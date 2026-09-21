@@ -125,17 +125,34 @@ d'env (pas de fichier de conf rclone à gérer) :
    (l'alerte `freshness:db-backup` couvre le dump local, pas le bucket — un œil
    humain sur le bucket 1×/mois).
 
-## 5. Sentry — activation (le code est déjà câblé, DSN vide = inactif)
+## 5. Sentry — activation (les 3 zones sont câblées, DSN vide = inactif)
+
+Le code est prêt dans les 3 zones (backend, engine, front — P5-19, 2026-09-22, a fermé le seul
+trou : le DSN front n'avait aucun chemin jusqu'au bundle avant cette date). Il ne reste que du
+geste ops, **mais dans cet ORDRE précis** — l'inverser fait échouer le prochain déploiement, sur
+un garde de build volontaire :
 
 1. Créer le compte sur sentry.io (free tier) + **3 projets** : `backend` (PHP), `engine`
-   (Python), `frontend` (JS).
-2. Poser les DSN :
-   - `.env` (backend) : `SENTRY_DSN=<dsn-php>` ;
-   - `.env` (racine, engine) : `ENGINE_SENTRY_DSN=<dsn-python>` ;
-   - front : `VITE_SENTRY_DSN=<dsn-js>` **au build** (`frontend/.env`), puis rebuild.
-3. Vérifier : lever une erreur volontaire par zone (ex. route inexistante côté API ne suffit
+   (Python), `frontend` (JS) → un DSN par projet.
+2. **Front d'abord, avant de poser le secret** : ajouter l'hôte d'ingestion du DSN front à la
+   directive `connect-src` de `docker/frontend/csp.conf`. Sans lui, le navigateur jetterait
+   chaque envoi en silence (SDK initialisé, rien ne part) — et depuis P4-65, le build refuse
+   carrément de compiler si un DSN est posé sans son hôte (`frontend/tooling/sentryCspGuard.ts`).
+3. Poser les DSN, chacun à sa maison — **elles ne sont PAS toutes le même fichier** :
+   - backend + engine : `SENTRY_DSN=<dsn-php>` et `ENGINE_SENTRY_DSN=<dsn-python>` dans le
+     `.env.prod` de la racine (le même fichier pour les deux — chiffré en dépôt, voir
+     § Secrets chiffrés de `deploy.md`) ;
+   - front : `VITE_SENTRY_DSN=<dsn-js>` en secret **GitHub Actions** du dépôt (Settings →
+     Secrets and variables → Actions), **PAS** dans `.env.prod`. Le bundle front est figé à la
+     COMPILATION (`import.meta.env`), et l'image prod n'est pas reconstruite sur la VM : elle
+     est construite par `.github/workflows/deploy.yml`, qui passe ce secret en `build-arg` à
+     `docker/frontend/Dockerfile` (`ARG`/`ENV VITE_SENTRY_DSN` avant `npm run build`). Un DSN
+     posé dans `.env.prod` n'atteindrait donc jamais le bundle.
+4. Redéployer (tag `v*`) pour reconstruire et pousser l'image front avec le DSN figé dedans —
+   poser le secret seul ne suffit pas, il faut qu'un build tourne après.
+5. Vérifier : lever une erreur volontaire par zone (ex. route inexistante côté API ne suffit
    pas — un `throw` de test) → l'event apparaît dans Sentry.
-4. Périmètre : **erreurs uniquement** (traces_sample_rate: 0 partout) — la perf solveur vit
+6. Périmètre : **erreurs uniquement** (traces_sample_rate: 0 partout) — la perf solveur vit
    dans `solver_metrics`, pas dans un APM.
 
 ## 6. Retour arrière de migration — drill (INF-05)
