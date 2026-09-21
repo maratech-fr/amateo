@@ -36,6 +36,7 @@ final class CustomRoutesOpenApiTest extends KernelTestCase
             '/api/fixtures/conflicts',
             '/api/fixtures/review',
             '/api/fixtures/review/deviations',
+            '/api/fixtures/league-validation',
             '/api/venues/{id}/external-labels',
             '/api/venues/{id}/external-labels/{label}',
             '/api/release-notes',

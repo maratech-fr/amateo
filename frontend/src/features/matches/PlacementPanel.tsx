@@ -90,9 +90,10 @@ function EnvelopeHint({ envelope, kickoff }: { envelope: EnvelopeResult; kickoff
  * unplace, lock/hand back to the solver, swap, edit, delete. Two HARD guards on
  * the placement gesture itself: the league envelope (when the team maps) and the
  * club's capacity data (PR B). RMM-1 PR 1 closes the weekly loop: a PLACED match
- * can be marked « Saisi dans FBI » (SUBMITTED, anchored); a SUBMITTED match keeps
- * the « Corriger » repair path back to PLACED. VALIDATED is fully read-only — the
- * league owns it.
+ * can be marked « Saisi dans FBI » (SUBMITTED, anchored). Both SUBMITTED and
+ * VALIDATED (batch « validé ligue », lot L) keep the « Corriger » repair path
+ * back to PLACED — a batch bascule can rest on an auto-matched venue, so the
+ * manager must always be able to unwind it.
  */
 export function PlacementPanel({
   fixture,
@@ -137,9 +138,10 @@ export function PlacementPanel({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const placed = "PLACED" === fixture.status;
-  // Saisi dans FBI : ancré, sortie « Corriger » possible. Attesté FBI : posé par
-  // l'import (la source atteste le match placé), aucune sortie. Les deux ferment
-  // l'édition — mais un futur import qui diverge peut faire retomber l'attestation.
+  // Saisi dans FBI ET Attesté ligue (bascule « validé ligue » en lot — lot L — ou
+  // réconciliation d'import) : tous deux ancrés et sortis de l'édition, mais tous
+  // deux gardent « Corriger » pour repasser en Placé. Une bascule en lot peut
+  // s'appuyer sur un gymnase apparié automatiquement : jamais de cul-de-sac.
   const submitted = "SUBMITTED" === fixture.status;
   const validated = "VALIDATED" === fixture.status;
   const locked = placed && "SOLVER" !== fixture.placementSource;
@@ -198,9 +200,18 @@ export function PlacementPanel({
             </Button>
           </div>
         ) : validated ? (
-          <div className="mt-3 border-t border-border pt-3">
-            <p className="text-sm font-medium">{FIXTURE_STATUS_LABEL.VALIDATED}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Attesté par FBI : date, heure et salle renvoyées identiques. Un futur import qui diverge le signalera dans Importer.</p>
+          <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+            <div>
+              <p className="text-sm font-medium">{FIXTURE_STATUS_LABEL.VALIDATED}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Ce match est ancré sur les date, heure et salle enregistrées côté ligue. Corrigez-le si l'une d'elles doit changer ;
+                un futur import qui diverge le signalera dans Importer.
+              </p>
+            </div>
+            <Button variant="ghost" size="sm" disabled={busy} className="self-start text-muted-foreground" onClick={onReopen}>
+              <Undo2 className="size-3.5" />
+              Corriger — repasser en Placé
+            </Button>
           </div>
         ) : (
           <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">

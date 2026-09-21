@@ -783,6 +783,55 @@ final class MatchTenantIsolationTest extends WebTestCase
         unset($clubA);
     }
 
+    /**
+     * NR axe §7.1 tenant isolation (revue lot L) — le geste « validé ligue » en lot ne
+     * lit ni n'écrit jamais les rencontres d'un AUTRE club. Le club B possède une
+     * rencontre ÉLIGIBLE ; sous SON identité B la compte à 1 (témoin : elle est bien
+     * éligible), mais le club A la compte à 0 et n'en bascule aucune — et la rencontre
+     * de B reste UNPLACED, sans source de placement. Cloisonnement club ET saison.
+     */
+    public function testLeagueValidationNeverReadsOrWritesAForeignClubsFixtures(): void
+    {
+        [$clubA, $userA] = $this->createClubUser('lva');
+        [$clubB, $userB, $seasonB] = $this->createClubUser('lvb');
+        $venueB = $this->createVenue($clubB, $seasonB, 'Gymnase B');
+
+        // B : un domicile UNPLACED portant heure + gymnase, sans écart → éligible.
+        $foreign = $this->createFixture($clubB, 'Adversaire B');
+        $this->scopeGucToClub($clubB->getId());
+        $foreign->setVenueId($venueB->getId());
+        $foreign->setKickoffTime(new DateTimeImmutable('15:30'));
+        $this->em->flush();
+        $foreignId = $foreign->getId();
+
+        // Témoin : sous SA propre identité, B compte bien 1 — le 0 vu par A ne peut donc
+        // venir que du cloisonnement, jamais de l'inéligibilité de la rencontre.
+        $this->client->request('GET', '/api/fixtures/league-validation', [], [], $this->authHeaders($userB));
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(1, $this->responseData()['count'] ?? -1);
+
+        // A ne voit RIEN : compte 0…
+        $this->client->request('GET', '/api/fixtures/league-validation', [], [], $this->authHeaders($userA));
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(0, $this->responseData()['count'] ?? -1);
+
+        // …et une bascule par A ne touche aucune rencontre de B.
+        $this->client->request('POST', '/api/fixtures/league-validation', [], [], $this->authHeaders($userA));
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(0, $this->responseData()['confirmed'] ?? -1);
+
+        // La rencontre de B est intacte : toujours UNPLACED, aucune source de placement.
+        // Lecture BRUTE sous le scope de B (la connexion dama partagée est scopée club).
+        $this->scopeGucToClub($clubB->getId());
+        $connection = self::getContainer()->get(EntityManagerInterface::class)->getConnection();
+        $row = $connection->fetchAssociative('SELECT status, placement_source FROM fixture WHERE id = ?', [$foreignId]);
+        self::assertIsArray($row);
+        self::assertSame('UNPLACED', $row['status'], 'la bascule de A ne valide jamais la rencontre de B');
+        self::assertNull($row['placement_source'], 'aucune source de placement posée cross-club');
+
+        unset($clubA);
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();

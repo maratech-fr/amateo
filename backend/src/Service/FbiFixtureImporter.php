@@ -980,6 +980,11 @@ final class FbiFixtureImporter
      * reviewState intact ; on la rend seulement visible de la collision de gymnase
      * (VENUE_OVERLAP) et de la fermeture (VENUE_UNAVAILABLE), statut indifférent.
      *
+     * « Naît avec son gymnase mais jamais placée d'office » : ce chemin de création ne
+     * pose donc AUCUN statut placé. L'UNIQUE exception CONSENTIE est un geste séparé,
+     * explicite et confirmé — le « validé ligue » en lot ({@see
+     * App\Controller\LeagueValidatedFixturesController}) —, jamais l'import lui-même.
+     *
      * @return bool vrai = un gymnase a été rattaché (la rencontre a « changé »)
      */
     public function attachConfirmedVenue(Fixture $fixture, ?string $venueLabel): bool

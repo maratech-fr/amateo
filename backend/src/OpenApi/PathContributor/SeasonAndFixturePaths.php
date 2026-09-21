@@ -435,5 +435,40 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                 ],
             ]),
         )));
+
+        $paths->addPath('/api/fixtures/league-validation', new PathItem(
+            get: new Operation(
+                operationId: 'countLeagueValidatableFixtures',
+                tags: ['Match'],
+                responses: [
+                    '200' => $this->schemas->jsonResponse('How many home fixtures are ready to be marked « validé ligue » in one gesture: UNPLACED home matches the imported FBI file already attests (kickoff present, an identified venue, no pending deviation). No date condition — a future home match carrying hour and gym is federation-recorded too.', [
+                        'type' => 'object',
+                        'properties' => [
+                            'count' => ['type' => 'integer'],
+                        ],
+                    ]),
+                    '401' => new Response('Unauthorized (missing/expired JWT)'),
+                    '403' => new Response('Not a management member'),
+                    '409' => new Response('No active season, season plan not chosen, or archived season'),
+                ],
+                summary: 'Count the home fixtures eligible for a batch « validé ligue » (read-only, management only)',
+            ),
+            post: new Operation(
+                operationId: 'confirmLeagueValidatedFixtures',
+                tags: ['Match'],
+                responses: [
+                    '200' => $this->schemas->jsonResponse('Mark every eligible home fixture « validé ligue » (status VALIDATED + placement source MANUAL — the anchor the grid lock and the placement solver both require). Idempotent: a second call finds nothing (the predicate excludes VALIDATED).', [
+                        'type' => 'object',
+                        'properties' => [
+                            'confirmed' => ['type' => 'integer', 'description' => 'How many fixtures were switched to « validé ligue »'],
+                        ],
+                    ]),
+                    '401' => new Response('Unauthorized (missing/expired JWT)'),
+                    '403' => new Response('Not a management member'),
+                    '409' => new Response('No active season, season plan not chosen, archived season, or a concurrent modification (another tab / double-click)'),
+                ],
+                summary: 'Mark the eligible home fixtures « validé ligue » in one confirmed gesture (management only)',
+            ),
+        ));
     }
 }

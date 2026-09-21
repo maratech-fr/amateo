@@ -3,39 +3,22 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-09-21 (`documentation-update`, lot K « appariement UX des gymnases
-adverses », 8 commits jusqu'à `5bfe2f92`). Recalé cette passe (§3 « Module matchs ») : `GET
-/api/opponents/travel` sert un champ additif `pairingKey` par adversaire (code fédéral, ou clé
-sentinelle locale pour un sans-code — `App\Service\OpponentPairingKey`) que le front réutilise tel
-quel dans les routes d'écriture ; `POST /api/opponents/{code}/venues`, `POST
-/api/opponents/{code}/venue-links` et **`PUT /api/opponents/venue-links/{id}`** acceptent cette
-même clé (fédérale ou sentinelle) — une clé sentinelle force un appariement LOCAL seul, la ref
-fédérale neutralisée AVANT écriture par la MAISON UNIQUE `OpponentVenueLinkManager::writeGym`
-(couvre les trois routes, SEULE — `93f36c29` avait d'abord donné au contrôleur un filtre
-identique en défense en profondeur, retiré par `5bfe2f92` le même jour : il court-circuitait le
-manager sur l'épinglage et rendait sa propre garde intestable par ce chemin) ;
-`OpponentTravelResolver::awayPairingKeys` inclut désormais les liens sentinelle dans le recalcul
-asynchrone de trajets (`pairsToRoute`, avant réservé aux codes fédéraux). Reste confronté à la
-passe précédente (2026-09-20, PR J/PR I) : §3 « Module matchs » recalé contre le code lu alors :
-`OpponentVenueLink` (tenant, club-scoped SANS saison) a remplacé `OpponentTravel` (supprimée,
-migration `Version20260920140000`) — 4 routes neuves sur
-`OpponentTravelController` (`POST /api/opponents/{code}/venues`, `POST
-/api/opponents/{code}/venue-links`, `PUT`/`DELETE /api/opponents/venue-links/{id}`), 2 supprimées
-(`POST /api/opponents/travel/manual`, `POST /api/opponents/travel/auto`) ; `GET
-/api/opponents/travel` change de forme (groupé par CLUB adverse, `venues[]`/`unmatchedLabels[]`) ;
-`FixtureResource.awayTravel` (champ additif, le trajet DÉRIVÉ de la rencontre, calculé en batch par
-`FixtureStateProvider::decorateCollection`) ; `OpponentPlaceResolver` re-pointé sur le lien. Preuve :
-`MatchPlacementContractSchemaTest` vert SANS modification, `engine/CONTRACT_VERSION` inchangé
-(2.23). Reste confronté à la passe précédente (2026-09-19, retouches revue sécurité H) : `POST
-/api/venue-travel-times/autofill`, `POST /api/opponents/travel/resolve` et la passe (c) de `POST
-/api/opponents/refresh` (`TravelComputeLock::isHeld` lu avant dispatch, `{queued: false,
-alreadyRunning: true}` sinon). Reste confronté à la passe d'avant (2026-09-19, PR H « onglet
-Adversaires ») : `hasLogo` additif, C5/C7 ; route `GET /api/opponents/{code}/logo`
-(`OpponentLogoController`, C7). Reste confronté à la passe d'avant (2026-09-19, PR G « todo FBI
-unique ») : trois routes `FbiCorrectionController` (registre « à corriger dans FBI »),
-`/api/fixtures/review/deviations`, `/api/matches/deadline-outlook`. Reste du fichier non re-vérifié
-cette passe — historique des recalages précédents : `git log -p --follow` ce fichier. Un stamp
-REMPLACE, l'historique vit dans git.
+Last verified @ 2026-09-21 (`documentation-update`, lot L « l'import FBI se confirme "validé ligue"
+en lot » + revue `d60b3fc0` le même jour). Recalé cette passe (§3 « Module matchs ») : nouveau
+`LeagueValidatedFixturesController` (`GET`/`POST /api/fixtures/league-validation`, priorité de route
+10 au-dessus de `/api/fixtures/{id}`) — prédicat `isEligible` unique lu au code (domicile `UNPLACED`,
+heure ET `venueId` présents, aucun écart en attente, aucune condition de date, **aucun contrôle des
+créneaux d'accès match — divergence assumée, vérifiée au docbloc**) ; le POST applique
+`setPlacementSource(MANUAL)` puis `setStatus(VALIDATED, …)`, rejouable. Vérifié que le chemin de
+création de l'import (`FbiFixtureImporter::attachConfirmedVenue`) n'a PAS changé. **`d60b3fc0`
+(revue, même jour) vérifié au code** : `guard()` refuse désormais en 409 si `_season_id` ne se
+résout pas (les deux routes) ; le POST attrape `OptimisticLockException` → 409 lisible en français ;
+`PlacementPanel.tsx` (frontend) offre « Corriger — repasser en Placé » sur `VALIDATED` comme
+`SUBMITTED` (le commentaire/texte d'origine affirmant une lecture seule était faux pour ce geste,
+corrigé) ; `MatchTenantIsolationTest` étendu. Snapshot OpenAPI régénéré une seconde fois (descriptions
+409 des deux routes élargies, **207 routes, compte inchangé** — recalculé au fichier,
+`openapi-snapshot.meta.md`). Reste du fichier non re-vérifié cette passe — historique des recalages
+précédents : `git log -p --follow` ce fichier. Un stamp REMPLACE, l'historique vit dans git.
 
 ---
 
@@ -623,6 +606,8 @@ Détail : [`module-matchs.md`](../../specs/courantes/module-matchs.md). Placemen
 | `/api/fixtures/place` | POST | `PlaceMatchesController` | « Placer automatiquement » (P1-4 PR D, ADR-0003). Rail **SYNCHRONE** — pas de Messenger/Mercure, verrou Redis dédié `MatchPlacementLock` (TTL 90 s, anti-double-clic). Ordre des gardes : SEC-07 (management) → saison inscriptible → `SocleGuard::assertSeasonPlanChosen` (409 si pas de socle en vigueur). Construit le payload (`MatchPlacementPayloadBuilder`, y compris `TeamLink`/`TeamMatchHabit`, et depuis P4-203 `matchMinutes`/`warmupMinutes` par équipe injectés par `MatchDurationResolver`, catégorie sinon défaut de famille), appelle `POST /place-matches` sur l'engine (timeout 60 s, `BAD_GATEWAY` si l'appel échoue — rien n'est écrit avant l'application du résultat), applique les placements (`MatchPlacementResultApplier`). Un match non plaçable n'est **jamais une erreur** : il revient nommé dans `unplaced` avec sa raison. |
 | `/api/fixtures/review` | POST | `ReviewFixturesController` | **PR-3a (2026-09-08)** — « traiter » des rencontres, espace Importer. Corps `{fixtureIds}` (geste LIGNE : chaque rencontre traitée, écarts pendants vidés — « garder l'app » implicite, D4) XOR `{teamId}` (geste MASSE : toutes les rencontres de l'équipe traitées SAUF celles à écart pendant, sautées et nommées dans `skipped[{fixtureId, reason}]` — jamais tranché en masse). Rend `{reviewed, skipped}`. SEC-07 + saison écrivable + `SocleGuard` ; 422 si zéro ou les deux gestes fournis. |
 | `/api/fixtures/review/deviations` | POST | `ReviewFixtureDeviationController` | **PR-3a (2026-09-08)** — trancher UN écart pendant. Corps `{fixtureId, field: date\|kickoff\|venue, choice: keep_app\|take_source}` — `keep_app` retire l'écart, `take_source` rejoue le moteur partagé (`FbiFixtureImporter::applyFieldTakeFile`) à partir de la valeur PERSISTÉE (jamais du client). Dernier écart retiré → `REVIEWED` + horodaté (D5). **Depuis le 2026-09-19 (todo FBI)** : `keep_app` (l'appli fait foi, FBI est en retard) ouvre en plus une entrée du registre « à corriger dans FBI » (`FbiCorrectionLedger::open`, tous champs — même foyer que le moteur de réconciliation partagé) ; `take_source` n'en ouvre jamais. SEC-07 + saison écrivable + `SocleGuard` ; 404 rencontre invisible (tenant) ; 422 corps malformé ou champ sans écart en attente. |
+| `/api/fixtures/league-validation` | GET | `LeagueValidatedFixturesController` | **Lot L (2026-09-21, revue `d60b3fc0` le même jour)** — un club qui démarre l'application EN COURS de saison importe des domiciles déjà datés côté fédération (date + heure + gymnase déjà enregistrés). Rend le COMPTE des domiciles `UNPLACED` éligibles à un geste « validé ligue » en lot — MÊME prédicat maison unique que le POST (`isEligible` : heure ET `venueId` présents, aucun écart en attente, **aucune condition de date, aucun contrôle des créneaux d'accès match — divergence ASSUMÉE** avec le geste unitaire, la source fédérale fait foi, signalée par le radar `ACCESS_WINDOW_LOST` plutôt que bloquée). SEC-07 + saison écrivable + `SocleGuard` + **409 explicite si aucune saison ne se résout** (défense en profondeur, ne dépend plus de la seule activation du filtre Doctrine). Route statique `priority: 10` pour gagner sur `/api/fixtures/{id}` d'API Platform. |
+| `/api/fixtures/league-validation` | POST | `LeagueValidatedFixturesController` | **Lot L (2026-09-21, revue `d60b3fc0` le même jour)** — bascule en lot chaque domicile éligible (même prédicat que le GET, même divergence assumée sur les créneaux d'accès) : `Fixture::setPlacementSource(MANUAL)` PUIS `Fixture::setStatus(VALIDATED, …)` (ancre requise par le cadenas de grille et par l'ancre `FIXED` du solveur de placement, §3). **Exception CONSENTIE** à « une rencontre naît avec son gymnase mais jamais placée d'office » — le chemin de création de l'import (`FbiFixtureImporter::attachConfirmedVenue`) N'EST PAS modifié, il continue de créer en `UNPLACED` ; c'est CE geste séparé, explicite et chiffré (jamais posé au chemin de création) qui valide. Rejouable : le prédicat exclut `VALIDATED`, une seconde application ne trouve plus rien. Rend `{confirmed}`. SEC-07 + saison écrivable + `SocleGuard` + **409 explicite si aucune saison ne se résout** ; **409 lisible en français sur une collision d'écriture simultanée** (verrou optimiste `Fixture`, aucun verrou Redis ajouté — écriture idempotente). Côté écran : `PlacementPanel` offre désormais « Corriger — repasser en Placé » sur toute rencontre `VALIDATED`, quel que soit le chemin qui l'a posée (réconciliation D9 ou ce geste) — une bascule en lot peut reposer sur un gymnase apparié automatiquement. |
 | `/api/fixtures/fbi-corrections` | GET | `FbiCorrectionController` | **2026-09-19 (todo FBI)** — lecture des entrées OUVERTES du registre « à corriger dans FBI » (club+saison), ouverte à tout membre. Route statique `priority: 10` pour gagner sur `/api/fixtures/{id}` d'API Platform. |
 | `/api/fixtures/fbi-corrections/{id}/close` | POST | `FbiCorrectionController` | **2026-09-19 (todo FBI)** — le gestionnaire coche « Corrigé dans FBI » (`closed_by=manual`). SEC-07 + saison écrivable ; entrée d'un autre club invisible (tenant) → 404 byte-identique, comme une entrée déjà fermée. |
 | `/api/fixtures/fbi-corrections/{id}/reopen` | POST | `FbiCorrectionController` | **2026-09-19 (todo FBI)** — annule un « corrigé dans FBI » manuel de moins de `REOPEN_GRACE_HOURS = 24` h (409 sinon, ou si l'entrée est déjà ouverte, ou fermée par un dépôt). SEC-07 + saison écrivable. |

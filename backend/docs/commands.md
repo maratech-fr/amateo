@@ -1,13 +1,14 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-09-18 (**rotation de fraîcheur** `documentation-update`, lot correctif
-frontend de l'audit 2026-09-18 — zone non touchée par cette PR). Re-confronté au code, tout juste :
+Last verified @ 2026-09-21 (**rotation de fraîcheur** `documentation-update`, lot L « validé ligue
+en lot » — zone non touchée par le reste de la PR). Re-confronté au code, tout juste :
 `app:fixtures:catch-up-review` (`CatchUpFixtureReviewCommand.php:59-60,66,68`) — options `--force`
 (`InputOption::VALUE_NONE`)/`--club` (`VALUE_REQUIRED`) confirmées ; `make play`/`db-empty`/`reset`
 toujours dans `Makefile` (racine, cibles `play`/`db-empty`/`reset`) ; CI lance toujours
-`app:bccl:seed --no-interaction` directement (`.github/workflows/ci.yml:1042`, `:1286`).
-Non re-sondé cette passe : le reste des commandes et gardes listées — un stamp REMPLACE,
-l'historique vit dans git.
+`app:bccl:seed --no-interaction` directement — **lignes recalées** (`.github/workflows/ci.yml:1045`,
+`:1289`, dérivé de `:1042`/`:1286` — le fichier a bougé de quelques lignes ailleurs, citation
+périmée corrigée). Non re-sondé cette passe : le reste des commandes et gardes listées — un stamp
+REMPLACE, l'historique vit dans git.
 
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`
 > le font pour toi. PHPUnit exige `APP_ENV=test` (sinon `test.service_container` introuvable).

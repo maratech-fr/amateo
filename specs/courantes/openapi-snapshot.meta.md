@@ -1,11 +1,25 @@
-Last verified @ 2026-09-21 (adversaire — UX d'appariement : `GET /api/opponents/travel` sert `pairingKey`
-par adversaire (code fédéral ou clé sentinelle d'un sans-code) ; `GET /api/ffbb/salles` gagne le paramètre
-`q` (recherche de salle par nom) ; régénéré par `api:openapi:export`).
-**206 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** net (champs / paramètre additifs).
-· SHA-256 `15785657c11f1813faa0e5cd7f313fce175aa99f8b70213a0f388d916ac541cb`
+Last verified @ 2026-09-21 (lot L + correctifs de revue `d60b3fc0` — « validé ligue » en lot :
+nouvelle route `GET`/`POST /api/fixtures/league-validation`, contributeur `SeasonAndFixturePaths` ;
+régénéré deux fois par `api:openapi:export`, la seconde après `d60b3fc0`).
+**207 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** net (nouvelle route,
+inchangé par les correctifs). · SHA-256 `9ae9779b0dd470df5e462dfde029234e980ed85e16505229f30a763c2d13e238`
 (`sha256sum`, confirmé sur le fichier régénéré. Reste du journal non re-confronté au code cette passe.)
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **Lot L — « validé ligue » en lot, backend (2026-09-21, amendé par `d60b3fc0` le même jour)** :
+  **+1 path** — nouvelle route `GET`/`POST /api/fixtures/league-validation` (management + saison
+  écrivable + socle pointé). GET rend le compte des domiciles UNPLACED éligibles (heure + venueId
+  identifié, sans écart en attente, aucune condition de date — délibérément AUCUN contrôle des
+  créneaux d'accès match, divergence assumée avec le geste unitaire, signalée par le radar via
+  `ACCESS_WINDOW_LOST`) ; POST les bascule en lot (statut VALIDATED + `placementSource` MANUAL —
+  l'ancre que le cadenas de grille et le solveur de placement exigent). Idempotent (le prédicat
+  exclut VALIDATED). Geste séparé du chemin de création de l'import (qui continue de créer en
+  UNPLACED). **`d60b3fc0` (revue) élargit la SÉMANTIQUE du 409 des deux routes** (le nombre de
+  routes ne bouge pas) : GET refuse désormais aussi quand AUCUNE saison ne se résout (défense en
+  profondeur, ne dépend plus de la seule activation du filtre Doctrine) ; POST refuse en plus sur
+  une collision d'écriture simultanée (verrou optimiste `Fixture`, message actionnable au lieu
+  d'une 500). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23, aucun
+  appel moteur).
 - **Adversaire — UX d'appariement des gymnases, backend (2026-09-21)** : **+0 path** — deux champs / un
   paramètre ADDITIFS. `GET /api/opponents/travel` sert `pairingKey` par adversaire : son code fédéral, ou une
   clé SENTINELLE (`X` + sha-256 du libellé) pour un adversaire SANS code, que le front repasse tel quel aux
@@ -66,16 +80,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   `unavailable` (tenté sans résultat, ou pas de lieu à router). En regard, la passe `resolve()` ne re-route
   plus QUE les trajets MANQUANTS (un trajet est une constante : jamais recalculé, jamais écrasé par un IGN
   muet). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23, aucun appel moteur).
-- **Registre « à corriger dans FBI », backend (2026-09-19)** : **+3 paths** — quand le gestionnaire garde
-  l'appli sur un écart, FBI est en retard : `GET /api/fixtures/fbi-corrections` (lecture membre) sert les
-  entrées OUVERTES du club+saison (`{id, fixtureId, field, appValue, fbiValue, venueFbiLabel, decidedAt,
-  lastSeenInFbiAt}`) ; `POST …/{id}/close` (gestionnaire + saison écrivable) coche « corrigé dans FBI »
-  (fermeture manuelle, 404 byte-identique cross-club) ; `POST …/{id}/reopen` annule un « corrigé » manuel de
-  moins de 24 h (sinon 409). Deux champs ADDITIFS : `fbiEcho` (`{field, value, at}`|null) sur le schéma
-  `Fixture` (mémo « FBI affiche … » d'un domicile rétrogradé « à saisir ») et `fbiTodo {toEnter, toCorrect}`
-  sur `GET /api/matches/deadline-outlook` (le « à faire dans FBI » global, servi pour que le cockpit ne
-  charge pas les fixtures). 201 → **204 paths**. Backend PUR, contrat backend⇄engine **inchangé**
-  (`CONTRACT_VERSION` 2.23, aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. Une route custom n'apparaît
 dans l'export que si elle est déclarée dans le `CustomPathContributor` de son domaine

@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,7 +9,9 @@ import { renderWithProviders } from "@/test/utils";
 import type { ImportAnalysisDivision, ImportFbiAnalysis, ImportFbiResult, PriorityTier, Team, VenueLabelInventoryRow } from "./api";
 import { ImportFbiDialog } from "./ImportFbiDialog";
 
-const { analyzeFbiFixtures, importFbiFixtures, placeMatches, getVenueLabelInventory } = vi.hoisted(() => ({
+const { analyzeFbiFixtures, importFbiFixtures, placeMatches, getVenueLabelInventory, getLeagueValidationCount, confirmLeagueValidatedFixtures } = vi.hoisted(() => ({
+  getLeagueValidationCount: vi.fn(() => Promise.resolve({ count: 0 })),
+  confirmLeagueValidatedFixtures: vi.fn(() => Promise.resolve({ confirmed: 0 })),
   analyzeFbiFixtures: vi.fn(() =>
     Promise.resolve({
       divisions: [
@@ -42,7 +44,7 @@ const { analyzeFbiFixtures, importFbiFixtures, placeMatches, getVenueLabelInvent
   getVenueLabelInventory: vi.fn((): Promise<VenueLabelInventoryRow[]> => Promise.resolve([])),
 }));
 
-vi.mock("./api", () => ({ analyzeFbiFixtures, importFbiFixtures, placeMatches, getVenueLabelInventory }));
+vi.mock("./api", () => ({ analyzeFbiFixtures, importFbiFixtures, placeMatches, getVenueLabelInventory, getLeagueValidationCount, confirmLeagueValidatedFixtures }));
 
 // useCredits lit useMe : `club` mutable pour piloter le solde (bouton de placement
 // de fin d'import — grisé à 0 AVEC le solde, jamais masqué).
@@ -87,6 +89,10 @@ beforeEach(() => {
   analyzeFbiFixtures.mockClear();
   importFbiFixtures.mockClear();
   placeMatches.mockClear();
+  getLeagueValidationCount.mockReset();
+  getLeagueValidationCount.mockResolvedValue({ count: 0 });
+  confirmLeagueValidatedFixtures.mockReset();
+  confirmLeagueValidatedFixtures.mockResolvedValue({ confirmed: 0 });
   meState.club = undefined;
 });
 
@@ -324,6 +330,39 @@ describe("ImportFbiDialog", () => {
     await waitFor(() => expect(screen.getByText(/22 créés/)).toBeInTheDocument());
     // unresolvedDeviations vide (mock par défaut) → aucune file à ouvrir.
     expect(screen.queryByRole("button", { name: "Ouvrir la file" })).not.toBeInTheDocument();
+  });
+
+  it("Lot L — après import, des rencontres validables ⇒ section « validé ligue » dans le rapport, et confirmer bascule", async () => {
+    // Persistant (pas Once) : l'import invalide le compte → il refetche ; les DEUX lectures
+    // voient les 4 validables. Remis à 0 par le beforeEach du test suivant.
+    getLeagueValidationCount.mockResolvedValue({ count: 4 });
+    confirmLeagueValidatedFixtures.mockResolvedValueOnce({ confirmed: 4 });
+    const user = userEvent.setup();
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Importer" }));
+    await user.click(await screen.findByRole("button", { name: "Importer quand même" }));
+
+    await waitFor(() => expect(screen.getByText(/4 rencontres portent déjà date, heure et gymnase dans FBI/)).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: /Marquer « validé ligue »/ }));
+    // La modale d'import est elle-même un role=dialog : on cible la confirmation par son nom.
+    const dialog = await screen.findByRole("dialog", { name: /Marquer « validé ligue »/ });
+    await user.click(within(dialog).getByRole("button", { name: /Marquer « validé ligue »/ }));
+    expect(confirmLeagueValidatedFixtures).toHaveBeenCalledOnce();
+  });
+
+  it("Lot L — rien à valider (compte 0) ⇒ aucune section « validé ligue » dans le rapport", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await pickFile(user);
+    await waitFor(() => expect(listboxTrigger(/Équipe pour DF2/)).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Importer" }));
+    await user.click(await screen.findByRole("button", { name: "Importer quand même" }));
+    await waitFor(() => expect(screen.getByText(/22 créés/)).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /Marquer « validé ligue »/ })).not.toBeInTheDocument();
   });
 
   it("E2 — après import, des salles à apparier ⇒ renvoi qui FERME la modale (pas de modale sur modale)", async () => {

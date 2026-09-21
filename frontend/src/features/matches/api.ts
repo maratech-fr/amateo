@@ -1158,6 +1158,29 @@ export interface ResolveDeviationResult {
 export const resolveFixtureDeviation = (input: ResolveDeviationInput): Promise<ResolveDeviationResult> =>
   api.post("fixtures/review/deviations", { json: input }).json<ResolveDeviationResult>();
 
+/**
+ * Lot L — « validé ligue » en lot. Un club qui démarre EN COURS de saison importe des
+ * domiciles déjà datés côté fédération (date + heure + gymnase) : plutôt que confirmer
+ * chaque placement, un geste chiffré les bascule d'un coup. Le backend est la SEULE
+ * maison du prédicat d'éligibilité — le front AFFICHE le compte servi, il ne le
+ * redérive JAMAIS (🔴 `.claude/rules/frontend.md`). `count` = combien sont validables ;
+ * `confirmed` = combien ont basculé (VALIDATED + source MANUAL). Rejouable : un second
+ * appel rend 0.
+ */
+export interface LeagueValidationCount {
+  count: number;
+}
+
+export interface LeagueValidationResult {
+  confirmed: number;
+}
+
+export const getLeagueValidationCount = (): Promise<LeagueValidationCount> =>
+  api.get("fixtures/league-validation").json<LeagueValidationCount>();
+
+export const confirmLeagueValidatedFixtures = (): Promise<LeagueValidationResult> =>
+  api.post("fixtures/league-validation").json<LeagueValidationResult>();
+
 export const createFixture = (input: CreateFixtureInput): Promise<Fixture> =>
   api.post("fixtures", { json: { competitionId: null, ...input } }).json<Fixture>();
 
