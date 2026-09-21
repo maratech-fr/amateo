@@ -20,30 +20,6 @@ enum ConflictResolutionStatus: string
 {
     use HasValues;
 
-    case DEROGATION_REQUESTED = 'DEROGATION_REQUESTED';
-
-    case RESOLVED_INTERNALLY = 'RESOLVED_INTERNALLY';
-
-    case NO_SOLUTION_YET = 'NO_SOLUTION_YET';
-
-    // Deux statuts réservés aux conflits où la personne JOUE (un côté servi porte
-    // le rôle PLAYER) : le gestionnaire tranche que la personne coache sans jouer,
-    // ou joue sans coacher. Colonne `length: 30` — aucune migration.
-    case COACHES_NOT_PLAYING = 'COACHES_NOT_PLAYING';
-
-    case PLAYS_NOT_COACHING = 'PLAYS_NOT_COACHING';
-
-    // Statuts propres à une FAMILLE de conflit — un « on a une action, pas
-    // forcément directe » que le gestionnaire pose sans régler le conflit sur-le-champ
-    // (lot N). Calendrier incomplet → importer les matchs manquants ; collision de
-    // gymnase → erreur FBI (alimente le registre « à corriger dans FBI ») ou match à
-    // déplacer. Toujours `length: 30` (IMPORT_MISSING_MATCHES = 22) — aucune migration.
-    case IMPORT_MISSING_MATCHES = 'IMPORT_MISSING_MATCHES';
-
-    case FBI_ERROR = 'FBI_ERROR';
-
-    case MATCH_TO_MOVE = 'MATCH_TO_MOVE';
-
     /** Les trois statuts de BASE, proposés sur TOUTE famille. */
     private const array BASE = [self::DEROGATION_REQUESTED, self::RESOLVED_INTERNALLY, self::NO_SOLUTION_YET];
 
@@ -74,4 +50,28 @@ enum ConflictResolutionStatus: string
     {
         return [...self::BASE, ...(self::FAMILY_EXTRA[$conflictType] ?? [])];
     }
+
+    case DEROGATION_REQUESTED = 'DEROGATION_REQUESTED';
+
+    case RESOLVED_INTERNALLY = 'RESOLVED_INTERNALLY';
+
+    case NO_SOLUTION_YET = 'NO_SOLUTION_YET';
+
+    // Deux statuts réservés aux conflits où la personne JOUE (un côté servi porte
+    // le rôle PLAYER) : le gestionnaire tranche que la personne coache sans jouer,
+    // ou joue sans coacher. Colonne `length: 30` — aucune migration.
+    case COACHES_NOT_PLAYING = 'COACHES_NOT_PLAYING';
+
+    case PLAYS_NOT_COACHING = 'PLAYS_NOT_COACHING';
+
+    // Statuts propres à une FAMILLE de conflit — un « on a une action, pas
+    // forcément directe » que le gestionnaire pose sans régler le conflit sur-le-champ
+    // (lot N). Calendrier incomplet → importer les matchs manquants ; collision de
+    // gymnase → erreur FBI (alimente le registre « à corriger dans FBI ») ou match à
+    // déplacer. Toujours `length: 30` (IMPORT_MISSING_MATCHES = 22) — aucune migration.
+    case IMPORT_MISSING_MATCHES = 'IMPORT_MISSING_MATCHES';
+
+    case FBI_ERROR = 'FBI_ERROR';
+
+    case MATCH_TO_MOVE = 'MATCH_TO_MOVE';
 }
