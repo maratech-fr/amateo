@@ -43,6 +43,8 @@ final class VenueAliasIdentityContext extends BaseContext
 
     private const string VENUE_NAME_2 = 'GYM AUTRE BEHAT';
 
+    private const string TEAM_NAME = 'Nom FBI Jetable';
+
     /** Le libellé fédéral rattaché au gymnase : stocké NORMALISÉ (« salle du 8 mai »). */
     private const string ALIAS_LABEL = 'SALLE DU 8 MAI';
 
@@ -62,12 +64,6 @@ final class VenueAliasIdentityContext extends BaseContext
     private string $teamId = '';
 
     private string $venueId = '';
-
-    private string $venueId2 = '';
-
-    private string $matchWindowId = '';
-
-    private string $competitionId = '';
 
     private string $matchDate = '';
 
@@ -112,6 +108,12 @@ final class VenueAliasIdentityContext extends BaseContext
         $clubToday = new DateTimeImmutable('today', new DateTimeZone('Europe/Paris'));
         $mondayThisWeek = $clubToday->modify(\sprintf('-%d days', (int) $clubToday->format('N') - 1));
         $this->matchDate = $mondayThisWeek->modify('+12 days')->format('Y-m-d');
+
+        // Indépendance : un run PRÉCÉDENT mal terminé (crochet de fin non joué) a pu
+        // laisser des ressources jetables — dont un gymnase retenant l'alias, ce qui
+        // refuserait le rattachement (422). On repart d'une ardoise propre AVANT de créer
+        // quoi que ce soit : un scénario ne suppose jamais l'état de la base.
+        $this->cleanSlate();
     }
 
     #[Given('une équipe jetable et un gymnase jetable « GYM ALIAS BEHAT » rattaché à l\'alias « SALLE DU 8 MAI »')]
@@ -122,13 +124,14 @@ final class VenueAliasIdentityContext extends BaseContext
         if (!\is_string($category) || '' === $category) {
             throw new RuntimeException('aucune catégorie sportive pour bâtir une équipe jetable');
         }
-        $this->teamId = $this->createdId($this->apiPost('teams', ['name' => 'Nom FBI Jetable', 'sportCategoryId' => $category, 'priorityTierId' => 1], $this->token), 'équipe');
+        $this->teamId = $this->createdId($this->apiPost('teams', ['name' => self::TEAM_NAME, 'sportCategoryId' => $category, 'priorityTierId' => 1], $this->token), 'équipe');
         $this->venueId = $this->createdId($this->apiPost('venues', ['name' => self::VENUE_NAME, 'source' => 'manual'], $this->token), 'gymnase');
         $this->rattacher($this->venueId, self::ALIAS_LABEL);
 
         // Un accès match le jour de la rencontre, pour pouvoir placer le domicile.
+        // L'id n'est pas retenu : le nettoyage supprime les accès par le gymnase (nom).
         $dayOfWeek = (int) new DateTimeImmutable($this->matchDate)->format('N');
-        $this->matchWindowId = $this->createdId(
+        $this->createdId(
             $this->apiPost('venue_match_windows', ['venueId' => $this->venueId, 'dayOfWeek' => $dayOfWeek, 'startTime' => '14:00', 'endTime' => '18:00'], $this->token),
             'accès match',
         );
@@ -137,8 +140,8 @@ final class VenueAliasIdentityContext extends BaseContext
     #[Given('un deuxième gymnase jetable « GYM AUTRE BEHAT » rattaché à l\'alias « SALLE RAPHAEL DE BARROS »')]
     public function unDeuxiemeGymnaseAvecAlias(): void
     {
-        $this->venueId2 = $this->createdId($this->apiPost('venues', ['name' => self::VENUE_NAME_2, 'source' => 'manual'], $this->token), 'gymnase');
-        $this->rattacher($this->venueId2, self::OTHER_ALIAS_LABEL);
+        $venueId2 = $this->createdId($this->apiPost('venues', ['name' => self::VENUE_NAME_2, 'source' => 'manual'], $this->token), 'gymnase');
+        $this->rattacher($venueId2, self::OTHER_ALIAS_LABEL);
     }
 
     #[Given('une rencontre sœur atteste la graphie brute « Salle du 8 Mai » pour ce gymnase')]
@@ -147,10 +150,6 @@ final class VenueAliasIdentityContext extends BaseContext
         // La sœur naît AVEC le gymnase (son libellé normalisé égale l'alias), et porte
         // sa graphie BRUTE dans le libellé FBI stocké — c'est elle qu'on retrouvera.
         $this->deposit(self::REF_SIBLING, self::RAW_LABEL, [['division' => self::DIVISION, 'teamId' => $this->teamId]]);
-        $this->competitionId = $this->dbalScalar(
-            \sprintf('SELECT id AS behatval FROM competition WHERE club_id=\'%s\' AND name=\'%s\' LIMIT 1', $this->clubId, self::DIVISION),
-            admin: true,
-        );
         if (($this->fixtureJson(self::REF_SIBLING)['venueId'] ?? null) !== $this->venueId) {
             throw new RuntimeException('la sœur aurait dû être rattachée au gymnase par son alias');
         }
@@ -230,36 +229,11 @@ final class VenueAliasIdentityContext extends BaseContext
     #[AfterScenario]
     public function nettoyer(): void
     {
-        if ('' === $this->token) {
+        if ('' === $this->clubId) {
             return;
         }
-        foreach ([self::REF_MAIN, self::REF_SIBLING] as $ref) {
-            $id = $this->dbalScalar(
-                \sprintf('SELECT id AS behatval FROM fixture WHERE club_id=\'%s\' AND external_ref=\'%s\' LIMIT 1', $this->clubId, $ref),
-                admin: true,
-            );
-            if ('' !== $id) {
-                // Les entrées « à corriger » sont purgées avec la rencontre ; en test on
-                // les efface directement (SQL admin) pour un run répétable.
-                $this->dbalExec(\sprintf('DELETE FROM fbi_correction WHERE fixture_id=\'%s\'', $id), admin: true);
-                $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
-            }
-        }
-        if ('' !== $this->competitionId) {
-            $this->apiDelete(\sprintf('competitions/%s', $this->competitionId), $this->token);
-        }
-        if ('' !== $this->matchWindowId) {
-            $this->apiDelete(\sprintf('venue_match_windows/%s', $this->matchWindowId), $this->token);
-        }
-        if ('' !== $this->teamId) {
-            $this->apiDelete(\sprintf('teams/%s', $this->teamId), $this->token);
-        }
-        foreach ([$this->venueId, $this->venueId2] as $venue) {
-            if ('' !== $venue) {
-                $this->apiDelete(\sprintf('venues/%s', $venue), $this->token);
-            }
-        }
-        if ($this->pointerSetBySelf && '' !== $this->clubId) {
+        $this->cleanSlate();
+        if ($this->pointerSetBySelf) {
             $this->dbalExec(
                 \sprintf('UPDATE schedule_plan SET chosen_schedule_id=NULL WHERE club_id=\'%s\' AND type=\'SEASON\'', $this->clubId),
                 admin: true,
@@ -267,16 +241,41 @@ final class VenueAliasIdentityContext extends BaseContext
         }
     }
 
+    /**
+     * Efface TOUTES les ressources jetables de ce lot, repérées par leur nom/référence
+     * STABLES (jamais par un id résolu au préalable — c'est ce qui injectait un « [OK]
+     * empty result set » dans une requête quand la rencontre n'existait pas). SQL admin
+     * (hors RLS, scopé au club), enfants avant parents ; ces entités ne portent aucune
+     * FK relationnelle (références en `guid` nu), l'ordre est donc sans risque. Idempotent
+     * et sans effet si rien ne traîne : jouable en début ET en fin de scénario.
+     */
+    private function cleanSlate(): void
+    {
+        $refs = \sprintf('\'%s\',\'%s\'', self::REF_MAIN, self::REF_SIBLING);
+        $venues = \sprintf('\'%s\',\'%s\'', self::VENUE_NAME, self::VENUE_NAME_2);
+
+        // Les entrées « à corriger » des rencontres jetables (aucune FK sur fixture_id).
+        $this->dbalExec(\sprintf(
+            'DELETE FROM fbi_correction WHERE club_id=\'%s\' AND fixture_id IN (SELECT id FROM fixture WHERE club_id=\'%s\' AND external_ref IN (%s))',
+            $this->clubId,
+            $this->clubId,
+            $refs,
+        ), admin: true);
+        $this->dbalExec(\sprintf('DELETE FROM fixture WHERE club_id=\'%s\' AND external_ref IN (%s)', $this->clubId, $refs), admin: true);
+        $this->dbalExec(\sprintf('DELETE FROM competition WHERE club_id=\'%s\' AND name=\'%s\'', $this->clubId, self::DIVISION), admin: true);
+        $this->dbalExec(\sprintf(
+            'DELETE FROM venue_match_window WHERE venue_id IN (SELECT id FROM venue WHERE club_id=\'%s\' AND name IN (%s))',
+            $this->clubId,
+            $venues,
+        ), admin: true);
+        $this->dbalExec(\sprintf('DELETE FROM venue WHERE club_id=\'%s\' AND name IN (%s)', $this->clubId, $venues), admin: true);
+        $this->dbalExec(\sprintf('DELETE FROM team WHERE club_id=\'%s\' AND name=\'%s\'', $this->clubId, self::TEAM_NAME), admin: true);
+    }
+
     /** Dépose la rencontre principale sous $salle, puis la place PLACED dans le gymnase à alias. */
     private function deposeEtPlace(string $salle): void
     {
         $this->deposit(self::REF_MAIN, $salle, [['division' => self::DIVISION, 'teamId' => $this->teamId]]);
-        if ('' === $this->competitionId) {
-            $this->competitionId = $this->dbalScalar(
-                \sprintf('SELECT id AS behatval FROM competition WHERE club_id=\'%s\' AND name=\'%s\' LIMIT 1', $this->clubId, self::DIVISION),
-                admin: true,
-            );
-        }
         $result = $this->apiPut(\sprintf('fixtures/%s', $this->fixtureId(self::REF_MAIN)), [
             'teamId' => $this->teamId,
             'matchDate' => $this->matchDate,
