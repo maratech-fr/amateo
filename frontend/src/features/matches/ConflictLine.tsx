@@ -286,9 +286,14 @@ function OverlapPhrase({ overlap }: { overlap: ConflictOverlapLine }) {
 function ConflictVenueRow({ side }: { side: ConflictSideLine }) {
   return (
     <TableRow>
-      <th scope="row" className="w-full px-1.5 py-0.5 text-left align-top font-normal">
-        <span className="block font-medium text-foreground">{side.teamName}</span>
-        {undefined !== side.opponent ? <span className="block min-w-0 text-foreground [overflow-wrap:anywhere]">{side.opponent}</span> : null}
+      {/* Identité : équipe et « vs adversaire » CÔTE À CÔTE (`flex`, une seule ligne au bureau) ;
+          `flex-wrap` les empile en largeur téléphone (repli assumé). Plus de `w-full` : la colonne
+          d'identité ne capte plus tout le vide — l'espace se répartit sur Gymnase · Date · Créneau. */}
+      <th scope="row" className="px-1.5 py-0.5 text-left align-top font-normal">
+        <span className="flex flex-wrap items-baseline gap-x-1.5">
+          <span className="font-medium text-foreground">{side.teamName}</span>
+          {undefined !== side.opponent ? <span className="min-w-0 text-foreground [overflow-wrap:anywhere]">{side.opponent}</span> : null}
+        </span>
       </th>
       <TableCell className="px-1.5 py-0.5 align-top">
         <span className="flex items-center gap-1">
@@ -298,7 +303,9 @@ function ConflictVenueRow({ side }: { side: ConflictSideLine }) {
       </TableCell>
       <TableCell className="whitespace-nowrap px-1.5 py-0.5 align-top tabular-nums text-foreground">{side.date ?? "—"}</TableCell>
       <TableCell className="whitespace-nowrap px-1.5 py-0.5 align-top tabular-nums">
-        <span className="inline-flex flex-wrap items-center gap-x-1">
+        {/* `inline-flex` SANS `flex-wrap` : le coup d'envoi, la flèche et la fin ne se cassent
+            jamais autour de la flèche (la cellule elle-même reste `whitespace-nowrap`). */}
+        <span className="inline-flex items-center gap-x-1">
           <span className="text-foreground">{undefined !== side.times.kickoff.value && "" !== side.times.kickoff.value ? side.times.kickoff.value : "—"}</span>
           {side.times.kickoff.estimated ? <EstimatedPill /> : null}
           {undefined !== side.times.end && "" !== side.times.end ? (
@@ -326,8 +333,9 @@ function ConflictVenueDetail({ model }: { model: ConflictSideModel }) {
         <TableCaption className="sr-only">Détail par équipe</TableCaption>
         <TableHeader>
           <TableRow>
-            {/* Colonne d'identité SANS en-tête nommé : les 3 en-têtes correspondent aux 3 colonnes. */}
-            <td className="w-full px-1.5 py-0.5" />
+            {/* Colonne d'identité SANS en-tête nommé (ni `w-full` : le vide se répartit sur les
+                3 colonnes plutôt que de gonfler l'identité) — les 3 en-têtes suivent les 3 colonnes. */}
+            <td className="px-1.5 py-0.5" />
             <TableHead className="px-1.5 py-0.5 normal-case">Gymnase</TableHead>
             <TableHead className="px-1.5 py-0.5 normal-case">Date</TableHead>
             <TableHead className="px-1.5 py-0.5 normal-case">Créneau</TableHead>
