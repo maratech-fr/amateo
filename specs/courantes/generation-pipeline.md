@@ -1,14 +1,16 @@
 # Génération d'un planning — conduite normalisée (bout en bout)
 
-Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — D3, hors
-filet du garde `test_contract_version_doc_sync.py`, AUD-DOC-39). `CONTRACT_VERSION` était noté
-`'2.21'`, désormais **`'2.23'`** (`ScheduleConstraintBuilder.php:64`, même valeur
-`MoveSlotService.php:50` et `MatchPlacementPayloadBuilder.php:65`, `engine/CONTRACT_VERSION`) —
-deux bumps le même jour : `2.22` (ENG-40, diagnostic `placement_problem_too_large`) puis `2.23`
-(D3, `matches[].roundTripMinutes` sur `/place-matches`) — occurrences ci-dessous recalées. Reste
-non re-sondé cette passe : chaîne
-`GenerateScheduleController` → Messenger → `GenerateScheduleHandler`, verrou
-`ClubGenerationLock::acquire`, topic Mercure, `TIMEOUT_MS` (dernière confrontation 2026-09-15)
+Last verified @ 2026-09-21 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
+cette PR — lot P « le nom FBI d'un gymnase », module matchs). Re-confronté : `CONTRACT_VERSION`
+toujours **`'2.23'`** aux trois foyers (`ScheduleConstraintBuilder.php:63`,
+`MoveSlotService.php:50`, `MatchPlacementPayloadBuilder.php:65`) et `engine/CONTRACT_VERSION`,
+inchangé depuis la passe précédente ; `ClubGenerationLock::acquire` existe toujours
+(`backend/src/Service/ClubGenerationLock.php:20`) ; `TIMEOUT_MS = 20 * 60 * 1000` toujours vrai
+(`GenerateStep.tsx:37`). **Une contradiction interne corrigée** : le diagramme §1 disait encore
+« Mercure publish, AUCUN abonné frontend » alors que §2 documente correctement depuis FRT-04 (livré
+2026-08-07) que le frontend CONSOMME Mercure — le diagramme datait d'avant cette livraison et
+n'avait jamais été recalé, corrigé cette passe. Reste non re-sondé : le détail interne de
+`GenerateScheduleHandler`, le format exact du topic Mercure
 *(historique des passes vit dans git : `git log -p --follow specs/courantes/generation-pipeline.md`)*
 
 > Vérité courante. Décrit ce qui **doit** se passer, zone par zone, quand un
@@ -31,8 +33,8 @@ POST /api/schedules/{id}/generate ──────▶ GenerateScheduleControll
                                                 ├─ POST http://engine:8000/generate ─▶ solveur CP-SAT
                                                 │                                     ◀─ { status, slots[], diagnostics }
                                                 ├─ importe les slots placés
-                                                └─ Mercure publish (canal ouvert, AUCUN abonné
-                                                   frontend à ce jour — voir §2)
+                                                └─ Mercure publish (§2 : le frontend CONSOMME
+                                                   depuis FRT-04, un EventSource par session)
 GET /api/schedules/{id} (poll PENDING/GENERATING) ◀───── status COMPLETED/FAILED
 Planning : GET /api/schedules (collection)
 └▶ atterrissage sur le plan de saison → affichage des créneaux

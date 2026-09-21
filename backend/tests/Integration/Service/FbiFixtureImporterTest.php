@@ -675,7 +675,37 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertInstanceOf(FbiCorrection::class, $entry);
         self::assertSame('Gymnase Coubertin', $entry->getAppValue());
         self::assertSame('GYMNASE MATEO', $entry->getFbiValue());
-        self::assertSame('gymnase pierre de coubertin', $entry->getVenueFbiLabel(), 'l\'alias FBI du gymnase de l\'appli, servi');
+        self::assertSame('gymnase pierre de coubertin', $entry->getVenueFbiLabel(), 'aucune sœur n\'atteste la graphie brute → repli sur le premier alias');
+    }
+
+    public function testVenueFbiLabelServesTheRawSpellingASiblingAttests(): void
+    {
+        // Le registre « à corriger dans FBI » rend la GRAPHIE BRUTE que la source
+        // atteste pour ce gymnase — pas le premier alias, stocké NORMALISÉ (minuscules
+        // sans accents), illisible à recopier dans un écran fédéral. Une rencontre
+        // SŒUR (même saison, même gymnase) dont le libellé normalisé est un alias
+        // confirmé en porte la graphie d'origine.
+        $venueId = $this->createVenueWithAliases('Gymnase Coubertin', ['gymnase pierre de coubertin']);
+        // La sœur, rattachée par cet alias, atteste sa graphie brute « Gymnase Pierre de Coubertin ».
+        $this->importMapped([['D2', 'SIB', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'Gymnase Pierre de Coubertin']]);
+        self::assertSame($venueId, $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'SIB'])?->getVenueId());
+
+        // La rencontre arbitrée est placée dans le MÊME gymnase, mais sous le nom Amateo.
+        $this->importMapped([['D2', 'PB1', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'Gymnase Coubertin']]);
+        $this->placeAt('PB1', $venueId);
+        $id = $this->fixtureId('PB1');
+
+        // « Garder l'appli » sur un écart salle ouvre l'entrée : elle sert la graphie brute.
+        $this->importMapped(
+            [['D2', 'PB1', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE MATEO']],
+            null,
+            [['fixtureId' => $id, 'field' => 'venue', 'choice' => 'keep_app']],
+        );
+        $this->em->clear();
+
+        $entry = $this->em->getRepository(FbiCorrection::class)->findOneBy(['fixtureId' => $id, 'field' => FbiCorrectionField::VENUE]);
+        self::assertInstanceOf(FbiCorrection::class, $entry);
+        self::assertSame('Gymnase Pierre de Coubertin', $entry->getVenueFbiLabel(), 'la graphie BRUTE attestée par la sœur, pas l\'alias normalisé');
     }
 
     public function testTakeFileNeverOpensAnFbiCorrectionEntry(): void
@@ -873,6 +903,54 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertSame(
             ['app' => 'GYMNASE PIERRE DE COUBERTIN', 'file' => 'GYMNASE MATEO'],
             $different['unresolvedDeviations'][0]['fields']['venue'],
+        );
+    }
+
+    public function testPlacedHomeNamedByAConfirmedAliasIsNoDeviationAndGetsValidated(): void
+    {
+        // Le FAUX écart qui revenait à chaque dépôt : la source nomme le gymnase PLACÉ
+        // par un alias CONFIRMÉ (pas le nom Amateo, et sans recouvrement de mot). Le
+        // chemin placé porte désormais la même clause alias que le non placé → plus
+        // d'écart ; et comme la source atteste date + heure + salle, la réconciliation
+        // passe enfin la rencontre en VALIDATED (D9 — l'attestation qui fonctionne).
+        $venueId = $this->createVenueWithAliases('GYMNASE COUBERTIN', ['salle du 8 mai']);
+        $this->importMapped([['D2', 'PA1', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'Salle du 8 Mai']]);
+        $this->placeAt('PA1', $venueId); // placé dans le gymnase que l'alias désigne
+
+        $result = $this->importMapped([['D2', 'PA1', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'Salle du 8 Mai']]);
+
+        self::assertSame([], $result['unresolvedDeviations'], 'l\'alias confirmé du gymnase placé n\'est pas un écart');
+        $this->em->clear();
+        self::assertSame(
+            FixtureStatus::VALIDATED,
+            $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'PA1'])?->getStatus(),
+            'attestée sur les trois champs (salle par alias) → validée',
+        );
+    }
+
+    public function testPlacedHomeWhoseFileAliasPointsAnotherVenueStillRaisesTheDeviation(): void
+    {
+        // La clause alias reste STRICTE sur l'identité : un alias qui désigne un AUTRE
+        // gymnase que celui où la rencontre est placée lève toujours l'écart (jamais
+        // validée sur la foi d'une salle qui n'est pas celle du placement).
+        $jdr = $this->createVenue('GYMNASE JDR');
+        $this->createVenueWithAliases('Debarros', ['salle raphael de barros']);
+        $this->importMapped([['D2', 'PA2', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE JDR']]);
+        $this->placeAt('PA2', $jdr); // placé dans JDR
+
+        // La source nomme la salle d'un AUTRE gymnase (alias confirmé de Debarros).
+        $result = $this->importMapped([['D2', 'PA2', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'SALLE RAPHAEL DE BARROS']]);
+
+        self::assertCount(1, $result['unresolvedDeviations']);
+        self::assertSame(
+            ['app' => 'GYMNASE JDR', 'file' => 'SALLE RAPHAEL DE BARROS'],
+            $result['unresolvedDeviations'][0]['fields']['venue'],
+        );
+        $this->em->clear();
+        self::assertSame(
+            FixtureStatus::PLACED,
+            $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'PA2'])?->getStatus(),
+            'un alias vers un autre gymnase n\'atteste pas → jamais validée',
         );
     }
 

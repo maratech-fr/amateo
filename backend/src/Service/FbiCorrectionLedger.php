@@ -11,6 +11,7 @@ use App\Entity\Venue;
 use App\Enum\FbiCorrectionCloseSource;
 use App\Enum\FbiCorrectionField;
 use App\Repository\FbiCorrectionRepository;
+use App\Repository\FixtureRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -37,6 +38,7 @@ final class FbiCorrectionLedger
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly FbiCorrectionRepository $repository,
+        private readonly FixtureRepository $fixtures,
         private readonly VenueLabelNormalizer $normalizer,
         private readonly Security $security,
     ) {}
@@ -187,6 +189,13 @@ final class FbiCorrectionLedger
      * Le libellé FBI du gymnase de l'appli, quand l'inventaire des alias en connaît un —
      * ce que le gestionnaire doit sélectionner dans FBI. Null pour une salle sans alias
      * confirmé (le front affiche alors le nom Amateo).
+     *
+     * On rend la GRAPHIE BRUTE que la source atteste pour ce gymnase, pas le premier
+     * alias : les alias sont stockés NORMALISÉS (minuscules sans accents), illisibles à
+     * recopier dans un écran fédéral. On la retrouve sur les rencontres SŒURS — le
+     * libellé FBI brut de la rencontre la plus récemment mise à jour (même saison, même
+     * gymnase) dont le libellé normalisé est un alias confirmé. Repli sur le premier
+     * alias si aucune sœur n'atteste (mieux que rien : au moins le nom de la salle).
      */
     private function venueFbiLabel(Fixture $fixture): ?string
     {
@@ -199,7 +208,14 @@ final class FbiCorrectionLedger
             return null;
         }
 
-        return $venue->getExternalLabels()[0] ?? null;
+        $aliases = $venue->getExternalLabels();
+        foreach ($this->fixtures->findRawVenueLabelsBySeasonAndVenue($fixture->getSeasonId(), $venueId) as $rawLabel) {
+            if (\in_array($this->normalizer->normalize($rawLabel), $aliases, true)) {
+                return $rawLabel;
+            }
+        }
+
+        return $aliases[0] ?? null;
     }
 
     private function currentUserId(): string

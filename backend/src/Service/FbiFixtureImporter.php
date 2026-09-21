@@ -452,11 +452,17 @@ final class FbiFixtureImporter
         // A placed home fixture without a venue id, or an unknown venue, cannot be
         // compared → no deviation (degrade safe). Fuzzy: normalized equality OR
         // whole-word containment either way (« Coubertin » ≈ « GYMNASE … COUBERTIN »).
+        // Conforme AUSSI quand l'alias confirmé du libellé pointe le gymnase courant :
+        // la MÊME clause alias que le chemin non placé ({@see detectUnplacedVenueDeviation}),
+        // sans quoi un domicile placé dans le bon gymnase mais que la source nomme par
+        // un alias lèverait un FAUX écart à chaque dépôt. L'égalité reste STRICTE sur
+        // l'identité : un alias pointant un AUTRE gymnase lève toujours l'écart.
         $venueId = $existing->getVenueId();
         $fileLabel = $row['venueLabel'];
         if (null !== $venueId && null !== $fileLabel && isset($venueNames[$venueId])) {
             $appLabel = $venueNames[$venueId];
-            if (!$this->venueMatches($appLabel, $fileLabel)) {
+            if (!$this->venueMatches($appLabel, $fileLabel)
+                && $this->venueAliasResolver->resolveConfirmed($fileLabel) !== $venueId) {
                 $fields['venue'] = ['app' => $appLabel, 'file' => $fileLabel];
             }
         }

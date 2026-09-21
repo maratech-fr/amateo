@@ -1,28 +1,17 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-21 (`documentation-update`, lot N « vocabulaire de traitement par famille +
-détail par côté d'une collision de gymnase + erreur FBI alimente le registre », 5 commits
-`e593085c`…`9ae3fd2c`, **amendé le même jour par 5 correctifs de revue de sécurité, `d1673bde`**).
-Confronté au code cette passe : `conflictSideLines.ts::venueSide` (le builder « détail par côté »
-gagne une variante `venue`, aux côtés de la variante `person` préexistante) ;
-`ConflictResolutionStatus` (`casesForFamily`, `FAMILY_EXTRA` — 5 → 8 valeurs stockables) et
-`FixtureConflictsController` (refus 422 hors table de la famille, complément `fbiCorrection`,
-refus 422 d'un `fbiCorrection` hors `FBI_ERROR`, rattrapage idempotent d'une pose concurrente) ;
-`conflictLabels.ts`/`api.ts` — la famille `TEAM_LINK_OVERLAP` a maintenant aussi quitté le
-FRONTEND (9 `ConflictType` des deux côtés, plus de chip « Passerelle »). **`d1673bde` (même jour)**
-confronté séparément : `FbiCorrectionLedger::declareFromConflict` (une seule déclaration « erreur
-FBI » vivante PAR CONFLIT — `FbiCorrection.conflictFingerprint`, nullable, migration
-`Version20260921120000`, motif de fermeture `REDECLARED` nouveau) ; `deleteResolution` n'appelle
-toujours PAS ce ledger (décision fondateur explicitement maintenue, pas une symétrie complète) ;
-`FbiEntryList::CorrectionField` affiche désormais « à vérifier » pour les trois champs (avant :
-seulement la salle, un tiret muet pour date/heure). **Contrat public confirmé INCHANGÉ** par
-`d1673bde` (zéro diff sur `SeasonAndFixturePaths.php`/le snapshot — vérifié par diff de commit,
-pas supposé) : aucune régénération. **La part frontend de la dérive du lot M (notée « reste
-ouvert » dans la passe précédente) est CLOSE par ce lot** : le contrat public et les deux
-implémentations (backend, frontend) s'accordent désormais sur 9 familles. Le reste du fichier
-(Validé ligue, Écran Adversaires, delta de visite…) n'a pas bougé sous ce lot — historique des
-passes précédentes :
-`git log -p --follow specs/courantes/module-matchs.md`.
+Last verified @ 2026-09-21 (`documentation-update`, lot P « le nom FBI d'un gymnase — l'alias
+confirmé n'est plus un faux écart, le registre rend la graphie brute », `964ed570`). Confronté au
+code cette passe : `FbiFixtureImporter::detectFieldDeviations` (`backend/src/Service/
+FbiFixtureImporter.php`) porte désormais la MÊME clause alias que `detectUnplacedVenueDeviation` —
+`VenueAliasResolver::resolveConfirmed($fileLabel) !== $venueId`, identité STRICTE — sur le
+périmètre PLACÉ, plus de faux écart quand la source nomme le gymnase placé par un alias confirmé ;
+`FbiCorrectionLedger::venueFbiLabel` (`backend/src/Service/FbiCorrectionLedger.php`) rend la
+graphie BRUTE attestée par la rencontre sœur la plus récente (même saison, même gymnase, libellé
+normalisé ∈ alias confirmés — `FixtureRepository::findRawVenueLabelsBySeasonAndVenue`), repli sur
+le premier alias (toujours normalisé) si aucune sœur n'atteste. Le reste du fichier (Validé ligue,
+Écran Adversaires, delta de visite, lot N…) n'a pas bougé sous ce lot — historique des passes
+précédentes : `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme (refonte 2026-09-18, AUD-DOC-38)** : ce fichier décrit **l'état courant, par
 > écran** — jamais une section datée d'une PR. Le JOURNAL (qui a livré quoi, quand, sous quel id)
@@ -260,7 +249,10 @@ non-alphanumérique → espace). Routes (`VenueExternalLabelController`) : `GET
 …/{id}/external-labels {label}` (ajoute l'alias + backfille les domiciles du club encore sans
 salle) ; `POST …{label, reassign: true}` (réaffecte l'alias vers un AUTRE gymnase, re-pointe les
 non placés, **épargne toujours les placés**) ; `DELETE …` (retire l'alias, **ne dépointe jamais**
-une rencontre déjà rattachée). Écran d'appariement : §5.3.
+une rencontre déjà rattachée). Écran d'appariement : §5.3. La MÊME clause d'identité (`resolveConfirmed`,
+égalité stricte) sert aussi aux deux détecteurs d'écart de salle d'une réconciliation (§7, domicile
+placé et non placé) : un libellé dont l'alias confirmé pointe le gymnase déjà rattaché n'est pas un
+écart, un alias vers un AUTRE gymnase en reste toujours un.
 
 ### Écart de salle d'un domicile NON PLACÉ — jamais réparé en silence
 
@@ -279,8 +271,12 @@ Angle INVERSE de l'écart de réconciliation (ci-dessus) : quand le gestionnaire
 l'appli » sur un champ divergent (date/heure/salle), c'est **FBI qui est en retard** — il faut le
 corriger à la main dans le portail fédéral. `FbiCorrection` (table tenant, RLS, une entrée par
 `(club, saison, rencontre, champ)`, unicité PARTIELLE sur les ouvertes seulement) dit ce qu'il faut
-**taper** dans FBI (`appValue`) en face de ce que FBI **affiche encore** (`fbiValue`), avec l'alias
-FBI confirmé du gymnase de l'appli quand connu (`venueFbiLabel`, premier `Venue.externalLabels`).
+**taper** dans FBI (`appValue`) en face de ce que FBI **affiche encore** (`fbiValue`), avec la
+graphie FBI BRUTE du gymnase de l'appli quand connue (`venueFbiLabel` — depuis le 2026-09-21, la
+graphie attestée par la rencontre SŒUR la plus récemment mise à jour de même saison et même
+gymnase dont le libellé normalisé est un alias confirmé, `FixtureRepository::
+findRawVenueLabelsBySeasonAndVenue` ; repli sur le premier `Venue.externalLabels` — stocké
+NORMALISÉ, minuscules sans accents, donc moins lisible à recopier — si aucune sœur n'atteste).
 Maison unique : `FbiCorrectionLedger` (`open`/`refreshSeen`/`closeBySource`/`closeManually`, plus
 `declareFromConflict` — lot N, correctif du même jour), injectée dans **trois** foyers d'écriture
 (lot N ajoute le troisième) — le moteur de réconciliation partagé (`FbiFixtureImporter`, canaux
@@ -868,6 +864,26 @@ Périmètre de réconciliation par écart (choix explicite, jamais un écrasemen
 heure, mais son écart de SALLE a son propre détecteur depuis 2026-09-16 (§1). Conséquence par champ :
 date/salle **dé-placent** ; heure reste en place mais **rétrograde** un `SUBMITTED`/`VALIDATED` en
 `PLACED`.
+
+**Salle du périmètre PLACÉ, la MÊME clause alias que le non placé (depuis le 2026-09-21).** Un
+libellé fichier dont l'alias confirmé pointe le gymnase où la rencontre est placée n'ouvre plus
+d'écart — avant, seul le fuzzy nom↔libellé était lu ici, un faux écart revenait à chaque dépôt
+quand la source nommait le gymnase par un alias que l'appli connaissait déjà. Identité STRICTE :
+un alias qui désigne un AUTRE gymnase que celui du placement lève toujours l'écart. Comme la
+source atteste alors les trois champs, la rencontre passe en `VALIDATED` (ci-dessus, D9) — ce
+n'est pas un effet de bord, c'est l'attestation qui fonctionne enfin sur ce champ.
+
+**Deux signaux complémentaires, DEUX chemins de code séparés — décision fondateur (`etat-des-lieux.md`
+§2)** : `analyze()` (dry-run, ci-dessus — mêmes deux canaux xlsx et API) ne consulte JAMAIS le
+registre et produit un enregistrement d'écart à CHAQUE dépôt tant que le fichier répète le libellé
+divergent, même après un « garder l'appli » précédent — c'est la fonction, pas un défaut : le
+gestionnaire doit continuer à être averti tant que FBI affiche la mauvaise valeur, jusqu'à ce qu'il
+la corrige lui-même dans le portail fédéral. `import()`/`apply()`, eux, ne recréent PAS d'écart sur
+la rencontre pour ce même cas (moteur partagé `processPerimeterFields`, mécanisme ledger depuis
+#925) : ils RE-DATENT seulement l'entrée du registre « à corriger dans FBI »
+(`lastSeenInFbiAt`, ci-dessous) — le rappel persistant vit dans cette liste, pas dans un nouvel
+écart de la rencontre. **Leçon** : analyser et appliquer ne partagent PAS ce filtre — les lire comme
+un seul mécanisme fait conclure à tort que le dialogue s'est tu.
 
 Deux routes de traitement (management + saison écrivable + socle pointé) : `POST
 /api/fixtures/review` (`{fixtureIds}` ligne, ou `{teamId}` masse — les rencontres à écart pendant

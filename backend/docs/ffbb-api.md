@@ -1,13 +1,14 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-09-21 (`documentation-update`, lot K « appariement UX des gymnases
-adverses »). Confronté au code cette passe : `FfbbApiClient::searchSallesByName` (nouveau, index
-`ffbbserver_salles`, `q` en plein-texte JAMAIS interpolé dans un `filter`, borné 2..180 chars) ;
-`FfbbSallesController` accepte `q` en alternative à `postalCode` (seuil 3 caractères) ; repris par
-`OpponentVenueAutoLocator` en repli par NOM de l'auto-appariement — § « Salles d'une commune »
-mise à jour ci-dessous avec la sonde réseau réelle du 2026-09-20. Reste du fichier (hosts SSRF,
-routes rencontres/engagements, pont par référence FFBB de salle hors ce point précis, §3bis logo)
-non re-sondé cette passe, dernière vérification de fond : 2026-09-20 (PR I).
+Last verified @ 2026-09-21 (`documentation-update`, lot P « le nom FBI d'un gymnase », `964ed570`).
+Confronté au code cette passe : le pont par référence FFBB de salle (§ « Réconciliation FBI, canal
+API », § « Salles d'une commune ») est désormais **FERMÉ** — décision fondateur consignée
+`etat-des-lieux.md` §2, les trois paragraphes qui le décrivaient sont recalés (piste abandonnée,
+plus « à sonder » ou « non implémentée »). Vérifié : aucun code n'expose l'`id` proxy salles ni ne
+tente ce pont (`FfbbSallesController.php`, `FfbbRencontreReader.php` inchangés sur ce point). Reste
+du fichier (hosts SSRF, routes rencontres/engagements, `searchSallesByName`/lot K, §3bis logo) non
+re-sondé cette passe, dernière vérification de fond : 2026-09-20 (PR I) / 2026-09-21 (lot K, pour
+la recherche par nom).
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit rester dans la **liste blanche de hosts** du client (SSRF, A12). Vérifié le 2026-07-10 sur le code réel `ARA0069036` (BCCL).
 
@@ -167,13 +168,16 @@ Deux routes, mêmes hosts, même confinement SSRF, gate **management (SEC-07) + 
   épargne les domiciles déjà PLACÉS/SOUMIS/VALIDÉS) — sans effet sur `apply`/`FfbbRencontreReconciler`
   elle-même, qui continue de ne poser `venueId` que sur un domicile encore sans salle. Détail :
   [`module-matchs.md`](../../specs/courantes/module-matchs.md) §1 « Modèle & données transverses ».
-  ⚠ **Pont par référence FFBB de salle toujours impossible AUJOURD'HUI** : l'objet `salle` d'un
-  hit rencontres (`FfbbRencontreReader.php:112-121`, `:168-190`) ne porte que `{id, libelle,
-  adresse, cartographie}`, jamais le `numero` de l'index salles (`Venue.externalRef`, exposé par
-  le proxy salles — `FfbbSallesController.php:141`, qui n'expose aujourd'hui que `numero`, jamais
-  l'`id`). Un pont EXACT par cet `id` (comparer le `salle.id` d'un hit rencontres à l'`id` de
-  l'index `ffbbserver_salles`) reste une **PISTE non implémentée** — aucun chemin de code ne
-  l'exploite ni ne le confirme aujourd'hui (roadmap P4-204, amendé 2026-09-15).
+  ⚠ **Pont par référence FFBB de salle — piste FERMÉE (2026-09-21, décision fondateur)** : l'objet
+  `salle` d'un hit rencontres (`FfbbRencontreReader.php:112-121`, `:168-190`) ne porte que `{id,
+  libelle, adresse, cartographie}`, jamais le `numero` de l'index salles (`Venue.externalRef`,
+  exposé par le proxy salles — `FfbbSallesController.php:141`, qui n'expose aujourd'hui que
+  `numero`, jamais l'`id`). Un pont EXACT par cet `id` (comparer le `salle.id` d'un hit rencontres
+  à l'`id` de l'index `ffbbserver_salles`) a été **abandonné après trois sondes réseau réelles
+  concordantes** (2026-09-14, 2026-09-15, 2026-09-21, détail `etat-des-lieux.md` §2) : le canal
+  principal du fondateur (fichier Excel) ne porte aucun identifiant de salle non plus, le pont ne
+  servirait donc qu'au canal API secondaire, alors que les alias de gymnase restent de toute façon
+  obligatoires pour le xlsx.
   **2ᵉ sonde réseau réelle (2026-09-15, club BCCL, cadrage P2-54 PR-2)** : l'index `ffbbserver_salles`
   n'est **PAS queryable par `numero`** — ni en filtre, ni en plein texte — seule la voie `_geoRadius`
   rend des hits (`FfbbSalleResolver.php:15-23`, `FfbbApiClient::searchSallesNearby`). C'est
@@ -181,9 +185,9 @@ Deux routes, mêmes hosts, même confinement SSRF, gate **management (SEC-07) + 
   [`module-matchs.md`](../../specs/courantes/module-matchs.md)) n'est **PAS** par `id`, mais par
   **coordonnées-graine + égalité stricte du `numero`** parmi les hits proches
   (`FfbbSalleResolver::resolveByExternalRef`) — un mécanisme de VÉRIFICATION, pas de LOOKUP direct.
-  Il ne répond pas au besoin de P4-204 (apparier un hit rencontres SANS coordonnées de départ) : une
-  ligne `FFBB_API` et une ligne `MANUAL` de la MÊME salle restent donc deux suggestions disjointes
-  dans `opponent_venue_suggestion` tant que P4-204 n'est pas résolu.
+  Il ne répond pas à l'appariement d'un hit rencontres SANS coordonnées de départ : une ligne
+  `FFBB_API` et une ligne `MANUAL` de la MÊME salle restent donc deux suggestions disjointes dans
+  `opponent_venue_suggestion` — situation désormais définitive, le pont par `id` n'étant plus tenté.
 - **P4-199 (2026-09-12)** : `apply` partage désormais aussi les règles de naissance/fenêtre du xlsx
   (`FfbbRencontreReconciler` appelle `FbiFixtureImporter::treatOnArrival`/`sourceIsAuthoritativeForWindow`,
   foyer unique) — un extérieur créé par ce canal naît `REVIEWED` d'office, un domicile PLACÉ
@@ -289,7 +293,8 @@ désormais exploité côté réconciliation — voir § « Réconciliation FBI, 
   les capte toutes. `estimatedTotalHits` est **trompeur** (jusqu'à 2859 pour une seule
   correspondance exacte) : l'appelant décide sur l'égalité STRICTE du libellé normalisé, jamais
   sur ce compte. ⚠ Ce résultat porte sur `libelle` seulement — l'index reste **non** queryable par
-  `numero` (constat 2026-09-15 inchangé, § « Réconciliation FBI » ci-dessus, roadmap P4-204).
+  `numero` (constat 2026-09-15 inchangé, § « Réconciliation FBI » ci-dessus — le pont par
+  référence FFBB de salle est fermé, `etat-des-lieux.md` §2).
 - Exposé par `GET /api/ffbb/salles?q=` — **alternative** à `?postalCode=` sur la même route
   (`FfbbSallesController`), seuil 3 caractères côté serveur ET front (en-dessous : liste vide,
   aucun appel réseau). Même mapping serveur que la voie CP (`{name, address, city, externalRef,
