@@ -91,8 +91,10 @@ describe("decodeConsultParams (A — défauts + extérieurs)", () => {
     expect(decodeConsultParams(new URLSearchParams("type=")).kinds).toEqual([]);
   });
 
-  it("conflits ⇒ liste de familles filtrée sur les valeurs connues", () => {
-    expect(decodeConsultParams(new URLSearchParams("conflits=MATCH_MATCH,GHOST,TEAM_LINK_OVERLAP")).families).toEqual(["MATCH_MATCH", "TEAM_LINK_OVERLAP"]);
+  it("conflits ⇒ liste de familles filtrée sur les valeurs connues (une famille fictive ET l'ancienne Passerelle retirée sont ignorées)", () => {
+    // GHOST prouve le mécanisme générique ; TEAM_LINK_OVERLAP est un ANCIEN lien profond
+    // dont la famille a disparu (backend + contrat) — il doit s'ignorer proprement, comme GHOST.
+    expect(decodeConsultParams(new URLSearchParams("conflits=MATCH_MATCH,GHOST,TEAM_LINK_OVERLAP,VENUE_OVERLAP")).families).toEqual(["MATCH_MATCH", "VENUE_OVERLAP"]);
   });
 
   it("type_semaine INVERSÉ : 1 ⇒ affichée ; absent/0 ⇒ masquée", () => {
@@ -265,6 +267,11 @@ describe("decodeConflictsParams (onglet Conflits, B)", () => {
     expect(decodeConflictsParams(new URLSearchParams("traitement=regle_interne,sans_solution")).treatments).toEqual(["RESOLVED_INTERNALLY", "NO_SOLUTION_YET"]);
   });
 
+  it("traitement : les 3 slugs propres à une famille décodent (lot N) ; un slug inconnu reste ignoré", () => {
+    expect(decodeConflictsParams(new URLSearchParams("traitement=import_matchs,erreur_fbi,match_a_deplacer")).treatments).toEqual(["IMPORT_MISSING_MATCHES", "FBI_ERROR", "MATCH_TO_MOVE"]);
+    expect(decodeConflictsParams(new URLSearchParams("traitement=erreur_fbi,inconnu")).treatments).toEqual(["FBI_ERROR"]);
+  });
+
   it("domicile=1 ⇒ homeOnly", () => {
     expect(decodeConflictsParams(new URLSearchParams("domicile=1")).homeOnly).toBe(true);
     expect(decodeConflictsParams(new URLSearchParams("")).homeOnly).toBe(false);
@@ -289,9 +296,12 @@ describe("applyConflictsToParams (onglet Conflits, B)", () => {
     expect(out.get("conflits")).toBe("MATCH_MATCH");
   });
 
-  it("treatments partiels ⇒ traitement=slugs ; les 4 ⇒ absent ; toujours purge le legacy traites", () => {
+  it("treatments partiels ⇒ traitement=slugs ; les 7 clés ⇒ absent (défaut) ; toujours purge le legacy traites", () => {
     expect(applyConflictsToParams(new URLSearchParams(""), { ...base, treatments: ["a_traiter", "DEROGATION_REQUESTED"] }).get("traitement")).toBe("a_traiter,derogation");
-    expect(applyConflictsToParams(new URLSearchParams(""), { ...base, treatments: ["a_traiter", "DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET"] }).has("traitement")).toBe(false);
+    // Les 7 clés (historiques + propres à une famille) = le défaut ⇒ rien dans l'URL.
+    expect(applyConflictsToParams(new URLSearchParams(""), { ...base, treatments: ["a_traiter", "DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET", "IMPORT_MISSING_MATCHES", "FBI_ERROR", "MATCH_TO_MOVE"] }).has("traitement")).toBe(false);
+    // Les 4 historiques SEULES (les 3 propres à une famille décochées) = un sous-ensemble explicite, donc écrit.
+    expect(applyConflictsToParams(new URLSearchParams(""), { ...base, treatments: ["a_traiter", "DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET"] }).get("traitement")).toBe("a_traiter,derogation,regle_interne,sans_solution");
     expect(applyConflictsToParams(new URLSearchParams("traites=masques"), base).has("traites")).toBe(false);
   });
 

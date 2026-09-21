@@ -228,15 +228,17 @@ export interface ConflictFixtureView {
    * without a real hour): say « heure estimée ». */
   estimatedKickoff?: boolean;
   /** Le rôle de la personne sur CE côté — servi seulement pour MATCH_MATCH
-   * (`left`/`right`). Absent sur les familles gymnase/passerelle, qui partagent
-   * cette vue mais ne portent aucune personne. */
+   * (`left`/`right`). Absent sur la famille gymnase, qui partage
+   * cette vue mais ne porte aucune personne. */
   role?: ConflictSideRole;
   windowStart: string;
   windowEnd: string;
   /**
-   * Détail par côté (MATCH_MATCH / MATCH_TRAINING) — champs ADDITIFS servis par le
-   * backend pour rendre une ligne par côté. Optionnels : les familles gymnase/passerelle
-   * partagent cette vue mais le front ne les lit pas pour elles.
+   * Détail par côté — champs ADDITIFS servis par le backend pour rendre une ligne par
+   * côté sur TOUTES les familles qui partagent cette vue : l'écran des conflits les lit
+   * aussi pour la famille gymnase (VENUE_OVERLAP lit `opponentLabel` et
+   * `matchDurationMinutes`, `lib/conflictSideLines.ts::venueSide`), pas seulement pour
+   * MATCH_MATCH / MATCH_TRAINING. Optionnels côté TS.
    */
   /** Heure estimée « HH:MM » empruntée à l'habitude — non-null SSI `estimatedKickoff`. */
   estimatedKickoffTime?: string | null;
@@ -283,7 +285,6 @@ export type ConflictType =
   | "MATCH_TRAINING"
   | "VENUE_UNAVAILABLE"
   | "ACCESS_WINDOW_LOST"
-  | "TEAM_LINK_OVERLAP"
   | "COMPETITION_INCOMPLETE"
   | "AWAY_NO_FOOTPRINT"
   | "FRIENDLY_ON_MATCH_SLOT";
@@ -295,7 +296,18 @@ export type ConflictType =
  * l'instant). « À traiter » n'est PAS un statut : c'est l'ABSENCE de résolution
  * (`resolution === null`). Miroir de `App\Enum\ConflictResolutionStatus`.
  */
-export type ConflictResolutionStatus = "DEROGATION_REQUESTED" | "RESOLVED_INTERNALLY" | "NO_SOLUTION_YET" | "COACHES_NOT_PLAYING" | "PLAYS_NOT_COACHING";
+export type ConflictResolutionStatus =
+  | "DEROGATION_REQUESTED"
+  | "RESOLVED_INTERNALLY"
+  | "NO_SOLUTION_YET"
+  | "COACHES_NOT_PLAYING"
+  | "PLAYS_NOT_COACHING"
+  // Statuts propres à une famille (lot N) : calendrier incomplet → importer les matchs
+  // manquants ; collision de gymnase → erreur FBI / match à déplacer. Le backend refuse
+  // un statut hors de la table de sa famille (`ConflictResolutionStatus::casesForFamily`).
+  | "IMPORT_MISSING_MATCHES"
+  | "FBI_ERROR"
+  | "MATCH_TO_MOVE";
 
 /**
  * P4-207 — la résolution PERSISTÉE d'un conflit (par empreinte, jamais par id) : où
@@ -332,8 +344,6 @@ export interface Conflict {
    * PAR CÔTÉ vit sur `left`/`right` (ou `fixture`/`training`). */
   coachRole?: ConflictSideRole;
   coachId?: string;
-  /** TEAM_LINK_OVERLAP only. */
-  teamLinkId?: string;
   /**
    * Overlap segment — coach conflicts only. ISO datetimes carrying the club's
    * WALL-CLOCK time WITHOUT an offset (`2026-10-03T20:45:00`): the UI parses
@@ -626,9 +636,15 @@ export const getConflicts = (): Promise<ConflictsResponse> => api.get("fixtures/
  * (jamais un id). Le PUT est un remplacement plein : `note` absente ⇒ note vidée côté
  * serveur — l'appelant qui ne veut CHANGER que le statut resservit donc la note
  * existante. Management-gated (403 membre) ; 422 statut inconnu / note > 500 /
- * empreinte disparue du flux. Rend l'état à jour `{fingerprint, resolution}`.
+ * empreinte disparue du flux / statut hors table de famille / complément d'erreur FBI
+ * invalide. Le complément `fbiCorrection` (FBI_ERROR seulement) ouvre l'entrée « à
+ * corriger dans FBI » du côté fautif ; ignoré pour les autres statuts. Rend l'état à
+ * jour `{fingerprint, resolution}`.
  */
-export const putConflictResolution = (fingerprint: string, input: { status: ConflictResolutionStatus; note?: string }): Promise<{ fingerprint: string; resolution: ConflictResolution }> =>
+export const putConflictResolution = (
+  fingerprint: string,
+  input: { status: ConflictResolutionStatus; note?: string; fbiCorrection?: { fixtureId: string; field: DeviationField } },
+): Promise<{ fingerprint: string; resolution: ConflictResolution }> =>
   api.put(`fixtures/conflicts/${fingerprint}/resolution`, { json: input }).json<{ fingerprint: string; resolution: ConflictResolution }>();
 
 /**

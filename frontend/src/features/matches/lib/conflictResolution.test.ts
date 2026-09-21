@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Conflict, ConflictFixtureView, ConflictResolution, ConflictSideRole } from "../api";
-import { countByTreatment, isOpenConflict, openConflictCount, RESOLUTION_LABEL, RESOLUTION_STATUSES, resolutionChoicesFor, TREATMENT_KEYS, TREATMENT_SLUG, treatmentFromSlug, treatmentOf } from "./conflictResolution";
+import { countByTreatment, isOpenConflict, openConflictCount, RESOLUTION_LABEL, RESOLUTION_STATUSES, resolutionChoicesFor, statusNeedsFbiComplement, treatmentChipKeys, TREATMENT_KEYS, TREATMENT_SLUG, treatmentFromSlug, treatmentOf } from "./conflictResolution";
 
 function conflict(resolution: ConflictResolution | null): Conflict {
   return { type: "VENUE_OVERLAP", severity: 1, resolution };
@@ -63,12 +63,20 @@ describe("openConflictCount", () => {
 });
 
 describe("Traitement (B — clés, slugs, treatmentOf, countByTreatment)", () => {
-  it("TREATMENT_KEYS : à traiter en tête, puis les 3 statuts", () => {
-    expect(TREATMENT_KEYS).toEqual(["a_traiter", "DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET"]);
+  it("TREATMENT_KEYS : à traiter + les 3 historiques, PUIS les 3 propres à une famille (lot N)", () => {
+    expect(TREATMENT_KEYS).toEqual(["a_traiter", "DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET", "IMPORT_MISSING_MATCHES", "FBI_ERROR", "MATCH_TO_MOVE"]);
   });
 
-  it("TREATMENT_SLUG : table exhaustive des 4 slugs URL", () => {
-    expect(TREATMENT_SLUG).toEqual({ a_traiter: "a_traiter", DEROGATION_REQUESTED: "derogation", RESOLVED_INTERNALLY: "regle_interne", NO_SOLUTION_YET: "sans_solution" });
+  it("TREATMENT_SLUG : table exhaustive des 7 slugs URL", () => {
+    expect(TREATMENT_SLUG).toEqual({
+      a_traiter: "a_traiter",
+      DEROGATION_REQUESTED: "derogation",
+      RESOLVED_INTERNALLY: "regle_interne",
+      NO_SOLUTION_YET: "sans_solution",
+      IMPORT_MISSING_MATCHES: "import_matchs",
+      FBI_ERROR: "erreur_fbi",
+      MATCH_TO_MOVE: "match_a_deplacer",
+    });
   });
 
   it("treatmentFromSlug : aller-retour sur chaque clé ; slug inconnu ⇒ null", () => {
@@ -116,5 +124,50 @@ describe("statuts « joue/coache » (réservés aux conflits où la personne jou
   it("treatmentOf : les 2 statuts se rangent sous « Réglé en interne » (aucun chip propre)", () => {
     expect(treatmentOf(conflict(resolved("COACHES_NOT_PLAYING")))).toBe("RESOLVED_INTERNALLY");
     expect(treatmentOf(conflict(resolved("PLAYS_NOT_COACHING")))).toBe("RESOLVED_INTERNALLY");
+  });
+});
+
+describe("vocabulaire par famille (lot N)", () => {
+  it("RESOLUTION_LABEL : les 3 nouveaux libellés + glyphes tous distincts sur les 8 statuts", () => {
+    expect(RESOLUTION_LABEL.IMPORT_MISSING_MATCHES.label).toBe("Importer les matchs manquants");
+    expect(RESOLUTION_LABEL.FBI_ERROR.label).toBe("Erreur FBI");
+    expect(RESOLUTION_LABEL.MATCH_TO_MOVE.label).toBe("Match à déplacer");
+    const allIcons = (["DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET", "COACHES_NOT_PLAYING", "PLAYS_NOT_COACHING", "IMPORT_MISSING_MATCHES", "FBI_ERROR", "MATCH_TO_MOVE"] as const).map((s) => RESOLUTION_LABEL[s].icon);
+    expect(new Set(allIcons).size).toBe(8);
+  });
+
+  it("resolutionChoicesFor : collision de gymnase → base + erreur FBI + match à déplacer", () => {
+    const venue: Conflict = { type: "VENUE_OVERLAP", severity: 1, resolution: null };
+    expect(resolutionChoicesFor(venue)).toEqual(["DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET", "FBI_ERROR", "MATCH_TO_MOVE"]);
+  });
+
+  it("resolutionChoicesFor : calendrier incomplet → base + importer les matchs manquants", () => {
+    const incomplete: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null };
+    expect(resolutionChoicesFor(incomplete)).toEqual(["DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET", "IMPORT_MISSING_MATCHES"]);
+  });
+
+  it("resolutionChoicesFor : une famille sans statut propre → les 3 de base, exactement", () => {
+    const other: Conflict = { type: "LEAGUE_WINDOW_VIOLATION", severity: 2, resolution: null };
+    expect(resolutionChoicesFor(other)).toEqual(["DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET"]);
+  });
+
+  it("treatmentOf : les 3 statuts de famille ont leur PROPRE clé de filtre", () => {
+    expect(treatmentOf(conflict(resolved("IMPORT_MISSING_MATCHES")))).toBe("IMPORT_MISSING_MATCHES");
+    expect(treatmentOf(conflict(resolved("FBI_ERROR")))).toBe("FBI_ERROR");
+    expect(treatmentOf(conflict(resolved("MATCH_TO_MOVE")))).toBe("MATCH_TO_MOVE");
+  });
+
+  it("treatmentChipKeys : les 4 historiques TOUJOURS, une clé de famille SEULEMENT si présente", () => {
+    // Aucun conflit de famille traité → seules les 4 historiques.
+    expect(treatmentChipKeys([conflict(null), conflict(resolved("DEROGATION_REQUESTED"))])).toEqual(["a_traiter", "DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET"]);
+    // Une erreur FBI présente → sa puce apparaît, dans l'ordre ; les autres conditionnelles restent absentes.
+    expect(treatmentChipKeys([conflict(null), conflict(resolved("FBI_ERROR"))])).toEqual(["a_traiter", "DEROGATION_REQUESTED", "RESOLVED_INTERNALLY", "NO_SOLUTION_YET", "FBI_ERROR"]);
+  });
+
+  it("statusNeedsFbiComplement : FBI_ERROR seul exige le complément", () => {
+    expect(statusNeedsFbiComplement("FBI_ERROR")).toBe(true);
+    expect(statusNeedsFbiComplement("MATCH_TO_MOVE")).toBe(false);
+    expect(statusNeedsFbiComplement("IMPORT_MISSING_MATCHES")).toBe(false);
+    expect(statusNeedsFbiComplement("DEROGATION_REQUESTED")).toBe(false);
   });
 });

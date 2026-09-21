@@ -1,26 +1,27 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-21 (`documentation-update`, lot M « l'échauffement sort de l'empreinte des
-conflits de PERSONNE » + correctif `e881d748` « le conflit passerelle disparu quitte le contrat
-public et l'empreinte »). Confronté au code cette passe : `MatchFootprint::personConflictOccupancy`/
-`personConflictOccupancyAt` (occupation moins l'échauffement, trajet AWAY conservé) ;
-`MatchConflictDetector` — `MATCH_MATCH` et le côté match de `MATCH_TRAINING` testent désormais ce
-chevauchement (`conflictWindow`, plus `effectiveMatchWindows`/`sameHomeVenue`, supprimées comme code
-mort) ; le chargement de `TeamLink` retiré de `ConflictRadarLoader`/`MatchConflictDetector`
-(paramètre `teamLinks` disparu de la signature) ; le solveur `match_placement.py` — les trois
-fenêtres de personne (`fixed_windows_by_coach`, poids TO_PLACE, `_overlap_pairs` coach+passerelle)
-ne retranchent plus `warmupMinutes`, seul le trajet AWAY reste ; `CONTRACT_VERSION` inchangé
-(**2.23**, `warmupMinutes` reste au schéma, simplement plus lu par le solveur). **`e881d748`
-(même jour) referme le volet contrat** : `TEAM_LINK_OVERLAP` retiré de l'énumération OpenAPI
-`conflicts[].type` (`SeasonAndFixturePaths`, snapshot régénéré, 207 routes inchangées, 9 valeurs
-restantes) et de `ConflictFingerprinter` (branche `match` devenue morte) — vérifié : zéro hit
-`TEAM_LINK_OVERLAP` dans `specs/courantes/openapi-snapshot.json` ni dans `ConflictFingerprinter.php`.
-**Reste ouvert, VOLONTAIREMENT** : la part FRONTEND de cette dérive — `conflictLabels.ts`/`api.ts`
-gardent leurs 10 `ConflictType` (dont `TEAM_LINK_OVERLAP`), la chip « Passerelle » de l'onglet
-Conflits reste affichée et cochable alors qu'elle ne peut plus se peupler (§2 « Chips familles »
-ci-dessous) — un lot séparé reprend cet écran juste après ce lot, décision de ne pas l'entamer ici.
-Le reste du fichier (Validé ligue, Écran Adversaires, delta de visite…) n'a pas bougé sous ce lot —
-historique des passes précédentes :
+Last verified @ 2026-09-21 (`documentation-update`, lot N « vocabulaire de traitement par famille +
+détail par côté d'une collision de gymnase + erreur FBI alimente le registre », 5 commits
+`e593085c`…`9ae3fd2c`, **amendé le même jour par 5 correctifs de revue de sécurité, `d1673bde`**).
+Confronté au code cette passe : `conflictSideLines.ts::venueSide` (le builder « détail par côté »
+gagne une variante `venue`, aux côtés de la variante `person` préexistante) ;
+`ConflictResolutionStatus` (`casesForFamily`, `FAMILY_EXTRA` — 5 → 8 valeurs stockables) et
+`FixtureConflictsController` (refus 422 hors table de la famille, complément `fbiCorrection`,
+refus 422 d'un `fbiCorrection` hors `FBI_ERROR`, rattrapage idempotent d'une pose concurrente) ;
+`conflictLabels.ts`/`api.ts` — la famille `TEAM_LINK_OVERLAP` a maintenant aussi quitté le
+FRONTEND (9 `ConflictType` des deux côtés, plus de chip « Passerelle »). **`d1673bde` (même jour)**
+confronté séparément : `FbiCorrectionLedger::declareFromConflict` (une seule déclaration « erreur
+FBI » vivante PAR CONFLIT — `FbiCorrection.conflictFingerprint`, nullable, migration
+`Version20260921120000`, motif de fermeture `REDECLARED` nouveau) ; `deleteResolution` n'appelle
+toujours PAS ce ledger (décision fondateur explicitement maintenue, pas une symétrie complète) ;
+`FbiEntryList::CorrectionField` affiche désormais « à vérifier » pour les trois champs (avant :
+seulement la salle, un tiret muet pour date/heure). **Contrat public confirmé INCHANGÉ** par
+`d1673bde` (zéro diff sur `SeasonAndFixturePaths.php`/le snapshot — vérifié par diff de commit,
+pas supposé) : aucune régénération. **La part frontend de la dérive du lot M (notée « reste
+ouvert » dans la passe précédente) est CLOSE par ce lot** : le contrat public et les deux
+implémentations (backend, frontend) s'accordent désormais sur 9 familles. Le reste du fichier
+(Validé ligue, Écran Adversaires, delta de visite…) n'a pas bougé sous ce lot — historique des
+passes précédentes :
 `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme (refonte 2026-09-18, AUD-DOC-38)** : ce fichier décrit **l'état courant, par
@@ -280,11 +281,17 @@ corriger à la main dans le portail fédéral. `FbiCorrection` (table tenant, RL
 `(club, saison, rencontre, champ)`, unicité PARTIELLE sur les ouvertes seulement) dit ce qu'il faut
 **taper** dans FBI (`appValue`) en face de ce que FBI **affiche encore** (`fbiValue`), avec l'alias
 FBI confirmé du gymnase de l'appli quand connu (`venueFbiLabel`, premier `Venue.externalLabels`).
-Maison unique : `FbiCorrectionLedger` (`open`/`refreshSeen`/`closeBySource`/`closeManually`),
-injectée dans les DEUX foyers d'arbitrage — le moteur de réconciliation partagé
-(`FbiFixtureImporter`, canaux xlsx **et** API) et l'arbitrage hors dépôt
-(`ReviewFixtureDeviationController`). Un « garder l'appli » ouvre (ou re-date) une entrée OUVERTE ;
-« prendre le fichier » n'en ouvre **jamais** (l'appli s'aligne sur FBI, rien à reporter). Cycle
+Maison unique : `FbiCorrectionLedger` (`open`/`refreshSeen`/`closeBySource`/`closeManually`, plus
+`declareFromConflict` — lot N, correctif du même jour), injectée dans **trois** foyers d'écriture
+(lot N ajoute le troisième) — le moteur de réconciliation partagé (`FbiFixtureImporter`, canaux
+xlsx **et** API), l'arbitrage hors dépôt (`ReviewFixtureDeviationController`), et le statut
+« Erreur FBI » d'un conflit de collision de gymnase (`FixtureConflictsController`, §
+« Résolution des conflits » ci-dessous) — ce troisième foyer ouvre TOUJOURS l'entrée à **valeur
+cible VIDE** (`appValue`/`fbiValue` tous deux `null` : l'app a importé l'erreur depuis FBI, elle ne
+connaît pas la bonne valeur, inventer serait mentir ; l'écran affiche « à vérifier » pour les trois
+champs — salle, date, heure —, plus de tiret muet qui se lisait différemment, correctif du
+2026-09-21). Un « garder l'appli » ouvre (ou re-date) une entrée OUVERTE ; « prendre le fichier »
+n'en ouvre **jamais** (l'appli s'aligne sur FBI, rien à reporter). Cycle
 d'une entrée : un dépôt qui montre toujours l'ancienne valeur ne recrée pas d'écart, il re-date
 « vu dans FBI » ; un dépôt qui montre la valeur appli la ferme (`closed_by=deposit`) ; un dépôt qui
 montre une TROISIÈME valeur la ferme ET rouvre un écart normal à arbitrer ; le gestionnaire peut
@@ -295,6 +302,25 @@ PURGED_BY_CLUB_SEASON`). **Registre à ZÉRO au départ** : les « garder l'appl
 aucune trace exploitable, il ne se peuple que par les arbitrages à VENIR (décision fermée,
 `etat-des-lieux.md` §2). API : `GET /api/fixtures/fbi-corrections` (membre, entrées ouvertes du
 club+saison) ; `POST …/{id}/close` (gestionnaire + saison écrivable) ; `POST …/{id}/reopen`.
+
+**Une seule déclaration « erreur FBI » vivante par conflit (correctif du 2026-09-21, revue de
+sécurité).** L'entrée que le troisième foyer ouvre porte désormais l'EMPREINTE du conflit qui l'a
+ouverte (`FbiCorrection.conflictFingerprint`, colonne NULLABLE — `null` pour les entrées nées des
+deux autres foyers, qui n'ont aucun conflit derrière elles ; migration `Version20260921120000`,
+zéro index d'unicité dessus). Re-déclarer sur le **même conflit** — une autre rencontre, ou un
+autre champ — **ferme** (`closed_by=redeclared`, nouveau motif `FbiCorrectionCloseSource::
+REDECLARED`, fermeture DÉFINITIVE, pas de réouverture) la déclaration précédemment ouverte par CE
+conflit avant d'ouvrir la nouvelle ; re-déclarer sur la **même** cible (même rencontre, même champ)
+re-date sans dupliquer, comme avant. Motivé par un cas réel : une collision entre deux équipes,
+le gestionnaire déclare « erreur d'heure » sur l'une, se ravise et déclare « erreur de salle » sur
+l'autre — sans ce garde-fou, il pouvait accumuler jusqu'à six entrées, dont une fausse, pour une
+seule collision. ⚠ **Ce que ça NE change PAS, décision fondateur explicite** : remettre le conflit
+à « à traiter » (`DELETE .../resolution`) **ne ferme toujours pas** cette entrée —
+`deleteResolution` n'appelle jamais `FbiCorrectionLedger`, aucun lien n'est persisté entre une
+RÉSOLUTION de conflit et une entrée du registre (décision fermée, `etat-des-lieux.md` §2). La
+symétrie complète (fermer aussi au retour à « à traiter ») a été écartée **volontairement**, pour
+ne jamais perdre le rappel d'une erreur FBI réelle que le gestionnaire aurait déclassée par erreur
+— seule une re-déclaration sur ce conflit, ou une fermeture depuis la liste, referme l'entrée.
 
 **La suppression d'une rencontre supprime ses entrées** (ouvertes ET fermées) : `fbi_correction` ne
 porte aucune FK sur `fixture_id`, donc `FixtureStateProcessor::cascadeBeforeDelete` appelle
@@ -392,20 +418,34 @@ aucune) · 5 clash adouci +
 pour une `CUP`) · 7 `AWAY_NO_FOOTPRINT` (angle mort nommé : extérieur sans heure ni habitude du bon
 jour). Réponse : bornes datées en heure MURALE du club (jamais un offset).
 
-**Détail par côté (`MATCH_MATCH`/`MATCH_TRAINING` seulement)** : `MatchConflictDetector::fixtureView`
-sert quatre champs additifs par côté (`estimatedKickoffTime`, `travelOneWayMinutes` — `null` =
-trajet non modélisé, `matchDurationMinutes`, `opponentLabel`) ; `opponentPlace` (ville de
-l'adversaire, jamais un gymnase) est décoré EN AVAL par `FixtureConflictsController::
-decorateOpponentPlace` sur les côtés AWAY seulement, via `OpponentPlaceResolver` (batch,
-re-pointé sur le lien par l'amendement PR I 2026-09-20) : (1) le lien de la rencontre `(code,
-libellé FBI normalisé)` → sa référence de salle fédérale → ville de la suggestion fédérale
-correspondante ; (2) sinon la ville de l'annuaire fédéral global ; (3) `null`. Le front (`conflictSideLines.ts`,
-`ConflictLine.tsx`) rend un vrai TABLEAU (`Table variant="inline"` — primitive partagée
-`shared/components/ui/table.tsx`, `frontend/AGENTS.md` §Primitives) à quatre colonnes horaires
-FIXES — Départ · Coup d'envoi (toujours colonne 2, quelle que soit la nature du côté) · Fin/retour ·
-Durée (repliée sous 360 px par container query, la largeur du RADAR pas du viewport) — une ligne
-par côté puis une ligne de chevauchement ; un créneau absent rend « — », jamais une cellule vide
-muette. Présentation pure — aucune formule de gravité redérivée.
+**Détail par côté** : `MatchConflictDetector::fixtureView` sert quatre champs additifs par côté
+(`estimatedKickoffTime`, `travelOneWayMinutes` — `null` = trajet non modélisé,
+`matchDurationMinutes`, `opponentLabel`) ; `opponentPlace` (ville de l'adversaire, jamais un
+gymnase) est décoré EN AVAL par `FixtureConflictsController::decorateOpponentPlace` sur les côtés
+AWAY seulement, via `OpponentPlaceResolver` (batch, re-pointé sur le lien par l'amendement PR I
+2026-09-20) : (1) le lien de la rencontre `(code, libellé FBI normalisé)` → sa référence de salle
+fédérale → ville de la suggestion fédérale correspondante ; (2) sinon la ville de l'annuaire fédéral
+global ; (3) `null`. Ces champs sont servis pour TOUTE famille qui partage cette vue de rencontre
+(⚠ le commentaire de `fixtureView`/`ConflictFixtureView` dit encore « le front les ignore pour la
+famille gymnase » — **plus vrai depuis le lot N** ci-dessous, code non touché ici, signalé aux
+mainteneurs du fichier). Le front (`conflictSideLines.ts`, `ConflictLine.tsx`) choisit sa mise en
+page sur `model.kind`, DEUX variantes :
+
+- **`person`** (`MATCH_MATCH`/`MATCH_TRAINING`) : un vrai TABLEAU (`Table variant="inline"` —
+  primitive partagée `shared/components/ui/table.tsx`, `frontend/AGENTS.md` §Primitives) à quatre
+  colonnes horaires FIXES — Départ · Coup d'envoi (toujours colonne 2, quelle que soit la nature du
+  côté) · Fin/retour · Durée (repliée sous 360 px par container query, la largeur du RADAR pas du
+  viewport) — une ligne par côté puis une ligne de chevauchement ; un créneau absent rend « — »,
+  jamais une cellule vide muette.
+- **`venue`** (`VENUE_OVERLAP`, lot N, 2026-09-21) : une ligne par rencontre — équipe, « vs
+  adversaire », le GYMNASE et la DATE (répétés sur CHAQUE ligne bien qu'identiques pour les deux
+  côtés par construction — **forme imposée par le fondateur**, une factorisation en tête a été
+  proposée et écartée), et le créneau coup d'envoi → fin (fin = coup d'envoi + durée, arithmétique
+  d'affichage). Un `VENUE_OVERLAP` sans `venueId` connu (donnée dégradée) retombe sur la ligne grise
+  existante. Rien ne change côté détecteur : tous les champs consommés par cette variante étaient
+  déjà servis pour cette famille.
+
+Présentation pure — aucune formule de gravité redérivée.
 
 ## 3. Solveur de placement (`POST /api/fixtures/place` → engine `/place-matches`)
 
@@ -593,18 +633,18 @@ gymnase partagé (décision fermée — il fausserait le compte saison de l'ongl
   conflits sans ressource résolue (« Autres conflits », « Extérieur », « Sans date »), toujours en
   dernier. Un conflit à 2 équipes apparaît sous chacune en pivot équipe (assumé). Tri : compte
   décroissant puis alphabétique fr (chronologique pour la journée).
-- **Chips familles** (10 `ConflictType` **côté frontend**, toutes cochées par défaut) : compteur
-  SAISON, à traiter seulement — une famille 100 % traitée garde sa chip, « · 0 » en sourdine. ⚠
-  **Dérive partiellement corrigée** : le backend a cessé d'émettre `TEAM_LINK_OVERLAP` (lot M,
-  2026-09-21, § « Détecteur de conflits » ci-dessus) ; le contrat public l'a suivi le même jour
-  (`e881d748` — retiré de l'énumération OpenAPI `conflicts[].type` ET de `ConflictFingerprinter`,
-  qui ne compte plus que 9 types possibles). **Reste ouvert, volontairement** : le frontend garde
-  encore ses 10 clés `ConflictType` (`conflictLabels.ts`) — la chip « Passerelle » de l'onglet
-  Conflits reste affichée et cochable alors qu'elle ne peut plus jamais se peupler ; un lot séparé
-  reprend cet écran juste après ce lot, décision de ne pas l'entamer ici.
-- **Puces « Traitement »** (À traiter · Dérogation demandée · Réglé en interne · Sans solution pour
-  l'instant) et filtre « Seulement avec un match à domicile » (critère descriptif, pas « où je peux
-  agir » — décision fermée). Ordre d'application : familles → traitement → domicile → pivot.
+- **Chips familles** (9 `ConflictType`, backend et frontend désormais ALIGNÉS — la famille
+  `TEAM_LINK_OVERLAP`/« Passerelle » a quitté le contrat public (lot M, `e881d748`) ET le frontend
+  (lot N, `conflictLabels.ts`/`api.ts`, 2026-09-21) ; un ancien lien profond qui la citerait est
+  ignoré proprement, comme une famille fictive. Toutes cochées par défaut, compteur SAISON, à
+  traiter seulement — une famille 100 % traitée garde sa chip, « · 0 » en sourdine.
+- **Puces « Traitement »** : 4 puces HISTORIQUES toujours rendues même à zéro (À traiter ·
+  Dérogation demandée · Réglé en interne · Sans solution pour l'instant), plus jusqu'à 3 puces
+  CONDITIONNELLES propres à une famille (lot N — Importer les matchs manquants ·
+  Erreur FBI · Match à déplacer), rendues seulement si au moins un conflit les porte (même patron
+  que les chips familles, `treatmentChipKeys`). Plus le filtre « Seulement avec un match à
+  domicile » (critère descriptif, pas « où je peux agir » — décision fermée). Ordre d'application :
+  familles → traitement → domicile → pivot.
 - **Accordéon par entrée** (une seule ouverte) rend `ConflictSeverityGroups`/`ConflictLine` — même
   maison que le radar du Calendrier, gravité 7 repliée derrière un compte, conflits triés par date
   croissante dans un groupe de gravité. Bouton « Voir la semaine » sur un conflit daté : sélectionne
@@ -616,22 +656,44 @@ gymnase partagé (décision fermée — il fausserait le compte saison de l'ongl
 ### Résolution des conflits (`ConflictResolution`, P4-207)
 
 Un conflit traité **reste toujours rendu** — poser un statut dit où en est la résolution, ne masque
-jamais. Cinq cas stockables (`ConflictResolutionStatus`) : Dérogation demandée / Réglé en interne /
-Sans solution pour l'instant, plus deux réservés aux conflits de PERSONNE où un côté servi porte le
-rôle PLAYER — **« Coache, ne joue pas »** (`COACHES_NOT_PLAYING`) / **« Joue, ne coache pas »**
-(`PLAYS_NOT_COACHING`), refusés en 422 sinon (`FixtureConflictsController::conflictHasPlayerSide`) ;
-le front ne les PROPOSE que dans ce cas (`resolutionChoicesFor`, lecture des rôles servis, jamais une
-redérivation) et les range sous le filtre/chip « Réglé en interne » (pas de chip propre,
-`treatmentOf`). « À traiter » = défaut = **absence de ligne**. `GET /api/fixtures/conflicts` sert un champ additif
+jamais. **Huit cas stockables** (`ConflictResolutionStatus`) : les trois de BASE, proposés sur
+toute famille — Dérogation demandée / Réglé en interne / Sans solution pour l'instant ; deux
+réservés aux conflits de PERSONNE où un côté servi porte le rôle PLAYER — **« Coache, ne joue
+pas »** (`COACHES_NOT_PLAYING`) / **« Joue, ne coache pas »** (`PLAYS_NOT_COACHING`), refusés en
+422 sinon (`FixtureConflictsController::conflictHasPlayerSide`), rangés sous le filtre/chip « Réglé
+en interne » (pas de chip propre, `treatmentOf`) ; trois **propres à une famille** depuis le lot N
+(2026-09-21) — calendrier incomplet (`COMPETITION_INCOMPLETE`) propose **« Importer les matchs
+manquants »** (`IMPORT_MISSING_MATCHES`) ; collision de gymnase (`VENUE_OVERLAP`) propose
+**« Erreur FBI »** (`FBI_ERROR`) et **« Match à déplacer »** (`MATCH_TO_MOVE`) — chacun avec sa
+PROPRE chip de traitement (§ « Chips familles » ci-dessus), à la différence des deux statuts de
+personne. **Le serveur est souverain** : `ConflictResolutionStatus::casesForFamily` donne, pour la
+famille du conflit visé, les trois de base plus les statuts propres à cette famille ; un statut
+hors de cette table est refusé en 422, quelle que soit la famille (le front ne fait que masquer le
+geste voué au refus, `resolutionChoicesFor`, jamais une redérivation du refus lui-même). **Erreur
+FBI** exige un complément `fbiCorrection` (`{fixtureId, field}`, § « Registre » ci-dessus) — seul
+statut à ouvrir un dialogue (`FbiErrorDialog`, `statusNeedsFbiComplement`) avant d'écrire, qui
+prévient que la déclaration laisse une trace ailleurs (indépendante, § « Registre »). **Un
+`fbiCorrection` envoyé avec un AUTRE statut est refusé en 422** (correctif du 2026-09-21 — il
+n'aurait jamais été lu, une requête incohérente n'est plus silencieusement ignorée). « À traiter »
+= défaut = **absence de ligne**, pour les huit cas sans exception — poser N'IMPORTE LEQUEL des
+trois statuts propres à une famille retire le conflit du compte « à traiter » exactement comme les
+trois de base (décision fermée, `etat-des-lieux.md` §2 : le mécanisme des compteurs n'a PAS de cas
+spécial pour eux, seule leur chip diffère). `GET /api/fixtures/conflicts` sert un champ additif
 `resolution` (jointure serveur par empreinte, `ConflictRadarLoader`) ; `PUT`/`DELETE
 /api/fixtures/conflicts/{fingerprint}/resolution` (gestionnaire seul, empreinte contrainte par la
-route). **Orphelin** (empreinte disparue du flux) jamais nettoyé à la volée — purgé avec la saison
-(`SeasonDataPurger`) ou l'effacement RGPD. Écran (`ConflictResolutionControl`) : pastille
-`StatusPill` devenant, pour un gestionnaire, le déclencheur d'un menu APG (3 statuts + note +
-« Remettre à traiter ») ; un membre simple la lit figée, rien n'affiche « à traiter ». Note libre
-≤ 500 car., éditée inline ; `ConfirmDialog` seulement si une note serait perdue au retour à traiter.
-Tout compteur de l'app (badge de nav, `WeekCounters`, chips de familles, pivot) ne compte plus que
-l'à traiter. Badge de nav « Conflits · N » — absent (jamais « · 0 ») à zéro.
+route). **Pose concurrente rattrapée (correctif du 2026-09-21)** : la pose est lecture-puis-
+insertion, sans verrou — deux `PUT` simultanés sur la même empreinte violaient l'unicité base
+`(club, saison, empreinte)` et rendaient une 500 ; le contrôleur capture désormais
+`UniqueConstraintViolationException`, relit la ligne gagnante sur la connexion encore vivante
+(scopée club par la RLS) et rend un **200 idempotent** — même patron déjà en place dans six autres
+contrôleurs. **Orphelin** (empreinte disparue du flux) jamais nettoyé à la volée — purgé avec la
+saison (`SeasonDataPurger`) ou l'effacement RGPD. Écran (`ConflictResolutionControl`) : pastille
+`StatusPill` devenant, pour un gestionnaire, le déclencheur d'un menu APG (statuts de base + ceux
+de la famille + note + « Remettre à traiter ») ; un membre simple la lit figée, rien n'affiche
+« à traiter ». Note libre ≤ 500 car., éditée inline ; `ConfirmDialog` seulement si une note serait
+perdue au retour à traiter. Tout compteur de l'app (badge de nav, `WeekCounters`, chips de
+familles, pivot) ne compte plus que l'à traiter. Badge de nav « Conflits · N » — absent (jamais
+« · 0 ») à zéro.
 
 ## 7. Écran Importer (`/matchs/importer`)
 

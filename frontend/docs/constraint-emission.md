@@ -1,18 +1,18 @@
 # Émission des contraintes (frontend) + alignement 3 couches
 
-Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — D1).
-Re-confronté au code : **le mode « préfère » n'offre plus le sélecteur de règle** —
-`ConstraintsStep.tsx` épingle désormais `ruleType: "PREFERRED"` en mode préfère et rend une
-pastille figée « Préféré » (patron du badge « Obligatoire ») au lieu du sélecteur complet ;
-« évite » garde le sien. Côté 3 couches, `preferredVenueId`/`forcedVenueId` ne portent plus
-d'« exclusivité tag » (`ScheduleConstraintBuilder.php` n'émet plus de lignes `forbiddenVenueId`
-« interdit hors tag » — table ci-dessous recalée). `resolveTravelRuleIntensity`
-(`ScheduleConstraintBuilder.php:965`, repli `TeamLinkIntensity::PREFERRED`) toujours le seul point
+Last verified @ 2026-09-21 (`documentation-update`, rotation de fraîcheur — sans rapport avec le
+sujet de la PR qui l'a déclenchée). Re-confronté au code, mêmes 4 affirmations que la passe
+précédente (aucune n'a bougé de comportement, seuls les numéros de ligne avaient dérivé sous des
+lots ultérieurs — corrigés) : `resolveTravelRuleIntensity`
+(`ScheduleConstraintBuilder.php:964`, repli `TeamLinkIntensity::PREFERRED`) toujours le seul point
 de résolution de l'intensité `travelTime` ✓ ; `forcedDays` toujours câblé sur les 3 couches
-(`ConstraintValidationService.php:71-79`, `ConstraintConfigValidator.php:74`,
-`frontend/src/features/wizard/steps/ConstraintsStep.tsx:365-366`,
+(`ConstraintValidationService.php` case DAY, `ConstraintConfigValidator.php` liste blanche,
+`frontend/src/features/wizard/steps/ConstraintsStep.tsx:375`,
 `engine/app/solver/constraints/targeting.py:74`) ✓ ; la famille `FACILITY_CAPACITY` toujours
-retirée du moteur, le commentaire au passé à `engine/app/main.py:488-491` ✓.
+retirée du moteur, le commentaire au passé désormais à `engine/app/main.py:446-449` (a dérivé de
+488-491) ✓ ; le mode « préfère » toujours sans sélecteur de règle (`ruleType: "PREFERRED"` épinglé,
+pastille figée « Préféré ») ✓. Le reste de la table §2 (25 lignes) n'a pas été rejoué ligne à ligne
+cette passe.
 
 > **But** : (1) lister ce que le **wizard émet** réellement, et (2) mettre les **3 couches côte à côte**
 > (frontend → backend → engine) pour repérer les **scissions** et les **angles morts** — les cas où

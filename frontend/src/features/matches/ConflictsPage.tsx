@@ -1,4 +1,4 @@
-import { CalendarDays, CircleAlert, type LucideIcon, RotateCcw, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { CalendarDays, CircleAlert, Download, type LucideIcon, RotateCcw, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
@@ -19,7 +19,7 @@ import { ConflictResolutionControl } from "./ConflictResolutionControl";
 import { ConflictSeverityGroups } from "./ConflictLine";
 import { CONFLICT_FAMILIES, CONFLICT_FAMILY_LABEL } from "./lib/conflictLabels";
 import { type ConflictPivotAxis, type ConflictPivotEntry, PIVOT_AXES, pivotConflicts } from "./lib/conflictPivot";
-import { countByTreatment, isOpenConflict, openConflictCount, RESOLUTION_LABEL, TREATMENT_KEYS, type TreatmentKey, treatmentOf } from "./lib/conflictResolution";
+import { countByTreatment, isOpenConflict, openConflictCount, RESOLUTION_LABEL, TREATMENT_KEYS, type TreatmentKey, treatmentChipKeys, treatmentOf } from "./lib/conflictResolution";
 import { applyFamilyFilter, countByFamily, DEFAULT_KINDS, dateOf, familiesPresent, hasHomeSide, normalizeKinds, revealPlan } from "./lib/consultFilter";
 import { applyConflictsToParams, applyConsultToParams, applyMatchToParams, applyWeekendToParams, decodeConflictsParams } from "./lib/urlState";
 import { weekendKeyOf, weekendShortLabel } from "./lib/weekendGrid";
@@ -55,6 +55,10 @@ const TREATMENT_META: Record<TreatmentKey, { label: string; icon: LucideIcon }> 
   DEROGATION_REQUESTED: RESOLUTION_LABEL.DEROGATION_REQUESTED,
   RESOLVED_INTERNALLY: RESOLUTION_LABEL.RESOLVED_INTERNALLY,
   NO_SOLUTION_YET: RESOLUTION_LABEL.NO_SOLUTION_YET,
+  // Lot N — les 3 clés propres à une famille (rendues en puce seulement si présentes).
+  IMPORT_MISSING_MATCHES: RESOLUTION_LABEL.IMPORT_MISSING_MATCHES,
+  FBI_ERROR: RESOLUTION_LABEL.FBI_ERROR,
+  MATCH_TO_MOVE: RESOLUTION_LABEL.MATCH_TO_MOVE,
 };
 
 /**
@@ -307,8 +311,18 @@ export function ConflictsPage() {
     return applyMatchToParams(applyWeekendToParams(params, weekendKey), matchId).toString();
   };
 
-  // Un conflit daté offre « Voir la semaine » (vers Calendrier) ; sans date, aucun bouton.
-  const renderVoirSemaine = (conflict: Conflict): ReactNode => {
+  // Le lien d'action d'un conflit (lot N) : « Calendrier incomplet » n'a pas de date, donc
+  // pas de semaine — il pointe vers l'écran d'Import (les matchs manquants s'y importent).
+  // Tout autre conflit DATÉ offre « Voir la semaine » ; un conflit sans date ni import, rien.
+  const renderConflictAction = (conflict: Conflict): ReactNode => {
+    if ("COMPETITION_INCOMPLETE" === conflict.type) {
+      return (
+        <Button variant="outline" size="sm" title="Importer les matchs manquants" onClick={() => navigate("/matchs/importer")}>
+          <Download className="size-4" aria-hidden="true" />
+          Importer
+        </Button>
+      );
+    }
     const date = dateOf(conflict);
     if (null === date) {
       return null;
@@ -342,7 +356,7 @@ export function ConflictsPage() {
       tone={meta.tone}
       isNew={meta.isNew}
       canManage={canManage}
-      extraTrailing={renderVoirSemaine(conflict)}
+      extraTrailing={renderConflictAction(conflict)}
     />
   );
 
@@ -463,13 +477,15 @@ export function ConflictsPage() {
           {hasTreated ? null : homeToggle}
         </div>
 
-        {/* Traitement (4 puces, présentes seulement si des conflits sont traités). */}
+        {/* Traitement : les 4 puces historiques (toujours) + les 3 propres à une famille
+            rendues seulement si présentes (lot N) ; le groupe entier n'apparaît que si des
+            conflits sont traités. */}
         {hasTreated ? (
           <div role="group" aria-labelledby="conflicts-traitement-label" className="flex flex-wrap items-center gap-1.5">
             <span id="conflicts-traitement-label" className="w-full shrink-0 text-xs font-medium text-muted-foreground sm:w-24">
               Traitement
             </span>
-            {TREATMENT_KEYS.map((key) => {
+            {treatmentChipKeys(allConflicts).map((key) => {
               const meta = TREATMENT_META[key];
               const Icon = meta.icon;
               const count = treatmentCounts.get(key) ?? 0;

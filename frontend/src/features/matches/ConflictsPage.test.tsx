@@ -427,3 +427,31 @@ describe("ConflictsPage — filtre Traitement, domicile, resets (B)", () => {
     expect(useMatchesStore.getState().selectedWeekend).toBe("2026-10-03");
   });
 });
+
+describe("ConflictsPage — lot N : lien d'import + puce de traitement conditionnelle", () => {
+  it("un « Calendrier incomplet » (sans date) offre « Importer » au lieu de « Voir la semaine »", async () => {
+    const user = userEvent.setup();
+    state.conflicts = [
+      { type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null, teamId: "team-1", competitionId: "comp-1", competitionName: "Championnat X", imported: 2, expected: 10 },
+    ];
+    renderAt();
+    const entry = await screen.findByRole("button", { name: /Autres conflits · 1/ });
+    await user.click(entry);
+    // La gravité 6 (« Calendriers incomplets ») est repliée derrière un compte : on la déplie.
+    await user.click(await screen.findByRole("button", { name: /Calendriers incomplets/ }));
+    expect(await screen.findByRole("button", { name: "Importer" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Voir la semaine" })).not.toBeInTheDocument();
+  });
+
+  it("la puce de traitement « Erreur FBI » ne se rend QUE si un conflit la porte ; pas les autres conditionnelles", async () => {
+    state.conflicts = [
+      { type: "VENUE_OVERLAP", severity: 1, resolution: { status: "FBI_ERROR", note: null, updatedAt: "2026-10-03T20:45:00+02:00" }, left: side("fx-1", "team-1"), right: side("fx-2", "team-2") },
+    ];
+    renderAt();
+    const group = await screen.findByRole("group", { name: "Traitement" });
+    expect(within(group).getByRole("button", { name: /Erreur FBI/ })).toBeInTheDocument();
+    // Les deux autres puces propres à une famille restent absentes (aucun conflit ne les porte).
+    expect(within(group).queryByRole("button", { name: /Importer les matchs manquants/ })).not.toBeInTheDocument();
+    expect(within(group).queryByRole("button", { name: /Match à déplacer/ })).not.toBeInTheDocument();
+  });
+});

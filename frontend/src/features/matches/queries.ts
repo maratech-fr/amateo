@@ -40,18 +40,22 @@ export function useConflicts() {
 }
 
 /**
- * P4-207 — pose/remplace la résolution d'un conflit (par empreinte). On invalide
- * `["fixtures","conflicts"]` SEULEMENT : la résolution vit sur le flux du radar, et
- * aucune empreinte ne change (pas de `useModuleVisit` à rejouer). Toast succès/erreur
- * (jamais de sauvegarde muette) ; le message serveur (422/403) est affiché tel quel.
+ * P4-207 / lot N — pose/remplace la résolution d'un conflit (par empreinte). On invalide
+ * toujours `["fixtures","conflicts"]` (la résolution vit sur le flux du radar). Poser
+ * « erreur FBI » ouvre EN PLUS une entrée du registre « à corriger dans FBI » : on invalide
+ * alors aussi le registre ET le compteur cockpit (`fbiTodo`), sinon le gestionnaire ne verrait
+ * sa ligne qu'après rechargement. Toast succès/erreur ; le message serveur (422/403) tel quel.
  */
 export function useSetConflictResolution() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ fingerprint, status, note }: { fingerprint: string; status: matchesApi.ConflictResolutionStatus; note?: string }) =>
-      matchesApi.putConflictResolution(fingerprint, { status, note }),
-    onSuccess: () => {
+    mutationFn: ({ fingerprint, status, note, fbiCorrection }: { fingerprint: string; status: matchesApi.ConflictResolutionStatus; note?: string; fbiCorrection?: { fixtureId: string; field: matchesApi.DeviationField } }) =>
+      matchesApi.putConflictResolution(fingerprint, { status, note, fbiCorrection }),
+    onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: ["fixtures", "conflicts"] });
+      if ("FBI_ERROR" === variables.status) {
+        invalidateFbiCorrections(queryClient);
+      }
       toast.success("Statut enregistré.");
     },
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),

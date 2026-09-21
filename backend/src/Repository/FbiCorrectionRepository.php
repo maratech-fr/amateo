@@ -49,4 +49,16 @@ final class FbiCorrectionRepository extends ServiceEntityRepository
     {
         return $this->findBy(['fixtureId' => $fixtureId, 'closedAt' => null]);
     }
+
+    /**
+     * Les entrées OUVERTES qu'un même conflit du radar (une empreinte) a ouvertes dans
+     * la saison — pour ne garder qu'UNE déclaration « erreur FBI » vivante par conflit
+     * (lot N). Les filtres tenant/saison Doctrine scopent déjà au club courant.
+     *
+     * @return list<FbiCorrection>
+     */
+    public function findOpenByConflictFingerprint(string $seasonId, string $conflictFingerprint): array
+    {
+        return $this->findBy(['seasonId' => $seasonId, 'conflictFingerprint' => $conflictFingerprint, 'closedAt' => null]);
+    }
 }

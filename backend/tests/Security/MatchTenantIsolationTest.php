@@ -677,6 +677,95 @@ final class MatchTenantIsolationTest extends WebTestCase
     }
 
     /**
+     * NR axe §7.1 tenant isolation (lot N) — « erreur FBI » ouvre un NOUVEAU chemin d'écriture
+     * vers le registre « à corriger dans FBI ». Un club qui déclare une erreur FBI en visant le
+     * conflit d'un AUTRE club est refusé (422 : empreinte absente de son flux), et AUCUNE entrée
+     * n'est créée — le chemin d'écriture se trouve derrière la validation tenant du flux.
+     */
+    public function testFbiErrorDeclarationCannotTargetAnotherClubsConflict(): void
+    {
+        self::getContainer()->get(DevClockStore::class)->set(new DateTimeImmutable('2026-09-01 10:00:00'));
+
+        [$clubA, $userA, $seasonA] = $this->createClubUser('fea');
+        [$clubB, $userB, $seasonB] = $this->createClubUser('feb');
+        $fixtureAId = $this->createAwayNoFootprintFixture($clubA, $seasonA);
+        $this->createAwayNoFootprintFixture($clubB, $seasonB);
+
+        $fingerprintA = $this->firstConflict($userA)['fingerprint'];
+        self::assertIsString($fingerprintA);
+
+        // B déclare une erreur FBI en visant l'empreinte de A → 422 (absente du flux de B).
+        $this->putConflictResolution($userB, $fingerprintA, [
+            'status' => 'FBI_ERROR',
+            'fbiCorrection' => ['fixtureId' => $fixtureAId, 'field' => 'venue'],
+        ]);
+        self::assertResponseStatusCodeSame(422);
+
+        // Aucune entrée « à corriger dans FBI » n'a été créée, ni chez A ni chez B.
+        $this->scopeGucToClub($clubA->getId());
+        self::assertCount(0, $this->em->getRepository(FbiCorrection::class)->findBy(['fixtureId' => $fixtureAId]));
+        $this->scopeGucToClub($clubB->getId());
+        self::assertCount(0, $this->em->getRepository(FbiCorrection::class)->findAll());
+
+        unset($clubB, $seasonB);
+    }
+
+    /**
+     * NR axe §7.1 tenant isolation (lot N, point 4) — LA garde qui vérifie que la rencontre
+     * désignée par une « erreur FBI » appartient bien AU CONFLIT. Le club B poste sur SON
+     * PROPRE conflit de collision (valide, empreinte présente dans SON flux : la garde AMONT
+     * est franchie), mais nomme dans le complément une rencontre qui n'est PAS un côté de ce
+     * conflit → refus, aucune ligne créée.
+     *
+     * ⚠ Écrit pour être FALSIFIABLE (backend.md §défense en profondeur) : la cible du cas (1)
+     * est une rencontre VISIBLE de B mais HORS du conflit — désactiver la SEULE garde
+     * d'appartenance la laisse alors ouvrir une entrée (test rouge, preuve de chute faite).
+     * Nommer une rencontre d'un AUTRE club (cas (2)) ne prouverait PAS cette garde : la
+     * recherche de fixture tenant-filtrée la réduit déjà à null (« introuvable »), seconde
+     * ceinture qui garderait le test vert la garde d'appartenance désactivée. Le cas existant
+     * {@see self::testFbiErrorDeclarationCannotTargetAnotherClubsConflict} couvre, lui, la
+     * garde AMONT (empreinte absente du flux). On vérifie tout de même ici la sécurité
+     * cross-club (cas (2)), sans aucune fuite.
+     */
+    public function testFbiErrorComplementMustNameASideOfTheOwnConflict(): void
+    {
+        self::getContainer()->get(DevClockStore::class)->set(new DateTimeImmutable('2026-09-01 10:00:00'));
+
+        [$clubA, , $seasonA] = $this->createClubUser('csa');
+        [$clubB, $userB, $seasonB] = $this->createClubUser('csb');
+
+        // B a un VRAI conflit de collision (empreinte dans SON flux) ...
+        $this->createVenueOverlapConflict($clubB, $seasonB);
+        // ... plus une rencontre VISIBLE de B hors du conflit (la cible qui isole la garde) ...
+        $bystanderB = $this->createLoneHomeFixture($clubB, $seasonB);
+        // ... et A a une rencontre à lui (cible cross-club du cas 2).
+        $foreignA = $this->createLoneHomeFixture($clubA, $seasonA);
+
+        $fingerprintB = $this->firstConflict($userB)['fingerprint'];
+        self::assertIsString($fingerprintB);
+
+        // (1) B nomme une rencontre à LUI HORS du conflit → la garde d'appartenance refuse.
+        $this->putConflictResolution($userB, $fingerprintB, [
+            'status' => 'FBI_ERROR',
+            'fbiCorrection' => ['fixtureId' => $bystanderB, 'field' => 'venue'],
+        ]);
+        self::assertResponseStatusCodeSame(422);
+
+        // (2) B nomme une rencontre du club A → refusé aussi.
+        $this->putConflictResolution($userB, $fingerprintB, [
+            'status' => 'FBI_ERROR',
+            'fbiCorrection' => ['fixtureId' => $foreignA, 'field' => 'venue'],
+        ]);
+        self::assertResponseStatusCodeSame(422);
+
+        // Aucune entrée « à corriger dans FBI » nulle part, ni chez A ni chez B.
+        $this->scopeGucToClub($clubB->getId());
+        self::assertCount(0, $this->em->getRepository(FbiCorrection::class)->findAll());
+        $this->scopeGucToClub($clubA->getId());
+        self::assertCount(0, $this->em->getRepository(FbiCorrection::class)->findAll());
+    }
+
+    /**
      * NR axe §7.1 tenant isolation — le registre « à corriger dans FBI » vit dans une
      * table TENANT. Club A ouvre une entrée ; club B ne la lit jamais (sa
      * `findOpenBySeason`/`findOpen` reste vide sur la MÊME rencontre+champ), et une
@@ -1097,6 +1186,46 @@ final class MatchTenantIsolationTest extends WebTestCase
         // No kickoff and no habit on the team's weekday → AWAY_NO_FOOTPRINT (severity 7).
         $this->em->persist($fixture);
         $this->em->flush();
+
+        return $fixture->getId();
+    }
+
+    /**
+     * Two HOME fixtures (distinct teams) on the SAME venue with overlapping windows →
+     * exactly one VENUE_OVERLAP conflict (no coach → no person conflict). The family on
+     * which « erreur FBI » is accepted.
+     */
+    private function createVenueOverlapConflict(Club $club, Season $season): void
+    {
+        $venue = $this->createVenue($club, $season, 'Gymnase collision');
+        $this->persistHomeFixtureAtVenue($club, $season, '22222222-2222-4222-8222-222222222222', '16:00', $venue->getId());
+        $this->persistHomeFixtureAtVenue($club, $season, '33333333-3333-4333-8333-333333333333', '16:30', $venue->getId());
+        $this->em->flush();
+    }
+
+    /** A standalone HOME fixture VISIBLE to the club but part of NO conflict (own venue, off-peak). */
+    private function createLoneHomeFixture(Club $club, Season $season): string
+    {
+        $venue = $this->createVenue($club, $season, 'Gymnase à part ' . uniqid('', true));
+        $id = $this->persistHomeFixtureAtVenue($club, $season, '44444444-4444-4444-8444-444444444444', '09:00', $venue->getId());
+        $this->em->flush();
+
+        return $id;
+    }
+
+    private function persistHomeFixtureAtVenue(Club $club, Season $season, string $teamId, string $kickoff, string $venueId): string
+    {
+        $this->scopeGucToClub($club->getId());
+        $fixture = new Fixture;
+        $fixture->setClubId($club->getId());
+        $fixture->setSeasonId($season->getId());
+        $fixture->setTeamId($teamId);
+        $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
+        $fixture->setHomeAway(FixtureHomeAway::HOME);
+        $fixture->setOpponentLabel('Adversaire');
+        $fixture->setVenueId($venueId);
+        $fixture->setKickoffTime(DateTimeImmutable::createFromFormat('!H:i', $kickoff) ?: null);
+        $this->em->persist($fixture);
 
         return $fixture->getId();
     }

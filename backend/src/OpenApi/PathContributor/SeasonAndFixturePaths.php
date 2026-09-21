@@ -135,7 +135,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                             ]]],
                             'fingerprint' => ['type' => 'string', 'description' => 'Stable identity of the conflict — same while it is the same dispute, changes when its nature changes (the guardian compares it across visits)'],
                             'resolution' => ['type' => 'object', 'nullable' => true, 'description' => 'The handling status a manager stamped on this conflict (null = « à traiter », the default with no row)', 'properties' => [
-                                'status' => ['type' => 'string', 'enum' => ['DEROGATION_REQUESTED', 'RESOLVED_INTERNALLY', 'NO_SOLUTION_YET', 'COACHES_NOT_PLAYING', 'PLAYS_NOT_COACHING']],
+                                'status' => ['type' => 'string', 'enum' => ['DEROGATION_REQUESTED', 'RESOLVED_INTERNALLY', 'NO_SOLUTION_YET', 'COACHES_NOT_PLAYING', 'PLAYS_NOT_COACHING', 'IMPORT_MISSING_MATCHES', 'FBI_ERROR', 'MATCH_TO_MOVE']],
                                 'note' => ['type' => 'string', 'nullable' => true],
                                 'updatedAt' => ['type' => 'string', 'format' => 'date-time'],
                             ]],
@@ -158,7 +158,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                         'properties' => [
                             'fingerprint' => ['type' => 'string'],
                             'resolution' => ['type' => 'object', 'properties' => [
-                                'status' => ['type' => 'string', 'enum' => ['DEROGATION_REQUESTED', 'RESOLVED_INTERNALLY', 'NO_SOLUTION_YET', 'COACHES_NOT_PLAYING', 'PLAYS_NOT_COACHING']],
+                                'status' => ['type' => 'string', 'enum' => ['DEROGATION_REQUESTED', 'RESOLVED_INTERNALLY', 'NO_SOLUTION_YET', 'COACHES_NOT_PLAYING', 'PLAYS_NOT_COACHING', 'IMPORT_MISSING_MATCHES', 'FBI_ERROR', 'MATCH_TO_MOVE']],
                                 'note' => ['type' => 'string', 'nullable' => true],
                                 'updatedAt' => ['type' => 'string', 'format' => 'date-time'],
                             ]],
@@ -167,7 +167,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                     '400' => new Response('No club in context'),
                     '403' => new Response('Not a management member'),
                     '404' => new Response('Malformed fingerprint (routing)'),
-                    '422' => new Response('Unknown status, note over 500 characters, a fingerprint absent from the current radar, or a play-only status (COACHES_NOT_PLAYING / PLAYS_NOT_COACHING) on a conflict where nobody plays'),
+                    '422' => new Response('Unknown status, note over 500 characters, a fingerprint absent from the current radar, a status outside its conflict family\'s table, a play-only status (COACHES_NOT_PLAYING / PLAYS_NOT_COACHING) on a conflict where nobody plays, or an FBI_ERROR whose fbiCorrection does not name a valid side fixture and field'),
                 ],
                 summary: 'Set (or replace) the handling status of a conflict — management only. « À traiter » is not a status here (it is the absence of a row): reset with DELETE',
                 parameters: [['name' => 'fingerprint', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string'], 'description' => 'The stable fingerprint of the conflict (from the radar feed)']],
@@ -175,8 +175,17 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                     'type' => 'object',
                     'required' => ['status'],
                     'properties' => [
-                        'status' => ['type' => 'string', 'enum' => ['DEROGATION_REQUESTED', 'RESOLVED_INTERNALLY', 'NO_SOLUTION_YET', 'COACHES_NOT_PLAYING', 'PLAYS_NOT_COACHING']],
+                        'status' => ['type' => 'string', 'enum' => ['DEROGATION_REQUESTED', 'RESOLVED_INTERNALLY', 'NO_SOLUTION_YET', 'COACHES_NOT_PLAYING', 'PLAYS_NOT_COACHING', 'IMPORT_MISSING_MATCHES', 'FBI_ERROR', 'MATCH_TO_MOVE']],
                         'note' => ['type' => 'string', 'nullable' => true, 'description' => 'Optional free note, at most 500 characters'],
+                        'fbiCorrection' => [
+                            'type' => 'object',
+                            'nullable' => true,
+                            'description' => 'FBI_ERROR only — opens a « to correct in FBI » ledger entry for the offending fixture and field, atomically with the resolution. The fixture must be one of the two sides of this conflict; the target value stays empty (the app imported the error and does not know the right value)',
+                            'properties' => [
+                                'fixtureId' => ['type' => 'string', 'description' => 'The offending fixture — one of the two sides of this conflict'],
+                                'field' => ['type' => 'string', 'enum' => ['date', 'kickoff', 'venue']],
+                            ],
+                        ],
                     ],
                 ]),
             ),

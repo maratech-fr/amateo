@@ -153,11 +153,11 @@ describe("familyOf / countByFamily", () => {
     const conflicts: Conflict[] = [
       { type: "MATCH_MATCH", severity: 3, resolution: null },
       { type: "MATCH_MATCH", severity: 3, resolution: null },
-      { type: "TEAM_LINK_OVERLAP", severity: 6, resolution: null },
+      { type: "LEAGUE_WINDOW_VIOLATION", severity: 6, resolution: null },
     ];
     const counts = countByFamily(conflicts);
     expect(counts.get("MATCH_MATCH")).toBe(2);
-    expect(counts.get("TEAM_LINK_OVERLAP")).toBe(1);
+    expect(counts.get("LEAGUE_WINDOW_VIOLATION")).toBe(1);
     expect(counts.get("VENUE_OVERLAP")).toBeUndefined();
   });
 
@@ -165,23 +165,23 @@ describe("familyOf / countByFamily", () => {
     const conflicts: Conflict[] = [
       { type: "MATCH_MATCH", severity: 3, resolution: null },
       { type: "MATCH_MATCH", severity: 3, resolution: { status: "DEROGATION_REQUESTED", note: null, updatedAt: "2026-10-03T20:45:00+02:00" } },
-      { type: "TEAM_LINK_OVERLAP", severity: 6, resolution: { status: "RESOLVED_INTERNALLY", note: null, updatedAt: "2026-10-03T20:45:00+02:00" } },
+      { type: "LEAGUE_WINDOW_VIOLATION", severity: 6, resolution: { status: "RESOLVED_INTERNALLY", note: null, updatedAt: "2026-10-03T20:45:00+02:00" } },
     ];
     const counts = countByFamily(conflicts);
-    // Un seul MATCH_MATCH à traiter ; le TEAM_LINK_OVERLAP entièrement traité disparaît du compte.
+    // Un seul MATCH_MATCH à traiter ; le LEAGUE_WINDOW_VIOLATION entièrement traité disparaît du compte.
     expect(counts.get("MATCH_MATCH")).toBe(1);
-    expect(counts.get("TEAM_LINK_OVERLAP")).toBeUndefined();
+    expect(counts.get("LEAGUE_WINDOW_VIOLATION")).toBeUndefined();
   });
 
   it("familiesPresent : les familles AYANT au moins un conflit (traité ou non) — pour la visibilité des chips (P4-207)", () => {
     const conflicts: Conflict[] = [
       { type: "MATCH_MATCH", severity: 3, resolution: null },
       // Famille entièrement traitée : présente (chip visible à 0), mais hors compte.
-      { type: "TEAM_LINK_OVERLAP", severity: 6, resolution: { status: "RESOLVED_INTERNALLY", note: null, updatedAt: "2026-10-03T20:45:00+02:00" } },
+      { type: "LEAGUE_WINDOW_VIOLATION", severity: 6, resolution: { status: "RESOLVED_INTERNALLY", note: null, updatedAt: "2026-10-03T20:45:00+02:00" } },
     ];
     const present = familiesPresent(conflicts);
     expect(present.has("MATCH_MATCH")).toBe(true);
-    expect(present.has("TEAM_LINK_OVERLAP")).toBe(true);
+    expect(present.has("LEAGUE_WINDOW_VIOLATION")).toBe(true);
     // Une famille sans AUCUN conflit reste absente (chip masquée).
     expect(present.has("VENUE_OVERLAP")).toBe(false);
     expect(familiesPresent([]).size).toBe(0);
@@ -191,9 +191,9 @@ describe("familyOf / countByFamily", () => {
 describe("applyFamilyFilter", () => {
   const conflicts: Conflict[] = [
     { type: "MATCH_MATCH", severity: 3, resolution: null },
-    { type: "TEAM_LINK_OVERLAP", severity: 6, resolution: null },
+    { type: "LEAGUE_WINDOW_VIOLATION", severity: 6, resolution: null },
   ];
-  const ALL: ConflictType[] = ["VENUE_OVERLAP", "LEAGUE_WINDOW_VIOLATION", "MATCH_MATCH", "MATCH_TRAINING", "VENUE_UNAVAILABLE", "ACCESS_WINDOW_LOST", "TEAM_LINK_OVERLAP", "COMPETITION_INCOMPLETE", "AWAY_NO_FOOTPRINT"];
+  const ALL: ConflictType[] = ["VENUE_OVERLAP", "LEAGUE_WINDOW_VIOLATION", "MATCH_MATCH", "MATCH_TRAINING", "VENUE_UNAVAILABLE", "ACCESS_WINDOW_LOST", "COMPETITION_INCOMPLETE", "AWAY_NO_FOOTPRINT"];
 
   it("toutes les familles cochées ⇒ pass-through (MÊME référence)", () => {
     expect(applyFamilyFilter(conflicts, ALL)).toBe(conflicts);
