@@ -138,6 +138,43 @@ final class ConstraintApiTest extends WebTestCase
     }
 
     /**
+     * Axe *constraint semantics* — le cran `BONUS` a été retiré du produit : il n'a jamais eu de
+     * sémantique propre (ni poids, ni branche moteur) et n'est plus une valeur d'enum.
+     *
+     * ⚑ Le comportement d'AVANT : `ruleType: "BONUS"` était accepté à l'écriture puis normalisé en
+     * silence en `PREFERRED` par le moteur. Le gestionnaire posait un cran qui n'existait pas et en
+     * obtenait un autre, sans le savoir. Désormais la valeur est refusée à la SOURCE : un 422 qui
+     * nomme le champ fautif, jamais une transformation muette.
+     *
+     * Falsifiable : remettre le case `BONUS` dans `ConstraintRuleType` fait repasser cette écriture
+     * en 201 (le `Assert\Choice` dérivé de `values()` l'admet de nouveau) — le test rougit ; le
+     * retirer le rend vert.
+     *
+     * ⚠ Comme sa sœur ci-dessus, ce test tourne dans `unit-tests`, PAS dans `blocking-tests` (§4).
+     */
+    public function testBonusRuleTypeIsRefusedSinceItWasRemovedFromTheProduct(): void
+    {
+        $client = $this->client;
+        $client->loginUser($this->user);
+
+        $client->request('POST', '/api/constraints', [], [], [
+            'HTTP_X-Club-Id' => $this->club->getId(),
+            'CONTENT_TYPE' => 'application/ld+json',
+        ], json_encode([
+            'name' => 'Cran retiré',
+            'scope' => 'CLUB',
+            'family' => 'DAY',
+            'ruleType' => 'BONUS',
+            'config' => ['forbiddenDays' => [6]],
+            'isActive' => true,
+            'sortOrder' => 1,
+        ], \JSON_THROW_ON_ERROR));
+
+        self::assertSame(422, $client->getResponse()->getStatusCode(), 'Un ruleType « BONUS » — cran retiré du produit — doit être REFUSÉ, jamais accepté puis normalisé en silence.');
+        self::assertStringContainsString('ruleType', (string) $client->getResponse()->getContent(), 'La réponse doit NOMMER le champ fautif.');
+    }
+
+    /**
      * AUD-BCK-13 — un gymnase inconnu dans le `config` est REFUSÉ à l'écriture.
      *
      * ⚑ Mesuré côté moteur avant d'écrire le correctif : un `forcedVenueId` qui ne

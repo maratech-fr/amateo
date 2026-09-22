@@ -1093,7 +1093,6 @@ const DAY_LABELS_LONG: Record<number, string> = { 1: "Lundi", 2: "Mardi", 3: "Me
 const RULE_LABEL: Record<ConstraintRuleType, string> = {
   HARD: "Obligatoire",
   PREFERRED: "Préféré",
-  BONUS: "Bonus",
   LOCK: "Verrouillé",
 };
 
