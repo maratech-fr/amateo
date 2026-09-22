@@ -182,6 +182,119 @@ final class ContractSchemaTest extends TestCase
         self::assertSame(3, $dto->causes[0]->count);
     }
 
+    /**
+     * NR — axes §7.1 « backend↔engine contract » + « constraint semantics » : les coordonnées du
+     * créneau préféré déplacé (contrat 2.23, `soft_lock_moved.dayOfWeek`/`startTime`/
+     * `durationMinutes`) traversent l'import du backend jusqu'à l'API, et le message français
+     * reconstruit porte LEQUEL des créneaux a bougé (jour + plage horaire). Le mock engine émet
+     * les champs (message vidé — un texte anglais y serait mort) ; le recorder PERSISTE les
+     * colonnes jour/heure et bâtit le message FR ; la resource EXPOSE le tout. Sans EM réelle
+     * (noms → ids), la preuve porte sur le jour + l'heure, l'objet du lot.
+     */
+    #[Group('phase1')]
+    public function testEngineSoftLockMovedCoordinatesArePersistedAndExposed(): void
+    {
+        $engineBody = json_encode([
+            'status' => 'completed',
+            'score' => 0,
+            'slots' => [],
+            'metrics' => ['solver_version' => 'test', 'nb_variables' => 0, 'nb_constraints' => 0, 'wall_time_ms' => 0],
+            'diagnostics' => [[
+                'type' => 'soft_lock_moved',
+                'severity' => 'WARNING',
+                'teamId' => 'team-1',
+                'venueId' => 'venue-1',
+                'dayOfWeek' => 2,
+                'startTime' => '18:00',
+                'durationMinutes' => 90,
+                'message' => '',
+                'suggestions' => [],
+            ]],
+        ], \JSON_THROW_ON_ERROR);
+
+        $entity = $this->recordSingleDiagnostic($engineBody);
+        self::assertInstanceOf(ScheduleDiagnostic::class, $entity);
+        self::assertSame('soft_lock_moved', $entity->getType());
+
+        // Persistance : les coordonnées entrent dans les colonnes dédiées (mapping générique).
+        self::assertSame(2, $entity->getDayOfWeek());
+        self::assertSame('18:00', $entity->getStartTime());
+
+        // Le message FR reconstruit porte le jour et la plage horaire, l'anglais a disparu.
+        self::assertSame(
+            'Le créneau préféré de team-1 (venue-1, mardi de 18:00 à 19:30) a été déplacé par le solveur pour un meilleur ajustement global.',
+            $entity->getMessage(),
+        );
+
+        // Exposition : la resource porte le message enrichi et les coordonnées.
+        $dto = ScheduleDiagnosticResource::fromEntity($entity);
+        self::assertSame(2, $dto->dayOfWeek);
+        self::assertSame('18:00', $dto->startTime);
+        self::assertStringContainsString('mardi de 18:00 à 19:30', $dto->message);
+        self::assertStringNotContainsString('preferred slot', $dto->message);
+    }
+
+    /**
+     * NR — tolérance : un moteur PLUS ANCIEN qui n'émet pas les coordonnées laisse le message
+     * EXACTEMENT celui d'avant le lot (à l'octet près) et les colonnes jour/heure NULL.
+     */
+    #[Group('phase1')]
+    public function testEngineSoftLockMovedWithoutCoordinatesKeepsTodaysMessage(): void
+    {
+        $engineBody = json_encode([
+            'status' => 'completed',
+            'score' => 0,
+            'slots' => [],
+            'metrics' => ['solver_version' => 'test', 'nb_variables' => 0, 'nb_constraints' => 0, 'wall_time_ms' => 0],
+            'diagnostics' => [[
+                'type' => 'soft_lock_moved',
+                'severity' => 'WARNING',
+                'teamId' => 'team-1',
+                'venueId' => 'venue-1',
+                'message' => 'The preferred slot for team was moved.',
+            ]],
+        ], \JSON_THROW_ON_ERROR);
+
+        $entity = $this->recordSingleDiagnostic($engineBody);
+        self::assertInstanceOf(ScheduleDiagnostic::class, $entity);
+        self::assertSame(
+            'Le créneau préféré de team-1 (venue-1) a été déplacé par le solveur pour un meilleur ajustement global.',
+            $entity->getMessage(),
+        );
+        self::assertNull($entity->getDayOfWeek(), 'Sans coordonnées, la colonne jour reste NULL.');
+        self::assertNull($entity->getStartTime());
+    }
+
+    /**
+     * Poste le body engine mocké, importe via le recorder (EM mocké : `findBy => []` pour les
+     * name-maps, `persist` capturé — la persistance se PROUVE sur l'entité, pas via une DB ici)
+     * et rend l'unique entité persistée. Miroir de {@see testEngineSessionCausesArePersistedAndExposed}.
+     */
+    private function recordSingleDiagnostic(string $engineBody): ScheduleDiagnostic
+    {
+        $client = new MockHttpClient(static fn (): MockResponse => new MockResponse($engineBody, ['http_code' => 200]));
+        $result = $client->request('POST', self::engineUrl(), ['json' => $this->buildPayload()])->toArray(false);
+
+        $captured = [];
+        $repository = $this->createMock(EntityRepository::class);
+        $repository->method('findBy')->willReturn([]);
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->method('getRepository')->willReturn($repository);
+        $entityManager->method('persist')->willReturnCallback(static function (object $entity) use (&$captured): void {
+            $captured[] = $entity;
+        });
+
+        $schedule = new Schedule;
+        $schedule->setClubId(self::CLUB_ID)->setSeasonId(self::SEASON_ID);
+
+        new ScheduleDiagnosticsRecorder($entityManager, new DiagnosticMessageBuilder)->record($schedule, $result);
+
+        self::assertCount(1, $captured);
+        self::assertInstanceOf(ScheduleDiagnostic::class, $captured[0]);
+
+        return $captured[0];
+    }
+
     private function buildPayload(): array
     {
         $venue = (new Venue)

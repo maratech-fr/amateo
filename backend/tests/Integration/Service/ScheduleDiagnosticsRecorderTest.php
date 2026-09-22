@@ -291,69 +291,6 @@ final class ScheduleDiagnosticsRecorderTest extends KernelTestCase
         self::assertNull($diagnostic->getOpenCandidates());
     }
 
-    public function testSoftLockMovedCarriesDayAndTimeInTheFrenchMessage(): void
-    {
-        // Un moteur simulé émet les champs structurés (jour + heure tronquée HH:MM + durée) ;
-        // l'enregistrement les persiste (recopie générique) et le message FR reconstruit porte
-        // le jour et la plage horaire. Sans Team/Venue seedés, les noms retombent sur les ids —
-        // la preuve porte sur le jour + l'heure, qui sont l'objet du lot.
-        $schedule = $this->seedSchedule();
-
-        $this->recorder->record($schedule, ['diagnostics' => [[
-            'type' => 'soft_lock_moved',
-            'severity' => 'WARNING',
-            'teamId' => self::TEAM_ID,
-            'venueId' => self::VENUE_ID,
-            'dayOfWeek' => 2,
-            'startTime' => '18:00',
-            'durationMinutes' => 90,
-            'message' => '',
-            'suggestions' => [],
-        ]]]);
-        $this->em->flush();
-
-        $diagnostic = $this->onlyDiagnostic($schedule);
-        self::assertSame('soft_lock_moved', $diagnostic->getType());
-        self::assertSame(ScheduleDiagnosticSeverity::WARNING, $diagnostic->getSeverity());
-        // Les coordonnées entrent aussi dans les colonnes dédiées (mécanisme générique).
-        self::assertSame(2, $diagnostic->getDayOfWeek());
-        self::assertSame('18:00', $diagnostic->getStartTime());
-        // Le message FR porte le jour et la plage horaire, dans la parenthèse.
-        self::assertStringContainsString(
-            \sprintf('(%s, mardi de 18:00 à 19:30)', self::VENUE_ID),
-            $diagnostic->getMessage(),
-        );
-        self::assertStringNotContainsString('preferred slot', $diagnostic->getMessage());
-    }
-
-    public function testSoftLockMovedWithoutCoordinatesKeepsTodaysMessageByteForByte(): void
-    {
-        // Tolérance : un moteur plus ancien n'émet pas les champs → le message reste EXACTEMENT
-        // celui d'avant le lot, à l'octet près (parenthèse gymnase seul).
-        $schedule = $this->seedSchedule();
-
-        $this->recorder->record($schedule, ['diagnostics' => [[
-            'type' => 'soft_lock_moved',
-            'severity' => 'WARNING',
-            'teamId' => self::TEAM_ID,
-            'venueId' => self::VENUE_ID,
-            'message' => 'The preferred slot for team was moved.',
-        ]]]);
-        $this->em->flush();
-
-        $diagnostic = $this->onlyDiagnostic($schedule);
-        self::assertSame(
-            \sprintf(
-                'Le créneau préféré de %s (%s) a été déplacé par le solveur pour un meilleur ajustement global.',
-                self::TEAM_ID,
-                self::VENUE_ID,
-            ),
-            $diagnostic->getMessage(),
-        );
-        self::assertNull($diagnostic->getDayOfWeek(), 'Sans coordonnées, la colonne jour reste NULL.');
-        self::assertNull($diagnostic->getStartTime());
-    }
-
     public function testPurgePreviousRemovesEarlierRunsForThisSchedule(): void
     {
         $schedule = $this->seedSchedule();
