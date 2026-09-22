@@ -189,17 +189,11 @@ final class ConstraintValidationServiceTest extends TestCase
     /**
      * ALIGN-14 — allowedDays (whitelist) hors HARD/LOCK est un placebo muet : le chemin dur du
      * moteur la saute (filtre ruleType, targeting.py) et le chemin souple ne lit jamais allowedDays
-     * (objective/terms.py). PREFERRED et BONUS sont tous deux « hors HARD/LOCK ».
+     * (objective/terms.py). PREFERRED est le seul cran « hors HARD/LOCK » qui subsiste.
      */
     public function testAllowedDaysAtPreferredIsRejected(): void
     {
         $constraint = (new Constraint)->setScope(ConstraintScope::CLUB)->setFamily(ConstraintFamily::DAY)->setRuleType(ConstraintRuleType::PREFERRED)->setConfig(['allowedDays' => [1, 2]]);
-        self::assertContains('La règle « uniquement certains jours » n\'existe qu\'en règle obligatoire.', $this->service->validate($constraint));
-    }
-
-    public function testAllowedDaysAtBonusIsRejected(): void
-    {
-        $constraint = (new Constraint)->setScope(ConstraintScope::CLUB)->setFamily(ConstraintFamily::DAY)->setRuleType(ConstraintRuleType::BONUS)->setConfig(['allowedDays' => [1, 2]]);
         self::assertContains('La règle « uniquement certains jours » n\'existe qu\'en règle obligatoire.', $this->service->validate($constraint));
     }
 
@@ -241,12 +235,6 @@ final class ConstraintValidationServiceTest extends TestCase
     public function testForcedVenueIdAtPreferredIsRejected(): void
     {
         $constraint = (new Constraint)->setScope(ConstraintScope::TEAM)->setScopeTargetId('t')->setFamily(ConstraintFamily::FACILITY)->setRuleType(ConstraintRuleType::PREFERRED)->setConfig(['forcedVenueId' => self::VENUE]);
-        self::assertContains('« Imposer ce gymnase » n\'existe qu\'en règle OBLIGATOIRE — passez la contrainte en obligatoire, sinon elle serait ignorée.', $this->service->validate($constraint));
-    }
-
-    public function testForcedVenueIdAtBonusIsRejected(): void
-    {
-        $constraint = (new Constraint)->setScope(ConstraintScope::TEAM)->setScopeTargetId('t')->setFamily(ConstraintFamily::FACILITY)->setRuleType(ConstraintRuleType::BONUS)->setConfig(['forcedVenueId' => self::VENUE]);
         self::assertContains('« Imposer ce gymnase » n\'existe qu\'en règle OBLIGATOIRE — passez la contrainte en obligatoire, sinon elle serait ignorée.', $this->service->validate($constraint));
     }
 

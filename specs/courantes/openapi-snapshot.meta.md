@@ -1,18 +1,27 @@
-Last verified @ 2026-09-21 (lot O « validé ligue piloté par l'échéance du championnat » :
-`SeasonAndFixturePaths` — la réponse du `GET /api/fixtures/league-validation` change de FORME, le
-`{count: int}` devient `{matured[], toTreat[], missingDeadline[], totalValidatable}` (par
-championnat échu : nom, échéance, provenance, compte de validables ; les domiciles échus non
-validables NOMMÉS avec leur `reason` ; les championnats sans échéance ayant des rencontres prêtes ;
-le total). Le `POST` est inchangé. Régénéré par `api:openapi:export`, **aucune route
+Last verified @ 2026-09-23 (retrait du cran `BONUS` du produit : l'énumération
+`components.schemas.Constraint.ConstraintInput.properties.ruleType.enum` passe de
+`["HARD","PREFERRED","BONUS","LOCK"]` à `["HARD","PREFERRED","LOCK"]` — `BONUS` n'avait de
+sémantique propre nulle part (ni poids, ni branche moteur) et disparaît de la valeur d'enum ; une
+écriture `ruleType: "BONUS"` est désormais refusée en 422 (Assert\Choice dérivé de `values()`) au
+lieu d'être acceptée puis normalisée en silence. Régénéré par `api:openapi:export`, **aucune route
 ajoutée/supprimée** (207, inchangé) et l'empreinte recalculée contre le fichier réel —
 `OpenApiSnapshotMetaMatchesSnapshotTest` compare compte et empreinte aux mêmes deux fichiers et les
 deux concordent. Reste du journal non re-confronté au code cette passe.)
-**207 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** (la réponse
-d'une route existante change de forme, aucune route ajoutée/supprimée) · SHA-256
-`9cd7cd4e34efd1cdeb00d268f9eacdf86765458cf18e75a8bb65cbb14d2df399` (`sha256sum`, confirmé sur le
+**207 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** (une valeur
+quitte une énumération, aucune route ajoutée/supprimée) · SHA-256
+`f2e6becbb391dbdee6bb3e9eb241c7ef54bfe36eb4266423dff647c7239c15af` (`sha256sum`, confirmé sur le
 fichier régénéré).
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **Retrait du cran `BONUS` du produit (2026-09-23)** : **+0 path** — l'énumération
+  `Constraint.ConstraintInput.ruleType` perd la valeur `BONUS` (`["HARD","PREFERRED","LOCK"]`
+  restantes). Le cran n'avait jamais eu de sémantique propre (ni poids, ni branche moteur) : le
+  moteur le normalisait en `PREFERRED` dès le parse et le wizard ne l'offrait plus ; zéro ligne en
+  base. La valeur d'enum, la normalisation moteur et les libellés front partent ensemble. Une
+  écriture `ruleType: "BONUS"` est refusée à la source en 422 (`Assert\Choice` dérivé de
+  `values()`), plus jamais acceptée puis transformée en silence. Backend + moteur + front, contrat
+  backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23 — `rule_type` reste une chaîne libre côté
+  Pydantic, la forme du payload ne bouge pas).
 - **Lot O — « validé ligue » piloté par l'échéance du championnat, backend (2026-09-21)** : **+0
   path** — la réponse du `GET /api/fixtures/league-validation` (`SeasonAndFixturePaths`) passe du
   `{count: int}` à une lecture détaillée `{matured, toTreat, missingDeadline, totalValidatable}`.
@@ -90,13 +99,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   (zéro N+1) — le chip de trajet du calendrier ne dépend plus de l'endpoint adversaires. Backend PUR, contrat
   backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23, `matches[].roundTripMinutes` de forme identique,
   aucun appel moteur).
-- **Sécurité H — dispatchers de trajets honnêtes si un calcul tourne déjà, backend (2026-09-19)** :
-  **+0 path** — les trois routes qui dispatchent un calcul de trajets ne mentent plus quand le verrou
-  `travel_compute:{clubId}` est tenu (un second message finirait en `failed`). Elles rendent alors
-  `{queued:false, alreadyRunning:true}` sans rien dispatcher : champ ADDITIF `alreadyRunning` (booléen) sur
-  `POST /api/opponents/travel/resolve`, `POST /api/venue-travel-times/autofill`, et sur le bloc `travel` de
-  `POST /api/opponents/refresh` (dont les passes codes/gymnases restent jouées). Backend PUR, contrat
-  backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23, aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés
 en tête ne sont plus une promesse sur l'honneur** : `OpenApiSnapshotMetaMatchesSnapshotTest`

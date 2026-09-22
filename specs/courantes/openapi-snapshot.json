@@ -25959,7 +25959,6 @@
                         "enum": [
                             "HARD",
                             "PREFERRED",
-                            "BONUS",
                             "LOCK"
                         ],
                         "type": [

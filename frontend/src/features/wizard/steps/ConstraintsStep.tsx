@@ -37,16 +37,15 @@ const FAMILIES: { key: ConstraintFamily; label: string }[] = [
   { key: "COACH_AVAILABILITY", label: "Dispo coach" },
 ];
 
-// BONUS removed from the offer (audit ENG-12): it never had a distinct
-// semantic anywhere (no weight, no engine branch) — legacy rows are honored as
-// PREFERRED by the engine. RULE_LABEL keeps it for displaying existing rows.
+// Le cran BONUS a été entièrement retiré du produit : il n'avait de sémantique
+// propre nulle part (ni poids, ni branche moteur) et le backend ne peut plus
+// l'émettre — la valeur d'enum a disparu.
 const RULES: ConstraintRuleType[] = ["PREFERRED", "HARD", "LOCK"];
 
 /** Libellés gestionnaire (jamais l'enum brut à l'écran). */
 const RULE_LABEL: Record<ConstraintRuleType, string> = {
   HARD: "Obligatoire",
   PREFERRED: "Préféré",
-  BONUS: "Bonus",
   LOCK: "Verrouillé",
 };
 

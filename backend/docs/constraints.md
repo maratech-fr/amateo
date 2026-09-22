@@ -1,13 +1,16 @@
 # Documentation métier du système de contraintes
 
-Last verified @ 2026-09-21 (rotation de fraîcheur `documentation-update`, lot O « l'échéance du
-championnat pilote la validation "validé ligue" » — zone hors sujet de la PR). Re-confronté au
-code : tag système `EMB` toujours sur l'axe AGE (`TeamTagService.php:27`) ✓ · `FACILITY_CAPACITY`
-ne subsiste qu'en commentaires/docblocks historiques (`PayloadCapacityMirror.php:30`,
-`ScheduleConstraintBuilder.php:1375`, `ValidateConstraintsController.php:263`) ✓ ·
+Last verified @ 2026-09-23 (`documentation-update`, suppression du cran `BONUS`, `bc2e2568`).
+**Corrigé cette passe** : trois mentions de `BONUS` comme valeur `ruleType` vivante (table
+`maxEndTime`, table des types, ligne « Impact sur le score ») — le cran est retiré du produit
+(`App\Enum\ConstraintRuleType` ne compte plus que HARD/PREFERRED/LOCK), `ruleType: "BONUS"` rend
+422. Passe précédente (2026-09-21, conservée pour trace), rien à corriger : tag système `EMB`
+toujours sur l'axe AGE (`TeamTagService.php:27`) ; `FACILITY_CAPACITY` ne subsiste qu'en
+commentaires/docblocks historiques (`PayloadCapacityMirror.php:30`,
+`ScheduleConstraintBuilder.php:1375`, `ValidateConstraintsController.php:263`) ;
 `maxConsecutiveDays` (P2-42) toujours seule règle à `defaultIntensity: 'OFF'`
 (`ImplicitConstraintConfig.php:126`), les 4 autres règles implicites restant `'HARD'`
-(`:93,100,107,114`) ✓. Rien à corriger.
+(`:93,100,107,114`).
 
 > ClubScheduler — Symfony 7 + API Platform. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
@@ -53,7 +56,7 @@ Restreint la fenêtre horaire de l'entraînement. La validation exige **au moins
 |--------------|------|-------------|---------|
 | `maxStartTime` | string (HH:MM) | Heure max de début | `"19:30"` |
 | `minStartTime` | string (HH:MM) | Heure min de début | `"20:00"` |
-| `maxEndTime` | string (HH:MM) | Heure max de **fin** (mode « fini avant ») — l'engine calcule fin = début + durée du créneau. **Exige une règle `HARD`/`LOCK`** : le chemin souple l'ignore, la validation le refuse donc en `PREFERRED`/`BONUS` | `"20:30"` |
+| `maxEndTime` | string (HH:MM) | Heure max de **fin** (mode « fini avant ») — l'engine calcule fin = début + durée du créneau. **Exige une règle `HARD`/`LOCK`** : le chemin souple l'ignore, la validation le refuse donc en `PREFERRED` | `"20:30"` |
 
 > Exemple : `{maxStartTime: "19:30"}` signifie "l'entraînement doit commencer au plus tard à 19h30". Si la séance dure 1h30, elle finira donc à 21h00 au plus tard.
 
@@ -120,8 +123,11 @@ Le champ `ruleType` (enum `ConstraintRuleType`) définit comment le solveur trai
 |--------|--------------|----------|
 | `HARD` | Doit être respectée. Si elle est violée, le planning est infaisable. | "C'est non négociable." |
 | `PREFERRED` | Devrait être respectée. Une violation est pénalisée dans le score, mais autorisée. | "C'est préférable, mais on peut déroger si nécessaire." |
-| `BONUS` | Récompense si respectée. Aucune pénalité si violée. | "C'est un plus, pas une obligation." |
 | `LOCK` | Figé. Le créneau est verrouillé, le solveur ne peut pas le déplacer. | "Ne touchez pas à ce créneau." |
+
+> Liste **fermée** à ces trois valeurs. Un quatrième cran, `BONUS`, a existé dans le modèle
+> d'origine mais n'a jamais eu de sémantique propre (le moteur le normalisait en `PREFERRED`, le
+> wizard ne l'offrait plus) ; retiré du produit le 2026-09-23 — `ruleType: "BONUS"` rend 422.
 
 ### 2.4 Tag targeting (pour le scope `CLUB`)
 
@@ -260,7 +266,7 @@ Le solveur CP-SAT (OR-Tools) raisonne sur des variables binaires du type "l'équ
 | **Stockage** | Code de l'engine | Table `Constraint` en base de données |
 | **Exemples** | Un entraîneur = une équipe à la fois. Une salle = une équipe à la fois. | Les jeunes doivent finir avant 19h30. SM3 préfère le mercredi. |
 | **Visibilité API** | Endpoint `POST /implicit-constraints` de l'**engine** (aucune route backend) — consommé par la commande `app:constraint:export-implicit` | Endpoint `/api/constraints` (CRUD complet) |
-| **Impact sur le score** | `HARD` par défaut ; les règles de bien-être peuvent être assouplies en `PREFERRED` (pénalité au lieu d'invalidité), et `maxConsecutiveDays` naît OFF | Variable (`HARD`, `PREFERRED`, `BONUS`, `LOCK`) |
+| **Impact sur le score** | `HARD` par défaut ; les règles de bien-être peuvent être assouplies en `PREFERRED` (pénalité au lieu d'invalidité), et `maxConsecutiveDays` naît OFF | Variable (`HARD`, `PREFERRED`, `LOCK`) |
 
 Les contraintes implicites sont les fondations du système. Sans elles, le solveur pourrait placer le coach Enzo sur deux terrains simultanément, ou assigner SM1 et SF3 dans la même salle à la même heure. Les contraintes utilisateur viennent affiner ce comportement de base pour refléter les réalités du BCCL : horaires des bus scolaires, disponibilités des salles municipales, préférences des entraîneurs bénévoles.
 

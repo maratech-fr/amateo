@@ -10,6 +10,5 @@ enum ConstraintRuleType: string
 
     case HARD = 'HARD';
     case PREFERRED = 'PREFERRED';
-    case BONUS = 'BONUS';
     case LOCK = 'LOCK';
 }

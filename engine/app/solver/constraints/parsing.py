@@ -193,13 +193,6 @@ def parse_v2_constraints(constraints: list[dict[str, Any]]) -> ParsedConstraints
         config = c.get("config") or {}
         metadata = c.get("metadata") or {}
 
-        # BONUS never had a distinct semantic anywhere (no weight, no branch) —
-        # the UI no longer offers it; legacy rows are honored as PREFERRED
-        # (soft), which is more honest than silently dropping them (ENG-12).
-        if rule_type == "BONUS":
-            rule_type = "PREFERRED"
-            c = {**c, "ruleType": "PREFERRED"}
-
         if rule_type == "LOCK" and family in ("TIME", "DAY"):
             # A LOCK on a time/day rule means "keep this window fixed" — same
             # effect as HARD for the solver. Route it through time_windows;
@@ -395,8 +388,8 @@ def parse_v2_constraints(constraints: list[dict[str, Any]]) -> ParsedConstraints
                     }
                 )
             elif scope_target_id:
-                # PREFERRED (incl. normalized BONUS): soft "avoid" — an
-                # objective malus, never a feasibility constraint.
+                # PREFERRED: soft "avoid" — an objective malus, never a
+                # feasibility constraint.
                 result["avoided_venues"].append(
                     {"scope_target_id": str(scope_target_id), "venue_id": str(config["forbiddenVenueId"])}
                 )

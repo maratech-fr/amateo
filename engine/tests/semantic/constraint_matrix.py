@@ -301,28 +301,6 @@ MATRIX: tuple[MatrixCell, ...] = (
     # --- Legacy / guard cells ---------------------------------------------------
     MatrixCell(
         "DAY",
-        "BONUS",
-        "forbiddenDays",
-        "TEAM",
-        Expectation.HONORED_SOFT,
-        False,
-        note="ENG-12: BONUS removed from the UI; legacy rows normalize to PREFERRED",
-        config={"forbiddenDays": [3]},
-        lock_silence=LockSilence.SOFT,
-    ),
-    MatrixCell(
-        "FACILITY",
-        "BONUS",
-        "forbiddenVenueId",
-        "TEAM",
-        Expectation.HONORED_SOFT,
-        False,
-        note="legacy BONUS → PREFERRED (soft avoid)",
-        config={"forbiddenVenueId": "{bad_venue}"},
-        lock_silence=LockSilence.SOFT,
-    ),
-    MatrixCell(
-        "DAY",
         "HARD",
         "forbiddenDays",
         "CLUB",

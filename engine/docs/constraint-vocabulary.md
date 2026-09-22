@@ -1,13 +1,16 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-09-22 (`documentation-update`, lot « blocs imbriqués — parité de comptage »,
-`e487e85d`). Re-confronté au code § mutualisation par bloc : `_fold_case_occupant_identity`
-(`engine/app/solver/constraints/common.py:168`) élit désormais le bloc MAXIMAL (tri taille
-décroissante puis clé), miroir exact de `ReservationGroupOccupancy::occupantCount` côté backend ✓ ;
-`_shared_block_move_violation` (`validate_assignments.py`) refuse `shared_block_overformed` en plus
-de `shared_block_broken` ✓ ; `_venue_minimum_move_violation` raisonne en ensembles de cases par
-équipe ✓. Aucune montée de `CONTRACT_VERSION` (toujours `2.23`, `rule` reste une chaîne libre) ✓.
-Non re-sondé cette passe : le reste du vocabulaire
+Last verified @ 2026-09-23 (`documentation-update`, suppression du cran `BONUS`, `bc2e2568`).
+**Corrigé cette passe** : la ligne `ruleType` listait encore `BONUS` comme une valeur vivante
+normalisée en `PREFERRED` — l'enum backend `ConstraintRuleType` ne compte plus que
+HARD/PREFERRED/LOCK, une écriture `ruleType: "BONUS"` rend 422 avant d'atteindre le moteur.
+Aucune montée de `CONTRACT_VERSION` (toujours `2.23`, `rule_type` reste une chaîne libre côté
+Pydantic) ✓. Passe précédente (2026-09-22, conservée pour trace) : § mutualisation par bloc —
+`_fold_case_occupant_identity` (`engine/app/solver/constraints/common.py:168`) élit le bloc MAXIMAL
+(tri taille décroissante puis clé), miroir exact de `ReservationGroupOccupancy::occupantCount` côté
+backend ; `_shared_block_move_violation` (`validate_assignments.py`) refuse
+`shared_block_overformed` en plus de `shared_block_broken` ; `_venue_minimum_move_violation`
+raisonne en ensembles de cases par équipe. Non re-sondé cette passe : le reste du vocabulaire
 listé ci-dessous — un stamp REMPLACE, l'historique vit dans git.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
@@ -26,7 +29,7 @@ listé ci-dessous — un stamp REMPLACE, l'historique vit dans git.
 | `scope` | `CLUB` · `TEAM` · `COACH` · `FACILITY` | cible de la règle |
 | `scopeTargetId` | uuid | l'équipe / coach / gymnase visé (null si CLUB) |
 | `config.targetTag` | tag système (`JEUNE`, `SENIOR`, `EMB`, `U9`…`U21`, `FEMININE`, `MASCULINE`, `REGIONAL`, `DEPARTEMENTAL`, `LOISIR_ADULTE`…) | **CLUB + targetTag** → le backend **éclate** en N contraintes `TEAM` (une par équipe du tag). Une règle sans cible qui atteindrait l'engine → **warning** (`constraint_not_honored`) |
-| `ruleType` | `HARD` · `LOCK` · `PREFERRED` · `BONUS` | `HARD`/`LOCK` = **dur** (jamais violé ; sur-contraint → équipe non placée + diagnostic). `PREFERRED` = **soft** (oriente l'objectif, ne bloque jamais). `BONUS` = normalisé en `PREFERRED`. |
+| `ruleType` | `HARD` · `LOCK` · `PREFERRED` — liste **fermée**, `BONUS` retiré du produit le 2026-09-23 | `HARD`/`LOCK` = **dur** (jamais violé ; sur-contraint → équipe non placée + diagnostic). `PREFERRED` = **soft** (oriente l'objectif, ne bloque jamais). |
 
 ---
 

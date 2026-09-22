@@ -1,12 +1,15 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-09-21 (`documentation-update`, rotation de fraîcheur, lot M — sujet sans
-rapport, fichier choisi par son stamp le plus ancien du dépôt ; deux affirmations périmées
-CORRIGÉES au passage, § bumps 2.21 et 2.23). Re-confronté au code : `CONTRACT_VERSION` = **2.23**
-(`engine/CONTRACT_VERSION`) ✓ ; `DEFAULT_MATCH_MIN=105`/`DEFAULT_WARMUP_MIN=30` toujours dans
-`match_placement.py` ✓. **Corrigé** : les bumps 2.21 et 2.23 affirmaient encore que l'échauffement
-« reste » une contrainte de fenêtre PERSONNE au placement — FAUX depuis le lot M (2026-09-21,
-`docs/architecture/adr-0003-match-placement-solve.md` § amendement lot M) : les trois fenêtres de
+Last verified @ 2026-09-23 (`documentation-update`, suppression du cran `BONUS`, `bc2e2568`).
+**Corrigé cette passe** : le §4.1 affirmait encore que `parse_v2_constraints` normalisait les
+lignes legacy `BONUS` en `PREFERRED` — cette branche a disparu du parse en même temps que l'enum
+backend `ConstraintRuleType::BONUS` a été retirée (ne compte plus que HARD/PREFERRED/LOCK) ; une
+écriture `ruleType: "BONUS"` rend désormais 422 côté backend, avant même d'atteindre le moteur.
+Re-confronté au code : `CONTRACT_VERSION` = **2.23** (`engine/CONTRACT_VERSION`) ✓ ;
+`DEFAULT_MATCH_MIN=105`/`DEFAULT_WARMUP_MIN=30` toujours dans `match_placement.py` ✓. Passe
+précédente (2026-09-21, conservée pour trace) : les bumps 2.21 et 2.23 affirmaient encore que
+l'échauffement « reste » une contrainte de fenêtre PERSONNE au placement — FAUX depuis le lot M
+(`docs/architecture/adr-0003-match-placement-solve.md` § amendement lot M) : les trois fenêtres de
 personne du solveur (coach, `NOT_SIMULTANEOUS`) ont perdu l'échauffement, seul le trajet AWAY y
 reste (`match_placement.py` — `fixed_windows_by_coach`, poids TO_PLACE, `_overlap_pairs`). Reste de
 l'inventaire (`PLACEMENT_PROXIMITY_WEIGHT`, le détail des sections sous la ligne 40) non re-sondé
@@ -314,7 +317,11 @@ Contrat **2.23** (le MÊME que `/generate` — un seul contrat pour les trois en
 | `PREFERRED` | Souhait — optimisation | Bonus objectif Level-2 (pas de contrainte hard) |
 | `LOCK` | Règle « figée » | Traité **exactement comme `HARD`** : TIME/DAY → `time_windows` ; FACILITY → `forced_venues` / `venue_minimums`. La collection `fixed_slots` n'est alimentée par **aucune** branche de `parse_v2_constraints` (chemin résiduel). ⚠ Ne pas confondre avec `slotTemplates[].lockLevel`, autre mécanisme (cf. §5 Hard locks) |
 
-> `BONUS` **n'existe plus** (audit P0.1 ENG-12) : l'UI ne le propose plus ; les lignes legacy `BONUS` sont normalisées en `PREFERRED` à l'entrée de `parse_v2_constraints` (`constraints.py` — plus honnête que de les dropper en silence).
+> `BONUS` **a été retiré du produit** (audit P0.1 ENG-12, puis suppression complète le 2026-09-23) :
+> l'enum backend `ConstraintRuleType` ne compte plus que HARD/PREFERRED/LOCK — une écriture
+> `ruleType: "BONUS"` rend 422 avant même d'atteindre le moteur. `parse_v2_constraints` n'a donc
+> plus de normalisation `BONUS → PREFERRED` à faire (`rule_type` reste une chaîne libre côté
+> Pydantic — c'est le backend, pas le moteur, qui ferme la porte).
 
 ### 4.2 Family & Scope
 

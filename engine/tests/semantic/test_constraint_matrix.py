@@ -427,31 +427,6 @@ def test_multiple_coach_constraints_union_not_last_wins() -> None:
     assert days == {5}, f"both Monday AND Wednesday must be blocked, got {days}"
 
 
-# --- ENG-12 (dedicated): legacy BONUS rows are honored as PREFERRED ------------
-
-
-def test_legacy_bonus_facility_behaves_as_preferred() -> None:
-    venues = [make_venue(GOOD_VENUE, [(1, "18:00")]), make_venue(BAD_VENUE, [(3, "18:00")])]
-    constraints = [
-        {
-            "id": "bonus-1",
-            "scope": "TEAM",
-            "scopeTargetId": "t",
-            "family": "FACILITY",
-            "ruleType": "BONUS",
-            "name": "legacy bonus",
-            "config": {"forbiddenVenueId": BAD_VENUE},
-            "sortOrder": 0,
-            "isActive": True,
-        }
-    ]
-    result = solve_payload(make_payload(teams=[_team()], venues=venues, constraints=constraints))
-
-    assert result["status"] == "completed"
-    placed = _slots(result)
-    assert placed and all(s["venueId"] == GOOD_VENUE for s in placed)
-
-
 # --- Review NR: two soft avoid-day rules must BOTH steer (no mutual cancel) ----
 
 

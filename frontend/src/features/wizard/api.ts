@@ -547,7 +547,7 @@ export const updateTravelRuleSetting = (intensity: VenueTravelRuleIntensity): Pr
 
 export type ConstraintFamily = "TIME" | "DAY" | "FACILITY" | "COACH_AVAILABILITY";
 export type ConstraintScope = "CLUB" | "TEAM" | "COACH" | "FACILITY";
-export type ConstraintRuleType = "HARD" | "PREFERRED" | "BONUS" | "LOCK";
+export type ConstraintRuleType = "HARD" | "PREFERRED" | "LOCK";
 
 export interface Constraint {
   id: string;

@@ -97,7 +97,7 @@ final class DevScheduleReportWriter
         if ([] !== $activeConstraints) {
             // Sort by ruleType (HARD first), then sortOrder
             usort($activeConstraints, static function (Constraint $a, Constraint $b): int {
-                $typeOrder = ['HARD' => 0, 'PREFERRED' => 1, 'BONUS' => 2, 'LOCK' => 3];
+                $typeOrder = ['HARD' => 0, 'PREFERRED' => 1, 'LOCK' => 2];
                 $aType = $typeOrder[$a->getRuleType()->value];
                 $bType = $typeOrder[$b->getRuleType()->value];
                 if ($aType !== $bType) {

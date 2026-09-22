@@ -1,18 +1,19 @@
 # Émission des contraintes (frontend) + alignement 3 couches
 
-Last verified @ 2026-09-21 (`documentation-update`, rotation de fraîcheur — sans rapport avec le
-sujet de la PR qui l'a déclenchée). Re-confronté au code, mêmes 4 affirmations que la passe
-précédente (aucune n'a bougé de comportement, seuls les numéros de ligne avaient dérivé sous des
-lots ultérieurs — corrigés) : `resolveTravelRuleIntensity`
-(`ScheduleConstraintBuilder.php:964`, repli `TeamLinkIntensity::PREFERRED`) toujours le seul point
-de résolution de l'intensité `travelTime` ✓ ; `forcedDays` toujours câblé sur les 3 couches
-(`ConstraintValidationService.php` case DAY, `ConstraintConfigValidator.php` liste blanche,
-`frontend/src/features/wizard/steps/ConstraintsStep.tsx:375`,
+Last verified @ 2026-09-23 (`documentation-update`, rotation de fraîcheur — sujet sans rapport
+(suppression du cran `BONUS`, `bc2e2568`)). Re-confronté au code : ce fichier ne cite `bonus` que
+pour le terme d'OBJECTIF (`bonus soft` à la ligne 70, sur `minStartTime`/`maxStartTime`), homonyme
+sans rapport avec le cran de règle `BONUS` retiré du produit — le tableau `ruleType` (§ ci-dessous)
+ne l'a d'ailleurs jamais listé, rien à corriger ici. Mêmes 4 affirmations que la passe précédente
+re-confirmées : `resolveTravelRuleIntensity` (`ScheduleConstraintBuilder.php:964`, repli
+`TeamLinkIntensity::PREFERRED`) toujours le seul point de résolution de l'intensité `travelTime` ✓ ;
+`forcedDays` toujours câblé sur les 3 couches (`ConstraintValidationService.php` case DAY,
+`ConstraintConfigValidator.php` liste blanche,
+`frontend/src/features/wizard/steps/ConstraintsStep.tsx:374`,
 `engine/app/solver/constraints/targeting.py:74`) ✓ ; la famille `FACILITY_CAPACITY` toujours
-retirée du moteur, le commentaire au passé désormais à `engine/app/main.py:446-449` (a dérivé de
-488-491) ✓ ; le mode « préfère » toujours sans sélecteur de règle (`ruleType: "PREFERRED"` épinglé,
-pastille figée « Préféré ») ✓. Le reste de la table §2 (25 lignes) n'a pas été rejoué ligne à ligne
-cette passe.
+retirée du moteur, le commentaire au passé toujours à `engine/app/main.py:446-449` ✓ ; le mode
+« préfère » toujours sans sélecteur de règle (`ruleType: "PREFERRED"` épinglé, pastille figée
+« Préféré ») ✓. Le reste de la table §2 (25 lignes) n'a pas été rejoué ligne à ligne cette passe.
 
 > **But** : (1) lister ce que le **wizard émet** réellement, et (2) mettre les **3 couches côte à côte**
 > (frontend → backend → engine) pour repérer les **scissions** et les **angles morts** — les cas où

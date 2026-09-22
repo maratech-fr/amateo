@@ -1,7 +1,7 @@
 # Console superadmin — authentification, télémétrie et API de supervision
 
-Last verified @ 2026-09-21 (rotation `documentation-update`, lot K « appariement UX des gymnases
-adverses », hors sujet de la PR). Re-confronté au code, rien de faux trouvé : firewall `admin` =
+Last verified @ 2026-09-23 (rotation `documentation-update`, suppression du cran `BONUS`, hors
+sujet de la PR). Re-confronté au code, rien de faux trouvé : firewall `admin` =
 `pattern: ^/api/admin`, `provider: super_admin_provider`
 (`backend/config/packages/security.yaml:34,36`) ✓ ; `AdminCsrfListener` toujours à la priorité 6
 (`#[AsEventListener(event: KernelEvents::REQUEST, priority: 6)]`) ✓ ; politique de mot de passe
