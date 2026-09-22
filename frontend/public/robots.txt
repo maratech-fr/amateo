@@ -1,0 +1,8 @@
+# Application host (the app subdomain). The app is NOT for search engines —
+# nothing here is public marketing. Forbid crawling entirely, and name NO path:
+# this file is public, so listing a route (e.g. a token page) would only
+# advertise it. The real non-indexing guard is the X-Robots-Tag: noindex header
+# on every response (docker/frontend/security-headers.conf) — robots.txt just
+# keeps crawlers from walking the tree. No Sitemap: the app publishes none.
+User-agent: *
+Disallow: /

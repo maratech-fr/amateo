@@ -1,0 +1,5 @@
+# Landing host (the bare domain) — the public sales page. It MUST be indexable,
+# so crawling is fully allowed. Served as-is by Caddy file_server (zero build).
+# No Sitemap directive: the landing has no sitemap.
+User-agent: *
+Disallow:

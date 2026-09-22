@@ -15,6 +15,18 @@ COPY coverage-floor.json /app/coverage-floor.json
 
 FROM tooling AS build
 
+# P5-19 — a frontend's config is frozen at COMPILE time: a Sentry DSN written in
+# .env.prod at runtime never reaches the bundle. So the DSN must arrive as a
+# build ARG here, promoted to ENV so Vite (import.meta.env.VITE_SENTRY_DSN) and
+# the build guard (vite.config.ts → tooling/sentryCspGuard.ts) both see it.
+# INERT by default: empty ARG → empty env → main.tsx skips Sentry.init and the
+# guard returns null. Setting it is a DELIBERATE act that ALSO requires adding
+# the DSN's ingest host to docker/frontend/csp.conf — otherwise the build FAILS
+# (the guard, on purpose), because the browser would drop every event in
+# silence. That CSP edit is the founder's to make once the Sentry account exists.
+ARG VITE_SENTRY_DSN=""
+ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN
+
 RUN npm run build
 
 FROM nginx:1.27-alpine AS runtime

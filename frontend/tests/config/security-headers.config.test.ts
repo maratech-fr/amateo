@@ -42,6 +42,15 @@ describe("A17 baseline security headers (docker/frontend/security-headers.conf)"
     expect(base).not.toMatch(/includeSubDomains/);
     expect(base).not.toMatch(/Content-Security-Policy/);
   });
+
+  it("keeps the whole app out of search indexes via X-Robots-Tag noindex (P5-18)", () => {
+    // Single home for the app's non-indexing: one `add_header` on the shared
+    // baseline covers EVERY app response — SPA, in-app privacy page, and the
+    // token pages (club-approval / doléances) whose paths must never be named
+    // in the public robots.txt. Dropping this line silently re-exposes the app
+    // (and any forwarded token URL) to indexing.
+    expect(base).toMatch(/add_header\s+X-Robots-Tag\s+"[^"]*noindex[^"]*"/);
+  });
 });
 
 describe("A17 CSP (docker/frontend/csp.conf)", () => {
