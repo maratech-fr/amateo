@@ -1,17 +1,16 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-21 (`documentation-update`, lot P « le nom FBI d'un gymnase — l'alias
-confirmé n'est plus un faux écart, le registre rend la graphie brute », `964ed570`). Confronté au
-code cette passe : `FbiFixtureImporter::detectFieldDeviations` (`backend/src/Service/
-FbiFixtureImporter.php`) porte désormais la MÊME clause alias que `detectUnplacedVenueDeviation` —
-`VenueAliasResolver::resolveConfirmed($fileLabel) !== $venueId`, identité STRICTE — sur le
-périmètre PLACÉ, plus de faux écart quand la source nomme le gymnase placé par un alias confirmé ;
-`FbiCorrectionLedger::venueFbiLabel` (`backend/src/Service/FbiCorrectionLedger.php`) rend la
-graphie BRUTE attestée par la rencontre sœur la plus récente (même saison, même gymnase, libellé
-normalisé ∈ alias confirmés — `FixtureRepository::findRawVenueLabelsBySeasonAndVenue`), repli sur
-le premier alias (toujours normalisé) si aucune sœur n'atteste. Le reste du fichier (Validé ligue,
-Écran Adversaires, delta de visite, lot N…) n'a pas bougé sous ce lot — historique des passes
-précédentes : `git log -p --follow specs/courantes/module-matchs.md`.
+Last verified @ 2026-09-22 (`documentation-update`, lot filtres Conflits/`FilterChip`, `c8cf2661`).
+Confronté au code cette passe (§5/§6 amendés) : `hasConflictsParams` (`frontend/src/features/
+matches/lib/urlState.ts:325`) miroir de `hasConsultParams` (`:189`) ✓ ; `conflictsTreatments`/
+`conflictsHomeOnly` rejoignent `useMatchesStore` (`store.ts:89-90,137-138,162-163`) — plus en
+`useState` local ✓ ; `FilterChip` (`shared/components/ui/filter-chip.tsx`) consommée par exactement
+les 3 chips « Familles » (`CalendarControls.tsx:172`, `ConflictsPage.tsx:500`) et « Traitement »
+(`ConflictsPage.tsx:532`) — les 3 autres puces d'apparence proche (types, période, « Regrouper
+par ») restent des contrôles segmentés non absorbés (contrat sans compteur) ✓. Le reste du fichier
+(Validé ligue, Écran Adversaires, delta de visite, lot N…) n'a pas bougé sous ce lot, non
+re-contrôlé cette passe — historique des passes précédentes : `git log -p --follow
+specs/courantes/module-matchs.md`.
 
 > **Règle de forme (refonte 2026-09-18, AUD-DOC-38)** : ce fichier décrit **l'état courant, par
 > écran** — jamais une section datée d'une PR. Le JOURNAL (qui a livré quoi, quand, sous quel id)
@@ -624,11 +623,20 @@ Lecture seule, en regard du Calendrier : « qu'est-ce qui cloche sur TOUTE la sa
 qui ça touche ? ». Même flux (`GET /api/fixtures/conflicts`), **sans** le filtre équipe/coach/
 gymnase partagé (décision fermée — il fausserait le compte saison de l'onglet).
 
+- **Mémoire de session des filtres** : même mécanisme que le Calendrier (§5) — l'URL fait foi
+  pour les quatre filtres (pivot, familles, traitement, domicile) **seulement si** elle porte au
+  moins une des clés dédiées (`hasConflictsParams`, `?ouvert=` compris — le paramètre qui ouvre
+  une entrée précise COMPTE comme une clé), sinon le store (`conflictsTreatments`/
+  `conflictsHomeOnly` désormais dans `useMatchesStore`, à côté de `conflictsPivot`/
+  `conflictsFamilies`) est gardé et l'adresse se re-synchronise depuis lui.
 - **Pivot** (`pivotConflicts`, pur — répartit en seaux les lignes déjà servies, ne recalcule rien) :
   coach (défaut) · équipe · gymnase · journée (week-end). Chaque axe porte une sentinelle pour les
   conflits sans ressource résolue (« Autres conflits », « Extérieur », « Sans date »), toujours en
   dernier. Un conflit à 2 équipes apparaît sous chacune en pivot équipe (assumé). Tri : compte
   décroissant puis alphabétique fr (chronologique pour la journée).
+- **Chips familles et puces « Traitement »** rendues par la primitive partagée `FilterChip`
+  (`shared/components/ui/filter-chip.tsx`, sœur de `FilterToggle`) — maison unique du motif puce
+  `aria-pressed` bordée à compteur, aussi consommée par la chip « Familles » du Calendrier (§5).
 - **Chips familles** (9 `ConflictType`, backend et frontend désormais ALIGNÉS — la famille
   `TEAM_LINK_OVERLAP`/« Passerelle » a quitté le contrat public (lot M, `e881d748`) ET le frontend
   (lot N, `conflictLabels.ts`/`api.ts`, 2026-09-21) ; un ancien lien profond qui la citerait est

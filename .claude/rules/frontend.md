@@ -53,7 +53,13 @@ paths:
   `FilterToggle` (`shared/components/ui/filter-toggle.tsx`, P4-207) est la maison unique de la case
   à cocher d'un filtre d'affichage — née du patron inline de `ReviewQueue.tsx`, qui l'utilise
   désormais pour ses deux interrupteurs (« Afficher les traitées », « Masquer les extérieurs »,
-  UXC-21, lot audit 2026-09-18) : plus aucune copie locale du patron ;
+  UXC-21, lot audit 2026-09-18) : plus aucune copie locale du patron ; sa sœur `FilterChip`
+  (`shared/components/ui/filter-chip.tsx`, P4-216, 2026-09-22) est la maison unique de la PUCE de
+  filtre `aria-pressed` bordée à compteur (icône optionnelle) — consommée par les chips
+  « Familles » (Calendrier + Conflits) et « Traitement » (Conflits) de `features/matches`.
+  N'absorbe QUE ce contrat exact : ni les interrupteurs `role="switch"` (sémantique a11y
+  différente), ni les contrôles SEGMENTÉS (bordure portée par le conteneur, pas de compteur —
+  types de compétition, période, « Regrouper par ») ;
   **couleurs/espacements** = tokens du thème (`text-warning`,
   `text-muted-foreground`, `bg-muted`, `border-border`…), **jamais un `#hex`** ni une classe sans
   jeton (`text-warning-foreground` était un no-op, P4-130). Recoder à la main un spinner nu, un

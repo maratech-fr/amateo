@@ -1,12 +1,14 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-09-19 (rotation `documentation-update`, PR H « onglet Adversaires » — fichier
-hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code :
+Last verified @ 2026-09-22 (rotation `documentation-update`, lot filtres Conflits/`FilterChip` —
+fichier hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code :
 `CalendarEntryStateProcessor::redateEntryPairedConstraints` (`CalendarEntryStateProcessor.php:642`,
 appelée `:458`) toujours présente ✓ ; `ConstraintConfigValidator::SPEC` porte toujours
 `minStartTime`/`maxStartTime`/`maxEndTime` en type `time`, `preferredDays`/`forbiddenDays`/
 `forcedDays`/`allowedDays` en `days`, `minAtVenueCount` en `count`, `type`/`startDate`/`endDate` en
-`closure`/`date` (`ConstraintConfigValidator.php:59-84`) ✓. Rien à corriger.
+`closure`/`date` ✓ ; `TeamTagResolver::resolveConstraintTeamIds` et les gardes
+`PeriodGatePayloadParityTest`/`ConstraintKeysAreHonouredByEngineTest` toujours présents ✓. Rien à
+corriger.
 
 > Source de vérité du code : `App\Service\ConstraintConfigValidator`.
 > Cette page explique le POURQUOI ; la liste qui fait foi est dans la classe.

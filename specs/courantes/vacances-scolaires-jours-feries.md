@@ -1,18 +1,15 @@
 # Vacances scolaires & jours fériés — référentiels calendaires
 
-Last verified @ 2026-09-19 (rotation `documentation-update`, PR F « retours de tests du 18-19/09 »
-— zone non touchée par la PR, contrôle de fraîcheur). Re-confronté aux 5 mêmes repères que la passe
-du 2026-09-15 : `AdminJobCatalog` déclare toujours `import-school-holidays`/`import-public-holidays`
-en `quarterly(4)`/`quarterly(4, 30)`, `manualTriggerAllowed: true`
-(`backend/src/AdminJob/AdminJobCatalog.php:63-64`) ✓ ;
-`SchoolZoneResolver::ZONES` (`backend/src/Service/SchoolZoneResolver.php:27-32`) porte toujours
-exactement les 13 codes listés (`A`/`B`/`C`/`CORSE` + 9 DOM/TOM) ✓ ; `HolidayPaths` toujours composé
-par `CustomRoutesOpenApiFactory` (`:69`) ✓ ; le court-circuit zone `null` de `GET
-/api/school-holidays` (`{zone:null, items:[]}`) toujours en place (`SchoolHolidaysController.php:47`),
-`GET /api/public-holidays` ne porte toujours aucun court-circuit sur `zone` (fériés nationaux
-même sans zone, `PublicHolidaysController.php:38-45`) ✓. `SchoolHolidayPeriod`/
-`Club.schoolZone`/« display-only » non re-contrôlés cette passe — *(historique des passes :
-`git log -p --follow specs/courantes/vacances-scolaires-jours-feries.md`)*
+Last verified @ 2026-09-22 (rotation `documentation-update`, lot filtres Conflits/`FilterChip` —
+zone non touchée par la PR, contrôle de fraîcheur). Re-confronté aux 5 mêmes repères que les passes
+précédentes : `AdminJobCatalog` déclare toujours `import-school-holidays`/`import-public-holidays`
+en `quarterly(4)`/`quarterly(4, 30)`, `manualTriggerAllowed: true` ✓ ; `SchoolZoneResolver::ZONES`
+porte toujours exactement les 13 codes listés (`A`/`B`/`C`/`CORSE` + 9 DOM/TOM) ✓ ; `HolidayPaths`
+toujours composé par `CustomRoutesOpenApiFactory` ✓ ; le court-circuit zone `null` de `GET
+/api/school-holidays` (`{zone:null, items:[]}`) toujours en place, `GET /api/public-holidays` ne
+porte toujours aucun court-circuit sur `zone` (fériés nationaux même sans zone) ✓.
+`SchoolHolidayPeriod`/`Club.schoolZone`/« display-only » non re-contrôlés cette passe —
+*(historique des passes : `git log -p --follow specs/courantes/vacances-scolaires-jours-feries.md`)*
 
 Feed d'affichage du cockpit (accueil temporel) : vacances scolaires de la zone du club + jours fériés applicables. **Display-only — jamais consommé par le solveur** : si un férié ou une vacance gêne un entraînement, le gestionnaire pose une période (`CalendarEntry` `closure`/`holiday`), il n'y a aucune règle implicite.
 
