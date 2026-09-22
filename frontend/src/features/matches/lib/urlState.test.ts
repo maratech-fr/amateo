@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyConflictsToParams, applyConsultToParams, applyFbiToParams, applyFilterToParams, applyMatchToParams, applyOpponentFilterToParams, applySectionToParams, applyWeekendToParams, decodeConflictsParams, decodeConsultParams, decodeFbiParam, decodeFilterParams, decodeMatchParam, decodeOpponentFilter, decodeSectionParam, decodeWeekendParam, hasConsultParams } from "./urlState";
+import { applyConflictsToParams, applyConsultToParams, applyFbiToParams, applyFilterToParams, applyMatchToParams, applyOpponentFilterToParams, applySectionToParams, applyWeekendToParams, decodeConflictsParams, decodeConsultParams, decodeFbiParam, decodeFilterParams, decodeMatchParam, decodeOpponentFilter, decodeSectionParam, decodeWeekendParam, hasConflictsParams, hasConsultParams } from "./urlState";
 
 describe("decodeMatchParam / applyMatchToParams (deep-link match=)", () => {
   it("absent ou vide ⇒ null", () => {
@@ -248,6 +248,28 @@ describe("applySectionToParams (PR 2a)", () => {
   it("aller-retour cohérent : encode(null) se relit null, encode(echeances) se relit echeances", () => {
     expect(decodeSectionParam(applySectionToParams(new URLSearchParams(""), null))).toBeNull();
     expect(decodeSectionParam(applySectionToParams(new URLSearchParams(""), "echeances"))).toBe("echeances");
+  });
+});
+
+describe("hasConflictsParams (mémoire de session — l'URL porte-t-elle une clé Conflits ?)", () => {
+  it("chacune des clés Conflits (dont l'alias legacy et ?ouvert) ⇒ true", () => {
+    for (const key of ["pivot", "conflits", "traitement", "traites", "domicile", "ouvert"]) {
+      expect(hasConflictsParams(new URLSearchParams(`${key}=x`))).toBe(true);
+    }
+  });
+
+  it("aucune clé ⇒ false", () => {
+    expect(hasConflictsParams(new URLSearchParams(""))).toBe(false);
+  });
+
+  it("clés étrangères seules (semaine · vue/filtre · match) ⇒ false", () => {
+    expect(hasConflictsParams(new URLSearchParams("semaine=2027-03-13"))).toBe(false);
+    expect(hasConflictsParams(new URLSearchParams("vue=coach&filtre=a,b"))).toBe(false);
+    expect(hasConflictsParams(new URLSearchParams("match=fx-1"))).toBe(false);
+  });
+
+  it("?ouvert seul (lien vers une entrée précise) ⇒ true — décision fondateur", () => {
+    expect(hasConflictsParams(new URLSearchParams("ouvert=coach-1"))).toBe(true);
   });
 });
 

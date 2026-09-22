@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 import type { ConflictType, RencontreCreatable } from "./api";
 import type { ConflictPivotAxis } from "./lib/conflictPivot";
+import type { TreatmentKey } from "./lib/conflictResolution";
 import type { Kind } from "./lib/consultFilter";
 import type { MatchFilterMode } from "./lib/matchFilter";
 
@@ -78,6 +79,15 @@ interface MatchesState {
    */
   conflictsPivot: ConflictPivotAxis;
   conflictsFamilies: ConflictType[] | null;
+  /**
+   * PR — les filtres « Traitement » et « domicile » de l'onglet Conflits, DÉPLACÉS de l'état
+   * local de la page vers le store (mémoire de session, comme `conflictsPivot`/`conflictsFamilies`) :
+   * ils survivent désormais à un retour sur l'onglet. `conflictsTreatments` : `null` = tout coché
+   * (les 4 aussi ⇒ jamais sérialisé) ; `conflictsHomeOnly` : n'afficher que les conflits avec un
+   * match à domicile. Non persistés : l'URL `?traitement=&domicile=1` porte le deep-link.
+   */
+  conflictsTreatments: TreatmentKey[] | null;
+  conflictsHomeOnly: boolean;
   setSelectedWeekend: (key: string | null) => void;
   setUnplacedReasons: (reasons: Map<string, string>) => void;
   setSelectedFixtureId: (id: string | null) => void;
@@ -97,6 +107,8 @@ interface MatchesState {
   setConsultPhaseId: (phaseId: string | null) => void;
   setConflictsPivot: (pivot: ConflictPivotAxis) => void;
   setConflictsFamilies: (families: ConflictType[] | null) => void;
+  setConflictsTreatments: (treatments: TreatmentKey[] | null) => void;
+  setConflictsHomeOnly: (homeOnly: boolean) => void;
 }
 
 /** PR-2b — les trois temporalités de l'onglet Consulter. */
@@ -122,6 +134,8 @@ export const useMatchesStore = create<MatchesState>((set) => ({
   consultPhaseId: null,
   conflictsPivot: "coach",
   conflictsFamilies: null,
+  conflictsTreatments: null,
+  conflictsHomeOnly: false,
   // Les raisons de non-placement sont attachées à la semaine affichée : changer de
   // semaine les PURGE (une raison d'une autre semaine ne doit pas rester à l'écran).
   setSelectedWeekend: (selectedWeekend) => set({ selectedWeekend, unplacedReasons: new Map() }),
@@ -145,4 +159,6 @@ export const useMatchesStore = create<MatchesState>((set) => ({
   setConsultPhaseId: (consultPhaseId) => set({ consultPhaseId }),
   setConflictsPivot: (conflictsPivot) => set({ conflictsPivot }),
   setConflictsFamilies: (conflictsFamilies) => set({ conflictsFamilies }),
+  setConflictsTreatments: (conflictsTreatments) => set({ conflictsTreatments }),
+  setConflictsHomeOnly: (conflictsHomeOnly) => set({ conflictsHomeOnly }),
 }));

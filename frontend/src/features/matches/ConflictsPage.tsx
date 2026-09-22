@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from "react-router";
 import { AccordionSection } from "@/shared/components/ui/accordion";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint, EmptyState } from "@/shared/components/ui/empty-hint";
+import { FilterChip } from "@/shared/components/ui/filter-chip";
 import { FilterToggle } from "@/shared/components/ui/filter-toggle";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
@@ -21,7 +22,7 @@ import { CONFLICT_FAMILIES, CONFLICT_FAMILY_LABEL } from "./lib/conflictLabels";
 import { type ConflictPivotAxis, type ConflictPivotEntry, PIVOT_AXES, pivotConflicts } from "./lib/conflictPivot";
 import { countByTreatment, isOpenConflict, openConflictCount, RESOLUTION_LABEL, TREATMENT_KEYS, type TreatmentKey, treatmentChipKeys, treatmentOf } from "./lib/conflictResolution";
 import { applyFamilyFilter, countByFamily, DEFAULT_KINDS, dateOf, familiesPresent, hasHomeSide, normalizeKinds, revealPlan } from "./lib/consultFilter";
-import { applyConflictsToParams, applyConsultToParams, applyMatchToParams, applyWeekendToParams, decodeConflictsParams } from "./lib/urlState";
+import { applyConflictsToParams, applyConsultToParams, applyMatchToParams, applyWeekendToParams, decodeConflictsParams, hasConflictsParams } from "./lib/urlState";
 import { weekendKeyOf, weekendShortLabel } from "./lib/weekendGrid";
 import { useCoaches, useCompetitions, useConflicts, useFixtures, useModuleVisit, useTeams, useVenues } from "./queries";
 import { useMatchesStore } from "./store";
@@ -88,13 +89,26 @@ export function ConflictsPage() {
   const { data: me } = useMe();
   const canManage = isManagementRole(me?.role);
 
-  const { conflictsPivot, conflictsFamilies, setConflictsPivot, setConflictsFamilies, setSelectedWeekend, consultKinds, consultFamilies, consultTypicalWeek, consultAway } = useMatchesStore();
+  // Les QUATRE filtres de l'onglet vivent dans le store (mémoire de session) : pivot + familles
+  // y étaient déjà, « Traitement » et « domicile » les rejoignent (aliasés `treatments`/`homeOnly`
+  // pour garder le corps inchangé) — ils survivent désormais à un retour sur l'onglet. Ils filtrent
+  // l'AFFICHAGE, jamais les compteurs.
+  const {
+    conflictsPivot,
+    conflictsFamilies,
+    conflictsTreatments: treatments,
+    conflictsHomeOnly: homeOnly,
+    setConflictsPivot,
+    setConflictsFamilies,
+    setConflictsTreatments: setTreatments,
+    setConflictsHomeOnly: setHomeOnly,
+    setSelectedWeekend,
+    consultKinds,
+    consultFamilies,
+    consultTypicalWeek,
+    consultAway,
+  } = useMatchesStore();
 
-  // « Traitement » (4 puces) et « domicile » vivent en état LOCAL, miroirs de
-  // `?traitement=`/`?domicile=1` (patron `ReviewQueue` : l'URL différée revient « décochée »
-  // un instant si la case dépend d'elle seule). Ils filtrent l'AFFICHAGE, jamais les compteurs.
-  const [treatments, setTreatments] = useState<TreatmentKey[] | null>(null);
-  const [homeOnly, setHomeOnly] = useState(false);
   // Mobile (< sm) : les filtres autres que le pivot se replient derrière « Filtres ».
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -177,26 +191,45 @@ export function ConflictsPage() {
 
   const entryKeys = useMemo(() => new Set(entries.map((e) => e.key)), [entries]);
 
-  // ── Deep-link : pivot + familles dans le store (seed une fois, écrit à chaque
-  //    changement) ; la section ouverte (`?ouvert`) reste directe (patron ReviewQueue).
+  // ── Deep-link + mémoire de session — la MAISON du Calendrier (`CalendarPage`), copiée : UN seul
+  //    effet qui (1) au 1ᵉʳ passage seede le store depuis l'URL SI elle porte au moins une clé
+  //    (sinon la session du store est GARDÉE), puis (2) à chaque passage re-SYNCHRONISE l'URL depuis
+  //    le store. Fusionnés (au lieu d'un effet d'écriture séparé) pour que la re-synchro parte DÈS la
+  //    passe de seed même quand aucune valeur n'a changé — cas « URL nue, store gardé » : la session
+  //    est ainsi repoussée dans l'adresse. Gardé sur les données chargées (comme le Calendrier) : le
+  //    nettoyage de `?ouvert` a besoin des entrées, sans quoi un lien partagé le perdrait avant le
+  //    chargement.
   const seededRef = useRef(false);
   useEffect(() => {
-    if (seededRef.current) {
+    if (undefined === conflicts.data || undefined === teams.data || undefined === venues.data || undefined === fixtures.data) {
       return;
     }
-    seededRef.current = true;
-    const decoded = decodeConflictsParams(searchParams);
-    setConflictsPivot(decoded.pivot);
-    setConflictsFamilies(decoded.families);
-    setTreatments(decoded.treatments);
-    setHomeOnly(decoded.homeOnly);
-  }, [searchParams, setConflictsPivot, setConflictsFamilies]);
-  useEffect(() => {
+    // `touchedStore` : le seed a-t-il écrit dans le store CETTE passe ? Si oui, on NE synchronise PAS
+    // l'URL maintenant (les valeurs lues plus bas sont encore celles d'AVANT le seed) ; l'écriture du
+    // store redéclenche l'effet et la passe suivante synchronise. Si non (URL nue, store gardé), les
+    // valeurs lues SONT à jour → on synchronise dès cette passe.
+    let touchedStore = false;
     if (!seededRef.current) {
+      seededRef.current = true;
+      // L'URL FAIT FOI dès qu'elle porte au moins une clé Conflits (`?ouvert` compris, décision
+      // fondateur) — seed complet, clé absente = son défaut, un lien partagé dit vrai quitte à écraser
+      // la session ; une URL nue laisse le store (mémoire de session) intact.
+      if (hasConflictsParams(searchParams)) {
+        const decoded = decodeConflictsParams(searchParams);
+        setConflictsPivot(decoded.pivot);
+        setConflictsFamilies(decoded.families);
+        setTreatments(decoded.treatments);
+        setHomeOnly(decoded.homeOnly);
+        touchedStore = true;
+      }
+    }
+    if (touchedStore) {
       return;
     }
+    // Re-synchro : pousse le store (valeurs à jour) dans l'URL (`replace`), autres params préservés.
     const next = applyConflictsToParams(searchParams, { pivot: conflictsPivot, families: conflictsFamilies, treatments, homeOnly });
-    // Changer de pivot replie tout : un `?ouvert` dont la clé n'existe plus est nettoyé.
+    // `?ouvert` est PRÉSERVÉ (état porté par l'adresse) mais nettoyé quand sa clé n'existe plus
+    // (changer de pivot replie tout).
     const open = next.get("ouvert");
     if (null !== open && !entryKeys.has(open)) {
       next.delete("ouvert");
@@ -204,7 +237,23 @@ export function ConflictsPage() {
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
-  }, [conflictsPivot, conflictsFamilies, treatments, homeOnly, entryKeys, searchParams, setSearchParams]);
+  }, [
+    conflicts.data,
+    teams.data,
+    venues.data,
+    fixtures.data,
+    conflictsPivot,
+    conflictsFamilies,
+    treatments,
+    homeOnly,
+    entryKeys,
+    searchParams,
+    setConflictsPivot,
+    setConflictsFamilies,
+    setTreatments,
+    setHomeOnly,
+    setSearchParams,
+  ]);
 
   // Section ouverte : `?ouvert=<clé>` ; une seule entrée ⇒ ouverte d'office.
   const openParam = searchParams.get("ouvert");
@@ -448,18 +497,9 @@ export function ConflictsPage() {
             Familles
           </span>
           {familyChips.map((family) => (
-            <Button
-              key={family}
-              type="button"
-              size="sm"
-              aria-pressed={isFamilyChecked(family)}
-              variant={isFamilyChecked(family) ? "default" : "ghost"}
-              className={cn("h-7 gap-1.5 border border-border", isFamilyChecked(family) ? "" : "text-muted-foreground")}
-              onClick={() => toggleFamily(family)}
-            >
+            <FilterChip key={family} pressed={isFamilyChecked(family)} count={familyCounts.get(family) ?? 0} onPress={() => toggleFamily(family)}>
               {CONFLICT_FAMILY_LABEL[family]}
-              <span className={cn("tabular-nums text-xs", 0 === (familyCounts.get(family) ?? 0) ? "text-muted-foreground" : undefined)}>{familyCounts.get(family) ?? 0}</span>
-            </Button>
+            </FilterChip>
           ))}
           <Button
             type="button"
@@ -488,21 +528,16 @@ export function ConflictsPage() {
             {treatmentChipKeys(allConflicts).map((key) => {
               const meta = TREATMENT_META[key];
               const Icon = meta.icon;
-              const count = treatmentCounts.get(key) ?? 0;
               return (
-                <Button
+                <FilterChip
                   key={key}
-                  type="button"
-                  size="sm"
-                  aria-pressed={isTreatmentChecked(key)}
-                  variant={isTreatmentChecked(key) ? "default" : "ghost"}
-                  className={cn("h-7 gap-1.5 border border-border", isTreatmentChecked(key) ? "" : "text-muted-foreground")}
-                  onClick={() => toggleTreatment(key)}
+                  pressed={isTreatmentChecked(key)}
+                  count={treatmentCounts.get(key) ?? 0}
+                  icon={<Icon className="size-3.5" aria-hidden="true" />}
+                  onPress={() => toggleTreatment(key)}
                 >
-                  <Icon className="size-3.5" aria-hidden="true" />
                   {meta.label}
-                  <span className={cn("tabular-nums text-xs", 0 === count ? "text-muted-foreground" : undefined)}>{count}</span>
-                </Button>
+                </FilterChip>
               );
             })}
             <Button

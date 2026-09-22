@@ -2,6 +2,7 @@ import { Bus, CalendarCheck2, ChevronLeft, ChevronRight, RotateCcw } from "lucid
 import { useRef } from "react";
 
 import { Button } from "@/shared/components/ui/button";
+import { FilterChip } from "@/shared/components/ui/filter-chip";
 import { Select } from "@/shared/components/ui/select";
 import { todayISO } from "@/shared/lib/clock";
 import { cn } from "@/shared/lib/utils";
@@ -168,18 +169,9 @@ export function CalendarControls(props: CalendarControlsProps) {
             Familles de conflits
           </span>
           {familyChips.map((family) => (
-            <Button
-              key={family}
-              type="button"
-              size="sm"
-              aria-pressed={isFamilyChecked(family)}
-              variant={isFamilyChecked(family) ? "default" : "ghost"}
-              className={cn("h-7 gap-1.5 border border-border", isFamilyChecked(family) ? "" : "text-muted-foreground")}
-              onClick={() => toggleFamily(family)}
-            >
+            <FilterChip key={family} pressed={isFamilyChecked(family)} count={familyCounts.get(family) ?? 0} onPress={() => toggleFamily(family)}>
               {CONFLICT_FAMILY_LABEL[family]}
-              <span className={cn("tabular-nums text-xs", 0 === (familyCounts.get(family) ?? 0) ? "text-muted-foreground" : undefined)}>{familyCounts.get(family) ?? 0}</span>
-            </Button>
+            </FilterChip>
           ))}
         </div>
       ) : null}

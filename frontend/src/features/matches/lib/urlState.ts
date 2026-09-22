@@ -307,6 +307,25 @@ function decodeTreatments(raw: string | null): TreatmentKey[] | null {
   return [...new Set(parsed)];
 }
 
+/**
+ * Les clés de query que porte l'état Conflits — source de vérité de `hasConflictsParams`.
+ * Les quatre filtres (`pivot`/`conflits`/`traitement`/`domicile`), l'alias legacy `traites`
+ * (rétro-compat P4-207, décodé puis réécrit), ET `ouvert` : le param qui ouvre une entrée
+ * précise COMPTE comme une clé (décision fondateur), sans quoi un lien partagé vers une entrée
+ * que la session masque la garderait invisible et perdrait le param en silence — le lien mentirait.
+ */
+export const CONFLICTS_PARAM_KEYS = ["pivot", "conflits", "traitement", "traites", "domicile", "ouvert"] as const;
+
+/**
+ * PURE — l'URL porte-t-elle AU MOINS une clé de l'état Conflits ? Miroir de `hasConsultParams`
+ * (mémoire de session) : une URL avec au moins une clé FAIT FOI (seed complet, clé absente = son
+ * défaut — un lien partagé dit vrai, quitte à écraser la session) ; une URL nue laisse le store
+ * (mémoire non persistée) intact, la re-synchro repoussant ensuite les filtres dans l'adresse.
+ */
+export function hasConflictsParams(params: URLSearchParams): boolean {
+  return CONFLICTS_PARAM_KEYS.some((key) => params.has(key));
+}
+
 export function decodeConflictsParams(params: URLSearchParams): ConflictsParams {
   const rawPivot = params.get("pivot");
   const rawTraitement = params.get("traitement");

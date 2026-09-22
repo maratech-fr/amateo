@@ -84,7 +84,7 @@ beforeEach(() => {
   state.conflicts = DEFAULT_CONFLICTS;
   compState.competitions = [];
   meState.role = "admin";
-  useMatchesStore.setState({ selectedWeekend: null, conflictsPivot: "coach", conflictsFamilies: null, consultKinds: null, consultAway: false });
+  useMatchesStore.setState({ selectedWeekend: null, conflictsPivot: "coach", conflictsFamilies: null, conflictsTreatments: null, conflictsHomeOnly: false, consultKinds: null, consultAway: false });
 });
 
 describe("ConflictsPage — pivot par défaut coach", () => {
@@ -271,6 +271,66 @@ describe("ConflictsPage — deep-link ?pivot", () => {
     renderAt("/matchs/conflits?pivot=gymnase");
     await waitFor(() => expect(screen.getByRole("group", { name: "Regrouper par" })).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Gymnase" })).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+describe("ConflictsPage — mémoire de session des filtres (URL nue vs clé, maison Calendrier)", () => {
+  it("URL NUE : garde le pivot de session du store (ne reseede PAS aux défauts)", async () => {
+    // Session posée dans le store (mémoire non persistée), puis retour sur l'onglet SANS param :
+    // le pivot doit être GARDÉ, jamais réécrasé au défaut « coach » par un seed au montage.
+    useMatchesStore.setState({ conflictsPivot: "gymnase" });
+    renderAt("/matchs/conflits");
+    await screen.findByRole("group", { name: "Regrouper par" });
+    expect(screen.getByRole("button", { name: "Gymnase" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Coach" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("URL NUE : le filtre « domicile » survit à un retour sur l'onglet", async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderAt("/matchs/conflits");
+    await screen.findByRole("button", { name: /Mara · 3/ });
+    await user.click(screen.getByRole("checkbox", { name: "Seulement avec un match à domicile" }));
+    expect(screen.getByRole("checkbox", { name: "Seulement avec un match à domicile" })).toBeChecked();
+    // Quitter puis revenir sur l'onglet (URL nue) : le store porte la session, la case reste cochée.
+    unmount();
+    renderAt("/matchs/conflits");
+    await screen.findByRole("group", { name: "Regrouper par" });
+    expect(screen.getByRole("checkbox", { name: "Seulement avec un match à domicile" })).toBeChecked();
+  });
+
+  it("URL NUE : une puce « Traitement » décochée survit à un retour sur l'onglet", async () => {
+    const user = userEvent.setup();
+    state.conflicts = [
+      { type: "MATCH_MATCH", severity: 3, coachId: "coach-1", fingerprint: "fp-open", resolution: null, left: side("fx-1", "team-1"), right: side("fx-2", "team-2") },
+      { type: "MATCH_TRAINING", severity: 5, coachId: "coach-1", fingerprint: "fp-treated", resolution: { status: "RESOLVED_INTERNALLY", note: null, updatedAt: "2026-10-03T20:45:00+02:00" }, fixture: side("fx-1", "team-1"), training },
+    ];
+    const { unmount } = renderAt("/matchs/conflits");
+    await screen.findByRole("group", { name: "Traitement" });
+    await user.click(within(screen.getByRole("group", { name: "Traitement" })).getByRole("button", { name: /Réglé en interne/ }));
+    expect(within(screen.getByRole("group", { name: "Traitement" })).getByRole("button", { name: /Réglé en interne/ })).toHaveAttribute("aria-pressed", "false");
+    unmount();
+    renderAt("/matchs/conflits");
+    await screen.findByRole("group", { name: "Traitement" });
+    expect(within(screen.getByRole("group", { name: "Traitement" })).getByRole("button", { name: /Réglé en interne/ })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("URL avec CLÉ fait foi : ?pivot=journee écrase la session gymnase du store", async () => {
+    useMatchesStore.setState({ conflictsPivot: "gymnase" });
+    renderAt("/matchs/conflits?pivot=journee");
+    await screen.findByRole("group", { name: "Regrouper par" });
+    expect(screen.getByRole("button", { name: "Journée" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Gymnase" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("?ouvert COMPTE comme une clé : un lien vers une entrée fait foi malgré la session", async () => {
+    // Session pivot « journée » : sous ce pivot l'entrée coach `coach-1` n'existe pas. Le lien
+    // `?ouvert=coach-1` porte une clé → l'URL fait foi → le pivot revient au défaut « coach » →
+    // l'entrée « Mara » existe et s'ouvre. Sans compter `?ouvert`, la session masquerait l'entrée.
+    useMatchesStore.setState({ conflictsPivot: "journee" });
+    renderAt("/matchs/conflits?ouvert=coach-1");
+    const mara = await screen.findByRole("button", { name: /Mara · 3/ });
+    expect(mara).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Coach" })).toHaveAttribute("aria-pressed", "true");
   });
 });
 
