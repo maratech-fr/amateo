@@ -17,7 +17,11 @@
 `Security/TenantCacheIsolationTest` (cache scopé club) ·
 `MessageHandler/ComputeTravelTimesHandlerTest` (worker de calcul des trajets : GUC posé/clear, verrou, jamais la ligne d'un autre club) ·
 `Queue/ConcurrentGenerationTest` (verrou de génération) ·
-`CrossStack/ContractSchemaTest` (contrat backend⇄engine) ·
+`CrossStack/ContractSchemaTest` (contrat backend⇄engine ; depuis 2026-09-22 garde aussi
+`soft_lock_moved` : les coordonnées du créneau préféré déplacé émises par le moteur
+[`dayOfWeek`/`startTime`/`durationMinutes`] traversent l'import jusqu'au message FR reconstruit
+[jour + plage horaire] et l'exposition API, et un moteur plus ancien sans ces champs laisse le
+message d'avant à l'octet près) ·
 `CrossStack/PayloadVersionMatchesContractVersionTest` (la version que le payload s'attribue == `engine/CONTRACT_VERSION`, égalité STRICTE — la dérive avait vécu deux bumps en silence) ·
 `CrossStack/ValidateAssignmentsContractSchemaTest` (contrat du verdict `/validate-assignments`) ·
 `Security/RlsIsolationTest` (RLS en base) ·
