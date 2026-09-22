@@ -1,11 +1,14 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-09-21 (`documentation-update`, rotation de fraîcheur, lot M — sujet sans
-rapport, fichier choisi par son stamp le plus ancien du dépôt). Re-confronté au code : les poids
-cités ligne 35 (`spacing`, −2), ligne 45 (`preferredVenueId`, +10) et ligne 67 (tiers S=10000…D=1)
-toujours exacts contre `engine/app/solver/objective/weights.py`
-(`LEVEL_2_OBJECTIVE_WEIGHTS["spacing"]=-2`, `["preferred"]=10`, `["S"]=10000`/`["D"]=1`, même dict) ;
-`ConstraintFamily` (`backend/src/Enum/ConstraintFamily.php:11-14`) n'a toujours que 4 cas
+Last verified @ 2026-09-23 (`documentation-update`, rotation de fraîcheur — sujet sans rapport
+(suppression du cran `BONUS`, `bc2e2568`), fichier choisi parmi les plus anciens stamps du dépôt).
+Re-confronté au code : ce fichier ne cite `bonus` que pour le terme d'OBJECTIF
+(`add_match_day_rest_bonus`, ligne 73), homonyme sans rapport avec le cran de règle `BONUS` retiré
+du produit — rien à corriger ici. Les poids cités ligne 35 (`spacing`, −2), ligne 45
+(`preferredVenueId`, +10) et ligne 67 (tiers S=10000…D=1) toujours exacts contre
+`engine/app/solver/objective/weights.py` (`LEVEL_2_OBJECTIVE_WEIGHTS["spacing"]=-2`,
+`["preferred"]=10`, `["S"]=10000`/`["D"]=1`, même dict) ; `ConstraintFamily`
+(`backend/src/Enum/ConstraintFamily.php:11-14`) n'a toujours que 4 cas
 (TIME/DAY/FACILITY/COACH_AVAILABILITY), `FACILITY_CAPACITY` absent de l'enum ✓. « Réserver un
 gymnase à un groupe » toujours ❌ : `ScheduleConstraintBuilder.php:256` confirme l'expansion
 `forbiddenVenueId` par équipe « GONE » (commentaire code), zéro hit `forbiddenRowsSurvive` dans

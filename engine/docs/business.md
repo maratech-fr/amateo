@@ -1,13 +1,15 @@
 # Documentation metier du moteur de generation
 
-Last verified @ 2026-09-22 (rotation de fraîcheur `documentation-update`, lot « le créneau déplacé
-dit enfin lequel » — fichier hors sujet). Re-confronté au code, tout juste sauf une coquille de
-ligne corrigée : `add_coach_player_non_overlap` toujours à
+Last verified @ 2026-09-23 (`documentation-update`, suppression du cran `BONUS`, `bc2e2568`).
+**Corrigé cette passe** : la liste des `ruleType` citait encore `BONUS` comme une valeur vivante —
+le cran a été retiré du produit (zéro sémantique propre, zéro ligne en base), `ConstraintRuleType`
+ne compte plus que HARD/PREFERRED/LOCK. Passe précédente (2026-09-22, conservée pour trace),
+tout juste sauf une coquille de ligne corrigée : `add_coach_player_non_overlap` toujours à
 `app/solver/constraints/structural.py:237` ; la dérivation de capacité `canSplit ? capacity : 1`
 toujours dans `ScheduleConstraintBuilder.php` (`Service/ScheduleConstraintBuilder.php:1052`) ; les
-poids de tier S=10000/A=1000/B=100 toujours en dur dans `app/solver/objective/weights.py`, mais aux
-lignes **35-37** (le stamp précédent disait 34-36, décalé d'une ligne). Reste du fichier non
-re-vérifié cette passe — historique : `git log -p --follow engine/docs/business.md`.
+poids de tier S=10000/A=1000/B=100 toujours en dur dans `app/solver/objective/weights.py`, aux
+lignes **35-37**. Reste du fichier non re-vérifié cette passe — historique :
+`git log -p --follow engine/docs/business.md`.
 
 > Ce document explique le domaine de la planification sportive et ce que le moteur `engine` resout. Destine aux nouveaux developpeurs rejoignant le projet ClubScheduler.
 
@@ -69,10 +71,11 @@ Une regle metier qui faconne l'emploi du temps. Chaque contrainte a :
   - `COACH_AVAILABILITY` : indisponibilite d'un entraineur (ex. "Maxime Dupont indisponible le mercredi")
   - ~~`FACILITY_CAPACITY`~~ : famille **RETIRÉE le 2026-08-08** (`app/main.py:483-484` — aucun chemin UI ne la creait). Le plafond d'equipes simultanees vit desormais **par creneau** : `VenueTrainingSlot.capacity`, derive cote backend (`canSplit ? capacity : 1`). Quant aux fermetures temporaires : depuis 5b (#263) elles **retirent les creneaux** du payload les jours fermes (`VenueClosureDays`), l'ancienne expansion en `forbiddenVenueId` est supprimee aussi
 
-- **Type de regle (`ruleType`)** :
+- **Type de regle (`ruleType`)** — liste **fermee** a trois valeurs (`BONUS` retire du produit le
+  2026-09-23 : zero semantique propre, jamais de ligne en base, `App\Enum\ConstraintRuleType` ne le
+  porte plus) :
   - `HARD` : doit absolument etre respectee. Si ce n'est pas possible, le solveur declare l'instance infaisable
   - `PREFERRED` : souhaitable, mais pas obligatoire. Penalisee si non respectee
-  - `BONUS` : recompensee si respectee (ex. bonus pour placer une equipe sur son jour prefere)
   - `LOCK` : fige un creneau. Toujours applique **en dur** par le moteur — le ruleType `LOCK` n'a pas de variantes SOFT/HARD. Ne pas confondre avec le `lockLevel` des `slotTemplates` (valeurs `NONE`/`SOFT`/`HARD`), qui est un autre mecanisme (voir plus bas)
 
 - **Ciblage par tag** : une contrainte `CLUB` avec `targetTag=JEUNE` s'applique automatiquement a toutes les equipes portant le tag `JEUNE`. Cela evite de creer 15 contraintes identiques pour les 15 equipes jeunes.

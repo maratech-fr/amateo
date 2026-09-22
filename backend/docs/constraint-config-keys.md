@@ -1,14 +1,20 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-09-22 (`documentation-update`, lot 5 d'audit « la même contrainte honorée
-pareil », ALIGN-14 + ALIGN-15). Recalé cette passe : la nouvelle section « Quelle INTENSITÉ pour
-quelle clé » — la table est vérifiée contre `ConstraintValidationService` (les six cellules
-refusées et leur maison) et contre le moteur (`solver/constraints/targeting.py` pour le chemin
-dur, `solver/objective/terms.py` pour le filtre `PREFERRED` strict). Re-confronté aussi :
-`ConstraintConfigValidator::SPEC` porte toujours les mêmes clés et types ✓ ;
-`TeamTagResolver::resolveConstraintTeamIds` et les gardes `PeriodGatePayloadParityTest` /
-`ConstraintKeysAreHonouredByEngineTest` toujours présents ✓. Reste du fichier non re-vérifié cette
-passe — historique : `git log -p --follow`. Un stamp REMPLACE, il ne s'empile pas.
+Last verified @ 2026-09-23 (`documentation-update`, suppression du cran `BONUS`,
+`bc2e2568`). Recalé cette passe : le §« Quelle INTENSITÉ pour quelle clé » citait encore `BONUS`
+comme normalisé en PREFERRED par le moteur — ce cran a été **retiré de l'enum**
+(`App\Enum\ConstraintRuleType` ne compte plus que HARD/PREFERRED/LOCK) et la normalisation moteur
+correspondante a disparu de `engine/app/solver/constraints/parsing.py` ; un `ruleType: "BONUS"`
+rend désormais 422 (`Assert\Choice` sur `ConstraintInput::$ruleType`, dérivé de
+`ConstraintRuleType::values()`) au lieu d'être accepté puis transformé en silence. Le reste de la
+section — les six cellules refusées et leur maison, la doctrine de preuve par le CHOIX — reste
+vérifié contre `ConstraintValidationService` (grep direct, inchangé par ce commit) et le moteur
+(`solver/constraints/targeting.py` pour le chemin dur, `solver/objective/terms.py` pour le filtre
+`PREFERRED` strict). Re-confronté aussi : `ConstraintConfigValidator::SPEC` porte toujours les
+mêmes clés et types ✓ ; `TeamTagResolver::resolveConstraintTeamIds` et les gardes
+`PeriodGatePayloadParityTest` / `ConstraintKeysAreHonouredByEngineTest` toujours présents ✓. Reste
+du fichier non re-vérifié cette passe — historique : `git log -p --follow`. Un stamp REMPLACE, il
+ne s'empile pas.
 
 > Source de vérité du code : `App\Service\ConstraintConfigValidator`.
 > Cette page explique le POURQUOI ; la liste qui fait foi est dans la classe.
@@ -76,9 +82,10 @@ change ce qu'il fait. Une cellule souple s'y prouve par le **choix** — une gri
 coût identique où seul le terme souple les départage — jamais par un score : un score bouge aussi
 quand un bonus est accroché à la mauvaise condition.
 
-⚑ **`BONUS` n'a jamais eu de sémantique propre** : le moteur le normalise en PREFERRED au parse, et
-le wizard ne l'offre plus (ENG-12). Les refus ci-dessus l'attrapent par construction (« hors
-HARD/LOCK »).
+⚑ **`BONUS` a disparu du produit (2026-09-23)** : le cran n'avait jamais de sémantique propre — le
+moteur le normalisait en PREFERRED au parse et le wizard ne l'offrait plus depuis ENG-12 — et zéro
+ligne n'en portait la valeur en base. L'enum `ConstraintRuleType` ne compte plus que HARD/PREFERRED/
+LOCK ; la table ci-dessus n'a donc plus que trois crans à connaître.
 
 ## Trois règles pour maintenir cette liste
 

@@ -30,8 +30,10 @@ de l'UI (verrouillé par le test Vitest).
 | COACH_AVAILABILITY `availableDays` | mode « disponible uniquement » — dure (whitelist, **intersection** multi) *(ALIGN — l'UI expose la capacité engine)* | — l'UI force **Obligatoire** | — |
 | COACH_AVAILABILITY `fromTime` / `untilTime` | **fenêtre horaire** sur les jours listés (lot C #195, contrat 2.0→2.1) — dure. Absente = journée entière ; `fromTime` bloque `[from, 24:00)`, `untilTime` bloque `[00:00, until)`. Malformée ou inversée → repli journée entière (conservateur) | — l'UI force **Obligatoire** | — |
 
-- **BONUS retiré de l'offre** *(ENG-12 : aucune sémantique définie nulle part)*. Les lignes BONUS
-  déjà en base sont **normalisées en PREFERRED par l'engine** (honorées soft, jamais droppées).
+- **BONUS retiré du produit** *(offre wizard dès ENG-12, puis retrait complet de l'enum le
+  2026-09-23 : aucune sémantique définie nulle part — zéro ligne en base, zéro poids, zéro branche
+  moteur)*. `App\Enum\ConstraintRuleType` ne compte plus que HARD/PREFERRED/LOCK ; une écriture
+  `ruleType: "BONUS"` rend 422 au lieu d'être acceptée puis transformée en silence.
 - **Cibles** : équipe (TEAM) · groupe (tag → expansion backend en N contraintes TEAM) ·
   **« Toutes les équipes » (CLUB) → expansion backend en N contraintes TEAM** *(fix P0.1 — la case
   était un no-op silencieux)*. Une contrainte TIME/DAY/FACILITY sans cible qui atteindrait quand
