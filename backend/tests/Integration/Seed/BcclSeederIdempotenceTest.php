@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Seed;
 use App\Repository\SchoolHolidayPeriodRepository;
 use App\Seed\BcclSeeder;
 use App\Seed\BcclSeedProfile;
+use App\Service\Basketball\CategoryCatalog;
 use App\Service\ClosureSegmentation;
 use App\Service\HolidayWorkweekRule;
 use App\Service\PeriodWindowUniquenessGuard;
@@ -1405,6 +1406,61 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         }
 
         self::assertSame([], $violations, 'chaque semaine-enfant de vacances seedée est entièrement de vacances (lun→ven)');
+    }
+
+    /**
+     * NR (tenant isolation, §7.1) — LE SEED SCOPE SES CATÉGORIES SPORTIVES AU CLUB.
+     *
+     * Le seed tourne sur la connexion ADMIN, qui TRAVERSE la RLS : rien n'arrête un
+     * find-or-create de catégorie non scopé au club, et rien ne le signale. Si les deux
+     * recherches de `SportCategory` du seeder (create-or-pass + le closure `$fetchCat`)
+     * oublient le `clubId`, un club seedé sur une base où un AUTRE a déjà créé ses
+     * catégories les RETROUVE par (sportId, name), n'en crée AUCUNE pour lui, et accroche
+     * ses 50 équipes aux catégories d'un AUTRE club — fuite de tenant pure. En aval,
+     * GET /api/sport_categories sous le jeton de ce club rend une liste VIDE (le
+     * TenantFilter fait, lui, son travail) et une trentaine de scénarios Behat meurent
+     * faute de catégorie pour bâtir une équipe.
+     *
+     * Ce test seede DEUX clubs dans la même base (dev PUIS démo) et exige : (a) chaque
+     * club possède son propre jeu COMPLET de catégories ; (b) AUCUNE équipe de ces deux
+     * clubs ne pointe une catégorie appartenant à un AUTRE club (jointure team →
+     * sport_category, club de l'équipe == club de la catégorie).
+     *
+     * Falsifiable : retirer le `clubId` de l'UNE OU l'AUTRE recherche rend ce test ROUGE
+     * — la seule seconde recherche non scopée suffit à accrocher les équipes ailleurs.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testSeedScopesSportCategoriesToTheirOwnClub(): void
+    {
+        $bccl = $this->seeder->run($this->em, BcclSeedProfile::dev());
+        $demo = $this->seeder->run($this->em, BcclSeedProfile::demo('demo-pass-tenant-scope'));
+
+        self::assertNotSame($bccl->getId(), $demo->getId(), 'les deux clubs seedés sont bien distincts');
+
+        // (a) Chaque club a son PROPRE jeu complet de catégories (le catalogue entier).
+        $expectedCount = \count(CategoryCatalog::categories());
+        foreach ([$bccl->getId(), $demo->getId()] as $clubId) {
+            $ownCategories = (int) $this->connection->fetchOne(
+                'SELECT COUNT(*) FROM sport_category WHERE club_id = ?',
+                [$clubId],
+            );
+            self::assertSame($expectedCount, $ownCategories, \sprintf('le club %s possède son propre jeu complet de catégories', $clubId));
+
+            $teamCount = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM team WHERE club_id = ?', [$clubId]);
+            self::assertGreaterThan(0, $teamCount, 'le club a bien des équipes — sinon la requête d\'isolation ci-dessous serait vide');
+        }
+
+        // (b) LA REQUÊTE QUI TRANCHE : une équipe de l'un des deux clubs dont la catégorie
+        // appartient à un AUTRE club. Avec la recherche non scopée, les équipes du second
+        // club seedé pointent les catégories du premier → ces lignes apparaissent → ROUGE.
+        $leaks = $this->connection->fetchAllAssociative(
+            'SELECT t.name AS team, t.club_id AS team_club, sc.club_id AS category_club '
+            . 'FROM team t JOIN sport_category sc ON sc.id = t.sport_category_id '
+            . 'WHERE t.club_id IN (?, ?) AND sc.club_id <> t.club_id',
+            [$bccl->getId(), $demo->getId()],
+        );
+        self::assertSame([], $leaks, 'aucune équipe ne pointe une catégorie appartenant à un autre club');
     }
 
     protected function setUp(): void
