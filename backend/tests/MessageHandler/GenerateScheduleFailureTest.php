@@ -7,8 +7,10 @@ namespace App\Tests\MessageHandler;
 use App\Entity\Club;
 use App\Entity\Schedule;
 use App\Entity\ScheduleDiagnostic;
+use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\SolverMetric;
+use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Message\GenerateScheduleMessage;
@@ -147,6 +149,135 @@ final class GenerateScheduleFailureTest extends KernelTestCase
         );
         self::assertContains('internal_error', $types, 'a failure diagnostic must be recorded');
         self::assertSame(1, $em->getRepository(SolverMetric::class)->count(['scheduleId' => $scheduleId]));
+    }
+
+    /**
+     * Geste 2 (greffe de convergence) — le corps RÉELLEMENT envoyé au moteur est
+     * reconstituable depuis la base : il vaut `Schedule::engineInput()` (snapshot + greffe)
+     * rechargé. Ici en RÉGÉNÉRATION : une V1 COMPLETED du même plan porte un placement, greffé
+     * en `previousAssignments` APRÈS le hash de snapshot. La greffe est persistée dans
+     * `payload_graft`, jamais recalculée. Falsification : retirer `setPayloadGraft` dans le
+     * handler → la greffe relue serait vide et la parité tomberait.
+     */
+    public function testEngineBodyEqualsPersistedEngineInputInRegeneration(): void
+    {
+        self::bootKernel();
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+
+        $uid = uniqid('', true);
+        $club = new Club;
+        $club->setName('Graft Club');
+        $club->setSlug('graft-parity-' . $uid);
+        $club->setTimezone('Europe/Paris');
+        $club->setLocale('fr');
+        $club->setOnboardingCompleted(true);
+        $em->persist($club);
+        $em->flush();
+
+        $this->scopeGucToClub($club->getId());
+        $season = new Season;
+        $season->setClubId($club->getId());
+        $season->setName('2025-2026');
+        $season->setStartDate(new DateTimeImmutable('2025-09-01'));
+        $season->setEndDate(new DateTimeImmutable('2026-06-30'));
+        $season->setStatus(SeasonStatus::ACTIVE);
+        $em->persist($season);
+        $em->flush();
+
+        $provisioner = self::getContainer()->get(SchedulePlanProvisioner::class);
+        $planId = $provisioner->ensureSeasonPlanId($season->getId());
+
+        // La version SOURCE (V1 COMPLETED du plan) et son placement : repli de
+        // `resolvePreviousAssignmentSlots` sur la dernière COMPLETED → greffe non vide.
+        $source = new Schedule;
+        $source->setClubId($club->getId());
+        $source->setSeasonId($season->getId());
+        $source->setName('Source V1');
+        $source->setStatus(ScheduleStatus::COMPLETED);
+        $source->setSchedulePlanId($planId);
+        $source->setVersionNumber(1);
+        $em->persist($source);
+        $em->flush();
+
+        $placement = new ScheduleSlotTemplate;
+        $placement->setClubId($club->getId());
+        $placement->setSeasonId($season->getId());
+        $placement->setScheduleId($source->getId());
+        $placement->setTeamId('11111111-1111-4111-8111-111111111111');
+        $placement->setVenueId('22222222-2222-4222-8222-222222222222');
+        $placement->setDayOfWeek(2);
+        $placement->setStartTime(new DateTimeImmutable('18:00'));
+        $placement->setDurationMinutes(90);
+        $placement->setLockLevel(LockLevel::NONE);
+        $em->persist($placement);
+
+        // La V2 à régénérer.
+        $target = new Schedule;
+        $target->setClubId($club->getId());
+        $target->setSeasonId($season->getId());
+        $target->setName('Cible V2');
+        $target->setStatus(ScheduleStatus::PENDING);
+        $target->setSchedulePlanId($planId);
+        $target->setVersionNumber(2);
+        $target->setQueuedAt(new DateTimeImmutable('2026-08-13 09:00:00'));
+        $em->persist($target);
+        $em->flush();
+        $targetId = $target->getId();
+        $em->clear();
+        $this->clearGuc();
+
+        $body = $this->runHandlerCapturingBody($em, $club->getId(), $targetId);
+
+        self::assertArrayHasKey('previousAssignments', $body, 'la régénération greffe le placement précédent');
+
+        $this->scopeGucToClub($club->getId());
+        $em->clear();
+        $reloaded = $em->getRepository(Schedule::class)->find($targetId);
+        self::assertInstanceOf(Schedule::class, $reloaded);
+        self::assertSame(ScheduleStatus::COMPLETED, $reloaded->getStatus());
+        $graft = $reloaded->getPayloadGraft();
+        self::assertIsArray($graft, 'la greffe est persistée (non-null quand la source existe)');
+        self::assertArrayHasKey('previousAssignments', $graft, 'la greffe persistée porte previousAssignments, PAS le snapshot');
+        self::assertArrayNotHasKey('previousAssignments', $reloaded->getSnapshotData(), 'la greffe n\'entre jamais dans le snapshot gelé');
+        self::assertEquals($body, $reloaded->engineInput(), 'le corps moteur == engineInput() (snapshot + greffe) rechargé');
+    }
+
+    /** @return array<string, mixed> le corps RÉELLEMENT envoyé au moteur (décodé) */
+    private function runHandlerCapturingBody(EntityManagerInterface $em, string $clubId, string $scheduleId): array
+    {
+        $container = self::getContainer();
+        $hub = $this->createMock(HubInterface::class);
+        $hub->method('publish')->willReturn('id');
+
+        $engineResult = json_encode(['status' => 'completed', 'score' => 0, 'slots' => [], 'diagnostics' => []], \JSON_THROW_ON_ERROR);
+
+        $sent = [];
+        $client = new MockHttpClient(function (string $method, string $url, array $options) use ($engineResult, &$sent): MockResponse {
+            $sent = json_decode((string) ($options['body'] ?? '{}'), true, 512, \JSON_THROW_ON_ERROR);
+
+            return new MockResponse($engineResult, ['http_code' => 200]);
+        });
+
+        $handler = new GenerateScheduleHandler(
+            $em,
+            $container->get(ScheduleConstraintBuilder::class),
+            $container->get(ScheduleResultImporter::class),
+            new EngineClient($client, new RequestIdContext),
+            new ScheduleProgressPublisher($hub),
+            new ScheduleDiagnosticsRecorder($em, $container->get(DiagnosticMessageBuilder::class)),
+            new SolverMetricsMapper,
+            $container->get(ClubGenerationLock::class),
+            $container->get(TenantConnectionContext::class),
+            $container->get(StructureSnapshotter::class),
+            $container->get(SchedulePlanProvisioner::class),
+            null,
+            null,
+            $container->get(SolverMetricsRecorder::class),
+        );
+
+        $handler(new GenerateScheduleMessage(scheduleId: $scheduleId, clubId: $clubId));
+
+        return $sent;
     }
 
     /**

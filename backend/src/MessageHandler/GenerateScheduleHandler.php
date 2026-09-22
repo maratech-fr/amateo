@@ -294,6 +294,17 @@ final class GenerateScheduleHandler
             );
         }
 
+        // Geste 2 — figer la GREFFE de convergence pour que `Schedule::engineInput()` reste
+        // fidèle à ce qui PART au moteur, sans jamais toucher au hash. Extraction par DIFFÉRENCE
+        // de clés entre le payload post-greffe et le snapshot pré-greffe : les deux greffes
+        // (`withPreviousAssignments` / `withSocleReferenceAssignments`) AJOUTENT une clé, n'en
+        // modifient jamais une existante — le diff isole donc exactement la greffe. Les épingles
+        // HARD du comblement (`withPinnedAssignments`) sont injectées AVANT le hash : elles vivent
+        // déjà dans le snapshot et sortent naturellement de ce diff. Flush au flush existant
+        // ci-dessous (avant le solve) : un signalement émis pendant le solve reste cohérent.
+        $graft = array_diff_key($scheduleInput, $schedule->getSnapshotData());
+        $schedule->setPayloadGraft([] === $graft ? null : $graft);
+
         $this->diagnosticsRecorder->purgePrevious($schedule);
         $this->entityManager->flush();
 

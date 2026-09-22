@@ -238,6 +238,114 @@ final class OverlayGenerationTest extends KernelTestCase
         self::assertSame(LockLevel::HARD->value, $snapshotPins[0]['lockLevel']);
     }
 
+    /**
+     * Geste 2 (greffe) au CHEMIN COMBLEMENT — la référence socle (`socleReferenceAssignments`,
+     * greffée APRÈS le hash) est persistée dans `payload_graft` et l'entrée reconstruite
+     * `Schedule::engineInput()` vaut le corps RÉELLEMENT envoyé au moteur. Distinct des épingles
+     * HARD (`withPinnedAssignments`, AVANT le hash) : celles-ci vivent dans le snapshot, hors greffe.
+     * Falsification : retirer `setPayloadGraft` → la greffe relue serait vide, la parité tomberait.
+     */
+    public function testFillModePersistsSocleReferenceGraftEqualToEngineInput(): void
+    {
+        [$em, $club, $season, $entry] = $this->seedClosureOverlay('ov-graft');
+
+        $activeVenueId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+        $venue = new Venue;
+        $venue->setId($activeVenueId);
+        $venue->setClubId($club->getId());
+        $venue->setSeasonId($season->getId());
+        $venue->setName('Gym ouvert');
+        $venue->setCanSplit(false);
+        $venue->setSource('manual');
+        $em->persist($venue);
+
+        $teamId = $em->getRepository(Team::class)->findOneBy(['clubId' => $club->getId()])?->getId();
+        self::assertIsString($teamId);
+
+        $planId = $this->planIdOf($entry);
+
+        // Socle EN VIGUEUR (SocleGuard en amont) : une version COMPLETED du plan SEASON, pointée,
+        // ET porteuse d'un placement pour l'équipe du roster → `socleReferenceAssignments` non vide.
+        $socle = new Schedule;
+        $socle->setClubId($club->getId());
+        $socle->setSeasonId($season->getId());
+        $socle->setName('Socle');
+        $socle->setStatus(ScheduleStatus::COMPLETED);
+        $socle->setSchedulePlanId($this->seasonPlanIdOf($season));
+        $socle->setVersionNumber(1);
+        $em->persist($socle);
+        $em->flush();
+        $seasonPlan = $em->getRepository(SchedulePlan::class)->find($this->seasonPlanIdOf($season));
+        self::assertInstanceOf(SchedulePlan::class, $seasonPlan);
+        $seasonPlan->setChosenScheduleId($socle->getId());
+        $em->flush();
+
+        $socleSlot = new ScheduleSlotTemplate;
+        $socleSlot->setClubId($club->getId());
+        $socleSlot->setSeasonId($season->getId());
+        $socleSlot->setScheduleId($socle->getId());
+        $socleSlot->setTeamId($teamId);
+        $socleSlot->setVenueId($activeVenueId);
+        $socleSlot->setDayOfWeek(4);
+        $socleSlot->setStartTime(new DateTimeImmutable('17:00'));
+        $socleSlot->setDurationMinutes(90);
+        $socleSlot->setLockLevel(LockLevel::NONE);
+        $em->persist($socleSlot);
+
+        // La version SOURCE de période (COMPLETED) et son placement — épinglé HARD par le fill.
+        $source = new Schedule;
+        $source->setClubId($club->getId());
+        $source->setSeasonId($season->getId());
+        $source->setName('Source');
+        $source->setStatus(ScheduleStatus::COMPLETED);
+        $source->setSchedulePlanId($planId);
+        $source->setVersionNumber(1);
+        $em->persist($source);
+        $em->flush();
+
+        $placement = new ScheduleSlotTemplate;
+        $placement->setClubId($club->getId());
+        $placement->setSeasonId($season->getId());
+        $placement->setScheduleId($source->getId());
+        $placement->setTeamId($teamId);
+        $placement->setVenueId($activeVenueId);
+        $placement->setDayOfWeek(2);
+        $placement->setStartTime(new DateTimeImmutable('18:00'));
+        $placement->setDurationMinutes(90);
+        $placement->setLockLevel(LockLevel::NONE);
+        $em->persist($placement);
+
+        $target = new Schedule;
+        $target->setClubId($club->getId());
+        $target->setSeasonId($season->getId());
+        $target->setName('Comblement');
+        $target->setStatus(ScheduleStatus::PENDING);
+        $target->setSchedulePlanId($planId);
+        $target->setVersionNumber(2);
+        $em->persist($target);
+        $em->flush();
+        $sourceId = $source->getId();
+        $targetId = $target->getId();
+        $em->clear();
+        $this->clearGuc();
+
+        $engineResult = json_encode(['status' => 'completed', 'score' => 1, 'slots' => [], 'diagnostics' => []], \JSON_THROW_ON_ERROR);
+        $sentPayload = $this->runHandler($em, $club->getId(), $targetId, $engineResult, $sourceId);
+
+        self::assertArrayHasKey('socleReferenceAssignments', $sentPayload, 'le comblement greffe la référence socle');
+
+        $this->scopeGucToClub($club->getId());
+        $em->clear();
+        $reloaded = $em->getRepository(Schedule::class)->find($targetId);
+        self::assertInstanceOf(Schedule::class, $reloaded);
+        self::assertSame(ScheduleStatus::COMPLETED, $reloaded->getStatus());
+        $graft = $reloaded->getPayloadGraft();
+        self::assertIsArray($graft, 'la greffe est persistée');
+        self::assertArrayHasKey('socleReferenceAssignments', $graft, 'la greffe porte la référence socle');
+        self::assertArrayNotHasKey('socleReferenceAssignments', $reloaded->getSnapshotData(), 'la greffe n\'entre jamais dans le snapshot gelé');
+        self::assertEquals($sentPayload, $reloaded->engineInput(), 'le corps moteur == engineInput() (snapshot + greffe) rechargé');
+    }
+
     public function testOverlayWithMissingPeriodFailsCleanly(): void
     {
         [$em, $club, $season, $entry] = $this->seedClosureOverlay('ov-missing');
