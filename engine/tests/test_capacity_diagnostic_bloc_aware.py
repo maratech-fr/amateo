@@ -91,3 +91,35 @@ def test_block_folds_but_a_third_unrelated_team_still_overflows() -> None:
         capacity=1,
     )
     assert len(caps_viol) == 1
+
+
+def test_nested_blocks_fold_the_maximal_block_not_the_alphabetical_one() -> None:
+    """NR — blocs IMBRIQUÉS {t1,t2} ⊂ {t1,t2,t3}, TOUS présents sur une case cap 1 : le repli élit le
+    bloc MAXIMAL (les trois en UN occupant) → AUCUN ``venue_capacity``. Le tri par la CLÉ seule
+    (« premier bloc gagne ») élisait {t1,t2} par l'alphabet et laissait t3 isolé → 2 occupants > 1 →
+    faux ``venue_capacity``. DÉTERMINISTE : l'ordre des blocs dans la liste ne change rien (le repli
+    trie taille décroissante puis clé). Rougit sous l'ancien ``sorted(blocks)`` par la seule clé."""
+    for blocks in (
+        [{"id": "b2", "teamIds": ["t1", "t2"]}, {"id": "b3", "teamIds": ["t1", "t2", "t3"]}],
+        [{"id": "b3", "teamIds": ["t1", "t2", "t3"]}, {"id": "b2", "teamIds": ["t1", "t2"]}],
+    ):
+        caps_viol = _capacity_violations(
+            candidate=_slot("t1", "A", 1, "19:30"),
+            baseline_slots=[_slot("t2", "A", 1, "19:30"), _slot("t3", "A", 1, "19:30")],
+            shared_blocks=blocks,
+            capacity=1,
+        )
+        assert caps_viol == [], f"le bloc maximal {{t1,t2,t3}} = UN occupant <= 1; blocks={blocks}"
+
+
+def test_maximal_fold_does_not_hide_a_truly_extra_team() -> None:
+    """Le repli maximal ne masque pas un débordement réel : blocs imbriqués {t1,t2} ⊂ {t1,t2,t3} +
+    une équipe tierce t4 sur une case cap 1 → le bloc maximal fond en 1, t4 reste isolée → 2 > 1 →
+    ``venue_capacity`` maintenu."""
+    caps_viol = _capacity_violations(
+        candidate=_slot("t1", "A", 1, "19:30"),
+        baseline_slots=[_slot("t2", "A", 1, "19:30"), _slot("t3", "A", 1, "19:30"), _slot("t4", "A", 1, "19:30")],
+        shared_blocks=[{"id": "b2", "teamIds": ["t1", "t2"]}, {"id": "b3", "teamIds": ["t1", "t2", "t3"]}],
+        capacity=1,
+    )
+    assert len(caps_viol) == 1

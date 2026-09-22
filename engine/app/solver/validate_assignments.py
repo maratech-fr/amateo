@@ -75,15 +75,24 @@ def _shared_block_move_violation(
     team_names: dict[str, str],
     venue_names: dict[str, str],
 ) -> dict[str, Any] | None:
-    """P2-51 (D11) — refus NOMMÉ ``shared_block_broken`` quand un déplacement RETIRE une équipe
-    d'une séance de BLOC jusque-là honorée (miroir déterministe + anti-enfermement, patron
-    ``_venue_minimum_move_violation``).
+    """P2-51 (D11) — DEUX refus NOMMÉS, miroir déterministe de ``Σb == commonSessions`` dans SES DEUX
+    sens (patron ``_venue_minimum_move_violation``, anti-enfermement inclus) :
 
-    Le HARD posé dans ``_apply_hard`` (``add_shared_block_constraints``) NE SUFFIT PAS : les
-    variables de l'ancienne case restent LIBRES → le solveur réinvente la séance de bloc ailleurs
-    pour tenir ``Σb == commonSessions`` et conclut « valide » à tort (même faille qu'ENG-36 / la
-    mutualisation / le plancher de gymnase). On juge donc l'ÉTAT FINAL proposé, de façon
-    déterministe : c'est le miroir de la contrainte.
+      * ``shared_block_broken`` — un déplacement RETIRE une équipe d'une séance de BLOC jusque-là
+        honorée (l'état FINAL a MOINS de séances communes que ``commonSessions``) ;
+      * ``shared_block_overformed`` — un déplacement FORME une séance commune de TROP (l'état FINAL
+        en a PLUS que ``commonSessions``). Sans ce maillon, la case tombait sur le message
+        passe-partout : le pré-check de capacité fond le bloc en UN occupant (il ne crie donc pas
+        ``venue_capacity``), mais le solveur, à court de budget ``b`` (``Σb == commonSessions``), est
+        contraint de poser ``b = 1`` sur la case en trop pour tenir la capacité → INFEASIBLE que
+        ``diagnose_candidate_conflicts`` ne savait pas attribuer → ``unknown_hard_conflict``. Ce
+        miroir le NOMME. Symétrique du plafond (c) côté écriture (``ReservationGroupOccupancy``).
+
+    Le HARD posé dans ``_apply_hard`` (``add_shared_block_constraints``) NE SUFFIT PAS pour le refus
+    de RUPTURE : les variables de l'ancienne case restent LIBRES → le solveur réinvente la séance de
+    bloc ailleurs pour tenir ``Σb == commonSessions`` et conclut « valide » à tort (même faille
+    qu'ENG-36 / la mutualisation / le plancher de gymnase). On juge donc l'ÉTAT FINAL proposé, de
+    façon déterministe : c'est le miroir de la contrainte.
 
     ⚠ N déplacements jugés ENSEMBLE, sur l'état FINAL (P2-51 PR-5b) — c'est le CŒUR du rail
     « déplacer le bloc ». « avant » = baseline gelée (elle EXCLUT déjà les N sources) + chaque
@@ -164,6 +173,28 @@ def _shared_block_move_violation(
                     f"Ce déplacement casse le bloc de mutualisation : les équipes {named} doivent "
                     f"partager {common_sessions} séance(s) commune(s) en bloc{where}, or retirer "
                     f"{_team_name(str(offender['team_id']))} de sa séance n'en laisserait plus que {len(after)}."
+                ),
+                "team_id": str(offender["team_id"]),
+                "venue_id": str(offender["venue_id"]),
+                "day_of_week": int(offender["day"]),
+                "start_time": str(offender["start_time"]),
+            }
+        # SUR-FORMATION — l'état FINAL formerait PLUS de séances communes que déclaré. Anti-enfermement
+        # symétrique : on n'accuse QUE si le bloc n'était pas DÉJÀ au-dessus (``before <= commonSessions``).
+        if len(before) <= common_sessions and len(after) > common_sessions:
+            offender = next(m for m in moved if str(m["team_id"]) in members)
+            named = ", ".join(_team_name(member) for member in members)
+            formed = sorted(after - before)
+            where = ""
+            if formed:
+                f_venue, f_day, f_start = formed[0]
+                where = f" (nouvelle séance commune du {_DAY_LABELS_FR[f_day] if 1 <= f_day <= 7 else f'jour {f_day}'} à {str(f_start)[:5]} au gymnase {_venue_name(f_venue)})"
+            return {
+                "rule": "shared_block_overformed",
+                "message": (
+                    f"Ce déplacement formerait une séance commune de trop : les équipes {named} doivent "
+                    f"partager {common_sessions} séance(s) commune(s) en bloc, or ce placement en "
+                    f"formerait {len(after)}{where}."
                 ),
                 "team_id": str(offender["team_id"]),
                 "venue_id": str(offender["venue_id"]),
@@ -344,7 +375,7 @@ def _venue_minimum_move_violation(
     venue_minimums: list[dict[str, Any]],
     baseline_slots: list[dict[str, Any]],
     moved: list[dict[str, Any]],
-    ref_case_by_team: dict[str, tuple[str, int, str]],
+    ref_cases_by_team: dict[str, set[tuple[str, int, str]]],
     team_names: dict[str, str],
     venue_names: dict[str, str],
 ) -> dict[str, Any] | None:
@@ -358,8 +389,11 @@ def _venue_minimum_move_violation(
 
     ⚠ N déplacements (P2-51 PR-5b) : le plancher d'une équipe ne dépend QUE de ses propres séances,
     on évalue donc CHAQUE équipe déplacée indépendamment sur la baseline gelée (qui exclut déjà les
-    N sources). L'état « avant » d'une équipe déplacée = baseline + SA source ré-ajoutée
-    (``ref_case_by_team``) ; « après » = baseline + SON candidat.
+    N sources). L'état « avant » d'une équipe déplacée = baseline + TOUTES ses sources ré-ajoutées
+    (``ref_cases_by_team``) ; « après » = baseline + TOUS ses candidats. On raisonne en ENSEMBLES de
+    cases (comme ``_shared_block_move_violation``) : une équipe peut être déplacée PLUSIEURS fois dans
+    le MÊME lot (ses deux séances bougent), et un ``dict`` « une case par équipe » (dernière gagne)
+    lui faisait PERDRE une case — le compte à V, avant comme après, était faux d'une unité.
 
     ⚠ LE PLANNING DÉJÀ EN INFRACTION : on ne refuse QUE si le plancher était SATISFAIT AVANT le
     déplacement et cesse de l'être APRÈS. Si le plancher était DÉJÀ cassé (``current < N``), le
@@ -372,7 +406,15 @@ def _venue_minimum_move_violation(
     if not venue_minimums:
         return None
 
-    moved_by_team = {str(m["team_id"]): m for m in moved}
+    # ENSEMBLES de cases candidates par équipe (toutes les cibles d'une équipe déplacée N fois) +
+    # un représentant par équipe pour NOMMER le geste (coordonnées du refus). Le COMPTE, lui, se
+    # fait sur TOUTES les cases — jamais une seule.
+    cand_cases_by_team: dict[str, set[tuple[str, int, str]]] = {}
+    moved_repr: dict[str, dict[str, Any]] = {}
+    for m in moved:
+        team = str(m["team_id"])
+        cand_cases_by_team.setdefault(team, set()).add((str(m["venue_id"]), int(m["day"]), str(m["start_time"])))
+        moved_repr.setdefault(team, m)
 
     # Nombre de séances de chaque (équipe, gymnase) dans la baseline GELÉE — elle exclut déjà les
     # sources des déplacements (MoveSlotService.baselineWithoutSiblings). Les séances HARD-verrouillées
@@ -392,15 +434,15 @@ def _venue_minimum_move_violation(
         team_id = str(rule.get("scope_target_id"))
         venue_id = str(rule.get("venue_id"))
         minimum = int(rule.get("min") or 1)
-        moved_slot = moved_by_team.get(team_id)
+        moved_slot = moved_repr.get(team_id)
         if moved_slot is None:
             continue  # un déplacement ne touche que les comptes des équipes déplacées.
 
         base_at_venue = base_count.get((team_id, venue_id), 0)
-        ref_case = ref_case_by_team.get(team_id)
-        # « avant » = baseline + source ré-ajoutée ; « après » = baseline + candidat.
-        current_at_venue = base_at_venue + (1 if ref_case is not None and ref_case[0] == venue_id else 0)
-        final_at_venue = base_at_venue + (1 if str(moved_slot["venue_id"]) == venue_id else 0)
+        # « avant » = baseline + TOUTES les cases d'origine de l'équipe à ce gymnase ; « après » =
+        # baseline + TOUS ses candidats à ce gymnase. Une équipe déplacée deux fois compte ses deux.
+        current_at_venue = base_at_venue + sum(1 for c in ref_cases_by_team.get(team_id) or () if c[0] == venue_id)
+        final_at_venue = base_at_venue + sum(1 for c in cand_cases_by_team.get(team_id) or () if c[0] == venue_id)
         if current_at_venue >= minimum and final_at_venue < minimum:
             return {
                 "rule": "venue_minimum_infeasible",
@@ -730,19 +772,16 @@ def validate_assignment(
         candidate_keys.append((c_team, c_venue, c_day, c_start_text))
 
     # Références appariées PAR INDEX à ``candidates`` (le validateur de schéma garantit la longueur
-    # 0 ou N). ``ref_case_by_team`` : la case d'ORIGINE d'une équipe déplacée, clé sur l'équipe de la
-    # référence — l'anti-enfermement du miroir plancher en dépend. ``ref_cases_by_team`` : l'ENSEMBLE
-    # des cases d'origine d'une équipe (elle peut être déplacée PLUSIEURS fois dans le même lot), pour
-    # le miroir de BLOC qui raisonne sur l'état FINAL complet. ``reference_keys`` : les SlotKeys
-    # « avant » pour le DELTA de compromis.
-    ref_case_by_team: dict[str, tuple[str, int, str]] = {}
+    # 0 ou N). ``ref_cases_by_team`` : l'ENSEMBLE des cases d'origine d'une équipe (elle peut être
+    # déplacée PLUSIEURS fois dans le même lot), consommé par le miroir de BLOC ET le miroir plancher
+    # qui raisonnent l'un et l'autre sur l'état FINAL complet — un « une case par équipe » leur
+    # faisait perdre une case. ``reference_keys`` : les SlotKeys « avant » pour le DELTA de compromis.
     ref_cases_by_team: dict[str, set[tuple[str, int, str]]] = {}
     reference_keys: set[SlotKey] = set()
     for reference in input_data.references:
         r_team = str(reference.team_id)
         r_start_text = _format_time(_time_to_minutes(reference.start_time))
         r_case = (str(reference.venue_id), int(reference.day_of_week), r_start_text)
-        ref_case_by_team[r_team] = r_case
         ref_cases_by_team.setdefault(r_team, set()).add(r_case)
         key = _slot_key_of(reference)
         if key is not None:
@@ -814,12 +853,13 @@ def validate_assignment(
                 "metrics": metrics,
             }
 
-    # P2-51 (D11) — miroir déterministe du BLOC : un déplacement qui RETIRE une équipe d'une séance
-    # de bloc jusque-là honorée est refusé, NOMMÉ (`shared_block_broken`). Le HARD posé dans
-    # `_apply_hard` ne saurait pas l'attribuer (le solveur réinventerait la séance de bloc ailleurs
-    # pour tenir Σb == commonSessions). ⚠ N candidats jugés ENSEMBLE : déplacer les N membres d'un
-    # bloc vers une MÊME case le laisse honoré. ⚠ Anti-enfermement (P4-152) : un bloc déjà cassé dans
-    # la baseline ne bloque pas — on refuse SEULEMENT si le déplacement casse un bloc jusque-là honoré.
+    # P2-51 (D11) — miroir déterministe du BLOC, dans les DEUX sens de `Σb == commonSessions` : un
+    # déplacement qui RETIRE une équipe d'une séance de bloc jusque-là honorée (`shared_block_broken`)
+    # OU qui FORME une séance commune de TROP (`shared_block_overformed`) est refusé, NOMMÉ. Le HARD
+    # posé dans `_apply_hard` ne saurait pas l'attribuer (le solveur réinventerait la séance ailleurs,
+    # ou l'INFEASIBLE de sur-formation tomberait sur `unknown_hard_conflict`). ⚠ N candidats jugés
+    # ENSEMBLE : déplacer les N membres d'un bloc vers une MÊME case le laisse honoré. ⚠ Anti-enfermement
+    # (P4-152) : on ne refuse QUE si le déplacement est la CAUSE (bloc honoré avant / pas déjà au-dessus).
     shared_block_violation = _shared_block_move_violation(
         data.get("sharedBlocks", []) or [],
         baseline_slots,
@@ -871,7 +911,7 @@ def validate_assignment(
         parsed.get("venue_minimums", []),
         baseline_slots,
         moved,
-        ref_case_by_team,
+        ref_cases_by_team,
         team_names,
         venue_names,
     )

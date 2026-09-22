@@ -143,9 +143,18 @@ def _fold_case_occupant_identity(
     team_ids: list[str], team_to_group: Mapping[str, str], blocks: list[tuple[str, frozenset[str]]]
 ) -> tuple[dict[str, str], set[str]]:
     """P2-51 — PAR CASE : identité d'occupant de chaque équipe présente. Un BLOC dont TOUS les
-    membres siègent ICI se fond en une entrée (multi-appartenance ⇒ attribution par case, jamais
-    « premier bloc gagne ») ; sinon l'équipe retombe sur son GROUPE mutualisé (unicité) ou
-    elle-même. Renvoie ``(identity: équipe → clé d'occupant, clés de bloc effectivement fondues)``.
+    membres siègent ICI se fond en une entrée ; sinon l'équipe retombe sur son GROUPE mutualisé
+    (unicité) ou elle-même. Renvoie ``(identity: équipe → clé d'occupant, clés de bloc effectivement
+    fondues)``.
+
+    ⚠ Élection du bloc quand DEUX blocs IMBRIQUÉS siègent sur la case (l'un contient l'autre, ou se
+    recouvrent) : on élit le bloc MAXIMAL — taille décroissante, la clé ne départageant QUE les blocs
+    de même taille. Un tri par la seule clé (« premier bloc gagne » par l'alphabet) élisait un bloc de
+    2 devant un bloc de 3 sur une case où les trois siègent, comptant 2 occupants (le bloc de 2 + le
+    tiers isolé) là où le solveur, par sa garde de distinctness, réunit le bloc de 3 en UNE occupation.
+    Ce tri par la clé seule était donc en désaccord avec le solveur ET avec le compteur backend
+    (``ReservationGroupOccupancy::occupantCount``) : même case physique, jugée pleine ici et libre
+    là. Taille d'abord, clé ensuite : déterministe et maximal, aligné sur les deux.
 
     MAISON UNIQUE (P2-58 C) : le repli d'occupant du sur-solde post-solve
     (``result_builder._diagnose_conflicts``) ET le pré-check de capacité du verdict
@@ -156,7 +165,7 @@ def _fold_case_occupant_identity(
     identity: dict[str, str] = {}
     covered: set[str] = set()
     block_keys: set[str] = set()
-    for block_key, members in sorted(blocks):
+    for block_key, members in sorted(blocks, key=lambda item: (-len(item[1]), item[0])):
         if members <= present and not (members & covered):
             for member in members:
                 identity[member] = block_key
