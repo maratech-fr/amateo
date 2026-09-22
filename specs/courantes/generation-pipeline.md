@@ -1,16 +1,13 @@
 # Génération d'un planning — conduite normalisée (bout en bout)
 
-Last verified @ 2026-09-21 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
-cette PR — lot P « le nom FBI d'un gymnase », module matchs). Re-confronté : `CONTRACT_VERSION`
-toujours **`'2.23'`** aux trois foyers (`ScheduleConstraintBuilder.php:63`,
-`MoveSlotService.php:50`, `MatchPlacementPayloadBuilder.php:65`) et `engine/CONTRACT_VERSION`,
-inchangé depuis la passe précédente ; `ClubGenerationLock::acquire` existe toujours
-(`backend/src/Service/ClubGenerationLock.php:20`) ; `TIMEOUT_MS = 20 * 60 * 1000` toujours vrai
-(`GenerateStep.tsx:37`). **Une contradiction interne corrigée** : le diagramme §1 disait encore
-« Mercure publish, AUCUN abonné frontend » alors que §2 documente correctement depuis FRT-04 (livré
-2026-08-07) que le frontend CONSOMME Mercure — le diagramme datait d'avant cette livraison et
-n'avait jamais été recalé, corrigé cette passe. Reste non re-sondé : le détail interne de
-`GenerateScheduleHandler`, le format exact du topic Mercure
+Last verified @ 2026-09-22 (lot « la génération relancée ne refait pas le travail »,
+`documentation-update`). Re-confronté : `CONTRACT_VERSION` toujours **`'2.23'`** aux trois foyers
+(`ScheduleConstraintBuilder.php:63`, `MoveSlotService.php:50`,
+`MatchPlacementPayloadBuilder.php:65`) et `engine/CONTRACT_VERSION`, inchangé. §3 gagne le détail
+du handler qui manquait jusqu'ici (signalé « non re-sondé » à la passe précédente) : la garde de
+redélivrance (`GenerateScheduleHandler.php`, lecture fraîche + après verrou, SEUL `COMPLETED`
+bloque) et la persistance de la greffe de convergence (`Schedule::payloadGraft`/`engineInput()`) —
+les deux vérifiées ligne à ligne contre le code de cette PR.
 *(historique des passes vit dans git : `git log -p --follow specs/courantes/generation-pipeline.md`)*
 
 > Vérité courante. Décrit ce qui **doit** se passer, zone par zone, quand un
@@ -104,6 +101,28 @@ via `POST /generate` ; backend → frontend via Mercure SSE `club:{clubId}:sched
 - Le handler : **gèle un snapshot** des données, `POST http://engine:8000/generate`,
   **importe** les slots renvoyés, **publie** sur Mercure. Verrou par club
   `ClubGenerationLock` (Redis `SETEX NX` + jeton de libération).
+- **Garde de redélivrance** (`GenerateScheduleHandler.php`, dans la section verrouillée, lecture
+  FRAÎCHE et APRÈS l'acquisition du verrou) : une redélivrance Messenger (worker tué APRÈS le
+  flush `COMPLETED`, AVANT l'ack) est ignorée — log `info`, aucun publish Mercure, le message est
+  acquitté sans resolve. **SEUL `COMPLETED` bloque** : les trois dispatchers
+  (`GenerateScheduleController`, `RegenerateController`, `FillPeriodPlanController`) posent
+  `PENDING` avant le dispatch, donc `COMPLETED` à l'entrée du handler ⟺ travail déjà fini. Tout
+  le reste repasse par `generate()` — en particulier `GENERATING` : un SIGKILL ne fait tourner
+  aucun `catch`/`finally`, le planning y resterait figé à vie sans la redélivrance qui le sauve.
+  Sans cette garde, une redélivrance re-solve et écrase un planning `COMPLETED`, retouches
+  manuelles comprises. Gardé bloquant par `MessageHandler/RedeliveredGenerationTest`
+  (`docs/testing/blocking-tests.md`).
+- **La greffe de convergence est persistée, jamais recalculée après coup**
+  (`Schedule::payloadGraft`, colonne `payload_graft`) : `previousAssignments`
+  (régénération) ou `socleReferenceAssignments` (comblement) sont émis au moteur APRÈS le hash
+  de snapshot — les y inclure ferait diverger `snapshotHash` de `currentStructureHash` et
+  casserait en silence le garde « structure inchangée ». Le handler extrait la greffe par
+  différence de clés entre le payload post-greffe et le snapshot pré-greffe, et la flushe avant
+  le solve. `Schedule::engineInput()` (snapshot + greffe) est la maison unique de recomposition
+  de l'entrée RÉELLE envoyée au moteur — consommée par `FeedbackController` pour qu'un
+  signalement porte ce que le solveur a réellement reçu, pas seulement le snapshot gelé. Un
+  planning `COMPLETED` d'avant cette persistance a `payload_graft` `NULL` : le passé n'est pas
+  reconstitué (détail : `etat-des-lieux.md` §2, décision fermée du 2026-09-22).
 - Multi-tenant : le Schedule est stampé `club_id` + `season_id` (filtres Doctrine +
   RLS PostgreSQL). Écriture sur saison archivée → 409.
 

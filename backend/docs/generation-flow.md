@@ -1,14 +1,15 @@
 # Documentation technique du flux de génération de planning
 
-Last verified @ 2026-09-21 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
-cette PR — lot P « le nom FBI d'un gymnase », module matchs). Re-confronté : `CONTRACT_VERSION`
-toujours **`'2.23'`** (`ScheduleConstraintBuilder.php:63` ⇄ `engine/CONTRACT_VERSION`, ligne 137
-ci-dessous inchangée) ; le margin du TTL du verrou (« timeoutSeconds + 60 s ») confirmé
-(`GenerateScheduleHandler.php:62` `LOCK_TTL_MARGIN_SECONDS = 60`, ligne 117 `acquire(...
-getTimeoutSeconds() + self::LOCK_TTL_MARGIN_SECONDS)`) ; le frontend consomme bien Mercure par un
-seul `EventSource` par session tel que décrit §6.1 (`scheduleStream.ts`, cohérent avec
-`specs/courantes/generation-pipeline.md`). Reste non re-sondé cette passe : `ScheduleStatus`
-(dernière confrontation 2026-09-15).
+Last verified @ 2026-09-22 (`documentation-update`, lot « la génération relancée ne refait pas le
+travail »). §3 gagne deux sections vérifiées ligne à ligne contre le code de ce lot : **3a-bis**
+(la garde de redélivrance — seul `COMPLETED` court-circuite, lecture fraîche après le verrou) et
+**3c corrigée** (`snapshotData` seul n'est plus présenté comme « ce qui a été envoyé au moteur » —
+la greffe de convergence `payload_graft`/`engineInput()` porte l'entrée réelle). `CONTRACT_VERSION`
+toujours **`'2.23'`** (`ScheduleConstraintBuilder.php:63` ⇄ `engine/CONTRACT_VERSION`) ; le margin
+du TTL du verrou confirmé (`GenerateScheduleHandler.php:62` `LOCK_TTL_MARGIN_SECONDS = 60`, ligne
+117 `acquire(... getTimeoutSeconds() + self::LOCK_TTL_MARGIN_SECONDS)`). Reste non re-sondé cette
+passe : §4-9 (appel moteur, import, Mercure §6.1-6.3, cycle de vie du statut) — dernière
+confrontation de ces sections 2026-09-21/2026-09-15.
 
 > ClubScheduler — Symfony 7 + API Platform + Messenger Redis + Mercure SSE. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
@@ -105,6 +106,14 @@ Il n'y a donc **pas d'échec** pour l'utilisateur, et le diagnostic `engine_busy
 
 > Exemple concret : si l'administrateur du BCCL clique deux fois rapidement sur "Générer", la seconde génération reste en `PENDING` et sera rejouée par le worker une fois la première terminée. Cela évite de surcharger le moteur et de corrompre les données, sans faire échouer la demande.
 
+### 3a-bis — Garde de redélivrance
+
+Le verrou acquis, le handler relit `Schedule.status` **à l'instant même** (fresh read, pas la copie chargée avant le verrou) : si le statut est déjà `COMPLETED`, le handler **n'appelle pas le moteur** — il journalise un `info` et acquitte le message sans rien publier sur Mercure.
+
+Ce cas se produit sur une **redélivrance Messenger** : un worker tué (SIGKILL, OOM) **après** avoir flushé `COMPLETED` mais **avant** d'acquitter le message fait revenir le message dans la file, et sans cette garde le handler re-résoudrait le même planning — écrasant au passage une éventuelle retouche manuelle faite entre-temps. **Seul `COMPLETED` bloque** : les trois contrôleurs qui dispatchent une génération (`GenerateScheduleController`, `RegenerateController`, `FillPeriodPlanController`) posent tous `PENDING` **avant** le dispatch, donc un `COMPLETED` à l'entrée du handler ne peut désigner qu'un travail déjà terminé. `GENERATING` (un SIGKILL en plein solve ne déclenche aucun `catch`/`finally` — la redélivrance est précisément ce qui sort le planning de cet état), `FAILED` et `PENDING` continuent tous vers le solve normal.
+
+Gardé par `RedeliveredGenerationTest` (bloquant, `docs/testing/blocking-tests.md`). Détail produit : `specs/courantes/generation-pipeline.md` §3.
+
 ### 3b — Construction du payload (ScheduleConstraintBuilder)
 
 Le verrou acquis, `ScheduleConstraintBuilder` construit le payload JSON destiné au moteur.
@@ -141,13 +150,14 @@ Le payload complet pèse généralement entre 50 et 200 Ko de JSON selon la tail
 
 ### 3c — Snapshot SHA-256
 
-Le payload construit est hashé en SHA-256. Le hash est stocké sur l'entité `Schedule` dans le champ `snapshotHash`, et le payload lui-même est conservé dans `snapshotData`.
+Le payload construit **à ce stade** (avant la greffe de convergence ci-dessous) est hashé en SHA-256. Le hash est stocké sur l'entité `Schedule` dans le champ `snapshotHash`, et le payload lui-même est conservé dans `snapshotData`.
 
 **À quoi ça sert ?**
 
-- **Audit** : on sait exactement quelles données ont été envoyées au moteur pour une génération donnée.
 - **Debug** : si un utilisateur dit "la génération d'hier donnait un meilleur résultat", on peut comparer les hash pour voir si les données d'entrée ont changé (nouvelle équipe, nouvelle contrainte, nouvel entraîneur).
-- **Détection de changement** : une future optimisation pourrait éviter de regénérer si le hash n'a pas changé.
+- **Détection de changement** : c'est ce hash, recomparé à `currentStructureHash` (recalculé à la volée par `SchedulePlanProvisioner`), qui alimente le garde « structure inchangée » (bouton Régénérer grisé, signal du cockpit) — pas une optimisation future, un mécanisme déjà en place.
+
+⚠ **`snapshotData` seul n'est PAS ce qui a été envoyé au moteur.** Après le hash, le handler greffe `previousAssignments` (régénération) ou `socleReferenceAssignments` (comblement) — une préférence de CONVERGENCE, volontairement tenue HORS du hash pour ne jamais le faire diverger de `currentStructureHash`. Cette greffe est persistée à part (`Schedule.payloadGraft`, colonne `payload_graft`, extraite par différence de clés entre le payload post-greffe et `snapshotData`) : `Schedule::engineInput()` = `snapshotData` + `payloadGraft` est la **seule** reconstitution fidèle de l'entrée RÉELLE du solve — c'est elle que consomme `FeedbackController` pour un signalement, jamais `snapshotData` seul. Un planning `COMPLETED` généré avant cette colonne a `payload_graft` à `NULL` : le passé n'est pas reconstitué a posteriori (la greffe part de la dernière version `COMPLETED` du plan, qui devient CE planning une fois terminé — la rejouer le grefferait sur lui-même).
 
 ---
 

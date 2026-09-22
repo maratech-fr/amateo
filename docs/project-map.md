@@ -1,13 +1,13 @@
 # Project Map — Amateo (engine + backend)
 
-Last verified @ 2026-09-21 (`documentation-update`, lot M « l'échauffement sort de l'empreinte des
-conflits de PERSONNE »). Recalé cette passe (§3 « Contract version », bumps `2.21`/`2.23`) : les
-deux extraits affirmant encore que l'échauffement « stays a PERSON-window constraint »/« half
-before warm-up » côté solveur de placement étaient FAUX depuis le lot M (2026-09-21) — corrigés,
-`warmupMinutes` reste au schéma mais n'est plus lu par aucune fenêtre du solveur. `engine/
-CONTRACT_VERSION` = **2.23** ✓ (inchangé). Reste du fichier (§1 repository layout, backend
-détaillé, ops, sécurité, §2.4 async messaging) non reconfronté cette passe — voir les stamps de
-zone et `git log -p --follow docs/project-map.md` pour l'historique.
+Last verified @ 2026-09-22 (`documentation-update`, lot « la génération relancée ne refait pas le
+travail »). §2.4 « Async / messaging » gagne la garde de redélivrance de `GenerateScheduleHandler`
+(lecture fraîche, après le verrou, seul `COMPLETED` court-circuite) — vérifiée contre
+`backend/src/MessageHandler/GenerateScheduleHandler.php` et son NR bloquant
+`MessageHandler/RedeliveredGenerationTest`. `engine/CONTRACT_VERSION` = **2.23** ✓ (inchangé,
+non touché par ce lot). Reste du fichier (§1 repository layout, backend détaillé, ops, sécurité)
+non reconfronté cette passe — voir les stamps de zone et `git log -p --follow
+docs/project-map.md` pour l'historique.
 
 Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend has been **rebuilt (React 19) and is active** — features live under `frontend/src/features/` (`ls` it, no count here — it rots): `auth`, `wizard` (data entry), `planning` (work-loop), `cockpit`, `matches`, `coach-wishes` (doléances), `club`, `profile`, `season-transition`, `legal`, `feedback` (bouton + dialogue de signalement), `release-notes` (journal + modale « quoi de neuf ») et `admin` (console superadmin, garde et session distinctes) ; voir `../frontend/docs/frontend-wizard.md` et `frontend-spec.md`. Generated/verified during onboarding against the real code and the `code-review-graph` knowledge graph.
 
@@ -109,7 +109,7 @@ All services share the Docker network `amateo_network`.
 
 ### 2.4 Async / messaging
 - **Transport:** Redis (`redis://redis:6379/messages`), `sync://` under test. Worker: `messenger-worker` container. Bounded `retry_strategy` (3 retries) + `failure_transport: failed` (`MESSENGER_FAILURE_TRANSPORT_DSN`, boot-safe default) — exhausted messages are preserved, never silently dropped.
-- **`GenerateScheduleMessage`** (`scheduleId`, `clubId`, `timeoutSeconds`=650) → **`GenerateScheduleHandler`** (orchestration only — BCK-04): acquire `ClubGenerationLock` → frozen snapshot (`ScheduleConstraintBuilder`) → `EngineClient.solve()` (`POST http://engine:8000/generate`) → import via `ScheduleResultImporter` → `SolverMetricsMapper` + `ScheduleDiagnosticsRecorder` → **flush (persist result)** → `ScheduleProgressPublisher.publishSafely()` (Mercure **best-effort** — the frontend polls as fallback, so a publish failure never discards a persisted solve).
+- **`GenerateScheduleMessage`** (`scheduleId`, `clubId`, `timeoutSeconds`=650) → **`GenerateScheduleHandler`** (orchestration only — BCK-04): acquire `ClubGenerationLock` → **redelivery guard** (fresh read, after the lock: only `COMPLETED` short-circuits — a Messenger redelivery of an already-delivered schedule is acked without re-solving, `MessageHandler/RedeliveredGenerationTest`, blocking) → frozen snapshot (`ScheduleConstraintBuilder`) → `EngineClient.solve()` (`POST http://engine:8000/generate`) → import via `ScheduleResultImporter` → `SolverMetricsMapper` + `ScheduleDiagnosticsRecorder` → **flush (persist result)** → `ScheduleProgressPublisher.publishSafely()` (Mercure **best-effort** — the frontend polls as fallback, so a publish failure never discards a persisted solve). Detail: `specs/courantes/generation-pipeline.md` §3.
 - **Terminal-status guarantee (BCK-01):** a schedule never freezes in `PENDING`/`GENERATING`. Three nets: (1) the handler catch-all clears the dirty unit-of-work and marks `FAILED` on any uncaught error; (2) `ScheduleGenerationFailureListener` (`WorkerMessageFailedEvent`, `willRetry()===false`) terminates permanently-failed messages (e.g. lock-exhaustion); (3) `app:schedules:reconcile-stuck` fails `GENERATING` schedules older than `--older-than` minutes (worker crash/OOM) — executed every 10 minutes by the `cron-runner` compose service. PENDING is left to nets (1)/(2) to avoid racing a legitimately-queued message.
 - **Operational jobs (SA3-A/B/C/D):** `cron-runner` exécute `app:jobs:run-due` chaque minute. `AdminJobCatalog` est une allowlist de dix jobs à arguments et horaires fermés (`Europe/Paris`) : reconcile toutes les 10 min, rappels et purges quotidiens, imports vacances/fériés trimestriels. Le tick rattrape au plus le dernier créneau manqué ; `scheduled_for` et un index unique empêchent le doublon par `(job, créneau)`, tandis que le verrou advisory empêche le chevauchement. `AdminJobRunStore` écrit via la connexion `admin` dans `admin_job_run` (aucun privilège `amateo_app`, aucun output/message d'exception persisté). `GET /api/admin/jobs` rapproche le catalogue du dernier run, expose le prochain passage et `manualTriggerAllowed`. `POST /api/admin/jobs/{key}/run`, session + CSRF, relance uniquement les deux imports idempotents avec source/acteur `superadmin`; aucune purge ou commande brute n'est acceptée.
 - **`ExportPdfMessage`** → **`ExportPdfHandler`**: `PdfGenerator.generate()` → publish Mercure with export URLs.
