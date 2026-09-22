@@ -11,6 +11,10 @@ on:
     - cron: "0 6 * * 1" # lundi 06:00 UTC
   workflow_dispatch: {} # relançable à la main depuis l'onglet Actions
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   trivy-published-images:
     name: Trivy (published prod images)
