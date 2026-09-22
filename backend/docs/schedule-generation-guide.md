@@ -1,13 +1,18 @@
 # Guide de génération de planning — ClubScheduler
 
-Last verified @ 2026-09-18 (`documentation-update`, PR E « décisions de l'audit 0918 » — D3).
-Re-confronté § 6 « Cas 1 : le statut reste bloqué en PENDING » contre `docker-compose.yml`
-(passe précédente, même jour) : `messenger-worker` y porte toujours `restart: unless-stopped`,
-seul service de dev à le porter. `engine/CONTRACT_VERSION` = `2.23` ✓ — deux bumps le même jour,
-sans rapport avec ce guide : `2.22` (ENG-40, diagnostic `placement_problem_too_large`) puis
-`2.23` (D3, `matches[].roundTripMinutes`) — la ligne « Correction » ci-dessous recalée au numéro
-courant. Reste non re-sondé cette passe : le corps du guide hors § Pré-requis, § Injection et § 6
-Cas 1.
+Last verified @ 2026-09-22 (`documentation-update`, lot « blocs imbriqués — parité de comptage »,
+rotation de fraîcheur). Re-confronté § 6 « Cas 1 : le statut reste bloqué en PENDING » contre
+`docker-compose.yml` (état courant) : **corrigé** — `restart: unless-stopped` n'est plus le
+propre de `messenger-worker` seul depuis le lot correctif de l'audit 0918 (`b04b577f`, INF-04,
+même jour que la passe précédente mais commit ultérieur) : **tous** les services de dev le
+portent désormais (`frontend`, `php-fpm`, `nginx`, `postgres`, `redis`, `messenger-worker`,
+`cron-runner`, `engine`, `pdf-worker`, `mercure`, `mailpit`). `engine/CONTRACT_VERSION` = `2.23`
+✓ (inchangé — le lot « blocs imbriqués » de ce jour ne monte pas le contrat, champ `rule` libre).
+Re-confronté aussi : le cycle des 5 statuts (§5, `App\Enum\ScheduleStatus` : DRAFT/PENDING/
+GENERATING/COMPLETED/FAILED) ✓, la route `export-xlsx` (§11, `ScheduleResource.php` +
+`ExportXlsxController`) ✓, le budget solveur par défaut 650 s (§6 Cas 2/3,
+`GenerateScheduleMessage::$timeoutSeconds`, `ScheduleConstraintBuilder::DEFAULT_SOLVER_TIMEOUT_SECONDS`)
+✓. Reste non re-sondé cette passe : le corps du guide hors § 5, § 6 Cas 1-3, § 11.
 
 > Ce guide explique, étape par étape, comment générer un planning de matchs pour un club de basket dans le backend ClubScheduler. Il s'adresse aux développeurs juniors qui découvrent le projet.
 
@@ -335,7 +340,7 @@ Voici chaque panne possible, avec son symptôme, sa cause, sa vérification, sa 
 | **Cause** | Le conteneur `messenger-worker` n'est pas démarré. Il n'y a personne pour consommer la file Redis. |
 | **Vérification** | `docker ps \| grep messenger` — si aucune ligne ne s'affiche, le worker est arrêté. |
 | **Correction** | `docker compose up -d messenger-worker` |
-| **Prévention** | Depuis le 2026-09-18, `messenger-worker` porte `restart: unless-stopped` en dev (comme en prod) : une sortie de lui-même (time-limit horaire, `cache:clear` qui invalide son cache) le fait redémarrer seul en quelques secondes — ce cas précis ne devrait donc plus se produire. Ce qui reste possible : la stack n'a jamais été démarrée pour ce service, ou il a été arrêté volontairement (`docker compose stop`, respecté par `unless-stopped`) — inclure `messenger-worker` dans ton `docker-compose.yml`/script de démarrage le couvre. |
+| **Prévention** | Depuis le 2026-09-18, **tous** les services de dev portent `restart: unless-stopped` (comme en prod, INF-04) — `messenger-worker` y compris : une sortie de lui-même (time-limit horaire, `cache:clear` qui invalide son cache) le fait redémarrer seul en quelques secondes — ce cas précis ne devrait donc plus se produire. Ce qui reste possible : la stack n'a jamais été démarrée pour ce service, ou il a été arrêté volontairement (`docker compose stop`, respecté par `unless-stopped`) — inclure `messenger-worker` dans ton `docker-compose.yml`/script de démarrage le couvre. |
 
 ### Cas 2 : le statut retombe en PENDING (verrou club tenu)
 

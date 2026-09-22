@@ -1,15 +1,10 @@
 # ClubScheduler — PostgreSQL Row-Level Security (RLS)
 
-Last verified @ 2026-09-19 (rotation `documentation-update`, PR G « todo FBI unique » — fichier
-hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code : `TenantFilterListener` toujours
-`KernelEvents::REQUEST => ['onKernelRequest', 7]` (priorité 7, APRÈS le firewall,
-`TenantFilterListener.php:55`) ✓ · `docker/postgres/init/02-users.sh` crée toujours `amateo_app`
-`NOSUPERUSER NOCREATEDB NOCREATEROLE` (`:32`) ✓ · `Version20260731090000.php` existe toujours ✓ ·
-`RlsIsolationTest.php` (`backend/tests/Security/RlsIsolationTest.php`) garde toujours la policy
-`admin_all` TO `amateo_owner` (assertions `:195-197`) ✓. Preuve neuve cette passe : la migration
-`Version20260919120000` (`fbi_correction`, registre « à corriger dans FBI ») copie le SQL canonique
-§ « Enabling RLS on a New Table » à la lettre (`TENANT_PREDICATE` en constante, `admin_all` avant
-le `hasOwner`) — le patron tient sur une entité neuve. Rien de faux trouvé cette passe.
+Last verified @ 2026-09-22 (rotation `documentation-update`, lot « blocs imbriqués — parité de
+comptage » — fichier hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code :
+`TenantFilterListener` toujours `KernelEvents::REQUEST => ['onKernelRequest', 7]`
+(`TenantFilterListener.php:55`) ✓ · `RlsIsolationTest.php` et `Version20260731090000.php`
+présents ✓. Rien de faux trouvé cette passe.
 
 > ✅ **STATUS: ACTIVE** since migration `Version20260703120000` (SEC-03 fixed). The migration — not the initdb scripts — is the source of truth for policies and grants: **every table carrying a `club_id` column** is under `FORCE ROW LEVEL SECURITY` with a `tenant_isolation` policy `TO amateo_app` (no hard count here — new tenant tables inherit the pattern via the migration helper; the count would rot). `club_user` and `coach_wish_token` carry the hybrid SELECT bootstrap policy (open only while NO tenant GUC is set — scoped to the tenant otherwise, SEC-12 residual closed by `Version20260804120000`; deliberate cross-tenant reads go through `TenantConnectionContext::runWithoutTenant()`). Runtime connects as `amateo_app`; the GUC is set via `TenantConnectionContext` (`set_config`, session-scoped). **This file = operator how-to (env, roles, troubleshooting). The effective architecture — who sets the GUC, the exception tables, the superadmin door — is `docs/security/rls.md`, and it is CANONICAL.** ⚑ La consigne précédente disait « garder les deux en phase » : c'est précisément ce qui a produit la dérive du prédicat corrigée le 2026-08-19. Deux fichiers qu'on maintient en phase à la main divergent — le seul garde-fou est de ne PAS redire ici ce que le canon dit là-bas : on pointe. The `01/02/03-*.sql` initdb scripts remain for fresh volumes only.
 

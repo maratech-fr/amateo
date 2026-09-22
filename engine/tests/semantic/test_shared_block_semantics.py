@@ -498,3 +498,79 @@ class TestBlockGroupMoveFinalStateSets:
         )
         assert result["valid"] is False
         assert any(v["rule"] == "shared_block_broken" for v in result["violations"])
+
+
+# ── P2-51 (sur-formation) — un déplacement qui FORME une séance commune de TROP est refusé, NOMMÉ ──
+
+
+class TestBlockOverformationVerdict:
+    """Miroir SYMÉTRIQUE de la rupture : ``Σb == commonSessions`` interdit AUSSI de FORMER une séance
+    commune de trop. Sans ce maillon, la sur-formation sur une case cap 1 rend le solve INFEASIBLE (le
+    budget ``b`` est épuisé, la capacité force ``b = 1`` sur la case en trop), mais le pré-check de
+    capacité, qui fond le bloc en UN occupant, ne crie pas ``venue_capacity`` → le refus tombait sur le
+    passe-partout ``unknown_hard_conflict``. Ce maillon le NOMME. Symétrique du plafond (c) côté
+    écriture (``ReservationGroupOccupancy``)."""
+
+    @staticmethod
+    def _cap1_venue() -> dict[str, Any]:
+        return make_venue("A", [(3, "18:00"), (4, "18:00"), (5, "18:00")], capacity=1)
+
+    def test_forming_an_extra_common_session_is_refused_and_named(self) -> None:
+        """Bloc {t1,t2}, commonSessions=1, honoré sur (A,3,18:00). t2 déplace sa séance individuelle
+        (A,5,18:00) vers (A,4,18:00) où t1 s'entraîne DÉJÀ → 2ᵉ séance commune → l'état final en a 2 > 1
+        → REFUS NOMMÉ ``shared_block_overformed``. Falsification : sans le maillon, le solve est
+        INFEASIBLE (cap 1 force ``b`` sur la case en trop, Σb=2) mais le pré-check de capacité fond le
+        bloc → aucun ``venue_capacity`` → refus ``unknown_hard_conflict``. On vérifie le NOM du motif."""
+        result = validate_assignment(
+            ValidateAssignmentsInputSchema.model_validate(
+                _verdict_payload_multi(
+                    candidates=[
+                        {"teamId": "t2", "venueId": "A", "dayOfWeek": 4, "startTime": "18:00", "durationMinutes": 90},
+                    ],
+                    # baseline (source exclue) : la commune (A,3) + la séance individuelle de t1 (A,4).
+                    slot_templates=[
+                        _tmpl("t1", "A", 3, "18:00"),
+                        _tmpl("t2", "A", 3, "18:00"),
+                        _tmpl("t1", "A", 4, "18:00"),
+                    ],
+                    blocks=[_block("b", ["t1", "t2"], 1)],
+                    teams=[make_team("t1", sessions_per_week=2), make_team("t2", sessions_per_week=2)],
+                    references=[
+                        {"teamId": "t2", "venueId": "A", "dayOfWeek": 5, "startTime": "18:00", "durationMinutes": 90},
+                    ],
+                    venues=[self._cap1_venue()],
+                )
+            )
+        )
+        assert result["valid"] is False
+        assert any(v["rule"] == "shared_block_overformed" for v in result["violations"]), (
+            f"la sur-formation doit être NOMMÉE, pas retomber sur unknown_hard_conflict; got {result['violations']}"
+        )
+
+    def test_reaching_exactly_the_declared_common_budget_is_accepted(self) -> None:
+        """TÉMOIN (anti-faux-refus) : le garde ne tire QU'AU-DELÀ de commonSessions. Bloc {t1,t2},
+        commonSessions=2, une commune (A,3) déjà là ; t2 rejoint t1 sur (A,4) → 2ᵉ commune → 2 == 2 →
+        ACCEPTÉ, aucune sur-formation. Prouve que le maillon compte au bon seuil (K+1, pas K)."""
+        result = validate_assignment(
+            ValidateAssignmentsInputSchema.model_validate(
+                _verdict_payload_multi(
+                    candidates=[
+                        {"teamId": "t2", "venueId": "A", "dayOfWeek": 4, "startTime": "18:00", "durationMinutes": 90},
+                    ],
+                    slot_templates=[
+                        _tmpl("t1", "A", 3, "18:00"),
+                        _tmpl("t2", "A", 3, "18:00"),
+                        _tmpl("t1", "A", 4, "18:00"),
+                    ],
+                    blocks=[_block("b", ["t1", "t2"], 2)],
+                    teams=[make_team("t1", sessions_per_week=2), make_team("t2", sessions_per_week=2)],
+                    references=[
+                        {"teamId": "t2", "venueId": "A", "dayOfWeek": 5, "startTime": "18:00", "durationMinutes": 90},
+                    ],
+                    venues=[self._cap1_venue()],
+                )
+            )
+        )
+        assert not any(v["rule"] == "shared_block_overformed" for v in result["violations"]), (
+            f"atteindre EXACTEMENT commonSessions n'est pas une sur-formation; got {result['violations']}"
+        )

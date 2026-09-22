@@ -366,33 +366,46 @@ final class ReservationGroupOccupancy
         $groupCount = 0;
 
         // P2-51 — un BLOC entièrement présent compte pour UN occupant. La multi-appartenance est
-        // permise : on ne re-compte pas un bloc dont TOUS les membres sont déjà attribués (à un
-        // autre bloc déjà folié), sinon une même case physique pèserait deux fois. Aucun bloc en
-        // portée ⇒ boucle vide ⇒ occupants == équipes distinctes.
-        foreach ($this->blockMemberSetsInScope($schedulePlanId) as $memberSet) {
+        // permise : sur un cas de blocs IMBRIQUÉS (un bloc en contient un autre), on élit le bloc
+        // MAXIMAL. Tri DÉTERMINISTE — taille décroissante, puis identité de bloc pour départager —
+        // MIROIR EXACT du repli moteur `_fold_case_occupant_identity` (`sorted(blocks, key=(-len,
+        // key))`). Sans tri, la requête rendait les blocs dans un ordre NON garanti (dépendant de la
+        // base) : deux exécutions pouvaient diverger, le backend jugeant LIBRE une case que le moteur
+        // juge PLEINE, et se contredisant d'un appel à l'autre. Aucun bloc en portée ⇒ boucle vide ⇒
+        // occupants == équipes distinctes.
+        $blocks = $this->blockMemberSetsInScope($schedulePlanId);
+        $blockIds = array_keys($blocks);
+        usort($blockIds, static function (int|string $a, int|string $b) use ($blocks): int {
+            $bySize = \count($blocks[$b]) <=> \count($blocks[$a]); // taille décroissante (bloc maximal d'abord)
+
+            return 0 !== $bySize ? $bySize : ((string) $a <=> (string) $b); // puis id croissant
+        });
+
+        // Un bloc se fond en UN occupant s'il est ENTIÈREMENT présent ET qu'AUCUN de ses membres n'est
+        // déjà attribué à un bloc précédent (recouvrement PAR CASE : un membre appartient à UN seul
+        // occupant). MIROIR EXACT du critère moteur `members <= present and not (members & covered)`.
+        // L'ancien critère « au moins un membre nouveau » repliait un bloc partiellement chevauchant
+        // en le comptant pour UN et absorbait ses membres restants : il SOUS-comptait les occupants,
+        // acceptant une case que le moteur (repli maximal, membre couvert = bloc écarté) juge pleine.
+        foreach ($blockIds as $blockId) {
+            $memberSet = $blocks[$blockId];
             if ([] === $memberSet) {
                 continue;
             }
-            $fullyPresent = true;
+            $foldable = true;
             foreach (array_keys($memberSet) as $teamId) {
-                if (!isset($teamSet[$teamId])) {
-                    $fullyPresent = false;
+                if (!isset($teamSet[$teamId]) || isset($accountedFor[$teamId])) {
+                    $foldable = false;
                     break;
                 }
             }
-            if (!$fullyPresent) {
+            if (!$foldable) {
                 continue;
             }
-            $newlyAccounted = false;
             foreach (array_keys($memberSet) as $teamId) {
-                if (!isset($accountedFor[$teamId])) {
-                    $newlyAccounted = true;
-                }
                 $accountedFor[$teamId] = true;
             }
-            if ($newlyAccounted) {
-                ++$groupCount;
-            }
+            ++$groupCount;
         }
 
         $loners = 0;
@@ -457,11 +470,14 @@ final class ReservationGroupOccupancy
     }
 
     /**
-     * Les jeux de membres des BLOCS de la portée (P2-51). Le filtre tenant borne club + saison ;
-     * la multi-appartenance est permise, d'où des jeux qui peuvent se recouvrir — les lecteurs
-     * ({@see occupantCount}, {@see reservedSetMatchesABlock}) gèrent le recouvrement par case.
+     * Les jeux de membres des BLOCS de la portée (P2-51), INDEXÉS par identité de bloc. Le filtre
+     * tenant borne club + saison ; la multi-appartenance est permise, d'où des jeux qui peuvent se
+     * recouvrir — les lecteurs ({@see occupantCount}, {@see reservedSetMatchesABlock}) gèrent le
+     * recouvrement par case. L'identité de bloc en clé sert le TRI déterministe du repli d'occupant
+     * (miroir de la clé `__shared_block__{id}` côté moteur) ; les autres lecteurs itèrent les valeurs
+     * et l'ignorent.
      *
-     * @return list<array<string, true>>
+     * @return array<string, array<string, true>> blockId => memberSet
      */
     private function blockMemberSetsInScope(?string $schedulePlanId): array
     {
@@ -478,7 +494,7 @@ final class ReservationGroupOccupancy
                 $set[$member->getTeamId()] = true;
             }
             if ([] !== $set) {
-                $result[] = $set;
+                $result[$block->getId()] = $set;
             }
         }
 

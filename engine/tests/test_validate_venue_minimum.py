@@ -164,3 +164,42 @@ class TestVenueMinimumVerdict:
         assert all(v.get("rule") != "venue_minimum_infeasible" for v in result.get("violations", [])), (
             f"le déplacement ne doit PAS être imputé d'un plancher déjà cassé; got {result.get('violations')}"
         )
+
+    def test_a_team_moved_twice_counts_both_its_cases_at_the_venue(self) -> None:
+        """NR — une équipe déplacée DEUX fois dans le MÊME lot ne doit pas PERDRE une case au comptage.
+        t1 a EXACTEMENT ses 2 séances à V1 (plancher 2, SATISFAIT) : (V1 mer) et (V1 ven). On les
+        déplace TOUTES DEUX vers V2 → 0 séance à V1 (< 2) → REFUS ``venue_minimum_infeasible``.
+
+        Le miroir raisonne en ENSEMBLES de cases par équipe : « avant » = TOUTES les sources
+        ré-ajoutées (2 à V1), « après » = TOUS les candidats (0 à V1). Falsification : un ``dict``
+        « une case par équipe » (dernière gagne) ne ré-ajoutait qu'UNE source → « avant » = 1 < 2 →
+        le garde anti-enfermement croyait le plancher DÉJÀ cassé et ACCEPTAIT à tort (le solveur
+        tiendrait le plancher avec des séances fantômes à V1)."""
+        payload: dict[str, Any] = {
+            "clubId": "c",
+            "seasonId": "s",
+            "venues": [
+                make_venue("V1", [(3, "18:00"), (5, "18:00")]),
+                make_venue("V2", [(3, "18:00"), (5, "18:00")]),
+            ],
+            "teams": [make_team("t1", sessions_per_week=2)],
+            "coaches": [],
+            "constraints": [_floor("t1", "V1", 2)],
+            # baseline VIDE : les deux séances de t1 à V1 SONT les sources déplacées (exclues).
+            "slotTemplates": [],
+            "candidates": [
+                {"teamId": "t1", "venueId": "V2", "dayOfWeek": 3, "startTime": "18:00", "durationMinutes": 90},
+                {"teamId": "t1", "venueId": "V2", "dayOfWeek": 5, "startTime": "18:00", "durationMinutes": 90},
+            ],
+            "references": [
+                _ref("t1", "V1", 3, "18:00"),
+                _ref("t1", "V1", 5, "18:00"),
+            ],
+        }
+        result = _run(payload)
+        assert result["valid"] is False, (
+            f"quitter V1 pour ses 2 séances (2→0, plancher 2) doit être REFUSÉ; got {result}"
+        )
+        assert any(v.get("rule") == "venue_minimum_infeasible" for v in result.get("violations", [])), (
+            f"le refus doit NOMMER le plancher, pas retomber sur unknown_hard_conflict; got {result.get('violations')}"
+        )

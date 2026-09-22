@@ -1,13 +1,13 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-09-21 (rotation de fraîcheur `documentation-update`, lot L « validé ligue en
-lot » — engine non touché par cette PR, zéro appel moteur). Re-confronté au code, tout juste :
-`SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"` (`objective/weights.py:31`) ✓ ; poids
-`"preferred": 10` / `"avoided_venue": -10` (`objective/weights.py:53,61`) ✓ ; le backend n'ajoute
-toujours pas de `forbiddenVenueId` hors tag depuis D1 (`ScheduleConstraintBuilder.php:256` —
-« per-team `forbiddenVenueId` expansion is GONE » — et `:1364`) ✓. L'engine reste inchangé sur ce
-point : un `preferredVenueId`/`forcedVenueId` HARD/LOCK toujours traité comme un gymnase FORCÉ
-(défense en profondeur sur donnée legacy). Non re-sondé cette passe : le reste du vocabulaire
+Last verified @ 2026-09-22 (`documentation-update`, lot « blocs imbriqués — parité de comptage »,
+`e487e85d`). Re-confronté au code § mutualisation par bloc : `_fold_case_occupant_identity`
+(`engine/app/solver/constraints/common.py:168`) élit désormais le bloc MAXIMAL (tri taille
+décroissante puis clé), miroir exact de `ReservationGroupOccupancy::occupantCount` côté backend ✓ ;
+`_shared_block_move_violation` (`validate_assignments.py`) refuse `shared_block_overformed` en plus
+de `shared_block_broken` ✓ ; `_venue_minimum_move_violation` raisonne en ensembles de cases par
+équipe ✓. Aucune montée de `CONTRACT_VERSION` (toujours `2.23`, `rule` reste une chaîne libre) ✓.
+Non re-sondé cette passe : le reste du vocabulaire
 listé ci-dessous — un stamp REMPLACE, l'historique vit dans git.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
@@ -92,6 +92,11 @@ listé ci-dessous — un stamp REMPLACE, l'historique vit dans git.
   redondant : retirer la pose HARD fait rougir `test_hard_layer_parity_registry.py` (registre de
   parité) sans faire rougir le NR (le miroir refuse encore) ; désactiver le miroir fait rougir
   `test_validate_venue_minimum.py` sans faire rougir le registre (la pose HARD reste là).
+  **Ensembles, pas singleton (2026-09-22)** : `_venue_minimum_move_violation` raisonne sur
+  l'ENSEMBLE des cases candidates/d'origine par équipe (`cand_cases_by_team`/`ref_cases_by_team`),
+  comme `_shared_block_move_violation` — une structure « une case par équipe » (dernière gagne)
+  faisait perdre une case à une équipe déplacée DEUX fois dans le même lot, faussant le compte
+  avant/après d'une unité.
 - **Plus d'exclusivité groupe depuis D1 (2026-09-18, décision fondateur lecture 1)** : `CLUB + targetTag + forcedVenueId` force le tag sur le gymnase mais **ne l'interdit plus** aux équipes hors tag — le backend n'émet plus de ligne `forbiddenVenueId` « hors tag ». Une exclusivité voulue se pose désormais À LA MAIN (une contrainte `forbiddenVenueId` séparée par équipe/tag hors groupe). Besoin non couvert par un mécanisme dédié : `backend/docs/constraint-coverage.md` §Axe GYMNASE (❌), `specs/evolution/roadmap.md` §Parking.
 - **Fermeture datée** (`config.type = "venue_closed"`, période cockpit) → le backend l'**étend** en `forbiddenVenueId` HARD par équipe sur la fenêtre.
 
@@ -253,8 +258,8 @@ sur la MÊME case (sinon une séance physique compterait pour deux blocs).
 | `team_share_declared_pairs` | co-présence des membres exemptée de l'anti-chevauchement passerelle (§ci-dessus) |
 | `shared_block_case_bvars` → `add_coach_player_non_overlap` | co-présence des membres exemptée de l'anti-chevauchement coach-joueur/joueur-joueur QUAND la séance de bloc de la case est active (borne `≤ 1 + Σb`) — voir `COACH_PLAYER_NO_OVERLAP` ci-dessus |
 | Diagnostic post-solve (`_diagnose_shared_blocks`) | `shared_block_not_honored` — INFEASIBLE : moins de cases communes candidates que de séances demandées, OU (2026-09-07) plus de cases toute-épinglées EXCLUSIVES (aucun autre bloc toute-épinglé dessus) que de séances demandées (deux causes certaines, la seconde nomme le bloc sur-épinglé) ; solve abouti : défense en profondeur si le compte réel diverge |
-| Sur-capacité gymnase (post-solve) | attribuée **PAR CASE** (multi-appartenance permise, `_fold_case_occupant_identity`) — jamais « premier bloc gagne » via une carte globale, contrairement au groupe historique (unicité un-groupe-par-équipe) |
-| `/validate-assignments` | miroir déterministe `_shared_block_move_violation` (D11) — refuse NOMMÉ `shared_block_broken` un déplacement qui RETIRE un membre d'une séance de bloc jusque-là honorée ; **garde anti-enfermement** (patron `_venue_minimum_move_violation`/P4-152) : un bloc DÉJÀ cassé dans la baseline ne bloque pas les déplacements |
+| Sur-capacité gymnase (post-solve) | attribuée **PAR CASE** (multi-appartenance permise, `_fold_case_occupant_identity`) — jamais « premier bloc gagne » via une carte globale, contrairement au groupe historique (unicité un-groupe-par-équipe). **Blocs IMBRIQUÉS sur la MÊME case** (l'un contient l'autre) : le repli élit le bloc **MAXIMAL** — tri déterministe taille décroissante puis clé (`sorted(blocks, key=(-len, key))`) — MIROIR EXACT du repli backend (`ReservationGroupOccupancy::occupantCount`, même tri). Avant le 22/09/2026 le tri se faisait sur la seule clé (« premier bloc gagne » par l'alphabet PARMI les blocs qui matchent la case), ce qui pouvait élire un bloc de 2 devant un bloc de 3 et compter un occupant fantôme (le tiers isolé) là où le solveur, par sa garde de distinctness (`targeting.py`), réunit le bloc de 3 en une seule occupation |
+| `/validate-assignments` | miroir déterministe `_shared_block_move_violation` (D11), dans les DEUX sens de `Σb == commonSessions` — `shared_block_broken` : un déplacement qui RETIRE un membre d'une séance de bloc jusque-là honorée ; `shared_block_overformed` (2026-09-22) : un déplacement qui FORME une séance commune de TROP (tombait avant sur `unknown_hard_conflict` générique) ; **garde anti-enfermement** (patron `_venue_minimum_move_violation`/P4-152) : un bloc DÉJÀ cassé (ou déjà sur-formé) dans la baseline ne bloque pas les déplacements |
 
 `sharedBlocks` vide/absent ⇒ `add_shared_block_constraints` retourne 0 sans poser de variable,
 chemin byte-identique, goldens inchangés (aucun golden avec bloc). Les 3 gestes (déclarer, poser,

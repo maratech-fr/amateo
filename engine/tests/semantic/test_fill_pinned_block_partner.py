@@ -211,10 +211,10 @@ def test_nested_fully_pinned_blocks_on_one_case_complete_without_infeasible() ->
     )
     # ⚠ RÉSIDU CONNU, HORS PÉRIMÈTRE de ce fix (statut, pas warnings) : t1/t2 étant physiquement
     # ensemble sur C1 (séance du bloc de 3) ET sur leur case libre, la défense en profondeur
-    # post-solve les compte à 2 co-présences (``shared-block-not-honored-b2``, WARNING), et le
-    # comptage capacité fond {t1,t2} au lieu du bloc maximal {t1,t2,t3} sur C1. Ces deux
-    # diagnostics vivent dans le comptage co-présence (branche OPTIMAL) et ``_fold_case_occupant_identity``
-    # (``common.py``), pré-existants et non introduits ici ; ils n'affectent pas le STATUT.
+    # post-solve les compte à 2 co-présences (``shared-block-not-honored-b2``, WARNING). Ce résidu vit
+    # dans le comptage co-présence (branche OPTIMAL), pré-existant et non introduit ici ; il n'affecte
+    # pas le STATUT. (Le comptage CAPACITÉ, lui, fond désormais le bloc MAXIMAL {t1,t2,t3} sur C1 —
+    # ``_fold_case_occupant_identity`` trie taille décroissante puis clé : plus de faux occupant isolé.)
 
 
 def test_two_fully_pinned_cases_for_one_common_session_fail_and_name_the_block() -> None:
