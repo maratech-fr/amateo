@@ -1,13 +1,18 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-09-20 (rotation `documentation-update`, PR I « les gymnases adverses
-appartiennent au club, le trajet au gymnase » — fichier hors sujet de la PR). Re-confronté à
-`frontend/package.json` : `vitest`/`@vitest/coverage-v8` `^4.1.11`, `@testing-library/react`
-`^16.3.3` (dérive mineure depuis `^16.3.0`, corrigée), `@testing-library/jest-dom` `^7.0.1`,
-`jsdom` `^30.0.1`, `msw` `^2.15.0`, `@playwright/test` `^1.63.0` (dérive mineure depuis `^1.62.1`,
-corrigée), `vitest-axe` `^0.1.0`, `@axe-core/playwright` `^4.13.0`, `storybook`/
-`@storybook/react-vite` `^10.6.0` (dérive mineure depuis `^10.5.10`, corrigée) — toutes les
-majeures citées (§ Outils de test) tiennent encore. Historique des passes :
+Last verified @ 2026-09-22 (rotation `documentation-update`, lot « la génération relancée ne
+refait pas le travail » — fichier hors sujet de la PR). Re-confronté à `frontend/package.json` :
+toutes les versions citées (§ Outils de test — `vitest`/`@vitest/coverage-v8` `^4.1.11`,
+`@testing-library/react` `^16.3.3`, `@testing-library/jest-dom` `^7.0.1`, `jsdom` `^30.0.1`,
+`msw` `^2.15.0`, `@playwright/test` `^1.63.0`, `vitest-axe` `^0.1.0`, `@axe-core/playwright`
+`^4.13.0`, `storybook`/`@storybook/react-vite` `^10.6.0` ; § Stack Versions Fixed — `react`
+`^19.2.8`, `vite` `^8.2.2`, `typescript` `~6.0.2`, `tailwindcss` `^4.3.0`,
+`@tanstack/react-query` `^5.102.8`, `zustand` `^5.0.15`) tiennent, exactes. `testTimeout`
+15 s / `slowTestThreshold` 3 s (`vitest.config.ts:39,44`) et `asyncUtilTimeout` 5 s
+(`src/test/setup.ts:28`) inchangés. **Une dérive corrigée** : l'« écart connu, non tranché » sur
+`location /engine/` dans `docker/frontend/nginx.conf` était **faux depuis le 2026-07-31** (#329) —
+le bloc a été retiré, remplacé par un commentaire explicite ; la note datait d'avant ce fix et
+n'avait jamais été recalée. Historique des passes :
 `git log -p --follow frontend/docs/frontend-strategy.md`.)
 
 > **Statut : le rebuild est LIVRÉ.** Les formulations « pour le rebuild » ci-dessous sont
@@ -294,11 +299,11 @@ Le rebuild est un **raz ciblé sur le code source** — l'infrastructure Docker 
 | `docker/frontend/Dockerfile` | Image Docker du frontend (build multi-stage + Nginx) | **Préserver tel quel** — adapter uniquement si la structure de build change. |
 | `docker/frontend/nginx.conf` | Config Nginx (proxy `/api` → backend, `/exports` → backend, `/bundles/` → backend, `/.well-known/mercure` → hub, `/engine/` → engine, en-têtes de sécurité + CSP, SPA fallback) | **Préserver tel quel** — la config proxy est validée et fonctionnelle. |
 
-> ⚠️ **Écart connu, non tranché** : le bloc `location /engine/` → `http://engine:8000/` existe
-> toujours dans `docker/frontend/nginx.conf`, alors que le proxy `/engine` a été **supprimé**
-> côté Vite (FRT-17) au nom de la frontière « le frontend ne contacte jamais l'engine »
-> (`CLAUDE.md` §2). Aucun code de `frontend/src/` ne l'appelle, mais il ouvre une route que
-> cette frontière interdit. Décision fondateur en attente.
+> **Écart clos (2026-07-31, #329)** : `docker/frontend/nginx.conf` ne porte plus de
+> `location /engine/` — retiré en même temps que le proxy Vite (FRT-17), au nom de la même
+> frontière (`CLAUDE.md` §2 : « aucun proxy `/engine` nulle part, ne jamais en réintroduire »).
+> Un commentaire explicite (`PAS de location /engine/`) marque désormais l'absence
+> intentionnelle, pour parler au moteur en dev : `docker compose exec engine …`.
 
 ### Périmètre du raz
 

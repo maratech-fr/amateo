@@ -122,6 +122,21 @@ class Schedule implements TenantOwnedInterface
     #[ORM\Column(type: 'json')]
     private array $snapshotData = [];
 
+    /**
+     * Greffe de CONVERGENCE ajoutée à l'entrée du moteur APRÈS le hash de snapshot
+     * (`previousAssignments` en régénération, `socleReferenceAssignments` en comblement) :
+     * des clés DISJOINTES du snapshot, JAMAIS intégrées à `snapshotHash`/`snapshotData` —
+     * les y mettre ferait diverger `snapshotHash` de `currentStructureHash` (recalculé sans
+     * elle) à chaque régénération, cassant en silence le garde « structure inchangée ».
+     * NULL = aucune greffe (exact pour une première génération : les builders rendent le
+     * payload inchangé quand la source est vide). Persistée parce que NON reconstituable
+     * après coup — cf. {@see self::engineInput()}.
+     *
+     * @var array<string, mixed>|null
+     */
+    #[ORM\Column(type: 'json', nullable: true)]
+    private ?array $payloadGraft = null;
+
     #[ORM\Column(type: 'string', length: 80, nullable: true)]
     private ?string $solverVersion = null;
 
@@ -376,6 +391,39 @@ class Schedule implements TenantOwnedInterface
         $this->snapshotData = $snapshotData;
 
         return $this;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function getPayloadGraft(): ?array
+    {
+        return $this->payloadGraft;
+    }
+
+    /** @param array<string, mixed>|null $payloadGraft */
+    public function setPayloadGraft(?array $payloadGraft): self
+    {
+        $this->payloadGraft = $payloadGraft;
+
+        return $this;
+    }
+
+    /**
+     * L'entrée RÉELLE envoyée au moteur : le snapshot gelé PLUS la greffe de convergence
+     * (`previousAssignments` / `socleReferenceAssignments`) — clés disjointes par
+     * construction, l'une jamais recouverte par l'autre.
+     *
+     * MAISON UNIQUE de la recomposition. Pourquoi persister la greffe plutôt que la
+     * rejouer : elle part de la dernière version COMPLETED du plan (stabilité) ou de la
+     * version pointée du socle (comblement) — or, une fois CE planning terminé, c'est LUI
+     * qui devient la dernière COMPLETED de son plan. Rejouer `withPreviousAssignments`
+     * après coup grefferait donc ses propres placements sur lui-même : la greffe n'est
+     * fidèle qu'au moment du solve, elle est figée là et relue, jamais recalculée.
+     *
+     * @return array<string, mixed>
+     */
+    public function engineInput(): array
+    {
+        return array_merge($this->snapshotData, $this->payloadGraft ?? []);
     }
 
     public function getSolverVersion(): ?string

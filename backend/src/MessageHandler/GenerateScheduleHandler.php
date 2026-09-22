@@ -123,6 +123,35 @@ final class GenerateScheduleHandler
         }
 
         try {
+            // Garde de redélivrance : SEUL COMPLETED bloque. Une redélivrance Messenger
+            // (worker tué après le flush COMPLETED, avant l'ack) re-solverait et écraserait
+            // un planning DÉJÀ livré — retouches manuelles comprises. Les trois dispatchers
+            // posent PENDING AVANT le dispatch, donc COMPLETED à l'entrée du handler ⟺ travail
+            // fini : la garde ne peut pas bloquer une génération légitime.
+            //
+            // Lecture FRAÎCHE et APRÈS le verrou : lue avant le verrou, la garde verrait
+            // GENERATING pendant qu'un autre worker finit, le laisserait flusher COMPLETED puis
+            // re-solverait derrière lui. Seule la lecture post-acquisition ferme cette fenêtre.
+            //
+            // Tout le reste PASSE, chacun pour une raison : GENERATING (un SIGKILL ne fait
+            // tourner aucun catch/finally — le planning reste GENERATING à vie, la redélivrance
+            // EST sa reprise), PENDING (état de dispatch, ET état reposé par le handler au retry
+            // de verrou), FAILED (relancer après échec est un usage normal), DRAFT (jamais
+            // dispatché). Aucune seconde garde en amont : dupliquée sur ce chemin d'écriture,
+            // elle rendrait le NR intestable (backend.md).
+            $this->entityManager->refresh($schedule);
+            if (ScheduleStatus::COMPLETED === $schedule->getStatus()) {
+                // Fait d'exploitation, pas une anomalie : un log info, aucun publish Mercure
+                // (le rail est best-effort, le statut est terminal en base et le front converge
+                // au sondage suivant), puis on acquitte le message.
+                $this->logger?->info('Génération déjà terminée — redélivrance Messenger ignorée', [
+                    'scheduleId' => $schedule->getId(),
+                    'clubId' => $message->getClubId(),
+                ]);
+
+                return;
+            }
+
             $this->generate($schedule, $message);
         } catch (Throwable $exception) {
             // BCK-01: any uncaught error (snapshot build, result import, a flush)
@@ -264,6 +293,17 @@ final class GenerateScheduleHandler
                 $this->socleReferenceSlots($schedule),
             );
         }
+
+        // Geste 2 — figer la GREFFE de convergence pour que `Schedule::engineInput()` reste
+        // fidèle à ce qui PART au moteur, sans jamais toucher au hash. Extraction par DIFFÉRENCE
+        // de clés entre le payload post-greffe et le snapshot pré-greffe : les deux greffes
+        // (`withPreviousAssignments` / `withSocleReferenceAssignments`) AJOUTENT une clé, n'en
+        // modifient jamais une existante — le diff isole donc exactement la greffe. Les épingles
+        // HARD du comblement (`withPinnedAssignments`) sont injectées AVANT le hash : elles vivent
+        // déjà dans le snapshot et sortent naturellement de ce diff. Flush au flush existant
+        // ci-dessous (avant le solve) : un signalement émis pendant le solve reste cohérent.
+        $graft = array_diff_key($scheduleInput, $schedule->getSnapshotData());
+        $schedule->setPayloadGraft([] === $graft ? null : $graft);
 
         $this->diagnosticsRecorder->purgePrevious($schedule);
         $this->entityManager->flush();

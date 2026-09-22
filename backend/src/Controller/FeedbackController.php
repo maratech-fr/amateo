@@ -122,7 +122,9 @@ final class FeedbackController extends AbstractController
             $context['scheduleId'] = $scheduleId;
             $context['seasonId'] = $schedule->getSeasonId();
             $context['scheduleStatus'] = $schedule->getStatus()->value;
-            $context['snapshot'] = $schedule->getSnapshotData();
+            // Le signalement porte l'entrée RÉELLE du solve (snapshot + greffe de convergence),
+            // pas seulement le snapshot gelé — la clé garde son nom `snapshot`.
+            $context['snapshot'] = $schedule->engineInput();
             $context['diagnostics'] = $this->diagnosticsOf($scheduleId);
         }
 
