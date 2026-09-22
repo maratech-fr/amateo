@@ -168,6 +168,51 @@ final class XlsxUploadGuardTest extends TestCase
         self::assertInstanceOf(UploadedFile::class, $result, 'un zip illisible passe le garde, le parseur tranchera');
     }
 
+    public function testSheetRelocatedOutsideWorksheetsIsStillCounted(): void
+    {
+        // L'emplacement d'une feuille dans un .xlsx n'est PAS imposé (OPC) : la
+        // cible est déclarée par xl/_rels/workbook.xml.rels, le format autorise
+        // n'importe quel chemin de partie. PhpSpreadsheet suit les rels et lit une
+        // feuille rangée en xl/data/s1.xml ; la garde, qui ne parse pas les rels,
+        // doit donc compter les `<row` sur TOUTE partie XML — sinon 5 001 lignes
+        // hors xl/worksheets/ passeraient inaperçues (le trou que SEC-22 comble).
+        // Falsification : restaurer `str_starts_with($name, 'xl/worksheets/')`
+        // dans inspectArchive → ce test rougit (aucune ligne comptée).
+        $path = $this->xlsxWithExtraXmlPart(
+            'xl/data/s1.xml',
+            '<?xml version="1.0" encoding="UTF-8"?><worksheet><sheetData>'
+            . str_repeat('<row/>', 5001)
+            . '</sheetData></worksheet>',
+        );
+
+        $result = $this->guard()->requireXlsxFile($this->requestWithFile($path, 'relocated.xlsx'));
+        $this->assertRefused($result, 413, '5 000');
+    }
+
+    public function testDuplicateEntryNamesAreEachMeasuredByIndex(): void
+    {
+        // Zip à deux entrées HOMONYMES : la première minuscule, la seconde >20 Mo
+        // décompressés. `getStream($name)` rendrait deux fois la PREMIÈRE et la
+        // seconde échapperait au comptage ; `getStreamIndex($i)` inflate l'entrée
+        // que la boucle visite → les octets de la seconde comptent → refus « 20 Mo ».
+        // Falsification : revenir à `getStream($name)` → ce test rougit (les octets
+        // volumineux ne sont jamais lus). ZipArchive dédoublonne à l'écriture, d'où
+        // le zip fabriqué à la main (en-têtes locaux + annuaire central).
+        $path = $this->zipWithDuplicateEntries(
+            'xl/worksheets/sheet1.xml',
+            '<x/>',
+            str_repeat('x', 25 * 1024 * 1024),
+        );
+        self::assertLessThan(
+            2 * 1024 * 1024,
+            (int) filesize($path),
+            'le zip compressé reste sous la borne octets, pour que ce soit bien la borne décompressé qui tranche',
+        );
+
+        $result = $this->guard()->requireXlsxFile($this->requestWithFile($path, 'dup.xlsx'));
+        $this->assertRefused($result, 413, '20 Mo');
+    }
+
     protected function tearDown(): void
     {
         foreach ($this->tempFiles as $file) {
@@ -218,6 +263,69 @@ final class XlsxUploadGuardTest extends TestCase
         $zip->open($path);
         $zip->addFromString('xl/worksheets/sheet1.xml', $sheetXml);
         $zip->close();
+
+        return $path;
+    }
+
+    /**
+     * Un classeur PhpSpreadsheet réel auquel on AJOUTE une partie XML à un chemin
+     * arbitraire (hors xl/worksheets/) — pour prouver que la garde compte les
+     * lignes où qu'elles vivent, comme le fait PhpSpreadsheet via les rels.
+     */
+    private function xlsxWithExtraXmlPart(string $entryName, string $xml): string
+    {
+        $spreadsheet = new Spreadsheet;
+        $spreadsheet->getActiveSheet()->fromArray([['A']], null, 'A1');
+        $path = $this->tempFile('part');
+        new Xlsx($spreadsheet)->save($path);
+
+        $zip = new ZipArchive;
+        $zip->open($path);
+        $zip->addFromString($entryName, $xml);
+        $zip->close();
+
+        return $path;
+    }
+
+    /**
+     * Un zip fabriqué OCTET PAR OCTET portant DEUX entrées de même nom (ZipArchive
+     * dédoublonne à l'écriture, impossible autrement). Chaque entrée est deflatée
+     * (méthode 8) pour que 25 Mo de remplissage tiennent sous la borne octets ;
+     * l'annuaire central pointe deux en-têtes locaux distincts, si bien que
+     * numFiles vaut 2 et getStreamIndex($i) rend chacune telle qu'elle est.
+     */
+    private function zipWithDuplicateEntries(string $name, string $firstData, string $secondData): string
+    {
+        $entries = [$firstData, $secondData];
+        $local = '';
+        $central = '';
+        $offsets = [];
+        foreach ($entries as $data) {
+            $offsets[] = \strlen($local);
+            $compressed = (string) gzdeflate($data);
+            $local .= pack('V', 0x04034B50)
+                . pack('vvvvv', 20, 0, 8, 0, 0)
+                . pack('VVV', crc32($data), \strlen($compressed), \strlen($data))
+                . pack('vv', \strlen($name), 0)
+                . $name
+                . $compressed;
+        }
+        foreach ($entries as $idx => $data) {
+            $compressed = (string) gzdeflate($data);
+            $central .= pack('V', 0x02014B50)
+                . pack('vvvvvv', 20, 20, 0, 8, 0, 0)
+                . pack('VVV', crc32($data), \strlen($compressed), \strlen($data))
+                . pack('vvvvv', \strlen($name), 0, 0, 0, 0)
+                . pack('VV', 0, $offsets[$idx])
+                . $name;
+        }
+        $eocd = pack('V', 0x06054B50)
+            . pack('vvvv', 0, 0, \count($entries), \count($entries))
+            . pack('VV', \strlen($central), \strlen($local))
+            . pack('v', 0);
+
+        $path = $this->tempFile('dup');
+        file_put_contents($path, $local . $central . $eocd);
 
         return $path;
     }

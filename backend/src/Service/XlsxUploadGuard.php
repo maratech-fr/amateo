@@ -24,8 +24,9 @@ use ZipArchive;
  *
  * La borne ne fait confiance à AUCUN en-tête : elle ouvre le zip, streame
  * l'inflate de chaque entrée avec un compteur borné, et compte les balises
- * `<row` dans le flux des feuilles — jamais les tailles déclarées ni le
- * `<dimension ref>` (qui peut mentir). Un fichier qui n'est pas un zip lisible
+ * `<row` dans le flux de CHAQUE partie XML — l'emplacement d'une feuille n'est
+ * pas imposé (OPC), on ne se restreint donc pas à `xl/worksheets/` — jamais les
+ * tailles déclarées ni le `<dimension ref>` (qui peut mentir). Un fichier qui n'est pas un zip lisible
  * n'est PAS refusé ici : il n'y a aucun inflate à borner, on le laisse au
  * parseur en aval dont le filet générique (P4-5) ne fuit rien.
  */
@@ -120,8 +121,8 @@ final class XlsxUploadGuard
 
     /**
      * Ouvre le zip et mesure en INFLATANT : octets décompressés cumulés (toutes
-     * entrées) bornés à 20 Mo, balises `<row` des feuilles bornées à 5 000. On ne
-     * lit jamais les tailles déclarées ni `<dimension ref>`. Un zip illisible
+     * entrées) bornés à 20 Mo, balises `<row` de chaque partie XML bornées à
+     * 5 000. On ne lit jamais les tailles déclarées ni `<dimension ref>`. Un zip illisible
      * n'est pas notre affaire — retour null, le parseur en aval s'en charge.
      */
     private function inspectArchive(string $path): ?JsonResponse
@@ -139,11 +140,23 @@ final class XlsxUploadGuard
                 if (false === $name) {
                     continue;
                 }
-                $stream = $zip->getStream($name);
+                // Streamer par INDEX, pas par nom : sur un zip portant deux entrées
+                // de même nom, `getStream($name)` rend deux fois la PREMIÈRE et la
+                // seconde n'est jamais mesurée ; `getStreamIndex($i)` inflate
+                // exactement l'entrée que la boucle visite, pour le même prix.
+                $stream = $zip->getStreamIndex($i);
                 if (false === $stream) {
                     continue;
                 }
-                $isSheet = str_starts_with($name, 'xl/worksheets/') && str_ends_with($name, '.xml');
+                // Compter les `<row` sur TOUTE entrée `.xml`, pas seulement
+                // `xl/worksheets/` : l'emplacement d'une feuille dans un .xlsx n'est
+                // pas imposé (OPC), il est déclaré par `xl/_rels/workbook.xml.rels`
+                // et le format autorise n'importe quel chemin de partie. La garde ne
+                // peut pas savoir où vit une feuille sans parser les rels (ce qu'on
+                // ne veut pas faire ici), donc elle compte partout. Aucun faux
+                // positif possible : un `<row` littéral dans une chaîne partagée
+                // serait échappé en `&lt;row` et ne matcherait pas le motif.
+                $isXml = str_ends_with($name, '.xml');
                 $carry = '';
                 try {
                     while (!feof($stream)) {
@@ -155,7 +168,7 @@ final class XlsxUploadGuard
                         if ($inflated > self::MAX_INFLATED_BYTES) {
                             return $this->tooLarge($this->inflatedMessage());
                         }
-                        if ($isSheet) {
+                        if ($isXml) {
                             $window = $carry . $chunk;
                             $rows += preg_match_all(self::ROW_PATTERN, $window);
                             if ($rows > self::MAX_ROWS) {
