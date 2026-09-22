@@ -39,7 +39,7 @@
     <php>
         <server name="KERNEL_CLASS" value="App\Kernel" />
         <server name="APP_ENV" value="test" />
-        <server name="SYMFONY_DEPRECATIONS_HELPER" value="weak" />
+        <server name="SYMFONY_DEPRECATIONS_HELPER" value="max[direct]=0" />
     </php>
     <!-- Périmètre de couverture (P4-166, décision B4) : le code applicatif `src`,
          exclusions DÉCLARÉES (jamais implicites). PHPUnit 11 n'a pas de seuil natif
