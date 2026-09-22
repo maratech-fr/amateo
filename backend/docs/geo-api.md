@@ -1,33 +1,16 @@
 # API géo — routes externes consommées (P2-53 RMM-8)
 
-Last verified @ 2026-09-20 (`documentation-update`, PR I « les gymnases adverses appartiennent au
-club, le trajet au gymnase » — amendement fondateur, `3993cbd3`…`3e203402`). Re-confronté au code
-cette passe : `OpponentVenueLink` (tenant, club-scoped SANS saison, grain `(club, code organisme,
-libellé FBI normalisé)`) a remplacé `OpponentTravel` (supprimée, migration
-`Version20260920140000`) ✓ · `OpponentTravelResolver::pairsToRoute` route désormais les paires
-siège→gymnase depuis les LIENS du club (plus de notion d'équipe/ligne saison) ✓ ·
-`ClubSiegeController::__invoke` ne touche plus aucune ligne `opponent_travel` (elle n'existe plus) :
-un déménagement de siège dispatche juste un recalcul, le cache étant directionnel (nouvelle origine
-= nouvelle clé) ✓. Reste confronté à la passe précédente (2026-09-19, revue sécurité H) :
-`IgnRoutingClient::MAX_RETRY_AFTER_SECONDS = 5.0`
-(`IgnRoutingClient.php:63`, abandon de la paire au-delà plutôt qu'un `sleep` du `Retry-After` reçu)
-✓ · les trois dispatchers (`OpponentRefreshController`, `OpponentTravelController`,
-`VenueTravelTimeAutofillController`) lisent `TravelComputeLock::isHeld` avant de dispatcher et
-rendent `{queued: false, alreadyRunning: true}` sinon ✓. Reste confronté à la passe d'avant
-(2026-09-19, PR H « onglet Adversaires » — cache de trajets club-scoped + calcul asynchrone) :
-`App\Entity\ClubTravelCache` (`ClubTravelCache.php`, tenant RLS, clé `(club, profile, origin_lat,
-origin_lon, dest_lat, dest_lon)`, `minutes` NON NULL) ✓ · `App\Service\Geo\TravelTimeCache`
-(`TravelTimeCache.php`, `INSERT … ON CONFLICT DO NOTHING`, clé `%.5f` canonique) ✓ · migration
-`Version20260920120000::seedStatements()` (seed one-shot avant RLS) ✓ · `IgnRoutingClient::pace`/
-`MIN_INTERVAL_SECONDS = 1.0`/`MAX_ATTEMPTS = 3` ✓ · `App\Message\ComputeTravelTimesMessage` +
-`App\MessageHandler\ComputeTravelTimesHandler` (`WORKER_BUDGET_SECONDS = 180`, `PROGRESS_STEP = 5`)
-✓ · `App\Service\TravelComputeLock` (clé `travel_compute:club:{clubId}`, patron
-`MatchPlacementLock`) ✓ · `ClubSiegeController::coordinatesChanged` (invalidation + dispatch) ✓.
-Reste confronté à la passe d'avant (2026-09-19, PR F « retours de tests du 18-19/09 ») :
-`BanGeocodingClient::geocodeTop` ✓ · `ClubSiegeController` SEC-15 ✓. Reste confronté à la passe
-d'avant (2026-09-18, PR E — recalage du contrat 2.23) : hosts en constantes dures,
-`BATCH_BUDGET_SECONDS = 30.0`, `MAX_AUTOFILL_PAIRS = 120`, rate-limit
-`venue_travel_time_autofill` 10/h.
+Last verified @ 2026-09-22 (`documentation-update`, rotation de fraîcheur — sans rapport avec le
+sujet de la PR). Re-confronté au code cette passe : les deux hosts liste-blanche
+(`api-adresse.data.gouv.fr` dans `BanGeocodingClient::SEARCH_URL`, `data.geopf.fr` dans
+`IgnRoutingClient::ITINERARY_URL`) ✓ · `IgnRoutingClient::MAX_RETRY_AFTER_SECONDS = 5.0` /
+`MIN_INTERVAL_SECONDS = 1.0` / `MAX_ATTEMPTS = 3` (`IgnRoutingClient.php:55-65`) ✓ ·
+`TravelComputeLock::KEY_PREFIX = 'travel_compute:club:'` ✓ · `ClubTravelCache` — table
+`club_travel_cache`, clé unique `(club_id, profile, origin_lat, origin_lon, dest_lat, dest_lon)`,
+RLS FORCE (`ClubTravelCache.php:28-30`) ✓ · `ComputeTravelTimesHandler::WORKER_BUDGET_SECONDS =
+180` / `PROGRESS_STEP = 5` ✓ · `OpponentVenueLink` seul présent dans `src/Entity/` (aucun
+`OpponentTravel` résiduel) ✓. Historique des passes précédentes vit dans git :
+`git log -p --follow backend/docs/geo-api.md`.
 
 > Répertoire des endpoints externes **géo** utilisés par le backend — deuxième famille de sorties
 > non-FFBB après `ffbb-api.md` (même patron : liste blanche de hosts codés en dur, SSRF-safe,
