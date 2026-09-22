@@ -217,7 +217,14 @@ final class BcclSeeder
         $categories = CategoryCatalog::categories();
 
         foreach ($categories as $cat) {
+            // clubId scope OBLIGATOIRE : une catégorie sportive est une donnée de
+            // CLUB (tenant), et le seed tourne sur la connexion admin qui TRAVERSE
+            // la RLS. Sans ce scope, un club seedé après un autre retrouve les
+            // catégories du premier, n'en crée aucune, et accroche ses équipes à
+            // des catégories d'un AUTRE club — c'est le seul endroit où le tenant
+            // doit être écrit à la main (le TenantFilter est neutralisé ici).
             $existing = $manager->getRepository(SportCategory::class)->findOneBy([
+                'clubId' => $clubId,
                 'sportId' => $sport->getId(),
                 'name' => $cat['name'],
             ]);
@@ -237,8 +244,11 @@ final class BcclSeeder
 
         // --- Fetch ALL sport categories in one place (every one is created by the
         // loop above; regrouped here so teams/constraints share a single source). ---
-        $fetchCat = static function (string $name) use ($manager, $sport): SportCategory {
-            $cat = $manager->getRepository(SportCategory::class)->findOneBy(['sportId' => $sport->getId(), 'name' => $name]);
+        $fetchCat = static function (string $name) use ($manager, $sport, $clubId): SportCategory {
+            // clubId scope OBLIGATOIRE, même raison qu'au create-or-pass ci-dessus :
+            // sans lui, cette relecture ramène encore la catégorie d'un AUTRE club
+            // (le seed traverse la RLS), et les équipes seraient accrochées dessus.
+            $cat = $manager->getRepository(SportCategory::class)->findOneBy(['clubId' => $clubId, 'sportId' => $sport->getId(), 'name' => $name]);
             \assert($cat instanceof SportCategory);
 
             return $cat;

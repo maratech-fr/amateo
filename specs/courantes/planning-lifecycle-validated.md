@@ -1,10 +1,15 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-09-19 (`documentation-update`, PR H « onglet Adversaires » — vérification
-ÉTROITE : seul le renvoi § « P2-52 » vers `module-matchs.md`, qui a gagné un nouvel écran
-« Adversaires » le même jour, est recalé sur son nouveau §11 (l'insertion a décalé l'ancien §10) ;
-le reste du fichier n'est pas re-sondé cette passe). Historique des passes vit dans git :
-`git log -p --follow specs/courantes/planning-lifecycle-validated.md`)
+Last verified @ 2026-09-22 (`documentation-update`, rotation de fraîcheur — sans rapport avec le
+sujet de la PR). Re-confronté au code cette passe : `ScheduleStatus` = exactement
+`DRAFT/PENDING/GENERATING/COMPLETED/FAILED`, pas de `VALIDATED` (`Enum/ScheduleStatus.php`) ✓ ·
+`SocleGuard::assertSeasonPlanChosen` appelé depuis `FixtureStateProcessor`, `ScheduleStateProcessor`,
+`GenerateScheduleController` et (via `FixtureImportGate::gate`, appelée par
+`ImportFixturesController`) le rail d'import FBI ✓ · le garde matchs `useSocleValidated()`
+(`frontend/src/shared/lib/socle.ts`, dérivé de `me.seasonPlan.chosenScheduleId`) est bien monté
+dans `MatchesLayout.tsx` (RMM-1 PR2) ✓ · `BcclSeedProfile::transcribeRealSchedule` reste `true`
+au profil `dev()` seul, `false` en `demo()`/charge (`BcclSeedProfile.php`) ✓. Historique des
+passes vit dans git : `git log -p --follow specs/courantes/planning-lifecycle-validated.md`.
 
 > **Bascule 2026-07-16 (ADR-0002, `docs/architecture/adr-0002-pattern-plan.md`)** : le **plan de
 > type SEASON** (`schedule_plan`) et **la version qu'il pointe** (`chosen_schedule_id`) SONT le

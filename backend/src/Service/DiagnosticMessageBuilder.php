@@ -140,17 +140,34 @@ final class DiagnosticMessageBuilder
         $venueId = $this->extractId($diagnostic, 'venueId', 'venue_id');
         $venueName = null !== $venueId ? ($venueNames[$venueId] ?? $venueId) : null;
 
+        // Coordonnées du créneau déplacé (jour + plage horaire), quand le moteur les émet —
+        // même patron que buildUnusedSlot (table des jours + calcul de plage). Un moteur plus
+        // ancien qui n'émet pas ces champs laisse $when vide : la parenthèse retombe alors sur
+        // le gymnase seul (ou disparaît), rendant le message d'avant à l'octet près.
+        $dayOfWeek = (int) ($diagnostic['dayOfWeek'] ?? $diagnostic['day_of_week'] ?? 0);
+        $day = self::DAY_NAMES[$dayOfWeek] ?? '';
+        $start = $this->hhmm((string) ($diagnostic['startTime'] ?? $diagnostic['start_time'] ?? ''));
+        $duration = (int) ($diagnostic['durationMinutes'] ?? $diagnostic['duration_minutes'] ?? 0);
+        $end = '' !== $start && $duration > 0 ? $this->addMinutes($start, $duration) : '';
+
+        $slot = '';
+        if ('' !== $start) {
+            $slot = '' !== $end ? \sprintf('de %s à %s', $start, $end) : \sprintf('à %s', $start);
+        }
+        $when = trim($day . ' ' . $slot);
+
+        // La parenthèse : gymnase + coordonnées, gymnase seul, coordonnées seules, ou rien.
+        $inside = '';
         if (null !== $venueName) {
-            return \sprintf(
-                'Le créneau préféré de %s (%s) a été déplacé par le solveur pour un meilleur ajustement global.',
-                $teamName,
-                $venueName,
-            );
+            $inside = '' !== $when ? \sprintf('%s, %s', $venueName, $when) : $venueName;
+        } elseif ('' !== $when) {
+            $inside = $when;
         }
 
         return \sprintf(
-            'Le créneau préféré de %s a été déplacé par le solveur pour un meilleur ajustement global.',
+            'Le créneau préféré de %s%s a été déplacé par le solveur pour un meilleur ajustement global.',
             $teamName,
+            '' !== $inside ? \sprintf(' (%s)', $inside) : '',
         );
     }
 

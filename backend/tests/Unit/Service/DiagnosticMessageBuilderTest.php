@@ -55,6 +55,46 @@ final class DiagnosticMessageBuilderTest extends TestCase
         self::assertStringNotContainsString('preferred slot', $result);
     }
 
+    public function testSoftLockMovedNamesTheDayAndTimeWhenTheEngineEmitsThem(): void
+    {
+        // Champs structurés (jour + heure + durée) → la parenthèse dit LEQUEL des créneaux a bougé.
+        $result = $this->builder->build(
+            [
+                'type' => 'soft_lock_moved',
+                'teamId' => 't1',
+                'venueId' => 'v1',
+                'dayOfWeek' => 2,
+                'startTime' => '18:00',
+                'durationMinutes' => 90,
+                'message' => '',
+            ],
+            ['t1' => 'SM1'],
+            [],
+            ['v1' => 'Gymnase A'],
+        );
+
+        self::assertSame(
+            'Le créneau préféré de SM1 (Gymnase A, mardi de 18:00 à 19:30) a été déplacé par le solveur pour un meilleur ajustement global.',
+            $result,
+        );
+    }
+
+    public function testSoftLockMovedWithoutCoordinatesIsUnchanged(): void
+    {
+        // Tolérance : sans les champs, le message reste celui d'avant, à l'octet près.
+        $result = $this->builder->build(
+            ['type' => 'soft_lock_moved', 'teamId' => 't1', 'venueId' => 'v1', 'message' => ''],
+            ['t1' => 'SM1'],
+            [],
+            ['v1' => 'Gymnase A'],
+        );
+
+        self::assertSame(
+            'Le créneau préféré de SM1 (Gymnase A) a été déplacé par le solveur pour un meilleur ajustement global.',
+            $result,
+        );
+    }
+
     public function testUnusedSlotRebuiltInFrench(): void
     {
         // Engine sends a raw English "…: no team assigned" message → rebuild locally.

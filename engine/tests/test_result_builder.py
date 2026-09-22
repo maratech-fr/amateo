@@ -176,9 +176,11 @@ class ResultBuilderTest(unittest.TestCase):
                 "id": "soft-1",
                 "teamId": "team-1",
                 "venueId": "venue-1",
-                "dayOfWeek": 1,
-                "startTime": "09:00",
-                "durationMinutes": 15,
+                "dayOfWeek": 2,
+                # HH:MM:SS en entrée (le backend transmet parfois les secondes) : le champ
+                # structuré émis doit être tronqué à HH:MM (colonne backend de 5 caractères).
+                "startTime": "18:00:00",
+                "durationMinutes": 90,
                 "lockLevel": "SOFT",
             },
         ]
@@ -192,7 +194,21 @@ class ResultBuilderTest(unittest.TestCase):
 
         soft_diags = [d for d in result["diagnostics"] if d["type"] == "soft_lock_moved"]
         self.assertTrue(soft_diags)
-        self.assertEqual(soft_diags[0]["teamId"], "team-1")
+        diag = soft_diags[0]
+        self.assertEqual(diag["teamId"], "team-1")
+        self.assertEqual(diag["venueId"], "venue-1")
+        # Champs structurés : le backend possède le texte FR, l'engine possède les coordonnées.
+        self.assertEqual(diag["dayOfWeek"], 2)
+        self.assertEqual(diag["startTime"], "18:00")  # tronqué depuis "18:00:00"
+        self.assertEqual(diag["durationMinutes"], 90)
+        # Message vidé (un texte anglais y serait mort) et suggestions vidées (jamais affichées
+        # hors d'un solve en échec).
+        self.assertEqual(diag["message"], "")
+        self.assertEqual(diag["suggestions"], [])
+        # L'identifiant reste stable — il porte l'heure BRUTE (avec les secondes), pas la tronquée.
+        self.assertEqual(diag["id"], "diag-soft-moved-team-1-2-18:00:00")
+        # La forme reste valide au regard du schéma de contrat (champs déjà optionnels).
+        ScheduleOutputSchema.model_validate(result)
 
     def test_coach_overload_diagnostic(self):
         data = self._minimal_data()

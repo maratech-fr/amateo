@@ -326,6 +326,7 @@ def _diagnose_soft_lock_moved(
         venue_id = str(_get(template, "venue_id", "venueId"))
         day_of_week = int(_get(template, "day_of_week", "dayOfWeek"))
         start_time = str(_get(template, "start_time", "startTime"))
+        duration = int(_get(template, "duration_minutes", "durationMinutes", default=DEFAULT_SESSION_MINUTES))
 
         found = any(
             slot["teamId"] == team_id
@@ -342,15 +343,21 @@ def _diagnose_soft_lock_moved(
                     "severity": "WARNING",
                     "teamId": team_id,
                     "venueId": venue_id,
-                    "message": (
-                        f"The preferred slot for team {team_id} at {venue_id} "
-                        f"on day {day_of_week} starting at {start_time} was moved. "
-                        "The solver found a better overall fit by shifting this session."
-                    ),
-                    "suggestions": [
-                        "Review the new time and confirm it still works for the team.",
-                        "If the original time is essential, consider raising the lock to HARD.",
-                    ],
+                    "dayOfWeek": day_of_week,
+                    # Heure tronquée à HH:MM : la colonne backend ``startTime`` n'accepte que 5
+                    # caractères (le payload transmet parfois HH:MM:SS) — même troncature que les
+                    # autres foyers de ce fichier. L'``id`` garde, lui, ``start_time`` brut : il est
+                    # stable et sert ailleurs.
+                    "startTime": str(start_time)[:5],
+                    "durationMinutes": duration,
+                    # Copie possédée par le backend : DiagnosticMessageBuilder reconstruit
+                    # inconditionnellement le texte FR de ``soft_lock_moved`` et lui ajoute le jour
+                    # + la plage horaire depuis les champs structurés ci-dessus. Émettre un message
+                    # ici serait du texte anglais mort, jamais lu — on envoie donc une chaîne vide,
+                    # suggestions comprises (jamais affichées : seules celles d'un solve en échec le
+                    # sont).
+                    "message": "",
+                    "suggestions": [],
                     "createdAt": datetime.now(UTC).isoformat(),
                 }
             )
