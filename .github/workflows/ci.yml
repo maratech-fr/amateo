@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Lint
@@ -111,6 +114,10 @@ jobs:
   secrets-scan:
     name: Secrets Scan (gitleaks)
     runs-on: ubuntu-latest
+    # docker login ghcr — image miroir gitleaks, P4-92 (contents:read répété : un bloc de job REMPLACE la racine)
+    permissions:
+      contents: read
+      packages: read
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 10
@@ -1304,6 +1311,10 @@ jobs:
   build-docker:
     name: Build Docker Images
     runs-on: ubuntu-latest
+    # docker login ghcr — image miroir trivy, P4-92 (contents:read répété : un bloc de job REMPLACE la racine)
+    permissions:
+      contents: read
+      packages: read
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 45

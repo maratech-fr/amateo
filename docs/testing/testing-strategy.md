@@ -1,16 +1,14 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-09-21 (`documentation-update`, piège ops « image e2e Playwright désalignée du
-lock » — désormais un garde EXÉCUTÉ, pas seulement relaté). Re-confronté au code cette passe (§4
-« How to run locally », paragraphe « Dockerized run ») : `docker-compose.yml:51` sert
-`mcr.microsoft.com/playwright:v1.63.0-noble`, aligné sur `"@playwright/test": "^1.63.0"` de
-`frontend/package-lock.json:34` (corrigé par `b7959d98` après une dérive mesurée le 2026-09-21,
-image restée en `1.62.0-noble`, désormais gardé par
-`backend/tests/Unit/Dependency/PlaywrightImageMatchesLockTest.php`, `d34188e4`) ; la CI ne suit pas
-ce tag — elle installe son propre chromium (`npx playwright install chromium`,
-`ci.yml:1078-1082`, caché par un hash du lock) — donc une dérive locale ne rougit jamais la CI,
-paragraphe recalé pour nommer le garde. Reste du fichier non re-sondé cette passe (voir `git log -p
---follow docs/testing/testing-strategy.md` pour l'historique des passes).
+Last verified @ 2026-09-22 (lot gardes CI/permissions/dépréciations, P4-92). Re-confronté au code
+cette passe (§1) : le paragraphe « Régime de permissions des workflows » décrit le régime RÉEL de
+`.github/workflows/` — bloc `permissions:` racine `contents: read` sur `ci.yml`, surchargé
+`packages: read` sur `secrets-scan` et `build-docker` (pull d'image miroir ghcr), `contents: read`
++ `packages: read` à la racine de `security-weekly.yml`, `packages: write` conservé sur
+`deploy.yml`/`mirror-images.yml` — cliquet `WorkflowPermissionsDeclaredTest` ; et le paragraphe
+« Régime de dépréciations » décrit `phpunit.xml.dist:42` passé de `weak` à `max[direct]=0`. Reste du
+fichier non re-sondé cette passe (voir `git log -p --follow docs/testing/testing-strategy.md` pour
+l'historique des passes).
 
 Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique), [`test-coverage-map.md`](test-coverage-map.md) (qui teste quoi, angles morts) and [`../project-map.md`](../project-map.md).
 
@@ -94,6 +92,10 @@ ce matin) ne doit pas prendre en otage `blocking-tests` — donc l'isolation ten
 et `dependency-audit` sont des **required status checks** de `main`, ils bloquent le merge sans gater
 aucun job. Même raison pour laquelle `SymfonyStackAlignmentTest` tourne dans `unit-tests` et non dans
 le gate bloquant.
+
+**Régime de permissions des workflows (P4-92, 2026-09-22)** : chaque workflow de `.github/workflows/` déclare désormais un bloc `permissions:` racine explicite (`contents: read` sur `ci.yml`, surchargé `packages: read` sur `secrets-scan`/`build-docker` qui pullent une image miroir ghcr ; `contents: read` + `packages: read` à la racine de `security-weekly.yml`), cliquet gardé par `WorkflowPermissionsDeclaredTest` (testsuite `Unit`, **ne gate pas**) qui rougit sur un bloc racine manquant ou un scope `write` hors de la liste fermée `deploy.yml`/`mirror-images.yml` — ce n'est PAS un correctif de faille, `default_workflow_permissions` valant déjà `read` côté dépôt.
+
+**Régime de dépréciations (2026-09-22)** : `phpunit.xml.dist` passe `SYMFONY_DEPRECATIONS_HELPER` de `weak` à `max[direct]=0`, ce qui **redéfinit ce qui peut rougir `unit-tests`** (et tout job PHPUnit) — une dépréciation `direct` (une API Symfony dépréciée appelée par notre code, dont l'avertissement part du vendor et non de nos fichiers) fait désormais échouer la suite, attrapant la dérive vers Symfony 8.4 que le seuil `self` (dépréciations émises depuis nos seuls fichiers) laisserait passer.
 
 All PHP test jobs first **create + migrate the test DB** (`doctrine:database:create --if-not-exists` + `migrations:migrate`, `--env=test`) and run phpunit with `-e APP_ENV=test` on the `docker compose exec` — the containers default to `APP_ENV=dev` (root `.env` env_file) and `phpunit.xml.dist`'s `<server APP_ENV=test>` is not `force`d, so the real env var must be set explicitly.
 
