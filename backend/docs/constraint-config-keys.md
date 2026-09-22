@@ -1,14 +1,14 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-09-22 (rotation `documentation-update`, lot filtres Conflits/`FilterChip` —
-fichier hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code :
-`CalendarEntryStateProcessor::redateEntryPairedConstraints` (`CalendarEntryStateProcessor.php:642`,
-appelée `:458`) toujours présente ✓ ; `ConstraintConfigValidator::SPEC` porte toujours
-`minStartTime`/`maxStartTime`/`maxEndTime` en type `time`, `preferredDays`/`forbiddenDays`/
-`forcedDays`/`allowedDays` en `days`, `minAtVenueCount` en `count`, `type`/`startDate`/`endDate` en
-`closure`/`date` ✓ ; `TeamTagResolver::resolveConstraintTeamIds` et les gardes
-`PeriodGatePayloadParityTest`/`ConstraintKeysAreHonouredByEngineTest` toujours présents ✓. Rien à
-corriger.
+Last verified @ 2026-09-22 (`documentation-update`, lot 5 d'audit « la même contrainte honorée
+pareil », ALIGN-14 + ALIGN-15). Recalé cette passe : la nouvelle section « Quelle INTENSITÉ pour
+quelle clé » — la table est vérifiée contre `ConstraintValidationService` (les six cellules
+refusées et leur maison) et contre le moteur (`solver/constraints/targeting.py` pour le chemin
+dur, `solver/objective/terms.py` pour le filtre `PREFERRED` strict). Re-confronté aussi :
+`ConstraintConfigValidator::SPEC` porte toujours les mêmes clés et types ✓ ;
+`TeamTagResolver::resolveConstraintTeamIds` et les gardes `PeriodGatePayloadParityTest` /
+`ConstraintKeysAreHonouredByEngineTest` toujours présents ✓. Reste du fichier non re-vérifié cette
+passe — historique : `git log -p --follow`. Un stamp REMPLACE, il ne s'empile pas.
 
 > Source de vérité du code : `App\Service\ConstraintConfigValidator`.
 > Cette page explique le POURQUOI ; la liste qui fait foi est dans la classe.
@@ -46,6 +46,39 @@ avec le nom de la clé et les réglages acceptés pour la famille.
 > Refus à l'écriture (422) : tag inconnu du club · `targetTags ∩ excludeTags` non vide · mélange
 > `targetTag`+`targetTags` · résolution VIDE sur la saison courante. Le no-op+warning du builder
 > reste en backstop (une résolution peut se vider APRÈS coup — équipes désactivées).
+
+## Quelle INTENSITÉ pour quelle clé — la matrice muette (ALIGN-14, 2026-09-22)
+
+Une clé de la liste blanche n'est pas honorée à tous les crans. Le moteur range les règles par
+`ruleType` **avant** de les appliquer : le chemin dur ne lit que HARD/LOCK
+(`engine/app/solver/constraints/targeting.py`), le chemin souple filtre `ruleType == "PREFERRED"`
+strictement et ne connaît qu'une poignée de clés (`engine/app/solver/objective/terms.py`). Une clé
+posée au mauvais cran tombe donc entre les deux : **elle s'affiche comme active et ne fait rien**.
+
+| Clé | Cran refusé | Pourquoi elle serait muette |
+|---|---|---|
+| `maxEndTime` | hors HARD/LOCK | le chemin souple ne lit que `minStartTime`/`maxStartTime` |
+| `forcedDays` | hors HARD/LOCK | les règles DAY dures ne sont collectées que pour HARD/LOCK ; le souple ne lit que `preferredDays` |
+| `allowedDays` | hors HARD/LOCK | rangée en fenêtre de temps côté dur (sautée par le filtre de cran), jamais lue côté souple |
+| `forcedVenueId` | hors HARD/LOCK | la carte des gymnases imposés n'est nourrie qu'en HARD/LOCK |
+| `preferredDays` | **en HARD/LOCK** | symétrique : le chemin dur ne lit pas cette clé, et le souple exige PREFERRED. Une préférence ne peut pas être obligatoire par nature (décision fondateur 2026-09-22) |
+| `preferredVenueId` | **en HARD/LOCK** | refusé plus tôt, **à l'écriture** (422) — seule cellule gardée par le write-path |
+
+⚠ **Ces refus ne vivent PAS dans le chemin d'écriture** (sauf `preferredVenueId`) : ils sont rendus
+par `App\Service\ConstraintValidationService`, lue par le **récap pré-génération**
+(`ValidateConstraintsController`). Une écriture directe par API passe donc toujours ; la règle est
+nommée avant la génération, pas au moment de la saisie. C'est le patron historique, pas un oubli —
+le déplacer vers le 422 serait une décision à prendre, pas un correctif.
+
+⚑ **La preuve vit ailleurs** : `ConstraintKeysAreHonouredByEngineTest` (testsuite `Contract`, jouée
+par le required check `engine-semantics`) envoie chaque cellule au VRAI moteur et vérifie qu'elle
+change ce qu'il fait. Une cellule souple s'y prouve par le **choix** — une grille à deux issues de
+coût identique où seul le terme souple les départage — jamais par un score : un score bouge aussi
+quand un bonus est accroché à la mauvaise condition.
+
+⚑ **`BONUS` n'a jamais eu de sémantique propre** : le moteur le normalise en PREFERRED au parse, et
+le wizard ne l'offre plus (ENG-12). Les refus ci-dessus l'attrapent par construction (« hors
+HARD/LOCK »).
 
 ## Trois règles pour maintenir cette liste
 
