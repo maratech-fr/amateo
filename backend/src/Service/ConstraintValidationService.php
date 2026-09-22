@@ -79,6 +79,19 @@ final class ConstraintValidationService
                 if (isset($config['forcedDays']) && !\in_array($constraint->getRuleType()->value, ['HARD', 'LOCK'], true)) {
                     $errors[] = 'La règle « au moins une séance » n\'existe qu\'en règle obligatoire.';
                 }
+                // allowedDays (whitelist) hors HARD/LOCK : le moteur la range dans time_windows mais
+                // le chemin dur la saute (filtre ruleType, targeting.py) et le chemin souple ne lit
+                // jamais allowedDays (objective/terms.py ne lit que preferredDays/forbiddenDays) —
+                // placebo muet. Même patron que forcedDays.
+                if (isset($config['allowedDays']) && !\in_array($constraint->getRuleType()->value, ['HARD', 'LOCK'], true)) {
+                    $errors[] = 'La règle « uniquement certains jours » n\'existe qu\'en règle obligatoire.';
+                }
+                // preferredDays en HARD/LOCK : le chemin dur ne lit pas preferredDays (targeting.py)
+                // et le chemin souple filtre ruleType == PREFERRED strict (objective/terms.py) —
+                // placebo muet. Une préférence ne peut pas être obligatoire par nature.
+                if (isset($config['preferredDays']) && \in_array($constraint->getRuleType()->value, ['HARD', 'LOCK'], true)) {
+                    $errors[] = 'Un jour « à privilégier » ne peut pas être une règle obligatoire — repassez-la en préférence.';
+                }
                 break;
 
             case ConstraintFamily::FACILITY:
@@ -112,6 +125,13 @@ final class ConstraintValidationService
                 // engine branch, so it is not accepted here.
                 if (!isset($config['forcedVenueId']) && !isset($config['forbiddenVenueId']) && !isset($config['preferredVenueId']) && !isset($config['minAtVenueId'])) {
                     $errors[] = 'Une contrainte de gymnase doit désigner un gymnase.';
+                }
+                // forcedVenueId hors HARD/LOCK : le moteur ne l'honore qu'en dur (parse_v2_constraints
+                // exige HARD/LOCK) ; en souple il ne matche aucune branche et tombe sur le repli, avec
+                // un avertissement au libellé FAUX — placebo. (preferredVenueId, lui, EST honoré en
+                // souple → non concerné.)
+                if (isset($config['forcedVenueId']) && !\in_array($constraint->getRuleType()->value, ['HARD', 'LOCK'], true)) {
+                    $errors[] = '« Imposer ce gymnase » n\'existe qu\'en règle OBLIGATOIRE — passez la contrainte en obligatoire, sinon elle serait ignorée.';
                 }
                 // minAtVenueId ("au moins N ici") is honored by the engine ONLY as
                 // a per-TEAM, HARD/LOCK count. A CLUB-scoped or PREFERRED one is

@@ -220,6 +220,123 @@ final class PreSolvePreventionWarningsTest extends TestCase
     }
 
     /**
+     * ALIGN-15 (a) LE CAS DU FINDING — un gymnase imposé par une CONTRAINTE FACILITY (pas par le
+     * champ d'équipe) sans créneau le jour exigé, alors qu'un AUTRE gymnase en a un ce jour-là. Le
+     * bloqueur DOIT tomber : avant le correctif il retombait sur `$allDays` et laissait passer.
+     */
+    public function testForcedVenueFromConstraintWithoutSlotOnForcedDayBlocks(): void
+    {
+        $found = $this->warnings->detectBlockers($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1]), $this->venue('v2', 'Debarros', [2])],
+            teams: [$this->team('t1', 'U11 A')],
+            constraints: [
+                $this->dayRule('TEAM', 't1', ['forcedDays' => [1]]),
+                $this->facilityRule('t1', ['forcedVenueId' => 'v2']),
+            ],
+        ));
+
+        self::assertContains(
+            'U11 A : au moins une séance exigée le(s) lundi, mais aucun créneau sur aucun de ces jours — ouvrez un créneau (étape Gymnases) ou retirez la règle (étape Contraintes).',
+            $found,
+        );
+    }
+
+    /** (b) ANTI-SUR-BLOCAGE — le gymnase imposé A un créneau le jour exigé : aucun bloqueur. */
+    public function testForcedVenueFromConstraintWithSlotOnForcedDayDoesNotBlock(): void
+    {
+        $found = $this->warnings->detectBlockers($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1]), $this->venue('v2', 'Debarros', [2])],
+            teams: [$this->team('t1', 'U11 A')],
+            constraints: [
+                $this->dayRule('TEAM', 't1', ['forcedDays' => [2]]),
+                $this->facilityRule('t1', ['forcedVenueId' => 'v2']),
+            ],
+        ));
+
+        self::assertSame([], $found);
+    }
+
+    /**
+     * (c) PRÉCÉDENCE — le champ d'équipe l'emporte sur la contrainte FACILITY ({@see targeting.py}
+     * `_forced_venue_id`). Le champ pointe v1 (créneau le lundi), la contrainte v2 (pas de créneau
+     * lundi) : si le champ gagne, aucun bloqueur ; si la contrainte gagnait, un bloqueur.
+     */
+    public function testTeamFieldForcedVenueWinsOverConstraint(): void
+    {
+        $found = $this->warnings->detectBlockers($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1]), $this->venue('v2', 'Debarros', [2])],
+            teams: [$this->team('t1', 'U11 A', forcedVenueId: 'v1')],
+            constraints: [
+                $this->dayRule('TEAM', 't1', ['forcedDays' => [1]]),
+                $this->facilityRule('t1', ['forcedVenueId' => 'v2']),
+            ],
+        ));
+
+        self::assertSame([], $found);
+    }
+
+    /**
+     * (d) LAST-WINS — deux contraintes FACILITY se remplacent (last-wins, {@see parsing.py}
+     * `_set_venue_rule`). La première impose v1 (créneau lundi), la seconde v2 (pas de créneau
+     * lundi) : la SECONDE gagne, donc un bloqueur. Un « premier gagne » ne bloquerait pas.
+     */
+    public function testLastWinsBetweenTwoForcedVenueConstraints(): void
+    {
+        $found = $this->warnings->detectBlockers($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1]), $this->venue('v2', 'Debarros', [2])],
+            teams: [$this->team('t1', 'U11 A')],
+            constraints: [
+                $this->facilityRule('t1', ['forcedVenueId' => 'v1']),
+                $this->facilityRule('t1', ['forcedVenueId' => 'v2']),
+                $this->dayRule('TEAM', 't1', ['forcedDays' => [1]]),
+            ],
+        ));
+
+        self::assertContains(
+            'U11 A : au moins une séance exigée le(s) lundi, mais aucun créneau sur aucun de ces jours — ouvrez un créneau (étape Gymnases) ou retirez la règle (étape Contraintes).',
+            $found,
+        );
+    }
+
+    /**
+     * (e) `preferredVenueId` HARD alimente aussi le gate — le moteur le verse dans `forced_venues`
+     * ({@see parsing.py} branche preferredVenueId HARD/LOCK). Un helper qui ne lirait que
+     * `forcedVenueId` manquerait ce cas.
+     */
+    public function testPreferredVenueIdHardFeedsTheGate(): void
+    {
+        $found = $this->warnings->detectBlockers($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1]), $this->venue('v2', 'Debarros', [2])],
+            teams: [$this->team('t1', 'U11 A')],
+            constraints: [
+                $this->dayRule('TEAM', 't1', ['forcedDays' => [1]]),
+                $this->facilityRule('t1', ['preferredVenueId' => 'v2']),
+            ],
+        ));
+
+        self::assertContains(
+            'U11 A : au moins une séance exigée le(s) lundi, mais aucun créneau sur aucun de ces jours — ouvrez un créneau (étape Gymnases) ou retirez la règle (étape Contraintes).',
+            $found,
+        );
+    }
+
+    /**
+     * (f) LE MIROIR — `teamsNoSlotCanHost` (avertissement) voit lui aussi la contrainte FACILITY :
+     * l'équipe est imposée par contrainte dans un gymnase SANS aucun créneau, alors qu'un autre en
+     * a. Avant le correctif il retombait sur `$allDays` (non vide) et se taisait.
+     */
+    public function testMirrorTeamsNoSlotCanHostSeesFacilityConstraint(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1]), $this->venue('v2', 'Debarros', [])],
+            teams: [$this->team('t1', 'U13 F1')],
+            constraints: [$this->facilityRule('t1', ['forcedVenueId' => 'v2'])],
+        ));
+
+        self::assertContains('U13 F1 est imposée dans un gymnase qui n\'a aucun créneau : elle ne pourra pas être placée.', $found);
+    }
+
+    /**
      * ALIGN-09 AVERTISSEMENT de FUSION — deux règles « au moins une séance » sur la même équipe se
      * combinent en une seule exigence (l'union des jours). Risque de malentendu → on avertit.
      */
@@ -327,5 +444,18 @@ final class PreSolvePreventionWarningsTest extends TestCase
     private function dayRule(string $scope, string $targetId, array $config, string $ruleType = 'HARD'): array
     {
         return ['scope' => $scope, 'scopeTargetId' => $targetId, 'family' => 'DAY', 'ruleType' => $ruleType, 'config' => $config];
+    }
+
+    /**
+     * Une contrainte FACILITY (scope TEAM) telle que le builder l'émet — le gymnase imposé se lit
+     * ici, pas seulement sur le champ d'équipe (ALIGN-15).
+     *
+     * @param array<string, mixed> $config
+     *
+     * @return array<string, mixed>
+     */
+    private function facilityRule(string $targetId, array $config, string $ruleType = 'HARD', bool $isActive = true): array
+    {
+        return ['scope' => 'TEAM', 'scopeTargetId' => $targetId, 'family' => 'FACILITY', 'ruleType' => $ruleType, 'config' => $config, 'isActive' => $isActive];
     }
 }

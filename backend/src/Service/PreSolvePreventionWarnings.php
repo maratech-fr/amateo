@@ -146,7 +146,7 @@ final readonly class PreSolvePreventionWarnings
         $messages = [];
         foreach ($teams as $team) {
             $teamId = $this->stringOf($team, 'id');
-            $forcedVenueId = $this->stringOf($team, 'forcedVenueId');
+            $forcedVenueId = $this->forcedVenueOf($team, $constraints);
             $reachable = '' !== $forcedVenueId ? ($slotDaysByVenue[$forcedVenueId] ?? []) : $allDays;
 
             if ([] === $reachable) {
@@ -332,7 +332,7 @@ final readonly class PreSolvePreventionWarnings
                 continue;
             }
 
-            $forcedVenueId = $this->stringOf($team, 'forcedVenueId');
+            $forcedVenueId = $this->forcedVenueOf($team, $constraints);
             $reachable = '' !== $forcedVenueId ? ($slotDaysByVenue[$forcedVenueId] ?? []) : $allDays;
             $forbidden = array_flip($rules['forbidden']);
             $allowed = $rules['allowed'];
@@ -392,6 +392,57 @@ final readonly class PreSolvePreventionWarnings
         sort($messages);
 
         return $messages;
+    }
+
+    /**
+     * ALIGN-15 — le gymnase imposé d'une équipe tel que le MOTEUR le résout, pas seulement le
+     * champ d'équipe. Le champ `forcedVenueId` de l'équipe (écrit par {@see TeamStateProcessor},
+     * jamais par une contrainte FACILITY) GAGNE s'il est non vide ({@see targeting.py}
+     * `_forced_venue_id`) ; sinon la DERNIÈRE contrainte gagnante (last-wins, {@see parsing.py}
+     * `_set_venue_rule`) parmi les FACILITY de scope TEAM ciblant cette équipe, en HARD/LOCK,
+     * portant `forcedVenueId` OU `preferredVenueId` — les deux nourrissent `forced_venues`
+     * ({@see parsing.py} `parse_v2_constraints`, branches preferredVenueId puis forcedVenueId).
+     * Dans une MÊME contrainte, `preferredVenueId` l'emporte (sa branche est testée avant celle de
+     * `forcedVenueId`). Les contraintes inactives sont sautées, comme le moteur ({@see parsing.py}
+     * `isActive`).
+     *
+     * ⚠ À la différence de {@see teamHardDayRules} (qui ne filtre PAS `isActive`, divergence
+     * préexistante hors périmètre de ce lot), ce helper respecte `isActive` comme le moteur.
+     *
+     * @param array<string, mixed>       $team
+     * @param list<array<string, mixed>> $constraints
+     */
+    private function forcedVenueOf(array $team, array $constraints): string
+    {
+        $field = $this->stringOf($team, 'forcedVenueId');
+        if ('' !== $field) {
+            return $field;
+        }
+
+        $teamId = $this->stringOf($team, 'id');
+        $venue = '';
+        foreach ($constraints as $constraint) {
+            if (false === ($constraint['isActive'] ?? true)
+                || ConstraintFamily::FACILITY->value !== ($constraint['family'] ?? null)
+                || ConstraintScope::TEAM->value !== ($constraint['scope'] ?? null)
+                || $this->stringOf($constraint, 'scopeTargetId') !== $teamId
+                || !\in_array($constraint['ruleType'] ?? null, ['HARD', 'LOCK'], true)
+            ) {
+                continue;
+            }
+            $config = \is_array($constraint['config'] ?? null) ? $constraint['config'] : [];
+            // preferredVenueId l'emporte dans une même contrainte (branche testée en premier côté
+            // moteur) ; sinon forcedVenueId. Last-wins entre contraintes = dernière affectation.
+            $candidate = $this->stringOf($config, 'preferredVenueId');
+            if ('' === $candidate) {
+                $candidate = $this->stringOf($config, 'forcedVenueId');
+            }
+            if ('' !== $candidate) {
+                $venue = $candidate;
+            }
+        }
+
+        return $venue;
     }
 
     /**

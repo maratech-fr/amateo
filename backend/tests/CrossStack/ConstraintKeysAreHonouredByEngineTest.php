@@ -58,6 +58,8 @@ final class ConstraintKeysAreHonouredByEngineTest extends TestCase
      * `grid` choisit la forme du problème (voir `payload`) :
      *   `only`   — UN seul créneau, lundi 18:00          → on observe le PLACEMENT
      *   `days`   — un gymnase, lundi et mercredi 18:00   → on observe le jour
+     *   `hours`  — un gymnase, lundi 18:00 ET lundi 20:00 → on observe l'HEURE (format
+     *              rendu par le moteur : `'18:00:00'`/`'20:00:00'`, mesuré — avec secondes)
      *   `venues` — deux gymnases, lundi 18:00            → on observe le gymnase
      *
      * ⚠ Pourquoi le STATUT pour les règles dures : mesuré le 2026-08-07, sur une
@@ -80,6 +82,12 @@ final class ConstraintKeysAreHonouredByEngineTest extends TestCase
         // Borne la FIN : 18:00 + 90 min = 19:30, donc une borne à 19:00 l'exclut —
         // et c'est bien la FIN qui est lue, pas le début (18:00 < 19:00).
         yield 'maxEndTime' => ['maxEndTime', 'only', 'TIME', 'HARD', ['maxEndTime' => '19:00'], 'non placée'];
+        // SOUPLE : une clé TIME prouvée AUSSI à un cran plus souple, pas seulement en dur (ALIGN-14
+        // — une clé honorée en obligatoire pouvait être un placebo muet en PREFERRED). Le chemin
+        // soft (add_preferred_time_bonus) lit min/maxStartTime. Sur la grille `hours` le solveur
+        // choisit spontanément 20:00 (mesuré) ; la préférence « au plus tard 19:00 » doit le faire
+        // pencher vers 18:00 — l'AUTRE heure, celle qu'il ne prend pas seul.
+        yield 'maxStartTime souple' => ['maxStartTime', 'hours', 'TIME', 'PREFERRED', ['maxStartTime' => '19:00'], '18:00:00'];
 
         // ---- DAY : même grille, la règle doit exclure le lundi ---------------
         yield 'forbiddenDays' => ['forbiddenDays', 'only', 'DAY', 'HARD', ['forbiddenDays' => [1]], 'non placée'];
@@ -107,6 +115,11 @@ final class ConstraintKeysAreHonouredByEngineTest extends TestCase
         // ---- COACH_AVAILABILITY : le coach requis ne peut pas lundi ----------
         yield 'unavailableDays' => ['unavailableDays', 'only', 'COACH_AVAILABILITY', 'HARD', ['unavailableDays' => [1]], 'non placée'];
         yield 'availableDays' => ['availableDays', 'only', 'COACH_AVAILABILITY', 'HARD', ['availableDays' => [3]], 'non placée'];
+        // ESCALADE (ALIGN-14) : la disponibilité coach est TOUJOURS appliquée en dur — tout ruleType
+        // non HARD/LOCK est escaladé (parsing.py ~305). C'est cette escalade qu'on prouve, pas un
+        // cran souple : cette famille n'en a pas. Un `unavailableDays` PREFERRED bloque donc le
+        // lundi comme un HARD → équipe non placée (mesuré : nslots=0 ; témoin sans règle = placée).
+        yield 'unavailableDays escaladé' => ['unavailableDays', 'only', 'COACH_AVAILABILITY', 'PREFERRED', ['unavailableDays' => [1]], 'non placée'];
         // ⚠ Les deux fenêtres se prouvent À L'ENVERS : sans elles, « indisponible
         // lundi » bloque la journée entière (failed) ; avec, l'indisponibilité est
         // BORNÉE hors du créneau de 18:00, qui redevient jouable (completed). Un
@@ -227,6 +240,8 @@ final class ConstraintKeysAreHonouredByEngineTest extends TestCase
             // UN seul créneau : toute règle dure qui l'exclut rend `failed`.
             'only' => [$this->venue(self::V1, [[1, '18:00', 1]])],
             'days' => [$this->venue(self::V1, [[1, '18:00', 1], [3, '18:00', 1]])],
+            // Deux heures le MÊME jour, capacité 1 chacune : la préférence horaire départage.
+            'hours' => [$this->venue(self::V1, [[1, '18:00', 1], [1, '20:00', 1]])],
             'venues' => [$this->venue(self::V1, [[1, '18:00', 1]]), $this->venue(self::V2, [[1, '18:00', 1]])],
             // Un SEUL créneau de capacité 2 et deux équipes : sans rabot les deux
             // y tiennent, avec rabot une seule — le nombre placé fait la preuve.
