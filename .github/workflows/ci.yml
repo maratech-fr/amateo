@@ -684,6 +684,16 @@ jobs:
       - name: OpponentVenueSuggestionShareTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/OpponentVenueSuggestionShareTest.php --group phase1'
 
+      # « La génération relancée ne refait pas » (axe generation pipeline) — la garde de
+      # redélivrance du handler. Une redélivrance Messenger (worker tué APRÈS le flush
+      # COMPLETED, AVANT l'ack) ne doit JAMAIS re-solver : re-solver écraserait un planning
+      # livré, retouches manuelles comprises. Deux témoins falsifiables : l'APPEL moteur
+      # (compteur = 0 sur un COMPLETED redélivré) et le DÉGÂT (une retouche manuelle survit) ;
+      # plus FAILED/GENERATING orphelin/PENDING qui re-solvent (compteur = 1), prouvant que
+      # SEUL COMPLETED bloque. Sans ce gate, une redélivrance écrase un planning livré, en silence.
+      - name: RedeliveredGenerationTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/MessageHandler/RedeliveredGenerationTest.php --group phase1'
+
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
