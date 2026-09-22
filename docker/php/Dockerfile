@@ -56,6 +56,12 @@ RUN apt-get update \
     && docker-php-ext-enable redis \
     && echo "memory_limit = 512M" > /usr/local/etc/php/conf.d/zz-memory.ini \
     && echo "max_execution_time = 0" >> /usr/local/etc/php/conf.d/zz-memory.ini \
+    # SEC-22 — échelle des bornes d'upload, épinglée contre une dérive upstream :
+    # appli 2 Mo (XlsxUploadGuard) < PHP upload 4M < POST 8M < nginx 20m
+    # (docker/nginx, partagé avec les autres uploads dont le logo). Le garde
+    # applicatif refuse toujours EN PREMIER, avec un message lisible.
+    && echo "upload_max_filesize = 4M" > /usr/local/etc/php/conf.d/zz-upload.ini \
+    && echo "post_max_size = 8M" >> /usr/local/etc/php/conf.d/zz-upload.ini \
     && rm -rf /var/lib/apt/lists/*
 
 # P4-166 — driver de couverture pcov, DEV/TEST UNIQUEMENT (décision B1).

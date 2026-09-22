@@ -42,7 +42,11 @@ final class FfbbExcelImporter
             throw ImportRejectedException::badRequest('Club does not have an FFBB club code configured.');
         }
 
-        $spreadsheet = IOFactory::load($filePath);
+        // Lecteur épinglé à Xlsx (pas d'auto-détection) : le garde d'upload ne
+        // valide que nom/mime/taille, donc un HTML/CSV/XML déguisé en .xlsx ne doit
+        // jamais atteindre un autre lecteur (parité avec l'import de rencontres,
+        // FbiFixtureImporter — défense en profondeur, security-review PR-4).
+        $spreadsheet = IOFactory::load($filePath, 0, [IOFactory::READER_XLSX]);
         $worksheet = $spreadsheet->getActiveSheet();
         $rows = $worksheet->toArray();
 
