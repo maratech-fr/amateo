@@ -1,9 +1,9 @@
 # Identité visuelle par club (logo + couleur d'accent)
 
-Last verified @ 2026-09-20 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
-cette PR — PR J « recherche de gymnase par code postal », module matchs). Re-vérifié contre le
-code : `Club.logoUrl`/`accentColor`/`accentColorDark`/`accentPalette` toujours dans l'entité
-(`backend/src/Entity/Club.php:138-154`) ✓, `PATCH /api/club/appearance`
+Last verified @ 2026-09-22 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
+cette PR — lot « les gardes de CI qui ne gardent rien », permissions/dépréciations). Re-vérifié
+contre le code : `Club.logoUrl`/`accentColor`/`accentColorDark`/`accentPalette` toujours dans
+l'entité (`backend/src/Entity/Club.php:138-154`) ✓, `PATCH /api/club/appearance`
 (`ClubAppearanceController::__invoke`, `:34`) ✓, `GenerationWaiting.tsx` ne porte toujours aucune
 prop `logoUrl`/`initial` (zéro hit) ✓. L'historique vit dans git :
 `git log -p --follow specs/courantes/identite-visuelle-club.md`)
