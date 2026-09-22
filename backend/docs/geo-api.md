@@ -9,7 +9,8 @@ sujet de la PR). Re-confronté au code cette passe : les deux hosts liste-blanch
 `club_travel_cache`, clé unique `(club_id, profile, origin_lat, origin_lon, dest_lat, dest_lon)`,
 RLS FORCE (`ClubTravelCache.php:28-30`) ✓ · `ComputeTravelTimesHandler::WORKER_BUDGET_SECONDS =
 180` / `PROGRESS_STEP = 5` ✓ · `OpponentVenueLink` seul présent dans `src/Entity/` (aucun
-`OpponentTravel` résiduel) ✓. Historique des passes précédentes vit dans git :
+`OpponentTravel` résiduel) ✓ · version de contrat en vigueur citée au corps (`engine/CONTRACT_VERSION`
+= 2.23, § « Ce que la matrice + le levier alimentent ») ✓. Historique des passes précédentes vit dans git :
 `git log -p --follow backend/docs/geo-api.md`.
 
 > Répertoire des endpoints externes **géo** utilisés par le backend — deuxième famille de sorties
@@ -290,8 +291,8 @@ les 5 règles de bien-être. Décision consignée `etat-des-lieux.md` §2.
 
 - **Le solveur d'ENTRAÎNEMENT la lit** — `POST /generate` seul (jamais `/place-matches`) :
   `ScheduleConstraintBuilder` sérialise la matrice club+saison (TRIÉE) dans le bloc
-  `venueTravelTimes` du payload, contrat **`CONTRACT_VERSION`** (`engine/CONTRACT_VERSION`, bumpé
-  depuis sans rapport avec ce bloc — voir le fichier pour la valeur courante). Sa présence (≥1 ligne) —
+  `venueTravelTimes` du payload, contrat **`CONTRACT_VERSION`** (`engine/CONTRACT_VERSION`, **2.23**
+  à ce jour — bumpé depuis sans rapport avec ce bloc). Sa présence (≥1 ligne) —
   ELLE SEULE — active la règle implicite `travelTime` côté moteur (opt-in au premier geste, jamais
   silencieux : un club sans matrice reçoit un payload byte-identique à avant) ; l'INTENSITÉ émise
   est le réglage stocké **?? PREFERRED** (`resolveTravelRuleIntensity`, § ci-dessus). Détail du
