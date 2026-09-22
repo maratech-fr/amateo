@@ -149,6 +149,17 @@ framework:
             policy: 'sliding_window'
             limit: 10
             interval: '1 hour'
+        # SEC-22 — upload d'un classeur .xlsx (import de rencontres FBI et import
+        # d'équipes), keyé PAR UTILISATEUR (JWT) : chaque appel fait streamer et
+        # inflater le fichier (XlsxUploadGuard) puis parser PhpSpreadsheet — un
+        # travail CPU/mémoire non nul. 30/h couvre largement l'usage réel (on
+        # importe ponctuellement, puis on ajuste), et borne une boucle d'uploads.
+        # Consommé APRÈS la gate d'auth (403/404/409), dans FixtureImportGate::gate
+        # et ImportController. Même patron per-user que feedback.
+        xlsx_import:
+            policy: 'sliding_window'
+            limit: 30
+            interval: '1 hour'
 
 # Dev/e2e: the Playwright suite registers ~8 clubs in one minute from one IP —
 # the strict anti-brute-force sizing (5/15min) is a production concern. 100 is
@@ -197,6 +208,13 @@ when@dev:
                 policy: 'sliding_window'
                 limit: 100
                 interval: '15 minutes'
+            # SEC-22 — la suite e2e rejoue des imports en rafale sur un même club/utilisateur ;
+            # 300/h reste une borne réelle (un dev box exposé ne devient pas une ferme à imports)
+            # tout en laissant passer une suite complète. Prod garde 30/h.
+            xlsx_import:
+                policy: 'sliding_window'
+                limit: 300
+                interval: '1 hour'
 
 # Test: a small API bound so ApiRateLimitTest can trip the 429 in a handful of
 # requests. Keyed per user, so it never leaks across the other functional tests
@@ -220,4 +238,11 @@ when@test:
             email_change_confirm:
                 policy: 'sliding_window'
                 limit: 1000
+                interval: '15 minutes'
+            # SEC-22 — petite borne PAR UTILISATEUR pour que XlsxImportRateLimitTest tripe le
+            # 429 en 6 requêtes. Keyée par user : elle ne fuit pas dans les autres suites (aucune
+            # ne fait 6 imports xlsx sous une même identité — la plus grosse en fait 4).
+            xlsx_import:
+                policy: 'sliding_window'
+                limit: 5
                 interval: '15 minutes'

@@ -257,6 +257,50 @@ final class ImportFixturesApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(400);
     }
 
+    public function testUploadIniSizeErrorReturns413(): void
+    {
+        // SEC-22 — falsification native : un upload marqué UPLOAD_ERR_INI_SIZE (le
+        // fichier a dépassé la limite PHP) doit répondre 413 nommant la borne. Sur
+        // le code d'AVANT le garde, ce chemin tombait dans le 422 générique.
+        [$token] = $this->registerWithTeam();
+
+        $path = tempnam(sys_get_temp_dir(), 'ini') . '.xlsx';
+        file_put_contents($path, '');
+        $this->tempFiles[] = $path;
+
+        $this->client->request('POST', '/api/fixtures/import', [], [
+            'file' => new UploadedFile($path, 'fbi.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', \UPLOAD_ERR_INI_SIZE, true),
+        ], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+
+        self::assertResponseStatusCodeSame(413);
+        self::assertStringContainsString('2 Mo', $this->errorMessage());
+    }
+
+    public function testUploadOverTwoMegabytesIsRefusedOnImport(): void
+    {
+        [$token] = $this->registerWithTeam();
+
+        $this->client->request('POST', '/api/fixtures/import', [], [
+            'file' => new UploadedFile($this->oversizedFile(), 'fbi.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true),
+        ], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+
+        self::assertResponseStatusCodeSame(413);
+        self::assertStringContainsString('2 Mo', $this->errorMessage());
+    }
+
+    public function testUploadOverTwoMegabytesIsRefusedOnAnalyze(): void
+    {
+        // Le MÊME refus sur le dry-run : les deux endpoints partagent le garde.
+        [$token] = $this->registerWithTeam();
+
+        $this->client->request('POST', '/api/fixtures/import/analyze', [], [
+            'file' => new UploadedFile($this->oversizedFile(), 'fbi.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true),
+        ], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+
+        self::assertResponseStatusCodeSame(413);
+        self::assertStringContainsString('2 Mo', $this->errorMessage());
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -386,6 +430,21 @@ final class ImportFixturesApiTest extends WebTestCase
         $this->tempFiles[] = $path;
 
         return $path;
+    }
+
+    /** 2,1 Mo d'octets quelconques nommés .xlsx : la borne octets tombe avant tout parsing. */
+    private function oversizedFile(): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'big') . '.xlsx';
+        file_put_contents($path, str_repeat('x', (int) (2.1 * 1024 * 1024)));
+        $this->tempFiles[] = $path;
+
+        return $path;
+    }
+
+    private function errorMessage(): string
+    {
+        return (string) (json_decode((string) $this->client->getResponse()->getContent(), true)['error'] ?? '');
     }
 
     /** @return array<string, mixed> */

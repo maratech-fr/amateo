@@ -11,6 +11,7 @@ use App\Exception\ImportRejectedException;
 use App\Repository\ClubUserRepository;
 use App\Service\Basketball\FfbbExcelImporter;
 use App\Service\SeasonAccessGuard;
+use App\Service\XlsxUploadGuard;
 use Doctrine\ORM\EntityManagerInterface;
 use InvalidArgumentException;
 use Psr\Log\LoggerInterface;
@@ -22,6 +23,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\AsController;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use Symfony\Component\RateLimiter\RateLimiterFactory;
 
 #[AsController]
 final class ImportController extends AbstractController
@@ -39,6 +41,8 @@ final class ImportController extends AbstractController
         private readonly ClubUserRepository $clubUserRepository,
         private readonly SeasonAccessGuard $seasonAccessGuard,
         private readonly LoggerInterface $logger,
+        private readonly RateLimiterFactory $xlsxImportLimiter,
+        private readonly XlsxUploadGuard $xlsxUploadGuard,
     ) {}
 
     public function __invoke(Request $request, string $id): JsonResponse
@@ -68,16 +72,18 @@ final class ImportController extends AbstractController
             return $this->json(['error' => 'Club not found.'], Response::HTTP_NOT_FOUND);
         }
 
-        /** @var UploadedFile|null $file */
-        $file = $request->files->get('file');
-        if (!$file instanceof UploadedFile) {
-            return $this->json(['error' => 'Aucun fichier n\'a été envoyé.'], Response::HTTP_BAD_REQUEST);
+        // Anti-abus : borne PAR UTILISATEUR (JWT), consommée APRÈS l'auth pour que
+        // 403/404/409 gagnent d'abord (SEC-22, même patron que FixtureImportGate).
+        // $user est ici forcément un User (la garde de membership l'a établi).
+        if (!$this->xlsxImportLimiter->create($user->getId())->consume(1)->isAccepted()) {
+            return $this->json(['error' => 'Trop d\'imports — réessayez plus tard.'], Response::HTTP_TOO_MANY_REQUESTS);
         }
 
-        if ('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' !== $file->getMimeType()
-            && !str_ends_with(strtolower($file->getClientOriginalName()), '.xlsx')
-        ) {
-            return $this->json(['error' => 'Format de fichier invalide — seuls les fichiers .xlsx sont acceptés.'], Response::HTTP_BAD_REQUEST);
+        // Maison unique des bornes d'upload (SEC-22) : mime/extension + octets +
+        // décompressé + lignes, byte-identique à l'import de rencontres.
+        $file = $this->xlsxUploadGuard->requireXlsxFile($request);
+        if (!$file instanceof UploadedFile) {
+            return $file;
         }
 
         $seasonId = $request->request->get('seasonId');

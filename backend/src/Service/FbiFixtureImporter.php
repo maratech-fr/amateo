@@ -386,7 +386,8 @@ final class FbiFixtureImporter
             if (null === $expected) {
                 continue;
             }
-            $imported = \count($this->entityManager->getRepository(Fixture::class)->findBy(['competitionId' => $competition->getId()]));
+            // BCK-31 — COUNT natif (zéro hydratation) : la complétude ne lit qu'un nombre.
+            $imported = $this->entityManager->getRepository(Fixture::class)->count(['competitionId' => $competition->getId()]);
             if ($imported < $expected) {
                 $completeness[] = [
                     'competitionId' => $competition->getId(),

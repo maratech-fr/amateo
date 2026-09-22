@@ -21,6 +21,7 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Throwable;
 
 /**
  * P4-35 — l'identité d'une équipe à l'import Excel est (club, saison, NOM), et
@@ -114,6 +115,34 @@ final class FfbbExcelImporterTest extends KernelTestCase
             }
         }
         self::assertGreaterThan($max, $created->getSortOrder(), 'une catégorie créée se range APRÈS le catalogue (0 = la place de « Vétéran », elle sautait en tête des sélecteurs)');
+    }
+
+    public function testHtmlDisguisedAsXlsxIsRejectedByThePinnedReader(): void
+    {
+        // SEC-22 — le lecteur est épinglé à Xlsx : un HTML portant une table
+        // Nom/Catégorie/Numéro/Organisme (que le lecteur Html LIRAIT) ne doit
+        // JAMAIS être ingéré. Test au niveau SERVICE : via HTTP, le garde zip du
+        // contrôleur refuserait avant le parseur et rendrait l'épinglage intestable.
+        $path = tempnam(sys_get_temp_dir(), 'html-') . '.xlsx';
+        \assert(\is_string($path));
+        file_put_contents($path, <<<'HTML'
+            <html><body><table>
+            <tr><th>Nom</th><th>Catégorie</th><th>Numéro</th><th>Organisme</th></tr>
+            <tr><td>SM1</td><td>Seniors</td><td>1</td><td>ARA0069036 - MON CLUB</td></tr>
+            </table></body></html>
+            HTML);
+        $this->files[] = $path;
+
+        $threw = false;
+        try {
+            $this->importer()->import($path, $this->club->getId(), $this->seasonId);
+        } catch (Throwable) {
+            // Le lecteur Xlsx refuse ce qui n'est pas un classeur : c'est le comportement gardé.
+            $threw = true;
+        }
+
+        self::assertTrue($threw, 'un HTML déguisé en .xlsx doit être refusé par le lecteur épinglé');
+        self::assertCount(0, $this->em->getRepository(Team::class)->findBy(['clubId' => $this->club->getId()]), 'aucune équipe ne doit naître d\'un HTML');
     }
 
     protected function setUp(): void

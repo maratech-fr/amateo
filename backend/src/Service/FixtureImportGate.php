@@ -14,13 +14,14 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\RateLimiter\RateLimiterFactory;
 
 /**
  * The shared gate of the two FBI import endpoints (analyze + import): both are
  * club-wide (the real export is one file for the WHOLE club, cadrage P1-4 F1),
  * so the sequence is the SEC-04 one minus the team lookup:
  *   404 no resolvable club/membership → 403 non-management → 409 archived
- *   season → 409 socle not chosen → 400 missing/invalid file.
+ *   season → 409 socle not chosen → 429 rate-limited → 400 missing/invalid file.
  *
  * Returns the tenant Club on success, or the error JsonResponse to relay —
  * the two controllers must answer byte-identically on every refusal.
@@ -33,6 +34,8 @@ final class FixtureImportGate
         private readonly SeasonAccessGuard $seasonAccessGuard,
         private readonly SocleGuard $socleGuard,
         private readonly Security $security,
+        private readonly RateLimiterFactory $xlsxImportLimiter,
+        private readonly XlsxUploadGuard $xlsxUploadGuard,
     ) {}
 
     public function gate(Request $request): Club|JsonResponse
@@ -67,23 +70,21 @@ final class FixtureImportGate
             return new JsonResponse(['error' => 'Club not found.'], Response::HTTP_NOT_FOUND);
         }
 
+        // Anti-abus : borne PAR UTILISATEUR (JWT), consommée APRÈS l'auth pour que
+        // 403/404/409 gagnent d'abord (un refus d'accès ne doit pas dépenser le
+        // budget d'import). Même patron que FeedbackController.
+        $user = $this->security->getUser();
+        if ($user instanceof User && !$this->xlsxImportLimiter->create($user->getId())->consume(1)->isAccepted()) {
+            return new JsonResponse(['error' => 'Trop d\'imports — réessayez plus tard.'], Response::HTTP_TOO_MANY_REQUESTS);
+        }
+
         return $club;
     }
 
     public function requireXlsxFile(Request $request): UploadedFile|JsonResponse
     {
-        /** @var UploadedFile|null $file */
-        $file = $request->files->get('file');
-        if (!$file instanceof UploadedFile) {
-            return new JsonResponse(['error' => 'Aucun fichier n\'a été envoyé.'], Response::HTTP_BAD_REQUEST);
-        }
-
-        if ('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' !== $file->getMimeType()
-            && !str_ends_with(strtolower($file->getClientOriginalName()), '.xlsx')
-        ) {
-            return new JsonResponse(['error' => 'Format de fichier invalide — seuls les fichiers .xlsx sont acceptés.'], Response::HTTP_BAD_REQUEST);
-        }
-
-        return $file;
+        // Maison unique des bornes d'upload (SEC-22) : mime/extension + octets +
+        // décompressé + lignes. Refus byte-identiques sur les deux endpoints.
+        return $this->xlsxUploadGuard->requireXlsxFile($request);
     }
 }
