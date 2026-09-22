@@ -186,6 +186,76 @@ final class ConstraintValidationServiceTest extends TestCase
         self::assertNotContains('La règle « au moins une séance » n\'existe qu\'en règle obligatoire.', $this->service->validate($constraint));
     }
 
+    /**
+     * ALIGN-14 — allowedDays (whitelist) hors HARD/LOCK est un placebo muet : le chemin dur du
+     * moteur la saute (filtre ruleType, targeting.py) et le chemin souple ne lit jamais allowedDays
+     * (objective/terms.py). PREFERRED et BONUS sont tous deux « hors HARD/LOCK ».
+     */
+    public function testAllowedDaysAtPreferredIsRejected(): void
+    {
+        $constraint = (new Constraint)->setScope(ConstraintScope::CLUB)->setFamily(ConstraintFamily::DAY)->setRuleType(ConstraintRuleType::PREFERRED)->setConfig(['allowedDays' => [1, 2]]);
+        self::assertContains('La règle « uniquement certains jours » n\'existe qu\'en règle obligatoire.', $this->service->validate($constraint));
+    }
+
+    public function testAllowedDaysAtBonusIsRejected(): void
+    {
+        $constraint = (new Constraint)->setScope(ConstraintScope::CLUB)->setFamily(ConstraintFamily::DAY)->setRuleType(ConstraintRuleType::BONUS)->setConfig(['allowedDays' => [1, 2]]);
+        self::assertContains('La règle « uniquement certains jours » n\'existe qu\'en règle obligatoire.', $this->service->validate($constraint));
+    }
+
+    public function testAllowedDaysAtHardIsAccepted(): void
+    {
+        $constraint = (new Constraint)->setScope(ConstraintScope::CLUB)->setFamily(ConstraintFamily::DAY)->setRuleType(ConstraintRuleType::HARD)->setConfig(['allowedDays' => [1, 2]]);
+        self::assertSame([], $this->service->validate($constraint));
+    }
+
+    /**
+     * ALIGN-14 — preferredDays en HARD/LOCK est un placebo muet : le chemin dur ne lit pas
+     * preferredDays (targeting.py) et le chemin souple filtre ruleType == PREFERRED strict
+     * (objective/terms.py). Une préférence ne peut pas être obligatoire par nature.
+     */
+    public function testPreferredDaysAtHardIsRejected(): void
+    {
+        $constraint = (new Constraint)->setScope(ConstraintScope::CLUB)->setFamily(ConstraintFamily::DAY)->setRuleType(ConstraintRuleType::HARD)->setConfig(['preferredDays' => [1]]);
+        self::assertContains('Un jour « à privilégier » ne peut pas être une règle obligatoire — repassez-la en préférence.', $this->service->validate($constraint));
+    }
+
+    public function testPreferredDaysAtLockIsRejected(): void
+    {
+        $constraint = (new Constraint)->setScope(ConstraintScope::CLUB)->setFamily(ConstraintFamily::DAY)->setRuleType(ConstraintRuleType::LOCK)->setConfig(['preferredDays' => [1]]);
+        self::assertContains('Un jour « à privilégier » ne peut pas être une règle obligatoire — repassez-la en préférence.', $this->service->validate($constraint));
+    }
+
+    public function testPreferredDaysAtPreferredIsAccepted(): void
+    {
+        // preferredDays PREFERRED est la seule intensité honorée (objective/terms.py) — le nouveau
+        // refus ne doit PAS tomber ici. (Le contrôle « au moins un jour » reste hors périmètre.)
+        $constraint = (new Constraint)->setScope(ConstraintScope::CLUB)->setFamily(ConstraintFamily::DAY)->setRuleType(ConstraintRuleType::PREFERRED)->setConfig(['preferredDays' => [1]]);
+        self::assertNotContains('Un jour « à privilégier » ne peut pas être une règle obligatoire — repassez-la en préférence.', $this->service->validate($constraint));
+    }
+
+    /**
+     * ALIGN-14 — forcedVenueId hors HARD/LOCK est un placebo : le moteur ne l'honore qu'en dur
+     * (parse_v2_constraints exige HARD/LOCK) ; en souple il tombe sur le repli au libellé faux.
+     */
+    public function testForcedVenueIdAtPreferredIsRejected(): void
+    {
+        $constraint = (new Constraint)->setScope(ConstraintScope::TEAM)->setScopeTargetId('t')->setFamily(ConstraintFamily::FACILITY)->setRuleType(ConstraintRuleType::PREFERRED)->setConfig(['forcedVenueId' => self::VENUE]);
+        self::assertContains('« Imposer ce gymnase » n\'existe qu\'en règle OBLIGATOIRE — passez la contrainte en obligatoire, sinon elle serait ignorée.', $this->service->validate($constraint));
+    }
+
+    public function testForcedVenueIdAtBonusIsRejected(): void
+    {
+        $constraint = (new Constraint)->setScope(ConstraintScope::TEAM)->setScopeTargetId('t')->setFamily(ConstraintFamily::FACILITY)->setRuleType(ConstraintRuleType::BONUS)->setConfig(['forcedVenueId' => self::VENUE]);
+        self::assertContains('« Imposer ce gymnase » n\'existe qu\'en règle OBLIGATOIRE — passez la contrainte en obligatoire, sinon elle serait ignorée.', $this->service->validate($constraint));
+    }
+
+    public function testForcedVenueIdAtHardIsAccepted(): void
+    {
+        $constraint = (new Constraint)->setScope(ConstraintScope::TEAM)->setScopeTargetId('t')->setFamily(ConstraintFamily::FACILITY)->setRuleType(ConstraintRuleType::HARD)->setConfig(['forcedVenueId' => self::VENUE]);
+        self::assertSame([], $this->service->validate($constraint));
+    }
+
     public function testFacilityFamilyRequiresAVenueKey(): void
     {
         $constraint = new Constraint;
