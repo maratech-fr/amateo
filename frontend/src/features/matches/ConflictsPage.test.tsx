@@ -515,3 +515,58 @@ describe("ConflictsPage — lot N : lien d'import + puce de traitement condition
     expect(within(group).queryByRole("button", { name: /Match à déplacer/ })).not.toBeInTheDocument();
   });
 });
+
+// FRT-36 — le FILET des chemins de LECTURE (aucune ligne de production ne bouge). Le test frère
+// n'exerçait ni le chargement ni l'échec de `ConflictsPage.tsx:413-428` (readLoading →
+// FullPageSpinner ; readFailed(conflicts||teams||venues) → LoadErrorHint avec un onRetry qui
+// refetch LES TROIS lectures). Ces tests épinglent l'effet observable : rôle DOM, textes,
+// refetch, jamais une classe.
+describe("ConflictsPage — filet des chemins de lecture (FRT-36)", () => {
+  it("getConflicts rejette → alerte d'échec + « Réessayer », JAMAIS l'EmptyState « Aucun conflit »", async () => {
+    vi.mocked(matchesApi.getConflicts).mockRejectedValueOnce(new Error("réseau"));
+    renderAt();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Le chargement a échoué.");
+    expect(within(alert).getByRole("button", { name: "Réessayer" })).toBeInTheDocument();
+    // Le mensonge exact que `LoadErrorHint` existe pour tuer : un échec déguisé en « aucun conflit ».
+    expect(screen.queryByText("Aucun conflit sur la saison")).not.toBeInTheDocument();
+  });
+
+  it("le retry RÉPARE : échec initial sur getTeams, clic « Réessayer » → refetch des trois, le contenu apparaît", async () => {
+    // getTeams échoue au 1ᵉʳ appel seulement ; le retry refetch les TROIS lectures — dont
+    // getTeams, désormais au vert — et la page revient. (Falsif. : retirer `void teams.refetch()`
+    // de l'onRetry ⇒ getTeams reste en échec, l'alerte ne cède jamais.)
+    vi.mocked(matchesApi.getTeams).mockRejectedValueOnce(new Error("réseau"));
+    const user = userEvent.setup();
+    renderAt();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Le chargement a échoué.");
+    await user.click(within(alert).getByRole("button", { name: "Réessayer" }));
+    expect(await screen.findByRole("button", { name: /Mara · 3/ })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("l'échec d'UNE lecture secondaire (getTeams seul) lève l'alerte", async () => {
+    vi.mocked(matchesApi.getTeams).mockRejectedValueOnce(new Error("réseau"));
+    renderAt();
+    expect(await screen.findByText("Le chargement a échoué.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Mara · 3/ })).not.toBeInTheDocument();
+  });
+
+  it("l'échec d'UNE lecture secondaire (getVenues seul) lève l'alerte", async () => {
+    vi.mocked(matchesApi.getVenues).mockRejectedValueOnce(new Error("réseau"));
+    renderAt();
+    expect(await screen.findByText("Le chargement a échoué.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Mara · 3/ })).not.toBeInTheDocument();
+  });
+
+  it("chargement : FullPageSpinner tant qu'une lecture fondatrice n'a rien rendu", async () => {
+    // getConflicts ne résout JAMAIS → la page reste au premier chargement (spinner pleine page),
+    // jamais un vide ni une alerte fabriqués.
+    vi.mocked(matchesApi.getConflicts).mockReturnValueOnce(new Promise(() => {}) as never);
+    renderAt();
+    expect(await screen.findByLabelText("Chargement")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByText("Aucun conflit sur la saison")).not.toBeInTheDocument();
+  });
+});
