@@ -1,5 +1,5 @@
-Last verified @ 2026-09-21 (**rotation de fraîcheur** `documentation-update`, lot M — zone sans
-rapport, fichier choisi par son stamp le plus ancien du dépôt). Re-confronté au code : `POST
+Last verified @ 2026-09-23 (**rotation de fraîcheur** `documentation-update`, lot 7 PR B — zone
+sans rapport, fichier choisi par son stamp le plus ancien du dépôt). Re-confronté au code : `POST
 /api/feedback` route toujours présente à la MÊME ligne (`FeedbackController.php:68`) ;
 `EventListener/RequestIdListener.php` + `Messenger/RequestIdMiddleware.php` existent toujours
 (backend+bus) ; `monolog-bundle` toujours dans `composer.json:31` ; le digest quotidien (D4) existe

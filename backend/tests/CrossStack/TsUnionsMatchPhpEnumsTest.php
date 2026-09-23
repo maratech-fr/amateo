@@ -64,12 +64,12 @@ final class TsUnionsMatchPhpEnumsTest extends TestCase
         // affiché comme inconnu sur l'écran des équipes.
         // P4-148 — descendu dans shared/lib/teamIdentity.ts avec Gender (identité FFBB d'une équipe).
         'TeamLevel' => '../shared/lib/teamIdentity.ts',
-        'FixtureStatus' => 'matches/api.ts',
-        'TeamLinkType' => 'matches/api.ts',
+        'FixtureStatus' => 'matches/api/fixtures.ts',
+        'TeamLinkType' => 'matches/api/teams.ts',
         // Lot PASSERELLES PR-3 (2026-08-22) — l'intensité d'entraînement d'une passerelle
         // (PREFERRED/MANDATORY) traverse la frontière : PR-1 l'avait laissée sans union TS
         // (« aucune union requise en PR-1 ») car c'est l'écran de saisie (PR-3) qui la crée.
-        'TeamLinkIntensity' => 'matches/api.ts',
+        'TeamLinkIntensity' => 'matches/api/teams.ts',
     ];
     private const string FRONT = __DIR__ . '/../../../frontend/src/features';
 

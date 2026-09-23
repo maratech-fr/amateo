@@ -49,6 +49,9 @@ frontend/
 │   │   ├── SeasonSelector.tsx · SeasonTransitionBanner.tsx · ReadonlySeasonBanner.tsx
 │   │   └── providers.tsx · DevClock.tsx · seasonTransition.ts
 │   ├── features/                # One folder per domain, each `{api,queries,store}.ts`
+│   │                            # (exception matchs : `api` est un BARREL — `api/index.ts` +
+│   │                            #  8 modules par domaine opponents/fixtures/conflicts/venues/
+│   │                            #  teams/competitions/fbi/ffbb, FRT-33 ; chemin public `./api` inchangé)
 │   │   ├── admin/               # Superadmin console (/admin) — own session client
 │   │   ├── auth/                # Login · register · verify-email · password · waiting
 │   │   ├── club/                # /club hub: identity (logo/accent), FFBB info, requests

@@ -14,8 +14,11 @@ toutes les versions citées (§ Outils de test — `vitest`/`@vitest/coverage-v8
 (`src/test/setup.ts:28`) inchangés. **Une dérive corrigée** : l'« écart connu, non tranché » sur
 `location /engine/` dans `docker/frontend/nginx.conf` était **faux depuis le 2026-07-31** (#329) —
 le bloc a été retiré, remplacé par un commentaire explicite ; la note datait d'avant ce fix et
-n'avait jamais été recalée. Historique des passes :
-`git log -p --follow frontend/docs/frontend-strategy.md`.)
+n'avait jamais été recalée. **Ajout du même jour (lot 7 PR B, FRT-33)** : le § « Périmètre de test
+obligatoire » gagne le piège du barrel `matches/api/` — un `vi.mock("./api")` ne suit que le
+spécificateur importé, pas un sous-module importé en direct (`./api/fixtures`), risque nul
+aujourd'hui (zéro import direct), à surveiller le jour où un tel import apparaîtra. Historique des
+passes : `git log -p --follow frontend/docs/frontend-strategy.md`.)
 
 > **Statut : le rebuild est LIVRÉ.** Les formulations « pour le rebuild » ci-dessous sont
 > historiques ; le document reste la référence vivante des **versions de la stack**, des
@@ -73,6 +76,23 @@ cycle RED → GREEN → REFACTOR avant d'être considéré livrable.
 - **Intégration API** : `vi.mock` du module `queries`/`api` de la feature — l'outil de mock EN
   SERVICE dans toute la suite —, vérification des payloads et headers. `msw` est RÉSERVÉ (voir la
   table d'outillage) : il n'est utilisé nulle part aujourd'hui.
+
+⚑ **Piège du barrel `./api` — le mock suit le SPÉCIFICATEUR importé, pas le module « final »**
+(`features/matches/api/`, barrel `index.ts` + 8 modules par domaine, FRT-33, 2026-09-23) : un
+`vi.mock("./api")` (ou `vi.mock("@/features/matches/api")`) n'intercepte QUE l'import littéral
+`from "./api"` — jamais un import direct d'un sous-module (`from "./api/fixtures"`), même si
+`"./api"` n'est qu'un barrel de ré-exports vers ce même fichier. Aujourd'hui le risque est nul :
+tous les appelants (`~163`) et toute la suite passent par le barrel, aucun import direct d'un
+sous-module `api/*.ts` n'existe. Le jour où un import direct apparaîtra, un test qui mocke encore
+`"./api"` ne l'interceptera plus — le sous-module réel s'exécutera (client `ky` compris) sans
+qu'aucune assertion ne le signale forcément. Même famille de piège déjà payée dans l'AUTRE sens :
+`features/planning/api.ts:96-97` documente un symbole (`isSeasonPlanType`) qui, tant qu'il vivait
+DANS le module que plusieurs tests mockent via un `vi.mock("./api")` manuel, devenait `undefined`
+sous ce mock (le factory ne le ré-exportait pas) — corrigé en le déplaçant hors de ce module
+(`./lib/versions`, jamais mocké). Avant d'ajouter un import direct d'un sous-module `matches/api/*`
+quelque part : vérifier tous les `vi.mock("./api")` / `vi.mock("@/features/matches/api")` des
+fichiers de test concernés et mocker aussi le sous-module visé si l'import direct est vraiment
+nécessaire.
 
 ### Outils de test (versions fixées)
 
