@@ -72,6 +72,17 @@ final class OpponentLocationResolverTest extends WebTestCase
 
     private const string AMBIGU = 'AMBIGU - 1';
 
+    // BCK-26 — organisme résolu PAR SON CODE (canal API sans salle → `resolveOrganismeByCode`) :
+    // le hit fédéral peut ne porter AUCUN `nom`, et le libellé de l'observation est celui du
+    // FICHIER de CE club — jamais celui qui doit atterrir dans la table PARTAGÉE.
+    private const string CODE_ONLY_NO_NOM = 'ARA0069NNM';
+
+    private const string CODE_ONLY_WITH_NOM = 'ARA0069WNM';
+
+    private const string LOCAL_CLUB_LABEL = 'ORTHOGRAPHE LOCALE DU CLUB';
+
+    private const string FEDERAL_NOM = 'NOM FEDERAL OFFICIEL';
+
     private EntityManagerInterface $em;
 
     public function testXlsxChannelCanNeverProduceVenuePrecisionOnTheSharedTable(): void
@@ -320,10 +331,139 @@ final class OpponentLocationResolverTest extends WebTestCase
         self::assertNull($match->getOpponentOrganismeCode(), 'une relance à 2 organismes reste ambiguë → aucune clé');
     }
 
+    /**
+     * BCK-26 — la table `opponent_directory` est PARTAGÉE hors-tenant (unicité sur le code
+     * fédéral, {@see OpponentDirectoryShareTest}). Quand l'organisme est résolu PAR SON CODE
+     * (canal API sans salle → `resolveOrganismeByCode`) et que le hit fédéral ne porte PAS de
+     * `nom`, la ligne d'annuaire doit retomber sur le CODE FÉDÉRAL — JAMAIS sur le libellé de
+     * l'adversaire venu du fichier de CE club, qui deviendrait sinon, via ce partage, le nom
+     * que TOUS les autres clubs voient. Falsifié en remettant `?? $name` dans `locateCity` :
+     * l'assertion sur le nom rougit en exhibant le libellé local.
+     */
+    public function testOrganismeResolvedByCodeWithoutNomFallsBackToTheFederalCodeNeverTheClubLabel(): void
+    {
+        $resolver = $this->resolverOn($this->nomlessByCodeMock());
+
+        // Canal « code en main » sans directVenue autoritatif : `resolveOne` tient déjà le code
+        // (organismeHit reste null), donc `locateCity` interroge `resolveOrganismeByCode` — dont
+        // le hit ne porte ici AUCUN `nom`, exactement le cas étroit qui déclenche le repli.
+        $outcome = $resolver->resolveObservations([[
+            'organismeCode' => self::CODE_ONLY_NO_NOM,
+            'name' => self::LOCAL_CLUB_LABEL,
+            'directVenue' => null,
+        ]]);
+
+        self::assertSame(1, $outcome['resolved'], 'l\'adversaire est localisé (à la ville)');
+
+        $entry = $this->repository()->findOneByFfbbOrganismeCode(self::CODE_ONLY_NO_NOM);
+        self::assertNotNull($entry);
+        self::assertSame(OpponentLocationPrecision::CITY, $entry->getPrecision());
+        self::assertSame(
+            self::CODE_ONLY_NO_NOM,
+            $entry->getName(),
+            'sans nom fédéral, la table partagée retombe sur le CODE, jamais rien (colonne NOT NULL)',
+        );
+        self::assertNotSame(
+            self::LOCAL_CLUB_LABEL,
+            $entry->getName(),
+            'le libellé orthographié par CE club ne DOIT JAMAIS devenir le nom vu par tous les autres',
+        );
+    }
+
+    /**
+     * Non-régression du cas nominal : le repli ne mange jamais un nom fédéral présent. Même
+     * chemin (`resolveOrganismeByCode`), mais le hit PORTE cette fois un `nom` — c'est lui qui
+     * est écrit, ni le repli code, ni le libellé du fichier client.
+     */
+    public function testOrganismeResolvedByCodeWritesTheFederalNameWhenTheHitCarriesOne(): void
+    {
+        $resolver = $this->resolverOn($this->namedByCodeMock());
+
+        $outcome = $resolver->resolveObservations([[
+            'organismeCode' => self::CODE_ONLY_WITH_NOM,
+            'name' => self::LOCAL_CLUB_LABEL,
+            'directVenue' => null,
+        ]]);
+
+        self::assertSame(1, $outcome['resolved']);
+
+        $entry = $this->repository()->findOneByFfbbOrganismeCode(self::CODE_ONLY_WITH_NOM);
+        self::assertNotNull($entry);
+        self::assertSame(
+            self::FEDERAL_NOM,
+            $entry->getName(),
+            'le nom FÉDÉRAL porté par le hit gagne — ni le repli code, ni le libellé du fichier client',
+        );
+    }
+
     protected function setUp(): void
     {
         self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    /**
+     * The real resolver on a FFBB mock given as argument (BCK-26 code-channel scenarios).
+     */
+    private function resolverOn(MockHttpClient $mock): OpponentLocationResolver
+    {
+        $apiClient = new FfbbApiClient($mock, 'stub-token');
+
+        $importer = self::getContainer()->get(FbiFixtureImporter::class);
+        self::assertInstanceOf(FbiFixtureImporter::class, $importer);
+        $geocoder = self::getContainer()->get(BanGeocodingClient::class);
+        self::assertInstanceOf(BanGeocodingClient::class, $geocoder);
+
+        return new OpponentLocationResolver(
+            new FfbbRencontreReader($apiClient),
+            $apiClient,
+            $geocoder,
+            $importer,
+            $this->repository(),
+            $this->suggestions(),
+            $this->em,
+            new NullLogger,
+            new MockClock,
+        );
+    }
+
+    /**
+     * The FFBB organismes index answers `resolveOrganismeByCode` with a hit carrying the code
+     * and a locatable commune but NO `nom` — the narrow shape that triggers the name fallback.
+     */
+    private function nomlessByCodeMock(): MockHttpClient
+    {
+        return new MockHttpClient(function (string $method, string $url, array $options): MockResponse {
+            $body = \is_string($options['body'] ?? null) ? $options['body'] : '';
+            if (str_contains($body, 'ffbbserver_organismes')) {
+                return $this->hits([[
+                    'code' => self::CODE_ONLY_NO_NOM,
+                    // aucune clé 'nom' : le hit fédéral ne porte pas de nom
+                    'commune' => ['libelle' => 'Lyon', 'codePostal' => '69001'],
+                    '_geo' => ['lat' => 45.76, 'lng' => 4.86],
+                ]]);
+            }
+
+            return $this->hits([]);
+        });
+    }
+
+    /** Même chemin que {@see nomlessByCodeMock}, mais le hit porte un `nom` fédéral. */
+    private function namedByCodeMock(): MockHttpClient
+    {
+        return new MockHttpClient(function (string $method, string $url, array $options): MockResponse {
+            $body = \is_string($options['body'] ?? null) ? $options['body'] : '';
+            if (str_contains($body, 'ffbbserver_organismes')) {
+                return $this->hits([[
+                    'code' => self::CODE_ONLY_WITH_NOM,
+                    'nom' => self::FEDERAL_NOM,
+                    'commune' => ['libelle' => 'Lyon', 'codePostal' => '69001'],
+                    '_geo' => ['lat' => 45.76, 'lng' => 4.86],
+                ]]);
+            }
+
+            return $this->hits([]);
+        });
     }
 
     /**
