@@ -1,20 +1,14 @@
 # FORWARD Components Spec — Pages & Shared Components (hors wizard)
 
-Last verified @ 2026-09-21 (`documentation-update`, rotation — lot K « appariement UX des
-gymnases adverses », hors sujet de cette PR). Re-confronté au code : `FilterToggle`
-(`frontend/src/shared/components/ui/filter-toggle.tsx`) toujours la maison unique, consommée par
-`ConflictsPage.tsx:384` pour « Seulement avec un match à domicile » ✓ ; **écart TROUVÉ ET
-CORRIGÉ** — la table §3 disait encore `ReviewQueue.tsx` non converti (deux cases à cocher inline) :
-le code le contredit, `ReviewQueue.tsx:181,185,197,200` consomme désormais `FilterToggle` pour ses
-deux interrupteurs (« Afficher les traitées », « Masquer les extérieurs » — conversion UXC-21, lot
-audit 2026-09-18, plus aucune copie locale) — ligne corrigée ; `Listbox` (`listbox.tsx`) :
-`SEARCH_THRESHOLD = 8` (`:73`), consommé par `team-select.tsx` et `venue-select.tsx` ✓. Drift
-**toujours présent, non corrigé** (`StatusPill` vit dans `badge.tsx` — pas un fichier dédié) :
-`StatusPill` et `SourceBadge` (maisons uniques citées dans `.claude/rules/frontend.md` et
-`module-matchs.md`) restent ABSENTES de la table §3. Le bloc « Historique » (sections 2-9) reste
-marqué superseded par son en-tête ; §3 (Shared Components) reste en pratique tenu à jour au fil des
-PR (cf. les lignes P4-127/P4-149/P4-198/P4-207) — signalé pour ce que ça vaut, non déplacé cette
-passe.
+Last verified @ 2026-09-23 (**rotation de fraîcheur**, `documentation-update`, lot 7 PR A « filet
+de tests avant le découpage du module matchs », FRT-36 — zone non touchée par cette PR, qui n'a
+ajouté que des tests, zéro ligne de production). Re-confronté au code : `StatusPill`
+(`frontend/src/shared/components/ui/badge.tsx:30`) et `SourceBadge`
+(`frontend/src/features/matches/SourceBadge.tsx:14`) existent bien tous les deux — drift **toujours
+présent, non corrigé** : les deux restent ABSENTS de la table §3 (aucune ligne `StatusPill` ni
+`SourceBadge` dedans). Le bloc « Historique » (sections 2-9) reste marqué superseded par son
+en-tête ; §3 (Shared Components) reste en pratique tenu à jour au fil des PR (cf. les lignes
+P4-127/P4-149/P4-198/P4-207) — signalé pour ce que ça vaut, non déplacé cette passe.
 
 > 🛑 **Ce document est SUPERSEDED. Il ne décrit pas le frontend livré.**
 >
