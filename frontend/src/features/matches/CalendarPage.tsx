@@ -20,15 +20,15 @@ import { FbiEntryList } from "./FbiEntryList";
 import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
 import { FixtureFormDialog } from "./FixtureFormDialog";
 import { CONFLICT_FAMILIES } from "./lib/conflictLabels";
-import { applyFamilyFilter, countByFamily, DEFAULT_KINDS, familiesPresent, KINDS, normalizeKinds, revealPlan } from "./lib/consultFilter";
+import { DEFAULT_KINDS, familiesPresent, KINDS, normalizeKinds, revealPlan } from "./lib/consultFilter";
 import { isInEnvelope, resolveEnvelope } from "./lib/envelope";
 import { depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
 import { datelessConflicts } from "./lib/loopSteps";
-import { conflictsByFixture, monthLabel } from "./lib/monthView";
-import { listPhases, phaseCompleteness, phaseFixtures, scopeConflictsToPhase } from "./lib/phaseView";
+import { monthLabel } from "./lib/monthView";
 import { placementToastMessage } from "./lib/placementToast";
 import { useMatchFilterChain } from "./lib/useMatchFilterChain";
 import { useMonthView } from "./lib/useMonthView";
+import { usePhaseView } from "./lib/usePhaseView";
 import { usePlacementGuards } from "./lib/usePlacementGuards";
 import { useWeekView } from "./lib/useWeekView";
 import {
@@ -44,7 +44,7 @@ import {
   decodeWeekendParam,
   hasConsultParams,
 } from "./lib/urlState";
-import { isPlacedOnGrid, matchMinutesByCategory, weekendKeyOf, weekLabel } from "./lib/weekendGrid";
+import { isPlacedOnGrid, matchMinutesByCategory, weekendKeyOf } from "./lib/weekendGrid";
 import { MatchesFilterBar } from "./MatchesFilterBar";
 import { ModuleVisitBanner } from "./ModuleVisitBanner";
 import { MonthTable } from "./MonthTable";
@@ -236,29 +236,15 @@ export function CalendarPage() {
   const { months, activeMonth, monthConflicts, monthFamilyCounts, monthCbf, monthGroups, monthIndex } = useMonthView(visibleFixtures, consultMonth, kindConflicts, effectiveFamilies);
 
   // ── Temporalité PHASE ──────────────────────────────────────────────────────────
-  const phases = useMemo(() => listPhases(competitions.data ?? [], teams.data ?? []), [competitions.data, teams.data]);
-  const activePhaseId = useMemo(() => {
-    if (0 === phases.length) {
-      return null;
-    }
-    return phases.some((p) => p.competitionId === consultPhaseId) ? consultPhaseId : phases[0].competitionId;
-  }, [phases, consultPhaseId]);
-  // Complétude + conflits + scoping = toute la compétition (extérieurs INCLUS).
-  const phaseGroupsAll = useMemo(() => (null === activePhaseId ? [] : phaseFixtures(kindFixtures, activePhaseId)), [kindFixtures, activePhaseId]);
-  const phaseAllFixtures = useMemo(() => phaseGroupsAll.flatMap((g) => g.fixtures), [phaseGroupsAll]);
-  // Table d'AFFICHAGE (extérieurs masqués si l'interrupteur est éteint).
-  const phaseGroupsRaw = useMemo(() => (null === activePhaseId ? [] : phaseFixtures(visibleFixtures, activePhaseId)), [visibleFixtures, activePhaseId]);
-  const phaseConflicts = useMemo(
-    () => scopeConflictsToPhase(kindConflicts, activePhaseId, phaseAllFixtures.map((f) => f.id)),
-    [kindConflicts, activePhaseId, phaseAllFixtures],
-  );
-  const phaseFamilyCounts = useMemo(() => countByFamily(phaseConflicts), [phaseConflicts]);
-  const phaseCbf = useMemo(() => conflictsByFixture(applyFamilyFilter(phaseConflicts, effectiveFamilies)), [phaseConflicts, effectiveFamilies]);
-  const phaseGroups = useMemo(() => phaseGroupsRaw.map((g) => ({ key: g.weekend, label: weekLabel(g.weekend), fixtures: g.fixtures })), [phaseGroupsRaw]);
-  const activePhaseCompetition = null === activePhaseId ? undefined : competitionsMap.get(activePhaseId);
-  const completeness = useMemo(
-    () => (undefined === activePhaseCompetition ? null : phaseCompleteness(activePhaseCompetition, phaseAllFixtures, kindConflicts)),
-    [activePhaseCompetition, phaseAllFixtures, kindConflicts],
+  const { phases, activePhaseId, phaseConflicts, phaseFamilyCounts, phaseCbf, phaseGroups, activePhaseCompetition, completeness } = usePhaseView(
+    competitions,
+    teams,
+    consultPhaseId,
+    kindFixtures,
+    visibleFixtures,
+    kindConflicts,
+    effectiveFamilies,
+    competitionsMap,
   );
 
   // Chips familles : présentes sur la temporalité affichée, compteur AVANT le filtre familles.
