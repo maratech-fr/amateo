@@ -166,10 +166,17 @@ export function DiagnosticsPanel({ diagnostics, slots, emptySlots = [], lookups,
     // tiennent dans UNE case (même gymnase/jour/heure) — la sur-capacité d'un gymnase, où ouvrir
     // « le premier » désigne bien le lieu du problème.
     //
-    // ⚠ P4-95 (décision fondateur 2026-08-29) — un conflit de COACH s'étale sur DEUX cases, dans
-    // deux gymnases : on surligne les deux et on n'ouvre RIEN. En ouvrir une désignerait
-    // arbitrairement le créneau à déplacer, alors que l'arbitrage appartient au gestionnaire — et
-    // ouvrir un panneau masquerait justement l'autre moitié du choc.
+    // ⚠ P4-95 (décision fondateur 2026-08-29) — un conflit de personne (COACH ou joueur) s'étale sur
+    // DEUX cases, dans deux gymnases : on surligne les deux et on n'ouvre RIEN. En ouvrir une
+    // désignerait arbitrairement le créneau à déplacer, alors que l'arbitrage appartient au
+    // gestionnaire — et ouvrir un panneau masquerait justement l'autre moitié du choc. Depuis le
+    // lot 8, `diag-locked-person-*` et `diag-conflict-coach-*` portent `startTime` = le début du
+    // CHEVAUCHEMENT ; `concernedSlots` retient alors toute séance de cette personne ce jour dont
+    // l'intervalle CONTIENT cet instant — donc les DEUX cases sur des débuts décalés, d'où deux
+    // cellules distinctes et aucune ouverture. Les familles qui NE portent PAS `startTime`
+    // (`diag-locked-team-day-*` volontairement ; `implicit_rule_not_honored`, autre type) ne passent
+    // pas ici : elles retombent sur le repli plus bas — surlignage large (resserré au jour), jamais
+    // d'ouverture.
     if ("conflict" === diagnostic.type && null !== diagnostic.dayOfWeek && null !== diagnostic.startTime) {
       const concerned = concernedSlots(diagnostic, slots, lookups);
       onHighlight(new Set(concerned.map((c) => c.slotId)));

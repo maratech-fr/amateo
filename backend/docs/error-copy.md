@@ -4,18 +4,18 @@
 > Pas d'inventaire ligne à ligne (il dériverait), pas de décompte (« N messages »).
 > Le code fait foi ; ce doc dit **comment décider**, pas **combien**.
 
-Last verified @ 2026-09-21 (rotation de fraîcheur `documentation-update`, lot L « validé ligue en
-lot » — zone non touchée par le reste de la PR). Re-confronté au code : la règle « le corps du
-serveur ne parle qu'en deçà de 500 » tient toujours (`frontend/src/shared/lib/errorMessage.ts:32`,
-et le repli générique `if (status >= 500)` `:65` au-delà) ✓ (lignes inchangées) ; le rail 422 des
-state processors reste gardé par `backend/tests/Unit/ValidationExceptionCarriesViolationsTest.php`
-✓ ; `ConstraintStateProcessor::assertPreferredVenueIsNotMandatory`
+Last verified @ 2026-09-23 (rotation de fraîcheur `documentation-update`, P4-95 lot 8 « diagnostics
+à coordonnées partielles » — zone non touchée par cette PR, aucun message d'erreur backend
+modifié). Re-confronté au code : la règle « le corps du serveur ne parle qu'en deçà de 500 » tient
+toujours (`frontend/src/shared/lib/errorMessage.ts:32`, et le repli générique `if (status >= 500)`
+`:65` au-delà) ✓ (lignes inchangées) ; le rail 422 des state processors reste gardé par
+`backend/tests/Unit/ValidationExceptionCarriesViolationsTest.php` ✓ ;
+`ConstraintStateProcessor::assertPreferredVenueIsNotMandatory`
 (`backend/src/State/Processor/ConstraintStateProcessor.php:174-186`) et
 `FixtureStateProcessor::assertVenueAccessAllowed`
 (`backend/src/State/Processor/FixtureStateProcessor.php:229-…`) suivent bien l'idiome unique
-`$this->refuse(…)` ✓ ; le nouveau `LeagueValidatedFixturesController` (lot L) n'écrit AUCUN message
-d'erreur métier propre — ses 401/403/409 sont ceux des guards partagés (`ManagementAccessGuard`/
-`SeasonAccessGuard`/`SocleGuard`), déjà couverts ailleurs — rien à cataloguer ici. Rien à corriger.
+`$this->refuse(…)` ✓ ; `LeagueValidatedFixturesController` n'écrit toujours AUCUN message d'erreur
+métier propre — rien à cataloguer ici. Rien à corriger.
 
 ## La règle
 

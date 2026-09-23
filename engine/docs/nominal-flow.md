@@ -1,12 +1,15 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-09-21 (rotation de fraîcheur `documentation-update`, lot O « l'échéance du
-championnat pilote la validation "validé ligue" » — engine non touché par cette PR, zéro appel
-moteur, contrat backend⇄engine inchangé). Re-confronté au code : `engine/CONTRACT_VERSION` =
-`2.23` ✓ (inchangé) ; `DiagnosticSchema.id` toujours requis, sans défaut
-(`app/schemas/output_schema.py:61`) ✓ ; le commentaire mort `FACILITY_CAPACITY` toujours présent,
-non-code — **citation recalée** : `app/main.py:447-450` (le fichier a bougé depuis la dernière
-confrontation, plus `:488-491`) ✓. Reste non re-parcouru ligne à ligne cette passe — historique :
+Last verified @ 2026-09-23 (rotation de fraîcheur `documentation-update`, P4-95 lot 8 « diagnostics
+à coordonnées partielles » — engine non touché par cette PR au sens contrat, zéro appel moteur
+modifié côté payload). Re-confronté au code : `engine/CONTRACT_VERSION` = `2.23` ✓ (inchangé) ;
+`DiagnosticSchema.id` toujours requis, sans défaut — **citation corrigée** :
+`app/schemas/output_schema.py:62` (le `class DiagnosticSchema` est en `:61`, le champ `id` juste
+en dessous — la passe précédente citait la classe) ✓ ; le commentaire mort `FACILITY_CAPACITY`
+toujours présent, une seule occurrence, non-code — **citation corrigée dans le corps du
+document (§ étape 6, item 8)** : `app/main.py:447-450`, qui portait à tort `:487-490` (le fichier
+a bougé depuis, la référence de la précédente rotation n'avait corrigé que le stamp, pas le corps)
+✓. Reste non re-parcouru ligne à ligne cette passe — historique :
 `git log -p --follow engine/docs/nominal-flow.md`.
 
 > Ce document decrit le chemin complet d'une requete de generation d'emploi du temps, du moment ou le backend construit le payload jusqu'a la notification en temps reel du frontend. Destine aux developpeurs travaillant sur l'integration backend/engine.
@@ -198,7 +201,7 @@ Ces contraintes doivent etre satisfaites pour que la solution soit **faisable**.
 5. **FIXED_SLOTS** : chemin residuel. La collection `fixed_slots` n'est alimentee par aucune branche de `parse_v2_constraints` aujourd'hui, donc cette contrainte ne pose rien en production. Les verrous `HARD` ne passent **pas** par la : ils sont pre-places hors du modele (voir etape 1).
 6. **FORBIDDEN_ASSIGNMENTS** : pour chaque contrainte `HARD` de type interdiction, la variable vaut 0. Exemple : si le SM1 a une contrainte "pas le vendredi", toutes les variables `x[t-sm1, *, 5, *]` valent 0.
 7. **COACH_UNAVAILABILITY** : pour chaque contrainte `COACH_AVAILABILITY`, les variables correspondantes valent 0.
-8. **FACILITY_CAPACITY** : **RETIREE le 2026-08-08** — cette famille de contrainte n'existe plus (`ConstraintFamily` ne porte que TIME/DAY/FACILITY/COACH_AVAILABILITY, `backend/src/Enum/ConstraintFamily.php`), aucun chemin UI ne la creait, zero ligne en base. Le rabot `min(capacite du creneau, maxTeams)` qu'elle posait a disparu du moteur (`engine/app/main.py:487-490`, commentaire seul) — la capacite se regle desormais **uniquement par CRENEAU** (`trainingSlots.capacity`, etape 1 ci-dessus). Ce n'etait de toute facon **pas** une fermeture de salle : les fermetures temporaires (`venue_closed`) sont expansees **cote backend** en contraintes `forbiddenVenueId` par equipe avant l'envoi.
+8. **FACILITY_CAPACITY** : **RETIREE le 2026-08-08** — cette famille de contrainte n'existe plus (`ConstraintFamily` ne porte que TIME/DAY/FACILITY/COACH_AVAILABILITY, `backend/src/Enum/ConstraintFamily.php`), aucun chemin UI ne la creait, zero ligne en base. Le rabot `min(capacite du creneau, maxTeams)` qu'elle posait a disparu du moteur (`engine/app/main.py:447-450`, commentaire seul) — la capacite se regle desormais **uniquement par CRENEAU** (`trainingSlots.capacity`, etape 1 ci-dessus). Ce n'etait de toute facon **pas** une fermeture de salle : les fermetures temporaires (`venue_closed`) sont expansees **cote backend** en contraintes `forbiddenVenueId` par equipe avant l'envoi.
 9. **MIN_SESSIONS** : attention, ce n'est **pas** une contrainte dure — c'est une **cible soft** (audit ENG-18). Le nombre de seances souhaite (`sessionsPerWeek`) est encourage via l'objectif, jamais impose (plancher dur 0 en production) : une equipe peut recevoir moins de seances que demande sans rendre l'instance infaisable.
 10. **FORCED_VENUES** : si une equipe a une contrainte `FACILITY` `HARD` l'obligeant a une salle specifique, toutes les variables `x[team, autre_salle, *, *]` valent 0.
 11. **COACH_REST_DAY** : chaque coach a au moins un jour de repos du lundi au vendredi (au plus 4 jours travailles). Ignore pour un coach dont le `maxDaysOverride` est deja inferieur ou egal a 4.

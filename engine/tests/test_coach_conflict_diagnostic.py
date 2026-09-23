@@ -83,3 +83,19 @@ def test_two_different_coaches_never_clash() -> None:
         _coach_conflicts([_slot("sm1", "gymnase-nord", "18:00"), _slot("sm2", "gymnase-sud", "18:00", coach="julie")])
         == []
     )
+
+
+def test_staggered_starts_emit_the_overlap_start_not_the_first_session_start() -> None:
+    """P4-95 lot 8 (décision D) — sur des débuts DÉCALÉS, le champ ``startTime`` doit être le début
+    du CHEVAUCHEMENT (``max``), pas ``a_raw`` (début de la 1ʳᵉ séance).
+
+    Sinon, côté front, l'instant n'appartient qu'à UNE des deux cases → le panneau en ouvrirait
+    une, alors que le choc s'étale sur deux gymnases (on surligne les deux, on n'ouvre rien).
+
+    Falsification : revenir à ``str(a_raw)[:5]`` (18:00) → l'assert ``"19:00"`` rougit."""
+    conflicts = _coach_conflicts([_slot("sm1", "gymnase-nord", "18:00"), _slot("sm2", "gymnase-sud", "19:00")])
+
+    assert len(conflicts) == 1
+    assert conflicts[0]["startTime"] == "19:00"
+    # L'id garde le début de la 1ʳᵉ séance (stable) — il ne suit PAS le champ.
+    assert conflicts[0]["id"].endswith("-18:00")

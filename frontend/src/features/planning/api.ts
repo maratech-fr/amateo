@@ -267,9 +267,12 @@ export interface Diagnostic {
   teamId: string | null;
   coachId: string | null;
   venueId: string | null;
-  /** Jour (ISO 1-7) + heure « HH:MM » de la séance fautive : renseignés SEULEMENT par un
-   *  `conflict` (l'engine les porte, cf. schéma 2.6), null sur les 10 autres types. Avec
-   *  venueId, ils identifient LE créneau à ouvrir sur la grille. */
+  /** Jour (ISO 1-7) + heure « HH:MM » d'un créneau désigné par le diagnostic. Portés par
+   *  plusieurs familles (l'engine les émet) : `conflict` (le créneau fautif — `startTime` = début du
+   *  CHEVAUCHEMENT pour un conflit de personne, cf. lot 8), `unused_slot` et `soft_lock_moved` (le
+   *  créneau visé), `implicit_rule_not_honored` (jour du gymnase concerné, `startTime` absent).
+   *  `null` quand la famille ne les renseigne pas. Avec un discriminant (venueId/coachId/teamId),
+   *  ils resserrent le ciblage sur la grille (`concernedSlots`). */
   dayOfWeek: number | null;
   startTime: string | null;
   /** Clé de la règle implicite « bien-être » assouplie — renseignée SEULEMENT par un

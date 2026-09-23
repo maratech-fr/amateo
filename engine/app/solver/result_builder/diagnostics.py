@@ -184,6 +184,15 @@ def _diagnose_locked_structural_conflicts(
                         "severity": "ERROR",
                         "coachId": person,
                         "dayOfWeek": a_day,
+                        # P4-95 lot 8 — l'INSTANT cliquable = le début du CHEVAUCHEMENT
+                        # (``max(a_start, b_start)``), jamais ``a_start``. La sémantique front est
+                        # « toute séance de cette personne ce jour dont l'intervalle CONTIENT cet
+                        # instant » ; avec des débuts décalés (A 18:00, B 19:00) ``a_start`` = 18:00
+                        # n'appartient PAS à B → une seule case matcherait, que le front ouvrirait,
+                        # en violation de « deux gymnases : on surligne les deux, on n'ouvre rien ».
+                        # ``max`` est contenu dans les deux par définition du chevauchement. L'``id``
+                        # (qui porte ``a_start``) ne change pas : il est stable.
+                        "startTime": _format_time(max(a_start, b_start)),
                         "message": (
                             f"{_label(person, coach_names)} est réservé(e) dans deux gymnases en même temps "
                             f"le {when} — {_label(a_venue, venue_names)} avec {_label(a_team, team_names)} et "
@@ -767,7 +776,12 @@ def _diagnose_conflicts(
                         "severity": "ERROR",
                         "coachId": clash_coach,
                         "dayOfWeek": clash_day,
-                        "startTime": str(a_raw)[:5],
+                        # P4-95 lot 8, décision D — même défaut latent que ``diag-locked-person-*`` :
+                        # sur des débuts décalés, ``a_raw`` (début de la 1ʳᵉ séance) n'appartient qu'à
+                        # UNE des deux cases → le front en ouvrirait une, au lieu de surligner les deux
+                        # gymnases sans rien ouvrir. On émet le début du CHEVAUCHEMENT, contenu dans les
+                        # deux par définition. L'``id`` (qui porte ``a_raw``) ne change pas.
+                        "startTime": _format_time(max(a_start, b_start)),
                         "message": (
                             f"Le coach {_label(clash_coach, coach_names)} est affecté à plusieurs équipes "
                             f"en même temps le {when}, dans des gymnases différents : {_named_list(list(pair), team_names)}."
