@@ -4,26 +4,13 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-09-21 (`documentation-update`, lot O « l'échéance du championnat pilote la
-validation "validé ligue" » — amende le lot L livré plus tôt le même jour + revue `d60b3fc0`).
-Re-confronté au code cette passe : `LeagueValidationBanner` (bandeau de rattrapage sur
-`ImportPage.tsx`, rend TROIS blocs indépendants — championnats échus prêts, domiciles échus à
-traiter nommés, championnats sans échéance — muet seulement si les trois sont vides, PAS un simple
-« muet à 0 »), `LeagueValidationReportEntry` (section du rapport sur `ImportFbiDialog.tsx`, muette si
-`totalValidatable` est nul) — même confirmation chiffrée partagée (`LeagueValidationConfirmDialog`,
-lib pure `lib/leagueValidation.ts`), front sans prédicat propre (`useLeagueValidationOutlook` affiche
-la lecture SERVIE — plus le seul compte : `{matured, toTreat, missingDeadline, totalValidatable}`) ;
-`EntryDeadlinesLink` rendu INCONDITIONNELLEMENT. **`d60b3fc0` vérifié au code (comportement inchangé
-par le lot O)** : `PlacementPanel.tsx` offre « Corriger — repasser en Placé » sur `VALIDATED`
-(réconciliation D9 ET bascule en lot) — le test `PlacementPanel.test.tsx` clique le bouton et vérifie
-`onReopen` appelé, le texte affiché est désormais « … ancré sur les date, heure et salle enregistrées
-côté ligue… » (générique, plus « Attesté par FBI »). Reste confronté à la passe
-précédente (2026-09-20, PR I « les gymnases adverses appartiennent au club ») : `OpponentsPage.tsx`
-au grain GYMNASE (un `<tbody>` par club adverse), filtre segmenté **Sans gymnase · À apparier ·
-Tous**, `AwayTravelChip` lit `fixture.awayTravel`. Reste confronté à la passe d'avant (2026-09-19,
-PR H « onglet Adversaires ») : nav `MatchesLayout` à **6** onglets **Conflits · Calendrier ·
-Importer · Configuration · Adversaires · Semaine type**, `ConfigurationPage.tsx` à **quatre**
-`AccordionSection`. Reste du fichier non re-sondé cette passe — historique :
+Last verified @ 2026-09-23 (**rotation de fraîcheur**, `documentation-update`, lot 7 PR A « filet
+de tests avant le découpage du module matchs », FRT-36 — zone non touchée par cette PR, qui n'a
+ajouté que des tests, zéro ligne de production). Re-confronté au code cette passe : `railStep` reste
+bien **absent** de `features/matches/store.ts` et de tout composant du module (§ tableau des stores
+ci-dessous, « SUPPRIMÉ ») ✓ ; le modèle groupe `{équipes, K}` et son panneau `MutualisationPanel`
+restent bien absents de `frontend/src/` (§2 wizard étape Équipes, « supprimés ») ✓ — aucun écart
+trouvé. Reste du fichier non re-sondé cette passe — historique :
 `git log -p --follow` ce fichier.
 ## 1. Stack Decided
 

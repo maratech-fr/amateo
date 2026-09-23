@@ -1,12 +1,11 @@
 # Wizard — saisie des données (tranche 3, LIVRÉ)
 
-Last verified @ 2026-09-21 (**rotation de fraîcheur** `documentation-update`, lot O « l'échéance du
-championnat pilote la validation "validé ligue" » — zone non touchée par cette PR, module matchs
-seul). Re-confronté au code : `VenueSelect` (`frontend/src/shared/components/ui/venue-select.tsx:1`)
-reste construit sur `Listbox` (`shared/components/ui/listbox.tsx`) ; `WIZARD_STEPS`
-(`frontend/src/features/wizard/lib/steps.ts:9-16`) porte toujours exactement 6 étapes
-(teams/venues/coaches/constraints/recap/generate), inchangé ; `frontend/src/features/wizard/lib/teamColumns.ts`
-existe toujours (foyer unique des largeurs de colonnes). Reste du fichier non re-contrôlé ligne à
+Last verified @ 2026-09-23 (**rotation de fraîcheur** `documentation-update`, lot 7 PR A « filet
+de tests avant le découpage du module matchs », FRT-36 — zone non touchée par cette PR, module
+matchs seul, qui n'a ajouté que des tests, zéro ligne de production). Re-confronté au code :
+`frontend/src/features/wizard/lib/teamColumns.ts` existe toujours (foyer unique des largeurs de
+colonnes) ✓ ; `SharedTrainingBlockPanel.tsx` existe toujours (`features/wizard/steps/`, panneau
+« groupe à mutualiser ») ✓ — aucun écart trouvé. Reste du fichier non re-contrôlé ligne à
 ligne cette passe — un stamp REMPLACE, l'historique vit dans git.
 
 > ⚠️ **Réalité livrée — canonique.** Le draft "4 étapes" plus bas est **historique/superseded** : le wizard a été reconstruit dans `frontend/src/features/wizard` avec un flux plus granulaire, décidé avec le PO. Les sections 1+ ci-dessous ne décrivent plus l'implémentation.
