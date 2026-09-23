@@ -1,14 +1,20 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-22 (`documentation-update`, lot filtres Conflits/`FilterChip`, `c8cf2661`).
-Confronté au code cette passe (§5/§6 amendés) : `hasConflictsParams` (`frontend/src/features/
-matches/lib/urlState.ts:325`) miroir de `hasConsultParams` (`:189`) ✓ ; `conflictsTreatments`/
+Last verified @ 2026-09-24 (`documentation-update`, lot 7 PR C, FRT-33 dernier volet — CalendarPage
+allégé, détail `specs/courantes/etat-des-lieux.md` §3 2026-09-24). Ce fichier ne décrit ni les
+hooks internes ni la taille de `CalendarPage.tsx` (son grain est l'écran, pas son organisation de
+fichiers) donc rien à y recaler pour ce lot ; re-confronté au code les deux citations `matches/lib/`
+qui restent dans ce fichier — non déplacées par le lot 7 : `hasConsultParams`
+(`frontend/src/features/matches/lib/urlState.ts:189`) et son miroir `hasConflictsParams` (`:325`)
+✓ ; `MatchConflictDetector::kickoffInsideLeagueWindow` ⇄ `matches/lib/envelope.ts::
+kickoffInsideLeagueWindow` (`:28`) ✓, toujours en place, aucun des deux n'a rejoint un hook.
+Précédente passe (2026-09-22, lot filtres Conflits/`FilterChip`, `c8cf2661`) : `conflictsTreatments`/
 `conflictsHomeOnly` rejoignent `useMatchesStore` (`store.ts:89-90,137-138,162-163`) — plus en
-`useState` local ✓ ; `FilterChip` (`shared/components/ui/filter-chip.tsx`) consommée par exactement
+`useState` local ; `FilterChip` (`shared/components/ui/filter-chip.tsx`) consommée par exactement
 les 3 chips « Familles » (`CalendarControls.tsx:172`, `ConflictsPage.tsx:500`) et « Traitement »
 (`ConflictsPage.tsx:532`) — les 3 autres puces d'apparence proche (types, période, « Regrouper
-par ») restent des contrôles segmentés non absorbés (contrat sans compteur) ✓. Le reste du fichier
-(Validé ligue, Écran Adversaires, delta de visite, lot N…) n'a pas bougé sous ce lot, non
+par ») restent des contrôles segmentés non absorbés (contrat sans compteur). Le reste du fichier
+(Validé ligue, Écran Adversaires, delta de visite, lot N…) n'a pas bougé sous ces deux lots, non
 re-contrôlé cette passe — historique des passes précédentes : `git log -p --follow
 specs/courantes/module-matchs.md`.
 

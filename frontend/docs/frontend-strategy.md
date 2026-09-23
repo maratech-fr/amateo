@@ -1,6 +1,6 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-09-23 (lot FRT-34/FRT-35 : table d'outillage recalée sur la réalité —
+Last verified @ 2026-09-24 (lot FRT-34/FRT-35 : table d'outillage recalée sur la réalité —
 `vi.mock` est l'outil de mock réseau EN SERVICE, `msw` `^2.15.0` reste DÉCLARÉ mais jamais
 importé, désormais présenté comme RÉSERVÉ aux tests ciblés d'erreurs HTTP réelles (roadmap
 P4-254) ; cliquet act-warnings ajouté à la table. Re-confronté à `frontend/package.json` :
@@ -14,11 +14,18 @@ toutes les versions citées (§ Outils de test — `vitest`/`@vitest/coverage-v8
 (`src/test/setup.ts:28`) inchangés. **Une dérive corrigée** : l'« écart connu, non tranché » sur
 `location /engine/` dans `docker/frontend/nginx.conf` était **faux depuis le 2026-07-31** (#329) —
 le bloc a été retiré, remplacé par un commentaire explicite ; la note datait d'avant ce fix et
-n'avait jamais été recalée. **Ajout du même jour (lot 7 PR B, FRT-33)** : le § « Périmètre de test
+n'avait jamais été recalée. **Ajout du 2026-09-23 (lot 7 PR B, FRT-33)** : le § « Périmètre de test
 obligatoire » gagne le piège du barrel `matches/api/` — un `vi.mock("./api")` ne suit que le
 spécificateur importé, pas un sous-module importé en direct (`./api/fixtures`), risque nul
-aujourd'hui (zéro import direct), à surveiller le jour où un tel import apparaîtra. Historique des
-passes : `git log -p --follow frontend/docs/frontend-strategy.md`.)
+aujourd'hui (zéro import direct), à surveiller le jour où un tel import apparaîtra. **Ajout du
+2026-09-24 (lot 7 PR C, FRT-33 dernier volet)** : nouvelle section « Extraction de hooks par
+sujet — le déplacement VERBATIM » sous le même § — promue au rang de politique transverse après
+sa 3ᵉ occurrence constatée (`wizard/lib/useStepValidation.ts`, `cockpit/lib/useWeekAdapt.ts`,
+puis les six hooks de `matches/lib/` sortis de `CalendarPage.tsx`, 746 → 544 l.), vérifiée contre
+le diff réel (`git diff main --color-moved` ne montre que signatures/imports/destructurations
+neufs, `CalendarPage.test.tsx` intact, un seul test neuf `usePlacementGuards.test.ts` là où le
+filet avait un trou réel). Historique des passes :
+`git log -p --follow frontend/docs/frontend-strategy.md`.)
 
 > **Statut : le rebuild est LIVRÉ.** Les formulations « pour le rebuild » ci-dessous sont
 > historiques ; le document reste la référence vivante des **versions de la stack**, des
@@ -93,6 +100,40 @@ sous ce mock (le factory ne le ré-exportait pas) — corrigé en le déplaçant
 quelque part : vérifier tous les `vi.mock("./api")` / `vi.mock("@/features/matches/api")` des
 fichiers de test concernés et mocker aussi le sous-module visé si l'import direct est vraiment
 nécessaire.
+
+### Extraction de hooks « par sujet » — le déplacement VERBATIM comme condition de sûreté sans test dédié
+
+Motif reconnu à sa 3ᵉ occurrence (`wizard/lib/useStepValidation.ts`, `cockpit/lib/useWeekAdapt.ts`,
+puis les six hooks de `matches/lib/` sortis de `CalendarPage.tsx` au lot 7 PR C, FRT-33,
+2026-09-24 — trace `specs/courantes/etat-des-lieux.md` §3) : quand une page monolithe accumule des
+`useMemo`/`useEffect` sur plusieurs sujets métier indépendants, chaque sujet devient un hook maison
+dans `<feature>/lib/useXxx.ts` — **jamais** un découpage arbitraire par taille, un hook = un sujet
+(la garde du geste, la chaîne de filtre, une vue temporelle…). ⚠ **Résidus délibérément NON
+extraits** : une page garde ce qui n'a pas de sujet propre — un calcul dont le périmètre mentirait
+s'il portait le nom d'une vue (`outOfEnvelope`, indépendant de la semaine), un sujet trop petit
+pour justifier une interface (~15 lignes éclatées), ou des handlers qui ne prennent sens qu'ancrés
+au JSX rendu (ids de cellules, focus, scroll). Chaque résidu **nomme sa raison en commentaire** —
+un résidu sans raison écrite est juste un oubli.
+
+**Ce déplacement ne réclame PAS de nouveau test par hook** (exception assumée à la règle RED du
+§1 : un déplacement pur ne prouve rien de nouveau, il ne doit rien casser) — à une condition
+stricte, le déplacement **VERBATIM** : chaque `useMemo`/`useEffect`/`useRef` migre caractère pour
+caractère, tableau de dépendances **inchangé**, les hooks restent appelés **inconditionnellement,
+dans le même ordre, avant tout early return**, et les entrées du hook extrait sont des **paramètres
+individuels** (jamais un objet d'options qui changerait d'identité à chaque rendu et casserait la
+mémoïsation). La preuve n'est pas un test neuf : c'est le test de la page **resté vert et intact**
+(`CalendarPage.test.tsx`, 909 l., inchangé au diff) et une revue `git diff main --color-moved` qui
+ne doit montrer que des signatures de hooks, des destructurations au call-site, des imports et des
+docblocks — tout diff de CORPS invalide le verbatim et exige de repasser par RED → GREEN. Un test
+neuf ne se justifie que si le déplacement révèle un trou réel du filet existant (précédent :
+`usePlacementGuards.test.ts`, seul hook des six à en gagner un — le test de page ne couvrait qu'un
+état d'échec sur trois du treillis chargement/erreur/prêt).
+
+⚠ Cette discipline porte sur l'extraction de **logique** (hooks), pas sur le découpage de **JSX**
+en composants — les deux se distinguent : sortir un `useMemo` ne change aucune interface visible,
+sortir un bloc de JSX en fait naître une (props). `P4-255` (monolithes hors module matchs) suit sa
+propre règle, distincte, posée par le fondateur : jamais de découpage sans filet de tests D'ABORD
+— celle-là vise le second cas, pas celui-ci.
 
 ### Outils de test (versions fixées)
 
