@@ -20,14 +20,14 @@ import { FbiEntryList } from "./FbiEntryList";
 import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
 import { FixtureFormDialog } from "./FixtureFormDialog";
 import { CONFLICT_FAMILIES } from "./lib/conflictLabels";
-import { applyFamilyFilter, applyKindFilter, countByFamily, DEFAULT_KINDS, familiesPresent, hiddenWeekBreakdown, KINDS, normalizeKinds, revealPlan, scopeConflictsToWeek } from "./lib/consultFilter";
+import { applyFamilyFilter, countByFamily, DEFAULT_KINDS, familiesPresent, hiddenWeekBreakdown, KINDS, normalizeKinds, revealPlan, scopeConflictsToWeek } from "./lib/consultFilter";
 import { isInEnvelope, resolveEnvelope } from "./lib/envelope";
 import { depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
 import { datelessConflicts, deriveWeekCounters } from "./lib/loopSteps";
-import { applyMatchFilter } from "./lib/matchFilter";
 import { conflictsByFixture, groupByDay, listMonths, monthLabel, resolveActiveMonth, scopeConflictsToMonth } from "./lib/monthView";
 import { listPhases, phaseCompleteness, phaseFixtures, scopeConflictsToPhase } from "./lib/phaseView";
 import { placementToastMessage } from "./lib/placementToast";
+import { useMatchFilterChain } from "./lib/useMatchFilterChain";
 import { usePlacementGuards } from "./lib/usePlacementGuards";
 import {
   applyConsultToParams,
@@ -185,44 +185,24 @@ export function CalendarPage() {
   // indisponibilités, enveloppe ligue), suspendues tant qu'elles ne sont pas prêtes.
   const placementGuards = usePlacementGuards(matchWindows, unavailabilities, leagueWindows);
 
-  // ── Chaîne : PR-1 (équipe/coach/gymnase) → type de compétition ─────────────────
-  const filtered = useMemo(
-    () => applyMatchFilter({ mode: filterMode, ids: filterIds, fixtures: allFixtures, conflicts: allConflicts, teamCoaches: teamCoaches.data ?? [], coachPlayers: coachPlayers.data ?? [] }),
-    [filterMode, filterIds, allFixtures, allConflicts, teamCoaches.data, coachPlayers.data],
-  );
-  const coachTeamRoles = filtered.coachTeamRoles ?? undefined;
-  const filterActive = filterIds.length > 0;
-  const filterLabel = useMemo(() => {
-    if (!filterActive) {
-      return "";
-    }
-    return filterIds
-      .map((id) => {
-        if ("coach" === filterMode) {
-          const coach = coachesMap.get(id);
-          return undefined === coach ? null : `${coach.firstName} ${coach.lastName}`.trim();
-        }
-        return ("gymnase" === filterMode ? venuesMap.get(id)?.name : teamsMap.get(id)?.name) ?? null;
-      })
-      .filter((name): name is string => null !== name)
-      .join(", ");
-  }, [filterActive, filterIds, filterMode, coachesMap, venuesMap, teamsMap]);
-
-  const effectiveKinds = consultKinds ?? DEFAULT_KINDS;
-  const effectiveFamilies = consultFamilies ?? CONFLICT_FAMILIES;
-  const kindResult = useMemo(
-    () => applyKindFilter(filtered.fixtures, filtered.conflicts, effectiveKinds, competitionsMap),
-    [filtered.fixtures, filtered.conflicts, effectiveKinds, competitionsMap],
+  // Chaîne de filtrage : PR-1 (équipe/coach/gymnase) → types → « Extérieurs ».
+  const { filtered, coachTeamRoles, filterActive, filterLabel, effectiveKinds, effectiveFamilies, kindResult, visibleFixtures } = useMatchFilterChain(
+    filterMode,
+    filterIds,
+    allFixtures,
+    allConflicts,
+    teamCoaches,
+    coachPlayers,
+    coachesMap,
+    venuesMap,
+    teamsMap,
+    competitionsMap,
+    consultKinds,
+    consultFamilies,
+    consultAway,
   );
   const kindFixtures = kindResult.fixtures;
   const kindConflicts = kindResult.conflicts;
-
-  // Interrupteur « Extérieurs » : filtre d'AFFICHAGE (grille/bande/Mois/Phase). Les
-  // compteurs, conflits, radar, complétude et enveloppe restent sur `kindFixtures`.
-  const visibleFixtures = useMemo(
-    () => (consultAway ? kindFixtures : kindFixtures.filter((f) => "HOME" === f.homeAway)),
-    [consultAway, kindFixtures],
-  );
 
   const isWeek = "semaine" === consultTemporality;
   const isMonth = "mois" === consultTemporality;
