@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { HTTPError } from "ky";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -283,7 +283,7 @@ describe("matches queries — trajet adverse : les 3 écritures rafraîchissent 
     await waitFor(() => expect(result.current.fixtures.isSuccess).toBe(true));
     await waitFor(() => expect(result.current.travel.isSuccess).toBe(true));
 
-    result.current.update.run();
+    act(() => result.current.update.run());
 
     await waitFor(() => expect("idle" === result.current.update.step).toBe(true));
     // UN SEUL appel serveur remplace les deux gestes de la PR 2a.
@@ -311,7 +311,7 @@ describe("matches queries — trajet adverse : les 3 écritures rafraîchissent 
     const invalidate = vi.spyOn(client, "invalidateQueries");
     const { result } = renderHook(() => ({ update: useUpdateOpponents() }), { wrapper: wrapperFor(client) });
 
-    result.current.update.run();
+    act(() => result.current.update.run());
 
     await waitFor(() => expect("idle" === result.current.update.step).toBe(true));
     // 200 mensonger évité : l'étape échouée est nommée en clair, aucun succès.
@@ -336,7 +336,7 @@ describe("matches queries — trajet adverse : les 3 écritures rafraîchissent 
     });
     const { result } = renderHook(() => ({ update: useUpdateOpponents() }), { wrapper: wrapperFor(makeClient()) });
 
-    result.current.update.run();
+    act(() => result.current.update.run());
 
     await waitFor(() => expect("idle" === result.current.update.step).toBe(true));
     expect(toastMock.success).toHaveBeenCalledWith("5 codes retrouvés (1 en échec) · 3 gymnases localisés · calcul de 4 trajets lancé");
@@ -351,7 +351,7 @@ describe("matches queries — trajet adverse : les 3 écritures rafraîchissent 
     const invalidate = vi.spyOn(client, "invalidateQueries");
     const { result } = renderHook(() => ({ update: useUpdateOpponents() }), { wrapper: wrapperFor(client) });
 
-    result.current.update.run();
+    act(() => result.current.update.run());
 
     await waitFor(() => expect("idle" === result.current.update.step).toBe(true));
     expect(toastMock.error).toHaveBeenCalledTimes(1);

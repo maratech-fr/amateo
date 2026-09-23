@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -693,6 +693,7 @@ describe("ConstraintsStep — P4-95 : la ligne ciblée est surlignée et amenée
   });
 
   afterEach(() => {
+    cleanup();
     Element.prototype.scrollIntoView = originalScroll;
     useWizardStore.getState().exitPeriodMode();
   });
@@ -897,6 +898,7 @@ describe("ConstraintsStep — inherited section lives inside the family tabs (pe
     useWizardStore.getState().startPeriodMode("entry-9");
   });
   afterEach(() => {
+    cleanup();
     useWizardStore.getState().exitPeriodMode();
   });
 
@@ -996,6 +998,7 @@ describe("ConstraintsStep — période : choisir, nommer, atteindre", () => {
     useWizardStore.getState().startPeriodMode("entry-15");
   });
   afterEach(() => {
+    cleanup();
     useWizardStore.getState().exitPeriodMode();
   });
 
@@ -1206,6 +1209,7 @@ describe("ConstraintsStep — atterrissage d'un diagnostic sur une règle (P2-28
     };
   });
   afterEach(() => {
+    cleanup();
     Element.prototype.scrollIntoView = originalScroll;
     useWizardStore.getState().exitPeriodMode();
   });
@@ -1257,6 +1261,7 @@ describe("ConstraintsStep — Réserver : fermetures de gymnase (D2)", () => {
     useWizardStore.getState().startPeriodMode("entry-closures");
   });
   afterEach(() => {
+    cleanup();
     useWizardStore.getState().exitPeriodMode();
     entryConflictsState.data = { entryId: "e", venueIds: [], conflicts: [], closures: [], seasonPlanChosen: true };
     entryConflictsState.isError = false;
@@ -1362,6 +1367,7 @@ describe("ConstraintsStep — genèses de la semaine vs faits de la mère (P2-59
     useWizardStore.getState().startPeriodMode("child-week");
   });
   afterEach(() => {
+    cleanup();
     useWizardStore.getState().exitPeriodMode();
     h.byEntry = {};
     calendarEntryById.map = {};
@@ -1441,7 +1447,10 @@ describe("ConstraintsStep — affiner un groupe (targetTags / excludeTags)", () 
     h.tagAssignments = REFINE_ASSIGN;
     h.reservations = [];
   });
-  afterEach(() => useWizardStore.getState().exitPeriodMode());
+  afterEach(() => {
+    cleanup();
+    useWizardStore.getState().exitPeriodMode();
+  });
 
   const refineLink = /Affiner ce groupe/;
 
@@ -1634,7 +1643,10 @@ describe("ConstraintsStep — l'onglet Mutualisation a déménagé (P2-45)", () 
     activeTeamsState.pausedIds = new Set();
     useWizardStore.getState().exitPeriodMode();
   });
-  afterEach(() => useWizardStore.getState().exitPeriodMode());
+  afterEach(() => {
+    cleanup();
+    useWizardStore.getState().exitPeriodMode();
+  });
 
   it("n'offre plus d'onglet « Mutualisation » en saison", () => {
     renderWithProviders(<ConstraintsStep />);
