@@ -136,6 +136,17 @@ Pour **chaque vecteur** ci-dessous : verdict **protégé / partiel / absent / no
 
 Chaque finding **critique ou élevé** doit être contre-vérifié à la main avant publication : lire les fichiers/lignes cités, chercher la preuve inverse. Issues possibles : `confirmé` / `réfuté` / `non vérifié`. Un finding réfuté reste dans le rapport, barré, avec la preuve de réfutation — c'est ce qui rend l'audit digne de confiance. Ne publie JAMAIS un finding critique non vérifié sans le marquer `non vérifié`.
 
+⚠ **Un verdict de PORTÉE (« quasi mort », « dead code », « le hit est toujours trouvé PAR X ») engage à
+vérifier TOUS les chemins d'appel de la fonction, pas seulement celui qui a fait remarquer le défaut —
+même sur un finding en dessous du seuil critique/élevé ci-dessus.** Cas mesuré : l'édition du
+2026-09-18 a jugé le repli `?? $name` de `OpponentLocationResolver::locateCity()` (finding BCK-26)
+« quasi mort (le hit est trouvé PAR le nom) » — vrai du seul canal NOM (`resolveOrganismeByName`,
+où l'appariement se fait justement sur `nom`, donc toujours présent sur ce chemin), faux du canal
+CODE (`resolveOrganismeByCode`, atteint par le canal API rencontres), dont le hit fédéral peut
+n'avoir aucun `nom`. La gravité Faible restait juste, mais l'affirmation de portée était fausse —
+un chemin réellement exerçable, pas résiduel. Correctif et trace : `9b64c461` / lot 9,
+`specs/courantes/etat-des-lieux.md` §3 (2026-09-23).
+
 ## Étape 4 — Notation
 
 Barème fixe (ne pas le modifier — la comparabilité en dépend) :

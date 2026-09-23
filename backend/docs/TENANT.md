@@ -1,9 +1,10 @@
 # ClubScheduler — Tenant Isolation Architecture
 
-Last verified @ 2026-09-22 (rotation `documentation-update`, lot « blocs imbriqués — parité de
-comptage » — fichier hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code : priorité 7
-toujours en place (`TenantFilterListener.php:55`) ✓ · `TenantOwnedInterfaceCompletenessTest.php`
-et `Version20260919120000.php` présents ✓. Rien à corriger.
+Last verified @ 2026-09-23 (rotation `documentation-update`, lot « annuaire adverse — repli code
+fédéral » (BCK-26) — fichier hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code :
+priorité 7 toujours en place (`TenantFilterListener.php:55`) ✓ ·
+`backend/tests/Security/TenantOwnedInterfaceCompletenessTest.php` et
+`backend/migrations/Version20260919120000.php` toujours présents ✓. Rien à corriger.
 
 ## Overview
 

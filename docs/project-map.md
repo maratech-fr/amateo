@@ -1,13 +1,11 @@
 # Project Map — Amateo (engine + backend)
 
-Last verified @ 2026-09-22 (`documentation-update`, lot « la génération relancée ne refait pas le
-travail »). §2.4 « Async / messaging » gagne la garde de redélivrance de `GenerateScheduleHandler`
-(lecture fraîche, après le verrou, seul `COMPLETED` court-circuite) — vérifiée contre
-`backend/src/MessageHandler/GenerateScheduleHandler.php` et son NR bloquant
-`MessageHandler/RedeliveredGenerationTest`. `engine/CONTRACT_VERSION` = **2.23** ✓ (inchangé,
-non touché par ce lot). Reste du fichier (§1 repository layout, backend détaillé, ops, sécurité)
-non reconfronté cette passe — voir les stamps de zone et `git log -p --follow
-docs/project-map.md` pour l'historique.
+Last verified @ 2026-09-23 (rotation `documentation-update`, lot « annuaire adverse — repli code
+fédéral » (BCK-26) — fichier hors sujet de la PR, contrôle de fraîcheur). Re-confronté :
+`backend/tests/MessageHandler/RedeliveredGenerationTest.php` toujours présent ✓ ·
+`engine/CONTRACT_VERSION` = **2.23** ✓ (inchangé). Reste du fichier (§1 repository layout, backend
+détaillé, ops, sécurité) non reconfronté cette passe — voir les stamps de zone et `git log -p
+--follow docs/project-map.md` pour l'historique.
 
 Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend has been **rebuilt (React 19) and is active** — features live under `frontend/src/features/` (`ls` it, no count here — it rots): `auth`, `wizard` (data entry), `planning` (work-loop), `cockpit`, `matches`, `coach-wishes` (doléances), `club`, `profile`, `season-transition`, `legal`, `feedback` (bouton + dialogue de signalement), `release-notes` (journal + modale « quoi de neuf ») et `admin` (console superadmin, garde et session distinctes) ; voir `../frontend/docs/frontend-wizard.md` et `frontend-spec.md`. Generated/verified during onboarding against the real code and the `code-review-graph` knowledge graph.
 
