@@ -76,15 +76,15 @@ final class TsFieldsMatchOpenApiSchemaTest extends TestCase
     public const array PAIRS = [
         // Les trois copies de Team écrites à la main : c'est ici que vit la dérive démontrée.
         'wizard/Team' => ['ts' => 'wizard/api.ts', 'interface' => 'Team', 'schema' => 'Team'],
-        'matches/Team' => ['ts' => 'matches/api.ts', 'interface' => 'Team', 'schema' => 'Team'],
+        'matches/Team' => ['ts' => 'matches/api/teams.ts', 'interface' => 'Team', 'schema' => 'Team'],
         'planning/Team' => ['ts' => 'planning/api.ts', 'interface' => 'Team', 'schema' => 'Team'],
         // Les 4 APIs de FRT-28.
         'wizard/VenueTravelTime' => ['ts' => 'wizard/api.ts', 'interface' => 'VenueTravelTime', 'schema' => 'VenueTravelTime'],
         // P4-154 (P2-51) — le bloc de mutualisation, type miroir écrit à la main côté wizard.
         'wizard/SharedTrainingBlock' => ['ts' => 'wizard/api.ts', 'interface' => 'SharedTrainingBlock', 'schema' => 'SharedTrainingBlock'],
-        'matches/DeadlineOutlook' => ['ts' => 'matches/api.ts', 'interface' => 'DeadlineOutlook', 'response' => ['GET', '/api/matches/deadline-outlook']],
+        'matches/DeadlineOutlook' => ['ts' => 'matches/api/competitions.ts', 'interface' => 'DeadlineOutlook', 'response' => ['GET', '/api/matches/deadline-outlook']],
         'planning/ValidateImpact' => ['ts' => 'planning/api.ts', 'interface' => 'ValidateImpact', 'response' => ['GET', '/api/schedules/{id}/validate-impact']],
-        'matches/FfbbRencontresResult' => ['ts' => 'matches/api.ts', 'interface' => 'FfbbRencontresResult', 'response' => ['GET', '/api/ffbb/rencontres']],
+        'matches/FfbbRencontresResult' => ['ts' => 'matches/api/ffbb.ts', 'interface' => 'FfbbRencontresResult', 'response' => ['GET', '/api/ffbb/rencontres']],
     ];
     private const string SNAPSHOT = __DIR__ . '/../../../specs/courantes/openapi-snapshot.json';
     private const string FRONT = __DIR__ . '/../../../frontend/src/features';
