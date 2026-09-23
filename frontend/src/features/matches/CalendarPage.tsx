@@ -20,15 +20,16 @@ import { FbiEntryList } from "./FbiEntryList";
 import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
 import { FixtureFormDialog } from "./FixtureFormDialog";
 import { CONFLICT_FAMILIES } from "./lib/conflictLabels";
-import { applyFamilyFilter, countByFamily, DEFAULT_KINDS, familiesPresent, hiddenWeekBreakdown, KINDS, normalizeKinds, revealPlan, scopeConflictsToWeek } from "./lib/consultFilter";
+import { applyFamilyFilter, countByFamily, DEFAULT_KINDS, familiesPresent, KINDS, normalizeKinds, revealPlan } from "./lib/consultFilter";
 import { isInEnvelope, resolveEnvelope } from "./lib/envelope";
 import { depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
-import { datelessConflicts, deriveWeekCounters } from "./lib/loopSteps";
+import { datelessConflicts } from "./lib/loopSteps";
 import { conflictsByFixture, groupByDay, listMonths, monthLabel, resolveActiveMonth, scopeConflictsToMonth } from "./lib/monthView";
 import { listPhases, phaseCompleteness, phaseFixtures, scopeConflictsToPhase } from "./lib/phaseView";
 import { placementToastMessage } from "./lib/placementToast";
 import { useMatchFilterChain } from "./lib/useMatchFilterChain";
 import { usePlacementGuards } from "./lib/usePlacementGuards";
+import { useWeekView } from "./lib/useWeekView";
 import {
   applyConsultToParams,
   applyFbiToParams,
@@ -42,7 +43,7 @@ import {
   decodeWeekendParam,
   hasConsultParams,
 } from "./lib/urlState";
-import { isPlacedOnGrid, listWeekends, matchMinutesByCategory, resolveActiveWeekend, weekendKeyOf, weekLabel } from "./lib/weekendGrid";
+import { isPlacedOnGrid, matchMinutesByCategory, weekendKeyOf, weekLabel } from "./lib/weekendGrid";
 import { MatchesFilterBar } from "./MatchesFilterBar";
 import { ModuleVisitBanner } from "./ModuleVisitBanner";
 import { MonthTable } from "./MonthTable";
@@ -224,33 +225,16 @@ export function CalendarPage() {
   }, [allFixtures, resolvedTeamWindows, windows]);
 
   // ── Temporalité SEMAINE ────────────────────────────────────────────────────────
-  const weekends = useMemo(() => listWeekends(visibleFixtures), [visibleFixtures]);
-  const activeWeekend = resolveActiveWeekend(weekends, selectedWeekend, weekendKeyOf(todayISO()));
-  const weekendIndex = null === activeWeekend ? -1 : weekends.indexOf(activeWeekend);
-  // Rencontres AFFICHÉES de la semaine (extérieurs masqués si l'interrupteur est éteint).
-  const weekendFixtures = useMemo(
-    () => (null === activeWeekend ? [] : visibleFixtures.filter((f) => weekendKeyOf(f.matchDate) === activeWeekend)),
-    [visibleFixtures, activeWeekend],
-  );
-  // Rencontres de la semaine, extérieurs INCLUS — sert les COMPTEURS (identiques quel que
-  // soit l'interrupteur, NR) et la modale « À recopier dans FBI ».
-  const weekendFixturesAll = useMemo(
-    () => (null === activeWeekend ? [] : kindFixtures.filter((f) => weekendKeyOf(f.matchDate) === activeWeekend)),
-    [kindFixtures, activeWeekend],
-  );
-  const weekConflicts = useMemo(() => scopeConflictsToWeek(kindConflicts, activeWeekend), [kindConflicts, activeWeekend]);
-  const weekFamilyCounts = useMemo(() => countByFamily(weekConflicts), [weekConflicts]);
-  const radarConflicts = useMemo(() => applyFamilyFilter(weekConflicts, effectiveFamilies), [weekConflicts, effectiveFamilies]);
-  const weekCounts = useMemo(() => deriveWeekCounters(weekendFixturesAll, kindConflicts), [weekendFixturesAll, kindConflicts]);
-  // Indice « masqués » : rencontres de la semaine (filtrées PR-1) retirées par les Types OU
-  // l'interrupteur Extérieurs — dérivé sur la semaine RÉELLEMENT affichée.
-  const weekAllFilteredFixtures = useMemo(
-    () => (null === activeWeekend ? [] : filtered.fixtures.filter((f) => weekendKeyOf(f.matchDate) === activeWeekend)),
-    [filtered.fixtures, activeWeekend],
-  );
-  const weekHiddenBreakdown = useMemo(
-    () => hiddenWeekBreakdown(weekAllFilteredFixtures, effectiveKinds, consultAway, competitionsMap),
-    [weekAllFilteredFixtures, effectiveKinds, consultAway, competitionsMap],
+  const { weekends, activeWeekend, weekendIndex, weekendFixtures, weekConflicts, weekFamilyCounts, radarConflicts, weekCounts, weekHiddenBreakdown } = useWeekView(
+    visibleFixtures,
+    selectedWeekend,
+    kindFixtures,
+    kindConflicts,
+    effectiveFamilies,
+    filtered,
+    effectiveKinds,
+    consultAway,
+    competitionsMap,
   );
 
   // ── Temporalité MOIS ───────────────────────────────────────────────────────────
