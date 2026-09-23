@@ -371,7 +371,15 @@ final class OpponentLocationResolver
 
         return [
             'precision' => OpponentLocationPrecision::CITY,
-            'name' => mb_substr($this->str($hit['nom'] ?? null) ?? $name, 0, 180),
+            // BCK-26 — repli sur le CODE FÉDÉRAL, jamais sur `$name` : `$name` est le libellé
+            // de l'adversaire tel que le fichier FBI de CE club l'orthographie, or
+            // `opponent_directory` est une table PARTAGÉE hors-tenant (unicité sur le code
+            // fédéral) — y écrire un libellé local le ferait voir par TOUS les autres clubs.
+            // La colonne `name` est NOT NULL : « ne rien écrire » n'est pas une option sans
+            // migration, on retombe donc sur le code. Précédent maison : {@see FfbbClubPopulator}
+            // (« ?? $code »). Cas atteint uniquement quand l'organisme est résolu PAR SON CODE
+            // ({@see resolveOrganismeByCode}) et que le hit fédéral ne porte pas de `nom`.
+            'name' => mb_substr($this->str($hit['nom'] ?? null) ?? $code, 0, 180),
             'city' => $city,
             'postalCode' => $postalCode,
             'latitude' => $latitude,
