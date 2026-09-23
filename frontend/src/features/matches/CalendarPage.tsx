@@ -24,10 +24,11 @@ import { applyFamilyFilter, countByFamily, DEFAULT_KINDS, familiesPresent, KINDS
 import { isInEnvelope, resolveEnvelope } from "./lib/envelope";
 import { depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
 import { datelessConflicts } from "./lib/loopSteps";
-import { conflictsByFixture, groupByDay, listMonths, monthLabel, resolveActiveMonth, scopeConflictsToMonth } from "./lib/monthView";
+import { conflictsByFixture, monthLabel } from "./lib/monthView";
 import { listPhases, phaseCompleteness, phaseFixtures, scopeConflictsToPhase } from "./lib/phaseView";
 import { placementToastMessage } from "./lib/placementToast";
 import { useMatchFilterChain } from "./lib/useMatchFilterChain";
+import { useMonthView } from "./lib/useMonthView";
 import { usePlacementGuards } from "./lib/usePlacementGuards";
 import { useWeekView } from "./lib/useWeekView";
 import {
@@ -78,12 +79,6 @@ import { GRID_CONTAINER_ID, PLACE_HEADING_ID, WeekWorkbench } from "./WeekWorkbe
 
 function byId<T extends { id: string }>(rows: T[] | undefined): Map<string, T> {
   return new Map((rows ?? []).map((row) => [row.id, row]));
-}
-
-/** En-tête de groupe d'un JOUR (Mois), ex. « sam. 3 oct. » avec l'initiale capitalisée. */
-function dayHeaderLabel(dateIso: string): string {
-  const label = new Date(`${dateIso}T12:00:00Z`).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
-  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 /**
@@ -238,16 +233,7 @@ export function CalendarPage() {
   );
 
   // ── Temporalité MOIS ───────────────────────────────────────────────────────────
-  const months = useMemo(() => listMonths(visibleFixtures), [visibleFixtures]);
-  const activeMonth = resolveActiveMonth(months, consultMonth, todayISO().slice(0, 7));
-  const monthConflicts = useMemo(() => scopeConflictsToMonth(kindConflicts, activeMonth), [kindConflicts, activeMonth]);
-  const monthFamilyCounts = useMemo(() => countByFamily(monthConflicts), [monthConflicts]);
-  const monthCbf = useMemo(() => conflictsByFixture(applyFamilyFilter(monthConflicts, effectiveFamilies)), [monthConflicts, effectiveFamilies]);
-  const monthGroups = useMemo(
-    () => (null === activeMonth ? [] : groupByDay(visibleFixtures, activeMonth).map((g) => ({ key: g.date, label: dayHeaderLabel(g.date), fixtures: g.fixtures }))),
-    [visibleFixtures, activeMonth],
-  );
-  const monthIndex = null === activeMonth ? -1 : months.indexOf(activeMonth);
+  const { months, activeMonth, monthConflicts, monthFamilyCounts, monthCbf, monthGroups, monthIndex } = useMonthView(visibleFixtures, consultMonth, kindConflicts, effectiveFamilies);
 
   // ── Temporalité PHASE ──────────────────────────────────────────────────────────
   const phases = useMemo(() => listPhases(competitions.data ?? [], teams.data ?? []), [competitions.data, teams.data]);
