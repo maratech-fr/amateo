@@ -1,6 +1,14 @@
 import { readFileSync } from 'node:fs'
 import { defineConfig, mergeConfig } from 'vitest/config'
 import viteConfig from './vite.config'
+import { ActWarningsRatchet, readCeiling } from './tooling/actWarningsRatchet'
+
+// FRT-34 — cliquet des avertissements React « not wrapped in act ». Le plafond vit dans la
+// maison unique `act-warnings-ceiling.json` (versionné, ici dans frontend/, PAS le
+// `coverage-floor.json` racine qui est multi-zones et porte la sémantique inverse). Lu ici,
+// passé au reporter ; le reporter compte au processus principal et rougit si le compte
+// dépasse. `default` reste explicite dans `reporters`, sinon on perd l'affichage.
+const actWarningsCeiling = readCeiling(new URL('./act-warnings-ceiling.json', import.meta.url))
 
 // P4-166 (B3) — le plancher de couverture vit dans la maison UNIQUE `coverage-floor.json`
 // (racine du dépôt), jamais en dur ici. La couverture ne se collecte que sous `--coverage`
@@ -21,6 +29,8 @@ export default mergeConfig(viteConfig, defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     exclude: ['tests/e2e/**', 'node_modules/**'],
+    // FRT-34 — `default` d'abord (affichage), puis le cliquet act (comptage + verdict).
+    reporters: ['default', new ActWarningsRatchet(actWarningsCeiling)],
     // P4-116 (AUD-FRT-25) — le plafond par test passe de 5 s (défaut Vitest) à 15 s.
     //
     // ⚠ **Ce n'est pas un pansement sur des tests lents, et la mesure le dit.** Le cas le plus

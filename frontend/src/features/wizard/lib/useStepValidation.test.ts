@@ -1,4 +1,4 @@
-import { renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Reservation, Team, Venue, VenueTrainingSlot } from "../api";
@@ -187,7 +187,13 @@ describe("computeReservationWarnings (W6)", () => {
 });
 
 describe("useStepValidation — venue slot rule (période : #8 PR-B, la grille est éditable)", () => {
-  afterEach(() => useWizardStore.setState({ mode: "season", calendarEntryId: null, stepId: "teams" }));
+  afterEach(() => {
+    // FRT-34 — démonter le hook (TestComponent) AVANT de remettre le store à zéro, sinon le
+    // set(...) re-rend un composant encore monté hors act. Le cleanup() global de RTL ne passe
+    // qu'APRÈS cet afterEach.
+    cleanup();
+    useWizardStore.setState({ mode: "season", calendarEntryId: null, stepId: "teams" });
+  });
 
   it("flags a gym without a slot in base (season) mode", () => {
     useWizardStore.setState({ mode: "season", calendarEntryId: null, stepId: "venues" });
@@ -204,7 +210,11 @@ describe("useStepValidation — venue slot rule (période : #8 PR-B, la grille e
       const { result } = renderHook(() => useStepValidation("venues"));
       expect(result.current.errors).toEqual([]);
 
-      useWizardStore.setState({ mode: "period", calendarEntryId: "e1", stepId: "venues" });
+      // FRT-34 — écriture de store en MILIEU de test : le premier renderHook est encore monté,
+      // le set(...) le re-rend → act() pour absorber cette mise à jour.
+      act(() => {
+        useWizardStore.setState({ mode: "period", calendarEntryId: "e1", stepId: "venues" });
+      });
       const { result: periodResult } = renderHook(() => useStepValidation("venues"));
       expect(periodResult.current.errors).toEqual([]);
     } finally {

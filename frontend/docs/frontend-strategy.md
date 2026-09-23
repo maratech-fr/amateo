@@ -1,7 +1,9 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-09-22 (rotation `documentation-update`, lot « la génération relancée ne
-refait pas le travail » — fichier hors sujet de la PR). Re-confronté à `frontend/package.json` :
+Last verified @ 2026-09-23 (lot FRT-34/FRT-35 : table d'outillage recalée sur la réalité —
+`vi.mock` est l'outil de mock réseau EN SERVICE, `msw` `^2.15.0` reste DÉCLARÉ mais jamais
+importé, désormais présenté comme RÉSERVÉ aux tests ciblés d'erreurs HTTP réelles (roadmap
+P4-254) ; cliquet act-warnings ajouté à la table. Re-confronté à `frontend/package.json` :
 toutes les versions citées (§ Outils de test — `vitest`/`@vitest/coverage-v8` `^4.1.11`,
 `@testing-library/react` `^16.3.3`, `@testing-library/jest-dom` `^7.0.1`, `jsdom` `^30.0.1`,
 `msw` `^2.15.0`, `@playwright/test` `^1.63.0`, `vitest-axe` `^0.1.0`, `@axe-core/playwright`
@@ -68,7 +70,9 @@ cycle RED → GREEN → REFACTOR avant d'être considéré livrable.
   incident les désigne. `admin/queries.ts` est un abandon délibéré (persona fondateur, décision
   `specs/courantes/etat-des-lieux.md` §2), pas un reliquat.
 - **Routes** : tests de navigation (React Router memory router), guards d'auth, redirections.
-- **Intégration API** : mock `ky` via MSW ou interceptor, vérification des payloads et headers.
+- **Intégration API** : `vi.mock` du module `queries`/`api` de la feature — l'outil de mock EN
+  SERVICE dans toute la suite —, vérification des payloads et headers. `msw` est RÉSERVÉ (voir la
+  table d'outillage) : il n'est utilisé nulle part aujourd'hui.
 
 ### Outils de test (versions fixées)
 
@@ -105,7 +109,9 @@ au-delà de 3 s est colorié dans le rapport : c'est là qu'on regarde si le sc�
 | @testing-library/user-event | 14.x | Simulation d'interaction |
 | @testing-library/jest-dom | 7.x | Matchers DOM |
 | jsdom | 30.x | Environnement DOM |
-| msw | 2.x | Mock réseau HTTP |
+| `vi.mock` (Vitest) | — | **Mock réseau EN SERVICE** : remplace NOTRE module (`queries`/`api` de la feature). C'est l'outil utilisé partout. |
+| msw | 2.x | **DÉCLARÉ mais jamais importé — RÉSERVÉ.** Destiné aux tests ciblés d'erreurs HTTP RÉELLES (413, 422 avec `violations[]`, 429, 500 + `X-Request-Id`), là où `vi.mock` est structurellement aveugle : en remplaçant notre module, il court-circuite le client HTTP, la lecture du statut et la traduction d'une erreur en message affiché — jamais exercés. `msw` intercepte le réseau et exerce ce chemin. **Aucun test msw écrit à ce jour** (roadmap P4-254). |
+| Cliquet act-warnings | — | `tooling/actWarningsRatchet.ts` (reporter Vitest) : compte les avertissements React « not wrapped in act » au processus principal, rougit le run dès qu'ils dépassent le plafond versionné `act-warnings-ceiling.json` (FRT-34, même patron que le plancher de couverture ; fil de détente si le compte tombe à 0 alors que le plafond > 0 = capture cassée). |
 | @playwright/test | 1.x | E2E (`frontend/tests/e2e/`) |
 | **vitest-axe** · **@axe-core/playwright** | 0.x · 4.x | **Assertions a11y** — suite unitaire (`src/test/a11y.test.tsx`) + spec de contraste e2e (`tests/e2e/a11y-contrast.spec.ts`) |
 | storybook · @storybook/react-vite | 10.x | Atelier de composants (`npm run storybook`) |

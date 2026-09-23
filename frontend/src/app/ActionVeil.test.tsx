@@ -1,5 +1,5 @@
 import { onlineManager, QueryClient, QueryClientProvider, useMutation, useQuery } from "@tanstack/react-query";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRef, useImperativeHandle, useMemo, type ReactNode, type Ref } from "react";
 
@@ -83,6 +83,10 @@ beforeEach(() => {
   onlineManager.setOnline(true); // onlineManager est un singleton global : on le remet en ligne
 });
 afterEach(() => {
+  // FRT-34 — démonter AVANT de vider les minuteries : `runOnlyPendingTimers` déclenche sinon
+  // les setTimeout du voile (250 ms / 2,6 s / 10 s) sur un composant encore monté, donc un
+  // `set(...)` hors act. Le cleanup() global de RTL ne passe qu'APRÈS cet afterEach.
+  cleanup();
   vi.runOnlyPendingTimers();
   vi.useRealTimers();
   useToastStore.setState({ toasts: [] });
