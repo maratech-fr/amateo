@@ -1,5 +1,5 @@
 import { ArrowRight, CalendarX2, Info, Plus, Upload, Wand2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
 import { useCoachPlayers, useTeamCoaches } from "@/features/planning/queries";
@@ -20,30 +20,19 @@ import { FbiEntryList } from "./FbiEntryList";
 import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
 import { FixtureFormDialog } from "./FixtureFormDialog";
 import { CONFLICT_FAMILIES } from "./lib/conflictLabels";
-import { DEFAULT_KINDS, familiesPresent, KINDS, normalizeKinds, revealPlan } from "./lib/consultFilter";
+import { familiesPresent, KINDS, normalizeKinds } from "./lib/consultFilter";
 import { isInEnvelope, resolveEnvelope } from "./lib/envelope";
 import { depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
 import { datelessConflicts } from "./lib/loopSteps";
 import { monthLabel } from "./lib/monthView";
 import { placementToastMessage } from "./lib/placementToast";
+import { useCalendarUrlSync } from "./lib/useCalendarUrlSync";
 import { useMatchFilterChain } from "./lib/useMatchFilterChain";
 import { useMonthView } from "./lib/useMonthView";
 import { usePhaseView } from "./lib/usePhaseView";
 import { usePlacementGuards } from "./lib/usePlacementGuards";
 import { useWeekView } from "./lib/useWeekView";
-import {
-  applyConsultToParams,
-  applyFbiToParams,
-  applyFilterToParams,
-  applyMatchToParams,
-  applyWeekendToParams,
-  decodeConsultParams,
-  decodeFbiParam,
-  decodeFilterParams,
-  decodeMatchParam,
-  decodeWeekendParam,
-  hasConsultParams,
-} from "./lib/urlState";
+import { applyFbiToParams, decodeFbiParam } from "./lib/urlState";
 import { isPlacedOnGrid, matchMinutesByCategory, weekendKeyOf } from "./lib/weekendGrid";
 import { MatchesFilterBar } from "./MatchesFilterBar";
 import { ModuleVisitBanner } from "./ModuleVisitBanner";
@@ -144,12 +133,8 @@ export function CalendarPage() {
     consultMonth,
     consultPhaseId,
     setConsultKinds,
-    setConsultFamilies,
-    setConsultTypicalWeek,
     setConsultAway,
     setConsultTemporality,
-    setConsultMonth,
-    setConsultPhaseId,
   } = useMatchesStore();
 
   // A5 — région live persistante : remplie après la levée des masques (« N matchs affichés »),
@@ -259,16 +244,9 @@ export function CalendarPage() {
   const depositReminder =
     null === latestDeposit ? "Aucun dépôt FBI cette saison" : `Dernier dépôt FBI ${relativeDepositLabel(depositDaysAgo(latestDeposit.depositedAt, todayISO()))}`;
 
-  // ── Deep-link fusionné : filtre PR-1 + filtres Consulter + semaine ──────────────
-  // UN seul effet, deux temps : (1) au premier passage utile (données prêtes), SEED depuis
-  // l'URL — filtre PR-1 sur store vierge, filtres Consulter SEULEMENT si l'URL porte une clé
-  // Consulter (sinon le store, mémoire de session non persistée, est GARDÉ), semaine ; (2) à
-  // CHAQUE passage, re-SYNCHRONISE l'URL depuis le store. Fusionnés (au lieu d'un effet
-  // d'écriture séparé gardé par un ref) pour que la re-synchro parte DÈS la passe de seed même
-  // quand aucune valeur n'a changé — cas « URL nue, store gardé » : un ref ne redéclencherait
-  // aucun effet et l'adresse ne se re-synchroniserait qu'à la prochaine interaction.
+  // La page GARDE son propre `useSearchParams` pour les gestes `fbi=` (ouvrir/fermer la liste
+  // « FBI — à faire ») ; le seed + la re-synchro de l'URL vivent dans `useCalendarUrlSync`.
   const [searchParams, setSearchParams] = useSearchParams();
-  const seededRef = useRef(false);
   // Le geste « aller à cette rencontre » après rendu : focalise la cellule de la grille
   // week-end (`[data-fixture-id]`, la sélection porte déjà l'anneau `ring-accent`), sinon
   // le `<h2>` « À placer » (repli d'un extérieur sans cellule propre). Partagé par le clic
@@ -287,104 +265,9 @@ export function CalendarPage() {
       document.getElementById(PLACE_HEADING_ID)?.focus();
     });
   }, []);
-  useEffect(() => {
-    // `match=` (deep-link vers une rencontre) exige les fixtures chargées : on attend les
-    // quatre lectures pour que le seed ne rate jamais la mise en évidence.
-    if (undefined === teams.data || undefined === coaches.data || undefined === venues.data || undefined === fixtures.data) {
-      return;
-    }
-    // `touchedStore` : le seed a-t-il écrit dans le store CETTE passe ? Si oui, on NE
-    // synchronise PAS l'URL maintenant (les valeurs lues plus bas sont encore celles d'AVANT
-    // le seed → on clobberait le deep-link) ; l'écriture du store redéclenche l'effet et la
-    // passe suivante synchronise avec les valeurs seedées. Si non (URL nue, store gardé), les
-    // valeurs lues SONT à jour → on synchronise dès cette passe.
-    let touchedStore = false;
-    if (!seededRef.current) {
-      seededRef.current = true;
-      // Filtre PR-1 : seedé seulement sur un store VIERGE (une navigation depuis Conflits/
-      // la file l'a déjà peuplé ; re-toggler l'effacerait).
-      if (0 === filterIds.length && "equipe" === filterMode) {
-        const { mode, ids } = decodeFilterParams(searchParams);
-        const known = new Set(("coach" === mode ? coaches.data : "gymnase" === mode ? venues.data : teams.data).map((r) => r.id));
-        const kept = ids.filter((id) => known.has(id));
-        if ("equipe" !== mode || kept.length > 0) {
-          setFilterMode(mode);
-          kept.forEach(toggleFilterId);
-          touchedStore = true;
-        }
-      }
-      // Mémoire de session : l'URL FAIT FOI dès qu'elle porte au moins une clé Consulter
-      // (seed complet, clé absente = son défaut — un lien partagé dit vrai) ; sinon (URL nue,
-      // ex. retour par l'onglet « Calendrier » vers `/matchs`) on NE TOUCHE PAS l'état
-      // Consulter du store — la re-synchro ci-dessous repoussera le store dans l'adresse.
-      if (hasConsultParams(searchParams)) {
-        const consult = decodeConsultParams(searchParams);
-        setConsultKinds(consult.kinds);
-        setConsultFamilies(consult.families);
-        setConsultTypicalWeek(consult.typicalWeek);
-        setConsultAway(consult.away);
-        setConsultTemporality(consult.temps);
-        setConsultMonth(consult.month);
-        setConsultPhaseId(consult.phaseId);
-        touchedStore = true;
-      }
-      // Semaine : ne seede QUE si l'URL la porte ET que le store est à l'auto (jamais
-      // clobber une semaine posée par une navigation « Voir la semaine »).
-      const weekend = decodeWeekendParam(searchParams);
-      if (null !== weekend && null === useMatchesStore.getState().selectedWeekend) {
-        setSelectedWeekend(weekend);
-        touchedStore = true;
-      }
-      // Deep-link `match=` : met EN ÉVIDENCE une rencontre précise (« Voir la semaine » depuis
-      // Conflits). One-shot — le param est retiré à la re-synchro (`applyMatchToParams(_, null)`
-      // ci-dessous) ; la mise en évidence vit ensuite dans le store (`selectedFixtureId`).
-      const matchId = decodeMatchParam(searchParams);
-      const matchFixture = null === matchId ? undefined : fixtures.data.find((f) => f.id === matchId);
-      if (undefined !== matchFixture) {
-        setConsultTemporality("semaine");
-        // Semaine : seulement si l'URL ne la porte pas déjà (un lien « Voir la semaine » porte
-        // les deux — `semaine` fait foi) et que le store est encore à l'auto.
-        if (null === weekend && null === useMatchesStore.getState().selectedWeekend) {
-          setSelectedWeekend(weekendKeyOf(matchFixture.matchDate));
-        }
-        setSelectedFixtureId(matchFixture.id);
-        // Lève le masque qui cacherait ce match (type de compétition décoché, extérieur masqué)
-        // — sinon la cellule visée n'existe pas. Redondant quand l'URL portait déjà la levée
-        // (le lien de Conflits l'inclut), inoffensif (`normalizeKinds` dédoublonne).
-        const plan = revealPlan([matchFixture], consultKinds ?? DEFAULT_KINDS, competitionsMap);
-        if (plan.away) {
-          setConsultAway(true);
-        }
-        if (plan.kinds.length > 0) {
-          setConsultKinds(normalizeKinds([...(consultKinds ?? DEFAULT_KINDS), ...plan.kinds]));
-        }
-        focusFixtureCell(matchFixture.id);
-        touchedStore = true;
-      }
-    }
-    if (touchedStore) {
-      return;
-    }
-    // Re-synchro : pousse le store (valeurs à jour) dans l'URL (`replace`), autres params
-    // préservés. No-op quand l'adresse reflète déjà le store.
-    const withFilter = applyFilterToParams(searchParams, filterMode, filterIds);
-    const withConsult = applyConsultToParams(withFilter, {
-      kinds: consultKinds,
-      families: consultFamilies,
-      typicalWeek: consultTypicalWeek,
-      away: consultAway,
-      temps: consultTemporality,
-      month: consultMonth,
-      phaseId: consultPhaseId,
-    });
-    const withWeekend = applyWeekendToParams(withConsult, selectedWeekend);
-    // `match=` est TOUJOURS retiré à la re-synchro : c'est un deep-link one-shot consommé au
-    // seed (« retiré en replace après sélection »), jamais un état porté par l'adresse.
-    const next = applyMatchToParams(withWeekend, null);
-    if (next.toString() !== searchParams.toString()) {
-      setSearchParams(next, { replace: true });
-    }
-  }, [teams.data, coaches.data, venues.data, fixtures.data, searchParams, filterMode, filterIds, consultKinds, consultFamilies, consultTypicalWeek, consultAway, consultTemporality, consultMonth, consultPhaseId, selectedWeekend, setFilterMode, toggleFilterId, setConsultKinds, setConsultFamilies, setConsultTypicalWeek, setConsultAway, setConsultTemporality, setConsultMonth, setConsultPhaseId, setSelectedWeekend, setSelectedFixtureId, focusFixtureCell, competitionsMap, setSearchParams]);
+  // Deep-link fusionné : SEED depuis l'URL (filtre PR-1 + filtres Consulter + semaine) puis
+  // re-synchro de l'URL depuis le store. Le hook lit lui-même `useMatchesStore`/`useSearchParams`.
+  useCalendarUrlSync(teams.data, coaches.data, venues.data, fixtures.data, competitionsMap, focusFixtureCell);
 
   // Ouvrir/fermer la liste « FBI — à faire » synchronise le param `fbi` (l'URL fait foi).
   const openFbiModal = (): void => {
