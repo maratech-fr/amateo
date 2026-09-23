@@ -1,11 +1,10 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-21 (`documentation-update`, lot N « vocabulaire de traitement par famille +
-erreur FBI alimente le registre ») : confronté au code cette passe — `backend/features/
-une-erreur-fbi-alimente-le-registre.feature` existe et porte le scénario décrit (déclarer « erreur
-FBI » pose la résolution ET ouvre une entrée « salle à vérifier ») ; sa suite Behat dédiée
-(`FbiErrorLedgerContext`) est bien enregistrée dans `backend/behat.dist.php` (nouvelle entrée de ce
-lot). Reste des lignes non touchées cette passe — historique complet :
+Last verified @ 2026-09-23 (**rotation de fraîcheur** `documentation-update`, lot 7 PR B — zone
+sans rapport, fichier choisi par son stamp le plus ancien du dépôt). Re-confronté au code :
+`backend/features/une-erreur-fbi-alimente-le-registre.feature` existe toujours et porte le
+scénario décrit ; `FbiErrorLedgerContext` reste enregistrée dans `backend/behat.dist.php`. Rien de
+faux trouvé cette passe. Reste des lignes non touchées — historique complet :
 `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil

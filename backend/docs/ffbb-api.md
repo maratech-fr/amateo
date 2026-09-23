@@ -1,14 +1,12 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-09-21 (`documentation-update`, lot P « le nom FBI d'un gymnase », `964ed570`).
-Confronté au code cette passe : le pont par référence FFBB de salle (§ « Réconciliation FBI, canal
-API », § « Salles d'une commune ») est désormais **FERMÉ** — décision fondateur consignée
-`etat-des-lieux.md` §2, les trois paragraphes qui le décrivaient sont recalés (piste abandonnée,
-plus « à sonder » ou « non implémentée »). Vérifié : aucun code n'expose l'`id` proxy salles ni ne
-tente ce pont (`FfbbSallesController.php`, `FfbbRencontreReader.php` inchangés sur ce point). Reste
-du fichier (hosts SSRF, routes rencontres/engagements, `searchSallesByName`/lot K, §3bis logo) non
-re-sondé cette passe, dernière vérification de fond : 2026-09-20 (PR I) / 2026-09-21 (lot K, pour
-la recherche par nom).
+Last verified @ 2026-09-23 (**rotation de fraîcheur** `documentation-update`, lot 7 PR B — zone
+sans rapport, fichier choisi parmi les stamps les plus anciens du dépôt). Re-confronté au code :
+le pont par référence FFBB de salle reste **FERMÉ** — aucun code n'expose l'`id` proxy salles ni ne
+tente ce pont (`FfbbSallesController.php`, `FfbbRencontreReader.php` inchangés sur ce point). Rien
+de faux trouvé cette passe. Reste du fichier (hosts SSRF, routes rencontres/engagements,
+`searchSallesByName`/lot K, §3bis logo) non re-sondé cette passe, dernière vérification de fond :
+2026-09-20 (PR I) / 2026-09-21 (lot K, pour la recherche par nom).
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit rester dans la **liste blanche de hosts** du client (SSRF, A12). Vérifié le 2026-07-10 sur le code réel `ARA0069036` (BCCL).
 
