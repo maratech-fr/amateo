@@ -425,6 +425,45 @@ describe("concernedSlots", () => {
     const result = concernedSlots({ teamId: null, venueId: "v1", coachId: null, dayOfWeek: null, startTime: null }, slots, lookups);
     expect(result.map((r) => r.slotId).sort()).toEqual(["a", "c"]);
   });
+
+  it("P4-95 lot 8 — jour SEUL (équipe + jour, sans heure) resserre sur CE jour, pas toutes les semaines", () => {
+    // `diag-locked-team-day-*` porte équipe + jour, jamais d'heure : « toutes les séances de cette
+    // équipe CE jour ». Sans le resserrement au jour, la branche large surlignait toutes les
+    // séances de l'équipe, jour 3 ET jour 5.
+    const slots = [
+      slot({ id: "j3a", teamId: "t1", dayOfWeek: 3, startTime: "18:00:00" }),
+      slot({ id: "j3b", teamId: "t1", dayOfWeek: 3, startTime: "20:00:00" }),
+      slot({ id: "j5", teamId: "t1", dayOfWeek: 5, startTime: "18:00:00" }),
+    ];
+    // Falsification : annuler le resserrement au jour → `j5` entre → rouge (assert d'ENSEMBLE EXACT).
+    const result = concernedSlots({ teamId: "t1", venueId: null, coachId: null, dayOfWeek: 3, startTime: null }, slots, lookups);
+    expect(result.map((r) => r.slotId).sort()).toEqual(["j3a", "j3b"]);
+  });
+
+  it("P4-95 lot 8 — la personne matche par INTERVALLE : l'instant du chevauchement concerne les DEUX séances décalées", () => {
+    // `diag-locked-person-*` / `diag-conflict-coach-*` émettent l'heure = début du chevauchement.
+    // 19:00 tombe dans [18:00, 19:30) ET dans [19:00, 20:30) : les deux cases sont concernées, donc
+    // deux cellules distinctes → le panneau n'ouvre rien.
+    const slots = [
+      slot({ id: "ca", coachId: "c1", teamId: "t1", venueId: "v1", dayOfWeek: 3, startTime: "18:00:00", durationMinutes: 90 }),
+      slot({ id: "cb", coachId: "c1", teamId: "t2", venueId: "v2", dayOfWeek: 3, startTime: "19:00:00", durationMinutes: 90 }),
+    ];
+    // Falsification : revenir à l'égalité stricte du début → seule `cb` (début 19:00) matche → rouge.
+    const result = concernedSlots({ teamId: null, venueId: null, coachId: "c1", dayOfWeek: 3, startTime: "19:00" }, slots, lookups);
+    expect(result.map((r) => r.slotId).sort()).toEqual(["ca", "cb"]);
+  });
+
+  it("P4-95 lot 8 — le GYMNASE garde l'égalité stricte du début (jour + heure)", () => {
+    // Le discriminant gymnase ne bascule PAS sur l'intervalle : la sur-capacité déjà livrée en
+    // dépend. Un conflit gymnase+jour SANS heure retombe, lui, sur le resserrement au jour.
+    const slots = [
+      slot({ id: "va", venueId: "v1", teamId: "t1", dayOfWeek: 3, startTime: "18:00:00" }),
+      slot({ id: "vb", venueId: "v1", teamId: "t2", dayOfWeek: 3, startTime: "20:00:00" }),
+      slot({ id: "vc", venueId: "v1", teamId: "t1", dayOfWeek: 5, startTime: "18:00:00" }),
+    ];
+    const result = concernedSlots({ teamId: null, venueId: "v1", coachId: null, dayOfWeek: 3, startTime: null }, slots, lookups);
+    expect(result.map((r) => r.slotId).sort()).toEqual(["va", "vb"]);
+  });
 });
 
 describe("le dimanche dans la boucle de travail (revue P4-37)", () => {

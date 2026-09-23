@@ -557,6 +557,18 @@ const dayLabelOf = (day: number): string => DAYS.find((d) => d.n === day)?.label
  * moteur donne l'instant exact retombait donc sur « tous les créneaux de ce coach ». La clé est
  * désormais (jour + heure + n'importe quel discriminant), ce qui couvre aussi le gymnase sans rien
  * changer pour lui.
+ *
+ * ⚠ P4-95 lot 8 — trois précisions du ciblage, toutes falsifiables :
+ *   1. `jour seul` (jour renseigné, heure nulle) : la branche large filtre AUSSI sur le jour —
+ *      sinon un diagnostic équipe+jour (`diag-locked-team-day-*`) surlignait toutes les séances de
+ *      l'équipe, toutes semaines confondues.
+ *   2. la PERSONNE (coach OU joueur) matche par INTERVALLE : l'instant émis est le début du
+ *      CHEVAUCHEMENT, concerné dès qu'il tombe dans `[début, début + durée)` d'une séance. Débuts
+ *      décalés ⇒ deux cases matchent ⇒ le panneau surligne les deux et n'ouvre rien. Gymnase et
+ *      équipe gardent l'égalité STRICTE du début (la sur-capacité de gymnase en dépend).
+ *   3. la personne se résout par les lookups (`slotCoachId` OU `teamPlayerCoaches`), jamais par
+ *      `slot.coachId` en direct — l'engine laisse ce champ vide (le coach est celui de l'équipe) et
+ *      la « personne » peut être un JOUEUR (le moteur en émet, `team_player_map`).
  */
 export function concernedSlots(
   diagnostic: { teamId: string | null; venueId: string | null; coachId: string | null; dayOfWeek?: number | null; startTime?: string | null },
@@ -566,21 +578,31 @@ export function concernedSlots(
   const pinDay = diagnostic.dayOfWeek ?? null;
   const pinTime = diagnostic.startTime ?? null;
   const pinned = null !== pinDay && null !== pinTime && (null !== diagnostic.venueId || null !== diagnostic.coachId || null !== diagnostic.teamId);
+  const personMatches = (s: Slot): boolean =>
+    null !== diagnostic.coachId &&
+    (slotCoachId(s, lookups) === diagnostic.coachId || (lookups.teamPlayerCoaches.get(s.teamId) ?? []).includes(diagnostic.coachId));
   const matches = pinned
-    ? slots.filter(
-        (s) =>
-          s.dayOfWeek === pinDay &&
-          parseTimeToMinutes(s.startTime) === parseTimeToMinutes(pinTime) &&
-          ((null !== diagnostic.venueId && s.venueId === diagnostic.venueId) ||
-            (null !== diagnostic.coachId && s.coachId === diagnostic.coachId) ||
-            (null !== diagnostic.teamId && s.teamId === diagnostic.teamId)),
-      )
-    : slots.filter(
-          (s) =>
-            (null !== diagnostic.teamId && diagnostic.teamId === s.teamId) ||
-            (null !== diagnostic.venueId && diagnostic.venueId === s.venueId) ||
-            (null !== diagnostic.coachId && diagnostic.coachId === s.coachId),
+    ? slots.filter((s) => {
+        if (s.dayOfWeek !== pinDay) {
+          return false;
+        }
+        const slotStart = parseTimeToMinutes(s.startTime);
+        const pinMin = parseTimeToMinutes(pinTime);
+        const startMatches = slotStart === pinMin;
+        const intervalContainsPin = pinMin >= slotStart && pinMin < slotStart + s.durationMinutes;
+        return (
+          (null !== diagnostic.venueId && s.venueId === diagnostic.venueId && startMatches) ||
+          (personMatches(s) && intervalContainsPin) ||
+          (null !== diagnostic.teamId && s.teamId === diagnostic.teamId && startMatches)
         );
+      })
+    : slots.filter(
+        (s) =>
+          (null === pinDay || s.dayOfWeek === pinDay) &&
+          ((null !== diagnostic.teamId && diagnostic.teamId === s.teamId) ||
+            (null !== diagnostic.venueId && diagnostic.venueId === s.venueId) ||
+            personMatches(s)),
+      );
 
   return matches
     .map((s) => ({

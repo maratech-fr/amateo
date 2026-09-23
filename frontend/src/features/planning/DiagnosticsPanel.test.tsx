@@ -226,6 +226,59 @@ describe("DiagnosticsPanel — un conflict OUVRE le créneau fautif (P4-95)", ()
     expect(lastSet(onHighlight)).toEqual([]);
     expect(onOpenSlot).not.toHaveBeenCalled();
   });
+
+  it("P4-95 lot 8 — un conflict ÉQUIPE+JOUR sans heure surligne les deux séances du jour et n'ouvre RIEN", async () => {
+    // `diag-locked-team-day-*` : type `conflict`, mais SANS `startTime` (décision : « toutes les
+    // séances de cette équipe ce jour »). Il ne passe donc pas par la branche d'ouverture — repli :
+    // surlignage resserré au jour, aucune ouverture.
+    const user = userEvent.setup();
+    const onOpenSlot = vi.fn();
+    const onHighlight = vi.fn();
+    const teamDaySlots = [
+      slot({ id: "td-a", teamId: "t1", venueId: "v1", dayOfWeek: 3, startTime: "18:00:00" }),
+      slot({ id: "td-b", teamId: "t1", venueId: "v1", dayOfWeek: 3, startTime: "20:00:00" }),
+      slot({ id: "td-c", teamId: "t1", venueId: "v1", dayOfWeek: 5, startTime: "18:00:00" }),
+    ];
+    const teamDay = conflict({ venueId: null, teamId: "t1", coachId: null, dayOfWeek: 3, startTime: null, message: "équipe deux fois le même jour" });
+    render(panel({ diagnostics: [teamDay], slots: teamDaySlots, onOpenSlot, onHighlight, openMostSevere: true, seedToken: "v1" }));
+
+    await user.click(screen.getByText("équipe deux fois le même jour"));
+
+    // Les deux séances du jour 3 — jamais celle du jour 5.
+    expect(lastSet(onHighlight)).toEqual(["td-a", "td-b"]);
+    expect(onOpenSlot).not.toHaveBeenCalled();
+  });
+
+  it("P4-95 lot 8 — un implicit_rule_not_honored gymnase+jour surligne ce gymnase CE jour, sans ouverture", async () => {
+    // `implicit_rule_not_honored` (ex. `diag-implicit-age-*`) n'est PAS un `conflict` : il retombe
+    // sur le repli (surlignage large, resserré au jour), jamais d'ouverture. On rend avec les
+    // providers car le lien « Ajuster cette règle » (ruleKey) monte un WizardStepLink (Router).
+    const user = userEvent.setup();
+    const onOpenSlot = vi.fn();
+    const onHighlight = vi.fn();
+    const ageSlots = [
+      slot({ id: "ag-a", teamId: "t1", venueId: "v1", dayOfWeek: 3, startTime: "18:00:00" }),
+      slot({ id: "ag-b", teamId: "t2", venueId: "v1", dayOfWeek: 3, startTime: "20:00:00" }),
+      slot({ id: "ag-c", teamId: "t1", venueId: "v1", dayOfWeek: 5, startTime: "18:00:00" }),
+    ];
+    const age = conflict({
+      type: "implicit_rule_not_honored",
+      severity: "WARNING",
+      venueId: "v1",
+      coachId: null,
+      teamId: null,
+      dayOfWeek: 3,
+      startTime: null,
+      ruleKey: "ageAscending",
+      message: "âge croissant non tenu",
+    });
+    renderWithProviders(panel({ diagnostics: [age], slots: ageSlots, onOpenSlot, onHighlight, openMostSevere: true, seedToken: "v1" }));
+
+    await user.click(screen.getByText("âge croissant non tenu"));
+
+    expect(lastSet(onHighlight)).toEqual(["ag-a", "ag-b"]);
+    expect(onOpenSlot).not.toHaveBeenCalled();
+  });
 });
 
 describe("DiagnosticsPanel — l'état vide ne ment pas", () => {
