@@ -1,11 +1,12 @@
 # Accueil « cockpit temporel » — mise au clair (préliminaire calendriers secondaires)
 
-Last verified @ 2026-09-24 (`documentation-update`, P4-255 PR 1 — extraction verbatim de
-`PlanningPage.tsx` en cinq hooks maison, `planning/lib/`). La citation `PlanningPage.tsx:1352-1372`
-pour `stalenessMessage` avait dérivé (page passée de 1 871 à 1 648 l.) — recalée en `:1134-1143`,
-vérifiée contre le fichier actuel. Reste du fichier — les 4 repères de la passe du 2026-09-19/22
-(`PeriodStructure.tsx:518` `sub` sur `VenueSelect`, `SCHOOL_HOLIDAY_HORIZON_DAYS = 30` à
-`RadarPanel.tsx:50`, `ClosureSegmentation`/`CalendarEntryRedatability`, la route
+Last verified @ 2026-09-24 (`documentation-update`, P4-255 PR 2 — le carrefour `highlightSlotIds`
+sort vers `planning/lib/useSlotHighlight.ts` et le sujet retouche/éviction/annulation vers
+`planning/lib/useRetouchGestures.ts`, verbatim). La citation `PlanningPage.tsx:1134-1143` pour
+`stalenessMessage` avait de nouveau dérivé (page passée de 1 648 à 1 145 l.) — recalée en
+`:634-640`, vérifiée contre le fichier actuel. Reste du fichier — les 4 repères de la passe du
+2026-09-19/22 (`PeriodStructure.tsx:518` `sub` sur `VenueSelect`, `SCHOOL_HOLIDAY_HORIZON_DAYS = 30`
+à `RadarPanel.tsx:50`, `ClosureSegmentation`/`CalendarEntryRedatability`, la route
 `redate-preview`) — non re-vérifié cette passe, sans rapport avec le sujet ; historique :
 `git log -p --follow` ce fichier.
 
@@ -571,7 +572,7 @@ l'horloge. Le **serveur** garde l'heure réelle (P4-16 reste ouverte pour lui).
     ferme le dialogue et annonce « Fermeture re-datée du … au … — planning à régénérer » —
     **jamais** de mention du pivot socle dans ce toast (décision fermée, `etat-des-lieux.md` §2) :
     la version pointée survit, seulement marquée périmée par la bannière de `/planning`
-    (`stalenessMessage`, `PlanningPage.tsx:1134-1143`). **Le cockpit le dit désormais lui-même
+    (`stalenessMessage`, `PlanningPage.tsx:634-640`). **Le cockpit le dit désormais lui-même
     (P4-173, 2026-09-05)** : `SchedulePlanResource.staleness` (`{manuallyEdited,
     constraintsChanged, resourcesChanged} | null`) sert au cockpit la péremption de la version
     **POINTÉE** par le plan — `null` tant que rien n'est pointé, ou dès que la fenêtre du plan est

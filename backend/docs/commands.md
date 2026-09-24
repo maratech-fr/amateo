@@ -1,11 +1,12 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-09-22 (`documentation-update`, fix `dbalScalar` lecture vide, PR d'un seul
-fichier — zone non touchée par le reste de la PR). Re-confronté au code, tout juste :
-`BaseContext::dbalScalar` (`backend/tests/Behat/BaseContext.php:82-112`) — rend bien `''` sur
-lecture vide (le `str_contains(… 'The query yielded an empty result set')` retourne `''` avant de
-pouvoir filer la bannière ; boucle vérifiée ligne à ligne). Non re-sondé cette passe : le reste des
-commandes et gardes listées — un stamp REMPLACE, l'historique vit dans git.
+Last verified @ 2026-09-24 (**rotation de fraîcheur**, `documentation-update`, P4-255 PR 2 sur
+`PlanningPage.tsx` — sans rapport avec le sujet de la PR, doc de zone la plus ancienne du garde
+`DocStampFreshnessTest`). Re-confronté au code : `BaseContext::dbalScalar`
+(`backend/tests/Behat/BaseContext.php:82-112`) toujours exact — rend bien `''` sur lecture vide
+(le `str_contains(… 'The query yielded an empty result set')` retourne `''` avant de pouvoir filer
+la bannière). Non re-sondé cette passe : le reste des commandes et gardes listées — un stamp
+REMPLACE, l'historique vit dans git.
 
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`
 > le font pour toi. PHPUnit exige `APP_ENV=test` (sinon `test.service_container` introuvable).

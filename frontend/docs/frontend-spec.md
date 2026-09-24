@@ -4,14 +4,13 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-09-23 (**rotation de fraîcheur**, `documentation-update`, P4-95 lot 8
-« diagnostics à coordonnées partielles »). §6.2 recalé contre le code livré (`d0c10d6b`) :
-`diag-locked-person-*` porte désormais `startTime` (début du CHEVAUCHEMENT) et rejoint
-`diag-conflict-coach-*`, corrigée du même défaut latent — vérifié dans
-`engine/app/solver/result_builder/diagnostics.py` ; `concernedSlots` résout la personne par les
-lookups et l'apparie par intervalle, resserre aussi `diag-locked-team-day-*` sur `dayOfWeek` —
-vérifié dans `frontend/src/features/planning/lib/grid.ts`. Reste du fichier non re-sondé cette
-passe — historique : `git log -p --follow` ce fichier.
+Last verified @ 2026-09-24 (`documentation-update`, P4-255 PR 2 — le filet posé avant la refonte du
+surlignage a révélé qu'une case OCCUPÉE ciblée ne porte AUCUN anneau, contrairement à une case VIDE
+ciblée : §6.2 « Priorités visuelles » gagne la précision, vérifiée contre
+`frontend/src/features/planning/WeekGrid.tsx` (`dimmed`/`flagged`, lignes 295-300 et 462-485)).
+Reste du fichier non re-sondé cette passe (dernière ronde : 2026-09-23, P4-95 lot 8 « diagnostics
+à coordonnées partielles », §6.2 `diag-locked-person-*`/`diag-locked-team-day-*`) — historique :
+`git log -p --follow` ce fichier.
 
 ## 1. Stack Decided
 
@@ -515,6 +514,14 @@ par un CRUD brut sur la ressource :
   - **Priorités visuelles** : surlignage **conflit** > **mode cible** > **lentille verrous** — la
     lentille se tait tant qu'un conflit règne OU que le mode cible est armé (elle ne doit jamais
     brouiller ni le rouge du conflit, ni la cible en cours de choix).
+  - ⚠ **Le signal du surlignage n'est PAS une bordure posée sur la case ciblée** : `WeekGrid`
+    ESTOMPE (`grayscale`) toutes les AUTRES cases de la grille pendant qu'un surlignage est actif —
+    la ou les cases visées sont simplement les SEULES qui gardent leurs couleurs. Une case **VIDE**
+    ciblée gagne en plus un anneau ambre (`border-warning ring-2 ring-warning`) ; une case
+    **OCCUPÉE**, elle, n'en gagne AUCUN (elle serait confondue avec un anneau de sélection, de
+    lentille verrous ou d'écart au socle) — c'est l'estompe des autres qui la désigne, constaté en
+    posant le filet de `PlanningPage.test.tsx` avant P4-255 PR 2 (`WeekGrid.tsx`, variables locales
+    `dimmed`/`flagged`).
   - **Case libre** : `POST /api/schedule-slots/{id}/move` (`useMoveSlot`, sans `evictSlotId`).
     **Pas d'optimistic update** — la grille attend le verdict du moteur (`MoveFeedback` : `pending`
     pendant l'appel, ~500 ms).

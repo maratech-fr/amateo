@@ -1,13 +1,14 @@
 # API géo — routes externes consommées (P2-53 RMM-8)
 
-Last verified @ 2026-09-22 (`documentation-update`, rotation de fraîcheur — sans rapport avec le
-sujet de la PR). Re-confronté au code cette passe : les deux hosts liste-blanche
-(`api-adresse.data.gouv.fr` dans `BanGeocodingClient::SEARCH_URL`, `data.geopf.fr` dans
-`IgnRoutingClient::ITINERARY_URL`) ✓ · `IgnRoutingClient::MAX_RETRY_AFTER_SECONDS = 5.0` /
-`MIN_INTERVAL_SECONDS = 1.0` / `MAX_ATTEMPTS = 3` (`IgnRoutingClient.php:55-65`) ✓ ·
+Last verified @ 2026-09-24 (**rotation de fraîcheur**, `documentation-update`, P4-255 PR 2 sur
+`PlanningPage.tsx` — sans rapport avec le sujet de la PR). Re-confronté au code cette passe : les
+deux hosts liste-blanche (`api-adresse.data.gouv.fr` dans `BanGeocodingClient::SEARCH_URL`,
+`data.geopf.fr` dans `IgnRoutingClient::ITINERARY_URL`, désormais ligne 67) ✓ ·
+`IgnRoutingClient::MAX_RETRY_AFTER_SECONDS = 5.0` / `MIN_INTERVAL_SECONDS = 1.0` /
+`MAX_ATTEMPTS = 3` (`IgnRoutingClient.php:55-65`, inchangé) ✓ ·
 `TravelComputeLock::KEY_PREFIX = 'travel_compute:club:'` ✓ · `ClubTravelCache` — table
 `club_travel_cache`, clé unique `(club_id, profile, origin_lat, origin_lon, dest_lat, dest_lon)`,
-RLS FORCE (`ClubTravelCache.php:28-30`) ✓ · `ComputeTravelTimesHandler::WORKER_BUDGET_SECONDS =
+RLS FORCE (`ClubTravelCache.php:28-30`, inchangé) ✓ · `ComputeTravelTimesHandler::WORKER_BUDGET_SECONDS =
 180` / `PROGRESS_STEP = 5` ✓ · `OpponentVenueLink` seul présent dans `src/Entity/` (aucun
 `OpponentTravel` résiduel) ✓ · version de contrat en vigueur citée au corps (`engine/CONTRACT_VERSION`
 = 2.23, § « Ce que la matrice + le levier alimentent ») ✓. Historique des passes précédentes vit dans git :
