@@ -41,7 +41,7 @@ import { buildClubView } from "./lib/clubView";
 import { ClubViewTable } from "./ClubViewTable";
 import { availableResourceGroups, buildGrid, DAYS, type Lookups, slotGroupKey, toHourMinute } from "./lib/grid";
 import { PlanningToolbar } from "./PlanningToolbar";
-import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useLockSlot, useMoveDryRun, useMoveGroup, useMoveSlot, usePlaceSlot, useRegenerate, useRegenerateFromVersion, useRegenerateOverlay, useReopenSchedule, useSchedules, useSlots, useSocleDeviation, useTeamCoaches, useTeams, useTrainingSlots, useValidateImpact, useValidateSchedule, useVenues } from "./queries";
+import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useMoveDryRun, useMoveGroup, useMoveSlot, usePlaceSlot, useRegenerate, useRegenerateFromVersion, useRegenerateOverlay, useReopenSchedule, useSchedules, useSlots, useSocleDeviation, useTeamCoaches, useTeams, useTrainingSlots, useValidateImpact, useValidateSchedule, useVenues } from "./queries";
 import { blocksForSlot } from "./lib/blockSession";
 import { ResourceFilter } from "./ResourceFilter";
 import { SlotDetail, type MoveFeedback } from "./SlotDetail";
@@ -51,6 +51,7 @@ import type { ToReplaceEntry } from "./lib/toReplaceReason";
 import { isSeasonPlanType, planRepresentative, visibleSeasonPlans } from "./lib/versions";
 import { useVersionLanding } from "./lib/useVersionLanding";
 import { usePeriodClosures } from "./lib/usePeriodClosures";
+import { useLockControls } from "./lib/useLockControls";
 import { SeasonComparisonModal } from "./SeasonComparisonModal";
 import { ValidateDialog } from "./ValidateDialog";
 import { capacityShortfallSentence } from "./lib/capacityShortfall";
@@ -95,15 +96,6 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const { viewMode, selectedScheduleId, selectedSlotId, resourceFilter, setViewMode, setSelectedScheduleId, setSelectedSlotId, toggleResource, clearResourceFilter } =
     usePlanningStore();
   const [highlightSlotIds, setHighlightSlotIds] = useState<Set<string>>(new Set());
-  // Déverrouiller un créneau né d'une RÉSERVATION de gymnase demande confirmation (F1) : c'est
-  // un engagement pris hors de l'app, à ne pas relâcher par inadvertance. On mémorise LE créneau
-  // visé (et non un booléen) : le cadenas de la grille (PR 2) peut viser un créneau NON
-  // sélectionné, la confirmation doit muter celui-là, pas le sélectionné.
-  const [pendingUnlockSlotId, setPendingUnlockSlotId] = useState<string | null>(null);
-  // PR 3 — panneau latéral des verrous manuels + lentille (surbrillance de la grille par
-  // origine de verrou). Fermer le panneau ÉTEINT la lentille : pas d'état fantôme.
-  const [locksPanelOpen, setLocksPanelOpen] = useState(false);
-  const [lockLens, setLockLens] = useState(false);
   // P2-44 (PR-2) — la modale « Comparer avec la saison » (consultation du socle).
   const [compareOpen, setCompareOpen] = useState(false);
   // P2-30 (geste 1/2) — le mode cible « click-click ». `move` déplace un créneau existant
@@ -214,6 +206,10 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
     [isFailed, generatedSlots, reservationSlots],
   );
 
+  // Verrous manuels et déverrouillage (F1/PR 3) — états, mutation, verrous manuels, bascule.
+  // Appelé ici, après `slots`, car ses dérivations en dépendent (regroupement assumé au plan).
+  const { pendingUnlockSlotId, setPendingUnlockSlotId, locksPanelOpen, setLocksPanelOpen, lockLens, setLockLens, lockMutation, manualLocks, closeLocksPanel, requestToggleLock } = useLockControls(slots);
+
   const diagnosticsQuery = useDiagnostics(validScheduleId);
   // `useMemo` et non `?? []` : le repli littéral fabriquait un tableau NEUF à chaque rendu,
   // ce qui invalidait le `useMemo` du filtrage en aval à chaque fois (avertissement lint).
@@ -240,7 +236,6 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const lockMutation = useLockSlot();
   const moveMutation = useMoveSlot();
   const moveGroupMutation = useMoveGroup();
   const dryRunMutation = useMoveDryRun();
@@ -453,34 +448,6 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const selectedSlotBlock = useMemo(
     () => (null === selectedSlot ? null : (blocksForSlot(selectedSlot, sharedBlocks, slots)[0] ?? null)),
     [selectedSlot, sharedBlocks, slots],
-  );
-
-  // PR 3 — les créneaux verrouillés À LA MAIN (le compteur toolbar + la liste du panneau).
-  // SEULS les MANUAL comptent : ni les réservations de gymnase (RESERVATION), ni les verrous
-  // d'origine indécidable (UNKNOWN) — c'est le « travail de verrouillage » du gestionnaire.
-  const manualLocks = useMemo(() => slots.filter((s) => "MANUAL" === s.lockOrigin), [slots]);
-  const closeLocksPanel = useCallback(() => {
-    setLocksPanelOpen(false);
-    setLockLens(false);
-  }, []);
-
-  // F1 (PR 2) — LE point d'entrée UNIQUE de la bascule de verrou, partagé par le panneau de
-  // détail ET le cadenas de la grille : la règle RÉSERVATION (déverrouiller → confirmation)
-  // s'écrit ainsi une seule fois. MANUAL/UNKNOWN et tout verrouillage mutent directement.
-  const requestToggleLock = useCallback(
-    (slotId: string) => {
-      const slot = slots.find((s) => s.id === slotId);
-      if (undefined === slot) {
-        return;
-      }
-      const locked = "NONE" !== slot.lockLevel;
-      if (locked && "RESERVATION" === slot.lockOrigin) {
-        setPendingUnlockSlotId(slotId);
-        return;
-      }
-      lockMutation.mutate({ id: slotId, lockLevel: locked ? "NONE" : "HARD" });
-    },
-    [slots, lockMutation],
   );
 
   // F2b — le retour du dernier déplacement, dérivé de la mutation (verdict moteur). Un refus
