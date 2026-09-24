@@ -1,7 +1,7 @@
 # Project Map — Amateo (engine + backend)
 
-Last verified @ 2026-09-23 (rotation `documentation-update`, lot « annuaire adverse — repli code
-fédéral » (BCK-26) — fichier hors sujet de la PR, contrôle de fraîcheur). Re-confronté :
+Last verified @ 2026-09-24 (rotation `documentation-update`, lot P4-253 (reprise réseau Dockerfile)
+— fichier hors sujet de la PR, contrôle de fraîcheur). Re-confronté :
 `backend/tests/MessageHandler/RedeliveredGenerationTest.php` toujours présent ✓ ·
 `engine/CONTRACT_VERSION` = **2.23** ✓ (inchangé). Reste du fichier (§1 repository layout, backend
 détaillé, ops, sécurité) non reconfronté cette passe — voir les stamps de zone et `git log -p
