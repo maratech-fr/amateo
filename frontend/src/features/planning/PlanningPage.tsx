@@ -4,7 +4,6 @@ import { AlertTriangle, GitCompare, Loader2, Lock, Pencil, Sparkles, Star, Undo2
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
-import { useRenamePlanning } from "@/features/auth/queries";
 import { useMe, useWorkingSeason } from "@/shared/session/queries";
 import { FeedbackButton } from "@/features/feedback/FeedbackButton";
 // Same ["priority_tiers"] query key as the matches/wizard hooks — one cache entry.
@@ -52,6 +51,7 @@ import { useVersionLanding } from "./lib/useVersionLanding";
 import { usePeriodClosures } from "./lib/usePeriodClosures";
 import { useLockControls } from "./lib/useLockControls";
 import { useValidateReopen } from "./lib/useValidateReopen";
+import { usePlanHeader } from "./lib/usePlanHeader";
 import { SeasonComparisonModal } from "./SeasonComparisonModal";
 import { ValidateDialog } from "./ValidateDialog";
 import { capacityShortfallSentence } from "./lib/capacityShortfall";
@@ -246,8 +246,6 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const deleteMutation = useDeleteSchedule();
   const regenerateFromMutation = useRegenerateFromVersion();
   const [regenerateFromOpen, setRegenerateFromOpen] = useState(false);
-  const renamePlanning = useRenamePlanning();
-  const [editingPlanningName, setEditingPlanningName] = useState<string | null>(null);
   // Repli CONTEXTUEL (P4-40). En boucle de travail, replié par défaut : la grille prend
   // toute la largeur pour vérifier, une barre compacte rouvre l'aside — c'est la demande
   // utilisateur d'origine, inchangée. Au sortir d'une génération lancée DEPUIS LE WIZARD
@@ -261,48 +259,9 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const { validateOpen, setValidateOpen, reopenOverlayCount, setReopenOverlayCount, validateOverlayCount, setValidateOverlayCount, validateMutation, reopenMutation, orphanImpact, validate, reopen } = useValidateReopen(validScheduleId, displayed, allSchedulePlans, navigate);
 
   const selectedSchedule = displayed;
-  // Suppression d'un planning SECONDAIRE (overlay) depuis l'en-tête (retour fondateur
-  // 2026-07-19) : l'entrée de calendrier de son plan (jamais pour le socle SEASON).
-  // `allSchedulePlans` est déjà lu plus haut (dérivation de la fermeture de période).
-  const overlayDeleteEntryId =
-    null !== selectedSchedule && !isSeasonPlanType(selectedSchedule.planType) && null !== selectedSchedule.schedulePlanId
-      ? ((allSchedulePlans ?? []).find((p) => p.id === selectedSchedule.schedulePlanId)?.calendarEntryId ?? null)
-      : null;
-  // ADR-0002 inv. 12 : LE nom vit sur le PLAN, jamais sur la version. Tout ce que
-  // l'en-tête montre ou modifie (titre, stylo, nom de fichier exporté, popup de
-  // suppression) doit donc désigner le plan de la version AFFICHÉE — pas le plan de
-  // saison. Il était codé en dur : renommer un planning de période renommait le
-  // planning de la SAISON, et l'en-tête affichait son nom sur toutes les périodes.
-  // `null` = plan pas encore résolu (collection en vol, ou plan absent) : l'appelant
-  // dégrade, il ne devine pas.
-  // Le club n'a AUCUNE version : on est dans le contexte SAISON par défaut, le plan de
-  // saison reste le sujet de l'en-tête. Sans ce cas, un club qui n'a jamais généré perdait
-  // le nom de son planning ET son stylo — il ne pouvait plus le nommer (revue #339 round 1).
-  // ⚠ La condition porte sur « le club n'a aucune version » (`schedules.length`), PAS sur
-  // « aucune version RÉSOLUE » : entre deux refetch, la sélection du store peut ne pas se
-  // retrouver dans la liste, et un repli sur ce signal-là ré-armerait le plan de SAISON comme
-  // cible du stylo alors que le gestionnaire est sur une période — le bug d'origine, de retour
-  // par une porte transitoire (revue #339 round 2).
-  // Entre deux refetch, la sélection du store peut ne plus être dans la liste (suppression
-  // d'une version, sélection persistée d'une autre saison) : `selectedSchedule` est alors null
-  // UNE passe de rendu, le temps que l'effet d'atterrissage rejoue. Plutôt que de laisser
-  // l'en-tête retomber sur un générique — ou pire, sur le plan de SAISON alors qu'on regarde
-  // une période —, on lit dès maintenant la version que cet effet va choisir : la MÊME
-  // fonction, donc le même résultat, sans flash et sans deviner (revue #339 round 3).
-  // L'en-tête lit dès maintenant la version que l'effet d'atterrissage va choisir (la MÊME
-  // fonction, donc le même résultat, sans flash) : en portée, la version de la période — jamais
-  // le socle ; hors portée, l'atterrissage embarqué/pointeur selon le contexte.
-  const headerSchedule = selectedSchedule ?? (null !== landingScheduleId ? (schedules.find((s) => s.id === landingScheduleId) ?? null) : null);
-  const displayedPlan: { id: string; name: string } | null = scoped
-    ? ((allSchedulePlans ?? []).find((p) => p.id === scopePlanId) ?? null)
-    : null === headerSchedule || isSeasonPlanType(headerSchedule.planType)
-      ? (me?.seasonPlan ?? null)
-      : ((allSchedulePlans ?? []).find((p) => p.id === headerSchedule.schedulePlanId) ?? null);
-  // Le TITRE tolère un plan non encore résolu (collection des plans en vol) : la photo
-  // `Schedule.name` porte le nom du plan à la création, donc un libellé juste dans l'immense
-  // majorité des cas — bien mieux que le générique « Planning ». Le STYLO, lui, reste
-  // conditionné au plan résolu : on ne propose pas un geste dont on n'a pas la cible.
-  const displayedPlanName = displayedPlan?.name ?? headerSchedule?.name ?? null;
+  // Identité du plan affiché et renommage (ADR-0002 inv. 12) : nom en édition, mutation de
+  // renommage, entrée de suppression d'overlay, plan affiché et son nom.
+  const { editingPlanningName, setEditingPlanningName, renamePlanning, overlayDeleteEntryId, displayedPlan, displayedPlanName } = usePlanHeader(selectedSchedule, landingScheduleId, schedules, scoped, scopePlanId, allSchedulePlans, me);
   const isGenerating = null !== selectedSchedule && IN_FLIGHT.includes(selectedSchedule.status);
   // Lot C (défaut terrain fondateur 2026-08-21) — l'écran de génération s'affiche dès qu'une
   // version DU PLAN EN PORTÉE est en vol, en saison comme en période. `isGenerating` ne dérive
