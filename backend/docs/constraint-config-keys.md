@@ -1,20 +1,16 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-09-23 (`documentation-update`, suppression du cran `BONUS`,
-`bc2e2568`). Recalé cette passe : le §« Quelle INTENSITÉ pour quelle clé » citait encore `BONUS`
-comme normalisé en PREFERRED par le moteur — ce cran a été **retiré de l'enum**
-(`App\Enum\ConstraintRuleType` ne compte plus que HARD/PREFERRED/LOCK) et la normalisation moteur
-correspondante a disparu de `engine/app/solver/constraints/parsing.py` ; un `ruleType: "BONUS"`
-rend désormais 422 (`Assert\Choice` sur `ConstraintInput::$ruleType`, dérivé de
-`ConstraintRuleType::values()`) au lieu d'être accepté puis transformé en silence. Le reste de la
-section — les six cellules refusées et leur maison, la doctrine de preuve par le CHOIX — reste
-vérifié contre `ConstraintValidationService` (grep direct, inchangé par ce commit) et le moteur
-(`solver/constraints/targeting.py` pour le chemin dur, `solver/objective/terms.py` pour le filtre
-`PREFERRED` strict). Re-confronté aussi : `ConstraintConfigValidator::SPEC` porte toujours les
-mêmes clés et types ✓ ; `TeamTagResolver::resolveConstraintTeamIds` et les gardes
-`PeriodGatePayloadParityTest` / `ConstraintKeysAreHonouredByEngineTest` toujours présents ✓. Reste
-du fichier non re-vérifié cette passe — historique : `git log -p --follow`. Un stamp REMPLACE, il
-ne s'empile pas.
+Last verified @ 2026-09-24 (`documentation-update`, rotation de fraîcheur — sujet sans rapport,
+lot flaky e2e `landOnMatchesCalendar`/#966). Re-confronté à `ConstraintConfigValidator::SPEC`
+(`backend/src/Service/ConstraintConfigValidator.php:59-95`) : les 4 familles et leurs clés/types
+correspondent trait pour trait à la table du fichier ✓. `App\Enum\ConstraintRuleType` ne compte
+toujours que HARD/PREFERRED/LOCK ✓ (`BONUS` reste bien retiré). `TeamTagResolver::
+resolveConstraintTeamIds` (`backend/src/Service/TeamTagResolver.php:278`) et les deux gardes
+`backend/tests/Security/PeriodGatePayloadParityTest.php` /
+`backend/tests/CrossStack/ConstraintKeysAreHonouredByEngineTest.php` (testsuite `Contract`, gardée
+par le required check `engine-semantics`) existent toujours ✓. La migration
+`Version20260807190000` (retrait de `config.coachId`) est confirmée en place ✓. Rien de faux
+trouvé cette passe. Historique : `git log -p --follow`. Un stamp REMPLACE, il ne s'empile pas.
 
 > Source de vérité du code : `App\Service\ConstraintConfigValidator`.
 > Cette page explique le POURQUOI ; la liste qui fait foi est dans la classe.
