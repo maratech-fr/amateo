@@ -1,8 +1,10 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-09-22 (**rotation de fraîcheur** `documentation-update`, lot « la génération
-relancée ne refait pas le travail » — zone non touchée par cette PR). Re-vérifié contre le code,
-tout juste : les six repères déjà cités tiennent encore (`RedatePreviewController`
+Last verified @ 2026-09-24 (**rotation de fraîcheur** `documentation-update`, P4-255 PR 1 —
+zone non touchée par cette PR : `PlanningPage.tsx` perd 223 l. vers cinq hooks `planning/lib/`,
+mais reste le composant qui monte le bouton « Combler automatiquement » cité ici, sans numéro de
+ligne — vérifié que `useFillSchedule`/`fillMutation` y sont toujours appelés). Re-vérifié contre le
+code, tout juste : les six repères déjà cités tiennent encore (`RedatePreviewController`
 `backend/src/Controller/RedatePreviewController.php:36` ✓, `SplitMotherRedatePlanner`
 `backend/src/Service/SplitMotherRedatePlanner.php:41` ✓, `CalendarEntryRedatability::
 redateNeedsPreview` `backend/src/Service/CalendarEntryRedatability.php:68` ✓,
