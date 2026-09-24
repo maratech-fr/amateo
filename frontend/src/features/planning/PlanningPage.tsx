@@ -7,7 +7,6 @@ import { useNavigate } from "react-router";
 import { useRenamePlanning } from "@/features/auth/queries";
 import { useMe, useWorkingSeason } from "@/shared/session/queries";
 import { FeedbackButton } from "@/features/feedback/FeedbackButton";
-import { useWizardStore } from "@/features/wizard/store";
 // Same ["priority_tiers"] query key as the matches/wizard hooks — one cache entry.
 import { usePriorityTiers } from "@/features/matches/queries";
 import { DeletePlanningButton } from "@/features/cockpit/DeletePlanningButton";
@@ -22,7 +21,7 @@ import { EmptyState } from "@/shared/components/ui/empty-hint";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
 
-import { type Compromise, EngineTimeoutError, EngineVerificationInterruptedError, type EvictedSlot, GenerationInProgressError, type MoveViolation, MoveRejectedError, OverlaysExistError, type Slot, SlotEditError, TargetLockedError, VerdictAbandonedError } from "./api";
+import { type Compromise, EngineTimeoutError, EngineVerificationInterruptedError, type EvictedSlot, GenerationInProgressError, type MoveViolation, MoveRejectedError, type Slot, SlotEditError, TargetLockedError, VerdictAbandonedError } from "./api";
 import { CompromiseList } from "./CompromiseList";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { DriftBanner } from "./DriftBanner";
@@ -41,7 +40,7 @@ import { buildClubView } from "./lib/clubView";
 import { ClubViewTable } from "./ClubViewTable";
 import { availableResourceGroups, buildGrid, DAYS, type Lookups, slotGroupKey, toHourMinute } from "./lib/grid";
 import { PlanningToolbar } from "./PlanningToolbar";
-import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useMoveDryRun, useMoveGroup, useMoveSlot, usePlaceSlot, useRegenerate, useRegenerateFromVersion, useRegenerateOverlay, useReopenSchedule, useSchedules, useSlots, useSocleDeviation, useTeamCoaches, useTeams, useTrainingSlots, useValidateImpact, useValidateSchedule, useVenues } from "./queries";
+import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useMoveDryRun, useMoveGroup, useMoveSlot, usePlaceSlot, useRegenerate, useRegenerateFromVersion, useRegenerateOverlay, useSchedules, useSlots, useSocleDeviation, useTeamCoaches, useTeams, useTrainingSlots, useVenues } from "./queries";
 import { blocksForSlot } from "./lib/blockSession";
 import { ResourceFilter } from "./ResourceFilter";
 import { SlotDetail, type MoveFeedback } from "./SlotDetail";
@@ -52,6 +51,7 @@ import { isSeasonPlanType, planRepresentative, visibleSeasonPlans } from "./lib/
 import { useVersionLanding } from "./lib/useVersionLanding";
 import { usePeriodClosures } from "./lib/usePeriodClosures";
 import { useLockControls } from "./lib/useLockControls";
+import { useValidateReopen } from "./lib/useValidateReopen";
 import { SeasonComparisonModal } from "./SeasonComparisonModal";
 import { ValidateDialog } from "./ValidateDialog";
 import { capacityShortfallSentence } from "./lib/capacityShortfall";
@@ -243,8 +243,6 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const regenerateMutation = useRegenerate();
   const regenerateOverlayMutation = useRegenerateOverlay();
   const fillMutation = useFillSchedule();
-  const validateMutation = useValidateSchedule();
-  const reopenMutation = useReopenSchedule();
   const deleteMutation = useDeleteSchedule();
   const regenerateFromMutation = useRegenerateFromVersion();
   const [regenerateFromOpen, setRegenerateFromOpen] = useState(false);
@@ -257,91 +255,10 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // avec l'écran génération » (retour terrain). Les deux règles ne se contredisent pas —
   // la seconde nomme un contexte que la première n'avait pas distingué.
   const [diagnosticsCollapsed, setDiagnosticsCollapsed] = useState(true);
-  const [validateOpen, setValidateOpen] = useState(false);
-  // P2-52 — l'impact de dépointage de la validation, interrogé UNIQUEMENT quand la modale « Valider »
-  // est ouverte (le geste est envisagé). N=0 → l'annonce ne s'affiche pas ; N>0 → le confirm gagne
-  // l'avertissement « salle perdue » ; en vol / échec → le bouton Valider reste désactivé.
-  const validateImpactQuery = useValidateImpact(validateOpen ? validScheduleId : null);
-  const orphanImpact = useMemo(
-    () => ({
-      orphanCount: validateImpactQuery.data?.orphanedFixtures ?? 0,
-      declaredCount: validateImpactQuery.data?.declaredOrphanedFixtures ?? 0,
-      loading: readLoading(validateImpactQuery),
-      failed: readFailed(validateImpactQuery),
-      onRetry: () => void validateImpactQuery.refetch(),
-    }),
-    [validateImpactQuery],
-  );
-  // Reopening the baseline with period overlays → 409; confirm to delete them.
-  const [reopenOverlayCount, setReopenOverlayCount] = useState<number | null>(null);
-
-  // Validating a non-baseline version with overlays → 409 escalation (same
-  // destructive idiom as reopen): confirm, then re-POST with the flag.
-  const [validateOverlayCount, setValidateOverlayCount] = useState<number | null>(null);
-  const validate = (confirmDeleteOverlays?: boolean) => {
-    if (!validScheduleId) {
-      return;
-    }
-    validateMutation.mutate(
-      { id: validScheduleId, confirmDeleteOverlays },
-      {
-        onSuccess: () => {
-          setValidateOverlayCount(null);
-          setValidateOpen(false);
-          // Validated → land on /planning, the screen of the version IN FORCE. Valider
-          // est la SORTIE de l'espace de travail (l'étape Génération du wizard) : le socle
-          // validé devient la version en vigueur, et /planning en porte le badge de statut
-          // et « Rouvrir » (symétrie stricte, 2026-08-20 — Valider ↔ Rouvrir).
-          navigate("/planning");
-        },
-        onError: (error) => {
-          if (error instanceof OverlaysExistError) {
-            setValidateOpen(false);
-            setValidateOverlayCount(error.count);
-          }
-        },
-      },
-    );
-  };
-
-  const reopen = (confirmDeleteOverlays?: boolean) => {
-    if (!validScheduleId) {
-      return;
-    }
-    reopenMutation.mutate(
-      { id: validScheduleId, confirmDeleteOverlays },
-      {
-        onSuccess: () => {
-          setReopenOverlayCount(null);
-          // RÈGLE : toute navigation vers /wizard DÉCLARE son mode — aucun héritage du mode
-          // ambiant du localStorage. Sans quoi rouvrir un overlay ouvrait la SAISON (ou la
-          // mauvaise période) : `jumpTo("generate")` SEUL laissait le mode persisté décider.
-          // On le dérive de la version rouverte : plan non-SEASON → mode période ancré sur SON
-          // entrée (schedulePlanId → plan → calendarEntryId) ; plan SEASON → mode saison.
-          const reopened = displayed; // === selectedSchedule ; `displayed` est en portée ici
-          const reopenedEntryId =
-            null !== reopened && !isSeasonPlanType(reopened.planType) && null !== reopened.schedulePlanId
-              ? ((allSchedulePlans ?? []).find((p) => p.id === reopened.schedulePlanId)?.calendarEntryId ?? null)
-              : null;
-          if (null !== reopenedEntryId) {
-            useWizardStore.getState().startPeriodMode(reopenedEntryId);
-          } else {
-            useWizardStore.getState().exitPeriodMode();
-          }
-          // Reopened to rework the plan → the wizard's generation step (mode already declared).
-          useWizardStore.getState().jumpTo("generate");
-          navigate("/wizard");
-        },
-        // Generic failures are toasted by the hook (unmount-safe); only the
-        // 409 escalation is UI state handled here.
-        onError: (error) => {
-          if (error instanceof OverlaysExistError) {
-            setReopenOverlayCount(error.count);
-          }
-        },
-      },
-    );
-  };
+  // Validation et réouverture (le cœur du lifecycle — ADR-0002) : états, mutations, impact de
+  // dépointage, validate()/reopen(). `actionBusy` est recomposé plus bas depuis les mutations
+  // retournées (deleteMutation et regenerateFromMutation restent en page).
+  const { validateOpen, setValidateOpen, reopenOverlayCount, setReopenOverlayCount, validateOverlayCount, setValidateOverlayCount, validateMutation, reopenMutation, orphanImpact, validate, reopen } = useValidateReopen(validScheduleId, displayed, allSchedulePlans, navigate);
 
   const selectedSchedule = displayed;
   // Suppression d'un planning SECONDAIRE (overlay) depuis l'en-tête (retour fondateur
