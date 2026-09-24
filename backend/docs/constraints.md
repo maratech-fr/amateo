@@ -1,16 +1,14 @@
 # Documentation métier du système de contraintes
 
-Last verified @ 2026-09-23 (`documentation-update`, suppression du cran `BONUS`, `bc2e2568`).
-**Corrigé cette passe** : trois mentions de `BONUS` comme valeur `ruleType` vivante (table
-`maxEndTime`, table des types, ligne « Impact sur le score ») — le cran est retiré du produit
-(`App\Enum\ConstraintRuleType` ne compte plus que HARD/PREFERRED/LOCK), `ruleType: "BONUS"` rend
-422. Passe précédente (2026-09-21, conservée pour trace), rien à corriger : tag système `EMB`
-toujours sur l'axe AGE (`TeamTagService.php:27`) ; `FACILITY_CAPACITY` ne subsiste qu'en
-commentaires/docblocks historiques (`PayloadCapacityMirror.php:30`,
-`ScheduleConstraintBuilder.php:1375`, `ValidateConstraintsController.php:263`) ;
-`maxConsecutiveDays` (P2-42) toujours seule règle à `defaultIntensity: 'OFF'`
-(`ImplicitConstraintConfig.php:126`), les 4 autres règles implicites restant `'HARD'`
-(`:93,100,107,114`).
+Last verified @ 2026-09-25 (`documentation-update`, rotation de fraîcheur, sans rapport avec le
+sujet du lot — le fix `f9b36591` ne touche ni contraintes ni backend). Re-confronté au code :
+`App\Enum\ConstraintRuleType` compte toujours exactement HARD/PREFERRED/LOCK (`ConstraintRuleType.php:11-13`,
+aucun cran `BONUS`) ✓ ; `minAtVenueId` toujours exigé `HARD`/`LOCK` + scope `TEAM`
+(`ConstraintConfigValidator.php:137-141`) ✓ ; `targetTags`/`excludeTags` (intersection/soustraction,
+P2-29) toujours vivants à côté du `targetTag` legacy (`TeamTagResolver.php:128-167,264-280`) ✓ ;
+`LOCK` toujours réservé aux familles `TIME`/`DAY` (`ConstraintConfigValidator.php:184`) ✓ ;
+`ConstraintValidationService` ne porte toujours aucune matrice scope×family (grep vide) ✓. Reste du
+fichier non re-contrôlé cette passe — historique : `git log -p --follow backend/docs/constraints.md`.
 
 > ClubScheduler — Symfony 7 + API Platform. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 

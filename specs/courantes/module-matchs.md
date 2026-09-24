@@ -1,24 +1,12 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-24 (lot « les trois décisions produit » — UXS-07/UXC-24/A11Y-21, détail
-`specs/courantes/etat-des-lieux.md` §3 2026-09-24). Recalé pour ce lot : l'index `/matchs` n'est
-plus inconditionnellement le Calendrier (§ « Atterrissage conditionnel de l'index », `MatchesLanding.tsx`
-en index de `routes.tsx`) et le statut `UNPLACED` se dit « Sans créneau » (`fixtureStatusLabel.ts`).
-Passe précédente (lot 7 PR C, FRT-33 dernier volet — CalendarPage allégé) : ce fichier ne décrit ni les
-hooks internes ni la taille de `CalendarPage.tsx` (son grain est l'écran, pas son organisation de
-fichiers) ; re-confronté au code les deux citations `matches/lib/`
-qui restent dans ce fichier — non déplacées par le lot 7 : `hasConsultParams`
-(`frontend/src/features/matches/lib/urlState.ts:189`) et son miroir `hasConflictsParams` (`:325`)
-✓ ; `MatchConflictDetector::kickoffInsideLeagueWindow` ⇄ `matches/lib/envelope.ts::
-kickoffInsideLeagueWindow` (`:28`) ✓, toujours en place, aucun des deux n'a rejoint un hook.
-Précédente passe (2026-09-22, lot filtres Conflits/`FilterChip`, `c8cf2661`) : `conflictsTreatments`/
-`conflictsHomeOnly` rejoignent `useMatchesStore` (`store.ts:89-90,137-138,162-163`) — plus en
-`useState` local ; `FilterChip` (`shared/components/ui/filter-chip.tsx`) consommée par exactement
-les 3 chips « Familles » (`CalendarControls.tsx:172`, `ConflictsPage.tsx:500`) et « Traitement »
-(`ConflictsPage.tsx:532`) — les 3 autres puces d'apparence proche (types, période, « Regrouper
-par ») restent des contrôles segmentés non absorbés (contrat sans compteur). Le reste du fichier
-(Validé ligue, Écran Adversaires, delta de visite, lot N…) n'a pas bougé sous ces deux lots, non
-re-contrôlé cette passe — historique des passes précédentes : `git log -p --follow
+Last verified @ 2026-09-25 (fix `f9b36591` — l'atterrissage `/matchs` gèle désormais l'ISSUE, pas
+seulement l'entrée en décision). Recalé pour cette passe : § « Atterrissage conditionnel de
+l'index », confronté à `MatchesLanding.tsx` — l'état `outcome` (`null → "conflicts"|"calendar"`)
+est posé une fois puis immuable, un conflit né après l'atterrissage se voit dans le badge sans
+déplacer l'utilisateur ; les quatre règles fermées (latch session, spinner, fail-open, lien
+profond) restent inchangées dans leur comportement observable. Reste du fichier non re-contrôlé
+cette passe. Historique des passes précédentes : `git log -p --follow
 specs/courantes/module-matchs.md`.
 
 > **Règle de forme (refonte 2026-09-18, AUD-DOC-38)** : ce fichier décrit **l'état courant, par
@@ -547,9 +535,15 @@ Importer garde sa maison propre (§6).
 inconditionnellement le Calendrier : une route d'atterrissage (`MatchesLanding.tsx`) tranche au
 montage. S'il y a des conflits **à traiter** (`openConflictCount` sur le même cache `useConflicts`
 que le badge « Conflits · N »), elle redirige vers `/matchs/conflits` ; sinon elle rend
-`<CalendarPage/>`. Quatre règles fermées : (1) la décision est **figée au montage** et ne se rejoue
-qu'une fois par **session** SPA (booléen `landingDecided` de `useMatchesStore`, non persisté, hors
-URL — un rechargement complet re-propose Conflits s'il y en a) ; (2) pendant l'attente du compte,
+`<CalendarPage/>`. Quatre règles fermées : (1) **c'est l'ISSUE qui est figée, pas seulement
+l'entrée en décision** (bug corrigé le 2026-09-25, `f9b36591` — l'entrée était bien gelée, mais la
+condition de renvoi, elle, se réévaluait à chaque rendu, si bien qu'un conflit né APRÈS un
+atterrissage sans conflit rejouait le renvoi et éjectait l'utilisateur du Calendrier en plein
+travail) : un état local `outcome` (`null → "conflicts" | "calendar"`) est posé UNE fois puis ne
+bouge plus, et ne se rejoue qu'une fois par **session** SPA (booléen `landingDecided` de
+`useMatchesStore`, non persisté, hors URL — un rechargement complet re-propose Conflits s'il y en
+a). **Un conflit né ensuite se voit dans le badge « Conflits · N », il ne déplace jamais
+l'utilisateur** ; (2) pendant l'attente du compte,
 un `FullPageSpinner` — jamais le Calendrier avant de savoir ; (3) un compte **en erreur** ouvre le
 Calendrier (« fail-open » — même doctrine que le badge, qui n'affiche jamais « Conflits · 0 » sur
 données absentes) ; (4) une **URL avec paramètres** fait foi (lien profond : le cockpit `?fbi=1`,

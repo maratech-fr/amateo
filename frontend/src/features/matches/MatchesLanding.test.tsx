@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -46,16 +46,19 @@ beforeEach(() => {
 
 function renderAt(path: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path="/matchs" element={<MatchesLanding />} />
-          <Route path="/matchs/conflits" element={<div>CONFLITS</div>} />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
+  return {
+    queryClient,
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path="/matchs" element={<MatchesLanding />} />
+            <Route path="/matchs/conflits" element={<div>CONFLITS</div>} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 describe("MatchesLanding (UXS-07 — atterrissage conditionnel)", () => {
@@ -101,6 +104,33 @@ describe("MatchesLanding (UXS-07 — atterrissage conditionnel)", () => {
     expect(screen.getByText("CALENDRIER")).toBeInTheDocument();
     expect(screen.queryByLabelText("Chargement")).not.toBeInTheDocument();
     await waitFor(() => expect(conflictsState.settled).toBe(true));
+    expect(screen.queryByText("CONFLITS")).not.toBeInTheDocument();
+  });
+
+  it("entré SANS conflit puis un conflit APPARAÎT → on RESTE sur le Calendrier (l'ISSUE est figée, pas seulement l'entrée)", async () => {
+    // Entrée sur une session vierge, zéro conflit : on atterrit sur le Calendrier.
+    conflictsState.open = 0;
+    const { queryClient } = renderAt("/matchs");
+    expect(await screen.findByText("CALENDRIER")).toBeInTheDocument();
+    expect(screen.queryByText("CONFLITS")).not.toBeInTheDocument();
+
+    // Un conflit naît PENDANT le travail : l'utilisateur saisit une rencontre, ce qui en
+    // prod invalide le préfixe `["fixtures"]` (donc `["fixtures","conflicts"]`) via
+    // `invalidateFixtures` (`queries.ts`). On reproduit le geste EXACT — `invalidateQueries`
+    // refetch la requête active (le `staleTime` de 10 s ne protège pas d'une invalidation),
+    // le compte passe de 0 à 2, et react-query notifie ses observateurs sur un macrotask :
+    // on le laisse se vider DANS `act` pour que le re-rendu (celui qui, buggé, rejouait le
+    // renvoi) ait bien lieu.
+    conflictsState.open = 2;
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ["fixtures", "conflicts"] });
+      await new Promise((resolve) => setTimeout(resolve));
+    });
+
+    // L'atterrissage était résolu sur « calendrier » : un conflit né APRÈS ne doit jamais
+    // rejouer le renvoi et éjecter l'utilisateur. Il se voit dans le badge « Conflits · N »,
+    // pas en le déplaçant de force. Calendrier toujours là, Conflits jamais monté.
+    expect(screen.getByText("CALENDRIER")).toBeInTheDocument();
     expect(screen.queryByText("CONFLITS")).not.toBeInTheDocument();
   });
 });
