@@ -140,6 +140,8 @@ vi.mock("./api", () => {
   // d'attente. Le mock doit exposer la même surface — sa valeur exacte n'est vérifiée nulle part
   // ici (la parité message⇄constante est gardée par EvictConfirmDialog.test.tsx, non moqué).
   MOVE_VERDICT_TIMEOUT_SECONDS: 45,
+  // P4-255 PR 2 (filet) — le rail move-group : par défaut ACCEPTE (le filet de groupe l'exerce en succès).
+  moveGroup: vi.fn(() => Promise.resolve({ valid: true, compromises: [] })),
   };
 });
 
@@ -175,6 +177,13 @@ const { meState, renameSpy, plansState, conflictsState, reservationsState, teamO
   capacityGateEnabled: [] as boolean[],
 }));
 
+// P4-255 PR 2 (filet surlignage) — les blocs de mutualisation SERVIS : le déplacement de GROUPE
+// (rail move-group) en dérive. `[]` par défaut → aucune séance de bloc, comportement inchangé ;
+// le seul cas « groupe » du filet les renseigne (et les reremet à `[]` dans son beforeEach).
+const { sharedBlocksState } = vi.hoisted(() => ({
+  sharedBlocksState: { blocks: [] as { id: string; version: number; createdAt: string; updatedAt: string; schedulePlanId: string | null; teamIds: string[]; commonSessions: number }[] },
+}));
+
 // P2-15 : les réglages de gymnases de la période — un gymnase DÉSACTIVÉ garde ses
 // créneaux en base, l'écran doit malgré tout cesser de l'afficher.
 vi.mock("@/features/wizard/queries", async (orig) => ({
@@ -192,6 +201,8 @@ vi.mock("@/features/wizard/queries", async (orig) => ({
     capacityGateEnabled.push(enabled);
     return { data: enabled ? capacityState.data : undefined };
   },
+  // P4-255 PR 2 (filet) — les blocs de mutualisation servis : le déplacement de GROUPE en dérive.
+  useSharedTrainingBlocks: () => ({ data: sharedBlocksState.blocks }),
 }));
 
 // Partiel : seul `useSchedulePlans` est simulé (l'en-tête y lit le nom du plan
@@ -2143,5 +2154,206 @@ describe("PlanningPage — écran de génération dès qu'une version EN PORTÉE
 
     expect(await screen.findByText("U11")).toBeInTheDocument();
     expect(screen.queryByText(/génération du planning/i)).not.toBeInTheDocument();
+  });
+});
+
+// P4-255 PR 2 — LE FILET DU SURLIGNAGE, posé AVANT d'en refaire la conception (rien ne l'exerçait :
+// `PlanningPage.test.tsx` ne portait aucune occurrence de « highlight »). Ces tests épinglent
+// l'EFFET (classes de la grille), jamais un espion : la cellule surlignée d'une carte OCCUPÉE est la
+// SEULE non estompée (`grayscale`) tandis que les autres le sont — le marquage `border-warning`
+// n'apparaît, lui, que sur une case VIDE flaggée (WeekGrid). « Surlignage effacé » = plus aucune
+// carte estompée. Vue par défaut = « gymnase » → WeekGrid (cf. beforeEach global).
+describe("PlanningPage — filet du surlignage (P4-255 PR 2)", () => {
+  const twoTeams = [
+    { id: "team-1", name: "U11", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 0, sessionsPerWeek: 1 },
+    { id: "team-2", name: "U13", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 1, sessionsPerWeek: 1 },
+  ];
+  const twoSlots = [
+    { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE" as const, lockOrigin: null },
+    { id: "slot-2", scheduleId: SID, teamId: "team-2", venueId: "venue-1", coachId: null, dayOfWeek: 3, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE" as const, lockOrigin: null },
+  ];
+  // Un bloc de mutualisation à UNE équipe (team-1) : dégénéré mais structurellement valide, il suffit
+  // à faire de slot-1 une « séance de bloc » sans co-localisation (donc rendu en carte normale).
+  const soloBlock = { id: "blk-1", version: 1, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", schedulePlanId: null, teamIds: ["team-1"], commonSessions: 1 };
+
+  const gray = (container: HTMLElement, slotId: string): boolean => (container.querySelector(`[data-slot-id="${slotId}"]`)?.className ?? "").includes("grayscale");
+
+  beforeEach(() => {
+    useToastStore.setState({ toasts: [] });
+    vi.mocked(moveSlot).mockReset();
+    vi.mocked(placeSlot).mockReset();
+    sharedBlocksState.blocks = [];
+  });
+
+  async function armMoveFrom(user: ReturnType<typeof userEvent.setup>, label: string): Promise<void> {
+    await user.click(await screen.findByText(label));
+    await user.click(screen.getByRole("button", { name: /Déplacer/ }));
+  }
+
+  // 1 — un déplacement REFUSÉ marque la carte de l'équipe en conflit (la SEULE non estompée) et
+  //     estompe les autres. (chemin highlightViolations)
+  it("un déplacement refusé marque le créneau en conflit et estompe les autres", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getTeams).mockResolvedValue(twoTeams);
+    vi.mocked(getSlots).mockResolvedValue(twoSlots);
+    vi.mocked(moveSlot).mockRejectedValue(new MoveRejectedError([{ rule: "coach_double_booking", message: "le coach a déjà les U13 ici.", conflictingTeamId: "team-2" }]));
+    const { container } = renderWithProviders(<PlanningPage />);
+    await armMoveFrom(user, "U11");
+    await user.click(await screen.findByRole("button", { name: /Placer ici/ }));
+
+    await vi.waitFor(() => {
+      expect(gray(container, "slot-2")).toBe(false); // l'équipe en conflit reste nette
+      expect(gray(container, "slot-1")).toBe(true); // les autres s'estompent
+    });
+  });
+
+  // 2 — changer de créneau SÉLECTIONNÉ après un rejet EFFACE le surlignage (jamais couvert).
+  //     (chemin clearHighlight, via le bloc de rendu de rejet)
+  it("changer de créneau sélectionné après un rejet efface le surlignage", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getTeams).mockResolvedValue(twoTeams);
+    vi.mocked(getSlots).mockResolvedValue(twoSlots);
+    vi.mocked(moveSlot).mockRejectedValue(new MoveRejectedError([{ rule: "coach_double_booking", message: "conflit.", conflictingTeamId: "team-2" }]));
+    const { container } = renderWithProviders(<PlanningPage />);
+    await armMoveFrom(user, "U11");
+    await user.click(await screen.findByRole("button", { name: /Placer ici/ }));
+    // Le surlignage est bien posé (slot-1 estompé).
+    await vi.waitFor(() => expect(gray(container, "slot-1")).toBe(true));
+
+    // Sortir du mode cible (Échap), puis SÉLECTIONNER un autre créneau : le verdict du geste
+    // précédent se réinitialise et le surlignage s'efface.
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByText("U13"));
+
+    await vi.waitFor(() => {
+      expect(gray(container, "slot-1")).toBe(false);
+      expect(gray(container, "slot-2")).toBe(false);
+    });
+  });
+
+  // 3 — un PLACEMENT refusé (équipe à la dérive) surligne le conflit. (chemin highlightViolations)
+  it("un placement refusé surligne le créneau en conflit", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getTeams).mockResolvedValue([
+      { id: "team-1", name: "U11", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 0, sessionsPerWeek: 2 },
+      { id: "team-2", name: "U13", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 1, sessionsPerWeek: 1 },
+    ]);
+    vi.mocked(getSlots).mockResolvedValue(twoSlots);
+    vi.mocked(placeSlot).mockRejectedValue(new MoveRejectedError([{ rule: "coach_double_booking", message: "conflit.", conflictingTeamId: "team-2" }]));
+    const { container } = renderWithProviders(<PlanningPage />);
+
+    // Attendre que la grille ait chargé les DEUX séances : la dérive recalculée ne retient alors
+    // que U11 (team-2 est placée). Sinon, tant que les créneaux sont en vol, les deux équipes
+    // « dérivent » (aucune séance vue) et le bandeau porte deux boutons.
+    await screen.findByTitle(/U13 · Gymnase Alpha/);
+    const banner = await screen.findByRole("region", { name: /séances à replacer/i });
+    await user.click(within(banner).getByRole("button", { name: /U11/ }));
+    await user.click(await screen.findByRole("button", { name: /Placer ici/ }));
+
+    await vi.waitFor(() => {
+      expect(gray(container, "slot-2")).toBe(false);
+      expect(gray(container, "slot-1")).toBe(true);
+    });
+  });
+
+  // 4 — un ESSAI à blanc (dry-run d'éviction) REFUSÉ surligne le conflit. (chemin highlightViolations)
+  it("un essai à blanc refusé surligne le créneau en conflit", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getTeams).mockResolvedValue(twoTeams);
+    vi.mocked(getSlots).mockResolvedValue(twoSlots);
+    vi.mocked(moveSlot).mockResolvedValueOnce({ valid: false, dryRun: true, violations: [{ rule: "coach_double_booking", message: "le coach a déjà les U13.", conflictingTeamId: "team-2" }], compromises: [] });
+    const { container } = renderWithProviders(<PlanningPage />);
+    await armMoveFrom(user, "U11");
+    await user.click(screen.getByTitle(/U13 · Gymnase Alpha/));
+
+    // La modale de refus s'ouvre ET la grille surligne le conflit (derrière la modale).
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    await vi.waitFor(() => {
+      expect(gray(container, "slot-2")).toBe(false);
+      expect(gray(container, "slot-1")).toBe(true);
+    });
+  });
+
+  // 5 — un PLACEMENT réussi APRÈS un surlignage l'efface. (chemin clearHighlight, doPlace onSuccess)
+  it("un placement réussi après un surlignage l'efface", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getTeams).mockResolvedValue([
+      { id: "team-1", name: "U11", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 0, sessionsPerWeek: 2 },
+      { id: "team-2", name: "U13", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 1, sessionsPerWeek: 1 },
+    ]);
+    vi.mocked(getSlots).mockResolvedValue(twoSlots);
+    // 1er placement refusé (pose le surlignage), 2e accepté (l'efface).
+    vi.mocked(placeSlot)
+      .mockRejectedValueOnce(new MoveRejectedError([{ rule: "coach_double_booking", message: "conflit.", conflictingTeamId: "team-2" }]))
+      .mockResolvedValue({ valid: true, slotId: "new", compromises: [] });
+    const { container } = renderWithProviders(<PlanningPage />);
+
+    // cf. test « placement refusé » : attendre le chargement des créneaux pour que seule U11 dérive.
+    await screen.findByTitle(/U13 · Gymnase Alpha/);
+    const banner = await screen.findByRole("region", { name: /séances à replacer/i });
+    await user.click(within(banner).getByRole("button", { name: /U11/ }));
+    await user.click(await screen.findByRole("button", { name: /Placer ici/ }));
+    await vi.waitFor(() => expect(gray(container, "slot-1")).toBe(true)); // surlignage posé
+
+    // Le mode placement reste armé : un 2e essai réussit et efface le surlignage.
+    await user.click(await screen.findByRole("button", { name: /Placer ici/ }));
+    await vi.waitFor(() => {
+      expect(gray(container, "slot-1")).toBe(false);
+      expect(gray(container, "slot-2")).toBe(false);
+    });
+  });
+
+  // 6 — cliquer un diagnostic marque/estompe la grille (câblage page ↔ panneau). (chemin highlightSlots)
+  it("cliquer un diagnostic marque la grille et estompe le reste", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getTeams).mockResolvedValue(twoTeams);
+    vi.mocked(getSlots).mockResolvedValue(twoSlots);
+    // Un warning rattaché à team-1 : cliqué, il surligne les créneaux de team-1 (slot-1).
+    vi.mocked(getDiagnostics).mockResolvedValue([
+      { id: "wa", scheduleId: SID, type: "constraint_not_honored", severity: "WARNING", teamId: "team-1", venueId: null, coachId: null, dayOfWeek: null, startTime: null, ruleKey: null, message: "Règle non honorée.", suggestions: [], causes: [], openCandidates: null },
+    ]);
+    const { container } = renderWithProviders(<PlanningPage />);
+    await screen.findByText("U11");
+
+    await user.click(screen.getByRole("button", { name: /Diagnostics du système/ }));
+    await user.click(await screen.findByRole("button", { name: /Alertes/ }));
+    await user.click(screen.getByText("Règle non honorée."));
+
+    await vi.waitFor(() => {
+      expect(gray(container, "slot-1")).toBe(false); // le créneau nommé reste net
+      expect(gray(container, "slot-2")).toBe(true); // les autres s'estompent
+    });
+  });
+
+  // 7 — un déplacement de GROUPE réussi efface le surlignage (chemin jamais exercé : `grep moveGroup`
+  //     = 0). Surlignage posé par un diagnostic, puis un move-group accepté (mock par défaut) l'efface.
+  //     (chemin clearHighlight, doMoveGroup onSuccess)
+  it("un déplacement de groupe réussi efface le surlignage", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getTeams).mockResolvedValue(twoTeams);
+    vi.mocked(getSlots).mockResolvedValue(twoSlots);
+    sharedBlocksState.blocks = [soloBlock]; // slot-1 devient une séance de bloc (déplaçable en groupe)
+    vi.mocked(getDiagnostics).mockResolvedValue([
+      { id: "wa", scheduleId: SID, type: "constraint_not_honored", severity: "WARNING", teamId: "team-1", venueId: null, coachId: null, dayOfWeek: null, startTime: null, ruleKey: null, message: "Règle non honorée.", suggestions: [], causes: [], openCandidates: null },
+    ]);
+    const { container } = renderWithProviders(<PlanningPage />);
+    await screen.findByText("U11");
+
+    // Poser un surlignage via le diagnostic (team-1 net, le reste estompé).
+    await user.click(screen.getByRole("button", { name: /Diagnostics du système/ }));
+    await user.click(await screen.findByRole("button", { name: /Alertes/ }));
+    await user.click(screen.getByText("Règle non honorée."));
+    await vi.waitFor(() => expect(gray(container, "slot-2")).toBe(true));
+
+    // Sélectionner la séance de bloc, armer « Déplacer le groupe », choisir une case libre.
+    await user.click(screen.getByText("U11"));
+    await user.click(await screen.findByRole("button", { name: /Déplacer le groupe/ }));
+    await user.click(await screen.findByRole("button", { name: /Placer ici/ }));
+
+    // Le déplacement de groupe réussit → le surlignage est effacé.
+    await vi.waitFor(() => {
+      expect(gray(container, "slot-1")).toBe(false);
+      expect(gray(container, "slot-2")).toBe(false);
+    });
   });
 });
