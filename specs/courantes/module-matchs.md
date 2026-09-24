@@ -1,9 +1,12 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-24 (`documentation-update`, lot 7 PR C, FRT-33 dernier volet — CalendarPage
-allégé, détail `specs/courantes/etat-des-lieux.md` §3 2026-09-24). Ce fichier ne décrit ni les
+Last verified @ 2026-09-24 (lot « les trois décisions produit » — UXS-07/UXC-24/A11Y-21, détail
+`specs/courantes/etat-des-lieux.md` §3 2026-09-24). Recalé pour ce lot : l'index `/matchs` n'est
+plus inconditionnellement le Calendrier (§ « Atterrissage conditionnel de l'index », `MatchesLanding.tsx`
+en index de `routes.tsx`) et le statut `UNPLACED` se dit « Sans créneau » (`fixtureStatusLabel.ts`).
+Passe précédente (lot 7 PR C, FRT-33 dernier volet — CalendarPage allégé) : ce fichier ne décrit ni les
 hooks internes ni la taille de `CalendarPage.tsx` (son grain est l'écran, pas son organisation de
-fichiers) donc rien à y recaler pour ce lot ; re-confronté au code les deux citations `matches/lib/`
+fichiers) ; re-confronté au code les deux citations `matches/lib/`
 qui restent dans ce fichier — non déplacées par le lot 7 : `hasConsultParams`
 (`frontend/src/features/matches/lib/urlState.ts:189`) et son miroir `hasConflictsParams` (`:325`)
 ✓ ; `MatchConflictDetector::kickoffInsideLeagueWindow` ⇄ `matches/lib/envelope.ts::
@@ -26,10 +29,11 @@ specs/courantes/module-matchs.md`.
 > — si une phrase commence par une date ou un id de PR, elle appartient à l'état des lieux, pas ici.
 
 Le module vit dans `frontend/src/features/matches/` (nav `MatchesLayout`, sous `/matchs` :
-`index` = Calendrier, `conflits`, `importer`, `configuration`, `adversaires` (§ Écran Adversaires,
-sorti de Configuration le 2026-09-19), `semaine-type`, `consulter` en redirection permanente vers
-l'index, `reconciliation` accessible seulement depuis le canal API,
-`frontend/src/app/routes.tsx:141-186`) et dans les services backend `Match*`/`Fixture*`/
+`index` = **route d'atterrissage conditionnelle** (`MatchesLanding` → Calendrier, ou renvoi sur
+Conflits s'il y a des conflits à traiter — § Écran Calendrier), `conflits`, `importer`,
+`configuration`, `adversaires` (§ Écran Adversaires, sorti de Configuration le 2026-09-19),
+`semaine-type`, `consulter` en redirection permanente vers l'index, `reconciliation` accessible
+seulement depuis le canal API, `frontend/src/app/routes.tsx:141-186`) et dans les services backend `Match*`/`Fixture*`/
 `Opponent*`/`Ffbb*` (`backend/src/Service/`, `backend/src/Entity/`).
 
 ## 0. Portée et gating
@@ -538,6 +542,21 @@ aucune fenêtre → muette. Lien unique « Ouvrir la liste FBI » → `/matchs?f
 
 L'écran unique du module : place/échange/verrouille/saisit dans FBI ET lit Semaine·Mois·Phase.
 Importer garde sa maison propre (§6).
+
+**Atterrissage conditionnel de l'index (UXS-07).** L'index `/matchs` n'est plus
+inconditionnellement le Calendrier : une route d'atterrissage (`MatchesLanding.tsx`) tranche au
+montage. S'il y a des conflits **à traiter** (`openConflictCount` sur le même cache `useConflicts`
+que le badge « Conflits · N »), elle redirige vers `/matchs/conflits` ; sinon elle rend
+`<CalendarPage/>`. Quatre règles fermées : (1) la décision est **figée au montage** et ne se rejoue
+qu'une fois par **session** SPA (booléen `landingDecided` de `useMatchesStore`, non persisté, hors
+URL — un rechargement complet re-propose Conflits s'il y en a) ; (2) pendant l'attente du compte,
+un `FullPageSpinner` — jamais le Calendrier avant de savoir ; (3) un compte **en erreur** ouvre le
+Calendrier (« fail-open » — même doctrine que le badge, qui n'affiche jamais « Conflits · 0 » sur
+données absentes) ; (4) une **URL avec paramètres** fait foi (lien profond : le cockpit `?fbi=1`,
+« Voir la semaine », « Replacer ») et **saute** la décision. Toute entrée dans le module par un
+autre onglet consomme aussi la règle (effet de montage de `MatchesLayout`) : revenir ensuite au
+Calendrier ne renvoie jamais de force sur Conflits. La décision vit dans `MatchesLanding`, pas dans
+le layout — la nav des six onglets reste inchangée.
 
 - **Chaîne de filtres pure** : filtre équipe/coach/gymnase (barre `MatchesFilterBar`, réutilise
   `ResourceFilter` de `features/planning`) → filtre type de compétition → scope temporel → familles

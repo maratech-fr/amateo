@@ -1,7 +1,7 @@
 # ClubScheduler — PostgreSQL Row-Level Security (RLS)
 
-Last verified @ 2026-09-23 (rotation `documentation-update`, lot « annuaire adverse — repli code
-fédéral » (BCK-26) — fichier hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code :
+Last verified @ 2026-09-24 (rotation `documentation-update`, lot « les trois décisions produit »
+UXS-07/UXC-24/A11Y-21 — fichier hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code :
 `TenantFilterListener` toujours `KernelEvents::REQUEST => ['onKernelRequest', 7]`
 (`TenantFilterListener.php:55`) ✓ · `backend/tests/Security/RlsIsolationTest.php` et
 `backend/migrations/Version20260731090000.php` toujours présents ✓ · `TenantConnectionContext`

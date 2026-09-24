@@ -147,9 +147,13 @@ export const routes: RouteObject[] = [
             lazy: async () => ({ Component: (await import("@/features/matches/MatchesLayout")).MatchesLayout }),
             children: [
               {
-                // PR 3b — le Calendrier, écran unique du module (fusion Semaine⇄Consulter).
+                // UXS-07 — l'index est une ROUTE D'ATTERRISSAGE conditionnelle
+                // (`MatchesLanding`) : elle rend le Calendrier (écran unique, fusion
+                // Semaine⇄Consulter) OU renvoie sur Conflits s'il y en a à traiter, une
+                // fois par session, lien profond prioritaire. La décision vit là, PAS
+                // dans le layout — la nav des six onglets reste inchangée.
                 index: true,
-                lazy: async () => ({ Component: (await import("@/features/matches/CalendarPage")).CalendarPage }),
+                lazy: async () => ({ Component: (await import("@/features/matches/MatchesLanding")).MatchesLanding }),
               },
               {
                 // PR 3b — renvoi permanent de l'ancien « Consulter » vers le Calendrier,

@@ -1,10 +1,13 @@
 # ClubScheduler — Tenant Isolation Architecture
 
-Last verified @ 2026-09-23 (rotation `documentation-update`, lot « annuaire adverse — repli code
-fédéral » (BCK-26) — fichier hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code :
-priorité 7 toujours en place (`TenantFilterListener.php:55`) ✓ ·
-`backend/tests/Security/TenantOwnedInterfaceCompletenessTest.php` et
-`backend/migrations/Version20260919120000.php` toujours présents ✓. Rien à corriger.
+Last verified @ 2026-09-24 (rotation `documentation-update`, lot « les trois décisions produit »
+UXS-07/UXC-24/A11Y-21 — fichier hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code :
+priorité 7 toujours en place (`TenantFilterListener.php:55`) ✓ · `TenantConnectionContext`
+pose toujours `set_config('app.club_id', ?, false)` (`TenantConnectionContext.php:30`) ✓ ·
+`backend/tests/Security/TenantOwnedInterfaceCompletenessTest.php`,
+`backend/tests/Security/AdminRequestBoundaryTest.php`, `TenantJwtIsolationTest.php`,
+`ManagementRoleTest.php` et `backend/migrations/Version20260919120000.php` toujours présents ✓.
+Rien à corriger.
 
 ## Overview
 

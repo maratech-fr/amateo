@@ -258,6 +258,51 @@ export async function settleVeil(page: Page): Promise<void> {
 }
 
 /**
+ * Entre dans le module matchs et rejoint le Calendrier de façon DÉTERMINISTE — la maison unique
+ * pour « je viens d'arriver sur /matchs et je veux agir sur le Calendrier ». Même doctrine que
+ * `settleVeil` : attendre que l'écran soit vraiment posé avant d'agir.
+ *
+ * ⚠ Pourquoi ce helper existe (UXS-07, `MatchesLanding.tsx`) : l'index `/matchs` n'est plus
+ * inconditionnellement le Calendrier. Il rend un `FullPageSpinner` tant que le compte de conflits
+ * n'est pas connu, PUIS `<Navigate to="/matchs/conflits" replace/>` s'il y a des conflits ouverts,
+ * sinon `<CalendarPage/>`. Cliquer « Calendrier » PENDANT que cette décision est en vol est un
+ * no-op (on est déjà sur la route de ce lien) : le clic ne fait rien, le compte arrive, la
+ * redirection pousse sur Conflits, et la suite du scénario cherche des éléments du Calendrier sur
+ * la page Conflits jusqu'au timeout. Il faut d'abord ATTENDRE que la décision soit RENDUE.
+ *
+ * Contrat :
+ *  1. Attendre que la décision d'atterrissage soit RENDUE, INDÉPENDAMMENT de son issue — surtout
+ *     pas en pariant sur « il y aura des conflits » (un `waitForURL(/conflits/)` pendrait le jour
+ *     où le club n'en a plus). Le signal juste : attendre que l'UN des deux contenus TERMINAUX
+ *     soit visible — le Calendrier (groupe « Semaine affichée », `WeekCounters`) OU les Conflits
+ *     (groupe « Regrouper par », `ConflictsPage`). Tant qu'un `FullPageSpinner` est seul à l'écran
+ *     (celui de `MatchesLanding`, PUIS celui de la page résolue pendant qu'elle charge ses propres
+ *     données), aucun `role="group"` n'existe : c'est exactement la condition de sortie voulue.
+ *  2. ENSUITE seulement, rejoindre le Calendrier en cliquant l'onglet, scopé à la nav du module.
+ *     La décision est derrière nous : le clic est une vraie navigation si on est sur Conflits, un
+ *     no-op inoffensif si on est déjà sur le Calendrier — plus rien ne peut la défaire.
+ *  3. Terminer par un TÉMOIN POSITIF : le groupe « Semaine affichée » est visible. Un helper qui
+ *     rend la main sans avoir prouvé où il a posé le scénario est un faux vert en puissance.
+ *
+ * Timeouts généreux : la décision traverse DEUX spinners en cascade (MatchesLanding → page
+ * résolue), et rejoindre le Calendrier depuis Conflits relance le spinner propre de `CalendarPage`.
+ */
+export async function landOnMatchesCalendar(page: Page): Promise<void> {
+  // 1. La décision est rendue dès que l'un des deux contenus terminaux paraît. `.or()` sort au
+  //    premier des deux visible ; sous le(s) spinner(s) aucun n'existe → on attend vraiment.
+  const calendar = page.getByRole("group", { name: "Semaine affichée" });
+  const conflicts = page.getByRole("group", { name: "Regrouper par" });
+  await expect(calendar.or(conflicts).first()).toBeVisible({ timeout: 30_000 });
+
+  // 2. Rejoindre le Calendrier, scopé à la nav du module (Playwright fait défiler avant de cliquer,
+  //    donc reste correct à 400 px où la nav déborde).
+  await page.getByRole("navigation", { name: "Espaces matchs" }).getByRole("link", { name: "Calendrier" }).click();
+
+  // 3. Témoin positif : on est bien posé sur le Calendrier.
+  await expect(calendar).toBeVisible({ timeout: 30_000 });
+}
+
+/**
  * **Enregistre les appels d'API qui ÉCHOUENT, pour qu'un parcours qui casse dise POURQUOI.**
  *
  * ⚑ Écrit après l'avoir payé deux fois dans la même journée (2026-08-21, PR #684 puis #687) :

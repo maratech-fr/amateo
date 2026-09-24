@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures";
+import { landOnMatchesCalendar } from "./support";
 
 /**
  * PR-3b — l'onglet « Importer » : les entrées de données (dépôt FBI, canal API,
@@ -127,6 +128,11 @@ test("importer: onglet, badge absent, configuration allégée, file de traitemen
   const tabLabel = 0 === openBefore ? "Importer" : `Importer · ${openBefore}`;
 
   await page.goto("/matchs");
+  // UXS-07 — après ce `goto` (store vierge), l'atterrissage conditionnel est EN VOL : cliquer un
+  // onglet pendant cette fenêtre voit la redirection `<Navigate>` DÉFAIRE la navigation de
+  // l'utilisateur (aria-current reste null). On CONSOMME d'abord la décision (maison unique, qui
+  // pose le scénario sur le Calendrier) : ensuite le clic sur « Importer » est une vraie navigation.
+  await landOnMatchesCalendar(page);
   const importerTab = page.getByRole("navigation", { name: "Espaces matchs" }).getByRole("link", { name: /^Importer/ });
   await expect(importerTab).toBeVisible();
   await expect(importerTab).toHaveText(tabLabel);

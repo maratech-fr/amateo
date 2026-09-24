@@ -59,16 +59,18 @@ frontend/
 │   │   ├── cockpit/             # / home: season-plan banner, month calendar, radar,
 │   │   │                        # FbiDeadlineCard (RMM-6 PR-3: matches FBI-entry reminder + login escalation)
 │   │   ├── legal/               # /confidentialite
-│   │   ├── matches/             # MatchesLayout, seven routes/5 tabs: /matchs (index — the
-│   │   │                        # Calendar, single screen since PR 3b 2026-09-16: merges the
-│   │   │                        # weekly placement loop, `WeekCounters` bar replacing the old
-│   │   │                        # 5-step rail, and read Week/month/phase) ·
+│   │   ├── matches/             # MatchesLayout, 8 routes/6 tabs: /matchs (index — since UXS-07
+│   │   │                        # 2026-09-24 a conditional landing, `MatchesLanding`: redirects
+│   │   │                        # to Conflits if any are open, else renders the Calendar — the
+│   │   │                        # single screen since PR 3b 2026-09-16 merging the weekly
+│   │   │                        # placement loop, `WeekCounters` bar, and read Week/month/phase) ·
 │   │   │                        # /matchs/consulter (permanent redirect → /matchs) ·
 │   │   │                        # /matchs/importer (data entry + per-team review queue) ·
-│   │   │                        # /matchs/configuration (rare setup) · /matchs/conflits (read-only,
-│   │   │                        # season conflicts pivoted coach/team/venue/matchday, PR A 2026-09-15)
+│   │   │                        # /matchs/configuration (rare setup) · /matchs/adversaires ·
+│   │   │                        # /matchs/semaine-type · /matchs/conflits (read-only, season
+│   │   │                        # conflicts pivoted coach/team/venue/matchday, PR A 2026-09-15)
 │   │   │                        # · /matchs/reconciliation (RMM-4, FBI écarts per-field — delivered,
-│   │   │                        # two channels: xlsx deposit + FFBB API)
+│   │   │                        # two channels: xlsx deposit + FFBB API, no tab — API channel only)
 │   │   ├── planning/            # /planning work loop: WeekGrid, toolbar, exports
 │   │   ├── profile/             # /profile
 │   │   ├── season-transition/   # Season pivot banner + re-dating dialog

@@ -8,6 +8,7 @@ import { useSocleValidated } from "@/shared/lib/socle";
 import { openConflictCount } from "./lib/conflictResolution";
 import { pendingReviewCount } from "./lib/reviewQueue";
 import { useConflicts, useFixtures, useModuleVisit } from "./queries";
+import { useMatchesStore } from "./store";
 
 /**
  * RMM-1 PR2 — « deux espaces ». Le module matchs écrasait deux temps que le
@@ -41,6 +42,18 @@ export function MatchesLayout() {
   // depuis le cache react-query partagé. Le layout enveloppant LES DEUX routes, la
   // navigation boucle⇄configuration ne le remonte pas → pas de re-POST.
   useModuleVisit(socleValidated);
+
+  // UXS-07 — toute ENTRÉE dans le module (par n'importe quel onglet) consomme la règle
+  // d'atterrissage conditionnel : la décision est marquée au montage, sous la même garde
+  // socle que la visite. Conséquence voulue : entrer par `/matchs/importer` puis cliquer
+  // « Calendrier » ne ramène JAMAIS de force sur Conflits (`MatchesLanding` voit alors la
+  // décision déjà prise). La décision elle-même vit dans `MatchesLanding` (index).
+  const markLandingDecided = useMatchesStore((s) => s.markLandingDecided);
+  useEffect(() => {
+    if (socleValidated) {
+      markLandingDecided();
+    }
+  }, [socleValidated, markLandingDecided]);
 
   // PR-3b — le badge de l'onglet Importer : le nombre de rencontres à traiter
   // (NEW + OUT_OF_SYNC), dérivé du MÊME cache que la boucle et la file (aucune

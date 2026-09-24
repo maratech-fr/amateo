@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, test } from "./fixtures";
 
-import { ensureValidated, expectNoA11yViolations, expectNoContrastViolations, forceTheme, loginSeededClub, registerAndVerify, settleVeil, uniqueAra } from "./support";
+import { ensureValidated, expectNoA11yViolations, expectNoContrastViolations, forceTheme, landOnMatchesCalendar, loginSeededClub, registerAndVerify, settleVeil, uniqueAra } from "./support";
 
 /**
  * WCAG 2.2 AA colour-contrast (1.4.3) on the real rendered app — the axis jsdom
@@ -163,6 +163,10 @@ for (const mode of MODES) {
     const fixtureId = (await created.json()).id as string;
     try {
       await page.goto("/matchs");
+      // UXS-07 — `goto` recharge la page (store vierge) : l'atterrissage conditionnel peut renvoyer
+      // sur Conflits si le club porte des conflits. On attend que la décision soit RENDUE puis on
+      // rejoint le Calendrier avant de scanner (maison unique, cf. `landOnMatchesCalendar`).
+      await landOnMatchesCalendar(page);
       // « Amical » est DÉCOCHÉ par défaut (#916) — notre amical (`competitionId: null`) serait invisible,
       // la grille resterait un EmptyState. On le coche AVANT de chercher la semaine (une semaine 100 %
       // masquée n'entre pas dans le sélecteur : `weekends` dérive des fixtures VISIBLES).

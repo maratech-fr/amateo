@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures";
+import { landOnMatchesCalendar } from "./support";
 
 /**
  * La liste « FBI — à faire » du Calendrier, de bout en bout, sous la stack réelle.
@@ -65,6 +66,10 @@ test("fbi — le compteur « FBI à faire » ouvre la liste ; cocher marque sais
 
   try {
     await page.goto("/matchs");
+    // UXS-07 — l'index peut renvoyer sur Conflits (atterrissage conditionnel, store vierge après
+    // `goto`) : on attend la décision RENDUE puis on rejoint le Calendrier, qui porte le compteur
+    // « FBI à faire » (maison unique, cf. `landOnMatchesCalendar`).
+    await landOnMatchesCalendar(page);
 
     // Le compteur global « FBI à faire » (hors du groupe « Semaine affichée ») porte au
     // moins NOTRE rencontre.
