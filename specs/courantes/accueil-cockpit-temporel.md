@@ -1,13 +1,16 @@
 # Accueil « cockpit temporel » — mise au clair (préliminaire calendriers secondaires)
 
-Last verified @ 2026-09-24 (`documentation-update`, P4-255 PR 2 — le carrefour `highlightSlotIds`
-sort vers `planning/lib/useSlotHighlight.ts` et le sujet retouche/éviction/annulation vers
-`planning/lib/useRetouchGestures.ts`, verbatim). La citation `PlanningPage.tsx:1134-1143` pour
-`stalenessMessage` avait de nouveau dérivé (page passée de 1 648 à 1 145 l.) — recalée en
-`:634-640`, vérifiée contre le fichier actuel. Reste du fichier — les 4 repères de la passe du
-2026-09-19/22 (`PeriodStructure.tsx:518` `sub` sur `VenueSelect`, `SCHOOL_HOLIDAY_HORIZON_DAYS = 30`
-à `RadarPanel.tsx:50`, `ClosureSegmentation`/`CalendarEntryRedatability`, la route
-`redate-preview`) — non re-vérifié cette passe, sans rapport avec le sujet ; historique :
+Last verified @ 2026-09-24 (`documentation-update`, P4-255 PR 3 — `PeriodStructure.tsx` supprimé,
+scindé verbatim en trois fichiers à plat de `wizard/steps/` : `PeriodTeams.tsx`, `PeriodVenues.tsx`,
+`PeriodConstraints.tsx`. Le repère `sub` sur `VenueSelect` cité ci-dessous vit désormais dans
+`PeriodVenues.tsx` — recalé en `:192`, vérifié contre le fichier actuel). Précédemment, P4-255 PR 2
+— le carrefour `highlightSlotIds` sort vers `planning/lib/useSlotHighlight.ts` et le sujet
+retouche/éviction/annulation vers `planning/lib/useRetouchGestures.ts`, verbatim. La citation
+`PlanningPage.tsx:1134-1143` pour `stalenessMessage` avait de nouveau dérivé (page passée de 1 648
+à 1 145 l.) — recalée en `:634-640`, vérifiée contre le fichier actuel. Reste du fichier — les 3
+autres repères de la passe du 2026-09-19/22 (`SCHOOL_HOLIDAY_HORIZON_DAYS = 30` à
+`RadarPanel.tsx:50`, `ClosureSegmentation`/`CalendarEntryRedatability`, la route
+`redate-preview`) — non re-vérifiés cette passe, sans rapport avec le sujet ; historique :
 `git log -p --follow` ce fichier.
 
 > **Statut** : **approche arrêtée** (décisions tranchées §9) — **livrée** ; cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2.
@@ -694,7 +697,7 @@ signalé**, en attente d'être adapté.
 > contrairement à `conflicts` (séances à replacer) qui, lui, dépend du plan choisi. La **donnée**
 > (PR 1) est reprise par le **surfaçage** (PR 2) dans les trois écrans concernés — créneau BARRÉ
 > + libellé « Indispo du X au Y — titre » au grain JOUR (pas de bande de remplacement), sur les
-> grilles Gymnases/Réserver, `PeriodStructure` et le récap. Détail : [`frontend-wizard.md`](../../frontend/docs/frontend-wizard.md).
+> grilles Gymnases/Réserver, `PeriodVenues` (ex-`PeriodStructure`, P4-255) et le récap. Détail : [`frontend-wizard.md`](../../frontend/docs/frontend-wizard.md).
 
 ---
 
@@ -760,7 +763,7 @@ coches, provenance, gestes gymnase entier, gel sous DISABLED, bandeau), `venueDa
 d'écriture de la coche), `RecapStep.test.tsx` (état effectif). ⚠ **Point contre-intuitif, vérifié
 au code, pas un oubli** : la grille d'un gymnase entièrement fermé reste **modifiable** (créneaux,
 Reprendre/Vider) — le `<fieldset disabled>` de la grille ne gèle que sur le mode `DISABLED` de
-l'override, jamais sur une fermeture (`PeriodStructure.tsx`). Geler la grille aurait inventé une
+l'override, jamais sur une fermeture (`PeriodVenues.tsx`, ex-`PeriodStructure.tsx`). Geler la grille aurait inventé une
 restriction que le SERVEUR n'impose pas (seule la réservation reste refusée en 422, au grain jour
 EFFECTIF — le mode override, lui, est accepté depuis la décision fondateur du 2026-08-18 ; jamais un
 geste de grille) — le front serait devenu plus strict que le serveur, ce que la règle d'or interdit.

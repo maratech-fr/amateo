@@ -1,13 +1,12 @@
 # Génération d'un planning — conduite normalisée (bout en bout)
 
-Last verified @ 2026-09-22 (lot « la génération relancée ne refait pas le travail »,
-`documentation-update`). Re-confronté : `CONTRACT_VERSION` toujours **`'2.23'`** aux trois foyers
-(`ScheduleConstraintBuilder.php:63`, `MoveSlotService.php:50`,
-`MatchPlacementPayloadBuilder.php:65`) et `engine/CONTRACT_VERSION`, inchangé. §3 gagne le détail
-du handler qui manquait jusqu'ici (signalé « non re-sondé » à la passe précédente) : la garde de
+Last verified @ 2026-09-24 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
+cette PR — lot découpage `PeriodStructure.tsx`, P4-255). Re-confronté : `CONTRACT_VERSION` toujours
+**`'2.23'`** aux trois foyers (`ScheduleConstraintBuilder.php:63`, `MoveSlotService.php:50`,
+`MatchPlacementPayloadBuilder.php:65`) et `engine/CONTRACT_VERSION`, inchangé ; la garde de
 redélivrance (`GenerateScheduleHandler.php`, lecture fraîche + après verrou, SEUL `COMPLETED`
-bloque) et la persistance de la greffe de convergence (`Schedule::payloadGraft`/`engineInput()`) —
-les deux vérifiées ligne à ligne contre le code de cette PR.
+bloque) et la persistance de la greffe de convergence (`Schedule::payloadGraft`/`engineInput()`)
+toujours présentes, code relu.
 *(historique des passes vit dans git : `git log -p --follow specs/courantes/generation-pipeline.md`)*
 
 > Vérité courante. Décrit ce qui **doit** se passer, zone par zone, quand un

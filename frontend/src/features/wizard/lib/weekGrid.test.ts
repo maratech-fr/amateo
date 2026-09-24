@@ -7,7 +7,7 @@ import { END_MIN, gridTemplateColumns, rows, START_MIN, STEP, WEEK } from "./wee
  *
  * Deux bornes cachaient des données que l'API acceptait et que le solveur recevait déjà :
  * la grille s'arrêtait à 22h, et au samedi. Un créneau 22h-23h ou un dimanche était donc
- * servi au planning sans jamais pouvoir être posé ni relu — au point que `PeriodStructure`
+ * servi au planning sans jamais pouvoir être posé ni relu — au point que `PeriodVenues`
  * avait dû se doter d'un filet pour au moins les rendre supprimables.
  *
  * Géométrie PARTAGÉE par trois grilles (disponibilités, réservations, structure de

@@ -430,7 +430,8 @@ product rules — reuse them instead of rolling your own:
   `leadingOptions` (replaces `<option>` children), a venue's effective period state (disabled /
   closed weekday / unavailable) in `sub` — name stays intact, no more `"nom — état"` label
   concatenation. One swatch now (the trigger's), the standalone `VenueSwatch` next to the field
-  is gone. 5 consumers migrated (`VenuesStep`, `PeriodStructure`, `ConstraintsStep`,
+  is gone. 5 consumers migrated (`VenuesStep`, `PeriodVenues` — the venue-grid third of the
+  period wizard step, split out of `PeriodStructure` in P4-255 —, `ConstraintsStep`,
   `ReservationPanel`, `PlacementPanel`) and the 6 inline `<select>` gymnase that used to bypass it
   are rebased on it too: `cockpit/VenueUnavailabilityCard.tsx` (its load-bearing P4-122 empty
   placeholder preserved), `cockpit/DayDialog.tsx`, `matches/ConfigurationPage.tsx`,

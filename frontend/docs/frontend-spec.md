@@ -8,8 +8,11 @@ Last verified @ 2026-09-24 (`documentation-update`, P4-255 PR 2 — le filet pos
 surlignage a révélé qu'une case OCCUPÉE ciblée ne porte AUCUN anneau, contrairement à une case VIDE
 ciblée : §6.2 « Priorités visuelles » gagne la précision, vérifiée contre
 `frontend/src/features/planning/WeekGrid.tsx` (`dimmed`/`flagged`, lignes 295-300 et 462-485)).
-Reste du fichier non re-sondé cette passe (dernière ronde : 2026-09-23, P4-95 lot 8 « diagnostics
-à coordonnées partielles », §6.2 `diag-locked-person-*`/`diag-locked-team-day-*`) — historique :
+**Ajout du même jour (P4-255 PR 3)** : l'arborescence de `wizard/` recalée — `PeriodStructure.tsx`
+supprimé, remplacé par `PeriodTeams.tsx`/`PeriodVenues.tsx`/`PeriodConstraints.tsx`, vérifié contre
+`ls frontend/src/features/wizard/steps/`. Reste du fichier non re-sondé cette passe (dernière
+ronde : 2026-09-23, P4-95 lot 8 « diagnostics à coordonnées partielles », §6.2
+`diag-locked-person-*`/`diag-locked-team-day-*`) — historique :
 `git log -p --follow` ce fichier.
 
 ## 1. Stack Decided
@@ -1412,7 +1415,9 @@ frontend/src/
 │   ├── profile/                # ProfilePage
 │   ├── season-transition/      # RedateEventsDialog + api (le bandeau et le sélecteur vivent dans app/)
 │   └── wizard/                 # WizardLayout, steps/ (Teams, Venues, Coaches, Constraints, Recap,
-│                               # Generate + PeriodStructure, StructureSummary), lib/, store
+│                               # Generate + PeriodTeams/PeriodVenues/PeriodConstraints — trois
+│                               # sujets à écrivain unique du plan de période, P4-255,
+│                               # ex-PeriodStructure —, StructureSummary), lib/, store
 ├── shared/
 │   ├── api/                    # client ky, collection (JSON-LD clé `member`), errors
 │   ├── components/ui/          # Primitives (shadcn-style) — dont delete-confirm, load-error-hint,

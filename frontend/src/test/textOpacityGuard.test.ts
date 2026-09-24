@@ -53,7 +53,7 @@ const EXEMPTIONS: Exemption[] = [
     reason: "estompage transitoire de cellule (dimmed/lens), même famille que WeekGrid — hors du scope grayscale de ce lot (convergence signalée)",
   },
   {
-    file: "features/wizard/steps/PeriodStructure.tsx",
+    file: "features/wizard/steps/PeriodTeams.tsx",
     pattern: /opacity-50/,
     reason: "label d'un découpage INACTIF (!active) — dé-emphase d'un contrôle inactif (WCAG 1.4.3)",
   },
