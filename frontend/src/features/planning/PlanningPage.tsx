@@ -11,7 +11,6 @@ import { useWizardStore } from "@/features/wizard/store";
 // Same ["priority_tiers"] query key as the matches/wizard hooks — one cache entry.
 import { usePriorityTiers } from "@/features/matches/queries";
 import { DeletePlanningButton } from "@/features/cockpit/DeletePlanningButton";
-import { useEntryConflicts, useSchedulePlans } from "@/features/cockpit/queries";
 import { useConstraintValidation, useReservations, useSharedTrainingBlocks, useTeamPeriodOverrides, useWizardTeamTagAssignments, useWizardTeamTags } from "@/features/wizard/queries";
 import { coachFullName } from "@/shared/lib/coachName";
 import { readFailed, readLoading } from "@/shared/lib/readState";
@@ -51,6 +50,7 @@ import { stalenessMessage } from "./lib/staleness";
 import type { ToReplaceEntry } from "./lib/toReplaceReason";
 import { isSeasonPlanType, planRepresentative, visibleSeasonPlans } from "./lib/versions";
 import { useVersionLanding } from "./lib/useVersionLanding";
+import { usePeriodClosures } from "./lib/usePeriodClosures";
 import { SeasonComparisonModal } from "./SeasonComparisonModal";
 import { ValidateDialog } from "./ValidateDialog";
 import { capacityShortfallSentence } from "./lib/capacityShortfall";
@@ -184,35 +184,10 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // `reservation-*` : aucun PATCH slot ne doit les viser), sur la MÊME couche que le
   // payload du solveur : socle = réservations permanentes, période = celles de son plan.
   const isFailed = "FAILED" === displayed?.status;
-  // P2-43 volet (v) — l'état de fermeture des gymnases SERVI par le backend pour la PÉRIODE
-  // affichée (`GET /calendar-entries/{id}/conflicts`, foyer unique déjà consommé par le wizard).
-  // L'entrée de calendrier : prop en embarqué (Génération l'a en main), sinon dérivée du plan de
-  // la version affichée — JAMAIS le socle (une version de saison n'a pas d'entrée de période).
-  const { data: allSchedulePlans } = useSchedulePlans();
-  const periodPlan =
-    null !== displayed && !isSeasonPlanType(displayed.planType) && null !== displayed.schedulePlanId
-      ? ((allSchedulePlans ?? []).find((p) => p.id === displayed.schedulePlanId) ?? null)
-      : null;
-  const periodEntryId = calendarEntryId ?? periodPlan?.calendarEntryId ?? null;
-  const entryConflicts = useEntryConflicts(periodEntryId);
-  const conflictsUnresolved = readLoading(entryConflicts) || readFailed(entryConflicts);
-  // FAIL-CLOSED sur l'OFFRE : on n'ARME pas un geste cible tant que l'état de fermeture n'est pas
-  // connu (le moteur refuserait un placement sur un couple fermé). Le socle n'a rien à attendre ;
-  // une version de PÉRIODE dont le plan n'est pas encore résolu compte comme non résolue (on ne
-  // DEVINE pas l'absence de fermeture). Fail-CLOSED sur l'offre, fail-OPEN sur l'affichage.
-  const periodPlanPending = null !== displayed && !isSeasonPlanType(displayed.planType) && null === calendarEntryId && undefined === allSchedulePlans;
-  const closuresResolved = !periodPlanPending && (null === periodEntryId || !conflictsUnresolved);
-  // P2-15 — un gymnase DÉSACTIVÉ pour la période garde ses créneaux en base (le backend
-  // les écarte du payload, il ne les supprime pas) : sans ce filtre, l'écran de génération
-  // affichait TOUS les gymnases du club alors qu'un seul sert — « du bruit pour rien ».
-  // On filtre à la SOURCE : la grille, ses fenêtres vides et le sélecteur en dérivent tous.
-  // On lit l'état SERVI (`disabledVenueIds`), plus de re-dérivation locale depuis les overrides
-  // (le wizard a migré de même — règle d'or). FAIL-CLOSED sur l'AFFICHAGE (P4-20) : lecture ratée
-  // / pas encore résolue ⇒ on ne masque rien.
-  const disabledVenueIds = useMemo(
-    () => new Set(conflictsUnresolved ? [] : (entryConflicts.data?.disabledVenueIds ?? [])),
-    [conflictsUnresolved, entryConflicts.data],
-  );
+  // Fermetures de gymnase et gymnases désactivés de la période affichée (P2-43 volet v).
+  // `allSchedulePlans` et `entryConflicts` sont aussi retournés : l'en-tête, la réouverture et
+  // les fenêtres fermées les lisent plus bas.
+  const { allSchedulePlans, entryConflicts, conflictsUnresolved, closuresResolved, disabledVenueIds } = usePeriodClosures(displayed, calendarEntryId);
   // P2-30 (dérive) : les overrides d'équipe de la PÉRIODE (seuil/désactivation) — mêmes hooks
   // que le wizard. Sur le socle (slotLayerId=null) le hook est inerte → `computeDrift` reçoit
   // `null` et lit le seuil de saison.
