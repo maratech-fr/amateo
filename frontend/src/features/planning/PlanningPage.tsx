@@ -34,7 +34,6 @@ import { topSeveritySummary } from "./lib/diagnosticsSummary";
 import { computeDrift } from "./lib/drift";
 import { computeClosedWindows } from "./lib/closedWindows";
 import { computeEmptySlots, isEmptySlotId } from "./lib/emptySlots";
-import { violationHighlightSlotIds } from "./lib/violationHighlight";
 import { buildClubView } from "./lib/clubView";
 import { ClubViewTable } from "./ClubViewTable";
 import { availableResourceGroups, buildGrid, DAYS, type Lookups, slotGroupKey, toHourMinute } from "./lib/grid";
@@ -52,6 +51,7 @@ import { usePeriodClosures } from "./lib/usePeriodClosures";
 import { useLockControls } from "./lib/useLockControls";
 import { useValidateReopen } from "./lib/useValidateReopen";
 import { usePlanHeader } from "./lib/usePlanHeader";
+import { useSlotHighlight } from "./lib/useSlotHighlight";
 import { SeasonComparisonModal } from "./SeasonComparisonModal";
 import { ValidateDialog } from "./ValidateDialog";
 import { capacityShortfallSentence } from "./lib/capacityShortfall";
@@ -95,7 +95,6 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const credits = useCredits();
   const { viewMode, selectedScheduleId, selectedSlotId, resourceFilter, setViewMode, setSelectedScheduleId, setSelectedSlotId, toggleResource, clearResourceFilter } =
     usePlanningStore();
-  const [highlightSlotIds, setHighlightSlotIds] = useState<Set<string>>(new Set());
   // P2-44 (PR-2) — la modale « Comparer avec la saison » (consultation du socle).
   const [compareOpen, setCompareOpen] = useState(false);
   // P2-30 (geste 1/2) — le mode cible « click-click ». `move` déplace un créneau existant
@@ -205,6 +204,12 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
     () => isFailed && 0 === generatedSlots.length ? reservationSlots : generatedSlots,
     [isFailed, generatedSlots, reservationSlots],
   );
+
+  // Le CARREFOUR du surlignage (P4-255 PR 2) : état possédé par le hook, exposé en TROIS intentions
+  // nommées (aucun setter). `highlightViolations` dépend de `slots` (identité instable, assumée) et
+  // ne descend JAMAIS dans un enfant ; `highlightSlots`/`clearHighlight` sont stables et seules
+  // passées au JSX. Appelé après `slots` (son unique paramètre).
+  const { highlightSlotIds, highlightViolations, highlightSlots, clearHighlight } = useSlotHighlight(slots);
 
   // Verrous manuels et déverrouillage (F1/PR 3) — états, mutation, verrous manuels, bascule.
   // Appelé ici, après `slots`, car ses dérivations en dépendent (regroupement assumé au plan).
@@ -383,10 +388,10 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const activeRejectionViolations = "rejected" === moveState.status ? moveState.violations : "rejected" === moveGroupState.status ? moveGroupState.violations : [];
   if (null !== activeRejection && activeRejection !== rejectionHandled) {
     setRejectionHandled(activeRejection);
-    setHighlightSlotIds(violationHighlightSlotIds(activeRejectionViolations, slots));
+    highlightViolations(activeRejectionViolations);
   } else if (null === activeRejection && null !== rejectionHandled) {
     setRejectionHandled(null);
-    setHighlightSlotIds(new Set());
+    clearHighlight();
   }
 
   const lookups: Lookups = useMemo(() => {
@@ -617,7 +622,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           // on n'arme aucun undo, et on invalide un éventuel undo d'un geste simple précédent.
           setUndo(null);
           setEvictionNotice(null);
-          setHighlightSlotIds(new Set());
+          clearHighlight();
           const compromises = result.compromises ?? [];
           setCompromiseNotice(compromises.length > 0 ? compromises : null);
           toast.success(compromises.length > 0 ? `Groupe déplacé — ${compromises.length} compromis` : "Groupe déplacé.");
@@ -648,7 +653,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           setTargetMode(null);
           setUndo(null); // un placement n'a pas d'inverse (aucun endpoint de suppression de créneau)
           setEvictionNotice(null);
-          setHighlightSlotIds(new Set());
+          clearHighlight();
           const compromises = result.compromises ?? [];
           setCompromiseNotice(compromises.length > 0 ? compromises : null);
           toast.success(compromises.length > 0 ? `Séance placée — ${compromises.length} compromis` : "Séance placée.");
@@ -662,7 +667,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           }
           if (error instanceof MoveRejectedError) {
             toast.error(error.violations[0]?.message ?? "Placement refusé par le moteur.");
-            setHighlightSlotIds(violationHighlightSlotIds(error.violations, slots));
+            highlightViolations(error.violations);
           } else if (error instanceof GenerationInProgressError) {
             toast.error("Une génération est en cours pour ce club — réessayez ensuite.");
           } else if (error instanceof EngineVerificationInterruptedError) {
@@ -693,7 +698,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
             const violations = result.violations ?? [];
             setEvictDialog({ phase: "refused", sourceSlotId, targetSlot, violations });
             // Surligner le conflit nommé (présentation pure, même chemin qu'un placement refusé).
-            setHighlightSlotIds(violationHighlightSlotIds(violations, slots));
+            highlightViolations(violations);
           }
         },
         onError: (error) => {
@@ -980,17 +985,8 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
     [setSelectedSlotId],
   );
 
-  // Le chemin SURLIGNAGE (tous les autres types de diagnostic) n'amenait PAS la grille au
-  // créneau : « ça illumine mais je dois chercher pour le trouver » (retour fondateur
-  // 2026-08-15). Même recette que openSlot — le PREMIER créneau surligné est centré ; un
-  // clic qui ÉTEINT le surlignage (set vide) ne scrolle pas.
-  const highlightSlots = useCallback((slotIds: Set<string>) => {
-    setHighlightSlotIds(slotIds);
-    const [first] = slotIds;
-    if (undefined !== first) {
-      requestAnimationFrame(() => document.querySelector(`[data-slot-id="${first}"]`)?.scrollIntoView?.({ block: "center", inline: "center", behavior: "smooth" }));
-    }
-  }, []);
+  // Le chemin SURLIGNAGE (clic diagnostic) vit désormais dans `useSlotHighlight.highlightSlots`
+  // (P4-255 PR 2) — corps inchangé, identité STABLE (contrat anti-boucle de DiagnosticsPanel).
 
   const selectedCell = model.cells.find((c) => c.slotId === selectedSlotId) ?? null;
 
