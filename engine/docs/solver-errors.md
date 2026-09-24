@@ -1,16 +1,13 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-09-23 (`documentation-update`, P4-95 lot 8 « diagnostics à coordonnées
-partielles » — sans rapport avec le sujet du lot, qui n'ajoute aucun type de diagnostic ni ne
-touche `output_schema.py`). Re-confronté au code : `engine/CONTRACT_VERSION` = `2.23` ✓ ; la liste
-`type` de `DiagnosticSchema` porte toujours **15 valeurs** (comptées cette passe), toutes présentes
-dans la table ci-dessous — aucun ajout ni retrait depuis la précédente rotation (lot 8 change le
-CONTENU de `startTime` sur deux types déjà listés, `conflict` en tête, jamais l'ENSEMBLE des
-types) ✓ ; `SCORE_FORMULA_VERSION` = `T24_LEVEL_2_FIXED_WEIGHTS_V13`
+Last verified @ 2026-09-25 (`documentation-update`, rotation de fraîcheur, sans rapport avec le
+sujet du lot — un fix frontend, `f9b36591`, qui ne touche ni l'engine ni ce contrat). Re-confronté
+au code : `engine/CONTRACT_VERSION` = `2.23` ✓ ; la liste `type` de `DiagnosticSchema`
+(`app/schemas/output_schema.py:69-97`) porte toujours **15 valeurs**, toutes présentes dans la
+table ci-dessous, aucun ajout ni retrait ✓ ; `SCORE_FORMULA_VERSION` = `T24_LEVEL_2_FIXED_WEIGHTS_V13`
 (`app/solver/objective/weights.py:31`) ✓ ; `BUILD_BUDGET_SECONDS` = `10.0`
-(`app/solver/match_placement.py:77`, cité par `placement_problem_too_large`) ✓ — les deux
-confirmés cette passe. Budget adaptatif 60/180/600 s et `solverTimeoutSeconds` défaut 650 : non
-re-sondés cette passe.
+(`app/solver/match_placement.py:77`, cité par `placement_problem_too_large`) ✓. Budget adaptatif
+60/180/600 s et `solverTimeoutSeconds` défaut 650 : non re-sondés cette passe.
 
 > Ce document recense toutes les erreurs que le moteur peut produire, avec leurs causes et les actions correctives. Destine aux developpeurs et aux utilisateurs avances du club.
 
