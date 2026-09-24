@@ -47,10 +47,10 @@ import { blocksForSlot } from "./lib/blockSession";
 import { ResourceFilter } from "./ResourceFilter";
 import { SlotDetail, type MoveFeedback } from "./SlotDetail";
 
-import { pickLandingScheduleId } from "./lib/pickLandingSchedule";
 import { stalenessMessage } from "./lib/staleness";
 import type { ToReplaceEntry } from "./lib/toReplaceReason";
-import { isSeasonPlanType, planRepresentative, visibleOverlayVersions, visibleSeasonPlans } from "./lib/versions";
+import { isSeasonPlanType, planRepresentative, visibleSeasonPlans } from "./lib/versions";
+import { useVersionLanding } from "./lib/useVersionLanding";
 import { SeasonComparisonModal } from "./SeasonComparisonModal";
 import { ValidateDialog } from "./ValidateDialog";
 import { capacityShortfallSentence } from "./lib/capacityShortfall";
@@ -148,50 +148,9 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // la saison de travail, plus de copie inline qui pourrait diverger.
   const workingSeason = useWorkingSeason();
 
-  // Portée d'affichage (bug fondateur 2026-08-19). `scoped` ⇒ l'écran ne connaît QUE les
-  // versions de ce plan de période : le socle et les autres périodes n'entrent ni dans
-  // l'atterrissage, ni dans la toolbar, ni dans le titre. Sans portée, tout est inchangé.
-  const scoped = null !== scopePlanId;
-  const scopeVersions = useMemo(() => (scoped ? visibleOverlayVersions(schedules, scopePlanId) : null), [scoped, schedules, scopePlanId]);
-  // La version sur laquelle atterrir (règle ARBITRÉE fondateur 2026-08-19). EMBARQUÉ (étape
-  // Génération) ⇒ la version la plus RÉCENTE du plan en portée — période via la portée, saison
-  // via les versions de saison —, génération EN VOL comprise : le gestionnaire doit revoir la
-  // génération qu'il vient de lancer, pas le pointeur (le seed BCCL, V1 transcrite POINTÉE,
-  // ramenait sinon toujours la V1). NON embarqué (`/planning` autonome, cockpit) ⇒ POINTEUR
-  // d'abord, STRICTEMENT inchangé (frontière de `pickLanding.test.ts`). Fail-closed en portée :
-  // on atterrit DANS la portée ou nulle part, JAMAIS via `pickLandingScheduleId` (socle).
-  const landingScheduleId = useMemo(() => {
-    if (scoped) {
-      const versions = scopeVersions ?? [];
-      return embedded ? (versions.at(-1)?.id ?? null) : (planRepresentative(versions)?.id ?? versions.at(-1)?.id ?? null);
-    }
-    if (embedded) {
-      return visibleSeasonPlans(schedules).at(-1)?.id ?? null;
-    }
-    return schedules.length > 0 ? pickLandingScheduleId(schedules) : null;
-  }, [scoped, embedded, scopeVersions, schedules]);
-
-  // Keep a valid selection: default to the season base plan, else the latest
-  // completed. A selection archived concurrently (sibling validation in another
-  // tab) is invalid too — the selector has no option for it. En portée, la sélection
-  // n'est valide que si elle appartient À la portée : une sélection de saison laissée
-  // par un autre écran ne survit donc pas (le bug d'origine).
-  const selectionInScope = !scoped || (null !== scopeVersions && scopeVersions.some((s) => s.id === selectedScheduleId));
-  const validScheduleId = schedules.some((s) => s.id === selectedScheduleId) && selectionInScope ? selectedScheduleId : null;
-  useEffect(() => {
-    if (null !== validScheduleId) {
-      return;
-    }
-    if (null !== landingScheduleId && landingScheduleId !== selectedScheduleId) {
-      setSelectedScheduleId(landingScheduleId);
-    }
-  }, [validScheduleId, landingScheduleId, selectedScheduleId, setSelectedScheduleId]);
-
-  // La COUCHE de créneaux de la version affichée (#8) : le socle lit la grille de
-  // saison, une période lit la sienne. Dérivée ici, avant les requêtes, pour que
-  // l'écran et l'export montrent les mêmes créneaux vides.
-  const displayed = schedules.find((s) => s.id === validScheduleId) ?? null;
-  const slotLayerId = null !== displayed && !isSeasonPlanType(displayed.planType) ? (displayed.schedulePlanId ?? null) : null;
+  // Portée et atterrissage de version (bug fondateur 2026-08-19) : la sélection vit dans le
+  // store (passée en paramètres) ; le hook n'a aucun état propre.
+  const { scoped, scopeVersions, landingScheduleId, validScheduleId, displayed, slotLayerId } = useVersionLanding(schedules, scopePlanId, embedded, selectedScheduleId, setSelectedScheduleId);
 
   // P2-44 PR-5 — les écarts NOMMÉS vs le socle. Armés UNIQUEMENT sur l'écran embarqué et porté
   // (`transcriptionSurface`), d'une FERMETURE (le serveur reste seul juge — 422 sinon), et d'une
