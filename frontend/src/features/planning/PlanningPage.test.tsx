@@ -987,6 +987,34 @@ describe("PlanningPage (integration)", () => {
     expect(navigate).toHaveBeenCalledWith("/planning");
   });
 
+  // planning lifecycle (§7.1) — le JUMEAU de l'escalade « Rouvrir » (cf. describe « reopen
+  // escalation »). Valider une version dont l'ancien principal porte des plannings de période
+  // 409 (OverlaysExistError) ; l'UI escalade vers un confirm proportionné, PUIS re-POST avec
+  // `confirmDeleteOverlays`. Filet posé AVANT l'extraction de `useValidateReopen` (P4-255 PR 1) :
+  // ce chemin d'escalade n'était exercé que côté « Rouvrir » — son jumeau « Valider » ne l'était
+  // pas. Miroir exact du test reopen 409.
+  it("« Valider » : 409 → confirm nommant le compte d'overlays → re-POST avec confirmDeleteOverlays", async () => {
+    const user = userEvent.setup();
+    vi.mocked(validateSchedule).mockReset(); // per-test call count + queued once-values
+    vi.mocked(validateSchedule).mockRejectedValueOnce(new OverlaysExistError(2, [])).mockResolvedValueOnce({});
+    renderWithProviders(<PlanningPage embedded />); // Valider vit dans le wizard (embedded)
+    await screen.findByText("U11");
+
+    // Toolbar « Valider » ouvre la modale d'impact ; on confirme dedans (impact {0,0}).
+    await user.click(screen.getByRole("button", { name: /valider/i }));
+    const confirm = within(screen.getByRole("dialog")).getByRole("button", { name: "Valider" });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    await user.click(confirm);
+
+    // First validate (no flag) → 409 → proportional confirm dialog naming the overlay count.
+    expect(await screen.findByText(/2 plannings de période/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Valider et remplacer" }));
+
+    // Re-sent with the flag (le second appel porte confirmDeleteOverlays: true).
+    expect(vi.mocked(validateSchedule)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(validateSchedule).mock.calls[1]).toEqual([SID, { confirmDeleteOverlays: true }]);
+  });
+
   // F2b — retouche du rail : le geste PARLE (toast + surlignage du conflit) et déverrouiller
   // une RÉSERVATION demande confirmation.
   describe("retouche : feedback des gestes", () => {
