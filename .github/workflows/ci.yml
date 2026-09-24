@@ -1160,7 +1160,13 @@ jobs:
       - name: A17 security headers (against the nginx build, not the dev server)
         id: a17
         working-directory: frontend
-        run: E2E_BASE_URL=http://localhost:8081 E2E_A17_REQUIRED=1 npx playwright test tests/e2e/security-headers.spec.ts
+        # `--output` DÉDIÉ : Playwright vide l'outputDir au démarrage de CHAQUE run (tâche de
+        # setup « clear output », runner/index.js → removeFolders sur chaque projet). Sans dossier
+        # à part, cette 2ᵉ invocation effacerait le `test-results/` que la suite principale vient
+        # de remplir (dont la trace d'un essai flaky perdu) et l'upload final ne trouverait plus
+        # rien — run réel #968 : « No files were found with the provided path ». Deux dossiers
+        # distincts → l'upload les ramasse tous les deux, y compris LA trace d'A17 si elle rougit.
+        run: E2E_BASE_URL=http://localhost:8081 E2E_A17_REQUIRED=1 npx playwright test tests/e2e/security-headers.spec.ts --output test-results-a17
 
       # Boussole d'échec : distinguer une panne d'INFRA (avant que Playwright tourne) d'un vrai
       # échec de test, pour ne pas envoyer chercher un bug produit quand c'est le registre, BuildKit
@@ -1205,7 +1211,14 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: playwright-results
-          path: frontend/test-results/
+          # Deux dossiers : la suite principale (`test-results/`, dont la trace d'un essai flaky
+          # perdu) ET le run A17 (`test-results-a17/`, sa propre trace s'il rougit). Un SEUL
+          # artefact multi-chemins plutôt que deux artefacts nommés : un seul téléchargement pour
+          # diagnostiquer, et les sous-dossiers sont distincts (aucune collision). `ignore` couvre
+          # le cas « tout vert » où aucun des deux dossiers n'existe → rien uploadé, pas d'erreur.
+          path: |
+            frontend/test-results/
+            frontend/test-results-a17/
           if-no-files-found: ignore
           retention-days: 7
 

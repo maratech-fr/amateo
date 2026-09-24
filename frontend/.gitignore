@@ -27,6 +27,6 @@ storybook-static
 # capture/screenshot outputs (never commit)
 .screenshots*
 
-# Playwright outputs
-test-results/
+# Playwright outputs (défaut `test-results/` + dossiers par run via `--output test-results-*`, ex. A17)
+test-results*/
 playwright-report/
