@@ -1,12 +1,13 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-09-22 (lot gardes CI/permissions/dépréciations, P4-92). Re-confronté au code
-cette passe (§1) : le paragraphe « Régime de permissions des workflows » décrit le régime RÉEL de
-`.github/workflows/` — bloc `permissions:` racine `contents: read` sur `ci.yml`, surchargé
-`packages: read` sur `secrets-scan` et `build-docker` (pull d'image miroir ghcr), `contents: read`
-+ `packages: read` à la racine de `security-weekly.yml`, `packages: write` conservé sur
-`deploy.yml`/`mirror-images.yml` — cliquet `WorkflowPermissionsDeclaredTest` ; et le paragraphe
-« Régime de dépréciations » décrit `phpunit.xml.dist:42` passé de `weak` à `max[direct]=0`. Reste du
+Last verified @ 2026-09-24 (rotation de fraîcheur, `documentation-update` lot 7 PR C). Ce fichier ne
+couvre que backend+engine (« Scope » ci-dessous) — sans rapport avec le refactor hooks frontend de
+ce lot, donc rien à y recaler pour FRT-33. Re-confronté au code : le paragraphe « Régime de permissions des
+workflows » reste exact — `permissions:` racine `contents: read` sur `ci.yml`, surchargé
+`packages: read` sur les jobs qui pullent l'image miroir ghcr (`secrets-scan`, `build-docker`,
+lignes 119-120/1326-1327), `contents: read` + `packages: read` à la racine de
+`security-weekly.yml`, `packages: write` conservé sur `deploy.yml`/`mirror-images.yml` ; et le
+paragraphe « Régime de dépréciations » — `phpunit.xml.dist:42` toujours à `max[direct]=0`. Reste du
 fichier non re-sondé cette passe (voir `git log -p --follow docs/testing/testing-strategy.md` pour
 l'historique des passes).
 

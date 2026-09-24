@@ -1,5 +1,5 @@
 import { ArrowRight, CalendarX2, Info, Plus, Upload, Wand2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
 import { useCoachPlayers, useTeamCoaches } from "@/features/planning/queries";
@@ -11,7 +11,6 @@ import { Modal } from "@/shared/components/ui/modal";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
 import { todayISO } from "@/shared/lib/clock";
 import { readFailed, readLoading } from "@/shared/lib/readState";
-import type { ReadState } from "@/shared/lib/readState";
 import { useCredits } from "@/shared/credits/useCredits";
 import { toast } from "@/shared/stores/toastStore";
 
@@ -21,28 +20,20 @@ import { FbiEntryList } from "./FbiEntryList";
 import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
 import { FixtureFormDialog } from "./FixtureFormDialog";
 import { CONFLICT_FAMILIES } from "./lib/conflictLabels";
-import { applyFamilyFilter, applyKindFilter, countByFamily, DEFAULT_KINDS, familiesPresent, hiddenWeekBreakdown, KINDS, normalizeKinds, revealPlan, scopeConflictsToWeek } from "./lib/consultFilter";
+import { familiesPresent, KINDS, normalizeKinds } from "./lib/consultFilter";
 import { isInEnvelope, resolveEnvelope } from "./lib/envelope";
 import { depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
-import { datelessConflicts, deriveWeekCounters } from "./lib/loopSteps";
-import { applyMatchFilter } from "./lib/matchFilter";
-import { conflictsByFixture, groupByDay, listMonths, monthLabel, resolveActiveMonth, scopeConflictsToMonth } from "./lib/monthView";
-import { listPhases, phaseCompleteness, phaseFixtures, scopeConflictsToPhase } from "./lib/phaseView";
+import { datelessConflicts } from "./lib/loopSteps";
+import { monthLabel } from "./lib/monthView";
 import { placementToastMessage } from "./lib/placementToast";
-import {
-  applyConsultToParams,
-  applyFbiToParams,
-  applyFilterToParams,
-  applyMatchToParams,
-  applyWeekendToParams,
-  decodeConsultParams,
-  decodeFbiParam,
-  decodeFilterParams,
-  decodeMatchParam,
-  decodeWeekendParam,
-  hasConsultParams,
-} from "./lib/urlState";
-import { isPlacedOnGrid, listWeekends, matchMinutesByCategory, resolveActiveWeekend, weekendKeyOf, weekLabel } from "./lib/weekendGrid";
+import { useCalendarUrlSync } from "./lib/useCalendarUrlSync";
+import { useMatchFilterChain } from "./lib/useMatchFilterChain";
+import { useMonthView } from "./lib/useMonthView";
+import { usePhaseView } from "./lib/usePhaseView";
+import { usePlacementGuards } from "./lib/usePlacementGuards";
+import { useWeekView } from "./lib/useWeekView";
+import { applyFbiToParams, decodeFbiParam } from "./lib/urlState";
+import { isPlacedOnGrid, matchMinutesByCategory, weekendKeyOf } from "./lib/weekendGrid";
 import { MatchesFilterBar } from "./MatchesFilterBar";
 import { ModuleVisitBanner } from "./ModuleVisitBanner";
 import { MonthTable } from "./MonthTable";
@@ -73,17 +64,10 @@ import {
 import { useMatchesStore } from "./store";
 import { HiddenMatchesWeekNotice } from "./UnpairedVenueLabelsBanner";
 import { WeekCounters } from "./WeekCounters";
-import type { PlacementGuards } from "./PlacementPanel";
 import { GRID_CONTAINER_ID, PLACE_HEADING_ID, WeekWorkbench } from "./WeekWorkbench";
 
 function byId<T extends { id: string }>(rows: T[] | undefined): Map<string, T> {
   return new Map((rows ?? []).map((row) => [row.id, row]));
-}
-
-/** En-tête de groupe d'un JOUR (Mois), ex. « sam. 3 oct. » avec l'initiale capitalisée. */
-function dayHeaderLabel(dateIso: string): string {
-  const label = new Date(`${dateIso}T12:00:00Z`).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
-  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 /**
@@ -149,12 +133,8 @@ export function CalendarPage() {
     consultMonth,
     consultPhaseId,
     setConsultKinds,
-    setConsultFamilies,
-    setConsultTypicalWeek,
     setConsultAway,
     setConsultTemporality,
-    setConsultMonth,
-    setConsultPhaseId,
   } = useMatchesStore();
 
   // A5 — région live persistante : remplie après la levée des masques (« N matchs affichés »),
@@ -182,68 +162,28 @@ export function CalendarPage() {
   const rotations = useMemo(() => rotationsQuery.data ?? [], [rotationsQuery.data]);
   const allConflicts = useMemo<Conflict[]>(() => conflicts.data?.conflicts ?? [], [conflicts.data]);
 
-  // D2 — les trois lectures du club sur lesquelles s'appuie le GESTE de placement
-  // (accès match, indisponibilités, enveloppe ligue). Le panneau suspend le geste
-  // tant qu'elles ne sont pas prêtes : un échec de première lecture ne doit jamais
-  // se lire « aucune restriction » et laisser poser un match dans un gymnase
-  // restreint. Le reste du panneau (dé-placer, verrouiller…) reste actif.
-  const placementGuards = useMemo<PlacementGuards>(() => {
-    const state: ReadState =
-      readFailed(matchWindows) || readFailed(unavailabilities) || readFailed(leagueWindows)
-        ? "failed"
-        : readLoading(matchWindows) || readLoading(unavailabilities) || readLoading(leagueWindows)
-          ? "loading"
-          : "ready";
-    return {
-      state,
-      matchWindows: matchWindows.data ?? [],
-      unavailabilities: unavailabilities.data ?? [],
-      retry: () => {
-        void matchWindows.refetch();
-        void unavailabilities.refetch();
-        void leagueWindows.refetch();
-      },
-    };
-  }, [matchWindows, unavailabilities, leagueWindows]);
+  // D2 — les trois lectures du club qui GARDENT le geste de placement (accès match,
+  // indisponibilités, enveloppe ligue), suspendues tant qu'elles ne sont pas prêtes.
+  const placementGuards = usePlacementGuards(matchWindows, unavailabilities, leagueWindows);
 
-  // ── Chaîne : PR-1 (équipe/coach/gymnase) → type de compétition ─────────────────
-  const filtered = useMemo(
-    () => applyMatchFilter({ mode: filterMode, ids: filterIds, fixtures: allFixtures, conflicts: allConflicts, teamCoaches: teamCoaches.data ?? [], coachPlayers: coachPlayers.data ?? [] }),
-    [filterMode, filterIds, allFixtures, allConflicts, teamCoaches.data, coachPlayers.data],
-  );
-  const coachTeamRoles = filtered.coachTeamRoles ?? undefined;
-  const filterActive = filterIds.length > 0;
-  const filterLabel = useMemo(() => {
-    if (!filterActive) {
-      return "";
-    }
-    return filterIds
-      .map((id) => {
-        if ("coach" === filterMode) {
-          const coach = coachesMap.get(id);
-          return undefined === coach ? null : `${coach.firstName} ${coach.lastName}`.trim();
-        }
-        return ("gymnase" === filterMode ? venuesMap.get(id)?.name : teamsMap.get(id)?.name) ?? null;
-      })
-      .filter((name): name is string => null !== name)
-      .join(", ");
-  }, [filterActive, filterIds, filterMode, coachesMap, venuesMap, teamsMap]);
-
-  const effectiveKinds = consultKinds ?? DEFAULT_KINDS;
-  const effectiveFamilies = consultFamilies ?? CONFLICT_FAMILIES;
-  const kindResult = useMemo(
-    () => applyKindFilter(filtered.fixtures, filtered.conflicts, effectiveKinds, competitionsMap),
-    [filtered.fixtures, filtered.conflicts, effectiveKinds, competitionsMap],
+  // Chaîne de filtrage : PR-1 (équipe/coach/gymnase) → types → « Extérieurs ».
+  const { filtered, coachTeamRoles, filterActive, filterLabel, effectiveKinds, effectiveFamilies, kindResult, visibleFixtures } = useMatchFilterChain(
+    filterMode,
+    filterIds,
+    allFixtures,
+    allConflicts,
+    teamCoaches,
+    coachPlayers,
+    coachesMap,
+    venuesMap,
+    teamsMap,
+    competitionsMap,
+    consultKinds,
+    consultFamilies,
+    consultAway,
   );
   const kindFixtures = kindResult.fixtures;
   const kindConflicts = kindResult.conflicts;
-
-  // Interrupteur « Extérieurs » : filtre d'AFFICHAGE (grille/bande/Mois/Phase). Les
-  // compteurs, conflits, radar, complétude et enveloppe restent sur `kindFixtures`.
-  const visibleFixtures = useMemo(
-    () => (consultAway ? kindFixtures : kindFixtures.filter((f) => "HOME" === f.homeAway)),
-    [consultAway, kindFixtures],
-  );
 
   const isWeek = "semaine" === consultTemporality;
   const isMonth = "mois" === consultTemporality;
@@ -265,71 +205,31 @@ export function CalendarPage() {
   }, [allFixtures, resolvedTeamWindows, windows]);
 
   // ── Temporalité SEMAINE ────────────────────────────────────────────────────────
-  const weekends = useMemo(() => listWeekends(visibleFixtures), [visibleFixtures]);
-  const activeWeekend = resolveActiveWeekend(weekends, selectedWeekend, weekendKeyOf(todayISO()));
-  const weekendIndex = null === activeWeekend ? -1 : weekends.indexOf(activeWeekend);
-  // Rencontres AFFICHÉES de la semaine (extérieurs masqués si l'interrupteur est éteint).
-  const weekendFixtures = useMemo(
-    () => (null === activeWeekend ? [] : visibleFixtures.filter((f) => weekendKeyOf(f.matchDate) === activeWeekend)),
-    [visibleFixtures, activeWeekend],
-  );
-  // Rencontres de la semaine, extérieurs INCLUS — sert les COMPTEURS (identiques quel que
-  // soit l'interrupteur, NR) et la modale « À recopier dans FBI ».
-  const weekendFixturesAll = useMemo(
-    () => (null === activeWeekend ? [] : kindFixtures.filter((f) => weekendKeyOf(f.matchDate) === activeWeekend)),
-    [kindFixtures, activeWeekend],
-  );
-  const weekConflicts = useMemo(() => scopeConflictsToWeek(kindConflicts, activeWeekend), [kindConflicts, activeWeekend]);
-  const weekFamilyCounts = useMemo(() => countByFamily(weekConflicts), [weekConflicts]);
-  const radarConflicts = useMemo(() => applyFamilyFilter(weekConflicts, effectiveFamilies), [weekConflicts, effectiveFamilies]);
-  const weekCounts = useMemo(() => deriveWeekCounters(weekendFixturesAll, kindConflicts), [weekendFixturesAll, kindConflicts]);
-  // Indice « masqués » : rencontres de la semaine (filtrées PR-1) retirées par les Types OU
-  // l'interrupteur Extérieurs — dérivé sur la semaine RÉELLEMENT affichée.
-  const weekAllFilteredFixtures = useMemo(
-    () => (null === activeWeekend ? [] : filtered.fixtures.filter((f) => weekendKeyOf(f.matchDate) === activeWeekend)),
-    [filtered.fixtures, activeWeekend],
-  );
-  const weekHiddenBreakdown = useMemo(
-    () => hiddenWeekBreakdown(weekAllFilteredFixtures, effectiveKinds, consultAway, competitionsMap),
-    [weekAllFilteredFixtures, effectiveKinds, consultAway, competitionsMap],
+  const { weekends, activeWeekend, weekendIndex, weekendFixtures, weekConflicts, weekFamilyCounts, radarConflicts, weekCounts, weekHiddenBreakdown } = useWeekView(
+    visibleFixtures,
+    selectedWeekend,
+    kindFixtures,
+    kindConflicts,
+    effectiveFamilies,
+    filtered,
+    effectiveKinds,
+    consultAway,
+    competitionsMap,
   );
 
   // ── Temporalité MOIS ───────────────────────────────────────────────────────────
-  const months = useMemo(() => listMonths(visibleFixtures), [visibleFixtures]);
-  const activeMonth = resolveActiveMonth(months, consultMonth, todayISO().slice(0, 7));
-  const monthConflicts = useMemo(() => scopeConflictsToMonth(kindConflicts, activeMonth), [kindConflicts, activeMonth]);
-  const monthFamilyCounts = useMemo(() => countByFamily(monthConflicts), [monthConflicts]);
-  const monthCbf = useMemo(() => conflictsByFixture(applyFamilyFilter(monthConflicts, effectiveFamilies)), [monthConflicts, effectiveFamilies]);
-  const monthGroups = useMemo(
-    () => (null === activeMonth ? [] : groupByDay(visibleFixtures, activeMonth).map((g) => ({ key: g.date, label: dayHeaderLabel(g.date), fixtures: g.fixtures }))),
-    [visibleFixtures, activeMonth],
-  );
-  const monthIndex = null === activeMonth ? -1 : months.indexOf(activeMonth);
+  const { months, activeMonth, monthConflicts, monthFamilyCounts, monthCbf, monthGroups, monthIndex } = useMonthView(visibleFixtures, consultMonth, kindConflicts, effectiveFamilies);
 
   // ── Temporalité PHASE ──────────────────────────────────────────────────────────
-  const phases = useMemo(() => listPhases(competitions.data ?? [], teams.data ?? []), [competitions.data, teams.data]);
-  const activePhaseId = useMemo(() => {
-    if (0 === phases.length) {
-      return null;
-    }
-    return phases.some((p) => p.competitionId === consultPhaseId) ? consultPhaseId : phases[0].competitionId;
-  }, [phases, consultPhaseId]);
-  // Complétude + conflits + scoping = toute la compétition (extérieurs INCLUS).
-  const phaseGroupsAll = useMemo(() => (null === activePhaseId ? [] : phaseFixtures(kindFixtures, activePhaseId)), [kindFixtures, activePhaseId]);
-  const phaseAllFixtures = useMemo(() => phaseGroupsAll.flatMap((g) => g.fixtures), [phaseGroupsAll]);
-  // Table d'AFFICHAGE (extérieurs masqués si l'interrupteur est éteint).
-  const phaseGroupsRaw = useMemo(() => (null === activePhaseId ? [] : phaseFixtures(visibleFixtures, activePhaseId)), [visibleFixtures, activePhaseId]);
-  const phaseConflicts = useMemo(
-    () => scopeConflictsToPhase(kindConflicts, activePhaseId, phaseAllFixtures.map((f) => f.id)),
-    [kindConflicts, activePhaseId, phaseAllFixtures],
-  );
-  const phaseFamilyCounts = useMemo(() => countByFamily(phaseConflicts), [phaseConflicts]);
-  const phaseCbf = useMemo(() => conflictsByFixture(applyFamilyFilter(phaseConflicts, effectiveFamilies)), [phaseConflicts, effectiveFamilies]);
-  const phaseGroups = useMemo(() => phaseGroupsRaw.map((g) => ({ key: g.weekend, label: weekLabel(g.weekend), fixtures: g.fixtures })), [phaseGroupsRaw]);
-  const activePhaseCompetition = null === activePhaseId ? undefined : competitionsMap.get(activePhaseId);
-  const completeness = useMemo(
-    () => (undefined === activePhaseCompetition ? null : phaseCompleteness(activePhaseCompetition, phaseAllFixtures, kindConflicts)),
-    [activePhaseCompetition, phaseAllFixtures, kindConflicts],
+  const { phases, activePhaseId, phaseConflicts, phaseFamilyCounts, phaseCbf, phaseGroups, activePhaseCompetition, completeness } = usePhaseView(
+    competitions,
+    teams,
+    consultPhaseId,
+    kindFixtures,
+    visibleFixtures,
+    kindConflicts,
+    effectiveFamilies,
+    competitionsMap,
   );
 
   // Chips familles : présentes sur la temporalité affichée, compteur AVANT le filtre familles.
@@ -344,16 +244,9 @@ export function CalendarPage() {
   const depositReminder =
     null === latestDeposit ? "Aucun dépôt FBI cette saison" : `Dernier dépôt FBI ${relativeDepositLabel(depositDaysAgo(latestDeposit.depositedAt, todayISO()))}`;
 
-  // ── Deep-link fusionné : filtre PR-1 + filtres Consulter + semaine ──────────────
-  // UN seul effet, deux temps : (1) au premier passage utile (données prêtes), SEED depuis
-  // l'URL — filtre PR-1 sur store vierge, filtres Consulter SEULEMENT si l'URL porte une clé
-  // Consulter (sinon le store, mémoire de session non persistée, est GARDÉ), semaine ; (2) à
-  // CHAQUE passage, re-SYNCHRONISE l'URL depuis le store. Fusionnés (au lieu d'un effet
-  // d'écriture séparé gardé par un ref) pour que la re-synchro parte DÈS la passe de seed même
-  // quand aucune valeur n'a changé — cas « URL nue, store gardé » : un ref ne redéclencherait
-  // aucun effet et l'adresse ne se re-synchroniserait qu'à la prochaine interaction.
+  // La page GARDE son propre `useSearchParams` pour les gestes `fbi=` (ouvrir/fermer la liste
+  // « FBI — à faire ») ; le seed + la re-synchro de l'URL vivent dans `useCalendarUrlSync`.
   const [searchParams, setSearchParams] = useSearchParams();
-  const seededRef = useRef(false);
   // Le geste « aller à cette rencontre » après rendu : focalise la cellule de la grille
   // week-end (`[data-fixture-id]`, la sélection porte déjà l'anneau `ring-accent`), sinon
   // le `<h2>` « À placer » (repli d'un extérieur sans cellule propre). Partagé par le clic
@@ -372,104 +265,9 @@ export function CalendarPage() {
       document.getElementById(PLACE_HEADING_ID)?.focus();
     });
   }, []);
-  useEffect(() => {
-    // `match=` (deep-link vers une rencontre) exige les fixtures chargées : on attend les
-    // quatre lectures pour que le seed ne rate jamais la mise en évidence.
-    if (undefined === teams.data || undefined === coaches.data || undefined === venues.data || undefined === fixtures.data) {
-      return;
-    }
-    // `touchedStore` : le seed a-t-il écrit dans le store CETTE passe ? Si oui, on NE
-    // synchronise PAS l'URL maintenant (les valeurs lues plus bas sont encore celles d'AVANT
-    // le seed → on clobberait le deep-link) ; l'écriture du store redéclenche l'effet et la
-    // passe suivante synchronise avec les valeurs seedées. Si non (URL nue, store gardé), les
-    // valeurs lues SONT à jour → on synchronise dès cette passe.
-    let touchedStore = false;
-    if (!seededRef.current) {
-      seededRef.current = true;
-      // Filtre PR-1 : seedé seulement sur un store VIERGE (une navigation depuis Conflits/
-      // la file l'a déjà peuplé ; re-toggler l'effacerait).
-      if (0 === filterIds.length && "equipe" === filterMode) {
-        const { mode, ids } = decodeFilterParams(searchParams);
-        const known = new Set(("coach" === mode ? coaches.data : "gymnase" === mode ? venues.data : teams.data).map((r) => r.id));
-        const kept = ids.filter((id) => known.has(id));
-        if ("equipe" !== mode || kept.length > 0) {
-          setFilterMode(mode);
-          kept.forEach(toggleFilterId);
-          touchedStore = true;
-        }
-      }
-      // Mémoire de session : l'URL FAIT FOI dès qu'elle porte au moins une clé Consulter
-      // (seed complet, clé absente = son défaut — un lien partagé dit vrai) ; sinon (URL nue,
-      // ex. retour par l'onglet « Calendrier » vers `/matchs`) on NE TOUCHE PAS l'état
-      // Consulter du store — la re-synchro ci-dessous repoussera le store dans l'adresse.
-      if (hasConsultParams(searchParams)) {
-        const consult = decodeConsultParams(searchParams);
-        setConsultKinds(consult.kinds);
-        setConsultFamilies(consult.families);
-        setConsultTypicalWeek(consult.typicalWeek);
-        setConsultAway(consult.away);
-        setConsultTemporality(consult.temps);
-        setConsultMonth(consult.month);
-        setConsultPhaseId(consult.phaseId);
-        touchedStore = true;
-      }
-      // Semaine : ne seede QUE si l'URL la porte ET que le store est à l'auto (jamais
-      // clobber une semaine posée par une navigation « Voir la semaine »).
-      const weekend = decodeWeekendParam(searchParams);
-      if (null !== weekend && null === useMatchesStore.getState().selectedWeekend) {
-        setSelectedWeekend(weekend);
-        touchedStore = true;
-      }
-      // Deep-link `match=` : met EN ÉVIDENCE une rencontre précise (« Voir la semaine » depuis
-      // Conflits). One-shot — le param est retiré à la re-synchro (`applyMatchToParams(_, null)`
-      // ci-dessous) ; la mise en évidence vit ensuite dans le store (`selectedFixtureId`).
-      const matchId = decodeMatchParam(searchParams);
-      const matchFixture = null === matchId ? undefined : fixtures.data.find((f) => f.id === matchId);
-      if (undefined !== matchFixture) {
-        setConsultTemporality("semaine");
-        // Semaine : seulement si l'URL ne la porte pas déjà (un lien « Voir la semaine » porte
-        // les deux — `semaine` fait foi) et que le store est encore à l'auto.
-        if (null === weekend && null === useMatchesStore.getState().selectedWeekend) {
-          setSelectedWeekend(weekendKeyOf(matchFixture.matchDate));
-        }
-        setSelectedFixtureId(matchFixture.id);
-        // Lève le masque qui cacherait ce match (type de compétition décoché, extérieur masqué)
-        // — sinon la cellule visée n'existe pas. Redondant quand l'URL portait déjà la levée
-        // (le lien de Conflits l'inclut), inoffensif (`normalizeKinds` dédoublonne).
-        const plan = revealPlan([matchFixture], consultKinds ?? DEFAULT_KINDS, competitionsMap);
-        if (plan.away) {
-          setConsultAway(true);
-        }
-        if (plan.kinds.length > 0) {
-          setConsultKinds(normalizeKinds([...(consultKinds ?? DEFAULT_KINDS), ...plan.kinds]));
-        }
-        focusFixtureCell(matchFixture.id);
-        touchedStore = true;
-      }
-    }
-    if (touchedStore) {
-      return;
-    }
-    // Re-synchro : pousse le store (valeurs à jour) dans l'URL (`replace`), autres params
-    // préservés. No-op quand l'adresse reflète déjà le store.
-    const withFilter = applyFilterToParams(searchParams, filterMode, filterIds);
-    const withConsult = applyConsultToParams(withFilter, {
-      kinds: consultKinds,
-      families: consultFamilies,
-      typicalWeek: consultTypicalWeek,
-      away: consultAway,
-      temps: consultTemporality,
-      month: consultMonth,
-      phaseId: consultPhaseId,
-    });
-    const withWeekend = applyWeekendToParams(withConsult, selectedWeekend);
-    // `match=` est TOUJOURS retiré à la re-synchro : c'est un deep-link one-shot consommé au
-    // seed (« retiré en replace après sélection »), jamais un état porté par l'adresse.
-    const next = applyMatchToParams(withWeekend, null);
-    if (next.toString() !== searchParams.toString()) {
-      setSearchParams(next, { replace: true });
-    }
-  }, [teams.data, coaches.data, venues.data, fixtures.data, searchParams, filterMode, filterIds, consultKinds, consultFamilies, consultTypicalWeek, consultAway, consultTemporality, consultMonth, consultPhaseId, selectedWeekend, setFilterMode, toggleFilterId, setConsultKinds, setConsultFamilies, setConsultTypicalWeek, setConsultAway, setConsultTemporality, setConsultMonth, setConsultPhaseId, setSelectedWeekend, setSelectedFixtureId, focusFixtureCell, competitionsMap, setSearchParams]);
+  // Deep-link fusionné : SEED depuis l'URL (filtre PR-1 + filtres Consulter + semaine) puis
+  // re-synchro de l'URL depuis le store. Le hook lit lui-même `useMatchesStore`/`useSearchParams`.
+  useCalendarUrlSync(teams.data, coaches.data, venues.data, fixtures.data, competitionsMap, focusFixtureCell);
 
   // Ouvrir/fermer la liste « FBI — à faire » synchronise le param `fbi` (l'URL fait foi).
   const openFbiModal = (): void => {

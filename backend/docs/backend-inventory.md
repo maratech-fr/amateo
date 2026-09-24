@@ -3,16 +3,21 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-09-22 (`documentation-update`, lot 4 d'audit « un gros fichier FBI ne doit
-pas plier l'import », SEC-22 + BCK-31). Recalé cette passe, et RIEN D'AUTRE : les trois routes
-d'upload xlsx (§ « Import », `/api/clubs/{id}/import-teams` ; §3 « Module matchs »,
-`/api/fixtures/import` et `/api/fixtures/import/analyze`) portent désormais les bornes
-applicatives de la maison unique `App\Service\XlsxUploadGuard` — 2 Mo d'octets, 20 Mo une fois
-décompressé, 5 000 lignes, refus 413 ; la borne inflate le zip au lieu de croire ses en-têtes, et
-laisse passer un non-zip (rien à borner) pour ne pas dupliquer la copie du filet P4-5. Le
-paragraphe « Sécurité / rate limiting » gagne le limiteur `xlsx_import` (30/h prod · 300/h
-`when@dev` · 5/15 min `when@test`, par utilisateur, consommé APRÈS l'auth). Vérifié contre le code
-ce jour : `XlsxUploadGuard.php` (les trois constantes et le pass-through non-zip),
+Last verified @ 2026-09-24 (rotation de fraîcheur, `documentation-update` lot 7 PR C — ce fichier
+est backend, sans rapport avec le refactor hooks frontend de ce lot, donc rien à y recaler pour
+FRT-33). Re-confronté au code ce jour, ciblé sur la dernière passe de fond (2026-09-22, lot 4
+d'audit « un gros fichier FBI ne doit pas plier l'import », SEC-22 + BCK-31) : les trois
+constantes de `App\Service\XlsxUploadGuard` tiennent toujours — `MAX_UPLOAD_BYTES` 2 Mo,
+`MAX_INFLATED_BYTES` 20 Mo, `MAX_ROWS` 5 000 (`backend/src/Service/XlsxUploadGuard.php:36,39,42`)
+— et le limiteur `xlsx_import` existe toujours dans `backend/config/packages/rate_limiter.yaml`
+(prod/dev/test). Détail de la passe du 22 : les trois
+routes d'upload xlsx (§ « Import », `/api/clubs/{id}/import-teams` ; §3 « Module matchs »,
+`/api/fixtures/import` et `/api/fixtures/import/analyze`) portent ces bornes applicatives ; la
+borne inflate le zip au lieu de croire ses en-têtes, et laisse passer un non-zip (rien à borner)
+pour ne pas dupliquer la copie du filet P4-5. Le paragraphe « Sécurité / rate limiting » porte le
+limiteur `xlsx_import` (30/h prod · 300/h `when@dev` · 5/15 min `when@test`, par utilisateur,
+consommé APRÈS l'auth). Vérifié contre le code ce jour-là : `XlsxUploadGuard.php` (les trois
+constantes et le pass-through non-zip),
 `FixtureImportGate.php` (délégation + consommation du limiteur en fin de `gate()`),
 `ImportController.php`, `rate_limiter.yaml`. Reste du fichier non re-vérifié cette passe —
 historique des recalages précédents : `git log -p --follow` ce fichier. Un stamp REMPLACE,
