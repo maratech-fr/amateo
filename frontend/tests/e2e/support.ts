@@ -270,6 +270,25 @@ export async function settleVeil(page: Page): Promise<void> {
  * redirection pousse sur Conflits, et la suite du scénario cherche des éléments du Calendrier sur
  * la page Conflits jusqu'au timeout. Il faut d'abord ATTENDRE que la décision soit RENDUE.
  *
+ * ⚠ LE VOILE (`app/ActionVeil`) — pourquoi ce helper draine `settleVeil` autour de son clic. Un
+ * voile bloquant encore LEVÉ pose sur `document.documentElement` un overlay `z-[60]` qui CAPTE les
+ * clics. Playwright le signale « <html … class="dark"> intercepts pointer events », retente, puis
+ * l'élément visé se DÉTACHE quand le voile retombe (« element was detached from the DOM ») et le
+ * clic tourne jusqu'au TIMEOUT. C'est le flaky mesuré après PR #966 (`matches.spec` « create a
+ * fixture… » : rouge au 1ᵉʳ essai — 240 s —, vert au retry) : le helper rendait la main dès que le
+ * groupe « Semaine affichée » était VISIBLE, mais un `toBeVisible` traverse l'`inert` du voile sans
+ * broncher — l'écran était « visible » et pourtant pas POSÉ. Le scénario enchaînait alors son clic
+ * sur le sélecteur « Équipe » (modale « Nouveau match »), intercepté, détaché, timeout.
+ *
+ * On draine donc le voile AUTOUR de la SEULE action pointeur du helper — le clic d'onglet — et non
+ * ailleurs : les deux `toBeVisible` (étapes 1 et 3) se lisent sous `inert`, un voile ne les gêne
+ * pas. AVANT le clic : le voile peut TRAÎNER de l'étape que l'appelant vient de jouer (génération +
+ * validation dans `ensureValidated`, transition wizard/planning via `navTransitionStore`) — le clic
+ * doit partir sur un écran posé, pas compter sur l'auto-retry de Playwright pour masquer
+ * l'interception. APRÈS le clic : le voile peut être levé par ce que la navigation déclenche — on
+ * ne rend la main qu'une fois retombé, sinon on rejoue le flaky sur le PROCHAIN clic de l'appelant.
+ * `settleVeil` est idempotent (sans voile : ~120 ms de détection puis sortie immédiate).
+ *
  * Contrat :
  *  1. Attendre que la décision d'atterrissage soit RENDUE, INDÉPENDAMMENT de son issue — surtout
  *     pas en pariant sur « il y aura des conflits » (un `waitForURL(/conflits/)` pendrait le jour
@@ -278,9 +297,10 @@ export async function settleVeil(page: Page): Promise<void> {
  *     (groupe « Regrouper par », `ConflictsPage`). Tant qu'un `FullPageSpinner` est seul à l'écran
  *     (celui de `MatchesLanding`, PUIS celui de la page résolue pendant qu'elle charge ses propres
  *     données), aucun `role="group"` n'existe : c'est exactement la condition de sortie voulue.
- *  2. ENSUITE seulement, rejoindre le Calendrier en cliquant l'onglet, scopé à la nav du module.
- *     La décision est derrière nous : le clic est une vraie navigation si on est sur Conflits, un
- *     no-op inoffensif si on est déjà sur le Calendrier — plus rien ne peut la défaire.
+ *  2. Drainer le voile, PUIS rejoindre le Calendrier en cliquant l'onglet (scopé à la nav du
+ *     module), PUIS drainer le voile À NOUVEAU. La décision d'atterrissage est derrière nous : le
+ *     clic est une vraie navigation si on est sur Conflits, un no-op inoffensif si on est déjà sur
+ *     le Calendrier — plus rien ne peut la défaire.
  *  3. Terminer par un TÉMOIN POSITIF : le groupe « Semaine affichée » est visible. Un helper qui
  *     rend la main sans avoir prouvé où il a posé le scénario est un faux vert en puissance.
  *
@@ -294,9 +314,13 @@ export async function landOnMatchesCalendar(page: Page): Promise<void> {
   const conflicts = page.getByRole("group", { name: "Regrouper par" });
   await expect(calendar.or(conflicts).first()).toBeVisible({ timeout: 30_000 });
 
-  // 2. Rejoindre le Calendrier, scopé à la nav du module (Playwright fait défiler avant de cliquer,
-  //    donc reste correct à 400 px où la nav déborde).
+  // 2. Drainer un éventuel voile TRAÎNANT (étape de l'appelant) AVANT d'agir, rejoindre le
+  //    Calendrier (scopé à la nav du module — Playwright fait défiler avant de cliquer, donc reste
+  //    correct à 400 px où la nav déborde), puis drainer À NOUVEAU ce que la navigation a pu lever
+  //    — on ne rend jamais la main sur un voile encore levé (cf. bloc de contrat ci-dessus).
+  await settleVeil(page);
   await page.getByRole("navigation", { name: "Espaces matchs" }).getByRole("link", { name: "Calendrier" }).click();
+  await settleVeil(page);
 
   // 3. Témoin positif : on est bien posé sur le Calendrier.
   await expect(calendar).toBeVisible({ timeout: 30_000 });
