@@ -4,14 +4,11 @@ import { AlertTriangle, GitCompare, Loader2, Lock, Pencil, Sparkles, Star, Undo2
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
-import { useRenamePlanning } from "@/features/auth/queries";
 import { useMe, useWorkingSeason } from "@/shared/session/queries";
 import { FeedbackButton } from "@/features/feedback/FeedbackButton";
-import { useWizardStore } from "@/features/wizard/store";
 // Same ["priority_tiers"] query key as the matches/wizard hooks — one cache entry.
 import { usePriorityTiers } from "@/features/matches/queries";
 import { DeletePlanningButton } from "@/features/cockpit/DeletePlanningButton";
-import { useEntryConflicts, useSchedulePlans } from "@/features/cockpit/queries";
 import { useConstraintValidation, useReservations, useSharedTrainingBlocks, useTeamPeriodOverrides, useWizardTeamTagAssignments, useWizardTeamTags } from "@/features/wizard/queries";
 import { coachFullName } from "@/shared/lib/coachName";
 import { readFailed, readLoading } from "@/shared/lib/readState";
@@ -23,7 +20,7 @@ import { EmptyState } from "@/shared/components/ui/empty-hint";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
 
-import { type Compromise, EngineTimeoutError, EngineVerificationInterruptedError, type EvictedSlot, GenerationInProgressError, type MoveViolation, MoveRejectedError, OverlaysExistError, type Slot, SlotEditError, TargetLockedError, VerdictAbandonedError } from "./api";
+import { type Compromise, EngineTimeoutError, EngineVerificationInterruptedError, type EvictedSlot, GenerationInProgressError, type MoveViolation, MoveRejectedError, type Slot, SlotEditError, TargetLockedError, VerdictAbandonedError } from "./api";
 import { CompromiseList } from "./CompromiseList";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { DriftBanner } from "./DriftBanner";
@@ -42,15 +39,19 @@ import { buildClubView } from "./lib/clubView";
 import { ClubViewTable } from "./ClubViewTable";
 import { availableResourceGroups, buildGrid, DAYS, type Lookups, slotGroupKey, toHourMinute } from "./lib/grid";
 import { PlanningToolbar } from "./PlanningToolbar";
-import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useLockSlot, useMoveDryRun, useMoveGroup, useMoveSlot, usePlaceSlot, useRegenerate, useRegenerateFromVersion, useRegenerateOverlay, useReopenSchedule, useSchedules, useSlots, useSocleDeviation, useTeamCoaches, useTeams, useTrainingSlots, useValidateImpact, useValidateSchedule, useVenues } from "./queries";
+import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useMoveDryRun, useMoveGroup, useMoveSlot, usePlaceSlot, useRegenerate, useRegenerateFromVersion, useRegenerateOverlay, useSchedules, useSlots, useSocleDeviation, useTeamCoaches, useTeams, useTrainingSlots, useVenues } from "./queries";
 import { blocksForSlot } from "./lib/blockSession";
 import { ResourceFilter } from "./ResourceFilter";
 import { SlotDetail, type MoveFeedback } from "./SlotDetail";
 
-import { pickLandingScheduleId } from "./lib/pickLandingSchedule";
 import { stalenessMessage } from "./lib/staleness";
 import type { ToReplaceEntry } from "./lib/toReplaceReason";
-import { isSeasonPlanType, planRepresentative, visibleOverlayVersions, visibleSeasonPlans } from "./lib/versions";
+import { isSeasonPlanType, planRepresentative, visibleSeasonPlans } from "./lib/versions";
+import { useVersionLanding } from "./lib/useVersionLanding";
+import { usePeriodClosures } from "./lib/usePeriodClosures";
+import { useLockControls } from "./lib/useLockControls";
+import { useValidateReopen } from "./lib/useValidateReopen";
+import { usePlanHeader } from "./lib/usePlanHeader";
 import { SeasonComparisonModal } from "./SeasonComparisonModal";
 import { ValidateDialog } from "./ValidateDialog";
 import { capacityShortfallSentence } from "./lib/capacityShortfall";
@@ -95,15 +96,6 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const { viewMode, selectedScheduleId, selectedSlotId, resourceFilter, setViewMode, setSelectedScheduleId, setSelectedSlotId, toggleResource, clearResourceFilter } =
     usePlanningStore();
   const [highlightSlotIds, setHighlightSlotIds] = useState<Set<string>>(new Set());
-  // Déverrouiller un créneau né d'une RÉSERVATION de gymnase demande confirmation (F1) : c'est
-  // un engagement pris hors de l'app, à ne pas relâcher par inadvertance. On mémorise LE créneau
-  // visé (et non un booléen) : le cadenas de la grille (PR 2) peut viser un créneau NON
-  // sélectionné, la confirmation doit muter celui-là, pas le sélectionné.
-  const [pendingUnlockSlotId, setPendingUnlockSlotId] = useState<string | null>(null);
-  // PR 3 — panneau latéral des verrous manuels + lentille (surbrillance de la grille par
-  // origine de verrou). Fermer le panneau ÉTEINT la lentille : pas d'état fantôme.
-  const [locksPanelOpen, setLocksPanelOpen] = useState(false);
-  const [lockLens, setLockLens] = useState(false);
   // P2-44 (PR-2) — la modale « Comparer avec la saison » (consultation du socle).
   const [compareOpen, setCompareOpen] = useState(false);
   // P2-30 (geste 1/2) — le mode cible « click-click ». `move` déplace un créneau existant
@@ -148,50 +140,9 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // la saison de travail, plus de copie inline qui pourrait diverger.
   const workingSeason = useWorkingSeason();
 
-  // Portée d'affichage (bug fondateur 2026-08-19). `scoped` ⇒ l'écran ne connaît QUE les
-  // versions de ce plan de période : le socle et les autres périodes n'entrent ni dans
-  // l'atterrissage, ni dans la toolbar, ni dans le titre. Sans portée, tout est inchangé.
-  const scoped = null !== scopePlanId;
-  const scopeVersions = useMemo(() => (scoped ? visibleOverlayVersions(schedules, scopePlanId) : null), [scoped, schedules, scopePlanId]);
-  // La version sur laquelle atterrir (règle ARBITRÉE fondateur 2026-08-19). EMBARQUÉ (étape
-  // Génération) ⇒ la version la plus RÉCENTE du plan en portée — période via la portée, saison
-  // via les versions de saison —, génération EN VOL comprise : le gestionnaire doit revoir la
-  // génération qu'il vient de lancer, pas le pointeur (le seed BCCL, V1 transcrite POINTÉE,
-  // ramenait sinon toujours la V1). NON embarqué (`/planning` autonome, cockpit) ⇒ POINTEUR
-  // d'abord, STRICTEMENT inchangé (frontière de `pickLanding.test.ts`). Fail-closed en portée :
-  // on atterrit DANS la portée ou nulle part, JAMAIS via `pickLandingScheduleId` (socle).
-  const landingScheduleId = useMemo(() => {
-    if (scoped) {
-      const versions = scopeVersions ?? [];
-      return embedded ? (versions.at(-1)?.id ?? null) : (planRepresentative(versions)?.id ?? versions.at(-1)?.id ?? null);
-    }
-    if (embedded) {
-      return visibleSeasonPlans(schedules).at(-1)?.id ?? null;
-    }
-    return schedules.length > 0 ? pickLandingScheduleId(schedules) : null;
-  }, [scoped, embedded, scopeVersions, schedules]);
-
-  // Keep a valid selection: default to the season base plan, else the latest
-  // completed. A selection archived concurrently (sibling validation in another
-  // tab) is invalid too — the selector has no option for it. En portée, la sélection
-  // n'est valide que si elle appartient À la portée : une sélection de saison laissée
-  // par un autre écran ne survit donc pas (le bug d'origine).
-  const selectionInScope = !scoped || (null !== scopeVersions && scopeVersions.some((s) => s.id === selectedScheduleId));
-  const validScheduleId = schedules.some((s) => s.id === selectedScheduleId) && selectionInScope ? selectedScheduleId : null;
-  useEffect(() => {
-    if (null !== validScheduleId) {
-      return;
-    }
-    if (null !== landingScheduleId && landingScheduleId !== selectedScheduleId) {
-      setSelectedScheduleId(landingScheduleId);
-    }
-  }, [validScheduleId, landingScheduleId, selectedScheduleId, setSelectedScheduleId]);
-
-  // La COUCHE de créneaux de la version affichée (#8) : le socle lit la grille de
-  // saison, une période lit la sienne. Dérivée ici, avant les requêtes, pour que
-  // l'écran et l'export montrent les mêmes créneaux vides.
-  const displayed = schedules.find((s) => s.id === validScheduleId) ?? null;
-  const slotLayerId = null !== displayed && !isSeasonPlanType(displayed.planType) ? (displayed.schedulePlanId ?? null) : null;
+  // Portée et atterrissage de version (bug fondateur 2026-08-19) : la sélection vit dans le
+  // store (passée en paramètres) ; le hook n'a aucun état propre.
+  const { scoped, scopeVersions, landingScheduleId, validScheduleId, displayed, slotLayerId } = useVersionLanding(schedules, scopePlanId, embedded, selectedScheduleId, setSelectedScheduleId);
 
   // P2-44 PR-5 — les écarts NOMMÉS vs le socle. Armés UNIQUEMENT sur l'écran embarqué et porté
   // (`transcriptionSurface`), d'une FERMETURE (le serveur reste seul juge — 422 sinon), et d'une
@@ -225,35 +176,10 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // `reservation-*` : aucun PATCH slot ne doit les viser), sur la MÊME couche que le
   // payload du solveur : socle = réservations permanentes, période = celles de son plan.
   const isFailed = "FAILED" === displayed?.status;
-  // P2-43 volet (v) — l'état de fermeture des gymnases SERVI par le backend pour la PÉRIODE
-  // affichée (`GET /calendar-entries/{id}/conflicts`, foyer unique déjà consommé par le wizard).
-  // L'entrée de calendrier : prop en embarqué (Génération l'a en main), sinon dérivée du plan de
-  // la version affichée — JAMAIS le socle (une version de saison n'a pas d'entrée de période).
-  const { data: allSchedulePlans } = useSchedulePlans();
-  const periodPlan =
-    null !== displayed && !isSeasonPlanType(displayed.planType) && null !== displayed.schedulePlanId
-      ? ((allSchedulePlans ?? []).find((p) => p.id === displayed.schedulePlanId) ?? null)
-      : null;
-  const periodEntryId = calendarEntryId ?? periodPlan?.calendarEntryId ?? null;
-  const entryConflicts = useEntryConflicts(periodEntryId);
-  const conflictsUnresolved = readLoading(entryConflicts) || readFailed(entryConflicts);
-  // FAIL-CLOSED sur l'OFFRE : on n'ARME pas un geste cible tant que l'état de fermeture n'est pas
-  // connu (le moteur refuserait un placement sur un couple fermé). Le socle n'a rien à attendre ;
-  // une version de PÉRIODE dont le plan n'est pas encore résolu compte comme non résolue (on ne
-  // DEVINE pas l'absence de fermeture). Fail-CLOSED sur l'offre, fail-OPEN sur l'affichage.
-  const periodPlanPending = null !== displayed && !isSeasonPlanType(displayed.planType) && null === calendarEntryId && undefined === allSchedulePlans;
-  const closuresResolved = !periodPlanPending && (null === periodEntryId || !conflictsUnresolved);
-  // P2-15 — un gymnase DÉSACTIVÉ pour la période garde ses créneaux en base (le backend
-  // les écarte du payload, il ne les supprime pas) : sans ce filtre, l'écran de génération
-  // affichait TOUS les gymnases du club alors qu'un seul sert — « du bruit pour rien ».
-  // On filtre à la SOURCE : la grille, ses fenêtres vides et le sélecteur en dérivent tous.
-  // On lit l'état SERVI (`disabledVenueIds`), plus de re-dérivation locale depuis les overrides
-  // (le wizard a migré de même — règle d'or). FAIL-CLOSED sur l'AFFICHAGE (P4-20) : lecture ratée
-  // / pas encore résolue ⇒ on ne masque rien.
-  const disabledVenueIds = useMemo(
-    () => new Set(conflictsUnresolved ? [] : (entryConflicts.data?.disabledVenueIds ?? [])),
-    [conflictsUnresolved, entryConflicts.data],
-  );
+  // Fermetures de gymnase et gymnases désactivés de la période affichée (P2-43 volet v).
+  // `allSchedulePlans` et `entryConflicts` sont aussi retournés : l'en-tête, la réouverture et
+  // les fenêtres fermées les lisent plus bas.
+  const { allSchedulePlans, entryConflicts, conflictsUnresolved, closuresResolved, disabledVenueIds } = usePeriodClosures(displayed, calendarEntryId);
   // P2-30 (dérive) : les overrides d'équipe de la PÉRIODE (seuil/désactivation) — mêmes hooks
   // que le wizard. Sur le socle (slotLayerId=null) le hook est inerte → `computeDrift` reçoit
   // `null` et lit le seuil de saison.
@@ -279,6 +205,10 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
     () => isFailed && 0 === generatedSlots.length ? reservationSlots : generatedSlots,
     [isFailed, generatedSlots, reservationSlots],
   );
+
+  // Verrous manuels et déverrouillage (F1/PR 3) — états, mutation, verrous manuels, bascule.
+  // Appelé ici, après `slots`, car ses dérivations en dépendent (regroupement assumé au plan).
+  const { pendingUnlockSlotId, setPendingUnlockSlotId, locksPanelOpen, setLocksPanelOpen, lockLens, setLockLens, lockMutation, manualLocks, closeLocksPanel, requestToggleLock } = useLockControls(slots);
 
   const diagnosticsQuery = useDiagnostics(validScheduleId);
   // `useMemo` et non `?? []` : le repli littéral fabriquait un tableau NEUF à chaque rendu,
@@ -306,7 +236,6 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const lockMutation = useLockSlot();
   const moveMutation = useMoveSlot();
   const moveGroupMutation = useMoveGroup();
   const dryRunMutation = useMoveDryRun();
@@ -314,13 +243,9 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const regenerateMutation = useRegenerate();
   const regenerateOverlayMutation = useRegenerateOverlay();
   const fillMutation = useFillSchedule();
-  const validateMutation = useValidateSchedule();
-  const reopenMutation = useReopenSchedule();
   const deleteMutation = useDeleteSchedule();
   const regenerateFromMutation = useRegenerateFromVersion();
   const [regenerateFromOpen, setRegenerateFromOpen] = useState(false);
-  const renamePlanning = useRenamePlanning();
-  const [editingPlanningName, setEditingPlanningName] = useState<string | null>(null);
   // Repli CONTEXTUEL (P4-40). En boucle de travail, replié par défaut : la grille prend
   // toute la largeur pour vérifier, une barre compacte rouvre l'aside — c'est la demande
   // utilisateur d'origine, inchangée. Au sortir d'une génération lancée DEPUIS LE WIZARD
@@ -328,135 +253,15 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // avec l'écran génération » (retour terrain). Les deux règles ne se contredisent pas —
   // la seconde nomme un contexte que la première n'avait pas distingué.
   const [diagnosticsCollapsed, setDiagnosticsCollapsed] = useState(true);
-  const [validateOpen, setValidateOpen] = useState(false);
-  // P2-52 — l'impact de dépointage de la validation, interrogé UNIQUEMENT quand la modale « Valider »
-  // est ouverte (le geste est envisagé). N=0 → l'annonce ne s'affiche pas ; N>0 → le confirm gagne
-  // l'avertissement « salle perdue » ; en vol / échec → le bouton Valider reste désactivé.
-  const validateImpactQuery = useValidateImpact(validateOpen ? validScheduleId : null);
-  const orphanImpact = useMemo(
-    () => ({
-      orphanCount: validateImpactQuery.data?.orphanedFixtures ?? 0,
-      declaredCount: validateImpactQuery.data?.declaredOrphanedFixtures ?? 0,
-      loading: readLoading(validateImpactQuery),
-      failed: readFailed(validateImpactQuery),
-      onRetry: () => void validateImpactQuery.refetch(),
-    }),
-    [validateImpactQuery],
-  );
-  // Reopening the baseline with period overlays → 409; confirm to delete them.
-  const [reopenOverlayCount, setReopenOverlayCount] = useState<number | null>(null);
-
-  // Validating a non-baseline version with overlays → 409 escalation (same
-  // destructive idiom as reopen): confirm, then re-POST with the flag.
-  const [validateOverlayCount, setValidateOverlayCount] = useState<number | null>(null);
-  const validate = (confirmDeleteOverlays?: boolean) => {
-    if (!validScheduleId) {
-      return;
-    }
-    validateMutation.mutate(
-      { id: validScheduleId, confirmDeleteOverlays },
-      {
-        onSuccess: () => {
-          setValidateOverlayCount(null);
-          setValidateOpen(false);
-          // Validated → land on /planning, the screen of the version IN FORCE. Valider
-          // est la SORTIE de l'espace de travail (l'étape Génération du wizard) : le socle
-          // validé devient la version en vigueur, et /planning en porte le badge de statut
-          // et « Rouvrir » (symétrie stricte, 2026-08-20 — Valider ↔ Rouvrir).
-          navigate("/planning");
-        },
-        onError: (error) => {
-          if (error instanceof OverlaysExistError) {
-            setValidateOpen(false);
-            setValidateOverlayCount(error.count);
-          }
-        },
-      },
-    );
-  };
-
-  const reopen = (confirmDeleteOverlays?: boolean) => {
-    if (!validScheduleId) {
-      return;
-    }
-    reopenMutation.mutate(
-      { id: validScheduleId, confirmDeleteOverlays },
-      {
-        onSuccess: () => {
-          setReopenOverlayCount(null);
-          // RÈGLE : toute navigation vers /wizard DÉCLARE son mode — aucun héritage du mode
-          // ambiant du localStorage. Sans quoi rouvrir un overlay ouvrait la SAISON (ou la
-          // mauvaise période) : `jumpTo("generate")` SEUL laissait le mode persisté décider.
-          // On le dérive de la version rouverte : plan non-SEASON → mode période ancré sur SON
-          // entrée (schedulePlanId → plan → calendarEntryId) ; plan SEASON → mode saison.
-          const reopened = displayed; // === selectedSchedule ; `displayed` est en portée ici
-          const reopenedEntryId =
-            null !== reopened && !isSeasonPlanType(reopened.planType) && null !== reopened.schedulePlanId
-              ? ((allSchedulePlans ?? []).find((p) => p.id === reopened.schedulePlanId)?.calendarEntryId ?? null)
-              : null;
-          if (null !== reopenedEntryId) {
-            useWizardStore.getState().startPeriodMode(reopenedEntryId);
-          } else {
-            useWizardStore.getState().exitPeriodMode();
-          }
-          // Reopened to rework the plan → the wizard's generation step (mode already declared).
-          useWizardStore.getState().jumpTo("generate");
-          navigate("/wizard");
-        },
-        // Generic failures are toasted by the hook (unmount-safe); only the
-        // 409 escalation is UI state handled here.
-        onError: (error) => {
-          if (error instanceof OverlaysExistError) {
-            setReopenOverlayCount(error.count);
-          }
-        },
-      },
-    );
-  };
+  // Validation et réouverture (le cœur du lifecycle — ADR-0002) : états, mutations, impact de
+  // dépointage, validate()/reopen(). `actionBusy` est recomposé plus bas depuis les mutations
+  // retournées (deleteMutation et regenerateFromMutation restent en page).
+  const { validateOpen, setValidateOpen, reopenOverlayCount, setReopenOverlayCount, validateOverlayCount, setValidateOverlayCount, validateMutation, reopenMutation, orphanImpact, validate, reopen } = useValidateReopen(validScheduleId, displayed, allSchedulePlans, navigate);
 
   const selectedSchedule = displayed;
-  // Suppression d'un planning SECONDAIRE (overlay) depuis l'en-tête (retour fondateur
-  // 2026-07-19) : l'entrée de calendrier de son plan (jamais pour le socle SEASON).
-  // `allSchedulePlans` est déjà lu plus haut (dérivation de la fermeture de période).
-  const overlayDeleteEntryId =
-    null !== selectedSchedule && !isSeasonPlanType(selectedSchedule.planType) && null !== selectedSchedule.schedulePlanId
-      ? ((allSchedulePlans ?? []).find((p) => p.id === selectedSchedule.schedulePlanId)?.calendarEntryId ?? null)
-      : null;
-  // ADR-0002 inv. 12 : LE nom vit sur le PLAN, jamais sur la version. Tout ce que
-  // l'en-tête montre ou modifie (titre, stylo, nom de fichier exporté, popup de
-  // suppression) doit donc désigner le plan de la version AFFICHÉE — pas le plan de
-  // saison. Il était codé en dur : renommer un planning de période renommait le
-  // planning de la SAISON, et l'en-tête affichait son nom sur toutes les périodes.
-  // `null` = plan pas encore résolu (collection en vol, ou plan absent) : l'appelant
-  // dégrade, il ne devine pas.
-  // Le club n'a AUCUNE version : on est dans le contexte SAISON par défaut, le plan de
-  // saison reste le sujet de l'en-tête. Sans ce cas, un club qui n'a jamais généré perdait
-  // le nom de son planning ET son stylo — il ne pouvait plus le nommer (revue #339 round 1).
-  // ⚠ La condition porte sur « le club n'a aucune version » (`schedules.length`), PAS sur
-  // « aucune version RÉSOLUE » : entre deux refetch, la sélection du store peut ne pas se
-  // retrouver dans la liste, et un repli sur ce signal-là ré-armerait le plan de SAISON comme
-  // cible du stylo alors que le gestionnaire est sur une période — le bug d'origine, de retour
-  // par une porte transitoire (revue #339 round 2).
-  // Entre deux refetch, la sélection du store peut ne plus être dans la liste (suppression
-  // d'une version, sélection persistée d'une autre saison) : `selectedSchedule` est alors null
-  // UNE passe de rendu, le temps que l'effet d'atterrissage rejoue. Plutôt que de laisser
-  // l'en-tête retomber sur un générique — ou pire, sur le plan de SAISON alors qu'on regarde
-  // une période —, on lit dès maintenant la version que cet effet va choisir : la MÊME
-  // fonction, donc le même résultat, sans flash et sans deviner (revue #339 round 3).
-  // L'en-tête lit dès maintenant la version que l'effet d'atterrissage va choisir (la MÊME
-  // fonction, donc le même résultat, sans flash) : en portée, la version de la période — jamais
-  // le socle ; hors portée, l'atterrissage embarqué/pointeur selon le contexte.
-  const headerSchedule = selectedSchedule ?? (null !== landingScheduleId ? (schedules.find((s) => s.id === landingScheduleId) ?? null) : null);
-  const displayedPlan: { id: string; name: string } | null = scoped
-    ? ((allSchedulePlans ?? []).find((p) => p.id === scopePlanId) ?? null)
-    : null === headerSchedule || isSeasonPlanType(headerSchedule.planType)
-      ? (me?.seasonPlan ?? null)
-      : ((allSchedulePlans ?? []).find((p) => p.id === headerSchedule.schedulePlanId) ?? null);
-  // Le TITRE tolère un plan non encore résolu (collection des plans en vol) : la photo
-  // `Schedule.name` porte le nom du plan à la création, donc un libellé juste dans l'immense
-  // majorité des cas — bien mieux que le générique « Planning ». Le STYLO, lui, reste
-  // conditionné au plan résolu : on ne propose pas un geste dont on n'a pas la cible.
-  const displayedPlanName = displayedPlan?.name ?? headerSchedule?.name ?? null;
+  // Identité du plan affiché et renommage (ADR-0002 inv. 12) : nom en édition, mutation de
+  // renommage, entrée de suppression d'overlay, plan affiché et son nom.
+  const { editingPlanningName, setEditingPlanningName, renamePlanning, overlayDeleteEntryId, displayedPlan, displayedPlanName } = usePlanHeader(selectedSchedule, landingScheduleId, schedules, scoped, scopePlanId, allSchedulePlans, me);
   const isGenerating = null !== selectedSchedule && IN_FLIGHT.includes(selectedSchedule.status);
   // Lot C (défaut terrain fondateur 2026-08-21) — l'écran de génération s'affiche dès qu'une
   // version DU PLAN EN PORTÉE est en vol, en saison comme en période. `isGenerating` ne dérive
@@ -519,34 +324,6 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const selectedSlotBlock = useMemo(
     () => (null === selectedSlot ? null : (blocksForSlot(selectedSlot, sharedBlocks, slots)[0] ?? null)),
     [selectedSlot, sharedBlocks, slots],
-  );
-
-  // PR 3 — les créneaux verrouillés À LA MAIN (le compteur toolbar + la liste du panneau).
-  // SEULS les MANUAL comptent : ni les réservations de gymnase (RESERVATION), ni les verrous
-  // d'origine indécidable (UNKNOWN) — c'est le « travail de verrouillage » du gestionnaire.
-  const manualLocks = useMemo(() => slots.filter((s) => "MANUAL" === s.lockOrigin), [slots]);
-  const closeLocksPanel = useCallback(() => {
-    setLocksPanelOpen(false);
-    setLockLens(false);
-  }, []);
-
-  // F1 (PR 2) — LE point d'entrée UNIQUE de la bascule de verrou, partagé par le panneau de
-  // détail ET le cadenas de la grille : la règle RÉSERVATION (déverrouiller → confirmation)
-  // s'écrit ainsi une seule fois. MANUAL/UNKNOWN et tout verrouillage mutent directement.
-  const requestToggleLock = useCallback(
-    (slotId: string) => {
-      const slot = slots.find((s) => s.id === slotId);
-      if (undefined === slot) {
-        return;
-      }
-      const locked = "NONE" !== slot.lockLevel;
-      if (locked && "RESERVATION" === slot.lockOrigin) {
-        setPendingUnlockSlotId(slotId);
-        return;
-      }
-      lockMutation.mutate({ id: slotId, lockLevel: locked ? "NONE" : "HARD" });
-    },
-    [slots, lockMutation],
   );
 
   // F2b — le retour du dernier déplacement, dérivé de la mutation (verdict moteur). Un refus

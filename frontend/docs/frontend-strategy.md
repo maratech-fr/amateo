@@ -24,7 +24,12 @@ sa 3ᵉ occurrence constatée (`wizard/lib/useStepValidation.ts`, `cockpit/lib/u
 puis les six hooks de `matches/lib/` sortis de `CalendarPage.tsx`, 746 → 544 l.), vérifiée contre
 le diff réel (`git diff main --color-moved` ne montre que signatures/imports/destructurations
 neufs, `CalendarPage.test.tsx` intact, un seul test neuf `usePlacementGuards.test.ts` là où le
-filet avait un trou réel). Historique des passes :
+filet avait un trou réel). **Ajout du 2026-09-24 (P4-255 PR 1, `planning/PlanningPage.tsx`)** : la
+même section gagne la règle de frontière pour découper un même monolithe en PLUSIEURS PR —
+écrivain unique d'abord (verbatim), carrefours ensuite (une fois leur propriétaire décidé) —
+vérifiée contre les cinq hooks livrés (`useVersionLanding`, `usePeriodClosures`, `useLockControls`,
+`useValidateReopen`, `usePlanHeader`, `planning/lib/`) et les deux carrefours nommément laissés en
+page (`highlightSlotIds`, `diagnosticsCollapsed`). Historique des passes :
 `git log -p --follow frontend/docs/frontend-strategy.md`.)
 
 > **Statut : le rebuild est LIVRÉ.** Les formulations « pour le rebuild » ci-dessous sont
@@ -134,6 +139,27 @@ en composants — les deux se distinguent : sortir un `useMemo` ne change aucune
 sortir un bloc de JSX en fait naître une (props). `P4-255` (monolithes hors module matchs) suit sa
 propre règle, distincte, posée par le fondateur : jamais de découpage sans filet de tests D'ABORD
 — celle-là vise le second cas, pas celui-ci.
+
+**Quand un même monolithe réclame PLUS d'une PR : d'abord l'écrivain unique, les carrefours
+ensuite** (motif posé sur `planning/PlanningPage.tsx`, P4-255 PR 1, 2026-09-24, 1 871 → 1 648 l.,
+cinq hooks — `useVersionLanding`, `usePeriodClosures`, `useLockControls`, `useValidateReopen`,
+`usePlanHeader`). Un sujet ne se qualifie pour une extraction verbatim (règle ci-dessus) que si son
+état a un **écrivain unique** — un seul endroit qui le pose. Une page qui a grossi pendant des mois
+porte aussi des **carrefours** : un état lu et écrit par PLUSIEURS sujets à la fois (exemples
+laissés en page sur ce lot : `highlightSlotIds`, posé aussi bien par le déplacement simple, le
+déplacement de groupe que le placement à la dérive — trois gestes distincts, chacun avec son propre
+échec à surligner ; `diagnosticsCollapsed`, posé par l'arrivée d'un diagnostic, l'ouverture d'un
+créneau et le panneau lui-même). Extraire un carrefour avec la même
+mécanique reviendrait à choisir arbitrairement UN sujet comme propriétaire et à faire remonter
+l'état aux autres par des paramètres — ce n'est plus un déplacement verbatim, c'est une décision de
+conception qui engage une interface, et elle doit être prise consciemment, pas héritée de l'ordre
+dans lequel les sujets ont été lus. **La bonne coupe entre deux PR n'est donc pas la taille, c'est
+l'écrivain** : la première PR prend tous les sujets à écrivain unique (verbatim, sans risque) ; les
+carrefours restent en page, chacun avec sa raison écrite (même exigence que les résidus
+ci-dessus), jusqu'à ce qu'une décision explicite tranche qui les possède — alors seulement une PR
+suivante les sort. Une ligne roadmap qui couvre un fichier à traiter en plusieurs PR reste
+**ouverte** tant que ses carrefours n'ont pas de propriétaire décidé, même si chaque PR
+individuelle est verte et mergée : « verbatim et sans risque » ne veut pas dire « fini ».
 
 ### Outils de test (versions fixées)
 
