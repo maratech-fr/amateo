@@ -29,8 +29,13 @@ même section gagne la règle de frontière pour découper un même monolithe en
 écrivain unique d'abord (verbatim), carrefours ensuite (une fois leur propriétaire décidé) —
 vérifiée contre les cinq hooks livrés (`useVersionLanding`, `usePeriodClosures`, `useLockControls`,
 `useValidateReopen`, `usePlanHeader`, `planning/lib/`) et les deux carrefours nommément laissés en
-page (`highlightSlotIds`, `diagnosticsCollapsed`). Historique des passes :
-`git log -p --follow frontend/docs/frontend-strategy.md`.)
+page à ce stade (`highlightSlotIds`, `diagnosticsCollapsed` — le premier a depuis gagné son
+propriétaire, voir la PR 2 ci-dessous). **Ajout du 2026-09-24 (P4-255 PR 2, même fichier)** : un
+carrefour a désormais son ISSUE — `highlightSlotIds` sort vers `planning/lib/useSlotHighlight.ts`
+avec un propriétaire unique et trois intentions nommées (aucun setter), régime de preuve
+rouge→vert (pas verbatim, une décision de conception engage une interface) précédé d'un filet
+d'EFFET posé sur le comportement actuel ; seul `diagnosticsCollapsed` reste en page. Historique des
+passes : `git log -p --follow frontend/docs/frontend-strategy.md`.)
 
 > **Statut : le rebuild est LIVRÉ.** Les formulations « pour le rebuild » ci-dessous sont
 > historiques ; le document reste la référence vivante des **versions de la stack**, des
@@ -160,6 +165,17 @@ ci-dessus), jusqu'à ce qu'une décision explicite tranche qui les possède — 
 suivante les sort. Une ligne roadmap qui couvre un fichier à traiter en plusieurs PR reste
 **ouverte** tant que ses carrefours n'ont pas de propriétaire décidé, même si chaque PR
 individuelle est verte et mergée : « verbatim et sans risque » ne veut pas dire « fini ».
+
+**Et un carrefour finit par avoir son ISSUE** (P4-255 PR 2, même page, 2026-09-24, 1 648 →
+1 145 l.) : sur les deux exemples ci-dessus, `highlightSlotIds` a reçu sa décision — propriétaire
+unique (`planning/lib/useSlotHighlight.ts`), exposé par **intentions nommées** plutôt que par un
+setter (`highlightViolations`/`highlightSlots`/`clearHighlight`, aucune n'écrit l'état à la place
+d'une autre). Le régime de preuve n'est PLUS celui du déplacement verbatim (§ ci-dessus) — c'est
+**rouge→vert** : un filet d'EFFET posé d'abord sur le comportement ACTUEL (le sujet n'avait jamais
+été exercé), puis le hook, puis des falsifications qui montrent que retirer une intention ou
+recréer une identité à chaque rendu fait rougir le filet. `diagnosticsCollapsed` reste le seul
+carrefour encore en page sur ce fichier, raison inchangée (trois écritures sans répétition — un
+hook y serait de la cérémonie).
 
 ### Outils de test (versions fixées)
 

@@ -1,15 +1,14 @@
 # Documentation technique du flux de génération de planning
 
-Last verified @ 2026-09-22 (`documentation-update`, lot « la génération relancée ne refait pas le
-travail »). §3 gagne deux sections vérifiées ligne à ligne contre le code de ce lot : **3a-bis**
-(la garde de redélivrance — seul `COMPLETED` court-circuite, lecture fraîche après le verrou) et
-**3c corrigée** (`snapshotData` seul n'est plus présenté comme « ce qui a été envoyé au moteur » —
-la greffe de convergence `payload_graft`/`engineInput()` porte l'entrée réelle). `CONTRACT_VERSION`
-toujours **`'2.23'`** (`ScheduleConstraintBuilder.php:63` ⇄ `engine/CONTRACT_VERSION`) ; le margin
-du TTL du verrou confirmé (`GenerateScheduleHandler.php:62` `LOCK_TTL_MARGIN_SECONDS = 60`, ligne
-117 `acquire(... getTimeoutSeconds() + self::LOCK_TTL_MARGIN_SECONDS)`). Reste non re-sondé cette
-passe : §4-9 (appel moteur, import, Mercure §6.1-6.3, cycle de vie du statut) — dernière
-confrontation de ces sections 2026-09-21/2026-09-15.
+Last verified @ 2026-09-24 (**rotation de fraîcheur**, `documentation-update`, P4-255 PR 2 sur
+`PlanningPage.tsx` — sans rapport avec le sujet de la PR). Re-confirmé cette passe :
+`CONTRACT_VERSION` toujours **`'2.23'`** (`ScheduleConstraintBuilder.php:63` ⇄
+`engine/CONTRACT_VERSION`) ; le margin du TTL du verrou (`GenerateScheduleHandler.php:62`
+`LOCK_TTL_MARGIN_SECONDS = 60`, ligne 117 `acquire(... getTimeoutSeconds() +
+self::LOCK_TTL_MARGIN_SECONDS)`) — les deux inchangés. Reste non re-sondé cette passe : §3a-bis/3c
+(dernière confrontation 2026-09-22, lot « la génération relancée ne refait pas le travail ») et
+§4-9 (appel moteur, import, Mercure §6.1-6.3, cycle de vie du statut) — dernière confrontation de
+ces sections 2026-09-21/2026-09-15.
 
 > ClubScheduler — Symfony 7 + API Platform + Messenger Redis + Mercure SSE. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
