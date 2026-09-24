@@ -99,7 +99,12 @@ paths:
   pleine transition n'est pas la couleur finale — la surbrillance d'étape passait par un
   `text-muted-foreground` sur `bg-muted` à **3,93** avant de se poser sur sa vraie valeur AA. Un
   scan trop tôt échoue pour une couleur qui n'existe qu'un instant ; un scan sur un sous-arbre
-  inert réussit sans rien lire. Les deux mentent.
+  inert réussit sans rien lire. Les deux mentent. ⚠ Le même `inert` ment aussi à un `toBeVisible` —
+  il ne teste QUE la présence dans le DOM/CSS, pas l'`inert`. Seule une **action pointeur** (un
+  `click`) le révèle : Playwright la fait échouer avec « intercepts pointer events » sur l'overlay,
+  puis timeout quand l'élément visé se détache au retrait du voile. D'où le patron
+  `landOnMatchesCalendar` (`tests/e2e/support.ts`) : `settleVeil` encadre la SEULE action pointeur
+  du helper, pas ses lectures `toBeVisible`.
 - 🔴 **jsdom n'a AUCUN moteur de mise en page** : `boundingBox`, `scrollHeight` et
   `getBoundingClientRect` y valent 0. Le **contraste** et le **reflow** (WCAG 1.4.10) ne se testent
   qu'en **Playwright**. Un test jsdom sur ces sujets est vert par construction — il n'atteste rien.

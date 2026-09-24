@@ -1,15 +1,17 @@
 # Documentation metier du moteur de generation
 
-Last verified @ 2026-09-23 (`documentation-update`, suppression du cran `BONUS`, `bc2e2568`).
-**Corrigé cette passe** : la liste des `ruleType` citait encore `BONUS` comme une valeur vivante —
-le cran a été retiré du produit (zéro sémantique propre, zéro ligne en base), `ConstraintRuleType`
-ne compte plus que HARD/PREFERRED/LOCK. Passe précédente (2026-09-22, conservée pour trace),
-tout juste sauf une coquille de ligne corrigée : `add_coach_player_non_overlap` toujours à
-`app/solver/constraints/structural.py:237` ; la dérivation de capacité `canSplit ? capacity : 1`
-toujours dans `ScheduleConstraintBuilder.php` (`Service/ScheduleConstraintBuilder.php:1052`) ; les
-poids de tier S=10000/A=1000/B=100 toujours en dur dans `app/solver/objective/weights.py`, aux
-lignes **35-37**. Reste du fichier non re-vérifié cette passe — historique :
-`git log -p --follow engine/docs/business.md`.
+Last verified @ 2026-09-24 (`documentation-update`, rotation de fraîcheur — sujet sans rapport,
+lot flaky e2e `landOnMatchesCalendar`/#966). **Corrigé cette passe** : la citation
+`app/main.py:483-484` pour le retrait de `FACILITY_CAPACITY` était PÉRIMÉE — le commentaire vit à
+`app/main.py:447-450`, recalé. Re-confronté : tiers de poids S=10000/A=1000/B=100/C=10/D=1 toujours
+en dur dans `app/solver/objective/weights.py:35-37,66-67` ✓ ; `_adaptive_timeout`
+(`app/main.py:374-389`) applique bien les paliers ≤50→60 s · ≤200→180 s · sinon 600 s, plafonnés
+par `solverTimeoutSeconds` ✓ ; `orToolsWeight` reste déclaré requis
+(`app/schemas/input_schema.py:75`, alias de `or_tools_weight`) mais aucun lecteur ne le consomme
+côté objectif ✓ ; `MAX_CONSECUTIVE_DAYS` naît bien `OFF` en l'absence de bloc
+(`resolve_implicit_rules`, `app/solver/constraints/parsing.py:90`,
+`max_consecutive_days_intensity=OFF if days is None else …`) ✓. Reste du fichier non re-vérifié
+cette passe — historique : `git log -p --follow engine/docs/business.md`.
 
 > Ce document explique le domaine de la planification sportive et ce que le moteur `engine` resout. Destine aux nouveaux developpeurs rejoignant le projet ClubScheduler.
 
@@ -69,7 +71,7 @@ Une regle metier qui faconne l'emploi du temps. Chaque contrainte a :
   - `DAY` : jours preferes ou interdits (ex. "pas le vendredi", "preferer le mardi")
   - `FACILITY` : assignation de salle (ex. "le SM1 doit etre au Gymnase A")
   - `COACH_AVAILABILITY` : indisponibilite d'un entraineur (ex. "Maxime Dupont indisponible le mercredi")
-  - ~~`FACILITY_CAPACITY`~~ : famille **RETIRÉE le 2026-08-08** (`app/main.py:483-484` — aucun chemin UI ne la creait). Le plafond d'equipes simultanees vit desormais **par creneau** : `VenueTrainingSlot.capacity`, derive cote backend (`canSplit ? capacity : 1`). Quant aux fermetures temporaires : depuis 5b (#263) elles **retirent les creneaux** du payload les jours fermes (`VenueClosureDays`), l'ancienne expansion en `forbiddenVenueId` est supprimee aussi
+  - ~~`FACILITY_CAPACITY`~~ : famille **RETIRÉE le 2026-08-08** (`app/main.py:447-450` — aucun chemin UI ne la creait). Le plafond d'equipes simultanees vit desormais **par creneau** : `VenueTrainingSlot.capacity`, derive cote backend (`canSplit ? capacity : 1`). Quant aux fermetures temporaires : depuis 5b (#263) elles **retirent les creneaux** du payload les jours fermes (`VenueClosureDays`), l'ancienne expansion en `forbiddenVenueId` est supprimee aussi
 
 - **Type de regle (`ruleType`)** — liste **fermee** a trois valeurs (`BONUS` retire du produit le
   2026-09-23 : zero semantique propre, jamais de ligne en base, `App\Enum\ConstraintRuleType` ne le
