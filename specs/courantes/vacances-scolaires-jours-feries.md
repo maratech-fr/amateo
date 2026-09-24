@@ -1,8 +1,8 @@
 # Vacances scolaires & jours fériés — référentiels calendaires
 
-Last verified @ 2026-09-22 (rotation `documentation-update`, lot filtres Conflits/`FilterChip` —
-zone non touchée par la PR, contrôle de fraîcheur). Re-confronté aux 5 mêmes repères que les passes
-précédentes : `AdminJobCatalog` déclare toujours `import-school-holidays`/`import-public-holidays`
+Last verified @ 2026-09-24 (rotation `documentation-update`, lot P4-253 (reprise réseau Dockerfile)
+— zone non touchée par la PR, contrôle de fraîcheur). Re-confronté aux 5 mêmes repères que les
+passes précédentes : `AdminJobCatalog` déclare toujours `import-school-holidays`/`import-public-holidays`
 en `quarterly(4)`/`quarterly(4, 30)`, `manualTriggerAllowed: true` ✓ ; `SchoolZoneResolver::ZONES`
 porte toujours exactement les 13 codes listés (`A`/`B`/`C`/`CORSE` + 9 DOM/TOM) ✓ ; `HolidayPaths`
 toujours composé par `CustomRoutesOpenApiFactory` ✓ ; le court-circuit zone `null` de `GET

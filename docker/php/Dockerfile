@@ -93,12 +93,39 @@ RUN if [ "$WITH_PCOV" = "1" ]; then \
 # Client PostgreSQL 16 (pg_dump/pg_restore/psql) pour app:db:backup / restore-check :
 # le client Debian par défaut est en 15 et pg_dump refuse un serveur plus récent —
 # on prend la version EXACTE du serveur (postgres:16) via le dépôt PGDG officiel.
+#
+# P4-253 — reprise réseau, portée à cette couche voisine comme P4-124 l'a fait pour PECL :
+# le 2026-09-22 la CI `functional-tests` est sortie ROUGE sans qu'un test tombe — la clé
+# PGDG téléchargée à vide (`curl: (56) … unexpected eof`) puis `gpg: no valid OpenPGP data`,
+# donc postgresql-client-16 absent. Une relance a suffi. La couche tire DEUX ressources
+# réseau, donc DEUX reprises (trois essais, back-off 10 s/20 s comme la couche redis) :
+#   1. la CLÉ sur postgresql.org. ⚠ Piège du tube : `curl … | gpg --dearmor` ne rapporte
+#      que le statut de `gpg`, JAMAIS celui de `curl` — c'est CE tube qui a masqué l'échec
+#      réseau derrière un « no valid OpenPGP data » trompeur ; une boucle enveloppant le
+#      tube reboucle sans savoir pourquoi, voire sur un faux succès. On rend donc l'échec
+#      détectable à CHAQUE essai : `curl` écrit dans un fichier, on exige son succès ET un
+#      fichier non vide (`[ -s ]`), et `gpg --dearmor` ne s'exécute qu'APRÈS le break, hors
+#      tube — un essai raté est alors franchement raté.
+#   2. le PAQUET sur apt.postgresql.org (`apt-get update` + install) — c'est celle-ci qui
+#      lâchera le jour où c'est le dépôt, et non la clé, qui est indisponible.
+# PAS de `|| true` ni aucun masquage, et AUCUN repli sur le client Debian 15 (pg_dump
+# refuserait le serveur 16 → app:db:backup casserait EN SILENCE, ce que cette couche existe
+# pour empêcher). Au bout des trois essais, le build échoue FRANCHEMENT (exit 1).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends gnupg lsb-release \
-    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/pgdg.gpg \
+    && for attempt in 1 2 3; do \
+         if curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/pgdg.asc && [ -s /tmp/pgdg.asc ]; then break; fi; \
+         if [ "$attempt" = 3 ]; then echo "téléchargement de la clé PGDG : échec après 3 essais" >&2; exit 1; fi; \
+         sleep $((attempt * 10)); \
+       done \
+    && gpg --dearmor -o /usr/share/keyrings/pgdg.gpg /tmp/pgdg.asc \
+    && rm -f /tmp/pgdg.asc \
     && echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends postgresql-client-16 \
+    && for attempt in 1 2 3; do \
+         if apt-get update && apt-get install -y --no-install-recommends postgresql-client-16; then break; fi; \
+         if [ "$attempt" = 3 ]; then echo "installation de postgresql-client-16 : échec après 3 essais" >&2; exit 1; fi; \
+         sleep $((attempt * 10)); \
+       done \
     && rm -rf /var/lib/apt/lists/*
 
 RUN usermod -u ${UID} www-data && groupmod -g ${GID} www-data
