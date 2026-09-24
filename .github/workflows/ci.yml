@@ -1134,7 +1134,16 @@ jobs:
       - name: Run Playwright suite
         id: playwright
         working-directory: frontend
-        run: E2E_BASE_URL=http://localhost:5173 npx playwright test
+        # `set -o pipefail` EXPLICITE, dans le corps du run : le shell `run` par défaut sur
+        # Linux est `bash -e {0}` SANS pipefail (il ne serait armé qu'avec un `shell: bash`
+        # explicite, absent de ce workflow — vérifié). Sans pipefail, `… | tee` renverrait le
+        # code de `tee` (toujours 0) et MASQUERAIT un échec de Playwright : `steps.playwright.
+        # outcome` mentirait « success », Classify failure ne se déclencherait jamais et le job
+        # E2E serait vert en permanence. Avec pipefail + le `-e` par défaut, un échec de
+        # Playwright fait échouer le step. Le tee alimente le step « E2E — tests flaky ».
+        run: |
+          set -o pipefail
+          E2E_BASE_URL=http://localhost:5173 npx playwright test 2>&1 | tee "$RUNNER_TEMP/playwright-list.log"
 
       # D-04 — les en-têtes A17 (CSP, HSTS, X-Frame-Options, nosniff) ne vivent QUE sur
       # l'image nginx. La suite ci-dessus tourne contre le dev server, où le spec dédié se
@@ -1178,12 +1187,26 @@ jobs:
             echo "| A17 headers | ${{ steps.a17.outcome }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload traces on failure
-        if: failure()
+      # Un run vert-mais-flaky doit le DIRE : `always()` pour parler même quand le job est
+      # vert (Classify failure, lui, ne parle qu'en `failure()`). Le script sort 0 quoi qu'il
+      # lise — il ne peut ni faire rougir un job vert, ni casser un job qui rougit déjà pour
+      # une autre raison. Reporter `list` (playwright.config.ts) : pas de JSON, on parse le
+      # résumé texte du run principal capturé ci-dessus.
+      - name: E2E — flaky tests (green-but-flaky notice)
+        if: always()
+        run: .github/scripts/flaky-summary.sh "$RUNNER_TEMP/playwright-list.log" >> "$GITHUB_STEP_SUMMARY"
+
+      # `always()` (+ `if-no-files-found: ignore`) : la trace d'un essai perdu (trace:
+      # on-first-retry) doit survivre MÊME quand le job finit vert. Sur un run 100 % vert le
+      # dossier est absent/vide et l'upload se TAIT au lieu de rougir. « on failure » serait
+      # devenu un mensonge — d'où le renommage.
+      - name: Upload Playwright traces
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: playwright-results
           path: frontend/test-results/
+          if-no-files-found: ignore
           retention-days: 7
 
   # Vérifs sémantiques de bout en bout sur une vraie stack — « il faut s'assurer
