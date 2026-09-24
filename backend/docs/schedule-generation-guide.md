@@ -1,18 +1,14 @@
 # Guide de génération de planning — ClubScheduler
 
-Last verified @ 2026-09-22 (`documentation-update`, lot « blocs imbriqués — parité de comptage »,
-rotation de fraîcheur). Re-confronté § 6 « Cas 1 : le statut reste bloqué en PENDING » contre
-`docker-compose.yml` (état courant) : **corrigé** — `restart: unless-stopped` n'est plus le
-propre de `messenger-worker` seul depuis le lot correctif de l'audit 0918 (`b04b577f`, INF-04,
-même jour que la passe précédente mais commit ultérieur) : **tous** les services de dev le
-portent désormais (`frontend`, `php-fpm`, `nginx`, `postgres`, `redis`, `messenger-worker`,
-`cron-runner`, `engine`, `pdf-worker`, `mercure`, `mailpit`). `engine/CONTRACT_VERSION` = `2.23`
-✓ (inchangé — le lot « blocs imbriqués » de ce jour ne monte pas le contrat, champ `rule` libre).
-Re-confronté aussi : le cycle des 5 statuts (§5, `App\Enum\ScheduleStatus` : DRAFT/PENDING/
-GENERATING/COMPLETED/FAILED) ✓, la route `export-xlsx` (§11, `ScheduleResource.php` +
-`ExportXlsxController`) ✓, le budget solveur par défaut 650 s (§6 Cas 2/3,
-`GenerateScheduleMessage::$timeoutSeconds`, `ScheduleConstraintBuilder::DEFAULT_SOLVER_TIMEOUT_SECONDS`)
-✓. Reste non re-sondé cette passe : le corps du guide hors § 5, § 6 Cas 1-3, § 11.
+Last verified @ 2026-09-24 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
+cette PR — lot découpage `PeriodStructure.tsx`, P4-255). Re-confronté contre le code actuel : les
+11 services de `docker-compose.yml` portent toujours tous `restart: unless-stopped` (§6 Cas 1) ;
+le cycle des 5 statuts (§5, `App\Enum\ScheduleStatus` : DRAFT/PENDING/GENERATING/COMPLETED/FAILED)
+✓ ; la route `export-xlsx` (§11, `ScheduleResource.php` + `ExportXlsxController`) ✓ ; le budget
+solveur par défaut 650 s (§6 Cas 2/3, `GenerateScheduleMessage::$timeoutSeconds`,
+`ScheduleConstraintBuilder::DEFAULT_SOLVER_TIMEOUT_SECONDS`) ✓ ; `CONTRACT_VERSION` = `2.23` aux
+trois foyers backend ET `engine/CONTRACT_VERSION` ✓ (inchangé). Reste non re-sondé cette passe : le
+corps du guide hors § 5, § 6 Cas 1-3, § 11.
 
 > Ce guide explique, étape par étape, comment générer un planning de matchs pour un club de basket dans le backend ClubScheduler. Il s'adresse aux développeurs juniors qui découvrent le projet.
 

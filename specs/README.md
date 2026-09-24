@@ -1,18 +1,18 @@
 # Living Specs System
 
-Last verified @ 2026-09-22 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
-cette PR — lot « les gardes de CI qui ne gardent rien », permissions/dépréciations). Re-confronté :
-les quatre gardes `{DocPlacementTest,DocStampFreshnessTest, RoadmapIdentityTest,
-BlockingTestsListMatchesCiTest}.php` existent toujours (`ls backend/tests/Unit/Documentation/` — le
-dossier compte désormais aussi `WorkflowPermissionsDeclaredTest.php`, né de ce lot, sans rapport
-avec ce fichier) ; `engine/tests/test_contract_version_doc_sync.py` (cité comme premier de la série
-des docs gardées par un test) existe toujours ; `docs/testing/blocking-tests.md` existe. **§ Files
-Overview confronté ligne à ligne à `ls specs/courantes/*.md`** — les 11 fichiers cités
-(`etat-des-lieux`, `planning-lifecycle-validated`, `types-de-planning`, `superadmin-auth`,
-`identite-visuelle-club`, `vacances-scolaires-jours-feries`, `accueil-cockpit-temporel`,
-`module-matchs`, `canal-signalement`, `generation-pipeline`, `openapi-snapshot.meta`)
-correspondent exactement au dossier, aucun absent, aucun fantôme. Reste du fichier non re-sondé
-cette passe.
+Last verified @ 2026-09-24 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
+cette PR — lot découpage `PeriodStructure.tsx`, P4-255). Re-confronté : les quatre gardes
+`{DocPlacementTest, DocStampFreshnessTest, RoadmapIdentityTest,
+BlockingTestsListMatchesCiTest}.php` existent toujours, `WorkflowPermissionsDeclaredTest.php`
+aussi (`ls backend/tests/Unit/Documentation/`) ; `engine/tests/test_contract_version_doc_sync.py`
+(cité comme premier de la série des docs gardées par un test) existe toujours ;
+`docs/testing/blocking-tests.md` existe. **§ Files Overview confronté ligne à ligne à
+`ls specs/courantes/*.md`** — les 11 fichiers cités (`etat-des-lieux`,
+`planning-lifecycle-validated`, `types-de-planning`, `superadmin-auth`, `identite-visuelle-club`,
+`vacances-scolaires-jours-feries`, `accueil-cockpit-temporel`, `module-matchs`,
+`canal-signalement`, `generation-pipeline`, `openapi-snapshot.meta`) correspondent exactement au
+dossier, aucun absent, aucun fantôme ; `ls specs/evolution/` et `ls specs/audit/` recoupés contre
+leur description en § Files Overview, rien de périmé. Reste du fichier non re-sondé cette passe.
 
 ## 3-Tier Structure
 

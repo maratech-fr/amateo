@@ -34,7 +34,15 @@ propriétaire, voir la PR 2 ci-dessous). **Ajout du 2026-09-24 (P4-255 PR 2, mê
 carrefour a désormais son ISSUE — `highlightSlotIds` sort vers `planning/lib/useSlotHighlight.ts`
 avec un propriétaire unique et trois intentions nommées (aucun setter), régime de preuve
 rouge→vert (pas verbatim, une décision de conception engage une interface) précédé d'un filet
-d'EFFET posé sur le comportement actuel ; seul `diagnosticsCollapsed` reste en page. Historique des
+d'EFFET posé sur le comportement actuel ; seul `diagnosticsCollapsed` reste en page. **Ajout du
+2026-09-24 (P4-255, `wizard/steps/PeriodStructure.tsx` → trois fichiers à plat)** : la section
+gagne une **troisième forme de découpage**, distincte des deux ci-dessus — séparer des sujets qui
+cohabitent sans écrivain commun (le fichier d'origine disparaît, remplacé par ses enfants, zéro
+nouvelle interface) plutôt qu'extraire une couche d'un orchestrateur qui survit — avec son critère
+de choix (le fichier source reste-t-il l'orchestrateur de ce qu'il a laissé sortir ?), vérifiée
+contre le code actuel (imports de `PeriodTeams`/`PeriodVenues`/`PeriodConstraints` confirmés
+chacun depuis un seul appelant, `TeamsStep`/`VenuesStep`/`ConstraintsStep`) ; 2ᵉ occurrence après
+`matches/api.ts`, pas encore promue politique transverse. Historique des
 passes : `git log -p --follow frontend/docs/frontend-strategy.md`.)
 
 > **Statut : le rebuild est LIVRÉ.** Les formulations « pour le rebuild » ci-dessous sont
@@ -144,6 +152,26 @@ en composants — les deux se distinguent : sortir un `useMemo` ne change aucune
 sortir un bloc de JSX en fait naître une (props). `P4-255` (monolithes hors module matchs) suit sa
 propre règle, distincte, posée par le fondateur : jamais de découpage sans filet de tests D'ABORD
 — celle-là vise le second cas, pas celui-ci.
+
+**Troisième forme, à ne pas confondre avec les deux précédentes : séparer des sujets qui
+COHABITENT, pas en extraire une couche** (`matches/api.ts` → 8 fichiers par domaine, FRT-33,
+2026-09-23 ; `wizard/steps/PeriodStructure.tsx` → `PeriodTeams.tsx`/`PeriodVenues.tsx`/
+`PeriodConstraints.tsx`, P4-255, 2026-09-24 — 2ᵉ occurrence, pas encore une politique transverse au
+sens du seuil des 3 occurrences ci-dessus, le critère est noté ici pour ne pas redécouvrir le
+raisonnement à la 3ᵉ). **Le critère qui tranche laquelle des trois formes s'applique : le fichier
+d'origine survit-il comme ORCHESTRATEUR de ce qu'il a laissé sortir ?** Extraction de hooks et
+découpage de JSX en sous-composants (ci-dessus) répondent OUI — une page reste, elle appelle le
+hook ou rend le sous-composant, une interface (paramètres/props) naît à la frontière qu'il faut
+concevoir. Ici la réponse est NON : les sujets ne se citaient qu'en commentaire (aucun élément
+réellement partagé, aucun tiroir « utils » n'a été créé), et chacun avait déjà son propre appelant
+unique — `PeriodStructure.tsx` était importé sous trois angles différents par `TeamsStep.tsx`,
+`VenuesStep.tsx` et `ConstraintsStep.tsx`, jamais par un chapeau commun qui les orchestrait
+ensemble. Le fichier d'origine **disparaît**, remplacé par ses N enfants **à plat**, chacun nommé
+comme son export ; **zéro nouvelle interface à concevoir**, chaque appelant existant repointe sans
+changer sa propre forme. C'est le déplacement verbatim le plus sûr des trois : rien n'orchestre,
+rien à recomposer — la preuve reste identique (`git diff --color-moved` sans diff de corps, suite
+de test inchangée hors la ligne d'import scindée). Candidat visible pour la 3ᵉ occurrence :
+`wizard/queries.ts` (940 l.), à confirmer au moment d'y toucher, pas avant.
 
 **Quand un même monolithe réclame PLUS d'une PR : d'abord l'écrivain unique, les carrefours
 ensuite** (motif posé sur `planning/PlanningPage.tsx`, P4-255 PR 1, 2026-09-24, 1 871 → 1 648 l.,
