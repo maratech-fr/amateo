@@ -24,7 +24,7 @@ import { orderedTeams, teamsOfTier } from "../lib/ranking";
 import { mutualisedTeammateLabel } from "../lib/sharedTraining";
 import { useCreateTeam, useDeleteTeam, useDeletionImpact, usePriorityTiers, useReorderTeams, useSharedTrainingBlocks, useSportCategories, useUpdateTeam, useWizardTeams } from "../queries";
 import { useWizardStore } from "../store";
-import { PeriodTeams } from "./PeriodStructure";
+import { PeriodTeams } from "./PeriodTeams";
 import { TeamLinksModal } from "./TeamLinksModal";
 import { compareNamesFr } from "@/shared/lib/nameOrder";
 

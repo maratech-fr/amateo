@@ -27,7 +27,7 @@ import { useCreateConstraint, useDeleteConstraint, usePriorityTiers, useUpdateCo
 import { useCalendarEntry, useEntryConflicts, usePeriodAnchor } from "@/features/cockpit/queries";
 import { sortByName } from "@/shared/lib/nameOrder";
 import { useWizardStore } from "../store";
-import { PeriodConstraints } from "./PeriodStructure";
+import { PeriodConstraints } from "./PeriodConstraints";
 import { ReservationPanel } from "./ReservationPanel";
 
 const FAMILIES: { key: ConstraintFamily; label: string }[] = [

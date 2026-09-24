@@ -11,9 +11,9 @@
  *
  * FOYER UNIQUE (P4-88) : cette résolution existait en DEUX exemplaires côté front —
  * `applicableConstraints.buildTagTeamIds` (panneau planning) et une copie inline dans
- * `wizard/steps/PeriodStructure.tsx` (masquage d'une CLUB+tag sans équipe active),
+ * `wizard/steps/PeriodConstraints.tsx` (masquage d'une CLUB+tag sans équipe active),
  * commentée « mirrored server-side » sans garde. Deux copies du même calcul = la dérive
- * garantie ; elle ne vit plus qu'ici. `PeriodStructure` compose PAR-DESSUS un filtre
+ * garantie ; elle ne vit plus qu'ici. `PeriodConstraints` compose PAR-DESSUS un filtre
  * « équipes actives cette période » — un raffinement d'overlay, pas une seconde résolution.
  *
  * P2-29 (lot tags PR 3) — une contrainte CLUB peut cibler PLUSIEURS tags (`targetTags`,
@@ -27,7 +27,7 @@
  * ⚠️ MIROIR DÉCLARÉ (régime 2) — parité MÉCANIQUE avec `App\Service\TeamTagResolver`
  * (`teamIdsByTagName` pour le groupement, `intersectMinusExclude` pour l'algèbre d'ensembles),
  * cas partagés `tagTeamIds.parity.json`, gardée par `TagTeamIdsMirrorParityTest`. Ce foyer, et
- * les modules qui le consomment (applicableConstraints, PeriodStructure), figurent au registre
+ * les modules qui le consomment (applicableConstraints, PeriodConstraints), figurent au registre
  * `FrontRederivationRegistryTest`.
  */
 export function buildTagTeamIds(

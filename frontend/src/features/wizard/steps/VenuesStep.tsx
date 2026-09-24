@@ -29,7 +29,7 @@ import { slotPlacementError } from "../lib/slotOverlap";
 import { useCreateSlot, useCreateVenue, useDeleteSlot, useDeletionImpact, useDeleteVenue, useFfbbSalles, useFfbbSallesProches, useReservations, useUpdateSlot, useUpdateVenue, useVenueSlots, useWizardVenues } from "../queries";
 import { useWizardStore } from "../store";
 import { useWizardFooter } from "../lib/footerSlot";
-import { PeriodVenues } from "./PeriodStructure";
+import { PeriodVenues } from "./PeriodVenues";
 import { TravelMatrixModal } from "./TravelMatrixModal";
 import { VenueAvailabilityGrid } from "./VenueAvailabilityGrid";
 import { VenueGeocodeField } from "./VenueGeocodeField";

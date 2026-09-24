@@ -212,7 +212,9 @@ vi.mock("@/shared/stores/toastStore", () => ({ toast: { success: vi.fn(), error:
 
 import { toast } from "@/shared/stores/toastStore";
 
-import { PeriodConstraints, PeriodTeams, PeriodVenues } from "./PeriodStructure";
+import { PeriodConstraints } from "./PeriodConstraints";
+import { PeriodTeams } from "./PeriodTeams";
+import { PeriodVenues } from "./PeriodVenues";
 import { resetPeriodSeed } from "./periodSeed";
 
 afterEach(() => {

@@ -45,7 +45,7 @@ final class TeamTagResolver implements ResetInterface
      * vers le nom de son tag, collecter les teamId, ignorer un tagId inconnu).
      *
      * Extrait pour la parité MÉCANIQUE avec le foyer FRONT `shared/lib/tagTeamIds.ts::buildTagTeamIds`
-     * (le miroir client, utilisé par `applicableConstraints` ET `PeriodStructure`, P4-88) :
+     * (le miroir client, utilisé par `applicableConstraints` ET `PeriodConstraints`, P4-88) :
      * cas partagés `tagTeamIds.parity.json`, gardés par `TagTeamIdsMirrorParityTest`. Les
      * assignations sont supposées DÉJÀ filtrées à la saison (comme les reçoit le front) — la
      * saison n'entre pas dans le groupement, seulement dans la requête de `tagTeamIds()`.

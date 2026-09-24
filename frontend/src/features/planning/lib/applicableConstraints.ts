@@ -1,7 +1,7 @@
 import { intersectMinusExclude, targetsTags, targetTagNames, excludeTagNames } from "@/shared/lib/tagTeamIds";
 
 import type { Constraint, Slot } from "../api";
-// FOYER UNIQUE de la résolution tag→équipes (P4-88) : partagé avec `wizard/steps/PeriodStructure.tsx`.
+// FOYER UNIQUE de la résolution tag→équipes (P4-88) : partagé avec `wizard/steps/PeriodConstraints.tsx`.
 // Ré-exporté ici pour les consommateurs planning (aucun changement d'import chez eux).
 export { buildTagTeamIds } from "@/shared/lib/tagTeamIds";
 

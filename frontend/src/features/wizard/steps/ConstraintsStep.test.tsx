@@ -176,7 +176,7 @@ vi.mock("@/features/cockpit/queries", () => ({
 }));
 // Stub : le comportement interne de PeriodConstraints est couvert par
 // PeriodStructure.test — ici on ne teste que son PLACEMENT par onglet (#9).
-vi.mock("./PeriodStructure", () => ({
+vi.mock("./PeriodConstraints", () => ({
   PeriodConstraints: ({ family }: { family?: string }) => <div data-testid="inherited-section">{family ?? "all"}</div>,
 }));
 

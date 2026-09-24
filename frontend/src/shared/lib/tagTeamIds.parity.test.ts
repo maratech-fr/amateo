@@ -7,7 +7,7 @@ import cases from "./tagTeamIds.parity.json";
  * P4-88 — CÔTÉ FRONT de la parité mécanique du groupement tag → équipes. Le MÊME fichier
  * de cas alimente `TagTeamIdsMirrorParityTest.php` (backend,
  * `TeamTagResolver::teamIdsByTagName`). Changer le groupement d'un seul côté rougit ce
- * côté-là. Le foyer est partagé par `applicableConstraints` et `PeriodStructure`.
+ * côté-là. Le foyer est partagé par `applicableConstraints` et `PeriodConstraints`.
  */
 describe("buildTagTeamIds — parité mécanique avec TeamTagResolver::teamIdsByTagName (PHP)", () => {
   for (const c of cases.cases) {

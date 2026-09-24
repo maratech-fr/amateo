@@ -83,7 +83,7 @@ final class FrontRederivationRegistryTest extends TestCase
             'backendTruth' => 'App\\Service\\ScheduleConstraintBuilder (expansion du payload)',
             'parityTest' => 'TagTeamIdsMirrorParityTest.php',
         ],
-        'features/wizard/steps/PeriodStructure.tsx' => [
+        'features/wizard/steps/PeriodConstraints.tsx' => [
             'decides' => 'défaut reprise/fermeture par scope + masquage CLUB+tag sans équipe active',
             'backendTruth' => 'App\\Service\\ScheduleConstraintBuilder::inheritedPermanents',
             'parityTest' => 'TagTeamIdsMirrorParityTest.php',

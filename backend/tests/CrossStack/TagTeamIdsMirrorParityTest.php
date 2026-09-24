@@ -12,7 +12,7 @@ use PHPUnit\Framework\TestCase;
  * P4-88 — CÔTÉ BACKEND de la parité mécanique du groupement « nom de tag → équipes ».
  *
  * Le foyer FRONT `shared/lib/tagTeamIds.ts::buildTagTeamIds` (utilisé par
- * `applicableConstraints` ET `PeriodStructure`) est le miroir client de la résolution
+ * `applicableConstraints` ET `PeriodConstraints`) est le miroir client de la résolution
  * `TeamTagResolver`. `teamIdsByTagName` en est le foyer serveur PUR. Les MÊMES cas
  * (`tagTeamIds.parity.json`) les traversent : changer le groupement d'un seul côté rougit
  * ce côté-là. C'est la redérivation qui a ouvert P4-88 (un panneau annonçant une contrainte
