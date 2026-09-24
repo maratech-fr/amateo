@@ -88,6 +88,16 @@ interface MatchesState {
    */
   conflictsTreatments: TreatmentKey[] | null;
   conflictsHomeOnly: boolean;
+  /**
+   * UXS-07 — l'atterrissage conditionnel du module a-t-il DÉJÀ été tranché dans cette
+   * session ? `false` au premier montage : la route d'atterrissage (`MatchesLanding`)
+   * peut alors renvoyer sur Conflits s'il y en a à traiter. Une fois marqué (par
+   * l'atterrissage OU par la simple entrée dans le module via `MatchesLayout`), on ne
+   * re-propose plus — c'est un « déjà vu » de session, pas un lien profond. Patron #917 :
+   * état zustand de session, NON persisté, hors URL. Remise à zéro = un rechargement
+   * complet (rouvrir l'appli le lendemain re-propose Conflits s'il y en a) — voulu.
+   */
+  landingDecided: boolean;
   setSelectedWeekend: (key: string | null) => void;
   setUnplacedReasons: (reasons: Map<string, string>) => void;
   setSelectedFixtureId: (id: string | null) => void;
@@ -109,6 +119,8 @@ interface MatchesState {
   setConflictsFamilies: (families: ConflictType[] | null) => void;
   setConflictsTreatments: (treatments: TreatmentKey[] | null) => void;
   setConflictsHomeOnly: (homeOnly: boolean) => void;
+  /** UXS-07 — fige la décision d'atterrissage pour le reste de la session (idempotent). */
+  markLandingDecided: () => void;
 }
 
 /** PR-2b — les trois temporalités de l'onglet Consulter. */
@@ -136,6 +148,7 @@ export const useMatchesStore = create<MatchesState>((set) => ({
   conflictsFamilies: null,
   conflictsTreatments: null,
   conflictsHomeOnly: false,
+  landingDecided: false,
   // Les raisons de non-placement sont attachées à la semaine affichée : changer de
   // semaine les PURGE (une raison d'une autre semaine ne doit pas rester à l'écran).
   setSelectedWeekend: (selectedWeekend) => set({ selectedWeekend, unplacedReasons: new Map() }),
@@ -161,4 +174,5 @@ export const useMatchesStore = create<MatchesState>((set) => ({
   setConflictsFamilies: (conflictsFamilies) => set({ conflictsFamilies }),
   setConflictsTreatments: (conflictsTreatments) => set({ conflictsTreatments }),
   setConflictsHomeOnly: (conflictsHomeOnly) => set({ conflictsHomeOnly }),
+  markLandingDecided: () => set({ landingDecided: true }),
 }));

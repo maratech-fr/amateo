@@ -145,6 +145,9 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
 
   await page.getByRole("link", { name: "Matchs" }).click();
   await expect(page.getByRole("heading", { name: "Matchs" })).toBeVisible();
+  // UXS-07 — la première entrée dans le module peut atterrir sur Conflits (conditionnel,
+  // store vierge) : on rejoint explicitement le Calendrier (clic idempotent si on y est).
+  await page.getByRole("navigation", { name: "Espaces matchs" }).getByRole("link", { name: "Calendrier" }).click();
 
   // PR 3b — l'écran est désormais le CALENDRIER unique : plus de rail, la liste
   // « à placer », le panneau, la grille, la bande extérieur ET le radar sont sur le
@@ -490,6 +493,9 @@ test("matches: filtre par coach recadre la vue et porte le deep-link", async ({ 
 
   await page.getByRole("link", { name: "Matchs" }).click();
   await expect(page.getByRole("heading", { name: "Matchs" })).toBeVisible();
+  // UXS-07 — la première entrée dans le module peut atterrir sur Conflits (conditionnel,
+  // store vierge) : on rejoint explicitement le Calendrier (clic idempotent si on y est).
+  await page.getByRole("navigation", { name: "Espaces matchs" }).getByRole("link", { name: "Calendrier" }).click();
 
   // Basculer l'axe du filtre sur « Par coach » (contrôle segmenté, aria-pressed).
   const parCoach = page.getByRole("button", { name: "Par coach" });
@@ -542,6 +548,10 @@ test("matches PR 2a: nav ordonnée, défilable à 400 px, Semaine type, Accès m
   // À 400 px la nav déborde : l'onglet actif (« Calendrier », l'index /matchs) est ramené en vue.
   await page.setViewportSize({ width: 400, height: 800 });
   await page.goto("/matchs");
+  // UXS-07 — `goto` recharge la page : le store est vierge, l'atterrissage conditionnel peut
+  // renvoyer sur Conflits si le bac à sable porte des conflits. On rejoint explicitement le
+  // Calendrier (patron déterministe) — le clic est idempotent si on y est déjà.
+  await page.getByRole("link", { name: "Calendrier" }).click();
   const active = nav.locator('[aria-current="page"]');
   await expect(active).toHaveText("Calendrier");
   await expect(active).toBeInViewport();
@@ -720,6 +730,9 @@ test("matches PR 3b: compteurs, modale FBI, suivi P4-197, Mois→Semaine", async
   const matchDate = "2027-03-13";
   await page.goto("/matchs");
   await expect(page.getByRole("heading", { name: "Matchs" })).toBeVisible();
+  // UXS-07 — l'index peut renvoyer sur Conflits (atterrissage conditionnel, store vierge après
+  // `goto`) : on rejoint explicitement le Calendrier avant d'agir dessus (clic idempotent).
+  await page.getByRole("link", { name: "Calendrier" }).click();
   // Lot A — le domicile créé est un AMICAL (competitionId null), masqué par défaut : on coche
   // « Amical » pour qu'il pèse dans les compteurs, la liste « À placer », la grille et le Mois.
   await page.getByRole("button", { name: "Amical", exact: true }).click();

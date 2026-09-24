@@ -163,6 +163,10 @@ for (const mode of MODES) {
     const fixtureId = (await created.json()).id as string;
     try {
       await page.goto("/matchs");
+      // UXS-07 — `goto` recharge la page (store vierge) : l'atterrissage conditionnel peut renvoyer
+      // sur Conflits si le club porte des conflits. On rejoint explicitement le Calendrier avant de
+      // scanner (patron déterministe, clic idempotent si on y est déjà).
+      await page.getByRole("link", { name: "Calendrier" }).click();
       // « Amical » est DÉCOCHÉ par défaut (#916) — notre amical (`competitionId: null`) serait invisible,
       // la grille resterait un EmptyState. On le coche AVANT de chercher la semaine (une semaine 100 %
       // masquée n'entre pas dans le sélecteur : `weekends` dérive des fixtures VISIBLES).

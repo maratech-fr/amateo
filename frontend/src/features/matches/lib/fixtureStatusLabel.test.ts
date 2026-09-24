@@ -5,7 +5,7 @@ import { FIXTURE_STATUS_LABEL } from "./fixtureStatusLabel";
 
 describe("FIXTURE_STATUS_LABEL (RMM-1 PR 1)", () => {
   it("renders each of the four statuses in French", () => {
-    expect(FIXTURE_STATUS_LABEL.UNPLACED).toBe("Importé");
+    expect(FIXTURE_STATUS_LABEL.UNPLACED).toBe("Sans créneau");
     expect(FIXTURE_STATUS_LABEL.PLACED).toBe("Placé");
     expect(FIXTURE_STATUS_LABEL.SUBMITTED).toBe("Saisi dans FBI");
     expect(FIXTURE_STATUS_LABEL.VALIDATED).toBe("Attesté FBI");

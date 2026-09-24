@@ -65,6 +65,10 @@ test("fbi — le compteur « FBI à faire » ouvre la liste ; cocher marque sais
 
   try {
     await page.goto("/matchs");
+    // UXS-07 — l'index peut renvoyer sur Conflits (atterrissage conditionnel, store vierge après
+    // `goto`) : on rejoint explicitement le Calendrier, qui porte le compteur « FBI à faire »
+    // (patron déterministe, clic idempotent si on y est déjà).
+    await page.getByRole("link", { name: "Calendrier" }).click();
 
     // Le compteur global « FBI à faire » (hors du groupe « Semaine affichée ») porte au
     // moins NOTRE rencontre.

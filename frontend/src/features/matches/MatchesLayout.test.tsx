@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MatchesLayout } from "./MatchesLayout";
+import { useMatchesStore } from "./store";
 
 // Le socle est validé quand le plan de saison pointe une version. Mutable par test
 // pour éprouver le garde sur LES DEUX espaces (RMM-1 PR2 — le garde vit une fois
@@ -193,6 +194,43 @@ describe("MatchesLayout — le badge de l'onglet Conflits (P4-207)", () => {
     await waitFor(() => expect(visit.count).toBe(1));
     expect(screen.getByRole("link", { name: "Conflits" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Conflits · / })).not.toBeInTheDocument();
+  });
+});
+
+describe("MatchesLayout — entrer dans le module consomme la règle d'atterrissage (UXS-07)", () => {
+  // La décision d'atterrissage est un état de session : les autres tests montent le layout
+  // (qui la marque désormais), il faut donc la remettre à zéro avant chacun de ceux-ci.
+  beforeEach(() => {
+    useMatchesStore.setState({ landingDecided: false });
+  });
+
+  it("marque la décision au montage quand le socle est validé (entrée par la Configuration)", async () => {
+    meState.chosen = "s1";
+    renderAt("/matchs/configuration");
+    // Attendre le POST de visite laisse TOUTES les lectures se poser dans act ; l'effet de
+    // marquage a couru au montage.
+    await waitFor(() => expect(visit.count).toBe(1));
+    expect(useMatchesStore.getState().landingDecided).toBe(true);
+  });
+
+  it("entrer par la Configuration puis cliquer « Calendrier » n'emmène PAS sur Conflits", async () => {
+    meState.chosen = "s1";
+    const user = userEvent.setup();
+    renderAt("/matchs/configuration");
+    await waitFor(() => expect(visit.count).toBe(1));
+    expect(useMatchesStore.getState().landingDecided).toBe(true);
+    // Le harnais rend « BOUCLE » à l'index ; combiné au cas « décision déjà prise →
+    // Calendrier immédiat » de MatchesLanding, la règle « pas de renvoi forcé » est prouvée.
+    await user.click(screen.getByRole("link", { name: "Calendrier" }));
+    expect(screen.getByText("BOUCLE")).toBeInTheDocument();
+  });
+
+  it("ne marque RIEN sur un module verrouillé (pas de socle pointé)", async () => {
+    meState.chosen = null;
+    renderAt("/matchs/configuration");
+    // Le garde socle court-circuite l'Outlet ET l'effet de marquage (gaté comme la visite).
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Matchs verrouillés" })).toBeInTheDocument());
+    expect(useMatchesStore.getState().landingDecided).toBe(false);
   });
 });
 

@@ -188,6 +188,12 @@ test("consulter: chips, semaine type, et filtre par famille de conflit", async (
     // PR 3b — « Consulter » a FUSIONNÉ dans « Calendrier » : /matchs/consulter REDIRIGE
     // vers /matchs (query conservée). Les chips/temporalités vivent désormais sur le Calendrier.
     await page.goto("/matchs/consulter");
+    // UXS-07 — la redirection permanente mène à /matchs (l'index) ; l'atterrissage conditionnel
+    // peut ENSUITE pousser sur Conflits (ce club porte le VENUE_OVERLAP créé plus haut, store
+    // vierge après `goto`). On accepte les deux issues puis on rejoint explicitement le Calendrier
+    // (patron déterministe) pour la suite du scénario.
+    await expect(page).toHaveURL(/\/matchs(\/conflits)?(\?|$)/);
+    await page.getByRole("navigation", { name: "Espaces matchs" }).getByRole("link", { name: "Calendrier" }).click();
     await expect(page).toHaveURL(/\/matchs(\?|$)/);
     await expect(page.getByRole("navigation", { name: "Espaces matchs" }).getByRole("link", { name: "Calendrier" })).toHaveAttribute("aria-current", "page");
 
