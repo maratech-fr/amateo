@@ -2,7 +2,7 @@
 
 Last verified @ 2026-09-25 (`documentation-update`, P4-257 + P4-261). Vérifié contre le code
 cette passe : `frontend/tests/e2e/width-calibration.spec.ts` porte bien DEUX gardes distinctes
-dans le même fichier — la mesure de reflow 360 px (angle mort, roadmap P4-251, inchangée) et la
+dans le même fichier — la mesure de reflow 360 px (angle mort, ex-P4-251, déplacé en Vision au triage roadmap 2026-09-25, inchangée) et la
 nouvelle garde P4-261 (le `<span>` du nom du club se masque sous `sm` au lieu de se tronquer).
 Reste des lignes non touchées — historique complet :
 `git log -p --follow docs/testing/test-coverage-map.md`.
@@ -108,10 +108,11 @@ horloge de l'en-tête global (`DevClock`, `frontend/src/app/AppLayout.tsx:64` so
 re-mesurer séparément, ne pas le supposer identique. Accueil et `/planning` débordent pour leurs
 PROPRES raisons, non instruites. Seul `/matchs/adversaires` porte aujourd'hui un test ciblé
 (`frontend/tests/e2e/matches.spec.ts`, écrit avec l'écran lui-même, PR I 2026-09-20) — un seul écran
-sur cinq mesurés en défaut. Roadmap : P4-251. ⚠ **Ne pas confondre avec la garde P4-261** (même
+sur cinq mesurés en défaut. Vision (ex-P4-251, déplacé au triage roadmap du 2026-09-25 —
+desktop-first, mobile en V2). ⚠ **Ne pas confondre avec la garde P4-261** (même
 fichier `width-calibration.spec.ts`) : elle verrouille que le NOM du club de l'en-tête se masque
 proprement à 360 px plutôt que de se tronquer à zéro — elle ne mesure PAS le non-débordement de
-l'en-tête, qui reste ouvert ici (P4-251).
+l'en-tête, qui reste réel mais déprioritisé (ex-P4-251).
 
 **Appariement FFBB (engagements, tous canaux) — jamais de feature Behat, structurel.** L'env dev de
 Behat pointe la vraie FFBB (`with-sandbox.sh`) ; le double déterministe `FfbbHttpClientStub` n'est

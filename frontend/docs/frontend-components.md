@@ -112,7 +112,7 @@ En-tête, de gauche à droite :
 - `DevClock`, seulement en `import.meta.env.DEV`.
 - La nav de droite (`<nav>`, ne se rétracte JAMAIS, y compris sous 360 px — décision fondateur
   desktop-first/mobile V2 ; le débordement horizontal résiduel de l'en-tête à cette largeur est
-  une dette DISTINCTE, roadmap P4-251) : `CreditBadge`, `SeasonSelector`, l'item « Matchs »
+  une dette DISTINCTE, déplacée en Vision au triage roadmap 2026-09-25 ex-P4-251) : `CreditBadge`, `SeasonSelector`, l'item « Matchs »
   (verrouillé — `aria-disabled`, non cliquable — tant que `me.seasonPlan.chosenScheduleId` est
   nul, même condition que `SocleGuard` côté serveur), la bascule thème clair/sombre, puis le
   `Menu` du compte : Club (`/club`), Profil (`/profile`), Nouveautés (`/nouveautes`), Signaler
@@ -156,7 +156,7 @@ club, établi par un témoin `GET /api/me` — jamais un littéral)
 (`frontend/tests/e2e/width-calibration.spec.ts` — « en-tête à 360 px : le nom du club se
 masque sous sm, le lien d'accueil garde son nom accessible », P4-261 ; ⚠ ce test verrouille le
 comportement du NOM, pas le non-débordement de l'en-tête — à 360 px le produit déborde encore,
-dette trackée en P4-251)
+dette trackée en Vision, ex-P4-251, déplacée au triage roadmap 2026-09-25)
 
 ---
 

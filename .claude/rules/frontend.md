@@ -144,8 +144,8 @@ paths:
   l'accent OPAQUE vers la surface : en clair le fond s'éclaircissait pendant que le texte blanc
   restait blanc, cassant l'AA (blanc/accent 4,85 → 4,26, sous 4,5:1 — la puce « Amical » pressée de
   `/matchs`, 2026-09-18). `destructive` (`bg-destructive`) et l'avatar de `ClubPage` (`bg-muted`)
-  restent sur `opacity-90`, délibérément hors scope (roadmap P4-244) — même piège à surveiller si
-  un futur fond plein en hérite.
+  restent sur `opacity-90`, délibérément hors scope (ex-P4-244, fermé sans correctif au triage
+  roadmap 2026-09-25) — même piège à surveiller si un futur fond plein en hérite.
 - **TDD obligatoire**, RED prouvé avant l'implémentation
   ([`../../frontend/docs/frontend-strategy.md`](../../frontend/docs/frontend-strategy.md) §1).
 - **Passe de design `ui-ux-pro-max`** (dans un agent — elle ne MESURE rien, mais elle TRANCHE une
