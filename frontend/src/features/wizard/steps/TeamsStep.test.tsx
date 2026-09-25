@@ -94,11 +94,20 @@ vi.mock("@/features/matches/queries", () => ({
 vi.mock("@/features/matches/HabitsLinksButton", () => ({
   HabitsLinksButton: () => <button type="button">Gérer les passerelles</button>,
 }));
+// PeriodTeams est testé chez lui : on le stube pour que le mode période rende sans ses hooks —
+// le sujet ici est que l'affordance d'import n'y existe PAS (décision « saison seule »).
+vi.mock("./PeriodTeams", () => ({
+  PeriodTeams: () => <div>PeriodTeams (stub)</div>,
+}));
 
 import { TeamsStep } from "./TeamsStep";
+import { useWizardStore } from "../store";
 
 describe("TeamsStep", () => {
   beforeEach(() => {
+    // Le store est réel (zustand persist) : on le remet en mode saison entre les cas,
+    // sinon un test « mode période » contaminerait les suivants.
+    useWizardStore.setState({ mode: "season", calendarEntryId: null });
     team = baseTeam;
     teamsState.data = null;
     sharedBlocksState.data = [];
@@ -109,6 +118,28 @@ describe("TeamsStep", () => {
     createMut.mockClear();
     updateMut.mockClear();
     deleteMut.mockClear();
+  });
+
+  // ── P3-7 : l'affordance d'import FBI, SAISON SEULE ──
+
+  it("offre « Importer depuis FBI » sur l'étape saison, liste pleine", () => {
+    renderWithProviders(<TeamsStep />);
+    expect(screen.getByRole("button", { name: "Importer depuis FBI" })).toBeInTheDocument();
+  });
+
+  it("offre « Importer depuis FBI » même quand aucune équipe n'existe encore", () => {
+    teamsState.data = [];
+    renderWithProviders(<TeamsStep />);
+    expect(screen.getByRole("button", { name: "Importer depuis FBI" })).toBeInTheDocument();
+  });
+
+  // Test NÉGATIF obligatoire : en mode période, TeamsStep rend PeriodTeams — le bouton
+  // n'y existe PAS. C'est structurel (la décision « saison seule »), pas un `if` d'affichage.
+  it("n'offre PAS l'import FBI en mode période (saison seule)", () => {
+    useWizardStore.setState({ mode: "period", calendarEntryId: "ce1" });
+    renderWithProviders(<TeamsStep />);
+    expect(screen.getByText("PeriodTeams (stub)")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Importer depuis FBI" })).toBeNull();
   });
 
   it("deleting a team confirms the impact first, then deletes on confirm", async () => {

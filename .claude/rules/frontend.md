@@ -59,7 +59,10 @@ paths:
   « Familles » (Calendrier + Conflits) et « Traitement » (Conflits) de `features/matches`.
   N'absorbe QUE ce contrat exact : ni les interrupteurs `role="switch"` (sémantique a11y
   différente), ni les contrôles SEGMENTÉS (bordure portée par le conteneur, pas de compteur —
-  types de compétition, période, « Regrouper par ») ;
+  types de compétition, période, « Regrouper par ») ; `snapshotFile`
+  (`shared/lib/fileSnapshot.ts`, P3-7) est la maison unique du snapshot mémoire d'un `File` avant
+  envoi — ferme le piège `ERR_UPLOAD_FILE_CHANGED` (fichier relu sur disque à l'envoi, déguisé en
+  « Problème de connexion ») — consommée par `TeamsImportModal.tsx` et `ImportFbiDialog.tsx` ;
   **couleurs/espacements** = tokens du thème (`text-warning`,
   `text-muted-foreground`, `bg-muted`, `border-border`…), **jamais un `#hex`** ni une classe sans
   jeton (`text-warning-foreground` était un no-op, P4-130). Recoder à la main un spinner nu, un
@@ -88,7 +91,10 @@ paths:
 - 🔴 **Jamais `tsc --noEmit`** : le `tsconfig.json` racine est un fichier *solution*
   (`"files": []` + `references`), donc `--noEmit` voit **zéro fichier**, sort 0 sans rien vérifier,
   et la CI (`tsc -b`) échoue sur ce qu'il a sauté. `make -C frontend lint` fait `tsc -b --force` —
-  le `--force` est requis (un `tsbuildinfo` périmé court-circuite le contrôle).
+  le `--force` est requis (un `tsbuildinfo` périmé court-circuite le contrôle). **`tests/e2e/`
+  n'est couvert par AUCUN des deux** (ni `tsconfig.app.json` qui n'`include` que `src`, ni
+  `tsconfig.node.json` qui n'`include` que `vite.config.ts`/`tooling`) : un spec Playwright qui
+  appelle une API inexistante passe le lint vert et ne se révèle qu'en CI (P4-257).
 - 🔴 **axe SAUTE un sous-arbre `inert` — un scan d'a11y sur un écran voilé ne vérifie RIEN.**
   Découvert le 2026-08-21 en différant le blocage du voile (lot C) : le scan de contraste
   « wizard · gymnases » tournait pendant que le voile rendait le contenu `inert`, donc axe ne

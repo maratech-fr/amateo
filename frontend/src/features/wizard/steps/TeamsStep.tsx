@@ -1,10 +1,10 @@
 import { closestCorners, DndContext, type DragEndEvent, DragOverlay, KeyboardSensor, PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowUpDown, ChevronDown, ChevronUp, GripVertical, Link2, Plus, Trash2 } from "lucide-react";
+import { ArrowUpDown, ChevronDown, ChevronUp, FileUp, GripVertical, Link2, Plus, Trash2 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useMe } from "@/shared/session/queries";
+import { useMe, useWorkingSeason } from "@/shared/session/queries";
 import { useTeamLinks } from "@/features/matches/queries";
 import { INTENSITY_LABEL } from "@/features/matches/lib/teamLinkLabel";
 import { Button } from "@/shared/components/ui/button";
@@ -26,6 +26,7 @@ import { useCreateTeam, useDeleteTeam, useDeletionImpact, usePriorityTiers, useR
 import { useWizardStore } from "../store";
 import { PeriodTeams } from "./PeriodTeams";
 import { TeamLinksModal } from "./TeamLinksModal";
+import { TeamsImportModal } from "./TeamsImportModal";
 import { compareNamesFr } from "@/shared/lib/nameOrder";
 
 const GENDERS: { value: Gender | ""; label: string }[] = [
@@ -378,6 +379,12 @@ function TeamsEditor() {
   // redérivation) : elles nourrissent la sous-ligne « Passerelle avec … » et la modale Liens.
   const { data: teamLinks = [] } = useTeamLinks();
   const [linksTeam, setLinksTeam] = useState<Team | null>(null);
+  // P3-7 — l'import FBI des équipes (onboarding). Saison SEULE : ce bouton vit dans
+  // TeamsEditor, jamais dans PeriodTeams (branche « mode période » de TeamsStep).
+  const [importOpen, setImportOpen] = useState(false);
+  // La saison de TRAVAIL résolue (X-Season-Id, sinon saison courante serveur) : c'est
+  // exactement ce que l'en-tête posera, donc le seasonId du corps que le serveur exige.
+  const workingSeasonId = useWorkingSeason()?.id;
   const create = useCreateTeam();
   const update = useUpdateTeam();
   const del = useDeleteTeam();
@@ -728,6 +735,15 @@ function TeamsEditor() {
         </>
       ) : (
         <>
+          {/* P3-7 — l'import FBI des équipes, au-dessus du formulaire d'ajout. Visible liste
+              vide OU pleine ; hors mode « Trier ». Par construction absent en mode période
+              (TeamsStep bascule alors sur PeriodTeams, qui ne rend jamais ce bouton). */}
+          <div className="mb-4">
+            <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+              <FileUp className="size-4" />
+              Importer depuis FBI
+            </Button>
+          </div>
           {/* P4-36 (a) — l'en-tête ne vivait QUE dans la branche « au moins une équipe »,
               alors que le formulaire est au-dessus et n'a que des placeholders : un club
               neuf saisissait sa première équipe à l'aveugle. Il nomme donc les champs DU
@@ -918,6 +934,11 @@ function TeamsEditor() {
           (readOnlyLinks=false) et la mutualisation écrit sur le socle (schedulePlanId null). */}
       {null !== linksTeam ? (
         <TeamLinksModal team={linksTeam} teams={teams} tiers={tiers} schedulePlanId={null} readOnlyLinks={false} onClose={() => setLinksTeam(null)} />
+      ) : null}
+      {/* P3-7 — la modale d'import. Montée seulement club + saison connus (l'onboarding les a
+          toujours) ; le bouton reste visible même sinon, mais n'ouvre rien à vide. */}
+      {importOpen && undefined !== clubId && undefined !== workingSeasonId ? (
+        <TeamsImportModal clubId={clubId} seasonId={workingSeasonId} onClose={() => setImportOpen(false)} />
       ) : null}
     </div>
   );

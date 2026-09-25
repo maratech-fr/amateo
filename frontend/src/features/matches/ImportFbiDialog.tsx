@@ -5,6 +5,7 @@ import { useNavigate } from "react-router";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Modal } from "@/shared/components/ui/modal";
+import { snapshotFile } from "@/shared/lib/fileSnapshot";
 import { TabPanel, Tabs } from "@/shared/components/ui/tabs";
 import { TeamSelect } from "@/shared/components/ui/team-select";
 import { toast } from "@/shared/stores/toastStore";
@@ -77,12 +78,11 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
     setActiveFamily((current) => (null !== current && families.includes(current) ? current : (families[0] ?? null)));
   };
 
-  // Le `File` d'un <input> n'est qu'un HANDLE : son contenu est RELU sur le disque à
-  // CHAQUE envoi. Si l'export est rouvert/ré-enregistré dans Excel entre l'analyse et
-  // l'import, Chrome rejette le second fetch (`ERR_UPLOAD_FILE_CHANGED` → `TypeError`),
-  // que l'app traduit à tort en « Problème de connexion » (aucune requête n'atteint le
-  // serveur). On fige donc un SNAPSHOT mémoire à la sélection et on l'envoie aux deux
-  // appels (même nom, même type — multipart et nom de champ inchangés).
+  // On fige un SNAPSHOT mémoire du fichier à la sélection et on l'envoie aux deux appels
+  // (analyse puis import) : sans lui, un export rouvert/ré-enregistré dans Excel entre les
+  // deux fait rejeter le second fetch par Chrome (`ERR_UPLOAD_FILE_CHANGED`), traduit à
+  // tort en « Problème de connexion ». Le pourquoi complet vit dans `snapshotFile` (maison
+  // unique, `shared/lib/fileSnapshot.ts`).
   const onFileChange = async (next: File | null): Promise<void> => {
     setAnalysis(null);
     setChoices({});
@@ -93,8 +93,7 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
     }
     let snapshot: File;
     try {
-      const buffer = await next.arrayBuffer();
-      snapshot = new File([buffer], next.name, { type: next.type });
+      snapshot = await snapshotFile(next);
     } catch {
       setFile(null);
       toast.error("Le fichier n'a pas pu être lu — est-il ouvert dans un autre logiciel ?");
