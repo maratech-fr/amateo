@@ -110,6 +110,9 @@
     .pain p { font-size: 15px; color: var(--ink-2); }
     /* #matchs porte quatre cartes : même rythme que les 4 étapes (min 230px) — 4 de front en desktop, 2×2 en tablette, 1 en mobile ; #douleur (3 cartes) intact */
     #matchs .pains { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+    /* #matchs : deux captures secondaires côte à côte sous le calendrier — empilées en mobile (même idiome auto-fit, aucune media query) */
+    #matchs .shots-pair { margin-top: 28px; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; align-items: start; }
+    #matchs .shots-pair figure.shot { margin: 0; }
 
     /* ── Étapes ── */
     .steps { margin-top: 40px; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0; counter-reset: step; }
@@ -299,6 +302,17 @@
         <img src="assets/matchs.jpg" alt="Le calendrier des rencontres d'un week-end : chaque match placé sur son gymnase, les conflits et les matchs à placer signalés en tête" width="2160" height="1170" loading="lazy" />
         <figcaption>L'essentiel remonte tout seul en tête : les matchs à placer, les conflits à traiter et ce qu'il faut rendre à FBI — vous n'avez plus à y penser.</figcaption>
       </figure>
+
+      <div class="shots-pair">
+        <figure class="shot">
+          <img src="assets/matchs-importer.jpg" alt="L'écran Importer du module matchs : bouton « Importer FBI », date du dernier dépôt, lien « Échéances de saisie », et un bandeau proposant de valider en lot 106 rencontres de championnats échus" width="2160" height="1500" loading="lazy" />
+          <figcaption>Un dépôt de l'export FBI, et le club sait ce qui reste à saisir et à valider — sans traquer la ligne oubliée.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="assets/matchs-conflits.jpg" alt="L'onglet Conflits regroupé par coach : un coach (nom de démo) apparaît sur trois rencontres qui se chevauchent, avec départ, coup d'envoi, retour et durée du chevauchement, et un bouton « Traiter »" width="2160" height="1500" loading="lazy" />
+          <figcaption>Les conflits regroupés et suivis : chaque cas dit qui, quand, et ce qu'il reste à trancher.</figcaption>
+        </figure>
+      </div>
     </div>
   </section>
 
