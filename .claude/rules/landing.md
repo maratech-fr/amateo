@@ -7,6 +7,9 @@ paths:
 
 > La page de vente publique. **Elle n'a pas d'`AGENTS.md`** : tout ce qui la concerne tient ici.
 
+- **La page s'adosse à [`specs/courantes/modules-produit.md`](../../specs/courantes/modules-produit.md)**
+  — la carte des modules en langage club, promesse + preuve + capture ; toute nouvelle section
+  vitrine vérifie ses affirmations contre ce fichier avant d'écrire un mot.
 - **Zéro build.** HTML/CSS statique servi tel quel — pas de npm, pas de bundler, pas de
   transpilation. On édite `index.html` et `assets/` directement. N'introduis **aucune** chaîne de
   build : c'est ce qui rend cette page increvable et déployable seule.
@@ -32,3 +35,18 @@ paths:
 - **Aucune donnée personnelle collectée sans mentions légales ni politique de confidentialité**
   (LCEN + RGPD) : un formulaire de contact sur cette page déclenche les deux obligations —
   `business/administratif-mise-en-prod.md` §9.
+- **Aucun job CI ne couvre `landing/`** (`.github/workflows/ci.yml` ne la mentionne nulle part) —
+  la seule preuve d'une passe (design, contraste, rendu) est un axe joué **à la main** dans un
+  vrai navigateur, captures à l'appui dans `captures/` (racine du dépôt, gitignoré).
+- **Une capture d'écran de l'app pour la vitrine s'exige sur le RÉSULTAT, pas sur une méthode
+  unique** : (1) l'en-tête porte « Démo Basket Club », jamais un club réel ; (2) **aucune personne
+  RÉELLE** — un nom de démo manifestement générique (ex. « Camille Durand ») est admis, remplacé
+  dans le DOM au moment de la capture, jamais le nom d'une vraie personne ; (3) les données
+  visibles sont publiques (codes d'équipe, clubs adverses, gymnases). Deux façons d'y arriver,
+  toutes deux valides : le **seed démo** (`app:demo:seed`, patron `landing/assets/planning.png`,
+  P5-5) ou une **prise de vue sur une stack réelle** avec le nom du club remplacé dans le DOM au
+  moment de la capture (patron `landing/assets/matchs.jpg`, P5-26, 2026-09-25 — blason retiré du
+  DOM). La vue **Conflits** (qui liste des coachs) est admise sous cette condition — un nom de
+  démo fictif suffit, elle n'est plus écartée par principe (patron
+  `landing/assets/matchs-conflits.jpg`, 2026-09-25) — décision fermée,
+  `specs/courantes/etat-des-lieux.md` §2.

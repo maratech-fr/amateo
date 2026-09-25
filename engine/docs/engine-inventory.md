@@ -1,19 +1,15 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-09-23 (`documentation-update`, suppression du cran `BONUS`, `bc2e2568`).
-**Corrigé cette passe** : le §4.1 affirmait encore que `parse_v2_constraints` normalisait les
-lignes legacy `BONUS` en `PREFERRED` — cette branche a disparu du parse en même temps que l'enum
-backend `ConstraintRuleType::BONUS` a été retirée (ne compte plus que HARD/PREFERRED/LOCK) ; une
-écriture `ruleType: "BONUS"` rend désormais 422 côté backend, avant même d'atteindre le moteur.
-Re-confronté au code : `CONTRACT_VERSION` = **2.23** (`engine/CONTRACT_VERSION`) ✓ ;
-`DEFAULT_MATCH_MIN=105`/`DEFAULT_WARMUP_MIN=30` toujours dans `match_placement.py` ✓. Passe
-précédente (2026-09-21, conservée pour trace) : les bumps 2.21 et 2.23 affirmaient encore que
-l'échauffement « reste » une contrainte de fenêtre PERSONNE au placement — FAUX depuis le lot M
-(`docs/architecture/adr-0003-match-placement-solve.md` § amendement lot M) : les trois fenêtres de
-personne du solveur (coach, `NOT_SIMULTANEOUS`) ont perdu l'échauffement, seul le trajet AWAY y
-reste (`match_placement.py` — `fixed_windows_by_coach`, poids TO_PLACE, `_overlap_pairs`). Reste de
-l'inventaire (`PLACEMENT_PROXIMITY_WEIGHT`, le détail des sections sous la ligne 40) non re-sondé
-cette passe — voir `git log -p --follow` pour sa dernière vérification.
+Last verified @ 2026-09-25 (rotation de fraîcheur `documentation-update`). **Corrigé cette
+passe** : §2 affirmait « Cinq endpoints exposés » alors que le tableau qui suit en liste SIX
+(`/`, `/health`, `/generate`, `/place-matches`, `/validate-assignments`, `/implicit-constraints`,
+`engine/app/main.py:775-885`) — décompte volatil et faux, retiré au profit d'une description
+structurelle. Re-confronté au code : `CONTRACT_VERSION` = **2.23** (`engine/CONTRACT_VERSION`) ✓ ;
+`DEFAULT_MATCH_MIN=105`/`DEFAULT_WARMUP_MIN=30` toujours dans `match_placement.py:38-39` ✓ ;
+`ConstraintRuleType` ne porte plus que HARD/PREFERRED/LOCK (`backend/src/Enum/
+ConstraintRuleType.php`, `BONUS` absent) ✓. Reste de l'inventaire (`PLACEMENT_PROXIMITY_WEIGHT`,
+le détail des sections sous la ligne 40) non re-sondé cette passe — voir `git log -p --follow`
+pour sa dernière vérification.
 
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.
 > Source de vérité : `engine/app/main.py`, `engine/app/schemas/input_schema.py`, `engine/app/schemas/output_schema.py`, `engine/app/solver/{model,constraints,objective,result_builder}.py`, `engine/app/core/config.py`.
@@ -46,7 +42,7 @@ cette passe — voir `git log -p --follow` pour sa dernière vérification.
 
 ## 2. Endpoints Engine
 
-**Cinq** endpoints exposés par `app/main.py` :
+Les endpoints exposés par `app/main.py` (santé + les trois du contrat) :
 
 | Endpoint | Méthode | Rôle | Response model |
 |----------|---------|------|----------------|

@@ -1,17 +1,13 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-09-23 (`documentation-update`, suppression du cran `BONUS`, `bc2e2568`).
-**Corrigé cette passe** : la ligne `ruleType` listait encore `BONUS` comme une valeur vivante
-normalisée en `PREFERRED` — l'enum backend `ConstraintRuleType` ne compte plus que
-HARD/PREFERRED/LOCK, une écriture `ruleType: "BONUS"` rend 422 avant d'atteindre le moteur.
-Aucune montée de `CONTRACT_VERSION` (toujours `2.23`, `rule_type` reste une chaîne libre côté
-Pydantic) ✓. Passe précédente (2026-09-22, conservée pour trace) : § mutualisation par bloc —
-`_fold_case_occupant_identity` (`engine/app/solver/constraints/common.py:168`) élit le bloc MAXIMAL
-(tri taille décroissante puis clé), miroir exact de `ReservationGroupOccupancy::occupantCount` côté
-backend ; `_shared_block_move_violation` (`validate_assignments.py`) refuse
-`shared_block_overformed` en plus de `shared_block_broken` ; `_venue_minimum_move_violation`
-raisonne en ensembles de cases par équipe. Non re-sondé cette passe : le reste du vocabulaire
-listé ci-dessous — un stamp REMPLACE, l'historique vit dans git.
+Last verified @ 2026-09-25 (rotation de fraîcheur `documentation-update`). Re-confronté au code :
+`ConstraintRuleType` ne porte plus que HARD/PREFERRED/LOCK (`backend/src/Enum/
+ConstraintRuleType.php`, `BONUS` absent) ✓ ; `CONTRACT_VERSION` = **2.23**
+(`engine/CONTRACT_VERSION`) ✓ ; `venue_minimum_unreachable` toujours émis par
+`engine/app/solver/constraints/targeting.py` ✓ ; `add_socle_reference_bonus`
+(`engine/app/solver/objective/terms.py`) et `SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"`
+(`engine/app/solver/objective/weights.py`) ✓. Rien de faux trouvé. Non re-sondé cette passe : le
+reste du vocabulaire détaillé ci-dessous — un stamp REMPLACE, l'historique vit dans git.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.

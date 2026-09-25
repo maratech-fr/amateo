@@ -1,18 +1,18 @@
 # Living Specs System
 
-Last verified @ 2026-09-24 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
-cette PR — lot découpage `PeriodStructure.tsx`, P4-255). Re-confronté : les quatre gardes
+Last verified @ 2026-09-25 (**§ Files Overview mis à jour** — création de
+`specs/courantes/modules-produit.md`, ajoutée à la liste). Re-confronté : les quatre gardes
 `{DocPlacementTest, DocStampFreshnessTest, RoadmapIdentityTest,
 BlockingTestsListMatchesCiTest}.php` existent toujours, `WorkflowPermissionsDeclaredTest.php`
 aussi (`ls backend/tests/Unit/Documentation/`) ; `engine/tests/test_contract_version_doc_sync.py`
 (cité comme premier de la série des docs gardées par un test) existe toujours ;
 `docs/testing/blocking-tests.md` existe. **§ Files Overview confronté ligne à ligne à
-`ls specs/courantes/*.md`** — les 11 fichiers cités (`etat-des-lieux`,
+`ls specs/courantes/*.md`** — les **12** fichiers cités (`etat-des-lieux`, `modules-produit`,
 `planning-lifecycle-validated`, `types-de-planning`, `superadmin-auth`, `identite-visuelle-club`,
 `vacances-scolaires-jours-feries`, `accueil-cockpit-temporel`, `module-matchs`,
 `canal-signalement`, `generation-pipeline`, `openapi-snapshot.meta`) correspondent exactement au
-dossier, aucun absent, aucun fantôme ; `ls specs/evolution/` et `ls specs/audit/` recoupés contre
-leur description en § Files Overview, rien de périmé. Reste du fichier non re-sondé cette passe.
+dossier, aucun absent, aucun fantôme. `ls specs/evolution/` et `ls specs/audit/` non re-sondés
+cette passe (zone non touchée par ce fichier).
 
 ## 3-Tier Structure
 
@@ -71,7 +71,7 @@ Le 2026-08-08, cette commande a sorti **9 fichiers sur 16** — dont un modifié
 ## Files Overview
 
 - `specs/initiales/` — `ClubScheduler_v3.md` (spec produit consolidée, figée) · `ClubScheduler_Specification_des_contraintes_v2.md` (modèle de contraintes d'origine) · prompt orchestrateur v3.
-- `specs/courantes/` — `etat-des-lieux.md` (**point d'entrée** : ce que l'app sait faire, décisions fermées, traces datées) · specs de features livrées graduées depuis evolution (`planning-lifecycle-validated`, `types-de-planning` — les 3 types (socle / overlay / vacances) et l'axe collecte coach · `superadmin-auth` — console SA0-SA4 + monitoring · `identite-visuelle-club`, `vacances-scolaires-jours-feries`, `accueil-cockpit-temporel` — calendrier d'exceptions/overlays livré #122 · `module-matchs` — import FBI + placement + radar conflits) · `canal-signalement` (signalement/support/reproduction, `X-Request-Id` bout en bout) · `generation-pipeline` (conduite normalisée bout en bout front→backend→engine→import→affichage + invariants silencieux) · `openapi-snapshot.json` + son meta (régénéré à chaque changement d'API).
+- `specs/courantes/` — `etat-des-lieux.md` (**point d'entrée** : ce que l'app sait faire, décisions fermées, traces datées) · `modules-produit.md` (la carte ci-dessus **en langage club** : une promesse, ce qui est livré, où c'est dans l'app — nourrit la page de vente/FAQ/démo) · specs de features livrées graduées depuis evolution (`planning-lifecycle-validated`, `types-de-planning` — les 3 types (socle / overlay / vacances) et l'axe collecte coach · `superadmin-auth` — console SA0-SA4 + monitoring · `identite-visuelle-club`, `vacances-scolaires-jours-feries`, `accueil-cockpit-temporel` — calendrier d'exceptions/overlays livré #122 · `module-matchs` — import FBI + placement + radar conflits) · `canal-signalement` (signalement/support/reproduction, `X-Request-Id` bout en bout) · `generation-pipeline` (conduite normalisée bout en bout front→backend→engine→import→affichage + invariants silencieux) · `openapi-snapshot.json` + son meta (régénéré à chaque changement d'API).
 - `specs/evolution/` — `roadmap.md` (**index unique de l'OUVERT** : toute évolution/gap/idée non livrée y laisse une ligne) · fichiers de détail référencés depuis la roadmap quand une ligne ne suffit pas (liste des fichiers actifs tenue dans le header de la roadmap). Règle : un fichier de détail devenu sans objet (sujet livré/tranché) est supprimé après absorption dans la roadmap (`features-futures.md`, `backend-gaps.md`, `contraintes-modele-cible.md` absorbés le 2026-07-05 — leurs IDs `FF#n`/`G#n` restent cités comme réf historiques).
 - `specs/audit/` — éditions d'audit horodatées (`AUDIT-<date>-<model>.md`, skill `/audit`) ; registre de findings à ID stables, comparaison inter-éditions.
 

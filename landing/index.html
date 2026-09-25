@@ -108,6 +108,11 @@
     .pain { border-top: 2px solid var(--accent); padding-top: 18px; }
     .pain h3 { font-size: 17.5px; margin-bottom: 8px; line-height: 1.3; }
     .pain p { font-size: 15px; color: var(--ink-2); }
+    /* #matchs porte quatre cartes : même rythme que les 4 étapes (min 230px) — 4 de front en desktop, 2×2 en tablette, 1 en mobile ; #douleur (3 cartes) intact */
+    #matchs .pains { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+    /* #matchs : deux captures secondaires côte à côte sous le calendrier — empilées en mobile (même idiome auto-fit, aucune media query) */
+    #matchs .shots-pair { margin-top: 28px; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; align-items: start; }
+    #matchs .shots-pair figure.shot { margin: 0; }
 
     /* ── Étapes ── */
     .steps { margin-top: 40px; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0; counter-reset: step; }
@@ -261,6 +266,56 @@
     </div>
   </section>
 
+  <section class="alt" id="matchs">
+    <div class="wrap">
+      <h2>Les matchs, un dossier de moins à garder en tête.</h2>
+      <p class="sub">Le calendrier des matchs arrive de la fédération. L'app le range : les
+      rencontres importées, les domiciles placés, les conflits repérés, les échéances suivies. Vous
+      déposez l'export une fois, et vous n'avez plus à tout tenir de tête.</p>
+      <div class="pains">
+        <article class="pain">
+          <h3>Déposez l'export, l'app place vos matchs</h3>
+          <p>L'import du fichier FBI du club range vos rencontres par équipe, et un solveur pose vos
+          domiciles sur les créneaux où vos gymnases sont libres — à vous d'ajuster ou de verrouiller
+          ce qui doit l'être.</p>
+        </article>
+        <article class="pain">
+          <h3>Les écarts avec FBI ne vous échappent plus</h3>
+          <p>L'écran « FBI — à faire » liste ce qui reste à saisir ou à corriger dans FBI, avec
+          l'échéance de chaque compétition — il alerte, sans jamais bloquer.</p>
+        </article>
+        <article class="pain">
+          <h3>Les conflits de coachs vus avant le week-end</h3>
+          <p>Un radar signale à la volée un coach sur deux rencontres, un match et un entraînement en
+          même temps, un gymnase pris deux fois ; chaque conflit se traite — dérogation demandée,
+          réglé en interne, sans solution pour l'instant — sans jamais se masquer.</p>
+        </article>
+        <article class="pain">
+          <h3>Les déplacements comptés, adversaires localisés</h3>
+          <p>Le temps d'un match à l'extérieur intègre le trajet réel jusqu'au gymnase adverse, et
+          l'annuaire des adversaires se localise tout seul depuis le libellé du fichier FBI, sans
+          rien à saisir.</p>
+        </article>
+      </div>
+
+      <figure class="shot">
+        <img src="assets/matchs.jpg" alt="Le calendrier des rencontres d'un week-end : chaque match placé sur son gymnase, les conflits et les matchs à placer signalés en tête" width="2160" height="1170" loading="lazy" />
+        <figcaption>L'essentiel remonte tout seul en tête : les matchs à placer, les conflits à traiter et ce qu'il faut rendre à FBI — vous n'avez plus à y penser.</figcaption>
+      </figure>
+
+      <div class="shots-pair">
+        <figure class="shot">
+          <img src="assets/matchs-importer.jpg" alt="L'écran Importer du module matchs : bouton « Importer FBI », date du dernier dépôt, lien « Échéances de saisie », et un bandeau proposant de valider en lot 106 rencontres de championnats échus" width="2160" height="1500" loading="lazy" />
+          <figcaption>Un dépôt de l'export FBI, et le club sait ce qui reste à saisir et à valider — sans traquer la ligne oubliée.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="assets/matchs-conflits.jpg" alt="L'onglet Conflits regroupé par coach : un coach (nom de démo) apparaît sur trois rencontres qui se chevauchent, avec départ, coup d'envoi, retour et durée du chevauchement, et un bouton « Traiter »" width="2160" height="1500" loading="lazy" />
+          <figcaption>Les conflits regroupés et suivis : chaque cas dit qui, quand, et ce qu'il reste à trancher.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
   <section class="alt" id="transparence">
     <div class="wrap">
       <h2>Votre bureau voit tout, en lecture.</h2>
@@ -355,9 +410,9 @@
         </details>
         <details>
           <summary>Où sont hébergées nos données ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
-          <p class="a">En Europe, sauvegardées quotidiennement. Vos données appartiennent à votre
-          club : export complet à la demande et suppression définitive possible à tout moment,
-          conformément au RGPD.</p>
+          <p class="a">En France, chez un hébergeur français (Scaleway, Paris), sauvegardées chaque
+          jour. Vos données appartiennent à votre club : export complet à la demande, suppression
+          définitive possible à tout moment, conformément au RGPD.</p>
         </details>
         <details>
           <summary>On peut voir avant de s'engager ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
@@ -371,7 +426,7 @@
 
   <section class="final">
     <div class="wrap">
-      <h2>La rentrée arrive. Le planning peut être prêt avant.</h2>
+      <h2>La saison n'a pas encore débuté que le planning est déjà prêt.</h2>
       <div class="ctas">
         <a class="btn btn-primary" data-cta="register" href="#">Essayer gratuitement avec mon club</a>
         <a class="btn btn-ghost" data-cta="demo" href="#">Demander une démo</a>
