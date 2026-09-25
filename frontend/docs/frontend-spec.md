@@ -440,7 +440,7 @@ retours de tests) :
   `FfbbClubPopulator::populate`) est le SEUL geste de correction — il n'écrase plus le siège s'il en
   existe déjà un (`only-fill-when-empty`, § ci-dessous).
 - **Siège du club** (`ClubSiegeSubsection`, amende la décision 2026-08-04 — SEULE saisie de la
-  page) : un `AddressGeocodeField` (primitive partagée, `frontend/AGENTS.md` §Primitives) pose une
+  page) : un `AddressGeocodeField` (primitive partagée, [`frontend-components.md`](frontend-components.md) §3) pose une
   adresse en texte, le serveur RE-géocode via `PATCH /api/club/siege` (`ClubSiegeController`,
   `backend/docs/geo-api.md` §1bis) et écrit adresse/CP/ville/lat/lon depuis SON hit fédéral —
   jamais des coordonnées client (patron SEC-15). Motif : la fédération ne fournit pas d'adresse
@@ -1460,7 +1460,7 @@ frontend/src/
   celle du **niveau** (une équipe n'a pas de couleur propre, décision fermée, zéro champ
   backend). Reclasser une équipe met l'ordre à jour **partout**. Signature `onValueChange`
   (pas un `onChange` DOM), option enrichissable via `optionMeta(team)` (compte à droite,
-  sous-ligne, désactivée+motif) — voir `frontend/AGENTS.md` §Primitives.
+  sous-ligne, désactivée+motif) — voir [`frontend-components.md`](frontend-components.md) §3.
 
 ### Alias
 

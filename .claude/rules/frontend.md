@@ -112,10 +112,12 @@ paths:
 - 🔴 **Jamais `tsc --noEmit`** : le `tsconfig.json` racine est un fichier *solution*
   (`"files": []` + `references`), donc `--noEmit` voit **zéro fichier**, sort 0 sans rien vérifier,
   et la CI (`tsc -b`) échoue sur ce qu'il a sauté. `make -C frontend lint` fait `tsc -b --force` —
-  le `--force` est requis (un `tsbuildinfo` périmé court-circuite le contrôle). **`tests/e2e/`
-  n'est couvert par AUCUN des deux** (ni `tsconfig.app.json` qui n'`include` que `src`, ni
-  `tsconfig.node.json` qui n'`include` que `vite.config.ts`/`tooling`) : un spec Playwright qui
-  appelle une API inexistante passe le lint vert et ne se révèle qu'en CI (P4-257).
+  le `--force` est requis (un `tsbuildinfo` périmé court-circuite le contrôle). `tests/e2e/` et
+  `playwright.config.ts` sont désormais couverts eux aussi (`tsconfig.e2e.json`, référencé depuis
+  le fichier solution racine, P4-257, 2026-09-25) — avant ce lot ils n'étaient couverts par
+  **aucun** des deux autres projets (`tsconfig.app.json` n'`include` que `src`, `tsconfig.node.json`
+  que `vite.config.ts`/`tooling`), si bien qu'un spec Playwright appelant une API inexistante
+  passait le lint vert et ne se révélait qu'en CI.
 - 🔴 **axe SAUTE un sous-arbre `inert` — un scan d'a11y sur un écran voilé ne vérifie RIEN.**
   Découvert le 2026-08-21 en différant le blocage du voile (lot C) : le scan de contraste
   « wizard · gymnases » tournait pendant que le voile rendait le contenu `inert`, donc axe ne

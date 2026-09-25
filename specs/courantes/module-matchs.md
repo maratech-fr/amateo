@@ -425,7 +425,7 @@ mainteneurs du fichier). Le front (`conflictSideLines.ts`, `ConflictLine.tsx`) c
 page sur `model.kind`, DEUX variantes :
 
 - **`person`** (`MATCH_MATCH`/`MATCH_TRAINING`) : un vrai TABLEAU (`Table variant="inline"` —
-  primitive partagée `shared/components/ui/table.tsx`, `frontend/AGENTS.md` §Primitives) à quatre
+  primitive partagée `shared/components/ui/table.tsx`, [`frontend-components.md`](../../frontend/docs/frontend-components.md) §3) à quatre
   colonnes horaires FIXES — Départ · Coup d'envoi (toujours colonne 2, quelle que soit la nature du
   côté) · Fin/retour · Durée (repliée sous 360 px par container query, la largeur du RADAR pas du
   viewport) — une ligne par côté puis une ligne de chevauchement ; un créneau absent rend « — »,
