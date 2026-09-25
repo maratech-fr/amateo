@@ -1,11 +1,16 @@
 # Identité visuelle produit — la base est le produit, l'accent est le club
 
-Last verified @ 2026-09-25 (création, `documentation-update` — PR A du chantier DA). Confronté au
-code : `frontend/src/index.css` (blocs `:root`/`.dark`), `frontend/src/shared/lib/product.ts`
-(`PRODUCT_ACCENT`), `frontend/src/shared/hooks/useApplyClubTheme.ts`,
-`frontend/src/shared/lib/color.ts` (`SURFACES`/`accentForMode`/`accentHoverForMode`),
-`frontend/src/test/accentTokenParity.test.ts`, `frontend/src/features/club/ClubPage.tsx`
-(`DEFAULT_ACCENT`), `landing/index.html` (`--accent`). Les ratios de contraste cités ont été
+Last verified @ 2026-09-25 (`documentation-update`, PR B du chantier DA « en-tête marque produit +
+favicon », complétée par le logo en remplacement du nom produit en texte, puis par le retrait du
+second ton du logotype `BrandMark`). Confronté au code :
+`frontend/src/index.css` (blocs `:root`/`.dark`), `frontend/src/shared/lib/product.ts`
+(`PRODUCT_ACCENT`), `frontend/src/shared/hooks/useApplyClubTheme.ts`, `frontend/src/shared/lib/color.ts`
+(`SURFACES`/`accentForMode`/`accentHoverForMode`), `frontend/src/test/accentTokenParity.test.ts`,
+`frontend/src/features/club/ClubPage.tsx` (`DEFAULT_ACCENT`), `landing/index.html` (`--accent`) —
+PR A ; `frontend/src/shared/components/ui/brand-icon.tsx`, `frontend/src/app/AppLayout.tsx:58-68`,
+`frontend/public/favicon.svg`, `frontend/src/shared/components/ui/brand-mark.tsx`,
+`frontend/src/features/auth/AuthLayout.tsx`, `frontend/src/shared/components/ui/system-screen.tsx`,
+`frontend/src/features/admin/AdminAuthLayout.tsx` — PR B. Les ratios de contraste cités ont été
 recalculés indépendamment (conversion OKLCH → sRGB linéaire, WCAG 2.1) contre les fonds décrits
 ci-dessous, pas recopiés d'un commentaire.
 
@@ -108,14 +113,47 @@ dur : `tests/e2e/a11y-contrast.spec.ts` (inchangé par ce lot).
   héritent donc la base chaude sans aucune modification de leur code, cf.
   [`identite-visuelle-club.md`](identite-visuelle-club.md) et `frontend/docs/frontend-spec.md` §6.8.
 
+## Décision 3 — en-tête : la marque PRODUIT d'abord, le club ensuite (2026-09-25, fondateur, PR B)
+
+L'arbitrage posé en PR A (« l'en-tête est aujourd'hui pris par le logo du CLUB ») est tranché :
+l'en-tête de l'app (`frontend/src/app/AppLayout.tsx:58-68`) montre désormais **les deux**, dans un
+ordre fixe — l'icône produit ne s'efface jamais devant celle d'un club.
+
+- **`BrandIcon`** (`frontend/src/shared/components/ui/brand-icon.tsx`) est la maison unique de
+  l'icône produit : SVG inline, trois arcs (`<circle>` avec `stroke-dasharray`/`pathLength`), mêmes
+  nombres que le handoff marque (`business/7-marque/design_handoff_logo_loaders/`) et que
+  `landing/assets/brand/icon.svg` — recopiée par convention, jamais importée (les deux zones
+  restent indépendantes, `CLAUDE.md` §2). **Les couleurs des arcs sont en dur** (`#B51C8A`,
+  `#D47800`, `#46AFAC`) — seule exception documentée à « jamais un `#hex` »
+  (`.claude/rules/frontend.md`) : ce sont les teintes du mark lui-même, pas des jetons de thème
+  themables. `aria-hidden` par défaut (décoratif, le sens est porté par le nom écrit à côté) ;
+  une prop `title` optionnelle bascule sur `role="img"` pour un usage isolé.
+- **Composition de l'en-tête** : `[BrandIcon 24px] · [blason du club 24px si `logoUrl`] NOM` —
+  l'icône produit est TOUJOURS rendue, le blason du club (image ronde `object-cover`) suit quand il
+  existe, à la même taille (la position porte la hiérarchie, pas la taille). `aria-label` du lien
+  d'accueil = nom du club ou `PRODUCT_NAME` (icône et blason restent décoratifs). **Le repli glyphe
+  `CalendarCheck2` a disparu** — un club sans logo n'affiche plus qu'un glyphe interchangeable,
+  toujours au moins l'icône Amateo.
+- **Favicon** (`frontend/public/favicon.svg`) : la marque violette générique (`#863bff`) est
+  remplacée par l'icône Amateo posée sur un **disque plein blanc** (`r=490`) — même règle que le
+  favicon de la vitrine (`landing/assets/brand/icon.svg`, PR précédente) : le disque fait ressortir
+  l'icône sur un onglet sombre comme clair. Même géométrie/couleurs que `BrandIcon`, recopiées dans
+  le fichier SVG statique (pas de génération depuis le composant React — un favicon n'exécute pas
+  de JS).
+- **`BrandMark`** (`frontend/src/shared/components/ui/brand-mark.tsx`) : les surfaces où le produit
+  se nomme comme MARQUE plutôt qu'en texte de phrase — login/inscription (`AuthLayout`), écrans
+  système (`system-screen`), console admin (`AdminAuthLayout`) — portent désormais le logo complet
+  (`BrandIcon` + le mot) au lieu du nom en texte nu. Le mot hérite `currentColor` (UN seul ton, dans
+  tous les thèmes) — **seul `BrandIcon` porte des couleurs en dur**, `BrandMark` n'en porte aucune :
+  un second ton teal sur les deux derniers caractères a été essayé puis retiré, il ne tenait que
+  ~2,5:1 sur le fond papier clair (sous la barre), et `aria-hidden` n'exempte pas le texte rendu de
+  la règle color-contrast d'axe — la piste « logotype exempté de WCAG 1.4.3 » ne tenait pas ;
+  décision fondateur : une marque n'a pas deux visages.
+
 ## Ce qui reste à venir
 
-- **En-tête produit + favicon de l'app** (PR B, roadmap P5-24) : le favicon de l'app
-  (`frontend/public/favicon.svg`) reste une marque violette générique sans rapport avec Amateo ;
-  l'en-tête de l'app est aujourd'hui pris par le logo du CLUB (`AppLayout.tsx`) — l'arbitrage entre
-  marque produit et marque club à cet emplacement est encore à poser.
 - **Fond d'écran / motif « ça sent le basket »** (roadmap P4-18) : décision distincte de ce lot —
   la base chaude ne le solde pas, il attend le fond du designer (bandeau/illustrations).
-- **Animations, PDF, e-mails transactionnels, image OG** : n'ont reçu aucune base ni accent produit
-  à ce jour (roadmap P5-24 pour le volet marque ; les exports PDF suivent leur propre chaîne,
-  `backend/docs/`, non touchée par ce lot).
+- **PDF (y compris impression N&B), e-mails transactionnels, image OG** (roadmap P5-24) : n'ont
+  reçu aucun asset logo à ce jour — les exports PDF suivent leur propre chaîne
+  (`PdfGenerator`, `backend/docs/`), non touchée par ce lot.

@@ -69,6 +69,12 @@ paths:
   est la SEULE maison d'un hex d'accent produit ; les valeurs statiques d'accent d'`index.css` sont
   la sortie EXACTE de sa dérivation, gardée par `src/test/accentTokenParity.test.ts` — **on ne les
   édite jamais à la main, on les recalcule** (`specs/courantes/identite-visuelle-produit.md`).
+  `BrandIcon` (`shared/components/ui/brand-icon.tsx`) est la SEULE exception admise à « jamais un
+  `#hex` » (ses trois arcs). `BrandMark` (`shared/components/ui/brand-mark.tsx`), le logo COMPLET
+  (icône + mot) posé partout où le produit se nomme comme MARQUE (login/inscription, écrans
+  système, console admin — jamais pour une mention dans une phrase), n'en porte aucune : le mot
+  hérite `currentColor`, un seul ton dans tous les thèmes (un second ton teal codé en dur tombait
+  sous la barre de contraste sur fond clair, retiré).
   Recoder à la main un spinner nu, un
   encart d'erreur, une pastille inline **là où la primitive existe** = incohérence UX (« même
   chose, au même endroit, de la même façon » — famille UXC de l'audit). Cas fondateur du

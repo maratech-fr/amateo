@@ -1,13 +1,13 @@
 # Identité visuelle par club (logo + couleur d'accent)
 
-Last verified @ 2026-09-25 (`documentation-update`, PR A du chantier DA « base chaude + accent
-produit »). Re-vérifié contre le code :
+Last verified @ 2026-09-25 (`documentation-update`, PR B du chantier DA « en-tête marque produit +
+favicon »). Re-vérifié contre le code :
 `Club.logoUrl`/`accentColor`/`accentColorDark`/`accentPalette` toujours dans l'entité
 (`backend/src/Entity/Club.php:138-154`) ✓, `PATCH /api/club/appearance`
 (`ClubAppearanceController::__invoke`, `:34`) ✓, `GenerationWaiting.tsx` ne porte toujours aucune
-prop `logoUrl`/`initial` (zéro hit) ✓, `useApplyClubTheme.ts` — le repli d'un club SANS couleur
-n'est plus les jetons statiques d'`index.css` (voir ci-dessous). L'historique vit dans git :
-`git log -p --follow specs/courantes/identite-visuelle-club.md`)
+prop `logoUrl`/`initial` (zéro hit) ✓, `frontend/src/app/AppLayout.tsx` — le repli glyphe
+`CalendarCheck2` a disparu, l'icône `BrandIcon` est désormais TOUJOURS rendue avant le blason du
+club ✓. L'historique vit dans git : `git log -p --follow specs/courantes/identite-visuelle-club.md`)
 
 > **LIVRÉ (2026-07-02)** — accent par club + logo + extraction 3 couleurs + écran « Gestion du club ». Détail livré ci-dessous ; ce qui reste ⬜ est du confort (voir « Questions ouvertes »).
 >
@@ -26,7 +26,14 @@ n'est plus les jetons statiques d'`index.css` (voir ci-dessous). L'historique vi
 - Mode clair/sombre : `frontend/src/shared/stores/themeStore.ts` (+ slot `accent`).
 - **Pré-paint du thème** : `frontend/src/main.tsx` (`readPersistedThemeMode`) pose la classe `.dark` **avant** le premier rendu React. Sans lui, l'arbre se rend en clair puis un effet bascule : flash du mauvais thème **et** animation `transition-colors` qui laisse les surfaces à des couleurs intermédiaires **sub-AA** (A11Y-06).
 - Écran de réglage : `frontend/src/features/club/ClubPage.tsx` + `LogoCropper.tsx`.
-- Surfaces de marque : `frontend/src/app/AppLayout.tsx` (logo au header, fallback icône `CalendarCheck2`). L'écran d'attente de génération (`frontend/src/features/planning/GenerationWaiting.tsx`, consommé par `GenerateStep.tsx` et `PlanningPage.tsx`) n'est **plus** une surface de marque au sens logo — elle lit seulement l'accent via `--accent`.
+- Surfaces de marque : `frontend/src/app/AppLayout.tsx` — depuis la PR B du chantier DA
+  (2026-09-25), l'en-tête pose **la marque PRODUIT d'abord** : icône `BrandIcon`
+  (`shared/components/ui/brand-icon.tsx`) **toujours présente**, puis le blason du club (son
+  `logoUrl`) juste après **s'il existe**, même taille (24 px) — le repli glyphe `CalendarCheck2`
+  **n'existe plus** (détail de la composition : `identite-visuelle-produit.md`). L'écran d'attente
+  de génération (`frontend/src/features/planning/GenerationWaiting.tsx`, consommé par
+  `GenerateStep.tsx` et `PlanningPage.tsx`) n'est **plus** une surface de marque au sens logo — elle
+  lit seulement l'accent via `--accent`.
 
 ---
 

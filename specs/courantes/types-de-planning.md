@@ -1,22 +1,18 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-09-24 (**rotation de fraîcheur** `documentation-update`, P4-255 PR 1 —
-zone non touchée par cette PR : `PlanningPage.tsx` perd 223 l. vers cinq hooks `planning/lib/`,
-mais reste le composant qui monte le bouton « Combler automatiquement » cité ici, sans numéro de
-ligne — vérifié que `useFillSchedule`/`fillMutation` y sont toujours appelés). Re-vérifié contre le
-code, tout juste : les six repères déjà cités tiennent encore (`RedatePreviewController`
-`backend/src/Controller/RedatePreviewController.php:36` ✓, `SplitMotherRedatePlanner`
-`backend/src/Service/SplitMotherRedatePlanner.php:41` ✓, `CalendarEntryRedatability::
-redateNeedsPreview` `backend/src/Service/CalendarEntryRedatability.php:68` ✓,
-`CalendarEntryResource.redateNeedsPreview` `backend/src/ApiResource/CalendarEntryResource.php:78`
+Last verified @ 2026-09-25 (**rotation de fraîcheur**, `documentation-update`, PR B du chantier DA
+« en-tête marque produit + favicon » — zone non touchée par cette PR). Re-vérifié contre le code,
+tout juste : les neuf repères déjà cités tiennent encore — `RedatePreviewController`
+(`backend/src/Controller/RedatePreviewController.php:36`) ✓, `SplitMotherRedatePlanner`
+(`backend/src/Service/SplitMotherRedatePlanner.php:41`) ✓, `CalendarEntryRedatability::
+redateNeedsPreview` (`backend/src/Service/CalendarEntryRedatability.php:68`) ✓,
+`CalendarEntryResource.$redateNeedsPreview` (`backend/src/ApiResource/CalendarEntryResource.php:78`)
 ✓, `CalendarEntryStateProcessor::assertValidWeekChild`
-`backend/src/State/Processor/CalendarEntryStateProcessor.php:673` ✓, `segmentsFromOffer`
-`frontend/src/features/cockpit/lib/date.ts:231` ✓) ; trois de plus confrontés cette passe : la
-route `POST /api/schedule_plans/{id}/transcribe-from-socle` (§2 « Naissance de la V1 »)
-existe toujours (`TranscribePeriodPlanController.php:52`), `POST /api/schedules/{id}/fill`
-(§2 « Combler automatiquement ») aussi (`FillPeriodPlanController.php:75`), et `ensurePeriodPlanId`
-(§E6 « le TITRE de son entrée ») est toujours la source unique du nom de plan de période
-(`SchedulePlanProvisioner.php:780`). Rien de faux trouvé cette passe. Reste du fichier (E1-E6,
+(`backend/src/State/Processor/CalendarEntryStateProcessor.php:673`) ✓, `segmentsFromOffer`
+(`frontend/src/features/cockpit/lib/date.ts:231`) ✓, la route
+`POST /api/schedule_plans/{id}/transcribe-from-socle` (`TranscribePeriodPlanController.php:52`) ✓,
+`POST /api/schedules/{id}/fill` (`FillPeriodPlanController.php:75`) ✓, `ensurePeriodPlanId`
+(`SchedulePlanProvisioner.php:780`) ✓. Rien de faux trouvé cette passe. Reste du fichier (E1-E6,
 D1-D10bis, historique des décisions) non re-confronté ligne à ligne cette passe.
 
 > **Rôle de ce document** : la trace durable du modèle métier des plannings, validé avec le

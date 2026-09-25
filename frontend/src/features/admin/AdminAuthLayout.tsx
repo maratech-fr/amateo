@@ -1,7 +1,7 @@
 import { ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { PRODUCT_NAME } from "@/shared/lib/product";
+import { BrandMark } from "@/shared/components/ui/brand-mark";
 
 interface AdminAuthLayoutProps {
   title: string;
@@ -21,7 +21,9 @@ export function AdminAuthLayout({ title, description, children }: AdminAuthLayou
               <ShieldCheck className="size-5" aria-hidden="true" />
             </div>
             <div>
-              <p className="text-sm font-semibold tracking-wide text-white">{PRODUCT_NAME}</p>
+              {/* « amat » hérite du blanc de la console (20:1 sur le fond ardoise) ; « eo » teal
+                  y tient 7,67:1 — au-dessus du seuil texte, et logotype de toute façon. */}
+              <BrandMark size="md" className="text-white" />
               <p className="text-xs uppercase tracking-[0.22em] text-console-text-dim">Console sécurisée</p>
             </div>
           </div>
