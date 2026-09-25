@@ -53,6 +53,8 @@
     .logotype { display: inline-flex; align-items: center; text-decoration: none; }
     .brand-logo { height: 34px; width: auto; display: block; }
     .brand-logo--footer { height: 18px; vertical-align: -3px; }
+    /* Repli texte si config.js n'expose pas `logo` (ex. ancien script en cache) — jamais d'image cassée */
+    .logotype .brand-fallback { font-family: var(--display); font-size: 22px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); }
     nav.top { display: flex; gap: 22px; align-items: center; font-size: 15px; }
     nav.top a { color: var(--ink-2); text-decoration: none; }
     nav.top a:hover { color: var(--ink); }
@@ -179,7 +181,7 @@
 
 <header class="site">
   <div class="wrap">
-    <a class="logotype" href="#" data-brand-label><img class="brand-logo" data-brand-logo alt="" width="878" height="226" /></a>
+    <a class="logotype" href="#" data-brand-label><img class="brand-logo" data-brand-logo alt="" width="878" height="226" /><span class="brand brand-fallback" hidden></span></a>
     <nav class="top" aria-label="Navigation principale">
       <a href="#fonctionnement">Comment ça marche</a>
       <a href="#offres">Offres</a>
@@ -440,19 +442,33 @@
 
 <footer class="site">
   <div class="wrap">
-    <span><img class="brand-logo brand-logo--footer" data-brand-logo data-brand-alt alt="" width="878" height="226" /> — le planning des clubs de basket. Actuellement en bêta avec des clubs pilotes.</span>
+    <span><img class="brand-logo brand-logo--footer" data-brand-logo data-brand-alt alt="" width="878" height="226" /><span class="brand brand-fallback" hidden></span> — le planning des clubs de basket. Actuellement en bêta avec des clubs pilotes.</span>
     <span><a data-cta="demo-inline" href="#">Contact</a></span>
   </div>
 </footer>
 
-<script src="config.js"></script>
+<!-- ?v=… : cache-bust de config.js. Caddy file_server (comme le serveur Python de relecture)
+     n'envoie pas de Cache-Control → un ancien config.js pouvait rester en cache avec un index.html
+     neuf. Bumper cette date À CHAQUE ajout/retrait de clé dans config.js (cf. commentaire là-bas). -->
+<script src="config.js?v=2026-09-25"></script>
 <script>
   // Le nom et les liens sont injectés depuis config.js — UNE source.
   (function () {
     const { brand, appUrl, contactEmail, logo } = window.LANDING_CONFIG;
     document.title = brand + " — " + document.title;
     document.querySelectorAll(".brand").forEach((el) => { el.textContent = brand; });
-    document.querySelectorAll("[data-brand-logo]").forEach((img) => { img.src = logo; });
+    // Injection défensive : si `logo` manque (ex. ancien config.js en cache sans la clé),
+    // on ne pose PAS de src — on retire l'image et on révèle le repli texte (le nom, depuis
+    // la config, jamais dupliqué en dur), pour ne jamais afficher une image cassée.
+    document.querySelectorAll("[data-brand-logo]").forEach((img) => {
+      if (logo) {
+        img.src = logo;
+      } else {
+        const fb = img.parentElement.querySelector(".brand-fallback");
+        if (fb) { fb.hidden = false; }
+        img.remove();  // retiré du DOM : `.brand-logo{display:block}` couvrirait `[hidden]`, laissant une boîte vide
+      }
+    });
     document.querySelectorAll("[data-brand-label]").forEach((el) => { el.setAttribute("aria-label", brand); });
     document.querySelectorAll("[data-brand-alt]").forEach((el) => { el.setAttribute("alt", brand); });
     const mailto = "mailto:" + contactEmail
