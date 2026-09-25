@@ -70,14 +70,14 @@ function contrastRatio(a: string, b: string): number {
 }
 
 /**
- * Surfaces du thème, en sRGB, converties des oklch de `src/index.css` (bloc `:root` clair, bloc
- * `.dark`) — à garder synchronisées avec ce fichier :
- *   clair  : --background oklch(0.99 0 0) → #fcfcfc ; --card oklch(1 0 0) → #ffffff
- *   sombre : --background oklch(0.19 0.01 260) → #111418 ; --card oklch(0.23 0.01 260) → #1a1d22
+ * Surfaces du thème, en sRGB, converties des oklch/hex de `src/index.css` (bloc `:root` clair, bloc
+ * `.dark`) — à garder synchronisées avec ce fichier (base CHAUDE, DA « base chaude + accent produit ») :
+ *   clair  : --background #faf9f7 ; --card #ffffff
+ *   sombre : --background oklch(0.19 0.006 75) → #151311 ; --card oklch(0.23 0.006 75) → #1f1d1a
  */
 const SURFACES: Record<"dark" | "light", { bg: string; card: string }> = {
-  light: { bg: "#fcfcfc", card: "#ffffff" },
-  dark: { bg: "#111418", card: "#1a1d22" },
+  light: { bg: "#faf9f7", card: "#ffffff" },
+  dark: { bg: "#151311", card: "#1f1d1a" },
 };
 
 const AA = 4.5; // WCAG 1.4.3 — texte normal

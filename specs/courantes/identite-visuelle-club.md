@@ -1,11 +1,12 @@
 # Identité visuelle par club (logo + couleur d'accent)
 
-Last verified @ 2026-09-24 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
-cette PR — lot P4-253, reprise réseau Dockerfile). Re-vérifié contre le code :
+Last verified @ 2026-09-25 (`documentation-update`, PR A du chantier DA « base chaude + accent
+produit »). Re-vérifié contre le code :
 `Club.logoUrl`/`accentColor`/`accentColorDark`/`accentPalette` toujours dans l'entité
 (`backend/src/Entity/Club.php:138-154`) ✓, `PATCH /api/club/appearance`
 (`ClubAppearanceController::__invoke`, `:34`) ✓, `GenerationWaiting.tsx` ne porte toujours aucune
-prop `logoUrl`/`initial` (zéro hit) ✓. L'historique vit dans git :
+prop `logoUrl`/`initial` (zéro hit) ✓, `useApplyClubTheme.ts` — le repli d'un club SANS couleur
+n'est plus les jetons statiques d'`index.css` (voir ci-dessous). L'historique vit dans git :
 `git log -p --follow specs/courantes/identite-visuelle-club.md`)
 
 > **LIVRÉ (2026-07-02)** — accent par club + logo + extraction 3 couleurs + écran « Gestion du club ». Détail livré ci-dessous ; ce qui reste ⬜ est du confort (voir « Questions ouvertes »).
@@ -20,7 +21,7 @@ prop `logoUrl`/`initial` (zéro hit) ✓. L'historique vit dans git :
 
 ## Réfs (à jour)
 
-- Application de l'accent : `frontend/src/shared/hooks/useApplyClubTheme.ts` (lit `accentColor` / `accentColorDark` / `accentPalette` depuis `/api/me`, dérive `--accent-foreground` en AA).
+- Application de l'accent : `frontend/src/shared/hooks/useApplyClubTheme.ts` (lit `accentColor` / `accentColorDark` / `accentPalette` depuis `/api/me`, dérive `--accent-foreground` en AA). **Un club SANS couleur ne retombe plus sur des jetons CSS statiques indépendants** : il dérive l'accent PRODUIT (`PRODUCT_ACCENT`, `shared/lib/product.ts`) par la MÊME voie qu'un accent de club — détail, table des jetons et garde de parité : [`identite-visuelle-produit.md`](identite-visuelle-produit.md).
 - Design tokens : `frontend/src/index.css` (`@theme`, slots `--accent`).
 - Mode clair/sombre : `frontend/src/shared/stores/themeStore.ts` (+ slot `accent`).
 - **Pré-paint du thème** : `frontend/src/main.tsx` (`readPersistedThemeMode`) pose la classe `.dark` **avant** le premier rendu React. Sans lui, l'arbre se rend en clair puis un effet bascule : flash du mauvais thème **et** animation `transition-colors` qui laisse les surfaces à des couleurs intermédiaires **sub-AA** (A11Y-06).

@@ -7,13 +7,13 @@ const contrast = (a: string, b: string): number => {
   return (hi + 0.05) / (lo + 0.05);
 };
 
-// Surfaces du thème, en sRGB, converties des oklch de `src/index.css` (bloc `:root` clair,
-// bloc `.dark`) — la MÊME conversion Björn Ottosson que le test e2e mesure au canvas.
-//   clair : --background oklch(0.99 0 0) → #fcfcfc ; --card oklch(1 0 0) → #ffffff
-//   sombre : --background oklch(0.19 0.01 260) → #111418 ; --card oklch(0.23 0.01 260) → #1a1d22
+// Surfaces du thème, en sRGB, converties des oklch/hex de `src/index.css` (bloc `:root` clair,
+// bloc `.dark`) — la MÊME conversion Björn Ottosson que le test e2e mesure au canvas (base CHAUDE).
+//   clair : --background #faf9f7 ; --card #ffffff
+//   sombre : --background oklch(0.19 0.006 75) → #151311 ; --card oklch(0.23 0.006 75) → #1f1d1a
 const SURFACES = {
-  light: { bg: "#fcfcfc", card: "#ffffff" },
-  dark: { bg: "#111418", card: "#1a1d22" },
+  light: { bg: "#faf9f7", card: "#ffffff" },
+  dark: { bg: "#151311", card: "#1f1d1a" },
 } as const;
 
 describe("readableForeground", () => {

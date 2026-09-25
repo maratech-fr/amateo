@@ -65,7 +65,11 @@ paths:
   « Problème de connexion ») — consommée par `TeamsImportModal.tsx` et `ImportFbiDialog.tsx` ;
   **couleurs/espacements** = tokens du thème (`text-warning`,
   `text-muted-foreground`, `bg-muted`, `border-border`…), **jamais un `#hex`** ni une classe sans
-  jeton (`text-warning-foreground` était un no-op, P4-130). Recoder à la main un spinner nu, un
+  jeton (`text-warning-foreground` était un no-op, P4-130). `PRODUCT_ACCENT` (`shared/lib/product.ts`)
+  est la SEULE maison d'un hex d'accent produit ; les valeurs statiques d'accent d'`index.css` sont
+  la sortie EXACTE de sa dérivation, gardée par `src/test/accentTokenParity.test.ts` — **on ne les
+  édite jamais à la main, on les recalcule** (`specs/courantes/identite-visuelle-produit.md`).
+  Recoder à la main un spinner nu, un
   encart d'erreur, une pastille inline **là où la primitive existe** = incohérence UX (« même
   chose, au même endroit, de la même façon » — famille UXC de l'audit). Cas fondateur du
   **2026-08-28** : `MatchesPage` rendait un `<Spinner>` nu dans un `py-16` (demi-page) là où ses

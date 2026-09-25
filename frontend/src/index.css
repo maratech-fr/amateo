@@ -3,31 +3,39 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Design tokens — neutral dark/light base + a single club `--accent` slot.
- * The accent drives primary/active/highlight only; base surfaces + text stay
- * neutral and AA-contrasted. `--accent` is overridden per club later (logo
- * extraction), never the base colors. No tailwind.config.js, no @apply.
+ * Design tokens — base CHAUDE clair/sombre (papier `#faf9f7` / encre chaude `#464646` en clair,
+ * échelle de gris chauds en sombre) partagée PAR CONVENTION avec la vitrine (`landing/`, jamais
+ * importée) + un seul emplacement `--accent`. Accent PAR DÉFAUT = le teal PRODUIT (`PRODUCT_ACCENT`
+ * `#46AFAC`) ; la valeur statique ci-dessous EST la sortie EXACTE de `accentForMode`/
+ * `accentHoverForMode` sur lui (gardé par `accentTokenParity`, calculé en node depuis `color.ts`).
+ * `--accent` est surchargé par club via `useApplyClubTheme` (un club qui a sa couleur la garde ;
+ * un club sans couleur dérive le MÊME teal). No tailwind.config.js, no @apply.
  */
 :root {
   --radius: 0.625rem;
 
-  --background: oklch(0.99 0 0);
-  --foreground: oklch(0.21 0.01 260);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.21 0.01 260);
-  --muted: oklch(0.96 0.005 260);
-  --muted-foreground: oklch(0.5 0.02 260);
-  --border: oklch(0.91 0.005 260);
-  --input: oklch(0.91 0.005 260);
+  /* Base chaude (encre `#464646` = le gris du mot « amat » du logo ; papier/surface/ligne/muted =
+     jetons de la vitrine, dupliqués par convention). foreground 8,97:1 sur bg / 9,44:1 sur card. */
+  --background: #faf9f7;
+  --foreground: #464646;
+  --card: #ffffff;
+  --card-foreground: #464646;
+  --muted: oklch(0.965 0.004 80); /* ≈ #f5f3f0 — surface chaude atténuée */
+  --muted-foreground: #6d675d; /* 5,32:1 sur bg · 5,60:1 sur card · 5,06:1 sur muted */
+  --border: #e7e3dc;
+  --input: #e7e3dc;
 
-  /* club accent (default neutral blue-ish; replaced per club) */
-  --accent: oklch(0.55 0.16 255);
-  --accent-foreground: oklch(0.99 0 0);
+  /* Accent PRODUIT par défaut (teal), remplacé par club via `useApplyClubTheme`.
+     = accentForMode(PRODUCT_ACCENT, "light") — assombri pour clearer AA sur papier ET card
+     (4,77:1 / 5,02:1). */
+  --accent: #317a77;
+  /* = readableForeground(#317a77) — blanc sur le teal clair (5,02:1). */
+  --accent-foreground: #ffffff;
   /* Survol du bouton accent (jamais `opacity-90`, qui cassait AA en clair — le fond s'éclaircissait
      vers la surface, le texte blanc non). Teinte ASSOMBRIE, contraste préservé. Défaut CALCULÉ par
-     `accentHoverForMode(#2171cc,"light")` = sRGB de l'accent par défaut ci-dessus (blanc-sur-survol
-     5,25:1). Surchargé par club via `useApplyClubTheme`. */
-  --accent-hover: #206cc4;
+     `accentHoverForMode(accentForMode(PRODUCT_ACCENT,"light"),"light")` = sRGB de l'accent par défaut
+     ci-dessus (blanc-sur-survol 5,37:1). Surchargé par club via `useApplyClubTheme`. */
+  --accent-hover: #2f7572;
 
   /* Assombri de L 0,58 → 0,50 (P4-181) : `text-destructive` vit en TEXTE sur des teintes
      `bg-destructive/10|15` (badges de contrainte, jour férié, jour sélectionné, alerte de
@@ -61,25 +69,27 @@
 }
 
 .dark {
-  --background: oklch(0.19 0.01 260);
-  --foreground: oklch(0.96 0.005 260);
-  --card: oklch(0.23 0.01 260);
-  --card-foreground: oklch(0.96 0.005 260);
-  --muted: oklch(0.27 0.01 260);
-  --muted-foreground: oklch(0.68 0.02 260);
-  --border: oklch(0.31 0.01 260);
-  --input: oklch(0.31 0.01 260);
+  /* Base chaude en sombre : TRANSLATION de teinte (260 → 75) des mêmes L et chroma qu'avant,
+     pas une nouvelle échelle. --background ≈ #151311, --card ≈ #1f1d1a (cf. SURFACES de color.ts). */
+  --background: oklch(0.19 0.006 75);
+  --foreground: oklch(0.96 0.004 75);
+  --card: oklch(0.23 0.006 75);
+  --card-foreground: oklch(0.96 0.004 75);
+  --muted: oklch(0.27 0.006 75);
+  --muted-foreground: oklch(0.68 0.015 75);
+  --border: oklch(0.31 0.006 75);
+  --input: oklch(0.31 0.006 75);
 
-  /* Brighter accent (dark themes lift accents anyway): `text-accent` links gain
-     contrast on the dark bg, and the button pairs it with a dark foreground so
-     both roles clear AA — a mid-blue (0.62) capped the button near 3.6:1 with
-     any single foreground (A11Y-06, WCAG 1.4.3). */
-  --accent: oklch(0.72 0.15 255);
-  --accent-foreground: oklch(0.17 0.02 260);
+  /* Accent PRODUIT par défaut en sombre = accentForMode(PRODUCT_ACCENT, "dark") = `#46AFAC` tel
+     quel (il cleare déjà AA : 7,05:1 sur bg, 6,40:1 sur card). Remplacé par club via
+     `useApplyClubTheme`. */
+  --accent: #46afac;
+  /* = readableForeground(#46afac) — texte NOIR sur le teal (7,99:1). */
+  --accent-foreground: #000000;
   /* Survol accent en sombre : teinte ÉCLAIRCIE (le sens qui MONTE le contraste avec le texte
-     sombre). Défaut CALCULÉ par `accentHoverForMode(#5fa7ff,"dark")` = sRGB de l'accent sombre
-     ci-dessus (texte-sur-survol 8,8:1). Surchargé par club via `useApplyClubTheme`. */
-  --accent-hover: #65abff;
+     sombre). Défaut CALCULÉ par `accentHoverForMode(accentForMode(PRODUCT_ACCENT,"dark"),"dark")`
+     = sRGB de l'accent sombre ci-dessus (texte-sur-survol 8,30:1). Surchargé par club via `useApplyClubTheme`. */
+  --accent-hover: #4db2af;
 
   /* Remonté de L 0.62 → 0.66 (P4-179) puis → 0.72 (P4-181) : le fond rouge sombre s'éclaire
      assez pour porter un TEXTE SOMBRE (`--destructive-foreground`) à ≥ AA (6,45:1), et
@@ -88,16 +98,16 @@
      sur background). Paires gardées en dur par `a11y-contrast.spec.ts`, deux thèmes. */
   --destructive: oklch(0.72 0.21 27);
   /* Texte sombre sur le rouge clair du bouton `destructive` en thème sombre (le blanc y tombait
-     sous AA — P4-179). Même valeur que `--accent-foreground` sombre. */
-  --destructive-foreground: oklch(0.17 0.02 260);
+     sous AA — P4-179). Teinte CHAUDE (75) comme la base sombre — 6,47:1 sur `--destructive`. */
+  --destructive-foreground: oklch(0.17 0.02 75);
 
   --warning: oklch(0.83 0.15 78);
   --success: oklch(0.76 0.16 163);
 
   /* --diff : violet clair sur fond sombre (même rôle « écart au socle ») ; le foreground
-     redevient sombre pour tenir le contraste sur la pastille. */
+     redevient sombre (teinte CHAUDE 75 comme la base) pour tenir le contraste sur la pastille (8,92:1). */
   --diff: oklch(0.78 0.16 305);
-  --diff-foreground: oklch(0.17 0.02 260);
+  --diff-foreground: oklch(0.17 0.02 75);
 
   --ring: var(--accent);
 }
