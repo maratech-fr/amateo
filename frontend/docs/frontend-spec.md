@@ -4,20 +4,12 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-09-24 (lot « les trois décisions produit » — la ligne route `/matchs` recalée :
-l'index est désormais la route d'atterrissage conditionnelle `MatchesLanding.tsx` (UXS-07), et le
-statut `UNPLACED` se dit « Sans créneau » (UXC-24) ; vérifié contre `frontend/src/app/routes.tsx`,
-`frontend/src/features/matches/MatchesLanding.tsx` et `.../lib/fixtureStatusLabel.ts`. Passe
-précédente `documentation-update`, P4-255 PR 2 — le filet posé avant la refonte du
-surlignage a révélé qu'une case OCCUPÉE ciblée ne porte AUCUN anneau, contrairement à une case VIDE
-ciblée : §6.2 « Priorités visuelles » gagne la précision, vérifiée contre
-`frontend/src/features/planning/WeekGrid.tsx` (`dimmed`/`flagged`, lignes 295-300 et 462-485)).
-**Ajout du même jour (P4-255 PR 3)** : l'arborescence de `wizard/` recalée — `PeriodStructure.tsx`
-supprimé, remplacé par `PeriodTeams.tsx`/`PeriodVenues.tsx`/`PeriodConstraints.tsx`, vérifié contre
-`ls frontend/src/features/wizard/steps/`. Reste du fichier non re-sondé cette passe (dernière
-ronde : 2026-09-23, P4-95 lot 8 « diagnostics à coordonnées partielles », §6.2
-`diag-locked-person-*`/`diag-locked-team-day-*`) — historique :
-`git log -p --follow` ce fichier.
+Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement », 1/3 frontend —
+édition de POINTEUR seule). Les deux mentions `AddressGeocodeField`/`TeamSelect` (§6.6 ter, §10)
+pointaient vers `frontend/AGENTS.md` §Primitives, section désormais déplacée (primitives UI
+partagées, maison unique) : recalées vers [`frontend-components.md`](frontend-components.md) §3.
+Reste du fichier non re-sondé cette passe (dernière ronde : 2026-09-24, route `/matchs`/`WeekGrid`
+priorités visuelles/arborescence `wizard/`) — historique : `git log -p --follow` ce fichier.
 
 ## 1. Stack Decided
 
