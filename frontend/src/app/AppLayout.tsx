@@ -1,4 +1,4 @@
-import { CalendarCheck2, Flag, LogOut, Menu as MenuIcon, Moon, Settings, Sparkles, Sun, User, ShieldCheck } from "lucide-react";
+import { Flag, LogOut, Menu as MenuIcon, Moon, Settings, Sparkles, Sun, User, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { NavLink, Outlet, useNavigation } from "react-router";
 
@@ -6,6 +6,7 @@ import { useLogout } from "@/features/auth/queries";
 import { useMe } from "@/shared/session/queries";
 import { FeedbackDialog } from "@/features/feedback/FeedbackDialog";
 import { WhatsNewModal } from "@/features/release-notes/WhatsNewModal";
+import { BrandIcon } from "@/shared/components/ui/brand-icon";
 import { Button } from "@/shared/components/ui/button";
 import { Menu, MenuItem } from "@/shared/components/ui/menu";
 import { CreditBadge } from "@/shared/credits/CreditBadge";
@@ -50,15 +51,19 @@ export function AppLayout() {
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border">
         <div className="flex h-14 items-center justify-between gap-4 px-4 lg:px-6 xl:px-8">
-          {/* The club title IS the home link — everything else (planning,
-              assistant) is reached from the cockpit, not the top bar. */}
+          {/* L'en-tête = la marque PRODUIT, puis le club (décision fondateur DA) :
+              [icône Amateo] · [blason du club, s'il existe] NOM DU CLUB. L'icône produit
+              est TOUJOURS là ; le blason suit quand il existe ; le nom (club ou produit)
+              porte le sens accessible du lien d'accueil (icône + blason décoratifs). */}
           <div className="flex min-w-0 items-center gap-2">
-            <NavLink to="/" aria-label="Accueil" title="Retour à l'accueil (tableau de bord)" className="flex items-center gap-2 rounded-md transition-opacity hover:opacity-80">
-              {data?.club?.logoUrl ? (
-                <img src={data.club.logoUrl} alt="" className="size-6 rounded-full object-cover" />
-              ) : (
-                <CalendarCheck2 className="size-5 text-accent" />
-              )}
+            <NavLink
+              to="/"
+              aria-label={data?.club?.name ?? PRODUCT_NAME}
+              title="Retour à l'accueil (tableau de bord)"
+              className="flex min-w-0 items-center gap-2 rounded-md transition-opacity hover:opacity-80"
+            >
+              <BrandIcon className="size-6 shrink-0" />
+              {data?.club?.logoUrl ? <img src={data.club.logoUrl} alt="" className="size-6 shrink-0 rounded-full object-cover" /> : null}
               <span className="truncate text-sm font-semibold">{data?.club?.name ?? PRODUCT_NAME}</span>
             </NavLink>
             {import.meta.env.DEV ? <DevClock /> : null}

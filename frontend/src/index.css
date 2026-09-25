@@ -40,7 +40,7 @@
   /* Assombri de L 0,58 → 0,50 (P4-181) : `text-destructive` vit en TEXTE sur des teintes
      `bg-destructive/10|15` (badges de contrainte, jour férié, jour sélectionné, alerte de
      réservation) et y tombait sous AA en clair (3,98:1 sur /10, 3,77:1 sur /15 — mesuré canvas,
-     même méthode que `a11y-contrast.spec.ts`). À 0,50 : 5,17:1 (/10 sur background), 4,81:1
+     même méthode que `a11y-contrast.spec.ts`). À 0,50 : 5,05:1 (/10 sur background), 4,81:1
      (/15 sur card), le blanc du bouton monte à 6,21:1. Même recette que `--warning`/`--success`
      (A11Y-06) : on assombrit le jeton, jamais les sites. Paires gardées en dur par le spec. */
   --destructive: oklch(0.50 0.22 27);
