@@ -470,7 +470,7 @@ Le coach émet un **souhait**, le gestionnaire **arbitre et tranche** — le lie
 - **Push temps réel** Mercure (statut de génération) — **consommé par le front** (FRT-04) : un EventSource par session, cookie httpOnly borné au club, polling conservé en fallback. → [`mercure.md`](../../docs/security/mercure.md)
 - **Identité visuelle par club** : accent distinct clair/sombre + logo + palette extraite, contraste AA par thème.
   → [`identite-visuelle-club.md`](identite-visuelle-club.md)
-- **Identité visuelle produit** : base chaude (papier/encre/bordures partagées avec la vitrine par convention) + accent teal par défaut pour un club sans couleur, dérivé comme un club + en-tête/favicon de l'app portant la marque Amateo (`BrandIcon`), avant le blason du club.
+- **Identité visuelle produit** : base chaude (papier/encre/bordures partagées avec la vitrine par convention) + accent teal par défaut pour un club sans couleur, dérivé comme un club + en-tête/favicon de l'app portant la marque Amateo (`BrandIcon`), avant le blason du club + BrandMark sur login/système/admin.
   → [`identite-visuelle-produit.md`](identite-visuelle-produit.md)
 - **Fiche club** (`/club`) : lecture seule FFBB (identité, contact — refresh par « Actualiser depuis la
   FFBB ») à une exception, le **siège du club** (`PATCH /api/club/siege`, texte re-géocodé serveur),

@@ -1,15 +1,17 @@
 # Identité visuelle produit — la base est le produit, l'accent est le club
 
 Last verified @ 2026-09-25 (`documentation-update`, PR B du chantier DA « en-tête marque produit +
-favicon »). Confronté au code : `frontend/src/index.css` (blocs `:root`/`.dark`),
-`frontend/src/shared/lib/product.ts` (`PRODUCT_ACCENT`),
-`frontend/src/shared/hooks/useApplyClubTheme.ts`, `frontend/src/shared/lib/color.ts`
+favicon », complétée par le logo en remplacement du nom produit en texte). Confronté au code :
+`frontend/src/index.css` (blocs `:root`/`.dark`), `frontend/src/shared/lib/product.ts`
+(`PRODUCT_ACCENT`), `frontend/src/shared/hooks/useApplyClubTheme.ts`, `frontend/src/shared/lib/color.ts`
 (`SURFACES`/`accentForMode`/`accentHoverForMode`), `frontend/src/test/accentTokenParity.test.ts`,
 `frontend/src/features/club/ClubPage.tsx` (`DEFAULT_ACCENT`), `landing/index.html` (`--accent`) —
 PR A ; `frontend/src/shared/components/ui/brand-icon.tsx`, `frontend/src/app/AppLayout.tsx:58-68`,
-`frontend/public/favicon.svg` — PR B. Les ratios de contraste cités ont été recalculés
-indépendamment (conversion OKLCH → sRGB linéaire, WCAG 2.1) contre les fonds décrits ci-dessous,
-pas recopiés d'un commentaire.
+`frontend/public/favicon.svg`, `frontend/src/shared/components/ui/brand-mark.tsx`,
+`frontend/src/features/auth/AuthLayout.tsx`, `frontend/src/shared/components/ui/system-screen.tsx`,
+`frontend/src/features/admin/AdminAuthLayout.tsx` — PR B. Les ratios de contraste cités ont été
+recalculés indépendamment (conversion OKLCH → sRGB linéaire, WCAG 2.1) contre les fonds décrits
+ci-dessous, pas recopiés d'un commentaire.
 
 > Ce fichier est le pendant **PRODUIT** de [`identite-visuelle-club.md`](identite-visuelle-club.md)
 > (qui reste la maison du **CLUB** : logo, upload, palette extraite, écran « Gestion du club »).
@@ -137,6 +139,11 @@ ordre fixe — l'icône produit ne s'efface jamais devant celle d'un club.
   l'icône sur un onglet sombre comme clair. Même géométrie/couleurs que `BrandIcon`, recopiées dans
   le fichier SVG statique (pas de génération depuis le composant React — un favicon n'exécute pas
   de JS).
+- **`BrandMark`** (`frontend/src/shared/components/ui/brand-mark.tsx`) : les surfaces où le produit
+  se nomme comme MARQUE plutôt qu'en texte de phrase — login/inscription (`AuthLayout`), écrans
+  système (`system-screen`), console admin (`AdminAuthLayout`) — portent désormais le logo complet
+  (`BrandIcon` + le mot) au lieu du nom en texte nu ; statut **logotype**, exempté de WCAG 1.4.3 pour
+  le teal sur fond clair, au même titre que `BrandIcon`.
 
 ## Ce qui reste à venir
 

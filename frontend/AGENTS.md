@@ -480,6 +480,11 @@ product rules — reuse them instead of rolling your own:
   `frontend/public/favicon.svg`), decorative by default. Its stroke colours are hardcoded `#hex`
   literals **on purpose** — the one admitted exception to "never a `#hex`", because a logo's tones
   are fixed by definition, not a themeable token (`.claude/rules/frontend.md` carries the rule).
+- **`brand-mark`** (`BrandMark`) — the FULL logo (`BrandIcon` + the product word, two-tone, teal
+  hardcoded on the last two characters like `BrandIcon`), the single home wherever the product
+  names itself as a BRAND rather than in a sentence: `AuthLayout` (login/signup), `system-screen`,
+  `AdminAuthLayout`. `role="img"` container named `PRODUCT_NAME`, decorative `aria-hidden` visual —
+  a logotype, exempt from WCAG 1.4.3 like `BrandIcon`.
 
 ### `shared/lib/readState.ts` — the anti-"credible emptiness" rule
 
