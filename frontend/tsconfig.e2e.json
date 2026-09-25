@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.e2e.tsbuildinfo",
+    "target": "es2023",
+    // Les specs Playwright tournent dans Node MAIS pilotent un navigateur : elles
+    // touchent des types DOM (`ConsoleMessage`, `HTMLSelectElement`, `getComputedStyle`
+    // dans les `page.evaluate`) ET des modules Node (`node:fs`/`path`/`crypto`/…).
+    "lib": ["ES2023", "DOM"],
+    "module": "esnext",
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    /* Bundler mode — miroir de tsconfig.app.json */
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Path aliases — `system-scene.spec.ts` importe `../../src/...`, qui tire du code
+       app référencé en `@/` : sans ces alias, ces imports transitifs ne résolvent pas. */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "ignoreDeprecations": "6.0",
+
+    /* Linting — mêmes gardes que l'app */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  // `playwright.config.ts` n'était couvert par AUCUN projet (node.json n'inclut que
+  // vite.config.ts + tooling) : il entre ici, avec la suite e2e (P4-257).
+  "include": ["tests/e2e", "playwright.config.ts"]
+}
