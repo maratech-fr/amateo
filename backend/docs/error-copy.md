@@ -4,11 +4,12 @@
 > Pas d'inventaire ligne à ligne (il dériverait), pas de décompte (« N messages »).
 > Le code fait foi ; ce doc dit **comment décider**, pas **combien**.
 
-Last verified @ 2026-09-23 (rotation de fraîcheur `documentation-update`, P4-95 lot 8 « diagnostics
-à coordonnées partielles » — zone non touchée par cette PR, aucun message d'erreur backend
-modifié). Re-confronté au code : la règle « le corps du serveur ne parle qu'en deçà de 500 » tient
+Last verified @ 2026-09-25 (rotation de fraîcheur `documentation-update`, P3-7 PR-A — zone non
+touchée par cette PR : les 4 messages francisés de `FfbbExcelImporter`/`FbiFixtureImporter` de
+cette PR suivent déjà la règle ci-dessous, rien à cataloguer ligne à ligne ici par doctrine du
+fichier). Re-confronté au code : la règle « le corps du serveur ne parle qu'en deçà de 500 » tient
 toujours (`frontend/src/shared/lib/errorMessage.ts:32`, et le repli générique `if (status >= 500)`
-`:65` au-delà) ✓ (lignes inchangées) ; le rail 422 des state processors reste gardé par
+`:65` au-delà) ✓ ; le rail 422 des state processors reste gardé par
 `backend/tests/Unit/ValidationExceptionCarriesViolationsTest.php` ✓ ;
 `ConstraintStateProcessor::assertPreferredVenueIsNotMandatory`
 (`backend/src/State/Processor/ConstraintStateProcessor.php:174-186`) et

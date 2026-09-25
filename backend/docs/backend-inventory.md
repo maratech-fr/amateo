@@ -3,24 +3,21 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-09-24 (rotation de fraîcheur, `documentation-update` lot 7 PR C — ce fichier
-est backend, sans rapport avec le refactor hooks frontend de ce lot, donc rien à y recaler pour
-FRT-33). Re-confronté au code ce jour, ciblé sur la dernière passe de fond (2026-09-22, lot 4
-d'audit « un gros fichier FBI ne doit pas plier l'import », SEC-22 + BCK-31) : les trois
-constantes de `App\Service\XlsxUploadGuard` tiennent toujours — `MAX_UPLOAD_BYTES` 2 Mo,
-`MAX_INFLATED_BYTES` 20 Mo, `MAX_ROWS` 5 000 (`backend/src/Service/XlsxUploadGuard.php:36,39,42`)
-— et le limiteur `xlsx_import` existe toujours dans `backend/config/packages/rate_limiter.yaml`
-(prod/dev/test). Détail de la passe du 22 : les trois
-routes d'upload xlsx (§ « Import », `/api/clubs/{id}/import-teams` ; §3 « Module matchs »,
-`/api/fixtures/import` et `/api/fixtures/import/analyze`) portent ces bornes applicatives ; la
-borne inflate le zip au lieu de croire ses en-têtes, et laisse passer un non-zip (rien à borner)
-pour ne pas dupliquer la copie du filet P4-5. Le paragraphe « Sécurité / rate limiting » porte le
-limiteur `xlsx_import` (30/h prod · 300/h `when@dev` · 5/15 min `when@test`, par utilisateur,
-consommé APRÈS l'auth). Vérifié contre le code ce jour-là : `XlsxUploadGuard.php` (les trois
-constantes et le pass-through non-zip),
-`FixtureImportGate.php` (délégation + consommation du limiteur en fin de `gate()`),
-`ImportController.php`, `rate_limiter.yaml`. Reste du fichier non re-vérifié cette passe —
-historique des recalages précédents : `git log -p --follow` ce fichier. Un stamp REMPLACE,
+Last verified @ 2026-09-25 (`documentation-update`, P3-7 PR-A — import d'équipes analyse le
+fichier avant d'écrire). Re-confronté au code ce jour, ciblé sur le § « Import équipes » : la
+nouvelle route `POST /api/clubs/{id}/import-teams/analyze` (`ImportTeamsAnalyzeController.php`,
+dry-run, zéro écriture) et le champ `rows` de `POST /api/clubs/{id}/import-teams`
+(`ImportController::parseRows`, absent = tout importer) ; les deux endpoints partagent
+`TeamImportGate.php` (même séquence de refus que `FixtureImportGate`, **sans** `SocleGuard` —
+`TeamImportGate.php:29-32`) et consomment le limiteur `xlsx_import` un jeton par appel. Passe
+précédente (2026-09-22, lot 4 d'audit « un gros fichier FBI ne doit pas plier l'import », SEC-22 +
+BCK-31, non re-sondée en profondeur cette fois) : les trois constantes de `XlsxUploadGuard`
+tenaient — `MAX_UPLOAD_BYTES` 2 Mo, `MAX_INFLATED_BYTES` 20 Mo, `MAX_ROWS` 5 000
+(`backend/src/Service/XlsxUploadGuard.php:36,39,42`) — et le limiteur `xlsx_import` existe
+toujours dans `backend/config/packages/rate_limiter.yaml` (prod/dev/test), désormais consommé par
+**quatre** routes d'upload xlsx (les deux ci-dessus + `/api/fixtures/import` et
+`/api/fixtures/import/analyze`, § « Module matchs »). Reste du fichier non re-vérifié cette
+passe — historique des recalages précédents : `git log -p --follow` ce fichier. Un stamp REMPLACE,
 l'historique vit dans git.
 
 ---
@@ -105,7 +102,7 @@ Doctrine correspondantes vivent dans `backend/src/Entity/` et utilisent des UUID
 
 | # | Resource (shortName) | Endpoint | Description | Notes |
 |---|----------------------|---------|-------------|-------|
-| 1 | Club | `/api/clubs` | Clubs / organisations | Opération custom `POST /clubs/{id}/import-teams` |
+| 1 | Club | `/api/clubs` | Clubs / organisations | Opérations custom `POST /clubs/{id}/import-teams` et `POST /clubs/{id}/import-teams/analyze` (P3-7 PR-A) |
 | 2 | Season | `/api/seasons` | Saisons sportives | |
 | 3 | Team | `/api/teams` | Équipes (catégorie, priorité, créneaux) | |
 | 4 | Venue | `/api/venues` | Salles / lieux de pratique | `address` (P2-53 RMM-8, nullable) — l'adresse saisie qu'on géocode en `latitude`/`longitude` via `GET /api/geocode` (§3) ; `externalLabels` (P4-187a, lecture seule, jamais écrit par `PUT` — libellés FBI/FFBB confirmés, écrits par `POST /api/venues/{id}/external-labels`, §3) |
@@ -470,9 +467,20 @@ API Platform normale — voir la ligne `VenueTravelRuleSetting` du tableau §2, 
 
 ### Import équipes
 
+Les deux routes ci-dessous partagent **`TeamImportGate`** (`backend/src/Service/TeamImportGate.php`) —
+même séquence de refus que `FixtureImportGate` (404 membership absente → 403 non-gestion → 409
+saison archivée → 429 limiteur `xlsx_import` → bornes `XlsxUploadGuard` → `seasonId` body ⇄
+`X-Season-Id`), **byte-identique entre les deux endpoints**. ⚠ **Elle NE porte PAS de
+`SocleGuard`, à la différence de `FixtureImportGate`** (import de rencontres) : importer les
+équipes d'un club est un geste d'ONBOARDING, il arrive AVANT qu'aucun socle n'existe — exiger un
+socle en vigueur y renverrait 409 sur le cas même que la route sert (décision de conception,
+`TeamImportGate.php:29-32`, trace `etat-des-lieux.md` §2). Chaque flux (analyse **puis** import)
+consomme le limiteur `xlsx_import` **deux fois** (un jeton par appel `gate()`), pas une.
+
 | Route | Méthode | Contrôleur | Description |
 |-------|---------|------------|-------------|
-| `/api/clubs/{id}/import-teams` | POST | `ImportController` | Importe un fichier `.xlsx` (Excel) pour un club et une saison donnés. Body multipart : `file` (.xlsx), `seasonId`. Délègue à `FfbbExcelImporter`. Retourne 200 avec `created`, `skipped`, `errors`. **SEC-22 (2026-09-22)** : bornes d'upload posées par la maison unique `XlsxUploadGuard` — 2 Mo d'octets · 20 Mo cumulés une fois DÉCOMPRESSÉ · 5 000 lignes, refus **413** nommant le chiffre dépassé. La borne n'accorde aucune confiance aux en-têtes : elle inflate le zip avec un compteur borné et compte les `<row` du flux, jamais les tailles déclarées ni le `<dimension ref>` (qui peut mentir). Un fichier qui n'est pas un zip lisible n'est PAS refusé ici (rien à inflater) : il part au parseur en aval, dont le filet générique P4-5 rend 422 sans fuite. Limiteur `xlsx_import` (30/h par utilisateur) consommé APRÈS l'auth, pour qu'un refus d'accès ne dépense pas le budget d'import. |
+| `/api/clubs/{id}/import-teams/analyze` | POST | `ImportTeamsAnalyzeController` | **Dry-run (P3-7 PR-A, 2026-09-25)** : mêmes body/gate que l'import, ZÉRO écriture. Délègue à `FfbbExcelImporter::analyze()`, qui rend `{rows:[{row, name, category, number, alreadyPresent}], errors, total}` — `row` = n° de ligne EXCEL (`rowIndex + 2`), `alreadyPresent` = le nom est déjà présent (club + saison courante, comparaison casse-insensible) **ou** déjà vu plus haut dans CE fichier (doublon interne). Mêmes refus métier que l'import : colonnes manquantes → 400, fichier d'un autre club (code Organisme ≠ code du club) → 422 dès l'analyse, rien créé. |
+| `/api/clubs/{id}/import-teams` | POST | `ImportController` | Importe un fichier `.xlsx` (Excel) pour un club et une saison donnés. Body multipart : `file` (.xlsx), `seasonId`, et depuis **P3-7 PR-A** un champ optionnel **`rows`** — liste JSON de numéros de ligne Excel (`ImportController::parseRows`) ; **absent = tout importer** (comportement historique conservé). Délègue à `FfbbExcelImporter::import()` (`?array $selectedRows` filtré en TÊTE de boucle — une ligne non cochée n'est ni comptée ni soumise au contrôle de code club). Retourne 200 avec `created`, `skipped`, `errors`. **SEC-22 (2026-09-22)** : bornes d'upload posées par la maison unique `XlsxUploadGuard` — 2 Mo d'octets · 20 Mo cumulés une fois DÉCOMPRESSÉ · 5 000 lignes, refus **413** nommant le chiffre dépassé. La borne n'accorde aucune confiance aux en-têtes : elle inflate le zip avec un compteur borné et compte les `<row` du flux, jamais les tailles déclarées ni le `<dimension ref>` (qui peut mentir). Un fichier qui n'est pas un zip lisible n'est PAS refusé ici (rien à inflater) : il part au parseur en aval, dont le filet générique P4-5 rend 422 sans fuite. Limiteur `xlsx_import` (30/h par utilisateur) consommé APRÈS l'auth, pour qu'un refus d'accès ne dépense pas le budget d'import. |
 
 ### Reset saison
 
@@ -691,8 +699,9 @@ Le firewall `login` applique en plus `login_throttling` (`max_attempts: 5`) ; `/
 sliding window 300/min en prod ; **3000/min en `when@dev`** depuis le 2026-09-08, parce que la suite e2e joue tout le club
 sous un seul utilisateur dans la même minute — `rate_limiter.yaml`) via `ApiRateLimitSubscriber` (priorité 6, après firewall + tenant) → 429
 au-delà ; les endpoints publics (sans `User`) gardent leur limiteur par IP.
-**SEC-22 (2026-09-22)** : les trois routes d'upload xlsx (`/api/fixtures/import`, `/api/fixtures/import/analyze`,
-`/api/clubs/{id}/import-teams`) portent en plus le limiteur `xlsx_import` **par utilisateur** — 30/h en prod,
+**SEC-22 (2026-09-22)** : les quatre routes d'upload xlsx (`/api/fixtures/import`, `/api/fixtures/import/analyze`,
+`/api/clubs/{id}/import-teams`, `/api/clubs/{id}/import-teams/analyze` — cette dernière depuis P3-7 PR-A,
+2026-09-25) portent en plus le limiteur `xlsx_import` **par utilisateur** — 30/h en prod,
 **300/h en `when@dev`** (Behat et e2e rejouent des imports en rafale), 5/15 min en `when@test` (le 429 se prouve
 en 6 requêtes). Il est consommé APRÈS l'auth : un 403/404/409 ne dépense pas le budget.
 
@@ -733,7 +742,8 @@ superadmin n'a pas de tenant, §3 :
 
 **Accès API (SEC-01/02/04)** : `Club` GetCollection/Get/Put scopés aux memberships actifs
 (Post/Delete retirés) ; `User` self-only (Get/Put ; pas de collection ni Delete) ;
-`import-teams` requiert un membership admin sur le club du path. Gardé par
+`import-teams`/`import-teams/analyze` requièrent un membership de gestion sur le club du path
+(`ClubUserRepository::isManagementRole`, `TeamImportGate::gate`). Gardé par
 `ClubAccessTest`/`UserSelfOnlyTest`/`ImportAuthorizationTest`/`RlsIsolationTest` (blocking-tests).
 
 ---
