@@ -28,9 +28,12 @@ final class FfbbExcelImporter
     ) {}
 
     /**
+     * @param list<int>|null $selectedRows numéros de ligne Excel à importer (P3-7) ;
+     *                                     null = tout importer (comportement historique)
+     *
      * @return array{created: int, skipped: int, errors: list<string>}
      */
-    public function import(string $filePath, string $clubId, string $seasonId): array
+    public function import(string $filePath, string $clubId, string $seasonId, ?array $selectedRows = null): array
     {
         $club = $this->entityManager->getRepository(Club::class)->find($clubId);
         if (!$club instanceof Club) {
@@ -51,15 +54,20 @@ final class FfbbExcelImporter
         $rows = $worksheet->toArray();
 
         if ([] === $rows || $this->isEmptyRow($rows[0] ?? [])) {
-            return ['created' => 0, 'skipped' => 0, 'errors' => ['Excel file is empty.']];
+            return ['created' => 0, 'skipped' => 0, 'errors' => ['Le fichier est vide.']];
         }
 
         $header = array_shift($rows);
         $columnMap = $this->buildColumnMap($header);
 
         if (!isset($columnMap['nom'], $columnMap['catégorie'], $columnMap['numéro'], $columnMap['organisme'])) {
-            throw ImportRejectedException::badRequest('Required columns missing: Nom, Catégorie, Numéro, Organisme.');
+            throw ImportRejectedException::badRequest('Colonnes requises manquantes : Nom, Catégorie, Numéro, Organisme.');
         }
+
+        // P3-7 — la sélection est un ensemble de numéros de ligne Excel (rowIndex + 2).
+        // Une ligne non cochée est ignorée AVANT tout contrôle : ni comptée, ni soumise
+        // au code club (un code étranger sur une ligne non cochée ne fait rien).
+        $selectedSet = null === $selectedRows ? null : array_fill_keys($selectedRows, true);
 
         $sport = $this->findDefaultSport();
         if (!$sport instanceof Sport) {
@@ -89,6 +97,10 @@ final class FfbbExcelImporter
         }
 
         foreach ($rows as $rowIndex => $row) {
+            if (null !== $selectedSet && !isset($selectedSet[$rowIndex + 2])) {
+                continue;
+            }
+
             /** @var array<mixed> $row */
             $nom = $this->stringValue($row[$columnMap['nom']] ?? null);
             $categorie = $this->stringValue($row[$columnMap['catégorie']] ?? null);
@@ -101,14 +113,14 @@ final class FfbbExcelImporter
 
             $extractedClubCode = $this->extractClubCode($organisme);
             if (null === $extractedClubCode) {
-                $errors[] = \sprintf('Row %d: unable to extract club code from Organisme.', $rowIndex + 2);
+                $errors[] = \sprintf('Ligne %d : impossible de lire le code club dans la colonne Organisme.', $rowIndex + 2);
                 continue;
             }
 
             if ($extractedClubCode !== $expectedClubCode) {
                 // Règle métier relayée telle quelle : les deux codes viennent du club
                 // appelant et du fichier qu'il vient lui-même de déposer — rien d'un tiers.
-                throw ImportRejectedException::unprocessable(\sprintf('Identity theft prevention: extracted club code "%s" does not match club code "%s".', $extractedClubCode, $expectedClubCode));
+                throw ImportRejectedException::unprocessable(\sprintf('Ce fichier appartient à un autre club (code %s, le vôtre est %s).', $extractedClubCode, $expectedClubCode));
             }
 
             $nameKey = mb_strtolower($nom, 'UTF-8');
@@ -155,6 +167,98 @@ final class FfbbExcelImporter
         $this->entityManager->flush();
 
         return ['created' => $created, 'skipped' => $skipped, 'errors' => $errors];
+    }
+
+    /**
+     * P3-7 — Dry-run : lit le fichier et rend, pour CHAQUE ligne d'équipe, si son
+     * nom est DÉJÀ présent (club + saison, casse-insensible) ou déjà vu plus haut
+     * dans le fichier — sans RIEN écrire. Le gestionnaire choisit alors les lignes
+     * à importer et évite les doublons. Mêmes refus métier que `import()` : code
+     * club étranger → 422 ; colonnes manquantes → 400 ; fichier vide → erreur.
+     *
+     * @return array{
+     *     rows: list<array{row: int, name: string, category: string, number: string, alreadyPresent: bool}>,
+     *     errors: list<string>,
+     *     total: int
+     * }
+     */
+    public function analyze(string $filePath, string $clubId, string $seasonId): array
+    {
+        $club = $this->entityManager->getRepository(Club::class)->find($clubId);
+        if (!$club instanceof Club) {
+            throw ImportRejectedException::badRequest('Club not found.');
+        }
+
+        $expectedClubCode = $club->getFfbbClubCode();
+        if (null === $expectedClubCode || '' === $expectedClubCode) {
+            throw ImportRejectedException::badRequest('Club does not have an FFBB club code configured.');
+        }
+
+        // Lecteur épinglé à Xlsx (comme import()) : un HTML/CSV/XML déguisé ne doit
+        // jamais atteindre un autre lecteur (défense en profondeur, security-review PR-4).
+        $spreadsheet = IOFactory::load($filePath, 0, [IOFactory::READER_XLSX]);
+        $rows = $spreadsheet->getActiveSheet()->toArray();
+
+        if ([] === $rows || $this->isEmptyRow($rows[0] ?? [])) {
+            return ['rows' => [], 'errors' => ['Le fichier est vide.'], 'total' => 0];
+        }
+
+        $header = array_shift($rows);
+        $columnMap = $this->buildColumnMap($header);
+
+        if (!isset($columnMap['nom'], $columnMap['catégorie'], $columnMap['numéro'], $columnMap['organisme'])) {
+            throw ImportRejectedException::badRequest('Colonnes requises manquantes : Nom, Catégorie, Numéro, Organisme.');
+        }
+
+        // Dédup par NOM : l'identité d'une équipe est (club, saison, nom). On précharge
+        // les noms existants, puis on marque `alreadyPresent` aussi pour un nom déjà vu
+        // plus haut dans LE FICHIER (même sémantique que le `knownNames` de import()).
+        $knownNames = [];
+        foreach ($this->entityManager->getRepository(Team::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]) as $team) {
+            $knownNames[mb_strtolower($team->getName(), 'UTF-8')] = true;
+        }
+
+        $out = [];
+        $errors = [];
+        $total = 0;
+
+        foreach ($rows as $rowIndex => $row) {
+            /** @var array<mixed> $row */
+            $nom = $this->stringValue($row[$columnMap['nom']] ?? null);
+            $categorie = $this->stringValue($row[$columnMap['catégorie']] ?? null);
+            $numero = $this->stringValue($row[$columnMap['numéro']] ?? null);
+            $organisme = $this->stringValue($row[$columnMap['organisme']] ?? null);
+
+            if (\in_array('', [$nom, $categorie, $numero, $organisme], true)) {
+                continue;
+            }
+            ++$total;
+            $excelRow = $rowIndex + 2;
+
+            $extractedClubCode = $this->extractClubCode($organisme);
+            if (null === $extractedClubCode) {
+                $errors[] = \sprintf('Ligne %d : impossible de lire le code club dans la colonne Organisme.', $excelRow);
+                continue;
+            }
+
+            if ($extractedClubCode !== $expectedClubCode) {
+                throw ImportRejectedException::unprocessable(\sprintf('Ce fichier appartient à un autre club (code %s, le vôtre est %s).', $extractedClubCode, $expectedClubCode));
+            }
+
+            $nameKey = mb_strtolower($nom, 'UTF-8');
+            $alreadyPresent = isset($knownNames[$nameKey]);
+            $knownNames[$nameKey] = true;
+
+            $out[] = [
+                'row' => $excelRow,
+                'name' => $nom,
+                'category' => $categorie,
+                'number' => $numero,
+                'alreadyPresent' => $alreadyPresent,
+            ];
+        }
+
+        return ['rows' => $out, 'errors' => $errors, 'total' => $total];
     }
 
     /**

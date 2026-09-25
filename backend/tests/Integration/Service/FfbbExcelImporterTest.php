@@ -8,6 +8,7 @@ use App\Entity\Club;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
+use App\Entity\SubscriptionPlan;
 use App\Entity\Team;
 use App\Enum\SeasonStatus;
 use App\Exception\ImportRejectedException;
@@ -143,6 +144,99 @@ final class FfbbExcelImporterTest extends KernelTestCase
 
         self::assertTrue($threw, 'un HTML déguisé en .xlsx doit être refusé par le lecteur épinglé');
         self::assertCount(0, $this->em->getRepository(Team::class)->findBy(['clubId' => $this->club->getId()]), 'aucune équipe ne doit naître d\'un HTML');
+    }
+
+    public function testAnalyzeMarksAlreadyPresentByExistingNameAndInFileDuplicate(): void
+    {
+        // P3-7 — l'analyse liste les lignes et dit lesquelles feraient DOUBLON, sans
+        // rien écrire. « Déjà présent » = même nom en base (club+saison) OU déjà vu
+        // plus haut dans le fichier. Une équipe SF1 existe déjà pour ce club+saison.
+        $existing = (new Team)->setClubId($this->club->getId())->setSeasonId($this->seasonId)
+            ->setSportCategoryId($this->categoryId('Seniors'))->setName('SF1')->setPriorityTierId(1);
+        $this->em->persist($existing);
+        $this->em->flush();
+
+        $result = $this->importer()->analyze($this->xlsx([
+            ['SF1', 'Seniors', '6', self::CLUB_CODE . ' - MON CLUB'],   // ligne 2 : déjà en base
+            ['SM1', 'Seniors', '1', self::CLUB_CODE . ' - MON CLUB'],   // ligne 3 : neuve
+            ['SM1', 'Seniors', '1', self::CLUB_CODE . ' - MON CLUB'],   // ligne 4 : doublon DANS le fichier
+        ]), $this->club->getId(), $this->seasonId);
+
+        self::assertSame(3, $result['total']);
+        self::assertSame([], $result['errors']);
+        self::assertSame(
+            ['row' => 2, 'name' => 'SF1', 'category' => 'Seniors', 'number' => '6', 'alreadyPresent' => true],
+            $result['rows'][0],
+            'le numéro de ligne est celui d\'Excel (en-tête = ligne 1), et SF1 est déjà en base',
+        );
+        self::assertSame(
+            ['row' => 3, 'name' => 'SM1', 'category' => 'Seniors', 'number' => '1', 'alreadyPresent' => false],
+            $result['rows'][1],
+        );
+        self::assertSame(4, $result['rows'][2]['row']);
+        self::assertTrue($result['rows'][2]['alreadyPresent'], 'un nom déjà vu plus haut DANS le fichier est un doublon');
+
+        // Dry-run : l'analyse n'écrit rien (seule l'équipe préexistante subsiste).
+        self::assertCount(1, $this->em->getRepository(Team::class)->findBy(['clubId' => $this->club->getId()]));
+    }
+
+    public function testImportOnlyCreatesTheSelectedRows(): void
+    {
+        $file = $this->xlsx([
+            ['SM1', 'Seniors', '1', self::CLUB_CODE . ' - MON CLUB'],   // ligne 2 — NON cochée
+            ['SM2', 'Seniors', '2', self::CLUB_CODE . ' - MON CLUB'],   // ligne 3 — cochée
+            ['U13M1', 'U13', '1', self::CLUB_CODE . ' - MON CLUB'],     // ligne 4 — cochée
+        ]);
+
+        $result = $this->importer()->import($file, $this->club->getId(), $this->seasonId, [3, 4]);
+        self::assertSame(['created' => 2, 'skipped' => 0, 'errors' => []], $result);
+
+        $names = array_map(
+            static fn (Team $t): string => $t->getName(),
+            $this->em->getRepository(Team::class)->findBy(['clubId' => $this->club->getId()]),
+        );
+        sort($names);
+        self::assertSame(['SM2', 'U13M1'], $names, 'la ligne décochée SM1 n\'est PAS en base');
+    }
+
+    public function testAForeignCodeOnAnUncheckedRowNeverRejectsTheImport(): void
+    {
+        // La ligne 2 porte un code ÉTRANGER mais n'est PAS cochée : elle est ignorée
+        // AVANT le contrôle de code, donc l'import ne jette pas et la ligne 3 se crée.
+        $file = $this->xlsx([
+            ['SM1', 'Seniors', '1', 'IDF9999999 - UN AUTRE CLUB'],     // ligne 2 — étrangère, décochée
+            ['SM2', 'Seniors', '2', self::CLUB_CODE . ' - MON CLUB'],  // ligne 3 — cochée
+        ]);
+
+        $result = $this->importer()->import($file, $this->club->getId(), $this->seasonId, [3]);
+        self::assertSame(['created' => 1, 'skipped' => 0, 'errors' => []], $result);
+    }
+
+    public function testOfferCapCountsOnlyTheSelectedNewRows(): void
+    {
+        // Offre à cap = 1 équipe : cocher 2 lignes neuves franchit le cap (refus
+        // tout-ou-rien), en cocher 1 passe — le cap se compte sur la SÉLECTION neuve.
+        $plan = (new SubscriptionPlan)->setCode('cap1-' . uniqid('', true))->setName('Cap 1')
+            ->setMaxTeams(1)->setMaxVenues(0)->setMaxGenerations(0);
+        $this->em->persist($plan);
+        $pivot = SeasonResolver::seasonYear(new DateTimeImmutable);
+        $this->club->setPlanId($plan->getId())->setPaidSeasonYear($pivot);
+        $this->em->flush();
+
+        $file = $this->xlsx([
+            ['SM1', 'Seniors', '1', self::CLUB_CODE . ' - MON CLUB'],   // ligne 2
+            ['SM2', 'Seniors', '2', self::CLUB_CODE . ' - MON CLUB'],   // ligne 3
+        ]);
+
+        try {
+            $this->importer()->import($file, $this->club->getId(), $this->seasonId, [2, 3]);
+            self::fail('deux équipes cochées pour un cap de 1 doivent être refusées');
+        } catch (ImportRejectedException) {
+        }
+        self::assertCount(0, $this->em->getRepository(Team::class)->findBy(['clubId' => $this->club->getId()]), 'tout-ou-rien : rien créé');
+
+        $result = $this->importer()->import($file, $this->club->getId(), $this->seasonId, [3]);
+        self::assertSame(['created' => 1, 'skipped' => 0, 'errors' => []], $result);
     }
 
     protected function setUp(): void

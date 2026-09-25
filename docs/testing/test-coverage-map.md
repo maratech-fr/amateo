@@ -1,11 +1,10 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-23 (**rotation de fraîcheur** `documentation-update`, lot 7 PR B — zone
-sans rapport, fichier choisi par son stamp le plus ancien du dépôt). Re-confronté au code :
-`backend/features/une-erreur-fbi-alimente-le-registre.feature` existe toujours et porte le
-scénario décrit ; `FbiErrorLedgerContext` reste enregistrée dans `backend/behat.dist.php`. Rien de
-faux trouvé cette passe. Reste des lignes non touchées — historique complet :
-`git log -p --follow docs/testing/test-coverage-map.md`.
+Last verified @ 2026-09-25 (`documentation-update`, P3-7 PR-A — nouvelle feature Behat de l'import
+d'équipes ajoutée à ce fichier). Vérifié contre le code : `l-import-des-equipes-choisit-ses-lignes.feature`
+existe (`backend/features/`, 3 scénarios) et sa suite `import-equipes` est bien déclarée dans
+`backend/behat.dist.php` (`TeamsImportContext`). Reste des lignes non touchées — historique
+complet : `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
 > prouve**, **par quel job CI**, et **ce que personne ne prouve**. Il ne remplace ni
@@ -173,6 +172,12 @@ une feature par PR (`ls backend/features/` fait foi du compte) :
 | Feature | Ce qu'elle prouve |
 |---|---|
 | `inscription-et-premier-planning.feature` | un club neuf inscrit + minimum saisi obtient son planning `COMPLETED` (remplace `onboarding-smoke.sh`) |
+
+**Équipes (import)**
+
+| Feature | Ce qu'elle prouve |
+|---|---|
+| `l-import-des-equipes-choisit-ses-lignes.feature` (P3-7 PR-A, 2026-09-25) | le dépôt dry-run (`/import-teams/analyze`) liste les équipes du fichier FFBB et marque déjà présente celle dont le nom existe déjà (club + saison, casse-insensible) ; seules les lignes cochées s'importent (`rows`), les autres ne créent rien ; un fichier portant le code d'un autre club est refusé dès l'analyse, aucune équipe créée |
 
 **Matchs**
 

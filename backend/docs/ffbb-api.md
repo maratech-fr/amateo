@@ -1,12 +1,16 @@
 # API FFBB — routes consommées (lot C : auto-alimentation club)
 
-Last verified @ 2026-09-23 (**rotation de fraîcheur** `documentation-update`, lot 7 PR B — zone
-sans rapport, fichier choisi parmi les stamps les plus anciens du dépôt). Re-confronté au code :
-le pont par référence FFBB de salle reste **FERMÉ** — aucun code n'expose l'`id` proxy salles ni ne
-tente ce pont (`FfbbSallesController.php`, `FfbbRencontreReader.php` inchangés sur ce point). Rien
-de faux trouvé cette passe. Reste du fichier (hosts SSRF, routes rencontres/engagements,
-`searchSallesByName`/lot K, §3bis logo) non re-sondé cette passe, dernière vérification de fond :
-2026-09-20 (PR I) / 2026-09-21 (lot K, pour la recherche par nom).
+Last verified @ 2026-09-25 (**rotation de fraîcheur** `documentation-update`, PR P3-7 PR-A — zone
+sans rapport avec l'import équipes de cette PR, fichier choisi parmi les stamps les plus anciens
+du dépôt). Re-confronté au code : les deux hosts en liste blanche (`api.ffbb.com`,
+`meilisearch-prod.ffbb.app`) sont toujours codés en dur dans `FfbbApiClient.php:24-25` ;
+`OpponentLogoController.php` reste `IS_AUTHENTICATED_FULLY` (jamais public) ; le pont par
+référence FFBB de salle reste **FERMÉ** — aucun code n'expose l'`id` proxy salles ni ne tente ce
+pont (`FfbbRencontreReader.php:112-121,168-190` inchangés). **Une citation corrigée** :
+`FfbbSallesController.php:141` → **`:162`** (le mapping `externalRef => numero` a bougé de ligne
+depuis le dernier stamp — la ligne 141 ne pointait plus le bon endroit). Reste du fichier (routes
+rencontres/engagements, `searchSallesByName`/lot K, §3bis logo) non re-sondé cette passe, dernière
+vérification de fond : 2026-09-20 (PR I) / 2026-09-21 (lot K, pour la recherche par nom).
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit rester dans la **liste blanche de hosts** du client (SSRF, A12). Vérifié le 2026-07-10 sur le code réel `ARA0069036` (BCCL).
 
@@ -169,7 +173,7 @@ Deux routes, mêmes hosts, même confinement SSRF, gate **management (SEC-07) + 
   ⚠ **Pont par référence FFBB de salle — piste FERMÉE (2026-09-21, décision fondateur)** : l'objet
   `salle` d'un hit rencontres (`FfbbRencontreReader.php:112-121`, `:168-190`) ne porte que `{id,
   libelle, adresse, cartographie}`, jamais le `numero` de l'index salles (`Venue.externalRef`,
-  exposé par le proxy salles — `FfbbSallesController.php:141`, qui n'expose aujourd'hui que
+  exposé par le proxy salles — `FfbbSallesController.php:162`, qui n'expose aujourd'hui que
   `numero`, jamais l'`id`). Un pont EXACT par cet `id` (comparer le `salle.id` d'un hit rencontres
   à l'`id` de l'index `ffbbserver_salles`) a été **abandonné après trois sondes réseau réelles
   concordantes** (2026-09-14, 2026-09-15, 2026-09-21, détail `etat-des-lieux.md` §2) : le canal

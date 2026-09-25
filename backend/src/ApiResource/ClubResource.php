@@ -32,6 +32,12 @@ use Symfony\Component\Serializer\Attribute\Groups;
         read: false,
         name: 'import_teams',
     ),
+    new Post(
+        uriTemplate: '/clubs/{id}/import-teams/analyze',
+        controller: 'App\Controller\ImportTeamsAnalyzeController',
+        read: false,
+        name: 'import_teams_analyze',
+    ),
 ], input: ClubInput::class, paginationEnabled: true, paginationItemsPerPage: 30, provider: ClubStateProvider::class, processor: ClubStateProcessor::class)]
 class ClubResource
 {

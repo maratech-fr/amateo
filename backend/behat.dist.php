@@ -24,6 +24,7 @@ use App\Tests\Behat\RepriseWeekContext;
 use App\Tests\Behat\SeasonGenerationContext;
 use App\Tests\Behat\SoclePlansContext;
 use App\Tests\Behat\StaleScheduleContext;
+use App\Tests\Behat\TeamsImportContext;
 use App\Tests\Behat\TenantIsolationContext;
 use App\Tests\Behat\TrainingBlockContext;
 use App\Tests\Behat\VenueAliasContext;
@@ -179,5 +180,10 @@ return (new Config)
                 new Suite('validation-ligue')
                     ->withPaths('%paths.base%/features/un-club-en-cours-de-saison-valide-ses-matchs-en-lot.feature')
                     ->withContexts(LeagueValidationContext::class),
+            )
+            ->withSuite(
+                new Suite('import-equipes')
+                    ->withPaths('%paths.base%/features/l-import-des-equipes-choisit-ses-lignes.feature')
+                    ->withContexts(TeamsImportContext::class),
             ),
     );
