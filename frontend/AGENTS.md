@@ -120,6 +120,11 @@ import.meta.url)` throws `ERR_INVALID_URL_SCHEME`.
 **solution file** (`"files": []` + `references`), so `tsc --noEmit` sees **zero files**: it
 exits 0 having checked nothing, while CI (which runs `tsc -b`) fails on the errors it
 skipped. `--force` is also required — a stale `tsbuildinfo` short-circuits the check.
+`tests/e2e/` and `playwright.config.ts` are now covered too (`tsconfig.e2e.json`, referenced
+from the root solution file, P4-257, 2026-09-25) — before this they were type-checked by
+**neither** project (`tsconfig.app.json` only `include`s `src`, `tsconfig.node.json` only
+`vite.config.ts`/tooling), so a spec calling a nonexistent Playwright API passed lint green
+and only broke in CI.
 
 ### ⚠ Trap: an e2e run can validate the PREVIOUS build
 
