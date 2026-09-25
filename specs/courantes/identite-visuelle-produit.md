@@ -1,7 +1,8 @@
 # Identité visuelle produit — la base est le produit, l'accent est le club
 
 Last verified @ 2026-09-25 (`documentation-update`, PR B du chantier DA « en-tête marque produit +
-favicon », complétée par le logo en remplacement du nom produit en texte). Confronté au code :
+favicon », complétée par le logo en remplacement du nom produit en texte, puis par le retrait du
+second ton du logotype `BrandMark`). Confronté au code :
 `frontend/src/index.css` (blocs `:root`/`.dark`), `frontend/src/shared/lib/product.ts`
 (`PRODUCT_ACCENT`), `frontend/src/shared/hooks/useApplyClubTheme.ts`, `frontend/src/shared/lib/color.ts`
 (`SURFACES`/`accentForMode`/`accentHoverForMode`), `frontend/src/test/accentTokenParity.test.ts`,
@@ -142,8 +143,12 @@ ordre fixe — l'icône produit ne s'efface jamais devant celle d'un club.
 - **`BrandMark`** (`frontend/src/shared/components/ui/brand-mark.tsx`) : les surfaces où le produit
   se nomme comme MARQUE plutôt qu'en texte de phrase — login/inscription (`AuthLayout`), écrans
   système (`system-screen`), console admin (`AdminAuthLayout`) — portent désormais le logo complet
-  (`BrandIcon` + le mot) au lieu du nom en texte nu ; statut **logotype**, exempté de WCAG 1.4.3 pour
-  le teal sur fond clair, au même titre que `BrandIcon`.
+  (`BrandIcon` + le mot) au lieu du nom en texte nu. Le mot hérite `currentColor` (UN seul ton, dans
+  tous les thèmes) — **seul `BrandIcon` porte des couleurs en dur**, `BrandMark` n'en porte aucune :
+  un second ton teal sur les deux derniers caractères a été essayé puis retiré, il ne tenait que
+  ~2,5:1 sur le fond papier clair (sous la barre), et `aria-hidden` n'exempte pas le texte rendu de
+  la règle color-contrast d'axe — la piste « logotype exempté de WCAG 1.4.3 » ne tenait pas ;
+  décision fondateur : une marque n'a pas deux visages.
 
 ## Ce qui reste à venir
 
