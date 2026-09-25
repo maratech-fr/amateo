@@ -11,3 +11,13 @@
  */
 export const PRODUCT_NAME = "Amateo";
 export const PUBLISHER_NAME = "Maratech";
+
+/**
+ * Accent PRODUIT par défaut — le teal signature du logo (`#46AFAC`), partagé PAR
+ * CONVENTION avec la vitrine (`landing/index.html` `--accent`), jamais importé de
+ * `landing/`. C'est la couleur d'un club qui n'a pas choisi la sienne : `useApplyClubTheme`
+ * la fait passer par la MÊME dérivation par contraste que n'importe quel accent de club
+ * (`accentForMode`/`readableForeground`/`accentHoverForMode`), il n'y a donc qu'une voie.
+ * La maison UNIQUE de cet hex côté frontend — jamais un `#hex` d'accent ailleurs.
+ */
+export const PRODUCT_ACCENT = "#46AFAC";

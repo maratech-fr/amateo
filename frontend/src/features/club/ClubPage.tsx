@@ -17,6 +17,7 @@ import { Input } from "@/shared/components/ui/input";
 import { FullPageSpinner, Spinner } from "@/shared/components/ui/spinner";
 import { useCredits } from "@/shared/credits/useCredits";
 import { readableForeground } from "@/shared/lib/color";
+import { PRODUCT_ACCENT } from "@/shared/lib/product";
 import { readFailed, readLoading } from "@/shared/lib/readState";
 import { cn } from "@/shared/lib/utils";
 import { extractPalette } from "@/shared/lib/palette";
@@ -29,7 +30,8 @@ import { toast } from "@/shared/stores/toastStore";
 import { isManagementRole } from "@/shared/lib/roles";
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
-const DEFAULT_ACCENT = "#3b82f6";
+// Repli du sélecteur de couleur = l'accent PRODUIT (maison unique `product.ts`, jamais un hex ici).
+const DEFAULT_ACCENT = PRODUCT_ACCENT;
 
 /** One accent picker (swatch + hex input + filled preview) for a given theme. */
 function AccentField({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (v: string) => void }) {
@@ -48,7 +50,7 @@ function AccentField({ id, label, value, onChange }: { id: string; label: string
           value={valid ? value : DEFAULT_ACCENT}
           onChange={(e) => onChange(e.target.value)}
         />
-        <Input aria-label={`Couleur ${label} (hexadécimal)`} className="h-9 w-28 font-mono text-xs" value={value} placeholder="#3b82f6" onChange={(e) => onChange(e.target.value)} />
+        <Input aria-label={`Couleur ${label} (hexadécimal)`} className="h-9 w-28 font-mono text-xs" value={value} placeholder={DEFAULT_ACCENT} onChange={(e) => onChange(e.target.value)} />
         {/* Filled swatch → the accent stays legible whatever its lightness. */}
         <div className="rounded-md px-3 py-2 text-sm font-medium" style={valid ? { backgroundColor: value, color: readableForeground(value) } : undefined}>
           Aa
