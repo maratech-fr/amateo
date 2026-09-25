@@ -247,10 +247,26 @@
   --radius-lg: var(--radius);
 }
 
+/* Fond d'écran commun app + vitrine (P5-16) : le SOL est notre papier (`--background`), les MOTIFS
+   multi-sport aux 3 couleurs du logo sont des SVG STATIQUES purgés (`public/brand/fond-*.svg`,
+   `<metadata>`/c2pa/rect de sol retirés à la copie, opacité 0,15 clair / 0,17 sombre). En-tête et
+   cartes restent opaques : le fond ne vit que dans les zones vides. ⚠ Aucun gate automatisé ne voit
+   ces motifs (SVG hors du graphe TS, non couverts par le scan de contraste) — parité clair/sombre
+   et purge gardées par `src/test/brandBackground.test.ts`. `fixed` : parallaxe de fond assumée
+   desktop-first (iOS Safari retombe en `scroll`, P5-16). */
 body {
   background-color: var(--color-background);
+  background-image: url("/brand/fond-light.svg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
   color: var(--color-foreground);
   font-family: system-ui, -apple-system, sans-serif;
+}
+
+.dark body {
+  background-image: url("/brand/fond-dark.svg");
 }
 
 /* Barre d'attente de navigation (P4-6) : un aller-retour indéterminé, pas une
