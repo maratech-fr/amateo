@@ -1,15 +1,11 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-09-23 (rotation de fraîcheur `documentation-update`, P4-95 lot 8 « diagnostics
-à coordonnées partielles » — engine non touché par cette PR au sens contrat, zéro appel moteur
-modifié côté payload). Re-confronté au code : `engine/CONTRACT_VERSION` = `2.23` ✓ (inchangé) ;
-`DiagnosticSchema.id` toujours requis, sans défaut — **citation corrigée** :
-`app/schemas/output_schema.py:62` (le `class DiagnosticSchema` est en `:61`, le champ `id` juste
-en dessous — la passe précédente citait la classe) ✓ ; le commentaire mort `FACILITY_CAPACITY`
-toujours présent, une seule occurrence, non-code — **citation corrigée dans le corps du
-document (§ étape 6, item 8)** : `app/main.py:447-450`, qui portait à tort `:487-490` (le fichier
-a bougé depuis, la référence de la précédente rotation n'avait corrigé que le stamp, pas le corps)
-✓. Reste non re-parcouru ligne à ligne cette passe — historique :
+Last verified @ 2026-09-25 (rotation de fraîcheur `documentation-update`, P5-25 « la vitrine repart
+du logo » — engine non touché par cette PR, zéro appel moteur modifié). Re-confronté au code :
+`engine/CONTRACT_VERSION` = `2.23` ✓ (inchangé, fichier `engine/CONTRACT_VERSION`) ;
+`DiagnosticSchema.id` toujours requis, sans défaut, `app/schemas/output_schema.py:61-62` ✓ ; le
+commentaire mort `FACILITY_CAPACITY` toujours à `app/main.py:447-450`, une seule occurrence,
+non-code ✓. Reste non re-parcouru ligne à ligne cette passe — historique :
 `git log -p --follow engine/docs/nominal-flow.md`.
 
 > Ce document decrit le chemin complet d'une requete de generation d'emploi du temps, du moment ou le backend construit le payload jusqu'a la notification en temps reel du frontend. Destine aux developpeurs travaillant sur l'integration backend/engine.

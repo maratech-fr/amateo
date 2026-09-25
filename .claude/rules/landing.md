@@ -16,11 +16,23 @@ paths:
 - **Aucun lien avec `frontend/`** — pas d'import de composant, pas de CSS partagé, pas de brique
   commune. Les deux zones se ressemblent par **convention**, jamais par dépendance. Dupliquer une
   couleur ici est le comportement VOULU.
-- **Marque, liens et coordonnées vivent dans `config.js` SEUL** — jamais en dur dans `index.html`.
-  Le nom commercial **est tranché depuis le 2026-08-15** (produit **Amateo**, éditeur **Maratech**)
-  et `config.js` est recalé dessus ; la règle du point unique reste, elle : c'est elle qui a rendu
-  le renommage gratuit, et c'est elle qui rendra gratuit un changement de domaine.
+- **Marque, liens, coordonnées et logo vivent dans `config.js` SEUL** — jamais en dur dans
+  `index.html`. Le nom commercial **est tranché depuis le 2026-08-15** (produit **Amateo**, éditeur
+  **Maratech**) et `config.js` est recalé dessus ; la règle du point unique reste, elle : c'est
+  elle qui a rendu le renommage gratuit, et c'est elle qui rendra gratuit un changement de domaine.
   ⚠ `appUrl` s'écrit **sans slash final** — les CTA concatènent (`appUrl + "/register"`).
+  **Le logo suit le même patron (P5-25, 2026-09-25)** : `config.js` clé `logo` (source définitive
+  du handoff marque, `assets/brand/`) injecté par script sur chaque `[data-brand-logo]` — jamais un
+  chemin d'asset en dur dans `index.html`. `config.js` est chargé depuis `index.html` avec
+  `?v=<date>`, à bumper à chaque ajout/retrait/renommage de clé — sinon un visiteur de retour garde
+  l'ancien fichier en cache et toute nouvelle clé lit `undefined` (incident 2026-09-25, logo cassé ;
+  l'injection est défensive depuis, mais le `?v=` est ce qui rend le vrai logo tout de suite).
+- **Palette recalée sur le logo (P5-25, 2026-09-25)** : `--accent` (`#46afac`, teal signature) est
+  **décoratif seul** — il ne tient que 2,50:1 sur `--paper`, sous la barre texte. Le texte, les
+  liens, les boutons et **les anneaux de focus** portent `--accent-ink` (`#2e7876`, ≥ 4,5:1 partout
+  où il est posé) ; `--accent-deep` (`#215857`) sert au survol ; `--accent-soft` (`#e9f5f5`) sert de
+  fond. Ne jamais remonter le teal signature sur du texte ou un focus — un accent de marque n'y
+  monte que s'il passe 4,5:1 mesuré (3:1 pour un indicateur de focus WCAG 2.2).
 - **Deux domaines, une machine** : le domaine **nu** sert `landing/`, un **sous-domaine** sert l'app.
   Un lien « Se connecter » vers l'app est donc un lien absolu inter-domaines, pas une route.
   ⚠ Ce ne sont **pas des vhosts nginx** : c'est **Caddy**, sur la VM et hors compose, qui tient la TLS

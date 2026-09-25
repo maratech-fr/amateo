@@ -1,14 +1,15 @@
 # FORWARD Components Spec — Pages & Shared Components (hors wizard)
 
-Last verified @ 2026-09-23 (**rotation de fraîcheur**, `documentation-update`, lot 7 PR A « filet
-de tests avant le découpage du module matchs », FRT-36 — zone non touchée par cette PR, qui n'a
-ajouté que des tests, zéro ligne de production). Re-confronté au code : `StatusPill`
-(`frontend/src/shared/components/ui/badge.tsx:30`) et `SourceBadge`
-(`frontend/src/features/matches/SourceBadge.tsx:14`) existent bien tous les deux — drift **toujours
-présent, non corrigé** : les deux restent ABSENTS de la table §3 (aucune ligne `StatusPill` ni
-`SourceBadge` dedans). Le bloc « Historique » (sections 2-9) reste marqué superseded par son
-en-tête ; §3 (Shared Components) reste en pratique tenu à jour au fil des PR (cf. les lignes
-P4-127/P4-149/P4-198/P4-207) — signalé pour ce que ça vaut, non déplacé cette passe.
+Last verified @ 2026-09-25 (**rotation de fraîcheur**, `documentation-update`, P5-25 « la vitrine
+repart du logo » — zone `frontend/` non touchée par cette PR, qui ne modifie que `landing/`).
+Re-confronté au code : `StatusPill` (`frontend/src/shared/components/ui/badge.tsx:30`) et
+`SourceBadge` (`frontend/src/features/matches/SourceBadge.tsx:14`) existent toujours — drift
+**toujours présent, non corrigé** : les deux restent ABSENTS de la table §3 (aucune ligne
+`StatusPill` ni `SourceBadge` dedans). §1 (conventions de nommage API) reste vrai : les paths
+`snake_case` cités (`/api/priority_tiers`, `/api/schedule_diagnostics`, `/api/team_coaches`)
+existent tels quels dans `specs/courantes/openapi-snapshot.json`. Le bloc « Historique »
+(sections 2-9) reste marqué superseded par son en-tête ; §3 (Shared Components) reste en pratique
+tenu à jour au fil des PR — signalé pour ce que ça vaut, non déplacé cette passe.
 
 > 🛑 **Ce document est SUPERSEDED. Il ne décrit pas le frontend livré.**
 >
