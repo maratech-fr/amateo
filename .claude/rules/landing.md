@@ -35,7 +35,12 @@ paths:
 - **Aucun job CI ne couvre `landing/`** (`.github/workflows/ci.yml` ne la mentionne nulle part) —
   la seule preuve d'une passe (design, contraste, rendu) est un axe joué **à la main** dans un
   vrai navigateur, captures à l'appui dans `captures/` (racine du dépôt, gitignoré).
-- **Une capture d'écran de l'app pour la vitrine se prend sur le club de démonstration**
-  (`app:demo:seed`, « Démo Basket Club ») — jamais sur un club réel, jamais de nom de personne.
-  Patron : `landing/assets/planning.png` (P5-5), `landing/assets/matchs.jpg` (P5-26) — décision
+- **Une capture d'écran de l'app pour la vitrine s'exige sur le RÉSULTAT, pas sur une méthode
+  unique** : (1) l'en-tête porte « Démo Basket Club », jamais un club réel ; (2) aucun nom de
+  personne nulle part dans l'image (coach, compte, signature) ; (3) les données visibles sont
+  publiques (codes d'équipe, clubs adverses, gymnases). Deux façons d'y arriver, toutes deux
+  valides : le **seed démo** (`app:demo:seed`, patron `landing/assets/planning.png`, P5-5) ou une
+  **prise de vue sur une stack réelle** avec le nom du club remplacé dans le DOM au moment de la
+  capture et une vue choisie sans personne (patron `landing/assets/matchs.jpg`, P5-26,
+  2026-09-25 — blason retiré du DOM, vue Conflits écartée car elle liste les coachs) — décision
   fermée, `specs/courantes/etat-des-lieux.md` §2.
