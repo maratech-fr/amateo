@@ -108,6 +108,8 @@
     .pain { border-top: 2px solid var(--accent); padding-top: 18px; }
     .pain h3 { font-size: 17.5px; margin-bottom: 8px; line-height: 1.3; }
     .pain p { font-size: 15px; color: var(--ink-2); }
+    /* #matchs porte quatre cartes : même rythme que les 4 étapes (min 230px) — 4 de front en desktop, 2×2 en tablette, 1 en mobile ; #douleur (3 cartes) intact */
+    #matchs .pains { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
 
     /* ── Étapes ── */
     .steps { margin-top: 40px; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0; counter-reset: step; }
@@ -263,31 +265,40 @@
 
   <section class="alt" id="matchs">
     <div class="wrap">
-      <h2>Le calendrier des matchs arrive de la fédération. <span class="brand">…</span> le range.</h2>
-      <p class="sub">Championnats, coupes, amicaux : dès la rentrée, les rencontres tombent de la
-      FFBB. Au lieu de les recopier dans un coin, votre planning les accueille — sur les mêmes
-      gymnases, les mêmes créneaux, à côté des entraînements.</p>
+      <h2>Les matchs, un dossier de moins à garder en tête.</h2>
+      <p class="sub">Le calendrier des matchs arrive de la fédération. L'app le range : les
+      rencontres importées, les domiciles placés, les conflits repérés, les échéances suivies. Vous
+      déposez l'export une fois, et vous n'avez plus à tout tenir de tête.</p>
       <div class="pains">
         <article class="pain">
-          <h3>L'export fédéral s'importe en un dépôt</h3>
-          <p>Vous déposez le fichier FBI de vos engagements : chaque rencontre se range par équipe
-          et par compétition, sans une ligne à recopier à la main.</p>
+          <h3>Déposez l'export, l'app place vos matchs</h3>
+          <p>L'import du fichier FBI du club range vos rencontres par équipe, et un solveur pose vos
+          domiciles sur les créneaux où vos gymnases sont libres — à vous d'ajuster ou de verrouiller
+          ce qui doit l'être.</p>
         </article>
         <article class="pain">
-          <h3>Les conflits se voient avant le week-end</h3>
-          <p>Un coach convoqué sur deux rencontres, un gymnase déjà pris, un match encore sans
-          créneau : tout est signalé pendant que vous pouvez encore agir, pas le samedi matin.</p>
+          <h3>Les écarts avec FBI ne vous échappent plus</h3>
+          <p>L'écran « FBI — à faire » liste ce qu'il faut taper dans la fédération en face de ce
+          qu'elle affiche encore, avec l'échéance de saisie de chaque compétition — qui alerte sans
+          jamais bloquer.</p>
         </article>
         <article class="pain">
-          <h3>Les matchs à domicile se placent tout seuls</h3>
-          <p>Le moteur pose vos rencontres à domicile sur les créneaux de gymnase libres, et vous
-          gardez la main pour déplacer ou verrouiller ce qui doit l'être.</p>
+          <h3>Les conflits de coachs vus avant le week-end</h3>
+          <p>Un radar signale à la volée un coach sur deux rencontres, un match et un entraînement en
+          même temps, un gymnase pris deux fois ; chaque conflit se traite — dérogation demandée,
+          réglé en interne, sans solution pour l'instant — sans jamais se masquer.</p>
+        </article>
+        <article class="pain">
+          <h3>Les déplacements comptés, adversaires localisés</h3>
+          <p>Le temps d'un match à l'extérieur intègre le trajet réel jusqu'au gymnase adverse, et
+          l'annuaire des adversaires se localise tout seul depuis le libellé du fichier FBI, sans
+          rien à saisir.</p>
         </article>
       </div>
 
       <figure class="shot">
         <img src="assets/matchs.jpg" alt="Le calendrier des rencontres d'un week-end : chaque match placé sur son gymnase, les conflits et les matchs à placer signalés en tête" width="2160" height="1170" loading="lazy" />
-        <figcaption>Le week-end des rencontres d'un coup d'œil : chaque match sur son gymnase, les conflits repérés, et ce qui reste à faire affiché en tête.</figcaption>
+        <figcaption>L'essentiel remonte tout seul en tête : les matchs à placer, les conflits à traiter et ce qu'il faut rendre à FBI — vous n'avez plus à y penser.</figcaption>
       </figure>
     </div>
   </section>
