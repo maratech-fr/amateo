@@ -91,7 +91,10 @@ paths:
 - 🔴 **Jamais `tsc --noEmit`** : le `tsconfig.json` racine est un fichier *solution*
   (`"files": []` + `references`), donc `--noEmit` voit **zéro fichier**, sort 0 sans rien vérifier,
   et la CI (`tsc -b`) échoue sur ce qu'il a sauté. `make -C frontend lint` fait `tsc -b --force` —
-  le `--force` est requis (un `tsbuildinfo` périmé court-circuite le contrôle).
+  le `--force` est requis (un `tsbuildinfo` périmé court-circuite le contrôle). **`tests/e2e/`
+  n'est couvert par AUCUN des deux** (ni `tsconfig.app.json` qui n'`include` que `src`, ni
+  `tsconfig.node.json` qui n'`include` que `vite.config.ts`/`tooling`) : un spec Playwright qui
+  appelle une API inexistante passe le lint vert et ne se révèle qu'en CI (P4-257).
 - 🔴 **axe SAUTE un sous-arbre `inert` — un scan d'a11y sur un écran voilé ne vérifie RIEN.**
   Découvert le 2026-08-21 en différant le blocage du voile (lot C) : le scan de contraste
   « wizard · gymnases » tournait pendant que le voile rendait le contenu `inert`, donc axe ne
