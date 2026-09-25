@@ -31,7 +31,10 @@ test("importe les nouvelles équipes d'un export FBI et évite le doublon déjà
   await page.getByLabel("Nom de l'équipe").fill("U13-1");
   await page.getByLabel("Catégorie").selectOption({ label: "Senior" });
   await page.getByRole("button", { name: "Ajouter l'équipe" }).click();
-  await expect(page.getByDisplayValue("U13-1")).toBeVisible({ timeout: 15_000 });
+  // ⏱ 20 s, PAS le sélecteur : ce point précis (équipe ajoutée juste après l'inscription) a
+  // flaqué sur quatre PR à cause du voile posé par WhatsNewModal — cf. journey.spec.ts:27-42.
+  // `page.locator('input[value=…]')` : Playwright n'a pas de `getByDisplayValue` (Testing Library).
+  await expect(page.locator('input[value="U13-1"]')).toBeVisible({ timeout: 20_000 });
 
   // Le fichier FBI : le doublon (U13-1) + deux nouvelles, tous au code club du run.
   const organisme = `${ara} - CLUB E2E`;
@@ -64,7 +67,7 @@ test("importe les nouvelles équipes d'un export FBI et évite le doublon déjà
   await dialog.getByRole("button", { name: "Fermer" }).last().click();
 
   // Les deux nouvelles rejoignent la liste, et U13-1 n'y est PAS dupliquée.
-  await expect(page.getByDisplayValue("U13-2")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByDisplayValue("SM1")).toBeVisible();
-  await expect(page.getByDisplayValue("U13-1")).toHaveCount(1);
+  await expect(page.locator('input[value="U13-2"]')).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('input[value="SM1"]')).toBeVisible();
+  await expect(page.locator('input[value="U13-1"]')).toHaveCount(1);
 });
