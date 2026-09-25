@@ -1,11 +1,10 @@
 # Modules produit — ce qu'Amateo vend, en langage club
 
-Last verified @ 2026-09-25 (création — confronté à `etat-des-lieux.md` §1.1/1.2/1.5/1.6/1.7,
-`module-matchs.md` (§ Puces « Traitement », § Résolution des conflits), `types-de-planning.md` §3,
-`vacances-scolaires-jours-feries.md`, `evolution/ffbb-appariement-source-de-verite.md` §1ter,
-`backend/src/Service/Basketball/FfbbClubPopulator.php`,
-`backend/src/Service/Basketball/FfbbTeamImporter.php`, `frontend/src/app/routes.tsx`,
-`landing/assets/`).
+Last verified @ 2026-09-25 (`documentation-update`, passe finale P5-26 — confronté à
+`landing/index.html` §`#matchs`/§`final`/FAQ hébergement, `docs/ops/backup-restore.md` §1-2
+(cadence `pg_dump` nocturne, région Scaleway `fr-par`), `.claude/rules/landing.md`, décision
+`etat-des-lieux.md` §2 recalée le même jour, `backend/src/Service/Basketball/
+FfbbClubPopulator.php`, `backend/src/Service/Basketball/FfbbTeamImporter.php`).
 
 > **Rôle de ce fichier.** `etat-des-lieux.md` §1 est la carte technique (entités, PR, pointeurs) —
 > ce fichier est sa **couche en langage club** : ce que le produit fait, dit à qui le vit sur le
@@ -152,7 +151,7 @@ inaperçu — vous savez exactement quoi corriger, et où le corriger.
 
 **Où dans l'app :** `/matchs` (deep-link « FBI — à faire »), `/matchs/importer`.
 
-**Capture :** aucune encore.
+**Capture :** `landing/assets/matchs-importer.jpg`.
 
 ### 3. Les conflits de coachs vus en amont
 
@@ -171,8 +170,9 @@ un gymnase pris deux fois : vous le voyez avant le week-end, pas après.
 
 **Où dans l'app :** `/matchs/conflits`.
 
-**Capture :** aucune encore (la vue Conflits liste les coachs — écartée de la vitrine par décision,
-`.claude/rules/landing.md`).
+**Capture :** `landing/assets/matchs-conflits.jpg` — la vue Conflits liste des coachs, admise
+depuis le 2026-09-25 sous nom de démo fictif (`.claude/rules/landing.md`, décision recalée
+`etat-des-lieux.md` §2).
 
 ### 4. Les déplacements extérieurs
 
@@ -229,3 +229,8 @@ jamais reformulées :
 - « Un import FBI : du temps gagné, des soucis vus avant le week-end. »
 - « Les matchs, un dossier de moins à garder en tête. »
 - « Le vrai problème n'est pas le temps passé. C'est la charge mentale. »
+- « Chaque année, dans chaque club de basket FFBB, quelqu'un passe ses soirées à répartir les
+  créneaux de gymnase entre les équipes, en espérant n'oublier aucune contrainte. Amateo capture
+  toutes les contraintes du club, génère un planning optimisé en quelques minutes, et le réajuste
+  quand la réalité change. »
+- « La saison n'a pas encore débuté que le planning est déjà prêt. »
