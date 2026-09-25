@@ -23,7 +23,10 @@ paths:
   ⚠ `appUrl` s'écrit **sans slash final** — les CTA concatènent (`appUrl + "/register"`).
   **Le logo suit le même patron (P5-25, 2026-09-25)** : `config.js` clé `logo` (source définitive
   du handoff marque, `assets/brand/`) injecté par script sur chaque `[data-brand-logo]` — jamais un
-  chemin d'asset en dur dans `index.html`.
+  chemin d'asset en dur dans `index.html`. `config.js` est chargé depuis `index.html` avec
+  `?v=<date>`, à bumper à chaque ajout/retrait/renommage de clé — sinon un visiteur de retour garde
+  l'ancien fichier en cache et toute nouvelle clé lit `undefined` (incident 2026-09-25, logo cassé ;
+  l'injection est défensive depuis, mais le `?v=` est ce qui rend le vrai logo tout de suite).
 - **Palette recalée sur le logo (P5-25, 2026-09-25)** : `--accent` (`#46afac`, teal signature) est
   **décoratif seul** — il ne tient que 2,50:1 sur `--paper`, sous la barre texte. Le texte, les
   liens, les boutons et **les anneaux de focus** portent `--accent-ink` (`#2e7876`, ≥ 4,5:1 partout
