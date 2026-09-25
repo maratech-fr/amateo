@@ -8,29 +8,21 @@ import { PRODUCT_NAME } from "@/shared/lib/product";
 import { BrandMark } from "./brand-mark";
 
 describe("BrandMark", () => {
-  it("rend l'icône produit + le mot en deux tons, le teal sur les 2 derniers caractères", () => {
+  it("rend l'icône produit + le mot (minuscule) SANS aucune couleur en dur — le mot hérite", () => {
     const { container } = render(<BrandMark />);
-    // L'icône produit (le SEUL svg au viewBox de la marque).
+    // L'icône produit (le SEUL svg au viewBox de la marque) porte seule les couleurs du mark.
     expect(container.querySelector('svg[viewBox="0 0 1000 1000"]')).not.toBeNull();
 
-    // Le mot vit en DEUX spans : la tête (currentColor) + la queue teal.
-    const tail = container.querySelector('span[style*="color"]');
-    expect(tail).not.toBeNull();
-    expect(tail?.textContent).toBe(PRODUCT_NAME.toLowerCase().slice(-2)); // « eo »
-    // jsdom normalise la couleur inline en rgb — #46AFAC = rgb(70, 175, 172), le teal du mark.
-    expect(tail?.getAttribute("style") ?? "").toContain("rgb(70, 175, 172)");
-
-    // Le mot complet visible (tête + queue) = la marque en minuscules.
+    // Le mot vit en UN span, la marque en minuscules, sans style couleur inline (il hérite).
     const word = container.querySelector('[aria-hidden="true"].font-semibold');
     expect(word?.textContent).toBe(PRODUCT_NAME.toLowerCase());
+    // Aucune couleur codée en dur nulle part (ni sur le mot, ni ailleurs) : un seul ton, hérité.
+    expect(container.querySelector('[style*="color"]')).toBeNull();
   });
 
-  it("est un LOGOTYPE : nom accessible = PRODUCT_NAME, visuel décoratif (un seul énoncé)", () => {
-    const { getByRole, container } = render(<BrandMark />);
-    const mark = getByRole("img", { name: PRODUCT_NAME });
-    expect(mark).toBeInTheDocument();
-    // Le mot est aria-hidden (pas de double énonciation) ; l'icône aussi.
-    expect(container.querySelector('span[aria-hidden="true"]')).not.toBeNull();
+  it("est un LOGOTYPE : nom accessible = PRODUCT_NAME (un seul énoncé)", () => {
+    const { getByRole } = render(<BrandMark />);
+    expect(getByRole("img", { name: PRODUCT_NAME })).toBeInTheDocument();
   });
 
   it("décline trois tailles (icône + échelle du mot)", () => {
