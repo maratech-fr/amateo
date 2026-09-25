@@ -162,3 +162,51 @@ test.describe("largeurs sur 1920×1080", () => {
   });
 });
 
+/**
+ * P4-261 — à 360 px, le NOM du club de l'en-tête (`AppLayout`) ne se tronque plus à « B… » :
+ * il se MASQUE proprement sous `sm` (`hidden sm:inline` sur le span), tandis que le lien
+ * d'accueil garde son nom accessible (porté par son `aria-label`, à toutes les largeurs).
+ *
+ * Décision fondateur : desktop-first, mobile en V2 — la nav de droite ne se rétracte PAS. La
+ * dette de reflow GLOBALE à 360 px (le produit déborde encore, DevClock de dev compris) reste
+ * une ligne de roadmap ; ce test ne mesure donc PAS le non-débordement de l'en-tête (cf. le
+ * docblock du test 360 px de `matches.spec.ts`), il verrouille le comportement DÉCIDÉ : le mot
+ * se masque/réapparaît proprement, l'accessibilité ne bouge pas.
+ *
+ * ⚠ Le nom du club vient d'un TÉMOIN que le scénario établit lui-même (`GET /api/me`), jamais
+ * d'un littéral « BCCL » : le seed CI peut changer de nom sans casser le test, et le span est
+ * lié à ce témoin (`toHaveText`) avant qu'on ne juge sa visibilité.
+ *
+ * e2e écrit, PAS lancé (garde sandbox ; l'exécution des e2e reste au fondateur, la CI fait foi).
+ */
+test("en-tête à 360 px : le nom du club se masque sous sm, le lien d'accueil garde son nom accessible", async ({ page }) => {
+  test.setTimeout(90_000);
+  await login(page);
+
+  // Témoin établi par le scénario : le nom que l'en-tête affiche EST celui du club de /api/me.
+  const meRes = await page.request.get("/api/me");
+  expect(meRes.ok(), "GET /api/me").toBeTruthy();
+  const clubName = ((await meRes.json()).club?.name ?? "") as string;
+  expect(clubName, "le club seedé a un nom — sans lui le scénario ne met RIEN à l'épreuve").toBeTruthy();
+
+  // /club est sous AppLayout et joignable quel que soit l'état d'onboarding.
+  await page.goto("/club");
+  const header = page.locator("header");
+  // Le span du nom : unique enfant direct <span> du lien d'accueil (a[href='/']).
+  const nameSpan = header.locator("a[href='/'] > span");
+  // On lie le span au témoin AVANT de juger sa visibilité (toHaveText lit le textContent,
+  // masqué ou non) : on prouve que c'est bien l'élément du nom du club.
+  await expect(nameSpan).toHaveText(clubName);
+
+  // ── 360 px (téléphone) : le lien d'accueil reste, avec son nom accessible ; le MOT est masqué ──
+  await page.setViewportSize({ width: 360, height: 740 });
+  const homeLink = header.getByRole("link", { name: clubName });
+  await expect(homeLink).toBeVisible();
+  await expect(homeLink).toHaveAccessibleName(clubName);
+  await expect(nameSpan, "à 360 px le nom du club doit être MASQUÉ (hidden sm:inline), pas tronqué à « B… »").toBeHidden();
+
+  // ── 1280 px (bureau) : le mot réapparaît (sm:inline) ; le nom accessible n'a jamais bougé ──
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(nameSpan, "à 1280 px le nom du club doit être visible").toBeVisible();
+  await expect(homeLink).toHaveAccessibleName(clubName);
+});

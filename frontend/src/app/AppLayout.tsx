@@ -53,8 +53,12 @@ export function AppLayout() {
         <div className="flex h-14 items-center justify-between gap-4 px-4 lg:px-6 xl:px-8">
           {/* L'en-tête = la marque PRODUIT, puis le club (décision fondateur DA) :
               [icône Amateo] · [blason du club, s'il existe] NOM DU CLUB. L'icône produit
-              est TOUJOURS là ; le blason suit quand il existe ; le nom (club ou produit)
-              porte le sens accessible du lien d'accueil (icône + blason décoratifs). */}
+              est TOUJOURS là ; le blason suit quand il existe. Le sens accessible du lien
+              d'accueil vit sur son `aria-label` (nom du club sinon PRODUCT_NAME), à toutes
+              les largeurs — icône + blason restent décoratifs. Sous `sm` (téléphone,
+              desktop-first / mobile V2, P4-261) le MOT est masqué visuellement seulement
+              (`hidden sm:inline`), pour ne plus se tronquer à « B… » ; le nom accessible ne
+              bouge pas. La nav de droite ne se rétracte pas (décision fondateur). */}
           <div className="flex min-w-0 items-center gap-2">
             <NavLink
               to="/"
@@ -64,7 +68,7 @@ export function AppLayout() {
             >
               <BrandIcon className="size-6 shrink-0" />
               {data?.club?.logoUrl ? <img src={data.club.logoUrl} alt="" className="size-6 shrink-0 rounded-full object-cover" /> : null}
-              <span className="truncate text-sm font-semibold">{data?.club?.name ?? PRODUCT_NAME}</span>
+              <span className="hidden truncate text-sm font-semibold sm:inline">{data?.club?.name ?? PRODUCT_NAME}</span>
             </NavLink>
             {import.meta.env.DEV ? <DevClock /> : null}
           </div>
