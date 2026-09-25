@@ -70,11 +70,22 @@ paths:
   la sortie EXACTE de sa dérivation, gardée par `src/test/accentTokenParity.test.ts` — **on ne les
   édite jamais à la main, on les recalcule** (`specs/courantes/identite-visuelle-produit.md`).
   `BrandIcon` (`shared/components/ui/brand-icon.tsx`) est la SEULE exception admise à « jamais un
-  `#hex` » (ses trois arcs). `BrandMark` (`shared/components/ui/brand-mark.tsx`), le logo COMPLET
+  `#hex` » **en composant React** (ses trois arcs) ; les **SVG d'asset statiques de marque**
+  (`public/brand/*.svg` — `favicon.svg`, `fond-light.svg`/`fond-dark.svg`, P5-16) en sont une
+  seconde, pour la même raison : un fichier servi tel quel n'a pas de jeton de thème à consommer.
+  `BrandMark` (`shared/components/ui/brand-mark.tsx`), le logo COMPLET
   (icône + mot) posé partout où le produit se nomme comme MARQUE (login/inscription, écrans
   système, console admin — jamais pour une mention dans une phrase), n'en porte aucune : le mot
   hérite `currentColor`, un seul ton dans tous les thèmes (un second ton teal codé en dur tombait
   sous la barre de contraste sur fond clair, retiré).
+- 🔴 **Les racines de shell ne portent plus `bg-background` depuis le fond d'écran commun**
+  (P5-16, `AppLayout.tsx`/`AuthLayout.tsx`) : le fond commun vit sur `body` (`index.css`), et une
+  racine qui poserait `bg-background` par-dessus le masquerait entièrement. L'en-tête d'`AppLayout`
+  et les cartes restent OPAQUES (`bg-background`/`bg-card` posés dessus, pas sur la racine) — le
+  fond ne vit que dans les zones vides. Un écran qui veut au contraire un fond NU (déjà chargé
+  visuellement, ou système) pose `bg-background` sur sa PROPRE section, pas sur un shell partagé —
+  patron `GenerationScene.tsx` (racine `bg-background`, décor déjà dense) et `system-screen.tsx`
+  (inchangé, hors lot).
   Recoder à la main un spinner nu, un
   encart d'erreur, une pastille inline **là où la primitive existe** = incohérence UX (« même
   chose, au même endroit, de la même façon » — famille UXC de l'audit). Cas fondateur du

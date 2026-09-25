@@ -1,10 +1,15 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-25 (`documentation-update`, P4-257 + P4-261). Vérifié contre le code
-cette passe : `frontend/tests/e2e/width-calibration.spec.ts` porte bien DEUX gardes distinctes
-dans le même fichier — la mesure de reflow 360 px (angle mort, ex-P4-251, déplacé en Vision au triage roadmap 2026-09-25, inchangée) et la
-nouvelle garde P4-261 (le `<span>` du nom du club se masque sous `sm` au lieu de se tronquer).
-Reste des lignes non touchées — historique complet :
+Last verified @ 2026-09-25 (`documentation-update`, P5-16 — le fond d'écran commun ouvre un angle
+mort neuf, contraste sur motif). Vérifié contre le code cette passe :
+`frontend/src/test/brandBackground.test.ts` n'assert que la parité clair/sombre de `index.css` et
+la purge des SVG servis (`c2pa`/`<metadata`/rect de sol), jamais un ratio de contraste ;
+`a11y-contrast.spec.ts` (`expectNoContrastViolations`) n'assert que `results.violations` — confirmé
+qu'aucun des deux ne couvre le texte posé sur le fond commun. Passe précédente (P4-257 + P4-261,
+non re-sondée cette fois) : `frontend/tests/e2e/width-calibration.spec.ts` porte bien DEUX gardes
+distinctes dans le même fichier — la mesure de reflow 360 px (angle mort, ex-P4-251, déplacé en
+Vision au triage roadmap 2026-09-25, inchangée) et la garde P4-261 (le `<span>` du nom du club se
+masque sous `sm` au lieu de se tronquer). Reste des lignes non touchées — historique complet :
 `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
@@ -113,6 +118,19 @@ desktop-first, mobile en V2). ⚠ **Ne pas confondre avec la garde P4-261** (mê
 fichier `width-calibration.spec.ts`) : elle verrouille que le NOM du club de l'en-tête se masque
 proprement à 360 px plutôt que de se tronquer à zéro — elle ne mesure PAS le non-débordement de
 l'en-tête, qui reste réel mais déprioritisé (ex-P4-251).
+
+**Contraste sur le fond d'écran commun (P5-16, 2026-09-25) — non mesuré, structurellement hors de
+portée d'axe.** Les motifs multi-sport posés en `background-image` sur `body`
+(`frontend/src/index.css`, `landing/index.html`) sont des SVG statiques dans `public/`/`assets/` :
+hors du graphe TypeScript, aucun outil de lint ne les lit, et le scan de contraste axe-core
+(`a11y-contrast.spec.ts`, `expectNoContrastViolations`) n'assert que `results.violations` sur les
+éléments évalués par axe — un `background-image` décoratif sur `body` n'entre jamais dans cette
+liste, contrairement au texte posé au-dessus. La seule garde est
+`frontend/src/test/brandBackground.test.ts` (Vitest, jsdom) : elle prouve la PARITÉ clair/sombre et
+la PURGE des assets, jamais un ratio de contraste — elle assume explicitement ne rien assertir sur
+l'opacité. La preuve que le texte reste lisible par-dessus le fond est une **passe visuelle
+manuelle** (faite le 2026-09-25), pas un gate automatisé — même angle mort que le reflow ci-dessus :
+un défaut de fond derrière du texte pourrait passer inaperçu jusqu'à une régression visible à l'œil.
 
 **Appariement FFBB (engagements, tous canaux) — jamais de feature Behat, structurel.** L'env dev de
 Behat pointe la vraie FFBB (`with-sandbox.sh`) ; le double déterministe `FfbbHttpClientStub` n'est

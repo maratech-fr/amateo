@@ -1,7 +1,7 @@
 # Génération d'un planning — conduite normalisée (bout en bout)
 
-Last verified @ 2026-09-24 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
-cette PR — lot découpage `PeriodStructure.tsx`, P4-255). Re-confronté : `CONTRACT_VERSION` toujours
+Last verified @ 2026-09-25 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
+cette PR — lot P5-16 fond d'écran commun). Re-confronté : `CONTRACT_VERSION` toujours
 **`'2.23'`** aux trois foyers (`ScheduleConstraintBuilder.php:63`, `MoveSlotService.php:50`,
 `MatchPlacementPayloadBuilder.php:65`) et `engine/CONTRACT_VERSION`, inchangé ; la garde de
 redélivrance (`GenerateScheduleHandler.php`, lecture fraîche + après verrou, SEUL `COMPLETED`
