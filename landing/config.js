@@ -13,4 +13,7 @@ window.LANDING_CONFIG = {
   // Contact démo / questions — adresse pro du domaine produit (décision fondateur
   // 2026-08-17). Règle business tenue : jamais un Gmail perso sur la page.
   contactEmail: "contact@amateo.app",
+  // Le logo (mark de marque) vit ici comme le nom : point unique. Injecté dans
+  // l'en-tête et le pied (`[data-brand-logo]`). Source définitive du handoff marque.
+  logo: "assets/brand/logo-couleur.png",
 };

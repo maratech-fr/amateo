@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Le planning de votre club, sans le casse-tête</title>
   <meta name="description" content="Générez le planning d'entraînements de votre club de basket en quelques minutes : toutes vos contraintes capturées, un planning optimisé, réajustable quand la réalité change." />
+  <link rel="icon" type="image/svg+xml" href="assets/brand/icon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/brand/icon-32.png" />
   <style>
     /* ── Voix display : Bricolage Grotesque (OFL, auto-hébergée — assets/fonts/) ── */
     @font-face {
@@ -22,10 +24,10 @@
       --ink-2: #57534c;
       --muted: #6d675d;         /* ≥ 4.5:1 sur --paper, tenable en petit texte */
       --line: #e7e3dc;
-      --accent: #c2571e;        /* cuir de ballon, désaturé — décoratif seulement */
-      --accent-ink: #9c4210;    /* le même cuir, assez sombre pour porter du texte */
-      --accent-deep: #7e340a;
-      --accent-soft: #faf0e8;
+      --accent: #46afac;        /* teal signature du logo — décoratif seulement (2.50:1 sur --paper, jamais de texte dessus) */
+      --accent-ink: #2e7876;    /* teal assombri pour porter du texte — 4.91:1 sur --paper, 5.17:1 blanc dessus, 4.64:1 sur --accent-soft */
+      --accent-deep: #215857;   /* survol — 8.08:1 blanc dessus */
+      --accent-soft: #e9f5f5;   /* teinte très claire du teal — encre 16.05:1 dessus */
       --radius: 12px;
       --display: "Bricolage Grotesque", system-ui, sans-serif;
     }
@@ -36,7 +38,7 @@
       font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
       -webkit-font-smoothing: antialiased;
     }
-    ::selection { background: #f0dcc9; color: var(--ink); }
+    ::selection { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); color: var(--ink); }
     .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
     a { color: var(--accent-ink); text-underline-offset: 3px; }
 
@@ -48,8 +50,9 @@
       border-bottom: 1px solid var(--line);
     }
     header.site .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; }
-    .logotype { font-family: var(--display); font-size: 22px; font-weight: 800; letter-spacing: -0.02em; text-decoration: none; color: var(--ink); }
-    .logotype .dot { color: var(--accent); }
+    .logotype { display: inline-flex; align-items: center; text-decoration: none; }
+    .brand-logo { height: 34px; width: auto; display: block; }
+    .brand-logo--footer { height: 18px; vertical-align: -3px; }
     nav.top { display: flex; gap: 22px; align-items: center; font-size: 15px; }
     nav.top a { color: var(--ink-2); text-decoration: none; }
     nav.top a:hover { color: var(--ink); }
@@ -67,7 +70,7 @@
       transition: transform 80ms ease, box-shadow 80ms ease;
     }
     .btn:hover { transform: translateY(-1px); }
-    .btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+    .btn:focus-visible { outline: 3px solid var(--accent-ink); outline-offset: 2px; }
     .btn-primary { background: var(--accent-ink); color: #fff; box-shadow: 0 2px 6px -2px rgba(25,23,20,.35); }
     .btn-primary:hover { background: var(--accent-deep); }
     .btn-ghost { border: 1.5px solid var(--line); color: var(--ink); background: var(--surface); }
@@ -153,7 +156,7 @@
     .faq summary::-webkit-details-marker { display: none; }
     .faq summary svg { flex-shrink: 0; color: var(--muted); transition: transform 240ms cubic-bezier(0.16, 1, 0.3, 1); }
     .faq details[open] summary svg { transform: rotate(45deg); }
-    .faq summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+    .faq summary:focus-visible { outline: 3px solid var(--accent-ink); outline-offset: 2px; border-radius: 6px; }
     .faq .a { padding: 0 4px 18px; color: var(--ink-2); font-size: 15.5px; max-width: 68ch; }
 
     /* ── CTA final ── */
@@ -176,7 +179,7 @@
 
 <header class="site">
   <div class="wrap">
-    <a class="logotype" href="#"><span class="brand">…</span><span class="dot">.</span></a>
+    <a class="logotype" href="#" data-brand-label><img class="brand-logo" data-brand-logo alt="" width="878" height="226" /></a>
     <nav class="top" aria-label="Navigation principale">
       <a href="#fonctionnement">Comment ça marche</a>
       <a href="#offres">Offres</a>
@@ -437,7 +440,7 @@
 
 <footer class="site">
   <div class="wrap">
-    <span><span class="brand">…</span> — le planning des clubs de basket. Actuellement en bêta avec des clubs pilotes.</span>
+    <span><img class="brand-logo brand-logo--footer" data-brand-logo data-brand-alt alt="" width="878" height="226" /> — le planning des clubs de basket. Actuellement en bêta avec des clubs pilotes.</span>
     <span><a data-cta="demo-inline" href="#">Contact</a></span>
   </div>
 </footer>
@@ -446,9 +449,12 @@
 <script>
   // Le nom et les liens sont injectés depuis config.js — UNE source.
   (function () {
-    const { brand, appUrl, contactEmail } = window.LANDING_CONFIG;
+    const { brand, appUrl, contactEmail, logo } = window.LANDING_CONFIG;
     document.title = brand + " — " + document.title;
     document.querySelectorAll(".brand").forEach((el) => { el.textContent = brand; });
+    document.querySelectorAll("[data-brand-logo]").forEach((img) => { img.src = logo; });
+    document.querySelectorAll("[data-brand-label]").forEach((el) => { el.setAttribute("aria-label", brand); });
+    document.querySelectorAll("[data-brand-alt]").forEach((el) => { el.setAttribute("alt", brand); });
     const mailto = "mailto:" + contactEmail
       + "?subject=" + encodeURIComponent("Demande de démo — " + brand)
       + "&body=" + encodeURIComponent("Bonjour,\n\nJe souhaite voir " + brand + " en démo pour mon club.\n\nClub : \nNombre d'équipes (environ) : \nDisponibilités : ");
