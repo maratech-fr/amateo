@@ -546,7 +546,10 @@ survive is naturally bounded by a modal's lifetime.
 7. **The club accent is per-club and AA-guarded IN BOTH MODES, by contrast, not by a fixed
    formula.** `useApplyClubTheme` (`shared/hooks/useApplyClubTheme.ts`) picks a per-mode base
    (dark mode prefers `accentColorDark`, light mode `accentColor`, each falling back to the
-   other) and **always** runs it through `accentForMode(hex, mode)` (`shared/lib/color.ts`,
+   other, and a club with **neither** falling back to `PRODUCT_ACCENT` — `shared/lib/product.ts`,
+   the teal signature, DA "base chaude + accent produit", 2026-09-25; see
+   `specs/courantes/identite-visuelle-produit.md`) and **always** runs it through
+   `accentForMode(hex, mode)` (`shared/lib/color.ts`,
    A11Y-22 decision 5) — never a raw bypass. `accentForMode` mixes the colour toward black
    (light) / white (dark) by ~4% steps until it clears **4.5:1 on BOTH `--background` AND
    `--card`** of that mode (not just the darker one) — a colour already conforming is returned
