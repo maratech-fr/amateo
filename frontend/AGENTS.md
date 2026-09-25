@@ -582,7 +582,8 @@ survive is naturally bounded by a modal's lifetime.
    white-on-accent from 4.85 to 4.26 in light mode — the pressed "Amical" chip on `/matchs`,
    2026-09-18). Consumed by `button.tsx`'s `default` variant, `system-screen.tsx`,
    `RouteErrorBoundary.tsx`. `destructive` (`bg-destructive`) and `ClubPage`'s avatar (`bg-muted`)
-   still hover via `opacity-90`, deliberately out of scope — `specs/evolution/roadmap.md` P4-244.
+   still hover via `opacity-90`, deliberately out of scope — ex-P4-244, closed without a fix at
+   the 2026-09-25 roadmap triage (never measured under AA in practice).
 8. **Engaged teams are read-only on two fields.** `Team.isEngaged` comes **from the server**
    (`TeamResource.isEngaged`) and is never recomputed client-side; `TeamsStep` greys out both
    **deletion** and **level change** for such a team — its matches are filed with the

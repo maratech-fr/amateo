@@ -152,8 +152,9 @@ ordre fixe — l'icône produit ne s'efface jamais devant celle d'un club.
 
 ## Ce qui reste à venir
 
-- **Fond d'écran / motif « ça sent le basket »** (roadmap P4-18) : décision distincte de ce lot —
-  la base chaude ne le solde pas, il attend le fond du designer (bandeau/illustrations).
+- **Fond d'écran / motif « ça sent le basket »** (roadmap P5-16, ex-P4-18, absorbé par le triage
+  du 2026-09-25) : décision distincte de ce lot — la base chaude ne le solde pas, il attend le
+  fond du designer (bandeau/illustrations).
 - **PDF (y compris impression N&B), e-mails transactionnels, image OG** (roadmap P5-24) : n'ont
   reçu aucun asset logo à ce jour — les exports PDF suivent leur propre chaîne
   (`PdfGenerator`, `backend/docs/`), non touchée par ce lot.

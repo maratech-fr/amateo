@@ -39,7 +39,8 @@ en a été retirée, et la description publique a été réécrite en français 
 passage, on a repéré que **cinq autres** descriptions déjà publiées avant ce lot (sur
 `ScheduleResource.php` : `planType`, `generatedTeamCount`, `hasStructurePhoto`, `isLiveContext`,
 `isChosen`) sont écrites en jargon de développeur anglais — sans référence interne, donc le
-garde-fou ne les voit pas. Ligne de dette ouverte : `P4-218` dans `specs/evolution/roadmap.md`.
+garde-fou ne les voit pas. Ligne de dette ex-`P4-218`, fermée sans correctif au triage roadmap du
+2026-09-25 (cosmétique, aucun impact fonctionnel — décision fermée, `specs/courantes/etat-des-lieux.md` §2).
 
 ### Le piège Flex, encore (backend, PR #900)
 

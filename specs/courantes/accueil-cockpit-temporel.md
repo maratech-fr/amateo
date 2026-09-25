@@ -17,7 +17,7 @@ autres repères de la passe du 2026-09-19/22 (`SCHOOL_HOLIDAY_HORIZON_DAYS = 30`
 > **Pas un plan** — pas de tâches, pas d'effort chiffré ; l'exécution se planifiera palier par palier (§8).
 > **Nature** : ce document fixe une **idée claire et maligne d'UX + d'architecture** pour
 > remplacer l'écran d'accueil, et pose la fondation des **calendriers secondaires**.
-> **Statut** : livré (cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2) ; les restes ouverts sont en roadmap (**P3-3**, **P3-2**, **P3-13**). **Vision d'origine** : `initiales/ClubScheduler_v3.md` §3.5, §3.6, §8.
+> **Statut** : livré (cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2) ; les anciens restes ouverts **P3-3** et **P3-2** sont fermés (décisions fermées, triage roadmap du 2026-09-25 — [`etat-des-lieux.md`](etat-des-lieux.md) §2), et **P3-13** était déjà livré le 2026-08-01 ([`etat-des-lieux.md`](etat-des-lieux.md) §3). **Vision d'origine** : `initiales/ClubScheduler_v3.md` §3.5, §3.6, §8.
 > **Ce doc challenge la vision d'origine** là où elle est trop lourde (voir §3).
 > **Modèle métier des 3 types de planning** (socle / overlay / reprise — déclenchement,
 > manipulation, règle « semaine = unité hors socle ») : [`types-de-planning.md`](types-de-planning.md).
