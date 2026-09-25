@@ -1711,7 +1711,7 @@ final class FbiFixtureImporter
         $sheetRows = $spreadsheet->getActiveSheet()->toArray();
 
         if ([] === $sheetRows || $this->isEmptyRow($sheetRows[0] ?? [])) {
-            return ['rows' => [], 'exempted' => 0, 'errors' => ['Excel file is empty.']];
+            return ['rows' => [], 'exempted' => 0, 'errors' => ['Le fichier est vide.']];
         }
 
         $header = array_shift($sheetRows);

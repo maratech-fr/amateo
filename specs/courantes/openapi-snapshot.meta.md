@@ -1,18 +1,27 @@
-Last verified @ 2026-09-23 (retrait du cran `BONUS` du produit : l'énumération
-`components.schemas.Constraint.ConstraintInput.properties.ruleType.enum` passe de
-`["HARD","PREFERRED","BONUS","LOCK"]` à `["HARD","PREFERRED","LOCK"]` — `BONUS` n'avait de
-sémantique propre nulle part (ni poids, ni branche moteur) et disparaît de la valeur d'enum ; une
-écriture `ruleType: "BONUS"` est désormais refusée en 422 (Assert\Choice dérivé de `values()`) au
-lieu d'être acceptée puis normalisée en silence. Régénéré par `api:openapi:export`, **aucune route
-ajoutée/supprimée** (207, inchangé) et l'empreinte recalculée contre le fichier réel —
+Last verified @ 2026-09-25 (import d'équipes sélectif : nouvelle opération de resource
+`POST /api/clubs/{id}/import-teams/analyze` (`import_teams_analyze`, contrôleur custom, dry-run qui
+liste les lignes du fichier et lesquelles feraient doublon) — **+1 path** (207 → 208). L'opération
+existante `POST /api/clubs/{id}/import-teams` gagne un champ multipart `rows` (liste JSON de numéros
+de ligne à importer) : forme d'API inchangée dans le contrat (multipart, corps de réponse
+identique). Régénéré par `api:openapi:export`, empreinte recalculée contre le fichier réel —
 `OpenApiSnapshotMetaMatchesSnapshotTest` compare compte et empreinte aux mêmes deux fichiers et les
 deux concordent. Reste du journal non re-confronté au code cette passe.)
-**207 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+0 path** (une valeur
-quitte une énumération, aucune route ajoutée/supprimée) · SHA-256
-`f2e6becbb391dbdee6bb3e9eb241c7ef54bfe36eb4266423dff647c7239c15af` (`sha256sum`, confirmé sur le
+**208 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) ✓, **+1 path** (une
+opération de resource ajoutée) · SHA-256
+`55cef358c16ede935b6a3ab604abdff9c2e8a7413ffddd083d858aa8f06c7d84` (`sha256sum`, confirmé sur le
 fichier régénéré).
 
 Changements récents (**les 8 dernières entrées seulement** — en ajouter une = supprimer la plus ancienne) :
+- **Import d'équipes sélectif, backend (2026-09-25)** : **+1 path** — nouvelle opération de resource
+  `POST /api/clubs/{id}/import-teams/analyze` (`import_teams_analyze`, contrôleur custom, management +
+  saison écrivable, PAS de socle) : dry-run qui rend `{rows:[{row, name, category, number,
+  alreadyPresent}], errors, total}` — quelles équipes contient le fichier et lesquelles feraient
+  DOUBLON (nom déjà en base pour club+saison, ou déjà vu plus haut dans le fichier), sans rien
+  écrire. L'opération existante `POST /api/clubs/{id}/import-teams` gagne un champ multipart `rows`
+  (liste JSON de numéros de ligne Excel à importer ; absent = tout importer, comportement conservé) ;
+  corps de réponse inchangé. Les deux endpoints partagent une gate unique (`TeamImportGate`, refus
+  byte-identiques). Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23, aucun
+  appel moteur).
 - **Retrait du cran `BONUS` du produit (2026-09-23)** : **+0 path** — l'énumération
   `Constraint.ConstraintInput.ruleType` perd la valeur `BONUS` (`["HARD","PREFERRED","LOCK"]`
   restantes). Le cran n'avait jamais eu de sémantique propre (ni poids, ni branche moteur) : le
@@ -83,22 +92,6 @@ Changements récents (**les 8 dernières entrées seulement** — en ajouter une
   /api/opponents/travel` gagne un champ ADDITIF `postalCode` (`string`|null) par club adverse, à côté de
   `city`, depuis `opponent_directory.postal_code` — le front préremplit la recherche de gymnase FFBB avec.
   Backend PUR, contrat backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23, aucun appel moteur).
-- **Adversaire multi-gymnases (amendement) — appariement club-scoped, backend (2026-09-20)** : **+1 path**
-  net — le gymnase d'un adversaire se rattache au CLUB adverse et au LIBELLÉ de salle (`opponent_venue_link`,
-  club-scoped sans saison), plus au trajet (une CONSTANTE servie depuis `club_travel_cache`). `GET
-  /api/opponents/travel` change de FORME : groupé PAR CLUB adverse → `{code, name, city, precision, hasLogo,
-  fixtureCount, venues:[{id, label, externalRef, source, travelMinutes, travelStatus, approximated,
-  fixtureCount, fallbackVenueName}], unmatchedLabels:[{label, fixtureCount}]}` + `clubGeolocated` au sommet.
-  Nouveaux gestes management : `POST /api/opponents/{code}/venues` (ajouter un gymnase), `POST
-  /api/opponents/{code}/venue-links` (apparier un libellé orphelin), `PUT`/`DELETE
-  /api/opponents/venue-links/{id}` (ré-apparier/fusionner, retirer). `POST /api/opponents/travel/{manual,auto}`
-  SUPPRIMÉES (grain équipe disparu). `POST /api/opponents/travel/resolve` conservée (dispatche le calcul des
-  paires manquantes). **`FixtureResource` gagne un champ additif `awayTravel`** (le trajet DÉRIVÉ de la
-  rencontre extérieure : `{venueLabel, city, precision, oneWayMinutes, approximated, basis}` où `basis` =
-  `linked`|`most_frequent`|`city`, null pour un domicile), calculé EN BATCH par le provider de collection
-  (zéro N+1) — le chip de trajet du calendrier ne dépend plus de l'endpoint adversaires. Backend PUR, contrat
-  backend⇄engine **inchangé** (`CONTRACT_VERSION` 2.23, `matches[].roundTripMinutes` de forme identique,
-  aucun appel moteur).
 Règle (skill documentation-update) : régénérer ce snapshot à chaque changement d'API
 (resource, controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés
 en tête ne sont plus une promesse sur l'honneur** : `OpenApiSnapshotMetaMatchesSnapshotTest`
