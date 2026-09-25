@@ -1,10 +1,8 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-09-23 (`documentation-update`, rotation de fraîcheur — sujet sans rapport
-(suppression du cran `BONUS`, `bc2e2568`), fichier choisi parmi les plus anciens stamps du dépôt).
-Re-confronté au code : ce fichier ne cite `bonus` que pour le terme d'OBJECTIF
-(`add_match_day_rest_bonus`, ligne 73), homonyme sans rapport avec le cran de règle `BONUS` retiré
-du produit — rien à corriger ici. Les poids cités ligne 35 (`spacing`, −2), ligne 45
+Last verified @ 2026-09-25 (`documentation-update`, rotation de fraîcheur — sujet sans rapport
+(P3-7 PR-B, modale d'import FBI des équipes), fichier choisi parmi les plus anciens stamps du
+dépôt). Re-confronté au code : les poids cités ligne 35 (`spacing`, −2), ligne 45
 (`preferredVenueId`, +10) et ligne 67 (tiers S=10000…D=1) toujours exacts contre
 `engine/app/solver/objective/weights.py` (`LEVEL_2_OBJECTIVE_WEIGHTS["spacing"]=-2`,
 `["preferred"]=10`, `["S"]=10000`/`["D"]=1`, même dict) ; `ConstraintFamily`

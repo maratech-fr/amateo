@@ -59,7 +59,10 @@ paths:
   « Familles » (Calendrier + Conflits) et « Traitement » (Conflits) de `features/matches`.
   N'absorbe QUE ce contrat exact : ni les interrupteurs `role="switch"` (sémantique a11y
   différente), ni les contrôles SEGMENTÉS (bordure portée par le conteneur, pas de compteur —
-  types de compétition, période, « Regrouper par ») ;
+  types de compétition, période, « Regrouper par ») ; `snapshotFile`
+  (`shared/lib/fileSnapshot.ts`, P3-7) est la maison unique du snapshot mémoire d'un `File` avant
+  envoi — ferme le piège `ERR_UPLOAD_FILE_CHANGED` (fichier relu sur disque à l'envoi, déguisé en
+  « Problème de connexion ») — consommée par `TeamsImportModal.tsx` et `ImportFbiDialog.tsx` ;
   **couleurs/espacements** = tokens du thème (`text-warning`,
   `text-muted-foreground`, `bg-muted`, `border-border`…), **jamais un `#hex`** ni une classe sans
   jeton (`text-warning-foreground` était un no-op, P4-130). Recoder à la main un spinner nu, un
