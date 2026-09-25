@@ -17,6 +17,9 @@
 
 ## 1. Ce que l'application sait faire
 
+> La couche en langage club de cette carte — une promesse, ce qui est livré, où c'est dans l'app —
+> vit dans [`modules-produit.md`](modules-produit.md).
+
 ### 1.1 Solveur & contraintes
 
 Le modèle de contraintes est **entièrement tranché** (série ENGINE, 2026-07-03) : 4 scopes

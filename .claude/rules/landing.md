@@ -7,6 +7,9 @@ paths:
 
 > La page de vente publique. **Elle n'a pas d'`AGENTS.md`** : tout ce qui la concerne tient ici.
 
+- **La page s'adosse à [`specs/courantes/modules-produit.md`](../../specs/courantes/modules-produit.md)**
+  — la carte des modules en langage club, promesse + preuve + capture ; toute nouvelle section
+  vitrine vérifie ses affirmations contre ce fichier avant d'écrire un mot.
 - **Zéro build.** HTML/CSS statique servi tel quel — pas de npm, pas de bundler, pas de
   transpilation. On édite `index.html` et `assets/` directement. N'introduis **aucune** chaîne de
   build : c'est ce qui rend cette page increvable et déployable seule.
