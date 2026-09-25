@@ -476,6 +476,10 @@ product rules — reuse them instead of rolling your own:
   plus a third, GLOBAL "N FBI à faire" counter fed by the backend's `fbiTodo`, deliberately outside
   the week-scoped group, todo-FBI lot 2026-09-19). The wizard is `step-rail`'s **only** consumer
   today; don't assume it still tracks matches-module progression.
+- **`brand-icon`** (`BrandIcon`) — the product mark itself (three arcs, `AppLayout`'s header +
+  `frontend/public/favicon.svg`), decorative by default. Its stroke colours are hardcoded `#hex`
+  literals **on purpose** — the one admitted exception to "never a `#hex`", because a logo's tones
+  are fixed by definition, not a themeable token (`.claude/rules/frontend.md` carries the rule).
 
 ### `shared/lib/readState.ts` — the anti-"credible emptiness" rule
 

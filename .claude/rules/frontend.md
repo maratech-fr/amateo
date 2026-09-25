@@ -69,6 +69,9 @@ paths:
   est la SEULE maison d'un hex d'accent produit ; les valeurs statiques d'accent d'`index.css` sont
   la sortie EXACTE de sa dérivation, gardée par `src/test/accentTokenParity.test.ts` — **on ne les
   édite jamais à la main, on les recalcule** (`specs/courantes/identite-visuelle-produit.md`).
+  `BrandIcon` (`shared/components/ui/brand-icon.tsx`) est la SEULE exception admise à « jamais un
+  `#hex` » : ses trois arcs portent les teintes du mark en dur, assumé, parce que c'est le logo, pas
+  une surface themable (`AppLayout.tsx` + `frontend/public/favicon.svg`, les deux seuls porteurs).
   Recoder à la main un spinner nu, un
   encart d'erreur, une pastille inline **là où la primitive existe** = incohérence UX (« même
   chose, au même endroit, de la même façon » — famille UXC de l'audit). Cas fondateur du
