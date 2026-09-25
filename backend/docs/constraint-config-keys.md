@@ -1,16 +1,15 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-09-24 (`documentation-update`, rotation de fraîcheur — sujet sans rapport,
-lot flaky e2e `landOnMatchesCalendar`/#966). Re-confronté à `ConstraintConfigValidator::SPEC`
+Last verified @ 2026-09-25 (`documentation-update`, rotation de fraîcheur — sujet sans rapport,
+P4-257/P4-261 frontend). Re-confronté à `ConstraintConfigValidator::SPEC`
 (`backend/src/Service/ConstraintConfigValidator.php:59-95`) : les 4 familles et leurs clés/types
 correspondent trait pour trait à la table du fichier ✓. `App\Enum\ConstraintRuleType` ne compte
 toujours que HARD/PREFERRED/LOCK ✓ (`BONUS` reste bien retiré). `TeamTagResolver::
-resolveConstraintTeamIds` (`backend/src/Service/TeamTagResolver.php:278`) et les deux gardes
-`backend/tests/Security/PeriodGatePayloadParityTest.php` /
-`backend/tests/CrossStack/ConstraintKeysAreHonouredByEngineTest.php` (testsuite `Contract`, gardée
-par le required check `engine-semantics`) existent toujours ✓. La migration
-`Version20260807190000` (retrait de `config.coachId`) est confirmée en place ✓. Rien de faux
-trouvé cette passe. Historique : `git log -p --follow`. Un stamp REMPLACE, il ne s'empile pas.
+resolveConstraintTeamIds` (`backend/src/Service/TeamTagResolver.php:278`) existe toujours à cette
+ligne exacte ✓. La migration `Version20260807190000` est confirmée en place ✓. Non re-sondé cette
+passe : les deux gardes `PeriodGatePayloadParityTest`/`ConstraintKeysAreHonouredByEngineTest` (déjà
+vérifiées la passe précédente). Rien de faux trouvé cette passe. Historique : `git log -p
+--follow`. Un stamp REMPLACE, il ne s'empile pas.
 
 > Source de vérité du code : `App\Service\ConstraintConfigValidator`.
 > Cette page explique le POURQUOI ; la liste qui fait foi est dans la classe.

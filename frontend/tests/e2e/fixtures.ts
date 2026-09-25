@@ -44,4 +44,4 @@ export const test = base.extend<{ apiFailureWatch: void }>({
 
 export { expect } from "@playwright/test";
 // Les specs importaient aussi leurs TYPES d'ici : on les fait suivre, pour qu'un seul import suffise.
-export type { Locator, Page } from "@playwright/test";
+export type { ConsoleMessage, Locator, Page } from "@playwright/test";

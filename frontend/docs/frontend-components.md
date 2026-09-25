@@ -1,21 +1,24 @@
 # FORWARD Components Spec — Pages & Shared Components (hors wizard)
 
-Last verified @ 2026-09-25 (**rotation de fraîcheur**, `documentation-update`, P5-25 « la vitrine
-repart du logo » — zone `frontend/` non touchée par cette PR, qui ne modifie que `landing/`).
-Re-confronté au code : `StatusPill` (`frontend/src/shared/components/ui/badge.tsx:30`) et
-`SourceBadge` (`frontend/src/features/matches/SourceBadge.tsx:14`) existent toujours — drift
-**toujours présent, non corrigé** : les deux restent ABSENTS de la table §3 (aucune ligne
-`StatusPill` ni `SourceBadge` dedans). §1 (conventions de nommage API) reste vrai : les paths
-`snake_case` cités (`/api/priority_tiers`, `/api/schedule_diagnostics`, `/api/team_coaches`)
-existent tels quels dans `specs/courantes/openapi-snapshot.json`. Le bloc « Historique »
-(sections 2-9) reste marqué superseded par son en-tête ; §3 (Shared Components) reste en pratique
-tenu à jour au fil des PR — signalé pour ce que ça vaut, non déplacé cette passe.
+Last verified @ 2026-09-25 (`documentation-update`, P4-257 + P4-261 — recalage de l'en-tête
+`AppLayout`). Re-confronté au code cette passe : `frontend/src/app/AppLayout.tsx` entier
+(en-tête = `BrandIcon` + blason + `<span>` du nom masqué sous `sm` depuis P4-261, nav qui ne se
+rétracte pas, `Menu` du compte) et ses tests (`AppLayout.test.tsx`, `width-calibration.spec.ts`) ;
+`AuthLayout.tsx`/`AdminAuthLayout.tsx` (logotype `BrandMark` depuis `#975`, plus d'icône
+`CalendarCheck2` ni de nom en texte nu) — la section **« Layout »** (sortie du bloc Historique,
+juste après §1 ci-dessous) est désormais tenue à jour. Drift antérieur **non re-sondé cette
+passe** (hors du scope frontend touché) : `StatusPill`/`SourceBadge` restaient absents de la
+table §3 lors de la dernière vérification (2026-09-25 matin, P5-25). §1 (conventions de nommage
+API) reste vrai : les paths `snake_case` cités (`/api/priority_tiers`,
+`/api/schedule_diagnostics`, `/api/team_coaches`) existent tels quels dans
+`specs/courantes/openapi-snapshot.json`.
 
-> 🛑 **Ce document est SUPERSEDED. Il ne décrit pas le frontend livré.**
+> 🛑 **Ce document est en grande partie SUPERSEDED — sauf §1 et la section « Layout ».**
 >
-> Les sections 2 à 9 sont la **spécification forward d'origine** (2026-07-03), écrite
-> *avant* le frontend réellement construit. Elles sont conservées pour trace, repliées
-> dans un bloc « Historique » — **ne les lisez pas comme un contrat**.
+> Les sections 2, 3 et 5 à 9 (repliées ci-dessous, bloc « Historique ») sont la **spécification
+> forward d'origine** (2026-07-03), écrite *avant* le frontend réellement construit —
+> **ne les lisez pas comme un contrat**. §1 et « Layout » (juste après, hors du bloc replié)
+> font exception : tenues à jour.
 >
 > **Où est la vérité :**
 >
@@ -31,6 +34,7 @@ tenu à jour au fil des PR — signalé pour ce que ça vaut, non déplacé cett
 > | **Palette console** — jetons `--console-*` (`src/index.css`, bloc « Console superadmin », décision UXC-12/P4-151, 2026-08-30). Chaque nuance Tailwind consommée par `features/admin/` a un jeton NOMMÉ par son rôle sémantique, construit par **ALIASING** (`--console-muted: var(--color-slate-500)`) — jamais une valeur `oklch` recopiée à la main, donc un rendu identique par construction — en **BIJECTION** stricte (une nuance Tailwind = un jeton ; deux nuances proches, ex. `emerald-400`/`emerald-500`, ne sont jamais fondues en un seul jeton, ce serait un changement visuel). Cette surface est **hors** du système de thème clair/sombre de l'app plus haut dans le même fichier (`--background`/`--foreground`…) — la console garde une esthétique sombre fixe, décision fermée ([`etat-des-lieux.md`](../../specs/courantes/etat-des-lieux.md) §2). `white`/`black` restent des classes littérales (ancres absolues, hors échelle numérique — même décision fermée). Gardé par `consolePalette.guard.test.ts` (`features/admin/`) : rougit si une classe de palette Tailwind brute réapparaît dans le source du module | — |
 > | Console superadmin (`/admin`) | [`superadmin-auth.md`](../../specs/courantes/superadmin-auth.md) |
 > | Conventions agent, pièges, primitives partagées | [`../../frontend/AGENTS.md`](../../frontend/AGENTS.md) |
+> | `AppLayout` / `AuthLayout` / `AdminAuthLayout` | section « Layout » ci-dessous (hors bloc Historique, tenue à jour) |
 >
 > **Principaux écarts** entre les sections historiques et le code : aucune des pages
 > qu'elles spécifient n'existe (`/dashboard`, `/teams`, `/priorities`, `/schedules/:id`,
@@ -42,7 +46,8 @@ tenu à jour au fil des PR — signalé pour ce que ça vaut, non déplacé cett
 > atomique). Depuis, sont apparues les routes `/` (cockpit), `/matchs`, `/admin`,
 > `/admin/login`, `/confidentialite` et `/doleances/:token`.
 >
-> Seule la **section 1** ci-dessous (conventions de nommage API) reste valide.
+> Seules la **section 1** ci-dessous (conventions de nommage API) et la section **« Layout »**
+> (hors du bloc replié, juste après) restent valides.
 
 ---
 
@@ -65,7 +70,97 @@ complet dans `backend-inventory.md` §3.
 
 ---
 
-<details><summary><b>Historique — spec forward d'origine (sections 2 à 9), superseded, conservée pour trace</b></summary>
+## Layout (AppLayout / AuthLayout / AdminAuthLayout — vivant)
+
+⚠ **Section maintenue à jour**, contrairement au bloc « Historique » replié ci-dessous
+(recalée sur le code le 2026-09-25, P4-257/P4-261 — `AppLayout.tsx`/`AuthLayout.tsx`/
+`AdminAuthLayout.tsx` relus entiers). Trois layouts pour les écrans authentifiés/non
+authentifiés + un layout wizard (non détaillé ici, voir `frontend-wizard.md`).
+
+### AuthLayout / AdminAuthLayout
+
+**Routes :** `AuthLayout` habille `/login`, `/register` et les autres écrans publics non-admin
+(table complète : `frontend-spec.md` §2) ; `AdminAuthLayout` habille `/admin/login` seul.
+
+Les deux sont une carte centrée sur fond plein écran (`AuthLayout` : `bg-background` ;
+`AdminAuthLayout` : `bg-console-surface` sombre + halos décoratifs), sans navigation. La marque
+n'est plus une icône + un nom en texte nu (`CalendarCheck2` + `<span>{PRODUCT_NAME}</span>` —
+ancienne description, voir l'historique replié plus bas) : depuis la PR B du chantier DA
+(`#975`, 2026-09-25), c'est le logotype complet **`BrandMark`**
+(`shared/components/ui/brand-mark.tsx`, `role="img"` nommé `PRODUCT_NAME`) — `AuthLayout`
+l'affiche en couleur, bascule thème clair/sombre juste à côté ; `AdminAuthLayout` le teinte en
+blanc sur son fond sombre, sous-titré « Console sécurisée ». Gardé par `AuthLayout.test.tsx` /
+`AdminAuthLayout.test.tsx` : le logotype nommé est présent, aucun texte nu ni icône
+`CalendarCheck2` ne subsiste.
+
+### AppLayout
+
+Layout de l'espace authentifié (`frontend/src/app/AppLayout.tsx`) : un unique `<header>`
+(`border-b`, `h-14`) puis `<main>` — **pas de sidebar** (l'historique replié plus bas décrit une
+sidebar à 5 items sur des routes qui n'ont jamais existé — `/dashboard` `/teams` `/priorities`
+`/schedules/:id` — table réelle des routes sous `AppLayout` : `frontend-spec.md` §2, à ne pas
+dupliquer ici).
+
+En-tête, de gauche à droite :
+- Le lien d'accueil (`NavLink to="/"`) : `aria-label` = nom du club sinon `PRODUCT_NAME`, à
+  TOUTE largeur — c'est lui qui porte le nom ACCESSIBLE, pas le texte visible. Visuellement :
+  `BrandIcon` (icône produit, toujours rendue) puis le blason du club (`<img alt="">`,
+  seulement si `logoUrl`) puis un `<span>` du nom (club ou `PRODUCT_NAME`). **Depuis P4-261
+  (2026-09-25)** : ce `<span>` est masqué sous `sm` (`hidden sm:inline`, `truncate` conservé
+  ≥ `sm`) — il ne se tronque plus visuellement jusqu'à un caractère (« B… »), il disparaît
+  proprement ; le nom accessible du lien ne bouge pas.
+- `DevClock`, seulement en `import.meta.env.DEV`.
+- La nav de droite (`<nav>`, ne se rétracte JAMAIS, y compris sous 360 px — décision fondateur
+  desktop-first/mobile V2 ; le débordement horizontal résiduel de l'en-tête à cette largeur est
+  une dette DISTINCTE, roadmap P4-251) : `CreditBadge`, `SeasonSelector`, l'item « Matchs »
+  (verrouillé — `aria-disabled`, non cliquable — tant que `me.seasonPlan.chosenScheduleId` est
+  nul, même condition que `SocleGuard` côté serveur), la bascule thème clair/sombre, puis le
+  `Menu` du compte : Club (`/club`), Profil (`/profile`), Nouveautés (`/nouveautes`), Signaler
+  un bug (`FeedbackDialog`), Confidentialité (`/confidentialite`), Se déconnecter.
+
+`<main aria-busy={navigating}>` (`navigating` dérivé de `useNavigation()`) rend
+`ReadonlySeasonBanner`, `SeasonTransitionBanner`, `CreditsBanner` puis `<Outlet />`. **Aucun
+skip link identifié** dans ce composant (grep `main-content`/`sr-only` sans résultat dans
+`AppLayout.tsx`) — l'historique replié plus bas décrit une table « Skip link » qui n'existe pas.
+
+### Test Cases — Layout
+
+**Given** `useMe()` n'a pas encore de club chargé
+**When** `AppLayout` se rend
+**Then** l'icône produit (`BrandIcon`, seul `<svg>` au `viewBox="0 0 1000 1000"`) est présente
+**And** le nom affiché est `PRODUCT_NAME`
+(`frontend/src/app/AppLayout.test.tsx` — « rend TOUJOURS l'icône produit, même sans club
+chargé » / « sans club chargé : icône produit + nom produit »)
+
+**Given** le club a un `logoUrl`
+**When** `AppLayout` se rend
+**Then** le blason du club (`<img alt="">`) apparaît dans le `<header>` à côté de l'icône
+produit, et son nom (pas `PRODUCT_NAME`) est affiché
+(`AppLayout.test.tsx` — « affiche le blason du club à côté de l'icône produit quand il
+existe »)
+
+**Given** le club n'a pas de `logoUrl`
+**When** `AppLayout` se rend
+**Then** aucune balise `<img>` n'apparaît dans le `<header>`
+**And** l'ancienne icône de repli `CalendarCheck2` n'est plus utilisée
+(`AppLayout.test.tsx` — « sans blason : aucune image de club, l'icône produit suffit » /
+« n'utilise plus l'icône de repli CalendarCheck2 »)
+
+**Given** un gestionnaire connecté navigue vers `/club` en viewport 360 px
+**When** la page se charge
+**Then** le lien d'accueil reste visible et garde son nom accessible (`aria-label` = nom du
+club, établi par un témoin `GET /api/me` — jamais un littéral)
+**And** le `<span>` visuel du nom est MASQUÉ (`toBeHidden`)
+**When** le viewport repasse à 1280 px
+**Then** le `<span>` du nom redevient visible, le nom accessible ne change pas
+(`frontend/tests/e2e/width-calibration.spec.ts` — « en-tête à 360 px : le nom du club se
+masque sous sm, le lien d'accueil garde son nom accessible », P4-261 ; ⚠ ce test verrouille le
+comportement du NOM, pas le non-débordement de l'en-tête — à 360 px le produit déborde encore,
+dette trackée en P4-251)
+
+---
+
+<details><summary><b>Historique — spec forward d'origine (sections 2, 3 et 5 à 9), superseded, conservée pour trace</b></summary>
 
 > ⚠️ Tout ce qui suit décrit un frontend qui n'a jamais été construit tel quel. Aucune
 > affirmation de ce bloc ne fait autorité : voir le tableau « Où est la vérité » en tête.
@@ -595,111 +690,6 @@ de la présentation + accessibilité.
 **Then** un message s'affiche : "Une erreur est survenue lors du chargement du planning"
 **And** un bouton "Réessayer" est présent et appelle `onRetry` au clic
 **And** l'erreur est loggée en console (pas envoyée à un service externe en MVP)
-
----
-
-## 4. Layout
-
-Deux layouts principaux + un layout wizard (non détaillé ici, voir
-`frontend-wizard.md`).
-
-### 4.1 AuthLayout
-
-**Routes :** `/login`, `/register`
-
-Layout minimal pour les pages d'authentification. Pas de navigation, pas de
-sidebar.
-
-```
-┌─────────────────────────────────────┐
-│                                     │
-│      [Icône + nom produit]          │
-│                                     │
-│      ┌─────────────────────┐        │
-│      │                     │        │
-│      │   AuthCard (children)│       │
-│      │                     │        │
-│      └─────────────────────┘        │
-│                                     │
-│    [Lien switch login/register]     │
-│                                     │
-└─────────────────────────────────────┘
-```
-
-| Élément | Rôle | Détail |
-|---------|------|--------|
-| `AuthLayout` | Wrapper plein écran, fond gradient subtil | `<main role="main">` |
-| `AuthCard` | Card centrée, max-width 480px | `<div>` avec ombre légère |
-| Marque | Icône `CalendarCheck2` + nom produit en haut | `<span>{PRODUCT_NAME}</span>` (« Amateo », `shared/lib/product.ts` — pas un `<img>`) |
-
-### 4.2 AppLayout
-
-**Routes :** `/dashboard`, `/schedules/:id`, `/schedules/:id/diagnostics`,
-`/teams`, `/priorities`, `/profile`
-
-Layout principal de l'application. Sidebar navigation + topbar + contenu.
-
-```
-┌──────────┬──────────────────────────────┐
-│          │  TopBar (club name, user)    │
-│  Sidebar ├──────────────────────────────┤
-│          │                              │
-│  - Dash  │                              │
-│  - Plan  │     Content (children)       │
-│  - Équip │                              │
-│  - Prio  │                              │
-│  - Profil│                              │
-│          │                              │
-└──────────┴──────────────────────────────┘
-```
-
-| Élément | Rôle | Détail |
-|---------|------|--------|
-| `AppLayout` | Wrapper flex, sidebar fixe + contenu scrollable | `<div>` |
-| `Sidebar` | Navigation principale, collapsible | `<nav role="navigation" aria-label="Navigation principale">` |
-| `SidebarItem` | Item de navigation avec icône + label | `<a>` avec `aria-current="page"` si actif |
-| `TopBar` | Barre supérieure : nom du club, avatar user, logout | `<header role="banner">` |
-| `ContentArea` | Zone de contenu, scrollable | `<main role="main" id="main-content">` |
-
-#### Navigation sidebar
-
-| Item | Icône lucide-react | Route | `aria-current` |
-|------|-------------------|-------|----------------|
-| Tableau de bord | `LayoutDashboard` | `/dashboard` | `page` si actif |
-| Planning | `Calendar` | `/schedules/{activeId}` | `page` si actif |
-| Équipes | `Users` | `/teams` | `page` si actif |
-| Priorités | `Trophy` | `/priorities` | `page` si actif |
-| Profil | `Settings` | `/profile` | `page` si actif |
-
-#### Skip link
-
-```html
-<!-- Premier élément du DOM dans AppLayout -->
-<a href="#main-content" class="sr-only focus:not-sr-only">
-  Aller au contenu principal
-</a>
-```
-
-### Test Cases — Layout
-
-**Given** le gestionnaire est connecté et sur `/dashboard`
-**When** la page se charge avec `AppLayout`
-**Then** la sidebar affiche 5 items de navigation avec icônes
-**And** l'item "Tableau de bord" a `aria-current="page"`
-**And** les autres items n'ont pas `aria-current`
-**And** un skip link "Aller au contenu principal" est présent en premier élément du DOM
-
-**Given** le gestionnaire est sur `/priorities` et la sidebar est en mode collapsible
-**When** il clique sur le bouton de collapse de la sidebar
-**Then** la sidebar se réduit à une largeur de 64px (icônes uniquement)
-**And** les labels disparaissent avec `aria-hidden="true"`
-**And** `uiStore.sidebarOpen` passe à `false`
-**And** le contenu s'élargit pour remplir l'espace
-
-**Given** le gestionnaire utilise un lecteur d'écran et navigue au clavier
-**When** il appuie sur `Tab` en arrivant sur la page
-**Then** le skip link "Aller au contenu principal" reçoit le focus en premier
-**And** s'il appuie sur `Enter`, le focus se déplace sur `<main id="main-content">`
 
 ---
 
