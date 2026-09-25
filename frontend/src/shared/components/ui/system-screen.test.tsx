@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 
 import { clearLastIncident, recordIncident } from "@/shared/api/lastIncidentStore";
+import { PRODUCT_NAME } from "@/shared/lib/product";
 
 import { SystemScreen } from "./system-screen";
 
@@ -114,6 +115,19 @@ describe("SystemScreen — primitive présentationnelle", () => {
     );
     expect(screen.getByText("Détails techniques (dev)")).toBeInTheDocument();
     expect(screen.getByText(/Dernier incident serveur/i)).toBeInTheDocument();
+  });
+
+  it("porte le logotype produit en tête ET en pied, jamais le nom en texte nu ni l'icône calendrier", () => {
+    const { container } = render(
+      <SystemScreen title="T" primaryAction={{ label: "P", onClick: noop }}>
+        corps
+      </SystemScreen>,
+    );
+    // Deux logotypes nommés PRODUCT_NAME (en-tête size=lg + pied size=sm).
+    expect(screen.getAllByRole("img", { name: PRODUCT_NAME })).toHaveLength(2);
+    // Plus de nom en texte nu ni d'icône calendrier de repli.
+    expect(screen.queryByText(PRODUCT_NAME)).toBeNull();
+    expect(container.querySelector('[class*="calendar-check"]')).toBeNull();
   });
 
   it("passe axe (structure, rôles, noms)", async () => {

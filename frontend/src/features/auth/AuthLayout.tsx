@@ -1,9 +1,9 @@
-import { CalendarCheck2, Moon, Sun } from "lucide-react";
+import { Moon, Sun } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { BrandMark } from "@/shared/components/ui/brand-mark";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
-import { PRODUCT_NAME } from "@/shared/lib/product";
 import { useThemeStore } from "@/shared/stores/themeStore";
 
 interface AuthLayoutProps {
@@ -22,10 +22,7 @@ export function AuthLayout({ title, description, children, footer }: AuthLayoutP
     <main className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground">
       <div className="w-full max-w-md">
         <div className="mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <CalendarCheck2 className="size-6 text-accent" />
-            <span className="text-lg font-semibold">{PRODUCT_NAME}</span>
-          </div>
+          <BrandMark size="md" />
           <Button variant="ghost" size="icon" aria-label="Basculer le thème" onClick={toggleMode}>
             {mode === "dark" ? <Sun /> : <Moon />}
           </Button>

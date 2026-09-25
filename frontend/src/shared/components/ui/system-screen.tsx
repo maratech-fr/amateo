@@ -1,8 +1,7 @@
-import { CalendarCheck2 } from "lucide-react";
 import { type ReactNode, useEffect, useId, useRef } from "react";
 
+import { BrandMark } from "@/shared/components/ui/brand-mark";
 import { DevIncidentDetails } from "@/shared/components/ui/dev-incident-details";
-import { PRODUCT_NAME } from "@/shared/lib/product";
 import { SystemScene } from "@/shared/components/ui/system-scene";
 
 /**
@@ -18,8 +17,9 @@ import { SystemScene } from "@/shared/components/ui/system-scene";
  *
  * ⚠ Contrainte dure : elle rend SANS aucun provider — elle sert sous l'ErrorBoundary
  * React, monté HORS providers. Donc pas de `useQuery`, pas de router, pas de
- * `FeedbackDialog` à l'intérieur. Le nom produit vient de la VARIABLE `PRODUCT_NAME`
- * (jamais un littéral — garde `product.guard.test.ts`).
+ * `FeedbackDialog` à l'intérieur. Le nom produit est porté par le logotype `BrandMark`
+ * (dérivé de `PRODUCT_NAME`, jamais un littéral — garde `product.guard.test.ts`) ; comme
+ * `BrandMark` n'est que `BrandIcon` + texte, il reste sans provider.
  *
  * A11y (passe de design P5-14) : un écran système est une NAVIGATION qui remplace la
  * page, pas un toast — on déplace donc le focus sur le titre (`h1` focusable), sans
@@ -57,10 +57,7 @@ export function SystemScreen({ title, children, primaryAction, secondaryAction, 
 
   return (
     <section aria-labelledby={titleId} className="flex min-h-[70vh] flex-col items-center justify-center gap-6 bg-background px-4 py-10 text-center text-foreground">
-      <span className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-        <CalendarCheck2 className="size-5 text-accent" aria-hidden />
-        {PRODUCT_NAME}
-      </span>
+      <BrandMark size="lg" />
 
       {/* Scène commune à TOUS les écrans système (P5-22) : un demi-terrain où des cartes
           flottent en apesanteur. Décor (aria-hidden), rendu par DÉFAUT — c'est de la forme
@@ -98,7 +95,9 @@ export function SystemScreen({ title, children, primaryAction, secondaryAction, 
         {/* P4-129 — détails techniques repliables, DEV uniquement. Dans le pied, donc hors
             du focus posé sur le h1 au montage ; le composant ne vole jamais le focus. */}
         <DevIncidentDetails />
-        <span className="text-xs text-muted-foreground">{PRODUCT_NAME}</span>
+        {/* Pied atténué : « amat » suit `text-muted-foreground` (5,32:1 sur bg), « eo » teal
+            reste le mark (logotype, exempté du contraste texte). */}
+        <BrandMark size="sm" className="text-muted-foreground" />
       </footer>
     </section>
   );
