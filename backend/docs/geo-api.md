@@ -1,16 +1,11 @@
 # API géo — routes externes consommées (P2-53 RMM-8)
 
-Last verified @ 2026-09-25 (**rotation de fraîcheur**, `documentation-update`, PR B du chantier DA
-« en-tête marque produit + favicon » — sans rapport avec le sujet de la PR). Re-confronté au code
-cette passe : les deux hosts liste-blanche (`api-adresse.data.gouv.fr` dans
-`BanGeocodingClient::SEARCH_URL`, `:24` ; `data.geopf.fr` dans `IgnRoutingClient::ITINERARY_URL`,
-`:67`) ✓ · `IgnRoutingClient::MAX_RETRY_AFTER_SECONDS = 5.0` / `MIN_INTERVAL_SECONDS = 1.0` /
-`MAX_ATTEMPTS = 3` (`IgnRoutingClient.php:55-65`, inchangé) ✓ ·
-`TravelComputeLock::KEY_PREFIX = 'travel_compute:club:'` (`:24`) ✓ ·
-`ComputeTravelTimesHandler::WORKER_BUDGET_SECONDS = 180` / `PROGRESS_STEP = 5`
-(`ComputeTravelTimesHandler.php:38,50`) ✓ · version de contrat en vigueur citée au corps
-(`engine/CONTRACT_VERSION` = 2.23, § « Ce que la matrice + le levier alimentent ») ✓. Historique des
-passes précédentes vit dans git : `git log -p --follow backend/docs/geo-api.md`.
+Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement » frontend 2/3 —
+édition de POINTEUR seule). La mention `AddressGeocodeField` pointait vers `frontend/AGENTS.md`
+§Primitives, section déplacée (primitives UI partagées, maison unique) : recalée vers
+[`frontend/docs/frontend-components.md`](../../frontend/docs/frontend-components.md) §3. Reste du
+fichier non re-sondé cette passe. Historique des passes précédentes vit dans git :
+`git log -p --follow backend/docs/geo-api.md`.
 
 > Répertoire des endpoints externes **géo** utilisés par le backend — deuxième famille de sorties
 > non-FFBB après `ffbb-api.md` (même patron : liste blanche de hosts codés en dur, SSRF-safe,
@@ -47,7 +42,7 @@ Headers:
 service est indisponible (best-effort : jamais un formulaire cassé). Le frontend n'appelle jamais
 directement api-adresse.data.gouv.fr (frontière §2 de `CLAUDE.md`). **Primitive front partagée
 (retours de tests, 2026-09-19)** : `AddressGeocodeField` (`frontend/src/shared/components/ui/
-address-geocode-field.tsx`, `frontend/AGENTS.md` §Primitives) — saisie ≥3 caractères → « Localiser »
+address-geocode-field.tsx`, [`frontend/docs/frontend-components.md`](../../frontend/docs/frontend-components.md) §3) — saisie ≥3 caractères → « Localiser »
 (consomme `GET /api/geocode`) → liste de candidats (`label`, sans le score chiffré : le premier
 porte « Recommandé », un score < 0.4 porte « correspondance approximative ») → clic remonte le
 candidat FÉDÉRAL choisi au caller via `onPick`, jamais d'écriture avant le clic. Deux consommateurs :

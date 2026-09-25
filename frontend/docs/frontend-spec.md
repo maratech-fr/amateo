@@ -4,12 +4,15 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement », 1/3 frontend —
-édition de POINTEUR seule). Les deux mentions `AddressGeocodeField`/`TeamSelect` (§6.6 ter, §10)
-pointaient vers `frontend/AGENTS.md` §Primitives, section désormais déplacée (primitives UI
-partagées, maison unique) : recalées vers [`frontend-components.md`](frontend-components.md) §3.
-Reste du fichier non re-sondé cette passe (dernière ronde : 2026-09-24, route `/matchs`/`WeekGrid`
-priorités visuelles/arborescence `wizard/`) — historique : `git log -p --follow` ce fichier.
+Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement », 2/3 frontend) —
+re-sondé contre le code : routes `/matchs` (`frontend/src/app/routes.tsx`, index `MatchesLanding`,
+redirect `/matchs/consulter`, catch-all 404), guard d'onboarding (`AuthGuard.tsx:19`), proxy Nginx
+(`docker/frontend/nginx.conf:96-102`), stores (`ls frontend/src/shared/stores/
+frontend/src/features/*/store.ts`) et endpoints club (`frontend/src/features/club/api.ts`) — un
+écart trouvé et corrigé (§9, `/api/club/info` n'existe plus) et un store manquant ajouté (§8,
+`navTransitionStore`). §6.2/§6.7 non retouchés cette passe (chronologie et raison des gardes
+inextricables) — signalé en roadmap. Reste du fichier hors périmètre : `git log -p --follow` ce
+fichier.
 
 ## 1. Stack Decided
 
@@ -106,8 +109,7 @@ Calendrier depuis `fixture.awayTravel` (dérivé de la rencontre, plus un appel 
 - **Onboarding** : `AuthGuard` verrouille l'app au wizard tant que `me.seasonPlan.hasFinishedVersion === false` (le club n'a jamais généré). Le flag legacy `club.onboardingCompleted` **n'est plus lu pour le routage**.
 - **Gate cockpit** : `CockpitPage` redirige vers `/wizard` tant que `me.seasonPlan.hasFinishedVersion === false`. Le critère est **dérivé** (le plan de saison porte ≥1 version terminée) et **indépendant du pointeur** : rouvrir un planning ne re-verrouille **pas** le cockpit — voir `planning-lifecycle-validated.md` et `specs/courantes/accueil-cockpit-temporel.md` §2ter.
 - **Gate matchs / plans secondaires** : bloqués tant que `me.seasonPlan.chosenScheduleId === null` (front désactivé + `SocleGuard` **409** côté serveur).
-- **Routes exemptées du verrou d'onboarding** : `AuthGuard` autorise `/wizard`, `/profile` et `/club` (constante `ONBOARDING_ALLOWED`).
-  ⚠️ **Écart connu, non tranché** : `/confidentialite` figure au **menu compte** (`AppLayout`) mais **pas** dans `ONBOARDING_ALLOWED` — un club en cours d'onboarding qui clique « Confidentialité » est renvoyé vers `/wizard`. Décision fondateur en attente (l'ajouter à la liste, ou le retirer du menu tant que l'onboarding n'est pas terminé).
+- **Routes exemptées du verrou d'onboarding** : `AuthGuard` autorise `/wizard`, `/profile`, `/club` et `/confidentialite` (constante `ONBOARDING_ALLOWED`, `AuthGuard.tsx:19`) — un club en cours d'onboarding peut donc consulter la confidentialité sans être renvoyé vers `/wizard`.
 - **`/doleances/:token` et `/admin*` sont hors de cet arbre** : la page doléances est publique (aucune session), la console superadmin a sa propre garde (`AdminGuard`) et sa propre session.
 
 ### Routes non livrées
@@ -235,12 +237,8 @@ export default defineConfig({
 ```
 
 En production, le Nginx frontend proxy `/api` → backend Nginx, `/exports` → backend et
-`/.well-known/mercure` → Mercure hub.
-
-> ⚠️ **Écart connu, non tranché** : `docker/frontend/nginx.conf` conserve un bloc
-> `location /engine/` → `http://engine:8000/`. Il n'est appelé par aucun code de
-> `frontend/src/`, mais il ouvre une route que la frontière §2 interdit. Décision fondateur
-> en attente (le retirer, ou documenter pourquoi il reste).
+`/.well-known/mercure` → Mercure hub. **Pas de `location /engine/`** (`docker/frontend/nginx.conf:96-102`) —
+frontière §2 de `CLAUDE.md` : le frontend ne contacte jamais l'engine directement.
 
 ---
 
@@ -419,13 +417,11 @@ Le gestionnaire ne voit jamais le concept de `club_id` ou `season_id`. Le fronte
 
 ### 6.6 ter Informations du club (fiche FFBB — 100 % lecture seule sauf le siège)
 
-⚠ **Périmé jusqu'au 2026-09-19** : cette section décrivait encore le formulaire éditable
-`PATCH /api/club/info` (comité éditable, correspondant, président, salle principale). Ce PATCH et
-ces quatre champs ont été **supprimés le 2026-08-04** (décision fondateur, `etat-des-lieux.md` §3) —
-l'index FFBB `organismes` ne connaît aucune personne physique ni aucun lien club→salle. La route
-`/club` expose une section **« Informations du club »** (admin uniquement, `AccordionSection`,
-`ClubInfoSection`) redevenue **lecture seule FFBB**, à une exception près (amendement 2026-09-19,
-retours de tests) :
+Le `PATCH /api/club/info` et ses quatre champs (comité éditable, correspondant, président, salle
+principale) n'existent plus (`etat-des-lieux.md` §3) — l'index FFBB `organismes` ne connaît aucune
+personne physique ni aucun lien club→salle. La route `/club` expose une section
+**« Informations du club »** (admin uniquement, `AccordionSection`, `ClubInfoSection`) **lecture
+seule FFBB**, à une exception près :
 
 - **Identité** (`ReadOnlyField`) : Code FFBB, Ligue, Zone de vacances, Comité — auto-dérivés,
   aucune saisie. Bouton « Actualiser depuis la FFBB » (`POST /api/club/ffbb-import`,
@@ -1186,6 +1182,7 @@ Le frontend n'utilise **pas** `useInfiniteQuery` (aucune occurrence dans `src/`)
 | `seasonStore` | `src/shared/stores/seasonStore.ts` | saison sélectionnée (`selectedSeasonId`) — alimente l'en-tête `X-Season-Id` | persisté |
 | `toastStore` | `src/shared/stores/toastStore.ts` | file des notifications, rendue par `ui/toaster` | Non persisté |
 | `transitionUiStore` | `src/shared/stores/transitionUiStore.ts` | état UI du bandeau de bascule de saison | persisté |
+| `navTransitionStore` | `src/shared/stores/navTransitionStore.ts` | jeton monotone armé par un GESTE de navigation (`armNavTransition`) — seul déclencheur du contexte « Changement de page » du voile `ActionVeil` | Non persisté |
 | wizard `store` | `src/features/wizard/store.ts` | étape courante, étape max atteinte, **mode** (`season`/`period`) + `calendarEntryId` — **aucune donnée métier** | persisté (`version: 4`) |
 | planning `store` | `src/features/planning/store.ts` | planning sélectionné + état UI (vue, filtres) | Non persisté |
 | matches `store` | `src/features/matches/store.ts` | état UI du module matchs — `selectedWeekend` (semaine affichée du Calendrier, `null` = auto, miroir URL `?semaine=`, PR 3b) + `unplacedReasons` (raisons du dernier auto-placement, par fixtureId) : les deux resettent au changement de semaine (`setSelectedWeekend`) ; **`railStep` SUPPRIMÉ (PR 3b, 2026-09-16, remplacé par la barre `WeekCounters` dérivée pure — plus aucun état de rail stocké)** ; `filterMode` (`equipe`/`coach`/`gymnase`) + `filterIds` (PR-1 filtres 2026-09-08) : changer d'axe vide la sélection, changer de semaine ne purge PAS le filtre ; miroir dans l'URL `?vue=&filtre=` ; `consultKinds` (`null` = **les DÉFAUTS** championnat+coupe+brassage depuis le 2026-09-16/17, plus « tout » — `DEFAULT_KINDS`)/`consultFamilies` (`null` = tout) + `consultTypicalWeek` (PR-2a, 2026-09-08, initial `false` depuis le 2026-09-16/17) + `consultAway` (interrupteur Extérieurs, initial `false`, non persisté) + `consultTemporality`/`consultMonth`/`consultPhaseId` (PR-2b), miroir URL `type=`/`conflits=`/`type_semaine=`/`exterieurs=`/`temps=`/`mois=`/`phase=` ; `conflictsPivot`/`conflictsFamilies` (PR A Conflits, 2026-09-15) — SÉPARÉS de `consultFamilies` (le compte de l'onglet Conflits est SAISON, celui du Calendrier la temporalité affichée), miroir URL `pivot=`/`conflits=` (`decodeConflictsParams`/`applyConflictsToParams` — `traitement=`/`domicile=` sont aussi décodés par ces fonctions mais restent en état LOCAL de `ConflictsPage.tsx`, pas dans ce store) | Non persisté |
@@ -1242,7 +1239,7 @@ type AuthState = {
 | `/` (cockpit) | `GET /api/me`, `GET /api/schedules`, `GET /api/schedule_plans`, `GET /api/calendar_entries` (+ conflits d'entrée), campagnes de doléances (badge radar), `GET /api/venue_unavailabilities` + `venue-unavailability-impact` (carte radar « gymnase indisponible » — P4-68), `PUT /api/calendar_entries/{id}` (re-dater une racine `closure` re-datable — bouton « Modifier les dates » de la liste du jour, D3 v1 PR-2 ; ou, pour une mère DÉCOUPÉE, confirme un `POST /redate-preview` — D3 v2), `POST /api/calendar_entries/{id}/redate-preview` (aperçu des effets avant confirmation, mère découpée seulement — D3 v2, P4-174) |
 | `/matchs`, `/matchs/consulter`, `/matchs/importer`, `/matchs/configuration`, `/matchs/adversaires`, `/matchs/semaine-type`, `/matchs/reconciliation` | `POST /api/fixtures/import/analyze` (multipart `file` → mappings résolus, PR-3b : plus de `deviations` dans la réponse consommée), `POST /api/fixtures/import` (multipart `file` + `mappings`, **plus de `decisions`** depuis PR-3b → rapport + `unresolvedDeviations`/`depositedAt`), `GET /api/fbi-ingestions/latest` (fraîcheur, Membre), `POST /api/matches/module-visit` (gardien RMM-3, un POST par ouverture), `GET /api/ffbb/rencontres` + `POST /api/ffbb/rencontres/apply` (canal API, à la demande — `useFfbbRencontres(enabled: false)`), `POST /api/fixtures/review` (geste ligne `{fixtureIds}` ou masse `{teamId}`, PR-3a/3b) + `POST /api/fixtures/review/deviations` (trancher un écart `{fixtureId, field, choice}`). ⚠ Catalogue **partiel** — le module porte aussi `fixtures` CRUD, `fixtures/conflicts`, `fixtures/place`, `league-match-windows`, `venue_match_windows`, `team_match_habits`, `team_links`, `ffbb/engagements`, `venue_unavailabilities`, `POST /api/opponents/resolve` (rattrapage des codes FFBB des adversaires, cap dur `MAX_DISTINCT` — `OpponentResolveController.php`, route fine conservée en compat), `POST /api/opponents/refresh` (l'orchestrateur appelé depuis « Mettre à jour les adversaires » depuis PR 2b, 2026-09-16 — `OpponentRefreshController.php`), `GET /api/opponents/travel` (`travelStatus`/`hasLogo` additifs, C5/C7), `POST /api/opponents/travel/resolve` (dispatche au worker depuis C6, `{queued: true}`), `POST /api/opponents/travel/manual`/`/auto`, `GET /api/opponents/{code}/venue-suggestions`, `GET /api/opponents/{code}/logo` (route membre, C7) |
 | `/wizard` | CRUD `teams`/`venues`/`coaches`/`constraints`/`venue_training_slots`…, `GET /api/priority_tiers`, `GET /api/sport_categories`, `POST /api/teams/reorder` (mode tri), `POST /api/constraints/validate`, `POST /api/schedules` + `generate` (étape Génération) |
-| `/club` | `PATCH /api/club/appearance`, `POST/DELETE /api/club/logo`, `GET /api/clubs/{clubId}/logo` (public, cache-buster sur l'URL après upload), `PATCH /api/club/info` (fiche FFBB, management-gated), `GET /api/memberships/pending`, `POST /api/memberships/{id}/approve`, `POST /api/memberships/{id}/reject` (section « Demandes » — l'ancienne route `/pending-members` a été repliée ici), `GET /api/venue-usage-stats?from=&to=` (encart stats d'utilisation des gymnases — §6.6 quater) |
+| `/club` | `PATCH /api/club/appearance`, `POST/DELETE /api/club/logo`, `GET /api/clubs/{clubId}/logo` (public, cache-buster sur l'URL après upload), `POST /api/club/ffbb-import` (re-import institutionnel, seul geste de correction de la fiche FFBB, management-gated), `PATCH /api/club/siege` (siège du club, seule saisie de la page — §6.6 ter), `GET /api/memberships/pending`, `POST /api/memberships/{id}/approve`, `POST /api/memberships/{id}/reject` (section « Demandes » — l'ancienne route `/pending-members` a été repliée ici), `GET /api/venue-usage-stats?from=&to=` (encart stats d'utilisation des gymnases — §6.6 quater) |
 | `/profile` | `GET /api/me` |
 | `/doleances/:token` | Endpoints **publics** de la campagne de doléances (lecture du formulaire pré-rempli + soumission des seules sections modifiées) — aucun JWT |
 | `/admin*` | `POST /api/admin/auth/password`, `POST /api/admin/auth/totp`, `GET /api/admin/auth/me`, `GET /api/admin/{overview,health,clubs,jobs,actions}`, `POST /api/admin/jobs/{key}/run` (en-tête `X-CSRF-Token`) — client `adminApi` dédié, cookie de session `same-origin` |
@@ -1433,6 +1430,12 @@ frontend/src/
 │   └── stores/                 # authStore, themeStore, seasonStore, toastStore, transitionUiStore
 └── test/                       # setup vitest, helpers de rendu, suite a11y
 ```
+
+- `app/routes.tsx` exporte l'arbre `RouteObject[]` en **export non-composant** (sorti de
+  `router.tsx` à dessein, FRT-29).
+- `features/matches/api/` est **le seul barrel** de la base — `index.ts` réexporte huit modules
+  par domaine (`opponents`/`fixtures`/`conflicts`/`venues`/`teams`/`competitions`/`fbi`/`ffbb`,
+  FRT-33), chemin d'import public (`./api`) inchangé.
 
 ### Trois pièces transverses à connaître avant de coder
 
