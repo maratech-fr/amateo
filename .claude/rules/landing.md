@@ -32,3 +32,10 @@ paths:
 - **Aucune donnée personnelle collectée sans mentions légales ni politique de confidentialité**
   (LCEN + RGPD) : un formulaire de contact sur cette page déclenche les deux obligations —
   `business/administratif-mise-en-prod.md` §9.
+- **Aucun job CI ne couvre `landing/`** (`.github/workflows/ci.yml` ne la mentionne nulle part) —
+  la seule preuve d'une passe (design, contraste, rendu) est un axe joué **à la main** dans un
+  vrai navigateur, captures à l'appui dans `captures/` (racine du dépôt, gitignoré).
+- **Une capture d'écran de l'app pour la vitrine se prend sur le club de démonstration**
+  (`app:demo:seed`, « Démo Basket Club ») — jamais sur un club réel, jamais de nom de personne.
+  Patron : `landing/assets/planning.png` (P5-5), `landing/assets/matchs.jpg` (P5-26) — décision
+  fermée, `specs/courantes/etat-des-lieux.md` §2.
