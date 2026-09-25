@@ -1,6 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" role="img" aria-label="Amateo">
   <!-- Icône amateo — géométrie définitive du handoff marque (business/7-marque/design_handoff_logo_loaders).
        Trois arcs, centre 500,500, 0° = 3 h, sens horaire, pathLength=360 (dasharray en degrés). -->
+  <!-- Disque plein blanc derrière les arcs : fait ressortir l'icône sur les onglets sombres ET clairs
+       (retour fondateur). R=490 → marge fine autour de l'arc le plus large (bord extérieur ~358) et
+       10 u de transparence au bord pour rester un cercle, non rogné par le carré. Pas de contour ni ombre. -->
+  <circle cx="500" cy="500" r="490" fill="#ffffff"/>
   <circle cx="500" cy="500" r="313" fill="none" stroke="#B51C8A" stroke-width="83" stroke-linecap="round" pathLength="360" stroke-dasharray="133 400" transform="rotate(98 500 500)"/>
   <circle cx="500" cy="500" r="325" fill="none" stroke="#D47800" stroke-width="66" stroke-linecap="round" pathLength="360" stroke-dasharray="69 400" transform="rotate(252 500 500)"/>
   <circle cx="500" cy="500" r="332" fill="none" stroke="#46AFAC" stroke-width="50" stroke-linecap="round" pathLength="360" stroke-dasharray="89 400" transform="rotate(334.5 500 500)"/>
