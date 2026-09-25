@@ -128,8 +128,9 @@ branche puis PR ; **JAMAIS de merge sans le GO explicite du user** ; push libre,
 **Cycle full lane** :
 0. **Lire le CODE avant d'analyser** — tout constat vérifié (grep/read/test) et cité
    `fichier:ligne`, jamais de mémoire ni depuis un doc ; jamais « vérifié » sur balayage partiel.
-1. **Need validation** : besoin en 3-6 lignes + ambiguïtés + ce que je ne ferai PAS, chaque
-   constat adossé au code lu. **User valide — pas de `/plan` avant.**
+1. **Need validation** (agent `cadreur`, lecture seule) : besoin reformulé, constats cités
+   `fichier:ligne`, scénario UI réel, décisions avec exemple, ambiguïtés, hors-périmètre.
+   **User valide — pas de `/plan` avant.**
 2. `/plan` (agent `planner`, porte la checklist §9) ; optionnel `contrarian-review`. User valide.
 3. Implémenter **strictement dans le scope** (agent `coder`, zéro refactor opportuniste).
 4. **NR obligatoire si axe §7.1 touché — même PR.** ⚠ `phase1` ne gate pas (§4) : un NR qui doit
@@ -159,7 +160,10 @@ auth & memberships.
 `CLAUDE.md` = index court ; `docs/` = détail ; **one canonical home, no duplication**. Root
 `AGENTS.md` pointe ici ; `<zone>/AGENTS.md` = détail de zone. Mise à jour via le skill
 `documentation-update` avant chaque PR. Décisions structurantes → ADR
-(`docs/architecture/adr-index.md`).
+(`docs/architecture/adr-index.md`). Décision business prise en session (positionnement, marque,
+prix, juridique, terrain) → l'agent `business-writer` met `business/` à jour (hors dépôt, hors PR,
+jamais exigé en CI ; ce qui doit être opposable au code est recopié en substance dans
+`specs/courantes/` par `docs-writer`).
 
 **Les deux fichiers de suivi — ne jamais les confondre** : `specs/evolution/roadmap.md` =
 **l'ouvert seulement** ; `specs/courantes/etat-des-lieux.md` = **le livré + les décisions fermées**.
