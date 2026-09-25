@@ -42,13 +42,25 @@ function darkBody(css: string): string {
   return m[1];
 }
 
-/** La valeur d'un jeton dans un corps de bloc, en minuscules (`--accent:` ≠ `--accent-hover:`). */
+/**
+ * La valeur d'un jeton dans un corps de bloc, en minuscules. Lecture ligne à ligne (pas de
+ * `new RegExp` construite — Semgrep `detect-non-literal-regexp`, et l'alternative est triviale) :
+ * la 1ʳᵉ ligne dont le `trim` commence par `${token}:` (donc `--accent:` ≠ `--accent-hover:`),
+ * valeur = ce qui suit le `:` jusqu'au `;`, `trim`.
+ */
 function tokenValue(body: string, token: string): string {
-  const m = new RegExp(`${token}:\\s*([^;]+);`).exec(body);
-  if (null === m) {
-    throw new Error(`index.css : jeton ${token} introuvable dans le bloc`);
+  const prefix = `${token}:`;
+  for (const raw of body.split("\n")) {
+    const line = raw.trim();
+    if (line.startsWith(prefix)) {
+      const after = line.slice(prefix.length);
+      const end = after.indexOf(";");
+      if (-1 !== end) {
+        return after.slice(0, end).trim().toLowerCase();
+      }
+    }
   }
-  return m[1].trim().toLowerCase();
+  throw new Error(`index.css : jeton ${token} introuvable dans le bloc`);
 }
 
 describe("index.css ⇄ dérivation : l'accent PRODUIT statique EST la sortie de accentForMode", () => {
