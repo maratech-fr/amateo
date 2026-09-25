@@ -1,14 +1,18 @@
 # Documentation technique du flux de génération de planning
 
-Last verified @ 2026-09-24 (**rotation de fraîcheur**, `documentation-update`, P4-255 PR 2 sur
-`PlanningPage.tsx` — sans rapport avec le sujet de la PR). Re-confirmé cette passe :
-`CONTRACT_VERSION` toujours **`'2.23'`** (`ScheduleConstraintBuilder.php:63` ⇄
-`engine/CONTRACT_VERSION`) ; le margin du TTL du verrou (`GenerateScheduleHandler.php:62`
-`LOCK_TTL_MARGIN_SECONDS = 60`, ligne 117 `acquire(... getTimeoutSeconds() +
-self::LOCK_TTL_MARGIN_SECONDS)`) — les deux inchangés. Reste non re-sondé cette passe : §3a-bis/3c
-(dernière confrontation 2026-09-22, lot « la génération relancée ne refait pas le travail ») et
-§4-9 (appel moteur, import, Mercure §6.1-6.3, cycle de vie du statut) — dernière confrontation de
-ces sections 2026-09-21/2026-09-15.
+Last verified @ 2026-09-25 (**rotation de fraîcheur**, `documentation-update`, PR agents
+`cadreur`/`business-writer` — sans rapport avec le sujet). Re-confronté cette passe : `CONTRACT_VERSION`
+toujours **`'2.23'`** (`ScheduleConstraintBuilder.php:63` ⇄ `engine/CONTRACT_VERSION`) ; le margin
+du TTL du verrou (`GenerateScheduleHandler.php:62` `LOCK_TTL_MARGIN_SECONDS = 60`, ligne 117
+`acquire(... getTimeoutSeconds() + self::LOCK_TTL_MARGIN_SECONDS)`) ; `RedeliveredGenerationTest`
+toujours listé bloquant dans `docs/testing/blocking-tests.md` (§3a-bis) ; le payload Mercure porte
+toujours exactement **5** champs (`ScheduleProgressPublisher.php:40-44` — `scheduleId`, `status`,
+`score`, `unplaced`, `warnings`, §6.2). **Dérive trouvée et corrigée** : la citation du `Literal`
+de statut engine pointait `output_schema.py:137`, périmée — le fichier est
+`engine/app/schemas/output_schema.py:152` (§4.2), recalée. Reste non re-sondé cette passe : §3b
+(construction du payload, dernière confrontation 2026-09-22, lot « la génération relancée ne refait
+pas le travail ») et §5/§7-9 (import, diagnostics, cycle de vie) — dernière confrontation
+2026-09-21/2026-09-15.
 
 > ClubScheduler — Symfony 7 + API Platform + Messenger Redis + Mercure SSE. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
@@ -293,7 +297,7 @@ Le moteur a trouvé un planning valide. `ScheduleResultImporter` exécute les op
 
 ### 5.2 Cas : statut "failed"
 
-⚠ Il n'existe **pas** de statut `"infeasible"` sur le fil : le schéma de sortie du moteur est un `Literal["queued", "generating", "completed", "failed"]` (`output_schema.py:137`) — une instance INFEASIBLE arrive en `status: "failed"` avec ses diagnostics.
+⚠ Il n'existe **pas** de statut `"infeasible"` sur le fil : le schéma de sortie du moteur est un `Literal["queued", "generating", "completed", "failed"]` (`engine/app/schemas/output_schema.py:152`) — une instance INFEASIBLE arrive en `status: "failed"` avec ses diagnostics.
 
 Le moteur n'a pas pu produire de planning complet.
 
