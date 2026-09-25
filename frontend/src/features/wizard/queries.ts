@@ -77,6 +77,33 @@ export function useReorderTeams() {
   });
 }
 
+// --- FFBB team import (P3-7) ---
+
+/** Dry-run d'un dépôt FBI : la table des équipes du fichier. Aucune écriture, aucune invalidation. */
+export function useAnalyzeTeamsImport() {
+  return useMutation({
+    mutationFn: ({ clubId, seasonId, file }: { clubId: string; seasonId: string; file: File }) =>
+      wizardApi.analyzeTeamsImport(clubId, seasonId, file),
+  });
+}
+
+/**
+ * Import des lignes cochées. Au succès on invalide `teams` PARTOUT (D-25) ET
+ * `["sport_categories"]` : l'import fait naître les catégories sportives absentes, sans quoi le
+ * sélecteur de catégorie du formulaire d'ajout ignorerait les nouvelles.
+ */
+export function useImportTeams() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ clubId, seasonId, file, rows }: { clubId: string; seasonId: string; file: File; rows: number[] }) =>
+      wizardApi.importTeams(clubId, seasonId, file, rows),
+    onSuccess: () => {
+      void invalidateEverywhere(queryClient, "teams");
+      void queryClient.invalidateQueries({ queryKey: ["sport_categories"] });
+    },
+  });
+}
+
 // --- Venues + slots (W2) ---
 
 export function useWizardVenues() {

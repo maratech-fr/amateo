@@ -69,6 +69,62 @@ export const reorderTeams = (items: { id: string; priorityTierId: number; tierOr
   api.post("teams/reorder", { json: { items } }).json();
 export const deleteTeam = (id: string): Promise<void> => api.delete(`teams/${id}`).then(() => undefined);
 
+// --- FFBB team import (P3-7) : deposit an FBI export, pick the lines, import them ---
+
+/**
+ * Une ligne du fichier analysé (dry-run). `row` = numéro de ligne Excel (renvoyé tel quel
+ * par le serveur, ce qu'attend l'import). `alreadyPresent` = nom déjà présent (club+saison,
+ * casse-insensible) OU doublon plus haut dans le fichier — la modale la décoche par défaut
+ * pour éviter le doublon, sans l'interdire. Miroir de `FfbbExcelImporter::analyze`.
+ */
+export interface TeamImportRow {
+  row: number;
+  name: string;
+  category: string;
+  number: string;
+  alreadyPresent: boolean;
+}
+
+/** Le résultat du dry-run : les lignes, les erreurs par ligne, le total lu. */
+export interface TeamImportAnalysis {
+  rows: TeamImportRow[];
+  errors: string[];
+  total: number;
+}
+
+/** Le rapport de l'import : combien créées, combien ignorées (déjà présentes), erreurs. */
+export interface TeamImportResult {
+  message: string;
+  created: number;
+  skipped: number;
+  errors: string[];
+}
+
+/**
+ * Dry-run : dépose l'export FBI et rend la table des équipes qu'il contient. `seasonId`
+ * DOIT égaler la saison résolue (`X-Season-Id`, posé par le client) — sinon 422 côté
+ * serveur. Refus (400/403/404/409/413/422/429) affichés tels quels via `errorMessage`.
+ */
+export const analyzeTeamsImport = (clubId: string, seasonId: string, file: File): Promise<TeamImportAnalysis> => {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("seasonId", seasonId);
+  return api.post(`clubs/${clubId}/import-teams/analyze`, { body: form }).json<TeamImportAnalysis>();
+};
+
+/**
+ * Import : le MÊME fichier + `seasonId` + la liste des numéros de ligne cochés (`rows`,
+ * JSON — la modale l'envoie TOUJOURS, patron du champ « mappings »/« rows » de l'import
+ * rencontres). Les équipes naissent rang D · 2 séances · genre/niveau vides, à compléter.
+ */
+export const importTeams = (clubId: string, seasonId: string, file: File, rows: number[]): Promise<TeamImportResult> => {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("seasonId", seasonId);
+  form.append("rows", JSON.stringify(rows));
+  return api.post(`clubs/${clubId}/import-teams`, { body: form }).json<TeamImportResult>();
+};
+
 // --- Venues + availability slots (W2) ---
 
 export interface Venue {
