@@ -33,8 +33,12 @@
     }
     * { box-sizing: border-box; margin: 0; }
     html { scroll-behavior: smooth; }
+    /* Fond d'écran commun app + vitrine (P5-16) : même motif multi-sport du logo, posé sur le papier.
+       SVG statique purgé (assets/brand/fond.svg), opacité 0,26 (variante vitrine). `fixed` : parallaxe
+       desktop-first assumée (iOS Safari retombe en scroll). En-tête sticky translucide inchangé. */
     body {
-      background: var(--paper); color: var(--ink);
+      background: var(--paper) url("assets/brand/fond.svg") center / cover no-repeat fixed;
+      color: var(--ink);
       font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
       -webkit-font-smoothing: antialiased;
     }

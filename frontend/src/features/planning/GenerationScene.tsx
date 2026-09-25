@@ -25,7 +25,9 @@ const FILLED_CELL_DELAYS: Record<number, string> = { 1: ".2s", 3: "1.1s", 6: "1.
  */
 export function GenerationScene({ halted = false, children }: { halted?: boolean; children: ReactNode }) {
   return (
-    <div className="flex justify-center py-8">
+    // Fond NU (P5-16) : `bg-background` couvre le fond d'écran commun derrière l'attente de
+    // génération ET l'écran « moteur injoignable » — un seul point pour les deux états de la scène.
+    <div className="flex justify-center bg-background py-8">
       {/* Cadre : surface distincte du fond de page (bg-card), bordure + arrondi, overflow
           masqué. Pleine largeur, hauteur BORNÉE (le décor s'ancre, il ne s'agrandit plus). */}
       <div

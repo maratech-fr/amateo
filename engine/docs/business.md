@@ -1,16 +1,15 @@
 # Documentation metier du moteur de generation
 
-Last verified @ 2026-09-24 (`documentation-update`, rotation de fraîcheur — sujet sans rapport,
-lot flaky e2e `landOnMatchesCalendar`/#966). **Corrigé cette passe** : la citation
-`app/main.py:483-484` pour le retrait de `FACILITY_CAPACITY` était PÉRIMÉE — le commentaire vit à
-`app/main.py:447-450`, recalé. Re-confronté : tiers de poids S=10000/A=1000/B=100/C=10/D=1 toujours
+Last verified @ 2026-09-25 (`documentation-update`, rotation de fraîcheur — sujet sans rapport,
+lot P5-16 fond d'écran commun). Re-confronté : tiers de poids S=10000/A=1000/B=100/C=10/D=1 toujours
 en dur dans `app/solver/objective/weights.py:35-37,66-67` ✓ ; `_adaptive_timeout`
 (`app/main.py:374-389`) applique bien les paliers ≤50→60 s · ≤200→180 s · sinon 600 s, plafonnés
 par `solverTimeoutSeconds` ✓ ; `orToolsWeight` reste déclaré requis
 (`app/schemas/input_schema.py:75`, alias de `or_tools_weight`) mais aucun lecteur ne le consomme
 côté objectif ✓ ; `MAX_CONSECUTIVE_DAYS` naît bien `OFF` en l'absence de bloc
 (`resolve_implicit_rules`, `app/solver/constraints/parsing.py:90`,
-`max_consecutive_days_intensity=OFF if days is None else …`) ✓. Reste du fichier non re-vérifié
+`max_consecutive_days_intensity=OFF if days is None else …`) ✓ ; le commentaire de retrait de
+`FACILITY_CAPACITY` vit toujours à `app/main.py:447-450` ✓. Reste du fichier non re-vérifié
 cette passe — historique : `git log -p --follow engine/docs/business.md`.
 
 > Ce document explique le domaine de la planification sportive et ce que le moteur `engine` resout. Destine aux nouveaux developpeurs rejoignant le projet ClubScheduler.

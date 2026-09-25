@@ -1,7 +1,10 @@
 # FORWARD Components Spec — Pages & Shared Components (hors wizard)
 
-Last verified @ 2026-09-25 (`documentation-update`, P4-257 + P4-261 — recalage de l'en-tête
-`AppLayout`). Re-confronté au code cette passe : `frontend/src/app/AppLayout.tsx` entier
+Last verified @ 2026-09-25 (`documentation-update`, P5-16 — le fond d'écran commun corrige la
+section « Layout »). Re-confronté au code cette passe : `AuthLayout.tsx` ne porte plus
+`bg-background` sur sa racine (le fond commun vit sur `body`, `index.css`) — la section décrivait
+encore `bg-background` explicite, corrigé. Passe précédente (P4-257 + P4-261, non re-sondée pour
+le reste) : `frontend/src/app/AppLayout.tsx` entier
 (en-tête = `BrandIcon` + blason + `<span>` du nom masqué sous `sm` depuis P4-261, nav qui ne se
 rétracte pas, `Menu` du compte) et ses tests (`AppLayout.test.tsx`, `width-calibration.spec.ts`) ;
 `AuthLayout.tsx`/`AdminAuthLayout.tsx` (logotype `BrandMark` depuis `#975`, plus d'icône
@@ -82,8 +85,10 @@ authentifiés + un layout wizard (non détaillé ici, voir `frontend-wizard.md`)
 **Routes :** `AuthLayout` habille `/login`, `/register` et les autres écrans publics non-admin
 (table complète : `frontend-spec.md` §2) ; `AdminAuthLayout` habille `/admin/login` seul.
 
-Les deux sont une carte centrée sur fond plein écran (`AuthLayout` : `bg-background` ;
-`AdminAuthLayout` : `bg-console-surface` sombre + halos décoratifs), sans navigation. La marque
+Les deux sont une carte centrée sur fond plein écran (`AuthLayout` : le fond d'écran commun
+app/vitrine posé sur `body`, P5-16 — sa racine ne porte plus `bg-background` depuis ce lot ;
+`AdminAuthLayout` : `bg-console-surface` sombre + halos décoratifs, hors du fond commun, UXC-12),
+sans navigation. La marque
 n'est plus une icône + un nom en texte nu (`CalendarCheck2` + `<span>{PRODUCT_NAME}</span>` —
 ancienne description, voir l'historique replié plus bas) : depuis la PR B du chantier DA
 (`#975`, 2026-09-25), c'est le logotype complet **`BrandMark`**

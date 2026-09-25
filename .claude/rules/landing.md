@@ -27,6 +27,12 @@ paths:
   `?v=<date>`, à bumper à chaque ajout/retrait/renommage de clé — sinon un visiteur de retour garde
   l'ancien fichier en cache et toute nouvelle clé lit `undefined` (incident 2026-09-25, logo cassé ;
   l'injection est défensive depuis, mais le `?v=` est ce qui rend le vrai logo tout de suite).
+- **Le fond d'écran est un décor CSS, PAS une clé `config.js`** (P5-16, 2026-09-25) :
+  `background: var(--paper) url("assets/brand/fond.svg") center / cover no-repeat fixed;` est un
+  chemin en dur dans `index.html` — contrairement à la marque/aux liens/au logo (règle
+  précédente), un décor visuel n'a pas besoin d'indirection : il ne change jamais par club ni par
+  domaine. Détail (opacité, purge C2PA, parité avec l'app) :
+  `specs/courantes/identite-visuelle-produit.md` § « Le fond d'écran ».
 - **Palette recalée sur le logo (P5-25, 2026-09-25)** : `--accent` (`#46afac`, teal signature) est
   **décoratif seul** — il ne tient que 2,50:1 sur `--paper`, sous la barre texte. Le texte, les
   liens, les boutons et **les anneaux de focus** portent `--accent-ink` (`#2e7876`, ≥ 4,5:1 partout

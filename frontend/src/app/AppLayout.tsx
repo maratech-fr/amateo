@@ -48,8 +48,11 @@ export function AppLayout() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b border-border">
+    <div className="min-h-screen text-foreground">
+      {/* En-tête OPAQUE (`bg-background`) posé sur le fond d'écran commun (P5-16) : le fond ne vit
+          que dans les zones vides, jamais sous l'en-tête ni les cartes. La racine, elle, laisse
+          passer le fond du `body`. */}
+      <header className="border-b border-border bg-background">
         <div className="flex h-14 items-center justify-between gap-4 px-4 lg:px-6 xl:px-8">
           {/* L'en-tête = la marque PRODUIT, puis le club (décision fondateur DA) :
               [icône Amateo] · [blason du club, s'il existe] NOM DU CLUB. L'icône produit

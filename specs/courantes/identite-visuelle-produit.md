@@ -1,18 +1,23 @@
 # Identité visuelle produit — la base est le produit, l'accent est le club
 
-Last verified @ 2026-09-25 (`documentation-update`, PR B du chantier DA « en-tête marque produit +
-favicon », complétée par le logo en remplacement du nom produit en texte, puis par le retrait du
-second ton du logotype `BrandMark`). Confronté au code :
-`frontend/src/index.css` (blocs `:root`/`.dark`), `frontend/src/shared/lib/product.ts`
-(`PRODUCT_ACCENT`), `frontend/src/shared/hooks/useApplyClubTheme.ts`, `frontend/src/shared/lib/color.ts`
-(`SURFACES`/`accentForMode`/`accentHoverForMode`), `frontend/src/test/accentTokenParity.test.ts`,
-`frontend/src/features/club/ClubPage.tsx` (`DEFAULT_ACCENT`), `landing/index.html` (`--accent`) —
-PR A ; `frontend/src/shared/components/ui/brand-icon.tsx`, `frontend/src/app/AppLayout.tsx:58-68`,
+Last verified @ 2026-09-25 (`documentation-update`, P5-16 — le fond d'écran commun app + vitrine).
+Confronté au code cette passe : `frontend/src/index.css` (règle `body`/`.dark body`, opacités
+0,15/0,17), `frontend/public/brand/fond-{light,dark}.svg` (purgés — pas de `c2pa`, `<metadata`, ni
+rect de sol), `landing/assets/brand/fond.svg` (opacité 0,26), `landing/index.html` (déclaratif
+`background`), `frontend/src/app/AppLayout.tsx` (racine sans `bg-background`, header opaque),
+`frontend/src/features/auth/AuthLayout.tsx` (racine sans `bg-background`),
+`frontend/src/features/planning/GenerationScene.tsx` (racine `bg-background` conservée),
+`frontend/src/test/brandBackground.test.ts`. Passes précédentes (PR A/B du chantier DA — base
+chaude, accent produit, en-tête marque) non re-vérifiées cette passe :
+`frontend/src/shared/lib/product.ts` (`PRODUCT_ACCENT`), `frontend/src/shared/hooks/useApplyClubTheme.ts`,
+`frontend/src/shared/lib/color.ts` (`SURFACES`/`accentForMode`/`accentHoverForMode`),
+`frontend/src/test/accentTokenParity.test.ts`, `frontend/src/features/club/ClubPage.tsx`
+(`DEFAULT_ACCENT`), `frontend/src/shared/components/ui/brand-icon.tsx`,
 `frontend/public/favicon.svg`, `frontend/src/shared/components/ui/brand-mark.tsx`,
-`frontend/src/features/auth/AuthLayout.tsx`, `frontend/src/shared/components/ui/system-screen.tsx`,
-`frontend/src/features/admin/AdminAuthLayout.tsx` — PR B. Les ratios de contraste cités ont été
-recalculés indépendamment (conversion OKLCH → sRGB linéaire, WCAG 2.1) contre les fonds décrits
-ci-dessous, pas recopiés d'un commentaire.
+`frontend/src/shared/components/ui/system-screen.tsx`, `frontend/src/features/admin/AdminAuthLayout.tsx` —
+voir `git log -p --follow` pour l'historique de ces vérifications. Les ratios de contraste cités
+plus bas datent de la passe PR A/B, pas recalculés cette passe (le fond n'y touche pas — c'est un
+décor, pas un jeton de couleur de texte).
 
 > Ce fichier est le pendant **PRODUIT** de [`identite-visuelle-club.md`](identite-visuelle-club.md)
 > (qui reste la maison du **CLUB** : logo, upload, palette extraite, écran « Gestion du club »).
@@ -150,11 +155,61 @@ ordre fixe — l'icône produit ne s'efface jamais devant celle d'un club.
   la règle color-contrast d'axe — la piste « logotype exempté de WCAG 1.4.3 » ne tenait pas ;
   décision fondateur : une marque n'a pas deux visages.
 
+## Le fond d'écran (P5-16, 2026-09-25, fondateur)
+
+Un seul fond, **identique app et vitrine** : les motifs multi-sport aux 3 couleurs du logo, posés
+en `background-image` CSS sur `body` — pas de composant React, pas d'animation, **le fond est
+FIGÉ**.
+
+- **Assets** : `frontend/public/brand/fond-light.svg` / `fond-dark.svg` (thème clair/sombre de
+  l'app) et `landing/assets/brand/fond.svg` (vitrine, un seul thème — la landing n'a pas de mode
+  sombre). Les trois sont des copies **purgées** des SVG livrés par le fondateur (dossier
+  `business/`, hors dépôt) : manifeste C2PA retiré (l'original portait la signature « Anthropic
+  Claude Content Signing » — ces SVG sortent d'une session Claude, pas d'un outil de design),
+  `<metadata>` retirée, `<rect>` de sol retiré (le sol est notre papier, pas le gris de la
+  livraison) — chaque copie tombe à quelques Ko. Recopiées par convention (comme `BrandIcon`
+  ⇄ `icon.svg`, `CLAUDE.md` §2), jamais partagées par import entre `frontend/` et `landing/`.
+- **Pose** : `body { background-image: url("/brand/fond-light.svg"); background-size: cover;
+  background-position: center; background-repeat: no-repeat; background-attachment: fixed; }`
+  (`frontend/src/index.css`), `.dark body` bascule sur `fond-dark.svg` ; la vitrine pose
+  l'équivalent en un seul déclaratif (`background: var(--paper) url("assets/brand/fond.svg")
+  center / cover no-repeat fixed;`, `landing/index.html`). `fixed` : parallaxe de fond assumée
+  desktop-first — iOS Safari retombe en `scroll` (comportement natif, pas un bug).
+- **Sol et opacité** : le sol est notre papier — `--background` côté app, `--paper` côté vitrine
+  (`background-color` posé avant l'image). Opacité des motifs : **0,15 clair / 0,17 sombre** dans
+  l'app, **0,26** sur la vitrine (contraste éditorial différent, vitrine = une seule page longue).
+- **Zones opaques** : l'en-tête d'`AppLayout` (`bg-background` sur le `<header>`, plus sur la
+  racine) et les cartes restent opaques — le fond ne vit **que** dans les zones vides. Les racines
+  de shell (`AppLayout`, `AuthLayout`) ne portent donc plus `bg-background` : elles laissent
+  passer le fond du `body`. `GenerationScene` (attente de génération + moteur indisponible) garde
+  `bg-background` sur sa racine — décor déjà chargé (mini-grille, ballon, terrain filigrané), un
+  second fond dessous l'aurait surchargé. `system-screen` (écrans système) reste nu, inchangé —
+  hors lot. La console superadmin n'a pas de fond (UXC-12, § « Ce qui ne bouge pas »).
+- **Exception `#hex` étendue** : la règle « jamais un `#hex` » (`.claude/rules/frontend.md`)
+  admettait déjà `BrandIcon` ; les couleurs en dur **à l'intérieur** de ces SVG d'asset statiques
+  (`public/brand/fond-*.svg`, `landing/assets/brand/fond.svg` — comme `favicon.svg` avant eux)
+  sont la même exception : un fichier SVG servi tel quel n'a pas de jeton de thème à consommer.
+- **Garde** : `frontend/src/test/brandBackground.test.ts` tient deux faits qu'aucun autre test ne
+  voit — la parité clair/sombre dans `index.css` (`body` référence `fond-light.svg`, `.dark body`
+  référence `fond-dark.svg`) et la purge des deux copies servies (ni `c2pa`, ni `<metadata`, ni le
+  rect de sol). **Aucune assertion sur la valeur d'opacité** (plage fondateur, ajustable).
+- ⚠ **Aucun gate automatisé ne voit les motifs** : ce sont des SVG statiques dans `public/`, hors
+  du graphe TypeScript (aucun lint ne les lit) ; le scan de contraste axe (`a11y-contrast.spec.ts`,
+  `expectNoContrastViolations`) n'assert que `results.violations` sur les éléments texte — un
+  `background-image` décoratif posé sur `body` n'est jamais l'élément évalué. La seule preuve est
+  une **passe visuelle manuelle** (faite le 2026-09-25 : login clair/sombre, `/planning`
+  clair/sombre, état vide, 404, vitrine — texte lisible partout).
+- **Ce qui vit encore de l'ancien cadrage design par sport** (fichier `specs/evolution/`
+  **supprimé ce jour** — base neutre, accent bleu générique, fonds froids, familles A/B/C par
+  sport, tout supplanté par ce fond commun) — règles encore VIVANTES, reportées ici :
+  une **zone protégée** sous le texte reste à ≤ ~15 % d'opacité de motif (le fond commun applique
+  0,15-0,26, dans cette fourchette) ; `prefers-reduced-motion` **coupe** toute animation de décor
+  (sans effet ici, le fond est figé, mais reste la règle pour tout futur décor animé) ; pas de
+  Lottie, pas de police externe (autohébergée seulement) sur un asset visuel.
+
 ## Ce qui reste à venir
 
-- **Fond d'écran / motif « ça sent le basket »** (roadmap P5-16, ex-P4-18, absorbé par le triage
-  du 2026-09-25) : décision distincte de ce lot — la base chaude ne le solde pas, il attend le
-  fond du designer (bandeau/illustrations).
 - **PDF (y compris impression N&B), e-mails transactionnels, image OG** (roadmap P5-24) : n'ont
   reçu aucun asset logo à ce jour — les exports PDF suivent leur propre chaîne
-  (`PdfGenerator`, `backend/docs/`), non touchée par ce lot.
+  (`PdfGenerator`, `backend/docs/`), non touchée par ce lot. La cession de droits du logo est
+  **signée** (fondateur, 2026-09-25) — ce n'est plus le préalable qui bloquait ces trois usages.

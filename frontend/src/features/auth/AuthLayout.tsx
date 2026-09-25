@@ -19,7 +19,7 @@ export function AuthLayout({ title, description, children, footer }: AuthLayoutP
   const toggleMode = useThemeStore((state) => state.toggleMode);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground">
+    <main className="flex min-h-screen items-center justify-center p-4 text-foreground">
       <div className="w-full max-w-md">
         <div className="mb-6 flex items-center justify-between">
           <BrandMark size="md" />
