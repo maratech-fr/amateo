@@ -111,7 +111,10 @@ fusion, applique le test maison (`specs/evolution/duplications-de-verite.md`) :
    mention datée qui est la RAISON D'ÊTRE d'un garde-fou encore actif — une phrase, jamais une
    chronologie. Précédent : passe frontend du 2026-09-26 (4 640 → ~2 700 lignes ; le §4.2
    « sidebar » fiction vivait sous un stamp du jour, et §3 « Shared Components » vivant était
-   enterré sous un bandeau « superseded »).
+   enterré sous un bandeau « superseded »). ⚑ **Le seul journal autorisé est
+   `etat-des-lieux.md` (§2 décisions fermées, §3 traces datées)** : ailleurs dans
+   `specs/courantes/`, une décision prise en chemin va en §2, une livraison en §3 — jamais une
+   section/un paragraphe daté dans le fichier lui-même.
 
 ### Fraîcheur — le balayage TOUCHÉ, plus une ROTATION bornée
 

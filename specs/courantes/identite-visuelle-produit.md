@@ -1,23 +1,16 @@
 # Identité visuelle produit — la base est le produit, l'accent est le club
 
-Last verified @ 2026-09-25 (`documentation-update`, P5-16 — le fond d'écran commun app + vitrine).
-Confronté au code cette passe : `frontend/src/index.css` (règle `body`/`.dark body`, opacités
-0,15/0,17), `frontend/public/brand/fond-{light,dark}.svg` (purgés — pas de `c2pa`, `<metadata`, ni
-rect de sol), `landing/assets/brand/fond.svg` (opacité 0,26), `landing/index.html` (déclaratif
-`background`), `frontend/src/app/AppLayout.tsx` (racine sans `bg-background`, header opaque),
-`frontend/src/features/auth/AuthLayout.tsx` (racine sans `bg-background`),
-`frontend/src/features/planning/GenerationScene.tsx` (racine `bg-background` conservée),
-`frontend/src/test/brandBackground.test.ts`. Passes précédentes (PR A/B du chantier DA — base
-chaude, accent produit, en-tête marque) non re-vérifiées cette passe :
-`frontend/src/shared/lib/product.ts` (`PRODUCT_ACCENT`), `frontend/src/shared/hooks/useApplyClubTheme.ts`,
-`frontend/src/shared/lib/color.ts` (`SURFACES`/`accentForMode`/`accentHoverForMode`),
-`frontend/src/test/accentTokenParity.test.ts`, `frontend/src/features/club/ClubPage.tsx`
-(`DEFAULT_ACCENT`), `frontend/src/shared/components/ui/brand-icon.tsx`,
-`frontend/public/favicon.svg`, `frontend/src/shared/components/ui/brand-mark.tsx`,
-`frontend/src/shared/components/ui/system-screen.tsx`, `frontend/src/features/admin/AdminAuthLayout.tsx` —
-voir `git log -p --follow` pour l'historique de ces vérifications. Les ratios de contraste cités
-plus bas datent de la passe PR A/B, pas recalculés cette passe (le fond n'y touche pas — c'est un
-décor, pas un jeton de couleur de texte).
+Last verified @ 2026-09-26 (passe « présent » — dates/ids de PR retirés des titres de section,
+`Décision 1/2/3` gardés car cités depuis `roadmap.md` P5-24 et `etat-des-lieux.md` §3). Confronté
+au code cette passe : `frontend/src/shared/lib/product.ts` (`PRODUCT_ACCENT = "#46AFAC"`),
+`frontend/src/index.css` (règles `body`/`.dark body` sur `fond-{light,dark}.svg`),
+`frontend/src/test/brandBackground.test.ts` (purge `c2pa`/`<metadata`/rect de sol). Non re-vérifié
+cette passe (reformulé au présent tel quel) : `useApplyClubTheme.ts`, `color.ts`
+(`SURFACES`/`accentForMode`/`accentHoverForMode`), `accentTokenParity.test.ts`, `ClubPage.tsx`
+(`DEFAULT_ACCENT`), `brand-icon.tsx`, `favicon.svg`, `brand-mark.tsx`, `system-screen.tsx`,
+`AdminAuthLayout.tsx` — historique des vérifications précédentes : `git log -p --follow`. Les
+ratios de contraste cités plus bas ne sont pas recalculés cette passe (le fond n'y touche pas —
+c'est un décor, pas un jeton de couleur de texte).
 
 > Ce fichier est le pendant **PRODUIT** de [`identite-visuelle-club.md`](identite-visuelle-club.md)
 > (qui reste la maison du **CLUB** : logo, upload, palette extraite, écran « Gestion du club »).
@@ -31,10 +24,10 @@ par club, et un club sans couleur reçoit l'accent produit par défaut, dérivé
 serait la couleur d'un club.** Un club ne peut pas teinter les surfaces neutres de l'app (décision
 fermée, voir `etat-des-lieux.md` §2 — rouvrirait un club voulant aussi teinter le fond/la carte).
 
-## Décision 1 — base CHAUDE (2026-09-25, fondateur)
+## Décision 1 — base CHAUDE
 
-L'app quittait ses neutres bleu-froid (teinte OKLCH 260, un bleu-gris neutre générique) pour
-reprendre la base de la vitrine (`landing/index.html`) — partagée **par convention** (jetons
+L'app reprend la base de la vitrine (`landing/index.html`), plutôt que des neutres bleu-froid
+génériques (teinte OKLCH 260) — partagée **par convention** (jetons
 dupliqués dans `frontend/src/index.css`, jamais un import de `landing/`, les deux zones restant
 indépendantes par construction, `CLAUDE.md` §2).
 
@@ -47,11 +40,11 @@ indépendantes par construction, `CLAUDE.md` §2).
   `frontend/src/shared/lib/color.ts` (`SURFACES`) porte la conversion sRGB de ces deux fonds, à
   garder synchronisée avec `index.css` (commentaire en tête du fichier).
 
-## Décision 2 — accent produit par défaut, dérivé comme un accent de club (2026-09-25, fondateur)
+## Décision 2 — accent produit par défaut, dérivé comme un accent de club
 
-Un club **sans couleur choisie** reçoit désormais le **teal signature du logo** (`#46AFAC`,
-identique au `--accent` décoratif de `landing/index.html`, même hex, convention partagée jamais
-importée) au lieu de retomber sur des jetons CSS statiques indépendants.
+Un club **sans couleur choisie** reçoit le **teal signature du logo** (`#46AFAC`, identique au
+`--accent` décoratif de `landing/index.html`, même hex, convention partagée jamais importée) —
+jamais un jeton CSS statique indépendant.
 
 - **Maison unique de l'hex** : `PRODUCT_ACCENT` dans `frontend/src/shared/lib/product.ts` — aux
   côtés de `PRODUCT_NAME`/`PUBLISHER_NAME`, seule maison des littéraux d'identité produit
@@ -118,11 +111,10 @@ dur : `tests/e2e/a11y-contrast.spec.ts` (inchangé par ce lot).
   héritent donc la base chaude sans aucune modification de leur code, cf.
   [`identite-visuelle-club.md`](identite-visuelle-club.md) et `frontend/docs/frontend-spec.md` §6.8.
 
-## Décision 3 — en-tête : la marque PRODUIT d'abord, le club ensuite (2026-09-25, fondateur, PR B)
+## Décision 3 — en-tête : la marque PRODUIT d'abord, le club ensuite
 
-L'arbitrage posé en PR A (« l'en-tête est aujourd'hui pris par le logo du CLUB ») est tranché :
-l'en-tête de l'app (`frontend/src/app/AppLayout.tsx:58-68`) montre désormais **les deux**, dans un
-ordre fixe — l'icône produit ne s'efface jamais devant celle d'un club.
+L'en-tête de l'app (`frontend/src/app/AppLayout.tsx:58-68`) montre **les deux**, dans un ordre
+fixe — l'icône produit ne s'efface jamais devant celle d'un club.
 
 - **`BrandIcon`** (`frontend/src/shared/components/ui/brand-icon.tsx`) est la maison unique de
   l'icône produit : SVG inline, trois arcs (`<circle>` avec `stroke-dasharray`/`pathLength`), mêmes
@@ -141,21 +133,21 @@ ordre fixe — l'icône produit ne s'efface jamais devant celle d'un club.
   toujours au moins l'icône Amateo.
 - **Favicon** (`frontend/public/favicon.svg`) : la marque violette générique (`#863bff`) est
   remplacée par l'icône Amateo posée sur un **disque plein blanc** (`r=490`) — même règle que le
-  favicon de la vitrine (`landing/assets/brand/icon.svg`, PR précédente) : le disque fait ressortir
+  favicon de la vitrine (`landing/assets/brand/icon.svg`) : le disque fait ressortir
   l'icône sur un onglet sombre comme clair. Même géométrie/couleurs que `BrandIcon`, recopiées dans
   le fichier SVG statique (pas de génération depuis le composant React — un favicon n'exécute pas
   de JS).
 - **`BrandMark`** (`frontend/src/shared/components/ui/brand-mark.tsx`) : les surfaces où le produit
   se nomme comme MARQUE plutôt qu'en texte de phrase — login/inscription (`AuthLayout`), écrans
-  système (`system-screen`), console admin (`AdminAuthLayout`) — portent désormais le logo complet
-  (`BrandIcon` + le mot) au lieu du nom en texte nu. Le mot hérite `currentColor` (UN seul ton, dans
+  système (`system-screen`), console admin (`AdminAuthLayout`) — portent le logo complet
+  (`BrandIcon` + le mot), jamais le nom en texte nu. Le mot hérite `currentColor` (UN seul ton, dans
   tous les thèmes) — **seul `BrandIcon` porte des couleurs en dur**, `BrandMark` n'en porte aucune :
-  un second ton teal sur les deux derniers caractères a été essayé puis retiré, il ne tenait que
-  ~2,5:1 sur le fond papier clair (sous la barre), et `aria-hidden` n'exempte pas le texte rendu de
-  la règle color-contrast d'axe — la piste « logotype exempté de WCAG 1.4.3 » ne tenait pas ;
-  décision fondateur : une marque n'a pas deux visages.
+  un second ton teal sur les deux derniers caractères ne tiendrait que ~2,5:1 sur le fond papier
+  clair (sous la barre), et `aria-hidden` n'exempte pas le texte rendu de la règle color-contrast
+  d'axe — la piste « logotype exempté de WCAG 1.4.3 » ne tient pas ; décision fondateur : une
+  marque n'a pas deux visages.
 
-## Le fond d'écran (P5-16, 2026-09-25, fondateur)
+## Le fond d'écran
 
 Un seul fond, **identique app et vitrine** : les motifs multi-sport aux 3 couleurs du logo, posés
 en `background-image` CSS sur `body` — pas de composant React, pas d'animation, **le fond est
@@ -197,11 +189,11 @@ FIGÉ**.
   du graphe TypeScript (aucun lint ne les lit) ; le scan de contraste axe (`a11y-contrast.spec.ts`,
   `expectNoContrastViolations`) n'assert que `results.violations` sur les éléments texte — un
   `background-image` décoratif posé sur `body` n'est jamais l'élément évalué. La seule preuve est
-  une **passe visuelle manuelle** (faite le 2026-09-25 : login clair/sombre, `/planning`
-  clair/sombre, état vide, 404, vitrine — texte lisible partout).
+  une **passe visuelle manuelle** (login clair/sombre, `/planning` clair/sombre, état vide, 404,
+  vitrine — texte lisible partout).
 - **Ce qui vit encore de l'ancien cadrage design par sport** (fichier `specs/evolution/`
-  **supprimé ce jour** — base neutre, accent bleu générique, fonds froids, familles A/B/C par
-  sport, tout supplanté par ce fond commun) — règles encore VIVANTES, reportées ici :
+  supprimé — base neutre, accent bleu générique, fonds froids, familles A/B/C par sport, tout
+  supplanté par ce fond commun) — règles encore VIVANTES, reportées ici :
   une **zone protégée** sous le texte reste à ≤ ~15 % d'opacité de motif (le fond commun applique
   0,15-0,26, dans cette fourchette) ; `prefers-reduced-motion` **coupe** toute animation de décor
   (sans effet ici, le fond est figé, mais reste la règle pour tout futur décor animé) ; pas de
@@ -212,4 +204,4 @@ FIGÉ**.
 - **PDF (y compris impression N&B), e-mails transactionnels, image OG** (roadmap P5-24) : n'ont
   reçu aucun asset logo à ce jour — les exports PDF suivent leur propre chaîne
   (`PdfGenerator`, `backend/docs/`), non touchée par ce lot. La cession de droits du logo est
-  **signée** (fondateur, 2026-09-25) — ce n'est plus le préalable qui bloquait ces trois usages.
+  **signée** (fondateur) — ce n'est plus le préalable qui bloquait ces trois usages.

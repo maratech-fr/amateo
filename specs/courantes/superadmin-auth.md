@@ -3,22 +3,26 @@
 Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement » — dates
 retirées des titres §Fraîcheur des données et alerting / §Journaux read-only et de l'en-tête qui
 les citait par date ; la bascule de thème retirée d'`AdminAuthLayout` reformulée en fait présent
-(palette `--console-*` propre à la surface, pas un récit de retrait). Re-vérifié contre le code :
-firewall `admin` = `pattern: ^/api/admin`, `provider: super_admin_provider`
-(`backend/config/packages/security.yaml:33,36`) ✓ ; `AdminCsrfListener` toujours à la priorité 6
-(`AdminCsrfListener.php:38`) ✓ ; `PasswordPolicy::MIN_LENGTH`/`REQUIREMENT_FR`
-(`PasswordPolicy.php:15,18`) ✓ ; challenge TOTP borné à 5 minutes
-(`AdminAuthController.php:72`) ✓ ; `SuperAdmin` toujours séparée (`SuperAdmin.php:13`) ✓ ; les
-trois jobs `manualTriggerAllowed: true` (`club-approval-digest`, `import-school-holidays`,
-`import-public-holidays`) toujours dans `AdminJobCatalog.php` ✓. Reste du fichier (au-delà des
+(palette `--console-*` propre à la surface, pas un récit de retrait) ; nouvelle section §Capacité
+ajoutée. Re-vérifié contre le code : firewall `admin` = `pattern: ^/api/admin`,
+`provider: super_admin_provider` (`backend/config/packages/security.yaml:33,36`) ✓ ;
+`AdminCsrfListener` toujours à la priorité 6 (`AdminCsrfListener.php:38`) ✓ ;
+`PasswordPolicy::MIN_LENGTH`/`REQUIREMENT_FR` (`PasswordPolicy.php:15,18`) ✓ ; challenge TOTP
+borné à 5 minutes (`AdminAuthController.php:72`) ✓ ; `SuperAdmin` toujours séparée
+(`SuperAdmin.php:13`) ✓ ; les trois jobs `manualTriggerAllowed: true` (`club-approval-digest`,
+`import-school-holidays`, `import-public-holidays`) toujours dans `AdminJobCatalog.php` ✓ ;
+`GET /api/admin/capacity` (`AdminMonitoringController.php:47-51`) sert bien
+`AdminCapacityService::capacity()` (`AdminCapacityService.php`, fenêtre 90 jours, connexion
+`admin`), consommé par `CapacitySection.tsx`/`useAdminCapacity()` ✓. Reste du fichier (au-delà des
 dates ci-dessus) non re-confronté cette passe ; historique des vérifications précédentes :
 `git log -p --follow specs/courantes/superadmin-auth.md`.
 
 > **État courant** : SA0, SA1, la console read-only SA2, le socle
 > d'historisation SA3-A, la supervision SA3-B, la planification fiable SA3-C et
 > les relances d'imports SA3-D sont livrés — **plus SA2-stats (usage produit, §SA2 API),
-> SA4 v1 (catalogue d'actions support, §Actions de support), l'alerting santé +
-> data-freshness (§Fraîcheur des données et alerting), et la console en
+> le tableau de capacité solveur (§Capacité), SA4 v1 (catalogue d'actions support,
+> §Actions de support), l'alerting santé + data-freshness (§Fraîcheur des données et
+> alerting), et la console en
 > onglets avec monitoring conteneurs/dépendances externes + les journaux read-only
 > audit / échecs async / erreurs système (§Journaux read-only) + heartbeats
 > cron & pdf-worker**. Le redémarrage de conteneur depuis l'UI a été étudié puis **retiré**
@@ -341,6 +345,21 @@ L'historique vit sous la clé `action:{key}`, jamais mélangé au dernier passag
 panneau jobs, et le verrou advisory est **partagé avec le job planifié** quand la
 commande en a un (`purge-seasons`) : geste manuel et cron se sérialisent au lieu de se
 masquer.
+
+## Capacité — tenue du système sous charge
+
+`GET /api/admin/capacity` (`AdminCapacityService::capacity`, `backend/src/Service/AdminCapacityService.php`,
+connexion `admin` seule) lit `solver_metrics` sur une fenêtre de **90 jours** (le pic de septembre
+reste visible tout l'automne) et rend : volume quotidien (p50/max + jour du pic) et profil horaire
+en heure LOCALE Europe/Paris ; attente (file applicative queue→solve et attente engine, en ms) ;
+durées par TAILLE de problème (`nb_teams × nb_venues`, tiers `small ≤50 / medium 51-200 / large
+>200`, alignés aux tiers moteur) avec p50/p95 et le taux de preuve non fermée (`FEASIBLE` non
+optimal) ; mémoire du worker engine (RSS pic p50/p95/max, baseline avant solve) ; répartition des
+issues terminales. Toutes les colonnes de capacité sont nullable (ajoutées par migration additive,
+sans backfill) — un solve antérieur à leur ajout ou un chemin terminal sans détail (échec, engine
+muet) laisse `null`, rendu « — » côté écran. Consommé par `CapacitySection.tsx`
+(`frontend/src/features/admin/sections/`,
+`useAdminCapacity()`, refetch 5 min, lecture seule).
 
 ## Journaux read-only
 
