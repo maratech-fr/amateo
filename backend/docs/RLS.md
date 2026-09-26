@@ -1,12 +1,21 @@
 # ClubScheduler — PostgreSQL Row-Level Security (RLS)
 
-Last verified @ 2026-09-25 (rotation `documentation-update`, lot DA « base chaude + accent produit »
-— fichier hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code :
+Last verified @ 2026-09-26 (rotation `documentation-update`, stamp le plus ancien du dépôt — fichier
+hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code :
 `TenantFilterListener` toujours `KernelEvents::REQUEST => ['onKernelRequest', 7]`
-(`TenantFilterListener.php:55`) ✓ · `backend/tests/Security/RlsIsolationTest.php` et
-`backend/migrations/Version20260731090000.php` toujours présents ✓ · `TenantConnectionContext`
-pose toujours `set_config('app.club_id', ?, false)` (`TenantConnectionContext.php:30`) ✓. Rien de
-faux trouvé cette passe.
+(`backend/src/EventListener/TenantFilterListener.php:55`) ✓ · `TenantConnectionContext` pose
+`set_config('app.club_id', ?, false)` (`backend/src/Service/TenantConnectionContext.php:30`) ✓ ·
+`Version20260703120000` active toujours `FORCE ROW LEVEL SECURITY` + `tenant_isolation` sur les
+tables `club_id`, prédicat `NULLIF(current_setting('app.club_id', true), '')::uuid`
+(`backend/migrations/Version20260703120000.php:49`) — identique au canon `TENANT_PREDICATE` cité
+plus bas (comparé mot pour mot à `Version20260825120000.php:27` et `Version20260726100000.php:24`)
+✓ · `Version20260813130000` pose bien un `admin_all` (FOR ALL, USING/WITH CHECK `true`, TO
+`amateo_owner`) énuméré `pg_class`-side sur chaque table FORCE existante
+(`backend/migrations/Version20260813130000.php:9-30`) ✓ · `Version20260731090000` dépose bien
+`migration_user` (`DROP OWNED BY` + `DROP ROLE`, `Version20260731090000.php:50-51`) ✓ ·
+`docker/postgres/init/02-users.sh:32-45` crée `amateo_app` `NOSUPERUSER NOCREATEDB NOCREATEROLE`
+avec seulement `SELECT, INSERT, UPDATE, DELETE` (DML, aucun DDL) ✓. Rien de faux trouvé cette
+passe.
 
 > ✅ **STATUS: ACTIVE** since migration `Version20260703120000` (SEC-03 fixed). The migration — not the initdb scripts — is the source of truth for policies and grants: **every table carrying a `club_id` column** is under `FORCE ROW LEVEL SECURITY` with a `tenant_isolation` policy `TO amateo_app` (no hard count here — new tenant tables inherit the pattern via the migration helper; the count would rot). `club_user` and `coach_wish_token` carry the hybrid SELECT bootstrap policy (open only while NO tenant GUC is set — scoped to the tenant otherwise, SEC-12 residual closed by `Version20260804120000`; deliberate cross-tenant reads go through `TenantConnectionContext::runWithoutTenant()`). Runtime connects as `amateo_app`; the GUC is set via `TenantConnectionContext` (`set_config`, session-scoped). **This file = operator how-to (env, roles, troubleshooting). The effective architecture — who sets the GUC, the exception tables, the superadmin door — is `docs/security/rls.md`, and it is CANONICAL.** ⚑ La consigne précédente disait « garder les deux en phase » : c'est précisément ce qui a produit la dérive du prédicat corrigée le 2026-08-19. Deux fichiers qu'on maintient en phase à la main divergent — le seul garde-fou est de ne PAS redire ici ce que le canon dit là-bas : on pointe. The `01/02/03-*.sql` initdb scripts remain for fresh volumes only.
 
