@@ -1,13 +1,16 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-09-25 (**rotation de fraîcheur**, `documentation-update`, P4-257/P4-261
-frontend — sans rapport avec le sujet de la PR, doc de zone parmi les plus anciennes du garde
-`DocStampFreshnessTest`). Re-confronté au code : `BaseContext::dbalScalar`
+Last verified @ 2026-09-26 (**rotation de fraîcheur**, `documentation-update`, stamp le plus
+ancien du dépôt avec `backend/docs/TENANT.md`). Re-confronté au code : `BaseContext::dbalScalar`
 (`backend/tests/Behat/BaseContext.php:82-112`) toujours exact — rend bien `''` sur lecture vide
 (le `str_contains(… 'The query yielded an empty result set')` retourne `''` avant de pouvoir filer
 la bannière) ; les trois cibles `Makefile` racine `play`/`db-empty`/`reset` existent toujours
-telles que décrites (`reset` = `db-empty` + `play`, ligne 79). Non re-sondé cette passe : le reste
-des commandes et gardes listées — un stamp REMPLACE, l'historique vit dans git.
+telles que décrites (`reset` = `db-empty` + `play`, ligne 79) ; `PurgeExportsCommand` n'accepte
+toujours que `.pdf` (`RENDER_PATTERN`, `backend/src/Command/PurgeExportsCommand.php:61`) ;
+`doctrine:fixtures:load`/`BasketballInit`/`HolidayReferenceFixtures` toujours absents de `src/`
+(aucun appelant hors `tests/`), confirmant le seul chemin de remplissage restant
+(`app:bccl:seed`/`app:demo:seed`/`app:*-holidays:seed`). Non re-sondé cette passe : le reste des
+commandes et gardes listées — un stamp REMPLACE, l'historique vit dans git.
 
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`
 > le font pour toi. PHPUnit exige `APP_ENV=test` (sinon `test.service_container` introuvable).
