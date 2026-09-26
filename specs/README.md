@@ -1,9 +1,10 @@
 # Living Specs System
 
-Last verified @ 2026-09-26 (**§ 3-Tier Structure** gagne une phrase : seul `etat-des-lieux.md`
-porte un journal, décision fondateur 2026-09-26, cf. son §2). Re-confronté : les quatre gardes
-`{DocPlacementTest, DocStampFreshnessTest, RoadmapIdentityTest,
-BlockingTestsListMatchesCiTest}.php` existent toujours, `WorkflowPermissionsDeclaredTest.php`
+Last verified @ 2026-09-26 (**§ 3-Tier Structure** gagne une mention : seul `etat-des-lieux.md`
+porte un journal, décision fondateur 2026-09-26, cf. son §2, gardé mécaniquement par
+`SpecsCarryNoHistoryTest` sur `courantes/*.md`). Re-confronté : les cinq gardes
+`{DocPlacementTest, DocStampFreshnessTest, RoadmapIdentityTest, BlockingTestsListMatchesCiTest,
+SpecsCarryNoHistoryTest}.php` existent toujours, `WorkflowPermissionsDeclaredTest.php`
 aussi (`ls backend/tests/Unit/Documentation/`) ; `engine/tests/test_contract_version_doc_sync.py`
 (cité comme premier de la série des docs gardées par un test) existe toujours ;
 `docs/testing/blocking-tests.md` existe. **§ Files Overview confronté ligne à ligne à
@@ -22,7 +23,7 @@ correspondent exactement au dossier, aucun absent, aucun fantôme. `ls specs/evo
   dossier du « courant » : un doc qui décrit **une seule zone** (inventaire de ses routes, liste de ses
   composants, stratégie de test de la zone) appartient à **`<zone>/docs/`**, pas ici — règle de
   placement du skill `documentation-update`, tenue par `DocPlacementTest`. Migration du 2026-08-18 :
-  6 fichiers (~4 000 lignes) sont partis vers `frontend/docs`, `backend/docs` et `engine/docs`. Doit refléter le code : si une spec ne colle plus → on la **met à jour** ; si la feature a disparu → on la **supprime**. Point d'entrée : [`etat-des-lieux.md`](courantes/etat-des-lieux.md) — carte des capacités livrées, **décisions fermées**, traces datées. ⚠ **Seul `etat-des-lieux.md` porte un journal** (décisions fermées §2, une ligne par livraison §3, fondateur 2026-09-26) : les autres fichiers de `courantes/` décrivent le présent seulement — pas de « désormais », de section datée d'une PR ni de bloc « historique/superseded » ; l'historique de CE contenu vit dans git.
+  6 fichiers (~4 000 lignes) sont partis vers `frontend/docs`, `backend/docs` et `engine/docs`. Doit refléter le code : si une spec ne colle plus → on la **met à jour** ; si la feature a disparu → on la **supprime**. Point d'entrée : [`etat-des-lieux.md`](courantes/etat-des-lieux.md) — carte des capacités livrées, **décisions fermées**, traces datées. ⚠ **Seul `etat-des-lieux.md` porte un journal** (décisions fermées §2, une ligne par livraison §3, fondateur 2026-09-26) : les autres fichiers de `courantes/` décrivent le présent seulement — pas de « désormais », de section datée d'une PR ni de bloc « historique/superseded » ; l'historique de CE contenu vit dans git. Gardé mécaniquement par `SpecsCarryNoHistoryTest` (`backend/tests/Unit/Documentation/`) sur tout `courantes/*.md` sauf ce fichier.
 - `specs/evolution/` : **ce que l'appli fera plus tard** (backlog + gaps ouverts). Quand un item est **livré**, il **quitte** evolution (il gradue dans `courantes`). Les notes de process/décisions **résolues** n'y restent pas.
 
 **La règle des deux fichiers (refonte 2026-07-31).** `evolution/roadmap.md` ne tient que **l'ouvert** ; `courantes/etat-des-lieux.md` tient **le livré**. Un item livré **MOVE** : sa ligne est supprimée de la roadmap et une trace datée est ajoutée à l'état des lieux, avec le comportement documenté dans la spec courante qui le reçoit. Jamais les deux, jamais aucun. Corollaire : « est-ce que X est fait ? » ne se répond **pas** dans la roadmap.

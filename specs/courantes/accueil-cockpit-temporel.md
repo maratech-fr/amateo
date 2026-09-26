@@ -1,9 +1,10 @@
 # Accueil « cockpit temporel »
 
-Last verified @ 2026-09-26 (`documentation-update`, PR 3a — suppression du bloc « À faire (doc) »
-de §1bis, décision fondateur : pas de ligne roadmap pour ce point ; reste du fichier déjà au
-présent, non re-confronté au code cette passe). Historique de ce fichier : `git log -p --follow`
-dessus.
+Last verified @ 2026-09-26 (`documentation-update`) contre le code : `stalenessMessage`
+importée/utilisée dans `frontend/src/features/planning/PlanningPage.tsx:45,634` ✓,
+`App\Service\CalendarEntryRedatability::isRedatable` sert bien le champ `redatable`
+(`backend/src/Service/CalendarEntryRedatability.php:32`) ✓. Historique de ce fichier :
+`git log -p --follow` dessus.
 
 > **Statut** : livré — cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2. Ce document fixe le
 > modèle d'UX + d'architecture de l'accueil cockpit et la fondation des **calendriers
@@ -436,7 +437,7 @@ club réel garde l'heure vraie.
     tout autre refus part au filet global. Un succès invalide les lectures dérivées de la fenêtre,
     ferme le dialogue et annonce « Fermeture re-datée du … au … — planning à régénérer » (jamais
     de mention du pivot socle dans ce toast, décision fermée `etat-des-lieux.md` §2) : la version
-    pointée survit, marquée périmée par la bannière de `/planning` (`stalenessMessage`,
+    pointée survit ; la bannière de `/planning` la signale comme obsolète (`stalenessMessage`,
     `PlanningPage.tsx:634`).
   - **Le cockpit affiche lui-même la péremption d'une version** : `SchedulePlanResource.staleness`
     sert la péremption de la version **POINTÉE** par le plan — `null` tant que rien n'est pointé,

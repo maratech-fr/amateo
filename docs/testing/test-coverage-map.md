@@ -1,15 +1,15 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-25 (`documentation-update`, P5-16 — le fond d'écran commun ouvre un angle
-mort neuf, contraste sur motif). Vérifié contre le code cette passe :
-`frontend/src/test/brandBackground.test.ts` n'assert que la parité clair/sombre de `index.css` et
-la purge des SVG servis (`c2pa`/`<metadata`/rect de sol), jamais un ratio de contraste ;
-`a11y-contrast.spec.ts` (`expectNoContrastViolations`) n'assert que `results.violations` — confirmé
-qu'aucun des deux ne couvre le texte posé sur le fond commun. Passe précédente (P4-257 + P4-261,
-non re-sondée cette fois) : `frontend/tests/e2e/width-calibration.spec.ts` porte bien DEUX gardes
-distinctes dans le même fichier — la mesure de reflow 360 px (angle mort, ex-P4-251, déplacé en
-Vision au triage roadmap 2026-09-25, inchangée) et la garde P4-261 (le `<span>` du nom du club se
-masque sous `sm` au lieu de se tronquer). Reste des lignes non touchées — historique complet :
+Last verified @ 2026-09-26 (rotation de fraîcheur, `documentation-update`). Re-confronté au code :
+la ligne PHPUnit `Unit/` (`make -C backend coverage`, `pcov.enabled=1` sur `phpunit tests/
+--exclude-group contract`, plancher `coverage-floor.json` via `scripts/coverage-gate.php`) tient
+toujours (`backend/Makefile:52-62`) ; la ligne engine (`make -C engine test` = ruff + format-check +
+mypy + bandit + pytest, **sans** couverture depuis P4-166, cible `coverage` séparée) tient
+(`engine/Makefile:27-35`) ; la ligne Behat (`make -C backend behat` sous `with-sandbox.sh` en mode
+play) tient (`backend/Makefile:73-82`) ; `frontend/src/test/brandBackground.test.ts` n'assert
+toujours que la parité clair/sombre de `index.css` et la purge des SVG servis, jamais un ratio de
+contraste — confirme toujours que le texte posé sur le fond commun n'est couvert par aucun des
+deux gardes cités. Reste des lignes non re-sondé cette passe — historique complet :
 `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
