@@ -3,20 +3,13 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-09-26 (`documentation-update`, passe « le présent » backend 2/4 — balayage
-complet). Re-confronté au code ce jour : titre/version OpenAPI (`config/packages/api_platform.yaml`),
-version API Platform (`composer.json`), valeur courante d'`engine/CONTRACT_VERSION` /
-`ScheduleConstraintBuilder::CONTRACT_VERSION`, absence de ressource `ClubUser` (membres servis par
-`/api/memberships/*`), contenu de `src/DataFixtures/`. Généalogie (ids de lot/PR, dates, « depuis »/
-« désormais »/« remplace »/SHAs) retirée sur tout le fichier — ne restent que les citations
-sécurité (`file:line`/migration), les titres de section (intouchables) et une mention datée
-gardant la raison d'être d'un garde-fou actif. Cellules qui répétaient en prose ce qu'un doc
-canonique dit déjà (vérifié par lecture, pas par supposition) remplacées par un pointeur :
-[`module-matchs.md`](../../specs/courantes/module-matchs.md) (détecteur de conflits, résolution,
-workflow d'import, validé ligue, table `OpponentVenueLink`/cache de trajets, échéances de saisie) et
-[ADR-0004](../../docs/architecture/adr-0004-period-plan-birth-as-socle-copy.md) (transcription
-depuis le socle, écarts nommés). Historique des passes : `git log -p --follow` ce fichier — un
-stamp REMPLACE, il ne s'empile pas.
+Last verified @ 2026-09-27 (`documentation-update`, P4-263 PR 1/2 — backend parle français).
+Re-confronté au code : firewall `login` (`^/api/login`, `json_login`, succès/échec délégués à
+Lexik, `backend/config/packages/security.yaml`) ✓ ; le refus est désormais francisé par le socle
+`symfony/translation` (`default_locale: fr`) — détail et règle de classification dans
+[`error-copy.md`](error-copy.md), pointeur ajouté ici plutôt que recopié. Reste du fichier non
+rebalayé cette passe (portée = section Auth uniquement) ; historique des passes complètes :
+`git log -p --follow` ce fichier — un stamp REMPLACE, il ne s'empile pas.
 
 ---
 
@@ -654,7 +647,9 @@ Détail : [`vacances-scolaires-jours-feries.md`] et roadmap. Bascule de saison a
 ### JWT (LexikJWTAuthenticationBundle)
 
 - Firewall `login` (`^/api/login`) : `stateless: true`, `json_login` avec `check_path: /api/login`,
-  `username_path: email`, `password_path: password`. Succès/échec gérés par Lexik.
+  `username_path: email`, `password_path: password`. Succès/échec gérés par Lexik — le refus parle
+  français depuis P4-263 (socle `symfony/translation`, `default_locale: fr`) : voir
+  [`error-copy.md`](error-copy.md) pour la règle de classification anglais/français.
 - **SEC-16 — le jeton voyage en cookie httpOnly** : `set_cookies.BEARER` + `token_extractors.cookie`
   (`config/packages/lexik_jwt_authentication.yaml`). L'extracteur `authorization_header` reste
   ACTIF : scripts d'ops, contexts Behat (`backend/tests/Behat/BaseContext::mintToken`) et helpers

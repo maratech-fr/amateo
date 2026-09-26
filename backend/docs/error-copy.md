@@ -4,8 +4,8 @@
 > Pas d'inventaire ligne à ligne (il dériverait), pas de décompte (« N messages »).
 > Le code fait foi ; ce doc dit **comment décider**, pas **combien**.
 
-Last verified @ 2026-09-26 (`documentation-update`, passe « le présent » zone backend). Re-confronté
-au code : la règle « le corps du serveur ne parle qu'en deçà de 500 » tient toujours
+Last verified @ 2026-09-27 (`documentation-update`, P4-263 PR 1/2 — backend). Re-confronté au
+code : la règle « le corps du serveur ne parle qu'en deçà de 500 » tient toujours
 (`frontend/src/shared/lib/errorMessage.ts:32`, et le repli générique `if (status >= 500)` `:65`
 au-delà) ✓ ; le rail 422 des state processors reste gardé par
 `backend/tests/Unit/ValidationExceptionCarriesViolationsTest.php` ✓ ;
@@ -13,7 +13,13 @@ au-delà) ✓ ; le rail 422 des state processors reste gardé par
 (`backend/src/State/Processor/ConstraintStateProcessor.php:174`) et
 `FixtureStateProcessor::assertVenueAccessAllowed`
 (`backend/src/State/Processor/FixtureStateProcessor.php:229`) suivent bien l'idiome unique
-`$this->refuse(…)` ✓. Rien à corriger.
+`$this->refuse(…)` ✓. Passe ajoutée : le socle de traduction (`symfony/translation`,
+`default_locale: fr`, `backend/config/packages/translation.yaml:2`) est actif et sans négociation
+`Accept-Language` (`set_locale_from_accept_language` au défaut `false`) ✓ ; `/api/login` refuse en
+« Identifiants invalides. » via le catalogue `security` fr livré par `symfony/security-core`, gardé
+par `backend/tests/Security/LoginFailureCopyTest.php` (bloquant) ✓ ; console superadmin
+(`AdminAuthController::password`/`::totp`), membres (`MembershipController`) et la famille
+« planning/période disparu » francisées à la source, citées ci-dessous ✓.
 
 ## La règle
 
@@ -33,8 +39,44 @@ body.detail` **que** pour `status < 500`. Donc :
     (`Invalid JSON`, `Unauthorized`, `Missing required field: …`, noms de champ renvoyés tels
     quels — `seasonId …`, `accentColor …`, params `from`/`to`), et gardes « No club in context. »
     qui ne se produisent pas depuis un front authentifié normal.
-  - **Superadmin `SA0`** (`Controller/Admin*`, firewall `/api/admin/**`) et **outillage `Dev*`** :
-    hors app gestionnaire, laissés tels quels.
+  - **Superadmin `SA0`** (`Controller/Admin*` hors login/TOTP, firewall `/api/admin/**`) et
+    **outillage `Dev*`** : hors app gestionnaire, laissés tels quels. ⚠ La console de connexion
+    elle-même (`AdminAuthController::password`/`::totp`) **EST francisée** depuis P4-263 (section
+    dédiée ci-dessous) — seuls ses deux chemins API-only (`/me`, `/logout`) et les autres
+    contrôleurs `Admin*` (CSRF/`Unauthorized.` génériques, non touchés) restent en anglais.
+
+## Socle de traduction (`symfony/translation`, P4-263)
+
+- Actif depuis P4-263 : `symfony/translation` 7.4 (`backend/composer.json`), `default_locale: fr`
+  (`backend/config/packages/translation.yaml:2`), fallback `en`. **Aucune négociation
+  `Accept-Language`** — `set_locale_from_accept_language` reste au défaut `false`
+  (jamais surchargé dans `config/packages/`) : la locale ne varie donc jamais avec l'en-tête du
+  client, ce qui préserve le 404/401 byte-identique des pages anti-énumération.
+- Le refus de `/api/login` (Lexik `authentication_failure` sur le firewall `json_login`) traduit
+  la clé Symfony `Invalid credentials.` via le catalogue **`security`** livré en vendor par
+  `symfony/security-core` (`Resources/translations/security.fr.xlf`) → **« Identifiants
+  invalides. »**, byte-identique entre un mauvais mot de passe et un compte NON vérifié
+  (`UserChecker`, non touché par cette passe — l'anti-énumération vient de lui, le translator ne
+  fait que traduire les deux chemins par le même catalogue). Gardé par
+  `backend/tests/Security/LoginFailureCopyTest.php` (bloquant, `docs/testing/blocking-tests.md`).
+
+## Messages atteignables francisés à la source (P4-263)
+
+- **Console superadmin** (`AdminAuthController::password`/`::totp`) : 429 « Trop de tentatives.
+  Patientez quelques instants. », 401 « Identifiants invalides. » / « Le délai de vérification a
+  expiré — reconnectez-vous. » / « Vérification invalide — reconnectez-vous. » / « Code de
+  vérification invalide. ».
+- **Membres** (`MembershipController`) : 404 « Membre introuvable — rechargez la liste. », 403
+  « Accès refusé. ».
+- **Famille « planning disparu »** — « Ce planning n'existe plus — rechargez la page. » sur les
+  foyers atteignables : `AssertsSchedulePlanExistsTrait` (garde FK + garde id vide, dont le chemin
+  `POST /api/schedules`), `ScheduleStateProcessor::process` (plan nommé absent/hors club/hors
+  saison), `TeamSoloBudgetStateProvider`. Reste en anglais sur le MÊME processor : « No schedule
+  plan could be resolved for this schedule. » (`ScheduleStateProcessor.php:132`) — chemin protégé
+  en amont par `SocleGuard`, un cas IMPOSSIBLE en pratique (défense pure, jamais un repli à
+  écrire — cf. CLAUDE.md §6).
+- **Calendrier** (`SchedulePlanStateProcessor`) : « Cette période n'existe plus — rechargez le
+  calendrier. » sur l'entrée de calendrier inconnue/hors club/hors saison.
 
 ## Le rail 422 des state processors — un refus PARLE
 
