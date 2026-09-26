@@ -530,6 +530,7 @@ le front lit, il ne re-dérive plus les règles de refus, repli fail-closed si l
 
 | Date | Id | Sujet | Documenté dans |
 |------|----|-------|----------------|
+| 2026-09-26 | — | Passe doc « présent » ADR (0002 944→324 l., 0001/0003/0004+index pliés) ; règle 7 : ADR + 2 journaux + docs/archive ; cadrage P4-265 consigné | [`docs/architecture/adr-index.md`](../../docs/architecture/adr-index.md) |
 | 2026-09-26 | — | Passe doc « présent » racine (hors ADR) : README/CLAUDE.md/project-map/glossaire/testing/sécurité/ops/matrice ; faux corrigés (proxy /engine, fixtures, required checks, backups) | [`docs/project-map.md`](../../docs/project-map.md) |
 | 2026-09-26 | — | Passe doc « présent » zone backend (14 docs) : README pointe au lieu de recopier, 6 faux de routes/familles corrigés | [`backend/README.md`](../../backend/README.md) |
 | 2026-09-26 | — | Garde SpecsCarryNoHistoryTest : les specs courantes ne portent plus de journal (<details>, superseded, table datée…), seul l'état des lieux en porte un | [`specs/README.md`](../README.md) · règle 7 du skill documentation-update |
