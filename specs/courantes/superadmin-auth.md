@@ -1,32 +1,35 @@
 # Console superadmin — authentification, télémétrie et API de supervision
 
-Last verified @ 2026-09-25 (rotation `documentation-update`, sujet sans rapport, P5-26 vitrine).
-Re-confronté au code, rien de faux trouvé : firewall `admin` = `pattern: ^/api/admin`,
-`provider: super_admin_provider` (`backend/config/packages/security.yaml:34,36`) ✓ ;
-`AdminCsrfListener` toujours à la priorité 6
-(`#[AsEventListener(event: KernelEvents::REQUEST, priority: 6)]`) ✓ ; politique de mot de passe
-12 caractères + majuscule + caractère spécial toujours dans `PasswordPolicy::MIN_LENGTH`/
-`REQUIREMENT_FR` (`backend/src/Service/PasswordPolicy.php:15,18`) ✓ ; challenge de session
-password→TOTP toujours borné à 5 minutes (`time() - $startedAt > 300`,
-`backend/src/Controller/AdminAuthController.php:72`) ✓ ; entité `SuperAdmin` toujours séparée
-(`backend/src/Entity/SuperAdmin.php:13`) ✓ ; les trois jobs `manualTriggerAllowed: true`
-(`club-approval-digest`, `import-school-holidays`, `import-public-holidays`) toujours dans
-`backend/src/AdminJob/AdminJobCatalog.php:53,63,64` ✓. Reste du fichier non re-confronté cette
-passe ; l'historique des vérifications précédentes vit dans
+Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement » — dates
+retirées des titres §Fraîcheur des données et alerting / §Journaux read-only et de l'en-tête qui
+les citait par date ; la bascule de thème retirée d'`AdminAuthLayout` reformulée en fait présent
+(palette `--console-*` propre à la surface, pas un récit de retrait) ; nouvelle section §Capacité
+ajoutée. Re-vérifié contre le code : firewall `admin` = `pattern: ^/api/admin`,
+`provider: super_admin_provider` (`backend/config/packages/security.yaml:33,36`) ✓ ;
+`AdminCsrfListener` toujours à la priorité 6 (`AdminCsrfListener.php:38`) ✓ ;
+`PasswordPolicy::MIN_LENGTH`/`REQUIREMENT_FR` (`PasswordPolicy.php:15,18`) ✓ ; challenge TOTP
+borné à 5 minutes (`AdminAuthController.php:72`) ✓ ; `SuperAdmin` toujours séparée
+(`SuperAdmin.php:13`) ✓ ; les trois jobs `manualTriggerAllowed: true` (`club-approval-digest`,
+`import-school-holidays`, `import-public-holidays`) toujours dans `AdminJobCatalog.php` ✓ ;
+`GET /api/admin/capacity` (`AdminMonitoringController.php:47-51`) sert bien
+`AdminCapacityService::capacity()` (`AdminCapacityService.php`, fenêtre 90 jours, connexion
+`admin`), consommé par `CapacitySection.tsx`/`useAdminCapacity()` ✓. Reste du fichier (au-delà des
+dates ci-dessus) non re-confronté cette passe ; historique des vérifications précédentes :
 `git log -p --follow specs/courantes/superadmin-auth.md`.
 
 > **État courant** : SA0, SA1, la console read-only SA2, le socle
 > d'historisation SA3-A, la supervision SA3-B, la planification fiable SA3-C et
 > les relances d'imports SA3-D sont livrés — **plus SA2-stats (usage produit, §SA2 API),
-> SA4 v1 (catalogue d'actions support, §Actions de support), l'alerting santé +
-> data-freshness (2026-07-18, §Fraîcheur des données et alerting), et la console en
+> le tableau de capacité solveur (§Capacité), SA4 v1 (catalogue d'actions support,
+> §Actions de support), l'alerting santé + data-freshness (§Fraîcheur des données et
+> alerting), et la console en
 > onglets avec monitoring conteneurs/dépendances externes + les journaux read-only
-> audit / échecs async / erreurs système (2026-07-25, §Journaux read-only) + heartbeats
+> audit / échecs async / erreurs système (§Journaux read-only) + heartbeats
 > cron & pdf-worker**. Le redémarrage de conteneur depuis l'UI a été étudié puis **retiré**
 > (socle `docker.sock` non transposable en prod — voir console-superadmin.md). Les actions
 > cross-tenant restent dans [`../evolution/console-superadmin.md`](../evolution/console-superadmin.md).
 
-Le frontend React SA0 est désormais livré sur `/admin` : client HTTP à cookie de session
+Le frontend React SA0 est livré sur `/admin` : client HTTP à cookie de session
 séparé, store admin en mémoire uniquement, login mot de passe/TOTP, garde de route, shell
 de console et logout CSRF. Il ne lit ni ne persiste le JWT club.
 
@@ -41,10 +44,10 @@ primitive partagée qui consomme les jetons de **thème** par défaut (ex. `Empt
 `text-muted-foreground`) doit demander sa peau `console` explicitement (prop `variant`, foyer
 `shared/lib/surfaceSkin.ts::SurfaceSkin`, même patron que les onglets) pour rendre juste sur cette
 surface — la majorité des empty states admin l'ont fait (P4-149, 2026-08-30) ; 4 sites restent en
-arbitrage visuel, voir [`roadmap.md`](../evolution/roadmap.md) P4-149. `AdminAuthLayout` n'offre donc
-**aucune** bascule de thème (retirée le 2026-08-30 : elle basculait bien `.dark` sans rien
-changer à l'écran) ; les bascules publique (`AuthLayout`) et applicative (`AppLayout`) restent,
-hors de cette surface.
+arbitrage visuel, voir [`roadmap.md`](../evolution/roadmap.md) P4-149. `AdminAuthLayout` n'offre
+**aucune** bascule de thème — cette surface a sa propre palette `--console-*`, indépendante du
+mode clair/sombre applicatif, donc une bascule `.dark` n'y changerait rien ; les bascules
+publique (`AuthLayout`) et applicative (`AppLayout`) restent, hors de cette surface.
 
 ## Identité et frontière de sécurité
 
@@ -231,7 +234,7 @@ identifie ce créneau dans `admin_job_run` et un index PostgreSQL unique sur
 le créneau pour permettre le rattrapage d'un processus réellement interrompu. Le verrou
 advisory par clé continue d'interdire deux exécutions simultanées.
 
-`GET /api/admin/jobs` expose désormais `nextRunAt`, calculé avec le même modèle et le
+`GET /api/admin/jobs` expose `nextRunAt`, calculé avec le même modèle et le
 dernier créneau enregistré. Le tableau React affiche ce prochain passage avec les
 cadences « toutes les 10 minutes », « quotidien » ou « trimestriel ».
 
@@ -250,7 +253,7 @@ confirmation, affiche l'état en cours puis rafraîchit l'historique. Les rappel
 réconciliations et purges ne sont pas déclenchables depuis cette route ; en particulier
 `app:purge-orphans` reste volontairement manuel.
 
-## Fraîcheur des données et alerting (2026-07-18)
+## Fraîcheur des données et alerting
 
 `GET /api/admin/freshness` (`AdminDataFreshnessService::referentials`) répond à « mes
 données de référence sont-elles à jour ? ». Chaque ligne porte une clé, un libellé, la
@@ -343,7 +346,22 @@ panneau jobs, et le verrou advisory est **partagé avec le job planifié** quand
 commande en a un (`purge-seasons`) : geste manuel et cron se sérialisent au lieu de se
 masquer.
 
-## Journaux read-only (2026-07-25)
+## Capacité — tenue du système sous charge
+
+`GET /api/admin/capacity` (`AdminCapacityService::capacity`, `backend/src/Service/AdminCapacityService.php`,
+connexion `admin` seule) lit `solver_metrics` sur une fenêtre de **90 jours** (le pic de septembre
+reste visible tout l'automne) et rend : volume quotidien (p50/max + jour du pic) et profil horaire
+en heure LOCALE Europe/Paris ; attente (file applicative queue→solve et attente engine, en ms) ;
+durées par TAILLE de problème (`nb_teams × nb_venues`, tiers `small ≤50 / medium 51-200 / large
+>200`, alignés aux tiers moteur) avec p50/p95 et le taux de preuve non fermée (`FEASIBLE` non
+optimal) ; mémoire du worker engine (RSS pic p50/p95/max, baseline avant solve) ; répartition des
+issues terminales. Toutes les colonnes de capacité sont nullable (ajoutées par migration additive,
+sans backfill) — un solve antérieur à leur ajout ou un chemin terminal sans détail (échec, engine
+muet) laisse `null`, rendu « — » côté écran. Consommé par `CapacitySection.tsx`
+(`frontend/src/features/admin/sections/`,
+`useAdminCapacity()`, refetch 5 min, lecture seule).
+
+## Journaux read-only
 
 Trois lectures paginées complètent la console, toutes protégées et auditées comme le
 reste de `/api/admin/**` :

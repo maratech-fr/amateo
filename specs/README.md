@@ -1,18 +1,19 @@
 # Living Specs System
 
-Last verified @ 2026-09-25 (**§ Files Overview mis à jour** — création de
-`specs/courantes/modules-produit.md`, ajoutée à la liste). Re-confronté : les quatre gardes
+Last verified @ 2026-09-26 (**§ 3-Tier Structure** gagne une phrase : seul `etat-des-lieux.md`
+porte un journal, décision fondateur 2026-09-26, cf. son §2). Re-confronté : les quatre gardes
 `{DocPlacementTest, DocStampFreshnessTest, RoadmapIdentityTest,
 BlockingTestsListMatchesCiTest}.php` existent toujours, `WorkflowPermissionsDeclaredTest.php`
 aussi (`ls backend/tests/Unit/Documentation/`) ; `engine/tests/test_contract_version_doc_sync.py`
 (cité comme premier de la série des docs gardées par un test) existe toujours ;
 `docs/testing/blocking-tests.md` existe. **§ Files Overview confronté ligne à ligne à
-`ls specs/courantes/*.md`** — les **12** fichiers cités (`etat-des-lieux`, `modules-produit`,
+`ls specs/courantes/*.md`** — `identite-visuelle-produit.md` manquait à la liste (créé depuis la
+dernière passe), ajouté ; les **13** fichiers cités (`etat-des-lieux`, `modules-produit`,
 `planning-lifecycle-validated`, `types-de-planning`, `superadmin-auth`, `identite-visuelle-club`,
-`vacances-scolaires-jours-feries`, `accueil-cockpit-temporel`, `module-matchs`,
-`canal-signalement`, `generation-pipeline`, `openapi-snapshot.meta`) correspondent exactement au
-dossier, aucun absent, aucun fantôme. `ls specs/evolution/` et `ls specs/audit/` non re-sondés
-cette passe (zone non touchée par ce fichier).
+`identite-visuelle-produit`, `vacances-scolaires-jours-feries`, `accueil-cockpit-temporel`,
+`module-matchs`, `canal-signalement`, `generation-pipeline`, `openapi-snapshot.meta`)
+correspondent exactement au dossier, aucun absent, aucun fantôme. `ls specs/evolution/` et
+`ls specs/audit/` non re-sondés cette passe (zone non touchée par ce fichier).
 
 ## 3-Tier Structure
 
@@ -21,7 +22,7 @@ cette passe (zone non touchée par ce fichier).
   dossier du « courant » : un doc qui décrit **une seule zone** (inventaire de ses routes, liste de ses
   composants, stratégie de test de la zone) appartient à **`<zone>/docs/`**, pas ici — règle de
   placement du skill `documentation-update`, tenue par `DocPlacementTest`. Migration du 2026-08-18 :
-  6 fichiers (~4 000 lignes) sont partis vers `frontend/docs`, `backend/docs` et `engine/docs`. Doit refléter le code : si une spec ne colle plus → on la **met à jour** ; si la feature a disparu → on la **supprime**. Point d'entrée : [`etat-des-lieux.md`](courantes/etat-des-lieux.md) — carte des capacités livrées, **décisions fermées**, traces datées.
+  6 fichiers (~4 000 lignes) sont partis vers `frontend/docs`, `backend/docs` et `engine/docs`. Doit refléter le code : si une spec ne colle plus → on la **met à jour** ; si la feature a disparu → on la **supprime**. Point d'entrée : [`etat-des-lieux.md`](courantes/etat-des-lieux.md) — carte des capacités livrées, **décisions fermées**, traces datées. ⚠ **Seul `etat-des-lieux.md` porte un journal** (décisions fermées §2, une ligne par livraison §3, fondateur 2026-09-26) : les autres fichiers de `courantes/` décrivent le présent seulement — pas de « désormais », de section datée d'une PR ni de bloc « historique/superseded » ; l'historique de CE contenu vit dans git.
 - `specs/evolution/` : **ce que l'appli fera plus tard** (backlog + gaps ouverts). Quand un item est **livré**, il **quitte** evolution (il gradue dans `courantes`). Les notes de process/décisions **résolues** n'y restent pas.
 
 **La règle des deux fichiers (refonte 2026-07-31).** `evolution/roadmap.md` ne tient que **l'ouvert** ; `courantes/etat-des-lieux.md` tient **le livré**. Un item livré **MOVE** : sa ligne est supprimée de la roadmap et une trace datée est ajoutée à l'état des lieux, avec le comportement documenté dans la spec courante qui le reçoit. Jamais les deux, jamais aucun. Corollaire : « est-ce que X est fait ? » ne se répond **pas** dans la roadmap.
@@ -71,7 +72,7 @@ Le 2026-08-08, cette commande a sorti **9 fichiers sur 16** — dont un modifié
 ## Files Overview
 
 - `specs/initiales/` — `ClubScheduler_v3.md` (spec produit consolidée, figée) · `ClubScheduler_Specification_des_contraintes_v2.md` (modèle de contraintes d'origine) · prompt orchestrateur v3.
-- `specs/courantes/` — `etat-des-lieux.md` (**point d'entrée** : ce que l'app sait faire, décisions fermées, traces datées) · `modules-produit.md` (la carte ci-dessus **en langage club** : une promesse, ce qui est livré, où c'est dans l'app — nourrit la page de vente/FAQ/démo) · specs de features livrées graduées depuis evolution (`planning-lifecycle-validated`, `types-de-planning` — les 3 types (socle / overlay / vacances) et l'axe collecte coach · `superadmin-auth` — console SA0-SA4 + monitoring · `identite-visuelle-club`, `vacances-scolaires-jours-feries`, `accueil-cockpit-temporel` — calendrier d'exceptions/overlays livré #122 · `module-matchs` — import FBI + placement + radar conflits) · `canal-signalement` (signalement/support/reproduction, `X-Request-Id` bout en bout) · `generation-pipeline` (conduite normalisée bout en bout front→backend→engine→import→affichage + invariants silencieux) · `openapi-snapshot.json` + son meta (régénéré à chaque changement d'API).
+- `specs/courantes/` — `etat-des-lieux.md` (**point d'entrée** : ce que l'app sait faire, décisions fermées, traces datées) · `modules-produit.md` (la carte ci-dessus **en langage club** : une promesse, ce qui est livré, où c'est dans l'app — nourrit la page de vente/FAQ/démo) · specs de features livrées graduées depuis evolution (`planning-lifecycle-validated`, `types-de-planning` — les 3 types (socle / overlay / vacances) et l'axe collecte coach · `superadmin-auth` — console SA0-SA4 + monitoring · `identite-visuelle-club`, `identite-visuelle-produit` (base produit + accent club, en-tête, fond d'écran commun), `vacances-scolaires-jours-feries`, `accueil-cockpit-temporel` — calendrier d'exceptions/overlays livré #122 · `module-matchs` — import FBI + placement + radar conflits) · `canal-signalement` (signalement/support/reproduction, `X-Request-Id` bout en bout) · `generation-pipeline` (conduite normalisée bout en bout front→backend→engine→import→affichage + invariants silencieux) · `openapi-snapshot.json` + son meta (régénéré à chaque changement d'API).
 - `specs/evolution/` — `roadmap.md` (**index unique de l'OUVERT** : toute évolution/gap/idée non livrée y laisse une ligne) · fichiers de détail référencés depuis la roadmap quand une ligne ne suffit pas (liste des fichiers actifs tenue dans le header de la roadmap). Règle : un fichier de détail devenu sans objet (sujet livré/tranché) est supprimé après absorption dans la roadmap (`features-futures.md`, `backend-gaps.md`, `contraintes-modele-cible.md` absorbés le 2026-07-05 — leurs IDs `FF#n`/`G#n` restent cités comme réf historiques).
 - `specs/audit/` — éditions d'audit horodatées (`AUDIT-<date>-<model>.md`, skill `/audit`) ; registre de findings à ID stables, comparaison inter-éditions.
 

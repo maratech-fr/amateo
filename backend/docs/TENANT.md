@@ -1,13 +1,17 @@
 # ClubScheduler — Tenant Isolation Architecture
 
-Last verified @ 2026-09-25 (rotation `documentation-update`, lot DA « base chaude + accent produit »
-— fichier hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code :
-priorité 7 toujours en place (`TenantFilterListener.php:55`) ✓ · `TenantConnectionContext`
-pose toujours `set_config('app.club_id', ?, false)` (`TenantConnectionContext.php:30`) ✓ ·
-`backend/tests/Security/TenantOwnedInterfaceCompletenessTest.php`,
-`backend/tests/Security/AdminRequestBoundaryTest.php`, `TenantJwtIsolationTest.php`,
-`ManagementRoleTest.php` et `backend/migrations/Version20260919120000.php` toujours présents ✓.
-Rien à corriger.
+Last verified @ 2026-09-26 (rotation de fraîcheur `documentation-update`, stamp le plus ancien du
+dépôt avec `backend/docs/commands.md`). Re-confronté au code : priorité 7 toujours en place
+(`TenantFilterListener.php:55`) ✓ · le skip `/api/admin` toujours en `str_starts_with` sur le
+path (`TenantFilterListener.php:81`) ✓ · `TenantConnectionContext` pose toujours
+`set_config('app.club_id', ?, false)` (`TenantConnectionContext.php:30`) ✓ ·
+`AbstractStateProcessor::requiresManagementRole()` retourne toujours `true` par défaut
+(`backend/src/State/Processor/AbstractStateProcessor.php:130-132`) ✓ · `amateo_owner` reste
+l'unique rôle `BYPASSRLS`, `migration_user` toujours absent (`docker/postgres/init/02-users.sh`,
+migration `Version20260731090000.php` présente) ✓ · `BcclSeeder` scope toujours ses deux
+recherches `SportCategory` par `clubId` (`backend/src/Seed/BcclSeeder.php:251`), NR
+`BcclSeederIdempotenceTest::testSeedScopesSportCategoriesToTheirOwnClub` présent ✓. Rien à
+corriger.
 
 ## Overview
 
