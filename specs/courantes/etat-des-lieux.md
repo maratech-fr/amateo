@@ -528,6 +528,7 @@ le front lit, il ne re-dérive plus les règles de refus, repli fail-closed si l
 
 | Date | Id | Sujet | Documenté dans |
 |------|----|-------|----------------|
+| 2026-09-26 | — | Garde SpecsCarryNoHistoryTest : les specs courantes ne portent plus de journal (<details>, superseded, table datée…), seul l'état des lieux en porte un | [`specs/README.md`](../README.md) · règle 7 du skill documentation-update |
 | 2026-09-26 | — | Passe doc « présent » : accueil-cockpit-temporel, planning-lifecycle-validated, types-de-planning réécrits au présent (écarts soldés E1-E6, « paliers » cockpit retirés) | [`accueil-cockpit-temporel.md`](accueil-cockpit-temporel.md) · [`types-de-planning.md`](types-de-planning.md) |
 | 2026-09-26 | — | Passe doc « présent » : §1 devient une carte, §2/§3 compactés sans perte (268 décisions, 549 traces, chaque id sur sa ligne) ; seul ce fichier porte un journal | [`planning-lifecycle-validated.md`](planning-lifecycle-validated.md) §3.5 · décision §2 |
 | 2026-09-26 | — | Passe doc « présent » frontend : wizard/components/AGENTS/strategy compactés (règle 7 documentation-update) ; drift corrigé (nginx, e2e non typé avant P4-257) | [`frontend/docs/frontend-components.md`](../../frontend/docs/frontend-components.md) §3 · [`frontend/AGENTS.md`](../../frontend/AGENTS.md) · [`.claude/rules/frontend.md`](../../.claude/rules/frontend.md) · décision §2 |
