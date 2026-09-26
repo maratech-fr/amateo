@@ -1,19 +1,15 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-09-25 (**rotation de fraîcheur**, `documentation-update`, PR B du chantier DA
-« en-tête marque produit + favicon » — zone non touchée par cette PR). Re-vérifié contre le code,
-tout juste : les neuf repères déjà cités tiennent encore — `RedatePreviewController`
-(`backend/src/Controller/RedatePreviewController.php:36`) ✓, `SplitMotherRedatePlanner`
-(`backend/src/Service/SplitMotherRedatePlanner.php:41`) ✓, `CalendarEntryRedatability::
-redateNeedsPreview` (`backend/src/Service/CalendarEntryRedatability.php:68`) ✓,
-`CalendarEntryResource.$redateNeedsPreview` (`backend/src/ApiResource/CalendarEntryResource.php:78`)
-✓, `CalendarEntryStateProcessor::assertValidWeekChild`
-(`backend/src/State/Processor/CalendarEntryStateProcessor.php:673`) ✓, `segmentsFromOffer`
-(`frontend/src/features/cockpit/lib/date.ts:231`) ✓, la route
-`POST /api/schedule_plans/{id}/transcribe-from-socle` (`TranscribePeriodPlanController.php:52`) ✓,
-`POST /api/schedules/{id}/fill` (`FillPeriodPlanController.php:75`) ✓, `ensurePeriodPlanId`
-(`SchedulePlanProvisioner.php:780`) ✓. Rien de faux trouvé cette passe. Reste du fichier (E1-E6,
-D1-D10bis, historique des décisions) non re-confronté ligne à ligne cette passe.
+Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement », CLAUDE.md §8 /
+skill `documentation-update` règle 7). Retiré : le bloc « Historique des décisions » (les 3 entrées
+étaient déjà captées ailleurs — ADR-0002 pour le pattern Plan et le ré-ancrage `schedulePlanId`, le
+corps de ce document pour le modèle des 3 types ; aucune ligne §2 d'`etat-des-lieux.md` n'était donc
+nécessaire). Reconfronté au code dans la foulée : `RedatePreviewController`
+(`backend/src/Controller/RedatePreviewController.php:36`) ✓, `ensurePeriodPlanId`
+(`backend/src/Service/SchedulePlanProvisioner.php:780`) ✓, `FillPeriodPlanController`
+(`backend/src/Controller/FillPeriodPlanController.php:75`) ✓ — les autres repères (§0 de la note
+précédente) non re-rejoués cette passe. Reste du fichier (E1-E6, D1-D10bis) non re-confronté ligne
+à ligne cette passe.
 
 > **Rôle de ce document** : la trace durable du modèle métier des plannings, validé avec le
 > fondateur le 2026-07-12. C'est LA référence à consulter avant tout travail sur la
@@ -258,25 +254,3 @@ début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
 > [`../evolution/roadmap.md`](../evolution/roadmap.md) — ils se cadrent et se livrent
 > PR par PR, avec validation du besoin avant chaque lot (règle CLAUDE.md §7).
 
-## Historique des décisions
-
-- **2026-07-12** — **pattern « Plan » arbitré point par point (A→H)** → formalisé dans
-  [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md) : entité Plan (type, nom
-  public, période propre, pointeur), Schedule = version, valider = pointer + supprimer
-  les autres, réglages de période sur le Plan, structure partagée + photo.
-- **2026-07-12** — modèle des 3 types validé avec le fondateur (cette page) : semaine =
-  unité hors socle ; overlay = décision du gestionnaire après déclaration, structure
-  verrouillée sauf séances ; reprise = semaines choisies, défaut Fanion + importantes,
-  demandes coach en futur.
-- **2026-07-11/12** — overlays spontanés / différentiels (couche diff éparse, socle
-  jamais touché) : `TeamPeriodOverride`, `VenueTrainingSlot.calendarEntryId`,
-  `ConstraintPeriodOverride` (#208, #210, #211, #212).
-  > ⚠ **Dépassé, ne pas coder dessus.** Deux choses ont bougé depuis. (1) **L'ancre** : les
-  > jumeaux sparse se sont ré-ancrés au **plan** (`schedulePlanId`, lot C2/C3 du 2026-07-17),
-  > `VenueTrainingSlot.calendarEntryId` n'existe plus. (2) **Le modèle lui-même, pour les
-  > créneaux** : depuis #8 (2026-07-24) la période **possède** sa grille — les créneaux de
-  > saison y sont **copiés** à la naissance du plan, et le build overlay ne les unit **jamais**
-  > avec ceux de la saison. Seuls `TeamPeriodOverride` (activation + séances) et
-  > `ConstraintPeriodOverride` (toggle) sont restés des diffs épars. Les contraintes **datées**,
-  > elles, sont restées sur la `CalendarEntry` — c'est un fait de calendrier, pas un réglage
-  > de plan (à ne pas confondre avec les ancres ci-dessus).
