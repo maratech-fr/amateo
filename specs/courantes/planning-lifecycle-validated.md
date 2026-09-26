@@ -1,18 +1,12 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-09-24 (`documentation-update`, P4-255 PR 1 — extraction verbatim de
-`PlanningPage.tsx` en cinq hooks maison, `planning/lib/`). La citation `PlanningPage.tsx:317` pour
-`useValidateSchedule()` avait dérivé : l'appel vit désormais dans `planning/lib/useValidateReopen.ts:25`
-(le hook `useValidateReopen`, invoqué par `PlanningPage.tsx`) — recalée. Reste re-confronté au code
-lors de la passe précédente (2026-09-22, sans rapport avec le sujet de cette PR) : `ScheduleStatus` = exactement
-`DRAFT/PENDING/GENERATING/COMPLETED/FAILED`, pas de `VALIDATED` (`Enum/ScheduleStatus.php`) ✓ ·
-`SocleGuard::assertSeasonPlanChosen` appelé depuis `FixtureStateProcessor`, `ScheduleStateProcessor`,
-`GenerateScheduleController` et (via `FixtureImportGate::gate`, appelée par
-`ImportFixturesController`) le rail d'import FBI ✓ · le garde matchs `useSocleValidated()`
-(`frontend/src/shared/lib/socle.ts`, dérivé de `me.seasonPlan.chosenScheduleId`) est bien monté
-dans `MatchesLayout.tsx` (RMM-1 PR2) ✓ · `BcclSeedProfile::transcribeRealSchedule` reste `true`
-au profil `dev()` seul, `false` en `demo()`/charge (`BcclSeedProfile.php`) ✓. Historique des
-passes vit dans git : `git log -p --follow specs/courantes/planning-lifecycle-validated.md`.
+Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement » — §1 de
+`etat-des-lieux.md`). Nouveau §3.5 « Capacités exposées par le serveur » ajouté (contenu migré
+depuis `etat-des-lieux.md` §1.13, réduit là-bas à un pointeur) et confronté au code :
+`App\Service\ScheduleCapabilityResolver` (`canDelete`/`canValidate`/`canRegenerateFrom`,
+`forSchedules()` en batch par `GROUP BY (schedule_plan_id, status)`, prédicats `isInFlight`/
+`isChosen`/`isLastFinishedSeasonVersion`/`inFlightInSeason`) ✓. Historique des passes vit dans
+git : `git log -p --follow specs/courantes/planning-lifecycle-validated.md`.
 
 > **Bascule 2026-07-16 (ADR-0002, `docs/architecture/adr-0002-pattern-plan.md`)** : le **plan de
 > type SEASON** (`schedule_plan`) et **la version qu'il pointe** (`chosen_schedule_id`) SONT le
@@ -166,6 +160,19 @@ DRAFT ──generate──▶ PENDING ──▶ GENERATING ──▶ COMPLETED
 
 ### 3.4 Pas de nouveau statut
 `ScheduleStatus` reste `DRAFT/PENDING/GENERATING/COMPLETED/FAILED` : « validé » se dérive du pointeur, donc **aucun statut à ajouter** (inv. 1).
+
+### 3.5 Capacités exposées par le serveur (`ScheduleCapabilityResolver`, P2-8)
+
+Le front ne re-dérive plus les règles de refus du planning : chaque `Schedule` de `GET /api/schedules` porte un
+bloc `capabilities` (`canDelete`, `canValidate`, `canRegenerateFrom`, `versionsDeletedOnValidate`,
+`overlaysDroppedOnValidate`), calculé par `App\Service\ScheduleCapabilityResolver` — les gardes d'écriture
+(DELETE / validate / regenerate-from) et le sérialiseur tirent le **même verdict** via les mêmes prédicats
+unitaires (`isInFlight`, `isChosen`, `isLastFinishedSeasonVersion`, `inFlightInSeason`), donc la capacité
+affichée EST le refus réel — pas de dérive front↔serveur possible. Le front lit, il n'infère plus ; repli
+fail-closed (capacité absente → geste non offert). `forSchedules()` calcule le bloc en BATCH pour toute une
+collection (un `GROUP BY (schedule_plan_id, status)` + un appel par saison, coût fixe quel que soit le nombre
+de versions) — jamais de N+1. Gardé par `ScheduleCapabilityParityTest` (step du gate CI) : la capacité exposée
+== le verdict du garde, prouvé dans les deux sens.
 
 ## 4. Frontend
 

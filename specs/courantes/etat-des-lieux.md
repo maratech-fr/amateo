@@ -22,96 +22,56 @@
 
 ### 1.1 Solveur & contraintes
 
-Le modèle de contraintes est **entièrement tranché** (série ENGINE, 2026-07-03) : 4 scopes
-(CLUB/TEAM/COACH/FACILITY), 3 types (HARD/PREFERRED/LOCK — `BONUS` retiré du produit le
-2026-09-23, §2), 5 familles (TIME/DAY/FACILITY/COACH_AVAILABILITY/FACILITY_CAPACITY), liste
-**fermée** de types.
+Le modèle de contraintes est **entièrement tranché** : 4 scopes (CLUB/TEAM/COACH/FACILITY), 3 types
+(HARD/PREFERRED/LOCK — `BONUS` retiré du produit), 5 familles (TIME/DAY/FACILITY/
+COACH_AVAILABILITY/FACILITY_CAPACITY), liste **fermée**.
 
 - **Passe unique, aucun fallback de relaxation** — INFEASIBLE rend des diagnostics nommés (équipe, salle,
-  jour, heure, raison), jamais un plan aux contraintes relâchées en douce. → [ADR-0001](../../docs/architecture/adr-0001-single-pass-solve.md)
-- **Budget adaptatif** 60/180/600 s selon `n_teams × n_venues`, `num_search_workers` adaptatif (1 ≤200, 8 au-delà) —
-  le portefeuille à 8 workers a fait tomber un prove-stall de 612 s à ~2 s à objectif identique.
-- **Salle divisible** (`Venue.canSplit`) + capacité par créneau ; le parallélisme borné passe par `FACILITY_CAPACITY`.
-- **Règles implicites** appliquées sans saisie : coach principal présent à toutes les séances de son équipe,
-  repos après jour de match (poids 3), regroupement même-coach-même-salle (bonus de chaînage, phase 2 plafonnée 10 s).
-- **Verrous HARD pré-placés hors solveur** (`_extract_hard_locks`) : un verrou est **souverain** mais ne se tait plus —
-  `diagnose_locked_slot_violations` émet un `constraint_not_honored` INFO nommant la contrainte que l'épinglage rend
-  inatteignable, et le récap refuse la génération quand un verrou met un coach à deux endroits, bloque quand les
-  « au moins » d'un gymnase dépassent ses places non verrouillées, et avertit AVANT génération quand une réservation
-  tombe sur l'indisponibilité du coach (PR A 2026-08-06).
-- **Matrice contrainte UI↔engine** gelée par un test paramétré généré. → [`constraint-matrix.md`](../../docs/architecture/constraint-matrix.md)
-- **Trajet entre gymnases** (P2-53/RMM-8, 4 PR, livré le 2026-08-26) : matrice de temps de trajet
-  club+saison (deux barèmes voiture/à pied, géocodage BAN + autofill IGN), règle implicite
-  `travelTime` opt-in à la présence de matrice (départage « moindre trajet » + battement), et son
-  **levier d'intensité** Préféré/Obligatoire (`VenueTravelRuleSetting`, store DÉDIÉ club+saison,
-  vocabulaire des passerelles) — géré management, défaut Préféré. → [`geo-api.md`](../../backend/docs/geo-api.md) ·
-  [`constraint-vocabulary.md`](../../engine/docs/constraint-vocabulary.md) §Trajet entre gymnases
-- **Déterminisme exposé** : `score_formula_version` + `constraint_version` dans la sortie.
-- **Régénérer converge vers la version REGARDÉE** (P3-21, 2026-08-17 : `previousAssignments` départage les ex æquo en phase 2 ;
-  **P2-61, 2026-09-06 : la proximité pèse aussi 9 dans le placement** — une source retouchée à la main sous l'optimum n'est plus
-  rebattue, seule une règle saisie ≥ 10, un tier ou un HARD déplace ; score rapporté aux poids d'origine). → [ADR-0001](../../docs/architecture/adr-0001-single-pass-solve.md)
+  jour, heure, raison), budget adaptatif selon la taille du problème. → [ADR-0001](../../docs/architecture/adr-0001-single-pass-solve.md)
+- **Verrous HARD pré-placés hors solveur** : souverains mais diagnostiqués (jamais silencieux) ; la matrice
+  contrainte UI↔engine est gelée par un test paramétré généré. → [`constraint-matrix.md`](../../docs/architecture/constraint-matrix.md)
+- **Règles implicites** appliquées sans saisie (coach principal présent, repos après jour de match, regroupement
+  même-coach-même-salle) + **trajet entre gymnases** (matrice club+saison voiture/à pied, règle implicite opt-in
+  à la présence de matrice, levier d'intensité Préféré/Obligatoire géré management). → [`geo-api.md`](../../backend/docs/geo-api.md) ·
+  [`constraint-vocabulary.md`](../../engine/docs/constraint-vocabulary.md)
+- **Déterminisme exposé** (`score_formula_version` + `constraint_version` dans la sortie) ; **régénérer converge
+  vers la version REGARDÉE** — une séance retouchée à la main sous l'optimum n'est plus rebattue par hasard,
+  seule une règle saisie, un tier ou un HARD la déplace. → [ADR-0001](../../docs/architecture/adr-0001-single-pass-solve.md)
 
 → [`engine-inventory.md`](../../engine/docs/engine-inventory.md) · [`generation-pipeline.md`](generation-pipeline.md) · [`constraint-coverage.md`](../../backend/docs/constraint-coverage.md)
 
 ### 1.2 Modèle temporel — cockpit, périodes, overlays
 
-L'accueil **est** le cockpit : bandeau socle, calendrier d'exceptions, radar de rappels. Le calendrier est une
-**projection**, jamais une matérialisation ; une occurrence n'existe qu'en delta.
+L'accueil **est** le cockpit (bandeau socle, calendrier d'exceptions, radar de rappels) ; le calendrier est une
+**projection**, jamais une matérialisation.
 
-- **Vacances scolaires** (zones A/B/C + 13 codes DOM/TOM) et **jours fériés** importés depuis les API publiques,
-  rendus au cockpit. → [`vacances-scolaires-jours-feries.md`](vacances-scolaires-jours-feries.md)
-- **Périodes d'exception** = `CalendarEntry` `kind=period` : `closure` (fermeture) et `holiday` (vacances) sont
-  **générantes**, `cutoff` est une fenêtre vide purement informative.
-- **Une période POSSÈDE sa grille** : ses `VenueTrainingSlot` sont copiés du modèle de saison à la naissance du plan
-  (`schedulePlanId`), **jamais unis** avec les créneaux saisonniers. Les réglages par période sont des jumeaux sparse :
-  `VenuePeriodOverride` (DISABLED/BLANK), `TeamPeriodOverride` (activation + séances), `ConstraintPeriodOverride` (toggle).
-- **Le SEGMENT est l'unité hors socle (P2-41, 2026-08-19)** : une période se découpe en enfants qui couvrent chacun un
-  **bloc de semaines calendaires pleines et contiguës** (lun→dim, clamp saison) — la semaine simple est le segment de
-  taille 1. Vrai côté **API** (`CalendarEntryStateProcessor::assertValidWeekChild`, ADR-0002) et côté **picker**
-  (`WeekPickerDialog` propose des segments PRÉCOCHÉS aux ruptures géométriques, scindables et fusionnables —
-  `segmentsFromOffer`, `frontend/src/features/cockpit/lib/date.ts`) ; un enfant naît toujours avec son propre plan
-  (rail 1 entrée = 1 plan). **Pour une FERMETURE, ce découpage n'est plus libre depuis le 2026-09-05** : au plus
-  trois segments IMPOSÉS — début (semaine entamée), milieu (semaines pleines contiguës, un trou de vacances ou une
-  fenêtre déjà planifiée le coupe en deux runs), fin (semaine entamée) — jamais une semaine complète isolée ;
-  scinder/fusionner disparaît du picker pour ce type. Les VACANCES ne sont pas concernées. Gardé aux deux portes
-  (`App\Service\WeekSegmentationRule`/`ClosureSegmentation`, 422), miroir déclaré `cockpit/lib/weekSegmentation.ts`,
-  parité `WeekSegmentationMirrorParityTest`. → [`types-de-planning.md`](types-de-planning.md) §2.
-- **Une seule planification par fenêtre** (P2-38, ADR-0002 inv. 4) : deux plans de période ne peuvent jamais gouverner
-  les mêmes dates — refusé en 409 à la naissance (geste « Adapter » ou semaine-enfant), dans les deux sens, en NOMMANT
-  le plan déjà en place. Rien n'est supprimé/rétréci automatiquement. Une semaine dans sa mère et deux semaines sœurs
-  restent légitimes ; déclarer le FAIT (une fermeture) par-dessus une période déjà planifiée reste toujours libre.
-- **L'adaptation peut naître comme une COPIE du socle, sans solveur** (P2-44, programme COMPLET PR-1→PR-5, [ADR-0004](../../docs/architecture/adr-0004-period-plan-birth-as-socle-copy.md)) :
-  sur un plan de période vierge, `POST /api/schedule_plans/{id}/transcribe-from-socle` transcrit la version POINTÉE
-  du socle filtrée de la sélection de période (équipe désactivée, gymnase/jour fermé, réduction de séances — retrait
-  déterministe des dernières de la semaine) en une V1 `COMPLETED` non pointée, verrous HARD (origine RESERVATION si
-  coïncidence, sinon MANUAL) ; les séances qui ne passent plus reviennent nommées côté serveur (« à replacer »).
-  **Écran (PR-2)** : bouton « Partir du planning de saison » à l'étape Génération d'un plan de période vierge
-  (`GenerateStep`, refus 409 servi et affiché plutôt que muet), panneau « Séances à replacer » sur l'écran embarqué
-  (donnée servie, présentation pure, vit le temps de la session d'écran — `DriftBanner` prend le relais après
-  navigation), vides mis en évidence sur la grille (jamais les cases fermées), modale « Comparer avec la saison »
-  (consultation lecture seule du socle pointé, réutilise `WeekGrid`).
-  **Défaut sur une fermeture (PR-4, 2026-08-20)** : sur un plan de période de type FERMETURE
-  vierge, la transcription se déclenche AUTOMATIQUEMENT à l'arrivée sur l'étape — le bouton manuel
-  ci-dessus reste le geste de repli. Les VACANCES gardent le bouton manuel à l'octet près (décision
-  de sens + raison technique `OrphanPinGuard` — une grille de reprise réécrite verrait les séances
-  du soir du socle copiées hors grille).
-  **Comblement (PR-3, 2026-08-20)** : sur une version de période qui porte des séances « à replacer »,
-  `POST /api/schedules/{id}/fill` (4e route de solve) lance un solve **PARTIEL** — les placements de la
-  version SOURCE sont épinglés HARD **dans le payload du solve seul** (jamais persistés), le solveur ne
-  place que les trous. Rail async existant (savepoint, verrou de génération, Mercure, import), zéro
-  changement moteur, contrat backend⇄engine intact. Bouton « Combler automatiquement » sur l'écran embarqué.
-  **Écarts NOMMÉS (PR-5, 2026-08-20 — le programme est clos)** : sur une FERMETURE, la route de LECTURE re-appelable
-  `GET /api/schedules/{id}/socle-deviation` nomme les séances **déplacées** (placement d'origine → placement actuel) et
-  **non replacées** (raison dérivée de la sélection de période, `null` quand elle ne l'explique pas). Ni les nouvelles
-  ni les inchangées. Panneau « Écarts avec le planning de saison » sur l'écran embarqué, en plus de « Séances à
-  replacer ». Ferme P2-43 (iv).
+- **Vacances scolaires** (zones A/B/C + DOM/TOM) et **jours fériés** importés depuis les API publiques, rendus au
+  cockpit. → [`vacances-scolaires-jours-feries.md`](vacances-scolaires-jours-feries.md)
+- **Périodes d'exception** (`CalendarEntry` `kind=period`) : `closure`/`holiday` génèrent un plan, `cutoff` est
+  informatif. Une période **possède sa grille** — copiée du modèle de saison à la naissance du plan, jamais unie —
+  avec des réglages sparse (`VenuePeriodOverride`/`TeamPeriodOverride`/`ConstraintPeriodOverride`).
+- **Le SEGMENT est l'unité hors socle** (bloc de semaines calendaires pleines et contiguës) : une FERMETURE se
+  découpe en au plus trois segments IMPOSÉS (début/milieu/fin), les VACANCES gardent scission/fusion libres.
+  → [`types-de-planning.md`](types-de-planning.md) §2
+- **Une seule planification par fenêtre** : deux plans de période ne peuvent jamais gouverner les mêmes dates
+  (409 nommant le plan déjà en place, dans les deux sens) ; re-dater un incident (racine `closure` en bloc, ou mère
+  déjà segmentée sous aperçu puis confirmation) tient cette même règle. → [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md)
+  inv. 4 · [`accueil-cockpit-temporel.md`](accueil-cockpit-temporel.md) §5bis
+- **Une adaptation peut naître comme une COPIE du socle, sans solveur** : transcription filtrée de la sélection de
+  période (équipes/gymnases/jours désactivés, séances réduites) en verrous HARD, séances qui ne passent plus
+  nommées « à replacer », comblement solveur PARTIEL du reste, écarts nommés vs le socle.
+  → [ADR-0004](../../docs/architecture/adr-0004-period-plan-birth-as-socle-copy.md)
 - **Rappels** : cron quotidien J-14/J-7/J-3 par email + radar in-app, jamais d'auto-action.
-- **Mutualisation — deux mécanismes distincts, même mot** : **d'affichage** (fusion de cellules par `groupLabel` sur une réservation à capacité ≥ 2, P2-17, zéro changement engine) et **d'accord solveur**, désormais **UNE SEULE notion** (P2-51, lot ENTIÈREMENT LIVRÉ le 2026-08-31, 7 PR + 1 complément — le modèle groupe {équipes, K} du P2-27 d'origine est **retiré**, converti en blocs par migration).
-- **Le BLOC de mutualisation — le terrain pense créneau, le modèle pense équipe (P2-51, clos le 2026-08-31)** : un ensemble d'équipes (2..10) qui se comporte comme UNE équipe, son propre `commonSessions` — dissout structurellement le double-comptage de l'exact-K sur des partages imbriqués que l'ancien modèle groupe ne pouvait pas dire. **DÉCLARER** (modale « Liens » de l'étape Équipes) → **GÉNÉRER** (le solveur consomme le bloc, modélisation LIAGE) → **POSER** (réservation groupée ancrée sur le bloc, rail batch) → **DÉPLACER** (le bloc entier, atomiquement, verdict à N candidats) → **RETIRER** (P2-62, 2026-09-04 — supprimer une réservation d'une case bloc-complète emporte TOUTE la case, jamais un seul membre ; décision fondateur « on ne retire pas une équipe d'un groupe, on supprime le groupe ») : les cinq gestes sont câblés à l'écran sous une notion écran unique « **entraînement mutualisé** » (D13, terminologie affinée par P2-62 — jamais « groupe » ni « bloc » à l'écran). Contrat backend⇄engine **2.19** (le modèle groupe {équipes, K} — `sharedTrainings`, diagnostic `shared_training_not_honored`, miroir `shared_training_broken` — a disparu des deux endpoints qui le portaient ; un bloc mort emporte les réservations « bloc-complètes » des autres membres, une réservation individuelle coïncidente survit). → [`engine/docs/constraint-vocabulary.md`](../../engine/docs/constraint-vocabulary.md) §Bloc de mutualisation · [`backend/docs/backend-inventory.md`](../../backend/docs/backend-inventory.md) §SharedTrainingBlock · [`frontend/docs/frontend-wizard.md`](../../frontend/docs/frontend-wizard.md) §1
-- **Le résidu solo garde l'unité de placement (P2-60, lot ENTIÈREMENT LIVRÉ le 2026-09-03)** : une équipe qui s'entraîne uniquement en bloc ne se réserve plus individuellement — la garde vit aux deux portes (poser une réservation, déclarer/modifier un bloc) et le sélecteur de Réservation l'affiche. → [`backend/docs/backend-inventory.md`](../../backend/docs/backend-inventory.md) §TeamSoloBudget/Reservation/SharedTrainingBlock · [`frontend/docs/frontend-wizard.md`](../../frontend/docs/frontend-wizard.md) §1 (item 4, picker « Réserver »)
-- **Re-dater un incident d'un BLOC, dans les deux sens depuis le cockpit (D3 v1 SOLDÉE ENTIÈRE le 2026-09-04, ex-P2-57)** : une racine `closure` sans semaines-enfants qui porte un plan n'est plus figée sur ses dates — `PUT` re-date, resynchronise la fenêtre du plan, les contraintes `venue_closed` nées du même geste et le titre/nom du plan, sous garde de fenêtre unique (409 nommant le plan en place) ; la version pointée survit, marquée à régénérer. Racines vacances (liées au référentiel), mères découpées, semaines-enfants et le reste de l'identité (`kind`/`periodType`/`schoolHolidayId`) restent gelés. Le geste vit dans la liste du jour du cockpit (bouton « Modifier les dates de … », `frontend/src/features/cockpit/DayDialog.tsx`, rendu ssi `entry.redatable` — prédicat unique côté serveur, le front ne recalcule rien) ; un 409 s'affiche à l'endroit du geste, un succès toaste « planning à régénérer ». → [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md) (amendement D3 v1) · [`types-de-planning.md`](types-de-planning.md) §2 · [`accueil-cockpit-temporel.md`](accueil-cockpit-temporel.md) §5bis
-- **Le cockpit dit lui-même « à régénérer » (P4-173, 2026-09-05)** : le plan sert sa péremption au lieu de la laisser à la seule bannière `/planning` — `SchedulePlanResource.staleness` (version POINTÉE, `null` sans pointeur ou fenêtre révolue) affiché par une pastille non cliquable sur les quatre surfaces qui portent un plan (carte Saison, radar, « Tous les plannings », ligne du jour). → [`accueil-cockpit-temporel.md`](accueil-cockpit-temporel.md) §5bis
-- **Re-dater une indisponibilité DÉCOUPÉE, sous aperçu puis confirmation (D3 v2, P4-174, 2026-09-05)** : une mère `closure` déjà segmentée en enfants début/milieu/fin (sans plan-bloc à elle) n'est plus hors d'atteinte — `POST /api/calendar_entries/{id}/redate-preview` (`RedatePreviewController`) annonce les effets de la nouvelle fenêtre (par enfant : `keep`/`shift`/`absorb`/`vanish`, plus `birth` pour un segment neuf et `holiday_takes_over` si les vacances recoupent la fenêtre), calculés par le foyer unique `SplitMotherRedatePlanner` ; le `PUT` applique EXACTEMENT ce plan sous un `previewToken` (422 si absent, 409 si la période a bougé depuis l'aperçu — ré-aperçu, confirmation toujours manuelle). `CalendarEntryResource.redateNeedsPreview` (exclusif de `redatable`) signale l'entrée éligible. Geste écran : bouton unique « Voir les effets » → « Confirmer » dans `DayDialog.tsx` (`RedateWithPreviewForm`). → [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md) (amendement D3 v2) · [`types-de-planning.md`](types-de-planning.md) §2 · [`accueil-cockpit-temporel.md`](accueil-cockpit-temporel.md) §5bis
+- **Le cockpit affiche lui-même la péremption d'un plan** (pastille non cliquable sur les quatre surfaces qui le
+  portent). → [`accueil-cockpit-temporel.md`](accueil-cockpit-temporel.md) §5bis
+- **Mutualisation — deux mécanismes distincts, même mot** : fusion d'**affichage** (cellule à capacité ≥ 2, zéro
+  effet solveur) et **bloc de mutualisation** solveur — un ensemble d'équipes (2..10) qui se comporte comme UNE
+  équipe, son propre `commonSessions` — sous une notion écran unique « **entraînement mutualisé** » (déclarer /
+  générer / poser / déplacer / retirer ; retirer une réservation bloc-complète emporte toute la case, jamais un
+  seul membre). Le résidu solo (équipe qui ne s'entraîne qu'en bloc) garde son unité de placement propre.
+  → [`engine/docs/constraint-vocabulary.md`](../../engine/docs/constraint-vocabulary.md) §Bloc de mutualisation ·
+  [`backend/docs/backend-inventory.md`](../../backend/docs/backend-inventory.md) §SharedTrainingBlock ·
+  [`frontend/docs/frontend-wizard.md`](../../frontend/docs/frontend-wizard.md) §1
 
 → [`accueil-cockpit-temporel.md`](accueil-cockpit-temporel.md) · [`types-de-planning.md`](types-de-planning.md) · [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md)
 
@@ -139,280 +99,25 @@ consommée par la garde d'écriture **et** par `TeamResource.isEngaged` que le f
 
 ### 1.5 Module matchs
 
-- Entités `Competition`/`Fixture` season-scoped ; amical = competition null.
-- **Empreinte-temps** `MatchFootprint` : durée + échauffement **par catégorie** (`MatchDurationResolver`, défaut de famille, éditable au SET-UP), douche/battement retirés (P2-54 PR-1) ; extérieur + **trajet voiture réel** siège↔lieu adverse (P2-54 PR-3).
-- **Catalogue-ligue** `LeagueMatchWindow` · **Annuaire adverse** `OpponentDirectoryEntry` (porte désormais un `logo_id` fédéral, C7 2026-09-19) · **catalogue fédéral des gymnases d'un adversaire** `OpponentVenueSuggestion` (table GLOBALE hors tenant, public fédéral seulement, requalifiée par l'amendement PR I 2026-09-20 — porte un COMPTE de choix par gymnase connu, jamais un « qui », données FÉDÉRALES re-résolues serveur seules ; l'écran/picker qui les consomme (`LocateOpponentModal`) est livré depuis le 2026-09-15) · **appariement gymnase adverse** `OpponentVenueLink` (TENANT, club-scoped **SANS saison** depuis l'amendement PR I 2026-09-20 — remplace `OpponentTravel`, dont le grain ÉQUIPE×SAISON s'est révélé FAUX : le même adversaire peut jouer dans deux salles sans que ce soit lié à l'équipe ni à la saison ; grain `(club, code organisme, libellé FBI normalisé)`, AUTO/MANUAL ; l'écran (`OpponentsPage`, `/matchs/adversaires`) rend un `<tbody>` par club puis une ligne par gymnase apparié — rang gelé au montage, lot K 2026-09-20) · **appariement d'un adversaire SANS code fédéral** (lot K, 2026-09-20/21) : `App\Service\OpponentPairingKey` dérive une clé SENTINELLE locale du libellé (`opponent_organisme_code`, zéro migration) — apparié seulement en TENANT, jamais crédité au partagé, boutons « Ajouter un gymnase »/« Apparier » désormais inconditionnels) · **cache de trajets** `ClubTravelCache` (TENANT, sans saison, C4 2026-09-19 — un trajet routier est une constante, jamais recalculé) devant lequel les 4 consommateurs IGN passent désormais ; le calcul lui-même est **asynchrone** (worker, C6) et la progression se lit via `travelStatus` (Mercure, topic `club:{clubId}:travel`). **Depuis PR I** : le trajet d'une rencontre est une propriété DÉRIVÉE de la rencontre elle-même (`FixtureResource.awayTravel`, champ additif calculé en batch — `basis: linked|most_frequent|city`), plus un état à charger séparément côté écran Calendrier.
-- **Auto-localisation des adversaires depuis le libellé du fichier** `OpponentVenueAutoLocator` (P2-54 PR-2b, 2026-09-16, amendée PR I, repli par NOM ajouté lot K 2026-09-20) : quand le fichier FBI porte déjà le gymnase d'un adversaire à l'extérieur, une égalité STRICTE contre les salles fédérales de l'annuaire (CP/rayon, sinon repli en plein-texte par NOM si la voie commune ne rend pas un match unique) pose un `OpponentVenueLink` `source=AUTO` sans aucune saisie — propre au club, n'alimente JAMAIS le partagé (une ligne AUTO ne compte pas comme un choix). Le bouton « Mettre à jour les adversaires » appelle désormais **un seul** endpoint orchestrateur `POST /api/opponents/refresh` (`OpponentRefreshController`) qui enchaîne trois passes best-effort indépendantes (codes FFBB, auto-localisation, dispatch des trajets manquants) — **lot 2 « Configuration & navigation + auto-localisation » CLOS, PR 2a + PR 2b, 2026-09-16**. **Depuis le 2026-09-19** : l'annuaire s'écrit par upsert natif (l'ancien double `persist` fermait l'`EntityManager` sur deux noms résolvant le même code) ; une passe en échec s'inscrit dans `failedSteps` (réponse honnête, jamais un succès mensonger) ; le trajet AUTO exige un **siège de club géolocalisé** (`Club.latitude`/`longitude`, désormais saisissable, § « Fiche club » ci-dessous) — sans lui `GET /api/opponents/travel` sert `clubGeolocated: false` et l'écran affiche « Trajets indisponibles » avec un lien vers la fiche club.
-- **Radar de conflits SPATIAL** `MatchConflictDetector` à la volée (rien persisté) : MATCH_MATCH et MATCH_TRAINING (ce dernier lu
-  dans le planning **effectif à la date** — overlay ACTIVE sinon version choisie du plan SEASON), l'indisponibilité AWAY intègre le trajet.
-  Depuis D1 (2026-09-13, décision §2) : la collision de gymnase teste la fenêtre du match SEUL (sans échauffement) ; un match
-  ne concurrence jamais l'entraînement de sa PROPRE équipe ; un match déjà joué ne porte ni ne reçoit aucun conflit.
-  Depuis le lot « une personne = ses équipes coachées + ses équipes où elle joue » (2026-09-15, décision §2) : la carte
-  personne→équipes unionne coachs (`TeamCoach`) et joueurs actifs (`CoachPlayerMembership`) — le rôle se lit **PAR CÔTÉ**
-  (MAIN/ASSISTANT/PLAYER), D1 rule 2 (entraînement de sa propre équipe silencieux) s'étend aux joueurs.
-  **Depuis le lot M (2026-09-21, décision §2, SUPERSEDE D1 étendu du 2026-09-17)** : sur `MATCH_MATCH` et le côté match
-  de `MATCH_TRAINING`, l'échauffement ne compte plus JAMAIS pour un conflit de personne — joueuse OU coach, sans
-  distinction de rôle, quel que soit le gymnase — seule l'arrivée après le coup d'envoi du second engagement fait
-  conflit (chevauchement demi-ouvert, arrivée pile au coup d'envoi = pas de conflit) ; le trajet AWAY reste dans la
-  fenêtre. Généralise et remplace l'ancienne exception « même gymnase » de septembre (`effectiveMatchWindows`/
-  `sameHomeVenue`, supprimées) : à domicile il n'y a pas de trajet, donc la nouvelle fenêtre vaut exactement
-  l'ancienne fenêtre effective — les six tests same-gym restaient verts sans une modification, preuve de la
-  redondance. La famille `TEAM_LINK_OVERLAP` (passerelles) a QUITTÉ le radar entièrement (décision fondateur, « ça
-  fait plus de bruit qu'autre chose ») ; le solveur de placement (§ ci-dessous) GARDE sa préférence souple
-  `NOT_SIMULTANEOUS` — asymétrie délibérée et sûre (une préférence SOFT ne bloque jamais rien). **Depuis le lot N
-  (2026-09-21)** le frontend a rattrapé le contrat : `conflictLabels.ts`/`api.ts` ne portent plus que 9
-  `ConflictType`, la chip « Passerelle » a disparu de l'onglet Conflits — plus aucune dérive entre contrat et écran.
-  Ce même lot ajoute une seconde variante « détail par côté » (gymnase, en plus de personne) et 3 statuts de
-  traitement propres à une famille (§ « Module matchs » `module-matchs.md` §2/§6).
-- **Grille week-end** UI : pose domicile clic→panneau, envelope-ligue, saisie manuelle. **Depuis lot 3
-  PR-3a (2026-09-16)** les extérieurs vivent aussi DANS la grille (colonne « Extérieur » par date,
-  clic → édition). **Depuis le 2026-09-17** : masqués par défaut (interrupteur « Extérieurs »),
-  comme l'amical (chips « Types ») — détail § « Traces datées » ci-dessous et décision §2.
-- **Calendrier — l'écran unique du module matchs (PR 3b, 2026-09-16, clôt le lot 3)** : `/matchs`
-  (route index, `CalendarPage.tsx`) fusionne l'ex-onglet Semaine et l'ex-onglet Consulter en un seul
-  écran — placer/échanger/verrouiller/saisir dans FBI ET lire Semaine·Mois·Phase au même endroit ;
-  `MatchesPage.tsx`/`ConsultPage.tsx` supprimés, `/matchs/consulter` redirige en permanence. La barre
-  `WeekCounters` remplace le rail à 5 étapes dérivées de RMM-1 (décision fermée § 2) — à placer ·
-  conflits → BORNÉS à la semaine affichée, **« N FBI à faire » GLOBAL** (todo FBI, 2026-09-19)
-  depuis ; la liste « À placer » couvre désormais TOUTES les
-  semaines filtrées (P4-197, résout l'exception d'atterrissage ex-P4-192) ; nav `MatchesLayout` à
-  **6 onglets** (2026-09-19) : Conflits · Calendrier · Importer · Configuration · Adversaires ·
-  Semaine type.
-- **Appariement FFBB + garde-fous d'import** (P1-4 PR F1/F2) : dialog « Engagements FFBB »
-  (confirmation en bloc, ré-apparié à chaque phase, 1 clic) → réfs + attendu + clubs de poule figés
-  sur `Competition` ; à l'import, division appariée contrôlée contre sa poule (>50 % d'inconnus =
-  refusée nommée et sautée), complétude au rapport + sévérité 6, suggestions « proposé par la FFBB ».
-- **Diagnostic gradué** (P1-4 PR E2 ; 10ᵉ famille P4-193) : sévérités 1..7 émises par le SERVEUR
-  (collision de salle · hors fenêtre ligue · personne en double dur (MAIN×MAIN/MAIN×PLAYER/PLAYER×PLAYER,
-  2026-09-15) · indispo + accès perdu · personne en double adouci (un côté ASSISTANT) +
-  **amical sur créneau match** · angles morts repliés), UI qui groupe sans re-dériver — **depuis le
-  lot M (2026-09-21)**, la famille `TEAM_LINK_OVERLAP` (passerelle) a quitté cette échelle, le radar
-  ne l'émet plus ;
-  enveloppe ligue résolue serveur exposée
-  (`resolvedTeamWindows` — la jointure cliente est morte) ; bande « À l'extérieur » (salle FBI,
-  heure estimée) ; vue « week-end type » lecture seule (habitudes Sam/Dim × gymnases, sans dates).
-- **Boucle manuelle** (P1-4 PR E1) : grille cliquable (cadenas = ancre) → panneau : déplacer,
-  dé-placer, verrouiller ↔ rendre au solveur (`placementSource`, garde 422 côté processor), échanger
-  (salle+heure, jamais les dates), modifier (date conservée au placement, HOME→AWAY libère), supprimer
-  (engagement dérivé relâché). Rien ne bloque — la collision s'alerte (diagnostic gradué = PR E2).
-  **Depuis le 2026-09-17**, un domicile UNPLACED déjà pré-rempli (gymnase+heure repris de l'import) se
-  rend comme une case « À confirmer » distincte (jamais placée, jamais verrouillée), le cadenas de
-  grille ne couvrant plus que PLACED/SUBMITTED/VALIDATED posés à la main. **Depuis D2 (2026-09-18,
-  décision §2)** : `FixtureStateProcessor` refuse en 422 le placement manuel d'un domicile hors
-  fenêtre d'accès match (compétition seulement) ou sur une indisponibilité (amical compris) ; le
-  panneau suspend son propre geste tant que ses lectures de garde ne sont pas prêtes.
-- **Solveur de placement** (P1-4 PR D, ADR-0003) : `POST /api/fixtures/place` → engine `/place-matches`
-  (second problème CP-SAT, contrat **2.23**, rail synchrone) — place heure+salle des matchs de COMPÉTITION
-  domicile sous HARD (accès match, indispos, no-overlap SUR LA FENÊTRE MATCH SEULE, fenêtre ligue) + SOFT
-  golden-épinglés ; le non-plaçable sort NOMMÉ ; ancres `Fixture.placementSource` (geste manuel/déposé =
-  FIXED, jamais bougé) ; bouton « Placer automatiquement » sur `/matchs` ; feature Behat dédiée
-  `placement-des-matchs.feature`. **Depuis P4-203 (2026-09-14)**, le solveur partage la géométrie de salle
-  du radar (D1) : la salle tient le match seul, durées par équipe (`MatchDurationResolver`) — un
-  enchaînement fédéral à 2 h dans le même gymnase est honoré. **Depuis le lot M (2026-09-21)**,
-  l'échauffement ne compte plus non plus dans aucune fenêtre de PERSONNE du solveur (coach,
-  `NOT_SIMULTANEOUS`) — trajet seul (AWAY), comme le radar. **Depuis D3 (2026-09-18)**, le trajet aller-retour vers l'adversaire (`roundTripMinutes`, maison
-  unique `OpponentTravelProjection` partagée avec le radar) protège aussi le coach côté SOLVEUR — sa
-  fenêtre AWAY s'étend du trajet, plus seulement signalée en aval par le radar.
-  **Un AMICAL n'est jamais proposé au solveur (P4-193)** : placé+ancré → FIXED, sinon absent du payload —
-  son placement reste un geste manuel LIBRE (garde en avertissement, pas un blocage), signalé s'il tombe
-  sur un créneau de match (`FRIENDLY_ON_MATCH_SLOT`, ci-dessus).
-- **Couche préférences** (P1-4 PR C) : habitudes par équipe (jour + heure-point + gymnase optionnel, une
-  par jour, recopiées en N+1, inférence suggérée « ≥ 3 et ≥ 50 % ») · passerelles déclarées (`TeamLink`
-  cross-module, DEUX impacts depuis le lot PASSERELLES : côté MATCHS `NOT_SIMULTANEOUS` / `BACK_TO_BACK`
-  symétrique unique ; côté ENTRAÎNEMENT une intensité `PREFERRED`/`MANDATORY` honorée par le solveur —
-  l'écran unique « Gérer les passerelles » se gère aussi depuis le wizard Mutualisation) · effets sans solveur :
-  estimation d'heure extérieure (l'angle mort du radar se résorbe, « heure estimée »), pré-remplissage
-  du placement, blocs fantômes « fenêtre protégée » sur la grille — **le finding `TEAM_LINK_OVERLAP`
-  a quitté le radar (lot M, 2026-09-21, décision §2) et le contrat public (`e881d748`, même jour)**.
-- **Couche capacité** (P1-4 PR B) : fenêtres d'accès match par gymnase (≠ semaine — gymnase de
-  match = dérivé, recopiées en N+1, éditées wizard ET `/matchs`, vues en fantôme sur la grille du wizard
-  depuis le 2026-08-04) · indisponibilités gymnase
-  toutes-circonstances (posées au cockpit, alerte matchs + entraînements via
-  `GET /api/venue-unavailability-impact`, finding `VENUE_UNAVAILABLE` au radar, jamais recopiées) ·
-  garde de placement côté écran (sélecteur restreint + jour/heure/indispo) — gymnase indisponible reste
-  bloquant pour TOUS ; jour/heure hors créneau match reste bloquant pour une compétition, **devient un
-  simple avertissement pour un amical depuis P4-193** · règle wizard « sans créneau d'entraînement ni
-  fenêtre match ».
-- **Import FBI une passe** (`FbiFixtureImporter`, format RÉEL mesuré — P1-4 PR A) : fichier global club,
-  analyze (dry-run) → correspondances Division↔équipe validées par le gestionnaire (persistées en
-  `Competition`) → import qui crée ET met à jour (diff par n° FBI : re-programmation/switch dé-placent et
-  alertent, `00:00` = heure non fixée, salle FBI stockée, `Exempt` sauté). Format validé sur un **vrai
-  export** gelé en fixture (`backend/tests/Fixtures/fbi/rechercherRencontre.xlsx`). **Dépôt en onglets par
-  famille de division** (2026-09-12, mesure terrain 50 divisions/291 lignes) : `ImportFbiDialog` range
-  la table de correspondances par famille avec un compteur d'appariement par onglet, fichier lu en
-  mémoire une seule fois à la sélection.
-- **Refonte UX — RMM-0/1/2 (P2-26, soldée)** : deux espaces/deux routes (`/matchs` la boucle hebdo,
-  `/matchs/configuration` le SET-UP rare, **toujours vrai aujourd'hui**) sous `MatchesLayout` ;
-  contexte stable (panneau permanent, mode échange visible sur la grille) ; vue de saisie FBI
-  groupée par équipe avec geste de masse borné au filtre affiché. Zéro comportement moteur touché.
-  **Le rail à 5 étapes DÉRIVÉES qui guidait la boucle hebdomadaire a depuis été retiré** (PR 3b,
-  2026-09-16, §5 « Écran Calendrier » ci-dessus) — remplacé par la barre `WeekCounters`.
-- **Le « gardien » à l'ouverture (RMM-3, P2-47, soldée)** : à chaque ouverture du module, un
-  bandeau résumé dit ce qui a changé depuis la dernière visite de CET utilisateur (matchs arrivés,
-  nouveaux conflits par empreinte STABLE, planning de saison qui a bougé) + des chips « Nouveau »
-  sur le radar de conflits — persistance légère par visite, grâce glissante de 30 min, première
-  visite muette.
-- **Réconciliation FBI + canal API (RMM-4, P2-48, soldée)** : le CHOIX par écart (date/heure/salle,
-  jamais un écrasement silencieux) — dépôt xlsx (la vérité) et canal API FFBB à la demande
-  (`FfbbRencontreReconciler`, appariement 3 étages + idempotence) partagent le même moteur de
-  détection ; ingestion datée (fraîcheur + compteurs). **Depuis PR-3b (2026-09-08), l'écran
-  `/matchs/reconciliation` ne sert plus qu'au canal API pour ses rencontres CRÉABLES** (absentes de
-  l'app, proposées jamais imposées) — les écarts, eux, vivent désormais dans la file de traitement
-  de l'onglet Importer (ci-dessous), quel que soit le canal qui les a détectés. **Depuis le
-  2026-09-16, le CHOIX par écart s'étend à la salle d'un domicile NON PLACÉ déjà rattaché à un
-  gymnase** — auparavant réécrite en silence, jamais sous la fenêtre P4-199 (décision §2).
-- **Espace Importer — workflow de traitement + onglet dédié (PR-3a backend + PR-3b frontend,
-  2026-09-08, LIVRÉ EN ENTIER — clôt P4-186)** : chaque rencontre dit si elle est NEW / OUT_OF_SYNC
-  (déphasée) / REVIEWED (traitée) — axe distinct du placement, `Fixture.reviewState`/`reviewedAt`/
-  `pendingDeviations` (la trace des écarts a QUITTÉ `FbiIngestion` pour la rencontre elle-même) ;
-  `POST /api/fixtures/review` (ligne/masse) et `POST /api/fixtures/review/deviations` (un écart) ;
-  **VALIDATED n'est plus un geste au chemin de création** — posé par l'import quand la source atteste
-  le match placé (D9), dit « Attesté FBI » à l'écran (plus « Validé ligue »). **Exception consentie,
-  lot L puis lot O (2026-09-21)** : un geste SÉPARÉ et chiffré (`LeagueValidatedFixturesController`)
-  bascule en lot les domiciles UNPLACED déjà datés côté fédération (heure + gymnase, sans écart) —
-  utile au club qui démarre en cours de saison ; jamais posé au chemin de création, toujours refusable
-  (détail §3 2026-09-21). **Depuis le lot O**, le déclencheur n'est plus le seul domicile mais
-  l'ÉCHÉANCE DE SAISIE du CHAMPIONNAT (jour inclus, maison unique `CompetitionDeadlineResolver`,
-  RMM-6) — un championnat dont l'échéance n'est pas encore passée (nouvelle vague de matchs jeunes en
-  octobre, dates provisoires) n'est proposé nulle part, pour ne jamais verrouiller en ancre fixe une
-  date qui doit encore bouger ; la lecture (`GET`) détaille par championnat échu (compte, nom,
-  échéance), nomme les rencontres échues qui restent à traiter, et signale les championnats sans
-  échéance ayant des rencontres prêtes. **`VALIDATED` n'est jamais un cul-de-sac** (revue `d60b3fc0`,
-  même jour) : le
-  panneau de placement offre « Corriger — repasser en Placé » sur une rencontre `VALIDATED`, quel
-  que soit le chemin qui l'a posée (réconciliation D9 ou bascule en lot) — une bascule en lot peut
-  reposer sur un gymnase apparié AUTOMATIQUEMENT, jamais de sortie unique par suppression du
-  gymnase. **Règles de naissance (P4-199, 2026-09-12)** :
-  un extérieur, ou une rencontre passée/dans la semaine ISO en cours, naît déjà `REVIEWED` — un
-  écart ultérieur sur un extérieur ou dans cette fenêtre applique la source D'OFFICE (« Pris en
-  compte », jamais `OUT_OF_SYNC` à arbitrer pour un extérieur) ; le suffixe FFBB « (n) » est retiré
-  des libellés d'équipe à la lecture. `/matchs/importer` (`ImportPage.tsx`)
-  réunit les entrées de données (dépôt FBI, canal API, engagements, fraîcheur) et la file de
-  traitement par équipe (`ReviewQueue.tsx`, accordéon par équipe, deep-link `?equipe=`, « Tout
-  valider », écarts arbitrés champ par champ) ; badge « Importer · N » sur l'onglet. Le dépôt xlsx a
-  perdu son détour « Examiner les écarts » : il importe toujours en une passe, les écarts sont
-  consignés sur les rencontres. `ConfigurationPage` a perdu tout ce qui touchait aux données
-  FBI/FFBB (P4-186), elle ne porte plus que des réglages de saison — rendus en `AccordionSection`
-  CONTRÔLÉES, une seule ouverte à la fois, ancrées `?section=` (P4-185, soldée ; **PR 2a,
-  2026-09-16, en a fait sortir le gabarit A/B et les créneaux vers l'onglet « Semaine type » —
-  cinq sections restent, défaut désormais tout replié**, détail ci-dessous) ; les rotations
-  partagées et les durées de match, listées en carte jusque-là, sont devenues respectivement une
-  liste compacte dépliable et un tableau partagé. **Gymnase depuis le libellé
-  (P4-187, soldée)** : un domicile importé sans gymnase mais avec un libellé de salle
-  FBI/FFBB se résout automatiquement dès qu'un alias CONFIRMÉ existe (`Venue.externalLabels`) ;
-  sinon la file de traitement propose le geste **Rattacher** (`ReviewQueueRow.tsx`, `VenueSelect`
-  pré-sélectionné sur la proposition floue) qui confirme l'alias et backfille les domiciles du
-  club en attente. La 5ᵉ section de `ConfigurationPage` (`VenueLabelsSection.tsx`,
-  `?section=libelles`) est devenue **l'écran d'appariement (E1 backend + E2 écran, soldées le
-  2026-09-14, remplacent P4-196)** : `GET /api/venues/fbi-labels` sert un inventaire agrégé (par
-  libellé normalisé — gymnase confirmé, suggestion unanime, compteurs) ; l'écran liste une ligne
-  par libellé avec un `VenueSelect` (valeur = gymnase confirmé, sinon la suggestion « d'après les
-  rencontres » pré-sélectionnée), **Confirmer** (POST additif sans confirmation), **Réaffecter**
-  (`reassign: true` — corrige en un geste un alias posé sur le mauvais gymnase, re-pointe les
-  domiciles non placés du club, jamais un déjà placé, `ConfirmDialog` nommant ce qui bouge) et
-  **Retirer** (inchangé, ne touche aucune rencontre déjà rattachée). Un signal partagé
-  (`UnpairedVenueLabelsBanner`) renvoie vers cet écran unique depuis Importer et le Calendrier —
-  décision fermée § 2.
-- **Rotation A/B — créneau de match partagé (RMM-5, P2-49, soldée)** : le cas SM1/SM2 (pénurie de
-  créneaux → alternance sur le MÊME gymnase/jour/heure). `MatchSlotRotation` + membres ORDONNÉS
-  déclarés depuis `/matchs/configuration` (flèches ↑/↓, badge A/B/C, ordre purement fictif — dit à
-  l'écran) ; consommée en **SOFT seul** par `/place-matches` (attraction + protection de fenêtre à
-  parité des habitudes, contrat 2.15) et par le solve hebdo (le jour de repos d'entraînement suit
-  l'image, `matchDay` dérivé) ; `TypicalWeekendGrid` gagne des semaines A/B (segmenté invisible sans
-  rotation) ; signal « hors image » étendu aux membres + compteur « même week-end » (pilule
-  neutre). Jamais un HARD, jamais un ancrage calendaire déclaré.
-- **Échéances de saisie ligue/comité (RMM-6, P2-50, soldée — 3 PR)** : une échéance PAR
-  compétition (jamais une date unique de club), posée manuellement (la ligue les envoie par mail)
-  via un endpoint bulk hors CRUD, avec un défaut communautaire surchargeable partagé entre clubs
-  d'une même compétition FFBB appariée (`shared_competition_deadline`, la PREMIÈRE table du dépôt
-  hors tenant par conception). L'éditeur du SET-UP (multi-sélection + une date) et l'échéance
-  effective affichée à côté de chaque ligne de la vue de saisie FBI (dépassée = avertissement,
-  jamais bloquant) sont livrés ; **le rappel cockpit et l'escalade cockpit/login le sont aussi** :
-  une carte `FbiDeadlineCard` sur `/` (première incursion des matchs au cockpit), muette hors
-  fenêtre J-7, qui fusionne le résumé du gardien (RMM-3) dans la même carte plutôt qu'un second
-  bloc.
-- **Un match déclaré ne perd plus sa salle en silence (RMM-10, P2-52, soldée — DERNIER lot de code
-  du module matchs, le programme RMM est clos)** : l'exploration (« Charger cette version ») ne
-  dépointe plus les matchs, la VALIDATION du planning en devient la gâchette principale (annonce
-  `GET /validate-impact` si N>0, puis dépointage à parité par construction), à parité avec la
-  suppression de gymnase (même foyer `FixtureVenueLossMarker`) — raison persistante `venue_lost`,
-  heure conservée, périmètre engagé intact.
-- **Onglet « Conflits » — tous les conflits de la saison, pivotés (PR A, 2026-09-15)** : espace
-  dédié du module, lecture seule, badge de nav « Conflits · N » (N = à traiter, absent à 0, depuis
-  P4-207 PR B2). Même flux que le Calendrier (`GET /api/fixtures/conflicts`) mais SANS le filtre
-  PR-1 partagé (décision fermée § 2) ; pivot coach (défaut)/équipe/gymnase/journée (semaine =
-  samedi+dimanche), 3 sentinelles toujours en dernier (Autres conflits, Extérieur, Sans date), un
-  conflit à 2 équipes compte sous chacune en pivot équipe ; chips familles (9 `ConflictType` — la
-  famille `TEAM_LINK_OVERLAP`/« Passerelle » a quitté le contrat ET le frontend, lot N,
-  2026-09-21) au compteur SAISON à traiter, « · 0 » en sourdine sur une famille 100 % traitée ;
-  **depuis le 2026-09-17**, puces « Traitement » — 4 historiques + jusqu'à 3 conditionnelles
-  propres à une famille depuis le lot N (remplacent l'ex-interrupteur « Masquer les traités ») +
-  filtre « Seulement avec un match à domicile » ; accordéon par entrée, une seule ouverte, titre
-  « Mara · N » ; bouton
-  « Voir la semaine » vers le Calendrier sur un conflit daté ; `ConflictLine`/`ConflictSeverityGroups`
-  — maison unique de la ligne de conflit, extraite du radar (`ConflictRadar` la consomme aussi,
-  rendu inchangé).
-- **Résolution des conflits — livrée en entier (P4-207, 2026-09-15, PR B1 backend + PR B2
-  frontend)** : un statut de traitement persisté par empreinte STABLE de conflit
-  (`ConflictResolution`, table TENANT RLS, patron `OpponentVenueLink`) — trois cas de BASE
-  (Dérogation demandée · Réglé en interne · Sans solution pour l'instant), « À traiter » = défaut =
-  absence de ligne. **Depuis le lot N (2026-09-21)**, huit cas au total : les trois de base, plus
-  deux réservés aux conflits de PERSONNE où un côté joue (Coache/ne joue pas, Joue/ne coache pas),
-  plus trois propres à une famille (Importer les matchs manquants, Erreur FBI, Match à déplacer —
-  chacun avec sa propre chip, § « Module matchs » `module-matchs.md` §6). `GET
-  /api/fixtures/conflicts` gagne le champ additif `resolution` (jointure serveur par empreinte) ;
-  `PUT`/`DELETE /api/fixtures/conflicts/{fingerprint}/resolution` (gestionnaire seul, SEC-07). Le
-  conflit reste TOUJOURS rendu, jamais masqué par son statut. Orphelin (empreinte disparue du flux)
-  jamais nettoyé à la volée — purgé avec la saison. **Côté écran**
-  (`ConflictResolutionControl.tsx`) : pastille `StatusPill` devenant, pour un gestionnaire, le
-  déclencheur d'un menu APG (statuts de base + ceux de la famille + note + « Remettre à
-  traiter ») — un membre simple la lit
-  figée ; « à traiter » ouvre un bouton « Traiter » (gestionnaire) ou n'affiche rien (membre) ; note
-  libre éditée inline, `ConfirmDialog` seulement si une note serait perdue au retour à traiter. Tout
-  compteur de l'app (badge de nav, rail, chips de familles, pivot Conflits) ne compte plus que
-  l'À TRAITER.
-- **Détail par côté d'un conflit de personne (P2-54, 2026-09-17)** : `MATCH_MATCH`/`MATCH_TRAINING`
-  rendent une ligne par équipe (lieu, adversaire, coup d'envoi réel/estimé, trajet aller/retour ou
-  « trajet inconnu ») + la ligne de chevauchement avec sa durée, à la place de l'ancienne ligne grise
-  (gardée pour gymnase/passerelle). Backend : quatre champs additifs par côté servis par
-  `MatchConflictDetector::fixtureView` ; `opponentPlace` (où joue l'adversaire) décoré en aval, côtés
-  AWAY seulement, par le nouveau `OpponentPlaceResolver`. **Ordre recalé le 2026-09-17 (même jour,
-  remplace l'ordre « manuel d'abord » livré plus tôt dans cette même ligne, devenu caduc)** :
-  `opponentPlace` sert une VILLE, jamais un libellé de gymnase — override effectif équipe/club sur
-  sa référence de salle FFBB → ville de la suggestion fédérale `OpponentVenueSuggestion` → ville de
-  l'annuaire fédéral → `null` ; `overrideVenueLabel`/`fbiVenueLabel` ne sont plus jamais servis.
-- **Configuration & navigation — PR 2a, 2026-09-16** : nav `MatchesLayout` réordonnée (défilable
-  horizontalement à l'étroit) — **cet ordre a depuis été recomposé le même jour par PR 3b** (§
-  « Calendrier — l'écran unique » ci-dessus) qui fusionne Semaine+Consulter : nav finale à **5
-  onglets**, Conflits · Calendrier · Importer · Configuration · Semaine type. Nouvel onglet
-  **« Semaine type »** (`/matchs/semaine-type`) qui porte le gabarit A/B
-  et les créneaux partagés, sortis de la Configuration, plus le bouton « Habitudes & passerelles » ;
-  la Configuration s'ouvre désormais **tout repliée** (plus de section ouverte par défaut, amende
-  P4-185) et sa section « Réglages de saison » devient **« Accès match »** — les gymnases listés
-  (avec/sans accès, sans accès repliés à part), une **modale par gymnase** pour éditer ; l'écran
-  « Adversaires à localiser » gagne une **recherche instantanée** (club ou équipe, insensible aux
-  accents) et **un seul bouton « Mettre à jour les adversaires »** — appelant depuis PR 2b
-  (2026-09-16, § ci-dessus) l'orchestrateur `POST /api/opponents/refresh` (codes FFBB +
-  auto-localisation depuis le fichier + trajets, un seul appel serveur) ; le cap du rattrapage des
-  codes FFBB passe de 60 à **200** adversaires distincts (le club du fondateur en compte ~102).
+Compétitions/rencontres FFBB sous `/matchs` (6 onglets) : import FBI + canal API, radar de conflits, solveur de
+placement dédié, périmètre engagé (§1.4).
 
-- **Registre « à corriger dans FBI » + écran unique « FBI — à faire » (todo FBI, 2026-09-19)** :
-  quand le gestionnaire garde l'appli sur un écart, une entrée `FbiCorrection` (tenant, RLS) dit ce
-  qu'il faut TAPER dans FBI en face de ce que FBI affiche encore — maison unique
-  `FbiCorrectionLedger`, alimentée par les DEUX foyers d'arbitrage (dépôt xlsx/API et arbitrage
-  hors dépôt). Registre à ZÉRO au départ (décision §2). La modale ex-« À recopier dans FBI »
-  devient **« FBI — à faire »** : deux sections globales (À corriger dans FBI EN PREMIER, puis À
-  saisir), deep-link `/matchs?fbi=1`. `WeekCounters` perd son compteur hebdo « à saisir » au
-  profit d'un compteur **GLOBAL** (`fbiTodo`, servi par `GET /api/matches/deadline-outlook`) qui ne
-  compte que les domiciles PLACÉS + les entrées ouvertes (décision §2) ; la carte cockpit
-  `FbiDeadlineCard` (RMM-6) se rend désormais aussi HORS fenêtre J-7 tant qu'il reste du FBI à
-  faire.
+- **Calendrier** (écran index) : placer/échanger/verrouiller/saisir, vues Semaine·Mois·Phase, todo FBI global.
+- **Conflits** : tous les conflits de la saison, pivotés (coach/équipe/gymnase/journée), statut de traitement
+  persisté par conflit (à traiter par défaut).
+- **Importer** : file de traitement NEW/OUT_OF_SYNC/REVIEWED par rencontre + registre « à corriger dans FBI ».
+- **Configuration** : accès match par gymnase, rotations de créneau partagé, échéances de saisie ligue/comité.
+- **Adversaires** : gymnases adverses appariés (auto ou manuel), trajets, codes fédéraux.
+- **Semaine type** : gabarit A/B et créneaux partagés (lecture seule).
+- **Détecteur de conflits** (`MatchConflictDetector`, service pur, rien persisté) : collisions de gymnase et de
+  personne (coach/joueur), fenêtre du match SEUL (échauffement exclu depuis le lot M) ; le solveur de placement
+  dédié (`POST /api/fixtures/place` → engine `/place-matches`, CP-SAT, `CONTRACT_VERSION` **2.23**) place heure+
+  salle des matchs de compétition à domicile sous HARD (accès, indispos, no-overlap) + SOFT.
 
-→ [`module-matchs.md`](module-matchs.md) — refondu le 2026-09-18 en état courant PAR ÉCRAN
-(AUD-DOC-38) : §1 Modèle & données transverses, §2 Détecteur de conflits, §3 Solveur de placement,
-§4 Le gardien + échéances, §5 Écran Calendrier, §6 Écran Conflits, §7 Écran Importer, §8 Écran
-Configuration, §9 Écran Semaine type, §10 Périmètre engagé, §11 Tests & gardes ·
-[`gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md)
+→ [`module-matchs.md`](module-matchs.md) — état courant PAR ÉCRAN : §1 Modèle & données transverses,
+§2 Détecteur de conflits, §3 Solveur de placement, §4 Le gardien + échéances, §5 Écran Calendrier,
+§6 Écran Conflits, §7 Écran Importer, §8 Écran Configuration, §9 Écran Semaine type, §10 Périmètre
+engagé, §11 Tests & gardes · [`gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md)
 
 ### 1.6 Collecte des demandes coach
 
@@ -482,25 +187,13 @@ Le coach émet un **souhait**, le gestionnaire **arbitre et tranche** — le lie
 
 ### 1.10 Tests
 
-Gate bloquant CI (liste canonique : **`docs/testing/blocking-tests.md`**, jamais recopiée ici), e2e Playwright en CI sur le parcours
-produit réel (register → wizard → génération CP-SAT → validation → cockpit). **Fiabilité infra du job `e2e`
-(2026-09-16)** : `COMPOSE_BAKE: "false"` écarte le builder `bake` qui se figeait « waiting for BuildKit », les
-étapes de pull/build/démarrage (`.github/scripts/retry.sh`, distinct de `audit-retry.sh` qui ne relance que sur
-signature réseau) relancent un aléa Docker Hub/BuildKit sans rougir une PR saine, et un step `if: failure()`
-classe l'échec (infra AVANT Playwright vs. échec Playwright) dans le résumé du job. **Session superadmin unique
-par run** : le login (mot de passe + TOTP) vit dans un projet Playwright `setup` dédié qui fige un
-`storageState` réutilisé par le projet `superadmin` (`retries: 0` — un retry n'y rejouerait aucun login), pour
-ne plus dépasser le quota `admin_auth` (5/15 min par IP, non modifié) quand plusieurs specs superadmin se
-reloguaient. Détail : [`testing-strategy.md`](../../docs/testing/testing-strategy.md) §1 et § « Le socle
-superadmin e2e ». Gate perf `engine-perf` sur main,
-golden fixtures + invariants Hypothesis côté engine, Vitest + RTL côté frontend. **Tests fonctionnels
-lisibles par un non-développeur (Behat, Gherkin français)** : `backend/features/` — **16 features,
-une promesse métier par fichier** (rail de génération, inscription, placement des matchs, période
-en overlay/reprise/découpage/vacances, socle↔plans, contrainte honorée, unité de placement,
-verrou souverain, périmètre engagé, planning à régénérer, isolation tenant, export, vœux des
-coachs) — job CI `functional-tests`. Les 5 premières (P4-165 SOLDÉ, 2026-09-04) remplacent
-intégralement les smokes bash (supprimés) ; les 11 suivantes (P4-175 SOLDÉ, 2026-09-05) couvrent
-les règles qui détruisent/refusent/isolent — liste complète : `test-coverage-map.md` §5.
+Gate bloquant CI (liste canonique : **`docs/testing/blocking-tests.md`**, jamais recopiée ici), e2e Playwright en
+CI sur le parcours produit réel (register → wizard → génération CP-SAT → validation → cockpit), gate perf
+`engine-perf` sur main, golden fixtures + invariants Hypothesis côté engine, Vitest + RTL côté frontend.
+**Tests fonctionnels lisibles par un non-développeur** (Behat, Gherkin français, `backend/features/`, une
+promesse métier par fichier, job CI `functional-tests`) — remplacent les anciens smokes bash, couvrent le rail
+de génération, l'inscription, le placement des matchs, les périodes (overlay/reprise/découpage/vacances), le
+socle↔plans, les contraintes honorées, le périmètre engagé, l'isolation tenant, l'export, les vœux coach.
 
 → [`testing-strategy.md`](../../docs/testing/testing-strategy.md) · [`test-coverage-map.md`](../../docs/testing/test-coverage-map.md) §5
 
@@ -537,23 +230,13 @@ assignable. NR : `MemberRoleTest` (step du gate) + parité TS⇄PHP des rôles (
 → [`TENANT.md`](../../backend/docs/TENANT.md) (couche rôle) · [`superadmin-auth.md`](superadmin-auth.md)
 (porte d'activation) · roadmap : P4-76 (polish UX Membre), parking « invitations email »
 
-### 1.13 Capacités de version exposées par le serveur (P2-8, livré le 2026-08-10)
+### 1.13 Capacités de version exposées par le serveur
 
-Le front ne re-dérive plus les règles de refus du planning : chaque `Schedule` de `GET /api/schedules`
-porte un bloc **`capabilities`** `{ canDelete, canValidate, canRegenerateFrom, versionsDeletedOnValidate,
-overlaysDroppedOnValidate }`, calculé par un **`ScheduleCapabilityResolver` unique** dont **les gardes
-d'écriture (DELETE / validate / regenerate-from) ET le sérialiseur tirent le MÊME verdict** — donc la
-capacité affichée EST le refus réel, la dérive front↔serveur est structurellement close. Le front lit,
-n'infère plus ; les 4 miroirs (`isLastFinishedSeasonVersion`, `hasInFlightSibling`, les dérivations
-`canDelete`/`canRegenerateFrom`, le helper `versionsDeletedByValidating`) ont disparu. Repli fail-closed :
-capacité absente → geste non offert. Batch anti-N+1 (coût fixe quel que soit le nombre de versions). Gardé
-par **`ScheduleCapabilityParityTest`** (step du gate) : la capacité exposée == le verdict du garde, prouvé
-dans les deux sens. ⚑ Effet de bord assumé (décision fondateur D2) : une version d'overlay non-en-vigueur
-est désormais supprimable côté UI comme elle l'était déjà côté serveur — le front cesse de graver un
-interdit qui n'avait aucune raison d'être. Restant hors scope : le flux `ValidateDialog` à une seule boîte
-(D4, bonus UX non entamé — le comportement à deux boîtes tient), la ★ `liveContextScheduleId`.
+Chaque `Schedule` de `GET /api/schedules` porte un bloc `capabilities` (`canDelete`/`canValidate`/
+`canRegenerateFrom`/…) calculé par la MÊME source que les gardes d'écriture (DELETE/validate/regenerate-from) —
+le front lit, il ne re-dérive plus les règles de refus, repli fail-closed si la capacité est absente.
 
-→ `capabilities` sur `ScheduleResource` · roadmap Top 3 re-jugé (P2-6 remonte)
+→ [`planning-lifecycle-validated.md`](planning-lifecycle-validated.md) §3.5
 
 ---
 
