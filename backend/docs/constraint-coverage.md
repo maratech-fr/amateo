@@ -1,16 +1,17 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-09-25 (`documentation-update`, rotation de fraîcheur — sujet sans rapport
-(P3-7 PR-B, modale d'import FBI des équipes), fichier choisi parmi les plus anciens stamps du
-dépôt). Re-confronté au code : les poids cités ligne 35 (`spacing`, −2), ligne 45
-(`preferredVenueId`, +10) et ligne 67 (tiers S=10000…D=1) toujours exacts contre
-`engine/app/solver/objective/weights.py` (`LEVEL_2_OBJECTIVE_WEIGHTS["spacing"]=-2`,
-`["preferred"]=10`, `["S"]=10000`/`["D"]=1`, même dict) ; `ConstraintFamily`
-(`backend/src/Enum/ConstraintFamily.php:11-14`) n'a toujours que 4 cas
+Last verified @ 2026-09-26 (`documentation-update`, passe « le présent » zone backend). Re-confronté
+au code : les poids cités pour `spacing` (−2), `preferredVenueId` (+10) et les tiers (S=10000…D=1)
+toujours exacts contre `engine/app/solver/objective/weights.py`
+(`LEVEL_2_OBJECTIVE_WEIGHTS["spacing"]=-2`, `["preferred"]=10`, `["S"]=10000`/`["D"]=1`, même
+dict) ; `ConstraintFamily` (`backend/src/Enum/ConstraintFamily.php:11-14`) n'a toujours que 4 cas
 (TIME/DAY/FACILITY/COACH_AVAILABILITY), `FACILITY_CAPACITY` absent de l'enum ✓. « Réserver un
 gymnase à un groupe » toujours ❌ : `ScheduleConstraintBuilder.php:256` confirme l'expansion
-`forbiddenVenueId` par équipe « GONE » (commentaire code), zéro hit `forbiddenRowsSurvive` dans
-`backend/src/` ✓. Rien de faux trouvé cette passe.
+`forbiddenVenueId` par équipe « GONE » (commentaire code) ✓. Le guard
+`engine/tests/semantic/test_hard_lock_divisible_slot.py` (T1/T2/T3) existe toujours ✓. Cette passe
+retire la section « Angles morts traités » (redondante avec les lignes `*(ALIGN-XX)*` de la table,
+son seul fait unique — le pointeur de garde ALIGN-07 — replié dans la ligne « Réserver un créneau »)
+et les trous RÉSORBÉS de la synthèse (un trou fermé quitte la synthèse, il ne reste pas barré).
 
 > **But** : liste **exhaustive** des besoins qu'un gestionnaire de club peut vouloir exprimer, et
 > **ce que l'application couvre** aujourd'hui — pour voir clairement les cas couverts (✅), partiels
@@ -35,31 +36,31 @@ gymnase à un groupe » toujours ❌ : `ScheduleConstraintBuilder.php:256` confi
 | « Pas d'entraînement tel jour » (dur) | DAY `forbiddenDays` (HARD) | ✅ | U9/U11 pas le mercredi |
 | « Éviter tel jour » (préférence) | DAY `forbiddenDays` (PREFERRED) | ✅ soft | SM2 évite le vendredi |
 | « Uniquement tel(s) jour(s) » | DAY `allowedDays` (whitelist, HARD) | ✅ | Vétérans le vendredi uniquement |
-| **« Au moins une séance tel jour »** | DAY `forcedDays` (HARD — sémantique « l'un de ces jours » : UNE somme sur l'union par équipe) | ✅ *(ALIGN-09, 2026-08-23)* | mode wizard « au moins une » ; le gate pré-solve BLOQUE si aucun des jours imposés n'a de créneau candidat (décision fondateur : certitude arithmétique d'échec) et AVERTIT quand deux règles fusionnent |
+| **« Au moins une séance tel jour »** | DAY `forcedDays` (HARD — sémantique « l'un de ces jours » : UNE somme sur l'union par équipe) | ✅ *(ALIGN-09)* | mode wizard « au moins une » ; le gate pré-solve BLOQUE si aucun des jours imposés n'a de créneau candidat (décision fondateur : certitude arithmétique d'échec) et AVERTIT quand deux règles fusionnent |
 | **« Espacer les séances d'un jour »** / « pas 2 jours d'affilée » | règle **implicite soft** `spacing` (poids −2, malus sur jours consécutifs) — activée pour toutes les équipes, ne bloque jamais | ✅ soft *(ALIGN-06)* | besoin BCCL « implicite » — préféré, pas garanti |
-| **« Pas 3 entraînements d'affilée »** (dur) | règle implicite `maxConsecutiveDays` (5e règle bien-être, contrat 2.13) | ✅ | **Livrée le 2026-08-19 (P2-42 / ALIGN-08)** — réglable HARD (garantie) ou PREFERRED (objectif), seuil 2-5, **OFF par défaut** : un club l'active, sinon rien ne change. Prouvée par `engine/tests/semantic/test_consecutive_days.py` |
+| **« Pas 3 entraînements d'affilée »** (dur) | règle implicite `maxConsecutiveDays` (5e règle bien-être, contrat 2.13) | ✅ *(ALIGN-08)* | Réglable HARD (garantie) ou PREFERRED (objectif), seuil 2-5, **OFF par défaut** : un club l'active, sinon rien ne change. Prouvée par `engine/tests/semantic/test_consecutive_days.py` |
 
 ## Axe GYMNASE
 
 | Besoin | Mécanisme | Statut | Exemple BCCL |
 |---|---|---|---|
 | « Cette équipe joue dans tel gymnase (obligatoire) » | FACILITY `forcedVenueId` (HARD) | ✅ | SM4 → Jean Vilar |
-| « Réserver un gymnase à un groupe (exclusif) » | *aucun mécanisme* — depuis D1 (2026-09-18), « impose Y au groupe X » (`forcedVenueId` + `targetTag`) force le groupe mais **ne réserve plus rien** aux autres équipes ; obtenir l'exclusivité exige de poser À LA MAIN un `forbiddenVenueId` par équipe/tag hors groupe | ❌ | Camus imposé à Loisir 1/2/3 — les autres équipes restent libres d'y aller sauf contrainte séparée |
+| « Réserver un gymnase à un groupe (exclusif) » | *aucun mécanisme* — « impose Y au groupe X » (`forcedVenueId` + `targetTag`) force le groupe mais **ne réserve plus rien** aux autres équipes ; obtenir l'exclusivité exige de poser À LA MAIN un `forbiddenVenueId` par équipe/tag hors groupe | ❌ | Camus imposé à Loisir 1/2/3 — les autres équipes restent libres d'y aller sauf contrainte séparée |
 | « Éviter tel gymnase » (dur) | FACILITY `forbiddenVenueId` (HARD) | ✅ | Vétérans interdits sur 5 gymnases |
-| « Préférer tel gymnase » | FACILITY `preferredVenueId` (PREFERRED, +10 — recalé sous la valeur d'une séance nue depuis V10 « le remplissage prime », `engine/app/solver/objective/weights.py`) | ✅ soft | Matéo préféré aux Régionales |
+| « Préférer tel gymnase » | FACILITY `preferredVenueId` (PREFERRED, +10 — sous la valeur d'une séance nue, « le remplissage prime », `engine/app/solver/objective/weights.py`) | ✅ soft | Matéo préféré aux Régionales |
 | « Pas ce type d'équipe dans ce gymnase » | FACILITY `forbiddenVenueId` + `targetTag` | ✅ | Jean Vilar pas de féminines |
-| « Gymnase fermé sur une période » | période cockpit `venue_closed` → **retrait des créneaux** du gymnase les jours fermés (`VenueClosureDays`, 5b #263 ; l'ancienne expansion `forbiddenVenueId` est supprimée) — sur-ferme sur tout le bloc si un jour se répète, jamais sous-ferme | ✅ | (calendrier cockpit) |
+| « Gymnase fermé sur une période » | période cockpit `venue_closed` → **retrait des créneaux** du gymnase les jours fermés (`VenueClosureDays`) — sur-ferme sur tout le bloc si un jour se répète, jamais sous-ferme | ✅ | (calendrier cockpit) |
 | **« Au moins une séance dans tel gymnase »** | FACILITY `minAtVenueId` + `minAtVenueCount` (HARD, mode « au moins N ») — plancher, ≠ forçage ; les autres séances restent libres | ✅ *(ALIGN-05)* | « au moins 1 séance à Armand » ; fail-fast backend si N > séances/semaine |
-| « Nb max d'équipes par créneau d'un gymnase » | **`VenueTrainingSlot.capacity`** par créneau (écran Gymnases, borné à 1 si `canSplit=false`) | ✅ | ADN divisible en 3. ⚠ La famille `FACILITY_CAPACITY` (rabot `maxTeams` sur TOUT un gymnase) a été retirée le 2026-08-08 : aucun chemin UI ne la créait |
-| « Réserver un créneau à une équipe (verrou) » | onglet « Réserver » → `ScheduleSlotTemplate` `lockLevel=HARD` (pin durable, pas une contrainte) — verrouille le **créneau entier**, divisible ou non : l'équipe épinglée est **seule**, le solveur ne remplit jamais l'autre moitié. Partager = **explicite** : réserver les N équipes (la modal borne le picker à `capacity`) — décision gestionnaire | ✅ *(ALIGN-07)* | SM1 seul sur samedi 18h (cap 2) ; SM1+SM2 co-épinglés = partage assumé |
-| **« Éviter d'enchaîner deux gymnases trop éloignés »** | règle implicite `travelTime` (matrice `venue_travel_time` renseignée sur l'écran Gymnases, autofill IGN ou saisie manuelle) — départage « moindre trajet » soft (jamais dominant) + battement Préféré/Obligatoire réglable | ✅ | **P2-53 RMM-8 — SOLDÉ (4 PR, 2026-08-26)** — écran livré (PR-3), levier d'intensité Préféré/Obligatoire livré (PR-4, `VenueTravelRuleSetting`) : le gestionnaire choisit désormais tout ce que le moteur sait consommer, trace `specs/courantes/etat-des-lieux.md` §3 |
+| « Nb max d'équipes par créneau d'un gymnase » | **`VenueTrainingSlot.capacity`** par créneau (écran Gymnases, borné à 1 si `canSplit=false`) | ✅ | ADN divisible en 3. ⚠ Il n'existe pas de famille `FACILITY_CAPACITY` (qui raboterait `maxTeams` sur TOUT un gymnase) |
+| « Réserver un créneau à une équipe (verrou) » | onglet « Réserver » → `ScheduleSlotTemplate` `lockLevel=HARD` (pin durable, pas une contrainte) — verrouille le **créneau entier**, divisible ou non : l'équipe épinglée est **seule**, le solveur ne remplit jamais l'autre moitié (`blocked_venue_slots`, `model.py`). Partager = **explicite** : réserver les N équipes (la modal borne le picker à `capacity`) — décision gestionnaire, aucun diagnostic tant que N ≤ `capacity`. Gardé par `engine/tests/semantic/test_hard_lock_divisible_slot.py` (T1/T2/T3) | ✅ *(ALIGN-07)* | SM1 seul sur samedi 18h (cap 2) ; SM1+SM2 co-épinglés = partage assumé |
+| **« Éviter d'enchaîner deux gymnases trop éloignés »** | règle implicite `travelTime` (matrice `venue_travel_time` renseignée sur l'écran Gymnases, autofill IGN ou saisie manuelle) — départage « moindre trajet » soft (jamais dominant) + battement Préféré/Obligatoire réglable (`VenueTravelRuleSetting`) | ✅ | Le gestionnaire choisit tout ce que le moteur sait consommer |
 
 ## Axe COACH
 
 | Besoin | Mécanisme | Statut | Exemple BCCL |
 |---|---|---|---|
 | « Coach indisponible tel jour » | COACH_AVAILABILITY `unavailableDays` (UNION, dur) | ✅ | Lionel indispo vendredi |
-| « Coach disponible uniquement tel jour » | COACH_AVAILABILITY `availableDays` (INTERSECTION, dur) — mode « disponible uniquement » du wizard | ✅ *(aligné : le wizard l'expose désormais)* | coach dispo seulement le mardi |
+| « Coach disponible uniquement tel jour » | COACH_AVAILABILITY `availableDays` (INTERSECTION, dur) — mode « disponible uniquement » du wizard | ✅ *(le wizard l'expose)* | coach dispo seulement le mardi |
 | « Coach indispo/dispo sur une **plage horaire** tel jour » | COACH_AVAILABILITY `fromTime`/`untilTime` (Lot C, dur) | ✅ | dispo le mardi qu'à partir de 20h |
 | « Un coach ne peut pas être sur 2 séances à la fois » | `COACH_NO_OVERLAP` (implicite) | ✅ | — |
 | « Un coach qui joue aussi n'est pas convoqué en double » | `COACH_PLAYER_NO_OVERLAP` (implicite) | ✅ | Mathis coach U13M2 + joueur U21M1 ; Florian coach U18F3 + joueur Loisir 3 |
@@ -71,9 +72,9 @@ gymnase à un groupe » toujours ❌ : `ScheduleConstraintBuilder.php:256` confi
 | « Servir d'abord les équipes importantes » | tiers S=10000…D=1, poids **codés en dur** dans le moteur (`objective/weights.py` — le champ `orToolsWeight` du payload est requis mais IGNORÉ) | ✅ soft | rangs S/A/B/C/D |
 | « Garantir N séances/semaine par équipe » | `MIN_SESSIONS` — **cible soft**, pas un plancher dur | 🟡 | ⚠ « minimum » non garanti (audit ENG-18) |
 | « Jamais 2 équipes sur le même créneau » | `VENUE_AT_MOST_ONE` / capacité (implicite) | ✅ | — |
-| « Jour de repos après un match » | bonus soft `add_match_day_rest_bonus` ; le `matchDay` émis est DÉRIVÉ de l'image A/B côté backend (`ScheduleConstraintBuilder::deriveMatchDay`, RMM-5 PR-3) | ✅ soft | — |
+| « Jour de repos après un match » | bonus soft `add_match_day_rest_bonus` ; le `matchDay` émis est DÉRIVÉ de l'image A/B côté backend (`ScheduleConstraintBuilder::deriveMatchDay`) | ✅ soft | — |
 
-> **`matchDay` DÉRIVÉ (RMM-5 PR-3, « le repos suit l'image »)** : le backend n'émet plus le champ
+> **`matchDay` DÉRIVÉ (« le repos suit l'image »)** : le backend n'émet plus le champ
 > déclaré brut. `matchDay = max(jours ISO des habitudes de l'équipe ∪ jours ISO des rotations dont
 > elle est membre)` — le DERNIER jour de match de la semaine, car le repos qui compte est celui
 > d'après lui. Sans image (ni habitude ni rotation), repli sur le champ déclaré `Team.matchDay`
@@ -82,19 +83,9 @@ gymnase à un groupe » toujours ❌ : `ScheduleConstraintBuilder.php:256` confi
 > rien → `null`. La valeur émise reste ISO 1..7 ; conversion à l'émission seule, zéro migration, le
 > champ déclaré survit en repli legacy.
 
-## Angles morts traités (2026-07-08)
-
-Les 3 angles morts historiques d'alignement sont désormais couverts :
-- **ALIGN-04 « Finir avant X h »** → TIME `maxEndTime` (HARD, mode « Fini avant »).
-- **ALIGN-05 « Au moins une séance dans tel gymnase »** → FACILITY `minAtVenueId` + `minAtVenueCount` (plancher HARD, fail-soft si inatteignable, fail-fast backend si N > séances/semaine).
-- **ALIGN-06 espacement des séances** → règle implicite soft `spacing` (malus jours consécutifs, jamais bloquant).
-- **ALIGN-07 verrou HARD sur créneau divisible** → **comportement assumé** : une réservation HARD prend le créneau entier même si `capacity>1` (`blocked_venue_slots`, model.py) ; le partage se déclare en co-épinglant les équipes (aucun diagnostic tant que N ≤ `capacity`). Gardé par `engine/tests/semantic/test_hard_lock_divisible_slot.py` (T1/T2/T3).
-
 ## Synthèse des trous restants (❌ / 🟡)
 
-1. ~~« Pas 3 entraînements d'affilée » / écart dur~~ — **RÉSORBÉ le 2026-08-19** (P2-42) : la règle implicite `maxConsecutiveDays` pose la contrainte dure que le soft `spacing` ne garantissait pas. Le nudge `spacing` reste : il départage des ex æquo sur les PAIRES de jours, la règle garantit sur les suites — deux travaux différents.
-2. **Minimum de séances garanti** (🟡) — `MIN_SESSIONS` est une cible soft ; à trancher si un plancher dur est voulu (risque d'INFEASIBLE si capacité insuffisante).
-3. ~~« Au moins une séance tel jour »~~ — **RÉSORBÉ le 2026-08-23** (ALIGN-09) : mode wizard « au moins une », gate bloquant, clé héritée migrée.
+1. **Minimum de séances garanti** (🟡) — `MIN_SESSIONS` est une cible soft ; à trancher si un plancher dur est voulu (risque d'INFEASIBLE si capacité insuffisante).
 
 > Détail moteur exhaustif (toutes les clés + mécanismes) : `engine/docs/constraint-vocabulary.md`.
 > Offre réellement câblée dans le wizard : `docs/architecture/constraint-matrix.md`.

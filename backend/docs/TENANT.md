@@ -1,21 +1,27 @@
-# ClubScheduler — Tenant Isolation Architecture
+# Amateo — Tenant Isolation Architecture
 
-Last verified @ 2026-09-26 (rotation de fraîcheur `documentation-update`, stamp le plus ancien du
-dépôt avec `backend/docs/commands.md`). Re-confronté au code : priorité 7 toujours en place
-(`TenantFilterListener.php:55`) ✓ · le skip `/api/admin` toujours en `str_starts_with` sur le
-path (`TenantFilterListener.php:81`) ✓ · `TenantConnectionContext` pose toujours
+Last verified @ 2026-09-26 (`documentation-update`, passe « le présent » zone backend — sur les
+talons d'une rotation de fraîcheur du même jour). Re-confronté au code : priorité 7 toujours en
+place (`TenantFilterListener.php:55`) ✓ · le skip `/api/admin` toujours en `str_starts_with` sur
+le path (`TenantFilterListener.php:81`) ✓ · `TenantConnectionContext` pose toujours
 `set_config('app.club_id', ?, false)` (`TenantConnectionContext.php:30`) ✓ ·
 `AbstractStateProcessor::requiresManagementRole()` retourne toujours `true` par défaut
 (`backend/src/State/Processor/AbstractStateProcessor.php:130-132`) ✓ · `amateo_owner` reste
 l'unique rôle `BYPASSRLS`, `migration_user` toujours absent (`docker/postgres/init/02-users.sh`,
 migration `Version20260731090000.php` présente) ✓ · `BcclSeeder` scope toujours ses deux
 recherches `SportCategory` par `clubId` (`backend/src/Seed/BcclSeeder.php:251`), NR
-`BcclSeederIdempotenceTest::testSeedScopesSportCategoriesToTheirOwnClub` présent ✓. Rien à
-corriger.
+`BcclSeederIdempotenceTest::testSeedScopesSportCategoriesToTheirOwnClub` présent ✓. Cette passe
+retire en plus le récit d'incident autour du skip admin et de l'ordre priorité 7/8 (la RÈGLE et
+les gardes restent cités, l'historique vit dans git) et le titre passe à Amateo. Deuxième passe :
+dates décoratives retirées (`migration_user` ×2, PR/date du rôle P1-1 — le nom seul suffit,
+`etat-des-lieux.md` §1.12 le trace en détail) ; une seule exception gardée volontairement — voir
+§ « Read-only enforcement » ci-dessous, dont la date fait le travail de désambiguïsation d'un id
+par ailleurs surchargé (`roadmap.md` en tête de fichier documente trois sens distincts pour ce
+même id).
 
 ## Overview
 
-ClubScheduler is a **multi-tenant** application where every business entity belongs to exactly one club. Tenant isolation has **two layers, both active today**:
+Amateo is a **multi-tenant** application where every business entity belongs to exactly one club. Tenant isolation has **two layers, both active today**:
 
 1. **Application layer (ACTIVE)** — A Doctrine SQL filter (`TenantFilter`) transparently appends `club_id = ?` to every DQL/SQL query on entities that own a `club_id` column. **This is the effective tenant barrier.**
 2. **Database layer (ACTIVE since `Version20260703120000` — SEC-03 fixed)** — PostgreSQL Row-Level Security. Every `club_id` table carries `FORCE ROW LEVEL SECURITY` + a `tenant_isolation` policy keyed on the `app.club_id` GUC, the runtime connects as the restricted `amateo_app`, and the GUC is set via `TenantConnectionContext` (`set_config`, session-scoped — the old out-of-transaction `SET LOCAL` was a no-op). Workers set their own GUC from the message's `clubId`. See `docs/security/rls.md` for the full architecture, the `club_user` bootstrap exception and the `amateo_owner` superadmin door.
@@ -45,7 +51,7 @@ The shared membership lookups (`findActiveMembership`, `findActiveClubIds`, `isM
 **File:** `backend/src/EventListener/TenantFilterListener.php`
 
 - Subscribes to `kernel.request` at **priority 7 — AFTER the security firewall** (priority 8), so the JWT user is authenticated by the time the tenant is resolved.
-- **Returns immediately for `/api/admin/**` (SEC-17, 2026-08-07).** The super-admin console has no tenant by construction: separate identity (`SuperAdmin`, never a `User`), Doctrine `admin` connection which bypasses RLS, and the SA0 contract states the admin session never sets `app.club_id`. Without the skip the listener honoured an `X-Club-Id` header on those requests — and its anti-spoof membership check only arms `if ($user instanceof User)`, so under an admin identity the *claimed* club passed with no ownership check at all. Nothing read by that connection today; the point is that a mechanism contradicting its own contract breaks silently for whoever extends it next. Guarded by `AdminRequestBoundaryTest::testAnAdminRequestNeverSetsTheTenantGuc`.
+- **Returns immediately for `/api/admin/**`.** The super-admin console has no tenant by construction: separate identity (`SuperAdmin`, never a `User`), Doctrine `admin` connection which bypasses RLS, and the SA0 contract states the admin session never sets `app.club_id`. Guarded by `AdminRequestBoundaryTest::testAnAdminRequestNeverSetsTheTenantGuc`.
 - On each **main HTTP request**:
   1. Resolves the current `club_id`: `_club_id` route attribute → `X-Club-Id` header → **the authenticated JWT user's single active `ClubUser` membership** (the frontend sends no header — the club is derived from the token).
   2. If a club came from a header/attribute and a user is present, validates the membership (403 if the user is not an active member — blocks a spoofed `X-Club-Id`).
@@ -63,7 +69,12 @@ The shared membership lookups (`findActiveMembership`, `findActiveClubIds`, `isM
 - **Retention** (`app:seasons:purge`, **automatic — daily at 03:00 via the `AdminJobCatalog` / `app:jobs:run-due` tick**): keeps current + N-1 + futures, deletes N-2 and older (Season row included) via `SeasonDataPurger` (the canonical delete-order list, shared with `ResetSeasonController`).
 - Guarded by `tests/Security/SeasonIsolationTest.php` + `tests/Security/SeasonReadonlyTest.php` (blocking, phase1), `tests/Unit/Service/SeasonResolverTest.php`, `tests/Integration/Command/PurgeSeasonsCommandTest.php`.
 
-> **Ordering is load-bearing (fixed in tranche 3).** When this listener ran *before* the firewall (priority 8, same as the firewall — order undefined), a header-less request had no authenticated user yet → no club → the SQL filter stayed disabled and no RLS scope was set → **collection reads leaked every club's data**. It only surfaced without an `X-Club-Id` header, i.e. exactly the real frontend flow (`TenantFromJwtTest` used `loginUser`, which pre-injects the token and hid the ordering). Guarded now by `TenantJwtIsolationTest` (a real Bearer JWT) and `OnboardingFlowTest`.
+> **Ordering is load-bearing: priority 7, strictly AFTER the firewall (priority 8).** Were this
+> listener to run before authentication, a header-less request would have no authenticated user
+> yet → no club resolved → the SQL filter would stay disabled and no RLS scope would be set →
+> **collection reads would leak every club's data** — exactly the real frontend flow (no
+> `X-Club-Id` header sent). Guarded by `TenantJwtIsolationTest` (a real Bearer JWT) and
+> `OnboardingFlowTest`.
 
 ### 3. CLI Context
 
@@ -71,8 +82,8 @@ Console commands do **not** trigger `kernel.request`. Therefore:
 
 - The `tenant_filter` is **not** enabled automatically.
 - the `app.club_id` GUC is **never** set without an HTTP context.
-- CLI scripts that need tenant isolation must implement their own mechanism (e.g., explicit `--club-id` option, or `TenantConnectionContext::setClubId()` per club like the reminder crons). Maintenance tasks that must SEE ALL tenants run on the **`admin` Doctrine connection (`amateo_owner`, superuser — the only RLS bypass)**. ⚠ There is exactly **one** RLS bypass, and it is that `admin` connection. A second role (`migration_user`) used to exist in the init SQL with schema-wide `GRANT ALL` but no bypass and no configured connection — a dormant service account, **dropped on 2026-07-31** (`Version20260731090000`).
-- ⚠ **Corollary — a query issued on the `admin` connection stays cross-tenant unless it scopes itself by hand (2026-09-22).** The bypass is unconditional: it does not know "which tenant this operation is about", so a `findOneBy`-shaped lookup that omits `clubId` from its criteria will happily return **another** club's row. `BcclSeeder` (dev/demo seed, runs on `admin` — see the GUC table above) learned this the hard way: its `SportCategory` find-or-create searched by `(sportId, name)` only, so seeding a second club on a database where a first club already had its categories made the second club silently reuse the first's rows instead of creating its own — a real tenant leak, not a theoretical one. Fixed by adding `clubId` to both lookups (`backend/src/Seed/BcclSeeder.php`); NR `BcclSeederIdempotenceTest::testSeedScopesSportCategoriesToTheirOwnClub`. The rule generalises: **any admin-connection code that must stay within one tenant scopes every query by `clubId` itself — the connection will not do it for you.**
+- CLI scripts that need tenant isolation must implement their own mechanism (e.g., explicit `--club-id` option, or `TenantConnectionContext::setClubId()` per club like the reminder crons). Maintenance tasks that must SEE ALL tenants run on the **`admin` Doctrine connection (`amateo_owner`, superuser — the only RLS bypass)**. ⚠ There is exactly **one** RLS bypass, and it is that `admin` connection. A second role (`migration_user`) does not exist: the init SQL used to create it with schema-wide `GRANT ALL` and no bypass and no configured connection — a dormant service account, **no longer present** (`Version20260731090000`).
+- ⚠ **Corollary — a query issued on the `admin` connection stays cross-tenant unless it scopes itself by hand.** The bypass is unconditional: it does not know "which tenant this operation is about", so a `findOneBy`-shaped lookup that omits `clubId` from its criteria will happily return **another** club's row. `BcclSeeder` (dev/demo seed, runs on `admin` — see the GUC table above) scopes its `SportCategory` find-or-create by `(sportId, name, clubId)` for exactly this reason (`backend/src/Seed/BcclSeeder.php`), guarded by `BcclSeederIdempotenceTest::testSeedScopesSportCategoriesToTheirOwnClub`. The rule generalises: **any admin-connection code that must stay within one tenant scopes every query by `clubId` itself — the connection will not do it for you.**
 
 ## Registration
 
@@ -117,7 +128,7 @@ services:
 ## Security Considerations
 
 - Defence in depth is real now: Doctrine filter (layer 2) **and** RLS (layer 3). Keep `TenantIsolationTest`, `TenantJwtIsolationTest` and `RlsIsolationTest` green — they are the blocking guards.
-- **Role layer on top of the membership (P1-1 PR A, 2026-08-10):** every API Platform write is
+- **Role layer on top of the membership (P1-1):** every API Platform write is
   **management-only by default** — `AbstractStateProcessor::requiresManagementRole()` defaults to `true`
   (`ManagementAccessGuard`, SEC-07), with a single explicit opt-out (`UserStateProcessor`, self-only edits).
   Custom write controllers carry their own guard (same SEC-07 rule). A non-management member reads
@@ -128,4 +139,4 @@ services:
 ## See Also
 
 - `backend/docs/RLS.md` — PostgreSQL RLS setup and troubleshooting
-- `docker/postgres/init/02-users.sh` — `amateo_app` creation (`migration_user` dropped 2026-07-31, cf. RLS.md)
+- `docker/postgres/init/02-users.sh` — `amateo_app` creation (`migration_user` does not exist, cf. RLS.md)

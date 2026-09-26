@@ -1,17 +1,17 @@
-# Guide de génération de planning — ClubScheduler
+# Guide de génération de planning — Amateo
 
-Last verified @ 2026-09-25 (**rotation de fraîcheur**, `documentation-update`, PR agents
-`cadreur`/`business-writer` — zone non touchée par cette PR). Re-confronté contre le code actuel :
-les 11 services de `docker-compose.yml` portent toujours tous `restart: unless-stopped` (§6 Cas 1
-— `frontend-tooling`/`frontend-dev` en sont exclus, build-only) ; le cycle des 5 statuts (§5,
-`App\Enum\ScheduleStatus` : DRAFT/PENDING/GENERATING/COMPLETED/FAILED) ✓ ; la route `export-xlsx`
-(§11, `ScheduleResource.php:38-39` + `ExportXlsxController.php`) ✓ ; le budget solveur par défaut
-650 s (§6 Cas 2/3, `GenerateScheduleMessage.php:12`, `ScheduleConstraintBuilder.php:79`
-`DEFAULT_SOLVER_TIMEOUT_SECONDS`) ✓ ; `CONTRACT_VERSION` = `2.23` aux trois foyers backend ET
-`engine/CONTRACT_VERSION` ✓ (inchangé). Reste non re-sondé cette passe : le corps du guide hors
-§ 5, § 6 Cas 1-3, § 11.
+Last verified @ 2026-09-26. Re-confronté contre le code : les 11 services de `docker-compose.yml`
+portent `restart: unless-stopped` (`messenger-worker` compris, §6 Cas 1) ; le cycle des 5 statuts
+(§5, `App\Enum\ScheduleStatus` : DRAFT/PENDING/GENERATING/COMPLETED/FAILED) ; la route
+`export-xlsx` (§11, `ScheduleResource.php:38-39` + `ExportXlsxController.php`) ; le budget solveur
+par défaut 650 s (§6 Cas 2/3, `GenerateScheduleMessage.php:12`,
+`ScheduleConstraintBuilder.php:79` `DEFAULT_SOLVER_TIMEOUT_SECONDS`) ; `CONTRACT_VERSION` =
+`2.23` (`ScheduleConstraintBuilder.php:63` ⇄ `engine/CONTRACT_VERSION`) ; l'absence de fixtures
+Doctrine actives (§1 — `doctrine/doctrine-fixtures-bundle` reste dans `composer.json` mais aucune
+classe n'implémente `FixtureInterface` sous `src/`) ; l'absence d'export PNG (§8 —
+`PurgeExportsCommand::RENDER_PATTERN` ne matche que `.pdf`).
 
-> Ce guide explique, étape par étape, comment générer un planning de matchs pour un club de basket dans le backend ClubScheduler. Il s'adresse aux développeurs juniors qui découvrent le projet.
+> Ce guide explique, étape par étape, comment générer un planning de matchs pour un club de basket dans le backend Amateo. Il s'adresse aux développeurs juniors qui découvrent le projet.
 
 ---
 
@@ -41,7 +41,7 @@ Tu dois voir apparaître : `amateo-php-fpm`, `amateo-nginx`, `amateo-postgres`, 
 cd backend && make seed-bccl
 ```
 
-> ⚠️ **Ne lance JAMAIS une commande de seed à la main sans la connexion admin.** Sous `amateo_app`, une purge est silencieusement filtrée par RLS (elle supprime zéro ligne sur les tables tenant) et le rechargement collisionne alors avec les données survivantes — base à moitié purgée. Le seeder s'en protège et **lève une exception** si la connexion n'est pas celle du superutilisateur. Passe toujours par `make seed-bccl` (create-only, no-op si le club existe déjà) ou `make seed-demo` (créer OU reset la démo), qui injectent la connexion `admin`. Il n'y a plus de fixtures Doctrine (`doctrine:fixtures:load` n'a aucun appelant) — détail complet et table « situation → commande » : [`commands.md`](commands.md).
+> ⚠️ **Ne lance JAMAIS une commande de seed à la main sans la connexion admin.** Sous `amateo_app`, une purge est silencieusement filtrée par RLS (elle supprime zéro ligne sur les tables tenant) et le rechargement collisionne alors avec les données survivantes — base à moitié purgée. Le seeder s'en protège et **lève une exception** si la connexion n'est pas celle du superutilisateur. Passe toujours par `make seed-bccl` (create-only, no-op si le club existe déjà) ou `make seed-demo` (créer OU reset la démo), qui injectent la connexion `admin`. Il n'existe pas de fixtures Doctrine actives : `doctrine:fixtures:load` n'a aucun appelant, le bundle reste installé (`composer.json`) mais n'est câblé à rien — détail complet et table « situation → commande » : [`commands.md`](commands.md).
 
 ### Vérifier la santé du backend
 
@@ -337,13 +337,13 @@ Voici chaque panne possible, avec son symptôme, sa cause, sa vérification, sa 
 | **Cause** | Le conteneur `messenger-worker` n'est pas démarré. Il n'y a personne pour consommer la file Redis. |
 | **Vérification** | `docker ps \| grep messenger` — si aucune ligne ne s'affiche, le worker est arrêté. |
 | **Correction** | `docker compose up -d messenger-worker` |
-| **Prévention** | Depuis le 2026-09-18, **tous** les services de dev portent `restart: unless-stopped` (comme en prod, INF-04) — `messenger-worker` y compris : une sortie de lui-même (time-limit horaire, `cache:clear` qui invalide son cache) le fait redémarrer seul en quelques secondes — ce cas précis ne devrait donc plus se produire. Ce qui reste possible : la stack n'a jamais été démarrée pour ce service, ou il a été arrêté volontairement (`docker compose stop`, respecté par `unless-stopped`) — inclure `messenger-worker` dans ton `docker-compose.yml`/script de démarrage le couvre. |
+| **Prévention** | **Tous** les services de dev portent `restart: unless-stopped` (comme en prod) — `messenger-worker` y compris : une sortie de lui-même (time-limit horaire, `cache:clear` qui invalide son cache) le fait redémarrer seul en quelques secondes, donc ce cas précis ne se produit pas. Ce qui reste possible : la stack n'a jamais été démarrée pour ce service, ou il a été arrêté volontairement (`docker compose stop`, respecté par `unless-stopped`) — inclure `messenger-worker` dans ton `docker-compose.yml`/script de démarrage le couvre. |
 
 ### Cas 2 : le statut retombe en PENDING (verrou club tenu)
 
 | | Détail |
 |---|---|
-| **Symptôme** | Le statut repasse (ou reste) en `PENDING` alors qu'une génération a été demandée. Il n'y a **pas** de diagnostic `engine_busy` — ce type n'existe plus. |
+| **Symptôme** | Le statut repasse (ou reste) en `PENDING` alors qu'une génération a été demandée. Il n'existe pas de diagnostic `engine_busy` côté engine. |
 | **Cause** | Une autre génération est en cours pour le même club : le worker n'a pas pu prendre le verrou Redis `schedule_generation:club:{clubId}`, il a remis le statut en `PENDING` et levé une `RecoverableMessageHandlingException` (retry Messenger). |
 | **Vérification** | `docker exec amateo-redis redis-cli GET schedule_generation:club:<club-uuid>` — si ça retourne un token, le verrou est actif. |
 | **Correction** | Normalement rien : le message est rejoué automatiquement. Si le verrou est orphelin (worker crashé), `docker exec amateo-redis redis-cli DEL schedule_generation:club:<club-uuid>`. |
@@ -490,7 +490,7 @@ curl -O "http://localhost:8080<pdfExportUrl>"   # ex. /exports/schedule-a1b2c3d4
 
 ### Note importante
 
-La génération produit **un seul fichier** : `schedule-{id}.pdf` (A4 imprimable). ⚠ L'export **PNG a quitté totalement le projet le 2026-08-21** (décision fondateur : aucune plus-value) — `pngExportUrl` n'existe plus nulle part dans `src/`, et `app:exports:purge` ne connaît plus que le motif `.pdf`. Si un document mentionne encore le PNG, il est périmé.
+La génération produit **un seul fichier** : `schedule-{id}.pdf` (A4 imprimable). Il n'existe pas d'export PNG : `pngExportUrl` n'existe nulle part dans `src/`, et `app:exports:purge` (`PurgeExportsCommand::RENDER_PATTERN`) ne connaît que le motif `.pdf`.
 
 ## 8.5 Rapports de diagnostic (dev)
 
@@ -642,37 +642,8 @@ curl http://localhost:8080/api/health
 
 ## 10. Architecture rapide (pour comprendre)
 
-Voici le flux complet, de la requête frontend jusqu'à la notification temps réel.
-
-```
-Frontend (React)          Backend (Symfony)           Engine (Python)
-     |                         |                             |
-     | POST /api/schedules     |                             |
-     |------------------------>|                             |
-     |                         | Crée l'entité Schedule      |
-     |                         | (status = DRAFT)            |
-     |                         |                             |
-     | POST /api/schedules/{id}/generate                    |
-     |------------------------>|                             |
-     |                         | Passe le statut à PENDING   |
-     |                         | Publie un message sur Redis   |
-     | 202 Accepted            |                             |
-     |<------------------------|                             |
-     |                         |                             |
-     |                         | Worker Messenger            |
-     |                         | (conteneur async)           |
-     |                         |                             |
-     |                         | 1. Construit le payload     |
-     |                         | 2. POST engine:8000/generate|
-     |                         |---------------------------->|
-     |                         |                             |
-     |                         | 3. Importe le résultat      |
-     |                         | 4. Publie un SSE Mercure    |
-     |                         |                             |
-     | EventSource             |                             |
-     |<------------------------|                             |
-     | { status: COMPLETED }   |                             |
-```
+Le flux complet, de la requête frontend jusqu'à la notification temps réel — schéma pas à pas et
+noms de classes exacts : [`generation-flow.md`](generation-flow.md) §1 « Vue d'ensemble du flux ».
 
 ### Rôles de chaque service
 
@@ -688,11 +659,11 @@ Frontend (React)          Backend (Symfony)           Engine (Python)
 
 ### Injection du placement précédent (après le hash de snapshot)
 
-Entre l'étape « 1. Construit le payload » et l'appel au moteur, `GenerateScheduleHandler` greffe
-un bloc `previousAssignments` (terme de **stabilité** moteur, contrat 2.11 : à score égal, le
+Entre la construction du payload et l'appel au moteur (`generation-flow.md` §3b/§3c),
+`GenerateScheduleHandler` greffe un bloc `previousAssignments` (terme de **stabilité** moteur, contrat 2.11 : à score égal, le
 solveur garde une équipe sur son créneau précédent plutôt que d'en tirer un autre au hasard —
-et, depuis P2-61 (2026-09-06), une **proximité** de poids 9 dans le placement lui-même : une règle
-saisie ≥ 10 prime, le confort interne cède, ADR-0001) —
+avec en plus une **proximité** de poids 9 dans le placement lui-même : une règle saisie ≥ 10
+prime, le confort interne cède, ADR-0001) —
 **après** avoir figé `snapshotData`/`snapshotHash`, jamais avant :
 
 1. Le payload est construit et **caché** par club+saison (`ScheduleConstraintBuilder::buildForClubSeason`/`buildForPeriodPlan`) et son hash (`snapshotHash`, comparé à `currentStructureHash` pour griser « Régénérer ») est calculé.

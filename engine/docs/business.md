@@ -1,16 +1,17 @@
 # Documentation metier du moteur de generation
 
-Last verified @ 2026-09-25 (`documentation-update`, rotation de fraîcheur — sujet sans rapport,
-lot P5-16 fond d'écran commun). Re-confronté : tiers de poids S=10000/A=1000/B=100/C=10/D=1 toujours
-en dur dans `app/solver/objective/weights.py:35-37,66-67` ✓ ; `_adaptive_timeout`
-(`app/main.py:374-389`) applique bien les paliers ≤50→60 s · ≤200→180 s · sinon 600 s, plafonnés
-par `solverTimeoutSeconds` ✓ ; `orToolsWeight` reste déclaré requis
-(`app/schemas/input_schema.py:75`, alias de `or_tools_weight`) mais aucun lecteur ne le consomme
-côté objectif ✓ ; `MAX_CONSECUTIVE_DAYS` naît bien `OFF` en l'absence de bloc
-(`resolve_implicit_rules`, `app/solver/constraints/parsing.py:90`,
+Last verified @ 2026-09-26 (`documentation-update`, rotation de fraîcheur — sujet sans rapport).
+Re-confronté : tiers de poids S=10000/A=1000/B=100/C=10/D=1 toujours en dur dans
+`app/solver/objective/weights.py:35-37,66-67` ✓ ; `_adaptive_timeout` (`app/main.py:374-389`)
+applique bien les paliers ≤50→60 s · ≤200→180 s · sinon 600 s, plafonnés par
+`solverTimeoutSeconds` ✓ ; `orToolsWeight` reste déclaré requis (`app/schemas/input_schema.py:75`,
+alias de `or_tools_weight`) mais aucun lecteur ne le consomme côté objectif ✓ ; `MAX_CONSECUTIVE_DAYS`
+naît bien `OFF` en l'absence de bloc (`resolve_implicit_rules`, `app/solver/constraints/parsing.py:89`,
 `max_consecutive_days_intensity=OFF if days is None else …`) ✓ ; le commentaire de retrait de
-`FACILITY_CAPACITY` vit toujours à `app/main.py:447-450` ✓. Reste du fichier non re-vérifié
-cette passe — historique : `git log -p --follow engine/docs/business.md`.
+`FACILITY_CAPACITY` vit toujours à `app/main.py:447-450` ✓ ; `ConstraintRuleType` PHP
+(`backend/src/Enum/ConstraintRuleType.php`) confirme la liste fermée HARD/PREFERRED/LOCK, `BONUS`
+absent ✓. Reste du fichier non re-vérifié cette passe — historique : `git log -p --follow
+engine/docs/business.md`.
 
 > Ce document explique le domaine de la planification sportive et ce que le moteur `engine` resout. Destine aux nouveaux developpeurs rejoignant le projet ClubScheduler.
 

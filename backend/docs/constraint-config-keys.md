@@ -1,15 +1,21 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-09-25 (`documentation-update`, rotation de fraîcheur — sujet sans rapport,
-P4-257/P4-261 frontend). Re-confronté à `ConstraintConfigValidator::SPEC`
+Last verified @ 2026-09-26 (`documentation-update`, passe « le présent » suite — nettoyage des
+généalogies restantes). Re-confronté à `ConstraintConfigValidator::SPEC`
 (`backend/src/Service/ConstraintConfigValidator.php:59-95`) : les 4 familles et leurs clés/types
 correspondent trait pour trait à la table du fichier ✓. `App\Enum\ConstraintRuleType` ne compte
-toujours que HARD/PREFERRED/LOCK ✓ (`BONUS` reste bien retiré). `TeamTagResolver::
-resolveConstraintTeamIds` (`backend/src/Service/TeamTagResolver.php:278`) existe toujours à cette
-ligne exacte ✓. La migration `Version20260807190000` est confirmée en place ✓. Non re-sondé cette
-passe : les deux gardes `PeriodGatePayloadParityTest`/`ConstraintKeysAreHonouredByEngineTest` (déjà
-vérifiées la passe précédente). Rien de faux trouvé cette passe. Historique : `git log -p
---follow`. Un stamp REMPLACE, il ne s'empile pas.
+que HARD/PREFERRED/LOCK ✓ — `BONUS` n'existe nulle part dans l'engine comme cran de `ruleType`
+(`rtk grep -rn BONUS engine/app/solver/constraints engine/app/schemas` vide). `TeamTagResolver::
+resolveConstraintTeamIds` (`backend/src/Service/TeamTagResolver.php:278`),
+`PlanVenueClosures::effectiveStateForPlan` (`PlanVenueClosures.php:212`) et
+`CalendarEntryStateProcessor::redateEntryPairedConstraints` (`:642`) existent toujours à ces
+signatures ✓. La migration `Version20260807190000` est confirmée en place ✓. Cette passe retire
+les dates/ids décoratifs (ALIGN-14 du titre §« Quelle INTENSITÉ », lot tags PR 2, décisions
+fondateur datées) déjà tracés dans `etat-des-lieux.md` §3 (qui pointe LUI-MÊME vers ce fichier
+comme maison du comportement) — garde les noms encore utilisés ailleurs comme repères (`D3 v1`).
+Non re-sondé cette passe : les deux gardes
+`PeriodGatePayloadParityTest`/`ConstraintKeysAreHonouredByEngineTest` (déjà vérifiées la passe
+précédente). Historique : `git log -p --follow`. Un stamp REMPLACE, il ne s'empile pas.
 
 > Source de vérité du code : `App\Service\ConstraintConfigValidator`.
 > Cette page explique le POURQUOI ; la liste qui fait foi est dans la classe.
@@ -30,7 +36,7 @@ avec le nom de la clé et les réglages acceptés pour la famille.
 | **DAY** | `preferredDays` `forbiddenDays` `forcedDays` `allowedDays` | liste d'entiers 1-7 (lundi = 1) | moteur (`constraints/`, `objective.py`) |
 | **FACILITY** | `forcedVenueId` `forbiddenVenueId` `preferredVenueId` `minAtVenueId` | UUID de gymnase | moteur (`constraints/` — paquet) |
 | **FACILITY** | `minAtVenueCount` | entier ≥ 1 | moteur |
-| **FACILITY** | `type` (`venue_closed`) · `startDate` · `endDate` | constante · `AAAA-MM-JJ` | **backend seul** (`VenueClosureDays`) — une fermeture datée DÉRIVE un défaut de jours fermés (jamais stockée telle quelle) ; le réglage du plan (`VenuePeriodOverride.mode`/`dayOverrides`) peut le contredire jour par jour — la composition des deux vit dans `PlanVenueClosures::effectiveStateForPlan/Entry` (décision fondateur 2026-08-18 : l'indisponibilité déclarée est INFORMATIVE), et c'est l'état EFFECTIF qui ne produit aucune ligne de payload pour les jours fermés. **Suit le re-datage d'une racine CLOSURE (D3 v1, 2026-09-04)** : quand `startDate`/`endDate` de cette contrainte valent EXACTEMENT l'ancienne fenêtre de l'entrée, ils sont recalés sur la nouvelle (`CalendarEntryStateProcessor::redateEntryPairedConstraints`) — une fermeture datée plus finement par le gestionnaire (dates différentes) reste intouchée |
+| **FACILITY** | `type` (`venue_closed`) · `startDate` · `endDate` | constante · `AAAA-MM-JJ` | **backend seul** (`VenueClosureDays`) — une fermeture datée DÉRIVE un défaut de jours fermés (jamais stockée telle quelle) ; le réglage du plan (`VenuePeriodOverride.mode`/`dayOverrides`) peut le contredire jour par jour — la composition des deux vit dans `PlanVenueClosures::effectiveStateForPlan/Entry` (l'indisponibilité déclarée est INFORMATIVE), et c'est l'état EFFECTIF qui ne produit aucune ligne de payload pour les jours fermés. **Suit le re-datage d'une racine CLOSURE (D3 v1)** : quand `startDate`/`endDate` de cette contrainte valent EXACTEMENT l'ancienne fenêtre de l'entrée, ils sont recalés sur la nouvelle (`CalendarEntryStateProcessor::redateEntryPairedConstraints`) — une fermeture datée plus finement par le gestionnaire (dates différentes) reste intouchée |
 | **COACH_AVAILABILITY** | `unavailableDays` `availableDays` | liste d'entiers 1-7 | moteur (`constraints/` — paquet) |
 | **COACH_AVAILABILITY** | `fromTime` `untilTime` | `HH:MM` | moteur — bornent l'indisponibilité dans la journée |
 | **toutes** | `targetTag` | libellé de groupe non vide | **backend seul** — éclaté en N contraintes par équipe, puis RETIRÉ du payload (`ScheduleConstraintBuilder`). **Forme HISTORIQUE, toujours lue** : équivaut à `targetTags: [x]` |
@@ -38,8 +44,8 @@ avec le nom de la clé et les réglages acceptés pour la famille.
 | **toutes** | `excludeTags` | liste de tags | **UNION soustraite** de la cible (ex. `targetTags:["ADULTE"], excludeTags:["LOISIR_ADULTE"]` → les adultes en compétition, sans le loisir adulte). **Sans `targetTags`** : la base est TOUTE la saison, moins les exclus |
 
 
-> ⚑ **Résolution des cibles par tag — foyer UNIQUE** (`TeamTagResolver::resolveConstraintTeamIds`,
-> lot tags PR 2, 2026-08-15) : « (∩ `targetTags`) − (∪ `excludeTags`) », tri contractuel des
+> ⚑ **Résolution des cibles par tag — foyer UNIQUE** (`TeamTagResolver::resolveConstraintTeamIds`) :
+> « (∩ `targetTags`) − (∪ `excludeTags`) », tri contractuel des
 > teamIds conservé. Le **payload solveur** (`ScheduleConstraintBuilder`) ET le **verdict du gate de
 > période** (`PeriodConstraintSelector::clubTagVerdict`) passent par ce foyer — leur parité est un
 > step bloquant (`PeriodGatePayloadParityTest`). **Le contrat moteur ne bouge pas** : les 3 clés de
@@ -48,7 +54,7 @@ avec le nom de la clé et les réglages acceptés pour la famille.
 > `targetTag`+`targetTags` · résolution VIDE sur la saison courante. Le no-op+warning du builder
 > reste en backstop (une résolution peut se vider APRÈS coup — équipes désactivées).
 
-## Quelle INTENSITÉ pour quelle clé — la matrice muette (ALIGN-14, 2026-09-22)
+## Quelle INTENSITÉ pour quelle clé — la matrice muette
 
 Une clé de la liste blanche n'est pas honorée à tous les crans. Le moteur range les règles par
 `ruleType` **avant** de les appliquer : le chemin dur ne lit que HARD/LOCK
@@ -62,7 +68,7 @@ posée au mauvais cran tombe donc entre les deux : **elle s'affiche comme active
 | `forcedDays` | hors HARD/LOCK | les règles DAY dures ne sont collectées que pour HARD/LOCK ; le souple ne lit que `preferredDays` |
 | `allowedDays` | hors HARD/LOCK | rangée en fenêtre de temps côté dur (sautée par le filtre de cran), jamais lue côté souple |
 | `forcedVenueId` | hors HARD/LOCK | la carte des gymnases imposés n'est nourrie qu'en HARD/LOCK |
-| `preferredDays` | **en HARD/LOCK** | symétrique : le chemin dur ne lit pas cette clé, et le souple exige PREFERRED. Une préférence ne peut pas être obligatoire par nature (décision fondateur 2026-09-22) |
+| `preferredDays` | **en HARD/LOCK** | symétrique : le chemin dur ne lit pas cette clé, et le souple exige PREFERRED. Une préférence ne peut pas être obligatoire par nature (décision fondateur) |
 | `preferredVenueId` | **en HARD/LOCK** | refusé plus tôt, **à l'écriture** (422) — seule cellule gardée par le write-path |
 
 ⚠ **Ces refus ne vivent PAS dans le chemin d'écriture** (sauf `preferredVenueId`) : ils sont rendus
@@ -77,10 +83,8 @@ change ce qu'il fait. Une cellule souple s'y prouve par le **choix** — une gri
 coût identique où seul le terme souple les départage — jamais par un score : un score bouge aussi
 quand un bonus est accroché à la mauvaise condition.
 
-⚑ **`BONUS` a disparu du produit (2026-09-23)** : le cran n'avait jamais de sémantique propre — le
-moteur le normalisait en PREFERRED au parse et le wizard ne l'offrait plus depuis ENG-12 — et zéro
-ligne n'en portait la valeur en base. L'enum `ConstraintRuleType` ne compte plus que HARD/PREFERRED/
-LOCK ; la table ci-dessus n'a donc plus que trois crans à connaître.
+⚑ **`BONUS` n'existe pas comme cran de `ruleType`** : l'enum `ConstraintRuleType` ne compte que
+HARD/PREFERRED/LOCK — la table ci-dessus n'a donc que trois crans à connaître, jamais quatre.
 
 ## Trois règles pour maintenir cette liste
 
