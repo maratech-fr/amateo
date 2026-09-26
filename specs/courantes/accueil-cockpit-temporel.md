@@ -1,24 +1,17 @@
-# Accueil « cockpit temporel » — mise au clair (préliminaire calendriers secondaires)
+# Accueil « cockpit temporel »
 
-Last verified @ 2026-09-24 (`documentation-update`, P4-255 PR 3 — `PeriodStructure.tsx` supprimé,
-scindé verbatim en trois fichiers à plat de `wizard/steps/` : `PeriodTeams.tsx`, `PeriodVenues.tsx`,
-`PeriodConstraints.tsx`. Le repère `sub` sur `VenueSelect` cité ci-dessous vit désormais dans
-`PeriodVenues.tsx` — recalé en `:192`, vérifié contre le fichier actuel). Précédemment, P4-255 PR 2
-— le carrefour `highlightSlotIds` sort vers `planning/lib/useSlotHighlight.ts` et le sujet
-retouche/éviction/annulation vers `planning/lib/useRetouchGestures.ts`, verbatim. La citation
-`PlanningPage.tsx:1134-1143` pour `stalenessMessage` avait de nouveau dérivé (page passée de 1 648
-à 1 145 l.) — recalée en `:634-640`, vérifiée contre le fichier actuel. Reste du fichier — les 3
-autres repères de la passe du 2026-09-19/22 (`SCHOOL_HOLIDAY_HORIZON_DAYS = 30` à
-`RadarPanel.tsx:50`, `ClosureSegmentation`/`CalendarEntryRedatability`, la route
-`redate-preview`) — non re-vérifiés cette passe, sans rapport avec le sujet ; historique :
-`git log -p --follow` ce fichier.
+Last verified @ 2026-09-26 (`documentation-update`, passe « présent seul » — décision fondateur
+2026-09-25 : §7/§8 retirés (table sur une roadmap disparue, paliers de livraison désormais
+livrés), la narration prospective de §1/§2/§3 réécrite au présent, §9 réduit et recoupé contre
+`etat-des-lieux.md` §2, les repères `PeriodVenues.tsx:192` (`sub` de `VenueSelect`),
+`PlanningPage.tsx:634` (`stalenessMessage`), `RadarPanel.tsx:50`
+(`SCHOOL_HOLIDAY_HORIZON_DAYS`) et la suppression du champ `overlayScheduleId` re-vérifiés contre
+le code actuel). Historique complet de ce fichier : `git log -p --follow` dessus.
 
-> **Statut** : **approche arrêtée** (décisions tranchées §9) — **livrée** ; cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2.
-> **Pas un plan** — pas de tâches, pas d'effort chiffré ; l'exécution se planifiera palier par palier (§8).
-> **Nature** : ce document fixe une **idée claire et maligne d'UX + d'architecture** pour
-> remplacer l'écran d'accueil, et pose la fondation des **calendriers secondaires**.
-> **Statut** : livré (cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2) ; les anciens restes ouverts **P3-3** et **P3-2** sont fermés (décisions fermées, triage roadmap du 2026-09-25 — [`etat-des-lieux.md`](etat-des-lieux.md) §2), et **P3-13** était déjà livré le 2026-08-01 ([`etat-des-lieux.md`](etat-des-lieux.md) §3). **Vision d'origine** : `initiales/ClubScheduler_v3.md` §3.5, §3.6, §8.
-> **Ce doc challenge la vision d'origine** là où elle est trop lourde (voir §3).
+> **Statut** : livré — cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2. Ce document fixe le
+> modèle d'UX + d'architecture de l'accueil cockpit et la fondation des **calendriers
+> secondaires**. **Vision d'origine** : `initiales/ClubScheduler_v3.md` §3.5, §3.6, §8 — ce doc
+> s'en écarte là où elle prévoyait une matérialisation lourde (§3).
 > **Modèle métier des 3 types de planning** (socle / overlay / reprise — déclenchement,
 > manipulation, règle « semaine = unité hors socle ») : [`types-de-planning.md`](types-de-planning.md).
 
@@ -192,41 +185,33 @@ pour le routage.
 > **cockpit** et le radar affiche « Vacances Toussaint dans 55 j ». Tant qu'il n'a pas validé,
 > « créer un événement » ou « adapter une période » **n'existent pas** dans son UI.
 
-## 3. La décision d'architecture maligne (et le challenge de la vision d'origine)
+## 3. Modèle delta : projection + occurrences éparses, pas de matérialisation
 
-La vision d'origine (v3 §3.5) prévoit `schedule_slot_occurrences` : **matérialiser chaque
-occurrence** de chaque créneau sur une **fenêtre glissante J+14**. C'est la brique 🔴 dont
-« tout dépend » dans la roadmap.
+La vision d'origine (`initiales/ClubScheduler_v3.md` §3.5) prévoyait `schedule_slot_occurrences` :
+matérialiser chaque occurrence de chaque créneau sur une fenêtre glissante J+14. **Ce modèle n'est
+pas retenu** : matérialiser toutes les occurrences écrirait des milliers de lignes quasi
+identiques au template (40 semaines × N créneaux), à garder synchronisées avec la base à chaque
+régénération — un coût énorme pour une valeur quasi nulle sur les créneaux qui ne dérogent jamais.
 
-**Je challenge ça.** Matérialiser toutes les occurrences, c'est écrire des **milliers de
-lignes** quasi identiques au template (40 semaines × N créneaux), qu'il faut ensuite
-**garder synchronisées** avec la base à chaque régénération. Coût énorme, valeur quasi nulle
-pour les 99 % de créneaux qui ne dérogent jamais.
+**Le modèle retenu — occurrences éparses (deltas), pas matérialisation :**
 
-**Proposition — occurrences éparses (deltas), pas matérialisation :**
+> Une occurrence n'existe en base **que là où la réalité diverge du template** : créneau annulé,
+> déplacé, salle changée, ou appartenant à une **période** (plan secondaire). Partout ailleurs, le
+> calendrier **projette** le template à la volée. La matérialisation est paresseuse, pilotée par
+> les exceptions — jamais une fenêtre J+14 qui matérialise tout d'avance.
 
-> On ne stocke **une occurrence que là où la réalité diverge du template** : créneau annulé,
-> déplacé, salle changée, ou appartenant à une **période** (plan secondaire). Partout ailleurs,
-> le calendrier **projette** le template à la volée. **La matérialisation est paresseuse, et
-> pilotée par les exceptions** — pas une fenêtre J+14 qui matérialise tout d'avance.
+Conséquence : le cockpit, le calendrier réel et les événements sont livrables **sans** la
+machinerie templates→occurrences de la vision d'origine — la matérialisation n'arrive que
+quand/où une exception l'exige.
 
-> ✅ **Décision structurante actée : modèle delta / override.** La matérialisation J+14 de la
-> vision d'origine est **abandonnée**. Le calendrier est une **projection** ; une occurrence
-> n'existe en base que comme **override** d'une date qui déroge. C'est cette décision qui
-> débloque toute la §2 en incréments.
-
-Conséquence : **le cockpit + le calendrier réel + les événements sont livrables SANS
-construire la grosse machinerie templates→occurrences d'abord.** La matérialisation
-n'arrive que quand/où une exception l'exige. Ça transforme un monolithe 🔴 en incréments.
-
-> **Ex.** 40 semaines × 60 créneaux = **2 400 occurrences** à matérialiser puis resynchroniser à
-> chaque régénération, pour un club qui ne déroge jamais. En delta : **0 ligne** tant que rien ne
-> bouge ; une fermeture de gym la semaine du 4 mai n'écrit **que** les quelques overrides de cette
-> fenêtre. Le calendrier de mars, avril, juin… reste une **projection** gratuite du template.
+> **Ex.** 40 semaines × 60 créneaux = 2 400 occurrences à matérialiser puis resynchroniser à
+> chaque régénération, pour un club qui ne déroge jamais. En delta : 0 ligne tant que rien ne
+> bouge ; une fermeture de gym la semaine du 4 mai n'écrit que les quelques overrides de cette
+> fenêtre. Le calendrier de mars, avril, juin… reste une projection gratuite du template.
 
 ---
 
-### 3bis. C'est quoi une « occurrence » ? (et pourquoi je propose de s'en passer)
+### 3bis. Vocabulaire : template, occurrence, modèle delta
 
 - Un **slot_template** = un créneau **récurrent** du planning de base : « U13M1, **mardi**
   18h-19h30, gym Barros, coach Cyril, **toutes les semaines** ». **Pas de date.** C'est ce que
@@ -239,13 +224,9 @@ n'arrive que quand/où une exception l'exige. Ça transforme un monolithe 🔴 e
   « coach **remplacé** ». Impossible à exprimer sur un template hebdo (ça annulerait **tous** les
   mardis). Il faut un objet **par date** → l'occurrence, avec son `status`
   (scheduled/cancelled/moved/venue_changed/coach_replaced/added/merged).
-- **La vision d'origine** : matérialiser **toutes** les occurrences sur une fenêtre glissante
-  **J+14** (générer d'avance les 2 prochaines semaines de dates concrètes).
-- **Le hic** : 99 % des occurrences sont **identiques** au template (aucune divergence) → des
-  milliers de lignes redondantes à **resynchroniser** à chaque régénération de la base.
-- **Ma proposition (modèle delta)** : ne **rien** matérialiser d'avance. **Projeter** le
-  template sur les dates à l'affichage, et ne créer une occurrence **que quand une date déroge**.
-  Une occurrence devient alors un **override** (un delta), pas une copie. → « occurrences éparses ».
+- **Modèle retenu** : rien n'est matérialisé d'avance. Le template se **projette** sur les dates
+  à l'affichage ; une occurrence n'est créée **que quand une date déroge** — elle est alors un
+  **override** (un delta), pas une copie. → « occurrences éparses ».
 
 ## 4. Taxonomie : 3 objets, une seule entité
 
@@ -271,25 +252,14 @@ Pour éviter 4 tables (`period_templates`, `period_template_slots`, `period_assi
   qui n'a de sens que sur cette fenêtre.
 - **Une période** = une plage nommée avec **son propre plan** (le calendrier secondaire).
 
-### 4bis. Vacances scolaires — dérivées du code FFBB, stockées en base
+### 4bis. Vacances scolaires — dérivées du code FFBB, jamais géocodées au runtime
 
-Décision : **on ne géocode rien au runtime.** Le `Club.ffbbClubCode` encode déjà le
-**département** (ex. `…0069…` → 69 = Rhône). Le département → **zone scolaire** (A / B / C)
-est une table fixe. Et le **calendrier des vacances est officiel, publié ~1 an à l'avance**
-(open data Éducation nationale).
-
-Donc :
-1. La **zone** du club est **dérivée une fois** du `ffbbClubCode` (département → zone) et
-   stockée sur le club (le champ **`school_zone`** déjà prévu roadmap §8 — mais alimenté par
-   le code FFBB, **pas** par une API Géo depuis l'adresse : plus simple, la donnée est déjà là).
-2. Les **périodes de vacances** vivent en base (`school_holiday_periods` : zone · type
-   [Toussaint/Noël/Hiver/Printemps/Été] · début · fin · année scolaire), **seedées une fois par
-   an** depuis la source officielle (commande d'import, pas d'appel réseau au runtime).
-3. Le cockpit lit simplement les vacances **de la zone du club** → les affiche sur le calendrier
-   et les remonte au radar (« Vacances Toussaint dans 24 j »).
-
-**Ça simplifie la roadmap §8** : la « dérivation fuseau/zone depuis l'adresse (API Géo) » 🔴
-devient une **dérivation triviale depuis le code FFBB** 🟢.
+La **zone scolaire** du club (`Club.schoolZone`) se dérive du `Club.ffbbClubCode` (département →
+zone), jamais d'une API Géo depuis l'adresse. Les **périodes de vacances** vivent en base
+(`SchoolHolidayPeriod`), importées depuis la source officielle par une commande périodique — pas
+d'appel réseau au runtime. Le cockpit lit les vacances **de la zone du club**, les affiche sur le
+calendrier et les remonte au radar (« Vacances Toussaint dans 24 j »). Détail du modèle, des zones
+et de l'alimentation : [`vacances-scolaires-jours-feries.md`](vacances-scolaires-jours-feries.md).
 
 Le clic « signaler un souci » crée une `period` `periodType=closure` (avec sa contrainte datée
 pré-remplie) ; c'est ensuite le geste **« Adapter »** qui lui donne un plan, donc un calendrier
@@ -319,10 +289,8 @@ secondaire.
 └──────────────────────────────────────────────┴────────────────────────────┘
 ```
 
-**Bandeau** = l'état du plan principal **d'un coup d'œil** : **validé** · N diagnostics. ⚠ **Amendé
-2026-08-01 (P4-39)** : le score du solveur, montré dans le croquis d'origine ci-dessus, ne s'affiche
-plus nulle part — décision fondateur (« ça ne sert à rien pour le gestionnaire ») ; voir
-`etat-des-lieux.md` §2.
+**Bandeau** = l'état du plan principal **d'un coup d'œil** : **validé** · N diagnostics — **le
+score du solveur ne s'affiche nulle part** (décision fermée, `etat-des-lieux.md` §2).
 - **« Ouvrir »** → l'**écran de consultation** (grille lecture seule) — **le même écran** qui
   sert aussi à consulter les calendriers secondaires (§6ter). Pas de zones d'édition ; les entités
   sont visibles, non modifiables.
@@ -340,7 +308,9 @@ période). Le jour courant est **entouré**.
 
 **Radar** = la **to-do du gestionnaire**, triée par urgence : ce qui approche (J-24/J-7/J-3)
 et ce qui manque (plan de période non généré, planning modifié non régénéré). **Chaque item
-a un CTA.** C'est la version généralisée des alertes J-14 de la vision d'origine (§8.2).
+a un CTA.** C'est la version généralisée des alertes J-14 de la vision d'origine (§8.2). Les
+vacances y sont **proposées** comme période à adapter (CTA « Générer le plan »/« Adapter »),
+**jamais auto-appliquées** — c'est le gestionnaire qui déclenche.
 
 ### 5.1 Le radar ne montre que l'AVENIR ACTIONNABLE (P3-13, retour terrain 2026-07-31)
 
@@ -406,14 +376,16 @@ l'existence d'une carte. Il restait nu — et un cadre
 « À traiter » vide se lit comme « rien à faire ». Le squelette et « Rien à l'horizon. Tout
 roule. » ne coexistent jamais : `isEmpty` exige que ces mêmes lectures soient résolues.
 
-**Horloge de démo** (amorce de P4-16, côté front) : `shared/lib/clock.ts` est le point de
-passage unique du « aujourd'hui » du front. En **dev uniquement**, `?today=2026-12-20` le
-décale, ce qui permet de rejouer une situation datée — la valeur est vérifiée comme une
-date RÉELLE, pas seulement dans sa forme (`2026-13-01` triait après toute date et vidait le
-radar en affirmant « Tout roule ») — sans quoi ces règles ne seraient
-observables qu'en attendant la bonne date. La lecture de l'URL est derrière
+**Horloge de démo** : `shared/lib/clock.ts` est le point de passage unique du « aujourd'hui » du
+front. En **dev uniquement**, `?today=2026-12-20` le décale, ce qui permet de rejouer une
+situation datée — la valeur est vérifiée comme une date RÉELLE, pas seulement dans sa forme
+(`2026-13-01` triait après toute date et vidait le radar en affirmant « Tout roule ») — sans quoi
+ces règles ne seraient observables qu'en attendant la bonne date. La lecture de l'URL est derrière
 `import.meta.env.DEV` : le bundle de production ne contient aucun chemin capable de décaler
-l'horloge. Le **serveur** garde l'heure réelle (P4-16 reste ouverte pour lui).
+l'horloge côté front. Côté **serveur**, `DemoAwareClock` décale déjà la date pour un **club de
+démonstration** (`Club.demo_today`, posé/relâché par `app:demo:clock`) — tout consommateur de
+l'horloge (résolution de saison, transitions, garde-fous) la voit mentir pour ce club ; un club
+réel garde l'heure vraie.
 
 ---
 
@@ -718,11 +690,11 @@ différents** :
 | Étape wizard | En mode période |
 |---|---|
 | Équipes | Roster **hérité** (non ré-éditable), mais **activable/désactivable** pour la période + **séances** surchargeables (champ 1–7, toggle = 0 séance). **Défaut conscient du type de période** (E3, 2026-07-19) : **reprise** (`holiday`) = **Fanion + importantes** (les 2 premiers rangs, S+A) pré-cochées, avec repli sur le meilleur rang réellement présent si le club n'a ni S ni A — la reprise n'est jamais vide ; **fermeture** (`closure`) = **tout le club actif** (structure verrouillée, les équipes loisir se décochent à la main). |
-| Gymnases | **La période possède SA grille** (#8, 2026-07-24) : les créneaux de saison y sont **copiés** à la naissance du plan, puis modifiables sans jamais toucher au planning principal. Plus rien d'additif — le socle et la période ne sont **jamais** unis. Fermetures datées marquées au **grain JOUR** (« Indispo ven–dim du X au Y — titre », P2-22 PR 2, `frontend-wizard.md` pour le détail). À l'écran, un **sélecteur de gymnase** (une grille à la fois, comme l'éditeur de saison) montre la grille servie à la période, éditable créneau par créneau (clic = poser, clic sur un créneau = modale jour/heure/durée/capacité + suppression confirmée). **Le sélecteur lui-même annonce l'état effectif de chaque gymnase (P2-43 volet ii, 2026-08-19 ; passé en **sous-ligne** avec le reste de `VenueSelect`, P4-164 PR-2, 2026-09-06)** : chaque option porte, en sous-ligne sous son nom (nom intact, plus de suffixe concaténé), « désactivé » / « indisponible toute la période » / « fermé {jours} » (masque manuel OU indispo déclarée, priorité désactivé > fermé total > fermé partiel) ou rien s'il est ouvert — avant ce correctif, seule la fermeture TOTALE était annotée (« Indispo cette période ») et un gymnase DÉSACTIVÉ, ou fermé seulement certains jours (cas nommé : un gymnase « ADN » désactivé), restait invisible au choix. **La modale d'édition d'un créneau dit si le jour est fermé (P2-43 volet i, 2026-08-19)** : posé sur un jour effectivement fermé, l'éditeur affiche « Créneau inactif — le {jour} est fermé ({cause}). Le poser reste possible ; il ne servira pas tant que ce jour reste fermé. » (cause = masque manuel ou indisponibilité déclarée) — décision fondateur (a) : poser reste PERMIS, l'éditeur se contente de le DIRE ; avant ce correctif, `isDisabled` ne lisait que le mode gymnase (`DISABLED`), jamais le masque jour, et un créneau posé sur un jour décoché s'éditait sans aucun indice. Les deux lisent l'état effectif SERVI (`conflicts?.disabledVenueIds`/`effectiveClosedWeekdays`), jamais recomposé côté front. Par gymnase : un **état** actif/désactivé qui ne touche jamais la grille — désactiver n'a donc aucun coût, réactiver la rend telle quelle — et deux **actions** destructives atomiques, « reprendre la grille du planning principal » et « vider », chacune confirmée en annonçant les réservations emportées. Un gymnase désactivé a sa grille **gelée** dans un `<fieldset disabled>` (inerte souris ET clavier) : la table ne stocke qu'un mode par gymnase, donc vider écraserait l'état désactivé. Sous le capot, réglage épars `VenuePeriodOverride` — pas de ligne = hériter, le défaut ; deux
+| Gymnases | **La période possède SA grille** (#8, 2026-07-24) : les créneaux de saison y sont **copiés** à la naissance du plan, puis modifiables sans jamais toucher au planning principal. Plus rien d'additif — le socle et la période ne sont **jamais** unis. Fermetures datées marquées au **grain JOUR** (« Indispo ven–dim du X au Y — titre », P2-22 PR 2, `frontend-wizard.md` pour le détail). À l'écran, un **sélecteur de gymnase** (une grille à la fois, comme l'éditeur de saison) montre la grille servie à la période, éditable créneau par créneau (clic = poser, clic sur un créneau = modale jour/heure/durée/capacité + suppression confirmée). **Le sélecteur lui-même annonce l'état effectif de chaque gymnase (P2-43 volet ii, 2026-08-19 ; passé en **sous-ligne** avec le reste de `VenueSelect`, P4-164 PR-2, 2026-09-06)** : chaque option porte, en sous-ligne sous son nom (nom intact, plus de suffixe concaténé), « désactivé » / « indisponible toute la période » / « fermé {jours} » (masque manuel OU indispo déclarée, priorité désactivé > fermé total > fermé partiel) ou rien s'il est ouvert. **La modale d'édition d'un créneau dit si le jour est fermé (P2-43 volet i, 2026-08-19)** : posé sur un jour effectivement fermé, l'éditeur affiche « Créneau inactif — le {jour} est fermé ({cause}). Le poser reste possible ; il ne servira pas tant que ce jour reste fermé. » (cause = masque manuel ou indisponibilité déclarée) — décision fondateur (a) : poser reste PERMIS, l'éditeur se contente de le DIRE. Les deux lisent l'état effectif SERVI (`conflicts?.disabledVenueIds`/`effectiveClosedWeekdays`), jamais recomposé côté front. Par gymnase : un **état** actif/désactivé qui ne touche jamais la grille — désactiver n'a donc aucun coût, réactiver la rend telle quelle — et deux **actions** destructives atomiques, « reprendre la grille du planning principal » et « vider », chacune confirmée en annonçant les réservations emportées. Un gymnase désactivé a sa grille **gelée** dans un `<fieldset disabled>` (inerte souris ET clavier) : la table ne stocke qu'un mode par gymnase, donc vider écraserait l'état désactivé. Sous le capot, réglage épars `VenuePeriodOverride` — pas de ligne = hériter, le défaut ; deux
 réglages indépendants, chacun facultatif : `mode` (NULLABLE — DISABLED/BLANK/hériter) et un
 **masque manuel** jour ISO 1..7 → OPEN|CLOSED (`dayOverrides`), qui s'ajoute au défaut JOUR PAR
-JOUR. **Indisponibilité INFORMATIVE (décision fondateur 2026-08-18, remplace le régime ci-dessous)** :
-une fermeture datée `venue_closed` ne verrouille plus le réglage — elle PRÉ-REMPLIT un défaut
+JOUR. **Indisponibilité INFORMATIVE (décision fondateur 2026-08-18)** :
+une fermeture datée `venue_closed` ne verrouille pas le réglage — elle PRÉ-REMPLIT un défaut
 vivant que le masque du plan peut contredire (jour rouvert `OPEN`, jour décoché `CLOSED`). La
 composition (incident × masque) vit dans la maison unique
 `PlanVenueClosures::effectiveStateForPlan/Entry`, partagée par TOUS les consommateurs (gate,
@@ -743,10 +715,9 @@ avec sa **provenance** en info-bulle (« fermé — indisponibilité déclarée 
 coche écrit l'OPPOSÉ de l'état effectif dans le masque (`dayOverrides`) si le jour n'y a pas déjà
 d'entrée, ou RETIRE l'entrée existante (retour au défaut de l'incident) — jamais de recomposition
 côté front (`wizard/lib/venueDays.ts`, helpers purs, pas de miroir déclaré : la composition reste
-100 % serveur). **L'interrupteur Désactiver/Réactiver REVIENT sur un gymnase entièrement fermé** —
-le surfaçage du 2026-08-18 matin qui le cachait (remplacé par la raison en clair) est PÉRIMÉ : le
-serveur accepte le geste, donc l'écran ne le cache plus ; la raison reste affichée en badge
-d'information, à côté de l'interrupteur, jamais à sa place. **Gestes gymnase entier**, sous la
+100 % serveur). **L'interrupteur Désactiver/Réactiver reste visible sur un gymnase entièrement
+fermé** : le serveur accepte le geste, donc l'écran ne le cache pas ; la raison reste affichée en
+badge d'information, à côté de l'interrupteur, jamais à sa place. **Gestes gymnase entier**, sous la
 rangée de coches : « Réactiver malgré l'indisponibilité » (visible si une indisponibilité déclarée
 existe — pose `dayOverrides` = OPEN×7, mode préservé) et « Revenir au défaut » (visible si une ligne
 `VenuePeriodOverride` existe — DELETE, purge mode ET masque). Sous **DISABLED**, la rangée est gelée
@@ -830,92 +801,16 @@ endroits** seulement.
 > enchaînement wizard** qu'à l'inscription (en mode période). **Aucun écran neuf** dans tout le
 > parcours.
 
-## 7. Ce que ça **simplifie / remplace** dans la roadmap §2
-
-| Roadmap §2 (aujourd'hui) | Ce que ce doc propose |
-|---|---|
-| `schedule_slot_occurrences` + matérialisation J+14 (🔴 « tout dépend de ça ») | **Projection** + **occurrences éparses (deltas)** — la fenêtre J+14 **n'est plus un prérequis** |
-| 4 tables `period_*` | **1 entité `CalendarEntry`** (kind + plage), le reste vient après si besoin |
-| Plans secondaires « alternatifs » plein-saison | **Overlays de période bornés** |
-| Vue calendrier annuel (dépend de tout) | **Devient l'accueil**, livrable tôt en mode projection |
-| Scheduler quotidien J-14/J-7/J-3 | **Le panneau radar** (même logique, rendue visible et actionnable) |
-
-**Le pari** : en inversant « matérialiser d'abord » → « projeter + ne matérialiser que les
-exceptions », toute la §2 devient **incrémentale** au lieu d'un mur 🔴.
-
----
-
-## 8. Ce que ça donne, par paliers de valeur (ordre, pas un plan)
-
-- **Palier A — le cockpit sans génération de période.** Accueil 3 zones. Le calendrier
-  **projette** la semaine type. `CalendarEntry` (événements + indispos datées). Feed vacances
-  scolaires. Clic-date = ajout rapide. Une indispo apparaît en ⛔ et **alimente le radar**
-  (« à adapter »), sans encore générer quoi que ce soit. **→ Déjà énorme en valeur : le
-  gestionnaire voit venir.**
-- **Palier B — les calendriers secondaires.** Clic sur une indispo/période → génération
-  **bornée** → plan secondaire en overlay. Occurrences éparses persistées seulement là.
-- **Palier C — le différenciateur.** Collecte des dispos coach **par lien sans login** pour
-  une période (questionnaire email) → alimente la génération du plan secondaire. + alertes
-  automatiques (cron) qui remplissent le radar tout seul.
-
----
-
 ## 9. Tranché vs ouvert
 
-**Tranché :**
-- L'accueil **n'est plus** le planning — c'est le cockpit ; le planning reste **derrière le
-  bandeau**.
-- **Projection, pas matérialisation** : occurrences uniquement en delta d'exception.
-- **1 entité `CalendarEntry`**, à **2 `kind`** (`event` / `period` — l'indispo est une `period`
-  `closure`, pas un 3ᵉ type) plutôt que 4 tables d'emblée.
-- **Calendrier secondaire = overlay de période borné**, pas une alternative plein-saison.
-- Le **radar** est la to-do actionnable (généralise les alertes J-14).
-- **Calendrier = vue par mois entier, jour courant entouré** (plus lisible qu'une fenêtre
-  glissante).
-- **Événement club = informatif par défaut, marquable « perturbant » au choix du gestionnaire.**
-- **Vacances = zone dérivée du code FFBB (département → zone), périodes stockées en base et
-  seedées une fois par an** (pas d'API au runtime, pas de géocodage d'adresse).
-- **Modèle delta / override acté** : pas de matérialisation J+14 ;
-  `schedule_slot_occurrences` (si conservée comme table) ne stocke **que les overrides**. Le
-  PDF daté / les stats se calculent par **projection + deltas** au moment du besoin.
+**Tranché** : le modèle décrit dans ce document (§2 à §6ter, §9ter) est l'architecture livrée —
+aucun point n'est rouvert. Une décision qui n'est pas déjà l'état du code ci-dessus (un abandon,
+un arbitrage tranché contre une option qui paraissait évidente) vit dans
+[`etat-des-lieux.md`](etat-des-lieux.md) §2, jamais recopiée ici.
 
-- **Vacances = proposées comme période à adapter** (le radar dit « adapter les vacances ? »),
-  **jamais auto-appliquées** — le gestionnaire déclenche.
-- **Suppression** : un **plan secondaire (overlay) est supprimable** → le calendrier
-  **re-projette la base** sur la fenêtre. **Seul le planning principal n'est jamais supprimable.**
-- **Cliquer une date** : annotation légère = **modale/popover** ; générer/travailler un plan =
-  **écran dédié** = **le wizard en mode période** (§5bis, §6bis).
-- **Le calendrier affiche les événements/exceptions, pas la semaine type** (jour vide = base
-  normale). La projection ne sert qu'à la demande (overlay, PDF daté) — pas au rendu du mois.
-- **Une période ne s'AJOUTE jamais à la base — tranché par #8 (2026-07-24).** Elle **possède sa
-  grille de créneaux** : copie du modèle de saison prise à la naissance du plan, ancrée
-  `schedulePlanId`, **jamais unie** aux créneaux de saison au build. Ce que `periodType` porte
-  encore, c'est l'**héritage des contraintes permanentes** : `closure` → toutes gardées (on
-  décoche ce qui gêne) ; `holiday` → défaut intelligent (club/coach gardées, équipe selon la
-  sélection, gymnase décochée). `cutoff` et `mutualisation` ne portent pas de plan.
-  *(Cette ligne remplace l'ancienne formulation « additive vs remplaçante », et clôt l'arbitrage
-  que §9ter.e laissait ouvert.)*
-- **`CalendarEntry` à 2 `kind`** (event / period) + réutilisation de `Constraint` (FK nullable
-  `calendarEntryId`) et de `Schedule` (overlay). Quasi aucune nouvelle table.
-- **Plan principal = socle à COÛT PROGRESSIF (§2bis)** : **librement remaniable tant qu'aucun
-  overlay n'existe** (début de saison, contraintes coach encore mouvantes) ; « Modifier » devient
-  **destructeur dès qu'il y a des secondaires à venir** (les supprime — les périodes déjà
-  commencées survivent ; confirmation proportionnée qui les nomme).
-  **Gel de facto, pas une serrure.** Grille en lecture seule ; l'édition = « Modifier » → wizard
-  (= `reopen`). Le quotidien passe par les périodes/overlays.
-- **Le socle DÉBLOQUE le cockpit, en DEUX seuils (§2ter)** : tant que le plan n'a **rien généré**,
-  l'accueil **est** le wizard (le plancher d'abord) ; dès qu'il porte une **version terminée**
-  (`hasFinishedVersion`), l'accueil devient le cockpit et les fonctions temporelles s'ouvrent ;
-  dès qu'il **pointe** une version (`chosenScheduleId`), ce qui se **bâtit dessus** s'ouvre à son
-  tour (matchs, calendriers secondaires). Le premier seuil est **indépendant du pointeur** :
-  rouvrir ne re-verrouille pas le cockpit.
-- **DEUX familles d'écrans réutilisées partout (§6ter)** : **consultation** (grille R/O — principal
-  ET secondaires) et **wizard** (onboarding · libre · période). Navigation à 3 endroits : Accueil ↔
-  Consultation ↔ Wizard. Valider → consultation ; « Accueil » → cockpit ; éditer → wizard.
-  **Le gestionnaire n'a que 2 types d'écran à connaître.**
-
-**Ouvert — plus rien de bloquant.** Les détails restants (libellés exacts, statut d'une séance
-en conflit non résolue, forme du questionnaire coach du palier C) se tranchent à l'implémentation.
+**Ouvert** — aucun point d'architecture ne reste à trancher ici ; les évolutions produit encore
+ouvertes (radar, collecte coach, calendriers secondaires) vivent dans
+[`specs/evolution/roadmap.md`](../evolution/roadmap.md).
 
 ---
 
@@ -955,12 +850,10 @@ CalendarEntry
   createdBy, createdAt, updatedAt
 ```
 
-> **Plus de pointeur d'overlay sur l'entrée.** Le champ `overlayScheduleId` a bien existé
-> (livré au palier A le 2026-07-04) puis a été **supprimé** par ADR-0002 lot D-b (2026-07-18) :
-> il posait la même question que le pointeur du plan, à deux endroits. Désormais le plan
-> secondaire est un `SchedulePlan` ancré à la `CalendarEntry`, et c'est **lui** qui pointe sa
-> version (`chosenScheduleId`). Lecture : `SchedulePlanProvisioner::chosenOfPeriodPlan`, ou
-> `chosenByPeriodPlans` pour résoudre N entrées en une requête. Un plan de période qui ne pointe
+> **L'entrée ne porte pas de pointeur d'overlay.** Le plan secondaire est un `SchedulePlan` ancré
+> à la `CalendarEntry`, et c'est **lui** qui pointe sa version (`chosenScheduleId`) — une seule
+> maison pour « quelle version est active ». Lecture : `SchedulePlanProvisioner::chosenOfPeriodPlan`,
+> ou `chosenByPeriodPlans` pour résoudre N entrées en une requête. Un plan de période qui ne pointe
 > rien = **aucun overlay applicable**, pas un overlay vide.
 
 ### c. La réutilisation maligne (≈ zéro nouvelle table à part `CalendarEntry`)
