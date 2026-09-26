@@ -1,11 +1,12 @@
-# API géo — routes externes consommées (P2-53 RMM-8)
+# API géo — routes externes consommées
 
-Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement » frontend 2/3 —
-édition de POINTEUR seule). La mention `AddressGeocodeField` pointait vers `frontend/AGENTS.md`
-§Primitives, section déplacée (primitives UI partagées, maison unique) : recalée vers
-[`frontend/docs/frontend-components.md`](../../frontend/docs/frontend-components.md) §3. Reste du
-fichier non re-sondé cette passe. Historique des passes précédentes vit dans git :
-`git log -p --follow backend/docs/geo-api.md`.
+Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement » backend 3/4 —
+balayage complet contre le code : `BanGeocodingClient`, `IgnRoutingClient`,
+`VenueTravelTimeAutofillService`, `ClubTravelCache`/`TravelTimeCache`, `ComputeTravelTimesHandler`,
+`ClubSiegeController`, `OpponentTravelResolver`). Corrigé cette passe : le lot IGN n'est pas multiplexé en fenêtres concurrentes
+(`IgnRoutingClient::travelMinutesBatch` ignore son paramètre `$concurrency`, exécution sérielle
+pacée) — §3 le décrivait autrement. Historique des passes
+précédentes vit dans git : `git log -p --follow backend/docs/geo-api.md`.
 
 > Répertoire des endpoints externes **géo** utilisés par le backend — deuxième famille de sorties
 > non-FFBB après `ffbb-api.md` (même patron : liste blanche de hosts codés en dur, SSRF-safe,
@@ -40,14 +41,14 @@ Headers:
 **Proxy backend** : `GET /api/geocode?q=` (`GeocodeController`) — management-gated (SEC-07,
 `ManagementAccessGuard::assertManager`), 422 si la requête est vide/malformée, 502 nommé si le
 service est indisponible (best-effort : jamais un formulaire cassé). Le frontend n'appelle jamais
-directement api-adresse.data.gouv.fr (frontière §2 de `CLAUDE.md`). **Primitive front partagée
-(retours de tests, 2026-09-19)** : `AddressGeocodeField` (`frontend/src/shared/components/ui/
+directement api-adresse.data.gouv.fr (frontière §2 de `CLAUDE.md`). **Primitive front partagée** :
+`AddressGeocodeField` (`frontend/src/shared/components/ui/
 address-geocode-field.tsx`, [`frontend/docs/frontend-components.md`](../../frontend/docs/frontend-components.md) §3) — saisie ≥3 caractères → « Localiser »
 (consomme `GET /api/geocode`) → liste de candidats (`label`, sans le score chiffré : le premier
 porte « Recommandé », un score < 0.4 porte « correspondance approximative ») → clic remonte le
 candidat FÉDÉRAL choisi au caller via `onPick`, jamais d'écriture avant le clic. Deux consommateurs :
-- **`VenueGeocodeField`** (`frontend/src/features/wizard/steps/VenueGeocodeField.tsx`, PR-3 P2-53,
-  wrapper mince depuis l'extraction) — fiche d'un gymnase de l'étape Gymnases, écrit
+- **`VenueGeocodeField`** (`frontend/src/features/wizard/steps/VenueGeocodeField.tsx`, wrapper
+  mince) — fiche d'un gymnase de l'étape Gymnases, écrit
   `address`+`latitude`+`longitude` sur le gymnase (PUT partiel, coordonnées du candidat client).
   Détail écran : `frontend/docs/frontend-wizard.md` §Gymnases.
 - **`ClubSiegeSubsection`** (`frontend/src/features/club/ClubPage.tsx`) — section « Siège du club »
@@ -59,7 +60,7 @@ Les deux gardent le même comportement « jamais d'écrasement silencieux » : u
 s'affiche « Localisé »/« Siège localisé » et ne réécrit rien tant que « Modifier l'adresse » n'est
 pas cliqué explicitement.
 
-### 1bis. Poser le siège du club (`PATCH /api/club/siege`, retours de tests 2026-09-19)
+### 1bis. Poser le siège du club (`PATCH /api/club/siege`)
 
 Le corps ne porte **que du texte d'adresse** (`address`/`postalCode`/`city`, concaténés) —
 `ClubSiegeController` re-géocode via `BanGeocodingClient::geocodeTop` (le MEILLEUR candidat
@@ -74,8 +75,8 @@ introuvable » (aucun candidat), 502 (BAN muette). Réponse `{address, postalCod
 — `geolocated` reflète l'état réel (`latitude`/`longitude` non nuls), jamais recalculé côté front.
 `GET /api/opponents/travel` (module matchs) sert un champ additif `clubGeolocated` dérivé de la même
 vérité, consommé par `useClubGeolocated()` pour le bandeau « Trajets indisponibles » de l'onglet
-« Adversaires » (`/matchs/adversaires`, sorti de Configuration le 2026-09-19) — voir
-`specs/courantes/module-matchs.md` § Écran Adversaires.
+« Adversaires » (`/matchs/adversaires`) — voir `specs/courantes/module-matchs.md` § Écran
+Adversaires.
 
 ## 2. Itinéraire (temps de trajet) — IGN Géoplateforme
 
@@ -94,43 +95,40 @@ Headers:
   serveur-side** (`sprintf('%.6F,%.6F', ...)` — jamais une chaîne utilisateur dans l'URL, jamais un
   séparateur décimal locale-dépendant).
 - `duration` de la réponse (en **secondes**) → arrondie **au-dessus** à la minute
-  (`IgnRoutingClient::readMinutes`) ; `distance` en **mètres** (non consommée par PR-1).
+  (`IgnRoutingClient::readMinutes`) ; `distance` en **mètres** (non consommée).
 - Best-effort par appel : une coordonnée hors plage, une réponse sans `duration` numérique, ou un
   échec de transport rendent `null` — jamais une exception qui casserait le lot.
 
 **Consommateurs backend** : `VenueTravelTimeAutofillService` (matrice ENTRAÎNEMENT gym→gym, en lot)
-**et**, depuis P2-54 PR-3, `OpponentTravelResolver` (trajet MATCHS siège club ↔ gymnase adverse
-apparié — amendement PR I 2026-09-20 : le lieu vient du lien tenant `OpponentVenueLink`, le trajet
-lui-même n'est plus stocké par ligne, seulement dans le cache constant ci-dessous) — même client
-`IgnRoutingClient`, même confinement SSRF. Pas de proxy `GET` individuel exposé. Depuis C4/C6
-(ci-dessous), les deux passent d'abord par le cache club-scoped et le calcul quitte le rail
-synchrone.
+**et** `OpponentTravelResolver` (trajet MATCHS siège club ↔ gymnase adverse apparié — le lieu vient
+du lien tenant `OpponentVenueLink`, le trajet lui-même n'est pas stocké par ligne, seulement dans le
+cache constant ci-dessous) — même client `IgnRoutingClient`, même confinement SSRF. Pas de proxy
+`GET` individuel exposé. Les deux passent d'abord par le cache club-scoped et le calcul ne tourne
+pas sur le rail synchrone (§ Calcul asynchrone).
 
-**PACING (mesuré, C6 2026-09-19)** : l'endpoint rend `x-ratelimit-limit-second: 1` et un **429** au
-bout de ~9 appels rapprochés — `IgnRoutingClient` PACE désormais chaque requête à **1/s** sur
-l'horloge injectée (`ClockInterface`, `IgnRoutingClient::pace`, dernier dispatch mémorisé) : un
-appel trop tôt `sleep` la différence. Un 429 est rejoué (`Retry-After` sinon 1 s) jusqu'à **3**
-tentatives avant de rendre `null`, chaque échec journalisé (`logger->warning`, statut + tentative) —
-l'ancien code lisait `toArray(false)` AVANT le statut et avalait le 429 en `null` muet, sans log. Le
-lot (`travelMinutesBatch`) est désormais SÉRIEL (la fenêtre de 8 requêtes concurrentes a disparu :
-le quota 1/s rend la concurrence contre-productive, elle ne gagnait que des 429), même budget mural
-(`BATCH_BUDGET_SECONDS`) et même distinction `budgetExceededKeys` qu'avant.
+**PACING (mesuré)** : l'endpoint rend `x-ratelimit-limit-second: 1` et un **429** au bout de ~9
+appels rapprochés — `IgnRoutingClient` PACE chaque requête à **1/s** sur l'horloge injectée
+(`ClockInterface`, `IgnRoutingClient::pace`, dernier dispatch mémorisé) : un appel trop tôt `sleep`
+la différence. Un 429 est rejoué (`Retry-After` sinon 1 s) jusqu'à **3** tentatives avant de rendre
+`null`, chaque échec journalisé (`logger->warning`, statut + tentative). Le lot
+(`travelMinutesBatch`) est SÉRIEL — le paramètre `$concurrency` de sa signature est ignoré : le
+quota 1/s rend la concurrence contre-productive (elle ne gagnerait que des 429) — même budget mural
+(`BATCH_BUDGET_SECONDS`) et même distinction `budgetExceededKeys` par paire non atteinte.
 
-⚠ **`Retry-After` HONORÉ, mais plafonné à 5 s** (`MAX_RETRY_AFTER_SECONDS`, revue sécurité C6,
-2026-09-19) : au-delà, la paire est **abandonnée** (`null` + warning « réessai différé, paire
+⚠ **`Retry-After` HONORÉ, mais plafonné à 5 s** (`MAX_RETRY_AFTER_SECONDS`) : au-delà, la paire est
+**abandonnée** (`null` + warning « réessai différé, paire
 abandonnée ») plutôt que de `sleep` la valeur reçue — un `Retry-After: 3600` endormirait le worker
 UNIQUE et dépasserait de toute façon le plafond HTTP 60 s du rail synchrone
 (`carMinutesFromClub`/auto-locate). Le pire cas par paire reste donc borné à quelques dizaines de
 secondes (pacing 1 s + réessais bornés + timeout 5 s, jamais l'heure) — cité par le commentaire du
 TTL du verrou (`ComputeTravelTimesHandler::LOCK_TTL_MARGIN_SECONDS`).
 
-### Cache de trajets club-scoped (`ClubTravelCache`, C4, 2026-09-19)
+### Cache de trajets club-scoped (`ClubTravelCache`)
 
 Un trajet routier est une **CONSTANTE** : deux coordonnées (arrondies à 5 décimales, ~1 m) et un
 profil (voiture/à pied) ne changent jamais de durée. `App\Entity\ClubTravelCache` (table
 `club_travel_cache`, **tenant, RLS FORCE** — les coordonnées croisées trahiraient le siège d'un club
-précis, même raison que l'ex-`OpponentTravel` (supprimée par PR I, § ci-dessous)) tient donc,
-**club-scoped mais SANS saison**, la clé
+précis) tient donc, **club-scoped mais SANS saison**, la clé
 `(club, profil, origin_lat, origin_lon, dest_lat, dest_lon)` → minutes. `minutes` est NON NULL : un
 échec IGN n'entre jamais au cache (il pourrait réussir plus tard).
 
@@ -155,13 +153,12 @@ dans `Version20260920120000::seedStatements()`, rejouées à l'identique par `Cl
 saison ne le touche pas), `RgpdExportService::EXCLUDED_FROM_EXPORT` (donnée d'établissement
 RECOMPUTABLE, sans PII — retirée de l'export de portabilité). Détail : `docs/security/rgpd.md` §2.
 
-⚠ **Dette connue** : un déménagement de siège (`PATCH /api/club/siege`, ci-dessous) invalide
-`opponent_travel` et relance un calcul, mais ne PURGE PAS les anciennes lignes du cache dont
-l'origine était l'ancien siège — elles ne sont plus jamais lues (nouvelle origine = nouvelle clé)
-mais restent en base indéfiniment. Assumé pour l'instant (croissance non bornée, jamais mesurée en
-pratique) — `roadmap.md` P4-249.
+⚠ **Dette connue** : un déménagement de siège (`PATCH /api/club/siege`, ci-dessous) relance un
+calcul, mais ne PURGE PAS les anciennes lignes du cache dont l'origine était l'ancien siège — elles
+ne sont plus jamais lues (nouvelle origine = nouvelle clé) mais restent en base indéfiniment. Assumé
+pour l'instant (croissance non bornée, jamais mesurée en pratique) — `roadmap.md` P4-249.
 
-### Calcul asynchrone (C6, 2026-09-19) — le calcul quitte le rail synchrone
+### Calcul asynchrone — le calcul quitte le rail synchrone
 
 La rafale IGN pacée à 1/s dépasserait le plafond HTTP prod (`max_execution_time`/
 `fastcgi_read_timeout` = 60 s chacun) dès qu'un club a plus d'une poignée d'adversaires ou de
@@ -173,7 +170,7 @@ gymnases à router. Le calcul (adversaires ET matrice de gymnases) part donc au 
   `POST /api/venue-travel-times/autofill`, la passe (c) de `POST /api/opponents/refresh`, et
   `PATCH /api/club/siege` quand le siège bouge réellement.
   ⚠ **Les trois dispatchers contrôleur (hors le siège) ne dispatchent PAS si un calcul est déjà en
-  cours** (revue sécurité C6, 2026-09-19) : `App\Service\TravelComputeLock::isHeld($clubId)` lu
+  cours** : `App\Service\TravelComputeLock::isHeld($clubId)` lu
   AVANT le `dispatch` — un second message contre un verrou déjà tenu finirait en
   `RecoverableMessageHandlingException` répétée (voir ci-dessous) sans jamais aboutir. Réponse
   honnête `{queued: false, alreadyRunning: true}` (champ additif OpenAPI) plutôt qu'une mise en
@@ -193,25 +190,24 @@ gymnases à router. Le calcul (adversaires ET matrice de gymnases) part donc au 
 - **`travelStatus` servi par `GET /api/opponents/travel`** (par entrée) : `done` (minutes
   présentes) · `pending` (`TravelComputeLock::isHeld($clubId)` — un calcul tourne pour ce club) ·
   `unavailable` (tenté sans résultat, ou pas de lieu à router).
-- **`resolve()` ne re-route plus TOUT** — un trajet est une constante : une paire déjà présente au
-  cache est sautée. Cibles (`OpponentTravelResolver::pairsToRoute`, amendement PR I 2026-09-20) =
-  les PAIRES siège→gymnase manquantes : (1) un point par lien `OpponentVenueLink` dont le code
+- **`resolve()` ne re-route pas TOUT** — un trajet est une constante : une paire déjà présente au
+  cache est sautée. Cibles (`OpponentTravelResolver::pairsToRoute`) = les PAIRES siège→gymnase
+  manquantes : (1) un point par lien `OpponentVenueLink` dont le code
   adverse est joué cette saison — le gymnase apparié ; (2) pour un code SANS aucun lien, le point
   VILLE de l'annuaire fédéral (pour que le repli « ville seule » de la projection porte un trajet
   approché) ; dédupliquées par coordonnées arrondies (deux libellés du même gymnase = une paire).
   « Réessayer les manquants » côté écran (`specs/courantes/module-matchs.md` § Écran Adversaires)
   est donc littéralement ce même `POST /resolve`.
 
-### Poser le siège invalide les trajets dérivés (`PATCH /api/club/siege`, C6, amendé PR I)
+### Poser le siège invalide les trajets dérivés (`PATCH /api/club/siege`)
 
 Si l'adresse re-géocodée diverge de plus de ~1 m de l'ancienne (`ClubSiegeController::
 coordinatesChanged`, comparaison à 5 décimales — un re-géocodage de la MÊME adresse ne doit rien
 invalider), le contrôleur dispatche `ComputeTravelTimesMessage(scope: OPPONENTS)` sur la saison
-courante. **Rien n'est plus « invalidé » explicitement depuis PR I** (2026-09-20) : le trajet ne
-vit plus que dans le cache CONSTANT `club_travel_cache` (directionnel) — un nouveau siège est
-simplement une nouvelle clé d'origine, les anciennes lignes ne sont plus jamais lues (l'appariement
-`OpponentVenueLink` lui-même, gymnase apparié compris, ne bouge pas). Rien à purger côté cache
-(dette de croissance connue ci-dessus).
+courante. Rien n'est « invalidé » explicitement : le trajet ne vit que dans le cache CONSTANT
+`club_travel_cache` (directionnel) — un nouveau siège est simplement une nouvelle clé d'origine, les
+anciennes lignes ne sont plus jamais lues (l'appariement `OpponentVenueLink` lui-même, gymnase
+apparié compris, ne bouge pas). Rien à purger côté cache (dette de croissance connue ci-dessus).
 
 ## 3. L'autofill de la matrice de trajet (`POST /api/venue-travel-times/autofill`)
 
@@ -226,16 +222,15 @@ renseigne les paires à la main :
    (16×15/2=120), c'est la limite ; au-delà, saisie manuelle.
 3. Pour chaque paire, chaque mode (voiture/à pied) **déjà `MANUAL`** est SAUTÉ — le cœur de la
    feature : une correction gestionnaire n'est **jamais** écrasée par un re-calcul. Seuls les modes
-   `AUTO` ou jamais renseignés partent en requête IGN, par lots multiplexés
-   (`IgnRoutingClient::travelMinutesBatch`, fenêtres de 8 requêtes concurrentes).
-4. **Budget mural GLOBAL sur tout le lot** (BCK-22, 2026-08-28) : `IgnRoutingClient::BATCH_BUDGET_SECONDS`
-   = **30 s** (`IgnRoutingClient.php`) — sans lui, le cap de 120 paires × 2 profils = jusqu'à 240
-   appels en fenêtres de 8 × 5 s de timeout PAR APPEL pouvait tenir la requête ~150 s. La 1ʳᵉ fenêtre
-   part toujours ; au-delà de la 2ᵉ, une fois le budget consommé, les fenêtres suivantes ne sont plus
-   dispatchées et leurs clés reviennent dans `budgetExceededKeys`. Valeur adossée aux plafonds prod
-   réels : `max_execution_time = 60` (`docker/php/Dockerfile:105`) et `fastcgi_read_timeout 60s`
-   (`docker/nginx/default.conf:46`) — 30 s = la moitié, marge pour la dernière fenêtre bloquante + le
-   flush + la sérialisation.
+   `AUTO` ou jamais renseignés partent en requête IGN, sériellement et pacés à 1/s
+   (`IgnRoutingClient::travelMinutesBatch`, § ci-dessus).
+4. **Budget mural GLOBAL sur tout le lot** : `IgnRoutingClient::BATCH_BUDGET_SECONDS` = **30 s**
+   (`IgnRoutingClient.php`) — sans lui, le cap de 120 paires × 2 profils = jusqu'à 240 appels pacés à
+   1/s pouvait tenir la requête ~240 s. Le premier appel part toujours ; à partir du second, une fois
+   le budget consommé, les appels suivants ne sont plus dispatchés et leurs clés reviennent dans
+   `budgetExceededKeys`. Valeur adossée aux plafonds prod réels : `max_execution_time = 60`
+   (`docker/php/Dockerfile:170`) et `fastcgi_read_timeout 60s` (`docker/nginx/default.conf:46`) —
+   30 s = la moitié, marge pour le dernier appel bloquant + le flush + la sérialisation.
 5. Écriture : minute + `source=AUTO`. Une paire dont un mode nécessaire ne résout pas revient
    `unresolved` avec sa raison — `missing_geo` (géo manquante), `routing_failed` (IGN a répondu sans
    durée exploitable ou le transport a échoué) ou **`budget_exceeded`** (le lot s'est arrêté avant
@@ -243,22 +238,22 @@ renseigne les paires à la main :
    global du lot.
 6. Réponse `{filled, unresolved[], skippedManual}`. `OpponentTravelResolver` (trajet adverse, §
    ci-dessous) consomme le même `travelMinutesBatch` et distingue toujours les deux sens de `null`
-   (une paire jamais atteinte par le budget vs une clé RÉELLEMENT tentée sans durée IGN) — mais
-   **depuis l'amendement PR I (2026-09-20), la distinction n'est plus un garde-fou anti-écrasement** :
-   `ClubTravelCache` écrit en `INSERT … ON CONFLICT DO NOTHING` (jamais un `UPDATE`), et une paire déjà
-   en cache est court-circuitée AVANT même d'être routée (cache-first, § ci-dessus) — la régression
-   historique BCK-22 (« une relance effaçait des trajets adverse déjà bons ») est désormais
-   STRUCTURELLEMENT impossible, plus seulement évitée par cette distinction. Elle reste utile pour un
+   (une paire jamais atteinte par le budget vs une clé RÉELLEMENT tentée sans durée IGN) — mais cette
+   distinction n'est pas un garde-fou anti-écrasement : `ClubTravelCache` écrit en
+   `INSERT … ON CONFLICT DO NOTHING` (jamais un `UPDATE`), et une paire déjà en cache est
+   court-circuitée AVANT même d'être routée (cache-first, § ci-dessus) — une relance ne peut donc
+   structurellement pas effacer un trajet adverse déjà bon. La distinction reste utile pour un
    `unresolved` honnête (« relancez pour continuer » vs « IGN a vraiment échoué »).
 
 **Route** : management-gated (SEC-07) + saison écrivable (`SeasonAccessGuard::assertWritable` —
 archivée → 409) + **rate-limit dédié PAR UTILISATEUR** `venue_travel_time_autofill` (10/h, sliding
 window, `config/packages/rate_limiter.yaml`) consommé **après** la résolution du contexte
-club/saison (un 400 de contexte ne brûle pas un jeton — revue sécurité 2026-08-26). **409** si un
+club/saison (un 400 de contexte ne brûle pas un jeton). **409** si un
 autofill concurrent (ou un POST manuel du même couple) a créé la même ligne entre le pré-read et
-l'écriture (`UniqueConstraintViolationException` nommée, idiome rejouable P4-67).
+l'écriture (`UniqueConstraintViolationException` nommée, même idiome rejouable que les autres
+contraintes uniques concurrentes).
 
-## 4. Le levier d'intensité (`GET`/`PUT /api/venue_travel_rule_settings/travelTime`, PR-4)
+## 4. Le levier d'intensité (`GET`/`PUT /api/venue_travel_rule_settings/travelTime`)
 
 Le réglage qui décide si la règle implicite `travelTime` (§ ci-dessous) est une préférence souple
 ou une contrainte dure — vocabulaire des passerelles (PREFERRED|MANDATORY), store DÉDIÉ
@@ -269,8 +264,8 @@ les 5 règles de bien-être. Décision consignée `etat-des-lieux.md` §2.
 
 - **Identifiant fixe** : `travelKey` **toujours** `travelTime` (le nom de la règle gouvernée) —
   toute autre valeur de chemin rend **404** côté `GET` et `PUT` (le provider et le processor
-  vérifient tous les deux `VenueTravelRuleSettingResource::RULE_KEY`, revue sécurité 2026-08-26
-  F-1 : aucun alias silencieux sur l'unique réglage le jour où une 2ᵉ clé existera).
+  vérifient tous les deux `VenueTravelRuleSettingResource::RULE_KEY` : aucun alias silencieux sur
+  l'unique réglage le jour où une 2ᵉ clé existera).
 - **`GET`** résout : la ligne stockée du club+saison, ou `PREFERRED` (défaut) si rien n'a jamais
   été réglé — `{ruleKey, intensity, isDefault}`. Lecture ouverte (pas de garde management).
 - **`PUT`** upserte l'intensité — **management** (SEC-07, avant le 409 de saison archivée) ; seul
@@ -278,22 +273,22 @@ les 5 règles de bien-être. Décision consignée `etat-des-lieux.md` §2.
   (`VenueTravelRuleSettingInput`, `Assert\Choice` dérivé de `TeamLinkIntensity::values()`).
 - **Recopie N+1** (`SeasonTransitionService`) et **purge** (`SeasonDataPurger`) suivent le même
   patron que la matrice qu'il gouverne.
-- Absence de ligne = défaut `PREFERRED`, reproduisant le comportement d'avant PR-4 : un club qui
-  n'a jamais touché le levier garde un payload byte-identique.
+- Absence de ligne = défaut `PREFERRED` : un club qui n'a jamais touché le levier garde un payload
+  byte-identique.
 
-## Ce que la matrice + le levier alimentent désormais (PR-2 → PR-4)
+## Ce que la matrice + le levier alimentent
 
 - **Le solveur d'ENTRAÎNEMENT la lit** — `POST /generate` seul (jamais `/place-matches`) :
   `ScheduleConstraintBuilder` sérialise la matrice club+saison (TRIÉE) dans le bloc
   `venueTravelTimes` du payload, contrat **`CONTRACT_VERSION`** (`engine/CONTRACT_VERSION`, **2.23**
-  à ce jour — bumpé depuis sans rapport avec ce bloc). Sa présence (≥1 ligne) —
+  à ce jour, bumpé pour d'autres raisons que ce bloc). Sa présence (≥1 ligne) —
   ELLE SEULE — active la règle implicite `travelTime` côté moteur (opt-in au premier geste, jamais
   silencieux : un club sans matrice reçoit un payload byte-identique à avant) ; l'INTENSITÉ émise
   est le réglage stocké **?? PREFERRED** (`resolveTravelRuleIntensity`, § ci-dessus). Détail du
   mécanisme moteur (départage « moindre trajet » + battement PREFERRED/MANDATORY, barème coach
   véhiculé/passerelle à pied, défaut 20 min) : `engine/docs/constraint-vocabulary.md` §Trajet entre
   gymnases. Gardé par `CrossStack/VenueTravelTimePayloadParityTest`.
-- **L'écran (PR-3 la matrice, PR-4 le levier — les deux livrés)** : `TravelMatrixModal` (bouton
+- **L'écran** : `TravelMatrixModal` (bouton
   footerExtra « Trajets entre gymnases » de l'étape Gymnases, offert dès ≥2 gymnases) — première
   ouverture (aucune ligne) = consentement passif à l'autofill, **jamais lancé sans clic** ; matrice
   groupée « Depuis {gymnase} », deux colonnes voiture/à pied, badge AUTO/MANUEL (icône+texte),
@@ -301,11 +296,11 @@ les 5 règles de bien-être. Décision consignée `etat-des-lieux.md` §2.
   serveur, « Recalculer » préserve les MANUEL. La case **« Véhiculé »** sur la fiche coach
   (`CoachesStep`) choisit le barème appliqué à ses enchaînements. **`TravelRuleNotice`** (onglet
   Base de l'étape Contraintes) — visible seulement si la matrice porte ≥1 ligne (même dérivation
-  que `ScheduleConstraintBuilder`) — offre désormais un **vrai sélecteur** Préféré/Obligatoire
+  que `ScheduleConstraintBuilder`) — offre un **vrai sélecteur** Préféré/Obligatoire
   (patron exact de l'intensité des passerelles) : la copie dit le risque d'Obligatoire (« peut
   rendre le planning infaisable »), toujours visible même en Préféré, pour être lu AVANT de
   basculer ; désactivé (lecture seule) sur une saison archivée. Détail écran complet :
   `frontend/docs/frontend-wizard.md` §Gymnases/§Coachs/§Contraintes.
 - Décisions fondateur détaillées (deux barèmes, `Coach.isVehicled`, défaut 20 min pour une paire
-  jamais arbitrée, le trajet jamais dominant, le store dédié du levier) : le lot **P2-53 est
-  ENTIÈREMENT livré (4 PR)** et a quitté la roadmap — trace datée : `etat-des-lieux.md` §3.
+  jamais arbitrée, le trajet jamais dominant, le store dédié du levier) : `etat-des-lieux.md` §2 et
+  §3.
