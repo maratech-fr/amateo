@@ -19,8 +19,9 @@ make test
 Node.js and npm are never required on the host. Frontend development, build,
 lint and tests run through Docker with `make -C frontend dev|build|lint|test`.
 
-The database starts empty; demo data is opt-in (`make -C backend fixtures`). After a `git pull`
-that brings new migrations, run `make bootstrap` — `make start` never migrates on its own.
+The database starts empty; demo data is opt-in (`make -C backend seed-demo` / `seed-bccl`, see
+`backend/docs/commands.md`). After a `git pull` that brings new migrations, run `make bootstrap` —
+`make start` never migrates on its own.
 
 ## Architecture
 
@@ -40,7 +41,7 @@ Amateo is a monorepo with three main stacks:
 | redis | 6379 | Cache + Messenger transport |
 | engine | 8000 | Python solver microservice |
 | mercure | 3000 | SSE hub for real-time updates |
-| frontend | 8081 | SPA (nginx) — also proxies `/api`, `/exports`, `/bundles`, `/.well-known/mercure`, and `/engine` **in dev only** (the prod edge conf drops that location: the frontend never calls the engine) |
+| frontend | 8081 | SPA (nginx) — also proxies `/api`, `/exports`, `/bundles`, `/.well-known/mercure`; **no `/engine` location, in dev or prod** — the frontend never calls the engine directly (boundary, `CLAUDE.md` §2). To talk to the engine locally: `docker compose exec engine …` |
 | messenger-worker | — | consumes the Redis queue (generation, PDF export) — **without it a generation stays `PENDING`** |
 | cron-runner | — | runs `app:jobs:run-due` every minute (reminders, purges, holiday imports) |
 | pdf-worker | — | PDF/PNG rendering (Node) |
@@ -98,9 +99,9 @@ which is a no-op outside a transaction (see `../security/rls.md`).
 
 ## Tests
 
-The blocking CI gate is roughly a dozen and a half `--group phase1` suites — tenant/season
-isolation, RLS, Mercure hardening, management roles, API rate limit, superadmin SA0, engaged-team
-perimeter, period-plan birth, backend↔engine contract. **The canonical list is `docs/testing/blocking-tests.md`** —
+The blocking CI gate is the `--group phase1` suites — tenant/season isolation, RLS, Mercure
+hardening, management roles, API rate limit, superadmin SA0, engaged-team perimeter, period-plan
+birth, backend↔engine contract. **The canonical list is `docs/testing/blocking-tests.md`** —
 don't copy it here, it grows.
 
 ```bash

@@ -1,11 +1,14 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-09-25 (rotation de fraîcheur `documentation-update`, P5-25 « la vitrine repart
-du logo » — engine non touché par cette PR, zéro appel moteur modifié). Re-confronté au code :
-`engine/CONTRACT_VERSION` = `2.23` ✓ (inchangé, fichier `engine/CONTRACT_VERSION`) ;
-`DiagnosticSchema.id` toujours requis, sans défaut, `app/schemas/output_schema.py:61-62` ✓ ; le
-commentaire mort `FACILITY_CAPACITY` toujours à `app/main.py:447-450`, une seule occurrence,
-non-code ✓. Reste non re-parcouru ligne à ligne cette passe — historique :
+Last verified @ 2026-09-26 (rotation de fraîcheur `documentation-update`). Re-confronté au code :
+`engine/CONTRACT_VERSION` = `2.23` ✓ ; `DiagnosticSchema.id` toujours requis, sans défaut,
+`app/schemas/output_schema.py:61-62` ✓ ; le commentaire mort `FACILITY_CAPACITY` toujours à
+`app/main.py:447-450`, une seule occurrence, non-code ✓ ; paliers de budget adaptatif
+(`_adaptive_timeout`, `app/main.py:374-389`) toujours ≤50→60 s · ≤200→180 s · sinon 600 s,
+plafonnés par `solver_timeout_seconds` ✓ ; workers adaptatifs (`_adaptive_workers`,
+`app/main.py:406-412`) toujours 1 si complexité ≤200 sinon 8 ✓ ; un créneau verrouillé HARD ne
+crée toujours aucune variable `x[...]` (`app/solver/model.py:129-130`, `continue` sur
+`hard_slot_keys`) ✓. Reste non re-parcouru ligne à ligne cette passe — historique :
 `git log -p --follow engine/docs/nominal-flow.md`.
 
 > Ce document decrit le chemin complet d'une requete de generation d'emploi du temps, du moment ou le backend construit le payload jusqu'a la notification en temps reel du frontend. Destine aux developpeurs travaillant sur l'integration backend/engine.

@@ -32,7 +32,7 @@ sur la VM — détail : [`deploy.md`](deploy.md) § Secrets chiffrés.
 |---|---|---|
 | `scheduler-php` | `docker/php/Dockerfile` target `prod` | code + `composer install --no-dev`, opcache `validate_timestamps=0`, `max_execution_time=60`, **rclone** (hook off-site), USER www-data |
 | `scheduler-nginx` | `docker/php/Dockerfile` target `nginx-prod` | `backend/public` copié **depuis le stage php prod** (inclut `public/bundles` d'`assets:install`, gitignoré — un COPY du contexte le raterait en CI et casserait `/api/docs`) |
-| `scheduler-frontend` | `docker/frontend/Dockerfile` target `prod` | conf edge **sans `location /engine/`** — le solveur n'a pas d'auth, il ne doit JAMAIS être joignable de l'extérieur. ⚑ **Une seule conf depuis P4-118** (`docker/frontend/nginx.conf`) : `nginx.prod.conf` en était une copie identique, et la cible `prod` du Dockerfile est désormais un alias vide de `runtime` — le nom survit parce que la CI et `docker-compose.prod.yml` le nomment |
+| `scheduler-frontend` | `docker/frontend/Dockerfile` target `prod` | conf edge **sans `location /engine/`** — le solveur n'a pas d'auth, il ne doit JAMAIS être joignable de l'extérieur. ⚑ **Une seule conf** (`docker/frontend/nginx.conf`, P4-118) : la cible `prod` du Dockerfile est un alias vide de `runtime` — le nom survit parce que la CI et `docker-compose.prod.yml` le nomment |
 | `scheduler-postgres` | `docker/postgres/Dockerfile.prod` | scripts init RLS/rôles copiés (la VM n'a pas le repo) ; `02-users.sh` lit `APP_USER_PASSWORD` de l'env — plus de mot de passe en dur au premier init |
 | `scheduler-engine` / `scheduler-pdf-worker` | Dockerfiles existants | déjà self-contained (identiques dev) |
 
@@ -47,7 +47,7 @@ stage prod red le job même si aucun build dev ne l'utilise.
 - Mercure : `cors_origins` = `PUBLIC_BASE_URL` seul ; le navigateur passe par le
   proxy frontend (`/.well-known/mercure`).
 
-## Accès opérateur à la base — jamais un port ouvert (décision 2026-08-21)
+## Accès opérateur à la base — jamais un port ouvert
 
 **Postgres ne publie AUCUN port hôte en prod** (`docker-compose.prod.yml`, service `postgres` :
 pas de `ports:`) — il n'existe que sur le réseau Docker interne. **Ne l'ouvre jamais.** Un
@@ -57,8 +57,9 @@ personnelles de licenciés, mineurs compris.
 **Pas de bastion.** Un bastion se justifie sur un réseau privé à plusieurs machines, pour avoir un
 point d'entrée unique et audité. Sur une machine unique, l'hôte **EST** ce point d'entrée : ajouter
 un bastion, c'est une seconde machine à patcher et à surveiller pour zéro sécurité de plus.
-✅ **L'hébergeur est CHOISI : Scaleway, produit Instances** (décision fondateur 2026-08-21) — une
-VM auto-gérée qui porte toute la stack Docker, **pas** de base managée. Le raisonnement ci-dessus
+✅ **L'hébergeur est CHOISI : Scaleway, produit Instances** (décision fermée,
+`specs/courantes/etat-des-lieux.md` §2) — une VM auto-gérée qui porte toute la stack Docker,
+**pas** de base managée. Le raisonnement ci-dessus
 s'applique donc tel quel. ⚠ Si un jour la base passait sur un **Postgres managé** (Scaleway
 Database ou autre), l'accès passerait par le réseau privé du fournisseur et ses ACL d'IP, et le
 tunnel ci-dessous n'aurait plus lieu d'être — la présente section serait à réécrire, pas à adapter.

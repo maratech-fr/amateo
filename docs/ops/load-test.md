@@ -35,13 +35,15 @@ garde runtime en plus), tire N générations en rafale via `generate-schedule.sh
 
 ```bash
 docker compose -f docker-compose.yml up -d     # retire l'overlay de limites
-make -C backend fixtures                        # purge/re-seed si on veut effacer les clubs jetables
+# Effacer les clubs jetables « Club Charge N » : aucune purge dédiée. ⚠ `make db-empty` vide la base
+# ACTUELLEMENT VISÉE — en mode play c'est la base du fondateur (amateo_local). Ne le lancer que
+# sous le bac à sable : backend/scripts/with-sandbox.sh make -C backend db-empty
 ```
 
 ## Résultats
 
-Maison unique de la synthèse datée des runs (depuis le 2026-08-18 — l'étude d'hébergement qui
-la portait a quitté le repo pour `business/`, dossier local du fondateur). Bruts :
+Maison unique de la synthèse datée des runs (l'étude d'hébergement qui la portait a quitté le
+repo pour `business/`, dossier local du fondateur). Bruts :
 `var/load-test/<horodatage>/` (local).
 
 ### Mesures — run local du 2026-08-13

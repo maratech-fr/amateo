@@ -11,7 +11,7 @@ extension de navigateur, console ouverte sur un poste partagé — pouvait le li
 et le **rejouer ailleurs** : depuis la machine de l'attaquant, pendant toute la
 durée de vie du jeton (`token_ttl`, 1 h par défaut).
 
-Il est désormais posé par le serveur en **cookie httpOnly**, que le JS ne voit
+Il est posé par le serveur en **cookie httpOnly**, que le JS ne voit
 pas (`document.cookie` ne le contient pas).
 
 **Ce que cela ne fait PAS.** Une XSS garde l'autorité ambiante : depuis la page,
@@ -63,7 +63,7 @@ une copie lisible, et le jeton reviendrait en `localStorage`.
 Les deux extrémités mentent, en sens inverse :
 
 - **en production**, le nginx du front écoute en 80 derrière la terminaison TLS et
-  réécrit `X-Forwarded-Proto` avec `$scheme` (`docker/frontend/nginx.conf:53,69,81` — une seule conf depuis P4-118)
+  réécrit `X-Forwarded-Proto` avec `$scheme` (`docker/frontend/nginx.conf:53,69,81` — une seule conf, P4-118)
   → `isSecure()` répond **faux**, et le cookie serait parti **sans `Secure`** ;
 - **en CI**, l'e2e dockerisé tape `http://frontend-dev:5173`
   (`docker-compose.yml:59`), une origine non sûre où un cookie `Secure` ne serait

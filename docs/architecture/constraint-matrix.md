@@ -22,7 +22,7 @@ de l'UI (verrouillé par le test Vitest).
 | TIME `maxEndTime` | dure — mode **« Fini avant »** (fin = début + durée du créneau), toujours HARD (pas de sélecteur) *(ALIGN-04)* | — | — *(le chemin soft `preferredTime` ne lit que min/maxStartTime → une préférence serait un placebo)* |
 | DAY `forbiddenDays` | dure | dure | **soft « éviter ces jours »** *(fix ENG-10 — était un placebo)* |
 | DAY `allowedDays` | dure — mode **« uniquement »** (whitelist : l'engine interdit tous les autres jours), toujours HARD (pas de sélecteur) | — | — |
-| FACILITY `preferredVenueId` | **refusé à l'écriture depuis D1** (2026-09-18, `ConstraintStateProcessor::assertPreferredVenueIsNotMandatory`, 422 — « choisissez « impose » ») ; honoré si donnée LEGACY : dure (salle forcée) | **refusé à l'écriture depuis D1** ; honoré si donnée LEGACY : dure *(fix ENG-12 — était mort)* | soft |
+| FACILITY `preferredVenueId` | **refusé à l'écriture** (D1, `ConstraintStateProcessor::assertPreferredVenueIsNotMandatory`, 422 — « choisissez « impose » ») ; honoré si donnée LEGACY : dure (salle forcée) | **refusé à l'écriture** (D1) ; honoré si donnée LEGACY : dure *(fix ENG-12 — était mort)* | soft |
 | FACILITY `forcedVenueId` | dure — mode **« impose »** (doit se dérouler ici), toujours HARD (pas de sélecteur) | — | — |
 | FACILITY `minAtVenueId` + `minAtVenueCount` | dure — mode **« au moins N »** (plancher de séances dans ce gymnase, ≠ forçage), toujours HARD (pas de sélecteur) *(ALIGN-05)* ; plancher inatteignable → **fail-soft** (diagnostic `venue_minimum_unreachable` ERROR, pas INFEASIBLE) ; **les jours déjà VERROUILLÉS de l'équipe à ce gymnase créditent le plancher** (P4-97 — une demande satisfaite par ses réservations ne réclame plus de place libre, ni au moteur ni au miroir pré-solve) ; le backend refuse `N > séances/semaine` avant génération | — | — |
 | FACILITY `forbiddenVenueId` | dure | dure | **soft « éviter ce gymnase »** *(fix ENG-11 — était escaladé en dur → INFEASIBLE possible sur une préférence)* |
@@ -30,8 +30,8 @@ de l'UI (verrouillé par le test Vitest).
 | COACH_AVAILABILITY `availableDays` | mode « disponible uniquement » — dure (whitelist, **intersection** multi) *(ALIGN — l'UI expose la capacité engine)* | — l'UI force **Obligatoire** | — |
 | COACH_AVAILABILITY `fromTime` / `untilTime` | **fenêtre horaire** sur les jours listés (lot C #195, contrat 2.0→2.1) — dure. Absente = journée entière ; `fromTime` bloque `[from, 24:00)`, `untilTime` bloque `[00:00, until)`. Malformée ou inversée → repli journée entière (conservateur) | — l'UI force **Obligatoire** | — |
 
-- **BONUS retiré du produit** *(offre wizard dès ENG-12, puis retrait complet de l'enum le
-  2026-09-23 : aucune sémantique définie nulle part — zéro ligne en base, zéro poids, zéro branche
+- **BONUS retiré du produit** *(offre wizard dès ENG-12, puis retrait complet de l'enum —
+  aucune sémantique définie nulle part : zéro ligne en base, zéro poids, zéro branche
   moteur)*. `App\Enum\ConstraintRuleType` ne compte plus que HARD/PREFERRED/LOCK ; une écriture
   `ruleType: "BONUS"` rend 422 au lieu d'être acceptée puis transformée en silence.
 - **Cibles** : équipe (TEAM) · groupe (tag → expansion backend en N contraintes TEAM) ·
@@ -45,21 +45,20 @@ de l'UI (verrouillé par le test Vitest).
 `forcedDays` (engine-only : « au moins une séance ces jours-là » — ≠ « uniquement » ; le wizard émet `allowedDays`, cf. ENG-16) · `preferredDays` (lu par l'objectif, jamais émis — la racine d'ENG-10) ·
 `slotTemplates` (verrou HARD), hors matrice constraints.
 
-> **MàJ 2026-07-08** : `allowedDays` et `forcedVenueId` sont **émis par le wizard**
-> (modes « uniquement »/« impose », toujours HARD) pour que l'édition des contraintes fixtures
-> (`SM4 → Jean Vilar`, `Veterans vendredi uniquement`) fasse un aller-retour fidèle sans
-> rétrograder en préférence. Les deux cellules passent `NOT_OFFERED → HONORED_HARD`.
-> **Correctif ENG-16** : « uniquement » émet `allowedDays` (whitelist réelle), **pas** `forcedDays`
-> (qui ne veut dire QUE « au moins une séance ces jours-là » et laissait les autres jours ouverts).
+> `allowedDays` et `forcedVenueId` sont **émis par le wizard** (modes « uniquement »/« impose »,
+> toujours HARD) : l'édition des contraintes fixtures (`SM4 → Jean Vilar`, `Veterans vendredi
+> uniquement`) fait un aller-retour fidèle sans rétrograder en préférence. Les deux cellules sont
+> `HONORED_HARD`. **ENG-16** : « uniquement » émet `allowedDays` (whitelist réelle), **pas**
+> `forcedDays` (qui ne veut dire QUE « au moins une séance ces jours-là » et laisserait les autres
+> jours ouverts).
 >
-> **MàJ 2026-07-08 (angles morts d'alignement)** : trois capacités engine désormais alignées.
-> `maxEndTime` (**ALIGN-04**, mode « Fini avant ») et `minAtVenueId`+`minAtVenueCount` (**ALIGN-05**,
-> mode « au moins N ») deviennent **émis par le wizard** (toujours HARD). **ALIGN-06** ajoute une
-> **règle implicite soft** : espacement des jours d'entraînement (poids `spacing = −2`, malus sur
-> deux séances consécutives d'une même équipe) — activée pour toutes les équipes, ne bloque jamais
-> (soft). `SCORE_FORMULA_VERSION` **bumpé V6→V7** (nouveau poids `spacing`).
+> Trois capacités engine sont alignées avec le wizard. `maxEndTime` (**ALIGN-04**, mode « Fini
+> avant ») et `minAtVenueId`+`minAtVenueCount` (**ALIGN-05**, mode « au moins N ») sont **émis par
+> le wizard** (toujours HARD). **ALIGN-06** ajoute une **règle implicite soft** : espacement des
+> jours d'entraînement (poids `spacing = −2`, malus sur deux séances consécutives d'une même
+> équipe) — activée pour toutes les équipes, ne bloque jamais (soft).
 
-## Le verrou HARD est SOUVERAIN — et depuis P2-9 il le dit (2026-07-28)
+## Le verrou HARD est SOUVERAIN — et il le dit (P2-9)
 
 Un créneau **verrouillé** (onglet « Réserver », verrou manuel → `slotTemplates` `lockLevel=HARD`) est
 **pré-placé HORS du solveur** : `model.py` ne crée jamais la variable `x[équipe, gymnase, jour, heure]`
@@ -98,7 +97,7 @@ statut `completed`. Le produit affirmait avoir respecté une contrainte qu'il av
 
 Verrous de non-régression : `engine/tests/semantic/test_hard_lock_announces_violations.py` (avec un
 TÉMOIN explicite — sans lui, constater que SM1 joue le samedi n'accuserait pas le verrou ; couvre
-désormais le gymnase imposé) et `engine/tests/semantic/test_hard_lock_divisible_slot.py`.
+le gymnase imposé) et `engine/tests/semantic/test_hard_lock_divisible_slot.py`.
 
 **La matrice machine porte une dimension `lock_silence`** (`constraint_matrix.py`, **obligatoire, sans
 défaut** : une cellule qui l'oublie échoue à la construction, donc la suite entière rougit) qui classe
@@ -109,18 +108,17 @@ soft, ne promet rien). Le test généré ne vérifie pas l'étiquette mais le **
 cellule DIAGNOSED il rejoue un scénario verrou-contre-règle et exige un diagnostic qui nomme la règle —
 marquer une famille non-diagnostiquée (ex. `venue_minimums`) DIAGNOSED fait rougir la CI.
 
-⚠ **La souveraineté du verrou vaut aussi contre les INVARIANTS, et il a fallu le leur apprendre**
-(P4-81, 2026-08-11). `test_no_venue_double_booking` affirmait `len(team_ids) <= 1` en dur : il
-ignorait la capacité du créneau **et** le fait qu'un co-épinglage HARD au-delà de la capacité est
-honoré. Il rougissait donc au hasard des tirages hypothesis, sur un required check, bloquant des PR
-étrangères au moteur. L'invariant porte désormais sur **ce que le SOLVEUR décide** — même doctrine
+⚠ **La souveraineté du verrou vaut aussi contre les INVARIANTS** (P4-81). `test_no_venue_double_booking`
+affirmait `len(team_ids) <= 1` en dur : il ignorait la capacité du créneau **et** le fait qu'un
+co-épinglage HARD au-delà de la capacité est honoré. Il rougissait donc au hasard des tirages hypothesis,
+sur un required check, bloquant des PR étrangères au moteur. L'invariant porte sur **ce que le SOLVEUR décide** — même doctrine
 que le jumeau coach — et gagne au passage la garantie inverse : sur un créneau verrouillé, tous les
 occupants doivent être des épingles, faute de quoi `blocked_venue_slots` (`model.py:67`) aurait été
 contourné. Deux cas **déterministes** gardent l'ensemble (`tests/invariants/test_invariants.py`) :
 le contre-exemple réel de la CI, et un montage qui force la main du solveur — ce dernier parce que
 **aucune fixture aléatoire n'atteignait ce filet**, mesuré en désarmant `blocked_venue_slots`.
 
-## Règles structurelles JAMAIS saisies — et ce que l'écran en montre (P4-55, 2026-08-11)
+## Règles structurelles JAMAIS saisies — et ce que l'écran en montre (P4-55)
 
 `add_level_1_hard_constraints` (`engine/app/solver/`constraints/common.py` (`_record_closure`)`) pose une douzaine de
 règles que **personne n'entre nulle part**. Elles ne sont ni dans le wizard, ni dans le
@@ -134,31 +132,29 @@ passer » est refusé.
 | Affiché | Fonction moteur | Nuance qui compte |
 |---|---|---|
 | Un gymnase ne dépasse jamais sa capacité | `add_room_at_most_one:284` | « au plus la CAPACITÉ », pas « une seule équipe » — la capacité se règle par créneau |
-| Un coach n'est jamais dans deux gymnases à la fois | `add_coach_at_most_one:311` | **venue-aware** : le MÊME gymnase est AUTORISÉ (D-14, arbitrage fondateur 2026-08-09) |
+| Un coach n'est jamais dans deux gymnases à la fois | `add_coach_at_most_one:311` | **venue-aware** : le MÊME gymnase est AUTORISÉ (D-14, arbitrage fondateur) |
 | Une personne ne peut pas encadrer et jouer en même temps | `add_coach_player_non_overlap:374` | coach-joueur, les deux rôles |
 | Une équipe n'a jamais deux séances en même temps | `add_team_no_overlap:745` | — |
-| Au plus une séance par jour et par équipe | `add_one_session_per_day_constraints` | **sans exception** depuis le retrait du levier mort (P4-79, voir ci-dessous) |
+| Au plus une séance par jour et par équipe | `add_one_session_per_day_constraints` | **sans exception** — le levier d'exemption est retiré (P4-79, voir ci-dessous) |
 | Chaque coach garde un jour de repos | `add_coach_rest_day_constraints:452` | lundi→vendredi ; le week-end ne compte pas |
 
-⚑ **Un créneau VERROUILLÉ est un FAIT du planning, pas une exception aux règles** (spécification fondateur
-2026-08-15, P4-97 + P4-97 bis) : il est **imposé** (le solveur ne le déplace ni ne le supprime) **et il
+⚑ **Un créneau VERROUILLÉ est un FAIT du planning, pas une exception aux règles** (P4-97 + P4-97 bis) : il est **imposé** (le solveur ne le déplace ni ne le supprime) **et il
 compte dans TOUTES les règles** — il occupe la personne, l'équipe, le gymnase, le jour, la chaîne. Tout
 placement LIBRE doit être compatible avec lui. Deux verrous qui se contredisent ENTRE EUX (choix du
 gestionnaire) ne rendent jamais la génération infaisable : le planning sort, la violation est
-**diagnostiquée**. Historique du défaut : `_extract_hard_locks` retire les créneaux verrouillés des
-variables du modèle, donc toute règle qui n'itère que sur les variables était aveugle — corrigé en deux
-passes (repos coach, distribution salariés, enchaînements, plancher « au moins N à V » ; puis capacité,
-coach mono-gymnase, coach-joueur, une séance/jour). Trouvé sur données réelles : une coach jouait dans un
-gymnase pendant qu'elle en coachait un autre à la même heure, et une équipe avait deux séances le même
-jour — planning COMPLETED, aucun diagnostic.
+**diagnostiquée**. `_extract_hard_locks` retire les créneaux verrouillés des variables du modèle —
+toute règle qui n'itère que sur les variables resterait donc aveugle à leur effet si elle n'était
+pas explicitement relue contre les verrous : capacité, coach mono-gymnase, coach-joueur, une
+séance/jour, repos coach, distribution salariés, enchaînements et plancher « au moins N à V » le
+sont tous.
 
-Nuance bloc (2026-09-02) : pour la **capacité gymnase**, un verrou d'un membre de bloc partagé compte
+Nuance bloc : pour la **capacité gymnase**, un verrou d'un membre de bloc partagé compte
 comme l'occupation UNIQUE du bloc — ses partenaires libres peuvent rejoindre la case (eux seuls),
 sinon la transcription du socle rendait tout comblement infaisable
 (`engine/tests/semantic/test_fill_pinned_block_partner.py`).
 
-**Depuis P2-28 (2026-08-14), les règles se rangent en DEUX FAMILLES** — né de la reproduction du
-planning réel BCCL (P5-13) : le planning du club, 100 % verrouillé, était INFEASIBLE parce que deux
+**Les règles se rangent en DEUX FAMILLES** (P2-28) — la reproduction du planning réel BCCL (P5-13)
+l'a montré : 100 % verrouillé, le planning du club était INFEASIBLE parce que deux
 règles « de bon sens » sont plus strictes que la réalité (un coach-joueur enchaîne 3 créneaux dont
 une séance JOUÉE ; deux coachs-joueurs sont présents les 5 soirs).
 
@@ -174,12 +170,12 @@ une séance JOUÉE ; deux coachs-joueurs sont présents les 5 soirs).
   la règle via un littéral de violation AGRÉGÉ par entité, poids −6, preuve d'empilement dans
   `objective.py` — jamais un terme par occurrence, qui pouvait supprimer des séances). Un cran
   DÉSACTIVÉE est une **extension future**, coupée du lot sur contrarian-review.
-  ⚠ **Corrigé le 2026-08-18 (bien-être PAR PÉRIODE, PR1 backend)** : ce bloc était décrit
-  « réglable par club+saison » sans nuance — depuis `schedule_plan_id` sur `ImplicitRuleSetting`
-  (ADR-0002 inv. 5), la portée réelle est **le plan** : NULL = la saison (base + repli des plans
-  nés avant la fonctionnalité), un plan de période reçoit à sa NAISSANCE une **copie
-  matérialisée** de ses 4 lignes — patron de la copie de grille (#8) — et une modification de la
-  saison POSTÉRIEURE à la naissance ne redescend plus dans sa copie. Détail : ADR-0002.
+  ⚠ **Bien-être PAR PÉRIODE** : la portée n'est PAS « club+saison » — `schedule_plan_id` sur
+  `ImplicitRuleSetting` (ADR-0002 inv. 5) fixe la portée réelle au **plan** : NULL = la saison
+  (base + repli des plans nés avant la fonctionnalité), un plan de période reçoit à sa NAISSANCE
+  une **copie matérialisée** de ses 4 lignes — patron de la copie de grille (#8) — et une
+  modification de la saison POSTÉRIEURE à la naissance ne redescend plus dans sa copie. Détail :
+  ADR-0002.
 - **Violation TOUJOURS diagnostiquée**, quel que soit le cran (exigence fondateur) : type
   `implicit_rule_not_honored` + `ruleKey`, détection post-solve inconditionnelle au **même grain
   que la pose** (coach MAIN — les ASSISTANT ne comptent pas — + séances jouées), textes
@@ -187,9 +183,9 @@ une séance JOUÉE ; deux coachs-joueurs sont présents les 5 soirs).
   honorer » (HARD contourné par un verrou, alerte). Dédoublonné avec `coach_overload`.
   La parité génération ⇄ verdict tient : `/validate-assignments` reçoit le même bloc.
 
-✦ **Le levier `allowMultipleSessionsPerDay` a été RETIRÉ de bout en bout le 2026-08-12 (P4-79)** :
+✦ **Le levier `allowMultipleSessionsPerDay` est RETIRÉ de bout en bout** (P4-79) :
 il valait `false` partout (aucune route, aucun écran ne l'écrivait), la branche d'exemption du
-moteur était morte. Le schéma REFUSE désormais le champ (`extra_forbidden`) — la porte est fermée,
+moteur était morte. Le schéma REFUSE le champ (`extra_forbidden`) — la porte est fermée,
 pas seulement inutilisée. Si le terrain demande un jour le double-entraînement le même jour, il se
 reconstruira proprement (champ d'API, case sur la fiche équipe, encart des règles implicites).
 
@@ -198,13 +194,13 @@ reconstruira proprement (champ d'API, case sur la fiche équipe, encart des règ
 n'existe pas — ADR-0001 pose un solve **single-pass sans relaxation**. Corrigé au même lot.
 
 **Le garde anti-mensonge, dans les deux zones** : `ConstraintsStep.test.tsx` gèle le texte des
-règles côté écran, et `engine/tests/semantic/test_implicit_rules_are_still_applied.py` (muté à
-P2-28 PR 1) vérifie que les fonctions sont **appelées selon le réglage — défaut = toutes en
+règles côté écran, et `engine/tests/semantic/test_implicit_rules_are_still_applied.py` (P2-28)
+vérifie que les fonctions sont **appelées selon le réglage — défaut = toutes en
 HARD** et qu'une règle en PREFERRED reste **diagnostiquée**. L'inventaire cross-stack
-(`ImplicitConstraintConfig` ⇄ `engine/implicit_rules.json`, RULESET 2.4, 12 règles avec leur
+(`ImplicitConstraintConfig` ⇄ `engine/implicit_rules.json`, toutes les règles avec leur
 famille) est comparé par `ImplicitRulesMatchEngineTest` ; le réglage stocké ⇄ le bloc payload par
-`ImplicitRulePayloadParityTest` (step bloquant). L'onglet UI de réglage arrive en P2-28 PR 3 —
-d'ici là, le réglage se fait par l'API.
+`ImplicitRulePayloadParityTest` (step bloquant). Le réglage se fait depuis l'onglet **« Bien-être »**
+de l'étape Contraintes (`ImplicitRulesPanel.tsx`).
 
 ## Verrous
 
@@ -216,14 +212,10 @@ d'ici là, le réglage se fait par l'API.
 | Expansion CLUB→équipes | `backend/tests/Unit/Service/ScheduleConstraintBuilderTest.php` |
 
 Contrat backend↔engine **inchangé** (config = dict opaque, warnings via `diagnostics` existants) —
-pas de bump `CONTRACT_VERSION`. **`SCORE_FORMULA_VERSION` à ce lot (P2-28/ALIGN-06) : V7**
-(`engine/app/solver/objective/weights.py` — module éclaté en `objective/` depuis, le fichier
-`objective.py` n'existe plus ; **la version COURANTE se lit dans
-`engine/docs/engine-inventory.md`, jamais figée ici**, ce paragraphe est un historique de bump daté)
-— V5→V6 : nouveau poids `avoided_venue = −60` (vrai malus sur le créneau du gymnase évité — un
-bonus-complément sur les autres gymnases biaisait l'arbitrage inter-équipes) ; V6→V7 : poids
-`spacing` (ALIGN-06). Sémantiques d'agrégation : indispos coach =
+pas de bump `CONTRACT_VERSION`. Poids et version courante de `SCORE_FORMULA_VERSION`
+(`engine/app/solver/objective/weights.py`) : jamais figés ici, cf.
+`engine/docs/engine-inventory.md`. Sémantiques d'agrégation : indispos coach =
 **union des blacklists ∩ des whitelists** ; plusieurs « éviter tel jour » soft = **union par équipe**
 (deux compléments indépendants s'annulaient) ; double règle de gymnase sur une équipe : les
-PREFERRED se **cumulent en ensemble** (bonus si la séance tombe dans l'un d'eux — PR B 2026-08-06),
-seules les règles DURES (`forced_venues`) restent last-wins avec diagnostic INFO.
+PREFERRED se **cumulent en ensemble** (bonus si la séance tombe dans l'un d'eux), seules les règles
+DURES (`forced_venues`) restent last-wins avec diagnostic INFO.

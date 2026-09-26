@@ -24,7 +24,7 @@
 | **Rang / tier** (`PriorityTier`) | Priorité S/A/B/C/D d'une équipe, poids objectif exponentiel (S=10000…D=1). **Perception interne du club** — ça bouge, et ça reste modifiable même sur une équipe engagée. À ne pas confondre avec le **niveau**. |
 | **Niveau** (`Team.level`) | Le niveau FÉDÉRAL sous lequel l'équipe est inscrite : REGIONAL, DEPARTEMENTAL, ELITE… Se saisit **avant** de générer (il alimente le tag NIVEAU, donc les contraintes, donc la photo de structure). **Figé dès qu'elle est engagée — sans exception**, y compris s'il n'a jamais été renseigné : le laisser bouger après ferait diverger la photo et la base. Rien à voir avec le rang/tier. |
 | **Équipe engagée** | Elle porte **au moins un match**, quel qu'en soit le statut. La correspondance faite par l'import FBI entre une rencontre et une de nos équipes **est** l'engagement : la fédération la connaît. Le statut ne dit rien de lui — l'import crée TOUT en `UNPLACED`, donc filtrer dessus rendrait la garde inerte au moment où elle doit mordre. Ses matchs étant déposés, elle ne peut plus être **supprimée** ni changer de **niveau**. Nom, rang, `isActive`, créneaux et gymnase restent libres — « une équipe qui joue peut être déplacée, pas supprimée ». Exposé par `TeamResource.isEngaged` ; la règle vit dans `TeamEngagementGuard`. |
-**Tags d'âge — ADULTE et SENIOR se CHEVAUCHENT** (volet A du lot tags, 2026-08-15) : `ADULTE` = +18 ans (`ageMin >= 19`, ex-`SENIOR` renommé — le nom mentait, l'écran disait déjà « Adulte »), `SENIOR` = +22 ans (SM/SF, Vétérans — **pas** les U21). Une équipe ≥22 porte les DEUX. Les autres tranches (BABY, EMB, JEUNE) restent exclusives entre elles. Nouveau tag d'axe NIVEAU : `COMPETITION` = équipe dont le niveau n'est ni LOISIR_ADULTE ni LOISIR_JEUNE (**une équipe sans niveau n'est PAS en compétition** — ne jamais contraindre par défaut).
+**Tags d'âge — ADULTE et SENIOR se CHEVAUCHENT** : `ADULTE` = +18 ans (`ageMin >= 19`), `SENIOR` = +22 ans (SM/SF, Vétérans — **pas** les U21). Une équipe ≥22 porte les DEUX. Les autres tranches (BABY, EMB, JEUNE) restent exclusives entre elles. Tag d'axe NIVEAU : `COMPETITION` = équipe dont le niveau n'est ni LOISIR_ADULTE ni LOISIR_JEUNE (**une équipe sans niveau n'est PAS en compétition** — ne jamais contraindre par défaut).
 | **Doléance** (`CoachWish`) | Souhait exprimé par un coach pour une semaine : nombre de séances voulues, jours indisponibles, commentaire libre. **Ce n'est PAS une contrainte** — aucun effet solveur : c'est une saisie que le gestionnaire lit avant de décider. |
 | **Campagne de doléances** (`CoachWishCampaign`) | Collecte bornée ouverte par le gestionnaire : semaines × équipes × date limite. |
 | **Lien coach** (`CoachWishToken`) | Lien personnel `/doleances/{token}`, **sans login**. Le token est un secret aléatoire **stocké en clair** (décision fondateur : le gestionnaire doit pouvoir le recopier pour le renvoyer) ; son privilège est minuscule et borné par construction — il n'écrit que des souhaits, dans le périmètre du token (ce coach, ses équipes ∩ campagne, les semaines de la campagne), et meurt à la date limite. |
@@ -35,12 +35,10 @@
 ## Cycle de vie planning
 
 > Vocabulaire du pattern « Plan » ([ADR-0002](architecture/adr-0002-pattern-plan.md))
-> — **il fait foi pour parler du produit**, et depuis la bascule du 2026-07-16 il décrit
-> aussi le code. Termes **bannis** : *baseline*, *planningName*, statuts *VALIDATED*/
-> *ARCHIVED* — ils n'existent plus nulle part.
->
-> `CalendarEntry.overlayScheduleId` (pointeur inverse d'une période) et `liveContext`
-> (la ★) survivent : le premier jusqu'au lot C, la seconde **par décision** (inv. 17).
+> — **il fait foi pour parler du produit et décrit le code**. Termes **bannis** :
+> *baseline*, *planningName*, `overlayScheduleId`, statuts *VALIDATED*/*ARCHIVED* — ils
+> n'existent plus nulle part. Le champ `liveContextScheduleId` (la ★) survit **par
+> décision** (inv. 17) — voir « ★ / photo chargée » ci-dessous.
 
 | Terme | Définition |
 |-------|------------|

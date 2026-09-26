@@ -102,10 +102,9 @@ atteint l'appli. C'est acceptable pour une démo courte et surveillée, pas pour
 - La stack de démo est la stack **de dev** : `APP_ENV=dev`, secrets par défaut du `.env`, comptes
   de fixtures à mots de passe connus (`mara.mb@bccl.fr` / `maraboubccl`). Ne jamais pointer un
   tunnel vers une base contenant de vraies données personnelles de club.
-- ~~`/engine/` est proxifié par le nginx frontend : le solveur devient joignable publiquement et
-  sans auth pendant le tunnel.~~ **Corrigé le 2026-07-31** : le `location /engine/` a été retiré du
-  nginx de dev (il était déjà absent de la conf prod), donc le solveur n'est plus atteignable par
-  le tunnel. Il ne l'est que par le backend, comme le veut la frontière §2.
+- Le nginx frontend ne porte aucun `location /engine/`, en dev comme en prod : le solveur n'est
+  jamais atteignable par le tunnel, seulement par le backend, comme le veut la frontière §2 de
+  `CLAUDE.md`.
 - Le lien de vérification d'email part dans **Mailpit** (`localhost:8025`, hors tunnel) : un invité
   ne peut pas s'inscrire tout seul. Donne-lui un compte de fixtures, ou récupère le lien dans
   Mailpit et transmets-le à la main.

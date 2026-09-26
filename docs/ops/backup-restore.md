@@ -76,7 +76,7 @@ php bin/console app:db:restore-check     # PREUVE que le dernier dump est restau
 
 - **Hetzner Cloud** : console → serveur → *Backups* → activer (7 slots glissants, ~20 % du prix
   du serveur). Optionnel : snapshot manuel avant chaque grosse opération.
-- ⬜ **Scaleway — l'hébergeur RETENU** (décision fondateur 2026-08-21) : console → *Snapshots*,
+- ⬜ **Scaleway — l'hébergeur RETENU** (décision fermée, `specs/courantes/etat-des-lieux.md` §2) : console → *Snapshots*,
   plus une politique programmée. C'est CETTE ligne qu'il faut cocher ; les autres hébergeurs
   ci-dessus et ci-dessous ne restent que comme repères si la cible changeait un jour.
 - *(pour mémoire)* **OVH VPS** : options → *Automated Backup* (quotidien).
@@ -127,17 +127,16 @@ d'env (pas de fichier de conf rclone à gérer) :
 
 ## 5. Sentry — activation (les 3 zones sont câblées, DSN vide = inactif)
 
-Le code est prêt dans les 3 zones (backend, engine, front — P5-19, 2026-09-22, a fermé le seul
-trou : le DSN front n'avait aucun chemin jusqu'au bundle avant cette date). Il ne reste que du
-geste ops, **mais dans cet ORDRE précis** — l'inverser fait échouer le prochain déploiement, sur
-un garde de build volontaire :
+Le code est prêt dans les 3 zones (backend, engine, front — P5-19 : le DSN front a un chemin
+jusqu'au bundle). Il ne reste que du geste ops, **mais dans cet ORDRE précis** — l'inverser fait
+échouer le prochain déploiement, sur un garde de build volontaire :
 
 1. Créer le compte sur sentry.io (free tier) + **3 projets** : `backend` (PHP), `engine`
    (Python), `frontend` (JS) → un DSN par projet.
 2. **Front d'abord, avant de poser le secret** : ajouter l'hôte d'ingestion du DSN front à la
    directive `connect-src` de `docker/frontend/csp.conf`. Sans lui, le navigateur jetterait
-   chaque envoi en silence (SDK initialisé, rien ne part) — et depuis P4-65, le build refuse
-   carrément de compiler si un DSN est posé sans son hôte (`frontend/tooling/sentryCspGuard.ts`).
+   chaque envoi en silence (SDK initialisé, rien ne part) — et le build refuse
+   carrément de compiler si un DSN est posé sans son hôte (`frontend/tooling/sentryCspGuard.ts`, P4-65).
 3. Poser les DSN, chacun à sa maison — **elles ne sont PAS toutes le même fichier** :
    - backend + engine : `SENTRY_DSN=<dsn-php>` et `ENGINE_SENTRY_DSN=<dsn-python>` dans le
      `.env.prod` de la racine (le même fichier pour les deux — chiffré en dépôt, voir

@@ -4,15 +4,19 @@ Last verified @ 2026-09-26 (rotation de fraîcheur, `documentation-update`). Ce 
 backend+engine (« Scope » ci-dessous). Re-confronté au code : le graphe des jobs §1 (noms et
 `needs`) correspond à `.github/workflows/ci.yml` — `e2e` et `backend-coverage` sur `needs:
 blocking-tests`, `engine-coverage`/`engine-perf`/`engine-perf-pr` sur `needs: engine-tests`,
-`build-docker` sur `needs: [blocking-tests, engine-tests]` seuls ✓ ; `BlockingTestsListMatchesCiTest`
-et `PlaywrightImageMatchesLockTest` existent toujours (`backend/tests/Unit/Documentation/` et
-`Unit/Dependency/`) ✓ ; `phpunit.xml.dist:42` toujours à `SYMFONY_DEPRECATIONS_HELPER
-max[direct]=0` ✓ ; le projet Playwright `superadmin` dépend bien de `setup` (`storageState`,
-`frontend/playwright.config.ts`) ✓. Drift corrigé : §3bis affirmait `messenger-worker` « seul
-service de dev à porter `restart: unless-stopped` » — désormais faux depuis P4-220 (même jour,
-tous les services de dev durables le portent, `docker-compose.yml`) ; reformulé. Reste du fichier
-(§2 backend tests, §3 engine tests, §4bis a11y, §5 known gaps) non re-sondé cette passe — voir
-`git log -p --follow docs/testing/testing-strategy.md` pour l'historique des passes.
+`build-docker` sur `needs: [blocking-tests, engine-tests]` seuls ✓ ; `BlockingTestsListMatchesCiTest`,
+`DocStampFreshnessTest` et `PlaywrightImageMatchesLockTest` existent toujours
+(`backend/tests/Unit/Documentation/`, `Unit/Dependency/`) ✓ ; `phpunit.xml.dist:42` toujours à
+`SYMFONY_DEPRECATIONS_HELPER max[direct]=0` ✓ ; le projet Playwright `superadmin` dépend bien de
+`setup` (`storageState`, `frontend/playwright.config.ts`) ✓ ; `docker-compose.yml` pose
+`restart: unless-stopped` sur tous les services de dev durables ✓. **Required checks de `main`
+re-confirmés** (`gh api repos/maratech-fr/amateo/branches/main/protection --jq
+.required_status_checks.contexts`) : `Engine semantics` et `Functional Tests (Behat)` en font
+déjà partie — corrigé aux deux endroits qui affirmaient encore qu'il restait à les ajouter côté
+GitHub. §5 « Known testing gaps » purgé des entrées déjà closes (portée RLS SEC-12,
+`TenantCacheIsolationTest`, parcours e2e P4-122) : un gap résolu n'est plus un gap, sa trace vit
+dans `specs/courantes/etat-des-lieux.md` §2/§3. Reste du fichier (§2 backend tests, §3 engine
+tests, §4bis a11y) non re-sondé cette passe.
 
 Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique), [`test-coverage-map.md`](test-coverage-map.md) (qui teste quoi, angles morts) and [`../project-map.md`](../project-map.md).
 
@@ -34,7 +38,7 @@ rector              (dry-run, style gate P4-24)            — parallel, no need
 secrets-scan        (gitleaks)                             — parallel, no needs, BLOCKS the merge
 semgrep             (security gate)                        — parallel, no needs, BLOCKS the merge
 engine-semantics    (groupe `contract`, cross-stack)       — parallel, no needs, BLOCKS the merge
-functional-tests    (Behat, Gherkin FR, API-only, one feature per promise) — parallel, no needs, BLOCKS the merge (required check à ajouter côté GitHub)
+functional-tests    (Behat, Gherkin FR, API-only, one feature per promise) — parallel, no needs, BLOCKS the merge (required check of `main`)
 engine-perf         (dense + BCCL solve + place-matches build < 60 s) — needs engine-tests ; main only
 engine-perf-pr      (dense solve, PR budget = 60 s)         — needs engine-tests ; PR only, skipped when engine/ untouched
 engine-coverage     (couverture engine + cliquet)           — needs engine-tests ; does NOT gate build-docker
@@ -42,7 +46,7 @@ frontend-coverage   (couverture frontend + cliquet)         — needs frontend ;
 backend-coverage    (couverture backend + cliquet)          — needs blocking-tests ; does NOT gate build-docker
 ```
 
-**`engine-coverage`** (P4-166 PR 1/3, 2026-09-03) mesure `pytest --cov=app` en CI et la garde par un
+**`engine-coverage`** (P4-166) mesure `pytest --cov=app` en CI et la garde par un
 cliquet : `needs: engine-tests`, `timeout-minutes: 15`, `--cov-fail-under` lu de `coverage-floor.json`
 (racine, clé `engine`) — jamais un seuil en dur. **Absent des `needs` de `build-docker`** : une
 régression de couverture rougit ce job seul, jamais l'image de prod (décision fermée,
@@ -50,7 +54,7 @@ régression de couverture rougit ce job seul, jamais l'image de prod (décision 
 `upload-artifact` avec `if: always()`. Le plancher versionné et sa règle de cliquet sont détaillés
 dans [`test-coverage-map.md`](test-coverage-map.md) (§ `coverage-floor.json`).
 
-**`frontend-coverage`** (P4-166 PR 2/3, 2026-09-03) mesure `npm run test:coverage` (Vitest
+**`frontend-coverage`** (P4-166) mesure `npm run test:coverage` (Vitest
 `--coverage`) en CI et la garde par le même patron de cliquet : `needs: frontend`,
 `timeout-minutes: 15`, `thresholds.lines` lu de `coverage-floor.json` (racine, clé `frontend`) —
 jamais un seuil en dur. **Absent des `needs` de `build-docker`** (décision fermée,
@@ -59,7 +63,7 @@ jamais un seuil en dur. **Absent des `needs` de `build-docker`** (décision ferm
 d'implémentation (exclusions déclarées, piège `__dirname` sous `--coverage`) :
 [`test-coverage-map.md`](test-coverage-map.md) (§ `coverage-floor.json`).
 
-**`backend-coverage`** (P4-166 PR 3/3, 2026-09-04 — **lot P4-166 SOLDÉ**) mesure `phpunit tests/
+**`backend-coverage`** (P4-166) mesure `phpunit tests/
 --exclude-group contract` en CI, instrumenté par le driver `pcov` (`-d pcov.enabled=1`), et la
 garde par le même patron de cliquet : `needs: blocking-tests`, `timeout-minutes: 45`. PHPUnit 11
 n'a pas de seuil natif (pas de `--fail-under`) : le gate est `backend/scripts/coverage-gate.php`
@@ -74,7 +78,7 @@ fermée, `specs/courantes/etat-des-lieux.md` §2). Artefact `coverage-backend` (
 `upload-artifact` avec `if: always()`). Le plancher versionné et sa règle de cliquet sont détaillés dans
 [`test-coverage-map.md`](test-coverage-map.md) (§ `coverage-floor.json`).
 
-**`engine-perf-pr`** (P4-167, 2026-09-03) donne un signal de perf plus tôt et moins cher sur les PR sans
+**`engine-perf-pr`** (P4-167) donne un signal de perf plus tôt et moins cher sur les PR sans
 dupliquer `engine-perf` : `if: github.event_name == 'pull_request'`, `needs: engine-tests`,
 `timeout-minutes: 15`. Un step dédié détermine si `engine/` a bougé (`git diff --name-only
 origin/${BASE_REF}...HEAD | grep -qE '^(engine/|docker/engine/)'`, `BASE_REF` passé par l'**ENV**,
@@ -89,17 +93,17 @@ dans le nom du FICHIER). Le sélecteur correct est `-k dense_club`, qui isole
 `test_dense_club_completes_under_budget`. `engine-perf` (main) garde les deux paliers, dense et BCCL, au
 même budget 60 s.
 
-**SEPT jobs isolés sans `needs`** — `frontend`, `dependency-audit`, `rector`, `secrets-scan`, `semgrep`, `engine-semantics`, `functional-tests` (Behat, P4-165 SOLDÉ, 2026-09-04 — `smoke-tests` supprimé, compte re-vérifié contre `ci.yml`) : un signal qui peut
+**SEPT jobs isolés sans `needs`** — `frontend`, `dependency-audit`, `rector`, `secrets-scan`, `semgrep`, `engine-semantics`, `functional-tests` (Behat — remplace les anciens smokes bash, tous supprimés) : un signal qui peut
 rougir sur un commit qui n'a rien changé (une règle Rector élargie par un bump, une advisory publiée
 ce matin) ne doit pas prendre en otage `blocking-tests` — donc l'isolation tenant/RLS — ni
-`build-docker`, donc la livraison d'un correctif de sécurité. **Rougir ≠ ne rien bloquer** : `rector`
-et `dependency-audit` sont des **required status checks** de `main`, ils bloquent le merge sans gater
-aucun job. Même raison pour laquelle `SymfonyStackAlignmentTest` tourne dans `unit-tests` et non dans
-le gate bloquant.
+`build-docker`, donc la livraison d'un correctif de sécurité. **Rougir ≠ ne rien bloquer** : les sept
+sont des **required status checks** de `main` — `rector` et `dependency-audit` compris — ils
+bloquent le merge sans gater aucun job. Même raison pour laquelle `SymfonyStackAlignmentTest` tourne
+dans `unit-tests` et non dans le gate bloquant.
 
-**Régime de permissions des workflows (P4-92, 2026-09-22)** : chaque workflow de `.github/workflows/` déclare désormais un bloc `permissions:` racine explicite (`contents: read` sur `ci.yml`, surchargé `packages: read` sur `secrets-scan`/`build-docker` qui pullent une image miroir ghcr ; `contents: read` + `packages: read` à la racine de `security-weekly.yml`), cliquet gardé par `WorkflowPermissionsDeclaredTest` (testsuite `Unit`, **ne gate pas**) qui rougit sur un bloc racine manquant ou un scope `write` hors de la liste fermée `deploy.yml`/`mirror-images.yml` — ce n'est PAS un correctif de faille, `default_workflow_permissions` valant déjà `read` côté dépôt.
+**Régime de permissions des workflows (P4-92)** : chaque workflow de `.github/workflows/` déclare un bloc `permissions:` racine explicite (`contents: read` sur `ci.yml`, surchargé `packages: read` sur `secrets-scan`/`build-docker` qui pullent une image miroir ghcr ; `contents: read` + `packages: read` à la racine de `security-weekly.yml`), cliquet gardé par `WorkflowPermissionsDeclaredTest` (testsuite `Unit`, **ne gate pas**) qui rougit sur un bloc racine manquant ou un scope `write` hors de la liste fermée `deploy.yml`/`mirror-images.yml` — ce n'est PAS un correctif de faille, `default_workflow_permissions` valant déjà `read` côté dépôt.
 
-**Régime de dépréciations (2026-09-22)** : `phpunit.xml.dist` passe `SYMFONY_DEPRECATIONS_HELPER` de `weak` à `max[direct]=0`, ce qui **redéfinit ce qui peut rougir `unit-tests`** (et tout job PHPUnit) — une dépréciation `direct` (une API Symfony dépréciée appelée par notre code, dont l'avertissement part du vendor et non de nos fichiers) fait désormais échouer la suite, attrapant la dérive vers Symfony 8.4 que le seuil `self` (dépréciations émises depuis nos seuls fichiers) laisserait passer.
+**Régime de dépréciations** : `phpunit.xml.dist` fixe `SYMFONY_DEPRECATIONS_HELPER` à `max[direct]=0`, ce qui **définit ce qui peut rougir `unit-tests`** (et tout job PHPUnit) — une dépréciation `direct` (une API Symfony dépréciée appelée par notre code, dont l'avertissement part du vendor et non de nos fichiers) fait échouer la suite, attrapant la dérive vers Symfony 8.4 que le seuil `self` (dépréciations émises depuis nos seuls fichiers) laisserait passer.
 
 **Piège générique `run: … | tee …` dans un `step` GitHub Actions (P4-256, e2e)** : le shell par défaut d'un `run:` sur un runner Linux est `bash -e {0}`, **sans** `pipefail` (il ne s'arme qu'avec un `shell: bash` explicite au niveau du step ou du job, absent de ce workflow) — un `| tee` sans `set -o pipefail` explicite dans le corps du `run` renvoie le code de sortie de `tee` (toujours 0) et masque un échec de la commande en tête de pipe. Tout nouveau `run: … | …` dans `ci.yml` doit poser `set -o pipefail` en première ligne s'il doit pouvoir faire rougir le step.
 
@@ -109,16 +113,16 @@ All PHP test jobs first **create + migrate the test DB** (`doctrine:database:cre
 |-----|--------------|
 | `lint` | `docker compose config` + `make -n help` |
 | `phpstan` (job name: **PHPStan & CS-Fixer**) | `composer phpstan` (level 8) **+ `composer cs-fix -- --dry-run --diff`** — needs postgres + redis. CS-Fixer vit ici, et non dans `lint`, parce que ce job a déjà le conteneur PHP que `lint` n'a pas (jusqu'au 2026-07-17 CS-Fixer ne tournait **nulle part** en CI, et `main` a été mergée rouge dessus deux fois) |
-| `rector` (**Rector (style gate)**) | `composer rector -- --dry-run` (P4-24). Job **dédié, sans `needs`**, dépendance d'aucun autre — mais le contexte « Rector (style gate) » fait partie des **required status checks de `main`** (depuis le 2026-07-27), donc **il bloque le merge**. Corriger en local : `docker compose exec php-fpm sh -c 'cd /app/backend && composer rector'` (`make -C backend rector` est un dry-run : il montre, il ne fixe pas) |
+| `rector` (**Rector (style gate)**) | `composer rector -- --dry-run` (P4-24). Job **dédié, sans `needs`**, dépendance d'aucun autre — mais le contexte « Rector (style gate) » fait partie des **required status checks de `main`**, donc **il bloque le merge**. Corriger en local : `docker compose exec php-fpm sh -c 'cd /app/backend && composer rector'` (`make -C backend rector` est un dry-run : il montre, il ne fixe pas) |
 | `blocking-tests` | les tests sécurité/queue/contrat lancés en **steps nommés**, chacun avec `--group phase1` — **gate du reste de la suite PHP** et de `build-docker`. ⚠ **La liste vit dans [`blocking-tests.md`](blocking-tests.md), et NULLE PART AILLEURS** : elle était recopiée ici et les deux copies ont dérivé l'une de l'autre (audit DOC-16 puis DOC-26, 3 éditions). Deux endroits pour une même vérité finissent par diverger — la copie est supprimée, pas resynchronisée. ⚠ **`--group phase1` ≠ le gate** : bien plus de fichiers `backend/tests/` portent l'annotation que le job n'a de steps nommés ; un fichier `phase1` non listé tourne dans `unit-tests`, donc après le gate et sans bloquer `build-docker`. La vérité exécutable est `.github/workflows/ci.yml` |
 | `unit-tests` | full PHPUnit `tests/` (does NOT gate build-docker) |
-| `backend-coverage` | `phpunit tests/ --exclude-group contract --coverage-clover` (pcov, `-d pcov.enabled=1`) + `scripts/coverage-gate.php` (plancher `backend` de `coverage-floor.json`, PHPUnit 11 n'a pas de `--fail-under` natif), needs `blocking-tests`, does **NOT** gate `build-docker` (P4-166 PR 3/3) |
+| `backend-coverage` | `phpunit tests/ --exclude-group contract --coverage-clover` (pcov, `-d pcov.enabled=1`) + `scripts/coverage-gate.php` (plancher `backend` de `coverage-floor.json`, PHPUnit 11 n'a pas de `--fail-under` natif), needs `blocking-tests`, does **NOT** gate `build-docker` (P4-166) |
 | `e2e` | Playwright (full stack + Vite), needs blocking-tests. ⚠ **Deux cibles, pas une** : la suite tourne contre le **dev server** (:5173), puis un step dédié rejoue `security-headers.spec.ts` contre l'**image nginx** (:8081) avec `E2E_A17_REQUIRED=1`. Sans ce second passage, les tests A17 (CSP, HSTS, X-Frame-Options, nosniff) se **skippaient à chaque run** — les en-têtes n'existent que sur le build nginx — et le contrôle n'a jamais tourné en CI (audit D-04). La variable interdit au skip de revenir en silence : viser un dev server là devient un échec. **Fiabilité infra (2026-09-15)** : `COMPOSE_BAKE=false` (env du job) écarte le builder bake qui se figeait « waiting for BuildKit » ; un step **Pre-pull third-party images** (`docker compose pull --ignore-buildable`, enveloppé de `.github/scripts/retry.sh`) tire nginx/mercure/redis/postgres à part, l'image `engine` est bâtie dans son propre step relançable, et les steps d'infra (pull, build, `up --wait`) passent par `retry.sh` — un aléa de Docker Hub/BuildKit ne rougit plus une PR saine. Un step `if: failure()` écrit dans le résumé de job si l'échec est **AVANT Playwright (infra)** ou **Playwright**. **Un job vert peut cacher un flaky** (Playwright sort 0 dès qu'un retry passe, P4-256, toujours ouvert) : un step `always()` (`.github/scripts/flaky-summary.sh`) annonce dans le résumé de job les tests perdus-puis-rejoués, sans jamais faire rougir le job ni le gater. L'artefact `playwright-results` (traces `on-first-retry`) est lui aussi uploadé en `always()` — la trace de l'essai perdu survit donc même sur un run vert, récupérable 7 jours |
-| `functional-tests` | **Behat, Gherkin français, API seule** (`backend/features/`, contexts `backend/tests/Behat/`) — scénarios métier relus par le fondateur, joués contre la stack RÉELLE (nginx→php-fpm, vrai `messenger-worker`, vrai engine, **`pdf-worker`** depuis le 2026-09-05 — `l-export-du-planning.feature` attend un PDF Puppeteer réel, sans lui le worker d'export répond `failed`), sans navigateur ni noyau in-process. **Aucun `needs`** — ils répondent « la fonctionnalité marche-t-elle ? », indépendamment des suites unitaires, et n'installent ni npm ni Chromium : le verdict tombe plus tôt. Chaque feature est autosuffisante (JWT auto, données créées/nettoyées, pointeur socle rouvert PUIS restauré) : jouable seule et dans n'importe quel ordre. **Remplace intégralement les 5 smokes bash** (`smoke-solver.sh`, `onboarding-smoke.sh`, `smoke-place-matches.sh`, `smoke-overlay.sh`, `smoke-coach-wishes.sh`, tous SUPPRIMÉS — P4-165, 2026-09-04) — parité prouvée assertion par assertion, même verdicts. Table feature ↔ ce qu'elle prouve : [`test-coverage-map.md`](test-coverage-map.md) §5 |
+| `functional-tests` | **Behat, Gherkin français, API seule** (`backend/features/`, contexts `backend/tests/Behat/`) — scénarios métier relus par le fondateur, joués contre la stack RÉELLE (nginx→php-fpm, vrai `messenger-worker`, vrai engine, **`pdf-worker`** compris — `l-export-du-planning.feature` attend un PDF Puppeteer réel, sans lui le worker d'export répond `failed`), sans navigateur ni noyau in-process. **Aucun `needs`** — ils répondent « la fonctionnalité marche-t-elle ? », indépendamment des suites unitaires, et n'installent ni npm ni Chromium : le verdict tombe plus tôt. Chaque feature est autosuffisante (JWT auto, données créées/nettoyées, pointeur socle rouvert PUIS restauré) : jouable seule et dans n'importe quel ordre. **Remplace intégralement les 5 smokes bash** (`smoke-solver.sh`, `onboarding-smoke.sh`, `smoke-place-matches.sh`, `smoke-overlay.sh`, `smoke-coach-wishes.sh`, tous SUPPRIMÉS de `backend/scripts/`) — parité prouvée assertion par assertion, même verdicts. Table feature ↔ ce qu'elle prouve : [`test-coverage-map.md`](test-coverage-map.md) §5 |
 | `engine-tests` | `pytest` + `ruff check .` + `mypy` + `bandit -r app/` (ENG-46, lot correctif de l'audit 0918 — bandit était déjà en local via `make test`, il ne gatait pas la CI) (in the engine container) |
-| `engine-coverage` | `pytest --cov=app --cov-fail-under=$FLOOR` (`$FLOOR` read from `coverage-floor.json`, key `engine`), needs `engine-tests`, does **NOT** gate `build-docker` (P4-166 PR 1/3) |
+| `engine-coverage` | `pytest --cov=app --cov-fail-under=$FLOOR` (`$FLOOR` read from `coverage-floor.json`, key `engine`), needs `engine-tests`, does **NOT** gate `build-docker` (P4-166) |
 | `frontend` | `npm run lint` (dont `eslint-plugin-jsx-a11y`, §4bis) + `tsc -b` + `vite build` + `vitest` (parallel, no needs) |
-| `frontend-coverage` | `npm run test:coverage` (`vitest run --coverage`, `thresholds.lines` lu de `coverage-floor.json`, clé `frontend`), needs `frontend`, does **NOT** gate `build-docker` (P4-166 PR 2/3) |
+| `frontend-coverage` | `npm run test:coverage` (`vitest run --coverage`, `thresholds.lines` lu de `coverage-floor.json`, clé `frontend`), needs `frontend`, does **NOT** gate `build-docker` (P4-166) |
 | `dependency-audit` | `composer audit` / `npm audit --audit-level=high` / `pip-audit` (A18, blocking, parallel, no needs). Les trois passent par `.github/scripts/audit-retry.sh` (P4-171) : 3 tentatives (10 s, 30 s) **seulement** quand la sortie porte une signature réseau (timeout, 5xx, DNS, `curl error`) — un `exit 1` d'audit sans cette signature est rendu tel quel, le gate ne s'aveugle pas |
 | `build-docker` | `docker compose build` (needs **blocking + engine** tests only) |
 
@@ -136,7 +140,7 @@ exactement une testsuite, gardé par `Unit/TestsuitesCoverEveryTestDirectoryTest
 
 ⚠️ **Le piège reste réel malgré ce rangement** : le job CI `unit-tests` lance **`phpunit tests/`, le
 dossier entier**, alors que `make -C backend test` ne joue que la testsuite `Unit` (rapide, sans DB)
-et `make -C backend phpunit` que `--group phase1`. Les deux couvrent désormais TOUS les dossiers par
+et `make -C backend phpunit` que `--group phase1`. Les deux couvrent TOUS les dossiers par
 testsuite (rien n'y échappe en silence), mais `Integration`/`Contract` restent hors de `make test` par
 construction. **Avant de pousser : `make -C backend tests-complete`**, miroir exact de la CI.
 
@@ -148,7 +152,7 @@ Groups (PHP attributes): `#[Group('phase1')]`, `#[Group('integration')]`, `#[Gro
 | Test | Asserts |
 |------|---------|
 | `Security/TenantIsolationTest` | 403 on another club's data · 200 on own club · 403 when membership inactive · 200 with no `X-Club-Id` |
-| `Security/TenantCacheIsolationTest` | Implemented (B3, resolved 2026-07-01) — 2 real tests: cache invalidation isolates clubs; entity without `club_id` purges nothing. |
+| `Security/TenantCacheIsolationTest` | 2 real tests: cache invalidation isolates clubs; entity without `club_id` purges nothing. |
 | `Queue/ConcurrentGenerationTest` | 2nd `ClubGenerationLock` acquire for same club fails · different clubs acquire concurrently · wrong token cannot release |
 | `CrossStack/ContractSchemaTest` (`phase1`+`contract`) | engine payload shape valid (version, clubId, seasonId, teams, venues, coaches, constraints, trainingSlots, sportCategoryId, scopeTargetId…) · POSTs to the real engine when reachable, else skips |
 | `Security/SuperAdminAccessTest` | club JWT rejected · password without TOTP rejected · MFA session isolated from tenants · disabled/expired admin rejected · logout protected by CSRF · IP rate limit · runtime DB role has no admin-table privilege |
@@ -277,9 +281,9 @@ arrêté depuis 9 h. Et la boîte Mailpit est désormais **vidée avant chaque i
 (`submitRegister`) — accumulée sur des dizaines de runs locaux, la recherche `to:{email}` finissait
 par ne plus rendre le bon message.
 
-⚑ **Depuis le 2026-09-18, ce risque est atténué côté compose** : `docker-compose.yml` pose
-`restart: unless-stopped` sur `messenger-worker`, et depuis P4-220 (même jour) sur tous les autres
-services de dev durables aussi (§4 `project-map.md`) — une sortie sur le time-limit horaire, ou sur
+⚑ **Ce risque est atténué côté compose** : `docker-compose.yml` pose
+`restart: unless-stopped` sur `messenger-worker` et sur tous les autres
+services de dev durables (§4 `project-map.md`) — une sortie sur le time-limit horaire, ou sur
 un `cache:clear` qui invalide le cache que le worker avait chargé, ne le laisse plus mort en
 silence : il repart seul en quelques secondes, sur le code ET le cache courants. Le self-heal
 `compose up -d --wait` ci-dessus reste utile pour le cas qu'il couvre seul : un worker jamais
@@ -325,9 +329,9 @@ d'accord** : la cible `make -C frontend e2e` et un step du job CI. ⚠ Sans le s
 `admin_auth` (5 essais / 15 min PAR IP) fait rougir le spec en désignant l'écran TOTP : ça
 ressemble à une régression, c'est le quota.
 
-**Session superadmin UNIQUE par run (2026-09-15)** : ce même quota `admin_auth` (5 / 15 min) était
+**Session superadmin UNIQUE par run** : ce même quota `admin_auth` (5 / 15 min) était
 franchi dès que plusieurs specs superadmin se reloguaient, multiplié par `retries: 2` en CI — le
-429 se déguisait en « la console ne s'ouvre pas après le TOTP ». Le login vit désormais dans un
+429 se déguisait en « la console ne s'ouvre pas après le TOTP ». Le login vit dans un
 **projet Playwright `setup`** (`superadmin.setup.ts`, patron officiel `dependencies` + `storageState`)
 qui ouvre UNE session par run et la fige ; le projet `superadmin` la réutilise (`storageState`,
 `retries: 0` — un retry ne rejouerait aucun login). Sans préflight, le setup écrit un état VIDE et
@@ -349,7 +353,4 @@ Shared modal a11y is one hook — `useModalA11y` (`src/shared/lib/useModalA11y.t
 Matcher wiring: runtime `expect.extend` in `src/test/setup.ts`; the vitest-v3 type augmentation is `src/test/vitest-axe.d.ts` (vitest-axe ships only a stale global `Vi.Assertion`).
 
 ## 5. Known testing gaps
-- *Résolu en partie (P4-122, 2026-08-23)* — **le parcours « réalité d'un club » est ACTIF** : `frontend/tests/e2e/club-life.spec.ts` mène l'incident Matéo du seed (P5-13) de sa carte radar jusqu'à son overlay généré, et atteste que les QUATRE plannings coexistent (socle validé, deux reprises, overlay) chacun borné à SA lignée — c'est le témoin qui aurait rougi sur le repli silencieux saison du 2026-08-19. **Idempotent** (la base e2e n'est jamais réinitialisée) : il prend l'atelier au premier passage, l'écran du planning ensuite — les deux branches sont prouvées. Reste ouvert dans P4-122 : cadrer si le journey suffit comme témoin socle (1) et si l'approbation manuelle mérite son chemin (2). Détail : `specs/evolution/roadmap.md` P4-122.
 - **A11Y-06 — le contraste de couleur (WCAG 1.4.3) n'est vérifié par AUCUN test** : jsdom n'a pas de moteur de layout, donc axe **saute la règle** (cf. §4bis). La passe Playwright/axe en vrai navigateur reste à faire — jusque-là, un contraste insuffisant passe la CI.
-- *Résolu (SEC-12, 2026-07-31)* — **la portée des policies RLS est désormais gardée** : `RlsIsolationTest::testEveryPolicyOnClubIdTablesIsTenantScoped` compare chaque policy permissive des tables `club_id` au canon, avec allowlist bidirectionnelle justifiée. Détail et limites : `docs/security/rls.md` §Exceptions. (Dette *résiduelle* — scoper le SELECT ouvert de `club_user`/`coach_wish_token` — encore ouverte, roadmap SEC-12.)
-- *Résolus* : `TenantCacheIsolationTest` est implémenté (B3) et les 9 dépréciations de doc-comments PHPUnit 11 sont passées en attributs (B6) — 2026-07-01 (historique : git log de `docs/technical-debt.md`, absorbé dans `specs/evolution/roadmap.md` le 2026-07-11).

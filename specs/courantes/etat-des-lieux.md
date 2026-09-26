@@ -528,6 +528,7 @@ le front lit, il ne re-dérive plus les règles de refus, repli fail-closed si l
 
 | Date | Id | Sujet | Documenté dans |
 |------|----|-------|----------------|
+| 2026-09-26 | — | Passe doc « présent » racine (hors ADR) : README/CLAUDE.md/project-map/glossaire/testing/sécurité/ops/matrice ; faux corrigés (proxy /engine, fixtures, required checks, backups) | [`docs/project-map.md`](../../docs/project-map.md) |
 | 2026-09-26 | — | Passe doc « présent » zone backend (14 docs) : README pointe au lieu de recopier, 6 faux de routes/familles corrigés | [`backend/README.md`](../../backend/README.md) |
 | 2026-09-26 | — | Garde SpecsCarryNoHistoryTest : les specs courantes ne portent plus de journal (<details>, superseded, table datée…), seul l'état des lieux en porte un | [`specs/README.md`](../README.md) · règle 7 du skill documentation-update |
 | 2026-09-26 | — | Passe doc « présent » : accueil-cockpit-temporel, planning-lifecycle-validated, types-de-planning réécrits au présent (écarts soldés E1-E6, « paliers » cockpit retirés) | [`accueil-cockpit-temporel.md`](accueil-cockpit-temporel.md) · [`types-de-planning.md`](types-de-planning.md) |

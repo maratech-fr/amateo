@@ -44,7 +44,7 @@ The prod stack tightens the same four axes rather than restating them:
 
 - **No published port at all.** The dev hub is bound to `127.0.0.1:${MERCURE_PORT}`;
   in prod the service declares no `ports:` — browsers reach it only through the
-  frontend edge (`location /.well-known/mercure` in `docker/frontend/nginx.conf` — the single conf, dev and prod alike since P4-118).
+  frontend edge (`location /.well-known/mercure` in `docker/frontend/nginx.conf` — the single conf, dev and prod alike, P4-118).
 - **Image pinned** to `dunglas/mercure:v0.19` — a routine `docker compose pull` must never
   swap the hub version under a running production.
 - **`cors_origins ${PUBLIC_BASE_URL}` — that single origin**, not the dev
@@ -53,19 +53,16 @@ The prod stack tightens the same four axes rather than restating them:
   variable is missing, so a dev placeholder cannot silently ride into prod through
   an incomplete `.env.prod`.
 
-## Image pinned everywhere, not just prod (2026-09-17)
+## Image pinned everywhere, not just prod
 
 Dev and CI (`docker-compose.yml`) also pin an exact tag — `dunglas/mercure:v0.24.2` — instead
-of `:latest`. Mercure **1.0.0** was published 2026-09-16 (15:38 UTC, the `latest` tag moved) with
-breaking changes: authorization rebuilt on OAuth 2.0 (0.x publisher/subscriber JWTs are refused,
-`HTTP/1.1 401 Unauthorized` on `POST /.well-known/mercure`) and topic matching switched from URI
-Templates to URL Patterns (`match=` / `match_urlpattern=`) — a compatibility mode exists
-(https://mercure.rocks/docs/1.0/UPGRADE#compatibility-mode) but is opt-in. A routine
-`docker compose pull` on dev/CI moved to 1.0 overnight and broke `ReconcileStuckSchedulesTest`,
-Mercure publication, Backend Coverage and the `journey.spec` e2e (no SSE stream ever opens) — the
-same failure mode pinning already prevented in prod, now closed in every zone. **Rule for any
-third-party image**: pin an exact tag in dev, CI and prod alike — never `:latest` anywhere in
-this repo's compose files.
+of `:latest`. Mercure 1.0.0 rebuilt authorization on OAuth 2.0 (0.x publisher/subscriber JWTs are
+refused, `HTTP/1.1 401 Unauthorized` on `POST /.well-known/mercure`) and switched topic matching
+from URI Templates to URL Patterns (`match=` / `match_urlpattern=`) — a compatibility mode exists
+(https://mercure.rocks/docs/1.0/UPGRADE#compatibility-mode) but is opt-in. An unpinned `:latest`
+would silently ride a `docker compose pull` onto 1.0 and break Mercure publication end-to-end (no
+SSE stream ever opens). **Rule for any third-party image**: pin an exact tag in dev, CI and prod
+alike — never `:latest` anywhere in this repo's compose files.
 
 ## Public URL
 
