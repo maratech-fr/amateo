@@ -1,13 +1,10 @@
 # Identité visuelle par club (logo + couleur d'accent)
 
-Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement » — bloc
-`<details>` (base de réflexion initiale, superseded) supprimé, tout le vivant qu'il portait était
-déjà remonté dans l'en-tête « Reste ⬜ » ; ids/dates de PR retirés du corps. Re-vérifié contre le
-code : `Club.logoUrl`/`accentColor`/`accentColorDark`/`accentPalette`
-(`backend/src/Entity/Club.php:138-154`) ✓, `PATCH /api/club/appearance`
-(`ClubAppearanceController::__invoke`, `:34`) ✓, `GenerationWaiting.tsx` sans prop
-`logoUrl`/`initial` ✓, `frontend/src/app/AppLayout.tsx` — `BrandIcon` toujours rendue avant le
-blason du club, aucun repli glyphe générique ✓. Historique : `git log -p --follow
+Last verified @ 2026-09-26 (`documentation-update`) contre le code : `Club.logoUrl` /
+`accentColor` / `accentColorDark` / `accentPalette` (`backend/src/Entity/Club.php:138-154`) ✓,
+`PATCH /api/club/appearance` (`ClubAppearanceController::__invoke`, `:34`) ✓, `GenerationWaiting.tsx`
+sans prop `logoUrl`/`initial` ✓, `frontend/src/app/AppLayout.tsx:72` — `BrandIcon` rendue avant le
+`<img>` du logo club (`:73`), aucun repli glyphe générique ✓. Historique : `git log -p --follow
 specs/courantes/identite-visuelle-club.md`.
 
 > **Ce que porte cette identité** : accent par club + logo + extraction 3 couleurs + écran
