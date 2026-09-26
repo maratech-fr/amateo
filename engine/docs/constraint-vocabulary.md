@@ -1,17 +1,19 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-09-26 (rotation de fraîcheur `documentation-update`). Re-confronté au code :
-`ConstraintRuleType` ne porte plus que HARD/PREFERRED/LOCK (`backend/src/Enum/
-ConstraintRuleType.php`, `BONUS` absent) ✓ ; `CONTRACT_VERSION` = **2.23**
-(`engine/CONTRACT_VERSION`) ✓ ; `venue_minimum_unreachable` toujours émis par
-`engine/app/solver/constraints/targeting.py:319-320` ✓ ; `add_socle_reference_bonus`
-(`engine/app/solver/objective/terms.py:98`) et `SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"`
-(`engine/app/solver/objective/weights.py:20`) ✓ ; `TEAM_LINK_TIER_WEIGHTS`
-(S=8/A=6/B=4/C=2/D=1, `weights.py:242-250`) et `SOCLE_REFERENCE_TIER_WEIGHTS`
-(S=20/A=18/B=16/C=14/D=12, `weights.py:289-296`) ✓ ; `travelTime.defaultMinutes` toujours
-défaut 20, bornes 0-600 (`app/schemas/input_schema.py:204`) ✓ ; `add_max_consecutive_days_constraints`
-toujours dans `app/solver/constraints/wellness.py:494` ✓. Rien de faux trouvé. Non re-sondé cette
-passe : le reste du vocabulaire détaillé ci-dessous — un stamp REMPLACE, l'historique vit dans git.
+Last verified @ 2026-09-26 (passe « le présent » `documentation-update`, brief engine 3/4). Re-confronté
+au code : une fermeture datée `venue_closed` **ne produit aucune contrainte** — elle retire les
+`trainingSlots` du gymnase les jours fermés (`backend/src/Service/ScheduleConstraintBuilder.php:252-257`,
+`ConstraintValidationService.php:43-98`) — corrige deux mentions d'un ancien élargissement en
+`forbiddenVenueId` qui n'existe plus ✓ ; le modèle de bloc de mutualisation (liage `x ≥ b`,
+`Σ b == commonSessions`, `Σ b ≥ 1` par case toute-épinglée, `x ≤ Σ b` sur le membre libre porté par
+un partenaire verrouillé, distinctness inter-blocs) relu contre `engine/app/solver/constraints/
+targeting.py:371-538` et `structural.py:100-165` ✓ ; l'élection du bloc MAXIMAL en sur-capacité
+(`_fold_case_occupant_identity`, `constraints/common.py:142-178`) ✓ ; les trois diagnostics
+`shared_block_not_honored`/`shared_block_broken`/`shared_block_overformed` toujours en place
+(`result_builder/diagnostics.py`, `validate_assignments.py`) ✓ ; le pointeur d'exclusivité groupe
+(D1) vers `backend/docs/constraint-coverage.md` §Axe GYMNASE (❌) et `specs/evolution/roadmap.md`
+§Parking existe encore ✓. Non re-sondé cette passe : le reste du vocabulaire détaillé ci-dessous —
+un stamp REMPLACE, l'historique vit dans git.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
@@ -29,7 +31,7 @@ passe : le reste du vocabulaire détaillé ci-dessous — un stamp REMPLACE, l'h
 | `scope` | `CLUB` · `TEAM` · `COACH` · `FACILITY` | cible de la règle |
 | `scopeTargetId` | uuid | l'équipe / coach / gymnase visé (null si CLUB) |
 | `config.targetTag` | tag système (`JEUNE`, `SENIOR`, `EMB`, `U9`…`U21`, `FEMININE`, `MASCULINE`, `REGIONAL`, `DEPARTEMENTAL`, `LOISIR_ADULTE`…) | **CLUB + targetTag** → le backend **éclate** en N contraintes `TEAM` (une par équipe du tag). Une règle sans cible qui atteindrait l'engine → **warning** (`constraint_not_honored`) |
-| `ruleType` | `HARD` · `LOCK` · `PREFERRED` — liste **fermée**, `BONUS` retiré du produit le 2026-09-23 | `HARD`/`LOCK` = **dur** (jamais violé ; sur-contraint → équipe non placée + diagnostic). `PREFERRED` = **soft** (oriente l'objectif, ne bloque jamais). |
+| `ruleType` | `HARD` · `LOCK` · `PREFERRED` — liste **fermée** (`BONUS` n'existe plus : zéro sémantique propre, jamais de ligne en base) | `HARD`/`LOCK` = **dur** (jamais violé ; sur-contraint → équipe non placée + diagnostic). `PREFERRED` = **soft** (oriente l'objectif, ne bloque jamais). |
 
 ---
 
@@ -56,7 +58,7 @@ passe : le reste du vocabulaire détaillé ci-dessous — un stamp REMPLACE, l'h
 |---|---|---|
 | `forbiddenDays` (`[int]`) | **éviter** ces jours | `HARD` → jours interdits (dur) · `PREFERRED` → malus soft « éviter ces jours » |
 | `allowedDays` (`[int]`) | **uniquement** ces jours (whitelist) | l'engine **interdit tout jour hors liste**. Toujours dur. (liste vide = « non configuré », aucune restriction) |
-| `forcedDays` (`[int]`) | **au moins une** séance ces jours-là | pose `somme(vars de ces jours) ≥ 1`. **N'interdit PAS** les autres jours. **exposé au wizard depuis 2026-08-23 (ALIGN-09)** (le wizard émet `allowedDays` pour « uniquement », cf. audit ENG-16) |
+| `forcedDays` (`[int]`) | **au moins une** séance ces jours-là | pose `somme(vars de ces jours) ≥ 1`. **N'interdit PAS** les autres jours. **exposé au wizard (ALIGN-09)** (le wizard émet `allowedDays` pour « uniquement », cf. audit ENG-16) |
 | `preferredDays` (`[int]`) | préférer ces jours | bonus objectif. **Engine-only** (jamais émis par le wizard) |
 
 > **Piège** : `allowedDays` (« uniquement ») ≠ `forcedDays` (« au moins un »). « Vétérans le vendredi
@@ -95,13 +97,13 @@ passe : le reste du vocabulaire détaillé ci-dessous — un stamp REMPLACE, l'h
   redondant : retirer la pose HARD fait rougir `test_hard_layer_parity_registry.py` (registre de
   parité) sans faire rougir le NR (le miroir refuse encore) ; désactiver le miroir fait rougir
   `test_validate_venue_minimum.py` sans faire rougir le registre (la pose HARD reste là).
-  **Ensembles, pas singleton (2026-09-22)** : `_venue_minimum_move_violation` raisonne sur
+  **Ensembles, pas singleton** : `_venue_minimum_move_violation` raisonne sur
   l'ENSEMBLE des cases candidates/d'origine par équipe (`cand_cases_by_team`/`ref_cases_by_team`),
   comme `_shared_block_move_violation` — une structure « une case par équipe » (dernière gagne)
   faisait perdre une case à une équipe déplacée DEUX fois dans le même lot, faussant le compte
   avant/après d'une unité.
-- **Plus d'exclusivité groupe depuis D1 (2026-09-18, décision fondateur lecture 1)** : `CLUB + targetTag + forcedVenueId` force le tag sur le gymnase mais **ne l'interdit plus** aux équipes hors tag — le backend n'émet plus de ligne `forbiddenVenueId` « hors tag ». Une exclusivité voulue se pose désormais À LA MAIN (une contrainte `forbiddenVenueId` séparée par équipe/tag hors groupe). Besoin non couvert par un mécanisme dédié : `backend/docs/constraint-coverage.md` §Axe GYMNASE (❌), `specs/evolution/roadmap.md` §Parking.
-- **Fermeture datée** (`config.type = "venue_closed"`, période cockpit) → le backend l'**étend** en `forbiddenVenueId` HARD par équipe sur la fenêtre.
+- **Pas d'exclusivité groupe automatique (décision fondateur D1)** : `CLUB + targetTag + forcedVenueId` force le tag sur le gymnase mais **ne l'interdit pas** aux équipes hors tag — le backend n'émet aucune ligne `forbiddenVenueId` « hors tag ». Une exclusivité voulue se pose À LA MAIN (une contrainte `forbiddenVenueId` séparée par équipe/tag hors groupe). Besoin non couvert par un mécanisme dédié : `backend/docs/constraint-coverage.md` §Axe GYMNASE (❌), `specs/evolution/roadmap.md` §Parking.
+- **Fermeture datée** (`config.type = "venue_closed"`, période cockpit) → **ne produit aucune contrainte** : le gymnase perd ses `trainingSlots` les jours fermés (`VenueClosureDays`, `backend/src/Service/ScheduleConstraintBuilder.php`) — sans créneau il n'y a pas de variable à contraindre, le solveur ne peut simplement pas y placer ce jour-là, et les autres jours restent libres.
 
 **Exemples BCCL**
 - `SM4 - Jean Vilar obligatoire` → `{ FACILITY, HARD, scope:"TEAM", scopeTargetId:<SM4>, config:{ forcedVenueId:<Jean Vilar> } }`
@@ -131,17 +133,17 @@ passe : le reste du vocabulaire détaillé ci-dessous — un stamp REMPLACE, l'h
 > overnight `20:00-08:00` que le modèle plat ne wrappe pas) ou une heure malformée retombe sur **journée
 > entière bloquée** (l'indispo est honorée, jamais silencieusement perdue ni crash du solve).
 
-> **La cible est le `scope`, jamais le `config` (SEC-13 PR B, 2026-08-08).** La clé `coachId` a été
-> **supprimée** : elle valait exactement `scopeTargetId`, et un doublon de cible est une occasion de
-> divergence (deux sources pour la même vérité). Elle est absente de la liste blanche — un `config`
-> qui la porte est refusé en **422** à l'écriture.
+> **La cible est le `scope`, jamais le `config` (SEC-13).** La clé `coachId` n'existe plus : elle
+> valait exactement `scopeTargetId`, et un doublon de cible est une occasion de divergence (deux
+> sources pour la même vérité). Elle est absente de la liste blanche — un `config` qui la porte est
+> refusé en **422** à l'écriture.
 
 **Exemple BCCL**
 - `Lionel - Indisponible le vendredi` → `{ COACH_AVAILABILITY, HARD, scope:"COACH", scopeTargetId:<Lionel>, config:{ unavailableDays:[5] } }`
 
 ---
 
-## ~~Famille FACILITY_CAPACITY~~ — RETIRÉE le 2026-08-08 (SEC-13 PR C)
+## ~~Famille FACILITY_CAPACITY~~ — RETIRÉE (SEC-13)
 
 La famille est **supprimée des trois couches**. Le moteur rabotait la capacité d'un gymnase à `maxTeams`
 (`min(capacité du créneau, maxTeams)`) — un mécanisme réel, mais **aucun chemin UI ne pouvait créer la
@@ -180,7 +182,7 @@ supérieur l'emporte dans l'objectif. Le **minimum de séances** du rang est une
 | `MAX_CONSECUTIVE_SESSIONS` | **dur** : une même personne n'est jamais sur les 3 créneaux d'un enchaînement A→B→C le même jour, **tous gymnases confondus** |
 | `ONE_SESSION_PER_DAY` | **dur** : ≤ 1 séance par jour et par équipe, sauf `allowMultipleSessionsPerDay` |
 | `AGE_ASCENDING` | **dur** : à gymnase et jour égaux, une équipe plus jeune ne passe pas après une plus âgée. Exempt si `ageMin` est absent (Loisir, Baby) ou si l'équipe est verrouillée en HARD |
-| `MAX_CONSECUTIVE_DAYS` | **dur ou soft, au choix du club** : une ÉQUIPE ne s'entraîne pas `maxConsecutiveDays` jours de suite (défaut 3, bornes 2-5). ⚠ À ne pas confondre avec `MAX_CONSECUTIVE_SESSIONS`, presque homonyme : celle-là vise une PERSONNE sur des créneaux dos-à-dos DANS UNE JOURNÉE. **Seule règle dont l'absence du payload signifie NON APPLIQUÉE** — les autres retombent sur HARD (P2-42, contrat 2.13) |
+| `MAX_CONSECUTIVE_DAYS` | **dur ou soft, au choix du club** : une ÉQUIPE ne s'entraîne pas `maxConsecutiveDays` jours de suite (défaut 3, bornes 2-5). ⚠ À ne pas confondre avec `MAX_CONSECUTIVE_SESSIONS`, presque homonyme : celle-là vise une PERSONNE sur des créneaux dos-à-dos DANS UNE JOURNÉE. **Seule règle dont l'absence du payload signifie NON APPLIQUÉE** — les autres retombent sur HARD (P2-42) |
 | jour de repos après match | bonus soft (`add_match_day_rest_bonus`) : préfère laisser le lendemain d'un match libre |
 | espacement des jours (`spacing`) | **bonus soft** (`add_spacing_penalty`, poids `−2`) : malus sur deux séances d'une même équipe sur des jours consécutifs (jour, jour+1) — préfère espacer, ne bloque jamais (ALIGN-06) |
 
@@ -206,25 +208,23 @@ insensible à ce réglage (arbitrage fondateur n°1). Deux régimes :
   jamais avalé.
 - `teamLinks` vide (ou aucune passerelle du régime visé) ⇒ chemin byte-identique, goldens inchangés.
 
-## Bloc de mutualisation (`sharedBlocks`) — un ensemble d'équipes qui se comporte comme UNE équipe (P2-51)
+## Bloc de mutualisation (`sharedBlocks`) — un ensemble d'équipes qui se comporte comme UNE équipe
 
-Bloc d'entrée `sharedBlocks[]` (`{id, teamIds 2..10, commonSessions≥1}`, cap 50 blocs) — **SEULE
-notion de mutualisation depuis le retrait du modèle groupe {équipes, K} (`sharedTrainings`, P2-27)
-par PR-7 (2026-08-31)** : l'ancien exact-K par co-présence (`add_shared_training_constraints`) est
-supprimé du solveur, du contrat et de l'écran. Un bloc arbitre le besoin terrain (mutualisations
-imbriquées) sans le double-comptage que le groupe K portait sur les groupes recouvrants : ses
-séances **lui appartiennent**, exactement comme celles d'une équipe — le solveur les PLACE, il ne
-les DÉDUIT pas d'une co-présence.
+Bloc d'entrée `sharedBlocks[]` (`{id, teamIds 2..10, commonSessions≥1}`, cap 50 blocs) — **seule
+notion de mutualisation** : le modèle groupe {équipes, K} par co-présence exacte (`sharedTrainings`,
+`add_shared_training_constraints`) est retiré du solveur, du contrat et de l'écran. Un bloc arbitre
+le besoin terrain (mutualisations imbriquées) sans le double-comptage que portait le groupe K sur
+les groupes recouvrants : ses séances **lui appartiennent**, exactement comme celles d'une équipe —
+le solveur les PLACE, il ne les DÉDUIT pas d'une co-présence.
 
 **Modélisation retenue — le LIAGE, et pourquoi.** Pour chaque case candidate `(gymnase, jour,
 heure)` où tous les membres ont une variable ou un verrou, une variable de DÉCISION propre au bloc
 `b[case]` est créée, reliée à chaque membre par l'implication **UNIDIRECTIONNELLE**
 `x[membre, case] ≥ b[case]` (« si le bloc tient sa séance ici, tous les membres y sont »), puis
 `Σ b == commonSessions`. **`b` n'est PAS réifié depuis la co-présence** (pas de `b ⇔ tous
-présents`, contrairement à `y_s` de l'ancien modèle groupe `sharedTrainings`, retiré par PR-7) —
-c'est ce refus, précisément, qui dissolvait le mur du double-comptage de ce modèle (il comptait
-`y_s` pour CHAQUE groupe imbriqué candidat sur la même case, faisant compter une case deux fois
-pour deux groupes qui se recouvrent) : deux blocs qui partagent une équipe ont des `b`
+présents`) — c'est ce refus, précisément, qui dissout le mur du double-comptage du modèle groupe
+(qui comptait `y_s` pour CHAQUE groupe imbriqué candidat sur la même case, faisant compter une case
+deux fois pour deux groupes qui se recouvrent) : deux blocs qui partagent une équipe ont des `b`
 INDÉPENDANTS, leurs séances sont distinctes par construction. Et comme `b ⟹ x=1`, une séance de
 bloc EST une séance `x` normale du membre : elle **consomme gratuitement** une de ses
 séances/semaine, compte pour `one_session_per_day`, le repos coach, les enchaînements et
@@ -233,41 +233,41 @@ l'objectif de placement — tous déjà exprimés sur `x`, aucun crédit à câb
 chirurgie requise est la **capacité de gymnase** : une séance de bloc réunissant `n` membres libres
 sur une case n'y occupe qu'**UNE** place, pas `n` — `add_shared_block_constraints` enregistre le
 dé-comptage `(n_libres−1)·b`, que `add_room_at_most_one` soustrait (`shared_block_room_relief`,
-patron du crédit des verrouillés P4-97). Depuis le 2026-09-02, ce dé-comptage couvre aussi le
-**partenaire VERROUILLÉ** : un membre du bloc épinglé en HARD sur une case (transcription du
-socle) laisse la place aux membres libres du même bloc — et à eux seuls — aux deux étages
-(candidats de `model.py`, balayage par sous-départs de `structural.py`) ; gardé par
-`tests/semantic/test_fill_pinned_block_partner.py`. **Depuis le 2026-09-07 (bug mesuré sur le comblement BCCL)**,
-cette porte est CONDITIONNÉE à la séance de bloc : (1) une case où TOUS les membres d'un bloc sont
-épinglés ensemble est une séance commune RÉALISÉE pour AU MOINS un des blocs toute-épinglés sur
-cette case (`Σ b ≥ 1` par case, le solveur attribue ; la distinctness plafonne à 1 pour les blocs
-qui partagent un membre) — elle consomme le budget `Σ b == commonSessions` du bloc élu (avant, `b`
-sans aucun `x` libre à lier FLOTTAIT à 0 et le budget se dépensait ailleurs). ⚠ Pas `b == 1` PAR
-bloc : deux blocs IMBRIQUÉS ({U9F1,U9F2} ⊂ {U9F1,U9F2,U9M2} au club BCCL) toute-épinglés sur la
-même case rendaient tout INFEASIBLE (1 + 1 ≤ 1) — mesuré le 2026-09-07 sur le payload réel ; (2) un
-membre libre qui ne survit sur une case saturée QUE grâce au dé-compte du verrou partenaire reçoit
-`x ≤ Σ b` des blocs de la case (`structural.py`) — rejoindre l'épingle d'un partenaire n'est permis
-QU'au titre d'une séance de bloc active, jamais comme simple voisin (le liage `x ≥ b` est
-unidirectionnel, `b = 0` n'interdisait pas `x = 1`). Corollaire assumé : deux cases toute-épinglées
-EXCLUSIVES (aucun autre bloc n'y est toute-épinglé) pour `commonSessions = 1` ⇒ INFEASIBLE, le pin
-est souverain mais diagnostiqué. Une garde de distinctness inter-blocs
-(`Σ_{blocs ∋ membre} b[membre, case] ≤ 1`) empêche deux blocs partageant un membre de s'effondrer
-sur la MÊME case (sinon une séance physique compterait pour deux blocs).
+patron du crédit des verrouillés). Ce dé-comptage couvre aussi le **partenaire VERROUILLÉ** : un
+membre du bloc épinglé en HARD sur une case (transcription du socle) laisse la place aux membres
+libres du même bloc — et à eux seuls — aux deux étages (candidats de `model.py`, balayage par
+sous-départs de `structural.py`) ; gardé par `tests/semantic/test_fill_pinned_block_partner.py`.
+
+Cette porte est CONDITIONNÉE à la séance de bloc active, jamais à la seule présence du verrou : (1)
+une case où TOUS les membres d'un bloc sont épinglés ensemble est une séance commune RÉALISÉE pour
+AU MOINS un des blocs toute-épinglés sur cette case (`Σ b ≥ 1` par case, le solveur attribue ; la
+distinctness plafonne à 1 pour les blocs qui partagent un membre) — elle consomme le budget
+`Σ b == commonSessions` du bloc élu (sans cette porte, un `b` sans aucun `x` libre à lier FLOTTE à 0
+et le budget se dépense ailleurs). ⚠ Pas `b == 1` PAR bloc : deux blocs IMBRIQUÉS (ex.
+{U9F1,U9F2} ⊂ {U9F1,U9F2,U9M2} au club BCCL) toute-épinglés sur la même case rendraient tout
+INFEASIBLE (1 + 1 ≤ 1) ; (2) un membre libre qui ne survit sur une case saturée QUE grâce au
+dé-compte du verrou partenaire reçoit `x ≤ Σ b` des blocs de la case (`structural.py`) — rejoindre
+l'épingle d'un partenaire n'est permis QU'au titre d'une séance de bloc active, jamais comme simple
+voisin (le liage `x ≥ b` est unidirectionnel : `b = 0` n'interdit rien à `x` de lui-même).
+Corollaire assumé : deux cases toute-épinglées EXCLUSIVES (aucun autre bloc n'y est toute-épinglé)
+pour `commonSessions = 1` ⇒ INFEASIBLE, le pin est souverain mais diagnostiqué. Une garde de
+distinctness inter-blocs (`Σ_{blocs ∋ membre} b[membre, case] ≤ 1`) empêche deux blocs partageant un
+membre de s'effondrer sur la MÊME case (sinon une séance physique compterait pour deux blocs).
 
 | Où | Effet |
 |---|---|
 | `add_shared_block_constraints` (`targeting.py`, posé en tête d'`add_level_1_hard_constraints`, AVANT capacité) | liage `x ≥ b` par membre, `Σ b == commonSessions` par bloc, distinctness inter-blocs |
-| `add_room_at_most_one` | dé-compte `(n_libres−1)·b` — une séance de bloc = une occupation ; depuis le 2026-09-07, `x ≤ Σ b` sur le membre libre qui ne tient sur la case que par le dé-compte d'un verrou partenaire |
+| `add_room_at_most_one` | dé-compte `(n_libres−1)·b` — une séance de bloc = une occupation ; `x ≤ Σ b` sur le membre libre qui ne tient sur la case que par le dé-compte d'un verrou partenaire |
 | `team_share_declared_pairs` | co-présence des membres exemptée de l'anti-chevauchement passerelle (§ci-dessus) |
 | `shared_block_case_bvars` → `add_coach_player_non_overlap` | co-présence des membres exemptée de l'anti-chevauchement coach-joueur/joueur-joueur QUAND la séance de bloc de la case est active (borne `≤ 1 + Σb`) — voir `COACH_PLAYER_NO_OVERLAP` ci-dessus |
-| Diagnostic post-solve (`_diagnose_shared_blocks`) | `shared_block_not_honored` — INFEASIBLE : moins de cases communes candidates que de séances demandées, OU (2026-09-07) plus de cases toute-épinglées EXCLUSIVES (aucun autre bloc toute-épinglé dessus) que de séances demandées (deux causes certaines, la seconde nomme le bloc sur-épinglé) ; solve abouti : défense en profondeur si le compte réel diverge |
-| Sur-capacité gymnase (post-solve) | attribuée **PAR CASE** (multi-appartenance permise, `_fold_case_occupant_identity`) — jamais « premier bloc gagne » via une carte globale, contrairement au groupe historique (unicité un-groupe-par-équipe). **Blocs IMBRIQUÉS sur la MÊME case** (l'un contient l'autre) : le repli élit le bloc **MAXIMAL** — tri déterministe taille décroissante puis clé (`sorted(blocks, key=(-len, key))`) — MIROIR EXACT du repli backend (`ReservationGroupOccupancy::occupantCount`, même tri). Avant le 22/09/2026 le tri se faisait sur la seule clé (« premier bloc gagne » par l'alphabet PARMI les blocs qui matchent la case), ce qui pouvait élire un bloc de 2 devant un bloc de 3 et compter un occupant fantôme (le tiers isolé) là où le solveur, par sa garde de distinctness (`targeting.py`), réunit le bloc de 3 en une seule occupation |
-| `/validate-assignments` | miroir déterministe `_shared_block_move_violation` (D11), dans les DEUX sens de `Σb == commonSessions` — `shared_block_broken` : un déplacement qui RETIRE un membre d'une séance de bloc jusque-là honorée ; `shared_block_overformed` (2026-09-22) : un déplacement qui FORME une séance commune de TROP (tombait avant sur `unknown_hard_conflict` générique) ; **garde anti-enfermement** (patron `_venue_minimum_move_violation`/P4-152) : un bloc DÉJÀ cassé (ou déjà sur-formé) dans la baseline ne bloque pas les déplacements |
+| Diagnostic post-solve (`_diagnose_shared_blocks`) | `shared_block_not_honored` — INFEASIBLE : moins de cases communes candidates que de séances demandées, OU plus de cases toute-épinglées EXCLUSIVES (aucun autre bloc toute-épinglé dessus) que de séances demandées (deux causes certaines, la seconde nomme le bloc sur-épinglé) ; solve abouti : défense en profondeur si le compte réel diverge |
+| Sur-capacité gymnase (post-solve) | attribuée **PAR CASE** (multi-appartenance permise, `_fold_case_occupant_identity`) — jamais « premier bloc gagne » via une carte globale, contrairement au groupe historique (unicité un-groupe-par-équipe). **Blocs IMBRIQUÉS sur la MÊME case** (l'un contient l'autre) : le repli élit le bloc **MAXIMAL** — tri déterministe taille décroissante puis clé (`sorted(blocks, key=(-len, key))`) — MIROIR EXACT du repli backend (`ReservationGroupOccupancy::occupantCount`, même tri). Un tri sur la seule clé (« premier bloc gagne » par l'alphabet) élirait un bloc de 2 devant un bloc de 3 et compterait un occupant fantôme (le tiers isolé) là où le solveur, par sa garde de distinctness (`targeting.py`), réunit le bloc de 3 en une seule occupation |
+| `/validate-assignments` | miroir déterministe `_shared_block_move_violation` (D11), dans les DEUX sens de `Σb == commonSessions` — `shared_block_broken` : un déplacement qui RETIRE un membre d'une séance de bloc jusque-là honorée ; `shared_block_overformed` : un déplacement qui FORME une séance commune de TROP (plutôt que de tomber sur `unknown_hard_conflict` générique) ; **garde anti-enfermement** (patron `_venue_minimum_move_violation`) : un bloc DÉJÀ cassé (ou déjà sur-formé) dans la baseline ne bloque pas les déplacements |
 
 `sharedBlocks` vide/absent ⇒ `add_shared_block_constraints` retourne 0 sans poser de variable,
 chemin byte-identique, goldens inchangés (aucun golden avec bloc). Les 3 gestes (déclarer, poser,
-déplacer le bloc entier) sont livrés — `POST /api/schedule-slots/move-group` (D11, contrat 2.18)
-consomme le miroir `_shared_block_move_violation` ci-dessus.
+déplacer le bloc entier) sont livrés — `POST /api/schedule-slots/move-group` (D11) consomme le
+miroir `_shared_block_move_violation` ci-dessus.
 
 ## Trajet entre gymnases (`travelTime`) — départage + battement (P2-53 RMM-8)
 
@@ -306,7 +306,7 @@ de confort. Le MÊME gymnase n'est jamais concerné (l'exemption coach-coach mê
 intacte). `venueTravelTimes` absent/vide OU règle inactive ⇒ aucune variable posée, chemin
 byte-identique, goldens inchangés.
 
-## Référence socle du comblement (`socleReferenceAssignments`) — bonus de PLACEMENT par tier (PR-3)
+## Référence socle du comblement (`socleReferenceAssignments`) — bonus de PLACEMENT par tier
 
 Bloc d'entrée `socleReferenceAssignments[]` (`{teamId, dayOfWeek, startTime}`, **sans** `venueId`,
 cap `MAX_SLOT_TEMPLATES`) — émis **uniquement en comblement** (`ScheduleConstraintBuilder::
@@ -326,8 +326,7 @@ byte-identique (le backend ne l'émet qu'en comblement, en génération pleine i
 
 `SCORE_FORMULA_VERSION` = **`T24_LEVEL_2_FIXED_WEIGHTS_V13`** (V12 sans le terme, INERTE tant
 qu'aucune référence n'est émise). `sharedBlocks`/`slotTemplates` — miroir `MAX_SLOT_TEMPLATES` sur
-le cap de la liste. Contrat backend⇄engine **2.20**. Gardé côté backend par
-`CrossStack/SocleReferencePayloadParityTest`.
+le cap de la liste. Gardé côté backend par `CrossStack/SocleReferencePayloadParityTest`.
 
 ## Ce qu'un verrou HARD écrase (P2-9)
 
@@ -348,7 +347,7 @@ verrou avec les contraintes **saisies** et émet un `constraint_not_honored` de 
 | `maxEndTime` | `début + durée **DU VERROU**` (pas celle du créneau de grille : un verrou de 120 min sur un créneau de 90 déborde réellement) |
 | `forbiddenDays` / `allowedDays` | évalués sur l'**UNION par équipe** — la seule sémantique que le solveur applique ; les règles nommées sont celles qui excluent effectivement le jour une fois l'union faite |
 | `forcedDays` | un verrou posé un **autre** jour peut consommer le créneau qui aurait satisfait l'exigence → avertissement dédié |
-| `forbiddenVenueId` | paire (équipe, gymnase), ce qui couvre aussi les fermetures de gymnase étendues par le backend |
+| `forbiddenVenueId` | paire (équipe, gymnase) issue d'une contrainte `forbiddenVenueId` explicite — une fermeture datée de gymnase n'en pose pas : elle retire ses créneaux (§Famille FACILITY) |
 
 > **Hors périmètre volontaire** : les règles implicites **structurelles** (un coach dans deux gymnases à
 > la même heure) ne sont pas couvertes ici. Elles décrivent une impossibilité physique, pas une
@@ -357,7 +356,7 @@ verrou avec les contraintes **saisies** et émet un `constraint_not_honored` de 
 ## Ce que l'engine NE comprend PAS (à ce jour)
 
 *Rien à ce jour.* Le seul manque que cette section listait — « pas N jours d'affilée » — **est
-modélisé depuis P2-42** (`add_max_consecutive_days_constraints`,
+modélisé (P2-42)** (`add_max_consecutive_days_constraints`,
 `engine/app/solver/constraints/wellness.py` (`add_max_consecutive_days_constraints`), réglable HARD/PREFERRED/OFF, défaut 3 jours, bornes 2-5) :
 voir la ligne `MAX_CONSECUTIVE_DAYS` du tableau des règles implicites ci-dessus. La section reste
 en place — un nouveau manque constaté s'y écrit, il ne se dilue pas dans le reste du document.

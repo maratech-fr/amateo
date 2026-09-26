@@ -1,7 +1,7 @@
 # Documentation metier du moteur de generation
 
-Last verified @ 2026-09-26 (`documentation-update`, rotation de fraîcheur — sujet sans rapport).
-Re-confronté : tiers de poids S=10000/A=1000/B=100/C=10/D=1 toujours en dur dans
+Last verified @ 2026-09-26 (passe « présent » zone engine, `documentation-update`). Re-confronté :
+tiers de poids S=10000/A=1000/B=100/C=10/D=1 toujours en dur dans
 `app/solver/objective/weights.py:35-37,66-67` ✓ ; `_adaptive_timeout` (`app/main.py:374-389`)
 applique bien les paliers ≤50→60 s · ≤200→180 s · sinon 600 s, plafonnés par
 `solverTimeoutSeconds` ✓ ; `orToolsWeight` reste déclaré requis (`app/schemas/input_schema.py:75`,
@@ -10,8 +10,10 @@ naît bien `OFF` en l'absence de bloc (`resolve_implicit_rules`, `app/solver/con
 `max_consecutive_days_intensity=OFF if days is None else …`) ✓ ; le commentaire de retrait de
 `FACILITY_CAPACITY` vit toujours à `app/main.py:447-450` ✓ ; `ConstraintRuleType` PHP
 (`backend/src/Enum/ConstraintRuleType.php`) confirme la liste fermée HARD/PREFERRED/LOCK, `BONUS`
-absent ✓. Reste du fichier non re-vérifié cette passe — historique : `git log -p --follow
-engine/docs/business.md`.
+absent ✓ ; corrigé cette passe : une fermeture de gymnase ne produit aucune contrainte
+`forbiddenVenueId`, elle retire les créneaux fermés (`VenueClosureDays`,
+`backend/src/Service/ScheduleConstraintBuilder.php:252-257`) ✓. Reste du fichier non re-vérifié
+cette passe — historique : `git log -p --follow engine/docs/business.md`.
 
 > Ce document explique le domaine de la planification sportive et ce que le moteur `engine` resout. Destine aux nouveaux developpeurs rejoignant le projet ClubScheduler.
 
@@ -71,11 +73,10 @@ Une regle metier qui faconne l'emploi du temps. Chaque contrainte a :
   - `DAY` : jours preferes ou interdits (ex. "pas le vendredi", "preferer le mardi")
   - `FACILITY` : assignation de salle (ex. "le SM1 doit etre au Gymnase A")
   - `COACH_AVAILABILITY` : indisponibilite d'un entraineur (ex. "Maxime Dupont indisponible le mercredi")
-  - ~~`FACILITY_CAPACITY`~~ : famille **RETIRÉE le 2026-08-08** (`app/main.py:447-450` — aucun chemin UI ne la creait). Le plafond d'equipes simultanees vit desormais **par creneau** : `VenueTrainingSlot.capacity`, derive cote backend (`canSplit ? capacity : 1`). Quant aux fermetures temporaires : depuis 5b (#263) elles **retirent les creneaux** du payload les jours fermes (`VenueClosureDays`), l'ancienne expansion en `forbiddenVenueId` est supprimee aussi
+  - ~~`FACILITY_CAPACITY`~~ : famille absente du produit (`app/main.py:447-450` — commentaire mort, aucun chemin UI ne la creait). Le plafond d'equipes simultanees vit **par creneau** : `VenueTrainingSlot.capacity`, derive cote backend (`canSplit ? capacity : 1`). Les fermetures temporaires de gymnase **retirent les creneaux** du payload les jours fermes (`VenueClosureDays`) — aucune contrainte `forbiddenVenueId` n'est produite
 
-- **Type de regle (`ruleType`)** — liste **fermee** a trois valeurs (`BONUS` retire du produit le
-  2026-09-23 : zero semantique propre, jamais de ligne en base, `App\Enum\ConstraintRuleType` ne le
-  porte plus) :
+- **Type de regle (`ruleType`)** — liste **fermee** a trois valeurs (`BONUS` absent du produit :
+  zero semantique propre, jamais de ligne en base, `App\Enum\ConstraintRuleType` ne le porte pas) :
   - `HARD` : doit absolument etre respectee. Si ce n'est pas possible, le solveur declare l'instance infaisable
   - `PREFERRED` : souhaitable, mais pas obligatoire. Penalisee si non respectee
   - `LOCK` : fige un creneau. Toujours applique **en dur** par le moteur — le ruleType `LOCK` n'a pas de variantes SOFT/HARD. Ne pas confondre avec le `lockLevel` des `slotTemplates` (valeurs `NONE`/`SOFT`/`HARD`), qui est un autre mecanisme (voir plus bas)
@@ -84,14 +85,13 @@ Une regle metier qui faconne l'emploi du temps. Chaque contrainte a :
 
 ### Contraintes implicites
 
-Regles actives **par defaut**, sans que l'utilisateur ait rien a saisir. Nuance importante depuis
-les regles implicites « bien-etre » : cinq d'entre elles sont desormais **reglables** via le bloc
-`implicitRules` du payload (`resolve_implicit_rules`, `app/solver/constraints/parsing.py`) — intensite
-`HARD`/`PREFERRED` et seuils (`minRestDays`, `maxConsecutive`, `maxConsecutiveDays`). Sans bloc :
-defauts historiques, tout `HARD`. Une seule **nait ETEINTE** : `MAX_CONSECUTIVE_DAYS` (P2-42,
-« pas N jours d'entrainement d'affilee » pour une EQUIPE — a ne pas confondre avec
-`MAX_CONSECUTIVE_SESSIONS`, qui borne les creneaux d'une PERSONNE dans une journee) : absente du
-payload, elle est `OFF`.
+Regles actives **par defaut**, sans que l'utilisateur ait rien a saisir. Cinq regles implicites
+« bien-etre » sont **reglables** via le bloc `implicitRules` du payload (`resolve_implicit_rules`,
+`app/solver/constraints/parsing.py`) — intensite `HARD`/`PREFERRED` et seuils (`minRestDays`,
+`maxConsecutive`, `maxConsecutiveDays`). Sans bloc : defauts historiques, tout `HARD`. Une seule
+**nait ETEINTE** : `MAX_CONSECUTIVE_DAYS` (« pas N jours d'entrainement d'affilee » pour une
+EQUIPE — a ne pas confondre avec `MAX_CONSECUTIVE_SESSIONS`, qui borne les creneaux d'une PERSONNE
+dans une journee) : absente du payload, elle est `OFF`.
 
 | Contrainte | Description |
 |------------|-------------|
@@ -120,7 +120,7 @@ Chaque creneau a un niveau de verrouillage (`lockLevel`) :
 - `SOFT` : purement indicatif — le moteur l'**ignore au moment du solve** (aucun bonus de preservation dans l'objectif). Si le creneau ressort ailleurs, un diagnostic `soft_lock_moved` (severite `WARNING`) est emis **a posteriori** pour signaler le deplacement
 - `HARD` : fige, le moteur ne peut absolument pas le deplacer
 
-Un creneau `HARD` est pose **hors du solveur** : le moteur ne cree meme pas la variable de decision correspondante. Consequence directe, et il faut la connaitre : **aucune contrainte saisie ne s'applique a un creneau verrouille** (indisponibilite d'entraineur, fenetre horaire, jour interdit, gymnase interdit). Le verrou n'est pas "plus fort" que la contrainte, il la rend inatteignable. Le verrou prime — c'est un choix assume : le gestionnaire qui epingle une seance sait pourquoi il le fait. Mais depuis P2-9, le moteur ne le tait plus : il emet un diagnostic `constraint_not_honored` de severite **INFO** qui nomme la contrainte ecrasee, l'equipe, l'entraineur ou le gymnase concerne, le jour, l'heure et la duree. Le gestionnaire voit ce que son epingle a annule, et decide.
+Un creneau `HARD` est pose **hors du solveur** : le moteur ne cree meme pas la variable de decision correspondante. Consequence directe, et il faut la connaitre : **aucune contrainte saisie ne s'applique a un creneau verrouille** (indisponibilite d'entraineur, fenetre horaire, jour interdit, gymnase interdit). Le verrou n'est pas "plus fort" que la contrainte, il la rend inatteignable. Le verrou prime — c'est un choix assume : le gestionnaire qui epingle une seance sait pourquoi il le fait. Mais le moteur ne le tait pas : il emet un diagnostic `constraint_not_honored` de severite **INFO** qui nomme la contrainte ecrasee, l'equipe, l'entraineur ou le gymnase concerne, le jour, l'heure et la duree. Le gestionnaire voit ce que son epingle a annule, et decide.
 
 Un verrou `HARD` occupe aussi le creneau **en entier**, meme dans un gymnase divisible : les autres equipes en sont exclues. Pour partager un creneau divisible, il faut epingler explicitement chacune des equipes.
 

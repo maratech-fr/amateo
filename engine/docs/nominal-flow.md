@@ -1,14 +1,16 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-09-26 (rotation de fraîcheur `documentation-update`). Re-confronté au code :
-`engine/CONTRACT_VERSION` = `2.23` ✓ ; `DiagnosticSchema.id` toujours requis, sans défaut,
+Last verified @ 2026-09-26 (passe « présent » zone engine, `documentation-update`). Re-confronté au
+code : `engine/CONTRACT_VERSION` = `2.23` ✓ ; `DiagnosticSchema.id` toujours requis, sans défaut,
 `app/schemas/output_schema.py:61-62` ✓ ; le commentaire mort `FACILITY_CAPACITY` toujours à
 `app/main.py:447-450`, une seule occurrence, non-code ✓ ; paliers de budget adaptatif
 (`_adaptive_timeout`, `app/main.py:374-389`) toujours ≤50→60 s · ≤200→180 s · sinon 600 s,
-plafonnés par `solver_timeout_seconds` ✓ ; workers adaptatifs (`_adaptive_workers`,
-`app/main.py:406-412`) toujours 1 si complexité ≤200 sinon 8 ✓ ; un créneau verrouillé HARD ne
-crée toujours aucune variable `x[...]` (`app/solver/model.py:129-130`, `continue` sur
-`hard_slot_keys`) ✓. Reste non re-parcouru ligne à ligne cette passe — historique :
+plafonnés par `solver_timeout_seconds` ✓ ; un créneau verrouillé HARD ne crée toujours aucune
+variable `x[...]` (`app/solver/model.py:129-130`, `continue` sur `hard_slot_keys`) ✓ ; corrigé
+cette passe : une fermeture de gymnase (`venue_closed`) ne produit **aucune** contrainte
+`forbiddenVenueId` — elle retire les `trainingSlots` du gymnase les jours fermés
+(`VenueClosureDays`, `backend/src/Service/ScheduleConstraintBuilder.php:252-257`), confirmé aussi
+par `engine/docs/business.md`. Reste non re-parcouru ligne à ligne cette passe — historique :
 `git log -p --follow engine/docs/nominal-flow.md`.
 
 > Ce document decrit le chemin complet d'une requete de generation d'emploi du temps, du moment ou le backend construit le payload jusqu'a la notification en temps reel du frontend. Destine aux developpeurs travaillant sur l'integration backend/engine.
@@ -185,9 +187,9 @@ Chaque variable signifie : "l'equipe T s'entraine-t-elle a la salle V le jour D 
 
 Les creneaux candidats sont **exactement les `trainingSlots` declares par les salles** : chaque `trainingSlot` (salle, jour, `startTime`) constitue **un seul depart candidat**. Il n'y a **pas** de discretisation d'une fenetre horaire en pas de 15 minutes — si le Gymnase A declare un creneau le lundi a 19h00, le seul depart possible ce jour-la est 19h00. La constante `SLOT_MINUTES = 15` ne sert qu'a une chose : bloquer la **duree** des verrous `HARD` (occupation du creneau sur toute la duree de la seance).
 
-Les creneaux `HARD`-verrouilles sont **pre-places hors du modele** : **aucune variable `x[...]` n'est creee** pour eux (`model.py` saute les cles presentes dans `hard_slot_keys`), et le `(gymnase, jour, heure)` est retire pour **toutes** les equipes sur toute la duree du verrou — meme sur un creneau divisible (ALIGN-07).
+Les creneaux `HARD`-verrouilles sont **pre-places hors du modele** : **aucune variable `x[...]` n'est creee** pour eux (`model.py` saute les cles presentes dans `hard_slot_keys`), et le `(gymnase, jour, heure)` est retire pour **toutes** les equipes sur toute la duree du verrou — meme sur un creneau divisible.
 
-Consequence a connaitre : **aucune contrainte ne peut atteindre un creneau verrouille**. Une contrainte s'applique en forcant une variable a 0 ; s'il n'y a pas de variable, il n'y a rien a forcer. Le verrou n'est donc pas « plus fort » que la contrainte, il la rend inatteignable. Le verrou reste souverain (decision fondateur ALIGN-07), mais depuis P2-9 le moteur ne se tait plus : `diagnose_locked_slot_violations` emet un diagnostic `constraint_not_honored` de severite **INFO** pour chaque contrainte saisie ainsi ecrasee. Les slots verrouilles sont reinjectes tels quels dans la reponse par `build_result`.
+Consequence a connaitre : **aucune contrainte ne peut atteindre un creneau verrouille**. Une contrainte s'applique en forcant une variable a 0 ; s'il n'y a pas de variable, il n'y a rien a forcer. Le verrou n'est donc pas « plus fort » que la contrainte, il la rend inatteignable. Le verrou reste souverain (decision fondateur ALIGN-07), mais le moteur ne se tait pas : `diagnose_locked_slot_violations` emet un diagnostic `constraint_not_honored` de severite **INFO** pour chaque contrainte saisie ainsi ecrasee. Les slots verrouilles sont reinjectes tels quels dans la reponse par `build_result`.
 
 ### Etape 2 — `add_level_1_hard_constraints()`
 
@@ -200,7 +202,7 @@ Ces contraintes doivent etre satisfaites pour que la solution soit **faisable**.
 5. **FIXED_SLOTS** : chemin residuel. La collection `fixed_slots` n'est alimentee par aucune branche de `parse_v2_constraints` aujourd'hui, donc cette contrainte ne pose rien en production. Les verrous `HARD` ne passent **pas** par la : ils sont pre-places hors du modele (voir etape 1).
 6. **FORBIDDEN_ASSIGNMENTS** : pour chaque contrainte `HARD` de type interdiction, la variable vaut 0. Exemple : si le SM1 a une contrainte "pas le vendredi", toutes les variables `x[t-sm1, *, 5, *]` valent 0.
 7. **COACH_UNAVAILABILITY** : pour chaque contrainte `COACH_AVAILABILITY`, les variables correspondantes valent 0.
-8. **FACILITY_CAPACITY** : **RETIREE le 2026-08-08** — cette famille de contrainte n'existe plus (`ConstraintFamily` ne porte que TIME/DAY/FACILITY/COACH_AVAILABILITY, `backend/src/Enum/ConstraintFamily.php`), aucun chemin UI ne la creait, zero ligne en base. Le rabot `min(capacite du creneau, maxTeams)` qu'elle posait a disparu du moteur (`engine/app/main.py:447-450`, commentaire seul) — la capacite se regle desormais **uniquement par CRENEAU** (`trainingSlots.capacity`, etape 1 ci-dessus). Ce n'etait de toute facon **pas** une fermeture de salle : les fermetures temporaires (`venue_closed`) sont expansees **cote backend** en contraintes `forbiddenVenueId` par equipe avant l'envoi.
+8. **FACILITY_CAPACITY** : cette famille de contrainte n'existe pas (`ConstraintFamily` ne porte que TIME/DAY/FACILITY/COACH_AVAILABILITY, `backend/src/Enum/ConstraintFamily.php`). Le rabot `min(capacite du creneau, maxTeams)` qu'elle aurait pose est absent du moteur (`engine/app/main.py:447-450`, commentaire mort conserve comme garde contre sa reintroduction) — la capacite se regle **uniquement par CRENEAU** (`trainingSlots.capacity`, etape 1 ci-dessus). Une fermeture temporaire de salle (`venue_closed`) n'est de toute facon pas une contrainte : le gymnase ferme perd ses `trainingSlots` les jours effectivement fermes (`VenueClosureDays`, `backend/src/Service/ScheduleConstraintBuilder.php:252-257`) — sans creneau, aucune variable n'existe pour ce jour, donc rien a interdire.
 9. **MIN_SESSIONS** : attention, ce n'est **pas** une contrainte dure — c'est une **cible soft** (audit ENG-18). Le nombre de seances souhaite (`sessionsPerWeek`) est encourage via l'objectif, jamais impose (plancher dur 0 en production) : une equipe peut recevoir moins de seances que demande sans rendre l'instance infaisable.
 10. **FORCED_VENUES** : si une equipe a une contrainte `FACILITY` `HARD` l'obligeant a une salle specifique, toutes les variables `x[team, autre_salle, *, *]` valent 0.
 11. **COACH_REST_DAY** : chaque coach a au moins un jour de repos du lundi au vendredi (au plus 4 jours travailles). Ignore pour un coach dont le `maxDaysOverride` est deja inferieur ou egal a 4.
