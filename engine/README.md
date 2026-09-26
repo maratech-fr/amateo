@@ -30,7 +30,10 @@ L'**engine** est un microservice Python qui reçoit un contexte complet (clubs, 
 
 ### Frontend → Engine
 - Le frontend **ne contacte jamais l'engine directement**. Il passe toujours par le backend.
-- Le backend nginx expose l'engine sur `/api/engine/*` (si configuré), mais le frontend utilise `/api` → backend.
+- L'engine n'est joignable QUE par le backend, via `http://engine:8000` (réseau Docker interne) —
+  **aucun proxy `/engine` n'existe nulle part et ne doit jamais être (ré)introduit** (l'ancien
+  exposait le solveur SANS authentification, `docker/frontend/nginx.conf:~96`,
+  `docker/frontend/csp.conf:~4`). Pour déboguer directement : `docker compose exec engine …`.
 
 ## API Endpoints
 
@@ -38,16 +41,18 @@ L'**engine** est un microservice Python qui reçoit un contexte complet (clubs, 
 |----------|---------|-------------|
 | `/` | GET | Health check + version du contrat |
 | `/health` | GET | Health check simple |
-| `/generate` | POST | **Principal** — résout un planning et retourne les créneaux |
+| `/generate` | POST | **Principal** — résout le planning hebdomadaire et retourne les créneaux |
+| `/place-matches` | POST | Placement daté des matchs (ADR-0003), rail séparé du `/generate` hebdomadaire |
+| `/validate-assignments` | POST | Verdict du moteur sur un déplacement manuel (rejoue la couche HARD) |
 | `/implicit-constraints` | POST | Sync règles implicites backend↔engine (200 synchronized / 409 desynchronized) |
 
 ### `POST /generate`
 
-**Request** : `ScheduleInputSchema` (contrat `"2.23"`, fichier `engine/CONTRACT_VERSION` — seul le **MAJOR** est comparé, donc `"2.0"` passe aussi)
+**Request** : `ScheduleInputSchema` (contrat `"2.23"`, fichier `engine/CONTRACT_VERSION` — seul le **MAJOR** est comparé, donc toute `"2.x"` passe)
 
 ```json
 {
-  "version": "2.1",
+  "version": "2.23",
   "clubId": "uuid",
   "seasonId": "uuid",
   "scheduleName": "Saison 2026-2027",
@@ -117,13 +122,16 @@ engine/
 ├── app/
 │   ├── main.py              # FastAPI entry point + endpoints
 │   ├── schemas/
-│   │   ├── input_schema.py  # ScheduleInputSchema
-│   │   └── output_schema.py # ScheduleOutputSchema
+│   │   ├── input_schema.py / output_schema.py            # ScheduleInputSchema / ScheduleOutputSchema (/generate)
+│   │   ├── match_input_schema.py / match_output_schema.py # /place-matches
+│   │   └── validate_input_schema.py / validate_output_schema.py # /validate-assignments
 │   └── solver/
-│       ├── model.py         # Construction du modèle CP-SAT
-│       ├── constraints.py   # Contraintes hard Level-1 + parse_v2_constraints
-│       ├── objective.py     # Fonction objectif (Level 2)
-│       └── result_builder.py # Transformation solution → output
+│       ├── model.py           # Construction du modèle CP-SAT
+│       ├── constraints/       # Contraintes hard Level-1 + parse_v2_constraints (paquet)
+│       ├── objective/         # Fonction objectif Level 2 (paquet, `weights.py` = poids réels)
+│       ├── result_builder/    # Transformation solution → output (paquet)
+│       ├── match_placement.py # Solveur du rail /place-matches (ADR-0003)
+│       └── validate_assignments.py # Solveur du rail /validate-assignments
 ├── tests/
 │   ├── fixtures/            # Jeux de données "golden" (liste : ls tests/fixtures/)
 │   ├── golden/ invariants/ perf/ semantic/  # suites (semantic = matrice contrainte P0.1)
@@ -136,17 +144,17 @@ engine/
 
 ```
 1. Reçoit POST /generate avec ScheduleInputSchema
-2. model.py          Crée variables booléennes x[team, venue, day, slot]
-3. constraints.py    Applique les contraintes hard Level-1 (liste : constraints.py / engine-inventory §4.4)
-4. objective.py      Maximise le score pondéré (Level 2) — poids réels dans LEVEL_2_OBJECTIVE_WEIGHTS :
-                      - Tiers S: 10000, A: 1000, B: 100, C: 10, D: 1
-                      - preferred: 60 · avoided_venue: -60 · preferred_day/time: 30
-                      - session_count: 20 · rest: 3 · spacing: -2
-                      (source de vérité = objective.py ; ne pas figer d'autres valeurs)
+2. model.py            Crée variables booléennes x[team, venue, day, slot]
+3. constraints/        Applique les contraintes hard Level-1 (liste : `docs/engine-inventory.md` §4.4)
+4. objective/           Maximise le score pondéré (Level 2) — poids réels dans
+                        `LEVEL_2_OBJECTIVE_WEIGHTS` (`app/solver/objective/weights.py`) ;
+                        **ne pas recopier les valeurs dans un doc** — une copie a déjà survécu à un
+                        rebalancement et menti pendant des semaines (gotcha 3, `engine/AGENTS.md`).
+                        Détail : `docs/engine-inventory.md` §5.
 5. OR-Tools CP-SAT   Solve en 2 phases (placement puis chaînage borné 10s), warm-start.
                       timeout adaptatif (60/180/600s) plafonné par solver_timeout_seconds (défaut 650s)
                       workers adaptatifs : 1 si n_teams×n_venues ≤ 200, sinon 8 ; seed = solver_seed (42)
-6. result_builder.py   Transforme solution → ScheduleOutputSchema
+6. result_builder/     Transforme solution → ScheduleOutputSchema
                        + génère diagnostics (unplaced, soft_lock_moved, coach_overload,
                          session_below_effective_min, unused_slot, conflict) ; s'y ajoutent ceux
                          produits au parse / à la construction du modèle : day_constraint_conflict,
@@ -158,16 +166,20 @@ engine/
 
 ## Contraintes CP-SAT
 
-> Liste exhaustive et à jour : `constraints.py` (`add_level_1_hard_constraints` / `add_time_window_constraints`) et **`docs/engine-inventory.md` §4** (la seule vue maintenue — pas de décompte figé ici, il périmerait).
+> Liste exhaustive et à jour : `app/solver/constraints/` (`add_level_1_hard_constraints` / `add_time_window_constraints`) et **`docs/engine-inventory.md` §4** (la seule vue maintenue — pas de décompte figé ici, il périmerait).
 
 ### Hard (Level 1) — Impératives
-Salle at-most-one (capacité), coach at-most-one, coach-joueur non-overlap, repos coach / distribution salariés / max consécutifs, forbidden assignments, indispo coach, fermetures salle (étendues en `forbiddenVenueId` côté backend), forced venues, planchers par gymnase (`minAtVenueId`, ALIGN-05), une session/jour, âge croissant. Détail : engine-inventory §4.4.
+Salle at-most-one (capacité), coach at-most-one, coach-joueur non-overlap, repos coach / distribution salariés / max consécutifs, forbidden assignments, indispo coach, forced venues, planchers par gymnase (`minAtVenueId`, ALIGN-05), une session/jour, âge croissant. Détail : engine-inventory §4.4.
+
+> Une fermeture de gymnase (`config.type=venue_closed`) ne produit **aucune contrainte** côté
+> engine : le gymnase perd ses `trainingSlots` les jours fermés, côté backend
+> (`ScheduleConstraintBuilder`) — sans créneau, aucune variable, donc rien à y interdire.
 
 > ⚠ **`min_sessions` n'est PAS dur en production** (ENG-18) : `_solve` passe un plancher 0 pour chaque équipe. La cible est portée par le bonus objectif `session_count` et signalée par le diagnostic `session_below_effective_min`.
-> ⚠ Un **verrou HARD** (`slotTemplates[].lockLevel`) est pré-placé **hors du solveur** : sa variable n'existe pas, donc aucune contrainte ci-dessus ne peut l'atteindre. Le verrou prime (ALIGN-07) ; depuis P2-9 le moteur émet un `constraint_not_honored` INFO pour chaque contrainte ainsi écrasée.
+> ⚠ Un **verrou HARD** (`slotTemplates[].lockLevel`) est pré-placé **hors du solveur** : sa variable n'existe pas, donc aucune contrainte ci-dessus ne peut l'atteindre. Le verrou prime (ALIGN-07) ; le moteur émet un `constraint_not_honored` INFO pour chaque contrainte ainsi écrasée.
 
 ### Soft (Level 2) — Optimisées
-Tiers S>A>B>C>D, `preferred`, `avoided_venue` (malus), `preferred_day`, `preferred_time`, `session_count`, `rest`. Poids réels : `objective.py` (`LEVEL_2_OBJECTIVE_WEIGHTS`).
+Tiers S>A>B>C>D, `preferred`, `avoided_venue` (malus), `preferred_day`, `preferred_time`, `session_count`, `rest`. Poids réels : `app/solver/objective/weights.py` (`LEVEL_2_OBJECTIVE_WEIGHTS`) — voir la note ci-dessus, ne pas les recopier.
 
 ## Pour aller plus loin (docs structurantes)
 
@@ -177,7 +189,7 @@ Le métier du solveur vit dans `engine/docs/` — à lire avant de toucher au so
 |-----|---------|
 | [`docs/business.md`](docs/business.md) | **Cœur métier** — concepts (équipe, salle, coach, contrainte : scopes/familles/règles, tiers de priorité, contraintes implicites, niveaux de lock). |
 | [`docs/constraint-vocabulary.md`](docs/constraint-vocabulary.md) | **Vocabulaire engine complet** — chaque clé de `config` que le solveur sait parser, son mécanisme (dur/soft), le `ruleType` qui l'active, et ce qu'un verrou HARD écrase (P2-9). |
-| [`docs/nominal-flow.md`](docs/nominal-flow.md) | Flux nominal d'une requête de bout en bout — structure du payload v2.0, négociation de version, locks par club, étapes du pipeline, schéma de sortie. |
+| [`docs/nominal-flow.md`](docs/nominal-flow.md) | Flux nominal d'une requête de bout en bout — structure du payload, négociation de version (contrat `2.23`, MAJOR only), locks par club, étapes du pipeline, schéma de sortie. |
 | [`docs/solver-errors.md`](docs/solver-errors.md) | Erreurs & diagnostics — erreurs HTTP, statuts solveur, types de diagnostics, scénarios d'infaisabilité, lecture du score, guide de debug. |
 | [`AGENTS.md`](AGENTS.md) | Cheat-sheet agent (conventions ruff/mypy/pytest, gotchas, quick-reference). |
 
