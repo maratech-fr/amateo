@@ -1,20 +1,17 @@
 # Documentation technique du flux de génération de planning
 
-Last verified @ 2026-09-25 (**rotation de fraîcheur**, `documentation-update`, PR agents
-`cadreur`/`business-writer` — sans rapport avec le sujet). Re-confronté cette passe : `CONTRACT_VERSION`
-toujours **`'2.23'`** (`ScheduleConstraintBuilder.php:63` ⇄ `engine/CONTRACT_VERSION`) ; le margin
-du TTL du verrou (`GenerateScheduleHandler.php:62` `LOCK_TTL_MARGIN_SECONDS = 60`, ligne 117
+Last verified @ 2026-09-26. Re-confronté contre le code : `CONTRACT_VERSION` = `'2.23'`
+(`ScheduleConstraintBuilder.php:63` ⇄ `engine/CONTRACT_VERSION`) ; le TTL du verrou
+(`GenerateScheduleHandler.php:62` `LOCK_TTL_MARGIN_SECONDS = 60`, ligne 117
 `acquire(... getTimeoutSeconds() + self::LOCK_TTL_MARGIN_SECONDS)`) ; `RedeliveredGenerationTest`
-toujours listé bloquant dans `docs/testing/blocking-tests.md` (§3a-bis) ; le payload Mercure porte
-toujours exactement **5** champs (`ScheduleProgressPublisher.php:40-44` — `scheduleId`, `status`,
-`score`, `unplaced`, `warnings`, §6.2). **Dérive trouvée et corrigée** : la citation du `Literal`
-de statut engine pointait `output_schema.py:137`, périmée — le fichier est
-`engine/app/schemas/output_schema.py:152` (§4.2), recalée. Reste non re-sondé cette passe : §3b
-(construction du payload, dernière confrontation 2026-09-22, lot « la génération relancée ne refait
-pas le travail ») et §5/§7-9 (import, diagnostics, cycle de vie) — dernière confrontation
-2026-09-21/2026-09-15.
+listé bloquant dans `docs/testing/blocking-tests.md` (§3a-bis) ; le payload Mercure porte
+exactement **5** champs (`ScheduleProgressPublisher.php:40-44` — `scheduleId`, `status`,
+`score`, `unplaced`, `warnings`, §6.2) ; le schéma de sortie engine
+`Literal["queued", "generating", "completed", "failed"]` (`engine/app/schemas/output_schema.py:152`,
+§4.2/§5.2) ; l'abonnement frontend en un seul `EventSource` par sélecteur TEMPLATE du club (§6.1,
+`frontend/src/features/planning/lib/scheduleStream.ts`).
 
-> ClubScheduler — Symfony 7 + API Platform + Messenger Redis + Mercure SSE. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
+> Amateo — Symfony 7 + API Platform + Messenger Redis + Mercure SSE. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
 ---
 
@@ -105,7 +102,7 @@ SET schedule_generation:club:{clubId} <token> NX EX {timeoutSeconds + 60}
 1. Remet `Schedule.status` → `PENDING`.
 2. Lève une `RecoverableMessageHandlingException` : Messenger **réessaiera** le message plus tard.
 
-Il n'y a donc **pas d'échec** pour l'utilisateur, et le diagnostic `engine_busy` n'existe plus : la seconde demande attend simplement son tour.
+Il n'y a donc **pas d'échec** pour l'utilisateur ; il n'existe pas de diagnostic `engine_busy` : la seconde demande attend simplement son tour.
 
 > Exemple concret : si l'administrateur du BCCL clique deux fois rapidement sur "Générer", la seconde génération reste en `PENDING` et sera rejouée par le worker une fois la première terminée. Cela évite de surcharger le moteur et de corrompre les données, sans faire échouer la demande.
 
@@ -336,8 +333,7 @@ club:{clubId}:schedule:{scheduleId}
 
 > Exemple pour le BCCL : `club:bccl-uuid:schedule:550e8400-e29b-41d4-a716-446655440000`
 
-Le frontend, lui, ne s'abonne **plus** planning par planning depuis FRT-04/P4-123 : il ouvre **UN
-seul** `EventSource` par session, abonné au **sélecteur TEMPLATE du club**
+Le frontend ouvre **UN seul** `EventSource` par session, abonné au **sélecteur TEMPLATE du club**
 (`club:{clubId}:schedule:{id}`, le joker Mercure `{id}` — `MercureTopic::selectorForClub`) obtenu
 via `GET /api/mercure/auth` (champ `topicTemplate`) — toutes les générations du club arrivent sur
 la même connexion, sans en connaître les ids à l'avance (`frontend/src/features/planning/lib/scheduleStream.ts`).
@@ -376,17 +372,11 @@ du club (§6.1) — sans lui, l'événement ne dirait pas de quel planning il pa
 
 ### 6.3 Comportement frontend
 
-Le frontend maintient la connexion `EventSource` unique décrite en §6.1. À réception d'un
-événement, il ne recopie **jamais** son payload dans un cache — le serveur reste la source de
-vérité — il **invalide** des clés react-query (`invalidationKeysFor`, `scheduleStream.ts`) :
-
-- toujours `["schedules"]` et `["wizard", "schedule_status", scheduleId]` (le statut suivi par le wizard) ;
-- en plus, si `status` est **terminal** (`COMPLETED`/`FAILED`, `isTerminalStatus`) : `["slots", scheduleId]` et `["diagnostics", scheduleId]`, ce qui déclenche le refetch des créneaux et diagnostics du planning et rafraîchit la grille (React maison, pas de FullCalendar) et le badge de statut (§8.2).
-
-Best-effort : si le flux Mercure est indisponible ou se coupe, le polling react-query prend le
-relais (accéléré) au lieu de rester figé — décrit par `isScheduleStreamConnected`.
-
-L'utilisateur n'a pas besoin d'actualiser la page manuellement.
+Le frontend maintient la connexion `EventSource` unique décrite en §6.1 et retombe sur le polling
+react-query si le flux se coupe — comportement propre à la zone frontend, détaillé (clés
+react-query invalidées, repli, diagnostic observable) dans
+[`frontend/docs/frontend-spec.md`](../../frontend/docs/frontend-spec.md) §5 « Suivi temps réel de
+la génération ».
 
 ---
 
