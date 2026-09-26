@@ -12,7 +12,12 @@ migration `Version20260731090000.php` présente) ✓ · `BcclSeeder` scope toujo
 recherches `SportCategory` par `clubId` (`backend/src/Seed/BcclSeeder.php:251`), NR
 `BcclSeederIdempotenceTest::testSeedScopesSportCategoriesToTheirOwnClub` présent ✓. Cette passe
 retire en plus le récit d'incident autour du skip admin et de l'ordre priorité 7/8 (la RÈGLE et
-les gardes restent cités, l'historique vit dans git) et le titre passe à Amateo.
+les gardes restent cités, l'historique vit dans git) et le titre passe à Amateo. Deuxième passe :
+dates décoratives retirées (`migration_user` ×2, PR/date du rôle P1-1 — le nom seul suffit,
+`etat-des-lieux.md` §1.12 le trace en détail) ; une seule exception gardée volontairement — voir
+§ « Read-only enforcement » ci-dessous, dont la date fait le travail de désambiguïsation d'un id
+par ailleurs surchargé (`roadmap.md` en tête de fichier documente trois sens distincts pour ce
+même id).
 
 ## Overview
 
@@ -77,7 +82,7 @@ Console commands do **not** trigger `kernel.request`. Therefore:
 
 - The `tenant_filter` is **not** enabled automatically.
 - the `app.club_id` GUC is **never** set without an HTTP context.
-- CLI scripts that need tenant isolation must implement their own mechanism (e.g., explicit `--club-id` option, or `TenantConnectionContext::setClubId()` per club like the reminder crons). Maintenance tasks that must SEE ALL tenants run on the **`admin` Doctrine connection (`amateo_owner`, superuser — the only RLS bypass)**. ⚠ There is exactly **one** RLS bypass, and it is that `admin` connection. A second role (`migration_user`) used to exist in the init SQL with schema-wide `GRANT ALL` but no bypass and no configured connection — a dormant service account, **dropped on 2026-07-31** (`Version20260731090000`).
+- CLI scripts that need tenant isolation must implement their own mechanism (e.g., explicit `--club-id` option, or `TenantConnectionContext::setClubId()` per club like the reminder crons). Maintenance tasks that must SEE ALL tenants run on the **`admin` Doctrine connection (`amateo_owner`, superuser — the only RLS bypass)**. ⚠ There is exactly **one** RLS bypass, and it is that `admin` connection. A second role (`migration_user`) does not exist: the init SQL used to create it with schema-wide `GRANT ALL` and no bypass and no configured connection — a dormant service account, **no longer present** (`Version20260731090000`).
 - ⚠ **Corollary — a query issued on the `admin` connection stays cross-tenant unless it scopes itself by hand.** The bypass is unconditional: it does not know "which tenant this operation is about", so a `findOneBy`-shaped lookup that omits `clubId` from its criteria will happily return **another** club's row. `BcclSeeder` (dev/demo seed, runs on `admin` — see the GUC table above) scopes its `SportCategory` find-or-create by `(sportId, name, clubId)` for exactly this reason (`backend/src/Seed/BcclSeeder.php`), guarded by `BcclSeederIdempotenceTest::testSeedScopesSportCategoriesToTheirOwnClub`. The rule generalises: **any admin-connection code that must stay within one tenant scopes every query by `clubId` itself — the connection will not do it for you.**
 
 ## Registration
@@ -123,7 +128,7 @@ services:
 ## Security Considerations
 
 - Defence in depth is real now: Doctrine filter (layer 2) **and** RLS (layer 3). Keep `TenantIsolationTest`, `TenantJwtIsolationTest` and `RlsIsolationTest` green — they are the blocking guards.
-- **Role layer on top of the membership (P1-1 PR A, 2026-08-10):** every API Platform write is
+- **Role layer on top of the membership (P1-1):** every API Platform write is
   **management-only by default** — `AbstractStateProcessor::requiresManagementRole()` defaults to `true`
   (`ManagementAccessGuard`, SEC-07), with a single explicit opt-out (`UserStateProcessor`, self-only edits).
   Custom write controllers carry their own guard (same SEC-07 rule). A non-management member reads
@@ -134,4 +139,4 @@ services:
 ## See Also
 
 - `backend/docs/RLS.md` — PostgreSQL RLS setup and troubleshooting
-- `docker/postgres/init/02-users.sh` — `amateo_app` creation (`migration_user` dropped 2026-07-31, cf. RLS.md)
+- `docker/postgres/init/02-users.sh` — `amateo_app` creation (`migration_user` does not exist, cf. RLS.md)
