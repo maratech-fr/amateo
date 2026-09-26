@@ -111,14 +111,26 @@ fusion, applique le test maison (`specs/evolution/duplications-de-verite.md`) :
    mention datée qui est la RAISON D'ÊTRE d'un garde-fou encore actif — une phrase, jamais une
    chronologie. Précédent : passe frontend du 2026-09-26 (4 640 → ~2 700 lignes ; le §4.2
    « sidebar » fiction vivait sous un stamp du jour, et §3 « Shared Components » vivant était
-   enterré sous un bandeau « superseded »). ⚑ **Le seul journal autorisé est
-   `etat-des-lieux.md` (§2 décisions fermées, §3 traces datées)** : ailleurs dans
-   `specs/courantes/`, une décision prise en chemin va en §2, une livraison en §3 — jamais une
-   section/un paragraphe daté dans le fichier lui-même. Ce garde-fou est tenu mécaniquement par
-   `backend/tests/Unit/Documentation/SpecsCarryNoHistoryTest.php` sur tout `specs/courantes/*.md`
-   sauf `etat-des-lieux.md` (`<details>`, « superseded », « conservé pour trace/traçabilité »,
-   « instantané daté », « périmé par », table `| 20xx-` datée) : un rouge se corrige en sortant le
-   récit, jamais en affaiblissant le motif.
+   enterré sous un bandeau « superseded »). ⚑ **Les journaux autorisés sont deux, nulle part
+   ailleurs** : `specs/courantes/etat-des-lieux.md` (§2 décisions fermées, §3 traces datées) et
+   `docs/upgrades.md` (borné aux 6 derniers lots par sa propre charte, `docs/upgrades.md` en
+   tête). Ailleurs dans `specs/courantes/`, une décision prise en chemin va en §2, une livraison
+   en §3 — jamais une section/un paragraphe daté dans le fichier lui-même. Ce garde-fou est tenu
+   mécaniquement par `backend/tests/Unit/Documentation/SpecsCarryNoHistoryTest.php` sur tout
+   `specs/courantes/*.md` sauf `etat-des-lieux.md` (`<details>`, « superseded », « conservé pour
+   trace/traçabilité », « instantané daté », « périmé par », table `| 20xx-` datée) : un rouge se
+   corrige en sortant le récit, jamais en affaiblissant le motif.
+
+   **Les ADR font exception à la façon dont ils portent leur date, pas à la règle** : un ADR garde
+   son Contexte et sa Décision datés par nature, mais énonce sa Décision au présent — un
+   amendement se PLIE dans la décision (une mention datée d'une ligne, jamais plus, si elle est la
+   raison d'être d'un garde-fou encore actif) ; le journal d'implémentation (lots, PR, dates de
+   livraison) n'y vit jamais, il part dans `etat-des-lieux.md` §2/§3 comme n'importe où ailleurs
+   (précédent : ADR-0001/0002/0003/0004, passe du 2026-09-26).
+
+   **Exception distincte : `docs/archive/`.** Un instantané daté (compte-rendu de cadrage,
+   snapshot d'audit), cité depuis le code ou une décision comme référence historique, échappe à
+   la règle 7 — ce n'est jamais une source de vérité sur l'état courant, seulement une trace.
 
 ### Fraîcheur — le balayage TOUCHÉ, plus une ROTATION bornée
 
