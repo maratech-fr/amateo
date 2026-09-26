@@ -1,14 +1,16 @@
 # Vacances scolaires & jours fériés — référentiels calendaires
 
-Last verified @ 2026-09-24 (rotation `documentation-update`, lot P4-253 (reprise réseau Dockerfile)
-— zone non touchée par la PR, contrôle de fraîcheur). Re-confronté aux 5 mêmes repères que les
-passes précédentes : `AdminJobCatalog` déclare toujours `import-school-holidays`/`import-public-holidays`
-en `quarterly(4)`/`quarterly(4, 30)`, `manualTriggerAllowed: true` ✓ ; `SchoolZoneResolver::ZONES`
-porte toujours exactement les 13 codes listés (`A`/`B`/`C`/`CORSE` + 9 DOM/TOM) ✓ ; `HolidayPaths`
-toujours composé par `CustomRoutesOpenApiFactory` ✓ ; le court-circuit zone `null` de `GET
-/api/school-holidays` (`{zone:null, items:[]}`) toujours en place, `GET /api/public-holidays` ne
-porte toujours aucun court-circuit sur `zone` (fériés nationaux même sans zone) ✓.
-`SchoolHolidayPeriod`/`Club.schoolZone`/« display-only » non re-contrôlés cette passe —
+Last verified @ 2026-09-26 (rotation `documentation-update`, stamp le plus ancien du dépôt — zone
+non touchée par la PR, contrôle de fraîcheur). Re-confronté au code : `AdminJobCatalog` déclare
+`import-school-holidays`/`import-public-holidays` en `quarterly(4)`/`quarterly(4, 30)`,
+`manualTriggerAllowed: true` (`backend/src/AdminJob/AdminJobCatalog.php:63-64`) ✓ ;
+`SchoolZoneResolver::ZONES` porte exactement les 13 codes listés (`A`/`B`/`C`/`CORSE` + 9 DOM/TOM,
+`backend/src/Service/SchoolZoneResolver.php:27`) ✓ ; `HolidayPaths` composé par
+`CustomRoutesOpenApiFactory` (`backend/src/OpenApi/CustomRoutesOpenApiFactory.php:69`) ✓ ; le
+court-circuit zone `null` de `GET /api/school-holidays` (`{zone:null, items:[]}`,
+`SchoolHolidaysController.php:46-48`) en place, `GET /api/public-holidays` ne porte aucun
+court-circuit sur `zone` — la requête part avec `$zone` potentiellement `null`
+(`PublicHolidaysController.php:46-69`, fériés nationaux même sans zone) ✓.
 *(historique des passes : `git log -p --follow specs/courantes/vacances-scolaires-jours-feries.md`)*
 
 Feed d'affichage du cockpit (accueil temporel) : vacances scolaires de la zone du club + jours fériés applicables. **Display-only — jamais consommé par le solveur** : si un férié ou une vacance gêne un entraînement, le gestionnaire pose une période (`CalendarEntry` `closure`/`holiday`), il n'y a aucune règle implicite.
