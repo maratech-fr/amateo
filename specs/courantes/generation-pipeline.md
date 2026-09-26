@@ -1,12 +1,14 @@
 # Génération d'un planning — conduite normalisée (bout en bout)
 
-Last verified @ 2026-09-25 (**rotation de fraîcheur** `documentation-update`, zone non touchée par
-cette PR — lot P5-16 fond d'écran commun). Re-confronté : `CONTRACT_VERSION` toujours
-**`'2.23'`** aux trois foyers (`ScheduleConstraintBuilder.php:63`, `MoveSlotService.php:50`,
+Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement » — la
+chronologie du bug d'atterrissage embarqué en mode période (§2, « corrigé le 2026-08-19 ») et la
+mention « historique » de l'illustration `score` (§5.1) passées au présent, la trace datée reste
+en `etat-des-lieux.md` §3. `CONTRACT_VERSION` toujours **`'2.23'`** aux trois foyers
+(`ScheduleConstraintBuilder.php:63`, `MoveSlotService.php:50`,
 `MatchPlacementPayloadBuilder.php:65`) et `engine/CONTRACT_VERSION`, inchangé ; la garde de
 redélivrance (`GenerateScheduleHandler.php`, lecture fraîche + après verrou, SEUL `COMPLETED`
 bloque) et la persistance de la greffe de convergence (`Schedule::payloadGraft`/`engineInput()`)
-toujours présentes, code relu.
+toujours présentes, code relu ; aucun écran frontend n'affiche `score` (grep confirmé).
 *(historique des passes vit dans git : `git log -p --follow specs/courantes/generation-pipeline.md`)*
 
 > Vérité courante. Décrit ce qui **doit** se passer, zone par zone, quand un
@@ -53,7 +55,7 @@ via `POST /generate` ; backend → frontend via Mercure SSE `club:{clubId}:sched
 - **Attente** (`features/wizard/steps/GenerateStep.tsx` + `useScheduleStatus`) : poll
   `GET /api/schedules/{id}` tant que le statut ∈ `{PENDING, GENERATING}`. Garde-fou
   client `TIMEOUT_MS = 20 min` (`GenerateStep.tsx:37`) → sinon écran d'échec + réessai.
-- **Le frontend CONSOMME désormais Mercure** (FRT-04) — `features/planning/lib/scheduleStream.ts` ouvre
+- **Le frontend CONSOMME Mercure** (FRT-04) — `features/planning/lib/scheduleStream.ts` ouvre
   **UN EventSource par session**, abonné au TEMPLATE du club (`club:{clubId}:schedule:{id}` tel
   quel : le hub matche chaque topic exact contre lui), donc toutes les générations du club
   arrivent sur la même connexion sans connaître leurs ids à l'avance. L'authentification est un
@@ -65,33 +67,24 @@ via `POST /generate` ; backend → frontend via Mercure SSE `club:{clubId}:sched
   chemin critique : une génération s'affiche même hub éteint.
 - **Affichage** : dès qu'une version existe pour le plan en cours (terminée OU en vol),
   `GenerateStep` bascule sur `<PlanningPage embedded scopePlanId={...} />`
-  (`features/wizard/steps/GenerateStep.tsx`). **Règle d'atterrissage ARBITRÉE (fondateur,
-  2026-08-19)** : l'écran **EMBARQUÉ** (cette étape) se pose sur la version la **plus RÉCENTE**
-  du plan en portée (génération EN VOL comprise) — le gestionnaire doit revoir la génération
-  qu'il vient de lancer. Le **POINTEUR** (`seasonPlan.chosenScheduleId`, ADR-0002, via
-  `pickLandingScheduleId`) ne l'emporte QUE sur la page `/planning` autonome et au cockpit ; il
-  ne pilote **plus** l'atterrissage embarqué (`pickLanding.test.ts` garde le chemin autonome,
-  `PlanningPage.test.tsx` l'embarqué — la préférence est dérivée de `embedded` dans
-  `PlanningPage.tsx`, pas un one-shot). **En mode saison**, `scopePlanId` est `null` :
-  l'embarqué se pose sur la dernière version de saison, l'autonome sur celle que le plan SEASON
-  pointe (sinon la dernière terminée). **En mode période**, `scopePlanId` porte l'id du plan de
-  période : l'écran embarqué ne connaît QUE les versions de CE plan (atterrissage sur la plus
-  récente, titre, toolbar, badge « principal » impossible), et une période sans version affiche
-  un état vide **explicite** — jamais un repli sur une version de saison. ⚠ **Corrigé le
-  2026-08-19** (bug fondateur) : avant cette date, l'écran embarqué n'avait aucune portée en mode
-  période — une sélection laissée par un autre écran du cockpit (ou l'absence de sélection au
-  retour sur l'étape) faisait retomber l'affichage sur le plan de saison (titre, badge
-  « principal », versions de saison), masquant les versions déjà générées de la période et
-  exposant à une double génération. Le **même jour**, la règle d'atterrissage a été arbitrée : la
-  retombée « pointeur d'abord » ramenait la V1 POINTÉE (seed BCCL) au lieu de la génération
-  fraîche, et le **push one-shot** de `GenerateStep` (supprimé) couplait l'affichage à l'ordre de
-  montage — d'où « je ne vois plus MA génération ». En prime, le **verdict d'échec** de l'étape
-  Génération se dérive désormais du dernier run FAILED du plan lu de la LISTE (plus du state
-  local), donc il survit au retour sur l'étape au lieu de redevenir un lanceur muet. Ceinture
-  conservée : les entrées en mode période (`RadarPanel`, `DayDialog`, la reprise overlay de
-  `SeasonSchedulesModal`) et les sorties vers la génération de saison (`SeasonPlanBanner`,
-  `SeasonSchedulesModal`) purgent la sélection planning au passage. Détail :
-  `specs/courantes/etat-des-lieux.md` §3.
+  (`features/wizard/steps/GenerateStep.tsx`). **Règle d'atterrissage** : l'écran **EMBARQUÉ**
+  (cette étape) se pose sur la version la **plus RÉCENTE** du plan en portée (génération EN VOL
+  comprise) — le gestionnaire doit revoir la génération qu'il vient de lancer. Le **POINTEUR**
+  (`seasonPlan.chosenScheduleId`, ADR-0002, via `pickLandingScheduleId`) ne l'emporte QUE sur la
+  page `/planning` autonome et au cockpit ; il ne pilote **plus** l'atterrissage embarqué
+  (`pickLanding.test.ts` garde le chemin autonome, `PlanningPage.test.tsx` l'embarqué — la
+  préférence est dérivée de `embedded` dans `PlanningPage.tsx`, pas un one-shot). **En mode
+  saison**, `scopePlanId` est `null` : l'embarqué se pose sur la dernière version de saison,
+  l'autonome sur celle que le plan SEASON pointe (sinon la dernière terminée). **En mode
+  période**, `scopePlanId` porte l'id du plan de période : l'écran embarqué ne connaît QUE les
+  versions de CE plan (atterrissage sur la plus récente, titre, toolbar, badge « principal »
+  impossible), et une période sans version affiche un état vide **explicite** — jamais un repli
+  sur une version de saison. Le **verdict d'échec** de l'étape Génération se dérive du dernier
+  run FAILED du plan lu de la LISTE (pas d'un state local) : il survit au retour sur l'étape au
+  lieu de redevenir un lanceur muet. Ceinture : les entrées en mode période (`RadarPanel`,
+  `DayDialog`, la reprise overlay de `SeasonSchedulesModal`) et les sorties vers la génération de
+  saison (`SeasonPlanBanner`, `SeasonSchedulesModal`) purgent la sélection planning au passage.
+  Détail : `specs/courantes/etat-des-lieux.md` §3.
 
 ## 3. Backend — ce qu'il fait
 
@@ -160,12 +153,10 @@ Tout test `null === s.planType` (« est-ce un plan de saison ? ») échoue alors
 - **Conduite normalisée** : normaliser à la **frontière**. `listSchedules`
   (`features/planning/api.ts:845-848`) mappe les champs nullable (`planType`, `schedulePlanId`,
   `score`) en `?? null` → le type redevient honnête, **tous** les consommateurs voient un vrai
-  `null` (gardé par `api.test.ts`). Même piège pour `score` : un plan sans score (DRAFT/en vol)
-  affichait sinon le littéral « score undefined ». ⚠ **Amendé 2026-08-01 (P4-39)** : plus aucun
-  écran n'affiche le score, donc cette illustration est **historique** — la normalisation, elle,
-  reste en place — non plus pour corriger un affichage, mais pour garder le type honnête
-  (`score: number | null`) sur un champ que l'API sert toujours et que **plus aucun code
-  frontend ne lit**.
+  `null` (gardé par `api.test.ts`). Le champ `score` suit la même normalisation, mais par
+  cohérence de type plutôt que par besoin d'affichage : **aucun écran n'affiche le score**
+  aujourd'hui — la normalisation garde le type honnête (`score: number | null`) sur un champ que
+  l'API sert toujours et que plus aucun code frontend ne lit.
 - **Règle générale** : tout champ nullable consommé côté frontend via une comparaison
   `=== null` doit être normalisé à la frontière de son endpoint, ou testé avec un
   check *nullish* (`!x` / `== null`), jamais `=== null` seul.

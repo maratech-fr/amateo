@@ -1,21 +1,11 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement » complétée sur le
-tableau « Écarts implémentation ↔ cible » et les notes D3 v1/D3 v2, CLAUDE.md §8 / skill
-`documentation-update` règle 7). Retiré : le bloc « Historique des décisions » (passe précédente,
-vivant vérifié dans ADR-0002 et le corps du document) ; le tableau E1-E6 (les 6 écarts sont
-✅ soldés, donc ne sont plus des écarts — leur substance encore vivante était déjà, ou est
-désormais, énoncée en présent dans §1/§2/§3 ; traces datées déjà en `etat-des-lieux.md` §3 pour E5
-et E6, vérifiées par grep, aucune ligne à ajouter — le balayage de liens a aussi trouvé E1 cité
-depuis `docs/architecture/adr-0002-pattern-plan.md:20` en prose (pas un lien), tag restauré dans
-l'État de §2) ; les notes D3 v1/D3 v2 de re-datage, compactées
-en un seul fait présent (le détail technique — endpoints, jeton d'aperçu, verdicts — vit dans
-ADR-0002 et `backend/docs/backend-inventory.md`, déjà cités). Reconfronté au code dans la foulée :
-`RedatePreviewController` (`backend/src/Controller/RedatePreviewController.php:36`) ✓,
-`ensurePeriodPlanId` (`backend/src/Service/SchedulePlanProvisioner.php:780`) ✓,
-`FillPeriodPlanController` (`backend/src/Controller/FillPeriodPlanController.php:75`) ✓. Reste non
-re-confronté cette passe : la « Naissance de la V1 » (ADR-0004) et la « Règle transverse » —
-portent encore des ids/dates de lot, signalés en dehors du périmètre demandé.
+Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement » — les 4 résidus
+datés/identifiés de « Règle transverse » et « Naissance de la V1 » passés au présent, ids/dates de
+lot retirés du corps ; les deux décisions fermées correspondantes (portée fermetures-seules du
+découpage début·milieu·fin ; transcription manuelle sur les reprises de vacances) vivent dans
+[`etat-des-lieux.md`](etat-des-lieux.md) §2, vérifiées par grep. Reste du fichier déjà au présent
+(passe précédente), non re-confronté au code cette passe.
 
 > **Rôle de ce document** : la trace durable du modèle métier des plannings. C'est LA référence
 > à consulter avant tout travail sur la génération : quel type se déclenche quand, ce qu'on y
@@ -45,10 +35,10 @@ portent encore des ids/dates de lot, signalés en dehors du périmètre demandé
 **Tout planning qui n'est pas le socle couvre un SEGMENT — un bloc de semaines calendaires
 pleines et contiguës (lundi→dimanche, clamp saison admis aux deux bords) ; la semaine simple est
 le segment de taille 1.** Vrai côté API (`CalendarEntryStateProcessor::assertValidWeekChild`,
-[ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md)) **et côté écran depuis P2-41 PR-C
-(2026-08-19)** : le picker (`WeekPickerDialog`) propose des SEGMENTS aux ruptures GÉOMÉTRIQUES de
-l'offre (`segmentsFromOffer`, `frontend/src/features/cockpit/lib/date.ts`) — semaine d'entame/fin
-partielle de l'événement, discontinuité de l'offre (exclusion vacances P2-40, filtre temporel) —
+[ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md)) **et côté écran** : le picker
+(`WeekPickerDialog`) propose des SEGMENTS aux ruptures GÉOMÉTRIQUES de l'offre
+(`segmentsFromOffer`, `frontend/src/features/cockpit/lib/date.ts`) — semaine d'entame/fin
+partielle de l'événement, discontinuité de l'offre (exclusion vacances, filtre temporel) —
 **précochés**, avec deux gestes nommés : **SCISSION** (déplier un segment en ses semaines) et
 **FUSION** (assembler des segments adjacents dans l'offre, y compris par-dessus une rupture — le
 serveur ne borne que contiguïté + enveloppe). Un segment multi-semaines porte une phrase
@@ -56,9 +46,9 @@ pédagogique de présentation (le sur-ferme du solveur sur des semaines qui diff
 décision. Un enfant naît toujours avec SON plan (rail 1 entrée = 1 plan), quelle que soit la
 largeur de son segment.
 
-⚠ **Cette liberté (scinder/fusionner à la main) ne tient plus pour une FERMETURE (`closure`)**
-depuis la décision fondateur du 2026-09-05 — les VACANCES seules la gardent. Une fermeture se
-découpe désormais en au plus trois segments **IMPOSÉS** : **début** (semaine entamée de tête),
+⚠ **Cette liberté (scinder/fusionner à la main) ne tient pas pour une FERMETURE (`closure`)** —
+les VACANCES seules la gardent (décision fermée, [`etat-des-lieux.md`](etat-des-lieux.md) §2). Une
+fermeture se découpe en au plus trois segments **IMPOSÉS** : **début** (semaine entamée de tête),
 **milieu** (les semaines pleines lun→dim contiguës, UN SEUL plan — un trou de vacances ou une
 fenêtre déjà planifiée par un autre plan coupe le milieu en deux runs, chacun son propre plan) et
 **fin** (semaine entamée de queue) — jamais une semaine complète isolée, jamais un milieu tronqué.
@@ -105,20 +95,20 @@ début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
   indispo (« Adapter ») — **c'est là que le plan naît** (`POST /schedule_plans`), sans
   version ; (3) l'outil découpe **automatiquement** en autant de plannings que de **semaines
   englobées** ; (4) il gère le premier, est **notifié** des suivants à compléter.
-- **Naissance de la V1 — deux voies (P2-44, [ADR-0004](../../docs/architecture/adr-0004-period-plan-birth-as-socle-copy.md), 2026-08-19)** :
+- **Naissance de la V1 — deux voies** ([ADR-0004](../../docs/architecture/adr-0004-period-plan-birth-as-socle-copy.md)) :
   un plan de période vierge peut obtenir sa V1 par le **solve complet** habituel (`generate`), ou
   par **transcription sans solveur** (`POST /api/schedule_plans/{id}/transcribe-from-socle`) — le
   socle POINTÉ recopié à l'identique, moins ce que la sélection de période filtre (équipe
   désactivée, gymnase/jour fermé, réduction de séances), verrous HARD révocables, séances qui ne
-  passent plus nommées « à replacer ». **Écran (PR-2)** : un bouton « Partir du planning de
+  passent plus nommées « à replacer ». **Écran** : un bouton « Partir du planning de
   saison » propose la transcription à côté du bouton de génération tant que le plan est vierge
   (`GenerateStep`) ; l'écran embarqué affiche ensuite le panneau « à replacer » et une modale de
   comparaison avec le socle — détail : `frontend/docs/frontend-spec.md` §6.7 bis. **Sur une
-  fermeture, la transcription est désormais le DÉFAUT (P2-44 PR-4, 2026-08-20)** : elle se
-  déclenche automatiquement à l'arrivée sur l'étape, sans clic — le bouton manuel reste le geste de
-  repli. **Restriction assumée** : ce défaut ne s'applique QU'aux périodes de type fermeture — voir
-  §3 pour les vacances, qui gardent le bouton manuel à l'octet près.
-- **Une fois la V1 née — TROIS gestes désormais (générer / transcrire / combler, P2-44 PR-3)** :
+  fermeture, la transcription est le DÉFAUT** : elle se déclenche automatiquement à l'arrivée sur
+  l'étape, sans clic — le bouton manuel reste le geste de repli. **Restriction assumée** : ce
+  défaut ne s'applique QU'aux périodes de type fermeture — voir §3 pour les vacances, qui gardent
+  le bouton manuel à l'octet près (décision fermée, [`etat-des-lieux.md`](etat-des-lieux.md) §2).
+- **Une fois la V1 née — TROIS gestes (générer / transcrire / combler)** :
   après une transcription (ou tout autre solve) qui laisse des séances « à replacer », le
   gestionnaire n'est plus borné à « régénérer entièrement » ou « déplacer une par une » — un
   bouton **« Combler automatiquement »** (`PlanningPage`, visible dès que la dérive porte des
@@ -160,14 +150,14 @@ début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
 
 ## 3. Planning de reprise (vacances)
 
-- **La transcription du socle (§2) reste MANUELLE ici, à l'octet près (P2-44 PR-4, décision
-  fondateur 2026-08-20)** : contrairement à une fermeture, une reprise de vacances n'obtient
-  jamais sa V1 automatiquement — le bouton « Partir du planning de saison » reste le seul chemin.
-  Deux raisons : de sens (« les vacances sont TOTALEMENT différentes d'un incident de saison,
-  c'est un planning TOUT nouveau, régénérer de zéro y est accepté, je ne veux pas de copie du
-  socle ici ») et technique (une reprise dont la grille est réécrite en journée verrait les
-  séances du soir du socle copiées en verrous HARD hors grille — `OrphanPinGuard` refuserait
-  alors 422 « Régénérer » ET « Combler », enfermant le gestionnaire).
+- **La transcription du socle (§2) reste MANUELLE ici, à l'octet près** (décision fermée,
+  [`etat-des-lieux.md`](etat-des-lieux.md) §2) : contrairement à une fermeture, une reprise de
+  vacances n'obtient jamais sa V1 automatiquement — le bouton « Partir du planning de saison »
+  reste le seul chemin. Deux raisons : de sens (« les vacances sont TOTALEMENT différentes d'un
+  incident de saison, c'est un planning TOUT nouveau, régénérer de zéro y est accepté, je ne veux
+  pas de copie du socle ici ») et technique (une reprise dont la grille est réécrite en journée
+  verrait les séances du soir du socle copiées en verrous HARD hors grille — `OrphanPinGuard`
+  refuserait alors 422 « Régénérer » ET « Combler », enfermant le gestionnaire).
 - **Séquence** : depuis le cockpit (radar vacances ou clic sur un jour de vacances), le
   gestionnaire **choisit les semaines** à travailler parmi celles des vacances → chaque
   sélection ouvre le wizard en mode période → génération. **Chaque semaine cochée naît

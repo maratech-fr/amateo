@@ -1,10 +1,9 @@
 # Accueil « cockpit temporel »
 
-Last verified @ 2026-09-26 (`documentation-update`, passe « présent » — re-vérifié contre le code :
-`PeriodVenues.tsx:192` (`sub` de `VenueSelect`), `PlanningPage.tsx:634` (`stalenessMessage`),
-`RadarPanel.tsx:50` (`SCHOOL_HOLIDAY_HORIZON_DAYS`), `DemoAwareClock.php` (horloge simulée côté
-serveur), et l'absence de tout champ `overlayScheduleId` sur `CalendarEntry`). Historique de ce
-fichier : `git log -p --follow` dessus.
+Last verified @ 2026-09-26 (`documentation-update`, PR 3a — suppression du bloc « À faire (doc) »
+de §1bis, décision fondateur : pas de ligne roadmap pour ce point ; reste du fichier déjà au
+présent, non re-confronté au code cette passe). Historique de ce fichier : `git log -p --follow`
+dessus.
 
 > **Statut** : livré — cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2. Ce document fixe le
 > modèle d'UX + d'architecture de l'accueil cockpit et la fondation des **calendriers
@@ -64,11 +63,6 @@ travail préliminaire des calendriers secondaires.
 > version qui fait foi → la vie de la
 > saison se joue en **exceptions / overlays**, jamais en retouchant la base. On ne quitte jamais
 > les **2 familles d'écrans** (consultation / wizard).
-
-**À faire (doc)** : ce **cycle de vie de l'application** doit être **documenté dans la doc
-adéquate** — `docs/project-map.md` (section parcours) ou une doc dédiée (`docs/technique/app-
-lifecycle.md`). Il **dépasse cette spec** : il structure toute l'appli (auth → onboarding →
-validation → cockpit → périodes). À porter au moment de l'implémentation.
 
 ## 2. Le vrai enjeu : un glissement de modèle mental
 
