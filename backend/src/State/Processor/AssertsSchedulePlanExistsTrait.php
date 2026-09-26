@@ -52,7 +52,7 @@ trait AssertsSchedulePlanExistsTrait
         try {
             return $write();
         } catch (ForeignKeyConstraintViolationException $e) {
-            throw new UnprocessableEntityHttpException('Unknown schedule plan.', $e);
+            throw new UnprocessableEntityHttpException('Ce planning n\'existe plus — rechargez la page.', $e);
         }
     }
 
@@ -67,11 +67,11 @@ trait AssertsSchedulePlanExistsTrait
         // enverrait `WHERE id = ''` contre une PK `uuid` native → 22P02, soit
         // exactement le 500 que ce garde existe pour supprimer.
         if ('' === $schedulePlanId) {
-            throw new UnprocessableEntityHttpException('Unknown schedule plan.');
+            throw new UnprocessableEntityHttpException('Ce planning n\'existe plus — rechargez la page.');
         }
 
         if (!$entityManager->getRepository(SchedulePlan::class)->find($schedulePlanId) instanceof SchedulePlan) {
-            throw new UnprocessableEntityHttpException('Unknown schedule plan.');
+            throw new UnprocessableEntityHttpException('Ce planning n\'existe plus — rechargez la page.');
         }
     }
 }
