@@ -1,10 +1,9 @@
 # Drill de retour arrière de migration (INF-05)
 
-> Né de l'audit `AUDIT-2026-09-18-claude-fable-5-1.md` (finding INF-05) : 148 migrations portent
-> toutes un `down()`, mais aucune n'avait jamais été rejouée en rollback hors développement — le
-> seul chemin de secours réellement exercé était la restauration du dump pré-migration
+> Chaque migration porte un `down()` (finding d'audit INF-05), mais aucune n'est jamais rejouée en
+> rollback hors développement — le seul chemin de secours réellement exercé est la restauration du dump pré-migration
 > ([`backup-restore.md`](backup-restore.md)). Ce drill est le pendant du restore drill pour l'AUTRE
-> moitié du problème : un `down()` FAUX ou oublié ne se découvrait qu'en catastrophe, le jour d'un
+> moitié du problème : un `down()` FAUX ou oublié ne se découvre qu'en catastrophe, le jour d'un
 > vrai rollback de prod.
 
 ## Ce que fait le script
@@ -57,8 +56,8 @@ Pas de rythme automatisé (l'axe est un **candidat**, pas encore un rituel arbit
 
 - avant de merger une PR qui ajoute ou modifie une migration à `down()` non trivial ;
 - une fois par édition d'audit `/audit`, en échantillon sur les migrations les plus à risque
-  (`DROP TABLE`/`DROP COLUMN` en `up`) — recommandation de l'audit du 2026-09-18, pas encore
-  une politique tranchée.
+  (`DROP TABLE`/`DROP COLUMN` en `up`) — recommandation d'audit, pas encore une politique
+  tranchée.
 
 Voir aussi : [`backup-restore.md`](backup-restore.md) (le chemin de secours réel en prod —
 restaurer le dump pré-migration, jamais un `down()` en production) · [`deploy.md`](deploy.md) §

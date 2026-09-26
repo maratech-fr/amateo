@@ -32,8 +32,8 @@
 
 ## Partie 1 — Première mise en prod (une seule fois)
 
-> Prérequis : un compte **Scaleway** — hébergeur **CHOISI** (décision fondateur 2026-08-21),
-> produit **Instances** (VM auto-gérée, pas de base managée : la stack Docker tourne
+> Prérequis : un compte **Scaleway** — hébergeur **CHOISI** (décision fermée,
+> `specs/courantes/etat-des-lieux.md` §2), produit **Instances** (VM auto-gérée, pas de base managée : la stack Docker tourne
 > entière sur la VM). Plus le domaine choisi,
 > et les accès GitHub au repo. Compter ~1 h. Chaque ⬜ est une action à toi ;
 > on peut dérouler cette partie ensemble en session.

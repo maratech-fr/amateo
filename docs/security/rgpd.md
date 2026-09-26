@@ -1,6 +1,6 @@
 # RGPD — registre des traitements & mécanismes
 
-> **Statut** : socle technique **livré** (P0-1, lots 1-5, 2026-07-11). Les textes juridiques
+> **Statut** : socle technique **livré** (P0-1). Les textes juridiques
 > (CGU, politique de confidentialité, DPA) sont des **placeholders structurés**
 > (`frontend/src/features/legal/PrivacyPage.tsx`) à faire rédiger avant commercialisation.
 > Ce fichier est le **registre des traitements** (art. 30) côté ingénierie : inventaire → base
@@ -21,16 +21,16 @@
 | Compte jamais vérifié | User non vérifié + token | contrat (précontractuel) | 7 jours | `app:users:purge-unverified` (cron) | — |
 | Données du club | Coach (email/tél), équipes, plannings, contraintes | contrat (via le club) | saison courante + N-1 | `app:seasons:purge` (cron, grâce 30 j post-bascule) ; suppression manuelle par le club (cascade, auditée) | `AccountErasureTest` (d) |
 | Effacement de compte | anonymisation immédiate + purge club orphelin | obligation légale (art. 17) | grâce 30 j (annulable, revalidée) | `DELETE /api/me` → `app:clubs:purge-erased` — **l'identité publique FFBB du club survit** | `AccountErasureTest` |
-| Portabilité | export JSON compte / workspace club — **périmètre DÉRIVÉ** des entités `TenantOwnedInterface`, plus recopié (D-01, 2026-08-08) | obligation légale (art. 20) | à la demande (10/h par user) | `GET /api/me/export`, `GET /api/club/export` (management) | `RgpdExportTest` + **`RgpdExportCompletenessTest`** |
+| Portabilité | export JSON compte / workspace club — **périmètre DÉRIVÉ** des entités `TenantOwnedInterface`, plus recopié (D-01) | obligation légale (art. 20) | à la demande (10/h par user) | `GET /api/me/export`, `GET /api/club/export` (management) | `RgpdExportTest` + **`RgpdExportCompletenessTest`** |
 | Contacts officiels FFBB | président/correspondant (nom/tél/email publiés par la FFBB) | **intérêt légitime** (organisation des rencontres, annuaire adverse) | tant que publiés (refresh FFBB) ; **survivent** à la purge du club | opposition : exclusion du refresh (à outiller avec l'annuaire) | revue DP1 |
 | Journal d'audit | actions sensibles — **ids uniquement, jamais de PII** | intérêt légitime (accountability art. 5.2) | 12 mois | `app:audit:purge` (connexion admin — append-only DB pour le runtime) | `AuditTrailTest` |
 | Doléances coachs (#10) | `CoachWish` (souhaits par équipe × semaine, **commentaire libre**), `CoachWishToken` (lien personnel + horodatage d'envoi `sentAt`) | contrat (via le club) | saison courante + N-1 | `app:seasons:purge` (`SeasonDataPurger` supprime `CoachWish` et `CoachWishCampaign` ; les tokens partent par cascade FK de la campagne) | `PurgeSeasonsCommandTest` |
 | Visite du module matchs (RMM-3) | `MatchModuleVisit` — référence de visite PAR utilisateur (club+saison+user), horodatages seulement | contrat (via le club) | saison courante + N-1 (purge saison) ; vie du compte (effacement) | `app:seasons:purge` (`SeasonDataPurger`) **et** `DELETE /api/me` (`AccountErasureService`, boucle sur `findMemberClubIds` — clubs actifs ET quittés, pas seulement actifs) | `MatchVisitDeltaParityTest` |
-| Appariement gymnase des adversaires (P2-54, amendement PR I 2026-09-20) | `OpponentVenueLink` — code organisme adverse, libellé de salle FBI (normalisé), gymnase fédéral apparié (snapshot label/coordonnées/ref), source AUTO\|MANUAL. **Club-scoped SANS saison** (un libellé désigne le même gymnase d'une saison à l'autre — remplace `OpponentTravel`, qui était par saison×équipe) | contrat (via le club) | vie du club — jamais purgé par saison (`SeasonDataPurger::EXCLUDED_FROM_SEASON_PURGE`) ; vie du compte (effacement) | `DELETE /api/me` → `ErasedClubPurger::PURGED_BY_CLUB` (purge par `clubId`) — une ligne `MANUAL` qui épingle un gymnase fédéral **décrémente d'abord** le compteur partagé `opponent_venue_suggestion` (`decrementSharedVenueChoices`, avant le DELETE de masse) | `PurgeCompletenessTest`, `AccountErasureTest` |
-| Cache de trajets (C4, 2026-09-19) | `ClubTravelCache` — coordonnées ARRONDIES (5 décimales, ~1 m) origine/destination + profil (voiture/à pied) + minutes calculées ; **club-scoped, SANS saison** (un trajet routier est une constante) | contrat (via le club) | vie du club — jamais recalculé, jamais purgé par saison (`SeasonDataPurger::EXCLUDED_FROM_SEASON_PURGE`) ; vie du compte (effacement) | `DELETE /api/me` → `ErasedClubPurger::PURGED_BY_CLUB` (purge par `clubId`) ; **exclu de l'export de portabilité** (`RgpdExportService::EXCLUDED_FROM_EXPORT` — donnée d'établissement RECOMPUTABLE, sans PII). ⚠ Un changement de siège (`PATCH /api/club/siege`) laisse les anciennes lignes en base (nouvelle origine = nouvelle clé, l'ancienne n'est simplement plus jamais lue) — dette assumée, `backend/docs/geo-api.md` § cache de trajets, `roadmap.md` P4-249 | `PurgeCompletenessTest`, `RgpdExportCompletenessTest`, `ClubTravelCacheSeedTest` |
+| Appariement gymnase des adversaires (P2-54) | `OpponentVenueLink` — code organisme adverse, libellé de salle FBI (normalisé), gymnase fédéral apparié (snapshot label/coordonnées/ref), source AUTO\|MANUAL. **Club-scoped SANS saison** (un libellé désigne le même gymnase d'une saison à l'autre — remplace `OpponentTravel`, qui était par saison×équipe) | contrat (via le club) | vie du club — jamais purgé par saison (`SeasonDataPurger::EXCLUDED_FROM_SEASON_PURGE`) ; vie du compte (effacement) | `DELETE /api/me` → `ErasedClubPurger::PURGED_BY_CLUB` (purge par `clubId`) — une ligne `MANUAL` qui épingle un gymnase fédéral **décrémente d'abord** le compteur partagé `opponent_venue_suggestion` (`decrementSharedVenueChoices`, avant le DELETE de masse) | `PurgeCompletenessTest`, `AccountErasureTest` |
+| Cache de trajets (C4) | `ClubTravelCache` — coordonnées ARRONDIES (5 décimales, ~1 m) origine/destination + profil (voiture/à pied) + minutes calculées ; **club-scoped, SANS saison** (un trajet routier est une constante) | contrat (via le club) | vie du club — jamais recalculé, jamais purgé par saison (`SeasonDataPurger::EXCLUDED_FROM_SEASON_PURGE`) ; vie du compte (effacement) | `DELETE /api/me` → `ErasedClubPurger::PURGED_BY_CLUB` (purge par `clubId`) ; **exclu de l'export de portabilité** (`RgpdExportService::EXCLUDED_FROM_EXPORT` — donnée d'établissement RECOMPUTABLE, sans PII). ⚠ Un changement de siège (`PATCH /api/club/siege`) laisse les anciennes lignes en base (nouvelle origine = nouvelle clé, l'ancienne n'est simplement plus jamais lue) — dette assumée, `backend/docs/geo-api.md` § cache de trajets, `roadmap.md` P4-249 | `PurgeCompletenessTest`, `RgpdExportCompletenessTest`, `ClubTravelCacheSeedTest` |
 | Consentement | `termsAcceptedAt` + `termsVersion` au register | obligation légale (preuve) | vie du compte (anonymisé avec lui). Couvre 100 % des comptes réels : exigé au register avant le premier utilisateur de production (pas de backfill nécessaire — les comptes dev/test antérieurs n'en ont pas) | — | `ConsentTest` |
-| Siège du club (retours de tests, 2026-09-19) | `Club.address`/`postalCode`/`city`/`latitude`/`longitude` — l'adresse de l'ÉTABLISSEMENT (le club), posée par un gestionnaire (`PATCH /api/club/siege`) puis re-géocodée serveur-side ; donnée d'établissement, pas une PII (cohérent avec `Club.php:156-158` — ce sont les adresses PERSONNELLES du président/correspondant qui sont délibérément NON stockées) | contrat (via le club) | vie du club — `ErasedClubPurger` ne touche pas la ligne `Club` elle-même (la fiche FFBB, siège compris, **survit** à l'effacement d'un compte, § ligne « Effacement de compte ») ; supprimée avec le club entier par `PurgeErasedClubsCommand` (+30 j sans membre actif revenu) | — | `ClubSiegeTest` |
-| Registre « à corriger dans FBI » (todo FBI, 2026-09-19) | `FbiCorrection` — rencontre visée, champ (date/heure/salle), valeur appli, valeur FBI encore affichée, alias FBI du gymnase, `decidedBy` (guid interne, jamais un email/nom) | contrat (via le club) | saison courante + N-1 (purge saison) ; **supprimée avec la rencontre** (cascade applicative, pas de FK — `FixtureStateProcessor::cascadeBeforeDelete` → `FbiCorrectionLedger::removeForFixture`, ouvertes et fermées) | `app:seasons:purge` (`SeasonDataPurger::PURGED_BY_CLUB_SEASON`, ajoutée) — seule porte de sortie d'une entrée FERMÉE dont la rencontre survit (trace) ; exportée par la boucle générique de portabilité (`RgpdExportService::clubScopedTables()`, `TenantOwnedInterface`, aucune liste manuscrite à tenir) | `PurgeCompletenessTest`, `RgpdExportCompletenessTest` |
+| Siège du club | `Club.address`/`postalCode`/`city`/`latitude`/`longitude` — l'adresse de l'ÉTABLISSEMENT (le club), posée par un gestionnaire (`PATCH /api/club/siege`) puis re-géocodée serveur-side ; donnée d'établissement, pas une PII (cohérent avec `Club.php:156-158` — ce sont les adresses PERSONNELLES du président/correspondant qui sont délibérément NON stockées) | contrat (via le club) | vie du club — `ErasedClubPurger` ne touche pas la ligne `Club` elle-même (la fiche FFBB, siège compris, **survit** à l'effacement d'un compte, § ligne « Effacement de compte ») ; supprimée avec le club entier par `PurgeErasedClubsCommand` (+30 j sans membre actif revenu) | — | `ClubSiegeTest` |
+| Registre « à corriger dans FBI » | `FbiCorrection` — rencontre visée, champ (date/heure/salle), valeur appli, valeur FBI encore affichée, alias FBI du gymnase, `decidedBy` (guid interne, jamais un email/nom) | contrat (via le club) | saison courante + N-1 (purge saison) ; **supprimée avec la rencontre** (cascade applicative, pas de FK — `FixtureStateProcessor::cascadeBeforeDelete` → `FbiCorrectionLedger::removeForFixture`, ouvertes et fermées) | `app:seasons:purge` (`SeasonDataPurger::PURGED_BY_CLUB_SEASON`, ajoutée) — seule porte de sortie d'une entrée FERMÉE dont la rencontre survit (trace) ; exportée par la boucle générique de portabilité (`RgpdExportService::clubScopedTables()`, `TenantOwnedInterface`, aucune liste manuscrite à tenir) | `PurgeCompletenessTest`, `RgpdExportCompletenessTest` |
 
 ### Ce que l'export de portabilité NE contient PAS, et pourquoi
 
@@ -46,18 +46,17 @@ décisions, tenues par `RgpdExportCompletenessTest` (qui refuse une exclusion sa
 > `TenantOwnedInterface` (`RgpdExportService::clubScopedTables()`), marqueur déjà prouvé
 > équivalent à la colonne `club_id`. La liste manuscrite qui existait avant avait dérivé de
 > **9 tables** — dont `coach_wish` — et l'omission était **invisible** : la réponse restait 200
-> et le JSON valide, la clé simplement absente. Une entité tenant nouvelle fait désormais
+> et le JSON valide, la clé simplement absente. Une entité tenant nouvelle fait
 > **échouer** le test tant qu'elle n'est pas explicitement exportée ou exclue.
 
-### La purge ne se recopie plus non plus (BCK-24, 2026-09-18)
+### La purge ne se recopie pas non plus (BCK-24)
 
-Même patron que l'export (§ ci-dessus) : `SeasonDataPurger` et `ErasedClubPurger` tenaient chacun
-une liste manuscrite d'entités purgées — une entité tenant nouvelle (`OpponentTravel`, P2-54)
-pouvait donc survivre à un « réinitialiser la saison » **et** à un effacement RGPD sans qu'aucun
-test ne le voie (constaté par l'audit `AUDIT-2026-09-18-claude-fable-5-1.md`, finding BCK-24,
-Élevée : « seule l'identité FFBB survit » était faux à la lettre).
+Même patron que l'export (§ ci-dessus) : `SeasonDataPurger` et `ErasedClubPurger` exposent chacun
+leur liste d'entités purgées comme une source, jamais une copie — une liste manuscrite laisserait
+une entité tenant nouvelle (`OpponentTravel`, P2-54) survivre à un « réinitialiser la saison »
+**et** à un effacement RGPD sans qu'aucun test ne le voie (BCK-24).
 
-Les deux purgers exposent désormais leurs listes comme des **constantes publiques introspectables**
+Les deux purgers exposent leurs listes comme des **constantes publiques introspectables**
 et `backend/tests/Security/PurgeCompletenessTest.php` (phase1, régime de garde identique à
 `RgpdExportCompletenessTest` — ne gate pas `build-docker`) dérive de ces constantes, sans en
 recopier une seule ligne, et **exige** que toute entité `TenantOwnedInterface` soit, pour chaque
@@ -70,7 +69,7 @@ chemin, purgée ou nommément exclue avec sa raison :
 - `ErasedClubPurger::PURGED_BY_CLUB` (club-scoped sans saison, purgées par `club_id` à
   l'effacement) et `::EXCLUDED_FROM_ERASURE` (`audit_log`, `coach_wish_token`).
 
-Une entité tenant nouvelle fait désormais **échouer** ce test tant qu'elle n'est pas explicitement
+Une entité tenant nouvelle fait **échouer** ce test tant qu'elle n'est pas explicitement
 couverte ou exclue — le même défaut par défaut que pour l'export.
 
 ## 3. Mécanismes clés (pointeurs code)
@@ -82,12 +81,12 @@ couverte ou exclue — le même défaut par défaut que pour l'export.
 - **Audit** : `AuditTrail` (INSERT DBAL + SAVEPOINT, no-PII) ; append-only tenu par la DB (aucune policy UPDATE/DELETE) ; lecture = future console superadmin (SA1).
 - **Consentement** : requis au register (400 sinon, validation payload-only = enumeration-safe A3) ; version des textes = `AuthController::TERMS_VERSION`.
 
-## 4. Doctrine backups (**livrée** — cf. `docs/ops/backup-restore.md`, 2026-07-18)
+## 4. Doctrine backups (**livrée** — cf. `docs/ops/backup-restore.md`)
 
-Les sauvegardes contiennent des données effacées : purge **naturelle par rotation 30 j**, **aucune
-restauration sélective** de données effacées (une restauration complète post-incident ré-exécute
-les purges au cron suivant — les champs `anonymizedAt`/`erasureScheduledAt` restaurés re-déclenchent
-les mécanismes). À graver dans la config de backup P0-3.
+Les sauvegardes contiennent des données effacées : purge **naturelle par rotation des dumps**
+(`DatabaseBackupCommand::RETENTION`, les 14 plus récents), **aucune restauration sélective** de
+données effacées (une restauration complète post-incident ré-exécute les purges au cron suivant —
+les champs `anonymizedAt`/`erasureScheduledAt` restaurés re-déclenchent les mécanismes).
 
 ## 5. Logs & PII
 
@@ -104,5 +103,4 @@ les mécanismes). À graver dans la config de backup P0-3.
 ## 6. Reste à faire (hors P0-1)
 
 - Textes juridiques finaux (CGU, politique, DPA) — fondateur/juriste, avant commercialisation.
-- Mécanisme d'opposition outillé pour les contacts FFBB (avec l'annuaire adverse, roadmap matchs B).
-- Backups + config prod (P0-2/P0-3) ; alerting cron (P0-4) — les purges tournent sous `|| true`.
+- Mécanisme d'opposition outillé pour les contacts FFBB (avec l'annuaire adverse) — pas encore construit.
