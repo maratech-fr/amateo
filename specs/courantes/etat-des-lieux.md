@@ -525,6 +525,7 @@ le front lit, il ne re-dérive plus les règles de refus, repli fail-closed si l
 
 | Date | Id | Sujet | Documenté dans |
 |------|----|-------|----------------|
+| 2026-09-26 | — | Passe doc « présent » : §1 devient une carte, §2/§3 compactés sans perte (268 décisions, 549 traces, chaque id sur sa ligne) ; seul ce fichier porte un journal | [`planning-lifecycle-validated.md`](planning-lifecycle-validated.md) §3.5 · décision §2 |
 | 2026-09-26 | — | Passe doc « présent » frontend : wizard/components/AGENTS/strategy compactés (règle 7 documentation-update) ; drift corrigé (nginx, e2e non typé avant P4-257) | [`frontend/docs/frontend-components.md`](../../frontend/docs/frontend-components.md) §3 · [`frontend/AGENTS.md`](../../frontend/AGENTS.md) · [`.claude/rules/frontend.md`](../../.claude/rules/frontend.md) · décision §2 |
 | 2026-09-25 | P5-16 | Un fond d'écran commun, identique app et vitrine — les motifs multi-sport du logo sur notre papier, en `background-image` figé (aussi P4-140, P4-18) | [`identite-visuelle-produit.md`](identite-visuelle-produit.md) § « Le fond d'écran » · décision §2 |
 | 2026-09-25 | P4-261 | À 360 px, le nom du club se masque proprement au lieu de se tronquer à zéro (`AppLayout`) (aussi P4-251) | [`frontend-components.md`](../../frontend/docs/frontend-components.md) section « Layout » · décision §2 |
