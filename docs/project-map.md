@@ -1,16 +1,15 @@
 # Project Map — Amateo (engine + backend)
 
 Last verified @ 2026-09-26 (rotation de fraîcheur, `documentation-update`). Re-confronté au code :
-`engine/CONTRACT_VERSION` = **2.23** ✓ (inchangé) ; `TenantFilterListener` toujours en priorité **7**
-sur `KernelEvents::REQUEST` (`backend/src/EventListener/TenantFilterListener.php:55`) ✓ ; la liste
-des features frontend (§ ci-dessous) correspond exactement à `ls frontend/src/features/` ✓ ; les
-contrôleurs cités en §2.3 sans `#[Route]` (`GenerateScheduleController`, `VenuePeriodGridActionController`)
-sont bien câblés en opérations API Platform (`ApiResource/ScheduleResource.php`), les autres cités
-portent bien leur `#[Route]` ✓. Drift corrigé : « every dev service carries `restart: unless-stopped`
-[…] every service has a Docker healthcheck » (§4) était faux — les deux helpers dev à la demande
-(`frontend-dev`, `frontend-tooling`) n'ont ni l'un ni l'autre ; reformulé en « every **long-lived**
-dev service ». Reste du fichier (backend détaillé §2, engine §3, sécurité) non reconfronté cette
-passe — voir les stamps de zone et `git log -p --follow docs/project-map.md` pour l'historique.
+`engine/CONTRACT_VERSION` = **2.23** ; `TenantFilterListener` en priorité **7** sur
+`KernelEvents::REQUEST` (`backend/src/EventListener/TenantFilterListener.php:55`) ; la liste des
+features frontend (§ ci-dessous) correspond à `ls frontend/src/features/` ; les contrôleurs cités
+en §2.3 sans `#[Route]` (`GenerateScheduleController`, `VenuePeriodGridActionController`) sont bien
+câblés en opérations API Platform (`ApiResource/ScheduleResource.php`), les autres cités portent
+bien leur `#[Route]` ; tout service **long-lived** de `docker-compose.yml` porte `restart:
+unless-stopped` et un healthcheck — les deux helpers dev à la demande (`frontend-dev`,
+`frontend-tooling`) ne portent ni l'un ni l'autre, run-to-completion. Reste du fichier (backend
+détaillé §2, engine §3, sécurité) non reconfronté cette passe — voir les stamps de zone.
 
 Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend has been **rebuilt (React 19) and is active** — features live under `frontend/src/features/` (`ls` it, no count here — it rots): `auth`, `wizard` (data entry), `planning` (work-loop), `cockpit`, `matches`, `coach-wishes` (doléances), `club`, `profile`, `season-transition`, `legal`, `feedback` (bouton + dialogue de signalement), `release-notes` (journal + modale « quoi de neuf ») et `admin` (console superadmin, garde et session distinctes) ; voir `../frontend/docs/frontend-wizard.md` et `frontend-spec.md`. Generated/verified during onboarding against the real code and the `code-review-graph` knowledge graph.
 
@@ -35,12 +34,9 @@ docker-compose.yml       dev stack   ·   docker-compose.prod.yml   prod stack (
                          security-weekly.yml (cron hebdo, Trivy sur les images prod publiées, A19)
 ```
 
-⚠ `contracts/` et `tests/` (racine) — cités comme « placeholders vides » dans `CLAUDE.md` §10 —
-**n'existent pas du tout** dans ce dépôt (`git log --all --full-history -- contracts tests` : aucun
-commit, sur aucune branche, n'a jamais touché l'un ou l'autre chemin ; vérifié 2026-09-16). Git ne
-matérialise aucun dossier vide sans fichier suivi dedans, donc l'un et l'autre n'ont jamais existé
-tels quels — les tests cross-stack vivent dans `backend/tests/`, aucun codegen de contrat n'existe
-(sync manuelle backend⇄engine, `CLAUDE.md` §6).
+⚠ `contracts/` et `tests/` (racine) n'existent pas dans ce dépôt — les tests cross-stack vivent
+dans `backend/tests/`, aucun codegen de contrat n'existe (sync manuelle backend⇄engine, `CLAUDE.md`
+§6 ; gotcha `CLAUDE.md` §10).
 
 All services share the Docker network `amateo_network`.
 
@@ -129,7 +125,7 @@ All services share the Docker network `amateo_network`.
 ### 2.5 Multi-tenant isolation (security-critical)
 1. `TenantFilter` (Doctrine SQL filter) appends `{table}.club_id = :param` on entities owning a `club_id` column (fail-secure — column-based, not marker-based); registered in `config/packages/doctrine.yaml`. Entities also carry the explicit `App\Entity\TenantOwnedInterface` marker (BCK-03) that drives the **app-layer** State provider/processor guards via `instanceof` (replacing `method_exists` duck-typing); `TenantOwnedInterfaceCompletenessTest` keeps the marker set ≡ the club_id-column set.
 2. `TenantFilterListener` (kernel REQUEST, **priority 7 — AFTER the firewall (8)**; source: `backend/src/EventListener/TenantFilterListener.php`): resolves club from `_club_id` attr / `X-Club-Id` header / **else the authenticated JWT user's active `ClubUser` membership** (the frontend sends no header). Spoofed header without matching membership → 403. Enables the Doctrine filter and sets the `app.club_id` GUC via `TenantConnectionContext` (`set_config`). ⚠ Priority 8 (before auth) was the historical cross-club leak bug — never move it back. **RLS is ACTIVE** (migration `Version20260703120000`, SEC-03): FORCE policies on all `club_id` tables, runtime = `amateo_app`; migrations/ops via the `admin` connection (`amateo_owner`, bypasses RLS = superadmin door). 3 layers: Doctrine filter + RLS + provider/processor scoping for Club/User. See `backend/docs/TENANT.md`, `docs/security/rls.md`.
-3. Cache pool `cache.schedule` (4h, Redis, tag-aware) — le payload solveur, purgé par TAG club via `CacheInvalidationListener` à la fin du travail (kernel.terminate ET événements worker Messenger, P2-11). Le pool `cache.tenant` a été supprimé (P2-12 : jamais aucun writer).
+3. Cache pool `cache.schedule` (4h, Redis, tag-aware) — le payload solveur, purgé par TAG club via `CacheInvalidationListener` à la fin du travail (kernel.terminate ET événements worker Messenger). Le pool `cache.tenant` n'existe pas (aucun writer).
 - Reference docs: `backend/docs/TENANT.md`, `backend/docs/RLS.md`.
 
 ### 2.6 Tooling (verified)
@@ -176,12 +172,10 @@ ruff (line 120, py312, double quotes, LF) · mypy `strict` + `pydantic.mypy` (`o
 
 ## 4. Infrastructure
 
-- **Orchestration (dev):** root `docker-compose.yml` (reads `.env`; template `.env.dist`). **Since
-  P4-220 (2026-09-18):** every long-lived dev service carries `restart: unless-stopped` — parity
-  with prod (§ below), closing the gap an incident found the hard way (`messenger-worker` stayed
-  dead for 5h on 2026-09-17 after a `cache:clear`, PR #918, before the other services got the same
-  policy). The two on-demand dev helpers (`frontend-dev`, `frontend-tooling`) carry neither
-  `restart:` nor a healthcheck — they are run-to-completion tooling, not long-lived services.
+- **Orchestration (dev):** root `docker-compose.yml` (reads `.env`; template `.env.dist`). Every
+  long-lived dev service carries `restart: unless-stopped` — parity with prod (§ below). The two
+  on-demand dev helpers (`frontend-dev`, `frontend-tooling`) carry neither `restart:` nor a
+  healthcheck — they are run-to-completion tooling, not long-lived services.
 - **Services (dev):** PostgreSQL 16 (`amateo-postgres`), Redis 7 appendonly (`amateo-redis`), Mercure hub (`amateo-mercure` — signed with the **dedicated `MERCURE_JWT_SECRET`, never `JWT_PASSPHRASE`**: the two being the same value *was* SEC-06, and `MercureHardeningTest` now blocks its return), Mailpit (`amateo-mailpit`), `pdf-worker` (Node), `php-fpm` + nginx, `engine`, **`messenger-worker`** (consumes the Redis queue — without it a generation stays `PENDING`), **`cron-runner`** (`app:jobs:run-due` every minute), `frontend` (nginx :8081) and the dev helpers `frontend-dev` / `frontend-tooling`. Every long-lived service has a Docker healthcheck. Details on the hub: [`security/mercure.md`](security/mercure.md).
 - **Prod (`docker-compose.prod.yml`, P0-2/INF-03):** a **standalone** file, not an overlay of the dev compose — immutable images pulled by tag from ghcr.io, **zero code bind-mount**, no dev services (mailpit, frontend-dev, frontend-tooling), third-party images pinned to an exact tag everywhere (dev, CI and prod alike — e.g. Mercure: `dunglas/mercure:v0.24.2` in dev/CI's `docker-compose.yml`, `dunglas/mercure:v0.19` in prod; no zone rides `:latest` since Mercure 1.0's breaking release broke dev/CI overnight, 2026-09-17), secrets declared `${…:?}` so the stack refuses to boot on a missing one. The VM only ever holds `docker-compose.prod.yml`, `.env.prod` and `jwt/`. Deploy = tag `v*` → build-push ghcr → SSH (`.github/workflows/deploy.yml`, `make deploy VERSION=vX.Y.Z`); the SSH half stays dormant until the repo variable `DEPLOY_ENABLED=true`. Detail: [`ops/prod-stack.md`](ops/prod-stack.md) · runbook: [`ops/deploy.md`](ops/deploy.md) · backups & Sentry: [`ops/backup-restore.md`](ops/backup-restore.md).
 - **Edge routing:** dev `npm run dev` on host (:5173) proxies `/api`→8080, `/exports`→8080, `/.well-known/mercure`→3000 — and **no `/engine` proxy** (removed, FRT-17: the frontend never calls the engine directly, boundary §2 of `CLAUDE.md`). The `frontend` container's nginx (`docker/frontend/nginx.conf` — **a single conf for dev and prod since P4-118**) additionally proxies `/bundles/` and `/exports/`, and carries **no `/engine/` location at all**: that debug proxy was removed from dev too on 2026-07-31 (it exposed the solver unauthenticated).

@@ -28,8 +28,8 @@ Done in a spreadsheet, this is a slow, error-prone combinatorial puzzle. One cha
    the teams under the hard rules and optimizes a soft scoring objective (spread, preferences…).
 3. **Work the plan**: view it as a week grid (by gym, by coach, or by team), read the
    solver's diagnostics, **lock** the slots you like, tweak, and **regenerate** — the locked
-   slots stay put. Promote a plan as the season's **baseline**, and generate secondary plans
-   (e.g. holidays) alongside it.
+   slots stay put. **Validate** a version to make it the season's calendar (the plan now
+   **points** at it), then generate secondary plans (closures, holidays) alongside it.
 
 The manager stays in control; the solver does the combinatorial heavy lifting.
 
@@ -86,8 +86,9 @@ and bootstrap steps are idempotent.
 so **re-run it after a `git pull` that brings new migrations**, otherwise the app hits
 `permission denied for table app_user` (the RLS grants ride along with the migrations).
 
-The database comes up empty. Demo data is opt-in: `make -C backend fixtures` seeds a club, its
-teams and the holiday reference data — it purges the existing rows first.
+The database comes up empty. Demo data is opt-in — `make -C backend seed-demo` seeds/resets the
+permanent demo club, `make -C backend seed-bccl` seeds the real dev BCCL club (create-only);
+detail: [`backend/docs/commands.md`](backend/docs/commands.md).
 
 Per-zone commands live in `backend/Makefile` and `engine/Makefile` (e.g.
 `cd backend && make test`, `cd engine && make test`). A functional test drives a full
@@ -114,7 +115,7 @@ docs/      architecture, testing, glossaire, cartes
 |------|--------|--------------------|
 | `backend/` | [`backend/README.md`](backend/README.md) | [`docs/TENANT.md`](backend/docs/TENANT.md) · [`docs/RLS.md`](backend/docs/RLS.md) · [`scripts/generate-schedule.sh`](backend/scripts/generate-schedule.sh) (guide) · [`AGENTS.md`](backend/AGENTS.md) |
 | `engine/` | [`engine/README.md`](engine/README.md) | [`docs/business.md`](engine/docs/business.md) (cœur métier) · [`docs/nominal-flow.md`](engine/docs/nominal-flow.md) · [`docs/solver-errors.md`](engine/docs/solver-errors.md) · [`AGENTS.md`](engine/AGENTS.md) |
-| `frontend/` | [`frontend/README.md`](frontend/README.md) | [`AGENTS.md`](frontend/AGENTS.md) · [`frontend/docs/frontend-wizard.md`](frontend/docs/frontend-wizard.md) |
+| `frontend/` | [`frontend/README.md`](frontend/README.md) | [`AGENTS.md`](frontend/AGENTS.md) · [`frontend/docs/`](frontend/docs/) (`frontend-spec.md`, `frontend-wizard.md`, `frontend-components.md`, `frontend-strategy.md`, `constraint-emission.md`) |
 
 **Transverse** :
 - **`CLAUDE.md`** — index opérationnel (stack, frontières, conventions) · racine **`AGENTS.md`** y pointe.
