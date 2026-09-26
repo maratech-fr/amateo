@@ -4,30 +4,37 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Documentation;
 
+use FilesystemIterator;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use SplFileInfo;
 
 /**
- * LES SPECS COURANTES DÉCRIVENT LE PRÉSENT — l'historique vit dans git.
+ * LA DOC DÉCRIT LE PRÉSENT — l'historique vit dans git.
  *
- * Décision fondateur du 2026-09-26 (passe doc « le présent ») : un SEUL fichier de
- * `specs/courantes/` porte un journal, `etat-des-lieux.md` ; tous les autres décrivent
- * l'application telle qu'elle est aujourd'hui, sans récit du chemin parcouru (règle 7 du
- * skill `documentation-update`). Le « pourquoi / quand / qui a mordu » se lit dans git
- * (`git log -p`), une décision fermée dans `etat-des-lieux.md` §2, une livraison dans son §3.
+ * Décision fondateur du 2026-09-26 (passe doc « le présent ») : un doc dit ce que le code fait
+ * AUJOURD'HUI ; le « pourquoi / quand / qui a mordu » se lit dans git (`git log -p`), une décision
+ * fermée dans `etat-des-lieux.md` §2, une livraison dans son §3 (règle 7 du skill
+ * `documentation-update`). La passe a nettoyé toutes les zones ; ce garde interdit la régression.
  *
- * Ce que ce test garde, mécaniquement et sans juger la qualité du fond : aucun fichier du
- * présent ne reprend les tournures qui trahissent un journal glissé dans la prose —
- * un `<details>` de repli, un « superseded », un « conservé pour trace », un « instantané
- * daté », un « périmé par », ni une table dont les lignes commencent par une date. La borne
- * est volontairement étroite : le mot nu « historique » (une feature UI vivante en parle),
- * une date nue (la raison d'être d'un garde peut être datée) et « désormais » ne sont PAS
- * ferrés — ce sont des faux positifs assumés.
+ * Périmètre gardé (décision fondateur du 2026-09-26, extension du garde après la passe) :
+ *   - `specs/courantes/*.md`         — le produit courant sur l'axe temps ;
+ *   - `backend/docs/*.md`, `frontend/docs/*.md`, `engine/docs/*.md` — le métier de chaque zone ;
+ *   - `docs/` en récursif (tous sous-dossiers) — la couture entre zones, ADR, sécurité, ops, tests.
+ * Les motifs sont INCHANGÉS depuis la version « specs seulement » : seul le périmètre s'élargit.
  *
- * Corriger un rouge : sortir le récit du fichier. Une décision fermée part en
- * `etat-des-lieux.md` §2, une livraison en §3 ; le reste vit dans git. On ne réécrit PAS le
- * motif pour faire taire un hit, et une exemption nouvelle exige sa raison structurelle
- * dans self::EXEMPT.
+ * Ce que ce test garde, mécaniquement et sans juger la qualité du fond : aucun doc du présent ne
+ * reprend les tournures qui trahissent un journal glissé dans la prose — un `<details>` de repli,
+ * un « superseded », un « conservé pour trace », un « instantané daté », un « périmé par », ni une
+ * table dont les lignes commencent par une date. La borne est volontairement étroite : le mot nu
+ * « historique » (une feature UI vivante en parle), une date nue (la raison d'être d'un garde peut
+ * être datée) et « désormais » ne sont PAS ferrés — ce sont des faux positifs assumés.
+ *
+ * Corriger un rouge : sortir le récit du fichier. Une décision fermée part en `etat-des-lieux.md`
+ * §2, une livraison en §3 ; le reste vit dans git. On ne réécrit PAS le motif pour faire taire un
+ * hit, et une exemption nouvelle exige sa raison structurelle dans self::EXEMPT / self::EXEMPT_DIRS.
  */
 #[Group('phase1')]
 final class SpecsCarryNoHistoryTest extends TestCase
@@ -38,14 +45,32 @@ final class SpecsCarryNoHistoryTest extends TestCase
         . 'une décision → etat-des-lieux §2, une livraison → §3';
 
     /**
-     * Exemption NOMINATIVE, avec sa raison — jamais un motif large.
+     * Exemptions NOMINATIVES d'un FICHIER, avec leur raison — jamais un motif large.
      *
-     * @var array<string, string>
+     * @var array<string, string> chemin relatif au dépôt => raison
      */
     private const array EXEMPT = [
-        // C'est LUI le journal du dépôt : décision fondateur du 2026-09-26, l'unique fichier
-        // de `specs/courantes/` autorisé à porter des traces datées (décisions §2, livraisons §3).
-        'etat-des-lieux.md' => 'le journal du dépôt — le seul autorisé à porter des traces datées',
+        // C'est LUI le journal du dépôt : décision fondateur du 2026-09-26, l'unique fichier de
+        // `specs/courantes/` autorisé à porter des traces datées (décisions §2, livraisons §3).
+        'specs/courantes/etat-des-lieux.md' => 'le journal du dépôt — le seul de specs/courantes à porter des traces datées',
+        // Le SECOND journal autorisé par la règle 7 du skill documentation-update, borné aux 6
+        // derniers lots par sa propre charte (docs/upgrades.md en tête).
+        'docs/upgrades.md' => 'le second journal autorisé (règle 7), borné aux 6 derniers lots par sa charte',
+        // « superseded by adr-XXXX » y est un STATUT d'ADR (§Convention), pas un récit glissé dans
+        // la prose : c'est le vocabulaire de statut des ADR, pas de l'historique à sortir.
+        'docs/architecture/adr-index.md' => 'vocabulaire de statut ADR (« superseded by adr-XXXX ») dans la légende §Convention',
+    ];
+
+    /**
+     * Exemptions NOMINATIVES d'un DOSSIER (préfixe de chemin relatif), avec leur raison.
+     *
+     * @var array<string, string> préfixe relatif au dépôt => raison
+     */
+    private const array EXEMPT_DIRS = [
+        // Instantanés datés (compte-rendus de cadrage, snapshots d'audit) cités comme référence
+        // historique : hors règle 7 par exception explicite du skill — jamais une source de vérité
+        // sur l'état courant, seulement une trace.
+        'docs/archive/' => 'instantanés datés — exception explicite de la règle 7 (trace, jamais source de vérité courante)',
     ];
 
     /**
@@ -63,10 +88,10 @@ final class SpecsCarryNoHistoryTest extends TestCase
         '/périmée? par/iu' => 'un « périmé par »',
     ];
 
-    public function testNoCurrentSpecCarriesAHistoryMarker(): void
+    public function testNoPresentDocCarriesAHistoryMarker(): void
     {
         $offenders = [];
-        foreach ($this->currentSpecs() as $relative => $absolute) {
+        foreach ($this->presentDocs() as $relative => $absolute) {
             foreach ($this->linesOf($absolute) as $index => $line) {
                 foreach (self::HISTORY_MARKERS as $pattern => $what) {
                     if (1 === preg_match($pattern, $line)) {
@@ -80,16 +105,16 @@ final class SpecsCarryNoHistoryTest extends TestCase
             "Ces lignes portent un marqueur d'historique dans un fichier qui doit décrire le présent :\n"
             . "  - %s\n\n"
             . "Sortez le récit du fichier (%s). N'affaiblissez pas le motif pour faire taire un hit ;\n"
-            . 'une vraie exception se déclare NOMMÉMENT dans self::EXEMPT avec sa raison.',
+            . 'une vraie exception se déclare NOMMÉMENT dans self::EXEMPT / self::EXEMPT_DIRS avec sa raison.',
             implode("\n  - ", $offenders),
             self::GUIDANCE,
         ));
     }
 
-    public function testNoCurrentSpecCarriesADatedJournalTable(): void
+    public function testNoPresentDocCarriesADatedJournalTable(): void
     {
         $offenders = [];
-        foreach ($this->currentSpecs() as $relative => $absolute) {
+        foreach ($this->presentDocs() as $relative => $absolute) {
             foreach ($this->linesOf($absolute) as $index => $line) {
                 if (1 === preg_match('/^\| 20\d\d-/', $line)) {
                     $offenders[] = \sprintf('%s:%d', $relative, $index + 1);
@@ -98,7 +123,7 @@ final class SpecsCarryNoHistoryTest extends TestCase
         }
 
         self::assertSame([], $offenders, \sprintf(
-            "Ces lignes ouvrent une table de journal datée hors etat-des-lieux :\n"
+            "Ces lignes ouvrent une table de journal datée hors les journaux autorisés :\n"
             . "  - %s\n\n"
             . 'Une table `| YYYY-MM-DD | … |` est un journal : %s.',
             implode("\n  - ", $offenders),
@@ -107,25 +132,59 @@ final class SpecsCarryNoHistoryTest extends TestCase
     }
 
     /**
-     * `specs/courantes/*.md` sauf le journal — clé = chemin relatif au dépôt, pour des messages
-     * `fichier:ligne` directement ouvrables.
+     * Tous les docs du présent — clé = chemin relatif au dépôt, pour des messages `fichier:ligne`
+     * directement ouvrables. Zones (`specs/courantes`, `<zone>/docs`) balayées à plat ; `docs/`
+     * racine récursivement (ADR, sécurité, ops, tests…). Exemptions nominatives (fichier ET
+     * dossier) écartées ici.
      *
      * @return array<string, string> chemin relatif => chemin absolu
      */
-    private function currentSpecs(): array
+    private function presentDocs(): array
     {
         $files = [];
-        foreach (glob(self::ROOT . '/specs/courantes/*.md') ?: [] as $absolute) {
-            if (isset(self::EXEMPT[basename($absolute)])) {
+
+        foreach (['specs/courantes', 'backend/docs', 'frontend/docs', 'engine/docs'] as $dir) {
+            foreach (glob(self::ROOT . '/' . $dir . '/*.md') ?: [] as $absolute) {
+                $this->register($files, $dir . '/' . basename($absolute), $absolute);
+            }
+        }
+
+        $rootDocs = self::ROOT . '/docs';
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($rootDocs, FilesystemIterator::SKIP_DOTS),
+        );
+        foreach ($iterator as $entry) {
+            if (!$entry instanceof SplFileInfo || 'md' !== $entry->getExtension()) {
                 continue;
             }
-            $files['specs/courantes/' . basename($absolute)] = $absolute;
+            $absolute = $entry->getPathname();
+            $this->register($files, 'docs/' . substr($absolute, \strlen($rootDocs) + 1), $absolute);
         }
+
         ksort($files);
 
-        self::assertNotEmpty($files, 'Aucun spec courant trouvé — le glob pointe-t-il encore quelque part ?');
+        self::assertNotEmpty($files, 'Aucun doc du présent trouvé — les globs pointent-ils encore quelque part ?');
 
         return $files;
+    }
+
+    /**
+     * Range un fichier sous sa clé relative, sauf s'il est exempté nommément (fichier) ou par
+     * dossier (préfixe).
+     *
+     * @param array<string, string> $files
+     */
+    private function register(array &$files, string $relative, string $absolute): void
+    {
+        if (isset(self::EXEMPT[$relative])) {
+            return;
+        }
+        foreach (array_keys(self::EXEMPT_DIRS) as $prefix) {
+            if (str_starts_with($relative, $prefix)) {
+                return;
+            }
+        }
+        $files[$relative] = $absolute;
     }
 
     /** @return list<string> */

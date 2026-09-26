@@ -1,17 +1,14 @@
 # Wizard — saisie des données (tranche 3, LIVRÉ)
 
-Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement », 1/3 frontend).
-Le draft "4 étapes" historique/superseded est **supprimé** (jamais l'implémentation, l'historique
-vit dans `git log -p --follow` sur ce fichier). Re-confronté au code : les 6 étapes
-(`frontend/src/features/wizard/lib/steps.ts:8-15`) correspondent aux 6 items ci-dessous ;
-`ls frontend/src/features/wizard/steps/` ne porte plus de `PeriodStructure.tsx` (remplacé par
+Last verified @ 2026-09-26 (`documentation-update`). Le flux compte **6 étapes**
+(`frontend/src/features/wizard/lib/steps.ts:9-16`), reflétées par les 6 items ci-dessous ;
+`ls frontend/src/features/wizard/steps/` ne porte pas de `PeriodStructure.tsx` (remplacé par
 `StructureSummary.tsx`/`PeriodTeams.tsx`/`PeriodVenues.tsx`/`PeriodConstraints.tsx`) ;
-`TeamsImportModal.tsx` appelle bien `POST /clubs/{id}/import-teams/analyze` puis
+`TeamsImportModal.tsx` appelle `POST /clubs/{id}/import-teams/analyze` puis
 `POST /clubs/{id}/import-teams` (`frontend/src/features/wizard/api.ts:112,125`) ; `AuthGuard`
-`ONBOARDING_ALLOWED` contient `/confidentialite` (`frontend/src/app/AuthGuard.tsx:19`, plus
-d'écart avec le menu compte) ; `backend/features/inscription-et-premier-planning.feature` existe.
-Le reste du fichier n'est pas recontrôlé phrase à phrase cette passe — un stamp REMPLACE,
-l'historique vit dans git.
+`ONBOARDING_ALLOWED` contient `/confidentialite` (`frontend/src/app/AuthGuard.tsx:19`) ;
+`backend/features/inscription-et-premier-planning.feature` existe. Le reste du fichier n'est pas
+recontrôlé phrase à phrase cette passe.
 
 ## Flux (6 étapes, `WizardLayout` + registre `lib/steps.ts`)
 
