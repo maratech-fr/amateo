@@ -1,13 +1,17 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-09-25 (rotation de fraîcheur `documentation-update`). Re-confronté au code :
+Last verified @ 2026-09-26 (rotation de fraîcheur `documentation-update`). Re-confronté au code :
 `ConstraintRuleType` ne porte plus que HARD/PREFERRED/LOCK (`backend/src/Enum/
 ConstraintRuleType.php`, `BONUS` absent) ✓ ; `CONTRACT_VERSION` = **2.23**
 (`engine/CONTRACT_VERSION`) ✓ ; `venue_minimum_unreachable` toujours émis par
-`engine/app/solver/constraints/targeting.py` ✓ ; `add_socle_reference_bonus`
-(`engine/app/solver/objective/terms.py`) et `SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"`
-(`engine/app/solver/objective/weights.py`) ✓. Rien de faux trouvé. Non re-sondé cette passe : le
-reste du vocabulaire détaillé ci-dessous — un stamp REMPLACE, l'historique vit dans git.
+`engine/app/solver/constraints/targeting.py:319-320` ✓ ; `add_socle_reference_bonus`
+(`engine/app/solver/objective/terms.py:98`) et `SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"`
+(`engine/app/solver/objective/weights.py:20`) ✓ ; `TEAM_LINK_TIER_WEIGHTS`
+(S=8/A=6/B=4/C=2/D=1, `weights.py:242-250`) et `SOCLE_REFERENCE_TIER_WEIGHTS`
+(S=20/A=18/B=16/C=14/D=12, `weights.py:289-296`) ✓ ; `travelTime.defaultMinutes` toujours
+défaut 20, bornes 0-600 (`app/schemas/input_schema.py:204`) ✓ ; `add_max_consecutive_days_constraints`
+toujours dans `app/solver/constraints/wellness.py:494` ✓. Rien de faux trouvé. Non re-sondé cette
+passe : le reste du vocabulaire détaillé ci-dessous — un stamp REMPLACE, l'historique vit dans git.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
