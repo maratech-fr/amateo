@@ -1,20 +1,25 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement », CLAUDE.md §8 /
-skill `documentation-update` règle 7). Retiré : le bloc « Historique des décisions » (les 3 entrées
-étaient déjà captées ailleurs — ADR-0002 pour le pattern Plan et le ré-ancrage `schedulePlanId`, le
-corps de ce document pour le modèle des 3 types ; aucune ligne §2 d'`etat-des-lieux.md` n'était donc
-nécessaire). Reconfronté au code dans la foulée : `RedatePreviewController`
-(`backend/src/Controller/RedatePreviewController.php:36`) ✓, `ensurePeriodPlanId`
-(`backend/src/Service/SchedulePlanProvisioner.php:780`) ✓, `FillPeriodPlanController`
-(`backend/src/Controller/FillPeriodPlanController.php:75`) ✓ — les autres repères (§0 de la note
-précédente) non re-rejoués cette passe. Reste du fichier (E1-E6, D1-D10bis) non re-confronté ligne
-à ligne cette passe.
+Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement » complétée sur le
+tableau « Écarts implémentation ↔ cible » et les notes D3 v1/D3 v2, CLAUDE.md §8 / skill
+`documentation-update` règle 7). Retiré : le bloc « Historique des décisions » (passe précédente,
+vivant vérifié dans ADR-0002 et le corps du document) ; le tableau E1-E6 (les 6 écarts sont
+✅ soldés, donc ne sont plus des écarts — leur substance encore vivante était déjà, ou est
+désormais, énoncée en présent dans §1/§2/§3 ; traces datées déjà en `etat-des-lieux.md` §3 pour E5
+et E6, vérifiées par grep, aucune ligne à ajouter — le balayage de liens a aussi trouvé E1 cité
+depuis `docs/architecture/adr-0002-pattern-plan.md:20` en prose (pas un lien), tag restauré dans
+l'État de §2) ; les notes D3 v1/D3 v2 de re-datage, compactées
+en un seul fait présent (le détail technique — endpoints, jeton d'aperçu, verdicts — vit dans
+ADR-0002 et `backend/docs/backend-inventory.md`, déjà cités). Reconfronté au code dans la foulée :
+`RedatePreviewController` (`backend/src/Controller/RedatePreviewController.php:36`) ✓,
+`ensurePeriodPlanId` (`backend/src/Service/SchedulePlanProvisioner.php:780`) ✓,
+`FillPeriodPlanController` (`backend/src/Controller/FillPeriodPlanController.php:75`) ✓. Reste non
+re-confronté cette passe : la « Naissance de la V1 » (ADR-0004) et la « Règle transverse » —
+portent encore des ids/dates de lot, signalés en dehors du périmètre demandé.
 
-> **Rôle de ce document** : la trace durable du modèle métier des plannings, validé avec le
-> fondateur le 2026-07-12. C'est LA référence à consulter avant tout travail sur la
-> génération : quel type se déclenche quand, ce qu'on y manipule, quel besoin il comble,
-> et où l'implémentation actuelle diverge de la cible.
+> **Rôle de ce document** : la trace durable du modèle métier des plannings. C'est LA référence
+> à consulter avant tout travail sur la génération : quel type se déclenche quand, ce qu'on y
+> manipule, quel besoin il comble.
 >
 > **Ce doc = le PRODUIT** (déclenchement, manipulation, besoin). **Le modèle TECHNIQUE**
 > (entité Plan, versions, pointeur, invariants, vocabulaire) vit dans
@@ -89,7 +94,7 @@ début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
   dépointer**, la version survit ; **pointeur null = espace de travail**. Générer ne pointe
   jamais — seul le gestionnaire choisit. Modifier le socle invalide les plans construits
   dessus (confirmation proportionnée).
-- **État** : ✅ livré et rodé — c'est le flux de référence (cycle de vie basculé sur le pointeur du plan, ADR-0002, 2026-07-16).
+- **État** : le flux de référence, le mieux rodé — cycle de vie porté par le pointeur du plan ([ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md)).
 
 ## 2. Overlay d'ajustement (indisponibilité)
 
@@ -130,63 +135,28 @@ début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
   équipe loisir pour la semaine. Les **contraintes** sont l'outil principal d'ajustement.
 - **Résultat** : un calendrier secondaire borné à la semaine ; hors des jours d'indispo,
   les créneaux du socle restants **sont conservés**.
-- **Re-dater un incident d'un BLOC, dans les deux sens (D3 v1, décision fondateur 2026-09-04,
-  PR-1 backend)** : jusqu'ici, se tromper de dates sur une fermeture qui porte déjà un plan
-  imposait de supprimer la période (plan et versions partent avec) et de tout redéclarer — retour
-  terrain BCCL (gymnase « indisponible jusqu'aux vacances », travaux finis plus tôt). **Seul un cas
-  précis se dégèle** : une racine `closure` **sans semaines-enfants**, sans mère — `PUT` accepte
-  désormais un changement de `startDate`/`endDate` et resynchronise la fenêtre du plan
-  (`SchedulePlanProvisioner::resyncPeriodPlanWindow`), les contraintes `venue_closed` NÉES du même
-  geste (config == l'ancienne fenêtre exactement — une fermeture datée plus finement ne bouge pas),
-  et le titre/nom du plan s'ils portaient encore l'ancien libellé (inv. 12 intact). Une fenêtre déjà
-  gouvernée par un AUTRE plan reste refusée en 409, nommant ce plan (`PeriodWindowUniquenessGuard`,
-  même garde qu'à la naissance). **Depuis le 2026-09-05, une nouvelle fenêtre qui se décomposerait
-  en plus d'un segment début·milieu·fin est refusée en 422** (« Cette indisponibilité aurait une
-  semaine entamée : re-datez-la sur des semaines complètes, ou adaptez-la par début, milieu, fin »)
-  — sur la géométrie PLEINE de la fenêtre visée, indépendante de l'horloge : re-dater un plan-bloc
-  vers une semaine entamée contournerait sinon la règle du découpage par la porte D3. Une mère
-  déjà découpée en semaines-enfants n'est, elle, pas re-datable par ce mécanisme (même périmètre
-  qu'avant) — elle a son propre geste, **D3 v2** ci-dessous. La version pointée (le planning en vigueur) **survit** — elle est
-  seulement marquée à régénérer (`ResourceChangeStaleScheduleListener`, écoutait déjà ce cas).
-  **Tout le reste de l'identité reste figé** — `kind`, `periodType`, `schoolHolidayId` — et TOUS les
-  autres cas gardent leur fenêtre gelée : une racine `holiday` (liée au référentiel des vacances
-  scolaires), une mère découpée, une semaine-enfant. Le pivot **socle `startDate > today`** reste
-  entier : re-dater une racine déplace mécaniquement son plan sous cette même règle — une racine
-  commencée puis ramenée après aujourd'hui redevient balayable par une réouverture du socle, sans
-  champ ni geste dédié. **v1 SOLDÉE ENTIÈRE** (PR-1 backend puis PR-2 cockpit, 2026-09-04) : le
-  geste d'édition à l'écran vit dans la liste du jour du cockpit (`DayDialog.tsx`, bouton
-  « Modifier les dates de … » rendu ssi `entry.redatable`) — détail `accueil-cockpit-temporel.md`
-  §5bis. Détail complet : [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md)
-  (amendement D3 v1) · `docs/archive/plannings-bccl-2026-08-31.md` D3.
-- **État** : 🟢 rodé sur les axes livrés — découpage hebdo + granularité JOUR (E1/5b),
-  contraintes héritées cochables (#211), **séances/équipe ajustables dans l'UI** (champ 1–7
-  + toggle = 0 séance, E4 via `TeamPeriodOverride`), **défaut = tout le club actif** (E3,
-  structure verrouillée), **nom auto** = le titre de l'entrée (E6, recalé 2026-08-23). Reste la
-  notification multi-semaines (cadrage à venir). Voir « Écarts » ci-dessous.
-- **Re-dater une indisponibilité DÉCOUPÉE, sous aperçu puis confirmation (D3 v2, décision fondateur
-  2026-09-05)** : une mère `closure` déjà segmentée en début/milieu/fin (donc sans plan-bloc à
-  elle) n'est pas hors d'atteinte pour autant — le geste passe par DEUX temps, jamais un `PUT`
-  direct. **Aperçu** : `POST /api/calendar_entries/{id}/redate-preview` (lecture pure, aucun
-  persist) rend `{effects, token}` — `SplitMotherRedatePlanner` (foyer unique, partagé avec
-  l'apply) APPARIE chaque ancien enfant à un nouveau segment de la fenêtre visée, le RÔLE
-  primant (start↔start, end↔end sans condition ; les milieux par recouvrement de lundis
-  décroissant), et rend un verdict par ligne : `keep` (fenêtre identique), `shift` (l'enfant et
-  son plan glissent, versions conservées, marqués à régénérer), `absorb` (l'ancien enfant
-  rejoint le planning d'un nouveau segment, son propre plan est supprimé), `vanish` (plus aucun
-  segment ne le couvre, plan supprimé), `birth` (un nouveau segment sans enfant apparié — enfant
-  + plan neufs VIDES, jamais une copie). **« Les vacances ont la main »** : si la nouvelle fenêtre
-  recoupe une entrée HOLIDAY à plan, aucun 409 — la portion vacances n'offre aucun segment
-  (`ClosureSegmentation` la troue déjà) et l'aperçu ajoute une ligne `holiday_takes_over` par plan
-  de vacances concerné, marqué à régénérer (`PeriodWindowUniquenessGuard::governingWindows`
-  gagne `closuresOnly` pour cet effet). **Confirmation** : le `PUT` applique EXACTEMENT le plan
-  sous le `previewToken` reçu — 422 sans jeton, 409 si un recalcul sous verrou diverge (la
-  période a bougé depuis l'aperçu : enfant ajouté/supprimé, version régénérée, plan validé — le
-  front redemande l'aperçu, la confirmation reste MANUELLE). Geste écran : `DayDialog.tsx`
-  (`RedateWithPreviewForm`), bouton unique « Voir les effets » → « Confirmer », liste d'effets
-  servie telle quelle (aucune règle re-dérivée côté front), `WarningPanel` dès qu'un effet
-  supprime un planning. Détail complet : [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md)
-  (amendement D3 v2).
-- **Ce que l'API sert pour le geste** : `CalendarEntryResource.redatable` (bool) — vrai pour une racine de fermeture sans mère, avec plan, sans semaines-enfants (`App\Service\CalendarEntryRedatability::isRedatable()`, même prédicat que le processor, `CalendarEntryStateProvider`) ; `redateNeedsPreview` (bool, exclusif de `redatable`) — vrai pour une racine de fermeture sans mère, ≥ 1 semaine-enfant, sans plan-bloc (`App\Service\CalendarEntryRedatability::redateNeedsPreview()`) ; le front n'a rien à recalculer dans les deux cas. Au re-datage : 422 si la fenêtre sort de la saison (`CalendarEntryStateProcessor::assertWindowWithinSeason`) ou si la fin précède le début (`CalendarEntryInput::validateShape`, POST comme PUT).
+- **Re-dater un incident sans le redéclarer** : changer les dates d'une fermeture qui porte déjà
+  un plan ne détruit ni le plan ni ses versions — la version en vigueur survit, simplement marquée
+  à régénérer. Le geste diffère selon la forme de la fermeture :
+  - **Un seul bloc** (pas encore découpée en semaines-enfants) : re-datage direct — la fenêtre du
+    plan, les contraintes datées nées du même geste et le titre du plan (s'il portait encore le
+    libellé auto) suivent la nouvelle fenêtre. Refusé si la fenêtre chevauche un autre plan déjà en
+    place, ou si elle ne tiendrait plus dans le découpage début·milieu·fin imposé (§ règle
+    transverse ci-dessus).
+  - **Déjà découpée en semaines-enfants** : le geste passe par un aperçu puis une confirmation,
+    jamais une application directe — chaque ancien enfant reçoit un verdict (conservé, glissé avec
+    son plan, absorbé par un nouveau segment, disparu si plus aucun segment ne le couvre, ou un
+    enfant neuf naît sans copie) ; la confirmation applique EXACTEMENT ce que l'aperçu a annoncé.
+    Les vacances gardent toujours la main sur leur propre fenêtre — jamais bloquées par ce geste.
+  - Une racine liée au référentiel des vacances scolaires, ou toute autre identité de la période
+    (type, lien vacances), reste gelée par ce mécanisme.
+  Geste écran : liste du jour du cockpit (`DayDialog.tsx`), bouton « Modifier les dates de … ».
+  Détail technique (endpoints, prédicats, jeton d'aperçu) : [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md),
+  `backend/docs/backend-inventory.md`, `accueil-cockpit-temporel.md` §5bis.
+- **État** : rodé — découpage hebdomadaire (E1) avec granularité JOUR, contraintes héritées
+  cochables, séances par équipe ajustables dans l'écran (champ 1–7 + bascule = 0 séance), défaut =
+  tout le club actif, nom auto = le titre de l'entrée (E6). Reste ouvert, non cadré en roadmap : la
+  notification des plannings multi-semaines encore à compléter.
 
 ## 3. Planning de reprise (vacances)
 
@@ -215,31 +185,19 @@ début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
   - **Toussaint** : 2 semaines différentes → **2 plannings**.
   - **Noël** : 1 semaine blanche (aucun planning) + 1 semaine de reprise → **1 planning**.
   - **Été** : rien pendant l'été, puis **2 semaines de reprise dégradée** → **2 plannings**.
-- **Collecte des doléances coachs (LIVRÉ #10, 2026-07-25)** : bouton **« Doléances »**
+- **Collecte des doléances coachs (E5)** : bouton **« Doléances »**
   (todo-list par équipe × semaine, coche « traité ») + **« Solliciter les coachs »**
   (campagne → lien tokenisé sans login `/doleances/{token}` → page publique pré-remplie →
   emails + digest quotidien + relance) + **badge radar** « X/Y répondu · N à traiter ».
-  Un souhait, jamais une contrainte. Détail : E5 ci-dessous ·
+  Un souhait, jamais une contrainte. Détail :
   [`backend-inventory.md`](../../backend/docs/backend-inventory.md) §2 (entités, token, page publique).
-- **État** : 🟢 rodé sur les axes livrés — héritage contraintes + défaut intelligent (#212),
-  équipes on/off + séances, **grille de gymnases possédée par la période** (#8 — copie du
-  modèle de saison, éditable gymnase par gymnase à l'écran), **choix des semaines** (E1), été inclus (E2),
-  **défaut équipes = Fanion + importantes** (E3), **nom auto** `{label vacances} — {repère}` (E6),
-  **collecte des doléances coachs** (E5 — C1/C2/C3, feature CLOSE). Reste
-  optionnel, non demandé : un flux guidé « reprise progressive » (bonus P2-1). Voir « Écarts ».
+- **État** : rodé — héritage des contraintes avec défaut intelligent, équipes activables/
+  désactivables et séances ajustables, grille de gymnases possédée par la période (copie du
+  modèle de saison, éditable gymnase par gymnase à l'écran), choix des semaines, été inclus,
+  défaut équipes = Fanion + importantes, nom auto `{label vacances} — {repère}` (E6), collecte
+  des doléances coachs (E5). Reste optionnel, non demandé : un flux guidé « reprise progressive ».
 
-## Écarts implémentation ↔ cible (actés 2026-07-12)
-
-| # | Écart | Type touché | Cible |
-|---|---|---|---|
-| E1 | ✅ **Livré (2026-07-18, version fondateur — remplace la cible d'origine)** : adapter une période couvrant **plusieurs semaines** ouvre le **choix des semaines** (lun→dim, clampées à la saison) — chaque semaine cochée = une `CalendarEntry` **enfant** (`parentEntryId`) avec **son plan indépendant** (rail 1 entrée = 1 plan intact ; « N cochées ensemble = identiques » abandonné). Le chemin « d'un bloc » reste offert ; exclusivité bloc/semaines gardée serveur (422/409). Couverture visible (chips par semaine au radar + DayDialog). Datées héritées de la mère. **Granularité JOUR livrée (5b, 2026-07-18)** : un gymnase fermé une partie de la semaine n'est indispo QUE ses jours réellement fermés (incident ∩ fenêtre) — ses créneaux sont retirés du payload ces jours-là (`VenueClosureDays`), pas de forbid tous-jours ; conflits day-précis aussi. Zéro engine | 2 + 3 | — |
-| E2 | ✅ **Livré (2026-07-18)** : exclusion été levée (`isAdaptableHoliday` supprimé), dates clampées à la saison | 3 | — |
-| E3 | ✅ **Livré (2026-07-19)** : défaut équipes reprise = **Fanion + importantes** (2 premiers rangs) pré-cochés ; **fermeture = tout le club actif** (structure verrouillée, équipes loisir décochables à la main). Le seed de `PeriodTeams` est désormais conscient du `periodType` | 3 | — |
-| E4 | ✅ **Livré (arrivé avec #262, tracé 2026-07-19)** : `PeriodTeams` expose l'ajustement des séances/équipe (champ 1–7) **et** le toggle actif/inactif (= 0 séance) dans le flux période — pour la **fermeture comme la reprise** (`TeamPeriodOverride`) | 2 | — |
-| E5 | ✅ **C1 livré (2026-07-25, #10)** : la modale **« Doléances des coachs »** est une todo-list par (équipe × semaine), ancrée à l'entrée MÈRE des vacances, ouverte de deux portes — bandeau du wizard (filtrée sur la semaine du plan courant) et carte de période au cockpit (toutes semaines). Filtres coach/équipe, coche « traité », saisie « au nom d'un coach ». **Amendé 2026-08-01 (P3-14, retour terrain)** : les deux filtres se lisaient dans l'ordre BRUT de l'API — ils reprennent les regroupements qui existaient déjà ailleurs (coachs par staffing via `groupedCoaches`, équipes par RANG via `groupTeamsByTier`), pas un tri de plus. À la SAISIE, le coach est borné aux **coachs PRINCIPAUX (MAIN) de l'équipe choisie** (décision fondateur : « je veux que les MAIN coach ») : le select listait tout le club alors que le défaut pré-sélectionne déjà le MAIN, si bien qu'on pouvait consigner « U18F1 — Emerick » quand Emerick n'encadre que SF1 et U15F1, sans que rien ne l'attrape. Et une **équipe sans coach principal sort du formulaire** — « comment avoir une doléance de coach si une équipe n'a pas de coach ? ben c'est pas possible » — le bouton « Ajouter » est alors désactivé et l'écran dit ce qui manque, plutôt que d'ouvrir un select vide. ⚠ Deux asymétries VOULUES : le **filtre** garde toutes les équipes (il sert à LIRE des doléances existantes, dont celles d'une équipe qui a perdu son coach depuis), et le select conserve **la valeur courante** d'une doléance dont le coach n'encadre plus l'équipe, marquée — la filtrer viderait le champ sur une doléance qui nomme pourtant quelqu'un, et « combler le trou » la réattribuerait en silence. Masquer n'est légitime que pour un CHOIX. ✅ **C2 livré (2026-07-25, #10)** : **collecte SANS email** — bouton « Solliciter les coachs » (campagne modifiable : semaines / équipes / deadline) → un **lien personnel par coach** (`/doleances/{token}`, token en clair, réutilisable/révisable jusqu'à la deadline) que le gestionnaire **copie dans WhatsApp** → **page publique sans login** pré-remplie, le coach saisit ses souhaits (n'envoie que les sections modifiées) → tombe dans la todo-list C1 (écrase + « à retraiter ») → **badge radar** « X/Y coachs ont répondu · N à traiter ». ✅ **C3 livré (2026-07-25, #10 — feature CLOSE)** : bouton « Envoyer les liens par email » (global + individuel, badge « pas d'email »/« envoyé le… »), **digest quotidien 7h** aux gestionnaires (seulement si nouvelle réponse ; récap final une fois après la deadline), **relance des silencieux** (1×/jour). Le dialog campagne porte un **filtre par équipe + statut** (répondu / en attente / pas d'email) sur la liste des coachs (n'affecte que la liste, pas les boutons d'envoi). **Amendé 2026-08-01 (P3-15, retour terrain)** : la modale était « BEAUCOUP TROP longue » — recadré par le fondateur, **le problème était qu'elle affichait TOUTES les équipes**, une par ligne (49 sur un club réel). Trois remèdes : le choix des équipes se **replie derrière une ligne de résumé** (« Toutes les équipes (49) · Modifier ») et se déplie en **puces qui s'enroulent, groupées par RANG**, avec « tout cocher / tout décocher » globaux et par groupe ; une **nouvelle** collecte démarre avec **toutes** les équipes ayant un coach (le cas courant ne demande plus aucun geste — une campagne existante rouvre sur SA sélection, jamais sur « toutes ») ; et la liste des coachs passe dans un **second onglet** (« Réglages » / « Coachs »), absent tant que rien n'est enregistré, sélectionné d'office à la ré-ouverture puisque suivre et envoyer est alors le geste fréquent. Les puces de filtre par équipe suivent le rang elles aussi. Le composant d'onglets est **partagé** (`shared/components/ui/tabs.tsx`, deux peaux : `console` pour l'admin, `app` pour le club) — déplacé plutôt que dupliqué, un motif ARIA en double étant deux comportements clavier qui divergent. ⚠ **Une peau par défaut est un piège** (revue #346) : un `variant` oublié sur un site d'appel peint des tokens clairs sur la coque sombre du superadmin et rend l'onglet actif illisible — c'est arrivé aux sous-onglets Journaux. Le site d'appel est désormais gardé côté PAGE, pas seulement côté composant. Trois autres garanties tiennent par des tests dédiés : la création **bascule** sur l'onglet Coachs (sinon les liens naissent dans un panneau caché et on croit à un échec) ; une campagne dont une semaine retenue est **révolue** s'ouvre sur Réglages, pour ne pas reléguer derrière un clic l'avertissement que #344 avait imposé ; et le sélecteur **montre tout ce qui est sélectionné**, y compris une équipe qui a perdu son coach — sinon « tout décocher » la laissait en place et l'enregistrement la postait quand même. | 3 | — |
-| E6 | ✅ **Livré (2026-07-19), gabarits recalés le 2026-07-31, REFONDU le 2026-08-23** : à sa naissance, un plan de PÉRIODE (CLOSURE et HOLIDAY) prend pour nom **le TITRE de son entrée de calendrier** (`SchedulePlanProvisioner::ensurePeriodPlanId`, source unique serveur, ADR-0002 inv. 12 intact — le nom n'est posé qu'UNE fois, le renommage manuel reste sacré). Décision fondateur née du parcours e2e P4-122 : le même overlay portait DEUX noms sans lien visible (titre d'entrée au radar/wizard, gabarit « Ajustement {gymnase} — {repère} » dans « Tous les plannings »). **La date reste lisible dans le nom** — « le gestionnaire, d'un coup d'œil, confirme s'il a fait une erreur » — par CONVENTION et non par heuristique : tout titre de période porte sa fenêtre (le seul chemin qui y dérogeait, la vacance adaptée d'un bloc, l'a acquise côté front le même jour). Les anciens gabarits (« Ajustement {gymnase} — {repère} », « {label} — {repère} ») et le recalage `refreshClosurePlanName` sont SUPPRIMÉS — le recalage était de toute façon inopérant depuis que le plan naît du geste d'Adapter (il tournait avant que le plan n'existe). Aucune migration des plans anciens (précédent #339) : ils gardent leur nom, renommables à la main. SEASON inchangé (`Planning de la saison …`, pas d'entrée). `windowLabel` survit (consommé par le 409 et `GET /api/planned-windows`) | 1 + 2 + 3 | — |
-
-> **Décisions de conception figées de la collecte (fondateur, 2026-07-25/26)** — le *pourquoi*
+> **Décisions de conception figées de la collecte** — le *pourquoi*
 > derrière E5, à ne pas re-poser : **token stocké EN CLAIR** (« copier le lien » doit
 > re-fonctionner à tout moment pour WhatsApp, ce qu'un hash interdit ; le privilège est borné par
 > construction — n'écrit qu'un souhait, dans le périmètre du token, et meurt à la deadline) ·
@@ -249,8 +207,4 @@ début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
 > glissantes · **D5** le récap final **part toujours**, même à 0/8 (c'est le signal d'agir
 > autrement) · **D6** deadline **incluse** · **D8** format email validé à la saisie **et** à
 > l'envoi. Hors périmètre, non demandés : tracking d'ouverture, préférences de notification, SMS.
-
-> Suivi : ces écarts sont des items de backlog dans
-> [`../evolution/roadmap.md`](../evolution/roadmap.md) — ils se cadrent et se livrent
-> PR par PR, avec validation du besoin avant chaque lot (règle CLAUDE.md §7).
 

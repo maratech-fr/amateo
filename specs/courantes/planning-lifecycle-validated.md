@@ -1,10 +1,12 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement », CLAUDE.md §8 /
-skill `documentation-update` règle 7). Retiré : l'instantané de code périmé (ancien §2, antérieur à
-la bascule ADR-0002) et les deux artefacts de plan fossilisés en fin de fichier (« État du code au
-moment de la rédaction », « Vérification », « Checklist de scope ») — numéros de section conservés,
-trous assumés. Reconfronté au code dans la foulée : `App\Service\ScheduleCapabilityResolver`
+Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement » complétée,
+CLAUDE.md §8 / skill `documentation-update` règle 7). Passe précédente : instantané de code périmé
+et artefacts de plan fossilisés retirés (§2/§7/§8, trous assumés), §3.2bis compacté. Cette passe :
+« cockpit palier A/B » retiré des §6 (terme disparu d'`accueil-cockpit-temporel.md` — recalage
+group avec `backend/AGENTS.md` et `docs/project-map.md`) ; ids/dates retirés des titres §3.2bis (ni
+« §3.2bis » ni le sha `0fd895f` de §3.3 ne sont cités depuis l'extérieur, grep confirmé — sans
+danger à les enlever). `App\Service\ScheduleCapabilityResolver` reconfronté au code
 (`canDelete`/`canValidate`/`canRegenerateFrom`, `forSchedules()` en batch par
 `GROUP BY (schedule_plan_id, status)`, prédicats `isInFlight`/`isChosen`/
 `isLastFinishedSeasonVersion`/`inFlightInSeason`) ✓. Historique des passes vit dans git :
@@ -72,7 +74,7 @@ Le verrou se dérive du **pointeur** : « verrouillé » = **le plan pointe cett
 
 > Le verrou front seul serait une illusion (contrarian-review) : l'enforcement est **serveur**.
 
-### 3.2bis Unicité du socle en vigueur (P2-7, livré 2026-07-30)
+### 3.2bis Unicité du socle en vigueur
 
 Le verrou lecture-seule ci-dessus protège la version **choisie** ; il ne dit rien d'une
 **nouvelle** version créée à côté d'elle. `ScheduleStateProcessor::processPost` ferme ce trou :
@@ -126,7 +128,7 @@ DRAFT ──generate──▶ PENDING ──▶ GENERATING ──▶ COMPLETED
                                         └──▶ FAILED
 ```
 - `validate` / `reopen` **ne changent aucun statut** : ils posent et retirent le **pointeur du plan** (`schedule_plan.chosen_schedule_id`). Une version choisie reste `COMPLETED` ; « validé » se lit sur le pointeur (`Schedule.isChosen` en lecture d'API).
-- `COMPLETED` inclut les plannings **partiels/dégradés** (commit `0fd895f`) → on peut choisir un planning partiel (assumé).
+- `COMPLETED` inclut les plannings **partiels/dégradés** → on peut choisir un planning partiel (assumé).
 - **Effet de bord de `validate` (RMM-10 / P2-52, 2026-08-26)** : dans la MÊME transaction que le
   pointage, tout match domicile dont le gymnase a disparu du club+saison est dépointé
   (`FixtureVenueLossMarker`, `UNPLACED` + raison persistante `venue_lost`) — annoncé au préalable
@@ -179,8 +181,8 @@ de versions) — jamais de N+1. Gardé par `ScheduleCapabilityParityTest` (step 
 - `SchedulePlanLifecycleTest` / `SchedulePlanReadModelTest` / `SchedulePlanProvisionerTest` : pointeur, compteur de versions, provisioning et modèle de lecture du plan.
 - **Gardes** (`ScheduleLifecycleGuardTest`) : régénération / manual-edit / slot-template / PUT / DELETE → **409** quand le plan pointe la version.
 - **Tenant isolation** (blocking) : `/validate` et `/reopen` cross-club → 403.
-- **Déblocage du cockpit** (cockpit palier A) : `seasonPlan.hasFinishedVersion` = le plan SEASON porte ≥1 version terminée (`COMPLETED`/`FAILED`). **Dérivé, jamais posé, indépendant du pointeur** — `/reopen` ne re-verrouille pas. Exposé sur `/api/me`. Débloque l'accueil cockpit (vs work-loop). Voir `specs/courantes/accueil-cockpit-temporel.md` §2ter.
-- **Reopen destructeur du calendrier de saison** (cockpit palier B) : rouvrir la **version choisie du plan SEASON** alors que des calendriers secondaires (plans de période) existent les **supprime** (spec §2bis, inv. 14). `POST /api/schedules/{id}/reopen` renvoie **409 `{code:"overlays_exist", count, overlays:[{entryId,title}]}`** ; le client confirme avec le body `{"confirmDeleteOverlays": true}` → chaque période est détruite **de bout en bout** (`OverlayManager::deletePeriodPlanForEntry`) : ses versions, **son plan**, et tous les réglages ancrés au plan (grille de créneaux copiée, réservations, modes gymnase, overrides d'équipes/de contraintes) — **l'entrée de calendrier survit** et retombe « à traiter » au radar, à refaire — puis le reopen procède. Même garde, même code, sur `/validate` quand choisir une **autre** version déplacerait le calendrier de la saison. **Portée (amendement fondateur, 2026-07-24, ADR-0002 inv. 14)** : toute période qui porte un plan, **validé ou non** (une période « Adaptée » mais jamais générée compte aussi), et seulement celles **entièrement à venir** — pivot = la date de **début** : « rien du passé, rien de ce qui est en cours » (décision fondateur 2026-07-16), `CalendarEntryRepository::findWithPlanNotStarted`. Zéro période concernée, ou reopen d'un overlay de période : comportement inchangé.
+- **Déblocage du cockpit** : `seasonPlan.hasFinishedVersion` = le plan SEASON porte ≥1 version terminée (`COMPLETED`/`FAILED`). **Dérivé, jamais posé, indépendant du pointeur** — `/reopen` ne re-verrouille pas. Exposé sur `/api/me`. Débloque l'accueil cockpit (vs work-loop). Voir `specs/courantes/accueil-cockpit-temporel.md` §2ter.
+- **Reopen destructeur du calendrier de saison** : rouvrir la **version choisie du plan SEASON** alors que des calendriers secondaires (plans de période) existent les **supprime** (spec §2bis, inv. 14). `POST /api/schedules/{id}/reopen` renvoie **409 `{code:"overlays_exist", count, overlays:[{entryId,title}]}`** ; le client confirme avec le body `{"confirmDeleteOverlays": true}` → chaque période est détruite **de bout en bout** (`OverlayManager::deletePeriodPlanForEntry`) : ses versions, **son plan**, et tous les réglages ancrés au plan (grille de créneaux copiée, réservations, modes gymnase, overrides d'équipes/de contraintes) — **l'entrée de calendrier survit** et retombe « à traiter » au radar, à refaire — puis le reopen procède. Même garde, même code, sur `/validate` quand choisir une **autre** version déplacerait le calendrier de la saison. **Portée (amendement fondateur, 2026-07-24, ADR-0002 inv. 14)** : toute période qui porte un plan, **validé ou non** (une période « Adaptée » mais jamais générée compte aussi), et seulement celles **entièrement à venir** — pivot = la date de **début** : « rien du passé, rien de ce qui est en cours » (décision fondateur 2026-07-16), `CalendarEntryRepository::findWithPlanNotStarted`. Zéro période concernée, ou reopen d'un overlay de période : comportement inchangé.
 
 **Frontend** :
 - Toolbar : bouton Valider (`COMPLETED` non choisie) / Rouvrir (version choisie), read-only gating, libellés statut, badge « Planning de la saison ». Bandeau cockpit : `SeasonPlanBanner`.
