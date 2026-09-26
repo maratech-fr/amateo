@@ -1,22 +1,19 @@
 # Conventions API, Layout et primitives UI partagées
 
-Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement », 1/3
-frontend). Les anciennes sections 2 (Pages), 5 (ARIA), 6 (Lock Levels), 7 (Reference Day
-Anchoring), 8 (endpoints) et 9 (arborescence) — une spec forward d'origine (2026-07-03) décrivant
-un frontend jamais construit (FullCalendar, Zod, `/dashboard`/`/teams`/`/priorities`/
-`/schedules/:id`, `PUT /api/schedule_slot_templates/{id}`) — sont **supprimées** ; l'historique
-vit dans `git log -p --follow` sur ce fichier. §1 re-confronté à
-`specs/courantes/openapi-snapshot.json` : `/api/priority_tiers`, `/api/schedule_diagnostics`,
-`/api/team_coaches` y existent tels quels. **Layout** re-confronté au code : ni
-`frontend/src/app/AppLayout.tsx` ni `frontend/src/features/auth/AuthLayout.tsx` ne portent
-`bg-background` sur leur racine (`AppLayout.tsx:51`, `AuthLayout.tsx:22`), seul le `<header>`
-d'`AppLayout` le porte (`AppLayout.tsx:55`) — conforme au fond d'écran commun posé sur `body`
-(P5-16). **§3 est désormais la maison unique des primitives UI partagées** (décision fondateur
-2026-09-26) : les entrées déménagées depuis `frontend/AGENTS.md` § « Primitives that matter »
-sont vérifiées contre `frontend/src/shared/components/ui/` (`ls` : tous les fichiers cités
-existent) et un spot-check de props sur `listbox.tsx` (`ListboxOption`/`ListboxGroup`/
-`ListboxProps`), `filter-toggle.tsx` (`checked`/`onChange`/`children`) et `badge.tsx`
-(`StatusPill`, `variant: "warning" | "accent" | "neutral"`) confirme les signatures décrites.
+Last verified @ 2026-09-26 (rotation de fraîcheur `documentation-update`, sujet sans rapport —
+passe doc zone engine). Re-confronté au code : `frontend/src/app/AppLayout.tsx` garde une racine
+`min-h-screen text-foreground` (sans `bg-background`), seul le `<header>` le porte
+(`bg-background`, ligne ~55) ; `AuthLayout.tsx` ne porte pas non plus `bg-background` sur sa
+racine ✓. **§3 primitives UI** re-sondé : `listbox.tsx` exporte toujours
+`ListboxOption`/`ListboxGroup`/`ListboxProps` ✓ ; `filter-toggle.tsx` prend toujours
+`checked`/`onChange`/`children` ✓ ; `badge.tsx` porte toujours `StatusPill` avec
+`variant: "warning" | "accent" | "neutral"` ✓. §1 (endpoints) non re-sondé cette passe — dernière
+confrontation à `specs/courantes/openapi-snapshot.json` : `/api/priority_tiers`,
+`/api/schedule_diagnostics`, `/api/team_coaches` y existaient tels quels. Reste non re-parcouru
+cette passe — historique : `git log -p --follow` sur ce fichier. **§3 est la maison unique des
+primitives UI partagées** (décision fondateur 2026-09-26) : les entrées déménagées depuis
+`frontend/AGENTS.md` § « Primitives that matter » sont vérifiées contre
+`frontend/src/shared/components/ui/` (`ls` : tous les fichiers cités existent).
 
 > **Où est la vérité :**
 >

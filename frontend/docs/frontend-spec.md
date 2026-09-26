@@ -4,17 +4,14 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement », 3/3 frontend) —
-re-sondé contre le code : routes `/matchs` (`frontend/src/app/routes.tsx`, index `MatchesLanding`,
-redirect `/matchs/consulter`, catch-all 404), guard d'onboarding (`AuthGuard.tsx:19`), proxy Nginx
-(`docker/frontend/nginx.conf:96-102`), stores (`ls frontend/src/shared/stores/
-frontend/src/features/*/store.ts`) et endpoints club (`frontend/src/features/club/api.ts`) — un
-écart trouvé et corrigé (§9, `/api/club/info` n'existe plus) et un store manquant ajouté (§8,
-`navTransitionStore`). §6.2 dégraissé de quatre clauses purement chronologiques (règle 7) sans
-toucher le reste des paragraphes ; version `@dnd-kit` recalée sur `package.json`
-(`core ^6.3 · sortable ^10.0 · utilities ^3.2`, plus un `6.x` global faux). §6.7 reste hors
-périmètre cette passe (régime narratif plus dense, taille à l'aveugle refusée) — P4-262 en
-roadmap. Reste du fichier hors périmètre : `git log -p --follow` ce fichier.
+Last verified @ 2026-09-26 (rotation de fraîcheur `documentation-update`, sujet sans rapport — passe
+doc zone engine). Re-confronté au code : routes `/matchs` toujours `MatchesLanding` en index avec
+redirect `consulter` → `/matchs` (`frontend/src/app/routes.tsx:146-162`) ✓ ; `@dnd-kit` toujours
+`core ^6.3.1 · sortable ^10.0.0 · utilities ^3.2.2` (`frontend/package.json`) ✓ ;
+`docker/frontend/nginx.conf:96-102` ne déclare toujours aucune `location /engine/` (le commentaire
+explique l'ancien proxy debug, exposait le solveur sans authentification) ✓. Reste non re-sondé
+cette passe — historique : `git log -p --follow` ce fichier. §6.7 reste hors périmètre (régime
+narratif plus dense, taille à l'aveugle refusée) — P4-262 en roadmap.
 
 ## 1. Stack Decided
 
