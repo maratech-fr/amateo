@@ -1,15 +1,16 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-09-25 (`documentation-update`, rotation de fraîcheur — sujet sans rapport,
-P4-257/P4-261 frontend). Re-confronté à `ConstraintConfigValidator::SPEC`
+Last verified @ 2026-09-26 (`documentation-update`, passe « le présent » zone backend).
+Re-confronté à `ConstraintConfigValidator::SPEC`
 (`backend/src/Service/ConstraintConfigValidator.php:59-95`) : les 4 familles et leurs clés/types
 correspondent trait pour trait à la table du fichier ✓. `App\Enum\ConstraintRuleType` ne compte
-toujours que HARD/PREFERRED/LOCK ✓ (`BONUS` reste bien retiré). `TeamTagResolver::
-resolveConstraintTeamIds` (`backend/src/Service/TeamTagResolver.php:278`) existe toujours à cette
-ligne exacte ✓. La migration `Version20260807190000` est confirmée en place ✓. Non re-sondé cette
-passe : les deux gardes `PeriodGatePayloadParityTest`/`ConstraintKeysAreHonouredByEngineTest` (déjà
-vérifiées la passe précédente). Rien de faux trouvé cette passe. Historique : `git log -p
---follow`. Un stamp REMPLACE, il ne s'empile pas.
+que HARD/PREFERRED/LOCK ✓ — `BONUS` n'existe nulle part dans l'engine comme cran de `ruleType`
+(`rtk grep -rn BONUS engine/app/solver/constraints engine/app/schemas` vide), la mention de sa
+normalisation passée est retirée. `TeamTagResolver::resolveConstraintTeamIds`
+(`backend/src/Service/TeamTagResolver.php:278`) existe toujours à cette ligne exacte ✓. La
+migration `Version20260807190000` est confirmée en place ✓. Non re-sondé cette passe : les deux
+gardes `PeriodGatePayloadParityTest`/`ConstraintKeysAreHonouredByEngineTest` (déjà vérifiées la
+passe précédente). Historique : `git log -p --follow`. Un stamp REMPLACE, il ne s'empile pas.
 
 > Source de vérité du code : `App\Service\ConstraintConfigValidator`.
 > Cette page explique le POURQUOI ; la liste qui fait foi est dans la classe.
@@ -77,10 +78,8 @@ change ce qu'il fait. Une cellule souple s'y prouve par le **choix** — une gri
 coût identique où seul le terme souple les départage — jamais par un score : un score bouge aussi
 quand un bonus est accroché à la mauvaise condition.
 
-⚑ **`BONUS` a disparu du produit (2026-09-23)** : le cran n'avait jamais de sémantique propre — le
-moteur le normalisait en PREFERRED au parse et le wizard ne l'offrait plus depuis ENG-12 — et zéro
-ligne n'en portait la valeur en base. L'enum `ConstraintRuleType` ne compte plus que HARD/PREFERRED/
-LOCK ; la table ci-dessus n'a donc plus que trois crans à connaître.
+⚑ **`BONUS` n'existe pas comme cran de `ruleType`** : l'enum `ConstraintRuleType` ne compte que
+HARD/PREFERRED/LOCK — la table ci-dessus n'a donc que trois crans à connaître, jamais quatre.
 
 ## Trois règles pour maintenir cette liste
 

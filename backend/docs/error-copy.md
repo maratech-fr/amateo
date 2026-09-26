@@ -4,19 +4,16 @@
 > Pas d'inventaire ligne à ligne (il dériverait), pas de décompte (« N messages »).
 > Le code fait foi ; ce doc dit **comment décider**, pas **combien**.
 
-Last verified @ 2026-09-25 (rotation de fraîcheur `documentation-update`, P3-7 PR-A — zone non
-touchée par cette PR : les 4 messages francisés de `FfbbExcelImporter`/`FbiFixtureImporter` de
-cette PR suivent déjà la règle ci-dessous, rien à cataloguer ligne à ligne ici par doctrine du
-fichier). Re-confronté au code : la règle « le corps du serveur ne parle qu'en deçà de 500 » tient
-toujours (`frontend/src/shared/lib/errorMessage.ts:32`, et le repli générique `if (status >= 500)`
-`:65` au-delà) ✓ ; le rail 422 des state processors reste gardé par
+Last verified @ 2026-09-26 (`documentation-update`, passe « le présent » zone backend). Re-confronté
+au code : la règle « le corps du serveur ne parle qu'en deçà de 500 » tient toujours
+(`frontend/src/shared/lib/errorMessage.ts:32`, et le repli générique `if (status >= 500)` `:65`
+au-delà) ✓ ; le rail 422 des state processors reste gardé par
 `backend/tests/Unit/ValidationExceptionCarriesViolationsTest.php` ✓ ;
 `ConstraintStateProcessor::assertPreferredVenueIsNotMandatory`
-(`backend/src/State/Processor/ConstraintStateProcessor.php:174-186`) et
+(`backend/src/State/Processor/ConstraintStateProcessor.php:174`) et
 `FixtureStateProcessor::assertVenueAccessAllowed`
-(`backend/src/State/Processor/FixtureStateProcessor.php:229-…`) suivent bien l'idiome unique
-`$this->refuse(…)` ✓ ; `LeagueValidatedFixturesController` n'écrit toujours AUCUN message d'erreur
-métier propre — rien à cataloguer ici. Rien à corriger.
+(`backend/src/State/Processor/FixtureStateProcessor.php:229`) suivent bien l'idiome unique
+`$this->refuse(…)` ✓. Rien à corriger.
 
 ## La règle
 
@@ -39,14 +36,14 @@ body.detail` **que** pour `status < 500`. Donc :
   - **Superadmin `SA0`** (`Controller/Admin*`, firewall `/api/admin/**`) et **outillage `Dev*`** :
     hors app gestionnaire, laissés tels quels.
 
-## Le rail 422 des state processors — un refus PARLE (P4-126, 2026-08-23)
+## Le rail 422 des state processors — un refus PARLE
 
 `throw new ValidationException('chaîne')` rend un 422 **muet** : le constructeur-chaîne crée une
 `ConstraintViolationList` VIDE, et le normalizer d'API Platform dérive `detail` et `violations[]`
 **exclusivement de la liste** — l'écran affiche « An error occurred » pendant que le message
 français soigné meurt dans un champ que personne ne lit. Mesuré le 2026-08-22 : 35 occurrences
-dans 11 processors, dont les 3 messages de la mutualisation que la passe #700 avait traduits
-**pour personne**.
+dans 11 processors, dont des messages déjà traduits en français par une passe antérieure —
+traduits **pour personne**, puisque le 422 restait muet.
 
 **L'idiome est unique** : `$this->refuse('…')` (`AbstractStateProcessor` — vraie liste, le message
 ressort dans `violations[].message` ET `detail`, les deux champs que lit `errorMessage.ts`).

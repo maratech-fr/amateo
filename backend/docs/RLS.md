@@ -1,7 +1,9 @@
-# ClubScheduler — PostgreSQL Row-Level Security (RLS)
+# Amateo — PostgreSQL Row-Level Security (RLS)
 
-Last verified @ 2026-09-26 (rotation `documentation-update`, stamp le plus ancien du dépôt — fichier
-hors sujet de la PR, contrôle de fraîcheur). Re-confronté au code :
+Last verified @ 2026-09-26 (`documentation-update`, passe « le présent » zone backend — sur les
+talons d'une rotation de fraîcheur du même jour). Cette passe retire l'auto-récit de dérive du
+document (le POURQUOI technique de `NULLIF`/`true`/`TO amateo_app` reste) et compacte le
+paragraphe `migration_user` ; titre passé à Amateo. Re-confronté au code :
 `TenantFilterListener` toujours `KernelEvents::REQUEST => ['onKernelRequest', 7]`
 (`backend/src/EventListener/TenantFilterListener.php:55`) ✓ · `TenantConnectionContext` pose
 `set_config('app.club_id', ?, false)` (`backend/src/Service/TenantConnectionContext.php:30`) ✓ ·
@@ -17,11 +19,11 @@ plus bas (comparé mot pour mot à `Version20260825120000.php:27` et `Version202
 avec seulement `SELECT, INSERT, UPDATE, DELETE` (DML, aucun DDL) ✓. Rien de faux trouvé cette
 passe.
 
-> ✅ **STATUS: ACTIVE** since migration `Version20260703120000` (SEC-03 fixed). The migration — not the initdb scripts — is the source of truth for policies and grants: **every table carrying a `club_id` column** is under `FORCE ROW LEVEL SECURITY` with a `tenant_isolation` policy `TO amateo_app` (no hard count here — new tenant tables inherit the pattern via the migration helper; the count would rot). `club_user` and `coach_wish_token` carry the hybrid SELECT bootstrap policy (open only while NO tenant GUC is set — scoped to the tenant otherwise, SEC-12 residual closed by `Version20260804120000`; deliberate cross-tenant reads go through `TenantConnectionContext::runWithoutTenant()`). Runtime connects as `amateo_app`; the GUC is set via `TenantConnectionContext` (`set_config`, session-scoped). **This file = operator how-to (env, roles, troubleshooting). The effective architecture — who sets the GUC, the exception tables, the superadmin door — is `docs/security/rls.md`, and it is CANONICAL.** ⚑ La consigne précédente disait « garder les deux en phase » : c'est précisément ce qui a produit la dérive du prédicat corrigée le 2026-08-19. Deux fichiers qu'on maintient en phase à la main divergent — le seul garde-fou est de ne PAS redire ici ce que le canon dit là-bas : on pointe. The `01/02/03-*.sql` initdb scripts remain for fresh volumes only.
+> ✅ **STATUS: ACTIVE** since migration `Version20260703120000` (SEC-03 fixed). The migration — not the initdb scripts — is the source of truth for policies and grants: **every table carrying a `club_id` column** is under `FORCE ROW LEVEL SECURITY` with a `tenant_isolation` policy `TO amateo_app` (no hard count here — new tenant tables inherit the pattern via the migration helper; the count would rot). `club_user` and `coach_wish_token` carry the hybrid SELECT bootstrap policy (open only while NO tenant GUC is set — scoped to the tenant otherwise, SEC-12 residual closed by `Version20260804120000`; deliberate cross-tenant reads go through `TenantConnectionContext::runWithoutTenant()`). Runtime connects as `amateo_app`; the GUC is set via `TenantConnectionContext` (`set_config`, session-scoped). **This file = operator how-to (env, roles, troubleshooting). The effective architecture — who sets the GUC, the exception tables, the superadmin door — is `docs/security/rls.md`, and it is CANONICAL.** ⚑ Deux fichiers maintenus « en phase » à la main finissent par diverger — le seul garde-fou est de ne PAS redire ici ce que le canon dit là-bas : on pointe. The `01/02/03-*.sql` initdb scripts remain for fresh volumes only.
 
 ## Overview
 
-ClubScheduler is designed to use **PostgreSQL Row-Level Security (RLS)** to enforce **tenant isolation** at the database layer. Every business table that belongs to a club contains a `club_id` column. RLS policies ensure that the application user (`amateo_app`) can only see and manipulate rows whose `club_id` matches the tenant context set for the current database session.
+Amateo is designed to use **PostgreSQL Row-Level Security (RLS)** to enforce **tenant isolation** at the database layer. Every business table that belongs to a club contains a `club_id` column. RLS policies ensure that the application user (`amateo_app`) can only see and manipulate rows whose `club_id` matches the tenant context set for the current database session.
 
 ## Database Users
 
@@ -62,12 +64,10 @@ There is **no manual post-deploy step**: the Doctrine migration that creates a n
 > gate bloquant). Le geste sûr : copier une migration **récente** qui crée une table tenant — elles
 > portent le prédicat dans une constante (`TENANT_PREDICATE`), pas en toutes lettres.
 >
-> ⚑ Ce document a lui-même dérivé sur ce point jusqu'au 2026-08-19 : il donnait
-> `current_setting('app.club_id')::UUID` **sans `NULLIF(…, '')` ni le `true` de `missing_ok`**, et
-> **sans `TO amateo_app`**. Les trois écarts comptent — sans `true`, `current_setting` **lève** quand
-> le GUC est absent au lieu de rendre NULL (fin du fail-closed) ; sans `NULLIF`, la **chaîne vide**
-> que pose `TenantConnectionContext::clear()` part en `''::uuid` et rend une **erreur 22P02** ;
-> sans `TO amateo_app`, la policy s'applique à tous les rôles et brouille la porte admin. L'architecture
+> ⚑ **Les trois clauses comptent.** Sans `true` (missing_ok), `current_setting` **lève** quand le
+> GUC est absent au lieu de rendre NULL (fin du fail-closed) ; sans `NULLIF`, la **chaîne vide**
+> que pose `TenantConnectionContext::clear()` part en `''::uuid` et rend une **erreur 22P02** ; sans
+> `TO amateo_app`, la policy s'applique à tous les rôles et brouille la porte admin. L'architecture
 > effective, elle, est et reste [`../../docs/security/rls.md`](../../docs/security/rls.md).
 
 ```sql
@@ -120,7 +120,7 @@ Migrations and ops run on the **`admin` Doctrine connection** (`amateo_owner`, s
 DATABASE_ADMIN_URL="postgresql://amateo_owner:...@postgres:5432/amateo_dev?serverVersion=16&charset=utf8"
 ```
 
-⚠ `migration_user` **no longer exists** (dropped 2026-07-31, migration `Version20260731090000`). It was created by the init SQL with schema-wide `GRANT ALL` and used by **no** connection — a dormant service account with broad privileges. It could not be wired up either: at the time, `NOSUPERUSER` without `BYPASSRLS` meant default-deny under `FORCE`, so migrations and fixtures would break. Migrations run on the `admin` connection (`amateo_owner`). *(That wall is lifted since P5-7: a `NOSUPERUSER` role that is `amateo_owner` or a member of it passes through the `admin_all` policies — this is exactly the managed-PG regime.)*
+⚠ `migration_user` **does not exist.** The init SQL used to create it with schema-wide `GRANT ALL` and no connection ever used it — a dormant service account with broad privileges. Migrations run on the `admin` connection (`amateo_owner`); a `NOSUPERUSER` role that is `amateo_owner` or a member of it passes through the `admin_all` policies — this is exactly the managed-PG regime.
 
 ### 2. Setting the Tenant Context
 

@@ -1,4 +1,4 @@
-# ClubScheduler — Backend
+# Amateo — Backend
 
 > Symfony 7 API + admin workflows. Cœur métier de la plateforme.
 
@@ -32,115 +32,22 @@ Le **backend** est le point central du système. Il expose l'API REST, gère les
 ### Frontend → Backend
 - Le frontend React appelle l'API via des URLs relatives (`/api/*`) qui sont proxyfiées par le nginx du frontend vers le backend nginx
 
-## API Routes
+## API
 
-Toutes les routes sont exposées sous `/api` via **API Platform** (auto-génération CRUD + OpenAPI docs).
+Toutes les routes sont exposées sous `/api` via **API Platform** (CRUD auto-généré + OpenAPI docs),
+plus une série de contrôleurs custom (génération/exports de planning, cockpit temporel, module
+matchs, import FFBB, transition de saison, console superadmin). **Ce README ne les recopie pas** —
+source de vérité exhaustive :
 
-> ⚠️ **URIs en `snake_case`** (`/api/team_coaches`, `/api/venue_training_slots`, `/api/sport_categories`, `/api/priority_tiers`, `/api/schedule_slot_templates`…), **pas** en kebab. La **source de vérité** est l'OpenAPI (`/api/docs`) et l'inventaire [`docs/backend-inventory.md`](docs/backend-inventory.md) ; le tableau ci-dessous est indicatif.
+- `http://localhost:8080/api/docs` (Swagger UI) / `.../api/docs.json` (OpenAPI JSON)
+- [`docs/backend-inventory.md`](docs/backend-inventory.md) — inventaire ressource par ressource et contrôleur par contrôleur
+- [`specs/courantes/openapi-snapshot.json`](../specs/courantes/openapi-snapshot.json) — snapshot figé consommé par le frontend
 
-### Ressources métier (CRUD standard)
-
-| Ressource | Endpoint | Description |
-|-----------|----------|-------------|
-| `Club` | `/api/clubs` | Clubs/organisations |
-| `Season` | `/api/seasons` | Saisons sportives |
-| `Team` | `/api/teams` | Équipes (catégorie, priorité, créneaux) |
-| `Venue` | `/api/venues` | Salles/lieux de pratique |
-| `Coach` | `/api/coaches` | Entraîneurs |
-| `User` | `/api/users/{id}` | Utilisateurs — **item seul** : pas de collection (énumération d'emails), pas de `Delete` (voir `DELETE /api/me`) |
-| `ClubUser` | `/api/club_users` | Membres du club (rôles) |
-| `Sport` | `/api/sports` | Types de sports |
-| `SportCategory` | `/api/sport_categories` | Catégories d'âge |
-| `PriorityTier` | `/api/priority_tiers` | Niveaux de priorité (S/A/B/C/D) |
-| `SubscriptionPlan` | `/api/subscription_plans` | Plans d'abonnement |
-
-### Ressources planning (CRUD standard)
-
-| Ressource | Endpoint | Description |
-|-----------|----------|-------------|
-| `SchedulePlan` | `/api/schedule_plans` | **Pivot ADR-0002** — le plan SEASON *pointé* EST le calendrier de la saison (`chosenScheduleId`) ; il porte le **nom** (renommage par `PUT`, SEC-07). « Validé » n'est pas un statut. |
-| `Schedule` | `/api/schedules` | Versions de planning (générations) |
-| `ScheduleSlotTemplate` | `/api/schedule_slot_templates` | Créneaux générés |
-| `ScheduleDiagnostic` | `/api/schedule_diagnostics` | Erreurs/avertissements |
-| `Reservation` | `/api/reservations` | Créneaux réservés (pins `HARD` durables) |
-
-### Ressources contraintes & liens
-
-| Ressource | Endpoint | Description |
-|-----------|----------|-------------|
-| `Constraint` | `/api/constraints` | Contraintes **unifiées** (familles TIME/DAY/FACILITY/COACH_AVAILABILITY/FACILITY_CAPACITY · scope CLUB/TEAM/COACH/FACILITY · `config.targetTag` pour cibler un groupe) |
-| `VenueTrainingSlot` | `/api/venue_training_slots` | Disponibilités hebdo des salles (jour, heure, durée, capacité 1/2) |
-| `TeamCoach` | `/api/team_coaches` | Assignations entraîneur-équipe (MAIN/ASSISTANT) |
-| `CoachPlayerMembership` | `/api/coach_player_memberships` | Entraîneurs aussi joueurs |
-
-### Ressources cockpit temporel & matchs
-
-| Ressource | Endpoint | Description |
-|-----------|----------|-------------|
-| `CalendarEntry` | `/api/calendar_entries` | Périodes/événements du cockpit (kind PERIOD/EVENT). Le planning de période est un `SchedulePlan` ancré à l'entrée — le pointeur inverse `overlayScheduleId` a été supprimé (ADR-0002 lot D-b) |
-| `Competition` | `/api/competitions` | Compétitions FFBB (championnat/coupe/brassage) — module matchs palier A |
-| `Fixture` | `/api/fixtures` | Rencontres (HOME/AWAY, placement domicile, `externalRef` = n° FBI) |
-
-### Ressources de période (#8 — la période possède sa grille)
-
-Réglages **sparses** ancrés au **plan** (`schedulePlanId`) : pas de ligne = hériter du modèle de saison.
-
-| Ressource | Endpoint | Description |
-|-----------|----------|-------------|
-| `VenuePeriodOverride` | `/api/venue_period_overrides` (+ `/reset-grid`, `/clear-grid`) | Comportement d'un gymnase sur la période (`DISABLED` / `BLANK`) |
-| `TeamPeriodOverride` | `/api/team_period_overrides` | Équipe activée/désactivée + `sessionsPerWeek` sur la période |
-| `ConstraintPeriodOverride` | `/api/constraint_period_overrides` | Contrainte permanente activée/désactivée sur la période |
-
-### Ressources doléances coachs (#10)
-
-| Ressource | Endpoint | Description |
-|-----------|----------|-------------|
-| `CoachWishCampaign` | `/api/coach_wish_campaigns` (+ `/send-links`, `/remind`) | Campagne de collecte (périmètre, semaines, deadline) |
-| `CoachWish` | `/api/coach_wishes` | Doléances déposées |
-| — | `/api/coach-wishes/public/{token}` | **Route PUBLIQUE, sans JWT** (GET/POST) — voir `AGENTS.md` §18 |
-
-### Opérations custom (au-delà du CRUD)
-
-| Route | Méthode | Description |
-|-------|---------|-------------|
-| `/api/login` | POST | Authentification JSON → JWT (`json_login`, `security.yaml`) |
-| `/api/register` | POST | Inscription — compte non vérifié, **202 générique** (anti-énumération A3, aucun token) ; envoie un lien de vérification par email (`AuthController`) |
-| `/api/register/verify` | POST | Consomme le token du lien email → vérifie le compte, crée/rejoint le club, **émet le JWT** (login effectif) |
-| `/api/me` | GET/PATCH | Profil JWT + contexte club (`AuthController`) |
-| `/api/me` | DELETE | **Effacement RGPD self-service** (`DeleteAccountController`) — self-only (aucun id en entrée), confirmé par **ré-authentification mot de passe** ; anonymisation immédiate, club orphelin purgé après 30 j de grâce |
-| `/api/constraints/validate` | POST | Gate pré-solveur : valide les contraintes + détecte les conflits (200/422) |
-| `/api/schedule-slots/{id}/manual-edit/{constraint,lock,one-time}` | POST | Ajustements manuels de créneau (boucle de travail) |
-
-### Opérations custom
-
-| Route | Méthode | Description |
-|-------|---------|-------------|
-| `/api/health` | GET | Health check (nginx → php-fpm) |
-| `/api/schedules/{id}/generate` | POST | Lancer la génération de planning (async). ⚠️ **Trois refus synchrones possibles** : 409 si la version est celle que son plan pointe (rouvrir d'abord), 422 si `GenerationComplexityGuard` juge le problème hors bornes (A10), 422 si `OrphanPinGuard` trouve un épinglage orphelin |
-| `/api/schedules/{id}/reopen` | POST | **Rouvrir** (dépointer) la version en vigueur — obligatoire avant de régénérer |
-| `/api/schedules/{id}/regenerate` | POST | Relancer une génération sur la même version |
-| `/api/schedules/{id}/regenerate-from` | POST | Restaurer la structure photographiée par une version (D3) puis regénérer |
-| `/api/schedules/{id}/export-pdf` | POST | Exporter le planning en PDF (async) — produit aussi un PNG best-effort |
-| `/api/schedules/{id}/export-xlsx` | POST | Exporter le planning en tableur |
-
-### Opérations cockpit / matchs / transition / calendriers (invokables)
-
-| Route | Méthode | Description |
-|-------|---------|-------------|
-| `/api/calendar-entries/{id}/conflicts` | GET | Conflits d'une période vs la version pointée du plan SEASON (cockpit) |
-| `/api/league-match-windows` | GET | Fenêtres de match héritées de la ligue du club (catalogue global, fallback AURA) |
-| `/api/fixtures/conflicts` | GET | Radar conflits coach/joueur des rencontres (module matchs) |
-| `/api/teams/{id}/fixtures/import` | POST | Import FBI des rencontres (.xlsx par équipe) |
-| `/api/season-transition` | GET/POST | Recap + bascule de saison (P1/P2) |
-| `/api/school-holidays`, `/api/public-holidays` | GET | Vacances scolaires / jours fériés (tables globales) |
-| `/api/club/ffbb-import` | POST | Ré-import des données institutionnelles depuis l'API FFBB (rôle management) |
-| `/api/admin/**` | — | Console superadmin SA0 — **firewall séparé** (session + TOTP), jamais atteignable avec un JWT club |
-
-> Source de vérité exhaustive = OpenAPI (`/api/docs`) + snapshot `specs/courantes/openapi-snapshot.json`. Le tableau reste indicatif (pas de décompte figé).
-
-### Documentation OpenAPI
-- `http://localhost:8080/api/docs` — Swagger UI
-- `http://localhost:8080/api/docs.json` — OpenAPI JSON
+Quelques repères pour s'orienter avant d'aller lire l'inventaire :
+- URIs API Platform en **snake_case** (`/api/venue_training_slots`, `/api/sport_categories`…), **jamais** en kebab-case.
+- `SchedulePlan` (pivot **ADR-0002**) : le plan *pointé* **est** le calendrier de la saison ou de la période — `docs/architecture/adr-0002-pattern-plan.md`.
+- `/api/admin/**` : console superadmin SA0, **firewall séparé** (session + TOTP), jamais atteignable avec un JWT club.
+- La seule route `/api/*` sans JWT : `GET|POST /api/coach-wishes/public/{token}` (le token EST l'identité) — voir `AGENTS.md` gotcha 18.
 
 ## Commandes principales
 
@@ -175,7 +82,7 @@ make exec             # Entrer dans le conteneur php-fpm
 > `connection: admin`) : elles portent le DDL et les policies RLS, que le rôle applicatif
 > `amateo_app` n'a pas le droit d'exécuter.
 
-> ⚠️ Commandes backend = **dans Docker** (le Makefile enveloppe `docker compose exec`). Elles échouent sur l'hôte. La suite de tests a besoin de la base de test → `make db-init-test` d'abord.
+> ⚠ Commandes backend = **dans Docker** (le Makefile enveloppe `docker compose exec`). Elles échouent sur l'hôte. La suite de tests a besoin de la base de test → `make db-init-test` d'abord.
 
 ## Architecture interne
 
@@ -197,7 +104,7 @@ backend/
 │   │   └── ClubGenerationLock.php           # Verrou Redis
 │   ├── State/Provider/       # State providers API Platform
 │   ├── State/Processor/      # State processors API Platform
-│   └── DataFixtures/         # Jeux de données
+│   └── DataFixtures/         # assets (logos…) — pas de classes de fixtures ; les jeux de données réels viennent de `Seed/` (`make seed-bccl`/`make seed-demo`)
 ├── config/
 │   └── packages/mercure.yaml # Config Mercure hub
 ├── migrations/               # Migrations Doctrine
@@ -223,15 +130,15 @@ backend/
 | Doc / script | Contenu |
 |--------------|---------|
 | [`scripts/generate-schedule.sh`](scripts/generate-schedule.sh) | **Guide pratique** — pilote create → generate → poll une génération via l'API (vraie aide pour tester/déboguer le flux). |
-| [`features/`](features/) | **Tests fonctionnels Behat** (Gherkin FR) — une feature par promesse métier, jouées contre l'API réelle. `make behat` les joue toutes ; détail de chacune : [`docs/testing/test-coverage-map.md`](../docs/testing/test-coverage-map.md) §5. Les 5 premières ont remplacé les smokes bash (`backend/scripts/*smoke*.sh`, supprimés — P4-165) ; les suivantes (P4-175) couvrent les règles qui détruisent/refusent/isolent. |
+| [`features/`](features/) | **Tests fonctionnels Behat** (Gherkin FR) — une feature par promesse métier, jouées contre l'API réelle. `make behat` les joue toutes ; détail de chacune : [`docs/testing/test-coverage-map.md`](../docs/testing/test-coverage-map.md) §5. |
 | [`docs/TENANT.md`](docs/TENANT.md) | **Isolation multi-tenant** (cœur sécurité) — `TenantFilter` + `TenantFilterListener` (priorité 7, après le firewall) + résolution du club depuis le JWT. |
 | [`docs/RLS.md`](docs/RLS.md) | PostgreSQL Row-Level Security : rôles DB, policies, activation sur une nouvelle table. |
 | [`docs/commands.md`](docs/commands.md) | **Référence complète des commandes** — cibles make, console `app:*`, pièges RLS (`dbal:run-sql`), scripts. |
 | [`docs/ffbb-api.md`](docs/ffbb-api.md) | **Intégration FFBB** — les routes des API publiques FFBB utilisées (Meilisearch + api.ffbb.com), confinement SSRF, cache. |
-| [`docs/geo-api.md`](docs/geo-api.md) | **Intégration géo** — BAN (géocodage adresse) + IGN Géoplateforme (itinéraires), confinement SSRF, l'autofill de la matrice de temps de trajet (P2-53). |
+| [`docs/geo-api.md`](docs/geo-api.md) | **Intégration géo** — BAN (géocodage adresse) + IGN Géoplateforme (itinéraires), confinement SSRF, l'autofill de la matrice de temps de trajet. |
 | [`docs/constraint-coverage.md`](docs/constraint-coverage.md) | Couverture des besoins gestionnaire par le système de contraintes (✅/🟡/❌). |
 | [`docs/error-copy.md`](docs/error-copy.md) | **Copie des messages d'erreur** — la règle de langue (français dès qu'un gestionnaire peut lire ; anglais toléré = défense pure/API-only/admin/≥500), codes machine et 404 à parité intouchables. |
-| [`docs/constraints.md`](docs/constraints.md) · [`docs/generation-flow.md`](docs/generation-flow.md) · [`docs/schedule-generation-guide.md`](docs/schedule-generation-guide.md) | Docs pédagogiques (contraintes métier, pipeline de génération, guide pas-à-pas) — ex-`doc/`, fusionné 2026-07-11. |
+| [`docs/constraints.md`](docs/constraints.md) · [`docs/generation-flow.md`](docs/generation-flow.md) · [`docs/schedule-generation-guide.md`](docs/schedule-generation-guide.md) | Docs pédagogiques : contraintes métier, pipeline de génération, guide pas-à-pas. |
 | [`AGENTS.md`](AGENTS.md) | Cheat-sheet agent (conventions CS-Fixer/PHPStan/Rector, flux services, gotchas). |
 
 **Contraintes = cœur métier.** Elles sont *persistées/exposées* ici (`Constraint` + `ScheduleConstraintBuilder` qui construit le payload solveur, dont `resolveTagToTeamIds` pour cibler un groupe) et *résolues* par l'engine — voir [`engine/docs/business.md`](../engine/docs/business.md).
