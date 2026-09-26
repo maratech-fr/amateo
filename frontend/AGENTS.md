@@ -9,182 +9,45 @@
 
 ---
 
-> ⚑ Les pièges qui rendent un test **vert à tort** (image tooling, `dist` cuit,
-> `tsc --noEmit`, jsdom sans moteur de mise en page) sont AUSSI dans
-> [`.claude/rules/frontend.md`](../.claude/rules/frontend.md), **chargé automatiquement** dès
-> qu'un fichier de `frontend/` est touché — ce fichier-ci ne l'est pas.
+> ⚑ The traps that make a test pass **falsely** (tooling image, cooked `dist`, `tsc --noEmit`,
+> jsdom without a layout engine) have a single home:
+> [`.claude/rules/frontend.md`](../.claude/rules/frontend.md), auto-loaded whenever a
+> `frontend/` file is touched.
 
 ## Boundaries (never cross)
 
-- Talks to the backend **only** via `/api/*`. **Never contacts the engine directly** —
-  generation goes through `POST /api/schedules/{id}/generate` and the backend calls the
-  engine. There is deliberately **no `/engine` proxy** in `vite.config.ts` (FRT-17).
-- Sends **no `X-Club-Id` header**: the tenant is resolved server-side from the JWT
-  membership (see `../backend/docs/TENANT.md`). A spoofed header would 403 anyway.
-- Sends `X-Season-Id` **only** when the manager has explicitly picked a season
-  (`seasonStore`); absent = the server derives the current season. The server validates it
-  either way — it is never trusted client-side.
-- API URIs are **snake_case** (`/api/team_coaches`, `/api/venue_training_slots`,
-  `/api/priority_tiers`, `/api/schedule_slot_templates`…).
-- Always relative URLs. **Never hardcode a host** — `prefix: "/api"` uses the Vite proxy in
-  dev and Nginx in prod.
+Full list: [`README.md`](README.md) § Frontières + [`../CLAUDE.md`](../CLAUDE.md) §2 (backend-only
+via `/api/*`, never the engine directly, no `X-Club-Id` header, `snake_case` URIs). Two additions
+that live only here: there is deliberately **no `/engine` proxy** in `vite.config.ts` (FRT-17 —
+the old one exposed the solver unauthenticated) ; always **relative URLs** — never hardcode a
+host (`prefix: "/api"` uses the Vite proxy in dev, Nginx in prod).
 
 ---
 
 ## Layout
 
-```
-frontend/
-├── src/
-│   ├── main.tsx                 # Entry: Sentry init, pre-paint theme, createRoot
-│   ├── index.css                # Tailwind 4 @theme tokens + --accent slots
-│   ├── app/                     # Shell & routing
-│   │   ├── router.tsx           # `AppRouter`: builds `createBrowserRouter(routes)` on first use
-│   │   ├── routes.tsx           # The `RouteObject[]` tree + per-route `lazy` (see below) — moved
-│   │   │                        # out of router.tsx (FRT-29) so it stays a non-component export
-│   │   ├── RootShell.tsx        # Technical root: carries the navigation-pending net
-│   │   ├── RouteErrorBoundary.tsx / ErrorBoundary.tsx
-│   │   ├── AppLayout.tsx        # Header (club logo = home link) + account menu
-│   │   ├── AuthGuard.tsx        # Token / membership / onboarding gates
-│   │   ├── SeasonSelector.tsx · SeasonTransitionBanner.tsx · ReadonlySeasonBanner.tsx
-│   │   └── providers.tsx · DevClock.tsx · seasonTransition.ts
-│   ├── features/                # One folder per domain, each `{api,queries,store}.ts`
-│   │                            # (exception matchs : `api` est un BARREL — `api/index.ts` +
-│   │                            #  8 modules par domaine opponents/fixtures/conflicts/venues/
-│   │                            #  teams/competitions/fbi/ffbb, FRT-33 ; chemin public `./api` inchangé)
-│   │   ├── admin/               # Superadmin console (/admin) — own session client
-│   │   ├── auth/                # Login · register · verify-email · password · waiting
-│   │   ├── club/                # /club hub: identity (logo/accent), FFBB info, requests
-│   │   ├── coach-wishes/        # #10 doléances: modal, campaign, PUBLIC page, radar badge
-│   │   ├── cockpit/             # / home: season-plan banner, month calendar, radar,
-│   │   │                        # FbiDeadlineCard (RMM-6 PR-3: matches FBI-entry reminder + login escalation)
-│   │   ├── legal/               # /confidentialite
-│   │   ├── matches/             # MatchesLayout, 8 routes/6 tabs: /matchs (index — since UXS-07
-│   │   │                        # 2026-09-24 a conditional landing, `MatchesLanding`: redirects
-│   │   │                        # to Conflits if any are open, else renders the Calendar — the
-│   │   │                        # single screen since PR 3b 2026-09-16 merging the weekly
-│   │   │                        # placement loop, `WeekCounters` bar, and read Week/month/phase) ·
-│   │   │                        # /matchs/consulter (permanent redirect → /matchs) ·
-│   │   │                        # /matchs/importer (data entry + per-team review queue) ·
-│   │   │                        # /matchs/configuration (rare setup) · /matchs/adversaires ·
-│   │   │                        # /matchs/semaine-type · /matchs/conflits (read-only, season
-│   │   │                        # conflicts pivoted coach/team/venue/matchday, PR A 2026-09-15)
-│   │   │                        # · /matchs/reconciliation (RMM-4, FBI écarts per-field — delivered,
-│   │   │                        # two channels: xlsx deposit + FFBB API, no tab — API channel only)
-│   │   ├── planning/            # /planning work loop: WeekGrid, toolbar, exports
-│   │   ├── profile/             # /profile
-│   │   ├── season-transition/   # Season pivot banner + re-dating dialog
-│   │   └── wizard/              # 6-step data entry (see `lib/steps.ts`)
-│   ├── shared/
-│   │   ├── api/                 # client.ts (ky) · collection.ts (JSON-LD) · errors.ts
-│   │   ├── components/ui/       # Primitives (shadcn-style) — see "Primitives that matter"
-│   │   ├── hooks/               # useApplyTheme · useApplyClubTheme
-│   │   ├── lib/                 # readState, teamTiers, color, palette, duration, …
-│   │   └── stores/              # authStore · themeStore · seasonStore · toastStore · transitionUiStore
-│   └── test/                    # Vitest setup + render helpers + a11y suite
-├── tests/e2e/                   # Playwright (auth, journey, matches, a11y-contrast, …)
-├── vite.config.ts               # Plugins, `@/` alias, dev proxies
-├── vitest.config.ts             # jsdom, globals, setup, excludes tests/e2e
-├── eslint.config.js             # Flat config — jsx-a11y is BLOCKING (see below)
-└── Makefile                     # All tooling is Dockerized
-```
-
-Feature stores live at `features/<x>/store.ts` (`wizard`, `planning`, `matches`, `admin`);
-cross-cutting ones at `shared/stores/`.
+Full tree, entry points, key mechanisms: [`frontend-spec.md`](docs/frontend-spec.md) §10. Two
+facts absent from that spec, kept here: `app/routes.tsx` holds the `RouteObject[]` tree as a
+**non-component export**, moved out of `router.tsx` on purpose (FRT-29) ; `features/matches/api`
+is the **one barrel** in the codebase — `api/index.ts` re-exporting 8 per-domain modules
+(opponents/fixtures/conflicts/venues/teams/competitions/fbi/ffbb, FRT-33) — its public import
+path (`./api`) is unchanged.
 
 ---
 
 ## Commands
 
-**All tooling runs in Docker**; the host needs only Docker, Docker Compose and Make.
-
-```bash
-cd frontend
-make install     # Build the Node tooling image
-make dev         # Dockerized Vite dev server (5173)
-make build       # Production image (tsc + Vite + Nginx, served on 8081)
-make lint        # ESLint + TypeScript, in Docker
-make test        # make lint, then Vitest
-make coverage    # Coverage + ratchet (needs `make install` first, plancher `../coverage-floor.json`, ~4-5 min)
-make exec        # Shell inside the tooling image
-make start | stop | logs | shell | status   # Docker Compose helpers
-```
-
-⚠ **`coverageFloor.test.ts` anchors on `__dirname`, not `import.meta.url`** — under
-`vitest run --coverage` the latter is not always `file:`-scheme, and `new URL(...,
-import.meta.url)` throws `ERR_INVALID_URL_SCHEME`.
-
-### ⚠ Trap: never `tsc --noEmit`
-
-`make lint` runs `npm run lint && npx tsc -b --force`. The root `tsconfig.json` is a
-**solution file** (`"files": []` + `references`), so `tsc --noEmit` sees **zero files**: it
-exits 0 having checked nothing, while CI (which runs `tsc -b`) fails on the errors it
-skipped. `--force` is also required — a stale `tsbuildinfo` short-circuits the check.
-`tests/e2e/` and `playwright.config.ts` are now covered too (`tsconfig.e2e.json`, referenced
-from the root solution file, P4-257, 2026-09-25) — before this they were type-checked by
-**neither** project (`tsconfig.app.json` only `include`s `src`, `tsconfig.node.json` only
-`vite.config.ts`/tooling), so a spec calling a nonexistent Playwright API passed lint green
-and only broke in CI.
-
-### ⚠ Trap: an e2e run can validate the PREVIOUS build
-
-The `frontend` compose service **builds its own image** (`docker/frontend/Dockerfile`, Nginx
-on 8081) — `dist` is **not** a bind mount, and `frontend-tooling` is a COPY image with no
-mount either. So `npx vite build` inside the tooling container writes into that container
-and is thrown away: the app served on 8081 does not move, and an e2e launched afterwards
-**passes against the old bundle**. Before any e2e that must see your change:
-
-```bash
-docker compose build frontend && docker compose up -d --force-recreate frontend
-```
-
-Only `frontend-dev` (profile `dev`, port 5173) mounts `./frontend` — that is the hot-reload
-path, not what the e2e targets. Found the hard way on P4-43: the journey spec went green
-while a screenshot showed the old toolbar.
-
-E2E Playwright **is** fully Dockerized: `make -C frontend e2e` (compose profile `tools`,
-service `e2e`) — it needs the stack **and** `make -C frontend dev` running. The target also
-carries the superadmin preflight (it seeds the account and exports its TOTP secret); without
-it the `/admin` specs SKIP explicitly rather than fail.
+Command recap: [`README.md`](README.md) § Commandes principales + [`../CLAUDE.md`](../CLAUDE.md)
+§3. All tooling runs in Docker — the host needs only Docker, Docker Compose and Make.
 
 ---
 
-## Routing — split by route, and the three nets that make it safe
+## Routing
 
-`app/routes.tsx` declares the route tree, where **everything except `/login` and the guards is
-`lazy`**; `app/router.tsx` just calls `createBrowserRouter(routes)`. Motivation: a single chunk
-used to ship on every first visit — superadmin console and wizard included — even for a coach
-opening nothing but a public doléances page.
-
-Eager on purpose: `LoginPage` (entry path), `AuthGuard`, `AdminGuard` (their code must be
-present to decide).
-
-Splitting is only safe because of three nets. **Removing any of them trades the gain for a
-silent outage — do not drop them when adding a route:**
-
-| Net | Without it |
-|-----|-----------|
-| `errorElement` (root + nested under `AppLayout`) | A 404 chunk (deploy mid-session) replaces the **whole app** with the router's unstyled English screen, invisible to Sentry. The nested one keeps header/nav/banners alive when a single page's chunk fails. |
-| `HydrateFallback` | react-router renders `null` → **blank page** on any direct open or F5 of a lazy route. |
-| Pending indicator (`useNavigation`, in `AppLayout`) | A navigation click gives **no feedback at all** until the chunk lands. |
-
-Known, accepted trade-off (documented in the file): the data router resolves the `lazy` of
-**all matched routes** before rendering any, so an anonymous visitor on `/planning`
-downloads the page before being redirected to `/login`. That JS is public and carries no
-data; avoiding it would mean duplicating the auth decision into a per-route `loader`.
-
-### Routes
-
-| Route | Auth | Notes |
-|-------|------|-------|
-| `/login` | public | The only eager page |
-| `/register` · `/verify-email/:token` · `/forgot-password` · `/reset-password/:token` · `/waiting` | public | Register is 202 + email link; verify sets the auth **cookie** (SEC-16 — no token in the body) |
-| `/confidentialite` | public | Privacy policy |
-| **`/doleances/:token`** | **public, NO login** | #10 — flat route, deliberately **outside `AuthGuard`**. A coach fills in availability from a personal tokenised link. |
-| `/admin/login` · `/admin` | SA0 session | Superadmin console behind `AdminGuard` → `AdminShell`. Separate identity — a club JWT never crosses this firewall. |
-| `/` | required | **Cockpit** (temporal home), not the planning |
-| `/planning` · `/matchs` · `/wizard` · `/club` · `/profile` | required | Under `AuthGuard` → `AppLayout` |
-| `*` (authed) | required | **Renders the 404 screen** (`app/NotFoundPage`) inside `AppLayout` — header and nav kept. ⚠ It used to redirect silently to `/`: a stale link teleported the manager home with no explanation, and the 404 screen had nowhere to live. Same for `/admin/*`. |
+Route tree, the three safety nets (`errorElement`/`HydrateFallback`/pending indicator) and the
+full routes table: [`frontend-spec.md`](docs/frontend-spec.md) §2. ⚠ Dropping any of the three
+nets when adding a route trades the code-split gain for a silent outage — read what breaks
+without each one at the pointer above before touching `routes.tsx`.
 
 ---
 
@@ -321,13 +184,8 @@ Donc : pour un champ, assertion EXPLICITE du nom —
 
 ### Generation status = SSE, polling as fallback (FRT-04)
 
-`features/planning/lib/scheduleStream.ts` holds the ONE `EventSource` per session (ref-counted
-singleton): auth via `GET /api/mercure/auth` (httpOnly cookie + `topicTemplate` — the front
-never knows its clubId), subscription to the template itself, events invalidate the
-react-query caches. `features/planning/queries.ts` and `features/wizard/queries.ts` keep
-their poll but degrade it (2.5 s stream down → 15 s stream connected) — the publisher is
-best-effort, so polling must never die. Details & security contract:
-`docs/security/mercure.md` (root). `WaitingApprovalPage` still polls `/api/me` every 5 s.
+Full mechanics (topic, auth via `GET /api/mercure/auth`, cache invalidation, polling fallback):
+[`frontend-spec.md`](docs/frontend-spec.md) §5.
 
 **Second stream, `shared/lib/travelStream.ts` (C6, 2026-09-19) — the ONE exception to "an SSE
 consumer lives in the feature that uses it" (`P4-123`, `specs/courantes/etat-des-lieux.md` §2
@@ -348,151 +206,23 @@ POST/PUT/DELETE'd immediately via TanStack mutations. "Suivant" only validates a
 
 ---
 
-## Primitives that matter (`shared/components/ui/`)
+## Primitives that matter
 
-Beyond the obvious (`button`, `input`, `select`, `card`, `menu`, `accordion`), these carry
-product rules — reuse them instead of rolling your own:
+Full catalogue — one entry per primitive, verified against `shared/components/ui/`:
+[`frontend-components.md`](docs/frontend-components.md) §3, **the single home** for shared UI
+primitives (Button, Listbox, TeamSelect/VenueSelect, Menu, FilterToggle, EmptyState family,
+Modal, FichePage, WarningPanel, ConfirmDialog, DeleteConfirm, LoadErrorHint, StatusPill/
+SourceBadge, StepRail, Table, AccordionSection, AddressGeocodeField, OpponentLogo, Onglets,
+Palette console, BrandIcon, BrandMark).
 
-- **`modal`** — its width is a **named palier** (`size`: sm/md/lg/xl), and there is deliberately
-  **no `className` prop**: six callers had each patched their own `max-w-…` before P4-107's 3rd
-  tranche. The scale and its ceilings live in `MODAL_WIDTH` — see `frontend/docs/frontend-spec.md`
-  §6.9. Its scrollable content zone carries a `p-1 -m-1` gutter (padding + matching negative
-  margin, content unmoved) — never remove it: an `overflow-y-auto` ancestor clips a
-  `focus-visible:ring-2` that overflows it, so a field at the bottom of a long modal would lose
-  its focus ring at the very edge (2026-09-20, `e60fbb1f`).
-- **`fiche-page`** — the frame of a "fiche" screen (Club, Profil, Nouveautés): 832 px centred,
-  with help paragraphs bounded to a readable line length. A new fiche uses it; it never rolls its
-  own `mx-auto max-w-*` (same §6.9).
-- **`delete-confirm`** — destructive confirmation that *announces its impacts* ("N réservations
-  seront retirées"). Deleting without stating what it takes away is the bug it exists to prevent.
-- **`load-error-hint`** — "the read failed, here is a retry". Pairs with `readState` below.
-- **`opponent-logo`** (`OpponentLogo`, C7, 2026-09-19) — the federated opponent logo: `sm` (16 px,
-  bare, no fallback) / `md` (24 px, initials fallback via `features/matches/lib/opponentInitials.ts`
-  when `hasLogo` is false or the `<img>` errors), rounded, `object-cover`, `loading="lazy"`,
-  `alt=""` (decorative — the surrounding text already names the opponent). Fetches
-  `GET /api/opponents/{code}/logo` (member route, lazy re-hosting — `backend/docs/ffbb-api.md`
-  §3bis) only when `hasLogo` is true (server-derived boolean, never re-guessed). One consumer today:
-  `features/matches/AwayList.tsx` — deliberately **not** wired into `ConflictLine` (a conflict's
-  side doesn't carry the opponent's code) nor the calendar grid.
-- **`table`** (`Table`/`TableHeader`/`TableBody`/`TableRow`/`TableHead`/`TableCell`/`TableCaption`) —
-  the shared data table, born with the Consulter tab's month/phase lists (module matchs, 2026-09-08):
-  house tokens, `scope="col"` headers, `overflow-x-auto` container (a wide table scrolls inside itself,
-  the page never scrolls sideways). A new tabular list uses it; no `div` grid dressed as a table.
-  **`variant="inline"` (retours de tests, 2026-09-19)** — a bare table (no border/fill/radius,
-  `text-xs`) meant to nest inside an already-framed card: born for the per-side conflict detail
-  (`features/matches/ConflictLine.tsx`'s `ConflictSideDetail`, four fixed hour columns — kickoff
-  always column 2 — the Durée column folding under 360 px via `@container`, not the viewport).
-- **`address-geocode-field`** (`AddressGeocodeField`) — the shared geo-capture gesture: type an
-  address, "Localiser" (proxies `GET /api/geocode` → BAN, never a direct third-party call —
-  boundary §2), pick a candidate, the FEDERAL candidate bubbles up via `onPick` — the caller decides
-  what to do with it (venue lat/long, or a club siège that re-geocodes server-side). Never
-  overwrites an existing geo in silence: a `located` state shows "Localisé"/"Siège localisé" until
-  "Modifier l'adresse" is clicked explicitly. Extracted (retours de tests, 2026-09-19) from
-  `wizard/steps/VenueGeocodeField.tsx` (P2-53), now a thin wrapper around it; second consumer:
-  `features/club/ClubPage.tsx`'s `ClubSiegeSubsection` (`PATCH /api/club/siege`, `backend/docs/
-  geo-api.md` §1). The "Recommandé"/"correspondance approximative" `StatusPill` badges (P4-178) live
-  here now, not in `VenueGeocodeField`.
-- **`accordion`** (`AccordionSection`) gained an opt-in **controlled mode** (`open`/`onToggle`,
-  backward-compatible — omit both to keep the old uncontrolled state) for a caller that mirrors the
-  open section in the URL. Closing a controlled section **unmounts** its body — a caller holding
-  draft state inside must accept it is lost on collapse. First consumer: the Importer tab's
-  per-team review queue (`features/matches/ReviewQueue.tsx`, `?equipe=`, module matchs PR-3b
-  2026-09-08). Second: `/matchs/configuration` (`ConfigurationPage.tsx`, P4-185) — five sections
-  (the 5th, `VenueLabelsSection.tsx`, the venue-label pairing screen since E2/P4-205, 2026-09-14 —
-  the gabarit/créneaux sections moved out to their own `/matchs/semaine-type` page, PR 2a),
-  mutually exclusive (one open at a time), anchored `?section=` (`features/matches/lib/urlState.ts`).
-- **`listbox`** (`Listbox`) — the shared APG single-select listbox: colour dot or icon, a
-  right-aligned count ("reste N"), a second reason/precision line, and a keyboard-reachable but
-  **disabled** option (visible + motivated, never dropped from the list). Built in-house because
-  the project ships no rich-option select; interaction decisions (roving `tabIndex` not
-  `aria-activedescendant`, Escape stops propagation so it never bubbles into a hosting modal, Tab
-  closes without selecting, flip measured against the viewport at open + resize/scroll) live in
-  the component's own docblock — **the panel is portaled to `document.body` in `position: fixed`
-  (2026-09-15)**: it overflows a modal or any scrolling ancestor like a native `<select>` (the
-  founder's « Accès match » list was clipped by the modal body); `aria-controls` links trigger and
-  panel, a `mousedown` inside the panel never reaches `document` (hosts with their own
-  outside-click stay open) —
-  single home, don't re-decide them at a call site. The plain native `<select>` (`select.tsx`)
-  stays the house of the ~20 simple pickers (days, statuses, category, duration…) that carry no
-  colour/count/sub/disabled-with-reason. Test helper: `src/test/pickListboxOption.ts` (open +
-  choose by label). Two consumers, both migrated (P4-164, PR-1 + PR-2): `team-select` and
-  `venue-select` — lot **closed**, no `<select>` gymnase/team left outside these two.
-  **In-panel search at ≥ 8 real options** (P4-198, 2026-09-14): the panel becomes a
-  `[search input] + [div role="listbox"]` wrapper (an `<input>` is not a valid `role="listbox"`
-  child), trigger stays a plain button — an editable combobox was deliberately rejected (no a11y
-  gain, breaks trigger-value readers). `leadingOptions` prop (head rows, always visible, excluded
-  from the threshold and the filter) and `searchLabel` prop (the field's accessible name, default
-  "Rechercher") live on the primitive; below the threshold the panel is byte-identical to
-  pre-P4-198. `ResourceFilter` keeps its own separate search (not converged).
-- **`team-select`** — every team picker in the app (constraints, coaches, matches, FBI import)
-  goes through it, now built on `Listbox` (P4-164 PR-1): grouped by priority tier, same order as
-  the Teams step, tier **colour** as the swatch — a team has no colour of its own (founder
-  decision, no backend field, the tier's `color` is reused). Callers pass `onValueChange` (not a
-  DOM `onChange`) and, opt-in, `optionMeta(team)` for a right-aligned count/sub/disabled instead
-  of the old `optionLabel` text suffix. Reranking a team updates the order **everywhere**.
-- **`venue-select`** (`VenueSelect`) — every venue picker in the app, rebuilt on `Listbox`
-  (P4-164 PR-2): `Venue.color` pastille on **every option AND the trigger** (the old "open list
-  stays text-only" limit, 2026-08-05, is gone — a native `<option>` couldn't carry a swatch, a
-  `Listbox` option can). API: `onValueChange`, a selectable `placeholder` (value `""`), typed
-  `leadingOptions` (replaces `<option>` children), a venue's effective period state (disabled /
-  closed weekday / unavailable) in `sub` — name stays intact, no more `"nom — état"` label
-  concatenation. One swatch now (the trigger's), the standalone `VenueSwatch` next to the field
-  is gone. 5 consumers migrated (`VenuesStep`, `PeriodVenues` — the venue-grid third of the
-  period wizard step, split out of `PeriodStructure` in P4-255 —, `ConstraintsStep`,
-  `ReservationPanel`, `PlacementPanel`) and the 6 inline `<select>` gymnase that used to bypass it
-  are rebased on it too: `cockpit/VenueUnavailabilityCard.tsx` (its load-bearing P4-122 empty
-  placeholder preserved), `cockpit/DayDialog.tsx`, `matches/ConfigurationPage.tsx`,
-  `matches/MatchSlotRotationsEditor.tsx`, `matches/HabitsLinksDialog.tsx`,
-  `planning/ExportMenu.tsx` (its "Tous les gymnases" head option). No `<select>` for a venue
-  exists outside this component anymore.
-- **`badge`** (`StatusPill`) — the **only** house for a coloured pastille (icon + text, border +
-  tinted fill), variants `warning`/`accent`/`neutral` (P4-173, `accent` added P4-177). Both tinted
-  variants keep their text `text-foreground`, never `text-warning`/`text-accent` (measured: both
-  drop below AA — 4.5:1 — on their own `/10` tint), the icon alone carries the tone colour
-  (graphic element, WCAG 1.4.11 ≥ 3:1) — pairs locked in `tests/e2e/a11y-contrast.spec.ts` for both
-  themes. Wraps, never truncates (`whitespace-normal`); passes through `title`/`aria-label` for a
-  caller whose announcement is richer than the visible text (e.g. `CreditBadge`). First consumer:
-  `features/cockpit/StalenessPill.tsx` (P4-173). All five pastilles that predated it have migrated
-  (P4-177): `CreditBadge`, `CompromiseList`, `WeekWorkbench`'s (ex-`MatchesPage`) `offModelBadge`/`sameWeekendBadge`,
-  and `SourceBadge` — now a single shared component (`features/matches/SourceBadge.tsx`) consumed
-  by both `TravelMatrixModal` and `OpponentsPage` (ex-`OpponentTravelCard`, absorbed 2026-09-19),
-  which each used to carry their own copy.
-  Seven more migrated (P4-178): `CoachesStep` ("Salarié" + preferred cap), `VenueGeocodeField`
-  ("Recommandé" — since 2026-09-19 rendered by the shared `AddressGeocodeField` it wraps, see
-  Primitives above), `ImplicitRulesPanel`'s `TravelRuleNotice` ("Actif"), `CampaignDialog` ("✓
-  répondu le …", the ✓ became a `Check` icon; its two filter buttons keep their accent
-  border/tint but their active-state text moved `text-accent` → `text-foreground`),
-  `RadarCoachWishAction` (the responded-count pill), `ConflictRadar` ("Nouveau" chip, size
-  preserved via `className`). ⚠ Three sites remain outside `StatusPill`, for a **different**
-  reason (not the sub-AA defect): `features/matches/MatchSlotRotationsEditor.tsx` and
-  `features/matches/EntryDeadlinesEditor.tsx` use `text-accent-foreground` on a plain accent
-  fill (not `text-accent` on a tint), and `features/planning/WeekGrid.tsx`'s emphasised-cell
-  border is not a pastille. A new pastille on a tinted surface goes through `badge.tsx`.
-- **`step-rail`** — the left step rail (`<nav className="shrink-0 md:w-44">`), extracted from the
-  wizard (RMM-2). Presentation **pure**: `done`/`locked` arrive **calculated** in the `steps`
-  array (it knows nothing of validation gates, guided mode, business locks, or the nav veil);
-  `onSelect` bubbles the click so the caller owns its effects. Accessible name follows WCAG 2.5.3
-  (it **contains** the visible label; a done step appends "— étape terminée"). Imports `Check`/`Lock`
-  itself, and deliberately **no `className` prop** (same rationale as `modal`).
-  **Second consumer RETIRED (PR 3b, 2026-09-16)**: `features/matches` used `step-rail` from RMM-1
-  PR3 through the merged « Calendrier » screen — the 5-derived-step rail (`MatchesPage.tsx`,
-  deleted) is gone, replaced by the `WeekCounters` bar (two pure counters bound to the displayed
-  week, `lib/loopSteps.ts` `deriveWeekCounters` — no `steps`/`done` array, no `step-rail` import —
-  plus a third, GLOBAL "N FBI à faire" counter fed by the backend's `fbiTodo`, deliberately outside
-  the week-scoped group, todo-FBI lot 2026-09-19). The wizard is `step-rail`'s **only** consumer
-  today; don't assume it still tracks matches-module progression.
-- **`brand-icon`** (`BrandIcon`) — the product mark itself (three arcs, `AppLayout`'s header +
-  `frontend/public/favicon.svg`), decorative by default. Its stroke colours are hardcoded `#hex`
-  literals **on purpose** — the one admitted exception to "never a `#hex`", because a logo's tones
-  are fixed by definition, not a themeable token (`.claude/rules/frontend.md` carries the rule).
-- **`brand-mark`** (`BrandMark`) — the FULL logo (`BrandIcon` + the product word), the single home
-  wherever the product names itself as a BRAND rather than in a sentence: `AuthLayout`
-  (login/signup), `system-screen`, `AdminAuthLayout`. The word carries **no hardcoded colour** —
-  it inherits `currentColor`, one single tone in every theme; only `BrandIcon` holds the hardcoded
-  `#hex` arcs. A second, teal tone on the last two characters was tried and reverted: it only hit
-  ~2.5:1 on the light paper background, under the contrast bar, and `aria-hidden` does not exempt
-  rendered text from axe's color-contrast rule — the "logotype exempt from WCAG 1.4.3" angle did
-  not hold. `role="img"` container named `PRODUCT_NAME`, decorative `aria-hidden` visual.
+A few pure prohibitions worth keeping in agent context (detail at the pointer above):
+- Never a `className` prop on `Modal` or `StepRail` — several callers had each patched their
+  own width/layout before the primitives closed that door; a new need changes the primitive,
+  never a local override.
+- Never drop `Modal`'s scrollable-content gutter (`p-1 -m-1`) — an `overflow-y-auto` ancestor
+  clips the `focus-visible:ring-2` of a field at the very bottom without it (`e60fbb1f`).
+- A new rich single-select picker (colour/icon/count/sub/disabled-with-reason) goes through
+  `Listbox` — never a hand-rolled dropdown or a native `<select>` pressed past its limits.
 
 ### `shared/lib/readState.ts` — the anti-"credible emptiness" rule
 
@@ -541,13 +271,14 @@ survive is naturally bounded by a modal's lifetime.
 ## Gotchas
 
 1. **Tooling is Dockerized** — do not invoke host Node/npm; use the Make targets.
-2. **`tsc --noEmit` is a no-op here** — see the trap above. Always `tsc -b --force`.
+2. **`tsc --noEmit` is a no-op here** — the trap and the fix live in
+   [`.claude/rules/frontend.md`](../.claude/rules/frontend.md). Always `tsc -b --force`.
 3. **Accessibility is blocking, not advisory.** `eslint.config.js` re-severities the whole
    `jsx-a11y` recommended set to `error` via the single `A11Y_LEVEL` knob (WCAG 2.2 AA
    guardrail). Flip it to `warn` only to temporarily unblock a large refactor. There is also
    an a11y unit suite (`src/test/a11y.test.tsx`) and a Playwright contrast spec.
-4. **Migration anti-patterns are ESLint-enforced**, not just documented — e.g. a
-   `no-restricted-syntax` rule bans `ReactDOM.render`. See `docs/frontend-strategy.md` §3.
+4. **Migration anti-patterns are ESLint-enforced, not just documented** — table + detection
+   mechanism: `docs/frontend-strategy.md` §3.
 5. **The theme is applied before React's first paint** (`main.tsx`, `readPersistedThemeMode`).
    Without it the tree renders light, then an effect flips `.dark` — a flash of the wrong
    theme plus a `transition-colors` animation that leaves surfaces at sub-AA colours (A11Y-06).
@@ -643,22 +374,19 @@ survive is naturally bounded by a modal's lifetime.
     `text-muted-foreground` — a plain token, no opacity — which still failed AA on a bright venue
     tint in dark mode (4.24–4.33:1). Fixed to `text-foreground`, de-emphasised by SIZE alone
     (`text-[10px]`) — the exact recipe `WeekendGrid`'s cell already used (2026-09-18).
+12. **`coverageFloor.test.ts` anchors on `__dirname`, not `import.meta.url`** — under
+    `vitest run --coverage` the latter is not always `file:`-scheme, and `new URL(...,
+    import.meta.url)` throws `ERR_INVALID_URL_SCHEME`.
+13. **`make -C frontend e2e` carries the superadmin preflight** (compose profile `tools`, service
+    `e2e` — it needs the stack **and** `make -C frontend dev` running): it seeds the account and
+    exports its TOTP secret. Without it the `/admin` specs **SKIP** explicitly rather than fail.
 
 ---
-
-## Quick reference
-
-| Task | Command |
-|------|---------|
-| Dev server | `make -C frontend dev` |
-| Lint + typecheck | `make -C frontend lint` |
-| Tests (lint + Vitest) | `make -C frontend test` |
-| Build prod image | `make -C frontend build` |
-| Tooling shell | `cd frontend && make exec` |
 
 **Pointers:** `README.md` (role, boundaries, delivered features) ·
 `docs/frontend-spec.md` (routes, state, API contract) ·
 `docs/frontend-wizard.md` (wizard & period mode) ·
+`docs/frontend-components.md` (shared UI primitives, §3) ·
 `docs/constraint-emission.md` (what the wizard emits, 3-layer alignment) ·
 `../specs/courantes/superadmin-auth.md` (`/admin`) ·
 `../specs/courantes/types-de-planning.md` (doléances coachs, #10).

@@ -101,6 +101,17 @@ fusion, applique le test maison (`specs/evolution/duplications-de-verite.md`) :
    même passe et redater** — sinon le garde rougit, et il a raison. (Constaté le 2026-08-19 :
    la passe DOC-33 a fait rougir 3 fichiers exactement comme ça.) Et il ne rougit qu'APRÈS
    commit, puisqu'il lit une date git : le lancer avant ne prouve rien.
+7. **Le présent seulement — l'historique vit dans git** (décision fondateur 2026-09-25). Un doc
+   décrit ce que le code fait AUJOURD'HUI. Les blocs « Historique / superseded », les `<details>`
+   de spec d'origine, les « précédemment… » / « avant le JJ-MM il faisait X », les chronologies
+   de passes et les listes de PR n'ont pas leur place dans un doc : `git log -p --follow <fichier>`
+   tient l'historique, et une décision prise en chemin vit dans `etat-des-lieux.md` (§2/§3) —
+   jamais dans le corps. Même mécanique que la règle 6 étendue au CORPS : quand un fait change, on
+   ÉCRASE l'ancien énoncé, on n'empile pas un correctif daté par-dessus. Seule exception : la
+   mention datée qui est la RAISON D'ÊTRE d'un garde-fou encore actif — une phrase, jamais une
+   chronologie. Précédent : passe frontend du 2026-09-26 (4 640 → ~2 700 lignes ; le §4.2
+   « sidebar » fiction vivait sous un stamp du jour, et §3 « Shared Components » vivant était
+   enterré sous un bandeau « superseded »).
 
 ### Fraîcheur — le balayage TOUCHÉ, plus une ROTATION bornée
 
@@ -125,6 +136,11 @@ skill si lent qu'on finit par le sauter — et un skill sauté ne protège rien.
 c'est indolore, et le corpus entier est couvert en quelques semaines. Le coût est **réparti**, pas
 supprimé. ⚠ Une rotation qui trouve du faux **le dit dans le résumé** : c'est le signal que la
 zone concernée dérive, et il vaut souvent une ligne de roadmap.
+
+⚑ La rotation vérifie des PHRASES, jamais la STRUCTURE. Elle SIGNALE donc en plus, sans le
+traiter : tout fichier balayé contenant un `<details>`, un bloc « Historique »/« superseded », un
+stamp empilé ou des « précédemment / avant le … » en série est un CANDIDAT à une passe « présent »
+(règle 7) — une ligne au résumé de changement. Critère structurel, jamais un compteur de lignes.
 
 ### Drift sweep (mandatory, cheap)
 

@@ -1,54 +1,11 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-09-24 (lot FRT-34/FRT-35 : table d'outillage recalée sur la réalité —
-`vi.mock` est l'outil de mock réseau EN SERVICE, `msw` `^2.15.0` reste DÉCLARÉ mais jamais
-importé, désormais présenté comme RÉSERVÉ aux tests ciblés d'erreurs HTTP réelles (roadmap
-P4-254) ; cliquet act-warnings ajouté à la table. Re-confronté à `frontend/package.json` :
-toutes les versions citées (§ Outils de test — `vitest`/`@vitest/coverage-v8` `^4.1.11`,
-`@testing-library/react` `^16.3.3`, `@testing-library/jest-dom` `^7.0.1`, `jsdom` `^30.0.1`,
-`msw` `^2.15.0`, `@playwright/test` `^1.63.0`, `vitest-axe` `^0.1.0`, `@axe-core/playwright`
-`^4.13.0`, `storybook`/`@storybook/react-vite` `^10.6.0` ; § Stack Versions Fixed — `react`
-`^19.2.8`, `vite` `^8.2.2`, `typescript` `~6.0.2`, `tailwindcss` `^4.3.0`,
-`@tanstack/react-query` `^5.102.8`, `zustand` `^5.0.15`) tiennent, exactes. `testTimeout`
-15 s / `slowTestThreshold` 3 s (`vitest.config.ts:39,44`) et `asyncUtilTimeout` 5 s
-(`src/test/setup.ts:28`) inchangés. **Une dérive corrigée** : l'« écart connu, non tranché » sur
-`location /engine/` dans `docker/frontend/nginx.conf` était **faux depuis le 2026-07-31** (#329) —
-le bloc a été retiré, remplacé par un commentaire explicite ; la note datait d'avant ce fix et
-n'avait jamais été recalée. **Ajout du 2026-09-23 (lot 7 PR B, FRT-33)** : le § « Périmètre de test
-obligatoire » gagne le piège du barrel `matches/api/` — un `vi.mock("./api")` ne suit que le
-spécificateur importé, pas un sous-module importé en direct (`./api/fixtures`), risque nul
-aujourd'hui (zéro import direct), à surveiller le jour où un tel import apparaîtra. **Ajout du
-2026-09-24 (lot 7 PR C, FRT-33 dernier volet)** : nouvelle section « Extraction de hooks par
-sujet — le déplacement VERBATIM » sous le même § — promue au rang de politique transverse après
-sa 3ᵉ occurrence constatée (`wizard/lib/useStepValidation.ts`, `cockpit/lib/useWeekAdapt.ts`,
-puis les six hooks de `matches/lib/` sortis de `CalendarPage.tsx`, 746 → 544 l.), vérifiée contre
-le diff réel (`git diff main --color-moved` ne montre que signatures/imports/destructurations
-neufs, `CalendarPage.test.tsx` intact, un seul test neuf `usePlacementGuards.test.ts` là où le
-filet avait un trou réel). **Ajout du 2026-09-24 (P4-255 PR 1, `planning/PlanningPage.tsx`)** : la
-même section gagne la règle de frontière pour découper un même monolithe en PLUSIEURS PR —
-écrivain unique d'abord (verbatim), carrefours ensuite (une fois leur propriétaire décidé) —
-vérifiée contre les cinq hooks livrés (`useVersionLanding`, `usePeriodClosures`, `useLockControls`,
-`useValidateReopen`, `usePlanHeader`, `planning/lib/`) et les deux carrefours nommément laissés en
-page à ce stade (`highlightSlotIds`, `diagnosticsCollapsed` — le premier a depuis gagné son
-propriétaire, voir la PR 2 ci-dessous). **Ajout du 2026-09-24 (P4-255 PR 2, même fichier)** : un
-carrefour a désormais son ISSUE — `highlightSlotIds` sort vers `planning/lib/useSlotHighlight.ts`
-avec un propriétaire unique et trois intentions nommées (aucun setter), régime de preuve
-rouge→vert (pas verbatim, une décision de conception engage une interface) précédé d'un filet
-d'EFFET posé sur le comportement actuel ; seul `diagnosticsCollapsed` reste en page. **Ajout du
-2026-09-24 (P4-255, `wizard/steps/PeriodStructure.tsx` → trois fichiers à plat)** : la section
-gagne une **troisième forme de découpage**, distincte des deux ci-dessus — séparer des sujets qui
-cohabitent sans écrivain commun (le fichier d'origine disparaît, remplacé par ses enfants, zéro
-nouvelle interface) plutôt qu'extraire une couche d'un orchestrateur qui survit — avec son critère
-de choix (le fichier source reste-t-il l'orchestrateur de ce qu'il a laissé sortir ?), vérifiée
-contre le code actuel (imports de `PeriodTeams`/`PeriodVenues`/`PeriodConstraints` confirmés
-chacun depuis un seul appelant, `TeamsStep`/`VenuesStep`/`ConstraintsStep`) ; 2ᵉ occurrence après
-`matches/api.ts`, pas encore promue politique transverse. Historique des
-passes : `git log -p --follow frontend/docs/frontend-strategy.md`.)
+Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement », 2/3 frontend) —
+versions du § Outils de test et § Stack Versions Fixed re-confrontées à `frontend/package.json`
+(exactes), `act-warnings-ceiling.json` + `tooling/actWarningsRatchet.ts` existent, `msw` déclaré
+(`^2.15.0`) mais zéro import dans `src`/`tests` (confirmé). Chronique des passes antérieures :
+`git log -p --follow` ce fichier.
 
-> **Statut : le rebuild est LIVRÉ.** Les formulations « pour le rebuild » ci-dessous sont
-> historiques ; le document reste la référence vivante des **versions de la stack**, des
-> **anti-patterns bannis** et des **règles de préservation d'infrastructure**.
->
 > Fixe le mandat de test, les versions de la stack, les anti-patterns et les règles de
 > préservation d'infrastructure. Le détail fonctionnel (routes, composants, wizard) est dans
 > `frontend-spec.md` et `frontend-wizard.md` — ce document ne les duplique pas.
@@ -61,7 +18,7 @@ passes : `git log -p --follow frontend/docs/frontend-strategy.md`.)
 
 ## 1. Testing Strategy — TDD Mandatory
 
-**TDD is MANDATORY for the frontend rebuild plan. Write tests FIRST, watch them fail (RED), implement minimal to pass (GREEN), then refactor (REFACTOR).**
+**TDD is MANDATORY for all frontend work. Write tests FIRST, watch them fail (RED), implement minimal to pass (GREEN), then refactor (REFACTOR).**
 
 Aucune exception. Chaque composant, hook, store, route et intégration API doit suivre le
 cycle RED → GREEN → REFACTOR avant d'être considéré livrable.
@@ -359,8 +316,8 @@ Ce qu'il apporte quand on le sollicite, mesuré trois fois :
 
 ## 2. Stack Versions Fixed
 
-Les versions suivantes sont **figées** pour toute la durée du rebuild. Aucune mise à jour
-de version majeure ou mineure sans décision explicite et re-vérification de compatibilité.
+Les versions suivantes sont **figées**. Aucune mise à jour de version majeure ou mineure sans
+décision explicite et re-vérification de compatibilité.
 
 | Package | Version (`frontend/package.json`) | Rôle | Notes |
 |---------|--------------|------|-------|
@@ -387,7 +344,8 @@ de version majeure ou mineure sans décision explicite et re-vérification de co
    vérité effective des versions installées — tout changement de version doit être
    reflété dans le lockfile.
 2. Une mise à jour de version majeure = un commit dédié + re-run complet des tests
-   (Vitest) + vérification `tsc --noEmit` + `npm run build`.
+   (`make -C frontend test`) + `make -C frontend lint` (`tsc -b --force` — jamais
+   `tsc --noEmit`, voir §3) + `make -C frontend build`.
 
 ---
 
@@ -415,46 +373,19 @@ est rejeté automatiquement.
   `eslint-plugin-react-hooks`, `eslint-plugin-react-refresh`, `@tanstack/eslint-plugin-query`,
   `eslint-plugin-jsx-a11y`. L'anti-pattern n°1 est **réellement bloqué** par une règle
   `no-restricted-syntax` qui interdit `ReactDOM.render`.
-- **TypeScript** : `npx tsc -b --force`.
-  ⚠️ **Jamais `tsc --noEmit`** : le `tsconfig.json` racine est un fichier **solution**
-  (`"files": []` + `references`), donc `--noEmit` n'y voit **aucun fichier** — il sortait 0
-  sans rien vérifier pendant que la CI (qui fait bien `tsc -b`) tombait sur les erreurs. Le
-  `--force` est nécessaire aussi : un `tsbuildinfo` périmé court-circuite la vérification.
+- **TypeScript** : `make -C frontend lint` (`tsc -b --force`) — piège `tsc --noEmit` et son
+  pourquoi : maison unique [`.claude/rules/frontend.md`](../../.claude/rules/frontend.md).
 - **Code review** : checklist obligatoire dans le template de PR.
 
 ---
 
 ## 4. Infrastructure Reuse
 
-Le rebuild est un **raz ciblé sur le code source** — l'infrastructure Docker existante doit
-être **préservée**.
-
-### Fichiers à préserver (NE PAS SUPPRIMER)
-
-| Fichier | Rôle | Action |
-|---------|------|--------|
-| `docker/frontend/Dockerfile` | Image Docker du frontend (build multi-stage + Nginx) | **Préserver tel quel** — adapter uniquement si la structure de build change. |
-| `docker/frontend/nginx.conf` | Config Nginx (proxy `/api` → backend, `/exports` → backend, `/bundles/` → backend, `/.well-known/mercure` → hub, `/engine/` → engine, en-têtes de sécurité + CSP, SPA fallback) | **Préserver tel quel** — la config proxy est validée et fonctionnelle. |
-
-> **Écart clos (2026-07-31, #329)** : `docker/frontend/nginx.conf` ne porte plus de
-> `location /engine/` — retiré en même temps que le proxy Vite (FRT-17), au nom de la même
-> frontière (`CLAUDE.md` §2 : « aucun proxy `/engine` nulle part, ne jamais en réintroduire »).
-> Un commentaire explicite (`PAS de location /engine/`) marque désormais l'absence
-> intentionnelle, pour parler au moteur en dev : `docker compose exec engine …`.
-
-### Périmètre du raz
-
-- **Raz s'applique à** : `frontend/src/` uniquement (composants, hooks, stores, routes,
-  styles, types, utils).
-- **Raz ne s'applique PAS à** : `docker/frontend/`, `frontend/public/` (assets statiques
-  si présents), `frontend/index.html` (point d'entrée HTML), `frontend/package.json` et
-  `frontend/package-lock.json` (mis à jour selon §2, pas razé).
-
-### Règle de préservation
-
-> Toute opération de raz ou de reset du frontend doit explicitement exclure
-> `docker/frontend/Dockerfile` et `docker/frontend/nginx.conf`. Ces fichiers représentent
-> l'infrastructure de déploiement validée et ne sont pas du code source applicatif.
+`docker/frontend/Dockerfile` (build multi-stage + Nginx) et `docker/frontend/nginx.conf`
+(proxy `/api`, `/bundles/`, `/exports/` → backend, `/.well-known/mercure` → hub, en-têtes de
+sécurité + CSP, SPA fallback) sont l'infrastructure de déploiement de la zone, distincte du code
+source (`frontend/src/`) — **pas de `location /engine/`** (`nginx.conf:96-102`, frontière §2 de
+`CLAUDE.md`).
 
 ---
 

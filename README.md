@@ -1,8 +1,8 @@
-# ClubScheduler
+# Amateo
 
 **Automated training-schedule generation for basketball clubs (FFBB).**
 
-ClubScheduler builds a club's **per-season weekly training schedule** — placing every
+Amateo builds a club's **per-season weekly training schedule** — placing every
 team into a gym time-slot — automatically, with a constraint solver, instead of by hand.
 
 ---
@@ -20,7 +20,7 @@ gyms** across the week. Each placement must respect a tangle of rules at once:
 Done in a spreadsheet, this is a slow, error-prone combinatorial puzzle. One change
 (a gym closes, a coach leaves) forces a manual re-shuffle of everything.
 
-## What ClubScheduler does
+## What Amateo does
 
 1. **Enter the club's data once** (guided wizard): teams + priority ranking, gyms + weekly
    availability, coaches + their teams, and any explicit constraints.
