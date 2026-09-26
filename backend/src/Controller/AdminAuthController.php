@@ -40,17 +40,17 @@ final class AdminAuthController
     public function password(Request $request): JsonResponse
     {
         if (!$this->adminAuthLimiter->create($request->getClientIp() ?? 'unknown')->consume()->isAccepted()) {
-            return new JsonResponse(['error' => 'Too many attempts.'], 429);
+            return new JsonResponse(['error' => 'Trop de tentatives. Patientez quelques instants.'], 429);
         }
         $this->clearPendingChallenge($request);
         $body = $this->body($request);
         try {
             $admin = $this->provider->loadUserByIdentifier((string) ($body['email'] ?? ''));
         } catch (UserNotFoundException) {
-            return new JsonResponse(['error' => 'Invalid credentials.'], 401);
+            return new JsonResponse(['error' => 'Identifiants invalides.'], 401);
         }
         if (!$admin->isEnabled() || !$this->passwordHasher->isPasswordValid($admin, (string) ($body['password'] ?? ''))) {
-            return new JsonResponse(['error' => 'Invalid credentials.'], 401);
+            return new JsonResponse(['error' => 'Identifiants invalides.'], 401);
         }
         $session = $request->getSession();
         $session->migrate(true);
@@ -64,7 +64,7 @@ final class AdminAuthController
     public function totp(Request $request): JsonResponse
     {
         if (!$this->adminAuthLimiter->create($request->getClientIp() ?? 'unknown')->consume()->isAccepted()) {
-            return new JsonResponse(['error' => 'Too many attempts.'], 429);
+            return new JsonResponse(['error' => 'Trop de tentatives. Patientez quelques instants.'], 429);
         }
         $session = $request->getSession();
         $id = $session->get(self::PENDING_ID);
@@ -72,18 +72,18 @@ final class AdminAuthController
         if (!\is_string($id) || !\is_int($startedAt) || time() - $startedAt > 300) {
             $this->clearPendingChallenge($request);
 
-            return new JsonResponse(['error' => 'Authentication challenge expired.'], 401);
+            return new JsonResponse(['error' => 'Le délai de vérification a expiré — reconnectez-vous.'], 401);
         }
         try {
             $admin = $this->provider->loadById($id);
         } catch (UserNotFoundException) {
             $this->clearPendingChallenge($request);
 
-            return new JsonResponse(['error' => 'Invalid authentication challenge.'], 401);
+            return new JsonResponse(['error' => 'Vérification invalide — reconnectez-vous.'], 401);
         }
         $body = $this->body($request);
         if (!$admin->isEnabled() || !$this->totp->verifyEncrypted($admin->getTotpSecret(), (string) ($body['code'] ?? ''))) {
-            return new JsonResponse(['error' => 'Invalid authentication code.'], 401);
+            return new JsonResponse(['error' => 'Code de vérification invalide.'], 401);
         }
         $this->clearPendingChallenge($request);
         $session->migrate(true);

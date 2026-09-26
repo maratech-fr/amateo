@@ -211,7 +211,7 @@ final class MembershipController extends AbstractController
 
         $target = $this->clubUserRepository->find($id);
         if (null === $target || $target->getClubId() !== $adminMembership->getClubId()) {
-            return $this->json(['error' => 'Not found'], 404);
+            return $this->json(['error' => 'Membre introuvable — rechargez la liste.'], 404);
         }
         // Réservé aux lignes DÉJÀ désactivées : une pending (`deactivatedAt=null`)
         // ne se « réactive » pas — l'approbation est son seul chemin d'activation.
@@ -245,7 +245,7 @@ final class MembershipController extends AbstractController
 
             $target = $this->clubUserRepository->find($targetId);
             if (null === $target || $target->getClubId() !== $clubId) {
-                return $this->json(['error' => 'Not found'], 404);
+                return $this->json(['error' => 'Membre introuvable — rechargez la liste.'], 404);
             }
 
             if ($requireActive && !$target->getIsActive()) {
@@ -319,14 +319,14 @@ final class MembershipController extends AbstractController
         // (quel club est « courant » ?) rattaché à P1-1. Voir P4-8 (rouverte).
         $clubId = $this->resolveCurrentClubId($this->requestStack);
         if (null === $clubId) {
-            return $this->json(['error' => 'Forbidden'], 403);
+            return $this->json(['error' => 'Accès refusé.'], 403);
         }
 
         $membership = $this->clubUserRepository->findActiveMembership($user->getId(), $clubId);
         // isManagementRole (owner|admin), not a hardcoded 'admin' — an owner
         // must be able to approve members too (review note, PR SEC-07).
         if (!$membership instanceof ClubUser || !$this->clubUserRepository->isManagementRole($membership->getRole())) {
-            return $this->json(['error' => 'Forbidden'], 403);
+            return $this->json(['error' => 'Accès refusé.'], 403);
         }
 
         return $membership;
@@ -387,7 +387,7 @@ final class MembershipController extends AbstractController
         $target = $this->clubUserRepository->find($id);
         // Never leak cross-tenant: the target must belong to the admin's own club.
         if (null === $target || $target->getClubId() !== $adminMembership->getClubId()) {
-            return $this->json(['error' => 'Not found'], 404);
+            return $this->json(['error' => 'Membre introuvable — rechargez la liste.'], 404);
         }
 
         return $target;

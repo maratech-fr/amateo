@@ -87,7 +87,7 @@ class SchedulePlanStateProcessor extends AbstractStateProcessor
         if (false === $entry
             || (null !== $clubId && $entry['club_id'] !== $clubId)
             || (null !== $resolvedSeasonId && $entry['season_id'] !== $resolvedSeasonId)) {
-            throw new UnprocessableEntityHttpException('Unknown calendar entry.');
+            throw new UnprocessableEntityHttpException('Cette période n\'existe plus — rechargez le calendrier.');
         }
         if ('period' !== $entry['kind'] || !\in_array($entry['period_type'], ['closure', 'holiday'], true)) {
             throw new UnprocessableEntityHttpException('Seule une période de fermeture ou de vacances porte un planning.');
@@ -155,7 +155,7 @@ class SchedulePlanStateProcessor extends AbstractStateProcessor
 
             $plan = $this->entityManager->getRepository(SchedulePlan::class)->find($planId);
             if (!$plan instanceof SchedulePlan) {
-                throw new UnprocessableEntityHttpException('Unknown schedule plan.');
+                throw new UnprocessableEntityHttpException('Ce planning n\'existe plus — rechargez la page.');
             }
 
             return $this->mapEntityToOutput($plan);

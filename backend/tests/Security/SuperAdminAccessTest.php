@@ -308,7 +308,7 @@ final class SuperAdminAccessTest extends WebTestCase
 
         $this->json('POST', '/api/admin/auth/totp', ['code' => '123456']);
         self::assertResponseStatusCodeSame(401);
-        self::assertSame('Authentication challenge expired.', $this->responseBody()['error']);
+        self::assertSame('Le délai de vérification a expiré — reconnectez-vous.', $this->responseBody()['error']);
     }
 
     public function testDisablingAnAdminRevokesItsExistingSession(): void

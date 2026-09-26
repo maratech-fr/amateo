@@ -328,6 +328,14 @@ jobs:
       - name: UserInterfaceContractTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Unit/Entity/UserInterfaceContractTest.php --group phase1'
 
+      # Axe auth/memberships (P4-263) : le refus de connexion parle français
+      # (« Identifiants invalides. » via le socle de traduction) ET reste
+      # byte-identique entre mauvais mot de passe et compte non vérifié
+      # (anti-énumération). Sans ce gate, retirer symfony/translation ou donner un
+      # message distinct à l'un des deux chemins passerait les checks requis.
+      - name: LoginFailureCopyTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/LoginFailureCopyTest.php --group phase1'
+
       # Coûte 0,2 s et attrape une classe de défaut qui a ATTEINT `main` le 2026-08-21
       # (marqueurs de `git stash pop` commités dans un journal Markdown, PR #682) : rien
       # d'autre ne la voit — ni linter, ni test, ni revue humaine sur un diff de prose.
