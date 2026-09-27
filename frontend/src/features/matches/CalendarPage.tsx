@@ -21,7 +21,7 @@ import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
 import { FixtureFormDialog } from "./FixtureFormDialog";
 import { conflictFixtureIds, findFocusedConflict } from "./lib/conflictFocus";
 import { CONFLICT_FAMILIES } from "./lib/conflictLabels";
-import { DEFAULT_KINDS, familiesPresent, KINDS, normalizeKinds, revealPlan } from "./lib/consultFilter";
+import { dateOf, DEFAULT_KINDS, familiesPresent, KINDS, normalizeKinds, revealPlan } from "./lib/consultFilter";
 import { isInEnvelope, resolveEnvelope } from "./lib/envelope";
 import { depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
 import { datelessConflicts } from "./lib/loopSteps";
@@ -349,6 +349,19 @@ export function CalendarPage() {
     setFilterMode("equipe");
   };
 
+  // Correctif 6 — « Voir la semaine » depuis le panneau d'un conflit d'une temporalité Mois/Phase :
+  // bascule en Semaine, pose le week-end du conflit, puis FOCALISE (réutilise `focusConflict`, la
+  // même logique que le radar). Aucune duplication d'URL : le focus vit dans le store, la re-synchro
+  // du Calendrier le repousse dans l'adresse (`vue=coach&filtre=…&conflit=…&semaine=…`).
+  const focusConflictFromTable = (conflict: Conflict): void => {
+    const date = dateOf(conflict);
+    if (null !== date) {
+      setSelectedWeekend(weekendKeyOf(date));
+    }
+    setConsultTemporality("semaine");
+    focusConflict(conflict);
+  };
+
   // Trois lectures fondatrices (doctrine `readState`).
   if (readLoading(fixtures) || readLoading(teams) || readLoading(venues)) {
     return <FullPageSpinner />;
@@ -513,10 +526,12 @@ export function CalendarPage() {
           groups={monthGroups}
           teams={teamsMap}
           venues={venuesMap}
+          coaches={coachesMap}
           conflictsByFixture={monthCbf}
           coachRoles={coachTeamRoles}
           filterActive={filterActive}
           onSelectFixture={onSelectFromTable}
+          onFocusConflict={focusConflictFromTable}
         />
       ) : null}
 
@@ -527,9 +542,11 @@ export function CalendarPage() {
           competition={activePhaseCompetition}
           teams={teamsMap}
           venues={venuesMap}
+          coaches={coachesMap}
           conflictsByFixture={phaseCbf}
           coachRoles={coachTeamRoles}
           onSelectFixture={onSelectFromTable}
+          onFocusConflict={focusConflictFromTable}
           onOpenFfbb={() => setFfbbDialogOpen(true)}
         />
       ) : null}

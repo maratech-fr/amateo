@@ -579,8 +579,12 @@ describe("CalendarPage — chips, familles, temporalités (ex-Consulter)", () =>
     expect(await screen.findByRole("table")).toBeInTheDocument();
     expect(screen.getByText("Voisins")).toBeInTheDocument();
     expect(screen.getByText("Rivaux")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Collision de gymnase/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Gymnase indisponible/ })).toBeInTheDocument();
+    // Le libellé de famille apparaît désormais à DEUX endroits (chip de filtre + pastille de la
+    // table, cliquable — correctif 6) : on cible la CHIP de filtre par son groupe pour vérifier que
+    // les deux familles y sont scopées au mois, sans ambiguïté avec les pastilles de la table.
+    const familyGroup = screen.getByRole("group", { name: "Familles de conflits" });
+    expect(within(familyGroup).getByRole("button", { name: /Collision de gymnase/ })).toBeInTheDocument();
+    expect(within(familyGroup).getByRole("button", { name: /Gymnase indisponible/ })).toBeInTheDocument();
     expect(screen.queryByRole("switch", { name: /Semaine type/ })).not.toBeInTheDocument();
   });
 

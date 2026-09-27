@@ -3,7 +3,7 @@ import { Filter, Link2 } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
 
-import type { Competition, Conflict, Fixture, Team, Venue } from "./api";
+import type { Coach, Competition, Conflict, Fixture, Team, Venue } from "./api";
 import type { CoachTeamRole } from "./lib/matchFilter";
 import { MatchRowsTable } from "./MatchRowsTable";
 
@@ -22,10 +22,12 @@ interface PhaseTableProps {
   competition: Competition | undefined;
   teams: Map<string, Team>;
   venues: Map<string, Venue>;
+  coaches: Map<string, Coach>;
   /** fixtureId → conflits déjà scopés à la phase ET filtrés par famille. */
   conflictsByFixture: Map<string, Conflict[]>;
   coachRoles?: Map<string, CoachTeamRole>;
   onSelectFixture: (fixtureId: string) => void;
+  onFocusConflict: (conflict: Conflict) => void;
   /** Ouvre le dialogue « Engagements FFBB » (état « aucune compétition appariée »). */
   onOpenFfbb: () => void;
 }
@@ -36,7 +38,7 @@ interface PhaseTableProps {
  * trois états (aucune compétition appariée · aucune rencontre sur la phase · table),
  * LECTURE des données déjà dérivées par la page.
  */
-export function PhaseTable({ phaseCount, groups, competition, teams, venues, conflictsByFixture, coachRoles, onSelectFixture, onOpenFfbb }: PhaseTableProps) {
+export function PhaseTable({ phaseCount, groups, competition, teams, venues, coaches, conflictsByFixture, coachRoles, onSelectFixture, onFocusConflict, onOpenFfbb }: PhaseTableProps) {
   if (0 === phaseCount) {
     return (
       <div className="flex flex-col items-start gap-3">
@@ -57,9 +59,11 @@ export function PhaseTable({ phaseCount, groups, competition, teams, venues, con
       groups={groups}
       teams={teams}
       venues={venues}
+      coaches={coaches}
       conflictsByFixture={conflictsByFixture}
       coachRoles={coachRoles}
       onSelectFixture={onSelectFixture}
+      onFocusConflict={onFocusConflict}
     />
   );
 }

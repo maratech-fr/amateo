@@ -1,8 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import type { Conflict, Fixture, Team, Venue } from "./api";
+import type { Coach, Conflict, Fixture, Team, Venue } from "./api";
 import { MatchRowsTable } from "./MatchRowsTable";
 
 function fx(partial: Partial<Fixture> & Pick<Fixture, "id">): Fixture {
@@ -32,20 +32,25 @@ function fx(partial: Partial<Fixture> & Pick<Fixture, "id">): Fixture {
 const teams = new Map<string, Team>([["team-1", { id: "team-1", name: "U13", sportCategoryId: "c", level: null, gender: null, priorityTierId: 1, tierOrder: 0 }]]);
 const venues = new Map<string, Venue>([["venue-1", { id: "venue-1", name: "Gymnase Alpha", color: "#0a0", externalLabels: [] }]]);
 
+const coaches = new Map<string, Coach>([["coach-1", { id: "coach-1", firstName: "Emerick", lastName: "" }]]);
+
 function renderTable(props: Partial<Parameters<typeof MatchRowsTable>[0]> = {}) {
   const onSelectFixture = props.onSelectFixture ?? vi.fn();
+  const onFocusConflict = props.onFocusConflict ?? vi.fn();
   render(
     <MatchRowsTable
       caption="Matchs"
       groups={props.groups ?? [{ key: "2026-10-03", label: "Samedi 3 octobre", fixtures: [fx({ id: "fx-1" })] }]}
       teams={teams}
       venues={venues}
+      coaches={props.coaches ?? coaches}
       conflictsByFixture={props.conflictsByFixture ?? new Map()}
       coachRoles={props.coachRoles}
       onSelectFixture={onSelectFixture}
+      onFocusConflict={onFocusConflict}
     />,
   );
-  return { onSelectFixture };
+  return { onSelectFixture, onFocusConflict };
 }
 
 describe("MatchRowsTable (PR-2b — ligne de match partagée Mois/Phase)", () => {
@@ -95,6 +100,59 @@ describe("MatchRowsTable (PR-2b — ligne de match partagée Mois/Phase)", () =>
   it("en vue coach, une pastille de rôle sur l'équipe", () => {
     renderTable({ coachRoles: new Map([["team-1", "assistant"]]) });
     expect(screen.getByText("assistant")).toBeInTheDocument();
+  });
+
+  // ── Correctif 6 — la pastille de conflit NOMME la personne et s'ouvre en panneau ─────
+  const mm = (over: Partial<Conflict> = {}): Conflict => ({
+    type: "MATCH_MATCH",
+    severity: 1,
+    resolution: null,
+    coachId: "coach-1",
+    left: { fixtureId: "fx-1", teamId: "team-1", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "16:00", role: "MAIN", windowStart: "2026-10-03T16:00:00", windowEnd: "2026-10-03T18:00:00" },
+    right: { fixtureId: "fx-2", teamId: "team-1", homeAway: "AWAY", matchDate: "2026-10-03", kickoffTime: "18:00", role: "MAIN", windowStart: "2026-10-03T18:00:00", windowEnd: "2026-10-03T20:00:00" },
+    start: "2026-10-03T18:00:00",
+    end: "2026-10-03T18:00:00",
+    ...over,
+  });
+
+  it("la pastille de PERSONNE en double NOMME la personne (« Emerick en double »)", () => {
+    renderTable({ conflictsByFixture: new Map([["fx-1", [mm()]]]), coaches });
+    expect(screen.getByRole("button", { name: /Emerick en double/ })).toBeInTheDocument();
+  });
+
+  it("deux personnes en double sur le même match → « Emerick +1 »", () => {
+    const withSecond = new Map<string, Coach>([...coaches, ["coach-2", { id: "coach-2", firstName: "Nadia", lastName: "" }]]);
+    const second = mm({ coachId: "coach-2" });
+    renderTable({ conflictsByFixture: new Map([["fx-1", [mm(), second]]]), coaches: withSecond });
+    expect(screen.getByRole("button", { name: /Emerick \+1/ })).toBeInTheDocument();
+  });
+
+  it("cliquer la pastille ouvre un panneau qui liste le conflit ; « Voir la semaine » déclenche le focus", async () => {
+    const user = userEvent.setup();
+    const { onFocusConflict } = renderTable({ conflictsByFixture: new Map([["fx-1", [mm()]]]), coaches });
+    await user.click(screen.getByRole("button", { name: /Emerick en double/ }));
+    const dialog = await screen.findByRole("dialog");
+    // Le chevauchement est rendu par ConflictLine dans le panneau.
+    expect(within(dialog).getByText(/Chevauchement/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: /Voir la semaine/ }));
+    expect(onFocusConflict).toHaveBeenCalledWith(expect.objectContaining({ type: "MATCH_MATCH", coachId: "coach-1" }));
+  });
+
+  it("une famille SANS personne (collision de gymnase) est aussi un bouton qui ouvre le panneau", async () => {
+    const user = userEvent.setup();
+    const overlap: Conflict = {
+      type: "VENUE_OVERLAP",
+      severity: 1,
+      resolution: null,
+      venueId: "venue-1",
+      left: { fixtureId: "fx-1", teamId: "team-1", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "16:00", windowStart: "2026-10-03T16:00:00", windowEnd: "2026-10-03T18:00:00" },
+      right: { fixtureId: "fx-2", teamId: "team-1", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "16:30", windowStart: "2026-10-03T16:30:00", windowEnd: "2026-10-03T18:30:00" },
+      start: "2026-10-03T16:30:00",
+      end: "2026-10-03T18:00:00",
+    };
+    renderTable({ conflictsByFixture: new Map([["fx-1", [overlap]]]), coaches });
+    await user.click(screen.getByRole("button", { name: /Collision de gymnase/ }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
   it("cliquer la ligne (bouton accessible) appelle onSelectFixture", async () => {
