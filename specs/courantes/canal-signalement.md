@@ -1,9 +1,8 @@
-Last verified @ 2026-09-27 (`documentation-update`, rotation de fraîcheur — re-confronté au code :
-`POST /api/feedback` (`FeedbackController.php:68`), `Schedule::$snapshotData`
-(`backend/src/Entity/Schedule.php:123`), digest quotidien (`FeedbackDigestCommand.php`),
-`frontend/docs/frontend-spec.md:95` (route `/nouveautes`) — tous existent. Le renvoi « métriques de
-capacité superadmin sans maison » est PÉRIMÉ : `superadmin-auth.md` § Capacité les documente
-désormais — corrigé ci-dessous.
+Last verified @ 2026-09-27 (`documentation-update`, en-tête de page commun). Re-confronté au
+code : `POST /api/feedback` (`FeedbackController.php:68`) ✓ ; la porte (a) de D1 est désormais
+l'en-tête `PageHeader` de chaque écran principal et du wizard (`frontend/docs/
+frontend-components.md`), plus la seule paire planning/wizard d'origine — `FeedbackButton`/
+`FeedbackDialog` vivent dans `frontend/src/shared/feedback/` ✓.
 
 # Canal signalement, support & reproduction
 
@@ -46,7 +45,7 @@ un email vers `support@` à chaque dépôt (le mail part par le bus, rail déjà
 
 | # | Décision |
 |---|---|
-| D1 | **In-app, DEUX portes** : (a) un « Signaler » **contextuel sur la page** (planning/wizard) — contexte auto-joint + champ descriptif du bug ; (b) un « Signaler un bug » **dans le burger** — zone libre : choix d'un topic (bug / contrainte manquante / idée) + commentaire libre. La porte (b) existe partout, la (a) là où il y a un contexte à capturer |
+| D1 | **In-app, DEUX portes** : (a) un « Signaler » **contextuel**, dans l'en-tête (`PageHeader`, `frontend/docs/frontend-components.md`) de chaque écran principal et du wizard — contexte auto-joint (écran, club, saison, `scheduleId` s'il y en a un) + champ descriptif du bug ; (b) un « Signaler un bug » **dans le burger** — zone libre : choix d'un topic (bug / contrainte manquante / idée) + commentaire libre. Les deux portes existent partout |
 | D2 | **Contexte MAXIMAL, redondance assumée** : « je préfère être redondant et pouvoir reproduire plutôt que devoir redemander » — écran, club, saison, `scheduleId` ET **copie** des diagnostics + du payload rejouable dans le signalement lui-même. Justification technique de la redondance : le planning référencé peut être supprimé/régénéré après coup — la copie rend le signalement **impérissable** |
 | D3 | **Signé, et TOUT LE MONDE peut signaler** (Gestionnaires ET Membres) |
 | D4 | **Digest quotidien** vers `support@` (pas un email par dépôt) — la console SA reste la vue temps réel |

@@ -78,6 +78,12 @@ paths:
   système, console admin — jamais pour une mention dans une phrase), n'en porte aucune : le mot
   hérite `currentColor`, un seul ton dans tous les thèmes (un second ton teal codé en dur tombait
   sous la barre de contraste sur fond clair, retiré).
+- 🔴 **Tout écran principal rend `PageHeader`** (`shared/components/ui/page-header.tsx`) —
+  jamais un `<h1` brut : trait `border-accent` + titre à gauche, bouton « Signaler » TOUJOURS
+  visible à droite, gardé par `frontend/src/test/pageHeaderGuard.test.ts` (liste nominative des
+  pages principales + exemptions `<h1` nominatives). Le canal feedback (`FeedbackButton`,
+  `FeedbackDialog`) vit dans `shared/feedback/` avec la
+  brique, une primitive `shared/` ne remontant jamais vers une feature (AUD-FRT-21).
 - 🔴 **Les racines de shell ne portent plus `bg-background` depuis le fond d'écran commun**
   (P5-16, `AppLayout.tsx`/`AuthLayout.tsx`) : le fond commun vit sur `body` (`index.css`), et une
   racine qui poserait `bg-background` par-dessus le masquerait entièrement. L'en-tête d'`AppLayout`
