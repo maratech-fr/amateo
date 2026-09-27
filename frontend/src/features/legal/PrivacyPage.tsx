@@ -1,6 +1,8 @@
 import { Link } from "react-router";
 
+import { PageHeader } from "@/shared/components/ui/page-header";
 import { PRODUCT_NAME, PUBLISHER_NAME } from "@/shared/lib/product";
+import { useAuthStore } from "@/shared/stores/authStore";
 
 import { TERMS_VERSION } from "./terms";
 
@@ -22,14 +24,17 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export function PrivacyPage() {
+  // Page publique : « Signaler » exige une session (POST /feedback authentifié), on ne le montre
+  // donc qu'à un visiteur connecté — le titre, lui, reste aligné pour tous.
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   return (
     <div className="mx-auto max-w-2xl space-y-6 px-4 py-10">
-      <div>
-        <h1 className="border-l-[3px] border-accent pl-3 text-xl font-semibold">
-          Politique de confidentialité &amp; conditions d'utilisation
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">Version {TERMS_VERSION} (provisoire)</p>
-      </div>
+      <PageHeader
+        title="Politique de confidentialité & conditions d'utilisation"
+        screen="/confidentialite"
+        subtitle={`Version ${TERMS_VERSION} (provisoire)`}
+        showFeedback={isAuthenticated}
+      />
 
       <Section title="1. Qui sommes-nous (responsable de traitement)">
         <p>

@@ -34,6 +34,18 @@ vi.mock("./api", () => ({
   getConflicts: vi.fn(() => Promise.resolve({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: conflictsState.rows })),
 }));
 
+// L'en-tête « Matchs » porte désormais le bouton « Signaler » (feat/entete-page-signaler) — un
+// seul, en tête du module, plus celui, discret, qui vivait dans le seul Calendrier. Double fidèle
+// qui expose le `screen` transmis, pour éprouver « Signaler visible sur CHAQUE onglet, contexte =
+// la route ».
+vi.mock("@/shared/feedback/FeedbackButton", () => ({
+  FeedbackButton: ({ screen: screenProp }: { screen?: string }) => (
+    <button type="button" data-screen={screenProp}>
+      Signaler
+    </button>
+  ),
+}));
+
 beforeEach(() => {
   visit.count = 0;
   fixturesState.rows = [];
@@ -52,6 +64,7 @@ function renderAt(path: string) {
             <Route path="consulter" element={<div>CONSULTER</div>} />
             <Route path="importer" element={<div>IMPORTER</div>} />
             <Route path="configuration" element={<div>CONFIG</div>} />
+            <Route path="adversaires" element={<div>ADVERSAIRES</div>} />
             <Route path="semaine-type" element={<div>SEMAINE_TYPE</div>} />
             <Route path="conflits" element={<div>CONFLITS</div>} />
           </Route>
@@ -231,6 +244,32 @@ describe("MatchesLayout — entrer dans le module consomme la règle d'atterriss
     // Le garde socle court-circuite l'Outlet ET l'effet de marquage (gaté comme la visite).
     await waitFor(() => expect(screen.getByRole("heading", { name: "Matchs verrouillés" })).toBeInTheDocument());
     expect(useMatchesStore.getState().landingDecided).toBe(false);
+  });
+});
+
+describe("MatchesLayout — le bouton « Signaler » de l'en-tête (feat/entete-page-signaler)", () => {
+  it.each([
+    ["/matchs", "/matchs"],
+    ["/matchs/conflits", "/matchs/conflits"],
+    ["/matchs/importer", "/matchs/importer"],
+    ["/matchs/configuration", "/matchs/configuration"],
+    ["/matchs/adversaires", "/matchs/adversaires"],
+    ["/matchs/semaine-type", "/matchs/semaine-type"],
+  ])("rend « Signaler » sur %s, avec le contexte de la route courante", (path, expectedScreen) => {
+    meState.chosen = "s1";
+    renderAt(path);
+    const signaler = screen.getByRole("button", { name: "Signaler" });
+    expect(signaler).toBeInTheDocument();
+    expect(signaler).toHaveAttribute("data-screen", expectedScreen);
+  });
+
+  it("rend AUSSI « Signaler » quand le module est verrouillé (le fondateur doit pouvoir remonter une erreur)", () => {
+    meState.chosen = null;
+    renderAt("/matchs/conflits");
+    expect(screen.getByRole("heading", { name: "Matchs verrouillés" })).toBeInTheDocument();
+    const signaler = screen.getByRole("button", { name: "Signaler" });
+    expect(signaler).toBeInTheDocument();
+    expect(signaler).toHaveAttribute("data-screen", "/matchs/conflits");
   });
 });
 

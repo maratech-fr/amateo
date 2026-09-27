@@ -5,6 +5,7 @@ import { Navigate } from "react-router";
 import { useMe } from "@/shared/session/queries";
 import { useSchedules } from "@/features/planning/queries";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
+import { PageHeader } from "@/shared/components/ui/page-header";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
 
 import { SeasonPlanBanner } from "./SeasonPlanBanner";
@@ -69,6 +70,9 @@ export function CockpitPage() {
 
   return (
     <div className="space-y-4">
+      {/* En-tête d'accueil : le tableau de bord n'avait aucun titre ni porte « Signaler » —
+          désormais le même en-tête que les autres écrans, pour remonter une erreur dès l'accueil. */}
+      <PageHeader title="Accueil" screen="/" />
       {!socleValidated ? (
         <NoticeBanner
           tone="accent"

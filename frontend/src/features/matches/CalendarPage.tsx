@@ -3,7 +3,6 @@ import { useCallback, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
 import { useCoachPlayers, useTeamCoaches } from "@/features/planning/queries";
-import { FeedbackButton } from "@/features/feedback/FeedbackButton";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
@@ -391,9 +390,10 @@ export function CalendarPage() {
       <p className="sr-only" aria-live="polite">
         {revealLive}
       </p>
-      {/* (c) — barre d'actions : retour discret · Nouveau match · Placer auto (SEUL bouton primaire). */}
+      {/* (c) — barre d'actions : retour discret · Nouveau match · Placer auto (SEUL bouton primaire).
+          « Signaler » a quitté cette barre : il vit désormais UNE fois dans l'en-tête du module
+          (MatchesLayout), visible sur tous les onglets. */}
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <FeedbackButton screen="/matchs" />
         <Button variant="outline" size="sm" onClick={() => setFixtureFormOpen(true)}>
           <Plus className="size-4" />
           Nouveau match

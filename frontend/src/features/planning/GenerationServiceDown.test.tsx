@@ -15,7 +15,7 @@ import { clearLastIncident, recordIncident } from "@/shared/api/lastIncidentStor
 // c'est le CÂBLAGE « Contacter le support » → FeedbackDialog contextuel qu'on épingle (le
 // contexte n'est joint qu'en `contextual`, cf. FeedbackDialog.tsx:62-69).
 const feedbackProps = vi.fn();
-vi.mock("@/features/feedback/FeedbackDialog", () => ({
+vi.mock("@/shared/feedback/FeedbackDialog", () => ({
   FeedbackDialog: (props: { variant: string; scheduleId?: string | null }) => {
     feedbackProps(props);
     return <div data-testid="feedback-dialog" data-variant={props.variant} data-schedule={props.scheduleId ?? ""} />;

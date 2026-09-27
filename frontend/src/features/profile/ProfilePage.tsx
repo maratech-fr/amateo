@@ -8,6 +8,7 @@ import { FichePage } from "@/shared/components/ui/fiche-page";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { NewPasswordFields } from "@/shared/components/ui/new-password-fields";
+import { PageHeader } from "@/shared/components/ui/page-header";
 import { PasswordInput } from "@/shared/components/ui/password-input";
 import { isPasswordValid } from "@/shared/lib/passwordPolicy";
 import { FullPageSpinner, Spinner } from "@/shared/components/ui/spinner";
@@ -261,12 +262,7 @@ export function ProfilePage() {
 
   return (
     <FichePage className="space-y-4">
-      <div>
-        <h1 className="border-l-[3px] border-accent pl-3 text-xl font-semibold">Profil</h1>
-        <p className="text-sm text-muted-foreground">
-          {data.club?.name ?? "—"} · {data.role ?? "—"}
-        </p>
-      </div>
+      <PageHeader title="Profil" screen="/profile" subtitle={`${data.club?.name ?? "—"} · ${data.role ?? "—"}`} />
       <ProfileForm firstName={data.firstName} lastName={data.lastName} email={data.email} pendingEmail={data.pendingEmail} />
       <PasswordForm />
       <ExportSection />

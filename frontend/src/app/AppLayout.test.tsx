@@ -31,7 +31,7 @@ vi.mock("./ReadonlySeasonBanner", () => ({ ReadonlySeasonBanner: () => null }));
 vi.mock("./SeasonTransitionBanner", () => ({ SeasonTransitionBanner: () => null }));
 vi.mock("./DevClock", () => ({ DevClock: () => null }));
 vi.mock("@/features/release-notes/WhatsNewModal", () => ({ WhatsNewModal: () => null }));
-vi.mock("@/features/feedback/FeedbackDialog", () => ({ FeedbackDialog: () => null }));
+vi.mock("@/shared/feedback/FeedbackDialog", () => ({ FeedbackDialog: () => null }));
 
 const club = (overrides: Record<string, unknown>): MeResponse["club"] =>
   ({ id: "c1", name: "BCCL", onboardingCompleted: true, logoUrl: null, ...overrides }) as unknown as MeResponse["club"];

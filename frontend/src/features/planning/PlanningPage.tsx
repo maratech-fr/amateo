@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { useMe, useWorkingSeason } from "@/shared/session/queries";
-import { FeedbackButton } from "@/features/feedback/FeedbackButton";
+import { FeedbackButton } from "@/shared/feedback/FeedbackButton";
 // Same ["priority_tiers"] query key as the matches/wizard hooks — one cache entry.
 import { usePriorityTiers } from "@/features/matches/queries";
 import { DeletePlanningButton } from "@/features/cockpit/DeletePlanningButton";
@@ -18,6 +18,7 @@ import { Button } from "@/shared/components/ui/button";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
+import { PageHeader } from "@/shared/components/ui/page-header";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
 
 import { type Slot } from "./api";
@@ -565,9 +566,11 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
       {/* P4-168 — témoin (sans rendu) du canal de livraison : c'est l'écran qui affiche le
           planning, donc l'endroit où l'e2e lit « livré par SSE » vs « livré par polling ». */}
       <ScheduleStreamWitness />
-      <div className="mb-4 flex items-center gap-3">
-        {me?.club?.logoUrl ? <img src={me.club.logoUrl} alt="" className="size-8 shrink-0 rounded object-contain" /> : null}
-        {null !== editingPlanningName ? (
+      {null !== editingPlanningName ? (
+        // Renommage inline : le titre laisse place au champ de saisie (pas de h1 le temps de
+        // l'édition). « Signaler » reste présent, comme dans l'en-tête au repos.
+        <div className="mb-4 flex items-center gap-3">
+          {me?.club?.logoUrl ? <img src={me.club.logoUrl} alt="" className="size-8 shrink-0 rounded object-contain" /> : null}
           <input
             // eslint-disable-next-line jsx-a11y/no-autofocus -- inline rename field revealed on demand
             autoFocus
@@ -590,39 +593,50 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
             onBlur={() => setEditingPlanningName(null)}
             className="h-9 rounded-md border border-input bg-background px-3 text-xl font-semibold"
           />
-        ) : (
-          <>
-            {/* ADR-0002 inv. 12: THE plan's name lives here, on the plan — not in the version selector. */}
-            <h1 className="border-l-[3px] border-accent pl-3 text-2xl font-semibold">{planningTitle}</h1>
-            {/* « principal » qualifie LE planning de la saison (le plan SEASON), par
-                opposition aux plannings secondaires de période — pas la version choisie.
-                En portée période, il ne peut jamais apparaître (la portée n'expose aucune
-                version de saison — bug fondateur 2026-08-19). */}
-            {!scoped && null !== selectedSchedule && isSeasonPlanType(selectedSchedule.planType) ? (
-              <span className="flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground">
-                <Star className="size-3" />
-                principal
-              </span>
-            ) : null}
-            {/* Pas de plan résolu = rien à renommer : proposer le geste enverrait
-                l'écriture sur un id qu'on n'a pas (c'est ce qui la faisait retomber
-                sur le plan de saison). */}
-            {null !== displayedPlan && workingSeason && !workingSeason.isReadonly ? (
-              <Button size="sm" variant="ghost" className="h-8 px-2" aria-label="Renommer le planning" title="Renommer le planning" onClick={() => setEditingPlanningName(displayedPlan.name)}>
-                <Pencil className="size-4" />
-              </Button>
-            ) : null}
-            {/* Supprimer : plannings SECONDAIRES uniquement (jamais le socle), et
-                jamais pendant une génération en vol (la cascade emporterait la version
-                en cours de solve — revue B2 F3) → retour cockpit. */}
-            {null !== overlayDeleteEntryId && workingSeason && !workingSeason.isReadonly && !showGenerationWaiting ? (
-              <DeletePlanningButton calendarEntryId={overlayDeleteEntryId} schedulePlanId={selectedSchedule?.schedulePlanId ?? null} title={displayedPlanName ?? "ce planning"} onDeleted={() => navigate("/")} iconOnly />
-            ) : null}
-          </>
-        )}
-        {/* P5-6 — porte contextuelle : joint le planning affiché au signalement. */}
-        <FeedbackButton className="ml-auto" screen="/planning" scheduleId={validScheduleId} />
-      </div>
+          {/* P5-6 — porte contextuelle : joint le planning affiché au signalement. */}
+          <FeedbackButton className="ml-auto" screen="/planning" scheduleId={validScheduleId} />
+        </div>
+      ) : (
+        // En-tête d'écran unifié : trait + titre à gauche, « Signaler » à droite. Les éléments
+        // propres au planning (blason, pastille « principal », renommer, supprimer) restent autour
+        // du titre via `leading`/`beside`.
+        <PageHeader
+          className="mb-4"
+          /* ADR-0002 inv. 12: THE plan's name lives here, on the plan — not in the version selector. */
+          title={planningTitle}
+          screen="/planning"
+          scheduleId={validScheduleId}
+          leading={me?.club?.logoUrl ? <img src={me.club.logoUrl} alt="" className="size-8 shrink-0 rounded object-contain" /> : null}
+          beside={
+            <>
+              {/* « principal » qualifie LE planning de la saison (le plan SEASON), par
+                  opposition aux plannings secondaires de période — pas la version choisie.
+                  En portée période, il ne peut jamais apparaître (la portée n'expose aucune
+                  version de saison — bug fondateur 2026-08-19). */}
+              {!scoped && null !== selectedSchedule && isSeasonPlanType(selectedSchedule.planType) ? (
+                <span className="flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground">
+                  <Star className="size-3" />
+                  principal
+                </span>
+              ) : null}
+              {/* Pas de plan résolu = rien à renommer : proposer le geste enverrait
+                  l'écriture sur un id qu'on n'a pas (c'est ce qui la faisait retomber
+                  sur le plan de saison). */}
+              {null !== displayedPlan && workingSeason && !workingSeason.isReadonly ? (
+                <Button size="sm" variant="ghost" className="h-8 px-2" aria-label="Renommer le planning" title="Renommer le planning" onClick={() => setEditingPlanningName(displayedPlan.name)}>
+                  <Pencil className="size-4" />
+                </Button>
+              ) : null}
+              {/* Supprimer : plannings SECONDAIRES uniquement (jamais le socle), et
+                  jamais pendant une génération en vol (la cascade emporterait la version
+                  en cours de solve — revue B2 F3) → retour cockpit. */}
+              {null !== overlayDeleteEntryId && workingSeason && !workingSeason.isReadonly && !showGenerationWaiting ? (
+                <DeletePlanningButton calendarEntryId={overlayDeleteEntryId} schedulePlanId={selectedSchedule?.schedulePlanId ?? null} title={displayedPlanName ?? "ce planning"} onDeleted={() => navigate("/")} iconOnly />
+              ) : null}
+            </>
+          }
+        />
+      )}
 
       {/* Planning PÉRIMÉ (pas faux) : retouché à la main (F2b), une contrainte a changé (F2c),
           une DONNÉE DU CLUB a changé (P4-87), ou des équipes ont été ajoutées/retirées

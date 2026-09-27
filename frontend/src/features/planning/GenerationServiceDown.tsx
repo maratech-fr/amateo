@@ -1,7 +1,7 @@
 import { Rocket } from "lucide-react";
 import { useState } from "react";
 
-import { FeedbackDialog } from "@/features/feedback/FeedbackDialog";
+import { FeedbackDialog } from "@/shared/feedback/FeedbackDialog";
 import { readRecentIncidentRequestId } from "@/shared/api/lastIncidentStore";
 import { Button } from "@/shared/components/ui/button";
 import { DevIncidentDetails } from "@/shared/components/ui/dev-incident-details";
