@@ -184,6 +184,9 @@ Le coach émet un **souhait**, le gestionnaire **arbitre et tranche** — le lie
   → `backend/docs/geo-api.md` §1bis, `frontend/docs/frontend-spec.md` §6.6 ter
 - **Simulateur d'horloge** (dev seulement) pour rejouer les bascules annuelles.
 - **Console superadmin** : stats d'usage append-only, board de fraîcheur des référentiels, alerting sur transition.
+- **Tout texte affiché est en français** (P4-263) : messages atteignables par un gestionnaire francisés
+  à la source côté backend ; seuls les messages de défense pure (≥ 500, API-only, superadmin hors
+  connexion) restent anglais. → [`backend/docs/error-copy.md`](../../backend/docs/error-copy.md)
 
 ### 1.10 Tests
 
@@ -531,6 +534,7 @@ le front lit, il ne re-dérive plus les règles de refus, repli fail-closed si l
 
 | Date | Id | Sujet | Documenté dans |
 |------|----|-------|----------------|
+| 2026-09-27 | P4-263 (PR 2/2) | une seule maison d'erreur front ; un status-text anglais brut tombe sur le repli français — P4-263 soldé | [`frontend/docs/frontend-spec.md`](../../frontend/docs/frontend-spec.md) |
 | 2026-09-27 | P4-263 (PR 1/2) | le backend répond en français (translator fr, « Identifiants invalides. », messages de course et console superadmin), NR login bloquant | [`backend/docs/error-copy.md`](../../backend/docs/error-copy.md) |
 | 2026-09-26 | — | Passe doc « présent » ADR (0002 944→324 l., 0001/0003/0004+index pliés) ; règle 7 : ADR + 2 journaux + docs/archive ; cadrage P4-265 consigné | [`docs/architecture/adr-index.md`](../../docs/architecture/adr-index.md) |
 | 2026-09-26 | — | Passe doc « présent » racine (hors ADR) : README/CLAUDE.md/project-map/glossaire/testing/sécurité/ops/matrice ; faux corrigés (proxy /engine, fixtures, required checks, backups) | [`docs/project-map.md`](../../docs/project-map.md) |

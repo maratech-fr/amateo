@@ -4,14 +4,15 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-09-26 (rotation de fraîcheur `documentation-update`, sujet sans rapport — passe
-doc zone engine). Re-confronté au code : routes `/matchs` toujours `MatchesLanding` en index avec
-redirect `consulter` → `/matchs` (`frontend/src/app/routes.tsx:146-162`) ✓ ; `@dnd-kit` toujours
+Last verified @ 2026-09-27 (`documentation-update`, P4-263 PR 2/2 — front). Re-confronté au code :
+routes `/matchs` toujours `MatchesLanding` en index avec redirect `consulter` → `/matchs`
+(`frontend/src/app/routes.tsx:146-162`) ✓ ; `@dnd-kit` toujours
 `core ^6.3.1 · sortable ^10.0.0 · utilities ^3.2.2` (`frontend/package.json`) ✓ ;
 `docker/frontend/nginx.conf:96-102` ne déclare toujours aucune `location /engine/` (le commentaire
-explique l'ancien proxy debug, exposait le solveur sans authentification) ✓. Reste non re-sondé
-cette passe — historique : `git log -p --follow` ce fichier. §6.7 reste hors périmètre (régime
-narratif plus dense, taille à l'aveugle refusée) — P4-262 en roadmap.
+explique l'ancien proxy debug, exposait le solveur sans authentification) ✓ ; la doctrine d'erreur
+recalée contre `frontend/src/shared/lib/errorMessage.ts` (filet `ENGLISH_STATUS_TEXTS`, `errors.ts`
+disparu) ✓. Reste non re-sondé cette passe — historique : `git log -p --follow` ce fichier. §6.7
+reste hors périmètre (régime narratif plus dense, taille à l'aveugle refusée) — P4-262 en roadmap.
 
 ## 1. Stack Decided
 
@@ -890,8 +891,11 @@ Gardé par `frontend/tooling/noscript.test.ts` (existence, français, absence de
 
 **La copie des messages d'erreur SERVEUR a sa règle** : `backend/docs/error-copy.md` — français
 métier dès qu'un gestionnaire peut lire (nominal ou course), anglais toléré seulement hors de tout
-chemin UI. Le front n'a rien à traduire : `errorMessage.ts` reprend le corps 4xx tel quel, et il
-route sur `code`, jamais sur la phrase.
+chemin UI. Le front n'a rien à traduire : `errorMessage.ts` (`shared/lib/errorMessage.ts`, maison
+UNIQUE d'erreur front depuis P4-263 — `shared/api/errors.ts`/`apiErrorMessage` a disparu) reprend
+le corps 4xx tel quel, sauf s'il n'est qu'une reason-phrase HTTP anglaise brute reconnue (liste
+FERMÉE `ENGLISH_STATUS_TEXTS`, filet contre un 4xx nu de Symfony/API Platform) — auquel cas il
+tombe sur le repli français par statut ; il route sur `code`, jamais sur la phrase.
 
 **Session expirée — pourquoi un marqueur et pas une page** : le 401 est capté dans `client.ts`, mais
 « Se reconnecter » **EST** le formulaire de `/login` déjà présent ; une page dédiée ajouterait un clic
