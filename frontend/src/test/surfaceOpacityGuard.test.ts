@@ -72,3 +72,46 @@ describe("P4-265 — pas de fond teinté /NN au repos sur une primitive de surfa
     ).toEqual([]);
   });
 });
+
+/**
+ * Retour terrain 2026-09-27 — un CONTRÔLE DE SAISIE partagé (champ, sélecteur, zone de texte) est
+ * OPAQUE au repos. `bg-transparent` laissait traverser le fond à motifs du body : le placeholder
+ * (« Rechercher un club ou un gymnase ») devenait illisible. La contrainte est plus stricte que le
+ * garde P4-265 (qui ne vise que les teintes `/NN`) — `bg-transparent` doit aussi tomber, MAIS
+ * seulement sur les contrôles de saisie : un bouton `ghost`/`outline` reste transparent par
+ * décision fondateur (il vit sur une surface déjà opaque). D'où une LISTE NOMINATIVE de fichiers
+ * de contrôle de saisie, pas un scan large.
+ *
+ * Le lookbehind `(?<!:)` n'attrape que le fond AU REPOS (une variante `disabled:hover:bg-transparent`
+ * est un état, exempté). Contraste placeholder `text-muted-foreground` sur `--card` = 5,60 (mesuré).
+ */
+const INPUT_CONTROL_FILES = ["input.tsx", "select.tsx", "listbox.tsx", "password-input.tsx", "team-select.tsx", "venue-select.tsx", "new-password-fields.tsx"];
+
+const RESTING_TRANSPARENT = /(?<!:)\bbg-transparent\b/;
+
+// ≤ 5 entrées — un `bg-transparent` LÉGITIME parce qu'il vit DÉJÀ sur une surface opaque.
+const TRANSPARENT_EXEMPTIONS: Exemption[] = [
+  {
+    file: "listbox.tsx",
+    pattern: /border-0 bg-transparent/,
+    reason: "le champ de recherche du panneau Listbox est imbriqué dans un wrapper `bg-background` opaque (POPUP_FRAME `bg-card`) — pas de fond à motifs à traverser",
+  },
+];
+
+describe("Contrôle de saisie partagé opaque — pas de bg-transparent au repos", () => {
+  it("aucun bg-transparent au repos dans les fichiers de contrôle de saisie partagés, hors exemption nominative", () => {
+    const offenders: string[] = [];
+    for (const name of INPUT_CONTROL_FILES) {
+      const lines = readFileSync(join(UI_ROOT, name), "utf8").split("\n");
+      lines.forEach((line, index) => {
+        if (!RESTING_TRANSPARENT.test(line)) return;
+        if (TRANSPARENT_EXEMPTIONS.some((e) => name === e.file && e.pattern.test(line))) return;
+        offenders.push(`shared/components/ui/${name}:${index + 1} → ${line.trim().slice(0, 100)}`);
+      });
+    }
+    expect(
+      offenders,
+      "Contrôle de saisie transparent au repos : poser `bg-card` (ou `bg-background`) — un champ sur le fond à motifs du body rend son placeholder illisible. Un fond transparent légitime (contrôle déjà sur une surface opaque) entre dans TRANSPARENT_EXEMPTIONS (≤ 5).",
+    ).toEqual([]);
+  });
+});
