@@ -1,0 +1,1032 @@
+{
+  "clubId": "bccl",
+  "seasonId": "2026-2027",
+  "solverSeed": 42,
+  "solverTimeoutSeconds": 60,
+  "matches": [
+    {
+      "id": "m-amical-pnm-15",
+      "teamId": "b-charpennes-croix-luizet-1",
+      "date": "2026-08-27",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-amical-pnm-16",
+      "teamId": "b-charpennes-croix-luizet-1",
+      "date": "2026-09-03",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-amical-pnf-7",
+      "teamId": "b-charpennes-croix-luizet-12",
+      "date": "2026-09-05",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfloi-11",
+      "teamId": "b-charpennes-croix-luizet",
+      "date": "2026-09-19",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-pnm-101010",
+      "teamId": "b-charpennes-croix-luizet",
+      "date": "2026-09-19",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu11-9",
+      "teamId": "b-charpennes-croix-luizet-1",
+      "date": "2026-09-19",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu11-5",
+      "teamId": "b-charpennes-croix-luizet-1",
+      "date": "2026-09-19",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu11-2-12",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-09-19",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu13-5",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-09-19",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu11-2-26",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-09-19",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu15-4",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-09-19",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu18-7",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-09-19",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu21-3",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-09-19",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rm2-102021",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-09-19",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu18-3-4",
+      "teamId": "b-charpennes-croix-luizet-3",
+      "date": "2026-09-19",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu15-2-2",
+      "teamId": "b-charpennes-croix-luizet-3-3",
+      "date": "2026-09-19",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rmu21-120008",
+      "teamId": "b-charpennes-croix-luizet",
+      "date": "2026-09-20",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-pnf-201013",
+      "teamId": "b-charpennes-croix-luizet-1",
+      "date": "2026-09-20",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rf3-203018",
+      "teamId": "b-charpennes-croix-luizet-2-5",
+      "date": "2026-09-20",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dm2-17",
+      "teamId": "b-charpennes-croix-luizet-4",
+      "date": "2026-09-20",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmve-10",
+      "teamId": "b-charpennes-croix-luizet-10",
+      "date": "2026-09-25",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu9-7",
+      "teamId": "b-charpennes-croix-luizet-1",
+      "date": "2026-09-26",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu9-22",
+      "teamId": "b-charpennes-croix-luizet-1",
+      "date": "2026-09-26",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rmu13-brassage-20",
+      "teamId": "b-charpennes-croix-luizet-10",
+      "date": "2026-09-26",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rmu15-brassage-20",
+      "teamId": "b-charpennes-croix-luizet-10",
+      "date": "2026-09-26",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu15-6-14",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-09-26",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu18-6-12",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-09-26",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu9-2-37",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-09-26",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu13-14",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-09-26",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu9-2-22",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-09-26",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rfu13-brassage-30",
+      "teamId": "b-charpennes-croix-luizet-20",
+      "date": "2026-09-26",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rfu15-brassage-30",
+      "teamId": "b-charpennes-croix-luizet-20",
+      "date": "2026-09-26",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu13-3-26",
+      "teamId": "b-charpennes-croix-luizet-3",
+      "date": "2026-09-26",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rmu18-brassage-26",
+      "teamId": "b-charpennes-croix-luizet-10",
+      "date": "2026-09-27",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rfu18-brassage-30",
+      "teamId": "b-charpennes-croix-luizet-20",
+      "date": "2026-09-27",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-prm-32",
+      "teamId": "b-charpennes-croix-luizet-3-2",
+      "date": "2026-09-27",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-df2-15",
+      "teamId": "b-charpennes-croix-luizet-3-8",
+      "date": "2026-09-27",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfloi-47",
+      "teamId": "b-charpennes-croix-luizet",
+      "date": "2026-10-02",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-pnm-101047",
+      "teamId": "b-charpennes-croix-luizet",
+      "date": "2026-10-03",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu9-15",
+      "teamId": "b-charpennes-croix-luizet-1",
+      "date": "2026-10-03",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu11-34",
+      "teamId": "b-charpennes-croix-luizet-1",
+      "date": "2026-10-03",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu9-36",
+      "teamId": "b-charpennes-croix-luizet-1",
+      "date": "2026-10-03",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-pnf-201050",
+      "teamId": "b-charpennes-croix-luizet-1",
+      "date": "2026-10-03",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu13-16",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-10-03",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu15-6-22",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-10-03",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu18-6-20",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-10-03",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu9-2-60",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-10-03",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu11-2-79",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-10-03",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu15-17",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-10-03",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu18-32",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-10-03",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu9-2-45",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-10-03",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu18-3-17",
+      "teamId": "b-charpennes-croix-luizet-3",
+      "date": "2026-10-03",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu15-2-25",
+      "teamId": "b-charpennes-croix-luizet-3-3",
+      "date": "2026-10-03",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rmu21-120031",
+      "teamId": "b-charpennes-croix-luizet",
+      "date": "2026-10-04",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu21-15",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-10-04",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dm2-81",
+      "teamId": "b-charpennes-croix-luizet-4",
+      "date": "2026-10-04",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu11-34",
+      "teamId": "b-charpennes-croix-luizet-1",
+      "date": "2026-10-10",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmve-20",
+      "teamId": "b-charpennes-croix-luizet-10",
+      "date": "2026-10-10",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rmu13-brassage-50",
+      "teamId": "b-charpennes-croix-luizet-10",
+      "date": "2026-10-10",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rmu15-brassage-50",
+      "teamId": "b-charpennes-croix-luizet-10",
+      "date": "2026-10-10",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu11-2-55",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-10-10",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu13-32",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-10-10",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rf3-203088",
+      "teamId": "b-charpennes-croix-luizet-2-5",
+      "date": "2026-10-10",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rfu13-brassage-57",
+      "teamId": "b-charpennes-croix-luizet-20",
+      "date": "2026-10-10",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rfu15-brassage-57",
+      "teamId": "b-charpennes-croix-luizet-20",
+      "date": "2026-10-10",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu13-3-56",
+      "teamId": "b-charpennes-croix-luizet-3",
+      "date": "2026-10-10",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rmu18-brassage-72",
+      "teamId": "b-charpennes-croix-luizet-10",
+      "date": "2026-10-11",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rm2-102100",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-10-11",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rfu18-brassage-57",
+      "teamId": "b-charpennes-croix-luizet-20",
+      "date": "2026-10-11",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-prm-63",
+      "teamId": "b-charpennes-croix-luizet-3-2",
+      "date": "2026-10-11",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-df2-37",
+      "teamId": "b-charpennes-croix-luizet-3-8",
+      "date": "2026-10-11",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfloi-83",
+      "teamId": "b-charpennes-croix-luizet",
+      "date": "2026-10-16",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu9-27",
+      "teamId": "b-charpennes-croix-luizet-1",
+      "date": "2026-10-17",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu9-60",
+      "teamId": "b-charpennes-croix-luizet-1",
+      "date": "2026-10-17",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu9-2-102",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-10-17",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu13-41",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-10-17",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu15-28",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-10-17",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu18-55",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-10-17",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu21-27",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-10-17",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu9-2-87",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-10-17",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu13-3-71",
+      "teamId": "b-charpennes-croix-luizet-3",
+      "date": "2026-10-17",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfu18-3-28",
+      "teamId": "b-charpennes-croix-luizet-3",
+      "date": "2026-10-18",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dm2-145",
+      "teamId": "b-charpennes-croix-luizet-4",
+      "date": "2026-10-18",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-pnm-101082",
+      "teamId": "b-charpennes-croix-luizet",
+      "date": "2026-11-07",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-pnf-201085",
+      "teamId": "b-charpennes-croix-luizet-1",
+      "date": "2026-11-07",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmve-36",
+      "teamId": "b-charpennes-croix-luizet-10",
+      "date": "2026-11-07",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-prm-94",
+      "teamId": "b-charpennes-croix-luizet-3-2",
+      "date": "2026-11-08",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-df2-65",
+      "teamId": "b-charpennes-croix-luizet-3-8",
+      "date": "2026-11-08",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfloi-116",
+      "teamId": "b-charpennes-croix-luizet",
+      "date": "2026-11-12",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmve-41",
+      "teamId": "b-charpennes-croix-luizet-10",
+      "date": "2026-11-13",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-df2-78",
+      "teamId": "b-charpennes-croix-luizet-3-8",
+      "date": "2026-11-15",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dm2-209",
+      "teamId": "b-charpennes-croix-luizet-4",
+      "date": "2026-11-15",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-pnm-101118",
+      "teamId": "b-charpennes-croix-luizet",
+      "date": "2026-11-21",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-pnf-201121",
+      "teamId": "b-charpennes-croix-luizet-1",
+      "date": "2026-11-21",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu21-45",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-11-21",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rmu21-120081",
+      "teamId": "b-charpennes-croix-luizet",
+      "date": "2026-11-22",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rm2-102182",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-11-22",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rf3-203161",
+      "teamId": "b-charpennes-croix-luizet-2-5",
+      "date": "2026-11-22",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-prm-125",
+      "teamId": "b-charpennes-croix-luizet-3-2",
+      "date": "2026-11-22",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu21-50",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-11-28",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rm2-102208",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-11-29",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rf3-203184",
+      "teamId": "b-charpennes-croix-luizet-2-5",
+      "date": "2026-11-29",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-df2-100",
+      "teamId": "b-charpennes-croix-luizet-3-8",
+      "date": "2026-11-29",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dm2-273",
+      "teamId": "b-charpennes-croix-luizet-4",
+      "date": "2026-11-29",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfloi-171",
+      "teamId": "b-charpennes-croix-luizet",
+      "date": "2026-12-03",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-pnm-101154",
+      "teamId": "b-charpennes-croix-luizet",
+      "date": "2026-12-05",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-pnf-201157",
+      "teamId": "b-charpennes-croix-luizet-1",
+      "date": "2026-12-05",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmve-60",
+      "teamId": "b-charpennes-croix-luizet-10",
+      "date": "2026-12-05",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rmu21-120104",
+      "teamId": "b-charpennes-croix-luizet",
+      "date": "2026-12-06",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-prm-160",
+      "teamId": "b-charpennes-croix-luizet-3-2",
+      "date": "2026-12-06",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu21-62",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-12-12",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dm2-337",
+      "teamId": "b-charpennes-croix-luizet-4",
+      "date": "2026-12-12",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rmu21-120115",
+      "teamId": "b-charpennes-croix-luizet",
+      "date": "2026-12-13",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rm2-102264",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2026-12-13",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-rf3-203234",
+      "teamId": "b-charpennes-croix-luizet-2-5",
+      "date": "2026-12-13",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-df2-126",
+      "teamId": "b-charpennes-croix-luizet-3-8",
+      "date": "2026-12-13",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmve-71",
+      "teamId": "b-charpennes-croix-luizet-10",
+      "date": "2026-12-18",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-prm-192",
+      "teamId": "b-charpennes-croix-luizet-3-2",
+      "date": "2026-12-20",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-df2-136",
+      "teamId": "b-charpennes-croix-luizet-3-8",
+      "date": "2026-12-20",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfloi-227",
+      "teamId": "b-charpennes-croix-luizet",
+      "date": "2027-01-09",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu21-75",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2027-01-09",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dm2-401",
+      "teamId": "b-charpennes-croix-luizet-4",
+      "date": "2027-01-10",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmve-81",
+      "teamId": "b-charpennes-croix-luizet-10",
+      "date": "2027-01-15",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-prm-224",
+      "teamId": "b-charpennes-croix-luizet-3-2",
+      "date": "2027-01-17",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-df2-158",
+      "teamId": "b-charpennes-croix-luizet-3-8",
+      "date": "2027-01-17",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfloi-263",
+      "teamId": "b-charpennes-croix-luizet",
+      "date": "2027-01-30",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu21-87",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2027-01-30",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmve-91",
+      "teamId": "b-charpennes-croix-luizet-10",
+      "date": "2027-02-05",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-df2-186",
+      "teamId": "b-charpennes-croix-luizet-3-8",
+      "date": "2027-02-07",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfloi-299",
+      "teamId": "b-charpennes-croix-luizet",
+      "date": "2027-02-27",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu21-99",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2027-02-27",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu21-105",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2027-03-06",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfloi-331",
+      "teamId": "b-charpennes-croix-luizet",
+      "date": "2027-03-11",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmve-112",
+      "teamId": "b-charpennes-croix-luizet-10",
+      "date": "2027-03-12",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-df2-221",
+      "teamId": "b-charpennes-croix-luizet-3-8",
+      "date": "2027-03-14",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfloi-351",
+      "teamId": "b-charpennes-croix-luizet",
+      "date": "2027-03-18",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmve-120",
+      "teamId": "b-charpennes-croix-luizet-10",
+      "date": "2027-03-20",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmu21-121",
+      "teamId": "b-charpennes-croix-luizet-2",
+      "date": "2027-04-03",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-df2-246",
+      "teamId": "b-charpennes-croix-luizet-3-8",
+      "date": "2027-04-04",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dfloi-386",
+      "teamId": "b-charpennes-croix-luizet",
+      "date": "2027-04-08",
+      "kind": "TO_PLACE"
+    },
+    {
+      "id": "m-dmve-131",
+      "teamId": "b-charpennes-croix-luizet-10",
+      "date": "2027-04-09",
+      "kind": "TO_PLACE"
+    }
+  ],
+  "venues": [
+    {
+      "id": "gymnase-armand",
+      "name": "GYMNASE ARMAND",
+      "matchWindows": [
+        {
+          "dayOfWeek": 6,
+          "start": "00:00",
+          "end": "17:45"
+        }
+      ],
+      "unavailabilities": []
+    },
+    {
+      "id": "gymnase-jeanne-desparmet-ruello",
+      "name": "GYMNASE JEANNE DESPARMET-RUELLO",
+      "matchWindows": [
+        {
+          "dayOfWeek": 4,
+          "start": "20:45",
+          "end": "22:30"
+        },
+        {
+          "dayOfWeek": 5,
+          "start": "20:45",
+          "end": "22:30"
+        },
+        {
+          "dayOfWeek": 6,
+          "start": "00:00",
+          "end": "22:30"
+        },
+        {
+          "dayOfWeek": 7,
+          "start": "09:00",
+          "end": "19:15"
+        }
+      ],
+      "unavailabilities": []
+    },
+    {
+      "id": "gymnase-mateo",
+      "name": "GYMNASE MATEO",
+      "matchWindows": [
+        {
+          "dayOfWeek": 5,
+          "start": "20:45",
+          "end": "22:30"
+        },
+        {
+          "dayOfWeek": 6,
+          "start": "00:00",
+          "end": "01:45"
+        },
+        {
+          "dayOfWeek": 7,
+          "start": "10:00",
+          "end": "18:15"
+        }
+      ],
+      "unavailabilities": []
+    },
+    {
+      "id": "salle-annexe-de-barros",
+      "name": "SALLE ANNEXE DE BARROS",
+      "matchWindows": [
+        {
+          "dayOfWeek": 6,
+          "start": "13:00",
+          "end": "17:00"
+        }
+      ],
+      "unavailabilities": []
+    },
+    {
+      "id": "salle-raphael-de-barros",
+      "name": "SALLE RAPHAEL DE BARROS",
+      "matchWindows": [
+        {
+          "dayOfWeek": 4,
+          "start": "20:45",
+          "end": "22:30"
+        },
+        {
+          "dayOfWeek": 6,
+          "start": "13:00",
+          "end": "20:45"
+        }
+      ],
+      "unavailabilities": []
+    }
+  ],
+  "teams": [
+    {
+      "id": "b-charpennes-croix-luizet",
+      "name": "B CHARPENNES CROIX LUIZET",
+      "leagueWindows": [],
+      "habits": [],
+      "coaches": []
+    },
+    {
+      "id": "b-charpennes-croix-luizet-1",
+      "name": "B CHARPENNES CROIX LUIZET - 1",
+      "leagueWindows": [],
+      "habits": [],
+      "coaches": []
+    },
+    {
+      "id": "b-charpennes-croix-luizet-10",
+      "name": "B CHARPENNES CROIX LUIZET (10)",
+      "leagueWindows": [],
+      "habits": [],
+      "coaches": []
+    },
+    {
+      "id": "b-charpennes-croix-luizet-12",
+      "name": "B CHARPENNES CROIX LUIZET (12)",
+      "leagueWindows": [],
+      "habits": [],
+      "coaches": []
+    },
+    {
+      "id": "b-charpennes-croix-luizet-2",
+      "name": "B CHARPENNES CROIX LUIZET - 2",
+      "leagueWindows": [],
+      "habits": [],
+      "coaches": []
+    },
+    {
+      "id": "b-charpennes-croix-luizet-2-5",
+      "name": "B CHARPENNES CROIX LUIZET - 2 (5)",
+      "leagueWindows": [],
+      "habits": [],
+      "coaches": []
+    },
+    {
+      "id": "b-charpennes-croix-luizet-20",
+      "name": "B CHARPENNES CROIX LUIZET (20)",
+      "leagueWindows": [],
+      "habits": [],
+      "coaches": []
+    },
+    {
+      "id": "b-charpennes-croix-luizet-3",
+      "name": "B CHARPENNES CROIX LUIZET - 3",
+      "leagueWindows": [],
+      "habits": [],
+      "coaches": []
+    },
+    {
+      "id": "b-charpennes-croix-luizet-3-2",
+      "name": "B CHARPENNES CROIX LUIZET - 3 (2)",
+      "leagueWindows": [],
+      "habits": [],
+      "coaches": []
+    },
+    {
+      "id": "b-charpennes-croix-luizet-3-3",
+      "name": "B CHARPENNES CROIX LUIZET - 3 (3)",
+      "leagueWindows": [],
+      "habits": [],
+      "coaches": []
+    },
+    {
+      "id": "b-charpennes-croix-luizet-3-8",
+      "name": "B CHARPENNES CROIX LUIZET - 3 (8)",
+      "leagueWindows": [],
+      "habits": [],
+      "coaches": []
+    },
+    {
+      "id": "b-charpennes-croix-luizet-4",
+      "name": "B CHARPENNES CROIX LUIZET - 4",
+      "leagueWindows": [],
+      "habits": [],
+      "coaches": []
+    }
+  ]
+}

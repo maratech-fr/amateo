@@ -19,7 +19,9 @@ class UnplacedMatchSchema(SerializableModel):
     ADR-0001: nothing is relaxed, the impossible is spelled out)."""
 
     match_id: str = Field(alias="matchId")
-    # no_access_window | no_league_intersection | venue_unavailable | venue_full
+    # no_access_window | no_league_intersection | venue_unavailable | venue_full | not_selected
+    # (venue_full = plus aucun créneau licite libre ; not_selected = un créneau licite restait
+    # libre mais le solveur ne l'a pas retenu dans le temps imparti — cf. REASON_MESSAGES).
     reason: str
     message: str
 

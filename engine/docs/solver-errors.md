@@ -1,7 +1,7 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-09-26 (passe « présent » zone engine, `documentation-update`). Re-confronté au
-code : `engine/CONTRACT_VERSION` = `2.23` ✓ ; la liste `type` de `DiagnosticSchema`
+Last verified @ 2026-09-28 (recalé par la livraison P4-240 : contrat **2.24** ; reste inchangé, passe « présent » zone engine, `documentation-update`). Re-confronté au
+code : `engine/CONTRACT_VERSION` = `2.24` ✓ ; la liste `type` de `DiagnosticSchema`
 (`app/schemas/output_schema.py:62-90`) porte **15 valeurs**, toutes présentes dans la table
 ci-dessous ✓ ; `SCORE_FORMULA_VERSION` = `T24_LEVEL_2_FIXED_WEIGHTS_V13`
 (`app/solver/objective/weights.py:31`) ✓ ; `BUILD_BUDGET_SECONDS` = `10.0`
@@ -27,7 +27,7 @@ Ces erreurs sont retournees directement par l'API FastAPI, avant meme que le sol
 - `sessionsPerWeek: "trois"` au lieu d'un entier
 - Champ `sportCategoryId` manquant sur une equipe (requis)
 - Cle inconnue dans le payload (les schemas sont `extra=forbid`)
-- `version: "1.0"` alors que le moteur parle le **MAJOR 2** du contrat `2.23` (`"2.0"` comme `"2.1"` passent)
+- `version: "1.0"` alors que le moteur parle le **MAJOR 2** du contrat `2.24` (`"2.0"` comme `"2.1"` passent)
 
 **Attention — deux pieges qui ne provoquent PAS de 422** : `lockLevel` est une **chaine libre**, pas un enum (un `"FORT"` est accepte et simplement traite comme non-`HARD`), et le `dayOfWeek` d'un creneau de gymnase (`VenueTrainingSlotSchema`) est un entier **sans borne** — un `8` passe la validation (d'autres schemas du meme payload, eux, sont bornes `ge=1, le=7` : la tolerance n'est pas une regle generale).
 

@@ -702,6 +702,16 @@ jobs:
       - name: RedeliveredGenerationTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/MessageHandler/RedeliveredGenerationTest.php --group phase1'
 
+      # P4-240 (axe constraint semantics) — le contrat de PLACEMENT des matchs contre le VRAI
+      # moteur (le job démarre déjà php-fpm + engine). Deux promesses : tout ce qui est plaçable
+      # EST placé (fenêtre large, zéro conflit → zéro `unplaced`), et le VOCABULAIRE des raisons
+      # d'échec reste EXACT (`venue_unavailable`/`venue_full`/`not_selected`…) — un code hors
+      # énumération casserait le mapping front (enum OpenAPI + `UnplacedReason`), que rien d'autre
+      # ne typecheck (sérialisation à la main des deux côtés). Skip propre si l'engine est absent.
+      # Sans ce gate, une dérive du contrat de placement passerait tous les checks requis.
+      - name: MatchPlacementSemanticsGateTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/MatchPlacementSemanticsGateTest.php --group phase1'
+
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest

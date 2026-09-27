@@ -48,11 +48,11 @@ L'**engine** est un microservice Python qui reçoit un contexte complet (clubs, 
 
 ### `POST /generate`
 
-**Request** : `ScheduleInputSchema` (contrat `"2.23"`, fichier `engine/CONTRACT_VERSION` — seul le **MAJOR** est comparé, donc toute `"2.x"` passe)
+**Request** : `ScheduleInputSchema` (contrat `"2.24"`, fichier `engine/CONTRACT_VERSION` — seul le **MAJOR** est comparé, donc toute `"2.x"` passe)
 
 ```json
 {
-  "version": "2.23",
+  "version": "2.24",
   "clubId": "uuid",
   "seasonId": "uuid",
   "scheduleName": "Saison 2026-2027",
@@ -189,7 +189,7 @@ Le métier du solveur vit dans `engine/docs/` — à lire avant de toucher au so
 |-----|---------|
 | [`docs/business.md`](docs/business.md) | **Cœur métier** — concepts (équipe, salle, coach, contrainte : scopes/familles/règles, tiers de priorité, contraintes implicites, niveaux de lock). |
 | [`docs/constraint-vocabulary.md`](docs/constraint-vocabulary.md) | **Vocabulaire engine complet** — chaque clé de `config` que le solveur sait parser, son mécanisme (dur/soft), le `ruleType` qui l'active, et ce qu'un verrou HARD écrase (P2-9). |
-| [`docs/nominal-flow.md`](docs/nominal-flow.md) | Flux nominal d'une requête de bout en bout — structure du payload, négociation de version (contrat `2.23`, MAJOR only), locks par club, étapes du pipeline, schéma de sortie. |
+| [`docs/nominal-flow.md`](docs/nominal-flow.md) | Flux nominal d'une requête de bout en bout — structure du payload, négociation de version (contrat `2.24`, MAJOR only), locks par club, étapes du pipeline, schéma de sortie. |
 | [`docs/solver-errors.md`](docs/solver-errors.md) | Erreurs & diagnostics — erreurs HTTP, statuts solveur, types de diagnostics, scénarios d'infaisabilité, lecture du score, guide de debug. |
 | [`AGENTS.md`](AGENTS.md) | Cheat-sheet agent (conventions ruff/mypy/pytest, gotchas, quick-reference). |
 

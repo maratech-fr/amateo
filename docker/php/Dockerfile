@@ -167,7 +167,7 @@ RUN apt-get update \
 # graceful stop stays reachable. The 192M request cap is FPM-only, set as
 # php_admin_value in the pool below.
 RUN { \
-        echo "max_execution_time = 60"; \
+        echo "max_execution_time = 120"; \
         echo "opcache.enable = 1"; \
         echo "opcache.validate_timestamps = 0"; \
         echo "opcache.memory_consumption = 192"; \

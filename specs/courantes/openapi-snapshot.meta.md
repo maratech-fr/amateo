@@ -1,12 +1,10 @@
-Last verified @ 2026-09-27 (snapshot régénéré : `/api/matches/deadline-outlook` gagne un champ
-GLOBAL `toConfirmCount` — domiciles « validé ligue » prêts — et le `toPlaceCount` de chaque fenêtre
-SOUSTRAIT désormais les validables ; `/api/fixtures/league-validation` : `matured[]` gagne
-`maturedBy` (`deadline`/`firstMatchPlayed`) + `firstMatchDate`, `deadline` devient nullable
-(critère élargi : un championnat est proposé si l'échéance est passée OU si le premier match est
-joué) ; aucun chemin ajouté, compte inchangé, empreinte bumpée).
+Last verified @ 2026-09-28 (snapshot régénéré : la réponse de `POST /api/fixtures/place` gagne la
+raison d'échec `not_selected` dans l'énumération `unplaced[].reason` — distincte de `venue_full` :
+un créneau licite restait libre mais le solveur ne l'a pas retenu dans le temps imparti, «
+relancez le placement » (P4-240) ; aucun chemin ajouté, compte inchangé, empreinte bumpée).
 
 **208 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`bfff6ac37d40eea6a3857fdb4cf06448fac16e44fc2ceac9b854cf8cd497ae9f` (`sha256sum` sur le fichier).
+`cff028a89426c7609f3387900a3d13cc8b958659ac536b4856822d855b6d6f8a` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

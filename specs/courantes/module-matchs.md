@@ -1,6 +1,8 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-27 (lot « validé ligue » partout — §4/§7 re-confrontés :
+Last verified @ 2026-09-28 (recalé par la livraison P4-240 : contrat backend⇄engine **2.24** — le
+placement `/place-matches` distingue la raison `not_selected` de `venue_full` ; le reste ci-dessous
+inchangé, lot « validé ligue » partout — §4/§7 re-confrontés :
 `LeagueValidationOutlook::compute`/`fixturesToConfirm` porte le prédicat unique, `maturedBy`
 `deadline`/`firstMatchPlayed` + `firstMatchDate` (`backend/src/Service/LeagueValidationOutlook.php`)
 ✓ ; `FbiDivisionSignature::isFriendlyCode` exclut l'amical du lot
@@ -441,7 +443,7 @@ Présentation pure — aucune formule de gravité redérivée.
 ## 3. Solveur de placement (`POST /api/fixtures/place` → engine `/place-matches`)
 
 Second problème solveur ([ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md)),
-même `CONTRACT_VERSION` **2.23** que `/generate`/`/validate-assignments` (un seul contrat pour les
+même `CONTRACT_VERSION` **2.24** que `/generate`/`/validate-assignments` (un seul contrat pour les
 trois endpoints — voir §6 `CLAUDE.md`). **Rail
 SYNCHRONE** (`PlaceMatchesController` — management + saison écrivable + socle pointé), anti-double-clic
 `MatchPlacementLock` (Redis dédié). Best-effort à poids dominant : `10 000 × Σ placés + SOFT` —
@@ -452,7 +454,7 @@ SYNCHRONE** (`PlaceMatchesController` — management + saison écrivable + socle
 `kickoff+matchMinutes ≤ end`), indisponibilités gymnase, no-overlap `(gymnase, date)` sur la fenêtre
 MATCH, fenêtre ligue quand l'enveloppe est résolue (non résolue = diagnostic INFO seul). Durées par
 équipe (`MatchDurationResolver`) portées par le contrat ; absentes côté engine ⇒ défauts Pydantic
-105/30. **Trajet adversaire (D3, contrat 2.23)** : une ligne AWAY porte `roundTripMinutes` (2 ×
+105/30. **Trajet adversaire (D3, contrat 2.24)** : une ligne AWAY porte `roundTripMinutes` (2 ×
 aller simple, projeté par la maison unique `App\Service\OpponentTravelProjection`, partagée avec
 le radar §2) ; le solveur étend la fenêtre de blocage du coach de ce trajet — moitié avant
 le coup d'envoi, moitié après le match, SANS échauffement dans cette fenêtre (réplique exacte de

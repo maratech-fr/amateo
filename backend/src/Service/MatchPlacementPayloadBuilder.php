@@ -62,7 +62,7 @@ final class MatchPlacementPayloadBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '2.23';
+    public const string CONTRACT_VERSION = '2.24';
 
     /**
      * Borne du trajet aller-retour AWAY émis, alignée sur le schéma engine
@@ -231,7 +231,7 @@ final class MatchPlacementPayloadBuilder
                 'clubId' => $club->getId(),
                 'seasonId' => $seasonId ?? '',
                 'solverSeed' => 42,
-                'solverTimeoutSeconds' => 30,
+                'solverTimeoutSeconds' => 60,
                 'matches' => $matchRows,
                 'venues' => $venueRows,
                 'teams' => $teamRows,

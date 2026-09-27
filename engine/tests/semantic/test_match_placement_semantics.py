@@ -15,7 +15,12 @@ from typing import Any
 from app.main import read_contract_version
 from app.schemas.match_input_schema import MatchPlacementInputSchema, MatchTeamSchema
 from app.schemas.match_output_schema import MatchPlacementOutputSchema
-from app.solver.match_placement import DEFAULT_MATCH_MIN, solve_match_placement
+from app.solver.match_placement import (
+    DEFAULT_MATCH_MIN,
+    REASON_MESSAGES,
+    _remaining_reason,
+    solve_match_placement,
+)
 
 SATURDAY = "2026-10-03"
 
@@ -394,3 +399,61 @@ def test_horizon_spans_weeks_and_stays_consistent() -> None:
     # The habit (15:30) attracts BOTH weeks — the semaine type holds across weeks.
     assert {p.kickoff for p in output.placements} == {time(15, 30)}
     assert_no_hard_violation(input_data, output)
+
+
+def test_a_saturated_venue_yields_venue_full_through_the_solver() -> None:
+    # NR sémantique P4-240 (sens venue_full) — un gymnase RÉELLEMENT saturé : une
+    # fenêtre samedi 14:00-15:45 (105 min = UN seul créneau à 14:00) pour DEUX matchs
+    # le même jour. Le solveur en place un ; l'autre n'a plus AUCUN créneau licite
+    # libre (son unique candidat 14:00 recouvre le match posé) → reason venue_full,
+    # jamais not_selected.
+    payload = wire_payload()
+    payload["venues"] = [
+        {
+            "id": "mateo",
+            "name": "Mateo",
+            "matchWindows": [{"dayOfWeek": 6, "start": "14:00", "end": "15:45"}],
+            "unavailabilities": [],
+        }
+    ]
+    payload["matches"] = [
+        {"id": "m-a", "teamId": "a", "date": SATURDAY, "kind": "TO_PLACE"},
+        {"id": "m-b", "teamId": "b", "date": SATURDAY, "kind": "TO_PLACE"},
+    ]
+    payload["teams"] = [
+        {"id": "a", "name": "A", "leagueWindows": [], "habits": [], "coaches": []},
+        {"id": "b", "name": "B", "leagueWindows": [], "habits": [], "coaches": []},
+    ]
+    payload["teamLinks"] = []
+    payload["trainingOccupancies"] = []
+
+    input_data = MatchPlacementInputSchema.model_validate(payload)
+    output = MatchPlacementOutputSchema.model_validate(solve_match_placement(input_data))
+
+    assert len(output.placements) == 1
+    assert len(output.unplaced) == 1
+    assert output.unplaced[0].reason == "venue_full", (
+        f"gymnase saturé attendu venue_full, obtenu {output.unplaced[0].reason!r}"
+    )
+    assert output.unplaced[0].message == REASON_MESSAGES["venue_full"]
+    assert_no_hard_violation(input_data, output)
+
+
+def test_remaining_reason_falsified_both_ways() -> None:
+    # NR P4-240 — le classement post-solve (venue_full vs not_selected) falsifié dans
+    # les DEUX sens sur la fonction pure `_remaining_reason` (not_selected est sinon un
+    # artefact d'épuisement du budget, non forçable de façon déterministe sur un petit
+    # problème : le solveur atteint l'optimum et place tout ce qui est plaçable).
+    day = date.fromisoformat(SATURDAY)
+    # 840 = 14:00, 945 = 15:45 ; match 105 min. L'unique créneau candidat 14:00 est
+    # occupé → plus aucun créneau licite libre → venue_full.
+    assert _remaining_reason([("mateo", 840)], day, 105, {("mateo", day): [(840, 945)]}) == "venue_full"
+    # Deux créneaux candidats, seul 14:00 occupé → 15:45 reste licite ET libre →
+    # not_selected (« relancez le placement »).
+    assert _remaining_reason([("mateo", 840), ("mateo", 945)], day, 105, {("mateo", day): [(840, 945)]}) == (
+        "not_selected"
+    )
+    # Un créneau libre sur un AUTRE gymnase compte aussi comme not_selected.
+    assert _remaining_reason([("mateo", 840), ("armand", 840)], day, 105, {("mateo", day): [(840, 945)]}) == (
+        "not_selected"
+    )

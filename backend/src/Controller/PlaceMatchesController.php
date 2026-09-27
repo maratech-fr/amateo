@@ -39,8 +39,8 @@ final class PlaceMatchesController extends AbstractController
 {
     use ResolvesCurrentClubTrait;
 
-    private const LOCK_TTL_SECONDS = 90;
-    private const HTTP_TIMEOUT_SECONDS = 60;
+    private const LOCK_TTL_SECONDS = 120;
+    private const HTTP_TIMEOUT_SECONDS = 90;
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
