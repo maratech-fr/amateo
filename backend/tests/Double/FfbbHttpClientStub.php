@@ -150,13 +150,13 @@ final class FfbbHttpClientStub implements HttpClientInterface
                 $small = str_contains($body, '3000)');
                 $hits = [
                     ['libelle' => 'GYMNASE PROCHE', 'adresse' => '1 rue Près', 'numero' => '900000001',
-                        'cartographie' => ['ville' => 'Testville', 'latitude' => 45.001, 'longitude' => 4.001]],
+                        'cartographie' => ['ville' => 'Testville', 'latitude' => 45.001, 'longitude' => 4.001], 'commune' => ['codePostal' => '69120']],
                     ['libelle' => 'SALLE VOISINE', 'adresse' => '2 rue À-Côté', 'numero' => '900000002',
-                        'cartographie' => ['ville' => 'Testville', 'latitude' => 45.002, 'longitude' => 4.002]],
+                        'cartographie' => ['ville' => 'Testville', 'latitude' => 45.002, 'longitude' => 4.002], 'commune' => ['codePostal' => '69120']],
                 ];
                 if (!$small) {
                     $hits[] = ['libelle' => 'GYMNASE LOINTAIN', 'adresse' => '9 route Loin', 'numero' => '900000009',
-                        'cartographie' => ['ville' => 'Ailleurs', 'latitude' => 45.05, 'longitude' => 4.05]];
+                        'cartographie' => ['ville' => 'Ailleurs', 'latitude' => 45.05, 'longitude' => 4.05], 'commune' => ['codePostal' => '01000']];
                 }
 
                 return $this->search($hits);
@@ -167,7 +167,7 @@ final class FfbbHttpClientStub implements HttpClientInterface
                 // Sans cette branche, une requête nom tomberait dans le cas CP et rendrait [].
                 $hits = [
                     ['libelle' => 'GYMNASE RECHERCHE PAR NOM', 'adresse' => '3 rue du Nom', 'numero' => '166900500',
-                        'cartographie' => ['ville' => 'Villeurbanne', 'latitude' => 45.77, 'longitude' => 4.89]],
+                        'cartographie' => ['ville' => 'Villeurbanne', 'latitude' => 45.77, 'longitude' => 4.89], 'commune' => ['codePostal' => '69100']],
                 ];
 
                 return $this->search($hits);
@@ -179,9 +179,9 @@ final class FfbbHttpClientStub implements HttpClientInterface
                 // Symfony les sérialise en ' — on matche le CP seul.
                 $hits = str_contains($body, '69100') ? [
                     ['libelle' => 'SALLE ZOLA', 'adresse' => '251 cours Émile Zola', 'numero' => '166900001',
-                        'cartographie' => ['ville' => 'Villeurbanne', 'latitude' => 45.76672, 'longitude' => 4.9076]],
+                        'cartographie' => ['ville' => 'Villeurbanne', 'latitude' => 45.76672, 'longitude' => 4.9076], 'commune' => ['codePostal' => '69100']],
                     ['libelle' => 'GYMNASE MATEO', 'adresse' => '5 BIS RUE EMILE DUNIERE', 'numero' => '166926604',
-                        'cartographie' => ['ville' => 'Villeurbanne', 'latitude' => 45.78017, 'longitude' => 4.88467]],
+                        'cartographie' => ['ville' => 'Villeurbanne', 'latitude' => 45.78017, 'longitude' => 4.88467], 'commune' => ['codePostal' => '69100']],
                     ['libelle' => '', 'adresse' => 'sans nom'],
                 ] : [];
 

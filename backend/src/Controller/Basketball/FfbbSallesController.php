@@ -150,6 +150,7 @@ final class FfbbSallesController extends AbstractController
             return null;
         }
         $carto = \is_array($hit['cartographie'] ?? null) ? $hit['cartographie'] : [];
+        $commune = \is_array($hit['commune'] ?? null) ? $hit['commune'] : [];
         $str = static fn (mixed $v): ?string => \is_string($v) && '' !== trim($v) ? trim($v) : null;
         // Lat/lng viennent en float du JSON Meilisearch ; Venue les stocke en
         // string (decimal) — on normalise ici, en refusant tout non-numérique.
@@ -159,6 +160,7 @@ final class FfbbSallesController extends AbstractController
             'name' => $name,
             'address' => $str($hit['adresse'] ?? null),
             'city' => $str($carto['ville'] ?? null),
+            'postalCode' => $str($commune['codePostal'] ?? null),
             'externalRef' => $str($hit['numero'] ?? null),
             'latitude' => $num($carto['latitude'] ?? null),
             'longitude' => $num($carto['longitude'] ?? null),

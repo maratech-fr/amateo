@@ -150,6 +150,27 @@ describe("OpponentsPage — la liste par club adverse (grain gymnase)", () => {
     expect(screen.getByRole("button", { name: "Actions pour Gym 1 — Multi" })).toHaveFocus();
   });
 
+  it("le menu liste « Modifier le gymnase » EN PREMIER et l'ouvre en mode repoint avec le bon lien", async () => {
+    const user = userEvent.setup();
+    travelState.data = {
+      clubGeolocated: true,
+      opponents: [club({ code: "C", name: "Multi", venues: [venue({ id: "l1", label: "Gym 1" }), venue({ id: "l2", label: "Gym 2" })] })],
+    };
+    renderWithProviders(<OpponentsPage />);
+
+    await user.click(screen.getByRole("button", { name: "Actions pour Gym 1 — Multi" }));
+    const items = screen.getAllByRole("menuitem");
+    expect(items[0]).toHaveTextContent("Modifier le gymnase");
+    // « Retirer ce gymnase » reste le dernier item.
+    expect(items[items.length - 1]).toHaveTextContent("Retirer ce gymnase");
+
+    await user.click(screen.getByRole("menuitem", { name: "Modifier le gymnase" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Modifier le gymnase — Multi")).toBeInTheDocument();
+    expect(within(dialog).getByText("« Gym 1 »")).toBeInTheDocument();
+    expect(within(dialog).getByText(/sera remplacé par le gymnase choisi/)).toBeInTheDocument();
+  });
+
   it("un seul gymnase : le menu ne propose PAS de fusion, juste « Retirer »", async () => {
     const user = userEvent.setup();
     travelState.data = { clubGeolocated: true, opponents: [club({ code: "C", name: "Solo", venues: [venue({ id: "l1", label: "Gym Unique" })] })] };

@@ -42,9 +42,9 @@ final class FfbbSallesTest extends WebTestCase
         // sert ZOLA avant MATEO — l'inverse prouve le tri serveur).
         self::assertSame(['GYMNASE MATEO', 'SALLE ZOLA'], array_column($data['salles'], 'name'));
         self::assertSame(
-            ['name' => 'GYMNASE MATEO', 'address' => '5 BIS RUE EMILE DUNIERE', 'city' => 'Villeurbanne', 'externalRef' => '166926604', 'latitude' => '45.78017', 'longitude' => '4.88467'],
+            ['name' => 'GYMNASE MATEO', 'address' => '5 BIS RUE EMILE DUNIERE', 'city' => 'Villeurbanne', 'postalCode' => '69100', 'externalRef' => '166926604', 'latitude' => '45.78017', 'longitude' => '4.88467'],
             $data['salles'][0],
-            'mapping serveur : champs utiles seulement, lat/lng en string (format Venue)',
+            'mapping serveur : champs utiles seulement (code postal après la ville), lat/lng en string (format Venue)',
         );
     }
 
@@ -79,6 +79,8 @@ final class FfbbSallesTest extends WebTestCase
         $data = $this->get('/api/ffbb/salles?q=' . urlencode('GYMNASE'), $this->adminToken);
         self::assertNull($data['postalCode'], 'une recherche par nom ne porte pas de code postal');
         self::assertSame(['GYMNASE RECHERCHE PAR NOM'], array_column($data['salles'], 'name'));
+        // La salle porte SON code postal fédéral (commune.codePostal), même sur la voie nom.
+        self::assertSame('69100', $data['salles'][0]['postalCode'], 'le code postal fédéral de la salle est relayé');
 
         // Moins de 3 caractères → liste vide, aucun appel (même seuil que le front).
         $data = $this->get('/api/ffbb/salles?q=GY', $this->adminToken);

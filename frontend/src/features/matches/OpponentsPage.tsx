@@ -41,6 +41,8 @@ interface Locating {
   clubName: string;
   /** Le libellé de fichier à apparier (ligne orpheline) ; null = « ajouter un gymnase » au club. */
   fbiLabel: string | null;
+  /** Mode « modifier le gymnase » — le lien à re-pointer (EXCLUSIF de fbiLabel). null sinon. */
+  repointLink: { id: string; label: string } | null;
   /** Les libellés orphelins du club — la file que la modale enchaîne (mode appariement). */
   unmatchedLabels: string[];
   /** L'adversaire n'a aucun code fédéral (apparié par clé sentinelle, pas de suggestions partagées). */
@@ -236,9 +238,9 @@ export function OpponentsPage() {
                       <span className="sr-only">Logo</span>
                     </TableHead>
                     <TableHead>Gymnase</TableHead>
-                    <TableHead className="hidden @md:table-cell">Trajet</TableHead>
-                    <TableHead className="hidden text-right @md:table-cell">Rencontres</TableHead>
-                    <TableHead className="text-right">
+                    <TableHead className="hidden @md:table-cell @md:w-28">Trajet</TableHead>
+                    <TableHead className="hidden text-right @md:table-cell @md:w-24">Rencontres</TableHead>
+                    <TableHead className="w-14 text-right">
                       <span className="sr-only">Actions</span>
                     </TableHead>
                   </TableRow>
@@ -249,14 +251,27 @@ export function OpponentsPage() {
                     club={club}
                     filter={activeFilter}
                     onAddVenue={() =>
-                      setLocating({ code: club.pairingKey, clubName: club.name, fbiLabel: null, unmatchedLabels: [], sansCode: null === club.code, city: club.city, postalCode: club.postalCode })
+                      setLocating({ code: club.pairingKey, clubName: club.name, fbiLabel: null, repointLink: null, unmatchedLabels: [], sansCode: null === club.code, city: club.city, postalCode: club.postalCode })
                     }
                     onPairLabel={(label) =>
                       setLocating({
                         code: club.pairingKey,
                         clubName: club.name,
                         fbiLabel: label,
+                        repointLink: null,
                         unmatchedLabels: club.unmatchedLabels.map((u) => u.label),
+                        sansCode: null === club.code,
+                        city: club.city,
+                        postalCode: club.postalCode,
+                      })
+                    }
+                    onRepoint={(venue) =>
+                      setLocating({
+                        code: club.pairingKey,
+                        clubName: club.name,
+                        fbiLabel: null,
+                        repointLink: { id: venue.id, label: venue.label },
+                        unmatchedLabels: [],
                         sansCode: null === club.code,
                         city: club.city,
                         postalCode: club.postalCode,
@@ -283,6 +298,7 @@ export function OpponentsPage() {
           code={locating.code}
           clubName={locating.clubName}
           fbiLabel={locating.fbiLabel}
+          repointLink={locating.repointLink}
           unmatchedLabels={locating.unmatchedLabels}
           sansCode={locating.sansCode}
           city={locating.city}
@@ -351,6 +367,7 @@ function ClubTbody({
   filter,
   onAddVenue,
   onPairLabel,
+  onRepoint,
   onRemove,
   onMerge,
 }: {
@@ -358,6 +375,7 @@ function ClubTbody({
   filter: OpponentFilter | null;
   onAddVenue: () => void;
   onPairLabel: (label: string) => void;
+  onRepoint: (venue: OpponentVenue) => void;
   onRemove: (venue: OpponentVenue) => void;
   onMerge: (source: OpponentVenue, target: OpponentVenue) => void;
 }) {
@@ -418,7 +436,8 @@ function ClubTbody({
               </TableCell>
               <TableCell className="hidden text-right tabular-nums @md:table-cell">{venue.fixtureCount}</TableCell>
               <TableCell className="text-right">
-                <Menu label={`Actions pour ${venue.label} — ${club.name}`} trigger={<MoreHorizontal className="size-4" aria-hidden="true" />} triggerClassName="size-11 rounded-md">
+                <Menu label={`Actions pour ${venue.label} — ${club.name}`} trigger={<MoreHorizontal className="size-4" aria-hidden="true" />} triggerClassName="size-11 rounded-md @md:size-8">
+                  <MenuItem onSelect={() => onRepoint(venue)}>Modifier le gymnase</MenuItem>
                   {club.venues
                     .filter((other) => other.id !== venue.id)
                     .map((other) => (

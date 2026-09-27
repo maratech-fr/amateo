@@ -36,6 +36,7 @@ final readonly class FfbbProxyPaths implements CustomPathContributor
             'name' => ['type' => 'string'],
             'address' => ['type' => ['string', 'null']],
             'city' => ['type' => ['string', 'null']],
+            'postalCode' => ['type' => ['string', 'null']],
             'externalRef' => ['type' => ['string', 'null']],
             // Décimaux rendus en STRING : `Venue` les stocke ainsi, on normalise à la source.
             'latitude' => ['type' => ['string', 'null']],

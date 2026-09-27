@@ -1,10 +1,8 @@
 # API FFBB — routes consommées
 
-Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement » backend 3/4 —
-balayage complet contre le code : `FfbbApiClient`, `FfbbSallesController.php`, `FfbbSalleResolver`,
-`FfbbRencontresController`/`FfbbRencontreReader`/`FfbbRencontreReconciler`,
-`FfbbEngagementsController`/`FfbbEngagementReader`, `OpponentLogoController`,
-`OpponentVenueAutoLocator`). Historique des passes précédentes vit dans git :
+Last verified @ 2026-09-27 (`documentation-update`, P4-264 — mapping des salles vérifié contre
+`FfbbSallesController::mapSalle` : `postalCode` (`commune.codePostal`) désormais relayé sur les deux
+voies CP et nom). Historique des passes précédentes vit dans git :
 `git log -p --follow backend/docs/ffbb-api.md`.
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les
@@ -258,8 +256,9 @@ haut.
   l'index n'est **pas** relié aux clubs — cadrage `api-ffbb-completion-club.md` §3). CP validé `^\d{5}$`
   avant interpolation dans le filtre (même règle anti-injection que les autres `search*`).
 - Exposé par `GET /api/ffbb/salles?postalCode=` (SEC-07 management ; **défaut = CP du club**, surchargable
-  — une salle peut être dans la commune voisine). Mapping serveur `{name, address, city, externalRef,
-  latitude, longitude}` — jamais le hit brut ; lat/lng convertis en string (format `Venue`).
+  — une salle peut être dans la commune voisine). Mapping serveur `{name, address, city, postalCode,
+  externalRef, latitude, longitude}` — jamais le hit brut ; `postalCode` lu dans `commune.codePostal`
+  du hit (`FfbbSallesController::mapSalle`) ; lat/lng convertis en string (format `Venue`).
 - Consommé par la combobox « Nom du gymnase » de l'étape Gymnases : choisir une suggestion crée le
   gymnase avec son **ancrage FFBB** (`Venue.externalRef` = numéro fédéral + GPS — colonnes préexistantes,
   zéro migration). La liste **propose, n'impose jamais** : saisie libre intacte, et tout changement
@@ -292,10 +291,11 @@ haut.
   `etat-des-lieux.md` §2).
 - Exposé par `GET /api/ffbb/salles?q=` — **alternative** à `?postalCode=` sur la même route
   (`FfbbSallesController`), seuil 3 caractères côté serveur ET front (en-dessous : liste vide,
-  aucun appel réseau). Même mapping serveur que la voie CP (`{name, address, city, externalRef,
-  latitude, longitude}`).
+  aucun appel réseau). Même mapping serveur que la voie CP (`{name, address, city, postalCode,
+  externalRef, latitude, longitude}`).
 - Consommé par `LocateOpponentModal` (champ « Nom du gymnase », débounced 300 ms, prend la main
-  sur le code postal dès qu'elle est active — détail produit :
+  sur le code postal dès qu'elle est active ; chaque résultat affiche « Nom · adresse · CP Ville »
+  — détail produit :
   [`../../specs/courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) §9 « Écran
   Adversaires ») et par `OpponentVenueAutoLocator` (repli automatique ci-dessus, ne retient qu'une
   égalité stricte et unique).

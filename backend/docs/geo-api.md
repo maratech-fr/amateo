@@ -1,12 +1,11 @@
 # API géo — routes externes consommées
 
-Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement » backend 3/4 —
-balayage complet contre le code : `BanGeocodingClient`, `IgnRoutingClient`,
-`VenueTravelTimeAutofillService`, `ClubTravelCache`/`TravelTimeCache`, `ComputeTravelTimesHandler`,
-`ClubSiegeController`, `OpponentTravelResolver`). Corrigé cette passe : le lot IGN n'est pas multiplexé en fenêtres concurrentes
-(`IgnRoutingClient::travelMinutesBatch` ignore son paramètre `$concurrency`, exécution sérielle
-pacée) — §3 le décrivait autrement. Historique des passes
-précédentes vit dans git : `git log -p --follow backend/docs/geo-api.md`.
+Last verified @ 2026-09-27 (`documentation-update`, rotation de fraîcheur — re-confronté au code :
+`IgnRoutingClient::travelMinutesBatch` ignore toujours `$concurrency` (sériel, pacé 1/s),
+`MAX_RETRY_AFTER_SECONDS = 5.0`, `BATCH_BUDGET_SECONDS = 30.0`,
+`VenueTravelTimeAutofillService::MAX_AUTOFILL_PAIRS = 120`, `ClubTravelCache` reste TENANT RLS
+FORCE — tout juste). Historique des passes précédentes vit dans git :
+`git log -p --follow backend/docs/geo-api.md`.
 
 > Répertoire des endpoints externes **géo** utilisés par le backend — deuxième famille de sorties
 > non-FFBB après `ffbb-api.md` (même patron : liste blanche de hosts codés en dur, SSRF-safe,
