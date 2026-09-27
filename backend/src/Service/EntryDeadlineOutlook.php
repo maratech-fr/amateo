@@ -21,8 +21,10 @@ use Symfony\Component\Clock\ClockInterface;
  * The entry-deadline cockpit outlook (RMM-6) — THE single home of the J-7 rule
  * (REMINDER_WINDOW_DAYS): the front computes nothing. For each EFFECTIVE deadline
  * (the club value, else the community default) that is still owed, it serves the
- * competition names, how many home fixtures remain to enter, and whether we are
- * within the reminder window. A solved deadline (nothing left to enter) is absent.
+ * competition names, how many home fixtures remain to PLACE (UNPLACED) and to ENTER
+ * (PLACED, ready to copy into FBI — aligned with `fbiTodo.toEnter` and the FBI list),
+ * and whether we are within the reminder window. A solved deadline (nothing left to
+ * place NOR to enter) is absent.
  *
  * When at least one J-7 window is open, it also joins the guardian delta of the
  * CURRENT user — via {@see MatchModuleDeltaComputer::computeDelta}, WITHOUT
@@ -46,7 +48,7 @@ final class EntryDeadlineOutlook
 
     /**
      * @return array{
-     *     windows: list<array{deadline: string, source: string, competitionNames: list<string>, toEnterCount: int, withinWindow: bool}>,
+     *     windows: list<array{deadline: string, source: string, competitionNames: list<string>, toPlaceCount: int, toEnterCount: int, withinWindow: bool}>,
      *     fbiTodo: array{toEnter: int, toCorrect: int},
      *     guardianDelta?: array{newFixturesCount: int, newConflictFingerprints: list<string>, planningChanged: bool}
      * }
@@ -59,7 +61,7 @@ final class EntryDeadlineOutlook
         /** @var list<Fixture> $fixtures */
         $fixtures = $this->entityManager->getRepository(Fixture::class)->findBy([]);
 
-        $toEnterByCompetition = $this->countHomeToEnterByCompetition($fixtures);
+        $homeByCompetition = $this->countHomeByCompetition($fixtures);
         $sharedByFfbbId = $this->sharedDeadlineRepository->mapByFfbbCompetitionIds(
             array_values(array_filter(array_map(
                 static fn (Competition $c): ?string => $c->getFfbbCompetitionId(),
@@ -78,9 +80,10 @@ final class EntryDeadlineOutlook
             if (!$effective instanceof DateTimeImmutable) {
                 continue; // no deadline for this competition
             }
-            $toEnter = $toEnterByCompetition[$competition->getId()] ?? 0;
-            if (0 === $toEnter) {
-                continue; // solved (or nothing to enter) → absent
+            $toPlace = $homeByCompetition['toPlace'][$competition->getId()] ?? 0;
+            $toEnter = $homeByCompetition['toEnter'][$competition->getId()] ?? 0;
+            if (0 === $toPlace && 0 === $toEnter) {
+                continue; // nothing owed (solved, or all already entered/validated) → absent
             }
 
             $key = $effective->format('Y-m-d') . '|' . $source;
@@ -89,11 +92,13 @@ final class EntryDeadlineOutlook
                     'deadline' => $effective->format('Y-m-d'),
                     'source' => $source,
                     'competitionNames' => [],
+                    'toPlaceCount' => 0,
                     'toEnterCount' => 0,
                     'withinWindow' => $effective <= $windowThreshold,
                 ];
             }
             $groups[$key]['competitionNames'][] = $competition->getName();
+            $groups[$key]['toPlaceCount'] += $toPlace;
             $groups[$key]['toEnterCount'] += $toEnter;
         }
 
@@ -146,28 +151,36 @@ final class EntryDeadlineOutlook
     }
 
     /**
+     * HOME fixtures still owed against a deadline, split by placement stage so the cockpit
+     * can name the RIGHT action: UNPLACED must first be PLACED (a scheduling gesture), PLACED
+     * is ready to copy into FBI (aligned with `fbiTodo.toEnter` and the FBI list). SUBMITTED/
+     * VALIDATED are already entered → counted in neither.
+     *
      * @param list<Fixture> $fixtures
      *
-     * @return array<string, int> HOME fixtures not yet SUBMITTED/VALIDATED, by competitionId
+     * @return array{toPlace: array<string, int>, toEnter: array<string, int>} counts by competitionId
      */
-    private function countHomeToEnterByCompetition(array $fixtures): array
+    private function countHomeByCompetition(array $fixtures): array
     {
-        $counts = [];
+        $toPlace = [];
+        $toEnter = [];
         foreach ($fixtures as $fixture) {
             if (FixtureHomeAway::HOME !== $fixture->getHomeAway()) {
-                continue;
-            }
-            if (\in_array($fixture->getStatus(), [FixtureStatus::SUBMITTED, FixtureStatus::VALIDATED], true)) {
                 continue;
             }
             $competitionId = $fixture->getCompetitionId();
             if (null === $competitionId) {
                 continue; // a friendly carries no competition → no deadline
             }
-            $counts[$competitionId] = ($counts[$competitionId] ?? 0) + 1;
+            $status = $fixture->getStatus();
+            if (FixtureStatus::UNPLACED === $status) {
+                $toPlace[$competitionId] = ($toPlace[$competitionId] ?? 0) + 1;
+            } elseif (FixtureStatus::PLACED === $status) {
+                $toEnter[$competitionId] = ($toEnter[$competitionId] ?? 0) + 1;
+            }
         }
 
-        return $counts;
+        return ['toPlace' => $toPlace, 'toEnter' => $toEnter];
     }
 
     /**

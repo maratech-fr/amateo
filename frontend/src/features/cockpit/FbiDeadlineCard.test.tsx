@@ -31,7 +31,7 @@ describe("FbiDeadlineCard — la carte « Saisie FBI » du cockpit", () => {
 
   it("aucune fenêtre ET rien à faire → AUCUN rendu (le cockpit reste muet)", () => {
     setTodayOverride("2026-09-01");
-    outlook = { windows: [{ deadline: "2026-10-20", source: "club", competitionNames: ["DF2"], toEnterCount: 3, withinWindow: false }], fbiTodo: NONE };
+    outlook = { windows: [{ deadline: "2026-10-20", source: "club", competitionNames: ["DF2"], toPlaceCount: 0, toEnterCount: 3, withinWindow: false }], fbiTodo: NONE };
     const { container } = renderCard();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(container).toBeEmptyDOMElement();
@@ -70,10 +70,10 @@ describe("FbiDeadlineCard — la carte « Saisie FBI » du cockpit", () => {
     expect(card).not.toHaveTextContent("dont");
   });
 
-  it("en fenêtre → la ligne globale, les échéances, les compétitions ; lien → /matchs?fbi=1", () => {
+  it("en fenêtre, tout PLACÉ → « à saisir dans FBI », lien FBI → /matchs?fbi=1", () => {
     setTodayOverride("2026-09-07");
     outlook = {
-      windows: [{ deadline: "2026-09-10", source: "club", competitionNames: ["Départemental F2", "Régional M18"], toEnterCount: 6, withinWindow: true }],
+      windows: [{ deadline: "2026-09-10", source: "club", competitionNames: ["Départemental F2", "Régional M18"], toPlaceCount: 0, toEnterCount: 6, withinWindow: true }],
       fbiTodo: { toEnter: 6, toCorrect: 0 },
     };
     renderCard();
@@ -81,35 +81,72 @@ describe("FbiDeadlineCard — la carte « Saisie FBI » du cockpit", () => {
     const card = screen.getByRole("status");
     expect(card).toHaveTextContent("Saisie FBI");
     expect(card).toHaveTextContent("6 FBI à faire");
-    expect(card).toHaveTextContent("6 matchs à saisir avant le");
+    expect(card).toHaveTextContent("6 à saisir dans FBI avant le");
+    expect(card).not.toHaveTextContent("à placer");
     expect(card).toHaveTextContent("Départemental F2");
     expect(card).not.toHaveTextContent("proposée");
     expect(screen.getByRole("link")).toHaveAttribute("href", "/matchs?fbi=1");
+    expect(screen.getByRole("link")).toHaveTextContent("Ouvrir la liste FBI");
   });
 
   it("source communautaire → « · proposée »", () => {
     setTodayOverride("2026-09-07");
-    outlook = { windows: [{ deadline: "2026-09-10", source: "community", competitionNames: ["DF2"], toEnterCount: 2, withinWindow: true }], fbiTodo: { toEnter: 2, toCorrect: 0 } };
+    outlook = { windows: [{ deadline: "2026-09-10", source: "community", competitionNames: ["DF2"], toPlaceCount: 0, toEnterCount: 2, withinWindow: true }], fbiTodo: { toEnter: 2, toCorrect: 0 } };
     renderCard();
     expect(screen.getByRole("status")).toHaveTextContent("proposée");
   });
 
   it("dépassée avec du reste → la carte RESTE, ton warning (jamais destructive)", () => {
     setTodayOverride("2026-09-12");
-    outlook = { windows: [{ deadline: "2026-09-10", source: "club", competitionNames: ["DF2"], toEnterCount: 2, withinWindow: true }], fbiTodo: { toEnter: 2, toCorrect: 0 } };
+    outlook = { windows: [{ deadline: "2026-09-10", source: "club", competitionNames: ["DF2"], toPlaceCount: 0, toEnterCount: 2, withinWindow: true }], fbiTodo: { toEnter: 2, toCorrect: 0 } };
     renderCard();
 
     const card = screen.getByRole("status");
     expect(card).toHaveTextContent("échéance dépassée");
-    expect(card).toHaveTextContent("2 matchs toujours non saisis");
+    expect(card).toHaveTextContent("2 à saisir dans FBI");
     expect(card.className).toContain("border-warning");
     expect(card.className).not.toContain("destructive");
+  });
+
+  // Le retour fondateur (2026-09-27) : tout est encore À PLACER → la carte doit dire « à placer »
+  // (jamais « non saisi », un mensonge) et NE PAS mener à la liste FBI (qui serait vide).
+  it("tout UNPLACED → « à placer », bouton « Placer les matchs » → /matchs, jamais la liste FBI", () => {
+    setTodayOverride("2026-09-12");
+    outlook = {
+      windows: [{ deadline: "2026-09-10", source: "club", competitionNames: ["DF2"], toPlaceCount: 106, toEnterCount: 0, withinWindow: true }],
+      fbiTodo: { toEnter: 0, toCorrect: 0 },
+    };
+    renderCard();
+
+    const card = screen.getByRole("status");
+    expect(card).toHaveTextContent("échéance dépassée — 106 matchs à placer");
+    expect(card).not.toHaveTextContent("à saisir dans FBI");
+    expect(card).not.toHaveTextContent("non saisi");
+
+    const link = screen.getByRole("link");
+    expect(link).toHaveTextContent("Placer les matchs");
+    expect(link).toHaveAttribute("href", "/matchs");
+    expect(card).not.toHaveTextContent("Ouvrir la liste FBI");
+  });
+
+  it("mixte à placer + à saisir → les deux segments, lien FBI (la liste a du contenu)", () => {
+    setTodayOverride("2026-09-07");
+    outlook = {
+      windows: [{ deadline: "2026-10-15", source: "club", competitionNames: ["DF2"], toPlaceCount: 12, toEnterCount: 3, withinWindow: true }],
+      fbiTodo: { toEnter: 3, toCorrect: 0 },
+    };
+    renderCard();
+
+    const card = screen.getByRole("status");
+    expect(card).toHaveTextContent("12 matchs à placer");
+    expect(card).toHaveTextContent("3 à saisir dans FBI avant le");
+    expect(screen.getByRole("link")).toHaveAttribute("href", "/matchs?fbi=1");
   });
 
   it("guardianDelta joint → les segments s'affichent dans la carte", () => {
     setTodayOverride("2026-09-07");
     outlook = {
-      windows: [{ deadline: "2026-09-10", source: "club", competitionNames: ["DF2"], toEnterCount: 6, withinWindow: true }],
+      windows: [{ deadline: "2026-09-10", source: "club", competitionNames: ["DF2"], toPlaceCount: 0, toEnterCount: 6, withinWindow: true }],
       fbiTodo: { toEnter: 6, toCorrect: 0 },
       guardianDelta: { newFixturesCount: 12, newConflictFingerprints: ["a", "b", "c"], planningChanged: true },
     };

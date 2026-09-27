@@ -311,7 +311,8 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                             'deadline' => ['type' => 'string', 'format' => 'date'],
                             'source' => ['type' => 'string', 'enum' => ['club', 'community'], 'description' => 'Where the effective deadline came from'],
                             'competitionNames' => ['type' => 'array', 'items' => ['type' => 'string']],
-                            'toEnterCount' => ['type' => 'integer', 'description' => 'Home fixtures not yet entered in FBI (UNPLACED included)'],
+                            'toPlaceCount' => ['type' => 'integer', 'description' => 'Home fixtures still UNPLACED — must be placed before they can be entered in FBI'],
+                            'toEnterCount' => ['type' => 'integer', 'description' => 'Home fixtures PLACED but not yet entered in FBI (UNPLACED and already-submitted excluded)'],
                             'withinWindow' => ['type' => 'boolean', 'description' => 'True within seven days of the deadline (overdue included)'],
                         ]]],
                         'fbiTodo' => ['type' => 'object', 'description' => 'The GLOBAL « to do in FBI » counts (all weeks), so the cockpit and the counters bar never load the fixtures', 'properties' => [
