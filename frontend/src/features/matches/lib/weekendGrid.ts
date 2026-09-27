@@ -1,6 +1,6 @@
 import type { Fixture, SportCategoryDuration, Team, TeamMatchHabit, Venue } from "../api";
 import { awayBandRows, buildAwayCells, shortWeekday } from "./awayColumn";
-import { awayHour } from "./awayKickoff";
+import { awayHour, awayTimeline } from "./awayKickoff";
 import { isoWeekday, timeToMinutes } from "./envelope";
 
 /**
@@ -208,6 +208,17 @@ export interface WeekendCell {
   travelLabel?: string | null;
   /** AWAY short weekday (« sam. ») for the block's accessible name. */
   awayWeekday?: string;
+  /** AWAY (correctif 10) — le bloc couvre départ→retour (trajet aller-retour VISIBLE) : vrai
+   *  quand l'heure ET le trajet aller (`awayTravel.oneWayMinutes`) sont connus. Faux ⇒ match seul. */
+  hasTravel?: boolean;
+  /** AWAY — aller simple (min), poids du segment trajet (aller = retour). 0/absent sans trajet. */
+  travelOneWayMin?: number;
+  /** AWAY — durée du match (min), poids du segment match pour le partage proportionnel du bloc. */
+  matchSpanMin?: number;
+  /** AWAY — heure murale du DÉPART (coup d'envoi − aller). Absent sans trajet. */
+  departureLabel?: string;
+  /** AWAY — heure murale du RETOUR (fin de match + aller). Absent sans trajet. */
+  returnLabel?: string;
 }
 
 export interface WeekendGridRow {
@@ -366,13 +377,14 @@ export function buildWeekendGrid(
     max = Math.max(max, ghost.kickoffMin + matchMinutesOf(ghost.teamId, teams, durations));
   }
   // Les extérieurs À HEURE (réelle/estimée) participent à l'amplitude horaire ; ceux
-  // sans heure vivent dans la bande, hors des rangées horaires.
+  // sans heure vivent dans la bande, hors des rangées horaires. Correctif 10 : quand le
+  // trajet aller est connu, l'amplitude inclut le DÉPART (en amont) et le RETOUR (en aval).
   for (const fixture of awayFixtures) {
     const { hour } = awayHour(fixture, habits);
     if (null !== hour) {
-      const start = timeToMinutes(hour);
-      min = Math.min(min, start);
-      max = Math.max(max, start + matchMinutesOf(fixture.teamId, teams, durations));
+      const { departureMin, returnMin } = awayTimeline(timeToMinutes(hour), matchMinutesOf(fixture.teamId, teams, durations), fixture.awayTravel?.oneWayMinutes ?? null);
+      min = Math.min(min, departureMin);
+      max = Math.max(max, returnMin);
     }
   }
   const hasTimed = Infinity !== min;

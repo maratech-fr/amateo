@@ -6,7 +6,7 @@ import { frDateWeekdayNoYear } from "@/shared/lib/date";
 import { formatDurationMinutes, formatMinutes, parseTime } from "@/shared/lib/time";
 
 import type { Fixture, Team, TeamMatchHabit } from "./api";
-import { awayHour } from "./lib/awayKickoff";
+import { awayHour, awayTimeline } from "./lib/awayKickoff";
 import { FIXTURE_STATUS_LABEL } from "./lib/fixtureStatusLabel";
 import { matchMinutesOf } from "./lib/weekendGrid";
 
@@ -43,12 +43,14 @@ export function AwayFixtureCard({
   const oneWay = travel?.oneWayMinutes ?? null;
   const approx = true === travel?.approximated ? "~" : "";
 
-  // Départ ≈ coup d'envoi − trajet ; retour ≈ (coup d'envoi + durée) + trajet — arithmétique
-  // d'AFFICHAGE, marquée « estimé ». Rendue seulement si l'heure ET le trajet sont connus.
+  // Départ ≈ coup d'envoi − trajet ; retour ≈ (coup d'envoi + durée) + trajet — même calcul que
+  // la grille (`awayTimeline`, foyer UNIQUE), marqué « estimé ». Rendu seulement si l'heure ET le
+  // trajet sont connus (arithmétique d'AFFICHAGE, aucune règle serveur recalculée).
   const kickoffMin = parseTime(hour);
-  const departure = null !== oneWay && null !== kickoffMin ? formatMinutes(kickoffMin - oneWay) : null;
-  const back = null !== oneWay && null !== kickoffMin ? formatMinutes(kickoffMin + duration + oneWay) : null;
-  const showWindow = null !== departure && null !== back;
+  const timeline = null !== kickoffMin ? awayTimeline(kickoffMin, duration, oneWay) : null;
+  const showWindow = null !== timeline && null !== timeline.oneWayMinutes;
+  const departure = showWindow ? formatMinutes(timeline.departureMin) : null;
+  const back = showWindow ? formatMinutes(timeline.returnMin) : null;
 
   const rows: { label: string; value: string }[] = [
     { label: "Adversaire", value: fixture.opponentLabel },

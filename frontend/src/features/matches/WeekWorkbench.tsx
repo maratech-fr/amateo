@@ -381,6 +381,7 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
           <WeekendGridLegend
             toConfirmCount={grid.cells.filter((c) => c.toConfirm).length}
             showHabits={showGhosts && grid.cells.some((c) => c.ghost)}
+            showTravel={grid.cells.some((c) => true === c.hasTravel)}
           />
         </div>
         <AwayList fixtures={weekendFixtures} teams={teamsMap} habits={habits} coachRoles={coachRoles} onEdit={openAway} onDelete={(fixture) => deleteFixture.mutate(fixture.id)} />

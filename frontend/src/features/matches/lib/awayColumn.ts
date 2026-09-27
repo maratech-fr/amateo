@@ -2,7 +2,7 @@ import { compareNamesFr } from "@/shared/lib/nameOrder";
 import { formatMinutes } from "@/shared/lib/time";
 
 import type { AwayTravel, Fixture, Team, TeamMatchHabit } from "../api";
-import { awayHour } from "./awayKickoff";
+import { awayHour, awayTimeline } from "./awayKickoff";
 import { timeToMinutes } from "./envelope";
 import type { WeekendCell } from "./weekendGrid";
 
@@ -135,19 +135,30 @@ export function buildAwayCells(layout: AwayLayout, intervals: { startMin: number
     }
 
     const start = timeToMinutes(hour);
-    const end = start + matchMinutesOf(fixture.teamId);
+    const matchMinutes = matchMinutesOf(fixture.teamId);
+    const oneWay = fixture.awayTravel?.oneWayMinutes ?? null;
+    // Correctif 10 : le bloc couvre départ → retour (trajet aller-retour VISIBLE) quand l'aller
+    // est connu — même étendue que celle que compte le radar serveur pour une personne.
+    const { departureMin, matchEndMin, returnMin } = awayTimeline(start, matchMinutes, oneWay);
+    const hasTravel = null !== oneWay;
     const cell: WeekendCell = {
       ...base,
       key: `away:${fixture.id}`,
-      gridRowStart: 3 + bandRows + Math.round((start - startMin) / stepMin),
-      gridRowSpan: Math.max(1, Math.round((end - start) / stepMin)),
+      gridRowStart: 3 + bandRows + Math.round((departureMin - startMin) / stepMin),
+      gridRowSpan: Math.max(1, Math.round((returnMin - departureMin) / stepMin)),
       kickoffLabel: formatMinutes(start),
-      footprintLabel: `${formatMinutes(start)}–${formatMinutes(end)}`,
+      footprintLabel: `${formatMinutes(start)}–${formatMinutes(matchEndMin)}`,
       estimated,
       unknownHour: false,
+      hasTravel,
+      travelOneWayMin: oneWay ?? 0,
+      matchSpanMin: matchMinutes,
+      ...(hasTravel ? { departureLabel: formatMinutes(departureMin), returnLabel: formatMinutes(returnMin) } : {}),
     };
     cells.push(cell);
-    intervals.push({ startMin: start, endMin: end, cell });
+    // Les couloirs (`assignLanes`) se calculent sur l'étendue COMPLÈTE (départ → retour) : deux
+    // déplacements qui se chevauchent, trajets compris, vont en couloirs distincts.
+    intervals.push({ startMin: departureMin, endMin: returnMin, cell });
   }
   return cells;
 }

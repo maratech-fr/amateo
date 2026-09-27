@@ -10,7 +10,8 @@ import { cn } from "@/shared/lib/utils";
 import type { WeekendCell, WeekendGridModel } from "./lib/weekendGrid";
 
 /** lot 3 PR-3a — nom accessible d'un bloc extérieur : équipe, adversaire, jour + heure
- *  (ou « heure inconnue »), « heure estimée », trajet. Ordre stable, segments absents omis. */
+ *  (ou « heure inconnue »), « heure estimée », départ/retour (correctif 10), trajet.
+ *  Ordre stable, segments absents omis. */
 function awayBlockName(cell: WeekendCell): string {
   const parts = [`${cell.teamLabel} à ${cell.opponentLabel}`];
   const when = true === cell.unknownHour ? "heure inconnue" : cell.kickoffLabel;
@@ -18,11 +19,19 @@ function awayBlockName(cell: WeekendCell): string {
   if (true === cell.estimated) {
     parts.push("heure estimée");
   }
+  if (undefined !== cell.departureLabel && undefined !== cell.returnLabel) {
+    parts.push(`départ ${cell.departureLabel} · retour ${cell.returnLabel}`);
+  }
   if (null !== cell.travelLabel && undefined !== cell.travelLabel) {
     parts.push(`${cell.travelLabel} de trajet`);
   }
   return parts.join(", ");
 }
+
+/** Motif du segment TRAJET (correctif 10) : hachures discrètes en `--muted-foreground` sur le
+ *  fond OPAQUE `bg-surface-muted` — distinct du hachuré ACCENT de « À confirmer » et du plat du
+ *  match. Le motif est décoratif (le sens vit dans le repère texte + le nom accessible). */
+const TRAVEL_HATCH = "repeating-linear-gradient(45deg, color-mix(in oklch, var(--muted-foreground) 14%, transparent) 0 2px, transparent 2px 7px)";
 
 /**
  * VOCABULAIRE VISUEL des cases de la grille (à garder cohérent) :
@@ -145,6 +154,24 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
             const awayClickable = undefined !== onSelectFixture && !swapArmed;
             const AwayTag = awayClickable ? "button" : "div";
             const name = awayBlockName(cell);
+            // Correctif 10 : le bloc VISUALISE le trajet aller-retour en trois segments empilés
+            // (aller · match · retour) quand l'heure ET le trajet aller sont connus. Sinon, match
+            // seul comme avant, avec le libellé de trajet ou la mention « trajet inconnu ».
+            const showSegments = true === cell.hasTravel && true !== cell.unknownHour;
+            // Contenu identifiant du match (partagé segment ↔ bloc non segmenté).
+            const matchBody = (
+              <>
+                <span className="flex w-full items-center gap-1 text-xs font-medium">
+                  <Bus className="size-3 shrink-0" aria-hidden="true" />
+                  <span className="truncate">{cell.teamLabel}</span>
+                  {true === cell.estimated ? <Clock aria-label="Heure estimée" className="ml-auto size-3 shrink-0" /> : null}
+                  {true === cell.unknownHour ? <HelpCircle aria-label="Heure inconnue" className="ml-auto size-3 shrink-0" /> : null}
+                </span>
+                <span className="truncate text-[10px]">
+                  {(true === cell.unknownHour ? "heure inconnue" : cell.kickoffLabel) + ` · à ${cell.opponentLabel}`}
+                </span>
+              </>
+            );
             return (
               <AwayTag
                 key={cell.key}
@@ -154,7 +181,7 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
                 aria-label={name}
                 title={name}
                 className={cn(
-                  "z-10 m-px flex flex-col items-start overflow-hidden rounded border border-border border-l-4 border-l-muted-foreground bg-muted px-1 py-0.5 text-left leading-tight text-foreground",
+                  "z-10 m-px flex flex-col overflow-hidden rounded border border-border border-l-4 border-l-muted-foreground bg-muted text-left leading-tight text-foreground",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                   awayClickable ? "cursor-pointer hover:brightness-95 dark:hover:brightness-110" : "",
                   swapArmed ? "opacity-40" : "",
@@ -168,21 +195,47 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
                   transform: `translateX(${cell.lane * 100}%)`,
                 }}
               >
-                <span className="flex w-full items-center gap-1 text-xs font-medium">
-                  <Bus className="size-3 shrink-0" aria-hidden="true" />
-                  <span className="truncate">{cell.teamLabel}</span>
-                  {true === cell.estimated ? <Clock aria-label="Heure estimée" className="ml-auto size-3 shrink-0" /> : null}
-                  {true === cell.unknownHour ? <HelpCircle aria-label="Heure inconnue" className="ml-auto size-3 shrink-0" /> : null}
-                </span>
-                <span className="truncate text-[10px]">
-                  {(true === cell.unknownHour ? "heure inconnue" : cell.kickoffLabel) + ` · à ${cell.opponentLabel}`}
-                </span>
-                {null !== cell.travelLabel && undefined !== cell.travelLabel ? (
-                  <span className="flex items-center gap-1 text-[10px]">
-                    <Car className="size-3 shrink-0" aria-hidden="true" />
-                    <span className="tabular-nums">{cell.travelLabel}</span>
+                {showSegments ? (
+                  <>
+                    {/* Trajet ALLER : ton distinct (surface OPAQUE + hachures), hauteur proportionnelle
+                        au trajet, repère « départ HH:MM » en heure murale. Décoratif pour le lecteur
+                        d'écran (l'info vit dans le aria-label du bloc). */}
+                    <span
+                      aria-hidden="true"
+                      className="flex shrink-0 items-center gap-1 overflow-hidden bg-surface-muted px-1 text-[10px] text-foreground"
+                      style={{ flexGrow: cell.travelOneWayMin, flexBasis: 0, minHeight: 0, backgroundImage: TRAVEL_HATCH }}
+                    >
+                      <Car className="size-3 shrink-0" aria-hidden="true" />
+                      <span className="truncate tabular-nums">départ {cell.departureLabel}</span>
+                    </span>
+                    {/* Match : ton ACTUEL (bg-muted), le contenu identifiant. */}
+                    <span className="flex min-h-0 grow flex-col items-start px-1 py-0.5" style={{ flexGrow: cell.matchSpanMin, flexBasis: 0 }}>
+                      {matchBody}
+                    </span>
+                    {/* Trajet RETOUR : symétrique de l'aller, repère « retour HH:MM ». */}
+                    <span
+                      aria-hidden="true"
+                      className="flex shrink-0 items-center gap-1 overflow-hidden bg-surface-muted px-1 text-[10px] text-foreground"
+                      style={{ flexGrow: cell.travelOneWayMin, flexBasis: 0, minHeight: 0, backgroundImage: TRAVEL_HATCH }}
+                    >
+                      <Car className="size-3 shrink-0" aria-hidden="true" />
+                      <span className="truncate tabular-nums">retour {cell.returnLabel}</span>
+                    </span>
+                  </>
+                ) : (
+                  <span className="flex min-h-0 grow flex-col items-start px-1 py-0.5">
+                    {matchBody}
+                    {null !== cell.travelLabel && undefined !== cell.travelLabel ? (
+                      <span className="flex items-center gap-1 text-[10px]">
+                        <Car className="size-3 shrink-0" aria-hidden="true" />
+                        <span className="tabular-nums">{cell.travelLabel}</span>
+                      </span>
+                    ) : true !== cell.unknownHour ? (
+                      // Heure connue mais trajet indisponible : on le DIT (pas de bloc muet).
+                      <span className="text-[10px] text-muted-foreground">trajet inconnu</span>
+                    ) : null}
                   </span>
-                ) : null}
+                )}
               </AwayTag>
             );
           }
