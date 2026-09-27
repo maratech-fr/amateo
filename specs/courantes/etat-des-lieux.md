@@ -534,6 +534,7 @@ le front lit, il ne re-dérive plus les règles de refus, repli fail-closed si l
 
 | Date | Id | Sujet | Documenté dans |
 |------|----|-------|----------------|
+| 2026-09-27 | — | passe de tests manuels : 10 correctifs (tuile FBI, focus conflit, extérieurs lecture seule + trajet dessiné, péremption, champs opaques, recherche FFBB…) | [`module-matchs.md`](module-matchs.md) |
 | 2026-09-27 | P4-265 | toute surface qui porte du texte est opaque sur le fond à motifs (jetons --surface-*, NoticeBanner, onglets et accordéons opaques) | [`identite-visuelle-produit.md`](identite-visuelle-produit.md) |
 | 2026-09-27 | P4-264 | adversaires : CP et ville dans la recherche de salle FFBB, « Modifier le gymnase », lignes resserrées | [`module-matchs.md`](module-matchs.md) |
 | 2026-09-27 | P4-263 (PR 2/2) | une seule maison d'erreur front ; un status-text anglais brut tombe sur le repli français — P4-263 soldé | [`frontend/docs/frontend-spec.md`](../../frontend/docs/frontend-spec.md) |
