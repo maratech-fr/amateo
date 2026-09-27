@@ -152,6 +152,24 @@ describe("WeekendGrid — case « À confirmer » (lot 1, 2026-09-17)", () => {
   });
 });
 
+describe("WeekendGrid — surbrillance de focus d'un conflit (correctif 2)", () => {
+  it("une cellule domicile surlignée porte l'anneau destructif ; les autres non", () => {
+    const model = buildWeekendGrid(fixtures, venues, teams);
+    const { container } = render(<WeekendGrid model={model} onSelectFixture={() => {}} highlightedFixtureIds={new Set(["fxA"])} />);
+    expect(container.querySelector('[data-fixture-id="fxA"]')).toHaveClass("ring-destructive");
+    expect(container.querySelector('[data-fixture-id="fxB"]')).not.toHaveClass("ring-destructive");
+  });
+
+  it("un bloc extérieur surligné porte aussi l'anneau destructif (domicile ET colonne extérieur)", () => {
+    const awayBase = { ...fixtureBase, homeAway: "AWAY" as const, venueId: null, kickoffTime: null, status: "UNPLACED" as const, placementSource: null as null };
+    const habit = { id: "h", teamId: "tA", dayOfWeek: 6, kickoffTime: "15:30", venueId: null } as import("./api").TeamMatchHabit;
+    const away = { ...awayBase, id: "fxAway", teamId: "tA", matchDate: "2026-10-03", opponentLabel: "Épinouze", externalRef: "88", awayTravel: { venueLabel: "Halle Y", city: null, precision: "VENUE" as const, oneWayMinutes: 45, approximated: false, basis: "linked" as const } };
+    const model = buildWeekendGrid([away], venues, teams, new Set(), [habit], "2026-10-03", 15, new Map());
+    const { container } = render(<WeekendGrid model={model} onSelectFixture={() => {}} highlightedFixtureIds={new Set(["fxAway"])} />);
+    expect(container.querySelector('[data-away="true"]')).toHaveClass("ring-destructive");
+  });
+});
+
 describe("WeekendGrid — a11y (A11Y-17)", () => {
   it("un match hors fenêtre ligue porte un nom accessible, pas l'icône + couleur seules", () => {
     // 4ᵉ argument = ids hors enveloppe : fxA sort de la fenêtre autorisée par la ligue.

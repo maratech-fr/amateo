@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyConflictsToParams, applyConsultToParams, applyFbiToParams, applyFilterToParams, applyMatchToParams, applyOpponentFilterToParams, applySectionToParams, applyWeekendToParams, decodeConflictsParams, decodeConsultParams, decodeFbiParam, decodeFilterParams, decodeMatchParam, decodeOpponentFilter, decodeSectionParam, decodeWeekendParam, hasConflictsParams, hasConsultParams } from "./urlState";
+import { applyConflictFocusToParams, applyConflictsToParams, applyConsultToParams, applyFbiToParams, applyFilterToParams, applyMatchToParams, applyOpponentFilterToParams, applySectionToParams, applyWeekendToParams, decodeConflictFocusParam, decodeConflictsParams, decodeConsultParams, decodeFbiParam, decodeFilterParams, decodeMatchParam, decodeOpponentFilter, decodeSectionParam, decodeWeekendParam, hasConflictsParams, hasConsultParams } from "./urlState";
 
 describe("decodeMatchParam / applyMatchToParams (deep-link match=)", () => {
   it("absent ou vide ⇒ null", () => {
@@ -17,6 +17,20 @@ describe("decodeMatchParam / applyMatchToParams (deep-link match=)", () => {
     const out = applyMatchToParams(new URLSearchParams("semaine=2026-10-03"), "fx-7");
     expect(out.get("semaine")).toBe("2026-10-03");
     expect(out.get("match")).toBe("fx-7");
+  });
+});
+
+describe("decodeConflictFocusParam / applyConflictFocusToParams (correctif 2 — conflit=)", () => {
+  it("absent ⇒ [] ; une liste ⇒ fixtureId séparés par des virgules, dédoublonnés", () => {
+    expect(decodeConflictFocusParam(new URLSearchParams(""))).toEqual([]);
+    expect(decodeConflictFocusParam(new URLSearchParams("conflit=fx-1,fx-2,fx-1"))).toEqual(["fx-1", "fx-2"]);
+  });
+
+  it("[] ⇒ conflit absent ; une liste ⇒ écrit ; autres params préservés", () => {
+    expect(applyConflictFocusToParams(new URLSearchParams("conflit=fx-1,fx-2"), []).toString()).toBe("");
+    const out = applyConflictFocusToParams(new URLSearchParams("vue=coach"), ["fx-1", "fx-2"]);
+    expect(out.get("vue")).toBe("coach");
+    expect(out.get("conflit")).toBe("fx-1,fx-2");
   });
 });
 

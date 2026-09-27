@@ -1,6 +1,7 @@
-import { AlertTriangle, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Eye, ShieldCheck } from "lucide-react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
+import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { isManagementRole } from "@/shared/lib/roles";
 import { useMe } from "@/shared/session/queries";
@@ -8,6 +9,7 @@ import { useMe } from "@/shared/session/queries";
 import type { Coach, Conflict, Team, Venue } from "./api";
 import { ConflictSeverityGroups } from "./ConflictLine";
 import { ConflictResolutionControl } from "./ConflictResolutionControl";
+import { isFocusableConflict } from "./lib/conflictFocus";
 import { openConflictCount } from "./lib/conflictResolution";
 
 interface ConflictRadarProps {
@@ -23,6 +25,12 @@ interface ConflictRadarProps {
    * boucle n'en dépend ; absent (query non résolue) = aucune chip, radar intact.
    */
   newFingerprints?: ReadonlySet<string>;
+  /**
+   * Correctif 2 — « Voir » focalise CE conflit sur place (filtre coach + surbrillance des deux
+   * rencontres, sans quitter la semaine). Absent (onglet Conflits, qui a son propre « Voir la
+   * semaine ») ⇒ pas de bouton.
+   */
+  onFocusConflict?: (conflict: Conflict) => void;
 }
 
 /**
@@ -34,7 +42,7 @@ interface ConflictRadarProps {
  * `ConflictLine`/`ConflictSeverityGroups` (une seule maison, partagée avec l'onglet
  * Conflits) ; le radar les CONSOMME, rendu inchangé.
  */
-export function ConflictRadar({ conflicts, teams, coaches, venues, newFingerprints }: ConflictRadarProps) {
+export function ConflictRadar({ conflicts, teams, coaches, venues, newFingerprints, onFocusConflict }: ConflictRadarProps) {
   const { data: me } = useMe();
   const canManage = isManagementRole(me?.role);
   // Le badge ne compte que l'À TRAITER (P4-207) — un conflit annoté reste listé, mais
@@ -71,7 +79,23 @@ export function ConflictRadar({ conflicts, teams, coaches, venues, newFingerprin
             venues={venues}
             newFingerprints={newFingerprints}
             renderConflict={(conflict, meta) => (
-              <ConflictResolutionControl conflict={conflict} teams={teams} coaches={coaches} venues={venues} tone={meta.tone} isNew={meta.isNew} canManage={canManage} />
+              <ConflictResolutionControl
+                conflict={conflict}
+                teams={teams}
+                coaches={coaches}
+                venues={venues}
+                tone={meta.tone}
+                isNew={meta.isNew}
+                canManage={canManage}
+                extraTrailing={
+                  undefined !== onFocusConflict && isFocusableConflict(conflict) ? (
+                    <Button variant="outline" size="sm" onClick={() => onFocusConflict(conflict)}>
+                      <Eye className="size-4" aria-hidden="true" />
+                      Voir
+                    </Button>
+                  ) : undefined
+                }
+              />
             )}
           />
         )}

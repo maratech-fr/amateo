@@ -280,7 +280,7 @@ function ghostSlots(habits: TeamMatchHabit[], fixtures: Fixture[], weekendKey: s
 
 /** Durée effective (min) du match d'une équipe : `matchMinutes` de sa catégorie
  *  quand le front la connaît (déjà résolue côté serveur), sinon le repli 105. */
-function matchMinutesOf(teamId: string, teams: Map<string, Team>, durations: Map<string, number>): number {
+export function matchMinutesOf(teamId: string, teams: Map<string, Team>, durations: Map<string, number>): number {
   const categoryId = teams.get(teamId)?.sportCategoryId;
   const minutes = undefined === categoryId ? undefined : durations.get(categoryId);
   return undefined === minutes ? MATCH_MINUTES : minutes;

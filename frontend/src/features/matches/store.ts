@@ -22,6 +22,13 @@ interface MatchesState {
   /** Fixture being placed (opens the placement panel); null = none. */
   selectedFixtureId: string | null;
   /**
+   * Correctif 2 — les rencontres SURLIGNÉES par le focus d'un conflit, DISTINCTES de
+   * `selectedFixtureId` : surligner ne SÉLECTIONNE pas (le panneau de placement reste
+   * fermé). Portées par l'URL `conflit=<a>,<b>` (deep-link partageable) ; « Quitter le
+   * focus » les vide. `[]` = aucun focus.
+   */
+  highlightedFixtureIds: string[];
+  /**
    * RMM-1 PR4 (L6) — raisons de non-placement du DERNIER auto-placement, par
    * matchId. Attachées à la SEMAINE affichée : elles persistent tant qu'on ne
    * change pas de semaine (un re-render, un autre geste ne les efface pas), et
@@ -101,6 +108,7 @@ interface MatchesState {
   setSelectedWeekend: (key: string | null) => void;
   setUnplacedReasons: (reasons: Map<string, string>) => void;
   setSelectedFixtureId: (id: string | null) => void;
+  setHighlightedFixtureIds: (ids: string[]) => void;
   setSwapSourceId: (id: string | null) => void;
   setFixtureFormOpen: (open: boolean) => void;
   setImportDialogOpen: (open: boolean) => void;
@@ -130,6 +138,7 @@ export type ConsultTemporality = "semaine" | "mois" | "phase";
 export const useMatchesStore = create<MatchesState>((set) => ({
   selectedWeekend: null,
   selectedFixtureId: null,
+  highlightedFixtureIds: [],
   unplacedReasons: new Map(),
   swapSourceId: null,
   fixtureFormOpen: false,
@@ -154,6 +163,7 @@ export const useMatchesStore = create<MatchesState>((set) => ({
   setSelectedWeekend: (selectedWeekend) => set({ selectedWeekend, unplacedReasons: new Map() }),
   setUnplacedReasons: (unplacedReasons) => set({ unplacedReasons }),
   setSelectedFixtureId: (selectedFixtureId) => set({ selectedFixtureId }),
+  setHighlightedFixtureIds: (highlightedFixtureIds) => set({ highlightedFixtureIds }),
   setSwapSourceId: (swapSourceId) => set({ swapSourceId }),
   setFixtureFormOpen: (fixtureFormOpen) => set({ fixtureFormOpen }),
   setImportDialogOpen: (importDialogOpen) => set({ importDialogOpen }),

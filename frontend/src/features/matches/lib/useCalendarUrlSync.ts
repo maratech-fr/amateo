@@ -5,10 +5,12 @@ import type { Coach, Competition, Fixture, Team, Venue } from "../api";
 import { useMatchesStore } from "../store";
 import { DEFAULT_KINDS, normalizeKinds, revealPlan } from "./consultFilter";
 import {
+  applyConflictFocusToParams,
   applyConsultToParams,
   applyFilterToParams,
   applyMatchToParams,
   applyWeekendToParams,
+  decodeConflictFocusParam,
   decodeConsultParams,
   decodeFilterParams,
   decodeMatchParam,
@@ -52,6 +54,8 @@ export function useCalendarUrlSync(
     filterIds,
     setFilterMode,
     toggleFilterId,
+    highlightedFixtureIds,
+    setHighlightedFixtureIds,
     consultKinds,
     consultFamilies,
     consultTypicalWeek,
@@ -82,17 +86,24 @@ export function useCalendarUrlSync(
     let touchedStore = false;
     if (!seededRef.current) {
       seededRef.current = true;
-      // Filtre PR-1 : seedé seulement sur un store VIERGE (une navigation depuis Conflits/
-      // la file l'a déjà peuplé ; re-toggler l'effacerait).
-      if (0 === filterIds.length && "equipe" === filterMode) {
+      // Filtre PR-1 : l'URL FAIT FOI dès qu'elle porte `vue`/`filtre` (correctif 2 — une
+      // navigation « Voir la semaine » depuis un conflit de coach porte `vue=coach&filtre=<id>`,
+      // et ce filtre doit s'imposer même si le store portait déjà une session). Sans ces clés, on
+      // NE TOUCHE PAS le filtre (la session du store est gardée).
+      if (searchParams.has("vue") || searchParams.has("filtre")) {
         const { mode, ids } = decodeFilterParams(searchParams);
         const known = new Set(("coach" === mode ? coachesData : "gymnase" === mode ? venuesData : teamsData).map((r) => r.id));
         const kept = ids.filter((id) => known.has(id));
-        if ("equipe" !== mode || kept.length > 0) {
-          setFilterMode(mode);
-          kept.forEach(toggleFilterId);
-          touchedStore = true;
-        }
+        setFilterMode(mode);
+        kept.forEach(toggleFilterId);
+        touchedStore = true;
+      }
+      // Focus d'un conflit (`conflit=<a>,<b>`) : surligne les rencontres SANS ouvrir le panneau
+      // (distinct de `match=`). L'URL fait foi ; absente, le store (mémoire de session) est gardé.
+      const focusIds = decodeConflictFocusParam(searchParams);
+      if (focusIds.length > 0) {
+        setHighlightedFixtureIds(focusIds);
+        touchedStore = true;
       }
       // Mémoire de session : l'URL FAIT FOI dès qu'elle porte au moins une clé Consulter
       // (seed complet, clé absente = son défaut — un lien partagé dit vrai) ; sinon (URL nue,
@@ -159,11 +170,14 @@ export function useCalendarUrlSync(
       phaseId: consultPhaseId,
     });
     const withWeekend = applyWeekendToParams(withConsult, selectedWeekend);
+    // `conflit=` reflète le focus courant (porté par l'adresse : le bandeau + les anneaux
+    // persistent, le lien est partageable). Vide quand aucun conflit n'est focalisé.
+    const withFocus = applyConflictFocusToParams(withWeekend, highlightedFixtureIds);
     // `match=` est TOUJOURS retiré à la re-synchro : c'est un deep-link one-shot consommé au
     // seed (« retiré en replace après sélection »), jamais un état porté par l'adresse.
-    const next = applyMatchToParams(withWeekend, null);
+    const next = applyMatchToParams(withFocus, null);
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
-  }, [teamsData, coachesData, venuesData, fixturesData, searchParams, filterMode, filterIds, consultKinds, consultFamilies, consultTypicalWeek, consultAway, consultTemporality, consultMonth, consultPhaseId, selectedWeekend, setFilterMode, toggleFilterId, setConsultKinds, setConsultFamilies, setConsultTypicalWeek, setConsultAway, setConsultTemporality, setConsultMonth, setConsultPhaseId, setSelectedWeekend, setSelectedFixtureId, focusFixtureCell, competitionsMap, setSearchParams]);
+  }, [teamsData, coachesData, venuesData, fixturesData, searchParams, filterMode, filterIds, highlightedFixtureIds, setHighlightedFixtureIds, consultKinds, consultFamilies, consultTypicalWeek, consultAway, consultTemporality, consultMonth, consultPhaseId, selectedWeekend, setFilterMode, toggleFilterId, setConsultKinds, setConsultFamilies, setConsultTypicalWeek, setConsultAway, setConsultTemporality, setConsultMonth, setConsultPhaseId, setSelectedWeekend, setSelectedFixtureId, focusFixtureCell, competitionsMap, setSearchParams]);
 }

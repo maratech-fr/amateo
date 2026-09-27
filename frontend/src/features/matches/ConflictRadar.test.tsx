@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -80,6 +81,23 @@ describe("ConflictRadar — le compteur d'à-traiter (A11Y-22, décision 2)", ()
     expect(pill).not.toHaveClass("text-warning");
     expect(pill.className).toContain("text-foreground");
     expect(pill).toHaveTextContent("2");
+  });
+});
+
+describe("ConflictRadar — « Voir » focalise un conflit sur place (correctif 2)", () => {
+  it("un bouton « Voir » par conflit focalisable ; le clic remonte le conflit", async () => {
+    const onFocus = vi.fn();
+    renderRadar(<ConflictRadar conflicts={conflictsFixture()} teams={teams} coaches={coaches} venues={venues} onFocusConflict={onFocus} />);
+    const voir = screen.getAllByRole("button", { name: "Voir" });
+    expect(voir).toHaveLength(2);
+    await userEvent.click(voir[0]);
+    expect(onFocus).toHaveBeenCalledTimes(1);
+    expect(onFocus.mock.calls[0][0]).toMatchObject({ type: "VENUE_OVERLAP" });
+  });
+
+  it("sans onFocusConflict, aucun bouton « Voir » (l'onglet Conflits a son propre « Voir la semaine »)", () => {
+    renderRadar(<ConflictRadar conflicts={conflictsFixture()} teams={teams} coaches={coaches} venues={venues} />);
+    expect(screen.queryByRole("button", { name: "Voir" })).not.toBeInTheDocument();
   });
 });
 

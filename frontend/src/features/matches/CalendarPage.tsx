@@ -19,8 +19,9 @@ import { CalendarControls } from "./CalendarControls";
 import { FbiEntryList } from "./FbiEntryList";
 import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
 import { FixtureFormDialog } from "./FixtureFormDialog";
+import { conflictFixtureIds, findFocusedConflict } from "./lib/conflictFocus";
 import { CONFLICT_FAMILIES } from "./lib/conflictLabels";
-import { familiesPresent, KINDS, normalizeKinds } from "./lib/consultFilter";
+import { DEFAULT_KINDS, familiesPresent, KINDS, normalizeKinds, revealPlan } from "./lib/consultFilter";
 import { isInEnvelope, resolveEnvelope } from "./lib/envelope";
 import { depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
 import { datelessConflicts } from "./lib/loopSteps";
@@ -125,6 +126,8 @@ export function CalendarPage() {
     setFilterMode,
     toggleFilterId,
     clearFilter,
+    highlightedFixtureIds,
+    setHighlightedFixtureIds,
     consultKinds,
     consultFamilies,
     consultTypicalWeek,
@@ -316,6 +319,36 @@ export function CalendarPage() {
     requestAnimationFrame(() => document.getElementById(GRID_CONTAINER_ID)?.focus());
   };
 
+  // Correctif 2 — le conflit FOCALISÉ (surbrillance des deux rencontres) : retrouvé depuis les
+  // `fixtureId` surlignés (portés par l'URL `conflit=`, seedés dans le store) → alimente le bandeau.
+  const focusedConflict = useMemo(() => findFocusedConflict(allConflicts, highlightedFixtureIds), [allConflicts, highlightedFixtureIds]);
+
+  // « Voir » (radar) : focalise CE conflit SUR PLACE — filtre coach + surbrillance des deux
+  // rencontres, et lève les masques (extérieurs / types) qui cacheraient une cellule visée. Ne
+  // SÉLECTIONNE rien (le panneau reste fermé). L'URL se re-synchronise depuis le store.
+  const focusConflict = (conflict: Conflict): void => {
+    const ids = conflictFixtureIds(conflict);
+    setHighlightedFixtureIds(ids);
+    if (undefined !== conflict.coachId) {
+      setFilterMode("coach");
+      toggleFilterId(conflict.coachId);
+    }
+    const fixtures = allFixtures.filter((f) => ids.includes(f.id));
+    const plan = revealPlan(fixtures, consultKinds ?? DEFAULT_KINDS, competitionsMap);
+    if (plan.away) {
+      setConsultAway(true);
+    }
+    if (plan.kinds.length > 0) {
+      setConsultKinds(normalizeKinds([...(consultKinds ?? DEFAULT_KINDS), ...plan.kinds]));
+    }
+  };
+
+  // « Quitter le focus » : retire le filtre coach + la surbrillance (la re-synchro nettoie l'URL).
+  const quitFocus = (): void => {
+    setHighlightedFixtureIds([]);
+    setFilterMode("equipe");
+  };
+
   // Trois lectures fondatrices (doctrine `readState`).
   if (readLoading(fixtures) || readLoading(teams) || readLoading(venues)) {
     return <FullPageSpinner />;
@@ -465,6 +498,9 @@ export function CalendarPage() {
               hiddenBreakdown={weekHiddenBreakdown}
               onRevealHidden={revealHiddenWeek}
               onEditFixture={setEditFixture}
+              focusedConflict={focusedConflict}
+              onFocusConflict={focusConflict}
+              onQuitFocus={quitFocus}
             />
           )}
         </>

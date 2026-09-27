@@ -51,10 +51,16 @@ interface WeekendGridProps {
    * lands on the clickable targets. `null` = not in swap mode (nothing dimmed).
    */
   swapCandidateIds?: Set<string> | null;
+  /**
+   * Correctif 2 — les rencontres SURLIGNÉES par le focus d'un conflit : anneau destructif
+   * (AA) sur CHAQUE cellule concernée (domicile ET colonne extérieur). Distinct de la
+   * sélection (`selectedFixtureId`, anneau accent) — surligner n'ouvre pas le panneau.
+   */
+  highlightedFixtureIds?: Set<string> | null;
 }
 
 /** The placed home matches of one weekend on a dated venue grid (each block = 2h15 footprint). */
-export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, swapCandidateIds = null }: WeekendGridProps) {
+export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, swapCandidateIds = null, highlightedFixtureIds = null }: WeekendGridProps) {
   const { columns, dateGroups, rows, cells, empty } = model;
   const gridRef = useRef<HTMLDivElement>(null);
 
@@ -125,6 +131,13 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
           // l'anneau + le curseur, les autres cellules placées s'estompent.
           const swapArmed = null !== swapCandidateIds;
 
+          // Correctif 2 — anneau destructif (AA) sur une cellule surlignée par le focus d'un
+          // conflit (jamais un fantôme, qui n'a pas de rencontre).
+          const highlightRing =
+            null !== highlightedFixtureIds && !cell.ghost && highlightedFixtureIds.has(cell.fixtureId)
+              ? "ring-2 ring-destructive ring-offset-1 ring-offset-background"
+              : "";
+
           // lot 3 PR-3a — un bloc EXTÉRIEUR (colonne « Extérieur ») : même <button> que le
           // domicile, fond muted uni, rail muted-foreground, tout le texte `text-foreground`.
           // En mode échange il est INERTE (estompé, sans handler) : on n'échange que des domiciles.
@@ -145,6 +158,7 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                   awayClickable ? "cursor-pointer hover:brightness-95 dark:hover:brightness-110" : "",
                   swapArmed ? "opacity-40" : "",
+                  highlightRing,
                 )}
                 style={{
                   gridColumn: cell.gridColumn,
@@ -199,6 +213,7 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
                   // Estompage de cellule = `grayscale`, jamais `opacity` (l'opacité sur le texte de la
                 // case tombe sous AA — A11Y-22) : on désature la teinte de gymnase pour désigner l'œil.
                 confirmDimmed ? "grayscale" : "",
+                highlightRing,
                 )}
                 style={{
                   gridColumn: cell.gridColumn,
@@ -252,6 +267,7 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
                 // Hors du couple source/candidates : on estompe (pas d'animation —
                 // reduced-motion + on ne fait clignoter aucune cellule).
                 swapDimmed ? "grayscale" : "",
+                highlightRing,
               )}
               style={{
                 gridColumn: cell.gridColumn,

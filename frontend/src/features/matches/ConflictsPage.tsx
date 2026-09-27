@@ -21,8 +21,9 @@ import { ConflictSeverityGroups } from "./ConflictLine";
 import { CONFLICT_FAMILIES, CONFLICT_FAMILY_LABEL } from "./lib/conflictLabels";
 import { type ConflictPivotAxis, type ConflictPivotEntry, PIVOT_AXES, pivotConflicts } from "./lib/conflictPivot";
 import { countByTreatment, isOpenConflict, openConflictCount, RESOLUTION_LABEL, TREATMENT_KEYS, type TreatmentKey, treatmentChipKeys, treatmentOf } from "./lib/conflictResolution";
+import { conflictFixtureIds } from "./lib/conflictFocus";
 import { applyFamilyFilter, countByFamily, DEFAULT_KINDS, dateOf, familiesPresent, hasHomeSide, normalizeKinds, revealPlan } from "./lib/consultFilter";
-import { applyConflictsToParams, applyConsultToParams, applyMatchToParams, applyWeekendToParams, decodeConflictsParams, hasConflictsParams } from "./lib/urlState";
+import { applyConflictFocusToParams, applyConflictsToParams, applyConsultToParams, applyFilterToParams, applyMatchToParams, applyWeekendToParams, decodeConflictsParams, hasConflictsParams } from "./lib/urlState";
 import { weekendKeyOf, weekendShortLabel } from "./lib/weekendGrid";
 import { useCoaches, useCompetitions, useConflicts, useFixtures, useModuleVisit, useTeams, useVenues } from "./queries";
 import { useMatchesStore } from "./store";
@@ -349,9 +350,17 @@ export function ConflictsPage() {
       month: null,
       phaseId: null,
     });
-    // La rencontre à mettre en évidence : le côté gauche par défaut, mais LE domicile si
-    // un seul des deux côtés est à domicile (une case pleine de la grille week-end est plus
-    // sûre à viser qu'un extérieur, souvent masqué et relégué à sa colonne).
+    // Correctif 2 — un conflit de COACH : au lieu de sélectionner UN match (ce qui ouvrait le
+    // panneau de placement sur une seule équipe), on montre le planning du coach (filtre `vue=coach`)
+    // et on SURLIGNE les deux rencontres (`conflit=<a>,<b>`), sans rien sélectionner.
+    if (undefined !== conflict.coachId) {
+      const withCoach = applyFilterToParams(params, "coach", [conflict.coachId]);
+      const withFocus = applyConflictFocusToParams(withCoach, conflictFixtureIds(conflict));
+      return applyWeekendToParams(withFocus, weekendKey).toString();
+    }
+    // Conflit SANS coach (collision de gymnase, hors accès…) : on met en évidence LA rencontre —
+    // le côté gauche par défaut, mais LE domicile si un seul des deux côtés est à domicile (une
+    // case pleine de la grille week-end est plus sûre à viser qu'un extérieur, souvent masqué).
     const sides = [conflict.left, conflict.right, conflict.fixture].filter(
       (s): s is NonNullable<typeof s> => undefined !== s && undefined !== s.fixtureId,
     );
