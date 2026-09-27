@@ -33,3 +33,23 @@ Fonctionnalité: Un club qui démarre en cours de saison valide ses matchs en lo
     Et j'apparie le libellé « GYM BEHAT » au gymnase jetable
     Et l'échéance de saisie du championnat n'est pas encore passée
     Alors aucune rencontre n'est validable « validé ligue »
+
+  Scénario: Premier match joué, sans échéance — le championnat a démarré
+    Un championnat sans échéance renseignée dont le premier match est déjà joué a DÉMARRÉ :
+    il est proposé « validé ligue », sans qu'aucune échéance n'ait à être saisie.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable « GYM BEHAT »
+    Quand je dépose un fichier FBI avec un domicile daté dans le passé à « GYM BEHAT »
+    Et j'apparie le libellé « GYM BEHAT » au gymnase jetable
+    Alors 1 rencontre est validable « validé ligue » sans qu'aucune échéance ne soit renseignée
+
+  Scénario: Un amical passé se valide tout seul et n'est jamais proposé au lot
+    Un amical dont la date est passée n'a plus rien à confirmer : dès qu'un gestionnaire ouvre
+    la vue, il bascule « validé ligue » tout seul — et il n'est JAMAIS proposé au lot des
+    championnats (« validé ligue » n'a pas de sens pour un amical).
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable « GYM BEHAT »
+    Quand je dépose un fichier FBI avec un amical passé à « GYM BEHAT »
+    Et un gestionnaire ouvre la vue « validé ligue »
+    Alors l'amical passé est « validé ligue »
+    Et aucune rencontre n'est validable « validé ligue »

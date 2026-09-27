@@ -35,9 +35,21 @@ final class LeagueValidationContext extends BaseContext
 
     private const string DIVISION = 'BEHAT LEAGUE D';
 
+    /** Division au LIBELLÉ amical (typée CHAMPIONSHIP côté import, reconnue amicale au nom). */
+    private const string AMICAL_DIVISION = 'Amical M';
+
     private const string REF_DATED = 'BHL-2001';
 
     private const string REF_NO_HOUR = 'BHL-2002';
+
+    /** Un domicile de championnat daté DANS LE PASSÉ (premier match joué, sans échéance). */
+    private const string REF_PAST = 'BHL-2003';
+
+    /** Un amical daté dans le passé (se valide seul au balayage). */
+    private const string REF_AMICAL = 'BHL-2004';
+
+    /** Une date de match bien dans le passé (samedi) : « premier match joué ». */
+    private const string PAST_DATE = '2020-09-19';
 
     private const string VENUE_NAME = 'GYM BEHAT';
 
@@ -54,6 +66,8 @@ final class LeagueValidationContext extends BaseContext
     private string $venueId = '';
 
     private string $competitionId = '';
+
+    private string $amicalCompetitionId = '';
 
     private string $matchWindowId = '';
 
@@ -150,6 +164,58 @@ final class LeagueValidationContext extends BaseContext
         }
     }
 
+    #[When('je dépose un fichier FBI avec un domicile daté dans le passé à « GYM BEHAT »')]
+    public function jeDeposeUnDomicilePasse(): void
+    {
+        // Un seul domicile de championnat, daté DANS LE PASSÉ, aucune échéance renseignée :
+        // c'est le PREMIER MATCH JOUÉ qui fait démarrer le championnat.
+        $this->deposit([
+            [self::DIVISION, self::REF_PAST, $this->clubName, 'Adversaire A', $this->fbiDate(self::PAST_DATE), '15:30', self::VENUE_NAME],
+        ], [['division' => self::DIVISION, 'teamId' => $this->teamId]]);
+
+        $this->competitionId = $this->dbalScalar(
+            \sprintf('SELECT id AS behatval FROM competition WHERE club_id=\'%s\' AND name=\'%s\' LIMIT 1', $this->clubId, self::DIVISION),
+            admin: true,
+        );
+    }
+
+    #[When('je dépose un fichier FBI avec un amical passé à « GYM BEHAT »')]
+    public function jeDeposeUnAmicalPasse(): void
+    {
+        // Une division au LIBELLÉ amical (« Amical M »), datée dans le passé : l'import la
+        // type CHAMPIONSHIP, mais elle est reconnue amicale au nom (jamais candidate au lot).
+        $this->deposit([
+            [self::AMICAL_DIVISION, self::REF_AMICAL, $this->clubName, 'Adversaire A', $this->fbiDate(self::PAST_DATE), '15:30', self::VENUE_NAME],
+        ], [['division' => self::AMICAL_DIVISION, 'teamId' => $this->teamId]]);
+
+        $this->amicalCompetitionId = $this->dbalScalar(
+            \sprintf('SELECT id AS behatval FROM competition WHERE club_id=\'%s\' AND name=\'%s\' LIMIT 1', $this->clubId, self::AMICAL_DIVISION),
+            admin: true,
+        );
+    }
+
+    #[When('un gestionnaire ouvre la vue « validé ligue »')]
+    public function unGestionnaireOuvreLaVue(): void
+    {
+        // Une simple LECTURE par un gestionnaire déclenche le balayage des amicaux passés.
+        $result = $this->apiGet('fixtures/league-validation', $this->token);
+        if (200 !== $result['status']) {
+            throw new RuntimeException(\sprintf('la lecture « validé ligue » a répondu %d (200 attendu)', $result['status']));
+        }
+    }
+
+    #[Then('1 rencontre est validable « validé ligue » sans qu\'aucune échéance ne soit renseignée')]
+    public function uneRencontreValidableSansEcheance(): void
+    {
+        $this->assertCount(1);
+    }
+
+    #[Then('l\'amical passé est « validé ligue »')]
+    public function lAmicalPasseEstValide(): void
+    {
+        $this->assertStatusOf(self::REF_AMICAL, 'VALIDATED');
+    }
+
     #[Given('l\'échéance de saisie du championnat est déjà passée')]
     public function lEcheanceDejaPassee(): void
     {
@@ -234,7 +300,7 @@ final class LeagueValidationContext extends BaseContext
         if ('' === $this->token) {
             return;
         }
-        foreach ([self::REF_DATED, self::REF_NO_HOUR] as $ref) {
+        foreach ([self::REF_DATED, self::REF_NO_HOUR, self::REF_PAST, self::REF_AMICAL] as $ref) {
             $id = $this->dbalScalar(
                 \sprintf('SELECT id AS behatval FROM fixture WHERE club_id=\'%s\' AND external_ref=\'%s\' LIMIT 1', $this->clubId, $ref),
                 admin: true,
@@ -245,6 +311,9 @@ final class LeagueValidationContext extends BaseContext
         }
         if ('' !== $this->competitionId) {
             $this->apiDelete(\sprintf('competitions/%s', $this->competitionId), $this->token);
+        }
+        if ('' !== $this->amicalCompetitionId) {
+            $this->apiDelete(\sprintf('competitions/%s', $this->amicalCompetitionId), $this->token);
         }
         if ('' !== $this->matchWindowId) {
             $this->apiDelete(\sprintf('venue_match_windows/%s', $this->matchWindowId), $this->token);

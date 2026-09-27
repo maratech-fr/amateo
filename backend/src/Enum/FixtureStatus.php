@@ -25,7 +25,13 @@ namespace App\Enum;
  *      bascule VALIDATED + source MANUAL. EXCEPTION CONSENTIE à « naît avec son
  *      gymnase mais jamais placé d'office » : le statut n'est PAS posé à la création
  *      (le fondateur veut une confirmation chiffrée), c'est un geste séparé et
- *      explicite qui valide.
+ *      explicite qui valide ;
+ *   3. amicaux passés (lot O, `FriendlyAutoValidator`) — un amical (domicile SANS
+ *      compétition, ou compétition dont le LIBELLÉ est un amical) dont la date est
+ *      passée n'a plus rien à confirmer : un balayage déclenché par un GESTIONNAIRE le
+ *      passe VALIDATED (source MANUAL pour un domicile, intacte pour un extérieur). Pas
+ *      de confirmation chiffrée : le geste « validé ligue » ne concerne QUE les
+ *      championnats.
  * Aucun de ces chemins ne pose VALIDATED d'office pendant l'import.
  *
  * Ce statut ne dit RIEN de l'engagement de l'équipe : dès que l'import a fait

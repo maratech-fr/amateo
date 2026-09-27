@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Entity\ClubUser;
 use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\MatchModuleVisit;
 use App\Entity\SharedCompetitionDeadline;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
+use App\Repository\ClubUserRepository;
 use App\Repository\FbiCorrectionRepository;
 use App\Repository\MatchModuleVisitRepository;
 use App\Repository\SharedCompetitionDeadlineRepository;
@@ -43,6 +45,9 @@ final class EntryDeadlineOutlook
         private readonly MatchModuleVisitRepository $visitRepository,
         private readonly MatchModuleDeltaComputer $deltaComputer,
         private readonly FbiCorrectionRepository $correctionRepository,
+        private readonly LeagueValidationOutlook $leagueValidationOutlook,
+        private readonly FriendlyAutoValidator $friendlyAutoValidator,
+        private readonly ClubUserRepository $clubUserRepository,
         private readonly ClockInterface $clock,
     ) {}
 
@@ -50,11 +55,32 @@ final class EntryDeadlineOutlook
      * @return array{
      *     windows: list<array{deadline: string, source: string, competitionNames: list<string>, toPlaceCount: int, toEnterCount: int, withinWindow: bool}>,
      *     fbiTodo: array{toEnter: int, toCorrect: int},
+     *     toConfirmCount: int,
      *     guardianDelta?: array{newFixturesCount: int, newConflictFingerprints: list<string>, planningChanged: bool}
      * }
      */
     public function compute(string $clubId, ?string $seasonId, string $userId): array
     {
+        // Le balayage des amicaux passés (une ÉCRITURE) n'est déclenché que si l'utilisateur
+        // courant est GESTIONNAIRE : la route du cockpit est ouverte au Membre, qui ne doit
+        // jamais faire écrire la base. Le « validé ligue » chiffré, lui, ne touche que les
+        // championnats — les amicaux se valident seuls, ici, à date passée.
+        if (null !== $seasonId && $this->isManager($userId, $clubId)) {
+            $this->friendlyAutoValidator->sweep($clubId, $seasonId);
+        }
+
+        // Le compte GLOBAL de domiciles « validé ligue » à confirmer, et le compte par
+        // compétition à SOUSTRAIRE de « à placer » : un domicile validable est UNPLACED,
+        // donc compté à tort dans `toPlaceCount` — il est « à confirmer », pas « à placer ».
+        $leagueOutlook = null !== $seasonId ? $this->leagueValidationOutlook->compute($seasonId) : null;
+        $toConfirmCount = null !== $leagueOutlook ? $leagueOutlook['totalValidatable'] : 0;
+        $validatableByComp = [];
+        if (null !== $leagueOutlook) {
+            foreach ($leagueOutlook['matured'] as $maturedEntry) {
+                $validatableByComp[$maturedEntry['competitionId']] = $maturedEntry['validatableCount'];
+            }
+        }
+
         // Tenant + season Doctrine filters scope both reads to the club/season.
         /** @var list<Competition> $competitions */
         $competitions = $this->entityManager->getRepository(Competition::class)->findBy([]);
@@ -81,6 +107,9 @@ final class EntryDeadlineOutlook
                 continue; // no deadline for this competition
             }
             $toPlace = $homeByCompetition['toPlace'][$competition->getId()] ?? 0;
+            // Les domiciles validables « validé ligue » sont UNPLACED : on les RETIRE de
+            // « à placer » (ils sont « à confirmer », comptés dans `toConfirmCount`).
+            $toPlace = max(0, $toPlace - ($validatableByComp[$competition->getId()] ?? 0));
             $toEnter = $homeByCompetition['toEnter'][$competition->getId()] ?? 0;
             if (0 === $toPlace && 0 === $toEnter) {
                 continue; // nothing owed (solved, or all already entered/validated) → absent
@@ -125,6 +154,7 @@ final class EntryDeadlineOutlook
                 'toEnter' => $toEnter,
                 'toCorrect' => \count($this->correctionRepository->findBy(['closedAt' => null])),
             ],
+            'toConfirmCount' => $toConfirmCount,
         ];
 
         // Le bloc gardien n'est joint QUE si une fenêtre J-7 est ouverte ET que
@@ -148,6 +178,14 @@ final class EntryDeadlineOutlook
         }
 
         return $result;
+    }
+
+    /** Le membre courant est-il gestionnaire du club ? (seul un gestionnaire déclenche une écriture). */
+    private function isManager(string $userId, string $clubId): bool
+    {
+        $membership = $this->clubUserRepository->findActiveMembership($userId, $clubId);
+
+        return $membership instanceof ClubUser && $this->clubUserRepository->isManagementRole($membership->getRole());
     }
 
     /**

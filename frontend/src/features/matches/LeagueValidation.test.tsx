@@ -42,7 +42,7 @@ describe("LeagueValidationBanner — trois états servis par l'échéance (lot O
     outlookState.current = {
       ...EMPTY,
       totalValidatable: 12,
-      matured: [{ competitionId: "c1", name: "PNM", deadline: "2026-11-10", deadlineSource: "club", validatableCount: 12 }],
+      matured: [{ competitionId: "c1", name: "PNM", deadline: "2026-11-10", deadlineSource: "club", maturedBy: "deadline", firstMatchDate: null, validatableCount: 12 }],
     };
     const user = userEvent.setup();
     renderWithProviders(<LeagueValidationBanner />);

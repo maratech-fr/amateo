@@ -53,9 +53,9 @@ const { placeFixture, unplaceFixture, submitFixture } = vi.hoisted(() => ({
   submitFixture: vi.fn(() => Promise.resolve({})),
 }));
 
-const meState = vi.hoisted(() => ({ club: undefined as Record<string, unknown> | undefined }));
+const meState = vi.hoisted(() => ({ club: undefined as Record<string, unknown> | undefined, role: undefined as string | undefined }));
 vi.mock("@/shared/session/queries", () => ({
-  useMe: () => ({ data: { seasonPlan: { id: "p1", name: "Planning", chosenScheduleId: "s1", hasFinishedVersion: true }, club: meState.club } }),
+  useMe: () => ({ data: { seasonPlan: { id: "p1", name: "Planning", chosenScheduleId: "s1", hasFinishedVersion: true }, club: meState.club, role: meState.role } }),
 }));
 
 const planningLinks = vi.hoisted(() => ({ teamCoaches: [] as unknown[], coachPlayers: [] as unknown[] }));
@@ -140,6 +140,8 @@ vi.mock("./api", () => ({
   getFbiCorrections: vi.fn(() => Promise.resolve([])),
   closeFbiCorrection: vi.fn(() => Promise.resolve({})),
   reopenFbiCorrection: vi.fn(() => Promise.resolve({})),
+  getLeagueValidationOutlook: vi.fn(() => Promise.resolve({ matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0 })),
+  confirmLeagueValidatedFixtures: vi.fn(() => Promise.resolve({ confirmed: 0 })),
 }));
 
 beforeEach(() => {
@@ -147,6 +149,7 @@ beforeEach(() => {
   unplaceFixture.mockClear();
   submitFixture.mockClear();
   meState.club = undefined;
+  meState.role = undefined;
   planningLinks.teamCoaches = [];
   planningLinks.coachPlayers = [];
   setTodayOverride(null);
@@ -178,6 +181,31 @@ describe("CalendarPage — la Semaine (ex-boucle, fusion PR 3b)", () => {
     vi.mocked(matchesApi.getFixtures).mockReturnValueOnce(new Promise(() => {}));
     renderWithProviders(<CalendarPage />, { route: EXPLICIT });
     expect(screen.getByLabelText("Chargement")).toHaveClass("size-8");
+  });
+
+  it("gestionnaire → le bandeau « validé ligue » (championnats commencés) est monté", async () => {
+    meState.role = "admin";
+    vi.mocked(matchesApi.getLeagueValidationOutlook).mockResolvedValueOnce({
+      matured: [{ competitionId: "c1", name: "PNM", deadline: "2020-09-10", deadlineSource: "club", maturedBy: "deadline", firstMatchDate: null, validatableCount: 3 }],
+      toTreat: [],
+      missingDeadline: [],
+      totalValidatable: 3,
+    });
+    renderWithProviders(<CalendarPage />, { route: EXPLICIT });
+    expect(await screen.findByText(/à confirmer « validé ligue »/)).toBeInTheDocument();
+  });
+
+  it("Membre → le bandeau « validé ligue » n'est jamais monté", async () => {
+    meState.role = "member";
+    vi.mocked(matchesApi.getLeagueValidationOutlook).mockResolvedValueOnce({
+      matured: [{ competitionId: "c1", name: "PNM", deadline: "2020-09-10", deadlineSource: "club", maturedBy: "deadline", firstMatchDate: null, validatableCount: 3 }],
+      toTreat: [],
+      missingDeadline: [],
+      totalValidatable: 3,
+    });
+    renderWithProviders(<CalendarPage />, { route: EXPLICIT });
+    await screen.findByRole("group", { name: "Semaine affichée" });
+    expect(screen.queryByText(/à confirmer « validé ligue »/)).not.toBeInTheDocument();
   });
 
   it("rend la barre « Semaine affichée » (3 compteurs) ET l'établi (grille + radar) SANS rail", async () => {

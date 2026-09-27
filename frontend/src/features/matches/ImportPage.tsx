@@ -130,14 +130,14 @@ export function ImportPage() {
         </CardContent>
       </Card>
 
-      {/* Lot L — le rattrapage « validé ligue » : dès qu'un club démarre en cours de saison,
+      {/* Lot L/O — le rattrapage « validé ligue » : dès qu'un club démarre en cours de saison,
           les domiciles déjà datés (heure + gymnase) se confirment d'un geste chiffré. Trois blocs
-          indépendants (championnats échus à valider, rencontres échues à traiter, championnats
+          indépendants (championnats commencés à valider, rencontres à traiter, championnats
           sans échéance) — muet seulement si les trois sont vides à la fois. */}
       <LeagueValidationBanner />
 
       {/* 2. La file de traitement, par équipe. `id` = cible du renvoi « Traiter dans la
-          file » du bandeau « validé ligue » (les rencontres échues à traiter y sont
+          file » du bandeau « validé ligue » (les rencontres à traiter y sont
           visibles par défaut : elles ne sont pas traitées, donc jamais masquées). */}
       <div id={REVIEW_QUEUE_ANCHOR}>
         <ReviewQueue fixtures={fixtures.data ?? []} teams={teams.data ?? []} venues={venues.data ?? []} />

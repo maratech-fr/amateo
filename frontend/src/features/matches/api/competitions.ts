@@ -126,6 +126,12 @@ export interface DeadlineOutlook {
    * Optionnel côté TS (le backend le sert toujours ; l'absence retombe sur 0 à l'usage).
    */
   fbiTodo?: FbiTodo;
+  /**
+   * Le compte GLOBAL de domiciles prêts à être marqués « validé ligue » en un geste
+   * (championnats commencés, heure + gymnase identifié, sans écart) — calcul BACKEND, la
+   * carte l'AFFICHE. Optionnel côté TS (le backend le sert toujours ; l'absence retombe sur 0).
+   */
+  toConfirmCount?: number;
   /** Absent quand aucune fenêtre n'est ouverte OU sans référence de visite. */
   guardianDelta?: DeadlineGuardianDelta;
 }
@@ -145,12 +151,23 @@ export const getDeadlineOutlook = (): Promise<DeadlineOutlook> => api.get("match
  * source MANUAL). Un championnat dont l'échéance n'est pas passée (nouvelle vague, dates
  * provisoires) n'est proposé nulle part. Rejouable : un second appel rend 0.
  */
-/** Un championnat ÉCHU (échéance passée, jour inclus) avec son compte de validables. */
+/**
+ * Comment un championnat a « commencé » : son échéance est passée, ou son premier match
+ * est déjà joué (une compétition sans échéance mais dont les dates sont tombées).
+ */
+export type MaturedBy = "deadline" | "firstMatchPlayed";
+
+/** Un championnat COMMENCÉ (échéance passée OU premier match joué) avec son compte de validables. */
 export interface MaturedCompetition {
   competitionId: string;
   name: string;
-  deadline: string;
+  /** `null` quand le championnat a commencé par premier match joué (pas d'échéance renseignée). */
+  deadline: string | null;
   deadlineSource: "club" | "community";
+  /** Ce qui l'a fait commencer — décide le libellé (échéance vs 1er match joué). */
+  maturedBy: MaturedBy;
+  /** La date du premier match, présente seulement quand `maturedBy` vaut `firstMatchPlayed`. */
+  firstMatchDate: string | null;
   validatableCount: number;
 }
 

@@ -11,7 +11,9 @@ import { Modal } from "@/shared/components/ui/modal";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
 import { todayISO } from "@/shared/lib/clock";
 import { readFailed, readLoading } from "@/shared/lib/readState";
+import { isManagementRole } from "@/shared/lib/roles";
 import { useCredits } from "@/shared/credits/useCredits";
+import { useMe } from "@/shared/session/queries";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { Category, Coach, Competition, Conflict, Fixture, Team, Venue } from "./api";
@@ -35,6 +37,7 @@ import { usePlacementGuards } from "./lib/usePlacementGuards";
 import { useWeekView } from "./lib/useWeekView";
 import { applyFbiToParams, decodeFbiParam } from "./lib/urlState";
 import { isPlacedOnGrid, matchMinutesByCategory, weekendKeyOf } from "./lib/weekendGrid";
+import { LeagueValidationBanner } from "./LeagueValidation";
 import { MatchesFilterBar } from "./MatchesFilterBar";
 import { ModuleVisitBanner } from "./ModuleVisitBanner";
 import { MonthTable } from "./MonthTable";
@@ -103,6 +106,8 @@ export function CalendarPage() {
   const placeMatches = usePlaceMatches();
   const submitFixture = useSubmitFixture();
   const moduleVisit = useModuleVisit();
+  const { data: me } = useMe();
+  const canManage = isManagementRole(me?.role);
   const freshness = useLatestFbiIngestion();
   const fbiCorrections = useFbiCorrections();
   const closeFbiCorrection = useCloseFbiCorrection();
@@ -441,6 +446,9 @@ export function CalendarPage() {
 
       {/* Le gardien : ce qui a bougé depuis la dernière visite. */}
       <ModuleVisitBanner delta={moduleVisit.data} />
+
+      {/* « Validé ligue » en lot : rattrapage des championnats commencés (gestionnaire seul). */}
+      {canManage ? <LeagueValidationBanner /> : null}
 
       {/* Conflits SANS date (compétition incomplète…) → renvoi vers l'onglet Conflits. */}
       {dateless.length > 0 ? (

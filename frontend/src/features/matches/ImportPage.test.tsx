@@ -161,7 +161,7 @@ describe("ImportPage — les entrées de données", () => {
 });
 
 const MATURED_OUTLOOK = {
-  matured: [{ competitionId: "c1", name: "PNM", deadline: "2026-11-10", deadlineSource: "club" as const, validatableCount: 3 }],
+  matured: [{ competitionId: "c1", name: "PNM", deadline: "2026-11-10", deadlineSource: "club" as const, maturedBy: "deadline" as const, firstMatchDate: null, validatableCount: 3 }],
   toTreat: [],
   missingDeadline: [],
   totalValidatable: 3,
