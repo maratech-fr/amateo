@@ -1,9 +1,9 @@
 # API FFBB — routes consommées
 
-Last verified @ 2026-09-27 (`documentation-update`, P4-264 — mapping des salles vérifié contre
-`FfbbSallesController::mapSalle` : `postalCode` (`commune.codePostal`) désormais relayé sur les deux
-voies CP et nom). Historique des passes précédentes vit dans git :
-`git log -p --follow backend/docs/ffbb-api.md`.
+Last verified @ 2026-09-27 (`documentation-update`, passe tests manuels 0927 — `FfbbApiClient::
+searchSallesByName` vérifié contre `backend/src/Service/Basketball/FfbbApiClient.php:206-219` :
+`matchingStrategy: all` posé, preuve datée dans le code même). Historique des passes précédentes vit
+dans git : `git log -p --follow backend/docs/ffbb-api.md`.
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les
 > données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit
@@ -288,7 +288,11 @@ haut.
   correspondance exacte) : l'appelant décide sur l'égalité STRICTE du libellé normalisé, jamais
   sur ce compte. ⚠ Ce résultat porte sur `libelle` seulement — l'index reste **non** queryable par
   `numero` (§ « Réconciliation FBI » ci-dessus — le pont par référence FFBB de salle est fermé,
-  `etat-des-lieux.md` §2).
+  `etat-des-lieux.md` §2). **`matchingStrategy: all`** (retour terrain, sondé en réel le
+  2026-09-20) : par défaut Meilisearch relâche les mots un à un (`last`), si bien qu'une recherche
+  à plusieurs mots (« GYMNASE GUILLOUX ») rendait tout gymnase, exact ou non (Gutenberg, Jean
+  Brunel…) — `all` exige que TOUS les mots de `q` matchent ; mesuré sur la vraie API (clé
+  search-only) : « GYMNASE GUILLOUX » passe de 3 010 à 2 hits.
 - Exposé par `GET /api/ffbb/salles?q=` — **alternative** à `?postalCode=` sur la même route
   (`FfbbSallesController`), seuil 3 caractères côté serveur ET front (en-dessous : liste vide,
   aucun appel réseau). Même mapping serveur que la voie CP (`{name, address, city, postalCode,

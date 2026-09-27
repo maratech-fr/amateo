@@ -10,7 +10,8 @@ import { cn } from "@/shared/lib/utils";
 import type { WeekendCell, WeekendGridModel } from "./lib/weekendGrid";
 
 /** lot 3 PR-3a — nom accessible d'un bloc extérieur : équipe, adversaire, jour + heure
- *  (ou « heure inconnue »), « heure estimée », trajet. Ordre stable, segments absents omis. */
+ *  (ou « heure inconnue »), « heure estimée », départ/retour (correctif 10), trajet.
+ *  Ordre stable, segments absents omis. */
 function awayBlockName(cell: WeekendCell): string {
   const parts = [`${cell.teamLabel} à ${cell.opponentLabel}`];
   const when = true === cell.unknownHour ? "heure inconnue" : cell.kickoffLabel;
@@ -18,11 +19,19 @@ function awayBlockName(cell: WeekendCell): string {
   if (true === cell.estimated) {
     parts.push("heure estimée");
   }
+  if (undefined !== cell.departureLabel && undefined !== cell.returnLabel) {
+    parts.push(`départ ${cell.departureLabel} · retour ${cell.returnLabel}`);
+  }
   if (null !== cell.travelLabel && undefined !== cell.travelLabel) {
     parts.push(`${cell.travelLabel} de trajet`);
   }
   return parts.join(", ");
 }
+
+/** Motif du segment TRAJET (correctif 10) : hachures discrètes en `--muted-foreground` sur le
+ *  fond OPAQUE `bg-surface-muted` — distinct du hachuré ACCENT de « À confirmer » et du plat du
+ *  match. Le motif est décoratif (le sens vit dans le repère texte + le nom accessible). */
+const TRAVEL_HATCH = "repeating-linear-gradient(45deg, color-mix(in oklch, var(--muted-foreground) 14%, transparent) 0 2px, transparent 2px 7px)";
 
 /**
  * VOCABULAIRE VISUEL des cases de la grille (à garder cohérent) :
@@ -51,10 +60,16 @@ interface WeekendGridProps {
    * lands on the clickable targets. `null` = not in swap mode (nothing dimmed).
    */
   swapCandidateIds?: Set<string> | null;
+  /**
+   * Correctif 2 — les rencontres SURLIGNÉES par le focus d'un conflit : anneau destructif
+   * (AA) sur CHAQUE cellule concernée (domicile ET colonne extérieur). Distinct de la
+   * sélection (`selectedFixtureId`, anneau accent) — surligner n'ouvre pas le panneau.
+   */
+  highlightedFixtureIds?: Set<string> | null;
 }
 
 /** The placed home matches of one weekend on a dated venue grid (each block = 2h15 footprint). */
-export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, swapCandidateIds = null }: WeekendGridProps) {
+export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, swapCandidateIds = null, highlightedFixtureIds = null }: WeekendGridProps) {
   const { columns, dateGroups, rows, cells, empty } = model;
   const gridRef = useRef<HTMLDivElement>(null);
 
@@ -125,6 +140,13 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
           // l'anneau + le curseur, les autres cellules placées s'estompent.
           const swapArmed = null !== swapCandidateIds;
 
+          // Correctif 2 — anneau destructif (AA) sur une cellule surlignée par le focus d'un
+          // conflit (jamais un fantôme, qui n'a pas de rencontre).
+          const highlightRing =
+            null !== highlightedFixtureIds && !cell.ghost && highlightedFixtureIds.has(cell.fixtureId)
+              ? "ring-2 ring-destructive ring-offset-1 ring-offset-background"
+              : "";
+
           // lot 3 PR-3a — un bloc EXTÉRIEUR (colonne « Extérieur ») : même <button> que le
           // domicile, fond muted uni, rail muted-foreground, tout le texte `text-foreground`.
           // En mode échange il est INERTE (estompé, sans handler) : on n'échange que des domiciles.
@@ -132,28 +154,13 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
             const awayClickable = undefined !== onSelectFixture && !swapArmed;
             const AwayTag = awayClickable ? "button" : "div";
             const name = awayBlockName(cell);
-            return (
-              <AwayTag
-                key={cell.key}
-                {...(awayClickable ? { type: "button" as const, onClick: () => onSelectFixture(cell.fixtureId) } : {})}
-                data-fixture-id={cell.fixtureId}
-                data-away="true"
-                aria-label={name}
-                title={name}
-                className={cn(
-                  "z-10 m-px flex flex-col items-start overflow-hidden rounded border border-border border-l-4 border-l-muted-foreground bg-muted px-1 py-0.5 text-left leading-tight text-foreground",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                  awayClickable ? "cursor-pointer hover:brightness-95 dark:hover:brightness-110" : "",
-                  swapArmed ? "opacity-40" : "",
-                )}
-                style={{
-                  gridColumn: cell.gridColumn,
-                  gridRow: `${cell.gridRowStart} / span ${cell.gridRowSpan}`,
-                  justifySelf: "start",
-                  width: `${100 / cell.laneCount}%`,
-                  transform: `translateX(${cell.lane * 100}%)`,
-                }}
-              >
+            // Correctif 10 : le bloc VISUALISE le trajet aller-retour en trois segments empilés
+            // (aller · match · retour) quand l'heure ET le trajet aller sont connus. Sinon, match
+            // seul comme avant, avec le libellé de trajet ou la mention « trajet inconnu ».
+            const showSegments = true === cell.hasTravel && true !== cell.unknownHour;
+            // Contenu identifiant du match (partagé segment ↔ bloc non segmenté).
+            const matchBody = (
+              <>
                 <span className="flex w-full items-center gap-1 text-xs font-medium">
                   <Bus className="size-3 shrink-0" aria-hidden="true" />
                   <span className="truncate">{cell.teamLabel}</span>
@@ -163,12 +170,72 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
                 <span className="truncate text-[10px]">
                   {(true === cell.unknownHour ? "heure inconnue" : cell.kickoffLabel) + ` · à ${cell.opponentLabel}`}
                 </span>
-                {null !== cell.travelLabel && undefined !== cell.travelLabel ? (
-                  <span className="flex items-center gap-1 text-[10px]">
-                    <Car className="size-3 shrink-0" aria-hidden="true" />
-                    <span className="tabular-nums">{cell.travelLabel}</span>
+              </>
+            );
+            return (
+              <AwayTag
+                key={cell.key}
+                {...(awayClickable ? { type: "button" as const, onClick: () => onSelectFixture(cell.fixtureId) } : {})}
+                data-fixture-id={cell.fixtureId}
+                data-away="true"
+                aria-label={name}
+                title={name}
+                className={cn(
+                  "z-10 m-px flex flex-col overflow-hidden rounded border border-border border-l-4 border-l-muted-foreground bg-muted text-left leading-tight text-foreground",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                  awayClickable ? "cursor-pointer hover:brightness-95 dark:hover:brightness-110" : "",
+                  swapArmed ? "opacity-40" : "",
+                  highlightRing,
+                )}
+                style={{
+                  gridColumn: cell.gridColumn,
+                  gridRow: `${cell.gridRowStart} / span ${cell.gridRowSpan}`,
+                  justifySelf: "start",
+                  width: `${100 / cell.laneCount}%`,
+                  transform: `translateX(${cell.lane * 100}%)`,
+                }}
+              >
+                {showSegments ? (
+                  <>
+                    {/* Trajet ALLER : ton distinct (surface OPAQUE + hachures), hauteur proportionnelle
+                        au trajet, repère « départ HH:MM » en heure murale. Décoratif pour le lecteur
+                        d'écran (l'info vit dans le aria-label du bloc). */}
+                    <span
+                      aria-hidden="true"
+                      className="flex shrink-0 items-center gap-1 overflow-hidden bg-surface-muted px-1 text-[10px] text-foreground"
+                      style={{ flexGrow: cell.travelOneWayMin, flexBasis: 0, minHeight: 0, backgroundImage: TRAVEL_HATCH }}
+                    >
+                      <Car className="size-3 shrink-0" aria-hidden="true" />
+                      <span className="truncate tabular-nums">départ {cell.departureLabel}</span>
+                    </span>
+                    {/* Match : ton ACTUEL (bg-muted), le contenu identifiant. */}
+                    <span className="flex min-h-0 grow flex-col items-start px-1 py-0.5" style={{ flexGrow: cell.matchSpanMin, flexBasis: 0 }}>
+                      {matchBody}
+                    </span>
+                    {/* Trajet RETOUR : symétrique de l'aller, repère « retour HH:MM ». */}
+                    <span
+                      aria-hidden="true"
+                      className="flex shrink-0 items-center gap-1 overflow-hidden bg-surface-muted px-1 text-[10px] text-foreground"
+                      style={{ flexGrow: cell.travelOneWayMin, flexBasis: 0, minHeight: 0, backgroundImage: TRAVEL_HATCH }}
+                    >
+                      <Car className="size-3 shrink-0" aria-hidden="true" />
+                      <span className="truncate tabular-nums">retour {cell.returnLabel}</span>
+                    </span>
+                  </>
+                ) : (
+                  <span className="flex min-h-0 grow flex-col items-start px-1 py-0.5">
+                    {matchBody}
+                    {null !== cell.travelLabel && undefined !== cell.travelLabel ? (
+                      <span className="flex items-center gap-1 text-[10px]">
+                        <Car className="size-3 shrink-0" aria-hidden="true" />
+                        <span className="tabular-nums">{cell.travelLabel}</span>
+                      </span>
+                    ) : true !== cell.unknownHour ? (
+                      // Heure connue mais trajet indisponible : on le DIT (pas de bloc muet).
+                      <span className="text-[10px] text-muted-foreground">trajet inconnu</span>
+                    ) : null}
                   </span>
-                ) : null}
+                )}
               </AwayTag>
             );
           }
@@ -199,6 +266,7 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
                   // Estompage de cellule = `grayscale`, jamais `opacity` (l'opacité sur le texte de la
                 // case tombe sous AA — A11Y-22) : on désature la teinte de gymnase pour désigner l'œil.
                 confirmDimmed ? "grayscale" : "",
+                highlightRing,
                 )}
                 style={{
                   gridColumn: cell.gridColumn,
@@ -252,6 +320,7 @@ export function WeekendGrid({ model, onSelectFixture, selectedFixtureId = null, 
                 // Hors du couple source/candidates : on estompe (pas d'animation —
                 // reduced-motion + on ne fait clignoter aucune cellule).
                 swapDimmed ? "grayscale" : "",
+                highlightRing,
               )}
               style={{
                 gridColumn: cell.gridColumn,

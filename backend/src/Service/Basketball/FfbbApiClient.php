@@ -192,6 +192,12 @@ final class FfbbApiClient
      * en tête — `limit: 50` les capte toutes. `estimatedTotalHits` est trompeur (2859 pour 1
      * exact) : l'appelant décide sur l'égalité STRICTE du libellé normalisé, jamais sur le compte.
      *
+     * ⚠ `matchingStrategy = all` (retour terrain 2026-09-27) : par défaut Meilisearch relâche les
+     * mots un à un (`last`), si bien que « GYMNASE GUILLOUX » rendait Gutenberg, Jean Brunel… (tout
+     * ce qui contient « gymnase »). `all` exige que TOUS les mots de `q` matchent — sondé le
+     * 2026-09-27 sur la vraie API (clé search-only) : « GYMNASE GUILLOUX » passe de 3010 à 2 hits,
+     * l'option est ACCEPTÉE (pas un repli côté backend à écrire).
+     *
      * `q` est un paramètre de requête (borné 2..180), JAMAIS interpolé dans un `filter` — aucune
      * surface d'injection (même posture anti-injection que les autres `search*`).
      *
@@ -207,6 +213,7 @@ final class FfbbApiClient
         return $this->query([
             'indexUid' => 'ffbbserver_salles',
             'q' => $query,
+            'matchingStrategy' => 'all',
             'limit' => 50,
         ]);
     }

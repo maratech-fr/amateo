@@ -383,6 +383,48 @@ final class EntryDeadlineShareTest extends WebTestCase
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // (i) une fenêtre porte DEUX compteurs : UNPLACED → toPlace, PLACED → toEnter
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function testWindowSplitsUnplacedIntoToPlaceAndPlacedIntoToEnter(): void
+    {
+        // Le retour terrain (2026-09-27) : le cockpit annonçait « 106 matchs non saisis »
+        // (UNPLACED compris) mais la liste FBI, elle, ne montre que les PLACED — modale vide.
+        // La fenêtre doit distinguer « à placer » (UNPLACED) de « à saisir » (PLACED seul,
+        // aligné sur `fbiTodo.toEnter` et la liste FBI). SUBMITTED/VALIDATED : ni l'un ni l'autre.
+        [, $season, $user] = $this->createClub('i');
+        $comp = $this->makeCompetition($season, 1, null);
+        $this->setClubDeadline($comp, new DateTimeImmutable('today')->modify('+3 days'));
+
+        $this->homeFixture($season, $comp->getTeamId(), $comp->getId(), FixtureStatus::UNPLACED);
+        $this->homeFixture($season, $comp->getTeamId(), $comp->getId(), FixtureStatus::UNPLACED);
+        $this->homeFixture($season, $comp->getTeamId(), $comp->getId(), FixtureStatus::PLACED);
+        $this->homeFixture($season, $comp->getTeamId(), $comp->getId(), FixtureStatus::SUBMITTED);
+
+        $outlook = $this->deadlineOutlook($user);
+        self::assertCount(1, $outlook['windows'], 'une seule fenêtre (une échéance effective)');
+        $window = $outlook['windows'][0];
+
+        self::assertSame(2, $window['toPlaceCount'], 'les deux UNPLACED comptent « à placer »');
+        self::assertSame(1, $window['toEnterCount'], 'seul le PLACED compte « à saisir » — jamais l\'UNPLACED, jamais le SUBMITTED');
+    }
+
+    public function testWindowWithOnlyUnplacedIsStillEmittedWithZeroToEnter(): void
+    {
+        // La fenêtre reste émise si l'UN des deux compteurs > 0 : tout à placer, rien à saisir,
+        // le cockpit doit quand même alerter (« 106 à placer · 0 à saisir »).
+        [, $season, $user] = $this->createClub('ip');
+        $comp = $this->makeCompetition($season, 1, null);
+        $this->setClubDeadline($comp, new DateTimeImmutable('today')->modify('+3 days'));
+        $this->homeFixture($season, $comp->getTeamId(), $comp->getId(), FixtureStatus::UNPLACED);
+
+        $outlook = $this->deadlineOutlook($user);
+        self::assertCount(1, $outlook['windows'], 'un domicile UNPLACED suffit à émettre la fenêtre');
+        self::assertSame(1, $outlook['windows'][0]['toPlaceCount']);
+        self::assertSame(0, $outlook['windows'][0]['toEnterCount']);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Infrastructure
     // ─────────────────────────────────────────────────────────────────────────
 

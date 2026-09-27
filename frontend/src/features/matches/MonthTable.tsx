@@ -2,7 +2,7 @@ import { Filter } from "lucide-react";
 
 import { EmptyState } from "@/shared/components/ui/empty-hint";
 
-import type { Conflict, Fixture, Team, Venue } from "./api";
+import type { Coach, Conflict, Fixture, Team, Venue } from "./api";
 import type { CoachTeamRole } from "./lib/matchFilter";
 import { MatchRowsTable } from "./MatchRowsTable";
 
@@ -21,11 +21,13 @@ interface MonthTableProps {
   groups: MatchRowsGroup[];
   teams: Map<string, Team>;
   venues: Map<string, Venue>;
+  coaches: Map<string, Coach>;
   /** fixtureId → conflits déjà scopés au mois ET filtrés par famille. */
   conflictsByFixture: Map<string, Conflict[]>;
   coachRoles?: Map<string, CoachTeamRole>;
   filterActive: boolean;
   onSelectFixture: (fixtureId: string) => void;
+  onFocusConflict: (conflict: Conflict) => void;
 }
 
 /**
@@ -33,7 +35,7 @@ interface MonthTableProps {
  * (`MatchRowsTable`, maison partagée). Extraite de l'ancien onglet Consulter,
  * LECTURE des données déjà dérivées par la page (aucune re-dérivation ici).
  */
-export function MonthTable({ activeMonth, monthLabel, groups, teams, venues, conflictsByFixture, coachRoles, filterActive, onSelectFixture }: MonthTableProps) {
+export function MonthTable({ activeMonth, monthLabel, groups, teams, venues, coaches, conflictsByFixture, coachRoles, filterActive, onSelectFixture, onFocusConflict }: MonthTableProps) {
   if (0 === groups.length) {
     return (
       <EmptyState
@@ -49,9 +51,11 @@ export function MonthTable({ activeMonth, monthLabel, groups, teams, venues, con
       groups={groups}
       teams={teams}
       venues={venues}
+      coaches={coaches}
       conflictsByFixture={conflictsByFixture}
       coachRoles={coachRoles}
       onSelectFixture={onSelectFixture}
+      onFocusConflict={onFocusConflict}
     />
   );
 }

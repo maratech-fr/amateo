@@ -1,9 +1,10 @@
-Last verified @ 2026-09-27 (snapshot régénéré : la salle FFBB proxy porte désormais `postalCode`
-— nouvelle propriété du schéma de liste de `/api/ffbb/salles` et `/api/ffbb/salles-proches` ;
-aucun chemin ajouté, compte inchangé, empreinte bumpée).
+Last verified @ 2026-09-27 (snapshot régénéré : la fenêtre de `/api/matches/deadline-outlook` porte
+désormais `toPlaceCount` — domiciles UNPLACED à placer — distinct de `toEnterCount` — domiciles
+PLACED à saisir dans FBI ; description de `toEnterCount` recalée ; aucun chemin ajouté, compte
+inchangé, empreinte bumpée).
 
 **208 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`4974c3276b88acfc0e338f5abf0cbc1ed6bb6bc793b1ba6db8bc88d885a85677` (`sha256sum` sur le fichier).
+`d96e359381d2301da53324a92e396b7adb98eb00f2e4158dbfcc0cd09825b204` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

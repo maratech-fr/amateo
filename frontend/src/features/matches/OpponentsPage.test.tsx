@@ -92,6 +92,15 @@ describe("OpponentsPage — la liste par club adverse (grain gymnase)", () => {
     expect(screen.getByText(/1 club adverse sans gymnase/)).toBeInTheDocument();
   });
 
+  it("« Ajouter un gymnase » est un bouton ICÔNE : nom accessible + title, aucun libellé texte (correctif 5)", () => {
+    travelState.data = { clubGeolocated: true, opponents: [club({ code: "C2", name: "BC Sans Gym", venues: [], fixtureCount: 4 })] };
+    renderWithProviders(<OpponentsPage />);
+    const add = screen.getByRole("button", { name: "Ajouter un gymnase" });
+    expect(add).toHaveAttribute("title", "Ajouter un gymnase");
+    // Icône seule : plus de nœud de texte visible « Ajouter un gymnase » (le nom vient de l'aria-label).
+    expect(add).not.toHaveTextContent("Ajouter un gymnase");
+  });
+
   it("les libellés « à apparier » sont dans le MÊME rowgroup que le club, avec le bouton « Apparier »", () => {
     travelState.data = {
       clubGeolocated: true,

@@ -208,6 +208,10 @@ final class TeamTagServiceTest extends TestCase
         $existingAssignment = new TeamTagAssignment;
         $existingAssignment->setTeamId($team->getId());
         $existingAssignment->setSeasonId('season-1');
+        // `tag_id` est NOT NULL en base : une assignation réelle porte toujours son tag. On pose ici
+        // un id PÉRIMÉ (jamais dans l'ensemble re-dérivé) pour que le court-circuit « ensemble
+        // identique » (P4/2026-09-27) NE s'active PAS — le delete+recreate reste bien exercé.
+        $existingAssignment->setTagId('stale-tag-id');
 
         $this->assignmentRepository->method('findBy')
             ->willReturn([$existingAssignment]);

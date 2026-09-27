@@ -66,18 +66,47 @@ final class TeamTagService
         // tags d'abord, l'échec précède toute destruction : il n'y a rien à réparer.
         $systemTags = $this->getOrCreateSystemTags($clubId);
 
-        // Remove existing assignments for this team/season
+        // Existing assignments for this team/season.
         $existingAssignments = $this->entityManager->getRepository(TeamTagAssignment::class)->findBy([
             'teamId' => $teamId,
             'seasonId' => $seasonId,
         ]);
 
+        // Determine which tags apply to this team, resolved to the system-tag ids we would write.
+        $tagNames = $this->determineTagNames($team);
+        $desiredTagIds = [];
+        foreach ($tagNames as $tagName) {
+            if (isset($systemTags[$tagName])) {
+                $desiredTagIds[] = $systemTags[$tagName]->getId();
+            }
+        }
+
+        // ⚠ COURT-CIRCUIT SI L'ENSEMBLE EST IDENTIQUE — NE RIEN ÉCRIRE (retour terrain 2026-09-27).
+        //
+        // Ce listener est rejoué à chaque écriture de Team (renommage, édition) ET à chaque édition
+        // de SportCategory (`TeamTagSyncListener::categoryUpdated`, même quand seule la DURÉE de
+        // match change). Un delete+recreate systématique du MÊME ensemble de tags écrivait des
+        // `TeamTagAssignment` pour rien, ce que `ResourceChangeStaleScheduleListener` prenait pour
+        // un vrai changement de ressource → bannière « à régénérer — les données du club ont
+        // changé » à tort. On compare donc l'ensemble d'ids DÉSIRÉ à l'ENSEMBLE existant (par tag,
+        // pas par ligne) : identiques ⇒ aucune écriture, aucun faux marquage.
+        //
+        // Approche choisie plutôt qu'un filtre de changeset côté listener (« seuls name/ageMin/
+        // ageMax comptent ») : `determineTagNames` est libre d'aller lire un quatrième champ demain,
+        // et le filtre serait alors un bug SILENCIEUX (cf. `TeamTagSyncListener::categoryUpdated`).
+        // Comparer la SORTIE (l'ensemble de tags) reste correct quels que soient ses intrants.
+        $existingTagIds = array_map(static fn (TeamTagAssignment $a): string => $a->getTagId(), $existingAssignments);
+        sort($existingTagIds);
+        $wantedTagIds = $desiredTagIds;
+        sort($wantedTagIds);
+        if ($existingTagIds === $wantedTagIds) {
+            return;
+        }
+
+        // L'ensemble diffère : delete+recreate (l'écriture EST le signal de péremption légitime).
         foreach ($existingAssignments as $assignment) {
             $this->entityManager->remove($assignment);
         }
-
-        // Determine which tags apply to this team
-        $tagNames = $this->determineTagNames($team);
 
         // Create assignments
         foreach ($tagNames as $tagName) {

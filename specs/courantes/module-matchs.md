@@ -1,10 +1,15 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-27 (P4-264, §9 Adversaires — vérifié contre `OpponentsPage.tsx`/
-`LocateOpponentModal.tsx` : « Modifier le gymnase » en tête de menu, même `PUT
-/api/opponents/venue-links/{id}` que « Fusionner dans « X » », résultats de recherche affichant
-CP + ville). Reste du contenu recopié tel quel (reformulé au présent, jamais réaudité ligne à ligne
-contre le code cette passe). Historique : `git log -p --follow specs/courantes/module-matchs.md`.
+Last verified @ 2026-09-27 (passe tests manuels 0927 — §4/§5/§6 re-confrontés :
+`EntryDeadlineOutlook::countHomeByCompetition` sert `toPlaceCount`/`toEnterCount`
+(`backend/src/Service/EntryDeadlineOutlook.php`) ✓ ; `FbiDeadlineCard` n'ouvre « Ouvrir la liste
+FBI » que si `fbiTodo` a du contenu, sinon « Placer les matchs » (`FbiDeadlineCard.tsx`) ✓ ; le
+focus de conflit (`conflit=`, `ConflictFocusBanner`, `lib/conflictFocus.ts`) et son branchement
+coach/sans-coach (`CalendarPage.tsx`, `ConflictsPage.tsx`) ✓ ; `AwayFixtureCard` lecture seule sur
+import (`lib/fixtureOrigin.ts::isImportedFixture`, `WeekWorkbench.tsx::openAway`) ✓ ; le trajet
+aller-retour dessiné (`lib/awayKickoff.ts::awayTimeline`) ✓ ; la pastille de conflit nommée en
+Mois/Phase (`MatchRowsTable.tsx::pillLabel`) ✓). Reste du contenu non réaudité cette passe.
+Historique : `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
 > d'une PR. Le JOURNAL (qui a livré quoi, quand, sous quel id) vit dans
@@ -509,12 +514,18 @@ recalculée au front. `GET /api/matches/deadline-outlook` (ouvert au Membre, `RE
 toCorrect}` — le compte GLOBAL « à faire dans FBI » toutes semaines confondues (à saisir =
 domiciles PLACED, à corriger = entrées OUVERTES du registre ci-dessus), pour que le cockpit ET la
 barre de compteurs (§5) n'aient jamais à charger les fixtures —, et joint `guardianDelta` (réutilise
-`MatchModuleDeltaComputer` **sans stamper**) si une référence de visite existe déjà. La carte
-cockpit `FbiDeadlineCard` (`/`, sous `SeasonPlanBanner`) fusionne le résumé du gardien dans la même
-carte (jamais un second bloc) et distingue trois régimes : une échéance en fenêtre J-7 → ton accent
-(warning si dépassée) avec la ligne globale au-dessus des échéances ; hors fenêtre mais `fbiTodo` >
-0 → ton NEUTRE, la seule ligne globale (« N FBI à faire, dont M à corriger ») ; rien à faire ET
-aucune fenêtre → muette. Lien unique « Ouvrir la liste FBI » → `/matchs?fbi=1`.
+`MatchModuleDeltaComputer` **sans stamper**) si une référence de visite existe déjà. Chaque fenêtre
+sert en plus DEUX compteurs distincts (`EntryDeadlineOutlook::countHomeByCompetition`) : `toPlaceCount`
+(domiciles UNPLACED — un geste de placement) et `toEnterCount` (domiciles PLACED, prêts à copier
+dans FBI — aligné sur `fbiTodo.toEnter` et la liste FBI). La carte cockpit `FbiDeadlineCard` (`/`,
+sous `SeasonPlanBanner`) fusionne le résumé du gardien dans la même carte (jamais un second bloc) et
+distingue trois régimes : une échéance en fenêtre J-7 → ton accent (warning si dépassée) avec la
+ligne globale au-dessus des échéances, chaque échéance segmentant « N match(s) à placer » et « N à
+saisir dans FBI » ; hors fenêtre mais `fbiTodo` > 0 → ton NEUTRE, la seule ligne globale (« N FBI à
+faire, dont M à corriger ») ; rien à faire ET aucune fenêtre → muette. Le bouton n'ouvre « Ouvrir la
+liste FBI » (`/matchs?fbi=1`) **que si** cette liste a du contenu (`fbiTodo.toEnter +
+fbiTodo.toCorrect > 0`) ; sinon (tout reste à placer) il renvoie au Calendrier (`/matchs`, « Placer
+les matchs ») — la liste FBI serait sinon une modale vide.
 
 ## 5. Écran Calendrier (`/matchs`, route index)
 
@@ -551,7 +562,12 @@ le layout — la nav des six onglets reste inchangée.
   enchaînés ; bande « sans heure » en tête pour un AWAY sans heure ni habitude) ; bande `AwayList`
   (détail : salle fichier, n° rencontre, rôle coach) ; radar `ConflictRadar` en dernier. Mode
   échange : Échap désarme, les candidates (autres domiciles PLACED) portent un anneau, les autres
-  s'estompent.
+  s'estompent. **Ouvrir un extérieur** (clic grille ou crayon de la bande) : un extérieur IMPORTÉ
+  (FBI `externalRef` ou canal API `ffbbRencontreId`, `lib/fixtureOrigin.ts::isImportedFixture`)
+  s'ouvre en LECTURE SEULE (`AwayFixtureCard` — adversaire, lieu, date, coup d'envoi, durée, trajet,
+  statut, aucun bouton de modification, « la fédération en est la source ») ; un extérieur SAISI À
+  LA MAIN reste éditable (`FixtureFormDialog`), même logique côté grille et côté bande — une seule
+  maison (`openAway`).
 - **Refus serveur du placement (D2)** : `FixtureStateProcessor::assertVenueAccessAllowed` (geste
   gestionnaire, create ET update d'un domicile) refuse en 422 (1) toute rencontre — amical compris
   — posée dans un gymnase couvert par une `VenueUnavailability` à sa date ; (2) pour une rencontre
@@ -589,10 +605,22 @@ le layout — la nav des six onglets reste inchangée.
   « Semaine type ») : bloc translucide pointillé, dissous par la réalité (tout match de l'équipe ce
   jour-là, extérieur compris). L'estimation d'heure d'un extérieur ne dépend jamais de cet
   interrupteur.
+- **Trajet aller-retour d'un extérieur dessiné sur son bloc** (`lib/awayKickoff.ts::awayTimeline`,
+  foyer unique partagé par la colonne de grille, `AwayFixtureCard` et la fiche lecture seule) : à
+  coup d'envoi connu et trajet aller simple `awayTravel.oneWayMinutes` connu, le bloc couvre
+  `[coup d'envoi − aller, coup d'envoi + match + aller]` (l'aller de CHAQUE côté — exactement ce que
+  le radar serveur compte pour une personne, `MatchFootprint::personConflictOccupancy`) avec des
+  repères départ/retour ; trajet inconnu ⇒ le bloc reste réduit au match. Légende conditionnelle
+  « Trajet aller-retour » (`WeekendGridLegend`, hachures `muted`) affichée seulement quand un bloc
+  du week-end porte ce trajet dessiné.
 - **Temporalités Mois/Phase** : Mois = table groupée par jour ; Phase = une `Competition`
   appariée, en-tête « N/M journées » (`expected: null` pour une `CUP`, pas de dénominateur).
   `MatchRowsTable` (ligne partagée) : date/heure, équipe+rôle, dom./ext., adversaire, gymnase
-  résolu, statut, pastilles de conflit.
+  résolu, statut, une pastille CLIQUABLE par famille de conflit présente sur le match — la famille
+  PERSONNE (`MATCH_MATCH`) NOMME la personne en double (« Emerick en double » ; plusieurs coachs →
+  « Emerick +1 », `pillLabel`), les autres gardent leur libellé de famille. Cliquer une pastille
+  ouvre un panneau (détail par côté, chevauchement) avec un bouton « Voir la semaine » qui bascule
+  en Semaine sur le week-end du match et FOCALISE le conflit (même mécanisme que ci-dessous).
 - **Filtres d'affichage** (persistants en URL/store, défauts) : Types de compétition
   (championnat+coupe+brassage cochés, **amical décoché** par défaut), Extérieurs (**masqués** par
   défaut, sauf dans la colonne dédiée qui reste toujours visible), Semaine type. Un indice « N
@@ -603,6 +631,15 @@ le layout — la nav des six onglets reste inchangée.
   de session non persistée) est gardé et l'adresse se re-synchronise depuis lui. Un lien qui
   allume ses propres filtres (« Voir la semaine » depuis Conflits, « Placer » depuis Importer)
   construit toujours une query qui porte une clé dédiée, donc reste dans le cas qui fait foi.
+- **Focus d'un conflit** (`conflit=<a>,<b>`, `lib/urlState.ts` `decodeConflictFocusParam`/
+  `applyConflictFocusToParams`, distinct de `match=` qui SÉLECTIONNE) : met en évidence les DEUX
+  rencontres d'un conflit sans ouvrir le panneau de placement — posé par le bouton « Voir » du
+  radar (`ConflictRadar`, visible seulement si le conflit est focalisable,
+  `lib/conflictFocus.ts::isFocusableConflict`) ou par « Voir la semaine » depuis l'onglet Conflits
+  pour un conflit qui nomme un coach (§6). `ConflictFocusBanner` (bandeau en tête de la semaine)
+  rappelle de quoi il s'agit (« Conflit {coach} : {équipe A} × {équipe B}, chevauchement … ») et
+  offre « Quitter le focus » (retire le filtre coach et la surbrillance). Porté par l'URL — un lien
+  focalisé est partageable.
 - **Deep-link `match=<fixtureId>`** (patron « absent = défaut », `lib/urlState.ts`
   `decodeMatchParam`/`applyMatchToParams`) : au seed, la fixture visée est sélectionnée dans le
   store, sa semaine posée (si absente de l'URL), son masque levé (`revealPlan`) si elle est
@@ -659,11 +696,16 @@ gymnase partagé (décision fermée — il fausserait le compte saison de l'ongl
   familles → traitement → domicile → pivot.
 - **Accordéon par entrée** (une seule ouverte) rend `ConflictSeverityGroups`/`ConflictLine` — même
   maison que le radar du Calendrier, gravité 7 repliée derrière un compte, conflits triés par date
-  croissante dans un groupe de gravité. Bouton « Voir la semaine » sur un conflit daté : sélectionne
-  le côté GAUCHE par défaut, ou LE domicile si un seul des deux côtés joue à domicile (viser une
-  case pleine de la grille plutôt qu'un extérieur masqué), navigue vers le Calendrier avec `match=`
-  (§5). `ConflictLine` ne porte pas le logo de l'adversaire (§1 « Logo fédéral d'un adversaire ») —
-  le côté d'un conflit ne porte pas son code organisme.
+  croissante dans un groupe de gravité. Bouton « Voir la semaine » sur un conflit daté : un conflit
+  qui NOMME un coach (`conflict.coachId` défini — typiquement un conflit de PERSONNE) navigue vers
+  le Calendrier en FOCUS (`vue=coach&filtre=<coachId>&conflit=<a>,<b>`, `lib/urlState.ts`) — filtre
+  posé sur ce coach, les deux rencontres du conflit surlignées, masques levés — plutôt que de
+  sélectionner un match et ouvrir le panneau de placement sur une seule équipe ; un conflit SANS
+  coach (collision de gymnase, hors accès…) garde l'ancien comportement : sélectionne le côté GAUCHE
+  par défaut, ou LE domicile si un seul des deux côtés joue à domicile (viser une case pleine de la
+  grille plutôt qu'un extérieur masqué), navigue avec `match=` (§5). `ConflictLine` ne porte pas le
+  logo de l'adversaire (§1 « Logo fédéral d'un adversaire ») — le côté d'un conflit ne porte pas son
+  code organisme.
 
 ### Résolution des conflits (`ConflictResolution`)
 

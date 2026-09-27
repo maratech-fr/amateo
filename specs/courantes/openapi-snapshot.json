@@ -12928,9 +12928,13 @@
                                                             "type": "string"
                                                         }
                                                     },
+                                                    "toPlaceCount": {
+                                                        "type": "integer",
+                                                        "description": "Home fixtures still UNPLACED \u2014 must be placed before they can be entered in FBI"
+                                                    },
                                                     "toEnterCount": {
                                                         "type": "integer",
-                                                        "description": "Home fixtures not yet entered in FBI (UNPLACED included)"
+                                                        "description": "Home fixtures PLACED but not yet entered in FBI (UNPLACED and already-submitted excluded)"
                                                     },
                                                     "withinWindow": {
                                                         "type": "boolean",

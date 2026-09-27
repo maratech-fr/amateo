@@ -98,7 +98,9 @@ export interface DeadlineOutlookWindow {
   /** 'club' (valeur du club) | 'community' (défaut communautaire proposé). */
   source: "club" | "community";
   competitionNames: string[];
-  /** Domiciles pas encore saisis dans FBI (UNPLACED compris). */
+  /** Domiciles encore UNPLACED — à PLACER avant de pouvoir les saisir dans FBI. */
+  toPlaceCount: number;
+  /** Domiciles PLACED pas encore saisis dans FBI (UNPLACED et déjà-saisis exclus — aligné sur `fbiTodo.toEnter` et la liste FBI). */
   toEnterCount: number;
   /** Vraie dans les sept jours de l'échéance (dépassée comprise) — calcul BACKEND. */
   withinWindow: boolean;

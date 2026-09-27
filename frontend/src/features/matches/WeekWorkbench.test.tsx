@@ -100,6 +100,9 @@ function baseProps(over: Partial<Props> = {}): Props {
     hiddenBreakdown: emptyBreakdown,
     onRevealHidden: vi.fn(),
     onEditFixture: vi.fn(),
+    focusedConflict: null,
+    onFocusConflict: vi.fn(),
+    onQuitFocus: vi.fn(),
     ...over,
   };
 }
@@ -117,7 +120,7 @@ function renderWorkbench(over: Partial<Props> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useMatchesStore.setState({ selectedFixtureId: null, swapSourceId: null, selectedWeekend: null, unplacedReasons: new Map() });
+  useMatchesStore.setState({ selectedFixtureId: null, highlightedFixtureIds: [], swapSourceId: null, selectedWeekend: null, unplacedReasons: new Map() });
 });
 
 describe("WeekWorkbench — échange (swap)", () => {
@@ -157,6 +160,54 @@ describe("WeekWorkbench — échange (swap)", () => {
     expect(api.swapFixtures).not.toHaveBeenCalled();
     // Le mode reste armé : le clic inerte ne l'a pas quitté.
     expect(useMatchesStore.getState().swapSourceId).toBe("fx-src");
+  });
+});
+
+describe("WeekWorkbench — clic sur un extérieur (correctif 3, lecture seule / édition)", () => {
+  it("extérieur IMPORTÉ (externalRef) → fiche LECTURE SEULE avec les temps, JAMAIS la modale d'édition", async () => {
+    const away = fx({ id: "fx-imp", teamId: "team-a", opponentLabel: "AdvImport", homeAway: "AWAY", status: "UNPLACED", venueId: null, kickoffTime: null, externalRef: "999", placementSource: null });
+    const onEdit = vi.fn();
+    const user = userEvent.setup();
+    // On clique la CELLULE de la grille (`data-away`), pas la corbeille/crayon de la bande extérieur.
+    const { container } = renderWorkbench({ weekendFixtures: [away], allFixtures: [away], onEditFixture: onEdit });
+    await user.click(container.querySelector('[data-away="true"]') as HTMLElement);
+    // La fiche lecture seule s'ouvre (titre + une info de temps), l'édition n'est PAS appelée.
+    expect(await screen.findByText("Match à l'extérieur")).toBeInTheDocument();
+    expect(screen.getByText("Durée du match")).toBeInTheDocument();
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+
+  it("extérieur SAISI À LA MAIN (amical) → la modale d'édition, pas de fiche lecture seule", async () => {
+    const away = fx({ id: "fx-man", teamId: "team-a", opponentLabel: "AdvManuel", homeAway: "AWAY", status: "UNPLACED", venueId: null, kickoffTime: null, externalRef: null, ffbbRencontreId: null, placementSource: null });
+    const onEdit = vi.fn();
+    const user = userEvent.setup();
+    const { container } = renderWorkbench({ weekendFixtures: [away], allFixtures: [away], onEditFixture: onEdit });
+    await user.click(container.querySelector('[data-away="true"]') as HTMLElement);
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Match à l'extérieur")).not.toBeInTheDocument();
+  });
+});
+
+describe("WeekWorkbench — crayon de la bande extérieurs (correctif 3b)", () => {
+  it("bande : extérieur IMPORTÉ → « Voir » ouvre la fiche LECTURE SEULE, jamais l'édition", async () => {
+    const away = fx({ id: "fx-imp", teamId: "team-a", opponentLabel: "AdvImport", homeAway: "AWAY", status: "UNPLACED", venueId: null, kickoffTime: null, externalRef: "999", placementSource: null });
+    const onEdit = vi.fn();
+    const user = userEvent.setup();
+    renderWorkbench({ weekendFixtures: [away], allFixtures: [away], onEditFixture: onEdit });
+    // Le bouton de la BANDE (pas la cellule de grille) : son libellé dit « Voir », l'action ouvre la fiche.
+    await user.click(await screen.findByRole("button", { name: "Voir le match contre AdvImport" }));
+    expect(await screen.findByText("Match à l'extérieur")).toBeInTheDocument();
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+
+  it("bande : extérieur SAISI À LA MAIN → « Modifier » ouvre l'édition, pas la fiche", async () => {
+    const away = fx({ id: "fx-man", teamId: "team-a", opponentLabel: "AdvManuel", homeAway: "AWAY", status: "UNPLACED", venueId: null, kickoffTime: null, externalRef: null, ffbbRencontreId: null, placementSource: null });
+    const onEdit = vi.fn();
+    const user = userEvent.setup();
+    renderWorkbench({ weekendFixtures: [away], allFixtures: [away], onEditFixture: onEdit });
+    await user.click(await screen.findByRole("button", { name: "Modifier le match contre AdvManuel" }));
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Match à l'extérieur")).not.toBeInTheDocument();
   });
 });
 

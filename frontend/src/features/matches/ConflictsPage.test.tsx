@@ -171,7 +171,7 @@ describe("ConflictsPage — « Voir la semaine » mène à Placer", () => {
   });
 });
 
-describe("ConflictsPage — « Voir la semaine » vise LA rencontre (match=)", () => {
+describe("ConflictsPage — « Voir la semaine » focalise le conflit du coach (correctif 2)", () => {
   async function clickVoirSemaine() {
     const user = userEvent.setup();
     renderAt();
@@ -181,14 +181,20 @@ describe("ConflictsPage — « Voir la semaine » vise LA rencontre (match=)", (
     return new URLSearchParams(screen.getByTestId("calendar-search").textContent ?? "");
   }
 
-  it("deux côtés à domicile → vise le côté GAUCHE", async () => {
+  it("conflit de coach → filtre coach (vue=coach&filtre=coach-1) + les DEUX matchs surlignés (conflit=), SANS sélection (pas de match=)", async () => {
+    // Le bug : « Voir la semaine » sélectionnait UN match (match=) et ouvrait le panneau. Le focus
+    // doit au contraire montrer le PLANNING du coach et surligner les deux rencontres.
     state.conflicts = [
       { type: "MATCH_MATCH", severity: 3, resolution: null, coachId: "coach-1", start: "2026-10-03T20:00:00", end: "2026-10-03T22:00:00", left: side("fx-1", "team-1"), right: side("fx-2", "team-2") },
     ];
-    expect((await clickVoirSemaine()).get("match")).toBe("fx-1");
+    const params = await clickVoirSemaine();
+    expect(params.get("vue")).toBe("coach");
+    expect(params.get("filtre")).toBe("coach-1");
+    expect(params.get("conflit")).toBe("fx-1,fx-2");
+    expect(params.get("match")).toBeNull();
   });
 
-  it("un seul côté à domicile → vise CE domicile (pas le gauche par défaut)", async () => {
+  it("un côté à l'extérieur : les DEUX rencontres sont surlignées (le focus ne sélectionne rien)", async () => {
     state.conflicts = [
       {
         type: "MATCH_MATCH",
@@ -201,8 +207,9 @@ describe("ConflictsPage — « Voir la semaine » vise LA rencontre (match=)", (
         right: side("fx-2", "team-2"),
       },
     ];
-    // Le gauche est extérieur, le droit est domicile → c'est le droit qui est visé.
-    expect((await clickVoirSemaine()).get("match")).toBe("fx-2");
+    const params = await clickVoirSemaine();
+    expect(params.get("conflit")).toBe("fx-1,fx-2");
+    expect(params.get("match")).toBeNull();
   });
 });
 

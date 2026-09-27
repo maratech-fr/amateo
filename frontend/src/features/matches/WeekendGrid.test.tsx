@@ -62,9 +62,30 @@ describe("WeekendGrid — colonne extérieur (lot 3 PR-3a)", () => {
     const { container } = render(<WeekendGrid model={model} onSelectFixture={() => {}} />);
     const block = container.querySelector('[data-away="true"]') as HTMLElement;
     expect(block).toHaveAttribute("data-fixture-id", "fxAway");
-    expect(block).toHaveAttribute("aria-label", "U13 à Épinouze, sam. 15:30, heure estimée, 45 min de trajet");
+    // Correctif 10 : le nom accessible inclut départ (15:30 − 45) et retour ((15:30 + 105) + 45).
+    expect(block).toHaveAttribute("aria-label", "U13 à Épinouze, sam. 15:30, heure estimée, départ 14:45 · retour 18:00, 45 min de trajet");
     // Heure estimée → l'icône horloge nommée.
     expect(within(block).getByLabelText("Heure estimée")).toBeInTheDocument();
+  });
+
+  it("correctif 10 — trois segments trajet aller / match / retour, avec repères heure murale", () => {
+    const model = buildWeekendGrid([estimatedAway], venues, teams, new Set(), [habit], "2026-10-03", 15, new Map());
+    const { container } = render(<WeekendGrid model={model} onSelectFixture={() => {}} />);
+    const block = container.querySelector('[data-away="true"]') as HTMLElement;
+    // Repères VISIBLES : départ en tête du bloc, retour en pied, coup d'envoi au milieu.
+    expect(within(block).getByText("départ 14:45")).toBeInTheDocument();
+    expect(within(block).getByText("retour 18:00")).toBeInTheDocument();
+    expect(within(block).getByText(/15:30 · à Épinouze/)).toBeInTheDocument();
+  });
+
+  it("correctif 10 — trajet inconnu : bloc = match seul, mention « trajet inconnu », aucun segment", () => {
+    const noTravel = { ...awayBase, id: "fxNT", teamId: "tA", matchDate: "2026-10-03", opponentLabel: "Vienne", externalRef: null, kickoffTime: "18:00", awayTravel: null };
+    const model = buildWeekendGrid([noTravel], venues, teams, new Set(), [], "2026-10-03", 15, new Map());
+    const { container } = render(<WeekendGrid model={model} onSelectFixture={() => {}} />);
+    const block = container.querySelector('[data-away="true"]') as HTMLElement;
+    expect(within(block).getByText("trajet inconnu")).toBeInTheDocument();
+    expect(within(block).queryByText(/départ/)).toBeNull();
+    expect(within(block).queryByText(/retour/)).toBeNull();
   });
 
   it("un extérieur sans heure ni habitude : nom « heure inconnue » + icône nommée", () => {
@@ -149,6 +170,24 @@ describe("WeekendGrid — case « À confirmer » (lot 1, 2026-09-17)", () => {
     // A11Y-22 — la dé-emphase du fantôme se porte par la GRAISSE, jamais par l'opacité sur du texte.
     expect(ghost).toHaveClass("font-normal");
     expect(ghost).not.toHaveClass("opacity-60");
+  });
+});
+
+describe("WeekendGrid — surbrillance de focus d'un conflit (correctif 2)", () => {
+  it("une cellule domicile surlignée porte l'anneau destructif ; les autres non", () => {
+    const model = buildWeekendGrid(fixtures, venues, teams);
+    const { container } = render(<WeekendGrid model={model} onSelectFixture={() => {}} highlightedFixtureIds={new Set(["fxA"])} />);
+    expect(container.querySelector('[data-fixture-id="fxA"]')).toHaveClass("ring-destructive");
+    expect(container.querySelector('[data-fixture-id="fxB"]')).not.toHaveClass("ring-destructive");
+  });
+
+  it("un bloc extérieur surligné porte aussi l'anneau destructif (domicile ET colonne extérieur)", () => {
+    const awayBase = { ...fixtureBase, homeAway: "AWAY" as const, venueId: null, kickoffTime: null, status: "UNPLACED" as const, placementSource: null as null };
+    const habit = { id: "h", teamId: "tA", dayOfWeek: 6, kickoffTime: "15:30", venueId: null } as import("./api").TeamMatchHabit;
+    const away = { ...awayBase, id: "fxAway", teamId: "tA", matchDate: "2026-10-03", opponentLabel: "Épinouze", externalRef: "88", awayTravel: { venueLabel: "Halle Y", city: null, precision: "VENUE" as const, oneWayMinutes: 45, approximated: false, basis: "linked" as const } };
+    const model = buildWeekendGrid([away], venues, teams, new Set(), [habit], "2026-10-03", 15, new Map());
+    const { container } = render(<WeekendGrid model={model} onSelectFixture={() => {}} highlightedFixtureIds={new Set(["fxAway"])} />);
+    expect(container.querySelector('[data-away="true"]')).toHaveClass("ring-destructive");
   });
 });
 

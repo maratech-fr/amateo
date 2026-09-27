@@ -31,4 +31,11 @@ describe("WeekendGridLegend (lot 1, 2026-09-17)", () => {
     expect(screen.getByText(/2 à confirmer/)).toBeInTheDocument();
     expect(screen.getByText("Habitude — fenêtre protégée")).toBeInTheDocument();
   });
+
+  it("correctif 10 — montre l'entrée « trajet » seulement quand un extérieur porte un trajet", () => {
+    const { rerender } = render(<WeekendGridLegend toConfirmCount={0} showHabits={false} showTravel={true} />);
+    expect(screen.getByText(/Trajet aller-retour/)).toBeInTheDocument();
+    rerender(<WeekendGridLegend toConfirmCount={0} showHabits={false} showTravel={false} />);
+    expect(screen.queryByText(/Trajet aller-retour/)).toBeNull();
+  });
 });

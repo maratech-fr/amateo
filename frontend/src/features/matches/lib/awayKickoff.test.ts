@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Fixture, TeamMatchHabit } from "../api";
-import { awayHour } from "./awayKickoff";
+import { awayHour, awayTimeline } from "./awayKickoff";
 
 const away = (over: Partial<Fixture> = {}): Fixture => ({
   id: "fx-away",
@@ -50,5 +50,28 @@ describe("awayHour (règle d'affichage extraite d'AwayList — témoin)", () => 
   it("sans heure ni habitude du bon jour : null (« heure inconnue »)", () => {
     // Habitude un samedi, match un dimanche → aucune habitude ce jour-là.
     expect(awayHour(away({ matchDate: "2026-10-04" }), [habit()])).toEqual({ hour: null, estimated: false });
+  });
+});
+
+describe("awayTimeline (foyer unique du trajet aller-retour dessiné/affiché)", () => {
+  it("trajet connu : le bloc couvre départ → retour (aller de CHAQUE côté = ce que compte le radar)", () => {
+    // 15:30 = 930, match 105 → fin 17:15 = 1035 ; aller 45 → départ 14:45 = 885, retour 18:00 = 1080.
+    expect(awayTimeline(930, 105, 45)).toEqual({
+      departureMin: 885,
+      kickoffMin: 930,
+      matchEndMin: 1035,
+      returnMin: 1080,
+      oneWayMinutes: 45,
+    });
+  });
+
+  it("trajet inconnu (null) : pas d'aller — le bloc se réduit au match", () => {
+    expect(awayTimeline(930, 105, null)).toEqual({
+      departureMin: 930,
+      kickoffMin: 930,
+      matchEndMin: 1035,
+      returnMin: 1035,
+      oneWayMinutes: null,
+    });
   });
 });

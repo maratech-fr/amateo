@@ -1,15 +1,17 @@
 # Documentation technique du flux de génération de planning
 
-Last verified @ 2026-09-26. Re-confronté contre le code : `CONTRACT_VERSION` = `'2.23'`
-(`ScheduleConstraintBuilder.php:63` ⇄ `engine/CONTRACT_VERSION`) ; le TTL du verrou
+Last verified @ 2026-09-27 (rotation de fraîcheur `documentation-update`, sujet sans rapport — passe
+tests manuels 0927). Re-confronté contre le code : `CONTRACT_VERSION` = `'2.23'`
+(`ScheduleConstraintBuilder.php:63` ⇄ `engine/CONTRACT_VERSION`) ✓ ; le TTL du verrou
 (`GenerateScheduleHandler.php:62` `LOCK_TTL_MARGIN_SECONDS = 60`, ligne 117
-`acquire(... getTimeoutSeconds() + self::LOCK_TTL_MARGIN_SECONDS)`) ; `RedeliveredGenerationTest`
-listé bloquant dans `docs/testing/blocking-tests.md` (§3a-bis) ; le payload Mercure porte
-exactement **5** champs (`ScheduleProgressPublisher.php:40-44` — `scheduleId`, `status`,
-`score`, `unplaced`, `warnings`, §6.2) ; le schéma de sortie engine
+`acquire(... getTimeoutSeconds() + self::LOCK_TTL_MARGIN_SECONDS)`) ✓ ; `RedeliveredGenerationTest`
+toujours listé bloquant dans `docs/testing/blocking-tests.md` (§3a-bis) ✓ ; le payload Mercure porte
+toujours exactement **5** champs (`ScheduleProgressPublisher.php:40-44` — `scheduleId`, `status`,
+`score`, `unplaced`, `warnings`, §6.2) ✓ ; le schéma de sortie engine
 `Literal["queued", "generating", "completed", "failed"]` (`engine/app/schemas/output_schema.py:152`,
-§4.2/§5.2) ; l'abonnement frontend en un seul `EventSource` par sélecteur TEMPLATE du club (§6.1,
-`frontend/src/features/planning/lib/scheduleStream.ts`).
+§4.2/§5.2) ✓ ; l'abonnement frontend toujours en un seul `EventSource` par sélecteur TEMPLATE du
+club (§6.1, `frontend/src/features/planning/lib/scheduleStream.ts`) ✓. Reste du fichier non
+re-contrôlé cette passe.
 
 > Amateo — Symfony 7 + API Platform + Messenger Redis + Mercure SSE. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 

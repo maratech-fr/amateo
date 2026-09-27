@@ -98,6 +98,18 @@ describe("TeamLinksSection — équipe B filtrée UNIQUEMENT dans la modale ancr
   });
 });
 
+describe("TeamLinksSection — ligne d'ajout sur une seule rangée (correctif 4)", () => {
+  it("les 4 champs (A · B · Matchs · Entraînement) + le bouton Ajouter vivent dans le MÊME conteneur de ligne", () => {
+    renderWithProviders(<TeamLinksSection teams={TEAMS} tiers={TIERS} />);
+    const row = screen.getByRole("button", { name: "Ajouter la passerelle" }).parentElement as HTMLElement;
+    expect(row).not.toBeNull();
+    expect(within(row).getByRole("button", { name: /Première équipe du lien/ })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: /Seconde équipe du lien/ })).toBeInTheDocument();
+    expect(within(row).getByRole("combobox", { name: "Type de lien côté matchs" })).toBeInTheDocument();
+    expect(within(row).getByRole("combobox", { name: "Intensité d'entraînement du lien" })).toBeInTheDocument();
+  });
+});
+
 describe("TeamLinksSection — lecture seule vs édition (P2-45, tranchage A)", () => {
   it("readOnly : liste + intensité EN TEXTE, aucun contrôle d'édition, raison affichée", () => {
     linksState.data = [teamLink({ trainingIntensity: "PREFERRED" })];

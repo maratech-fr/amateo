@@ -1,5 +1,5 @@
 import { Info, MousePointerClick } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -9,8 +9,11 @@ import { frDateWeekdayNoYear } from "@/shared/lib/date";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { Category, Coach, Conflict, Fixture, LeagueWindow, MatchSlotRotation, Team, TeamMatchHabit, Venue } from "./api";
+import { AwayFixtureCard } from "./AwayFixtureCard";
 import { AwayList } from "./AwayList";
+import { ConflictFocusBanner } from "./ConflictFocusBanner";
 import { ConflictRadar } from "./ConflictRadar";
+import { isEditableAway } from "./lib/fixtureOrigin";
 import type { HiddenWeekBreakdown } from "./lib/consultFilter";
 import { resolveEnvelope } from "./lib/envelope";
 import { offModelCount, sameWeekendRotationCount } from "./lib/loopSteps";
@@ -82,6 +85,12 @@ interface WeekWorkbenchProps {
   onRevealHidden: () => void;
   /** Le crayon d'un extérieur / du panneau ouvre le dialogue d'édition (porté par la page). */
   onEditFixture: (fixture: Fixture) => void;
+  /** Correctif 2 — le conflit FOCALISÉ (bandeau en tête de semaine), ou null. Calculé par la page. */
+  focusedConflict: Conflict | null;
+  /** Correctif 2 — « Voir » dans le radar focalise CE conflit (filtre coach + surbrillance). */
+  onFocusConflict: (conflict: Conflict) => void;
+  /** Correctif 2 — « Quitter le focus » : retire le filtre coach + la surbrillance (URL nettoyée). */
+  onQuitFocus: () => void;
 }
 
 /**
@@ -121,9 +130,17 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
     hiddenBreakdown,
     onRevealHidden,
     onEditFixture,
+    focusedConflict,
+    onFocusConflict,
+    onQuitFocus,
   } = props;
 
-  const { selectedFixtureId, setSelectedFixtureId, swapSourceId, setSwapSourceId, unplacedReasons, setSelectedWeekend } = useMatchesStore();
+  const { selectedFixtureId, setSelectedFixtureId, highlightedFixtureIds, swapSourceId, setSwapSourceId, unplacedReasons, setSelectedWeekend } = useMatchesStore();
+
+  // Correctif 3 — un extérieur IMPORTÉ cliqué s'ouvre en fiche LECTURE SEULE (pas d'édition).
+  const [awayReadOnly, setAwayReadOnly] = useState<Fixture | null>(null);
+
+  const highlightedSet = useMemo(() => new Set(highlightedFixtureIds), [highlightedFixtureIds]);
 
   const placeFixture = usePlaceFixture();
   const moveFixture = useMoveFixture();
@@ -221,10 +238,21 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
       return;
     }
     if (null !== clicked && "AWAY" === clicked.homeAway) {
-      onEditFixture(clicked);
+      openAway(clicked);
       return;
     }
     setSelectedFixtureId(fixtureId);
+  }
+
+  // Correctif 3 / 3b — un extérieur SAISI À LA MAIN reste éditable ; un extérieur IMPORTÉ
+  // (FBI/FFBB) s'ouvre en LECTURE SEULE (la fédération en est la source). MÊME logique pour le
+  // clic grille ET le crayon de la bande « À l'extérieur » : une seule maison, jamais deux chemins.
+  function openAway(fixture: Fixture): void {
+    if (isEditableAway(fixture)) {
+      onEditFixture(fixture);
+    } else {
+      setAwayReadOnly(fixture);
+    }
   }
 
   const panelBlock =
@@ -333,6 +361,10 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
         {panelSlot}
       </div>
       <div className="flex min-w-0 flex-col gap-2">
+        {/* Correctif 2 — bandeau de focus d'un conflit, en tête de la semaine. */}
+        {null !== focusedConflict ? (
+          <ConflictFocusBanner conflict={focusedConflict} teams={teamsMap} coaches={coachesMap} venues={venuesMap} onQuit={onQuitFocus} />
+        ) : null}
         {offModelBadge}
         {sameWeekendBadge}
         {swapBanner}
@@ -340,7 +372,7 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
         <div className="flex flex-col gap-2">
           <UnpairedVenueLabelsBanner />
           <div id={GRID_CONTAINER_ID} tabIndex={-1} className="h-[32rem] outline-none">
-            <WeekendGrid model={grid} onSelectFixture={onGridSelect} selectedFixtureId={swapSourceId ?? selectedFixtureId} swapCandidateIds={swapCandidateIds} />
+            <WeekendGrid model={grid} onSelectFixture={onGridSelect} selectedFixtureId={swapSourceId ?? selectedFixtureId} swapCandidateIds={swapCandidateIds} highlightedFixtureIds={highlightedSet} />
           </div>
           <HiddenHomesWeekNotice count={hiddenHomesThisWeek} />
           <HiddenMatchesWeekNotice breakdown={hiddenBreakdown} onReveal={onRevealHidden} />
@@ -349,11 +381,15 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
           <WeekendGridLegend
             toConfirmCount={grid.cells.filter((c) => c.toConfirm).length}
             showHabits={showGhosts && grid.cells.some((c) => c.ghost)}
+            showTravel={grid.cells.some((c) => true === c.hasTravel)}
           />
         </div>
-        <AwayList fixtures={weekendFixtures} teams={teamsMap} habits={habits} coachRoles={coachRoles} onEdit={onEditFixture} onDelete={(fixture) => deleteFixture.mutate(fixture.id)} />
-        {radarLoaded ? <ConflictRadar conflicts={radarConflicts} teams={teamsMap} coaches={coachesMap} venues={venuesMap} newFingerprints={newFingerprints} /> : null}
+        <AwayList fixtures={weekendFixtures} teams={teamsMap} habits={habits} coachRoles={coachRoles} onEdit={openAway} onDelete={(fixture) => deleteFixture.mutate(fixture.id)} />
+        {radarLoaded ? <ConflictRadar conflicts={radarConflicts} teams={teamsMap} coaches={coachesMap} venues={venuesMap} newFingerprints={newFingerprints} onFocusConflict={onFocusConflict} /> : null}
       </div>
+      {null !== awayReadOnly ? (
+        <AwayFixtureCard fixture={awayReadOnly} teams={teamsMap} habits={habits} matchDurations={matchDurations} onClose={() => setAwayReadOnly(null)} />
+      ) : null}
     </div>
   );
 }

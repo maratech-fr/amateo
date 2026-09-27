@@ -119,6 +119,36 @@ export function applyMatchToParams(current: URLSearchParams, fixtureId: string |
 }
 
 /**
+ * Correctif 2 — le FOCUS d'un conflit sur le Calendrier : `conflit=<a>,<b>` porte les
+ * `fixtureId` des DEUX rencontres à surligner (distinct de `match=`, qui SÉLECTIONNE une
+ * rencontre et ouvre le panneau — le focus, lui, ne fait que surligner). PORTÉ par
+ * l'adresse (le bandeau de focus + les anneaux persistent, un lien est partageable) ;
+ * « Quitter le focus » le retire. Fonctions PURES, patron « param absent = défaut »
+ * (absent ⇒ aucun surlignage). Ordre préservé, doublons retirés.
+ */
+export function decodeConflictFocusParam(params: URLSearchParams): string[] {
+  const raw = params.get("conflit");
+  if (null === raw) {
+    return [];
+  }
+  const parsed = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => "" !== s);
+  return [...new Set(parsed)];
+}
+
+export function applyConflictFocusToParams(current: URLSearchParams, fixtureIds: string[]): URLSearchParams {
+  const next = new URLSearchParams(current);
+  if (fixtureIds.length > 0) {
+    next.set("conflit", fixtureIds.join(","));
+  } else {
+    next.delete("conflit");
+  }
+  return next;
+}
+
+/**
  * PR-2a/2b — sérialisation des filtres de l'onglet Consulter, fonctions PURES (mêmes
  * conventions que le filtre PR-1 : absent = défaut). `type` = types de compétition
  * cochés, `conflits` = familles de conflits cochées, `type_semaine=0|1` = semaine

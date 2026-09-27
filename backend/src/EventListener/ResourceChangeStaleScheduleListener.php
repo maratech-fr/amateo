@@ -138,7 +138,7 @@ use Doctrine\ORM\Events;
 #[AsEntityListener(event: Events::postUpdate, method: 'teamPeriodOverrideTouched', entity: TeamPeriodOverride::class)]
 #[AsEntityListener(event: Events::postRemove, method: 'teamPeriodOverrideTouched', entity: TeamPeriodOverride::class)]
 #[AsEntityListener(event: Events::postPersist, method: 'venueTouched', entity: Venue::class)]
-#[AsEntityListener(event: Events::postUpdate, method: 'venueTouched', entity: Venue::class)]
+#[AsEntityListener(event: Events::postUpdate, method: 'venueUpdated', entity: Venue::class)]
 #[AsEntityListener(event: Events::postRemove, method: 'venueTouched', entity: Venue::class)]
 #[AsEntityListener(event: Events::postPersist, method: 'coachTouched', entity: Coach::class)]
 #[AsEntityListener(event: Events::postUpdate, method: 'coachTouched', entity: Coach::class)]
@@ -195,6 +195,20 @@ final class ResourceChangeStaleScheduleListener
      */
     private const array COSMETIC_SLOT_FIELDS = ['groupLabel', 'updatedAt', 'version'];
 
+    /**
+     * Champs d'un gymnase dont la SEULE modification ne périme rien : `externalLabels` (les alias
+     * FFBB, jamais lus par le générateur — ni `ScheduleConstraintBuilder` ni
+     * `MatchPlacementPayloadBuilder` ne les sérialisent ; ils ne servent qu'au rattachement des
+     * libellés FBI, cf. `VenueAliasResolver`/`VenueLabelInventory`), plus les techniques
+     * `updatedAt`/`version` qui accompagnent toute écriture. Le nom, la position (lat/lng),
+     * `canSplit`, `isActive`… restent hors de cette liste, donc marquent (patron
+     * COSMETIC_SLOT_FIELDS). Corriger un alias FFBB (« GYMNASE GUILLOUX ») ne doit pas déclencher
+     * un faux « régénérez ».
+     *
+     * @var list<string>
+     */
+    private const array COSMETIC_VENUE_FIELDS = ['externalLabels', 'updatedAt', 'version'];
+
     /** @var array<string, array{scope: string, planId: ?string, clubId: ?string, seasonId: ?string}> périmètres à marquer, dédupliqués par clé */
     private array $pending = [];
 
@@ -242,6 +256,23 @@ final class ResourceChangeStaleScheduleListener
     public function venueTouched(Venue $entity): void
     {
         $this->markClubSeason($entity->getClubId(), $entity->getSeasonId());
+    }
+
+    /**
+     * postUpdate d'un gymnase — filtre son changeset (patron `venueTrainingSlotUpdated`). Un
+     * changement limité aux alias FFBB (`externalLabels`) + les techniques `updatedAt`/`version`
+     * ne périme rien : le solveur ne lit pas les alias, le planning reste FIDÈLE. Tout vrai
+     * changement (nom, lat/lng, canSplit…) marque comme avant. Réservé au postUpdate : la naissance
+     * (postPersist) et la suppression (postRemove) passent par `venueTouched` et marquent toujours.
+     */
+    public function venueUpdated(Venue $entity, PostUpdateEventArgs $args): void
+    {
+        $changed = array_keys($args->getObjectManager()->getUnitOfWork()->getEntityChangeSet($entity));
+        if ([] === array_diff($changed, self::COSMETIC_VENUE_FIELDS)) {
+            return;
+        }
+
+        $this->venueTouched($entity);
     }
 
     public function coachTouched(Coach $entity): void

@@ -93,7 +93,14 @@ paths:
   toujours préfixée (`hover:bg-accent/10`) : seul le repos devient plein. **Le texte posé sur une
   surface teintée reste `text-foreground`** (jamais `text-warning`/`text-accent`, sous l'AA sur leur
   propre teinte). Gardé par `frontend/src/test/surfaceOpacityGuard.test.ts` (portée
-  `shared/components/ui/*.tsx`, ≤ 5 exemptions nominatives).
+  `shared/components/ui/*.tsx`, ≤ 5 exemptions nominatives). **Un CONTRÔLE DE SAISIE partagé**
+  (champ, sélecteur, zone de texte) est soumis à une contrainte PLUS STRICTE (retour terrain
+  2026-09-27, même fichier de garde, liste nominative `INPUT_CONTROL_FILES` — `input.tsx`,
+  `select.tsx`, `listbox.tsx`, `password-input.tsx`, `team-select.tsx`, `venue-select.tsx`,
+  `new-password-fields.tsx`) : `bg-transparent` au repos y tombe aussi (pas seulement une teinte
+  `/NN`), car un champ transparent sur le fond à motifs du body rend son `placeholder` illisible —
+  contrairement à un bouton `ghost`/`outline`, qui reste transparent (il vit sur une surface déjà
+  opaque).
   Recoder à la main un spinner nu, un
   encart d'erreur, une pastille inline **là où la primitive existe** = incohérence UX (« même
   chose, au même endroit, de la même façon » — famille UXC de l'audit). Cas fondateur du

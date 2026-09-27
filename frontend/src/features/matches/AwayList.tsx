@@ -1,4 +1,4 @@
-import { Bus, Pencil, Trash2 } from "lucide-react";
+import { Bus, Eye, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
@@ -11,6 +11,7 @@ import type { Fixture, Team, TeamMatchHabit } from "./api";
 import { AwayTravelChip } from "./AwayTravelChip";
 import { compareAway } from "./lib/awayColumn";
 import { awayHour } from "./lib/awayKickoff";
+import { isEditableAway } from "./lib/fixtureOrigin";
 import { awayTravelTitle } from "./lib/awayTravelTitle";
 import type { CoachTeamRole } from "./lib/matchFilter";
 import { opponentInitials } from "./lib/opponentInitials";
@@ -25,6 +26,11 @@ interface AwayListProps {
   /**
    * PR-2a — actions OPTIONNELLES : l'onglet Consulter rend la bande en LECTURE
    * SEULE (aucun handler ⇒ ni crayon ni corbeille). La boucle (Placer) les fournit.
+   *
+   * Correctif 3b — un extérieur IMPORTÉ n'est pas modifiable : son pictogramme dit « Voir »
+   * (œil), un extérieur saisi à la main dit « Modifier » (crayon). Le PARENT (`WeekWorkbench`)
+   * route la même distinction que le clic grille (importé → fiche lecture seule `AwayFixtureCard`,
+   * manuel → dialogue d'édition) — ici on ne fait que choisir le pictogramme et appeler `onEdit`.
    */
   onEdit?: (fixture: Fixture) => void;
   onDelete?: (fixture: Fixture) => void;
@@ -87,9 +93,16 @@ export function AwayList({ fixtures, teams, habits, coachRoles, onEdit, onDelete
               {readOnly ? null : (
                 <span className="flex shrink-0 gap-1">
                   {undefined !== onEdit ? (
-                    <Button variant="ghost" size="sm" aria-label={`Modifier le match contre ${fixture.opponentLabel}`} onClick={() => onEdit(fixture)}>
-                      <Pencil className="size-3.5" />
-                    </Button>
+                    isEditableAway(fixture) ? (
+                      <Button variant="ghost" size="sm" aria-label={`Modifier le match contre ${fixture.opponentLabel}`} onClick={() => onEdit(fixture)}>
+                        <Pencil className="size-3.5" />
+                      </Button>
+                    ) : (
+                      // Extérieur IMPORTÉ (FBI/FFBB) : lecture seule → « Voir » (œil), jamais « Modifier ».
+                      <Button variant="ghost" size="sm" aria-label={`Voir le match contre ${fixture.opponentLabel}`} onClick={() => onEdit(fixture)}>
+                        <Eye className="size-3.5" />
+                      </Button>
+                    )
                   ) : null}
                   {undefined !== onDelete ? (
                     <Button variant="ghost" size="sm" aria-label={`Supprimer le match contre ${fixture.opponentLabel}`} onClick={() => setToDelete(fixture)}>

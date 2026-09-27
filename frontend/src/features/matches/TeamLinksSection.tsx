@@ -181,28 +181,39 @@ function EditableLinks<T extends TeamLike>({
         // Ancrée, toutes les équipes déjà liées à A : jamais un sélecteur vide muet, une phrase.
         <p className="text-xs text-muted-foreground">Toutes les équipes sont déjà liées à {teamName(teamAId)}.</p>
       ) : (
-        <div className="flex flex-wrap items-end gap-2">
-          {anchored ? (
-            // A FIGÉE : un FAIT en texte (« SM1 ↔ … »), pas un champ désactivé (qui se lirait comme une panne).
-            <span className="flex items-center gap-1.5 self-center text-sm">
-              <span className="sr-only">Passerelle depuis {teamName(teamAId)} — choisir la seconde équipe</span>
-              <span className="font-medium text-foreground">{teamName(teamAId)}</span>
-              <span aria-hidden className="text-muted-foreground">↔</span>
-            </span>
-          ) : (
-            <TeamSelect aria-label="Première équipe du lien" className="w-32" teams={teams} tiers={tiers} placeholder="Équipe A…" value={selectedA} onValueChange={setSelectedA} />
-          )}
-          <TeamSelect aria-label="Seconde équipe du lien" className="w-32" teams={bTeams} tiers={tiers} placeholder="Équipe B…" value={linkTeamBId} onValueChange={setLinkTeamBId} />
+        // Correctif 4 — les CINQ champs d'ajout sur UNE ligne (grille), chacun avec son libellé
+        // AU-DESSUS et aligné en bas (`items-end`) — fini « Équipe A/B » d'un côté, « Match/
+        // Entraînement » de l'autre. Repli propre en écran étroit : deux colonnes qui s'empilent.
+        <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
+          {/* Équipe A — `<div>` + légende décorative (jamais `<label>` : le Listbox se nomme
+              via son `aria-label`, un `<label>` doublonnerait l'association). */}
+          <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+            Équipe A
+            {anchored ? (
+              // A FIGÉE : un FAIT en texte (« SM1 ↔ … »), pas un champ désactivé (qui se lirait comme une panne).
+              <span className="flex h-9 items-center gap-1.5 text-sm">
+                <span className="sr-only">Passerelle depuis {teamName(teamAId)} — choisir la seconde équipe</span>
+                <span className="font-medium text-foreground">{teamName(teamAId)}</span>
+                <span aria-hidden className="text-muted-foreground">↔</span>
+              </span>
+            ) : (
+              <TeamSelect aria-label="Première équipe du lien" className="w-full" teams={teams} tiers={tiers} placeholder="Équipe A…" value={selectedA} onValueChange={setSelectedA} />
+            )}
+          </div>
+          <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+            Équipe B
+            <TeamSelect aria-label="Seconde équipe du lien" className="w-full" teams={bTeams} tiers={tiers} placeholder="Équipe B…" value={linkTeamBId} onValueChange={setLinkTeamBId} />
+          </div>
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             Matchs
-            <Select aria-label="Type de lien côté matchs" className="h-9 w-44" value={linkType} onChange={(e) => setLinkType(e.target.value as TeamLinkType)}>
+            <Select aria-label="Type de lien côté matchs" className="h-9 w-full" value={linkType} onChange={(e) => setLinkType(e.target.value as TeamLinkType)}>
               <option value="NOT_SIMULTANEOUS">Jamais en même temps</option>
               <option value="BACK_TO_BACK">L'un après l'autre</option>
             </Select>
           </label>
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             Entraînement
-            <Select aria-label="Intensité d'entraînement du lien" className="h-9 w-32" value={linkIntensity} onChange={(e) => setLinkIntensity(e.target.value as TeamLinkIntensity)}>
+            <Select aria-label="Intensité d'entraînement du lien" className="h-9 w-full" value={linkIntensity} onChange={(e) => setLinkIntensity(e.target.value as TeamLinkIntensity)}>
               <option value="PREFERRED">{INTENSITY_LABEL.PREFERRED}</option>
               <option value="MANDATORY">{INTENSITY_LABEL.MANDATORY}</option>
             </Select>

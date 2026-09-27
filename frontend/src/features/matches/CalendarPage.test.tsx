@@ -158,6 +158,7 @@ beforeEach(() => {
     importDialogOpen: false,
     filterMode: "equipe",
     filterIds: [],
+    highlightedFixtureIds: [],
     // État EXPLICITE (les 4 types cochés + extérieurs affichés) : les tests de comportement
     // ci-dessous reposent sur des amicaux (competitionId null) et le bloc extérieur, que les
     // NOUVEAUX défauts (amicaux + extérieurs masqués) cacheraient. Les défauts sont testés à part.
@@ -578,8 +579,12 @@ describe("CalendarPage — chips, familles, temporalités (ex-Consulter)", () =>
     expect(await screen.findByRole("table")).toBeInTheDocument();
     expect(screen.getByText("Voisins")).toBeInTheDocument();
     expect(screen.getByText("Rivaux")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Collision de gymnase/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Gymnase indisponible/ })).toBeInTheDocument();
+    // Le libellé de famille apparaît désormais à DEUX endroits (chip de filtre + pastille de la
+    // table, cliquable — correctif 6) : on cible la CHIP de filtre par son groupe pour vérifier que
+    // les deux familles y sont scopées au mois, sans ambiguïté avec les pastilles de la table.
+    const familyGroup = screen.getByRole("group", { name: "Familles de conflits" });
+    expect(within(familyGroup).getByRole("button", { name: /Collision de gymnase/ })).toBeInTheDocument();
+    expect(within(familyGroup).getByRole("button", { name: /Gymnase indisponible/ })).toBeInTheDocument();
     expect(screen.queryByRole("switch", { name: /Semaine type/ })).not.toBeInTheDocument();
   });
 
@@ -633,6 +638,36 @@ describe("CalendarPage — deep-link match= (mise en évidence d'une rencontre)"
     renderCalendarWithLocation("/?match=fx-placed"); // fx-placed est un amical (competitionId null)
     await waitFor(() => expect(useMatchesStore.getState().selectedFixtureId).toBe("fx-placed"));
     await waitFor(() => expect(document.querySelector('[data-fixture-id="fx-placed"]')).not.toBeNull());
+  });
+});
+
+describe("CalendarPage — focus d'un conflit (correctif 2)", () => {
+  it("l'URL vue/filtre l'emporte sur un filtre de SESSION du store", async () => {
+    // Le store porte une session « par gymnase » ; l'URL « ?vue=coach&filtre=coach-1 » doit gagner.
+    useMatchesStore.setState({ filterMode: "gymnase", filterIds: ["venue-1"] });
+    renderCalendarWithLocation("/?vue=coach&filtre=coach-1");
+    await waitFor(() => expect(useMatchesStore.getState().filterMode).toBe("coach"));
+    expect(useMatchesStore.getState().filterIds).toEqual(["coach-1"]);
+  });
+
+  it("conflit= surligne la rencontre (anneau destructif) + bandeau, SANS ouvrir le panneau ; « Quitter le focus » nettoie", async () => {
+    const user = userEvent.setup();
+    renderCalendarWithLocation("/?conflit=fx-unplaced,fx-placed");
+    // Le bandeau de focus rappelle le conflit (coach + les deux équipes).
+    expect(await screen.findByText(/Conflit Jean Dupont : U13 × Seniors/)).toBeInTheDocument();
+    // La cellule placée porte l'anneau destructif (surbrillance), jamais l'anneau de sélection.
+    await waitFor(() => {
+      const cell = document.querySelector<HTMLElement>('[data-fixture-id="fx-placed"]');
+      expect(cell).not.toBeNull();
+      expect(cell?.className).toContain("ring-destructive");
+    });
+    // Surligner ne SÉLECTIONNE pas : le panneau de placement reste fermé.
+    expect(useMatchesStore.getState().selectedFixtureId).toBeNull();
+    expect(screen.queryByLabelText("Heure de coup d'envoi")).not.toBeInTheDocument();
+    // « Quitter le focus » retire la surbrillance (et l'URL se nettoie).
+    await user.click(screen.getByRole("button", { name: "Quitter le focus" }));
+    await waitFor(() => expect(useMatchesStore.getState().highlightedFixtureIds).toEqual([]));
+    await waitFor(() => expect(screen.getByTestId("calendar-search").textContent).not.toContain("conflit"));
   });
 });
 
