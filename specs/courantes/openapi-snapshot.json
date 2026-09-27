@@ -8307,6 +8307,12 @@
                                                             "null"
                                                         ]
                                                     },
+                                                    "postalCode": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ]
+                                                    },
                                                     "externalRef": {
                                                         "type": [
                                                             "string",
@@ -8409,6 +8415,12 @@
                                                         ]
                                                     },
                                                     "city": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ]
+                                                    },
+                                                    "postalCode": {
                                                         "type": [
                                                             "string",
                                                             "null"

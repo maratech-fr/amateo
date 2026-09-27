@@ -12,7 +12,7 @@ import { readState } from "@/shared/lib/readState";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { FfbbSalle, VenueSuggestion } from "./api";
-import { useAddOpponentVenue, useFfbbSalles, useFfbbSallesByName, usePairOpponentVenueLabel, useVenueSuggestions } from "./queries";
+import { useAddOpponentVenue, useFfbbSalles, useFfbbSallesByName, usePairOpponentVenueLabel, useRepointVenueLink, useVenueSuggestions } from "./queries";
 
 /**
  * Amendement 2026-09-20 — la modale d'AJOUT / d'APPARIEMENT d'un gymnase pour un adversaire.
@@ -21,13 +21,16 @@ import { useAddOpponentVenue, useFfbbSalles, useFfbbSallesByName, usePairOpponen
  *     fédérales, « un compte jamais un qui ») ;
  *  2. « Chercher un gymnase » — la recherche FFBB par code postal, patron VenuesStep.
  * `fbiLabel` renseigné = on apparie un LIBELLÉ orphelin (`pairOpponentVenueLabel`) ; null = on
- * ajoute un gymnase au club (`addOpponentVenue`, keyé sur le libellé du gymnase). L'échec remonte
+ * ajoute un gymnase au club (`addOpponentVenue`, keyé sur le libellé du gymnase). `repointLink`
+ * renseigné (EXCLUSIF de `fbiLabel`) = on RE-POINTE un lien existant vers un autre gymnase
+ * (`repointVenueLink`, P4-264) : mêmes deux sections que l'ajout, un seul geste. L'échec remonte
  * en toast (onError du hook, la modale reste ouverte) ; le succès ferme et confirme.
  */
 export function LocateOpponentModal({
   code,
   clubName,
   fbiLabel,
+  repointLink = null,
   unmatchedLabels,
   sansCode,
   city,
@@ -39,6 +42,12 @@ export function LocateOpponentModal({
   clubName: string;
   /** Le libellé de fichier à apparier (ligne orpheline) ; null = ajouter un gymnase au club. */
   fbiLabel: string | null;
+  /**
+   * Mode « modifier le gymnase » (P4-264) — le lien EXISTANT à re-pointer vers le gymnase choisi
+   * (`id` + `label` de l'ancien gymnase). EXCLUSIF de `fbiLabel` (qui reste null en repoint). Le
+   * clic appelle `repointVenueLink` avec l'id du lien, JAMAIS de `fbiLabel` (le backend garde la clé).
+   */
+  repointLink?: { id: string; label: string } | null;
   /**
    * Les libellés orphelins du club (mode appariement) — la FILE que la modale enchaîne : au
    * succès, elle retire l'apparié et avance au suivant. LOCALE (figée à l'ouverture) : le refetch
@@ -80,7 +89,8 @@ export function LocateOpponentModal({
   const sallesQuery = useFfbbSalles(cp);
   const addVenue = useAddOpponentVenue();
   const pairLabel = usePairOpponentVenueLabel();
-  const writing = addVenue.isPending || pairLabel.isPending;
+  const repoint = useRepointVenueLink();
+  const writing = addVenue.isPending || pairLabel.isPending || repoint.isPending;
 
   const suggestions = suggestionsQuery.data ?? [];
   const suggestionsState = readState(suggestionsQuery);
@@ -109,6 +119,21 @@ export function LocateOpponentModal({
     }
     setPendingKey(key);
     const onSettled = { onSettled: () => setPendingKey(null) } as const;
+    if (null !== repointLink) {
+      // Mode « modifier le gymnase » — on RE-POINTE le lien : jamais de fbiLabel (le backend
+      // conserve la clé d'appariement du fichier). Un seul geste, on ferme au succès.
+      repoint.mutate(
+        { id: repointLink.id, venueLabel, venueExternalRef, latitude, longitude },
+        {
+          onSuccess: () => {
+            toast.success(`« ${repointLink.label} » remplacé par « ${venueLabel} ».`);
+            onClose();
+          },
+          ...onSettled,
+        },
+      );
+      return;
+    }
     if (null === fbiLabel) {
       addVenue.mutate(
         { code, venueLabel, venueExternalRef, latitude, longitude },
@@ -145,8 +170,8 @@ export function LocateOpponentModal({
 
   return (
     <Modal
-      label={null === fbiLabel ? "Ajouter un gymnase" : "Apparier un libellé"}
-      title={null === fbiLabel ? `Ajouter un gymnase — ${clubName}` : `Apparier « ${currentLabel} »`}
+      label={null !== repointLink ? "Modifier le gymnase" : null === fbiLabel ? "Ajouter un gymnase" : "Apparier un libellé"}
+      title={null !== repointLink ? `Modifier le gymnase — ${clubName}` : null === fbiLabel ? `Ajouter un gymnase — ${clubName}` : `Apparier « ${currentLabel} »`}
       onClose={onClose}
       size="lg"
       footer={
@@ -156,7 +181,12 @@ export function LocateOpponentModal({
       }
     >
       <div className="flex flex-col gap-4">
-        {null !== fbiLabel ? (
+        {null !== repointLink ? (
+          <p className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">« {repointLink.label} »</span> sera remplacé par le gymnase choisi ; les libellés du fichier restent reconnus.
+            {"" !== locationContext ? <span> · {locationContext}</span> : null}
+          </p>
+        ) : null !== fbiLabel ? (
           <p className="text-xs text-muted-foreground">
             Choisissez le gymnase de <span className="font-medium text-foreground">« {currentLabel} »</span> ({clubName})
             {"" !== locationContext ? <span> · {locationContext}</span> : "."}
@@ -292,6 +322,8 @@ function SuggestionButton({
 
 function SalleButton({ salle, pending, disabled, onPick }: { salle: FfbbSalle; pending: boolean; disabled: boolean; onPick: () => void }) {
   const noGeo = null === salle.latitude || null === salle.longitude;
+  // « CP Ville » — chaque segment omis si absent (« 69100 Villeurbanne » / « 69100 » / « Villeurbanne »).
+  const location = [salle.postalCode, salle.city].filter((part): part is string => null !== part && "" !== part).join(" ");
   return (
     <li>
       <button
@@ -304,6 +336,7 @@ function SalleButton({ salle, pending, disabled, onPick }: { salle: FfbbSalle; p
         <span>
           <span className="font-medium">{salle.name}</span>
           {null !== salle.address ? <span className="text-muted-foreground"> · {salle.address}</span> : null}
+          {"" !== location ? <span className="text-muted-foreground"> · {location}</span> : null}
           {noGeo ? <span className="text-muted-foreground"> · sans coordonnées</span> : null}
         </span>
       </button>

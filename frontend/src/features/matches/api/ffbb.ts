@@ -94,6 +94,7 @@ export interface FfbbSalle {
   name: string;
   address: string | null;
   city: string | null;
+  postalCode: string | null;
   externalRef: string | null;
   latitude: string | null;
   longitude: string | null;

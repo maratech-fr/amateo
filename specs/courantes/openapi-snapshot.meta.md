@@ -1,9 +1,9 @@
-Last verified @ 2026-09-26 (passe « présent » — le journal borné est retiré, décision fondateur
-`etat-des-lieux.md` §2 « Seul l'état des lieux porte un journal » ; snapshot non régénéré cette
-passe, compte et empreinte confirmés inchangés).
+Last verified @ 2026-09-27 (snapshot régénéré : la salle FFBB proxy porte désormais `postalCode`
+— nouvelle propriété du schéma de liste de `/api/ffbb/salles` et `/api/ffbb/salles-proches` ;
+aucun chemin ajouté, compte inchangé, empreinte bumpée).
 
 **208 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`55cef358c16ede935b6a3ab604abdff9c2e8a7413ffddd083d858aa8f06c7d84` (`sha256sum` sur le fichier).
+`4974c3276b88acfc0e338f5abf0cbc1ed6bb6bc793b1ba6db8bc88d885a85677` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

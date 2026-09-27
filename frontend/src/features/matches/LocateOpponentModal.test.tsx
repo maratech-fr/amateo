@@ -9,6 +9,7 @@ import { LocateOpponentModal } from "./LocateOpponentModal";
 
 const addMutate = vi.fn();
 const pairMutate = vi.fn();
+const repointMutate = vi.fn();
 const suggestionsState: { data: VenueSuggestion[] | undefined; isError: boolean } = { data: undefined, isError: false };
 const sallesState: { data: { postalCode: string | null; salles: FfbbSalle[] } | undefined; isError: boolean } = { data: undefined, isError: false };
 const nameSallesState: { data: { postalCode: string | null; salles: FfbbSalle[] } | undefined; isError: boolean } = { data: undefined, isError: false };
@@ -19,6 +20,7 @@ vi.mock("./queries", () => ({
   useFfbbSallesByName: () => ({ data: nameSallesState.data, isError: nameSallesState.isError, refetch: vi.fn() }),
   useAddOpponentVenue: () => ({ mutate: addMutate, isPending: false }),
   usePairOpponentVenueLabel: () => ({ mutate: pairMutate, isPending: false }),
+  useRepointVenueLink: () => ({ mutate: repointMutate, isPending: false }),
 }));
 
 const suggestion = (over: Partial<VenueSuggestion>): VenueSuggestion => ({
@@ -38,6 +40,7 @@ const salle = (over: Partial<FfbbSalle>): FfbbSalle => ({
   name: "Gymnase des Servizières",
   address: "Rue X",
   city: "Meyzieu",
+  postalCode: "69330",
   externalRef: "S999",
   latitude: "45.77",
   longitude: "4.90",
@@ -50,6 +53,7 @@ const renderPair = (onClose = vi.fn()) => renderWithProviders(<LocateOpponentMod
 beforeEach(() => {
   addMutate.mockReset();
   pairMutate.mockReset();
+  repointMutate.mockReset();
   suggestionsState.data = undefined;
   suggestionsState.isError = false;
   sallesState.data = undefined;
@@ -223,6 +227,43 @@ describe("LocateOpponentModal — ajouter / apparier un gymnase", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /Gym Choisi/ }));
     expect(pairMutate.mock.calls[1][0].fbiLabel).toBe("SALLE B");
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("une salle FFBB affiche son code postal et sa ville (« 69100 Villeurbanne »)", () => {
+    sallesState.data = { postalCode: "69100", salles: [salle({ name: "GYMNASE MATEO", postalCode: "69100", city: "Villeurbanne" })] };
+    renderAdd();
+    const list = screen.getByRole("list", { name: /Salles FFBB/ });
+    expect(within(list).getByText(/69100 Villeurbanne/)).toBeInTheDocument();
+  });
+
+  it("mode MODIFIER (repoint) : le titre nomme le club, la section « Gymnases connus » reste présente", () => {
+    suggestionsState.data = [suggestion({ label: "Gymnase connu" })];
+    renderWithProviders(
+      <LocateOpponentModal code="ARA0069001" clubName="Meyzieu Basket" fbiLabel={null} repointLink={{ id: "lnk-1", label: "SALLE ANCIENNE" }} postalCode="69330" city="Meyzieu" onClose={vi.fn()} />,
+    );
+    expect(screen.getByText("Modifier le gymnase — Meyzieu Basket")).toBeInTheDocument();
+    expect(screen.getByText("« SALLE ANCIENNE »")).toBeInTheDocument();
+    expect(screen.getByText(/sera remplacé par le gymnase choisi/)).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Gymnases connus de Meyzieu Basket" })).toBeInTheDocument();
+  });
+
+  it("mode MODIFIER : un clic appelle repointVenueLink avec l'id du lien et SANS fbiLabel ; le succès ferme + toast", async () => {
+    repointMutate.mockImplementation((_input: unknown, opts?: { onSuccess?: () => void; onSettled?: () => void }) => {
+      opts?.onSuccess?.();
+      opts?.onSettled?.();
+    });
+    suggestionsState.data = [suggestion({ externalRef: "S123", label: "Gymnase Cible", latitude: 45.77, longitude: 4.9 })];
+    const onClose = vi.fn();
+    renderWithProviders(
+      <LocateOpponentModal code="ARA0069001" clubName="Meyzieu Basket" fbiLabel={null} repointLink={{ id: "lnk-1", label: "SALLE ANCIENNE" }} postalCode="69330" city="Meyzieu" onClose={onClose} />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /Gymnase Cible/ }));
+    expect(repointMutate.mock.calls[0][0]).toEqual({ id: "lnk-1", venueLabel: "Gymnase Cible", venueExternalRef: "S123", latitude: 45.77, longitude: 4.9 });
+    expect(repointMutate.mock.calls[0][0]).not.toHaveProperty("fbiLabel");
+    expect(addMutate).not.toHaveBeenCalled();
+    expect(pairMutate).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
   });
 
