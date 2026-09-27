@@ -1,17 +1,13 @@
 # Documentation métier du système de contraintes
 
-Last verified @ 2026-09-26 (`documentation-update`, passe « le présent » zone backend). Reconfronté
-au code : `App\Enum\ConstraintRuleType` compte toujours exactement HARD/PREFERRED/LOCK
-(`ConstraintRuleType.php:11-13`, aucun cran `BONUS`) ✓ ; `minAtVenueId` exige `HARD`/`LOCK` + scope
-`TEAM` (ou un ciblage par tag) — **citation corrigée** : la règle vit dans
-`ConstraintValidationService.php:139-148`, pas dans `ConstraintConfigValidator` (qui ne valide que
-la FORME du `config`, jamais le `ruleType`/scope) ; `LOCK` réservé aux familles `TIME`/`DAY` —
-même correction, `ConstraintValidationService.php:184` (et non `ConstraintConfigValidator.php`) ✓ ;
+Last verified @ 2026-09-27 (rotation de fraîcheur `documentation-update`, sujet sans rapport — passe
+doc P4-265 frontend). Reconfronté au code : `App\Enum\ConstraintRuleType` compte toujours exactement
+HARD/PREFERRED/LOCK (`ConstraintRuleType.php:11-13`, aucun cran `BONUS`) ✓ ; `minAtVenueId` exige
+`HARD`/`LOCK` + scope `TEAM` (ou un ciblage par tag) dans `ConstraintValidationService.php:139-148`
+✓ ; `LOCK` réservé aux familles `TIME`/`DAY`, `ConstraintValidationService.php:184` ✓ ;
 `targetTags`/`excludeTags` (intersection/soustraction) toujours vivants à côté du `targetTag`
-legacy (`TeamTagResolver.php:128-167,264-280`) ✓ ; `ConstraintValidationService` ne porte toujours
-aucune matrice scope×family (grep vide) ✓. §2.2 ne recopie plus la table des clés de `config`
-(doublon confirmé avec `constraint-config-keys.md`, mêmes clés/types) — remplacée par un pointeur.
-Reste du fichier non re-contrôlé cette passe — historique : `git log -p --follow backend/docs/constraints.md`.
+legacy (`TeamTagResolver.php:32,128-148`) ✓. Reste du fichier non re-contrôlé cette passe —
+historique : `git log -p --follow backend/docs/constraints.md`.
 
 > Amateo — Symfony 7 + API Platform. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
