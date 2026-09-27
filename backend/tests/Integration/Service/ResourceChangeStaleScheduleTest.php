@@ -9,10 +9,14 @@ use App\Entity\Club;
 use App\Entity\ImplicitRuleSetting;
 use App\Entity\MatchSlotRotation;
 use App\Entity\MatchSlotRotationTeam;
+use App\Entity\PriorityTier;
 use App\Entity\Schedule;
 use App\Entity\ScheduleDiagnostic;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
+use App\Entity\Sport;
+use App\Entity\SportCategory;
+use App\Entity\Team;
 use App\Entity\TeamLink;
 use App\Entity\TeamMatchHabit;
 use App\Entity\TeamTag;
@@ -200,6 +204,100 @@ final class ResourceChangeStaleScheduleTest extends KernelTestCase
         self::assertTrue(
             $this->reload($seasonSchedule)->isResourcesChangedSinceGeneration(),
             'Un changement d\'heure (même accompagné d\'un libellé) périme le planning : le filtre esthétique ne doit avaler que le libellé seul.',
+        );
+    }
+
+    public function testAVenueAliasOnlyChangeDoesNotMarkStale(): void
+    {
+        [$club, $season] = $this->seed();
+        $venueId = $this->venue($club, $season);
+        $schedule = $this->seasonSchedule($club, $season);
+        $this->em->flush();
+        // Le gymnase existe déjà (sa création a légitimement marqué) : ardoise propre pour ne
+        // mesurer QUE l'ajout de l'alias.
+        $this->resetMarkers($schedule);
+
+        // Ajouter un alias FFBB (external_labels) — jamais lu par le générateur (payload /generate :
+        // ni ScheduleConstraintBuilder ni MatchPlacementPayloadBuilder ne le sérialisent ; il ne
+        // sert qu'au rattachement des libellés FBI). Le planning reste FIDÈLE : pas de « régénérez ».
+        $venue = $this->em->find(Venue::class, $venueId);
+        self::assertInstanceOf(Venue::class, $venue);
+        $venue->setExternalLabels(['GYMNASE ALIAS FBI']);
+        $this->em->flush();
+
+        self::assertFalse(
+            $this->reload($schedule)->isResourcesChangedSinceGeneration(),
+            'Un changement limité aux alias FFBB (external_labels) ne périme pas le planning — le solveur ne les lit pas.',
+        );
+    }
+
+    public function testAVenueNameChangeStillMarksStale(): void
+    {
+        [$club, $season] = $this->seed();
+        $venueId = $this->venue($club, $season);
+        $schedule = $this->seasonSchedule($club, $season);
+        $this->em->flush();
+        $this->resetMarkers($schedule);
+
+        // Le nom du gymnase est un VRAI changement (le solveur place des créneaux nommés) : le
+        // filtre du changeset ne doit avaler que external_labels/updatedAt/version, jamais le reste.
+        $venue = $this->em->find(Venue::class, $venueId);
+        self::assertInstanceOf(Venue::class, $venue);
+        $venue->setName('Gymnase renommé');
+        $this->em->flush();
+
+        self::assertTrue(
+            $this->reload($schedule)->isResourcesChangedSinceGeneration(),
+            'Renommer un gymnase (vrai changement) périme le planning : le filtre alias ne doit pas AVALER un vrai changement.',
+        );
+    }
+
+    public function testResyncingTheSameTeamTagsDoesNotMarkStale(): void
+    {
+        [$club, $season] = $this->seed();
+        [, $categoryId] = $this->createTeamInCategory($club, $season, 'U11', 10, 11);
+        $schedule = $this->seasonSchedule($club, $season);
+        $this->em->flush();
+        // La création de l'équipe a posé ses tags (marquage légitime via team_tag_assignment) :
+        // ardoise propre pour ne mesurer QUE la re-synchronisation.
+        $this->resetMarkers($schedule);
+
+        // Éditer la DURÉE de match de la catégorie : `TeamTagSyncListener::categoryUpdated` rejoue
+        // `syncTeamTags`, mais le NOM et les bornes d'âge n'ont pas bougé → MÊME ensemble de tags.
+        // Un delete+recreate à l'identique déclenchait `teamTagAssignmentTouched` et périmait à
+        // tort ; désormais `syncTeamTags` court-circuite quand l'ensemble est inchangé.
+        $category = $this->em->find(SportCategory::class, $categoryId);
+        self::assertInstanceOf(SportCategory::class, $category);
+        $category->setMatchMinutes(40);
+        $this->em->flush();
+
+        self::assertFalse(
+            $this->reload($schedule)->isResourcesChangedSinceGeneration(),
+            'Re-synchroniser le MÊME ensemble de tags (durée de match éditée) ne réécrit rien, donc ne périme pas.',
+        );
+    }
+
+    public function testResyncingToADifferentTagSetStillMarksStale(): void
+    {
+        [$club, $season] = $this->seed();
+        [, $categoryId] = $this->createTeamInCategory($club, $season, 'U11', 10, 11);
+        $schedule = $this->seasonSchedule($club, $season);
+        $this->em->flush();
+        $this->resetMarkers($schedule);
+
+        // Renommer la catégorie (U11 → Senior) + décaler les bornes d'âge : les tags CHANGENT
+        // (EMB/JEUNE → ADULTE/SENIOR). La re-synchronisation réécrit les assignations → périme,
+        // comme avant. Non-régression : le court-circuit ne doit avaler que l'ensemble IDENTIQUE.
+        $category = $this->em->find(SportCategory::class, $categoryId);
+        self::assertInstanceOf(SportCategory::class, $category);
+        $category->setName('Senior');
+        $category->setAgeMin(22);
+        $category->setAgeMax(99);
+        $this->em->flush();
+
+        self::assertTrue(
+            $this->reload($schedule)->isResourcesChangedSinceGeneration(),
+            'Un vrai changement de tags (catégorie renommée/rebornée) réécrit les assignations et périme le planning.',
         );
     }
 
@@ -620,6 +718,55 @@ final class ResourceChangeStaleScheduleTest extends KernelTestCase
         $this->em->flush();
 
         return $venue->getId();
+    }
+
+    /**
+     * Crée un Sport + une SportCategory + une Team (dont les tags sont posés au postFlush par
+     * `TeamTagSyncListener`). Retourne [teamId, categoryId] : la catégorie sert à falsifier le
+     * court-circuit de re-synchronisation des tags (l'éditer rejoue `syncTeamTags`).
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function createTeamInCategory(Club $club, Season $season, string $categoryName, ?int $ageMin, ?int $ageMax): array
+    {
+        $uid = uniqid('', true);
+        $sport = (new Sport)->setName('Basketball ' . $uid)->setSlug('bball-' . $uid)->setIsActive(true);
+        $this->em->persist($sport);
+        $this->em->flush();
+
+        $category = (new SportCategory)
+            ->setClubId($club->getId())
+            ->setSportId($sport->getId())
+            ->setName($categoryName)
+            ->setAgeMin($ageMin)
+            ->setAgeMax($ageMax)
+            ->setIsCustom(false)
+            ->setSortOrder(0);
+        $this->em->persist($category);
+        $this->em->flush();
+
+        $existing = $this->em->getRepository(PriorityTier::class)->find(1);
+        if ($existing instanceof PriorityTier) {
+            $tier = $existing;
+        } else {
+            $tier = (new PriorityTier)->setId(1)->setLabel('S')->setName('Senior')->setColor('#FF0000')->setOrToolsWeight(100)->setDefaultMinSessions(2);
+            $this->em->persist($tier);
+            $this->em->flush();
+        }
+
+        $team = (new Team)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setSportCategoryId($category->getId())
+            ->setPriorityTierId($tier->getId())
+            ->setName($categoryName . ' 1')
+            ->setSessionsPerWeek(1)
+            ->setIsActive(true);
+        $this->em->persist($team);
+        $this->em->flush();
+        $this->em->clear();
+
+        return [$team->getId(), $category->getId()];
     }
 
     private function seasonSchedule(Club $club, Season $season): Schedule
