@@ -857,9 +857,9 @@ describe("ConstraintsStep — Réserver tab (slot grid + modal)", () => {
     await pickListboxOption(user, "Ajouter une équipe", "Fanion"); // t2
     await user.click(screen.getByRole("button", { name: "Valider" }));
 
-    // D3 (P2-60) — la phase 1 passe désormais par `apiErrorMessage` (comme le rail groupe) : une
-    // erreur réseau nue (pas un 422 porteur de message) retombe sur le message générique du helper.
-    expect(await screen.findByRole("alert")).toHaveTextContent(/Une erreur est survenue/);
+    // D3 (P2-60) / P4-263 — la phase 1 passe désormais par `errorMessage` (maison d'erreur unique) :
+    // une erreur réseau nue (un `Error` sans réponse HTTP) retombe sur le repli réseau du helper.
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Problème de connexion/);
     expect(screen.getByRole("button", { name: "Valider" })).toBeInTheDocument(); // reste ouverte
 
     // Reprise : seule la création restante repart, le retrait déjà passé n'est PAS rejoué.

@@ -2,7 +2,7 @@ import { LogOut, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { Outlet, useNavigate } from "react-router";
 
-import { apiErrorMessage } from "@/shared/api/errors";
+import { errorMessage } from "@/shared/lib/errorMessage";
 import { Button } from "@/shared/components/ui/button";
 import { Spinner } from "@/shared/components/ui/spinner";
 
@@ -30,7 +30,7 @@ export function AdminShell() {
       clear();
       navigate("/admin/login", { replace: true });
     } catch (err) {
-      setError(await apiErrorMessage(err));
+      setError(await errorMessage(err));
     } finally {
       setPending(false);
     }

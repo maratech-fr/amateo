@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useNavigation } from "react-router";
 
-import { apiErrorMessage } from "@/shared/api/errors";
+import { errorMessage } from "@/shared/lib/errorMessage";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
@@ -39,7 +39,7 @@ export function LoginPage() {
       // AuthGuard routes to the app / waiting screen based on membership status.
       navigate("/", { replace: true });
     } catch (err) {
-      setError(await apiErrorMessage(err));
+      setError(await errorMessage(err));
     }
   }
 

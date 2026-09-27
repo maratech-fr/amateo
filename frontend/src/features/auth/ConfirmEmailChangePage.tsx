@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
-import { apiErrorMessage } from "@/shared/api/errors";
+import { errorMessage } from "@/shared/lib/errorMessage";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { toast } from "@/shared/stores/toastStore";
 
@@ -30,7 +30,7 @@ export function ConfirmEmailChangePage() {
         toast.success(`Adresse e-mail confirmée : ${result.email}.`);
         navigate("/", { replace: true });
       })
-      .catch(async (err) => setError(await apiErrorMessage(err)));
+      .catch(async (err) => setError(await errorMessage(err)));
   }, [token, confirm, navigate]);
 
   return (

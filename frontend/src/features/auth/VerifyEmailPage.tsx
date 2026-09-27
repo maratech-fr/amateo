@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
-import { apiErrorMessage } from "@/shared/api/errors";
+import { errorMessage } from "@/shared/lib/errorMessage";
 import { Spinner } from "@/shared/components/ui/spinner";
 
 import { AuthLayout } from "./AuthLayout";
@@ -25,7 +25,7 @@ export function VerifyEmailPage() {
     verify
       .mutateAsync(token)
       .then((result) => navigate(result.membershipStatus === "active" ? "/" : "/waiting", { replace: true }))
-      .catch(async (err) => setError(await apiErrorMessage(err)));
+      .catch(async (err) => setError(await errorMessage(err)));
   }, [token, verify, navigate]);
 
   return (

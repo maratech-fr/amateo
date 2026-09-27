@@ -1,7 +1,7 @@
 import { AlertTriangle, MapPin, MapPinCheck } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
-import { apiErrorMessage } from "@/shared/api/errors";
+import { errorMessage } from "@/shared/lib/errorMessage";
 import type { GeocodeCandidate } from "@/shared/api/geocode";
 import { useGeocode } from "@/shared/hooks/useGeocode";
 import { StatusPill } from "@/shared/components/ui/badge";
@@ -63,7 +63,7 @@ export function AddressGeocodeField({ address, located, onPick, placeholder, lab
     setSearched(q);
     geocode.mutate(q, {
       onSuccess: (list) => setCandidates(list),
-      onError: async (e) => setError(await apiErrorMessage(e)),
+      onError: async (e) => setError(await errorMessage(e)),
     });
   };
 

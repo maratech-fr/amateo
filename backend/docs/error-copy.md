@@ -4,10 +4,12 @@
 > Pas d'inventaire ligne à ligne (il dériverait), pas de décompte (« N messages »).
 > Le code fait foi ; ce doc dit **comment décider**, pas **combien**.
 
-Last verified @ 2026-09-27 (`documentation-update`, P4-263 PR 1/2 — backend). Re-confronté au
+Last verified @ 2026-09-27 (`documentation-update`, P4-263 PR 2/2 — front). Re-confronté au
 code : la règle « le corps du serveur ne parle qu'en deçà de 500 » tient toujours
-(`frontend/src/shared/lib/errorMessage.ts:32`, et le repli générique `if (status >= 500)` `:65`
-au-delà) ✓ ; le rail 422 des state processors reste gardé par
+(`frontend/src/shared/lib/errorMessage.ts:55`, et le repli générique `if (status >= 500)` `:89`
+au-delà) ✓ ; `errors.ts`/`apiErrorMessage` a disparu, `errorMessage.ts` est désormais la maison
+UNIQUE d'erreur front, avec un filet ignorant un reason-phrase HTTP anglais brut (liste FERMÉE
+`ENGLISH_STATUS_TEXTS:16-27`) ✓ ; le rail 422 des state processors reste gardé par
 `backend/tests/Unit/ValidationExceptionCarriesViolationsTest.php` ✓ ;
 `ConstraintStateProcessor::assertPreferredVenueIsNotMandatory`
 (`backend/src/State/Processor/ConstraintStateProcessor.php:174`) et
@@ -24,8 +26,10 @@ par `backend/tests/Security/LoginFailureCopyTest.php` (bloquant) ✓ ; console s
 ## La règle
 
 Un corps d'erreur `4xx` (`< 500`) revient TEL QUEL dans le toast du frontend :
-`frontend/src/shared/lib/errorMessage.ts:32` ne reprend `body.error ?? body.message ??
-body.detail` **que** pour `status < 500`. Donc :
+`frontend/src/shared/lib/errorMessage.ts:55` ne reprend `body.error ?? body.message ??
+body.detail` **que** pour `status < 500` — sauf si ce texte n'est qu'une reason-phrase HTTP
+anglaise brute reconnue (`ENGLISH_STATUS_TEXTS`, un 4xx nu de Symfony/API Platform sans message
+métier), auquel cas le filet l'ignore et retombe sur le repli français par statut. Donc :
 
 - **Français métier** — obligatoire dès qu'un **gestionnaire** peut lire le message via l'app,
   chemin nominal **ou course** (onglet périmé, deux gestionnaires concurrents, ressource
@@ -123,6 +127,10 @@ le CORPS BRUT manque « d'accès » ou « L'indisponibilité ». Décoder le JSO
 
 ## Pointeurs
 
-- Consommateur frontend : `frontend/src/shared/lib/errorMessage.ts`
+- Consommateur frontend : `frontend/src/shared/lib/errorMessage.ts` — maison UNIQUE d'erreur
+  front depuis P4-263 (`shared/api/errors.ts`/`apiErrorMessage` a disparu). Le front ne réémet
+  JAMAIS un reason-phrase HTTP anglais brut (un 4xx nu de Symfony/API Platform) : un corps
+  `< 500` dont le texte n'est qu'une entrée de la liste FERMÉE `ENGLISH_STATUS_TEXTS` est ignoré,
+  et l'écran tombe sur le repli français par statut.
 - Interdiction d'identifiant interne dans un texte lu : `.claude/rules/backend.md`, gardée par
   `PublicTextIsFreeOfInternalIdentifiersTest`.

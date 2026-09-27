@@ -1,10 +1,11 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement », 2/3 frontend) —
-versions du § Outils de test et § Stack Versions Fixed re-confrontées à `frontend/package.json`
-(exactes), `act-warnings-ceiling.json` + `tooling/actWarningsRatchet.ts` existent, `msw` déclaré
-(`^2.15.0`) mais zéro import dans `src`/`tests` (confirmé). Chronique des passes antérieures :
-`git log -p --follow` ce fichier.
+Last verified @ 2026-09-27 (`documentation-update`, P4-263 PR 2/2 — front). Re-confronté au code :
+versions du § Outils de test et § Stack Versions Fixed toujours exactes contre
+`frontend/package.json`, `act-warnings-ceiling.json` + `tooling/actWarningsRatchet.ts` existent,
+`msw` déclaré (`^2.15.0`) mais zéro import dans `src`/`tests` ✓ ; la maison unique d'erreur est
+`shared/lib/errorMessage.ts` — `shared/api/errors.ts` (`apiErrorMessage`) a disparu, absorbé dans
+`errorMessage()` ✓. Chronique des passes antérieures : `git log -p --follow` ce fichier.
 
 > Fixe le mandat de test, les versions de la stack, les anti-patterns et les règles de
 > préservation d'infrastructure. Le détail fonctionnel (routes, composants, wizard) est dans
@@ -361,7 +362,7 @@ est rejeté automatiquement.
 | 3 | `migrate()` sans null check dans Zustand 5 | `persist` v5 passe `persistedState` potentiellement `null` — un `migrate` qui assume un objet non-null lance une `TypeError`. | `migrate: (persistedState: unknown, version: number) => { if (persistedState === null) return initialState; ... }` |
 | 4 | `@apply` dans des composants Tailwind v4 | Tailwind v4 déprécie `@apply` dans les composants — casse l'extraction utility-first et le tree-shaking CSS. | Composer avec des classes utility directement, ou extraire un composant React réutilisable. |
 | 5 | `tailwind.config.js` (fichier JS de config) | Tailwind v4 remplace la config JS par la directive CSS `@theme` dans le fichier CSS principal. Le fichier JS est ignoré ou cause des conflits. | Définir les tokens (couleurs, fonts, breakpoints) via `@theme { ... }` dans `src/index.css`. |
-| 6 | Lire `error.response` dans un `catch` d'appel ky | ky 2.x **consomme lui-même** le corps de la réponse d'erreur et l'expose en `error.data` avant tout consommateur — re-lire la réponse lance `body stream already read`. C'est aussi pourquoi le client n'a **pas** de hook `beforeError`. | Lire **`error.data`** (`shared/api/errors.ts`, `errorMessage()`). |
+| 6 | Lire `error.response` dans un `catch` d'appel ky | ky 2.x **consomme lui-même** le corps de la réponse d'erreur et l'expose en `error.data` avant tout consommateur — re-lire la réponse lance `body stream already read`. C'est aussi pourquoi le client n'a **pas** de hook `beforeError`. | Lire **`error.data`** (`shared/lib/errorMessage.ts`, `errorMessage()` — maison unique d'erreur front). |
 | 7 | `data ?? []` sur une query en premier chargement | Fabrique un **vide crédible** (« aucun créneau », « aucun réglage ») qui pousse le gestionnaire à re-saisir (doublons) ou à valider une période qu'il croit vide. Symétriquement, traiter `isError` comme fatal détruit un écran qui fonctionne alors que seul un refetch d'arrière-plan a échoué. | `readState()` / `readFailed()` (`shared/lib/readState.ts`) — trois états sur le seul critère « a-t-on une donnée ? ». |
 
 > L'anti-pattern historique « `eslint-config-prettier` pas en dernier » a été retiré : le

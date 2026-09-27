@@ -1,4 +1,4 @@
-# Roadmap (46) — ce qui reste à faire
+# Roadmap (45) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -72,7 +72,7 @@
 
 **Mise en production ~2026-10-03, puis phase bêta-testeurs.**
 
-**AVANT PROD** (code — ordre de passage) : **P4-263** (tout en français) → **P4-265** (surfaces
+**AVANT PROD** (code — ordre de passage) : **P4-265** (surfaces
 opaques) → **P4-264** (appariement gymnases adverses) → **P4-240** (placement de matchs, gros lot)
 → **P5-24** (logo, en entier : PDF N&B, e-mails, image OG) → **P4-258** (scroll-padding vitrine) →
 **P5-27** (captures vitrine, en dernier des visuels). En parallèle, deux gestes code sans ligne
@@ -237,7 +237,6 @@ rien à faire en propre) → **P5-28 en dernier** (contrat backend⇄engine repa
 | P4-54 | **[APRÈS PROD]** **Console super-admin — SA4 v2 puis SA5** | ⚪ | M | SA0→SA4 v1 livrés + monitoring + alerting (état des lieux §1.8). Suite au signal → [`console-superadmin.md`](console-superadmin.md). ⚠ Suspension de club et approbation fallback **délibérément différées** au premier cas réel |
 | P4-245 | **[APRÈS PROD]** **(revue sécurité PR F, 2026-09-19) `ClubSiegeController`/`ClubAppearanceController` gardent un fallback `X-Club-Id` mort** | ⚪ | XS | `ClubSiegeController.php:48` et `ClubAppearanceController.php:39` résolvent le club par `$request?->attributes->get('_club_id') ?? $request?->headers->get('X-Club-Id')` — le front n'envoie jamais ce header (CLAUDE.md §10.3, tenant résolu serveur depuis le JWT) et `TenantFilterListener` rejette la requête avant que ce fallback ne serve à quoi que ce soit : sûr, mais mort. À retirer au prochain passage sur ces deux contrôleurs |
 | P4-246 | **[APRÈS PROD]** **(revue sécurité PR F, 2026-09-19) `BanGeocodingClient` lit la réponse BAN sans cap d'octets explicite** | ⚪ | XS | `BanGeocodingClient.php:100` (`fetchFeatures`) appelle `->toArray(false)` sans `max_content_size`/cap explicite — borné EN PRATIQUE par `max_duration` (5 s) et `limit ≤ 5` côté requête, mais rien n'empêche une réponse BAN anormalement volumineuse de tenir la mémoire du process le temps du timeout. Hardening partagé avec `GeocodeController` (même client) : poser un cap d'octets explicite sur la requête HttpClient |
-| P4-263 | **[AVANT PROD]** **Tout ce qui s'affiche est en français** | 🟠 | S/M | Déclencheur : le fondateur a vu « Invalid credentials. » sur `/connexion` (2026-09-26). **PR 1 (backend) livrée 2026-09-27** : translator câblé + refus `/api/login` francisé + messages de course + console superadmin, doctrine posée dans `backend/docs/error-copy.md`, NR `LoginFailureCopyTest` bloquant (§Décisions (1)(2)(5) faites). Reste ouvert — **PR 2 (frontend)** : `frontend/src/shared/api/errors.ts:4-19` (`apiErrorMessage` affiche tel quel `body.error`/`body.message`) et `frontend/src/shared/lib/errorMessage.ts` restent DEUX maisons d'erreur non unifiées, chacune reparse `error.data` indépendamment ; `frontend/src/features/auth/LoginPage.tsx:42`. **Décisions fondateur 2026-09-26 restant à faire** : (3) filet front : status-texts anglais bruts (« Not Found », « Forbidden »…) → repli FR ; (4) une seule maison d'erreur front = `errorMessage.ts` (`shared/api/errors.ts` à faire disparaître). Intouchables : 404 byte-identiques des pages à token, codes machine. Piège : envisager un scénario Behat « mauvais mot de passe → message français » dans la même PR |
 
 ### Dette technique & tooling
 

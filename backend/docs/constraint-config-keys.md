@@ -1,19 +1,14 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-09-26 (`documentation-update`, passe « le présent » suite — nettoyage des
-généalogies restantes). Re-confronté à `ConstraintConfigValidator::SPEC`
+Last verified @ 2026-09-27 (`documentation-update`, rotation de fraîcheur — sujet sans rapport,
+P4-263 PR 2/2 front). Re-confronté à `ConstraintConfigValidator::SPEC`
 (`backend/src/Service/ConstraintConfigValidator.php:59-95`) : les 4 familles et leurs clés/types
 correspondent trait pour trait à la table du fichier ✓. `App\Enum\ConstraintRuleType` ne compte
-que HARD/PREFERRED/LOCK ✓ — `BONUS` n'existe nulle part dans l'engine comme cran de `ruleType`
-(`rtk grep -rn BONUS engine/app/solver/constraints engine/app/schemas` vide). `TeamTagResolver::
-resolveConstraintTeamIds` (`backend/src/Service/TeamTagResolver.php:278`),
-`PlanVenueClosures::effectiveStateForPlan` (`PlanVenueClosures.php:212`) et
-`CalendarEntryStateProcessor::redateEntryPairedConstraints` (`:642`) existent toujours à ces
-signatures ✓. La migration `Version20260807190000` est confirmée en place ✓. Cette passe retire
-les dates/ids décoratifs (ALIGN-14 du titre §« Quelle INTENSITÉ », lot tags PR 2, décisions
-fondateur datées) déjà tracés dans `etat-des-lieux.md` §3 (qui pointe LUI-MÊME vers ce fichier
-comme maison du comportement) — garde les noms encore utilisés ailleurs comme repères (`D3 v1`).
-Non re-sondé cette passe : les deux gardes
+que HARD/PREFERRED/LOCK ✓. `TeamTagResolver::resolveConstraintTeamIds`
+(`backend/src/Service/TeamTagResolver.php:278`), `PlanVenueClosures::effectiveStateForPlan`
+(`PlanVenueClosures.php:212`) et `CalendarEntryStateProcessor::redateEntryPairedConstraints`
+(`:642`) existent toujours à ces signatures ✓. La migration `Version20260807190000` est confirmée
+en place ✓. Non re-sondé cette passe : les deux gardes
 `PeriodGatePayloadParityTest`/`ConstraintKeysAreHonouredByEngineTest` (déjà vérifiées la passe
 précédente). Historique : `git log -p --follow`. Un stamp REMPLACE, il ne s'empile pas.
 

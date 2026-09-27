@@ -2,7 +2,7 @@ import { Check } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
-import { apiErrorMessage } from "@/shared/api/errors";
+import { errorMessage } from "@/shared/lib/errorMessage";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
@@ -137,7 +137,7 @@ export function RegisterPage() {
       }
       setSent(true);
     } catch (err) {
-      setError(await apiErrorMessage(err));
+      setError(await errorMessage(err));
       // Token à usage unique : un refus (dont le 403 anti-robot) le consomme —
       // on l'oublie et on réarme le widget pour la tentative suivante.
       if (null !== turnstileSiteKey) {
