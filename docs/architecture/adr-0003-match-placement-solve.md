@@ -25,26 +25,53 @@ gardé MAJOR-only côté engine (`engine/CONTRACT_VERSION`) — un bump ajout re
 ### 2. Rail SYNCHRONE — pas de Messenger, pas de Mercure
 
 Le problème est minuscule pour CP-SAT (~10⁴ booléens : ~124 matchs × ~80 candidats) : solve mesuré en
-secondes. Le rail asynchrone du planning existe pour des solves de plusieurs centaines de secondes ;
-aucun de ses coûts (message, statut, topic, watchdog) n'est justifié ici — et le topic Mercure durci est
-façonné sur un `Schedule` qu'un placement n'a pas. `POST /api/fixtures/place` répond dans la requête ;
-anti-double-clic par `MatchPlacementLock` (Redis, préfixe dédié — ne partage PAS le verrou de génération :
-données disjointes). **Seuil de bascule** : si un club réel dépasse ~20 s de solve, repasser en rail async
-(décision à re-poser) — le contrat engine ne changerait pas.
+secondes sur un club réel, assumé jusqu'à un budget de 60 s de bout en bout (§4). Le rail asynchrone du
+planning existe pour des solves de plusieurs centaines de secondes ; aucun de ses coûts (message, statut,
+topic, watchdog) n'est justifié ici — et le topic Mercure durci est façonné sur un `Schedule` qu'un
+placement n'a pas. `POST /api/fixtures/place` répond dans la requête ; anti-double-clic PAR CLUB par
+`MatchPlacementLock` (Redis, préfixe dédié — ne partage PAS le verrou de génération : données disjointes).
+
+**Concurrence inter-clubs** : l'engine tient en plus un sémaphore GLOBAL, tous clubs confondus,
+`max_concurrent_placements = 1` (`engine/app/core/config.py`, acquis dans `engine/app/main.py` autour du
+solve). Le verrou club de `MatchPlacementLock` n'isole PAS deux clubs l'un de l'autre : ils partagent ce
+jeton unique, et le second appel attend derrière le solve du premier. Si cette attente plus son propre
+solve dépasse le timeout HTTP du contrôleur (`PlaceMatchesController::HTTP_TIMEOUT_SECONDS`, 90 s), il
+reçoit un 502 propre (« Le solveur n'a pas répondu — réessayez. ») — rien n'est écrit, l'applier ne tourne
+jamais sur un appel qui a levé une exception de transport. **Seuil de bascule vers l'async** : à re-poser
+sur mesure si un club réel dépasse en pratique le budget de 60 s — le contrat engine ne changerait pas.
 
 ### 3. Best-effort « placement optionnel à poids dominant » — articulation avec ADR-0001
 
 Chaque match plaçable porte un booléen `is_placed`, l'objectif maximise `10 000 × Σ is_placed + SOFT`.
 **Aucune contrainte HARD n'est jamais violée dans la sortie** : un match sans candidat licite reste
 non placé et sort NOMMÉ (`no_access_window` · `no_league_intersection` · `venue_unavailable` ·
-`venue_full`). Ce n'est pas la relaxation silencieuse qu'interdit ADR-0001 — rien n'est relâché,
-l'impossible est épelé : le « non-placé expliqué » EST le produit (le signal dérogation-tôt).
+`venue_full` · `not_selected`). Ce n'est pas la relaxation silencieuse qu'interdit ADR-0001 — rien n'est
+relâché, l'impossible est épelé : le « non-placé expliqué » EST le produit (le signal dérogation-tôt).
 Invariant gardé par `assert_no_hard_violation` (tests sémantiques).
+
+`venue_full` et `not_selected` se distinguent post-solve, sur l'occupation FINALE (placements retenus +
+ancres fixes) : `venue_full` quand plus AUCUN créneau licite du match n'est libre ce jour-là (le gymnase
+est réellement saturé) ; `not_selected` quand il en restait au moins un — le solve ne l'a simplement pas
+retenu dans son budget, message « relancez le placement ». Reclassification pure, falsifiable dans les
+deux sens sans avoir à saturer un budget pour de vrai (`_remaining_reason`,
+`engine/app/solver/match_placement.py`).
 
 ### 4. Budget fixe, déterminisme, poids documentés
 
-30 s par défaut (plafond payload 60 s), **1 worker** (bit-stable — les golden en dépendent), seed 42.
-Candidats au pas de **15 min** dans (accès ∩ ligue).
+60 s de bout en bout (`solverTimeoutSeconds` du payload, `MatchPlacementPayloadBuilder`) — porté de 30 s
+par P4-240 pour absorber un gros lot (une fixture réelle à 141 matchs domicile) sans changer de rail. La
+chaîne de timeouts qui l'encadre (verrou `MatchPlacementLock` 120 s, HTTP contrôleur 90 s, nginx
+fastcgi/proxy 120 s, PHP `max_execution_time` 120 s, client frontend `ky` 120 s sur cet appel seul) est
+détaillée dans `specs/courantes/module-matchs.md` §3. **1 worker** (bit-stable — les golden en dépendent),
+seed 42. Candidats au pas de **15 min** dans (accès ∩ ligue).
+
+**Warm-start glouton** (P4-240) : avant le solve, un premier-ajustement déterministe, matchs triés
+(date, équipe), choisit pour chacun le candidat préféré — créneau d'habitude/rotation, sinon le
+placement SOLVER courant s'il reste libre, sinon le premier créneau licite libre — et le donne à CP-SAT
+comme UN seul jeu de hints (`add_hint`). Il absorbe l'ancien hint de stabilité : jamais deux hints
+contradictoires sur le même match. Le poids `W_STABILITY` de la stabilité de re-solve (ci-dessous) est
+inchangé ; seule sa manière d'entrer dans le modèle change, via l'une des trois branches du greedy plutôt
+qu'un `add_hint` isolé.
 
 La salle est tenue pour le **match seul** (`[coup d'envoi, coup d'envoi + matchMinutes]`), alignée sur
 la règle que le radar de conflits applique déjà à l'occupation de salle. La fenêtre **personne** (coach,
@@ -111,4 +138,6 @@ aucun HARD + diagnostic INFO ; durcissement = dette roadmap).
 - NR : sémantique (`test_match_placement_semantics.py`), golden, contrat (phase1), feature Behat
   `placement-des-matchs.feature` (sens du placement de bout en bout), feature
   `generation-du-planning-de-saison.feature` (le planning hebdo n'est jamais affecté par une évolution
-  du contrat de placement).
+  du contrat de placement), `CrossStack/MatchPlacementSemanticsGateTest` (**bloquant**, P4-240 — le
+  contrat de placement contre le VRAI engine : tout ce qui est plaçable est placé, le vocabulaire des
+  cinq raisons reste exact).

@@ -1,6 +1,8 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-09-28 (recalé par la livraison P4-240 : `CONTRACT_VERSION` **2.24** — nouvelle raison de placement `not_selected` ; reste inchangé, passe « présent » `documentation-update`, brief engine 2/4).
+Last verified @ 2026-09-28 (P4-240 : `CONTRACT_VERSION` **2.24** ; `UnplacedMatchSchema.reason` porte
+désormais `not_selected` en plus des quatre raisons existantes, `REASON_MESSAGES` dans
+`match_placement.py` fait foi ; passe « présent » `documentation-update`, brief engine 2/4).
 Re-confronté au code : `CONTRACT_VERSION` = **2.24** (`engine/CONTRACT_VERSION`) ✓ ; les **six
 endpoints** inchangés (`/`, `/health`, `/generate`, `/place-matches`, `/validate-assignments`,
 `/implicit-constraints`, `engine/app/main.py:775-885`) ✓ ; `DEFAULT_MATCH_MIN=105`/
@@ -312,7 +314,13 @@ Contrat **2.24** (le MÊME que `/generate` — un seul contrat pour les trois en
   rotation de créneau partagé, cf. §POST /place-matches).
 - **`MatchPlacementOutputSchema`** : `status`, `placements: list[MatchPlacementSchema]`
   (`matchId`, `venueId`, `kickoff`), **`unplaced: list[UnplacedMatchSchema]`** (`matchId`,
-  `reason`, `message` — le non-plaçable sort NOMMÉ, c'est le produit), `diagnostics`
+  `reason`, `message` — le non-plaçable sort NOMMÉ, c'est le produit ; `reason` est un `str` libre,
+  pas un `Literal`, cinq valeurs en pratique — `no_access_window`, `no_league_intersection`,
+  `venue_unavailable`, `venue_full`, `not_selected` (`REASON_MESSAGES`, `match_placement.py`) —
+  les deux dernières tranchées **post-solve** sur l'occupation finale : `venue_full` = plus aucun
+  créneau licite libre à la date du match (gymnase réellement saturé), `not_selected` = un
+  créneau licite restait libre mais le solve ne l'a pas retenu dans son budget (P4-240,
+  `_remaining_reason`) — « relancez le placement »), `diagnostics`
   (mêmes `DiagnosticSchema` que le solve hebdo), `metrics`.
 
 ### ScheduleOutputSchema (`engine/app/schemas/output_schema.py`)
