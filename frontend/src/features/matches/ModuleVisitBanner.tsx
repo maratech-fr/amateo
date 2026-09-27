@@ -1,5 +1,7 @@
 import { Sparkles } from "lucide-react";
 
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
+
 import type { ModuleVisitDelta } from "./api";
 import { moduleVisitSummary } from "./lib/moduleVisitSummary";
 
@@ -27,11 +29,15 @@ export function ModuleVisitBanner({ delta }: ModuleVisitBannerProps) {
   }
 
   return (
-    <div role="status" className="flex items-start gap-2 rounded-md border border-accent/40 bg-accent/5 px-3 py-2 text-sm text-foreground">
-      <Sparkles className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden="true" />
-      <p>
-        <span className="font-medium">Depuis votre dernière visite :</span> {segments.join(" · ")}
-      </p>
-    </div>
+    <NoticeBanner
+      tone="accent"
+      role="status"
+      icon={<Sparkles className="size-4 text-accent" />}
+      message={
+        <>
+          <span className="font-medium">Depuis votre dernière visite :</span> {segments.join(" · ")}
+        </>
+      }
+    />
   );
 }

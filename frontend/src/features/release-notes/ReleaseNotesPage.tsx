@@ -35,7 +35,7 @@ export function ReleaseNotesPage() {
       ) : (
         <ul className="space-y-6">
           {data.items.map((item) => (
-            <li key={item.id} className="rounded-lg border border-border p-4">
+            <li key={item.id} className="rounded-lg border border-border bg-card p-4">
               <p className="text-base font-semibold">{item.title}</p>
               <p className="mt-0.5 text-xs text-muted-foreground">{formatDate(item.date)}</p>
               <p className="mt-3 whitespace-pre-line text-sm text-foreground">{item.body}</p>

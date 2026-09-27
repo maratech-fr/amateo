@@ -48,7 +48,7 @@ export function MatchesFilterBar({ mode, selected, teams, coaches, venues, tiers
     <div className="flex flex-wrap items-center gap-2">
       {/* Contrôle segmenté (patron VIEWS de PlanningToolbar) — `aria-pressed` porte
           l'état à l'AT, l'axe courant est en variante pleine. */}
-      <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
+      <div className="flex items-center gap-1 rounded-md border border-border bg-card p-0.5">
         {SEGMENTS.map((segment) => (
           <Button
             key={segment.key}

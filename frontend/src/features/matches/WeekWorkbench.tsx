@@ -4,6 +4,7 @@ import { useEffect, useMemo } from "react";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
 import { toast } from "@/shared/stores/toastStore";
 
@@ -281,7 +282,7 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
 
   const swapBanner =
     null !== swapSource ? (
-      <p className="flex items-center justify-between gap-2 rounded-md border border-accent/50 bg-accent/10 px-3 py-2 text-sm">
+      <p className="flex items-center justify-between gap-2 rounded-md border border-accent/50 bg-surface-accent px-3 py-2 text-sm">
         <span>
           Échange : cliquez le match à échanger avec <strong>{teamsMap.get(swapSource.teamId)?.name ?? "?"}</strong> (gymnase + heure — les dates ne bougent pas).
         </span>
@@ -295,13 +296,9 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
 
   const conflictErrorBlock =
     false === seasonPlanChosen ? (
-      <p className="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-sm text-foreground">
-        Le planning de la saison n'est plus validé — les conflits avec les entraînements ne sont pas évalués.
-      </p>
+      <NoticeBanner tone="destructive" message="Le planning de la saison n'est plus validé — les conflits avec les entraînements ne sont pas évalués." />
     ) : conflictsError ? (
-      <p className="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-sm text-foreground">
-        Les conflits n'ont pas pu être vérifiés — rechargez la page avant de placer un match.
-      </p>
+      <NoticeBanner tone="destructive" message="Les conflits n'ont pas pu être vérifiés — rechargez la page avant de placer un match." />
     ) : null;
 
   const offModelBadge =

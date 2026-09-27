@@ -620,7 +620,7 @@ function OfferSection({ me }: { me: MeResponse }) {
   return (
     <div className="space-y-4">
       {undefined !== entitlements ? (
-        <div className="rounded-lg border border-accent/40 bg-accent/5 p-3">
+        <div className="rounded-lg border border-accent/40 bg-surface-accent p-3">
           <p className="text-xs text-muted-foreground">Votre offre</p>
           <p className="text-base font-semibold">{entitlements.planName}</p>
           {null !== entitlements.maxTeams ? (
@@ -645,7 +645,7 @@ function OfferSection({ me }: { me: MeResponse }) {
           {sortPlans(plansQuery.data ?? []).map((plan) => {
             const current = undefined !== entitlements && plan.code === entitlements.planCode;
             return (
-              <div key={plan.id} className={cn("rounded-lg border p-3", current ? "border-accent bg-accent/5" : "border-border")}>
+              <div key={plan.id} className={cn("rounded-lg border p-3", current ? "border-accent bg-surface-accent" : "border-border bg-card")}>
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-medium">{plan.name}</p>
                   {current ? <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground">Votre offre</span> : null}

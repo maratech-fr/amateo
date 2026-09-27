@@ -62,7 +62,7 @@ export function ValidateDialog({ hasAlerts, siblingCount, busy, orphan, onConfir
       {/* P2-52 — l'annonce « salle perdue » N'APPARAÎT QUE si N>0 (aucun bruit préventif sinon).
           Ton destructif encadré, distinct des deux paragraphes en prose ci-dessus/dessous. */}
       {orphan.orphanCount > 0 ? (
-        <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-foreground">
+        <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/40 bg-surface-destructive px-3 py-2 text-sm text-foreground">
           <MapPinOff aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-destructive" />
           <div>
             <p>

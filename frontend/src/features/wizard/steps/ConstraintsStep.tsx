@@ -723,7 +723,7 @@ export function ConstraintsStep() {
       {layerNotices.map((notice) => (
         <p
           key={notice.message}
-          className={cn("mb-3 rounded-md px-3 py-2 text-sm", notice.pending ? "text-muted-foreground" : "border border-warning/40 bg-warning/10 text-foreground")}
+          className={cn("mb-3 rounded-md px-3 py-2 text-sm", notice.pending ? "text-muted-foreground" : "border border-warning/40 bg-surface-warning text-foreground")}
         >
           {notice.message}
         </p>
@@ -1000,7 +1000,7 @@ export function ConstraintsStep() {
         // les actions se retrouvent à ~700 px du libellé qu'elles concernent. La ligne doit
         // se lire comme UNE unité. (Choix ergonomique : le corpus de design est muet sur la
         // largeur d'un tableau de données — cf. `frontend-spec.md` §6.9.)
-        <div className="max-w-5xl overflow-x-auto rounded-lg border border-border">
+        <div className="max-w-5xl overflow-x-auto rounded-lg border border-border bg-card">
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">

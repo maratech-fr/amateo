@@ -34,7 +34,7 @@ export function CreditsBanner() {
 
   if (0 === credits.remaining) {
     return (
-      <div className="mb-4 flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-foreground" role="alert">
+      <div className="mb-4 flex items-center gap-2 rounded-md border border-destructive/50 bg-surface-destructive px-3 py-2 text-sm text-foreground" role="alert">
         <AlertTriangle className="size-4 shrink-0 text-destructive" aria-hidden="true" />
         <span className="min-w-0 flex-1">
           Vos crédits gratuits sont épuisés. Consultez et ajustez librement — passez à une offre pour générer à nouveau.
@@ -55,7 +55,7 @@ export function CreditsBanner() {
   };
 
   return (
-    <div className="mb-4 flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-foreground" role="alert">
+    <div className="mb-4 flex items-center gap-2 rounded-md border border-destructive/50 bg-surface-destructive px-3 py-2 text-sm text-foreground" role="alert">
       <AlertTriangle className="size-4 shrink-0 text-destructive" aria-hidden="true" />
       <span className="min-w-0 flex-1">
         Il ne vous reste que {credits.remaining} crédit{credits.remaining > 1 ? "s" : ""} gratuit{credits.remaining > 1 ? "s" : ""} — chaque génération, placement de matchs ou export en consomme un.

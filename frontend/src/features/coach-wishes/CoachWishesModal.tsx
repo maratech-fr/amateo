@@ -12,6 +12,7 @@ import { groupTeamsByTier, tierGroupLabel } from "@/shared/lib/teamTiers";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Modal } from "@/shared/components/ui/modal";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { cn } from "@/shared/lib/utils";
 
 import type { CoachWish, CoachWishPayload } from "./api";
@@ -133,9 +134,11 @@ export function CoachWishesModal({ mother, weekFilter, onClose }: { mother: Cale
       {/* Sans équipe à coach principal, « Ajouter » n'ouvrirait qu'un formulaire sans
           cible : on dit ce qui manque, au lieu de laisser un select vide. */}
       {0 === teamsWithMainCoach.length ? (
-        <p className="mt-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-          Aucune équipe n'a de coach principal : rattachez-en un pour pouvoir saisir une doléance.
-        </p>
+        <NoticeBanner
+          tone="muted"
+          className="mt-2"
+          message="Aucune équipe n'a de coach principal : rattachez-en un pour pouvoir saisir une doléance."
+        />
       ) : null}
 
       {formOpen && teamsWithMainCoach.length > 0 ? (

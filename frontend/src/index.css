@@ -57,6 +57,21 @@
   --warning: oklch(0.55 0.16 62);
   --success: oklch(0.52 0.14 160);
 
+  /* --surface-* (P4-265) — fonds OPAQUES teintés des bandeaux/tuiles posés sur le fond à MOTIFS du
+     body : `bg-card bg-warning/10` NE compose PAS (Tailwind n'empile pas deux background-color),
+     d'où ces jetons en dur. `color-mix` mêle la teinte de rôle à `--card` (jamais `--background`,
+     qui est le SOL du motif — la surface resterait quasi transparente). --surface-accent suit la
+     couleur du CLUB (`--accent` surchargé par `useApplyClubTheme`) : le texte posé dessus est donc
+     TOUJOURS `text-foreground`, jamais `text-accent` (qui varie avec le club). Contrastes
+     text-foreground mesurés canvas (même méthode que `a11y-contrast.spec.ts`), gardés en dur là,
+     CLAIR : text-foreground surface-warning 8,25 · surface-accent 8,25 · surface-destructive 8,38 ·
+     surface-muted 8,89 ; text-muted-foreground y reste ≥ AA (4,90 · 4,90 · 4,97 · 5,28) — la
+     sous-ligne secondaire d'un bandeau (ConflictLine, ToReplaceList) tient donc AA aussi. */
+  --surface-warning: color-mix(in oklab, var(--warning) 10%, var(--card));
+  --surface-accent: color-mix(in oklab, var(--accent) 10%, var(--card));
+  --surface-destructive: color-mix(in oklab, var(--destructive) 8%, var(--card));
+  --surface-muted: color-mix(in oklab, var(--muted) 60%, var(--card));
+
   /* --diff (P2-44 PR-4) : la couleur d'un ÉCART avec le socle (violet), rôle sémantique
      à part entière, hors des 4 rôles existants (accent/warning/destructive/success). Ce
      n'est JAMAIS une erreur — juste « ceci diffère du planning de saison ». Sert de FOND à
@@ -103,6 +118,20 @@
 
   --warning: oklch(0.83 0.15 78);
   --success: oklch(0.76 0.16 163);
+
+  /* --surface-* en SOMBRE (P4-265) — mêmes rôles, pourcentages ARRÊTÉS À LA MESURE. Sur
+     l'anthracite (`--card` ≈ #1f1d1a) les teintes de rôle sont CLAIRES (warning/accent/destructive
+     à L ≥ 0,72) : au-delà de ~12 % elles éclaircissent assez le fond pour que la SOUS-LIGNE
+     `text-muted-foreground` (ConflictLine, ToReplaceList, LeagueValidation) tombe sous AA (à 16 %,
+     warning muted-foreground = 4,29 < 4,5). 12 % garde une teinte franchement perceptible ET la
+     sous-ligne à ≥ AA. --surface-muted garde 60 % (nuance muted/card déjà large en sombre).
+     Contrastes canvas, SOMBRE : text-foreground surface-warning 12,04 · surface-accent 12,64 ·
+     surface-destructive 12,70 · surface-muted 14,08 ; text-muted-foreground ≥ AA (4,69 · 4,93 ·
+     4,96 · 5,49). */
+  --surface-warning: color-mix(in oklab, var(--warning) 12%, var(--card));
+  --surface-accent: color-mix(in oklab, var(--accent) 12%, var(--card));
+  --surface-destructive: color-mix(in oklab, var(--destructive) 12%, var(--card));
+  --surface-muted: color-mix(in oklab, var(--muted) 60%, var(--card));
 
   /* --diff : violet clair sur fond sombre (même rôle « écart au socle ») ; le foreground
      redevient sombre (teinte CHAUDE 75 comme la base) pour tenir le contraste sur la pastille (8,92:1). */
@@ -196,6 +225,12 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-warning: var(--warning);
   --color-success: var(--success);
+  /* Surfaces opaques teintées (P4-265) : engendrent `bg-surface-warning|accent|destructive|muted`.
+     Le texte posé dessus est TOUJOURS `text-foreground` (surface-accent suit la couleur du club). */
+  --color-surface-warning: var(--surface-warning);
+  --color-surface-accent: var(--surface-accent);
+  --color-surface-destructive: var(--surface-destructive);
+  --color-surface-muted: var(--surface-muted);
   /* Écart au socle (P2-44 PR-4) : engendre `bg-diff` / `text-diff-foreground` / `ring-diff`. */
   --color-diff: var(--diff);
   --color-diff-foreground: var(--diff-foreground);

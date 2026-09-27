@@ -6,6 +6,7 @@ import { errorMessage } from "@/shared/lib/errorMessage";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { Modal } from "@/shared/components/ui/modal";
 import { readState } from "@/shared/lib/readState";
@@ -144,12 +145,7 @@ function AutofillConsent({ onRun, onClose, running, error }: { onRun: () => void
         En les calculant, la règle « Trajet entre gymnases » s'active : le planning cherchera à enchaîner des gymnases proches. Elle démarre en « Préféré » (une préférence souple),
         et vous pourrez la passer en « Obligatoire » depuis l'étape Contraintes.
       </p>
-      {null !== error ? (
-        <p role="alert" className="flex items-center gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">
-          <AlertTriangle className="size-4 shrink-0 text-warning" />
-          {error}
-        </p>
-      ) : null}
+      {null !== error ? <NoticeBanner tone="warning" role="alert" icon={<AlertTriangle className="size-4 text-warning" />} message={error} /> : null}
       <div className="flex items-center gap-2">
         <Button onClick={onRun} disabled={running}>
           {running ? <Spinner className="size-4" /> : <Wand2 className="size-4" />}
@@ -295,13 +291,10 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
               </span>
             </div>
             {autofillError && !showConsent ? (
-              <p role="alert" className="flex items-center gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">
-                <AlertTriangle className="size-4 shrink-0 text-warning" />
-                {autofillError}
-              </p>
+              <NoticeBanner tone="warning" role="alert" icon={<AlertTriangle className="size-4 text-warning" />} message={autofillError} />
             ) : null}
             {venuesWithoutGeo.length > 0 ? (
-              <div className="flex flex-col gap-1 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+              <div className="flex flex-col gap-1 rounded-md border border-warning/40 bg-surface-warning px-3 py-2 text-sm">
                 <span className="inline-flex items-center gap-2 text-foreground">
                   <MapPinOff className="size-4 shrink-0 text-warning" aria-hidden="true" />
                   {venuesWithoutGeo.length > 1 ? "Ces gymnases n'ont pas d'adresse" : "Ce gymnase n'a pas d'adresse"} : renseignez-la sur leur fiche pour calculer les trajets automatiquement.

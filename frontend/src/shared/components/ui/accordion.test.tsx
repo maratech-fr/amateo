@@ -66,4 +66,39 @@ describe("AccordionSection", () => {
     expect(header).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText("body content")).toBeInTheDocument();
   });
+
+  // ── P4-265 — surface opaque + liseré d'état ─────────────────────────────────
+  it("le conteneur est opaque (bg-card) — plus jamais le fond à motifs au repos", () => {
+    const { container } = render(
+      <AccordionSection title="Visuel">
+        <p>body</p>
+      </AccordionSection>,
+    );
+    expect(container.firstElementChild?.className).toContain("bg-card");
+  });
+
+  it("l'état ouvert se marque par un liseré accent à gauche (border-l-2), le fermé par un liseré transparent — pas de fond", () => {
+    const { rerender } = render(
+      <AccordionSection title="Visuel">
+        <p>body</p>
+      </AccordionSection>,
+    );
+    const closed = screen.getByRole("button", { name: /Visuel/ });
+    // Liseré PERMANENT (aucun décalage de layout), transparent au repos.
+    expect(closed.className).toContain("border-l-2");
+    expect(closed.className).toContain("border-transparent");
+    expect(closed.className).not.toContain("border-accent");
+    // Le survol reste une teinte (décision fondateur), jamais bg-muted.
+    expect(closed.className).toContain("hover:bg-accent/10");
+    expect(closed.className).not.toContain("hover:bg-muted");
+
+    rerender(
+      <AccordionSection title="Visuel" open onToggle={() => {}}>
+        <p>body</p>
+      </AccordionSection>,
+    );
+    const open = screen.getByRole("button", { name: /Visuel/ });
+    expect(open.className).toContain("border-accent");
+    expect(open.className).not.toContain("border-transparent");
+  });
 });

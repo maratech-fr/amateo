@@ -17,7 +17,7 @@ export function BlockerList({ blockers, className }: { blockers: string[]; class
     return null;
   }
   return (
-    <div role="alert" className={`rounded-lg border border-destructive/50 bg-destructive/5 p-3 ${className ?? ""}`}>
+    <div role="alert" className={`rounded-lg border border-destructive/50 bg-surface-destructive p-3 ${className ?? ""}`}>
       <div className="mb-1 flex items-center gap-2 text-sm font-medium text-destructive">
         <AlertTriangle className="size-4" />À corriger avant de générer
       </div>

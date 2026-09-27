@@ -353,9 +353,9 @@ function ConflictVenueDetail({ model }: { model: ConflictSideModel }) {
 }
 
 const TONE_CLASSES = {
-  destructive: "border-destructive/40 bg-destructive/5",
-  warning: "border-warning/30 bg-warning/5",
-  muted: "border-border bg-muted/30",
+  destructive: "border-destructive/40 bg-surface-destructive",
+  warning: "border-warning/30 bg-surface-warning",
+  muted: "border-border bg-surface-muted",
 } as const;
 
 interface ConflictLineProps {

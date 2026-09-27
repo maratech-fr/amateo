@@ -4,6 +4,7 @@ import { Navigate } from "react-router";
 
 import { useMe } from "@/shared/session/queries";
 import { useSchedules } from "@/features/planning/queries";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
 
 import { SeasonPlanBanner } from "./SeasonPlanBanner";
@@ -69,12 +70,16 @@ export function CockpitPage() {
   return (
     <div className="space-y-4">
       {!socleValidated ? (
-        <div className="flex items-start gap-2 rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-sm" role="status">
-          <Lock className="mt-0.5 size-4 shrink-0 text-accent" />
-          <span className="text-muted-foreground">
-            Planning principal <strong className="text-foreground">non validé</strong> — validez-le pour débloquer les <strong className="text-foreground">matchs</strong> et les <strong className="text-foreground">plannings secondaires</strong>.
-          </span>
-        </div>
+        <NoticeBanner
+          tone="accent"
+          role="status"
+          icon={<Lock className="size-4 text-accent" />}
+          message={
+            <span className="text-muted-foreground">
+              Planning principal <strong className="text-foreground">non validé</strong> — validez-le pour débloquer les <strong className="text-foreground">matchs</strong> et les <strong className="text-foreground">plannings secondaires</strong>.
+            </span>
+          }
+        />
       ) : null}
       <SeasonPlanBanner schedules={schedules} socleValidated={socleValidated} loading={schedulesLoading} entries={radarEntries} />
       {/* RMM-6 PR-3 — le rappel de saisie FBI « remonte dès le login » : pleine largeur

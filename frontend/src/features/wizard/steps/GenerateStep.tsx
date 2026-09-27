@@ -18,6 +18,7 @@ import { Button } from "@/shared/components/ui/button";
 import { useCredits } from "@/shared/credits/useCredits";
 import { scheduleIdToReuse } from "../lib/retryTarget";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { errorMessage } from "@/shared/lib/errorMessage";
 import { isManagementRole } from "@/shared/lib/roles";
 
@@ -307,9 +308,7 @@ export function GenerateStep() {
             {failureExplanations.length > 0 ? (
               <div className="max-w-xl space-y-2 text-left">
                 {failureExplanations.map((d) => (
-                  <p key={d.id} className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-foreground">
-                    {d.message}
-                  </p>
+                  <NoticeBanner key={d.id} tone="destructive" message={d.message} />
                 ))}
                 {failureSuggestions.length > 0 ? (
                   <ul className="list-disc space-y-0.5 pl-5 text-sm text-muted-foreground">
@@ -350,9 +349,11 @@ export function GenerateStep() {
             {periodMode ? "Tout est prêt. Générez le planning de la période." : "Tout est prêt. Lancez la génération de votre planning."}
           </p>
           {isFirstOverlay ? (
-            <p className="max-w-sm rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-xs text-muted-foreground">
-              Premier planning secondaire : il s'appuie sur votre planning principal, qui devient la référence — le modifier ensuite supprimera les plannings secondaires (après confirmation).
-            </p>
+            <NoticeBanner
+              tone="accent"
+              className="max-w-sm"
+              message="Premier planning secondaire : il s'appuie sur votre planning principal, qui devient la référence — le modifier ensuite supprimera les plannings secondaires (après confirmation)."
+            />
           ) : null}
           <BlockerList blockers={blockers} className="max-w-md text-left" />
           {/* Period mode: wait for the entry to load so an existing overlay is
@@ -382,7 +383,7 @@ export function GenerateStep() {
             ) : null}
           </div>
           {null !== transcribeReason ? (
-            <p className="max-w-sm rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-foreground">{transcribeReason}</p>
+            <NoticeBanner tone="destructive" className="max-w-sm" message={transcribeReason} />
           ) : null}
         </div>
       )}

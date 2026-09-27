@@ -39,7 +39,7 @@ export function SharedSlotHint({ capacity }: { capacity: number }) {
     return null;
   }
   return (
-    <p className="mt-3 rounded-md border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+    <p className="mt-3 rounded-md border border-border bg-surface-muted px-3 py-2 text-xs text-muted-foreground">
       Créneau partagé : choisissez les {capacity} équipes qui l'occuperont en les réservant (étape Contraintes, onglet
       Réserver). Sans réservation, le système associera les équipes lui-même.
     </p>

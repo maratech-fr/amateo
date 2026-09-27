@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { todayISO } from "@/shared/lib/clock";
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
@@ -103,10 +104,11 @@ export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onP
       {/* Valeurs imposées d'office par la source pendant que le match était traité : UNE
           phrase lisible (dates formatées, date+heure fusionnées), plus une ligne par champ. */}
       {autoApplied.length > 0 ? (
-        <div className="flex items-start gap-2 rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-sm">
-          <CalendarClock className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
-          <span>{autoAppliedPhrase(autoApplied, sourceLabel(autoApplied[0].channel))}</span>
-        </div>
+        <NoticeBanner
+          tone="warning"
+          icon={<CalendarClock className="size-4 text-warning" />}
+          message={<span>{autoAppliedPhrase(autoApplied, sourceLabel(autoApplied[0].channel))}</span>}
+        />
       ) : null}
 
       {/* Écarts à arbitrer : deux colonnes Amateo / source, une décision par champ. */}
@@ -114,7 +116,7 @@ export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onP
         const consequence = fieldConsequence(d.field);
         const src = sourceLabel(d.channel);
         return (
-          <div key={`dev-${d.field}`} className="flex flex-col gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
+          <div key={`dev-${d.field}`} className="flex flex-col gap-2 rounded-md border border-border bg-surface-muted px-3 py-2">
             <div className="flex items-center gap-2 text-sm font-medium">
               <ArrowRightLeft className="size-4 text-muted-foreground" aria-hidden="true" />
               {FIELD_LABEL[d.field]}
@@ -177,7 +179,7 @@ function AttachVenueBlock({ fixture, venues, onAttach, busy }: { fixture: Fixtur
   };
 
   return (
-    <div className="flex flex-col gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
+    <div className="flex flex-col gap-2 rounded-md border border-border bg-surface-muted px-3 py-2 text-sm">
       {null === attachVenueId ? (
         <div className="flex flex-wrap items-center gap-2">
           <MapPin className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />

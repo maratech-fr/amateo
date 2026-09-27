@@ -94,7 +94,7 @@ export function CoachWishForm({
   };
 
   return (
-    <form onSubmit={submit} className="space-y-2 rounded-md border border-border bg-muted/30 p-2">
+    <form onSubmit={submit} className="space-y-2 rounded-md border border-border bg-surface-muted p-2">
       <div className="flex flex-wrap items-end gap-2">
         <label className="text-xs text-muted-foreground">
           Équipe

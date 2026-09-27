@@ -101,7 +101,7 @@ export function HabitsLinksDialog({ teams, tiers, venues, fixtures, onClose }: H
           </ul>
 
           {teamSuggestions.map((suggestion) => (
-            <div key={`${suggestion.teamId}-${suggestion.dayOfWeek}`} className="flex items-center justify-between gap-2 rounded-md border border-dashed border-accent/50 bg-accent/5 px-2 py-1 text-sm">
+            <div key={`${suggestion.teamId}-${suggestion.dayOfWeek}`} className="flex items-center justify-between gap-2 rounded-md border border-dashed border-accent/50 bg-surface-accent px-2 py-1 text-sm">
               <span className="flex items-center gap-1">
                 <Sparkles className="size-3.5 shrink-0 text-accent" />
                 Suggestion : {DAY_LABELS[suggestion.dayOfWeek] ?? "?"} {suggestion.kickoffTime}

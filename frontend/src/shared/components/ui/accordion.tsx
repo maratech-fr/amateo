@@ -40,13 +40,21 @@ export function AccordionSection({ title, defaultOpen = false, open: controlledO
   };
 
   return (
-    <div className={cn("rounded-lg border border-border", className)}>
+    <div className={cn("rounded-lg border border-border bg-card text-card-foreground", className)}>
       <button
         type="button"
         aria-expanded={open}
         aria-controls={open ? bodyId : undefined}
         onClick={toggle}
-        className="group flex w-full items-center justify-between gap-2 rounded-lg px-4 py-3 text-left text-sm font-semibold transition-colors hover:bg-accent/10 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        className={cn(
+          // Fond OPAQUE (bg-card sur le conteneur). L'état OUVERT se marque par un liseré teal à
+          // gauche (P4-265, décision fondateur), pas par un fond : `border-l-2` PERMANENT (aucun
+          // décalage de layout à l'ouverture), `border-accent` ouvert / `border-transparent` fermé.
+          // Le survol garde `hover:bg-accent/10` (teinte au repos → survol, jamais `hover:bg-muted/50`
+          // qui serait quasi invisible sur `bg-card`).
+          "group flex w-full items-center justify-between gap-2 rounded-lg border-l-2 px-4 py-3 text-left text-sm font-semibold transition-colors hover:bg-accent/10 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          open ? "border-accent" : "border-transparent",
+        )}
       >
         {title}
         <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform group-hover:text-accent", open ? "rotate-180" : "")} />

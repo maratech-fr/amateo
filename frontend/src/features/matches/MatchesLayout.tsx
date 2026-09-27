@@ -92,7 +92,7 @@ export function MatchesLayout() {
       <h1 className="border-l-[3px] border-accent pl-3 text-lg font-semibold">Matchs</h1>
       {/* Nav défilable horizontalement (pas de `flex-wrap`, pas de `scrollbar-hide`) : à l'étroit
           les onglets restent sur une ligne et l'actif est ramené en vue (`scrollIntoView` ci-dessus). */}
-      <nav ref={navRef} aria-label="Espaces matchs" className="flex gap-4 overflow-x-auto border-b border-border sm:gap-6">
+      <nav ref={navRef} aria-label="Espaces matchs" className="flex gap-4 overflow-x-auto rounded-lg border border-border bg-card px-3 sm:gap-6">
         {/* PR A — l'espace « Conflits » : tous les conflits de la saison, pivotés
             (coach/équipe/gymnase/journée), en lecture seule. P4-207 — badge = conflits
             À TRAITER, affiché seulement quand > 0. */}

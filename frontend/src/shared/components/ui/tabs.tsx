@@ -16,16 +16,20 @@ export interface TabItem {
  * La notion de peau elle-même vit dans `shared/lib/surfaceSkin.ts` (`SurfaceSkin`), pas
  * ici : elle est partagée avec les autres primitives à double peau (états vides…).
  */
+// `list` porte TOUT le style de la barre d'onglets, `border-b` compris (P4-265 : déplacé DU
+// conteneur DANS la peau). La console garde son simple filet (`border-b border-white/10`,
+// inchangé visuellement) ; l'app pose une BARRE OPAQUE (`bg-card`) — décision fondateur : la nav
+// d'onglets ne laisse plus traverser le fond à motifs. Le trait actif teal reste inchangé.
 const TAB_SKINS: Record<SurfaceSkin, { list: string; base: string; active: string; idle: string; panel: string }> = {
   console: {
-    list: "border-white/10",
+    list: "border-b border-white/10",
     base: "focus-visible:ring-console-accent/40 focus-visible:ring-offset-console-surface",
     active: "border-console-accent text-white",
     idle: "border-transparent text-console-text-dim hover:text-white hover:border-white/10",
     panel: "focus-visible:ring-console-accent/20",
   },
   app: {
-    list: "border-border",
+    list: "rounded-lg border border-border bg-card px-1",
     base: "focus-visible:ring-ring/40 focus-visible:ring-offset-background",
     active: "border-accent font-medium text-foreground",
     idle: "border-transparent text-muted-foreground hover:border-border hover:text-foreground",
@@ -100,7 +104,7 @@ export function Tabs({ tabs, activeTab, onTabChange, ariaLabel, idPrefix, varian
   }
 
   return (
-    <div role="tablist" aria-label={ariaLabel} className={cn("flex flex-wrap gap-1 border-b", skin.list)}>
+    <div role="tablist" aria-label={ariaLabel} className={cn("flex flex-wrap gap-1", skin.list)}>
       {tabs.map((tab) => {
         const isActive = tab.id === activeTab;
         const Icon = tab.icon;

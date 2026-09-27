@@ -5,6 +5,7 @@ import { useParams } from "react-router";
 import { AuthLayout } from "@/features/auth/AuthLayout";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Spinner } from "@/shared/components/ui/spinner";
 
 import { getPublicWishContext, isPublicWishError, submitPublicWishes, type PublicWishContext, type PublicWishSubmission } from "./publicApi";
@@ -164,7 +165,16 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
 
       {"intro" === current.kind ? (
         <div className="space-y-4">
-          {null !== context.respondedAt ? <p className="rounded-md border border-accent/40 bg-accent/10 p-3 text-sm text-foreground">Vous avez déjà répondu le {frDate(context.respondedAt.slice(0, 10))}. Révisable jusqu'au {frDate(context.deadline)}.</p> : null}
+          {null !== context.respondedAt ? (
+            <NoticeBanner
+              tone="accent"
+              message={
+                <>
+                  Vous avez déjà répondu le {frDate(context.respondedAt.slice(0, 10))}. Révisable jusqu'au {frDate(context.deadline)}.
+                </>
+              }
+            />
+          ) : null}
           <p className="text-sm text-muted-foreground">
             Bonjour {context.coachFirstName} — votre club prépare le planning de {context.periodTitle}. Pour chaque équipe, indiquez combien de séances vous souhaitez et vos jours d'indisponibilité, semaine par semaine. C'est un souhait, pas un engagement&nbsp;: le club arbitre selon les
             gymnases disponibles. Comptez 5&nbsp;minutes — vos réponses partent en une seule fois, à la fin. À renvoyer avant le {frDate(context.deadline)}.

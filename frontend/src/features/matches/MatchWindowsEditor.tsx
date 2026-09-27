@@ -51,7 +51,7 @@ export function MatchWindowsEditor({ venueId }: MatchWindowsEditorProps) {
 
       <ul className="flex flex-col gap-1">
         {windows.map((window) => (
-          <li key={window.id} className="flex items-center justify-between gap-2 rounded-md border border-border px-2 py-1 text-sm">
+          <li key={window.id} className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-2 py-1 text-sm">
             <span>
               {DAY_LABELS[window.dayOfWeek] ?? "?"} {window.startTime} – {window.endTime}
             </span>

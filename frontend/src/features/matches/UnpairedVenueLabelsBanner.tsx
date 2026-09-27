@@ -61,7 +61,7 @@ export function UnpairedVenueLabelsBanner() {
   const homes = unpaired.reduce((sum, row) => sum + row.unplacedCount, 0);
 
   return (
-    <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/50 bg-warning/10 px-3 py-2 text-sm text-foreground">
+    <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/50 bg-surface-warning px-3 py-2 text-sm text-foreground">
       <TriangleAlert className="size-4 shrink-0 text-warning" aria-hidden="true" />
       <span className="grow tabular-nums">
         {labels} libellé{labels > 1 ? "s" : ""} de salle non apparié{labels > 1 ? "s" : ""} — {homes} domicile{homes > 1 ? "s" : ""}{" "}

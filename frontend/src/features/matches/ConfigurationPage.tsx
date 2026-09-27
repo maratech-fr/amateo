@@ -200,7 +200,7 @@ function MatchAccessSection({ venues, windows }: { venues: Venue[]; windows: Ven
 
       {/* Les gymnases AVEC accès ; s'il n'y en a aucun, TOUS les gymnases dépliés (rien à replier). */}
       {(hasAccess ? withAccess : without).length > 0 ? (
-        <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
+        <ul className="flex flex-col divide-y divide-border rounded-md border border-border bg-card">
           {(hasAccess ? withAccess : without).map((venue) => (
             <AccessRow key={venue.id} venue={venue} windows={windowsByVenue.get(venue.id) ?? []} onEdit={() => setEditingVenueId(venue.id)} />
           ))}
@@ -215,7 +215,7 @@ function MatchAccessSection({ venues, windows }: { venues: Venue[]; windows: Ven
             {without.length} gymnase{without.length > 1 ? "s" : ""} sans accès match
           </Button>
           {showWithout ? (
-            <ul id={withoutListId} className="flex flex-col divide-y divide-border rounded-md border border-border">
+            <ul id={withoutListId} className="flex flex-col divide-y divide-border rounded-md border border-border bg-card">
               {without.map((venue) => (
                 <AccessRow key={venue.id} venue={venue} windows={[]} onEdit={() => setEditingVenueId(venue.id)} />
               ))}

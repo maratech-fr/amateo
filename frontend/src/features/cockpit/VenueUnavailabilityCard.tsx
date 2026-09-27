@@ -83,7 +83,7 @@ export function VenueUnavailabilityCard() {
           {unavailabilities.map((unavailability) => {
             const impact = impactByUnavailability.get(unavailability.id);
             return (
-              <li key={unavailability.id} className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-sm">
+              <li key={unavailability.id} className="rounded-md border border-warning/30 bg-surface-warning px-3 py-2 text-sm">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="font-medium">

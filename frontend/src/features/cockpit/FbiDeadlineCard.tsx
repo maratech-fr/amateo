@@ -42,7 +42,7 @@ export function FbiDeadlineCard() {
   const anyOverdue = windows.some((w) => daysUntilDeadline(w.deadline, today) < 0);
   const deltaSegments = undefined !== data?.guardianDelta ? visitDeltaSegments(data.guardianDelta) : [];
 
-  const tone = !inWindow ? "border-border bg-card" : anyOverdue ? "border-warning/40 bg-warning/5" : "border-accent/40 bg-accent/5";
+  const tone = !inWindow ? "border-border bg-card" : anyOverdue ? "border-warning/40 bg-surface-warning" : "border-accent/40 bg-surface-accent";
   const globalLine = `${total} FBI à faire${toCorrect > 0 ? `, dont ${toCorrect} à corriger` : ""}`;
 
   return (

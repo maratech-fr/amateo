@@ -212,7 +212,7 @@ export function PlanningToolbar({
             dont le second passait inaperçu. Côte à côte, ils se lisent comme un couple —
             quelle vue, puis quoi dedans. */}
         <div className="ml-auto flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
+        <div className="flex items-center gap-1 rounded-md border border-border bg-card p-0.5">
           {VIEWS.map((view) => (
             <Button
               key={view.key}

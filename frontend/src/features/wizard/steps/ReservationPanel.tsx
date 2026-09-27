@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useEntryConflicts } from "@/features/cockpit/queries";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { readFailed } from "@/shared/lib/readState";
 
@@ -130,13 +131,21 @@ export function ReservationPanel({
           fermeture) vs désactivé « override » (on réactive le gymnase). Les deux conservent les
           réservations et ferment l'ajout ; seul le geste de sortie diffère. */}
       {selectedFullyClosed ? (
-        <p className="mb-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">
-          {selected.name} est indisponible sur toute la période{closuresOfVenue.length > 0 ? ` — ${closuresOfVenue.map(closurePeriodLabel).join(" · ")}` : ""} : ses créneaux et ses réservations ne partiront pas au système. Elles sont conservées — ajustez ou levez la fermeture pour le rouvrir. On ne peut plus en ajouter ici.
-        </p>
+        <NoticeBanner
+          tone="warning"
+          className="mb-3"
+          message={
+            <>
+              {selected.name} est indisponible sur toute la période{closuresOfVenue.length > 0 ? ` — ${closuresOfVenue.map(closurePeriodLabel).join(" · ")}` : ""} : ses créneaux et ses réservations ne partiront pas au système. Elles sont conservées — ajustez ou levez la fermeture pour le rouvrir. On ne peut plus en ajouter ici.
+            </>
+          }
+        />
       ) : disabledVenueIds?.has(selected.id) ? (
-        <p className="mb-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">
-          {selected.name} est désactivé pour cette période : ses créneaux et ses réservations ne partiront pas au système. Elles sont conservées — réactiver le gymnase les rend telles quelles. On ne peut plus en ajouter ici.
-        </p>
+        <NoticeBanner
+          tone="warning"
+          className="mb-3"
+          message={`${selected.name} est désactivé pour cette période : ses créneaux et ses réservations ne partiront pas au système. Elles sont conservées — réactiver le gymnase les rend telles quelles. On ne peut plus en ajouter ici.`}
+        />
       ) : null}
 
       <ReservationGrid

@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Modal } from "@/shared/components/ui/modal";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { TeamSelect } from "@/shared/components/ui/team-select";
 import { errorMessage } from "@/shared/lib/errorMessage";
 
@@ -396,7 +397,7 @@ export function SlotReservationModal({
               N ids (symétrique de la ligne posée). Un Undo par membre promettait le retrait d'UNE
               seule équipe, que le serveur ne fait pas : il vide toute la case bloc-complète. */}
           {null !== removedLot ? (
-            <li key="removed-lot" className="flex items-start gap-2 rounded-md border border-dashed border-destructive/50 bg-destructive/5 px-3 py-1.5 text-sm">
+            <li key="removed-lot" className="flex items-start gap-2 rounded-md border border-dashed border-destructive/50 bg-surface-destructive px-3 py-1.5 text-sm">
               <Trash2 className="mt-0.5 size-3.5 shrink-0 text-destructive" />
               <span className="flex-1 font-medium line-through">
                 {lotLabel(removedLot.group.teamIds)} <span className="font-normal text-muted-foreground no-underline">· entraînement mutualisé</span>
@@ -418,7 +419,7 @@ export function SlotReservationModal({
           {reservations
             .filter((r) => removed.includes(r.id) && (null === removedLot || !removedLot.reservationIds.includes(r.id)))
             .map((r) => (
-              <li key={`removed-${r.id}`} className="flex items-center gap-2 rounded-md border border-dashed border-destructive/50 bg-destructive/5 px-3 py-1.5 text-sm">
+              <li key={`removed-${r.id}`} className="flex items-center gap-2 rounded-md border border-dashed border-destructive/50 bg-surface-destructive px-3 py-1.5 text-sm">
                 <Trash2 className="size-3.5 text-destructive" />
                 <span className="flex-1 font-medium line-through">{teamName.get(r.teamId) ?? "?"}</span>
                 <span className="text-xs text-muted-foreground">retrait à valider</span>
@@ -436,7 +437,7 @@ export function SlotReservationModal({
               </li>
             ))}
           {added.map((teamId) => (
-            <li key={`draft-${teamId}`} className="flex items-center gap-2 rounded-md border border-dashed border-accent/60 bg-accent/5 px-3 py-1.5 text-sm">
+            <li key={`draft-${teamId}`} className="flex items-center gap-2 rounded-md border border-dashed border-accent/60 bg-surface-accent px-3 py-1.5 text-sm">
               <Lock className="size-3.5 text-accent" />
               <span className="flex-1 font-medium">{teamName.get(teamId) ?? "?"}</span>
               <span className="text-xs text-muted-foreground">à valider</span>
@@ -459,7 +460,7 @@ export function SlotReservationModal({
             const members = blockById.get(blockId)?.teamIds ?? [];
 
             return (
-              <li key={`draft-block-${blockId}`} className="flex items-start gap-2 rounded-md border border-dashed border-accent/60 bg-accent/5 px-3 py-1.5 text-sm">
+              <li key={`draft-block-${blockId}`} className="flex items-start gap-2 rounded-md border border-dashed border-accent/60 bg-surface-accent px-3 py-1.5 text-sm">
                 <Users className="mt-0.5 size-3.5 shrink-0 text-accent" />
                 <span className="flex-1 font-medium">
                   {lotLabel(members)} <span className="font-normal text-muted-foreground">· entraînement mutualisé</span>
@@ -486,17 +487,23 @@ export function SlotReservationModal({
           fermeture TOTALE prime sur le jour fermé (refus d'un cran plus fort), et le désactivé
           « override » n'est que ce qui reste une fois la fermeture écartée. */}
       {venueFullyClosed ? (
-        <p role="status" className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground">
-          Ce gymnase est indisponible sur toute la période{closureText ? ` — ${closureText}` : ""} : la séance ne peut pas y être réservée. Retirez les réservations ci-dessus pour débloquer la génération ; ajustez ou levez la fermeture pour rouvrir ce gymnase.
-        </p>
+        <NoticeBanner
+          tone="warning"
+          role="status"
+          message={<>Ce gymnase est indisponible sur toute la période{closureText ? ` — ${closureText}` : ""} : la séance ne peut pas y être réservée. Retirez les réservations ci-dessus pour débloquer la génération ; ajustez ou levez la fermeture pour rouvrir ce gymnase.</>}
+        />
       ) : slotClosed ? (
-        <p role="status" className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground">
-          Ce gymnase est fermé ce jour-là{closureText ? ` — ${closureText}` : ""} : la séance ne peut pas y être réservée ici. Retirez les réservations ci-dessus pour débloquer la génération.
-        </p>
+        <NoticeBanner
+          tone="warning"
+          role="status"
+          message={<>Ce gymnase est fermé ce jour-là{closureText ? ` — ${closureText}` : ""} : la séance ne peut pas y être réservée ici. Retirez les réservations ci-dessus pour débloquer la génération.</>}
+        />
       ) : overrideDisabled ? (
-        <p role="status" className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground">
-          {venue.name} est désactivé pour cette période : on ne peut plus y ajouter d'équipe. Retirez les réservations ci-dessus pour débloquer la génération.
-        </p>
+        <NoticeBanner
+          tone="warning"
+          role="status"
+          message={<>{venue.name} est désactivé pour cette période : on ne peut plus y ajouter d&apos;équipe. Retirez les réservations ci-dessus pour débloquer la génération.</>}
+        />
       ) : !guardReady ? (
         <p role="status" className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           {coachesPending ? (
@@ -529,9 +536,7 @@ export function SlotReservationModal({
       ) : groupOccupies ? (
         // Un groupe occupe la case SEUL (règle b) : plus d'ajout individuel. Le lot ci-dessus le
         // nomme, la ligne reste donc sans libellé. `status` poli : c'est un état issu du brouillon.
-        <p role="status" className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground">
-          Un entraînement mutualisé occupe seul ce créneau. Retirez-le pour ajouter des équipes.
-        </p>
+        <NoticeBanner tone="warning" role="status" message="Un entraînement mutualisé occupe seul ce créneau. Retirez-le pour ajouter des équipes." />
       ) : occupied < capacity ? (
         selectorTeams.length > 0 || mutualisationOptions.length > 0 ? (
           <>
@@ -591,16 +596,11 @@ export function SlotReservationModal({
       {/* Guide (b) — la case porte des équipes alors que des groupes existent : dire POURQUOI aucun
           groupe n'est proposé et où agir (les retirer). `status` poli, comme « Créneau complet ». */}
       {showGroupGuide ? (
-        <p role="status" className="mt-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground">
-          Un entraînement mutualisé ne se pose que sur un créneau libre — retirez les équipes ci-dessus pour en poser un.
-        </p>
+        <NoticeBanner tone="warning" role="status" className="mt-3" message="Un entraînement mutualisé ne se pose que sur un créneau libre — retirez les équipes ci-dessus pour en poser un." />
       ) : null}
 
       {null !== error || null !== submitError ? (
-        <p role="alert" className="mt-3 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-          <span>{submitError ?? error}</span>
-        </p>
+        <NoticeBanner tone="destructive" role="alert" className="mt-3" icon={<AlertTriangle className="size-3.5 text-destructive" />} message={<span>{submitError ?? error}</span>} />
       ) : null}
 
     </Modal>
