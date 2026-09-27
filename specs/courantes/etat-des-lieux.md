@@ -534,6 +534,7 @@ le front lit, il ne re-dérive plus les règles de refus, repli fail-closed si l
 
 | Date | Id | Sujet | Documenté dans |
 |------|----|-------|----------------|
+| 2026-09-27 | P4-264 | adversaires : CP et ville dans la recherche de salle FFBB, « Modifier le gymnase », lignes resserrées | [`module-matchs.md`](module-matchs.md) |
 | 2026-09-27 | P4-263 (PR 2/2) | une seule maison d'erreur front ; un status-text anglais brut tombe sur le repli français — P4-263 soldé | [`frontend/docs/frontend-spec.md`](../../frontend/docs/frontend-spec.md) |
 | 2026-09-27 | P4-263 (PR 1/2) | le backend répond en français (translator fr, « Identifiants invalides. », messages de course et console superadmin), NR login bloquant | [`backend/docs/error-copy.md`](../../backend/docs/error-copy.md) |
 | 2026-09-26 | — | Passe doc « présent » ADR (0002 944→324 l., 0001/0003/0004+index pliés) ; règle 7 : ADR + 2 journaux + docs/archive ; cadrage P4-265 consigné | [`docs/architecture/adr-index.md`](../../docs/architecture/adr-index.md) |

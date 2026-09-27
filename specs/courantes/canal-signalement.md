@@ -1,17 +1,9 @@
-Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement » — §1
-« état des lieux avant le lot » supprimé (le seul fait encore vivant, `Schedule::$snapshotData`,
-remonté en tête) ; §3/3bis/3ter dédatés ; D5 (request-id) et le passage journal-de-nouveautés de
-§3bis, tous deux référencés comme « lot séparé » à tort (P5-11/P5-12 sont livrés), recalés vers
-leurs maisons courantes (`docs/ops/observability.md`, `frontend/docs/frontend-spec.md`) ; §5
-(estimation d'effort pré-implémentation, obsolète) supprimé. Re-confronté au code :
-`POST /api/feedback` (`FeedbackController.php:68`), `EventListener/RequestIdListener.php` +
-`Messenger/RequestIdMiddleware.php`, `monolog-bundle` (`composer.json:31`), digest quotidien
-(`FeedbackDigestCommand.php`), `FeedbackMailBuilder.php`, `Schedule::$snapshotData`
-(`backend/src/Entity/Schedule.php:123`), `docs/ops/observability.md`,
-`frontend/docs/frontend-spec.md:97` (route `/nouveautes`) — tous existent. **Trouvé et non
-traité** : les métriques de capacité superadmin (`AdminCapacityService`) n'ont de maison dans
-aucune spec courante, seulement une trace de livraison (`etat-des-lieux.md` §3) — signalé, pas
-corrigé cette passe.
+Last verified @ 2026-09-27 (`documentation-update`, rotation de fraîcheur — re-confronté au code :
+`POST /api/feedback` (`FeedbackController.php:68`), `Schedule::$snapshotData`
+(`backend/src/Entity/Schedule.php:123`), digest quotidien (`FeedbackDigestCommand.php`),
+`frontend/docs/frontend-spec.md:95` (route `/nouveautes`) — tous existent. Le renvoi « métriques de
+capacité superadmin sans maison » est PÉRIMÉ : `superadmin-auth.md` § Capacité les documente
+désormais — corrigé ci-dessous.
 
 # Canal signalement, support & reproduction
 
@@ -89,8 +81,8 @@ statut) — les indicateurs en découlent en SQL pur, AUCUNE collecte supplémen
 Surface : un petit panneau en tête de la vue console SA (D6). Pas de dashboard dédié, pas d'outil
 externe. Le reste de la qualité de service (taux de réussite des générations, erreurs techniques,
 délais de solve) est couvert ailleurs : `solver_metrics` + monitoring SA existant + Sentry
-(roadmap P5-1, pas encore activé) + métriques de capacité (`AdminCapacityService`,
-`backend/src/Service/AdminCapacityService.php`, console superadmin).
+(roadmap P5-1, pas encore activé) + métriques de capacité (`AdminCapacityService`, console
+superadmin — détail [`superadmin-auth.md`](superadmin-auth.md) § Capacité).
 
 ## 4. Hors périmètre
 Un système de tickets (statuts multiples, assignation, SLA), un chat, un forum, une base de

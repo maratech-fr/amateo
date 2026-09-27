@@ -1,12 +1,10 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-26 (passe « présent » — dates/ids de lot retirés du corps, §0-§12 gardés
-tels quels). Vérifié cette passe : `MatchesLanding.tsx` reste la maison de l'atterrissage
-conditionnel décrit en §5 (état `outcome` posé une fois, immuable) ; `etat-des-lieux.md` §2 porte
-bien la décision fermée citée en §1 (TeamLink/passerelle, radar vs solveur) ; le seul
-`CONTRACT_VERSION` cité dans ce fichier est `2.23`. Reste du contenu recopié tel quel (reformulé au
-présent, jamais réaudité ligne à ligne contre le code cette passe). Historique : `git log -p
---follow specs/courantes/module-matchs.md`.
+Last verified @ 2026-09-27 (P4-264, §9 Adversaires — vérifié contre `OpponentsPage.tsx`/
+`LocateOpponentModal.tsx` : « Modifier le gymnase » en tête de menu, même `PUT
+/api/opponents/venue-links/{id}` que « Fusionner dans « X » », résultats de recherche affichant
+CP + ville). Reste du contenu recopié tel quel (reformulé au présent, jamais réaudité ligne à ligne
+contre le code cette passe). Historique : `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
 > d'une PR. Le JOURNAL (qui a livré quoi, quand, sous quel id) vit dans
@@ -955,17 +953,23 @@ pas un effet) pour qu'un club tout juste apparié ne saute plus de place sous le
 l'onglet et y revenir recalcule (assumé). Un club apparu après le gel s'ajoute en fin, rang
 « infini ».
 
-**Gestes d'appariement** passent par le menu APG partagé sur chaque ligne gymnase (« Fusionner
-dans « X » » — vers un AUTRE gymnase du MÊME club, `PUT /api/opponents/venue-links/{id}` ;
-« Retirer ce gymnase » — `DELETE`) et une `ConfirmDialog` dont le texte vient de la donnée SERVIE
-(`fallbackVenueName`, `fixtureCount` — le front n'invente aucune règle métier, §
-`.claude/rules/frontend.md`). « Ajouter un gymnase »/« Apparier » (**inconditionnels**, y compris
-pour un adversaire sans code fédéral — voir ci-dessous) ouvrent `LocateOpponentModal` (recherche
-`/api/ffbb/salles`, écrit via `POST /{code}/venues` ou `POST /{code}/venue-links`). La recherche
-part **préfiltrée par le code postal fédéral de l'adversaire** (`OpponentClub.postalCode`, additif
-servi par `GET /api/opponents/travel`) — le gestionnaire n'a pas à ressaisir un CP déjà connu ; un
-sous-titre situe le club (« · Brignais 69530 »), jamais inventé quand ville/CP sont absents de
-l'annuaire fédéral.
+**Gestes d'appariement** passent par le menu APG partagé sur chaque ligne gymnase — **« Modifier le
+gymnase » en premier** (ouvre `LocateOpponentModal` en mode remplacement, cf. ci-dessous), puis
+« Fusionner dans « X » » par gymnase du MÊME club, puis « Retirer ce gymnase » (`DELETE`) — et une
+`ConfirmDialog` dont le texte vient de la donnée SERVIE (`fallbackVenueName`, `fixtureCount` — le
+front n'invente aucune règle métier, § `.claude/rules/frontend.md`). « Modifier le gymnase » et
+« Fusionner dans « X » » appellent le **même** `PUT /api/opponents/venue-links/{id}` (re-pointage
+du lien) : « Modifier » cherche le nouveau gymnase via `LocateOpponentModal` (recherche FFBB, cf.
+ci-dessous), « Fusionner » pointe directement vers un gymnase déjà apparié au club — le libellé de
+fichier reste reconnu dans les deux cas. « Ajouter un gymnase »/« Apparier » (**inconditionnels**, y
+compris pour un adversaire sans code fédéral — voir ci-dessous) ouvrent `LocateOpponentModal`
+(recherche `/api/ffbb/salles`, écrit via `POST /{code}/venues` ou `POST /{code}/venue-links`). La
+recherche part **préfiltrée par le code postal fédéral de l'adversaire** (`OpponentClub.postalCode`,
+additif servi par `GET /api/opponents/travel`) — le gestionnaire n'a pas à ressaisir un CP déjà
+connu ; un sous-titre situe le club (« · Brignais 69530 »), jamais inventé quand ville/CP sont
+absents de l'annuaire fédéral. Chaque résultat de recherche affiche « Nom · adresse · CP Ville »
+(code postal fédéral de la salle, `commune.codePostal`, relayé par `GET /api/ffbb/salles` — détail
+[`../../backend/docs/ffbb-api.md`](../../backend/docs/ffbb-api.md) § « Salles d'une commune »).
 
 **Adversaires SANS code fédéral.** Un adversaire sans code (amical saisi à la main, coupe non
 appariée) n'a par nature aucune clé d'appariement fédérale — sans traitement dédié, ses rencontres
