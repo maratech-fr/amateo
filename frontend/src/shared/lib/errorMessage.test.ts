@@ -93,3 +93,43 @@ describe("errorMessage", () => {
     expect(await errorMessage("weird")).toBe("Une erreur est survenue.");
   });
 });
+
+describe("errorMessage — filet status-text anglais (P4-263)", () => {
+  // P4-263 — le backend francise les messages ATTEIGNABLES, mais un 4xx nu de
+  // Symfony/API Platform (NotFoundHttpException sans message, garde de contrat)
+  // peut encore porter la reason-phrase anglaise brute (« Not Found », « Forbidden »…).
+  // Ce n'est pas une copie écrite pour l'utilisateur : le filet l'ignore et tombe sur
+  // le repli FR par statut. Liste FERMÉE (reason-phrases HTTP standard) — pas une
+  // heuristique « ça a l'air anglais ».
+  it("remplace un status-text anglais brut par le repli FR du statut", async () => {
+    expect(await errorMessage(httpError(404, { detail: "Not Found" }))).toBe("Ressource introuvable.");
+    expect(await errorMessage(httpError(403, { error: "Forbidden" }))).toBe("Accès refusé.");
+    expect(await errorMessage(httpError(400, { message: "Bad Request" }))).toBe("Requête invalide.");
+    expect(await errorMessage(httpError(409, { error: "Conflict" }))).toBe("Conflit : l'action n'a pas pu être effectuée.");
+    expect(await errorMessage(httpError(422, { detail: "Unprocessable Content" }))).toBe("Données invalides. Vérifiez votre saisie.");
+    expect(await errorMessage(httpError(422, { detail: "Unprocessable Entity" }))).toBe("Données invalides. Vérifiez votre saisie.");
+  });
+
+  it("ignore le status-text même en 401/429 (repli parlant, pas le brut anglais)", async () => {
+    expect(await errorMessage(httpError(401, { message: "Unauthorized" }))).toMatch(/reconnect/i);
+    expect(await errorMessage(httpError(429, { error: "Too Many Requests" }))).toMatch(/patientez/i);
+  });
+
+  it("reconnaît le status-text quelle que soit la casse ou l'espacement", async () => {
+    expect(await errorMessage(httpError(404, { detail: "not found" }))).toBe("Ressource introuvable.");
+    expect(await errorMessage(httpError(403, { error: "  Forbidden  " }))).toBe("Accès refusé.");
+  });
+
+  it("laisse TOUJOURS passer un message métier français (le filet ne l'attrape pas)", async () => {
+    expect(await errorMessage(httpError(404, { detail: "Cette période n'existe plus — rechargez le calendrier." }))).toBe(
+      "Cette période n'existe plus — rechargez le calendrier.",
+    );
+    // Le refus de connexion francisé par le backend passe tel quel — jamais le repli « Session expirée ».
+    expect(await errorMessage(httpError(401, { message: "Identifiants invalides." }))).toBe("Identifiants invalides.");
+  });
+
+  it("a un repli FR pour chaque statut de la liste fermée, dont 405", async () => {
+    expect(await errorMessage(httpError(405, { error: "Method Not Allowed" }))).toBe("Action non autorisée.");
+    expect(await errorMessage(httpError(405))).toBe("Action non autorisée.");
+  });
+});

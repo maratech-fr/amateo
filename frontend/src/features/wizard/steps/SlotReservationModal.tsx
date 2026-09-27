@@ -5,7 +5,7 @@ import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Modal } from "@/shared/components/ui/modal";
 import { TeamSelect } from "@/shared/components/ui/team-select";
-import { apiErrorMessage } from "@/shared/api/errors";
+import { errorMessage } from "@/shared/lib/errorMessage";
 
 import type { Closure } from "@/features/cockpit/api";
 
@@ -299,9 +299,9 @@ export function SlotReservationModal({
     } catch (e) {
       // La modale RESTE ouverte, avec ce qui n'est pas passé (l'ajout refusé garde sa ligne « à
       // valider » et son Undo). D3 (P2-60) : un 422 sur un ajout unitaire (ex. résidu solo dépassé)
-      // porte un message parlant du serveur — on l'affiche tel quel via `apiErrorMessage`, comme le
+      // porte un message parlant du serveur — on l'affiche tel quel via `errorMessage`, comme le
       // rail groupe, sans déplacer le focus. Le budget est FAIL-SAFE : le verdict reste au serveur.
-      setSubmitError(await apiErrorMessage(e));
+      setSubmitError(await errorMessage(e));
 
       return;
     }
@@ -315,7 +315,7 @@ export function SlotReservationModal({
         setAddedBlocks((prev) => prev.filter((pending) => pending !== blockId));
       }
     } catch (e) {
-      setSubmitError(await apiErrorMessage(e));
+      setSubmitError(await errorMessage(e));
 
       return;
     }

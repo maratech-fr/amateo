@@ -2,7 +2,7 @@ import { AlertTriangle, ArrowRight, Car, Footprints, MapPinOff, Pencil, RefreshC
 import { useState } from "react";
 
 import { SourceBadge } from "@/features/matches/SourceBadge";
-import { apiErrorMessage } from "@/shared/api/errors";
+import { errorMessage } from "@/shared/lib/errorMessage";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
@@ -204,7 +204,7 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
           setLaunched(true);
         }
       },
-      onError: async (e) => setAutofillError(await apiErrorMessage(e)),
+      onError: async (e) => setAutofillError(await errorMessage(e)),
     });
   };
 

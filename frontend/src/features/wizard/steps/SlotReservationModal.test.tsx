@@ -43,8 +43,13 @@ const soloBudget = (teamId: string, o: Partial<TeamSoloBudget> = {}): TeamSoloBu
 // Défaut : chaque équipe garde 2 créneaux libres ; a/b sont membres du bloc « g » (inBlock).
 const DEFAULT_BUDGETS: TeamSoloBudget[] = [soloBudget("a", { inBlock: true }), soloBudget("b", { inBlock: true }), soloBudget("c"), soloBudget("d")];
 
-/** Une HTTPError ky porteuse d'un corps `{ error }` (ce que `apiErrorMessage` lit dans `error.data`). */
-const httpError = (message: string): HTTPError => Object.assign(Object.create(HTTPError.prototype) as HTTPError, { data: { error: message } });
+/** Une HTTPError ky (4xx) porteuse d'un corps `{ error }` — `errorMessage` lit `error.data` ET `error.response.status`. */
+const httpError = (message: string): HTTPError => {
+  const response = new Response(JSON.stringify({ error: message }), { status: 422, headers: { "content-type": "application/json" } });
+  const err = new HTTPError(response, new Request("http://localhost/api/reservations"), {} as never);
+  (err as unknown as { data?: unknown }).data = { error: message };
+  return err;
+};
 
 function renderModal(overrides: Partial<Parameters<typeof SlotReservationModal>[0]> = {}) {
   return renderWithProviders(

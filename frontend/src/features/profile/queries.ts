@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { apiErrorMessage } from "@/shared/api/errors";
+import { errorMessage } from "@/shared/lib/errorMessage";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { ChangePasswordPayload, UpdateProfilePayload } from "./api";
@@ -31,7 +31,7 @@ export function useRequestEmailChange() {
       toast.info(`Un lien de confirmation a été envoyé à ${result.pendingEmail} — votre adresse actuelle reste active.`);
       void queryClient.invalidateQueries({ queryKey: ["me"] });
     },
-    onError: (err) => void apiErrorMessage(err).then((message) => toast.error(message)),
+    onError: (err) => void errorMessage(err).then((message) => toast.error(message)),
   });
 }
 

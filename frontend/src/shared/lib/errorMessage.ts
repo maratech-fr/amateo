@@ -7,6 +7,29 @@ interface ApiErrorBody {
   violations?: { message?: string }[];
 }
 
+// P4-263 — le backend francise les messages ATTEIGNABLES par un gestionnaire, mais un 4xx nu
+// de Symfony / API Platform (NotFoundHttpException sans message, garde de contrat) peut encore
+// porter la reason-phrase HTTP anglaise BRUTE. Ce n'est pas une copie écrite pour l'utilisateur :
+// on l'ignore et on tombe sur le repli FR par statut. Liste FERMÉE (les reason-phrases de
+// `Symfony\Component\HttpFoundation\Response::$statusTexts`, y compris l'ancienne « Unprocessable
+// Entity » qu'API Platform peut encore émettre) — jamais une heuristique « ça a l'air anglais ».
+const ENGLISH_STATUS_TEXTS = new Set([
+  "bad request",
+  "unauthorized",
+  "forbidden",
+  "not found",
+  "method not allowed",
+  "conflict",
+  "unprocessable entity",
+  "unprocessable content",
+  "too many requests",
+  "internal server error",
+]);
+
+function isEnglishStatusText(value: string): boolean {
+  return ENGLISH_STATUS_TEXTS.has(value.trim().toLowerCase());
+}
+
 /**
  * Best-effort French, user-facing message from an unknown error (FRT-01/02).
  * Prefers a server-provided message, then falls back to a status-based sentence.
@@ -32,7 +55,7 @@ export async function errorMessage(error: unknown): Promise<string> {
     if (status < 500 && null !== data && typeof data === "object") {
       const body = data as ApiErrorBody;
       const direct = body.error ?? body.message ?? body.detail;
-      if (typeof direct === "string" && direct.trim() !== "") {
+      if (typeof direct === "string" && direct.trim() !== "" && !isEnglishStatusText(direct)) {
         return direct;
       }
       if (Array.isArray(body.violations) && body.violations.length > 0) {
@@ -59,6 +82,7 @@ export async function errorMessage(error: unknown): Promise<string> {
     if (status === 401) return "Session expirée. Reconnectez-vous.";
     if (status === 403) return "Accès refusé.";
     if (status === 404) return "Ressource introuvable.";
+    if (status === 405) return "Action non autorisée.";
     if (status === 409) return "Conflit : l'action n'a pas pu être effectuée.";
     if (status === 422) return "Données invalides. Vérifiez votre saisie.";
     if (status === 429) return "Trop de requêtes d'affilée. Patientez quelques instants avant de réessayer.";

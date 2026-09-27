@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
-import { apiErrorMessage } from "@/shared/api/errors";
+import { errorMessage } from "@/shared/lib/errorMessage";
 import { Button } from "@/shared/components/ui/button";
 import { NewPasswordFields } from "@/shared/components/ui/new-password-fields";
 import { Spinner } from "@/shared/components/ui/spinner";
@@ -33,7 +33,7 @@ export function ResetPasswordPage() {
       await reset.mutateAsync({ token, password });
       navigate("/login", { replace: true });
     } catch (err) {
-      setError(await apiErrorMessage(err));
+      setError(await errorMessage(err));
     }
   }
 

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiErrorMessage } from "@/shared/api/errors";
+import { errorMessage } from "@/shared/lib/errorMessage";
 import type { AssignableRole } from "@/shared/lib/roles";
 import { useAuthStore } from "@/shared/stores/authStore";
 import { toast } from "@/shared/stores/toastStore";
@@ -13,7 +13,7 @@ import * as authApi from "./api";
  * serveur reste seul juge : l'UI n'anticipe pas le refus, elle le RESTITUE.
  */
 function toastServerError(err: unknown): void {
-  void apiErrorMessage(err).then((message) => toast.error(message));
+  void errorMessage(err).then((message) => toast.error(message));
 }
 
 /**

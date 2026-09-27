@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { useLocation, useNavigate, useNavigation } from "react-router";
 
-import { apiErrorMessage } from "@/shared/api/errors";
+import { errorMessage } from "@/shared/lib/errorMessage";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
@@ -37,7 +37,7 @@ export function AdminLoginPage() {
       await startAdminPassword({ email, password });
       setStep("totp");
     } catch (err) {
-      setError(await apiErrorMessage(err));
+      setError(await errorMessage(err));
     } finally {
       setPending(false);
     }
@@ -54,7 +54,7 @@ export function AdminLoginPage() {
       const from = (location.state as { from?: string } | null)?.from;
       navigate(from?.startsWith("/admin") ? from : "/admin", { replace: true });
     } catch (err) {
-      setError(await apiErrorMessage(err));
+      setError(await errorMessage(err));
     } finally {
       setPending(false);
     }
