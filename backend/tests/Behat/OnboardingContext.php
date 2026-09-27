@@ -28,6 +28,11 @@ final class OnboardingContext extends BaseContext
 
     private string $token = '';
 
+    private string $email = '';
+
+    /** @var array{status: int, json: array<mixed>, headers: array<string, list<string>>} */
+    private array $loginResponse = ['status' => 0, 'json' => [], 'headers' => []];
+
     private bool $onboardingCompleted = false;
 
     private string $finalStatus = '';
@@ -45,6 +50,7 @@ final class OnboardingContext extends BaseContext
     {
         $ara = 'ONB' . time() . random_int(100, 999);
         $email = 'onb-' . $ara . '@smoke.fr';
+        $this->email = $email;
 
         // /register défère tout à la vérification e-mail : 202 neutre, aucun jeton,
         // aucun club encore. Aucun turnstileToken envoyé (Turnstile éteint en dev).
@@ -148,6 +154,31 @@ final class OnboardingContext extends BaseContext
     {
         if ($statut !== $this->finalStatus) {
             throw new RuntimeException(\sprintf('statut attendu « %s », obtenu « %s »', $statut, $this->finalStatus));
+        }
+    }
+
+    #[When('il tente de se connecter avec un mot de passe erroné')]
+    public function ilTenteDeSeConnecterAvecUnMotDePasseErrone(): void
+    {
+        // Compte VÉRIFIÉ (le Given l'a inscrit, vérifié et approuvé) : un mauvais
+        // mot de passe emprunte donc le rail « identifiants » de /api/login, pas
+        // celui du compte non vérifié — les deux rendent le même message français.
+        $this->loginResponse = $this->publicPost('login', [
+            'email' => $this->email,
+            'password' => 'MauvaisMotDePasse9!',
+        ]);
+    }
+
+    #[Then('/^la connexion est refusée avec le message « (?P<message>[^»]+) »$/')]
+    public function laConnexionEstRefuseeAvecLeMessage(string $message): void
+    {
+        if (401 !== $this->loginResponse['status']) {
+            throw new RuntimeException(\sprintf('la connexion aurait dû être refusée (401 attendu), elle a répondu %d', $this->loginResponse['status']));
+        }
+
+        $actual = $this->loginResponse['json']['message'] ?? null;
+        if ($message !== $actual) {
+            throw new RuntimeException(\sprintf('message attendu « %s », obtenu « %s »', $message, \is_string($actual) ? $actual : var_export($actual, true)));
         }
     }
 

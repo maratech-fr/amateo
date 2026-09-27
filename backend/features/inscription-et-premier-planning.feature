@@ -12,3 +12,8 @@ Fonctionnalité: Un club neuf s'inscrit et obtient son premier planning
     Et il lance la génération de son premier planning
     Alors son parcours d'accueil est marqué comme terminé
     Et la génération aboutit avec le statut « COMPLETED »
+
+  Scénario: Un mot de passe erroné est refusé avec un message en français
+    Étant donné un club neuf dont le gestionnaire vient d'inscrire son compte et de valider son e-mail
+    Quand il tente de se connecter avec un mot de passe erroné
+    Alors la connexion est refusée avec le message « Identifiants invalides. »

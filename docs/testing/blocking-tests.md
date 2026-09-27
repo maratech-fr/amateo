@@ -9,6 +9,11 @@
 
 **blocking-tests** (must pass first — steps du job, un par ligne, tag = ce qui est gardé) :
 `Unit/Entity/UserInterfaceContractTest` (boot conteneur : `eraseCredentials`) ·
+`Security/LoginFailureCopyTest` (axe *auth & memberships*, P4-263 : le refus de `/api/login` parle
+français — « Identifiants invalides. » via le socle `symfony/translation` + `default_locale: fr` —
+ET reste BYTE-IDENTIQUE entre mauvais mot de passe et compte non vérifié [anti-énumération de
+`UserChecker`, jamais touché] ; falsifié dans les deux sens — retirer la traduction rend la clé
+anglaise, un message distinct sur l'un des deux chemins ouvre un oracle) ·
 `Unit/NoMergeConflictMarkerTest` (aucun marqueur de conflit Git commité — dépôt entier, `git grep` sur les fichiers SUIVIS ; écrit après que trois marqueurs de `stash pop` ont atteint `main` dans un journal Markdown, invisibles au linter comme à la revue) ·
 `Security/TenantIsolationTest` (isolation club) ·
 `Security/SeasonIsolationTest` (scoping saison + `X-Season-Id`) ·

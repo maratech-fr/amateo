@@ -1,23 +1,17 @@
 # Amateo — Tenant Isolation Architecture
 
-Last verified @ 2026-09-26 (`documentation-update`, passe « le présent » zone backend — sur les
-talons d'une rotation de fraîcheur du même jour). Re-confronté au code : priorité 7 toujours en
-place (`TenantFilterListener.php:55`) ✓ · le skip `/api/admin` toujours en `str_starts_with` sur
-le path (`TenantFilterListener.php:81`) ✓ · `TenantConnectionContext` pose toujours
+Last verified @ 2026-09-27 (`documentation-update`, rotation de fraîcheur — P4-263 PR 1/2, sujet
+sans rapport avec ce fichier). Re-confronté au code : priorité 7 toujours en place
+(`TenantFilterListener.php:55`) ✓ · le skip `/api/admin` toujours en `str_starts_with` sur le path
+(`TenantFilterListener.php:81`) ✓ · `TenantConnectionContext` pose toujours
 `set_config('app.club_id', ?, false)` (`TenantConnectionContext.php:30`) ✓ ·
 `AbstractStateProcessor::requiresManagementRole()` retourne toujours `true` par défaut
 (`backend/src/State/Processor/AbstractStateProcessor.php:130-132`) ✓ · `amateo_owner` reste
 l'unique rôle `BYPASSRLS`, `migration_user` toujours absent (`docker/postgres/init/02-users.sh`,
 migration `Version20260731090000.php` présente) ✓ · `BcclSeeder` scope toujours ses deux
 recherches `SportCategory` par `clubId` (`backend/src/Seed/BcclSeeder.php:251`), NR
-`BcclSeederIdempotenceTest::testSeedScopesSportCategoriesToTheirOwnClub` présent ✓. Cette passe
-retire en plus le récit d'incident autour du skip admin et de l'ordre priorité 7/8 (la RÈGLE et
-les gardes restent cités, l'historique vit dans git) et le titre passe à Amateo. Deuxième passe :
-dates décoratives retirées (`migration_user` ×2, PR/date du rôle P1-1 — le nom seul suffit,
-`etat-des-lieux.md` §1.12 le trace en détail) ; une seule exception gardée volontairement — voir
-§ « Read-only enforcement » ci-dessous, dont la date fait le travail de désambiguïsation d'un id
-par ailleurs surchargé (`roadmap.md` en tête de fichier documente trois sens distincts pour ce
-même id).
+`BcclSeederIdempotenceTest::testSeedScopesSportCategoriesToTheirOwnClub` présent ✓. Rien de faux
+trouvé cette passe.
 
 ## Overview
 

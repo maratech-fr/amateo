@@ -68,7 +68,7 @@ final class TeamSoloBudgetStateProvider implements ProviderInterface
         if (null !== $planId) {
             $plan = $this->entityManager->getRepository(SchedulePlan::class)->find($planId);
             if (!$plan instanceof SchedulePlan || $plan->getClubId() !== $clubId) {
-                throw new UnprocessableEntityHttpException('Unknown schedule plan.');
+                throw new UnprocessableEntityHttpException('Ce planning n\'existe plus — rechargez la page.');
             }
         }
 

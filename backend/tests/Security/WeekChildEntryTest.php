@@ -339,7 +339,10 @@ final class WeekChildEntryTest extends WebTestCase
             'schedulePlanId' => $motherPlanId,
         ], \JSON_THROW_ON_ERROR));
         self::assertResponseStatusCodeSame(422);
-        self::assertStringContainsString('Unknown schedule plan', (string) $this->client->getResponse()->getContent());
+        // Message décodé (API Platform sérialise l'apostrophe en ') : le refus parle français.
+        $payload = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($payload);
+        self::assertStringContainsString('Ce planning n\'existe plus', (string) ($payload['detail'] ?? ''));
     }
 
     public function testDeletingTheMotherCascadesToItsWeekChildren(): void

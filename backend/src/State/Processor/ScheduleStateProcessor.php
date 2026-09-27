@@ -93,7 +93,7 @@ class ScheduleStateProcessor extends AbstractStateProcessor
             if (null === $plan
                 || (null !== $clubId && $plan['clubId'] !== $clubId)
                 || $plan['seasonId'] !== $resolvedSeasonId) {
-                throw new UnprocessableEntityHttpException('Unknown schedule plan.');
+                throw new UnprocessableEntityHttpException('Ce planning n\'existe plus — rechargez la page.');
             }
             $isSeasonPost = SchedulePlanType::SEASON === $plan['type'];
             if (SchedulePlanType::SEASON !== $plan['type']) {
