@@ -1017,7 +1017,7 @@ Recherche instantanée (club, gymnase, libellé non apparié) combinée au filtr
 région `aria-live="polite"` à deux phrases stables + compteur chiffré frère, dérivée de
 `travelStatus` (rafraîchi par Mercure via `useTravelStream`, § Cache de trajets et calcul
 asynchrone) ; bouton « Mettre à jour » désactivé pendant le calcul, aucun spinner par ligne.
-**Échec partiel** : `WarningPanel` « n trajets n'ont pas pu être calculés » + bouton « Réessayer
+**Échec partiel** : `NoticeBanner` « n trajets n'ont pas pu être calculés » + bouton « Réessayer
 les manquants » (`POST /api/opponents/travel/resolve`, qui ne route déjà que les paires siège→
 gymnase manquantes). Bandeau siège (`useClubGeolocated`, § Prérequis du trajet AUTO) réutilisé tel
 quel. **Garde anti-double-dispatch** : si un calcul de trajets tourne déjà pour le club (verrou

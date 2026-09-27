@@ -1,4 +1,4 @@
-# Roadmap (44) — ce qui reste à faire
+# Roadmap (43) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -43,7 +43,6 @@
 > [`etude-tailles-clubs-ffbb.md`](etude-tailles-clubs-ffbb.md) (**tailles des clubs mesurées sur l'API FFBB** — a nourri le cadrage P1-3, sert la grille tarifaire par taille) ·
 > [`console-superadmin.md`](console-superadmin.md) (P4-54) ·
 > [`reprise-perimetre-engage.md`](reprise-perimetre-engage.md) (mémoire produit du planning de saison) ·
-> [`surfaces-opaques.md`](surfaces-opaques.md) (P4-265 — cadrage VALIDÉ le 2026-09-26, prêt pour le planner) ·
 > [`duplications-de-verite.md`](duplications-de-verite.md) (**doctrine du motif « une vérité, deux
 > endroits »** — le test de fusion réutilisé par `documentation-update`, les duplications
 > délibérées à ne jamais mutualiser, et l'ouvert. **Refondu le 2026-09-18 (AUD-DOC-43)** : le
@@ -72,8 +71,7 @@
 
 **Mise en production ~2026-10-03, puis phase bêta-testeurs.**
 
-**AVANT PROD** (code — ordre de passage) : **P4-265** (surfaces
-opaques) → **P4-240** (placement de matchs, gros lot)
+**AVANT PROD** (code — ordre de passage) : **P4-240** (placement de matchs, gros lot)
 → **P5-24** (logo, en entier : PDF N&B, e-mails, image OG) → **P4-258** (scroll-padding vitrine) →
 **P5-27** (captures vitrine, en dernier des visuels). En parallèle, deux gestes code sans ligne
 propre : CSP `connect-src` Sentry (`docker/frontend/csp.conf`, prérequis du DSN front — garde
@@ -223,7 +221,6 @@ rien à faire en propre) → **P5-28 en dernier** (contrat backend⇄engine repa
 | P4-149 | **[APRÈS PROD]** **UXC-12 résiduel — 4 hints inline de la console rendent dans une nuance plus CLAIRE que leurs 14 voisins ralliés ; arbitrage visuel fondateur à trancher** | ⚪ | XS | Le patron et le prérequis sont livrés (trace [`etat-des-lieux.md`](../courantes/etat-des-lieux.md) §3, 2026-08-30) : `EmptyHint`/`EmptyBlock` portent une prop `variant` (`app` par défaut, `console` sur les jetons `--console-*`, foyer `shared/lib/surfaceSkin.ts::SurfaceSkin`) et 14 des 18 empty states admin sont ralliés sans changement de rendu. **Ce qui reste** : 4 sites — `ClubRequestsSection.tsx:49`, `ClubRequestsSection.tsx:109`, `FeedbackSection.tsx:90`, `ReleaseNotesSection.tsx:111` — rendent en `text-console-text-dim` (jeton = `--color-slate-400`, `src/index.css:88`), alors que la peau `console` d'`EmptyHint` porte `--console-muted` (`--color-slate-500`, `src/index.css:89`) — la nuance MAJORITAIRE parmi les 10 sites inline d'origine. Sur la coque sombre `--console-surface`, `slate-400` est plus CLAIR que `slate-500` : ces 4 sites ressortent donc **davantage** que les 14 ralliés, pas moins — fait constaté, intention inconnue (accident ou choix). **Trois issues, à trancher par le fondateur** : (1) les rallier sur `variant="console"` tel quel — assume le changement de couleur (ils passeraient de `slate-400` à `slate-500`, plus discrets) ; (2) donner à `EmptyHint` une **seconde peau console** (ex. `console-bright`, sur `--console-text-dim`) pour préserver leur nuance actuelle en les sortant quand même du balisage `<p>` local ; (3) les laisser tels quels et clore la ligne en décision fermée. Effort XS quelle que soit l'issue retenue |
 | P4-76 | **[APRÈS PROD]** **UX Membre : les boutons d'écriture restent visibles (403 serveur au clic)** | ⚪ | M | Assumé à la livraison de P1-1 (2026-08-10, décision de plan) : le serveur refuse TOUTES les écritures d'un Membre (gate PR A), mais le front ne masque que les sections déjà keyées `isManagement` (page club). Un Membre voit ailleurs des boutons Générer/éditer qui rendront 403. Polish : consommer `me.role` pour griser/masquer écran par écran — sans jamais recalculer une règle (P2-8) |
 | P4-252 | **[APRÈS PROD]** **Une animation du logo comme écran d'attente — demande fondateur, mais elle rouvre DEUX décisions fermées** | ⚪ | S/M | Demandé le 2026-09-22 en même temps que la livraison du logo. ⚠ **À trancher AVANT de coder, parce que la case visée n'est pas libre** : **(1)** `GenerationWaiting` a déjà sa scène (mini-grille + ballon + terrain filigrané) et **le logo en a été explicitement RETIRÉ** — il était le premier centre imposé de la spec design, la décision de retrait est consignée (`specs/courantes/etat-des-lieux.md` §2 et `specs/courantes/identite-visuelle-club.md:17-20` — « aucun logo ni initiale par-dessus, la scène EST le contenu ») ; y remettre un logo animé, c'est revenir dessus. **(2)** P5-22 a livré une scène commune aux sept écrans système et a **écarté délibérément** les keyframes qui progressent (`sweep`, `riseIn`, `blink`) : une animation qui avance suggère un traitement en cours, or « à l'arrêt veut dire à l'arrêt ». ⚑ **La case réellement libre** : un **splash de démarrage applicatif** (le temps du premier chargement de l'app) — il n'existe aujourd'hui aucun écran à cet endroit, donc rien à contredire. Recommandation : viser celui-là, et laisser `GenerationWaiting` et les écrans système tels quels. ⚠ `prefers-reduced-motion` obligatoire, et **pas de rustine `opacity: 1 !important`** : le piège a déjà été payé sur `GenerationWaiting` (l'override peignait l'état PLEIN sous un titre d'attente). La scène doit s'animer en `transform` seul, pour que `animation: none` suffise. Dépend de P5-24 (le logo doit être posé dans le produit avant d'être animé) |
-| P4-265 | **[AVANT PROD]** **Toute surface qui porte du texte est opaque sur le fond à motifs** | 🟠 | M | Retour fondateur 2026-09-26 : « beaucoup de tuiles transparentes », ex. accordéon par coach de l'écran Conflits — vouloir un fond opaque EN GARDANT la surbrillance. **Cadrage VALIDÉ le 2026-09-26** (10 décisions, exemples avant/après, preuves `fichier:ligne`) → détail complet dans [`surfaces-opaques.md`](surfaces-opaques.md), **prochain geste : planner directement, pas de re-cadrage** |
 
 ### Sécurité & données
 

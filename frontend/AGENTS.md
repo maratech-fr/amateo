@@ -211,7 +211,7 @@ POST/PUT/DELETE'd immediately via TanStack mutations. "Suivant" only validates a
 Full catalogue — one entry per primitive, verified against `shared/components/ui/`:
 [`frontend-components.md`](docs/frontend-components.md) §3, **the single home** for shared UI
 primitives (Button, Listbox, TeamSelect/VenueSelect, Menu, FilterToggle, EmptyState family,
-Modal, FichePage, WarningPanel, ConfirmDialog, DeleteConfirm, LoadErrorHint, StatusPill/
+Modal, FichePage, NoticeBanner, ConfirmDialog, DeleteConfirm, LoadErrorHint, StatusPill/
 SourceBadge, StepRail, Table, AccordionSection, AddressGeocodeField, OpponentLogo, Onglets,
 Palette console, BrandIcon, BrandMark).
 

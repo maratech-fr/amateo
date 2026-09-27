@@ -69,7 +69,7 @@ function ReadOnlyLinks({ links, teamName, filtered }: { links: TeamLink[]; teamN
       ) : (
         <ul className="flex flex-col gap-1">
           {links.map((link) => (
-            <li key={link.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border px-2 py-1.5 text-sm">
+            <li key={link.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border bg-card px-2 py-1.5 text-sm">
               <span className="flex-1">
                 {teamName(link.teamAId)} ↔ {teamName(link.teamBId)} ·{" "}
                 <span className="text-muted-foreground">{"NOT_SIMULTANEOUS" === link.linkType ? "jamais en même temps" : "l'un après l'autre"}</span>
@@ -145,7 +145,7 @@ function EditableLinks<T extends TeamLike>({
 
       <ul className="flex flex-col gap-1">
         {links.map((link) => (
-          <li key={link.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border px-2 py-1.5 text-sm">
+          <li key={link.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border bg-card px-2 py-1.5 text-sm">
             <span className="flex-1">
               {teamName(link.teamAId)} ↔ {teamName(link.teamBId)} ·{" "}
               <span className="text-muted-foreground">{"NOT_SIMULTANEOUS" === link.linkType ? "jamais en même temps" : "l'un après l'autre"}</span>

@@ -94,7 +94,7 @@ function LeagueToTreatNotice({ fixtures }: { fixtures: LeagueToTreatFixture[] })
   const named = fixtures.slice(0, NAMED_LIMIT);
   const overflow = fixtures.length - named.length;
   return (
-    <div role="status" aria-live="polite" className="flex flex-wrap items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">
+    <div role="status" aria-live="polite" className="flex flex-wrap items-start gap-2 rounded-lg border border-warning/40 bg-surface-warning px-3 py-2 text-sm text-foreground">
       <ListTodo className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
       <div className="grow">
         <p className="tabular-nums">
@@ -124,7 +124,7 @@ function MissingDeadlineNotice({ competitions }: { competitions: MissingDeadline
   const navigate = useNavigate();
   const names = competitions.map((competition) => competition.name).join(", ");
   return (
-    <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm text-foreground">
+    <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-foreground">
       <CalendarClock className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       <span className="grow">
         {competitions.length} championnat{competitions.length > 1 ? "s" : ""} sans échéance {competitions.length > 1 ? "ont" : "a"} des rencontres prêtes ({names}) — renseignez leur échéance de saisie pour les valider.
@@ -156,7 +156,7 @@ export function LeagueValidationBanner() {
   return (
     <div className="flex flex-col gap-2">
       {totalValidatable > 0 ? (
-        <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm text-foreground">
+        <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-foreground">
           <BadgeCheck className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <span className="grow tabular-nums">
             {totalValidatable} {plural(totalValidatable)} de {matured.length} championnat{matured.length > 1 ? "s" : ""} échu{matured.length > 1 ? "s" : ""} {totalValidatable > 1 ? "sont prêtes" : "est prête"} — à confirmer « validé ligue ».

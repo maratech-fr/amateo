@@ -489,7 +489,7 @@ function PeriodVenuePanel({
       </fieldset>
 
       {offGridSlots.length > 0 && !isDisabled ? (
-        <div className="mt-2 rounded-md border border-destructive/40 bg-destructive/5 p-2">
+        <div className="mt-2 rounded-md border border-destructive/40 bg-surface-destructive p-2">
           <p role="alert" className="mb-1 text-xs font-medium text-destructive">
             Créneau(x) sur un jour non affichable — servi au système mais invisible sur la grille. Supprimez-le pour ne pas planifier ce jour-là.
           </p>
@@ -713,7 +713,7 @@ function PeriodSlotEditor({
 
       {/* P2-43 volet (i) — le jour édité est fermé : on le DIT, sans rien bloquer (poser reste permis). */}
       {undefined !== closedProvenance ? (
-        <p role="note" className="mt-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">
+        <p role="note" className="mt-3 rounded-md border border-warning/40 bg-surface-warning px-3 py-2 text-sm text-foreground">
           Créneau inactif — le {DAY_LABELS_LONG[day]?.toLowerCase() ?? `jour ${day}`} est fermé ({closedCause}). Le poser reste possible ; il ne servira pas tant que ce jour reste fermé.
         </p>
       ) : null}

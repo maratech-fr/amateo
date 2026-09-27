@@ -22,7 +22,7 @@ export function DriftBanner({ entries, teamName, onPlace, activeTeamId = null }:
     return null;
   }
   return (
-    <div className="mb-4 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm" role="region" aria-label="Séances à replacer">
+    <div className="mb-4 rounded-md border border-warning/40 bg-surface-warning px-3 py-2 text-sm" role="region" aria-label="Séances à replacer">
       <p className="flex items-center gap-1.5 font-medium text-foreground">
         <CalendarClock aria-hidden="true" className="size-4 text-warning" />
         Séances à replacer

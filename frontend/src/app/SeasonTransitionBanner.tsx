@@ -41,7 +41,7 @@ export function SeasonTransitionBanner({ today = todayDate() }: { today?: Date }
   }
 
   return (
-    <div className="mb-4 flex items-center gap-2 rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-sm" role="status">
+    <div className="mb-4 flex items-center gap-2 rounded-md border border-accent/40 bg-surface-accent px-3 py-2 text-sm" role="status">
       <CalendarPlus className="size-4 shrink-0 text-accent" />
       <span className="min-w-0 flex-1">
         La saison <span className="font-medium">{current.name}</span> se termine — préparez la saison suivante avant le {frDayMonth(deadline)}.

@@ -8,6 +8,7 @@ import { usePlanningStore } from "@/features/planning/store";
 import { useWizardStore } from "@/features/wizard/store";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { readFailed, readLoading } from "@/shared/lib/readState";
 import { cn } from "@/shared/lib/utils";
 
@@ -451,7 +452,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
       {/* Gating (#5) : plan de saison non validé → tout ajustement est bloqué. Encart
           rouge en TÊTE, l'action la plus prioritaire : finir de valider la saison. */}
       {!socleValidated ? (
-        <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3">
+        <div className="rounded-md border border-destructive/50 bg-surface-destructive p-3">
           <div className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
             <div className="min-w-0 flex-1">
@@ -751,9 +752,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
       {/* Une lecture ratée n'est ni « ça charge » ni « tout roule » : on le dit, sinon
           l'écran renonce en silence (doctrine `readState`). */}
       {readsFailed ? (
-        <p role="alert" className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">
-          Impossible de charger les éléments à traiter — cette liste est peut-être incomplète.
-        </p>
+        <NoticeBanner tone="warning" role="alert" message="Impossible de charger les éléments à traiter — cette liste est peut-être incomplète." />
       ) : null}
 
       {isEmpty ? <EmptyHint>Rien à l'horizon. Tout roule.</EmptyHint> : null}

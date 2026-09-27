@@ -145,7 +145,7 @@ function RotationRow<T extends TeamLike>({
   };
 
   return (
-    <li className="flex flex-col rounded-md border border-border">
+    <li className="flex flex-col rounded-md border border-border bg-card">
       <div className="flex items-center gap-1 pr-1">
         {/* Le SEUL bouton de dépliage porte aria-expanded ; Supprimer est son FRÈRE
             (jamais un bouton dans un bouton, patron ReviewQueue). */}
@@ -205,7 +205,7 @@ function MemberList({
   return (
     <ol className="flex flex-col gap-1">
       {teamIds.map((teamId, index) => (
-        <li key={teamId} className="flex items-center gap-2 rounded-md bg-muted/50 px-2 py-1 text-sm">
+        <li key={teamId} className="flex items-center gap-2 rounded-md bg-surface-muted px-2 py-1 text-sm">
           <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-accent/15 text-xs font-semibold text-accent-foreground" aria-hidden>
             {positionLabel(index)}
           </span>
@@ -295,7 +295,7 @@ function NewRotationForm<T extends TeamLike>({
   };
 
   return (
-    <div className="flex flex-col gap-2 rounded-md border border-dashed border-border px-3 py-2">
+    <div className="flex flex-col gap-2 rounded-md border border-dashed border-border bg-card px-3 py-2">
       <p className="text-xs font-medium text-muted-foreground">Nouveau créneau partagé</p>
 
       <div className="flex flex-wrap items-end gap-2">

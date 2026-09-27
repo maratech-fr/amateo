@@ -29,7 +29,7 @@ export function ToReplaceList({ entries, teamName, venueName }: ToReplaceListPro
   }
   return (
     <section
-      className="mb-4 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm"
+      className="mb-4 rounded-md border border-warning/40 bg-surface-warning px-3 py-2 text-sm"
       aria-label={`Séances non reprises du planning de saison (${entries.length})`}
     >
       <p className="flex items-center gap-1.5 font-medium text-foreground">

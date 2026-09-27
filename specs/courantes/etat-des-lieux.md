@@ -319,7 +319,7 @@ le front lit, il ne re-dérive plus les règles de refus, repli fail-closed si l
 | **P2-54 PR-2 — le backfill A5 est ABANDONNÉ, la migration ne recopie plus les surcharges existantes (2026-09-15)** | Les compteurs partent tous à zéro et se reconstruisent organiquement | Ces valeurs étaient des saisies non vérifiées côté serveur — les backfiller aurait réintroduit le vecteur que la revue sécurité venait de fermer |
 | **P2-54 PR-3 — l'écran DÉRIVE un libellé de club, jamais servi par l'API (2026-09-15, historique, disparu avec PR I)** | L'API sert une entrée par équipe adverse ; le titre « club » est dérivé côté écran seulement | Une dérivation côté backend aurait exigé un nouveau concept serveur pour un seul usage de présentation |
 | **P2-54 PR-3 — liste PLATE groupée par club, jamais un accordéon imbriqué (2026-09-15, historique)** | Une `<ul>` de groupes club, pas de composant accordéon | Un club compte rarement plus de 2-3 équipes adverses — un accordéon aurait ajouté un clic sans bénéfice |
-| **P2-54 PR-3 — `WarningPanel` UNE PHRASE, jamais un encart listant les équipes non localisées (2026-09-15)** | Une phrase d'alerte seule, le détail vit dans la liste triée | La doublure aurait dupliqué une information déjà portée par le tri de la liste |
+| **P2-54 PR-3 — `NoticeBanner` (alors `WarningPanel`) UNE PHRASE, jamais un encart listant les équipes non localisées (2026-09-15)** | Une phrase d'alerte seule, le détail vit dans la liste triée | La doublure aurait dupliqué une information déjà portée par le tri de la liste |
 | **P2-54 PR-3 — un seul geste de validation dans `LocateOpponentModal` (2026-09-15, historique, fieldset équipe/club disparu avec PR I)** | La portée se choisit avant, dans un fieldset ; cliquer un gymnase écrit directement | Deux boutons de validation par ligne auraient doublé les cibles cliquables pour une décision déjà prise |
 | **P2-54 PR-3 — pas de bouton proéminent même quand une seule suggestion existe (2026-09-15)** | Style `outline` discret seul | Une suggestion partagée peut être fausse pour ce club — un bouton disproportionné suggérerait une garantie non tenue |
 | **P2-54 PR-3 — « choisi N fois », jamais « par N clubs » (2026-09-15)** | Le libellé compte des choix, pas des clubs distincts | Rien ne garantit l'unicité club — le libellé doit rester honnête sur ce qu'il compte |
@@ -534,6 +534,7 @@ le front lit, il ne re-dérive plus les règles de refus, repli fail-closed si l
 
 | Date | Id | Sujet | Documenté dans |
 |------|----|-------|----------------|
+| 2026-09-27 | P4-265 | toute surface qui porte du texte est opaque sur le fond à motifs (jetons --surface-*, NoticeBanner, onglets et accordéons opaques) | [`identite-visuelle-produit.md`](identite-visuelle-produit.md) |
 | 2026-09-27 | P4-264 | adversaires : CP et ville dans la recherche de salle FFBB, « Modifier le gymnase », lignes resserrées | [`module-matchs.md`](module-matchs.md) |
 | 2026-09-27 | P4-263 (PR 2/2) | une seule maison d'erreur front ; un status-text anglais brut tombe sur le repli français — P4-263 soldé | [`frontend/docs/frontend-spec.md`](../../frontend/docs/frontend-spec.md) |
 | 2026-09-27 | P4-263 (PR 1/2) | le backend répond en français (translator fr, « Identifiants invalides. », messages de course et console superadmin), NR login bloquant | [`backend/docs/error-copy.md`](../../backend/docs/error-copy.md) |

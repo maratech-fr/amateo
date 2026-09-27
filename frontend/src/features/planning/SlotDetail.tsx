@@ -244,7 +244,7 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
           ) : null}
 
           {armed ? (
-            <p className="rounded-md border border-accent/40 bg-accent/10 p-2 text-xs text-muted-foreground">
+            <p className="rounded-md border border-accent/40 bg-surface-accent p-2 text-xs text-muted-foreground">
               {null !== groupSession
                 ? "Cliquez la case cible de la grille pour y déplacer tout le groupe."
                 : "Cliquez une case libre de la grille pour y déplacer ce créneau, ou une séance à évincer."}{" "}
@@ -255,7 +255,7 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
           {/* Le déplacement passe sous le verdict du moteur (F2b) : ici le résultat du dernier
               essai. On ne le montre que hors « pending » (le bouton porte déjà l'attente). */}
           {"rejected" === moveState.status ? (
-            <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-sm" role="alert">
+            <div className="rounded-md border border-destructive/40 bg-surface-destructive p-2 text-sm" role="alert">
               <div className="flex items-center gap-2 font-medium text-destructive">
                 <AlertTriangle className="size-4" aria-hidden="true" />
                 <span>Déplacement refusé — le créneau n’a pas bougé.</span>
@@ -269,19 +269,19 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
           ) : null}
 
           {"blocked" === moveState.status ? (
-            <p className="rounded-md border border-warning/40 bg-warning/10 p-2 text-sm text-muted-foreground" role="alert">
+            <p className="rounded-md border border-warning/40 bg-surface-warning p-2 text-sm text-foreground" role="alert">
               Une génération est en cours pour ce club — réessayez le déplacement une fois qu’elle est terminée.
             </p>
           ) : null}
 
           {"interrupted" === moveState.status ? (
-            <p className="rounded-md border border-warning/40 bg-warning/10 p-2 text-sm text-muted-foreground" role="alert">
+            <p className="rounded-md border border-warning/40 bg-surface-warning p-2 text-sm text-foreground" role="alert">
               La vérification a été interrompue avant la réponse — rien n’a été modifié, réessayez.
             </p>
           ) : null}
 
           {"error" === moveState.status ? (
-            <p className="rounded-md border border-warning/40 bg-warning/10 p-2 text-sm text-muted-foreground" role="alert">
+            <p className="rounded-md border border-warning/40 bg-surface-warning p-2 text-sm text-foreground" role="alert">
               Le moteur n’a pas répondu — rien n’a été modifié, réessayez.
             </p>
           ) : null}

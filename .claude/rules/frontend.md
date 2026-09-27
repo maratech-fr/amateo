@@ -86,6 +86,14 @@ paths:
   visuellement, ou système) pose `bg-background` sur sa PROPRE section, pas sur un shell partagé —
   patron `GenerationScene.tsx` (racine `bg-background`, décor déjà dense) et `system-screen.tsx`
   (inchangé, hors lot).
+- 🔴 **Toute surface qui porte du texte est opaque** (P4-265) : `bg-card` ou un jeton
+  `--surface-warning|accent|destructive|muted` (`color-mix` sur `--card`, `index.css`) — jamais une
+  teinte `bg-<jeton>/NN` comme fond AU REPOS (deux `background-color` Tailwind ne se composent pas,
+  et une teinte seule laisse traverser le fond à motifs). La surbrillance garde sa teinte `/NN`,
+  toujours préfixée (`hover:bg-accent/10`) : seul le repos devient plein. **Le texte posé sur une
+  surface teintée reste `text-foreground`** (jamais `text-warning`/`text-accent`, sous l'AA sur leur
+  propre teinte). Gardé par `frontend/src/test/surfaceOpacityGuard.test.ts` (portée
+  `shared/components/ui/*.tsx`, ≤ 5 exemptions nominatives).
   Recoder à la main un spinner nu, un
   encart d'erreur, une pastille inline **là où la primitive existe** = incohérence UX (« même
   chose, au même endroit, de la même façon » — famille UXC de l'audit). Cas fondateur du

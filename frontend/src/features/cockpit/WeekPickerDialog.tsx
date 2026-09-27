@@ -5,7 +5,7 @@ import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Modal } from "@/shared/components/ui/modal";
 import { Spinner } from "@/shared/components/ui/spinner";
-import { WarningPanel } from "@/shared/components/ui/warning-panel";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 
 import type { CalendarEntryPeriodType, PlannedWindow } from "./api";
 import { frDateShort, mergeSegments, segmentLabel, segmentsFromOffer, segmentWeekCount, splitSegment, type ExcludedWeekRange, type WeekSegment, type WeekWindow } from "./lib/date";
@@ -306,7 +306,7 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, per
       {"holiday" === state ? (
         <div className="mt-2 space-y-3 text-sm">
           {excludedRanges.map((range) => (
-            <WarningPanel
+            <NoticeBanner
               key={range.startDate}
               message={`Semaines du ${frDateShort(range.startDate)} au ${frDateShort(range.endDate)} couvertes par ${range.labels.join(", ")} — le rappel vous attend dans son planning.`}
             />
@@ -350,9 +350,7 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, per
           ) : (
             <>
               {block?.deleteFailed ? (
-                <p role="alert" className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-foreground">
-                  Certaines versions n'ont pas pu être supprimées — réessayez.
-                </p>
+                <NoticeBanner tone="destructive" role="alert" message="Certaines versions n'ont pas pu être supprimées — réessayez." />
               ) : null}
               <div>
                 <Button

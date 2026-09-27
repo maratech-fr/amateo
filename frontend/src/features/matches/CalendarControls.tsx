@@ -113,7 +113,7 @@ export function CalendarControls(props: CalendarControlsProps) {
           <span id="calendar-types-label" className="text-xs font-medium text-muted-foreground">
             Types
           </span>
-          <div ref={typesRef} className="flex flex-wrap items-center gap-1 rounded-md border border-border p-0.5">
+          <div ref={typesRef} className="flex flex-wrap items-center gap-1 rounded-md border border-border bg-card p-0.5">
             {KINDS.map((kind) => (
               <Button key={kind} type="button" size="sm" aria-pressed={isKindChecked(kind)} variant={isKindChecked(kind) ? "default" : "ghost"} className={chipClass(isKindChecked(kind))} onClick={() => toggleKind(kind)}>
                 {KIND_LABEL[kind]}
@@ -182,7 +182,7 @@ export function CalendarControls(props: CalendarControlsProps) {
           <span id="calendar-periode-label" className="text-xs font-medium text-muted-foreground">
             Période
           </span>
-          <div className="flex flex-wrap items-center gap-1 rounded-md border border-border p-0.5">
+          <div className="flex flex-wrap items-center gap-1 rounded-md border border-border bg-card p-0.5">
             {TEMPORALITIES.map((temporality) => (
               <Button
                 key={temporality}

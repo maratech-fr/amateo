@@ -245,4 +245,23 @@ describe("Tabs", () => {
     expect(active.className).toContain("text-white");
     expect(active.className).not.toContain("border-accent");
   });
+
+  // P4-265 — la peau `app` pose une BARRE OPAQUE (bg-card) sur le tablist pour ne plus laisser
+  // traverser le fond à motifs ; la peau `console` garde son simple filet `border-b`, sans fond.
+  it("peau app : barre opaque bg-card sur le tablist ; peau console : filet border-b sans fond", () => {
+    const appTabs = [
+      { id: "a", label: "A" },
+      { id: "b", label: "B" },
+    ];
+    const { unmount } = render(<Tabs tabs={appTabs} activeTab="a" onTabChange={() => {}} ariaLabel="App" idPrefix="app" />);
+    const appList = screen.getByRole("tablist", { name: "App" });
+    expect(appList.className).toContain("bg-card");
+    expect(appList.className).toContain("border-border");
+    unmount();
+
+    render(<Tabs variant="console" tabs={appTabs} activeTab="a" onTabChange={() => {}} ariaLabel="Console" idPrefix="con" />);
+    const consoleList = screen.getByRole("tablist", { name: "Console" });
+    expect(consoleList.className).not.toContain("bg-card");
+    expect(consoleList.className).toContain("border-b");
+  });
 });

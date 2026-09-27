@@ -8,6 +8,7 @@ import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Spinner } from "@/shared/components/ui/spinner";
 
 /**
@@ -127,12 +128,7 @@ export function AddressGeocodeField({ address, located, onPick, placeholder, lab
         </Button>
       </div>
 
-      {null !== error ? (
-        <p role="alert" className="flex items-center gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">
-          <AlertTriangle className="size-4 shrink-0 text-warning" />
-          {error}
-        </p>
-      ) : null}
+      {null !== error ? <NoticeBanner tone="warning" role="alert" icon={<AlertTriangle className="size-4 text-warning" />} message={error} /> : null}
 
       {null !== candidates && 0 === candidates.length ? (
         <EmptyHint>Aucune adresse trouvée pour « {searched} ». Vérifiez l'orthographe ou ajoutez la ville.</EmptyHint>

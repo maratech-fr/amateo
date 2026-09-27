@@ -1,17 +1,15 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-09-26 (`documentation-update`, passe « le présent » zone backend). Re-confronté
-au code : les poids cités pour `spacing` (−2), `preferredVenueId` (+10) et les tiers (S=10000…D=1)
-toujours exacts contre `engine/app/solver/objective/weights.py`
+Last verified @ 2026-09-27 (rotation de fraîcheur `documentation-update`, sujet sans rapport — passe
+doc P4-265 frontend). Re-confronté au code : les poids cités pour `spacing` (−2), `preferredVenueId`
+(+10) et les tiers (S=10000…D=1) toujours exacts contre `engine/app/solver/objective/weights.py`
 (`LEVEL_2_OBJECTIVE_WEIGHTS["spacing"]=-2`, `["preferred"]=10`, `["S"]=10000`/`["D"]=1`, même
 dict) ; `ConstraintFamily` (`backend/src/Enum/ConstraintFamily.php:11-14`) n'a toujours que 4 cas
 (TIME/DAY/FACILITY/COACH_AVAILABILITY), `FACILITY_CAPACITY` absent de l'enum ✓. « Réserver un
 gymnase à un groupe » toujours ❌ : `ScheduleConstraintBuilder.php:256` confirme l'expansion
-`forbiddenVenueId` par équipe « GONE » (commentaire code) ✓. Le guard
-`engine/tests/semantic/test_hard_lock_divisible_slot.py` (T1/T2/T3) existe toujours ✓. Cette passe
-retire la section « Angles morts traités » (redondante avec les lignes `*(ALIGN-XX)*` de la table,
-son seul fait unique — le pointeur de garde ALIGN-07 — replié dans la ligne « Réserver un créneau »)
-et les trous RÉSORBÉS de la synthèse (un trou fermé quitte la synthèse, il ne reste pas barré).
+`forbiddenVenueId` par équipe « GONE » (commentaire code) ✓. Les gardes
+`engine/tests/semantic/test_hard_lock_divisible_slot.py` et `test_consecutive_days.py` existent
+toujours ✓.
 
 > **But** : liste **exhaustive** des besoins qu'un gestionnaire de club peut vouloir exprimer, et
 > **ce que l'application couvre** aujourd'hui — pour voir clairement les cas couverts (✅), partiels

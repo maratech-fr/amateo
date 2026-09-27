@@ -22,7 +22,7 @@ import { frDateShort, segmentWeekCount, type WeekSegment } from "./lib/date";
 function ownWindowConflictFeedback(error: unknown): void {
   if (error instanceof WindowAlreadyPlannedError || error instanceof PreviewTokenStaleError) {
     // Le dialogue du geste affiche ces deux refus lui-même (WindowAlreadyPlannedNotice pour le
-    // chevauchement ; WarningPanel + ré-aperçu pour le jeton périmé, D3 v2) — jamais un toast.
+    // chevauchement ; NoticeBanner + ré-aperçu pour le jeton périmé, D3 v2) — jamais un toast.
     return;
   }
   void errorMessage(error).then((message) => toast.error(message));

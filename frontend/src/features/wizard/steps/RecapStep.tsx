@@ -344,7 +344,7 @@ export function RecapStep() {
       {layerNotices.map((notice) => (
         <p
           key={notice.message}
-          className={cn("mb-3 rounded-md px-3 py-2 text-sm", notice.pending ? "text-muted-foreground" : "border border-warning/40 bg-warning/10 text-foreground")}
+          className={cn("mb-3 rounded-md px-3 py-2 text-sm", notice.pending ? "text-muted-foreground" : "border border-warning/40 bg-surface-warning text-foreground")}
         >
           {notice.message}
         </p>
@@ -438,7 +438,7 @@ export function RecapStep() {
                 <div key={group.family} className="mb-3 last:mb-0">
                   {/* Bandeau de TITRE (demande fondateur 2026-08-05) : « Horaires/Jours/
                       Gymnase » ne se démarquait pas — fond accentué + liseré gauche. */}
-                  <p className="mb-1 rounded-md border-l-4 border-accent bg-accent/10 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-foreground">{FAMILY_LABEL[group.family] ?? "Autres"}</p>
+                  <p className="mb-1 rounded-md border-l-4 border-accent bg-surface-accent px-2 py-1 text-xs font-semibold uppercase tracking-wide text-foreground">{FAMILY_LABEL[group.family] ?? "Autres"}</p>
                   {group.sections.map((section) => (
                     <div key={section.key} className="mb-1 last:mb-0">
                       <p className="px-2 text-xs font-medium text-muted-foreground">{section.label}</p>
@@ -508,7 +508,7 @@ export function RecapStep() {
             // Partiel = warning (une place se PERD) ; non réservé = information neutre
             // (le système fera un choix légitime). Même œil que layerNotices : le ton
             // visuel suit la gravité, sinon tout bandeau finit par ne plus rien dire.
-            notice.partial ? "border border-warning/40 bg-warning/10 text-foreground" : "border border-border bg-muted/50 text-muted-foreground",
+            notice.partial ? "border border-warning/40 bg-surface-warning text-foreground" : "border border-border bg-surface-muted text-muted-foreground",
           )}
         >
           <span className="font-medium">{notice.place}</span> : {notice.message}

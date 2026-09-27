@@ -459,7 +459,7 @@ export function ConflictsPage() {
         <span id="conflicts-pivot-label" className="w-full shrink-0 text-xs font-medium text-muted-foreground sm:w-24">
           Regrouper par
         </span>
-        <div className="flex flex-wrap items-center gap-1 rounded-md border border-border p-0.5">
+        <div className="flex flex-wrap items-center gap-1 rounded-md border border-border bg-card p-0.5">
           {PIVOT_AXES.map((axis) => (
             <Button
               key={axis}

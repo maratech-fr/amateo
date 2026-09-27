@@ -141,7 +141,7 @@ export function ClubViewTable({ model, selectedSlotId, onSelectSlot, highlightSl
     <div className="flex h-full flex-col gap-2">
       {targetActive ? (
         // La limite est ANNONCÉE, pas découverte par un clic sans effet.
-        <p role="status" className="shrink-0 rounded-md border border-accent/40 bg-accent/5 px-3 py-1.5 text-xs leading-tight text-foreground">
+        <p role="status" className="shrink-0 rounded-md border border-accent/40 bg-surface-accent px-3 py-1.5 text-xs leading-tight text-foreground">
           Désignez une séance existante pour {isMoveVariant ? "l'évincer" : "la remplacer"}. Pour poser sur un <strong>créneau libre</strong>, repassez en vue « Par gymnase » ou « Par jour » — un couple équipe/jour ne désigne ni gymnase ni horaire.
         </p>
       ) : null}

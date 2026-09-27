@@ -12,7 +12,7 @@ import { Menu, MenuItem } from "@/shared/components/ui/menu";
 import { OpponentLogo } from "@/shared/components/ui/opponent-logo";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
-import { WarningPanel } from "@/shared/components/ui/warning-panel";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { readState } from "@/shared/lib/readState";
 import { useTravelStream } from "@/shared/lib/travelStream";
 import { cn } from "@/shared/lib/utils";
@@ -155,22 +155,22 @@ export function OpponentsPage() {
       </div>
 
       {"ready" === state && !clubGeolocated ? (
-        <WarningPanel icon={<MapPinOff className="size-4 text-warning" aria-hidden="true" />} message="Trajets indisponibles : l'adresse du siège du club n'est pas localisée.">
+        <NoticeBanner icon={<MapPinOff className="size-4 text-warning" aria-hidden="true" />} message="Trajets indisponibles : l'adresse du siège du club n'est pas localisée.">
           <Button variant="outline" size="sm" asChild>
             <Link to="/club?section=informations">Renseigner le siège</Link>
           </Button>
-        </WarningPanel>
+        </NoticeBanner>
       ) : null}
 
       {"ready" === state && clubGeolocated && !computing && failedCount > 0 ? (
-        <WarningPanel
+        <NoticeBanner
           icon={<MapPinOff className="size-4 text-warning" aria-hidden="true" />}
           message={`${failedCount} trajet${failedCount > 1 ? "s" : ""} n'${failedCount > 1 ? "ont" : "a"} pas pu être calculé${failedCount > 1 ? "s" : ""} — ces matchs n'entrent pas dans le radar.`}
         >
           <Button variant="outline" size="sm" disabled={retry.isPending} onClick={() => retry.mutate()}>
             Réessayer les manquants
           </Button>
-        </WarningPanel>
+        </NoticeBanner>
       ) : null}
 
       {"failed" === state ? <LoadErrorHint onRetry={() => void travelQuery.refetch()} /> : null}
@@ -199,7 +199,7 @@ export function OpponentsPage() {
                 />
               </div>
 
-              <div role="group" aria-label="Filtrer les adversaires" className="flex flex-wrap items-center gap-1 rounded-md border border-border p-0.5">
+              <div role="group" aria-label="Filtrer les adversaires" className="flex flex-wrap items-center gap-1 rounded-md border border-border bg-card p-0.5">
                 {SEGMENTS.map((segment) => {
                   const count = segmentCount(segment.key);
                   const pressed = segment.key === activeFilter;

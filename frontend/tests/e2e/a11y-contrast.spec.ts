@@ -347,25 +347,21 @@ for (const mode of MODES) {
       // fermées des grilles planning (`WeekGrid`) : sur `bg-muted` opaque, et sur `bg-muted/40` sur card.
       out["text-muted-foreground on bg-muted"] = ratio(of("text-muted-foreground", "color"), of("bg-muted", "backgroundColor"));
       out["text-muted-foreground on bg-muted/40 (over card)"] = ratio(of("text-muted-foreground", "color"), composite("bg-muted/40", card));
-      // A11Y — les CARTES de conflit de l'onglet Conflits (`ConflictLine`, `TONE_CLASSES`) portent leur
-      // texte (`text-foreground`) et leur phrase (`text-muted-foreground`) sur des teintes SEMI-TRANSPARENTES
-      // selon la gravité : `bg-destructive/5` (rouge), `bg-warning/5` (ambre), `bg-muted/30` (neutre),
-      // compositées sur `bg-background` (liste de l'onglet) OU `bg-card` (ConflictRadar/WeekendGrid).
-      // L'onglet Conflits n'est PAS visité par axe (il faudrait y provisionner une vraie collision) → on
-      // verrouille ses paires composites ici, dans les deux thèmes. cf. TONE_CLASSES (ConflictLine.tsx).
-      const conflictTints: [string, string][] = [
-        ["destructive/5", "bg-destructive/5"],
-        ["warning/5", "bg-warning/5"],
-        ["muted/30", "bg-muted/30"],
-      ];
-      const conflictMutedFg = of("text-muted-foreground", "color");
-      for (const [tintName, tintClass] of conflictTints) {
-        const overBg = composite(tintClass, bg);
-        const overCard = composite(tintClass, card);
-        out[`text-foreground on bg-${tintName} (conflict card over background)`] = ratio(fg, overBg);
-        out[`text-foreground on bg-${tintName} (conflict card over card)`] = ratio(fg, overCard);
-        out[`text-muted-foreground on bg-${tintName} (conflict card over background)`] = ratio(conflictMutedFg, overBg);
-        out[`text-muted-foreground on bg-${tintName} (conflict card over card)`] = ratio(conflictMutedFg, overCard);
+      // P4-265 — les SURFACES OPAQUES teintées (`--surface-*`) : fond des bandeaux, tuiles et lignes
+      // posés sur le fond à motifs du body (NoticeBanner, `ConflictLine` `TONE_CLASSES`, l'alerte de
+      // `FbiDeadlineCard`, la tuile d'offre courante de `ClubPage`…). Contrairement aux ex-teintes
+      // `bg-<ton>/NN`, elles sont OPAQUES (`color-mix … , var(--card)`), donc on les mesure
+      // DIRECTEMENT — plus de compositing sur background/card. Deux textes y vivent : `text-foreground`
+      // (texte principal — jamais `text-accent`/`text-warning`, qui varient avec le club et tombent
+      // sous AA), et `text-muted-foreground` (la SOUS-LIGNE secondaire d'un bandeau : ConflictLine,
+      // ToReplaceList, LeagueValidation, CockpitPage) — qui doit tenir AA elle aussi (c'est ELLE qui a
+      // fait descendre `--surface-warning` sombre de 16 % à 12 %). Aucun de ces écrans n'est peint par
+      // axe ici → paires verrouillées dans les deux thèmes. cf. `--surface-*` (index.css).
+      const surfaceMutedFg = of("text-muted-foreground", "color");
+      for (const tone of ["warning", "accent", "destructive", "muted"]) {
+        const surface = of(`bg-surface-${tone}`, "backgroundColor");
+        out[`text-foreground on bg-surface-${tone}`] = ratio(fg, surface);
+        out[`text-muted-foreground on bg-surface-${tone}`] = ratio(surfaceMutedFg, surface);
       }
       // P4-181 — `text-destructive` en TEXTE vit sur des teintes `bg-destructive/10|15` (badge de
       // contrainte `PeriodStructure`, badge `ReconciliationPanel`, jour sélectionné `CoachWishForm`,

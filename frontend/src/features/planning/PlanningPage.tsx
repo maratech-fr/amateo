@@ -17,6 +17,7 @@ import { useCredits } from "@/shared/credits/useCredits";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
 
 import { type Slot } from "./api";
@@ -638,11 +639,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
             structureDiverged,
             readOnly: isReadOnly,
           });
-        return null === stale ? null : (
-          <p className="mb-4 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">
-            {stale}
-          </p>
-        );
+        return null === stale ? null : <NoticeBanner tone="warning" className="mb-4" message={stale} />;
       })()}
 
 
@@ -783,7 +780,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
               dessous les compromis NOMMÉS du dernier geste écrit. Le close efface les deux ; le
               geste suivant / le changement de version les remplacent. */}
           {null !== evictionNotice || null !== compromiseNotice ? (
-            <div className="mb-4 flex flex-col gap-2 rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-sm" role="status">
+            <div className="mb-4 flex flex-col gap-2 rounded-md border border-accent/40 bg-surface-accent px-3 py-2 text-sm" role="status">
               <div className="flex flex-wrap items-center gap-3">
                 {null !== evictionNotice ? (
                   <>
@@ -819,18 +816,22 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
               séances restent affichées ET exportées, mais elles ne décrivent plus la
               période telle qu'elle est réglée. On le dit plutôt que de les escamoter. */}
           {!showGenerationWaiting && staleVenueSessions > 0 ? (
-            <p className="mb-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">
-              {staleVenueSessions} séance(s) de ce planning sont placées dans un gymnase désactivé depuis pour cette période — régénérez-la pour qu'elles en sortent.
-            </p>
+            <NoticeBanner
+              tone="warning"
+              className="mb-3"
+              message={`${staleVenueSessions} séance(s) de ce planning sont placées dans un gymnase désactivé depuis pour cette période — régénérez-la pour qu'elles en sortent.`}
+            />
           ) : null}
 
           {/* Génération en échec : la grille ne montre que les RÉSERVATIONS (pseudo-créneaux
               lecture seule) — on le dit, sinon elles passeraient pour un planning généré.
               Et l'export ne les contient pas : il rend les créneaux du serveur (§7.2 pt 3). */}
           {!showGenerationWaiting && isFailed && slots.length > 0 && 0 === generatedSlots.length ? (
-            <p className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-foreground">
-              La génération a échoué : aucun créneau n'a été placé. Seuls vos créneaux réservés sont affichés — ils restent acquis quoi qu'il arrive. Les exports sont vides pour ce planning.
-            </p>
+            <NoticeBanner
+              tone="destructive"
+              className="mb-3"
+              message="La génération a échoué : aucun créneau n'a été placé. Seuls vos créneaux réservés sont affichés — ils restent acquis quoi qu'il arrive. Les exports sont vides pour ce planning."
+            />
           ) : null}
 
           {showGenerationWaiting ? (

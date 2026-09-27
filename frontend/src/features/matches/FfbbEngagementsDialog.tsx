@@ -4,6 +4,7 @@ import { useState } from "react";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Modal } from "@/shared/components/ui/modal";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { TeamSelect } from "@/shared/components/ui/team-select";
 
@@ -89,9 +90,7 @@ export function FfbbEngagementsDialog({ teams, tiers, onClose }: FfbbEngagements
             <Spinner />
           </div>
         ) : engagements.isError ? (
-          <p className="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-sm">
-            FFBB indisponible — réessayez plus tard.
-          </p>
+          <NoticeBanner tone="destructive" message="FFBB indisponible — réessayez plus tard." />
         ) : 0 === rows.length ? (
           <p className="text-sm text-muted-foreground">
             Aucun engagement trouvé pour cette saison (les poules sortent généralement après le 20 juillet).

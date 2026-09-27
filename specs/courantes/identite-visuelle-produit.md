@@ -1,16 +1,18 @@
 # Identité visuelle produit — la base est le produit, l'accent est le club
 
-Last verified @ 2026-09-26 (passe « présent » — dates/ids de PR retirés des titres de section,
-`Décision 1/2/3` gardés car cités depuis `roadmap.md` P5-24 et `etat-des-lieux.md` §3). Confronté
-au code cette passe : `frontend/src/shared/lib/product.ts` (`PRODUCT_ACCENT = "#46AFAC"`),
-`frontend/src/index.css` (règles `body`/`.dark body` sur `fond-{light,dark}.svg`),
-`frontend/src/test/brandBackground.test.ts` (purge `c2pa`/`<metadata`/rect de sol). Non re-vérifié
-cette passe (reformulé au présent tel quel) : `useApplyClubTheme.ts`, `color.ts`
+Last verified @ 2026-09-27 (P4-265 — surfaces opaques). Confronté au code cette passe :
+`frontend/src/index.css` (jetons `--surface-warning|accent|destructive|muted`, `color-mix` clair
+10/10/8/60 %, sombre 12/12/12/60 %, `--color-surface-*` exposés à Tailwind), `frontend/src/shared/
+components/ui/notice-banner.tsx` (remplace `WarningPanel`, fond `bg-surface-<ton>`, texte
+`text-foreground`), `frontend/src/shared/components/ui/accordion.tsx` (`bg-card` + `border-l-2`
+accent à l'ouverture), `frontend/src/shared/components/ui/tabs.tsx` (peau `app` : barre `bg-card`),
+`frontend/src/test/surfaceOpacityGuard.test.ts`. Non re-vérifié cette passe (reformulé au présent
+tel quel lors de la passe 2026-09-26) : `useApplyClubTheme.ts`, `color.ts`
 (`SURFACES`/`accentForMode`/`accentHoverForMode`), `accentTokenParity.test.ts`, `ClubPage.tsx`
 (`DEFAULT_ACCENT`), `brand-icon.tsx`, `favicon.svg`, `brand-mark.tsx`, `system-screen.tsx`,
 `AdminAuthLayout.tsx` — historique des vérifications précédentes : `git log -p --follow`. Les
-ratios de contraste cités plus bas ne sont pas recalculés cette passe (le fond n'y touche pas —
-c'est un décor, pas un jeton de couleur de texte).
+ratios de contraste des jetons `--surface-*` sont ceux consignés en commentaire dans `index.css`
+(non recalculés indépendamment cette passe).
 
 > Ce fichier est le pendant **PRODUIT** de [`identite-visuelle-club.md`](identite-visuelle-club.md)
 > (qui reste la maison du **CLUB** : logo, upload, palette extraite, écran « Gestion du club »).
@@ -177,6 +179,21 @@ FIGÉ**.
   `bg-background` sur sa racine — décor déjà chargé (mini-grille, ballon, terrain filigrané), un
   second fond dessous l'aurait surchargé. `system-screen` (écrans système) reste nu, inchangé —
   hors lot. La console superadmin n'a pas de fond (UXC-12, § « Ce qui ne bouge pas »).
+  **Règle P4-265 (2026-09-27) : toute surface qui porte du texte est opaque** — `bg-card` (défaut,
+  accordéon, barre d'onglets peau `app`) ou un jeton teinté `--surface-warning|accent|destructive|
+  muted` (`frontend/src/index.css` : `color-mix(in oklab, var(--warning|accent|destructive|muted)
+  10|10|8|60%, var(--card))` en clair, `12|12|12|60%` en sombre, ratios AA du texte posé consignés
+  en commentaire à côté des jetons) ; une teinte semi-transparente `bg-<jeton>/NN` n'est **jamais**
+  le fond au repos d'une surface posée sur le motif — deux `background-color` Tailwind ne se
+  composent pas, et `/NN` seul laisse le fond à motifs traverser. La surbrillance (survol, focus)
+  reste une teinte `/NN` normale, préfixée (`hover:bg-accent/10`) : seul le fond AU REPOS devient
+  plein. Le texte posé sur une surface teintée reste `text-foreground` (jamais `text-warning`/
+  `text-accent`, qui tombent sous l'AA sur leur propre teinte). Primitive partagée :
+  `NoticeBanner` (`frontend/src/shared/components/ui/notice-banner.tsx`, `frontend/docs/
+  frontend-components.md` §3) remplace l'ancien `WarningPanel`. Garde statique :
+  `frontend/src/test/surfaceOpacityGuard.test.ts` (grep des classes sur `shared/components/ui/
+  *.tsx`, interdit `bg-<jeton>/NN` en fond au repos hors variante préfixée, ≤ 5 exemptions
+  nominatives).
 - **Exception `#hex` étendue** : la règle « jamais un `#hex` » (`.claude/rules/frontend.md`)
   admettait déjà `BrandIcon` ; les couleurs en dur **à l'intérieur** de ces SVG d'asset statiques
   (`public/brand/fond-*.svg`, `landing/assets/brand/fond.svg` — comme `favicon.svg` avant eux)

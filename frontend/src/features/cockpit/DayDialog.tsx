@@ -20,7 +20,7 @@ import { useWorkingSeason } from "@/shared/session/queries";
 import { clampRangeToSeason, frDateShort, groupCoverageSlots, periodWeeksToAdjust, todayISO, weeksCovering } from "./lib/date";
 import { seasonLockTitle, useSocleValidated } from "./lib/socle";
 import { useWeekAdapt } from "./lib/useWeekAdapt";
-import { WarningPanel } from "@/shared/components/ui/warning-panel";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { WindowAlreadyPlannedNotice } from "./WindowAlreadyPlannedNotice";
 import { entryIcon, entryLabel, holidayIcon, isHolidayAnchor, isHolidayWeekChild } from "./lib/markers";
 import { useCalendarEntries, useCreateCutoff, useCreateEvent, useCreateVenueClosure, useDeleteEntry, useRedateEntry, useRedatePreview, useSchedulePlanForEntry, useSchedulePlans } from "./queries";
@@ -176,12 +176,15 @@ function DayList({ entries, holiday, publicHoliday, onCreate, onRedate, onClose 
   return (
     <div className="space-y-4">
       {publicHoliday ? (
-        <p className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
-          <CalendarOff className="size-4 shrink-0 text-destructive" />
-          <span>
-            <span className="font-medium">Jour férié</span> — {publicHoliday.label}
-          </span>
-        </p>
+        <NoticeBanner
+          tone="destructive"
+          icon={<CalendarOff className="size-4 text-destructive" />}
+          message={
+            <span>
+              <span className="font-medium">Jour férié</span> — {publicHoliday.label}
+            </span>
+          }
+        />
       ) : null}
 
       {holiday ? <HolidayBlock holiday={holiday} entries={entries} onClose={onClose} /> : null}
@@ -434,7 +437,7 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
   const requestAdapt = (target: CalendarEntry) => requestWeekAdapt(target, { alreadySplit: weekChildren.length > 0 });
 
   return (
-    <WarningPanel
+    <NoticeBanner
       /* Same season emoji as the calendar (🎄/🎃/…) — decorative, the text names it. */
       icon={<span className="text-base">{holidayIcon(holiday)}</span>}
       message={
@@ -634,7 +637,7 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
           onOpenConflict={adapt}
         />
       ) : null}
-    </WarningPanel>
+    </NoticeBanner>
   );
 }
 
@@ -895,7 +898,7 @@ function effectIcon(kind: RedateEffectKind): ReactNode {
 /**
  * La liste chronologique des effets, servie TELLE QUELLE (aucun compte ni identifiant recalculé
  * côté front). Quand un effet SUPPRIME un plan (absorb/vanish), toute la liste est encadrée par le
- * `WarningPanel` (ambre = « attention, des plans seront ajustés » — jamais la couleur destructive
+ * `NoticeBanner` (ambre = « attention, des plans seront ajustés » — jamais la couleur destructive
  * pour des FAITS) ; sinon un cadre neutre.
  */
 function RedateEffectsList({ effects }: { effects: RedateEffect[] }) {
@@ -913,7 +916,7 @@ function RedateEffectsList({ effects }: { effects: RedateEffect[] }) {
     </ul>
   );
   return hasDeletion ? (
-    <WarningPanel message={<span className="font-medium">Effets de ce re-datage</span>}>{list}</WarningPanel>
+    <NoticeBanner message={<span className="font-medium">Effets de ce re-datage</span>}>{list}</NoticeBanner>
   ) : (
     <div className="rounded-md border border-border bg-muted/40 px-3 py-2">{list}</div>
   );
@@ -1034,7 +1037,7 @@ function RedateWithPreviewForm({ entry, onBack, onDone }: { entry: CalendarEntry
     <FormShell onBack={onBack}>
       <p className="text-xs text-muted-foreground">Déplacez la fenêtre de cette indisponibilité découpée. Voyez d'abord les effets, puis confirmez.</p>
       <DateRangeFields startDate={startDate} endDate={endDate} onStart={changeStart} onEnd={changeEnd} minStart={minStart} max={workingSeason?.endDate} />
-      {null !== staleWarning ? <WarningPanel message={staleWarning} /> : null}
+      {null !== staleWarning ? <NoticeBanner message={staleWarning} /> : null}
       {/* Région live PRÉSENTE dès le montage (vide au départ), aria-busy pendant le chargement ; jamais role="alert". */}
       <div aria-live="polite" aria-busy={preview.isPending} className="space-y-2">
         {null !== previewError ? <p className="text-sm text-destructive">{previewError}</p> : null}

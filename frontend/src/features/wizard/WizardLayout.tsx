@@ -396,7 +396,7 @@ export function WizardPage() {
         // ⚠ Le titre porte DÉJÀ le repère de semaine : `cockpit/queries.ts:349` nomme une
         // semaine enfant « {mère} — semaine du {lundi} ». Rien à ajouter ici, sous peine de
         // l'écrire deux fois.
-        <div className="mb-4 flex flex-col gap-1 rounded-lg border border-accent/40 bg-accent/10 px-4 py-2 text-sm">
+        <div className="mb-4 flex flex-col gap-1 rounded-lg border border-accent/40 bg-surface-accent px-4 py-2 text-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="flex items-center gap-2">
             <CalendarClock className="size-4 text-accent" />
