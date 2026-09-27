@@ -1,6 +1,6 @@
 # Émission des contraintes (frontend) + alignement 3 couches
 
-Last verified @ 2026-09-26 (`documentation-update`, rotation de fraîcheur). Re-confronté au code,
+Last verified @ 2026-09-27 (`documentation-update`, rotation de fraîcheur). Re-confronté au code,
 4 affirmations toujours vraies : `resolveTravelRuleIntensity`
 (`backend/src/Service/ScheduleConstraintBuilder.php:964`, repli `TeamLinkIntensity::PREFERRED`)
 toujours le seul point de résolution de l'intensité `travelTime` ✓ ; `forcedDays` toujours câblé
@@ -9,7 +9,7 @@ liste blanche, `frontend/src/features/wizard/steps/ConstraintsStep.tsx:374`,
 `engine/app/solver/constraints/targeting.py:74`) ✓ ; la famille `FACILITY_CAPACITY` toujours
 retirée du moteur, le commentaire au passé toujours à `engine/app/main.py:446-449` ✓ ; le mode
 « préfère » toujours sans sélecteur de règle (`ConstraintStateProcessor::assertPreferredVenueIsNotMandatory`,
-`backend/src/State/Processor/ConstraintStateProcessor.php:76,144`) ✓ ; le contrat backend⇄engine
+`backend/src/State/Processor/ConstraintStateProcessor.php:76,144,174`) ✓ ; le contrat backend⇄engine
 cité nulle part dans ce fichier — pas de version à recaler. Le reste de la table §2 n'a pas été
 rejoué ligne à ligne cette passe.
 

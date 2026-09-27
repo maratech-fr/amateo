@@ -14,6 +14,7 @@ import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { FichePage } from "@/shared/components/ui/fiche-page";
 import { Input } from "@/shared/components/ui/input";
+import { PageHeader } from "@/shared/components/ui/page-header";
 import { FullPageSpinner, Spinner } from "@/shared/components/ui/spinner";
 import { useCredits } from "@/shared/credits/useCredits";
 import { readableForeground } from "@/shared/lib/color";
@@ -674,8 +675,7 @@ function ClubHub({ me }: { me: MeResponse }) {
   const openInformations = "informations" === new URLSearchParams(window.location.search).get("section");
   return (
     <FichePage>
-      <h1 className="mb-1 border-l-[3px] border-accent pl-3 text-xl font-semibold">Gestion du club</h1>
-      <p className="mb-4 text-sm text-muted-foreground">{me.club?.name ?? "—"}</p>
+      <PageHeader className="mb-4" title="Gestion du club" screen="/club" subtitle={me.club?.name ?? "—"} />
       <div className="space-y-3">
         {isManagement ? (
           <AccordionSection title="Offre" defaultOpen>

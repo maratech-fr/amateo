@@ -4,7 +4,7 @@ import { NavLink, Outlet, useNavigation } from "react-router";
 
 import { useLogout } from "@/features/auth/queries";
 import { useMe } from "@/shared/session/queries";
-import { FeedbackDialog } from "@/features/feedback/FeedbackDialog";
+import { FeedbackDialog } from "@/shared/feedback/FeedbackDialog";
 import { WhatsNewModal } from "@/features/release-notes/WhatsNewModal";
 import { BrandIcon } from "@/shared/components/ui/brand-icon";
 import { Button } from "@/shared/components/ui/button";

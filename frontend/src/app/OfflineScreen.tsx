@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from "react";
 
-import { FeedbackDialog } from "@/features/feedback/FeedbackDialog";
+import { FeedbackDialog } from "@/shared/feedback/FeedbackDialog";
 import { SystemScreen } from "@/shared/components/ui/system-screen";
 
 /**

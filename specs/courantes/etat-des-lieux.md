@@ -535,6 +535,7 @@ le front lit, il ne re-dérive plus les règles de refus, repli fail-closed si l
 
 | Date | Id | Sujet | Documenté dans |
 |------|----|-------|----------------|
+| 2026-09-27 | — | en-tête de page commun : trait, titre, « Signaler » visible sur tous les écrans principaux (module feedback dans shared/) | [`frontend/docs/frontend-components.md`](../../frontend/docs/frontend-components.md) |
 | 2026-09-27 | — | « validé ligue » proposé partout où le gestionnaire regarde (cockpit, calendrier) — championnat commencé = échéance dépassée OU premier match joué, amicaux exclus du lot et validés d'office une fois passés (amende le lot O, aussi RMM-6) | [`module-matchs.md`](module-matchs.md) § « Validé ligue » en lot · §4 « Échéances de saisie ligue/comité » · décision §2 |
 | 2026-09-27 | — | passe de tests manuels : 10 correctifs (tuile FBI, focus conflit, extérieurs lecture seule + trajet dessiné, péremption, champs opaques, recherche FFBB…) | [`module-matchs.md`](module-matchs.md) |
 | 2026-09-27 | P4-265 | toute surface qui porte du texte est opaque sur le fond à motifs (jetons --surface-*, NoticeBanner, onglets et accordéons opaques) | [`identite-visuelle-produit.md`](identite-visuelle-produit.md) |

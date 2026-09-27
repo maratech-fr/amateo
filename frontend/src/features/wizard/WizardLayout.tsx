@@ -11,7 +11,7 @@ import { frDateNumeric } from "@/features/cockpit/lib/date";
 import { CoachWishesModal } from "@/features/coach-wishes/CoachWishesModal";
 import { canOpenWishes, wishesMotherId, wishesWeekFilter } from "@/features/coach-wishes/wishesTarget";
 import { DeletePlanningButton } from "@/features/cockpit/DeletePlanningButton";
-import { FeedbackButton } from "@/features/feedback/FeedbackButton";
+import { FeedbackButton } from "@/shared/feedback/FeedbackButton";
 import { listSchedules } from "@/features/planning/api";
 import { useSchedules } from "@/features/planning/queries";
 import { Button } from "@/shared/components/ui/button";

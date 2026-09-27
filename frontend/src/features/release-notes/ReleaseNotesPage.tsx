@@ -1,6 +1,7 @@
 import { Spinner } from "@/shared/components/ui/spinner";
 import { FichePage } from "@/shared/components/ui/fiche-page";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
+import { PageHeader } from "@/shared/components/ui/page-header";
 
 import { useReleaseNotes } from "./queries";
 
@@ -14,10 +15,7 @@ export function ReleaseNotesPage() {
 
   return (
     <FichePage className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Nouveautés</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Ce qui a changé récemment dans l'application.</p>
-      </div>
+      <PageHeader title="Nouveautés" screen="/nouveautes" subtitle="Ce qui a changé récemment dans l'application." />
 
       {isPending ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground" role="status">

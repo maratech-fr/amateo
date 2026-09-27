@@ -2,6 +2,7 @@ import { Lock } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
 
+import { PageHeader } from "@/shared/components/ui/page-header";
 import { cn } from "@/shared/lib/utils";
 import { useSocleValidated } from "@/shared/lib/socle";
 
@@ -72,11 +73,17 @@ export function MatchesLayout() {
   // (état cockpit 2) — même condition que le SocleGuard côté serveur. Le garde
   // couvre LES DEUX espaces puisqu'il enveloppe l'Outlet.
   if (!socleValidated) {
+    // Même en-tête « Matchs » (trait + Signaler) que le module déverrouillé : le fondateur doit
+    // pouvoir remonter une erreur même quand les matchs sont verrouillés. Le message de verrou
+    // reste une carte centrée, sous l'en-tête.
     return (
-      <div className="mx-auto max-w-md py-16 text-center">
-        <Lock className="mx-auto mb-3 size-8 text-accent" />
-        <h1 className="mb-1 text-lg font-semibold">Matchs verrouillés</h1>
-        <p className="text-sm text-muted-foreground">Validez d'abord votre planning principal (accueil → Ouvrir) pour débloquer les matchs.</p>
+      <div className="flex flex-col gap-4">
+        <PageHeader title="Matchs" screen={pathname} />
+        <div className="mx-auto max-w-md py-10 text-center">
+          <Lock className="mx-auto mb-3 size-8 text-accent" />
+          <h2 className="mb-1 text-lg font-semibold">Matchs verrouillés</h2>
+          <p className="text-sm text-muted-foreground">Validez d'abord votre planning principal (accueil → Ouvrir) pour débloquer les matchs.</p>
+        </div>
       </div>
     );
   }
@@ -89,7 +96,10 @@ export function MatchesLayout() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="border-l-[3px] border-accent pl-3 text-lg font-semibold">Matchs</h1>
+      {/* L'en-tête « Matchs » porte le bouton « Signaler » (contexte = la route de l'onglet
+          courant) — un seul, en tête du module, à la place du bouton discret d'antan qui ne
+          vivait que sur le Calendrier. */}
+      <PageHeader title="Matchs" screen={pathname} />
       {/* Nav défilable horizontalement (pas de `flex-wrap`, pas de `scrollbar-hide`) : à l'étroit
           les onglets restent sur une ligne et l'actif est ramené en vue (`scrollIntoView` ci-dessus). */}
       <nav ref={navRef} aria-label="Espaces matchs" className="flex gap-4 overflow-x-auto rounded-lg border border-border bg-card px-3 sm:gap-6">
