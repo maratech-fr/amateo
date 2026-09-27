@@ -238,16 +238,21 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
       return;
     }
     if (null !== clicked && "AWAY" === clicked.homeAway) {
-      // Correctif 3 — un extérieur SAISI À LA MAIN reste éditable ; un extérieur IMPORTÉ
-      // (FBI/FFBB) s'ouvre en LECTURE SEULE (la fédération en est la source).
-      if (isEditableAway(clicked)) {
-        onEditFixture(clicked);
-      } else {
-        setAwayReadOnly(clicked);
-      }
+      openAway(clicked);
       return;
     }
     setSelectedFixtureId(fixtureId);
+  }
+
+  // Correctif 3 / 3b — un extérieur SAISI À LA MAIN reste éditable ; un extérieur IMPORTÉ
+  // (FBI/FFBB) s'ouvre en LECTURE SEULE (la fédération en est la source). MÊME logique pour le
+  // clic grille ET le crayon de la bande « À l'extérieur » : une seule maison, jamais deux chemins.
+  function openAway(fixture: Fixture): void {
+    if (isEditableAway(fixture)) {
+      onEditFixture(fixture);
+    } else {
+      setAwayReadOnly(fixture);
+    }
   }
 
   const panelBlock =
@@ -378,7 +383,7 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
             showHabits={showGhosts && grid.cells.some((c) => c.ghost)}
           />
         </div>
-        <AwayList fixtures={weekendFixtures} teams={teamsMap} habits={habits} coachRoles={coachRoles} onEdit={onEditFixture} onDelete={(fixture) => deleteFixture.mutate(fixture.id)} />
+        <AwayList fixtures={weekendFixtures} teams={teamsMap} habits={habits} coachRoles={coachRoles} onEdit={openAway} onDelete={(fixture) => deleteFixture.mutate(fixture.id)} />
         {radarLoaded ? <ConflictRadar conflicts={radarConflicts} teams={teamsMap} coaches={coachesMap} venues={venuesMap} newFingerprints={newFingerprints} onFocusConflict={onFocusConflict} /> : null}
       </div>
       {null !== awayReadOnly ? (

@@ -188,6 +188,29 @@ describe("WeekWorkbench — clic sur un extérieur (correctif 3, lecture seule /
   });
 });
 
+describe("WeekWorkbench — crayon de la bande extérieurs (correctif 3b)", () => {
+  it("bande : extérieur IMPORTÉ → « Voir » ouvre la fiche LECTURE SEULE, jamais l'édition", async () => {
+    const away = fx({ id: "fx-imp", teamId: "team-a", opponentLabel: "AdvImport", homeAway: "AWAY", status: "UNPLACED", venueId: null, kickoffTime: null, externalRef: "999", placementSource: null });
+    const onEdit = vi.fn();
+    const user = userEvent.setup();
+    renderWorkbench({ weekendFixtures: [away], allFixtures: [away], onEditFixture: onEdit });
+    // Le bouton de la BANDE (pas la cellule de grille) : son libellé dit « Voir », l'action ouvre la fiche.
+    await user.click(await screen.findByRole("button", { name: "Voir le match contre AdvImport" }));
+    expect(await screen.findByText("Match à l'extérieur")).toBeInTheDocument();
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+
+  it("bande : extérieur SAISI À LA MAIN → « Modifier » ouvre l'édition, pas la fiche", async () => {
+    const away = fx({ id: "fx-man", teamId: "team-a", opponentLabel: "AdvManuel", homeAway: "AWAY", status: "UNPLACED", venueId: null, kickoffTime: null, externalRef: null, ffbbRencontreId: null, placementSource: null });
+    const onEdit = vi.fn();
+    const user = userEvent.setup();
+    renderWorkbench({ weekendFixtures: [away], allFixtures: [away], onEditFixture: onEdit });
+    await user.click(await screen.findByRole("button", { name: "Modifier le match contre AdvManuel" }));
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Match à l'extérieur")).not.toBeInTheDocument();
+  });
+});
+
 describe("WeekWorkbench — placement (« Placer » / « Déplacer »)", () => {
   it("domicile PLACÉ + heure changée → moveFixture, recadre selectedWeekend, rend le focus à la cellule", async () => {
     const sel = fx({ id: "fx-sel", teamId: "team-a", opponentLabel: "AdvSel", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00", placementSource: "MANUAL" });

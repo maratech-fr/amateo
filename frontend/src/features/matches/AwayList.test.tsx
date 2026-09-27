@@ -76,6 +76,24 @@ describe("AwayList (P1-4 PR E2 — l'extérieur visible)", () => {
     expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: "fx-away" }));
   });
 
+  // ── Correctif 3b — un extérieur IMPORTÉ ouvre en LECTURE SEULE (« Voir »), pas en édition ─────
+  it("un extérieur IMPORTÉ (externalRef) porte « Voir » (œil), jamais « Modifier » (crayon)", async () => {
+    const user = userEvent.setup();
+    const onEdit = vi.fn();
+    render(<AwayList fixtures={[away({ externalRef: "777" })]} teams={teams} habits={[]} onEdit={onEdit} onDelete={vi.fn()} />);
+
+    // Un extérieur fédéral n'est pas modifiable : le pictogramme dit « Voir », pas « Modifier ».
+    expect(screen.queryByRole("button", { name: "Modifier le match contre Grenoble" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Voir le match contre Grenoble" }));
+    expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ id: "fx-away" }));
+  });
+
+  it("un extérieur SAISI À LA MAIN garde « Modifier » (crayon)", () => {
+    render(<AwayList fixtures={[away({ externalRef: null, ffbbRencontreId: null })]} teams={teams} habits={[]} onEdit={vi.fn()} onDelete={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Modifier le match contre Grenoble" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Voir le match contre Grenoble" })).not.toBeInTheDocument();
+  });
+
   // ── PR-2a — variante LECTURE SEULE (Consulter) : sans onEdit/onDelete, aucun bouton ─────
   it("sans onEdit/onDelete (lecture seule), n'affiche NI le crayon NI la corbeille", () => {
     render(<AwayList fixtures={[away()]} teams={teams} habits={[]} />);
