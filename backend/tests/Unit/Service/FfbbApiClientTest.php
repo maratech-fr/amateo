@@ -78,6 +78,9 @@ final class FfbbApiClientTest extends TestCase
         self::assertSame('ffbbserver_salles', $query['indexUid']);
         self::assertSame('ASTROBALLE', $query['q']);
         self::assertArrayNotHasKey('filter', $query, 'aucun filtre — le nom ne s\'interpole jamais');
+        // « GYMNASE GUILLOUX » ne doit plus ramener Gutenberg/Jean Brunel : Meilisearch exige TOUS
+        // les mots (matchingStrategy=all, accepté par la clé search-only, sondé 2026-09-27 : 3010 → 2).
+        self::assertSame('all', $query['matchingStrategy'] ?? null, 'la recherche de salle par nom exige TOUS les mots (matchingStrategy=all)');
     }
 
     public function testSearchRencontresKeepsOnlyHitsCarryingTheClubCode(): void
