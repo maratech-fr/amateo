@@ -55,6 +55,9 @@ vi.mock("@/features/matches/queries", () => ({
   useDeleteVenueUnavailability: () => ({ mutate: vi.fn(), isPending: false }),
   // RMM-6 PR-3 — la tuile échéances FBI consomme cet outlook ; muet dans ces états.
   useDeadlineOutlook: () => ({ data: undefined }),
+  // Lot O — la tuile lit aussi « validé ligue » (gestionnaire) et ouvre la confirmation.
+  useLeagueValidationOutlook: () => ({ data: undefined }),
+  useConfirmLeagueValidatedFixtures: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 function renderCockpit() {

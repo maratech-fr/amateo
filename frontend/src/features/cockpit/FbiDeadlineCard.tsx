@@ -1,11 +1,16 @@
-import { AlertTriangle, ArrowRight, CalendarClock, ClipboardList } from "lucide-react";
+import { AlertTriangle, ArrowRight, BadgeCheck, CalendarClock, ClipboardList } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router";
 
-import { useDeadlineOutlook } from "@/features/matches/queries";
+import { useDeadlineOutlook, useLeagueValidationOutlook } from "@/features/matches/queries";
 import { daysUntilDeadline, frShortDate } from "@/features/matches/lib/deadlineLabel";
+import { LEAGUE_VALIDATION_CONFIRM_LABEL } from "@/features/matches/lib/leagueValidation";
+import { LeagueValidationConfirmDialog } from "@/features/matches/LeagueValidation";
 import { visitDeltaSegments } from "@/features/matches/lib/visitDeltaSegments";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/lib/utils";
+import { isManagementRole } from "@/shared/lib/roles";
+import { useMe } from "@/shared/session/queries";
 
 import { todayISO } from "./lib/date";
 
@@ -21,8 +26,10 @@ import { todayISO } from "./lib/date";
  *
  * Trois régimes : (1) une échéance en fenêtre → ton ACCENT (rappel calme), escaladé en
  * WARNING si dépassée, avec la ligne globale au-dessus des échéances ; (2) hors fenêtre
- * mais du travail (`fbiTodo` > 0) → ton NEUTRE, la seule ligne globale ; (3) rien à faire
- * ET aucune fenêtre → `null` (le cockpit reste muet). Chaque échéance distingue « à placer »
+ * mais du travail (`fbiTodo` > 0) → ton NEUTRE, la seule ligne globale ; (3) rien à faire,
+ * aucune fenêtre ET rien à confirmer « validé ligue » → `null` (le cockpit reste muet).
+ * Une ligne « N à confirmer « validé ligue » » + son bouton (ouvre la confirmation chiffrée
+ * partagée) n'apparaissent QUE pour un gestionnaire (`toConfirmCount` = BACKEND). Chaque échéance distingue « à placer »
  * (au calendrier) et « à saisir dans FBI ». Le bouton mène à la liste « FBI — à faire »
  * (`/matchs?fbi=1`) SEULEMENT si cette liste a du contenu (à saisir/corriger) ; sinon tout est
  * encore à placer et il renvoie au calendrier (`/matchs`) — sans quoi il ouvrait une modale VIDE
@@ -30,15 +37,25 @@ import { todayISO } from "./lib/date";
  */
 export function FbiDeadlineCard() {
   const { data } = useDeadlineOutlook();
+  const { data: me } = useMe();
+  const canManage = isManagementRole(me?.role);
+  // La lecture détaillée « validé ligue » n'est chargée que pour un gestionnaire (la route
+  // est en 403 pour un Membre) : elle alimente la confirmation chiffrée.
+  const leagueOutlook = useLeagueValidationOutlook(canManage);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const today = todayISO();
 
   const windows = (data?.windows ?? []).filter((w) => w.withinWindow);
   const toEnter = data?.fbiTodo?.toEnter ?? 0;
   const toCorrect = data?.fbiTodo?.toCorrect ?? 0;
   const total = toEnter + toCorrect;
+  // « Validé ligue » à confirmer : compte BACKEND (`toConfirmCount`), bouton réservé au
+  // gestionnaire (un Membre ne fait jamais écrire la base).
+  const toConfirm = data?.toConfirmCount ?? 0;
+  const canConfirm = canManage && toConfirm > 0;
 
-  // (3) Rien à faire ET aucune fenêtre → muet.
-  if (0 === windows.length && 0 === total) {
+  // (3) Rien à faire ET aucune fenêtre ET rien à confirmer → muet.
+  if (0 === windows.length && 0 === total && !canConfirm) {
     return null;
   }
 
@@ -100,6 +117,18 @@ export function FbiDeadlineCard() {
         </p>
       ) : null}
 
+      {canConfirm ? (
+        <div className="mt-3 border-t border-border/60 pt-2">
+          <p className="font-medium">
+            {toConfirm} match{toConfirm > 1 ? "s" : ""} à confirmer « validé ligue »
+          </p>
+          <Button variant="outline" size="sm" className="mt-2" onClick={() => setConfirmOpen(true)}>
+            <BadgeCheck className="size-4" aria-hidden="true" />
+            {LEAGUE_VALIDATION_CONFIRM_LABEL}
+          </Button>
+        </div>
+      ) : null}
+
       <Button variant="outline" size="sm" className="mt-3" asChild>
         {fbiListHasContent ? (
           <Link to="/matchs?fbi=1">
@@ -113,6 +142,10 @@ export function FbiDeadlineCard() {
           </Link>
         )}
       </Button>
+
+      {canConfirm && undefined !== leagueOutlook.data ? (
+        <LeagueValidationConfirmDialog open={confirmOpen} outlook={leagueOutlook.data} onClose={() => setConfirmOpen(false)} />
+      ) : null}
     </section>
   );
 }

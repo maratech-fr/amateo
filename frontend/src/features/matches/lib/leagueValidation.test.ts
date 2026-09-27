@@ -1,22 +1,31 @@
 import { describe, expect, it } from "vitest";
 
-import type { LeagueToTreatFixture } from "../api";
+import type { LeagueToTreatFixture, MaturedCompetition } from "../api";
 import { ENTRY_DEADLINES_PATH, REVIEW_QUEUE_ANCHOR, leagueValidationIntro, maturedLabel, reasonLabel, toTreatLabel } from "./leagueValidation";
 
-describe("LeagueValidation — vocabulaire piloté par l'échéance (lot O)", () => {
+describe("LeagueValidation — vocabulaire piloté par le démarrage du championnat (lot O)", () => {
   it("l'intro annonce le total ET ce que la validation change, accordée", () => {
     const one = leagueValidationIntro(1);
-    expect(one).toMatch(/^1 rencontre de championnats échus porte déjà/);
+    expect(one).toMatch(/^1 rencontre de championnats commencés porte déjà/);
     expect(one).toMatch(/ancres/);
     expect(one).toMatch(/Refuser ne change rien/);
-    expect(leagueValidationIntro(3)).toMatch(/^3 rencontres de championnats échus portent déjà/);
+    expect(leagueValidationIntro(3)).toMatch(/^3 rencontres de championnats commencés portent déjà/);
   });
 
-  it("le libellé d'un championnat échu porte son nom, son échéance et son compte", () => {
-    const label = maturedLabel("PNM", "2026-11-10", 12);
+  it("championnat échu → le libellé porte son nom, son ÉCHÉANCE et son compte", () => {
+    const label = maturedLabel({ competitionId: "c1", name: "PNM", deadline: "2026-11-10", deadlineSource: "club", maturedBy: "deadline", firstMatchDate: null, validatableCount: 12 });
     expect(label).toMatch(/^PNM — échéance /);
     expect(label).toMatch(/nov\./);
     expect(label).toMatch(/— 12 à valider$/);
+  });
+
+  it("championnat commencé par premier match joué → le libellé porte « 1er match joué le … », pas d'échéance", () => {
+    const competition: MaturedCompetition = { competitionId: "c2", name: "RF3", deadline: null, deadlineSource: "club", maturedBy: "firstMatchPlayed", firstMatchDate: "2026-09-19", validatableCount: 4 };
+    const label = maturedLabel(competition);
+    expect(label).toMatch(/^RF3 — 1er match joué le /);
+    expect(label).toMatch(/sept\./);
+    expect(label).not.toMatch(/échéance/);
+    expect(label).toMatch(/— 4 à valider$/);
   });
 
   it("nomme chaque raison de non-validabilité en clair", () => {

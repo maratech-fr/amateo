@@ -1,10 +1,12 @@
-Last verified @ 2026-09-27 (snapshot régénéré : la fenêtre de `/api/matches/deadline-outlook` porte
-désormais `toPlaceCount` — domiciles UNPLACED à placer — distinct de `toEnterCount` — domiciles
-PLACED à saisir dans FBI ; description de `toEnterCount` recalée ; aucun chemin ajouté, compte
-inchangé, empreinte bumpée).
+Last verified @ 2026-09-27 (snapshot régénéré : `/api/matches/deadline-outlook` gagne un champ
+GLOBAL `toConfirmCount` — domiciles « validé ligue » prêts — et le `toPlaceCount` de chaque fenêtre
+SOUSTRAIT désormais les validables ; `/api/fixtures/league-validation` : `matured[]` gagne
+`maturedBy` (`deadline`/`firstMatchPlayed`) + `firstMatchDate`, `deadline` devient nullable
+(critère élargi : un championnat est proposé si l'échéance est passée OU si le premier match est
+joué) ; aucun chemin ajouté, compte inchangé, empreinte bumpée).
 
 **208 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`d96e359381d2301da53324a92e396b7adb98eb00f2e4158dbfcc0cd09825b204` (`sha256sum` sur le fichier).
+`bfff6ac37d40eea6a3857fdb4cf06448fac16e44fc2ceac9b854cf8cd497ae9f` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

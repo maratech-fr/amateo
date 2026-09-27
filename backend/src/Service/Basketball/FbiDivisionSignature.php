@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Service\Basketball;
 
 use App\Entity\Competition;
+use App\Service\FriendlyAutoValidator;
+use App\Service\LeagueValidationOutlook;
 
 /**
  * The bridge between an FBI division CODE (the club-side label the xlsx import
@@ -32,6 +34,21 @@ final readonly class FbiDivisionSignature
     public const string TYPE_FRIENDLY = 'FRIENDLY';
 
     public function __construct(private VenueLabelNormalizer $normalizer) {}
+
+    /**
+     * MAISON UNIQUE de « ce libellé de division EST un amical » (token exact « amical »,
+     * décision fermée P4-194/195) : la seule vérité pour reconnaître un amical à son NOM,
+     * partagée par les consommateurs qui doivent l'exclure du « validé ligue »
+     * ({@see LeagueValidationOutlook}) ou l'auto-valider à date passée
+     * ({@see FriendlyAutoValidator}). Un code sans sexe (donc `fromCode` null)
+     * n'est pas un amical reconnaissable : on répond `false` sans deviner.
+     */
+    public function isFriendlyCode(string $code): bool
+    {
+        $signature = $this->fromCode($code);
+
+        return null !== $signature && self::TYPE_FRIENDLY === $signature['type'];
+    }
 
     /**
      * Parse an FBI division code into its signature. Null when the code carries

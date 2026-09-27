@@ -62,12 +62,12 @@ export function LeagueValidationConfirmDialog({ open, outlook, onClose }: { open
           <p>{leagueValidationIntro(outlook.totalValidatable)}</p>
           <ul className="flex flex-col gap-0.5 text-sm tabular-nums">
             {outlook.matured.map((competition) => (
-              <li key={competition.competitionId}>{maturedLabel(competition.name, competition.deadline, competition.validatableCount)}</li>
+              <li key={competition.competitionId}>{maturedLabel(competition)}</li>
             ))}
           </ul>
           {outlook.toTreat.length > 0 ? (
             <p className="text-sm text-muted-foreground">
-              {outlook.toTreat.length} {plural(outlook.toTreat.length)} échue{outlook.toTreat.length > 1 ? "s" : ""} ne {outlook.toTreat.length > 1 ? "seront" : "sera"} pas validée{outlook.toTreat.length > 1 ? "s" : ""} (ni heure ni gymnase, ou écart) — à traiter dans la file.
+              {outlook.toTreat.length} {plural(outlook.toTreat.length)} de championnats commencés ne {outlook.toTreat.length > 1 ? "seront" : "sera"} pas validée{outlook.toTreat.length > 1 ? "s" : ""} (ni heure ni gymnase, ou écart) — à traiter dans la file.
             </p>
           ) : null}
         </div>
@@ -98,7 +98,7 @@ function LeagueToTreatNotice({ fixtures }: { fixtures: LeagueToTreatFixture[] })
       <ListTodo className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
       <div className="grow">
         <p className="tabular-nums">
-          {fixtures.length} {plural(fixtures.length)} de championnats échus {fixtures.length > 1 ? "restent" : "reste"} à traiter (ni heure ni gymnase, ou écart en attente) :
+          {fixtures.length} {plural(fixtures.length)} de championnats commencés {fixtures.length > 1 ? "restent" : "reste"} à traiter (ni heure ni gymnase, ou écart en attente) :
         </p>
         <ul className="mt-1 flex flex-col gap-0.5 text-muted-foreground">
           {named.map((fixture) => (
@@ -159,7 +159,7 @@ export function LeagueValidationBanner() {
         <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-foreground">
           <BadgeCheck className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <span className="grow tabular-nums">
-            {totalValidatable} {plural(totalValidatable)} de {matured.length} championnat{matured.length > 1 ? "s" : ""} échu{matured.length > 1 ? "s" : ""} {totalValidatable > 1 ? "sont prêtes" : "est prête"} — à confirmer « validé ligue ».
+            {totalValidatable} {plural(totalValidatable)} de {matured.length} championnat{matured.length > 1 ? "s" : ""} commencé{matured.length > 1 ? "s" : ""} (échéance dépassée ou premier match joué) {totalValidatable > 1 ? "sont prêtes" : "est prête"} — à confirmer « validé ligue ».
           </span>
           <Button size="sm" className="shrink-0" onClick={() => setOpen(true)}>
             {LEAGUE_VALIDATION_CONFIRM_LABEL}
@@ -188,7 +188,7 @@ export function LeagueValidationReportEntry() {
   return (
     <div className="mt-1 flex flex-col items-start gap-1 border-t border-border pt-2">
       <p className="text-xs text-muted-foreground">
-        {total} {plural(total)} de championnats échus {total > 1 ? "portent" : "porte"} déjà date, heure et gymnase dans FBI — à confirmer « validé ligue ».
+        {total} {plural(total)} de championnats commencés (échéance dépassée ou premier match joué) {total > 1 ? "portent" : "porte"} déjà date, heure et gymnase dans FBI — à confirmer « validé ligue ».
       </p>
       <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
         <BadgeCheck className="size-4" />

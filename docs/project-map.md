@@ -1,15 +1,13 @@
 # Project Map — Amateo (engine + backend)
 
-Last verified @ 2026-09-26 (rotation de fraîcheur, `documentation-update`). Re-confronté au code :
-`engine/CONTRACT_VERSION` = **2.23** ; `TenantFilterListener` en priorité **7** sur
-`KernelEvents::REQUEST` (`backend/src/EventListener/TenantFilterListener.php:55`) ; la liste des
-features frontend (§ ci-dessous) correspond à `ls frontend/src/features/` ; les contrôleurs cités
-en §2.3 sans `#[Route]` (`GenerateScheduleController`, `VenuePeriodGridActionController`) sont bien
-câblés en opérations API Platform (`ApiResource/ScheduleResource.php`), les autres cités portent
-bien leur `#[Route]` ; tout service **long-lived** de `docker-compose.yml` porte `restart:
-unless-stopped` et un healthcheck — les deux helpers dev à la demande (`frontend-dev`,
-`frontend-tooling`) ne portent ni l'un ni l'autre, run-to-completion. Reste du fichier (backend
-détaillé §2, engine §3, sécurité) non reconfronté cette passe — voir les stamps de zone.
+Last verified @ 2026-09-27 (rotation de fraîcheur, `documentation-update`). Re-confronté au code :
+`engine/CONTRACT_VERSION` = **2.23** (`engine/CONTRACT_VERSION`) ✓ ; `TenantFilterListener` en
+priorité **7** sur `KernelEvents::REQUEST`
+(`backend/src/EventListener/TenantFilterListener.php:55`) ✓ ; la liste des features frontend (§
+ci-dessous) correspond à `ls frontend/src/features/` (`admin`, `auth`, `club`, `coach-wishes`,
+`cockpit`, `feedback`, `legal`, `matches`, `planning`, `profile`, `release-notes`,
+`season-transition`, `wizard`) ✓. Reste du fichier (backend détaillé §2, engine
+§3, sécurité) non reconfronté cette passe — voir les stamps de zone.
 
 Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend has been **rebuilt (React 19) and is active** — features live under `frontend/src/features/` (`ls` it, no count here — it rots): `auth`, `wizard` (data entry), `planning` (work-loop), `cockpit`, `matches`, `coach-wishes` (doléances), `club`, `profile`, `season-transition`, `legal`, `feedback` (bouton + dialogue de signalement), `release-notes` (journal + modale « quoi de neuf ») et `admin` (console superadmin, garde et session distinctes) ; voir `../frontend/docs/frontend-wizard.md` et `frontend-spec.md`. Generated/verified during onboarding against the real code and the `code-review-graph` knowledge graph.
 

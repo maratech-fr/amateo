@@ -335,7 +335,7 @@ describe("ImportFbiDialog", () => {
   it("Lot L — après import, des rencontres validables ⇒ section « validé ligue » dans le rapport, et confirmer bascule", async () => {
     // Persistant (pas Once) : l'import invalide le compte → il refetche ; les DEUX lectures
     // voient les 4 validables. Remis à 0 par le beforeEach du test suivant.
-    getLeagueValidationOutlook.mockResolvedValue({ matured: [{ competitionId: "c1", name: "PNM", deadline: "2026-11-10", deadlineSource: "club", validatableCount: 4 }], toTreat: [], missingDeadline: [], totalValidatable: 4 });
+    getLeagueValidationOutlook.mockResolvedValue({ matured: [{ competitionId: "c1", name: "PNM", deadline: "2026-11-10", deadlineSource: "club", maturedBy: "deadline", firstMatchDate: null, validatableCount: 4 }], toTreat: [], missingDeadline: [], totalValidatable: 4 });
     confirmLeagueValidatedFixtures.mockResolvedValueOnce({ confirmed: 4 });
     const user = userEvent.setup();
     renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
@@ -345,7 +345,7 @@ describe("ImportFbiDialog", () => {
     await user.click(screen.getByRole("button", { name: "Importer" }));
     await user.click(await screen.findByRole("button", { name: "Importer quand même" }));
 
-    await waitFor(() => expect(screen.getByText(/4 rencontres de championnats échus portent déjà date, heure et gymnase dans FBI/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/4 rencontres de championnats commencés .* portent déjà date, heure et gymnase dans FBI/)).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: /Marquer « validé ligue »/ }));
     // La modale d'import est elle-même un role=dialog : on cible la confirmation par son nom.
     const dialog = await screen.findByRole("dialog", { name: /Marquer « validé ligue »/ });

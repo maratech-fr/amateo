@@ -3,17 +3,31 @@ import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { setTodayOverride } from "@/shared/lib/clock";
-import type { DeadlineOutlook, FbiTodo } from "@/features/matches/api";
+import type { DeadlineOutlook, FbiTodo, LeagueValidationOutlook } from "@/features/matches/api";
 
 import { FbiDeadlineCard } from "./FbiDeadlineCard";
 
-// La tuile ne consomme QUE l'outlook (règle J-7 + `fbiTodo` + bloc gardien = BACKEND).
+// La tuile ne consomme QUE l'outlook (règle J-7 + `fbiTodo` + `toConfirmCount` + gardien =
+// BACKEND) et le rôle (le bouton « validé ligue » est réservé au gestionnaire).
 let outlook: DeadlineOutlook | undefined;
+let leagueOutlook: LeagueValidationOutlook | undefined;
+let meRole: string | undefined;
 vi.mock("@/features/matches/queries", () => ({
   useDeadlineOutlook: () => ({ data: outlook }),
+  useLeagueValidationOutlook: () => ({ data: leagueOutlook }),
+  useConfirmLeagueValidatedFixtures: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+vi.mock("@/shared/session/queries", () => ({
+  useMe: () => ({ data: { role: meRole } }),
 }));
 
 const NONE: FbiTodo = { toEnter: 0, toCorrect: 0 };
+const LEAGUE: LeagueValidationOutlook = {
+  matured: [{ competitionId: "c1", name: "PNM", deadline: "2026-11-10", deadlineSource: "club", maturedBy: "deadline", firstMatchDate: null, validatableCount: 5 }],
+  toTreat: [],
+  missingDeadline: [],
+  totalValidatable: 5,
+};
 
 function renderCard() {
   return render(
@@ -26,6 +40,8 @@ function renderCard() {
 describe("FbiDeadlineCard — la carte « Saisie FBI » du cockpit", () => {
   afterEach(() => {
     outlook = undefined;
+    leagueOutlook = undefined;
+    meRole = undefined;
     setTodayOverride(null);
   });
 
@@ -141,6 +157,32 @@ describe("FbiDeadlineCard — la carte « Saisie FBI » du cockpit", () => {
     expect(card).toHaveTextContent("12 matchs à placer");
     expect(card).toHaveTextContent("3 à saisir dans FBI avant le");
     expect(screen.getByRole("link")).toHaveAttribute("href", "/matchs?fbi=1");
+  });
+
+  it("gestionnaire + des matchs à confirmer → ligne « à confirmer » + bouton « validé ligue »", () => {
+    meRole = "admin";
+    outlook = { windows: [], fbiTodo: NONE, toConfirmCount: 5 };
+    leagueOutlook = LEAGUE;
+    renderCard();
+
+    const card = screen.getByRole("status");
+    expect(card).toHaveTextContent("5 matchs à confirmer « validé ligue »");
+    expect(screen.getByRole("button", { name: /Marquer « validé ligue »/ })).toBeInTheDocument();
+  });
+
+  it("Membre → jamais la ligne « à confirmer », même avec toConfirmCount > 0 (aucune écriture proposée)", () => {
+    meRole = "member";
+    outlook = { windows: [], fbiTodo: NONE, toConfirmCount: 5 };
+    const { container } = renderCard();
+    // Aucune fenêtre, rien à faire, et le Membre ne peut pas confirmer → carte muette.
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("gestionnaire mais 0 à confirmer → pas de ligne « à confirmer »", () => {
+    meRole = "admin";
+    outlook = { windows: [], fbiTodo: NONE, toConfirmCount: 0 };
+    const { container } = renderCard();
+    expect(container).toBeEmptyDOMElement();
   });
 
   it("guardianDelta joint → les segments s'affichent dans la carte", () => {

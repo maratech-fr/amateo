@@ -1,22 +1,16 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-26 (rotation de fraîcheur, `documentation-update`). Re-confronté au code :
+Last verified @ 2026-09-27 (rotation de fraîcheur, `documentation-update`). Re-confronté au code :
 la ligne PHPUnit `Unit/` (`make -C backend coverage`, `pcov.enabled=1` sur `phpunit tests/
 --exclude-group contract`, plancher `coverage-floor.json` via `scripts/coverage-gate.php`) tient
-(`backend/Makefile:52-62`) ; la ligne engine (`make -C engine test` = ruff + format-check + mypy +
-bandit + pytest, couverture séparée dans la cible `coverage`) tient (`engine/Makefile:27-35`) ; la
+(`backend/Makefile:58-62`) ; la ligne engine (`make -C engine test` = ruff + format-check + mypy +
+bandit + pytest, couverture séparée dans la cible `coverage`) tient (`engine/Makefile:27-32`) ; la
 ligne Behat (`make -C backend behat` sous `with-sandbox.sh` en mode play) tient
-(`backend/Makefile:73-82`) ; `frontend/src/test/brandBackground.test.ts` n'assert toujours que la
-parité clair/sombre de `index.css` et la purge des SVG servis, jamais un ratio de contraste —
-confirme toujours que le texte posé sur le fond commun n'est couvert par aucun des deux gardes
-cités. **`Engine semantics` et `Functional Tests (Behat)` sont déjà des required status checks de
-`main`** (`gh api repos/maratech-fr/amateo/branches/main/protection --jq
-.required_status_checks.contexts`, confirmé cette passe) — §3 corrigé, il affirmait le contraire.
-§3 resserré en pointeur vers `testing-strategy.md` §1 (le graphe des `needs` y est déjà canonique,
-recopié ici il aurait fini par diverger) ; §2 et §5 pliés au présent (les chaînes « depuis
-P4-xxx/D-n, date » décrivaient un empilement de livraisons, jamais une preuve à date). Reste des
-lignes non re-sondé cette passe — historique complet : `git log -p --follow
-docs/testing/test-coverage-map.md`.
+(`backend/Makefile:76-82`) ; §5 gagne la ligne manquante de
+`un-club-en-cours-de-saison-valide-ses-matchs-en-lot.feature` (backend/features/, 4 scénarios dont
+2 ajoutés cette passe : premier match joué sans échéance, amical passé auto-validé) — absente de
+cette carte depuis sa création (lot L, `a636955d`), trou comblé. Reste des lignes non re-sondées
+cette passe — historique complet : `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
 > prouve**, **par quel job CI**, et **ce que personne ne prouve**. Il ne remplace ni
@@ -204,6 +198,7 @@ une feature par PR (`ls backend/features/` fait foi du compte) :
 | `un-domicile-non-place-dont-la-ligue-change-la-salle-est-arbitre.feature` (suite `ecart-salle-non-place`) | un domicile NON PLACÉ déjà rattaché à un gymnase, dont un dépôt suivant nomme une autre salle, ouvre un écart sans jamais réécrire le gymnase en silence ; « Garder l'appli » mémorise le libellé (un re-dépôt identique reste muet, idempotence) ; « Prendre le fichier » suit l'alias confirmé de la nouvelle salle |
 | `ce-que-fbi-doit-refleter.feature` (suite `fbi-a-corriger`) | « garder l'appli » sur un écart ouvre une entrée « à corriger dans FBI » (taper la valeur appli, FBI affiche encore l'ancienne) ; un dépôt qui montre toujours l'ancienne valeur ne recrée pas d'écart (« vu dans FBI ») ; un dépôt qui montre FBI corrigé ferme l'entrée seule ; le gestionnaire peut aussi la cocher « corrigé dans FBI » |
 | `une-erreur-fbi-alimente-le-registre.feature` (lot N) | déclarer « erreur FBI » sur la salle d'une collision de gymnase pose la résolution « erreur FBI » ET ouvre, du même geste, une entrée « salle à vérifier » dans le registre « à corriger dans FBI » — troisième foyer d'écriture du registre (en plus de l'import et de l'arbitrage hors dépôt), valeur cible VIDE |
+| `un-club-en-cours-de-saison-valide-ses-matchs-en-lot.feature` (lot O, étendu) | un championnat dont l'échéance de saisie est passée bascule ses domiciles datés « validé ligue » en un geste chiffré, une rencontre sans heure reste nommée « à traiter » ; un championnat dont l'échéance n'est pas encore passée ne propose rien ; un championnat SANS échéance dont le premier match est déjà joué est proposé quand même (`maturedBy: firstMatchPlayed`) ; un amical passé bascule « validé ligue » tout SEUL dès qu'un gestionnaire ouvre la vue, jamais proposé au lot chiffré |
 | `les-conflits-d-un-match-disent-la-verite.feature` (P4-188/189/191) | une fermeture racine découpée en milieu/fin dont l'enfant « milieu » pointe un entraînement remonte ce conflit `MATCH_TRAINING` (la période la plus ÉTROITE gagne, jamais un repli sur la racine sans plan) — la borne de début du conflit est l'heure murale du club, sans décalage horaire ; un amical placé le dimanche d'un week-end où le club joue une rencontre de championnat le samedi est signalé `FRIENDLY_ON_MATCH_SLOT` (raison week-end de match), jamais bloqué ; une rencontre de coupe hors fenêtre de ligue lève `LEAGUE_WINDOW_VIOLATION` comme un championnat et n'est JAMAIS signalée `FRIENDLY_ON_MATCH_SLOT` — la coupe seede sa propre fenêtre de ligue dans la table GLOBALE `league_match_window` sous une catégorie jetable distinctive, nettoyée derrière elle ; certains scénarios épinglent l'horloge dev via `POST /api/dev/clock` le temps du scénario, relâchée en `AfterScenario` (sinon la règle « passé muet » tairait le décor daté) : un match posé sur le créneau d'entraînement de SA PROPRE équipe ne remonte aucun conflit ; deux matchs à domicile enchaînés à deux heures d'écart dans le même gymnase ne collisionnent plus (fenêtre SALLE seule, sans échauffement) ; un match déjà joué ne porte plus aucun conflit ; le scénario « deux gymnases différents » prouve que l'échauffement seul n'est jamais un conflit de personne, quel que soit le gymnase, et un contre-exemple à recouvrement RÉEL (le second coup d'envoi tombe avant la fin du premier match) prouve que le conflit demeure quand le chevauchement dépasse l'échauffement |
 
 Côté frontend (PR-3b) : **`tests/e2e/matches-importer.spec.ts`** — l'onglet

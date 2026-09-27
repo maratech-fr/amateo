@@ -1,14 +1,17 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-27 (passe tests manuels 0927 — §4/§5/§6 re-confrontés :
-`EntryDeadlineOutlook::countHomeByCompetition` sert `toPlaceCount`/`toEnterCount`
-(`backend/src/Service/EntryDeadlineOutlook.php`) ✓ ; `FbiDeadlineCard` n'ouvre « Ouvrir la liste
-FBI » que si `fbiTodo` a du contenu, sinon « Placer les matchs » (`FbiDeadlineCard.tsx`) ✓ ; le
-focus de conflit (`conflit=`, `ConflictFocusBanner`, `lib/conflictFocus.ts`) et son branchement
-coach/sans-coach (`CalendarPage.tsx`, `ConflictsPage.tsx`) ✓ ; `AwayFixtureCard` lecture seule sur
-import (`lib/fixtureOrigin.ts::isImportedFixture`, `WeekWorkbench.tsx::openAway`) ✓ ; le trajet
-aller-retour dessiné (`lib/awayKickoff.ts::awayTimeline`) ✓ ; la pastille de conflit nommée en
-Mois/Phase (`MatchRowsTable.tsx::pillLabel`) ✓). Reste du contenu non réaudité cette passe.
+Last verified @ 2026-09-27 (lot « validé ligue » partout — §4/§7 re-confrontés :
+`LeagueValidationOutlook::compute`/`fixturesToConfirm` porte le prédicat unique, `maturedBy`
+`deadline`/`firstMatchPlayed` + `firstMatchDate` (`backend/src/Service/LeagueValidationOutlook.php`)
+✓ ; `FbiDivisionSignature::isFriendlyCode` exclut l'amical du lot
+(`backend/src/Service/Basketball/FbiDivisionSignature.php`) ✓ ; `FriendlyAutoValidator::sweep`
+bascule un amical strictement passé, déclenché par `EntryDeadlineOutlook::compute` et
+`LeagueValidatedFixturesController::guard` SEULEMENT si l'appelant est gestionnaire
+(`backend/src/Service/FriendlyAutoValidator.php`) ✓ ; `EntryDeadlineOutlook` sert `toConfirmCount`
+et soustrait le validable de `toPlaceCount` (`backend/src/Service/EntryDeadlineOutlook.php:75-112`)
+✓ ; `FbiDeadlineCard` porte la ligne « N à confirmer « validé ligue » » + bouton gestionnaire
+(`FbiDeadlineCard.tsx:120-130`) ✓ ; `LeagueValidationBanner` rendu sur Calendrier en plus d'Importer
+(`CalendarPage.tsx:451`, `ImportPage.tsx:137`) ✓). Reste du contenu non réaudité cette passe.
 Historique : `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
@@ -514,18 +517,27 @@ recalculée au front. `GET /api/matches/deadline-outlook` (ouvert au Membre, `RE
 toCorrect}` — le compte GLOBAL « à faire dans FBI » toutes semaines confondues (à saisir =
 domiciles PLACED, à corriger = entrées OUVERTES du registre ci-dessus), pour que le cockpit ET la
 barre de compteurs (§5) n'aient jamais à charger les fixtures —, et joint `guardianDelta` (réutilise
-`MatchModuleDeltaComputer` **sans stamper**) si une référence de visite existe déjà. Chaque fenêtre
-sert en plus DEUX compteurs distincts (`EntryDeadlineOutlook::countHomeByCompetition`) : `toPlaceCount`
-(domiciles UNPLACED — un geste de placement) et `toEnterCount` (domiciles PLACED, prêts à copier
+`MatchModuleDeltaComputer` **sans stamper**) si une référence de visite existe déjà. Il sert aussi
+`toConfirmCount` — le compte GLOBAL de domiciles « validé ligue » validables
+(`LeagueValidationOutlook::compute`, § « Validé ligue » en lot) : un domicile validable est
+`UNPLACED`, donc `toPlaceCount` (ci-dessous) le SOUSTRAIT pour ne jamais le compter deux fois (« à
+confirmer », pas « à placer »). Cette route est aussi le point où le balayage des amicaux passés
+(`FriendlyAutoValidator::sweep`, § « Validé ligue » en lot) se déclenche — SEULEMENT si l'appelant
+est GESTIONNAIRE, jamais pour un Membre qui ouvre le même cockpit. Chaque fenêtre sert en plus DEUX
+compteurs distincts (`EntryDeadlineOutlook::countHomeByCompetition`) : `toPlaceCount`
+(domiciles UNPLACED restants — un geste de placement) et `toEnterCount` (domiciles PLACED, prêts à copier
 dans FBI — aligné sur `fbiTodo.toEnter` et la liste FBI). La carte cockpit `FbiDeadlineCard` (`/`,
 sous `SeasonPlanBanner`) fusionne le résumé du gardien dans la même carte (jamais un second bloc) et
 distingue trois régimes : une échéance en fenêtre J-7 → ton accent (warning si dépassée) avec la
 ligne globale au-dessus des échéances, chaque échéance segmentant « N match(s) à placer » et « N à
 saisir dans FBI » ; hors fenêtre mais `fbiTodo` > 0 → ton NEUTRE, la seule ligne globale (« N FBI à
-faire, dont M à corriger ») ; rien à faire ET aucune fenêtre → muette. Le bouton n'ouvre « Ouvrir la
-liste FBI » (`/matchs?fbi=1`) **que si** cette liste a du contenu (`fbiTodo.toEnter +
-fbiTodo.toCorrect > 0`) ; sinon (tout reste à placer) il renvoie au Calendrier (`/matchs`, « Placer
-les matchs ») — la liste FBI serait sinon une modale vide.
+faire, dont M à corriger ») ; rien à faire, aucune fenêtre ET rien à confirmer « validé ligue » →
+muette. Le bouton n'ouvre « Ouvrir la liste FBI » (`/matchs?fbi=1`) **que si** cette liste a du
+contenu (`fbiTodo.toEnter + fbiTodo.toCorrect > 0`) ; sinon (tout reste à placer) il renvoie au
+Calendrier (`/matchs`, « Placer les matchs ») — la liste FBI serait sinon une modale vide. Quand
+`toConfirmCount > 0` ET l'utilisateur est gestionnaire, la carte ajoute une ligne dédiée « N à
+confirmer « validé ligue » » + un bouton qui ouvre la confirmation chiffrée partagée (§ « Validé
+ligue » en lot) — jamais affichée à un Membre.
 
 ## 5. Écran Calendrier (`/matchs`, route index)
 
@@ -783,42 +795,69 @@ d'office » (`FbiFixtureImporter::attachConfirmedVenue`) : le chemin de créatio
 pas, continue de créer en `UNPLACED` — le statut n'est **jamais** posé pendant l'import. C'est CE
 geste, distinct, qui valide.
 
-**Le déclencheur est l'échéance de SAISIE du championnat, jamais une propriété du domicile
+**Le déclencheur est que le championnat ait COMMENCÉ, jamais une propriété du domicile
 lui-même** — décision fondateur : « la date d'échéance est de validation des dates pour un
 championnat entier, donc toutes les dates du championnat peuvent être validées à partir de la date
-d'échéance ». Raisonner rencontre par rencontre sans aucune condition de date serait
-**dangereux** : en octobre les brassages se terminent, une nouvelle vague de rencontres jeunes
-arrive (nouvelle phase, nouvelle poule, parfois un changement de niveau) avec des horaires
-**provisoires** et une échéance **pas encore passée** — les proposer à la validation les
-verrouillerait en ancres fixes pour le solveur au moment précis où il faut encore pouvoir les
-déplacer. Tant que l'échéance d'un championnat n'est pas passée (jour de
-l'échéance INCLUS, `CompetitionDeadlineResolver::resolve` + comparaison `<= aujourd'hui`), **rien
-n'est proposé pour lui**. L'échéance effective d'un championnat suit la règle « le club gagne, sinon
-le défaut communautaire » — **maison unique** `App\Service\CompetitionDeadlineResolver`, consommée
-par ses trois appelants : `CompetitionResource::fromEntity` (la lecture des compétitions),
-`EntryDeadlineOutlook` (le cockpit) et ce contrôleur.
+d'échéance ». Un championnat est « commencé » de DEUX façons, l'une ou l'autre suffit : (1) son
+échéance de SAISIE est passée (jour de l'échéance INCLUS, `CompetitionDeadlineResolver::resolve` +
+comparaison `<= aujourd'hui`) ; (2) OU son PREMIER match est déjà joué (`min(matchDate)`
+strictement dans le passé, tous domiciles/extérieurs confondus) — un championnat sans échéance
+renseignée mais dont les dates sont déjà tombées n'est plus provisoire, il a démarré. Raisonner
+rencontre par rencontre sans aucune de ces deux conditions serait **dangereux** : en octobre les
+brassages se terminent, une nouvelle vague de rencontres jeunes arrive (nouvelle phase, nouvelle
+poule, parfois un changement de niveau) avec des horaires **provisoires**, sans échéance passée ni
+match déjà joué — les proposer à la validation les verrouillerait en ancres fixes pour le solveur
+au moment précis où il faut encore pouvoir les déplacer. Tant qu'aucune des deux conditions n'est
+remplie, **rien n'est proposé pour ce championnat**.
+
+Toute la LECTURE et le prédicat vivent désormais dans la **maison unique**
+`App\Service\LeagueValidationOutlook` (extraite du contrôleur pour être consommée aussi par le
+cockpit, §4) : elle porte `compute()` (la lecture détaillée par championnat, avec `maturedBy`
+`deadline`/`firstMatchPlayed` et `firstMatchDate` quand c'est le premier match qui a fait mûrir)
+et `fixturesToConfirm()` (les domiciles à basculer au `POST`, recalculés au moment de
+l'application). L'échéance effective d'un championnat suit la règle « le club gagne, sinon le
+défaut communautaire » — maison unique `App\Service\CompetitionDeadlineResolver`, consommée par
+`CompetitionResource::fromEntity` (la lecture des compétitions), `EntryDeadlineOutlook` (les
+fenêtres J-7 du cockpit, §4) et `LeagueValidationOutlook` (la maturité « validé ligue »).
 
 Deux routes `GET`/`POST /api/fixtures/league-validation` (management + saison écrivable + socle
 pointé). **GET rend une lecture détaillée PAR CHAMPIONNAT**, pas un simple compte :
-- `matured[]` — les championnats dont l'échéance est passée, chacun avec son nom, son échéance, sa
-  provenance (`club`/`community`) et son compte de domiciles validables ;
-- `toTreat[]` — les domiciles d'un championnat échu qui NE seront PAS validés, **nommés**, jamais
+- `matured[]` — les championnats COMMENCÉS, chacun avec son nom, son échéance (nullable — un
+  championnat mûri par son premier match joué n'en a pas forcément), sa provenance
+  (`club`/`community`), **comment** il a mûri (`maturedBy` : `deadline`/`firstMatchPlayed`), la date
+  de son premier match quand c'est elle qui l'a fait mûrir (`firstMatchDate`), et son compte de
+  domiciles validables ;
+- `toTreat[]` — les domiciles d'un championnat commencé qui NE seront PAS validés, **nommés**, jamais
   écartés en silence : équipe, date, adversaire, et la raison (`NO_KICKOFF`, `NO_VENUE`,
   `PENDING_DEVIATION`) ;
-- `missingDeadline[]` — les championnats **sans échéance renseignée** qui ont pourtant des rencontres
-  prêtes (heure + gymnase) — signal qu'une échéance manque à saisir, jamais une validation proposée ;
-- `totalValidatable` — le total tous championnats échus confondus.
+- `missingDeadline[]` — les championnats **sans échéance renseignée et pas encore commencés**
+  (aucun premier match joué non plus) qui ont pourtant des rencontres prêtes (heure + gymnase) —
+  signal qu'une échéance manque à saisir, jamais une validation proposée ;
+- `totalValidatable` — le total tous championnats commencés confondus.
 
 Le prédicat « validable » d'un candidat (`passesPredicate`, ex-`isEligible`) est inchangé dans sa
-forme : un domicile `UNPLACED` rattaché à un championnat (`isCandidate` — **un amical est exclu, il
-n'a pas de championnat donc pas d'échéance**, HORS DU LOT) portant une heure ET un `venueId` (gymnase
-identifié, jamais le libellé brut), sans écart en attente. Il ne suffit pas à lui seul — il faut
-EN PLUS que le championnat du candidat soit échu.
+forme : un domicile `UNPLACED` rattaché à un championnat (`isCandidate` — **un amical est exclu**,
+qu'il s'agisse d'un domicile SANS compétition ou d'une compétition dont le LIBELLÉ est un amical
+(token exact « amical », maison unique `FbiDivisionSignature::isFriendlyCode` — couvre par exemple
+« Amical PNF »/« Amical PNM » typées `CHAMPIONSHIP` côté import) portant une heure ET un `venueId`
+(gymnase identifié, jamais le libellé brut), sans écart en attente. Il ne suffit pas à lui seul — il
+faut EN PLUS que le championnat du candidat soit commencé.
+
+**Les amicaux ne rejoignent jamais ce lot** — « validé ligue » n'a pas de sens sans championnat.
+Un amical passé (domicile ET extérieur, même reconnaissance par libellé) se valide TOUT SEUL,
+sans confirmation chiffrée : `App\Service\FriendlyAutoValidator::sweep` bascule `VALIDATED`
+(source `MANUAL` posée sur le domicile seulement, l'extérieur garde sa source) tout amical
+strictement passé, non déjà saisi (`SUBMITTED`/`VALIDATED` exclus) et sans écart en attente ;
+idempotent, ne flushe que s'il y a eu un changement. Ce balayage est un effet de bord d'une
+LECTURE, déclenché **uniquement quand un GESTIONNAIRE** charge la lecture « validé ligue »
+(`guard()` de ce contrôleur) ou le cockpit (`EntryDeadlineOutlook`, §4) — un Membre, qui peut ouvrir
+ces deux écrans, ne fait jamais écrire la base.
 
 **`POST` reste SANS corps** : le serveur ne reçoit AUCUN championnat choisi par le client — il
-**recalcule les championnats échus au moment de l'application** (`maturedCompetitionIds`, l'horloge
-injectée + les échéances du moment font foi, jamais ce que l'écran affichait à l'ouverture). Bascule
-en lot chaque domicile `UNPLACED` d'un championnat échu qui passe le prédicat : statut `VALIDATED`
+**recalcule les championnats commencés au moment de l'application** (`fixturesToConfirm`, l'horloge
+injectée + les échéances/premiers matchs du moment font foi, jamais ce que l'écran affichait à
+l'ouverture). Bascule en lot chaque domicile `UNPLACED` d'un championnat commencé qui passe le
+prédicat : statut `VALIDATED`
 (horodaté) + `placementSource` `MANUAL` — le `MANUAL` n'est pas cosmétique, la formule du cadenas de
 la grille et l'ancre `FIXED` du solveur de placement l'exigent (§3), sinon les rencontres basculées
 s'afficheraient déverrouillées alors que le solveur les traite déjà en ancres. **On ne dévalide
@@ -828,8 +867,8 @@ jamais reprise.
 
 **Un seul geste, détaillé par championnat (décision fondateur)** — le front a écarté les cases à
 cocher (choisir championnat par championnat) et les confirmations successives (une par championnat) :
-la confirmation liste chaque championnat échu avec son compte, puis une seule validation en bascule
-tous les domiciles éligibles de tous les championnats échus d'un coup.
+la confirmation liste chaque championnat commencé avec son compte, puis une seule validation en
+bascule tous les domiciles éligibles de tous les championnats commencés d'un coup.
 
 ⚠ **Divergence ASSUMÉE avec le contrôle d'accès du geste unitaire** : le placement
 manuel d'un domicile refuse en 422 hors des créneaux d'accès match déclarés du gymnase
@@ -850,19 +889,27 @@ et visible côté API (409, pas un silence qui élargirait le périmètre). Le P
 message actionnable en français, sur une collision d'écriture simultanée (verrou optimiste `Fixture`,
 deux onglets ou un double-clic) — aucun verrou ajouté, l'écriture reste idempotente.
 
-**Écran** : deux points d'ancrage, même confirmation chiffrée partagée
-(`LeagueValidationConfirmDialog`, lib pure `lib/leagueValidation.ts`) — refuser n'écrit rien. Un
-bandeau de rattrapage sur l'onglet Importer (`LeagueValidationBanner`, muet si les trois listes sont
-vides — couvre donc aussi les rencontres déjà en base sans re-déposer de fichier), rendant TROIS blocs
-indépendants selon ce que le backend sert : les championnats échus prêts (bouton de confirmation), les
-domiciles échus à traiter (`LeagueToTreatNotice`, nommés, renvoi qui scrolle vers la file de traitement
-de la même page) et les championnats sans échéance (`MissingDeadlineNotice`, renvoi vers les
-« Échéances de saisie »). La section du rapport de fin d'import (`LeagueValidationReportEntry`)
-ouvre la même confirmation, muette si `totalValidatable` est nul. Le front n'a **aucune règle** :
-c'est le backend qui décide QUOI est proposé (échéance passée), le front affiche la lecture servie
-(`useLeagueValidationOutlook`). Vocabulaire : la pastille de statut ne change pas (`VALIDATED` reste
-« Attesté FBI », §7 « Workflow de traitement ») — seule cette confirmation emploie les mots du
-fondateur, « validé ligue ».
+**Écran : proposé PARTOUT où le gestionnaire regarde (décision fondateur 2026-09-27, jamais
+silencieux)**, même confirmation chiffrée partagée (`LeagueValidationConfirmDialog`, lib pure
+`lib/leagueValidation.ts`) — refuser n'écrit rien. Quatre points d'ancrage :
+- **Importer** (`LeagueValidationBanner`, sous la carte « Données de match ») : muet si les trois
+  listes sont vides — couvre donc aussi les rencontres déjà en base sans re-déposer de fichier —,
+  rendant TROIS blocs indépendants selon ce que le backend sert : les championnats commencés prêts
+  (bouton de confirmation), les domiciles commencés à traiter (`LeagueToTreatNotice`, nommés, renvoi
+  qui scrolle vers la file de traitement de la même page) et les championnats sans échéance
+  (`MissingDeadlineNotice`, renvoi vers les « Échéances de saisie »). Ce MÊME bandeau se rend aussi
+  sur le **Calendrier** (`CalendarPage`, gardé `canManage`) — un gestionnaire qui n'ouvre jamais
+  l'onglet Importer le voit quand même.
+- La section du rapport de fin d'import (`LeagueValidationReportEntry`) ouvre la même confirmation,
+  muette si `totalValidatable` est nul.
+- Le **cockpit** (`FbiDeadlineCard`, §4) porte une ligne dédiée « N à confirmer « validé ligue » »
+  (compte `toConfirmCount`, servi par `EntryDeadlineOutlook`) + son propre bouton qui ouvre la MÊME
+  confirmation — réservée au gestionnaire, jamais affichée à un Membre.
+
+Le front n'a **aucune règle** : c'est le backend qui décide QUOI est proposé (championnat commencé),
+le front affiche la lecture servie (`useLeagueValidationOutlook`). Vocabulaire : la pastille de
+statut ne change pas (`VALIDATED` reste « Attesté FBI », §7 « Workflow de traitement ») — seule
+cette confirmation emploie les mots du fondateur, « validé ligue ».
 
 **Deux faits mesurés** : l'échéance d'un championnat est **saisie à la main** par le gestionnaire
 (`EntryDeadlinesEditor`) — jamais reprise automatiquement du fichier fédéral, rien dans FBI ne la

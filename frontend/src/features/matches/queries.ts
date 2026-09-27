@@ -620,21 +620,28 @@ export function useResolveFixtureDeviation() {
  * échéances l'invalide aussi (voir `useSetEntryDeadlines`). Le front n'a AUCUNE règle —
  * il affiche la lecture servie.
  */
-export function useLeagueValidationOutlook() {
-  return useQuery({ queryKey: ["fixtures", "league-validation"], queryFn: matchesApi.getLeagueValidationOutlook, staleTime: 30_000 });
+export function useLeagueValidationOutlook(enabled = true) {
+  // `enabled` : la route est réservée aux GESTIONNAIRES (403 sinon) — un Membre ne doit
+  // jamais la déclencher (la carte du cockpit passe `false` pour un non-gestionnaire).
+  return useQuery({ queryKey: ["fixtures", "league-validation"], queryFn: matchesApi.getLeagueValidationOutlook, staleTime: 30_000, enabled });
 }
 
 /**
  * Lot L — le geste confirmé. Bascule les rencontres éligibles en VALIDATED + MANUAL et
  * invalide `["fixtures"]` (statut/source/verrou de grille, radar) — la clé du compte
- * en fait partie, donc le bandeau disparaît de lui-même. Le toast de succès (« N
- * validées ») est composé par l'appelant.
+ * en fait partie, donc le bandeau disparaît de lui-même. On invalide AUSSI
+ * `["matches","deadline-outlook"]` : le cockpit y lit `toConfirmCount` et le `toPlaceCount`
+ * (validables soustraits), qui viennent de changer. Le toast de succès (« N validées »)
+ * est composé par l'appelant.
  */
 export function useConfirmLeagueValidatedFixtures() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => matchesApi.confirmLeagueValidatedFixtures(),
-    onSuccess: () => invalidateFixtures(queryClient),
+    onSuccess: () => {
+      invalidateFixtures(queryClient);
+      void queryClient.invalidateQueries({ queryKey: ["matches", "deadline-outlook"] });
+    },
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }

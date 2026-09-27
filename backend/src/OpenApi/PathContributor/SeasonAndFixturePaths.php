@@ -311,7 +311,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                             'deadline' => ['type' => 'string', 'format' => 'date'],
                             'source' => ['type' => 'string', 'enum' => ['club', 'community'], 'description' => 'Where the effective deadline came from'],
                             'competitionNames' => ['type' => 'array', 'items' => ['type' => 'string']],
-                            'toPlaceCount' => ['type' => 'integer', 'description' => 'Home fixtures still UNPLACED — must be placed before they can be entered in FBI'],
+                            'toPlaceCount' => ['type' => 'integer', 'description' => 'Home fixtures still UNPLACED to place — the « validé ligue » validatable ones are subtracted (they are to confirm, counted in toConfirmCount, not to place)'],
                             'toEnterCount' => ['type' => 'integer', 'description' => 'Home fixtures PLACED but not yet entered in FBI (UNPLACED and already-submitted excluded)'],
                             'withinWindow' => ['type' => 'boolean', 'description' => 'True within seven days of the deadline (overdue included)'],
                         ]]],
@@ -319,6 +319,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                             'toEnter' => ['type' => 'integer', 'description' => 'Home fixtures PLACED but not yet entered in FBI (UNPLACED and already-submitted excluded)'],
                             'toCorrect' => ['type' => 'integer', 'description' => 'Open « to correct in FBI » ledger entries (kept-app divergences FBI is still behind on)'],
                         ]],
+                        'toConfirmCount' => ['type' => 'integer', 'description' => 'Home fixtures ready to be marked « validé ligue » in one gesture (matured championships, kickoff + identified venue, no pending deviation) — the grand total of the batch outlook'],
                         'guardianDelta' => ['type' => 'object', 'nullable' => true, 'description' => 'Present only when a reminder window is open AND the user already has a visit reference', 'properties' => [
                             'newFixturesCount' => ['type' => 'integer'],
                             'newConflictFingerprints' => ['type' => 'array', 'items' => ['type' => 'string']],
@@ -451,7 +452,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                 operationId: 'leagueValidationOutlook',
                 tags: ['Match'],
                 responses: [
-                    '200' => $this->schemas->jsonResponse('The batch « validé ligue » outlook, driven by each competition\'s entry deadline. The deadline validates the whole championship\'s dates FROM the deadline day (inclusive), so only MATURED competitions (deadline passed) are proposed — a future-deadline championship (e.g. a new October youth wave with provisional dates) is deliberately left untouched. Per matured competition: its name, deadline, source and count of validatable home fixtures (UNPLACED, kickoff + identified venue, no pending deviation). Plus the NAMED fixtures still to treat in a matured competition (no kickoff, no venue, or a pending deviation), the no-deadline competitions that nonetheless have ready fixtures (deadline to be entered), and the grand total to validate.', [
+                    '200' => $this->schemas->jsonResponse('The batch « validé ligue » outlook, driven by each competition having STARTED. A championship has started when its entry deadline has passed (inclusive) OR its first match is already played (min match date strictly in the past) — so only STARTED competitions are proposed; a future-deadline championship with no match yet played (e.g. a new October youth wave with provisional dates) is deliberately left untouched. Per started competition: its name, deadline (null when it started by first match played), source, how it matured (deadline | firstMatchPlayed), the first match date (when that is what started it), and the count of validatable home fixtures (UNPLACED, kickoff + identified venue, no pending deviation). Plus the NAMED fixtures still to treat (no kickoff, no venue, or a pending deviation), the no-deadline competitions NOT YET started that nonetheless have ready fixtures (deadline to be entered), and the grand total to validate. Friendly competitions (label « Amical … ») are never proposed.', [
                         'type' => 'object',
                         'properties' => [
                             'matured' => [
@@ -461,8 +462,10 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                                     'properties' => [
                                         'competitionId' => ['type' => 'string'],
                                         'name' => ['type' => 'string'],
-                                        'deadline' => ['type' => 'string', 'format' => 'date'],
+                                        'deadline' => ['type' => 'string', 'format' => 'date', 'nullable' => true, 'description' => 'The effective entry deadline, or null when the championship started by its first match being played'],
                                         'deadlineSource' => ['type' => 'string', 'enum' => ['club', 'community']],
+                                        'maturedBy' => ['type' => 'string', 'enum' => ['deadline', 'firstMatchPlayed'], 'description' => 'What made the championship started: its deadline passed, or its first match already played'],
+                                        'firstMatchDate' => ['type' => 'string', 'format' => 'date', 'nullable' => true, 'description' => 'The first match date, present only when maturedBy is firstMatchPlayed'],
                                         'validatableCount' => ['type' => 'integer'],
                                     ],
                                 ],
