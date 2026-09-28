@@ -1,13 +1,14 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-09-28 (`documentation-update`, rotation de fraîcheur, P4-268). Re-confronté au
-code : `SocleGuard::assertSeasonPlanNotChosen` posée sur les trois portes
-`GenerateScheduleController.php:132`/`RegenerateController.php:145`/
-`RegenerateFromVersionController.php:120` ✓ ; `ScheduleCapabilityResolver::forSchedules`
-(`canDelete`/`canValidate`/`canRegenerateFrom`) ✓ ; `ScheduleStatus` toujours à 5 valeurs
-(`frontend/src/features/wizard/api.ts:813`) ✓ ; `confirmPhrase="modifier mon planning de saison"`
-toujours câblée uniquement sur le dialogue de réouverture (`PlanningPage.tsx:1088`) ✓. Historique
-des passes vit dans git : `git log -p --follow specs/courantes/planning-lifecycle-validated.md`.
+Last verified @ 2026-09-28 (`documentation-update`, P4-269). Re-confronté au code :
+`PlacedSessionPersonConflictDetector::detect` scanne la version **pointée** du plan SEASON
+(`SchedulePlanProvisioner::chosenOfSeasonPlan`) et rend `seasonPlanChosen: false` sans version
+pointée (`backend/src/Service/PlacedSessionPersonConflictDetector.php:68-73`) ✓ ;
+`GET /api/training/placed-conflicts` tire `ManagementAccessGuard::assertManager()` en premier
+(`backend/src/Controller/TrainingPlacedConflictsController.php:42`) ✓ ; les trois rendus front
+(`CoachesStep`, `/planning` autonome+en vigueur, pastille `SeasonPlanBanner`) confrontés au code
+(§2 ci-dessous). Historique des passes vit dans git :
+`git log -p --follow specs/courantes/planning-lifecycle-validated.md`.
 
 Le plan de type **SEASON** (`schedule_plan`) et **la version qu'il pointe**
 (`chosen_schedule_id`, `App\Entity\SchedulePlan`) SONT le calendrier de la saison
@@ -42,6 +43,40 @@ Ancrages : `AuthGuard.tsx` (onboarding = `!seasonPlan.hasFinishedVersion`), `Coc
 
 ### Hors scope (reporté, raison technique)
 - **Cascade « éditer le calendrier de la saison ⇒ répercuter sur les plannings secondaires »** : suppose que les secondaires dérivent du calendrier de base (modèle **templates → occurrences**, roadmap §2, **absent**). Impossible proprement aujourd'hui → différé, documenté. En attendant, déplacer ou retirer le pointeur du plan SEASON **détruit** les plans secondaires, sur confirmation explicite (inv. 14, §6).
+
+## 2. Radar « une personne à deux endroits » sur le planning en vigueur (P4-269)
+
+Compléter le modèle après génération (lier un coach adjoint déclaré tard, un joueur actif) ne
+rend plus le planning « à régénérer » (P4-268, `postPersist`/`TeamCoach`/`CoachPlayerMembership`
+non écoutés) — mais peut mettre une personne sur deux séances **déjà placées** qui se
+chevauchent, sans que rien ne le dise. `App\Service\PlacedSessionPersonConflictDetector` ferme
+cet angle mort : feed **recalculé en lecture seule** à chaque appel (rien n'est persisté), il
+croise les séances placées de la version **pointée** du plan SEASON avec les liens COURANTS —
+coach MAIN, coach ASSISTANT, joueur (`CoachPlayerMembership` actif) — et réutilise, sans le
+réécrire, `CoachDoubleBookingDetector::bookingsCollide` (intervalles réels, gymnases
+**DIFFÉRENTS** uniquement — le même gymnase reste la mutualisation voulue, jamais un conflit).
+Périmètre V1 (fondateur 2026-09-28) : la version pointée du plan **SEASON** seulement (les plans
+de période en sont hors scope) ; indisponibilités déclarées et trajets entre gymnases hors V1.
+
+`GET /api/training/placed-conflicts` (club-scopé, réservé gestionnaire — SEC-07,
+`ManagementAccessGuard::assertManager()` tiré en premier) rend `{seasonPlanChosen, conflicts}` :
+`seasonPlanChosen: false` (aucune version pointée) veut dire « pas de planning en vigueur à
+scanner » — `conflicts: []` n'y signifie alors **pas** « tout va bien ».
+
+Trois rendus de la même primitive de présentation (`PlacedConflictsNotice`,
+`planning/PlacedConflictsNotice.tsx`), consommée par `usePlacedConflicts()`
+(`planning/queries.ts`, `staleTime: 10 000`) :
+- l'étape Coachs du wizard (`CoachesStep`), rafraîchie après chaque mutation de lien
+  coach↔équipe ou coach-joueur ;
+- le bandeau de `/planning`, page **autonome** seulement (`!embedded && !scoped`), et seulement
+  quand la version affichée est **celle en vigueur** (`isReadOnly`) ;
+- la pastille du bandeau de saison du cockpit (`SeasonPlanBanner`) — le nombre de **personnes**
+  distinctes concernées (une personne peut porter plusieurs paires en conflit), pas le nombre de
+  paires.
+
+Détail exhaustif (règle de collision, forme du payload) : le service et le contrôleur eux-mêmes,
+inventoriés dans [`backend-inventory.md`](../../backend/docs/backend-inventory.md) § « Radar de
+conflits d'entraînement ».
 
 ## 3. Décisions de conception
 

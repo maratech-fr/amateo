@@ -4,16 +4,15 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-09-28 (`documentation-update`, P4-268 PR B — ligne `/` et §6.6bis
-re-confrontées : `SeasonPlanBanner.tsx` rend « Modifier les données du club » seulement si
-`socleValidated`, `WizardLayout.tsx` dérive `seasonEditLocked = !periodMode && socleValidated` et
-verrouille `constraints`/`generate` dans le `StepRail` ✓, `VenueAvailabilityGrid.tsx` rend un
-`readOnly` inerte (`<div>` au lieu d'un `<button>`) sur les cellules et créneaux ✓, `queries.ts`
-invalide `["team_coaches"]`/`["coach_player_memberships"]` en plus des clés wizard ✓, et
-`TeamsStep.tsx` passe « Séances/sem » d'une équipe existante en `readOnly` sous `useSocleValidated()`
-— création libre — ✓). Reste non
-re-sondé cette passe — historique : `git log -p --follow` ce fichier. §6.7 reste hors périmètre
-(régime narratif plus dense, taille à l'aveugle refusée) — P4-262 en roadmap.
+Last verified @ 2026-09-28 (`documentation-update`, P4-269 — §6.6bis et §9 re-confrontées :
+`usePlacedConflicts()` lit `GET /api/training/placed-conflicts` (`queryKey: ["training",
+"placed-conflicts"]`, `staleTime: 10 000`, `planning/queries.ts`) ✓, `PlacedConflictsNotice` est
+la seule primitive rendue par `CoachesStep.tsx`, `PlanningPage.tsx`
+(`!embedded && !scoped && isReadOnly`) et `SeasonPlanBanner.tsx` (pastille comptant les
+`personId` distincts) ✓, `wizard/queries.ts` invalide la clé sur les mutations de lien coach↔équipe
+et coach-joueur ✓). Reste non re-sondé cette passe — historique : `git log -p --follow` ce fichier.
+§6.7 reste hors périmètre (régime narratif plus dense, taille à l'aveugle refusée) — P4-262 en
+roadmap.
 
 ## 1. Stack Decided
 
@@ -454,6 +453,21 @@ Le gestionnaire ne voit jamais le concept de `club_id` ou `season_id`. Le fronte
   que lit `planning/queries.ts` pour le repli `lookups.teamCoach` de `planning/lib/grid.ts` — sans
   ce correctif, un coach lié depuis « Modifier les données du club » n'apparaissait sur une séance
   générée sans coach qu'après le `staleTime` de 5 min du Planning.
+- **Radar « une personne à deux endroits » (P4-269, décision fondateur 2026-09-28)** :
+  `usePlacedConflicts()` (`planning/queries.ts`, `queryKey: ["training", "placed-conflicts"]`,
+  `staleTime: 10 000`) lit `GET /api/training/placed-conflicts` — le backend recalcule à la volée,
+  depuis les séances **placées** de la version **en vigueur** du plan SEASON et les liens COURANTS
+  (coach MAIN/ASSISTANT + joueur actif), toute paire qui met la même personne dans deux gymnases
+  **différents** au même instant (le même gymnase reste la mutualisation voulue, jamais un
+  conflit) ; `seasonPlanChosen: false` (aucune version pointée) veut dire « pas de planning en
+  vigueur à scanner », une liste vide n'y signifie pas « tout va bien ». Une seule primitive de
+  présentation, `PlacedConflictsNotice` (`planning/PlacedConflictsNotice.tsx`, `role` réglé par
+  l'appelant), **trois rendus** : l'encart de l'étape Coachs du wizard (`CoachesStep`, rafraîchi
+  après chaque mutation de lien — `wizard/queries.ts` invalide la clé) ; le bandeau de `/planning`,
+  page **autonome** seulement (`!embedded && !scoped`) et seulement sur la version en vigueur
+  (`isReadOnly`) ; la pastille du bandeau de saison du cockpit (`SeasonPlanBanner`), qui compte les
+  **personnes** distinctes (pas les paires). Détail métier complet :
+  [`planning-lifecycle-validated.md`](../../specs/courantes/planning-lifecycle-validated.md) §2.
 
 ### 6.6 ter Informations du club (fiche FFBB — 100 % lecture seule sauf le siège)
 
@@ -1278,10 +1292,10 @@ type AuthState = {
 | `/verify-email/:token` | `POST /api/register/verify` (émet le JWT → app) |
 | `/forgot-password`, `/reset-password/:token` | `POST /api/password/forgot`, `POST /api/password/reset` |
 | `/waiting` | `GET /api/me` (poll 5 s jusqu'à `membershipStatus === "active"`) |
-| `/planning` | `GET /api/me`, `GET /api/schedules` (poll 2,5 s si génération en vol), `GET /api/schedule_slot_templates?scheduleId={id}`, `GET /api/schedule_diagnostics?scheduleId={id}`, `POST /api/schedules/{id}/generate`, `POST /api/schedules/{id}/validate`, `POST /api/schedules/{id}/reopen`, `POST /api/schedules/{id}/export-pdf` (`ExportMenu`), `PUT /api/schedule_plans/{id}` (renommage du plan), `PUT /api/schedules/{id}` (renommage de la version), `DELETE /api/schedules/{id}` (suppression d'une version de travail), `POST /api/schedule-slots/{id}/move` (déplacer/évincer, mode cible sous verdict moteur — §6.7), `POST /api/schedules/{id}/place-slot` (placer une séance à la dérive — §6.7), `POST /api/schedule-slots/{id}/manual-edit/lock` (verrouiller/déverrouiller — §6.7), collections référentiels (`teams`, `venues`, `coaches`, `sport_categories`, `team_coaches`, `coach_player_memberships`) |
-| `/` (cockpit) | `GET /api/me`, `GET /api/schedules`, `GET /api/schedule_plans`, `GET /api/calendar_entries` (+ conflits d'entrée), campagnes de doléances (badge radar), `GET /api/venue_unavailabilities` + `venue-unavailability-impact` (carte radar « gymnase indisponible » — P4-68), `PUT /api/calendar_entries/{id}` (re-dater une racine `closure` re-datable — bouton « Modifier les dates » de la liste du jour, D3 v1 PR-2 ; ou, pour une mère DÉCOUPÉE, confirme un `POST /redate-preview` — D3 v2), `POST /api/calendar_entries/{id}/redate-preview` (aperçu des effets avant confirmation, mère découpée seulement — D3 v2, P4-174) |
+| `/planning` | `GET /api/me`, `GET /api/schedules` (poll 2,5 s si génération en vol), `GET /api/schedule_slot_templates?scheduleId={id}`, `GET /api/schedule_diagnostics?scheduleId={id}`, `POST /api/schedules/{id}/generate`, `POST /api/schedules/{id}/validate`, `POST /api/schedules/{id}/reopen`, `POST /api/schedules/{id}/export-pdf` (`ExportMenu`), `PUT /api/schedule_plans/{id}` (renommage du plan), `PUT /api/schedules/{id}` (renommage de la version), `DELETE /api/schedules/{id}` (suppression d'une version de travail), `POST /api/schedule-slots/{id}/move` (déplacer/évincer, mode cible sous verdict moteur — §6.7), `POST /api/schedules/{id}/place-slot` (placer une séance à la dérive — §6.7), `POST /api/schedule-slots/{id}/manual-edit/lock` (verrouiller/déverrouiller — §6.7), `GET /api/training/placed-conflicts` (radar « une personne à deux endroits », bandeau autonome sur la version en vigueur — P4-269), collections référentiels (`teams`, `venues`, `coaches`, `sport_categories`, `team_coaches`, `coach_player_memberships`) |
+| `/` (cockpit) | `GET /api/me`, `GET /api/schedules`, `GET /api/schedule_plans`, `GET /api/calendar_entries` (+ conflits d'entrée), campagnes de doléances (badge radar), `GET /api/venue_unavailabilities` + `venue-unavailability-impact` (carte radar « gymnase indisponible » — P4-68), `GET /api/training/placed-conflicts` (pastille « N personnes à deux endroits » du bandeau de saison — P4-269), `PUT /api/calendar_entries/{id}` (re-dater une racine `closure` re-datable — bouton « Modifier les dates » de la liste du jour, D3 v1 PR-2 ; ou, pour une mère DÉCOUPÉE, confirme un `POST /redate-preview` — D3 v2), `POST /api/calendar_entries/{id}/redate-preview` (aperçu des effets avant confirmation, mère découpée seulement — D3 v2, P4-174) |
 | `/matchs`, `/matchs/consulter`, `/matchs/importer`, `/matchs/configuration`, `/matchs/adversaires`, `/matchs/semaine-type`, `/matchs/reconciliation` | `POST /api/fixtures/import/analyze` (multipart `file` → mappings résolus, PR-3b : plus de `deviations` dans la réponse consommée), `POST /api/fixtures/import` (multipart `file` + `mappings`, **plus de `decisions`** depuis PR-3b → rapport + `unresolvedDeviations`/`depositedAt`), `GET /api/fbi-ingestions/latest` (fraîcheur, Membre), `POST /api/matches/module-visit` (gardien RMM-3, un POST par ouverture), `GET /api/ffbb/rencontres` + `POST /api/ffbb/rencontres/apply` (canal API, à la demande — `useFfbbRencontres(enabled: false)`), `POST /api/fixtures/review` (geste ligne `{fixtureIds}` ou masse `{teamId}`, PR-3a/3b) + `POST /api/fixtures/review/deviations` (trancher un écart `{fixtureId, field, choice}`). ⚠ Catalogue **partiel** — le module porte aussi `fixtures` CRUD, `fixtures/conflicts`, `fixtures/place`, `league-match-windows`, `venue_match_windows`, `team_match_habits`, `team_links`, `ffbb/engagements`, `venue_unavailabilities`, `POST /api/opponents/resolve` (rattrapage des codes FFBB des adversaires, cap dur `MAX_DISTINCT` — `OpponentResolveController.php`, route fine conservée en compat), `POST /api/opponents/refresh` (l'orchestrateur appelé depuis « Mettre à jour les adversaires » depuis PR 2b, 2026-09-16 — `OpponentRefreshController.php`), `GET /api/opponents/travel` (`travelStatus`/`hasLogo` additifs, C5/C7), `POST /api/opponents/travel/resolve` (dispatche au worker depuis C6, `{queued: true}`), `POST /api/opponents/travel/manual`/`/auto`, `GET /api/opponents/{code}/venue-suggestions`, `GET /api/opponents/{code}/logo` (route membre, C7) |
-| `/wizard` | CRUD `teams`/`venues`/`coaches`/`constraints`/`venue_training_slots`…, `GET /api/priority_tiers`, `GET /api/sport_categories`, `POST /api/teams/reorder` (mode tri), `POST /api/constraints/validate`, `POST /api/schedules` + `generate` (étape Génération) |
+| `/wizard` | CRUD `teams`/`venues`/`coaches`/`constraints`/`venue_training_slots`…, `GET /api/priority_tiers`, `GET /api/sport_categories`, `POST /api/teams/reorder` (mode tri), `POST /api/constraints/validate`, `POST /api/schedules` + `generate` (étape Génération), `GET /api/training/placed-conflicts` (encart étape Coachs, rafraîchi après un lien — P4-269) |
 | `/club` | `PATCH /api/club/appearance`, `POST/DELETE /api/club/logo`, `GET /api/clubs/{clubId}/logo` (public, cache-buster sur l'URL après upload), `POST /api/club/ffbb-import` (re-import institutionnel, seul geste de correction de la fiche FFBB, management-gated), `PATCH /api/club/siege` (siège du club, seule saisie de la page — §6.6 ter), `GET /api/memberships/pending`, `POST /api/memberships/{id}/approve`, `POST /api/memberships/{id}/reject` (section « Demandes » — l'ancienne route `/pending-members` a été repliée ici), `GET /api/venue-usage-stats?from=&to=` (encart stats d'utilisation des gymnases — §6.6 quater) |
 | `/profile` | `GET /api/me` |
 | `/doleances/:token` | Endpoints **publics** de la campagne de doléances (lecture du formulaire pré-rempli + soumission des seules sections modifiées) — aucun JWT |

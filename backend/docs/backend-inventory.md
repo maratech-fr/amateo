@@ -3,12 +3,14 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-09-28 (`documentation-update`, P4-268 — entrée `Schedule` re-confrontée à
-`ResourceChangeStaleScheduleListener` : `postPersist` Coach n'est plus écouté, `postUpdate`
-filtre via `COSMETIC_COACH_FIELDS` (`firstName`/`lastName`/`email`/`phone`/`updatedAt`/`version`),
-`postRemove` marque toujours, `TeamCoach`/`CoachPlayerMembership` restent non écoutés ✓). Reste du
-fichier non rebalayé cette passe (portée = cette ligne) ; historique des passes complètes :
-`git log -p --follow` ce fichier — un stamp REMPLACE, il ne s'empile pas.
+Last verified @ 2026-09-28 (`documentation-update`, P4-269 — nouvelle entrée « Radar de conflits
+d'entraînement » re-confrontée : `GET /api/training/placed-conflicts` tire
+`ManagementAccessGuard::assertManager()` en premier (`TrainingPlacedConflictsController.php:42`) ✓,
+`PlacedSessionPersonConflictDetector::detect` scanne la version pointée du plan SEASON et
+réutilise `CoachDoubleBookingDetector::bookingsCollide` sans le réécrire
+(`PlacedSessionPersonConflictDetector.php:68-116,158`) ✓). Reste du fichier non rebalayé cette
+passe (portée = cette ligne) ; historique des passes complètes : `git log -p --follow` ce fichier
+— un stamp REMPLACE, il ne s'empile pas.
 
 ---
 
@@ -351,6 +353,12 @@ le club n'existe pas encore au moment de la demande) via `ClubCreationRequestRep
 | Route | Méthode | Contrôleur | Description |
 |-------|---------|------------|-------------|
 | `/api/constraints/validate` | POST | `ValidateConstraintsController` | Gate pré-solve. En mode période, le jeu validé vient de **`PeriodConstraintSelector`** — LA source unique partagée avec `buildForPeriodPlan`, qui aligne le récap sur ce que le solveur recevra (parité gardée par `PeriodGatePayloadParityTest`, phase1). Retourne `errors` par contrainte + `conflits` + `warnings` (drops pour gymnase désactivé, tag inerte, **capacité dans les deux sens** : demande = **`PayloadCapacityMirror::demand`** (Σ `sessionsPerWeek` du payload, MOINS le repli des blocs de mutualisation — une séance de bloc réunit N membres sur UNE place, donc (n_membres−1)×`commonSessions` sortent par bloc, plancher 0 ; miroir littéral de `engine/app/solver/result_builder/diagnostics.py`), offre = Σ capacités des créneaux, sous-capacité en « au moins X », surplus dès 1 créneau en trop ; nombres lus du payload `buildForClubSeason`/`buildForPeriodPlan`, jamais recalculés ; **coach indisponible × réservation en dur** — miroir du parse moteur dans `CoachDoubleBookingDetector::detectUnavailabilityClashes`, avertit AVANT au lieu de l'INFO post-solve) + `blockers` (coach dédoublé ; **saturation des « au moins » par gymnase** : demande = Σ des minimums (un pin n'y compte pas, sa variable n'existe pas), offre = places des triplets NON verrouillés — demande > offre = INFEASIBLE certain ; **surplus de réservations d'une équipe** : plus de réservations que de `sessionsPerWeek` est une INCOHÉRENCE gestionnaire, pas une préférence, appliquée côté serveur — un verrou est pré-placé hors modèle, les trois s'imposeraient) + **`capacity` (clé ADDITIVE)** — `{demand, offer}` chiffré, MÊME lecture que les avertissements ci-dessus, `null` sans payload (période non génératrice / build en échec) ; sert le compteur de carence de l'écran de FERMETURE (`frontend-spec.md` §6.7 bis), sans dupliquer le calcul côté front. **L'algèbre des lectures de payload vit dans `PayloadCapacityMirror`** (source unique offre/saturation/grille/demande, parité épinglée contre le VRAI moteur par `CapacityMirrorParityTest`, groupe `contract`). Quatre PRÉVENTIONS de plus, calculées par `PreSolvePreventionWarnings` depuis LE payload (donc depuis ce que le solveur recevra, jamais depuis une lecture parallèle) : gymnase déclaré sans aucun créneau · équipe qu'aucun créneau ne peut accueillir (gymnase imposé vide, ou jours autorisés sans intersection) · coach dont la charge dépasse ses jours disponibles · contrainte visant une équipe absente du périmètre. Elles AVERTISSENT, elles ne bloquent jamais |
+
+### Radar de conflits d'entraînement (P4-269)
+
+| Route | Méthode | Contrôleur | Description |
+|-------|---------|------------|-------------|
+| `/api/training/placed-conflicts` | GET | `TrainingPlacedConflictsController` | « Une personne à deux endroits en même temps » sur le planning d'entraînement **EN VIGUEUR** (version **pointée** du plan SEASON). `App\Service\PlacedSessionPersonConflictDetector` croise les `ScheduleSlotTemplate` placés de cette version avec les liens COURANTS (`TeamCoach` MAIN+ASSISTANT, `CoachPlayerMembership` actif) et réutilise, sans le réécrire, la règle pure `CoachDoubleBookingDetector::bookingsCollide` (intervalles réels, gymnases **DIFFÉRENTS** uniquement — le même gymnase reste la mutualisation voulue). Coach de séance = `slot.coachId` s'il est posé, sinon les coachs de l'équipe (même repli que le planning) ; une personne présente pour deux raisons au même créneau (coach ET joueur) ne compte qu'une fois. Feed **recalculé en lecture seule** à chaque appel (rien n'est persisté). Périmètre V1 (fondateur 2026-09-28) : plan SEASON seulement (plans de période hors V1), indisponibilités déclarées et trajets entre gymnases hors V1. Rend `{clubId, seasonId, seasonPlanChosen, conflicts}` — `seasonPlanChosen: false` (aucune version pointée) veut dire « pas de planning en vigueur à scanner », `conflicts: []` n'y signifie alors PAS « tout va bien ». Gate management (SEC-07, `assertManager()` tiré en premier) — 403 sinon. Tenant : tout est chargé via les repositories mappés (filtres Doctrine club+saison + RLS), gardé par `TrainingPlacedConflictsApiTest`. Trois affichages front consommateurs (wizard étape Coachs, bandeau `/planning`, pastille du cockpit) : [`planning-lifecycle-validated.md`](../../specs/courantes/planning-lifecycle-validated.md) §2. |
 
 ### Écriture des contraintes — liste blanche `config` (SEC-13)
 
