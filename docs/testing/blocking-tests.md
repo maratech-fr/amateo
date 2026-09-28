@@ -30,6 +30,7 @@ message d'avant à l'octet près) ·
 `CrossStack/PayloadVersionMatchesContractVersionTest` (la version que le payload s'attribue == `engine/CONTRACT_VERSION`, égalité STRICTE — la dérive avait vécu deux bumps en silence) ·
 `CrossStack/ValidateAssignmentsContractSchemaTest` (contrat du verdict `/validate-assignments`) ·
 `Security/RlsIsolationTest` (RLS en base) ·
+`Security/LeagueWindowSuggestionShareTest` (P4-272 ② : la suggestion de plages de ligue lit à travers la frontière tenant via une fonction SQL SECURITY DEFINER — seuil ≥ 3 ET majorité, groupement d'instance comité/ligue/fédération, demandeur exclu, saisons non actives exclues, aucune donnée club-identifiante, repli fédéral ARA/rien pour GUY, apply recalculé serveur) ·
 `Security/ClubAccessTest` + `Security/UserSelfOnlyTest` + `Security/ImportAuthorizationTest` (lockdown API tenant) ·
 `Security/MercureHardeningTest` (Mercure durci) ·
 `Security/ManagementRoleTest` (écriture = management par défaut) ·

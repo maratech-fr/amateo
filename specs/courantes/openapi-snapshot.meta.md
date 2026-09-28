@@ -1,12 +1,11 @@
-Last verified @ 2026-09-28 (snapshot régénéré depuis le backend vivant : la ressource
-`ClubLeagueWindow` (P4-272 ①) expose le CRUD gestionnaire de la copie club de l'enveloppe ligue —
-`GET/POST /api/club_league_windows` et `GET/PUT/DELETE /api/club_league_windows/{id}` ; chaque item
-porte un `badge` (« modified »/« added ») calculé serveur ; `GET /api/league-match-windows` sert
-cette copie, même surface de route ; `GET /api/training/placed-conflicts` (P4-269) expose le radar
-« une personne à deux endroits » du planning d'entraînement en vigueur).
+Last verified @ 2026-09-29 (snapshot régénéré depuis le backend vivant : P4-272 ② ajoute la
+suggestion de plages de ligue — `GET /api/league-window-suggestions` (la tendance dominante de
+l'instance fédérale du club : comité / ligue / fédération, plus un repli sur le catalogue fédéral,
+un compte de clubs jamais un « qui ») et `POST /api/league-window-suggestions/apply` (recalcul
+serveur, remplacement transactionnel de la copie), toutes deux réservées au gestionnaire).
 
-**211 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`7672e6a11adc24c627cb0fa57dfaf45cdc77cbc97aba7183d4d2b48894f6f653` (`sha256sum` sur le fichier).
+**213 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`ec1b8afad300351add565b0127fa47eb795af351e26233a397e22f063a387496` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

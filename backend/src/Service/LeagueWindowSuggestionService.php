@@ -315,7 +315,11 @@ final class LeagueWindowSuggestionService
         /** @var list<array{kickoffMin: string, kickoffMax: string}> $decoded */
         $decoded = json_decode($json, true, 512, \JSON_THROW_ON_ERROR);
 
-        return $decoded;
+        // Normalise key order (jsonb reorders keys) → a stable {kickoffMin, kickoffMax}.
+        return array_map(
+            static fn (array $w): array => ['kickoffMin' => $w['kickoffMin'], 'kickoffMax' => $w['kickoffMax']],
+            $decoded,
+        );
     }
 
     private static function combinationKey(string $category, string $level, ?string $gender, int $dayOfWeek): string
