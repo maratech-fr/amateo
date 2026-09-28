@@ -1,22 +1,14 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-09-26 (rotation de fraîcheur, `documentation-update`). Ce fichier ne couvre que
-backend+engine (« Scope » ci-dessous). Re-confronté au code : le graphe des jobs §1 (noms et
-`needs`) correspond à `.github/workflows/ci.yml` — `e2e` et `backend-coverage` sur `needs:
-blocking-tests`, `engine-coverage`/`engine-perf`/`engine-perf-pr` sur `needs: engine-tests`,
-`build-docker` sur `needs: [blocking-tests, engine-tests]` seuls ✓ ; `BlockingTestsListMatchesCiTest`,
-`DocStampFreshnessTest` et `PlaywrightImageMatchesLockTest` existent toujours
-(`backend/tests/Unit/Documentation/`, `Unit/Dependency/`) ✓ ; `phpunit.xml.dist:42` toujours à
-`SYMFONY_DEPRECATIONS_HELPER max[direct]=0` ✓ ; le projet Playwright `superadmin` dépend bien de
-`setup` (`storageState`, `frontend/playwright.config.ts`) ✓ ; `docker-compose.yml` pose
-`restart: unless-stopped` sur tous les services de dev durables ✓. **Required checks de `main`
-re-confirmés** (`gh api repos/maratech-fr/amateo/branches/main/protection --jq
-.required_status_checks.contexts`) : `Engine semantics` et `Functional Tests (Behat)` en font
-déjà partie — corrigé aux deux endroits qui affirmaient encore qu'il restait à les ajouter côté
-GitHub. §5 « Known testing gaps » purgé des entrées déjà closes (portée RLS SEC-12,
-`TenantCacheIsolationTest`, parcours e2e P4-122) : un gap résolu n'est plus un gap, sa trace vit
-dans `specs/courantes/etat-des-lieux.md` §2/§3. Reste du fichier (§2 backend tests, §3 engine
-tests, §4bis a11y) non re-sondé cette passe.
+Last verified @ 2026-09-28 (rotation de fraîcheur, `documentation-update`, brief P4-240). Re-confronté
+au code : le graphe des jobs §1 (noms et `needs`) correspond toujours à `.github/workflows/ci.yml` —
+`e2e` (`ci.yml:1007`) et `backend-coverage` (`ci.yml:961`) sur `needs: blocking-tests`,
+`engine-coverage`/`engine-perf`/`engine-perf-pr` sur `needs: engine-tests`, `build-docker`
+(`ci.yml:1385`) sur `needs: [blocking-tests, engine-tests]` seuls ✓ ; `BlockingTestsListMatchesCiTest`
+et `DocStampFreshnessTest` (`backend/tests/Unit/Documentation/`) et `PlaywrightImageMatchesLockTest`
+(`backend/tests/Unit/Dependency/`) existent toujours ✓ — le nouveau step `MatchPlacementSemanticsGateTest`
+(P4-240) est entré dans le job `blocking-tests` sans changer ce graphe. Reste du fichier (§2 backend
+tests, §3 engine tests, §4bis a11y) non re-sondé cette passe.
 
 Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique), [`test-coverage-map.md`](test-coverage-map.md) (qui teste quoi, angles morts) and [`../project-map.md`](../project-map.md).
 

@@ -12625,7 +12625,8 @@
                                                             "no_access_window",
                                                             "no_league_intersection",
                                                             "venue_unavailable",
-                                                            "venue_full"
+                                                            "venue_full",
+                                                            "not_selected"
                                                         ]
                                                     },
                                                     "message": {

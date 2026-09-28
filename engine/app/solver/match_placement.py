@@ -63,7 +63,11 @@ REASON_MESSAGES = {
     "venue_unavailable": "Tous les gymnases de match sont indisponibles à cette date.",
     "no_access_window": "Aucune fenêtre d'accès match ne contient la durée du match ce jour-là.",
     "no_league_intersection": "Les fenêtres de la ligue ne croisent aucune fenêtre d'accès ce jour-là.",
+    # venue_full ≠ not_selected : venue_full = plus AUCUN créneau licite libre ce jour-là
+    # (le gymnase est réellement saturé) ; not_selected = un créneau licite restait libre mais
+    # le solveur ne l'a pas retenu dans le temps imparti — la reclassification post-solve tranche.
     "venue_full": "Tous les créneaux licites sont déjà occupés par d'autres matchs.",
+    "not_selected": "Le solveur n'a pas retenu de créneau dans le temps imparti — relancez le placement.",
 }
 
 # ── Build budget (ADR-0001: name the impossible, never hang) ──────────────────
@@ -116,6 +120,27 @@ def _too_large_result(exc: _BuildBudgetExceeded) -> dict[str, Any]:
 
 def _minutes(value: time) -> int:
     return value.hour * 60 + value.minute
+
+
+def _remaining_reason(
+    slots: list[tuple[str, int]],
+    match_date: date,
+    match_min: int,
+    busy: dict[tuple[str, date], list[tuple[int, int]]],
+) -> str:
+    """Reason for a match the solve left unplaced, given the FINAL occupancy.
+
+    ``venue_full`` when EVERY legal slot of the match overlaps an occupied window
+    at its date (the venue is genuinely saturated); ``not_selected`` when at least
+    one legal slot stays free — the solver simply did not retain it within the
+    budget (« relancez le placement »). Pure so both branches are falsifiable
+    without a full solve (not_selected is otherwise a budget-exhaustion artefact,
+    impossible to force deterministically on a tiny problem)."""
+    for venue_id, kickoff in slots:
+        occupied = busy.get((venue_id, match_date), [])
+        if not any(kickoff < b_end and b_start < kickoff + match_min for b_start, b_end in occupied):
+            return "not_selected"
+    return "venue_full"
 
 
 def _to_time(total: int) -> time:
@@ -298,6 +323,75 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
         if len(group) > 1:
             model.add_no_overlap(group)
 
+    # ── Warm-start (ADR-0003): a deterministic greedy first-fit over the pruned
+    # domains hands CP-SAT ONE coherent hint per match — a feasible placement to
+    # improve on — so the budget is spent optimising, not rediscovering a feasible
+    # point. Order (date, team) is stable; per match the preferred candidate is the
+    # habit/rotation slot, else the current SOLVER placement, else the first legal
+    # free slot, each checked against the FIXED anchors AND the slots the greedy has
+    # already taken. It ABSORBS the old stability hint: exactly one hint set, never
+    # two contradictory ones on the same match.
+    def _greedy_key(
+        cand: _Candidate,
+        habit: TeamHabitSchema | None,
+        rotations: list[SlotRotationSchema],
+        match: MatchSchema,
+    ) -> tuple[int, str, int]:
+        # rank 0 = habit/rotation ideal slot ; 1 = current SOLVER placement ;
+        # 2 = any other legal slot. Ties broken by (venue, kickoff) = domain order.
+        rank = 2
+        if (
+            habit is not None
+            and cand.kickoff_min == _minutes(habit.kickoff)
+            and (habit.venue_id is None or cand.venue_id == habit.venue_id)
+        ) or any(cand.kickoff_min == _minutes(r.kickoff) and cand.venue_id == r.venue_id for r in rotations):
+            rank = 0
+        elif (
+            match.current_venue_id == cand.venue_id
+            and match.current_kickoff is not None
+            and _minutes(match.current_kickoff) == cand.kickoff_min
+        ):
+            rank = 1
+        return (rank, cand.venue_id, cand.kickoff_min)
+
+    def _apply_greedy_hints() -> None:
+        greedy_busy: dict[tuple[str, date], list[tuple[int, int]]] = {
+            key: list(windows) for key, windows in fixed_busy.items()
+        }
+        for match in sorted(solvable, key=lambda m: (m.match_date, m.team_id)):
+            _ensure_budget()
+            match_min, _ = _durations(teams_by_id.get(match.team_id))
+            team = teams_by_id.get(match.team_id)
+            habit = (
+                next((h for h in team.habits if h.day_of_week == _iso_day(match.match_date)), None) if team else None
+            )
+            match_rotations = rotations_by_team_day.get((match.team_id, _iso_day(match.match_date)), [])
+            cands = candidates[match.id]
+            chosen: _Candidate | None = None
+            # Decorate-sort-undecorate: the key is computed eagerly in the generator
+            # (no closure over the loop variable → no B023), and `sorted` compares
+            # only ``pair[0]`` so the _Candidate is never ordered directly.
+            ordered = sorted(
+                ((_greedy_key(cand, habit, match_rotations, match), cand) for cand in cands),
+                key=lambda pair: pair[0],
+            )
+            for _key, cand in ordered:
+                busy = greedy_busy.get((cand.venue_id, match.match_date), [])
+                if not any(
+                    cand.kickoff_min < b_end and b_start < cand.kickoff_min + match_min for b_start, b_end in busy
+                ):
+                    chosen = cand
+                    break
+            for cand in cands:
+                model.add_hint(cand.var, 1 if cand is chosen else 0)
+            model.add_hint(is_placed[match.id], 1 if chosen is not None else 0)
+            if chosen is not None:
+                greedy_busy.setdefault((chosen.venue_id, match.match_date), []).append(
+                    (chosen.kickoff_min, chosen.kickoff_min + match_min)
+                )
+
+    _apply_greedy_hints()
+
     objective: list[cp_model.LinearExpr | cp_model.IntVar] = []
     for match in solvable:
         objective.append(W_PLACE * is_placed[match.id])
@@ -399,7 +493,11 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
                 and _minutes(match.current_kickoff) == cand.kickoff_min
             ):
                 weight += W_STABILITY
-                model.add_hint(cand.var, 1)
+                # The stability hint is NOT posted here: a lone add_hint on the
+                # stable candidate would fight the greedy warm-start below (two
+                # contradictory hints on the same match). `_apply_greedy_hints`
+                # posts ONE coherent hint per match — and prefers this current
+                # placement when it is still free (see its preference tiers).
             # Protection is a VENUE conflict → the candidate's MATCH window.
             for p_start, p_end in protected.get((cand.venue_id, match.match_date), []):
                 if venue_start < p_end and p_start < venue_end:
@@ -542,18 +640,35 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
 
     placements: list[dict[str, Any]] = []
     diagnostics: list[dict[str, Any]] = []
+    # Reclassification of an unchosen match: venue_full ONLY when no legal slot
+    # remains free at its date given the FINAL placements + fixed anchors; if a
+    # licit slot is still open, the solver simply did not retain it within the
+    # budget → not_selected (« relancez le placement »).
+    final_busy: dict[tuple[str, date], list[tuple[int, int]]] = {
+        key: list(windows) for key, windows in fixed_busy.items()
+    }
+    unchosen: list[MatchSchema] = []
     if solver_status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         for match in solvable:
+            match_min, _ = _durations(teams_by_id.get(match.team_id))
             chosen = next((c for c in candidates[match.id] if solver.value(c.var) == 1), None)
             if chosen is not None:
                 placements.append(
                     {"matchId": match.id, "venueId": chosen.venue_id, "kickoff": _to_time(chosen.kickoff_min)}
                 )
+                final_busy.setdefault((chosen.venue_id, match.match_date), []).append(
+                    (chosen.kickoff_min, chosen.kickoff_min + match_min)
+                )
             else:
-                unplaced.append({"matchId": match.id, "reason": "venue_full", "message": REASON_MESSAGES["venue_full"]})
+                unchosen.append(match)
     else:  # pragma: no cover — the model is always feasible (placement optional)
-        for match in solvable:
-            unplaced.append({"matchId": match.id, "reason": "venue_full", "message": REASON_MESSAGES["venue_full"]})
+        unchosen = list(solvable)
+
+    for match in unchosen:
+        match_min, _ = _durations(teams_by_id.get(match.team_id))
+        slots = [(cand.venue_id, cand.kickoff_min) for cand in candidates[match.id]]
+        reason = _remaining_reason(slots, match.match_date, match_min, final_busy)
+        unplaced.append({"matchId": match.id, "reason": reason, "message": REASON_MESSAGES[reason]})
 
     for item in unplaced:
         diagnostics.append(

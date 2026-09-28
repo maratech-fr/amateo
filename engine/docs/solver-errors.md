@@ -1,7 +1,8 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-09-26 (passe « présent » zone engine, `documentation-update`). Re-confronté au
-code : `engine/CONTRACT_VERSION` = `2.23` ✓ ; la liste `type` de `DiagnosticSchema`
+Last verified @ 2026-09-28 (P4-240 : contrat **2.24**, ligne `unplaced_match` recalée sur les cinq
+valeurs de `UnplacedMatchSchema.reason` dont `not_selected` — détail dans `engine-inventory.md`).
+Re-confronté au code : `engine/CONTRACT_VERSION` = `2.24` ✓ ; la liste `type` de `DiagnosticSchema`
 (`app/schemas/output_schema.py:62-90`) porte **15 valeurs**, toutes présentes dans la table
 ci-dessous ✓ ; `SCORE_FORMULA_VERSION` = `T24_LEVEL_2_FIXED_WEIGHTS_V13`
 (`app/solver/objective/weights.py:31`) ✓ ; `BUILD_BUDGET_SECONDS` = `10.0`
@@ -27,7 +28,7 @@ Ces erreurs sont retournees directement par l'API FastAPI, avant meme que le sol
 - `sessionsPerWeek: "trois"` au lieu d'un entier
 - Champ `sportCategoryId` manquant sur une equipe (requis)
 - Cle inconnue dans le payload (les schemas sont `extra=forbid`)
-- `version: "1.0"` alors que le moteur parle le **MAJOR 2** du contrat `2.23` (`"2.0"` comme `"2.1"` passent)
+- `version: "1.0"` alors que le moteur parle le **MAJOR 2** du contrat `2.24` (`"2.0"` comme `"2.1"` passent)
 
 **Attention — deux pieges qui ne provoquent PAS de 422** : `lockLevel` est une **chaine libre**, pas un enum (un `"FORT"` est accepte et simplement traite comme non-`HARD`), et le `dayOfWeek` d'un creneau de gymnase (`VenueTrainingSlotSchema`) est un entier **sans borne** — un `8` passe la validation (d'autres schemas du meme payload, eux, sont bornes `ge=1, le=7` : la tolerance n'est pas une regle generale).
 
@@ -77,7 +78,7 @@ Les diagnostics apparaissent dans le tableau `diagnostics[]` de la reponse. Ils 
 | `session_below_effective_min` | ERROR / WARNING | Une equipe recoit moins de seances que demande | **Lire `causes[]` et `openCandidates`, ne PAS deviner** : chaque cause est MESUREE au moment ou le solveur a ferme un creneau candidat — `kind` (verrou, gymnase interdit, indispo coach, fenetre horaire, jour interdit, gymnase impose ailleurs), `constraintId`/`label` de la regle en cause, `count` de creneaux fermes. `openCandidates` compte les creneaux restes **ouverts** : la place existait, l'arbitrage global a place autre chose. `causes: []` + `openCandidates` absent = aucune cause mesurable, le message reste neutre. | Corriger la regle nommee par la cause. ⚠ Ce diagnostic mesure sa cause plutot que de la deviner (garde active depuis le contrat 2.8) : sous le score V10, une seance peut manquer alors que des creneaux etaient libres — ne jamais reintroduire une cause devinee ici. |
 | `unused_slot` | WARNING | Un creneau declare n'a recu aucune equipe | Le creneau est incompatible avec les contraintes des equipes restantes (jour interdit, fenetre horaire, gymnase interdit), ou plus aucune equipe n'a de seance a placer. | Reaffecter le creneau a une equipe compatible, ou le retirer des disponibilites du gymnase. |
 | `implicit_rule_not_honored` | INFO / WARNING | Une regle implicite de bien-etre n'est pas honoree | `ruleKey` nomme la regle (repos coach, distribution salaries, enchainements, age croissant). **INFO** : la regle a ete assouplie par le gestionnaire (reglee en PREFERRED) — c'est sa decision, pas une erreur. **WARNING** : le solveur n'a pas pu l'honorer malgre le reglage HARD, un verrou etant en cause. | INFO : rien a faire, ou durcir la regle. WARNING : lever le verrou en cause. |
-| `unplaced_match` | ERROR | Un match n'a pas pu etre place | Emis par `/place-matches` (rail synchrone, ADR-0003), pas par le solve hebdomadaire. | Ouvrir un creneau compatible, ou revoir la fenetre de la journee. |
+| `unplaced_match` | ERROR | Un match n'a pas pu etre place | Emis par `/place-matches` (rail synchrone, ADR-0003), pas par le solve hebdomadaire. La raison DETAILLEE vit sur `UnplacedMatchSchema.reason`, pas ce type de diagnostic — cinq valeurs (`no_access_window`, `no_league_intersection`, `venue_unavailable`, `venue_full`, `not_selected`), detaillees dans `engine-inventory.md` § Schemas du placement de matchs. | `venue_full`/`not_selected` : relancer le placement (P4-240 : le budget est passe a 60 s). Les trois autres : ouvrir un creneau compatible, ou revoir la fenetre de la journee. |
 | `placement_problem_too_large` | ERROR | La CONSTRUCTION du modele CP-SAT de `/place-matches` a depasse son budget avant meme que le solveur ne demarre | Contrat 2.22, ENG-40 : `max_time_in_seconds` ne borne que le SOLVE — les boucles chaudes (candidats, no-overlap, passerelles) sont O(matchs²)/O(candidats²) ; au-dela de `BUILD_BUDGET_SECONDS = 10 s` (`match_placement.py`), le moteur abandonne NOMME plutot qu'un hang (`status="failed"`, aucun placement). | Reduire le volume de matchs a placer par appel, ou resserrer les fenetres d'acces des gymnases (voir `suggestions[]` du diagnostic). |
 | `day_constraint_conflict` | ERROR | Les regles de jours d'une equipe se contredisent | Un jour est a la fois impose (`forcedDays`) et interdit (`forbiddenDays`), ou tous les jours de la liste blanche (`allowedDays`) sont interdits. L'equipe est alors forcee a 0 seance. | Retirer le recouvrement entre la regle "uniquement / impose" et la regle "evite". |
 | `venue_minimum_unreachable` | ERROR | Un plancher "au moins N seances dans ce gymnase" est inatteignable | Le gymnase offre a l'equipe moins de **jours distincts** que N (elle joue au plus une seance par jour). | Baisser N, ou ouvrir des creneaux sur d'autres jours dans ce gymnase. |

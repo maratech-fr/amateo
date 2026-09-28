@@ -76,6 +76,9 @@ final class MatchPlacementContext extends BaseContext
     /** @var list<array{id: string, venueId: string, startTime: string, endTime: string}> */
     private array $sundayWindows = [];
 
+    /** @var list<array{id: string, venueId: string, startTime: string, endTime: string}> */
+    private array $saturdayWindows = [];
+
     /** @var array<mixed> */
     private array $placeResult = [];
 
@@ -341,6 +344,38 @@ final class MatchPlacementContext extends BaseContext
         }
     }
 
+    /**
+     * Le seed BCCL pose des fenêtres samedi sur Matéo/Armand/Debarros : sans elles écartées, deux
+     * domiciles SANS préférence (ni habitude ni rotation) sont plaçables sur PLUSIEURS gymnases, et
+     * le solveur — indifférent entre gymnases à l'objectif — n'a aucune raison de les co-localiser
+     * sur le gymnase jetable (le warm-start glouton, déterministe, retient d'ailleurs le premier
+     * gymnase par ordre d'id). On rend le décor déterministe en ne laissant QUE la fenêtre du
+     * gymnase jetable ce samedi ; l'intention « deux domiciles à 2h d'écart tiennent dans le MÊME
+     * gymnase » (capacité D1) est intacte, recréation en fin de scénario (comme le dimanche).
+     */
+    #[Given('le club n\'offre aucune autre fenêtre d\'accès le samedi')]
+    public function plusAucuneAutreFenetreLeSamedi(): void
+    {
+        $windows = $this->apiGet('venue_match_windows?itemsPerPage=100', $this->token);
+        foreach ($this->members($windows['json']) as $window) {
+            if (6 !== ($window['dayOfWeek'] ?? null)) {
+                continue;
+            }
+            $id = $window['id'] ?? null;
+            if (!\is_string($id) || $id === $this->windowId) {
+                continue; // on garde la fenêtre du gymnase jetable
+            }
+            $venueId = $window['venueId'] ?? null;
+            $startTime = $window['startTime'] ?? null;
+            $endTime = $window['endTime'] ?? null;
+            if (!\is_string($venueId) || !\is_string($startTime) || !\is_string($endTime)) {
+                continue;
+            }
+            $this->saturdayWindows[] = ['id' => $id, 'venueId' => $venueId, 'startTime' => $startTime, 'endTime' => $endTime];
+            $this->apiDelete(\sprintf('venue_match_windows/%s', $id), $this->token);
+        }
+    }
+
     #[When('je lance le placement des matchs')]
     public function jeLanceLePlacement(): void
     {
@@ -533,6 +568,14 @@ final class MatchPlacementContext extends BaseContext
             $this->apiPost('venue_match_windows', [
                 'venueId' => $window['venueId'],
                 'dayOfWeek' => 7,
+                'startTime' => $window['startTime'],
+                'endTime' => $window['endTime'],
+            ], $this->token);
+        }
+        foreach ($this->saturdayWindows as $window) {
+            $this->apiPost('venue_match_windows', [
+                'venueId' => $window['venueId'],
+                'dayOfWeek' => 6,
                 'startTime' => $window['startTime'],
                 'endTime' => $window['endTime'],
             ], $this->token);

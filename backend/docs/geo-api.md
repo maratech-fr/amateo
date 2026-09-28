@@ -1,6 +1,6 @@
 # API géo — routes externes consommées
 
-Last verified @ 2026-09-27 (`documentation-update`, rotation de fraîcheur — re-confronté au code :
+Last verified @ 2026-09-28 (recalé par la livraison P4-240 : `CONTRACT_VERSION` **2.24** — re-confronté au code :
 `IgnRoutingClient::travelMinutesBatch` ignore toujours `$concurrency` (sériel, pacé 1/s),
 `MAX_RETRY_AFTER_SECONDS = 5.0`, `BATCH_BUDGET_SECONDS = 30.0`,
 `VenueTravelTimeAutofillService::MAX_AUTOFILL_PAIRS = 120`, `ClubTravelCache` reste TENANT RLS
@@ -279,7 +279,7 @@ les 5 règles de bien-être. Décision consignée `etat-des-lieux.md` §2.
 
 - **Le solveur d'ENTRAÎNEMENT la lit** — `POST /generate` seul (jamais `/place-matches`) :
   `ScheduleConstraintBuilder` sérialise la matrice club+saison (TRIÉE) dans le bloc
-  `venueTravelTimes` du payload, contrat **`CONTRACT_VERSION`** (`engine/CONTRACT_VERSION`, **2.23**
+  `venueTravelTimes` du payload, contrat **`CONTRACT_VERSION`** (`engine/CONTRACT_VERSION`, **2.24**
   à ce jour, bumpé pour d'autres raisons que ce bloc). Sa présence (≥1 ligne) —
   ELLE SEULE — active la règle implicite `travelTime` côté moteur (opt-in au premier geste, jamais
   silencieux : un club sans matrice reçoit un payload byte-identique à avant) ; l'INTENSITÉ émise

@@ -371,7 +371,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                         'skipped' => ['type' => 'integer', 'description' => 'Placements refused at write time (a manual gesture won during the solve)'],
                         'unplaced' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
                             'matchId' => ['type' => 'string'],
-                            'reason' => ['type' => 'string', 'enum' => ['no_access_window', 'no_league_intersection', 'venue_unavailable', 'venue_full']],
+                            'reason' => ['type' => 'string', 'enum' => ['no_access_window', 'no_league_intersection', 'venue_unavailable', 'venue_full', 'not_selected']],
                             'message' => ['type' => 'string'],
                         ]]],
                         'diagnostics' => ['type' => 'array', 'items' => ['type' => 'object']],

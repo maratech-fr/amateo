@@ -1,18 +1,11 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-27 (lot « validé ligue » partout — §4/§7 re-confrontés :
-`LeagueValidationOutlook::compute`/`fixturesToConfirm` porte le prédicat unique, `maturedBy`
-`deadline`/`firstMatchPlayed` + `firstMatchDate` (`backend/src/Service/LeagueValidationOutlook.php`)
-✓ ; `FbiDivisionSignature::isFriendlyCode` exclut l'amical du lot
-(`backend/src/Service/Basketball/FbiDivisionSignature.php`) ✓ ; `FriendlyAutoValidator::sweep`
-bascule un amical strictement passé, déclenché par `EntryDeadlineOutlook::compute` et
-`LeagueValidatedFixturesController::guard` SEULEMENT si l'appelant est gestionnaire
-(`backend/src/Service/FriendlyAutoValidator.php`) ✓ ; `EntryDeadlineOutlook` sert `toConfirmCount`
-et soustrait le validable de `toPlaceCount` (`backend/src/Service/EntryDeadlineOutlook.php:75-112`)
-✓ ; `FbiDeadlineCard` porte la ligne « N à confirmer « validé ligue » » + bouton gestionnaire
-(`FbiDeadlineCard.tsx:120-130`) ✓ ; `LeagueValidationBanner` rendu sur Calendrier en plus d'Importer
-(`CalendarPage.tsx:451`, `ImportPage.tsx:137`) ✓). Reste du contenu non réaudité cette passe.
-Historique : `git log -p --follow specs/courantes/module-matchs.md`.
+Last verified @ 2026-09-28 (P4-240, §3 recalé contre le code : `engine/app/solver/match_placement.py`
+— warm-start glouton un seul jeu de hints, `_remaining_reason` tranche `not_selected`/`venue_full` sur
+l'occupation finale ; `backend/src/Controller/PlaceMatchesController.php` — budget 60 s de bout en bout,
+verrou 120 s, HTTP 90 s ; `engine/app/core/config.py`/`main.py` — sémaphore global
+`max_concurrent_placements=1` ; `engine/CONTRACT_VERSION` **2.24**). Reste du contenu non réaudité cette
+passe. Historique : `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
 > d'une PR. Le JOURNAL (qui a livré quoi, quand, sous quel id) vit dans
@@ -441,18 +434,31 @@ Présentation pure — aucune formule de gravité redérivée.
 ## 3. Solveur de placement (`POST /api/fixtures/place` → engine `/place-matches`)
 
 Second problème solveur ([ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md)),
-même `CONTRACT_VERSION` **2.23** que `/generate`/`/validate-assignments` (un seul contrat pour les
+même `CONTRACT_VERSION` **2.24** que `/generate`/`/validate-assignments` (un seul contrat pour les
 trois endpoints — voir §6 `CLAUDE.md`). **Rail
 SYNCHRONE** (`PlaceMatchesController` — management + saison écrivable + socle pointé), anti-double-clic
-`MatchPlacementLock` (Redis dédié). Best-effort à poids dominant : `10 000 × Σ placés + SOFT` —
-**aucune contrainte HARD n'est jamais violée en sortie** ; un match sans candidat licite sort NOMMÉ
-(`no_access_window` · `no_league_intersection` · `venue_unavailable` · `venue_full`).
+PAR CLUB `MatchPlacementLock` (Redis dédié — ne protège pas deux clubs l'un de l'autre : ils partagent le
+sémaphore GLOBAL `max_concurrent_placements=1` de l'engine, détail ADR-0003 §2). Best-effort à poids
+dominant : `10 000 × Σ placés + SOFT` — **aucune contrainte HARD n'est jamais violée en sortie** ; un
+match sans candidat licite sort NOMMÉ (`no_access_window` · `no_league_intersection` ·
+`venue_unavailable` · `venue_full` · `not_selected`). Les deux dernières raisons se distinguent post-solve
+sur l'occupation finale : `venue_full` = plus aucun créneau licite libre à sa date (gymnase saturé) ;
+`not_selected` = un créneau licite restait libre mais le solve ne l'a pas retenu dans son budget —
+« relancez le placement » (ADR-0003 §3).
+
+**Budget 60 s de bout en bout** (`solverTimeoutSeconds` du payload — 30 s avant P4-240), encadré par la
+chaîne de timeouts `MatchPlacementLock` 120 s → HTTP contrôleur 90 s → nginx fastcgi/proxy 120 s → PHP
+`max_execution_time` 120 s → client frontend `ky` 120 s sur cet appel seul (`frontend/src/features/
+matches/api/fixtures.ts`). Avant le solve, un **warm-start glouton** déterministe (matchs triés
+date/équipe, candidat préféré = habitude/rotation, sinon placement SOLVER courant, sinon premier créneau
+licite libre) pose un seul jeu de hints CP-SAT — il absorbe l'ancien hint de stabilité, jamais deux hints
+contradictoires sur un même match (ADR-0003 §4).
 
 **HARD** : fenêtres d'accès match (le match SEUL dedans, D1 — `kickoff ≥ start`,
 `kickoff+matchMinutes ≤ end`), indisponibilités gymnase, no-overlap `(gymnase, date)` sur la fenêtre
 MATCH, fenêtre ligue quand l'enveloppe est résolue (non résolue = diagnostic INFO seul). Durées par
 équipe (`MatchDurationResolver`) portées par le contrat ; absentes côté engine ⇒ défauts Pydantic
-105/30. **Trajet adversaire (D3, contrat 2.23)** : une ligne AWAY porte `roundTripMinutes` (2 ×
+105/30. **Trajet adversaire (D3, contrat 2.24)** : une ligne AWAY porte `roundTripMinutes` (2 ×
 aller simple, projeté par la maison unique `App\Service\OpponentTravelProjection`, partagée avec
 le radar §2) ; le solveur étend la fenêtre de blocage du coach de ce trajet — moitié avant
 le coup d'envoi, moitié après le match, SANS échauffement dans cette fenêtre (réplique exacte de

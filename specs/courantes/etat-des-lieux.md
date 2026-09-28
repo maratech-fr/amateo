@@ -111,13 +111,14 @@ placement dédié, périmètre engagé (§1.4).
 - **Semaine type** : gabarit A/B et créneaux partagés (lecture seule).
 - **Détecteur de conflits** (`MatchConflictDetector`, service pur, rien persisté) : collisions de gymnase et de
   personne (coach/joueur), fenêtre du match SEUL (échauffement exclu depuis le lot M) ; le solveur de placement
-  dédié (`POST /api/fixtures/place` → engine `/place-matches`, CP-SAT, `CONTRACT_VERSION` **2.23**) place heure+
-  salle des matchs de compétition à domicile sous HARD (accès, indispos, no-overlap) + SOFT.
+  dédié (`POST /api/fixtures/place` → engine `/place-matches`, CP-SAT, `CONTRACT_VERSION` **2.24**) place heure+
+  salle des matchs de compétition à domicile sous HARD (accès, indispos, no-overlap) + SOFT, budget 60 s de
+  bout en bout, warm-start glouton (P4-240).
 
 → [`module-matchs.md`](module-matchs.md) — état courant PAR ÉCRAN : §1 Modèle & données transverses,
 §2 Détecteur de conflits, §3 Solveur de placement, §4 Le gardien + échéances, §5 Écran Calendrier,
-§6 Écran Conflits, §7 Écran Importer, §8 Écran Configuration, §9 Écran Semaine type, §10 Périmètre
-engagé, §11 Tests & gardes · [`gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md)
+§6 Écran Conflits, §7 Écran Importer, §8 Écran Configuration, §9 Écran Adversaires, §10 Écran Semaine
+type, §11 Périmètre engagé, §12 Tests & gardes · [`gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md)
 
 ### 1.6 Collecte des demandes coach
 
@@ -524,6 +525,7 @@ le front lit, il ne re-dérive plus les règles de refus, repli fail-closed si l
 | **Triage roadmap du 2026-09-25 (décision fondateur) — P4-244 : `destructive` et l'avatar de `ClubPage` gardent `hover:opacity-90` hors du jeton `--accent-hover`** | Fermé, sans correctif | Écart de contraste jamais mesuré sous AA en pratique |
 | **Triage roadmap du 2026-09-25 (décision fondateur) — P3-23 : « minimum de séances garanti », trancher le plancher dur** | Fermé, soft assumé | Un plancher HARD créerait des générations INFEASIBLE nommées pour un gain marginal |
 | **Triage roadmap du 2026-09-25 (décision fondateur) — P3-2 : overlays sur période `custom` générante** | Fermé, sans correctif | Les périodes vacances/reprise couvrent déjà le besoin réel qui aurait justifié `custom` |
+| **Indisponibilité d'équipe pour un match — abandonnée (fondateur, 2026-09-27)** | Le module matchs ne modélise pas d'indisponibilité d'équipe côté match : la ligue impose le week-end, et on ne s'en écarte que par DÉROGATION — un placement MANUEL qui prime sur tout, posé seulement quand la ligue l'a validée | Ce n'est pas le cas nominal ; modéliser une indisponibilité générique aurait ouvert une voie d'évitement des règles fédérales que le produit ne doit jamais faciliter |
 
 ---
 
@@ -535,6 +537,7 @@ le front lit, il ne re-dérive plus les règles de refus, repli fail-closed si l
 
 | Date | Id | Sujet | Documenté dans |
 |------|----|-------|----------------|
+| 2026-09-28 | P4-240 (PR ①) | Placement automatique d'un gros lot — warm-start glouton (un seul jeu de hints, absorbe l'ancien hint de stabilité), raison `not_selected` distincte de `venue_full`, budget 60 s de bout en bout (verrou/HTTP/nginx/PHP/ky recalés en chaîne), contrat backend⇄engine **2.24** | [`module-matchs.md`](module-matchs.md) §3 · [`adr-0003-match-placement-solve.md`](../../docs/architecture/adr-0003-match-placement-solve.md) §2/§3/§4 |
 | 2026-09-27 | — | en-tête de page commun : trait, titre, « Signaler » visible sur tous les écrans principaux (module feedback dans shared/) | [`frontend/docs/frontend-components.md`](../../frontend/docs/frontend-components.md) |
 | 2026-09-27 | — | « validé ligue » proposé partout où le gestionnaire regarde (cockpit, calendrier) — championnat commencé = échéance dépassée OU premier match joué, amicaux exclus du lot et validés d'office une fois passés (amende le lot O, aussi RMM-6) | [`module-matchs.md`](module-matchs.md) § « Validé ligue » en lot · §4 « Échéances de saisie ligue/comité » · décision §2 |
 | 2026-09-27 | — | passe de tests manuels : 10 correctifs (tuile FBI, focus conflit, extérieurs lecture seule + trajet dessiné, péremption, champs opaques, recherche FFBB…) | [`module-matchs.md`](module-matchs.md) |

@@ -160,7 +160,12 @@ function normalizeFixture(raw: Fixture): Fixture {
 export const getFixtures = async (): Promise<Fixture[]> => (await collectionAll<Fixture>("fixtures")).map(normalizeFixture);
 // ── Auto-placement (P1-4 PR D) ───────────────────────────────────────────────
 
-export type UnplacedReason = "no_access_window" | "no_league_intersection" | "venue_unavailable" | "venue_full";
+export type UnplacedReason =
+  | "no_access_window"
+  | "no_league_intersection"
+  | "venue_unavailable"
+  | "venue_full"
+  | "not_selected";
 
 export interface PlaceMatchesResult {
   placed: number;
@@ -172,7 +177,11 @@ export interface PlaceMatchesResult {
 
 /** Synchronous solve: the engine places every placeable home match (seconds).
  * A non-placeable match is NOT an error — it comes back named in `unplaced`. */
-export const placeMatches = (): Promise<PlaceMatchesResult> => api.post("fixtures/place").json<PlaceMatchesResult>();
+export const placeMatches = (): Promise<PlaceMatchesResult> =>
+  // The solve takes up to ~90 s (engine 60 s budget + import) — ky's 10 s default
+  // would abort a request the backend is honouring. Override it HERE only, never on
+  // the shared client (P4-240). The timeout chain (proxy/nginx/PHP) matches, 120 s.
+  api.post("fixtures/place", { timeout: 120_000 }).json<PlaceMatchesResult>();
 
 /** RMM-4 — the reconciliation perimeter: the three home fields that become a
  * CHOICE when the file diverges from an already-placed match. */

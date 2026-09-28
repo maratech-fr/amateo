@@ -24,7 +24,17 @@ from app.main import read_contract_version
 from app.schemas.match_input_schema import MatchPlacementInputSchema
 from app.solver.match_placement import solve_match_placement
 
-BUDGET_SECONDS = 60.0
+# Wall budget of the TEST (not the solver): the payload now grants the solver 60 s
+# (P4-240), so the whole call = build (≤ BUILD_BUDGET_SECONDS) + a 60 s solve + I/O.
+# 80 s leaves headroom on a slow CI runner without letting a runaway build slip through.
+BUDGET_SECONDS = 80.0
+
+# The synthetic fixture holds 239 TO_PLACE matches (291 total − 32 FIXED − 20 AWAY).
+# Tight city-hall windows (one 105-min match per venue per date → ~150 slots over the
+# horizon) cap the placeable set; the warm-start reaches ≥ 100 well inside the budget
+# and plateaus. This gate defends BOTH: the build/solve stay in time AND a real volume
+# of matches gets placed (a silent regression that placed « at least one » is caught).
+MIN_PLACEMENTS = 100
 
 N_TEAMS = 13
 N_VENUES = 5
@@ -121,6 +131,7 @@ def _payload() -> MatchPlacementInputSchema:
         "version": read_contract_version(),
         "clubId": "club-perf",
         "seasonId": "season-perf",
+        "solverTimeoutSeconds": 60,
         "matches": _matches(dates),
         "venues": _venues(),
         "teams": _teams(),
@@ -136,7 +147,8 @@ def _payload() -> MatchPlacementInputSchema:
 
 @pytest.mark.perf
 def test_place_matches_large_club_completes_under_budget() -> None:
-    """13 teams · 5 gyms · 291 matches: must build in budget and solve under 60 s."""
+    """13 teams · 5 gyms · 291 matches (239 TO_PLACE): must build in budget, solve
+    inside the 60 s solver budget, and place a real volume (≥ 100), not « at least one »."""
     input_data = _payload()
     assert len(input_data.matches) == TARGET_MATCHES
 
@@ -145,5 +157,7 @@ def test_place_matches_large_club_completes_under_budget() -> None:
     elapsed = time.monotonic() - start
 
     assert result["status"] == "completed", result
-    assert result["placements"], "expected at least one placement"
+    assert len(result["placements"]) >= MIN_PLACEMENTS, (
+        f"only {len(result['placements'])} placements, expected ≥ {MIN_PLACEMENTS}"
+    )
     assert elapsed < BUDGET_SECONDS, f"place-matches took {elapsed:.1f}s, over the {BUDGET_SECONDS:.0f}s budget"

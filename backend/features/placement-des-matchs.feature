@@ -22,6 +22,7 @@ Fonctionnalité: Le placement des matchs honore les fenêtres d'accès et nomme 
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et deux équipes et un gymnase jetables
     Et une fenêtre d'accès le samedi de 14h00 à 18h00 sur ce gymnase
+    Et le club n'offre aucune autre fenêtre d'accès le samedi
     Et deux matchs à domicile le même samedi, un par équipe
     Quand je lance le placement des matchs
     Alors les deux matchs du samedi sont posés par le solveur dans ce gymnase
