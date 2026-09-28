@@ -27,6 +27,12 @@ vi.mock("../queries", () => ({
   useDeletionImpact: () => ({ data: null, isPending: false, isError: false }),
 }));
 
+// P4-269 — l'étape Coachs lit le radar « personne à deux endroits » du planning EN VIGUEUR.
+const placedConflictsState: { data: { conflicts: unknown[] } | undefined } = { data: { conflicts: [] } };
+vi.mock("@/features/planning/queries", () => ({
+  usePlacedConflicts: () => ({ data: placedConflictsState.data }),
+}));
+
 import { CoachesStep } from "./CoachesStep";
 
 const coach = (over: Partial<Coach> & Pick<Coach, "id" | "firstName">): Coach => ({
@@ -43,7 +49,32 @@ beforeEach(() => {
   updateMut.mockClear();
   createMut.mockClear();
   coachesState.data = [];
+  placedConflictsState.data = { conflicts: [] };
   useWizardStore.setState({ mode: "season" });
+});
+
+describe("CoachesStep — conflit « personne à deux endroits » du planning en vigueur (P4-269)", () => {
+  const aConflict = {
+    personId: "c1",
+    personName: "Anna Dupont",
+    dayOfWeek: 2,
+    first: { teamId: "tA", teamName: "U13F", venueId: "vB", venueName: "Gymnase B", startTime: "18h00" },
+    second: { teamId: "tB", teamName: "U11M1", venueId: "vA", venueName: "Gymnase A", startTime: "18h00" },
+  };
+
+  it("affiche l'encart quand le backend signale un conflit", () => {
+    placedConflictsState.data = { conflicts: [aConflict] };
+    renderWithProviders(<CoachesStep />);
+    expect(
+      screen.getByText("Anna Dupont est à deux endroits le mardi à 18h00 (U13F · Gymnase B / U11M1 · Gymnase A)"),
+    ).toBeInTheDocument();
+  });
+
+  it("n'affiche aucun encart quand le backend n'en signale aucun", () => {
+    placedConflictsState.data = { conflicts: [] };
+    renderWithProviders(<CoachesStep />);
+    expect(screen.queryByText(/est à deux endroits/)).not.toBeInTheDocument();
+  });
 });
 
 describe("CoachesStep — statut véhiculé", () => {

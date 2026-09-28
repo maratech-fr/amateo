@@ -193,6 +193,16 @@ export function useCoachPlayers() {
   return useQuery({ queryKey: ["coach_player_memberships"], queryFn: planningApi.getCoachPlayers, staleTime: 300_000 });
 }
 
+/**
+ * P4-269 — le radar « une personne à deux endroits » sur le planning d'entraînement EN VIGUEUR,
+ * recalculé côté serveur. Court `staleTime` : un lien coach/joueur posé dans le wizard doit se
+ * refléter vite (les mutations de lien invalident aussi cette clé). Consommé par l'étape Coachs
+ * du wizard, le bandeau de `/planning` et la pastille du plan de saison du cockpit.
+ */
+export function usePlacedConflicts() {
+  return useQuery({ queryKey: ["training", "placed-conflicts"], queryFn: planningApi.getPlacedConflicts, staleTime: 10_000 });
+}
+
 // --- 2b: adjust + regenerate loop ---------------------------------------------
 
 export function useLockSlot() {

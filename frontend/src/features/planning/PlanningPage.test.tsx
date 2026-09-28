@@ -6,7 +6,7 @@ import type { EntryConflictsResponse, SchedulePlan } from "@/features/cockpit/ap
 import { useToastStore } from "@/shared/stores/toastStore";
 import { renderWithProviders } from "@/test/utils";
 
-import { EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, getDiagnostics, getSlots, getSocleDeviation, getTeams, getTrainingSlots, getVenues, listSchedules, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, reopenSchedule, TargetLockedError, validateSchedule } from "./api";
+import { EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, getDiagnostics, getPlacedConflicts, getSlots, getSocleDeviation, getTeams, getTrainingSlots, getVenues, listSchedules, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, reopenSchedule, TargetLockedError, validateSchedule } from "./api";
 import type { Schedule } from "./api";
 import { PlanningPage } from "./PlanningPage";
 import { usePlanningStore } from "./store";
@@ -127,6 +127,9 @@ vi.mock("./api", () => {
     ]),
   ),
   getCoaches: vi.fn(() => Promise.resolve([{ id: "coach-1", firstName: "Jean", lastName: "Dupont" }])),
+  // P4-269 — par défaut aucun conflit « personne à deux endroits » (le bandeau ne rend rien) ;
+  // le cas dédié le surcharge.
+  getPlacedConflicts: vi.fn(() => Promise.resolve({ clubId: "club-1", seasonId: "s1", seasonPlanChosen: true, conflicts: [] })),
   getCategories: vi.fn(() => Promise.resolve([{ id: "cat-1", name: "U11" }])),
   getTeamCoaches: vi.fn(() => Promise.resolve([{ id: "tc-1", teamId: "team-1", coachId: "coach-1", role: "MAIN" }])),
   getCoachPlayers: vi.fn(() => Promise.resolve([])),
@@ -282,6 +285,8 @@ beforeEach(() => {
   ]);
   // P2-44 PR-5 : ré-armement (mockResolvedValue survit) — défaut « aucun écart », les cas surchargent.
   vi.mocked(getSocleDeviation).mockResolvedValue({ socleScheduleId: "socle", moved: [], unplaced: [] });
+  // P4-269 : ré-armement — défaut « aucun conflit de personne », le cas dédié surcharge.
+  vi.mocked(getPlacedConflicts).mockResolvedValue({ clubId: "club-1", seasonId: "s1", seasonPlanChosen: true, conflicts: [] });
   navigate.mockClear();
   usePlanningStore.setState({ viewMode: "gymnase", selectedScheduleId: null, selectedSlotId: null, resourceFilter: [] });
 });
@@ -307,6 +312,26 @@ describe("PlanningPage (integration)", () => {
     // n'est pas en vigueur, donc pas de Rouvrir non plus — d'où l'absence de Valider ici.
     expect(screen.getByText("principal")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /valider/i })).not.toBeInTheDocument();
+  });
+
+  it("P4-269 — affiche le bandeau « personne à deux endroits » sur la version EN VIGUEUR", async () => {
+    // Version pointée (en vigueur) → le radar du planning en vigueur est montré sur /planning.
+    vi.mocked(listSchedules).mockResolvedValue([{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", isChosen: true }]);
+    vi.mocked(getPlacedConflicts).mockResolvedValue({
+      clubId: "club-1",
+      seasonId: "s1",
+      seasonPlanChosen: true,
+      conflicts: [{
+        personId: "anna",
+        personName: "Anna Dupont",
+        dayOfWeek: 2,
+        first: { teamId: "tA", teamName: "U13F", venueId: "vB", venueName: "Gymnase B", startTime: "18h00" },
+        second: { teamId: "tB", teamName: "U11M1", venueId: "vA", venueName: "Gymnase A", startTime: "18h00" },
+      }],
+    });
+    renderWithProviders(<PlanningPage />);
+
+    expect(await screen.findByText("Anna Dupont est à deux endroits le mardi à 18h00 (U13F · Gymnase B / U11M1 · Gymnase A)")).toBeInTheDocument();
   });
 
   it("lit les créneaux du SOCLE quand la version affichée est celle de la saison", async () => {

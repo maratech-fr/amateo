@@ -20,6 +20,7 @@ use App\Tests\Behat\OnboardingContext;
 use App\Tests\Behat\OpponentAutoLocateContext;
 use App\Tests\Behat\OpponentSuggestionContext;
 use App\Tests\Behat\PeriodOverlayContext;
+use App\Tests\Behat\PlacedPersonConflictContext;
 use App\Tests\Behat\RepriseWeekContext;
 use App\Tests\Behat\SeasonGenerationContext;
 use App\Tests\Behat\SoclePlansContext;
@@ -185,5 +186,10 @@ return (new Config)
                 new Suite('import-equipes')
                     ->withPaths('%paths.base%/features/l-import-des-equipes-choisit-ses-lignes.feature')
                     ->withContexts(TeamsImportContext::class),
+            )
+            ->withSuite(
+                new Suite('personne-deux-endroits')
+                    ->withPaths('%paths.base%/features/une-personne-est-signalee-a-deux-endroits.feature')
+                    ->withContexts(PlacedPersonConflictContext::class),
             ),
     );

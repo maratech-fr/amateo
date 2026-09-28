@@ -23,6 +23,7 @@ import { FullPageSpinner } from "@/shared/components/ui/spinner";
 
 import { type Slot } from "./api";
 import { CompromiseList } from "./CompromiseList";
+import { PlacedConflictsNotice } from "./PlacedConflictsNotice";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { DriftBanner } from "./DriftBanner";
 import { EvictConfirmDialog, type EvictDialogPhase } from "./EvictConfirmDialog";
@@ -39,7 +40,7 @@ import { buildClubView } from "./lib/clubView";
 import { ClubViewTable } from "./ClubViewTable";
 import { availableResourceGroups, buildGrid, DAYS, type Lookups, slotGroupKey } from "./lib/grid";
 import { PlanningToolbar } from "./PlanningToolbar";
-import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useRegenerate, useRegenerateFromVersion, useRegenerateOverlay, useSchedules, useSlots, useSocleDeviation, useTeamCoaches, useTeams, useTrainingSlots, useVenues } from "./queries";
+import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, usePlacedConflicts, useRegenerate, useRegenerateFromVersion, useRegenerateOverlay, useSchedules, useSlots, useSocleDeviation, useTeamCoaches, useTeams, useTrainingSlots, useVenues } from "./queries";
 import { blocksForSlot } from "./lib/blockSession";
 import { ResourceFilter } from "./ResourceFilter";
 import { SlotDetail } from "./SlotDetail";
@@ -198,6 +199,9 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const { data: teamCoaches = [] } = useTeamCoaches();
   const { data: coachPlayers = [] } = useCoachPlayers();
   const { data: constraints = [] } = useConstraints();
+  // P4-269 — le radar « personne à deux endroits » du planning EN VIGUEUR (version pointée du
+  // plan SEASON). Recalculé serveur ; ici on ne fait que l'AFFICHER, sur la version en vigueur.
+  const { data: placedConflicts } = usePlacedConflicts();
   // Résolution tag→équipes (saison courante) : le wrap n'affiche une contrainte CLUB ciblant
   // un tag QUE sur les équipes taguées — miroir de l'éclatement `CLUB+targetTag` du backend
   // (ScheduleConstraintBuilder). Mêmes hooks que le wizard (ConstraintsStep), pas un second
@@ -655,6 +659,11 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           });
         return null === stale ? null : <NoticeBanner tone="warning" className="mb-4" message={stale} />;
       })()}
+
+      {/* P4-269 — « une personne à deux endroits » sur la version EN VIGUEUR (le radar scanne
+          toujours la version pointée du plan SEASON) : on ne le montre que quand on REGARDE cette
+          version en vigueur (`isReadOnly`), page autonome (ni embarquée, ni en portée période). */}
+      {!embedded && !scoped && isReadOnly ? <PlacedConflictsNotice conflicts={placedConflicts?.conflicts ?? []} className="mb-4" /> : null}
 
 
       {scoped && (null === scopeVersions || 0 === scopeVersions.length) ? (
