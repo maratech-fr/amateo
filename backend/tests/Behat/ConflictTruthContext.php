@@ -818,10 +818,11 @@ final class ConflictTruthContext extends BaseContext
         // L'équipe porte cette catégorie distinctive + un niveau REGIONAL connu.
         $this->dbalExec(\sprintf('UPDATE team SET sport_category_id=\'%s\', level=\'REGIONAL\' WHERE id=\'%s\'', $this->cupCategoryId, $this->teamId), admin: true);
 
-        // La copie appartient à la saison ACTIVE du club (celle que le radar résout).
-        $seasonId = $this->dbalScalar(\sprintf('SELECT id AS behatval FROM season WHERE club_id=\'%s\' AND status=\'ACTIVE\' LIMIT 1', $this->clubId), admin: true);
+        // La copie appartient à la saison de l'équipe jetable — la même que le radar
+        // résout depuis la requête (l'équipe a été créée sous la saison courante).
+        $seasonId = $this->dbalScalar(\sprintf('SELECT season_id AS behatval FROM team WHERE id=\'%s\'', $this->teamId), admin: true);
         if ('' === $seasonId) {
-            throw new RuntimeException('la saison active du club est introuvable pour la copie de fenêtre de ligue');
+            throw new RuntimeException('la saison de l\'équipe jetable est introuvable pour la copie de fenêtre de ligue');
         }
 
         $this->cupSaturday = '2027-01-16';
