@@ -10,10 +10,10 @@ use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
- * P4-272 ① — saisie d'une fenêtre de ligue de la COPIE club (section Ligue de
- * l'écran des contraintes). `level` = palier fédéral (DEPARTEMENTAL | REGIONAL),
- * pas le niveau d'équipe. `gender` null = tous genres. `kickoffMin`/`kickoffMax`
- * bornent le coup d'envoi (HH:MM), min ≤ max (validé côté processor, message FR).
+ * Saisie d'une fenêtre de ligue de la copie club (section Ligue de l'écran des
+ * contraintes de match). `level` = palier fédéral (DEPARTEMENTAL | REGIONAL), pas
+ * le niveau d'équipe. `gender` null = tous genres. `kickoffMin`/`kickoffMax`
+ * bornent le coup d'envoi (HH:MM), min ≤ max (validé côté serveur, message clair).
  */
 class ClubLeagueWindowInput
 {

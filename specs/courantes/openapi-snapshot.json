@@ -25115,7 +25115,7 @@
             },
             "ClubLeagueWindow": {
                 "type": "object",
-                "description": "P4-272 \u2460 \u2014 la COPIE club d'une fen\u00eatre de ligue, \u00e9ditable par le gestionnaire\n(section Ligue de l'\u00e9cran des contraintes). CRUD management-gated (403 sinon,\nd\u00e9faut AbstractStateProcessor). `badge` (\u00ab modifi\u00e9 \u00bb / \u00ab ajout\u00e9 \u00bb) est calcul\u00e9\nSERVEUR par cl\u00e9 naturelle face au seed de la ligue effective \u2014 le front\nl'affiche, il ne le red\u00e9rive pas (.claude/rules/frontend.md).",
+                "description": "La copie, propre au club, d'une fen\u00eatre de coup d'envoi de la ligue, \u00e9ditable\npar le gestionnaire (section Ligue de l'\u00e9cran des contraintes de match). CRUD\nr\u00e9serv\u00e9 au gestionnaire. Le badge (\u00ab modifi\u00e9 \u00bb / \u00ab ajout\u00e9 \u00bb) est calcul\u00e9 c\u00f4t\u00e9\nserveur par cl\u00e9 naturelle face au mod\u00e8le de la ligue effective \u2014 le front\nl'affiche, il ne le recalcule pas.",
                 "properties": {
                     "id": {
                         "default": "",
@@ -25176,7 +25176,7 @@
             },
             "ClubLeagueWindow.ClubLeagueWindowInput": {
                 "type": "object",
-                "description": "P4-272 \u2460 \u2014 la COPIE club d'une fen\u00eatre de ligue, \u00e9ditable par le gestionnaire\n(section Ligue de l'\u00e9cran des contraintes). CRUD management-gated (403 sinon,\nd\u00e9faut AbstractStateProcessor). `badge` (\u00ab modifi\u00e9 \u00bb / \u00ab ajout\u00e9 \u00bb) est calcul\u00e9\nSERVEUR par cl\u00e9 naturelle face au seed de la ligue effective \u2014 le front\nl'affiche, il ne le red\u00e9rive pas (.claude/rules/frontend.md).",
+                "description": "La copie, propre au club, d'une fen\u00eatre de coup d'envoi de la ligue, \u00e9ditable\npar le gestionnaire (section Ligue de l'\u00e9cran des contraintes de match). CRUD\nr\u00e9serv\u00e9 au gestionnaire. Le badge (\u00ab modifi\u00e9 \u00bb / \u00ab ajout\u00e9 \u00bb) est calcul\u00e9 c\u00f4t\u00e9\nserveur par cl\u00e9 naturelle face au mod\u00e8le de la ligue effective \u2014 le front\nl'affiche, il ne le recalcule pas.",
                 "required": [
                     "category",
                     "level",
@@ -25239,7 +25239,7 @@
             },
             "ClubLeagueWindow.html": {
                 "type": "object",
-                "description": "P4-272 \u2460 \u2014 la COPIE club d'une fen\u00eatre de ligue, \u00e9ditable par le gestionnaire\n(section Ligue de l'\u00e9cran des contraintes). CRUD management-gated (403 sinon,\nd\u00e9faut AbstractStateProcessor). `badge` (\u00ab modifi\u00e9 \u00bb / \u00ab ajout\u00e9 \u00bb) est calcul\u00e9\nSERVEUR par cl\u00e9 naturelle face au seed de la ligue effective \u2014 le front\nl'affiche, il ne le red\u00e9rive pas (.claude/rules/frontend.md).",
+                "description": "La copie, propre au club, d'une fen\u00eatre de coup d'envoi de la ligue, \u00e9ditable\npar le gestionnaire (section Ligue de l'\u00e9cran des contraintes de match). CRUD\nr\u00e9serv\u00e9 au gestionnaire. Le badge (\u00ab modifi\u00e9 \u00bb / \u00ab ajout\u00e9 \u00bb) est calcul\u00e9 c\u00f4t\u00e9\nserveur par cl\u00e9 naturelle face au mod\u00e8le de la ligue effective \u2014 le front\nl'affiche, il ne le recalcule pas.",
                 "properties": {
                     "id": {
                         "default": "",
@@ -25364,7 +25364,7 @@
                         }
                     }
                 ],
-                "description": "P4-272 \u2460 \u2014 la COPIE club d'une fen\u00eatre de ligue, \u00e9ditable par le gestionnaire\n(section Ligue de l'\u00e9cran des contraintes). CRUD management-gated (403 sinon,\nd\u00e9faut AbstractStateProcessor). `badge` (\u00ab modifi\u00e9 \u00bb / \u00ab ajout\u00e9 \u00bb) est calcul\u00e9\nSERVEUR par cl\u00e9 naturelle face au seed de la ligue effective \u2014 le front\nl'affiche, il ne le red\u00e9rive pas (.claude/rules/frontend.md)."
+                "description": "La copie, propre au club, d'une fen\u00eatre de coup d'envoi de la ligue, \u00e9ditable\npar le gestionnaire (section Ligue de l'\u00e9cran des contraintes de match). CRUD\nr\u00e9serv\u00e9 au gestionnaire. Le badge (\u00ab modifi\u00e9 \u00bb / \u00ab ajout\u00e9 \u00bb) est calcul\u00e9 c\u00f4t\u00e9\nserveur par cl\u00e9 naturelle face au mod\u00e8le de la ligue effective \u2014 le front\nl'affiche, il ne le recalcule pas."
             },
             "Coach": {
                 "type": "object",
@@ -34774,7 +34774,7 @@
         },
         {
             "name": "ClubLeagueWindow",
-            "description": "P4-272 \u2460 \u2014 la COPIE club d'une fen\u00eatre de ligue, \u00e9ditable par le gestionnaire\n(section Ligue de l'\u00e9cran des contraintes). CRUD management-gated (403 sinon,\nd\u00e9faut AbstractStateProcessor). `badge` (\u00ab modifi\u00e9 \u00bb / \u00ab ajout\u00e9 \u00bb) est calcul\u00e9\nSERVEUR par cl\u00e9 naturelle face au seed de la ligue effective \u2014 le front\nl'affiche, il ne le red\u00e9rive pas (.claude/rules/frontend.md)."
+            "description": "La copie, propre au club, d'une fen\u00eatre de coup d'envoi de la ligue, \u00e9ditable\npar le gestionnaire (section Ligue de l'\u00e9cran des contraintes de match). CRUD\nr\u00e9serv\u00e9 au gestionnaire. Le badge (\u00ab modifi\u00e9 \u00bb / \u00ab ajout\u00e9 \u00bb) est calcul\u00e9 c\u00f4t\u00e9\nserveur par cl\u00e9 naturelle face au mod\u00e8le de la ligue effective \u2014 le front\nl'affiche, il ne le recalcule pas."
         },
         {
             "name": "Club",

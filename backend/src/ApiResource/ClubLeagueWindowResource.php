@@ -18,11 +18,11 @@ use DateTimeImmutable;
 use Symfony\Component\Serializer\Attribute\Groups;
 
 /**
- * P4-272 ① — la COPIE club d'une fenêtre de ligue, éditable par le gestionnaire
- * (section Ligue de l'écran des contraintes). CRUD management-gated (403 sinon,
- * défaut AbstractStateProcessor). `badge` (« modifié » / « ajouté ») est calculé
- * SERVEUR par clé naturelle face au seed de la ligue effective — le front
- * l'affiche, il ne le redérive pas (.claude/rules/frontend.md).
+ * La copie, propre au club, d'une fenêtre de coup d'envoi de la ligue, éditable
+ * par le gestionnaire (section Ligue de l'écran des contraintes de match). CRUD
+ * réservé au gestionnaire. Le badge (« modifié » / « ajouté ») est calculé côté
+ * serveur par clé naturelle face au modèle de la ligue effective — le front
+ * l'affiche, il ne le recalcule pas.
  */
 #[ApiResource(shortName: 'ClubLeagueWindow', operations: [
     new GetCollection,

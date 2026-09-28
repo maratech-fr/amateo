@@ -5,7 +5,7 @@ le CRUD gestionnaire de la copie club de l'enveloppe ligue — `GET/POST /api/cl
 désormais cette copie, même surface de route qu'avant).
 
 **210 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`aa9b4e555533e24c0ac1cb6e3c78091945dd2cebd7a8d0cb09ba1a1c3f0a2f38` (`sha256sum` sur le fichier).
+`14193d9bfbc44084f4ce39c444f3482fae279e1906d610f069244084e02b41ed` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

@@ -32,20 +32,6 @@ final class ClubLeagueWindowSeederTest extends KernelTestCase
 
     private ClubLeagueWindowSeeder $seeder;
 
-    protected function setUp(): void
-    {
-        self::bootKernel();
-        $this->em = self::getContainer()->get(EntityManagerInterface::class);
-        $this->seeder = self::getContainer()->get(ClubLeagueWindowSeeder::class);
-
-        // Catalogue GLOBAL : deux fenêtres AURA (référence des copies).
-        $this->globalWindow('AURA', 'Seniors', 'REGIONAL', null, 6, '14:00', '16:00');
-        $this->globalWindow('AURA', 'U13', 'DEPARTEMENTAL', 'M', 7, '10:00', '11:30');
-        // Une autre ligue cataloguée, pour distinguer « club catalogué ».
-        $this->globalWindow('GEST', 'Seniors', 'REGIONAL', null, 6, '18:00', '20:00');
-        $this->em->flush();
-    }
-
     public function testCataloguedClubCopiesItsOwnLeague(): void
     {
         [$club, $season] = $this->clubSeason('GEST');
@@ -105,6 +91,20 @@ final class ClubLeagueWindowSeederTest extends KernelTestCase
         self::assertNotNull($season);
         // ZZZ999 → ligue non résolue → repli AURA (2 fenêtres cataloguées).
         self::assertCount(2, $this->copies($club, $season));
+    }
+
+    protected function setUp(): void
+    {
+        self::bootKernel();
+        $this->em = self::getContainer()->get(EntityManagerInterface::class);
+        $this->seeder = self::getContainer()->get(ClubLeagueWindowSeeder::class);
+
+        // Catalogue GLOBAL : deux fenêtres AURA (référence des copies).
+        $this->globalWindow('AURA', 'Seniors', 'REGIONAL', null, 6, '14:00', '16:00');
+        $this->globalWindow('AURA', 'U13', 'DEPARTEMENTAL', 'M', 7, '10:00', '11:30');
+        // Une autre ligue cataloguée, pour distinguer « club catalogué ».
+        $this->globalWindow('GEST', 'Seniors', 'REGIONAL', null, 6, '18:00', '20:00');
+        $this->em->flush();
     }
 
     /**
