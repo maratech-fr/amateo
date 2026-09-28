@@ -1,11 +1,13 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-09-27 (`documentation-update`, rotation de fraîcheur). Re-confronté au code :
-`CalendarEntryStateProcessor::assertValidWeekChild` (`backend/src/State/Processor/
-CalendarEntryStateProcessor.php`) toujours la garde du segment de taille 1 ✓ ; `OrphanPinGuard`
-(`backend/src/Service/OrphanPinGuard.php:32`) toujours en place ✓ ; `DayDialog.tsx`
-(`frontend/src/features/cockpit/`) toujours le geste « Signaler une indispo » du cockpit ✓. Reste
-du fichier non rejoué ligne à ligne cette passe.
+Last verified @ 2026-09-28 (`documentation-update`, rotation de fraîcheur — sujet sans rapport,
+P4-272 ① matchs). Re-confronté au code : `CalendarEntryStateProcessor::assertValidWeekChild`
+(`backend/src/State/Processor/CalendarEntryStateProcessor.php:673`) toujours la garde du segment de
+taille 1 ✓ ; `OrphanPinGuard` (`backend/src/Service/OrphanPinGuard.php`) toujours en place ✓ ;
+`DayDialog.tsx` (`frontend/src/features/cockpit/`) toujours le geste « Signaler une
+indisponibilité » du cockpit ✓ ; `segmentsFromOffer` (`cockpit/lib/date.ts:231`),
+`WeekSegmentationRule` (backend) et `CrossStack/WeekSegmentationMirrorParityTest` toujours en
+place ✓. Reste du fichier non rejoué ligne à ligne cette passe.
 
 > **Rôle de ce document** : la trace durable du modèle métier des plannings. C'est LA référence
 > à consulter avant tout travail sur la génération : quel type se déclenche quand, ce qu'on y
