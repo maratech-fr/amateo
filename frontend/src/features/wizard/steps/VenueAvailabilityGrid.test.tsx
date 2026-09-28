@@ -153,6 +153,47 @@ describe("VenueAvailabilityGrid — fermetures de gymnase", () => {
 });
 
 /**
+ * Décision fondateur 2026-09-28 — « Modifier les données du club » : le socle validé, la grille des
+ * créneaux passe en LECTURE SEULE (les créneaux sont une contrainte). On VOIT les créneaux mais on
+ * ne pose ni ne modifie plus rien. ⚠ Les tests ne se contentent PAS de constater une présence : une
+ * cellule/un créneau rendus mais qu'on croit inertes doivent PROUVER qu'aucun geste ne passe.
+ */
+describe("VenueAvailabilityGrid — lecture seule (socle validé)", () => {
+  it("aucune cellule vide n'est cliquable : on ne peut plus POSER de créneau", () => {
+    const onAdd = vi.fn();
+    render(<VenueAvailabilityGrid venue={venue} slots={[]} selectedSlotId={null} onAdd={onAdd} onSelect={vi.fn()} readOnly />);
+
+    // La case existait en édition (« Lun 08:00 » est un bouton) — en lecture seule elle n'est plus
+    // un bouton du tout : rien à cliquer, donc rien à poser.
+    expect(screen.queryByRole("button", { name: "Lun 08:00" })).toBeNull();
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
+  it("un créneau posé se VOIT mais n'ouvre plus d'éditeur (pas de bouton « modifier »)", async () => {
+    const onSelect = vi.fn();
+    const user = userEvent.setup();
+    // 18:30 (hors de l'heure pile) n'apparaît que sur le créneau, jamais dans la gouttière des heures.
+    render(<VenueAvailabilityGrid venue={venue} slots={[slot({ startTime: "18:30:00" })]} selectedSlotId={null} onAdd={vi.fn()} onSelect={onSelect} readOnly />);
+
+    // Le libellé du créneau reste visible…
+    expect(screen.getByText("18:30")).toBeInTheDocument();
+    // …mais ce n'est plus un bouton « — modifier », et cliquer dessus n'appelle pas onSelect.
+    expect(screen.queryByRole("button", { name: /modifier/ })).toBeNull();
+    await user.click(screen.getByText("18:30"));
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("en ÉDITION (défaut), la même grille reste cliquable — la lecture seule ne fuit pas", async () => {
+    const onAdd = vi.fn();
+    const user = userEvent.setup();
+    render(<VenueAvailabilityGrid venue={venue} slots={[]} selectedSlotId={null} onAdd={onAdd} onSelect={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Lun 08:00" }));
+    expect(onAdd).toHaveBeenCalledWith(1, "08:00");
+  });
+});
+
+/**
  * P4-107 (4ᵉ tranche) — **la vue s'ouvre sur la bande utile, sans rien masquer.**
  *
  * La plage reste 08:00→23:00 (on crée ici des créneaux au clic : rogner rendrait 09:00

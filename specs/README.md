@@ -1,19 +1,13 @@
 # Living Specs System
 
-Last verified @ 2026-09-26 (**§ 3-Tier Structure** gagne une mention : seul `etat-des-lieux.md`
-porte un journal, décision fondateur 2026-09-26, cf. son §2, gardé mécaniquement par
-`SpecsCarryNoHistoryTest` sur `courantes/*.md`). Re-confronté : les cinq gardes
-`{DocPlacementTest, DocStampFreshnessTest, RoadmapIdentityTest, BlockingTestsListMatchesCiTest,
+Last verified @ 2026-09-28 (`documentation-update`, rotation de fraîcheur, P4-268 — sujet sans
+rapport avec ce fichier). Re-confronté : les cinq gardes `{DocPlacementTest,
+DocStampFreshnessTest, RoadmapIdentityTest, BlockingTestsListMatchesCiTest,
 SpecsCarryNoHistoryTest}.php` existent toujours, `WorkflowPermissionsDeclaredTest.php`
 aussi (`ls backend/tests/Unit/Documentation/`) ; `engine/tests/test_contract_version_doc_sync.py`
-(cité comme premier de la série des docs gardées par un test) existe toujours ;
-`docs/testing/blocking-tests.md` existe. **§ Files Overview confronté ligne à ligne à
-`ls specs/courantes/*.md`** — `identite-visuelle-produit.md` manquait à la liste (créé depuis la
-dernière passe), ajouté ; les **13** fichiers cités (`etat-des-lieux`, `modules-produit`,
-`planning-lifecycle-validated`, `types-de-planning`, `superadmin-auth`, `identite-visuelle-club`,
-`identite-visuelle-produit`, `vacances-scolaires-jours-feries`, `accueil-cockpit-temporel`,
-`module-matchs`, `canal-signalement`, `generation-pipeline`, `openapi-snapshot.meta`)
-correspondent exactement au dossier, aucun absent, aucun fantôme. `ls specs/evolution/` et
+existe toujours ; `docs/testing/blocking-tests.md` existe. **§ Files Overview confronté ligne à
+ligne à `ls specs/courantes/*.md`** : les **13** fichiers cités correspondent exactement au
+dossier, aucun absent, aucun fantôme. Rien de faux trouvé cette passe. `ls specs/evolution/` et
 `ls specs/audit/` non re-sondés cette passe (zone non touchée par ce fichier).
 
 ## 3-Tier Structure

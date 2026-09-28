@@ -26,11 +26,12 @@ vi.mock("react-router", async (orig) => ({ ...(await orig<typeof import("react-r
 const chosen: Schedule = { id: "b1", name: "Socle", status: "COMPLETED", score: 9011, createdAt: "", updatedAt: "", planType: "SEASON", schedulePlanId: "season-plan", isChosen: true };
 
 import { SeasonPlanBanner } from "./SeasonPlanBanner";
+import { useWizardStore } from "@/features/wizard/store";
 
-function renderBanner() {
+function renderBanner(socleValidated = true) {
   return render(
     <MemoryRouter>
-      <SeasonPlanBanner schedules={[chosen]} socleValidated />
+      <SeasonPlanBanner schedules={[chosen]} socleValidated={socleValidated} />
     </MemoryRouter>,
   );
 }
@@ -38,10 +39,29 @@ function renderBanner() {
 const seasonPlan = (staleness: unknown) => ({ id: "season-plan", type: "SEASON", name: "Saison", startDate: "2026-07-15", calendarEntryId: null, chosenScheduleId: "b1", teamSelectionInitialized: false, staleness });
 
 describe("SeasonPlanBanner", () => {
-  it("offers only « Ouvrir » (no « Modifier… » — modification happens on the planning page)", () => {
+  // Décision fondateur 2026-09-28 : le bandeau offre « Modifier les données du club » DÈS QUE le
+  // socle est validé — compléter le modèle (coachs tardifs, équipes, gymnases) sans « Rouvrir ».
+  it("offers « Modifier les données du club » when the socle is validated", () => {
     renderBanner();
     expect(screen.getByRole("button", { name: "Ouvrir" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Modifier/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Modifier les données du club" })).toBeInTheDocument();
+  });
+
+  it("hides « Modifier les données du club » while the socle is NOT validated (still edited in the wizard)", () => {
+    renderBanner(false);
+    expect(screen.getByRole("button", { name: "Ouvrir" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Modifier les données/ })).not.toBeInTheDocument();
+  });
+
+  it("« Modifier les données du club » opens the wizard on the Équipes step, out of any period mode", async () => {
+    // Un mode période résiduel ferait éditer la PÉRIODE, pas la saison : le geste sort du mode
+    // période et vise l'étape Équipes (décision fondateur), puis ouvre le wizard.
+    useWizardStore.setState({ mode: "period", calendarEntryId: "entry-x", stepId: "constraints" });
+    renderBanner();
+    await userEvent.click(screen.getByRole("button", { name: "Modifier les données du club" }));
+    expect(navigate).toHaveBeenCalledWith("/wizard");
+    expect(useWizardStore.getState().mode).toBe("season");
+    expect(useWizardStore.getState().stepId).toBe("teams");
   });
 
   it("n'affiche PAS le score du solveur (P4-39, décision fermée)", () => {

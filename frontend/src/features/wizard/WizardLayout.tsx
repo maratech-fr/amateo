@@ -16,8 +16,10 @@ import { listSchedules } from "@/features/planning/api";
 import { useSchedules } from "@/features/planning/queries";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { StepRail } from "@/shared/components/ui/step-rail";
 import { cn } from "@/shared/lib/utils";
+import { useSocleValidated } from "@/shared/lib/socle";
 import { armNavTransition } from "@/shared/stores/navTransitionStore";
 
 import { toast } from "@/shared/stores/toastStore";
@@ -168,6 +170,14 @@ export function WizardPage() {
   // until reached via "Suivant". Existing clubs edit freely. Period mode is never
   // guided (structure is inherited read-only; nav is open).
   const guided = !periodMode && !me?.seasonPlan?.hasFinishedVersion;
+
+  // « Modifier les données du club » (décision fondateur 2026-09-28) : en mode SAISON avec socle
+  // EN VIGUEUR, on complète le modèle (équipes, gymnases, coachs) sans rouvrir. Les Contraintes et la
+  // Génération y sont verrouillées — le serveur refuse déjà la génération en 409 (SocleGuard), le
+  // verrou rail n'est que du confort qui dit POURQUOI. Sans socle validé (onboarding, ou après
+  // « Rouvrir »), rien n'est verrouillé. Jamais en mode période (ses règles lui sont propres).
+  const socleValidated = useSocleValidated();
+  const seasonEditLocked = !periodMode && socleValidated;
 
   // ── P2-25 — porte d'entrée : l'URL décide l'étape (adressabilité) ──
   // On AJOUTE une lecture d'URL, on ne réécrit PAS la navigation interne (jumpTo/maxIndex/
@@ -386,6 +396,21 @@ export function WizardPage() {
           </Button>
         </div>
       ) : null}
+      {seasonEditLocked ? (
+        // « Modifier les données du club » (décision fondateur 2026-09-28) : le socle reste en
+        // vigueur pendant qu'on complète le modèle. Le bandeau dit l'état ET la porte de sortie —
+        // les Contraintes et la Génération sont verrouillées dans le rail, le motif est ici (le rail
+        // est présentation pure, il ne porte pas le POURQUOI).
+        <NoticeBanner
+          tone="accent"
+          role="status"
+          className="mb-4"
+          icon={<CalendarClock className="size-4 text-accent" />}
+          message="Le planning de la saison reste en vigueur — vos modifications s'appliqueront à la prochaine génération."
+        >
+          <p>Rouvrez le planning de la saison pour modifier les contraintes ou régénérer.</p>
+        </NoticeBanner>
+      ) : null}
       {periodMode ? (
         // P4-38 — DEUX lignes plutôt qu'une. La forme d'origine accolait les dates au titre
         // et alignait quatre actions à droite : sur un titre long (« Vacances d'Été —
@@ -466,7 +491,10 @@ export function WizardPage() {
           steps={WIZARD_STEPS.map((step, i) => ({
             ...step,
             done: true === stepDone[step.id],
-            locked: (guided && i > maxIndex) || ("generate" === step.id && generateBlocked),
+            locked:
+              (guided && i > maxIndex) ||
+              ("generate" === step.id && generateBlocked) ||
+              (seasonEditLocked && ("constraints" === step.id || "generate" === step.id)),
           }))}
           currentId={stepId}
           onSelect={(id) => {

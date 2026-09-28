@@ -6,8 +6,12 @@ import { renderWithProviders } from "@/test/utils";
 import { useNavTransition } from "@/shared/stores/navTransitionStore";
 
 // Established club (a main plan exists) → free wizard navigation, not guided.
+// `socleChosen` pilote le pointeur du socle : par défaut VALIDÉ (état 3), mais un test peut le mettre
+// à null (état 2 : version terminée, non pointée) pour exercer le wizard ENCORE éditable — le socle
+// validé verrouille Contraintes/Génération et passe la grille des créneaux en lecture seule (P4-268).
+let socleChosen: string | null = "b1";
 vi.mock("@/shared/session/queries", () => ({
-  useMe: () => ({ data: { seasonPlan: { id: "p1", name: "Planning", chosenScheduleId: "b1", hasFinishedVersion: true }, club: { id: "c", name: "C", onboardingCompleted: true } } }),
+  useMe: () => ({ data: { seasonPlan: { id: "p1", name: "Planning", chosenScheduleId: socleChosen, hasFinishedVersion: true }, club: { id: "c", name: "C", onboardingCompleted: true } } }),
   // Le panneau des règles du système (dans l'étape Contraintes) lit la saison de travail pour
   // savoir si elle est archivée (lecture seule). Non-archivée par défaut ici.
   useWorkingSeason: () => null,
@@ -92,6 +96,7 @@ beforeEach(() => {
   periodPlanId = "plan-x";
   schedulesData = [];
   freshSchedules = [];
+  socleChosen = "b1"; // socle validé par défaut (club établi, état 3)
 });
 
 describe("Wizard (integration)", () => {
@@ -185,6 +190,10 @@ describe("Wizard (integration)", () => {
     });
 
     it("`?step=venues&slot=X` ouvre le wizard SUR le créneau X (étape Gymnases + éditeur du créneau)", async () => {
+      // Socle NON validé (état 2) : la grille est éditable, donc le deep-link OUVRE l'éditeur — avec
+      // le socle validé les créneaux sont en lecture seule et ce chemin d'édition est fermé (P4-268,
+      // gardé par le describe « mode saison, socle validé » plus bas).
+      socleChosen = null;
       vi.mocked(api.listVenues).mockResolvedValue([{ id: "v1", name: "Gymnase A", color: "#3498DB", canSplit: true, isActive: true, externalRef: null }]);
       vi.mocked(api.listVenueSlots).mockResolvedValue([{ id: "s1", venueId: "v1", dayOfWeek: 2, startTime: "20:30", durationMinutes: 120, capacity: 1 }]);
       renderWithProviders(<WizardPage />, { route: "/wizard?step=venues&slot=s1" });
@@ -300,6 +309,73 @@ describe("Wizard (integration)", () => {
     await user.click(await screen.findByRole("button", { name: "Trier" }));
     expect(await screen.findByRole("button", { name: /terminer le tri/i })).toBeInTheDocument();
     expect(screen.getByText(/par sa poignée/i)).toBeInTheDocument();
+  });
+});
+
+// ── P4-268 — « Modifier les données du club » : compléter le modèle le socle EN VIGUEUR ──
+// Le socle validé (défaut du mock), en mode SAISON : un bandeau dit que le planning reste en vigueur,
+// Contraintes et Génération sont verrouillées dans le rail (le serveur refuse déjà en 409 — le verrou
+// est du confort qui dit POURQUOI), et la grille des créneaux passe en lecture seule (une contrainte).
+describe("mode saison, socle validé (P4-268)", () => {
+  it("affiche le bandeau « le planning reste en vigueur » avec le motif du verrou", async () => {
+    renderWithProviders(<WizardPage />, { route: "/wizard" });
+    expect(await screen.findByText(/Le planning de la saison reste en vigueur/)).toBeInTheDocument();
+    expect(screen.getByText(/Rouvrez le planning de la saison pour modifier les contraintes/)).toBeInTheDocument();
+  });
+
+  it("verrouille Contraintes et Génération dans le rail (boutons désactivés)", async () => {
+    // Le verrou = `disabled` sur le bouton du rail. On n'assère PAS l'aria-label : une étape à la
+    // fois « terminée » ET verrouillée porte « terminée » (le ✓ prime) — `disabled` reste le signal.
+    renderWithProviders(<WizardPage />, { route: "/wizard" });
+    await screen.findByDisplayValue("SF1");
+    expect(screen.getByRole("button", { name: /Contraintes/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Génération/ })).toBeDisabled();
+  });
+
+  it("verrouille la Génération MÊME sur un club valide (le verrou n'est pas celui du blocage récap)", async () => {
+    // Club complet : le récap ne bloque PAS la génération (`generateBlocked` faux) ; si le bouton
+    // Génération reste désactivé, c'est donc bien le verrou « socle en vigueur » qui la ferme — sinon
+    // ce test ne prouverait rien de plus que le blocage récap déjà existant.
+    vi.mocked(api.listVenues).mockResolvedValue([{ id: "v1", name: "Gymnase A", color: null, canSplit: false, isActive: true, externalRef: null }]);
+    vi.mocked(api.listVenueSlots).mockResolvedValue([{ id: "s1", venueId: "v1", dayOfWeek: 2, startTime: "20:30", durationMinutes: 120, capacity: 1 }]);
+    vi.mocked(api.listCoaches).mockResolvedValue([{ id: "co1", firstName: "Ana", lastName: "B", email: null, isEmployee: false, isActive: true, maxDaysOverride: null, isVehicled: false }]);
+    renderWithProviders(<WizardPage />, { route: "/wizard" });
+    expect(await screen.findByRole("button", { name: /Génération/ })).toBeDisabled();
+  });
+
+  it("SANS socle validé (état 2) : NI bandeau NI verrou (Contraintes reste ouverte)", async () => {
+    socleChosen = null;
+    renderWithProviders(<WizardPage />, { route: "/wizard" });
+    await screen.findByDisplayValue("SF1");
+    expect(screen.queryByText(/Le planning de la saison reste en vigueur/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Contraintes/ })).toBeEnabled();
+  });
+
+  it("étape Gymnases : la grille des créneaux est en LECTURE SEULE (mention, pas de barre de pose)", async () => {
+    useWizardStore.setState({ stepId: "venues" });
+    vi.mocked(api.listVenues).mockResolvedValue([{ id: "v1", name: "Gymnase A", color: "#3498DB", canSplit: false, isActive: true, externalRef: null }]);
+    vi.mocked(api.listVenueSlots).mockResolvedValue([{ id: "s1", venueId: "v1", dayOfWeek: 2, startTime: "20:30", durationMinutes: 120, capacity: 1 }]);
+    renderWithProviders(<WizardPage />, { route: "/wizard" });
+
+    // La MENTION explique le verrou…
+    expect(await screen.findByText(/Les créneaux d'entraînement sont une contrainte du planning/)).toBeInTheDocument();
+    // …la barre de pose disparaît, et aucune cellule vide n'est cliquable (on ne peut plus POSER).
+    expect(screen.queryByText(/cliquez la grille pour ajouter un créneau/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Lun 08:00" })).toBeNull();
+    // La fiche du gymnase, elle, reste éditable (nom).
+    expect(screen.getByLabelText("Renommer le gymnase")).toBeEnabled();
+  });
+
+  it("étape Gymnases : SANS socle validé, la grille reste ÉDITABLE (barre de pose + cellules cliquables)", async () => {
+    socleChosen = null;
+    useWizardStore.setState({ stepId: "venues" });
+    vi.mocked(api.listVenues).mockResolvedValue([{ id: "v1", name: "Gymnase A", color: "#3498DB", canSplit: false, isActive: true, externalRef: null }]);
+    vi.mocked(api.listVenueSlots).mockResolvedValue([{ id: "s1", venueId: "v1", dayOfWeek: 2, startTime: "20:30", durationMinutes: 120, capacity: 1 }]);
+    renderWithProviders(<WizardPage />, { route: "/wizard" });
+
+    expect(await screen.findByText(/cliquez la grille pour ajouter un créneau/)).toBeInTheDocument();
+    expect(screen.queryByText(/Les créneaux d'entraînement sont une contrainte du planning/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Lun 08:00" })).toBeInTheDocument();
   });
 });
 

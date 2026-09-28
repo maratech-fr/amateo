@@ -99,6 +99,13 @@ vi.mock("@/features/matches/HabitsLinksButton", () => ({
 vi.mock("./PeriodTeams", () => ({
   PeriodTeams: () => <div>PeriodTeams (stub)</div>,
 }));
+// Décision fondateur 2026-09-28 — « Modifier les données du club » : socle validé ⇒ le nombre de
+// séances d'une équipe EXISTANTE est verrouillé. Le prédicat est SERVI (chosenScheduleId du socle) ;
+// on le pilote ici comme un état mutable, jamais un vrai fetch.
+const socleState = { validated: false };
+vi.mock("@/shared/lib/socle", () => ({
+  useSocleValidated: () => socleState.validated,
+}));
 
 import { TeamsStep } from "./TeamsStep";
 import { useWizardStore } from "../store";
@@ -110,6 +117,7 @@ describe("TeamsStep", () => {
     useWizardStore.setState({ mode: "season", calendarEntryId: null });
     team = baseTeam;
     teamsState.data = null;
+    socleState.validated = false;
     sharedBlocksState.data = [];
     teamLinksState.data = [];
     stbCreate.mockClear();
@@ -189,6 +197,57 @@ describe("TeamsStep", () => {
     expect(within(row).getByRole("combobox", { name: "Niveau de jeu" })).toBeEnabled();
     expect(screen.queryByText(/joue en compétition/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Engagée en compétition/)).not.toBeInTheDocument();
+  });
+
+  // ── Décision fondateur 2026-09-28 : « Modifier les données du club » (socle en vigueur) ──
+  // Le nombre de séances par semaine d'une équipe EXISTANTE est une contrainte du planning en
+  // vigueur : visible mais verrouillé, comme les créneaux. La priorité (rang) et le niveau restent
+  // éditables (le niveau garde sa garde « équipe engagée »).
+
+  it("verrouille (lecture seule) le nombre de séances d'une équipe existante quand le socle est en vigueur", () => {
+    socleState.validated = true;
+    renderWithProviders(<TeamsStep />);
+    const row = teamRow();
+
+    // La valeur reste VISIBLE (readOnly, pas disabled — le champ ne sort pas de l'ordre de tabulation).
+    const sessions = within(row).getByRole("spinbutton", { name: "Séances/sem" });
+    expect(sessions).toHaveAttribute("readonly");
+    expect((sessions as HTMLInputElement).value).toBe("1"); // valeur de la fixture, toujours lisible
+    // Une explication, UNE fois pour la liste, cohérente avec le bandeau d'en-tête.
+    expect(screen.getByText(/séances par semaine fait partie du planning de la saison en vigueur/i)).toBeInTheDocument();
+    // Ce qui reste libre le reste : le rang (flèches) et le niveau ne sont pas des créneaux.
+    expect(within(row).getByRole("combobox", { name: "Niveau de jeu" })).toBeEnabled();
+    expect(within(row).getByRole("button", { name: /Descendre SM3/ })).toBeInTheDocument();
+  });
+
+  it("laisse le nombre de séances éditable quand le socle n'est PAS validé (onboarding / après Rouvrir)", () => {
+    // socleState.validated reste false (défaut du beforeEach).
+    renderWithProviders(<TeamsStep />);
+    const row = teamRow();
+
+    const sessions = within(row).getByRole("spinbutton", { name: "Séances/sem" });
+    expect(sessions).not.toHaveAttribute("readonly");
+    expect(sessions).toBeEnabled();
+    expect(screen.queryByText(/séances par semaine fait partie du planning de la saison en vigueur/i)).not.toBeInTheDocument();
+  });
+
+  it("laisse CRÉER une équipe avec son nombre de séances même socle en vigueur (le verrou porte sur l'édition)", async () => {
+    socleState.validated = true;
+    const user = userEvent.setup();
+    renderWithProviders(<TeamsStep />);
+
+    // Le champ « Séances/sem » du FORMULAIRE d'ajout ([0], avant la ligne) reste éditable.
+    const addSessions = screen.getAllByRole("spinbutton", { name: "Séances/sem" })[0];
+    expect(addSessions).not.toHaveAttribute("readonly");
+    await user.clear(addSessions);
+    await user.type(addSessions, "3");
+
+    await user.type(screen.getByLabelText("Nom de l'équipe"), "SF1");
+    await user.selectOptions(screen.getAllByLabelText("Catégorie")[0], "cat1");
+    await user.click(screen.getByRole("button", { name: "Ajouter l'équipe" }));
+
+    expect(createMut).toHaveBeenCalledOnce();
+    expect(createMut.mock.calls[0][0].sessionsPerWeek).toBe(3);
   });
 
   // P2-27 — le repère « mutualisée » sur la ligne, nommant les co-équipières (jamais un simple

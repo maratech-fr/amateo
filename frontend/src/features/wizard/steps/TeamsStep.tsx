@@ -15,6 +15,7 @@ import { Input } from "@/shared/components/ui/input";
 import { Select } from "@/shared/components/ui/select";
 import { groupTeamsByTier, TIER_MEANING, tierGroupLabel } from "@/shared/lib/teamTiers";
 import { cn } from "@/shared/lib/utils";
+import { useSocleValidated } from "@/shared/lib/socle";
 
 import { TEAM_COLUMNS } from "../lib/teamColumns";
 
@@ -57,6 +58,17 @@ const LEVELS: { value: TeamLevel | ""; label: string }[] = [
  * geste qui finira en 409.
  */
 const ENGAGED_REASON = "Cette équipe joue en compétition : ses matchs sont engagés auprès de la fédération.";
+
+/**
+ * « Modifier les données du club » (décision fondateur 2026-09-28) : par ce chemin (mode saison,
+ * socle EN VIGUEUR), le nombre de séances par semaine d'une équipe EXISTANTE est une CONTRAINTE du
+ * planning en vigueur — visible mais verrouillé, exactement comme les créneaux. On complète le
+ * modèle (niveau, rang, mutualisation) sans rouvrir ; pour changer les séances, il faut rouvrir le
+ * planning de la saison. La CRÉATION d'une équipe reste libre (son formulaire porte son propre champ,
+ * jamais verrouillé — sinon on ne pourrait plus créer d'équipe utile). Sans socle validé (onboarding,
+ * ou après « Rouvrir »), rien n'est verrouillé. Cohérent avec le bandeau d'en-tête du wizard.
+ */
+const SESSIONS_LOCK_HINT = "Rouvrez le planning de la saison pour modifier le nombre de séances.";
 
 /** A team is "competitive" unless it plays at a loisir level (or has none set). */
 const isCompetitive = (level: TeamLevel | null): boolean =>
@@ -104,9 +116,13 @@ interface RowProps {
   /** P2-45 — sous-ligne des liens : « Mutualisée avec … · Passerelle avec … (Préféré) ».
    *  null = ni groupe ni passerelle → aucun texte ajouté (densité nominale). */
   linksLabel?: string | null;
+  /** Décision fondateur 2026-09-28 — socle en vigueur : le nombre de séances d'une équipe
+   *  EXISTANTE est en lecture seule (contrainte du planning en vigueur). Le POURQUOI est dit
+   *  une fois au-dessus de la liste ; ici on rend seulement le champ non éditable. */
+  sessionsLocked?: boolean;
 }
 
-function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLinks, rankLabel, canUp, canDown, onMove, linksLabel }: RowProps) {
+function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLinks, rankLabel, canUp, canDown, onMove, linksLabel, sessionsLocked }: RowProps) {
   // Local edit buffers (saved on blur). name/sessions only change through this row.
   const [name, setName] = useState(team.name);
   const [sessions, setSessions] = useState(String(team.sessionsPerWeek));
@@ -178,10 +194,15 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
           aria-label="Séances/sem"
           type="number"
           min={1}
-          className={cn("h-8", TEAM_COLUMNS.sessions)}
+          // Socle en vigueur : la valeur reste VISIBLE (readOnly, pas disabled — un champ
+          // désactivé sort de l'ordre de tabulation et n'est plus lu) mais non éditable. Le
+          // onBlur est verrouillé aussi (ceinture + bretelles : readOnly bloque déjà la frappe).
+          readOnly={true === sessionsLocked}
+          title={true === sessionsLocked ? SESSIONS_LOCK_HINT : undefined}
+          className={cn("h-8", TEAM_COLUMNS.sessions, true === sessionsLocked && "cursor-not-allowed bg-muted/40 text-muted-foreground")}
           value={sessions}
           onChange={(e) => setSessions(e.target.value)}
-          onBlur={() => Number(sessions) !== team.sessionsPerWeek && onField(team, { sessionsPerWeek: Number(sessions) })}
+          onBlur={() => true !== sessionsLocked && Number(sessions) !== team.sessionsPerWeek && onField(team, { sessionsPerWeek: Number(sessions) })}
         />
         {/* Rang is not edited inline: changing a team's tier is done via the
             "Trier" mode (drag & drop between S/A/B/C/D zones). */}
@@ -385,6 +406,11 @@ function TeamsEditor() {
   // La saison de TRAVAIL résolue (X-Season-Id, sinon saison courante serveur) : c'est
   // exactement ce que l'en-tête posera, donc le seasonId du corps que le serveur exige.
   const workingSeasonId = useWorkingSeason()?.id;
+  // « Modifier les données du club » (décision fondateur 2026-09-28) : TeamsEditor n'est rendu
+  // qu'en mode SAISON (TeamsStep bascule sur PeriodTeams en mode période), donc socle validé ⇒ on
+  // est sur ce chemin. Le nombre de séances d'une équipe EXISTANTE y est verrouillé (contrainte du
+  // planning en vigueur) ; le formulaire de CRÉATION reste libre.
+  const sessionsLocked = useSocleValidated();
   const create = useCreateTeam();
   const update = useUpdateTeam();
   const del = useDeleteTeam();
@@ -848,6 +874,13 @@ function TeamsEditor() {
                   {ENGAGED_REASON} Leur niveau de jeu et leur suppression sont verrouillés ; le reste (nom, rang, créneaux, gymnase) se modifie librement.
                 </p>
               )}
+              {sessionsLocked && (
+                // « Modifier les données du club » (socle en vigueur) : le POURQUOI, UNE fois pour la
+                // liste — chaque champ « Séances/sem » d'une équipe existante est en lecture seule.
+                <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  Le nombre de séances par semaine fait partie du planning de la saison en vigueur : il reste visible mais verrouillé. {SESSIONS_LOCK_HINT}
+                </p>
+              )}
               <div className="flex items-center gap-2 px-2 text-xs font-medium text-muted-foreground">
                 {/* Le « # » est la position dans l'ordre par RANG : en liste plate il se
                     lirait 7, 3, 14, 1… soit comme un défaut d'affichage (revue #347). Il
@@ -885,6 +918,7 @@ function TeamsEditor() {
                           canDown={index < group.length - 1 && !reorderBusy}
                           onMove={null === tier ? undefined : (dir) => moveInTier(team, dir)}
                           linksLabel={linksLabelOf(team.id)}
+                          sessionsLocked={sessionsLocked}
                         />
                       ))}
                     </div>
@@ -895,7 +929,7 @@ function TeamsEditor() {
                 // et le badge de rang par ligne porte l'information qu'elles donnaient.
                 <div className="rounded-lg border border-border bg-card px-2">
                   {flatTeams.map((team) => (
-                    <TeamRow key={team.id} team={team} categories={categories} tiers={tiers} onField={onField} onDelete={setToDelete} onOpenLinks={setLinksTeam} rankLabel={rankLabelOf(team)} linksLabel={linksLabelOf(team.id)} />
+                    <TeamRow key={team.id} team={team} categories={categories} tiers={tiers} onField={onField} onDelete={setToDelete} onOpenLinks={setLinksTeam} rankLabel={rankLabelOf(team)} linksLabel={linksLabelOf(team.id)} sessionsLocked={sessionsLocked} />
                   ))}
                 </div>
               )}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Coach, Slot, Team, Venue } from "../api";
-import { availableResourceGroups, availableResources, buildGrid, computeTimeBounds, concernedSlots, formatMinutes, type Lookups, NO_COACH, parseTimeToMinutes, resourceKeysForSlot, toHourMinute } from "./grid";
+import { availableResourceGroups, availableResources, buildGrid, computeTimeBounds, concernedSlots, formatMinutes, type Lookups, NO_COACH, parseTimeToMinutes, resourceKeysForSlot, slotCoachId, toHourMinute } from "./grid";
 
 function slot(over: Partial<Slot>): Slot {
   return {
@@ -71,6 +71,26 @@ describe("resourceKeysForSlot", () => {
   it("also surfaces the coach under teams where he is a player", () => {
     const withPlayers = { ...lookups, teamCoach: new Map([["t1", "c9"]]), teamPlayerCoaches: new Map([["t1", ["p1"]]]) };
     expect(resourceKeysForSlot(slot({ coachId: null, teamId: "t1" }), "coach", withPlayers).sort()).toEqual(["c9", "p1"]);
+  });
+});
+
+// P4-268 — le planning affiche le coach COURANT de l'équipe sur une séance générée sans coach
+// (le solveur ne pose pas `slot.coachId`) : c'est le repli `teamCoach`. Un coach ajouté/lié tard via
+// « Modifier les données du club » doit donc s'y refléter dès que le cache `["team_coaches"]` est
+// invalidé (garde d'invalidation : `coachLinkInvalidation.test.tsx`).
+describe("slotCoachId — coach propre du créneau, sinon coach courant de l'équipe", () => {
+  it("prend le coach du créneau quand il est posé", () => {
+    const withTeamCoach = { ...lookups, teamCoach: new Map([["t1", "c9"]]) };
+    expect(slotCoachId(slot({ coachId: "c1", teamId: "t1" }), withTeamCoach)).toBe("c1");
+  });
+
+  it("retombe sur le coach de l'équipe quand le créneau n'en a pas (séance générée sans coach)", () => {
+    const withTeamCoach = { ...lookups, teamCoach: new Map([["t1", "c9"]]) };
+    expect(slotCoachId(slot({ coachId: null, teamId: "t1" }), withTeamCoach)).toBe("c9");
+  });
+
+  it("null quand ni le créneau ni l'équipe n'ont de coach", () => {
+    expect(slotCoachId(slot({ coachId: null, teamId: "t1" }), lookups)).toBeNull();
   });
 });
 

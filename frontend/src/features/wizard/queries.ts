@@ -30,6 +30,33 @@ export const invalidateEverywhere = (queryClient: QueryClient, family: "teams" |
     queryClient.invalidateQueries({ queryKey: [family] }),
   ]).then(() => undefined);
 
+/**
+ * Le LIEN équipe→coach vit sous DEUX clés : le wizard écrit/lit `["wizard", "team_coaches"]`,
+ * mais Planning et Matchs lisent `["team_coaches"]` (`planning/queries.ts`, `staleTime` 5 min) pour
+ * bâtir le repli `lookups.teamCoach` (`planning/lib/grid.ts` — le coach de l'équipe posé sur une
+ * séance générée sans coach). N'invalider que la clé wizard laissait le planning afficher un coach
+ * ajouté/lié tardivement avec cinq minutes de retard — exactement le geste « coach déclaré tard »
+ * que « Modifier les données du club » sert. Même famille de piège que `invalidateEverywhere` (D-25),
+ * mais un LIEN, hors de son périmètre teams/venues/coaches.
+ */
+const invalidateTeamCoaches = (queryClient: ReturnType<typeof useQueryClient>): Promise<void> =>
+  Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["wizard", "team_coaches"] }),
+    queryClient.invalidateQueries({ queryKey: ["team_coaches"] }),
+  ]).then(() => undefined);
+
+/**
+ * Le lien coach-JOUEUR : même dédoublement de clé que `invalidateTeamCoaches`. Le wizard écrit
+ * `["wizard", "coach_players"]` ; Planning lit `["coach_player_memberships"]` (nom DIFFÉRENT) pour
+ * `lookups.teamPlayerCoaches` (vue coach). Un joueur-coach déclaré au wizard n'apparaissait donc sur
+ * le planning qu'après la fenêtre de péremption.
+ */
+const invalidateCoachPlayers = (queryClient: ReturnType<typeof useQueryClient>): Promise<void> =>
+  Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["wizard", "coach_players"] }),
+    queryClient.invalidateQueries({ queryKey: ["coach_player_memberships"] }),
+  ]).then(() => undefined);
+
 export function useWizardTeams() {
   return useQuery({ queryKey: ["wizard", "teams"], queryFn: wizardApi.listTeams, staleTime: 30_000 });
 }
@@ -618,8 +645,8 @@ export function useDeleteCoach() {
     mutationFn: (id: string) => wizardApi.deleteCoach(id),
     onSuccess: () => {
       void invalidateEverywhere(queryClient, "coaches");
-      void queryClient.invalidateQueries({ queryKey: ["wizard", "team_coaches"] });
-      void queryClient.invalidateQueries({ queryKey: ["wizard", "coach_players"] });
+      void invalidateTeamCoaches(queryClient);
+      void invalidateCoachPlayers(queryClient);
     },
   });
 }
@@ -628,7 +655,7 @@ export function useCreateTeamCoach() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: { teamId: string; coachId: string; role: TeamCoachRole }) => wizardApi.createTeamCoach(body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wizard", "team_coaches"] }),
+    onSuccess: () => invalidateTeamCoaches(queryClient),
   });
 }
 
@@ -636,7 +663,7 @@ export function useDeleteTeamCoach() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => wizardApi.deleteTeamCoach(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wizard", "team_coaches"] }),
+    onSuccess: () => invalidateTeamCoaches(queryClient),
   });
 }
 
@@ -644,7 +671,7 @@ export function useCreateCoachPlayer() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: { teamId: string; coachId: string; isActive: boolean }) => wizardApi.createCoachPlayer(body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wizard", "coach_players"] }),
+    onSuccess: () => invalidateCoachPlayers(queryClient),
   });
 }
 
@@ -652,7 +679,7 @@ export function useDeleteCoachPlayer() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => wizardApi.deleteCoachPlayer(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wizard", "coach_players"] }),
+    onSuccess: () => invalidateCoachPlayers(queryClient),
   });
 }
 

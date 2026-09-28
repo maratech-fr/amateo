@@ -1,7 +1,7 @@
 # Amateo — PostgreSQL Row-Level Security (RLS)
 
-Last verified @ 2026-09-27 (`documentation-update`, rotation de fraîcheur — P4-263 PR 1/2, sujet
-sans rapport avec ce fichier). Re-confronté au code : `TenantFilterListener` toujours
+Last verified @ 2026-09-28 (`documentation-update`, rotation de fraîcheur — P4-268, sujet sans
+rapport avec ce fichier). Re-confronté au code : `TenantFilterListener` toujours
 `KernelEvents::REQUEST => ['onKernelRequest', 7]`
 (`backend/src/EventListener/TenantFilterListener.php:55`) ✓ · `TenantConnectionContext` pose
 `set_config('app.club_id', ?, false)` (`backend/src/Service/TenantConnectionContext.php:30`) ✓ ·
@@ -9,9 +9,9 @@ sans rapport avec ce fichier). Re-confronté au code : `TenantFilterListener` to
 (`NULLIF(current_setting('app.club_id', true), '')::uuid`,
 `backend/migrations/Version20260703120000.php:49`) ✓ · `Version20260813130000` pose bien un
 `admin_all` (FOR ALL, USING/WITH CHECK `true`, TO `amateo_owner`) énuméré `pg_class`-side sur
-chaque table FORCE existante (`backend/migrations/Version20260813130000.php:9-30`) ✓ ·
+chaque table FORCE existante (`backend/migrations/Version20260813130000.php:19-30`) ✓ ·
 `Version20260731090000` dépose bien `migration_user` (`DROP OWNED BY` + `DROP ROLE`,
-`Version20260731090000.php:50-51`) ✓ · `docker/postgres/init/02-users.sh:32-45` crée `amateo_app`
+`Version20260731090000.php:50-51`) ✓ · `docker/postgres/init/02-users.sh` crée `amateo_app`
 `NOSUPERUSER NOCREATEDB NOCREATEROLE` avec seulement `SELECT, INSERT, UPDATE, DELETE` (DML, aucun
 DDL) ✓. Rien de faux trouvé cette passe.
 

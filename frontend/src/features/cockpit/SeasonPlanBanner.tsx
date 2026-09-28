@@ -68,6 +68,17 @@ export function SeasonPlanBanner({ schedules, socleValidated, loading = false, e
     navigate("/wizard");
   };
 
+  // « Modifier les données du club » (décision fondateur 2026-09-28) : compléter le modèle
+  // (coachs déclarés tard, équipes, gymnases) alors que le socle est EN VIGUEUR, SANS « Rouvrir »
+  // (qui détruirait les plans de période futurs). On sort d'un éventuel mode période et on ouvre le
+  // wizard sur l'étape Équipes ; les contraintes et la génération y sont verrouillées (le serveur
+  // refuse déjà la génération en 409), les modifications s'appliqueront à la prochaine génération.
+  const editClubData = () => {
+    useWizardStore.getState().exitPeriodMode();
+    useWizardStore.getState().jumpTo("teams");
+    navigate("/wizard");
+  };
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-4">
       <div>
@@ -90,12 +101,18 @@ export function SeasonPlanBanner({ schedules, socleValidated, loading = false, e
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
-        {/* Only "Ouvrir": once inside the planning, the manager decides whether to
-            modify (the page has its own reopen/validate controls) — no separate
-            Modifier here (user request). */}
+        {/* « Ouvrir » consulte le planning (la page porte ses propres commandes rouvrir/valider).
+            « Modifier les données du club » ouvre le wizard pour compléter le modèle sans rouvrir :
+            offert UNIQUEMENT quand le socle est validé — avant, on complète encore dans le wizard,
+            et « Ouvrir » y ramène déjà (décision fondateur 2026-09-28). */}
         <Button variant="outline" size="sm" onClick={open}>
           Ouvrir
         </Button>
+        {socleValidated ? (
+          <Button variant="ghost" size="sm" onClick={editClubData}>
+            Modifier les données du club
+          </Button>
+        ) : null}
         <Button variant="ghost" size="sm" onClick={() => setListOpen(true)}>
           Tous les plannings ({planCount})
         </Button>
