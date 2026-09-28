@@ -1,16 +1,17 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-28 (P4-240 PR ④, §3/§5 recalés contre le code : `PlaceMatchesController::
-place` — corps `{from, to}` optionnel, 422 si une borne n'est pas une date AAAA-MM-JJ ou si `from` >
-`to`, 403 Découverte (`PlanEntitlements::outputBudget()['restricted']`) sans fenêtre ou fenêtre >
-`MAX_WINDOW_DAYS=6` jours ✓ ; `MatchPlacementPayloadBuilder::build`/`matchRow` — `$window` restreint
-les candidats TO_PLACE à l'intérieur, bascule un domicile posé HORS fenêtre en ancre FIXED et omet un
-extérieur hors fenêtre, `null` = payload inchangé à l'octet ✓ ; `frontend/src/features/matches/
-CalendarPage.tsx::runPlacement` — maison unique du placement (bouton global + « Placer ce week-end »
-de `WeekWorkbench`), `placeRestricted = credits !== null` désactive le bouton global avec message ✓ ;
-`WeekWorkbench.tsx` — bouton dédié pose `weekBounds(activeWeekend)` (lundi→dimanche) ✓). Reste du
-contenu (P4-240 ③, P4-267 et antérieur) non réaudité cette passe. Historique : `git log -p --follow
-specs/courantes/module-matchs.md`.
+Last verified @ 2026-09-28 (P4-272 ① — copie club de l'enveloppe ligue, §1/§3/§5/§8bis recalés
+contre le code : `ClubLeagueWindow` entité tenant club+saison (`backend/src/Entity/
+ClubLeagueWindow.php:37`), migration RLS `Version20260928130000` + backfill idempotent
+`Version20260928140000` ; `MatchPlacementPayloadBuilder::build` et `ConflictRadarLoader::conflicts`
+lisent tous deux la copie (`ClubLeagueWindow`, plus le catalogue), copie vide → un seul diagnostic
+`league_envelope_empty` (`MatchPlacementPayloadBuilder.php:283-289`), équipe non mappée sur copie
+non vide → `league_envelope_unresolved` (inchangé) ✓ ; `LeagueMatchWindowsController::__invoke`
+sert la copie club + `resolvedTeamWindows` ✓ ; `PlacementPanel.tsx` — `envelopeBlocked` retiré de
+`canPlace`, `isInEnvelope` ne sert plus qu'à `EnvelopeHint` (pose manuelle hors ligue PERMISE et
+SIGNALÉE) ✓ ; onglet `/matchs/contraintes` (`ConstraintsPage.tsx`, `routes.tsx:174-179`, CRUD
+`ClubLeagueWindowResource`) ✓). Reste du contenu (P4-240 et antérieur) non réaudité cette passe.
+Historique : `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
 > d'une PR. Le JOURNAL (qui a livré quoi, quand, sous quel id) vit dans
@@ -22,7 +23,8 @@ specs/courantes/module-matchs.md`.
 Le module vit dans `frontend/src/features/matches/` (nav `MatchesLayout`, sous `/matchs` :
 `index` = **route d'atterrissage conditionnelle** (`MatchesLanding` → Calendrier, ou renvoi sur
 Conflits s'il y a des conflits à traiter — § Écran Calendrier), `conflits`, `importer`,
-`configuration`, `adversaires` (§ Écran Adversaires, onglet propre — plus un deep-link de
+`configuration`, `contraintes` (§ Écran Contraintes, section Ligue éditable — sections Club/
+Équipes/Coachs à venir), `adversaires` (§ Écran Adversaires, onglet propre — plus un deep-link de
 Configuration), `semaine-type`, `consulter` en redirection permanente vers l'index, `reconciliation` accessible
 seulement depuis le canal API, `frontend/src/app/routes.tsx:141-186`) et dans les services backend `Match*`/`Fixture*`/
 `Opponent*`/`Ffbb*` (`backend/src/Service/`, `backend/src/Entity/`).
@@ -56,6 +58,20 @@ vigueur, il n'a rien à comparer.
   d'une rencontre EXTÉRIEURE, DÉRIVÉ de la rencontre elle-même — voir « Table TENANT
   `OpponentVenueLink` » ci-dessous.
 - **`TeamMatchHabit`** : jour ISO + heure-point + gymnase optionnel, une par jour et par équipe.
+- **`ClubLeagueWindow`** (clé `(club, saison)`, colonnes métier identiques au catalogue GLOBAL
+  `LeagueMatchWindow` ci-dessous) : la COPIE, propre au club, de l'enveloppe de fenêtres de coup
+  d'envoi de la ligue — MAISON UNIQUE lue par le placement (`MatchPlacementPayloadBuilder`), le
+  radar (`ConflictRadarLoader`) et `GET /api/league-match-windows` (interface commune
+  `LeagueWindowInterface`, `LeagueEnvelopeResolver` inchangé). Seedée depuis la ligue EFFECTIVE du
+  club à la naissance (`ClubProvisioner`), à la bascule de saison (`SeasonTransitionService` —
+  recopie la copie de la saison SOURCE, ne retombe sur le catalogue que si cette source est vide)
+  et par une migration de backfill pour les clubs déjà existants (`Version20260928140000`, saisons
+  active/brouillon seulement). Éditable par le gestionnaire (CRUD `ClubLeagueWindowResource`,
+  section Ligue de l'écran Contraintes, § « Écran Contraintes » ci-dessous) — badge `added`/
+  `modified` calculé SERVEUR par clé naturelle vs le seed. **Copie VIDE = zéro règle fédérale** :
+  aucun HARD ligue au placement (§3), un seul diagnostic INFO `league_envelope_empty` pour tout le
+  club (jamais un par équipe) ; une pose manuelle hors fenêtre reste PERMISE et SIGNALÉE (§5), le
+  radar continue de porter `LEAGUE_WINDOW_VIOLATION` sur une copie non vide.
 - **`TeamLink`** (couple symétrique `teamAId < teamBId`, cap `MAX_TEAM_LINKS = 50`) : côté MATCHS
   `TeamLinkType` `NOT_SIMULTANEOUS`/`BACK_TO_BACK` — rail SOFT **placement seul** ; le radar de
   conflits ne charge jamais `TeamLink` (décision fermée, `etat-des-lieux.md` §2 : « ça fait plus de
@@ -83,7 +99,8 @@ vigueur, il n'a rien à comparer.
 - `Venue.externalLabels` (JSON normalisé/dédupliqué) : alias FBI/FFBB confirmés — voir §5.3.
 
 Recopie en N+1 (`SeasonTransitionService`) : habitudes, passerelles, fenêtres d'accès, rotations
-(remap équipe+gymnase) ; les indisponibilités et les échéances **ne sont jamais recopiées**.
+(remap équipe+gymnase), la copie club de l'enveloppe ligue (`ClubLeagueWindow`, verbatim depuis la
+saison source) ; les indisponibilités et les échéances **ne sont jamais recopiées**.
 
 ### Tables GLOBALES fédérales (hors tenant, hors RLS)
 
@@ -92,10 +109,11 @@ GRANT `SELECT/INSERT/UPDATE` **sans `DELETE`** (une ligne retombée à 0 reste).
 de schéma dédié par table (`*ShareTest`, liste blanche exacte + byte-identique quel que soit le
 club lecteur).
 
-- **`LeagueMatchWindow`** : fenêtres de coup d'envoi imposées par la fédé, par `league × category ×
-  level × gender` — seedée depuis `backend/data/league-match-windows.aura.json`, ligue dérivée du
-  `ffbbClubCode` (`LeagueResolver`). `GET /api/league-match-windows` sert aussi
-  `resolvedTeamWindows` (la jointure équipe→fenêtres, même moteur que le solveur et le diagnostic).
+- **`LeagueMatchWindow`** : le catalogue fédéral de référence, par `league × category × level ×
+  gender` — seedé depuis `backend/data/league-match-windows.aura.json`, ligue dérivée du
+  `ffbbClubCode` (`LeagueResolver`). Ne sert plus qu'à SEMER la copie club (`ClubLeagueWindow`
+  ci-dessus) — le placement, le radar et `GET /api/league-match-windows` lisent tous la copie, plus
+  jamais ce catalogue directement.
 - **`OpponentDirectoryEntry`** : où joue un adversaire (`name`/`city`/`postalCode`/`lat`/`lng`/
   `precision` `VENUE`|`CITY`), résolu **automatiquement** par `OpponentLocationResolver` — salle
   exacte du hit rencontre API (`VENUE`, gratuit) sinon repli VILLE (`CITY`, géocodage). 🔴
@@ -486,9 +504,11 @@ derrière le bouton global désactivé (§5) ; 1 clic reste 1 crédit (`CreditBu
 
 **HARD** : fenêtres d'accès match (le match SEUL dedans, D1 — `kickoff ≥ start`,
 `kickoff+matchMinutes ≤ end`), indisponibilités gymnase, no-overlap `(gymnase, date)` sur la fenêtre
-MATCH, fenêtre ligue quand l'enveloppe est résolue (non résolue = diagnostic INFO seul). Durées par
-équipe (`MatchDurationResolver`) portées par le contrat ; absentes côté engine ⇒ défauts Pydantic
-105/30.
+MATCH, fenêtre ligue résolue depuis la COPIE club (`ClubLeagueWindow`, §1) quand l'enveloppe est
+résolue pour l'équipe — équipe non mappée = diagnostic INFO `league_envelope_unresolved` seul ;
+copie VIDE = aucun HARD ligue pour tout le club, diagnostic INFO `league_envelope_empty` unique.
+Durées par équipe (`MatchDurationResolver`) portées par le contrat ; absentes côté engine ⇒ défauts
+Pydantic 105/30.
 
 **Personne = coach OU joueuse active (P4-240 ③, décision A)** : chaque équipe du contrat porte
 `teams[].players` (ids `CoachPlayerMembership` actifs, additif, `CONTRACT_VERSION` inchangée
@@ -615,7 +635,7 @@ données absentes) ; (4) une **URL avec paramètres** fait foi (lien profond : l
 « Voir la semaine », « Replacer ») et **saute** la décision. Toute entrée dans le module par un
 autre onglet consomme aussi la règle (effet de montage de `MatchesLayout`) : revenir ensuite au
 Calendrier ne renvoie jamais de force sur Conflits. La décision vit dans `MatchesLanding`, pas dans
-le layout — la nav des six onglets reste inchangée.
+le layout — la nav des onglets reste inchangée.
 
 - **Chaîne de filtres pure** : filtre équipe/coach/gymnase (barre `MatchesFilterBar`, réutilise
   `ResourceFilter` de `features/planning`) → filtre type de compétition → scope temporel → familles
@@ -648,7 +668,8 @@ le layout — la nav des six onglets reste inchangée.
   de COMPÉTITION seulement, quand le club déclare ≥ 1 `VenueMatchWindow` : aucune fenêtre `(gymnase,
   jour)` ou coup d'envoi hors fenêtre (même prédicat que le diagnostic,
   `MatchConflictDetector::kickoffInsideWindow` — une seule maison). Jamais de refus sur l'enveloppe
-  ligue (radar seul, décision D2) ; un amical reste libre hors fenêtre d'accès. `/api/fixtures/place`
+  ligue (radar seul, décision D2, PERMISE côté client aussi depuis P4-272 ① — voir ci-dessous) ; un
+  amical reste libre hors fenêtre d'accès. `/api/fixtures/place`
   (rail solveur, §3 — le solveur pose déjà les mêmes fenêtres/indispos en HARD) et la
   réconciliation FBI n'empruntent **pas** ce processor : intacts, hors du geste manuel gestionnaire
   que D2 vise. `PlacementPanel` lit trois gardes du club (accès match,
@@ -660,11 +681,14 @@ le layout — la nav des six onglets reste inchangée.
 - **Enveloppe ligue — miroir déclaré (FRT-32)** : le prédicat d'appartenance au coup d'envoi
   (intervalle FERMÉ `[kickoffMin, kickoffMax]`, filtré par jour) vit dans
   `MatchConflictDetector::kickoffInsideLeagueWindow` (backend, DIAGNOSTIQUE `LEAGUE_WINDOW_VIOLATION`)
-  et son miroir DÉCLARÉ `matches/lib/envelope.ts::kickoffInsideLeagueWindow` (front, BLOQUE la pose
-  via `isInEnvelope`) — gardés en parité par `leagueEnvelope.parity.json` +
-  `LeagueEnvelopeMirrorParityTest`/`leagueEnvelope.parity.test.ts`. Divergent PAR CONCEPTION :
-  l'exemption amical (front `!isFriendly` vs backend saut des `competitionId` null) et la
-  résolution équipe↔fenêtre (déjà serveur).
+  et son miroir DÉCLARÉ `matches/lib/envelope.ts::kickoffInsideLeagueWindow` (front) — gardés en
+  parité par `leagueEnvelope.parity.json` + `LeagueEnvelopeMirrorParityTest`/
+  `leagueEnvelope.parity.test.ts`. La fenêtre de ligue ne BLOQUE plus la pose manuelle (P4-272 ①) :
+  `PlacementPanel` l'utilise seulement pour AVERTIR (`EnvelopeHint`, `isInEnvelope`), `canPlace` n'y
+  regarde plus — ligue, club et équipe se comportent désormais pareil, seul un gymnase indisponible
+  reste un refus dur côté client. Divergent PAR CONCEPTION : l'exemption amical (front `!isFriendly`
+  vs backend saut des `competitionId` null) et la résolution équipe↔fenêtre (déjà serveur, servie
+  depuis la COPIE club — §1).
 - **Grille week-end** (`WeekendGrid`) : un match placé démarre au coup d'envoi et dure le match
   (`matchMinutes` résolu) ; il **s'enchaîne** avec un match suivant même gymnase/jour dont le coup
   d'envoi tombe ≤ 30 min après sa fin — au-delà, le trou reste visible. **Case « À confirmer »**
@@ -1091,6 +1115,23 @@ gymnase en un geste, re-pointe les non placés, épargne toujours les placés, `
 ce qui bouge) ; **Retirer** (ne touche aucune rencontre déjà rattachée). Un signal partagé
 (`UnpairedVenueLabelsBanner`) renvoie vers cet écran unique depuis Importer et le Calendrier —
 décision fermée (une seule maison d'appariement, jamais une modale sur une modale).
+
+## 8bis. Écran Contraintes (`/matchs/contraintes`)
+
+L'écran UNIQUE des contraintes de match (P4-272 ①, demande fondateur « un endroit pour éditer les
+contraintes de match, ligue et personnelles, prises en compte pour le placement automatique »), en
+accordéon (`AccordionSection`, ancré `?section=<ligue|club|equipes|coachs>`, patron
+`ConfigurationPage`). Seule la section **Ligue** est livrée ; **Club**, **Équipes** et **Coachs**
+sont des placeholders « Bientôt » qui pointent, en attendant, vers les écrans qui portent déjà ces
+réglages (Configuration pour l'accès gymnase/la durée des matchs, Semaine type pour la préférence
+de gymnase/l'habitude d'équipe) — voir P4-272 ②③④⑤ (`specs/evolution/roadmap.md`) pour la suite.
+
+**Section Ligue** : le CRUD gestionnaire de la copie club de l'enveloppe fédérale
+(`ClubLeagueWindow`, §1) — un tableau éditable (catégorie, niveau, genre, jour, de/à),
+ajout/suppression, badge `added`/`modified` calculé SERVEUR (affiché, jamais redérivé, § règle
+frontend « le backend dit »). Bandeau si la copie est VIDE (« Aucune fenêtre ligue — le placement
+n'applique plus de règle fédérale », §1). Le placement, le radar et cet écran lisent la MÊME copie
+— une correction ici est immédiatement honorée par le placement automatique (§3) et le radar (§2).
 
 ## 9. Écran Adversaires (`/matchs/adversaires`, au grain GYMNASE)
 

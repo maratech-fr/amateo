@@ -5,9 +5,10 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\Club;
+use App\Entity\ClubLeagueWindow;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Fixture;
-use App\Entity\LeagueMatchWindow;
+use App\Entity\LeagueWindowInterface;
 use App\Entity\MatchSlotRotation;
 use App\Entity\MatchSlotRotationTeam;
 use App\Entity\SportCategory;
@@ -21,7 +22,6 @@ use App\Entity\VenueUnavailability;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
-use App\Repository\LeagueMatchWindowRepository;
 use DateInterval;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -125,6 +125,12 @@ final class MatchPlacementPayloadBuilder
         $playerMemberships = $this->entityManager->getRepository(CoachPlayerMembership::class)->findBy([]);
         /** @var list<MatchSlotRotation> $rotations */
         $rotations = $this->entityManager->getRepository(MatchSlotRotation::class)->findBy([]);
+        // P4-272 ① — la COPIE club de l'enveloppe ligue (scopée club+saison par les
+        // filtres Doctrine). C'est la MAISON UNIQUE de lecture au placement : le
+        // catalogue global ne sert plus qu'à semer cette copie. Copie VIDE = zéro
+        // règle de ligue (aucun HARD, un seul diagnostic club plus bas).
+        /** @var list<ClubLeagueWindow> $clubWindows */
+        $clubWindows = $this->entityManager->getRepository(ClubLeagueWindow::class)->findBy([]);
 
         $habitIndex = $this->awayKickoffEstimator->indexHabits($habits);
 
@@ -184,7 +190,7 @@ final class MatchPlacementPayloadBuilder
         // Teams: league envelope (tolerant), habits, coaches, per-category
         // durations (P4-203 — resolved by MatchDurationResolver, the SAME service
         // the radar footprint uses).
-        $envelope = $this->resolveEnvelope($club, $teams, $categories);
+        $envelope = $this->leagueEnvelopeResolver->resolve($teams, $categories, $clubWindows);
         $categoriesById = [];
         foreach ($categories as $category) {
             $categoriesById[$category->getId()] = $category;
@@ -243,7 +249,7 @@ final class MatchPlacementPayloadBuilder
             $teamRows[] = [
                 'id' => $team->getId(),
                 'name' => $team->getName(),
-                'leagueWindows' => array_map(static fn (LeagueMatchWindow $w): array => [
+                'leagueWindows' => array_map(static fn (LeagueWindowInterface $w): array => [
                     'dayOfWeek' => $w->getDayOfWeek(),
                     'kickoffMin' => $w->getKickoffMin()->format('H:i'),
                     'kickoffMax' => $w->getKickoffMax()->format('H:i'),
@@ -254,7 +260,11 @@ final class MatchPlacementPayloadBuilder
                 'matchMinutes' => $profile->matchMinutes,
                 'warmupMinutes' => $profile->warmupMinutes,
             ];
-            if ([] === $windows) {
+            // Copie NON vide mais équipe non mappée : diag PAR ÉQUIPE (« ta fenêtre
+            // n'a pas trouvé preneuse »). Copie VIDE : on N'ÉMET PAS ce diag par
+            // équipe — un seul diagnostic CLUB est posé après la boucle (décision
+            // fondateur : pas un par équipe à chaque placement).
+            if ([] === $windows && [] !== $clubWindows) {
                 $infoDiagnostics[] = [
                     'type' => 'league_envelope_unresolved',
                     'severity' => 'info',
@@ -265,6 +275,17 @@ final class MatchPlacementPayloadBuilder
                     ),
                 ];
             }
+        }
+
+        // P4-272 ① — copie de ligue VIDE = le placement n'applique plus aucune
+        // règle fédérale : UN seul diagnostic INFO pour tout le club (jamais un par
+        // équipe). Le gestionnaire l'assume, comme une pose manuelle hors fenêtre.
+        if ([] === $clubWindows) {
+            $infoDiagnostics[] = [
+                'type' => 'league_envelope_empty',
+                'severity' => 'info',
+                'message' => 'Aucune fenêtre de ligue définie — le placement n\'applique plus de règle fédérale.',
+            ];
         }
 
         return [
@@ -414,21 +435,6 @@ final class MatchPlacementPayloadBuilder
             <=> [$b['venueId'], $b['dayOfWeek'], $b['kickoff']]);
 
         return [$rows, $teamDays];
-    }
-
-    /**
-     * @param list<Team>          $teams
-     * @param list<SportCategory> $categories
-     *
-     * @return array<string, list<LeagueMatchWindow>>
-     */
-    private function resolveEnvelope(Club $club, array $teams, array $categories): array
-    {
-        /** @var LeagueMatchWindowRepository $repository */
-        $repository = $this->entityManager->getRepository(LeagueMatchWindow::class);
-        $windows = $repository->findEnvelopeForLeague($club->getLeague());
-
-        return $this->leagueEnvelopeResolver->resolve($teams, $categories, $windows);
     }
 
     /**

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\Club;
+use App\Entity\ClubLeagueWindow;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
@@ -50,6 +51,7 @@ final class SeasonTransitionService
         private readonly ClockInterface $clock,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly ConstraintConfigValidator $constraintConfigValidator,
+        private readonly ClubLeagueWindowSeeder $clubLeagueWindowSeeder,
     ) {}
 
     /**
@@ -363,6 +365,32 @@ final class SeasonTransitionService
             // serait une régression silencieuse — gardé par le test de transition).
             $copy->setTrainingIntensity($link->getTrainingIntensity());
             $this->entityManager->persist($copy);
+        }
+
+        // P4-272 ① — la COPIE club de l'enveloppe ligue suit la saison : les
+        // corrections du gestionnaire (fenêtres éditées/ajoutées/supprimées) se
+        // renouvellent en N+1, comme les fenêtres d'accès mairie. Recopie verbatim
+        // (aucune référence gymnase/équipe à remapper). Si la source n'en a aucune
+        // (club antérieur au backfill), on retombe sur la recopie de la ligue
+        // effective pour ne jamais laisser N+1 sans envelope.
+        $leagueWindowCopies = 0;
+        foreach ($this->rows(ClubLeagueWindow::class, $clubId, $sourceId) as $window) {
+            $copy = new ClubLeagueWindow;
+            $copy->setClubId($clubId);
+            $copy->setSeasonId($target->getId());
+            $copy->setLeague($window->getLeague());
+            $copy->setCategory($window->getCategory());
+            $copy->setLevel($window->getLevel());
+            $copy->setGender($window->getGender());
+            $copy->setDayOfWeek($window->getDayOfWeek());
+            $copy->setKickoffMin($window->getKickoffMin());
+            $copy->setKickoffMax($window->getKickoffMax());
+            $this->entityManager->persist($copy);
+            ++$leagueWindowCopies;
+        }
+        if (0 === $leagueWindowCopies) {
+            $club = $this->entityManager->getRepository(Club::class)->find($clubId);
+            $this->clubLeagueWindowSeeder->seedForSeason($clubId, $target->getId(), $club?->getLeague());
         }
 
         // P2-53 RMM-8 — la matrice de trajet suit la saison (remap gymnase). Un

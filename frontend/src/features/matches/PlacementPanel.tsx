@@ -151,7 +151,10 @@ export function PlacementPanel({
   // gymnase indisponible reste le seul refus dur — pour tout le monde.
   const isFriendly = null === fixture.competitionId;
   const hasKickoff = "" !== kickoff;
-  const envelopeBlocked = !isFriendly && envelope.mapped && hasKickoff && !isInEnvelope(envelope, kickoff);
+  // P4-272 ① — la fenêtre de ligue ne BLOQUE plus la pose manuelle (ligue, club et
+  // équipe se comportent pareil : le gestionnaire assume). L'avertissement reste
+  // visible (`EnvelopeHint`) et le radar continue de signaler ; le solveur garde,
+  // lui, la ligue en HARD. Le gymnase indisponible reste le seul refus dur.
   const venueName = venues.find((v) => v.id === venueId)?.name ?? "ce gymnase";
   const accessIssue = "" === venueId ? null : venueAccessError(venueId, venueName, fixture.matchDate, kickoff, matchWindows, unavailabilities, isFriendly);
   const accessBlocked = null !== accessIssue && "error" === accessIssue.level;
@@ -167,7 +170,7 @@ export function PlacementPanel({
     null !== fixture.kickoffTime &&
     venueId === fixture.venueId &&
     kickoff === fixture.kickoffTime;
-  const canPlace = "" !== venueId && hasKickoff && !envelopeBlocked && !accessBlocked && !busy && !unchanged && guardsReady;
+  const canPlace = "" !== venueId && hasKickoff && !accessBlocked && !busy && !unchanged && guardsReady;
 
   return (
     <Card>

@@ -6,6 +6,7 @@ namespace App\Tests\Security;
 
 use App\Clock\DevClockStore;
 use App\Entity\Club;
+use App\Entity\ClubLeagueWindow;
 use App\Entity\ClubTravelCache;
 use App\Entity\ClubUser;
 use App\Entity\Competition;
@@ -13,6 +14,7 @@ use App\Entity\ConflictResolution;
 use App\Entity\FbiCorrection;
 use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
+use App\Entity\LeagueMatchWindow;
 use App\Entity\MatchSlotRotation;
 use App\Entity\MatchSlotRotationTeam;
 use App\Entity\OpponentVenueLink;
@@ -302,6 +304,70 @@ final class MatchTenantIsolationTest extends WebTestCase
 
         // Club B sees nothing.
         $this->client->request('GET', '/api/team_match_habits', [], [], $this->authHeaders($userB));
+        self::assertCount(0, $this->responseData()['member'] ?? ['sentinel']);
+    }
+
+    // ── Copie de la ligue par club (P4-272 ①) ────────────────────────────────
+
+    public function testClubLeagueWindowIsScopedStampedManagementGatedAndBadged(): void
+    {
+        [$clubA, $userA, $seasonA] = $this->createClubUser('a');
+        [, $userB] = $this->createClubUser('b');
+
+        // Seed GLOBAL (ligue effective AURA — le ffbbClubCode aléatoire n'est pas
+        // catalogué) : une fenêtre Seniors/REGIONAL samedi 14:00-16:00 sert de
+        // référence au badge « modifié »/« ajouté ».
+        $this->scopeGucToClub($clubA->getId());
+        $seed = new LeagueMatchWindow;
+        $seed->setLeague('AURA')->setCategory('Seniors')->setLevel('REGIONAL')->setGender(null)
+            ->setDayOfWeek(6)->setKickoffMin(new DateTimeImmutable('14:00'))->setKickoffMax(new DateTimeImmutable('16:00'));
+        $this->em->persist($seed);
+        $this->em->flush();
+
+        $headers = $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'];
+
+        // Écriture = management par défaut : un membre non-gestionnaire est refusé.
+        $editor = $this->createMember($clubA, 'editor');
+        $this->client->request('POST', '/api/club_league_windows', [], [], $this->authHeaders($editor) + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'category' => 'Seniors', 'level' => 'REGIONAL', 'gender' => null, 'dayOfWeek' => 6, 'kickoffMin' => '14:00', 'kickoffMax' => '18:00',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(403);
+
+        // Gestionnaire : une fenêtre au MÊME clé naturelle que le seed mais avec une
+        // borne de fin déplacée → badge « modifié ». Club/saison/ligue estampés.
+        $this->client->request('POST', '/api/club_league_windows', [], [], $headers, json_encode([
+            'category' => 'Seniors', 'level' => 'REGIONAL', 'gender' => null, 'dayOfWeek' => 6, 'kickoffMin' => '14:00', 'kickoffMax' => '18:00',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+        $modified = $this->em->getRepository(ClubLeagueWindow::class)->findOneBy(['category' => 'Seniors']);
+        self::assertSame($clubA->getId(), $modified?->getClubId());
+        self::assertSame($seasonA->getId(), $modified?->getSeasonId());
+        self::assertSame('AURA', $modified?->getLeague());
+
+        // Une fenêtre sans équivalent au seed → badge « ajouté ».
+        $this->client->request('POST', '/api/club_league_windows', [], [], $headers, json_encode([
+            'category' => 'Poussins', 'level' => 'DEPARTEMENTAL', 'gender' => 'M', 'dayOfWeek' => 7, 'kickoffMin' => '10:00', 'kickoffMax' => '11:00',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+
+        // min > max → 422 nommé.
+        $this->client->request('POST', '/api/club_league_windows', [], [], $headers, json_encode([
+            'category' => 'Cadets', 'level' => 'REGIONAL', 'gender' => null, 'dayOfWeek' => 6, 'kickoffMin' => '18:00', 'kickoffMax' => '16:00',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+
+        // Le badge est calculé SERVEUR sur la lecture.
+        $this->client->request('GET', '/api/club_league_windows', [], [], $this->authHeaders($userA));
+        self::assertResponseIsSuccessful();
+        $badgeByCategory = [];
+        foreach ($this->responseData()['member'] ?? [] as $item) {
+            $badgeByCategory[$item['category']] = $item['badge'] ?? '(absent)';
+        }
+        self::assertSame('modified', $badgeByCategory['Seniors'] ?? null, 'la fenêtre à borne déplacée est « modifiée »');
+        self::assertSame('added', $badgeByCategory['Poussins'] ?? null, 'la fenêtre sans équivalent est « ajoutée »');
+
+        // Club B ne voit RIEN de la copie de A.
+        $this->client->request('GET', '/api/club_league_windows', [], [], $this->authHeaders($userB));
         self::assertCount(0, $this->responseData()['member'] ?? ['sentinel']);
     }
 

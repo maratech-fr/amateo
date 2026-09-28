@@ -151,7 +151,7 @@ export const routes: RouteObject[] = [
                 // (`MatchesLanding`) : elle rend le Calendrier (écran unique, fusion
                 // Semaine⇄Consulter) OU renvoie sur Conflits s'il y en a à traiter, une
                 // fois par session, lien profond prioritaire. La décision vit là, PAS
-                // dans le layout — la nav des six onglets reste inchangée.
+                // dans le layout — la nav des sept onglets reste inchangée.
                 index: true,
                 lazy: async () => ({ Component: (await import("@/features/matches/MatchesLanding")).MatchesLanding }),
               },
@@ -171,6 +171,13 @@ export const routes: RouteObject[] = [
               {
                 path: "configuration",
                 lazy: async () => ({ Component: (await import("@/features/matches/ConfigurationPage")).ConfigurationPage }),
+              },
+              {
+                // P4-272 ① — l'écran unique des « Contraintes » de match, en accordéon
+                // (section Ligue éditable + Club/Équipes/Coachs à venir). Garde socle
+                // héritée du layout, section ouverte ancrée `?section=`.
+                path: "contraintes",
+                lazy: async () => ({ Component: (await import("@/features/matches/ConstraintsPage")).ConstraintsPage }),
               },
               {
                 // C8 — les « Adversaires » (localisation + trajets), sortis de la Configuration

@@ -16,14 +16,15 @@ export { isoWeekday };
 /**
  * ⚠️ MIROIR DÉCLARÉ (régime 2, FrontRederivationRegistryTest) — parité MÉCANIQUE avec la
  * MÊME algèbre côté backend, `App\Service\MatchConflictDetector::kickoffInsideLeagueWindow`
- * (branche LEAGUE_WINDOW_VIOLATION). Le front BLOQUE la pose (via `isInEnvelope`, rail
- * synchrone) ; le backend DIAGNOSTIQUE après coup. Ils DIVERGENT par conception sur (a)
- * l'exemption AMICAL — le front assouplit un amical (`PlacementPanel` : `!isFriendly`), le
+ * (branche LEAGUE_WINDOW_VIOLATION). Depuis P4-272 ① le front ne BLOQUE PLUS la pose manuelle
+ * hors fenêtre : il l'AVERTIT (via `isInEnvelope`, `EnvelopeHint`), le backend DIAGNOSTIQUE
+ * après coup (radar), et le solveur garde la ligue en HARD. Ils DIVERGENT par conception sur
+ * (a) l'exemption AMICAL — le front assouplit un amical (`PlacementPanel` : `!isFriendly`), le
  * backend saute les `competitionId` null (`leagueWindowViolations`) — et (b) la résolution
- * équipe↔fenêtre, déjà serveur (`resolvedTeamWindows`). Ils partagent CE prédicat
- * d'appartenance, la seule algèbre qui peut dériver en silence : intervalle FERMÉ
- * `[kickoffMin, kickoffMax]` (les deux bornes incluses), filtré sur le JOUR. Cas partagés
- * `leagueEnvelope.parity.json`, gardés par `LeagueEnvelopeMirrorParityTest`.
+ * équipe↔fenêtre, déjà serveur (`resolvedTeamWindows`, servie depuis la COPIE club). Ils
+ * partagent CE prédicat d'appartenance, la seule algèbre qui peut dériver en silence :
+ * intervalle FERMÉ `[kickoffMin, kickoffMax]` (les deux bornes incluses), filtré sur le JOUR.
+ * Cas partagés `leagueEnvelope.parity.json`, gardés par `LeagueEnvelopeMirrorParityTest`.
  */
 export function kickoffInsideLeagueWindow(
   day: number,

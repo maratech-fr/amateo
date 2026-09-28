@@ -1,16 +1,16 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-09-27 (`documentation-update`, rotation de fraîcheur — sujet sans rapport,
-P4-263 PR 2/2 front). Re-confronté à `ConstraintConfigValidator::SPEC`
+Last verified @ 2026-09-28 (`documentation-update`, rotation de fraîcheur — sujet sans rapport,
+P4-272 ① matchs). Re-confronté à `ConstraintConfigValidator::SPEC`
 (`backend/src/Service/ConstraintConfigValidator.php:59-95`) : les 4 familles et leurs clés/types
 correspondent trait pour trait à la table du fichier ✓. `App\Enum\ConstraintRuleType` ne compte
 que HARD/PREFERRED/LOCK ✓. `TeamTagResolver::resolveConstraintTeamIds`
 (`backend/src/Service/TeamTagResolver.php:278`), `PlanVenueClosures::effectiveStateForPlan`
 (`PlanVenueClosures.php:212`) et `CalendarEntryStateProcessor::redateEntryPairedConstraints`
-(`:642`) existent toujours à ces signatures ✓. La migration `Version20260807190000` est confirmée
-en place ✓. Non re-sondé cette passe : les deux gardes
-`PeriodGatePayloadParityTest`/`ConstraintKeysAreHonouredByEngineTest` (déjà vérifiées la passe
-précédente). Historique : `git log -p --follow`. Un stamp REMPLACE, il ne s'empile pas.
+(`State/Processor/CalendarEntryStateProcessor.php:642`) existent toujours à ces signatures ✓. La
+migration `Version20260807190000` est confirmée en place ✓. Non re-sondé cette passe : les deux
+gardes `PeriodGatePayloadParityTest`/`ConstraintKeysAreHonouredByEngineTest` (déjà vérifiées la
+passe précédente). Historique : `git log -p --follow`. Un stamp REMPLACE, il ne s'empile pas.
 
 > Source de vérité du code : `App\Service\ConstraintConfigValidator`.
 > Cette page explique le POURQUOI ; la liste qui fait foi est dans la classe.

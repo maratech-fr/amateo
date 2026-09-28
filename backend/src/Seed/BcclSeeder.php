@@ -56,6 +56,7 @@ use App\Enum\TeamLinkType;
 use App\Enum\VenuePeriodMode;
 use App\Repository\SchoolHolidayPeriodRepository;
 use App\Service\Basketball\CategoryCatalog;
+use App\Service\ClubLeagueWindowSeeder;
 use App\Service\LeagueResolver;
 use App\Service\OverlayManager;
 use App\Service\ScheduleConstraintBuilder;
@@ -102,6 +103,7 @@ final class BcclSeeder
         private readonly ScheduleConstraintBuilder $constraintBuilder,
         private readonly SchoolHolidayPeriodRepository $schoolHolidayRepository,
         private readonly OverlayManager $overlayManager,
+        private readonly ClubLeagueWindowSeeder $clubLeagueWindowSeeder,
     ) {}
 
     public function run(EntityManagerInterface $manager, BcclSeedProfile $profile): Club
@@ -309,6 +311,11 @@ final class BcclSeeder
         }
         // ADR-0002 Lot A: seed the season's empty SEASON plan (idempotent).
         $this->schedulePlanProvisioner->ensureSeasonPlan($season);
+
+        // P4-272 ① — la copie club de l'enveloppe ligue (recopie de la ligue
+        // effective, idempotent : no-op si déjà posée ou si le catalogue global
+        // n'est pas seedé dans cet environnement). Flushée avec le reste du seed.
+        $this->clubLeagueWindowSeeder->seedForSeason($club->getId(), $season->getId(), $club->getLeague());
 
         // Le socle (baseline/socle validé) n'est PAS stampé ici. Deux visages ensuite
         // (P5-17, tout en fin de run() sous le drapeau `transcribeRealSchedule`) :

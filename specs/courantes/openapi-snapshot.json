@@ -4722,6 +4722,404 @@
                 }
             }
         },
+        "/api/club_league_windows": {
+            "get": {
+                "operationId": "api_club_league_windows_get_collection",
+                "tags": [
+                    "ClubLeagueWindow"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ClubLeagueWindow collection",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "type": "object",
+                                    "description": "ClubLeagueWindow.jsonld collection.",
+                                    "allOf": [
+                                        {
+                                            "$ref": "#/components/schemas/HydraCollectionBaseSchemaNoPagination"
+                                        },
+                                        {
+                                            "type": "object",
+                                            "required": [
+                                                "member"
+                                            ],
+                                            "properties": {
+                                                "member": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/ClubLeagueWindow.jsonld"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ClubLeagueWindow"
+                                    }
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ClubLeagueWindow.html"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "summary": "Retrieves the collection of ClubLeagueWindow resources.",
+                "description": "Retrieves the collection of ClubLeagueWindow resources.",
+                "parameters": []
+            },
+            "post": {
+                "operationId": "api_club_league_windows_post",
+                "tags": [
+                    "ClubLeagueWindow"
+                ],
+                "responses": {
+                    "201": {
+                        "description": "ClubLeagueWindow resource created",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ClubLeagueWindow.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ClubLeagueWindow"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ClubLeagueWindow.html"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "422": {
+                        "description": "An error occurred",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Creates a ClubLeagueWindow resource.",
+                "description": "Creates a ClubLeagueWindow resource.",
+                "parameters": [],
+                "requestBody": {
+                    "description": "The new ClubLeagueWindow resource",
+                    "content": {
+                        "application/ld+json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ClubLeagueWindow.ClubLeagueWindowInput"
+                            }
+                        },
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ClubLeagueWindow.ClubLeagueWindowInput"
+                            }
+                        },
+                        "text/html": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ClubLeagueWindow.ClubLeagueWindowInput"
+                            }
+                        }
+                    },
+                    "required": true
+                }
+            }
+        },
+        "/api/club_league_windows/{id}": {
+            "get": {
+                "operationId": "api_club_league_windows_id_get",
+                "tags": [
+                    "ClubLeagueWindow"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ClubLeagueWindow resource",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ClubLeagueWindow.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ClubLeagueWindow"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ClubLeagueWindow.html"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Retrieves a ClubLeagueWindow resource.",
+                "description": "Retrieves a ClubLeagueWindow resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "ClubLeagueWindow identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ]
+            },
+            "put": {
+                "operationId": "api_club_league_windows_id_put",
+                "tags": [
+                    "ClubLeagueWindow"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ClubLeagueWindow resource updated",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ClubLeagueWindow.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ClubLeagueWindow"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ClubLeagueWindow.html"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "422": {
+                        "description": "An error occurred",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Replaces the ClubLeagueWindow resource.",
+                "description": "Replaces the ClubLeagueWindow resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "ClubLeagueWindow identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ],
+                "requestBody": {
+                    "description": "The updated ClubLeagueWindow resource",
+                    "content": {
+                        "application/ld+json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ClubLeagueWindow.ClubLeagueWindowInput"
+                            }
+                        },
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ClubLeagueWindow.ClubLeagueWindowInput"
+                            }
+                        },
+                        "text/html": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ClubLeagueWindow.ClubLeagueWindowInput"
+                            }
+                        }
+                    },
+                    "required": true
+                }
+            },
+            "delete": {
+                "operationId": "api_club_league_windows_id_delete",
+                "tags": [
+                    "ClubLeagueWindow"
+                ],
+                "responses": {
+                    "204": {
+                        "description": "ClubLeagueWindow resource deleted"
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Removes the ClubLeagueWindow resource.",
+                "description": "Removes the ClubLeagueWindow resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "ClubLeagueWindow identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ]
+            }
+        },
         "/api/venue-usage-stats": {
             "get": {
                 "operationId": "getVenueUsageStats",
@@ -24715,6 +25113,259 @@
                     }
                 ]
             },
+            "ClubLeagueWindow": {
+                "type": "object",
+                "description": "La copie, propre au club, d'une fen\u00eatre de coup d'envoi de la ligue, \u00e9ditable\npar le gestionnaire (section Ligue de l'\u00e9cran des contraintes de match). CRUD\nr\u00e9serv\u00e9 au gestionnaire. Le badge (\u00ab modifi\u00e9 \u00bb / \u00ab ajout\u00e9 \u00bb) est calcul\u00e9 c\u00f4t\u00e9\nserveur par cl\u00e9 naturelle face au mod\u00e8le de la ligue effective \u2014 le front\nl'affiche, il ne le recalcule pas.",
+                "properties": {
+                    "id": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "version": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "league": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "category": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "level": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "gender": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "dayOfWeek": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "kickoffMin": {
+                        "description": "HH:MM",
+                        "default": "",
+                        "type": "string"
+                    },
+                    "kickoffMax": {
+                        "description": "HH:MM",
+                        "default": "",
+                        "type": "string"
+                    },
+                    "badge": {
+                        "description": "Server-computed provenance vs the effective-league seed, by natural key:\n`added` (no seed row shares the key), `modified` (same key, moved end\ntime), or null (identical to the seed). Deleted seed rows leave no copy \u2014\nthey carry no badge.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "ClubLeagueWindow.ClubLeagueWindowInput": {
+                "type": "object",
+                "description": "La copie, propre au club, d'une fen\u00eatre de coup d'envoi de la ligue, \u00e9ditable\npar le gestionnaire (section Ligue de l'\u00e9cran des contraintes de match). CRUD\nr\u00e9serv\u00e9 au gestionnaire. Le badge (\u00ab modifi\u00e9 \u00bb / \u00ab ajout\u00e9 \u00bb) est calcul\u00e9 c\u00f4t\u00e9\nserveur par cl\u00e9 naturelle face au mod\u00e8le de la ligue effective \u2014 le front\nl'affiche, il ne le recalcule pas.",
+                "required": [
+                    "category",
+                    "level",
+                    "dayOfWeek",
+                    "kickoffMin",
+                    "kickoffMax"
+                ],
+                "properties": {
+                    "category": {
+                        "maxLength": 40,
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "level": {
+                        "enum": [
+                            "DEPARTEMENTAL",
+                            "REGIONAL"
+                        ],
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "gender": {
+                        "enum": [
+                            "M",
+                            "F",
+                            "MIXTE"
+                        ],
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "dayOfWeek": {
+                        "minimum": 1,
+                        "maximum": 7,
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "kickoffMin": {
+                        "pattern": "^(.*(^([01]\\d|2[0-3]):[0-5]\\d$).*)$",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "kickoffMax": {
+                        "pattern": "^(.*(^([01]\\d|2[0-3]):[0-5]\\d$).*)$",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "ClubLeagueWindow.html": {
+                "type": "object",
+                "description": "La copie, propre au club, d'une fen\u00eatre de coup d'envoi de la ligue, \u00e9ditable\npar le gestionnaire (section Ligue de l'\u00e9cran des contraintes de match). CRUD\nr\u00e9serv\u00e9 au gestionnaire. Le badge (\u00ab modifi\u00e9 \u00bb / \u00ab ajout\u00e9 \u00bb) est calcul\u00e9 c\u00f4t\u00e9\nserveur par cl\u00e9 naturelle face au mod\u00e8le de la ligue effective \u2014 le front\nl'affiche, il ne le recalcule pas.",
+                "properties": {
+                    "id": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "version": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "league": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "category": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "level": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "gender": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "dayOfWeek": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "kickoffMin": {
+                        "description": "HH:MM",
+                        "default": "",
+                        "type": "string"
+                    },
+                    "kickoffMax": {
+                        "description": "HH:MM",
+                        "default": "",
+                        "type": "string"
+                    },
+                    "badge": {
+                        "description": "Server-computed provenance vs the effective-league seed, by natural key:\n`added` (no seed row shares the key), `modified` (same key, moved end\ntime), or null (identical to the seed). Deleted seed rows leave no copy \u2014\nthey carry no badge.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "ClubLeagueWindow.jsonld": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/HydraItemBaseSchema"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "default": "",
+                                "type": "string"
+                            },
+                            "version": {
+                                "default": 0,
+                                "type": "integer"
+                            },
+                            "createdAt": {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            "updatedAt": {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            "league": {
+                                "default": "",
+                                "type": "string"
+                            },
+                            "category": {
+                                "default": "",
+                                "type": "string"
+                            },
+                            "level": {
+                                "default": "",
+                                "type": "string"
+                            },
+                            "gender": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "dayOfWeek": {
+                                "default": 0,
+                                "type": "integer"
+                            },
+                            "kickoffMin": {
+                                "description": "HH:MM",
+                                "default": "",
+                                "type": "string"
+                            },
+                            "kickoffMax": {
+                                "description": "HH:MM",
+                                "default": "",
+                                "type": "string"
+                            },
+                            "badge": {
+                                "description": "Server-computed provenance vs the effective-league seed, by natural key:\n`added` (no seed row shares the key), `modified` (same key, moved end\ntime), or null (identical to the seed). Deleted seed rows leave no copy \u2014\nthey carry no badge.",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            }
+                        }
+                    }
+                ],
+                "description": "La copie, propre au club, d'une fen\u00eatre de coup d'envoi de la ligue, \u00e9ditable\npar le gestionnaire (section Ligue de l'\u00e9cran des contraintes de match). CRUD\nr\u00e9serv\u00e9 au gestionnaire. Le badge (\u00ab modifi\u00e9 \u00bb / \u00ab ajout\u00e9 \u00bb) est calcul\u00e9 c\u00f4t\u00e9\nserveur par cl\u00e9 naturelle face au mod\u00e8le de la ligue effective \u2014 le front\nl'affiche, il ne le recalcule pas."
+            },
             "Coach": {
                 "type": "object",
                 "properties": {
@@ -34120,6 +34771,10 @@
         {
             "name": "CalendarEntry",
             "description": "Resource 'CalendarEntry' operations."
+        },
+        {
+            "name": "ClubLeagueWindow",
+            "description": "La copie, propre au club, d'une fen\u00eatre de coup d'envoi de la ligue, \u00e9ditable\npar le gestionnaire (section Ligue de l'\u00e9cran des contraintes de match). CRUD\nr\u00e9serv\u00e9 au gestionnaire. Le badge (\u00ab modifi\u00e9 \u00bb / \u00ab ajout\u00e9 \u00bb) est calcul\u00e9 c\u00f4t\u00e9\nserveur par cl\u00e9 naturelle face au mod\u00e8le de la ligue effective \u2014 le front\nl'affiche, il ne le recalcule pas."
         },
         {
             "name": "Club",

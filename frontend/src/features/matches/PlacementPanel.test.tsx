@@ -104,16 +104,20 @@ describe("PlacementPanel — rappel de la raison venue_lost (P2-52)", () => {
 });
 
 describe("PlacementPanel", () => {
-  it("blocks placement out of the envelope when the team maps", async () => {
+  it("warns but no longer blocks a manual placement out of the league envelope (P4-272 ①)", async () => {
     const user = userEvent.setup();
     const onPlace = renderPanel(mappedEnvelope);
 
     await pickListboxOption(user, "Gymnase", "Gymnase Alpha");
     await user.type(screen.getByLabelText("Heure de coup d'envoi"), "20:00");
 
+    // L'avertissement reste visible…
     expect(screen.getByText(/Hors fenêtre autorisée/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Placer" })).toBeDisabled();
-    expect(onPlace).not.toHaveBeenCalled();
+    // …mais la pose n'est plus bloquée (le gestionnaire assume, le radar signale).
+    const place = screen.getByRole("button", { name: "Placer" });
+    expect(place).toBeEnabled();
+    await user.click(place);
+    expect(onPlace).toHaveBeenCalledWith({ venueId: "venue-1", kickoffTime: "20:00" });
   });
 
   it("allows and emits a placement inside the envelope", async () => {

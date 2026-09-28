@@ -629,6 +629,14 @@ jobs:
       - name: TeamLinkPayloadParityTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/TeamLinkPayloadParityTest.php --group phase1'
 
+      # P4-272 ① : le bloc `leagueWindows` émis au solveur == la COPIE club stockée
+      # (`club_league_window`), plus jamais le catalogue global. Falsifié dans les deux sens
+      # (fenêtre éditée émise ; catalogue global qui ne fuit plus ; copie vide → aucun HARD +
+      # UN SEUL diagnostic club ; copie non vide → diagnostic par équipe conservé pour l'équipe
+      # non mappée).
+      - name: LeagueWindowsPayloadParityTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/LeagueWindowsPayloadParityTest.php --group phase1'
+
       # P2-53 RMM-8 PR-2 : ce qui est STOCKÉ (matrice de trajet {venueAId, venueBId, driving,
       # walking}, STRUCTURE club+saison) == le bloc `venueTravelTimes` émis au moteur, TRIÉ ; et sa
       # présence — et elle seule — active la règle implicite `travelTime` (opt-in au 1er geste,

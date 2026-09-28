@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\CalendarEntry;
+use App\Entity\ClubLeagueWindow;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\CoachWish;
@@ -171,6 +172,9 @@ final class SeasonDataPurger
         // P1-4 PR C — préférences matchs, pointent team_id : avant Team.
         TeamMatchHabit::class,
         TeamLink::class,
+        // Copie club de l'enveloppe ligue (club_id+season_id, aucun enfant) : purgée
+        // avec la saison, comme les autres réglages tenant+saison.
+        ClubLeagueWindow::class,
         CalendarEntry::class,
         // ADR-0002: the named container of a season/period's versions — a
         // club_id+season_id table, so it must be purged with the season

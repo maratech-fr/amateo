@@ -8,9 +8,14 @@ d'entraînement » re-confrontée : `GET /api/training/placed-conflicts` tire
 `ManagementAccessGuard::assertManager()` en premier (`TrainingPlacedConflictsController.php:42`) ✓,
 `PlacedSessionPersonConflictDetector::detect` scanne la version pointée du plan SEASON et
 réutilise `CoachDoubleBookingDetector::bookingsCollide` sans le réécrire
-(`PlacedSessionPersonConflictDetector.php:68-116,158`) ✓). Reste du fichier non rebalayé cette
-passe (portée = cette ligne) ; historique des passes complètes : `git log -p --follow` ce fichier
-— un stamp REMPLACE, il ne s'empile pas.
+(`PlacedSessionPersonConflictDetector.php:68-116,158`) ✓ ; `documentation-update`, P4-268 — entrée `Schedule` re-confrontée à
+`ResourceChangeStaleScheduleListener` : `postPersist` Coach n'est plus écouté, `postUpdate`
+filtre via `COSMETIC_COACH_FIELDS` (`firstName`/`lastName`/`email`/`phone`/`updatedAt`/`version`),
+`postRemove` marque toujours, `TeamCoach`/`CoachPlayerMembership` restent non écoutés ✓ ; P4-272
+① — module matchs, table tenant `ClubLeagueWindow` (RLS, CRUD `ClubLeagueWindowResource`) et
+`/api/league-match-windows` recalés contre le code ✓). Reste du fichier non rebalayé cette passe
+(portée = ces entrées) ; historique des passes complètes : `git log -p --follow` ce fichier —
+un stamp REMPLACE, il ne s'empile pas.
 
 ---
 
@@ -589,11 +594,12 @@ Détail : [`accueil-cockpit-temporel.md`](../../specs/courantes/accueil-cockpit-
 
 ### Module matchs (palier A — FFBB)
 
-Détail : [`module-matchs.md`](../../specs/courantes/module-matchs.md). Placement des rencontres domicile + radar de conflits coach/joueur ; catalogue-ligue global `LeagueMatchWindow` (hors tenant) ; seconde table hors tenant du module, `shared_competition_deadline` (défaut communautaire d'échéance, keyée sur l'id FFBB de compétition, aucune colonne club-identifiante).
+Détail : [`module-matchs.md`](../../specs/courantes/module-matchs.md). Placement des rencontres domicile + radar de conflits coach/joueur ; catalogue-ligue global `LeagueMatchWindow` (hors tenant, ne sert plus qu'à SEMER la copie club `ClubLeagueWindow` ci-dessous, P4-272 ①) ; seconde table hors tenant du module, `shared_competition_deadline` (défaut communautaire d'échéance, keyée sur l'id FFBB de compétition, aucune colonne club-identifiante).
 
 | Route | Méthode | Contrôleur | Description |
 |-------|---------|------------|-------------|
-| `/api/league-match-windows` | GET | `LeagueMatchWindowsController` | Fenêtres de match héritées de la ligue du club (`Club.league`, fallback fédé AURA). Catalogue global partagé. |
+| `/api/league-match-windows` | GET | `LeagueMatchWindowsController` | Fenêtres de coup d'envoi de la ligue effective du club — sert la COPIE club `ClubLeagueWindow` (P4-272 ①, éditable via `/api/club_league_windows`), plus jamais le catalogue global directement. Porte aussi `resolvedTeamWindows` (jointure équipe→fenêtres, même moteur que le solveur et le diagnostic). |
+| `/api/club_league_windows` | CRUD | API Platform (5-fichiers) | La copie club éditable de l'enveloppe ligue (écran Contraintes, section Ligue) — `ClubLeagueWindowResource`/`ClubLeagueWindowInput`, provider/processor dédiés. Réservé au gestionnaire ; badge `added`/`modified` calculé SERVEUR par clé naturelle vs le seed de la ligue effective. |
 | `/api/ffbb/engagements` | GET | `FfbbEngagementsController` | Les engagements du club (compétitions/poules) de la saison COURANTE lus à la demande sur la FFBB (`FfbbEngagementReader`, aucun cache/cron), chacun avec une suggestion de pré-remplissage et sa source (`suggestionSource: "pairing"\|"canonical"\|"fbi"\|null`) : une `Competition` déjà appariée à cet id FFBB (`pairing`), sinon un match strict sur le nom canonique normalisé (`canonical`), sinon le pont de signature `App\Service\Basketball\FbiDivisionSignature` sur le code de division FBI d'une compétition xlsx non appariée (`fbi`, une seule équipe candidate sinon rien), sinon `null`. SEC-07. 502 si la FFBB est injoignable. |
 | `/api/ffbb/engagements/confirm` | POST | `FfbbEngagementsController` | Écrit les références FFBB sur la `Competition` de chaque équipe appariée : un `competitionId` optionnel par pairing (la suggestion `fbi` acceptée) fait porter les refs SUR cette compétition xlsx si elle appartient bien à l'équipe choisie (`resolveCompetition`), sinon réutilisée par `(teamId, nom canonique)` ou créée. Fige `expectedMatchdays` = 2×(N−1) et la liste des clubs adverses de la poule — taille de poule et adversaires relus **côté serveur** (jamais depuis le client). Une compétition qui portait déjà ces refs pour un AUTRE id FFBB les perd (un engagement = une équipe). SEC-07 + saison écrivable + `SocleGuard`. |
 | `/api/venue_training_slots/{id}/deletion-impact` | GET | `DeletionImpactController` | Même contrat que les trois routes ci-dessous, pour un CRÉNEAU de disponibilité. Ses enfants ne citent jamais son id : réservations et verrous `HARD` matérialisés s'y rattachent par le **triplet** (gymnase, jour, heure) **et par la COUCHE** — les comptes sont donc bornés à la couche du créneau (grille de saison vs copie de période, invariant fondateur n°1). Les placements SOFT/NONE choisis par le solveur ne sont jamais visés : ce sont des RÉSULTATS. `blocked` toujours faux, `slotsInForce`/`declaredFixtures` toujours 0 (un créneau n'a ni séance en vigueur propre ni match). |

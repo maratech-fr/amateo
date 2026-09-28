@@ -357,33 +357,10 @@ final class ConflictTruthContext extends BaseContext
     #[Given('une fenêtre de ligue étroite le samedi matin cadre cette équipe')]
     public function uneFenetreDeLigueEtroiteLeSamedi(): void
     {
-        // Isolation TOTALE : une catégorie DISTINCTIVE réaffectée à l'équipe jetable
-        // (aucune vraie équipe ne la porte → zéro collision d'enveloppe) + un niveau
-        // connu ; la fenêtre de ligue est seedée sous la ligue EFFECTIVE du club
-        // (patron LeagueMatchWindowRepository::effectiveLeague), samedi 10:00-10:30.
-        // Purge d'un éventuel orphelin d'un run tué (catégorie distinctive → sûr).
-        $this->dbalExec(\sprintf('DELETE FROM league_match_window WHERE category=\'%s\'', self::CUP_CATEGORY_NAME), admin: true);
+        $seasonId = $this->prepareCupTeamAndCategory();
 
-        $sportId = $this->dbalScalar(
-            \sprintf('SELECT sport_id AS behatval FROM sport_category WHERE id=(SELECT sport_category_id FROM team WHERE id=\'%s\')', $this->teamId),
-            admin: true,
-        );
-        if ('' === $sportId) {
-            throw new RuntimeException('le sport de la catégorie de l\'équipe jetable est introuvable');
-        }
-        $this->cupCategoryId = $this->dbalScalar('SELECT gen_random_uuid()::text AS behatval', admin: true);
-        $this->dbalExec(\sprintf(
-            'INSERT INTO sport_category (id, version, created_at, updated_at, club_id, sport_id, name, is_custom, sort_order)'
-            . ' VALUES (\'%s\', 1, now(), now(), \'%s\', \'%s\', \'%s\', true, 0)',
-            $this->cupCategoryId,
-            $this->clubId,
-            $sportId,
-            self::CUP_CATEGORY_NAME,
-        ), admin: true);
-        // L'équipe porte cette catégorie distinctive + un niveau REGIONAL connu.
-        $this->dbalExec(\sprintf('UPDATE team SET sport_category_id=\'%s\', level=\'REGIONAL\' WHERE id=\'%s\'', $this->cupCategoryId, $this->teamId), admin: true);
-
-        // Ligue effective (miroir de LeagueMatchWindowRepository::effectiveLeague).
+        // Ligue effective (provenance stockée sur la copie ; le radar scope par
+        // club+saison, la valeur de `league` n'entre pas dans la résolution).
         $clubLeague = $this->dbalScalar(\sprintf('SELECT COALESCE(league, \'\') AS behatval FROM club WHERE id=\'%s\'', $this->clubId), admin: true);
         $hasWindows = '' !== $this->dbalScalar(\sprintf('SELECT id AS behatval FROM league_match_window WHERE league=\'%s\' LIMIT 1', $clubLeague), admin: true);
         $effectiveLeague = ('' !== $clubLeague && $hasWindows) ? $clubLeague : 'AURA';
@@ -393,14 +370,37 @@ final class ConflictTruthContext extends BaseContext
         // son genre. Niveau REGIONAL = celui de l'équipe.
         $this->cupWindowId = $this->dbalScalar('SELECT gen_random_uuid()::text AS behatval', admin: true);
         $this->dbalExec(\sprintf(
-            'INSERT INTO league_match_window (id, created_at, league, category, level, gender, day_of_week, kickoff_min, kickoff_max)'
-            . ' VALUES (\'%s\', now(), \'%s\', \'%s\', \'REGIONAL\', NULL, 6, \'10:00\', \'10:30\')',
+            'INSERT INTO club_league_window (id, version, created_at, updated_at, club_id, season_id, league, category, level, gender, day_of_week, kickoff_min, kickoff_max)'
+            . ' VALUES (\'%s\', 1, now(), now(), \'%s\', \'%s\', \'%s\', \'%s\', \'REGIONAL\', NULL, 6, \'10:00\', \'10:30\')',
             $this->cupWindowId,
+            $this->clubId,
+            $seasonId,
             $effectiveLeague,
             self::CUP_CATEGORY_NAME,
         ), admin: true);
+    }
 
-        $this->cupSaturday = '2027-01-16';
+    /**
+     * P4-272 ① — variante « corrigée par le club » : le gestionnaire pose la MÊME
+     * fenêtre étroite mais par l'API CRUD (`POST club_league_windows`), pas par un
+     * INSERT SQL. Prouve le chemin réel écriture gestionnaire → copie → radar : une
+     * fenêtre corrigée par le club est honorée par le radar (et le placement, qui lit
+     * la même copie).
+     */
+    #[Given('le club corrige au samedi matin sa fenêtre de ligue pour cette équipe, via l\'API gestionnaire')]
+    public function leClubCorrigeSaFenetreDeLigueViaLApi(): void
+    {
+        $this->prepareCupTeamAndCategory();
+
+        $created = $this->apiPost('club_league_windows', [
+            'category' => self::CUP_CATEGORY_NAME,
+            'level' => 'REGIONAL',
+            'gender' => null,
+            'dayOfWeek' => 6,
+            'kickoffMin' => '10:00',
+            'kickoffMax' => '10:30',
+        ], $this->token);
+        $this->cupWindowId = $this->idOf($created, 'fenêtre de ligue corrigée');
     }
 
     #[Given('une rencontre de coupe à domicile ce samedi, coup d\'envoi le soir hors de la fenêtre')]
@@ -765,10 +765,10 @@ final class ConflictTruthContext extends BaseContext
             }
         }
 
-        // Décor P4-194 : la fenêtre de ligue seedée (globale, par catégorie
+        // Décor P4-194 : la fenêtre de ligue seedée dans la COPIE club (par catégorie
         // DISTINCTIVE → sûr) et la catégorie jetable (après la suppression de
         // l'équipe qui la référençait).
-        $this->dbalExec(\sprintf('DELETE FROM league_match_window WHERE category=\'%s\'', self::CUP_CATEGORY_NAME), admin: true);
+        $this->dbalExec(\sprintf('DELETE FROM club_league_window WHERE category=\'%s\'', self::CUP_CATEGORY_NAME), admin: true);
         // Décor D1 étendu : la catégorie à durée épinglée (après suppression des
         // deux équipes qui la référençaient ci-dessus).
         foreach ([$this->cupCategoryId, $this->durationCategoryId] as $categoryId) {
@@ -787,6 +787,47 @@ final class ConflictTruthContext extends BaseContext
                 admin: true,
             );
         }
+    }
+
+    /**
+     * Isolation TOTALE partagée par les deux variantes ci-dessus : une catégorie
+     * DISTINCTIVE réaffectée à l'équipe jetable (aucune vraie équipe ne la porte →
+     * zéro collision d'enveloppe) + un niveau REGIONAL connu. Purge d'un éventuel
+     * orphelin d'un run tué (catégorie distinctive → sûr). Renvoie la saison ACTIVE.
+     */
+    private function prepareCupTeamAndCategory(): string
+    {
+        $this->dbalExec(\sprintf('DELETE FROM club_league_window WHERE category=\'%s\'', self::CUP_CATEGORY_NAME), admin: true);
+
+        $sportId = $this->dbalScalar(
+            \sprintf('SELECT sport_id AS behatval FROM sport_category WHERE id=(SELECT sport_category_id FROM team WHERE id=\'%s\')', $this->teamId),
+            admin: true,
+        );
+        if ('' === $sportId) {
+            throw new RuntimeException('le sport de la catégorie de l\'équipe jetable est introuvable');
+        }
+        $this->cupCategoryId = $this->dbalScalar('SELECT gen_random_uuid()::text AS behatval', admin: true);
+        $this->dbalExec(\sprintf(
+            'INSERT INTO sport_category (id, version, created_at, updated_at, club_id, sport_id, name, is_custom, sort_order)'
+            . ' VALUES (\'%s\', 1, now(), now(), \'%s\', \'%s\', \'%s\', true, 0)',
+            $this->cupCategoryId,
+            $this->clubId,
+            $sportId,
+            self::CUP_CATEGORY_NAME,
+        ), admin: true);
+        // L'équipe porte cette catégorie distinctive + un niveau REGIONAL connu.
+        $this->dbalExec(\sprintf('UPDATE team SET sport_category_id=\'%s\', level=\'REGIONAL\' WHERE id=\'%s\'', $this->cupCategoryId, $this->teamId), admin: true);
+
+        // La copie appartient à la saison de l'équipe jetable — la même que le radar
+        // résout depuis la requête (l'équipe a été créée sous la saison courante).
+        $seasonId = $this->dbalScalar(\sprintf('SELECT season_id AS behatval FROM team WHERE id=\'%s\'', $this->teamId), admin: true);
+        if ('' === $seasonId) {
+            throw new RuntimeException('la saison de l\'équipe jetable est introuvable pour la copie de fenêtre de ligue');
+        }
+
+        $this->cupSaturday = '2027-01-16';
+
+        return $seasonId;
     }
 
     /** L'empreinte de l'UNIQUE conflit MATCH_MATCH du radar (un décor = un conflit de personne). */
