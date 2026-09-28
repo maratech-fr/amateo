@@ -1,17 +1,13 @@
 # Amateo — Tenant Isolation Architecture
 
-Last verified @ 2026-09-27 (`documentation-update`, rotation de fraîcheur — P4-263 PR 1/2, sujet
-sans rapport avec ce fichier). Re-confronté au code : priorité 7 toujours en place
+Last verified @ 2026-09-28 (`documentation-update`, rotation de fraîcheur — P4-269, sujet sans
+rapport avec ce fichier). Re-confronté au code : priorité 7 toujours en place
 (`TenantFilterListener.php:55`) ✓ · le skip `/api/admin` toujours en `str_starts_with` sur le path
 (`TenantFilterListener.php:81`) ✓ · `TenantConnectionContext` pose toujours
 `set_config('app.club_id', ?, false)` (`TenantConnectionContext.php:30`) ✓ ·
 `AbstractStateProcessor::requiresManagementRole()` retourne toujours `true` par défaut
-(`backend/src/State/Processor/AbstractStateProcessor.php:130-132`) ✓ · `amateo_owner` reste
-l'unique rôle `BYPASSRLS`, `migration_user` toujours absent (`docker/postgres/init/02-users.sh`,
-migration `Version20260731090000.php` présente) ✓ · `BcclSeeder` scope toujours ses deux
-recherches `SportCategory` par `clubId` (`backend/src/Seed/BcclSeeder.php:251`), NR
-`BcclSeederIdempotenceTest::testSeedScopesSportCategoriesToTheirOwnClub` présent ✓. Rien de faux
-trouvé cette passe.
+(`backend/src/State/Processor/AbstractStateProcessor.php:130-132`) ✓. Rien de faux trouvé cette
+passe.
 
 ## Overview
 

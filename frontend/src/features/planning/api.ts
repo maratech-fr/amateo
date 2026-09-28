@@ -884,3 +884,42 @@ export const getCoachPlayers = (): Promise<CoachPlayerMembership[]> => collectio
 /** Toutes les contraintes du club — le wrap de créneau (F1) filtre côté client celles qui
  *  s'appliquent au créneau sélectionné (composition, pas de calcul serveur). */
 export const getConstraints = (): Promise<Constraint[]> => collectionAll<Constraint>("constraints");
+
+/** P4-269 — un côté d'un conflit « personne à deux endroits » : l'équipe, le gymnase et l'heure de la séance. */
+export interface PlacedConflictSide {
+  teamId: string;
+  teamName: string;
+  venueId: string;
+  venueName: string;
+  /** Heure de début « HHhMM » (ex. « 18h00 »). */
+  startTime: string;
+}
+
+/** P4-269 — une personne présente à deux séances placées qui se chevauchent dans deux gymnases. */
+export interface PlacedConflict {
+  personId: string;
+  personName: string;
+  /** Jour ISO 1..7 (les deux séances le partagent). */
+  dayOfWeek: number;
+  first: PlacedConflictSide;
+  second: PlacedConflictSide;
+}
+
+/**
+ * P4-269 — le radar « une personne à deux endroits » sur le planning d'entraînement EN VIGUEUR.
+ * `seasonPlanChosen` false = aucune version pointée : pas de planning en vigueur à scanner, donc
+ * une liste vide ne veut pas dire « tout va bien ». Le backend décide TOUT ; le front AFFICHE.
+ */
+export interface PlacedConflicts {
+  clubId: string;
+  seasonId: string | null;
+  seasonPlanChosen: boolean;
+  conflicts: PlacedConflict[];
+}
+
+export const getPlacedConflicts = async (): Promise<PlacedConflicts> => {
+  const raw = await api.get("training/placed-conflicts").json<PlacedConflicts>();
+  // Normalisation défensive : on mute la PROD, jamais un mock — un feed sans `conflicts`
+  // (jamais servi ainsi, mais un contrat qui glisse ne doit pas casser l'écran) reste sûr.
+  return { ...raw, conflicts: Array.isArray(raw.conflicts) ? raw.conflicts : [] };
+};

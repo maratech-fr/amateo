@@ -43,6 +43,9 @@ const invalidateTeamCoaches = (queryClient: ReturnType<typeof useQueryClient>): 
   Promise.all([
     queryClient.invalidateQueries({ queryKey: ["wizard", "team_coaches"] }),
     queryClient.invalidateQueries({ queryKey: ["team_coaches"] }),
+    // P4-269 — un lien coach modifie le radar « personne à deux endroits » du planning en
+    // vigueur : l'encart de l'étape Coachs se rafraîchit dans la foulée.
+    queryClient.invalidateQueries({ queryKey: ["training", "placed-conflicts"] }),
   ]).then(() => undefined);
 
 /**
@@ -55,6 +58,9 @@ const invalidateCoachPlayers = (queryClient: ReturnType<typeof useQueryClient>):
   Promise.all([
     queryClient.invalidateQueries({ queryKey: ["wizard", "coach_players"] }),
     queryClient.invalidateQueries({ queryKey: ["coach_player_memberships"] }),
+    // P4-269 — un lien joueur (« joue aussi dans ») compte comme une présence : même
+    // rafraîchissement du radar « personne à deux endroits ».
+    queryClient.invalidateQueries({ queryKey: ["training", "placed-conflicts"] }),
   ]).then(() => undefined);
 
 export function useWizardTeams() {

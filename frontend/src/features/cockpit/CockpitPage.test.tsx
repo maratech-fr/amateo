@@ -22,6 +22,8 @@ vi.mock("@/features/planning/queries", () => ({
   useReopenSchedule: () => ({ mutate: vi.fn(), isPending: false }),
   // P2-36 — useWeekAdapt (dans RadarPanel) lit useDeleteSchedule pour la découpe destructive.
   useDeleteSchedule: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  // P4-269 — SeasonPlanBanner lit le radar « personne à deux endroits » du planning en vigueur.
+  usePlacedConflicts: () => ({ data: { conflicts: [] } }),
 }));
 
 const publicHolidayWindows: [string, string][] = [];

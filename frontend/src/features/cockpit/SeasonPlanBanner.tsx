@@ -1,11 +1,14 @@
+import { AlertTriangle } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 
 import { useMe } from "@/shared/session/queries";
 import { STATUS_LABELS, type Schedule } from "@/features/planning/api";
+import { usePlacedConflicts } from "@/features/planning/queries";
 import { usePlanningStore } from "@/features/planning/store";
 import { useWizardStore } from "@/features/wizard/store";
 import { Button } from "@/shared/components/ui/button";
+import { StatusPill } from "@/shared/components/ui/badge";
 
 import { SeasonSchedulesModal } from "./SeasonSchedulesModal";
 import { planRepresentative, visibleSeasonPlans } from "@/features/planning/lib/versions";
@@ -50,6 +53,11 @@ export function SeasonPlanBanner({ schedules, socleValidated, loading = false, e
   // P4-173 — la péremption du SOCLE vient du plan SEASON (calendarEntryId === null), servie par le
   // backend ; null (donc pas de pastille) tant qu'aucune version n'est pointée ou fenêtre révolue.
   const seasonStaleness = (plans ?? []).find((p) => null === p.calendarEntryId)?.staleness ?? null;
+  // P4-269 — le radar « personne à deux endroits » du planning EN VIGUEUR, résumé en une pastille :
+  // le nombre de PERSONNES concernées (une personne peut porter plusieurs conflits). Recalculé
+  // serveur ; vide (donc pas de pastille) tant qu'aucune version n'est pointée.
+  const { data: placedConflicts } = usePlacedConflicts();
+  const conflictedPeople = new Set((placedConflicts?.conflicts ?? []).map((c) => c.personId)).size;
 
   // Validated (state 3) → consult the plan. Not yet (state 2) → back to the
   // wizard's generation step to finish/validate it.
@@ -91,6 +99,11 @@ export function SeasonPlanBanner({ schedules, socleValidated, loading = false, e
             <>
               <span>{STATUS_LABELS[chosen.status]}</span>
               <StalenessPill staleness={seasonStaleness} />
+              {conflictedPeople > 0 ? (
+                <StatusPill variant="warning" icon={<AlertTriangle className="size-3.5 shrink-0 text-warning" aria-hidden="true" />}>
+                  {`${conflictedPeople} personne${conflictedPeople > 1 ? "s" : ""} à deux endroits`}
+                </StatusPill>
+              ) : null}
               {overlayCount > 0 ? <span>{` · ${overlayCount} planning${overlayCount > 1 ? "s" : ""} secondaire${overlayCount > 1 ? "s" : ""}${openOverlayCount > 0 ? ` (${openOverlayCount} en cours)` : ""}`}</span> : null}
             </>
           ) : loading ? (

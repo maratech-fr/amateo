@@ -28,6 +28,8 @@ import {
 import { groupedCoaches } from "../lib/ranking";
 import { useWizardStore } from "../store";
 import { ReadonlyCoaches } from "./StructureSummary";
+import { PlacedConflictsNotice } from "@/features/planning/PlacedConflictsNotice";
+import { usePlacedConflicts } from "@/features/planning/queries";
 
 function payload(coach: Coach, patch: Partial<Coach>) {
   return {
@@ -272,6 +274,10 @@ function CoachesEditor() {
   const { data: tiers = [] } = usePriorityTiers();
   const { data: teamCoaches = [] } = useWizardTeamCoaches();
   const { data: coachPlayers = [] } = useWizardCoachPlayers();
+  // P4-269 — le radar « personne à deux endroits » du planning EN VIGUEUR : compléter le modèle
+  // sans régénérer (lier un coach/joueur) peut créer un vrai conflit sur des séances déjà placées.
+  // L'encart rafraîchit après chaque mutation de lien (clé invalidée par les mutations).
+  const { data: placedConflicts } = usePlacedConflicts();
   const create = useCreateCoach();
 
   const [first, setFirst] = useState("");
@@ -305,6 +311,10 @@ function CoachesEditor() {
   return (
     <div>
       <p className="mb-4 text-sm text-muted-foreground">Ajoutez vos coachs, marquez les salariés, et liez-les à des équipes (coach, adjoint) ou aux équipes où ils jouent.</p>
+
+      {/* P4-269 — si un lien met une personne sur deux séances déjà placées qui se chevauchent
+          (planning en vigueur), on le SIGNALE ici, rafraîchi après chaque mutation de lien. */}
+      <PlacedConflictsNotice conflicts={placedConflicts?.conflicts ?? []} role="status" className="mb-4" />
 
       <form onSubmit={add} className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3">
         <Input

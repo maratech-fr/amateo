@@ -17,6 +17,9 @@ vi.mock("./SeasonSchedulesModal", () => ({
 vi.mock("./seasonPlannings", () => ({ seasonPlanCounts: () => ({ total: 2, overlays: 1, openOverlays: 0 }) }));
 let plansData: unknown[] = [];
 vi.mock("./queries", () => ({ useSchedulePlans: () => ({ data: plansData }) }));
+// P4-269 — le bandeau résume le radar « personne à deux endroits » du planning en vigueur.
+let placedConflictsData: { conflicts: { personId: string }[] } | undefined = { conflicts: [] };
+vi.mock("@/features/planning/queries", () => ({ usePlacedConflicts: () => ({ data: placedConflictsData }) }));
 // Le bandeau lit le NOM du plan sur me.seasonPlan (retour fondateur 2026-07-18).
 vi.mock("@/shared/session/queries", () => ({ useMe: () => ({ data: { seasonPlan: { name: "Planning de la saison 2026-2027" } } }) }));
 
@@ -105,5 +108,19 @@ describe("SeasonPlanBanner", () => {
     plansData = [seasonPlan(null)];
     renderBanner();
     expect(screen.queryByText(/À régénérer/)).not.toBeInTheDocument();
+  });
+
+  it("P4-269 — shows a pill counting the DISTINCT people caught in a live conflict", () => {
+    // Deux conflits mais UNE seule personne (elle est prise dans les deux) → « 1 personne ».
+    placedConflictsData = { conflicts: [{ personId: "anna" }, { personId: "anna" }, { personId: "bob" }] };
+    renderBanner();
+    expect(screen.getByText("2 personnes à deux endroits")).toBeInTheDocument();
+    placedConflictsData = { conflicts: [] };
+  });
+
+  it("P4-269 — no pill when nobody is double-booked", () => {
+    placedConflictsData = { conflicts: [] };
+    renderBanner();
+    expect(screen.queryByText(/à deux endroits/)).not.toBeInTheDocument();
   });
 });

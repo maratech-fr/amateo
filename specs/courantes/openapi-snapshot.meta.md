@@ -1,12 +1,10 @@
-Last verified @ 2026-09-28 (snapshot régénéré : `POST /api/fixtures/place` accepte désormais un
-corps OPTIONNEL `{from, to}` (dates AAAA-MM-JJ) qui restreint le placement à cette semaine
-(« Placer ce week-end », P4-240 ④) — sans corps, tout le club, inchangé ; sa réponse gagne un `422`
-(fenêtre invalide : une borne n'est pas une date, ou from après to) et sa `403` couvre en outre le
-régime crédit Découverte, où le placement automatique doit se faire week-end par week-end ; aucun
-chemin ajouté, compte inchangé, empreinte recalculée).
+Last verified @ 2026-09-28 (snapshot régénéré : nouveau `GET /api/training/placed-conflicts` — le
+radar « une personne à deux endroits en même temps » sur le planning d'entraînement EN VIGUEUR
+(version pointée du plan SEASON), coach MAIN/ASSISTANT et joueur, gymnases différents, lecture
+seule réservée aux gestionnaires (P4-269) ; +1 chemin, empreinte recalculée).
 
-**208 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`70a91a119729c97a11afb9e6f83fc1483122f86218a05e601b6ad0aedb0023a4` (`sha256sum` sur le fichier).
+**209 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`7964eeaafc29e5bc8a52011aadfaf962b78fbd3bdfb62ca8a7053b73c53aca6f` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne
