@@ -40,16 +40,16 @@ class Settings(BaseSettings):
     # réintroduite par la porte du voisin : `/validate-assignments` partageait le sémaphore de
     # `/place-matches` alors que leurs budgets sont ASYMÉTRIQUES, et mesurés —
     #
-    #   * placement : solveur 30 s (`MatchPlacementPayloadBuilder.php`), transport 60 s ;
+    #   * placement : solveur 60 s (`MatchPlacementPayloadBuilder.php`), transport 90 s ;
     #   * verdict   : solveur 2 s, transport **20 s** (`MoveSlotService.php`), valeur calée sur
     #     mesure (« 9 à 9,6 s de calcul réel constatés sur le club réel »).
     #
-    # Un placement du club A tenant l'unique jeton jusqu'à 30 s faisait donc échouer, par
+    # Un placement du club A tenant l'unique jeton jusqu'à 60 s faisait donc échouer, par
     # famine, le verdict LÉGAL du club B — qui abandonne à 20 s. Un club en faisait tomber un
     # autre, et le gestionnaire lisait un message honnête sur une cause fausse.
     #
     # Un budget propre, PAS un budget plus large : élargir `max_concurrent_placements` aurait
-    # aussi autorisé deux placements de 30 s en parallèle, sans garantir qu'un verdict ne se
+    # aussi autorisé deux placements de 60 s en parallèle, sans garantir qu'un verdict ne se
     # retrouve pas derrière eux. Coût assumé : au pire 1 génération + 1 placement + 1 verdict,
     # et le verdict est le plus petit des trois (baseline figée, un seul candidat épinglé).
     #
