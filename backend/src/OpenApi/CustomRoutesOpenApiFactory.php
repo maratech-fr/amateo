@@ -16,6 +16,7 @@ use App\OpenApi\PathContributor\AdminSupportPaths;
 use App\OpenApi\PathContributor\FfbbEngagementPaths;
 use App\OpenApi\PathContributor\FfbbProxyPaths;
 use App\OpenApi\PathContributor\HolidayPaths;
+use App\OpenApi\PathContributor\LeagueWindowSuggestionPaths;
 use App\OpenApi\PathContributor\ManualEditPaths;
 use App\OpenApi\PathContributor\OpponentTravelPaths;
 use App\OpenApi\PathContributor\PublicTokenPaths;
@@ -83,6 +84,7 @@ final readonly class CustomRoutesOpenApiFactory implements OpenApiFactoryInterfa
             new RedatePreviewPaths($schemas),
             new VenueAliasPaths($schemas),
             new TrainingConflictPaths($schemas),
+            new LeagueWindowSuggestionPaths($schemas),
         ] as $contributor) {
             $contributor->contribute($paths);
         }

@@ -11,10 +11,17 @@ namespace App\Service;
  * Est…), so we key on that prefix directly rather than re-deriving from the
  * department.
  *
- * Best-effort: an unreadable/unknown prefix returns null → the club falls back
- * to the federation-default catalog (AURA) in the envelope lookup
- * (LeagueMatchWindowRepository::findEnvelopeForLeague). The value is stored on
- * Club.league and never overwritten if already set.
+ * A code with a readable 3-letter prefix ALWAYS names a league (founder ruling
+ * 2026-09-29: « toute valeur de 3 lettres est une ligue », outre-mer included):
+ * a catalogued prefix maps to its internal catalog key (ARA → AURA), an
+ * uncatalogued-but-readable one returns the FFBB prefix itself (GUY → GUY,
+ * a real league we simply do not catalog) rather than null. Only an UNREADABLE
+ * code (no 3-letter prefix — a test/garbage code like `A11Y…`) returns null.
+ *
+ * Compat ① : `LeagueMatchWindowRepository::effectiveLeague` still maps any
+ * uncatalogued league (GUY as much as null) to the federation default AURA for
+ * the copy/seed, so day-one placement behaviour is unchanged. The value is
+ * stored on Club.league and never overwritten if already set.
  */
 final class LeagueResolver
 {
@@ -42,11 +49,13 @@ final class LeagueResolver
             return null;
         }
 
-        return self::PREFIX_LEAGUE[$prefix] ?? null;
+        // Readable prefix → a league. Catalogued → its catalog key; otherwise the
+        // prefix itself (a real, uncatalogued league — never null).
+        return self::PREFIX_LEAGUE[$prefix] ?? $prefix;
     }
 
     /** The leading 3 letters of the FFBB code (the league prefix), or null. */
-    private function extractPrefix(?string $ffbbCode): ?string
+    public function extractPrefix(?string $ffbbCode): ?string
     {
         if (null === $ffbbCode || '' === $ffbbCode) {
             return null;
