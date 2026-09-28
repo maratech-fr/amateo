@@ -67,7 +67,7 @@ use Doctrine\ORM\Events;
  *   venue_period_override       | schedule_plan_id (NOT NULL) | ce plan (toujours une période)
  *   team_period_override        | schedule_plan_id (NOT NULL) | ce plan (toujours une période)
  *   venue                       | club_id + season_id         | club + saison
- *   coach                       | club_id + season_id         | club + saison
+ *   coach                       | club_id + season_id         | club + saison  (cf. COSMETIC_COACH_FIELDS ; ajout & lien ne marquent pas)
  *   team                        | club_id + season_id         | club + saison  (cf. structureDiverged)
  *   team_match_habit            | club_id + season_id         | club + saison  (RMM-5 : matchDay dérivé)
  *   match_slot_rotation         | club_id + season_id         | club + saison  (RMM-5 : matchDay dérivé)
@@ -108,6 +108,15 @@ use Doctrine\ORM\Events;
  *   - le PIPELINE lui-même : import de résultat solveur (`ScheduleResultImporter`, qui au
  *     contraire DÉMARQUE), déplacement de créneau (`MoveSlotService`, couvert par son propre
  *     marqueur `manuallyEditedSinceGeneration`) ;
+ *   - AJOUTER un coach (postPersist) : un coach neuf n'est lié à aucune équipe, il ne change
+ *     aucun placement existant. Compléter son modèle (des coachs déclarés tard) ne doit pas
+ *     afficher un « régénérez » trompeur. Le SUPPRIMER, en revanche, marque (le planning a pu
+ *     honorer ses contraintes) ; le MODIFIER marque si le champ décide (cf. COSMETIC_COACH_FIELDS) ;
+ *   - LIER un coach à une équipe : `team_coach` et `coach_player_membership` ne sont PAS écoutés.
+ *     Rattacher un coach à une équipe (ou l'en détacher) ne pose pas le badge : le vrai risque —
+ *     un CONFLIT réel (coach doublé, indisponible…) — sera montré, sur le planning EN VIGUEUR, par
+ *     la détection de conflit dédiée (P4-269), là où il est actionnable, plutôt que par une
+ *     bannière de péremption globale qui crierait à chaque rattachement ;
  *   - les entités de RÉSULTAT : `schedule_slot_template`, `schedule_diagnostic`,
  *     `schedule_structure_snapshot`, et `schedule` elle-même ;
  *   - les DOLÉANCES : `coach_wish*` — des SOUHAITS de coach, pas des données que le solveur
@@ -140,8 +149,10 @@ use Doctrine\ORM\Events;
 #[AsEntityListener(event: Events::postPersist, method: 'venueTouched', entity: Venue::class)]
 #[AsEntityListener(event: Events::postUpdate, method: 'venueUpdated', entity: Venue::class)]
 #[AsEntityListener(event: Events::postRemove, method: 'venueTouched', entity: Venue::class)]
-#[AsEntityListener(event: Events::postPersist, method: 'coachTouched', entity: Coach::class)]
-#[AsEntityListener(event: Events::postUpdate, method: 'coachTouched', entity: Coach::class)]
+// Coach : PAS de postPersist (un coach neuf n'est lié à rien, il ne périme aucun résultat) ;
+// postUpdate FILTRE son changeset (patron venue) ; postRemove marque toujours (le planning a pu
+// honorer ses contraintes).
+#[AsEntityListener(event: Events::postUpdate, method: 'coachUpdated', entity: Coach::class)]
 #[AsEntityListener(event: Events::postRemove, method: 'coachTouched', entity: Coach::class)]
 #[AsEntityListener(event: Events::postPersist, method: 'teamTouched', entity: Team::class)]
 #[AsEntityListener(event: Events::postUpdate, method: 'teamTouched', entity: Team::class)]
@@ -208,6 +219,22 @@ final class ResourceChangeStaleScheduleListener
      * @var list<string>
      */
     private const array COSMETIC_VENUE_FIELDS = ['externalLabels', 'updatedAt', 'version'];
+
+    /**
+     * Champs d'un coach dont la SEULE modification ne périme rien : l'IDENTITÉ descriptive
+     * (`firstName`, `lastName`, `email`, `phone`), plus les techniques `updatedAt`/`version` qui
+     * accompagnent toute écriture. Ces quatre-là sont bien SÉRIALISÉS dans le payload /generate
+     * (`ScheduleConstraintBuilder::serializeCoach`), mais le solveur ne les lit PAS pour DÉCIDER
+     * d'un placement — ils ne portent que l'identité affichée du coach. Compléter un coach déclaré
+     * tard (corriger son nom, ajouter son e-mail) laisse donc le planning FIDÈLE : un « régénérez »
+     * serait un faux signal qui use la bannière. Tout AUTRE champ décide vraiment
+     * (`maxDaysOverride`, `acceptableLateMinutes`, `isActive`, `isEmployee`, `isVehicled`,
+     * `parentCoachId`) et reste hors de cette liste, donc marque. Fail-safe : un champ FUTUR non
+     * listé marque (patron COSMETIC_VENUE_FIELDS).
+     *
+     * @var list<string>
+     */
+    private const array COSMETIC_COACH_FIELDS = ['firstName', 'lastName', 'email', 'phone', 'updatedAt', 'version'];
 
     /** @var array<string, array{scope: string, planId: ?string, clubId: ?string, seasonId: ?string}> périmètres à marquer, dédupliqués par clé */
     private array $pending = [];
@@ -278,6 +305,24 @@ final class ResourceChangeStaleScheduleListener
     public function coachTouched(Coach $entity): void
     {
         $this->markClubSeason($entity->getClubId(), $entity->getSeasonId());
+    }
+
+    /**
+     * postUpdate d'un coach — filtre son changeset (patron `venueUpdated`). Un changement limité à
+     * l'identité descriptive (`firstName`/`lastName`/`email`/`phone`) + les techniques
+     * `updatedAt`/`version` ne périme rien : le solveur ne lit pas ces champs pour décider, le
+     * planning reste FIDÈLE. Tout vrai levier (`maxDaysOverride`, `isVehicled`, `isActive`…) marque
+     * comme avant. Réservé au postUpdate : le postPersist (coach neuf) NE marque PAS du tout (pas
+     * de listener), le postRemove (coach supprimé) passe par `coachTouched` et marque toujours.
+     */
+    public function coachUpdated(Coach $entity, PostUpdateEventArgs $args): void
+    {
+        $changed = array_keys($args->getObjectManager()->getUnitOfWork()->getEntityChangeSet($entity));
+        if ([] === array_diff($changed, self::COSMETIC_COACH_FIELDS)) {
+            return;
+        }
+
+        $this->coachTouched($entity);
     }
 
     public function teamTouched(Team $entity): void

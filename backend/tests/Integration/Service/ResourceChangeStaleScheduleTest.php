@@ -6,6 +6,7 @@ namespace App\Tests\Integration\Service;
 
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
+use App\Entity\Coach;
 use App\Entity\ImplicitRuleSetting;
 use App\Entity\MatchSlotRotation;
 use App\Entity\MatchSlotRotationTeam;
@@ -56,6 +57,10 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  *     SEASON, jamais les COPIES de période ; un créneau d'un plan de PÉRIODE ne périme QUE ce
  *     plan** — le périmètre se dérive de la colonne `schedule_plan_id`, mécaniquement ;
  *   - un override de période marque SON plan seul, pas le socle ;
+ *   - **le COACH est péremption ciblée (P4-268)** : l'AJOUTER ne marque pas (lié à rien),
+ *     corriger son identité descriptive (nom/e-mail) ne marque pas (le solveur ne la lit pas pour
+ *     décider), changer un vrai levier (véhiculé, plafond de jours) marque, le SUPPRIMER marque
+ *     toujours — falsifié dans les deux sens ;
  *   - un import de résultat solveur DÉMARQUE ;
  *   - la frontière saison tient ; un planning non COMPLETED n'est pas marqué ;
  *   - la LISTE FERMÉE : une écriture d'entité de RÉSULTAT (schedule_diagnostic, pipeline) ne
@@ -249,6 +254,115 @@ final class ResourceChangeStaleScheduleTest extends KernelTestCase
         self::assertTrue(
             $this->reload($schedule)->isResourcesChangedSinceGeneration(),
             'Renommer un gymnase (vrai changement) périme le planning : le filtre alias ne doit pas AVALER un vrai changement.',
+        );
+    }
+
+    public function testAddingACoachDoesNotMarkStale(): void
+    {
+        [$club, $season] = $this->seed();
+        $schedule = $this->seasonSchedule($club, $season);
+        $this->em->flush();
+
+        self::assertFalse($this->reload($schedule)->isResourcesChangedSinceGeneration());
+
+        // Un coach NEUF n'est lié à aucune équipe : il ne change aucun placement existant.
+        // Compléter son modèle (coachs déclarés tard) ne doit pas afficher un faux « régénérez » —
+        // postPersist N'EST PAS écouté pour Coach. Falsification : si l'ajout marquait encore
+        // (l'ancien comportement), l'assertion rougirait.
+        $this->persistedCoach($club, $season);
+
+        self::assertFalse(
+            $this->reload($schedule)->isResourcesChangedSinceGeneration(),
+            'Ajouter un coach (lié à rien) ne doit PAS périmer le planning — un « régénérez » serait un faux signal.',
+        );
+    }
+
+    public function testRenamingACoachDoesNotMarkStale(): void
+    {
+        [$club, $season] = $this->seed();
+        $schedule = $this->seasonSchedule($club, $season);
+        $this->em->flush();
+        // Le coach EXISTE déjà : ardoise propre pour ne mesurer QUE l'édition de son identité.
+        $coachId = $this->persistedCoach($club, $season)->getId();
+        $this->resetMarkers($schedule);
+
+        // Corriger l'identité DESCRIPTIVE d'un coach (nom + e-mail) : le solveur ne lit pas ces
+        // champs pour DÉCIDER d'un placement, le planning reste fidèle. Le filtre du changeset ne
+        // doit donc pas périmer.
+        $coach = $this->em->find(Coach::class, $coachId);
+        self::assertInstanceOf(Coach::class, $coach);
+        $coach->setLastName('Renommée')->setEmail('anna@example.test');
+        $this->em->flush();
+
+        self::assertFalse(
+            $this->reload($schedule)->isResourcesChangedSinceGeneration(),
+            'Renommer un coach / corriger son e-mail (identité descriptive) ne doit PAS périmer — le solveur ne lit pas ces champs pour décider.',
+        );
+    }
+
+    public function testChangingACoachTravelStatusMarksStale(): void
+    {
+        [$club, $season] = $this->seed();
+        $schedule = $this->seasonSchedule($club, $season);
+        $this->em->flush();
+        $coachId = $this->persistedCoach($club, $season)->getId();
+        $this->resetMarkers($schedule);
+
+        // Le statut véhiculé décide du barème de trajet (voiture vs à pied) que le solveur applique :
+        // VRAI levier, hors identité descriptive → marque comme avant. Le filtre du changeset ne
+        // doit AVALER que nom/e-mail/téléphone, jamais ça.
+        $coach = $this->em->find(Coach::class, $coachId);
+        self::assertInstanceOf(Coach::class, $coach);
+        $coach->setIsVehicled(true);
+        $this->em->flush();
+
+        self::assertTrue(
+            $this->reload($schedule)->isResourcesChangedSinceGeneration(),
+            'Changer le statut véhiculé d\'un coach (vrai levier de placement) périme le planning.',
+        );
+    }
+
+    public function testChangingACoachMaxDaysOverrideMarksStale(): void
+    {
+        [$club, $season] = $this->seed();
+        $schedule = $this->seasonSchedule($club, $season);
+        $this->em->flush();
+        $coachId = $this->persistedCoach($club, $season)->getId();
+        $this->resetMarkers($schedule);
+
+        // Le plafond de jours/semaine d'un coach borne les placements que le solveur retient :
+        // VRAI levier → marque, comme le statut véhiculé (falsification symétrique de l'identité
+        // descriptive qui, elle, ne marque pas).
+        $coach = $this->em->find(Coach::class, $coachId);
+        self::assertInstanceOf(Coach::class, $coach);
+        $coach->setMaxDaysOverride(3);
+        $this->em->flush();
+
+        self::assertTrue(
+            $this->reload($schedule)->isResourcesChangedSinceGeneration(),
+            'Changer le plafond de jours d\'un coach (vrai levier de placement) périme le planning.',
+        );
+    }
+
+    public function testRemovingACoachMarksStale(): void
+    {
+        [$club, $season] = $this->seed();
+        $schedule = $this->seasonSchedule($club, $season);
+        $this->em->flush();
+        $coachId = $this->persistedCoach($club, $season)->getId();
+        $this->resetMarkers($schedule);
+
+        // Supprimer un coach périme TOUJOURS (décision : le planning a pu honorer ses contraintes
+        // de disponibilité/repos) — postRemove marque, sans filtre de changeset. Falsification : si
+        // le retrait était aligné sur l'ajout (ne marque pas), l'assertion rougirait.
+        $coach = $this->em->find(Coach::class, $coachId);
+        self::assertInstanceOf(Coach::class, $coach);
+        $this->em->remove($coach);
+        $this->em->flush();
+
+        self::assertTrue(
+            $this->reload($schedule)->isResourcesChangedSinceGeneration(),
+            'Supprimer un coach périme le planning (il a pu honorer ses contraintes).',
         );
     }
 
@@ -767,6 +881,24 @@ final class ResourceChangeStaleScheduleTest extends KernelTestCase
         $this->em->clear();
 
         return [$team->getId(), $category->getId()];
+    }
+
+    /**
+     * Un coach DÉJÀ persisté (identité descriptive, non véhiculé, sans plafond). Retourné pour que
+     * l'appelant le retrouve par son id après un clear() et le MUTE ou le SUPPRIME — là où le test
+     * d'AJOUT, lui, mesure la naissance.
+     */
+    private function persistedCoach(Club $club, Season $season): Coach
+    {
+        $coach = (new Coach)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setFirstName('Anna')
+            ->setLastName('Coach');
+        $this->em->persist($coach);
+        $this->em->flush();
+
+        return $coach;
     }
 
     private function seasonSchedule(Club $club, Season $season): Schedule

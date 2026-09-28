@@ -15,3 +15,14 @@ Fonctionnalité: Le planning se dit à régénérer quand une contrainte change
     Étant donné le club de démonstration, connecté, dont le planning de saison en vigueur n'est pas marqué
     Quand j'ajoute une contrainte au club
     Alors le cockpit le sait : le plan de saison sert lui-même sa péremption
+
+  Scénario: Compléter les coachs ne trompe pas — ajouter et rattacher n'alerte pas, passer véhiculé oui
+    Le club déclare ses coachs après coup : ajouter un coach neuf et le rattacher à une équipe ne
+    doit pas afficher un « à régénérer » trompeur (rien de placé n'a changé). Mais renseigner qu'il
+    est véhiculé change son barème de trajet, donc ce que le solveur placerait : là, le planning se
+    dit périmé.
+    Étant donné le club de démonstration, connecté, dont le planning de saison en vigueur n'est pas dit périmé
+    Quand j'ajoute un coach au club et le rattache à une équipe
+    Alors le planning en vigueur n'est pas dit périmé
+    Quand je renseigne que ce coach est véhiculé
+    Alors le planning en vigueur est dit périmé
