@@ -88,6 +88,11 @@ export interface AddOpponentVenueInput {
   longitude: number;
   /** Le libellé de fichier que ce gymnase couvre ; par défaut le libellé du gymnase. */
   fbiLabel?: string;
+  /** C1 (P4-267) — l'adresse d'AFFICHAGE (ce que le front montre déjà : hit FFBB ou suggestion),
+   *  renvoyée telle quelle et stockée sur le lien tenant pour la fiche du match extérieur. */
+  address?: string | null;
+  city?: string | null;
+  postalCode?: string | null;
 }
 
 /** Ajoute un gymnase pour un adversaire (lien MANUAL, ref fédérale ou coordonnées). */
@@ -101,6 +106,10 @@ export interface PairVenueLabelInput {
   venueExternalRef?: string | null;
   latitude: number;
   longitude: number;
+  /** C1 (P4-267) — l'adresse d'AFFICHAGE, renvoyée telle quelle (voir `AddOpponentVenueInput`). */
+  address?: string | null;
+  city?: string | null;
+  postalCode?: string | null;
 }
 
 /** Apparie un libellé de salle ORPHELIN à un gymnase (lien MANUAL). */
@@ -113,6 +122,10 @@ export interface RepointVenueLinkInput {
   venueExternalRef?: string | null;
   latitude: number;
   longitude: number;
+  /** C1 (P4-267) — l'adresse d'AFFICHAGE, renvoyée telle quelle (voir `AddOpponentVenueInput`). */
+  address?: string | null;
+  city?: string | null;
+  postalCode?: string | null;
 }
 
 /** Ré-apparie / fusionne un lien vers un autre gymnase (le libellé reste reconnu à l'import). */

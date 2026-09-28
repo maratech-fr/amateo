@@ -91,7 +91,7 @@ describe("LocateOpponentModal — ajouter / apparier un gymnase", () => {
     renderAdd();
 
     await userEvent.click(screen.getByRole("button", { name: /Gymnase connu/ }));
-    expect(addMutate.mock.calls[0][0]).toEqual({ code: "ARA0069001", venueLabel: "Gymnase connu", venueExternalRef: "S123", latitude: 45.77, longitude: 4.9 });
+    expect(addMutate.mock.calls[0][0]).toEqual({ code: "ARA0069001", venueLabel: "Gymnase connu", venueExternalRef: "S123", latitude: 45.77, longitude: 4.9, address: null, city: "Meyzieu", postalCode: "69330" });
     expect(pairMutate).not.toHaveBeenCalled();
   });
 
@@ -100,7 +100,7 @@ describe("LocateOpponentModal — ajouter / apparier un gymnase", () => {
     renderPair();
 
     await userEvent.click(screen.getByRole("button", { name: /Gymnase connu/ }));
-    expect(pairMutate.mock.calls[0][0]).toEqual({ code: "ARA0069001", fbiLabel: "SALLE MACHIN", venueLabel: "Gymnase connu", venueExternalRef: "S123", latitude: 45.77, longitude: 4.9 });
+    expect(pairMutate.mock.calls[0][0]).toEqual({ code: "ARA0069001", fbiLabel: "SALLE MACHIN", venueLabel: "Gymnase connu", venueExternalRef: "S123", latitude: 45.77, longitude: 4.9, address: null, city: "Meyzieu", postalCode: "69330" });
     expect(addMutate).not.toHaveBeenCalled();
   });
 
@@ -166,7 +166,7 @@ describe("LocateOpponentModal — ajouter / apparier un gymnase", () => {
 
     const list = screen.getByRole("list", { name: /Salles FFBB/ });
     await userEvent.click(within(list).getByRole("button", { name: /Gymnase des Servizières/ }));
-    expect(addMutate.mock.calls[0][0]).toEqual({ code: "ARA0069001", venueLabel: "Gymnase des Servizières", venueExternalRef: "S999", latitude: 45.77, longitude: 4.9 });
+    expect(addMutate.mock.calls[0][0]).toEqual({ code: "ARA0069001", venueLabel: "Gymnase des Servizières", venueExternalRef: "S999", latitude: 45.77, longitude: 4.9, address: "Rue X", city: "Meyzieu", postalCode: "69330" });
   });
 
   it("annonce « Aucune salle trouvée » quand la recherche aboutit à zéro salle", () => {
@@ -260,7 +260,7 @@ describe("LocateOpponentModal — ajouter / apparier un gymnase", () => {
     );
 
     await userEvent.click(screen.getByRole("button", { name: /Gymnase Cible/ }));
-    expect(repointMutate.mock.calls[0][0]).toEqual({ id: "lnk-1", venueLabel: "Gymnase Cible", venueExternalRef: "S123", latitude: 45.77, longitude: 4.9 });
+    expect(repointMutate.mock.calls[0][0]).toEqual({ id: "lnk-1", venueLabel: "Gymnase Cible", venueExternalRef: "S123", latitude: 45.77, longitude: 4.9, address: null, city: "Meyzieu", postalCode: "69330" });
     expect(repointMutate.mock.calls[0][0]).not.toHaveProperty("fbiLabel");
     expect(addMutate).not.toHaveBeenCalled();
     expect(pairMutate).not.toHaveBeenCalled();

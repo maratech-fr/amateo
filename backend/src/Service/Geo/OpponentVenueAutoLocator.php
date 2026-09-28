@@ -94,10 +94,10 @@ final class OpponentVenueAutoLocator
 
         // Un seul appel réseau salle par CODE organisme (sa commune ne bouge pas d'un
         // libellé à l'autre) : cache local par run. `false` = déjà tenté, aucune salle.
-        /** @var array<string, list<array{numero: string, label: string, lat: float, lon: float}>|false> $candidateCache */
+        /** @var array<string, list<array{numero: string, label: string, lat: float, lon: float, address: string|null, city: string|null, postalCode: string|null}>|false> $candidateCache */
         $candidateCache = [];
         // Repli par NOM (plein-texte fédéral), caché par libellé NORMALISÉ (indépendant du code).
-        /** @var array<string, list<array{numero: string, label: string, lat: float, lon: float}>|false> $nameCache */
+        /** @var array<string, list<array{numero: string, label: string, lat: float, lon: float, address: string|null, city: string|null, postalCode: string|null}>|false> $nameCache */
         $nameCache = [];
 
         $located = 0;
@@ -237,9 +237,9 @@ final class OpponentVenueAutoLocator
      * connu, sinon par un rayon autour de ses coordonnées, sinon aucune. Cache par run (un
      * seul appel réseau par code). Best-effort : FFBB muet → [] (mémorisé).
      *
-     * @param array<string, list<array{numero: string, label: string, lat: float, lon: float}>|false> $cache
+     * @param array<string, list<array{numero: string, label: string, lat: float, lon: float, address: string|null, city: string|null, postalCode: string|null}>|false> $cache
      *
-     * @return list<array{numero: string, label: string, lat: float, lon: float}>
+     * @return list<array{numero: string, label: string, lat: float, lon: float, address: string|null, city: string|null, postalCode: string|null}>
      */
     private function candidates(string $code, array &$cache): array
     {
@@ -266,9 +266,9 @@ final class OpponentVenueAutoLocator
      * quand la commune/rayon ne tranche pas. Caché par libellé NORMALISÉ (un même libellé, quel
      * que soit le code, ne relance pas la recherche). Best-effort : FFBB muet → [] (mémorisé).
      *
-     * @param array<string, list<array{numero: string, label: string, lat: float, lon: float}>|false> $cache
+     * @param array<string, list<array{numero: string, label: string, lat: float, lon: float, address: string|null, city: string|null, postalCode: string|null}>|false> $cache
      *
-     * @return list<array{numero: string, label: string, lat: float, lon: float}>
+     * @return list<array{numero: string, label: string, lat: float, lon: float, address: string|null, city: string|null, postalCode: string|null}>
      */
     private function candidatesByName(string $label, array &$cache): array
     {
@@ -321,9 +321,9 @@ final class OpponentVenueAutoLocator
     }
 
     /**
-     * @param list<array{numero: string, label: string, lat: float, lon: float}> $candidates
+     * @param list<array{numero: string, label: string, lat: float, lon: float, address: string|null, city: string|null, postalCode: string|null}> $candidates
      *
-     * @return list<array{numero: string, label: string, lat: float, lon: float}>
+     * @return list<array{numero: string, label: string, lat: float, lon: float, address: string|null, city: string|null, postalCode: string|null}>
      */
     private function strictMatches(string $label, array $candidates): array
     {
@@ -339,7 +339,7 @@ final class OpponentVenueAutoLocator
      * Pose ou actualise le lien AUTO. Retourne true si le lien a été créé ou si son gymnase
      * a changé (un lien AUTO déjà pointé sur cette salle n'est pas réécrit — idempotent).
      *
-     * @param array{numero: string, label: string, lat: float, lon: float} $salle
+     * @param array{numero: string, label: string, lat: float, lon: float, address: string|null, city: string|null, postalCode: string|null} $salle
      */
     private function writeAutoLink(?OpponentVenueLink $existing, string $clubId, string $code, string $label, string $norm, array $salle): bool
     {
@@ -357,6 +357,10 @@ final class OpponentVenueAutoLocator
             ->setVenueLabel(mb_substr($salle['label'], 0, 180))
             ->setLatitude($salle['lat'])
             ->setLongitude($salle['lon'])
+            // Adresse d'AFFICHAGE (C1) : bornée aux longueurs de colonne, null si le hit ne la porte pas.
+            ->setAddress(null === $salle['address'] ? null : mb_substr($salle['address'], 0, 255))
+            ->setCity(null === $salle['city'] ? null : mb_substr($salle['city'], 0, 180))
+            ->setPostalCode(null === $salle['postalCode'] ? null : mb_substr($salle['postalCode'], 0, 16))
             ->setSource(OpponentVenueLinkSource::AUTO);
         if (!$existing instanceof OpponentVenueLink) {
             $this->entityManager->persist($link);
@@ -371,19 +375,30 @@ final class OpponentVenueAutoLocator
      *
      * @param array<string, mixed> $hit
      *
-     * @return array{numero: string, label: string, lat: float, lon: float}|null
+     * @return array{numero: string, label: string, lat: float, lon: float, address: string|null, city: string|null, postalCode: string|null}|null
      */
     private function salleFromHit(array $hit): ?array
     {
         $numero = isset($hit['numero']) && (\is_string($hit['numero']) || is_numeric($hit['numero'])) ? trim((string) $hit['numero']) : '';
         $label = \is_string($hit['libelle'] ?? null) ? trim($hit['libelle']) : '';
         $carto = \is_array($hit['cartographie'] ?? null) ? $hit['cartographie'] : [];
+        $commune = \is_array($hit['commune'] ?? null) ? $hit['commune'] : [];
         $lat = $carto['latitude'] ?? null;
         $lon = $carto['longitude'] ?? null;
         if ('' === $numero || '' === $label || !is_numeric($lat) || !is_numeric($lon)) {
             return null;
         }
+        // Adresse d'AFFICHAGE (C1) : best-effort depuis le hit fédéral, null si absente.
+        $str = static fn (mixed $v): ?string => \is_string($v) && '' !== trim($v) ? trim($v) : null;
 
-        return ['numero' => $numero, 'label' => $label, 'lat' => (float) $lat, 'lon' => (float) $lon];
+        return [
+            'numero' => $numero,
+            'label' => $label,
+            'lat' => (float) $lat,
+            'lon' => (float) $lon,
+            'address' => $str($hit['adresse'] ?? null),
+            'city' => $str($carto['ville'] ?? null),
+            'postalCode' => $str($commune['codePostal'] ?? null),
+        ];
     }
 }

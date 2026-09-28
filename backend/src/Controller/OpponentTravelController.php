@@ -151,7 +151,7 @@ final class OpponentTravelController extends AbstractController
             return $this->json(['error' => 'Trop de gymnases épinglés — réessayez plus tard.'], Response::HTTP_TOO_MANY_REQUESTS);
         }
 
-        $link = $this->linkManager->repoint($clubId, $id, $gym['label'], $gym['ref'], $gym['lat'], $gym['lon']);
+        $link = $this->linkManager->repoint($clubId, $id, $gym['label'], $gym['ref'], $gym['lat'], $gym['lon'], $gym['address'], $gym['city'], $gym['postalCode']);
         if (!$link instanceof OpponentVenueLink) {
             return $this->json(['error' => 'Appariement introuvable.'], Response::HTTP_NOT_FOUND);
         }
@@ -310,7 +310,7 @@ final class OpponentTravelController extends AbstractController
         // addOrUpdate ET repoint — POST comme PUT — et tout appelant futur. Aucune garde dupliquée
         // ici : une ceinture qui court-circuiterait le manager rendrait sa garde intestable sur ce
         // chemin (un test de sécurité vert « pour la mauvaise raison »).
-        $link = $this->linkManager->addOrUpdate($clubId, $clean, $fbiLabel, $gym['label'], $gym['ref'], $gym['lat'], $gym['lon']);
+        $link = $this->linkManager->addOrUpdate($clubId, $clean, $fbiLabel, $gym['label'], $gym['ref'], $gym['lat'], $gym['lon'], $gym['address'], $gym['city'], $gym['postalCode']);
 
         return $this->json($this->linkView($link, $this->targetFixtureCount($clubId, $season->getId(), $link)), Response::HTTP_OK);
     }
@@ -648,7 +648,7 @@ final class OpponentTravelController extends AbstractController
     /**
      * @param array<string, mixed> $payload
      *
-     * @return array{label: string, ref: string|null, lat: float, lon: float}|null
+     * @return array{label: string, ref: string|null, lat: float, lon: float, address: string|null, city: string|null, postalCode: string|null}|null
      */
     private function parseGym(array $payload): ?array
     {
@@ -662,7 +662,23 @@ final class OpponentTravelController extends AbstractController
             return null;
         }
 
-        return ['label' => mb_substr($label, 0, 180), 'ref' => $ref, 'lat' => $lat, 'lon' => $lon];
+        // Adresse d'AFFICHAGE (C1) : le front renvoie ce qu'il affiche déjà (hit FFBB ou suggestion).
+        // Purement optionnelle et purement TENANT (fiche du match extérieur) — jamais dans le partagé.
+        return [
+            'label' => mb_substr($label, 0, 180),
+            'ref' => $ref,
+            'lat' => $lat,
+            'lon' => $lon,
+            'address' => $this->optionalText($payload['address'] ?? null),
+            'city' => $this->optionalText($payload['city'] ?? null),
+            'postalCode' => $this->optionalText($payload['postalCode'] ?? null),
+        ];
+    }
+
+    /** Un texte de payload optionnel : trimé, null si vide ou non-string. */
+    private function optionalText(mixed $value): ?string
+    {
+        return \is_string($value) && '' !== trim($value) ? trim($value) : null;
     }
 
     /** @return array<string, mixed> */

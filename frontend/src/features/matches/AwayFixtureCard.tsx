@@ -1,13 +1,16 @@
 import { Bus } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { Modal } from "@/shared/components/ui/modal";
+import { OpponentLogo } from "@/shared/components/ui/opponent-logo";
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
 import { formatDurationMinutes, formatMinutes, parseTime } from "@/shared/lib/time";
 
 import type { Fixture, Team, TeamMatchHabit } from "./api";
 import { awayHour, awayTimeline } from "./lib/awayKickoff";
 import { FIXTURE_STATUS_LABEL } from "./lib/fixtureStatusLabel";
+import { opponentInitials } from "./lib/opponentInitials";
 import { matchMinutesOf } from "./lib/weekendGrid";
 
 /**
@@ -52,9 +55,25 @@ export function AwayFixtureCard({
   const departure = showWindow ? formatMinutes(timeline.departureMin) : null;
   const back = showWindow ? formatMinutes(timeline.returnMin) : null;
 
-  const rows: { label: string; value: string }[] = [
-    { label: "Adversaire", value: fixture.opponentLabel },
+  // C1 (P4-267) — l'adresse du gymnase (« 12 av. Jean Jaurès, 38500 Voiron »), servie par le lien
+  // apparié quand la donnée fédérale la porte. Un lien ancien (sans rattrapage) ou un repli ville
+  // n'en a pas : la ligne « Adresse » DISPARAÎT alors (jamais une ligne vide).
+  const cityLine = [travel?.postalCode ?? null, travel?.city ?? null].filter((part): part is string => null !== part && "" !== part).join(" ");
+  const addressLine = [travel?.address ?? null, "" !== cityLine ? cityLine : null].filter((part): part is string => null !== part && "" !== part).join(", ");
+
+  // C7 (comme `AwayList`) — logo fédéral de l'adversaire, repli initiales en `md` (fiche = place lisible).
+  const rows: { label: string; value: ReactNode }[] = [
+    {
+      label: "Adversaire",
+      value: (
+        <span className="inline-flex items-center gap-1.5">
+          <OpponentLogo code={fixture.opponentOrganismeCode} hasLogo={null !== fixture.opponentOrganismeCode} initials={opponentInitials(fixture.opponentLabel)} size="md" />
+          {fixture.opponentLabel}
+        </span>
+      ),
+    },
     { label: "Lieu", value: null !== place ? place : "Lieu inconnu" },
+    ...("" !== addressLine ? [{ label: "Adresse", value: addressLine }] : []),
     { label: "Date", value: frDateWeekdayNoYear(fixture.matchDate) },
     { label: "Coup d'envoi", value: null !== hour ? `${hour}${estimated ? " (estimé)" : ""}` : "heure inconnue" },
     { label: "Durée du match", value: formatDurationMinutes(duration) },
