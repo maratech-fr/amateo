@@ -173,6 +173,13 @@ export const routes: RouteObject[] = [
                 lazy: async () => ({ Component: (await import("@/features/matches/ConfigurationPage")).ConfigurationPage }),
               },
               {
+                // P4-272 ① — l'écran unique des « Contraintes » de match, en accordéon
+                // (section Ligue éditable + Club/Équipes/Coachs à venir). Garde socle
+                // héritée du layout, section ouverte ancrée `?section=`.
+                path: "contraintes",
+                lazy: async () => ({ Component: (await import("@/features/matches/ConstraintsPage")).ConstraintsPage }),
+              },
+              {
                 // C8 — les « Adversaires » (localisation + trajets), sortis de la Configuration
                 // en page sœur lazy dédiée. Garde socle héritée du layout.
                 path: "adversaires",

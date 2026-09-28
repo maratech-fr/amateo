@@ -61,6 +61,50 @@ export const setEntryDeadlines = (competitionIds: string[], deadline: string | n
 export const getLeagueWindows = (): Promise<LeagueWindowsResponse> =>
   api.get("league-match-windows").json<LeagueWindowsResponse>();
 
+/** Federation tier of a league window (NOT a team level). */
+export type LeagueWindowLevel = "DEPARTEMENTAL" | "REGIONAL";
+
+/**
+ * P4-272 ① — one editable row of the club's OWN copy of the league envelope
+ * (`club_league_window`). `badge` is computed SERVER-SIDE against the effective
+ * league seed (the front DISPLAYS it, never re-derives it — .claude/rules/frontend.md).
+ */
+export interface ClubLeagueWindow {
+  id: string;
+  version: number;
+  league: string;
+  category: string;
+  level: LeagueWindowLevel;
+  /** "M" | "F" | "MIXTE" | null (all genders). */
+  gender: string | null;
+  /** ISO 1..7 */
+  dayOfWeek: number;
+  /** HH:MM */
+  kickoffMin: string;
+  kickoffMax: string;
+  /** "modified" (moved end time) | "added" (no seed row) | null (identical to seed). */
+  badge: "modified" | "added" | null;
+}
+
+export interface ClubLeagueWindowInput {
+  category: string;
+  level: LeagueWindowLevel;
+  gender: string | null;
+  dayOfWeek: number;
+  kickoffMin: string;
+  kickoffMax: string;
+}
+
+export const getClubLeagueWindows = (): Promise<ClubLeagueWindow[]> => collectionAll<ClubLeagueWindow>("club_league_windows");
+
+export const createClubLeagueWindow = (input: ClubLeagueWindowInput): Promise<ClubLeagueWindow> =>
+  api.post("club_league_windows", { json: input }).json<ClubLeagueWindow>();
+
+export const updateClubLeagueWindow = (id: string, input: ClubLeagueWindowInput): Promise<ClubLeagueWindow> =>
+  api.put(`club_league_windows/${id}`, { json: input }).json<ClubLeagueWindow>();
+
+export const deleteClubLeagueWindow = (id: string): Promise<void> => api.delete(`club_league_windows/${id}`).then(() => undefined);
+
 /**
  * RMM-3 — le « gardien » à l'ouverture du module. Ce que le POST rapporte : ce qui
  * a CHANGÉ depuis la précédente visite de CET utilisateur (matchs arrivés, conflits

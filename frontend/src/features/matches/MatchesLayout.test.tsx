@@ -83,14 +83,14 @@ describe("MatchesLayout (RMM-1 PR2 — deux espaces)", () => {
     expect(screen.getByRole("link", { name: "Configuration" })).toBeInTheDocument();
   });
 
-  it("porte les SIX onglets, dans l'ordre Conflits · Calendrier · Importer · Configuration · Adversaires · Semaine type (C8)", () => {
+  it("porte les SEPT onglets, dans l'ordre Conflits · Calendrier · Importer · Configuration · Adversaires · Semaine type · Contraintes (P4-272 ①)", () => {
     meState.chosen = "s1";
     renderAt("/matchs");
     const nav = screen.getByRole("navigation", { name: "Espaces matchs" });
     const labels = within(nav)
       .getAllByRole("link")
       .map((l) => l.textContent);
-    expect(labels).toEqual(["Conflits", "Calendrier", "Importer", "Configuration", "Adversaires", "Semaine type"]);
+    expect(labels).toEqual(["Conflits", "Calendrier", "Importer", "Configuration", "Adversaires", "Semaine type", "Contraintes"]);
     // Plus aucun onglet « Consulter » ni « Semaine » (fusionnés dans « Calendrier »).
     expect(labels).not.toContain("Consulter");
     expect(labels).not.toContain("Semaine");

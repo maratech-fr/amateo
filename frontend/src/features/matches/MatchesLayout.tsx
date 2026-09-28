@@ -133,6 +133,11 @@ export function MatchesLayout() {
         <NavLink to="/matchs/semaine-type" className={linkClass}>
           Semaine type
         </NavLink>
+        {/* P4-272 ① — les « Contraintes » de match : l'écran unique (section Ligue éditable +
+            Club/Équipes/Coachs à venir), en accordéon. */}
+        <NavLink to="/matchs/contraintes" className={linkClass}>
+          Contraintes
+        </NavLink>
       </nav>
       <Outlet />
     </div>

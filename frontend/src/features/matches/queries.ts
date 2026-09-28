@@ -41,6 +41,46 @@ export function useLeagueWindows() {
   return useQuery({ queryKey: ["league-match-windows"], queryFn: matchesApi.getLeagueWindows, staleTime: 300_000 });
 }
 
+// ── Copie club de l'enveloppe ligue (P4-272 ①) ───────────────────────────────
+
+export function useClubLeagueWindows() {
+  return useQuery({ queryKey: ["club_league_windows"], queryFn: matchesApi.getClubLeagueWindows, staleTime: 300_000 });
+}
+
+/** Editing the copy moves the placement payload AND the radar (envelope) AND the placement grid feed. */
+function invalidateClubLeagueWindows(queryClient: ReturnType<typeof useQueryClient>): void {
+  void queryClient.invalidateQueries({ queryKey: ["club_league_windows"] });
+  void queryClient.invalidateQueries({ queryKey: ["league-match-windows"] });
+  void queryClient.invalidateQueries({ queryKey: ["fixtures", "conflicts"] });
+}
+
+export function useCreateClubLeagueWindow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: matchesApi.createClubLeagueWindow,
+    onSuccess: () => invalidateClubLeagueWindows(queryClient),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
+export function useUpdateClubLeagueWindow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: matchesApi.ClubLeagueWindowInput }) => matchesApi.updateClubLeagueWindow(id, input),
+    onSuccess: () => invalidateClubLeagueWindows(queryClient),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
+export function useDeleteClubLeagueWindow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: matchesApi.deleteClubLeagueWindow,
+    onSuccess: () => invalidateClubLeagueWindows(queryClient),
+    onError: () => toast.error("Suppression de la fenêtre de ligue impossible"),
+  });
+}
+
 /** The conflict radar is recomputed server-side — keep it fresh (short stale). */
 export function useConflicts() {
   return useQuery({ queryKey: ["fixtures", "conflicts"], queryFn: matchesApi.getConflicts, staleTime: 10_000 });
