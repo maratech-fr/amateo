@@ -210,7 +210,11 @@ Découverte, pas de cron, pas de read-only), **attribution superadmin seule en D
 saison réglée — Bêta comprise). **Découverte** : périmètre et configuration illimités, **pool CLUB de
 10 crédits** partagé entre gestionnaires — 1 crédit par SORTIE (solve planning/période, placement de matchs,
 export PDF/XLSX — le PNG passe par la route PDF), décompte atomique au succès 2xx, quotas anti-abus P4-45
-distincts et intacts. **Payants** : tout illimité, seul le cap d'équipes varie (gardé aux portes de création).
+distincts et intacts. Le placement de matchs en Découverte est en plus borné SEMAINE PAR SEMAINE (jamais
+tout le club en un clic) : `POST /api/fixtures/place` refuse 403 un appel sans fenêtre `{from, to}` ou
+d'une fenêtre > 7 jours ; le bouton global du Calendrier est désactivé, seul « Placer ce week-end » de la
+vue Semaine reste ouvert (P4-240 ④, `PlanEntitlements::outputBudget()['restricted']`,
+`module-matchs.md` §3/§5). **Payants** : tout illimité, seul le cap d'équipes varie (gardé aux portes de création).
 UX de conversion frontend : badge « Crédits : X/10 » (ambre ≤ 5), solde sur chaque bouton de sortie,
 bandeau rouge fermable ≤ 3, bandeau permanent à 0, section « Offre » sans montants (« sur demande »).
 NR bloquant : `PlanEntitlementsTest`, step du gate CI.
@@ -538,6 +542,7 @@ le front lit, il ne re-dérive plus les règles de refus, repli fail-closed si l
 
 | Date | Id | Sujet | Documenté dans |
 |------|----|-------|----------------|
+| 2026-09-28 | P4-240 (PR ④, SOLDÉ — ①③④ livrées, ②/⑤a/⑤b fusionnés dans P4-271/P4-272) | « Placer ce week-end » : `POST /api/fixtures/place` accepte un corps optionnel `{from, to}` — dans la fenêtre, TO_PLACE part au solveur ; hors fenêtre, un domicile déjà posé (solveur compris) devient une ancre FIXED, un non posé est absent, un extérieur est omis. Sans corps : payload inchangé à l'octet. En offre Découverte (mode restreint), le placement automatique se fait UNIQUEMENT semaine par semaine — 403 sans fenêtre ou fenêtre > 7 jours, bouton global du Calendrier désactivé | [`module-matchs.md`](module-matchs.md) §3 « Solveur de placement », §5 « Écran Calendrier » · [ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md) §5 |
 | 2026-09-28 | P4-240 (PR ③) | Personnes au placement : un joueur partagé (`teams[].players`, `CoachPlayerMembership` actifs) pèse comme un coach MAIN (SOFT) ; le solveur de placement ignore désormais toute empreinte personne des matchs EXTÉRIEURS (émis quand même, pour libérer la protection d'habitude/rotation) ; l'échauffement avant un extérieur compte partout où une fenêtre personne AWAY existe encore (radar, fiche, grille) — contrat backend⇄engine **2.24** inchangé (champ additif) | [`module-matchs.md`](module-matchs.md) §2 « Détecteur de conflits », §3 « Solveur de placement » · [ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md) · décision §2 |
 | 2026-09-28 | P4-267 | fiche d'un match à l'extérieur : logo fédéral de l'adversaire + adresse postale du gymnase (lien apparié, colonnes nullables `OpponentVenueLink`) ; « Voir la semaine » recentre la grille sur la rencontre en focus ; un conflit de gymnase SANS coach filtre désormais sur les équipes des deux côtés (au lieu de sélectionner un match) | [`module-matchs.md`](module-matchs.md) §1 « Table TENANT `OpponentVenueLink` » / § « Logo fédéral d'un adversaire », §5, §6 |
 | 2026-09-28 | P4-240 (PR ①) | Placement automatique d'un gros lot — warm-start glouton (un seul jeu de hints, absorbe l'ancien hint de stabilité), raison `not_selected` distincte de `venue_full`, budget 60 s de bout en bout (verrou/HTTP/nginx/PHP/ky recalés en chaîne), contrat backend⇄engine **2.24** | [`module-matchs.md`](module-matchs.md) §3 · [`adr-0003-match-placement-solve.md`](../../docs/architecture/adr-0003-match-placement-solve.md) §2/§3/§4 |
