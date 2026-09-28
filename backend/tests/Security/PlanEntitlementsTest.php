@@ -18,6 +18,7 @@ use App\Exception\ImportRejectedException;
 use App\Service\Basketball\FfbbExcelImporter;
 use App\Service\PlanEntitlements;
 use App\Service\SeasonResolver;
+use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -57,6 +58,7 @@ use Symfony\Component\HttpKernel\HttpKernelInterface;
 #[Group('integration')]
 final class PlanEntitlementsTest extends WebTestCase
 {
+    use ChoosesPlanVersionTrait;
     use TenantGucTrait;
 
     /** Un id de planning bidon suffit : le refus se joue AVANT le contrôleur (comme ClubQuotaTest). */
@@ -118,6 +120,53 @@ final class PlanEntitlementsTest extends WebTestCase
         $this->consumeOneCredit($neighbour['club']->getId(), $neighbour['season']->getId());
         self::assertSame(1, $this->creditsOf($neighbour['club']->getId()));
         self::assertSame(10, $this->creditsOf($exhausted['club']->getId()), 'le compteur d\'un club ne bouge pas quand un AUTRE club consomme');
+    }
+
+    // ─────────── Placement week-end par week-end en mode restreint (P4-240 ④) ───────────
+
+    /**
+     * En Découverte bridée, le placement AUTOMATIQUE se fait week-end par week-end : un appel
+     * SANS fenêtre est refusé 403 (défense serveur derrière le bouton global désactivé). Le club
+     * a du crédit (0/10) — le refus ne vient donc PAS du pool épuisé mais bien de la règle fenêtre.
+     */
+    public function testRestrictedRefusesPlacementWithoutWindow(): void
+    {
+        $ctx = $this->seedClub(credits: 0, settleSocle: true);
+
+        self::assertSame(403, $this->post($ctx['user'], '/api/fixtures/place'), 'placer sans fenêtre en Découverte doit être refusé');
+        self::assertStringContainsString('week-end par week-end', (string) $this->client->getResponse()->getContent(), 'le refus doit expliquer la règle week-end');
+    }
+
+    /** Une fenêtre qui dépasse une semaine contournerait la règle : refusée 403, même message. */
+    public function testRestrictedRefusesWindowWiderThanOneWeek(): void
+    {
+        $ctx = $this->seedClub(credits: 0, settleSocle: true);
+
+        // 16 jours (du 5 au 20) : au-delà de la borne Lun→Dim (7 jours).
+        self::assertSame(403, $this->postJson($ctx['user'], '/api/fixtures/place', ['from' => '2026-10-05', 'to' => '2026-10-20']), 'une fenêtre > 7 jours en Découverte doit être refusée');
+        self::assertStringContainsString('week-end par week-end', (string) $this->client->getResponse()->getContent());
+    }
+
+    /**
+     * Une fenêtre Lun→Dim (7 jours) PASSE la porte crédit ; sans match à placer le contrôleur
+     * répond 200 « Aucun match à placer » et le subscriber décompte 1 crédit (1 clic = 1 crédit).
+     */
+    public function testRestrictedAllowsAWeekWindowAndDecrementsOneCredit(): void
+    {
+        $ctx = $this->seedClub(credits: 0, settleSocle: true);
+
+        // Lun 5 → Dim 11 oct. : 7 jours calendaires, la borne exacte acceptée.
+        self::assertSame(200, $this->postJson($ctx['user'], '/api/fixtures/place', ['from' => '2026-10-05', 'to' => '2026-10-11']), 'une fenêtre d\'une semaine doit passer en Découverte');
+        self::assertSame(1, $this->creditsOf($ctx['club']->getId()), 'un placement week-end réussi décompte 1 crédit');
+    }
+
+    /** Hors mode restreint (offre payante), un placement SANS fenêtre reste libre (aucun 403). */
+    public function testUnrestrictedAllowsPlacementWithoutWindow(): void
+    {
+        $ctx = $this->seedClub('essentiel', credits: 0, settleSocle: true);
+
+        self::assertSame(200, $this->post($ctx['user'], '/api/fixtures/place'), 'une offre payante place sans fenêtre, sans porte crédit');
+        self::assertSame(0, $this->creditsOf($ctx['club']->getId()), 'une offre non bridée ne décompte jamais');
     }
 
     // ──────────────────────── Pool de crédits — décompte (subscriber) ────────────────────────
@@ -271,6 +320,7 @@ final class PlanEntitlementsTest extends WebTestCase
         int $teamCount = 0,
         bool $isDemo = false,
         bool $withFfbb = false,
+        bool $settleSocle = false,
     ): array {
         $uid = uniqid('', true);
         $hasher = self::getContainer()->get('security.user_password_hasher');
@@ -325,6 +375,13 @@ final class PlanEntitlementsTest extends WebTestCase
 
         if ($teamCount > 0) {
             $this->categoryId = $this->seedTeams($club->getId(), $season->getId(), $teamCount);
+        }
+
+        if ($settleSocle) {
+            // Le placement des matchs est gardé par le SocleGuard (409 sans plan en vigueur),
+            // ANTÉRIEUR à la porte crédit du contrôleur : pour atteindre le refus/l'acceptation
+            // week-end, le plan de saison doit pointer une version (ADR-0002).
+            $this->settleSeasonPlan($season);
         }
 
         return ['user' => $user, 'club' => $club, 'season' => $season];

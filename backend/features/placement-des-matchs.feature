@@ -42,6 +42,18 @@ Fonctionnalité: Le placement des matchs honore les fenêtres d'accès et nomme 
     Alors le match à domicile est placé par le solveur, sans être bloqué par l'extérieur
     Et le radar signale le conflit de personne entre le domicile et l'extérieur du coach partagé
 
+  Scénario: Placer un seul week-end ne déplace pas un match déjà posé sur un autre week-end
+    « Placer ce week-end » ne résout QUE la semaine affichée : un match déjà posé par le solveur
+    sur un AUTRE week-end est une ancre — sa salle reste protégée, son coup d'envoi ne bouge pas.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et deux équipes et un gymnase jetables
+    Et une fenêtre d'accès le samedi de 14h00 à 18h00 sur ce gymnase
+    Et un match à domicile à placer le week-end prochain
+    Et un match déjà posé par le solveur sur un autre week-end, à 20h00
+    Quand je lance le placement du seul week-end prochain
+    Alors le match du week-end prochain est placé par le solveur
+    Et le match de l'autre week-end n'a pas bougé, toujours à 20h00 et posé par le solveur
+
   Scénario: Un amical n'est jamais proposé au solveur et se place à la main hors créneau
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et deux équipes et un gymnase jetables

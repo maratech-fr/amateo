@@ -87,9 +87,21 @@ final class MatchPlacementPayloadBuilder
     ) {}
 
     /**
+     * @param array{from: string, to: string}|null $window Fenêtre calendaire (dates Y-m-d incluses)
+     *                                                     restreignant les matchs À PLACER (« Placer ce
+     *                                                     week-end », P4-240 ④). `null` = tout le club, à
+     *                                                     l'octet comme avant. Dans la fenêtre : les
+     *                                                     candidats TO_PLACE partent à placer ; HORS
+     *                                                     fenêtre : un domicile déjà POSÉ (venue+kickoff,
+     *                                                     SOLVER compris) devient une ANCRE FIXED (sa salle
+     *                                                     reste protégée, il ne bouge pas), un domicile non
+     *                                                     posé disparaît du payload, et un extérieur hors
+     *                                                     fenêtre ne sert plus (son empreinte personne est
+     *                                                     ignorée depuis ③, il ne portait que sa date).
+     *
      * @return array{payload: array<string, mixed>, toPlaceCount: int, infoDiagnostics: list<array<string, mixed>>}
      */
-    public function build(Club $club, ?string $seasonId): array
+    public function build(Club $club, ?string $seasonId, ?array $window = null): array
     {
         /** @var list<Fixture> $fixtures */
         $fixtures = $this->entityManager->getRepository(Fixture::class)->findBy([]);
@@ -133,7 +145,7 @@ final class MatchPlacementPayloadBuilder
         $toPlaceCount = 0;
         $matchRows = [];
         foreach ($fixtures as $fixture) {
-            $row = $this->matchRow($fixture, $habitIndex, $roundTripByFixtureId[$fixture->getId()] ?? 0);
+            $row = $this->matchRow($fixture, $habitIndex, $roundTripByFixtureId[$fixture->getId()] ?? 0, $window);
             if (null === $row) {
                 continue;
             }
@@ -281,10 +293,11 @@ final class MatchPlacementPayloadBuilder
     /**
      * @param array<string, array<int, TeamMatchHabit>> $habitIndex
      * @param int                                       $roundTripMinutes D3 — trajet aller-retour AWAY (0 = inconnu / non AWAY)
+     * @param array{from: string, to: string}|null      $window           P4-240 ④ — fenêtre de placement (dates Y-m-d incluses), null = tout le club
      *
-     * @return array<string, mixed>|null null = skipped (unanchorable submitted match)
+     * @return array<string, mixed>|null null = skipped (unanchorable submitted match, or dropped out-of-window)
      */
-    private function matchRow(Fixture $fixture, array $habitIndex, int $roundTripMinutes): ?array
+    private function matchRow(Fixture $fixture, array $habitIndex, int $roundTripMinutes, ?array $window): ?array
     {
         $base = [
             'id' => $fixture->getId(),
@@ -292,7 +305,20 @@ final class MatchPlacementPayloadBuilder
             'date' => $fixture->getMatchDate()->format('Y-m-d'),
         ];
 
+        // P4-240 ④ — dans la fenêtre ? (dates Y-m-d zero-paddées ⇒ comparaison
+        // lexicographique = comparaison de dates). Fenêtre nulle = toujours dedans,
+        // d'où un payload à l'octet identique à l'ancien comportement.
+        $inWindow = null === $window || ($base['date'] >= $window['from'] && $base['date'] <= $window['to']);
+
         if (FixtureHomeAway::AWAY === $fixture->getHomeAway()) {
+            // Depuis ③ le solveur IGNORE l'empreinte personne d'un extérieur ; il ne sert
+            // plus qu'à porter SA date (team_dates : libérer la protection d'habitude le jour
+            // où l'équipe est dehors). Hors fenêtre, cette date ne concerne aucun match à
+            // placer → l'extérieur est inutile, on l'omet (aucun autre usage engine ne le
+            // requiert : ni venues, ni teams, ni occupancies ne le lisent).
+            if (!$inWindow) {
+                return null;
+            }
             $estimated = $this->awayKickoffEstimator->estimate($fixture, $habitIndex);
             $kickoff = $fixture->getKickoffTime() ?? $estimated;
 
@@ -315,7 +341,11 @@ final class MatchPlacementPayloadBuilder
 
         $isSolverPlaced = FixtureStatus::PLACED === $fixture->getStatus()
             && FixturePlacementSource::SOLVER === $fixture->getPlacementSource();
-        if (!$isFriendly && (FixtureStatus::UNPLACED === $fixture->getStatus() || $isSolverPlaced)) {
+        // TO_PLACE seulement DANS la fenêtre (P4-240 ④). Hors fenêtre, le fixture tombe
+        // dans la branche d'ancrage ci-dessous : déjà posé (venue+kickoff, SOLVER compris)
+        // → FIXED (ancre, sa salle protégée, il ne bouge pas — le résultat ne le réécrit
+        // pas, il n'est jamais renvoyé par le moteur) ; non posé → null (absent du payload).
+        if (!$isFriendly && $inWindow && (FixtureStatus::UNPLACED === $fixture->getStatus() || $isSolverPlaced)) {
             return $base + [
                 'kind' => 'TO_PLACE',
                 'currentVenueId' => $isSolverPlaced ? $fixture->getVenueId() : null,
@@ -326,7 +356,8 @@ final class MatchPlacementPayloadBuilder
         // Anchors — competition matches placed manually / submitted / validated,
         // and ANY placed friendly — only if still fully anchored (a match whose
         // venue was deleted, DOC-2, can do neither; a friendly UNPLACED lands
-        // here and is skipped).
+        // here and is skipped). P4-240 ④ : a to-place candidate OUT of the window
+        // reaches here too — placed (venue+kickoff) → FIXED anchor, unplaced → null.
         if (null === $fixture->getVenueId() || !$fixture->getKickoffTime() instanceof DateTimeImmutable) {
             return null;
         }

@@ -85,6 +85,11 @@ export function CalendarPage() {
   const credits = useCredits();
   const placeCreditSuffix = null !== credits ? ` (${credits.remaining})` : "";
   const placeCreditsBlocked = null !== credits && !credits.canPlaceMatches;
+  // P4-240 ④ — en offre Découverte (crédits bridés), le placement AUTOMATIQUE se fait
+  // week-end par week-end : le bouton global est désactivé, seul « Placer ce week-end »
+  // de la vue Semaine reste ouvert. `credits !== null` = régime restreint (le verdict est
+  // SERVEUR — cf. `.claude/rules/frontend.md` : le front AFFICHE, il ne décide pas).
+  const placeRestricted = null !== credits;
 
   const fixtures = useFixtures();
   const competitions = useCompetitions();
@@ -287,6 +292,18 @@ export function CalendarPage() {
     setSearchParams(applyFbiToParams(searchParams, false), { replace: true });
   };
 
+  // Maison UNIQUE du placement automatique (P4-240 ④) : le bouton GLOBAL (`runPlacement()`,
+  // tout le club) et le bouton « Placer ce week-end » de la vue Semaine (`runPlacement({from,
+  // to})`, la semaine affichée) lancent LE MÊME rail — même rafraîchissement, même toast.
+  const runPlacement = (window?: { from: string; to: string }): void => {
+    placeMatches.mutate(window, {
+      onSuccess: (result) => {
+        setUnplacedReasons(new Map(result.unplaced.map((u) => [u.matchId, u.message])));
+        toast.success(placementToastMessage(result));
+      },
+    });
+  };
+
   // « à placer » : ramène la liste dans le champ et lui donne le focus (le `<h2>`).
   const scrollToPlace = (): void => {
     const heading = document.getElementById(PLACE_HEADING_ID);
@@ -394,26 +411,21 @@ export function CalendarPage() {
       {/* (c) — barre d'actions : retour discret · Nouveau match · Placer auto (SEUL bouton primaire).
           « Signaler » a quitté cette barre : il vit désormais UNE fois dans l'en-tête du module
           (MatchesLayout), visible sur tous les onglets. */}
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={() => setFixtureFormOpen(true)}>
-          <Plus className="size-4" />
-          Nouveau match
-        </Button>
-        <Button
-          size="sm"
-          disabled={placeMatches.isPending || placeCreditsBlocked}
-          onClick={() =>
-            placeMatches.mutate(undefined, {
-              onSuccess: (result) => {
-                setUnplacedReasons(new Map(result.unplaced.map((u) => [u.matchId, u.message])));
-                toast.success(placementToastMessage(result));
-              },
-            })
-          }
-        >
-          <Wand2 className="size-4" />
-          {placeMatches.isPending ? "Placement…" : `Placer automatiquement${placeCreditSuffix}`}
-        </Button>
+      <div className="flex flex-col items-end gap-1">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => setFixtureFormOpen(true)}>
+            <Plus className="size-4" />
+            Nouveau match
+          </Button>
+          <Button size="sm" disabled={placeMatches.isPending || placeRestricted || placeCreditsBlocked} onClick={() => runPlacement()}>
+            <Wand2 className="size-4" />
+            {placeMatches.isPending ? "Placement…" : `Placer automatiquement${placeCreditSuffix}`}
+          </Button>
+        </div>
+        {/* Découverte : le placement global est fermé, on renvoie vers « Placer ce week-end ». */}
+        {placeRestricted ? (
+          <p className="text-sm text-muted-foreground">En offre Découverte, placez week-end par week-end depuis la vue Semaine.</p>
+        ) : null}
       </div>
 
       {/* Filtre PR-1 partagé (équipe/coach/gymnase). */}
@@ -524,6 +536,10 @@ export function CalendarPage() {
               focusedConflict={focusedConflict}
               onFocusConflict={focusConflict}
               onQuitFocus={quitFocus}
+              onPlaceWeekend={runPlacement}
+              placePending={placeMatches.isPending}
+              placeCreditsBlocked={placeCreditsBlocked}
+              placeCreditSuffix={placeCreditSuffix}
             />
           )}
         </>

@@ -557,6 +557,11 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $club->setTimezone('Europe/Paris');
         $club->setLocale('fr');
         $club->setOnboardingCompleted(true);
+        // Club démo = jamais bridé (P4-240 ④) : ces tests portent sur la MÉCANIQUE de placement.
+        // Sans cela un club frais (Découverte) exigerait une fenêtre {from,to} et l'appel sans
+        // corps de `/api/fixtures/place` serait refusé 403 (la règle crédit a sa propre garde,
+        // PlanEntitlementsTest).
+        $club->setIsDemo(true);
         $club->setFfbbClubCode('ARA' . strtoupper(substr(md5($uid), 0, 10)));
         $this->em->persist($club);
 

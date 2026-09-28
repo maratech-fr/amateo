@@ -380,11 +380,20 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                 ]),
                 '400' => new Response('No club in context'),
                 '401' => new Response('Unauthorized (missing/expired JWT)'),
-                '403' => new Response('Not a management member'),
+                '403' => new Response('Not a management member — or, on the Découverte credit plan, automatic placement must be week-end by week-end (send a one-week window)'),
                 '409' => new Response('Placement already running, season plan not chosen, or archived season'),
+                '422' => new Response('Invalid window (a bound is not a date, or from is after to)'),
                 '502' => new Response('Engine unreachable — retry, nothing was written'),
             ],
             summary: 'Auto-place the unplaced home matches (writes PLACED+SOLVER; manual anchors never move)',
+            requestBody: $this->schemas->jsonBody([
+                'type' => 'object',
+                'description' => 'Optional placement window: place only the matches dated within [from, to] (« Placer ce week-end »); the already-placed matches outside it stay fixed. No body = the whole club. On the Découverte credit plan the window is mandatory and at most one week (Mon→Sun).',
+                'properties' => [
+                    'from' => ['type' => 'string', 'format' => 'date', 'description' => 'First day of the window (AAAA-MM-JJ), inclusive'],
+                    'to' => ['type' => 'string', 'format' => 'date', 'description' => 'Last day of the window (AAAA-MM-JJ), inclusive'],
+                ],
+            ]),
         )));
 
         $paths->addPath('/api/fixtures/review', new PathItem(post: new Operation(

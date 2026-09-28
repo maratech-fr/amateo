@@ -180,13 +180,23 @@ export interface PlaceMatchesResult {
   diagnostics: { type: string; severity: string; message: string }[];
 }
 
+/** P4-240 ④ — an optional calendar window {from, to} (dates AAAA-MM-JJ, both
+ * inclusive) restricting the placement to that week (« Placer ce week-end »).
+ * Omitted = the whole club (the global « Placer automatiquement » button). */
+export interface PlaceMatchesWindow {
+  from: string;
+  to: string;
+}
+
 /** Synchronous solve: the engine places every placeable home match (seconds).
- * A non-placeable match is NOT an error — it comes back named in `unplaced`. */
-export const placeMatches = (): Promise<PlaceMatchesResult> =>
+ * A non-placeable match is NOT an error — it comes back named in `unplaced`.
+ * With a `window`, only the matches dated inside it are (re)placed; the ones
+ * already placed outside it stay fixed (P4-240 ④). */
+export const placeMatches = (window?: PlaceMatchesWindow): Promise<PlaceMatchesResult> =>
   // The solve takes up to ~90 s (engine 60 s budget + import) — ky's 10 s default
   // would abort a request the backend is honouring. Override it HERE only, never on
   // the shared client (P4-240). The timeout chain (proxy/nginx/PHP) matches, 120 s.
-  api.post("fixtures/place", { timeout: 120_000 }).json<PlaceMatchesResult>();
+  api.post("fixtures/place", { timeout: 120_000, ...(undefined === window ? {} : { json: window }) }).json<PlaceMatchesResult>();
 
 /** RMM-4 — the reconciliation perimeter: the three home fields that become a
  * CHOICE when the file diverges from an already-placed match. */
