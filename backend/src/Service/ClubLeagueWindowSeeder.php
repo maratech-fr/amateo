@@ -17,10 +17,12 @@ use Doctrine\ORM\EntityManagerInterface;
  * `ClubLeagueWindow` pour la saison visée. Comportement jour 1 identique à la
  * lecture du catalogue (mêmes bornes/jours).
  *
- * Deux appelants aujourd'hui : la naissance d'un club ({@see ClubProvisioner})
- * et le backfill des clubs existants (commande). La bascule de saison, elle,
- * recopie la copie de la saison SOURCE (les corrections du gestionnaire suivent
- * la saison) et ne retombe ici que si cette source est vide.
+ * Sert la naissance d'un club ({@see ClubProvisioner}) et la bascule de saison
+ * N→N+1 ({@see SeasonTransitionService}) — toujours sur une saison FRAÎCHE, qui
+ * n'a donc pas de copie à écraser. La transition recopie d'abord la copie de la
+ * saison SOURCE (les corrections du gestionnaire suivent la saison) et ne retombe
+ * ici que si cette source est vide. Le backfill des clubs EXISTANTS, lui, est
+ * porté par la migration `Version20260928140000` (SQL, hors de ce service).
  *
  * ⚠ RLS : écriture club-scopée — l'APPELANT pose le GUC tenant (`app.club_id`)
  * et gère la transaction (aucun flush ici, patron du provisioning).

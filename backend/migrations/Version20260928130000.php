@@ -19,10 +19,9 @@ use Doctrine\Migrations\AbstractMigration;
  * la table automatiquement (colonne club_id). Table neuve : l'ancienne release
  * ne la touche pas (rétro-compat deploy).
  *
- * Backfill des clubs existants : hors migration (une écriture club-scopée exige
- * le GUC tenant, et le passé n'est pas recopié — commande dédiée
- * `app:club-league-windows:backfill`, saison en cours + suivante si elle
- * existe).
+ * Backfill des clubs existants : migration de données dédiée `Version20260928140000`
+ * (SQL idempotent, saison en cours + suivante, copie de la ligue effective). Séparée
+ * de cette migration de schéma pour rester applicable là où celle-ci a déjà tourné.
  */
 final class Version20260928130000 extends AbstractMigration
 {
