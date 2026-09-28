@@ -23,7 +23,7 @@ import { type ConflictPivotAxis, type ConflictPivotEntry, PIVOT_AXES, pivotConfl
 import { countByTreatment, isOpenConflict, openConflictCount, RESOLUTION_LABEL, TREATMENT_KEYS, type TreatmentKey, treatmentChipKeys, treatmentOf } from "./lib/conflictResolution";
 import { conflictFixtureIds } from "./lib/conflictFocus";
 import { applyFamilyFilter, countByFamily, DEFAULT_KINDS, dateOf, familiesPresent, hasHomeSide, normalizeKinds, revealPlan } from "./lib/consultFilter";
-import { applyConflictFocusToParams, applyConflictsToParams, applyConsultToParams, applyFilterToParams, applyMatchToParams, applyWeekendToParams, decodeConflictsParams, hasConflictsParams } from "./lib/urlState";
+import { applyConflictFocusToParams, applyConflictsToParams, applyConsultToParams, applyFilterToParams, applyWeekendToParams, decodeConflictsParams, hasConflictsParams } from "./lib/urlState";
 import { weekendKeyOf, weekendShortLabel } from "./lib/weekendGrid";
 import { useCoaches, useCompetitions, useConflicts, useFixtures, useModuleVisit, useTeams, useVenues } from "./queries";
 import { useMatchesStore } from "./store";
@@ -358,15 +358,18 @@ export function ConflictsPage() {
       const withFocus = applyConflictFocusToParams(withCoach, conflictFixtureIds(conflict));
       return applyWeekendToParams(withFocus, weekendKey).toString();
     }
-    // Conflit SANS coach (collision de gymnase, hors accès…) : on met en évidence LA rencontre —
-    // le côté gauche par défaut, mais LE domicile si un seul des deux côtés est à domicile (une
-    // case pleine de la grille week-end est plus sûre à viser qu'un extérieur, souvent masqué).
+    // Conflit SANS coach (collision de gymnase, ex. SM1 vs U21M2 ; hors accès…) : au lieu de
+    // sélectionner UN match (ce qui ouvrait le panneau sur une seule équipe), on filtre sur LES
+    // équipes des DEUX côtés (`vue=equipe&filtre=…`) et on SURLIGNE les deux rencontres
+    // (`conflit=<a>,<b>`), sans rien sélectionner. Un conflit à un seul côté (gymnase indisponible)
+    // filtre sur cette seule équipe. Les `teamId` sont servis par le backend (jamais redérivés).
     const sides = [conflict.left, conflict.right, conflict.fixture].filter(
       (s): s is NonNullable<typeof s> => undefined !== s && undefined !== s.fixtureId,
     );
-    const homeSides = sides.filter((s) => "HOME" === s.homeAway);
-    const matchId = 1 === homeSides.length ? homeSides[0].fixtureId : (sides[0]?.fixtureId ?? null);
-    return applyMatchToParams(applyWeekendToParams(params, weekendKey), matchId).toString();
+    const teamIds = [...new Set(sides.map((s) => s.teamId).filter((id): id is string => undefined !== id && "" !== id))];
+    const withTeams = applyFilterToParams(params, "equipe", teamIds);
+    const withFocus = applyConflictFocusToParams(withTeams, conflictFixtureIds(conflict));
+    return applyWeekendToParams(withFocus, weekendKey).toString();
   };
 
   // Le lien d'action d'un conflit (lot N) : « Calendrier incomplet » n'a pas de date, donc

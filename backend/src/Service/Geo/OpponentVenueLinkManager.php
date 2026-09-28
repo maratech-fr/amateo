@@ -46,7 +46,7 @@ final class OpponentVenueLinkManager
      * gymnase choisi (ref fédérale ou coordonnées). Décrémente/incrémente le partagé et
      * chauffe le trajet. Retourne le lien (sa clé de libellé est stable une fois posée).
      */
-    public function addOrUpdate(string $clubId, string $code, string $fbiLabel, string $venueLabel, ?string $venueRef, float $lat, float $lon): OpponentVenueLink
+    public function addOrUpdate(string $clubId, string $code, string $fbiLabel, string $venueLabel, ?string $venueRef, float $lat, float $lon, ?string $address = null, ?string $city = null, ?string $postalCode = null): OpponentVenueLink
     {
         $norm = $this->labelNormalizer->normalize(trim($fbiLabel));
         $existing = $this->linkRepository->findOneByKey($clubId, $code, $norm);
@@ -62,7 +62,7 @@ final class OpponentVenueLinkManager
             ->setFbiLabel(mb_substr(trim($fbiLabel), 0, 180))
             ->setFbiLabelNorm(mb_substr($norm, 0, 180));
 
-        $this->writeGym($clubId, $link, $venueLabel, $venueRef, $lat, $lon, $previousRef);
+        $this->writeGym($clubId, $link, $venueLabel, $venueRef, $lat, $lon, $previousRef, $address, $city, $postalCode);
 
         return $link;
     }
@@ -72,7 +72,7 @@ final class OpponentVenueLinkManager
      * conservée — le libellé du fichier reste reconnu à l'import). Null si le lien
      * n'appartient pas au club (404 byte-identique côté contrôleur). Le lien devient MANUAL.
      */
-    public function repoint(string $clubId, string $linkId, string $venueLabel, ?string $venueRef, float $lat, float $lon): ?OpponentVenueLink
+    public function repoint(string $clubId, string $linkId, string $venueLabel, ?string $venueRef, float $lat, float $lon, ?string $address = null, ?string $city = null, ?string $postalCode = null): ?OpponentVenueLink
     {
         $link = $this->linkRepository->find($linkId);
         if (!$link instanceof OpponentVenueLink || $link->getClubId() !== $clubId) {
@@ -80,7 +80,7 @@ final class OpponentVenueLinkManager
         }
         $previousRef = OpponentVenueLinkSource::MANUAL === $link->getSource() ? $link->getVenueExternalRef() : null;
 
-        $this->writeGym($clubId, $link, $venueLabel, $venueRef, $lat, $lon, $previousRef);
+        $this->writeGym($clubId, $link, $venueLabel, $venueRef, $lat, $lon, $previousRef, $address, $city, $postalCode);
 
         return $link;
     }
@@ -116,7 +116,7 @@ final class OpponentVenueLinkManager
      * le portait pas déjà (a), et on ne débite l'ancien que si plus aucun autre lien du club ne le
      * porte (a). Chauffe enfin le trajet du nouveau gymnase (cache-first).
      */
-    private function writeGym(string $clubId, OpponentVenueLink $link, string $venueLabel, ?string $newRef, float $lat, float $lon, ?string $previousRef): void
+    private function writeGym(string $clubId, OpponentVenueLink $link, string $venueLabel, ?string $newRef, float $lat, float $lon, ?string $previousRef, ?string $address = null, ?string $city = null, ?string $postalCode = null): void
     {
         // 🔴 SÉCURITÉ (revue 2026-09-21) — un adversaire SANS code fédéral (clé SENTINELLE) n'entre
         // JAMAIS dans le catalogue partagé `opponent_venue_suggestion` (keyé sur le code organisme
@@ -135,6 +135,12 @@ final class OpponentVenueLinkManager
             ->setVenueExternalRef($storedRef)
             ->setLatitude($lat)
             ->setLongitude($lon)
+            // Adresse d'AFFICHAGE (fiche extérieur) : le nouveau gymnase apporte la sienne, ou
+            // NULL (choix par coordonnées seules). Bornée aux longueurs de colonne ; JAMAIS
+            // recopiée dans le catalogue partagé (donnée propre au lien tenant).
+            ->setAddress(null === $address || '' === trim($address) ? null : mb_substr(trim($address), 0, 255))
+            ->setCity(null === $city || '' === trim($city) ? null : mb_substr(trim($city), 0, 180))
+            ->setPostalCode(null === $postalCode || '' === trim($postalCode) ? null : mb_substr(trim($postalCode), 0, 16))
             ->setSource(OpponentVenueLinkSource::MANUAL);
         $this->entityManager->persist($link);
         $this->entityManager->flush();

@@ -1,20 +1,15 @@
 # Console superadmin — authentification, télémétrie et API de supervision
 
-Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement » — dates
-retirées des titres §Fraîcheur des données et alerting / §Journaux read-only et de l'en-tête qui
-les citait par date ; la bascule de thème retirée d'`AdminAuthLayout` reformulée en fait présent
-(palette `--console-*` propre à la surface, pas un récit de retrait) ; nouvelle section §Capacité
-ajoutée. Re-vérifié contre le code : firewall `admin` = `pattern: ^/api/admin`,
-`provider: super_admin_provider` (`backend/config/packages/security.yaml:33,36`) ✓ ;
-`AdminCsrfListener` toujours à la priorité 6 (`AdminCsrfListener.php:38`) ✓ ;
-`PasswordPolicy::MIN_LENGTH`/`REQUIREMENT_FR` (`PasswordPolicy.php:15,18`) ✓ ; challenge TOTP
-borné à 5 minutes (`AdminAuthController.php:72`) ✓ ; `SuperAdmin` toujours séparée
+Last verified @ 2026-09-28 (rotation de fraîcheur, `documentation-update`). Re-vérifié contre le
+code : firewall `admin` = `pattern: ^/api/admin`, `provider: super_admin_provider`
+(`backend/config/packages/security.yaml:33,36`) ✓ ; `AdminCsrfListener` toujours à la priorité 6
+(`AdminCsrfListener.php:38`) ✓ ; `PasswordPolicy::MIN_LENGTH`/`REQUIREMENT_FR`
+(`PasswordPolicy.php:15,18`) ✓ ; challenge TOTP borné à 5 minutes (`time() - $startedAt > 300`,
+`AdminAuthController.php:72`) ✓ ; `SuperAdmin` toujours une entité séparée
 (`SuperAdmin.php:13`) ✓ ; les trois jobs `manualTriggerAllowed: true` (`club-approval-digest`,
 `import-school-holidays`, `import-public-holidays`) toujours dans `AdminJobCatalog.php` ✓ ;
-`GET /api/admin/capacity` (`AdminMonitoringController.php:47-51`) sert bien
-`AdminCapacityService::capacity()` (`AdminCapacityService.php`, fenêtre 90 jours, connexion
-`admin`), consommé par `CapacitySection.tsx`/`useAdminCapacity()` ✓. Reste du fichier (au-delà des
-dates ci-dessus) non re-confronté cette passe ; historique des vérifications précédentes :
+`GET /api/admin/capacity` (`AdminMonitoringController.php:47-48`) toujours exposée. Reste du
+fichier non re-confronté cette passe ; historique des vérifications précédentes :
 `git log -p --follow specs/courantes/superadmin-auth.md`.
 
 > **État courant** : SA0, SA1, la console read-only SA2, le socle

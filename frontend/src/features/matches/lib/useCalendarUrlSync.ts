@@ -153,6 +153,24 @@ export function useCalendarUrlSync(
         focusFixtureCell(matchFixture.id);
         touchedStore = true;
       }
+      // Correctif 2 (P4-267) — à l'ARRIVÉE depuis un conflit (`conflit=`) ou un `match=`, CENTRER la
+      // grille sur la première rencontre en focus une fois rendue, pour que le litige soit visible
+      // sans défiler (le filtre posé par l'URL reste actif). On vise le premier id qui porte une
+      // cellule (un côté à l'extérieur ou non placé n'en a pas). `scrollIntoView` gardé — jsdom n'a
+      // aucun moteur de layout ; `requestAnimationFrame` : la cellule n'existe qu'après le rendu seedé.
+      const centerTargets = focusIds.length > 0 ? focusIds : (undefined !== matchFixture ? [matchFixture.id] : []);
+      if (centerTargets.length > 0) {
+        requestAnimationFrame(() => {
+          for (const targetId of centerTargets) {
+            const cell = document.querySelector<HTMLElement>(`[data-fixture-id="${targetId}"]`);
+            if (null !== cell) {
+              cell.scrollIntoView?.({ block: "center" });
+
+              return;
+            }
+          }
+        });
+      }
     }
     if (touchedStore) {
       return;

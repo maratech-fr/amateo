@@ -96,7 +96,7 @@ final class OpponentTravelProjection
      *
      * @param list<Fixture> $fixtures
      *
-     * @return array<string, array{venueLabel: string|null, city: string|null, precision: string|null, oneWayMinutes: int|null, approximated: bool, basis: string}>
+     * @return array<string, array{venueLabel: string|null, city: string|null, address: string|null, postalCode: string|null, precision: string|null, oneWayMinutes: int|null, approximated: bool, basis: string}>
      */
     public function awayTravelByFixtureId(?string $seasonId, array $fixtures): array
     {
@@ -109,7 +109,7 @@ final class OpponentTravelProjection
      *
      * @param list<Fixture> $fixtures
      *
-     * @return array<string, array{venueLabel: string|null, city: string|null, precision: string|null, oneWayMinutes: int|null, approximated: bool, basis: string}>
+     * @return array<string, array{venueLabel: string|null, city: string|null, address: string|null, postalCode: string|null, precision: string|null, oneWayMinutes: int|null, approximated: bool, basis: string}>
      */
     private function detailByFixtureId(?string $seasonId, array $fixtures): array
     {
@@ -158,7 +158,12 @@ final class OpponentTravelProjection
             if ($link instanceof OpponentVenueLink) {
                 $result[$fixture->getId()] = [
                     'venueLabel' => $link->getVenueLabel(),
-                    'city' => null,
+                    // Adresse d'AFFICHAGE (C1) : servie depuis le lien (fiche extérieur), null pour un
+                    // lien ancien sans rattrapage. `city` sort désormais du lien aussi (le libellé
+                    // reste la place « Lieu » — venueLabel prime partout ailleurs).
+                    'city' => $link->getCity(),
+                    'address' => $link->getAddress(),
+                    'postalCode' => $link->getPostalCode(),
                     'precision' => 'VENUE',
                     'oneWayMinutes' => $cacheByDest[$this->travelCache->destKey($link->getLatitude(), $link->getLongitude())] ?? null,
                     'approximated' => false,
@@ -173,7 +178,9 @@ final class OpponentTravelProjection
             if (null !== $fallback) {
                 $result[$fixture->getId()] = [
                     'venueLabel' => $fallback['label'],
-                    'city' => null,
+                    'city' => $fallback['city'],
+                    'address' => $fallback['address'],
+                    'postalCode' => $fallback['postalCode'],
                     'precision' => 'VENUE',
                     'oneWayMinutes' => $fallback['oneWay'],
                     'approximated' => true,
@@ -193,6 +200,9 @@ final class OpponentTravelProjection
                 $result[$fixture->getId()] = [
                     'venueLabel' => null,
                     'city' => $entry->getCity(),
+                    // Repli VILLE : l'annuaire fédéral ne porte pas d'adresse de rue.
+                    'address' => null,
+                    'postalCode' => $entry->getPostalCode(),
                     'precision' => $entry->getPrecision()->value,
                     'oneWayMinutes' => $oneWay,
                     'approximated' => true,
@@ -212,11 +222,11 @@ final class OpponentTravelProjection
      * @param array<string, OpponentVenueLink> $linkByKey
      * @param array<string, int>               $cacheByDest
      *
-     * @return array<string, array{oneWay: int, label: string}>
+     * @return array<string, array{oneWay: int, label: string, address: string|null, city: string|null, postalCode: string|null}>
      */
     private function mostFrequentResolvedGymByCode(array $away, array $linkByKey, array $cacheByDest): array
     {
-        /** @var array<string, array<string, array{count: int, oneWay: int, label: string}>> $byCode */
+        /** @var array<string, array<string, array{count: int, oneWay: int, label: string, address: string|null, city: string|null, postalCode: string|null}>> $byCode */
         $byCode = [];
         foreach ($away as $fixture) {
             $norm = $this->normalizedLabel($fixture);
@@ -233,7 +243,14 @@ final class OpponentTravelProjection
             if (null === $oneWay) {
                 continue; // gymnase non encore routé : ne peut servir de repli
             }
-            $byCode[$code][$destKey] ??= ['count' => 0, 'oneWay' => $oneWay, 'label' => $link->getVenueLabel()];
+            $byCode[$code][$destKey] ??= [
+                'count' => 0,
+                'oneWay' => $oneWay,
+                'label' => $link->getVenueLabel(),
+                'address' => $link->getAddress(),
+                'city' => $link->getCity(),
+                'postalCode' => $link->getPostalCode(),
+            ];
             ++$byCode[$code][$destKey]['count'];
         }
 
@@ -246,7 +263,13 @@ final class OpponentTravelProjection
                 }
             }
             if (null !== $best) {
-                $result[$code] = ['oneWay' => $best['oneWay'], 'label' => $best['label']];
+                $result[$code] = [
+                    'oneWay' => $best['oneWay'],
+                    'label' => $best['label'],
+                    'address' => $best['address'],
+                    'city' => $best['city'],
+                    'postalCode' => $best['postalCode'],
+                ];
             }
         }
 

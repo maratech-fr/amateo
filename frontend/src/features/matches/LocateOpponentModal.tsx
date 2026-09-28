@@ -113,7 +113,18 @@ export function LocateOpponentModal({
    * on ENCHAÎNE — au succès on retire le libellé apparié de la file et on avance au suivant ;
    * file vidée → fermeture. La file est locale (jamais dérivée du refetch, qui clignoterait).
    */
-  const submit = (venueLabel: string, venueExternalRef: string | null, latitude: number, longitude: number, key: string): void => {
+  const submit = (
+    venueLabel: string,
+    venueExternalRef: string | null,
+    latitude: number,
+    longitude: number,
+    // C1 (P4-267) — l'adresse d'affichage renvoyée telle quelle (hit FFBB / suggestion) : posée sur
+    // le lien tenant pour la fiche du match extérieur. Une suggestion n'a pas de rue → address null.
+    address: string | null,
+    city: string | null,
+    postalCode: string | null,
+    key: string,
+  ): void => {
     if ("" === code) {
       return;
     }
@@ -123,7 +134,7 @@ export function LocateOpponentModal({
       // Mode « modifier le gymnase » — on RE-POINTE le lien : jamais de fbiLabel (le backend
       // conserve la clé d'appariement du fichier). Un seul geste, on ferme au succès.
       repoint.mutate(
-        { id: repointLink.id, venueLabel, venueExternalRef, latitude, longitude },
+        { id: repointLink.id, venueLabel, venueExternalRef, latitude, longitude, address, city, postalCode },
         {
           onSuccess: () => {
             toast.success(`« ${repointLink.label} » remplacé par « ${venueLabel} ».`);
@@ -136,7 +147,7 @@ export function LocateOpponentModal({
     }
     if (null === fbiLabel) {
       addVenue.mutate(
-        { code, venueLabel, venueExternalRef, latitude, longitude },
+        { code, venueLabel, venueExternalRef, latitude, longitude, address, city, postalCode },
         {
           onSuccess: () => {
             toast.success(`Gymnase ajouté pour ${clubName}.`);
@@ -152,7 +163,7 @@ export function LocateOpponentModal({
       return;
     }
     pairLabel.mutate(
-      { code, fbiLabel: label, venueLabel, venueExternalRef, latitude, longitude },
+      { code, fbiLabel: label, venueLabel, venueExternalRef, latitude, longitude, address, city, postalCode },
       {
         onSuccess: () => {
           toast.success(`« ${label} » apparié.`);
@@ -224,6 +235,9 @@ export function LocateOpponentModal({
                         suggestion.externalRef,
                         suggestion.latitude as number,
                         suggestion.longitude as number,
+                        null,
+                        suggestion.city,
+                        suggestion.postalCode,
                         `sugg-${suggestion.externalRef ?? suggestion.label}`,
                       )
                     }
@@ -265,7 +279,7 @@ export function LocateOpponentModal({
                     salle={salle}
                     pending={pendingKey === key}
                     disabled={writing}
-                    onPick={() => submit(salle.name, salle.externalRef, Number(salle.latitude), Number(salle.longitude), key)}
+                    onPick={() => submit(salle.name, salle.externalRef, Number(salle.latitude), Number(salle.longitude), salle.address, salle.city, salle.postalCode, key)}
                   />
                 );
               })}

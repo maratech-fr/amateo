@@ -114,6 +114,11 @@ export interface FbiEcho {
 export interface AwayTravel {
   venueLabel: string | null;
   city: string | null;
+  /** C1 (P4-267) — l'adresse postale du gymnase, pour la fiche d'un match à l'extérieur. Servie
+   *  depuis le lien apparié quand la donnée fédérale la porte ; absente/null pour un lien ancien
+   *  (pas de rattrapage) ou un repli ville. Optionnels côté TS (patron des champs additifs). */
+  address?: string | null;
+  postalCode?: string | null;
   precision: OpponentLocationPrecision | null;
   oneWayMinutes: number | null;
   approximated: boolean;

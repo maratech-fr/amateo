@@ -9,6 +9,7 @@ use App\Repository\OpponentVenueLinkRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\ErasedClubPurger;
 use App\Service\Geo\TravelTimeCache;
+use App\Service\OpponentTravelProjection;
 use App\Service\SeasonDataPurger;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
@@ -90,6 +91,22 @@ class OpponentVenueLink implements TenantOwnedInterface
 
     #[ORM\Column(name: 'longitude', type: 'float')]
     private float $longitude;
+
+    /**
+     * L'adresse POSTALE du gymnase (rue, CP, ville), servie EN AFFICHAGE sur la fiche d'un match à
+     * l'extérieur ({@see OpponentTravelProjection}). Best-effort : renseignée à
+     * l'appariement/à l'auto-localisation quand la donnée fédérale la porte, null pour un lien
+     * ANCIEN (pas de rattrapage) ou un choix par coordonnées seules. Jamais recopiée dans la table
+     * PARTAGÉE {@see OpponentVenueSuggestion} — donnée d'affichage propre au lien tenant.
+     */
+    #[ORM\Column(name: 'address', length: 255, nullable: true)]
+    private ?string $address = null;
+
+    #[ORM\Column(name: 'postal_code', length: 16, nullable: true)]
+    private ?string $postalCode = null;
+
+    #[ORM\Column(name: 'city', length: 180, nullable: true)]
+    private ?string $city = null;
 
     #[ORM\Column(length: 10, enumType: OpponentVenueLinkSource::class)]
     private OpponentVenueLinkSource $source = OpponentVenueLinkSource::AUTO;
@@ -241,6 +258,42 @@ class OpponentVenueLink implements TenantOwnedInterface
     public function setLongitude(float $longitude): self
     {
         $this->longitude = $longitude;
+
+        return $this;
+    }
+
+    public function getAddress(): ?string
+    {
+        return $this->address;
+    }
+
+    public function setAddress(?string $address): self
+    {
+        $this->address = $address;
+
+        return $this;
+    }
+
+    public function getPostalCode(): ?string
+    {
+        return $this->postalCode;
+    }
+
+    public function setPostalCode(?string $postalCode): self
+    {
+        $this->postalCode = $postalCode;
+
+        return $this;
+    }
+
+    public function getCity(): ?string
+    {
+        return $this->city;
+    }
+
+    public function setCity(?string $city): self
+    {
+        $this->city = $city;
 
         return $this;
     }

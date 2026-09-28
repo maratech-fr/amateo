@@ -213,6 +213,36 @@ describe("ConflictsPage — « Voir la semaine » focalise le conflit du coach (
   });
 });
 
+describe("ConflictsPage — « Voir la semaine » d'un conflit SANS coach filtre les équipes (correctif 3)", () => {
+  async function clickVoirSemaineAutres() {
+    const user = userEvent.setup();
+    renderAt();
+    await user.click(await screen.findByRole("button", { name: /Autres conflits/ }));
+    await user.click((await screen.findAllByRole("button", { name: "Voir la semaine" }))[0]);
+    await screen.findByText("PLACER");
+    return new URLSearchParams(screen.getByTestId("calendar-search").textContent ?? "");
+  }
+
+  it("collision de gymnase (sans coach) → filtre les DEUX équipes (filtre=team-1,team-2, mode équipe) + les deux rencontres surlignées (conflit=), sans coach ni match=", async () => {
+    // Le bug : un conflit sans coach sélectionnait UN match (match=) et ouvrait le panneau sur une
+    // seule équipe. Le focus doit filtrer sur les deux équipes en litige et surligner les deux.
+    state.conflicts = [{ type: "VENUE_OVERLAP", severity: 2, resolution: null, venueId: "venue-1", left: side("fx-1", "team-1"), right: side("fx-2", "team-2") }];
+    const params = await clickVoirSemaineAutres();
+    expect(params.get("filtre")).toBe("team-1,team-2");
+    expect(params.get("vue")).toBeNull(); // mode équipe = défaut : pas de vue=
+    expect(params.get("conflit")).toBe("fx-1,fx-2");
+    expect(params.get("match")).toBeNull();
+  });
+
+  it("un seul côté (gymnase indisponible) → filtre sur cette SEULE équipe + focus", async () => {
+    state.conflicts = [{ type: "VENUE_UNAVAILABLE", severity: 1, resolution: null, fixture: side("fx-1", "team-1") }];
+    const params = await clickVoirSemaineAutres();
+    expect(params.get("filtre")).toBe("team-1");
+    expect(params.get("conflit")).toBe("fx-1");
+    expect(params.get("match")).toBeNull();
+  });
+});
+
 describe("ConflictsPage — phrase sr-only aria-live", () => {
   it("vide au premier rendu, remplie APRÈS une interaction de pivot", async () => {
     const user = userEvent.setup();

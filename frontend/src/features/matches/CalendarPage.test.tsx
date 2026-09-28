@@ -697,6 +697,23 @@ describe("CalendarPage — focus d'un conflit (correctif 2)", () => {
     await waitFor(() => expect(useMatchesStore.getState().highlightedFixtureIds).toEqual([]));
     await waitFor(() => expect(screen.getByTestId("calendar-search").textContent).not.toContain("conflit"));
   });
+
+  it("à l'arrivée, CENTRE la grille sur la première rencontre en focus (scrollIntoView center) — correctif 3 P4-267", async () => {
+    // jsdom n'a pas de moteur de layout : `scrollIntoView` n'existe pas → on le pose en espion.
+    const scrollIntoView = vi.fn();
+    // jsdom n'a pas de moteur de layout : `scrollIntoView` n'est jamais appelé sauf par notre code.
+    Element.prototype.scrollIntoView = scrollIntoView;
+    try {
+      // fx-unplaced n'a AUCUNE cellule de grille (non placé) ; fx-placed en a une : on doit centrer
+      // la PREMIÈRE rencontre en focus qui porte une cellule.
+      renderCalendarWithLocation("/?conflit=fx-unplaced,fx-placed");
+      await waitFor(() => expect(document.querySelector('[data-fixture-id="fx-placed"]')).not.toBeNull());
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block: "center" }));
+    } finally {
+      // @ts-expect-error jsdom : nettoyage du stub pour ne pas fuir sur les tests suivants.
+      delete Element.prototype.scrollIntoView;
+    }
+  });
 });
 
 describe("CalendarPage — modale FBI (ConfirmDialog imbriqué)", () => {

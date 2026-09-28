@@ -1,10 +1,12 @@
-Last verified @ 2026-09-28 (snapshot régénéré : la réponse de `POST /api/fixtures/place` gagne la
+Last verified @ 2026-09-28 (snapshot régénéré : la réponse de `POST /api/fixtures/place` porte la
 raison d'échec `not_selected` dans l'énumération `unplaced[].reason` — distincte de `venue_full` :
-un créneau licite restait libre mais le solveur ne l'a pas retenu dans le temps imparti, «
-relancez le placement » (P4-240) ; aucun chemin ajouté, compte inchangé, empreinte bumpée).
+un créneau licite restait libre mais le solveur ne l'a pas retenu dans le temps imparti (P4-240) ;
+la propriété `awayTravel` de `Fixture` (lecture) mentionne dans sa DESCRIPTION les champs
+`address`/`postalCode` de l'adresse du gymnase apparié (P4-267) — objet à `additionalProperties`,
+seule la description bouge ; aucun chemin ajouté, compte inchangé, empreinte recalculée).
 
 **208 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`cff028a89426c7609f3387900a3d13cc8b958659ac536b4856822d855b6d6f8a` (`sha256sum` sur le fichier).
+`2268084d603c7210e9b1bedae8a595a5728fbcc55fccdc83c76d1f8faf4d2434` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

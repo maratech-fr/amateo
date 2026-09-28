@@ -201,10 +201,12 @@ class FixtureResource
      * (trajet pas encore calculé). `basis` porte la CAUSE (le front n'en dérive rien) :
      * `linked` = la salle de la rencontre est appariée (exact) ; `most_frequent` = repli sur le
      * gymnase le plus fréquent du club adverse (« gymnase supposé ») ; `city` = coordonnées de
-     * ville (« ville seule »). `approximated` = le trajet est approché (repli). Rempli EN BATCH
-     * par le provider de collection (jamais par item — zéro N+1).
+     * ville (« ville seule »). `approximated` = le trajet est approché (repli). `address`/`postalCode`
+     * = l'adresse postale du gymnase (affichage de la fiche d'un match à l'extérieur), servie depuis
+     * le lien apparié quand la donnée fédérale la porte, null sinon (lien ancien, repli ville).
+     * Rempli EN BATCH par le provider de collection (jamais par item — zéro N+1).
      *
-     * @var array{venueLabel: string|null, city: string|null, precision: string|null, oneWayMinutes: int|null, approximated: bool, basis: string}|null
+     * @var array{venueLabel: string|null, city: string|null, address: string|null, postalCode: string|null, precision: string|null, oneWayMinutes: int|null, approximated: bool, basis: string}|null
      */
     #[Groups(['read'])]
     public ?array $awayTravel = null;
