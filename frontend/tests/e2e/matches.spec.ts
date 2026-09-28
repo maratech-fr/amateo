@@ -536,15 +536,15 @@ test("matches PR 2a: nav ordonnée, défilable à 400 px, Semaine type, Accès m
   await page.goto("/matchs");
   const nav = page.getByRole("navigation", { name: "Espaces matchs" });
   const links = nav.getByRole("link");
-  // C8 — SIX onglets : Conflits · Calendrier · Importer · Configuration · Adversaires · Semaine type
-  // (« Consulter » et « Semaine » ont fusionné dans « Calendrier » ; les Adversaires ont leur onglet).
-  await expect(links).toHaveCount(6);
+  // SEPT onglets : Conflits · Calendrier · Importer · Configuration · Adversaires · Semaine type · Contraintes.
+  await expect(links).toHaveCount(7);
   await expect(links.nth(0)).toContainText("Conflits");
   await expect(links.nth(1)).toHaveText("Calendrier");
   await expect(links.nth(2)).toContainText("Importer");
   await expect(links.nth(3)).toHaveText("Configuration");
   await expect(links.nth(4)).toHaveText("Adversaires");
   await expect(links.nth(5)).toHaveText("Semaine type");
+  await expect(links.nth(6)).toHaveText("Contraintes");
 
   // À 400 px la nav déborde : l'onglet actif (« Calendrier », l'index /matchs) est ramené en vue.
   await page.setViewportSize({ width: 400, height: 800 });
