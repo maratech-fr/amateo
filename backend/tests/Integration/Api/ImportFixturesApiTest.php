@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Api;
 
+use App\Clock\DevClockStore;
 use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Sport;
@@ -305,6 +306,12 @@ final class ImportFixturesApiTest extends WebTestCase
     {
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+
+        // Horloge figée : les rencontres d'octobre de ces scénarios doivent rester des
+        // matchs FUTURS hors de la semaine ISO en cours, sinon treatOnArrival les naît
+        // « traitées » (REVIEWED) et « FBI fait foi » applique d'office les écarts
+        // imminents (P4-199) — sinon ces tests, verts un dimanche, rougissent le lundi.
+        self::getContainer()->get(DevClockStore::class)->set(new DateTimeImmutable('2026-09-16 10:00:00'));
     }
 
     protected function tearDown(): void
@@ -312,6 +319,8 @@ final class ImportFixturesApiTest extends WebTestCase
         foreach ($this->tempFiles as $file) {
             @unlink($file);
         }
+        // Relâche l'horloge épinglée (Redis partagé, non rollbacké entre tests).
+        self::getContainer()->get(DevClockStore::class)->set(null);
         parent::tearDown();
     }
 

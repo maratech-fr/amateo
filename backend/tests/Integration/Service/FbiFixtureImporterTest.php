@@ -1804,6 +1804,14 @@ final class FbiFixtureImporterTest extends KernelTestCase
         $this->club = $this->createClub(self::CLUB_NAME, 'bc-testville');
         $this->scopeGucToClub($this->club->getId());
         $this->team = $this->createTeam('U13-1');
+
+        // Horloge figée par défaut. Sans ancre, un domicile daté d'octobre bascule
+        // « dans la semaine ISO en cours » au fil réel du calendrier : treatOnArrival
+        // le fait alors naître REVIEWED et « FBI fait foi » applique d'office ses écarts
+        // imminents (P4-199, {@see FbiFixtureImporter}) — d'où des tests verts un
+        // dimanche puis rouges le lundi suivant. On fixe « aujourd'hui » avant l'octobre
+        // de ces scénarios ; tout test qui a besoin d'un autre jour repose son pinClock.
+        $this->pinClock(new DateTimeImmutable('2026-09-16 10:00:00'));
     }
 
     protected function tearDown(): void
