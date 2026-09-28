@@ -14,6 +14,7 @@ use App\Entity\Team;
 use App\Entity\User;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
+use App\Service\ClubLeagueWindowSeeder;
 use App\Service\LeagueResolver;
 use App\Service\SeasonResolver;
 use App\Tests\TenantGucTrait;
@@ -25,9 +26,13 @@ use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 /**
- * The league-match-window catalog is a GLOBAL reference (spec §6bis): shared by
- * every club, carries no club data, and a club with no catalogued league falls
- * back to the AURA federation default.
+ * P4-272 ① — `GET /api/league-match-windows` sert désormais la COPIE club de
+ * l'enveloppe (`club_league_window`, tenant + saison), plus le catalogue GLOBAL :
+ * le placement, le radar et l'écran des contraintes lisent la MÊME maison. Le
+ * champ `league` reste la ligue EFFECTIVE (celle du club si cataloguée, sinon la
+ * défaut fédérale AURA). La copie est posée à la naissance du club depuis cette
+ * ligue effective : deux clubs de la même ligue voient le MÊME contenu, mais leur
+ * PROPRE copie (isolée par tenant).
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -41,19 +46,20 @@ final class LeagueMatchWindowsApiTest extends WebTestCase
 
     public function testAuraClubGetsTheAuraEnvelope(): void
     {
-        $user = $this->clubUser('AURA'); // ARA prefix → AURA league
+        [$user] = $this->clubUser('AURA'); // ARA prefix → AURA league
 
         $this->client->request('GET', '/api/league-match-windows', [], [], $this->authHeaders($user));
         self::assertResponseStatusCodeSame(200);
         $data = $this->responseData();
         self::assertSame('AURA', $data['league']);
+        self::assertNotEmpty($data['items']);
         self::assertSame(['AURA'], array_values(array_unique(array_column($data['items'], 'league'))));
     }
 
     public function testUncataloguedLeagueFallsBackToAuraDefault(): void
     {
-        // A club whose league (BOFC) has no catalogued windows → AURA default.
-        $user = $this->clubUser('BFC');
+        // A club whose league (BOFC) has no catalogued windows → AURA default copy.
+        [$user] = $this->clubUser('BFC');
 
         $this->client->request('GET', '/api/league-match-windows', [], [], $this->authHeaders($user));
         self::assertResponseStatusCodeSame(200);
@@ -62,42 +68,31 @@ final class LeagueMatchWindowsApiTest extends WebTestCase
         self::assertNotEmpty($data['items']);
     }
 
-    public function testCatalogIsSharedAcrossClubs(): void
+    public function testCopyIsPerClubAndTenantIsolated(): void
     {
-        // Two clubs, same league, see the very same rows — the catalog is global,
-        // not tenant-scoped (no club_id in the payload).
-        $userA = $this->clubUser('AURA');
+        // Two clubs, same league, see the same CONTENT — but each its OWN copy
+        // (distinct ids, no cross-tenant leak): the copy is per-club, not global.
+        [$userA] = $this->clubUser('AURA');
         $this->client->request('GET', '/api/league-match-windows', [], [], $this->authHeaders($userA));
         $idsA = array_column($this->responseData()['items'], 'id');
 
-        $userB = $this->clubUser('AURA');
+        [$userB] = $this->clubUser('AURA');
         $this->client->request('GET', '/api/league-match-windows', [], [], $this->authHeaders($userB));
         $idsB = array_column($this->responseData()['items'], 'id');
 
-        self::assertSame($idsA, $idsB);
         self::assertNotEmpty($idsA);
+        self::assertNotEmpty($idsB);
+        self::assertNotSame($idsA, $idsB, 'chaque club a sa PROPRE copie (ids distincts)');
+        self::assertSame([], array_intersect($idsA, $idsB), 'aucune ligne d\'un club ne fuit chez l\'autre');
     }
 
     public function testResolvedTeamWindowsUseTheServerJoin(): void
     {
         // P1-4 PR E2 (dette iv): the response resolves each team's envelope with
         // the SAME LeagueEnvelopeResolver the solver uses — a « U13 »
-        // DEPARTEMENTAL team maps to the AURA U13 window, a category outside the
-        // catalog resolves to [] (unmapped = advisory on screen, no HARD).
-        $user = $this->clubUser('AURA');
-        $club = $this->em->getRepository(ClubUser::class)->findOneBy(['userId' => $user->getId()]);
-        \assert(null !== $club);
-        $clubId = $club->getClubId();
-
-        $season = new Season;
-        $season->setClubId($clubId);
-        $year = SeasonResolver::seasonYear(new DateTimeImmutable('today'));
-        $season->setName((string) $year);
-        $season->setStartDate(new DateTimeImmutable($year . '-08-01'));
-        $season->setEndDate(new DateTimeImmutable(($year + 1) . '-07-15'));
-        $season->setStatus(SeasonStatus::ACTIVE);
-        $season->setTransitionData([]);
-        $this->em->persist($season);
+        // DEPARTEMENTAL team maps to the U13 copy window, a category outside the
+        // copy resolves to [] (unmapped = advisory on screen, no HARD).
+        [$user, $clubId, $seasonId] = $this->clubUser('AURA');
 
         $sport = new Sport;
         $sport->setName('Basket ' . uniqid('', true));
@@ -106,15 +101,16 @@ final class LeagueMatchWindowsApiTest extends WebTestCase
         $this->em->persist($sport);
         $this->em->flush();
 
-        $mapped = $this->team($clubId, $season->getId(), $sport->getId(), 'U13', TeamLevel::DEPARTEMENTAL);
-        $loisir = $this->team($clubId, $season->getId(), $sport->getId(), 'Loisir', TeamLevel::DEPARTEMENTAL);
+        $mapped = $this->team($clubId, $seasonId, $sport->getId(), 'U13', TeamLevel::DEPARTEMENTAL);
+        $loisir = $this->team($clubId, $seasonId, $sport->getId(), 'Loisir', TeamLevel::DEPARTEMENTAL);
 
         $this->client->request('GET', '/api/league-match-windows', [], [], $this->authHeaders($user));
         self::assertResponseStatusCodeSame(200);
         $data = $this->responseData();
 
-        $auraIds = array_column(array_values(array_filter($data['items'], static fn (array $item): bool => 'U13' === $item['category'])), 'id');
-        self::assertSame($auraIds, $data['resolvedTeamWindows'][$mapped]);
+        $u13Ids = array_column(array_values(array_filter($data['items'], static fn (array $item): bool => 'U13' === $item['category'])), 'id');
+        self::assertNotEmpty($u13Ids);
+        self::assertSame($u13Ids, $data['resolvedTeamWindows'][$mapped]);
         self::assertSame([], $data['resolvedTeamWindows'][$loisir]);
     }
 
@@ -122,7 +118,8 @@ final class LeagueMatchWindowsApiTest extends WebTestCase
     {
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
-        // Deterministic global fixture: one AURA row + one GEST row.
+        // Deterministic global seed source: one AURA row + one GEST row. The copy
+        // is seeded from it at club birth (below).
         $this->em->createQuery('DELETE FROM ' . LeagueMatchWindow::class . ' w')->execute();
         $this->window('AURA', 'U13', 6, '13:00', '18:00');
         $this->window('GEST', 'U13', 6, '14:00', '19:00');
@@ -166,7 +163,10 @@ final class LeagueMatchWindowsApiTest extends WebTestCase
         $this->em->persist($w);
     }
 
-    private function clubUser(string $ffbbPrefix): User
+    /**
+     * @return array{0: User, 1: string, 2: string} [user, clubId, seasonId]
+     */
+    private function clubUser(string $ffbbPrefix): array
     {
         $uid = uniqid('', true);
         $hasher = self::getContainer()->get('security.user_password_hasher');
@@ -198,9 +198,25 @@ final class LeagueMatchWindowsApiTest extends WebTestCase
         $membership->setRole('admin');
         $membership->setIsActive(true);
         $this->em->persist($membership);
+
+        // Saison ACTIVE courante + copie de l'enveloppe ligue (posée à la naissance
+        // du club dans le vrai flux — ici reproduite via le seeder, foyer unique).
+        $year = SeasonResolver::seasonYear(new DateTimeImmutable('today'));
+        $season = new Season;
+        $season->setClubId($club->getId());
+        $season->setName((string) $year);
+        $season->setStartDate(new DateTimeImmutable($year . '-08-01'));
+        $season->setEndDate(new DateTimeImmutable(($year + 1) . '-07-15'));
+        $season->setStatus(SeasonStatus::ACTIVE);
+        $season->setTransitionData([]);
+        $this->em->persist($season);
         $this->em->flush();
 
-        return $user;
+        self::getContainer()->get(ClubLeagueWindowSeeder::class)
+            ->seedForSeason($club->getId(), $season->getId(), $club->getLeague());
+        $this->em->flush();
+
+        return [$user, $club->getId(), $season->getId()];
     }
 
     /**

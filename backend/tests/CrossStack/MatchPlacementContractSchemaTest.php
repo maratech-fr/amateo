@@ -88,10 +88,11 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         // hérite du défaut de famille U13-U15 = 90 / 30.
         self::assertSame(90, $team['matchMinutes']);
         self::assertSame(30, $team['warmupMinutes']);
-        // L'équipe de test ne mappe pas l'enveloppe → [] + diagnostic INFO
-        // (« on accompagne, on ne décide pas »).
+        // P4-272 ① — le club de test n'a AUCUNE copie de ligue → [] pour l'équipe
+        // ET un seul diagnostic INFO CLUB (« on accompagne, on ne décide pas » ;
+        // jamais un par équipe quand la copie est vide).
         self::assertSame([], $team['leagueWindows']);
-        self::assertSame('league_envelope_unresolved', $built['infoDiagnostics'][0]['type']);
+        self::assertSame('league_envelope_empty', $built['infoDiagnostics'][0]['type']);
     }
 
     /**

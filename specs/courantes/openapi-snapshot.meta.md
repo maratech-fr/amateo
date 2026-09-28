@@ -1,10 +1,11 @@
-Last verified @ 2026-09-28 (snapshot régénéré : nouveau `GET /api/training/placed-conflicts` — le
-radar « une personne à deux endroits en même temps » sur le planning d'entraînement EN VIGUEUR
-(version pointée du plan SEASON), coach MAIN/ASSISTANT et joueur, gymnases différents, lecture
-seule réservée aux gestionnaires (P4-269) ; +1 chemin, empreinte recalculée).
+Last verified @ 2026-09-28 (snapshot régénéré : la ressource `ClubLeagueWindow` (P4-272 ①) expose
+le CRUD gestionnaire de la copie club de l'enveloppe ligue — `GET/POST /api/club_league_windows` et
+`GET/PUT/DELETE /api/club_league_windows/{id}` (2 chemins ajoutés) ; chaque item porte un `badge`
+(« modified »/« added ») calculé serveur ; le contrôleur `GET /api/league-match-windows` sert
+désormais cette copie, même surface de route qu'avant).
 
-**209 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`7964eeaafc29e5bc8a52011aadfaf962b78fbd3bdfb62ca8a7053b73c53aca6f` (`sha256sum` sur le fichier).
+**210 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`aa9b4e555533e24c0ac1cb6e3c78091945dd2cebd7a8d0cb09ba1a1c3f0a2f38` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

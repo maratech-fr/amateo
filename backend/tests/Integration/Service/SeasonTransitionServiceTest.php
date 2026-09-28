@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Service;
 
 use App\Entity\Club;
+use App\Entity\ClubLeagueWindow;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
@@ -108,6 +109,14 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         self::assertContains($newHabit->getTeamId(), $newTeamIds);
         self::assertSame('15:30', $newHabit->getKickoffTime()->format('H:i'));
         self::assertSame($newVenues[0]->getId(), $newHabit->getVenueId());
+        // P4-272 ① — la copie club de l'enveloppe ligue suit la saison (verbatim).
+        $newLeagueWindow = $this->em->getRepository(ClubLeagueWindow::class)->findOneBy(['seasonId' => $target->getId()]);
+        self::assertNotNull($newLeagueWindow);
+        self::assertSame('Seniors', $newLeagueWindow->getCategory());
+        self::assertSame('REGIONAL', $newLeagueWindow->getLevel());
+        self::assertSame(6, $newLeagueWindow->getDayOfWeek());
+        self::assertSame('14:00', $newLeagueWindow->getKickoffMin()->format('H:i'));
+        self::assertSame('16:00', $newLeagueWindow->getKickoffMax()->format('H:i'));
         $newTeamLink = $this->em->getRepository(TeamLink::class)->findOneBy(['seasonId' => $target->getId()]);
         self::assertNotNull($newTeamLink);
         self::assertContains($newTeamLink->getTeamAId(), $newTeamIds);
@@ -469,6 +478,19 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $habit->setKickoffTime(new DateTimeImmutable('15:30'));
         $habit->setVenueId($venueA->getId());
         $this->em->persist($habit);
+
+        // P4-272 ① — la copie club de l'enveloppe ligue : recopiée verbatim en N+1.
+        $leagueWindow = new ClubLeagueWindow;
+        $leagueWindow->setClubId($club->getId());
+        $leagueWindow->setSeasonId($season->getId());
+        $leagueWindow->setLeague('AURA');
+        $leagueWindow->setCategory('Seniors');
+        $leagueWindow->setLevel('REGIONAL');
+        $leagueWindow->setGender(null);
+        $leagueWindow->setDayOfWeek(6);
+        $leagueWindow->setKickoffMin(new DateTimeImmutable('14:00'));
+        $leagueWindow->setKickoffMax(new DateTimeImmutable('16:00'));
+        $this->em->persist($leagueWindow);
 
         $teamLink = new TeamLink;
         $teamLink->setClubId($club->getId());
