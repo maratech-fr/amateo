@@ -54,10 +54,11 @@ describe("awayHour (règle d'affichage extraite d'AwayList — témoin)", () => 
 });
 
 describe("awayTimeline (foyer unique du trajet aller-retour dessiné/affiché)", () => {
-  it("trajet connu : le bloc couvre départ → retour (aller de CHAQUE côté = ce que compte le radar)", () => {
-    // 15:30 = 930, match 105 → fin 17:15 = 1035 ; aller 45 → départ 14:45 = 885, retour 18:00 = 1080.
-    expect(awayTimeline(930, 105, 45)).toEqual({
-      departureMin: 885,
+  it("trajet connu : le bloc couvre départ → retour (échauffement + aller avant, aller après = ce que compte le radar)", () => {
+    // 15:30 = 930, match 105 → fin 17:15 = 1035 ; échauffement 30 + aller 45 → départ 14:15 = 855,
+    // retour 18:00 = 1080 (P4-240 ③ : l'échauffement compte AVANT le départ extérieur).
+    expect(awayTimeline(930, 105, 30, 45)).toEqual({
+      departureMin: 855,
       kickoffMin: 930,
       matchEndMin: 1035,
       returnMin: 1080,
@@ -65,9 +66,10 @@ describe("awayTimeline (foyer unique du trajet aller-retour dessiné/affiché)",
     });
   });
 
-  it("trajet inconnu (null) : pas d'aller — le bloc se réduit au match", () => {
-    expect(awayTimeline(930, 105, null)).toEqual({
-      departureMin: 930,
+  it("trajet inconnu (null) : pas d'aller — le départ reste coup d'envoi − échauffement", () => {
+    // 930 − échauffement 30 = 900 ; retour = fin du match (pas d'aller).
+    expect(awayTimeline(930, 105, 30, null)).toEqual({
+      departureMin: 900,
       kickoffMin: 930,
       matchEndMin: 1035,
       returnMin: 1035,

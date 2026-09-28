@@ -108,6 +108,11 @@ final class FrontRederivationRegistryTest extends TestCase
             'backendTruth' => 'App\\Service\\MatchConflictDetector::kickoffInsideLeagueWindow',
             'parityTest' => 'LeagueEnvelopeMirrorParityTest.php',
         ],
+        'features/matches/lib/awayKickoff.ts' => [
+            'decides' => 'fenêtre personne d\'un match extérieur (départ = coup d\'envoi − échauffement − aller, retour = fin + aller)',
+            'backendTruth' => 'App\\Service\\MatchFootprint::personConflictOccupancy (régime AWAY)',
+            'parityTest' => 'AwayTimelineMirrorParityTest.php',
+        ],
         'features/cockpit/lib/holidayWorkweek.ts' => [
             'decides' => 'une semaine est-elle « de vacances » (lundi→vendredi couvert) — offerte en reprise, exclue de l\'offre fermeture ; sinon semaine de saison',
             'backendTruth' => 'App\\Service\\HolidayWorkweekRule::covers (garde du POST d\'une semaine-enfant de vacances)',

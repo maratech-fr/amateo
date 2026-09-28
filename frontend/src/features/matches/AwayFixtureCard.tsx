@@ -11,7 +11,7 @@ import type { Fixture, Team, TeamMatchHabit } from "./api";
 import { awayHour, awayTimeline } from "./lib/awayKickoff";
 import { FIXTURE_STATUS_LABEL } from "./lib/fixtureStatusLabel";
 import { opponentInitials } from "./lib/opponentInitials";
-import { matchMinutesOf } from "./lib/weekendGrid";
+import { matchMinutesOf, warmupMinutesOf } from "./lib/weekendGrid";
 
 /**
  * Correctif 3 (retour terrain 2026-09-27) — la FICHE d'un match à l'extérieur, en LECTURE
@@ -30,30 +30,34 @@ export function AwayFixtureCard({
   teams,
   habits,
   matchDurations,
+  warmupDurations,
   onClose,
 }: {
   fixture: Fixture;
   teams: Map<string, Team>;
   habits: TeamMatchHabit[];
   matchDurations: Map<string, number>;
+  warmupDurations: Map<string, number>;
   onClose: () => void;
 }) {
   const teamLabel = teams.get(fixture.teamId)?.name ?? "Équipe ?";
   const { hour, estimated } = awayHour(fixture, habits);
   const duration = matchMinutesOf(fixture.teamId, teams, matchDurations);
+  const warmup = warmupMinutesOf(fixture.teamId, teams, warmupDurations);
   const travel = fixture.awayTravel;
   const place = travel?.venueLabel ?? fixture.fbiVenueLabel ?? travel?.city ?? null;
   const oneWay = travel?.oneWayMinutes ?? null;
   const approx = true === travel?.approximated ? "~" : "";
 
-  // Départ ≈ coup d'envoi − trajet ; retour ≈ (coup d'envoi + durée) + trajet — même calcul que
-  // la grille (`awayTimeline`, foyer UNIQUE), marqué « estimé ». Rendu seulement si l'heure ET le
-  // trajet sont connus (arithmétique d'AFFICHAGE, aucune règle serveur recalculée).
+  // Départ ≈ coup d'envoi − échauffement − trajet ; retour ≈ (coup d'envoi + durée) + trajet —
+  // même calcul que la grille (`awayTimeline`, foyer UNIQUE), marqué « estimé ». P4-240 ③ : le
+  // DÉPART est estimé dès que l'heure est connue (l'échauffement compte toujours, décision C),
+  // le RETOUR seulement si le trajet est connu. Arithmétique d'AFFICHAGE, aucune règle recalculée.
   const kickoffMin = parseTime(hour);
-  const timeline = null !== kickoffMin ? awayTimeline(kickoffMin, duration, oneWay) : null;
-  const showWindow = null !== timeline && null !== timeline.oneWayMinutes;
-  const departure = showWindow ? formatMinutes(timeline.departureMin) : null;
-  const back = showWindow ? formatMinutes(timeline.returnMin) : null;
+  const timeline = null !== kickoffMin ? awayTimeline(kickoffMin, duration, warmup, oneWay) : null;
+  const hasTravel = null !== timeline && null !== timeline.oneWayMinutes;
+  const departure = null !== timeline ? formatMinutes(timeline.departureMin) : null;
+  const back = hasTravel ? formatMinutes(timeline.returnMin) : null;
 
   // C1 (P4-267) — l'adresse du gymnase (« 12 av. Jean Jaurès, 38500 Voiron »), servie par le lien
   // apparié quand la donnée fédérale la porte. Un lien ancien (sans rattrapage) ou un repli ville
@@ -78,7 +82,11 @@ export function AwayFixtureCard({
     { label: "Coup d'envoi", value: null !== hour ? `${hour}${estimated ? " (estimé)" : ""}` : "heure inconnue" },
     { label: "Durée du match", value: formatDurationMinutes(duration) },
     { label: "Trajet", value: null !== oneWay ? `${approx}${oneWay} min` : "trajet indisponible" },
-    ...(showWindow ? [{ label: "Départ / retour estimés", value: `≈ ${departure} → ≈ ${back}` }] : []),
+    ...(hasTravel
+      ? [{ label: "Départ / retour estimés", value: `≈ ${departure} → ≈ ${back}` }]
+      : null !== departure
+        ? [{ label: "Départ estimé", value: `≈ ${departure}` }]
+        : []),
     { label: "Statut", value: FIXTURE_STATUS_LABEL[fixture.status] },
   ];
 

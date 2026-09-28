@@ -1,0 +1,25 @@
+{
+  "_comment": "P4-240 ③ (décision C) — cas de PARITÉ MÉCANIQUE de la fenêtre PERSONNE d'un match à l'EXTÉRIEUR : départ = coup d'envoi − échauffement − aller ; retour = coup d'envoi + match + aller (aller = aller-retour/2 côté backend). Consommé par awayTimeline.parity.test.ts (front, awayKickoff.ts::awayTimeline) ET par AwayTimelineMirrorParityTest.php (backend, MatchFootprint::personConflictOccupancy, régime AWAY). `departure`/`return` sont le verdict des deux implémentations ; `matchEnd` est la fin du match (présentation front). Trajet inconnu = oneWayMinutes null → aller 0 (départ = coup d'envoi − échauffement, retour = fin du match). Changer l'algèbre AWAY d'un seul côté rougit ce côté-là.",
+  "cases": [
+    {
+      "name": "SF2 — samedi 20:00, 105/30, aller 50 → [18:40, 22:35]",
+      "kickoff": "20:00", "matchMinutes": 105, "warmupMinutes": 30, "oneWayMinutes": 50,
+      "departure": "18:40", "matchEnd": "21:45", "return": "22:35"
+    },
+    {
+      "name": "trajet inconnu — départ = coup d'envoi − échauffement, retour = fin du match",
+      "kickoff": "20:00", "matchMinutes": 105, "warmupMinutes": 30, "oneWayMinutes": null,
+      "departure": "19:30", "matchEnd": "21:45", "return": "21:45"
+    },
+    {
+      "name": "échauffement 0 — départ = coup d'envoi − aller",
+      "kickoff": "15:00", "matchMinutes": 60, "warmupMinutes": 0, "oneWayMinutes": 40,
+      "departure": "14:20", "matchEnd": "16:00", "return": "16:40"
+    },
+    {
+      "name": "U13 90/20, aller 25",
+      "kickoff": "10:00", "matchMinutes": 90, "warmupMinutes": 20, "oneWayMinutes": 25,
+      "departure": "09:15", "matchEnd": "11:30", "return": "11:55"
+    }
+  ]
+}

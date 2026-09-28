@@ -74,29 +74,34 @@ inchangé ; seule sa manière d'entrer dans le modèle change, via l'une des tro
 qu'un `add_hint` isolé.
 
 La salle est tenue pour le **match seul** (`[coup d'envoi, coup d'envoi + matchMinutes]`), alignée sur
-la règle que le radar de conflits applique déjà à l'occupation de salle. La fenêtre **personne** (coach,
-passerelle `NOT_SIMULTANEOUS`, entraînements projetés) est
-`[coup d'envoi − travelOut, coup d'envoi + matchMinutes + travelBack]` (`travelOut`/`travelBack` = la
-moitié du trajet aller-retour AWAY, D3 ; nuls à domicile, où elle vaut donc la fenêtre salle) — réplique
-exacte de `MatchFootprint::personConflictOccupancy` côté radar (`module-matchs.md` §2) : une personne
-engagée deux fois n'a plus qu'à ARRIVER au coup d'envoi du second engagement. Décision fondateur : « on
-s'échauffe sur le côté pendant le match précédent ; deux matchs qui s'enchaînent, c'est OK et très
-courant » — le solveur n'interdit donc plus l'enchaînement fédéral à 2 h que le radar accepte déjà.
+la règle que le radar de conflits applique déjà à l'occupation de salle. Une **personne** est un coach
+OU une joueuse active de l'équipe (`teams[].players` — ids `CoachPlayerMembership` actifs, additif au
+contrat, P4-240 ③ décision A) ; une joueuse pèse comme un coach MAIN. Le solveur **ignore toute
+empreinte personne d'un match EXTÉRIEUR** (P4-240 ③, décision B — « c'est la vie » ; le solveur ne peut
+de toute façon pas déplacer un extérieur puisque son heure est imposée par l'adversaire, et le radar §2
+reste la seule source qui signale une indisponibilité réelle liée à un extérieur) : la fenêtre
+**personne** (coach/joueuse, passerelle `NOT_SIMULTANEOUS`, entraînements projetés) ne provient donc
+plus que des ancres FIXED (matchs à domicile déjà posés) et des entraînements projetés, et vaut toujours
+`[coup d'envoi, coup d'envoi + matchMinutes]` — la fenêtre salle, sans trajet ni échauffement. Un match
+AWAY reste émis au contrat (`roundTripMinutes` transporté, plus consommé) : il libère la protection
+d'habitude/rotation de son équipe ce jour-là. Décision fondateur : « on s'échauffe sur le côté pendant le
+match précédent ; deux matchs qui s'enchaînent, c'est OK et très courant » — le solveur n'interdit donc
+pas l'enchaînement fédéral à 2 h que le radar accepte déjà.
 
 Les durées (`matchMinutes`/`warmupMinutes`) sont **par équipe**, résolues côté backend par
 `MatchDurationResolver` (override de catégorie sinon défaut de famille 75/90/105 min, échauffement
 30 min — `MatchDurationProfile::fallback()` = 105/30 pour une catégorie sans famille) et portées par le
 contrat (`teams[].matchMinutes`/`warmupMinutes`, Pydantic optionnels par défaut 105/30 — un payload
 absent de ces champs garde l'ancien comportement). `warmupMinutes` reste au schéma mais n'est plus lu par
-aucune fenêtre du solveur : l'échauffement s'y projette côté PERSONNE via `travelOut`/`travelBack` (nuls
-à domicile), pas via une fenêtre dédiée. Un match « enchaîné » (BACK_TO_BACK, SOFT) est celui dont le
-suivant démarre exactement à la fin du match précédent (`Δkickoff` variable selon les durées, plus une
-constante 2h15). **Asymétrie délibérée** : le radar de conflits a cessé d'émettre la famille passerelle
-(`TEAM_LINK_OVERLAP`) mais le solveur GARDE son malus SOFT `NOT_SIMULTANEOUS` (−40) — une préférence
-souple ne bloque jamais un placement, la retirer serait un recul silencieux si la famille revenait un
-jour au radar.
+AUCUNE fenêtre du solveur (ni salle ni personne, depuis la décision B) : un match extérieur ne projetant
+plus de fenêtre personne, il n'y a plus de trajet ni d'échauffement à y porter. Un match « enchaîné »
+(BACK_TO_BACK, SOFT) est celui dont le suivant démarre exactement à la fin du match précédent
+(`Δkickoff` variable selon les durées, plus une constante 2h15). **Asymétrie délibérée** : le radar de
+conflits a cessé d'émettre la famille passerelle (`TEAM_LINK_OVERLAP`) mais le solveur GARDE son malus
+SOFT `NOT_SIMULTANEOUS` (−40) — une préférence souple ne bloque jamais un placement, la retirer serait un
+recul silencieux si la famille revenait un jour au radar.
 
-Poids SOFT (produit, golden-épinglés) : conflit coach MAIN −60 ·
+Poids SOFT (produit, golden-épinglés) : conflit personne (coach MAIN ou joueuse active) −60 ·
 passerelle NOT_SIMULTANEOUS violée −40 · habitude heure +15 / gymnase +5 (le jour est constant) ·
 fenêtre habituelle protégée −25 · **rotation A/B — attraction heure +15 / gymnase +5 · fenêtre de
 rotation protégée −25** (RMM-5 : extension à parité stricte du mécanisme d'habitude, le créneau

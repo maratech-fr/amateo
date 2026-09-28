@@ -354,27 +354,28 @@ describe("colonne extérieur (lot 3 PR-3a)", () => {
     expect(new Set(cells.map((c) => c.lane))).toEqual(new Set([0, 1]));
   });
 
-  it("correctif 10 — l'étendue horaire de la grille inclut départ ET retour du trajet", () => {
-    // 18:00, match 105, aller 45 → départ 17:15, retour 20:30 → startMin 17:00, endMin 21:00.
+  it("correctif 10 + échauffement — l'étendue horaire de la grille inclut départ (échauffement + aller) ET retour", () => {
+    // 18:00, match 105, échauffement 30 (repli), aller 45 → départ 16:45, retour 20:30
+    // → startMin 16:00, endMin 21:00 (P4-240 ③ : l'échauffement tire l'amplitude en amont).
     const grid = buildWeekendGrid(
       [away({ kickoffTime: "18:00", awayTravel: { venueLabel: "Halle Y", city: null, precision: "VENUE", oneWayMinutes: 45, approximated: false, basis: "linked" } })],
       venues, teams,
     );
-    expect(grid.startMin).toBe(17 * 60); // 17:00, pas 18:00 (le départ tire l'amplitude en amont)
+    expect(grid.startMin).toBe(16 * 60); // 16:00, pas 18:00 (le départ échauffement+aller tire l'amplitude en amont)
     const cell = grid.cells.find((c) => true === c.away);
-    // Le bloc démarre au DÉPART (17:15) : 3 + round((1035 - 1020)/15) = 3 + 1 = 4.
-    expect(cell?.gridRowStart).toBe(4);
-    // Départ → retour = 195 min = 13 pas.
-    expect(cell?.gridRowSpan).toBe(13);
+    // Le bloc démarre au DÉPART (16:45 = 1005) : 3 + round((1005 - 960)/15) = 3 + 3 = 6.
+    expect(cell?.gridRowStart).toBe(6);
+    // Départ → retour = 225 min = 15 pas.
+    expect(cell?.gridRowSpan).toBe(15);
     expect(cell?.hasTravel).toBe(true);
-    expect(cell?.departureLabel).toBe("17:15");
+    expect(cell?.departureLabel).toBe("16:45");
     expect(cell?.returnLabel).toBe("20:30");
   });
 
   it("correctif 10 — deux extérieurs disjoints EN MATCH mais chevauchant EN TRAJET partent en couloirs", () => {
-    // A 14:00 (aller 45) → match 14:00–15:45, étendue 13:15–16:30.
-    // B 16:00 (aller 60) → match 16:00–17:45, étendue 15:00–18:45.
-    // Les MATCHS ne se chevauchent pas (15:45 < 16:00) ; les ÉTENDUES si (15:00–16:30).
+    // A 14:00 (échauffement 30 + aller 45) → match 14:00–15:45, étendue 12:45–16:30.
+    // B 16:00 (échauffement 30 + aller 60) → match 16:00–17:45, étendue 14:30–18:45.
+    // Les MATCHS ne se chevauchent pas (15:45 < 16:00) ; les ÉTENDUES si (14:30–16:30).
     const grid = buildWeekendGrid(
       [
         away({ id: "a", kickoffTime: "14:00", awayTravel: { venueLabel: "A", city: null, precision: "VENUE", oneWayMinutes: 45, approximated: false, basis: "linked" } }),
@@ -408,8 +409,8 @@ describe("colonne extérieur (lot 3 PR-3a)", () => {
       // Habitude d'une équipe FANTÔME (sans match) → un fantôme QUAND showGhosts.
       { id: "hg", teamId: "team-ghost", dayOfWeek: 6, kickoffTime: "14:00", venueId: "venue-1" } as import("../api").TeamMatchHabit,
     ];
-    // 10ᵉ argument `showGhosts=false` : pas de fantôme, MAIS l'extérieur reste estimé (habitudes pleines).
-    const grid = buildWeekendGrid([away()], venues, teams, new Set(), habits, "2026-10-03", 15, new Map(), false);
+    // dernier argument `showGhosts=false` : pas de fantôme, MAIS l'extérieur reste estimé (habitudes pleines).
+    const grid = buildWeekendGrid([away()], venues, teams, new Set(), habits, "2026-10-03", 15, new Map(), new Map(), false);
     expect(grid.cells.filter((c) => true === c.ghost)).toHaveLength(0);
     const awayCell = grid.cells.find((c) => true === c.away);
     expect(awayCell?.estimated).toBe(true);

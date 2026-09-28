@@ -409,6 +409,31 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertNull($byTeam[self::TEAM_1]['travelOneWayMinutes']);
     }
 
+    public function testWarmupBeforeAnAwayMatchNowCatchesATrainingClash(): void
+    {
+        // P4-240 ③ (décision C) — the warm-up BEFORE an away match counts for a
+        // person. Cadrage example: an AWAY match Saturday 20:00, one-way travel 50
+        // (round trip 100) → person window [18:40, 22:35] (before C: [19:10, 22:35]).
+        // Coach A follows the away TEAM_1 AND the SISTER TEAM_2, which trains
+        // Saturday 18:00–19:00: the warm-up leg (18:40) now bites into that session
+        // → a MATCH_TRAINING clash that the old warm-up-free window would have missed.
+        $away = $this->awayFixture('fx-away', self::TEAM_1, '2026-10-03', '20:00'); // Saturday (ISO 6)
+        $links = [$this->link(self::COACH_A, self::TEAM_1), $this->link(self::COACH_A, self::TEAM_2)];
+        $slots = [$this->slot('sl-1', self::BASELINE, self::TEAM_2, 6, '18:00', 60)];
+
+        $conflicts = $this->detect(
+            [$away],
+            $links,
+            self::BASELINE,
+            slotsBySchedule: [self::BASELINE => $slots],
+            roundTripByFixtureId: ['fx-away' => 100],
+        );
+
+        self::assertCount(1, $conflicts);
+        self::assertSame('MATCH_TRAINING', $conflicts[0]['type']);
+        self::assertSame('sl-1', $conflicts[0]['training']['slotTemplateId']);
+    }
+
     public function testAwayWithoutHabitOnThatWeekdayHasNoFootprintButIsNamed(): void
     {
         // NR of the PR-2 contract, amended by PR E2 (dette v): no habit on the
@@ -1270,12 +1295,15 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame([], $matchMatch);
     }
 
-    public function testTwoMatchesSameGymButOneAwayNoLongerConflictOnWarmupOnly(): void
+    public function testAwayWarmupClashesWithAnOverlappingHomeMatchOfASharedCoach(): void
     {
-        // INVERSÉ (lot M) — same gym, same times, but SM1 is AWAY. The old rule
-        // required both sides HOME, so the full windows overlapped 20:15→20:25 and a
-        // conflict stood. The warm-up now drops for the away side too (travel kept,
-        // here zero) → SM1 [20:45→22:30], no overlap with SM2 [18:30→20:25].
+        // INVERSÉ à nouveau (P4-240 ③, décision C) — SM1 est à l'EXTÉRIEUR à 20:45 :
+        // son échauffement AVANT (20:15→20:45) compte désormais pour une personne
+        // (elle doit être au gymnase adverse échauffée). Coach A partage SM2 (domicile,
+        // 115 min → [18:30, 20:25], échauffement toujours retranché à domicile — lot M)
+        // et SM1 (extérieur, sans trajet → [20:15, 22:30]). Le chevauchement [20:15,
+        // 20:25] = un vrai conflit (avant C, l'échauffement extérieur tombait et il n'y
+        // en avait pas).
         $sm2 = $this->fixture('fx-sm2', self::TEAM_1, '2026-10-03', '18:30');
         $sm2->setVenueId('jdr');
         $sm1 = $this->awayFixture('fx-sm1', self::TEAM_2, '2026-10-03', '20:45');
@@ -1286,7 +1314,8 @@ final class MatchConflictDetectorTest extends TestCase
             $this->detect([$sm2, $sm1], $links, profilesByTeam: [self::TEAM_1 => new MatchDurationProfile(115, 30)]),
             static fn (array $c): bool => 'MATCH_MATCH' === $c['type'],
         ));
-        self::assertSame([], $matchMatch);
+        self::assertCount(1, $matchMatch);
+        self::assertSame(self::COACH_A, $matchMatch[0]['coachId']);
     }
 
     public function testTwoHomeMatchesRealOverlapStillConflictAcrossGyms(): void

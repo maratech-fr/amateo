@@ -45,6 +45,13 @@ export function matchMinutesByCategory(durations: SportCategoryDuration[]): Map<
   return new Map(durations.map((category) => [category.id, category.matchMinutes ?? category.defaultMatchMinutes]));
 }
 
+/** Même patron pour l'ÉCHAUFFEMENT résolu par catégorie (P4-240 ③) : override de club
+ *  quand posé, sinon défaut de famille — servi par le serveur, jamais recalculé. Alimente
+ *  la chronologie extérieure (`awayTimeline`), qui compte l'échauffement avant le départ. */
+export function warmupMinutesByCategory(durations: SportCategoryDuration[]): Map<string, number> {
+  return new Map(durations.map((category) => [category.id, category.warmupMinutes ?? category.defaultWarmupMinutes]));
+}
+
 /** minutes since midnight → "HH:MM". */
 // D-20 : c'était la seule des trois copies à clamper — elle est devenue le foyer partagé.
 import { formatMinutes } from "@/shared/lib/time";
@@ -297,6 +304,14 @@ export function matchMinutesOf(teamId: string, teams: Map<string, Team>, duratio
   return undefined === minutes ? MATCH_MINUTES : minutes;
 }
 
+/** Durée effective (min) d'échauffement d'une équipe (P4-240 ③), miroir de `matchMinutesOf` :
+ *  `warmupMinutes` de sa catégorie quand le front la connaît, sinon le repli 30. */
+export function warmupMinutesOf(teamId: string, teams: Map<string, Team>, warmups: Map<string, number>): number {
+  const categoryId = teams.get(teamId)?.sportCategoryId;
+  const minutes = undefined === categoryId ? undefined : warmups.get(categoryId);
+  return undefined === minutes ? WARMUP_MINUTES : minutes;
+}
+
 /**
  * Bornes DESSINÉES d'un bloc de match (retour fondateur 2026-09-14) : début = coup
  * d'envoi ; fin = coup d'envoi + durée, ÉTIRÉE jusqu'au coup d'envoi suivant du même
@@ -347,6 +362,7 @@ export function buildWeekendGrid(
   weekendKey: string | null = null,
   stepMin = 15,
   durations: Map<string, number> = new Map(),
+  warmups: Map<string, number> = new Map(),
   showGhosts = true,
 ): WeekendGridModel {
   const placed = fixtures.filter(isPlacedOnGrid);
@@ -382,7 +398,7 @@ export function buildWeekendGrid(
   for (const fixture of awayFixtures) {
     const { hour } = awayHour(fixture, habits);
     if (null !== hour) {
-      const { departureMin, returnMin } = awayTimeline(timeToMinutes(hour), matchMinutesOf(fixture.teamId, teams, durations), fixture.awayTravel?.oneWayMinutes ?? null);
+      const { departureMin, returnMin } = awayTimeline(timeToMinutes(hour), matchMinutesOf(fixture.teamId, teams, durations), warmupMinutesOf(fixture.teamId, teams, warmups), fixture.awayTravel?.oneWayMinutes ?? null);
       min = Math.min(min, departureMin);
       max = Math.max(max, returnMin);
     }
@@ -494,7 +510,17 @@ export function buildWeekendGrid(
   // lot 3 PR-3a — les blocs de la colonne « Extérieur » (à heure : couloirs partagés ;
   // sans heure : bande en tête). Ils rejoignent les couloirs via `intervals`.
   const awayCells = buildAwayCells(
-    { awayFixtures, teams, habits, matchMinutesOf: (teamId) => matchMinutesOf(teamId, teams, durations), columnIndex, startMin, stepMin, bandRows },
+    {
+      awayFixtures,
+      teams,
+      habits,
+      matchMinutesOf: (teamId) => matchMinutesOf(teamId, teams, durations),
+      warmupMinutesOf: (teamId) => warmupMinutesOf(teamId, teams, warmups),
+      columnIndex,
+      startMin,
+      stepMin,
+      bandRows,
+    },
     intervals,
   );
   cells.push(...awayCells);

@@ -25,15 +25,20 @@ logger = logging.getLogger("engine.match_placement")
 # warm-up no longer occupies the venue (founder decision 2026-09-13: "you warm
 # up on the side during the previous match").
 #
-# ⚠ Lot M — the PERSON footprint (coach / NOT_SIMULTANEOUS link) ALSO drops the
-# warm-up now, mirroring MatchConflictDetector: a person coming from another
-# engagement only has to ARRIVE by the kickoff, the warm-up is hers to skip. So
-# the person window is [kickoff − travelOut, kickoff + matchMinutes + travelBack]
-# — warm-up-free, travel kept (an away arrival is a real drive). At home (no
-# travel) it collapses to [kickoff, kickoff + matchMinutes], i.e. the VENUE
-# window. warmupMinutes stays on the contract (no version bump) but the solver
-# no longer reads it for any window; keeping it avoids re-syncing the schemas for
-# a nil gain.
+# ⚠ Lot M — the PERSON footprint (coach / player / NOT_SIMULTANEOUS link) ALSO
+# drops the warm-up, mirroring MatchConflictDetector: a person coming from another
+# engagement only has to ARRIVE by the kickoff, the warm-up is hers to skip.
+#
+# ⚠ P4-240 ③ (décision B) — the placement solver IGNORES every person footprint of
+# an AWAY match: away matches project NO person window at all (« c'est la vie ; the
+# radar signals the conflict, we handle it after »). Only FIXED (home) anchors and
+# projected trainings hold a person; the only person window in play is therefore
+# [kickoff, kickoff + matchMinutes] (home = no travel, warm-up dropped = the VENUE
+# window). `roundTripMinutes` is still carried on the contract but no longer read.
+# A PERSON is a coach OR an active player (teams[].players, P4-240 ③): both project
+# and clash on the same window, a player weighted like a MAIN coach (W_COACH_MAIN).
+# warmupMinutes stays on the contract (no version bump) but the solver no longer
+# reads it for any window; keeping it avoids re-syncing the schemas for a nil gain.
 STEP_MIN = 15
 DEFAULT_MATCH_MIN = 105
 DEFAULT_WARMUP_MIN = 30
@@ -159,6 +164,24 @@ def _durations(team: MatchTeamSchema | None) -> tuple[int, int]:
     return team.match_minutes, team.warmup_minutes
 
 
+def _team_players(team: MatchTeamSchema | None) -> list[str]:
+    """The player person-ids of a team, MINUS anyone who also coaches it (the coach
+    role wins — parité MatchConflictDetector) and MINUS duplicates. The backend
+    already excludes coaches (PlayersPayloadParityTest); this belt keeps a defensive
+    double-listing from ever yielding a double malus (P4-240 ③)."""
+    if team is None:
+        return []
+    coach_ids = {ref.coach_id for ref in team.coaches}
+    seen: set[str] = set()
+    out: list[str] = []
+    for player_id in team.players:
+        if player_id in coach_ids or player_id in seen:
+            continue
+        seen.add(player_id)
+        out.append(player_id)
+    return out
+
+
 class _Candidate:
     __slots__ = ("kickoff_min", "var", "venue_id")
 
@@ -240,9 +263,10 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
     ([kickoff, kickoff + matchMinutes] — the warm-up no longer occupies the
     court, D1; FIXED matches consume their slot without being variables).
     SOFT: habits, A/B slot rotations (attraction + window protection, at parity
-    with habits — RMM-5), MAIN/ASSISTANT coach clashes (vs matches AND projected
-    trainings, on the PERSON window — warm-up-free since lot M), NOT_SIMULTANEOUS
-    links (same warm-up-free window), BACK_TO_BACK chains, habit-window
+    with habits — RMM-5), person clashes — coach (MAIN/ASSISTANT) or active player
+    (P4-240 ③) — vs FIXED anchors AND projected trainings, on the PERSON window
+    (warm-up-free since lot M; AWAY footprints ignored since P4-240 ③, décision B),
+    NOT_SIMULTANEOUS links (same window), BACK_TO_BACK chains, habit-window
     protection, day compaction, re-solve stability.
     """
     model = cp_model.CpModel()
@@ -397,28 +421,26 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
         objective.append(W_PLACE * is_placed[match.id])
 
     # 3. Per-candidate constant terms: habit bonus, stability, protection,
-    # coach clash vs FIXED/AWAY footprints and projected trainings. Lot M — the
-    # coach / person window is warm-up-FREE: [kickoff − travelOut, kickoff +
-    # matchMinutes + travelBack]. At home (no travel) it is [kickoff, kickoff +
-    # matchMinutes] — the person only has to arrive by the kickoff.
+    # person clash vs FIXED footprints and projected trainings. P4-240 ③ (décision
+    # B): only FIXED (home anchors) project a person window — AWAY matches are
+    # IGNORED by the placement solver (« c'est la vie ; le radar signale le conflit »),
+    # so no travel leg survives here. Lot M — the person window is warm-up-FREE, and
+    # FIXED = home = no travel, so it is [kickoff, kickoff + matchMinutes]. A PERSON is
+    # a coach OR an active player (P4-240 ③): both project the same window.
     fixed_windows_by_coach: dict[tuple[str, date], list[tuple[int, int]]] = {}
-    for match in input_data.matches:
-        if match.kind == "TO_PLACE" or match.kickoff is None:
+    for match in fixed:
+        if match.kickoff is None:  # guarded by the schema (a FIXED match is anchored)
             continue
         team = teams_by_id.get(match.team_id)
         if team is None:
             continue
         match_min, _ = _durations(team)
-        # D3 — an AWAY window grows by the round trip to the opponent: half the trip
-        # before the kickoff (outbound), the rest after the match (return). Replicates
-        # MatchFootprint EXACTLY (intdiv / `//`): the coach is protected while away.
-        # FIXED (home anchors) carry no travel leg. Lot M — no warm-up either side.
-        travel_out = match.round_trip_minutes // 2 if match.kind == "AWAY" else 0
-        travel_back = (match.round_trip_minutes - match.round_trip_minutes // 2) if match.kind == "AWAY" else 0
-        start = _minutes(match.kickoff) - travel_out
-        end = _minutes(match.kickoff) + match_min + travel_back
+        start = _minutes(match.kickoff)
+        end = start + match_min
         for ref in team.coaches:
             fixed_windows_by_coach.setdefault((ref.coach_id, match.match_date), []).append((start, end))
+        for player_id in _team_players(team):
+            fixed_windows_by_coach.setdefault((player_id, match.match_date), []).append((start, end))
     for occupancy in input_data.training_occupancies:
         fixed_windows_by_coach.setdefault((occupancy.coach_id, occupancy.occupancy_date), []).append(
             (_minutes(occupancy.start), _minutes(occupancy.end))
@@ -502,13 +524,18 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
             for p_start, p_end in protected.get((cand.venue_id, match.match_date), []):
                 if venue_start < p_end and p_start < venue_end:
                     weight -= W_PROTECT_HABIT
-            # Coach clash is a PERSON conflict → the warm-up-FREE person window (lot M).
+            # Person clash (coach OR active player) → the warm-up-FREE person window
+            # (lot M). A player weighs W_COACH_MAIN, like a MAIN coach (P4-240 ③).
             if team is not None:
                 for ref in team.coaches:
                     role_weight = W_COACH_MAIN if ref.role == "MAIN" else W_COACH_ASSISTANT
                     for f_start, f_end in fixed_windows_by_coach.get((ref.coach_id, match.match_date), []):
                         if person_start < f_end and f_start < person_end:
                             weight -= role_weight
+                for player_id in _team_players(team):
+                    for f_start, f_end in fixed_windows_by_coach.get((player_id, match.match_date), []):
+                        if person_start < f_end and f_start < person_end:
+                            weight -= W_COACH_MAIN
             if weight:
                 objective.append(weight * cand.var)
 
@@ -532,21 +559,26 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
                     model.add(both >= lc.var + rc.var - 1)
                     objective.append(-penalty * both)
 
-    coach_roles: dict[str, dict[str, str]] = {}
+    # Per-(team, person) penalty weight: a MAIN coach and a PLAYER both weigh
+    # W_COACH_MAIN, an ASSISTANT W_COACH_ASSISTANT (P4-240 ③). A PERSON = coach OR
+    # active player; the coach role wins on her own team (setdefault + `_team_players`
+    # exclusion), so she is weighted once. For coach-only clubs this is byte-identical
+    # to the old MAIN-or-MAIN rule (max of two weights = the old role pick).
+    person_weights: dict[str, dict[str, int]] = {}
     for team in input_data.teams:
         for ref in team.coaches:
-            coach_roles.setdefault(team.id, {})[ref.coach_id] = ref.role
+            person_weights.setdefault(team.id, {})[ref.coach_id] = (
+                W_COACH_MAIN if ref.role == "MAIN" else W_COACH_ASSISTANT
+            )
+        for player_id in _team_players(team):
+            person_weights.setdefault(team.id, {}).setdefault(player_id, W_COACH_MAIN)
     for i, left in enumerate(solvable):
         _ensure_budget()
         for right in solvable[i + 1 :]:
-            shared = set(coach_roles.get(left.team_id, {})) & set(coach_roles.get(right.team_id, {}))
-            for coach_id in shared:
-                role = (
-                    "MAIN"
-                    if coach_roles[left.team_id][coach_id] == "MAIN" or coach_roles[right.team_id][coach_id] == "MAIN"
-                    else "ASSISTANT"
-                )
-                _overlap_pairs(left, right, W_COACH_MAIN if role == "MAIN" else W_COACH_ASSISTANT, f"coach_{coach_id}")
+            shared = set(person_weights.get(left.team_id, {})) & set(person_weights.get(right.team_id, {}))
+            for person_id in shared:
+                penalty = max(person_weights[left.team_id][person_id], person_weights[right.team_id][person_id])
+                _overlap_pairs(left, right, penalty, f"coach_{person_id}")
 
     matches_by_team: dict[str, list[MatchSchema]] = {}
     for match in solvable:

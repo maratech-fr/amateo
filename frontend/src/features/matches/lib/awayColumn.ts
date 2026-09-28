@@ -68,6 +68,8 @@ export interface AwayLayout {
   habits: TeamMatchHabit[];
   /** Durée effective (min) du match d'une équipe — partagée avec le layout domicile. */
   matchMinutesOf: (teamId: string) => number;
+  /** Échauffement effectif (min) d'une équipe (P4-240 ③) — compté avant le départ extérieur. */
+  warmupMinutesOf: (teamId: string) => number;
   /** Clé de colonne `${dateKey}:away` → index 0-based dans le tableau `columns`. */
   columnIndex: Map<string, number>;
   startMin: number;
@@ -84,7 +86,7 @@ export interface AwayLayout {
  * cellules À HEURE pour qu'`assignLanes` les réparte.
  */
 export function buildAwayCells(layout: AwayLayout, intervals: { startMin: number; endMin: number; cell: WeekendCell }[]): WeekendCell[] {
-  const { awayFixtures, teams, habits, matchMinutesOf, columnIndex, startMin, stepMin, bandRows } = layout;
+  const { awayFixtures, teams, habits, matchMinutesOf, warmupMinutesOf, columnIndex, startMin, stepMin, bandRows } = layout;
   const cells: WeekendCell[] = [];
   // Un compteur de blocs sans heure PAR colonne (par date) : ils s'empilent verticalement.
   const unknownSlotByColumn = new Map<number, number>();
@@ -136,10 +138,12 @@ export function buildAwayCells(layout: AwayLayout, intervals: { startMin: number
 
     const start = timeToMinutes(hour);
     const matchMinutes = matchMinutesOf(fixture.teamId);
+    const warmupMinutes = warmupMinutesOf(fixture.teamId);
     const oneWay = fixture.awayTravel?.oneWayMinutes ?? null;
-    // Correctif 10 : le bloc couvre départ → retour (trajet aller-retour VISIBLE) quand l'aller
-    // est connu — même étendue que celle que compte le radar serveur pour une personne.
-    const { departureMin, matchEndMin, returnMin } = awayTimeline(start, matchMinutes, oneWay);
+    // Correctif 10 + P4-240 ③ : le bloc s'étend de l'échauffement AVANT le départ (toujours) et
+    // du trajet aller-retour (quand l'aller est connu) — même étendue que la fenêtre personne
+    // du radar serveur (`MatchFootprint::personConflictOccupancy`, miroir `awayTimeline`).
+    const { departureMin, matchEndMin, returnMin } = awayTimeline(start, matchMinutes, warmupMinutes, oneWay);
     const hasTravel = null !== oneWay;
     const cell: WeekendCell = {
       ...base,

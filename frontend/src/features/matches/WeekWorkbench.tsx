@@ -76,6 +76,7 @@ interface WeekWorkbenchProps {
   windows: LeagueWindow[];
   outOfEnvelope: Set<string>;
   matchDurations: Map<string, number>;
+  warmupDurations: Map<string, number>;
   newFingerprints: ReadonlySet<string>;
   /** « Semaine type » (interrupteur de la page) : les fantômes d'habitude sur la grille. */
   showGhosts: boolean;
@@ -125,6 +126,7 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
     windows,
     outOfEnvelope,
     matchDurations,
+    warmupDurations,
     newFingerprints,
     showGhosts,
     hiddenBreakdown,
@@ -164,8 +166,8 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
     reopenFixture.isPending;
 
   const grid = useMemo(
-    () => buildWeekendGrid(weekendFixtures, venuesMap, teamsMap, outOfEnvelope, habits, activeWeekend, 15, matchDurations, showGhosts),
-    [weekendFixtures, venuesMap, teamsMap, outOfEnvelope, habits, activeWeekend, matchDurations, showGhosts],
+    () => buildWeekendGrid(weekendFixtures, venuesMap, teamsMap, outOfEnvelope, habits, activeWeekend, 15, matchDurations, warmupDurations, showGhosts),
+    [weekendFixtures, venuesMap, teamsMap, outOfEnvelope, habits, activeWeekend, matchDurations, warmupDurations, showGhosts],
   );
 
   const selectedFixture = allFixtures.find((f) => f.id === selectedFixtureId) ?? null;
@@ -388,7 +390,7 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
         {radarLoaded ? <ConflictRadar conflicts={radarConflicts} teams={teamsMap} coaches={coachesMap} venues={venuesMap} newFingerprints={newFingerprints} onFocusConflict={onFocusConflict} /> : null}
       </div>
       {null !== awayReadOnly ? (
-        <AwayFixtureCard fixture={awayReadOnly} teams={teamsMap} habits={habits} matchDurations={matchDurations} onClose={() => setAwayReadOnly(null)} />
+        <AwayFixtureCard fixture={awayReadOnly} teams={teamsMap} habits={habits} matchDurations={matchDurations} warmupDurations={warmupDurations} onClose={() => setAwayReadOnly(null)} />
       ) : null}
     </div>
   );

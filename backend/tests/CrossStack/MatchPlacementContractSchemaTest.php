@@ -77,9 +77,12 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         self::assertArrayHasKey('unavailabilities', $venue);
 
         $team = $payload['teams'][0];
-        foreach (['id', 'name', 'leagueWindows', 'habits', 'coaches', 'matchMinutes', 'warmupMinutes'] as $key) {
+        foreach (['id', 'name', 'leagueWindows', 'habits', 'coaches', 'players', 'matchMinutes', 'warmupMinutes'] as $key) {
             self::assertArrayHasKey($key, $team);
         }
+        // P4-240 ③ — aucun membership seedé ⇒ players [] (champ ADDITIF, contrat 2.24
+        // inchangé : un payload sans le champ garde le comportement coach-only).
+        self::assertSame([], $team['players']);
         self::assertSame(['dayOfWeek' => 6, 'kickoff' => '15:30', 'venueId' => null], $team['habits'][0]);
         // Durées PAR CATÉGORIE (P4-203) : la catégorie « U13-… » sans override
         // hérite du défaut de famille U13-U15 = 90 / 30.
