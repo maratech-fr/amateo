@@ -1,4 +1,4 @@
-import { Info, MousePointerClick } from "lucide-react";
+import { Info, MousePointerClick, Wand2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
@@ -18,7 +18,7 @@ import type { HiddenWeekBreakdown } from "./lib/consultFilter";
 import { resolveEnvelope } from "./lib/envelope";
 import { offModelCount, sameWeekendRotationCount } from "./lib/loopSteps";
 import type { CoachTeamRole } from "./lib/matchFilter";
-import { isPlacedOnGrid, weekendKeyOf } from "./lib/weekendGrid";
+import { isPlacedOnGrid, weekBounds, weekendKeyOf } from "./lib/weekendGrid";
 import { buildWeekendGrid } from "./lib/weekendGrid";
 import { PlacementPanel } from "./PlacementPanel";
 import type { PlacementGuards } from "./PlacementPanel";
@@ -92,6 +92,15 @@ interface WeekWorkbenchProps {
   onFocusConflict: (conflict: Conflict) => void;
   /** Correctif 2 — « Quitter le focus » : retire le filtre coach + la surbrillance (URL nettoyée). */
   onQuitFocus: () => void;
+  /** P4-240 ④ — « Placer ce week-end » : place la fenêtre Lun→Dim de la semaine affichée
+   *  (même rail que le bouton global de la page). La semaine reçoit sa fenêtre calendaire. */
+  onPlaceWeekend: (window: { from: string; to: string }) => void;
+  /** Un placement (global ou week-end) est en cours — le bouton se met en attente. */
+  placePending: boolean;
+  /** Pool de crédits épuisé (`!canPlaceMatches`) → bouton désactivé (verdict SERVEUR). */
+  placeCreditsBlocked: boolean;
+  /** Suffixe de crédits « (n) » en offre Découverte, "" sinon (même affichage que le bouton global). */
+  placeCreditSuffix: string;
 }
 
 /**
@@ -135,6 +144,10 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
     focusedConflict,
     onFocusConflict,
     onQuitFocus,
+    onPlaceWeekend,
+    placePending,
+    placeCreditsBlocked,
+    placeCreditSuffix,
   } = props;
 
   const { selectedFixtureId, setSelectedFixtureId, highlightedFixtureIds, swapSourceId, setSwapSourceId, unplacedReasons, setSelectedWeekend } = useMatchesStore();
@@ -350,6 +363,20 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
     // borne la piste, la grille défile en interne, jamais la page.
     <div className="grid gap-4 lg:grid-cols-[minmax(18rem,20rem)_minmax(0,1fr)]">
       <div className="flex flex-col gap-4">
+        {/* P4-240 ④ — place la SEULE semaine affichée (fenêtre Lun→Dim), le seul rail de
+            placement automatique ouvert en offre Découverte. */}
+        <Button
+          size="sm"
+          className="w-full"
+          disabled={placePending || placeCreditsBlocked}
+          onClick={() => {
+            const { monday, sunday } = weekBounds(activeWeekend);
+            onPlaceWeekend({ from: monday, to: sunday });
+          }}
+        >
+          <Wand2 className="size-4" />
+          {placePending ? "Placement…" : `Placer ce week-end${placeCreditSuffix}`}
+        </Button>
         <Card>
           <CardHeader>
             <CardTitle id={PLACE_HEADING_ID} tabIndex={-1} className="text-base outline-none">

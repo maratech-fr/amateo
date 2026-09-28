@@ -292,6 +292,15 @@ describe("CalendarPage — la Semaine (ex-boucle, fusion PR 3b)", () => {
     expect(await screen.findByRole("button", { name: "Placer automatiquement" })).toBeEnabled();
   });
 
+  it("Découverte AVEC crédits : le bouton global est désactivé + explication vers la vue Semaine (P4-240 ④)", async () => {
+    // Crédits restants (canPlaceMatches vrai) mais offre bridée : le placement GLOBAL est fermé,
+    // seul « Placer ce week-end » reste ouvert. Le bouton porte quand même le solde (7).
+    meState.club = { entitlements: { planCode: "decouverte", planName: "Découverte", maxTeams: null, teamsUsed: 4, creditsMax: 10, creditsUsed: 3, canGenerate: true, canPlaceMatches: true, canExportPdf: true, seasonTransition: false } };
+    renderWithProviders(<CalendarPage />, { route: EXPLICIT });
+    expect(await screen.findByRole("button", { name: /Placer automatiquement \(7\)/ })).toBeDisabled();
+    expect(screen.getByText(/placez week-end par week-end depuis la vue Semaine/)).toBeInTheDocument();
+  });
+
   it("montre la bande extérieur ET le radar gradué dans le même établi", async () => {
     renderWithProviders(<CalendarPage />, { route: EXPLICIT });
     expect(await screen.findByText(/à Grenoble \(Halle Clemenceau\)/)).toBeInTheDocument();

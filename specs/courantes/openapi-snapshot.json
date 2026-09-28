@@ -12657,16 +12657,42 @@
                         "description": "Unauthorized (missing/expired JWT)"
                     },
                     "403": {
-                        "description": "Not a management member"
+                        "description": "Not a management member \u2014 or, on the D\u00e9couverte credit plan, automatic placement must be week-end by week-end (send a one-week window)"
                     },
                     "409": {
                         "description": "Placement already running, season plan not chosen, or archived season"
+                    },
+                    "422": {
+                        "description": "Invalid window (a bound is not a date, or from is after to)"
                     },
                     "502": {
                         "description": "Engine unreachable \u2014 retry, nothing was written"
                     }
                 },
-                "summary": "Auto-place the unplaced home matches (writes PLACED+SOLVER; manual anchors never move)"
+                "summary": "Auto-place the unplaced home matches (writes PLACED+SOLVER; manual anchors never move)",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "description": "Optional placement window: place only the matches dated within [from, to] (\u00ab Placer ce week-end \u00bb); the already-placed matches outside it stay fixed. No body = the whole club. On the D\u00e9couverte credit plan the window is mandatory and at most one week (Mon\u2192Sun).",
+                                "properties": {
+                                    "from": {
+                                        "type": "string",
+                                        "format": "date",
+                                        "description": "First day of the window (AAAA-MM-JJ), inclusive"
+                                    },
+                                    "to": {
+                                        "type": "string",
+                                        "format": "date",
+                                        "description": "Last day of the window (AAAA-MM-JJ), inclusive"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
             }
         },
         "/api/fixtures/review": {

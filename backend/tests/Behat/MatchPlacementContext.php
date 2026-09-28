@@ -73,6 +73,11 @@ final class MatchPlacementContext extends BaseContext
 
     private string $sunday = '';
 
+    private string $otherSaturday = '';
+
+    /** @var array<mixed> */
+    private array $otherFixture = [];
+
     /** @var list<array{id: string, venueId: string, startTime: string, endTime: string}> */
     private array $sundayWindows = [];
 
@@ -539,6 +544,92 @@ final class MatchPlacementContext extends BaseContext
 
         if ('no_access_window' !== $reason) {
             throw new RuntimeException(\sprintf('le match du dimanche aurait dû rester sans fenêtre d\'accès, raison obtenue « %s »', \is_string($reason) ? $reason : 'aucune'));
+        }
+    }
+
+    #[Given('un match à domicile à placer le week-end prochain')]
+    public function unMatchAPlacerLeWeekEndProchain(): void
+    {
+        $this->competitionId = $this->createdId(
+            $this->apiPost('competitions', ['teamId' => $this->teamId, 'name' => 'Championnat jetable WE', 'competitionType' => 'CHAMPIONSHIP'], $this->token),
+            'compétition du week-end prochain',
+        );
+        $this->fxSat = $this->createdId(
+            $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $this->saturday, 'homeAway' => 'HOME', 'opponentLabel' => 'Adversaire proche', 'competitionId' => $this->competitionId], $this->token),
+            'match du week-end prochain',
+        );
+    }
+
+    #[Given('un match déjà posé par le solveur sur un autre week-end, à 20h00')]
+    public function unMatchDejaPoseSurUnAutreWeekEnd(): void
+    {
+        // Deux semaines plus tard : hors de la fenêtre [lundi, dimanche] du week-end prochain.
+        $paris = new DateTimeZone('Europe/Paris');
+        $this->otherSaturday = new DateTimeImmutable($this->saturday, $paris)->modify('+14 days')->format('Y-m-d');
+
+        $this->competitionId2 = $this->createdId(
+            $this->apiPost('competitions', ['teamId' => $this->secondTeamId, 'name' => 'Championnat jetable autre WE', 'competitionType' => 'CHAMPIONSHIP'], $this->token),
+            'compétition de l\'autre week-end',
+        );
+        $this->fxSat2 = $this->createdId(
+            $this->apiPost('fixtures', ['teamId' => $this->secondTeamId, 'matchDate' => $this->otherSaturday, 'homeAway' => 'HOME', 'opponentLabel' => 'Adversaire lointain', 'competitionId' => $this->competitionId2], $this->token),
+            'match de l\'autre week-end',
+        );
+
+        // Posé PAR LE SOLVEUR à 20h00, HORS de la fenêtre d'accès 14h00-18h00 : si le
+        // placement le re-résolvait, il devrait le déplacer (ou le laisser sans créneau) —
+        // rester à 20h00 prouve qu'il est traité en ANCRE (FIXED), jamais renvoyé au solveur.
+        $this->dbalExec(
+            \sprintf(
+                'UPDATE fixture SET status=\'PLACED\', placement_source=\'SOLVER\', venue_id=\'%s\', kickoff_time=\'20:00:00\' WHERE id=\'%s\'',
+                $this->venueId,
+                $this->fxSat2,
+            ),
+            admin: true,
+        );
+    }
+
+    #[When('je lance le placement du seul week-end prochain')]
+    public function jeLancePlacementDuSeulWeekEndProchain(): void
+    {
+        // Fenêtre Lun→Dim de la semaine du samedi prochain (le grain de « Placer ce week-end »).
+        $paris = new DateTimeZone('Europe/Paris');
+        $from = new DateTimeImmutable($this->saturday, $paris)->modify('-5 days')->format('Y-m-d');
+        $to = new DateTimeImmutable($this->saturday, $paris)->modify('+1 day')->format('Y-m-d');
+
+        $result = $this->apiPost('fixtures/place', ['from' => $from, 'to' => $to], $this->token);
+        if (200 !== $result['status']) {
+            throw new RuntimeException(\sprintf('le placement du week-end a répondu %d (200 attendu)', $result['status']));
+        }
+        $this->placeResult = $result['json'];
+
+        $this->satFixture = $this->apiGet(\sprintf('fixtures/%s', $this->fxSat), $this->token)['json'];
+        $this->otherFixture = $this->apiGet(\sprintf('fixtures/%s', $this->fxSat2), $this->token)['json'];
+    }
+
+    #[Then('le match du week-end prochain est placé par le solveur')]
+    public function leMatchDuWeekEndProchainEstPlace(): void
+    {
+        if ('PLACED' !== ($this->satFixture['status'] ?? null)) {
+            throw new RuntimeException(\sprintf('le match du week-end prochain n\'est pas placé (statut « %s »)', \is_string($this->satFixture['status'] ?? null) ? $this->satFixture['status'] : 'inconnu'));
+        }
+        if ('SOLVER' !== ($this->satFixture['placementSource'] ?? null)) {
+            throw new RuntimeException('le match du week-end prochain n\'a pas été placé par le solveur');
+        }
+    }
+
+    #[Then('le match de l\'autre week-end n\'a pas bougé, toujours à 20h00 et posé par le solveur')]
+    public function leMatchDeLAutreWeekEndNaPasBouge(): void
+    {
+        $kickoff = $this->otherFixture['kickoffTime'] ?? null;
+        if (!\is_string($kickoff) || !str_starts_with($kickoff, '20:00')) {
+            throw new RuntimeException(\sprintf('le match de l\'autre week-end a bougé : coup d\'envoi « %s » au lieu de 20:00 — l\'ancre hors fenêtre a été re-résolue', \is_string($kickoff) ? $kickoff : 'aucun'));
+        }
+        if ('PLACED' !== ($this->otherFixture['status'] ?? null) || 'SOLVER' !== ($this->otherFixture['placementSource'] ?? null)) {
+            throw new RuntimeException('le match de l\'autre week-end n\'est plus posé par le solveur — il aurait dû rester intact');
+        }
+        if (($this->otherFixture['venueId'] ?? null) !== $this->venueId) {
+            throw new RuntimeException('le match de l\'autre week-end a changé de gymnase — l\'ancre n\'a pas été respectée');
         }
     }
 

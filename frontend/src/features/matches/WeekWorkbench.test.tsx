@@ -104,6 +104,10 @@ function baseProps(over: Partial<Props> = {}): Props {
     focusedConflict: null,
     onFocusConflict: vi.fn(),
     onQuitFocus: vi.fn(),
+    onPlaceWeekend: vi.fn(),
+    placePending: false,
+    placeCreditsBlocked: false,
+    placeCreditSuffix: "",
     ...over,
   };
 }
@@ -322,5 +326,26 @@ describe("WeekWorkbench — badges de signal (rendus seulement si > 0, pluriels)
 
     renderWorkbench({ weekendFixtures: [homeA, homeB], allFixtures: [homeA, homeB], rotations: [rot("r1"), rot("r2")] });
     expect(await screen.findByText(/^2 créneaux partagés : deux équipes reçoivent ce week-end$/)).toBeInTheDocument();
+  });
+});
+
+describe("WeekWorkbench — « Placer ce week-end » (P4-240 ④)", () => {
+  it("le bouton place la fenêtre Lun→Dim de la semaine affichée (samedi 2026-10-03 → 28/09 au 04/10)", async () => {
+    const onPlaceWeekend = vi.fn();
+    const user = userEvent.setup();
+    renderWorkbench({ onPlaceWeekend });
+    await user.click(await screen.findByRole("button", { name: /Placer ce week-end/ }));
+    expect(onPlaceWeekend).toHaveBeenCalledTimes(1);
+    expect(onPlaceWeekend).toHaveBeenCalledWith({ from: "2026-09-28", to: "2026-10-04" });
+  });
+
+  it("porte le suffixe de crédits comme le bouton global, et se désactive à pool épuisé", async () => {
+    const onPlaceWeekend = vi.fn();
+    const user = userEvent.setup();
+    renderWorkbench({ onPlaceWeekend, placeCreditSuffix: " (3)", placeCreditsBlocked: true });
+    const button = await screen.findByRole("button", { name: /Placer ce week-end \(3\)/ });
+    expect(button).toBeDisabled();
+    await user.click(button);
+    expect(onPlaceWeekend).not.toHaveBeenCalled();
   });
 });

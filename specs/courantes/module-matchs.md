@@ -1,30 +1,16 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-28 (P4-240 PR ③, §2/§3 recalés contre le code : `engine/app/solver/
-match_placement.py::_place_matches` — la boucle des fenêtres personne ne parcourt plus que `fixed`
-(ancres domicile) et `training_occupancies`, `_team_players` exclut les coachs des joueurs,
-`person_weights` pèse une joueuse comme `W_COACH_MAIN` ✓ ; `engine/app/schemas/
-match_input_schema.py` — `MatchTeamSchema.players` additif (`MAX_PLAYERS_PER_TEAM=60`),
-`round_trip_minutes` transporté non consommé ✓ ; `backend/src/Service/MatchFootprint.php::
-personConflictLeadMinutes` — 0 à domicile, `travelOutMinutes + warmupMinutes` à l'extérieur ✓ ;
-`backend/src/Service/MatchPlacementPayloadBuilder.php` — `teams[].players` = `CoachPlayerMembership`
-actifs moins les coachs de la même équipe, `trainingOccupancies` étendues aux joueurs actifs du
-créneau ✓ ; `frontend/src/features/matches/lib/awayKickoff.ts::awayTimeline` — départ = coup
-d'envoi − échauffement (− trajet si connu) ✓) ; (P4-240 warm-start, §3 : `_remaining_reason` tranche
-`not_selected`/`venue_full` sur l'occupation finale ; `backend/src/Controller/
-PlaceMatchesController.php` — budget 60 s de bout en bout, verrou 120 s, HTTP 90 s ;
-`engine/app/core/config.py`/`main.py` — sémaphore global `max_concurrent_placements=1` ;
-`engine/CONTRACT_VERSION` **2.24**) ; (P4-267 — §1/§5/§6 : trois colonnes NULLABLES
-`address`/`postalCode`/`city` sur `OpponentVenueLink` (`backend/src/Entity/OpponentVenueLink.php`,
-migration `Version20260928120000`), posées à l'appariement/repoint/auto-locate
-(`OpponentVenueLinkManager::writeGym`, `OpponentVenueAutoLocator::writeAutoLink`), jamais recopiées
-dans `OpponentVenueSuggestion` ✓ ; `AwayFixtureCard` rend le logo fédéral (`OpponentLogo`) et une
-ligne « Adresse » seulement si `awayTravel.address`/`.city`/`.postalCode` la portent
-(`AwayFixtureCard.tsx:58-76`) ✓ ; l'arrivée sur le Calendrier depuis `conflit=`/`match=` recentre la
-grille en plus de `focusFixtureCell` (`useCalendarUrlSync.ts:156-173`, `block: "center"`) ✓ ; un
-conflit sans coach de l'onglet Conflits filtre sur les `teamId` des deux côtés au lieu de
-sélectionner un match (`ConflictsPage.tsx:365-374`) ✓). Reste du contenu non réaudité cette
-passe. Historique : `git log -p --follow specs/courantes/module-matchs.md`.
+Last verified @ 2026-09-28 (P4-240 PR ④, §3/§5 recalés contre le code : `PlaceMatchesController::
+place` — corps `{from, to}` optionnel, 422 si une borne n'est pas une date AAAA-MM-JJ ou si `from` >
+`to`, 403 Découverte (`PlanEntitlements::outputBudget()['restricted']`) sans fenêtre ou fenêtre >
+`MAX_WINDOW_DAYS=6` jours ✓ ; `MatchPlacementPayloadBuilder::build`/`matchRow` — `$window` restreint
+les candidats TO_PLACE à l'intérieur, bascule un domicile posé HORS fenêtre en ancre FIXED et omet un
+extérieur hors fenêtre, `null` = payload inchangé à l'octet ✓ ; `frontend/src/features/matches/
+CalendarPage.tsx::runPlacement` — maison unique du placement (bouton global + « Placer ce week-end »
+de `WeekWorkbench`), `placeRestricted = credits !== null` désactive le bouton global avec message ✓ ;
+`WeekWorkbench.tsx` — bouton dédié pose `weekBounds(activeWeekend)` (lundi→dimanche) ✓). Reste du
+contenu (P4-240 ③, P4-267 et antérieur) non réaudité cette passe. Historique : `git log -p --follow
+specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
 > d'une PR. Le JOURNAL (qui a livré quoi, quand, sous quel id) vit dans
@@ -486,6 +472,18 @@ date/équipe, candidat préféré = habitude/rotation, sinon placement SOLVER co
 licite libre) pose un seul jeu de hints CP-SAT — il absorbe l'ancien hint de stabilité, jamais deux hints
 contradictoires sur un même match (ADR-0003 §4).
 
+**Fenêtre de placement optionnelle `{from, to}` (P4-240 ④)** : le corps JSON de la requête est
+optionnel — deux dates AAAA-MM-JJ incluses (422 si invalide ou `from` postérieur à `to`), sinon
+comportement inchangé, byte-identique à l'ancien payload (tout le club). Avec une fenêtre : DANS la
+fenêtre, les candidats TO_PLACE partent normalement au solveur ; HORS fenêtre, un domicile déjà posé
+(venue+kickoff, y compris par le solveur) devient une **ancre FIXED** — sa salle reste protégée, il ne
+bouge jamais et le résultat ne le réécrit pas — un domicile non posé est absent du payload, et un
+extérieur hors fenêtre est omis (depuis ③ le solveur ignore son empreinte personne, il ne portait plus
+que sa date). En offre Découverte (mode restreint, `PlanEntitlements::outputBudget()['restricted']`,
+club non démo, pool > 0), le placement automatique se fait UNIQUEMENT semaine par semaine : un appel
+sans fenêtre, ou avec une fenêtre de plus de 7 jours calendaires, est refusé 403 — défense SERVEUR
+derrière le bouton global désactivé (§5) ; 1 clic reste 1 crédit (`CreditBudgetSubscriber`, inchangé).
+
 **HARD** : fenêtres d'accès match (le match SEUL dedans, D1 — `kickoff ≥ start`,
 `kickoff+matchMinutes ≤ end`), indisponibilités gymnase, no-overlap `(gymnase, date)` sur la fenêtre
 MATCH, fenêtre ligue quand l'enveloppe est résolue (non résolue = diagnostic INFO seul). Durées par
@@ -530,7 +528,9 @@ laissée libre est couverte par `FRIENDLY_ON_MATCH_SLOT` (§2), pas par une cont
 
 Le backend PROJETTE (occupations d'entraînement datées, heure extérieure estimée, enveloppe ligue
 résolue serveur), l'engine reste plat. UI : bouton « Placer automatiquement » sur le Calendrier
-(spinner, toast « N placés · M non plaçables », raisons par match).
+(spinner, toast « N placés · M non plaçables », raisons par match) — désactivé, avec une explication,
+en offre Découverte ; bouton dédié « Placer ce week-end » dans l'établi Semaine (P4-240 ④, §5), même
+rail (`runPlacement`), même toast, fenêtre posée sur la semaine lundi→dimanche affichée.
 
 **Boucle manuelle** : chaque match cliquable ouvre `PlacementPanel` — Déplacer, Dé-placer,
 Verrouiller/Rendre au solveur (`placementSource` écho — refusé en 422 si le placement bouge),
@@ -621,6 +621,13 @@ le layout — la nav des six onglets reste inchangée.
   `ResourceFilter` de `features/planning`) → filtre type de compétition → scope temporel → familles
   de conflit. Coach = équipes coachées (principal+assistant) **+** équipes où il joue
   (`CoachPlayerMembership`). Filtre gymnase : le match doit y être POSÉ (les extérieurs en sortent).
+- **Placement automatique — bouton global vs. « Placer ce week-end » (P4-240 ④)** : la barre
+  d'actions du Calendrier porte le bouton global (tout le club, §3) ; en offre Découverte (crédits
+  bridés, `useCredits` non nul), il est désactivé avec un message renvoyant vers l'établi Semaine,
+  et seul le bouton dédié « Placer ce week-end » de `WeekWorkbench` reste ouvert — il pose la
+  fenêtre lundi→dimanche de la semaine affichée (`lib/weekendGrid.ts::weekBounds`) et lance le MÊME
+  rail (`runPlacement`, maison unique dans `CalendarPage`) : même rafraîchissement, même toast, même
+  suffixe de crédits. Hors Découverte, les deux boutons coexistent librement.
 - **`WeekWorkbench`** (temporalité Semaine, l'établi) : liste « À placer » couvrant TOUTES les
   semaines filtrées (pas seulement l'affichée) ; panneau de placement PERMANENT ; grille week-end
   (colonne « Extérieur » — dernière colonne du groupe de date qui porte ≥1 AWAY, blocs non

@@ -1,12 +1,12 @@
-Last verified @ 2026-09-28 (snapshot régénéré : la réponse de `POST /api/fixtures/place` porte la
-raison d'échec `not_selected` dans l'énumération `unplaced[].reason` — distincte de `venue_full` :
-un créneau licite restait libre mais le solveur ne l'a pas retenu dans le temps imparti (P4-240) ;
-la propriété `awayTravel` de `Fixture` (lecture) mentionne dans sa DESCRIPTION les champs
-`address`/`postalCode` de l'adresse du gymnase apparié (P4-267) — objet à `additionalProperties`,
-seule la description bouge ; aucun chemin ajouté, compte inchangé, empreinte recalculée).
+Last verified @ 2026-09-28 (snapshot régénéré : `POST /api/fixtures/place` accepte désormais un
+corps OPTIONNEL `{from, to}` (dates AAAA-MM-JJ) qui restreint le placement à cette semaine
+(« Placer ce week-end », P4-240 ④) — sans corps, tout le club, inchangé ; sa réponse gagne un `422`
+(fenêtre invalide : une borne n'est pas une date, ou from après to) et sa `403` couvre en outre le
+régime crédit Découverte, où le placement automatique doit se faire week-end par week-end ; aucun
+chemin ajouté, compte inchangé, empreinte recalculée).
 
 **208 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`2268084d603c7210e9b1bedae8a595a5728fbcc55fccdc83c76d1f8faf4d2434` (`sha256sum` sur le fichier).
+`70a91a119729c97a11afb9e6f83fc1483122f86218a05e601b6ad0aedb0023a4` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

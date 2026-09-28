@@ -128,6 +128,21 @@ fixes, ce chevauchement rendait le modèle entier INFAISABLE et tout ressortait 
 « rendre au solveur » (SOLVER, accepté par le serveur SEULEMENT à placement inchangé — 422 sinon :
 on ne peut pas étiqueter SOLVER un placement qu'on vient de choisir à la main).
 
+**Une fenêtre calendaire optionnelle produit des ancres SUPPLÉMENTAIRES (P4-240 ④)** :
+`PlaceMatchesController` accepte un corps `{from, to}` optionnel (dates incluses, 422 si invalide),
+transmis à `MatchPlacementPayloadBuilder::build()`. Sans corps, le payload est identique à l'octet.
+Avec une fenêtre, un match HORS fenêtre bascule dans la branche d'ancrage même s'il aurait été
+TO_PLACE sans elle : posé (venue+kickoff, solveur compris) → FIXED, protégé au même titre qu'un
+placement manuel ; non posé → absent du payload ; un extérieur hors fenêtre est omis (son empreinte
+personne est déjà ignorée depuis la décision B, il ne portait que sa date). C'est le mécanisme
+derrière « Placer ce week-end » (`specs/courantes/module-matchs.md` §3/§5) : résoudre une seule
+semaine sans jamais remettre en jeu un placement déjà posé ailleurs, gardé par le scénario Behat
+« placer un week-end ne déplace pas un match posé ailleurs ». **En offre Découverte** (mode restreint,
+`PlanEntitlements::outputBudget()['restricted']`, club non démo, pool > 0), c'est la SEULE fenêtre
+admise : le contrôleur refuse 403 un appel sans fenêtre ou dont l'écart `from`→`to` dépasse 6 jours
+(une semaine calendaire) — défense serveur derrière le bouton global désactivé côté front, 1 clic =
+1 crédit inchangé (`CreditBudgetSubscriber`).
+
 ### 6. Le backend PROJETTE, l'engine reste plat
 
 Les règles métier ne traversent pas la frontière : occupations d'entraînement **datées** projetées par

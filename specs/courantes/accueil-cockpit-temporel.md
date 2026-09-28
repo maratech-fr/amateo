@@ -1,9 +1,10 @@
 # Accueil « cockpit temporel »
 
-Last verified @ 2026-09-26 (`documentation-update`) contre le code : `stalenessMessage`
-importée/utilisée dans `frontend/src/features/planning/PlanningPage.tsx:45,634` ✓,
+Last verified @ 2026-09-28 (rotation `documentation-update`, zone non touchée par la PR P4-240 ④,
+contrôle de fraîcheur) contre le code : `stalenessMessage`
+importée/utilisée dans `frontend/src/features/planning/PlanningPage.tsx:47,649` ✓ (lignes recalées),
 `App\Service\CalendarEntryRedatability::isRedatable` sert bien le champ `redatable`
-(`backend/src/Service/CalendarEntryRedatability.php:32`) ✓. Historique de ce fichier :
+(`backend/src/Service/CalendarEntryRedatability.php:49`) ✓ (ligne recalée). Historique de ce fichier :
 `git log -p --follow` dessus.
 
 > **Statut** : livré — cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2. Ce document fixe le
