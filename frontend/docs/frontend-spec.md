@@ -9,7 +9,9 @@ re-confrontées : `SeasonPlanBanner.tsx` rend « Modifier les données du club �
 `socleValidated`, `WizardLayout.tsx` dérive `seasonEditLocked = !periodMode && socleValidated` et
 verrouille `constraints`/`generate` dans le `StepRail` ✓, `VenueAvailabilityGrid.tsx` rend un
 `readOnly` inerte (`<div>` au lieu d'un `<button>`) sur les cellules et créneaux ✓, `queries.ts`
-invalide `["team_coaches"]`/`["coach_player_memberships"]` en plus des clés wizard ✓). Reste non
+invalide `["team_coaches"]`/`["coach_player_memberships"]` en plus des clés wizard ✓, et
+`TeamsStep.tsx` passe « Séances/sem » d'une équipe existante en `readOnly` sous `useSocleValidated()`
+— création libre — ✓). Reste non
 re-sondé cette passe — historique : `git log -p --follow` ce fichier. §6.7 reste hors périmètre
 (régime narratif plus dense, taille à l'aveugle refusée) — P4-262 en roadmap.
 
@@ -425,12 +427,26 @@ Le gestionnaire ne voit jamais le concept de `club_id` ou `season_id`. Le fronte
   modifications s'appliqueront à la prochaine génération » et les étapes **Contraintes** et
   **Génération** sont verrouillées dans le `StepRail` — confort seul, le serveur refuse déjà la
   génération d'une version de saison pointée (`SocleGuard`, §3.2bis de
-  `planning-lifecycle-validated.md`). Équipes, Gymnases et Coachs restent pleinement accessibles.
+  `planning-lifecycle-validated.md`). Gymnases et Coachs restent pleinement accessibles ; l'étape
+  Équipes l'est aussi **à une exception près** (voir plus bas : le nombre de séances d'une équipe
+  existante y est verrouillé, comme les créneaux).
   L'étape Gymnases (`VenuesStep`/`VenueAvailabilityGrid`) y passe la grille des créneaux
   d'entraînement en **lecture seule** (`readOnly`, cellules et créneaux non cliquables, mention
   « rouvrez le planning pour les modifier ») — la fiche du gymnase reste éditable, et un
   deep-link `?slot=` n'y ouvre plus l'éditeur de créneau. Hors ce régime (onboarding, ou après
   un « Rouvrir »), la grille garde l'édition normale.
+  L'étape Équipes (`TeamsStep`) y passe le champ **« Séances/sem » d'une équipe existante en
+  lecture seule** (`readOnly` — décision fondateur 2026-09-28 : le nombre de séances par semaine
+  est une **contrainte** du planning en vigueur, au même titre que les créneaux, `useSocleValidated()`
+  gouverne le verrou). La valeur reste **visible** (readOnly, pas `disabled` — le champ ne sort pas
+  de l'ordre de tabulation et reste lu), et une explication unique au-dessus de la liste dit
+  « Rouvrez le planning de la saison pour modifier le nombre de séances ». Le **rang** (priorité,
+  flèches/« Trier ») et le **niveau** restent éditables (le niveau garde sa garde « équipe engagée »).
+  ⚠ La **création** d'une équipe reste libre : le champ « Séances/sem » du formulaire d'ajout n'est
+  jamais verrouillé (sinon aucune équipe neuve ne pourrait recevoir son nombre de séances) — le
+  verrou porte sur l'ÉDITION d'une équipe existante, pas sur la création. La surcharge de période
+  (`PeriodTeams`, mode période) et la mutualisation ne passent PAS par ce chemin et sont inchangées.
+  Hors ce régime (onboarding, ou après un « Rouvrir »), le champ redevient éditable.
 - **Invalidation croisée wizard→planning des liens coach** (`wizard/queries.ts`) : les mutations
   de lien équipe↔coach (`useCreateTeamCoach`/`useDeleteTeamCoach`) et coach-joueur
   (`useCreateCoachPlayer`/`useDeleteCoachPlayer`/`useDeleteCoach`) invalident désormais, en plus
