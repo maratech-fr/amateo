@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 import pathlib
 import re
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET  # nosemgrep: python.lang.security.use-defused-xml.use-defused-xml -- script de test jamais expédié : parse un .xlsx COMMITÉ de confiance (specs/initiales/rechercherRencontre.xlsx), aucune entrée externe ni utilisateur
 import zipfile
 from collections import defaultdict
 from datetime import date, datetime
