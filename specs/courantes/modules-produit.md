@@ -1,13 +1,12 @@
 # Modules produit — ce qu'Amateo vend, en langage club
 
-Last verified @ 2026-09-26 (rotation de fraîcheur, `documentation-update`). Re-confronté au code :
-le wizard compte toujours 6 étapes dans l'ordre cité (`frontend/src/features/wizard/lib/steps.ts`
-— teams/venues/coaches/constraints/recap/generate) ; `FfbbClubPopulator.php` et
+Last verified @ 2026-09-28 (rotation de fraîcheur, `documentation-update`). Re-confronté au code :
+le wizard compte toujours 6 étapes dans l'ordre cité (`frontend/src/features/wizard/lib/
+steps.ts:9-16` — teams/venues/coaches/constraints/recap/generate) ; `FfbbClubPopulator.php` et
 `FfbbTeamImporter.php` existent toujours (`backend/src/Service/Basketball/`) ; les rappels
-d'échéance J-14/J-7/J-3 tiennent (`PeriodReminderCommand.php:194`, `TransitionReminderCommand.php:
-212`, `PeriodReminderMailBuilder.php:26`) ; l'échéance par compétition qui alerte sans bloquer
-(RMM-6) tient (`EntryDeadlineOutlook.php:21-35`, aucune garde bloquante). Reste du fichier non
-re-sondé cette passe.
+d'échéance J-14/J-7/J-3 tiennent (`PeriodReminderCommand.php:31,40`) ; l'échéance par compétition
+qui alerte sans bloquer (RMM-6) tient (`EntryDeadlineOutlook.php:39-40`, fenêtre J-7, aucune garde
+bloquante). Reste du fichier non re-sondé cette passe.
 
 > **Rôle de ce fichier.** `etat-des-lieux.md` §1 est la carte technique (entités, PR, pointeurs) —
 > ce fichier est sa **couche en langage club** : ce que le produit fait, dit à qui le vit sur le

@@ -1,25 +1,26 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-09-28 (P4-240 : `CONTRACT_VERSION` **2.24** ; `UnplacedMatchSchema.reason` porte
-désormais `not_selected` en plus des quatre raisons existantes, `REASON_MESSAGES` dans
-`match_placement.py` fait foi ; passe « présent » `documentation-update`, brief engine 2/4).
-Re-confronté au code : `CONTRACT_VERSION` = **2.24** (`engine/CONTRACT_VERSION`) ✓ ; les **six
-endpoints** inchangés (`/`, `/health`, `/generate`, `/place-matches`, `/validate-assignments`,
-`/implicit-constraints`, `engine/app/main.py:775-885`) ✓ ; `DEFAULT_MATCH_MIN=105`/
-`DEFAULT_WARMUP_MIN=30` dans `match_placement.py:38-39` ✓ ; `ConstraintRuleType` ne porte que
-HARD/PREFERRED/LOCK (`backend/src/Enum/ConstraintRuleType.php`, `BONUS` absent) ✓ ;
-`PLACEMENT_PROXIMITY_WEIGHT = 9` dans `app/solver/objective/weights.py:191` ✓ ;
+Last verified @ 2026-09-28 (P4-240, `CONTRACT_VERSION` **2.24** inchangée) : PR ③ —
+`match_placement.py::_place_matches` — la boucle des fenêtres personne ne parcourt plus QUE
+`fixed` + `training_occupancies` (plus de jambes de trajet AWAY), `_team_players` exclut les
+coachs des joueurs, `person_weights` pèse une joueuse comme `W_COACH_MAIN` ✓ ;
+`match_input_schema.py` — `MatchTeamSchema.players` additif (`MAX_PLAYERS_PER_TEAM=60`),
+`round_trip_minutes` toujours au schéma mais non lu par le solveur ✓. PR ① — `UnplacedMatchSchema.
+reason` porte `not_selected` en plus des quatre raisons existantes, `REASON_MESSAGES` dans
+`match_placement.py` fait foi ; les **six endpoints** inchangés (`/`, `/health`, `/generate`,
+`/place-matches`, `/validate-assignments`, `/implicit-constraints`, `engine/app/main.py:775-885`) ;
+`DEFAULT_MATCH_MIN=105`/`DEFAULT_WARMUP_MIN=30` dans `match_placement.py:38-39` ; `ConstraintRuleType`
+ne porte que HARD/PREFERRED/LOCK (`backend/src/Enum/ConstraintRuleType.php`, `BONUS` absent) ;
+`PLACEMENT_PROXIMITY_WEIGHT = 9` dans `app/solver/objective/weights.py:191` ;
 `previousAssignments` est bien ÉMIS par le backend en régénération
-(`backend/src/Service/ScheduleConstraintBuilder.php:678`) — corrige une mention « inerte » du
-§3 ✓ ; le payload `/generate` n'a **aucune** clé racine `priorityTiers` peuplée, les tiers
-voyagent en contraintes `PRIORITY_TIER` (`ScheduleConstraintBuilder.php:570`) — corrige le §6 ✓ ;
-`socleReferenceAssignments`/`SOCLE_REFERENCE_TIER_WEIGHTS` confirmés (`input_schema.py:238,354`,
-`objective/weights.py:280-289`) ✓ ; durées de match par équipe et `roundTripMinutes` confirmés
-(`match_input_schema.py`, `match_placement.py`) ✓ ; `constraint_not_honored` a bien deux
-producteurs, `_not_honored_warning` appelé depuis `parsing.py` (parse) et depuis
-`diagnose_locked_slot_violations` (post-construction) ✓. Reste de l'inventaire (détail des
-sections sous la ligne 40) non re-sondé cette passe — voir `git log -p --follow` pour sa
-dernière vérification.
+(`backend/src/Service/ScheduleConstraintBuilder.php:678`) ; le payload `/generate` n'a **aucune**
+clé racine `priorityTiers` peuplée, les tiers voyagent en contraintes `PRIORITY_TIER`
+(`ScheduleConstraintBuilder.php:570`) ; `socleReferenceAssignments`/`SOCLE_REFERENCE_TIER_WEIGHTS`
+confirmés (`input_schema.py:238,354`, `objective/weights.py:280-289`) ; `constraint_not_honored` a
+bien deux producteurs, `_not_honored_warning` appelé depuis `parsing.py` (parse) et depuis
+`diagnose_locked_slot_violations` (post-construction). Reste de l'inventaire (détail des sections
+sous la ligne 40) non re-sondé cette passe — voir `git log -p --follow` pour sa dernière
+vérification.
 
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.
 > Source de vérité : `engine/app/main.py`, `engine/app/schemas/input_schema.py`, `engine/app/schemas/output_schema.py`, `engine/app/solver/{model,constraints,objective,result_builder}.py`, `engine/app/core/config.py`.
@@ -107,17 +108,29 @@ jeton, l'autre vérifie que deux placements restent sérialisés.
   `matchMinutes`/`warmupMinutes` (défauts Pydantic **105/30**, résolus côté backend par
   `MatchDurationResolver` — catégorie sinon défaut de famille 75/90/105). La **salle** ne tient
   que le MATCH `[kickoff, kickoff + matchMinutes]` — l'échauffement ne l'occupe plus (décision
-  fondateur : « on s'échauffe sur le côté pendant le match précédent »). La fenêtre **personne**
-  (coach / lien `NOT_SIMULTANEOUS`) est, elle aussi, sans échauffement : `[kickoff − travelOut,
-  kickoff + matchMinutes + travelBack]`, qui se réduit à `[kickoff, kickoff + matchMinutes]` à
-  domicile (pas de trajet). `warmupMinutes` reste au schéma (pas de bump) mais n'est plus lu par
-  aucune fenêtre du solveur.
+  fondateur : « on s'échauffe sur le côté pendant le match précédent »). Une **personne** est un
+  coach OU une joueuse active (`teams[].players`, P4-240 ③ décision A — voir plus bas). La fenêtre
+  **personne** (coach/joueuse, lien `NOT_SIMULTANEOUS`) ne provient plus **que** des matchs FIXED
+  (domicile déjà ancré) et des `training_occupancies` : un match `AWAY` ne projette **plus aucune**
+  fenêtre personne (P4-240 ③ décision B — « c'est la vie », le radar reste seul à signaler
+  l'indisponibilité réelle). La fenêtre personne vaut donc toujours `[kickoff, kickoff +
+  matchMinutes]`, sans échauffement ni trajet. `warmupMinutes` reste au schéma (pas de bump) mais
+  n'est plus lu par aucune fenêtre du solveur.
+- **`teams[].players`** (`MatchTeamSchema`, P4-240 ③ décision A, additif — `CONTRACT_VERSION`
+  inchangée **2.24**, `max_length` **60**) : ids `CoachPlayerMembership` actifs de l'équipe, le
+  backend excluant déjà toute personne qui coache AUSSI cette équipe (le rôle coach gagne, parité
+  `MatchConflictDetector` — gardé par `PlayersPayloadParityTest`, **bloquant**). Le solveur
+  applique la même exclusion en défense (`_team_players`) et pèse une joueuse comme un coach MAIN
+  (`W_COACH_MAIN`, SOFT). `trainingOccupancies` est étendu côté backend aux joueurs actifs de
+  l'équipe du créneau, en plus des coachs.
 - **`roundTripMinutes`** (`matches[]`, AWAY seulement, `int` 0-1440, défaut 0) : le trajet
   aller-retour vers l'adversaire, projeté par la maison unique
   `App\Service\OpponentTravelProjection` (partagée avec le radar de conflits côté backend).
-  Étend la fenêtre personne du coach — moitié avant le coup d'envoi (`travelOut`), moitié après
-  le match (`travelBack`) —, réplique exacte de `MatchFootprint::personConflictOccupancy`. Défaut
-  0 ⇒ aucune extension (match non-AWAY ou trajet inconnu).
+  TRANSPORTÉ par le contrat mais **plus consommé** par le solveur depuis P4-240 ③ (décision B) —
+  un match `AWAY` ne projette plus de fenêtre personne du tout, donc plus de jambe de trajet à
+  y porter. Le radar de conflits (backend, `MatchFootprint`) continue de le consommer : à
+  l'extérieur, sa fenêtre de conflit personne compte désormais aussi l'échauffement avant le
+  trajet aller (décision C, hors solveur).
 - **`slotRotations`** (RMM-5, `venueId`/`dayOfWeek`/`kickoff`/`teamIds`) : un créneau de match
   PARTAGÉ tourne entre équipes membres (rareté des créneaux — la case SM1/SM2 20:30, semaine A
   une équipe reçoit, semaine B l'autre). CONSOMMÉ en SOFT (jamais HARD) : le match HOME d'un
@@ -306,11 +319,14 @@ Contrat **2.24** (le MÊME que `/generate` — un seul contrat pour les trois en
   profondeur au bord) = jour + `kickoffMin`/`kickoffMax` imposés par la ligue,
   `habits: list[TeamHabitSchema]` ≤7 = jour + heure-point + gymnase optionnel,
   `coaches: list[TeamCoachRefSchema]` ≤20 avec `role`
-  MAIN/ASSISTANT, `matchMinutes`/`warmupMinutes` — durées résolues par le backend, défauts
+  MAIN/ASSISTANT, `players: list[str]` ≤60 (`MAX_PLAYERS_PER_TEAM`, P4-240 ③ décision A — ids
+  `CoachPlayerMembership` actifs, additif, une joueuse pèse comme un coach MAIN),
+  `matchMinutes`/`warmupMinutes` — durées résolues par le backend, défauts
   105/30, cf. §POST /place-matches), **`MatchSchema`** (un match daté : `kind`
   `TO_PLACE`/`FIXED`/`AWAY`, `venueId`/`kickoff` (requis si `FIXED`), `currentVenueId`/
-  `currentKickoff` pour le hint de stabilité, `roundTripMinutes` — trajet AWAY, cf.
-  §POST /place-matches), **`SlotRotationSchema`** (`venueId`/`dayOfWeek`/`kickoff`/`teamIds` ≤20 —
+  `currentKickoff` pour le hint de stabilité, `roundTripMinutes` — trajet AWAY, **transporté mais
+  non consommé par le solveur depuis P4-240 ③ décision B**, cf. §POST /place-matches),
+  **`SlotRotationSchema`** (`venueId`/`dayOfWeek`/`kickoff`/`teamIds` ≤20 —
   rotation de créneau partagé, cf. §POST /place-matches).
 - **`MatchPlacementOutputSchema`** : `status`, `placements: list[MatchPlacementSchema]`
   (`matchId`, `venueId`, `kickoff`), **`unplaced: list[UnplacedMatchSchema]`** (`matchId`,

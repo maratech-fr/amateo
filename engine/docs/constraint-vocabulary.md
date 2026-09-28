@@ -1,19 +1,16 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-09-26 (passe « le présent » `documentation-update`, brief engine 3/4). Re-confronté
-au code : une fermeture datée `venue_closed` **ne produit aucune contrainte** — elle retire les
-`trainingSlots` du gymnase les jours fermés (`backend/src/Service/ScheduleConstraintBuilder.php:252-257`,
-`ConstraintValidationService.php:43-98`) — corrige deux mentions d'un ancien élargissement en
-`forbiddenVenueId` qui n'existe plus ✓ ; le modèle de bloc de mutualisation (liage `x ≥ b`,
-`Σ b == commonSessions`, `Σ b ≥ 1` par case toute-épinglée, `x ≤ Σ b` sur le membre libre porté par
-un partenaire verrouillé, distinctness inter-blocs) relu contre `engine/app/solver/constraints/
-targeting.py:371-538` et `structural.py:100-165` ✓ ; l'élection du bloc MAXIMAL en sur-capacité
-(`_fold_case_occupant_identity`, `constraints/common.py:142-178`) ✓ ; les trois diagnostics
-`shared_block_not_honored`/`shared_block_broken`/`shared_block_overformed` toujours en place
-(`result_builder/diagnostics.py`, `validate_assignments.py`) ✓ ; le pointeur d'exclusivité groupe
-(D1) vers `backend/docs/constraint-coverage.md` §Axe GYMNASE (❌) et `specs/evolution/roadmap.md`
-§Parking existe encore ✓. Non re-sondé cette passe : le reste du vocabulaire détaillé ci-dessous —
-un stamp REMPLACE, l'historique vit dans git.
+Last verified @ 2026-09-28 (rotation de fraîcheur `documentation-update`, brief P4-240 ③). Re-confronté
+au code : `COACH_PLAYER_NO_OVERLAP` toujours posé par `add_coach_player_non_overlap`
+(`engine/app/solver/constraints/structural.py`, listé `constraints/__init__.py:7,197,253`) — ce
+mécanisme reste propre au solve hebdo `/generate`, sans lien avec la protection coach/joueur du
+solveur de placement (`/place-matches`, `docs/architecture/adr-0003-match-placement-solve.md`) ✓ ;
+`SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"` (`engine/app/solver/objective/
+weights.py:31`) ✓ ; `LEVEL_2_OBJECTIVE_WEIGHTS` toujours exporté (`engine/app/solver/__init__.py`)
+✓ ; `sharedBlocks` cap `MAX_SHARED_TRAINING_BLOCKS = 50` (`engine/app/schemas/input_schema.py:32`)
+✓ ; la famille `FACILITY_CAPACITY` reste absente du moteur, seul un commentaire au passé subsiste
+(`engine/app/main.py:447`) ✓. Non re-sondé cette passe : le reste du vocabulaire détaillé
+ci-dessous — un stamp REMPLACE, l'historique vit dans git.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.

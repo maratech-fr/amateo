@@ -1,10 +1,20 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-28 (P4-240, §3 recalé contre le code : `engine/app/solver/match_placement.py`
-— warm-start glouton un seul jeu de hints, `_remaining_reason` tranche `not_selected`/`venue_full` sur
-l'occupation finale ; `backend/src/Controller/PlaceMatchesController.php` — budget 60 s de bout en bout,
-verrou 120 s, HTTP 90 s ; `engine/app/core/config.py`/`main.py` — sémaphore global
-`max_concurrent_placements=1` ; `engine/CONTRACT_VERSION` **2.24**) ; (P4-267 — §1/§5/§6 re-confrontés : trois colonnes NULLABLES
+Last verified @ 2026-09-28 (P4-240 PR ③, §2/§3 recalés contre le code : `engine/app/solver/
+match_placement.py::_place_matches` — la boucle des fenêtres personne ne parcourt plus que `fixed`
+(ancres domicile) et `training_occupancies`, `_team_players` exclut les coachs des joueurs,
+`person_weights` pèse une joueuse comme `W_COACH_MAIN` ✓ ; `engine/app/schemas/
+match_input_schema.py` — `MatchTeamSchema.players` additif (`MAX_PLAYERS_PER_TEAM=60`),
+`round_trip_minutes` transporté non consommé ✓ ; `backend/src/Service/MatchFootprint.php::
+personConflictLeadMinutes` — 0 à domicile, `travelOutMinutes + warmupMinutes` à l'extérieur ✓ ;
+`backend/src/Service/MatchPlacementPayloadBuilder.php` — `teams[].players` = `CoachPlayerMembership`
+actifs moins les coachs de la même équipe, `trainingOccupancies` étendues aux joueurs actifs du
+créneau ✓ ; `frontend/src/features/matches/lib/awayKickoff.ts::awayTimeline` — départ = coup
+d'envoi − échauffement (− trajet si connu) ✓) ; (P4-240 warm-start, §3 : `_remaining_reason` tranche
+`not_selected`/`venue_full` sur l'occupation finale ; `backend/src/Controller/
+PlaceMatchesController.php` — budget 60 s de bout en bout, verrou 120 s, HTTP 90 s ;
+`engine/app/core/config.py`/`main.py` — sémaphore global `max_concurrent_placements=1` ;
+`engine/CONTRACT_VERSION` **2.24**) ; (P4-267 — §1/§5/§6 : trois colonnes NULLABLES
 `address`/`postalCode`/`city` sur `OpponentVenueLink` (`backend/src/Entity/OpponentVenueLink.php`,
 migration `Version20260928120000`), posées à l'appariement/repoint/auto-locate
 (`OpponentVenueLinkManager::writeGym`, `OpponentVenueAutoLocator::writeAutoLink`), jamais recopiées
@@ -387,17 +397,19 @@ chevauchement de périodes.
 **D1 (échauffement salle seule, hors des conflits de PERSONNE)** : la fenêtre SALLE (sans
 échauffement) sert `VENUE_OVERLAP`/`MATCH_SLOT_WINDOW` — deux matchs enchaînés à 2 h d'écart ne
 collisionnent pas. **Fenêtre de conflit PERSONNE**
-(`MatchFootprint::personConflictOccupancy`/`personConflictOccupancyAt`, occupation MOINS
-l'échauffement, trajet AWAY conservé) : une personne engagée deux fois — joueuse OU coach, sans
-distinction de rôle — n'est en conflit QUE si son arrivée dépasse le coup d'envoi du second
-engagement, quel que soit le gymnase ; arrivée pile au coup d'envoi = pas de conflit (chevauchement
-demi-ouvert). `MATCH_MATCH` et le côté match de `MATCH_TRAINING` testent le chevauchement sur cette
-fenêtre ; les bornes SERVIES par côté (`windowStart`/`windowEnd`) restent la fenêtre PERSONNE
-complète (échauffement inclus, § « Détail par côté » ci-dessous) — seul le TEST de chevauchement en
-diffère. À domicile il n'y a pas de trajet, la fenêtre de conflit y vaut donc exactement la fenêtre
-effective d'occupation. Cas fondateur : une personne coache à l'extérieur (retour estimé 19h17) et
-joue à domicile (coup d'envoi 19h30) — arrivée avant le coup d'envoi, aucun conflit, même règle que
-pour un coach.
+(`MatchFootprint::personConflictOccupancy`/`personConflictOccupancyAt`) retranche l'échauffement à
+DOMICILE seulement (aucun trajet, la fenêtre de conflit y vaut donc exactement la fenêtre salle) ; à
+l'EXTÉRIEUR l'échauffement est COMPTÉ (P4-240 ③, décision C — la personne doit être échauffée au
+gymnase adverse), la fenêtre de conflit y vaut donc la fenêtre effective d'occupation complète
+(échauffement + trajet aller avant, trajet retour après). Une personne engagée deux fois — joueuse
+OU coach, sans distinction de rôle — n'est en conflit QUE si son arrivée dépasse le coup d'envoi du
+second engagement, quel que soit le gymnase ; arrivée pile au coup d'envoi = pas de conflit
+(chevauchement demi-ouvert). `MATCH_MATCH` et le côté match de `MATCH_TRAINING` testent le
+chevauchement sur cette fenêtre ; les bornes SERVIES par côté (`windowStart`/`windowEnd`) restent la
+fenêtre PERSONNE complète (échauffement inclus, § « Détail par côté » ci-dessous) — seul le TEST de
+chevauchement en diffère à domicile. Cas fondateur : une personne coache à l'extérieur (retour
+estimé 19h17) et joue à domicile (coup d'envoi 19h30) — arrivée avant le coup d'envoi, aucun
+conflit, même règle que pour un coach.
 
 **Amicaux** (`competitionId` null) : jamais comparés aux fenêtres ligue, jamais soumis aux
 fenêtres/week-ends de match (ni solveur ni garde de placement manuel — juste un avertissement) ;
@@ -478,19 +490,34 @@ contradictoires sur un même match (ADR-0003 §4).
 `kickoff+matchMinutes ≤ end`), indisponibilités gymnase, no-overlap `(gymnase, date)` sur la fenêtre
 MATCH, fenêtre ligue quand l'enveloppe est résolue (non résolue = diagnostic INFO seul). Durées par
 équipe (`MatchDurationResolver`) portées par le contrat ; absentes côté engine ⇒ défauts Pydantic
-105/30. **Trajet adversaire (D3, contrat 2.24)** : une ligne AWAY porte `roundTripMinutes` (2 ×
-aller simple, projeté par la maison unique `App\Service\OpponentTravelProjection`, partagée avec
-le radar §2) ; le solveur étend la fenêtre de blocage du coach de ce trajet — moitié avant
-le coup d'envoi, moitié après le match, SANS échauffement dans cette fenêtre (réplique exacte de
-`MatchFootprint::personConflictOccupancy`) — pour le protéger pendant son déplacement. Absent/0
-(adversaire sans trajet connu) ⇒ aucune extension. **SOFT (golden-épinglés)** : conflit coach MAIN
-−60 · passerelle `NOT_SIMULTANEOUS` violée −40 (⚠ **asymétrie délibérée** : le radar §2 ne signale
+105/30.
+
+**Personne = coach OU joueuse active (P4-240 ③, décision A)** : chaque équipe du contrat porte
+`teams[].players` (ids `CoachPlayerMembership` actifs, additif, `CONTRACT_VERSION` inchangée
+**2.24**) en plus de `teams[].coaches` — le backend exclut déjà toute personne qui coache AUSSI
+cette équipe (le rôle coach gagne, parité `MatchConflictDetector`, gardé par le NR bloquant
+`PlayersPayloadParityTest`) ; le solveur applique la même exclusion en défense
+(`_team_players`). Une joueuse pèse comme un coach MAIN (`W_COACH_MAIN`, SOFT) — les
+`trainingOccupancies` projetées sont étendues de la même façon aux joueurs actifs de l'équipe du
+créneau (`MatchPlacementPayloadBuilder::trainingOccupancies`).
+
+**Le solveur IGNORE toute empreinte personne d'un match EXTÉRIEUR (P4-240 ③, décision B)** : la
+boucle des fenêtres personne ne parcourt plus que les ancres FIXED (domicile, déjà posées) et les
+entraînements projetés — un match AWAY ne bloque plus aucun coach ni joueuse côté solveur
+(`roundTripMinutes` reste transporté par le contrat, plus consommé). « C'est la vie » (fondateur) :
+le solveur ne peut de toute façon pas déplacer un match extérieur (l'heure est imposée par
+l'adversaire) ; le RADAR (§2) reste la seule source qui signale une indisponibilité réelle liée à un
+extérieur, le gestionnaire arbitre après coup. Un AWAY reste émis au contrat : il libère la
+protection d'habitude/rotation de son équipe ce jour-là (`team_dates`). Conséquence : la fenêtre
+personne du solveur ne provient plus JAMAIS d'un trajet ni d'un échauffement — elle vaut toujours la
+fenêtre salle `[kickoff, kickoff+matchMinutes]` (lot M + décision B).
+
+**SOFT (golden-épinglés)** : conflit personne (coach MAIN ou joueuse active) −60 · coach ASSISTANT
+−10 · passerelle `NOT_SIMULTANEOUS` violée −40 (⚠ **asymétrie délibérée** : le radar §2 ne signale
 jamais cette famille, le solveur GARDE cette préférence souple — sens sûr, une pénalité SOFT ne
 bloque jamais rien, à ne pas « aligner » en la retirant) · habitude heure +15/gymnase +5 · fenêtre
-habituelle protégée −25 · `BACK_TO_BACK` enchaîné +15 · coach ASSISTANT −10 · stabilité re-solve +8
-· compactage −1/15 min de trou. Les fenêtres coach et passerelle sont **toutes deux** sans
-échauffement — à domicile (candidats TO_PLACE, aucun trajet) la fenêtre personne vaut la fenêtre
-salle. La rotation A/B
+habituelle protégée −25 · `BACK_TO_BACK` enchaîné +15 · stabilité re-solve +8 · compactage −1/15 min
+de trou. La rotation A/B
 (`slotRotations`, §1) ajoute une attraction équivalente (`W_ROTATION_TIME=15`/`W_ROTATION_VENUE=5`)
 et une protection de fenêtre (`W_PROTECT_HABIT=25`) — une équipe ne porte jamais habitude ET
 rotation le même jour (suppléance côté backend), les deux bonus ne s'additionnent donc jamais.
@@ -645,14 +672,17 @@ le layout — la nav des six onglets reste inchangée.
   « Semaine type ») : bloc translucide pointillé, dissous par la réalité (tout match de l'équipe ce
   jour-là, extérieur compris). L'estimation d'heure d'un extérieur ne dépend jamais de cet
   interrupteur.
-- **Trajet aller-retour d'un extérieur dessiné sur son bloc** (`lib/awayKickoff.ts::awayTimeline`,
-  foyer unique partagé par la colonne de grille, `AwayFixtureCard` et la fiche lecture seule) : à
-  coup d'envoi connu et trajet aller simple `awayTravel.oneWayMinutes` connu, le bloc couvre
-  `[coup d'envoi − aller, coup d'envoi + match + aller]` (l'aller de CHAQUE côté — exactement ce que
-  le radar serveur compte pour une personne, `MatchFootprint::personConflictOccupancy`) avec des
-  repères départ/retour ; trajet inconnu ⇒ le bloc reste réduit au match. Légende conditionnelle
-  « Trajet aller-retour » (`WeekendGridLegend`, hachures `muted`) affichée seulement quand un bloc
-  du week-end porte ce trajet dessiné.
+- **Échauffement + trajet aller-retour d'un extérieur dessinés sur son bloc**
+  (`lib/awayKickoff.ts::awayTimeline`, 🔴 miroir déclaré de
+  `MatchFootprint::personConflictOccupancy` régime AWAY — gardé par `AwayTimelineMirrorParityTest`
+  ⇄ `awayTimeline.parity.test.ts`, foyer unique partagé par la colonne de grille, `AwayFixtureCard`
+  et la fiche lecture seule) : à coup d'envoi connu, le départ recule TOUJOURS de l'échauffement de
+  l'équipe (P4-240 ③, décision C — on doit être échauffé au gymnase adverse) et, quand le trajet
+  aller simple `awayTravel.oneWayMinutes` est connu, du trajet aller en plus (le bloc couvre
+  `[coup d'envoi − échauffement − aller, coup d'envoi + match + aller]`) avec des repères
+  départ/retour ; trajet inconnu ⇒ le départ reste `coup d'envoi − échauffement`, le retour se
+  réduit à la fin du match. Légende conditionnelle « Trajet aller-retour » (`WeekendGridLegend`,
+  hachures `muted`) affichée seulement quand un bloc du week-end porte un trajet dessiné.
 - **Temporalités Mois/Phase** : Mois = table groupée par jour ; Phase = une `Competition`
   appariée, en-tête « N/M journées » (`expected: null` pour une `CUP`, pas de dénominateur).
   `MatchRowsTable` (ligne partagée) : date/heure, équipe+rôle, dom./ext., adversaire, gymnase
