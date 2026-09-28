@@ -1,10 +1,13 @@
 # Accueil « cockpit temporel »
 
-Last verified @ 2026-09-28 (rotation `documentation-update`, zone non touchée par la PR P4-240 ④,
-contrôle de fraîcheur) contre le code : `stalenessMessage`
-importée/utilisée dans `frontend/src/features/planning/PlanningPage.tsx:47,649` ✓ (lignes recalées),
+Last verified @ 2026-09-28 (`documentation-update`, P4-268 PR B). Re-confronté au code :
+`SeasonPlanBanner.tsx` ne porte plus de bouton « Modifier » qui rouvre — seuls « Ouvrir » (→
+`/planning`, où vit « Rouvrir ») et, socle validé, « Modifier les données du club » (→ wizard
+étape Équipes, sans rouvrir) ✓ — les mentions narratives de « Modifier » = reopen dans ce fichier
+(§1bis, §2bis, §5, §6ter) sont recalées sur le libellé réel « Rouvrir ». `stalenessMessage`
+importée/utilisée dans `frontend/src/features/planning/PlanningPage.tsx:47,649` ✓,
 `App\Service\CalendarEntryRedatability::isRedatable` sert bien le champ `redatable`
-(`backend/src/Service/CalendarEntryRedatability.php:49`) ✓ (ligne recalée). Historique de ce fichier :
+(`backend/src/Service/CalendarEntryRedatability.php:49`) ✓. Historique de ce fichier :
 `git log -p --follow` dessus.
 
 > **Statut** : livré — cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2. Ce document fixe le
@@ -46,7 +49,7 @@ travail préliminaire des calendriers secondaires.
    │   COCKPIT (accueil) — débloqué par la génération    │
    │   bandeau (socle) · calendrier d'exceptions · radar  │
    └──────┬───────────────────────────────┬──────────────┘
-          │ clic date / « Adapter »         │ « Modifier » le socle
+          │ clic date / « Adapter »         │ « Rouvrir » le socle
           ▼                                 ▼
    ┌──────────────────────┐      ┌──────────────────────────────┐
    │  WIZARD mode PÉRIODE   │      │  WIZARD mode LIBRE            │
@@ -95,7 +98,7 @@ contre le socle ; si on le change, ils ne valent plus.
 - **Tant qu'aucun calendrier secondaire n'existe** (typiquement en **début de saison** — les
   contraintes coach arrivent encore le 12 septembre), on **remanie le socle librement**, sans
   friction : **rien ne dépend encore de lui**. Le figer de force serait absurde.
-- **Dès que des secondaires existent**, « Modifier » devient **coûteux** : ça **supprime les
+- **Dès que des secondaires existent**, « Rouvrir » devient **coûteux** : ça **supprime les
   calendriers secondaires concernés** → **confirmation proportionnée**, qui les **nomme**. Zéro
   concerné = zéro confirmation ; sinon avertissement à la hauteur.
 
@@ -120,15 +123,15 @@ contre le socle ; si on le change, ils ne valent plus.
 Le premier **annonce** le gel au bon moment ; le second **protège** contre la perte. C'est tout —
 pas d'état « verrouillé » à gérer, juste ces deux confirmations.
 
-> **Ex.** 8 sept, **0 overlay** : le coach U15 se libère le jeudi → « Modifier » le socle, **aucune
-> friction**, on régénère. 3 mars, **4 overlays** (Toussaint, Noël, 2 fermetures) : « Modifier »
+> **Ex.** 8 sept, **0 overlay** : le coach U15 se libère le jeudi → « Rouvrir » le socle, **aucune
+> friction**, on régénère. 3 mars, **4 overlays** (Toussaint, Noël, 2 fermetures) : « Rouvrir »
 > avertit « **ceci supprime 4 calendriers secondaires** » → en pratique on n'y touche plus.
 
 C'est cohérent avec la vraie vie du club : la semaine type se **stabilise** en début de saison
 (quelques itérations), puis tient toute l'année ; ce sont les **exceptions** (vacances,
 fermetures, événements) qui bougent ensuite — plus la base.
 
-**Ça réutilise le cycle de vie existant** (`planning-lifecycle-validated.md`) : **« Modifier » =
+**Ça réutilise le cycle de vie existant** (`planning-lifecycle-validated.md`) : **« Rouvrir » =
 `reopen`**. La seule chose à ajouter : la réouverture **liste et supprime les plans de période
 non commencés** — **silencieuse s'il n'y en a pas**, avec confirmation sévère sinon (409
 `overlays_exist` puis rejeu avec `confirmDeleteOverlays: true`). La destruction va **de bout en
@@ -250,8 +253,9 @@ secondaire.
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
-│  BANDEAU · Planning principal — Validé                [ Ouvrir ▸ ] [ Modifier… ] │
-│  (Ouvrir = grille en lecture seule · Modifier = rouvre le wizard, ⚠ détruit les secondaires) │
+│  BANDEAU · Planning principal — Validé   [ Ouvrir ▸ ] [ Modifier les données du club ] │
+│  (Ouvrir = grille en lecture seule, avec son propre « Rouvrir » destructeur ·        │
+│   Modifier les données du club = complète équipes/gymnases/coachs SANS rouvrir)      │
 ├──────────────────────────────────────────────┬────────────────────────────┤
 │  CALENDRIER (mois entier · jour courant ⭕ · navigable) │  RADAR — à traiter │
 │  (montre les ÉVÉNEMENTS, pas la semaine type)  │                             │
@@ -272,12 +276,17 @@ secondaire.
 score du solveur ne s'affiche nulle part** (décision fermée, `etat-des-lieux.md` §2).
 - **« Ouvrir »** → l'**écran de consultation** (grille lecture seule) — **le même écran** qui
   sert aussi à consulter les calendriers secondaires (§6ter). Pas de zones d'édition ; les entités
-  sont visibles, non modifiables.
-- **« Modifier »** → rouvre le **wizard (mode libre)** pour changer le socle. **Libre tant qu'il
-  n'y a pas encore de calendrier secondaire** (début de saison) ; sinon **destructeur** — ça
-  supprime les secondaires **encore à venir** (les périodes déjà commencées survivent, §2bis) →
-  **confirmation proportionnée** (cf. coût progressif §2bis). En routine (saison lancée), on n'y
-  touche plus.
+  sont visibles, non modifiables. C'est là, et seulement là, que vit **« Rouvrir »** pour changer
+  le socle (mode libre) : **libre tant qu'il n'y a pas encore de calendrier secondaire** (début de
+  saison) ; sinon **destructeur** — ça supprime les secondaires **encore à venir** (les périodes
+  déjà commencées survivent, §2bis) → **confirmation proportionnée** (cf. coût progressif §2bis).
+  En routine (saison lancée), on n'y touche plus.
+- **« Modifier les données du club »** (P4-268, rendu **seulement socle validé**) → ouvre le
+  wizard sur l'étape Équipes **sans rouvrir** : un geste **séparé et non destructeur**, pour
+  compléter le modèle (coach déclaré tard, équipe, gymnase) pendant que le planning de saison
+  reste en vigueur. Contraintes et Génération y restent verrouillées, et la grille des créneaux
+  d'entraînement passe en lecture seule — les créneaux et les contraintes sont ce qui reste
+  derrière « Rouvrir ». Détail mécanique : `frontend/docs/frontend-spec.md` §6.6bis.
 
 **Calendrier** = **la couche des événements / exceptions**, **PAS la semaine type** (elle est la
 base, accessible derrière le bandeau — inutile de la redessiner). Il montre **uniquement ce qui
@@ -581,7 +590,7 @@ endroits** seulement.
         │   ACCUEIL    │ ─────────────────────────────▸ │  CONSULTATION  │
         │  (cockpit)   │ ◀───────── « Accueil » ─────── │ (grille R/O)   │
         └──────┬───────┘                                 └───────┬────────┘
-               │  Modifier / Adapter / Créer période             │ Modifier
+               │  Modifier les données / Adapter / Créer période  │ Rouvrir
                ▼                                                  ▼
         ┌────────────────────────────────────────────────────────────────┐
         │      WIZARD  (onboarding · libre · période — mêmes 6 écrans)     │
@@ -597,7 +606,7 @@ endroits** seulement.
 > désorientation.
 
 > **Ex.** Je consulte le planning principal (grille R/O), « Accueil », je clique la période
-> Toussaint → **la même grille R/O** pour son overlay. Je clique « Modifier » → **le même
+> Toussaint → **la même grille R/O** pour son overlay. Je clique « Rouvrir » → **le même
 > enchaînement wizard** qu'à l'inscription (en mode période). **Aucun écran neuf** dans tout le
 > parcours.
 
