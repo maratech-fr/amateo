@@ -1,11 +1,10 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-28 (P4-240, `documentation-update`). Re-confronté au code : la ligne
-« Sémantique des contraintes » gagne `CrossStack/MatchPlacementSemanticsGateTest`
-(bloquant, `ci.yml` + `blocking-tests.md`) et la fixture réelle `engine/tests/fixtures/
-bccl_home_matches_2026.json` (`engine/tests/perf/test_perf_place_matches_real.py`, 141/141 domiciles
-placés) ✓. Reste des lignes non re-sondées cette passe — historique complet :
-`git log -p --follow docs/testing/test-coverage-map.md`.
+Last verified @ 2026-09-28 (P4-268, `documentation-update`). Re-confronté au code : la ligne
+`le-planning-se-dit-a-regenerer.feature` gagne le scénario coach — ajouter/rattacher n'alerte pas,
+passer véhiculé alerte (`ResourceChangeStaleScheduleListener::COSMETIC_COACH_FIELDS`,
+`backend/features/le-planning-se-dit-a-regenerer.feature`) ✓. Reste des lignes non re-sondées cette
+passe — historique complet : `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
 > prouve**, **par quel job CI**, et **ce que personne ne prouve**. Il ne remplace ni
@@ -225,7 +224,7 @@ Calendrier, ouvre la liste « FBI — à faire », coche « saisi » sur sa renc
 | `l-unite-de-placement-est-le-bloc.feature` | une équipe qui ne s'entraîne qu'en groupe ne se réserve pas seule ; réserver le groupe pose la séance pour tout le monde ; retirer une séance du lot emporte le groupe entier |
 | `un-verrou-est-souverain.feature` | une séance verrouillée en dur reste à la même case après régénération ; un déplacement impossible (case sans créneau ouvert) est refusé et nommé, rien n'est écrit ; une règle qui contredit un verrou ne le déplace pas, le créneau reste et la règle violée est signalée (P4-176) |
 | `le-perimetre-engage-est-protege.feature` | une équipe engagée en compétition (elle a des matchs) n'est ni supprimable ni changeable de niveau ; une équipe qui ne joue pas reste libre |
-| `le-planning-se-dit-a-regenerer.feature` | ajouter une contrainte marque le planning en vigueur à régénérer, sans en effacer un seul créneau |
+| `le-planning-se-dit-a-regenerer.feature` | ajouter une contrainte marque le planning en vigueur à régénérer, sans en effacer un seul créneau ; le cockpit sert lui-même sa péremption (P4-173) ; ajouter un coach et le rattacher à une équipe n'alerte pas, le rendre véhiculé alerte (P4-268) |
 
 **Sécurité & accès (isolation, export, vœux)**
 

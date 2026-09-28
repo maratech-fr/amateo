@@ -1,16 +1,13 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-09-26 (`documentation-update`, passe « le présent seulement » complétée,
-CLAUDE.md §8 / skill `documentation-update` règle 7). Passe précédente : instantané de code périmé
-et artefacts de plan fossilisés retirés (§2/§7/§8, trous assumés), §3.2bis compacté. Cette passe :
-« cockpit palier A/B » retiré des §6 (terme disparu d'`accueil-cockpit-temporel.md` — recalage
-group avec `backend/AGENTS.md` et `docs/project-map.md`) ; ids/dates retirés des titres §3.2bis (ni
-« §3.2bis » ni le sha `0fd895f` de §3.3 ne sont cités depuis l'extérieur, grep confirmé — sans
-danger à les enlever). `App\Service\ScheduleCapabilityResolver` reconfronté au code
-(`canDelete`/`canValidate`/`canRegenerateFrom`, `forSchedules()` en batch par
-`GROUP BY (schedule_plan_id, status)`, prédicats `isInFlight`/`isChosen`/
-`isLastFinishedSeasonVersion`/`inFlightInSeason`) ✓. Historique des passes vit dans git :
-`git log -p --follow specs/courantes/planning-lifecycle-validated.md`.
+Last verified @ 2026-09-28 (`documentation-update`, rotation de fraîcheur, P4-268). Re-confronté au
+code : `SocleGuard::assertSeasonPlanNotChosen` posée sur les trois portes
+`GenerateScheduleController.php:132`/`RegenerateController.php:145`/
+`RegenerateFromVersionController.php:120` ✓ ; `ScheduleCapabilityResolver::forSchedules`
+(`canDelete`/`canValidate`/`canRegenerateFrom`) ✓ ; `ScheduleStatus` toujours à 5 valeurs
+(`frontend/src/features/wizard/api.ts:813`) ✓ ; `confirmPhrase="modifier mon planning de saison"`
+toujours câblée uniquement sur le dialogue de réouverture (`PlanningPage.tsx:1088`) ✓. Historique
+des passes vit dans git : `git log -p --follow specs/courantes/planning-lifecycle-validated.md`.
 
 Le plan de type **SEASON** (`schedule_plan`) et **la version qu'il pointe**
 (`chosen_schedule_id`, `App\Entity\SchedulePlan`) SONT le calendrier de la saison
