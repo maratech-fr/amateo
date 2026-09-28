@@ -4,7 +4,16 @@ Last verified @ 2026-09-28 (P4-240, §3 recalé contre le code : `engine/app/sol
 — warm-start glouton un seul jeu de hints, `_remaining_reason` tranche `not_selected`/`venue_full` sur
 l'occupation finale ; `backend/src/Controller/PlaceMatchesController.php` — budget 60 s de bout en bout,
 verrou 120 s, HTTP 90 s ; `engine/app/core/config.py`/`main.py` — sémaphore global
-`max_concurrent_placements=1` ; `engine/CONTRACT_VERSION` **2.24**). Reste du contenu non réaudité cette
+`max_concurrent_placements=1` ; `engine/CONTRACT_VERSION` **2.24**) ; (P4-267 — §1/§5/§6 re-confrontés : trois colonnes NULLABLES
+`address`/`postalCode`/`city` sur `OpponentVenueLink` (`backend/src/Entity/OpponentVenueLink.php`,
+migration `Version20260928120000`), posées à l'appariement/repoint/auto-locate
+(`OpponentVenueLinkManager::writeGym`, `OpponentVenueAutoLocator::writeAutoLink`), jamais recopiées
+dans `OpponentVenueSuggestion` ✓ ; `AwayFixtureCard` rend le logo fédéral (`OpponentLogo`) et une
+ligne « Adresse » seulement si `awayTravel.address`/`.city`/`.postalCode` la portent
+(`AwayFixtureCard.tsx:58-76`) ✓ ; l'arrivée sur le Calendrier depuis `conflit=`/`match=` recentre la
+grille en plus de `focusFixtureCell` (`useCalendarUrlSync.ts:156-173`, `block: "center"`) ✓ ; un
+conflit sans coach de l'onglet Conflits filtre sur les `teamId` des deux côtés au lieu de
+sélectionner un match (`ConflictsPage.tsx:365-374`) ✓). Reste du contenu non réaudité cette
 passe. Historique : `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
@@ -136,6 +145,12 @@ rencontre AWAY retrouve par sa propre salle (`Fixture::getFbiVenueLabel()`). Cha
 SNAPSHOT fédéral du gymnase (`venueLabel` + `latitude`/`longitude`, jamais le texte brut du
 fichier) + `venueExternalRef` nullable (numéro de salle fédéral, null pour un gymnase choisi par
 coordonnées seules) ; `source` AUTO|MANUAL — un MANUAL n'est jamais écrasé par une passe AUTO.
+Trois colonnes NULLABLES additionnelles — `address`/`postalCode`/`city` — portent l'adresse
+POSTALE d'AFFICHAGE du gymnase (fiche lecture seule d'un match à l'extérieur, `AwayFixtureCard`
+ci-dessous) : posées à l'appariement (recherche FFBB), au choix d'une suggestion ou par
+l'auto-localisation quand le hit fédéral les porte ; un lien EXISTANT avant leur introduction reste
+à `NULL` (pas de rattrapage — la fiche montre alors le libellé seul, jamais une ligne vide) ; jamais
+recopiées dans le catalogue PARTAGÉ `OpponentVenueSuggestion` (donnée propre au lien tenant).
 **Le trajet n'y est PAS** : c'est une CONSTANTE lue depuis `ClubTravelCache` (siège du club →
 gymnase, § « Cache de trajets et calcul asynchrone » ci-dessous), jamais dupliquée par lien.
 **Purge** : club-scoped SANS saison → une purge de SAISON ne le touche jamais
@@ -222,10 +237,15 @@ worker/verrou/topic : `backend/docs/geo-api.md` § Calcul asynchrone.
 `OpponentDirectoryEntry.logoId` (table GLOBALE) est posé sans coût réseau supplémentaire depuis les
 hits organismes déjà résolus (canal `directVenue`, sans hit organisme, n'en pose pas — dette
 `roadmap.md` P4-250) ; `GET /api/opponents/{code}/logo` (route MEMBRE, jamais publique) le
-re-héberge paresseusement au premier accès. `hasLogo` (booléen additif de `GET
-/api/opponents/travel`) pilote `shared/components/ui/opponent-logo.tsx` (rond, 16/24 px, repli
-initiales) dans `AwayList` — **pas dans `ConflictLine`** (le côté d'un conflit ne porte pas le code
-adverse) **ni dans la grille**. Détail : `backend/docs/ffbb-api.md` §3bis.
+re-héberge paresseusement au premier accès. `shared/components/ui/opponent-logo.tsx` (rond, 16 px
+`AwayList`/24 px `AwayFixtureCard`, repli initiales — `initials` calculées par
+`lib/opponentInitials.ts`, hors du partagé) affiche l'image si un code organisme est connu et
+bascule elle-même sur le repli au premier 404 (`onError`) : `AwayList` et `AwayFixtureCard`
+n'ayant que la `Fixture` sous la main (pas le vrai booléen), ils lui passent une approximation
+« un code existe » plutôt que le `hasLogo` réel — seul `OpponentsPage` (§ Écran Adversaires),
+qui lit `GET /api/opponents/travel`, lui passe le booléen SERVEUR exact. **Pas dans `ConflictLine`**
+(le côté d'un conflit ne porte pas le code adverse) **ni dans la grille**. Détail :
+`backend/docs/ffbb-api.md` §3bis.
 
 ### Alias de gymnase (`Venue.externalLabels`, `VenueAliasResolver`)
 
@@ -582,8 +602,10 @@ le layout — la nav des six onglets reste inchangée.
   échange : Échap désarme, les candidates (autres domiciles PLACED) portent un anneau, les autres
   s'estompent. **Ouvrir un extérieur** (clic grille ou crayon de la bande) : un extérieur IMPORTÉ
   (FBI `externalRef` ou canal API `ffbbRencontreId`, `lib/fixtureOrigin.ts::isImportedFixture`)
-  s'ouvre en LECTURE SEULE (`AwayFixtureCard` — adversaire, lieu, date, coup d'envoi, durée, trajet,
-  statut, aucun bouton de modification, « la fédération en est la source ») ; un extérieur SAISI À
+  s'ouvre en LECTURE SEULE (`AwayFixtureCard` — logo fédéral de l'adversaire (repli initiales) +
+  libellé, lieu, adresse postale du gymnase (rendue SEULEMENT si le lien apparié la porte — jamais
+  une ligne vide), date, coup d'envoi, durée, trajet, statut, aucun bouton de modification, « la
+  fédération en est la source ») ; un extérieur SAISI À
   LA MAIN reste éditable (`FixtureFormDialog`), même logique côté grille et côté bande — une seule
   maison (`openAway`).
 - **Refus serveur du placement (D2)** : `FixtureStateProcessor::assertVenueAccessAllowed` (geste
@@ -661,9 +683,13 @@ le layout — la nav des six onglets reste inchangée.
 - **Deep-link `match=<fixtureId>`** (patron « absent = défaut », `lib/urlState.ts`
   `decodeMatchParam`/`applyMatchToParams`) : au seed, la fixture visée est sélectionnée dans le
   store, sa semaine posée (si absente de l'URL), son masque levé (`revealPlan`) si elle est
-  filtrée, puis focus + scroll sur sa cellule (`focusFixtureCell`) — la sélection (`ring-accent`)
-  EST la mise en évidence, pas d'anneau temporisé ni de `role="status"`. Le paramètre est retiré en
-  `replace` après consommation (one-shot). Posé par « Voir la semaine » depuis Conflits (§6).
+  filtrée, puis focus + scroll sur sa cellule (`focusFixtureCell`, `block: "nearest"`) — la
+  sélection (`ring-accent`) EST la mise en évidence, pas d'anneau temporisé ni de `role="status"`.
+  Le paramètre est retiré en `replace` après consommation (one-shot). Posé par « Voir la semaine »
+  depuis Conflits (§6). **À l'arrivée depuis `conflit=` ou `match=`, la grille se RECENTRE en plus**
+  (`block: "center"`, un `requestAnimationFrame` de plus que `focusFixtureCell`, sur la première
+  rencontre en focus qui porte une cellule) : le litige reste visible sans défiler, sans changer le
+  filtre posé par l'URL.
 - **`WeekCounters`** (barre au-dessus de la grille) : deux compteurs BORNÉS à la semaine affichée
   dans un `role="group"` « Semaine affichée » (« N à placer » · « N conflits → », lien vers
   Conflits) ; le troisième — **« N FBI à faire »** — est GLOBAL (toutes semaines), vit HORS du
@@ -719,11 +745,13 @@ gymnase partagé (décision fermée — il fausserait le compte saison de l'ongl
   le Calendrier en FOCUS (`vue=coach&filtre=<coachId>&conflit=<a>,<b>`, `lib/urlState.ts`) — filtre
   posé sur ce coach, les deux rencontres du conflit surlignées, masques levés — plutôt que de
   sélectionner un match et ouvrir le panneau de placement sur une seule équipe ; un conflit SANS
-  coach (collision de gymnase, hors accès…) garde l'ancien comportement : sélectionne le côté GAUCHE
-  par défaut, ou LE domicile si un seul des deux côtés joue à domicile (viser une case pleine de la
-  grille plutôt qu'un extérieur masqué), navigue avec `match=` (§5). `ConflictLine` ne porte pas le
-  logo de l'adversaire (§1 « Logo fédéral d'un adversaire ») — le côté d'un conflit ne porte pas son
-  code organisme.
+  coach (collision de gymnase, hors accès…) filtre de la même façon mais sur ÉQUIPE — les `teamId`
+  des deux côtés du conflit (`filtre=<teamIdA>,<teamIdB>&conflit=<a>,<b>`, mode équipe = défaut du
+  filtre partagé, donc sans `vue=` dans l'URL, `lib/urlState.ts` ; `teamId` servi par le backend,
+  jamais redérivé ; un conflit à un seul côté résolu filtre sur cette seule équipe), sans
+  jamais sélectionner de match ni ouvrir le panneau de placement. Les deux chemins arrivent centrés
+  sur la grille (§5, correctif de centrage). `ConflictLine` ne porte pas le logo de l'adversaire
+  (§1 « Logo fédéral d'un adversaire ») — le côté d'un conflit ne porte pas son code organisme.
 
 ### Résolution des conflits (`ConflictResolution`)
 
