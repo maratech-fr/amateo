@@ -645,6 +645,15 @@ jobs:
       - name: SlotRotationPayloadParityTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/SlotRotationPayloadParityTest.php --group phase1'
 
+      # P4-240 ③ (axes backend↔engine contract + auth & memberships) : ce qui est STOCKÉ (les
+      # memberships coach↔équipe ACTIFS) == le bloc `teams[].players` émis au solveur de placement,
+      # avec la règle du radar (le rôle coach gagne sur PLAYER pour la même équipe). Falsifié dans
+      # les deux sens (actif émis, inactif exclu, coach-de-la-même-équipe exclu, autre club ne fuit
+      # pas). Sans ce gate bloquant, un builder aveugle aux joueurs (ou au tenant) passerait les
+      # checks requis et le solveur cesserait de protéger un joueur partagé.
+      - name: PlayersPayloadParityTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/PlayersPayloadParityTest.php --group phase1'
+
       # RMM-6 (P2-50) échéances ligue/comité PR-1 : le défaut communautaire vit dans une table
       # PARTAGÉE entre clubs (`shared_competition_deadline`) — la seule surface du module matchs qui
       # traverse la frontière tenant. Ce gate tient l'invariant de partage : le SCHÉMA du partagé

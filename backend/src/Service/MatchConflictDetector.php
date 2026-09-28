@@ -36,14 +36,16 @@ use DateTimeImmutable;
  * PERSON-CONFLICT windows:
  * - MATCH_MATCH: two fixtures of teams sharing a person whose PERSON-CONFLICT
  *   windows overlap. ⚠ Lot M (cas Inès 2026-10-10, « pas de conflit du tout, et
- *   même règle pour le coach ») — the warm-up NEVER counts for a person clash,
- *   WHATEVER the gym: the shared person only has to ARRIVE by the SECOND kickoff,
- *   the warm-up is hers to skip. So each side's window is its
- *   {@see MatchFootprint::personConflictOccupancy} (occupancy MINUS the leading
- *   warm-up — travel kept). Arrival exactly at the second kickoff = no conflict
- *   (half-open overlap). This SUBSUMES the old « même gymnase à domicile »
- *   exception (2026-09-17): two home matches always drop their warm-up now, not
- *   only in one shared gym. Sides are ordered CHRONOLOGICALLY (earliest full
+ *   même règle pour le coach ») — at HOME the warm-up NEVER counts for a person
+ *   clash: the shared person only has to ARRIVE by the second kickoff, the warm-up
+ *   is hers to skip. ⚠ P4-240 ③ (décision C) — before an AWAY match the warm-up IS
+ *   counted (she must be at the away gym warmed up). So each side's window is its
+ *   {@see MatchFootprint::personConflictOccupancy}: [kickoff, kickoff + match] at
+ *   home, [kickoff − travelOut − warmup, kickoff + match + travelBack] away.
+ *   Arrival exactly at the second kickoff = no conflict (half-open overlap). This
+ *   SUBSUMES the old « même gymnase à domicile » exception (2026-09-17): two home
+ *   matches always drop their warm-up now, not only in one shared gym. Sides are
+ *   ordered CHRONOLOGICALLY (earliest full
  *   window start on the left); the fingerprint sorts the pair anyway, so the view
  *   order is free. The per-side windowStart/windowEnd still serve the FULL person
  *   windows (warm-up included) — only the overlap TEST and the served start/end
@@ -56,11 +58,12 @@ use DateTimeImmutable;
  *   AND its players (the players who play don't also train); a SISTER team's
  *   training (coach or player on two teams) still clashes. When the slot has an
  *   assigned coach, he replaces the OTHER coaches of the slot's team (anti false-
- *   positive) but NEVER evicts its players. ⚠ Lot M — the MATCH side uses its
- *   PERSON-CONFLICT window (warm-up dropped, whatever the gym), so a warm-up-only
- *   overlap with a session the person reaches by kickoff is silent; a real
- *   overlap (the session runs past the kickoff) still clashes. This subsumes the
- *   old same-gym « second match » special case (2026-09-17).
+ *   positive) but NEVER evicts its players. ⚠ Lot M / P4-240 ③ — the MATCH side
+ *   uses its PERSON-CONFLICT window: at HOME the warm-up is dropped (a warm-up-only
+ *   overlap with a session the person reaches by kickoff is silent), while an AWAY
+ *   match counts the warm-up before departure (décision C). A real overlap (the
+ *   session runs into the person window) still clashes. This subsumes the old
+ *   same-gym « second match » special case (2026-09-17).
  * - VENUE_UNAVAILABLE (P1-4 PR B): a fixture whose venue is unavailable on its
  *   date (all-circumstances closure posed on the club calendar AFTER the match
  *   was placed — the real-life case the placement guard cannot catch). Coach-
@@ -318,9 +321,10 @@ final class MatchConflictDetector
             $estimatedKickoffTime = null;
             $window = $this->footprint->occupancy($fixture, $profile, $roundTrip);
             $venueWindow = $this->footprint->venueOccupancy($fixture, $profile);
-            // Lot M — the PERSON-conflict window (warm-up dropped, travel kept):
-            // the families of PERSON overlap on THIS window, so the warm-up never
-            // false-alarms a clash the shared person can reach by kickoff.
+            // Lot M / P4-240 ③ — the PERSON-conflict window: at home the warm-up is
+            // dropped (a person reaches a home game she is late for by its kickoff),
+            // before an away match the warm-up IS counted (she warms up at the away
+            // gym, décision C). Travel kept. The families of PERSON overlap on THIS.
             $conflictWindow = $this->footprint->personConflictOccupancy($fixture, $profile, $roundTrip);
             if (null === $window) {
                 $estimatedKickoff = $this->awayKickoffEstimator->estimate($fixture, $habitByTeamDay);
@@ -912,12 +916,12 @@ final class MatchConflictDetector
                     }
 
                     $trainingWindow = $this->slotWindowOnDate($date, $slot);
-                    // Lot M — the MATCH side overlaps on its PERSON-CONFLICT window
-                    // (warm-up dropped, whatever the gym): the person reaches a session
-                    // she is late for only by its kickoff, so a warm-up-only overlap is
-                    // silent while a real one (the session runs past the kickoff) still
-                    // clashes. `spannedDates` above still scans on the FULL window, a
-                    // superset, so no day is missed.
+                    // Lot M / P4-240 ③ — the MATCH side overlaps on its PERSON-CONFLICT
+                    // window: at home the warm-up is dropped (a warm-up-only overlap the
+                    // person reaches by kickoff is silent), an away match counts the
+                    // warm-up before departure (décision C). A real overlap (the session
+                    // runs into the window) still clashes. `spannedDates` above still
+                    // scans on the FULL window, a superset, so no day is missed.
                     $matchWindow = $view['conflictWindow'];
                     if (!$this->overlaps($matchWindow, $trainingWindow)) {
                         continue;

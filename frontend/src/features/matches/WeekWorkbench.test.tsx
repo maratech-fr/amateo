@@ -95,6 +95,7 @@ function baseProps(over: Partial<Props> = {}): Props {
     windows: [],
     outOfEnvelope: new Set<string>(),
     matchDurations: new Map<string, number>(),
+    warmupDurations: new Map<string, number>(),
     newFingerprints: new Set<string>(),
     showGhosts: false,
     hiddenBreakdown: emptyBreakdown,

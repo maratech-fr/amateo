@@ -83,27 +83,43 @@ final class MatchFootprintTest extends TestCase
         self::assertSame('2026-10-04 17:45', $window['end']->format('Y-m-d H:i')); // kickoff + 105
     }
 
-    public function testPersonConflictWindowKeepsTravelButDropsWarmupAway(): void
+    public function testPersonConflictWindowKeepsTravelAndWarmupBeforeAnAwayMatch(): void
     {
-        // À l'extérieur, seul l'échauffement sort : le trajet (arrivée réelle) reste.
-        // 80 min aller-retour → 40 avant (aller) + 40 après (retour). Sans l'échauffement,
-        // start = kickoff - 40 (au lieu de -70), end = kickoff + 105 + 40 (inchangé).
+        // ⚠ CHANGEMENT DE COMPORTEMENT P4-240 ③ (décision C) : l'échauffement AVANT un
+        // match EXTÉRIEUR est désormais compté (on doit être au gymnase adverse échauffé).
+        // 80 min aller-retour → 40 aller + 40 retour. start = kickoff − 40 (aller) − 30
+        // (échauffement) = 15:30 − 70 = 14:20 (avant lot M+C : −40 seul, 14:50). end
+        // inchangé = kickoff + 105 + 40.
         $fixture = $this->fixture(FixtureHomeAway::AWAY, '2026-10-04', '15:30');
         $window = new MatchFootprint()->personConflictOccupancy($fixture, $this->profile(), 80);
 
         self::assertNotNull($window);
-        self::assertSame('14:50', $window['start']->format('H:i')); // 15:30 - 40 (aller seul, pas d'échauffement)
+        self::assertSame('14:20', $window['start']->format('H:i')); // 15:30 − 40 (aller) − 30 (échauffement)
         self::assertSame('17:55', $window['end']->format('H:i')); // 15:30 + 105 + 40, comme l'empreinte
     }
 
-    public function testPersonConflictWindowAtAnExplicitKickoffDropsWarmupToo(): void
+    public function testPersonConflictWindowSf2AwayExample(): void
+    {
+        // Exemple chiffré du cadrage (P4-240 ③ C) : SF2 (105/30), extérieur samedi 20:00,
+        // aller 50 min (aller-retour 100) → fenêtre PERSONNE [18:40, 22:35] (avant C :
+        // [19:10, 22:35]). start = 20:00 − 50 − 30 = 18:40 ; end = 20:00 + 105 + 50 = 22:35.
+        $fixture = $this->fixture(FixtureHomeAway::AWAY, '2026-10-03', '20:00');
+        $window = new MatchFootprint()->personConflictOccupancy($fixture, $this->profile(), 100);
+
+        self::assertNotNull($window);
+        self::assertSame('18:40', $window['start']->format('H:i'));
+        self::assertSame('22:35', $window['end']->format('H:i'));
+    }
+
+    public function testPersonConflictWindowAtAnExplicitKickoffCountsWarmupAway(): void
     {
         // La variante « heure estimée » (extérieur empruntant l'heure habituelle) :
-        // même règle, l'échauffement retranché, sur un coup d'envoi explicite.
+        // même règle (décision C), l'échauffement AVANT est compté, sur un coup d'envoi
+        // explicite. Pas de trajet modélisé → start = kickoff − 30 (échauffement seul).
         $fixture = $this->fixture(FixtureHomeAway::AWAY, '2026-10-04', null);
         $window = new MatchFootprint()->personConflictOccupancyAt($fixture, new DateTimeImmutable('17:30'), $this->profile());
 
-        self::assertSame('17:30', $window['start']->format('H:i')); // pas de trajet modélisé, pas d'échauffement → coup d'envoi
+        self::assertSame('17:00', $window['start']->format('H:i')); // 17:30 − 30 (échauffement, trajet inconnu)
         self::assertSame('19:15', $window['end']->format('H:i')); // 17:30 + 105
     }
 

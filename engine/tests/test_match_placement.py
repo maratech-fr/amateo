@@ -491,14 +491,13 @@ def test_protected_habit_window_repels_other_matches() -> None:
     assert minutes + 105 <= 15 * 60 + 30 or minutes >= 17 * 60 + 15
 
 
-def test_away_travel_extends_the_coach_window_and_pushes_the_home_match() -> None:
-    # D3 — an AWAY match's coach window grows by the round trip (half before the
-    # warm-up, half after the match, EXACTLY like MatchFootprint). Shared coach c1:
-    # t1 plays HOME (to place), t2 plays AWAY at 14:00. Durations 60/0 for clean math.
-    # Without travel the AWAY window is [14:00, 15:00]; t1's habit at 15:00 is clash-
-    # free (half-open) and wins. With a 120-min round trip the AWAY window grows to
-    # [13:00, 16:00]: the 15:00 slot now clashes with the coach (penalty 60 > habit
-    # bonus 20), so the match is pushed to the next clash-free slot, 16:00.
+def test_away_match_never_pushes_the_home_match_of_a_shared_coach() -> None:
+    # INVERSÉ (P4-240 ③, décision B) — the placement solver IGNORES every person
+    # footprint of an AWAY match (« c'est la vie ; le radar signale le conflit »).
+    # Shared coach c1: t1 plays HOME (to place, habit 15:00), t2 plays AWAY at 15:00.
+    # Whatever the round trip, the AWAY window never exists for the solver, so nothing
+    # penalises t1's 15:00 habit slot — it wins in EVERY case (before B a big round
+    # trip pushed it away). Durations 60/0 for clean math.
     def run(round_trip: int) -> dict[str, Any]:
         return solve_match_placement(
             payload(
@@ -509,7 +508,7 @@ def test_away_travel_extends_the_coach_window_and_pushes_the_home_match() -> Non
                         "teamId": "t2",
                         "date": SATURDAY,
                         "kind": "AWAY",
-                        "kickoff": "14:00",
+                        "kickoff": "15:00",
                         "roundTripMinutes": round_trip,
                     },
                 ],
@@ -527,7 +526,99 @@ def test_away_travel_extends_the_coach_window_and_pushes_the_home_match() -> Non
             )
         )
 
-    # Witness (round trip = 0): the travel leg is inert, the habit wins at 15:00.
+    # No round trip AND a large one both leave the habit slot free: the AWAY footprint
+    # is never consumed, so the placement is identical (15:00) in both.
     assert kickoff_of(run(0), "m1") == "15:00"
-    # With the round trip, the extended AWAY window pushes the match to 16:00.
-    assert kickoff_of(run(120), "m1") == "16:00"
+    assert kickoff_of(run(240), "m1") == "15:00"
+
+
+def test_an_away_match_still_frees_its_teams_habit_protection() -> None:
+    # P4-240 ③ (décision B) — the AWAY match is ignored as a PERSON footprint, but it
+    # is STILL emitted and STILL feeds `team_dates`: a team playing away a given day
+    # has a match that day, so its habitual MATCH window is NOT defended against other
+    # teams. t2 has a Saturday 15:30 habit at v1 and no coaches. WITHOUT a match that
+    # day, its window [15:30, 17:15] is protected → m1 (t1) is repelled outside it
+    # (kickoff ≥ 17:15, cf. test_protected_habit_window_repels_other_matches). WITH t2
+    # playing AWAY that Saturday, the protection lifts → m1's match window is free to
+    # cross [15:30, 17:15].
+    def run(with_away: bool) -> dict[str, Any]:
+        matches: list[dict[str, Any]] = [to_place("m1", "t1")]
+        if with_away:
+            matches.append({"id": "away2", "teamId": "t2", "date": SATURDAY, "kind": "AWAY", "kickoff": "10:00"})
+        return solve_match_placement(
+            payload(
+                matches=matches,
+                venues=[venue(windows=[{"dayOfWeek": 6, "start": "14:00", "end": "20:00"}])],
+                teams=[team("t1"), team("t2", habits=[{"dayOfWeek": 6, "kickoff": "15:30", "venueId": "v1"}])],
+            )
+        )
+
+    def crosses_protected(kickoff: str) -> bool:
+        start = int(kickoff[:2]) * 60 + int(kickoff[3:])
+        return start < 17 * 60 + 15 and start + 105 > 15 * 60 + 30
+
+    # No away match → the habit window is protected, m1 is repelled outside it.
+    assert not crosses_protected(kickoff_of(run(False), "m1"))
+    # Away match that day → protection lifted, m1's window may cross it.
+    assert crosses_protected(kickoff_of(run(True), "m1"))
+
+
+def test_shared_player_posed_at_once_is_penalised() -> None:
+    # P4-240 ③ (décision A) — a PLAYER shared by two teams is a person: two HOME
+    # matches of teams sharing an active player, posed at the same time, cost
+    # W_COACH_MAIN (60). Falsified BOTH ways: without the shared player the greedy
+    # packs both at the earliest slot (14:00, different venues, no venue clash);
+    # WITH the shared player the person clash pushes their MATCH windows ≥ one match
+    # (105 min) apart.
+    wide = [{"dayOfWeek": 6, "start": "14:00", "end": "22:30"}]
+
+    def run(shared: bool) -> dict[str, Any]:
+        return solve_match_placement(
+            payload(
+                matches=[to_place("m1", "t1"), to_place("m2", "t2")],
+                venues=[venue("v1", windows=wide), venue("v2", windows=wide)],
+                teams=[
+                    team("t1", players=["p1"]),
+                    team("t2", players=["p1"] if shared else ["p2"]),
+                ],
+            )
+        )
+
+    minutes = lambda s: int(s[:2]) * 60 + int(s[3:])  # noqa: E731
+    not_shared = run(False)
+    assert minutes(kickoff_of(not_shared, "m1")) == minutes(kickoff_of(not_shared, "m2"))
+    shared = run(True)
+    assert abs(minutes(kickoff_of(shared, "m1")) - minutes(kickoff_of(shared, "m2"))) >= 105
+
+
+def test_a_person_coaching_and_playing_the_same_team_is_counted_once() -> None:
+    # P4-240 ③ (décision A) — the coach role wins on her own team: a person listed as
+    # BOTH a coach and a player of the same team is ONE person, ONE malus. Even if a
+    # payload defensively double-lists her, the solve is byte-identical to listing her
+    # as a coach only (the engine drops the duplicate player, `_team_players`). Shared
+    # MAIN coach c1 across two teams on two wide venues → separated ≥ 105 either way,
+    # and the exact placements match.
+    wide = [{"dayOfWeek": 6, "start": "14:00", "end": "22:30"}]
+    base = {
+        "matches": [to_place("m1", "t1"), to_place("m2", "t2")],
+        "venues": [venue("v1", windows=wide), venue("v2", windows=wide)],
+    }
+    coach_only = solve_match_placement(
+        payload(
+            teams=[
+                team("t1", coaches=[{"coachId": "c1", "role": "MAIN"}]),
+                team("t2", coaches=[{"coachId": "c1", "role": "MAIN"}]),
+            ],
+            **base,
+        )
+    )
+    also_player = solve_match_placement(
+        payload(
+            teams=[
+                team("t1", coaches=[{"coachId": "c1", "role": "MAIN"}], players=["c1"]),
+                team("t2", coaches=[{"coachId": "c1", "role": "MAIN"}], players=["c1"]),
+            ],
+            **base,
+        )
+    )
+    assert coach_only["placements"] == also_player["placements"]

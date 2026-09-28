@@ -27,7 +27,11 @@ Fonctionnalité: Le placement des matchs honore les fenêtres d'accès et nomme 
     Quand je lance le placement des matchs
     Alors les deux matchs du samedi sont posés par le solveur dans ce gymnase
 
-  Scénario: Le trajet d'un match extérieur protège le coach partagé pendant le placement automatique
+  Scénario: Un match extérieur ne repousse plus le domicile du coach partagé — le solveur place, le radar signale
+    Le placement automatique IGNORE désormais l'empreinte personne d'un match EXTÉRIEUR (« c'est la
+    vie ; on gère après ») : le domicile du coach partagé se pose librement, sans être décalé par
+    l'extérieur. C'est le radar de conflits qui signale ensuite le chevauchement de personne, à gérer
+    à la main.
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et deux équipes et un gymnase jetables
     Et une large fenêtre d'accès le samedi de 14h00 à 23h30 sur ce gymnase
@@ -35,7 +39,8 @@ Fonctionnalité: Le placement des matchs honore les fenêtres d'accès et nomme 
     Et un match extérieur de la seconde équipe le samedi à 14h00, à long trajet aller-retour
     Et un match à domicile de la première équipe le samedi à placer
     Quand je lance le placement des matchs
-    Alors le match à domicile est posé en fin de journée, après le retour du coach de l'extérieur
+    Alors le match à domicile est placé par le solveur, sans être bloqué par l'extérieur
+    Et le radar signale le conflit de personne entre le domicile et l'extérieur du coach partagé
 
   Scénario: Un amical n'est jamais proposé au solveur et se place à la main hors créneau
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur

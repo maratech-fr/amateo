@@ -24,29 +24,41 @@ export function awayHour(fixture: Fixture, habits: TeamMatchHabit[]): AwayHour {
 }
 
 /**
- * Chronologie DESSINÉE/AFFICHÉE d'un extérieur à heure connue (correctif 10). Le bloc
- * couvre `[coup d'envoi − aller, coup d'envoi + match + aller]` quand le trajet ALLER SIMPLE
- * (`awayTravel.oneWayMinutes`) est connu — l'aller de CHAQUE côté, EXACTEMENT ce que le radar
- * serveur compte pour une personne (`MatchFootprint::personConflictOccupancy`, `travelOut` =
- * aller-retour/2 = aller simple). Trajet inconnu (`null`) ⇒ le bloc se réduit au match.
- * On ne recalcule AUCUNE règle métier : on POSITIONNE une donnée déjà servie
- * (🔴 `.claude/rules/frontend.md`). Foyer UNIQUE, partagé par la colonne de grille
- * (`lib/awayColumn.ts`) et la fiche lecture seule (`AwayFixtureCard.tsx`). Minutes depuis minuit.
+ * 🔴 MIROIR DÉCLARÉ (régime 2, `.claude/rules/frontend.md`) — `awayTimeline` réplique la
+ * règle AWAY de `App\Service\MatchFootprint::personConflictOccupancy` : la fenêtre PERSONNE
+ * d'un match à l'extérieur va de `[coup d'envoi − échauffement − aller, coup d'envoi + match
+ * + aller]`. C'est une redérivation ASSUMÉE (réactivité sans aller-retour réseau), gardée par
+ * un test de parité MÉCANIQUE — voir `FrontRederivationRegistryTest` (registre) et
+ * `awayTimeline.parity.test.ts` ⇄ `AwayTimelineMirrorParityTest.php` (cas partagés
+ * `awayTimeline.parity.json`). Changer l'algèbre d'un seul côté rougit ce côté-là.
+ *
+ * Chronologie DESSINÉE/AFFICHÉE d'un extérieur à heure connue (correctif 10, échauffement
+ * P4-240 ③). Le bloc s'étend de l'échauffement AVANT le coup d'envoi (on doit être au gymnase
+ * adverse échauffé, décision C) et, quand le trajet ALLER SIMPLE (`awayTravel.oneWayMinutes`)
+ * est connu, du trajet de CHAQUE côté (`travelOut` = aller-retour/2 = aller simple côté
+ * backend). Trajet inconnu (`null`) ⇒ le départ reste coup d'envoi − échauffement (le retour se
+ * réduit à la fin du match). Foyer UNIQUE, partagé par la colonne de grille (`lib/awayColumn.ts`)
+ * et la fiche lecture seule (`AwayFixtureCard.tsx`). Minutes depuis minuit.
  */
 export interface AwayTimeline {
   departureMin: number;
   kickoffMin: number;
   matchEndMin: number;
   returnMin: number;
-  /** Aller simple servi, `null` quand le trajet est inconnu (bloc = match seul). */
+  /** Aller simple servi, `null` quand le trajet est inconnu (retour = fin du match). */
   oneWayMinutes: number | null;
 }
 
-export function awayTimeline(kickoffMin: number, matchMinutes: number, oneWayMinutes: number | null): AwayTimeline {
+export function awayTimeline(
+  kickoffMin: number,
+  matchMinutes: number,
+  warmupMinutes: number,
+  oneWayMinutes: number | null,
+): AwayTimeline {
   const matchEndMin = kickoffMin + matchMinutes;
   const oneWay = oneWayMinutes ?? 0;
   return {
-    departureMin: kickoffMin - oneWay,
+    departureMin: kickoffMin - warmupMinutes - oneWay,
     kickoffMin,
     matchEndMin,
     returnMin: matchEndMin + oneWay,

@@ -271,10 +271,13 @@ final class MatchPlacementContext extends BaseContext
             ),
             admin: true,
         );
+        // Aller simple VOLONTAIREMENT très long (720 min) : la fenêtre PERSONNE de l'extérieur
+        // (radar) couvre alors tout le samedi, si bien que le conflit avec le domicile est
+        // DÉTERMINISTE quelle que soit l'heure retenue par le solveur dans le décor du club.
         $this->dbalExec(
             \sprintf(
                 'INSERT INTO club_travel_cache (id, club_id, profile, origin_lat, origin_lon, dest_lat, dest_lon, minutes, resolved_at) '
-                . 'VALUES (gen_random_uuid(), \'%s\', \'car\', 45.70000, 4.90000, 45.80000, 5.00000, 180, now())',
+                . 'VALUES (gen_random_uuid(), \'%s\', \'car\', 45.70000, 4.90000, 45.80000, 5.00000, 720, now())',
                 $this->clubId,
             ),
             admin: true,
@@ -297,21 +300,49 @@ final class MatchPlacementContext extends BaseContext
         $this->fxSat = $this->homeId;
     }
 
-    #[Then('le match à domicile est posé en fin de journée, après le retour du coach de l\'extérieur')]
-    public function leDomicileEstPoseTard(): void
+    #[Then('le match à domicile est placé par le solveur, sans être bloqué par l\'extérieur')]
+    public function leDomicileEstPlaceParLeSolveur(): void
     {
+        // P4-240 ③ (décision B) : le solveur IGNORE l'empreinte personne de l'extérieur — il
+        // ne l'empêche donc jamais de placer le domicile. Le domicile ressort PLACED, par le
+        // SOLVER, quelle que soit l'heure retenue (le décor du club en décide ; on ne borne pas
+        // l'heure, sensible aux autres rencontres du même samedi). C'est le « on gère après » :
+        // le solveur pose, le radar (step suivant) signale le chevauchement.
         $status = $this->satFixture['status'] ?? null;
         if ('PLACED' !== $status) {
             throw new RuntimeException(\sprintf('le match à domicile n\'est pas placé (statut « %s »)', \is_string($status) ? $status : 'inconnu'));
         }
-        // Sans trajet, le coach est libre dès la fin du match extérieur (≈ 16:15) et le
-        // solveur y poserait le domicile. Avec le trajet aller-retour, la fenêtre du coach
-        // s'étend du retour : le seul créneau sans double-réservation tombe en fin de
-        // journée. On borne large (≥ 17h00) pour rester robuste aux durées de catégorie.
-        $kickoff = $this->kickoff();
-        if ($kickoff < '17:00') {
-            throw new RuntimeException(\sprintf('coup d\'envoi %s : le trajet extérieur n\'a pas repoussé le domicile (attendu ≥ 17:00)', $kickoff));
+        $source = $this->satFixture['placementSource'] ?? null;
+        if ('SOLVER' !== $source) {
+            throw new RuntimeException(\sprintf('le match à domicile n\'a pas été placé par le solveur (source « %s »)', \is_string($source) ? $source : 'inconnue'));
         }
+    }
+
+    #[Then('le radar signale le conflit de personne entre le domicile et l\'extérieur du coach partagé')]
+    public function leRadarSignaleLeConflitDePersonne(): void
+    {
+        // Le placement ignore l'extérieur, mais le RADAR le voit : le coach partagé est en
+        // double (match à domicile × match extérieur qui se chevauchent) → MATCH_MATCH sur
+        // son identifiant, portant les deux rencontres. C'est le « on gère après » de la décision B.
+        $response = $this->apiGet('fixtures/conflicts', $this->token);
+        if (200 !== $response['status']) {
+            throw new RuntimeException(\sprintf('GET /api/fixtures/conflicts a répondu %d (200 attendu)', $response['status']));
+        }
+        $conflicts = $response['json']['conflicts'] ?? [];
+        foreach (\is_array($conflicts) ? $conflicts : [] as $conflict) {
+            if (!\is_array($conflict) || 'MATCH_MATCH' !== ($conflict['type'] ?? null) || ($conflict['coachId'] ?? null) !== $this->coachId) {
+                continue;
+            }
+            $ids = [
+                \is_array($conflict['left'] ?? null) ? ($conflict['left']['fixtureId'] ?? null) : null,
+                \is_array($conflict['right'] ?? null) ? ($conflict['right']['fixtureId'] ?? null) : null,
+            ];
+            if (\in_array($this->homeId, $ids, true) && \in_array($this->awayId, $ids, true)) {
+                return;
+            }
+        }
+
+        throw new RuntimeException('le radar n\'a pas signalé le conflit de personne attendu entre le domicile et l\'extérieur du coach partagé');
     }
 
     #[Given('un amical à domicile le samedi sur ce gymnase, sans créneau posé')]

@@ -15,6 +15,7 @@ MAX_MATCH_VENUES = 50
 MAX_MATCH_TEAMS = 200
 MAX_TEAM_LINKS = 400
 MAX_TRAINING_OCCUPANCIES = 20000
+MAX_PLAYERS_PER_TEAM = 60  # a shared-player roster stays small; generous cap (mirror of coaches)
 MAX_WINDOWS_PER_VENUE = 50
 MAX_LEAGUE_WINDOWS_PER_TEAM = 50  # mirror of MAX_WINDOWS_PER_VENUE — a team's league envelope
 MAX_UNAVAILABILITIES_PER_VENUE = 100
@@ -85,6 +86,13 @@ class MatchTeamSchema(SerializableModel):
     )
     habits: list[TeamHabitSchema] = Field(default_factory=list, max_length=7)
     coaches: list[TeamCoachRefSchema] = Field(default_factory=list, max_length=20)
+    # Active shared PLAYERS (CoachPlayerMembership) of the team — person ids, no
+    # role (P4-240 ③). A player is a person occupied by the team's match exactly
+    # like a coach, weighted W_COACH_MAIN (SOFT — ADR-0003). The backend already
+    # drops anyone who ALSO coaches this team (the coach role wins, parité
+    # MatchConflictDetector), so a person appears here XOR in `coaches`. OMITTED ⇒
+    # [] (an old payload keeps the coach-only behaviour).
+    players: list[str] = Field(default_factory=list, max_length=MAX_PLAYERS_PER_TEAM)
     # Per-category durations (P4-203) resolved by the backend
     # (MatchDurationResolver). OMITTED ⇒ the documented defaults, so an old
     # payload keeps the previous behaviour: the venue holds the match only
@@ -102,9 +110,11 @@ class MatchSchema(SerializableModel):
       previous SOLVER placement for the stability bonus + hint.
     - FIXED — HOME already anchored (manual placement / submitted / validated):
       consumes its venue slot, NEVER moves.
-    - AWAY — informative only: occupies the team's people (coach terms), not a
-      venue. `kickoff` may be the real hour or the habit estimation
-      (kickoffEstimated) — null = no footprint at all.
+    - AWAY — informative only, and IGNORED by the placement solver since P4-240 ③
+      (décision B): it occupies no venue and no longer projects a person window
+      either (« c'est la vie »). It still feeds `team_dates` (a team away a given
+      day frees its habit/rotation protection). `kickoff` may be the real hour or
+      the habit estimation (kickoffEstimated).
     """
 
     id: str
@@ -120,9 +130,11 @@ class MatchSchema(SerializableModel):
     current_venue_id: str | None = Field(default=None, alias="currentVenueId")
     current_kickoff: time | None = Field(default=None, alias="currentKickoff")
     # D3 — trajet aller-retour vers l'adversaire (minutes, 2 × aller simple), AWAY
-    # seulement. Le solveur étend la fenêtre AWAY du coach de ce trajet (moitié avant
-    # l'échauffement, moitié après le match), réplique de MatchFootprint côté backend.
-    # 0 = inconnu / non AWAY → aucune extension. Borne haute = 24 h (garde-fou).
+    # seulement. TRANSPORTÉ par le contrat mais NON CONSOMMÉ par le solveur depuis
+    # P4-240 ③ (décision B) : le placement IGNORE désormais toute empreinte personne
+    # d'un match EXTÉRIEUR (« c'est la vie ; le radar signale le conflit, on gère
+    # après »). Le champ reste sur le fil (le radar et la fiche s'en servent encore,
+    # et un re-bump serait gratuit). 0 = inconnu / non AWAY. Borne haute = 24 h.
     round_trip_minutes: int = Field(default=0, ge=0, le=1440, alias="roundTripMinutes")
 
     @model_validator(mode="after")

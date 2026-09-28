@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\Club;
+use App\Entity\CoachPlayerMembership;
 use App\Entity\Fixture;
 use App\Entity\LeagueMatchWindow;
 use App\Entity\MatchSlotRotation;
@@ -33,6 +34,9 @@ use Doctrine\ORM\EntityManagerInterface;
  *   never re-implemented engine-side);
  * - away kickoffs are estimated by the SAME AwayKickoffEstimator the radar
  *   uses;
+ * - teams carry their active shared PLAYERS (teams[].players, P4-240 ③) alongside
+ *   coaches — a player is a person the solver protects like a MAIN coach; the
+ *   coach role wins on the same team (parité MatchConflictDetector);
  * - the league envelope is resolved per team by LeagueEnvelopeResolver
  *   (tolerant join — unmapped team = no league HARD + an INFO diagnostic).
  *
@@ -105,6 +109,8 @@ final class MatchPlacementPayloadBuilder
         $teamLinks = $this->entityManager->getRepository(TeamLink::class)->findBy([]);
         /** @var list<TeamCoach> $teamCoaches */
         $teamCoaches = $this->entityManager->getRepository(TeamCoach::class)->findBy([]);
+        /** @var list<CoachPlayerMembership> $playerMemberships */
+        $playerMemberships = $this->entityManager->getRepository(CoachPlayerMembership::class)->findBy([]);
         /** @var list<MatchSlotRotation> $rotations */
         $rotations = $this->entityManager->getRepository(MatchSlotRotation::class)->findBy([]);
 
@@ -185,11 +191,34 @@ final class MatchPlacementPayloadBuilder
             ];
         }
         $coachesByTeam = [];
+        $coachIdSetByTeam = [];
         foreach ($teamCoaches as $link) {
             $coachesByTeam[$link->getTeamId()][] = [
                 'coachId' => $link->getCoachId(),
                 'role' => $link->getRole()->value,
             ];
+            $coachIdSetByTeam[$link->getTeamId()][$link->getCoachId()] = true;
+        }
+        // P4-240 ③ — active shared players by team, MINUS anyone who ALSO coaches
+        // the team (the coach role wins, parité MatchConflictDetector : émise UNE
+        // fois côté coach, jamais en double malus). Person ids sorted so the payload
+        // is deterministic (patron slotRotations). Feeds both teams[].players and
+        // the training occupancies below.
+        $playersByTeam = [];
+        foreach ($playerMemberships as $membership) {
+            if (!$membership->getIsActive()) {
+                continue;
+            }
+            if (isset($coachIdSetByTeam[$membership->getTeamId()][$membership->getCoachId()])) {
+                continue;
+            }
+            $playersByTeam[$membership->getTeamId()][$membership->getCoachId()] = true;
+        }
+        $playerIdsByTeam = [];
+        foreach ($playersByTeam as $teamId => $personIds) {
+            $ids = array_keys($personIds);
+            sort($ids);
+            $playerIdsByTeam[$teamId] = $ids;
         }
         $teamRows = [];
         $infoDiagnostics = [];
@@ -209,6 +238,7 @@ final class MatchPlacementPayloadBuilder
                 ], $windows),
                 'habits' => $habitsByTeam[$team->getId()] ?? [],
                 'coaches' => $coachesByTeam[$team->getId()] ?? [],
+                'players' => $playerIdsByTeam[$team->getId()] ?? [],
                 'matchMinutes' => $profile->matchMinutes,
                 'warmupMinutes' => $profile->warmupMinutes,
             ];
@@ -241,7 +271,7 @@ final class MatchPlacementPayloadBuilder
                     'type' => $link->getLinkType()->value,
                 ], $teamLinks),
                 'slotRotations' => $rotationRows,
-                'trainingOccupancies' => $this->trainingOccupancies($fixtures, $seasonId, $teamCoaches),
+                'trainingOccupancies' => $this->trainingOccupancies($fixtures, $seasonId, $teamCoaches, $playerIdsByTeam),
             ],
             'toPlaceCount' => $toPlaceCount,
             'infoDiagnostics' => $infoDiagnostics,
@@ -372,15 +402,19 @@ final class MatchPlacementPayloadBuilder
 
     /**
      * Dated projection of the training sessions on every date the horizon
-     * touches — one occupancy per (slot, coach) with the slot's own coach when
-     * set, else every coach of the slot's team (the radar's exact rule).
+     * touches — one occupancy per (slot, person). The slot's own coach when set,
+     * else every coach of the slot's team (the radar's exact rule), PLUS the
+     * slot's team's active players in EVERY case (P4-240 ③ : an assigned coach
+     * replaces the other COACHES, never the players — parité MatchConflictDetector).
+     * The `coachId` field carries any PERSON id (a player rides the same field).
      *
-     * @param list<Fixture>   $fixtures
-     * @param list<TeamCoach> $teamCoaches
+     * @param list<Fixture>               $fixtures
+     * @param list<TeamCoach>             $teamCoaches
+     * @param array<string, list<string>> $playerIdsByTeam teamId → active player person ids (coach-excluded)
      *
      * @return list<array<string, string>>
      */
-    private function trainingOccupancies(array $fixtures, ?string $seasonId, array $teamCoaches): array
+    private function trainingOccupancies(array $fixtures, ?string $seasonId, array $teamCoaches, array $playerIdsByTeam): array
     {
         $context = $this->trainingCalendarContext->load($seasonId);
         $coachesByTeam = [];
@@ -412,8 +446,15 @@ final class MatchPlacementPayloadBuilder
                 $end = $slot->getStartTime()->add(new DateInterval('PT' . $slot->getDurationMinutes() . 'M'))->format('H:i');
                 $slotCoach = $slot->getCoachId();
                 $coachIds = null !== $slotCoach ? [$slotCoach] : ($coachesByTeam[$slot->getTeamId()] ?? []);
-                foreach ($coachIds as $coachId) {
-                    $occupancies[] = ['date' => $dateKey, 'start' => $start, 'end' => $end, 'coachId' => $coachId];
+                // Coaches (assigned or all) PLUS the team's active players — a player
+                // is held by his team's training too (P4-240 ③, parité radar). Deduped
+                // so an id never yields two occupancies.
+                $personIds = array_values(array_unique([
+                    ...$coachIds,
+                    ...($playerIdsByTeam[$slot->getTeamId()] ?? []),
+                ]));
+                foreach ($personIds as $personId) {
+                    $occupancies[] = ['date' => $dateKey, 'start' => $start, 'end' => $end, 'coachId' => $personId];
                 }
             }
         }

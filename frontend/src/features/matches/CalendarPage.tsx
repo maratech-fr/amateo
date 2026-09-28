@@ -35,7 +35,7 @@ import { usePhaseView } from "./lib/usePhaseView";
 import { usePlacementGuards } from "./lib/usePlacementGuards";
 import { useWeekView } from "./lib/useWeekView";
 import { applyFbiToParams, decodeFbiParam } from "./lib/urlState";
-import { isPlacedOnGrid, matchMinutesByCategory, weekendKeyOf } from "./lib/weekendGrid";
+import { isPlacedOnGrid, matchMinutesByCategory, warmupMinutesByCategory, weekendKeyOf } from "./lib/weekendGrid";
 import { LeagueValidationBanner } from "./LeagueValidation";
 import { MatchesFilterBar } from "./MatchesFilterBar";
 import { ModuleVisitBanner } from "./ModuleVisitBanner";
@@ -154,6 +154,7 @@ export function CalendarPage() {
   const competitionsMap = useMemo<Map<string, Competition>>(() => byId(competitions.data), [competitions.data]);
   const coachesMap = useMemo<Map<string, Coach>>(() => byId(coaches.data), [coaches.data]);
   const matchDurations = useMemo(() => matchMinutesByCategory(categoryDurations.data ?? []), [categoryDurations.data]);
+  const warmupDurations = useMemo(() => warmupMinutesByCategory(categoryDurations.data ?? []), [categoryDurations.data]);
 
   const allFixtures = useMemo<Fixture[]>(() => fixtures.data ?? [], [fixtures.data]);
   const openCorrections = useMemo(() => fbiCorrections.data ?? [], [fbiCorrections.data]);
@@ -514,6 +515,7 @@ export function CalendarPage() {
               windows={windows}
               outOfEnvelope={outOfEnvelope}
               matchDurations={matchDurations}
+              warmupDurations={warmupDurations}
               newFingerprints={newConflictFingerprints}
               showGhosts={consultTypicalWeek}
               hiddenBreakdown={weekHiddenBreakdown}

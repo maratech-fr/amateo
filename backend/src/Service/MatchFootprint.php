@@ -77,16 +77,18 @@ final class MatchFootprint
 
     /**
      * The window used to DETECT a PERSON conflict (match↔match, and the match
-     * side of a match↔training): the occupancy window MINUS the leading warm-up.
-     * A person arriving from another engagement only has to be there by the
-     * KICKOFF — the warm-up is hers to skip (lot M, cas Inès 2026-10-10 : « pas de
-     * conflit du tout, et même règle pour le coach »). Travel is KEPT (an away
-     * arrival is a real drive), only the warm-up drops:
-     * - HOME (no travel): [kickoff, kickoff + matchMinutes] — identical to the
-     *   VENUE window.
-     * - AWAY: [kickoff − travelOut, kickoff + matchMinutes + travelBack].
-     * The DISPLAYED occupancy ({@see occupancy}) keeps the warm-up; ONLY this
-     * conflict-test window drops it. Null when the kickoff is unknown.
+     * side of a match↔training). Two régimes (lot M then P4-240 ③, décision C):
+     * - HOME (no travel): [kickoff, kickoff + matchMinutes] — the warm-up NEVER
+     *   counts for a person at home (lot M, cas Inès 2026-10-10 : « pas de conflit
+     *   du tout, et même règle pour le coach ») ; identical to the VENUE window.
+     * - AWAY: [kickoff − travelOut − warmup, kickoff + matchMinutes + travelBack].
+     *   The warm-up BEFORE an away match is counted (P4-240 ③, décision C): the
+     *   person must be at the away gym warmed up, so it is part of her occupancy.
+     *   Travel is kept (an away arrival is a real drive). Trajet inconnu →
+     *   travelOut = 0, so the lead is the warm-up alone.
+     * The DISPLAYED occupancy ({@see occupancy}) keeps the warm-up on BOTH sides;
+     * this conflict-test window drops it at home only. Null when the kickoff is
+     * unknown.
      *
      * @param int $roundTripTravelMinutes total there-and-back travel (away only); 0 until the travel matrix exists
      *
@@ -100,7 +102,7 @@ final class MatchFootprint
         }
 
         return [
-            'start' => $kickoff->modify(\sprintf('-%d minutes', $this->travelOutMinutes($fixture, $roundTripTravelMinutes))),
+            'start' => $kickoff->modify(\sprintf('-%d minutes', $this->personConflictLeadMinutes($fixture, $profile, $roundTripTravelMinutes))),
             'end' => $kickoff->modify(\sprintf('+%d minutes', $this->minutesAfter($fixture, $profile, $roundTripTravelMinutes))),
         ];
     }
@@ -108,7 +110,8 @@ final class MatchFootprint
     /**
      * The person-conflict window for an EXPLICIT kickoff time — the estimation
      * path (an away fixture borrowing its team's habitual kickoff), symmetric to
-     * {@see occupancyAt} but warm-up-free like {@see personConflictOccupancy}.
+     * {@see occupancyAt} and using the SAME lead as {@see personConflictOccupancy}
+     * (away travel + warm-up before the kickoff, none at home).
      *
      * @return array{start: DateTimeImmutable, end: DateTimeImmutable}
      */
@@ -120,7 +123,7 @@ final class MatchFootprint
         );
 
         return [
-            'start' => $kickoff->modify(\sprintf('-%d minutes', $this->travelOutMinutes($fixture, $roundTripTravelMinutes))),
+            'start' => $kickoff->modify(\sprintf('-%d minutes', $this->personConflictLeadMinutes($fixture, $profile, $roundTripTravelMinutes))),
             'end' => $kickoff->modify(\sprintf('+%d minutes', $this->minutesAfter($fixture, $profile, $roundTripTravelMinutes))),
         ];
     }
@@ -193,6 +196,23 @@ final class MatchFootprint
     private function travelOutMinutes(Fixture $fixture, int $roundTripTravelMinutes): int
     {
         return FixtureHomeAway::AWAY === $fixture->getHomeAway() ? intdiv($roundTripTravelMinutes, 2) : 0;
+    }
+
+    /**
+     * The lead a PERSON is occupied BEFORE the kickoff, for the conflict window
+     * (P4-240 ③, décision C):
+     * - AWAY: the outbound travel leg PLUS the warm-up she attends on the road
+     *   (a warm-up before an away match is time she must be there for).
+     * - HOME: 0 — the warm-up NEVER counts for a person at home (lot M, décision
+     *   fermée), and there is no travel.
+     */
+    private function personConflictLeadMinutes(Fixture $fixture, MatchDurationProfile $profile, int $roundTripTravelMinutes): int
+    {
+        if (FixtureHomeAway::AWAY !== $fixture->getHomeAway()) {
+            return 0;
+        }
+
+        return $this->travelOutMinutes($fixture, $roundTripTravelMinutes) + $profile->warmupMinutes;
     }
 
     private function minutesAfter(Fixture $fixture, MatchDurationProfile $profile, int $roundTripTravelMinutes): int
