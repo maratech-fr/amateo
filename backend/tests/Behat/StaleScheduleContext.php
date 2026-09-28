@@ -24,12 +24,23 @@ use RuntimeException;
  * planning (le résultat résolu AVEC elle est lui aussi périmé du fait qu'elle a disparu) : la
  * restauration se fait donc en base, sur la version ciblée, exactement comme le fait la preuve
  * PHPUnit (`ConstraintChangeStaleScheduleTest`).
+ *
+ * Second décor (péremption CIBLÉE du coach, P4-268) : compléter son modèle de coachs ne trompe
+ * pas. Ajouter un coach neuf et le rattacher à une équipe ne dit PAS le planning périmé (rien de
+ * placé n'a changé) ; renseigner qu'il est véhiculé — vrai levier de trajet — le dit périmé. On
+ * agit ici sur le drapeau RESSOURCE (`resourcesChangedSinceGeneration`, distinct du drapeau
+ * contrainte), exposé sur GET /schedules/{id}. Le coach et son rattachement jetables sont retirés
+ * et le drapeau restauré en fin, comme pour la contrainte.
  */
 final class StaleScheduleContext extends BaseContext
 {
     private const string USER_EMAIL = 'mara.mb@bccl.fr';
 
     private const string TEAM_NAME = 'SM1';
+
+    private const string COACH_FIRST_NAME = 'Nadia';
+
+    private const string COACH_LAST_NAME = 'Déclarée tard';
 
     private string $token = '';
 
@@ -49,6 +60,16 @@ final class StaleScheduleContext extends BaseContext
     private string $statusAtEntry = '';
 
     private string $constraintId = '';
+
+    /** Scénario coach (péremption ciblée, P4-268) : état à nettoyer/restaurer. */
+    private bool $coachScenario = false;
+
+    /** Valeur du drapeau de péremption RESSOURCE à l'entrée (à restaurer). */
+    private bool $resourceFlagAtEntry = false;
+
+    private string $coachId = '';
+
+    private string $teamCoachId = '';
 
     #[Given('le club de démonstration, connecté, dont le planning de saison en vigueur n\'est pas marqué')]
     public function leClubAvecUnPlanningNonMarque(): void
@@ -183,6 +204,115 @@ final class StaleScheduleContext extends BaseContext
         }
     }
 
+    #[Given('le club de démonstration, connecté, dont le planning de saison en vigueur n\'est pas dit périmé')]
+    public function leClubAvecUnPlanningNonPerime(): void
+    {
+        $this->coachScenario = true;
+        $this->resolveInForceSeasonSchedule();
+
+        // État « non périmé » du départ : on remet le drapeau RESSOURCE à faux (indépendant du
+        // drapeau CONTRAINTE) pour que le scénario prouve la TRANSITION, quel que soit l'héritage.
+        $this->resourceFlagAtEntry = 'oui' === $this->dbalScalar(
+            \sprintf('SELECT CASE WHEN resources_changed_since_generation THEN \'oui\' ELSE \'non\' END AS behatval FROM schedule WHERE id=\'%s\'', $this->scheduleId),
+            admin: true,
+        );
+        $this->setResourceFlag(false);
+
+        $seen = $this->apiGet(\sprintf('schedules/%s', $this->scheduleId), $this->token);
+        if (true === ($seen['json']['resourcesChangedSinceGeneration'] ?? null)) {
+            throw new RuntimeException('le planning en vigueur est déjà dit périmé (ressource) — décor non tenu');
+        }
+    }
+
+    #[When('j\'ajoute un coach au club et le rattache à une équipe')]
+    public function jAjouteUnCoachEtLeRattache(): void
+    {
+        // Un coach NEUF (postPersist non écouté) + son rattachement à une équipe (team_coach non
+        // écouté) : ni l'un ni l'autre ne doit périmer le planning en vigueur (P4-268).
+        $created = $this->apiPost('coaches', ['firstName' => self::COACH_FIRST_NAME, 'lastName' => self::COACH_LAST_NAME], $this->token);
+        if (!\in_array($created['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('création du coach refusée (HTTP %d)', $created['status']));
+        }
+        $coachId = $created['json']['id'] ?? null;
+        if (!\is_string($coachId) || '' === $coachId) {
+            throw new RuntimeException('le coach a été créé sans identifiant en retour');
+        }
+        $this->coachId = $coachId;
+
+        $linked = $this->apiPost('team_coaches', [
+            'teamId' => $this->teamId,
+            'coachId' => $this->coachId,
+            'role' => 'MAIN',
+        ], $this->token);
+        if (!\in_array($linked['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('rattachement du coach à l\'équipe refusé (HTTP %d)', $linked['status']));
+        }
+        $teamCoachId = $linked['json']['id'] ?? null;
+        if (!\is_string($teamCoachId) || '' === $teamCoachId) {
+            throw new RuntimeException('le rattachement coach↔équipe a été créé sans identifiant en retour');
+        }
+        $this->teamCoachId = $teamCoachId;
+    }
+
+    #[Then('le planning en vigueur n\'est pas dit périmé')]
+    public function lePlanningNestPasPerime(): void
+    {
+        $seen = $this->apiGet(\sprintf('schedules/%s', $this->scheduleId), $this->token);
+        if (false !== ($seen['json']['resourcesChangedSinceGeneration'] ?? null)) {
+            throw new RuntimeException('ajouter un coach et le rattacher à une équipe n\'aurait PAS dû dire le planning périmé (P4-268)');
+        }
+    }
+
+    #[When('je renseigne que ce coach est véhiculé')]
+    public function jeRenseigneCoachVehicule(): void
+    {
+        // Renseigner le statut véhiculé change le barème de trajet que le solveur appliquerait :
+        // vrai levier de placement → le planning se dit périmé (postUpdate hors champs cosmétiques).
+        // Le PUT rejoue l'identité inchangée (firstName est NotBlank sur CoachInput) : seul
+        // isVehicled bouge dans le changeset, donc SEUL lui déclenche le marquage.
+        $updated = $this->apiPut(\sprintf('coaches/%s', $this->coachId), [
+            'firstName' => self::COACH_FIRST_NAME,
+            'lastName' => self::COACH_LAST_NAME,
+            'isVehicled' => true,
+        ], $this->token);
+        if (!\in_array($updated['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('mise à jour du statut véhiculé refusée (HTTP %d)', $updated['status']));
+        }
+    }
+
+    #[Then('le planning en vigueur est dit périmé')]
+    public function lePlanningEstPerime(): void
+    {
+        $seen = $this->apiGet(\sprintf('schedules/%s', $this->scheduleId), $this->token);
+        if (true !== ($seen['json']['resourcesChangedSinceGeneration'] ?? null)) {
+            throw new RuntimeException('renseigner qu\'un coach est véhiculé aurait dû dire le planning en vigueur périmé');
+        }
+    }
+
+    /**
+     * Nettoie le scénario coach : retire le rattachement puis le coach jetable, et restaure le
+     * drapeau RESSOURCE dans son état d'entrée — quoi qu'il arrive. Supprimer le coach re-marque le
+     * planning (postRemove) : on remet donc le drapeau en base APRÈS suppression, sur la version
+     * ciblée, exactement comme le fait la preuve PHPUnit.
+     */
+    #[AfterScenario]
+    public function nettoyerCoach(): void
+    {
+        if (!$this->coachScenario || '' === $this->token) {
+            return;
+        }
+
+        if ('' !== $this->teamCoachId) {
+            $this->apiDelete(\sprintf('team_coaches/%s', $this->teamCoachId), $this->token);
+        }
+        if ('' !== $this->coachId) {
+            $this->apiDelete(\sprintf('coaches/%s', $this->coachId), $this->token);
+        }
+        if ('' !== $this->scheduleId) {
+            $this->setResourceFlag($this->resourceFlagAtEntry);
+        }
+    }
+
     /**
      * Retire la contrainte jetable et restaure le drapeau de péremption dans son état d'entrée —
      * quoi qu'il arrive. Le retrait re-marque le planning ; on remet donc le drapeau en base, sur
@@ -202,6 +332,58 @@ final class StaleScheduleContext extends BaseContext
         if ('' !== $this->scheduleId) {
             $this->setFlag($this->flagAtEntry);
         }
+    }
+
+    /**
+     * Résout le décor commun : jeton, club, équipe SM1 et version de saison EN VIGUEUR (celle que
+     * le socle pointe, sinon la COMPLETED la plus fraîche). Miroir de la résolution du Given
+     * contrainte, pour que le scénario coach cible EXACTEMENT le même planning.
+     */
+    private function resolveInForceSeasonSchedule(): void
+    {
+        $this->token = $this->mintToken(self::USER_EMAIL);
+
+        $me = $this->apiGet('me', $this->token);
+        $club = $me['json']['club'] ?? null;
+        $clubId = \is_array($club) ? ($club['id'] ?? null) : null;
+        if (!\is_string($clubId) || '' === $clubId) {
+            throw new RuntimeException('aucun club pour le gestionnaire de démonstration — la base est-elle seedée ?');
+        }
+        $this->clubId = $clubId;
+
+        $this->teamId = $this->dbalScalar(
+            \sprintf('SELECT id AS behatval FROM team WHERE club_id=\'%s\' AND name=\'%s\' LIMIT 1', $this->clubId, self::TEAM_NAME),
+            admin: true,
+        );
+        if (1 !== preg_match('/^[0-9a-f-]{36}$/i', $this->teamId)) {
+            throw new RuntimeException(\sprintf('équipe « %s » introuvable — la base est-elle seedée ?', self::TEAM_NAME));
+        }
+
+        $this->scheduleId = $this->dbalScalar(
+            \sprintf('SELECT chosen_schedule_id AS behatval FROM schedule_plan WHERE club_id=\'%s\' AND type=\'SEASON\' AND chosen_schedule_id IS NOT NULL LIMIT 1', $this->clubId),
+            admin: true,
+        );
+        if (1 !== preg_match('/^[0-9a-f-]{36}$/i', $this->scheduleId)) {
+            $this->scheduleId = $this->dbalScalar(
+                \sprintf('SELECT s.id AS behatval FROM schedule s JOIN schedule_plan p ON p.id=s.schedule_plan_id WHERE s.club_id=\'%s\' AND p.type=\'SEASON\' AND s.status=\'COMPLETED\' ORDER BY s.created_at DESC LIMIT 1', $this->clubId),
+                admin: true,
+            );
+        }
+        if (1 !== preg_match('/^[0-9a-f-]{36}$/i', $this->scheduleId)) {
+            throw new RuntimeException('aucun planning de saison COMPLETED — la base est-elle seedée ?');
+        }
+    }
+
+    private function setResourceFlag(bool $value): void
+    {
+        $this->dbalExec(
+            \sprintf(
+                'UPDATE schedule SET resources_changed_since_generation=%s WHERE id=\'%s\'',
+                $value ? 'true' : 'false',
+                $this->scheduleId,
+            ),
+            admin: true,
+        );
     }
 
     private function setFlag(bool $value): void
