@@ -1,4 +1,4 @@
-import { Plus, Route, Trash2 } from "lucide-react";
+import { Lock, Plus, Route, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
@@ -10,10 +10,12 @@ import { Input } from "@/shared/components/ui/input";
 import { Modal } from "@/shared/components/ui/modal";
 import { AccordionSection } from "@/shared/components/ui/accordion";
 import { Menu, MenuItem } from "@/shared/components/ui/menu";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Select } from "@/shared/components/ui/select";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
 import { nextVenueColor } from "@/shared/lib/color";
+import { useSocleValidated } from "@/shared/lib/socle";
 import { formatDuration } from "@/shared/lib/duration";
 import { toast } from "@/shared/stores/toastStore";
 
@@ -235,6 +237,13 @@ export function VenuesStep() {
 }
 
 function VenuesEditor() {
+  // Décision fondateur 2026-09-28 — « Modifier les données du club » : quand le socle (plan de
+  // saison) est VALIDÉ, la fiche du gymnase reste éditable mais la GRILLE des créneaux
+  // d'entraînement passe en lecture seule (les créneaux sont une contrainte : on rouvre le planning
+  // pour les changer). `VenuesEditor` n'est rendu qu'en mode SAISON (`VenuesStep` route la période
+  // vers `PeriodVenues`), donc le socle validé suffit à décider. Faux en onboarding ou après
+  // « Rouvrir » → l'édition redevient normale.
+  const slotsReadOnly = useSocleValidated();
   const { data: venues = [], isSuccess: venuesLoaded } = useWizardVenues();
   // Accordéon « Ajouter un gymnase » (demande fondateur 2026-08-05 : l'encart
   // prenait trop de place). Ouvert par défaut UNIQUEMENT pour un club sans
@@ -348,8 +357,12 @@ function VenuesEditor() {
     consumedSlotRef.current = slotTarget;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot : positionne sur le créneau ciblé (sélection du gymnase + ouverture de son éditeur)
     setSelectedId(slot.venueId);
-    setEditingSlot(slot);
-  }, [slotTarget, slots]);
+    // En lecture seule on positionne sur le gymnase du créneau mais on N'OUVRE PAS l'éditeur — un
+    // deep-link ne doit pas rouvrir un chemin d'édition que le socle validé ferme.
+    if (!slotsReadOnly) {
+      setEditingSlot(slot);
+    }
+  }, [slotTarget, slots, slotsReadOnly]);
   // P3-16 — l'impact vient du serveur, et seulement quand une suppression attend confirmation.
   const venueImpact = useDeletionImpact("venue", pendingDeleteVenue?.id ?? null);
 
@@ -660,8 +673,19 @@ function VenuesEditor() {
             </div>
           </div>
 
-          {/* Slot-placement toolbar — only the duration of the next dropped slot.
-              Capacity is set per-slot in the edit panel (a new slot is always 1). */}
+          {/* Lecture seule (socle validé) : la barre de pose n'a pas lieu d'être — on la remplace
+              par la MENTION qui dit pourquoi la grille ne répond plus au clic. */}
+          {slotsReadOnly ? (
+            <NoticeBanner
+              tone="muted"
+              role="status"
+              className="mb-3"
+              icon={<Lock className="size-4 text-muted-foreground" />}
+              message="Les créneaux d'entraînement sont une contrainte du planning : rouvrez le planning de la saison pour les modifier."
+            />
+          ) : (
+          /* Slot-placement toolbar — only the duration of the next dropped slot.
+              Capacity is set per-slot in the edit panel (a new slot is always 1). */
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <span className="text-xs text-muted-foreground">À poser :</span>
             <Select aria-label="Durée à poser" className="h-9 w-24" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
@@ -691,12 +715,14 @@ function VenuesEditor() {
               </span>
             ) : null}
           </div>
+          )}
 
           <VenueAvailabilityGrid
             venue={selected}
             slots={venueSlots}
             matchWindows={venueMatchWindows}
             selectedSlotId={editingSlot?.id ?? null}
+            readOnly={slotsReadOnly}
             onAdd={(dayOfWeek, startTime) => {
               const invalid = slotPlacementError(venueSlots, dayOfWeek, startTime, duration);
               if (null !== invalid) {
@@ -708,7 +734,7 @@ function VenuesEditor() {
             onSelect={(slot) => setEditingSlot(slot)}
           />
 
-          {null !== editingSlot ? (
+          {null !== editingSlot && !slotsReadOnly ? (
             <SlotEditor
               key={editingSlot.id}
               slot={editingSlot}

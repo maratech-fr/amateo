@@ -29,9 +29,17 @@ interface Props {
    * SAISON (VenuesStep) n'a pas de fermeture datée à montrer.
    */
   closures?: Closure[];
+  /**
+   * LECTURE SEULE (décision fondateur 2026-09-28) : les créneaux sont une contrainte du planning.
+   * Quand on complète les données du club le socle EN VIGUEUR (« Modifier les données du club »),
+   * on VOIT la grille mais on ne pose ni ne modifie de créneau — les cellules vides et les créneaux
+   * deviennent inertes (ni `onAdd`, ni `onSelect`). Faux par défaut : l'onboarding et la période
+   * gardent l'édition.
+   */
+  readOnly?: boolean;
 }
 
-export function VenueAvailabilityGrid({ venue, slots, selectedSlotId, onAdd, onSelect, matchWindows = [], closures = [] }: Props) {
+export function VenueAvailabilityGrid({ venue, slots, selectedSlotId, onAdd, onSelect, matchWindows = [], closures = [], readOnly = false }: Props) {
   const color = venue.color ?? "var(--accent)";
 
   // La plage verticale est l'UNION de la plage de saisie (08h→23h) et de ce que les
@@ -125,27 +133,28 @@ export function VenueAvailabilityGrid({ venue, slots, selectedSlotId, onAdd, onS
           </div>
         ))}
 
-        {/* Empty clickable cells */}
+        {/* Cellules de fond. En édition : des BOUTONS cliquables (poser un créneau). En LECTURE
+            SEULE : de simples `<div>` inertes — la grille se voit mais ne se pose plus (les créneaux
+            sont une contrainte, on rouvre le planning pour les changer). */}
         {WEEK.map((d, di) =>
-          rows.map((m, ri) => (
-            <button
-              key={`c${d.n}-${m}`}
-              type="button"
-              aria-label={`${d.label} ${fmt(m)}`}
-              onClick={() => onAdd(d.n, fmt(m))}
-              className={cn(
-                // Frontière de JOUR épaissie (retour fondateur 2026-08-05 : isoler un
-                // jour d'un coup d'œil) + pause méridienne 12h-14h en fond rosé —
-                // TEINTE DE FOND seulement : les créneaux (z-10, fond opaque) passent
-                // devant et gardent leur couleur.
-                "border-l border-t border-border/40 hover:bg-muted",
-                0 === m % 60 ? "border-t-border/70" : "",
-                "border-l-2 border-l-border",
-                m >= 12 * 60 && m < 14 * 60 ? "bg-destructive/5 hover:bg-muted" : "",
-              )}
-              style={{ gridColumn: 2 + di, gridRow: 2 + ri }}
-            />
-          )),
+          rows.map((m, ri) => {
+            // Frontière de JOUR épaissie (retour fondateur 2026-08-05 : isoler un jour d'un coup
+            // d'œil) + pause méridienne 12h-14h en fond rosé — TEINTE DE FOND seulement : les
+            // créneaux (z-10, fond opaque) passent devant et gardent leur couleur.
+            const cellClass = cn(
+              "border-l border-t border-border/40",
+              0 === m % 60 ? "border-t-border/70" : "",
+              "border-l-2 border-l-border",
+              m >= 12 * 60 && m < 14 * 60 ? "bg-destructive/5" : "",
+              readOnly ? "" : "hover:bg-muted",
+            );
+            const gridStyle = { gridColumn: 2 + di, gridRow: 2 + ri };
+            return readOnly ? (
+              <div key={`c${d.n}-${m}`} aria-hidden="true" className={cellClass} style={gridStyle} />
+            ) : (
+              <button key={`c${d.n}-${m}`} type="button" aria-label={`${d.label} ${fmt(m)}`} onClick={() => onAdd(d.n, fmt(m))} className={cellClass} style={gridStyle} />
+            );
+          }),
         )}
 
         {/* Fenêtres d'accès MATCH — fantôme, jamais un objet manipulable.
@@ -199,7 +208,30 @@ export function VenueAvailabilityGrid({ venue, slots, selectedSlotId, onAdd, onS
           // une bande de remplacement (grain JOUR strict, lu de `weekdays`).
           const closedBy = closureForSlot(slot, closures);
           const closedText = closedBy ? closureLabel(closedBy) : "";
-          return (
+          const slotClass = cn(
+            // Full border + OPAQUE fill so a slot is always clearly bounded — the old
+            // semi-transparent var(--muted) fill was identical to the empty cells'
+            // hover:bg-muted, so hovering the grid made slots "vanish" into the highlighted
+            // cells (reliability bug).
+            "z-10 m-px flex flex-col items-start overflow-hidden rounded border border-border border-l-4 px-1 text-left text-[10px] font-medium leading-tight",
+            readOnly ? "" : "hover:ring-1 hover:ring-accent",
+            slot.id === selectedSlotId ? "ring-2 ring-accent" : "",
+            closedBy ? "line-through" : "",
+          );
+          const slotStyle = { gridColumn: 2 + di, gridRow: `${startRow} / span ${span}`, borderLeftColor: color, backgroundColor: `color-mix(in oklch, ${color} 30%, var(--card))` };
+          const body = (
+            <>
+              <span>{visibleLabel}</span>
+              {closedBy ? <span className="w-full truncate">{closedText}</span> : null}
+            </>
+          );
+          // LECTURE SEULE : un `<div>` inerte (le texte visible reste lu par les lecteurs d'écran) ;
+          // en édition, un bouton qui ouvre l'éditeur du créneau.
+          return readOnly ? (
+            <div key={slot.id} className={slotClass} style={slotStyle}>
+              {body}
+            </div>
+          ) : (
             <button
               key={slot.id}
               type="button"
@@ -211,19 +243,10 @@ export function VenueAvailabilityGrid({ venue, slots, selectedSlotId, onAdd, onS
               // qui est écrit à l'écran n'atteint plus le bouton. D'où le texte visible en
               // tête, mot pour mot, complété ensuite (le libellé d'indispo compris).
               aria-label={`${visibleLabel} · ${WEEK[di]?.label ?? ""} ${formatDuration(slot.durationMinutes)} · capacité ${slot.capacity}${closedBy ? ` · ${closedText}` : ""} — modifier`}
-              className={cn(
-                // Full border + OPAQUE fill so a slot is always clearly bounded —
-                // the old semi-transparent var(--muted) fill was identical to the
-                // empty cells' hover:bg-muted, so hovering the grid made slots
-                // "vanish" into the highlighted cells (reliability bug).
-                "z-10 m-px flex flex-col items-start overflow-hidden rounded border border-border border-l-4 px-1 text-left text-[10px] font-medium leading-tight hover:ring-1 hover:ring-accent",
-                slot.id === selectedSlotId ? "ring-2 ring-accent" : "",
-                closedBy ? "line-through" : "",
-              )}
-              style={{ gridColumn: 2 + di, gridRow: `${startRow} / span ${span}`, borderLeftColor: color, backgroundColor: `color-mix(in oklch, ${color} 30%, var(--card))` }}
+              className={slotClass}
+              style={slotStyle}
             >
-              <span>{visibleLabel}</span>
-              {closedBy ? <span className="w-full truncate">{closedText}</span> : null}
+              {body}
             </button>
           );
         })}
