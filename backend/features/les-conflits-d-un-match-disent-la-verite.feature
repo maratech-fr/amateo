@@ -126,3 +126,15 @@ Fonctionnalité: Les conflits d'un match disent la vérité
     Et une rencontre de coupe à domicile ce samedi, coup d'envoi le soir hors de la fenêtre
     Quand je demande les conflits des matchs
     Alors le radar signale la coupe hors fenêtre de ligue, et jamais comme un amical sur créneau
+
+  Scénario: Une fenêtre de ligue corrigée par le club est honorée (P4-272 ①)
+    La copie de la ligue appartient au club : quand le gestionnaire pose sa fenêtre par l'écran des
+    contraintes, c'est CETTE fenêtre — pas le catalogue fédéral — que le radar (et le placement, qui
+    lisent la même copie) fait respecter. Un coup d'envoi hors de la fenêtre corrigée crie donc une
+    violation.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe, un coach et un gymnase jetables
+    Et le club corrige au samedi matin sa fenêtre de ligue pour cette équipe, via l'API gestionnaire
+    Et une rencontre de coupe à domicile ce samedi, coup d'envoi le soir hors de la fenêtre
+    Quand je demande les conflits des matchs
+    Alors le radar signale la coupe hors fenêtre de ligue, et jamais comme un amical sur créneau

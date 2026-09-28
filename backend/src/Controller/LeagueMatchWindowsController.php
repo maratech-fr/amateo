@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
-use App\Entity\LeagueMatchWindow;
+use App\Entity\ClubLeagueWindow;
+use App\Entity\LeagueWindowInterface;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Repository\ClubRepository;
@@ -51,10 +52,19 @@ final class LeagueMatchWindowsController extends AbstractController
 
         $league = $this->clubRepository->find($clubId)?->getLeague();
         $effectiveLeague = $this->windowRepository->effectiveLeague($league);
-        $windows = $this->windowRepository->findEnvelopeForLeague($league);
+
+        // P4-272 ① — les fenêtres servies sont la COPIE club (scopée club+saison par
+        // les filtres Doctrine), plus le catalogue global : le placement, le radar
+        // et cet écran lisent la MÊME maison. Copie vide = liste vide (le placement
+        // n'applique alors aucune règle fédérale).
+        /** @var list<ClubLeagueWindow> $windows */
+        $windows = $this->entityManager->getRepository(ClubLeagueWindow::class)->findBy(
+            [],
+            ['category' => 'ASC', 'level' => 'ASC', 'dayOfWeek' => 'ASC', 'kickoffMin' => 'ASC'],
+        );
 
         $items = array_map(
-            static fn (LeagueMatchWindow $w): array => [
+            static fn (ClubLeagueWindow $w): array => [
                 'id' => $w->getId(),
                 'league' => $w->getLeague(),
                 'category' => $w->getCategory(),
@@ -72,7 +82,7 @@ final class LeagueMatchWindowsController extends AbstractController
         /** @var list<SportCategory> $categories */
         $categories = $this->entityManager->getRepository(SportCategory::class)->findBy([]);
         $resolvedTeamWindows = array_map(
-            static fn (array $teamWindows): array => array_map(static fn (LeagueMatchWindow $w): string => $w->getId(), $teamWindows),
+            static fn (array $teamWindows): array => array_map(static fn (LeagueWindowInterface $w): string => $w->getId(), $teamWindows),
             $this->envelopeResolver->resolve($teams, $categories, $windows),
         );
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\Club;
+use App\Entity\ClubLeagueWindow;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Competition;
 use App\Entity\Fixture;
@@ -15,7 +16,6 @@ use App\Entity\TeamMatchHabit;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueUnavailability;
 use App\Repository\ClubRepository;
-use App\Repository\LeagueMatchWindowRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -43,7 +43,6 @@ final class ConflictRadarLoader
         private readonly MatchConflictDetector $detector,
         private readonly TrainingCalendarContext $trainingCalendarContext,
         private readonly ClubRepository $clubRepository,
-        private readonly LeagueMatchWindowRepository $leagueWindowRepository,
         private readonly LeagueEnvelopeResolver $envelopeResolver,
         private readonly MatchDurationResolver $matchDurationResolver,
         private readonly OpponentTravelProjection $opponentTravelProjection,
@@ -85,8 +84,12 @@ final class ConflictRadarLoader
         /** @var list<SportCategory> $categories */
         $categories = $this->entityManager->getRepository(SportCategory::class)->findBy([]);
         $club = $this->clubRepository->find($clubId);
-        $league = $club?->getLeague();
-        $envelope = $this->envelopeResolver->resolve($teams, $categories, $this->leagueWindowRepository->findEnvelopeForLeague($league));
+        // P4-272 ① — l'enveloppe ligue du radar lit la COPIE club (scopée
+        // club+saison par les filtres Doctrine), MAISON UNIQUE partagée avec le
+        // placement. Copie vide = aucune fenêtre = aucun LEAGUE_WINDOW_VIOLATION.
+        /** @var list<ClubLeagueWindow> $clubWindows */
+        $clubWindows = $this->entityManager->getRepository(ClubLeagueWindow::class)->findBy([]);
+        $envelope = $this->envelopeResolver->resolve($teams, $categories, $clubWindows);
         // D1 rule 3 — the club's civil today drops already-played matches from the
         // radar (foyer ClubDay, never rebuilt inline).
         $clubToday = $club instanceof Club ? $this->clubDay->todayFor($club) : null;

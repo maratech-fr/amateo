@@ -7,7 +7,7 @@ namespace App\Service;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Competition;
 use App\Entity\Fixture;
-use App\Entity\LeagueMatchWindow;
+use App\Entity\LeagueWindowInterface;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\TeamCoach;
 use App\Entity\TeamMatchHabit;
@@ -215,7 +215,7 @@ final class MatchConflictDetector
      * @param list<VenueUnavailability>                                                              $unavailabilities     scoped all-circumstances closures
      * @param list<TeamMatchHabit>                                                                   $habits               scoped habitual windows (estimation source)
      * @param list<VenueMatchWindow>                                                                 $matchWindows         scoped access windows (ACCESS_WINDOW_LOST)
-     * @param array<string, list<LeagueMatchWindow>>                                                 $envelope             teamId → resolved league windows ([] = unmapped)
+     * @param array<string, list<LeagueWindowInterface>>                                             $envelope             teamId → resolved league windows ([] = unmapped)
      * @param list<Competition>                                                                      $competitions         scoped competitions (COMPETITION_INCOMPLETE — severity 6)
      * @param array<string, MatchDurationProfile>                                                    $profilesByTeam       teamId → match duration profile (P2-54 RMM-9); a team absent falls back to MatchDurationProfile::fallback()
      * @param array<string, int>                                                                     $roundTripByFixtureId
@@ -595,8 +595,8 @@ final class MatchConflictDetector
      * league window (day or kickoff). Unmapped team ([] envelope) = silent, same
      * tolerance as the solver and the placement screen.
      *
-     * @param list<Fixture>                          $fixtures
-     * @param array<string, list<LeagueMatchWindow>> $envelope
+     * @param list<Fixture>                              $fixtures
+     * @param array<string, list<LeagueWindowInterface>> $envelope
      *
      * @return list<array<string, mixed>>
      */
@@ -621,7 +621,7 @@ final class MatchConflictDetector
             }
             $day = (int) $fixture->getMatchDate()->format('N');
             $kickoff = $kickoffTime->format('H:i');
-            $windowArrays = array_map(static fn (LeagueMatchWindow $w): array => [
+            $windowArrays = array_map(static fn (LeagueWindowInterface $w): array => [
                 'dayOfWeek' => $w->getDayOfWeek(),
                 'kickoffMin' => $w->getKickoffMin()->format('H:i'),
                 'kickoffMax' => $w->getKickoffMax()->format('H:i'),

@@ -4,45 +4,59 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
-use App\Repository\LeagueMatchWindowRepository;
+use App\Repository\ClubLeagueWindowRepository;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
- * Federation-imposed match kickoff windows per league × category × level
- * (× gender), the "envelope HARD" a club inherits (spec gestion-matchs §6bis).
- * GLOBAL reference, not tenant-owned: no club_id/season_id → no RLS, shared by
- * every club (same pattern as public_holiday / school_holiday_period). Seeded
- * from data/league-match-windows.aura.json (app:league-windows:seed).
+ * P4-272 ① — the per-club COPY of the federation match-window envelope (« écran
+ * unique des contraintes de match », section Ligue). Tenant + season owned,
+ * mirroring the business columns of the GLOBAL catalog ({@see LeagueMatchWindow})
+ * but now the SINGLE house the placement payload, the conflict radar and
+ * `GET /api/league-match-windows` read from — the global catalog only seeds this
+ * copy (birth of a club, season transition) and feeds the suggestion (PR ②).
  *
- * The AURA seed is the FEDERATION default base for EVERY club (couche 1 of the
- * 3-layer model: fédé → correction ligue → règles club). A club's league is
- * derived from its ffbbClubCode (LeagueResolver); until other leagues are
- * catalogued, all clubs inherit AURA.
+ * Seeded from the club's EFFECTIVE league (its own if catalogued, else the
+ * federation default AURA) so day-one behaviour is identical to reading the
+ * catalog. The manager then edits/adds/removes rows freely (ClubLeagueWindow
+ * CRUD, management-gated). An emptied copy = ZERO league rule: no HARD at
+ * placement, one INFO diagnostic for the whole club (founder decision) — the
+ * manager assumes it, exactly like an out-of-window manual placement, which
+ * stays PERMITTED and merely SIGNALLED by the radar (LEAGUE_WINDOW_VIOLATION).
  *
  * `level` = DEPARTEMENTAL | REGIONAL (federation tier). `gender` null = all
  * genders. `dayOfWeek` 1=Monday..7=Sunday. `kickoffMin`/`kickoffMax` bound the
- * tip-off, NOT a match duration.
+ * tip-off, NOT a match duration. Copied on season transition (the manager's
+ * corrections renew with the season, like habits / access windows).
  */
-#[ORM\Entity(repositoryClass: LeagueMatchWindowRepository::class)]
-#[ORM\Table(name: 'league_match_window')]
-#[ORM\UniqueConstraint(name: 'uniq_league_match_window', columns: ['league', 'category', 'level', 'gender', 'day_of_week', 'kickoff_min'])]
-#[ORM\Index(name: 'idx_league_match_window_league', columns: ['league'])]
-class LeagueMatchWindow implements LeagueWindowInterface
+#[ORM\Entity(repositoryClass: ClubLeagueWindowRepository::class)]
+#[ORM\Table(name: 'club_league_window')]
+#[ORM\UniqueConstraint(name: 'uniq_club_league_window', columns: ['club_id', 'season_id', 'category', 'level', 'gender', 'day_of_week', 'kickoff_min'])]
+#[ORM\Index(name: 'idx_club_league_window_club_season', columns: ['club_id', 'season_id'])]
+#[ORM\HasLifecycleCallbacks]
+class ClubLeagueWindow implements TenantOwnedInterface, LeagueWindowInterface
 {
-    public const LEVEL_DEPARTEMENTAL = 'DEPARTEMENTAL';
-    public const LEVEL_REGIONAL = 'REGIONAL';
-
-    /** Federation default base inherited by every club (couche 1). */
-    public const FEDERATION_DEFAULT_LEAGUE = 'AURA';
-
     #[ORM\Id]
     #[ORM\Column(type: 'guid')]
     private string $id;
 
+    #[ORM\Version]
+    #[ORM\Column(type: 'integer')]
+    private int $version = 1;
+
     #[ORM\Column(type: 'datetimetz_immutable')]
     private DateTimeImmutable $createdAt;
 
+    #[ORM\Column(type: 'datetimetz_immutable')]
+    private DateTimeImmutable $updatedAt;
+
+    #[ORM\Column(type: 'guid')]
+    private string $clubId;
+
+    #[ORM\Column(type: 'guid')]
+    private string $seasonId;
+
+    /** Provenance: the effective league the copy was seeded from. */
     #[ORM\Column(type: 'string', length: 24)]
     private string $league;
 
@@ -52,7 +66,6 @@ class LeagueMatchWindow implements LeagueWindowInterface
     #[ORM\Column(type: 'string', length: 20)]
     private string $level;
 
-    /** Null = applies to all genders; else a Gender enum value. */
     #[ORM\Column(type: 'string', length: 10, nullable: true)]
     private ?string $gender = null;
 
@@ -68,7 +81,9 @@ class LeagueMatchWindow implements LeagueWindowInterface
     public function __construct()
     {
         $this->id = $this->newUuid();
-        $this->createdAt = new DateTimeImmutable;
+        $now = new DateTimeImmutable;
+        $this->createdAt = $now;
+        $this->updatedAt = $now;
     }
 
     public function getId(): string
@@ -76,9 +91,56 @@ class LeagueMatchWindow implements LeagueWindowInterface
         return $this->id;
     }
 
+    public function setId(string $id): self
+    {
+        $this->id = $id;
+
+        return $this;
+    }
+
+    public function getVersion(): int
+    {
+        return $this->version;
+    }
+
     public function getCreatedAt(): DateTimeImmutable
     {
         return $this->createdAt;
+    }
+
+    public function getUpdatedAt(): DateTimeImmutable
+    {
+        return $this->updatedAt;
+    }
+
+    #[ORM\PreUpdate]
+    public function touchUpdatedAt(): void
+    {
+        $this->updatedAt = new DateTimeImmutable;
+    }
+
+    public function getClubId(): string
+    {
+        return $this->clubId;
+    }
+
+    public function setClubId(string $clubId): self
+    {
+        $this->clubId = $clubId;
+
+        return $this;
+    }
+
+    public function getSeasonId(): string
+    {
+        return $this->seasonId;
+    }
+
+    public function setSeasonId(string $seasonId): self
+    {
+        $this->seasonId = $seasonId;
+
+        return $this;
     }
 
     public function getLeague(): string

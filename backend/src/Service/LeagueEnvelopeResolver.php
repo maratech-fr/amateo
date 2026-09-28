@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-use App\Entity\LeagueMatchWindow;
+use App\Entity\LeagueWindowInterface;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 
@@ -22,11 +22,11 @@ use App\Entity\Team;
 final class LeagueEnvelopeResolver
 {
     /**
-     * @param list<Team>              $teams
-     * @param list<SportCategory>     $categories
-     * @param list<LeagueMatchWindow> $windows
+     * @param list<Team>                  $teams
+     * @param list<SportCategory>         $categories
+     * @param list<LeagueWindowInterface> $windows
      *
-     * @return array<string, list<LeagueMatchWindow>> teamId → applicable windows ([] = unmapped)
+     * @return array<string, list<LeagueWindowInterface>> teamId → applicable windows ([] = unmapped)
      */
     public function resolve(array $teams, array $categories, array $windows): array
     {
