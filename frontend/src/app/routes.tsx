@@ -151,7 +151,7 @@ export const routes: RouteObject[] = [
                 // (`MatchesLanding`) : elle rend le Calendrier (écran unique, fusion
                 // Semaine⇄Consulter) OU renvoie sur Conflits s'il y en a à traiter, une
                 // fois par session, lien profond prioritaire. La décision vit là, PAS
-                // dans le layout — la nav des six onglets reste inchangée.
+                // dans le layout — la nav des sept onglets reste inchangée.
                 index: true,
                 lazy: async () => ({ Component: (await import("@/features/matches/MatchesLanding")).MatchesLanding }),
               },

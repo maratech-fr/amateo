@@ -13,7 +13,7 @@ import { useMatchesStore } from "./store";
  * était inconditionnellement le Calendrier ; le fondateur veut atterrir sur
  * **Conflits s'il y a des conflits à traiter**, sur le **Calendrier sinon**. La
  * décision vit ICI, jamais dans `MatchesLayout` — le layout garde sa nav intacte
- * (l'ordre des six onglets reste octet pour octet), et cette route rend elle-même
+ * (l'ordre des sept onglets reste octet pour octet), et cette route rend elle-même
  * `<CalendarPage/>` dans le cas nominal.
  *
  * Contrat :
