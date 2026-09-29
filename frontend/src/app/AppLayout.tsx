@@ -68,11 +68,15 @@ export function AppLayout() {
               to="/"
               aria-label={data?.club?.name ?? PRODUCT_NAME}
               title="Retour à l'accueil (tableau de bord)"
-              className="flex min-w-0 items-center gap-2 rounded-md transition-opacity hover:opacity-80"
+              // PAS de `min-w-0` sur le lien : sinon les pastilles `shrink-0` de la grappe l'écrasent
+              // à largeur NULLE et le lien devient HIDDEN à 360 px (régression e2e #1022). Sans
+              // `min-w-0`, le plancher du lien est son contenu de largeur minimale = l'icône
+              // (`shrink-0`), toujours visible ; c'est le SPAN qui porte `min-w-0` pour tronquer.
+              className="flex items-center gap-2 rounded-md transition-opacity hover:opacity-80"
             >
               <BrandIcon className="size-6 shrink-0" />
               {data?.club?.logoUrl ? <img src={data.club.logoUrl} alt="" className="size-6 shrink-0 rounded-full object-cover" /> : null}
-              <span className="hidden truncate text-sm font-semibold sm:inline">{data?.club?.name ?? PRODUCT_NAME}</span>
+              <span className="hidden min-w-0 truncate text-sm font-semibold sm:inline">{data?.club?.name ?? PRODUCT_NAME}</span>
             </NavLink>
             {/* Pastilles d'OFFRE, juste après la marque/club : « BÊTA » (offre bêta) et
                 « Découverte · N crédits » (offre Découverte bridée). Mutuellement exclusives en

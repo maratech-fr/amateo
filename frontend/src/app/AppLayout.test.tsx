@@ -116,4 +116,25 @@ describe("AppLayout — en-tête marque produit", () => {
     fireEvent.click(screen.getByTestId("beta-badge"));
     expect(screen.getByTestId("feedback-dialog")).toBeInTheDocument();
   });
+
+  // Régression CI (#1022, width-calibration.spec 360 px) : les pastilles `shrink-0` ajoutées dans
+  // la grappe écrasaient le lien d'accueil `min-w-0` à largeur NULLE → lien HIDDEN à 360 px. Le lien
+  // doit garder un PLANCHER (l'icône, `shrink-0`) : il ne porte donc PAS `min-w-0` (qui supprime son
+  // plancher de contenu), et c'est le SPAN du nom qui porte `min-w-0` (troncature au bureau sans
+  // écraser l'icône) tout en se masquant sous `sm`. jsdom n'a pas de layout : on garde le CONTRAT de
+  // classes, la mesure pixel à 360 px est faite en vrai navigateur (harnais).
+  it("lien d'accueil : plancher icône (pas de min-w-0 sur le lien), nom en min-w-0 masqué sous sm", () => {
+    meData = { club: club({ name: "B CHARPENNES CROIX LUIZET", logoUrl: null }) };
+    const { container } = renderLayout();
+    const home = container.querySelector("header a[href='/']") as HTMLElement;
+    // Le lien ne s'écrase plus : pas de `min-w-0` sur le lien lui-même.
+    expect(home.className).not.toContain("min-w-0");
+    // L'icône produit est le plancher visible (shrink-0), toujours présente.
+    expect(brandIcon(container)?.getAttribute("class") ?? "").toContain("shrink-0");
+    // Le nom : masqué sous sm (`hidden sm:inline`) ET `min-w-0` pour tronquer au bureau.
+    const span = home.querySelector("span") as HTMLElement;
+    expect(span.className).toContain("hidden");
+    expect(span.className).toContain("sm:inline");
+    expect(span.className).toContain("min-w-0");
+  });
 });
