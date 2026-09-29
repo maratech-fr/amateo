@@ -191,6 +191,69 @@ domaine), sinon l'envoi part en spam ou est refusé.
 
 ---
 
+### 1.8 Jour J — données (seed initial, une seule fois)
+
+Une fois la stack déployée et **les migrations passées** (elles tournent au déploiement),
+on pose les données de départ. Tous les seeds qui touchent des tables tenant traversent la RLS
+et exigent la **connexion ADMIN** : on lance chaque commande avec `DATABASE_URL` forcé sur
+`DATABASE_ADMIN_URL` (déjà présent dans l'environnement du conteneur).
+
+⬜ **Sonder d'abord la connexion admin** — le seed échoue vite si `DATABASE_ADMIN_URL` n'est pas
+un rôle superuser (il ne peut alors pas traverser la RLS) :
+
+```bash
+docker compose exec php-fpm sh -c 'DATABASE_URL="$DATABASE_ADMIN_URL" php bin/console dbal:run-sql "SELECT usesuper FROM pg_user WHERE usename = current_user"'
+```
+
+Si la réponse n'est **pas** `t` (true) : **STOP** — ne rien seeder, remonter la décision (le rôle
+admin de prod doit être superuser pour le seed, comme `amateo_owner` en local).
+
+⬜ **Référentiels d'abord** (globaux, non-tenant, idempotents) — les fenêtres de ligue **avant**
+le BCCL (le club en dépend) :
+
+```bash
+docker compose exec php-fpm php bin/console app:school-holidays:seed
+docker compose exec php-fpm php bin/console app:public-holidays:seed
+docker compose exec php-fpm php bin/console app:league-windows:seed
+```
+
+⬜ **Le club BCCL réel** (`app:bccl:seed-prod`) — CREATE-ONLY (no-op si déjà là). Les mots de passe
+sont demandés en **prompt masqué** (ne pas les mettre en `--password` pour ne pas les laisser dans
+l'historique shell). `--email` = ton compte fondateur, `--co-email` = celui de Nicolas Barilleau :
+
+```bash
+docker compose exec php-fpm sh -c 'DATABASE_URL="$DATABASE_ADMIN_URL" php bin/console app:bccl:seed-prod --email=TON-EMAIL --co-email=EMAIL-NICOLAS'
+# → deux prompts masqués : mot de passe gestionnaire, puis co-gestionnaire (min 12 caractères).
+```
+
+⬜ **Le club de démonstration** (`app:demo:seed`) — jouable dès le jour J. `--password` (min 12) est
+requis à la première création ; pour éviter de le laisser en clair dans l'historique, préfixer la
+ligne d'un espace (avec `HISTCONTROL=ignorespace`) ou passer par une variable non historisée :
+
+```bash
+ docker compose exec php-fpm sh -c 'DATABASE_URL="$DATABASE_ADMIN_URL" php bin/console app:demo:seed --password=MOT-DE-PASSE-DEMO'
+```
+
+⬜ **Rôle PostgreSQL lecture seule** — le mot de passe du rôle SELECT se pose au jour J ; cette
+étape est livrée par une **PR distincte** (rôle RO sans `admin_all`). À compléter ici quand elle est
+en place.
+
+⬜ **Ré-importer les matchs** — le seed pose l'état terrain (créneaux, contraintes, adversaires
+déjà localisés) mais **pas les matchs** : les réimporter depuis l'UI (module Matchs → Importer, le
+fichier FBI de la saison). Les localisations d'adversaires étant déjà amorcées, l'import retrouve
+les gymnases sans re-résoudre.
+
+⬜ **Vérifications** :
+- se connecter aux **3 comptes** (fondateur, Nicolas, démo) — ils naissent pré-vérifiés ;
+- non-fuite entre clubs (chaque club voit SES catégories, jamais celles d'un autre) :
+
+```bash
+docker compose exec php-fpm sh -c 'DATABASE_URL="$DATABASE_ADMIN_URL" php bin/console dbal:run-sql "SELECT t.name, t.club_id, sc.club_id FROM team t JOIN sport_category sc ON sc.id = t.sport_category_id WHERE sc.club_id <> t.club_id"'
+# → 0 ligne attendue.
+```
+
+---
+
 ## Partie 2 — Au quotidien
 
 ### Déployer une release
