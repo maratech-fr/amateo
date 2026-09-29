@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 
 import { PageHeader } from "@/shared/components/ui/page-header";
-import { PRODUCT_NAME, PUBLISHER_NAME } from "@/shared/lib/product";
+import { LEGAL_NOTICE_URL, PRODUCT_NAME, PUBLISHER_NAME } from "@/shared/lib/product";
 import { useAuthStore } from "@/shared/stores/authStore";
 
 import { TERMS_VERSION } from "./terms";
@@ -90,6 +90,13 @@ export function PrivacyPage() {
 
       <Section title="7. Contact">
         <p>{PLACEHOLDER}</p>
+        <p>
+          Éditeur, responsable de la publication et hébergeur : voir les{" "}
+          <a className="text-accent hover:underline" href={LEGAL_NOTICE_URL} target="_blank" rel="noreferrer noopener">
+            mentions légales
+          </a>
+          .
+        </p>
       </Section>
 
       <p className="pt-4 text-sm">

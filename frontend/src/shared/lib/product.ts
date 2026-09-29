@@ -13,6 +13,16 @@ export const PRODUCT_NAME = "Amateo";
 export const PUBLISHER_NAME = "Maratech";
 
 /**
+ * Mentions légales — page publique de la VITRINE (domaine nu, hors app), donc une URL
+ * ABSOLUE inter-domaines (la vitrine et l'app sont deux hôtes : `amateo.app` vs
+ * `app.amateo.app`). Maison unique côté frontend, comme le nom : la page de confidentialité
+ * y renvoie, sans littéral dispersé. La vitrine tient les mentions elles-mêmes
+ * (`landing/mentions-legales.html`), leurs VALEURS dans `landing/config.js` ; ceci n'est
+ * que le LIEN vers cette page.
+ */
+export const LEGAL_NOTICE_URL = "https://amateo.app/mentions-legales.html";
+
+/**
  * Accent PRODUIT par défaut — le teal signature du logo (`#46AFAC`), partagé PAR
  * CONVENTION avec la vitrine (`landing/index.html` `--accent`), jamais importé de
  * `landing/`. C'est la couleur d'un club qui n'a pas choisi la sienne : `useApplyClubTheme`
