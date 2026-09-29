@@ -9,9 +9,12 @@ section Club de `ConstraintsPage.tsx` (`MatchConstraint` CRUD, `DayToggles`, Obl
 bornes pas avant/pas après) + l'alerte de cohérence (`useMatchConstraintCoherence`, affichée dans
 `ConstraintsPage` ET `IdealSlotsEditor`) recalées contre le code ✓, `ConflictType`/
 `CONFLICT_FAMILY_LABEL` portent `CLUB_RULE_VIOLATION` ✓ ; P5-24 — ligne `/doleances/:token` :
-Layout `AuthLayout` + pied « Propulsé par » ✓). Reste non re-sondé cette passe —
-historique : `git log -p --follow` ce fichier. §6.7 reste hors périmètre (régime narratif plus
-dense, taille à l'aveugle refusée) — P4-262 en roadmap.
+Layout `AuthLayout` + pied « Propulsé par » ✓ ; feat/pastilles-offre-club — sondé pour les
+pastilles `BetaBadge`/`CreditBadge` de l'en-tête `AppLayout` : ce fichier ne les décrit nulle part
+(seul marqueur `Required | AppLayout` dans la table de routes §2, aucune mention de crédits/offre),
+la maison canonique est `frontend/docs/frontend-components.md` § AppLayout — rien à recaler ici).
+Reste non re-sondé cette passe — historique : `git log -p --follow` ce fichier. §6.7 reste hors
+périmètre (régime narratif plus dense, taille à l'aveugle refusée) — P4-262 en roadmap.
 
 ## 1. Stack Decided
 
