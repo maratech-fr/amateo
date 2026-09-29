@@ -10,6 +10,7 @@ use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
 use App\Entity\ImplicitRuleSetting;
+use App\Entity\MatchConstraint;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
@@ -391,6 +392,27 @@ final class SeasonTransitionService
         if (0 === $leagueWindowCopies) {
             $club = $this->entityManager->getRepository(Club::class)->find($clubId);
             $this->clubLeagueWindowSeeder->seedForSeason($clubId, $target->getId(), $club?->getLeague());
+        }
+
+        // P4-272 ③ — les RÈGLES DE MATCH du club (scope CLUB) suivent la saison,
+        // comme les corrections du gestionnaire : recopie VERBATIM (une règle CLUB
+        // ne porte ni gymnase ni équipe à remapper — scopeTargetId/venueId nuls). Les
+        // scopes TEAM/COACH (④/⑤) exigeront un remap et ne sont pas encore émis.
+        foreach ($this->rows(MatchConstraint::class, $clubId, $sourceId) as $rule) {
+            if (ConstraintScope::CLUB !== $rule->getScope()) {
+                continue;
+            }
+            $copy = new MatchConstraint;
+            $copy->setClubId($clubId);
+            $copy->setSeasonId($target->getId());
+            $copy->setScope($rule->getScope());
+            $copy->setScopeTargetId($rule->getScopeTargetId());
+            $copy->setRuleType($rule->getRuleType());
+            $copy->setDaysOfWeek($rule->getDaysOfWeek());
+            $copy->setKickoffMin($rule->getKickoffMin());
+            $copy->setKickoffMax($rule->getKickoffMax());
+            $copy->setVenueId($rule->getVenueId());
+            $this->entityManager->persist($copy);
         }
 
         // P2-53 RMM-8 — la matrice de trajet suit la saison (remap gymnase). Un

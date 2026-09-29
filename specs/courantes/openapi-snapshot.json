@@ -12289,6 +12289,7 @@
                                                         "enum": [
                                                             "VENUE_OVERLAP",
                                                             "LEAGUE_WINDOW_VIOLATION",
+                                                            "CLUB_RULE_VIOLATION",
                                                             "MATCH_MATCH",
                                                             "MATCH_TRAINING",
                                                             "VENUE_UNAVAILABLE",
@@ -12471,6 +12472,32 @@
                                                                 "endTime": {
                                                                     "type": "string",
                                                                     "description": "\u00ab HH:MM \u00bb"
+                                                                }
+                                                            }
+                                                        }
+                                                    },
+                                                    "rules": {
+                                                        "type": "array",
+                                                        "description": "CLUB_RULE_VIOLATION: the HARD club match rules the placed kickoff violates \u2014 so the screen can name which rule was broken",
+                                                        "items": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "daysOfWeek": {
+                                                                    "type": "array",
+                                                                    "items": {
+                                                                        "type": "integer"
+                                                                    },
+                                                                    "description": "ISO weekdays the rule covers"
+                                                                },
+                                                                "kickoffMin": {
+                                                                    "type": "string",
+                                                                    "nullable": true,
+                                                                    "description": "\u00ab HH:MM \u00bb or null (open lower bound)"
+                                                                },
+                                                                "kickoffMax": {
+                                                                    "type": "string",
+                                                                    "nullable": true,
+                                                                    "description": "\u00ab HH:MM \u00bb or null (open upper bound)"
                                                                 }
                                                             }
                                                         }
@@ -13022,6 +13049,7 @@
                                                         "enum": [
                                                             "no_access_window",
                                                             "no_league_intersection",
+                                                            "club_rule_no_slot",
                                                             "venue_unavailable",
                                                             "venue_full",
                                                             "not_selected"
@@ -13332,6 +13360,120 @@
                 "summary": "League match-kickoff windows inherited by the club (global reference, read-only)"
             }
         },
+        "/api/match-constraints/coherence": {
+            "get": {
+                "operationId": "getMatchConstraintCoherence",
+                "tags": [
+                    "Match"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Coherence alerts between the club match rules and the teams' ideal slots (read-only, computed \u2014 nothing stored, nothing blocked). Two projections of the same collision set: byRule (constraints screen) and byHabit (ideal-slots screen)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "byRule": {
+                                            "type": "array",
+                                            "description": "Per club rule, the ideal slots it collides with",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "ruleId": {
+                                                        "type": "string"
+                                                    },
+                                                    "habits": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "teamId": {
+                                                                    "type": "string"
+                                                                },
+                                                                "teamName": {
+                                                                    "type": "string"
+                                                                },
+                                                                "week": {
+                                                                    "type": "string",
+                                                                    "enum": [
+                                                                        "A",
+                                                                        "B",
+                                                                        "ALL"
+                                                                    ]
+                                                                },
+                                                                "dayOfWeek": {
+                                                                    "type": "integer"
+                                                                },
+                                                                "kickoff": {
+                                                                    "type": "string",
+                                                                    "description": "\u00ab HH:MM \u00bb"
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "byHabit": {
+                                            "type": "array",
+                                            "description": "Per ideal slot, the club rules it collides with",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "habitId": {
+                                                        "type": "string"
+                                                    },
+                                                    "rules": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "ruleId": {
+                                                                    "type": "string"
+                                                                },
+                                                                "ruleType": {
+                                                                    "type": "string",
+                                                                    "enum": [
+                                                                        "HARD",
+                                                                        "PREFERRED"
+                                                                    ]
+                                                                },
+                                                                "daysOfWeek": {
+                                                                    "type": "array",
+                                                                    "items": {
+                                                                        "type": "integer"
+                                                                    }
+                                                                },
+                                                                "kickoffMin": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                },
+                                                                "kickoffMax": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No club in context"
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    }
+                },
+                "summary": "Coherence alerts between club match rules and team ideal slots (read-only, computed)"
+            }
+        },
         "/api/matches/deadline-outlook": {
             "get": {
                 "operationId": "getMatchDeadlineOutlook",
@@ -13563,6 +13705,404 @@
                     }
                 },
                 "summary": "Venue unavailability impact (alert-only, computed on the fly \u2014 blocks nothing)"
+            }
+        },
+        "/api/match_constraints": {
+            "get": {
+                "operationId": "api_match_constraints_get_collection",
+                "tags": [
+                    "MatchConstraint"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "MatchConstraint collection",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "type": "object",
+                                    "description": "MatchConstraint.jsonld collection.",
+                                    "allOf": [
+                                        {
+                                            "$ref": "#/components/schemas/HydraCollectionBaseSchemaNoPagination"
+                                        },
+                                        {
+                                            "type": "object",
+                                            "required": [
+                                                "member"
+                                            ],
+                                            "properties": {
+                                                "member": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/MatchConstraint.jsonld"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/MatchConstraint"
+                                    }
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/MatchConstraint.html"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "summary": "Retrieves the collection of MatchConstraint resources.",
+                "description": "Retrieves the collection of MatchConstraint resources.",
+                "parameters": []
+            },
+            "post": {
+                "operationId": "api_match_constraints_post",
+                "tags": [
+                    "MatchConstraint"
+                ],
+                "responses": {
+                    "201": {
+                        "description": "MatchConstraint resource created",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MatchConstraint.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MatchConstraint"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MatchConstraint.html"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "422": {
+                        "description": "An error occurred",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Creates a MatchConstraint resource.",
+                "description": "Creates a MatchConstraint resource.",
+                "parameters": [],
+                "requestBody": {
+                    "description": "The new MatchConstraint resource",
+                    "content": {
+                        "application/ld+json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MatchConstraint.MatchConstraintInput"
+                            }
+                        },
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MatchConstraint.MatchConstraintInput"
+                            }
+                        },
+                        "text/html": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MatchConstraint.MatchConstraintInput"
+                            }
+                        }
+                    },
+                    "required": true
+                }
+            }
+        },
+        "/api/match_constraints/{id}": {
+            "get": {
+                "operationId": "api_match_constraints_id_get",
+                "tags": [
+                    "MatchConstraint"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "MatchConstraint resource",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MatchConstraint.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MatchConstraint"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MatchConstraint.html"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Retrieves a MatchConstraint resource.",
+                "description": "Retrieves a MatchConstraint resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "MatchConstraint identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ]
+            },
+            "put": {
+                "operationId": "api_match_constraints_id_put",
+                "tags": [
+                    "MatchConstraint"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "MatchConstraint resource updated",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MatchConstraint.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MatchConstraint"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MatchConstraint.html"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "422": {
+                        "description": "An error occurred",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Replaces the MatchConstraint resource.",
+                "description": "Replaces the MatchConstraint resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "MatchConstraint identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ],
+                "requestBody": {
+                    "description": "The updated MatchConstraint resource",
+                    "content": {
+                        "application/ld+json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MatchConstraint.MatchConstraintInput"
+                            }
+                        },
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MatchConstraint.MatchConstraintInput"
+                            }
+                        },
+                        "text/html": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MatchConstraint.MatchConstraintInput"
+                            }
+                        }
+                    },
+                    "required": true
+                }
+            },
+            "delete": {
+                "operationId": "api_match_constraints_id_delete",
+                "tags": [
+                    "MatchConstraint"
+                ],
+                "responses": {
+                    "204": {
+                        "description": "MatchConstraint resource deleted"
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Removes the MatchConstraint resource.",
+                "description": "Removes the MatchConstraint resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "MatchConstraint identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ]
             }
         },
         "/api/league-window-suggestions": {
@@ -28371,6 +28911,268 @@
                 ],
                 "description": "Les 4 r\u00e8gles implicites \u00ab bien-\u00eatre \u00bb, R\u00c9GLABLES par club/saison (contrat moteur 2.7).\n\nL'identifiant EST `ruleKey` (la cl\u00e9 camelCase du contrat), pas un uuid : le front r\u00e8gle une\nr\u00e8gle par son nom, sans conna\u00eetre de ligne en base. La collection est R\u00c9SOLUE \u2014 toujours 4\nentr\u00e9es, d\u00e9fauts inclus, pour que le front n'invente rien. Le PUT UPSERTE (cr\u00e9e la ligne au\npremier r\u00e9glage), le DELETE R\u00c9INITIALISE (supprime la ligne \u2192 retour au d\u00e9faut)."
             },
+            "MatchConstraint": {
+                "type": "object",
+                "description": "Une R\u00c8GLE DE MATCH du club, \u00e9ditable par le gestionnaire (section Club de l'\u00e9cran\ndes contraintes de match). CRUD r\u00e9serv\u00e9 au gestionnaire. `daysOfWeek` = jours ISO\ncouverts ; `kickoffMin`/`kickoffMax` bornent le coup d'envoi (HH:MM), chacune\nfacultative. `scope` CLUB en \u2462 (TEAM/COACH \u00e0 venir).",
+                "properties": {
+                    "id": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "version": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "scope": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "scopeTargetId": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "ruleType": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "daysOfWeek": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        }
+                    },
+                    "kickoffMin": {
+                        "description": "HH:MM or null",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "kickoffMax": {
+                        "description": "HH:MM or null",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "venueId": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "MatchConstraint.MatchConstraintInput": {
+                "type": "object",
+                "description": "Une R\u00c8GLE DE MATCH du club, \u00e9ditable par le gestionnaire (section Club de l'\u00e9cran\ndes contraintes de match). CRUD r\u00e9serv\u00e9 au gestionnaire. `daysOfWeek` = jours ISO\ncouverts ; `kickoffMin`/`kickoffMax` bornent le coup d'envoi (HH:MM), chacune\nfacultative. `scope` CLUB en \u2462 (TEAM/COACH \u00e0 venir).",
+                "properties": {
+                    "scope": {
+                        "enum": [
+                            "CLUB",
+                            "TEAM",
+                            "COACH",
+                            "FACILITY"
+                        ],
+                        "default": "CLUB",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "scopeTargetId": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "ruleType": {
+                        "enum": [
+                            "HARD",
+                            "PREFERRED"
+                        ],
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "daysOfWeek": {
+                        "minItems": 1,
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "integer"
+                        }
+                    },
+                    "kickoffMin": {
+                        "pattern": "^(.*(^([01]\\d|2[0-3]):[0-5]\\d$).*)$",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "kickoffMax": {
+                        "pattern": "^(.*(^([01]\\d|2[0-3]):[0-5]\\d$).*)$",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "venueId": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "ruleType",
+                    "daysOfWeek"
+                ]
+            },
+            "MatchConstraint.html": {
+                "type": "object",
+                "description": "Une R\u00c8GLE DE MATCH du club, \u00e9ditable par le gestionnaire (section Club de l'\u00e9cran\ndes contraintes de match). CRUD r\u00e9serv\u00e9 au gestionnaire. `daysOfWeek` = jours ISO\ncouverts ; `kickoffMin`/`kickoffMax` bornent le coup d'envoi (HH:MM), chacune\nfacultative. `scope` CLUB en \u2462 (TEAM/COACH \u00e0 venir).",
+                "properties": {
+                    "id": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "version": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "scope": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "scopeTargetId": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "ruleType": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "daysOfWeek": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        }
+                    },
+                    "kickoffMin": {
+                        "description": "HH:MM or null",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "kickoffMax": {
+                        "description": "HH:MM or null",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "venueId": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "MatchConstraint.jsonld": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/HydraItemBaseSchema"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "default": "",
+                                "type": "string"
+                            },
+                            "version": {
+                                "default": 0,
+                                "type": "integer"
+                            },
+                            "createdAt": {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            "updatedAt": {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            "scope": {
+                                "default": "",
+                                "type": "string"
+                            },
+                            "scopeTargetId": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "ruleType": {
+                                "default": "",
+                                "type": "string"
+                            },
+                            "daysOfWeek": {
+                                "type": "array",
+                                "items": {
+                                    "type": "integer"
+                                }
+                            },
+                            "kickoffMin": {
+                                "description": "HH:MM or null",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "kickoffMax": {
+                                "description": "HH:MM or null",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "venueId": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            }
+                        }
+                    }
+                ],
+                "description": "Une R\u00c8GLE DE MATCH du club, \u00e9ditable par le gestionnaire (section Club de l'\u00e9cran\ndes contraintes de match). CRUD r\u00e9serv\u00e9 au gestionnaire. `daysOfWeek` = jours ISO\ncouverts ; `kickoffMin`/`kickoffMax` bornent le coup d'envoi (HH:MM), chacune\nfacultative. `scope` CLUB en \u2462 (TEAM/COACH \u00e0 venir)."
+            },
             "PriorityTier": {
                 "type": "object",
                 "properties": {
@@ -34433,6 +35235,10 @@
         {
             "name": "ImplicitRuleSetting",
             "description": "Les 4 r\u00e8gles implicites \u00ab bien-\u00eatre \u00bb, R\u00c9GLABLES par club/saison (contrat moteur 2.7).\n\nL'identifiant EST `ruleKey` (la cl\u00e9 camelCase du contrat), pas un uuid : le front r\u00e8gle une\nr\u00e8gle par son nom, sans conna\u00eetre de ligne en base. La collection est R\u00c9SOLUE \u2014 toujours 4\nentr\u00e9es, d\u00e9fauts inclus, pour que le front n'invente rien. Le PUT UPSERTE (cr\u00e9e la ligne au\npremier r\u00e9glage), le DELETE R\u00c9INITIALISE (supprime la ligne \u2192 retour au d\u00e9faut)."
+        },
+        {
+            "name": "MatchConstraint",
+            "description": "Une R\u00c8GLE DE MATCH du club, \u00e9ditable par le gestionnaire (section Club de l'\u00e9cran\ndes contraintes de match). CRUD r\u00e9serv\u00e9 au gestionnaire. `daysOfWeek` = jours ISO\ncouverts ; `kickoffMin`/`kickoffMax` bornent le coup d'envoi (HH:MM), chacune\nfacultative. `scope` CLUB en \u2462 (TEAM/COACH \u00e0 venir)."
         },
         {
             "name": "PriorityTier",

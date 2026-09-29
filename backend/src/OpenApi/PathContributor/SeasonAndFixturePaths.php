@@ -67,6 +67,41 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
             summary: 'League match-kickoff windows inherited by the club (global reference, read-only)',
         )));
 
+        $paths->addPath('/api/match-constraints/coherence', new PathItem(get: new Operation(
+            operationId: 'getMatchConstraintCoherence',
+            tags: ['Match'],
+            responses: [
+                '200' => $this->schemas->jsonResponse('Coherence alerts between the club match rules and the teams\' ideal slots (read-only, computed — nothing stored, nothing blocked). Two projections of the same collision set: byRule (constraints screen) and byHabit (ideal-slots screen)', [
+                    'type' => 'object',
+                    'properties' => [
+                        'byRule' => ['type' => 'array', 'description' => 'Per club rule, the ideal slots it collides with', 'items' => ['type' => 'object', 'properties' => [
+                            'ruleId' => ['type' => 'string'],
+                            'habits' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                                'teamId' => ['type' => 'string'],
+                                'teamName' => ['type' => 'string'],
+                                'week' => ['type' => 'string', 'enum' => ['A', 'B', 'ALL']],
+                                'dayOfWeek' => ['type' => 'integer'],
+                                'kickoff' => ['type' => 'string', 'description' => '« HH:MM »'],
+                            ]]],
+                        ]]],
+                        'byHabit' => ['type' => 'array', 'description' => 'Per ideal slot, the club rules it collides with', 'items' => ['type' => 'object', 'properties' => [
+                            'habitId' => ['type' => 'string'],
+                            'rules' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                                'ruleId' => ['type' => 'string'],
+                                'ruleType' => ['type' => 'string', 'enum' => ['HARD', 'PREFERRED']],
+                                'daysOfWeek' => ['type' => 'array', 'items' => ['type' => 'integer']],
+                                'kickoffMin' => ['type' => 'string', 'nullable' => true],
+                                'kickoffMax' => ['type' => 'string', 'nullable' => true],
+                            ]]],
+                        ]]],
+                    ],
+                ]),
+                '400' => new Response('No club in context'),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+            ],
+            summary: 'Coherence alerts between club match rules and team ideal slots (read-only, computed)',
+        )));
+
         $paths->addPath('/api/fbi-ingestions/latest', new PathItem(get: new Operation(
             operationId: 'getLatestFbiIngestion',
             tags: ['Match'],
@@ -111,7 +146,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                         'clubId' => ['type' => 'string'],
                         'seasonId' => ['type' => 'string', 'nullable' => true],
                         'conflicts' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
-                            'type' => ['type' => 'string', 'enum' => ['VENUE_OVERLAP', 'LEAGUE_WINDOW_VIOLATION', 'MATCH_MATCH', 'MATCH_TRAINING', 'VENUE_UNAVAILABLE', 'ACCESS_WINDOW_LOST', 'COMPETITION_INCOMPLETE', 'AWAY_NO_FOOTPRINT', 'FRIENDLY_ON_MATCH_SLOT']],
+                            'type' => ['type' => 'string', 'enum' => ['VENUE_OVERLAP', 'LEAGUE_WINDOW_VIOLATION', 'CLUB_RULE_VIOLATION', 'MATCH_MATCH', 'MATCH_TRAINING', 'VENUE_UNAVAILABLE', 'ACCESS_WINDOW_LOST', 'COMPETITION_INCOMPLETE', 'AWAY_NO_FOOTPRINT', 'FRIENDLY_ON_MATCH_SLOT']],
                             'coachId' => ['type' => 'string', 'description' => 'The double-booked person (a coach or a player) — MATCH_MATCH / MATCH_TRAINING'],
                             'coachRole' => ['type' => 'string', 'enum' => ['MAIN', 'ASSISTANT', 'PLAYER'], 'description' => 'Aggregate role of the person: MAIN when every side is MAIN, ASSISTANT as soon as one side is ASSISTANT, PLAYER otherwise'],
                             'start' => ['type' => 'string', 'format' => 'date-time', 'description' => 'Overlap segment start'],
@@ -132,6 +167,11 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                                 'dayOfWeek' => ['type' => 'integer', 'description' => 'ISO weekday 1..7'],
                                 'startTime' => ['type' => 'string', 'description' => '« HH:MM »'],
                                 'endTime' => ['type' => 'string', 'description' => '« HH:MM »'],
+                            ]]],
+                            'rules' => ['type' => 'array', 'description' => 'CLUB_RULE_VIOLATION: the HARD club match rules the placed kickoff violates — so the screen can name which rule was broken', 'items' => ['type' => 'object', 'properties' => [
+                                'daysOfWeek' => ['type' => 'array', 'items' => ['type' => 'integer'], 'description' => 'ISO weekdays the rule covers'],
+                                'kickoffMin' => ['type' => 'string', 'nullable' => true, 'description' => '« HH:MM » or null (open lower bound)'],
+                                'kickoffMax' => ['type' => 'string', 'nullable' => true, 'description' => '« HH:MM » or null (open upper bound)'],
                             ]]],
                             'fingerprint' => ['type' => 'string', 'description' => 'Stable identity of the conflict — same while it is the same dispute, changes when its nature changes (the guardian compares it across visits)'],
                             'resolution' => ['type' => 'object', 'nullable' => true, 'description' => 'The handling status a manager stamped on this conflict (null = « à traiter », the default with no row)', 'properties' => [
@@ -371,7 +411,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                         'skipped' => ['type' => 'integer', 'description' => 'Placements refused at write time (a manual gesture won during the solve)'],
                         'unplaced' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
                             'matchId' => ['type' => 'string'],
-                            'reason' => ['type' => 'string', 'enum' => ['no_access_window', 'no_league_intersection', 'venue_unavailable', 'venue_full', 'not_selected']],
+                            'reason' => ['type' => 'string', 'enum' => ['no_access_window', 'no_league_intersection', 'club_rule_no_slot', 'venue_unavailable', 'venue_full', 'not_selected']],
                             'message' => ['type' => 'string'],
                         ]]],
                         'diagnostics' => ['type' => 'array', 'items' => ['type' => 'object']],

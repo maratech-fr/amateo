@@ -101,6 +101,10 @@ use DateTimeImmutable;
  * - LEAGUE_WINDOW_VIOLATION (2): a placed HOME fixture of a MAPPED team whose
  *   day/kickoff sit outside every resolved league window (same
  *   LeagueEnvelopeResolver join as the solver — unmapped team = silent).
+ * - CLUB_RULE_VIOLATION (3, P4-272 ③): a placed HOME fixture whose kickoff violates
+ *   a HARD club match rule covering the match day. HARD rules ONLY (a PREFERRED rule
+ *   never makes a violation); friendlies exempt (like the league envelope). Manual
+ *   placement outside a HARD rule stays PERMITTED — this ALERTS, it never blocks.
  * - ACCESS_WINDOW_LOST (4, dette ii): a placed HOME fixture whose kickoff no
  *   longer falls in any access window of (venue, weekday) — the window changed
  *   AFTER the placement. Mirrors the PANEL rule (kickoff point, half-open,
@@ -206,30 +210,50 @@ final class MatchConflictDetector
     }
 
     /**
-     * @param list<Fixture>                                                                          $fixtures             season fixtures (already club+season scoped)
-     * @param list<TeamCoach>                                                                        $teamCoachRows        coach↔team links (scoped)
-     * @param string|null                                                                            $seasonScheduleId     the season's calendar (the version its plan points at), or null
-     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}> $activePeriods
-     *                                                                                                                     active period windows (ordered), scheduleId = their overlay or null
-     * @param array<string, list<ScheduleSlotTemplate>>                                              $slotsBySchedule      slots indexed by their scheduleId
-     * @param list<VenueUnavailability>                                                              $unavailabilities     scoped all-circumstances closures
-     * @param list<TeamMatchHabit>                                                                   $habits               scoped habitual windows (estimation source)
-     * @param list<VenueMatchWindow>                                                                 $matchWindows         scoped access windows (ACCESS_WINDOW_LOST)
-     * @param array<string, list<LeagueWindowInterface>>                                             $envelope             teamId → resolved league windows ([] = unmapped)
-     * @param list<Competition>                                                                      $competitions         scoped competitions (COMPETITION_INCOMPLETE — severity 6)
-     * @param array<string, MatchDurationProfile>                                                    $profilesByTeam       teamId → match duration profile (P2-54 RMM-9); a team absent falls back to MatchDurationProfile::fallback()
-     * @param array<string, int>                                                                     $roundTripByFixtureId
-     *                                                                                                                     fixtureId → round-trip car travel minutes (P2-54 RMM-9 PR-3, AWAY only); absent = 0
-     *                                                                                                                     (no travel modelled → no spatial extension of the footprint). The controller projects it
-     *                                                                                                                     via OpponentTravelProjection (link gym → constant travel cache, 2 × one-way), the detector stays pure.
-     * @param DateTimeImmutable|null                                                                 $clubToday
-     *                                                                                                                     the club's civil today ({@see ClubDay}); a fixture whose matchDate is strictly BEFORE
-     *                                                                                                                     it is already played — it neither PORTS nor RECEIVES a conflict (D1, rule 3). null
-     *                                                                                                                     (the pure test path) disables the filter entirely.
-     * @param list<CoachPlayerMembership>                                                            $playerMemberships
-     *                                                                                                                     scoped coach↔team PLAYER links; only the active ones count. A person is a PLAYER of
-     *                                                                                                                     that team UNLESS she already coaches it (the coach role then wins). Both callers load
-     *                                                                                                                     and pass these (parité MatchVisitDeltaParityTest).
+     * LE prédicat pur d'une règle de match du club — le coup d'envoi (H:i) est-il
+     * dans la fourchette de la règle ? Chaque borne facultative (« pas après 21h » =
+     * max seul) ; intervalle FERMÉ des deux côtés (comme l'enveloppe ligue). Une
+     * borne absente = ouverte de ce côté. Comparaison lexicographique sûre (H:i
+     * zero-paddé).
+     *
+     * @param array{kickoffMin: string|null, kickoffMax: string|null} $rule
+     */
+    public static function kickoffSatisfiesClubRule(string $kickoff, array $rule): bool
+    {
+        $belowMin = null !== $rule['kickoffMin'] && $kickoff < $rule['kickoffMin'];
+        $aboveMax = null !== $rule['kickoffMax'] && $kickoff > $rule['kickoffMax'];
+
+        return !$belowMin && !$aboveMax;
+    }
+
+    /**
+     * @param list<Fixture>                                                                                          $fixtures             season fixtures (already club+season scoped)
+     * @param list<TeamCoach>                                                                                        $teamCoachRows        coach↔team links (scoped)
+     * @param string|null                                                                                            $seasonScheduleId     the season's calendar (the version its plan points at), or null
+     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}>                 $activePeriods
+     *                                                                                                                                     active period windows (ordered), scheduleId = their overlay or null
+     * @param array<string, list<ScheduleSlotTemplate>>                                                              $slotsBySchedule      slots indexed by their scheduleId
+     * @param list<VenueUnavailability>                                                                              $unavailabilities     scoped all-circumstances closures
+     * @param list<TeamMatchHabit>                                                                                   $habits               scoped habitual windows (estimation source)
+     * @param list<VenueMatchWindow>                                                                                 $matchWindows         scoped access windows (ACCESS_WINDOW_LOST)
+     * @param array<string, list<LeagueWindowInterface>>                                                             $envelope             teamId → resolved league windows ([] = unmapped)
+     * @param list<Competition>                                                                                      $competitions         scoped competitions (COMPETITION_INCOMPLETE — severity 6)
+     * @param array<string, MatchDurationProfile>                                                                    $profilesByTeam       teamId → match duration profile (P2-54 RMM-9); a team absent falls back to MatchDurationProfile::fallback()
+     * @param array<string, int>                                                                                     $roundTripByFixtureId
+     *                                                                                                                                     fixtureId → round-trip car travel minutes (P2-54 RMM-9 PR-3, AWAY only); absent = 0
+     *                                                                                                                                     (no travel modelled → no spatial extension of the footprint). The controller projects it
+     *                                                                                                                                     via OpponentTravelProjection (link gym → constant travel cache, 2 × one-way), the detector stays pure.
+     * @param DateTimeImmutable|null                                                                                 $clubToday
+     *                                                                                                                                     the club's civil today ({@see ClubDay}); a fixture whose matchDate is strictly BEFORE
+     *                                                                                                                                     it is already played — it neither PORTS nor RECEIVES a conflict (D1, rule 3). null
+     *                                                                                                                                     (the pure test path) disables the filter entirely.
+     * @param list<CoachPlayerMembership>                                                                            $playerMemberships
+     *                                                                                                                                     scoped coach↔team PLAYER links; only the active ones count. A person is a PLAYER of
+     *                                                                                                                                     that team UNLESS she already coaches it (the coach role then wins). Both callers load
+     *                                                                                                                                     and pass these (parité MatchVisitDeltaParityTest).
+     * @param list<array{ruleType: string, daysOfWeek: list<int>, kickoffMin: string|null, kickoffMax: string|null}> $clubRules
+     *                                                                                                                                     the club's CLUB-scoped match rules (P4-272 ③). Only HARD rules make a
+     *                                                                                                                                     violation (CLUB_RULE_VIOLATION); PREFERRED ones only nudge the solver.
      *
      * @return list<array<string, mixed>> conflict items ready to serialize
      */
@@ -248,6 +272,7 @@ final class MatchConflictDetector
         array $roundTripByFixtureId = [],
         ?DateTimeImmutable $clubToday = null,
         array $playerMemberships = [],
+        array $clubRules = [],
     ): array {
         // Two person maps by team. Coaches carry a role (MAIN/ASSISTANT, worst
         // engagement wins, cadrage §8); active players carry PLAYER. Kept apart
@@ -373,6 +398,7 @@ final class MatchConflictDetector
         return [
             ...$this->venueOverlapConflicts($views),
             ...$this->leagueWindowViolations($activeFixtures, $envelope),
+            ...$this->clubRuleViolations($activeFixtures, $clubRules),
             ...$this->matchMatchConflicts($personViews, $roleByTeamPerson),
             ...$this->matchTrainingConflicts($personViews, $coachesByTeam, $playersByTeam, $roleByTeamPerson, $seasonScheduleId, $activePeriods, $slotsBySchedule),
             ...$this->venueUnavailableConflicts($activeFixtures, $unavailabilities),
@@ -633,6 +659,66 @@ final class MatchConflictDetector
                 'type' => 'LEAGUE_WINDOW_VIOLATION',
                 'severity' => 2,
                 'windows' => $windowArrays,
+                'fixture' => $this->bareFixtureView($fixture),
+            ];
+        }
+
+        return $conflicts;
+    }
+
+    /**
+     * Severity 3 (P4-272 ③, entre LEAGUE_WINDOW_VIOLATION 2 et ACCESS_WINDOW_LOST 4)
+     * — un domicile POSÉ dont le coup d'envoi viole une règle de match HARD du club le
+     * jour du match. Règles HARD SEULEMENT (une PREFERRED ne fait jamais violation, elle
+     * n'oriente que le solveur). Amicaux EXEMPTÉS (comme LEAGUE_WINDOW_VIOLATION, même
+     * décision). La pose manuelle hors règle HARD reste PERMISE — ceci la SIGNALE, il ne
+     * la bloque pas. `rules` porte les règles violées, de quoi nommer le motif à l'écran.
+     *
+     * @param list<Fixture>                                                                                          $fixtures
+     * @param list<array{ruleType: string, daysOfWeek: list<int>, kickoffMin: string|null, kickoffMax: string|null}> $clubRules
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function clubRuleViolations(array $fixtures, array $clubRules): array
+    {
+        $hard = array_values(array_filter($clubRules, static fn (array $rule): bool => 'HARD' === $rule['ruleType']));
+        if ([] === $hard) {
+            return [];
+        }
+
+        $conflicts = [];
+        foreach ($fixtures as $fixture) {
+            $kickoffTime = $fixture->getKickoffTime();
+            if (FixtureHomeAway::HOME !== $fixture->getHomeAway() || !$kickoffTime instanceof DateTimeImmutable) {
+                continue;
+            }
+            // Amical (competitionId null) : exempté de toute règle de match (comme
+            // l'enveloppe ligue) — il se joue quand le club veut.
+            if (null === $fixture->getCompetitionId()) {
+                continue;
+            }
+            $day = (int) $fixture->getMatchDate()->format('N');
+            $kickoff = $kickoffTime->format('H:i');
+            $violated = [];
+            foreach ($hard as $rule) {
+                if (!\in_array($day, $rule['daysOfWeek'], true)) {
+                    continue;
+                }
+                if (!self::kickoffSatisfiesClubRule($kickoff, $rule)) {
+                    $violated[] = [
+                        'daysOfWeek' => $rule['daysOfWeek'],
+                        'kickoffMin' => $rule['kickoffMin'],
+                        'kickoffMax' => $rule['kickoffMax'],
+                    ];
+                }
+            }
+            if ([] === $violated) {
+                continue;
+            }
+            $conflicts[] = [
+                'type' => 'CLUB_RULE_VIOLATION',
+                'severity' => 3,
+                'rules' => $violated,
                 'fixture' => $this->bareFixtureView($fixture),
             ];
         }

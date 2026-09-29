@@ -9,12 +9,14 @@ use App\Entity\ClubLeagueWindow;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Competition;
 use App\Entity\Fixture;
+use App\Entity\MatchConstraint;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\TeamMatchHabit;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueUnavailability;
+use App\Enum\ConstraintScope;
 use App\Repository\ClubRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -90,6 +92,17 @@ final class ConflictRadarLoader
         /** @var list<ClubLeagueWindow> $clubWindows */
         $clubWindows = $this->entityManager->getRepository(ClubLeagueWindow::class)->findBy([]);
         $envelope = $this->envelopeResolver->resolve($teams, $categories, $clubWindows);
+        // P4-272 ③ — les règles de match du club (scope CLUB), sous les mêmes filtres
+        // tenant+saison. Le détecteur ne SIGNALE (CLUB_RULE_VIOLATION) que les règles
+        // HARD violées par un domicile posé ; il fait le tri lui-même.
+        /** @var list<MatchConstraint> $clubRuleRows */
+        $clubRuleRows = $this->entityManager->getRepository(MatchConstraint::class)->findBy(['scope' => ConstraintScope::CLUB]);
+        $clubRules = array_map(static fn (MatchConstraint $rule): array => [
+            'ruleType' => $rule->getRuleType()->value,
+            'daysOfWeek' => $rule->getDaysOfWeek(),
+            'kickoffMin' => $rule->getKickoffMin()?->format('H:i'),
+            'kickoffMax' => $rule->getKickoffMax()?->format('H:i'),
+        ], $clubRuleRows);
         // D1 rule 3 — the club's civil today drops already-played matches from the
         // radar (foyer ClubDay, never rebuilt inline).
         $clubToday = $club instanceof Club ? $this->clubDay->todayFor($club) : null;
@@ -136,6 +149,7 @@ final class ConflictRadarLoader
             $roundTripByFixtureId,
             $clubToday,
             $playerMemberships,
+            $clubRules,
         );
 
         return [
