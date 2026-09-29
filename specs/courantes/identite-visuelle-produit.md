@@ -1,7 +1,8 @@
 # Identité visuelle produit — la base est le produit, l'accent est le club
 
 Last verified @ 2026-09-29 (P5-24 PR-1 — pied de marque de l'export PDF ; PR-2 — signature de
-marque des e-mails ; P4-274 — thème sombre vitrine). Confronté au code cette passe : `backend/src/Service/BrandAssets.php`
+marque des e-mails ; PR-3 — image OG + pied de la page doléances coachs, P5-24 livré en entier ;
+P4-274 — thème sombre vitrine). Confronté au code cette passe : `backend/src/Service/BrandAssets.php`
 (`pdfLogoDataUri()` + le nouveau `emailLogoPngBytes()`), `backend/src/Service/PdfGenerator.php`
 (`buildFooterTemplate`), `backend/src/Service/ProductIdentity.php` (les nouveaux `tagline()`/
 `siteUrl()`), `backend/src/EventListener/EmailSignatureListener.php`, `backend/assets/brand/
@@ -10,9 +11,14 @@ icon.svg` + `email-icon.png` (+ leurs README de provenance), `frontend/worker.js
 sombres, bouton `.theme-toggle`, `html[data-theme="dark"] body` → `fond-dark.svg`, logotype
 `mark.svg` + `.logo-word`), `landing/assets/brand/mark.svg` (arcs seuls, sans disque blanc),
 `landing/assets/brand/fond-dark.svg` (identique octet à `frontend/public/brand/fond-dark.svg`,
-vérifié par `diff`), `landing/config.js` (clé `logo`). — section « Ce qui reste à venir » ci-dessous recalée en conséquence. Reste du
-fichier non re-vérifié cette passe (portée = le volet PDF/e-mails) — repris tel quel de la passe
-P4-265 (2026-09-27) :
+vérifié par `diff`), `landing/config.js` (clé `logo`), `landing/assets/brand/og.png` (identique
+octet à `frontend/public/brand/og.png`, vérifié par `md5sum`), `scripts/brand-og/og.html`,
+`frontend/src/shared/lib/product.ts` (nouveau `PRODUCT_SITE_URL`), `frontend/src/features/
+coach-wishes/PublicWishPage.tsx` (pied `footer` d'`AuthLayout` sur les six états), `landing/
+index.html` + `landing/mentions-legales.html` + `frontend/index.html` (blocs `og:`/`twitter:`).
+— section « Ce qui reste à venir » ci-dessous recalée en conséquence (plus rien n'y est ouvert).
+Reste du fichier non re-vérifié cette passe (portée = le volet PDF/e-mails/OG/doléances) — repris
+tel quel de la passe P4-265 (2026-09-27) :
 `frontend/src/index.css` (jetons `--surface-warning|accent|destructive|muted`, `color-mix` clair
 10/10/8/60 %, sombre 12/12/12/60 %, `--color-surface-*` exposés à Tailwind), `frontend/src/shared/
 components/ui/notice-banner.tsx` (remplace `WarningPanel`, fond `bg-surface-<ton>`, texte
@@ -275,7 +281,27 @@ FIGÉ**.
   correspond au `src="cid:…"` du HTML. **Décision fermée** (fondateur, 2026-09-29) : signature sur
   tous les e-mails, superadmin compris ; l'accroche reprend le titre de la vitrine ; le lien pointe
   vers la vitrine, jamais l'app — `etat-des-lieux.md` §2.
-- **Reste ouvert (roadmap P5-24)** : image OG · page publique de doléances des coachs
-  (`/doleances/:token`, `frontend/src/features/coach-wishes/PublicWishPage.tsx` — aucune marque
-  produit à ce jour). La cession de droits du logo est **signée** (fondateur) — ce n'est plus le
-  préalable qui bloquait ces deux usages, il ne reste que le travail de pose.
+- **Image OG — posée (P5-24 PR-3, 2026-09-29)** : une image de partage Open Graph **UNIQUE** (1200×630,
+  fond CLAIR `#faf9f7`, logotype + accroche de la vitrine), servie en deux copies octet-identiques
+  — `landing/assets/brand/og.png` et `frontend/public/brand/og.png`, chacune sur son propre
+  domaine, jamais un fetch cross-domaine. Source versionnée : `scripts/brand-og/og.html` (gabarit
+  HTML capturé en 1200×630, assets de marque en chemins relatifs vers `landing/assets/brand/`,
+  détail de régénération et piège du cache immuable — `scripts/brand-og/README.md`). `landing/
+  index.html`, `landing/mentions-legales.html` et `frontend/index.html` portent chacun leur bloc
+  `og:`/`twitter:` (`og:url`/`og:image` en URL ABSOLUES — un aperçu se charge hors du contexte de
+  la page, un chemin relatif ne s'y résout pas), copie recopiée du `<title>`/`<meta description>`
+  de chaque page, sans `og:site_name` et sans nom de marque en clair dans le titre/la description
+  (seul le domaine `amateo.app` y figure, une adresse plutôt que la marque). Gardé par
+  `frontend/tooling/og.test.ts`. **Décision fermée** : une seule image pour vitrine ET app, fond
+  clair (lisible dans un aperçu qui n'adapte pas au thème du visiteur) — `etat-des-lieux.md` §2.
+- **Page publique de doléances des coachs — posée (P5-24 PR-3, 2026-09-29)** : un pied « Propulsé
+  par [`BrandMark`] — découvrir » se pose sous la carte des SIX états de `PublicWishPage`
+  (`frontend/src/features/coach-wishes/PublicWishPage.tsx` — chargement, lien expiré, lien
+  invalide, aucune équipe, formulaire, merci), via la prop `footer` déjà portée par `AuthLayout`
+  (qui affichait déjà `BrandMark` en EN-TÊTE de cet écran public — le pied est un AJOUT, pas un
+  remplacement). Le lien « découvrir » pointe le nouvel export `PRODUCT_SITE_URL`
+  (`frontend/src/shared/lib/product.ts`, `https://amateo.app`, sans slash final), premier et seul
+  consommateur à ce jour. **Décision fermée** : le coach n'a souvent aucun autre contact avec le
+  produit que ce lien — `etat-des-lieux.md` §2.
+- **P5-24 est désormais livré en entier** (en-tête app, favicon, PDF, e-mails, image OG, pied
+  doléances) et a quitté la roadmap — `etat-des-lieux.md` §2/§3.
