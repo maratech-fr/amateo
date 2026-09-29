@@ -94,9 +94,9 @@ Fonctionnalité: Le placement des matchs honore les fenêtres d'accès et nomme 
     Alors le match du samedi est placé par le solveur, hors du gymnase interdit
 
   Scénario: Le seul gymnase ouvert est interdit à l'équipe : le match reste sans créneau, nommé
-    Quand le SEUL gymnase ouvert le samedi est interdit à l'équipe, un créneau licite existait
-    pourtant : le match reste sans créneau avec un motif NOMMÉ — le gestionnaire sait que c'est
-    SON interdiction, pas un gymnase fermé, pas la ligue, pas une règle horaire du club.
+    Le SEUL gymnase ouvert le samedi est interdit à l'équipe : un créneau licite existait
+    pourtant, mais le match reste sans créneau avec un motif NOMMÉ — le gestionnaire sait
+    que c'est SON interdiction, pas un gymnase fermé, pas la ligue, pas une règle horaire du club.
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et deux équipes et un gymnase jetables
     Et une large fenêtre d'accès le samedi de 14h00 à 23h30 sur ce gymnase
