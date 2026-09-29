@@ -1,11 +1,13 @@
 # Conventions API, Layout et primitives UI partagées
 
-Last verified @ 2026-09-27 (`documentation-update`, ajout `PageHeader`). Re-confronté au code pour
-cette entrée : `shared/components/ui/page-header.tsx` exporte `PageHeader` (props `title`,
-`screen`, `scheduleId`, `leading`, `beside`, `actions`, `subtitle`, `showFeedback`) ✓ ; le module
-feedback vit dans `shared/feedback/` (`FeedbackButton`, `FeedbackDialog`) ✓ ; garde `frontend/src/test/pageHeaderGuard.test.ts` (pages
-principales nominatives + exemptions `<h1` nominatives) ✓. Reste de la table non rejoué ligne à
-ligne cette passe — historique : `git log -p --follow` sur ce fichier. **§3 est la maison unique
+Last verified @ 2026-09-29 (P4-271 : entrée `VenueSelect` recalée — `matches/MatchSlotRotationsEditor.tsx`
+a disparu, remplacé par `matches/IdealSlotsEditor.tsx` dans la liste des consommateurs ; `PageHeader`
+re-confronté au passage : `shared/components/ui/page-header.tsx` exporte toujours `PageHeader` (props
+`title`, `screen`, `scheduleId`, `leading`, `beside`, `actions`, `subtitle`, `showFeedback`) ✓, le
+module feedback vit toujours dans `shared/feedback/` (`FeedbackButton`, `FeedbackDialog`) ✓, garde
+`frontend/src/test/pageHeaderGuard.test.ts` (pages principales nominatives + exemptions `<h1`
+nominatives) ✓). Reste de la table non rejoué ligne à ligne cette passe — historique : `git log -p
+--follow` sur ce fichier. **§3 est la maison unique
 des primitives UI partagées** (décision fondateur 2026-09-26) : les entrées déménagées depuis
 `frontend/AGENTS.md` § « Primitives that matter » sont vérifiées contre
 `frontend/src/shared/components/ui/` (`ls` : tous les fichiers cités existent).
