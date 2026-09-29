@@ -1,6 +1,5 @@
 import type { DeletionImpact } from "@/shared/api/deletionImpact";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
-import { DeclaredFixturesNotice } from "@/shared/components/ui/declared-fixtures-notice";
 
 interface DeleteConfirmProps {
   open: boolean;
@@ -60,6 +59,10 @@ export function DeleteConfirm({
   // appelant, pour qu'on ne puisse plus recompter ici par commodité.
   const lines = impact?.lines ?? [];
   const blocked = true === impact?.blocked;
+  // P4-270 — matchs déjà placés dans ce gymnase qui redeviendront « à placer » ; `declared` en
+  // est le sous-ensemble déjà déposé à la fédération (à re-soumettre). Zéro hors gymnase.
+  const placedFixtures = impact?.placedFixtures ?? 0;
+  const declaredFixtures = impact?.declaredFixtures ?? 0;
   const description = (
     <>
       {blocked ? (
@@ -88,10 +91,23 @@ export function DeleteConfirm({
               Dont <strong>{impact.slotsInForce}</strong> {impact.slotsInForce > 1 ? "séances" : "séance"} du planning <strong>en vigueur</strong>. Vos plannings terminés passeront en «&nbsp;périmé&nbsp;» — régénérez pour retrouver un état sûr.
             </p>
           ) : null}
-          {/* P2-52 — on ne refuse pas le geste (un gymnase qui ferme, ça arrive), on avertit :
-              le match redevient « à placer », mais un match déjà déclaré devra être re-soumis.
-              Phrase PARTAGÉE avec la validation de planning (même perte de salle). */}
-          {undefined !== impact && null !== impact ? <DeclaredFixturesNotice count={impact.declaredFixtures} /> : null}
+          {/* P4-270 — on ne refuse pas le geste (un gymnase qui ferme, ça arrive), on dit la
+              VÉRITÉ du comportement : les matchs placés ici redeviennent « à placer », et le
+              sous-ensemble déjà déclaré à la fédération devra être re-soumis. Une seule phrase,
+              pas de doublon avec l'ancienne alerte des déclarés. */}
+          {placedFixtures > 0 ? (
+            <p className="mt-3 text-foreground">
+              <strong>
+                {placedFixtures} {placedFixtures > 1 ? "matchs placés" : "match placé"} dans ce gymnase {placedFixtures > 1 ? "redeviendront" : "redeviendra"} «&nbsp;à placer&nbsp;».
+              </strong>
+              {declaredFixtures > 0 ? (
+                <>
+                  {" "}
+                  Dont {declaredFixtures} {declaredFixtures > 1 ? "déjà déclarés" : "déjà déclaré"}, à re-soumettre à la fédération.
+                </>
+              ) : null}
+            </p>
+          ) : null}
           <p className={lines.length > 0 ? "mt-3 font-medium text-foreground" : "font-medium text-foreground"}>
             Cette action est définitive{affectsPeriodPlans ? ", y compris les réservations des plannings de période" : ""}.
           </p>

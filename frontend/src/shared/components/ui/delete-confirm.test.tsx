@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { DeleteConfirm } from "./delete-confirm";
 
 describe("DeleteConfirm", () => {
-  const impact = (over = {}) => ({ blocked: false, reason: null, lines: [], slotsInForce: 0, declaredFixtures: 0, ...over });
+  const impact = (over = {}) => ({ blocked: false, reason: null, lines: [], slotsInForce: 0, placedFixtures: 0, declaredFixtures: 0, ...over });
 
   /**
    * P3-16 — les comptes ET les libellés viennent du serveur : une famille ajoutée à la
@@ -19,6 +19,7 @@ describe("DeleteConfirm", () => {
         impact={impact({
           lines: [{ key: "venue_slot", count: 12, one: "créneau de disponibilité", many: "créneaux de disponibilité" }],
           slotsInForce: 6,
+          placedFixtures: 5,
           declaredFixtures: 2,
         })}
         onConfirm={vi.fn()}
@@ -28,7 +29,43 @@ describe("DeleteConfirm", () => {
 
     expect(screen.getByText(/12 créneaux de disponibilité/)).toBeInTheDocument();
     expect(screen.getByText(/planning/i)).toBeInTheDocument();
+    // P4-270 — les matchs placés redeviennent « à placer », dont le sous-ensemble déclaré.
+    expect(screen.getByText(/5 matchs placés dans ce gymnase/)).toBeInTheDocument();
     expect(screen.getByText(/déjà déclarés/)).toBeInTheDocument();
+  });
+
+  it("P4-270 — au singulier, accorde « match placé »/« redeviendra » et « déjà déclaré »", () => {
+    render(
+      <DeleteConfirm
+        open
+        entityName="Gymnase A"
+        impact={impact({ placedFixtures: 1, declaredFixtures: 1 })}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/1 match placé dans ce gymnase redeviendra/)).toBeInTheDocument();
+    expect(screen.getByText(/Dont 1 déjà déclaré,/)).toBeInTheDocument();
+  });
+
+  it("P4-270 — des matchs placés mais AUCUN déclaré : la phrase « à placer » sans la mention fédération", () => {
+    render(
+      <DeleteConfirm
+        open
+        entityName="Gymnase A"
+        impact={impact({ placedFixtures: 3, declaredFixtures: 0 })}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/3 matchs placés dans ce gymnase redeviendront/)).toBeInTheDocument();
+    expect(screen.queryByText(/déclaré/)).not.toBeInTheDocument();
+  });
+
+  it("P4-270 — zéro match placé : aucune phrase de matchs", () => {
+    render(<DeleteConfirm open entityName="SM1" impact={impact({ placedFixtures: 0, declaredFixtures: 0 })} onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.queryByText(/dans ce gymnase/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/déclaré/)).not.toBeInTheDocument();
   });
 
   it("n'offre PAS de confirmer tant que l'impact n'a pas répondu — ni quand le serveur refusera", async () => {

@@ -146,7 +146,7 @@ vi.mock("../queries", () => ({
   // P4-108 — l'impact d'une suppression de créneau vient du SERVEUR (il voit les verrous
   // HARD que l'écran ne pouvait pas compter). Le mock rend l'épinglage de ce créneau.
   useDeletionImpact: () => ({
-    data: { blocked: false, reason: null, lines: [{ key: "slot_reservation", count: 1, one: "réservation d'équipe", many: "réservations d'équipe" }], slotsInForce: 0, declaredFixtures: 0 },
+    data: { blocked: false, reason: null, lines: [{ key: "slot_reservation", count: 1, one: "réservation d'équipe", many: "réservations d'équipe" }], slotsInForce: 0, placedFixtures: 0, declaredFixtures: 0 },
     isPending: false,
     isError: false,
   }),
