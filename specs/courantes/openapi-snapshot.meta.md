@@ -1,11 +1,11 @@
-Last verified @ 2026-09-29 (snapshot régénéré depuis le backend vivant : P4-271 — la ressource
-`MatchSlotRotation` disparaît (les 2 routes `GET/POST /api/match_slot_rotations` et
+Last verified @ 2026-09-29 (snapshot régénéré depuis le backend vivant, rebasé sur #1008 : P4-271 —
+la ressource `MatchSlotRotation` disparaît (les 2 routes `GET/POST /api/match_slot_rotations` et
 `GET/PUT/DELETE /api/match_slot_rotations/{id}` retirées, semaine type A/B désormais un tag `week`
 sur le créneau idéal) et `TeamMatchHabit` gagne le champ `week` (A/B/ALL) en lecture comme en
-écriture).
+écriture ; les routes de P4-272 ② (plages de ligue suggérées) présentes via le rebase).
 
-**209 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`947841f5912d9d772ac33dd1be3c3db43869b1016b624539146b1a4f9278f71a` (`sha256sum` sur le fichier).
+**211 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`e438ee8c9ed3724b193c71245bb945fd225a8e0ba16f5db9d710407f8ddc16c4` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne
