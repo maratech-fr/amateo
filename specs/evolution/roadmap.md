@@ -1,4 +1,4 @@
-# Roadmap (40) — ce qui reste à faire
+# Roadmap (39) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -79,14 +79,16 @@ P4-240 (placement de matchs, gros lot) est livré en entier (①③④ ; ② « 
 ⑤a/⑤b repris dans **P4-272**, `[AVANT PROD]` — **P4-271** a livré la semaine A/B en aide visuelle et
 a quitté la roadmap, `etat-des-lieux.md` §2/§3). **P4-258** (scroll-padding vitrine) et les trois
 items surfacés le 2026-09-29 soir (P4-273 mailto illisible, P4-274 mode sombre, P4-275 mentions
-légales) sont **livrés** (même PR vitrine, `etat-des-lieux.md` §2/§3). En parallèle, deux gestes code
-sans ligne propre : CSP `connect-src` Sentry (`docker/frontend/csp.conf`, prérequis du DSN front —
-garde `sentryCspGuard`) et la migration du rôle Postgres lecture seule (volet code de **P5-20**).
+légales) sont **livrés** (même PR vitrine, `etat-des-lieux.md` §2/§3). **P5-20 est livré et a quitté
+la roadmap** (rôle Postgres `amateo_read` en liste blanche + runbook jour J, `etat-des-lieux.md`
+§2/§3) — reste un seul geste code sans ligne propre : CSP `connect-src` Sentry
+(`docker/frontend/csp.conf`, prérequis du DSN front — garde `sentryCspGuard`).
 
 **JOUR J** (checklist, **P5-28 en dernier**) : **P5-5** (VM Scaleway, DNS, Caddy, secrets, premier
 déploiement — anticipable J-2/J-3 avec un tag d'essai) → **P5-1** (Sentry : comptes, 3 projets, DSN)
-→ **P5-2** (bucket + `BACKUP_SYNC_COMMAND` + restauration testée) → **P5-20** (usage du rôle lecture
-seule) → **SEC-19** (ZAP + Nuclei sur l'hôte exposé) → **P5-21** (ne pointe plus que vers P5-28,
+→ **P5-2** (bucket + `BACKUP_SYNC_COMMAND` + restauration testée) → poser le mot de passe du rôle
+lecture seule `amateo_read` (**P5-20 livré**, geste jour J documenté `docs/ops/deploy.md` §1.8) →
+**SEC-19** (ZAP + Nuclei sur l'hôte exposé) → **P5-21** (ne pointe plus que vers P5-28,
 rien à faire en propre) → **P5-28 en dernier** (contrat backend⇄engine repart à 1, un seul commit).
 
 **Tout le reste des lignes P1-P5 et des findings d'audit (`AUD-*`) est APRÈS PROD.**
@@ -281,7 +283,6 @@ rien à faire en propre) → **P5-28 en dernier** (contrat backend⇄engine repa
 | P5-1 | **[JOUR J]** **Activer Sentry — le compte n'existe pas** | 🟠 | XS | Geste ops, zéro code : créer l'org Sentry + 3 projets, poser les 3 DSN. Le câblage des 3 zones est livré (backend/engine : P0-4 ; front : P5-19, 2026-09-22 — le DSN a désormais un chemin jusqu'au bundle), DSN-vide reste inactif partout. **L'ORDRE compte, dans le SENS où le garde de build le fait échouer** : hôte d'ingestion dans `connect-src` (`docker/frontend/csp.conf`) posé AVANT le secret front, jamais après (`frontend/tooling/sentryCspGuard.ts`, appelé par `vite.config.ts`). Séquence exacte et où poser chaque valeur (le DSN front n'est PAS dans `.env.prod`, c'est un secret GitHub Actions consommé par le build) → [`backup-restore.md`](../../docs/ops/backup-restore.md) §5 |
 | P5-2 | **[JOUR J]** **Hook off-site des backups (résidu INF-02)** | 🟠 | XS | Action d'exploitation, pas de code : brancher la copie hors-site des dumps `pg_dump` le jour du déploiement → [`backup-restore.md`](../../docs/ops/backup-restore.md) |
 | P5-4b | **[APRÈS PROD]** **Re-run de la mesure de charge sur la VM de prod (Scaleway Instances)** | ⚪ | XS | Le harness et le premier run local sont livrés (2026-08-13 — 5 clubs sous limites mémoire de prod : 5/5 COMPLETED, zéro mur mémoire à cette taille, files nominales ; synthèse : [`docs/ops/load-test.md`](../../docs/ops/load-test.md) §Mesures — maison unique depuis que l'étude d'hébergement a quitté le repo pour `business/`, dossier local du fondateur, 2026-08-18). **Ce qui reste est le run qui DIMENSIONNE** : mêmes commandes (`docs/ops/load-test.md`) sur le VPS après mise en prod — en particulier le pic RAM engine d'un solve DENSE de 600 s (un solve local de 0,2 s ne stresse pas la mémoire comme 600 s de branch-and-bound) et le verdict PRO2-XXS vs PRO2-XS. Positionné « la semaine d'après » dans la checklist Scaleway ⚑ **La cible n'est plus indéterminée** : hébergeur CHOISI le 2026-08-21 — **Scaleway, produit Instances** (VM auto-gérée, stack Docker entière dessus, pas de base managée). La mesure porte donc sur CE gabarit de VM, pas sur « un VPS » générique — trace et conséquences en décision fermée, `etat-des-lieux.md` §2. |
-| P5-20 | **[JOUR J]** **Un rôle Postgres en LECTURE SEULE pour l'exploration depuis un poste** | 🟡 | XS | Décision fondateur 2026-08-21, en cadrant l'accès base en prod ([`../../docs/ops/prod-stack.md`](../../docs/ops/prod-stack.md) §Accès opérateur). Aujourd'hui deux rôles seulement : `amateo_app` (runtime, scopé RLS) et `amateo_owner` (propriétaire, renommé depuis `clubscheduler` par P4-142 — policies `admin_all` — il **traverse le RLS et voit TOUS les clubs**). Se connecter avec le second depuis un client graphique rapatrie les données personnelles de tous les clubs sur un portable, et un `UPDATE` mal collé y touche de vraies données sans filet. À créer : un rôle `SELECT` seul, **sans** policy `admin_all` (donc scopé RLS comme `amateo_app`), documenté dans le runbook. ⚠ Ne pas lui donner `admin_all` « pour dépanner » — ce serait recréer `amateo_owner` sous un autre nom. Geste d'ops + une migration de rôle ; à faire avant l'ouverture publique |
 | P5-5 | **[JOUR J]** **Page de vente publique — reste : un geste d'OPS, plus une ligne de code** | 🟠 | XS | **La page est finie** (`landing/`, statique pur) **et la partie DÉPÔT est livrée le 2026-08-18** : `appUrl` pointe `https://app.amateo.app` (convention retenue — le domaine NU est la vitrine, le sous-domaine `app.` l'application) ; le **workflow de déploiement dépose `landing/`** sous `$DEPLOY_PATH/landing`, donc la page suit la version de l'app et se **rollback** avec elle ; `Caddyfile` à trois blocs versionné (`docs/ops/Caddyfile.example`) et procédure réécrite (`deploy.md` §1.5, droits de lecture `caddy` compris) ; texte relu. **Ne reste QUE ce que personne d'autre que le fondateur ne peut faire** : créer la VM (§1 de `deploy.md`), poser le DNS (`amateo.app`, `www`, `app.`), copier le Caddyfile, armer `DEPLOY_ENABLED` + secrets, déployer une première fois (c'est lui qui crée le dossier), ouvrir les droits, recharger Caddy. ⚠ Avant ce premier déploiement le domaine nu répond **404**, c'est attendu. Procédure canonique : [`deploy.md`](../../docs/ops/deploy.md) §1.5 + `docs/ops/Caddyfile.example` ; le guide pédagogique fondateur (vocabulaire, chaîne complète) a rejoint `business/3-runbooks/mise-en-ligne-landing.md` (local, non versionné) le 2026-08-18 |
 
 ---

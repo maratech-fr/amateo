@@ -1,13 +1,14 @@
 # Amateo — Tenant Isolation Architecture
 
-Last verified @ 2026-09-29 (`documentation-update`, rotation de fraîcheur — seed BCCL de
-PRODUCTION et P4-272 ③, sujets sans rapport avec ce fichier). Re-confronté au code : priorité 7 toujours en
-place (`TenantFilterListener.php:55`) ✓ · le skip `/api/admin` toujours en `str_starts_with` sur le
-path (`TenantFilterListener.php:81`) ✓ · `TenantConnectionContext` pose toujours
-`set_config('app.club_id', ?, false)` (`TenantConnectionContext.php:30`) ✓ ·
-`AbstractStateProcessor::requiresManagementRole()` retourne toujours `true` par défaut
-(`backend/src/State/Processor/AbstractStateProcessor.php:130-132`) ✓. Rien de faux trouvé cette
-passe.
+Last verified @ 2026-09-29 (`documentation-update`, P5-20 — ajout du rôle `amateo_read` ; seed BCCL de production qui traverse la RLS en connexion admin). Re-confronté
+au code : priorité 7 toujours en place (`TenantFilterListener.php:55`) ✓ · le skip `/api/admin`
+toujours en `str_starts_with` sur le path (`TenantFilterListener.php:81`) ✓ ·
+`TenantConnectionContext` pose toujours `set_config('app.club_id', ?, false)`
+(`TenantConnectionContext.php:30`) ✓ · `AbstractStateProcessor::requiresManagementRole()` retourne
+toujours `true` par défaut (`backend/src/State/Processor/AbstractStateProcessor.php:130-132`) ✓ ·
+**nouveau cette passe** : le claim « exactement un bypass RLS » reste vrai — `amateo_read`
+(`Version20260930090000`) porte `NOBYPASSRLS` explicite et aucune policy `admin_all`, il reste
+scopé par club comme `amateo_app`. Rien de faux trouvé cette passe.
 
 ## Overview
 
@@ -72,7 +73,7 @@ Console commands do **not** trigger `kernel.request`. Therefore:
 
 - The `tenant_filter` is **not** enabled automatically.
 - the `app.club_id` GUC is **never** set without an HTTP context.
-- CLI scripts that need tenant isolation must implement their own mechanism (e.g., explicit `--club-id` option, or `TenantConnectionContext::setClubId()` per club like the reminder crons). Maintenance tasks that must SEE ALL tenants run on the **`admin` Doctrine connection (`amateo_owner`, superuser — the only RLS bypass)**. ⚠ There is exactly **one** RLS bypass, and it is that `admin` connection. A second role (`migration_user`) does not exist: the init SQL used to create it with schema-wide `GRANT ALL` and no bypass and no configured connection — a dormant service account, **no longer present** (`Version20260731090000`).
+- CLI scripts that need tenant isolation must implement their own mechanism (e.g., explicit `--club-id` option, or `TenantConnectionContext::setClubId()` per club like the reminder crons). Maintenance tasks that must SEE ALL tenants run on the **`admin` Doctrine connection (`amateo_owner`, superuser — the only RLS bypass)**. ⚠ There is exactly **one** RLS bypass, and it is that `admin` connection. A second role (`migration_user`) does not exist: the init SQL used to create it with schema-wide `GRANT ALL` and no bypass and no configured connection — a dormant service account, **no longer present** (`Version20260731090000`). The read-only operator role `amateo_read` (P5-20) does **not** change this count: `NOBYPASSRLS` explicit, no `admin_all` policy — it stays scoped by club like `amateo_app`, see `docs/security/rls.md`.
 - ⚠ **Corollary — a query issued on the `admin` connection stays cross-tenant unless it scopes itself by hand.** The bypass is unconditional: it does not know "which tenant this operation is about", so a `findOneBy`-shaped lookup that omits `clubId` from its criteria will happily return **another** club's row. `BcclSeeder` (dev/demo seed, runs on `admin` — see the GUC table above) scopes its `SportCategory` find-or-create by `(sportId, name, clubId)` for exactly this reason (`backend/src/Seed/BcclSeeder.php`), guarded by `BcclSeederIdempotenceTest::testSeedScopesSportCategoriesToTheirOwnClub`. The rule generalises: **any admin-connection code that must stay within one tenant scopes every query by `clubId` itself — the connection will not do it for you.**
 
 ## Registration
