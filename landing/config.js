@@ -25,10 +25,11 @@ window.LANDING_CONFIG = {
   // (`frontend/src/shared/lib/product.ts`), jamais importé de `frontend/`.
   editor: "Maratech",
   // Le logo suit désormais le patron de l'app (BrandMark) : l'ICÔNE (les trois arcs,
-  // `icon.svg`) sert de mark, thème-neutre, et le MOT (`brand`) est rendu en TEXTE à la
-  // couleur du thème — un seul rendu en clair comme en sombre. On garde le point unique :
-  // le chemin de l'icône vit ici (injecté dans `[data-brand-logo]`), le mot vient de `brand`.
-  logo: "assets/brand/icon.svg",
+  // `mark.svg` — arcs SEULS, comme BrandIcon, jamais le favicon `icon.svg` à disque blanc)
+  // sert de mark thème-neutre, et le MOT (`brand`) est rendu en TEXTE à la couleur du thème —
+  // un seul rendu en clair comme en sombre. Point unique : le chemin de l'icône vit ici
+  // (injecté dans `[data-brand-logo]`), le mot vient de `brand`.
+  logo: "assets/brand/mark.svg",
   // Mentions légales (LCEN + RGPD) — consommées par `mentions-legales.html`. Point unique.
   // Éditeur = micro-entreprise Maratech EN COURS DE CRÉATION (bêta) : nom affiché, pas
   // d'adresse postale (décision fondateur), contact = `contactEmail` ci-dessus.

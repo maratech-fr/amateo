@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000">
+  <!-- Mark de marque pour le LOGOTYPE (en-tête, pied, mentions) — arcs SEULS, SANS disque blanc,
+       comme le logo de l'app (BrandIcon, frontend/src/shared/components/ui/brand-icon.tsx). Le disque
+       blanc reste réservé au FAVICON (icon.svg), pour ressortir sur un onglet ; posé sur une surface
+       de page, l'icône n'en a pas besoin. Géométrie DÉFINITIVE du handoff marque, recopiée EXPRÈS
+       (zéro import depuis frontend/, les deux zones sont indépendantes par convention). Trois arcs,
+       centre 500,500, pathLength=360 (dasharray en degrés). Couleurs FIXES du mark (pas des jetons). -->
+  <circle cx="500" cy="500" r="313" fill="none" stroke="#B51C8A" stroke-width="83" stroke-linecap="round" pathLength="360" stroke-dasharray="133 400" transform="rotate(98 500 500)"/>
+  <circle cx="500" cy="500" r="325" fill="none" stroke="#D47800" stroke-width="66" stroke-linecap="round" pathLength="360" stroke-dasharray="69 400" transform="rotate(252 500 500)"/>
+  <circle cx="500" cy="500" r="332" fill="none" stroke="#46AFAC" stroke-width="50" stroke-linecap="round" pathLength="360" stroke-dasharray="89 400" transform="rotate(334.5 500 500)"/>
+</svg>
