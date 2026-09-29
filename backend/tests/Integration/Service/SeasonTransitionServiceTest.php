@@ -9,8 +9,6 @@ use App\Entity\ClubLeagueWindow;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
-use App\Entity\MatchSlotRotation;
-use App\Entity\MatchSlotRotationTeam;
 use App\Entity\PriorityTier;
 use App\Entity\Schedule;
 use App\Entity\Season;
@@ -30,6 +28,7 @@ use App\Entity\VenueUnavailability;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
+use App\Enum\MatchWeek;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
@@ -109,6 +108,8 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         self::assertContains($newHabit->getTeamId(), $newTeamIds);
         self::assertSame('15:30', $newHabit->getKickoffTime()->format('H:i'));
         self::assertSame($newVenues[0]->getId(), $newHabit->getVenueId());
+        // P4-271 — le tag de semaine A/B/toutes se renouvelle avec la saison.
+        self::assertSame(MatchWeek::B, $newHabit->getWeek());
         // P4-272 ① — la copie club de l'enveloppe ligue suit la saison (verbatim).
         $newLeagueWindow = $this->em->getRepository(ClubLeagueWindow::class)->findOneBy(['seasonId' => $target->getId()]);
         self::assertNotNull($newLeagueWindow);
@@ -158,53 +159,6 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         // behaviour). So the custom tag from N must NOT appear in N+1.
         $customInTarget = $this->em->getRepository(TeamTagAssignment::class)->findOneBy(['seasonId' => $target->getId(), 'tagId' => $refs['tag']->getId()]);
         self::assertNull($customInTarget);
-    }
-
-    /**
-     * RMM-5 (P2-49) — les créneaux de match partagés (rotation A/B) suivent la saison, gymnase
-     * ET membres remappés. Trois gardes : un membre non remappé est EXCLU ; un créneau < 2 après
-     * remap n'est pas recopié ; un gymnase non remappé (référence pendante) n'est pas recopié —
-     * la rotation EST le créneau, rien où l'ancrer.
-     */
-    public function testMatchSlotRotationsAreCopiedRemappedWithGuards(): void
-    {
-        [$club, $season, $refs] = $this->createClubGraph();
-        $teamA = $refs['teamA'];
-        $venueA = $refs['venueA'];
-        $teamB = $this->em->getRepository(Team::class)->findOneBy(['seasonId' => $season->getId(), 'name' => 'U13']);
-        self::assertNotNull($teamB);
-        $bogusTeam = 'deadbeef-2222-4000-8000-000000000000';
-        $bogusVenue = 'deadbeef-3333-4000-8000-000000000000';
-
-        // R1 {teamA, teamB} → recopié (2 membres remappés).
-        $this->seedRotation($club, $season, $venueA->getId(), 6, '20:30', [$teamA->getId(), $teamB->getId()]);
-        // R2 {teamA, bogusTeam} → bogus exclu → 1 membre < 2 → NON recopié.
-        $this->seedRotation($club, $season, $venueA->getId(), 7, '18:00', [$teamA->getId(), $bogusTeam]);
-        // R3 {teamA, teamB} sur un gymnase pendant → NON recopié.
-        $this->seedRotation($club, $season, $bogusVenue, 6, '20:30', [$teamA->getId(), $teamB->getId()]);
-        // R4 {teamA, teamB, bogusTeam} → bogus exclu → 2 membres restent → recopié.
-        $this->seedRotation($club, $season, $venueA->getId(), 6, '18:00', [$teamA->getId(), $teamB->getId(), $bogusTeam]);
-        $this->em->flush();
-
-        $target = $this->service->transition($season);
-
-        $copied = $this->em->getRepository(MatchSlotRotation::class)->findBy(['seasonId' => $target->getId()], ['dayOfWeek' => 'ASC', 'kickoffTime' => 'ASC']);
-        self::assertCount(2, $copied, 'seuls R1 et R4 sont recopiés (R2 tombe < 2, R3 a un gymnase pendant)');
-
-        $newVenue = $this->em->getRepository(Venue::class)->findOneBy(['seasonId' => $target->getId(), 'name' => 'Gym A']);
-        $newTeamIds = array_map(
-            static fn (Team $t): string => $t->getId(),
-            $this->em->getRepository(Team::class)->findBy(['seasonId' => $target->getId()]),
-        );
-        foreach ($copied as $rotation) {
-            self::assertSame($newVenue?->getId(), $rotation->getVenueId(), 'le gymnase est remappé sur la copie N+1');
-            $members = $this->em->getRepository(MatchSlotRotationTeam::class)->findBy(['rotationId' => $rotation->getId()], ['position' => 'ASC']);
-            self::assertCount(2, $members, 'le membre pendant est exclu, les deux remappés restent');
-            foreach ($members as $member) {
-                self::assertContains($member->getTeamId(), $newTeamIds, 'chaque membre pointe une équipe recopiée');
-                self::assertSame($target->getId(), $member->getSeasonId());
-            }
-        }
     }
 
     public function testConstraintsArePermanentOnlyWithRemappedTargets(): void
@@ -477,6 +431,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $habit->setDayOfWeek(6);
         $habit->setKickoffTime(new DateTimeImmutable('15:30'));
         $habit->setVenueId($venueA->getId());
+        $habit->setWeek(MatchWeek::B);
         $this->em->persist($habit);
 
         // P4-272 ① — la copie club de l'enveloppe ligue : recopiée verbatim en N+1.
@@ -604,33 +559,6 @@ final class SeasonTransitionServiceTest extends KernelTestCase
             'coachConstraint' => $coachConstraint,
             'tag' => $tag,
         ]];
-    }
-
-    /**
-     * Un créneau de match partagé (rotation A/B) et ses membres ordonnés — seedés directement
-     * (les references pendantes sont possibles au niveau entité : aucune FK).
-     *
-     * @param list<string> $teamIds
-     */
-    private function seedRotation(Club $club, Season $season, string $venueId, int $day, string $at, array $teamIds): void
-    {
-        $rotation = new MatchSlotRotation;
-        $rotation->setClubId($club->getId());
-        $rotation->setSeasonId($season->getId());
-        $rotation->setVenueId($venueId);
-        $rotation->setDayOfWeek($day);
-        $rotation->setKickoffTime(new DateTimeImmutable($at));
-        $this->em->persist($rotation);
-
-        foreach (array_values($teamIds) as $position => $teamId) {
-            $member = new MatchSlotRotationTeam;
-            $member->setClubId($club->getId());
-            $member->setSeasonId($season->getId());
-            $member->setRotationId($rotation->getId());
-            $member->setTeamId($teamId);
-            $member->setPosition($position);
-            $this->em->persist($member);
-        }
     }
 
     private function minimalClub(): Club

@@ -418,7 +418,6 @@ final class SeasonTransitionService
             $this->entityManager->persist($copy);
         }
 
-
         $maps = ['venues' => $venueMap, 'coaches' => $coachMap, 'teams' => $teamMap];
         $constraints = 0;
         // Permanent constraints only: dated ones (calendarEntryId set) belong

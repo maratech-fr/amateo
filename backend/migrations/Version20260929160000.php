@@ -28,7 +28,7 @@ use Doctrine\Migrations\AbstractMigration;
  * migrations tournent sous `amateo_owner` (BYPASSRLS) : la conversion cross-club n'a pas
  * besoin de GUC (patron Version20260928140000).
  */
-final class Version20260929120000 extends AbstractMigration
+final class Version20260929160000 extends AbstractMigration
 {
     private const string TENANT_PREDICATE = 'club_id = NULLIF(current_setting(\'app.club_id\', true), \'\')::uuid';
 
@@ -53,12 +53,12 @@ final class Version20260929120000 extends AbstractMigration
         );
 
         // (a) La colonne, avec son défaut.
-        $this->addSql("ALTER TABLE team_match_habit ADD week VARCHAR(8) DEFAULT 'ALL' NOT NULL");
+        $this->addSql('ALTER TABLE team_match_habit ADD week VARCHAR(8) DEFAULT \'ALL\' NOT NULL');
 
         // (b1) Tag posé sur l'habitude MÊME-JOUR existante (position 0 → A, sinon B).
         $this->addSql(
             'UPDATE team_match_habit h '
-            . "SET week = CASE WHEN t.position = 0 THEN 'A' ELSE 'B' END, updated_at = now() "
+            . 'SET week = CASE WHEN t.position = 0 THEN \'A\' ELSE \'B\' END, updated_at = now() '
             . 'FROM match_slot_rotation_team t '
             . 'JOIN match_slot_rotation r ON r.id = t.rotation_id '
             . 'WHERE h.club_id = t.club_id AND h.season_id = t.season_id '
@@ -71,7 +71,7 @@ final class Version20260929120000 extends AbstractMigration
             'INSERT INTO team_match_habit '
             . '(id, version, created_at, updated_at, club_id, season_id, team_id, day_of_week, kickoff_time, venue_id, week) '
             . 'SELECT gen_random_uuid(), 1, now(), now(), t.club_id, t.season_id, t.team_id, r.day_of_week, '
-            . "r.kickoff_time, r.venue_id, CASE WHEN t.position = 0 THEN 'A' ELSE 'B' END "
+            . 'r.kickoff_time, r.venue_id, CASE WHEN t.position = 0 THEN \'A\' ELSE \'B\' END '
             . 'FROM match_slot_rotation_team t '
             . 'JOIN match_slot_rotation r ON r.id = t.rotation_id '
             . 'WHERE NOT EXISTS ('

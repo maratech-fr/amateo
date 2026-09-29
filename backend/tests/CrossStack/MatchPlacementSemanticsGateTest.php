@@ -60,6 +60,23 @@ final class MatchPlacementSemanticsGateTest extends TestCase
         self::assertSame([], $result['unplaced'], 'aucun match ne doit rester non placé sur une fenêtre large');
     }
 
+    public function testTeamIdealSlotIsHonoured(): void
+    {
+        // P4-271 (axe « constraint semantics ») — le créneau idéal (habitude) est un BONUS
+        // d'attraction : sur une fenêtre large et sans conflit, le match DOIT atterrir sur
+        // (jour, heure, gymnase) de l'habitude, même face à un gymnase alternatif ouvert.
+        $result = $this->solve([
+            'matches' => [['id' => 'm1', 'teamId' => 't1', 'date' => self::SATURDAY, 'kind' => 'TO_PLACE']],
+            'venues' => [$this->venue('v1', [['13:00', '22:30']]), $this->venue('v2', [['13:00', '22:30']])],
+            'teams' => [$this->teamWithIdeal('t1', 6, '15:30', 'v1')],
+        ]);
+
+        self::assertSame([], $result['unplaced']);
+        self::assertCount(1, $result['placements']);
+        self::assertSame('v1', $result['placements'][0]['venueId'], 'le match atterrit sur le gymnase de l\'idéal');
+        self::assertStringStartsWith('15:30', (string) $result['placements'][0]['kickoff'], 'sur l\'heure de l\'idéal');
+    }
+
     public function testAClosedVenueYieldsVenueUnavailable(): void
     {
         // Le seul gymnase est indisponible à la date → le match ne peut être placé nulle part.
@@ -123,7 +140,6 @@ final class MatchPlacementSemanticsGateTest extends TestCase
             'venues' => $problem['venues'],
             'teams' => $problem['teams'],
             'teamLinks' => [],
-            'slotRotations' => [],
             'trainingOccupancies' => [],
         ];
 
@@ -163,5 +179,17 @@ final class MatchPlacementSemanticsGateTest extends TestCase
     private function team(string $id): array
     {
         return ['id' => $id, 'name' => strtoupper($id), 'leagueWindows' => [], 'habits' => [], 'coaches' => []];
+    }
+
+    /** Une équipe avec un créneau idéal (habitude) {jour ISO, heure, gymnase}. @return array<string, mixed> */
+    private function teamWithIdeal(string $id, int $dayOfWeek, string $kickoff, string $venueId): array
+    {
+        return [
+            'id' => $id,
+            'name' => strtoupper($id),
+            'leagueWindows' => [],
+            'habits' => [['dayOfWeek' => $dayOfWeek, 'kickoff' => $kickoff, 'venueId' => $venueId]],
+            'coaches' => [],
+        ];
     }
 }

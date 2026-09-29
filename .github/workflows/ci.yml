@@ -652,13 +652,14 @@ jobs:
       - name: VenueTravelTimePayloadParityTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/VenueTravelTimePayloadParityTest.php --group phase1'
 
-      # RMM-5 (P2-49) rotation A/B PR-2 : ce qui est STOCKÉ (créneaux de match partagés
-      # {venue, jour, heure, membres}) == le bloc `slotRotations` émis au moteur, et la SUPPLÉANCE
-      # retire l'habitude d'un membre le MÊME jour que sa rotation — jamais les autres. Falsifié
-      # dans les deux sens (rotation stockée émise, rotation d'un autre club ne fuit pas, habitude
-      # même-jour supplantée / autre jour conservée, sans rotation bloc [] + habitudes intactes).
-      - name: SlotRotationPayloadParityTest
-        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/SlotRotationPayloadParityTest.php --group phase1'
+      # P4-271 : ce qui est STOCKÉ (le créneau idéal d'une équipe {jour, heure, gymnase}, tagué
+      # semaine A/B/toutes) == ce que le payload émet dans `teams[].habits` — SANS le tag `week`
+      # (aide visuelle qui ne voyage pas) et SANS suppléance (rotations supprimées, toutes les
+      # habitudes voyagent). Falsifié dans les deux sens (habitude stockée émise sans le tag,
+      # habitude d'un autre club ne fuit pas ; matchDay dérivé = jour ISO de l'habitude, repli
+      # champ déclaré 0-based→ISO, null sans image).
+      - name: HabitPayloadParityTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/HabitPayloadParityTest.php --group phase1'
 
       # P4-240 ③ (axes backend↔engine contract + auth & memberships) : ce qui est STOCKÉ (les
       # memberships coach↔équipe ACTIFS) == le bloc `teams[].players` émis au solveur de placement,

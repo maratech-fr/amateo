@@ -237,7 +237,7 @@ final class PlayersPayloadParityTest extends KernelTestCase
         $this->em->persist($season);
 
         // Un sport actif est requis par le résolveur d'enveloppe (même rituel que
-        // SlotRotationPayloadParityTest) même si nos équipes ne mappent aucune fenêtre.
+        // HabitPayloadParityTest) même si nos équipes ne mappent aucune fenêtre.
         $sport = $this->em->getRepository(Sport::class)->findOneBy(['isActive' => true]);
         if (!$sport instanceof Sport) {
             $sport = new Sport;
