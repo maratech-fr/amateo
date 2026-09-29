@@ -152,10 +152,10 @@ dans `Version20260920120000::seedStatements()`, rejouées à l'identique par `Cl
 saison ne le touche pas), `RgpdExportService::EXCLUDED_FROM_EXPORT` (donnée d'établissement
 RECOMPUTABLE, sans PII — retirée de l'export de portabilité). Détail : `docs/security/rgpd.md` §2.
 
-⚠ **Dette connue** : un déménagement de siège (`PATCH /api/club/siege`, ci-dessous) relance un
-calcul, mais ne PURGE PAS les anciennes lignes du cache dont l'origine était l'ancien siège — elles
-ne sont plus jamais lues (nouvelle origine = nouvelle clé) mais restent en base indéfiniment. Assumé
-pour l'instant (croissance non bornée, jamais mesurée en pratique) — `roadmap.md` P4-249.
+**P4-249** : un déménagement de siège (`PATCH /api/club/siege`, ci-dessous) purge les anciennes
+lignes du cache dont l'origine était l'ancien siège (`ClubTravelCacheRepository::
+deleteAllFromOrigin`, tous profils, bornée club) AVANT de relancer le calcul — elles ne sont plus
+jamais lues (nouvelle origine = nouvelle clé), elles ne s'accumulent donc plus en base.
 
 ### Calcul asynchrone — le calcul quitte le rail synchrone
 
@@ -203,10 +203,11 @@ gymnases à router. Le calcul (adversaires ET matrice de gymnases) part donc au 
 Si l'adresse re-géocodée diverge de plus de ~1 m de l'ancienne (`ClubSiegeController::
 coordinatesChanged`, comparaison à 5 décimales — un re-géocodage de la MÊME adresse ne doit rien
 invalider), le contrôleur dispatche `ComputeTravelTimesMessage(scope: OPPONENTS)` sur la saison
-courante. Rien n'est « invalidé » explicitement : le trajet ne vit que dans le cache CONSTANT
-`club_travel_cache` (directionnel) — un nouveau siège est simplement une nouvelle clé d'origine, les
-anciennes lignes ne sont plus jamais lues (l'appariement `OpponentVenueLink` lui-même, gymnase
-apparié compris, ne bouge pas). Rien à purger côté cache (dette de croissance connue ci-dessus).
+courante. Le trajet ne vit que dans le cache CONSTANT `club_travel_cache` (directionnel) — un
+nouveau siège est simplement une nouvelle clé d'origine, les anciennes lignes ne seraient plus
+jamais lues (l'appariement `OpponentVenueLink` lui-même, gymnase apparié compris, ne bouge pas).
+**P4-249** : le contrôleur les PURGE explicitement (`ClubTravelCacheRepository::
+deleteAllFromOrigin`, avant le dispatch) plutôt que de les laisser mortes en base — cf. ci-dessus.
 
 ## 3. L'autofill de la matrice de trajet (`POST /api/venue-travel-times/autofill`)
 
