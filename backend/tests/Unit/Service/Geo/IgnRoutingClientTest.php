@@ -114,4 +114,25 @@ final class IgnRoutingClientTest extends TestCase
         self::assertSame([], $result['budgetExceededKeys'], 'budget large : rien de sauté');
         self::assertSame(1, $clock->now()->getTimestamp() - $start->getTimestamp(), 'un battement de pacing entre les deux jobs');
     }
+
+    /**
+     * P4-246 — plafond de taille de réponse (1 Mio). Un itinéraire fait quelques Kio ; une
+     * réponse d'un ordre de grandeur au-dessus signale un endpoint compromis ou déréglé, et
+     * la lire en entier serait un vecteur d'épuisement mémoire. Le téléchargement est AVORTÉ
+     * par `on_progress` ; l'exception tombe dans le catch transport existant → la paire résout
+     * à null (best-effort — un seul appel dégradé ne casse jamais la matrice).
+     */
+    public function testAnOversizedResponseIsAbortedAndResolvesToNull(): void
+    {
+        $clock = new MockClock(new DateTimeImmutable('2026-01-01T00:00:00+00:00'));
+        $client = new IgnRoutingClient(
+            new MockHttpClient(static fn (): MockResponse => new MockResponse(str_repeat('x', 1_100_000))),
+            $clock,
+        );
+
+        self::assertNull(
+            $client->travelMinutes(IgnRoutingClient::PROFILE_CAR, 45.7, 4.8, 45.8, 4.9),
+            'une réponse au-dessus du plafond (> 1 Mio) est avortée → null best-effort',
+        );
+    }
 }

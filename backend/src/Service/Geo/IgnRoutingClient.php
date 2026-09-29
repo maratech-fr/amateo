@@ -6,6 +6,7 @@ namespace App\Service\Geo;
 
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
+use RuntimeException;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\Clock\MockClock;
 use Symfony\Contracts\HttpClient\Exception\ExceptionInterface;
@@ -67,6 +68,15 @@ final class IgnRoutingClient
     private const string ITINERARY_URL = 'https://data.geopf.fr/navigation/itineraire';
     private const string RESOURCE = 'bdtopo-osrm';
     private const float TIMEOUT = 5.0;
+
+    /**
+     * Response-size ceiling (1 MiB). One itinerary answer is a few KiB; a response an
+     * order of magnitude larger means a compromised or misbehaving endpoint, and reading
+     * it whole would be a memory-exhaustion vector. The download is ABORTED past this cap
+     * (via `on_progress`); the exception falls into the existing transport catch, so the
+     * pair resolves to null best-effort — a single degraded call never breaks the matrix.
+     */
+    private const int MAX_RESPONSE_BYTES = 1_048_576;
 
     /** The instant (Unix seconds, µs precision) of the last dispatched request, for pacing. */
     private ?float $lastDispatchAt = null;
@@ -189,6 +199,12 @@ final class IgnRoutingClient
                     'timeout' => self::TIMEOUT,
                     'max_duration' => self::TIMEOUT,
                     'max_redirects' => 0,
+                    // Abort past the size ceiling: a runaway response never gets read whole.
+                    'on_progress' => static function (int $dlNow): void {
+                        if ($dlNow > self::MAX_RESPONSE_BYTES) {
+                            throw new RuntimeException(\sprintf('Réponse IGN trop volumineuse (> %d octets).', self::MAX_RESPONSE_BYTES));
+                        }
+                    },
                 ]);
                 // Read the STATUS before the body: a 429 is a retryable rate-limit,
                 // not a decode error (the old code let `toArray(false)` swallow it as

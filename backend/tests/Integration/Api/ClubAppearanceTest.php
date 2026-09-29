@@ -107,6 +107,28 @@ final class ClubAppearanceTest extends WebTestCase
         self::assertSame('image/png', $this->client->getResponse()->headers->get('Content-Type'));
     }
 
+    /**
+     * P4-245 — le contrôleur logo ne lit plus l'en-tête `X-Club-Id` : un upload AUTHENTIFIÉ
+     * SANS cet en-tête résout quand même le club, car le listener tenant pose `_club_id`
+     * depuis l'adhésion active du porteur du JWT (repli d'appartenance). Le front n'envoie
+     * jamais `X-Club-Id` (`CLAUDE.md` §10.3) : c'est bien `_club_id` du listener qui suffit.
+     */
+    public function testLogoUploadResolvesTheClubFromMembershipWithoutTheClubIdHeader(): void
+    {
+        $this->client->loginUser($this->user);
+
+        $png = (string) base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', true);
+        $tmp = (string) tempnam(sys_get_temp_dir(), 'logo') . '.png';
+        file_put_contents($tmp, $png);
+        $file = new UploadedFile($tmp, 'logo.png', 'image/png', null, true);
+
+        // Aucun en-tête X-Club-Id : le club vient de l'unique adhésion active du gestionnaire.
+        $this->client->request('POST', '/api/club/logo', [], ['file' => $file], []);
+        self::assertResponseIsSuccessful();
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertStringStartsWith('/api/clubs/' . $this->club->getId() . '/logo?v=', (string) $data['logoUrl']);
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();

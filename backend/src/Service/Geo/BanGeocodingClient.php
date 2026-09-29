@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service\Geo;
 
 use App\Service\Basketball\FfbbApiClient;
+use RuntimeException;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
@@ -26,6 +27,15 @@ final class BanGeocodingClient
 
     private const QUERY_MIN = 3;
     private const QUERY_MAX = 200;
+
+    /**
+     * Response-size ceiling (1 MiB). The BAN answers a handful of address candidates —
+     * a few KiB at most; a response an order of magnitude larger means a compromised or
+     * misbehaving endpoint, and reading it whole would be a memory-exhaustion vector. The
+     * download is ABORTED past this cap (via `on_progress`); the exception propagates like
+     * any transport failure, so the caller returns a 502 best-effort, never a broken form.
+     */
+    private const int MAX_RESPONSE_BYTES = 1_048_576;
 
     public function __construct(
         private readonly HttpClientInterface $httpClient,
@@ -97,6 +107,12 @@ final class BanGeocodingClient
             'timeout' => self::TIMEOUT,
             'max_duration' => self::TIMEOUT,
             'max_redirects' => 0,
+            // Abort past the size ceiling: a runaway response never gets read whole.
+            'on_progress' => static function (int $dlNow): void {
+                if ($dlNow > self::MAX_RESPONSE_BYTES) {
+                    throw new RuntimeException(\sprintf('Réponse BAN trop volumineuse (> %d octets).', self::MAX_RESPONSE_BYTES));
+                }
+            },
         ])->toArray(false);
 
         $features = $data['features'] ?? null;

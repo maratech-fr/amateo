@@ -28991,6 +28991,10 @@
                         ]
                     },
                     "scopeTargetId": {
+                        "format": "uuid",
+                        "externalDocs": {
+                            "url": "https://schema.org/identifier"
+                        },
                         "type": [
                             "string",
                             "null"
@@ -29031,6 +29035,10 @@
                         ]
                     },
                     "venueId": {
+                        "format": "uuid",
+                        "externalDocs": {
+                            "url": "https://schema.org/identifier"
+                        },
                         "type": [
                             "string",
                             "null"
@@ -32221,12 +32229,6 @@
                         ]
                     },
                     "parentTeamId": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    },
-                    "ffbbTeamId": {
                         "type": [
                             "string",
                             "null"

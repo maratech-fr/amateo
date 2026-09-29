@@ -104,7 +104,6 @@
     "require-dev": {
         "behat/behat": "^3.33",
         "dama/doctrine-test-bundle": "^8.6",
-        "doctrine/doctrine-fixtures-bundle": "^4.3",
         "friendsofphp/php-cs-fixer": "^3.95.24",
         "phpstan/phpstan": "^2.2.14",
         "phpstan/phpstan-doctrine": "^2.0",

@@ -184,7 +184,6 @@ $entities = [
             ['name' => 'forcedVenueId', 'type' => 'string', 'nullable' => true],
             ['name' => 'isActive', 'type' => 'bool', 'required' => true],
             ['name' => 'parentTeamId', 'type' => 'string', 'nullable' => true],
-            ['name' => 'ffbbTeamId', 'type' => 'string', 'nullable' => true],
         ],
     ],
     'Coach' => [

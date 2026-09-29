@@ -1,9 +1,9 @@
 # API géo — routes externes consommées
 
-Last verified @ 2026-09-29 (P4-272 ③ : `CONTRACT_VERSION` **2.25 → 2.26**, bloc `clubRules` ajouté
-au payload `/place-matches` ; antérieur P4-271 : **2.24 → 2.25**, `slotRotations` retiré — re-confronté au code :
-`IgnRoutingClient::travelMinutesBatch` ignore toujours `$concurrency` (sériel, pacé 1/s),
-`MAX_RETRY_AFTER_SECONDS = 5.0`, `BATCH_BUDGET_SECONDS = 30.0`,
+Last verified @ 2026-09-29 (P4-246 — `BanGeocodingClient::fetchFeatures` et
+`IgnRoutingClient::pacedMinutes` bornent désormais leur réponse à 1 Mio, `MAX_RESPONSE_BYTES` +
+`on_progress` — re-confronté au code : `IgnRoutingClient::travelMinutesBatch` ignore toujours
+`$concurrency` (sériel, pacé 1/s), `MAX_RETRY_AFTER_SECONDS = 5.0`, `BATCH_BUDGET_SECONDS = 30.0`,
 `VenueTravelTimeAutofillService::MAX_AUTOFILL_PAIRS = 120`, `ClubTravelCache` reste TENANT RLS
 FORCE — tout juste). Historique des passes précédentes vit dans git :
 `git log -p --follow backend/docs/geo-api.md`.
@@ -22,7 +22,12 @@ FORCE — tout juste). Historique des passes précédentes vit dans git :
 
 > ⚠️ Ces deux hosts sont **codés en dur**, jamais dérivés d'un input utilisateur. Redirects
 > désactivés (`max_redirects: 0`) sur les deux clients : un endpoint compromis ne peut pas rebondir
-> vers une adresse interne. Timeout serré (5 s) par appel.
+> vers une adresse interne. Timeout serré (5 s) par appel. **Réponse plafonnée à 1 Mio**
+> (`MAX_RESPONSE_BYTES`, `on_progress` avorte le téléchargement au-delà) — une réponse d'un ordre
+> de grandeur au-dessus de la taille normale (quelques Kio) signale un endpoint compromis ou
+> déréglé, jamais lue en entier. Le dépassement PROPAGE côté BAN (panne transport, le contrôleur en
+> fait un 502 best-effort) et résout `null` best-effort côté IGN (tombe dans le catch transport
+> existant).
 
 ## 1. Géocoder une adresse (BAN)
 
