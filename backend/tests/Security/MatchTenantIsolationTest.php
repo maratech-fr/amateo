@@ -9,6 +9,7 @@ use App\Entity\Club;
 use App\Entity\ClubLeagueWindow;
 use App\Entity\ClubTravelCache;
 use App\Entity\ClubUser;
+use App\Entity\Coach;
 use App\Entity\Competition;
 use App\Entity\ConflictResolution;
 use App\Entity\FbiCorrection;
@@ -427,10 +428,11 @@ final class MatchTenantIsolationTest extends WebTestCase
     /**
      * Durcissement (revue sécurité) : une règle de CLUB (③) ne porte NI cible
      * (scopeTargetId) NI gymnase (venueId) — une valeur non nulle est refusée (422) ;
-     * le scope COACH reste réservé (⑤, 422 nommé) ; et une valeur non-UUID rend un 422
-     * LISIBLE (garde Uuid de l'input), jamais une 500 à l'écriture (colonne guid). Le
-     * scope TEAM (④) est éditable — testé à part
-     * ({@see self::testTeamVenueBanIsScopedStampedAndTenantGuarded}).
+     * le scope FACILITY reste réservé (422 nommé) ; et une valeur non-UUID rend un 422
+     * LISIBLE (garde Uuid de l'input), jamais une 500 à l'écriture (colonne guid). Les
+     * scopes TEAM (④) et COACH (⑤) sont éditables — testés à part
+     * ({@see self::testTeamVenueBanIsScopedStampedAndTenantGuarded},
+     * {@see self::testCoachUnavailabilityIsScopedStampedAndTenantGuarded}).
      */
     public function testMatchConstraintRestrictsScopeToClubAndRejectsNonNullTargets(): void
     {
@@ -439,9 +441,9 @@ final class MatchTenantIsolationTest extends WebTestCase
         $uuid = '11111111-1111-4111-8111-111111111111';
         $base = ['ruleType' => 'HARD', 'daysOfWeek' => [6], 'kickoffMax' => '21:00'];
 
-        // Scope COACH → 422 (réservé ⑤), refus nommé via le processeur.
-        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode(['scope' => 'COACH'] + $base, \JSON_THROW_ON_ERROR));
-        self::assertResponseStatusCodeSame(422, 'le scope COACH doit être refusé');
+        // Scope FACILITY → 422 (réservé), refus nommé via le processeur.
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode(['scope' => 'FACILITY'] + $base, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422, 'le scope FACILITY doit être refusé');
 
         // scopeTargetId non-UUID → 422 LISIBLE (Uuid de l'input), jamais 500.
         $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode(['scopeTargetId' => 'pas-un-uuid'] + $base, \JSON_THROW_ON_ERROR));
@@ -528,6 +530,68 @@ final class MatchTenantIsolationTest extends WebTestCase
         // Une seule interdiction a été écrite (les tentatives cross-club n'ont rien créé).
         $this->scopeGucToClub($clubA->getId());
         self::assertCount(1, $this->em->getRepository(MatchConstraint::class)->findBy(['clubId' => $clubA->getId(), 'scope' => ConstraintScope::TEAM]));
+        // Et le club B n'a AUCUNE règle (jamais d'écriture cross-club chez lui).
+        $this->scopeGucToClub($clubB->getId());
+        self::assertCount(0, $this->em->getRepository(MatchConstraint::class)->findBy(['clubId' => $clubB->getId()]));
+    }
+
+    /**
+     * P4-272 ⑤ (axe §7.1 tenant isolation) — une INDISPONIBILITÉ d'entraîneur (scope COACH)
+     * s'écrit avec un coach DU CLUB (estampée club+saison), management-gated, TOUJOURS SOFT
+     * (PREFERRED — HARD refusé), avec jours + fourchette (au moins un jour, au moins une borne) ;
+     * et elle ne peut jamais viser le coach d'un AUTRE club : il est invisible sous les filtres
+     * tenant → 422, zéro écriture cross-club.
+     */
+    public function testCoachUnavailabilityIsScopedStampedAndTenantGuarded(): void
+    {
+        [$clubA, $userA, $seasonA] = $this->createClubUser('a');
+        $coachA = $this->createCoach($clubA, $seasonA, 'Anna');
+        [$clubB, , $seasonB] = $this->createClubUser('b');
+        $coachB = $this->createCoach($clubB, $seasonB, 'Bob');
+        $headers = $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'];
+        $base = ['scope' => 'COACH', 'scopeTargetId' => $coachA->getId(), 'ruleType' => 'PREFERRED', 'daysOfWeek' => [6], 'kickoffMin' => '14:00', 'kickoffMax' => '16:00'];
+
+        // Écriture = management par défaut : un membre non-gestionnaire est refusé.
+        $editor = $this->createMember($clubA, 'editor');
+        $this->client->request('POST', '/api/match_constraints', [], [], $this->authHeaders($editor) + ['CONTENT_TYPE' => 'application/json'], json_encode($base, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(403);
+
+        // Gestionnaire : l'indisponibilité du coach A, samedi 14h00-16h00. Club/saison/scope estampés.
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode($base, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+        $this->scopeGucToClub($clubA->getId());
+        $unavailability = $this->em->getRepository(MatchConstraint::class)->findOneBy(['clubId' => $clubA->getId(), 'scope' => ConstraintScope::COACH]);
+        self::assertInstanceOf(MatchConstraint::class, $unavailability);
+        self::assertSame($seasonA->getId(), $unavailability->getSeasonId());
+        self::assertSame($coachA->getId(), $unavailability->getScopeTargetId());
+        self::assertSame(ConstraintRuleType::PREFERRED, $unavailability->getRuleType());
+        self::assertSame([6], $unavailability->getDaysOfWeek());
+        self::assertSame('14:00', $unavailability->getKickoffMin()?->format('H:i'));
+        self::assertNull($unavailability->getVenueId(), 'une indisponibilité ne porte aucun gymnase');
+
+        // Une indisponibilité HARD est refusée (elle est toujours SOFT) → 422 nommé.
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode(['ruleType' => 'HARD'] + $base, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+
+        // Aucun jour → 422.
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode(['daysOfWeek' => []] + $base, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+
+        // Aucune borne de coup d'envoi → 422.
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode(['scope' => 'COACH', 'scopeTargetId' => $coachA->getId(), 'ruleType' => 'PREFERRED', 'daysOfWeek' => [6]], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+
+        // Un gymnase renseigné sur une indisponibilité → 422 (non pertinent).
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode(['venueId' => '11111111-1111-4111-8111-111111111111'] + $base, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+
+        // Le coach d'un AUTRE club est invisible → 422, aucune écriture cross-club.
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode(['scopeTargetId' => $coachB->getId()] + $base, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422, 'un coach d\'un autre club est inconnu → 422');
+
+        // Une seule indisponibilité a été écrite (les tentatives invalides/cross-club n'ont rien créé).
+        $this->scopeGucToClub($clubA->getId());
+        self::assertCount(1, $this->em->getRepository(MatchConstraint::class)->findBy(['clubId' => $clubA->getId(), 'scope' => ConstraintScope::COACH]));
         // Et le club B n'a AUCUNE règle (jamais d'écriture cross-club chez lui).
         $this->scopeGucToClub($clubB->getId());
         self::assertCount(0, $this->em->getRepository(MatchConstraint::class)->findBy(['clubId' => $clubB->getId()]));
@@ -1211,6 +1275,17 @@ final class MatchTenantIsolationTest extends WebTestCase
         $this->em->flush();
 
         return $venue;
+    }
+
+    private function createCoach(Club $club, Season $season, string $firstName): Coach
+    {
+        $this->scopeGucToClub($club->getId());
+        $coach = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setFirstName($firstName)->setLastName('Coach')->setIsActive(true);
+        $this->em->persist($coach);
+        $this->em->flush();
+
+        return $coach;
     }
 
     private function createMember(Club $club, string $role): User

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
 
-import type { ClubLeagueWindow, MatchConstraint, MatchConstraintCoherence, Team, Venue } from "./api";
+import type { ClubLeagueWindow, Coach, MatchConstraint, MatchConstraintCoherence, Team, Venue } from "./api";
 import { ConstraintsPage } from "./ConstraintsPage";
 
 const createWindow = vi.fn();
@@ -18,6 +18,7 @@ const rulesState: { data: MatchConstraint[] | undefined; isError: boolean } = { 
 const coherenceState: { data: MatchConstraintCoherence } = { data: { byRule: [], byHabit: [] } };
 const teamsState: { data: Team[] | undefined; isError: boolean } = { data: [], isError: false };
 const venuesState: { data: Venue[] | undefined; isError: boolean } = { data: [], isError: false };
+const coachesState: { data: Coach[] | undefined; isError: boolean } = { data: [], isError: false };
 
 // On pilote les hooks (miroir de la copie stockée), jamais le réseau. Le badge et
 // l'alerte de cohérence viennent du SERVEUR : l'écran les affiche, on ne les recalcule pas ici.
@@ -39,6 +40,8 @@ vi.mock("./queries", () => ({
   // Section Équipes (P4-272 ④) : équipes + gymnases pour les sélecteurs d'interdiction.
   useTeams: () => ({ ...teamsState, refetch: vi.fn() }),
   useVenues: () => ({ ...venuesState, refetch: vi.fn() }),
+  // Section Coachs (P4-272 ⑤) : entraîneurs pour le sélecteur d'indisponibilité.
+  useCoaches: () => ({ ...coachesState, refetch: vi.fn() }),
 }));
 
 const window = (over: Partial<ClubLeagueWindow> = {}): ClubLeagueWindow => ({
@@ -80,6 +83,12 @@ function openEquipes(): void {
   renderWithProviders(<ConstraintsPage />, { route: "/matchs/contraintes?section=equipes" });
 }
 
+function openCoachs(): void {
+  renderWithProviders(<ConstraintsPage />, { route: "/matchs/contraintes?section=coachs" });
+}
+
+const coachOf = (id: string, firstName: string, lastName: string): Coach => ({ id, firstName, lastName });
+
 beforeEach(() => {
   createWindow.mockClear();
   updateWindow.mockClear();
@@ -96,6 +105,8 @@ beforeEach(() => {
   teamsState.isError = false;
   venuesState.data = [];
   venuesState.isError = false;
+  coachesState.data = [];
+  coachesState.isError = false;
 });
 
 describe("ConstraintsPage — section Ligue (P4-272 ①)", () => {
@@ -256,5 +267,58 @@ describe("ConstraintsPage — section Équipes (P4-272 ④)", () => {
     await user.click(screen.getByRole("button", { name: "Lever l'interdiction" }));
 
     expect(deleteRule).toHaveBeenCalledWith("b1");
+  });
+});
+
+describe("ConstraintsPage — section Coachs (P4-272 ⑤)", () => {
+  it("indique l'absence d'indisponibilité quand la liste est vide", () => {
+    rulesState.data = [];
+    coachesState.data = [coachOf("c1", "Anna", "Martin")];
+    openCoachs();
+    expect(screen.getByText(/Aucune indisponibilité/)).toBeInTheDocument();
+  });
+
+  it("crée une indisponibilité via l'API (scope COACH, toujours PREFERRED, bornes nullables)", async () => {
+    const user = userEvent.setup();
+    rulesState.data = [];
+    coachesState.data = [coachOf("c1", "Anna", "Martin")];
+    openCoachs();
+
+    // La ligne d'ajout par défaut a samedi coché ; on choisit l'entraîneur et « Pas avant ».
+    const addRow = screen.getByRole("button", { name: "Ajouter" }).closest("div") as HTMLElement;
+    await user.selectOptions(within(addRow).getByLabelText("Entraîneur"), "c1");
+    fireEvent.change(within(addRow).getByLabelText("Pas avant (heure de début)"), { target: { value: "14:00" } });
+    await user.click(screen.getByRole("button", { name: "Ajouter" }));
+
+    expect(createRule).toHaveBeenCalledWith(
+      { scope: "COACH", scopeTargetId: "c1", ruleType: "PREFERRED", daysOfWeek: [6], kickoffMin: "14:00", kickoffMax: null },
+      expect.anything(),
+    );
+  });
+
+  it("ne montre PAS les règles CLUB ni les interdictions TEAM dans la section Coachs", () => {
+    // Les trois scopes partagent la même collection ; la section Coachs ne rend QUE le scope COACH.
+    rulesState.data = [
+      rule({ id: "r1", scope: "CLUB", kickoffMax: "21:00" }),
+      rule({ id: "b1", scope: "TEAM", scopeTargetId: "t1", venueId: "v1", daysOfWeek: [], kickoffMax: null }),
+      rule({ id: "u1", scope: "COACH", scopeTargetId: "c1", daysOfWeek: [6], kickoffMin: "14:00", kickoffMax: null }),
+    ];
+    coachesState.data = [coachOf("c1", "Anna", "Martin")];
+    openCoachs();
+    // Une seule indisponibilité éditable → un seul « Enregistrer » (ni la règle CLUB ni l'interdiction TEAM).
+    expect(screen.getAllByRole("button", { name: "Enregistrer" })).toHaveLength(1);
+    expect(screen.queryByText(/Aucune indisponibilité/)).not.toBeInTheDocument();
+  });
+
+  it("supprime une indisponibilité existante via l'API", async () => {
+    const user = userEvent.setup();
+    rulesState.data = [rule({ id: "u1", scope: "COACH", scopeTargetId: "c1", daysOfWeek: [6], kickoffMin: "14:00", kickoffMax: null })];
+    coachesState.data = [coachOf("c1", "Anna", "Martin")];
+    openCoachs();
+
+    await user.click(screen.getByRole("button", { name: "Supprimer" }));
+    await user.click(screen.getAllByRole("button", { name: "Supprimer" })[1]);
+
+    expect(deleteRule).toHaveBeenCalledWith("u1");
   });
 });

@@ -106,6 +106,22 @@ Fonctionnalité: Le placement des matchs honore les fenêtres d'accès et nomme 
     Quand je lance le placement des matchs
     Alors le match du samedi reste sans créneau, faute d'un gymnase interdit
 
+  Scénario: Une indisponibilité de coach écarte le créneau idéal qui tombe dans sa plage
+    Une indisponibilité d'entraîneur est une PRÉFÉRENCE : le placement l'évite quand il le peut.
+    Le coach de l'équipe est indisponible le samedi de 14h00 à 16h00, et son créneau idéal (15h30)
+    tombe dans la plage — le match se pose donc ailleurs, plus tard que 16h00, sans jamais devenir
+    impossible (une indisponibilité pèse, elle ne bloque pas).
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et deux équipes et un gymnase jetables
+    Et une large fenêtre d'accès le samedi de 14h00 à 23h30 sur ce gymnase
+    Et le club n'offre aucune autre fenêtre d'accès le samedi
+    Et un créneau idéal le samedi à 15h30 sur ce gymnase pour la première équipe
+    Et un entraîneur de la première équipe
+    Et une indisponibilité de cet entraîneur le samedi de 14h00 à 16h00
+    Et un match à domicile de la première équipe le samedi à placer
+    Quand je lance le placement des matchs
+    Alors le match du samedi est placé par le solveur, après 16h00
+
   Scénario: Un amical n'est jamais proposé au solveur et se place à la main hors créneau
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et deux équipes et un gymnase jetables

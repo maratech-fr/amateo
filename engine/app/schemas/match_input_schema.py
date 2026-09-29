@@ -20,6 +20,7 @@ MAX_WINDOWS_PER_VENUE = 50
 MAX_LEAGUE_WINDOWS_PER_TEAM = 50  # mirror of MAX_WINDOWS_PER_VENUE — a team's league envelope
 MAX_UNAVAILABILITIES_PER_VENUE = 100
 MAX_CLUB_RULES = 200  # a club's hand-entered match rules stay small; generous cap
+MAX_COACH_UNAVAILABILITIES = 500  # several ranges per coach per day are allowed; generous cap
 MAX_TIMEOUT_SECONDS = 60
 
 
@@ -75,6 +76,23 @@ class ClubRuleSchema(SerializableModel):
     """
 
     rule_type: str = Field(alias="ruleType")  # HARD | PREFERRED
+    days_of_week: list[int] = Field(default_factory=list, alias="daysOfWeek", max_length=7)
+    kickoff_min: time | None = Field(default=None, alias="kickoffMin")
+    kickoff_max: time | None = Field(default=None, alias="kickoffMax")
+
+
+class CoachUnavailabilitySchema(SerializableModel):
+    """A coach's UNAVAILABILITY window (P4-272 ⑤): a range of kickoff instants over some
+    ISO days when the coach cannot be there. ALWAYS SOFT — a TO_PLACE match of a team the
+    coach coaches, whose kickoff falls INSIDE the window on a covered day, is penalised
+    W_COACH_UNAVAILABLE (a nudge, never a block). ``kickoffMin``/``kickoffMax`` each bound
+    the window and are each optional: « indispo avant 12h » = max only; a missing bound is
+    OPEN on that side. Several ranges per coach and per day are legitimate. The backend
+    refuses a window with neither bound; a defensive empty window here is a no-op (matches
+    nothing meaningful). Friendlies are exempt structurally (never handed to the solver).
+    """
+
+    coach_id: str = Field(alias="coachId")
     days_of_week: list[int] = Field(default_factory=list, alias="daysOfWeek", max_length=7)
     kickoff_min: time | None = Field(default=None, alias="kickoffMin")
     kickoff_max: time | None = Field(default=None, alias="kickoffMax")
@@ -194,7 +212,7 @@ class MatchPlacementInputSchema(SerializableModel):
     # courant pour qu'aucun lecteur ne le prenne pour une version concurrente.
     # L'autorité reste `engine/CONTRACT_VERSION`, comparée au MAJOR à l'entrée ;
     # gardé par test_schema_version_defaults_match_contract_version.
-    version: str = "2.27"
+    version: str = "2.28"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     solver_seed: int = Field(default=42, alias="solverSeed")
@@ -212,3 +230,9 @@ class MatchPlacementInputSchema(SerializableModel):
     # applied to every non-friendly TO_PLACE match. OMITTED ⇒ [] (an old payload
     # keeps the previous behaviour).
     club_rules: list[ClubRuleSchema] = Field(default_factory=list, alias="clubRules", max_length=MAX_CLUB_RULES)
+    # P4-272 ⑤ — the club's coach UNAVAILABILITIES (always SOFT), penalising a TO_PLACE
+    # match whose kickoff falls in a coach's window on a covered day, for a coach of that
+    # match's team. OMITTED ⇒ [] (an old payload keeps the previous behaviour).
+    coach_unavailabilities: list[CoachUnavailabilitySchema] = Field(
+        default_factory=list, alias="coachUnavailabilities", max_length=MAX_COACH_UNAVAILABILITIES
+    )

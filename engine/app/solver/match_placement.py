@@ -10,6 +10,7 @@ from ortools.sat.python import cp_model
 
 from app.schemas.match_input_schema import (
     ClubRuleSchema,
+    CoachUnavailabilitySchema,
     MatchPlacementInputSchema,
     MatchSchema,
     MatchTeamSchema,
@@ -48,6 +49,12 @@ DEFAULT_WARMUP_MIN = 30
 # sacrifices a placement for comfort.
 W_PLACE = 10_000
 W_COACH_MAIN = 60
+# P4-272 ⑤ — a coach of the match's team is UNAVAILABLE at a candidate's kickoff (a declared
+# window on a covered day). SOFT (validé fondateur : même niveau que les autres pénalités
+# coach — W_CLUB_RULE 30 < NOT_SIMULTANEOUS 40 < coach 60) : it steers the placement out of
+# the window when an alternative exists, it NEVER blocks (a match is never left unplaced for
+# a coach unavailability — no domain pruning, no unplaced reason).
+W_COACH_UNAVAILABLE = 60
 W_LINK_NOT_SIMULTANEOUS = 40
 # P4-272 ③ — a PREFERRED club rule violated by a candidate (validé fondateur : > une
 # habitude 15+5, < NOT_SIMULTANEOUS 40 < coach 60). A HARD club rule never reaches
@@ -170,6 +177,17 @@ def _kick_in_club_rule(kick: int, rule: ClubRuleSchema) -> bool:
     below_min = rule.kickoff_min is not None and kick < _minutes(rule.kickoff_min)
     above_max = rule.kickoff_max is not None and kick > _minutes(rule.kickoff_max)
     return not (below_min or above_max)
+
+
+def _kick_in_unavailability(kick: int, unav: CoachUnavailabilitySchema) -> bool:
+    """Is a kickoff (minutes) INSIDE a coach's unavailability window (P4-272 ⑤)? A missing
+    bound is OPEN on that side (« indispo avant 12h » = kickoff_max only). Closed interval —
+    the coach cannot be there, so a candidate at that kickoff is PENALISED (SOFT). Same range
+    shape as a club rule, but the intent is inverted: a club rule wants the kickoff IN range,
+    an unavailability penalises the kickoff being IN range."""
+    after_min = unav.kickoff_min is None or kick >= _minutes(unav.kickoff_min)
+    before_max = unav.kickoff_max is None or kick <= _minutes(unav.kickoff_max)
+    return after_min and before_max
 
 
 def _durations(team: MatchTeamSchema | None) -> tuple[int, int]:
@@ -504,6 +522,13 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
                 kick = _minutes(habit.kickoff)
                 protected.setdefault((habit.venue_id, day_key), set()).add((kick, kick + match_min))
 
+    # P4-272 ⑤ — coach unavailabilities indexed by coach id (SOFT). A candidate whose
+    # kickoff falls in an unavailable window of one of the match team's coaches, on a
+    # covered ISO day, is penalised W_COACH_UNAVAILABLE below.
+    coach_unavailabilities: dict[str, list[CoachUnavailabilitySchema]] = {}
+    for unav in input_data.coach_unavailabilities:
+        coach_unavailabilities.setdefault(unav.coach_id, []).append(unav)
+
     for match in solvable:
         _ensure_budget()
         team = teams_by_id.get(match.team_id)
@@ -519,6 +544,18 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
             for r in input_data.club_rules
             if r.rule_type == "PREFERRED" and _iso_day(match.match_date) in r.days_of_week
         ]
+        # P4-272 ⑤ — coach unavailabilities of THIS team's coaches covering this ISO day.
+        match_day = _iso_day(match.match_date)
+        team_coach_unavailabilities = (
+            [
+                unav
+                for ref in team.coaches
+                for unav in coach_unavailabilities.get(ref.coach_id, [])
+                if match_day in unav.days_of_week
+            ]
+            if team is not None
+            else []
+        )
         for cand in candidates[match.id]:
             weight = 0
             venue_start = cand.kickoff_min
@@ -578,6 +615,12 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
             for rule in preferred_rules:
                 if not _kick_in_club_rule(cand.kickoff_min, rule):
                     weight -= W_CLUB_RULE
+            # P4-272 ⑤ — a coach of this team is unavailable at this candidate's kickoff
+            # (a declared window on this ISO day) → W_COACH_UNAVAILABLE. SOFT: it steers
+            # the match out of the window when an alternative exists, never blocks it.
+            for unav in team_coach_unavailabilities:
+                if _kick_in_unavailability(cand.kickoff_min, unav):
+                    weight -= W_COACH_UNAVAILABLE
             if weight:
                 objective.append(weight * cand.var)
 

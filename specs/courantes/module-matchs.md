@@ -93,7 +93,7 @@ vigueur, il n'a rien à comparer.
   `DELETE /api/match_constraints`), sections Club et Équipes de l'écran Contraintes (§8bis). Le
   moteur reçoit les règles CLUB VERBATIM dans le bloc top-level `clubRules`, les interdictions TEAM
   dans `teams[].forbiddenVenueIds` (liste triée, déterministe) du payload `/place-matches`
-  (`CONTRACT_VERSION` 2.27) — un domaine vidé par les seules règles CLUB HARD ressort `club_rule_
+  (`CONTRACT_VERSION` 2.28) — un domaine vidé par les seules règles CLUB HARD ressort `club_rule_
   no_slot`, un domaine vidé par un gymnase interdit alors qu'un créneau licite y existait ressort
   `team_venue_forbidden` (précédence sur `club_rule_no_slot`, §3) ; les amicaux (`competitionId`
   nul) en sont exemptés structurellement, comme l'enveloppe ligue. Une pose MANUELLE hors d'une
@@ -527,7 +527,7 @@ Présentation pure — aucune formule de gravité redérivée.
 ## 3. Solveur de placement (`POST /api/fixtures/place` → engine `/place-matches`)
 
 Second problème solveur ([ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md)),
-même `CONTRACT_VERSION` **2.27** que `/generate`/`/validate-assignments` (un seul contrat pour les
+même `CONTRACT_VERSION` **2.28** que `/generate`/`/validate-assignments` (un seul contrat pour les
 trois endpoints — voir §6 `CLAUDE.md`). **Rail
 SYNCHRONE** (`PlaceMatchesController` — management + saison écrivable + socle pointé), anti-double-clic
 PAR CLUB `MatchPlacementLock` (Redis dédié — ne protège pas deux clubs l'un de l'autre : ils partagent le

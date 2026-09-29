@@ -57,7 +57,7 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         // Version DÉRIVÉE de la source ; l'égalité constante⇄engine/CONTRACT_VERSION
         // est gardée par PayloadVersionMatchesContractVersionTest.
         self::assertSame(MatchPlacementPayloadBuilder::CONTRACT_VERSION, $payload['version']);
-        foreach (['clubId', 'seasonId', 'solverSeed', 'solverTimeoutSeconds', 'matches', 'venues', 'teams', 'teamLinks', 'trainingOccupancies'] as $key) {
+        foreach (['clubId', 'seasonId', 'solverSeed', 'solverTimeoutSeconds', 'matches', 'venues', 'teams', 'teamLinks', 'trainingOccupancies', 'clubRules', 'coachUnavailabilities'] as $key) {
             self::assertArrayHasKey($key, $payload);
         }
         // P4-271 — le bloc `slotRotations` a disparu du contrat (2.25).

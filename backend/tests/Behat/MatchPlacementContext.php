@@ -267,6 +267,49 @@ final class MatchPlacementContext extends BaseContext
         }
     }
 
+    #[Given('un entraîneur de la première équipe')]
+    public function unEntraineurDeLaPremiereEquipe(): void
+    {
+        $this->coachId = $this->createdId(
+            $this->apiPost('coaches', ['firstName' => 'Coach', 'lastName' => 'Indispo'], $this->token),
+            'entraîneur',
+        );
+        $this->teamCoachAId = $this->createdId(
+            $this->apiPost('team_coaches', ['teamId' => $this->teamId, 'coachId' => $this->coachId, 'role' => 'MAIN'], $this->token),
+            'affectation coach↔équipe',
+        );
+    }
+
+    #[Given('une indisponibilité de cet entraîneur le samedi de 14h00 à 16h00')]
+    public function uneIndisponibiliteDuCoachSamedi(): void
+    {
+        // P4-272 ⑤ — une règle de match scope COACH : le coach est indisponible le samedi
+        // 14h00-16h00. TOUJOURS SOFT (PREFERRED) : le placement l'évite sans jamais bloquer.
+        $this->matchRuleId = $this->createdId(
+            $this->apiPost('match_constraints', ['scope' => 'COACH', 'scopeTargetId' => $this->coachId, 'ruleType' => 'PREFERRED', 'daysOfWeek' => [6], 'kickoffMin' => '14:00', 'kickoffMax' => '16:00'], $this->token),
+            'indisponibilité de coach',
+        );
+    }
+
+    #[Then('le match du samedi est placé par le solveur, après 16h00')]
+    public function leMatchDuSamediPlaceApres16h(): void
+    {
+        $status = $this->satFixture['status'] ?? null;
+        if ('PLACED' !== $status) {
+            throw new RuntimeException(\sprintf('le match du samedi n\'est pas placé (statut « %s »)', \is_string($status) ? $status : 'inconnu'));
+        }
+        if ('SOLVER' !== ($this->satFixture['placementSource'] ?? null)) {
+            throw new RuntimeException('le match du samedi n\'a pas été placé par le solveur');
+        }
+        // La pénalité d'indisponibilité (SOFT) écarte le créneau idéal 15h30, dans la plage
+        // 14h00-16h00, au profit d'un créneau hors plage — l'alternative existant, le match
+        // se pose APRÈS 16h00 (comparaison HH:MM, insensible aux secondes du format API).
+        $hhmm = substr($this->kickoff(), 0, 5);
+        if ($hhmm <= '16:00') {
+            throw new RuntimeException(\sprintf('coup d\'envoi %s dans l\'indisponibilité du coach (14h00-16h00) — la pénalité n\'a pas orienté le placement', $hhmm));
+        }
+    }
+
     #[Then('le match du samedi reste sans créneau, faute d\'une règle du club')]
     public function leMatchDuSamediResteSansCreneauRegleClub(): void
     {

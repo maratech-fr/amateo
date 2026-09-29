@@ -394,12 +394,13 @@ final class SeasonTransitionService
             $this->clubLeagueWindowSeeder->seedForSeason($clubId, $target->getId(), $club?->getLeague());
         }
 
-        // P4-272 ③+④ — les RÈGLES DE MATCH suivent la saison, comme les corrections du
+        // P4-272 ③+④+⑤ — les RÈGLES DE MATCH suivent la saison, comme les corrections du
         // gestionnaire. CLUB (③) : recopie VERBATIM (ni gymnase ni équipe à remapper —
         // scopeTargetId/venueId nuls). TEAM (④, interdiction de gymnase) : remap de
-        // l'équipe (teamMap) ET du gymnase (venueMap) ; une référence PENDANTE (l'équipe
-        // ou le gymnase n'existe plus en N+1, comme une habitude à gymnase disparu) fait
-        // ABANDONNER la ligne — jamais un pointeur mort en base. COACH (⑤) : pas encore émis.
+        // l'équipe (teamMap) ET du gymnase (venueMap). COACH (⑤, indisponibilité) : remap
+        // du coach (coachMap), jours + fourchette conservés. Une référence PENDANTE (l'entité
+        // visée n'existe plus en N+1, comme une habitude à gymnase disparu) fait ABANDONNER
+        // la ligne — jamais un pointeur mort en base. FACILITY : pas encore émis.
         foreach ($this->rows(MatchConstraint::class, $clubId, $sourceId) as $rule) {
             $copy = new MatchConstraint;
             $copy->setClubId($clubId);
@@ -424,9 +425,19 @@ final class SeasonTransitionService
                 $copy->setScope(ConstraintScope::TEAM);
                 $copy->setScopeTargetId($teamId);
                 $copy->setVenueId($venueId);
+            } elseif (ConstraintScope::COACH === $rule->getScope()) {
+                $sourceCoachId = $rule->getScopeTargetId();
+                $coachId = null !== $sourceCoachId ? ($coachMap[$sourceCoachId] ?? null) : null;
+                // Coach pendant (supprimé en N) → ligne abandonnée.
+                if (null === $coachId) {
+                    continue;
+                }
+                $copy->setScope(ConstraintScope::COACH);
+                $copy->setScopeTargetId($coachId);
+                $copy->setVenueId(null);
             } else {
-                // COACH/FACILITY : non émis aujourd'hui (le processeur les refuse) ; une
-                // ligne héritée d'un état antérieur ne se propage pas sans règle de remap.
+                // FACILITY : non émis aujourd'hui (le processeur le refuse) ; une ligne héritée
+                // d'un état antérieur ne se propage pas sans règle de remap.
                 continue;
             }
             $this->entityManager->persist($copy);
