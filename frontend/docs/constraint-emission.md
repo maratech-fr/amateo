@@ -1,6 +1,6 @@
 # Émission des contraintes (frontend) + alignement 3 couches
 
-Last verified @ 2026-09-27 (`documentation-update`, rotation de fraîcheur). Re-confronté au code,
+Last verified @ 2026-09-29 (`documentation-update`, rotation de fraîcheur). Re-confronté au code,
 4 affirmations toujours vraies : `resolveTravelRuleIntensity`
 (`backend/src/Service/ScheduleConstraintBuilder.php:964`, repli `TeamLinkIntensity::PREFERRED`)
 toujours le seul point de résolution de l'intensité `travelTime` ✓ ; `forcedDays` toujours câblé

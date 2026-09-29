@@ -20,7 +20,29 @@ window.LANDING_CONFIG = {
   // Contact démo / questions — adresse pro du domaine produit (décision fondateur
   // 2026-08-17). Règle business tenue : jamais un Gmail perso sur la page.
   contactEmail: "contact@amateo.app",
-  // Le logo (mark de marque) vit ici comme le nom : point unique. Injecté dans
-  // l'en-tête et le pied (`[data-brand-logo]`). Source définitive du handoff marque.
-  logo: "assets/brand/logo-couleur.png",
+  // Éditeur (responsable de publication / de traitement RGPD) — variable, jamais
+  // un littéral dans le HTML. Miroir par CONVENTION de `PUBLISHER_NAME`
+  // (`frontend/src/shared/lib/product.ts`), jamais importé de `frontend/`.
+  editor: "Maratech",
+  // Le logo suit désormais le patron de l'app (BrandMark) : l'ICÔNE (les trois arcs,
+  // `mark.svg` — arcs SEULS, comme BrandIcon, jamais le favicon `icon.svg` à disque blanc)
+  // sert de mark thème-neutre, et le MOT (`brand`) est rendu en TEXTE à la couleur du thème —
+  // un seul rendu en clair comme en sombre. Point unique : le chemin de l'icône vit ici
+  // (injecté dans `[data-brand-logo]`), le mot vient de `brand`.
+  logo: "assets/brand/mark.svg",
+  // Mentions légales (LCEN + RGPD) — consommées par `mentions-legales.html`. Point unique.
+  // Éditeur = micro-entreprise Maratech EN COURS DE CRÉATION (bêta) : nom affiché, pas
+  // d'adresse postale (décision fondateur), contact = `contactEmail` ci-dessus.
+  legal: {
+    editorStatus: "micro-entreprise en cours de création",
+    // Hébergeur — Scaleway SAS (siège social vérifié le 2026-09-29 sur la mention
+    // légale officielle scaleway.com/legal-notice + registres RCS). LCEN art. 6-III :
+    // dénomination, adresse et téléphone de l'hébergeur.
+    host: {
+      name: "Scaleway SAS",
+      address: "8 rue de la Ville-l'Évêque, 75008 Paris, France",
+      rcs: "RCS Paris 433 115 904",
+      phone: "+33 1 84 13 00 00",
+    },
+  },
 };

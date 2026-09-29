@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mentions légales</title>
+  <meta name="description" content="Mentions légales : éditeur, responsable de publication et hébergeur du service." />
+  <meta name="robots" content="index, follow" />
+  <link rel="icon" type="image/svg+xml" href="assets/brand/icon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/brand/icon-32.png" />
+  <!-- Thème AU CHOIX, posé AVANT le <style> (anti-flash) : localStorage `theme` sinon système.
+       ⚠ Dupliqué VOLONTAIREMENT depuis index.html — zéro build, aucune brique partagée : chaque
+       page statique porte son propre scaffolding de thème (règle landing). -->
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem("theme");
+        var dark = saved
+          ? saved === "dark"
+          : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        if (dark) document.documentElement.setAttribute("data-theme", "dark");
+      } catch (e) { /* stockage indisponible : on reste en clair */ }
+    })();
+  </script>
+  <style>
+    @font-face {
+      font-family: "Bricolage Grotesque";
+      font-style: normal;
+      font-weight: 700 800;
+      font-display: swap;
+      src: url("assets/fonts/bricolage-latin.woff2") format("woff2");
+    }
+    /* Palette dupliquée VOLONTAIREMENT depuis index.html (voir en-tête du <head>). */
+    :root {
+      color-scheme: light;
+      --paper: #faf9f7;
+      --surface: #ffffff;
+      --ink: #191714;
+      --ink-2: #57534c;
+      --muted: #6d675d;
+      --line: #e7e3dc;
+      --accent: #46afac;
+      --accent-ink: #2e7876;
+      --accent-deep: #215857;
+      --accent-soft: #e9f5f5;
+      --accent-foreground: #ffffff;
+      --radius: 12px;
+      --display: "Bricolage Grotesque", system-ui, sans-serif;
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --paper: oklch(0.19 0.006 75);
+      --surface: oklch(0.23 0.006 75);
+      --ink: oklch(0.96 0.004 75);
+      --ink-2: oklch(0.82 0.010 75);
+      --muted: oklch(0.68 0.015 75);
+      --line: oklch(0.31 0.006 75);
+      --accent: #46afac;
+      --accent-ink: #46afac;
+      --accent-deep: #4db2af;
+      --accent-soft: color-mix(in oklab, var(--accent) 14%, var(--surface));
+      --accent-foreground: oklch(0.19 0.010 75);
+    }
+    * { box-sizing: border-box; margin: 0; }
+    /* PAS de `scroll-behavior: smooth` : glissement d'ancre piloté en JS (easeOutCubic),
+       comme sur index.html — dupliqué VOLONTAIREMENT (zéro brique partagée). */
+    html { scroll-padding-top: 76px; }
+    body {
+      background: var(--paper) url("assets/brand/fond.svg") center / cover no-repeat fixed;
+      color: var(--ink);
+      font: 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    html[data-theme="dark"] body {
+      background: var(--paper) url("assets/brand/fond-dark.svg") center / cover no-repeat fixed;
+    }
+    a { color: var(--accent-ink); text-underline-offset: 3px; }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 0 24px; }
+
+    header.site {
+      position: sticky; top: 0; z-index: 20;
+      background: color-mix(in srgb, var(--paper) 92%, transparent);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--line);
+    }
+    header.site .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+    .logotype { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; }
+    .brand-logo { height: 30px; width: 30px; display: block; }
+    .logo-word { font-family: var(--display); font-weight: 800; font-size: 23px; letter-spacing: -0.03em; line-height: 1; color: var(--ink); text-transform: lowercase; }
+    nav.top { display: flex; gap: 16px; align-items: center; font-size: 15px; }
+    nav.top a { color: var(--ink-2); text-decoration: none; }
+    nav.top a:hover { color: var(--ink); }
+    .theme-toggle {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 40px; height: 40px; padding: 0; border-radius: 10px;
+      border: 1.5px solid var(--line); background: var(--surface); color: var(--ink-2);
+      cursor: pointer; transition: color 80ms ease, border-color 80ms ease;
+    }
+    .theme-toggle:hover { color: var(--ink); border-color: var(--muted); }
+    .theme-toggle:focus-visible { outline: 3px solid var(--accent-ink); outline-offset: 2px; }
+    .theme-toggle svg { width: 18px; height: 18px; display: block; }
+    .theme-toggle .icon-sun { display: none; }
+    html[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+    html[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+
+    main { padding: 56px 0 24px; }
+    h1 { font-family: var(--display); font-size: clamp(30px, 4.5vw, 44px); line-height: 1.08; letter-spacing: -0.02em; font-weight: 800; }
+    .updated { margin-top: 10px; color: var(--muted); font-size: 14px; }
+    section.legal { margin-top: 40px; }
+    section.legal h2 { font-family: var(--display); font-size: 20px; letter-spacing: -0.01em; font-weight: 800; margin-bottom: 10px; }
+    section.legal p { color: var(--ink-2); margin-top: 8px; }
+    section.legal address { color: var(--ink-2); font-style: normal; line-height: 1.7; }
+    .back { margin-top: 48px; font-size: 15px; }
+
+    footer.site { border-top: 1px solid var(--line); margin-top: 56px; padding: 28px 0 40px; font-size: 14px; color: var(--muted); }
+    footer.site .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .foot-brand { display: inline-flex; align-items: center; gap: 7px; vertical-align: -5px; }
+    footer.site .brand-logo { height: 20px; width: 20px; }
+    footer.site .logo-word { font-size: 16px; }
+
+    @media (prefers-reduced-motion: reduce) {
+      /* Saut d'ancre direct : le script de glissement teste prefers-reduced-motion. */
+      .theme-toggle { transition: none; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="logotype" href="index.html" data-brand-label><img class="brand-logo" data-brand-logo alt="" width="30" height="30" /><span class="brand logo-word" aria-hidden="true"></span></a>
+    <nav class="top" aria-label="Navigation">
+      <a data-cta="home" href="index.html">Accueil</a>
+      <button type="button" class="theme-toggle" data-theme-toggle aria-pressed="false" aria-label="Passer en thème sombre">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M4.22 4.22l1.77 1.77M18.01 18.01l1.77 1.77M2 12h2.5M19.5 12H22M4.22 19.78l1.77-1.77M18.01 5.99l1.77-1.77"/></svg>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <h1>Mentions légales</h1>
+    <p class="updated">Conformément aux articles 6-III et 19 de la loi n° 2004-575 du 21 juin 2004 pour la confiance dans l'économie numérique (LCEN).</p>
+
+    <section class="legal">
+      <h2>Éditeur du service</h2>
+      <p>
+        Le service <strong class="brand">…</strong> est édité par <strong data-legal="editor">…</strong>,
+        <span data-legal="editorStatus">…</span>.
+      </p>
+      <p>Contact : <a data-legal="contactEmail" href="#">…</a></p>
+    </section>
+
+    <section class="legal">
+      <h2>Responsable de la publication</h2>
+      <p>Le responsable de la publication est l'éditeur, <strong data-legal="editor">…</strong>, joignable à l'adresse de contact ci-dessus.</p>
+    </section>
+
+    <section class="legal">
+      <h2>Hébergement</h2>
+      <p>Le service est hébergé en France par :</p>
+      <address>
+        <strong data-legal="hostName">…</strong><br />
+        <span data-legal="hostAddress">…</span><br />
+        <span data-legal="hostRcs">…</span><br />
+        Téléphone : <span data-legal="hostPhone">…</span>
+      </address>
+    </section>
+
+    <section class="legal">
+      <h2>Données personnelles</h2>
+      <p>
+        Le traitement des données personnelles, les durées de conservation et l'exercice de vos droits
+        (accès, rectification, effacement, portabilité, opposition) sont détaillés dans la
+        <a data-cta="privacy" href="#">politique de confidentialité</a> de l'application.
+      </p>
+    </section>
+
+    <section class="legal">
+      <h2>Propriété intellectuelle</h2>
+      <p>
+        La marque <strong class="brand">…</strong>, le logo, les textes et les visuels de ce site sont la
+        propriété de l'éditeur. Toute reproduction sans autorisation écrite préalable est interdite.
+      </p>
+    </section>
+
+    <p class="back"><a data-cta="home" href="index.html">← Retour à l'accueil</a></p>
+  </div>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <span><span class="foot-brand"><img class="brand-logo" data-brand-logo alt="" width="20" height="20" /><span class="brand logo-word" aria-hidden="true"></span></span> — le planning des clubs de basket.</span>
+    <span><a data-cta="home" href="index.html">Accueil</a></span>
+  </div>
+</footer>
+
+<!-- ?v=… : cache-bust de config.js, aligné sur index.html (bumper les DEUX ensemble). -->
+<script src="config.js?v=2026-09-29b"></script>
+<script>
+  // Injection des valeurs légales depuis config.js — MÊME source unique que la vitrine.
+  (function () {
+    const cfg = window.LANDING_CONFIG || {};
+    const { brand, appUrl, contactEmail, logo } = cfg;
+    const legal = cfg.legal || {};
+    const host = legal.host || {};
+
+    document.title = brand + " — " + document.title;
+    document.querySelectorAll(".brand").forEach((el) => { el.textContent = brand; });
+    document.querySelectorAll("[data-brand-label]").forEach((el) => { el.setAttribute("aria-label", brand); });
+    document.querySelectorAll("[data-brand-logo]").forEach((img) => {
+      if (logo) {
+        img.onerror = () => { img.onerror = null; img.remove(); };
+        img.src = logo;
+      } else {
+        img.remove();
+      }
+    });
+
+    const setText = (sel, value) => {
+      document.querySelectorAll(sel).forEach((el) => { el.textContent = value || "—"; });
+    };
+    setText('[data-legal="editor"]', cfg.editor);
+    setText('[data-legal="editorStatus"]', legal.editorStatus);
+    setText('[data-legal="hostName"]', host.name);
+    setText('[data-legal="hostAddress"]', host.address);
+    setText('[data-legal="hostRcs"]', host.rcs);
+    setText('[data-legal="hostPhone"]', host.phone);
+
+    document.querySelectorAll('[data-legal="contactEmail"]').forEach((a) => {
+      a.textContent = contactEmail;
+      a.href = "mailto:" + contactEmail;
+    });
+    document.querySelectorAll('[data-cta="privacy"]').forEach((a) => { a.href = appUrl + "/confidentialite"; });
+  })();
+</script>
+<script>
+  // Bascule de thème — dupliquée VOLONTAIREMENT depuis index.html (aucune brique partagée).
+  (function () {
+    const root = document.documentElement;
+    const toggle = document.querySelector("[data-theme-toggle]");
+    const current = () => (root.getAttribute("data-theme") === "dark" ? "dark" : "light");
+    function reflect(theme) {
+      if (!toggle) return;
+      const dark = theme === "dark";
+      toggle.setAttribute("aria-pressed", String(dark));
+      toggle.setAttribute("aria-label", dark ? "Passer en thème clair" : "Passer en thème sombre");
+    }
+    reflect(current());
+    if (toggle) {
+      toggle.addEventListener("click", () => {
+        const next = current() === "dark" ? "light" : "dark";
+        if (next === "dark") root.setAttribute("data-theme", "dark");
+        else root.removeAttribute("data-theme");
+        try { localStorage.setItem("theme", next); } catch (e) { /* stockage indisponible */ }
+        reflect(next);
+      });
+    }
+  })();
+</script>
+<script>
+  // Glissement des ancres internes — MÊME script que index.html, dupliqué VOLONTAIREMENT
+  // (zéro build, zéro brique partagée). easeOutCubic en rAF, saut direct sous reduced-motion,
+  // interrompu si l'utilisateur reprend la main. Inerte tant qu'aucun lien `#…` n'existe ici.
+  (function () {
+    const PAD = 76;
+    const reduced = () => {
+      try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; }
+    };
+    const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+
+    const targetY = (hash) => {
+      if (hash === "#" || hash === "") return 0;
+      let el = null;
+      try { el = document.querySelector(hash); } catch (e) { el = null; }
+      if (!el) return null;
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      return Math.max(0, Math.round(top - PAD));
+    };
+    const focusTarget = (hash) => {
+      if (hash === "#" || hash === "") return;
+      let el = null;
+      try { el = document.querySelector(hash); } catch (e) { el = null; }
+      if (!el) return;
+      if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
+      el.focus({ preventScroll: true });
+    };
+
+    let raf = null;
+    const stop = () => {
+      if (raf) { cancelAnimationFrame(raf); raf = null; }
+      window.removeEventListener("wheel", stop, { passive: true });
+      window.removeEventListener("touchstart", stop, { passive: true });
+      window.removeEventListener("keydown", stop, true);
+    };
+    const animate = (y, done) => {
+      stop();
+      const start = window.scrollY;
+      const dist = y - start;
+      if (Math.abs(dist) < 2) { window.scrollTo(0, y); if (done) done(); return; }
+      const dur = Math.min(900, Math.max(600, Math.abs(dist) * 0.6));
+      const t0 = performance.now();
+      window.addEventListener("wheel", stop, { passive: true });
+      window.addEventListener("touchstart", stop, { passive: true });
+      window.addEventListener("keydown", stop, true);
+      const step = (now) => {
+        const p = Math.min(1, (now - t0) / dur);
+        window.scrollTo(0, Math.round(start + dist * easeOutCubic(p)));
+        if (p < 1) { raf = requestAnimationFrame(step); }
+        else { stop(); if (done) done(); }
+      };
+      raf = requestAnimationFrame(step);
+    };
+
+    document.addEventListener("click", (e) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const t = e.target;
+      const a = t && t.closest ? t.closest('a[href^="#"]') : null;
+      if (!a) return;
+      const hash = a.getAttribute("href");
+      if (hash === null) return;
+      const y = targetY(hash);
+      if (y === null) return;
+      e.preventDefault();
+      try {
+        if (hash === "#") history.pushState(null, "", location.pathname + location.search);
+        else history.pushState(null, "", hash);
+      } catch (err) { /* file:// ou restrictions : sans blocage */ }
+      if (reduced()) { window.scrollTo(0, y); focusTarget(hash); return; }
+      animate(y, () => focusTarget(hash));
+    });
+  })();
+</script>
+</body>
+</html>

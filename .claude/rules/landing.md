@@ -27,12 +27,42 @@ paths:
   `?v=<date>`, à bumper à chaque ajout/retrait/renommage de clé — sinon un visiteur de retour garde
   l'ancien fichier en cache et toute nouvelle clé lit `undefined` (incident 2026-09-25, logo cassé ;
   l'injection est défensive depuis, mais le `?v=` est ce qui rend le vrai logo tout de suite).
+  **Le logotype recopie désormais le patron `BrandMark` de l'app (P4-274, 2026-09-29)** : `logo`
+  pointe `assets/brand/mark.svg` (les trois arcs SEULS, sans le disque blanc du favicon
+  `icon.svg`) — un mark thème-neutre — et le MOT (`brand`, en minuscules) est rendu en TEXTE à la
+  couleur du thème courant (`.logo-word`, `color: var(--ink)`), un seul rendu clair/sombre ; repli
+  défensif inchangé, si l'icône manque/échoue seul le mot reste (marque toujours lisible).
 - **Le fond d'écran est un décor CSS, PAS une clé `config.js`** (P5-16, 2026-09-25) :
   `background: var(--paper) url("assets/brand/fond.svg") center / cover no-repeat fixed;` est un
   chemin en dur dans `index.html` — contrairement à la marque/aux liens/au logo (règle
   précédente), un décor visuel n'a pas besoin d'indirection : il ne change jamais par club ni par
   domaine. Détail (opacité, purge C2PA, parité avec l'app) :
   `specs/courantes/identite-visuelle-produit.md` § « Le fond d'écran ».
+- **Thème AU CHOIX, clair par défaut (P4-274, 2026-09-29)** : un mini-script en tête de `<head>`
+  (avant le `<style>`, anti-flash) pose `data-theme="dark"` sur `<html>` depuis `localStorage.theme`
+  (choix explicite du visiteur) sinon `prefers-color-scheme`, enveloppé (navigation privée,
+  cookies refusés → repli clair silencieux). Un bouton `.theme-toggle` (lune/soleil, dans
+  `nav.top` — un `<button>`, pas un `<a>`, donc épargné par la règle mobile `a:not(.btn){display:none}`)
+  bascule l'attribut et persiste le choix. Jetons sombres **dérivés PAR CONVENTION** des jetons
+  `.dark` de l'app (`frontend/src/index.css`, même hue 75, mêmes L/chroma) — jamais importés, les
+  deux zones restent indépendantes (règle ci-dessus). Détail des jetons et du fond sombre :
+  `specs/courantes/identite-visuelle-produit.md`.
+- **Convention `-dark` pour toute capture/asset qui varie par thème (P4-274, 2026-09-29)** :
+  `nom.ext` → `nom-dark.ext`, même dossier. Le script de bascule de thème essaie systématiquement
+  la variante `-dark` en sombre et retombe sur la version claire via `onerror` tant qu'aucune
+  `-dark` n'existe — poser un fichier `*-dark.*` suffit à l'activer, **aucun code à toucher**
+  (câblage défensif, P5-27 attend seulement la reprise des captures elles-mêmes).
+- **`mentions-legales.html` est une page statique SŒUR d'`index.html`, pas un fragment** (P4-275,
+  2026-09-29) : même scaffolding dupliqué VOLONTAIREMENT (thème anti-flash, palette, glissement
+  d'ancre — zéro brique partagée même entre pages `landing/`) ; ses valeurs (éditeur, statut,
+  hébergeur) viennent du bloc `legal`/`editor` de `config.js`, injectées par son propre script —
+  chargé avec le MÊME `?v=`, à bumper ensemble avec `index.html`.
+- **Glissement d'ancre animé en JS, pas `scroll-behavior: smooth` (P4-258, 2026-09-29)** :
+  `html { scroll-padding-top: 76px }` (en-tête sticky 64px + marge) reste pour le saut natif
+  (arrivée avec `#hash` dans l'URL, JS absent) ; le clic sur un lien `href="#…"` interne est
+  intercepté et animé en `requestAnimationFrame` (easeOutCubic, décélération maîtrisée, coupé net
+  si l'utilisateur reprend la main) — `scroll-behavior: smooth` a été retiré, il aurait doublé le
+  lissage. Saut direct (pas d'animation) sous `prefers-reduced-motion: reduce`.
 - **Palette recalée sur le logo (P5-25, 2026-09-25)** : `--accent` (`#46afac`, teal signature) est
   **décoratif seul** — il ne tient que 2,50:1 sur `--paper`, sous la barre texte. Le texte, les
   liens, les boutons et **les anneaux de focus** portent `--accent-ink` (`#2e7876`, ≥ 4,5:1 partout
@@ -50,8 +80,11 @@ paths:
 - ⚠ **Le contraste WCAG se vérifie dans un vrai navigateur**, jamais à l'œil ni en jsdom — les
   couleurs sont en `oklch`, la conversion vers sRGB passe par un canvas (P5-5 a corrigé des
   contrastes qui « paraissaient » bons).
-- **Aucune donnée personnelle collectée sans mentions légales ni politique de confidentialité**
-  (LCEN + RGPD) : un formulaire de contact sur cette page déclenche les deux obligations —
+- **Mentions légales livrées (P4-275, 2026-09-29)** : `landing/mentions-legales.html` (LCEN
+  art. 6-III — éditeur, responsable de publication, hébergeur Scaleway ; renvoie vers la politique
+  de confidentialité de l'app pour le volet RGPD). **Aucune donnée personnelle collectée sur cette
+  page** — la démo passe par un `mailto:` (client de messagerie du visiteur, rien n'est posté côté
+  serveur) : un futur formulaire de contact POSTÉ déclencherait, lui, l'obligation RGPD complète —
   `business/administratif-mise-en-prod.md` §9.
 - **Aucun job CI ne couvre `landing/`** (`.github/workflows/ci.yml` ne la mentionne nulle part) —
   la seule preuve d'une passe (design, contraste, rendu) est un axe joué **à la main** dans un

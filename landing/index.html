@@ -7,6 +7,20 @@
   <meta name="description" content="Générez le planning d'entraînements de votre club de basket en quelques minutes : toutes vos contraintes capturées, un planning optimisé, réajustable quand la réalité change." />
   <link rel="icon" type="image/svg+xml" href="assets/brand/icon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="assets/brand/icon-32.png" />
+  <!-- Thème AU CHOIX, posé AVANT le <style> pour éviter tout flash : localStorage `theme`
+       (choix explicite du visiteur), sinon la préférence système. Sans JS → aucun `data-theme`
+       → thème clair. Le stockage est enveloppé (navigation privée, cookies refusés). -->
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem("theme");
+        var dark = saved
+          ? saved === "dark"
+          : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        if (dark) document.documentElement.setAttribute("data-theme", "dark");
+      } catch (e) { /* stockage indisponible : on reste en clair */ }
+    })();
+  </script>
   <style>
     /* ── Voix display : Bricolage Grotesque (OFL, auto-hébergée — assets/fonts/) ── */
     @font-face {
@@ -18,6 +32,7 @@
     }
     /* ── Palette : sobre, crédible trésorier ; le sport en accent, pas en criard ── */
     :root {
+      color-scheme: light;
       --paper: #faf9f7;
       --surface: #ffffff;
       --ink: #191714;
@@ -28,11 +43,38 @@
       --accent-ink: #2e7876;    /* teal assombri pour porter du texte — 4.91:1 sur --paper, 5.17:1 blanc dessus, 4.64:1 sur --accent-soft */
       --accent-deep: #215857;   /* survol — 8.08:1 blanc dessus */
       --accent-soft: #e9f5f5;   /* teinte très claire du teal — encre 16.05:1 dessus */
+      --accent-foreground: #ffffff;  /* texte posé sur le fond plein --accent-ink (bouton) — blanc en clair */
       --radius: 12px;
       --display: "Bricolage Grotesque", system-ui, sans-serif;
     }
+    /* ── Thème sombre AU CHOIX (opt-in) ───────────────────────────────────────────
+       Posé par le mini-script du <head>. Palette DÉRIVÉE PAR CONVENTION des jetons de
+       l'app (`frontend/src/index.css` `.dark`) — jamais importée, les deux zones se
+       ressemblent par convention (règle landing). Base grise chaude (hue 75, mêmes L/chroma
+       que l'app), et le teal signature devient PORTEUR de texte en sombre (≈ 7:1 sur --paper,
+       là où en clair il restait décoratif). Le bouton teal plein passe donc à un texte SOMBRE
+       (--accent-foreground), miroir exact de `--accent-foreground` de l'app en `.dark`. */
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --paper: oklch(0.19 0.006 75);        /* ≈ app --background */
+      --surface: oklch(0.23 0.006 75);      /* ≈ app --card */
+      --ink: oklch(0.96 0.004 75);          /* ≈ app --foreground */
+      --ink-2: oklch(0.82 0.010 75);        /* texte secondaire clair */
+      --muted: oklch(0.68 0.015 75);        /* ≈ app --muted-foreground — ≥ 4.5:1 sur --paper */
+      --line: oklch(0.31 0.006 75);         /* ≈ app --border */
+      --accent: #46afac;                    /* teal signature — décoratif ET porteur en sombre */
+      --accent-ink: #46afac;                /* texte / liens / focus : le teal clair suffit sur fond sombre */
+      --accent-deep: #4db2af;               /* survol — ÉCLAIRCI (monte le contraste avec le texte sombre du bouton) */
+      --accent-soft: color-mix(in oklab, var(--accent) 14%, var(--surface)); /* teinte sombre du teal — le teal clair passe dessus */
+      --accent-foreground: oklch(0.19 0.010 75);  /* texte SOMBRE sur le bouton teal plein — miroir app */
+    }
     * { box-sizing: border-box; margin: 0; }
-    html { scroll-behavior: smooth; }
+    /* scroll-padding-top : l'en-tête sticky fait 64px — sans ça une ancre (#faq, #offres…)
+       s'arrête SOUS l'en-tête et son titre est masqué (P4-258). 64 + 12 de marge = 76.
+       ⚠ PAS de `scroll-behavior: smooth` : le glissement des ancres est piloté en JS
+       (easeOutCubic, décélération maîtrisée) — un smooth CSS doublerait le lissage. Le
+       scroll-padding reste pour le saut NATIF (arrivée avec #hash dans l'URL, ou JS absent). */
+    html { scroll-padding-top: 76px; }
     /* Fond d'écran commun app + vitrine (P5-16) : même motif multi-sport du logo, posé sur le papier.
        SVG statique purgé (assets/brand/fond.svg), opacité 0,26 (variante vitrine). `fixed` : parallaxe
        desktop-first assumée (iOS Safari retombe en scroll). En-tête sticky translucide inchangé. */
@@ -41,6 +83,10 @@
       color: var(--ink);
       font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
       -webkit-font-smoothing: antialiased;
+    }
+    /* Fond sombre : même motif, variante claire-sur-sombre (fond-dark.svg, copie de l'app). */
+    html[data-theme="dark"] body {
+      background: var(--paper) url("assets/brand/fond-dark.svg") center / cover no-repeat fixed;
     }
     ::selection { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); color: var(--ink); }
     .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
@@ -54,16 +100,35 @@
       border-bottom: 1px solid var(--line);
     }
     header.site .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; }
-    .logotype { display: inline-flex; align-items: center; text-decoration: none; }
-    .brand-logo { height: 34px; width: auto; display: block; }
-    .brand-logo--footer { height: 18px; vertical-align: -3px; }
-    /* Repli texte si config.js n'expose pas `logo` (ex. ancien script en cache) — jamais d'image cassée */
-    .logotype .brand-fallback { font-family: var(--display); font-size: 22px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); }
+    /* Logotype « comme l'app » (BrandMark) : l'ICÔNE (arcs, thème-neutre) + le MOT en TEXTE
+       à la couleur du thème, un seul rendu clair/sombre. Le mot vient de `brand` (config, via
+       `.brand`) ; `text-transform` le met en minuscules comme le logo, sans dupliquer le nom.
+       Repli conservé : si l'icône manque/échoue, le mot seul reste (marque toujours lisible). */
+    .logotype { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; }
+    .brand-logo { height: 30px; width: 30px; display: block; }
+    .logo-word { font-family: var(--display); font-weight: 800; font-size: 23px; letter-spacing: -0.03em; line-height: 1; color: var(--ink); text-transform: lowercase; }
+    footer.site .brand-logo { height: 20px; width: 20px; }
+    footer.site .logo-word { font-size: 16px; }
+    footer.site .foot-brand { display: inline-flex; align-items: center; gap: 7px; vertical-align: -5px; }
     nav.top { display: flex; gap: 22px; align-items: center; font-size: 15px; }
     nav.top a { color: var(--ink-2); text-decoration: none; }
     nav.top a:hover { color: var(--ink); }
-    nav.top a.btn-primary { color: #fff; }
-    nav.top a.btn-primary:hover { color: #fff; }
+    nav.top a.btn-primary { color: var(--accent-foreground); }
+    nav.top a.btn-primary:hover { color: var(--accent-foreground); }
+    /* Bascule de thème : bouton (pas un lien), donc épargné par la règle `a:not(.btn)` de mobile —
+       reste visible < 720px. Lune en clair (« passer en sombre »), soleil en sombre. */
+    .theme-toggle {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 40px; height: 40px; padding: 0; border-radius: 10px;
+      border: 1.5px solid var(--line); background: var(--surface); color: var(--ink-2);
+      cursor: pointer; transition: color 80ms ease, border-color 80ms ease;
+    }
+    .theme-toggle:hover { color: var(--ink); border-color: var(--muted); }
+    .theme-toggle:focus-visible { outline: 3px solid var(--accent-ink); outline-offset: 2px; }
+    .theme-toggle svg { width: 18px; height: 18px; display: block; }
+    .theme-toggle .icon-sun { display: none; }
+    html[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+    html[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
     @media (max-width: 720px) {
       nav.top { gap: 14px; }
       nav.top a:not(.btn) { display: none; }
@@ -77,7 +142,7 @@
     }
     .btn:hover { transform: translateY(-1px); }
     .btn:focus-visible { outline: 3px solid var(--accent-ink); outline-offset: 2px; }
-    .btn-primary { background: var(--accent-ink); color: #fff; box-shadow: 0 2px 6px -2px rgba(25,23,20,.35); }
+    .btn-primary { background: var(--accent-ink); color: var(--accent-foreground); box-shadow: 0 2px 6px -2px rgba(25,23,20,.35); }
     .btn-primary:hover { background: var(--accent-deep); }
     .btn-ghost { border: 1.5px solid var(--line); color: var(--ink); background: var(--surface); }
     .btn-ghost:hover { border-color: var(--muted); }
@@ -174,7 +239,8 @@
     footer.site .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 
     @media (prefers-reduced-motion: reduce) {
-      html { scroll-behavior: auto; }
+      /* Le saut d'ancre redevient direct : le script de glissement teste lui-même
+         prefers-reduced-motion et fait un window.scrollTo instantané. */
       .btn { transition: none; }
       figure.shot img { animation: none; }
       .faq summary svg { transition: none; }
@@ -185,12 +251,16 @@
 
 <header class="site">
   <div class="wrap">
-    <a class="logotype" href="#" data-brand-label><img class="brand-logo" data-brand-logo alt="" width="878" height="226" /><span class="brand brand-fallback" hidden></span></a>
+    <a class="logotype" href="#" data-brand-label><img class="brand-logo" data-brand-logo alt="" width="30" height="30" /><span class="brand logo-word" aria-hidden="true"></span></a>
     <nav class="top" aria-label="Navigation principale">
       <a href="#fonctionnement">Comment ça marche</a>
       <a href="#offres">Offres</a>
       <a href="#faq">FAQ</a>
       <a data-cta="login" href="#">Se connecter</a>
+      <button type="button" class="theme-toggle" data-theme-toggle aria-pressed="false" aria-label="Passer en thème sombre">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M4.22 4.22l1.77 1.77M18.01 18.01l1.77 1.77M2 12h2.5M19.5 12H22M4.22 19.78l1.77-1.77M18.01 5.99l1.77-1.77"/></svg>
+      </button>
       <a class="btn btn-primary" data-cta="register" href="#">Essayer gratuitement</a>
     </nav>
   </div>
@@ -446,41 +516,168 @@
 
 <footer class="site">
   <div class="wrap">
-    <span><img class="brand-logo brand-logo--footer" data-brand-logo data-brand-alt alt="" width="878" height="226" /><span class="brand brand-fallback" hidden></span> — le planning des clubs de basket. Actuellement en bêta avec des clubs pilotes.</span>
-    <span><a data-cta="demo-inline" href="#">Contact</a></span>
+    <span><span class="foot-brand"><img class="brand-logo" data-brand-logo alt="" width="20" height="20" /><span class="brand logo-word" aria-hidden="true"></span></span> — le planning des clubs de basket. Actuellement en bêta avec des clubs pilotes.</span>
+    <span><a href="mentions-legales.html">Mentions légales</a> · <a data-cta="demo-inline" href="#">Contact</a></span>
   </div>
 </footer>
 
 <!-- ?v=… : cache-bust de config.js. Caddy file_server (comme le serveur Python de relecture)
      n'envoie pas de Cache-Control → un ancien config.js pouvait rester en cache avec un index.html
      neuf. Bumper cette date À CHAQUE ajout/retrait de clé dans config.js (cf. commentaire là-bas). -->
-<script src="config.js?v=2026-09-25"></script>
+<script src="config.js?v=2026-09-29b"></script>
 <script>
   // Le nom et les liens sont injectés depuis config.js — UNE source.
   (function () {
     const { brand, appUrl, contactEmail, logo } = window.LANDING_CONFIG;
     document.title = brand + " — " + document.title;
+    // Le mot du logotype (`.brand.logo-word`) et les mentions de marque dans le texte
+    // (`.brand`) partagent le nom, injecté ici ; le logotype le met en minuscules en CSS.
     document.querySelectorAll(".brand").forEach((el) => { el.textContent = brand; });
-    // Injection défensive : si `logo` manque (ex. ancien config.js en cache sans la clé),
-    // on ne pose PAS de src — on retire l'image et on révèle le repli texte (le nom, depuis
-    // la config, jamais dupliqué en dur), pour ne jamais afficher une image cassée.
+    // Injection défensive de l'ICÔNE : si `logo` manque (ancien config.js en cache) ou si
+    // l'image échoue, on retire l'icône — le MOT (texte, toujours visible) reste le repli :
+    // la marque demeure lisible, jamais d'image cassée.
     document.querySelectorAll("[data-brand-logo]").forEach((img) => {
       if (logo) {
+        img.onerror = () => { img.onerror = null; img.remove(); };
         img.src = logo;
       } else {
-        const fb = img.parentElement.querySelector(".brand-fallback");
-        if (fb) { fb.hidden = false; }
-        img.remove();  // retiré du DOM : `.brand-logo{display:block}` couvrirait `[hidden]`, laissant une boîte vide
+        img.remove();
       }
     });
     document.querySelectorAll("[data-brand-label]").forEach((el) => { el.setAttribute("aria-label", brand); });
-    document.querySelectorAll("[data-brand-alt]").forEach((el) => { el.setAttribute("alt", brand); });
+    // ⚠ Objet ET corps 100 % ASCII (P4-273) : certains clients mail cassent l'encodage des
+    // accents/tirets d'un mailto (objet illisible, corps tronqué). Le texte VISIBLE de la page
+    // garde ses accents — seul le brouillon d'e-mail est déaccentué.
     const mailto = "mailto:" + contactEmail
-      + "?subject=" + encodeURIComponent("Demande de démo — " + brand)
-      + "&body=" + encodeURIComponent("Bonjour,\n\nJe souhaite voir " + brand + " en démo pour mon club.\n\nClub : \nNombre d'équipes (environ) : \nDisponibilités : ");
+      + "?subject=" + encodeURIComponent("Demande de demo - " + brand)
+      + "&body=" + encodeURIComponent("Bonjour,\n\nJe souhaite voir " + brand + " en demo pour mon club.\n\nClub : \nNombre d'equipes (environ) : \nDisponibilites : ");
     document.querySelectorAll("[data-cta=register]").forEach((a) => { a.href = appUrl + "/register"; });
     document.querySelectorAll("[data-cta=login]").forEach((a) => { a.href = appUrl + "/login"; });
     document.querySelectorAll("[data-cta=demo],[data-cta=demo-inline]").forEach((a) => { a.href = mailto; });
+  })();
+</script>
+<script>
+  // Bascule de thème (clair ⇄ sombre) + captures thème-conscientes. Le <head> a déjà posé
+  // `data-theme` ; ce script aligne le bouton, persiste le choix et tente les captures sombres.
+  (function () {
+    const root = document.documentElement;
+    const toggle = document.querySelector("[data-theme-toggle]");
+    const current = () => (root.getAttribute("data-theme") === "dark" ? "dark" : "light");
+
+    // `nom.ext` → `nom-dark.ext` (avant un éventuel ?query). Convention P5-27.
+    const darkSrc = (src) => src.replace(/(\.[a-z0-9]+)(\?.*)?$/i, "-dark$1$2");
+    // DÉFENSIF : aucune capture `-dark` n'existe encore — onerror rend la version claire.
+    // Le jour où les `*-dark` arriveront (P5-27), elles se branchent SANS toucher au code.
+    function paintShots(theme) {
+      document.querySelectorAll("figure.shot img").forEach((img) => {
+        const light = img.getAttribute("data-shot-light") || img.getAttribute("src");
+        img.setAttribute("data-shot-light", light);
+        if (theme === "dark") {
+          img.onerror = () => { img.onerror = null; img.src = light; };
+          img.src = darkSrc(light);
+        } else {
+          img.onerror = null;
+          if (img.getAttribute("src") !== light) img.src = light;
+        }
+      });
+    }
+    function reflect(theme) {
+      if (!toggle) return;
+      const dark = theme === "dark";
+      toggle.setAttribute("aria-pressed", String(dark));
+      toggle.setAttribute("aria-label", dark ? "Passer en thème clair" : "Passer en thème sombre");
+    }
+
+    reflect(current());
+    paintShots(current());
+
+    if (toggle) {
+      toggle.addEventListener("click", () => {
+        const next = current() === "dark" ? "light" : "dark";
+        if (next === "dark") root.setAttribute("data-theme", "dark");
+        else root.removeAttribute("data-theme");
+        try { localStorage.setItem("theme", next); } catch (e) { /* stockage indisponible */ }
+        reflect(next);
+        paintShots(next);
+      });
+    }
+  })();
+</script>
+<script>
+  // Glissement des ancres internes — décélération MAÎTRISÉE (easeOutCubic), zéro build, zéro lib.
+  // Remplace `scroll-behavior: smooth` (vitesse/courbe non maîtrisées, parfois quasi
+  // instantané selon le navigateur) : on anime window.scrollTo en requestAnimationFrame.
+  // Sous prefers-reduced-motion → saut DIRECT (a11y). Interrompu si l'utilisateur reprend la main.
+  (function () {
+    const PAD = 76; // = scroll-padding-top (hauteur de l'en-tête sticky + marge)
+    const reduced = () => {
+      try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; }
+    };
+    const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+
+    const targetY = (hash) => {
+      if (hash === "#" || hash === "") return 0;
+      let el = null;
+      try { el = document.querySelector(hash); } catch (e) { el = null; }
+      if (!el) return null;
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      return Math.max(0, Math.round(top - PAD));
+    };
+    const focusTarget = (hash) => {
+      if (hash === "#" || hash === "") return;
+      let el = null;
+      try { el = document.querySelector(hash); } catch (e) { el = null; }
+      if (!el) return;
+      if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1"); // focusable sans piège tab
+      el.focus({ preventScroll: true }); // le focus ne doit PAS re-scroller (on gère le scroll)
+    };
+
+    let raf = null;
+    const stop = () => {
+      if (raf) { cancelAnimationFrame(raf); raf = null; }
+      window.removeEventListener("wheel", stop, { passive: true });
+      window.removeEventListener("touchstart", stop, { passive: true });
+      window.removeEventListener("keydown", stop, true);
+    };
+    const animate = (y, done) => {
+      stop();
+      const start = window.scrollY;
+      const dist = y - start;
+      if (Math.abs(dist) < 2) { window.scrollTo(0, y); if (done) done(); return; }
+      // Durée proportionnelle à la distance (~0,6 ms/px), PLAFONNÉE à 600–900 ms.
+      const dur = Math.min(900, Math.max(600, Math.abs(dist) * 0.6));
+      const t0 = performance.now();
+      // L'utilisateur reprend la main → on coupe l'animation net.
+      window.addEventListener("wheel", stop, { passive: true });
+      window.addEventListener("touchstart", stop, { passive: true });
+      window.addEventListener("keydown", stop, true);
+      const step = (now) => {
+        const p = Math.min(1, (now - t0) / dur);
+        window.scrollTo(0, Math.round(start + dist * easeOutCubic(p)));
+        if (p < 1) { raf = requestAnimationFrame(step); }
+        else { stop(); if (done) done(); }
+      };
+      raf = requestAnimationFrame(step);
+    };
+
+    document.addEventListener("click", (e) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const t = e.target;
+      const a = t && t.closest ? t.closest('a[href^="#"]') : null;
+      if (!a) return;
+      const hash = a.getAttribute("href");
+      if (hash === null) return;
+      const y = targetY(hash);
+      if (y === null) return; // cible absente : on laisse le comportement par défaut
+      e.preventDefault();
+      // URL : reflète l'ancre (retire le hash pour un retour en haut via href="#").
+      try {
+        if (hash === "#") history.pushState(null, "", location.pathname + location.search);
+        else history.pushState(null, "", hash);
+      } catch (err) { /* file:// ou restrictions : sans blocage */ }
+      if (reduced()) { window.scrollTo(0, y); focusTarget(hash); return; }
+      animate(y, () => focusTarget(hash));
+    });
   })();
 </script>
 </body>

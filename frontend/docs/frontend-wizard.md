@@ -1,6 +1,6 @@
 # Wizard — saisie des données (tranche 3, LIVRÉ)
 
-Last verified @ 2026-09-27 (`documentation-update`, P4-263 PR 2/2 — front). Le flux compte
+Last verified @ 2026-09-29 (`documentation-update`, rotation de fraîcheur). Le flux compte
 **6 étapes** (`frontend/src/features/wizard/lib/steps.ts:9-16`), reflétées par les 6 items
 ci-dessous ; `ls frontend/src/features/wizard/steps/` ne porte pas de `PeriodStructure.tsx`
 (remplacé par `StructureSummary.tsx`/`PeriodTeams.tsx`/`PeriodVenues.tsx`/`PeriodConstraints.tsx`) ;
