@@ -9,6 +9,7 @@ use App\Dto\TeamMatchHabitInput;
 use App\Entity\Team;
 use App\Entity\TeamMatchHabit;
 use App\Entity\Venue;
+use App\Enum\MatchWeek;
 use DateTimeImmutable;
 
 /**
@@ -70,6 +71,9 @@ class TeamMatchHabitStateProcessor extends AbstractStateProcessor
         if (null !== $input->venueId && '' !== $input->venueId) {
             $entity->setVenueId($input->venueId);
         }
+        // Semaine d'alternance : omise ⇒ `ALL` (défaut), sur création comme sur
+        // PUT (idiome full-replace, cf. venueId ci-dessus).
+        $entity->setWeek(null !== $input->week ? MatchWeek::from($input->week) : MatchWeek::ALL);
 
         // Foreign/unknown references resolve to null through the tenant+season
         // filters → 422. `findOneBy`, NOT `find()`: a PK load can serve the
@@ -80,14 +84,14 @@ class TeamMatchHabitStateProcessor extends AbstractStateProcessor
         if (null !== $entity->getVenueId() && !$this->entityManager->getRepository(Venue::class)->findOneBy(['id' => $entity->getVenueId()]) instanceof Venue) {
             $this->refuse('Gymnase inconnu pour ce club.');
         }
-        // One habit per weekday and per team — the DB unique is the backstop,
-        // this gives the manager a readable 422 instead of a 500.
+        // ONE ideal slot per team (P4-271 — la possibilité d'en déclarer deux est
+        // fermée) : le DB unique (club, saison, équipe) est le filet, ce contrôle
+        // donne au gestionnaire un 422 lisible au lieu d'un 500.
         $existing = $this->entityManager->getRepository(TeamMatchHabit::class)->findOneBy([
             'teamId' => $entity->getTeamId(),
-            'dayOfWeek' => $entity->getDayOfWeek(),
         ]);
         if ($existing instanceof TeamMatchHabit && $existing->getId() !== $entity->getId()) {
-            $this->refuse('Cette équipe a déjà une habitude de match ce jour-là — modifiez-la.');
+            $this->refuse('Cette équipe a déjà un créneau idéal de match — modifiez-le.');
         }
     }
 }

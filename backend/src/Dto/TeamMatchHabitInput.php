@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Dto;
 
+use App\Enum\MatchWeek;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 
@@ -30,4 +31,10 @@ class TeamMatchHabitInput
     #[Assert\Uuid]
     #[Groups(['write'])]
     public ?string $venueId = null;
+
+    // Semaine d'alternance du créneau idéal (A/B/toutes — P4-271). Omise ⇒ `ALL`
+    // (le processor pose le défaut), pour qu'un ancien payload reste valide.
+    #[Assert\Choice(callback: [MatchWeek::class, 'values'])]
+    #[Groups(['write'])]
+    public ?string $week = null;
 }

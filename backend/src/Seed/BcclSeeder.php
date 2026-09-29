@@ -12,8 +12,6 @@ use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
 use App\Entity\ConstraintPeriodOverride;
 use App\Entity\ImplicitRuleSetting;
-use App\Entity\MatchSlotRotation;
-use App\Entity\MatchSlotRotationTeam;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
@@ -48,6 +46,7 @@ use App\Enum\ImplicitRuleIntensity;
 use App\Enum\ImplicitRuleKey;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
+use App\Enum\MatchWeek;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
@@ -1393,15 +1392,12 @@ final class BcclSeeder
      *     et dim 09:00→18:30, Armand sam 10:45→21:00, Debarros sam 13:00→18:30. Cette table n'a
      *     AUCUNE unicité DB : idempotence par PURGE des fenêtres du club/saison puis recréation
      *     (patron des créneaux d'entraînement).
-     *  2. 32 {@see TeamMatchHabit} — l'habitude de match (jour + heure de coup d'envoi + gymnase)
-     *     de chaque équipe qui reçoit le WE. Find-or-create sur la clé unique (club, saison, équipe,
-     *     jour) ; heure + gymnase réappliqués au re-run. Aucune équipe ne reçoit deux fois le même
-     *     jour, donc une habitude par équipe.
-     *  3. 8 {@see MatchSlotRotation} + 16 {@see MatchSlotRotationTeam} — les créneaux partagés A/B
-     *     d'Armand et Debarros (mêmes heures en semaine A et B, deux équipes en alternance) :
-     *     position 0 = équipe de la semaine A, 1 = semaine B. Matéo ne porte AUCUNE rotation (ses
-     *     heures diffèrent d'une semaine à l'autre). Purge des membres puis des rotations du
-     *     club/saison, puis recréation — sémantique du {@see MatchSlotRotationStateProcessor}.
+     *  2. 32 {@see TeamMatchHabit} — le créneau idéal de match (jour + heure de coup d'envoi +
+     *     gymnase + semaine A/B) de chaque équipe qui reçoit le WE. Find-or-create sur la clé
+     *     unique (club, saison, équipe) ; heure + gymnase + semaine réappliqués au re-run. Une
+     *     équipe = un seul créneau idéal (P4-271). Le tag de semaine EST la donnée : les 8 paires
+     *     d'Armand/Debarros (mêmes heure + gymnase en A et B) matérialisent l'alternance sans
+     *     aucune entité de rotation.
      *
      * @param array<string, Team>  $teams
      * @param array<string, Venue> $venues
@@ -1436,91 +1432,48 @@ final class BcclSeeder
         }
         $manager->flush();
 
-        // 2. Habitudes de match — find-or-create sur (club, saison, équipe, jour), heure + gymnase
-        // réappliqués. [équipe, jour ISO, coup d'envoi, gymnase].
-        /** @var list<array{string, int, string, string}> $habits */
+        // 2. Créneaux idéaux de match — find-or-create sur (club, saison, équipe), heure + gymnase
+        // + semaine réappliqués. [équipe, jour ISO, coup d'envoi, gymnase, semaine A/B]. Une équipe
+        // = un seul créneau (P4-271). Les 8 paires d'Armand/Debarros (mêmes heure + gymnase en A et
+        // B) portent l'alternance par le tag de semaine — plus aucune entité de rotation.
+        /** @var list<array{string, int, string, string, MatchWeek}> $habits */
         $habits = [
             // Semaine A — samedi Matéo
-            ['U13F1', 6, '13:00', 'vMateo'], ['U18F2', 6, '15:00', 'vMateo'], ['U13M1', 6, '17:00', 'vMateo'], ['U18M2', 6, '19:00', 'vMateo'],
+            ['U13F1', 6, '13:00', 'vMateo', MatchWeek::A], ['U18F2', 6, '15:00', 'vMateo', MatchWeek::A], ['U13M1', 6, '17:00', 'vMateo', MatchWeek::A], ['U18M2', 6, '19:00', 'vMateo', MatchWeek::A],
             // Semaine A — samedi Armand
-            ['U9F2', 6, '10:45', 'vArmand'], ['U9F1', 6, '12:15', 'vArmand'], ['U11F1', 6, '13:45', 'vArmand'], ['U11M2', 6, '15:30', 'vArmand'], ['U18F3', 6, '17:15', 'vArmand'],
+            ['U9F2', 6, '10:45', 'vArmand', MatchWeek::A], ['U9F1', 6, '12:15', 'vArmand', MatchWeek::A], ['U11F1', 6, '13:45', 'vArmand', MatchWeek::A], ['U11M2', 6, '15:30', 'vArmand', MatchWeek::A], ['U18F3', 6, '17:15', 'vArmand', MatchWeek::A],
             // Semaine A — samedi Debarros
-            ['U13M2', 6, '13:00', 'vDebarros'], ['U13F3', 6, '15:00', 'vDebarros'], ['U15F3', 6, '17:00', 'vDebarros'],
+            ['U13M2', 6, '13:00', 'vDebarros', MatchWeek::A], ['U13F3', 6, '15:00', 'vDebarros', MatchWeek::A], ['U15F3', 6, '17:00', 'vDebarros', MatchWeek::A],
             // Semaine A — dimanche Matéo
-            ['SM3', 7, '10:00', 'vMateo'], ['U18M1', 7, '12:00', 'vMateo'], ['U18F1', 7, '14:15', 'vMateo'], ['SF3', 7, '16:30', 'vMateo'],
+            ['SM3', 7, '10:00', 'vMateo', MatchWeek::A], ['U18M1', 7, '12:00', 'vMateo', MatchWeek::A], ['U18F1', 7, '14:15', 'vMateo', MatchWeek::A], ['SF3', 7, '16:30', 'vMateo', MatchWeek::A],
             // Semaine B — samedi Matéo
-            ['U15F1', 6, '13:45', 'vMateo'], ['U15M1', 6, '16:00', 'vMateo'], ['SF1', 6, '18:30', 'vMateo'], ['SM1', 6, '20:45', 'vMateo'],
+            ['U15F1', 6, '13:45', 'vMateo', MatchWeek::B], ['U15M1', 6, '16:00', 'vMateo', MatchWeek::B], ['SF1', 6, '18:30', 'vMateo', MatchWeek::B], ['SM1', 6, '20:45', 'vMateo', MatchWeek::B],
             // Semaine B — samedi Armand
-            ['U9M1', 6, '10:45', 'vArmand'], ['U9M2', 6, '12:15', 'vArmand'], ['U11F2', 6, '13:45', 'vArmand'], ['U11M1', 6, '15:30', 'vArmand'], ['U21M2', 6, '17:15', 'vArmand'],
+            ['U9M1', 6, '10:45', 'vArmand', MatchWeek::B], ['U9M2', 6, '12:15', 'vArmand', MatchWeek::B], ['U11F2', 6, '13:45', 'vArmand', MatchWeek::B], ['U11M1', 6, '15:30', 'vArmand', MatchWeek::B], ['U21M2', 6, '17:15', 'vArmand', MatchWeek::B],
             // Semaine B — samedi Debarros
-            ['U15M2', 6, '13:00', 'vDebarros'], ['U13F2', 6, '15:00', 'vDebarros'], ['U15F2', 6, '17:00', 'vDebarros'],
+            ['U15M2', 6, '13:00', 'vDebarros', MatchWeek::B], ['U13F2', 6, '15:00', 'vDebarros', MatchWeek::B], ['U15F2', 6, '17:00', 'vDebarros', MatchWeek::B],
             // Semaine B — dimanche Matéo
-            ['SM4', 7, '09:00', 'vMateo'], ['SF2', 7, '11:00', 'vMateo'], ['U21M1', 7, '13:15', 'vMateo'], ['SM2', 7, '15:30', 'vMateo'],
+            ['SM4', 7, '09:00', 'vMateo', MatchWeek::B], ['SF2', 7, '11:00', 'vMateo', MatchWeek::B], ['U21M1', 7, '13:15', 'vMateo', MatchWeek::B], ['SM2', 7, '15:30', 'vMateo', MatchWeek::B],
         ];
-        foreach ($habits as [$teamName, $day, $kickoff, $venueVar]) {
+        foreach ($habits as [$teamName, $day, $kickoff, $venueVar, $week]) {
             $teamId = $teams[$teamName]->getId();
             $venueId = $venues[$venueVar]->getId();
             $existing = $manager->getRepository(TeamMatchHabit::class)->findOneBy([
                 'clubId' => $clubId,
                 'seasonId' => $seasonId,
                 'teamId' => $teamId,
-                'dayOfWeek' => $day,
             ]);
             $habit = $existing instanceof TeamMatchHabit ? $existing : new TeamMatchHabit;
             if (!$existing instanceof TeamMatchHabit) {
                 $habit->setClubId($clubId);
                 $habit->setSeasonId($seasonId);
                 $habit->setTeamId($teamId);
-                $habit->setDayOfWeek($day);
                 $manager->persist($habit);
             }
+            $habit->setDayOfWeek($day);
             $habit->setKickoffTime(new DateTimeImmutable($kickoff));
             $habit->setVenueId($venueId);
-        }
-        $manager->flush();
-
-        // 3. Créneaux partagés A/B — purge des membres puis des rotations du club/saison, puis
-        // recréation (sémantique du processor : pas de clé naturelle par composition).
-        foreach ($manager->getRepository(MatchSlotRotation::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]) as $existingRotation) {
-            foreach ($manager->getRepository(MatchSlotRotationTeam::class)->findBy(['rotationId' => $existingRotation->getId()]) as $existingMember) {
-                $manager->remove($existingMember);
-            }
-            $manager->remove($existingRotation);
-        }
-        $manager->flush();
-
-        // [gymnase, jour ISO, coup d'envoi, [équipe semaine A, équipe semaine B]] — position 0 = A,
-        // 1 = B. Matéo n'a aucune rotation (heures A ≠ B). Les heures d'une paire sont identiques
-        // en A et B, ce qui EST le créneau physique partagé.
-        /** @var list<array{string, int, string, array{string, string}}> $rotations */
-        $rotations = [
-            ['vArmand', 6, '10:45', ['U9F2', 'U9M1']],
-            ['vArmand', 6, '12:15', ['U9F1', 'U9M2']],
-            ['vArmand', 6, '13:45', ['U11F1', 'U11F2']],
-            ['vArmand', 6, '15:30', ['U11M2', 'U11M1']],
-            ['vArmand', 6, '17:15', ['U18F3', 'U21M2']],
-            ['vDebarros', 6, '13:00', ['U13M2', 'U15M2']],
-            ['vDebarros', 6, '15:00', ['U13F3', 'U13F2']],
-            ['vDebarros', 6, '17:00', ['U15F3', 'U15F2']],
-        ];
-        foreach ($rotations as [$venueVar, $day, $kickoff, $memberNames]) {
-            $rotation = new MatchSlotRotation;
-            $rotation->setClubId($clubId);
-            $rotation->setSeasonId($seasonId);
-            $rotation->setVenueId($venues[$venueVar]->getId());
-            $rotation->setDayOfWeek($day);
-            $rotation->setKickoffTime(new DateTimeImmutable($kickoff));
-            $manager->persist($rotation);
-
-            foreach ($memberNames as $position => $memberName) {
-                $member = new MatchSlotRotationTeam;
-                $member->setClubId($clubId);
-                $member->setSeasonId($seasonId);
-                $member->setRotationId($rotation->getId());
-                $member->setTeamId($teams[$memberName]->getId());
-                $member->setPosition($position);
-                $manager->persist($member);
-            }
+            $habit->setWeek($week);
         }
         $manager->flush();
     }

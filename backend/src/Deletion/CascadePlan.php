@@ -79,9 +79,6 @@ final class CascadePlan
             // P2-51 — le bloc de mutualisation (SEULE notion de mutualisation depuis PR-7) meurt
             // ENTIER quand une équipe membre part : toutes ses lignes membres + le bloc lui-même.
             new SharedTrainingBlockPruneStep(new ImpactLabel('team_shared_block', 'bloc de mutualisation', 'blocs de mutualisation')),
-            // RMM-5 — l'équipe quitte ses créneaux de match partagés ; ceux qui tombent < 2
-            // membres sont SUPPRIMÉS (annoncés). Les survivants gardent leurs autres équipes.
-            new MatchSlotRotationTeamPruneStep(new ImpactLabel('team_match_slot_rotation', 'créneau de match partagé', 'créneaux de match partagés')),
             new ClearFieldStep(Team::class, 'parentTeamId', new ImpactLabel('team_child', 'équipe rattachée qui perdra son équipe parente', 'équipes rattachées qui perdront leur équipe parente')),
         ];
     }
@@ -92,9 +89,6 @@ final class CascadePlan
         return [
             new DeleteByFieldStep(VenueTrainingSlot::class, 'venueId', new ImpactLabel('venue_slot', 'créneau de disponibilité', 'créneaux de disponibilité')),
             new DeleteByFieldStep(VenueMatchWindow::class, 'venueId', new ImpactLabel('venue_match_window', 'fenêtre de match', 'fenêtres de match')),
-            // RMM-5 — la rotation EST le créneau (venue_id NOT NULL) : sans son gymnase elle
-            // n'existe plus, parent ET lignes membres partent (contrairement à l'habitude qui survit).
-            new MatchSlotRotationVenuePruneStep(new ImpactLabel('venue_match_slot_rotation', 'créneau de match partagé', 'créneaux de match partagés')),
             new DeleteByFieldStep(VenueUnavailability::class, 'venueId', new ImpactLabel('venue_unavailability', 'indisponibilité déclarée', 'indisponibilités déclarées')),
             new DeleteByFieldStep(VenuePeriodOverride::class, 'venueId', new ImpactLabel('venue_period_override', 'réglage de période', 'réglages de période')),
             // P2-53 RMM-8 — la matrice de trajet du gymnase part avec lui (couple normalisé :

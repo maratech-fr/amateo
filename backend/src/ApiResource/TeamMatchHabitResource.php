@@ -55,6 +55,10 @@ class TeamMatchHabitResource
     #[Groups(['read'])]
     public ?string $venueId = null;
 
+    /** Semaine d'alternance du créneau idéal — A | B | ALL. */
+    #[Groups(['read'])]
+    public string $week = 'ALL';
+
     public static function fromEntity(TeamMatchHabit $entity): self
     {
         $dto = new self;
@@ -66,6 +70,7 @@ class TeamMatchHabitResource
         $dto->dayOfWeek = $entity->getDayOfWeek();
         $dto->kickoffTime = $entity->getKickoffTime()->format('H:i');
         $dto->venueId = $entity->getVenueId();
+        $dto->week = $entity->getWeek()->value;
 
         return $dto;
     }
