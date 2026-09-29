@@ -275,7 +275,7 @@ correction frappe TOUS les clubs.
 
 ---
 
-### 1.8 Jour J — données (seed initial, une seule fois)
+### 1.10 Jour J — données (seed initial, une seule fois)
 
 Une fois la stack déployée et **les migrations passées** (elles tournent au déploiement),
 on pose les données de départ. Tous les seeds qui touchent des tables tenant traversent la RLS
@@ -326,9 +326,8 @@ ligne d'un espace (avec `HISTCONTROL=ignorespace`) ou passer par une variable no
  docker compose exec php-fpm sh -c 'DATABASE_URL="$DATABASE_ADMIN_URL" php bin/console app:demo:seed --password=MOT-DE-PASSE-DEMO'
 ```
 
-⬜ **Rôle PostgreSQL lecture seule** — le mot de passe du rôle SELECT se pose au jour J ; cette
-étape est livrée par une **PR distincte** (rôle RO sans `admin_all`). À compléter ici quand elle est
-en place.
+⬜ **Rôle PostgreSQL lecture seule** — poser le mot de passe de `amateo_read` (créé par la
+migration) : procédure §1.8.
 
 ⬜ **Ré-importer les matchs** — le seed pose l'état terrain (créneaux, contraintes, adversaires
 déjà localisés) mais **pas les matchs** : les réimporter depuis l'UI (module Matchs → Importer, le
