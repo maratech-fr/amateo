@@ -97,7 +97,9 @@ En-tête, de gauche à droite :
     jamais l'accent du club — recette `StatusPill` : bordure/fond teintés, texte
     `text-foreground` pour l'AA) qui ouvre un popover **non modal** (`role="dialog"
     aria-modal="false"`) : Échap ferme et rend le focus à la pastille, clic extérieur ferme sans
-    forcer le focus, le CTA « Signaler un problème » ferme le popover et appelle `onReport`
+    forcer le focus, le CTA « Signaler un problème » — lui aussi en teal PRODUIT (fond
+    `accentForMode(PRODUCT_ACCENT)`, texte `readableForeground`, surchargés en style inline sur la
+    primitive `Button`, jamais `--accent`) — ferme le popover et appelle `onReport`
     (câblé par `AppLayout` sur le même `FeedbackDialog` que le menu du compte). La bêta se
     termine club par club via l'attribution de plan de la console superadmin — aucun
     interrupteur produit.

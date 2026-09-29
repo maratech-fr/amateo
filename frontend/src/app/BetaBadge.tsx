@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
-import { accentForMode } from "@/shared/lib/color";
+import { accentForMode, readableForeground } from "@/shared/lib/color";
 import { PRODUCT_ACCENT, PRODUCT_NAME } from "@/shared/lib/product";
 import { useMe } from "@/shared/session/queries";
 import { useThemeStore } from "@/shared/stores/themeStore";
@@ -22,6 +22,13 @@ import { useThemeStore } from "@/shared/stores/themeStore";
  * Popover non modal (pas de piège de focus) : Échap ferme et REND le focus à la pastille ; un clic
  * extérieur ferme ; `aria-expanded`/`aria-controls` relient la pastille au panneau. Le CTA rend la
  * main au canal feedback (qui prend alors le focus, d'où l'absence de restauration à ce moment).
+ *
+ * Le CTA « Signaler un problème » est LUI AUSSI en teal PRODUIT (décision fondateur 2026-09-29),
+ * jamais la couleur du CLUB : on réutilise la primitive `Button` et on surcharge en STYLE INLINE
+ * son fond (`accentForMode(PRODUCT_ACCENT, mode)`) et son texte (`readableForeground` du fond) — la
+ * MÊME dérivation que le thème pour n'importe quel accent, appliquée à `PRODUCT_ACCENT`. Le style
+ * inline l'emporte sur les classes `bg-accent`/`hover:…bg-accent-hover` de la variante par défaut
+ * (le survol ne rebascule donc jamais vers `--accent`). Un club à accent custom garde le CTA teal.
  */
 export function BetaBadge({ onReport }: { onReport: () => void }) {
   const { data } = useMe();
@@ -98,6 +105,9 @@ export function BetaBadge({ onReport }: { onReport: () => void }) {
           <Button
             size="sm"
             className="mt-3 w-full"
+            // Teal PRODUIT (fond + texte lisible dérivé), jamais la couleur du club — le style inline
+            // prime sur `bg-accent`/`text-accent-foreground`/`hover:…-hover` de la variante défaut.
+            style={{ backgroundColor: teal, color: readableForeground(teal) }}
             onClick={() => {
               // Le canal feedback prend le focus à son ouverture : on ferme sans le ramener à la pastille.
               setOpen(false);

@@ -2,7 +2,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MeResponse } from "@/shared/session/api";
-import { PRODUCT_NAME } from "@/shared/lib/product";
+import { accentForMode, readableForeground } from "@/shared/lib/color";
+import { PRODUCT_ACCENT, PRODUCT_NAME } from "@/shared/lib/product";
 
 // On mocke le SOCLE (session) : la règle testée — « la pastille reflète l'OFFRE bêta du
 // club » — vit dans le composant, lu du serveur (`entitlements.planCode`), jamais recalculé.
@@ -14,6 +15,12 @@ import { BetaBadge } from "./BetaBadge";
 const clubWith = (planCode: string): Partial<MeResponse> => ({
   club: { entitlements: { planCode } } as unknown as MeResponse["club"],
 });
+
+// jsdom normalise une couleur hex inline en `rgb(r, g, b)` — on compare dans cette forme.
+const rgb = (hex: string): string => {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+};
 
 beforeEach(() => {
   meData = undefined;
@@ -91,5 +98,21 @@ describe("BetaBadge", () => {
     fireEvent.click(screen.getByRole("button", { name: "Signaler un problème" }));
     expect(onReport).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  // Décision fondateur 2026-09-29 : le CTA du popover est en teal PRODUIT, jamais la couleur du CLUB
+  // (`--accent`). On mesure le style INLINE (jsdom normalise l'hex en `rgb(...)`), porté par la MÊME
+  // dérivation que le thème : `accentForMode(PRODUCT_ACCENT)` pour le fond, `readableForeground` pour
+  // le texte. Le store est en mode "dark" par défaut. Un club à accent custom ne change RIEN au CTA.
+  it("le CTA « Signaler un problème » porte le teal PRODUIT en style inline, indépendant de --accent", () => {
+    meData = clubWith("beta");
+    render(<BetaBadge onReport={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "BÊTA" }));
+    const cta = screen.getByRole("button", { name: "Signaler un problème" });
+    const teal = accentForMode(PRODUCT_ACCENT, "dark");
+    expect(cta.style.backgroundColor).toBe(rgb(teal));
+    expect(cta.style.color).toBe(rgb(readableForeground(teal)));
+    // Jamais adossé à la variable de club : la couleur est une valeur produite, pas `var(--accent)`.
+    expect(cta.style.backgroundColor).not.toContain("--accent");
   });
 });
