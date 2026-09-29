@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Schedule } from "../api";
-import { liveContextScheduleId, overlayVersionLabels, versionLabels, visibleOverlayVersions, visibleSeasonPlans } from "./versions";
+import { laterCompletedVersionId, liveContextScheduleId, overlayVersionLabels, versionLabels, visibleOverlayVersions, visibleSeasonPlans } from "./versions";
 
 const plan = (over: Partial<Schedule>): Schedule => ({
   id: "id",
@@ -99,5 +99,51 @@ describe("liveContextScheduleId — the ★ (latest generated, = live context)",
 
   it("is null when there is no version", () => {
     expect(liveContextScheduleId([], null)).toBeNull();
+  });
+});
+
+describe("laterCompletedVersionId (P4-98 — version antérieure)", () => {
+  it("returns the newer COMPLETED season id when the displayed season version is an older one", () => {
+    const older = plan({ id: "old", createdAt: "2026-07-01T10:00:00+00:00" });
+    const newer = plan({ id: "new", createdAt: "2026-07-05T10:00:00+00:00" });
+    expect(laterCompletedVersionId(older, [older, newer])).toBe("new");
+  });
+
+  it("is null when the displayed version IS the latest COMPLETED of its plan", () => {
+    const older = plan({ id: "old", createdAt: "2026-07-01T10:00:00+00:00" });
+    const newer = plan({ id: "new", createdAt: "2026-07-05T10:00:00+00:00" });
+    expect(laterCompletedVersionId(newer, [older, newer])).toBeNull();
+  });
+
+  it("points at the newer COMPLETED even when the displayed one is the in-force (isChosen) but older", () => {
+    // La raison d'être P4-98 : `pickLandingScheduleId` atterrit sur la version EN VIGUEUR
+    // (isChosen), qui peut être plus ANCIENNE que la dernière COMPLETED du même plan.
+    const chosenOld = plan({ id: "chosen", createdAt: "2026-07-01T10:00:00+00:00", isChosen: true });
+    const newer = plan({ id: "new", createdAt: "2026-07-08T10:00:00+00:00" });
+    expect(laterCompletedVersionId(chosenOld, [chosenOld, newer])).toBe("new");
+  });
+
+  it("scopes to the displayed overlay's OWN plan — a newer version of another plan does not count", () => {
+    const displayedOverlay = plan({ id: "o1", ...overlayOf("p1"), createdAt: "2026-07-01T10:00:00+00:00" });
+    const newerOverlaySamePlan = plan({ id: "o2", ...overlayOf("p1"), createdAt: "2026-07-04T10:00:00+00:00" });
+    const newerOtherPlan = plan({ id: "x", ...overlayOf("p2"), createdAt: "2026-07-09T10:00:00+00:00" });
+    const newerSeason = plan({ id: "s", createdAt: "2026-07-09T10:00:00+00:00" });
+    expect(laterCompletedVersionId(displayedOverlay, [displayedOverlay, newerOverlaySamePlan, newerOtherPlan, newerSeason])).toBe("o2");
+  });
+
+  it("ignores a newer non-COMPLETED version — only a finished later one counts", () => {
+    const older = plan({ id: "old", createdAt: "2026-07-01T10:00:00+00:00" });
+    const runningNewer = plan({ id: "run", status: "GENERATING", createdAt: "2026-07-05T10:00:00+00:00" });
+    expect(laterCompletedVersionId(older, [older, runningNewer])).toBeNull();
+  });
+
+  it("is null when the displayed version is the NEWEST overall (even if it failed) — not an earlier one", () => {
+    const completedOld = plan({ id: "ok", createdAt: "2026-07-01T10:00:00+00:00" });
+    const failedNew = plan({ id: "ko", status: "FAILED", createdAt: "2026-07-05T10:00:00+00:00" });
+    expect(laterCompletedVersionId(failedNew, [completedOld, failedNew])).toBeNull();
+  });
+
+  it("is null when nothing is displayed", () => {
+    expect(laterCompletedVersionId(null, [plan({ id: "a" })])).toBeNull();
   });
 });

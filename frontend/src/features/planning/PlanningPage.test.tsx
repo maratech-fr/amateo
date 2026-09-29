@@ -2382,3 +2382,78 @@ describe("PlanningPage — filet du surlignage (P4-255 PR 2)", () => {
     });
   });
 });
+
+// P4-98 — « Vous regardez une version antérieure du planning » : quand la version affichée n'est
+// PAS la dernière COMPLETED de SON plan, un bandeau le dit + « Ouvrir la dernière version »
+// SÉLECTIONNE localement la dernière (aucune écriture serveur, aucune redirection). Le bandeau se
+// tait pendant une génération (showGenerationWaiting). La version en vigueur reste le calendrier.
+describe("PlanningPage — version antérieure (P4-98)", () => {
+  const seasonV = (id: string, createdAt: string, extra: Partial<Schedule> = {}): Schedule => ({
+    id, name: "Planning A", status: "COMPLETED", score: null, createdAt, updatedAt: createdAt,
+    planType: "SEASON", schedulePlanId: "season-plan", ...extra,
+  });
+
+  it("affiche le bandeau quand la version en vigueur (isChosen) est plus ancienne que la dernière COMPLETED", async () => {
+    // Chemin réel : `pickLandingScheduleId` atterrit sur la version EN VIGUEUR (isChosen), qui
+    // peut être plus ANCIENNE que la dernière COMPLETED du même plan de saison.
+    vi.mocked(listSchedules).mockResolvedValue([
+      seasonV("old", "2026-01-01T00:00:00Z", { isChosen: true }),
+      seasonV("new", "2026-06-01T00:00:00Z"),
+    ]);
+    renderWithProviders(<PlanningPage />);
+
+    expect(await screen.findByText(/Vous regardez une version antérieure du planning/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Ouvrir la dernière version/ })).toBeInTheDocument();
+  });
+
+  it("n'affiche PAS le bandeau quand on regarde la dernière version COMPLETED du plan", async () => {
+    vi.mocked(listSchedules).mockResolvedValue([
+      seasonV("old", "2026-01-01T00:00:00Z"),
+      seasonV("new", "2026-06-01T00:00:00Z"),
+    ]);
+    usePlanningStore.setState({ selectedScheduleId: "new" });
+    renderWithProviders(<PlanningPage />);
+
+    await screen.findByText("U11"); // la grille est rendue (l'écran a dépassé le chargement)
+    expect(screen.queryByText(/version antérieure du planning/)).not.toBeInTheDocument();
+  });
+
+  it("se tait pendant une génération en vol (showGenerationWaiting)", async () => {
+    vi.mocked(listSchedules).mockResolvedValue([
+      seasonV("old", "2026-01-01T00:00:00Z"),
+      seasonV("new", "2026-06-01T00:00:00Z"),
+      seasonV("running", "2026-07-01T00:00:00Z", { status: "GENERATING" }),
+    ]);
+    usePlanningStore.setState({ selectedScheduleId: "old" });
+    renderWithProviders(<PlanningPage />);
+
+    // Une version du plan en portée est en vol → l'écran d'attente REMPLACE le contenu…
+    expect(await screen.findByText("Génération du planning…")).toBeInTheDocument();
+    // …et le bandeau « version antérieure » se tait (il flotterait sinon au-dessus de l'attente).
+    expect(screen.queryByText(/version antérieure du planning/)).not.toBeInTheDocument();
+  });
+
+  it("« Ouvrir la dernière version » sélectionne LOCALEMENT la dernière — sans écriture ni redirection", async () => {
+    const user = userEvent.setup();
+    vi.mocked(listSchedules).mockResolvedValue([
+      seasonV("old", "2026-01-01T00:00:00Z", { isChosen: true }),
+      seasonV("new", "2026-06-01T00:00:00Z"),
+    ]);
+    renderWithProviders(<PlanningPage />);
+
+    const openButton = await screen.findByRole("button", { name: /Ouvrir la dernière version/ });
+    // Ces mocks sont partagés au niveau module (des cas plus haut valident/rouvrent) : on remet
+    // leur historique à zéro pour prouver que c'est CE clic, et lui seul, qui n'écrit rien.
+    vi.mocked(validateSchedule).mockClear();
+    vi.mocked(reopenSchedule).mockClear();
+    await user.click(openButton);
+
+    // Sélection LOCALE de la dernière version…
+    expect(usePlanningStore.getState().selectedScheduleId).toBe("new");
+    // …aucune écriture serveur (la version en vigueur reste le calendrier)…
+    expect(validateSchedule).not.toHaveBeenCalled();
+    expect(reopenSchedule).not.toHaveBeenCalled();
+    // …et aucune redirection (jamais de navigate automatique).
+    expect(navigate).not.toHaveBeenCalled();
+  });
+});
