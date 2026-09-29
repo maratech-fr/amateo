@@ -386,6 +386,13 @@ jobs:
       - name: RlsIsolationTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/RlsIsolationTest.php --group phase1'
 
+      # P4-272 ② — la suggestion de plages de ligue LIT à travers la frontière tenant
+      # (fonction SQL SECURITY DEFINER). Sans ce gate BLOQUANT, une régression du seuil,
+      # de la majorité, du groupement d'instance, de l'exclusion du demandeur, ou une
+      # fuite de donnée club-identifiante passerait tous les checks requis.
+      - name: LeagueWindowSuggestionShareTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/LeagueWindowSuggestionShareTest.php --group phase1'
+
       - name: ClubUserAccessTests
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/ClubAccessTest.php tests/Security/UserSelfOnlyTest.php tests/Security/ImportAuthorizationTest.php --group phase1'
 

@@ -99,7 +99,12 @@ final class ClubLeagueWindowSeederTest extends KernelTestCase
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
         $this->seeder = self::getContainer()->get(ClubLeagueWindowSeeder::class);
 
-        // Catalogue GLOBAL : deux fenêtres AURA (référence des copies).
+        // Catalogue GLOBAL déterministe : on part d'une table VIDE (la base de test la
+        // porte désormais pleine — correctif catalogue P4-272 ②) puis on pose NOS
+        // fenêtres de référence. Même patron que LeagueMatchWindowsApiTest /
+        // SeedLeagueWindowsCommandTest — ce test contrôle son propre catalogue.
+        $this->em->createQuery('DELETE FROM ' . LeagueMatchWindow::class . ' w')->execute();
+        // Deux fenêtres AURA (référence des copies).
         $this->globalWindow('AURA', 'Seniors', 'REGIONAL', null, 6, '14:00', '16:00');
         $this->globalWindow('AURA', 'U13', 'DEPARTEMENTAL', 'M', 7, '10:00', '11:30');
         // Une autre ligue cataloguée, pour distinguer « club catalogué ».

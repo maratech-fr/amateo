@@ -1,16 +1,17 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-28 (P4-272 ① — copie club de l'enveloppe ligue, §1/§3/§5/§8bis recalés
-contre le code : `ClubLeagueWindow` entité tenant club+saison (`backend/src/Entity/
-ClubLeagueWindow.php:37`), migration RLS `Version20260928130000` + backfill idempotent
-`Version20260928140000` ; `MatchPlacementPayloadBuilder::build` et `ConflictRadarLoader::conflicts`
-lisent tous deux la copie (`ClubLeagueWindow`, plus le catalogue), copie vide → un seul diagnostic
-`league_envelope_empty` (`MatchPlacementPayloadBuilder.php:283-289`), équipe non mappée sur copie
-non vide → `league_envelope_unresolved` (inchangé) ✓ ; `LeagueMatchWindowsController::__invoke`
-sert la copie club + `resolvedTeamWindows` ✓ ; `PlacementPanel.tsx` — `envelopeBlocked` retiré de
-`canPlace`, `isInEnvelope` ne sert plus qu'à `EnvelopeHint` (pose manuelle hors ligue PERMISE et
-SIGNALÉE) ✓ ; onglet `/matchs/contraintes` (`ConstraintsPage.tsx`, `routes.tsx:174-179`, CRUD
-`ClubLeagueWindowResource`) ✓). Reste du contenu (P4-240 et antérieur) non réaudité cette passe.
+Last verified @ 2026-09-29 (P4-272 ② — suggestion de plages de ligue, §1/§8bis recalés contre le
+code : `LeagueResolver::resolveFromFfbbCode` rend le préfixe brut pour une ligue lisible non
+cataloguée, jamais null (`backend/src/Service/LeagueResolver.php:45-55`) ✓ ; fonction SQL
+`SECURITY DEFINER league_window_suggestions` — seuil ≥3 ET majorité, groupement comité/ligue/
+fédération par niveau (`backend/migrations/Version20260929120000.php:94-112`) ✓ ;
+`LeagueWindowSuggestionService::suggestionsFor`/`apply` — masquage serveur, repli fédéral limité à
+la ligue du demandeur, recalcul serveur à l'application (`backend/src/Service/
+LeagueWindowSuggestionService.php:67-148`) ✓ ; `Version20260929130000` charge le catalogue vide au
+départ puis backfille les copies, anti-résurrection (`backend/migrations/
+Version20260929130000.php:39-76`) ✓ ; `LeagueSuggestions.tsx` — bloc « Plages suggérées
+(estimation) », Appliquer/Tout appliquer, N jamais QUELS clubs ✓). P4-272 ① (copie club de
+l'enveloppe ligue) et le contenu antérieur non réaudités cette passe.
 Historique : `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
@@ -112,8 +113,16 @@ club lecteur).
 - **`LeagueMatchWindow`** : le catalogue fédéral de référence, par `league × category × level ×
   gender` — seedé depuis `backend/data/league-match-windows.aura.json`, ligue dérivée du
   `ffbbClubCode` (`LeagueResolver`). Ne sert plus qu'à SEMER la copie club (`ClubLeagueWindow`
-  ci-dessus) — le placement, le radar et `GET /api/league-match-windows` lisent tous la copie, plus
-  jamais ce catalogue directement.
+  ci-dessus) et le repli fédéral de la suggestion (§8bis) — le placement, le radar et
+  `GET /api/league-match-windows` lisent tous la copie, plus jamais ce catalogue directement.
+  **Chargement initial garanti par migration** (`Version20260929130000`, P4-272 ②) : là où le
+  catalogue est resté vide (base neuve, dev jamais seedé), `doctrine:migrations:migrate` seul le
+  charge depuis le JSON puis recopie chaque club×saison sans copie — avant cette migration, seul
+  `make play`/la commande `app:league-windows:seed` le peuplaient, donc un déploiement ou une CI
+  qui ne lance que les migrations héritait d'un catalogue et d'une copie VIDES. Anti-résurrection :
+  ne joue que si le catalogue était vide AU DÉPART (une copie déjà vidée par un gestionnaire n'est
+  jamais ressuscitée). La commande `app:league-windows:seed` reste le geste de RAFRAÎCHISSEMENT du
+  catalogue (`backend/docs/commands.md`).
 - **`OpponentDirectoryEntry`** : où joue un adversaire (`name`/`city`/`postalCode`/`lat`/`lng`/
   `precision` `VENUE`|`CITY`), résolu **automatiquement** par `OpponentLocationResolver` — salle
   exacte du hit rencontre API (`VENUE`, gratuit) sinon repli VILLE (`CITY`, géocodage). 🔴
@@ -1132,6 +1141,29 @@ ajout/suppression, badge `added`/`modified` calculé SERVEUR (affiché, jamais r
 frontend « le backend dit »). Bandeau si la copie est VIDE (« Aucune fenêtre ligue — le placement
 n'applique plus de règle fédérale », §1). Le placement, le radar et cet écran lisent la MÊME copie
 — une correction ici est immédiatement honorée par le placement automatique (§3) et le radar (§2).
+
+**Bloc « Plages suggérées (estimation) » (P4-272 ②)** : sous le tableau, une aide FACULTATIVE
+(`LeagueSuggestions.tsx`) qui propose la tendance dominante des plages saisies par les AUTRES
+clubs de l'instance fédérale du demandeur — jamais une source de vérité, une estimation à
+appliquer ou ignorer. Instance dérivée du `ffbbClubCode` du club (§ glossaire « Code club FFBB ») ;
+son échelle dépend du NIVEAU de la combinaison (§ glossaire « Instance qui fixe les horaires de
+match ») : `DEPARTEMENTAL` (et assimilés) groupe par **comité**, `REGIONAL` par **ligue**,
+`NATIONAL`/`ELITE` par **fédération** entière. Une combinaison (catégorie, niveau, genre, jour)
+n'est proposée que si l'ensemble de plages est saisi À L'IDENTIQUE par **≥ 3 clubs** de l'instance
+**ET par plus de la moitié** des clubs de l'instance ayant saisi cette combinaison — sinon rien
+pour elle (« une aide facultative, pas une vérité », pas de médiane). Seules les saisons `active`
+des AUTRES clubs comptent, le demandeur est exclu. Sans tendance, repli sur le catalogue fédéral
+de LA LIGUE DU DEMANDEUR SEULE (`ARA` → `AURA` aujourd'hui) — **jamais** la donnée d'une autre
+ligue. Une combinaison déjà identique à la copie du club est MASQUÉE côté serveur (rien à
+suggérer). Chaque ligne affiche « Estimation à partir de N clubs de votre comité / ligue — à
+vérifier auprès de votre ligue et de votre comité » (un COMPTE, jamais lesquels) ou « données
+fédérales » pour le repli. Geste **Appliquer** (par ligne) ou **Tout appliquer** : le serveur
+RECALCULE la suggestion et REMPLACE la copie de la combinaison — aucune plage saisie par le client
+n'est jamais écrite telle quelle. Réservé au gestionnaire (`GET`/`POST /api/league-window-
+suggestions[/apply]`, `ManagementAccessGuard`). Le calcul cross-tenant vit dans la fonction SQL
+`SECURITY DEFINER` `league_window_suggestions` (`docs/security/rls.md` § SECURITY DEFINER) —
+gardée par le NR bloquant `Security/LeagueWindowSuggestionShareTest`
+(`docs/testing/blocking-tests.md`).
 
 ## 9. Écran Adversaires (`/matchs/adversaires`, au grain GYMNASE)
 

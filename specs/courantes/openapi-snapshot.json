@@ -13963,6 +13963,175 @@
                 ]
             }
         },
+        "/api/league-window-suggestions": {
+            "get": {
+                "operationId": "getLeagueWindowSuggestions",
+                "tags": [
+                    "Matches"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The suggested league match-window sets for the current club: the dominant tendency of its federation instance (\u2265 3 clubs AND a majority of the clubs of the instance that entered the combination) plus the federation-catalog fallback for uncovered combinations. Combinations already identical to the club's own copy are hidden server-side. Never reveals WHICH clubs \u2014 only a count. An unreadable FFBB code yields a neutral response (instance null, no items).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "instance": {
+                                            "type": "object",
+                                            "nullable": true,
+                                            "properties": {
+                                                "ligue": {
+                                                    "type": "string",
+                                                    "description": "FFBB league (3-letter prefix)"
+                                                },
+                                                "comite": {
+                                                    "type": "string",
+                                                    "description": "FFBB committee (4 digits)"
+                                                }
+                                            }
+                                        },
+                                        "items": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "category": {
+                                                        "type": "string"
+                                                    },
+                                                    "level": {
+                                                        "type": "string",
+                                                        "description": "DEPARTEMENTAL | REGIONAL"
+                                                    },
+                                                    "gender": {
+                                                        "type": "string",
+                                                        "nullable": true,
+                                                        "description": "M | F | MIXTE, null = all genders"
+                                                    },
+                                                    "dayOfWeek": {
+                                                        "type": "integer",
+                                                        "description": "ISO 1..7"
+                                                    },
+                                                    "windows": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "kickoffMin": {
+                                                                    "type": "string",
+                                                                    "description": "Kickoff window start \u00ab HH:MM \u00bb"
+                                                                },
+                                                                "kickoffMax": {
+                                                                    "type": "string",
+                                                                    "description": "Kickoff window end \u00ab HH:MM \u00bb"
+                                                                }
+                                                            }
+                                                        },
+                                                        "description": "The canonical ordered set of windows for the combination"
+                                                    },
+                                                    "clubCount": {
+                                                        "type": "integer",
+                                                        "nullable": true,
+                                                        "description": "How many clubs of the instance entered this exact set (null for a federation-catalog fallback row)"
+                                                    },
+                                                    "source": {
+                                                        "type": "string",
+                                                        "description": "clubs (a peer-clubs tendency) | federation (federation-catalog fallback)"
+                                                    },
+                                                    "scope": {
+                                                        "type": "string",
+                                                        "description": "comite | ligue | federation \u2014 the instance the row is grouped by"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No club in context"
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    }
+                },
+                "summary": "League match-window suggestions for the current club (management only, read-only)"
+            }
+        },
+        "/api/league-window-suggestions/apply": {
+            "post": {
+                "operationId": "applyLeagueWindowSuggestions",
+                "tags": [
+                    "Matches"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Applied: for each requested combination that still has a recomputed suggestion, the club's copy rows for that combination are replaced by the suggested set (transactional). Returns how many combinations were applied.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "applied": {
+                                            "type": "integer"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No club in context"
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    }
+                },
+                "summary": "Apply league match-window suggestions to the club copy (management only, server recomputes)",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "combinations": {
+                                        "type": "array",
+                                        "description": "The combinations to apply (windows are RECOMPUTED server-side, never taken from the client)",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "category": {
+                                                    "type": "string"
+                                                },
+                                                "level": {
+                                                    "type": "string"
+                                                },
+                                                "gender": {
+                                                    "type": "string",
+                                                    "nullable": true
+                                                },
+                                                "dayOfWeek": {
+                                                    "type": "integer"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
+            }
+        },
         "/api/memberships": {
             "get": {
                 "operationId": "getApiMembershipsList",

@@ -19,6 +19,10 @@ vi.mock("./queries", () => ({
   useCreateClubLeagueWindow: () => ({ mutate: createWindow, isPending: false }),
   useUpdateClubLeagueWindow: () => ({ mutate: updateWindow, isPending: false }),
   useDeleteClubLeagueWindow: () => ({ mutate: deleteWindow, isPending: false }),
+  // Bloc « Plages suggérées » : neutre ici (instance null → rien rendu). Testé
+  // séparément dans LeagueSuggestions.test.tsx.
+  useLeagueWindowSuggestions: () => ({ data: { instance: null, items: [] } }),
+  useApplyLeagueWindowSuggestions: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 const window = (over: Partial<ClubLeagueWindow> = {}): ClubLeagueWindow => ({

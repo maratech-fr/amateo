@@ -1,8 +1,10 @@
 # Vacances scolaires & jours fériés — référentiels calendaires
 
-Last verified @ 2026-09-28 (rotation `documentation-update`, zone non touchée par la PR P4-240 ④,
-contrôle de fraîcheur). Re-confronté au code : `AdminJobCatalog` déclare
-`import-school-holidays`/`import-public-holidays` en `quarterly(4)`/`quarterly(4, 30)`,
+Last verified @ 2026-09-29 (`documentation-update`, P4-272 ② — anatomie du code FFBB remplacée par
+un pointeur vers `docs/glossary.md` § « Code club FFBB » pour éviter la double maison ; la
+dérivation département confrontée à `SchoolZoneResolver.php:29-34` (table `DOM_TOM_ZONE` keyée sur
+les 3 chiffres du comité) ✓. Reste du fichier hérité de la passe précédente : `AdminJobCatalog`
+déclare `import-school-holidays`/`import-public-holidays` en `quarterly(4)`/`quarterly(4, 30)`,
 `manualTriggerAllowed: true` (`backend/src/AdminJob/AdminJobCatalog.php:63-64`) ✓ ;
 `SchoolZoneResolver::ZONES` porte exactement les 13 codes listés (`A`/`B`/`C`/`CORSE` + 9 DOM/TOM,
 `backend/src/Service/SchoolZoneResolver.php:27`) ✓ ; `HolidayPaths` composé par
@@ -28,7 +30,7 @@ Deux tables **globales** (référentiel national partagé, pas de `club_id`, hor
 
 `SchoolZoneResolver::ZONES` énumère les 13 codes : `A`, `B`, `C`, `CORSE` + 9 DOM/TOM (`GUADELOUPE`, `GUYANE`, `MARTINIQUE`, `MAYOTTE`, `NOUVELLE_CALEDONIE`, `POLYNESIE`, `REUNION`, `SAINT_PIERRE_MIQUELON`, `WALLIS_FUTUNA`). `FrenchSchoolCalendarMapper` ne réutilise **pas** cette constante en runtime — il a sa propre table `ZONE_LABEL_TO_CODE` (libellé de zone API → code) ; `FrenchSchoolCalendarMapperTest` garde la cohérence des deux listes (`assertContains(..., SchoolZoneResolver::ZONES)`). Ajouter une 14ᵉ zone impose donc de toucher **les deux** constantes.
 
-La zone du club (`Club.schoolZone`) est **dérivée du code FFBB** au register + backfill : 3 lettres de ligue + 4 chiffres zéro-paddés = département (`GES0067060` → 67 → B ; `GUY0973021` → 973 → GUYANE ; Corse `2A`/`2B`/`20` → CORSE). Extraction **best-effort** (format FFBB non officiellement vérifié) : illisible → `null`, saisie manuelle (PATCH club), jamais écrasée si déjà renseignée. La migration `Version20260706120000` a élargi les colonnes de zone à la taxonomie 13 codes et **re-taggé les clubs corses `B → CORSE`** (down : `CORSE → B`).
+La zone du club (`Club.schoolZone`) est **dérivée du code FFBB** au register + backfill (anatomie du code : `docs/glossary.md` § « Code club FFBB ») — les chiffres de comité (zéro-paddés) donnent le département (`GES0067060` → 67 → B ; `GUY0973021` → 973 → GUYANE ; Corse `2A`/`2B`/`20` → CORSE). Extraction **best-effort** (format FFBB non officiellement vérifié) : illisible → `null`, saisie manuelle (PATCH club), jamais écrasée si déjà renseignée. La migration `Version20260706120000` a élargi les colonnes de zone à la taxonomie 13 codes et **re-taggé les clubs corses `B → CORSE`** (down : `CORSE → B`).
 
 ## Alimentation (commandes console, idempotentes)
 

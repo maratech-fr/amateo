@@ -14,6 +14,7 @@ import { DAYS, dayLabelLong } from "@/shared/lib/days";
 import { readFailed } from "@/shared/lib/readState";
 
 import type { ClubLeagueWindow, ClubLeagueWindowInput, LeagueWindowLevel } from "./api";
+import { LeagueSuggestions } from "./LeagueSuggestions";
 import { useClubLeagueWindows, useCreateClubLeagueWindow, useDeleteClubLeagueWindow, useUpdateClubLeagueWindow } from "./queries";
 
 /**
@@ -130,6 +131,8 @@ function LeagueSection() {
         Les fenêtres de coup d'envoi imposées par la ligue, copiées pour votre club — vous pouvez les corriger, en ajouter ou en retirer. Le
         placement des matchs et le radar suivent cette copie.
       </p>
+
+      <LeagueSuggestions />
 
       {0 === rows.length ? (
         <p className="rounded-md border border-warning/50 bg-surface-warning px-3 py-2 text-sm text-foreground" role="status">

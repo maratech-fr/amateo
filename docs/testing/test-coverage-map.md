@@ -1,12 +1,14 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-28 (P4-269 et P4-272 ①, `documentation-update`). Re-confronté au code :
-nouvelle ligne `une-personne-est-signalee-a-deux-endroits.feature` (`backend/features/`, deux
-scénarios — deux gymnases différents signalent, le même gymnase ne signale rien) ✓ ; la ligne
-`les-conflits-d-un-match-disent-la-verite.feature` gagne le scénario « Une fenêtre de ligue
-corrigée par le club est honorée » (décor dans `club_league_window`, la copie tenant) et le NR
-bloquant `LeagueWindowsPayloadParityTest` ✓. Reste des lignes non re-sondées cette passe —
-historique complet : `git log -p --follow docs/testing/test-coverage-map.md`.
+Last verified @ 2026-09-29 (P4-272 ②, `documentation-update`). Re-confronté au code : nouveau NR
+bloquant `Security/LeagueWindowSuggestionShareTest` (`docs/testing/blocking-tests.md`, falsifie la
+fonction SQL `SECURITY DEFINER league_window_suggestions` — seuil/majorité, groupement d'instance,
+demandeur exclu, `search_path`/`EXECUTE` figés, aucune donnée club-identifiante) ✓ ;
+`Integration/MigrationLeagueWindowCatalogFixTest` prouve le VRAI SQL de `Version20260929130000`
+(catalogue vide → chargé + copies, catalogue plein → intouché, copie vidée non ressuscitée),
+couverte par la testsuite `Integration` (ligne PHPUnit `Integration/` ci-dessous, pas une ligne à
+part) ✓. Reste des lignes non re-sondées cette passe — historique complet :
+`git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
 > prouve**, **par quel job CI**, et **ce que personne ne prouve**. Il ne remplace ni

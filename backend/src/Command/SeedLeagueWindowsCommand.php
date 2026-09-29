@@ -6,8 +6,10 @@ namespace App\Command;
 
 use App\Entity\LeagueMatchWindow;
 use App\Repository\LeagueMatchWindowRepository;
+use App\Service\LeagueWindowCatalogFile;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use RuntimeException;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -30,6 +32,7 @@ final class SeedLeagueWindowsCommand extends Command
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly LeagueMatchWindowRepository $repository,
+        private readonly LeagueWindowCatalogFile $catalogFile,
     ) {
         parent::__construct();
     }
@@ -44,42 +47,27 @@ final class SeedLeagueWindowsCommand extends Command
         $io = new SymfonyStyle($input, $output);
         $file = (string) $input->getOption('file');
 
-        if (!is_file($file)) {
-            $io->error(\sprintf('Source file not found: %s', $file));
+        // Read/validate through the shared, dependency-free reader (same house as
+        // the catalog-load data migration). A malformed file throws → nothing written.
+        try {
+            $rows = $this->catalogFile->read($file);
+        } catch (RuntimeException $e) {
+            $io->error($e->getMessage());
 
             return Command::FAILURE;
         }
 
-        $raw = file_get_contents($file);
-        if (false === $raw) {
-            $io->error('Could not read the source file.');
-
-            return Command::FAILURE;
-        }
-
-        /** @var array{windows?: list<array<string, mixed>>} $data */
-        $data = json_decode($raw, true, 512, \JSON_THROW_ON_ERROR);
-        $rawWindows = $data['windows'] ?? [];
-
-        // Validate EVERY row before writing anything — a malformed file must not
-        // leave a partially-seeded catalog behind.
         $parsed = [];
-        foreach ($rawWindows as $row) {
-            $league = \is_string($row['league'] ?? null) ? $row['league'] : '';
-            $category = \is_string($row['category'] ?? null) ? $row['category'] : '';
-            $level = \is_string($row['level'] ?? null) ? $row['level'] : '';
-            $gender = \is_string($row['gender'] ?? null) ? $row['gender'] : null;
-            $dayOfWeek = \is_int($row['dayOfWeek'] ?? null) ? $row['dayOfWeek'] : 0;
-            $min = $this->parseTime($row['kickoffMin'] ?? null);
-            $max = $this->parseTime($row['kickoffMax'] ?? null);
-
-            if (\in_array('', [$league, $category, $level], true) || $dayOfWeek < 1 || $dayOfWeek > 7 || !$min instanceof DateTimeImmutable || !$max instanceof DateTimeImmutable) {
-                $io->error(\sprintf('Malformed row (nothing written): %s', json_encode($row)));
-
-                return Command::FAILURE;
-            }
-
-            $parsed[] = ['league' => $league, 'category' => $category, 'level' => $level, 'gender' => $gender, 'dayOfWeek' => $dayOfWeek, 'min' => $min, 'max' => $max];
+        foreach ($rows as $row) {
+            $parsed[] = [
+                'league' => $row['league'],
+                'category' => $row['category'],
+                'level' => $row['level'],
+                'gender' => $row['gender'],
+                'dayOfWeek' => $row['dayOfWeek'],
+                'min' => $this->time($row['kickoffMin']),
+                'max' => $this->time($row['kickoffMax']),
+            ];
         }
 
         $leagues = array_values(array_unique(array_column($parsed, 'league')));
@@ -124,14 +112,14 @@ final class SeedLeagueWindowsCommand extends Command
         return Command::SUCCESS;
     }
 
-    private function parseTime(mixed $value): ?DateTimeImmutable
+    /** The `HH:MM` string is already validated by {@see LeagueWindowCatalogFile}. */
+    private function time(string $value): DateTimeImmutable
     {
-        if (!\is_string($value) || 1 !== preg_match('/^\d{2}:\d{2}$/', $value)) {
-            return null;
+        $time = DateTimeImmutable::createFromFormat('!H:i', $value);
+        if (false === $time) {
+            throw new RuntimeException(\sprintf('Unparseable time slipped past validation: %s', $value));
         }
 
-        $time = DateTimeImmutable::createFromFormat('!H:i', $value);
-
-        return false === $time ? null : $time;
+        return $time;
     }
 }

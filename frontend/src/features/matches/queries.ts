@@ -81,6 +81,30 @@ export function useDeleteClubLeagueWindow() {
   });
 }
 
+// ── Plages suggérées (tendance de l'instance fédérale, P4-272 ②) ──────────────
+
+export function useLeagueWindowSuggestions() {
+  return useQuery({ queryKey: ["league-window-suggestions"], queryFn: matchesApi.getLeagueWindowSuggestions, staleTime: 300_000 });
+}
+
+/**
+ * Appliquer une (ou toutes les) suggestion(s) remplace des lignes de la copie côté
+ * serveur (recalcul serveur) : on rafraîchit la copie (donc le placement et le radar)
+ * ET la suggestion elle-même (les lignes appliquées, désormais identiques à la copie,
+ * disparaissent — masquage serveur).
+ */
+export function useApplyLeagueWindowSuggestions() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: matchesApi.applyLeagueWindowSuggestions,
+    onSuccess: () => {
+      invalidateClubLeagueWindows(queryClient);
+      void queryClient.invalidateQueries({ queryKey: ["league-window-suggestions"] });
+    },
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
 /** The conflict radar is recomputed server-side — keep it fresh (short stale). */
 export function useConflicts() {
   return useQuery({ queryKey: ["fixtures", "conflicts"], queryFn: matchesApi.getConflicts, staleTime: 10_000 });
