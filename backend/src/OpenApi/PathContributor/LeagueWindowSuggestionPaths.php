@@ -58,6 +58,16 @@ final readonly class LeagueWindowSuggestionPaths implements CustomPathContributo
         $paths->addPath('/api/league-window-suggestions/apply', new PathItem(post: new Operation(
             operationId: 'applyLeagueWindowSuggestions',
             tags: ['Matches'],
+            responses: [
+                '200' => $this->schemas->jsonResponse('Applied: for each requested combination that still has a recomputed suggestion, the club\'s copy rows for that combination are replaced by the suggested set (transactional). Returns how many combinations were applied.', [
+                    'type' => 'object',
+                    'properties' => ['applied' => ['type' => 'integer']],
+                ]),
+                '400' => new Response('No club in context'),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+                '403' => new Response('Not a management member'),
+            ],
+            summary: 'Apply league match-window suggestions to the club copy (management only, server recomputes)',
             requestBody: $this->schemas->jsonBody([
                 'type' => 'object',
                 'properties' => [
@@ -69,16 +79,6 @@ final readonly class LeagueWindowSuggestionPaths implements CustomPathContributo
                     ]]],
                 ],
             ]),
-            responses: [
-                '200' => $this->schemas->jsonResponse('Applied: for each requested combination that still has a recomputed suggestion, the club\'s copy rows for that combination are replaced by the suggested set (transactional). Returns how many combinations were applied.', [
-                    'type' => 'object',
-                    'properties' => ['applied' => ['type' => 'integer']],
-                ]),
-                '400' => new Response('No club in context'),
-                '401' => new Response('Unauthorized (missing/expired JWT)'),
-                '403' => new Response('Not a management member'),
-            ],
-            summary: 'Apply league match-window suggestions to the club copy (management only, server recomputes)',
         )));
     }
 }

@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Command\SeedLeagueWindowsCommand;
 use JsonException;
 use RuntimeException;
 
 /**
  * Reads and validates the federation league-match-window catalog JSON
  * (`data/league-match-windows.aura.json`). Dependency-free ON PURPOSE: shared by
- * the seed command ({@see \App\Command\SeedLeagueWindowsCommand}) AND by the data
+ * the seed command ({@see SeedLeagueWindowsCommand}) AND by the data
  * migration that loads the catalog where it is still empty
  * (`Version20260929130000`) — one validated reader, no duplication.
  *

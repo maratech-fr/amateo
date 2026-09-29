@@ -14,6 +14,7 @@ use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
+use Throwable;
 
 /**
  * P4-272 ② — la « tendance dominante » des plages de match de l'INSTANCE fédérale du
@@ -43,6 +44,21 @@ final class LeagueWindowSuggestionService
     ) {}
 
     /**
+     * @param list<array{kickoffMin: string, kickoffMax: string}> $windows
+     */
+    private static function windowsFingerprint(array $windows): string
+    {
+        usort($windows, static fn (array $a, array $b): int => [$a['kickoffMin'], $a['kickoffMax']] <=> [$b['kickoffMin'], $b['kickoffMax']]);
+
+        return json_encode(array_map(static fn (array $w): string => $w['kickoffMin'] . '-' . $w['kickoffMax'], $windows), \JSON_THROW_ON_ERROR);
+    }
+
+    private static function combinationKey(string $category, string $level, ?string $gender, int $dayOfWeek): string
+    {
+        return implode('|', [$category, $level, $gender ?? '', $dayOfWeek]);
+    }
+
+    /**
      * @return array{
      *     instance: array{ligue: string, comite: string}|null,
      *     items: list<array{category: string, level: string, gender: string|null, dayOfWeek: int, windows: list<array{kickoffMin: string, kickoffMax: string}>, clubCount: int|null, source: string, scope: string}>
@@ -68,10 +84,8 @@ final class LeagueWindowSuggestionService
             },
         ));
 
-        usort($items, static function (array $a, array $b): int {
-            return [$a['category'], $a['level'], $a['gender'] ?? '', $a['dayOfWeek']]
-                <=> [$b['category'], $b['level'], $b['gender'] ?? '', $b['dayOfWeek']];
-        });
+        usort($items, static fn (array $a, array $b): int => [$a['category'], $a['level'], $a['gender'] ?? '', $a['dayOfWeek']]
+                <=> [$b['category'], $b['level'], $b['gender'] ?? '', $b['dayOfWeek']]);
 
         // Ne conserver que les clés servies (liste blanche — aucune club-identifiante).
         $items = array_map(
@@ -102,7 +116,7 @@ final class LeagueWindowSuggestionService
     {
         $season = $this->currentSeason($clubId);
         $instance = $this->instanceOf($clubId);
-        if (null === $season || null === $instance) {
+        if (!$season instanceof Season || null === $instance) {
             return 0;
         }
 
@@ -124,7 +138,7 @@ final class LeagueWindowSuggestionService
             }
             $this->entityManager->flush();
             $this->connection->commit();
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->connection->rollBack();
 
             throw $e;
@@ -201,7 +215,7 @@ final class LeagueWindowSuggestionService
                 'windows' => $this->decodeWindows($row['windows']),
                 'clubCount' => (int) $row['club_count'],
                 'source' => 'clubs',
-                'scope' => self::scopeForLevel($level),
+                'scope' => $this->scopeForLevel($level),
             ];
         }
 
@@ -267,7 +281,7 @@ final class LeagueWindowSuggestionService
     private function myCopyByCombination(string $clubId): array
     {
         $season = $this->currentSeason($clubId);
-        if (null === $season) {
+        if (!$season instanceof Season) {
             return [];
         }
 
@@ -299,16 +313,6 @@ final class LeagueWindowSuggestionService
         return $this->seasonResolver->selectedOrCurrent($this->requestStack->getCurrentRequest(), $clubId);
     }
 
-    /**
-     * @param list<array{kickoffMin: string, kickoffMax: string}> $windows
-     */
-    private static function windowsFingerprint(array $windows): string
-    {
-        usort($windows, static fn (array $a, array $b): int => [$a['kickoffMin'], $a['kickoffMax']] <=> [$b['kickoffMin'], $b['kickoffMax']]);
-
-        return json_encode(array_map(static fn (array $w): string => $w['kickoffMin'] . '-' . $w['kickoffMax'], $windows), \JSON_THROW_ON_ERROR);
-    }
-
     /** @return list<array{kickoffMin: string, kickoffMax: string}> */
     private function decodeWindows(string $json): array
     {
@@ -322,13 +326,8 @@ final class LeagueWindowSuggestionService
         );
     }
 
-    private static function combinationKey(string $category, string $level, ?string $gender, int $dayOfWeek): string
-    {
-        return implode('|', [$category, $level, $gender ?? '', $dayOfWeek]);
-    }
-
     /** Instance grouping the level maps to (founder ruling 2026-09-29). */
-    private static function scopeForLevel(string $level): string
+    private function scopeForLevel(string $level): string
     {
         return match ($level) {
             'REGIONAL' => 'ligue',

@@ -48,11 +48,11 @@ final class LeagueWindowSuggestionShareTest extends WebTestCase
 {
     use TenantGucTrait;
 
+    private static int $seq = 0;
+
     private KernelBrowser $client;
 
     private EntityManagerInterface $em;
-
-    private static int $seq = 0;
 
     // ── (a) byte-identique pour deux lecteurs d'une même instance ─────────────
 
