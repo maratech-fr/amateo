@@ -85,14 +85,23 @@ Trois rôles, et confondre les deux premiers est le risque réel (→ [`../secur
 |---|---|---|
 | `amateo_app` | NOSUPERUSER, DML, **scopé par RLS** | la connexion runtime de l'application, jamais un humain |
 | `amateo_owner` | propriétaire non-superuser, policies `admin_all` → **traverse le RLS, voit TOUS les clubs** | migrations et gestes de support qui l'exigent vraiment |
-| `amateo_read` | `SELECT` seulement (aucun GRANT DML → écriture refusée au niveau privilège), **sans** `admin_all` donc scopé au club posé par `SET app.club_id` comme `amateo_app` | l'exploration courante depuis un poste — le geste par défaut |
+| `amateo_read` | **LISTE BLANCHE** `SELECT` (aucun GRANT DML → écriture refusée au niveau privilège), **jamais un secret**, **sans** `admin_all` | l'exploration courante depuis un poste — le geste par défaut |
 
 Le rôle `amateo_read` est **créé par la migration** (`Version20260930090000`, idempotente) : contrairement à
 `amateo_app`/`amateo_owner` il ne porte **aucun mot de passe** (donc pas de secret en git), il est `LOGIN` mais
 inutilisable tant que l'opérateur n'en pose pas un — **pose du mot de passe le jour J**, hors env, cf.
-[`deploy.md`](deploy.md) § Rôle de lecture seule. Il a une policy `readonly_tenant` `FOR SELECT` sur chaque
-table `club_id` (le `GRANT SELECT` seul ne suffit pas sous `FORCE ROW LEVEL SECURITY`) ; les tables globales sans
-`club_id` sont couvertes par le seul `GRANT SELECT`.
+[`deploy.md`](deploy.md) § Rôle de lecture seule.
+
+Sa garantie DURE, c'est la **liste blanche** : il lit les tables métier (toutes les tables `club_id` + un
+ensemble EXPLICITE de référentiels globaux + `club`), `app_user` **en colonnes sans `password_hash` ni
+`pending_email`**, `coach_wish_token` **sans la colonne `token`**, et **JAMAIS** `super_admin`
+(mot de passe + secret TOTP), les tables de tokens (`club_creation_request`, `reset_password_request`,
+`email_change_token`, `email_verification_token`), le journal admin ni l'infra. Une table AJOUTÉE demain n'est
+PAS lisible tant qu'une migration ne l'a pas classée (défaut fermé), et un NR bloquant
+(`ReadOnlyRoleTest`) refuse toute table non classée. ⚠ Le scoping par club via `SET app.club_id` (policy
+`readonly_tenant` sur les tables `club_id`) n'est qu'une **AIDE** — éviter de mélanger les clubs — **PAS une
+frontière de sécurité** : le contexte est posable par qui tient la session (l'opérateur peut boucler sur les
+clubs). La vraie sécurité tient à ce que le rôle ne voie **aucun secret** et ne puisse **rien écrire**.
 
 ⚠ **Le danger n'est pas théorique** : ouvrir un client graphique sur une session `amateo_owner`,
 c'est rapatrier sur un portable les données personnelles de **tous** les clubs — et un `UPDATE`

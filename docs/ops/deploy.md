@@ -191,11 +191,20 @@ domaine), sinon l'envoi part en spam ou est refusé.
 
 ### 1.8 Rôle de lecture seule (`amateo_read`) — poser son mot de passe
 
-Le rôle `amateo_read` est **créé par la migration** (jouée au premier déploiement) : lecture seule,
-scopé au club posé par `SET app.club_id`, jamais de porte `admin_all` (→ [`prod-stack.md`](prod-stack.md)
-§ « Avec quel rôle » + [`../security/rls.md`](../security/rls.md)). Il naît **sans mot de passe** — donc
-aucun secret en git — et ne peut pas se connecter tant que tu n'en poses pas un. À faire **une fois**, sur
-la VM, en **saisie non historisée** (ne pas mettre le mot de passe dans `.env*` ni dans l'historique shell) :
+Le rôle `amateo_read` est **créé par la migration** (jouée au premier déploiement) : lecture seule sur une
+**liste blanche** (jamais un secret : ni `super_admin`, ni les tables de tokens, ni `app_user.password_hash`),
+jamais de porte `admin_all` (→ [`prod-stack.md`](prod-stack.md) § « Avec quel rôle » +
+[`../security/rls.md`](../security/rls.md)). Il naît **sans mot de passe** — donc aucun secret en git — et ne
+peut pas se connecter tant que tu n'en poses pas un.
+
+⚠ `amateo_read` est un rôle **de confiance** : le `SET app.club_id` ci-dessous ne fait qu'**éviter de mélanger
+les clubs à l'écran**, ce n'est **pas une frontière** (l'opérateur peut poser n'importe quel club). Sa
+protection réelle : il ne voit aucun secret et ne peut rien écrire. Conséquence : son mot de passe donne accès
+aux données personnelles des clubs — **ne jamais le stocker en clair** sur un poste partagé (gestionnaire de
+secrets, jamais un fichier ni l'historique shell), et le changer si un poste est compromis.
+
+À faire **une fois**, sur la VM, en **saisie non historisée** (ne pas mettre le mot de passe dans `.env*` ni
+dans l'historique shell) :
 
 ```bash
 # Sonde préalable (rare) : si l'owner n'est PAS superuser sur ton hébergeur, il lui faut CREATEROLE
