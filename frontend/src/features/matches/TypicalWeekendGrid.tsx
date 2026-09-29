@@ -16,6 +16,9 @@ interface TypicalWeekendGridProps {
   habits: TeamMatchHabit[];
   venues: Map<string, Venue>;
   teams: Map<string, Team>;
+  /** P4-206 — durée EFFECTIVE de match par catégorie (`sportCategoryId → minutes`), résolue par
+   *  le serveur (`matchMinutesByCategory`) : chaque bloc s'étend sur la durée de son équipe. */
+  durations: Map<string, number>;
 }
 
 /**
@@ -29,11 +32,11 @@ interface TypicalWeekendGridProps {
  * « toutes »). Sans aucun tag A/B, AUCUN segmenté : la grille reste la vue unique.
  * Le modèle (`buildTypicalWeekend`) filtre par semaine ; ce composant porte le choix.
  */
-export function TypicalWeekendGrid({ habits, venues, teams }: TypicalWeekendGridProps) {
+export function TypicalWeekendGrid({ habits, venues, teams, durations }: TypicalWeekendGridProps) {
   const alternates = hasAlternatingWeeks(habits);
   const [week, setWeek] = useState<MatchWeek>("A");
   const activeWeek: MatchWeek | undefined = alternates ? week : undefined;
-  const model = buildTypicalWeekend(habits, activeWeek);
+  const model = buildTypicalWeekend(habits, teams, durations, activeWeek);
   const { columns, blocks, venueless, startMin, endMin, empty } = model;
 
   const segmented = alternates ? (
