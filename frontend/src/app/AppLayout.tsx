@@ -17,6 +17,7 @@ import { PRODUCT_NAME } from "@/shared/lib/product";
 import { cn } from "@/shared/lib/utils";
 import { useThemeStore } from "@/shared/stores/themeStore";
 
+import { BetaBadge } from "./BetaBadge";
 import { ReadonlySeasonBanner } from "./ReadonlySeasonBanner";
 import { DevClock } from "./DevClock";
 import { SeasonSelector } from "./SeasonSelector";
@@ -73,10 +74,14 @@ export function AppLayout() {
               {data?.club?.logoUrl ? <img src={data.club.logoUrl} alt="" className="size-6 shrink-0 rounded-full object-cover" /> : null}
               <span className="hidden truncate text-sm font-semibold sm:inline">{data?.club?.name ?? PRODUCT_NAME}</span>
             </NavLink>
+            {/* Pastilles d'OFFRE, juste après la marque/club : « BÊTA » (offre bêta) et
+                « Découverte · N crédits » (offre Découverte bridée). Mutuellement exclusives en
+                pratique — chacune ne se montre que pour son offre ; rien en payant/démo. */}
+            <BetaBadge onReport={() => setFeedbackOpen(true)} />
+            <CreditBadge />
             {import.meta.env.DEV ? <DevClock /> : null}
           </div>
           <nav className="flex items-center gap-1">
-            <CreditBadge />
             <SeasonSelector />
             {/* Matches stay locked until the season's plan points at a version —
                 same condition the server enforces (SocleGuard). */}

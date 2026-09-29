@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -23,15 +23,17 @@ vi.mock("react-router", async (importOriginal) => {
 });
 
 // Enfants hors sujet de la barre de marque — réduits à un marqueur inerte pour isoler l'en-tête
-// (ils tirent chacun react-query / des stores testés ailleurs).
-vi.mock("@/shared/credits/CreditBadge", () => ({ CreditBadge: () => null }));
+// (ils tirent chacun react-query / des stores testés ailleurs). Les deux PASTILLES sont réduites à
+// un marqueur repérable pour vérifier LEUR PLACEMENT (grappe de marque, hors de la nav de droite).
+vi.mock("@/shared/credits/CreditBadge", () => ({ CreditBadge: () => <span data-testid="credit-badge" /> }));
+vi.mock("./BetaBadge", () => ({ BetaBadge: ({ onReport }: { onReport: () => void }) => <button data-testid="beta-badge" onClick={onReport} type="button" /> }));
 vi.mock("@/shared/credits/CreditsBanner", () => ({ CreditsBanner: () => null }));
 vi.mock("./SeasonSelector", () => ({ SeasonSelector: () => null }));
 vi.mock("./ReadonlySeasonBanner", () => ({ ReadonlySeasonBanner: () => null }));
 vi.mock("./SeasonTransitionBanner", () => ({ SeasonTransitionBanner: () => null }));
 vi.mock("./DevClock", () => ({ DevClock: () => null }));
 vi.mock("@/features/release-notes/WhatsNewModal", () => ({ WhatsNewModal: () => null }));
-vi.mock("@/shared/feedback/FeedbackDialog", () => ({ FeedbackDialog: () => null }));
+vi.mock("@/shared/feedback/FeedbackDialog", () => ({ FeedbackDialog: () => <div data-testid="feedback-dialog" /> }));
 
 const club = (overrides: Record<string, unknown>): MeResponse["club"] =>
   ({ id: "c1", name: "BCCL", onboardingCompleted: true, logoUrl: null, ...overrides }) as unknown as MeResponse["club"];
@@ -87,5 +89,31 @@ describe("AppLayout — en-tête marque produit", () => {
     meData = { club: club({ name: "BCCL", logoUrl: null }) };
     const { container } = renderLayout();
     expect(container.querySelector('[class*="calendar-check"]')).toBeNull();
+  });
+
+  it("place les deux pastilles dans la grappe de marque, APRÈS le lien d'accueil, hors de la nav", () => {
+    meData = { club: club({ name: "BCCL", logoUrl: null }) };
+    const { container } = renderLayout();
+    const nav = container.querySelector("header nav") as HTMLElement;
+    const beta = screen.getByTestId("beta-badge");
+    const credit = screen.getByTestId("credit-badge");
+    // Ni l'une ni l'autre dans la nav de droite (elles ont quitté ~L79).
+    expect(nav.contains(beta)).toBe(false);
+    expect(nav.contains(credit)).toBe(false);
+    // Toutes deux dans la grappe de marque (le parent du lien d'accueil), APRÈS ce lien.
+    const home = screen.getByRole("link", { name: "BCCL" });
+    const cluster = home.parentElement as HTMLElement;
+    expect(cluster.contains(beta)).toBe(true);
+    expect(cluster.contains(credit)).toBe(true);
+    expect(home.compareDocumentPosition(beta) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(home.compareDocumentPosition(credit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("« BÊTA » → onReport ouvre le canal de signalement (FeedbackDialog)", () => {
+    meData = { club: club({ name: "BCCL", logoUrl: null }) };
+    renderLayout();
+    expect(screen.queryByTestId("feedback-dialog")).toBeNull();
+    fireEvent.click(screen.getByTestId("beta-badge"));
+    expect(screen.getByTestId("feedback-dialog")).toBeInTheDocument();
   });
 });
