@@ -189,6 +189,33 @@ domaine), sinon l'envoi part en spam ou est refusé.
 - Sentry : poser les 3 DSN (backup-restore.md §5) ;
 - superadmin : `docker compose ... exec php-fpm php bin/console app:superadmin:create <email>`.
 
+### 1.8 Rôle de lecture seule (`amateo_read`) — poser son mot de passe
+
+Le rôle `amateo_read` est **créé par la migration** (jouée au premier déploiement) : lecture seule,
+scopé au club posé par `SET app.club_id`, jamais de porte `admin_all` (→ [`prod-stack.md`](prod-stack.md)
+§ « Avec quel rôle » + [`../security/rls.md`](../security/rls.md)). Il naît **sans mot de passe** — donc
+aucun secret en git — et ne peut pas se connecter tant que tu n'en poses pas un. À faire **une fois**, sur
+la VM, en **saisie non historisée** (ne pas mettre le mot de passe dans `.env*` ni dans l'historique shell) :
+
+```bash
+# Sonde préalable (rare) : si l'owner n'est PAS superuser sur ton hébergeur, il lui faut CREATEROLE
+# pour que la migration ait pu créer le rôle — sinon elle aurait échoué franchement au déploiement.
+ssh <hôte> "docker compose exec postgres psql -U amateo_owner -d amateo -c '\du amateo_read'"
+
+# Pose le mot de passe — \password invite en saisie masquée, rien n'atterrit dans l'historique ni les logs.
+ssh -t <hôte> "docker compose exec postgres psql -U amateo_owner -d amateo -c '\\password amateo_read'"
+```
+
+⬜ Se connecter ensuite depuis ton poste par **tunnel SSH** (jamais de port Postgres ouvert —
+[`prod-stack.md`](prod-stack.md) § Accès opérateur), puis **poser le club** avant toute lecture :
+
+```bash
+ssh -N -L 5433:localhost:5432 <hôte>          # publie le port sur la loopback de l'hôte, cf. prod-stack.md
+# puis, dans le client (psql/DBeaver) connecté à localhost:5433 en amateo_read :
+SET app.club_id = '<uuid-du-club>';           -- sans ce contexte, les tables tenant rendent 0 ligne (fail-closed)
+SELECT * FROM team_tag;                        -- ne voit que le club posé ; toute écriture est refusée
+```
+
 ---
 
 ### 1.8 Jour J — données (seed initial, une seule fois)
