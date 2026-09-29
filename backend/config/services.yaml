@@ -36,6 +36,11 @@ parameters:
     # littéraux. `APP_PUBLISHER_NAME` est le responsable de traitement RGPD.
     env(APP_PRODUCT_NAME): 'Amateo'
     env(APP_PUBLISHER_NAME): 'Maratech'
+    # P5-24 — l'URL de la VITRINE (domaine nu, `amateo.app`) posée en signature des
+    # e-mails. À NE PAS confondre avec `FRONTEND_BASE_URL` (l'application,
+    # `app.amateo.app`) : la signature invite vers la page de vente, pas vers l'app.
+    # Varie par environnement (un rebranding/déménagement change l'hôte) → variable.
+    env(PRODUCT_SITE_URL): 'https://amateo.app'
     # SEC-16 (audit) — le cookie httpOnly qui porte le JWT applicatif. Nom et
     # chemin sont des PARAMÈTRES parce que trois écrivains doivent s'accorder :
     # le handler lexik (`set_cookies`, ci-dessous), `JwtCookieFactory`
@@ -82,10 +87,17 @@ services:
             # d'envoi lui demandent l'expéditeur, ils ne connaissent plus d'adresse.
             $mailFromAddress: '%env(MAIL_FROM_ADDRESS)%'
             $mailFromName: '%env(MAIL_FROM_NAME)%'
-            # P5-15 — consommés par le SEUL service `ProductIdentity` ; les points
-            # d'appel lui demandent le nom, ils ne portent plus de littéral.
+            # P5-15 / P5-24 — consommés par le SEUL service `ProductIdentity` ; les
+            # points d'appel lui demandent nom / accroche / URL, ils ne portent plus
+            # de littéral.
             $productName: '%env(APP_PRODUCT_NAME)%'
             $publisherName: '%env(APP_PUBLISHER_NAME)%'
+            # L'accroche est un texte produit FIXE (pas d'axe environnement) : bind
+            # LITTÉRAL, sans variable d'env. Le défaut du service n'est que pour les
+            # tests unitaires ; ici, le bind fait foi.
+            $productTagline: 'Le planning de votre club, sans le casse-tête.'
+            # L'URL de la vitrine VARIE par environnement → variable d'env dédiée.
+            $productSiteUrl: '%env(PRODUCT_SITE_URL)%'
 
     # makes classes in src/ available to be used as services
     # this creates a service per class whose id is the fully-qualified class name
