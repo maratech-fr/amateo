@@ -540,7 +540,7 @@ fenêtre salle `[kickoff, kickoff+matchMinutes]` (lot M + décision B).
 −10 · passerelle `NOT_SIMULTANEOUS` violée −40 (⚠ **asymétrie délibérée** : le radar §2 ne signale
 jamais cette famille, le solveur GARDE cette préférence souple — sens sûr, une pénalité SOFT ne
 bloque jamais rien, à ne pas « aligner » en la retirant) · habitude heure +15/gymnase +5 · fenêtre
-habituelle protégée −25 (`W_PROTECT_HABIT`, `match_placement.py:53`) · `BACK_TO_BACK` enchaîné +15 ·
+habituelle protégée −25 (`W_PROTECT_HABIT=25`, `match_placement.py:53`) · `BACK_TO_BACK` enchaîné +15 ·
 stabilité re-solve +8 · compactage −1/15 min de trou. **La protection ne s'applique JAMAIS au
 créneau idéal PROPRE de l'équipe candidate** (`is_own_ideal`, P4-271) — sans cette exception, le
 bonus +15+5 d'une équipe perdrait toujours face à la protection −25 dès qu'une AUTRE équipe déclare
