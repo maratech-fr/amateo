@@ -1,20 +1,14 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-29 (`documentation-update`, P4-272 ③ — règles de match du club :
-`MatchConstraint` (`backend/src/Entity/MatchConstraint.php`, scope CLUB seul saisi) ⇄ bloc `clubRules`
-du payload `/place-matches` (`ClubRuleSchema`, `engine/app/schemas/match_input_schema.py:65-79`),
-`CONTRACT_VERSION` **2.26** (bump depuis la version précédente) ; domaine vidé par une règle HARD → raison `club_rule_no_slot`
-(`match_placement.py:264`) ; règle PREFERRED violée → `W_CLUB_RULE=30`
-(`match_placement.py:55`) ; radar `CLUB_RULE_VIOLATION` sévérité 3, HARD seulement
-(`MatchConflictDetector::clubRuleViolations`, `MatchConflictDetector.php:682`) ; alerte de cohérence lecture seule
-(`ClubRuleCoherenceChecker`, `GET /api/match-constraints/coherence`) ✓. Antérieur P4-271 — semaine
-type A/B = tag `week` sur le créneau idéal, rotations (`MatchSlotRotation`) supprimées ; P4-272 ②
-— suggestion de plages de ligue (`LeagueResolver`, fonction SQL `league_window_suggestions`,
-`LeagueSuggestions.tsx`) et P4-272 ① — copie club de l'enveloppe ligue (`ClubLeagueWindow`, onglet
-`/matchs/contraintes`) ; `MatchPlacementPayloadBuilder::build` et `ConflictRadarLoader::conflicts`
-lisent la copie club, copie vide → un seul diagnostic `league_envelope_empty` ; pose manuelle hors
-ligue PERMISE et SIGNALÉE (`PlacementPanel.tsx`). Reste du contenu (P4-240 et antérieur) non
-réaudité cette passe. Historique : `git log -p --follow specs/courantes/module-matchs.md`.
+Last verified @ 2026-09-29 (`documentation-update`, P4-206 — géométrie de la grille « Semaine
+type », §10). Re-confronté : `TypicalWeekendGrid`/`buildTypicalWeekend` dessine chaque bloc du coup
+d'envoi à coup d'envoi + `matchMinutesOf(teamId, teams, durations)` (`frontend/src/features/
+matches/lib/weekendGrid.ts:301-305`, `typicalWeekend.ts:98-101`), MÊME fonction que la grille datée
+(`blockBounds`, `weekendGrid.ts:321-342`) ; `TypicalWeekPage` lit les durées via
+`useSportCategoryDurations` (`queries.ts:297-299`) et les gate avec ses 4 autres lectures — aucun
+repli silencieux tant que le serveur n'a pas répondu (`TypicalWeekPage.tsx`) ✓. `CONTRACT_VERSION`
+**2.26** (P4-272 ③, inchangé par cette PR, frontend seul) ✓. Reste du contenu (P4-272, P4-271 et
+antérieur) non réaudité cette passe. Historique : `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
 > d'une PR. Le JOURNAL (qui a livré quoi, quand, sous quel id) vit dans
@@ -1334,6 +1328,14 @@ saisissent plus) s'ouvre d'ici. Un signal « hors image » (écart entre placeme
 idéal du jour) et un signal « même week-end » (deux équipes dont le créneau idéal coïncide
 physiquement — même gymnase+jour+heure — reçues à domicile le même week-end, contredit
 l'alternance A/B) restent des SIGNAUX, jamais un blocage.
+
+**Géométrie des blocs (P4-206, 2026-09-29)** : chaque bloc va du coup d'envoi à coup d'envoi + la
+durée RÉELLE de match de la catégorie de l'équipe (`matchMinutesOf`, durées servies par
+`GET /api/sport-categories` — override de club sinon défaut de famille), **exactement la même
+géométrie que la grille datée du Calendrier** (§5) — aucun échauffement dessiné, aucun
+enchaînement (la vue est un gabarit sans dates, pas un planning). `TypicalWeekPage` gate cette
+lecture avec ses autres lectures de page : pas de repli silencieux sur une durée par défaut tant
+que le serveur n'a pas répondu.
 
 Sous un créneau idéal, l'**alerte de cohérence** (P4-272 ③, `GET /api/match-constraints/
 coherence`, §1/§8bis) affiche les règles de match du CLUB qu'il heurte (« Heurte la règle du club «

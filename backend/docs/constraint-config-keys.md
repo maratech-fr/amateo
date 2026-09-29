@@ -1,7 +1,7 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-09-28 (`documentation-update`, rotation de fraîcheur — sujet sans rapport,
-P4-272 ① matchs). Re-confronté à `ConstraintConfigValidator::SPEC`
+Last verified @ 2026-09-29 (`documentation-update`, rotation de fraîcheur — sujet sans rapport,
+P4-206 matchs). Re-confronté à `ConstraintConfigValidator::SPEC`
 (`backend/src/Service/ConstraintConfigValidator.php:59-95`) : les 4 familles et leurs clés/types
 correspondent trait pour trait à la table du fichier ✓. `App\Enum\ConstraintRuleType` ne compte
 que HARD/PREFERRED/LOCK ✓. `TeamTagResolver::resolveConstraintTeamIds`
