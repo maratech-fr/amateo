@@ -65,7 +65,10 @@ final class ConflictFingerprinter
             // violées sont EXCLUES de l'identité (le litige reste « ce match viole une
             // règle du club » que la règle change de bornes ou non — même logique que
             // les `reasons` de FRIENDLY_ON_MATCH_SLOT).
-            'LEAGUE_WINDOW_VIOLATION', 'CLUB_RULE_VIOLATION', 'ACCESS_WINDOW_LOST', 'AWAY_NO_FOOTPRINT', 'FRIENDLY_ON_MATCH_SLOT' => \sprintf(
+            // TEAM_VENUE_FORBIDDEN (P4-272 ④) : une seule fixture porte le litige ; le
+            // `venueId` est EXCLU de l'identité (le litige reste « ce match est dans un
+            // gymnase interdit » — le gymnase EST fixé sur la fixture de toute façon).
+            'LEAGUE_WINDOW_VIOLATION', 'CLUB_RULE_VIOLATION', 'TEAM_VENUE_FORBIDDEN', 'ACCESS_WINDOW_LOST', 'AWAY_NO_FOOTPRINT', 'FRIENDLY_ON_MATCH_SLOT' => \sprintf(
                 '%s:%s',
                 $type,
                 $this->nestedStr($conflict, 'fixture', 'fixtureId'),

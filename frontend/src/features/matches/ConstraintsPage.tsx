@@ -13,7 +13,7 @@ import { FullPageSpinner } from "@/shared/components/ui/spinner";
 import { DAYS, dayLabelLong } from "@/shared/lib/days";
 import { readFailed } from "@/shared/lib/readState";
 
-import type { ClubLeagueWindow, ClubLeagueWindowInput, LeagueWindowLevel, MatchConstraint, MatchConstraintInput, MatchRuleType } from "./api";
+import type { ClubLeagueWindow, ClubLeagueWindowInput, LeagueWindowLevel, MatchConstraint, MatchConstraintInput, MatchRuleType, Team, Venue } from "./api";
 import { frClock } from "./lib/clubRuleLabel";
 import { LeagueSuggestions } from "./LeagueSuggestions";
 import {
@@ -24,8 +24,10 @@ import {
   useDeleteMatchConstraint,
   useMatchConstraintCoherence,
   useMatchConstraints,
+  useTeams,
   useUpdateClubLeagueWindow,
   useUpdateMatchConstraint,
+  useVenues,
 } from "./queries";
 
 /**
@@ -76,13 +78,7 @@ export function ConstraintsPage() {
       </AccordionSection>
 
       <AccordionSection {...sectionProps("equipes")} title="Équipes">
-        <ComingSoon>
-          Les contraintes d'équipe arriveront ici. En attendant, la préférence de gymnase et l'habitude de match se règlent dans la{" "}
-          <Link className="text-accent underline" to="/matchs/semaine-type">
-            Semaine type
-          </Link>
-          .
-        </ComingSoon>
+        <TeamsSection />
       </AccordionSection>
 
       <AccordionSection {...sectionProps("coachs")} title="Coachs">
@@ -335,6 +331,10 @@ function ClubSection() {
 
   // byRule → Map<ruleId, habits>. L'alerte est calculée serveur ; on la POSE sous la règle.
   const alertsByRule = new Map((coherence.data?.byRule ?? []).map((r) => [r.ruleId, r.habits]));
+  // La section Club ne montre QUE les règles de club (les interdictions de gymnase TEAM
+  // vivent dans la section Équipes). Simple tri d'affichage en deux listes — jamais un
+  // verdict solveur (le backend et le radar décident, .claude/rules/frontend.md).
+  const clubRules = rules.data.filter((rule) => "CLUB" === rule.scope);
 
   return (
     <div className="flex flex-col gap-3">
@@ -344,11 +344,11 @@ function ClubSection() {
         reste possible — le radar la signale.
       </p>
 
-      {0 === rules.data.length ? (
+      {0 === clubRules.length ? (
         <p className="text-sm text-muted-foreground">Aucune règle de club — le placement ne s'impose que les fenêtres de la ligue.</p>
       ) : (
         <div className="flex flex-col gap-2">
-          {rules.data.map((rule) => (
+          {clubRules.map((rule) => (
             <ClubRuleRow key={rule.id} rule={rule} alerts={alertsByRule.get(rule.id) ?? []} />
           ))}
         </div>
@@ -486,6 +486,141 @@ function AddClubRuleRow() {
       <Button size="sm" className="ml-auto" disabled={!isRuleComplete(draft) || create.isPending} onClick={submit}>
         <Plus className="size-3.5" />
         Ajouter
+      </Button>
+    </div>
+  );
+}
+
+// ── Section Équipes (P4-272 ④) : interdictions de gymnase par équipe ─────────────
+
+/**
+ * La section Équipes : le CRUD des INTERDICTIONS de gymnase (« l'équipe X ne joue
+ * jamais au gymnase Y »). Chaque interdiction est une règle de match de scope TEAM
+ * (ruleType HARD, sans jour ni horaire) — le placement retire le gymnase du domaine
+ * de l'équipe, le radar signale une pose manuelle qui l'enfreint. La PRÉFÉRENCE de
+ * gymnase (à l'inverse d'une interdiction) reste l'habitude de la semaine type.
+ */
+function TeamsSection() {
+  const rules = useMatchConstraints();
+  const teams = useTeams();
+  const venues = useVenues();
+
+  if (readFailed(rules) || readFailed(teams) || readFailed(venues)) {
+    return (
+      <LoadErrorHint
+        onRetry={() => {
+          void rules.refetch();
+          void teams.refetch();
+          void venues.refetch();
+        }}
+      />
+    );
+  }
+  if (undefined === rules.data || undefined === teams.data || undefined === venues.data) {
+    return <FullPageSpinner />;
+  }
+
+  // La section Équipes ne montre QUE les interdictions de gymnase (scope TEAM). Simple
+  // tri d'affichage — jamais un verdict solveur (le backend décide, .claude/rules/frontend.md).
+  const bans = rules.data.filter((rule) => "TEAM" === rule.scope);
+  const teamsById = new Map(teams.data.map((t) => [t.id, t]));
+  const venuesById = new Map(venues.data.map((v) => [v.id, v]));
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground">
+        Interdisez à une équipe un gymnase où elle ne doit jamais jouer ses matchs. Le placement l'évite ; une pose manuelle qui l'enfreint
+        reste possible — le radar la signale. La <strong>préférence</strong> de gymnase, elle, se règle dans la{" "}
+        <Link className="text-accent underline" to="/matchs/semaine-type">
+          Semaine type
+        </Link>
+        .
+      </p>
+
+      {0 === bans.length ? (
+        <p className="text-sm text-muted-foreground">Aucune interdiction — chaque équipe peut jouer dans n'importe quel gymnase du club.</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {bans.map((ban) => (
+            <TeamVenueBanRow key={ban.id} ban={ban} teamName={teamsById.get(ban.scopeTargetId ?? "")?.name ?? "Équipe ?"} venueName={venuesById.get(ban.venueId ?? "")?.name ?? "Gymnase ?"} />
+          ))}
+        </div>
+      )}
+
+      <AddTeamVenueBanRow teams={teams.data} venues={venues.data} />
+    </div>
+  );
+}
+
+/** Une interdiction existante : équipe → gymnase interdit, avec suppression (DELETE). */
+function TeamVenueBanRow({ ban, teamName, venueName }: { ban: MatchConstraint; teamName: string; venueName: string }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const remove = useDeleteMatchConstraint();
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
+      <span className="text-sm text-foreground">
+        <strong>{teamName}</strong> ne joue jamais à <strong>{venueName}</strong>
+      </span>
+      <Button variant="outline" size="sm" aria-label="Supprimer" className="ml-auto" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
+        <Trash2 className="size-3.5" />
+      </Button>
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Lever cette interdiction ?"
+        description="Le placement pourra de nouveau utiliser ce gymnase pour cette équipe."
+        confirmLabel="Lever l'interdiction"
+        destructive
+        onConfirm={() => {
+          setConfirmDelete(false);
+          remove.mutate(ban.id);
+        }}
+        onCancel={() => setConfirmDelete(false)}
+      />
+    </div>
+  );
+}
+
+/** La ligne d'ajout d'une interdiction (POST scope TEAM : équipe + gymnase, toujours HARD). */
+function AddTeamVenueBanRow({ teams, venues }: { teams: Team[]; venues: Venue[] }) {
+  const [teamId, setTeamId] = useState("");
+  const [venueId, setVenueId] = useState("");
+  const create = useCreateMatchConstraint();
+
+  const submit = (): void => {
+    create.mutate(
+      { scope: "TEAM", scopeTargetId: teamId, venueId, ruleType: "HARD", daysOfWeek: [], kickoffMin: null, kickoffMax: null },
+      {
+        onSuccess: () => {
+          setTeamId("");
+          setVenueId("");
+        },
+      },
+    );
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-border px-3 py-2">
+      <Select aria-label="Équipe" value={teamId} onChange={(e) => setTeamId(e.target.value)} className="min-w-32">
+        <option value="">Équipe…</option>
+        {teams.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.name}
+          </option>
+        ))}
+      </Select>
+      <span className="text-sm text-muted-foreground">ne joue jamais à</span>
+      <Select aria-label="Gymnase interdit" value={venueId} onChange={(e) => setVenueId(e.target.value)} className="min-w-32">
+        <option value="">Gymnase…</option>
+        {venues.map((v) => (
+          <option key={v.id} value={v.id}>
+            {v.name}
+          </option>
+        ))}
+      </Select>
+      <Button size="sm" className="ml-auto" disabled={"" === teamId || "" === venueId || create.isPending} onClick={submit}>
+        <Plus className="size-3.5" />
+        Interdire
       </Button>
     </div>
   );

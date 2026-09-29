@@ -71,6 +71,12 @@ def assert_no_hard_violation(input_data: MatchPlacementInputSchema, output: Matc
                 w.day_of_week == day and _minutes(w.kickoff_min) <= kick <= _minutes(w.kickoff_max) for w in league
             ), f"{placement.match_id}: kickoff outside the league window"
 
+        # P4-272 ④ — a forbidden venue is a HARD invariant of the output: the solver
+        # never places a team's match in a venue that team is forbidden to play at.
+        assert placement.venue_id not in set(teams[match.team_id].forbidden_venue_ids), (
+            f"{placement.match_id}: placed in a venue forbidden to its team"
+        )
+
         # P4-272 ③ — a HARD club rule is a HARD invariant of the output: no
         # placement ever sits outside a HARD rule covering the match day.
         for rule in input_data.club_rules:
@@ -381,6 +387,90 @@ def test_preferred_club_rule_violated_everywhere_still_places() -> None:
 
     assert output.unplaced == []
     assert len(output.placements) == 1
+
+
+def test_forbidden_venue_is_never_chosen_even_when_it_holds_the_ideal() -> None:
+    # P4-272 ④ constraint-semantics (§7.1) — a team is FORBIDDEN to play at Mateo,
+    # where its ideal slot sits (Saturday 20:30). Armand is also open. The HARD ban
+    # PRUNES Mateo from the domain: the match lands on Armand (never Mateo), it is NOT
+    # left unplaced, and no HARD invariant (the ban included) is violated.
+    payload: dict[str, Any] = {
+        "version": read_contract_version(),
+        "clubId": "club-bccl",
+        "seasonId": "season-2026",
+        "solverSeed": 42,
+        "solverTimeoutSeconds": 30,
+        "matches": [{"id": "m1", "teamId": "t1", "date": SATURDAY, "kind": "TO_PLACE"}],
+        "venues": [
+            {
+                "id": "mateo",
+                "name": "Mateo",
+                "matchWindows": [{"dayOfWeek": 6, "start": "13:00", "end": "22:30"}],
+                "unavailabilities": [],
+            },
+            {
+                "id": "armand",
+                "name": "Armand",
+                "matchWindows": [{"dayOfWeek": 6, "start": "13:00", "end": "22:30"}],
+                "unavailabilities": [],
+            },
+        ],
+        "teams": [
+            {
+                "id": "t1",
+                "name": "T1",
+                "leagueWindows": [],
+                "habits": [{"dayOfWeek": 6, "kickoff": "20:30", "venueId": "mateo"}],
+                "coaches": [],
+                "forbiddenVenueIds": ["mateo"],
+            }
+        ],
+        "teamLinks": [],
+        "trainingOccupancies": [],
+    }
+    input_data = MatchPlacementInputSchema.model_validate(payload)
+    output = MatchPlacementOutputSchema.model_validate(solve_match_placement(input_data))
+
+    assert output.unplaced == []
+    assert len(output.placements) == 1
+    assert output.placements[0].venue_id == "armand", (
+        "the match avoids the forbidden venue, even though it held the ideal"
+    )
+    assert_no_hard_violation(input_data, output)
+
+
+def test_forbidden_venue_leaving_no_other_names_team_venue_forbidden() -> None:
+    # P4-272 ④ — the ONLY open venue is forbidden to the team: a legal slot existed,
+    # but only in the forbidden venue → the match is unplaced with the NAMED reason
+    # `team_venue_forbidden` (told apart from venue_unavailable / no_access_window).
+    payload: dict[str, Any] = {
+        "version": read_contract_version(),
+        "clubId": "club-bccl",
+        "seasonId": "season-2026",
+        "solverSeed": 42,
+        "solverTimeoutSeconds": 30,
+        "matches": [{"id": "m1", "teamId": "t1", "date": SATURDAY, "kind": "TO_PLACE"}],
+        "venues": [
+            {
+                "id": "mateo",
+                "name": "Mateo",
+                "matchWindows": [{"dayOfWeek": 6, "start": "13:00", "end": "22:30"}],
+                "unavailabilities": [],
+            }
+        ],
+        "teams": [
+            {"id": "t1", "name": "T1", "leagueWindows": [], "habits": [], "coaches": [], "forbiddenVenueIds": ["mateo"]}
+        ],
+        "teamLinks": [],
+        "trainingOccupancies": [],
+    }
+    input_data = MatchPlacementInputSchema.model_validate(payload)
+    output = MatchPlacementOutputSchema.model_validate(solve_match_placement(input_data))
+
+    assert output.placements == []
+    assert len(output.unplaced) == 1
+    assert output.unplaced[0].reason == "team_venue_forbidden"
+    assert output.unplaced[0].message == REASON_MESSAGES["team_venue_forbidden"]
 
 
 def test_two_homes_sharing_an_ideal_slot_split_one_served_the_other_placed() -> None:

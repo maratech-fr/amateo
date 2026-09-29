@@ -6,9 +6,23 @@ d'envoi à coup d'envoi + `matchMinutesOf(teamId, teams, durations)` (`frontend/
 matches/lib/weekendGrid.ts:301-305`, `typicalWeekend.ts:98-101`), MÊME fonction que la grille datée
 (`blockBounds`, `weekendGrid.ts:321-342`) ; `TypicalWeekPage` lit les durées via
 `useSportCategoryDurations` (`queries.ts:297-299`) et les gate avec ses 4 autres lectures — aucun
-repli silencieux tant que le serveur n'a pas répondu (`TypicalWeekPage.tsx`) ✓. `CONTRACT_VERSION`
-**2.26** (P4-272 ③, inchangé par cette PR, frontend seul) ✓. Reste du contenu (P4-272, P4-271 et
-antérieur) non réaudité cette passe. Historique : `git log -p --follow specs/courantes/module-matchs.md`.
+repli silencieux tant que le serveur n'a pas répondu (`TypicalWeekPage.tsx`) ✓.
+
+Last verified @ 2026-09-29 (`documentation-update`, P4-272 ③ — règles de match du club :
+`MatchConstraint` (`backend/src/Entity/MatchConstraint.php`, scope CLUB seul saisi) ⇄ bloc `clubRules`
+du payload `/place-matches` (`ClubRuleSchema`, `engine/app/schemas/match_input_schema.py:65-79`),
+domaine vidé par une règle HARD → raison `club_rule_no_slot`
+(`match_placement.py:264`) ; règle PREFERRED violée → `W_CLUB_RULE=30`
+(`match_placement.py:55`) ; radar `CLUB_RULE_VIOLATION` sévérité 3, HARD seulement
+(`MatchConflictDetector::clubRuleViolations`, `MatchConflictDetector.php:682`) ; alerte de cohérence lecture seule
+(`ClubRuleCoherenceChecker`, `GET /api/match-constraints/coherence`) ✓. Antérieur P4-271 — semaine
+type A/B = tag `week` sur le créneau idéal, rotations (`MatchSlotRotation`) supprimées ; P4-272 ②
+— suggestion de plages de ligue (`LeagueResolver`, fonction SQL `league_window_suggestions`,
+`LeagueSuggestions.tsx`) et P4-272 ① — copie club de l'enveloppe ligue (`ClubLeagueWindow`, onglet
+`/matchs/contraintes`) ; `MatchPlacementPayloadBuilder::build` et `ConflictRadarLoader::conflicts`
+lisent la copie club, copie vide → un seul diagnostic `league_envelope_empty` ; pose manuelle hors
+ligue PERMISE et SIGNALÉE (`PlacementPanel.tsx`). Reste du contenu (P4-240 et antérieur) non
+réaudité cette passe. Historique : `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
 > d'une PR. Le JOURNAL (qui a livré quoi, quand, sous quel id) vit dans
@@ -80,7 +94,7 @@ vigueur, il n'a rien à comparer.
   base (plusieurs règles peuvent se recouvrir, ⑤ en aura besoin). CRUD gestionnaire (`GET`/`POST`/
   `PUT`/`DELETE /api/match_constraints`), section Club de l'écran Contraintes (§8bis). Le moteur les
   reçoit VERBATIM dans le bloc top-level `clubRules` du payload `/place-matches`
-  (`CONTRACT_VERSION` 2.26) — un domaine vidé par les seules règles HARD ressort avec la raison
+  (`CONTRACT_VERSION` 2.27) — un domaine vidé par les seules règles HARD ressort avec la raison
   `club_rule_no_slot` (§3) ; les amicaux (`competitionId` nul) en sont exemptés structurellement,
   comme l'enveloppe ligue. Une pose MANUELLE hors d'une règle HARD reste PERMISE — le radar la
   SIGNALE (`CLUB_RULE_VIOLATION`, §2), il ne la bloque pas. L'**alerte de cohérence** (lecture
@@ -503,7 +517,7 @@ Présentation pure — aucune formule de gravité redérivée.
 ## 3. Solveur de placement (`POST /api/fixtures/place` → engine `/place-matches`)
 
 Second problème solveur ([ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md)),
-même `CONTRACT_VERSION` **2.26** que `/generate`/`/validate-assignments` (un seul contrat pour les
+même `CONTRACT_VERSION` **2.27** que `/generate`/`/validate-assignments` (un seul contrat pour les
 trois endpoints — voir §6 `CLAUDE.md`). **Rail
 SYNCHRONE** (`PlaceMatchesController` — management + saison écrivable + socle pointé), anti-double-clic
 PAR CLUB `MatchPlacementLock` (Redis dédié — ne protège pas deux clubs l'un de l'autre : ils partagent le

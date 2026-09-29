@@ -286,7 +286,7 @@ les 5 règles de bien-être. Décision consignée `etat-des-lieux.md` §2.
 
 - **Le solveur d'ENTRAÎNEMENT la lit** — `POST /generate` seul (jamais `/place-matches`) :
   `ScheduleConstraintBuilder` sérialise la matrice club+saison (TRIÉE) dans le bloc
-  `venueTravelTimes` du payload, contrat **`CONTRACT_VERSION`** (`engine/CONTRACT_VERSION`, **2.26**
+  `venueTravelTimes` du payload, contrat **`CONTRACT_VERSION`** (`engine/CONTRACT_VERSION`, **2.27**
   à ce jour, bumpé pour d'autres raisons que ce bloc). Sa présence (≥1 ligne) —
   ELLE SEULE — active la règle implicite `travelTime` côté moteur (opt-in au premier geste, jamais
   silencieux : un club sans matrice reçoit un payload byte-identique à avant) ; l'INTENSITÉ émise

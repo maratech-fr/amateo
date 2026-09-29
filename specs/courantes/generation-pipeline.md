@@ -2,7 +2,7 @@
 
 Last verified @ 2026-09-29 (P4-271 : `CONTRACT_VERSION` **2.24 → 2.26** aux trois foyers —
 `slotRotations` retiré du payload, semaine type A/B = tag sur le créneau idéal, non transmis au
-moteur. `CONTRACT_VERSION` **`'2.26'`** aux trois foyers
+moteur. `CONTRACT_VERSION` **`'2.27'`** aux trois foyers
 (`ScheduleConstraintBuilder.php:63`, `MoveSlotService.php:50`,
 `MatchPlacementPayloadBuilder.php:65`) et `engine/CONTRACT_VERSION`, inchangé ; la garde de
 redélivrance (`GenerateScheduleHandler.php`, lecture fraîche + après verrou, SEUL `COMPLETED`

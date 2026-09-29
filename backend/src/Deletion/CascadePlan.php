@@ -9,6 +9,7 @@ use App\Entity\CoachPlayerMembership;
 use App\Entity\CoachWish;
 use App\Entity\Competition;
 use App\Entity\Fixture;
+use App\Entity\MatchConstraint;
 use App\Entity\Reservation;
 use App\Entity\ScheduleDiagnostic;
 use App\Entity\ScheduleSlotTemplate;
@@ -57,6 +58,10 @@ final class CascadePlan
             // P1-4 PR C — habitudes + liens suivent leur équipe (liens des DEUX côtés : le
             // couple est normalisé, l'équipe peut occuper l'une ou l'autre colonne).
             new DeleteByFieldStep(TeamMatchHabit::class, 'teamId', new ImpactLabel('team_match_habit', 'habitude de match', 'habitudes de match')),
+            // P4-272 ④ — les INTERDICTIONS de gymnase visant cette équipe (scope TEAM,
+            // scopeTargetId = teamId ; les règles CLUB portent un scopeTargetId nul, jamais
+            // touchées ici). Sans elle, l'interdiction pendrait sur une équipe morte.
+            new DeleteByFieldStep(MatchConstraint::class, 'scopeTargetId', new ImpactLabel('team_forbidden_venue', 'interdiction de gymnase', 'interdictions de gymnase')),
             new DeleteByFieldStep(TeamLink::class, 'teamAId', new ImpactLabel('team_link_a', 'lien entre équipes', 'liens entre équipes')),
             new DeleteByFieldStep(TeamLink::class, 'teamBId', new ImpactLabel('team_link_b', 'lien entre équipes', 'liens entre équipes')),
             new DeleteByFieldStep(ScheduleSlotTemplate::class, 'teamId', new ImpactLabel('team_slot', 'séance placée dans vos plannings', 'séances placées dans vos plannings')),
@@ -90,6 +95,10 @@ final class CascadePlan
             new DeleteByFieldStep(VenueTrainingSlot::class, 'venueId', new ImpactLabel('venue_slot', 'créneau de disponibilité', 'créneaux de disponibilité')),
             new DeleteByFieldStep(VenueMatchWindow::class, 'venueId', new ImpactLabel('venue_match_window', 'fenêtre de match', 'fenêtres de match')),
             new DeleteByFieldStep(VenueUnavailability::class, 'venueId', new ImpactLabel('venue_unavailability', 'indisponibilité déclarée', 'indisponibilités déclarées')),
+            // P4-272 ④ — les INTERDICTIONS de gymnase pointant CE gymnase (scope TEAM,
+            // venueId = ce gymnase ; les règles CLUB portent un venueId nul, jamais
+            // touchées ici). Sans elle, l'interdiction pendrait sur un gymnase mort.
+            new DeleteByFieldStep(MatchConstraint::class, 'venueId', new ImpactLabel('venue_forbidden_team', 'interdiction de gymnase', 'interdictions de gymnase')),
             new DeleteByFieldStep(VenuePeriodOverride::class, 'venueId', new ImpactLabel('venue_period_override', 'réglage de période', 'réglages de période')),
             // P2-53 RMM-8 — la matrice de trajet du gymnase part avec lui (couple normalisé :
             // le gymnase peut occuper l'une ou l'autre colonne, comme team_link).

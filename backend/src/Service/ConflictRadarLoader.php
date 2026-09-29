@@ -16,6 +16,7 @@ use App\Entity\TeamCoach;
 use App\Entity\TeamMatchHabit;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueUnavailability;
+use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Repository\ClubRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -103,6 +104,21 @@ final class ConflictRadarLoader
             'kickoffMin' => $rule->getKickoffMin()?->format('H:i'),
             'kickoffMax' => $rule->getKickoffMax()?->format('H:i'),
         ], $clubRuleRows);
+        // P4-272 ④ — les INTERDICTIONS de gymnase par équipe (scope TEAM, HARD). Le
+        // détecteur SIGNALE (TEAM_VENUE_FORBIDDEN) un domicile posé dans un gymnase
+        // interdit. teamId → liste des gymnases interdits ; sous les mêmes filtres tenant.
+        /** @var list<MatchConstraint> $teamVenueBanRows */
+        $teamVenueBanRows = $this->entityManager->getRepository(MatchConstraint::class)->findBy(['scope' => ConstraintScope::TEAM]);
+        $forbiddenVenuesByTeam = [];
+        foreach ($teamVenueBanRows as $ban) {
+            $teamId = $ban->getScopeTargetId();
+            $venueId = $ban->getVenueId();
+            if (ConstraintRuleType::HARD !== $ban->getRuleType() || null === $teamId || null === $venueId) {
+                continue;
+            }
+            $forbiddenVenuesByTeam[$teamId][$venueId] = true;
+        }
+        $forbiddenVenuesByTeam = array_map(static fn (array $set): array => array_keys($set), $forbiddenVenuesByTeam);
         // D1 rule 3 — the club's civil today drops already-played matches from the
         // radar (foyer ClubDay, never rebuilt inline).
         $clubToday = $club instanceof Club ? $this->clubDay->todayFor($club) : null;
@@ -150,6 +166,7 @@ final class ConflictRadarLoader
             $clubToday,
             $playerMemberships,
             $clubRules,
+            $forbiddenVenuesByTeam,
         );
 
         return [

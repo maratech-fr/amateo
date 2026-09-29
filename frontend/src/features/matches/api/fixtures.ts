@@ -169,6 +169,8 @@ export type UnplacedReason =
   | "no_access_window"
   | "no_league_intersection"
   | "club_rule_no_slot"
+  // P4-272 ④ — every venue that would have held the match is forbidden to the team.
+  | "team_venue_forbidden"
   | "venue_unavailable"
   | "venue_full"
   | "not_selected";

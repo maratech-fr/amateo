@@ -58,6 +58,8 @@ function conflictTitle(conflict: Conflict, coaches: Map<string, Coach>): string 
       return "Hors fenêtre autorisée par la ligue";
     case "CLUB_RULE_VIOLATION":
       return "Hors règle du club";
+    case "TEAM_VENUE_FORBIDDEN":
+      return "Gymnase interdit à l'équipe";
     case "ACCESS_WINDOW_LOST":
       return "Hors accès match";
     case "COMPETITION_INCOMPLETE":
@@ -119,6 +121,10 @@ function conflictSummary(conflict: Conflict, teams: Map<string, Team>, venues: M
     const labels = (conflict.rules ?? []).map((r) => `« ${clubRuleLabel(r)} »`).join(", ");
     const bounded = "" !== labels ? ` (règle : ${labels})` : "";
     return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)} à ${conflict.fixture.kickoffTime ?? "?"}${bounded} — pose libre, à surveiller`;
+  }
+  if ("TEAM_VENUE_FORBIDDEN" === conflict.type && conflict.fixture) {
+    const venueName = venues.get(conflict.venueId ?? "")?.name ?? "ce gymnase";
+    return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)} — posé dans ${venueName}, interdit à cette équipe. Pose libre, à surveiller.`;
   }
   if ("COMPETITION_INCOMPLETE" === conflict.type && undefined !== conflict.teamId) {
     return `${conflict.competitionName ?? "?"} (${teamName(teams, conflict.teamId)}) — ${conflict.imported ?? 0}/${conflict.expected ?? "?"} journées : fichier partiel ou phase pas encore sortie`;
