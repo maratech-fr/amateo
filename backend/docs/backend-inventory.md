@@ -3,12 +3,16 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-09-29 (`documentation-update`, P4-272 ③ — règles de match du club : routes
-`/api/match_constraints` (CRUD, `MatchConstraintResource`/`Input`/`StateProcessor`/`StateProvider`)
-et `/api/match-constraints/coherence` (`ClubRuleCoherenceController`, GET) recalées contre le code
-✓, `CONTRACT_VERSION` **2.26**). Reste du fichier non rebalayé cette passe (portée = ces deux
-entrées) ; historique des passes complètes : `git log -p --follow` ce fichier — un stamp REMPLACE,
-il ne s'empile pas.
+Last verified @ 2026-09-29 (`documentation-update`, seed BCCL de PRODUCTION — recalé contre le
+code : `BcclProdSeedCommand` (`src/Command/BcclProdSeedCommand.php`, CREATE-ONLY, auto-enregistrée,
+options `--email`/`--co-email`/`--password`/`--co-password`) ; `BcclSeedProfile::prod()`
+(`src/Seed/BcclSeedProfile.php`) ; 10 `VenueMatchWindow` + durées de match par catégorie
+(`BcclSeeder::seedWeekendMatchLayout`, `src/Seed/BcclSeeder.php`) ; amorçage adversaires section
+13ter (`BcclSeeder::seedOpponentData`, `BcclOpponentData` — 75/101/15) ✓ ; P4-272 ③ — routes
+`/api/match_constraints` (CRUD) et `/api/match-constraints/coherence` (GET) ✓, `CONTRACT_VERSION` **2.26**). Reste du fichier non
+rebalayé cette passe (portée = ces entrées) ;
+historique des passes complètes : `git log -p --follow` ce fichier — un stamp REMPLACE, il ne
+s'empile pas.
 
 ---
 
@@ -520,16 +524,30 @@ partagées portent une **capacité de 1** (pas de palliatif de capacité 2/3 —
 compte pour UN occupant, `ReservationGroupOccupancy` §SharedTrainingBlock ci-dessus) et les
 réservations socle posées sur ces cases sont EXACTEMENT les membres du bloc correspondant.
 
-Le profil **dev** SEUL porte aussi (section 13bis de `BcclSeeder`,
+Les profils **dev ET prod** portent aussi (section 13bis de `BcclSeeder`,
 `BcclSeedProfile::seedWeekendMatchLayout`, `false` en démo et en charge), la **répartition WE
-réelle des matchs** du club (données fondateur, xlsx importé) : 4
+réelle des matchs** du club (données fondateur, relevées de la base réelle le 2026-09-29) : 10
 `VenueMatchWindow` (fenêtres d'accès match des gymnases), 32 `TeamMatchHabit` — le créneau idéal
 (jour + coup d'envoi + gymnase exacts + tag `week`) de chaque équipe qui reçoit le week-end, dont
 8 paires d'Armand/Debarros qui portent la même heure+gymnase en semaine A et B (l'alternance,
 P4-271 — plus aucune entité de rotation) — zéro `Fixture` (les équipes ne sont pas engagées tant
 que le calendrier FFBB n'est pas importé). Idempotent (purge+recréation des fenêtres,
-find-or-create des créneaux idéaux). Détail complet : [`module-matchs.md`](../../specs/courantes/module-matchs.md)
-§ « Seed BCCL dev — répartition WE des matchs ». Un club de démonstration **prospect** (à partir d'un code
+find-or-create des créneaux idéaux). Les durées de match par catégorie (`SportCategory.matchMinutes`/
+`warmupMinutes`, résolues par `MatchDurationResolver`) sont également recalées sur la base réelle
+(Senior 120 min + 45 d'échauffement, U15 105 min sans échauffement dédié, U21 120 min sans
+échauffement dédié), réappliquées à chaque run. Détail complet :
+[`module-matchs.md`](../../specs/courantes/module-matchs.md).
+
+Les profils **dev ET prod** portent aussi (section 13ter, `BcclSeedProfile::seedOpponentData`,
+`false` en démo et en charge) l'**amorçage du module « adversaires »** depuis
+`BcclOpponentData` (`src/Seed/BcclOpponentData.php`, données FÉDÉRALES PUBLIQUES relevées de la
+base réelle du club) : 75 `OpponentDirectoryEntry` (table GLOBALE, upsert natif idempotent), 101
+`OpponentVenueLink` du club (find-or-create, un lien `MANUAL` déjà posé par un gestionnaire n'est
+jamais écrasé, seul un lien `AUTO` est réactualisé), 15 `OpponentVenueSuggestion` (table GLOBALE,
+upserts natifs, **compte de choix jamais fabriqué** — un prod frais n'a pas encore de choix). But
+de cet amorçage : que le ré-import des matchs en prod retrouve ses localisations sans re-résoudre.
+
+Un club de démonstration **prospect** (à partir d'un code
 FFBB réel) se crée par `app:demo:create` (`src/Command/DemoCreateCommand.php`, options
 `--ffbb`, `--name`, `--animator-email`, `--animator-password`), dont le cœur (déplacement de
 l'animateur, provisioning, populate FFBB + import des équipes engagées, best-effort synchrone)
@@ -570,6 +588,16 @@ l'auto-enregistrement (`services.yaml:96-99`), déclarée seulement dans
 (refuse hors `dev`/`test`) : invisible en prod par construction — **seule** commande démo/seed à
 porter cette restriction, `app:demo:seed` n'en a aucune. Connexion admin requise, comme
 `app:demo:seed`. Appelée par `make play` (`backend/docs/commands.md`).
+
+Le pendant PRODUCTION du club BCCL réel est `app:bccl:seed-prod`
+(`src/Command/BcclProdSeedCommand.php`) — même `BcclSeeder` + `BcclSeedProfile::prod()`,
+**CREATE-ONLY** comme `app:bccl:seed`, mais **AUTO-ENREGISTRÉE** (disponible en prod, à l'inverse
+d'`app:bccl:seed` qui reste dev-only). Les gestionnaires (fondateur + Nicolas Barilleau) arrivent
+100 % par `--email`/`--co-email`/`--password`/`--co-password` (prompt masqué `askHidden` si les
+mots de passe sont absents, min. 12 caractères) — **aucun credential réel dans le dépôt**, comptes
+posés **pré-vérifiés** (le rail `/register` est mort sans e-mail sortant en prod). Connexion admin
+requise (RLS). NR bloquant : `BcclProdSeedCommandTest`. Runbook jour J complet :
+[`docs/ops/deploy.md`](../../docs/ops/deploy.md) §1.8. Détail commande : `backend/docs/commands.md`.
 
 ### Cockpit temporel (overlays période/événement)
 
