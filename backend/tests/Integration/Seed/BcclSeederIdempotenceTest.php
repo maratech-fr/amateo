@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Seed;
 
+use App\Entity\OpponentVenueLink;
+use App\Enum\OpponentVenueLinkSource;
 use App\Repository\SchoolHolidayPeriodRepository;
 use App\Seed\BcclSeeder;
 use App\Seed\BcclSeedProfile;
@@ -1173,21 +1175,26 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         );
         self::assertFalse($nicolas, 'la démo ne crée pas le compte gestionnaire Nicolas');
 
-        foreach (['team_match_habit', 'venue_match_window'] as $table) {
+        foreach (['team_match_habit', 'venue_match_window', 'opponent_venue_link'] as $table) {
             $count = (int) $this->connection->fetchOne(
                 'SELECT COUNT(*) FROM ' . $table . ' WHERE club_id = ?',
                 [$club->getId()],
             );
-            self::assertSame(0, $count, \sprintf('la démo ne pose aucune ligne dans %s (répartition WE dev-only)', $table));
+            self::assertSame(0, $count, \sprintf('la démo ne pose aucune ligne dans %s (répartition WE + adversaires dev/prod-only)', $table));
         }
+
+        // Les tables d'adversaires GLOBALES (hors tenant) restent vides : la démo n'amorce rien.
+        self::assertSame(0, $this->rowsIn('opponent_directory'), 'la démo n\'amorce aucune localisation d\'adversaire partagée');
+        self::assertSame(0, $this->rowsIn('opponent_venue_suggestion'), 'la démo n\'amorce aucune suggestion de gymnase partagée');
     }
 
     /**
-     * Répartition WE des matchs (données fondateur, xlsx du 2026-09-02) — le seed dev pose l'état
-     * terrain du week-end en trois entités du module matchs :
+     * Répartition WE des matchs (données fondateur) — le seed dev pose l'état terrain du week-end
+     * en trois entités du module matchs :
      *
-     *  - 4 fenêtres d'accès match (Matéo sam 13:00→22:30 + dim 09:00→18:30, Armand sam 10:45→21:00,
-     *    Debarros sam 13:00→18:30) ;
+     *  - 10 fenêtres d'accès match (relevées de la base réelle le 2026-09-29, co-construction
+     *    fondateur : Annexe sam, Armand sam, Debarros jeu + sam, JDR ven + sam + dim, Matéo ven +
+     *    sam + dim) ;
      *  - 32 créneaux idéaux de match (un par équipe qui reçoit le WE : jour + coup d'envoi + gymnase
      *    + semaine A/B), l'alternance A/B des 8 paires d'Armand/Debarros portée par le tag `week`
      *    (P4-271 : plus aucune entité de rotation).
@@ -1202,11 +1209,11 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
         $clubId = $club->getId();
 
-        // --- 4 fenêtres d'accès match (gymnase, jour, début, fin). ---
+        // --- 10 fenêtres d'accès match (gymnase, jour, début, fin). ---
         $windowRows = $this->connection->fetchAllAssociative(
             'SELECT v.name AS venue, w.day_of_week AS day, to_char(w.start_time, \'HH24:MI\') AS s, '
             . 'to_char(w.end_time, \'HH24:MI\') AS e FROM venue_match_window w '
-            . 'JOIN venue v ON v.id = w.venue_id WHERE w.club_id = ? ORDER BY v.name, w.day_of_week',
+            . 'JOIN venue v ON v.id = w.venue_id WHERE w.club_id = ? ORDER BY v.name, w.day_of_week, w.start_time',
             [$clubId],
         );
         $windows = array_map(
@@ -1215,13 +1222,19 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         );
         self::assertSame(
             [
+                ['Annexe', 6, '12:00', '22:00'],
                 ['Armand', 6, '10:45', '21:00'],
-                ['Debarros', 6, '13:00', '18:30'],
-                ['Matéo', 6, '13:00', '22:30'],
+                ['Debarros', 4, '20:30', '22:00'],
+                ['Debarros', 6, '12:00', '22:00'],
+                ['JDR', 5, '20:00', '22:00'],
+                ['JDR', 6, '10:30', '22:00'],
+                ['JDR', 7, '09:00', '20:00'],
+                ['Matéo', 5, '20:30', '22:00'],
+                ['Matéo', 6, '11:00', '22:00'],
                 ['Matéo', 7, '09:00', '18:30'],
             ],
             $windows,
-            'les 4 fenêtres d\'accès match sont exactement celles du terrain',
+            'les 10 fenêtres d\'accès match sont exactement celles du terrain (relevé 2026-09-29)',
         );
 
         // --- 32 créneaux idéaux de match (équipe, jour, coup d'envoi, gymnase, semaine A/B). ---
@@ -1259,6 +1272,110 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         // Le seed ne crée aucun match.
         $fixtures = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM fixture WHERE club_id = ?', [$clubId]);
         self::assertSame(0, $fixtures, 'le seed ne crée aucun match (fixture)');
+    }
+
+    /**
+     * Durées de match + échauffement par catégorie (relevé de la base réelle 2026-09-29) — le seed
+     * pose Senior 120/45, U15 105/(défaut), U21 120/(défaut) ; les autres catégories suivent le
+     * défaut de famille (NULL). Ces valeurs sont RÉAPPLIQUÉES à chaque run (pas « only-fill » comme
+     * le siège) : une dérive manuelle est ramenée au réel au re-run. Falsifiable dans les deux sens.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testDevSeedCarriesPerCategoryMatchDurations(): void
+    {
+        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
+        $clubId = $club->getId();
+
+        $durations = fn (): array => $this->connection->fetchAllKeyValue(
+            'SELECT name, match_minutes || \'/\' || COALESCE(warmup_minutes::text, \'-\') '
+            . 'FROM sport_category WHERE club_id = ? AND name IN (\'Senior\', \'U15\', \'U21\') ORDER BY name',
+            [$clubId],
+        );
+        self::assertSame(
+            ['Senior' => '120/45', 'U15' => '105/-', 'U21' => '120/-'],
+            $durations(),
+            'le seed pose les durées de match + échauffement du terrain (Senior 120/45, U15 105/défaut, U21 120/défaut)',
+        );
+
+        // Réappliquées au re-run : une dérive manuelle est ramenée au réel (pas « only-fill »).
+        $this->connection->executeStatement(
+            'UPDATE sport_category SET match_minutes = 999, warmup_minutes = 999 WHERE club_id = ? AND name = \'U15\'',
+            [$clubId],
+        );
+        $this->em->clear();
+        $this->seeder->run($this->em, BcclSeedProfile::dev());
+        self::assertSame(
+            ['Senior' => '120/45', 'U15' => '105/-', 'U21' => '120/-'],
+            $durations(),
+            'un second seed réapplique les durées (la dérive 999/999 sur U15 est ramenée à 105/défaut)',
+        );
+    }
+
+    /**
+     * Amorçage des adversaires (relevé de la base réelle 2026-09-29) — le seed dev pose les trois
+     * tables de référence du module « adversaires » à leurs volumes réels : 75 localisations
+     * partagées (opponent_directory, GLOBALE), 101 appariements du club (opponent_venue_link : 32
+     * MANUAL + 69 AUTO), 15 suggestions partagées (opponent_venue_suggestion, GLOBALE, toutes
+     * MANUAL). Le club ne crée aucun match (le ré-import se fait en prod). Idempotent (upserts
+     * natifs + find-or-create) : un second run ne double rien.
+     *
+     * Deux sens de la règle « source préservée, MANUAL jamais écrasé » : un lien MANUAL modifié à
+     * la main SURVIT à un re-run (le seed ne le touche pas) ; un lien AUTO dérivé est RESTAURÉ au
+     * réel (le seed réapplique ses champs fédéraux).
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testDevSeedCarriesOpponentReferenceData(): void
+    {
+        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
+        $clubId = $club->getId();
+
+        // Volumes (baseline test = 0 sur les tables GLOBALES, cf. amateo_test vierge).
+        self::assertSame(75, $this->rowsIn('opponent_directory'), 'le seed pose 75 localisations partagées');
+        self::assertSame(15, $this->rowsIn('opponent_venue_suggestion'), 'le seed pose 15 suggestions partagées');
+        $linkCount = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM opponent_venue_link WHERE club_id = ?', [$clubId]);
+        self::assertSame(101, $linkCount, 'le seed pose 101 appariements pour le club');
+
+        /** @var array<string, int> $bySource */
+        $bySource = $this->connection->fetchAllKeyValue(
+            'SELECT source, COUNT(*) FROM opponent_venue_link WHERE club_id = ? GROUP BY source ORDER BY source',
+            [$clubId],
+        );
+        self::assertSame(['AUTO' => 69, 'MANUAL' => 32], array_map('intval', $bySource), 'les liens se répartissent 69 AUTO + 32 MANUAL');
+
+        // Toutes les suggestions sont MANUAL, à compte 0 (l'upsert ne fabrique pas de choix).
+        $suggestionSources = $this->connection->fetchFirstColumn('SELECT DISTINCT source FROM opponent_venue_suggestion');
+        self::assertSame(['MANUAL'], array_map('strval', $suggestionSources), 'les suggestions semées sont MANUAL');
+        self::assertSame(0, (int) $this->connection->fetchOne('SELECT COALESCE(MAX(chosen_by_count), 0) FROM opponent_venue_suggestion'), 'le seed ne fabrique aucun compte de choix (« un COMPTE, jamais un QUI »)');
+
+        // Aucun match : le ré-import se fait en prod, hors seed.
+        self::assertSame(0, (int) $this->connection->fetchOne('SELECT COUNT(*) FROM fixture WHERE club_id = ?', [$clubId]), 'le seed ne crée aucun match');
+
+        // (1) Un lien MANUAL modifié à la main SURVIT au re-run.
+        $manual = $this->em->getRepository(OpponentVenueLink::class)->findOneBy(['clubId' => $clubId, 'source' => OpponentVenueLinkSource::MANUAL]);
+        self::assertInstanceOf(OpponentVenueLink::class, $manual, 'un lien MANUAL existe');
+        $manual->setVenueLabel('SENTINELLE MANUAL');
+        $this->em->flush();
+
+        // (2) Un lien AUTO dérivé est RESTAURÉ au réel au re-run.
+        $auto = $this->em->getRepository(OpponentVenueLink::class)->findOneBy(['clubId' => $clubId, 'source' => OpponentVenueLinkSource::AUTO]);
+        self::assertInstanceOf(OpponentVenueLink::class, $auto, 'un lien AUTO existe');
+        $seededAutoLabel = $auto->getVenueLabel();
+        $auto->setVenueLabel('DERIVE AUTO');
+        $this->em->flush();
+
+        $this->seeder->run($this->em, BcclSeedProfile::dev());
+
+        // Idempotent : mêmes volumes après le second run.
+        self::assertSame(75, $this->rowsIn('opponent_directory'), 'un second run ne double pas les localisations');
+        self::assertSame(15, $this->rowsIn('opponent_venue_suggestion'), 'un second run ne double pas les suggestions');
+        self::assertSame(101, (int) $this->connection->fetchOne('SELECT COUNT(*) FROM opponent_venue_link WHERE club_id = ?', [$clubId]), 'un second run ne double pas les appariements');
+
+        $this->em->refresh($manual);
+        self::assertSame('SENTINELLE MANUAL', $manual->getVenueLabel(), 'un lien MANUAL n\'est JAMAIS écrasé par un re-run');
+        $this->em->refresh($auto);
+        self::assertSame($seededAutoLabel, $auto->getVenueLabel(), 'un lien AUTO dérivé est restauré au réel par un re-run');
     }
 
     /**
@@ -1450,7 +1567,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     }
 
     /**
-     * @return array{clubs:int, teams:int, slots:int, reservations:int, schedules:int, slotTemplates:int, clubUsers:int, calendarEntries:int, schedulePlans:int, sharedBlocks:int, sharedBlockTeams:int, teamLinks:int, venuePeriodOverrides:int, teamPeriodOverrides:int, constraintPeriodOverrides:int, teamMatchHabits:int, venueMatchWindows:int}
+     * @return array{clubs:int, teams:int, slots:int, reservations:int, schedules:int, slotTemplates:int, clubUsers:int, calendarEntries:int, schedulePlans:int, sharedBlocks:int, sharedBlockTeams:int, teamLinks:int, venuePeriodOverrides:int, teamPeriodOverrides:int, constraintPeriodOverrides:int, teamMatchHabits:int, venueMatchWindows:int, opponentDirectory:int, opponentVenueLinks:int, opponentVenueSuggestions:int}
      */
     private function counts(): array
     {
@@ -1480,10 +1597,17 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             'teamPeriodOverrides' => $this->rowsIn('team_period_override'),
             'constraintPeriodOverrides' => $this->rowsIn('constraint_period_override'),
             // Répartition WE des matchs (profil dev) : les 32 créneaux idéaux (find-or-create sur
-            // (club, saison, équipe), tag de semaine réappliqué) et les 4 fenêtres d'accès
+            // (club, saison, équipe), tag de semaine réappliqué) et les 10 fenêtres d'accès
             // (purge+recréation) entrent dans la mesure — deux runs = mêmes comptes.
             'teamMatchHabits' => $this->rowsIn('team_match_habit'),
             'venueMatchWindows' => $this->rowsIn('venue_match_window'),
+            // Amorçage des adversaires (profils dev/prod) : les localisations partagées et
+            // suggestions (upserts natifs ON CONFLICT) et les 101 appariements du club
+            // (find-or-create par clé unique, MANUAL préservé) entrent dans la mesure — deux
+            // runs = mêmes comptes (baseline test = 0, cf. amateo_test vierge de ces tables).
+            'opponentDirectory' => $this->rowsIn('opponent_directory'),
+            'opponentVenueLinks' => $this->rowsIn('opponent_venue_link'),
+            'opponentVenueSuggestions' => $this->rowsIn('opponent_venue_suggestion'),
         ];
     }
 

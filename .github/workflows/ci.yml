@@ -336,6 +336,14 @@ jobs:
       - name: LoginFailureCopyTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/LoginFailureCopyTest.php --group phase1'
 
+      # Axe auth & memberships — le seed BCCL de PROD pose des gestionnaires PRÉ-VÉRIFIÉS,
+      # rattachés au bon club, avec des mots de passe pilotés par options (les mots de passe
+      # dev du dépôt n'ouvrent pas les comptes prod), refuse sans credentials, create-only.
+      # Sans ce gate, une régression sur la vérification d'e-mail ou un credential en dur
+      # passerait tous les checks requis de `main`.
+      - name: BcclProdSeedCommandTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Command/BcclProdSeedCommandTest.php --group phase1'
+
       # Coûte 0,2 s et attrape une classe de défaut qui a ATTEINT `main` le 2026-08-21
       # (marqueurs de `git stash pop` commités dans un journal Markdown, PR #682) : rien
       # d'autre ne la voit — ni linter, ni test, ni revue humaine sur un diff de prose.
