@@ -12,7 +12,7 @@ import type { Conflict } from "../api";
 
 /**
  * Les `fixtureId` d'un conflit — les rencontres à surligner. MATCH_MATCH / VENUE_OVERLAP
- * portent `left`/`right` ; MATCH_TRAINING / LEAGUE_WINDOW_VIOLATION / … portent `fixture`
+ * portent `left`/`right` ; MATCH_TRAINING / LEAGUE_WINDOW_VIOLATION / CLUB_RULE_VIOLATION / … portent `fixture`
  * (l'entraînement n'a pas de `fixtureId`). Dédoublonné, ordre stable.
  */
 export function conflictFixtureIds(conflict: Conflict): string[] {

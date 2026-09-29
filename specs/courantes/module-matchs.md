@@ -1,13 +1,20 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-29 (P4-271 — semaine type A/B = tag `week` sur le créneau idéal, rotations
-(`MatchSlotRotation`) supprimées, `CONTRACT_VERSION` **2.25** ; antérieur P4-272 ② — suggestion de
-plages de ligue (`LeagueResolver`, fonction SQL `league_window_suggestions`, `LeagueSuggestions.tsx`)
-et P4-272 ① — copie club de l'enveloppe ligue (`ClubLeagueWindow`, onglet `/matchs/contraintes`) ;
-`MatchPlacementPayloadBuilder::build` et `ConflictRadarLoader::conflicts` lisent la copie club, copie
-vide → un seul diagnostic `league_envelope_empty` ✓ ; pose manuelle hors ligue PERMISE et SIGNALÉE
-(`PlacementPanel.tsx`). Reste du contenu (P4-240 et antérieur) non réaudité cette passe.
-Historique : `git log -p --follow specs/courantes/module-matchs.md`.
+Last verified @ 2026-09-29 (`documentation-update`, P4-272 ③ — règles de match du club :
+`MatchConstraint` (`backend/src/Entity/MatchConstraint.php`, scope CLUB seul saisi) ⇄ bloc `clubRules`
+du payload `/place-matches` (`ClubRuleSchema`, `engine/app/schemas/match_input_schema.py:65-79`),
+`CONTRACT_VERSION` **2.26** (bump depuis la version précédente) ; domaine vidé par une règle HARD → raison `club_rule_no_slot`
+(`match_placement.py:264`) ; règle PREFERRED violée → `W_CLUB_RULE=30`
+(`match_placement.py:55`) ; radar `CLUB_RULE_VIOLATION` sévérité 3, HARD seulement
+(`MatchConflictDetector::clubRuleViolations`, `MatchConflictDetector.php:682`) ; alerte de cohérence lecture seule
+(`ClubRuleCoherenceChecker`, `GET /api/match-constraints/coherence`) ✓. Antérieur P4-271 — semaine
+type A/B = tag `week` sur le créneau idéal, rotations (`MatchSlotRotation`) supprimées ; P4-272 ②
+— suggestion de plages de ligue (`LeagueResolver`, fonction SQL `league_window_suggestions`,
+`LeagueSuggestions.tsx`) et P4-272 ① — copie club de l'enveloppe ligue (`ClubLeagueWindow`, onglet
+`/matchs/contraintes`) ; `MatchPlacementPayloadBuilder::build` et `ConflictRadarLoader::conflicts`
+lisent la copie club, copie vide → un seul diagnostic `league_envelope_empty` ; pose manuelle hors
+ligue PERMISE et SIGNALÉE (`PlacementPanel.tsx`). Reste du contenu (P4-240 et antérieur) non
+réaudité cette passe. Historique : `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
 > d'une PR. Le JOURNAL (qui a livré quoi, quand, sous quel id) vit dans
@@ -68,6 +75,25 @@ vigueur, il n'a rien à comparer.
   aucun HARD ligue au placement (§3), un seul diagnostic INFO `league_envelope_empty` pour tout le
   club (jamais un par équipe) ; une pose manuelle hors fenêtre reste PERMISE et SIGNALÉE (§5), le
   radar continue de porter `LEAGUE_WINDOW_VIOLATION` sur une copie non vide.
+- **`MatchConstraint`** (table `match_constraint`, P4-272 ③) : une RÈGLE DE MATCH propre au club —
+  `scope` `ConstraintScope` (seul `CLUB` est saisi ; `TEAM`/`COACH` réservés à ④/⑤),
+  `scopeTargetId`/`venueId` nuls tant que seul `CLUB` est saisi, `ruleType` `ConstraintRuleType`
+  HARD (honorée par le solveur — le coup d'envoi doit tomber dans la fourchette les jours couverts)
+  ou PREFERRED (pénalité `W_CLUB_RULE=30`, le solveur l'évite sans jamais bloquer), `daysOfWeek`
+  (ISO 1=lundi..7=dimanche, plusieurs par règle) et une fourchette de coup d'envoi
+  `kickoffMin`/`kickoffMax` (HH:MM, chacune nullable — « pas après 21h » = max seul). Le serveur
+  refuse une règle sans AUCUNE des deux bornes (`MatchConstraintStateProcessor`) ; aucune unicité en
+  base (plusieurs règles peuvent se recouvrir, ⑤ en aura besoin). CRUD gestionnaire (`GET`/`POST`/
+  `PUT`/`DELETE /api/match_constraints`), section Club de l'écran Contraintes (§8bis). Le moteur les
+  reçoit VERBATIM dans le bloc top-level `clubRules` du payload `/place-matches`
+  (`CONTRACT_VERSION` 2.26) — un domaine vidé par les seules règles HARD ressort avec la raison
+  `club_rule_no_slot` (§3) ; les amicaux (`competitionId` nul) en sont exemptés structurellement,
+  comme l'enveloppe ligue. Une pose MANUELLE hors d'une règle HARD reste PERMISE — le radar la
+  SIGNALE (`CLUB_RULE_VIOLATION`, §2), il ne la bloque pas. L'**alerte de cohérence** (lecture
+  seule, rien stocké) croise chaque règle CLUB avec les créneaux idéaux (`TeamMatchHabit`) qu'elle
+  heurte (`ClubRuleCoherenceChecker`, `GET /api/match-constraints/coherence`), affichée sous la
+  règle en section Club (§8bis) ET sous le créneau idéal concerné en Semaine type (§10) — ne bloque
+  jamais rien, le gestionnaire décide.
 - **`TeamLink`** (couple symétrique `teamAId < teamBId`, cap `MAX_TEAM_LINKS = 50`) : côté MATCHS
   `TeamLinkType` `NOT_SIMULTANEOUS`/`BACK_TO_BACK` — rail SOFT **placement seul** ; le radar de
   conflits ne charge jamais `TeamLink` (décision fermée, `etat-des-lieux.md` §2 : « ça fait plus de
@@ -97,8 +123,10 @@ vigueur, il n'a rien à comparer.
 
 Recopie en N+1 (`SeasonTransitionService`) : habitudes (créneau idéal + tag `week` remap
 équipe+gymnase), passerelles, fenêtres d'accès, la copie club de l'enveloppe ligue
-(`ClubLeagueWindow`, verbatim depuis la saison source) ; les indisponibilités et les échéances
-**ne sont jamais recopiées**.
+(`ClubLeagueWindow`, verbatim depuis la saison source), les règles de match CLUB
+(`MatchConstraint`, verbatim — une règle CLUB ne porte ni gymnase ni équipe à remapper,
+`scopeTargetId`/`venueId` restent nuls ; les scopes TEAM/COACH ④/⑤ ne sont pas encore émis donc pas
+encore recopiés) ; les indisponibilités et les échéances **ne sont jamais recopiées**.
 
 ### Tables GLOBALES fédérales (hors tenant, hors RLS)
 
@@ -435,8 +463,11 @@ toute rencontre `matchDate` strictement passée de **toutes** les familles sauf
 plus aucun conflit.
 
 **Échelle de sévérité (1..7, émise par le serveur)** : 1 `VENUE_OVERLAP` · 2
-`LEAGUE_WINDOW_VIOLATION` (équipe mappée seulement) · 3 clash dur `MATCH_MATCH`/`MATCH_TRAINING` ·
-4 `VENUE_UNAVAILABLE` + `ACCESS_WINDOW_LOST` (« Hors accès match » — champ additif `windows`, les
+`LEAGUE_WINDOW_VIOLATION` (équipe mappée seulement) · 3 clash dur `MATCH_MATCH`/`MATCH_TRAINING` +
+`CLUB_RULE_VIOLATION` (P4-272 ③ — un domicile placé dont le coup d'envoi viole une règle CLUB
+**HARD** couvrant son jour ; une règle PREFERRED ne fait jamais de violation, seulement un nudge
+côté solveur — champ additif `rules`, les règles violées ; amicaux exemptés comme l'enveloppe
+ligue) · 4 `VENUE_UNAVAILABLE` + `ACCESS_WINDOW_LOST` (« Hors accès match » — champ additif `windows`, les
 accès du gymnase de la fixture triés jour du match d'abord, hors identité de l'empreinte
 `TYPE:fixtureId` ; l'écran nomme le gymnase et ses fenêtres, « aucun accès match ce jour-là » sans
 aucune) · 5 clash adouci +
@@ -478,14 +509,18 @@ Présentation pure — aucune formule de gravité redérivée.
 ## 3. Solveur de placement (`POST /api/fixtures/place` → engine `/place-matches`)
 
 Second problème solveur ([ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md)),
-même `CONTRACT_VERSION` **2.25** que `/generate`/`/validate-assignments` (un seul contrat pour les
+même `CONTRACT_VERSION` **2.26** que `/generate`/`/validate-assignments` (un seul contrat pour les
 trois endpoints — voir §6 `CLAUDE.md`). **Rail
 SYNCHRONE** (`PlaceMatchesController` — management + saison écrivable + socle pointé), anti-double-clic
 PAR CLUB `MatchPlacementLock` (Redis dédié — ne protège pas deux clubs l'un de l'autre : ils partagent le
 sémaphore GLOBAL `max_concurrent_placements=1` de l'engine, détail ADR-0003 §2). Best-effort à poids
 dominant : `10 000 × Σ placés + SOFT` — **aucune contrainte HARD n'est jamais violée en sortie** ; un
 match sans candidat licite sort NOMMÉ (`no_access_window` · `no_league_intersection` ·
-`venue_unavailable` · `venue_full` · `not_selected`). Les deux dernières raisons se distinguent post-solve
+`club_rule_no_slot` · `venue_unavailable` · `venue_full` · `not_selected`). `club_rule_no_slot`
+(P4-272 ③) : un créneau était licite (accès + ligue) mais TOUTES les règles CLUB HARD couvrant le
+jour l'ont refusé (sémantique ET — chaque règle HARD du jour doit accepter le coup d'envoi) ; une
+règle PREFERRED ne vide jamais un domaine, elle pénalise seulement le candidat retenu
+(`W_CLUB_RULE=30`, §3 SOFT ci-dessous). Les deux dernières raisons se distinguent post-solve
 sur l'occupation finale : `venue_full` = plus aucun créneau licite libre à sa date (gymnase saturé) ;
 `not_selected` = un créneau licite restait libre mais le solve ne l'a pas retenu dans son budget —
 « relancez le placement » (ADR-0003 §3).
@@ -514,13 +549,16 @@ derrière le bouton global désactivé (§5) ; 1 clic reste 1 crédit (`CreditBu
 `kickoff+matchMinutes ≤ end`), indisponibilités gymnase, no-overlap `(gymnase, date)` sur la fenêtre
 MATCH, fenêtre ligue résolue depuis la COPIE club (`ClubLeagueWindow`, §1) quand l'enveloppe est
 résolue pour l'équipe — équipe non mappée = diagnostic INFO `league_envelope_unresolved` seul ;
-copie VIDE = aucun HARD ligue pour tout le club, diagnostic INFO `league_envelope_empty` unique.
+copie VIDE = aucun HARD ligue pour tout le club, diagnostic INFO `league_envelope_empty` unique ;
+règles de match CLUB HARD (`MatchConstraint`, §1, bloc top-level `clubRules` — {ruleType,
+daysOfWeek, kickoffMin, kickoffMax} — chaque règle HARD couvrant le jour DOIT accepter le coup
+d'envoi, sémantique ET ; un domaine vidé par elles seules sort `club_rule_no_slot` ci-dessus).
 Durées par équipe (`MatchDurationResolver`) portées par le contrat ; absentes côté engine ⇒ défauts
 Pydantic 105/30.
 
 **Personne = coach OU joueuse active (P4-240 ③, décision A)** : chaque équipe du contrat porte
-`teams[].players` (ids `CoachPlayerMembership` actifs, additif, `CONTRACT_VERSION` inchangée
-**2.25**) en plus de `teams[].coaches` — le backend exclut déjà toute personne qui coache AUSSI
+`teams[].players` (ids `CoachPlayerMembership` actifs, additif — n'a pas nécessité de bump de
+`CONTRACT_VERSION` à son introduction) en plus de `teams[].coaches` — le backend exclut déjà toute personne qui coache AUSSI
 cette équipe (le rôle coach gagne, parité `MatchConflictDetector`, gardé par le NR bloquant
 `PlayersPayloadParityTest`) ; le solveur applique la même exclusion en défense
 (`_team_players`). Une joueuse pèse comme un coach MAIN (`W_COACH_MAIN`, SOFT) — les
@@ -541,8 +579,11 @@ fenêtre salle `[kickoff, kickoff+matchMinutes]` (lot M + décision B).
 **SOFT (golden-épinglés)** : conflit personne (coach MAIN ou joueuse active) −60 · coach ASSISTANT
 −10 · passerelle `NOT_SIMULTANEOUS` violée −40 (⚠ **asymétrie délibérée** : le radar §2 ne signale
 jamais cette famille, le solveur GARDE cette préférence souple — sens sûr, une pénalité SOFT ne
-bloque jamais rien, à ne pas « aligner » en la retirant) · habitude heure +15/gymnase +5 · fenêtre
-habituelle protégée −25 (`W_PROTECT_HABIT=25`, `match_placement.py:53`) · `BACK_TO_BACK` enchaîné +15 ·
+bloque jamais rien, à ne pas « aligner » en la retirant) · règle de match CLUB PREFERRED violée −30
+(`W_CLUB_RULE=30`, P4-272 ③, `match_placement.py:55` — arbitrage fondateur : plus qu'une habitude
++15+5, moins qu'une passerelle `NOT_SIMULTANEOUS` −40 ou qu'un conflit coach −60 ; une règle HARD
+n'entre jamais dans l'objectif, elle élague le domaine, §3 ci-dessus) · habitude heure +15/gymnase +5 · fenêtre
+habituelle protégée −25 (`W_PROTECT_HABIT=25`, `match_placement.py:58`) · `BACK_TO_BACK` enchaîné +15 ·
 stabilité re-solve +8 · compactage −1/15 min de trou. **La protection ne s'applique JAMAIS au
 créneau idéal PROPRE de l'équipe candidate** (`is_own_ideal`, P4-271) — sans cette exception, le
 bonus +15+5 d'une équipe perdrait toujours face à la protection −25 dès qu'une AUTRE équipe déclare
@@ -1132,10 +1173,10 @@ décision fermée (une seule maison d'appariement, jamais une modale sur une mod
 L'écran UNIQUE des contraintes de match (P4-272 ①, demande fondateur « un endroit pour éditer les
 contraintes de match, ligue et personnelles, prises en compte pour le placement automatique »), en
 accordéon (`AccordionSection`, ancré `?section=<ligue|club|equipes|coachs>`, patron
-`ConfigurationPage`). Seule la section **Ligue** est livrée ; **Club**, **Équipes** et **Coachs**
-sont des placeholders « Bientôt » qui pointent, en attendant, vers les écrans qui portent déjà ces
-réglages (Configuration pour l'accès gymnase/la durée des matchs, Semaine type pour la préférence
-de gymnase/l'habitude d'équipe) — voir P4-272 ②③④⑤ (`specs/evolution/roadmap.md`) pour la suite.
+`ConfigurationPage`). Sections **Ligue** et **Club** livrées ; **Équipes** et **Coachs** restent des
+placeholders « Bientôt » qui pointent, en attendant, vers les écrans qui portent déjà ces réglages
+(Configuration pour l'accès gymnase/la durée des matchs, Semaine type pour la préférence de
+gymnase/l'habitude d'équipe) — voir P4-272 ④⑤ (`specs/evolution/roadmap.md`) pour la suite.
 
 **Section Ligue** : le CRUD gestionnaire de la copie club de l'enveloppe fédérale
 (`ClubLeagueWindow`, §1) — un tableau éditable (catégorie, niveau, genre, jour, de/à),
@@ -1166,6 +1207,24 @@ suggestions[/apply]`, `ManagementAccessGuard`). Le calcul cross-tenant vit dans 
 `SECURITY DEFINER` `league_window_suggestions` (`docs/security/rls.md` § SECURITY DEFINER) —
 gardée par le NR bloquant `Security/LeagueWindowSuggestionShareTest`
 (`docs/testing/blocking-tests.md`).
+
+**Section Club (P4-272 ③)** : le CRUD gestionnaire des règles de match du club
+(`MatchConstraint`, §1, scope CLUB seulement — TEAM/COACH ④/⑤ à venir). Chaque règle : un ou
+plusieurs jours (`DayToggles`, bascule multi-sélection), un type — **Obligatoire** (HARD, honorée
+par le placement) ou **Préférée** (PREFERRED, une préférence, `W_CLUB_RULE=30`, §3) — et une
+fourchette de coup d'envoi « pas avant »/« pas après » (chaque borne facultative, au moins une
+exigée par le serveur). Une ligne pointillée en bas ajoute une règle (POST) ; chaque règle existante
+s'édite en place (PUT, bouton Enregistrer actif seulement si modifiée et complète) et se supprime
+avec confirmation (`ConfirmDialog`, destructive). Liste vide → phrase neutre (« le placement ne
+s'impose que les fenêtres de la ligue »), jamais un tableau vide muet.
+
+Sous chaque règle, l'**alerte de cohérence** (`GET /api/match-constraints/coherence`,
+`ClubRuleCoherenceChecker`, §1) affiche, en LECTURE SEULE, les créneaux idéaux d'équipe qu'elle
+heurte (« Cette règle heurte le créneau idéal des <équipe> (semaine A/B) : <jour> <heure> ») — la
+même donnée est affichée à l'ENVERS sous chaque créneau idéal concerné dans l'écran Semaine type
+(§10, `IdealSlotsEditor`) : deux vues du même croisement serveur, jamais redérivées côté client. Ne
+bloque ni n'empêche aucune écriture — le gestionnaire tranche (décision fondateur 2026-09-29 :
+signaler, ne jamais bloquer).
 
 ## 9. Écran Adversaires (`/matchs/adversaires`, au grain GYMNASE)
 
@@ -1276,6 +1335,11 @@ idéal du jour) et un signal « même week-end » (deux équipes dont le crénea
 physiquement — même gymnase+jour+heure — reçues à domicile le même week-end, contredit
 l'alternance A/B) restent des SIGNAUX, jamais un blocage.
 
+Sous un créneau idéal, l'**alerte de cohérence** (P4-272 ③, `GET /api/match-constraints/
+coherence`, §1/§8bis) affiche les règles de match du CLUB qu'il heurte (« Heurte la règle du club «
+<libellé> » ») — la même donnée serveur que la section Club de l'écran Contraintes, vue depuis le
+créneau plutôt que depuis la règle ; LECTURE SEULE, ne bloque rien.
+
 ## 11. Le périmètre engagé (`TeamEngagementGuard`)
 
 Valider le planning valide aussi un périmètre : les équipes qui font de la compétition. **Engagée**
@@ -1313,7 +1377,11 @@ journalisé). Progression Mercure : `TravelProgressPublisherTest`. Logo fédéra
 `OpponentLogoApiTest` (401 anonyme, 404, MIME, Cache-Control, code invalide). Contrats cross-stack
 (groupe `contract`) : `MatchPlacementContractSchemaTest`,
 `ValidateAssignmentsContractSchemaTest`, `HabitPayloadParityTest`,
-`MatchVisitDeltaParityTest`. Tables partagées : un `*ShareTest` par table (`OpponentDirectoryShareTest`
+`MatchVisitDeltaParityTest`, `ClubRulePayloadParityTest` (P4-272 ③, NR bloquant — `MatchConstraint`
+scope CLUB ⇄ bloc `clubRules`, falsifié dans les deux sens, RLS). Alerte de cohérence règle ⇄
+créneau idéal : `Unit/Service/ClubRuleCoherenceCheckerTest`. Sémantique solveur `club_rule_no_slot`/
+`W_CLUB_RULE` : `engine/tests/semantic/test_match_placement_semantics.py` + feature Behat
+`backend/features/placement-des-matchs.feature` (scénarios règle CLUB HARD/PREFERRED). Tables partagées : un `*ShareTest` par table (`OpponentDirectoryShareTest`
 — whitelist `logo_id` compris —, `OpponentVenueSuggestionShareTest`, `EntryDeadlineShareTest`).
 Périmètre engagé : `EngagedTeamGuardTest`,
 `DeletionImpactParityTest`. Détecteur/radar : `MatchConflictDetectorTest`,

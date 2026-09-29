@@ -19,6 +19,7 @@ MAX_PLAYERS_PER_TEAM = 60  # a shared-player roster stays small; generous cap (m
 MAX_WINDOWS_PER_VENUE = 50
 MAX_LEAGUE_WINDOWS_PER_TEAM = 50  # mirror of MAX_WINDOWS_PER_VENUE — a team's league envelope
 MAX_UNAVAILABILITIES_PER_VENUE = 100
+MAX_CLUB_RULES = 200  # a club's hand-entered match rules stay small; generous cap
 MAX_TIMEOUT_SECONDS = 60
 
 
@@ -59,6 +60,24 @@ class LeagueKickoffWindowSchema(SerializableModel):
     day_of_week: int = Field(alias="dayOfWeek", ge=1, le=7)
     kickoff_min: time = Field(alias="kickoffMin")
     kickoff_max: time = Field(alias="kickoffMax")
+
+
+class ClubRuleSchema(SerializableModel):
+    """A club-wide MATCH rule (P4-272 ③): a kickoff constraint over some ISO days.
+
+    ``ruleType`` HARD (the solver HONOURS it — the kickoff must fall in the range on
+    every day it covers) | PREFERRED (a penalty W_CLUB_RULE — the solver avoids
+    violating it, never blocks). ``kickoffMin``/``kickoffMax`` each bound the kickoff
+    and are each optional: « pas après 21h » = max only. A missing bound is OPEN on
+    that side. The backend refuses a rule with neither bound; a defensive empty rule
+    here is simply a no-op (accepts everything). Friendlies are exempt structurally
+    (never handed to the solver).
+    """
+
+    rule_type: str = Field(alias="ruleType")  # HARD | PREFERRED
+    days_of_week: list[int] = Field(default_factory=list, alias="daysOfWeek", max_length=7)
+    kickoff_min: time | None = Field(default=None, alias="kickoffMin")
+    kickoff_max: time | None = Field(default=None, alias="kickoffMax")
 
 
 class TeamHabitSchema(SerializableModel):
@@ -168,7 +187,7 @@ class MatchPlacementInputSchema(SerializableModel):
     # courant pour qu'aucun lecteur ne le prenne pour une version concurrente.
     # L'autorité reste `engine/CONTRACT_VERSION`, comparée au MAJOR à l'entrée ;
     # gardé par test_schema_version_defaults_match_contract_version.
-    version: str = "2.25"
+    version: str = "2.26"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     solver_seed: int = Field(default=42, alias="solverSeed")
@@ -182,3 +201,7 @@ class MatchPlacementInputSchema(SerializableModel):
     training_occupancies: list[TrainingOccupancySchema] = Field(
         default_factory=list, alias="trainingOccupancies", max_length=MAX_TRAINING_OCCUPANCIES
     )
+    # P4-272 ③ — the club's MATCH rules (HARD honoured / PREFERRED penalised),
+    # applied to every non-friendly TO_PLACE match. OMITTED ⇒ [] (an old payload
+    # keeps the previous behaviour).
+    club_rules: list[ClubRuleSchema] = Field(default_factory=list, alias="clubRules", max_length=MAX_CLUB_RULES)

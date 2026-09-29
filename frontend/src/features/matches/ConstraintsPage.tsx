@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, Plus, Trash2 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
@@ -13,9 +13,20 @@ import { FullPageSpinner } from "@/shared/components/ui/spinner";
 import { DAYS, dayLabelLong } from "@/shared/lib/days";
 import { readFailed } from "@/shared/lib/readState";
 
-import type { ClubLeagueWindow, ClubLeagueWindowInput, LeagueWindowLevel } from "./api";
+import type { ClubLeagueWindow, ClubLeagueWindowInput, LeagueWindowLevel, MatchConstraint, MatchConstraintInput, MatchRuleType } from "./api";
+import { frClock } from "./lib/clubRuleLabel";
 import { LeagueSuggestions } from "./LeagueSuggestions";
-import { useClubLeagueWindows, useCreateClubLeagueWindow, useDeleteClubLeagueWindow, useUpdateClubLeagueWindow } from "./queries";
+import {
+  useClubLeagueWindows,
+  useCreateClubLeagueWindow,
+  useCreateMatchConstraint,
+  useDeleteClubLeagueWindow,
+  useDeleteMatchConstraint,
+  useMatchConstraintCoherence,
+  useMatchConstraints,
+  useUpdateClubLeagueWindow,
+  useUpdateMatchConstraint,
+} from "./queries";
 
 /**
  * P4-272 ① — l'écran UNIQUE des contraintes de match, en accordéon (patron
@@ -61,13 +72,7 @@ export function ConstraintsPage() {
       </AccordionSection>
 
       <AccordionSection {...sectionProps("club")} title="Club">
-        <ComingSoon>
-          Les contraintes de club arriveront ici. En attendant, l'accès match des gymnases et la durée des matchs se règlent dans la{" "}
-          <Link className="text-accent underline" to="/matchs/configuration?section=reglages">
-            Configuration
-          </Link>
-          .
-        </ComingSoon>
+        <ClubSection />
       </AccordionSection>
 
       <AccordionSection {...sectionProps("equipes")} title="Équipes">
@@ -269,6 +274,216 @@ function AddLeagueWindowRow() {
     <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-border px-3 py-2">
       <DraftFields draft={draft} set={set} />
       <Button size="sm" className="ml-auto" disabled={!isComplete(draft) || create.isPending} onClick={submit}>
+        <Plus className="size-3.5" />
+        Ajouter
+      </Button>
+    </div>
+  );
+}
+
+// ── Section Club (P4-272 ③) ──────────────────────────────────────────────────
+
+const RULE_TYPES: { value: MatchRuleType; label: string }[] = [
+  { value: "HARD", label: "Obligatoire" },
+  { value: "PREFERRED", label: "Préférée" },
+];
+
+interface ClubRuleDraft {
+  ruleType: MatchRuleType;
+  daysOfWeek: number[];
+  /** "" = borne ouverte de ce côté. */
+  kickoffMin: string;
+  kickoffMax: string;
+}
+
+const emptyRuleDraft = (rule: MatchConstraint | null): ClubRuleDraft => ({
+  ruleType: rule?.ruleType ?? "HARD",
+  daysOfWeek: rule?.daysOfWeek ?? [6],
+  kickoffMin: rule?.kickoffMin ?? "",
+  kickoffMax: rule?.kickoffMax ?? "",
+});
+
+/** Au moins un jour ET au moins une borne (le serveur refuse sinon). min ≤ max reste au serveur. */
+const isRuleComplete = (draft: ClubRuleDraft): boolean => draft.daysOfWeek.length > 0 && ("" !== draft.kickoffMin || "" !== draft.kickoffMax);
+
+const toRuleInput = (draft: ClubRuleDraft): MatchConstraintInput => ({
+  ruleType: draft.ruleType,
+  daysOfWeek: draft.daysOfWeek,
+  kickoffMin: "" !== draft.kickoffMin ? draft.kickoffMin : null,
+  kickoffMax: "" !== draft.kickoffMax ? draft.kickoffMax : null,
+});
+
+const sameDays = (a: number[], b: number[]): boolean => a.length === b.length && a.every((d) => b.includes(d));
+
+/**
+ * La section Club : le CRUD des règles de match du club (« pas après 21h », …). Chaque
+ * règle porte un ou plusieurs JOURS, une fourchette de coup d'envoi (chaque borne
+ * facultative) et un type Obligatoire (HARD, honorée par le solveur) / Préférée
+ * (PREFERRED, une préférence). Sous une règle, l'ALERTE DE COHÉRENCE — les créneaux
+ * idéaux qu'elle heurte — est CALCULÉE côté serveur (`/coherence`), l'écran l'affiche.
+ */
+function ClubSection() {
+  const rules = useMatchConstraints();
+  const coherence = useMatchConstraintCoherence();
+
+  if (readFailed(rules)) {
+    return <LoadErrorHint onRetry={() => void rules.refetch()} />;
+  }
+  if (undefined === rules.data) {
+    return <FullPageSpinner />;
+  }
+
+  // byRule → Map<ruleId, habits>. L'alerte est calculée serveur ; on la POSE sous la règle.
+  const alertsByRule = new Map((coherence.data?.byRule ?? []).map((r) => [r.ruleId, r.habits]));
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground">
+        Vos règles de match — par exemple « pas de match après 21h le samedi ». Une règle <strong>obligatoire</strong> est respectée par le
+        placement ; une règle <strong>préférée</strong> est un souhait que le placement suit s'il le peut. Une pose manuelle hors d'une règle
+        reste possible — le radar la signale.
+      </p>
+
+      {0 === rules.data.length ? (
+        <p className="text-sm text-muted-foreground">Aucune règle de club — le placement ne s'impose que les fenêtres de la ligue.</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {rules.data.map((rule) => (
+            <ClubRuleRow key={rule.id} rule={rule} alerts={alertsByRule.get(rule.id) ?? []} />
+          ))}
+        </div>
+      )}
+
+      <AddClubRuleRow />
+    </div>
+  );
+}
+
+/** Les 7 jours en bascule (aria-pressed) — le multi-jours d'une règle. */
+function DayToggles({ value, onChange, label }: { value: number[]; onChange: (days: number[]) => void; label: string }) {
+  const toggle = (n: number): void => onChange(value.includes(n) ? value.filter((d) => d !== n) : [...value, n].sort((a, b) => a - b));
+  return (
+    <div className="flex flex-wrap gap-1" role="group" aria-label={label}>
+      {DAYS.map((d) => {
+        const on = value.includes(d.n);
+        return (
+          <Button
+            key={d.n}
+            type="button"
+            size="sm"
+            variant={on ? "default" : "outline"}
+            aria-pressed={on}
+            aria-label={dayLabelLong(d.n)}
+            onClick={() => toggle(d.n)}
+          >
+            {d.label}
+          </Button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Les champs d'une règle (jours · type · de/à) — partagés par la ligne éditable et l'ajout. */
+function RuleFields({ draft, set, idLabel }: { draft: ClubRuleDraft; set: (patch: Partial<ClubRuleDraft>) => void; idLabel: string }) {
+  return (
+    <>
+      <DayToggles label={`Jours (${idLabel})`} value={draft.daysOfWeek} onChange={(daysOfWeek) => set({ daysOfWeek })} />
+      <Select aria-label="Type" value={draft.ruleType} onChange={(e) => set({ ruleType: e.target.value as MatchRuleType })}>
+        {RULE_TYPES.map((t) => (
+          <option key={t.value} value={t.value}>
+            {t.label}
+          </option>
+        ))}
+      </Select>
+      <label className="flex items-center gap-1 text-sm text-muted-foreground">
+        Pas avant
+        <Input aria-label="Pas avant (heure de début)" type="time" value={draft.kickoffMin} onChange={(e) => set({ kickoffMin: e.target.value })} />
+      </label>
+      <label className="flex items-center gap-1 text-sm text-muted-foreground">
+        Pas après
+        <Input aria-label="Pas après (heure de fin)" type="time" value={draft.kickoffMax} onChange={(e) => set({ kickoffMax: e.target.value })} />
+      </label>
+    </>
+  );
+}
+
+/** L'alerte de cohérence sous une règle : les créneaux idéaux qu'elle heurte (calculée serveur). */
+function ClubRuleAlerts({ alerts }: { alerts: { teamId: string; teamName: string; week: string; dayOfWeek: number; kickoff: string }[] }) {
+  if (0 === alerts.length) {
+    return null;
+  }
+  return (
+    <div className="mt-1 flex w-full flex-col gap-1 rounded-md border border-warning/40 bg-surface-warning px-3 py-2 text-sm text-foreground" role="status">
+      {alerts.map((h) => (
+        <p key={`${h.teamId}-${h.dayOfWeek}-${h.kickoff}`} className="flex items-start gap-1.5">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          <span>
+            Cette règle heurte le créneau idéal des {h.teamName}
+            {"ALL" !== h.week ? ` (semaine ${h.week})` : ""} : {dayLabelLong(h.dayOfWeek)} {frClock(h.kickoff)}.
+          </span>
+        </p>
+      ))}
+    </div>
+  );
+}
+
+/** Une règle éditable (PUT au « Enregistrer », DELETE au « Supprimer »). */
+function ClubRuleRow({ rule, alerts }: { rule: MatchConstraint; alerts: { teamId: string; teamName: string; week: string; dayOfWeek: number; kickoff: string }[] }) {
+  const [draft, setDraft] = useState<ClubRuleDraft>(() => emptyRuleDraft(rule));
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const update = useUpdateMatchConstraint();
+  const remove = useDeleteMatchConstraint();
+  const set = (patch: Partial<ClubRuleDraft>): void => setDraft((d) => ({ ...d, ...patch }));
+
+  const dirty =
+    draft.ruleType !== rule.ruleType ||
+    !sameDays(draft.daysOfWeek, rule.daysOfWeek) ||
+    draft.kickoffMin !== (rule.kickoffMin ?? "") ||
+    draft.kickoffMax !== (rule.kickoffMax ?? "");
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
+      <RuleFields draft={draft} set={set} idLabel="règle" />
+      <div className="ml-auto flex items-center gap-2">
+        <Button size="sm" disabled={!dirty || !isRuleComplete(draft) || update.isPending} onClick={() => update.mutate({ id: rule.id, input: toRuleInput(draft) })}>
+          Enregistrer
+        </Button>
+        <Button variant="outline" size="sm" aria-label="Supprimer" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
+          <Trash2 className="size-3.5" />
+        </Button>
+      </div>
+      <ClubRuleAlerts alerts={alerts} />
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Supprimer cette règle de match ?"
+        description="Le placement et le radar cesseront d'appliquer cette règle."
+        confirmLabel="Supprimer"
+        destructive
+        onConfirm={() => {
+          setConfirmDelete(false);
+          remove.mutate(rule.id);
+        }}
+        onCancel={() => setConfirmDelete(false)}
+      />
+    </div>
+  );
+}
+
+/** La ligne d'ajout d'une nouvelle règle (POST). */
+function AddClubRuleRow() {
+  const [draft, setDraft] = useState<ClubRuleDraft>(() => emptyRuleDraft(null));
+  const create = useCreateMatchConstraint();
+  const set = (patch: Partial<ClubRuleDraft>): void => setDraft((d) => ({ ...d, ...patch }));
+
+  const submit = (): void => {
+    create.mutate(toRuleInput(draft), { onSuccess: () => setDraft(emptyRuleDraft(null)) });
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-border px-3 py-2">
+      <RuleFields draft={draft} set={set} idLabel="nouvelle règle" />
+      <Button size="sm" className="ml-auto" disabled={!isRuleComplete(draft) || create.isPending} onClick={submit}>
         <Plus className="size-3.5" />
         Ajouter
       </Button>

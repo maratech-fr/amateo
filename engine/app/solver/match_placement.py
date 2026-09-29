@@ -9,6 +9,7 @@ from typing import Any
 from ortools.sat.python import cp_model
 
 from app.schemas.match_input_schema import (
+    ClubRuleSchema,
     MatchPlacementInputSchema,
     MatchSchema,
     MatchTeamSchema,
@@ -48,6 +49,10 @@ DEFAULT_WARMUP_MIN = 30
 W_PLACE = 10_000
 W_COACH_MAIN = 60
 W_LINK_NOT_SIMULTANEOUS = 40
+# P4-272 ③ — a PREFERRED club rule violated by a candidate (validé fondateur : > une
+# habitude 15+5, < NOT_SIMULTANEOUS 40 < coach 60). A HARD club rule never reaches
+# the objective: it prunes the domain (see _candidate_kickoffs), it is not a penalty.
+W_CLUB_RULE = 30
 W_HABIT_TIME = 15  # on top of the implicit day match (constant per candidate set)
 W_HABIT_VENUE = 5
 W_PROTECT_HABIT = 25
@@ -65,6 +70,11 @@ REASON_MESSAGES = {
     # le solveur ne l'a pas retenu dans le temps imparti — la reclassification post-solve tranche.
     "venue_full": "Tous les créneaux licites sont déjà occupés par d'autres matchs.",
     "not_selected": "Le solveur n'a pas retenu de créneau dans le temps imparti — relancez le placement.",
+    # P4-272 ③ — a HARD club rule empties the domain: a legal (access ∩ league) slot
+    # existed but every one is refused by a club rule. The manager must relax the rule
+    # or place the match by hand (manual placement outside a HARD rule stays PERMITTED,
+    # only the radar signals it).
+    "club_rule_no_slot": "Aucun créneau compatible avec les règles du club.",
 }
 
 # ── Build budget (ADR-0001: name the impossible, never hang) ──────────────────
@@ -148,6 +158,15 @@ def _iso_day(value: date) -> int:
     return value.isoweekday()
 
 
+def _kick_in_club_rule(kick: int, rule: ClubRuleSchema) -> bool:
+    """Does a kickoff (minutes) satisfy a club rule's range? A missing bound is OPEN
+    on that side (« pas après 21h » = kickoff_max only). Closed interval, matching the
+    league window (both bounds inclusive)."""
+    below_min = rule.kickoff_min is not None and kick < _minutes(rule.kickoff_min)
+    above_max = rule.kickoff_max is not None and kick > _minutes(rule.kickoff_max)
+    return not (below_min or above_max)
+
+
 def _durations(team: MatchTeamSchema | None) -> tuple[int, int]:
     """(matchMinutes, warmupMinutes) of a team — the documented defaults when the
     team is absent or the fields were omitted (Pydantic already fills 105 / 30)."""
@@ -194,10 +213,14 @@ def _candidate_kickoffs(
     match_min, _ = _durations(team)
     league = [w for w in (team.league_windows if team else []) if w.day_of_week == day]
     league_mapped = team is not None and len(team.league_windows) > 0
+    # P4-272 ③ — HARD club rules covering this ISO day. Every one must accept the
+    # kickoff (AND semantics); a domain emptied by them alone is `club_rule_no_slot`.
+    hard_rules = [r for r in input_data.club_rules if r.rule_type == "HARD" and day in r.days_of_week]
 
     domain: dict[str, list[int]] = {}
     saw_open_venue = False
     saw_access_candidate = False
+    saw_league_candidate = False
     for venue in input_data.venues:
         if any(u.start_date <= match.match_date <= u.end_date for u in venue.unavailabilities):
             continue
@@ -216,8 +239,16 @@ def _candidate_kickoffs(
                 saw_access_candidate = True
                 # League HARD only when the team maps: the kickoff must fall in
                 # SOME league window of that day.
-                if not league_mapped or any(_minutes(w.kickoff_min) <= kick <= _minutes(w.kickoff_max) for w in league):
-                    kicks.append(kick)
+                league_ok = not league_mapped or any(
+                    _minutes(w.kickoff_min) <= kick <= _minutes(w.kickoff_max) for w in league
+                )
+                if league_ok:
+                    saw_league_candidate = True
+                    # Club HARD rules (P4-272 ③): every rule covering this day must
+                    # accept the kickoff. A club rule that empties an otherwise-legal
+                    # domain is told apart below (`club_rule_no_slot`).
+                    if all(_kick_in_club_rule(kick, rule) for rule in hard_rules):
+                        kicks.append(kick)
                 kick += STEP_MIN
         if kicks:
             domain[venue.id] = kicks
@@ -228,7 +259,9 @@ def _candidate_kickoffs(
         return {}, "venue_unavailable"
     if not saw_access_candidate:
         return {}, "no_access_window"
-    return {}, "no_league_intersection"
+    if not saw_league_candidate:
+        return {}, "no_league_intersection"
+    return {}, "club_rule_no_slot"
 
 
 def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
@@ -457,6 +490,14 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
         team_habit: TeamHabitSchema | None = None
         if team is not None:
             team_habit = next((h for h in team.habits if h.day_of_week == _iso_day(match.match_date)), None)
+        # P4-272 ③ — PREFERRED club rules covering this match's ISO day: a candidate
+        # that violates one is penalised W_CLUB_RULE (a nudge, never a block — the
+        # HARD rules already pruned the domain in _candidate_kickoffs).
+        preferred_rules = [
+            r
+            for r in input_data.club_rules
+            if r.rule_type == "PREFERRED" and _iso_day(match.match_date) in r.days_of_week
+        ]
         for cand in candidates[match.id]:
             weight = 0
             venue_start = cand.kickoff_min
@@ -510,6 +551,12 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
                     for f_start, f_end in fixed_windows_by_coach.get((player_id, match.match_date), []):
                         if person_start < f_end and f_start < person_end:
                             weight -= W_COACH_MAIN
+            # P4-272 ③ — a PREFERRED club rule this candidate violates costs W_CLUB_RULE
+            # (a nudge; HARD rules were already pruned from the domain). The ideal slot
+            # loses to a neutral conforming slot, but never to nothing.
+            for rule in preferred_rules:
+                if not _kick_in_club_rule(cand.kickoff_min, rule):
+                    weight -= W_CLUB_RULE
             if weight:
                 objective.append(weight * cand.var)
 

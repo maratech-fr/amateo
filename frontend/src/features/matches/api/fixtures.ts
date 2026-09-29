@@ -168,6 +168,7 @@ export const getFixtures = async (): Promise<Fixture[]> => (await collectionAll<
 export type UnplacedReason =
   | "no_access_window"
   | "no_league_intersection"
+  | "club_rule_no_slot"
   | "venue_unavailable"
   | "venue_full"
   | "not_selected";

@@ -9,6 +9,7 @@ use App\Entity\ClubLeagueWindow;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
+use App\Entity\MatchConstraint;
 use App\Entity\PriorityTier;
 use App\Entity\Schedule;
 use App\Entity\Season;
@@ -118,6 +119,14 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         self::assertSame(6, $newLeagueWindow->getDayOfWeek());
         self::assertSame('14:00', $newLeagueWindow->getKickoffMin()->format('H:i'));
         self::assertSame('16:00', $newLeagueWindow->getKickoffMax()->format('H:i'));
+        // P4-272 ③ — la règle de match du club suit la saison (verbatim, scope CLUB).
+        $newClubRule = $this->em->getRepository(MatchConstraint::class)->findOneBy(['seasonId' => $target->getId()]);
+        self::assertNotNull($newClubRule);
+        self::assertSame(ConstraintScope::CLUB, $newClubRule->getScope());
+        self::assertSame(ConstraintRuleType::HARD, $newClubRule->getRuleType());
+        self::assertSame([6], $newClubRule->getDaysOfWeek());
+        self::assertNull($newClubRule->getKickoffMin());
+        self::assertSame('21:00', $newClubRule->getKickoffMax()?->format('H:i'));
         $newTeamLink = $this->em->getRepository(TeamLink::class)->findOneBy(['seasonId' => $target->getId()]);
         self::assertNotNull($newTeamLink);
         self::assertContains($newTeamLink->getTeamAId(), $newTeamIds);
@@ -446,6 +455,16 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $leagueWindow->setKickoffMin(new DateTimeImmutable('14:00'));
         $leagueWindow->setKickoffMax(new DateTimeImmutable('16:00'));
         $this->em->persist($leagueWindow);
+
+        // P4-272 ③ — une règle de match du club (scope CLUB) : recopiée verbatim en N+1.
+        $clubRule = new MatchConstraint;
+        $clubRule->setClubId($club->getId());
+        $clubRule->setSeasonId($season->getId());
+        $clubRule->setScope(ConstraintScope::CLUB);
+        $clubRule->setRuleType(ConstraintRuleType::HARD);
+        $clubRule->setDaysOfWeek([6]);
+        $clubRule->setKickoffMax(new DateTimeImmutable('21:00'));
+        $this->em->persist($clubRule);
 
         $teamLink = new TeamLink;
         $teamLink->setClubId($club->getId());

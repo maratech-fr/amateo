@@ -5,13 +5,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 
-import type { Team, TeamMatchHabit, Venue } from "./api";
+import type { MatchConstraintCoherence, Team, TeamMatchHabit, Venue } from "./api";
 import { IdealSlotsEditor } from "./IdealSlotsEditor";
 
 const createHabit = vi.fn();
 const updateHabit = vi.fn();
 const deleteHabit = vi.fn();
 const habitsState: { data: TeamMatchHabit[] } = { data: [] };
+const coherenceState: { data: MatchConstraintCoherence } = { data: { byRule: [], byHabit: [] } };
 
 // On pilote les hooks (jamais le réseau) : le composant AFFICHE les créneaux stockés et rejoue
 // ses mutations. On MUTE la prod, jamais le mock (§ règles frontend).
@@ -20,6 +21,7 @@ vi.mock("./queries", () => ({
   useCreateTeamMatchHabit: () => ({ mutate: createHabit, isPending: false }),
   useUpdateTeamMatchHabit: () => ({ mutate: updateHabit, isPending: false }),
   useDeleteTeamMatchHabit: () => ({ mutate: deleteHabit, isPending: false }),
+  useMatchConstraintCoherence: () => ({ data: coherenceState.data }),
 }));
 
 const team = (id: string, name: string): Team => ({ id, name, sportCategoryId: "cat", level: null, gender: null, priorityTierId: 1, tierOrder: 0 });
@@ -33,6 +35,7 @@ beforeEach(() => {
   updateHabit.mockClear();
   deleteHabit.mockClear();
   habitsState.data = [];
+  coherenceState.data = { byRule: [], byHabit: [] };
 });
 
 describe("IdealSlotsEditor (P4-271)", () => {
@@ -96,5 +99,18 @@ describe("IdealSlotsEditor (P4-271)", () => {
     expect(screen.queryByRole("button", { name: "Supprimer le créneau idéal de SM2" })).toBeNull();
     // garde-fou : within limite l'assertion à une ligne, jamais un match global fortuit.
     expect(within(document.body).getAllByRole("listitem").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("affiche l'alerte de cohérence (calculée serveur) sous le créneau qui heurte une règle du club (P4-272 ③)", () => {
+    habitsState.data = [habit()]; // h1 → SM1
+    coherenceState.data = {
+      byRule: [],
+      byHabit: [{ habitId: "h1", rules: [{ ruleId: "r1", ruleType: "HARD", daysOfWeek: [6], kickoffMin: null, kickoffMax: "21:00" }] }],
+    };
+    renderWithProviders(<IdealSlotsEditor teams={TEAMS} venues={VENUES} />);
+
+    expect(screen.getByText("Heurte la règle du club « pas après 21h ».")).toBeInTheDocument();
+    // Aucune alerte sur SM2 (pas de créneau, pas d'entrée byHabit).
+    expect(screen.getAllByText(/Heurte la règle du club/)).toHaveLength(1);
   });
 });

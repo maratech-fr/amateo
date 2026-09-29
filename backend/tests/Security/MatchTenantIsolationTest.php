@@ -15,6 +15,7 @@ use App\Entity\FbiCorrection;
 use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
 use App\Entity\LeagueMatchWindow;
+use App\Entity\MatchConstraint;
 use App\Entity\OpponentVenueLink;
 use App\Entity\Season;
 use App\Entity\Sport;
@@ -367,6 +368,99 @@ final class MatchTenantIsolationTest extends WebTestCase
         // Club B ne voit RIEN de la copie de A.
         $this->client->request('GET', '/api/club_league_windows', [], [], $this->authHeaders($userB));
         self::assertCount(0, $this->responseData()['member'] ?? ['sentinel']);
+    }
+
+    // ── Règles de match du club (P4-272 ③) ───────────────────────────────────
+
+    public function testMatchConstraintIsScopedStampedManagementGatedAndValidated(): void
+    {
+        [$clubA, $userA, $seasonA] = $this->createClubUser('a');
+        [, $userB] = $this->createClubUser('b');
+        $headers = $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'];
+
+        // Écriture = management par défaut : un membre non-gestionnaire est refusé.
+        $editor = $this->createMember($clubA, 'editor');
+        $this->client->request('POST', '/api/match_constraints', [], [], $this->authHeaders($editor) + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'ruleType' => 'HARD', 'daysOfWeek' => [6], 'kickoffMax' => '21:00',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(403);
+
+        // Gestionnaire : « pas après 21h » le samedi (scope CLUB par défaut). Club/saison estampés.
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode([
+            'ruleType' => 'HARD', 'daysOfWeek' => [6], 'kickoffMax' => '21:00',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+        $this->scopeGucToClub($clubA->getId());
+        $rule = $this->em->getRepository(MatchConstraint::class)->findOneBy(['clubId' => $clubA->getId()]);
+        self::assertInstanceOf(MatchConstraint::class, $rule);
+        self::assertSame($clubA->getId(), $rule->getClubId());
+        self::assertSame($seasonA->getId(), $rule->getSeasonId());
+        self::assertSame('CLUB', $rule->getScope()->value);
+        self::assertSame([6], $rule->getDaysOfWeek());
+
+        // Aucune borne de coup d'envoi → 422 nommé (une règle doit borner quelque chose).
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode([
+            'ruleType' => 'HARD', 'daysOfWeek' => [6],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+
+        // min > max → 422 nommé.
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode([
+            'ruleType' => 'PREFERRED', 'daysOfWeek' => [3], 'kickoffMin' => '20:00', 'kickoffMax' => '18:00',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+
+        // Aucun jour → 422 (validation d'entrée).
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode([
+            'ruleType' => 'HARD', 'daysOfWeek' => [], 'kickoffMax' => '21:00',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+
+        // Club B ne voit RIEN des règles de A.
+        $this->client->request('GET', '/api/match_constraints', [], [], $this->authHeaders($userB));
+        self::assertResponseStatusCodeSame(200);
+        self::assertCount(0, $this->responseData()['member'] ?? ['sentinel']);
+    }
+
+    /**
+     * Durcissement (revue sécurité) : en ③ seul le scope CLUB est éditable, et une
+     * règle de club ne porte NI cible (scopeTargetId) NI gymnase (venueId). Un scope
+     * TEAM/COACH est refusé (422 nommé, jamais une règle inerte) ; une cible/gymnase
+     * non nul est refusé (422) ; et une valeur non-UUID rend un 422 LISIBLE (garde
+     * Uuid de l'input), jamais une 500 à l'écriture (colonne guid).
+     */
+    public function testMatchConstraintRestrictsScopeToClubAndRejectsNonNullTargets(): void
+    {
+        [$clubA, $userA] = $this->createClubUser('a');
+        $headers = $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'];
+        $uuid = '11111111-1111-4111-8111-111111111111';
+        $base = ['ruleType' => 'HARD', 'daysOfWeek' => [6], 'kickoffMax' => '21:00'];
+
+        // Scope TEAM / COACH → 422 (réservés ④/⑤), refus nommé via le processeur.
+        foreach (['TEAM', 'COACH'] as $scope) {
+            $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode(['scope' => $scope] + $base, \JSON_THROW_ON_ERROR));
+            self::assertResponseStatusCodeSame(422, \sprintf('le scope %s doit être refusé en ③', $scope));
+        }
+
+        // scopeTargetId non-UUID → 422 LISIBLE (Uuid de l'input), jamais 500.
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode(['scopeTargetId' => 'pas-un-uuid'] + $base, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422, 'un scopeTargetId non-UUID doit rendre un 422, pas une 500');
+
+        // scopeTargetId UUID valide mais NON NUL (scope CLUB) → 422 (une règle de club ne cible personne).
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode(['scopeTargetId' => $uuid] + $base, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422, 'une règle de club ne porte pas de cible');
+
+        // venueId non-UUID → 422 LISIBLE, jamais 500.
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode(['venueId' => 'pas-un-uuid'] + $base, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422, 'un venueId non-UUID doit rendre un 422, pas une 500');
+
+        // venueId UUID valide mais NON NUL (scope CLUB) → 422.
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode(['venueId' => $uuid] + $base, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422, 'une règle de club ne porte pas de gymnase');
+
+        // Aucune de ces tentatives n'a écrit en base.
+        $this->scopeGucToClub($clubA->getId());
+        self::assertCount(0, $this->em->getRepository(MatchConstraint::class)->findBy(['clubId' => $clubA->getId()]));
     }
 
     public function testTeamLinkIsSymmetricUniqueAndTenantScoped(): void

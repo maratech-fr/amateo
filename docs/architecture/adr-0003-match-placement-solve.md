@@ -44,10 +44,12 @@ sur mesure si un club réel dépasse en pratique le budget de 60 s — le contra
 
 Chaque match plaçable porte un booléen `is_placed`, l'objectif maximise `10 000 × Σ is_placed + SOFT`.
 **Aucune contrainte HARD n'est jamais violée dans la sortie** : un match sans candidat licite reste
-non placé et sort NOMMÉ (`no_access_window` · `no_league_intersection` · `venue_unavailable` ·
-`venue_full` · `not_selected`). Ce n'est pas la relaxation silencieuse qu'interdit ADR-0001 — rien n'est
-relâché, l'impossible est épelé : le « non-placé expliqué » EST le produit (le signal dérogation-tôt).
-Invariant gardé par `assert_no_hard_violation` (tests sémantiques).
+non placé et sort NOMMÉ (`no_access_window` · `no_league_intersection` · `club_rule_no_slot` ·
+`venue_unavailable` · `venue_full` · `not_selected`) — `club_rule_no_slot` (P4-272 ③) marque un
+domaine par ailleurs licite vidé par les seules règles de match HARD du club. Ce n'est pas la
+relaxation silencieuse qu'interdit ADR-0001 — rien n'est relâché, l'impossible est épelé : le
+« non-placé expliqué » EST le produit (le signal dérogation-tôt). Invariant gardé par
+`assert_no_hard_violation` (tests sémantiques).
 
 `venue_full` et `not_selected` se distinguent post-solve, sur l'occupation FINALE (placements retenus +
 ancres fixes) : `venue_full` quand plus AUCUN créneau licite du match n'est libre ce jour-là (le gymnase
@@ -102,7 +104,9 @@ SOFT `NOT_SIMULTANEOUS` (−40) — une préférence souple ne bloque jamais un 
 recul silencieux si la famille revenait un jour au radar.
 
 Poids SOFT (produit, golden-épinglés) : conflit personne (coach MAIN ou joueuse active) −60 ·
-passerelle NOT_SIMULTANEOUS violée −40 · habitude heure +15 / gymnase +5 (le jour est constant) ·
+passerelle NOT_SIMULTANEOUS violée −40 · règle de match CLUB PREFERRED violée −30 (`W_CLUB_RULE`,
+P4-272 ③ — entre l'habitude et la passerelle ; une règle HARD, elle, n'entre jamais dans l'objectif,
+elle élague le domaine, §3 ci-dessus) · habitude heure +15 / gymnase +5 (le jour est constant) ·
 fenêtre habituelle protégée −25 · BACK_TO_BACK enchaîné +15 · coach ASSISTANT −10 · stabilité re-solve
 +8 (+ hint) · compactage −1 **par pas de 15 min** de trou (jamais par minute — un trou de 6 h ne doit
 pas renverser un conflit de coach). **La protection de fenêtre d'habitude ne s'applique jamais au

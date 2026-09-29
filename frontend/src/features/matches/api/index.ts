@@ -10,5 +10,6 @@ export * from "./conflicts";
 export * from "./venues";
 export * from "./teams";
 export * from "./competitions";
+export * from "./matchConstraints";
 export * from "./fbi";
 export * from "./ffbb";

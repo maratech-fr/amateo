@@ -10,6 +10,7 @@ import { formatDurationMinutes } from "@/shared/lib/time";
 import { cn } from "@/shared/lib/utils";
 
 import type { Coach, Conflict, ConflictSideRole, LeagueKickoffWindow, Team, Venue, VenueAccessWindow } from "./api";
+import { clubRuleLabel } from "./lib/clubRuleLabel";
 import { SIDE_ROLE_WORD } from "./lib/conflictLabels";
 import { buildConflictSideLines, type ConflictOverlapLine, type ConflictSideKind, type ConflictSideLine, type ConflictSideModel } from "./lib/conflictSideLines";
 import { sortConflictsByDate } from "./lib/conflictOrder";
@@ -55,6 +56,8 @@ function conflictTitle(conflict: Conflict, coaches: Map<string, Coach>): string 
       return "Deux matchs sur le même créneau";
     case "LEAGUE_WINDOW_VIOLATION":
       return "Hors fenêtre autorisée par la ligue";
+    case "CLUB_RULE_VIOLATION":
+      return "Hors règle du club";
     case "ACCESS_WINDOW_LOST":
       return "Hors accès match";
     case "COMPETITION_INCOMPLETE":
@@ -111,6 +114,11 @@ function conflictSummary(conflict: Conflict, teams: Map<string, Team>, venues: M
   if ("LEAGUE_WINDOW_VIOLATION" === conflict.type && conflict.fixture) {
     const windows = ((conflict.windows ?? []) as LeagueKickoffWindow[]).map((w) => `${w.kickoffMin}–${w.kickoffMax}`).join(", ");
     return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)} à ${conflict.fixture.kickoffTime ?? "?"} (fenêtres : ${windows}) — dérogation à demander tôt`;
+  }
+  if ("CLUB_RULE_VIOLATION" === conflict.type && conflict.fixture) {
+    const labels = (conflict.rules ?? []).map((r) => `« ${clubRuleLabel(r)} »`).join(", ");
+    const bounded = "" !== labels ? ` (règle : ${labels})` : "";
+    return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)} à ${conflict.fixture.kickoffTime ?? "?"}${bounded} — pose libre, à surveiller`;
   }
   if ("COMPETITION_INCOMPLETE" === conflict.type && undefined !== conflict.teamId) {
     return `${conflict.competitionName ?? "?"} (${teamName(teams, conflict.teamId)}) — ${conflict.imported ?? 0}/${conflict.expected ?? "?"} journées : fichier partiel ou phase pas encore sortie`;

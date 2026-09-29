@@ -1,6 +1,6 @@
 # Amateo — Tenant Isolation Architecture
 
-Last verified @ 2026-09-28 (`documentation-update`, rotation de fraîcheur — P4-269, sujet sans
+Last verified @ 2026-09-29 (`documentation-update`, rotation de fraîcheur — P4-272 ③, sujet sans
 rapport avec ce fichier). Re-confronté au code : priorité 7 toujours en place
 (`TenantFilterListener.php:55`) ✓ · le skip `/api/admin` toujours en `str_starts_with` sur le path
 (`TenantFilterListener.php:81`) ✓ · `TenantConnectionContext` pose toujours

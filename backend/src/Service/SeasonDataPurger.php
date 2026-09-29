@@ -19,6 +19,7 @@ use App\Entity\FbiCorrection;
 use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
 use App\Entity\ImplicitRuleSetting;
+use App\Entity\MatchConstraint;
 use App\Entity\MatchModuleVisit;
 use App\Entity\PeriodReminderLog;
 use App\Entity\Reservation;
@@ -169,6 +170,9 @@ final class SeasonDataPurger
         // Copie club de l'enveloppe ligue (club_id+season_id, aucun enfant) : purgée
         // avec la saison, comme les autres réglages tenant+saison.
         ClubLeagueWindow::class,
+        // P4-272 ③ — règles de match du club (club_id+season_id, aucun enfant) :
+        // purgées avec la saison, comme les autres réglages tenant+saison.
+        MatchConstraint::class,
         CalendarEntry::class,
         // ADR-0002: the named container of a season/period's versions — a
         // club_id+season_id table, so it must be purged with the season

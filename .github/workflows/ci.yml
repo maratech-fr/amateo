@@ -644,6 +644,13 @@ jobs:
       - name: LeagueWindowsPayloadParityTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/LeagueWindowsPayloadParityTest.php --group phase1'
 
+      # P4-272 ③ : ce qui est STOCKÉ (règles de match du club, MatchConstraint scope CLUB) == le bloc
+      # top-level `clubRules` émis au moteur (`/place-matches`), verbatim ; falsifié dans les deux sens
+      # (une règle CLUB voyage ; un scope non-CLUB et un AUTRE club ne fuient pas). La promesse « une
+      # règle saisie est honorée » à la source du payload — axes constraint semantics + contract.
+      - name: ClubRulePayloadParityTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/ClubRulePayloadParityTest.php --group phase1'
+
       # P2-53 RMM-8 PR-2 : ce qui est STOCKÉ (matrice de trajet {venueAId, venueBId, driving,
       # walking}, STRUCTURE club+saison) == le bloc `venueTravelTimes` émis au moteur, TRIÉ ; et sa
       # présence — et elle seule — active la règle implicite `travelTime` (opt-in au 1er geste,
