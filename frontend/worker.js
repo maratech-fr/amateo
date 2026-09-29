@@ -10,14 +10,22 @@ const OUTPUT_DIR = '/app/backend/public/exports';
 // A4 in CSS px at 96dpi. Landscape swaps the two. ~24px of margin each way.
 const A4 = { w: 794, h: 1123 };
 const MARGIN = 24;
+// Bottom margin enlarged when a brand footer is seated on every page (P5-24) : the
+// "Généré avec …" template lives in the bottom margin, so it needs more room there than
+// the plain 24px. availH shrinks by the same amount so the grid never spills onto page 2.
+const FOOTER_MARGIN = 40;
 
-async function generateFiles(html, filename, landscape, multiSection) {
+async function generateFiles(html, filename, landscape, multiSection, footerTemplate) {
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
   const pageW = landscape ? A4.h : A4.w;
   const pageH = landscape ? A4.w : A4.h;
+  // The bottom margin grows to seat the footer; the top/left/right stay at MARGIN. The
+  // usable content height must subtract the REAL margins (top + bottom), otherwise the
+  // grid is fitted to a taller box than the print actually leaves and spills to page 2.
+  const bottomMargin = footerTemplate ? FOOTER_MARGIN : MARGIN;
   const availW = pageW - 2 * MARGIN;
-  const availH = pageH - 2 * MARGIN;
+  const availH = pageH - MARGIN - bottomMargin;
 
   const browser = await puppeteer.launch({
     headless: true,
@@ -31,7 +39,7 @@ async function generateFiles(html, filename, landscape, multiSection) {
     await page.setViewport({ width: availW, height: availH });
     await page.setContent(html, { waitUntil: 'networkidle0' });
 
-    const geom = { pageW, pageH, availW, availH };
+    const geom = { pageW, pageH, availW, availH, bottomMargin, footerTemplate };
     if (multiSection) {
       await renderMultiSection(page, filename, landscape, geom);
     } else {
@@ -42,10 +50,24 @@ async function generateFiles(html, filename, landscape, multiSection) {
   }
 }
 
+// The brand footer wired into every page (P5-24). When the backend passes a
+// `footerTemplate`, Puppeteer draws it in the bottom margin of EACH page; an empty
+// header template suppresses Chromium's default date/url header.
+function footerOptions(footerTemplate) {
+  if (!footerTemplate) {
+    return {};
+  }
+  return {
+    displayHeaderFooter: true,
+    headerTemplate: '<div></div>',
+    footerTemplate,
+  };
+}
+
 // Historical one-page export (unchanged): the whole document is scaled so the
 // WHOLE week fits ONE A4 page, and the PNG frames the same single page. Every
 // single-section call takes this path and gets exactly the file it got before.
-async function renderSinglePage(page, filename, landscape, { pageW, pageH, availW, availH }) {
+async function renderSinglePage(page, filename, landscape, { pageW, pageH, availW, availH, bottomMargin, footerTemplate }) {
   const { contentH, contentW } = await page.evaluate(() => ({
     contentH: document.documentElement.scrollHeight,
     contentW: document.documentElement.scrollWidth,
@@ -67,7 +89,8 @@ async function renderSinglePage(page, filename, landscape, { pageW, pageH, avail
     printBackground: true,
     scale,
     pageRanges: '1',
-    margin: { top: `${MARGIN}px`, bottom: `${MARGIN}px`, left: `${MARGIN}px`, right: `${MARGIN}px` },
+    margin: { top: `${MARGIN}px`, bottom: `${bottomMargin}px`, left: `${MARGIN}px`, right: `${MARGIN}px` },
+    ...footerOptions(footerTemplate),
   });
 
   // PNG — same one-page framing: scale the body, shoot the page rectangle.
@@ -82,7 +105,7 @@ async function renderSinglePage(page, filename, landscape, { pageW, pageH, avail
 // page 1 exactly like the single-page path — and section 2 (`.page-matrix`, forced
 // onto a new page by CSS `break-before: page`) is the team × day matrix, which
 // flows onto page(s) 2+ at natural size.
-async function renderMultiSection(page, filename, landscape, { pageW, pageH, availW, availH }) {
+async function renderMultiSection(page, filename, landscape, { pageW, pageH, availW, availH, bottomMargin, footerTemplate }) {
   // Measure the GRID section AND the header above it : page 1 carries the document
   // header (club title bar) THEN the grid, and both must fit one page. Measuring the
   // grid alone let the header's height spill the grid's tail onto page 2.
@@ -133,7 +156,8 @@ async function renderMultiSection(page, filename, landscape, { pageW, pageH, ava
     format: 'A4',
     landscape,
     printBackground: true,
-    margin: { top: `${MARGIN}px`, bottom: `${MARGIN}px`, left: `${MARGIN}px`, right: `${MARGIN}px` },
+    margin: { top: `${MARGIN}px`, bottom: `${bottomMargin}px`, left: `${MARGIN}px`, right: `${MARGIN}px` },
+    ...footerOptions(footerTemplate),
   });
 }
 
@@ -149,7 +173,7 @@ const server = http.createServer(async (req, res) => {
     req.on('data', chunk => { body += chunk; });
     req.on('end', async () => {
       try {
-        const { html, filename, landscape, multiSection } = JSON.parse(body);
+        const { html, filename, landscape, multiSection, footerTemplate } = JSON.parse(body);
 
         if (!html || !filename) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -157,7 +181,13 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        await generateFiles(html, filename, landscape === true, multiSection === true);
+        await generateFiles(
+          html,
+          filename,
+          landscape === true,
+          multiSection === true,
+          typeof footerTemplate === 'string' ? footerTemplate : '',
+        );
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true }));

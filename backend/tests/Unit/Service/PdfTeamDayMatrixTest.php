@@ -191,9 +191,9 @@ final class PdfTeamDayMatrixTest extends TestCase
         $prop->setValue($generator, $client);
         $call = new ReflectionMethod(PdfGenerator::class, 'callWorker');
 
-        $call->invoke($generator, '<html></html>', 'schedule-x-all.pdf');
+        $call->invoke($generator, '<html></html>', 'schedule-x-all.pdf', '<div>footer</div>');
 
-        self::assertSame(['html', 'filename', 'landscape', 'multiSection'], array_keys($captured[0]), 'le payload porte exactement ces quatre clés — aucune de plus (le PNG et sa `pngSection` sont retirés)');
+        self::assertSame(['html', 'filename', 'landscape', 'multiSection', 'footerTemplate'], array_keys($captured[0]), 'le payload porte exactement ces cinq clés — les deux sections + le pied de marque (P5-24) ; le PNG et sa `pngSection` restent retirés');
         self::assertTrue($captured[0]['multiSection'], 'les deux sections partent toujours');
     }
 

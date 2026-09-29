@@ -10,6 +10,10 @@ parameters:
     # Where club logos are stored. Dev/default = local disk (persisted via the
     # ./:/app mount). Prod: swap the LogoStorage alias below for object storage.
     app.logo_storage_dir: '%kernel.project_dir%/var/storage/logos'
+    # P5-24 — où vivent les actifs de marque servis côté backend (icône inlinée
+    # dans le pied de page de l'export PDF). Le chemin arrive par injection à
+    # `App\Service\BrandAssets` ; jamais codé en dur chez l'appelant.
+    app.brand_assets_dir: '%kernel.project_dir%/assets/brand'
     # FFBB Meilisearch bearer token (lot C). Optional override — empty by default,
     # in which case FfbbApiClient fetches the public token from the FFBB config
     # endpoint at runtime. Never hard-code a token in the repo.
@@ -107,6 +111,12 @@ services:
         arguments:
             $dir: '%app.logo_storage_dir%'
     App\Storage\LogoStorage: '@App\Storage\LocalLogoStorage'
+
+    # P5-24 — le mark produit inliné dans le pied de page du PDF. Chemin depuis le
+    # dépôt (jamais un littéral chez le générateur).
+    App\Service\BrandAssets:
+        arguments:
+            $brandAssetsDir: '%app.brand_assets_dir%'
 
     App\EventListener\TenantFilterListener:
         tags:

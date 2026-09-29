@@ -1,12 +1,22 @@
 # Identité visuelle produit — la base est le produit, l'accent est le club
 
-Last verified @ 2026-09-29 (P4-274 — thème sombre vitrine). Confronté au code cette passe :
-`landing/index.html` (mini-script anti-flash `data-theme`, bloc `html[data-theme="dark"]` — jetons
+Last verified @ 2026-09-29 (P5-24 PR-1 — pied de marque de l'export PDF ; P4-274 — thème sombre
+vitrine). Confronté au code cette passe : `backend/src/Service/BrandAssets.php`, `backend/src/Service/PdfGenerator.php`
+(`buildFooterTemplate`), `backend/assets/brand/icon.svg` + son README de provenance,
+`frontend/worker.js` (câblage `footerTemplate`), `landing/index.html` (mini-script anti-flash `data-theme`, bloc `html[data-theme="dark"]` — jetons
 sombres, bouton `.theme-toggle`, `html[data-theme="dark"] body` → `fond-dark.svg`, logotype
 `mark.svg` + `.logo-word`), `landing/assets/brand/mark.svg` (arcs seuls, sans disque blanc),
 `landing/assets/brand/fond-dark.svg` (identique octet à `frontend/public/brand/fond-dark.svg`,
-vérifié par `diff`), `landing/config.js` (clé `logo`). Non re-vérifié cette passe (reformulé au
-présent tel quel lors des passes 2026-09-26/27) : `useApplyClubTheme.ts`, `color.ts`
+vérifié par `diff`), `landing/config.js` (clé `logo`). — section « Ce qui reste à venir » ci-dessous
+recalée en conséquence. Reste du fichier non re-vérifié cette passe (portée = le volet PDF) —
+repris tel quel de la passe P4-265 (2026-09-27) :
+`frontend/src/index.css` (jetons `--surface-warning|accent|destructive|muted`, `color-mix` clair
+10/10/8/60 %, sombre 12/12/12/60 %, `--color-surface-*` exposés à Tailwind), `frontend/src/shared/
+components/ui/notice-banner.tsx` (remplace `WarningPanel`, fond `bg-surface-<ton>`, texte
+`text-foreground`), `frontend/src/shared/components/ui/accordion.tsx` (`bg-card` + `border-l-2`
+accent à l'ouverture), `frontend/src/shared/components/ui/tabs.tsx` (peau `app` : barre `bg-card`),
+`frontend/src/test/surfaceOpacityGuard.test.ts`. Non re-vérifié cette passe (reformulé au présent
+tel quel lors de la passe 2026-09-26) : `useApplyClubTheme.ts`, `color.ts`
 (`SURFACES`/`accentForMode`/`accentHoverForMode`), `accentTokenParity.test.ts`, `ClubPage.tsx`
 (`DEFAULT_ACCENT`), `brand-icon.tsx`, `favicon.svg`, `brand-mark.tsx`, `system-screen.tsx`,
 `AdminAuthLayout.tsx`, `frontend/src/index.css` (jetons `--surface-*`), `notice-banner.tsx`,
@@ -227,7 +237,19 @@ FIGÉ**.
 
 ## Ce qui reste à venir
 
-- **PDF (y compris impression N&B), e-mails transactionnels, image OG** (roadmap P5-24) : n'ont
-  reçu aucun asset logo à ce jour — les exports PDF suivent leur propre chaîne
-  (`PdfGenerator`, `backend/docs/`), non touchée par ce lot. La cession de droits du logo est
-  **signée** (fondateur) — ce n'est plus le préalable qui bloquait ces trois usages.
+- **PDF — posé (P5-24 PR-1, 2026-09-29)** : le pied de page « Généré avec [icône] amateo » est
+  posé par Puppeteer sur CHAQUE page de l'export (`footerTemplate`), construit côté backend —
+  `App\Service\PdfGenerator::buildFooterTemplate()`, nom via `App\Service\ProductIdentity`
+  (variable, jamais un littéral). L'icône est le mark produit **en couleur** (les trois arcs de
+  `BrandIcon`, sans le disque blanc du favicon), servie en data URI par le nouveau
+  `App\Service\BrandAssets` depuis `backend/assets/brand/icon.svg` — recopie assumée de
+  `frontend/src/shared/components/ui/brand-icon.tsx` (README de provenance à côté, même règle que
+  le fond d'écran ci-dessus : zéro import cross-zone entre `backend/` et `frontend/`,
+  `CLAUDE.md` §2). **Décision fermée** : le mark va en PIED, jamais en en-tête, et reste en couleur
+  (pas de variante grayscale distincte) — `etat-des-lieux.md` §2. Détail de la chaîne worker
+  (marge basse, `footerOptions`) : `backend/docs/backend-inventory.md` § « Export PDF / Excel ».
+- **E-mails transactionnels, image OG, page publique de doléances coach** (roadmap P5-24) : n'ont
+  reçu aucun asset logo à ce jour. La cession de droits du logo est **signée** (fondateur) — ce
+  n'est plus le préalable qui bloquait ces usages. Amendement fondateur du 2026-09-29 (détail
+  roadmap P5-24) : la signature des e-mails automatiques doit porter le logo explicitement, et la
+  page `/doleances/:token` (aujourd'hui sans aucune marque produit) doit montrer la marque Amateo.
