@@ -119,7 +119,8 @@ export interface TeamMatchHabitInput {
   teamId: string;
   dayOfWeek: number;
   kickoffTime: string;
-  venueId?: string;
+  /** `null` (or omitted) = no venue — on a PUT it CLEARS the venue (full-replace, P4-271). */
+  venueId?: string | null;
   week?: MatchWeek;
 }
 

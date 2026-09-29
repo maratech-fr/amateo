@@ -77,8 +77,9 @@ function IdealSlotRow<T extends TeamLike>({ team, habit, venues }: { team: T; ha
     if (!canSave) {
       return;
     }
-    // Le gymnase est optionnel : omis quand aucun n'est choisi (le POST le laisse nul).
-    const input = { teamId: team.id, dayOfWeek: day, kickoffTime: time, week, ...("" !== venueId ? { venueId } : {}) };
+    // Le gymnase est optionnel : `null` explicite quand aucun n'est choisi — sur un PUT il RETIRE
+    // le gymnase du créneau idéal (full-replace, P4-271), pas seulement le change.
+    const input = { teamId: team.id, dayOfWeek: day, kickoffTime: time, week, venueId: "" !== venueId ? venueId : null };
     if (null === habit) {
       create.mutate(input);
     } else {

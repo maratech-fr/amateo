@@ -57,12 +57,11 @@ describe("TypicalWeekPage (PR 2a — la Semaine type)", () => {
     expect(await screen.findByRole("heading", { name: "Créneaux idéaux", level: 3 })).toBeInTheDocument();
   });
 
-  it("le bouton « Habitudes & passerelles » ouvre la modale", async () => {
+  it("le bouton « Passerelles » ouvre la modale des passerelles (P4-271 : plus d'habitudes ici)", async () => {
     const user = userEvent.setup();
     renderWithProviders(<TypicalWeekPage />);
-    await user.click(await screen.findByRole("button", { name: "Habitudes & passerelles" }));
-    // Le nom accessible de la modale vient de son `label` (« et »), le titre visible garde le « & ».
-    expect(await screen.findByRole("dialog", { name: "Habitudes et passerelles" })).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Passerelles" }));
+    expect(await screen.findByRole("dialog", { name: "Passerelles" })).toBeInTheDocument();
   });
 
   // UXS-08 — la Semaine type est gatée sur ses lectures. Un échec doit céder à une alerte avec
