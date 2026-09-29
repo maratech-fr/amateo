@@ -1,0 +1,56 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Tests\Unit\Service\Geo;
+
+use App\Service\Geo\BanGeocodingClient;
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\HttpClient\MockHttpClient;
+use Symfony\Component\HttpClient\Response\MockResponse;
+use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+
+/**
+ * P4-246 — le géocodeur BAN borne la taille de réponse (1 Mio). Une réponse d'un ordre de
+ * grandeur au-dessus du plafond signale un endpoint compromis ou déréglé, et la lire en
+ * entier serait un vecteur d'épuisement mémoire : le téléchargement est AVORTÉ par
+ * `on_progress`. Contrairement à l'IGN (best-effort → null), le BAN ne rattrape pas — la
+ * panne de transport PROPAGE et le contrôleur en fait un 502, jamais un formulaire cassé.
+ */
+#[Group('unit')]
+final class BanGeocodingClientTest extends TestCase
+{
+    public function testAnOversizedResponseIsAbortedAndPropagatesAsATransportFailure(): void
+    {
+        $client = new BanGeocodingClient(
+            new MockHttpClient(static fn (): MockResponse => new MockResponse(str_repeat('x', 1_100_000))),
+        );
+
+        $this->expectException(TransportExceptionInterface::class);
+        $client->geocodeTop('5 rue Emile Duniere Villeurbanne');
+    }
+
+    /**
+     * Contre-preuve : le plafond ne casse pas le chemin normal — une réponse de taille
+     * ordinaire est parsée comme avant (sinon le test ci-dessus « passerait » pour une
+     * mauvaise raison).
+     */
+    public function testANormalResponseIsParsedUnaffectedByTheSizeGuard(): void
+    {
+        $body = (string) json_encode(['features' => [[
+            'properties' => ['label' => '5 Rue Émile Dunière, Villeurbanne', 'score' => 0.9, 'postcode' => '69100', 'city' => 'Villeurbanne'],
+            'geometry' => ['coordinates' => [4.85, 45.75]],
+        ]]], \JSON_THROW_ON_ERROR);
+
+        $client = new BanGeocodingClient(
+            new MockHttpClient(static fn (): MockResponse => new MockResponse($body)),
+        );
+
+        $top = $client->geocodeTop('5 rue Emile Duniere Villeurbanne');
+        self::assertNotNull($top);
+        self::assertSame(45.75, $top['latitude']);
+        self::assertSame(4.85, $top['longitude']);
+        self::assertSame('69100', $top['postalCode']);
+    }
+}
