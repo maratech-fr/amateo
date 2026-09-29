@@ -19,8 +19,11 @@ use Doctrine\Migrations\AbstractMigration;
  * club). Exécutée comme son propriétaire (`amateo_owner`, qui porte la policy
  * `admin_all` — et bypasse la RLS sur un Postgres managé), elle voit tout, mais ne
  * rend QUE l'agrégat : (catégorie, niveau, genre, jour, ensemble canonique trié de
- * plages, NOMBRE de clubs) — jamais LESQUELS. `SET search_path` figé + `REVOKE …
- * FROM PUBLIC` + `GRANT EXECUTE` au seul rôle applicatif = surface d'appel close.
+ * plages, NOMBRE de clubs) — jamais LESQUELS. Durcissement (revue sécurité) :
+ * `SET search_path = pg_catalog, public, pg_temp` (pg_temp EN DERNIER, reco PostgreSQL
+ * pour SECURITY DEFINER — sinon une session pourrait ombrer club/season/club_league_window
+ * par des tables temporaires) + tables qualifiées `public.…` + `REVOKE … FROM PUBLIC` +
+ * `GRANT EXECUTE` au seul rôle applicatif = surface d'appel close.
  *
  * Règle de la tendance (décision fondateur 2026-09-29) : un ensemble de plages
  * identiques est retenu s'il est saisi par ≥ 3 clubs de l'instance ET par plus de
@@ -56,12 +59,12 @@ final class Version20260929120000 extends AbstractMigration
             LANGUAGE sql
             STABLE
             SECURITY DEFINER
-            SET search_path = pg_catalog, public
+            SET search_path = pg_catalog, public, pg_temp
             AS $fn$
                 WITH me AS (
                     SELECT upper(substring(ffbb_club_code FROM 1 FOR 3)) AS ligue,
                            substring(ffbb_club_code FROM 4 FOR 4) AS comite
-                    FROM club
+                    FROM public.club
                     WHERE id = p_requesting_club
                       AND ffbb_club_code ~ '^[A-Za-z]{3}[0-9]{4}'
                 ),
@@ -69,7 +72,7 @@ final class Version20260929120000 extends AbstractMigration
                     SELECT c.id,
                            upper(substring(c.ffbb_club_code FROM 1 FOR 3)) AS ligue,
                            substring(c.ffbb_club_code FROM 4 FOR 4) AS comite
-                    FROM club c
+                    FROM public.club c
                     WHERE c.id <> p_requesting_club
                       AND c.ffbb_club_code ~ '^[A-Za-z]{3}[0-9]{4}'
                 ),
@@ -83,8 +86,8 @@ final class Version20260929120000 extends AbstractMigration
                                )
                                ORDER BY w.kickoff_min, w.kickoff_max
                            ) AS windows
-                    FROM club_league_window w
-                    JOIN season s ON s.id = w.season_id AND s.status = 'active'
+                    FROM public.club_league_window w
+                    JOIN public.season s ON s.id = w.season_id AND s.status = 'active'
                     JOIN peers p ON p.id = w.club_id
                     GROUP BY w.club_id, w.category, w.level, w.gender, w.day_of_week, p.ligue, p.comite
                 ),

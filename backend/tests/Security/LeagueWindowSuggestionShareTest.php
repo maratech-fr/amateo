@@ -313,7 +313,12 @@ final class LeagueWindowSuggestionShareTest extends WebTestCase
         );
         self::assertIsArray($row, 'la fonction existe');
         self::assertTrue((bool) $row['prosecdef'], 'la fonction est SECURITY DEFINER');
-        self::assertStringContainsString('search_path=pg_catalog, public', (string) $row['proconfig'], 'search_path figé');
+        $proconfig = (string) $row['proconfig'];
+        self::assertStringContainsString('search_path=pg_catalog, public', $proconfig, 'search_path figé');
+        // Durcissement revue sécurité : pg_temp présent ET EN DERNIER (reco PostgreSQL pour
+        // SECURITY DEFINER — sinon une table temporaire pourrait ombrer club/season/…).
+        self::assertStringContainsString('pg_temp', $proconfig, 'pg_temp est dans le search_path');
+        self::assertStringEndsWith('pg_temp"}', $proconfig, 'pg_temp est le DERNIER schéma du search_path');
 
         self::assertTrue((bool) $this->conn()->fetchOne(
             'SELECT has_function_privilege(\'amateo_app\', \'league_window_suggestions(uuid)\', \'EXECUTE\')',
