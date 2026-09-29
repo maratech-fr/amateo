@@ -1,6 +1,6 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-09-28 (rotation de fraîcheur `documentation-update`, brief P4-240 ③). Re-confronté
+Last verified @ 2026-09-29 (rotation de fraîcheur `documentation-update`, brief P4-272 ④). Re-confronté
 au code : `COACH_PLAYER_NO_OVERLAP` toujours posé par `add_coach_player_non_overlap`
 (`engine/app/solver/constraints/structural.py`, listé `constraints/__init__.py:7,197,253`) — ce
 mécanisme reste propre au solve hebdo `/generate`, sans lien avec la protection coach/joueur du

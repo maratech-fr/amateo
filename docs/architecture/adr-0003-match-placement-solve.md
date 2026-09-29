@@ -44,9 +44,15 @@ sur mesure si un club réel dépasse en pratique le budget de 60 s — le contra
 
 Chaque match plaçable porte un booléen `is_placed`, l'objectif maximise `10 000 × Σ is_placed + SOFT`.
 **Aucune contrainte HARD n'est jamais violée dans la sortie** : un match sans candidat licite reste
-non placé et sort NOMMÉ (`no_access_window` · `no_league_intersection` · `club_rule_no_slot` ·
-`venue_unavailable` · `venue_full` · `not_selected`) — `club_rule_no_slot` (P4-272 ③) marque un
-domaine par ailleurs licite vidé par les seules règles de match HARD du club. Ce n'est pas la
+non placé et sort NOMMÉ (`no_access_window` · `no_league_intersection` · `team_venue_forbidden` ·
+`club_rule_no_slot` · `venue_unavailable` · `venue_full` · `not_selected`) — `club_rule_no_slot`
+(P4-272 ③) marque un domaine par ailleurs licite vidé par les seules règles de match HARD du club ;
+`team_venue_forbidden` (P4-272 ④) marque un domaine vidé par les seuls gymnases que l'équipe
+s'interdit (`teams[].forbiddenVenueIds`, scope TEAM HARD) : les créneaux d'un gymnase sont d'abord
+filtrés par les règles de club HARD, PUIS le gymnase est écarté du domaine s'il est interdit —
+un créneau qui survit au premier filtre mais tombe sur ce second rend `team_venue_forbidden`,
+testée AVANT le repli `club_rule_no_slot` (`_candidate_kickoffs`,
+`engine/app/solver/match_placement.py`). Ce n'est pas la
 relaxation silencieuse qu'interdit ADR-0001 — rien n'est relâché, l'impossible est épelé : le
 « non-placé expliqué » EST le produit (le signal dérogation-tôt). Invariant gardé par
 `assert_no_hard_violation` (tests sémantiques).

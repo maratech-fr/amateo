@@ -1,18 +1,20 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-09-29 (P4-272 ③ : contrat **2.25 → 2.26** — bloc `clubRules` ajouté au payload
-`/place-matches` ; antérieur P4-271 : **2.24 → 2.25** — `slotRotations`/rotations retirées, semaine type A/B = tag sur le créneau idéal, non transmis au moteur). Re-confronté au
-code : `engine/CONTRACT_VERSION` = `2.27` ✓ ; `DiagnosticSchema.id` toujours requis, sans défaut,
-`app/schemas/output_schema.py:61-62` ✓ ; le commentaire mort `FACILITY_CAPACITY` toujours à
-`app/main.py:447-450`, une seule occurrence, non-code ✓ ; paliers de budget adaptatif
+Last verified @ 2026-09-29 (P4-272 ④ : contrat **2.26 → 2.27** — `teams[].forbiddenVenueIds`
+ajouté au payload `/place-matches`, ce document ne le détaille pas lui-même — §3 « Solveur de
+placement » de `specs/courantes/module-matchs.md` et `engine-inventory.md` en sont la maison,
+`/generate` — décrit ici — n'en porte jamais). Re-confronté au code :
+`engine/CONTRACT_VERSION` = `2.27` ✓ ; `DiagnosticSchema.id` toujours requis, sans défaut,
+`app/schemas/output_schema.py:61-62` ✓ ; paliers de budget adaptatif
 (`_adaptive_timeout`, `app/main.py:374-389`) toujours ≤50→60 s · ≤200→180 s · sinon 600 s,
 plafonnés par `solver_timeout_seconds` ✓ ; un créneau verrouillé HARD ne crée toujours aucune
-variable `x[...]` (`app/solver/model.py:129-130`, `continue` sur `hard_slot_keys`) ✓ ; corrigé
-cette passe : une fermeture de gymnase (`venue_closed`) ne produit **aucune** contrainte
-`forbiddenVenueId` — elle retire les `trainingSlots` du gymnase les jours fermés
-(`VenueClosureDays`, `backend/src/Service/ScheduleConstraintBuilder.php:252-257`), confirmé aussi
-par `engine/docs/business.md`. Reste non re-parcouru ligne à ligne cette passe — historique :
-`git log -p --follow engine/docs/nominal-flow.md`.
+variable `x[...]` (`app/solver/model.py:129-130`, `continue` sur `hard_slot_keys`) ✓ ; une
+fermeture de gymnase (`venue_closed`) ne produit toujours **aucune** contrainte `forbiddenVenueId`
+(champ DISTINCT du `forbiddenVenueIds` P4-272 ④ ci-dessus — celui-ci vit sur `/generate`, dérive
+d'une fermeture ; celui-là sur `/place-matches`, dérive d'une interdiction saisie) — elle retire
+les `trainingSlots` du gymnase les jours fermés (`VenueClosureDays`, `backend/src/Service/
+ScheduleConstraintBuilder.php:252-257`) ✓. Reste non re-parcouru ligne à ligne cette passe —
+historique : `git log -p --follow engine/docs/nominal-flow.md`.
 
 > Ce document decrit le chemin complet d'une requete de generation d'emploi du temps, du moment ou le backend construit le payload jusqu'a la notification en temps reel du frontend. Destine aux developpeurs travaillant sur l'integration backend/engine.
 
