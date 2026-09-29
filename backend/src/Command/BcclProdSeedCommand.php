@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Entity\Club;
+use App\Entity\User;
 use App\Seed\BcclSeeder;
 use App\Seed\BcclSeedProfile;
 use Doctrine\ORM\EntityManagerInterface;
@@ -28,6 +29,11 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *
  * CREATE-ONLY : si le club ARA0069036 existe déjà, la commande NE FAIT RIEN (no-op, SUCCESS) —
  * jamais de reset, jamais de purge. La base de prod ne se re-seede pas par accident.
+ *
+ * ANTI-USURPATION : elle REFUSE de seeder si un User existe déjà pour l'un des deux e-mails. Le
+ * seeder adopte en silence un compte trouvé par e-mail (en ignorant le mot de passe fourni) — en
+ * prod, un tiers pourrait avoir créé ce compte via /api/register avec SON mot de passe, et
+ * l'adopter en ferait un gestionnaire du BCCL. Le refus est explicite, rien n'est créé.
  *
  * ⚠ Comme tout seed, le seeder traverse la RLS et exige la connexion ADMIN : lancer sous
  * `DATABASE_URL=$DATABASE_ADMIN_URL` — le garde superuser de {@see BcclSeeder::run()} échoue vite
@@ -78,6 +84,23 @@ final class BcclProdSeedCommand extends Command
         }
         $email = strtolower(trim($emailOption));
         $coEmail = strtolower(trim($coEmailOption));
+
+        // Anti-usurpation : le seeder ADOPTE en silence un User préexistant trouvé par e-mail
+        // (find-or-create), en IGNORANT le mot de passe fourni. En prod, un tiers pourrait avoir
+        // créé un compte via /api/register public avec l'un de ces e-mails ET son mot de passe
+        // entre le déploiement et le seed ; l'adopter en ferait un gestionnaire du BCCL. On refuse
+        // donc de seeder si un compte existe déjà pour l'un des deux e-mails — rien n'est créé.
+        $userRepo = $this->entityManager->getRepository(User::class);
+        foreach ([$email, $coEmail] as $candidate) {
+            if ($userRepo->findOneBy(['email' => $candidate]) instanceof User) {
+                $io->error(\sprintf(
+                    'An account already exists for %s — the seed would silently adopt it (its own password, not the one given here): a takeover risk. Delete or handle that account by hand before running the seed. Nothing was created.',
+                    $candidate,
+                ));
+
+                return Command::FAILURE;
+            }
+        }
 
         $password = $this->resolvePassword($io, $input, 'password', 'Main manager password');
         if (null === $password) {

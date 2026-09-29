@@ -6,6 +6,7 @@ namespace App\Tests\Integration\Command;
 
 use App\Entity\User;
 use App\Seed\BcclSeedProfile;
+use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
@@ -151,6 +152,61 @@ final class BcclProdSeedCommandTest extends KernelTestCase
         self::assertSame($before, $this->counts(), 'le second run (no-op) n\'écrit RIEN : tous les comptes sont identiques');
     }
 
+    /**
+     * Anti-usurpation — un compte NON vérifié qu'un tiers aurait créé via /api/register public avec
+     * l'e-mail du fondateur (et SON mot de passe) entre le déploiement et le seed : le seeder
+     * l'adopterait en silence (mot de passe fourni ignoré), en ferait un gestionnaire du BCCL, et
+     * le lien de vérification cliqué par le fondateur activerait le compte de l'attaquant. La
+     * commande doit REFUSER, ne rien créer, et ne pas toucher le compte existant.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testRefusesWhenAnUnverifiedAccountAlreadyExistsForAManagerEmail(): void
+    {
+        $userId = $this->persistUser(self::MANAGER_EMAIL, false, 'mot-de-passe-attaquant');
+
+        self::assertSame(Command::FAILURE, $this->tester->execute([
+            '--email' => self::MANAGER_EMAIL,
+            '--co-email' => self::CO_MANAGER_EMAIL,
+            '--password' => self::MANAGER_PASSWORD,
+            '--co-password' => self::CO_MANAGER_PASSWORD,
+        ], ['interactive' => false]));
+        self::assertStringContainsString('already exists', $this->tester->getDisplay(), 'le refus nomme le compte préexistant');
+
+        self::assertFalse($this->connection->fetchOne('SELECT 1 FROM club WHERE ffbb_club_code = ?', [self::BCCL_FFBB_CODE]), 'aucun club n\'est créé');
+        self::assertSame(0, (int) $this->connection->fetchOne('SELECT COUNT(*) FROM club_user WHERE user_id = ?', [$userId]), 'aucune adhésion gestionnaire n\'est créée pour le compte adopté');
+
+        // Le compte préexistant n'est PAS touché : toujours non vérifié, mot de passe inchangé.
+        $hasher = self::getContainer()->get(UserPasswordHasherInterface::class);
+        $user = $this->em->getRepository(User::class)->findOneBy(['email' => self::MANAGER_EMAIL]);
+        self::assertInstanceOf(User::class, $user);
+        self::assertNull($this->connection->fetchOne('SELECT email_verified_at FROM app_user WHERE id = ?', [$userId]), 'le compte reste NON vérifié');
+        self::assertTrue($hasher->isPasswordValid($user, 'mot-de-passe-attaquant'), 'le mot de passe du compte préexistant est inchangé (rien n\'a été adopté)');
+        self::assertFalse($hasher->isPasswordValid($user, self::MANAGER_PASSWORD), 'le mot de passe fourni au seed n\'a PAS été appliqué');
+    }
+
+    /**
+     * Anti-usurpation, variante compte DÉJÀ vérifié pour l'e-mail du co-gestionnaire : même refus,
+     * rien créé — le garde ne dépend pas de l'état de vérification.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testRefusesWhenAVerifiedAccountAlreadyExistsForTheCoManagerEmail(): void
+    {
+        $userId = $this->persistUser(self::CO_MANAGER_EMAIL, true, 'mot-de-passe-tiers');
+
+        self::assertSame(Command::FAILURE, $this->tester->execute([
+            '--email' => self::MANAGER_EMAIL,
+            '--co-email' => self::CO_MANAGER_EMAIL,
+            '--password' => self::MANAGER_PASSWORD,
+            '--co-password' => self::CO_MANAGER_PASSWORD,
+        ], ['interactive' => false]));
+        self::assertStringContainsString('already exists', $this->tester->getDisplay());
+
+        self::assertFalse($this->connection->fetchOne('SELECT 1 FROM club WHERE ffbb_club_code = ?', [self::BCCL_FFBB_CODE]), 'aucun club n\'est créé');
+        self::assertSame(0, (int) $this->connection->fetchOne('SELECT COUNT(*) FROM club_user WHERE user_id = ?', [$userId]), 'aucune adhésion n\'est créée pour le compte préexistant');
+    }
+
     protected function setUp(): void
     {
         $adminUrl = $_SERVER['DATABASE_ADMIN_URL'] ?? getenv('DATABASE_ADMIN_URL');
@@ -179,6 +235,26 @@ final class BcclProdSeedCommandTest extends KernelTestCase
             $this->connection->rollBack();
         }
         parent::tearDown();
+    }
+
+    /**
+     * Pose un User global (hors tenant) à l'e-mail donné, comme le ferait un /api/register — avec
+     * un mot de passe « choisi par un tiers » et l'état de vérification voulu.
+     */
+    private function persistUser(string $email, bool $verified, string $plainPassword): string
+    {
+        $user = new User;
+        $user->setEmail($email);
+        $user->setFirstName('Tiers');
+        $user->setLastName('Inconnu');
+        $user->setPasswordHash(self::getContainer()->get(UserPasswordHasherInterface::class)->hashPassword($user, $plainPassword));
+        if ($verified) {
+            $user->setEmailVerifiedAt(new DateTimeImmutable);
+        }
+        $this->em->persist($user);
+        $this->em->flush();
+
+        return $user->getId();
     }
 
     /**

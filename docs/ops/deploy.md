@@ -219,12 +219,20 @@ docker compose exec php-fpm php bin/console app:league-windows:seed
 
 ⬜ **Le club BCCL réel** (`app:bccl:seed-prod`) — CREATE-ONLY (no-op si déjà là). Les mots de passe
 sont demandés en **prompt masqué** (ne pas les mettre en `--password` pour ne pas les laisser dans
-l'historique shell). `--email` = ton compte fondateur, `--co-email` = celui de Nicolas Barilleau :
+l'historique shell). `--email` = ton compte fondateur, `--co-email` = celui de Nicolas Barilleau.
+⚠ **Lancer ce seed JUSTE APRÈS le déploiement**, avant d'ouvrir l'inscription publique à qui que ce
+soit : le seeder crée les comptes gestionnaires à ces e-mails, et il **refuse** si un compte existe
+déjà pour l'un d'eux (garde anti-usurpation — un compte créé entre-temps via `/register` avec ton
+e-mail ne doit jamais être adopté par le seed).
 
 ```bash
 docker compose exec php-fpm sh -c 'DATABASE_URL="$DATABASE_ADMIN_URL" php bin/console app:bccl:seed-prod --email=TON-EMAIL --co-email=EMAIL-NICOLAS'
 # → deux prompts masqués : mot de passe gestionnaire, puis co-gestionnaire (min 12 caractères).
 ```
+
+Si la commande échoue sur « **An account already exists for … »** : un compte porte déjà cet e-mail.
+**Ne pas contourner** — vérifier qui l'a créé, le supprimer (ou le traiter à la main) puis relancer.
+Rien n'a été créé tant que ce refus s'affiche.
 
 ⬜ **Le club de démonstration** (`app:demo:seed`) — jouable dès le jour J. `--password` (min 12) est
 requis à la première création ; pour éviter de le laisser en clair dans l'historique, préfixer la
