@@ -62,6 +62,32 @@ describe("DeleteConfirm", () => {
     expect(screen.queryByText(/déclaré/)).not.toBeInTheDocument();
   });
 
+  it("P4-270 — la phrase placedFixtures REMPLACE la puce cascade venue_fixture (une seule mention des matchs)", () => {
+    render(
+      <DeleteConfirm
+        open
+        entityName="Gymnase A"
+        impact={impact({
+          lines: [
+            { key: "venue_slot", count: 3, one: "créneau de disponibilité", many: "créneaux de disponibilité" },
+            { key: "venue_fixture", count: 5, one: "match qui perdra sa salle", many: "matchs qui perdront leur salle" },
+          ],
+          placedFixtures: 5,
+          declaredFixtures: 2,
+        })}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    // La phrase dédiée est là…
+    expect(screen.getByText(/5 matchs placés dans ce gymnase/)).toBeInTheDocument();
+    expect(screen.getByText(/déjà déclarés/)).toBeInTheDocument();
+    // …et la puce cascade des mêmes matchs a DISPARU (pas de redite).
+    expect(screen.queryByText(/qui perdront leur salle/)).not.toBeInTheDocument();
+    // Les AUTRES puces de cascade restent.
+    expect(screen.getByText("3 créneaux de disponibilité")).toBeInTheDocument();
+  });
+
   it("P4-270 — zéro match placé : aucune phrase de matchs", () => {
     render(<DeleteConfirm open entityName="SM1" impact={impact({ placedFixtures: 0, declaredFixtures: 0 })} onConfirm={vi.fn()} onCancel={vi.fn()} />);
     expect(screen.queryByText(/dans ce gymnase/)).not.toBeInTheDocument();

@@ -57,12 +57,16 @@ export function DeleteConfirm({
   // P4-108 — plus AUCUN compte local : les quatre gestes de suppression (salle, équipe,
   // coach, créneau) lisent l'impact du serveur. La prop `impacts` a disparu avec son dernier
   // appelant, pour qu'on ne puisse plus recompter ici par commodité.
-  const lines = impact?.lines ?? [];
   const blocked = true === impact?.blocked;
   // P4-270 — matchs déjà placés dans ce gymnase qui redeviendront « à placer » ; `declared` en
   // est le sous-ensemble déjà déposé à la fédération (à re-soumettre). Zéro hors gymnase.
   const placedFixtures = impact?.placedFixtures ?? 0;
   const declaredFixtures = impact?.declaredFixtures ?? 0;
+  // P4-270 — la phrase placedFixtures ci-dessous couvre EXACTEMENT le même ensemble que la ligne
+  // de cascade `venue_fixture` (les matchs qui perdent leur salle) : on retire cette puce quand la
+  // phrase est rendue, pour ne pas dire deux fois la même chose. Filtre par CLÉ (jamais le libellé,
+  // porté par le serveur). placedFixtures = 0 → la puce n'existe de toute façon pas.
+  const lines = (impact?.lines ?? []).filter((line) => !(placedFixtures > 0 && "venue_fixture" === line.key));
   const description = (
     <>
       {blocked ? (
