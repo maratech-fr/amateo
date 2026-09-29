@@ -69,8 +69,8 @@ Fonctionnalité: Le placement des matchs honore les fenêtres d'accès et nomme 
     Alors le match du samedi est placé par le solveur, au plus tard à 21h00
 
   Scénario: Une règle du club incompatible avec la seule fenêtre laisse le match sans créneau, nommé
-    Quand la seule fenêtre d'accès est tardive (20h00-23h00) et qu'une règle « pas après 18h »
-    vide le domaine pourtant licite, le match reste sans créneau avec un motif NOMMÉ — le
+    Avec une seule fenêtre d'accès tardive (20h00-23h00), une règle « pas après 18h »
+    vide le domaine pourtant licite : le match reste sans créneau avec un motif NOMMÉ — le
     gestionnaire sait que c'est SA règle, pas un gymnase fermé ni la ligue.
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et deux équipes et un gymnase jetables
