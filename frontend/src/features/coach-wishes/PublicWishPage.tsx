@@ -3,10 +3,12 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
 
 import { AuthLayout } from "@/features/auth/AuthLayout";
+import { BrandMark } from "@/shared/components/ui/brand-mark";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Spinner } from "@/shared/components/ui/spinner";
+import { PRODUCT_SITE_URL } from "@/shared/lib/product";
 
 import { getPublicWishContext, isPublicWishError, submitPublicWishes, type PublicWishContext, type PublicWishSubmission } from "./publicApi";
 import { useWishStepper } from "./useWishStepper";
@@ -22,6 +24,27 @@ import { buildInitialSections, cloneSections, frDate, isSectionDirty, toSubmissi
  * les sections MODIFIÉES (dirty-tracking) — une section non touchée n'écrit rien. Un filet
  * sessionStorage LOCAL survit à un rechargement d'onglet (purgé au succès).
  */
+/**
+ * Pied discret « Propulsé par <marque> — découvrir » (P5-24), posé via la prop `footer`
+ * d'`AuthLayout` sous la carte des SIX états de cette page publique. Le coach n'a aucun
+ * autre contact avec le produit : le pied nomme la marque (logotype `BrandMark`, seul lieu
+ * où le nom produit se pose comme MARQUE) et renvoie à la vitrine (`PRODUCT_SITE_URL`).
+ * Une seule ligne, mark aligné sur le texte (`items-center`) ; discret (hérite `text-sm`
+ * `text-muted-foreground` du conteneur d'`AuthLayout`), il ne concurrence pas le CTA de la carte.
+ */
+function PoweredByFooter() {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span>Propulsé par</span>
+      <BrandMark size="sm" />
+      <span aria-hidden>—</span>
+      <a href={PRODUCT_SITE_URL} target="_blank" rel="noopener" className="underline underline-offset-2 transition-colors hover:text-foreground">
+        découvrir
+      </a>
+    </span>
+  );
+}
+
 export function PublicWishPage() {
   const { token = "" } = useParams();
 
@@ -34,7 +57,7 @@ export function PublicWishPage() {
 
   if (query.isLoading) {
     return (
-      <AuthLayout title="Vos disponibilités" description="Chargement…">
+      <AuthLayout title="Vos disponibilités" description="Chargement…" footer={<PoweredByFooter />}>
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
           <Spinner className="size-4" />
           Un instant…
@@ -47,13 +70,13 @@ export function PublicWishPage() {
     const status = isPublicWishError(query.error) ? query.error.response.status : 0;
     if (410 === status) {
       return (
-        <AuthLayout title="Lien expiré" description="La collecte est close.">
+        <AuthLayout title="Lien expiré" description="La collecte est close." footer={<PoweredByFooter />}>
           <p className="text-sm text-muted-foreground">La période de collecte est terminée. Rapprochez-vous de votre club si vous souhaitez encore transmettre vos disponibilités.</p>
         </AuthLayout>
       );
     }
     return (
-      <AuthLayout title="Lien invalide" description="Ce lien n'est pas reconnu.">
+      <AuthLayout title="Lien invalide" description="Ce lien n'est pas reconnu." footer={<PoweredByFooter />}>
         <p className="text-sm text-muted-foreground">Ce lien est invalide. Vérifiez qu'il est complet, ou demandez-en un nouveau à votre club.</p>
       </AuthLayout>
     );
@@ -140,7 +163,7 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
 
   if (0 === context.teams.length) {
     return (
-      <AuthLayout title="Aucune équipe concernée" description={context.periodTitle}>
+      <AuthLayout title="Aucune équipe concernée" description={context.periodTitle} footer={<PoweredByFooter />}>
         <EmptyHint>Aucune de vos équipes n'est concernée par cette collecte pour le moment. Rapprochez-vous de votre club.</EmptyHint>
       </AuthLayout>
     );
@@ -148,7 +171,7 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
 
   if (done) {
     return (
-      <AuthLayout title="Merci !" description="Vos disponibilités sont enregistrées.">
+      <AuthLayout title="Merci !" description="Vos disponibilités sont enregistrées." footer={<PoweredByFooter />}>
         <p className="text-sm text-muted-foreground">C'est transmis à votre club. Vous pouvez revenir modifier ce formulaire jusqu'au {frDate(context.deadline)}.</p>
       </AuthLayout>
     );
@@ -160,7 +183,7 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
   const title = "intro" === current.kind ? `Bonjour ${context.coachFirstName}` : "team" === current.kind ? (context.teams[current.teamIndex ?? 0]?.name ?? "Votre équipe") : "Récapitulatif";
 
   return (
-    <AuthLayout title={title} description={description}>
+    <AuthLayout title={title} description={description} footer={<PoweredByFooter />}>
       <WishProgress stepper={stepper} teams={context.teams} />
 
       {"intro" === current.kind ? (

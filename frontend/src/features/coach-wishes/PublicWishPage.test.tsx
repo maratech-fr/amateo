@@ -5,6 +5,8 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { HTTPError } from "ky";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { PRODUCT_SITE_URL } from "@/shared/lib/product";
+
 import type { PublicWishContext } from "./publicApi";
 
 const h = { getContext: vi.fn(), submit: vi.fn() };
@@ -213,5 +215,68 @@ describe("PublicWishPage — parcours en étapes", () => {
     h.getContext.mockRejectedValue(httpError(410));
     renderAt();
     expect(await screen.findByText(/Lien expiré/)).toBeInTheDocument();
+  });
+});
+
+// P5-24 — le pied « Propulsé par <marque> — découvrir » est posé sous la carte des SIX états
+// de la page publique (chargement, 410, 404, aucune équipe, merci, formulaire), via la prop
+// `footer` d'`AuthLayout`. Le lien pointe la vitrine (`PRODUCT_SITE_URL`, maison unique).
+describe("PublicWishPage — pied « Propulsé par » (P5-24)", () => {
+  beforeEach(() => {
+    h.getContext.mockReset();
+    h.submit.mockReset();
+    sessionStorage.clear();
+  });
+
+  /** Le pied est présent, nomme « Propulsé par » et son lien pointe la vitrine. */
+  function expectFooter() {
+    expect(screen.getByText(/Propulsé par/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /découvrir/ })).toHaveAttribute("href", PRODUCT_SITE_URL);
+  }
+
+  it("état CHARGEMENT — pied présent", async () => {
+    h.getContext.mockReturnValue(new Promise<never>(() => {})); // pending
+    renderAt();
+    await screen.findByText(/Un instant/);
+    expectFooter();
+  });
+
+  it("état 410 (lien expiré) — pied présent", async () => {
+    h.getContext.mockRejectedValue(httpError(410));
+    renderAt();
+    await screen.findByText(/Lien expiré/);
+    expectFooter();
+  });
+
+  it("état 404 (lien invalide) — pied présent", async () => {
+    h.getContext.mockRejectedValue(httpError(404));
+    renderAt();
+    await screen.findByText(/Lien invalide/);
+    expectFooter();
+  });
+
+  it("état AUCUNE ÉQUIPE — pied présent", async () => {
+    h.getContext.mockResolvedValue(context({ teams: [] }));
+    renderAt();
+    await screen.findByText(/Aucune de vos équipes n'est concernée/);
+    expectFooter();
+  });
+
+  it("état FORMULAIRE — pied présent", async () => {
+    h.getContext.mockResolvedValue(context());
+    renderAt();
+    await screen.findByText(/votre club prépare le planning/);
+    expectFooter();
+  });
+
+  it("état MERCI (après envoi) — pied présent", async () => {
+    h.getContext.mockResolvedValue(context());
+    h.submit.mockResolvedValue({ deadline: "2027-06-30" });
+    renderAt();
+    await start();
+    await userEvent.click(screen.getByRole("button", { name: /Rien à signaler/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Confirmer sans modification/ }));
+    await screen.findByText(/transmis à votre club/);
+    expectFooter();
   });
 });

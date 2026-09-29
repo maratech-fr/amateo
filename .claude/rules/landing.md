@@ -38,6 +38,14 @@ paths:
   précédente), un décor visuel n'a pas besoin d'indirection : il ne change jamais par club ni par
   domaine. Détail (opacité, purge C2PA, parité avec l'app) :
   `specs/courantes/identite-visuelle-produit.md` § « Le fond d'écran ».
+- **`og:url`/`og:image` (carte de partage) sont des URL ABSOLUES en dur dans `index.html` et
+  `mentions-legales.html` (P5-24, 2026-09-29)** — même exception que le fond d'écran ci-dessus,
+  pour une raison différente : un crawler de messagerie/réseau social qui construit l'aperçu
+  Open Graph ne charge pas `config.js`, il **n'exécute pas de JS** — une valeur injectée par script
+  n'existerait donc jamais pour lui. `og:image` pointe `assets/brand/og.png` (source versionnée
+  `scripts/brand-og/`, README de régénération à côté — piège du cache immuable : renommer le
+  fichier à toute retouche visuelle). Détail : `specs/courantes/identite-visuelle-produit.md`
+  § « Ce qui reste à venir ».
 - **Thème AU CHOIX, clair par défaut (P4-274, 2026-09-29)** : un mini-script en tête de `<head>`
   (avant le `<style>`, anti-flash) pose `data-theme="dark"` sur `<html>` depuis `localStorage.theme`
   (choix explicite du visiteur) sinon `prefers-color-scheme`, enveloppé (navigation privée,
