@@ -134,6 +134,14 @@ final class Version20260930090000 extends AbstractMigration
             $$;
             SQL);
 
+        // Durcissement (revue sécurité) : re-poser explicitement les attributs étroits —
+        // un rôle amateo_read PRÉ-EXISTANT aux droits plus larges (créé à la main, ou
+        // hérité) serait sinon conservé tel quel par le CREATE idempotent ci-dessus.
+        // Requiert que le rôle des migrations soit superuser (le cas partout aujourd'hui :
+        // dev/test/CI + prod Scaleway Instances, cf. docs/ops/prod-stack.md ; un futur
+        // Postgres managé rouvrirait cette section).
+        $this->addSql('ALTER ROLE amateo_read NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOREPLICATION');
+
         $this->addSql('GRANT USAGE ON SCHEMA public TO amateo_read');
 
         // 2. Tables club_id : SELECT table entière + policy readonly_tenant.

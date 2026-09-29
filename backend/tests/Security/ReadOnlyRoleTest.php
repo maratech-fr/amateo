@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
-use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\Persistence\ManagerRegistry;
@@ -96,10 +95,20 @@ final class ReadOnlyRoleTest extends KernelTestCase
         'constraint_conflict',
     ];
 
-    /** Noms de colonnes qui portent un secret — jamais lisibles via un GRANT table entière. */
-    private const array SECRET_COLUMN_NAMES = [
-        'password_hash', 'hashed_token', 'token', 'totp_secret', 'pending_email',
-        'api_key', 'credentials', 'secret', 'private_key',
+    /**
+     * Motif (insensible à la casse) des noms de colonnes qui SENTENT le secret. Large
+     * volontairement — c'est un filet, pas une liste exacte : une future colonne
+     * `access_token`, `otp_hash`, `api_key`… sera attrapée sans qu'on y pense.
+     */
+    private const string SECRET_COLUMN_REGEX = '(token|secret|hash|password|passwd|otp|totp|salt|api_?key|private)';
+
+    /**
+     * Faux positifs LÉGITIMES du motif ci-dessus, déjà revus : à tenir à la main, JAMAIS
+     * une exclusion large. `schedule.snapshot_hash` = empreinte de CONTENU du planning
+     * (détection de péremption), pas un secret d'authentification.
+     */
+    private const array SECRET_COLUMN_REGEX_EXCEPTIONS = [
+        'schedule.snapshot_hash',
     ];
 
     private Connection $connection;
@@ -202,22 +211,28 @@ final class ReadOnlyRoleTest extends KernelTestCase
         self::assertTrue($this->hasColumnSelect('app_user', 'email'), 'app_user.email doit rester lisible (témoin positif)');
         self::assertTrue($this->hasColumnSelect('coach_wish_token', 'club_id'), 'coach_wish_token.club_id doit rester lisible (témoin positif)');
 
-        // Garde du FUTUR : aucune table accordée TABLE ENTIÈRE n'expose une colonne au
-        // nom secret — une future table club_id gagnant une colonne `token` et accordée
-        // table-level rougirait ici (les tables en colonnes, elles, sont hors champ car
-        // has_table_privilege y est faux, et leurs secrets sont couverts ci-dessus).
-        /** @var list<string> $leaks */
-        $leaks = $this->connection->fetchFirstColumn(
+        // Garde du FUTUR : AUCUNE colonne lisible par amateo_read (table entière OU
+        // colonne) dont le nom sent le secret — sauf les faux positifs revus. Une future
+        // table gagnant une colonne `access_token`/`api_key`/… et accordée en lecture
+        // rougit ici. On interroge has_column_privilege (non filtrée par le rôle courant).
+        /** @var list<string> $matches */
+        $matches = $this->connection->fetchFirstColumn(
             'SELECT c.relname || \'.\' || a.attname '
             . 'FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace '
             . 'JOIN pg_attribute a ON a.attrelid = c.oid '
             . 'WHERE n.nspname = \'public\' AND c.relkind IN (\'r\', \'p\') AND a.attnum > 0 AND NOT a.attisdropped '
-            . 'AND has_table_privilege(\'amateo_read\', c.oid, \'SELECT\') '
-            . 'AND a.attname IN (?)',
-            [self::SECRET_COLUMN_NAMES],
-            [ArrayParameterType::STRING],
+            . 'AND has_column_privilege(\'amateo_read\', a.attrelid, a.attnum, \'SELECT\') '
+            . 'AND a.attname ~* ?',
+            [self::SECRET_COLUMN_REGEX],
         );
-        self::assertSame([], $leaks, 'des colonnes au nom secret sont exposées via un GRANT table entière : ' . implode(', ', $leaks));
+        $leaks = array_values(array_diff($matches, self::SECRET_COLUMN_REGEX_EXCEPTIONS));
+        self::assertSame(
+            [],
+            $leaks,
+            "Colonnes au nom secret lisibles par amateo_read :\n  - " . implode("\n  - ", $leaks)
+            . "\nSoit exclure la colonne du GRANT (migration), soit — si c'est un faux positif revu — l'ajouter "
+            . 'à SECRET_COLUMN_REGEX_EXCEPTIONS avec justification.',
+        );
     }
 
     public function testEveryPublicTableIsClassifiedReadableOrBlacklisted(): void
