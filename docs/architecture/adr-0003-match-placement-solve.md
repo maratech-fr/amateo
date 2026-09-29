@@ -66,7 +66,7 @@ détaillée dans `specs/courantes/module-matchs.md` §3. **1 worker** (bit-stabl
 seed 42. Candidats au pas de **15 min** dans (accès ∩ ligue).
 
 **Warm-start glouton** (P4-240) : avant le solve, un premier-ajustement déterministe, matchs triés
-(date, équipe), choisit pour chacun le candidat préféré — créneau d'habitude/rotation, sinon le
+(date, équipe), choisit pour chacun le candidat préféré — créneau idéal (habitude), sinon le
 placement SOLVER courant s'il reste libre, sinon le premier créneau licite libre — et le donne à CP-SAT
 comme UN seul jeu de hints (`add_hint`). Il absorbe l'ancien hint de stabilité : jamais deux hints
 contradictoires sur le même match. Le poids `W_STABILITY` de la stabilité de re-solve (ci-dessous) est
@@ -84,7 +84,7 @@ reste la seule source qui signale une indisponibilité réelle liée à un exté
 plus que des ancres FIXED (matchs à domicile déjà posés) et des entraînements projetés, et vaut toujours
 `[coup d'envoi, coup d'envoi + matchMinutes]` — la fenêtre salle, sans trajet ni échauffement. Un match
 AWAY reste émis au contrat (`roundTripMinutes` transporté, plus consommé) : il libère la protection
-d'habitude/rotation de son équipe ce jour-là. Décision fondateur : « on s'échauffe sur le côté pendant le
+d'habitude de son équipe ce jour-là. Décision fondateur : « on s'échauffe sur le côté pendant le
 match précédent ; deux matchs qui s'enchaînent, c'est OK et très courant » — le solveur n'interdit donc
 pas l'enchaînement fédéral à 2 h que le radar accepte déjà.
 
@@ -103,13 +103,14 @@ recul silencieux si la famille revenait un jour au radar.
 
 Poids SOFT (produit, golden-épinglés) : conflit personne (coach MAIN ou joueuse active) −60 ·
 passerelle NOT_SIMULTANEOUS violée −40 · habitude heure +15 / gymnase +5 (le jour est constant) ·
-fenêtre habituelle protégée −25 · **rotation A/B — attraction heure +15 / gymnase +5 · fenêtre de
-rotation protégée −25** (RMM-5 : extension à parité stricte du mécanisme d'habitude, le créneau
-partagé attire le domicile d'un membre son jour de rotation et se défend les dates où aucun membre
-ne joue ; la suppléance backend garantit qu'un membre reçoit rotation OU habitude, jamais les deux) ·
-BACK_TO_BACK enchaîné +15 · coach ASSISTANT −10 · stabilité re-solve
+fenêtre habituelle protégée −25 · BACK_TO_BACK enchaîné +15 · coach ASSISTANT −10 · stabilité re-solve
 +8 (+ hint) · compactage −1 **par pas de 15 min** de trou (jamais par minute — un trou de 6 h ne doit
-pas renverser un conflit de coach).
+pas renverser un conflit de coach). **La protection de fenêtre d'habitude ne s'applique jamais au
+créneau idéal PROPRE de l'équipe candidate** (`is_own_ideal`, P4-271, 2026-09-29 — la « rotation A/B »
+d'origine, RMM-5, a été retirée : deux créneaux idéaux physiquement identiques, l'ex-alternance A/B,
+protègent désormais la MÊME fenêtre plutôt que deux mécanismes séparés) : sans cette exception, le
+bonus d'habitude d'une équipe perdrait toujours face à la protection posée par une AUTRE équipe dont
+le créneau idéal coïncide (même gymnase+jour+heure).
 
 ### 5. Ancres : `Fixture.placementSource` (MANUAL | SOLVER)
 

@@ -17,8 +17,8 @@ use RuntimeException;
  *
  * Reproduit ce que faisait le smoke « place-matches » : rail SYNCHRONE de
  * POST /api/fixtures/place. On possède TOUTES les ressources dont dépendent les
- * assertions (deux équipes + un gymnase jetables, une fenêtre samedi, une
- * rotation samedi 15:30, deux fixtures) pour que la donnée WE réelle du seed ne
+ * assertions (deux équipes + un gymnase jetables, une fenêtre samedi, un
+ * créneau idéal samedi 15:30, deux fixtures) pour que la donnée WE réelle du seed ne
  * les perturbe pas. Deux gardes de restauration, exécutées quoi qu'il arrive :
  *   - la raison `no_access_window` est CLUB-WIDE → on sauve puis supprime toute
  *     fenêtre d'accès dominicale du club, et on la RECRÉE en fin de scénario ;
@@ -43,7 +43,7 @@ final class MatchPlacementContext extends BaseContext
 
     private string $windowId = '';
 
-    private string $rotationId = '';
+    private string $habitIdealId = '';
 
     private string $competitionId = '';
 
@@ -155,12 +155,12 @@ final class MatchPlacementContext extends BaseContext
         );
     }
 
-    #[Given('un créneau de rotation partagé le samedi à 15h30 réunissant les deux équipes')]
-    public function uneRotationSamedi1530(): void
+    #[Given('un créneau idéal le samedi à 15h30 sur ce gymnase pour la première équipe')]
+    public function unCreneauIdealSamedi1530(): void
     {
-        $this->rotationId = $this->createdId(
-            $this->apiPost('match_slot_rotations', ['venueId' => $this->venueId, 'dayOfWeek' => 6, 'kickoffTime' => '15:30', 'teamIds' => [$this->teamId, $this->secondTeamId]], $this->token),
-            'rotation',
+        $this->habitIdealId = $this->createdId(
+            $this->apiPost('team_match_habits', ['teamId' => $this->teamId, 'dayOfWeek' => 6, 'kickoffTime' => '15:30', 'venueId' => $this->venueId, 'week' => 'A'], $this->token),
+            'créneau idéal',
         );
     }
 
@@ -382,7 +382,7 @@ final class MatchPlacementContext extends BaseContext
 
     /**
      * Le seed BCCL pose des fenêtres samedi sur Matéo/Armand/Debarros : sans elles écartées, deux
-     * domiciles SANS préférence (ni habitude ni rotation) sont plaçables sur PLUSIEURS gymnases, et
+     * domiciles SANS préférence (aucun créneau idéal) sont plaçables sur PLUSIEURS gymnases, et
      * le solveur — indifférent entre gymnases à l'objectif — n'a aucune raison de les co-localiser
      * sur le gymnase jetable (le warm-start glouton, déterministe, retient d'ailleurs le premier
      * gymnase par ordre d'id). On rend le décor déterministe en ne laissant QUE la fenêtre du
@@ -515,17 +515,17 @@ final class MatchPlacementContext extends BaseContext
         }
     }
 
-    #[Then('le match du samedi atterrit sur le créneau de rotation partagé, sur le gymnase à 15h30')]
-    public function leMatchDuSamediSurLaRotation(): void
+    #[Then('le match du samedi atterrit sur son créneau idéal, sur le gymnase à 15h30')]
+    public function leMatchDuSamediSurSonIdeal(): void
     {
         $kickoff = $this->kickoff();
         if (!str_starts_with($kickoff, '15:30')) {
-            throw new RuntimeException(\sprintf('l\'attraction de rotation n\'a pas joué : coup d\'envoi %s au lieu de 15:30', $kickoff));
+            throw new RuntimeException(\sprintf('l\'attraction du créneau idéal n\'a pas joué : coup d\'envoi %s au lieu de 15:30', $kickoff));
         }
 
         $venuePlaced = $this->satFixture['venueId'] ?? null;
         if ($venuePlaced !== $this->venueId) {
-            throw new RuntimeException('le match n\'a pas atterri sur le gymnase du créneau de rotation');
+            throw new RuntimeException('le match n\'a pas atterri sur le gymnase du créneau idéal');
         }
     }
 
@@ -635,7 +635,7 @@ final class MatchPlacementContext extends BaseContext
 
     /**
      * Nettoyage dans l'ordre du smoke (`trap cleanup`) : les fixtures D'ABORD
-     * (une équipe engagée refuse sa suppression), puis rotation, fenêtre,
+     * (une équipe engagée refuse sa suppression), puis créneau idéal, fenêtre,
      * équipes, gymnase ; on RECRÉE les fenêtres dominicales retirées ; enfin on
      * repose le pointeur du socle à NULL si c'est nous qui l'avons posé.
      */
@@ -666,8 +666,8 @@ final class MatchPlacementContext extends BaseContext
         if ('' !== $this->coachId) {
             $this->apiDelete(\sprintf('coaches/%s', $this->coachId), $this->token);
         }
-        if ('' !== $this->rotationId) {
-            $this->apiDelete(\sprintf('match_slot_rotations/%s', $this->rotationId), $this->token);
+        if ('' !== $this->habitIdealId) {
+            $this->apiDelete(\sprintf('team_match_habits/%s', $this->habitIdealId), $this->token);
         }
         foreach ([$this->competitionId, $this->competitionId2] as $id) {
             if ('' !== $id) {

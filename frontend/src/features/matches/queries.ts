@@ -849,12 +849,21 @@ export function useCreateTeamMatchHabit() {
   });
 }
 
+export function useUpdateTeamMatchHabit() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: matchesApi.TeamMatchHabitInput }) => matchesApi.updateTeamMatchHabit(id, input),
+    onSuccess: () => invalidateHabits(queryClient),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
 export function useDeleteTeamMatchHabit() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: matchesApi.deleteTeamMatchHabit,
     onSuccess: () => invalidateHabits(queryClient),
-    onError: () => toast.error("Suppression de l'habitude impossible"),
+    onError: () => toast.error("Suppression du créneau idéal impossible"),
   });
 }
 
@@ -892,43 +901,6 @@ export function useDeleteTeamLink() {
     mutationFn: matchesApi.deleteTeamLink,
     onSuccess: () => invalidateTeamLinks(queryClient),
     onError: () => toast.error("Suppression du lien impossible"),
-  });
-}
-
-// ── Rotation A/B — shared match slots (RMM-5 PR-4) ───────────────────────────
-
-export function useMatchSlotRotations() {
-  return useQuery({ queryKey: ["match_slot_rotations"], queryFn: matchesApi.getMatchSlotRotations, staleTime: 300_000 });
-}
-
-function invalidateRotations(queryClient: ReturnType<typeof useQueryClient>): void {
-  void queryClient.invalidateQueries({ queryKey: ["match_slot_rotations"] });
-}
-
-export function useCreateMatchSlotRotation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: matchesApi.createMatchSlotRotation,
-    onSuccess: () => invalidateRotations(queryClient),
-    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
-  });
-}
-
-export function useUpdateMatchSlotRotation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: matchesApi.MatchSlotRotationInput }) => matchesApi.updateMatchSlotRotation(id, input),
-    onSuccess: () => invalidateRotations(queryClient),
-    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
-  });
-}
-
-export function useDeleteMatchSlotRotation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: matchesApi.deleteMatchSlotRotation,
-    onSuccess: () => invalidateRotations(queryClient),
-    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 

@@ -8,8 +8,6 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\Coach;
 use App\Entity\ImplicitRuleSetting;
-use App\Entity\MatchSlotRotation;
-use App\Entity\MatchSlotRotationTeam;
 use App\Entity\PriorityTier;
 use App\Entity\Schedule;
 use App\Entity\ScheduleDiagnostic;
@@ -706,25 +704,6 @@ final class ResourceChangeStaleScheduleTest extends KernelTestCase
         );
     }
 
-    public function testAMatchSlotRotationChangeMarksTheClubSeasonSchedules(): void
-    {
-        [$club, $season] = $this->seed();
-        $venueId = $this->venue($club, $season);
-        $schedule = $this->seasonSchedule($club, $season);
-        $this->em->flush();
-        // La création du gymnase marque légitimement : ardoise propre pour ne mesurer QUE la rotation.
-        $this->resetMarkers($schedule);
-
-        // Une rotation (créneau + ses membres) nourrit le matchDay dérivé de chaque membre → périme
-        // le club+saison (hors plan de période, patron STRUCTURE).
-        $this->storeRotation($club, $season, $venueId);
-
-        self::assertTrue(
-            $this->reload($schedule)->isResourcesChangedSinceGeneration(),
-            'Une rotation A/B (créneau + membres) périme les plannings COMPLETED du club+saison.',
-        );
-    }
-
     public function testAnImportClearsTheMarkerAfterAHabitChange(): void
     {
         [$club, $season] = $this->seed();
@@ -1077,30 +1056,6 @@ final class ResourceChangeStaleScheduleTest extends KernelTestCase
             ->setDayOfWeek($dayOfWeek)
             ->setKickoffTime(new DateTimeImmutable('15:30'));
         $this->em->persist($habit);
-        $this->em->flush();
-        $this->em->clear();
-    }
-
-    private function storeRotation(Club $club, Season $season, string $venueId): void
-    {
-        $rotation = (new MatchSlotRotation)
-            ->setClubId($club->getId())
-            ->setSeasonId($season->getId())
-            ->setVenueId($venueId)
-            ->setDayOfWeek(6)
-            ->setKickoffTime(new DateTimeImmutable('20:30'));
-        $this->em->persist($rotation);
-
-        $position = 0;
-        foreach ([$this->uuid(), $this->uuid()] as $teamId) {
-            $member = (new MatchSlotRotationTeam)
-                ->setClubId($club->getId())
-                ->setSeasonId($season->getId())
-                ->setRotationId($rotation->getId())
-                ->setTeamId($teamId)
-                ->setPosition($position++);
-            $this->em->persist($member);
-        }
         $this->em->flush();
         $this->em->clear();
     }

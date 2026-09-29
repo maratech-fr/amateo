@@ -4,25 +4,31 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
+use App\Enum\MatchWeek;
 use App\Repository\TeamMatchHabitRepository;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
- * A team's habitual match window (cadrage P1-4 §5.3 — « nous sommes des êtres
- * d'habitude ») : « SF3 = dimanche 17h30 à Coubertin ». A POINT in time, not a
- * range (every founder example is a kickoff instant), venue optional (the
- * away-kickoff estimation only needs day+time). N per team, ONE per weekday
- * (DB unique) — « domicile samedi OU dimanche » = two rows.
+ * A team's ideal match slot (« créneau idéal », cadrage P1-4 §5.3 — « nous sommes
+ * des êtres d'habitude ») : « SF3 = dimanche 17h30 à Coubertin ». A POINT in time,
+ * not a range (every founder example is a kickoff instant), venue optional (the
+ * away-kickoff estimation only needs day+time). ONE per team (DB unique on
+ * club+season+team since P4-271) — a team declares a SINGLE ideal slot, tagged
+ * week {@see MatchWeek} A, B or ALL (a club without A/B alternation).
+ *
+ * The `week` tag is a VISUAL AID (the manager's ideal model), never a constraint:
+ * it feeds the frontend's A/B typical-week view and NEVER travels to the engine —
+ * the solver sees an habitual window without a week label.
  *
  * Serves three consumers: the PR D solver's SOFT preference, the weekend-grid
  * ghost blocks (protecting the weekends of a team whose calendar is not out
  * yet), and the away-kickoff estimation that feeds the conflict radar.
- * Copied on season transition (habits renew with the season).
+ * Copied on season transition (habits renew with the season, `week` carried).
  */
 #[ORM\Entity(repositoryClass: TeamMatchHabitRepository::class)]
 #[ORM\Table(name: 'team_match_habit')]
-#[ORM\UniqueConstraint(name: 'uniq_team_match_habit_day', columns: ['club_id', 'season_id', 'team_id', 'day_of_week'])]
+#[ORM\UniqueConstraint(name: 'uniq_team_match_habit_team', columns: ['club_id', 'season_id', 'team_id'])]
 #[ORM\Index(name: 'idx_team_match_habit_club_season', columns: ['club_id', 'season_id'])]
 #[ORM\Index(name: 'idx_team_match_habit_team', columns: ['team_id'])]
 #[ORM\HasLifecycleCallbacks]
@@ -62,6 +68,13 @@ class TeamMatchHabit implements TenantOwnedInterface
     /** Habitual HOME venue — null when the habit is day+time only. */
     #[ORM\Column(type: 'guid', nullable: true)]
     private ?string $venueId = null;
+
+    /**
+     * Semaine d'alternance du créneau idéal (aide visuelle A/B — P4-271). `ALL` par
+     * défaut : un club sans alternance. Ne voyage JAMAIS au moteur.
+     */
+    #[ORM\Column(type: 'string', length: 8, enumType: MatchWeek::class, options: ['default' => 'ALL'])]
+    private MatchWeek $week = MatchWeek::ALL;
 
     public function __construct()
     {
@@ -186,6 +199,18 @@ class TeamMatchHabit implements TenantOwnedInterface
     public function setVenueId(?string $venueId): self
     {
         $this->venueId = $venueId;
+
+        return $this;
+    }
+
+    public function getWeek(): MatchWeek
+    {
+        return $this->week;
+    }
+
+    public function setWeek(MatchWeek $week): self
+    {
+        $this->week = $week;
 
         return $this;
     }

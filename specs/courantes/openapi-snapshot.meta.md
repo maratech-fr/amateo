@@ -1,11 +1,14 @@
-Last verified @ 2026-09-29 (snapshot régénéré depuis le backend vivant : P4-272 ② ajoute la
-suggestion de plages de ligue — `GET /api/league-window-suggestions` (la tendance dominante de
-l'instance fédérale du club : comité / ligue / fédération, plus un repli sur le catalogue fédéral,
-un compte de clubs jamais un « qui ») et `POST /api/league-window-suggestions/apply` (recalcul
-serveur, remplacement transactionnel de la copie), toutes deux réservées au gestionnaire).
+Last verified @ 2026-09-29 (snapshot régénéré depuis le backend vivant : P4-271 — la ressource
+`MatchSlotRotation` disparaît (les 2 routes `GET/POST /api/match_slot_rotations` et
+`GET/PUT/DELETE /api/match_slot_rotations/{id}` retirées, semaine type A/B désormais un tag `week`
+sur le créneau idéal) et `TeamMatchHabit` gagne le champ `week` (A/B/ALL) en lecture comme en
+écriture ; la description de la ressource (`TeamMatchHabitResource.php`) recalée sur « un par
+équipe » (l'ancien « un par jour de semaine » datait d'avant l'unicité par équipe) — même passe que
+le PUT qui peut désormais retirer le gymnase d'un créneau idéal (`d703af19`) ; les routes de
+P4-272 ② (plages de ligue suggérées) toujours présentes).
 
-**213 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`ec1b8afad300351add565b0127fa47eb795af351e26233a397e22f063a387496` (`sha256sum` sur le fichier).
+**211 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`602d6b7d1646b60cec8f3ed33a59aa8897af7c24e03028dba62adaffedd85989` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

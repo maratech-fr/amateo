@@ -427,51 +427,48 @@ def test_shared_coach_no_longer_forces_extra_warmup_spacing() -> None:
     assert abs(minutes(kickoff_of(result, "m1")) - minutes(kickoff_of(result, "m2"))) == 105
 
 
-def test_rotation_time_and_venue_attract_the_placement() -> None:
-    # RMM-5: t1 belongs to a Saturday 15:30 rotation at v2 and has NO habit — the
-    # rotation attracts its HOME match to (v2, 15:30), at parity with a habit.
-    result = solve_match_placement(
-        payload(
-            matches=[to_place()],
-            venues=[venue("v1"), venue("v2")],
-            teams=[team("t1"), team("t2")],
-            slotRotations=[{"venueId": "v2", "dayOfWeek": 6, "kickoff": "15:30", "teamIds": ["t1", "t2"]}],
-        )
-    )
-    placement = result["placements"][0]
-    assert placement["venueId"] == "v2"
-    assert placement["kickoff"].strftime("%H:%M") == "15:30"
-
-
-def test_rotation_window_is_protected_when_no_member_plays() -> None:
-    # The rotation slot (Saturday 15:30 at v1) is defended on a date where NEITHER
-    # member (t2, t3) has a match — t1 (an outsider) lands outside 15:00-17:15.
+def test_inactive_ab_partner_does_not_chase_a_team_off_its_own_ideal() -> None:
+    # P4-271 (fix) — t1 and its A/B partner t2 declare the SAME ideal slot (Saturday
+    # 15:30 at v1). This weekend t1 receives (a match to place) and t2 does NOT, so
+    # t2's habit window [15:30, 17:15] is protected. Without the own-ideal skip, t1's
+    # 15:30 candidate scores +15 +5 −25 = −5 and loses to a neutral 17:15 slot (0);
+    # the fix keeps t1 ON its declared ideal. FALSIFIED without the skip (lands 17:15).
     result = solve_match_placement(
         payload(
             matches=[to_place("m1", "t1")],
             venues=[venue(windows=[{"dayOfWeek": 6, "start": "14:00", "end": "20:00"}])],
-            teams=[team("t1"), team("t2"), team("t3")],
-            slotRotations=[{"venueId": "v1", "dayOfWeek": 6, "kickoff": "15:30", "teamIds": ["t2", "t3"]}],
+            teams=[
+                team("t1", habits=[{"dayOfWeek": 6, "kickoff": "15:30", "venueId": "v1"}]),
+                team("t2", habits=[{"dayOfWeek": 6, "kickoff": "15:30", "venueId": "v1"}]),
+            ],
         )
     )
-    k = kickoff_of(result, "m1")
-    minutes = int(k[:2]) * 60 + int(k[3:])
-    # Protected MATCH window [15:30, 17:15] (D1) — the candidate's own match
-    # window [k, k+105] must not cross it.
-    assert minutes + 105 <= 15 * 60 + 30 or minutes >= 17 * 60 + 15
+    placement = result["placements"][0]
+    assert placement["venueId"] == "v1"
+    assert placement["kickoff"].strftime("%H:%M") == "15:30"
 
 
-def test_empty_rotation_block_is_a_noop() -> None:
-    # An absent/empty slotRotations block must not perturb the objective — the
-    # world before RMM-5 is byte-identical (pattern teamLinks).
-    base = {
-        "matches": [to_place()],
-        "venues": [venue("v1"), venue("v2")],
-        "teams": [team(habits=[{"dayOfWeek": 6, "kickoff": "15:30", "venueId": "v2"}])],
-    }
-    without = solve_match_placement(payload(**base))
-    with_empty = solve_match_placement(payload(slotRotations=[], **base))
-    assert without["placements"] == with_empty["placements"]
+def test_two_homes_sharing_an_ideal_slot_place_one_there_the_other_elsewhere() -> None:
+    # P4-271 — two teams declare the SAME ideal slot (Saturday 15:30 at v1) and BOTH
+    # receive this weekend. The HARD venue no-overlap lets only ONE sit at 15:30; the
+    # other is placed elsewhere in the window (never dropped). Both play → neither
+    # protects a window, so the shared ideal is not double-penalised.
+    result = solve_match_placement(
+        payload(
+            matches=[to_place("m1", "t1"), to_place("m2", "t2")],
+            venues=[venue(windows=[{"dayOfWeek": 6, "start": "14:00", "end": "20:00"}])],
+            teams=[
+                team("t1", habits=[{"dayOfWeek": 6, "kickoff": "15:30", "venueId": "v1"}]),
+                team("t2", habits=[{"dayOfWeek": 6, "kickoff": "15:30", "venueId": "v1"}]),
+            ],
+        )
+    )
+    assert result["unplaced"] == []
+    kickoffs = {kickoff_of(result, "m1"), kickoff_of(result, "m2")}
+    assert "15:30" in kickoffs  # one team gets the shared ideal slot
+    minutes = lambda s: int(s[:2]) * 60 + int(s[3:])  # noqa: E731
+    # The two MATCH windows [k, k+105] must not overlap (HARD venue no-overlap at v1).
+    assert abs(minutes(kickoff_of(result, "m1")) - minutes(kickoff_of(result, "m2"))) >= 105
 
 
 def test_protected_habit_window_repels_other_matches() -> None:

@@ -1,10 +1,8 @@
 # Génération d'un planning — conduite normalisée (bout en bout)
 
-Last verified @ 2026-09-28 (recalé par la livraison P4-240 : `CONTRACT_VERSION` **2.24** aux trois
-foyers ; reste inchangé — passe « le présent seulement » — la
-chronologie du bug d'atterrissage embarqué en mode période (§2, « corrigé le 2026-08-19 ») et la
-mention « historique » de l'illustration `score` (§5.1) passées au présent, la trace datée reste
-en `etat-des-lieux.md` §3. `CONTRACT_VERSION` toujours **`'2.24'`** aux trois foyers
+Last verified @ 2026-09-29 (P4-271 : `CONTRACT_VERSION` **2.24 → 2.25** aux trois foyers —
+`slotRotations` retiré du payload, semaine type A/B = tag sur le créneau idéal, non transmis au
+moteur. `CONTRACT_VERSION` **`'2.25'`** aux trois foyers
 (`ScheduleConstraintBuilder.php:63`, `MoveSlotService.php:50`,
 `MatchPlacementPayloadBuilder.php:65`) et `engine/CONTRACT_VERSION`, inchangé ; la garde de
 redélivrance (`GenerateScheduleHandler.php`, lecture fraîche + après verrou, SEUL `COMPLETED`

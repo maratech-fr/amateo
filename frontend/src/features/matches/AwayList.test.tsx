@@ -23,7 +23,7 @@ const away = (over: Partial<Fixture> = {}): Fixture => ({
 });
 
 const teams = new Map<string, Team>([["team-1", { id: "team-1", name: "SM2", sportCategoryId: "cat", level: null, gender: null, priorityTierId: 1, tierOrder: 0 }]]);
-const habit: TeamMatchHabit = { id: "h-1", teamId: "team-1", dayOfWeek: 6, kickoffTime: "20:30", venueId: null };
+const habit: TeamMatchHabit = { id: "h-1", teamId: "team-1", dayOfWeek: 6, kickoffTime: "20:30", venueId: null, week: "ALL" };
 
 describe("AwayList (P1-4 PR E2 — l'extérieur visible)", () => {
   it("renders the away match with the opponent venue and the habitual hour tagged estimée", () => {

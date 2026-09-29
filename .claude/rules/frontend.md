@@ -163,7 +163,7 @@ paths:
   Vitest, avant le scan de contraste Playwright — sans lui une régression d'opacité sur du texte
   resterait verte jusqu'au prochain `a11y-contrast.spec.ts`.
 - 🔴 **Un scan a11y authentifié sur `/matchs` ne peint RIEN si le club seedé CI n'a aucune
-  `Fixture`** — `app:bccl:seed` ne pose que des `TeamMatchHabit`/`MatchSlotRotation`, jamais de
+  `Fixture`** — `app:bccl:seed` ne pose que des `TeamMatchHabit` (créneaux idéaux), jamais de
   rencontre : l'écran rend un `EmptyState` (« Aucun match importé »), le scan tourne sur du vide et
   son témoin rougit avant même d'atteindre le contraste. `tests/e2e/a11y-contrast.spec.ts`
   (2026-09-18) POSTe désormais son propre amical HOME placé avant de scanner, nettoyé en `finally`

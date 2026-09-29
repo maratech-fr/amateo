@@ -9,7 +9,7 @@ import { EntryDeadlinesEditor } from "./EntryDeadlinesEditor";
 
 const setDeadlinesMutate = vi.fn();
 
-// On pilote le hook PROD, jamais le réseau (patron TeamLinksSection/MatchSlotRotations).
+// On pilote le hook PROD, jamais le réseau (patron TeamLinksSection/IdealSlots).
 vi.mock("./queries", () => ({
   useSetEntryDeadlines: () => ({ mutate: setDeadlinesMutate, isPending: false }),
 }));

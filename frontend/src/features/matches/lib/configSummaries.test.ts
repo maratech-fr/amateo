@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { Competition, MatchSlotRotation, SportCategoryDuration, Venue, VenueLabelInventoryRow, VenueMatchWindow } from "../api";
-import { accessSummary, deadlinesSummary, durationsSummary, labelsSummary, rotationsSummary } from "./configSummaries";
+import type { Competition, SportCategoryDuration, Venue, VenueLabelInventoryRow, VenueMatchWindow } from "../api";
+import { accessSummary, deadlinesSummary, durationsSummary, labelsSummary } from "./configSummaries";
 
 const venue = (id: string): Venue => ({ id, name: `Gymnase ${id}`, color: null, externalLabels: [] });
 const matchWindow = (venueId: string): VenueMatchWindow => ({ id: `${venueId}-w`, venueId, dayOfWeek: 6, startTime: "14:00", endTime: "22:00" });
@@ -17,8 +17,6 @@ const invRow = (over: Partial<VenueLabelInventoryRow> = {}): VenueLabelInventory
   ...over,
 });
 
-const rotation = (id: string): MatchSlotRotation => ({ id, venueId: "v1", dayOfWeek: 6, kickoffTime: "20:30", teamIds: ["t1", "t2"] });
-
 const competition = (over: Partial<Competition> = {}): Competition => ({ id: "c1", teamId: "t1", name: "PNM", competitionType: "championnat", ...over });
 
 const category = (over: Partial<SportCategoryDuration> = {}): SportCategoryDuration => ({
@@ -32,24 +30,6 @@ const category = (over: Partial<SportCategoryDuration> = {}): SportCategoryDurat
   ...over,
 });
 
-
-describe("rotationsSummary", () => {
-  it("undefined (chargement/échec) ⇒ null — jamais un « 0 » fabriqué", () => {
-    expect(rotationsSummary(undefined)).toBeNull();
-  });
-
-  it("aucune ⇒ « aucune rotation »", () => {
-    expect(rotationsSummary([])).toBe("aucune rotation");
-  });
-
-  it("une seule ⇒ singulier", () => {
-    expect(rotationsSummary([rotation("r1")])).toBe("1 rotation");
-  });
-
-  it("plusieurs ⇒ pluriel", () => {
-    expect(rotationsSummary([rotation("r1"), rotation("r2"), rotation("r3")])).toBe("3 rotations");
-  });
-});
 
 describe("deadlinesSummary", () => {
   it("undefined ⇒ null", () => {

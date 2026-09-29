@@ -57,11 +57,11 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         // Version DÉRIVÉE de la source ; l'égalité constante⇄engine/CONTRACT_VERSION
         // est gardée par PayloadVersionMatchesContractVersionTest.
         self::assertSame(MatchPlacementPayloadBuilder::CONTRACT_VERSION, $payload['version']);
-        foreach (['clubId', 'seasonId', 'solverSeed', 'solverTimeoutSeconds', 'matches', 'venues', 'teams', 'teamLinks', 'slotRotations', 'trainingOccupancies'] as $key) {
+        foreach (['clubId', 'seasonId', 'solverSeed', 'solverTimeoutSeconds', 'matches', 'venues', 'teams', 'teamLinks', 'trainingOccupancies'] as $key) {
             self::assertArrayHasKey($key, $payload);
         }
-        // RMM-5 : aucune rotation seedée ⇒ bloc [] (chemin byte-identique côté moteur).
-        self::assertSame([], $payload['slotRotations']);
+        // P4-271 — le bloc `slotRotations` a disparu du contrat (2.25).
+        self::assertArrayNotHasKey('slotRotations', $payload);
 
         self::assertSame(1, $built['toPlaceCount']);
         $match = $payload['matches'][0];
@@ -80,8 +80,8 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         foreach (['id', 'name', 'leagueWindows', 'habits', 'coaches', 'players', 'matchMinutes', 'warmupMinutes'] as $key) {
             self::assertArrayHasKey($key, $team);
         }
-        // P4-240 ③ — aucun membership seedé ⇒ players [] (champ ADDITIF, contrat 2.24
-        // inchangé : un payload sans le champ garde le comportement coach-only).
+        // P4-240 ③ — aucun membership seedé ⇒ players [] (champ ADDITIF : un payload
+        // sans le champ garde le comportement coach-only).
         self::assertSame([], $team['players']);
         self::assertSame(['dayOfWeek' => 6, 'kickoff' => '15:30', 'venueId' => null], $team['habits'][0]);
         // Durées PAR CATÉGORIE (P4-203) : la catégorie « U13-… » sans override

@@ -214,12 +214,16 @@ def test_a_manual_anchor_is_never_moved_nor_double_booked() -> None:
         assert not (start < anchor_end and anchor_start < end), f"{placement.match_id} overlaps the manual anchor"
 
 
-def test_ab_rotation_image_is_honoured_across_two_weekends() -> None:
-    # RMM-5 constraint-semantics (§7.1): the SM1/SM2 shared slot (Mateo, Saturday
-    # 20:30). Two federal weekends: week A only SM1 receives, week B only SM2 —
-    # the alternation of the model. Each member's HOME match must land ON the
-    # slot (day + hour + venue), and no HARD rule is ever violated.
+def test_ideal_slot_is_honoured_when_the_ab_partner_is_idle_across_two_weekends() -> None:
+    # P4-271 constraint-semantics (§7.1) — SM1 and SM2 declare the SAME ideal slot
+    # (Mateo, Saturday 20:30), tagged week A / week B. The tag NEVER travels to the
+    # engine: the solver sees two teams whose ideal slots coincide physically. Two
+    # federal weekends: week A only SM1 receives, week B only SM2 — the alternation.
+    # The idle partner's habit window is protected, but the receiving team must land
+    # ON its own declared ideal (the FIX): without the own-ideal skip, each team would
+    # be chased off 20:30 by the other's protection. No HARD rule is ever violated.
     next_saturday = (date.fromisoformat(SATURDAY) + timedelta(days=7)).isoformat()
+    ideal = [{"dayOfWeek": 6, "kickoff": "20:30", "venueId": "mateo"}]
     payload: dict[str, Any] = {
         "version": read_contract_version(),
         "clubId": "club-bccl",
@@ -245,11 +249,10 @@ def test_ab_rotation_image_is_honoured_across_two_weekends() -> None:
             },
         ],
         "teams": [
-            {"id": "sm1", "name": "SM1", "leagueWindows": [], "habits": [], "coaches": []},
-            {"id": "sm2", "name": "SM2", "leagueWindows": [], "habits": [], "coaches": []},
+            {"id": "sm1", "name": "SM1", "leagueWindows": [], "habits": ideal, "coaches": []},
+            {"id": "sm2", "name": "SM2", "leagueWindows": [], "habits": ideal, "coaches": []},
         ],
         "teamLinks": [],
-        "slotRotations": [{"venueId": "mateo", "dayOfWeek": 6, "kickoff": "20:30", "teamIds": ["sm1", "sm2"]}],
         "trainingOccupancies": [],
     }
     input_data = MatchPlacementInputSchema.model_validate(payload)
@@ -257,11 +260,57 @@ def test_ab_rotation_image_is_honoured_across_two_weekends() -> None:
 
     assert output.unplaced == []
     placed = {p.match_id: (p.venue_id, p.kickoff) for p in output.placements}
-    # Each member receives ON the shared slot on its own weekend.
+    # Each team receives ON its own ideal slot on its own weekend, undisturbed by the
+    # idle partner's protected window.
     assert placed == {
         "m-sm1": ("mateo", time(20, 30)),
         "m-sm2": ("mateo", time(20, 30)),
     }
+    assert_no_hard_violation(input_data, output)
+
+
+def test_two_homes_sharing_an_ideal_slot_split_one_served_the_other_placed() -> None:
+    # P4-271 constraint-semantics (§7.1) — SM1 and SM2 declare the SAME ideal slot
+    # (Mateo, Saturday 20:30) and BOTH receive the SAME Saturday. The HARD venue
+    # no-overlap lets only one sit at 20:30; the other must be placed elsewhere in the
+    # window (never dropped). Both play → neither protects, so the shared ideal is not
+    # double-penalised. No HARD rule violated.
+    ideal = [{"dayOfWeek": 6, "kickoff": "20:30", "venueId": "mateo"}]
+    payload: dict[str, Any] = {
+        "version": read_contract_version(),
+        "clubId": "club-bccl",
+        "seasonId": "season-2026",
+        "solverSeed": 42,
+        "solverTimeoutSeconds": 30,
+        "matches": [
+            {"id": "m-sm1", "teamId": "sm1", "date": SATURDAY, "kind": "TO_PLACE"},
+            {"id": "m-sm2", "teamId": "sm2", "date": SATURDAY, "kind": "TO_PLACE"},
+        ],
+        "venues": [
+            {
+                "id": "mateo",
+                "name": "Mateo",
+                "matchWindows": [{"dayOfWeek": 6, "start": "13:00", "end": "22:30"}],
+                "unavailabilities": [],
+            }
+        ],
+        "teams": [
+            {"id": "sm1", "name": "SM1", "leagueWindows": [], "habits": ideal, "coaches": []},
+            {"id": "sm2", "name": "SM2", "leagueWindows": [], "habits": ideal, "coaches": []},
+        ],
+        "teamLinks": [],
+        "trainingOccupancies": [],
+    }
+    input_data = MatchPlacementInputSchema.model_validate(payload)
+    output = MatchPlacementOutputSchema.model_validate(solve_match_placement(input_data))
+
+    assert output.unplaced == []
+    placed = {p.match_id: p.kickoff for p in output.placements}
+    # One of the two lands on the shared ideal (20:30); the other elsewhere at Mateo.
+    assert time(20, 30) in placed.values()
+    kicks = sorted(_minutes(k) for k in placed.values())
+    # The two MATCH windows do not overlap (HARD venue no-overlap).
+    assert kicks[1] - kicks[0] >= _match_min({t.id: t for t in input_data.teams}, "sm1")
     assert_no_hard_violation(input_data, output)
 
 

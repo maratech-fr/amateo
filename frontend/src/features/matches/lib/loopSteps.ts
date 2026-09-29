@@ -1,4 +1,4 @@
-import type { Conflict, Fixture, MatchSlotRotation, TeamMatchHabit } from "../api";
+import type { Conflict, Fixture, TeamMatchHabit } from "../api";
 import { isOpenConflict } from "./conflictResolution";
 import { isoWeekday } from "./envelope";
 
@@ -16,39 +16,27 @@ import { isoWeekday } from "./envelope";
  */
 
 /**
- * Écart au modèle d'un domicile PLACÉ (jour / heure / gymnase divergeant de la
- * référence du jour). C'est un SIGNAL affiché, JAMAIS un `done` : « c'est un signal,
- * c'est pas bloquant » (verbatim fondateur). Sans référence sur l'équipe (ni habitude
- * ni rotation) il n'y a pas de modèle — donc pas d'écart.
+ * Écart au modèle d'un domicile PLACÉ (jour / heure / gymnase divergeant du créneau
+ * idéal de l'équipe). C'est un SIGNAL affiché, JAMAIS un `done` : « c'est un signal,
+ * c'est pas bloquant » (verbatim fondateur). Sans créneau idéal sur l'équipe il n'y a
+ * pas de modèle — donc pas d'écart.
  *
- * RMM-5 PR-4 — pour un MEMBRE de rotation, le modèle de référence du jour du créneau
- * EST le créneau de rotation (jour/heure/gymnase), pas son habitude : cohérent avec la
- * suppléance backend (l'habitude même-jour d'un membre est retirée du payload de
- * placement). La rotation du même jour PRIME donc sur l'habitude.
+ * P4-271 — une équipe n'a plus qu'UN créneau idéal (rotations supprimées) : la référence
+ * est ce créneau, le jour où il tombe. Placé un AUTRE jour → écart.
  */
-export function isOffModel(fixture: Fixture, habits: TeamMatchHabit[], rotations: MatchSlotRotation[] = []): boolean {
+export function isOffModel(fixture: Fixture, habits: TeamMatchHabit[]): boolean {
   if ("HOME" !== fixture.homeAway || "UNPLACED" === fixture.status) {
     return false;
   }
   const teamHabits = habits.filter((h) => h.teamId === fixture.teamId);
-  const teamRotations = rotations.filter((r) => r.teamIds.includes(fixture.teamId));
-  if (0 === teamHabits.length && 0 === teamRotations.length) {
+  if (0 === teamHabits.length) {
     return false; // aucun modèle de référence
   }
   const day = isoWeekday(fixture.matchDate);
 
-  // Suppléance : la rotation du même jour est la référence du jour (jamais l'habitude).
-  const rotation = teamRotations.find((r) => r.dayOfWeek === day) ?? null;
-  if (null !== rotation) {
-    if (null !== fixture.kickoffTime && fixture.kickoffTime !== rotation.kickoffTime) {
-      return true; // heure divergente du créneau partagé
-    }
-    return null !== fixture.venueId && fixture.venueId !== rotation.venueId; // gymnase divergent (le créneau a TOUJOURS un gymnase)
-  }
-
   const habit = teamHabits.find((h) => h.dayOfWeek === day) ?? null;
   if (null === habit) {
-    return true; // placé un jour non habituel (ni habitude ni rotation ce jour-là)
+    return true; // placé un jour non habituel
   }
   if (null !== fixture.kickoffTime && fixture.kickoffTime !== habit.kickoffTime) {
     return true; // heure divergente
@@ -56,19 +44,44 @@ export function isOffModel(fixture: Fixture, habits: TeamMatchHabit[], rotations
   return null !== habit.venueId && null !== fixture.venueId && fixture.venueId !== habit.venueId; // gymnase divergent
 }
 
-export const offModelCount = (weekFixtures: Fixture[], habits: TeamMatchHabit[], rotations: MatchSlotRotation[] = []): number =>
-  weekFixtures.filter((f) => isOffModel(f, habits, rotations)).length;
+export const offModelCount = (weekFixtures: Fixture[], habits: TeamMatchHabit[]): number =>
+  weekFixtures.filter((f) => isOffModel(f, habits)).length;
 
 /**
- * RMM-5 PR-4 — le compteur « même week-end » : combien de créneaux partagés voient
- * DEUX de leurs membres (ou plus, distincts) recevoir À DOMICILE le même week-end
- * affiché. L'alternance dit qu'un seul membre reçoit par week-end sur le créneau ;
- * deux domiciles la contredisent. SIGNAL neutre (pilule), jamais un blocage — comme
- * l'écart au modèle, il ne pèse dans AUCUN compteur.
+ * P4-271 — le signal « même week-end » recalculé depuis les créneaux idéaux : combien
+ * de CRÉNEAUX PHYSIQUES PARTAGÉS (mêmes gymnase + jour + heure, ≥ 2 équipes) voient DEUX
+ * de leurs équipes (ou plus) recevoir À DOMICILE le même week-end affiché. L'alternance
+ * A/B dit qu'une seule reçoit par week-end sur le créneau ; deux domiciles la contredisent.
+ * SIGNAL neutre (pilule), jamais un blocage — comme l'écart au modèle, il ne pèse dans
+ * AUCUN compteur.
  */
-export function sameWeekendRotationCount(weekFixtures: Fixture[], rotations: MatchSlotRotation[]): number {
+export function sameWeekendSharedSlotCount(weekFixtures: Fixture[], habits: TeamMatchHabit[]): number {
   const homeTeams = new Set(weekFixtures.filter((f) => "HOME" === f.homeAway).map((f) => f.teamId));
-  return rotations.filter((r) => r.teamIds.filter((t) => homeTeams.has(t)).length >= 2).length;
+  // Regroupe les créneaux idéaux À GYMNASE par (gymnase, jour, heure) : un créneau
+  // physique partagé = au moins deux équipes sur la même clé.
+  const teamsBySlot = new Map<string, Set<string>>();
+  for (const habit of habits) {
+    if (null === habit.venueId) {
+      continue;
+    }
+    const key = `${habit.venueId}:${habit.dayOfWeek}:${habit.kickoffTime}`;
+    let teams = teamsBySlot.get(key);
+    if (undefined === teams) {
+      teams = new Set<string>();
+      teamsBySlot.set(key, teams);
+    }
+    teams.add(habit.teamId);
+  }
+  let count = 0;
+  for (const teams of teamsBySlot.values()) {
+    if (teams.size < 2) {
+      continue; // pas un créneau partagé
+    }
+    if ([...teams].filter((t) => homeTeams.has(t)).length >= 2) {
+      count += 1;
+    }
+  }
+  return count;
 }
 
 /** Les fixtureIds qu'un conflit référence (0, 1 ou 2) — un conflit sans fixture est « sans date ». */

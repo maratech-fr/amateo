@@ -1,9 +1,9 @@
 # Documentation métier du système de contraintes
 
-Last verified @ 2026-09-27 (`documentation-update`, passe tests manuels 0927 — §4.1 étape 2
-re-confrontée : `TeamTagService::syncTeamTags` court-circuite sur ensemble de tags identique,
-`backend/src/Service/TeamTagService.php:84-104` ✓). Reste du fichier non re-contrôlé cette passe —
-historique : `git log -p --follow backend/docs/constraints.md`.
+Last verified @ 2026-09-29 (rotation de fraîcheur `documentation-update`, passe doc P4-271 matchs,
+sujet sans rapport — §4.1 étape 2 re-confrontée : `TeamTagService::syncTeamTags` court-circuite
+toujours sur ensemble de tags identique, `backend/src/Service/TeamTagService.php:84-104` ✓). Reste
+du fichier non re-contrôlé cette passe — historique : `git log -p --follow backend/docs/constraints.md`.
 
 > Amateo — Symfony 7 + API Platform. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 

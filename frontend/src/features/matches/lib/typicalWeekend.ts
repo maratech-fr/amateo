@@ -1,18 +1,16 @@
-import type { MatchSlotRotation, TeamMatchHabit } from "../api";
+import type { MatchWeek, TeamMatchHabit } from "../api";
 
 /**
  * P1-4 PR E2 — the « week-end type » view (founder reframing of « semaine
  * type », 2026-08-03): the manager's IDEAL weekend template — every team's
- * habitual window laid out Sat/Sun × venues, date-less. Read-only (habits are
- * edited in HabitsLinksDialog). Pure layout, MÊME empreinte que la grille datée
- * (constantes importées de `weekendGrid`, elles-mêmes alignées sur `MatchFootprint.php`).
+ * ideal slot laid out Sat/Sun × venues, date-less. Pure layout, MÊME empreinte
+ * que la grille datée (constantes importées de `weekendGrid`, elles-mêmes
+ * alignées sur `MatchFootprint.php`).
  *
- * RMM-5 PR-4 — la rotation A/B entre dans le gabarit : un créneau partagé
- * dessine, à la SEMAINE k, le bloc de son membre `position k mod N` (l'ordre est
- * fictif, il ne pilote AUCUN calendrier — il ne fait que dérouler l'alternance à
- * l'écran). Le modèle reste PUR : il prend les rotations et l'index de semaine en
- * entrée. Sans rotation, `buildTypicalWeekend(habits)` rend EXACTEMENT le modèle
- * d'avant (rotations = [] par défaut) — l'anti-régression est vraie par construction.
+ * P4-271 — la semaine type A/B est une AIDE VISUELLE portée par le tag `week` de
+ * chaque créneau idéal (plus aucune entité de rotation). `buildTypicalWeekend(habits, week)`
+ * garde les créneaux tagués `week` OU `ALL` (un club sans alternance) ; appelée
+ * sans `week` (ou avec `ALL`), elle rend TOUS les créneaux (vue unique).
  */
 
 // D-02 : ces deux constantes valaient 30/135 ici et 30/105 dans `weekendGrid` — or le
@@ -40,23 +38,11 @@ export interface TypicalBlock {
   laneCount: number;
 }
 
-/** A rotation whose slot falls OUTSIDE the weekend — listed apart (the grid is Sat/Sun only). */
-export interface OffWeekendRotation {
-  rotationId: string;
-  dayOfWeek: number;
-  kickoffTime: string;
-  venueId: string;
-  /** The member shown for the active week (position k mod N). */
-  teamId: string;
-}
-
 export interface TypicalWeekendModel {
   columns: TypicalColumn[];
   blocks: TypicalBlock[];
-  /** Habits without a venue — listed apart (the grid is venue-columned). */
+  /** Ideal slots without a venue — listed apart (the grid is venue-columned). */
   venueless: TeamMatchHabit[];
-  /** Rotations declared on a non-weekend day — listed apart (§tranche 3, RMM-5 PR-4). */
-  offWeekendRotations: OffWeekendRotation[];
   startMin: number;
   endMin: number;
   empty: boolean;
@@ -69,42 +55,30 @@ function toMinutes(time: string): number {
 
 const isWeekendDay = (day: number): day is 6 | 7 => 6 === day || 7 === day;
 
-/**
- * Le nombre de SEMAINES du gabarit = la plus grande rotation (N=2 → A/B, N=3 →
- * A/B/C…), 1 s'il n'y a aucune rotation (≥ 2 membres). C'est ce compte qui décide
- * si un segmenté « Semaine A / B / … » s'affiche : 1 ⇒ pas de segmenté du tout.
- */
-export function weekCountOf(rotations: MatchSlotRotation[]): number {
-  const max = rotations.reduce((acc, r) => (r.teamIds.length >= 2 ? Math.max(acc, r.teamIds.length) : acc), 0);
-  return Math.max(1, max);
+/** Au moins un créneau idéal est tagué A ou B → le club alterne, la vue se segmente. */
+export function hasAlternatingWeeks(habits: TeamMatchHabit[]): boolean {
+  return habits.some((h) => "A" === h.week || "B" === h.week);
 }
 
-/** Le membre d'une rotation à la semaine `weekIndex` (0-based) : position `weekIndex mod N`. */
-function memberAtWeek(rotation: MatchSlotRotation, weekIndex: number): string {
-  return rotation.teamIds[weekIndex % rotation.teamIds.length];
+/** Les créneaux visibles pour la semaine `week` : ceux tagués `week` ou `ALL`. */
+function habitsForWeek(habits: TeamMatchHabit[], week: MatchWeek | undefined): TeamMatchHabit[] {
+  if (undefined === week || "ALL" === week) {
+    return habits;
+  }
+  return habits.filter((h) => h.week === week || "ALL" === h.week);
 }
 
-export function buildTypicalWeekend(habits: TeamMatchHabit[], rotations: MatchSlotRotation[] = [], weekIndex = 0): TypicalWeekendModel {
-  const weekend = habits.filter((h) => isWeekendDay(h.dayOfWeek));
+export function buildTypicalWeekend(habits: TeamMatchHabit[], week?: MatchWeek): TypicalWeekendModel {
+  const scoped = habitsForWeek(habits, week);
+  const weekend = scoped.filter((h) => isWeekendDay(h.dayOfWeek));
   const withVenue = weekend.filter((h) => null !== h.venueId);
   const venueless = weekend.filter((h) => null === h.venueId);
 
-  // Seules les rotations réelles (≥ 2 membres) comptent — un créneau à une équipe n'alterne pas.
-  const usableRotations = rotations.filter((r) => r.teamIds.length >= 2);
-  const weekendRotations = usableRotations.filter((r) => isWeekendDay(r.dayOfWeek));
-  const offWeekendRotations: OffWeekendRotation[] = usableRotations
-    .filter((r) => !isWeekendDay(r.dayOfWeek))
-    .map((r) => ({ rotationId: r.id, dayOfWeek: r.dayOfWeek, kickoffTime: r.kickoffTime, venueId: r.venueId, teamId: memberAtWeek(r, weekIndex) }));
+  const empty = 0 === weekend.length;
 
-  const empty = 0 === weekend.length && 0 === usableRotations.length;
-
-  // Colonnes = (habitudes À gymnase) ∪ (rotations week-end) — les deux portent jour+gymnase.
   const columnKeys = new Set<string>();
   for (const h of withVenue) {
     columnKeys.add(`${h.dayOfWeek}:${h.venueId as string}`);
-  }
-  for (const r of weekendRotations) {
-    columnKeys.add(`${r.dayOfWeek}:${r.venueId}`);
   }
 
   const columns: TypicalColumn[] = [...columnKeys].sort().map((key) => {
@@ -113,7 +87,7 @@ export function buildTypicalWeekend(habits: TeamMatchHabit[], rotations: MatchSl
   });
 
   if (0 === columns.length) {
-    return { columns: [], blocks: [], venueless, offWeekendRotations, startMin: 0, endMin: 0, empty };
+    return { columns: [], blocks: [], venueless, startMin: 0, endMin: 0, empty };
   }
 
   let min = Infinity;
@@ -131,10 +105,6 @@ export function buildTypicalWeekend(habits: TeamMatchHabit[], rotations: MatchSl
 
   for (const habit of withVenue) {
     pushBlock(habit.id, habit.teamId, habit.dayOfWeek, habit.venueId as string, habit.kickoffTime);
-  }
-  // La rotation dessine LE membre de la semaine k sur son créneau (l'ordre est fictif).
-  for (const rotation of weekendRotations) {
-    pushBlock(`rot:${rotation.id}`, memberAtWeek(rotation, weekIndex), rotation.dayOfWeek, rotation.venueId, rotation.kickoffTime);
   }
 
   // Lane overlapping blocks of the same column side by side (same rule as the
@@ -160,7 +130,6 @@ export function buildTypicalWeekend(habits: TeamMatchHabit[], rotations: MatchSl
     columns,
     blocks,
     venueless,
-    offWeekendRotations,
     startMin: Math.floor(min / 60) * 60,
     endMin: Math.ceil(max / 60) * 60,
     empty: false,

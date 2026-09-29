@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Category, Coach, Fixture, MatchSlotRotation, Team, TeamMatchHabit, Venue } from "./api";
+import type { Category, Coach, Fixture, Team, TeamMatchHabit, Venue } from "./api";
 import type { HiddenWeekBreakdown } from "./lib/consultFilter";
 import type { PlacementGuards } from "./PlacementPanel";
 import { useMatchesStore } from "./store";
@@ -90,7 +90,6 @@ function baseProps(over: Partial<Props> = {}): Props {
     venues: [venue],
     guards,
     habits: [],
-    rotations: [],
     resolvedTeamWindows: {},
     windows: [],
     outOfEnvelope: new Set<string>(),
@@ -293,8 +292,8 @@ describe("WeekWorkbench — badges de signal (rendus seulement si > 0, pluriels)
   it("« hors modèle » : absent à 0, singulier à 1, pluriel à 2", async () => {
     // Une habitude un jour AUTRE que le samedi du match ⇒ le domicile placé le samedi est hors modèle.
     const habits: TeamMatchHabit[] = [
-      { id: "h-a", teamId: "team-a", dayOfWeek: 1, kickoffTime: "18:00", venueId: "venue-1" },
-      { id: "h-b", teamId: "team-b", dayOfWeek: 1, kickoffTime: "18:00", venueId: "venue-1" },
+      { id: "h-a", teamId: "team-a", dayOfWeek: 1, kickoffTime: "18:00", venueId: "venue-1", week: "ALL" },
+      { id: "h-b", teamId: "team-b", dayOfWeek: 1, kickoffTime: "18:00", venueId: "venue-1", week: "ALL" },
     ];
     const first = renderWorkbench({ weekendFixtures: [], allFixtures: [], habits });
     await waitFor(() => expect(api.getVenueLabelInventory).toHaveBeenCalled());
@@ -311,20 +310,29 @@ describe("WeekWorkbench — badges de signal (rendus seulement si > 0, pluriels)
     expect(await screen.findByText("2 matchs hors modèle")).toBeInTheDocument();
   });
 
-  it("« créneau partagé » : absent à 0, singulier à 1, pluriel à 2", async () => {
+  it("« créneau partagé » : absent à 0, singulier à 1, pluriel à 2 (P4-271, créneaux idéaux)", async () => {
     const homeA = fx({ id: "fx-a", teamId: "team-a", opponentLabel: "AdvA", status: "PLACED", kickoffTime: "16:00" });
     const homeB = fx({ id: "fx-b", teamId: "team-b", opponentLabel: "AdvB", status: "PLACED", kickoffTime: "18:00" });
-    const first = renderWorkbench({ weekendFixtures: [homeA, homeB], allFixtures: [homeA, homeB], rotations: [] });
+    // Sans créneau idéal partagé : aucun signal.
+    const first = renderWorkbench({ weekendFixtures: [homeA, homeB], allFixtures: [homeA, homeB], habits: [] });
     await waitFor(() => expect(api.getVenueLabelInventory).toHaveBeenCalled());
     expect(screen.queryByText(/créneau.*partagé/)).not.toBeInTheDocument();
     first.unmount();
 
-    const rot = (id: string): MatchSlotRotation => ({ id, venueId: "venue-1", dayOfWeek: 6, kickoffTime: "16:00", teamIds: ["team-a", "team-b"] });
-    const second = renderWorkbench({ weekendFixtures: [homeA, homeB], allFixtures: [homeA, homeB], rotations: [rot("r1")] });
+    // Un créneau PHYSIQUE partagé : team-a (A) et team-b (B) sur le même gymnase+jour+heure.
+    const sharedSlot = (venueId: string, kickoff: string): TeamMatchHabit[] => [
+      { id: `${venueId}-a`, teamId: "team-a", dayOfWeek: 6, kickoffTime: kickoff, venueId, week: "A" },
+      { id: `${venueId}-b`, teamId: "team-b", dayOfWeek: 6, kickoffTime: kickoff, venueId, week: "B" },
+    ];
+    const second = renderWorkbench({ weekendFixtures: [homeA, homeB], allFixtures: [homeA, homeB], habits: sharedSlot("venue-1", "16:00") });
     expect(await screen.findByText(/^1 créneau partagé : deux équipes reçoivent ce week-end$/)).toBeInTheDocument();
     second.unmount();
 
-    renderWorkbench({ weekendFixtures: [homeA, homeB], allFixtures: [homeA, homeB], rotations: [rot("r1"), rot("r2")] });
+    renderWorkbench({
+      weekendFixtures: [homeA, homeB],
+      allFixtures: [homeA, homeB],
+      habits: [...sharedSlot("venue-1", "16:00"), ...sharedSlot("venue-2", "18:00")],
+    });
     expect(await screen.findByText(/^2 créneaux partagés : deux équipes reçoivent ce week-end$/)).toBeInTheDocument();
   });
 });

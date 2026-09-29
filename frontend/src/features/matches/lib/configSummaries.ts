@@ -1,4 +1,4 @@
-import type { Competition, MatchSlotRotation, SportCategoryDuration, Venue, VenueLabelInventoryRow, VenueMatchWindow } from "../api";
+import type { Competition, SportCategoryDuration, Venue, VenueLabelInventoryRow, VenueMatchWindow } from "../api";
 
 /**
  * P4-185 — les résumés d'en-tête des sections de `/matchs/configuration` (accordéon
@@ -7,17 +7,6 @@ import type { Competition, MatchSlotRotation, SportCategoryDuration, Venue, Venu
  * (🔴 `.claude/rules/frontend.md`). Entrée `undefined` (chargement / échec de lecture)
  * ⇒ `null` ⇒ en-tête SANS compte — jamais un « 0 » fabriqué qui ferait croire à un vide.
  */
-
-export function rotationsSummary(rotations?: MatchSlotRotation[]): string | null {
-  if (undefined === rotations) {
-    return null;
-  }
-  const n = rotations.length;
-  if (0 === n) {
-    return "aucune rotation";
-  }
-  return `${n} rotation${n > 1 ? "s" : ""}`;
-}
 
 export function deadlinesSummary(competitions?: Competition[]): string | null {
   if (undefined === competitions) {
