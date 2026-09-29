@@ -1,6 +1,6 @@
 # Modules produit — ce qu'Amateo vend, en langage club
 
-Last verified @ 2026-09-28 (rotation de fraîcheur, `documentation-update`). Re-confronté au code :
+Last verified @ 2026-09-29 (rotation de fraîcheur, `documentation-update`, brief P4-272 ④). Re-confronté au code :
 le wizard compte toujours 6 étapes dans l'ordre cité (`frontend/src/features/wizard/lib/
 steps.ts:9-16` — teams/venues/coaches/constraints/recap/generate) ; `FfbbClubPopulator.php` et
 `FfbbTeamImporter.php` existent toujours (`backend/src/Service/Basketball/`) ; les rappels

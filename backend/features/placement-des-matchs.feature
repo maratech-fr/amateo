@@ -81,6 +81,31 @@ Fonctionnalité: Le placement des matchs honore les fenêtres d'accès et nomme 
     Quand je lance le placement des matchs
     Alors le match du samedi reste sans créneau, faute d'une règle du club
 
+  Scénario: Une équipe interdite d'un gymnase voit son match posé ailleurs
+    Une interdiction de gymnase (règle d'équipe) est HONORÉE par le solveur : le gymnase
+    jetable est retiré du domaine de l'équipe, et le match se pose sur un AUTRE gymnase
+    du club (les gymnases du seed gardent leurs fenêtres du samedi), jamais sur l'interdit.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et deux équipes et un gymnase jetables
+    Et une fenêtre d'accès le samedi de 14h00 à 18h00 sur ce gymnase
+    Et une interdiction du gymnase jetable pour la première équipe
+    Et un match à domicile de la première équipe le samedi à placer
+    Quand je lance le placement des matchs
+    Alors le match du samedi est placé par le solveur, hors du gymnase interdit
+
+  Scénario: Le seul gymnase ouvert est interdit à l'équipe : le match reste sans créneau, nommé
+    Le SEUL gymnase ouvert le samedi est interdit à l'équipe : un créneau licite existait
+    pourtant, mais le match reste sans créneau avec un motif NOMMÉ — le gestionnaire sait
+    que c'est SON interdiction, pas un gymnase fermé, pas la ligue, pas une règle horaire du club.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et deux équipes et un gymnase jetables
+    Et une large fenêtre d'accès le samedi de 14h00 à 23h30 sur ce gymnase
+    Et le club n'offre aucune autre fenêtre d'accès le samedi
+    Et une interdiction du gymnase jetable pour la première équipe
+    Et un match à domicile de la première équipe le samedi à placer
+    Quand je lance le placement des matchs
+    Alors le match du samedi reste sans créneau, faute d'un gymnase interdit
+
   Scénario: Un amical n'est jamais proposé au solveur et se place à la main hors créneau
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et deux équipes et un gymnase jetables

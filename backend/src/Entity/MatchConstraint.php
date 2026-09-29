@@ -11,25 +11,28 @@ use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
- * P4-272 ③ — une RÈGLE DE MATCH propre au club (« écran unique des contraintes de
- * match », section Club). Tenant + season owned, renouvelée avec la saison.
+ * P4-272 ③+④ — une RÈGLE DE MATCH (« écran unique des contraintes de match »).
+ * Tenant + season owned, renouvelée avec la saison.
  *
- * Patron de {@see Constraint} SANS sa table : un `scope` (CLUB | TEAM | COACH — seul
- * CLUB est saisi ici ; ④/⑤ réutiliseront TEAM/COACH), un `scopeTargetId` nullable (la
- * cible quand le scope l'exige), un `ruleType` HARD | PREFERRED (jamais LOCK ici), des
+ * Patron de {@see Constraint} SANS sa table : un `scope` (CLUB | TEAM | COACH — CLUB
+ * et TEAM sont saisis ; COACH est réservé à ⑤), un `scopeTargetId` nullable (la cible
+ * quand le scope l'exige), un `ruleType` HARD | PREFERRED (jamais LOCK ici), des
  * `daysOfWeek` (ISO 1=lundi..7=dimanche, PLUSIEURS jours par règle) et une fourchette
  * de coup d'envoi `kickoffMin`/`kickoffMax` (HH:MM, chacune nullable — « pas après
- * 21h » = max seul). `venueId` nullable est réservé à ④.
+ * 21h » = max seul). Deux formes :
+ *  - CLUB (③) : `scopeTargetId`/`venueId` nuls, `daysOfWeek` + fourchette portent la
+ *    règle horaire ; HARD honorée par le solveur, PREFERRED = pénalité.
+ *  - TEAM (④) : `scopeTargetId` = l'équipe, `venueId` = le gymnase INTERDIT, `ruleType`
+ *    HARD seulement, `daysOfWeek` vide + fourchette nulle (l'interdiction vaut tous les
+ *    jours à toute heure). Le solveur retire ce gymnase du domaine de l'équipe.
  *
- * Une règle HARD est HONORÉE par le solveur (le coup d'envoi doit tomber dans la
- * fourchette les jours couverts) ; une règle PREFERRED est une PÉNALITÉ (le solveur
- * l'évite si possible, ne la subit jamais comme un blocage). Les amicaux en sont
- * exemptés (structurel : un amical n'est jamais confié au solveur). La pose MANUELLE
- * hors d'une règle HARD reste PERMISE — le radar la SIGNALE (CLUB_RULE_VIOLATION), il
- * ne la bloque pas.
+ * Les amicaux sont exemptés (structurel : un amical n'est jamais confié au solveur). La
+ * pose MANUELLE hors d'une règle HARD reste PERMISE — le radar la SIGNALE
+ * (CLUB_RULE_VIOLATION / TEAM_VENUE_FORBIDDEN), il ne la bloque pas.
  *
- * ⚠ AUCUNE unicité en base : plusieurs lignes par cible/jour sont légitimes (⑤ en
- * aura besoin), et deux règles club peuvent se recouvrir sans être un doublon.
+ * ⚠ AUCUNE unicité en base : plusieurs lignes par cible/jour sont légitimes (une équipe
+ * peut s'interdire plusieurs gymnases), et deux règles club peuvent se recouvrir sans
+ * être un doublon.
  */
 #[ORM\Entity(repositoryClass: MatchConstraintRepository::class)]
 #[ORM\Table(name: 'match_constraint')]

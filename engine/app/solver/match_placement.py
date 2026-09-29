@@ -75,6 +75,11 @@ REASON_MESSAGES = {
     # or place the match by hand (manual placement outside a HARD rule stays PERMITTED,
     # only the radar signals it).
     "club_rule_no_slot": "Aucun créneau compatible avec les règles du club.",
+    # P4-272 ④ — the team is FORBIDDEN from every venue that would otherwise have held
+    # the match: a legal slot existed, but only on a forbidden venue. Same remedy as a
+    # club rule — lift the ban or place by hand (a manual placement in a forbidden venue
+    # stays PERMITTED, only the radar signals it). Founder wording (2026-09-29).
+    "team_venue_forbidden": "Gymnase interdit pour cette équipe.",
 }
 
 # ── Build budget (ADR-0001: name the impossible, never hang) ──────────────────
@@ -216,11 +221,16 @@ def _candidate_kickoffs(
     # P4-272 ③ — HARD club rules covering this ISO day. Every one must accept the
     # kickoff (AND semantics); a domain emptied by them alone is `club_rule_no_slot`.
     hard_rules = [r for r in input_data.club_rules if r.rule_type == "HARD" and day in r.days_of_week]
+    # P4-272 ④ — venues this team is FORBIDDEN to play at. A forbidden venue is removed
+    # from the domain (never chosen), but tracked apart: if a legal (access ∩ league ∩
+    # club-rule) slot existed ONLY on forbidden venues, the reason is `team_venue_forbidden`.
+    forbidden_venues = set(team.forbidden_venue_ids) if team else set()
 
     domain: dict[str, list[int]] = {}
     saw_open_venue = False
     saw_access_candidate = False
     saw_league_candidate = False
+    saw_forbidden_legal = False
     for venue in input_data.venues:
         if any(u.start_date <= match.match_date <= u.end_date for u in venue.unavailabilities):
             continue
@@ -250,8 +260,15 @@ def _candidate_kickoffs(
                     if all(_kick_in_club_rule(kick, rule) for rule in hard_rules):
                         kicks.append(kick)
                 kick += STEP_MIN
-        if kicks:
-            domain[venue.id] = kicks
+        if not kicks:
+            continue
+        # P4-272 ④ — a forbidden venue never enters the domain (the solver must never
+        # put the team there), but a would-be-legal slot on it flags the reason so an
+        # emptied domain reads `team_venue_forbidden`, not a misleading access/league one.
+        if venue.id in forbidden_venues:
+            saw_forbidden_legal = True
+            continue
+        domain[venue.id] = kicks
 
     if domain:
         return domain, ""
@@ -261,6 +278,10 @@ def _candidate_kickoffs(
         return {}, "no_access_window"
     if not saw_league_candidate:
         return {}, "no_league_intersection"
+    # A legal slot survived on a forbidden venue alone → the ban is what empties the
+    # domain (told apart from a club rule doing the same, `club_rule_no_slot`).
+    if saw_forbidden_legal:
+        return {}, "team_venue_forbidden"
     return {}, "club_rule_no_slot"
 
 

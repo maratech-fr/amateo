@@ -73,6 +73,8 @@ export type ConflictType =
   | "VENUE_OVERLAP"
   | "LEAGUE_WINDOW_VIOLATION"
   | "CLUB_RULE_VIOLATION"
+  // P4-272 ④ — a placed HOME fixture in a venue its team is forbidden to play at.
+  | "TEAM_VENUE_FORBIDDEN"
   | "MATCH_MATCH"
   | "MATCH_TRAINING"
   | "VENUE_UNAVAILABLE"

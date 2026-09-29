@@ -39,6 +39,7 @@ final class MatchPlacementSemanticsGateTest extends TestCase
         'no_access_window',
         'no_league_intersection',
         'club_rule_no_slot',
+        'team_venue_forbidden',
         'venue_unavailable',
         'venue_full',
         'not_selected',
@@ -112,6 +113,41 @@ final class MatchPlacementSemanticsGateTest extends TestCase
         self::assertSame([], $result['placements']);
         self::assertCount(1, $result['unplaced']);
         self::assertSame('club_rule_no_slot', $result['unplaced'][0]['reason']);
+        self::assertContains($result['unplaced'][0]['reason'], self::REASON_VOCABULARY);
+        self::assertNotSame('', (string) $result['unplaced'][0]['message']);
+    }
+
+    public function testAForbiddenVenueIsNeverChosenEvenWhenItIsTheOnlyFreeSlot(): void
+    {
+        // P4-272 ④ (axe « constraint semantics ») — contre le VRAI moteur : un gymnase
+        // INTERDIT à l'équipe n'est jamais retenu, même s'il offre le seul créneau idéal.
+        // Deux gymnases ouverts, l'idéal sur v1 (interdit) → le match atterrit sur v2, PAS
+        // sur v1, et n'est pas laissé non placé (aucun repli dans l'interdit).
+        $result = $this->solve([
+            'matches' => [['id' => 'm1', 'teamId' => 't1', 'date' => self::SATURDAY, 'kind' => 'TO_PLACE']],
+            'venues' => [$this->venue('v1', [['13:00', '22:30']]), $this->venue('v2', [['13:00', '22:30']])],
+            'teams' => [$this->teamForbidding('t1', 6, '15:30', 'v1', ['v1'])],
+        ]);
+
+        self::assertSame([], $result['unplaced'], 'un gymnase interdit ne laisse pas le match non placé s\'il reste un gymnase autorisé');
+        self::assertCount(1, $result['placements']);
+        self::assertSame('v2', $result['placements'][0]['venueId'], 'le match évite le gymnase interdit, même s\'il portait l\'idéal');
+    }
+
+    public function testAForbiddenVenueLeavingNoOtherVenueYieldsTeamVenueForbidden(): void
+    {
+        // P4-272 ④ — le SEUL gymnase ouvert est interdit à l'équipe : un créneau licite
+        // existait, mais seulement dans l'interdit → raison NOMMÉE `team_venue_forbidden`
+        // (distincte de venue_unavailable / no_access_window), dans le vocabulaire figé.
+        $result = $this->solve([
+            'matches' => [['id' => 'm1', 'teamId' => 't1', 'date' => self::SATURDAY, 'kind' => 'TO_PLACE']],
+            'venues' => [$this->venue('v1', [['13:00', '22:30']])],
+            'teams' => [$this->teamForbidding('t1', 6, '15:30', 'v1', ['v1'])],
+        ]);
+
+        self::assertSame([], $result['placements'], 'le moteur ne pose jamais un match dans un gymnase interdit');
+        self::assertCount(1, $result['unplaced']);
+        self::assertSame('team_venue_forbidden', $result['unplaced'][0]['reason']);
         self::assertContains($result['unplaced'][0]['reason'], self::REASON_VOCABULARY);
         self::assertNotSame('', (string) $result['unplaced'][0]['message']);
     }
@@ -230,6 +266,25 @@ final class MatchPlacementSemanticsGateTest extends TestCase
             'leagueWindows' => [],
             'habits' => [['dayOfWeek' => $dayOfWeek, 'kickoff' => $kickoff, 'venueId' => $venueId]],
             'coaches' => [],
+        ];
+    }
+
+    /**
+     * Une équipe avec un créneau idéal ET une liste de gymnases INTERDITS (P4-272 ④).
+     *
+     * @param list<string> $forbiddenVenueIds
+     *
+     * @return array<string, mixed>
+     */
+    private function teamForbidding(string $id, int $dayOfWeek, string $kickoff, string $venueId, array $forbiddenVenueIds): array
+    {
+        return [
+            'id' => $id,
+            'name' => strtoupper($id),
+            'leagueWindows' => [],
+            'habits' => [['dayOfWeek' => $dayOfWeek, 'kickoff' => $kickoff, 'venueId' => $venueId]],
+            'coaches' => [],
+            'forbiddenVenueIds' => $forbiddenVenueIds,
         ];
     }
 }

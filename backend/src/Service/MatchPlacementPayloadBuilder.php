@@ -18,6 +18,7 @@ use App\Entity\TeamMatchHabit;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueUnavailability;
+use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
@@ -66,7 +67,7 @@ final class MatchPlacementPayloadBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '2.26';
+    public const string CONTRACT_VERSION = '2.27';
 
     /**
      * Borne du trajet aller-retour AWAY émis, alignée sur le schéma engine
@@ -137,6 +138,22 @@ final class MatchPlacementPayloadBuilder
         // filtres Doctrine.
         /** @var list<MatchConstraint> $clubRules */
         $clubRules = $this->entityManager->getRepository(MatchConstraint::class)->findBy(['scope' => ConstraintScope::CLUB]);
+        // P4-272 ④ — les INTERDICTIONS de gymnase par équipe (scope TEAM, toujours HARD).
+        // Émises par équipe dans teams[].forbiddenVenueIds : le solveur retire ces gymnases
+        // du domaine de l'équipe. Scopé club+saison par les filtres Doctrine.
+        /** @var list<MatchConstraint> $teamVenueBans */
+        $teamVenueBans = $this->entityManager->getRepository(MatchConstraint::class)->findBy(['scope' => ConstraintScope::TEAM]);
+        $forbiddenVenuesByTeam = [];
+        foreach ($teamVenueBans as $ban) {
+            // Défensif : seule une règle HARD portant équipe + gymnase interdit compte
+            // (le processeur n'écrit rien d'autre en scope TEAM).
+            $teamId = $ban->getScopeTargetId();
+            $venueId = $ban->getVenueId();
+            if (ConstraintRuleType::HARD !== $ban->getRuleType() || null === $teamId || null === $venueId) {
+                continue;
+            }
+            $forbiddenVenuesByTeam[$teamId][$venueId] = true;
+        }
 
         $habitIndex = $this->awayKickoffEstimator->indexHabits($habits);
 
@@ -256,6 +273,9 @@ final class MatchPlacementPayloadBuilder
                 'players' => $playerIdsByTeam[$team->getId()] ?? [],
                 'matchMinutes' => $profile->matchMinutes,
                 'warmupMinutes' => $profile->warmupMinutes,
+                // P4-272 ④ — les gymnases INTERDITS à cette équipe (scope TEAM HARD). Le
+                // solveur les retire de son domaine ; trié pour un payload déterministe.
+                'forbiddenVenueIds' => $this->sortedKeys($forbiddenVenuesByTeam[$team->getId()] ?? []),
             ];
             // Copie NON vide mais équipe non mappée : diag PAR ÉQUIPE (« ta fenêtre
             // n'a pas trouvé preneuse »). Copie VIDE : on N'ÉMET PAS ce diag par
@@ -455,5 +475,21 @@ final class MatchPlacementPayloadBuilder
         }
 
         return $occupancies;
+    }
+
+    /**
+     * Les clés d'un set (valeurs `true`), triées — pour un payload déterministe
+     * insensible à l'ordre d'insertion des uuid.
+     *
+     * @param array<string, true> $set
+     *
+     * @return list<string>
+     */
+    private function sortedKeys(array $set): array
+    {
+        $keys = array_keys($set);
+        sort($keys);
+
+        return $keys;
     }
 }

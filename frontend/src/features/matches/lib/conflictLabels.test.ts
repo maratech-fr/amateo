@@ -10,6 +10,7 @@ const ALL_FAMILIES: ConflictType[] = [
   "VENUE_OVERLAP",
   "LEAGUE_WINDOW_VIOLATION",
   "CLUB_RULE_VIOLATION",
+  "TEAM_VENUE_FORBIDDEN",
   "MATCH_MATCH",
   "MATCH_TRAINING",
   "VENUE_UNAVAILABLE",
@@ -31,6 +32,7 @@ describe("CONFLICT_FAMILY_LABEL", () => {
     expect(CONFLICT_FAMILY_LABEL.VENUE_OVERLAP).toBe("Collision de gymnase");
     expect(CONFLICT_FAMILY_LABEL.LEAGUE_WINDOW_VIOLATION).toBe("Hors fenêtre ligue");
     expect(CONFLICT_FAMILY_LABEL.CLUB_RULE_VIOLATION).toBe("Hors règle du club");
+    expect(CONFLICT_FAMILY_LABEL.TEAM_VENUE_FORBIDDEN).toBe("Gymnase interdit");
     expect(CONFLICT_FAMILY_LABEL.MATCH_MATCH).toBe("Personne en double");
     expect(CONFLICT_FAMILY_LABEL.MATCH_TRAINING).toBe("Match × entraînement");
     expect(CONFLICT_FAMILY_LABEL.ACCESS_WINDOW_LOST).toBe("Hors accès match");

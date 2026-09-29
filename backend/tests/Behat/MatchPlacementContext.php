@@ -222,6 +222,51 @@ final class MatchPlacementContext extends BaseContext
         }
     }
 
+    #[Given('une interdiction du gymnase jetable pour la première équipe')]
+    public function uneInterdictionDuGymnasePourLaPremiereEquipe(): void
+    {
+        // P4-272 ④ — une règle de match scope TEAM : l'équipe A ne joue jamais dans le
+        // gymnase jetable. HARD, sans jour ni horaire (une interdiction vaut tout le temps).
+        $this->matchRuleId = $this->createdId(
+            $this->apiPost('match_constraints', ['scope' => 'TEAM', 'scopeTargetId' => $this->teamId, 'venueId' => $this->venueId, 'ruleType' => 'HARD'], $this->token),
+            'interdiction de gymnase',
+        );
+    }
+
+    #[Then('le match du samedi est placé par le solveur, hors du gymnase interdit')]
+    public function leMatchDuSamediPlaceHorsGymnaseInterdit(): void
+    {
+        $status = $this->satFixture['status'] ?? null;
+        if ('PLACED' !== $status) {
+            throw new RuntimeException(\sprintf('le match du samedi n\'est pas placé (statut « %s »)', \is_string($status) ? $status : 'inconnu'));
+        }
+        if ('SOLVER' !== ($this->satFixture['placementSource'] ?? null)) {
+            throw new RuntimeException('le match du samedi n\'a pas été placé par le solveur');
+        }
+        // Le gymnase interdit ne peut JAMAIS être retenu (retiré du domaine).
+        if (($this->satFixture['venueId'] ?? null) === $this->venueId) {
+            throw new RuntimeException('le match a atterri sur le gymnase INTERDIT — le solveur ne devrait jamais l\'y poser');
+        }
+    }
+
+    #[Then('le match du samedi reste sans créneau, faute d\'un gymnase interdit')]
+    public function leMatchDuSamediResteSansCreneauGymnaseInterdit(): void
+    {
+        $reason = null;
+        $unplaced = $this->placeResult['unplaced'] ?? [];
+        foreach (\is_array($unplaced) ? $unplaced : [] as $entry) {
+            if (\is_array($entry) && ($entry['matchId'] ?? null) === $this->fxSat) {
+                $reason = $entry['reason'] ?? null;
+
+                break;
+            }
+        }
+
+        if ('team_venue_forbidden' !== $reason) {
+            throw new RuntimeException(\sprintf('le match aurait dû rester sans créneau pour un gymnase interdit, raison obtenue « %s »', \is_string($reason) ? $reason : 'aucune'));
+        }
+    }
+
     #[Then('le match du samedi reste sans créneau, faute d\'une règle du club')]
     public function leMatchDuSamediResteSansCreneauRegleClub(): void
     {

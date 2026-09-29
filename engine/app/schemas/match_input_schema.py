@@ -116,6 +116,13 @@ class MatchTeamSchema(SerializableModel):
     # ([kickoff, kickoff + matchMinutes]), the person window keeps the warm-up.
     match_minutes: int = Field(default=105, alias="matchMinutes", ge=1)
     warmup_minutes: int = Field(default=30, alias="warmupMinutes", ge=0)
+    # Venues this team is FORBIDDEN to play at (P4-272 ④ — scope TEAM HARD rules,
+    # resolved by the backend). The solver removes them from the team's domain (see
+    # _candidate_kickoffs); a domain emptied by them alone is `team_venue_forbidden`.
+    # A manual placement in a forbidden venue is PERMITTED — the radar signals it, the
+    # solver never puts one there. OMITTED ⇒ [] (an old payload keeps the previous
+    # behaviour: no venue forbidden).
+    forbidden_venue_ids: list[str] = Field(default_factory=list, alias="forbiddenVenueIds", max_length=MAX_MATCH_VENUES)
 
 
 class MatchSchema(SerializableModel):
@@ -187,7 +194,7 @@ class MatchPlacementInputSchema(SerializableModel):
     # courant pour qu'aucun lecteur ne le prenne pour une version concurrente.
     # L'autorité reste `engine/CONTRACT_VERSION`, comparée au MAJOR à l'entrée ;
     # gardé par test_schema_version_defaults_match_contract_version.
-    version: str = "2.26"
+    version: str = "2.27"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     solver_seed: int = Field(default=42, alias="solverSeed")

@@ -29,6 +29,8 @@ use App\Entity\VenueMatchWindow;
 use App\Entity\VenueUnavailability;
 use App\Enum\CompetitionType;
 use App\Enum\ConflictResolutionStatus;
+use App\Enum\ConstraintRuleType;
+use App\Enum\ConstraintScope;
 use App\Enum\FbiCorrectionField;
 use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
@@ -423,11 +425,12 @@ final class MatchTenantIsolationTest extends WebTestCase
     }
 
     /**
-     * Durcissement (revue sécurité) : en ③ seul le scope CLUB est éditable, et une
-     * règle de club ne porte NI cible (scopeTargetId) NI gymnase (venueId). Un scope
-     * TEAM/COACH est refusé (422 nommé, jamais une règle inerte) ; une cible/gymnase
-     * non nul est refusé (422) ; et une valeur non-UUID rend un 422 LISIBLE (garde
-     * Uuid de l'input), jamais une 500 à l'écriture (colonne guid).
+     * Durcissement (revue sécurité) : une règle de CLUB (③) ne porte NI cible
+     * (scopeTargetId) NI gymnase (venueId) — une valeur non nulle est refusée (422) ;
+     * le scope COACH reste réservé (⑤, 422 nommé) ; et une valeur non-UUID rend un 422
+     * LISIBLE (garde Uuid de l'input), jamais une 500 à l'écriture (colonne guid). Le
+     * scope TEAM (④) est éditable — testé à part
+     * ({@see self::testTeamVenueBanIsScopedStampedAndTenantGuarded}).
      */
     public function testMatchConstraintRestrictsScopeToClubAndRejectsNonNullTargets(): void
     {
@@ -436,11 +439,9 @@ final class MatchTenantIsolationTest extends WebTestCase
         $uuid = '11111111-1111-4111-8111-111111111111';
         $base = ['ruleType' => 'HARD', 'daysOfWeek' => [6], 'kickoffMax' => '21:00'];
 
-        // Scope TEAM / COACH → 422 (réservés ④/⑤), refus nommé via le processeur.
-        foreach (['TEAM', 'COACH'] as $scope) {
-            $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode(['scope' => $scope] + $base, \JSON_THROW_ON_ERROR));
-            self::assertResponseStatusCodeSame(422, \sprintf('le scope %s doit être refusé en ③', $scope));
-        }
+        // Scope COACH → 422 (réservé ⑤), refus nommé via le processeur.
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode(['scope' => 'COACH'] + $base, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422, 'le scope COACH doit être refusé');
 
         // scopeTargetId non-UUID → 422 LISIBLE (Uuid de l'input), jamais 500.
         $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode(['scopeTargetId' => 'pas-un-uuid'] + $base, \JSON_THROW_ON_ERROR));
@@ -461,6 +462,75 @@ final class MatchTenantIsolationTest extends WebTestCase
         // Aucune de ces tentatives n'a écrit en base.
         $this->scopeGucToClub($clubA->getId());
         self::assertCount(0, $this->em->getRepository(MatchConstraint::class)->findBy(['clubId' => $clubA->getId()]));
+    }
+
+    /**
+     * P4-272 ④ (axe §7.1 tenant isolation) — une INTERDICTION de gymnase (scope TEAM)
+     * s'écrit avec une équipe ET un gymnase DU CLUB (estampés club+saison), management-
+     * gated ; et elle ne peut jamais viser l'équipe NI le gymnase d'un AUTRE club :
+     * chacun est invisible sous les filtres tenant → 422, zéro écriture cross-club.
+     */
+    public function testTeamVenueBanIsScopedStampedAndTenantGuarded(): void
+    {
+        [$clubA, $userA, $seasonA] = $this->createClubUser('a');
+        $teamA = $this->createTeam($clubA, $seasonA, 'SM1');
+        $venueA = $this->createVenue($clubA, $seasonA, 'Gymnase A');
+        [$clubB, , $seasonB] = $this->createClubUser('b');
+        $teamB = $this->createTeam($clubB, $seasonB, 'SM1 B');
+        $venueB = $this->createVenue($clubB, $seasonB, 'Gymnase B');
+        $headers = $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'];
+
+        // Écriture = management par défaut : un membre non-gestionnaire est refusé.
+        $editor = $this->createMember($clubA, 'editor');
+        $this->client->request('POST', '/api/match_constraints', [], [], $this->authHeaders($editor) + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'scope' => 'TEAM', 'scopeTargetId' => $teamA->getId(), 'venueId' => $venueA->getId(), 'ruleType' => 'HARD',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(403);
+
+        // Gestionnaire : l'interdiction équipe A ↔ gymnase A. Club/saison/scope estampés.
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode([
+            'scope' => 'TEAM', 'scopeTargetId' => $teamA->getId(), 'venueId' => $venueA->getId(), 'ruleType' => 'HARD',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+        $this->scopeGucToClub($clubA->getId());
+        $ban = $this->em->getRepository(MatchConstraint::class)->findOneBy(['clubId' => $clubA->getId(), 'scope' => ConstraintScope::TEAM]);
+        self::assertInstanceOf(MatchConstraint::class, $ban);
+        self::assertSame($seasonA->getId(), $ban->getSeasonId());
+        self::assertSame($teamA->getId(), $ban->getScopeTargetId());
+        self::assertSame($venueA->getId(), $ban->getVenueId());
+        self::assertSame(ConstraintRuleType::HARD, $ban->getRuleType());
+        self::assertSame([], $ban->getDaysOfWeek(), 'une interdiction ne porte aucun jour');
+
+        // Une PRÉFÉRENCE (PREFERRED) est refusée pour une interdiction (422 nommé).
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode([
+            'scope' => 'TEAM', 'scopeTargetId' => $teamA->getId(), 'venueId' => $venueA->getId(), 'ruleType' => 'PREFERRED',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+
+        // Un jour renseigné sur une interdiction → 422 (non pertinent).
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode([
+            'scope' => 'TEAM', 'scopeTargetId' => $teamA->getId(), 'venueId' => $venueA->getId(), 'ruleType' => 'HARD', 'daysOfWeek' => [6],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+
+        // L'équipe d'un AUTRE club est invisible → 422, aucune écriture cross-club.
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode([
+            'scope' => 'TEAM', 'scopeTargetId' => $teamB->getId(), 'venueId' => $venueA->getId(), 'ruleType' => 'HARD',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422, 'une équipe d\'un autre club est inconnue → 422');
+
+        // Le gymnase d'un AUTRE club est invisible → 422.
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode([
+            'scope' => 'TEAM', 'scopeTargetId' => $teamA->getId(), 'venueId' => $venueB->getId(), 'ruleType' => 'HARD',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422, 'un gymnase d\'un autre club est inconnu → 422');
+
+        // Une seule interdiction a été écrite (les tentatives cross-club n'ont rien créé).
+        $this->scopeGucToClub($clubA->getId());
+        self::assertCount(1, $this->em->getRepository(MatchConstraint::class)->findBy(['clubId' => $clubA->getId(), 'scope' => ConstraintScope::TEAM]));
+        // Et le club B n'a AUCUNE règle (jamais d'écriture cross-club chez lui).
+        $this->scopeGucToClub($clubB->getId());
+        self::assertCount(0, $this->em->getRepository(MatchConstraint::class)->findBy(['clubId' => $clubB->getId()]));
     }
 
     public function testTeamLinkIsSymmetricUniqueAndTenantScoped(): void

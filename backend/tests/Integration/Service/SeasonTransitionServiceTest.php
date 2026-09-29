@@ -120,13 +120,21 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         self::assertSame('14:00', $newLeagueWindow->getKickoffMin()->format('H:i'));
         self::assertSame('16:00', $newLeagueWindow->getKickoffMax()->format('H:i'));
         // P4-272 ③ — la règle de match du club suit la saison (verbatim, scope CLUB).
-        $newClubRule = $this->em->getRepository(MatchConstraint::class)->findOneBy(['seasonId' => $target->getId()]);
+        $newClubRule = $this->em->getRepository(MatchConstraint::class)->findOneBy(['seasonId' => $target->getId(), 'scope' => ConstraintScope::CLUB]);
         self::assertNotNull($newClubRule);
         self::assertSame(ConstraintScope::CLUB, $newClubRule->getScope());
         self::assertSame(ConstraintRuleType::HARD, $newClubRule->getRuleType());
         self::assertSame([6], $newClubRule->getDaysOfWeek());
         self::assertNull($newClubRule->getKickoffMin());
         self::assertSame('21:00', $newClubRule->getKickoffMax()?->format('H:i'));
+        // P4-272 ④ — l'interdiction de gymnase (scope TEAM) suit la saison, REMAPPÉE :
+        // l'équipe pointe l'équipe COPIÉE, le gymnase le gymnase COPIÉ (jamais un id de N).
+        $newVenueBan = $this->em->getRepository(MatchConstraint::class)->findOneBy(['seasonId' => $target->getId(), 'scope' => ConstraintScope::TEAM]);
+        self::assertNotNull($newVenueBan);
+        self::assertSame(ConstraintRuleType::HARD, $newVenueBan->getRuleType());
+        self::assertSame([], $newVenueBan->getDaysOfWeek());
+        self::assertContains($newVenueBan->getScopeTargetId(), $newTeamIds, 'l\'équipe visée est l\'équipe COPIÉE');
+        self::assertSame($newVenues[0]->getId(), $newVenueBan->getVenueId(), 'le gymnase interdit est le gymnase COPIÉ (Gym A)');
         $newTeamLink = $this->em->getRepository(TeamLink::class)->findOneBy(['seasonId' => $target->getId()]);
         self::assertNotNull($newTeamLink);
         self::assertContains($newTeamLink->getTeamAId(), $newTeamIds);
@@ -232,6 +240,35 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         self::assertNotContains('Config fantôme', $copiedNames);
         // The valid permanent constraints are still copied.
         self::assertContains('Coach indispo', $copiedNames);
+    }
+
+    /**
+     * P4-272 ④ — une INTERDICTION de gymnase (scope TEAM) dont l'équipe visée n'existe
+     * plus en N (référence pendante) n'est PAS propagée : elle est abandonnée, jamais
+     * recopiée avec un id mort. Seule l'interdiction LÉGITIME de createClubGraph survit.
+     */
+    public function testDanglingTeamVenueBanIsAbandoned(): void
+    {
+        [$club, $season] = $this->createClubGraph();
+        $venue = $this->em->getRepository(Venue::class)->findOneBy(['seasonId' => $season->getId(), 'name' => 'Gym A']);
+        self::assertInstanceOf(Venue::class, $venue);
+        // Une interdiction visant une équipe FANTÔME (aucune ligne team ne la porte).
+        $ghostBan = new MatchConstraint;
+        $ghostBan->setClubId($club->getId());
+        $ghostBan->setSeasonId($season->getId());
+        $ghostBan->setScope(ConstraintScope::TEAM);
+        $ghostBan->setScopeTargetId('deadbeef-2222-4000-8000-000000000000');
+        $ghostBan->setVenueId($venue->getId());
+        $ghostBan->setRuleType(ConstraintRuleType::HARD);
+        $ghostBan->setDaysOfWeek([]);
+        $this->em->persist($ghostBan);
+        $this->em->flush();
+
+        $target = $this->service->transition($season);
+
+        // La cible : seule l'interdiction légitime (équipe réelle) a été recopiée.
+        $copiedBans = $this->em->getRepository(MatchConstraint::class)->findBy(['seasonId' => $target->getId(), 'scope' => ConstraintScope::TEAM]);
+        self::assertCount(1, $copiedBans, 'l\'interdiction à l\'équipe fantôme est abandonnée, jamais recopiée');
     }
 
     public function testNothingGeneratedIsCopied(): void
@@ -465,6 +502,18 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $clubRule->setDaysOfWeek([6]);
         $clubRule->setKickoffMax(new DateTimeImmutable('21:00'));
         $this->em->persist($clubRule);
+
+        // P4-272 ④ — une INTERDICTION de gymnase (scope TEAM) : l'équipe A ne joue jamais
+        // à Gym A. Recopiée en N+1 avec REMAP de l'équipe (teamMap) ET du gymnase (venueMap).
+        $venueBan = new MatchConstraint;
+        $venueBan->setClubId($club->getId());
+        $venueBan->setSeasonId($season->getId());
+        $venueBan->setScope(ConstraintScope::TEAM);
+        $venueBan->setScopeTargetId($teamA->getId());
+        $venueBan->setVenueId($venueA->getId());
+        $venueBan->setRuleType(ConstraintRuleType::HARD);
+        $venueBan->setDaysOfWeek([]);
+        $this->em->persist($venueBan);
 
         $teamLink = new TeamLink;
         $teamLink->setClubId($club->getId());

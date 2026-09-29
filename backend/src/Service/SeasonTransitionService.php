@@ -394,24 +394,41 @@ final class SeasonTransitionService
             $this->clubLeagueWindowSeeder->seedForSeason($clubId, $target->getId(), $club?->getLeague());
         }
 
-        // P4-272 ③ — les RÈGLES DE MATCH du club (scope CLUB) suivent la saison,
-        // comme les corrections du gestionnaire : recopie VERBATIM (une règle CLUB
-        // ne porte ni gymnase ni équipe à remapper — scopeTargetId/venueId nuls). Les
-        // scopes TEAM/COACH (④/⑤) exigeront un remap et ne sont pas encore émis.
+        // P4-272 ③+④ — les RÈGLES DE MATCH suivent la saison, comme les corrections du
+        // gestionnaire. CLUB (③) : recopie VERBATIM (ni gymnase ni équipe à remapper —
+        // scopeTargetId/venueId nuls). TEAM (④, interdiction de gymnase) : remap de
+        // l'équipe (teamMap) ET du gymnase (venueMap) ; une référence PENDANTE (l'équipe
+        // ou le gymnase n'existe plus en N+1, comme une habitude à gymnase disparu) fait
+        // ABANDONNER la ligne — jamais un pointeur mort en base. COACH (⑤) : pas encore émis.
         foreach ($this->rows(MatchConstraint::class, $clubId, $sourceId) as $rule) {
-            if (ConstraintScope::CLUB !== $rule->getScope()) {
-                continue;
-            }
             $copy = new MatchConstraint;
             $copy->setClubId($clubId);
             $copy->setSeasonId($target->getId());
-            $copy->setScope($rule->getScope());
-            $copy->setScopeTargetId($rule->getScopeTargetId());
             $copy->setRuleType($rule->getRuleType());
             $copy->setDaysOfWeek($rule->getDaysOfWeek());
             $copy->setKickoffMin($rule->getKickoffMin());
             $copy->setKickoffMax($rule->getKickoffMax());
-            $copy->setVenueId($rule->getVenueId());
+            if (ConstraintScope::CLUB === $rule->getScope()) {
+                $copy->setScope(ConstraintScope::CLUB);
+                $copy->setScopeTargetId(null);
+                $copy->setVenueId(null);
+            } elseif (ConstraintScope::TEAM === $rule->getScope()) {
+                $sourceTeamId = $rule->getScopeTargetId();
+                $sourceVenueId = $rule->getVenueId();
+                $teamId = null !== $sourceTeamId ? ($teamMap[$sourceTeamId] ?? null) : null;
+                $venueId = null !== $sourceVenueId ? ($venueMap[$sourceVenueId] ?? null) : null;
+                // Référence pendante des deux côtés obligatoires → ligne abandonnée.
+                if (null === $teamId || null === $venueId) {
+                    continue;
+                }
+                $copy->setScope(ConstraintScope::TEAM);
+                $copy->setScopeTargetId($teamId);
+                $copy->setVenueId($venueId);
+            } else {
+                // COACH/FACILITY : non émis aujourd'hui (le processeur les refuse) ; une
+                // ligne héritée d'un état antérieur ne se propage pas sans règle de remap.
+                continue;
+            }
             $this->entityManager->persist($copy);
         }
 

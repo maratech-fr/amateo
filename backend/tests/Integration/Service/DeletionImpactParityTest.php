@@ -9,6 +9,7 @@ use App\Deletion\DeletionImpactCounter;
 use App\Entity\Club;
 use App\Entity\Coach;
 use App\Entity\Fixture;
+use App\Entity\MatchConstraint;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
@@ -21,6 +22,8 @@ use App\Entity\TeamCoach;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Entity\VenueTravelTime;
+use App\Enum\ConstraintRuleType;
+use App\Enum\ConstraintScope;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
@@ -413,6 +416,76 @@ final class DeletionImpactParityTest extends KernelTestCase
         self::assertNull($reloaded->getCoachId(), 'elle perd son coach, pas son créneau');
         self::assertSame(1, $reloaded->getDayOfWeek());
         self::assertSame($venue->getId(), $reloaded->getVenueId());
+    }
+
+    /**
+     * P4-272 ④ — l'INTERDICTION de gymnase (MatchConstraint scope TEAM) est annoncée ET
+     * détruite par les DEUX portes qui l'orphelineraient : supprimer l'ÉQUIPE visée
+     * (scopeTargetId) et supprimer le GYMNASE interdit (venueId). Une règle de CLUB (③,
+     * scopeTargetId/venueId nuls) N'est JAMAIS touchée par ces deux étapes — falsifié
+     * dans les deux sens.
+     */
+    public function testDeletingATeamOrVenueAnnouncesAndDeletesItsForbiddenVenueBan(): void
+    {
+        [$club, $season] = $this->seed();
+        $venue = $this->venue($club, $season, 'Coubertin');
+        $team = $this->team($club, $season, forcedVenueId: $venue->getId());
+        // L'interdiction : l'équipe ne joue jamais dans ce gymnase.
+        $ban = (new MatchConstraint)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setScope(ConstraintScope::TEAM)->setScopeTargetId($team->getId())->setVenueId($venue->getId())
+            ->setRuleType(ConstraintRuleType::HARD)->setDaysOfWeek([]);
+        $this->em->persist($ban);
+        // Une règle de CLUB (③) : elle ne doit PARTIR par aucune des deux étapes.
+        $clubRule = (new MatchConstraint)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setScope(ConstraintScope::CLUB)->setRuleType(ConstraintRuleType::HARD)->setDaysOfWeek([6])
+            ->setKickoffMax(new DateTimeImmutable('21:00'));
+        $this->em->persist($clubRule);
+        $this->em->flush();
+
+        // (1) Suppression de l'ÉQUIPE : annonce team_forbidden_venue = 1, puis détruit l'interdiction.
+        $teamImpact = self::getContainer()->get(DeletionImpactCounter::class)->forTeam($team);
+        $teamAnnounced = [];
+        foreach ($teamImpact->lines as $line) {
+            $teamAnnounced[$line['key']] = $line['count'];
+        }
+        self::assertSame(1, $teamAnnounced['team_forbidden_venue'] ?? 0, 'l\'interdiction de gymnase visant l\'équipe est annoncée');
+
+        self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfTeam($team);
+        $this->em->flush();
+        $this->em->clear();
+
+        self::assertNull($this->em->getRepository(MatchConstraint::class)->find($ban->getId()), 'l\'interdiction part avec l\'équipe');
+        self::assertNotNull($this->em->getRepository(MatchConstraint::class)->find($clubRule->getId()), 'la règle de club ne part JAMAIS avec une équipe');
+    }
+
+    public function testDeletingAVenueAnnouncesAndDeletesItsForbiddenVenueBan(): void
+    {
+        [$club, $season] = $this->seed();
+        $venue = $this->venue($club, $season, 'Coubertin');
+        $team = $this->team($club, $season, forcedVenueId: $venue->getId());
+        $ban = (new MatchConstraint)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setScope(ConstraintScope::TEAM)->setScopeTargetId($team->getId())->setVenueId($venue->getId())
+            ->setRuleType(ConstraintRuleType::HARD)->setDaysOfWeek([]);
+        $this->em->persist($ban);
+        $clubRule = (new MatchConstraint)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setScope(ConstraintScope::CLUB)->setRuleType(ConstraintRuleType::HARD)->setDaysOfWeek([6])
+            ->setKickoffMax(new DateTimeImmutable('21:00'));
+        $this->em->persist($clubRule);
+        $this->em->flush();
+
+        $venueImpact = self::getContainer()->get(DeletionImpactCounter::class)->forVenue($venue);
+        $venueAnnounced = [];
+        foreach ($venueImpact->lines as $line) {
+            $venueAnnounced[$line['key']] = $line['count'];
+        }
+        self::assertSame(1, $venueAnnounced['venue_forbidden_team'] ?? 0, 'l\'interdiction pointant ce gymnase est annoncée');
+
+        self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfVenue($venue);
+        $this->em->flush();
+        $this->em->clear();
+
+        self::assertNull($this->em->getRepository(MatchConstraint::class)->find($ban->getId()), 'l\'interdiction part avec le gymnase');
+        self::assertNotNull($this->em->getRepository(MatchConstraint::class)->find($clubRule->getId()), 'la règle de club ne part JAMAIS avec un gymnase');
     }
 
     public function testDeletingAVenueAnnouncesAndDeletesItsTravelTimes(): void

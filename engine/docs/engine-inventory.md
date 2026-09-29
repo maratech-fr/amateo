@@ -1,26 +1,18 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-09-29 (P4-272 ③ : `CONTRACT_VERSION` **2.25 → 2.26** — bloc `clubRules` ajouté au payload `/place-matches` ; antérieur P4-271 : **2.24 → 2.25** — `slotRotations`/rotations retirées, semaine type A/B = tag `week` sur le créneau idéal, non transmis au moteur ; skip de protection sur l'idéal propre). Passe antérieure P4-240 PR ③ —
-`match_placement.py::_place_matches` — la boucle des fenêtres personne ne parcourt plus QUE
-`fixed` + `training_occupancies` (plus de jambes de trajet AWAY), `_team_players` exclut les
-coachs des joueurs, `person_weights` pèse une joueuse comme `W_COACH_MAIN` ✓ ;
-`match_input_schema.py` — `MatchTeamSchema.players` additif (`MAX_PLAYERS_PER_TEAM=60`),
-`round_trip_minutes` toujours au schéma mais non lu par le solveur ✓. PR ① — `UnplacedMatchSchema.
-reason` porte `not_selected` en plus des quatre raisons existantes, `REASON_MESSAGES` dans
-`match_placement.py` fait foi ; les **six endpoints** inchangés (`/`, `/health`, `/generate`,
-`/place-matches`, `/validate-assignments`, `/implicit-constraints`, `engine/app/main.py:775-885`) ;
-`DEFAULT_MATCH_MIN=105`/`DEFAULT_WARMUP_MIN=30` dans `match_placement.py:38-39` ; `ConstraintRuleType`
-ne porte que HARD/PREFERRED/LOCK (`backend/src/Enum/ConstraintRuleType.php`, `BONUS` absent) ;
-`PLACEMENT_PROXIMITY_WEIGHT = 9` dans `app/solver/objective/weights.py:191` ;
-`previousAssignments` est bien ÉMIS par le backend en régénération
-(`backend/src/Service/ScheduleConstraintBuilder.php:678`) ; le payload `/generate` n'a **aucune**
-clé racine `priorityTiers` peuplée, les tiers voyagent en contraintes `PRIORITY_TIER`
-(`ScheduleConstraintBuilder.php:570`) ; `socleReferenceAssignments`/`SOCLE_REFERENCE_TIER_WEIGHTS`
-confirmés (`input_schema.py:238,354`, `objective/weights.py:280-289`) ; `constraint_not_honored` a
-bien deux producteurs, `_not_honored_warning` appelé depuis `parsing.py` (parse) et depuis
-`diagnose_locked_slot_violations` (post-construction). Reste de l'inventaire (détail des sections
-sous la ligne 40) non re-sondé cette passe — voir `git log -p --follow` pour sa dernière
-vérification.
+Last verified @ 2026-09-29 (P4-272 ④ : `CONTRACT_VERSION` **2.26 → 2.27** — `teams[].
+forbiddenVenueIds` ajouté au payload `/place-matches`, `MatchTeamSchema.forbidden_venue_ids`
+`match_input_schema.py`). Re-confronté au code : `_candidate_kickoffs`
+(`app/solver/match_placement.py:221-285`) retire un gymnase de `forbidden_venue_ids` du domaine
+AVANT tout calcul de créneau (jamais choisi par le solveur) et distingue le cas où un créneau y
+était licite (`saw_forbidden_legal`), pour rendre la raison `team_venue_forbidden` — testée AVANT
+`club_rule_no_slot` dans la même chaîne de retour ✓ ; `REASON_MESSAGES` porte désormais **sept**
+raisons (`venue_unavailable`, `no_access_window`, `no_league_intersection`, `venue_full`,
+`not_selected`, `club_rule_no_slot`, `team_venue_forbidden`, `match_placement.py:64-82`) ✓ ; les
+**six endpoints** inchangés (`/`, `/health`, `/generate`, `/place-matches`,
+`/validate-assignments`, `/implicit-constraints`, `engine/app/main.py:775-885`) ✓. Reste de
+l'inventaire (détail des sections sous la ligne 40) non re-sondé cette passe — voir
+`git log -p --follow` pour sa dernière vérification.
 
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.
 > Source de vérité : `engine/app/main.py`, `engine/app/schemas/input_schema.py`, `engine/app/schemas/output_schema.py`, `engine/app/solver/{model,constraints,objective,result_builder}.py`, `engine/app/core/config.py`.
@@ -34,7 +26,7 @@ vérification.
 - **Solver** : Google OR-Tools CP-SAT (`from ortools.sat.python import cp_model`).
 - **Validation** : Pydantic v2 (`BaseModel`, `ConfigDict`, `Field`, `populate_by_name=True`).
 - **Settings** : `pydantic-settings` (`engine/app/core/config.py`), prefix env `ENGINE_`, `.env` lu. Defaults : `app_name="engine"`, `app_version="1.0"`, `contract_version="2.0"`, `environment="dev"`, `log_level="info"`.
-- **Contract version** : lu depuis `engine/CONTRACT_VERSION` (**fichier = `2.26`** — source de vérité, `read_contract_version()` dans `main.py`). Un fichier manquant lève une `RuntimeError`, il n'est **jamais** remplacé par un défaut : le garde de contrat est MAJOR-only, un build amputé de son fichier passerait sinon le handshake et résoudrait un payload d'une AUTRE version mineure en se croyant d'accord. Gardé par `tests/test_contract_version_doc_sync.py`. **Politique de bump** : un changement de FORME ou de SÉMANTIQUE (champ/type/alias ajouté, retiré ou dont le sens change) bump le contrat ; un simple resserrage d'ENVELOPPE (`max_length` qui rétrécit ce qu'on acceptait déjà, sans toucher forme ni sémantique) ne bump pas. **UN SEUL `CONTRACT_VERSION` pour les TROIS endpoints** `/generate` · `/place-matches` · `/validate-assignments`, tous vérifient le même MAJOR — l'historique des bumps (ce que chaque version a changé) vit dans `git log -p --follow engine/CONTRACT_VERSION` et le journal `specs/courantes/etat-des-lieux.md` §3.
+- **Contract version** : lu depuis `engine/CONTRACT_VERSION` (**fichier = `2.27`** — source de vérité, `read_contract_version()` dans `main.py`). Un fichier manquant lève une `RuntimeError`, il n'est **jamais** remplacé par un défaut : le garde de contrat est MAJOR-only, un build amputé de son fichier passerait sinon le handshake et résoudrait un payload d'une AUTRE version mineure en se croyant d'accord. Gardé par `tests/test_contract_version_doc_sync.py`. **Politique de bump** : un changement de FORME ou de SÉMANTIQUE (champ/type/alias ajouté, retiré ou dont le sens change) bump le contrat ; un simple resserrage d'ENVELOPPE (`max_length` qui rétrécit ce qu'on acceptait déjà, sans toucher forme ni sémantique) ne bump pas. **UN SEUL `CONTRACT_VERSION` pour les TROIS endpoints** `/generate` · `/place-matches` · `/validate-assignments`, tous vérifient le même MAJOR — l'historique des bumps (ce que chaque version a changé) vit dans `git log -p --follow engine/CONTRACT_VERSION` et le journal `specs/courantes/etat-des-lieux.md` §3.
 - **Structure interne** :
   - `app/main.py` — endpoints FastAPI + pipeline solver.
   - `app/core/config.py` — settings.
@@ -276,13 +268,13 @@ Le verdict F2a (§ci-dessus) porte aussi les **compromis nommés** d'un verdict 
 
 ### ScheduleInputSchema (`engine/app/schemas/input_schema.py`)
 
-Version contrat active : **`"2.26"`** (fichier `CONTRACT_VERSION`, source de vérité). Le default Pydantic du champ `version` vaut **`"2.26"`** lui aussi (`input_schema.py:321`, gardé par `test_schema_version_defaults_match_contract_version`, ENG-44) : c'est un repli pour un payload qui n'annonce rien — le backend l'envoie TOUJOURS, ce défaut n'est donc jamais la valeur du fil — aligné sur le contrat courant pour qu'aucun lecteur ne le prenne pour une version concurrente. `ConfigDict(extra="forbid", populate_by_name=True)`.
+Version contrat active : **`"2.27"`** (fichier `CONTRACT_VERSION`, source de vérité). Le default Pydantic du champ `version` vaut **`"2.27"`** lui aussi (`input_schema.py:321`, gardé par `test_schema_version_defaults_match_contract_version`, ENG-44) : c'est un repli pour un payload qui n'annonce rien — le backend l'envoie TOUJOURS, ce défaut n'est donc jamais la valeur du fil — aligné sur le contrat courant pour qu'aucun lecteur ne le prenne pour une version concurrente. `ConfigDict(extra="forbid", populate_by_name=True)`.
 
 **Bornes A10** (anti-bombe de génération) : la plupart des listes portent un `max_length` (rejet **422** avant CP-SAT) — `teams` ≤200 · `venues` ≤50 · `coaches` ≤200 · `slot_templates` ≤2000 · `priority_tiers` ≤20 · `trainingSlots` ≤1000/gymnase ; plus un `model_validator` bornant le **total** des créneaux à ≤3000 (empêche 50×1000). **`constraints` est cappé par le PRODUIT ÉTENDU, pas un compte par règle** : `MAX_CONSTRAINTS_EXPANDED = 100_000` = brut(≤500)×équipes(≤200), parce que le backend éclate 1 règle CLUB en N rangées/équipe et qu'aucun compte fixe par règle ne peut à la fois borner une bombe et ne jamais faux-bloquer un club légitime — le produit étendu, lui, est une borne réelle et finie. Les vraies bornes amont restent aussi actives : cap **brut** backend (≤500) + la limite de body nginx (20 m) + le timeout solveur. Le backend (`GenerationComplexityGuard`) pré-vérifie teams/venues/coaches/contraintes permanentes/total créneaux (=3000) **plus** `teams×venues` ≤2000, **avant dispatch**. ⚠ Ce durcissement de validation n'a **pas** bumpé `CONTRACT_VERSION` : politique — un `max_length` resserre l'enveloppe acceptée sans changer forme/type ni MAJOR ; un bump n'est requis que pour un changement de forme/sémantique (champ/type/alias).
 
 | Champ | Alias JSON | Type | Default |
 |-------|-------------|------|---------|
-| `version` | — | `str` | `"2.26"` (repli — cf. ci-dessus) |
+| `version` | — | `str` | `"2.27"` (repli — cf. ci-dessus) |
 | `club_id` | `clubId` | `str` | requis |
 | `season_id` | `seasonId` | `str` | requis |
 | `schedule_name` | `scheduleName` | `str \| None` | `None` |
@@ -310,7 +302,7 @@ Sous-schemas clés :
 
 ### Schémas du placement de matchs (`match_input_schema.py` / `match_output_schema.py`)
 
-Contrat **2.26** (le MÊME que `/generate` — un seul contrat pour les trois endpoints), les schémas hebdomadaires n'étant pas réutilisés
+Contrat **2.27** (le MÊME que `/generate` — un seul contrat pour les trois endpoints), les schémas hebdomadaires n'étant pas réutilisés
 (le problème n'a ni créneau récurrent ni séance) :
 
 - **`MatchPlacementInputSchema`** : `version`, `clubId`, `seasonId`, `matches`, `venues`, `teams`,
@@ -326,21 +318,27 @@ Contrat **2.26** (le MÊME que `/generate` — un seul contrat pour les trois en
   MAIN/ASSISTANT, `players: list[str]` ≤60 (`MAX_PLAYERS_PER_TEAM`, P4-240 ③ décision A — ids
   `CoachPlayerMembership` actifs, additif, une joueuse pèse comme un coach MAIN),
   `matchMinutes`/`warmupMinutes` — durées résolues par le backend, défauts
-  105/30, cf. §POST /place-matches), **`MatchSchema`** (un match daté : `kind`
+  105/30, `forbiddenVenueIds: list[str]` (`forbidden_venue_ids`, P4-272 ④, additif, ≤50
+  `MAX_MATCH_VENUES`) — gymnases INTERDITS à cette équipe, triés, `[]` par défaut ; le solveur les
+  retire du domaine AVANT tout calcul de créneau, jamais choisis), cf. §POST /place-matches), **`MatchSchema`** (un match daté : `kind`
   `TO_PLACE`/`FIXED`/`AWAY`, `venueId`/`kickoff` (requis si `FIXED`), `currentVenueId`/
   `currentKickoff` pour le hint de stabilité, `roundTripMinutes` — trajet AWAY, **transporté mais
   non consommé par le solveur depuis P4-240 ③ décision B**, cf. §POST /place-matches).
 - **`MatchPlacementOutputSchema`** : `status`, `placements: list[MatchPlacementSchema]`
   (`matchId`, `venueId`, `kickoff`), **`unplaced: list[UnplacedMatchSchema]`** (`matchId`,
   `reason`, `message` — le non-plaçable sort NOMMÉ, c'est le produit ; `reason` est un `str` libre,
-  pas un `Literal`, six valeurs en pratique — `no_access_window`, `no_league_intersection`,
-  `club_rule_no_slot`, `venue_unavailable`, `venue_full`, `not_selected` (`REASON_MESSAGES`,
-  `match_placement.py`) — `club_rule_no_slot` (P4-272 ③) marque un domaine vidé par les seules
-  règles CLUB HARD (jour/fenêtre de coup d'envoi) ; les deux dernières tranchées **post-solve** sur
-  l'occupation finale : `venue_full` = plus aucun créneau licite libre à la date du match (gymnase
-  réellement saturé), `not_selected` = un créneau licite restait libre mais le solve ne l'a pas
-  retenu dans son budget (P4-240, `_remaining_reason`) — « relancez le placement »), `diagnostics`
-  (mêmes `DiagnosticSchema` que le solve hebdo), `metrics`.
+  pas un `Literal`, **sept** valeurs en pratique — `no_access_window`, `no_league_intersection`,
+  `team_venue_forbidden`, `club_rule_no_slot`, `venue_unavailable`, `venue_full`, `not_selected`
+  (`REASON_MESSAGES`, `match_placement.py`) — `club_rule_no_slot` (P4-272 ③) marque un domaine vidé
+  par les seules règles CLUB HARD (jour/fenêtre de coup d'envoi) ; `team_venue_forbidden`
+  (P4-272 ④) marque un domaine vidé par les seuls gymnases INTERDITS à l'équipe (`teams[].
+  forbiddenVenueIds`) alors qu'un créneau y était par ailleurs licite — testée AVANT
+  `club_rule_no_slot` dans la même résolution (§ Solveur de placement, `_candidate_kickoffs`) ; les
+  deux dernières tranchées **post-solve** sur l'occupation finale : `venue_full` = plus aucun
+  créneau licite libre à la date du match (gymnase réellement saturé), `not_selected` = un créneau
+  licite restait libre mais le solve ne l'a pas retenu dans son budget (P4-240, `_remaining_reason`)
+  — « relancez le placement »), `diagnostics` (mêmes `DiagnosticSchema` que le solve hebdo),
+  `metrics`.
 
 ### ScheduleOutputSchema (`engine/app/schemas/output_schema.py`)
 

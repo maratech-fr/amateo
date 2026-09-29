@@ -1,30 +1,32 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-09-29 (P4-272 ③ : contrat **2.25 → 2.26** — bloc `clubRules` ajouté au payload
-`/place-matches` ; antérieur P4-271 : **2.24 → 2.25** — `slotRotations`/rotations retirées, semaine type A/B = tag sur le créneau idéal, non transmis au moteur). Re-confronté au
-code : `engine/CONTRACT_VERSION` = `2.26` ✓ ; `DiagnosticSchema.id` toujours requis, sans défaut,
-`app/schemas/output_schema.py:61-62` ✓ ; le commentaire mort `FACILITY_CAPACITY` toujours à
-`app/main.py:447-450`, une seule occurrence, non-code ✓ ; paliers de budget adaptatif
+Last verified @ 2026-09-29 (P4-272 ④ : contrat **2.26 → 2.27** — `teams[].forbiddenVenueIds`
+ajouté au payload `/place-matches`, ce document ne le détaille pas lui-même — §3 « Solveur de
+placement » de `specs/courantes/module-matchs.md` et `engine-inventory.md` en sont la maison,
+`/generate` — décrit ici — n'en porte jamais). Re-confronté au code :
+`engine/CONTRACT_VERSION` = `2.27` ✓ ; `DiagnosticSchema.id` toujours requis, sans défaut,
+`app/schemas/output_schema.py:61-62` ✓ ; paliers de budget adaptatif
 (`_adaptive_timeout`, `app/main.py:374-389`) toujours ≤50→60 s · ≤200→180 s · sinon 600 s,
 plafonnés par `solver_timeout_seconds` ✓ ; un créneau verrouillé HARD ne crée toujours aucune
-variable `x[...]` (`app/solver/model.py:129-130`, `continue` sur `hard_slot_keys`) ✓ ; corrigé
-cette passe : une fermeture de gymnase (`venue_closed`) ne produit **aucune** contrainte
-`forbiddenVenueId` — elle retire les `trainingSlots` du gymnase les jours fermés
-(`VenueClosureDays`, `backend/src/Service/ScheduleConstraintBuilder.php:252-257`), confirmé aussi
-par `engine/docs/business.md`. Reste non re-parcouru ligne à ligne cette passe — historique :
-`git log -p --follow engine/docs/nominal-flow.md`.
+variable `x[...]` (`app/solver/model.py:129-130`, `continue` sur `hard_slot_keys`) ✓ ; une
+fermeture de gymnase (`venue_closed`) ne produit toujours **aucune** contrainte `forbiddenVenueId`
+(champ DISTINCT du `forbiddenVenueIds` P4-272 ④ ci-dessus — celui-ci vit sur `/generate`, dérive
+d'une fermeture ; celui-là sur `/place-matches`, dérive d'une interdiction saisie) — elle retire
+les `trainingSlots` du gymnase les jours fermés (`VenueClosureDays`, `backend/src/Service/
+ScheduleConstraintBuilder.php:252-257`) ✓. Reste non re-parcouru ligne à ligne cette passe —
+historique : `git log -p --follow engine/docs/nominal-flow.md`.
 
 > Ce document decrit le chemin complet d'une requete de generation d'emploi du temps, du moment ou le backend construit le payload jusqu'a la notification en temps reel du frontend. Destine aux developpeurs travaillant sur l'integration backend/engine.
 
 ---
 
-## 1. Le backend construit le payload (contrat 2.26)
+## 1. Le backend construit le payload (contrat 2.27)
 
-Quand un utilisateur clique sur "Generer l'emploi du temps" dans le frontend, le backend assemble un objet JSON conforme au schema `ScheduleInputSchema` (version de contrat **2.26**, fichier `engine/CONTRACT_VERSION`). Voici la structure complete, avec des explications inline.
+Quand un utilisateur clique sur "Generer l'emploi du temps" dans le frontend, le backend assemble un objet JSON conforme au schema `ScheduleInputSchema` (version de contrat **2.27**, fichier `engine/CONTRACT_VERSION`). Voici la structure complete, avec des explications inline.
 
 ```json
 {
-  "version": "2.26",
+  "version": "2.27",
   "clubId": "550e8400-e29b-41d4-a716-446655440000",
   "seasonId": "660e8400-e29b-41d4-a716-446655440001",
 
@@ -139,7 +141,7 @@ Quand un utilisateur clique sur "Generer l'emploi du temps" dans le frontend, le
 
 ### Explications par section
 
-- **`version`** : version du contrat (actuellement `2.26`). Le moteur ne compare que le **MAJOR** : `"2.0"` et `"2.1"` passent tous les deux ; un payload `1.x` ou `3.x` est refuse.
+- **`version`** : version du contrat (actuellement `2.27`). Le moteur ne compare que le **MAJOR** : `"2.0"` et `"2.1"` passent tous les deux ; un payload `1.x` ou `3.x` est refuse.
 - **`clubId` / `seasonId`** : identifiants du club et de la saison en cours. Le moteur ne les utilise pas pour le calcul, mais les inclut dans les logs et les diagnostics.
 - **`venues`** : liste des salles. Chaque salle porte ses **creneaux d'entrainement** explicites dans la cle `trainingSlots` : `{dayOfWeek, startTime, durationMinutes, capacity}`. Il n'existe **ni** cle `availability` **ni** champ `endTime` (la fin se deduit de `startTime + durationMinutes`) — les schemas Pydantic sont `extra=forbid`, donc une cle inconnue provoque un `422`. La `capacity` indique combien d'equipes peuvent occuper le creneau simultanement (gymnase divisible : le backend envoie `canSplit ? capacity : 1`).
 - **`teams`** : liste des equipes. Le champ `sportCategoryId` est **requis** (son absence provoque un `422`). Le `priorityTierId` identifie le rang de priorite (1 = S ... 5 = D), dont le poids est code en dur cote moteur.
@@ -170,7 +172,7 @@ Avant de lancer le solveur, le moteur acquiert un verrou asyncio specifique au `
 
 ### Verification de version
 
-Le moteur verifie que le **MAJOR** de `version` correspond au MAJOR de son contrat (`2` pour le contrat `2.26`) : `"2.0"` comme `"2.26"` sont acceptes — le MINOR est ignore. C'est pourquoi la version que le PAYLOAD s'attribue (constante PHP du builder) DOIT valoir exactement `engine/CONTRACT_VERSION` et non « un `2.x` quelconque » : sinon un changement de forme du payload sans bump de MAJOR passerait inapercu des deux cotes. Cette egalite stricte est gardee par `PayloadVersionMatchesContractVersionTest`. Si le MAJOR differe, le moteur retourne une erreur indiquant la version attendue et la version recue.
+Le moteur verifie que le **MAJOR** de `version` correspond au MAJOR de son contrat (`2` pour le contrat `2.27`) : `"2.0"` comme `"2.27"` sont acceptes — le MINOR est ignore. C'est pourquoi la version que le PAYLOAD s'attribue (constante PHP du builder) DOIT valoir exactement `engine/CONTRACT_VERSION` et non « un `2.x` quelconque » : sinon un changement de forme du payload sans bump de MAJOR passerait inapercu des deux cotes. Cette egalite stricte est gardee par `PayloadVersionMatchesContractVersionTest`. Si le MAJOR differe, le moteur retourne une erreur indiquant la version attendue et la version recue.
 
 ---
 
@@ -352,7 +354,7 @@ Le frontend ecoute ce topic via `EventSource`. Des que l'evenement arrive, le fr
 
 ## Resume du flux en 5 etapes
 
-1. **Backend** : construit le payload (contrat 2.26) a partir des entites du club (equipes, salles, entraineurs, contraintes)
+1. **Backend** : construit le payload (contrat 2.27) a partir des entites du club (equipes, salles, entraineurs, contraintes)
 2. **Moteur** : valide le payload, acquiert le verrou club, verifie le MAJOR de la version
 3. **Solveur** : construit le modele, ajoute les contraintes HARD, definit l'objectif, resout dans le budget adaptatif (60/180/600 s selon la taille du probleme)
 4. **Moteur** : retourne `ScheduleOutputSchema` avec creneaux, diagnostics, metriques

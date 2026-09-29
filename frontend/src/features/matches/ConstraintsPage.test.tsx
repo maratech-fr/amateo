@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
 
-import type { ClubLeagueWindow, MatchConstraint, MatchConstraintCoherence } from "./api";
+import type { ClubLeagueWindow, MatchConstraint, MatchConstraintCoherence, Team, Venue } from "./api";
 import { ConstraintsPage } from "./ConstraintsPage";
 
 const createWindow = vi.fn();
@@ -16,6 +16,8 @@ const updateRule = vi.fn();
 const deleteRule = vi.fn();
 const rulesState: { data: MatchConstraint[] | undefined; isError: boolean } = { data: [], isError: false };
 const coherenceState: { data: MatchConstraintCoherence } = { data: { byRule: [], byHabit: [] } };
+const teamsState: { data: Team[] | undefined; isError: boolean } = { data: [], isError: false };
+const venuesState: { data: Venue[] | undefined; isError: boolean } = { data: [], isError: false };
 
 // On pilote les hooks (miroir de la copie stockée), jamais le réseau. Le badge et
 // l'alerte de cohérence viennent du SERVEUR : l'écran les affiche, on ne les recalcule pas ici.
@@ -34,6 +36,9 @@ vi.mock("./queries", () => ({
   useCreateMatchConstraint: () => ({ mutate: createRule, isPending: false }),
   useUpdateMatchConstraint: () => ({ mutate: updateRule, isPending: false }),
   useDeleteMatchConstraint: () => ({ mutate: deleteRule, isPending: false }),
+  // Section Équipes (P4-272 ④) : équipes + gymnases pour les sélecteurs d'interdiction.
+  useTeams: () => ({ ...teamsState, refetch: vi.fn() }),
+  useVenues: () => ({ ...venuesState, refetch: vi.fn() }),
 }));
 
 const window = (over: Partial<ClubLeagueWindow> = {}): ClubLeagueWindow => ({
@@ -71,6 +76,10 @@ function openClub(): void {
   renderWithProviders(<ConstraintsPage />, { route: "/matchs/contraintes?section=club" });
 }
 
+function openEquipes(): void {
+  renderWithProviders(<ConstraintsPage />, { route: "/matchs/contraintes?section=equipes" });
+}
+
 beforeEach(() => {
   createWindow.mockClear();
   updateWindow.mockClear();
@@ -83,6 +92,10 @@ beforeEach(() => {
   rulesState.data = [];
   rulesState.isError = false;
   coherenceState.data = { byRule: [], byHabit: [] };
+  teamsState.data = [];
+  teamsState.isError = false;
+  venuesState.data = [];
+  venuesState.isError = false;
 });
 
 describe("ConstraintsPage — section Ligue (P4-272 ①)", () => {
@@ -182,5 +195,66 @@ describe("ConstraintsPage — section Club (P4-272 ③)", () => {
     openClub();
 
     expect(screen.getByText("Cette règle heurte le créneau idéal des SM1 : dimanche 21h45.")).toBeInTheDocument();
+  });
+
+  it("ne montre PAS les interdictions de gymnase (scope TEAM) dans la section Club", () => {
+    // Une interdiction TEAM et une règle CLUB partagent la même collection ; la section
+    // Club ne rend QUE la règle CLUB (l'interdiction vit dans « Équipes »).
+    rulesState.data = [rule({ id: "r1", scope: "CLUB", kickoffMax: "21:00" }), rule({ id: "b1", scope: "TEAM", scopeTargetId: "t1", venueId: "v1", daysOfWeek: [], kickoffMax: null })];
+    openClub();
+    // La règle CLUB rend son bouton « Enregistrer » ; l'interdiction TEAM n'ajoute pas
+    // de seconde ligne éditable (une seule ligne de règle → un seul « Enregistrer »).
+    expect(screen.getAllByRole("button", { name: "Enregistrer" })).toHaveLength(1);
+    expect(screen.queryByText(/Aucune règle de club/)).not.toBeInTheDocument();
+  });
+});
+
+const teamOf = (id: string, name: string): Team => ({ id, name }) as Team;
+const venueOf = (id: string, name: string): Venue => ({ id, name, color: null, externalLabels: [] }) as Venue;
+
+describe("ConstraintsPage — section Équipes (P4-272 ④)", () => {
+  it("indique l'absence d'interdiction quand la liste est vide", () => {
+    rulesState.data = [];
+    teamsState.data = [teamOf("t1", "SM1")];
+    venuesState.data = [venueOf("v1", "Gymnase A")];
+    openEquipes();
+    expect(screen.getByText(/Aucune interdiction/)).toBeInTheDocument();
+  });
+
+  it("crée une interdiction de gymnase via l'API (scope TEAM, HARD, sans jour ni horaire)", async () => {
+    const user = userEvent.setup();
+    rulesState.data = [];
+    teamsState.data = [teamOf("t1", "SM1")];
+    venuesState.data = [venueOf("v1", "Gymnase A")];
+    openEquipes();
+
+    await user.selectOptions(screen.getByLabelText("Équipe"), "t1");
+    await user.selectOptions(screen.getByLabelText("Gymnase interdit"), "v1");
+    await user.click(screen.getByRole("button", { name: "Interdire" }));
+
+    expect(createRule).toHaveBeenCalledWith(
+      { scope: "TEAM", scopeTargetId: "t1", venueId: "v1", ruleType: "HARD", daysOfWeek: [], kickoffMin: null, kickoffMax: null },
+      expect.anything(),
+    );
+  });
+
+  it("affiche une interdiction existante (équipe → gymnase) et la lève via l'API", async () => {
+    const user = userEvent.setup();
+    rulesState.data = [rule({ id: "b1", scope: "TEAM", scopeTargetId: "t1", venueId: "v1", daysOfWeek: [], kickoffMax: null })];
+    teamsState.data = [teamOf("t1", "SM1")];
+    venuesState.data = [venueOf("v1", "Gymnase A")];
+    openEquipes();
+
+    // « SM1 »/« Gymnase A » figurent AUSSI dans les <option> des sélecteurs d'ajout, et
+    // « ne joue jamais à » dans le libellé de la ligne d'ajout : on cible la LIGNE
+    // d'interdiction par son texte COMPLET (unique) et on vérifie son contenu.
+    const banRow = screen.getByText((_, el) => "SPAN" === el?.tagName && "SM1 ne joue jamais à Gymnase A" === el.textContent);
+    expect(banRow).toHaveTextContent("SM1");
+    expect(banRow).toHaveTextContent("Gymnase A");
+
+    await user.click(screen.getByRole("button", { name: "Supprimer" }));
+    await user.click(screen.getByRole("button", { name: "Lever l'interdiction" }));
+
+    expect(deleteRule).toHaveBeenCalledWith("b1");
   });
 });
