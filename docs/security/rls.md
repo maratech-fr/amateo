@@ -49,6 +49,40 @@ du journal reste tenue contre `amateo_app`). Supervision totale via
 
 `DATABASE_ADMIN_URL` alimente la connexion Doctrine `admin` — utilisée par les **migrations** (`doctrine_migrations.connection: admin`, donc aussi `make migration-migrate` et `make bootstrap`), `db-init`/`db-init-test`/`db-empty*` et les commandes de seed `app:bccl:seed`/`app:demo:seed` (le purge DELETE d'`app:demo:seed` serait silencieusement partiel sous RLS sans elle). **Ne jamais pointer `DATABASE_URL` runtime dessus** — `RlsIsolationTest::testConnectionUserIsNotSuperuser` le garde.
 
+## Fonction `SECURITY DEFINER` — l'exception au modèle RLS
+
+**Une seule fonction du dépôt tourne en `SECURITY DEFINER`** : `league_window_suggestions(uuid)`
+(P4-272 ②, `Version20260929120000`) — la tendance dominante des plages de match saisies par les
+AUTRES clubs de l'instance fédérale (comité/ligue/fédération) du demandeur. C'est le SEUL endroit
+du produit qui **lit à travers la frontière tenant** : `amateo_app` (RLS le borne à son club) ne
+peut pas agréger `club_league_window` de tous les clubs pairs, il fallait un contexte qui voie
+tout.
+
+- **Exécutée comme son PROPRIÉTAIRE** (`amateo_owner`, qui porte la policy `admin_all` — bypasse
+  la RLS, cf. « Porte superadmin » ci-dessus), pas comme l'appelant — c'est la définition même de
+  `SECURITY DEFINER`.
+- **Contrat de sortie strict : agrégats seulement, jamais une identité.** La fonction ne rend que
+  `(category, level, gender, day_of_week, windows, club_count)` — un ENSEMBLE de plages et un
+  COMPTE de clubs, jamais LESQUELS ; le SQL dérive lui-même `ligue`/`comité` depuis le
+  `ffbb_club_code` du demandeur, **aucun paramètre de ligue fourni par l'appelant**.
+  `LeagueWindowSuggestionService` (le seul appelant, `backend/src/Service/
+  LeagueWindowSuggestionService.php`) ne sert au front que cette liste blanche.
+- **Surface d'appel close** : `SET search_path = pg_catalog, public, pg_temp` figé — `pg_temp` en
+  DERNIER (recommandation PostgreSQL pour un `SECURITY DEFINER` : sinon une table temporaire de
+  session pourrait ombrer `club`/`season`/`club_league_window`), tables qualifiées `public.…` dans
+  le corps de la requête, `REVOKE ALL … FROM PUBLIC` puis `GRANT EXECUTE` au seul rôle applicatif
+  (`Version20260929120000.php:113-120`).
+- **`STABLE`, en `LANGUAGE sql`** — lecture pure, aucune écriture possible depuis la fonction
+  elle-même.
+- **Gardée par un NR bloquant dédié** : `Security/LeagueWindowSuggestionShareTest`
+  (`docs/testing/blocking-tests.md`) — falsifie, entre autres, `search_path` figé, `EXECUTE` limité
+  au rôle applicatif, le seuil (≥3 ET majorité), le groupement par instance, le demandeur exclu, et
+  l'absence de toute donnée club-identifiante dans la réponse.
+
+Toute nouvelle fonction `SECURITY DEFINER` doit justifier ICI pourquoi une lecture cross-tenant
+est nécessaire, et respecter le même contrat (agrégat seul, `search_path` figé, `EXECUTE` restreint
+au rôle applicatif, NR de partage dédié).
+
 ## Caveats
 
 - **pgbouncer transaction-pooling incompatible** avec le GUC session-scoped (fuite cross-tenant). À reconcevoir avant d'introduire un pooler (GUC transactionnel + transaction par requête).

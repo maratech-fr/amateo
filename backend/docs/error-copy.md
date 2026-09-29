@@ -4,24 +4,15 @@
 > Pas d'inventaire ligne à ligne (il dériverait), pas de décompte (« N messages »).
 > Le code fait foi ; ce doc dit **comment décider**, pas **combien**.
 
-Last verified @ 2026-09-27 (`documentation-update`, P4-263 PR 2/2 — front). Re-confronté au
-code : la règle « le corps du serveur ne parle qu'en deçà de 500 » tient toujours
-(`frontend/src/shared/lib/errorMessage.ts:55`, et le repli générique `if (status >= 500)` `:89`
-au-delà) ✓ ; `errors.ts`/`apiErrorMessage` a disparu, `errorMessage.ts` est désormais la maison
-UNIQUE d'erreur front, avec un filet ignorant un reason-phrase HTTP anglais brut (liste FERMÉE
-`ENGLISH_STATUS_TEXTS:16-27`) ✓ ; le rail 422 des state processors reste gardé par
-`backend/tests/Unit/ValidationExceptionCarriesViolationsTest.php` ✓ ;
+Last verified @ 2026-09-29 (rotation `documentation-update`, zone sans rapport avec la PR
+P4-272 ②). Re-confronté au code : la règle « le corps du serveur ne parle qu'en deçà de 500 »
+tient toujours (`frontend/src/shared/lib/errorMessage.ts:55`) ✓ ; `ENGLISH_STATUS_TEXTS` déclarée
+`:16` ✓ ; `backend/tests/Unit/ValidationExceptionCarriesViolationsTest.php` et
+`backend/tests/Security/LoginFailureCopyTest.php` toujours présents ✓ ;
 `ConstraintStateProcessor::assertPreferredVenueIsNotMandatory`
-(`backend/src/State/Processor/ConstraintStateProcessor.php:174`) et
-`FixtureStateProcessor::assertVenueAccessAllowed`
-(`backend/src/State/Processor/FixtureStateProcessor.php:229`) suivent bien l'idiome unique
-`$this->refuse(…)` ✓. Passe ajoutée : le socle de traduction (`symfony/translation`,
-`default_locale: fr`, `backend/config/packages/translation.yaml:2`) est actif et sans négociation
-`Accept-Language` (`set_locale_from_accept_language` au défaut `false`) ✓ ; `/api/login` refuse en
-« Identifiants invalides. » via le catalogue `security` fr livré par `symfony/security-core`, gardé
-par `backend/tests/Security/LoginFailureCopyTest.php` (bloquant) ✓ ; console superadmin
-(`AdminAuthController::password`/`::totp`), membres (`MembershipController`) et la famille
-« planning/période disparu » francisées à la source, citées ci-dessous ✓.
+(`backend/src/State/Processor/ConstraintStateProcessor.php:174`) suit toujours l'idiome unique
+`$this->refuse(…)` ✓. Reste du fichier hérité de la passe P4-263 précédente, non re-sondé ligne à
+ligne cette passe.
 
 ## La règle
 

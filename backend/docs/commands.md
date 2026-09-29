@@ -1,11 +1,14 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-09-28 (`documentation-update`, rotation de fraîcheur — sujet sans rapport,
-P4-269 backend/frontend). Re-confronté au code : `make test` = `phpunit --testsuite Unit` seule,
-`make phpunit` = `--group phase1` seule, `make tests-complete`/`make coverage` = `phpunit tests/
---exclude-group contract` (`backend/Makefile:37,50,61,87`) ✓ ; `PurgeExportsCommand` n'accepte
-toujours que `.pdf` (`RENDER_PATTERN`, `backend/src/Command/PurgeExportsCommand.php:61`) ✓ ;
-`db-init-test` pose toujours `idle_in_transaction_session_timeout = 60s` sur `amateo_test`
+Last verified @ 2026-09-29 (`documentation-update`, P4-272 ② — `seed-league`/`app:league-windows:seed`
+recalés : la commande reste un RAFRAÎCHISSEMENT idempotent (`backend/src/Command/
+SeedLeagueWindowsCommand.php`), le chargement INITIAL du catalogue est désormais garanti par
+`Version20260929130000` (charge le JSON si `league_match_window` est vide, puis backfille les
+copies club×saison) ✓. Reste hérité de la passe précédente : `make test` = `phpunit --testsuite
+Unit` seule, `make phpunit` = `--group phase1` seule, `make tests-complete`/`make coverage` =
+`phpunit tests/ --exclude-group contract` (`backend/Makefile:37,50,61,87`) ✓ ; `PurgeExportsCommand`
+n'accepte toujours que `.pdf` (`RENDER_PATTERN`, `backend/src/Command/PurgeExportsCommand.php:61`)
+✓ ; `db-init-test` pose toujours `idle_in_transaction_session_timeout = 60s` sur `amateo_test`
 (`backend/Makefile:101`) ✓ ; `doctrine:fixtures:load` toujours sans appelant dans `src/`
 (`BasketballInit`/`HolidayReferenceFixtures` absents), P4-163 (retrait du bundle) toujours ouverte
 en roadmap ✓. Non re-sondé cette passe : le reste des commandes et gardes listées — un stamp
@@ -29,7 +32,7 @@ REMPLACE, l'historique vit dans git.
 | CI / Behat (`functional-tests`) | appellent `app:bccl:seed --no-interaction` directement (idempotent — voir §CI plus bas) |
 | Base de test phpunit | `make -C backend db-init-test` (idempotent) / `make -C backend db-empty-test` (vide) |
 | Rejouer seulement les référentiels vacances/fériés (globaux) | `make -C backend seed-holidays` |
-| Rejouer seulement le catalogue des fenêtres de matchs de la ligue (global) | `make -C backend seed-league` |
+| RAFRAÎCHIR le catalogue des fenêtres de matchs de la ligue (global) — le chargement INITIAL est garanti par migration | `make -C backend seed-league` |
 
 ## Les 3 bases locales — et les deux commandes qui basculent
 
@@ -76,7 +79,7 @@ Une stack pointe **une base à la fois**. Le défaut committé est le **bac à s
 | `make seed-bccl` | Seed le club dev BCCL RÉEL (ARA0069036, `app:bccl:seed`) — **CREATE-ONLY**, ne fait RIEN si le club existe déjà — connexion admin, gardé par `mutation-confirm.sh` |
 | `make seed-demo` | Seed/reset le club de DÉMONSTRATION permanent (ARA9999999, `app:demo:seed`) — **créer OU RESET** par défaut (purge le workspace puis re-seed) ; `IF_ABSENT=1 make seed-demo` ajoute `--if-absent` (no-op si présent) — connexion admin, gardé par `mutation-confirm.sh`. `DEMO_BCCL_PASSWORD` (défaut `DemoBccl!2026`, non secret) est passé en `--password` |
 | `make seed-holidays` | Rejoue les référentiels vacances scolaires + jours fériés (globaux, non-tenant, idempotents) — pas de connexion admin, non gardé |
-| `make seed-league` | Rejoue le catalogue des fenêtres de matchs de la ligue (global, non-tenant, `app:league-windows:seed`, idempotent — upsert par clé naturelle) — pas de connexion admin, non gardé |
+| `make seed-league` | RAFRAÎCHIT le catalogue des fenêtres de matchs de la ligue (global, non-tenant, `app:league-windows:seed`, idempotent — upsert par clé naturelle) — **le chargement INITIAL n'en dépend plus** : `Version20260929130000` (P4-272 ②) le charge depuis le JSON dès que `doctrine:migrations:migrate` tourne sur un catalogue vide, puis recopie chaque club×saison sans copie. Pas de connexion admin, non gardé |
 | `make phpstan` / `make cs` / `make cs-fix` / `make rector` | Analyses (cs/rector en dry-run, `cs-fix` applique). ⚠ PHPStan (`phpstan.neon`) a `paths: [src]` **seul** — `scripts/` (dont `coverage-gate.php`) n'est PAS analysé |
 | `make lint` | PHPStan + CS + Rector (tout en dry-run) |
 | `make migration-diff` / `make migration-migrate` | Diff / applique les migrations (connexion **admin**) |
@@ -117,7 +120,7 @@ Toutes manuelles sauf mention. Détail : `ls backend/src/Command/`.
 | `app:seasons:remind-transition` | Emails J-61/J-30/J-14 avant le pivot du 15 juillet : saison N+1 non préparée — **auto, quotidien à 08:00** |
 | `app:public-holidays:seed` / `app:public-holidays:import` | Jours fériés : seed offline (JSON embarqué) / import API etalab — idempotents ; import **auto trimestriel (1er janv./avr./juil./oct. à 04:30)** |
 | `app:school-holidays:seed` / `app:school-holidays:import` | Vacances scolaires : seed offline / import API Éducation nationale — idempotents ; import **auto trimestriel (1er janv./avr./juil./oct. à 04:00)** |
-| `app:league-windows:seed` | Catalogue des fenêtres de matchs par ligue (JSON AURA) — idempotent. Appelée par `make -C backend seed-league`, rejouée par `make play`/`make reset` (racine) |
+| `app:league-windows:seed` | RAFRAÎCHIT le catalogue des fenêtres de matchs par ligue (JSON AURA) — idempotent. Appelée par `make -C backend seed-league`, rejouée par `make play`/`make reset` (racine). **Le chargement INITIAL est garanti par migration** (`Version20260929130000`, P4-272 ②) — cette commande n'est plus le seul chemin qui peuple le catalogue, lecture/validation du JSON partagées via `LeagueWindowCatalogFile` |
 | `app:clubs:backfill-school-zone` | Déduit `Club.schoolZone` du code FFBB (dry-run sans `--apply`) |
 | `app:club-approvals:digest` | P3-4 PR B : relance les demandes de création de club (3 j restants + jour J) et expire les échues (la console superadmin garde la main) ; `--dry-run`, `--date` — **auto, quotidien à 08:30** |
 | `app:clubs:ffbb-resync` | SA4/P2-18 : ré-importe l'identité FFBB de `--club=<id>` (FfbbClubPopulator refresh — nom, coordonnées, logo, comité/ligue) ; échec franc si organisme introuvable — action support, aussi déclenchable depuis la console admin |

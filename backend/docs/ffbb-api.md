@@ -1,9 +1,12 @@
 # API FFBB — routes consommées
 
-Last verified @ 2026-09-27 (`documentation-update`, passe tests manuels 0927 — `FfbbApiClient::
-searchSallesByName` vérifié contre `backend/src/Service/Basketball/FfbbApiClient.php:206-219` :
-`matchingStrategy: all` posé, preuve datée dans le code même). Historique des passes précédentes vit
-dans git : `git log -p --follow backend/docs/ffbb-api.md`.
+Last verified @ 2026-09-29 (rotation `documentation-update`, zone sans rapport avec la PR
+P4-272 ②). Re-confronté au code : la liste blanche des deux hosts (`api.ffbb.com`,
+`meilisearch-prod.ffbb.app`) inchangée (`FfbbApiClient.php:13-25`) ✓ ; `matchingStrategy: all`
+toujours posé (`FfbbApiClient.php:216`) ✓ ; les routes `GET /api/ffbb/salles` et
+`GET /api/ffbb/salles-proches` toujours déclarées (`FfbbSallesController.php:50,104`) ✓. Reste du
+fichier non re-sondé ligne à ligne cette passe — historique des passes précédentes vit dans git :
+`git log -p --follow backend/docs/ffbb-api.md`.
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les
 > données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit
