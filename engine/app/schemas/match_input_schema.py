@@ -19,8 +19,6 @@ MAX_PLAYERS_PER_TEAM = 60  # a shared-player roster stays small; generous cap (m
 MAX_WINDOWS_PER_VENUE = 50
 MAX_LEAGUE_WINDOWS_PER_TEAM = 50  # mirror of MAX_WINDOWS_PER_VENUE — a team's league envelope
 MAX_UNAVAILABILITIES_PER_VENUE = 100
-MAX_SLOT_ROTATIONS = 100
-MAX_TEAMS_PER_SLOT_ROTATION = 20
 MAX_TIMEOUT_SECONDS = 60
 
 
@@ -113,7 +111,7 @@ class MatchSchema(SerializableModel):
     - AWAY — informative only, and IGNORED by the placement solver since P4-240 ③
       (décision B): it occupies no venue and no longer projects a person window
       either (« c'est la vie »). It still feeds `team_dates` (a team away a given
-      day frees its habit/rotation protection). `kickoff` may be the real hour or
+      day frees its habit protection). `kickoff` may be the real hour or
       the habit estimation (kickoffEstimated).
     """
 
@@ -154,24 +152,6 @@ class TeamLinkSchema(SerializableModel):
     type: str = "NOT_SIMULTANEOUS"  # NOT_SIMULTANEOUS | BACK_TO_BACK
 
 
-class SlotRotationSchema(SerializableModel):
-    """RMM-5 (P2-49) — a shared match slot (venue + ISO day + kickoff) rotated
-    between member teams (the SM1/SM2 20:30 case): scarcity of slots → week A one
-    team receives, week B another, on the SAME physical slot (refonte §8).
-
-    The A/B image is a SOFT ideal (never a HARD): a member's HOME match on the
-    slot's day is ATTRACTED to (kickoff, venue), at strict parity with the habit
-    terms, and the slot's window is protected on member-free dates. The backend
-    already applies the SUPPLÉANCE: a member's same-day habit is dropped from
-    `teams[].habits`, so a member gets rotation OR habit that day, never both. An
-    absent/empty block ⇒ byte-identical code path (pattern `teamLinks`)."""
-
-    venue_id: str = Field(alias="venueId")
-    day_of_week: int = Field(alias="dayOfWeek", ge=1, le=7)
-    kickoff: time
-    team_ids: list[str] = Field(alias="teamIds", max_length=MAX_TEAMS_PER_SLOT_ROTATION)
-
-
 class TrainingOccupancySchema(SerializableModel):
     """A dated training session projected by the backend from the EFFECTIVE
     schedule (ADR-0002 rules live backend-side — the engine stays flat)."""
@@ -188,7 +168,7 @@ class MatchPlacementInputSchema(SerializableModel):
     # courant pour qu'aucun lecteur ne le prenne pour une version concurrente.
     # L'autorité reste `engine/CONTRACT_VERSION`, comparée au MAJOR à l'entrée ;
     # gardé par test_schema_version_defaults_match_contract_version.
-    version: str = "2.24"
+    version: str = "2.25"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     solver_seed: int = Field(default=42, alias="solverSeed")
@@ -199,9 +179,6 @@ class MatchPlacementInputSchema(SerializableModel):
     venues: list[MatchVenueSchema] = Field(default_factory=list, max_length=MAX_MATCH_VENUES)
     teams: list[MatchTeamSchema] = Field(default_factory=list, max_length=MAX_MATCH_TEAMS)
     team_links: list[TeamLinkSchema] = Field(default_factory=list, alias="teamLinks", max_length=MAX_TEAM_LINKS)
-    slot_rotations: list[SlotRotationSchema] = Field(
-        default_factory=list, alias="slotRotations", max_length=MAX_SLOT_ROTATIONS
-    )
     training_occupancies: list[TrainingOccupancySchema] = Field(
         default_factory=list, alias="trainingOccupancies", max_length=MAX_TRAINING_OCCUPANCIES
     )

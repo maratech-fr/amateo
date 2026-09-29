@@ -12,7 +12,6 @@ from app.schemas.match_input_schema import (
     MatchPlacementInputSchema,
     MatchSchema,
     MatchTeamSchema,
-    SlotRotationSchema,
     TeamHabitSchema,
 )
 
@@ -52,13 +51,6 @@ W_LINK_NOT_SIMULTANEOUS = 40
 W_HABIT_TIME = 15  # on top of the implicit day match (constant per candidate set)
 W_HABIT_VENUE = 5
 W_PROTECT_HABIT = 25
-# RMM-5 (§8.2) — the A/B rotation image is the habit mechanism extended AT PARITY:
-# a member's HOME match on the slot's day is attracted to (kickoff, venue) exactly
-# like a habit, and the slot window is protected on member-free dates at
-# W_PROTECT_HABIT. The backend suppléance guarantees a member never carries both a
-# rotation and a same-day habit, so these never double up.
-W_ROTATION_TIME = 15  # strict parity with W_HABIT_TIME
-W_ROTATION_VENUE = 5  # strict parity with W_HABIT_VENUE
 W_BACK_TO_BACK = 15
 W_COACH_ASSISTANT = 10
 W_STABILITY = 8
@@ -262,12 +254,13 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
     venue unavailabilities, per-(venue, date) no-overlap of the MATCH windows
     ([kickoff, kickoff + matchMinutes] — the warm-up no longer occupies the
     court, D1; FIXED matches consume their slot without being variables).
-    SOFT: habits, A/B slot rotations (attraction + window protection, at parity
-    with habits — RMM-5), person clashes — coach (MAIN/ASSISTANT) or active player
-    (P4-240 ③) — vs FIXED anchors AND projected trainings, on the PERSON window
-    (warm-up-free since lot M; AWAY footprints ignored since P4-240 ③, décision B),
-    NOT_SIMULTANEOUS links (same window), BACK_TO_BACK chains, habit-window
-    protection, day compaction, re-solve stability.
+    SOFT: habits (attraction + window protection — P4-271: the ideal slot is a
+    SOFT preference, the week A/B tag never reaches the engine), person clashes —
+    coach (MAIN/ASSISTANT) or active player (P4-240 ③) — vs FIXED anchors AND
+    projected trainings, on the PERSON window (warm-up-free since lot M; AWAY
+    footprints ignored since P4-240 ③, décision B), NOT_SIMULTANEOUS links (same
+    window), BACK_TO_BACK chains, habit-window protection, day compaction,
+    re-solve stability.
     """
     model = cp_model.CpModel()
     deadline = time_module.monotonic() + BUILD_BUDGET_SECONDS
@@ -275,14 +268,6 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
     teams_by_id = {t.id: t for t in input_data.teams}
     to_place = [m for m in input_data.matches if m.kind == "TO_PLACE"]
     fixed = [m for m in input_data.matches if m.kind == "FIXED"]
-
-    # RMM-5: rotations a team belongs to, indexed by (teamId, ISO day) for the
-    # per-candidate attraction term below. Iteration order stays that of the
-    # (deterministically sorted) payload.
-    rotations_by_team_day: dict[tuple[str, int], list[SlotRotationSchema]] = {}
-    for rotation in input_data.slot_rotations:
-        for member_id in rotation.team_ids:
-            rotations_by_team_day.setdefault((member_id, rotation.day_of_week), []).append(rotation)
 
     # 1. Domains + pre-solve reasons.
     candidates: dict[str, list[_Candidate]] = {}
@@ -351,24 +336,23 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
     # domains hands CP-SAT ONE coherent hint per match — a feasible placement to
     # improve on — so the budget is spent optimising, not rediscovering a feasible
     # point. Order (date, team) is stable; per match the preferred candidate is the
-    # habit/rotation slot, else the current SOLVER placement, else the first legal
+    # habit slot, else the current SOLVER placement, else the first legal
     # free slot, each checked against the FIXED anchors AND the slots the greedy has
     # already taken. It ABSORBS the old stability hint: exactly one hint set, never
     # two contradictory ones on the same match.
     def _greedy_key(
         cand: _Candidate,
         habit: TeamHabitSchema | None,
-        rotations: list[SlotRotationSchema],
         match: MatchSchema,
     ) -> tuple[int, str, int]:
-        # rank 0 = habit/rotation ideal slot ; 1 = current SOLVER placement ;
+        # rank 0 = habit ideal slot ; 1 = current SOLVER placement ;
         # 2 = any other legal slot. Ties broken by (venue, kickoff) = domain order.
         rank = 2
         if (
             habit is not None
             and cand.kickoff_min == _minutes(habit.kickoff)
             and (habit.venue_id is None or cand.venue_id == habit.venue_id)
-        ) or any(cand.kickoff_min == _minutes(r.kickoff) and cand.venue_id == r.venue_id for r in rotations):
+        ):
             rank = 0
         elif (
             match.current_venue_id == cand.venue_id
@@ -389,14 +373,13 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
             habit = (
                 next((h for h in team.habits if h.day_of_week == _iso_day(match.match_date)), None) if team else None
             )
-            match_rotations = rotations_by_team_day.get((match.team_id, _iso_day(match.match_date)), [])
             cands = candidates[match.id]
             chosen: _Candidate | None = None
             # Decorate-sort-undecorate: the key is computed eagerly in the generator
             # (no closure over the loop variable → no B023), and `sorted` compares
             # only ``pair[0]`` so the _Candidate is never ordered directly.
             ordered = sorted(
-                ((_greedy_key(cand, habit, match_rotations, match), cand) for cand in cands),
+                ((_greedy_key(cand, habit, match), cand) for cand in cands),
                 key=lambda pair: pair[0],
             )
             for _key, cand in ordered:
@@ -446,12 +429,16 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
             (_minutes(occupancy.start), _minutes(occupancy.end))
         )
 
-    # Habit-window protection: dates where a team with a venue-anchored habit
-    # has NO match at all — its habitual MATCH window [kickoff, kickoff +
-    # matchMinutes] is defended (aligned on the venue occupancy, D1).
+    # Habit-window protection (P4-271): dates where a team with a venue-anchored
+    # habit has NO match at all — its habitual MATCH window [kickoff, kickoff +
+    # matchMinutes] is defended (aligned on the venue occupancy, D1). Stored as a
+    # SET per (venue, date): two teams whose ideal slots coincide physically (the
+    # A/B alternation) protect the SAME window on a member-free date — deduped so a
+    # third team's overlapping candidate is penalised W_PROTECT_HABIT ONCE, never
+    # twice (a −50 would wrongly outweigh a −25 real habit conflict).
     match_dates = sorted({m.match_date for m in input_data.matches})
     team_dates = {(m.team_id, m.match_date) for m in input_data.matches}
-    protected: dict[tuple[str, date], list[tuple[int, int]]] = {}
+    protected: dict[tuple[str, date], set[tuple[int, int]]] = {}
     for team in input_data.teams:
         match_min, _ = _durations(team)
         for habit in team.habits:
@@ -461,25 +448,7 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
                 if _iso_day(day_key) != habit.day_of_week or (team.id, day_key) in team_dates:
                     continue
                 kick = _minutes(habit.kickoff)
-                protected.setdefault((habit.venue_id, day_key), []).append((kick, kick + match_min))
-
-    # Rotation-window protection (RMM-5, §8): on a date at the slot's day where NO
-    # member has a match at all, the shared slot's MATCH window is defended
-    # against other teams — the mirror of the habit protection above. Duration =
-    # the longest member's match (the slot must hold whichever member receives).
-    for rotation in input_data.slot_rotations:
-        members = set(rotation.team_ids)
-        rot_match_min = max(
-            (_durations(teams_by_id.get(member_id))[0] for member_id in rotation.team_ids),
-            default=DEFAULT_MATCH_MIN,
-        )
-        for day_key in match_dates:
-            if _iso_day(day_key) != rotation.day_of_week:
-                continue
-            if any((member_id, day_key) in team_dates for member_id in members):
-                continue
-            kick = _minutes(rotation.kickoff)
-            protected.setdefault((rotation.venue_id, day_key), []).append((kick, kick + rot_match_min))
+                protected.setdefault((habit.venue_id, day_key), set()).add((kick, kick + match_min))
 
     for match in solvable:
         _ensure_budget()
@@ -488,7 +457,6 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
         team_habit: TeamHabitSchema | None = None
         if team is not None:
             team_habit = next((h for h in team.habits if h.day_of_week == _iso_day(match.match_date)), None)
-        match_rotations = rotations_by_team_day.get((match.team_id, _iso_day(match.match_date)), [])
         for cand in candidates[match.id]:
             weight = 0
             venue_start = cand.kickoff_min
@@ -497,18 +465,22 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
             # (no travel), so it equals the venue window: [kickoff, kickoff + match].
             person_start = cand.kickoff_min
             person_end = cand.kickoff_min + match_min
+            # P4-271 — is this candidate the team's OWN ideal slot (same venue AND
+            # kickoff)? Then habit-window protection NEVER applies to it: an A/B
+            # partner's protected window on the same physical slot must not chase a
+            # team off its own declared ideal. Without this, +15 +5 −25 = −5 would
+            # make the ideal LOSE to any neutral slot (the U9F1/U9M2 case).
+            is_own_ideal = (
+                team_habit is not None
+                and team_habit.venue_id is not None
+                and cand.venue_id == team_habit.venue_id
+                and cand.kickoff_min == _minutes(team_habit.kickoff)
+            )
             if team_habit is not None:
                 if cand.kickoff_min == _minutes(team_habit.kickoff):
                     weight += W_HABIT_TIME
                 if team_habit.venue_id is not None and cand.venue_id == team_habit.venue_id:
                     weight += W_HABIT_VENUE
-            # Rotation attraction (RMM-5) — extension of the habit bonus at strict
-            # parity: pull a member's HOME match to the shared slot's (kickoff, venue).
-            for rotation in match_rotations:
-                if cand.kickoff_min == _minutes(rotation.kickoff):
-                    weight += W_ROTATION_TIME
-                if cand.venue_id == rotation.venue_id:
-                    weight += W_ROTATION_VENUE
             if (
                 match.current_venue_id == cand.venue_id
                 and match.current_kickoff is not None
@@ -520,10 +492,12 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
                 # contradictory hints on the same match). `_apply_greedy_hints`
                 # posts ONE coherent hint per match — and prefers this current
                 # placement when it is still free (see its preference tiers).
-            # Protection is a VENUE conflict → the candidate's MATCH window.
-            for p_start, p_end in protected.get((cand.venue_id, match.match_date), []):
-                if venue_start < p_end and p_start < venue_end:
-                    weight -= W_PROTECT_HABIT
+            # Protection is a VENUE conflict → the candidate's MATCH window (deduped
+            # set). Skipped when the candidate IS the team's own ideal (P4-271).
+            if not is_own_ideal:
+                for p_start, p_end in protected.get((cand.venue_id, match.match_date), set()):
+                    if venue_start < p_end and p_start < venue_end:
+                        weight -= W_PROTECT_HABIT
             # Person clash (coach OR active player) → the warm-up-FREE person window
             # (lot M). A player weighs W_COACH_MAIN, like a MAIN coach (P4-240 ③).
             if team is not None:

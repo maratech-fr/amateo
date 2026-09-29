@@ -1,17 +1,12 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-29 (P4-272 ② — suggestion de plages de ligue, §1/§8bis recalés contre le
-code : `LeagueResolver::resolveFromFfbbCode` rend le préfixe brut pour une ligue lisible non
-cataloguée, jamais null (`backend/src/Service/LeagueResolver.php:45-55`) ✓ ; fonction SQL
-`SECURITY DEFINER league_window_suggestions` — seuil ≥3 ET majorité, groupement comité/ligue/
-fédération par niveau (`backend/migrations/Version20260929120000.php:94-112`) ✓ ;
-`LeagueWindowSuggestionService::suggestionsFor`/`apply` — masquage serveur, repli fédéral limité à
-la ligue du demandeur, recalcul serveur à l'application (`backend/src/Service/
-LeagueWindowSuggestionService.php:67-148`) ✓ ; `Version20260929130000` charge le catalogue vide au
-départ puis backfille les copies, anti-résurrection (`backend/migrations/
-Version20260929130000.php:39-76`) ✓ ; `LeagueSuggestions.tsx` — bloc « Plages suggérées
-(estimation) », Appliquer/Tout appliquer, N jamais QUELS clubs ✓). P4-272 ① (copie club de
-l'enveloppe ligue) et le contenu antérieur non réaudités cette passe.
+Last verified @ 2026-09-29 (P4-271 — semaine type A/B = tag `week` sur le créneau idéal, rotations
+(`MatchSlotRotation`) supprimées, `CONTRACT_VERSION` **2.25** ; antérieur P4-272 ② — suggestion de
+plages de ligue (`LeagueResolver`, fonction SQL `league_window_suggestions`, `LeagueSuggestions.tsx`)
+et P4-272 ① — copie club de l'enveloppe ligue (`ClubLeagueWindow`, onglet `/matchs/contraintes`) ;
+`MatchPlacementPayloadBuilder::build` et `ConflictRadarLoader::conflicts` lisent la copie club, copie
+vide → un seul diagnostic `league_envelope_empty` ✓ ; pose manuelle hors ligue PERMISE et SIGNALÉE
+(`PlacementPanel.tsx`). Reste du contenu (P4-240 et antérieur) non réaudité cette passe.
 Historique : `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
@@ -479,7 +474,7 @@ Présentation pure — aucune formule de gravité redérivée.
 ## 3. Solveur de placement (`POST /api/fixtures/place` → engine `/place-matches`)
 
 Second problème solveur ([ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md)),
-même `CONTRACT_VERSION` **2.24** que `/generate`/`/validate-assignments` (un seul contrat pour les
+même `CONTRACT_VERSION` **2.25** que `/generate`/`/validate-assignments` (un seul contrat pour les
 trois endpoints — voir §6 `CLAUDE.md`). **Rail
 SYNCHRONE** (`PlaceMatchesController` — management + saison écrivable + socle pointé), anti-double-clic
 PAR CLUB `MatchPlacementLock` (Redis dédié — ne protège pas deux clubs l'un de l'autre : ils partagent le
@@ -521,7 +516,7 @@ Pydantic 105/30.
 
 **Personne = coach OU joueuse active (P4-240 ③, décision A)** : chaque équipe du contrat porte
 `teams[].players` (ids `CoachPlayerMembership` actifs, additif, `CONTRACT_VERSION` inchangée
-**2.24**) en plus de `teams[].coaches` — le backend exclut déjà toute personne qui coache AUSSI
+**2.25**) en plus de `teams[].coaches` — le backend exclut déjà toute personne qui coache AUSSI
 cette équipe (le rôle coach gagne, parité `MatchConflictDetector`, gardé par le NR bloquant
 `PlayersPayloadParityTest`) ; le solveur applique la même exclusion en défense
 (`_team_players`). Une joueuse pèse comme un coach MAIN (`W_COACH_MAIN`, SOFT) — les
