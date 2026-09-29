@@ -596,7 +596,10 @@ d'`app:bccl:seed` qui reste dev-only). Les gestionnaires (fondateur + Nicolas Ba
 100 % par `--email`/`--co-email`/`--password`/`--co-password` (prompt masqué `askHidden` si les
 mots de passe sont absents, min. 12 caractères) — **aucun credential réel dans le dépôt**, comptes
 posés **pré-vérifiés** (le rail `/register` est mort sans e-mail sortant en prod). Connexion admin
-requise (RLS). NR bloquant : `BcclProdSeedCommandTest`. Runbook jour J complet :
+requise (RLS). **Anti-usurpation** : si un compte existe DÉJÀ pour `--email` ou `--co-email`
+(vérifié ou non — ex. inscrit via `/register` entre le déploiement et le seed), la commande
+échoue AVANT tout prompt et ne crée rien, au lieu d'adopter ce compte (et son mot de passe) en
+gestionnaire du BCCL. NR bloquant : `BcclProdSeedCommandTest`. Runbook jour J complet :
 [`docs/ops/deploy.md`](../../docs/ops/deploy.md) §1.8. Détail commande : `backend/docs/commands.md`.
 
 ### Cockpit temporel (overlays période/événement)
