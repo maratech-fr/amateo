@@ -209,12 +209,85 @@ def test_nested_fully_pinned_blocks_on_one_case_complete_without_infeasible() ->
     assert not any(d.get("id", "").startswith("shared-block-overpinned") for d in result.get("diagnostics", [])), (
         "aucune preuve « sur-épinglé » sur un cas imbriqué"
     )
-    # ⚠ RÉSIDU CONNU, HORS PÉRIMÈTRE de ce fix (statut, pas warnings) : t1/t2 étant physiquement
-    # ensemble sur C1 (séance du bloc de 3) ET sur leur case libre, la défense en profondeur
-    # post-solve les compte à 2 co-présences (``shared-block-not-honored-b2``, WARNING). Ce résidu vit
-    # dans le comptage co-présence (branche OPTIMAL), pré-existant et non introduit ici ; il n'affecte
-    # pas le STATUT. (Le comptage CAPACITÉ, lui, fond désormais le bloc MAXIMAL {t1,t2,t3} sur C1 —
-    # ``_fold_case_occupant_identity`` trie taille décroissante puis clé : plus de faux occupant isolé.)
+    # P4-183 — la défense en profondeur post-solve ne DOIT PAS accuser le bloc INCLUS {t1,t2} :
+    # t1/t2 sont physiquement ensemble sur C1 (séance du bloc de 3) ET sur leur case libre, soit 2
+    # co-présences BRUTES pour ``commonSessions = 1``. Mais C1 appartient au bloc MAXIMAL {t1,t2,t3}
+    # (élection ``_fold_case_occupant_identity``), pas à {t1,t2} : seule la case libre crédite le bloc
+    # de 2 → exactement 1 séance honorée, aucun ``shared-block-not-honored-b2``. (Sans le fix P4-183 le
+    # comptage brut voit 2 ≠ 1 et rougit ici.)
+    assert not any(d.get("id") == "shared-block-not-honored-b2" for d in result.get("diagnostics", [])), (
+        "le bloc inclus {t1,t2} n'est pas accusé pour la case du bloc maximal {t1,t2,t3}"
+    )
+    assert not _has_shared_block_diag(result), "aucun shared_block_not_honored sur la propre solution du solveur"
+
+
+def test_bccl_nested_blocks_share_one_case_without_any_shared_block_diagnostic() -> None:
+    """(b) Cas BCCL RÉEL (P4-183). {U9F1,U9F2} ⊂ {U9F1,U9F2,U9M2}, ``commonSessions = 1`` chacun ;
+    les trois épinglés HARD ensemble sur l'unique case C1 (V1/lun/17:30, capacité 1). U9F1 et U9F2 ont
+    une 2ᵉ séance LIBRE, U9M2 n'a que son pin ; deux cases libres C2/C3 existent.
+
+    Le bloc de 3 tient sa séance commune sur C1 ; le bloc de 2 {U9F1,U9F2}, écarté de C1 par la
+    distinctness, réunit U9F1+U9F2 sur UNE case libre (mutualisation, capacité 1). Co-présence BRUTE
+    de U9F1/U9F2 = 2 cases (C1 + case libre), mais C1 revient au bloc MAXIMAL : le fix P4-183 ne
+    crédite le bloc de 2 QUE de la case libre → 1 séance honorée, ZÉRO ``shared_block_not_honored``.
+    Sans le fix, le comptage brut (2 ≠ 1) accuse à tort le bloc inclus."""
+    payload = make_payload(
+        teams=[
+            make_team("U9F1", sessions_per_week=2),
+            make_team("U9F2", sessions_per_week=2),
+            make_team("U9M2", sessions_per_week=1),
+        ],
+        venues=[
+            make_venue("V1", [(1, "17:30")], capacity=1),
+            make_venue("V2", [(3, "17:30")], capacity=1),
+            make_venue("V3", [(5, "17:30")], capacity=1),
+        ],
+        slot_templates=[
+            _hard_lock("U9F1", "V1", 1, "17:30"),
+            _hard_lock("U9F2", "V1", 1, "17:30"),
+            _hard_lock("U9M2", "V1", 1, "17:30"),
+        ],
+    )
+    payload["sharedBlocks"] = [
+        _block("bF", ["U9F1", "U9F2"], 1),
+        _block("bFM", ["U9F1", "U9F2", "U9M2"], 1),
+    ]
+
+    result = solve_payload(payload)
+
+    assert result["status"] == "completed"
+    assert not _has_shared_block_diag(result), (
+        "blocs imbriqués réunis sur une même case : aucun bloc n'est accusé (case = bloc maximal)"
+    )
+
+
+def test_optimal_branch_still_flags_a_genuinely_unhonored_separate_block() -> None:
+    """(c) Témoin inverse (P4-183). L'élection du bloc maximal n'AVEUGLE PAS la défense en profondeur :
+    un VRAI bloc SÉPARÉ {x1,x2} dont les membres ne se réunissent JAMAIS (0 co-présence) alors que
+    ``commonSessions = 1`` garde son ``shared_block_not_honored`` (ERROR) — aucun bloc plus grand ne
+    le couvre, donc chacune de ses (zéro) cases candidates ne l'élit pas. Test direct de la branche
+    OPTIMAL sur une solution posée : ce cas ne peut pas transiter par le solveur (il sortirait
+    INFEASIBLE), c'est précisément le filet post-solve qu'on garde vivant."""
+    from ortools.sat.python import cp_model
+
+    from app.solver.result_builder.diagnostics import _diagnose_shared_blocks
+
+    model_data = {
+        "teams": [{"id": "x1", "name": "X1"}, {"id": "x2", "name": "X2"}],
+        "sharedBlocks": [{"id": "sep", "teamIds": ["x1", "x2"], "commonSessions": 1}],
+    }
+    # x1 et x2 ne partagent AUCUNE case : zéro co-présence pour un bloc qui en exige une.
+    slots = [
+        {"teamId": "x1", "venueId": "VA", "dayOfWeek": 1, "startTime": "18:00", "durationMinutes": 90},
+        {"teamId": "x2", "venueId": "VB", "dayOfWeek": 2, "startTime": "18:00", "durationMinutes": 90},
+    ]
+
+    diagnostics = _diagnose_shared_blocks(model_data, cp_model.OPTIMAL, slots)
+
+    honored_diag = next((d for d in diagnostics if d["id"] == "shared-block-not-honored-sep"), None)
+    assert honored_diag is not None, "un bloc séparé réellement non honoré garde son ERROR"
+    assert honored_diag["severity"] == "ERROR"
+    assert "en partagent 0" in honored_diag["message"], "le message compte 0 séance honorée, pas la co-présence brute"
 
 
 def test_two_fully_pinned_cases_for_one_common_session_fail_and_name_the_block() -> None:

@@ -939,14 +939,39 @@ def _diagnose_shared_blocks(
             continue
         occupancy[str(slot["teamId"])].add((str(slot["venueId"]), day, str(slot["startTime"])[:5]))
 
+    # P4-183 — index inverse case → équipes présentes, et blocs valides au format d'ÉLECTION
+    # (clé, membres). La case (gymnase, jour, heure) où DEUX blocs imbriqués se réunissent ({A,B}
+    # sous {A,B,C}) n'appartient qu'au bloc MAXIMAL : ``_fold_case_occupant_identity`` (base des
+    # constraints, même élection que le compteur de sur-capacité) l'attribue à {A,B,C}. Compter la
+    # co-présence BRUTE créditait AUSSI {A,B} de cette case → faux ``shared_block_not_honored`` sur
+    # le bloc inclus. On ne crédite un bloc d'une case QUE s'il y est le bloc élu.
+    teams_by_case: dict[tuple[str, int, str], set[str]] = defaultdict(set)
+    for team_id, member_cases in occupancy.items():
+        for member_case in member_cases:
+            teams_by_case[member_case].add(team_id)
+    team_to_group: dict[str, str] = {}
+    fold_blocks: list[tuple[str, frozenset[str]]] = []
+    for index, block in enumerate(blocks):
+        block_members = frozenset(str(m) for m in (_get(block, "teamIds", "team_ids", default=[]) or []))
+        if len(block_members) >= 2:
+            fold_blocks.append((f"__shared_block__{_get(block, 'id', default=index)}", block_members))
+
     for index, block in enumerate(blocks):
         members = [str(t) for t in (_get(block, "teamIds", "team_ids", default=[]) or [])]
         if len(members) < 2:
             continue
         common_sessions = int(_get(block, "commonSessions", "common_sessions", default=0) or 0)
         member_sets = [occupancy.get(member, set()) for member in members]
-        common = set.intersection(*member_sets) if member_sets else set()
-        if len(common) != common_sessions:
+        common_cases = set.intersection(*member_sets) if member_sets else set()
+        block_key = f"__shared_block__{_get(block, 'id', default=index)}"
+        honored = 0
+        for common_case in common_cases:
+            _identity, block_keys_here = _fold_case_occupant_identity(
+                list(teams_by_case[common_case]), team_to_group, fold_blocks
+            )
+            if block_key in block_keys_here:
+                honored += 1
+        if honored != common_sessions:
             diagnostics.append(
                 {
                     "id": f"shared-block-not-honored-{_get(block, 'id', default=index)}",
@@ -955,7 +980,7 @@ def _diagnose_shared_blocks(
                     "message": (
                         f"Le bloc de mutualisation n'est pas respecté : les équipes "
                         f"{_named_list(members, team_names)} devraient partager {common_sessions} séance(s) "
-                        f"commune(s) en bloc mais en partagent {len(common)}."
+                        f"commune(s) en bloc mais en partagent {honored}."
                     ),
                     "suggestions": ["Vérifiez les disponibilités communes de ces équipes ou ajustez le bloc."],
                     "createdAt": datetime.now(UTC).isoformat(),
