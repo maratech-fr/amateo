@@ -1,21 +1,14 @@
-Last verified @ 2026-09-29 (P4-272 ③ — règles de match du club : la ressource `MatchConstraint`
-apparaît [3 routes ajoutées : `GET/POST /api/match_constraints`, `GET/PUT/DELETE
-/api/match_constraints/{id}`] avec son schéma [scope, ruleType HARD/PREFERRED, daysOfWeek,
-kickoffMin/kickoffMax nullables] ; plus la route custom `GET /api/match-constraints/coherence`
-[alerte de cohérence règles club ⇄ créneaux idéaux, `SeasonAndFixturePaths.php`] ; le radar gagne la
-famille `CLUB_RULE_VIOLATION` et le placement le motif d'échec `club_rule_no_slot`
-[`SeasonAndFixturePaths.php`]. Régénéré depuis le backend vivant. Antérieur P4-270 — description texte
-de la réponse `GET /api/venues/{id}/deletion-impact` recalée à la main sur `UncoveredCustomPaths.php`
-[champ additif `placedFixtures` aux côtés de `declaredFixtures`] ; antérieurement P4-271 — la
-ressource `MatchSlotRotation` disparaît [les 2 routes
-`GET/POST /api/match_slot_rotations` et `GET/PUT/DELETE /api/match_slot_rotations/{id}` retirées,
-semaine type A/B désormais un tag `week` sur le créneau idéal] et `TeamMatchHabit` gagne le champ
-`week` [A/B/ALL] en lecture comme en écriture ; la description de la ressource
-[`TeamMatchHabitResource.php`] recalée sur « un par équipe » ; les routes de P4-272 ② [plages de
-ligue suggérées] toujours présentes).
+Last verified @ 2026-09-29 (P4-239 — le champ mort `ffbbTeamId` disparaît du schéma d'écriture de
+`Team` : la propriété était déclarée sur `TeamInput` mais aucun processor ne la lisait ; le champ
+moteur `ffbb_team_id` reste optionnel côté engine et n'est jamais envoyé, donc pas de bump de
+contrat. Régénéré à froid depuis le backend vivant. Correction incidente au passage : `scopeTargetId`
+et `venueId` de `MatchConstraint` gagnent `format: uuid` + `externalDocs` schema.org/identifier —
+tous deux portent `#[Assert\Uuid]`, l'export précédent [P4-272 ③] les avait ratés sur un cache de
+métadonnées api-platform tiède ; aucun nom de route ni de propriété ne change, la surface du contrat
+est identique. Aucune route ajoutée ni retirée [214 paths inchangé]).
 
 **214 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`a7c3942c9562e929f977822ed2ef9e743a6a215fee536447ce59a79218bcb1bd` (`sha256sum` sur le fichier).
+`18c11db41b451f307be002a6f1b50437f1d950d59576e7f3688c881bfac55a07` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne
