@@ -43,10 +43,6 @@ class TeamMatchHabitStateProcessor extends AbstractStateProcessor
     protected function updateEntityFromInput(object $entity, object $input): void
     {
         $this->applyInput($entity, $input);
-        // '' explicitly clears the venue (PUT full-replace idiom).
-        if ('' === $input->venueId) {
-            $entity->setVenueId(null);
-        }
     }
 
     /**
@@ -68,9 +64,10 @@ class TeamMatchHabitStateProcessor extends AbstractStateProcessor
         if (null !== $input->kickoffTime) {
             $entity->setKickoffTime(new DateTimeImmutable($input->kickoffTime));
         }
-        if (null !== $input->venueId && '' !== $input->venueId) {
-            $entity->setVenueId($input->venueId);
-        }
+        // Gymnase : idiome full-replace (P4-271) — `null` (ou '') passe le créneau à
+        // « aucun gymnase », un UUID le pose. Le PUT peut donc RETIRER le gymnase d'un
+        // créneau idéal, pas seulement le changer.
+        $entity->setVenueId(null === $input->venueId || '' === $input->venueId ? null : $input->venueId);
         // Semaine d'alternance : omise ⇒ `ALL` (défaut), sur création comme sur
         // PUT (idiome full-replace, cf. venueId ci-dessus).
         $entity->setWeek(null !== $input->week ? MatchWeek::from($input->week) : MatchWeek::ALL);

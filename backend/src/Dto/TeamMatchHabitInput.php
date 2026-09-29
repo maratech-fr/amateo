@@ -26,7 +26,9 @@ class TeamMatchHabitInput
     public ?string $kickoffTime = null;
 
     // `NotBlank(allowNull: true)` en plus d'`Uuid` : le validateur Uuid laisse
-    // passer la chaîne VIDE, qui atteindrait la colonne uuid en base (22P02).
+    // passer la chaîne VIDE, qui atteindrait la colonne uuid en base (22P02). `null`
+    // est ACCEPTÉ et signifie « aucun gymnase » — sur un PUT il RETIRE le gymnase du
+    // créneau idéal (idiome full-replace, P4-271) ; le processor traite null comme ''.
     #[Assert\NotBlank(allowNull: true)]
     #[Assert\Uuid]
     #[Groups(['write'])]

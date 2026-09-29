@@ -73,7 +73,7 @@ final class ValidationMessageReachesBodyApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(201);
 
         $this->post('/api/team_match_habits', ['teamId' => $team, 'dayOfWeek' => 3, 'kickoffTime' => '11:00']);
-        $this->assertBodyCarries(422, 'Cette équipe a déjà une habitude de match ce jour-là — modifiez-la.');
+        $this->assertBodyCarries(422, 'Cette équipe a déjà un créneau idéal de match — modifiez-le.');
     }
 
     public function testVenueMatchWindowEndBeforeStartCarriesFrenchViolation(): void
