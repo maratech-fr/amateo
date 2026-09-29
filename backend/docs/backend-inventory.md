@@ -600,7 +600,7 @@ requise (RLS). **Anti-usurpation** : si un compte existe DÉJÀ pour `--email` o
 (vérifié ou non — ex. inscrit via `/register` entre le déploiement et le seed), la commande
 échoue AVANT tout prompt et ne crée rien, au lieu d'adopter ce compte (et son mot de passe) en
 gestionnaire du BCCL. NR bloquant : `BcclProdSeedCommandTest`. Runbook jour J complet :
-[`docs/ops/deploy.md`](../../docs/ops/deploy.md) §1.8. Détail commande : `backend/docs/commands.md`.
+[`docs/ops/deploy.md`](../../docs/ops/deploy.md) §1.10. Détail commande : `backend/docs/commands.md`.
 
 ### Cockpit temporel (overlays période/événement)
 

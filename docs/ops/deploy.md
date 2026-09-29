@@ -189,9 +189,93 @@ domaine), sinon l'envoi part en spam ou est refusé.
 - Sentry : poser les 3 DSN (backup-restore.md §5) ;
 - superadmin : `docker compose ... exec php-fpm php bin/console app:superadmin:create <email>`.
 
+### 1.8 Rôle de lecture seule (`amateo_read`) — poser son mot de passe
+
+Le rôle `amateo_read` est **créé par la migration** (jouée au premier déploiement) : lecture seule sur une
+**liste blanche** (jamais un secret : ni `super_admin`, ni les tables de tokens, ni `app_user.password_hash`),
+jamais de porte `admin_all` (→ [`prod-stack.md`](prod-stack.md) § « Avec quel rôle » +
+[`../security/rls.md`](../security/rls.md)). Il naît **sans mot de passe** — donc aucun secret en git — et ne
+peut pas se connecter tant que tu n'en poses pas un.
+
+⚠ `amateo_read` est un rôle **de confiance** : le `SET app.club_id` ci-dessous ne fait qu'**éviter de mélanger
+les clubs à l'écran**, ce n'est **pas une frontière** (l'opérateur peut poser n'importe quel club). Sa
+protection réelle : il ne voit aucun secret et ne peut rien écrire. Conséquence : son mot de passe donne accès
+aux données personnelles des clubs — **ne jamais le stocker en clair** sur un poste partagé (gestionnaire de
+secrets, jamais un fichier ni l'historique shell), et le changer si un poste est compromis.
+
+À faire **une fois**, sur la VM, en **saisie non historisée** (ne pas mettre le mot de passe dans `.env*` ni
+dans l'historique shell) :
+
+```bash
+# Sonde préalable (rare) : si l'owner n'est PAS superuser sur ton hébergeur, il lui faut CREATEROLE
+# pour que la migration ait pu créer le rôle — sinon elle aurait échoué franchement au déploiement.
+ssh <hôte> "docker compose exec postgres psql -U amateo_owner -d amateo -c '\du amateo_read'"
+
+# Pose le mot de passe — \password invite en saisie masquée, rien n'atterrit dans l'historique ni les logs.
+ssh -t <hôte> "docker compose exec postgres psql -U amateo_owner -d amateo -c '\\password amateo_read'"
+```
+
+⬜ Se connecter ensuite depuis ton poste par **tunnel SSH** (jamais de port Postgres ouvert —
+[`prod-stack.md`](prod-stack.md) § Accès opérateur), puis **poser le club** avant toute lecture :
+
+```bash
+ssh -N -L 5433:localhost:5432 <hôte>          # publie le port sur la loopback de l'hôte, cf. prod-stack.md
+# puis, dans le client (psql/DBeaver) connecté à localhost:5433 en amateo_read :
+SET app.club_id = '<uuid-du-club>';           -- sans ce contexte, les tables tenant rendent 0 ligne (fail-closed)
+SELECT * FROM team_tag;                        -- ne voit que le club posé ; toute écriture est refusée
+```
+
+#### Supprimer `amateo_read` (si tu n'en veux plus)
+
+Le rôle est isolé (que du `SELECT`, aucune dépendance) : le `down()` de la migration le retire, ou à la main
+sur la VM en `amateo_owner`. `DROP OWNED BY` d'abord — il révoque tous les droits (table ET colonne) et permet
+le `DROP ROLE`. (Le rôle est cluster-level : `DROP OWNED BY` ne touche qu'une base — le rejouer par base s'il a
+été créé dans plusieurs.)
+
+```bash
+ssh <hôte> "docker compose exec postgres psql -U amateo_owner -d amateo -c 'DROP OWNED BY amateo_read; DROP ROLE amateo_read;'"
+```
+
+### 1.9 Réparer une donnée en prod — le geste sûr
+
+Pour LIRE, `amateo_read` suffit (§1.8). Pour ÉCRIRE (corriger une donnée), il faut l'accès complet :
+`amateo_owner`. **Toujours SSH sur la VM puis `psql` — JAMAIS depuis un poste** (pas de tunnel : un client
+graphique en `amateo_owner`, c'est toutes les données de tous les clubs sur un portable, et un `UPDATE` mal
+collé qui touche du vrai sans filet).
+
+**Préférer une commande console applicative quand elle existe** (`bin/console app:…`) : elle passe par les
+règles métier et laisse une trace. La retouche SQL directe est le dernier recours.
+
+⚠ **RLS : `amateo_owner` bypasse le tenant** (policies `admin_all`, cf. [`../security/rls.md`](../security/rls.md)) —
+`SET app.club_id` NE le filtre PAS. Donc **filtrer TOUJOURS par `club_id` à la main** dans le `WHERE`, sinon la
+correction frappe TOUS les clubs.
+
+1. **AVANT — sauvegarder la cible** : dump ciblé de la/les table(s) ou du club, ou backup complet.
+   ```bash
+   ssh <hôte>
+   # dump ciblé d'une table (rejouable) :
+   docker compose exec postgres pg_dump -U amateo_owner -d amateo -t public.<table> -Fc -f /tmp/repair-<table>-$(date +%F).dump
+   # ou un backup complet applicatif (cf. backup-restore.md) :
+   docker compose exec php-fpm php bin/console app:db:backup --force
+   ```
+2. **PENDANT — transaction explicite, jamais d'autocommit** : contrôler, agir avec un `WHERE` explicite
+   (`club_id` COMPRIS), vérifier le nombre de lignes touchées, puis committer — ou tout annuler au moindre doute.
+   ```sql
+   BEGIN;
+   -- 1. contrôle : voir exactement les lignes visées (club_id explicite)
+   SELECT id, name FROM public.<table> WHERE club_id = '<uuid-du-club>' AND <condition>;
+   -- 2. correction : WHERE explicite, club_id TOUJOURS présent
+   UPDATE public.<table> SET <col> = <val> WHERE club_id = '<uuid-du-club>' AND <condition>;
+   -- 3. vérifier le compte de lignes touchées AVANT de committer (psql affiche « UPDATE <n> »)
+   SELECT count(*) FROM public.<table> WHERE club_id = '<uuid-du-club>' AND <condition>;
+   COMMIT;   -- ou ROLLBACK; si le compte n'est pas EXACTEMENT celui attendu
+   ```
+3. **APRÈS — tracer le geste** dans le journal ops : qui, quand, quoi (table + condition + lignes touchées),
+   pourquoi, et le dump pris avant. Une écriture directe en prod se justifie et se retrouve.
+
 ---
 
-### 1.8 Jour J — données (seed initial, une seule fois)
+### 1.10 Jour J — données (seed initial, une seule fois)
 
 Une fois la stack déployée et **les migrations passées** (elles tournent au déploiement),
 on pose les données de départ. Tous les seeds qui touchent des tables tenant traversent la RLS
@@ -242,9 +326,8 @@ ligne d'un espace (avec `HISTCONTROL=ignorespace`) ou passer par une variable no
  docker compose exec php-fpm sh -c 'DATABASE_URL="$DATABASE_ADMIN_URL" php bin/console app:demo:seed --password=MOT-DE-PASSE-DEMO'
 ```
 
-⬜ **Rôle PostgreSQL lecture seule** — le mot de passe du rôle SELECT se pose au jour J ; cette
-étape est livrée par une **PR distincte** (rôle RO sans `admin_all`). À compléter ici quand elle est
-en place.
+⬜ **Rôle PostgreSQL lecture seule** — poser le mot de passe de `amateo_read` (créé par la
+migration) : procédure §1.8.
 
 ⬜ **Ré-importer les matchs** — le seed pose l'état terrain (créneaux, contraintes, adversaires
 déjà localisés) mais **pas les matchs** : les réimporter depuis l'UI (module Matchs → Importer, le

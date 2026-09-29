@@ -49,6 +49,57 @@ du journal reste tenue contre `amateo_app`). Supervision totale via
 
 `DATABASE_ADMIN_URL` alimente la connexion Doctrine `admin` — utilisée par les **migrations** (`doctrine_migrations.connection: admin`, donc aussi `make migration-migrate` et `make bootstrap`), `db-init`/`db-init-test`/`db-empty*` et les commandes de seed `app:bccl:seed`/`app:demo:seed` (le purge DELETE d'`app:demo:seed` serait silencieusement partiel sous RLS sans elle). **Ne jamais pointer `DATABASE_URL` runtime dessus** — `RlsIsolationTest::testConnectionUserIsNotSuperuser` le garde.
 
+## Rôle de lecture seule pour l'exploration opérateur (`amateo_read`, P5-20)
+
+Un **troisième** rôle, créé par la migration `Version20260930090000` (idempotente) : `SELECT`
+seulement, **jamais** de porte `admin_all` — il reste scopé RLS comme `amateo_app`, ce n'est **pas**
+un bypass. Destiné à l'exploration courante d'un poste (au lieu d'ouvrir un client graphique en
+`amateo_owner`, qui rapatrie les données personnelles de **tous** les clubs). Naît `LOGIN` mais
+**sans mot de passe** (aucun secret en git) — inutilisable tant que l'opérateur n'en pose pas un le
+jour J (`docs/ops/deploy.md` §1.8).
+
+- **LISTE BLANCHE stricte, jamais `GRANT SELECT ON ALL TABLES`** : un tel grant exposerait
+  `super_admin` (mot de passe + secret TOTP), les quatre tables de tokens
+  (`club_creation_request`, `reset_password_request`, `email_change_token`,
+  `email_verification_token`), `app_user.password_hash`/`pending_email`, le journal admin. La
+  migration énumère donc explicitement : **toutes les tables `club_id`** (patron catalogue,
+  robuste aux tables futures) — table entière, sauf `coach_wish_token` dont la colonne `token`
+  (secret de la page publique) est exclue par un `GRANT` colonne par colonne — plus une **liste
+  blanche globale explicite** de référentiels non sensibles + `club`, et `app_user` en colonnes
+  sans `password_hash` ni `pending_email`. **Toute table hors de ces deux listes est en LISTE
+  NOIRE implicite** — non accordée, pas d'exception silencieuse.
+- **Aucun `ALTER DEFAULT PRIVILEGES`** : une table **future** n'est PAS lisible tant qu'une
+  migration ne l'a pas classée — défaut fermé, décision délibérée (pas un oubli).
+- **`ALTER ROLE` étroit** re-posé explicitement après le `CREATE ROLE` idempotent
+  (`NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOREPLICATION`) — un rôle `amateo_read`
+  préexistant aux droits plus larges (créé à la main, ou hérité) serait sinon conservé tel quel.
+- **Policy `readonly_tenant FOR SELECT TO amateo_read`** sur **chaque** table `club_id`, portant le
+  **même prédicat canonique** que `tenant_isolation` (comparé par égalité stricte à l'exécution,
+  cf. ci-dessus) — sans elle, `FORCE ROW LEVEL SECURITY` rendrait 0 ligne à l'opérateur (pas
+  d'erreur, juste une table qui semble vide). **Aucune** policy `admin_all` pour `amateo_read` : il
+  ne traverse jamais la frontière tenant.
+- **Écriture refusée au niveau PRIVILÈGE** : aucun `GRANT` DML (`INSERT`/`UPDATE`/`DELETE`) —
+  toute tentative échoue avant même d'atteindre une policy.
+- ⚠ **Le scoping par club (`SET app.club_id`) est une AIDE, pas une frontière** — contrairement à
+  `TenantFilterListener` côté application, rien ne borne l'opérateur à un club particulier : c'est
+  lui qui pose le GUC, et il peut le reposer sur un autre club à volonté. La vraie garantie tient à
+  ce que le rôle **ne voie aucun secret** et **ne puisse rien écrire** ; `amateo_read` est un rôle
+  **de confiance** (l'opérateur qui détient son mot de passe), pas un rôle contraint comme
+  `amateo_app`.
+- **Garde du futur, NR bloquant `Security/ReadOnlyRoleTest`** (`docs/testing/blocking-tests.md`) :
+  classification EXHAUSTIVE — chaque table du schéma `public` doit être soit lisible (table
+  `club_id` ∪ liste blanche globale), soit dans une **liste noire explicite**
+  (`super_admin`, `admin_audit_log`, `admin_alert_state`, `admin_job_run`, les quatre tables de
+  tokens, `period_reminder_log`, `transition_reminder_log`, `doctrine_migration_versions`,
+  `constraint_conflict`) — une table non classée fait rougir le test, jamais un `GRANT ON ALL`
+  silencieux. Le test porte aussi un **filet regex** sur les noms de colonnes qui sentent le secret
+  (`token|secret|hash|password|passwd|otp|totp|salt|api_?key|private`) sur TOUTE colonne lisible
+  par `amateo_read`, exceptions nommées une par une (`schedule.snapshot_hash` = empreinte de
+  contenu, pas un secret d'authentification). **Toute nouvelle table doit être classée — lisible ou
+  interdite — dans ce test au moment où elle naît**, pas après coup.
+- Écrire (corriger une donnée en prod) reste un geste `amateo_owner`, en SSH direct sur la VM,
+  jamais depuis un poste avec `amateo_read` : procédure `docs/ops/deploy.md` §1.9.
+
 ## Fonction `SECURITY DEFINER` — l'exception au modèle RLS
 
 **Une seule fonction du dépôt tourne en `SECURITY DEFINER`** : `league_window_suggestions(uuid)`
@@ -99,5 +150,6 @@ au rôle applicatif, NR de partage dédié).
 ## Tests de non-régression (phase1)
 
 `tests/Security/RlsIsolationTest.php` — SQL brut sur la connexion runtime : isolation SELECT/UPDATE/DELETE, WITH CHECK rejette un `club_id` ≠ GUC, fail-closed sans GUC, bootstrap `club_user`, garde anti-superuser.
+`tests/Security/ReadOnlyRoleTest.php` — le rôle `amateo_read` (§ ci-dessus) : classification exhaustive de toutes les tables du schéma `public` (lisible ou liste noire), filet regex sur les colonnes secrètes, policy `readonly_tenant` scopée au prédicat canonique sur chaque table `club_id`, aucune porte `admin_all`, écriture refusée au niveau privilège.
 `tests/MessageHandler/ExportPdfHandlerRlsTest.php` — un handler worker pose son propre GUC (GenerateScheduleHandler : même pattern, couvert e2e par la feature Behat `generation-du-planning-de-saison.feature`, `make -C backend behat`).
 Les suites Tenant* (HTTP, JWT réel) et `AuthFlowTest` (register) tournent intégralement sous RLS.
