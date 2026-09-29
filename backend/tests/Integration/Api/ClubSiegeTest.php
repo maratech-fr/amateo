@@ -162,6 +162,26 @@ final class ClubSiegeTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
     }
 
+    /**
+     * P4-245 — le contrôleur ne lit plus l'en-tête `X-Club-Id` : une requête AUTHENTIFIÉE
+     * SANS cet en-tête résout quand même le club, car le listener tenant pose `_club_id`
+     * depuis l'adhésion active du porteur du JWT (repli d'appartenance). Le front n'envoie
+     * jamais `X-Club-Id` (`CLAUDE.md` §10.3) : c'est bien `_club_id` du listener qui suffit.
+     */
+    public function testSiegeResolvesTheClubFromMembershipWithoutTheClubIdHeader(): void
+    {
+        $this->client->loginUser($this->user);
+
+        // Aucun en-tête X-Club-Id : le club vient de l'unique adhésion active du gestionnaire.
+        $this->client->request('PATCH', '/api/club/siege', [], [], [
+            'CONTENT_TYPE' => 'application/json',
+        ], json_encode(['address' => '5 rue Emile Duniere Villeurbanne'], \JSON_THROW_ON_ERROR));
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertTrue($data['geolocated']);
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();

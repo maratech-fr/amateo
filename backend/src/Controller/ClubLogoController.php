@@ -46,7 +46,7 @@ final class ClubLogoController extends AbstractController
         $this->managementAccessGuard->assertManager(); // SEC-07 (same surface as /club/appearance)
 
         $request = $this->requestStack->getCurrentRequest();
-        $clubId = $request?->attributes->get('_club_id') ?? $request?->headers->get('X-Club-Id');
+        $clubId = $request?->attributes->get('_club_id');
         if (!\is_string($clubId) || '' === $clubId) {
             return $this->json(['error' => 'No club in context.'], Response::HTTP_BAD_REQUEST);
         }
@@ -55,7 +55,8 @@ final class ClubLogoController extends AbstractController
             return $this->json(['error' => 'Club not found.'], Response::HTTP_NOT_FOUND);
         }
 
-        $file = $request?->files->get('file');
+        // $clubId n'est une chaîne que si $request n'est pas null (l'attribut vient de lui).
+        $file = $request->files->get('file');
         if (null === $file) {
             return $this->json(['error' => 'No file uploaded (field "file").'], Response::HTTP_BAD_REQUEST);
         }
@@ -86,7 +87,7 @@ final class ClubLogoController extends AbstractController
         $this->managementAccessGuard->assertManager(); // SEC-07
 
         $request = $this->requestStack->getCurrentRequest();
-        $clubId = $request?->attributes->get('_club_id') ?? $request?->headers->get('X-Club-Id');
+        $clubId = $request?->attributes->get('_club_id');
         if (!\is_string($clubId) || '' === $clubId) {
             return $this->json(['error' => 'No club in context.'], Response::HTTP_BAD_REQUEST);
         }
