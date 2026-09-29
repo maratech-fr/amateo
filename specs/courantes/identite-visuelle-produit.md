@@ -1,15 +1,18 @@
 # Identité visuelle produit — la base est le produit, l'accent est le club
 
-Last verified @ 2026-09-29 (P5-24 PR-1 — pied de marque de l'export PDF ; P4-274 — thème sombre
-vitrine). Confronté au code cette passe : `backend/src/Service/BrandAssets.php`, `backend/src/Service/PdfGenerator.php`
-(`buildFooterTemplate`), `backend/assets/brand/icon.svg` + son README de provenance,
-`frontend/worker.js` (câblage `footerTemplate`), `landing/index.html` (mini-script anti-flash `data-theme`, bloc `html[data-theme="dark"]` — jetons
+Last verified @ 2026-09-29 (P5-24 PR-1 — pied de marque de l'export PDF ; PR-2 — signature de
+marque des e-mails ; P4-274 — thème sombre vitrine). Confronté au code cette passe : `backend/src/Service/BrandAssets.php`
+(`pdfLogoDataUri()` + le nouveau `emailLogoPngBytes()`), `backend/src/Service/PdfGenerator.php`
+(`buildFooterTemplate`), `backend/src/Service/ProductIdentity.php` (les nouveaux `tagline()`/
+`siteUrl()`), `backend/src/EventListener/EmailSignatureListener.php`, `backend/assets/brand/
+icon.svg` + `email-icon.png` (+ leurs README de provenance), `frontend/worker.js` (câblage
+`footerTemplate`), `landing/index.html` (mini-script anti-flash `data-theme`, bloc `html[data-theme="dark"]` — jetons
 sombres, bouton `.theme-toggle`, `html[data-theme="dark"] body` → `fond-dark.svg`, logotype
 `mark.svg` + `.logo-word`), `landing/assets/brand/mark.svg` (arcs seuls, sans disque blanc),
 `landing/assets/brand/fond-dark.svg` (identique octet à `frontend/public/brand/fond-dark.svg`,
-vérifié par `diff`), `landing/config.js` (clé `logo`). — section « Ce qui reste à venir » ci-dessous
-recalée en conséquence. Reste du fichier non re-vérifié cette passe (portée = le volet PDF) —
-repris tel quel de la passe P4-265 (2026-09-27) :
+vérifié par `diff`), `landing/config.js` (clé `logo`). — section « Ce qui reste à venir » ci-dessous recalée en conséquence. Reste du
+fichier non re-vérifié cette passe (portée = le volet PDF/e-mails) — repris tel quel de la passe
+P4-265 (2026-09-27) :
 `frontend/src/index.css` (jetons `--surface-warning|accent|destructive|muted`, `color-mix` clair
 10/10/8/60 %, sombre 12/12/12/60 %, `--color-surface-*` exposés à Tailwind), `frontend/src/shared/
 components/ui/notice-banner.tsx` (remplace `WarningPanel`, fond `bg-surface-<ton>`, texte
@@ -248,8 +251,31 @@ FIGÉ**.
   `CLAUDE.md` §2). **Décision fermée** : le mark va en PIED, jamais en en-tête, et reste en couleur
   (pas de variante grayscale distincte) — `etat-des-lieux.md` §2. Détail de la chaîne worker
   (marge basse, `footerOptions`) : `backend/docs/backend-inventory.md` § « Export PDF / Excel ».
-- **E-mails transactionnels, image OG, page publique de doléances coach** (roadmap P5-24) : n'ont
-  reçu aucun asset logo à ce jour. La cession de droits du logo est **signée** (fondateur) — ce
-  n'est plus le préalable qui bloquait ces usages. Amendement fondateur du 2026-09-29 (détail
-  roadmap P5-24) : la signature des e-mails automatiques doit porter le logo explicitement, et la
-  page `/doleances/:token` (aujourd'hui sans aucune marque produit) doit montrer la marque Amateo.
+- **E-mails — posé (P5-24 PR-2, 2026-09-29)** : `App\EventListener\EmailSignatureListener`
+  (branché sur le `MessageEvent` de `symfony/mailer`) pose la signature de marque sur TOUS les
+  e-mails automatiques dont le corps HTML est encore nul — envois club ET superadmin, un seul
+  foyer, aucun contrôleur ni builder de mail retouché. Partie texte = le texte métier d'origine
+  (préfixe byte-identique) suivi de « -- \nAmateo\n<accroche>\n<URL vitrine> » ; partie HTML = ce
+  même texte échappé + `nl2br`, puis un bloc signature (trait, logo 40 px en pièce inline
+  `Content-ID`, nom en gras, accroche, lien vitrine). Un e-mail qui porte déjà du HTML est laissé
+  intact (garde d'idempotence — aucun envoi de l'app n'est dans ce cas à ce jour). `ProductIdentity`
+  gagne `tagline()` (accroche produit FIXE, bind littéral — identique au `<title>`/`<h1>` de
+  `landing/index.html`, « Le planning de votre club, sans le casse-tête ») et `siteUrl()` (variable
+  d'env dédiée `PRODUCT_SITE_URL`, le domaine NU de la vitrine `https://amateo.app` — **jamais**
+  `FRONTEND_BASE_URL`, qui est l'app `app.amateo.app`). Le logo est un second asset PNG
+  (`backend/assets/brand/email-icon.png`, pastille couleur sur disque blanc 128×128, README de
+  provenance à côté — PNG et non SVG, les clients de messagerie ne rendent pas fiablement un SVG)
+  servi en octets bruts par `BrandAssets::emailLogoPngBytes()` et embarqué en pièce inline (l'icône
+  voyage avec l'e-mail, aucun fetch réseau côté destinataire). ⚠ **Timing Mailer vérifié** :
+  `Mailer::send()` dispatche un premier `MessageEvent` à l'enfilage sur un CLONE (mutation jetée,
+  seul le message NON signé part sur Messenger/Redis) — c'est le second `MessageEvent`
+  (`queued=false`), redispatché par le transport chez le `messenger-worker` juste avant le SMTP,
+  qui porte la mutation réellement livrée ; preuve : un e-mail livré en sandbox par le worker,
+  capté dans Mailpit, porte la signature et une partie inline `image/png` dont le Content-ID
+  correspond au `src="cid:…"` du HTML. **Décision fermée** (fondateur, 2026-09-29) : signature sur
+  tous les e-mails, superadmin compris ; l'accroche reprend le titre de la vitrine ; le lien pointe
+  vers la vitrine, jamais l'app — `etat-des-lieux.md` §2.
+- **Reste ouvert (roadmap P5-24)** : image OG · page publique de doléances des coachs
+  (`/doleances/:token`, `frontend/src/features/coach-wishes/PublicWishPage.tsx` — aucune marque
+  produit à ce jour). La cession de droits du logo est **signée** (fondateur) — ce n'est plus le
+  préalable qui bloquait ces deux usages, il ne reste que le travail de pose.
