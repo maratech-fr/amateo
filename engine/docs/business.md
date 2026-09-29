@@ -1,6 +1,6 @@
 # Documentation metier du moteur de generation
 
-Last verified @ 2026-09-28 (rotation de fraîcheur, `documentation-update`, brief P4-240). Re-confronté :
+Last verified @ 2026-09-29 (rotation de fraîcheur, `documentation-update`, brief P4-206). Re-confronté :
 tiers de poids S=10000/A=1000/B=100/C=10/D=1 toujours en dur dans
 `app/solver/objective/weights.py` ✓ ; `_adaptive_timeout` (`app/main.py:374-389`) applique bien les
 paliers ≤50→60 s · ≤200→180 s · sinon 600 s, plafonnés par `solverTimeoutSeconds` ✓ ; `orToolsWeight`

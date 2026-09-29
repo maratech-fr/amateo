@@ -8,7 +8,7 @@ import { TypicalWeekPage } from "./TypicalWeekPage";
 
 // PR 2a — la Semaine type porte le gabarit idéal + les créneaux partagés, sortis de la
 // Configuration. On mute la couche api (PROD) et react-query tourne pour de vrai.
-const state: Record<string, unknown[] | "error"> = { teams: [], tiers: [], venues: [], fixtures: [], habits: [], links: [] };
+const state: Record<string, unknown[] | "error"> = { teams: [], tiers: [], venues: [], fixtures: [], habits: [], links: [], durations: [] };
 
 function serve(key: string): Promise<unknown> {
   const value = state[key];
@@ -22,6 +22,9 @@ vi.mock("./api", () => ({
   getFixtures: () => serve("fixtures"),
   getTeamMatchHabits: () => serve("habits"),
   getTeamLinks: () => serve("links"),
+  // P4-206 — la Semaine type charge les durées de catégorie (même source que le Calendrier)
+  // pour dessiner la durée réelle par équipe ; elles sont GATÉES avec les autres lectures.
+  getSportCategoryDurations: () => serve("durations"),
   // P4-272 ③ — l'éditeur de créneaux idéaux lit l'alerte de cohérence (calculée serveur).
   getMatchConstraintCoherence: () => Promise.resolve({ byRule: [], byHabit: [] }),
   createTeamMatchHabit: vi.fn(),
@@ -39,6 +42,7 @@ beforeEach(() => {
   state.fixtures = [];
   state.habits = [];
   state.links = [];
+  state.durations = [{ id: "cat-1", sportId: "s", name: "U13", matchMinutes: null, warmupMinutes: null, defaultMatchMinutes: 90, defaultWarmupMinutes: 20 }];
 });
 
 describe("TypicalWeekPage (PR 2a — la Semaine type)", () => {
@@ -70,6 +74,16 @@ describe("TypicalWeekPage (PR 2a — la Semaine type)", () => {
   // réessai, jamais rendre « Aucun créneau idéal déclaré » (vide crédible) sur une lecture en échec.
   it("UXS-08 — useVenues en ÉCHEC → une alerte, jamais un vide crédible", async () => {
     state.venues = "error";
+    renderWithProviders(<TypicalWeekPage />);
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByText(/Aucun créneau idéal déclaré/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Semaine type", level: 2 })).not.toBeInTheDocument();
+  });
+
+  // P4-206 / UXS-08 — les durées de catégorie rejoignent le gate : leur échec cède à l'alerte,
+  // jamais un vide crédible (« Aucun créneau idéal déclaré ») dessiné sans les durées servies.
+  it("UXS-08 — useSportCategoryDurations en ÉCHEC → une alerte, jamais un vide crédible", async () => {
+    state.durations = "error";
     renderWithProviders(<TypicalWeekPage />);
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.queryByText(/Aucun créneau idéal déclaré/)).not.toBeInTheDocument();

@@ -1,23 +1,24 @@
-import type { MatchWeek, TeamMatchHabit } from "../api";
+import type { MatchWeek, Team, TeamMatchHabit } from "../api";
 
 /**
  * P1-4 PR E2 — the « week-end type » view (founder reframing of « semaine
  * type », 2026-08-03): the manager's IDEAL weekend template — every team's
- * ideal slot laid out Sat/Sun × venues, date-less. Pure layout, MÊME empreinte
- * que la grille datée (constantes importées de `weekendGrid`, elles-mêmes
- * alignées sur `MatchFootprint.php`).
+ * ideal slot laid out Sat/Sun × venues, date-less.
+ *
+ * P4-206 — mise en page identique à la grille DATÉE : chaque créneau va du COUP D'ENVOI à
+ * coup d'envoi + la durée RÉELLE de la catégorie de l'équipe (servie par le serveur via
+ * `durations`, jamais redérivée — 🔴 `.claude/rules/frontend.md`), SANS échauffement dessiné.
+ * `buildTypicalWeekend` reçoit donc `teams` + `durations` et délègue à `matchMinutesOf`
+ * (repli 105 pour une catégorie sans durée servie). Aucune notion d'enchaînement ici (pas de
+ * dates) : la vue est un gabarit, pas un planning.
  *
  * P4-271 — la semaine type A/B est une AIDE VISUELLE portée par le tag `week` de
- * chaque créneau idéal (plus aucune entité de rotation). `buildTypicalWeekend(habits, week)`
- * garde les créneaux tagués `week` OU `ALL` (un club sans alternance) ; appelée
- * sans `week` (ou avec `ALL`), elle rend TOUS les créneaux (vue unique).
+ * chaque créneau idéal (plus aucune entité de rotation). `buildTypicalWeekend` garde les
+ * créneaux tagués `week` OU `ALL` (un club sans alternance) ; appelée sans `week` (ou avec
+ * `ALL`), elle rend TOUS les créneaux (vue unique).
  */
 
-// D-02 : ces deux constantes valaient 30/135 ici et 30/105 dans `weekendGrid` — or le
-// serveur fait foi (`MatchFootprint.php` : 30 + 105). Le « week-end type » dessinait donc des
-// blocs de 2h15 pour des matchs que le solveur traite comme 1h45, et l'en-tête ci-dessus
-// affirmait pourtant « same footprint geometry as the dated grid ».
-import { MATCH_MINUTES, WARMUP_MINUTES } from "./weekendGrid";
+import { matchMinutesOf } from "./weekendGrid";
 import { parseTime } from "@/shared/lib/time";
 
 export interface TypicalColumn {
@@ -30,7 +31,7 @@ export interface TypicalBlock {
   key: string;
   teamId: string;
   columnKey: string;
-  /** Minutes since midnight of the 2h15 footprint. */
+  /** Minutes since midnight : début = coup d'envoi, fin = coup d'envoi + durée de la catégorie. */
   startMin: number;
   endMin: number;
   kickoff: string;
@@ -68,7 +69,7 @@ function habitsForWeek(habits: TeamMatchHabit[], week: MatchWeek | undefined): T
   return habits.filter((h) => h.week === week || "ALL" === h.week);
 }
 
-export function buildTypicalWeekend(habits: TeamMatchHabit[], week?: MatchWeek): TypicalWeekendModel {
+export function buildTypicalWeekend(habits: TeamMatchHabit[], teams: Map<string, Team>, durations: Map<string, number>, week?: MatchWeek): TypicalWeekendModel {
   const scoped = habitsForWeek(habits, week);
   const weekend = scoped.filter((h) => isWeekendDay(h.dayOfWeek));
   const withVenue = weekend.filter((h) => null !== h.venueId);
@@ -96,8 +97,8 @@ export function buildTypicalWeekend(habits: TeamMatchHabit[], week?: MatchWeek):
 
   const pushBlock = (key: string, teamId: string, day: number, venueId: string, kickoff: string): void => {
     const kickoffMin = toMinutes(kickoff);
-    const startMin = kickoffMin - WARMUP_MINUTES;
-    const endMin = kickoffMin + MATCH_MINUTES;
+    const startMin = kickoffMin;
+    const endMin = kickoffMin + matchMinutesOf(teamId, teams, durations);
     min = Math.min(min, startMin);
     max = Math.max(max, endMin);
     blocks.push({ key, teamId, columnKey: `${day}:${venueId}`, startMin, endMin, kickoff, lane: 0, laneCount: 1 });
