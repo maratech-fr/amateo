@@ -32,12 +32,11 @@ import {
 } from "./queries";
 
 /**
- * P4-272 ① — l'écran UNIQUE des contraintes de match, en accordéon (patron
- * `ConfigurationPage`, section ouverte ancrée `?section=`). La section **Ligue**
- * est le CRUD gestionnaire de la copie club de l'enveloppe fédérale (le placement,
- * le radar et le calendrier lisent la même copie) ; les sections **Club**,
- * **Équipes** et **Coachs** arrivent dans les PR suivantes — en attendant, elles
- * pointent vers les écrans qui portent déjà ces réglages (liens croisés).
+ * P4-272 — l'écran UNIQUE des contraintes de match, en accordéon (patron
+ * `ConfigurationPage`, section ouverte ancrée `?section=`). Quatre sections, chacune
+ * un CRUD gestionnaire : **Ligue** (copie club de l'enveloppe fédérale), **Club**
+ * (règles de coup d'envoi), **Équipes** (interdictions de gymnase) et **Coachs**
+ * (indisponibilités) — toutes lues par le placement, le radar et le calendrier.
  *
  * Le badge « modifié »/« ajouté » est calculé SERVEUR (`badge`) : le front
  * l'AFFICHE, il ne le redérive pas (.claude/rules/frontend.md).
