@@ -1,9 +1,9 @@
 /**
  * P4-65 — poser `VITE_SENTRY_DSN` ne suffit PAS à activer Sentry.
  *
- * Le SDK n'émet que si la CSP l'autorise, et `docker/frontend/csp.conf` déclare
- * `connect-src 'self' blob:` — aucun hôte tiers. Sans l'hôte d'ingestion du DSN dans cette
- * directive, le navigateur refuse chaque envoi. Or **rien ne le dit** : le build passe, le
+ * Le SDK n'émet que si la CSP l'autorise : `docker/frontend/csp.conf` doit porter l'hôte
+ * d'ingestion du DSN dans `connect-src` (l'org du fondateur y est posée). Sans cet hôte, le
+ * navigateur refuse chaque envoi. Or **rien ne le dit** : le build passe, le
  * SDK s'initialise, l'application paraît instrumentée, et les erreurs ne partent jamais. On
  * le découvrirait le jour où on cherche une erreur de production — c'est-à-dire au pire
  * moment.
