@@ -465,6 +465,17 @@ Le gestionnaire ne voit jamais le concept de `club_id` ou `season_id`. Le fronte
   (`isReadOnly`) ; la pastille du bandeau de saison du cockpit (`SeasonPlanBanner`), qui compte les
   **personnes** distinctes (pas les paires). Détail métier complet :
   [`planning-lifecycle-validated.md`](../../specs/courantes/planning-lifecycle-validated.md) §2.
+- **Bandeau « version antérieure » (P4-98, 2026-09-29)** : `pickLandingScheduleId` atterrit
+  délibérément sur la version **en vigueur** (`isChosen`), qui peut être plus ancienne que la
+  dernière `COMPLETED` — sans signal, le gestionnaire pouvait croire regarder du frais.
+  `lib/versions.ts::laterCompletedVersionId(displayed, schedules)` compare `displayed` à
+  `representativeVersion(...)` sur la MÊME portée de plan que `scopeInFlight` (saison via
+  `isSeasonPlanType`, sinon `schedulePlanId`) : `null` si `displayed` est déjà la plus récente
+  terminée du plan (un échec tout frais n'est pas « antérieur ») ; sinon l'id de la dernière
+  `COMPLETED`. `PlanningPage.tsx` rend alors un `NoticeBanner` ton **muted** `role="status"`
+  (distinct du warning « périmé » ci-dessus) + bouton « Ouvrir la dernière version » —
+  **sélection locale seule** (`setSelectedScheduleId`), aucune écriture serveur ni navigation : la
+  version en vigueur reste le calendrier. Muet pendant une génération (`showGenerationWaiting`).
 
 ### 6.6 ter Informations du club (fiche FFBB — 100 % lecture seule sauf le siège)
 

@@ -47,7 +47,7 @@ import { SlotDetail } from "./SlotDetail";
 
 import { stalenessMessage } from "./lib/staleness";
 import type { ToReplaceEntry } from "./lib/toReplaceReason";
-import { isSeasonPlanType, planRepresentative, visibleSeasonPlans } from "./lib/versions";
+import { isSeasonPlanType, laterCompletedVersionId, planRepresentative, visibleSeasonPlans } from "./lib/versions";
 import { useVersionLanding } from "./lib/useVersionLanding";
 import { usePeriodClosures } from "./lib/usePeriodClosures";
 import { useLockControls } from "./lib/useLockControls";
@@ -261,6 +261,11 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const showGenerationWaiting = isGenerating || scopeInFlight;
   // Read-only = its plan points at it: this version IS the calendar in force.
   const isReadOnly = true === selectedSchedule?.isChosen;
+  // P4-98 — la version affichée n'est pas la dernière COMPLETED de SON plan (`pickLandingScheduleId`
+  // atterrit sur celle en vigueur, qui peut être plus ancienne) → on PROPOSE d'ouvrir la dernière,
+  // par une sélection LOCALE. Aucune écriture, aucune redirection : la version en vigueur (isChosen)
+  // reste le calendrier. Même borne de plan que `scopeInFlight` (cf. lib/versions).
+  const laterVersionId = useMemo(() => laterCompletedVersionId(displayed, schedules), [displayed, schedules]);
   const regenerateDisabled =
     null !== selectedSchedule
     && isSeasonPlanType(selectedSchedule.planType)
@@ -659,6 +664,26 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           });
         return null === stale ? null : <NoticeBanner tone="warning" className="mb-4" message={stale} />;
       })()}
+
+      {/* P4-98 — « version antérieure » : la version affichée n'est pas la dernière COMPLETED de son
+          plan. Bandeau NEUTRE (ton muted, distinct du warning « périmé » et de l'accent d'éviction)
+          + une seule action, « Ouvrir la dernière version », qui SÉLECTIONNE localement la dernière
+          (aucune écriture, aucune redirection). Muet pendant une génération (showGenerationWaiting).
+          role="status" : il apparaît de façon asynchrone au changement de version, annoncé poliment. */}
+      {!showGenerationWaiting && null !== laterVersionId ? (
+        <NoticeBanner tone="muted" role="status" className="mb-4" message="Vous regardez une version antérieure du planning.">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              armNavTransition(); // GESTE (ouverture d'une version) arme le voile de changement de page
+              setSelectedScheduleId(laterVersionId);
+            }}
+          >
+            Ouvrir la dernière version
+          </Button>
+        </NoticeBanner>
+      ) : null}
 
       {/* P4-269 — « une personne à deux endroits » sur la version EN VIGUEUR (le radar scanne
           toujours la version pointée du plan SEASON) : on ne le montre que quand on REGARDE cette

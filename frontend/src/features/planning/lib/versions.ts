@@ -82,6 +82,31 @@ export function representativeVersion<T extends VersionLike>(versions: T[]): T |
   return finished.at(-1) ?? null;
 }
 
+/**
+ * P4-98 — l'id de la version la plus récente COMPLETED du plan de `displayed`, SI et seulement si
+ * cette version est STRICTEMENT plus récente que `displayed` : autrement dit, si `displayed` est
+ * une version ANTÉRIEURE (on peut « ouvrir la dernière »). `null` sinon — displayed EST déjà la
+ * dernière terminée, ou displayed est la plus récente du plan (un ÉCHEC tout frais n'est pas une
+ * version « antérieure »), ou rien n'est affiché. Aucune écriture n'en découle : la version en
+ * vigueur (isChosen) reste le calendrier, ceci ne pilote qu'une SÉLECTION locale.
+ *
+ * Portée « son plan » = même borne que `scopeInFlight` (PlanningPage) : une version de saison est
+ * comparée aux versions de SAISON (isSeasonPlanType), un overlay aux versions de SON schedulePlanId.
+ */
+export function laterCompletedVersionId<T extends VersionLike & { id: string }>(displayed: T | null, schedules: T[]): string | null {
+  if (null === displayed) {
+    return null;
+  }
+  const planVersions = isSeasonPlanType(displayed.planType)
+    ? visibleSeasonPlans(schedules)
+    : (null === displayed.schedulePlanId ? [] : visibleOverlayVersions(schedules, displayed.schedulePlanId));
+  const latestCompleted = representativeVersion(planVersions);
+  if (null === latestCompleted) {
+    return null;
+  }
+  return latestCompleted.createdAt.localeCompare(displayed.createdAt) > 0 ? latestCompleted.id : null;
+}
+
 /** "V3 — 10 juil. 14:32" stamp shared by season and overlay version labels. */
 function versionStamp(createdAt: string, index: number): string {
   const date = new Date(createdAt);
