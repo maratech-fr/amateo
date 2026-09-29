@@ -1,16 +1,11 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-09-29 (rotation de fraîcheur `documentation-update`, brief P4-272 ④). Re-confronté
-au code : `COACH_PLAYER_NO_OVERLAP` toujours posé par `add_coach_player_non_overlap`
-(`engine/app/solver/constraints/structural.py`, listé `constraints/__init__.py:7,197,253`) — ce
-mécanisme reste propre au solve hebdo `/generate`, sans lien avec la protection coach/joueur du
-solveur de placement (`/place-matches`, `docs/architecture/adr-0003-match-placement-solve.md`) ✓ ;
-`SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"` (`engine/app/solver/objective/
-weights.py:31`) ✓ ; `LEVEL_2_OBJECTIVE_WEIGHTS` toujours exporté (`engine/app/solver/__init__.py`)
-✓ ; `sharedBlocks` cap `MAX_SHARED_TRAINING_BLOCKS = 50` (`engine/app/schemas/input_schema.py:32`)
-✓ ; la famille `FACILITY_CAPACITY` reste absente du moteur, seul un commentaire au passé subsiste
-(`engine/app/main.py:447`) ✓. Non re-sondé cette passe : le reste du vocabulaire détaillé
-ci-dessous — un stamp REMPLACE, l'historique vit dans git.
+Last verified @ 2026-09-30 (`documentation-update`, P4-272 ⑤). Re-confronté au code : la famille
+`COACH_AVAILABILITY` de ce fichier reste propre au solve hebdo `/generate`, sans lien avec
+l'indisponibilité de coach du placement de matchs (`MatchConstraint` scope COACH, bloc top-level
+`coachUnavailabilities`, TOUJOURS SOFT, `W_COACH_UNAVAILABLE=60`,
+`engine/app/solver/match_placement.py:57`) ✓. Non re-sondé cette passe : le reste du vocabulaire
+détaillé ci-dessous — un stamp REMPLACE, l'historique vit dans git.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
@@ -137,6 +132,14 @@ ci-dessous — un stamp REMPLACE, l'historique vit dans git.
 
 **Exemple BCCL**
 - `Lionel - Indisponible le vendredi` → `{ COACH_AVAILABILITY, HARD, scope:"COACH", scopeTargetId:<Lionel>, config:{ unavailableDays:[5] } }`
+
+> **À NE PAS confondre avec l'indisponibilité de coach du placement de MATCHS (P4-272 ⑤)** : cette
+> famille gouverne **uniquement** le solveur d'ENTRAÎNEMENT (`/generate`, toujours dure). Le rail
+> matchs (`/place-matches`) reçoit un bloc top-level SÉPARÉ, `coachUnavailabilities`
+> (`match_input_schema.py::CoachUnavailabilitySchema`) — TOUJOURS SOFT (`W_COACH_UNAVAILABLE=60`,
+> `engine/app/solver/match_placement.py`), jamais un élagage de domaine ni un HARD. Les deux
+> mécanismes ne partagent ni schéma ni mécanisme — voir
+> [`../../specs/courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) §1/§3.
 
 ---
 
