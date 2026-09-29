@@ -4,9 +4,12 @@
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
 Last verified @ 2026-09-29 (`documentation-update`, P5-24 PR-1 — export PDF, le pied de marque
-`App\Service\PdfGenerator::buildFooterTemplate()` + le nouveau `App\Service\BrandAssets` recalés
-contre le code ✓). Reste du fichier non rebalayé cette passe (portée = cette entrée) ; historique
-des passes complètes : `git log -p --follow` ce fichier — un stamp REMPLACE, il ne s'empile pas.
+`App\Service\PdfGenerator::buildFooterTemplate()` + le nouveau `App\Service\BrandAssets` ; PR-2 —
+signature de marque des e-mails, `App\EventListener\EmailSignatureListener` +
+`BrandAssets::emailLogoPngBytes()` + `App\Service\ProductIdentity::tagline()`/`siteUrl()` recalés
+contre le code ✓). Reste du fichier non rebalayé cette passe (portée = ces deux entrées) ;
+historique des passes complètes : `git log -p --follow` ce fichier — un stamp REMPLACE, il ne
+s'empile pas.
 
 ---
 
@@ -38,7 +41,7 @@ backend/
 │   ├── Service/              # ScheduleConstraintBuilder, ScheduleResultImporter, ClubGenerationLock, ManualEditService, FfbbExcelImporter, ConstraintValidationService, ... — liste : ls backend/src/Service/
 │   ├── State/Provider/       # State providers API Platform (par ressource)
 │   ├── State/Processor/      # State processors API Platform (par ressource)
-│   ├── EventListener/        # TenantFilterListener (résolution tenant : attribut / header / JWT)
+│   ├── EventListener/        # TenantFilterListener (résolution tenant : attribut / header / JWT), EmailSignatureListener (signature de marque sur tout e-mail sortant, MessageEvent symfony/mailer — P5-24)
 │   ├── Doctrine/Filter/      # TenantFilter (Doctrine filter SQL)
 │   ├── Enum/                 # ScheduleStatus, LockLevel, ...
 │   ├── Dto/                  # Input DTOs (ClubInput, ScheduleInput, ...)

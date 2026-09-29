@@ -67,6 +67,14 @@ final class ProductIdentityTest extends TestCase
         self::assertSame('Éditeur', $identity->publisher());
     }
 
+    public function testIdentityCarriesTaglineAndSiteUrl(): void
+    {
+        $identity = new ProductIdentity('Marque', 'Éditeur', 'Une accroche', 'https://vitrine.test');
+
+        self::assertSame('Une accroche', $identity->tagline());
+        self::assertSame('https://vitrine.test', $identity->siteUrl());
+    }
+
     public function testOldProductNameIsNotHardCodedInSource(): void
     {
         $offenders = [];
