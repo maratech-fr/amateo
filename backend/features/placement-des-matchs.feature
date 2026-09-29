@@ -54,6 +54,33 @@ Fonctionnalité: Le placement des matchs honore les fenêtres d'accès et nomme 
     Alors le match du week-end prochain est placé par le solveur
     Et le match de l'autre week-end n'a pas bougé, toujours à 20h00 et posé par le solveur
 
+  Scénario: Une règle du club « pas après 21h » écarte le créneau idéal trop tardif
+    Une règle de match du club est HONORÉE par le solveur : le créneau idéal de l'équipe
+    (samedi 21h30) viole la règle « pas après 21h », il est donc écarté et le match se pose
+    sur un créneau conforme, sans être laissé sans créneau (aucun repli sur l'idéal).
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et deux équipes et un gymnase jetables
+    Et une large fenêtre d'accès le samedi de 14h00 à 23h30 sur ce gymnase
+    Et le club n'offre aucune autre fenêtre d'accès le samedi
+    Et un créneau idéal le samedi à 21h30 sur ce gymnase pour la première équipe
+    Et une règle du club « pas après 21h » le samedi
+    Et un match à domicile de la première équipe le samedi à placer
+    Quand je lance le placement des matchs
+    Alors le match du samedi est placé par le solveur, au plus tard à 21h00
+
+  Scénario: Une règle du club incompatible avec la seule fenêtre laisse le match sans créneau, nommé
+    Quand la seule fenêtre d'accès est tardive (20h00-23h00) et qu'une règle « pas après 18h »
+    vide le domaine pourtant licite, le match reste sans créneau avec un motif NOMMÉ — le
+    gestionnaire sait que c'est SA règle, pas un gymnase fermé ni la ligue.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et deux équipes et un gymnase jetables
+    Et une fenêtre d'accès tardive le samedi de 20h00 à 23h00 sur ce gymnase
+    Et le club n'offre aucune autre fenêtre d'accès le samedi
+    Et une règle du club « pas après 18h » le samedi
+    Et un match à domicile de la première équipe le samedi à placer
+    Quand je lance le placement des matchs
+    Alors le match du samedi reste sans créneau, faute d'une règle du club
+
   Scénario: Un amical n'est jamais proposé au solveur et se place à la main hors créneau
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et deux équipes et un gymnase jetables

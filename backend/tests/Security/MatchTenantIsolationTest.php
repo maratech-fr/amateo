@@ -15,6 +15,7 @@ use App\Entity\FbiCorrection;
 use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
 use App\Entity\LeagueMatchWindow;
+use App\Entity\MatchConstraint;
 use App\Entity\OpponentVenueLink;
 use App\Entity\Season;
 use App\Entity\Sport;
@@ -366,6 +367,58 @@ final class MatchTenantIsolationTest extends WebTestCase
 
         // Club B ne voit RIEN de la copie de A.
         $this->client->request('GET', '/api/club_league_windows', [], [], $this->authHeaders($userB));
+        self::assertCount(0, $this->responseData()['member'] ?? ['sentinel']);
+    }
+
+    // ── Règles de match du club (P4-272 ③) ───────────────────────────────────
+
+    public function testMatchConstraintIsScopedStampedManagementGatedAndValidated(): void
+    {
+        [$clubA, $userA, $seasonA] = $this->createClubUser('a');
+        [, $userB] = $this->createClubUser('b');
+        $headers = $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'];
+
+        // Écriture = management par défaut : un membre non-gestionnaire est refusé.
+        $editor = $this->createMember($clubA, 'editor');
+        $this->client->request('POST', '/api/match_constraints', [], [], $this->authHeaders($editor) + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'ruleType' => 'HARD', 'daysOfWeek' => [6], 'kickoffMax' => '21:00',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(403);
+
+        // Gestionnaire : « pas après 21h » le samedi (scope CLUB par défaut). Club/saison estampés.
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode([
+            'ruleType' => 'HARD', 'daysOfWeek' => [6], 'kickoffMax' => '21:00',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+        $this->scopeGucToClub($clubA->getId());
+        $rule = $this->em->getRepository(MatchConstraint::class)->findOneBy(['clubId' => $clubA->getId()]);
+        self::assertInstanceOf(MatchConstraint::class, $rule);
+        self::assertSame($clubA->getId(), $rule->getClubId());
+        self::assertSame($seasonA->getId(), $rule->getSeasonId());
+        self::assertSame('CLUB', $rule->getScope()->value);
+        self::assertSame([6], $rule->getDaysOfWeek());
+
+        // Aucune borne de coup d'envoi → 422 nommé (une règle doit borner quelque chose).
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode([
+            'ruleType' => 'HARD', 'daysOfWeek' => [6],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+
+        // min > max → 422 nommé.
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode([
+            'ruleType' => 'PREFERRED', 'daysOfWeek' => [3], 'kickoffMin' => '20:00', 'kickoffMax' => '18:00',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+
+        // Aucun jour → 422 (validation d'entrée).
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode([
+            'ruleType' => 'HARD', 'daysOfWeek' => [], 'kickoffMax' => '21:00',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+
+        // Club B ne voit RIEN des règles de A.
+        $this->client->request('GET', '/api/match_constraints', [], [], $this->authHeaders($userB));
+        self::assertResponseStatusCodeSame(200);
         self::assertCount(0, $this->responseData()['member'] ?? ['sentinel']);
     }
 

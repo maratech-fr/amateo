@@ -45,6 +45,8 @@ final class MatchPlacementContext extends BaseContext
 
     private string $habitIdealId = '';
 
+    private string $matchRuleId = '';
+
     private string $competitionId = '';
 
     private string $competitionId2 = '';
@@ -162,6 +164,80 @@ final class MatchPlacementContext extends BaseContext
             $this->apiPost('team_match_habits', ['teamId' => $this->teamId, 'dayOfWeek' => 6, 'kickoffTime' => '15:30', 'venueId' => $this->venueId, 'week' => 'A'], $this->token),
             'créneau idéal',
         );
+    }
+
+    #[Given('un créneau idéal le samedi à 21h30 sur ce gymnase pour la première équipe')]
+    public function unCreneauIdealSamedi2130(): void
+    {
+        $this->habitIdealId = $this->createdId(
+            $this->apiPost('team_match_habits', ['teamId' => $this->teamId, 'dayOfWeek' => 6, 'kickoffTime' => '21:30', 'venueId' => $this->venueId, 'week' => 'ALL'], $this->token),
+            'créneau idéal tardif',
+        );
+    }
+
+    #[Given('une fenêtre d\'accès tardive le samedi de 20h00 à 23h00 sur ce gymnase')]
+    public function uneFenetreTardiveLeSamedi(): void
+    {
+        $this->windowId = $this->createdId(
+            $this->apiPost('venue_match_windows', ['venueId' => $this->venueId, 'dayOfWeek' => 6, 'startTime' => '20:00', 'endTime' => '23:00'], $this->token),
+            'fenêtre d\'accès tardive',
+        );
+    }
+
+    #[Given('une règle du club « pas après 21h » le samedi')]
+    public function uneRegleClubPasApres21h(): void
+    {
+        $this->matchRuleId = $this->createdId(
+            $this->apiPost('match_constraints', ['ruleType' => 'HARD', 'daysOfWeek' => [6], 'kickoffMax' => '21:00'], $this->token),
+            'règle du club « pas après 21h »',
+        );
+    }
+
+    #[Given('une règle du club « pas après 18h » le samedi')]
+    public function uneRegleClubPasApres18h(): void
+    {
+        $this->matchRuleId = $this->createdId(
+            $this->apiPost('match_constraints', ['ruleType' => 'HARD', 'daysOfWeek' => [6], 'kickoffMax' => '18:00'], $this->token),
+            'règle du club « pas après 18h »',
+        );
+    }
+
+    #[Then('le match du samedi est placé par le solveur, au plus tard à 21h00')]
+    public function leMatchDuSamediPlaceAuPlusTard21h(): void
+    {
+        $status = $this->satFixture['status'] ?? null;
+        if ('PLACED' !== $status) {
+            throw new RuntimeException(\sprintf('le match du samedi n\'est pas placé (statut « %s »)', \is_string($status) ? $status : 'inconnu'));
+        }
+        if ('SOLVER' !== ($this->satFixture['placementSource'] ?? null)) {
+            throw new RuntimeException('le match du samedi n\'a pas été placé par le solveur');
+        }
+        // La règle HARD « pas après 21h » borne le coup d'envoi ; l'idéal 21h30 est écarté.
+        $kickoff = $this->kickoff();
+        if ($kickoff > '21:00') {
+            throw new RuntimeException(\sprintf('coup d\'envoi %s après 21h00 — la règle HARD du club n\'a pas été honorée', $kickoff));
+        }
+        if (str_starts_with($kickoff, '21:30')) {
+            throw new RuntimeException('le créneau idéal 21h30, qui viole la règle, a été retenu malgré tout');
+        }
+    }
+
+    #[Then('le match du samedi reste sans créneau, faute d\'une règle du club')]
+    public function leMatchDuSamediResteSansCreneauRegleClub(): void
+    {
+        $reason = null;
+        $unplaced = $this->placeResult['unplaced'] ?? [];
+        foreach (\is_array($unplaced) ? $unplaced : [] as $entry) {
+            if (\is_array($entry) && ($entry['matchId'] ?? null) === $this->fxSat) {
+                $reason = $entry['reason'] ?? null;
+
+                break;
+            }
+        }
+
+        if ('club_rule_no_slot' !== $reason) {
+            throw new RuntimeException(\sprintf('le match aurait dû rester sans créneau pour une règle du club, raison obtenue « %s »', \is_string($reason) ? $reason : 'aucune'));
+        }
     }
 
     #[Given('un match à domicile le samedi et un autre le dimanche')]
@@ -668,6 +744,9 @@ final class MatchPlacementContext extends BaseContext
         }
         if ('' !== $this->habitIdealId) {
             $this->apiDelete(\sprintf('team_match_habits/%s', $this->habitIdealId), $this->token);
+        }
+        if ('' !== $this->matchRuleId) {
+            $this->apiDelete(\sprintf('match_constraints/%s', $this->matchRuleId), $this->token);
         }
         foreach ([$this->competitionId, $this->competitionId2] as $id) {
             if ('' !== $id) {

@@ -38,6 +38,7 @@ final class MatchPlacementSemanticsGateTest extends TestCase
     private const array REASON_VOCABULARY = [
         'no_access_window',
         'no_league_intersection',
+        'club_rule_no_slot',
         'venue_unavailable',
         'venue_full',
         'not_selected',
@@ -75,6 +76,44 @@ final class MatchPlacementSemanticsGateTest extends TestCase
         self::assertCount(1, $result['placements']);
         self::assertSame('v1', $result['placements'][0]['venueId'], 'le match atterrit sur le gymnase de l\'idéal');
         self::assertStringStartsWith('15:30', (string) $result['placements'][0]['kickoff'], 'sur l\'heure de l\'idéal');
+    }
+
+    public function testAHardClubRuleIsHonouredAndExcludesTheIdeal(): void
+    {
+        // P4-272 ③ (axe « constraint semantics ») — une règle HARD saisie par le club
+        // (« pas après 18h ») DOIT être honorée par le VRAI moteur : le créneau idéal
+        // (habitude 20:30) la viole → il est exclu, le match atterrit sur un créneau
+        // conforme (≤ 18:00), et n'est pas laissé non placé (aucun repli).
+        $result = $this->solve([
+            'matches' => [['id' => 'm1', 'teamId' => 't1', 'date' => self::SATURDAY, 'kind' => 'TO_PLACE']],
+            'venues' => [$this->venue('v1', [['13:00', '22:30']])],
+            'teams' => [$this->teamWithIdeal('t1', 6, '20:30', 'v1')],
+            'clubRules' => [['ruleType' => 'HARD', 'daysOfWeek' => [6], 'kickoffMin' => null, 'kickoffMax' => '18:00']],
+        ]);
+
+        self::assertSame([], $result['unplaced'], 'une règle HARD ne laisse pas le match non placé s\'il reste un créneau conforme');
+        self::assertCount(1, $result['placements']);
+        self::assertLessThanOrEqual('18:00', substr((string) $result['placements'][0]['kickoff'], 0, 5), 'le coup d\'envoi respecte la règle HARD');
+        self::assertStringStartsNotWith('20:30', (string) $result['placements'][0]['kickoff'], 'le créneau idéal violant la règle n\'est pas choisi');
+    }
+
+    public function testAHardClubRuleLeavingNoSlotYieldsClubRuleNoSlot(): void
+    {
+        // P4-272 ③ — le seul accès est 20:00-22:30 ; une règle HARD « pas après 18h »
+        // vide le domaine pourtant licite → raison NOMMÉE `club_rule_no_slot` (distincte
+        // de no_access_window / no_league_intersection), dans le vocabulaire figé.
+        $result = $this->solve([
+            'matches' => [['id' => 'm1', 'teamId' => 't1', 'date' => self::SATURDAY, 'kind' => 'TO_PLACE']],
+            'venues' => [$this->venue('v1', [['20:00', '22:30']])],
+            'teams' => [$this->team('t1')],
+            'clubRules' => [['ruleType' => 'HARD', 'daysOfWeek' => [6], 'kickoffMin' => null, 'kickoffMax' => '18:00']],
+        ]);
+
+        self::assertSame([], $result['placements']);
+        self::assertCount(1, $result['unplaced']);
+        self::assertSame('club_rule_no_slot', $result['unplaced'][0]['reason']);
+        self::assertContains($result['unplaced'][0]['reason'], self::REASON_VOCABULARY);
+        self::assertNotSame('', (string) $result['unplaced'][0]['message']);
     }
 
     public function testAClosedVenueYieldsVenueUnavailable(): void
@@ -124,7 +163,7 @@ final class MatchPlacementSemanticsGateTest extends TestCase
     }
 
     /**
-     * @param array{matches: list<array<string, mixed>>, venues: list<array<string, mixed>>, teams: list<array<string, mixed>>} $problem
+     * @param array{matches: list<array<string, mixed>>, venues: list<array<string, mixed>>, teams: list<array<string, mixed>>, clubRules?: list<array<string, mixed>>} $problem
      *
      * @return array<string, mixed>
      */
@@ -141,6 +180,7 @@ final class MatchPlacementSemanticsGateTest extends TestCase
             'teams' => $problem['teams'],
             'teamLinks' => [],
             'trainingOccupancies' => [],
+            'clubRules' => $problem['clubRules'] ?? [],
         ];
 
         $client = HttpClient::create(['timeout' => 30]);
