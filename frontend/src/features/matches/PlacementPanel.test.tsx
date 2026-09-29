@@ -180,7 +180,7 @@ describe("PlacementPanel", () => {
     // Saturday habit 15:30 at venue-2: both fields prefilled, hint shown.
     const user = userEvent.setup();
     const onPlace = renderPanel(openEnvelope, vi.fn(), {
-      habits: [{ id: "h1", teamId: "team-1", dayOfWeek: 6, kickoffTime: "15:30", venueId: "venue-2" }],
+      habits: [{ id: "h1", teamId: "team-1", dayOfWeek: 6, kickoffTime: "15:30", venueId: "venue-2", week: "ALL" }],
     });
 
     expect(screen.getByText(/Habitude : 15:30 · Gymnase Beta/)).toBeInTheDocument();

@@ -8,7 +8,7 @@ import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
 import { toast } from "@/shared/stores/toastStore";
 
-import type { Category, Coach, Conflict, Fixture, LeagueWindow, MatchSlotRotation, Team, TeamMatchHabit, Venue } from "./api";
+import type { Category, Coach, Conflict, Fixture, LeagueWindow, Team, TeamMatchHabit, Venue } from "./api";
 import { AwayFixtureCard } from "./AwayFixtureCard";
 import { AwayList } from "./AwayList";
 import { ConflictFocusBanner } from "./ConflictFocusBanner";
@@ -16,7 +16,7 @@ import { ConflictRadar } from "./ConflictRadar";
 import { isEditableAway } from "./lib/fixtureOrigin";
 import type { HiddenWeekBreakdown } from "./lib/consultFilter";
 import { resolveEnvelope } from "./lib/envelope";
-import { offModelCount, sameWeekendRotationCount } from "./lib/loopSteps";
+import { offModelCount, sameWeekendSharedSlotCount } from "./lib/loopSteps";
 import type { CoachTeamRole } from "./lib/matchFilter";
 import { isPlacedOnGrid, weekBounds, weekendKeyOf } from "./lib/weekendGrid";
 import { buildWeekendGrid } from "./lib/weekendGrid";
@@ -70,7 +70,6 @@ interface WeekWorkbenchProps {
   /** D2 — les gardes du placement (accès match + indisponibilités) + leur état de lecture. */
   guards: PlacementGuards;
   habits: TeamMatchHabit[];
-  rotations: MatchSlotRotation[];
   coachRoles?: Map<string, CoachTeamRole>;
   resolvedTeamWindows: Record<string, string[]>;
   windows: LeagueWindow[];
@@ -129,7 +128,6 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
     venues,
     guards,
     habits,
-    rotations,
     coachRoles,
     resolvedTeamWindows,
     windows,
@@ -211,8 +209,8 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [swapSourceId, setSwapSourceId]);
 
-  const offModel = useMemo(() => offModelCount(weekendFixtures, habits, rotations), [weekendFixtures, habits, rotations]);
-  const sameWeekendRotations = useMemo(() => sameWeekendRotationCount(weekendFixtures, rotations), [weekendFixtures, rotations]);
+  const offModel = useMemo(() => offModelCount(weekendFixtures, habits), [weekendFixtures, habits]);
+  const sameWeekendShared = useMemo(() => sameWeekendSharedSlotCount(weekendFixtures, habits), [weekendFixtures, habits]);
 
   // Suivi P4-197 — après « Placer », recadre la semaine sur le match et lui rend le focus
   // (repli : le `<h2>` « À placer » quand la cellule n'est pas sur la grille, ex. sans gymnase).
@@ -352,9 +350,9 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
     ) : null;
 
   const sameWeekendBadge =
-    sameWeekendRotations > 0 ? (
+    sameWeekendShared > 0 ? (
       <StatusPill className="w-fit" icon={<Info className="size-3.5" aria-hidden="true" />}>
-        {sameWeekendRotations} créneau{sameWeekendRotations > 1 ? "x" : ""} partagé{sameWeekendRotations > 1 ? "s" : ""} : deux équipes reçoivent ce week-end
+        {sameWeekendShared} créneau{sameWeekendShared > 1 ? "x" : ""} partagé{sameWeekendShared > 1 ? "s" : ""} : deux équipes reçoivent ce week-end
       </StatusPill>
     ) : null;
 

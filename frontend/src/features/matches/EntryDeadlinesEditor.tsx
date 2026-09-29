@@ -13,7 +13,7 @@ import { useSetEntryDeadlines } from "./queries";
 
 /**
  * RMM-6 PR-2 — l'éditeur « Échéances de saisie » du SET-UP (`/matchs/configuration`),
- * frère de `MatchWindowsEditor`/`MatchSlotRotationsEditor`. La ligue/le comité fixe une
+ * frère de `MatchWindowsEditor`/`IdealSlotsEditor`. La ligue/le comité fixe une
  * date limite de saisie PAR compétition (région le 2 sept, département le 10…) : le
  * gestionnaire COCHE un lot de compétitions et pose (ou efface) UNE échéance en un geste.
  *

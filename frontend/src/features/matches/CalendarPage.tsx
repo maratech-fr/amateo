@@ -51,7 +51,6 @@ import {
   useFixtures,
   useLatestFbiIngestion,
   useLeagueWindows,
-  useMatchSlotRotations,
   useModuleVisit,
   usePlaceMatches,
   usePriorityTiers,
@@ -104,7 +103,6 @@ export function CalendarPage() {
   const matchWindows = useVenueMatchWindows();
   const unavailabilities = useVenueUnavailabilities();
   const habitsQuery = useTeamMatchHabits();
-  const rotationsQuery = useMatchSlotRotations();
   const teamCoaches = useTeamCoaches();
   const coachPlayers = useCoachPlayers();
   const placeMatches = usePlaceMatches();
@@ -172,7 +170,6 @@ export function CalendarPage() {
   const windows = useMemo(() => leagueWindows.data?.items ?? [], [leagueWindows.data]);
   const resolvedTeamWindows = useMemo(() => leagueWindows.data?.resolvedTeamWindows ?? {}, [leagueWindows.data]);
   const habits = useMemo(() => habitsQuery.data ?? [], [habitsQuery.data]);
-  const rotations = useMemo(() => rotationsQuery.data ?? [], [rotationsQuery.data]);
   const allConflicts = useMemo<Conflict[]>(() => conflicts.data?.conflicts ?? [], [conflicts.data]);
 
   // D2 — les trois lectures du club qui GARDENT le geste de placement (accès match,
@@ -521,7 +518,6 @@ export function CalendarPage() {
               venues={venues.data ?? []}
               guards={placementGuards}
               habits={habits}
-              rotations={rotations}
               coachRoles={coachTeamRoles}
               resolvedTeamWindows={resolvedTeamWindows}
               windows={windows}

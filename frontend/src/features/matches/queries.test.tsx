@@ -84,7 +84,7 @@ vi.mock("./api", () => ({
     failedSteps: [],
   }),
   createVenueUnavailability: vi.fn().mockResolvedValue({ id: "u1", venueId: "v", startDate: "2026-10-01", endDate: "2026-10-02", label: null }),
-  createTeamMatchHabit: vi.fn().mockResolvedValue({ id: "h1", teamId: "t", dayOfWeek: 6, kickoffTime: "18:00", venueId: null }),
+  createTeamMatchHabit: vi.fn().mockResolvedValue({ id: "h1", teamId: "t", dayOfWeek: 6, kickoffTime: "18:00", venueId: null, week: "ALL" }),
   setEntryDeadlines: vi.fn().mockResolvedValue({ updated: [], deadline: null }),
   swapFixtures: vi.fn().mockResolvedValue(undefined),
   analyzeFbiFixtures: vi.fn().mockResolvedValue({ divisions: [], totalRows: 0, exempted: 0, errors: [], deviations: [] }),

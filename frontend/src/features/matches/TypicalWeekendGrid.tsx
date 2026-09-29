@@ -4,62 +4,57 @@ import { EmptyBlock } from "@/shared/components/ui/empty-hint";
 import { TabPanel, Tabs } from "@/shared/components/ui/tabs";
 import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
 import { tint } from "@/shared/lib/color";
-import { dayLabelLong } from "@/shared/lib/days";
 
-import type { MatchSlotRotation, Team, TeamMatchHabit, Venue } from "./api";
-import { buildTypicalWeekend, weekCountOf } from "./lib/typicalWeekend";
+import type { MatchWeek, Team, TeamMatchHabit, Venue } from "./api";
+import { buildTypicalWeekend, hasAlternatingWeeks } from "./lib/typicalWeekend";
 
 const ROW_HEIGHT = 16; // px per 15-min step — same scale as the dated grid
 const HEADER_ROW = "1.75rem";
 const DAY_LABELS: Record<number, string> = { 6: "Samedi", 7: "Dimanche" };
 
-/** A/B/C… — l'étiquette de la semaine `k` (identique à l'ordre des membres d'une rotation). */
-const weekLetter = (index: number): string => String.fromCharCode(65 + index);
-
 interface TypicalWeekendGridProps {
   habits: TeamMatchHabit[];
-  rotations: MatchSlotRotation[];
   venues: Map<string, Venue>;
   teams: Map<string, Team>;
 }
 
 /**
- * P1-4 PR E2 — the « week-end type »: every team's habitual window on a
- * date-less Sat/Sun × venues grid. READ-ONLY — the manager's ideal template;
- * habits are edited in « Habitudes & passerelles ».
+ * P1-4 PR E2 — the « week-end type »: every team's ideal slot on a date-less
+ * Sat/Sun × venues grid. READ-ONLY — the manager's ideal template; ideal slots
+ * are edited below in « Créneaux idéaux ».
  *
- * RMM-5 PR-4 — l'alternance A/B entre dans le gabarit : quand il existe des
- * rotations, l'en-tête gagne un segmenté « Semaine A / Semaine B / … » (N = la
- * plus grande rotation) et la semaine k dessine, pour chaque rotation, le membre
- * `position k mod N`. **Sans rotation, N = 1 : AUCUN segmenté, la grille reste
- * EXACTEMENT celle d'avant.** Le modèle (`buildTypicalWeekend`) reste pur ; ce
- * composant ne fait que porter l'index de semaine choisi.
+ * P4-271 — la semaine type A/B est une AIDE VISUELLE portée par le tag `week`. Dès
+ * qu'un créneau idéal est tagué A ou B, l'en-tête gagne un segmenté « Semaine A /
+ * Semaine B » et chaque semaine dessine ses créneaux (tagués cette semaine OU
+ * « toutes »). Sans aucun tag A/B, AUCUN segmenté : la grille reste la vue unique.
+ * Le modèle (`buildTypicalWeekend`) filtre par semaine ; ce composant porte le choix.
  */
-export function TypicalWeekendGrid({ habits, rotations, venues, teams }: TypicalWeekendGridProps) {
-  const [week, setWeek] = useState(0);
-  const weekCount = weekCountOf(rotations);
-  // Le choix d'une semaine peut se retrouver hors bornes si les rotations rétrécissent — on borne.
-  const activeWeek = week < weekCount ? week : 0;
-  const model = buildTypicalWeekend(habits, rotations, activeWeek);
-  const { columns, blocks, venueless, offWeekendRotations, startMin, endMin, empty } = model;
+export function TypicalWeekendGrid({ habits, venues, teams }: TypicalWeekendGridProps) {
+  const alternates = hasAlternatingWeeks(habits);
+  const [week, setWeek] = useState<MatchWeek>("A");
+  const activeWeek: MatchWeek | undefined = alternates ? week : undefined;
+  const model = buildTypicalWeekend(habits, activeWeek);
+  const { columns, blocks, venueless, startMin, endMin, empty } = model;
 
-  const segmented =
-    weekCount > 1 ? (
-      <Tabs
-        ariaLabel="Semaine de l'alternance"
-        idPrefix="ab-week"
-        tabs={Array.from({ length: weekCount }, (_, i) => ({ id: String(i), label: `Semaine ${weekLetter(i)}` }))}
-        activeTab={String(activeWeek)}
-        onTabChange={(id) => setWeek(Number(id))}
-      />
-    ) : null;
+  const segmented = alternates ? (
+    <Tabs
+      ariaLabel="Semaine de l'alternance"
+      idPrefix="ab-week"
+      tabs={[
+        { id: "A", label: "Semaine A" },
+        { id: "B", label: "Semaine B" },
+      ]}
+      activeTab={week}
+      onTabChange={(id) => setWeek(id as MatchWeek)}
+    />
+  ) : null;
 
   // A11Y-23 — quand le segmenté A/B existe, le contenu de la semaine ACTIVE est un TabPanel
   // (tabId = la semaine affichée) : l'onglet actif — seul à porter `aria-controls` désormais —
-  // pointe alors un panneau RÉELLEMENT présent. Sans rotation (N=1), aucun onglet, aucun panneau.
+  // pointe alors un panneau RÉELLEMENT présent. Sans alternance, aucun onglet, aucun panneau.
   const wrapWeek = (content: ReactNode): ReactNode =>
-    weekCount > 1 ? (
-      <TabPanel tabId={String(activeWeek)} idPrefix="ab-week" active className="flex min-h-0 flex-1 flex-col gap-2">
+    alternates ? (
+      <TabPanel tabId={week} idPrefix="ab-week" active className="flex min-h-0 flex-1 flex-col gap-2">
         {content}
       </TabPanel>
     ) : (
@@ -70,7 +65,7 @@ export function TypicalWeekendGrid({ habits, rotations, venues, teams }: Typical
     return (
       <div className="flex h-full flex-col gap-2">
         {segmented}
-        {wrapWeek(<EmptyBlock>Aucune habitude déclarée — le week-end type se construit dans « Habitudes & passerelles ».</EmptyBlock>)}
+        {wrapWeek(<EmptyBlock>Aucun créneau idéal déclaré — le week-end type se construit dans « Créneaux idéaux ».</EmptyBlock>)}
       </div>
     );
   }
@@ -159,16 +154,6 @@ export function TypicalWeekendGrid({ habits, rotations, venues, teams }: Typical
           Sans gymnase :{" "}
           {venueless
             .map((h) => `${teams.get(h.teamId)?.name ?? "?"} · ${6 === h.dayOfWeek ? "sam" : "dim"} ${h.kickoffTime}`)
-            .join(" · ")}
-        </p>
-      ) : null}
-
-      {/* §tranche 3 — un créneau partagé hors week-end : listé à part (la grille est Sam/Dim). */}
-      {offWeekendRotations.length > 0 ? (
-        <p className="text-xs text-muted-foreground">
-          Hors week-end :{" "}
-          {offWeekendRotations
-            .map((r) => `${teams.get(r.teamId)?.name ?? "?"} · ${dayLabelLong(r.dayOfWeek)} ${r.kickoffTime} · ${venues.get(r.venueId)?.name ?? "?"}`)
             .join(" · ")}
         </p>
       ) : null}

@@ -94,7 +94,6 @@ vi.mock("./api", () => ({
   getVenueUnavailabilities: vi.fn(() => Promise.resolve([])),
   getTeamMatchHabits: vi.fn(() => Promise.resolve([])),
   getTeamLinks: vi.fn(() => Promise.resolve([])),
-  getMatchSlotRotations: vi.fn(() => Promise.resolve([])),
   placeMatches: vi.fn(() =>
     Promise.resolve({
       placed: 1,

@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
-import type { MatchSlotRotation, Team, TeamMatchHabit, Venue } from "./api";
+import type { Team, TeamMatchHabit, Venue } from "./api";
 import { TypicalWeekendGrid } from "./TypicalWeekendGrid";
 
 const VENUES = new Map<string, Venue>([
@@ -12,59 +12,58 @@ const VENUES = new Map<string, Venue>([
 const TEAMS = new Map<string, Team>([
   ["ta", { id: "ta", name: "SM1", sportCategoryId: "c", level: null, gender: null, priorityTierId: 1, tierOrder: 0 }],
   ["tb", { id: "tb", name: "SM2", sportCategoryId: "c", level: null, gender: null, priorityTierId: 1, tierOrder: 0 }],
-  ["tc", { id: "tc", name: "SM3", sportCategoryId: "c", level: null, gender: null, priorityTierId: 1, tierOrder: 0 }],
   ["tx", { id: "tx", name: "SF1", sportCategoryId: "c", level: null, gender: null, priorityTierId: 1, tierOrder: 0 }],
 ]);
 
-const habit = (over: Partial<TeamMatchHabit> = {}): TeamMatchHabit => ({ id: "h", teamId: "tx", dayOfWeek: 6, kickoffTime: "15:30", venueId: "v1", ...over });
-const rotation = (over: Partial<MatchSlotRotation> = {}): MatchSlotRotation => ({ id: "rot-1", venueId: "v9", dayOfWeek: 6, kickoffTime: "20:30", teamIds: ["ta", "tb"], ...over });
+const habit = (over: Partial<TeamMatchHabit> = {}): TeamMatchHabit => ({ id: "h", teamId: "tx", dayOfWeek: 6, kickoffTime: "15:30", venueId: "v1", week: "ALL", ...over });
 
-describe("TypicalWeekendGrid — segmenté A/B (RMM-5 PR-4)", () => {
-  it("SANS rotation : AUCUN segmenté (la grille reste comme avant)", () => {
-    render(<TypicalWeekendGrid habits={[habit()]} rotations={[]} venues={VENUES} teams={TEAMS} />);
+describe("TypicalWeekendGrid — segmenté A/B (P4-271)", () => {
+  it("SANS tag A/B (tout « toutes ») : AUCUN segmenté (la grille reste comme avant)", () => {
+    render(<TypicalWeekendGrid habits={[habit()]} venues={VENUES} teams={TEAMS} />);
     expect(screen.queryByRole("tablist")).toBeNull();
     expect(screen.getByText("SF1")).toBeInTheDocument();
   });
 
-  it("AVEC une rotation N=2 : un segmenté « Semaine A / Semaine B », A montre le membre 0, B le membre 1", async () => {
+  it("AVEC des créneaux tagués A/B : un segmenté « Semaine A / Semaine B », A montre l'équipe A, B l'équipe B", async () => {
     const user = userEvent.setup();
-    render(<TypicalWeekendGrid habits={[]} rotations={[rotation({ teamIds: ["ta", "tb"] })]} venues={VENUES} teams={TEAMS} />);
-    const tablist = screen.getByRole("tablist", { name: "Semaine de l'alternance" });
-    expect(tablist).toBeInTheDocument();
+    const habits = [
+      habit({ id: "a", teamId: "ta", venueId: "v9", kickoffTime: "20:30", week: "A" }),
+      habit({ id: "b", teamId: "tb", venueId: "v9", kickoffTime: "20:30", week: "B" }),
+    ];
+    render(<TypicalWeekendGrid habits={habits} venues={VENUES} teams={TEAMS} />);
+    expect(screen.getByRole("tablist", { name: "Semaine de l'alternance" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Semaine A" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Semaine B" })).toBeInTheDocument();
-    // Semaine A → membre 0 (SM1).
+    // Semaine A → l'équipe taguée A (SM1).
     expect(screen.getByText("SM1")).toBeInTheDocument();
     expect(screen.queryByText("SM2")).toBeNull();
-    // Bascule → Semaine B → membre 1 (SM2).
+    // Bascule → Semaine B → l'équipe taguée B (SM2).
     await user.click(screen.getByRole("tab", { name: "Semaine B" }));
     expect(screen.getByText("SM2")).toBeInTheDocument();
     expect(screen.queryByText("SM1")).toBeNull();
   });
 
-  it("N=3 : trois semaines A/B/C", () => {
-    render(<TypicalWeekendGrid habits={[]} rotations={[rotation({ teamIds: ["ta", "tb", "tc"] })]} venues={VENUES} teams={TEAMS} />);
-    expect(screen.getByRole("tab", { name: "Semaine A" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Semaine B" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Semaine C" })).toBeInTheDocument();
-  });
-
-  it("une habitude simple est IDENTIQUE sur toutes les semaines (elle ne tourne pas)", async () => {
+  it("un créneau tagué « toutes » est présent sur les DEUX semaines", async () => {
     const user = userEvent.setup();
-    render(<TypicalWeekendGrid habits={[habit({ teamId: "tx", venueId: "v1" })]} rotations={[rotation()]} venues={VENUES} teams={TEAMS} />);
-    // Semaine A : l'habitude SF1 est là ET la rotation montre SM1.
+    const habits = [
+      habit({ id: "a", teamId: "ta", venueId: "v9", kickoffTime: "20:30", week: "A" }),
+      habit({ id: "all", teamId: "tx", venueId: "v1", kickoffTime: "15:30", week: "ALL" }),
+    ];
+    render(<TypicalWeekendGrid habits={habits} venues={VENUES} teams={TEAMS} />);
+    // Semaine A : l'équipe A ET l'équipe « toutes ».
+    expect(screen.getByText("SM1")).toBeInTheDocument();
     expect(screen.getByText("SF1")).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Semaine B" }));
-    // Semaine B : l'habitude SF1 est TOUJOURS là (identique), la rotation a tourné vers SM2.
+    // Semaine B : plus l'équipe A, mais toujours l'équipe « toutes ».
+    expect(screen.queryByText("SM1")).toBeNull();
     expect(screen.getByText("SF1")).toBeInTheDocument();
-    expect(screen.getByText("SM2")).toBeInTheDocument();
   });
 
   // A11Y-23 — le segmenté A/B posait un `aria-controls` sur CHAQUE onglet, mais AUCUN TabPanel
   // n'existait : des références pendantes. La semaine active est désormais enveloppée dans un
   // TabPanel, et la primitive ne pose `aria-controls` que sur l'onglet actif → tout lien résout.
   it("A11Y-23 — chaque aria-controls d'onglet référence un panneau présent", () => {
-    render(<TypicalWeekendGrid habits={[]} rotations={[rotation()]} venues={VENUES} teams={TEAMS} />);
+    render(<TypicalWeekendGrid habits={[habit({ teamId: "ta", venueId: "v9", kickoffTime: "20:30", week: "A" })]} venues={VENUES} teams={TEAMS} />);
     const tabs = screen.getAllByRole("tab");
     expect(tabs.length).toBeGreaterThan(1);
     for (const tab of tabs) {
@@ -73,14 +72,13 @@ describe("TypicalWeekendGrid — segmenté A/B (RMM-5 PR-4)", () => {
         expect(document.getElementById(controls), `aria-controls="${controls}" doit exister`).not.toBeNull();
       }
     }
-    // L'onglet actif (Semaine A) pointe bien un tabpanel présent.
     expect(screen.getByRole("tabpanel")).toBeInTheDocument();
   });
 
   // A11Y-24 — la grille défile ; une région défilante doit être focusable au clavier et nommée
   // (WCAG 2.1.1). Le div `overflow-auto` porte lui-même tabIndex/role="region"/aria-label.
   it("A11Y-24 — la grille défilante est une région focusable et nommée", () => {
-    render(<TypicalWeekendGrid habits={[]} rotations={[rotation()]} venues={VENUES} teams={TEAMS} />);
+    render(<TypicalWeekendGrid habits={[habit({ teamId: "ta", venueId: "v9", kickoffTime: "20:30", week: "A" })]} venues={VENUES} teams={TEAMS} />);
     const region = screen.getByRole("region", { name: "Grille de la semaine type" });
     expect(region).toHaveClass("overflow-auto");
     expect(region).toHaveAttribute("tabindex", "0");

@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { Conflict, Fixture, MatchSlotRotation, TeamMatchHabit } from "../api";
-import { datelessConflicts, deriveWeekCounters, isOffModel, offModelCount, sameWeekendRotationCount, weekConflictCount } from "./loopSteps";
-
-function rotation(over: Partial<MatchSlotRotation> = {}): MatchSlotRotation {
-  return { id: over.id ?? "rot", venueId: over.venueId ?? "venue-1", dayOfWeek: over.dayOfWeek ?? 6, kickoffTime: over.kickoffTime ?? "16:00", teamIds: over.teamIds ?? ["team-1", "team-2"] };
-}
+import type { Conflict, Fixture, TeamMatchHabit } from "../api";
+import { datelessConflicts, deriveWeekCounters, isOffModel, offModelCount, sameWeekendSharedSlotCount, weekConflictCount } from "./loopSteps";
 
 /** A HOME fixture builder — everything placed by default, overridable. */
 function fx(over: Partial<Fixture> = {}): Fixture {
@@ -39,7 +35,7 @@ function fx(over: Partial<Fixture> = {}): Fixture {
 
 /** ISO weekday of 2026-10-03 is Saturday = 6. */
 function habit(over: Partial<TeamMatchHabit> = {}): TeamMatchHabit {
-  return { id: over.id ?? "h", teamId: over.teamId ?? "team-1", dayOfWeek: over.dayOfWeek ?? 6, kickoffTime: over.kickoffTime ?? "16:00", venueId: over.venueId ?? null };
+  return { id: over.id ?? "h", teamId: over.teamId ?? "team-1", dayOfWeek: over.dayOfWeek ?? 6, kickoffTime: over.kickoffTime ?? "16:00", venueId: over.venueId ?? null, week: over.week ?? "ALL" };
 }
 
 function conflictOn(fixtureId: string): Conflict {
@@ -95,77 +91,72 @@ describe("datelessConflicts — conflits sans fixture (bannière hors-semaine)",
   });
 });
 
-describe("isOffModel — divergence d'un domicile placé vs son habitude", () => {
-  it("pas d'habitude sur l'équipe ⇒ jamais un écart (pas de modèle de référence)", () => {
+describe("isOffModel — divergence d'un domicile placé vs son créneau idéal (P4-271)", () => {
+  it("pas de créneau idéal sur l'équipe ⇒ jamais un écart (pas de modèle de référence)", () => {
     expect(isOffModel(fx({ kickoffTime: "20:00" }), [])).toBe(false);
   });
   it("UNPLACED ⇒ jamais un écart (rien de placé à comparer)", () => {
     expect(isOffModel(fx({ status: "UNPLACED", venueId: null, kickoffTime: null }), [habit()])).toBe(false);
   });
   it("jour non habituel ⇒ écart", () => {
-    // Placé un dimanche (7) alors que l'habitude est le samedi (6).
+    // Placé un dimanche (7) alors que le créneau idéal est le samedi (6).
     expect(isOffModel(fx({ matchDate: "2026-10-04" }), [habit({ dayOfWeek: 6 })])).toBe(true);
   });
-  it("même jour, gymnase habituel divergent ⇒ écart", () => {
+  it("même jour, gymnase idéal divergent ⇒ écart", () => {
     expect(isOffModel(fx({ venueId: "venue-2" }), [habit({ venueId: "venue-1" })])).toBe(true);
+  });
+  it("même jour, heure divergente ⇒ écart", () => {
+    expect(isOffModel(fx({ kickoffTime: "18:30" }), [habit({ kickoffTime: "16:00", venueId: "venue-1" })])).toBe(true);
   });
   it("même jour, heure et gymnase conformes ⇒ pas d'écart", () => {
     expect(isOffModel(fx({ kickoffTime: "16:00", venueId: "venue-1" }), [habit({ kickoffTime: "16:00", venueId: "venue-1" })])).toBe(false);
   });
-});
-
-describe("isOffModel — le créneau de ROTATION est la référence du jour (RMM-5 PR-4)", () => {
-  it("membre d'un créneau partagé placé HORS de son créneau (heure) ⇒ écart", () => {
-    // La rotation samedi 20:30 est la référence ; placé à 18:30 → écart.
-    const fixture = fx({ teamId: "team-1", matchDate: "2026-10-03", kickoffTime: "18:30", venueId: "venue-1" });
-    expect(isOffModel(fixture, [], [rotation({ dayOfWeek: 6, kickoffTime: "20:30", venueId: "venue-1" })])).toBe(true);
-  });
-  it("membre placé HORS de son créneau (gymnase) ⇒ écart", () => {
-    const fixture = fx({ teamId: "team-1", matchDate: "2026-10-03", kickoffTime: "20:30", venueId: "venue-2" });
-    expect(isOffModel(fixture, [], [rotation({ dayOfWeek: 6, kickoffTime: "20:30", venueId: "venue-1" })])).toBe(true);
-  });
-  it("membre placé SUR son créneau (heure + gymnase) ⇒ pas d'écart", () => {
-    const fixture = fx({ teamId: "team-1", matchDate: "2026-10-03", kickoffTime: "20:30", venueId: "venue-1" });
-    expect(isOffModel(fixture, [], [rotation({ dayOfWeek: 6, kickoffTime: "20:30", venueId: "venue-1" })])).toBe(false);
-  });
-  it("la rotation du jour PRIME sur l'habitude (suppléance) : conforme au créneau ⇒ pas d'écart même si l'habitude divergeait", () => {
-    // Habitude 16:00 mais rotation 20:30 le même jour ; placé 20:30 → conforme (rotation prime).
-    const fixture = fx({ teamId: "team-1", matchDate: "2026-10-03", kickoffTime: "20:30", venueId: "venue-1" });
-    expect(isOffModel(fixture, [habit({ teamId: "team-1", dayOfWeek: 6, kickoffTime: "16:00", venueId: "venue-1" })], [rotation({ dayOfWeek: 6, kickoffTime: "20:30", venueId: "venue-1" })])).toBe(false);
-  });
-  it("offModelCount tient compte des rotations", () => {
-    const off = fx({ id: "o", teamId: "team-1", matchDate: "2026-10-03", kickoffTime: "18:30", venueId: "venue-1" });
-    expect(offModelCount([off], [], [rotation({ dayOfWeek: 6, kickoffTime: "20:30", venueId: "venue-1" })])).toBe(1);
+  it("offModelCount somme les écarts de la semaine", () => {
+    const off = fx({ id: "o", teamId: "team-1", matchDate: "2026-10-04" });
+    expect(offModelCount([off], [habit({ dayOfWeek: 6 })])).toBe(1);
   });
 });
 
-describe("sameWeekendRotationCount — deux membres reçoivent le même week-end", () => {
-  it("deux membres distincts d'une même rotation à domicile le même week-end ⇒ 1", () => {
+describe("sameWeekendSharedSlotCount — deux équipes d'un créneau partagé reçoivent le même week-end (P4-271)", () => {
+  // Deux équipes qui partagent PHYSIQUEMENT un créneau idéal (même gymnase + jour + heure).
+  const sharedSlot = (): TeamMatchHabit[] => [
+    habit({ id: "h1", teamId: "team-1", venueId: "venue-1", dayOfWeek: 6, kickoffTime: "12:15", week: "A" }),
+    habit({ id: "h2", teamId: "team-2", venueId: "venue-1", dayOfWeek: 6, kickoffTime: "12:15", week: "B" }),
+  ];
+
+  it("deux équipes distinctes du même créneau à domicile le même week-end ⇒ 1", () => {
     const home1 = fx({ id: "a", teamId: "team-1", homeAway: "HOME" });
     const home2 = fx({ id: "b", teamId: "team-2", homeAway: "HOME" });
-    expect(sameWeekendRotationCount([home1, home2], [rotation({ teamIds: ["team-1", "team-2"] })])).toBe(1);
+    expect(sameWeekendSharedSlotCount([home1, home2], sharedSlot())).toBe(1);
   });
-  it("un seul membre à domicile ⇒ 0 (l'alternance est respectée)", () => {
+  it("une seule équipe à domicile ⇒ 0 (l'alternance est respectée)", () => {
     const home1 = fx({ id: "a", teamId: "team-1", homeAway: "HOME" });
     const away2 = fx({ id: "b", teamId: "team-2", homeAway: "AWAY" });
-    expect(sameWeekendRotationCount([home1, away2], [rotation({ teamIds: ["team-1", "team-2"] })])).toBe(0);
+    expect(sameWeekendSharedSlotCount([home1, away2], sharedSlot())).toBe(0);
   });
-  it("le MÊME membre deux fois à domicile ne compte pas (il faut deux membres DISTINCTS)", () => {
+  it("deux créneaux idéaux QUI NE SE PARTAGENT PAS (heures différentes) ⇒ 0", () => {
+    const habits = [
+      habit({ id: "h1", teamId: "team-1", venueId: "venue-1", kickoffTime: "12:15" }),
+      habit({ id: "h2", teamId: "team-2", venueId: "venue-1", kickoffTime: "14:00" }),
+    ];
     const home1 = fx({ id: "a", teamId: "team-1", homeAway: "HOME" });
-    const home1bis = fx({ id: "b", teamId: "team-1", homeAway: "HOME" });
-    expect(sameWeekendRotationCount([home1, home1bis], [rotation({ teamIds: ["team-1", "team-2"] })])).toBe(0);
+    const home2 = fx({ id: "b", teamId: "team-2", homeAway: "HOME" });
+    expect(sameWeekendSharedSlotCount([home1, home2], habits)).toBe(0);
   });
 });
 
-describe("le SIGNAL ne pèse JAMAIS dans les compteurs (les rotations n'y entrent nulle part)", () => {
-  it("écart au modèle + même-week-end pleins : les 3 compteurs restent INCHANGÉS", () => {
-    // Deux membres d'une rotation, tous deux placés HORS créneau ET recevant le même week-end.
+describe("le SIGNAL ne pèse JAMAIS dans les compteurs (les créneaux idéaux n'y entrent nulle part)", () => {
+  it("écart au modèle + même-week-end pleins : les 2 compteurs restent INCHANGÉS", () => {
+    // Deux équipes d'un créneau partagé, toutes deux placées HORS créneau ET recevant le même week-end.
     const home1 = fx({ id: "a", teamId: "team-1", status: "SUBMITTED", matchDate: "2026-10-03", kickoffTime: "18:30", venueId: "venue-1" });
     const home2 = fx({ id: "b", teamId: "team-2", status: "SUBMITTED", matchDate: "2026-10-03", kickoffTime: "18:30", venueId: "venue-1" });
-    const rots = [rotation({ dayOfWeek: 6, kickoffTime: "20:30", venueId: "venue-1", teamIds: ["team-1", "team-2"] })];
+    const habits = [
+      habit({ id: "h1", teamId: "team-1", venueId: "venue-1", dayOfWeek: 6, kickoffTime: "20:30", week: "A" }),
+      habit({ id: "h2", teamId: "team-2", venueId: "venue-1", dayOfWeek: 6, kickoffTime: "20:30", week: "B" }),
+    ];
     // Signal PLEIN…
-    expect(offModelCount([home1, home2], [], rots)).toBe(2);
-    expect(sameWeekendRotationCount([home1, home2], rots)).toBe(1);
+    expect(offModelCount([home1, home2], habits)).toBe(2);
+    expect(sameWeekendSharedSlotCount([home1, home2], habits)).toBe(1);
     // …et pourtant les compteurs sont intacts : tout est SUBMITTED, aucun conflit.
     expect(deriveWeekCounters([home1, home2], [])).toEqual({ unplaced: 0, conflicts: 0 });
   });

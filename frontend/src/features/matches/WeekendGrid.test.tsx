@@ -42,7 +42,7 @@ describe("WeekendGrid — mode échange (RMM-1 PR4, L6)", () => {
 
 describe("WeekendGrid — colonne extérieur (lot 3 PR-3a)", () => {
   const awayBase = { ...fixtureBase, homeAway: "AWAY" as const, venueId: null, kickoffTime: null, status: "UNPLACED" as const, placementSource: null as null };
-  const habit = { id: "h", teamId: "tA", dayOfWeek: 6, kickoffTime: "15:30", venueId: null } as import("./api").TeamMatchHabit;
+  const habit = { id: "h", teamId: "tA", dayOfWeek: 6, kickoffTime: "15:30", venueId: null, week: "ALL" } as import("./api").TeamMatchHabit;
   // Extérieur SANS heure réelle mais habitude samedi 15:30 → heure estimée + trajet 45 min.
   const estimatedAway = { ...awayBase, id: "fxAway", teamId: "tA", matchDate: "2026-10-03", opponentLabel: "Épinouze", externalRef: null, opponentOrganismeCode: "C1", opponentTeamKey: "EPI-1", awayTravel: { venueLabel: "Halle Y", city: null, precision: "VENUE" as const, oneWayMinutes: 45, approximated: false, basis: "linked" as const } };
 
@@ -131,7 +131,7 @@ describe("WeekendGrid — case « À confirmer » (lot 1, 2026-09-17)", () => {
     externalRef: "7",
     placementSource: null as null,
   };
-  const habit = { id: "h", teamId: "tB", dayOfWeek: 6, kickoffTime: "14:00", venueId: "v1" } as import("./api").TeamMatchHabit;
+  const habit = { id: "h", teamId: "tB", dayOfWeek: 6, kickoffTime: "14:00", venueId: "v1", week: "ALL" } as import("./api").TeamMatchHabit;
 
   it("porte la pastille « À confirmer », un fond hachuré et un nom accessible verbatim — jamais de cadenas", () => {
     const model = buildWeekendGrid([toConfirm], venues, teams);
@@ -183,7 +183,7 @@ describe("WeekendGrid — surbrillance de focus d'un conflit (correctif 2)", () 
 
   it("un bloc extérieur surligné porte aussi l'anneau destructif (domicile ET colonne extérieur)", () => {
     const awayBase = { ...fixtureBase, homeAway: "AWAY" as const, venueId: null, kickoffTime: null, status: "UNPLACED" as const, placementSource: null as null };
-    const habit = { id: "h", teamId: "tA", dayOfWeek: 6, kickoffTime: "15:30", venueId: null } as import("./api").TeamMatchHabit;
+    const habit = { id: "h", teamId: "tA", dayOfWeek: 6, kickoffTime: "15:30", venueId: null, week: "ALL" } as import("./api").TeamMatchHabit;
     const away = { ...awayBase, id: "fxAway", teamId: "tA", matchDate: "2026-10-03", opponentLabel: "Épinouze", externalRef: "88", awayTravel: { venueLabel: "Halle Y", city: null, precision: "VENUE" as const, oneWayMinutes: 45, approximated: false, basis: "linked" as const } };
     const model = buildWeekendGrid([away], venues, teams, new Set(), [habit], "2026-10-03", 15, new Map());
     const { container } = render(<WeekendGrid model={model} onSelectFixture={() => {}} highlightedFixtureIds={new Set(["fxAway"])} />);

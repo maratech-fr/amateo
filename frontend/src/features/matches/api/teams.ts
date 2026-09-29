@@ -74,7 +74,10 @@ export const updateSportCategoryDuration = (category: SportCategoryDuration, inp
     .json<SportCategoryDuration>();
 // ── Preferences layer (P1-4 PR C) ────────────────────────────────────────────
 
-/** A team's habitual match window — one per weekday, venue optional. */
+/** Semaine d'alternance du créneau idéal (aide visuelle A/B — P4-271). */
+export type MatchWeek = "A" | "B" | "ALL";
+
+/** A team's ideal match slot — ONE per team (P4-271), venue optional, tagged week A/B/ALL. */
 export interface TeamMatchHabit {
   id: string;
   teamId: string;
@@ -83,6 +86,8 @@ export interface TeamMatchHabit {
   /** HH:MM — an instant, not a range. */
   kickoffTime: string;
   venueId: string | null;
+  /** Alternation week — A | B | ALL (a club without A/B alternation). */
+  week: MatchWeek;
 }
 
 export type TeamLinkType = "NOT_SIMULTANEOUS" | "BACK_TO_BACK";
@@ -107,10 +112,23 @@ export interface TeamLink {
 }
 
 export const getTeamMatchHabits = (): Promise<TeamMatchHabit[]> =>
-  (async () => (await collectionAll<TeamMatchHabit>("team_match_habits")).map((h) => ({ ...h, venueId: h.venueId ?? null })))();
+  (async () => (await collectionAll<TeamMatchHabit>("team_match_habits")).map((h) => ({ ...h, venueId: h.venueId ?? null, week: h.week ?? "ALL" })))();
 
-export const createTeamMatchHabit = (input: { teamId: string; dayOfWeek: number; kickoffTime: string; venueId?: string }): Promise<TeamMatchHabit> =>
+/** All ideal-slot fields the editor writes: day, kickoff, optional venue, week tag. */
+export interface TeamMatchHabitInput {
+  teamId: string;
+  dayOfWeek: number;
+  kickoffTime: string;
+  venueId?: string;
+  week?: MatchWeek;
+}
+
+export const createTeamMatchHabit = (input: TeamMatchHabitInput): Promise<TeamMatchHabit> =>
   api.post("team_match_habits", { json: input }).json<TeamMatchHabit>();
+
+/** PUT is a full replace: every field travels (an omitted venue clears it, an omitted week resets to ALL). */
+export const updateTeamMatchHabit = (id: string, input: TeamMatchHabitInput): Promise<TeamMatchHabit> =>
+  api.put(`team_match_habits/${id}`, { json: input }).json<TeamMatchHabit>();
 
 export const deleteTeamMatchHabit = (id: string): Promise<void> => api.delete(`team_match_habits/${id}`).then(() => undefined);
 
@@ -137,40 +155,3 @@ export const updateTeamLink = (link: TeamLink, input: { linkType?: TeamLinkType;
     .json<TeamLink>();
 
 export const deleteTeamLink = (id: string): Promise<void> => api.delete(`team_links/${id}`).then(() => undefined);
-
-// ── Rotation A/B — shared match slots (RMM-5) ────────────────────────────────
-
-/**
- * A shared match slot (venue + day + kickoff) and its ORDERED teams, alternating
- * A/B/C. `teamIds` order is FICTIONAL — it draws the alternation on screen and
- * drives no calendar (founder decision, spec §8). Read open to Member, write
- * management-gated (backend rail default).
- */
-export interface MatchSlotRotation {
-  id: string;
-  venueId: string;
-  /** ISO 1..7 */
-  dayOfWeek: number;
-  /** HH:MM */
-  kickoffTime: string;
-  /** Ordered members (position ASC) — the order IS the A/B/C drawing, nothing more. */
-  teamIds: string[];
-}
-
-export interface MatchSlotRotationInput {
-  venueId: string;
-  dayOfWeek: number;
-  kickoffTime: string;
-  teamIds: string[];
-}
-
-export const getMatchSlotRotations = (): Promise<MatchSlotRotation[]> => collectionAll<MatchSlotRotation>("match_slot_rotations");
-
-export const createMatchSlotRotation = (input: MatchSlotRotationInput): Promise<MatchSlotRotation> =>
-  api.post("match_slot_rotations", { json: input }).json<MatchSlotRotation>();
-
-/** PUT is a full replace: the whole slot + ordered roster is re-sent (backend rewrites members). */
-export const updateMatchSlotRotation = (id: string, input: MatchSlotRotationInput): Promise<MatchSlotRotation> =>
-  api.put(`match_slot_rotations/${id}`, { json: input }).json<MatchSlotRotation>();
-
-export const deleteMatchSlotRotation = (id: string): Promise<void> => api.delete(`match_slot_rotations/${id}`).then(() => undefined);

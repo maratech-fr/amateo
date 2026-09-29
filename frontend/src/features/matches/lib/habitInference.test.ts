@@ -58,7 +58,7 @@ describe("inferHabits (seuils fondateur : ≥ 3 matchs ET ≥ 50 %)", () => {
   });
 
   it("never re-suggests a day that already carries a DECLARED habit", () => {
-    const declared: TeamMatchHabit[] = [{ id: "h1", teamId: "team-1", dayOfWeek: 6, kickoffTime: "14:00", venueId: null }];
+    const declared: TeamMatchHabit[] = [{ id: "h1", teamId: "team-1", dayOfWeek: 6, kickoffTime: "14:00", venueId: null, week: "ALL" }];
     expect(inferHabits(saturdays(6), declared)).toEqual([]);
   });
 
