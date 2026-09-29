@@ -1,9 +1,9 @@
 # Amateo — Tenant Isolation Architecture
 
-Last verified @ 2026-09-29 (`documentation-update`, rotation de fraîcheur — P4-272 ③, sujet sans
-rapport avec ce fichier). Re-confronté au code : priorité 7 toujours en place
-(`TenantFilterListener.php:55`) ✓ · le skip `/api/admin` toujours en `str_starts_with` sur le path
-(`TenantFilterListener.php:81`) ✓ · `TenantConnectionContext` pose toujours
+Last verified @ 2026-09-29 (`documentation-update`, rotation de fraîcheur — seed BCCL de
+PRODUCTION et P4-272 ③, sujets sans rapport avec ce fichier). Re-confronté au code : priorité 7 toujours en
+place (`TenantFilterListener.php:55`) ✓ · le skip `/api/admin` toujours en `str_starts_with` sur le
+path (`TenantFilterListener.php:81`) ✓ · `TenantConnectionContext` pose toujours
 `set_config('app.club_id', ?, false)` (`TenantConnectionContext.php:30`) ✓ ·
 `AbstractStateProcessor::requiresManagementRole()` retourne toujours `true` par défaut
 (`backend/src/State/Processor/AbstractStateProcessor.php:130-132`) ✓. Rien de faux trouvé cette

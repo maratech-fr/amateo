@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Seed;
 
+use App\Command\BcclProdSeedCommand;
 use InvalidArgumentException;
 
 /**
@@ -82,10 +83,16 @@ final readonly class BcclSeedProfile
      *                                                                                                                  seed pose les fenêtres d'accès match des gymnases,
      *                                                                                                                  les habitudes de match des équipes et les créneaux
      *                                                                                                                  de match partagés (rotations A/B) — l'état terrain
-     *                                                                                                                  du week-end (dev SEULEMENT)
+     *                                                                                                                  du week-end (dev ET prod)
+     * @param bool                                                                              $seedOpponentData       l'amorçage des trois tables de référence du module
+     *                                                                                                                  « adversaires » (localisations partagées, appariements
+     *                                                                                                                  du club, suggestions partagées) depuis
+     *                                                                                                                  {@see BcclOpponentData} — données FÉDÉRALES PUBLIQUES,
+     *                                                                                                                  pour que le ré-import des matchs retrouve ses
+     *                                                                                                                  localisations (dev ET prod ; false pour démo/charge)
      * @param list<array{email: string, firstName: string, lastName: string, password: string}> $additionalManagers     gestionnaires (User + ClubUser admin) EN PLUS du
      *                                                                                                                  gestionnaire principal — find-or-create par email,
-     *                                                                                                                  jamais écrasés (dev SEULEMENT ; [] ailleurs)
+     *                                                                                                                  jamais écrasés (dev/prod ; [] ailleurs)
      */
     private function __construct(
         public string $clubName,
@@ -102,6 +109,7 @@ final readonly class BcclSeedProfile
         public bool $seedReprisePeriods,
         public bool $seedMateoIncident,
         public bool $seedWeekendMatchLayout,
+        public bool $seedOpponentData,
         public array $additionalManagers,
     ) {}
 
@@ -126,12 +134,56 @@ final readonly class BcclSeedProfile
             // gestionnaire (fermeture de Matéo + son plan d'ajustement non validé). Dev SEULEMENT.
             seedMateoIncident: true,
             // Répartition WE des matchs — le club dev porte l'état terrain du week-end (fenêtres
-            // d'accès match, habitudes de match des équipes, créneaux partagés A/B). Dev SEULEMENT.
+            // d'accès match, habitudes de match des équipes, créneaux partagés A/B).
             seedWeekendMatchLayout: true,
+            // Amorçage des adversaires — le club dev porte les localisations/appariements/suggestions
+            // fédéraux relevés de la base réelle (le ré-import des matchs les retrouve sans re-résoudre).
+            seedOpponentData: true,
             additionalManagers: [
                 // Mot de passe EN CLAIR, hashé au seed (patron du gestionnaire principal
                 // ci-dessus). Find-or-create par email, jamais écrasé s'il existe déjà.
                 ['email' => 'nicolas.barilleau@bccl.fr', 'firstName' => 'Nicolas', 'lastName' => 'Barilleau', 'password' => 'NicolasB'],
+            ],
+        );
+    }
+
+    /**
+     * Le club BCCL RÉEL, jouable en PROD (identités réelles comme {@see dev()} : club, coachs,
+     * logo, mêmes drapeaux — la transcription du planning réel, les reprises, l'incident Matéo, la
+     * répartition WE, l'amorçage des adversaires). Parité avec la base locale du fondateur.
+     *
+     * SEULE différence avec dev() : les GESTIONNAIRES sont 100 % en paramètres — AUCUNE adresse
+     * ni mot de passe réels dans le code (invisible en prod par construction sinon, mais un mot de
+     * passe dev en clair y serait une porte). Le gestionnaire principal garde l'identité réelle
+     * (Mara Mb, déjà au dépôt via {@see dev()}) ; le co-gestionnaire est Nicolas Barilleau
+     * (prénom/nom déjà au dépôt). La commande {@see BcclProdSeedCommand} exige les
+     * deux mots de passe (≥ 12 caractères) et pose des comptes PRÉ-VÉRIFIÉS (le rail /register est
+     * mort sans e-mail sortant en prod).
+     */
+    public static function prod(
+        string $managerEmail,
+        string $managerPassword,
+        string $coManagerEmail,
+        string $coManagerPassword,
+    ): self {
+        return new self(
+            clubName: 'B CHARPENNES CROIX LUIZET',
+            clubSlug: 'b-charpennes-croix-luizet',
+            ffbbCode: 'ARA0069036',
+            managerEmail: $managerEmail,
+            managerFirstName: 'Mara',
+            managerLastName: 'Mb',
+            managerPassword: $managerPassword,
+            seedLogo: true,
+            isDemo: false,
+            coachNames: null,
+            transcribeRealSchedule: true,
+            seedReprisePeriods: true,
+            seedMateoIncident: true,
+            seedWeekendMatchLayout: true,
+            seedOpponentData: true,
+            additionalManagers: [
+                ['email' => $coManagerEmail, 'firstName' => 'Nicolas', 'lastName' => 'Barilleau', 'password' => $coManagerPassword],
             ],
         );
     }
@@ -174,6 +226,8 @@ final readonly class BcclSeedProfile
             seedMateoIncident: false,
             // Ni répartition WE des matchs : la charge mesure la génération d'entraînements.
             seedWeekendMatchLayout: false,
+            // Ni amorçage des adversaires : la charge mesure la génération, pas le module matchs.
+            seedOpponentData: false,
             additionalManagers: [],
         );
     }
@@ -203,6 +257,8 @@ final readonly class BcclSeedProfile
             seedMateoIncident: false,
             // La démo ne porte pas la répartition WE des matchs (dev SEULEMENT).
             seedWeekendMatchLayout: false,
+            // La démo ne porte pas d'adversaires (RGPD : elle reste vierge de calendrier de matchs).
+            seedOpponentData: false,
             additionalManagers: [],
         );
     }
