@@ -70,8 +70,11 @@
     }
     * { box-sizing: border-box; margin: 0; }
     /* scroll-padding-top : l'en-tête sticky fait 64px — sans ça une ancre (#faq, #offres…)
-       s'arrête SOUS l'en-tête et son titre est masqué (P4-258). 64 + 12 de marge = 76. */
-    html { scroll-behavior: smooth; scroll-padding-top: 76px; }
+       s'arrête SOUS l'en-tête et son titre est masqué (P4-258). 64 + 12 de marge = 76.
+       ⚠ PAS de `scroll-behavior: smooth` : le glissement des ancres est piloté en JS
+       (easeOutCubic, décélération maîtrisée) — un smooth CSS doublerait le lissage. Le
+       scroll-padding reste pour le saut NATIF (arrivée avec #hash dans l'URL, ou JS absent). */
+    html { scroll-padding-top: 76px; }
     /* Fond d'écran commun app + vitrine (P5-16) : même motif multi-sport du logo, posé sur le papier.
        SVG statique purgé (assets/brand/fond.svg), opacité 0,26 (variante vitrine). `fixed` : parallaxe
        desktop-first assumée (iOS Safari retombe en scroll). En-tête sticky translucide inchangé. */
@@ -236,7 +239,8 @@
     footer.site .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 
     @media (prefers-reduced-motion: reduce) {
-      html { scroll-behavior: auto; }
+      /* Le saut d'ancre redevient direct : le script de glissement teste lui-même
+         prefers-reduced-motion et fait un window.scrollTo instantané. */
       .btn { transition: none; }
       figure.shot img { animation: none; }
       .faq summary svg { transition: none; }
@@ -597,6 +601,83 @@
         paintShots(next);
       });
     }
+  })();
+</script>
+<script>
+  // Glissement des ancres internes — décélération MAÎTRISÉE (easeOutCubic), zéro build, zéro lib.
+  // Remplace `scroll-behavior: smooth` (vitesse/courbe non maîtrisées, parfois quasi
+  // instantané selon le navigateur) : on anime window.scrollTo en requestAnimationFrame.
+  // Sous prefers-reduced-motion → saut DIRECT (a11y). Interrompu si l'utilisateur reprend la main.
+  (function () {
+    const PAD = 76; // = scroll-padding-top (hauteur de l'en-tête sticky + marge)
+    const reduced = () => {
+      try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; }
+    };
+    const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+
+    const targetY = (hash) => {
+      if (hash === "#" || hash === "") return 0;
+      let el = null;
+      try { el = document.querySelector(hash); } catch (e) { el = null; }
+      if (!el) return null;
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      return Math.max(0, Math.round(top - PAD));
+    };
+    const focusTarget = (hash) => {
+      if (hash === "#" || hash === "") return;
+      let el = null;
+      try { el = document.querySelector(hash); } catch (e) { el = null; }
+      if (!el) return;
+      if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1"); // focusable sans piège tab
+      el.focus({ preventScroll: true }); // le focus ne doit PAS re-scroller (on gère le scroll)
+    };
+
+    let raf = null;
+    const stop = () => {
+      if (raf) { cancelAnimationFrame(raf); raf = null; }
+      window.removeEventListener("wheel", stop, { passive: true });
+      window.removeEventListener("touchstart", stop, { passive: true });
+      window.removeEventListener("keydown", stop, true);
+    };
+    const animate = (y, done) => {
+      stop();
+      const start = window.scrollY;
+      const dist = y - start;
+      if (Math.abs(dist) < 2) { window.scrollTo(0, y); if (done) done(); return; }
+      // Durée proportionnelle à la distance (~0,6 ms/px), PLAFONNÉE à 600–900 ms.
+      const dur = Math.min(900, Math.max(600, Math.abs(dist) * 0.6));
+      const t0 = performance.now();
+      // L'utilisateur reprend la main → on coupe l'animation net.
+      window.addEventListener("wheel", stop, { passive: true });
+      window.addEventListener("touchstart", stop, { passive: true });
+      window.addEventListener("keydown", stop, true);
+      const step = (now) => {
+        const p = Math.min(1, (now - t0) / dur);
+        window.scrollTo(0, Math.round(start + dist * easeOutCubic(p)));
+        if (p < 1) { raf = requestAnimationFrame(step); }
+        else { stop(); if (done) done(); }
+      };
+      raf = requestAnimationFrame(step);
+    };
+
+    document.addEventListener("click", (e) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const t = e.target;
+      const a = t && t.closest ? t.closest('a[href^="#"]') : null;
+      if (!a) return;
+      const hash = a.getAttribute("href");
+      if (hash === null) return;
+      const y = targetY(hash);
+      if (y === null) return; // cible absente : on laisse le comportement par défaut
+      e.preventDefault();
+      // URL : reflète l'ancre (retire le hash pour un retour en haut via href="#").
+      try {
+        if (hash === "#") history.pushState(null, "", location.pathname + location.search);
+        else history.pushState(null, "", hash);
+      } catch (err) { /* file:// ou restrictions : sans blocage */ }
+      if (reduced()) { window.scrollTo(0, y); focusTarget(hash); return; }
+      animate(y, () => focusTarget(hash));
+    });
   })();
 </script>
 </body>

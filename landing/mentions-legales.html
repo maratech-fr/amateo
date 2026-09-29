@@ -62,7 +62,9 @@
       --accent-foreground: oklch(0.19 0.010 75);
     }
     * { box-sizing: border-box; margin: 0; }
-    html { scroll-behavior: smooth; }
+    /* PAS de `scroll-behavior: smooth` : glissement d'ancre piloté en JS (easeOutCubic),
+       comme sur index.html — dupliqué VOLONTAIREMENT (zéro brique partagée). */
+    html { scroll-padding-top: 76px; }
     body {
       background: var(--paper) url("assets/brand/fond.svg") center / cover no-repeat fixed;
       color: var(--ink);
@@ -117,7 +119,7 @@
     footer.site .logo-word { font-size: 16px; }
 
     @media (prefers-reduced-motion: reduce) {
-      html { scroll-behavior: auto; }
+      /* Saut d'ancre direct : le script de glissement teste prefers-reduced-motion. */
       .theme-toggle { transition: none; }
     }
   </style>
@@ -256,6 +258,79 @@
         reflect(next);
       });
     }
+  })();
+</script>
+<script>
+  // Glissement des ancres internes — MÊME script que index.html, dupliqué VOLONTAIREMENT
+  // (zéro build, zéro brique partagée). easeOutCubic en rAF, saut direct sous reduced-motion,
+  // interrompu si l'utilisateur reprend la main. Inerte tant qu'aucun lien `#…` n'existe ici.
+  (function () {
+    const PAD = 76;
+    const reduced = () => {
+      try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; }
+    };
+    const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+
+    const targetY = (hash) => {
+      if (hash === "#" || hash === "") return 0;
+      let el = null;
+      try { el = document.querySelector(hash); } catch (e) { el = null; }
+      if (!el) return null;
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      return Math.max(0, Math.round(top - PAD));
+    };
+    const focusTarget = (hash) => {
+      if (hash === "#" || hash === "") return;
+      let el = null;
+      try { el = document.querySelector(hash); } catch (e) { el = null; }
+      if (!el) return;
+      if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
+      el.focus({ preventScroll: true });
+    };
+
+    let raf = null;
+    const stop = () => {
+      if (raf) { cancelAnimationFrame(raf); raf = null; }
+      window.removeEventListener("wheel", stop, { passive: true });
+      window.removeEventListener("touchstart", stop, { passive: true });
+      window.removeEventListener("keydown", stop, true);
+    };
+    const animate = (y, done) => {
+      stop();
+      const start = window.scrollY;
+      const dist = y - start;
+      if (Math.abs(dist) < 2) { window.scrollTo(0, y); if (done) done(); return; }
+      const dur = Math.min(900, Math.max(600, Math.abs(dist) * 0.6));
+      const t0 = performance.now();
+      window.addEventListener("wheel", stop, { passive: true });
+      window.addEventListener("touchstart", stop, { passive: true });
+      window.addEventListener("keydown", stop, true);
+      const step = (now) => {
+        const p = Math.min(1, (now - t0) / dur);
+        window.scrollTo(0, Math.round(start + dist * easeOutCubic(p)));
+        if (p < 1) { raf = requestAnimationFrame(step); }
+        else { stop(); if (done) done(); }
+      };
+      raf = requestAnimationFrame(step);
+    };
+
+    document.addEventListener("click", (e) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const t = e.target;
+      const a = t && t.closest ? t.closest('a[href^="#"]') : null;
+      if (!a) return;
+      const hash = a.getAttribute("href");
+      if (hash === null) return;
+      const y = targetY(hash);
+      if (y === null) return;
+      e.preventDefault();
+      try {
+        if (hash === "#") history.pushState(null, "", location.pathname + location.search);
+        else history.pushState(null, "", hash);
+      } catch (err) { /* file:// ou restrictions : sans blocage */ }
+      if (reduced()) { window.scrollTo(0, y); focusTarget(hash); return; }
+      animate(y, () => focusTarget(hash));
+    });
   })();
 </script>
 </body>
