@@ -1,6 +1,7 @@
 # Documentation technique du flux de génération de planning
 
-Last verified @ 2026-09-29 (P4-271 : `CONTRACT_VERSION` **2.24 → 2.26** — `slotRotations` retiré du
+Last verified @ 2026-09-29 (P4-272 ③ : `CONTRACT_VERSION` **2.25 → 2.26** — bloc `clubRules` ajouté
+au payload `/place-matches` ; antérieur P4-271 : **2.24 → 2.25** — `slotRotations` retiré du
 payload). Re-confronté contre le code : `CONTRACT_VERSION` = `'2.26'`
 (`ScheduleConstraintBuilder.php:63` ⇄ `engine/CONTRACT_VERSION`) ✓ ; le TTL du verrou
 (`GenerateScheduleHandler.php:62` `LOCK_TTL_MARGIN_SECONDS = 60`, ligne 117

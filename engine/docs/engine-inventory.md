@@ -333,12 +333,13 @@ Contrat **2.26** (le MÊME que `/generate` — un seul contrat pour les trois en
 - **`MatchPlacementOutputSchema`** : `status`, `placements: list[MatchPlacementSchema]`
   (`matchId`, `venueId`, `kickoff`), **`unplaced: list[UnplacedMatchSchema]`** (`matchId`,
   `reason`, `message` — le non-plaçable sort NOMMÉ, c'est le produit ; `reason` est un `str` libre,
-  pas un `Literal`, cinq valeurs en pratique — `no_access_window`, `no_league_intersection`,
-  `venue_unavailable`, `venue_full`, `not_selected` (`REASON_MESSAGES`, `match_placement.py`) —
-  les deux dernières tranchées **post-solve** sur l'occupation finale : `venue_full` = plus aucun
-  créneau licite libre à la date du match (gymnase réellement saturé), `not_selected` = un
-  créneau licite restait libre mais le solve ne l'a pas retenu dans son budget (P4-240,
-  `_remaining_reason`) — « relancez le placement »), `diagnostics`
+  pas un `Literal`, six valeurs en pratique — `no_access_window`, `no_league_intersection`,
+  `club_rule_no_slot`, `venue_unavailable`, `venue_full`, `not_selected` (`REASON_MESSAGES`,
+  `match_placement.py`) — `club_rule_no_slot` (P4-272 ③) marque un domaine vidé par les seules
+  règles CLUB HARD (jour/fenêtre de coup d'envoi) ; les deux dernières tranchées **post-solve** sur
+  l'occupation finale : `venue_full` = plus aucun créneau licite libre à la date du match (gymnase
+  réellement saturé), `not_selected` = un créneau licite restait libre mais le solve ne l'a pas
+  retenu dans son budget (P4-240, `_remaining_reason`) — « relancez le placement »), `diagnostics`
   (mêmes `DiagnosticSchema` que le solve hebdo), `metrics`.
 
 ### ScheduleOutputSchema (`engine/app/schemas/output_schema.py`)

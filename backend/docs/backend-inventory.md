@@ -3,13 +3,12 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-09-29 (`documentation-update`, P5-24 PR-1 — export PDF, le pied de marque
-`App\Service\PdfGenerator::buildFooterTemplate()` + le nouveau `App\Service\BrandAssets` ; PR-2 —
-signature de marque des e-mails, `App\EventListener\EmailSignatureListener` +
-`BrandAssets::emailLogoPngBytes()` + `App\Service\ProductIdentity::tagline()`/`siteUrl()` recalés
-contre le code ✓). Reste du fichier non rebalayé cette passe (portée = ces deux entrées) ;
-historique des passes complètes : `git log -p --follow` ce fichier — un stamp REMPLACE, il ne
-s'empile pas.
+Last verified @ 2026-09-29 (`documentation-update`, P4-272 ③ — règles de match du club : routes
+`/api/match_constraints` (CRUD, `MatchConstraintResource`/`Input`/`StateProcessor`/`StateProvider`)
+et `/api/match-constraints/coherence` (`ClubRuleCoherenceController`, GET) recalées contre le code
+✓, `CONTRACT_VERSION` **2.26**). Reste du fichier non rebalayé cette passe (portée = ces deux
+entrées) ; historique des passes complètes : `git log -p --follow` ce fichier — un stamp REMPLACE,
+il ne s'empile pas.
 
 ---
 
@@ -593,6 +592,8 @@ Détail : [`module-matchs.md`](../../specs/courantes/module-matchs.md). Placemen
 |-------|---------|------------|-------------|
 | `/api/league-match-windows` | GET | `LeagueMatchWindowsController` | Fenêtres de coup d'envoi de la ligue effective du club — sert la COPIE club `ClubLeagueWindow` (P4-272 ①, éditable via `/api/club_league_windows`), plus jamais le catalogue global directement. Porte aussi `resolvedTeamWindows` (jointure équipe→fenêtres, même moteur que le solveur et le diagnostic). |
 | `/api/club_league_windows` | CRUD | API Platform (5-fichiers) | La copie club éditable de l'enveloppe ligue (écran Contraintes, section Ligue) — `ClubLeagueWindowResource`/`ClubLeagueWindowInput`, provider/processor dédiés. Réservé au gestionnaire ; badge `added`/`modified` calculé SERVEUR par clé naturelle vs le seed de la ligue effective. |
+| `/api/match_constraints` | CRUD | API Platform (5-fichiers) | P4-272 ③ — les règles de match du club (écran Contraintes, section Club) — `MatchConstraintResource`/`MatchConstraintInput`, `MatchConstraintStateProcessor`/`Provider` dédiés. Scope CLUB seul saisi (TEAM/COACH réservés à ④/⑤) ; refuse (422) une règle sans AUCUNE borne de coup d'envoi. Réservé au gestionnaire ; reçues VERBATIM dans le bloc `clubRules` du payload `/place-matches` (`CONTRACT_VERSION` 2.26). |
+| `/api/match-constraints/coherence` | GET | `ClubRuleCoherenceController` | P4-272 ③ (ajout fondateur) — l'alerte de cohérence entre les règles CLUB et les créneaux idéaux (`TeamMatchHabit`), calculée en LECTURE SEULE par `ClubRuleCoherenceChecker` (rien stocké, rien bloqué) ; deux projections `byRule`/`byHabit` du même croisement, consommées par la section Club de l'écran Contraintes et l'écran Semaine type. |
 | `/api/league-window-suggestions` | GET | `LeagueWindowSuggestionsController` | P4-272 ② — la tendance dominante des plages de match de l'instance fédérale du demandeur (comité/ligue/fédération selon le niveau), plus repli sur le catalogue fédéral de SA ligue, masquée des combinaisons déjà identiques à sa copie. Calcul cross-tenant délégué à la fonction SQL `SECURITY DEFINER league_window_suggestions` (`docs/security/rls.md` § SECURITY DEFINER) via `LeagueWindowSuggestionService`. Réservé au gestionnaire (`ManagementAccessGuard`). |
 | `/api/league-window-suggestions/apply` | POST | `LeagueWindowSuggestionsController` | Applique une ou plusieurs combinaisons suggérées — le serveur RECALCULE la suggestion et REMPLACE la copie club correspondante ; aucune plage du corps client n'est jamais écrite telle quelle. Réservé au gestionnaire. |
 | `/api/ffbb/engagements` | GET | `FfbbEngagementsController` | Les engagements du club (compétitions/poules) de la saison COURANTE lus à la demande sur la FFBB (`FfbbEngagementReader`, aucun cache/cron), chacun avec une suggestion de pré-remplissage et sa source (`suggestionSource: "pairing"\|"canonical"\|"fbi"\|null`) : une `Competition` déjà appariée à cet id FFBB (`pairing`), sinon un match strict sur le nom canonique normalisé (`canonical`), sinon le pont de signature `App\Service\Basketball\FbiDivisionSignature` sur le code de division FBI d'une compétition xlsx non appariée (`fbi`, une seule équipe candidate sinon rien), sinon `null`. SEC-07. 502 si la FFBB est injoignable. |

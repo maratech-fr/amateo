@@ -1,6 +1,7 @@
 # API géo — routes externes consommées
 
-Last verified @ 2026-09-29 (P4-271 : `CONTRACT_VERSION` **2.24 → 2.26**, `slotRotations` retiré — re-confronté au code :
+Last verified @ 2026-09-29 (P4-272 ③ : `CONTRACT_VERSION` **2.25 → 2.26**, bloc `clubRules` ajouté
+au payload `/place-matches` ; antérieur P4-271 : **2.24 → 2.25**, `slotRotations` retiré — re-confronté au code :
 `IgnRoutingClient::travelMinutesBatch` ignore toujours `$concurrency` (sériel, pacé 1/s),
 `MAX_RETRY_AFTER_SECONDS = 5.0`, `BATCH_BUDGET_SECONDS = 30.0`,
 `VenueTravelTimeAutofillService::MAX_AUTOFILL_PAIRS = 120`, `ClubTravelCache` reste TENANT RLS

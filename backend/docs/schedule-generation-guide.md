@@ -1,6 +1,7 @@
 # Guide de génération de planning — Amateo
 
-Last verified @ 2026-09-29 (P4-271 : `CONTRACT_VERSION` **2.24 → 2.26** — `slotRotations` retiré du
+Last verified @ 2026-09-29 (P4-272 ③ : `CONTRACT_VERSION` **2.25 → 2.26** — bloc `clubRules` ajouté
+au payload `/place-matches` ; antérieur P4-271 : **2.24 → 2.25** — `slotRotations` retiré du
 payload, semaine type A/B = tag sur le créneau idéal). Re-confronté contre le code : les 11 services de `docker-compose.yml` portent
 toujours `restart: unless-stopped` (`messenger-worker` compris, §6 Cas 1) ✓ ; le cycle des 5 statuts
 (§5, `App\Enum\ScheduleStatus` : DRAFT/PENDING/GENERATING/COMPLETED/FAILED) ✓ ; la route

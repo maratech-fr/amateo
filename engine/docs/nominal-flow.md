@@ -1,6 +1,7 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-09-29 (P4-271 : contrat **2.24 → 2.26** — `slotRotations`/rotations retirées, semaine type A/B = tag sur le créneau idéal, non transmis au moteur). Re-confronté au
+Last verified @ 2026-09-29 (P4-272 ③ : contrat **2.25 → 2.26** — bloc `clubRules` ajouté au payload
+`/place-matches` ; antérieur P4-271 : **2.24 → 2.25** — `slotRotations`/rotations retirées, semaine type A/B = tag sur le créneau idéal, non transmis au moteur). Re-confronté au
 code : `engine/CONTRACT_VERSION` = `2.26` ✓ ; `DiagnosticSchema.id` toujours requis, sans défaut,
 `app/schemas/output_schema.py:61-62` ✓ ; le commentaire mort `FACILITY_CAPACITY` toujours à
 `app/main.py:447-450`, une seule occurrence, non-code ✓ ; paliers de budget adaptatif
