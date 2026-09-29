@@ -12,6 +12,9 @@ use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
 use App\Entity\ConstraintPeriodOverride;
 use App\Entity\ImplicitRuleSetting;
+use App\Entity\OpponentDirectoryEntry;
+use App\Entity\OpponentVenueLink;
+use App\Entity\OpponentVenueSuggestion;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
@@ -47,6 +50,9 @@ use App\Enum\ImplicitRuleKey;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\MatchWeek;
+use App\Enum\OpponentLocationPrecision;
+use App\Enum\OpponentVenueLinkSource;
+use App\Enum\OpponentVenueSuggestionSource;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
@@ -265,6 +271,17 @@ final class BcclSeeder
         $senior = $fetchCat('Senior');
         $veteran = $fetchCat('Vétéran');
         $loisir = $fetchCat('Loisir');
+
+        // Durées de match + échauffement par catégorie — relevées de la base réelle du club
+        // (SELECT sport_category, 2026-09-29). Réappliquées à CHAQUE run (setter idempotent) : les
+        // entités renvoyées par $fetchCat sont managées, qu'elles viennent d'être créées ou relues.
+        // NULL = « suit le défaut de famille » (MatchDurationResolver), jamais 0. L'échauffement de
+        // U15/U21 est explicitement remis à NULL : la réapplication porte TOUT l'état déclaré (une
+        // dérive manuelle sur l'échauffement est ramenée au réel, pas seulement sur la durée).
+        $senior->setMatchMinutes(120)->setWarmupMinutes(45);
+        $u15->setMatchMinutes(105)->setWarmupMinutes(null);
+        $u21->setMatchMinutes(120)->setWarmupMinutes(null);
+        $manager->flush();
 
         // ============================================================
         // SECTION 1 — PRIORITY TIERS
@@ -1364,6 +1381,18 @@ final class BcclSeeder
         }
 
         // ============================================================
+        // SECTION 13ter — AMORÇAGE DES ADVERSAIRES (profils dev/prod)
+        // ============================================================
+        // Les trois tables de référence du module « adversaires » (localisations partagées,
+        // appariements libellé→gymnase du club, suggestions partagées), depuis les données
+        // FÉDÉRALES PUBLIQUES relevées de la base réelle ({@see BcclOpponentData}). Le ré-import
+        // des matchs en prod retrouve ses localisations sans re-résoudre. Démo/charge sans (drapeau
+        // à false). Aucune de ces écritures ne touche une ressource écoutée par la péremption.
+        if ($profile->seedOpponentData) {
+            $this->seedOpponentData($manager, $clubId);
+        }
+
+        // ============================================================
         // SECTION 14 — LES VERSIONS TRANSCRITES NAISSENT FRAÎCHES
         // ============================================================
         // Le seed crée les versions transcrites (sections 11-12) PUIS continue d'insérer
@@ -1388,10 +1417,11 @@ final class BcclSeeder
      * Répartition WE des matchs (données fondateur, xlsx importé le 2026-09-02) — l'état terrain du
      * week-end du club, en trois entités du module matchs (toutes saison-scopées, hors plan) :
      *
-     *  1. 4 {@see VenueMatchWindow} — les fenêtres d'accès match des gymnases : Matéo sam 13:00→22:30
-     *     et dim 09:00→18:30, Armand sam 10:45→21:00, Debarros sam 13:00→18:30. Cette table n'a
-     *     AUCUNE unicité DB : idempotence par PURGE des fenêtres du club/saison puis recréation
-     *     (patron des créneaux d'entraînement).
+     *  1. 10 {@see VenueMatchWindow} — les fenêtres d'accès match des gymnases (relevées de la base
+     *     réelle du club le 2026-09-29, en co-construction fondateur) : Annexe sam, Armand sam,
+     *     Debarros jeu + sam, JDR ven + sam + dim, Matéo ven + sam + dim. Cette table n'a AUCUNE
+     *     unicité DB : idempotence par PURGE des fenêtres du club/saison puis recréation (patron
+     *     des créneaux d'entraînement).
      *  2. 32 {@see TeamMatchHabit} — le créneau idéal de match (jour + heure de coup d'envoi +
      *     gymnase + semaine A/B) de chaque équipe qui reçoit le WE. Find-or-create sur la clé
      *     unique (club, saison, équipe) ; heure + gymnase + semaine réappliqués au re-run. Une
@@ -1412,13 +1442,20 @@ final class BcclSeeder
         }
         $manager->flush();
 
-        // [gymnase, jour ISO, début, fin] — horaires exacts, aucun arrondi.
+        // [gymnase, jour ISO, début, fin] — horaires exacts, aucun arrondi. Relevé de la base réelle
+        // du club le 2026-09-29 (SELECT venue_match_window, 10 fenêtres — co-construction fondateur).
         /** @var list<array{string, int, string, string}> $windows */
         $windows = [
-            ['vMateo', 6, '13:00', '22:30'],
-            ['vMateo', 7, '09:00', '18:30'],
+            ['vDebarrosAnnexe', 6, '12:00', '22:00'],
             ['vArmand', 6, '10:45', '21:00'],
-            ['vDebarros', 6, '13:00', '18:30'],
+            ['vDebarros', 4, '20:30', '22:00'],
+            ['vDebarros', 6, '12:00', '22:00'],
+            ['vJdr', 5, '20:00', '22:00'],
+            ['vJdr', 6, '10:30', '22:00'],
+            ['vJdr', 7, '09:00', '20:00'],
+            ['vMateo', 5, '20:30', '22:00'],
+            ['vMateo', 6, '11:00', '22:00'],
+            ['vMateo', 7, '09:00', '18:30'],
         ];
         foreach ($windows as [$venueVar, $day, $start, $end]) {
             $window = new VenueMatchWindow;
@@ -1476,6 +1513,102 @@ final class BcclSeeder
             $habit->setWeek($week);
         }
         $manager->flush();
+    }
+
+    /**
+     * Amorçage du module « adversaires » depuis {@see BcclOpponentData} (données FÉDÉRALES
+     * PUBLIQUES relevées de la base réelle du club), en trois tables :
+     *
+     *  1. opponent_directory (GLOBALE, hors tenant) — 75 localisations d'organismes adverses.
+     *     Écriture par l'upsert NATIF `ON CONFLICT (ffbb_organisme_code)` du repository (idempotent,
+     *     ne DÉGRADE jamais une salle VENUE en simple ville, préserve un logo déjà connu).
+     *  2. opponent_venue_link (tenant, club-scopé SANS saison) — 101 appariements libellé→gymnase du
+     *     club. Find-or-create sur la clé unique (club, code organisme, libellé normalisé). La
+     *     `source` (MANUAL/AUTO) est PRÉSERVÉE au re-run : un lien MANUAL n'est JAMAIS écrasé (le
+     *     gestionnaire l'a posé à la main), un lien AUTO est réactualisé sur ses champs fédéraux.
+     *  3. opponent_venue_suggestion (GLOBALE, hors tenant) — 15 suggestions partagées, par les
+     *     upserts NATIFS du repository (concurrence sur une table partagée). Le COMPTE de choix
+     *     n'est PAS fabriqué (upsert à 0) : « un COMPTE, jamais un QUI », un prod frais n'a pas
+     *     encore de choix. Aucun octet de logo (seul le `logoId` fédéral est porté).
+     */
+    private function seedOpponentData(EntityManagerInterface $manager, string $clubId): void
+    {
+        // 1. Localisations partagées — upsert natif idempotent (table GLOBALE, hors tenant).
+        $directoryRepo = $manager->getRepository(OpponentDirectoryEntry::class);
+        foreach (BcclOpponentData::directoryEntries() as $entry) {
+            $directoryRepo->upsert(
+                $entry['code'],
+                OpponentLocationPrecision::from($entry['precision']),
+                [
+                    'name' => $entry['name'],
+                    'city' => $entry['city'],
+                    'postalCode' => $entry['postalCode'],
+                    'latitude' => $entry['latitude'],
+                    'longitude' => $entry['longitude'],
+                    'venueLabel' => $entry['venueLabel'],
+                    'logoId' => $entry['logoId'],
+                ],
+            );
+        }
+
+        // 2. Appariements libellé→gymnase du club — find-or-create, source préservée, MANUAL jamais écrasé.
+        $linkRepo = $manager->getRepository(OpponentVenueLink::class);
+        foreach (BcclOpponentData::venueLinks() as $row) {
+            $existing = $linkRepo->findOneBy([
+                'clubId' => $clubId,
+                'opponentOrganismeCode' => $row['code'],
+                'fbiLabelNorm' => $row['fbiLabelNorm'],
+            ]);
+            // Un lien MANUAL déjà en base est souverain : on n'y touche pas (le gestionnaire l'a posé).
+            if ($existing instanceof OpponentVenueLink && OpponentVenueLinkSource::MANUAL === $existing->getSource()) {
+                continue;
+            }
+            $link = $existing instanceof OpponentVenueLink ? $existing : new OpponentVenueLink;
+            if (!$existing instanceof OpponentVenueLink) {
+                $link->setClubId($clubId);
+                $link->setOpponentOrganismeCode($row['code']);
+                $link->setFbiLabelNorm($row['fbiLabelNorm']);
+                // La source du seed ne s'applique qu'à la CRÉATION ; au re-run elle est préservée.
+                $link->setSource(OpponentVenueLinkSource::from($row['source']));
+                $manager->persist($link);
+            }
+            $link->setFbiLabel($row['fbiLabel']);
+            $link->setVenueExternalRef($row['venueExternalRef']);
+            $link->setVenueLabel($row['venueLabel']);
+            $link->setLatitude($row['latitude']);
+            $link->setLongitude($row['longitude']);
+            $link->setAddress($row['address']);
+            $link->setPostalCode($row['postalCode']);
+            $link->setCity($row['city']);
+        }
+        $manager->flush();
+
+        // 3. Suggestions partagées — upserts natifs (table GLOBALE, hors tenant, concurrente).
+        $suggestionRepo = $manager->getRepository(OpponentVenueSuggestion::class);
+        foreach (BcclOpponentData::venueSuggestions() as $suggestion) {
+            $ref = $suggestion['venueExternalRef'];
+            if (OpponentVenueSuggestionSource::MANUAL->value === $suggestion['source'] && null !== $ref) {
+                $suggestionRepo->upsertManual(
+                    $suggestion['code'],
+                    $ref,
+                    $suggestion['venueLabel'],
+                    $suggestion['city'],
+                    $suggestion['postalCode'],
+                    $suggestion['latitude'],
+                    $suggestion['longitude'],
+                );
+
+                continue;
+            }
+            $suggestionRepo->upsertFromApi(
+                $suggestion['code'],
+                $suggestion['venueLabel'],
+                $suggestion['city'],
+                $suggestion['postalCode'],
+                $suggestion['latitude'],
+                $suggestion['longitude'],
+            );
+        }
     }
 
     /**
