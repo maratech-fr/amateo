@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Api;
 
 use App\Entity\Club;
+use App\Entity\ClubTravelCache;
 use App\Entity\ClubUser;
 use App\Entity\OpponentVenueLink;
 use App\Entity\User;
@@ -91,6 +92,63 @@ final class ClubSiegeTest extends WebTestCase
         self::assertSame('166900999', $survivor->getVenueExternalRef(), 'le gymnase épinglé est intact');
     }
 
+    /**
+     * P4-249 — quand le siège DÉMÉNAGE, l'ancienne origine devient une clé morte du cache
+     * directionnel `club_travel_cache` (plus jamais lue) : elle est PURGÉE (tous profils),
+     * bornée au club. Une autre origine du même club, et la même origine chez un AUTRE club,
+     * restent intactes.
+     */
+    public function testMovingTheSiegePurgesTheOldOriginCacheButSparesOtherOriginsAndClubs(): void
+    {
+        // Le club a un siège AILLEURS (40/3) et un cache DEPUIS ce siège (deux profils), plus une
+        // ligne depuis une AUTRE origine (41/3).
+        $this->scopeGucToClub($this->club->getId());
+        $this->club->setLatitude(40.0)->setLongitude(3.0);
+        $this->em->flush();
+        $this->seedCacheRow($this->club->getId(), 'car', '40.00000', '3.00000', '45.50000', '4.50000', 12);
+        $this->seedCacheRow($this->club->getId(), 'pedestrian', '40.00000', '3.00000', '45.50000', '4.50000', 30);
+        $this->seedCacheRow($this->club->getId(), 'car', '41.00000', '3.00000', '45.50000', '4.50000', 99);
+
+        // Un AUTRE club a une ligne depuis la MÊME vieille origine (40/3) — jamais touchée.
+        $otherClub = $this->makeOtherClub();
+        $this->scopeGucToClub($otherClub->getId());
+        $this->seedCacheRow($otherClub->getId(), 'car', '40.00000', '3.00000', '45.50000', '4.50000', 77);
+
+        // Le siège DÉMÉNAGE (le stub BAN rend 45.75/4.85, ≠ 40/3).
+        $this->client->loginUser($this->user);
+        $this->client->request('PATCH', '/api/club/siege', [], [], [
+            'HTTP_X-Club-Id' => $this->club->getId(),
+            'CONTENT_TYPE' => 'application/json',
+        ], json_encode(['address' => '5 rue Emile Duniere Villeurbanne'], \JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+
+        self::assertSame(0, $this->countRows($this->club->getId(), '40.00000', '3.00000'), 'l\'ancienne origine du club est purgée, tous profils');
+        self::assertSame(1, $this->countRows($this->club->getId(), '41.00000', '3.00000'), 'une autre origine du même club est intacte');
+        self::assertSame(1, $this->countRows($otherClub->getId(), '40.00000', '3.00000'), 'un autre club n\'est jamais purgé (borne clubId)');
+    }
+
+    /**
+     * P4-249 — re-géocoder la MÊME adresse ne fait pas bouger le siège (coordonnées inchangées à
+     * la granularité du cache) : aucune purge, le cache existant survit intégralement.
+     */
+    public function testReGeocodingTheSameAddressPurgesNothing(): void
+    {
+        // Le siège est DÉJÀ aux coordonnées que la BAN rendra (45.75 / 4.85).
+        $this->scopeGucToClub($this->club->getId());
+        $this->club->setLatitude(45.75)->setLongitude(4.85);
+        $this->em->flush();
+        $this->seedCacheRow($this->club->getId(), 'car', '45.75000', '4.85000', '46.00000', '5.00000', 21);
+
+        $this->client->loginUser($this->user);
+        $this->client->request('PATCH', '/api/club/siege', [], [], [
+            'HTTP_X-Club-Id' => $this->club->getId(),
+            'CONTENT_TYPE' => 'application/json',
+        ], json_encode(['address' => '5 rue Emile Duniere Villeurbanne'], \JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+
+        self::assertSame(1, $this->countRows($this->club->getId(), '45.75000', '4.85000'), 're-géocoder la même adresse ne purge aucun trajet');
+    }
+
     public function testAddressNotFoundIs422(): void
     {
         $this->client->loginUser($this->user);
@@ -138,5 +196,48 @@ final class ClubSiegeTest extends WebTestCase
         $cu->setIsActive(true);
         $this->em->persist($cu);
         $this->em->flush();
+    }
+
+    private function makeOtherClub(): Club
+    {
+        $uid = uniqid('other', true);
+        $this->clearGuc(); // insertion d'un club : hors scope tenant (comme le club principal en setUp)
+        $other = new Club;
+        $other->setName('Autre Club');
+        $other->setSlug('other-' . $uid);
+        $other->setTimezone('Europe/Paris');
+        $other->setLocale('fr');
+        $other->setOnboardingCompleted(true);
+        $other->setFfbbClubCode('OTH' . strtoupper(substr(md5($uid), 0, 10)));
+        $this->em->persist($other);
+        $this->em->flush();
+
+        return $other;
+    }
+
+    /** Une ligne de cache de trajet, coordonnées déjà sous forme canonique `%.5f`. GUC déjà scopé au club. */
+    private function seedCacheRow(string $clubId, string $profile, string $originLat, string $originLon, string $destLat, string $destLon, int $minutes): void
+    {
+        $row = (new ClubTravelCache)
+            ->setClubId($clubId)
+            ->setProfile($profile)
+            ->setOriginLat($originLat)
+            ->setOriginLon($originLon)
+            ->setDestLat($destLat)
+            ->setDestLon($destLon)
+            ->setMinutes($minutes);
+        $this->em->persist($row);
+        $this->em->flush();
+    }
+
+    private function countRows(string $clubId, string $originLat, string $originLon): int
+    {
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+
+        return (int) $this->em->getConnection()->fetchOne(
+            'SELECT COUNT(*) FROM club_travel_cache WHERE club_id = :c AND origin_lat = :lat AND origin_lon = :lon',
+            ['c' => $clubId, 'lat' => $originLat, 'lon' => $originLon],
+        );
     }
 }

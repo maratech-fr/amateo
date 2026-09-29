@@ -53,4 +53,28 @@ final class ClubTravelCacheRepository extends ServiceEntityRepository
             'originLon' => $originLon,
         ]);
     }
+
+    /**
+     * P4-249 — purge every cached row that fans out FROM one origin, ALL profiles, for one club.
+     * When the club siège moves, the old origin becomes a dead key no read will ever hit again
+     * (the cache is directional): its rows are pruned here so they never accumulate.
+     *
+     * Coordinates are matched in the canonical 5-decimal form shared with {@see TravelTimeCache}
+     * — the exact string the rows were written with (`%.5f`). The `clubId` bound is EXPLICIT (RLS
+     * doubles it in base); no profile filter — a moved siège invalidates every profile's fan-out
+     * from the old point. Returns the number of rows removed.
+     */
+    public function deleteAllFromOrigin(string $clubId, float $originLat, float $originLon): int
+    {
+        return (int) $this->getEntityManager()->createQueryBuilder()
+            ->delete(ClubTravelCache::class, 'c')
+            ->where('c.clubId = :clubId')
+            ->andWhere('c.originLat = :lat')
+            ->andWhere('c.originLon = :lon')
+            ->setParameter('clubId', $clubId)
+            ->setParameter('lat', \sprintf('%.5f', $originLat))
+            ->setParameter('lon', \sprintf('%.5f', $originLon))
+            ->getQuery()
+            ->execute();
+    }
 }
