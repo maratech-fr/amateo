@@ -23,6 +23,10 @@ class MatchConstraintInput
     #[Groups(['write'])]
     public ?string $scope = ConstraintScope::CLUB->value;
 
+    // Uuid tolère null (borne format seulement) : une chaîne non-UUID → 422 lisible
+    // plutôt qu'une 500 à l'écriture (colonne guid). La NULLITÉ pour le scope CLUB est
+    // exigée par le processeur (refuse), pas ici.
+    #[Assert\Uuid]
     #[Groups(['write'])]
     public ?string $scopeTargetId = null;
 
@@ -48,6 +52,7 @@ class MatchConstraintInput
     #[Groups(['write'])]
     public ?string $kickoffMax = null;
 
+    #[Assert\Uuid]
     #[Groups(['write'])]
     public ?string $venueId = null;
 }

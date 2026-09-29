@@ -422,6 +422,47 @@ final class MatchTenantIsolationTest extends WebTestCase
         self::assertCount(0, $this->responseData()['member'] ?? ['sentinel']);
     }
 
+    /**
+     * Durcissement (revue sécurité) : en ③ seul le scope CLUB est éditable, et une
+     * règle de club ne porte NI cible (scopeTargetId) NI gymnase (venueId). Un scope
+     * TEAM/COACH est refusé (422 nommé, jamais une règle inerte) ; une cible/gymnase
+     * non nul est refusé (422) ; et une valeur non-UUID rend un 422 LISIBLE (garde
+     * Uuid de l'input), jamais une 500 à l'écriture (colonne guid).
+     */
+    public function testMatchConstraintRestrictsScopeToClubAndRejectsNonNullTargets(): void
+    {
+        [$clubA, $userA] = $this->createClubUser('a');
+        $headers = $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'];
+        $uuid = '11111111-1111-4111-8111-111111111111';
+        $base = ['ruleType' => 'HARD', 'daysOfWeek' => [6], 'kickoffMax' => '21:00'];
+
+        // Scope TEAM / COACH → 422 (réservés ④/⑤), refus nommé via le processeur.
+        foreach (['TEAM', 'COACH'] as $scope) {
+            $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode(['scope' => $scope] + $base, \JSON_THROW_ON_ERROR));
+            self::assertResponseStatusCodeSame(422, \sprintf('le scope %s doit être refusé en ③', $scope));
+        }
+
+        // scopeTargetId non-UUID → 422 LISIBLE (Uuid de l'input), jamais 500.
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode(['scopeTargetId' => 'pas-un-uuid'] + $base, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422, 'un scopeTargetId non-UUID doit rendre un 422, pas une 500');
+
+        // scopeTargetId UUID valide mais NON NUL (scope CLUB) → 422 (une règle de club ne cible personne).
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode(['scopeTargetId' => $uuid] + $base, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422, 'une règle de club ne porte pas de cible');
+
+        // venueId non-UUID → 422 LISIBLE, jamais 500.
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode(['venueId' => 'pas-un-uuid'] + $base, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422, 'un venueId non-UUID doit rendre un 422, pas une 500');
+
+        // venueId UUID valide mais NON NUL (scope CLUB) → 422.
+        $this->client->request('POST', '/api/match_constraints', [], [], $headers, json_encode(['venueId' => $uuid] + $base, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422, 'une règle de club ne porte pas de gymnase');
+
+        // Aucune de ces tentatives n'a écrit en base.
+        $this->scopeGucToClub($clubA->getId());
+        self::assertCount(0, $this->em->getRepository(MatchConstraint::class)->findBy(['clubId' => $clubA->getId()]));
+    }
+
     public function testTeamLinkIsSymmetricUniqueAndTenantScoped(): void
     {
         [$clubA, $userA, $seasonA] = $this->createClubUser('a');

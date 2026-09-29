@@ -57,8 +57,25 @@ class MatchConstraintStateProcessor extends AbstractStateProcessor
 
     private function applyInput(MatchConstraint $entity, MatchConstraintInput $input): void
     {
-        $entity->setScope(ConstraintScope::from($input->scope ?? ConstraintScope::CLUB->value));
-        $entity->setScopeTargetId('' === $input->scopeTargetId ? null : $input->scopeTargetId);
+        // ③ ne saisit QUE des règles de club : le scope TEAM/COACH (et FACILITY) est
+        // refusé tant que ④/⑤ ne sont pas livrés — un scope non honoré par le solveur
+        // laisserait une règle inerte et illisible. Refus NOMMÉ (jamais muet).
+        $scope = ConstraintScope::from($input->scope ?? ConstraintScope::CLUB->value);
+        if (ConstraintScope::CLUB !== $scope) {
+            $this->refuse('Seules les règles de club sont éditables pour l\'instant (une règle par équipe ou par entraîneur viendra plus tard).');
+        }
+        $entity->setScope($scope);
+        // Une règle de club ne vise ni une équipe/un entraîneur (scopeTargetId) ni un
+        // gymnase (venueId) : ces cibles sont réservées aux règles à venir. Une valeur
+        // non nulle est donc refusée ici (le format UUID, lui, est gardé par l'input).
+        if (null !== $input->scopeTargetId && '' !== $input->scopeTargetId) {
+            $this->refuse('Une règle de club ne vise pas une équipe ou un entraîneur précis.');
+        }
+        $entity->setScopeTargetId(null);
+        if (null !== $input->venueId && '' !== $input->venueId) {
+            $this->refuse('Une règle de club ne vise pas un gymnase précis.');
+        }
+        $entity->setVenueId(null);
         if (null !== $input->ruleType) {
             $entity->setRuleType(ConstraintRuleType::from($input->ruleType));
         }
@@ -66,7 +83,6 @@ class MatchConstraintStateProcessor extends AbstractStateProcessor
         $entity->setDaysOfWeek(array_map(intval(...), $input->daysOfWeek ?? []));
         $entity->setKickoffMin($this->parseTime($input->kickoffMin));
         $entity->setKickoffMax($this->parseTime($input->kickoffMax));
-        $entity->setVenueId('' === $input->venueId ? null : $input->venueId);
 
         $min = $entity->getKickoffMin();
         $max = $entity->getKickoffMax();
