@@ -52,6 +52,21 @@ describe("ConflictLine (extrait du radar, avec slot trailing)", () => {
     ).toBeInTheDocument();
   });
 
+  it("CLUB_RULE_VIOLATION : titre « Hors règle du club » et phrase nommant la règle violée (P4-272 ③)", () => {
+    const clubRule: Conflict = {
+      type: "CLUB_RULE_VIOLATION",
+      severity: 3,
+      resolution: null,
+      fingerprint: "fp-club",
+      fixture: { fixtureId: "fx-7", teamId: "team-1", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "21:30", windowStart: "", windowEnd: "" },
+      rules: [{ daysOfWeek: [6], kickoffMin: null, kickoffMax: "21:00" }],
+    };
+    renderLine({ conflict: clubRule });
+    expect(screen.getByText("Hors règle du club")).toBeInTheDocument();
+    expect(screen.getByText(/règle : « pas après 21h »/)).toBeInTheDocument();
+    expect(screen.getByText(/pose libre, à surveiller/)).toBeInTheDocument();
+  });
+
   it("ACCESS_WINDOW_LOST : sans aucun accès match sur le gymnase → « (aucun accès match ce jour-là) »", () => {
     const access: Conflict = {
       type: "ACCESS_WINDOW_LOST",

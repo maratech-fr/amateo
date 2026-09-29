@@ -22,6 +22,8 @@ vi.mock("./api", () => ({
   getFixtures: () => serve("fixtures"),
   getTeamMatchHabits: () => serve("habits"),
   getTeamLinks: () => serve("links"),
+  // P4-272 ③ — l'éditeur de créneaux idéaux lit l'alerte de cohérence (calculée serveur).
+  getMatchConstraintCoherence: () => Promise.resolve({ byRule: [], byHabit: [] }),
   createTeamMatchHabit: vi.fn(),
   updateTeamMatchHabit: vi.fn(),
   deleteTeamMatchHabit: vi.fn(),

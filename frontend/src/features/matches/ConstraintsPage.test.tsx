@@ -4,16 +4,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
 
-import type { ClubLeagueWindow } from "./api";
+import type { ClubLeagueWindow, MatchConstraint, MatchConstraintCoherence } from "./api";
 import { ConstraintsPage } from "./ConstraintsPage";
 
 const createWindow = vi.fn();
 const updateWindow = vi.fn();
 const deleteWindow = vi.fn();
 const windowsState: { data: ClubLeagueWindow[] | undefined; isError: boolean } = { data: [], isError: false };
+const createRule = vi.fn();
+const updateRule = vi.fn();
+const deleteRule = vi.fn();
+const rulesState: { data: MatchConstraint[] | undefined; isError: boolean } = { data: [], isError: false };
+const coherenceState: { data: MatchConstraintCoherence } = { data: { byRule: [], byHabit: [] } };
 
-// On pilote les hooks (miroir de la copie stockée), jamais le réseau. Le badge vient
-// du SERVEUR : l'écran l'affiche, on ne le recalcule pas ici.
+// On pilote les hooks (miroir de la copie stockée), jamais le réseau. Le badge et
+// l'alerte de cohérence viennent du SERVEUR : l'écran les affiche, on ne les recalcule pas ici.
 vi.mock("./queries", () => ({
   useClubLeagueWindows: () => ({ ...windowsState, refetch: vi.fn() }),
   useCreateClubLeagueWindow: () => ({ mutate: createWindow, isPending: false }),
@@ -23,6 +28,12 @@ vi.mock("./queries", () => ({
   // séparément dans LeagueSuggestions.test.tsx.
   useLeagueWindowSuggestions: () => ({ data: { instance: null, items: [] } }),
   useApplyLeagueWindowSuggestions: () => ({ mutate: vi.fn(), isPending: false }),
+  // Section Club (P4-272 ③).
+  useMatchConstraints: () => ({ ...rulesState, refetch: vi.fn() }),
+  useMatchConstraintCoherence: () => ({ data: coherenceState.data }),
+  useCreateMatchConstraint: () => ({ mutate: createRule, isPending: false }),
+  useUpdateMatchConstraint: () => ({ mutate: updateRule, isPending: false }),
+  useDeleteMatchConstraint: () => ({ mutate: deleteRule, isPending: false }),
 }));
 
 const window = (over: Partial<ClubLeagueWindow> = {}): ClubLeagueWindow => ({
@@ -43,12 +54,35 @@ function openLigue(): void {
   renderWithProviders(<ConstraintsPage />, { route: "/matchs/contraintes?section=ligue" });
 }
 
+const rule = (over: Partial<MatchConstraint> = {}): MatchConstraint => ({
+  id: "r1",
+  version: 1,
+  scope: "CLUB",
+  scopeTargetId: null,
+  ruleType: "HARD",
+  daysOfWeek: [6],
+  kickoffMin: null,
+  kickoffMax: "21:00",
+  venueId: null,
+  ...over,
+});
+
+function openClub(): void {
+  renderWithProviders(<ConstraintsPage />, { route: "/matchs/contraintes?section=club" });
+}
+
 beforeEach(() => {
   createWindow.mockClear();
   updateWindow.mockClear();
   deleteWindow.mockClear();
   windowsState.data = [];
   windowsState.isError = false;
+  createRule.mockClear();
+  updateRule.mockClear();
+  deleteRule.mockClear();
+  rulesState.data = [];
+  rulesState.isError = false;
+  coherenceState.data = { byRule: [], byHabit: [] };
 });
 
 describe("ConstraintsPage — section Ligue (P4-272 ①)", () => {
@@ -103,5 +137,50 @@ describe("ConstraintsPage — section Ligue (P4-272 ①)", () => {
       id: "w1",
       input: { category: "Seniors", level: "REGIONAL", gender: null, dayOfWeek: 6, kickoffMin: "14:00", kickoffMax: "17:30" },
     });
+  });
+});
+
+describe("ConstraintsPage — section Club (P4-272 ③)", () => {
+  it("indique l'absence de règle quand la liste est vide", () => {
+    rulesState.data = [];
+    openClub();
+    expect(screen.getByText(/Aucune règle de club/)).toBeInTheDocument();
+  });
+
+  it("ajoute une règle « pas après 21h » le samedi via l'API (bornes nullables)", async () => {
+    const user = userEvent.setup();
+    rulesState.data = [];
+    openClub();
+
+    // La ligne d'ajout par défaut a samedi déjà coché ; on renseigne « Pas après ».
+    fireEvent.change(screen.getByLabelText("Pas après (heure de fin)"), { target: { value: "21:00" } });
+    await user.click(screen.getByRole("button", { name: "Ajouter" }));
+
+    expect(createRule).toHaveBeenCalledWith(
+      { ruleType: "HARD", daysOfWeek: [6], kickoffMin: null, kickoffMax: "21:00" },
+      expect.anything(),
+    );
+  });
+
+  it("affiche l'alerte de cohérence (calculée serveur) sous la règle qui heurte un créneau idéal", () => {
+    rulesState.data = [rule({ id: "r1", kickoffMax: "21:00" })];
+    coherenceState.data = {
+      byRule: [{ ruleId: "r1", habits: [{ teamId: "t1", teamName: "U13M", week: "A", dayOfWeek: 6, kickoff: "21:30" }] }],
+      byHabit: [],
+    };
+    openClub();
+
+    expect(screen.getByText("Cette règle heurte le créneau idéal des U13M (semaine A) : samedi 21h30.")).toBeInTheDocument();
+  });
+
+  it("omet « (semaine …) » quand le créneau idéal vaut pour toutes les semaines", () => {
+    rulesState.data = [rule({ id: "r1", kickoffMax: "21:00" })];
+    coherenceState.data = {
+      byRule: [{ ruleId: "r1", habits: [{ teamId: "t2", teamName: "SM1", week: "ALL", dayOfWeek: 7, kickoff: "21:45" }] }],
+      byHabit: [],
+    };
+    openClub();
+
+    expect(screen.getByText("Cette règle heurte le créneau idéal des SM1 : dimanche 21h45.")).toBeInTheDocument();
   });
 });

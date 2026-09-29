@@ -72,6 +72,7 @@ export interface ConflictUnavailableFixtureView {
 export type ConflictType =
   | "VENUE_OVERLAP"
   | "LEAGUE_WINDOW_VIOLATION"
+  | "CLUB_RULE_VIOLATION"
   | "MATCH_MATCH"
   | "MATCH_TRAINING"
   | "VENUE_UNAVAILABLE"
@@ -126,6 +127,13 @@ export interface VenueAccessWindow {
   endTime: string;
 }
 
+/** CLUB_RULE_VIOLATION — one HARD club match rule the placed kickoff violates (P4-272 ③). */
+export interface ClubRuleViolationRule {
+  daysOfWeek: number[];
+  kickoffMin: string | null;
+  kickoffMax: string | null;
+}
+
 export interface Conflict {
   type: ConflictType;
   /** P1-4 PR E2 — gravity emitted by the SERVER (1 = worst … 7 = info). */
@@ -158,6 +166,8 @@ export interface Conflict {
    * ACCESS_WINDOW_LOST — the fixture's venue match-access windows, the match weekday first (`startTime`/`endTime`).
    */
   windows?: LeagueKickoffWindow[] | VenueAccessWindow[];
+  /** CLUB_RULE_VIOLATION (severity 3, P4-272 ③) — the HARD club rules the placed kickoff violates. */
+  rules?: ClubRuleViolationRule[];
   /** COMPETITION_INCOMPLETE (severity 6) — paired-competition completeness. */
   competitionId?: string;
   competitionName?: string;

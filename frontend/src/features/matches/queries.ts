@@ -81,6 +81,55 @@ export function useDeleteClubLeagueWindow() {
   });
 }
 
+// ── Règles de match du club (P4-272 ③) ───────────────────────────────────────
+
+export function useMatchConstraints() {
+  return useQuery({ queryKey: ["match_constraints"], queryFn: matchesApi.getMatchConstraints, staleTime: 300_000 });
+}
+
+/**
+ * Read-only, computed coherence between the club rules and the teams' ideal slots
+ * (nothing stored, nothing blocked). Editing a rule or a habit moves it → invalidated
+ * alongside both mutations (see below and the habit mutations).
+ */
+export function useMatchConstraintCoherence() {
+  return useQuery({ queryKey: ["match_constraints", "coherence"], queryFn: matchesApi.getMatchConstraintCoherence, staleTime: 60_000 });
+}
+
+/** Editing a rule moves the placement payload, the radar AND the coherence alerts. */
+function invalidateMatchConstraints(queryClient: ReturnType<typeof useQueryClient>): void {
+  // Covers both ["match_constraints"] and ["match_constraints","coherence"] (prefix match).
+  void queryClient.invalidateQueries({ queryKey: ["match_constraints"] });
+  void queryClient.invalidateQueries({ queryKey: ["fixtures", "conflicts"] });
+}
+
+export function useCreateMatchConstraint() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: matchesApi.createMatchConstraint,
+    onSuccess: () => invalidateMatchConstraints(queryClient),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
+export function useUpdateMatchConstraint() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: matchesApi.MatchConstraintInput }) => matchesApi.updateMatchConstraint(id, input),
+    onSuccess: () => invalidateMatchConstraints(queryClient),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
+export function useDeleteMatchConstraint() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: matchesApi.deleteMatchConstraint,
+    onSuccess: () => invalidateMatchConstraints(queryClient),
+    onError: () => toast.error("Suppression de la règle de match impossible"),
+  });
+}
+
 // ── Plages suggérées (tendance de l'instance fédérale, P4-272 ②) ──────────────
 
 export function useLeagueWindowSuggestions() {
@@ -838,6 +887,8 @@ export function useTeamMatchHabits() {
 function invalidateHabits(queryClient: ReturnType<typeof useQueryClient>): void {
   void queryClient.invalidateQueries({ queryKey: ["team_match_habits"] });
   void queryClient.invalidateQueries({ queryKey: ["fixtures", "conflicts"] });
+  // P4-272 ③ — an ideal slot moving changes the club-rule coherence alerts.
+  void queryClient.invalidateQueries({ queryKey: ["match_constraints", "coherence"] });
 }
 
 export function useCreateTeamMatchHabit() {

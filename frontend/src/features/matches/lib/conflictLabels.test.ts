@@ -3,12 +3,13 @@ import { describe, expect, it } from "vitest";
 import type { ConflictSideRole, ConflictType } from "../api";
 import { CONFLICT_FAMILY_LABEL, SIDE_ROLE_WORD } from "./conflictLabels";
 
-// PR-2a — les 9 familles de conflits couvertes exhaustivement. La table est un
-// `Record<ConflictType, string>` : TypeScript exige déjà les 9 clés, ce test
+// PR-2a — les familles de conflits couvertes exhaustivement. La table est un
+// `Record<ConflictType, string>` : TypeScript exige déjà toutes les clés, ce test
 // verrouille les LIBELLÉS et interdit une clé fantôme.
 const ALL_FAMILIES: ConflictType[] = [
   "VENUE_OVERLAP",
   "LEAGUE_WINDOW_VIOLATION",
+  "CLUB_RULE_VIOLATION",
   "MATCH_MATCH",
   "MATCH_TRAINING",
   "VENUE_UNAVAILABLE",
@@ -19,7 +20,7 @@ const ALL_FAMILIES: ConflictType[] = [
 ];
 
 describe("CONFLICT_FAMILY_LABEL", () => {
-  it("porte un libellé non vide pour les 9 familles, et exactement celles-ci", () => {
+  it("porte un libellé non vide pour toutes les familles, et exactement celles-ci", () => {
     expect(Object.keys(CONFLICT_FAMILY_LABEL).sort()).toEqual([...ALL_FAMILIES].sort());
     for (const family of ALL_FAMILIES) {
       expect(CONFLICT_FAMILY_LABEL[family]).toBeTruthy();
@@ -29,6 +30,7 @@ describe("CONFLICT_FAMILY_LABEL", () => {
   it("mappe chaque famille sur son libellé humain (PR-2a)", () => {
     expect(CONFLICT_FAMILY_LABEL.VENUE_OVERLAP).toBe("Collision de gymnase");
     expect(CONFLICT_FAMILY_LABEL.LEAGUE_WINDOW_VIOLATION).toBe("Hors fenêtre ligue");
+    expect(CONFLICT_FAMILY_LABEL.CLUB_RULE_VIOLATION).toBe("Hors règle du club");
     expect(CONFLICT_FAMILY_LABEL.MATCH_MATCH).toBe("Personne en double");
     expect(CONFLICT_FAMILY_LABEL.MATCH_TRAINING).toBe("Match × entraînement");
     expect(CONFLICT_FAMILY_LABEL.ACCESS_WINDOW_LOST).toBe("Hors accès match");

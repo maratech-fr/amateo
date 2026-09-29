@@ -1,4 +1,4 @@
-import { Check, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
@@ -7,8 +7,9 @@ import { Select } from "@/shared/components/ui/select";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { compareTeamsByRank, type TeamLike } from "@/shared/lib/teamTiers";
 
-import type { MatchWeek, TeamMatchHabit, Venue } from "./api";
-import { useCreateTeamMatchHabit, useDeleteTeamMatchHabit, useTeamMatchHabits, useUpdateTeamMatchHabit } from "./queries";
+import type { ClubRuleCoherenceRuleRef, MatchWeek, TeamMatchHabit, Venue } from "./api";
+import { clubRuleLabel } from "./lib/clubRuleLabel";
+import { useCreateTeamMatchHabit, useDeleteTeamMatchHabit, useMatchConstraintCoherence, useTeamMatchHabits, useUpdateTeamMatchHabit } from "./queries";
 
 const DAY_LABELS = ["", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 const WEEK_OPTIONS: { value: MatchWeek; label: string }[] = [
@@ -32,6 +33,10 @@ export function IdealSlotsEditor<T extends TeamLike>({ teams, venues }: { teams:
   const habits = habitsQuery.data ?? [];
   const habitByTeam = new Map(habits.map((h) => [h.teamId, h]));
   const orderedTeams = [...teams].sort(compareTeamsByRank);
+  // P4-272 ③ — l'alerte de cohérence est CALCULÉE côté serveur (`/coherence`) ; on
+  // AFFICHE, sous le créneau idéal concerné, les règles du club qu'il heurte.
+  const coherence = useMatchConstraintCoherence();
+  const rulesByHabit = new Map((coherence.data?.byHabit ?? []).map((h) => [h.habitId, h.rules]));
 
   return (
     <section className="flex flex-col gap-3">
@@ -49,16 +54,35 @@ export function IdealSlotsEditor<T extends TeamLike>({ teams, venues }: { teams:
         <EmptyHint>Aucune équipe — les équipes se déclarent dans l’assistant de saisie.</EmptyHint>
       ) : (
         <ul className="flex flex-col gap-1">
-          {orderedTeams.map((team) => (
-            <IdealSlotRow key={`${team.id}:${habitByTeam.get(team.id)?.id ?? "none"}`} team={team} habit={habitByTeam.get(team.id) ?? null} venues={venues} />
-          ))}
+          {orderedTeams.map((team) => {
+            const habit = habitByTeam.get(team.id) ?? null;
+            return (
+              <IdealSlotRow
+                key={`${team.id}:${habit?.id ?? "none"}`}
+                team={team}
+                habit={habit}
+                venues={venues}
+                clubRuleAlerts={null !== habit ? (rulesByHabit.get(habit.id) ?? []) : []}
+              />
+            );
+          })}
         </ul>
       )}
     </section>
   );
 }
 
-function IdealSlotRow<T extends TeamLike>({ team, habit, venues }: { team: T; habit: TeamMatchHabit | null; venues: Venue[] }) {
+function IdealSlotRow<T extends TeamLike>({
+  team,
+  habit,
+  venues,
+  clubRuleAlerts,
+}: {
+  team: T;
+  habit: TeamMatchHabit | null;
+  venues: Venue[];
+  clubRuleAlerts: ClubRuleCoherenceRuleRef[];
+}) {
   const create = useCreateTeamMatchHabit();
   const update = useUpdateTeamMatchHabit();
   const remove = useDeleteTeamMatchHabit();
@@ -154,6 +178,16 @@ function IdealSlotRow<T extends TeamLike>({ team, habit, venues }: { team: T; ha
         >
           <Trash2 className="size-4" />
         </Button>
+      ) : null}
+      {clubRuleAlerts.length > 0 ? (
+        <div className="flex w-full flex-col gap-1 rounded-md border border-warning/40 bg-surface-warning px-3 py-1.5 text-sm text-foreground" role="status">
+          {clubRuleAlerts.map((rule) => (
+            <p key={rule.ruleId} className="flex items-start gap-1.5">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+              <span>Heurte la règle du club « {clubRuleLabel(rule)} ».</span>
+            </p>
+          ))}
+        </div>
       ) : null}
     </li>
   );
