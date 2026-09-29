@@ -9,9 +9,10 @@ Unit` seule, `make phpunit` = `--group phase1` seule, `make tests-complete`/`mak
 `phpunit tests/ --exclude-group contract` (`backend/Makefile:37,50,61,87`) ✓ ; `PurgeExportsCommand`
 n'accepte toujours que `.pdf` (`RENDER_PATTERN`, `backend/src/Command/PurgeExportsCommand.php:61`)
 ✓ ; `db-init-test` pose toujours `idle_in_transaction_session_timeout = 60s` sur `amateo_test`
-(`backend/Makefile:101`) ✓ ; `doctrine:fixtures:load` toujours sans appelant dans `src/`
-(`BasketballInit`/`HolidayReferenceFixtures` absents), P4-163 (retrait du bundle) toujours ouverte
-en roadmap ✓. Non re-sondé cette passe : le reste des commandes et gardes listées — un stamp
+(`backend/Makefile:101`) ✓ ; `doctrine:fixtures:load` n'existe plus — le bundle
+`doctrine/doctrine-fixtures-bundle` a été RETIRÉ de `composer.json` et de `config/bundles.php`
+(aucune fixture Doctrine active, `BasketballInit`/`HolidayReferenceFixtures` absents de `src/`) ✓.
+Non re-sondé cette passe : le reste des commandes et gardes listées — un stamp
 REMPLACE, l'historique vit dans git.
 
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`
@@ -145,7 +146,7 @@ Toutes manuelles sauf mention. Détail : `ls backend/src/Command/`.
 |----------|-------|
 | `dbal:run-sql "…"` | Connexion `default` = `amateo_app` **sous RLS sans GUC → 0 ligne sur les tables tenant**. Ops/debug : `--connection admin`. *(doctrine-bundle 3 a supprimé l'ancien alias `doctrine:query:sql`.)* |
 | `doctrine:migrations:migrate` | Toujours via la connexion **admin** (les cibles make le font) |
-| `doctrine:fixtures:load` | **Plus aucun appelant** — les fixtures Doctrine (`BasketballInit`, `HolidayReferenceFixtures`) et `make fixtures` sont supprimées ; un seul chemin de remplissage reste : `app:bccl:seed`/`app:demo:seed`/`app:*-holidays:seed` ci-dessus. Le bundle `doctrine/doctrine-fixtures-bundle` reste installé (`composer.json`) mais n'est plus câblé à rien — retrait ouvert en roadmap (P4-163) |
+| `doctrine:fixtures:load` | **N'existe plus** — le bundle `doctrine/doctrine-fixtures-bundle` a été RETIRÉ de `composer.json` et de `config/bundles.php` ; les fixtures Doctrine (`BasketballInit`, `HolidayReferenceFixtures`) et `make fixtures` avaient déjà disparu. Un seul chemin de remplissage : `app:bccl:seed`/`app:demo:seed`/`app:*-holidays:seed` ci-dessus |
 
 ## Scripts (`backend/scripts/`)
 

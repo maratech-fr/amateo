@@ -8,8 +8,8 @@ toujours `restart: unless-stopped` (`messenger-worker` compris, §6 Cas 1) ✓ ;
 `export-xlsx` (§11, `ScheduleResource.php:38-39` + `ExportXlsxController.php`) ✓ ; le budget solveur
 par défaut toujours 650 s (§6 Cas 2/3, `ScheduleConstraintBuilder.php:79`
 `DEFAULT_SOLVER_TIMEOUT_SECONDS`) ✓ ; `CONTRACT_VERSION` = `2.26` (`ScheduleConstraintBuilder.php:63`
-⇄ `engine/CONTRACT_VERSION`) ✓ ; l'absence de fixtures Doctrine actives (§1 — aucune classe
-n'implémente `FixtureInterface` sous `src/`) ✓ ; l'absence d'export PNG (§8 —
+⇄ `engine/CONTRACT_VERSION`) ✓ ; l'absence de fixtures Doctrine actives (§1 — le bundle
+`doctrine/doctrine-fixtures-bundle` a été retiré de `composer.json`) ✓ ; l'absence d'export PNG (§8 —
 `PurgeExportsCommand::RENDER_PATTERN` ne matche toujours que `.pdf`) ✓. Reste du fichier non
 re-contrôlé cette passe.
 
@@ -43,7 +43,7 @@ Tu dois voir apparaître : `amateo-php-fpm`, `amateo-nginx`, `amateo-postgres`, 
 cd backend && make seed-bccl
 ```
 
-> ⚠️ **Ne lance JAMAIS une commande de seed à la main sans la connexion admin.** Sous `amateo_app`, une purge est silencieusement filtrée par RLS (elle supprime zéro ligne sur les tables tenant) et le rechargement collisionne alors avec les données survivantes — base à moitié purgée. Le seeder s'en protège et **lève une exception** si la connexion n'est pas celle du superutilisateur. Passe toujours par `make seed-bccl` (create-only, no-op si le club existe déjà) ou `make seed-demo` (créer OU reset la démo), qui injectent la connexion `admin`. Il n'existe pas de fixtures Doctrine actives : `doctrine:fixtures:load` n'a aucun appelant, le bundle reste installé (`composer.json`) mais n'est câblé à rien — détail complet et table « situation → commande » : [`commands.md`](commands.md).
+> ⚠️ **Ne lance JAMAIS une commande de seed à la main sans la connexion admin.** Sous `amateo_app`, une purge est silencieusement filtrée par RLS (elle supprime zéro ligne sur les tables tenant) et le rechargement collisionne alors avec les données survivantes — base à moitié purgée. Le seeder s'en protège et **lève une exception** si la connexion n'est pas celle du superutilisateur. Passe toujours par `make seed-bccl` (create-only, no-op si le club existe déjà) ou `make seed-demo` (créer OU reset la démo), qui injectent la connexion `admin`. Il n'existe pas de fixtures Doctrine actives : le bundle `doctrine/doctrine-fixtures-bundle` a été RETIRÉ de `composer.json` et de `config/bundles.php`, `doctrine:fixtures:load` n'existe plus — détail complet et table « situation → commande » : [`commands.md`](commands.md).
 
 ### Vérifier la santé du backend
 
