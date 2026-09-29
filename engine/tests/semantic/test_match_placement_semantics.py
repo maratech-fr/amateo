@@ -71,6 +71,16 @@ def assert_no_hard_violation(input_data: MatchPlacementInputSchema, output: Matc
                 w.day_of_week == day and _minutes(w.kickoff_min) <= kick <= _minutes(w.kickoff_max) for w in league
             ), f"{placement.match_id}: kickoff outside the league window"
 
+        # P4-272 ③ — a HARD club rule is a HARD invariant of the output: no
+        # placement ever sits outside a HARD rule covering the match day.
+        for rule in input_data.club_rules:
+            if rule.rule_type != "HARD" or day not in rule.days_of_week:
+                continue
+            if rule.kickoff_min is not None:
+                assert kick >= _minutes(rule.kickoff_min), f"{placement.match_id}: before a HARD club rule"
+            if rule.kickoff_max is not None:
+                assert kick <= _minutes(rule.kickoff_max), f"{placement.match_id}: after a HARD club rule"
+
         window = (kick, kick + m_min)
         for other in occupied.get((placement.venue_id, match.match_date), []):
             assert not (window[0] < other[1] and other[0] < window[1]), f"{placement.match_id}: venue overlap"
@@ -267,6 +277,110 @@ def test_ideal_slot_is_honoured_when_the_ab_partner_is_idle_across_two_weekends(
         "m-sm2": ("mateo", time(20, 30)),
     }
     assert_no_hard_violation(input_data, output)
+
+
+def _one_team_payload(
+    *,
+    window: tuple[str, str],
+    habits: list[dict[str, Any]] | None = None,
+    club_rules: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """A single home match to place on Saturday, one venue, no coaches/links — the
+    minimal shape to isolate the club-rule behaviour (P4-272 ③)."""
+    return {
+        "version": read_contract_version(),
+        "clubId": "club-bccl",
+        "seasonId": "season-2026",
+        "solverSeed": 42,
+        "solverTimeoutSeconds": 30,
+        "matches": [{"id": "m1", "teamId": "t1", "date": SATURDAY, "kind": "TO_PLACE"}],
+        "venues": [
+            {
+                "id": "mateo",
+                "name": "Mateo",
+                "matchWindows": [{"dayOfWeek": 6, "start": window[0], "end": window[1]}],
+                "unavailabilities": [],
+            }
+        ],
+        "teams": [{"id": "t1", "name": "T1", "leagueWindows": [], "habits": habits or [], "coaches": []}],
+        "teamLinks": [],
+        "trainingOccupancies": [],
+        "clubRules": club_rules or [],
+    }
+
+
+def test_hard_club_rule_is_honoured_and_excludes_the_ideal_without_falling_back() -> None:
+    # P4-272 ③ constraint-semantics (§7.1) — a HARD club rule « pas après 18h »
+    # (kickoffMax 18:00) covers Saturday. The team's ideal slot is 20:30 (a habit)
+    # — it VIOLATES the rule. The HARD rule PRUNES it from the domain: the match is
+    # placed on a CONFORMING slot (≤ 18:00), it keeps NO attraction to 20:30, and it
+    # is NOT left unplaced (no relaxation, no fallback to the ideal).
+    payload = _one_team_payload(
+        window=("13:00", "22:30"),
+        habits=[{"dayOfWeek": 6, "kickoff": "20:30", "venueId": "mateo"}],
+        club_rules=[{"ruleType": "HARD", "daysOfWeek": [6], "kickoffMin": None, "kickoffMax": "18:00"}],
+    )
+    input_data = MatchPlacementInputSchema.model_validate(payload)
+    output = MatchPlacementOutputSchema.model_validate(solve_match_placement(input_data))
+
+    assert output.unplaced == []
+    assert len(output.placements) == 1
+    kick = output.placements[0].kickoff
+    assert kick <= time(18, 0), "the HARD rule bounds the kickoff"
+    assert kick != time(20, 30), "the ideal slot is excluded, never chosen despite its attraction"
+    assert_no_hard_violation(input_data, output)
+
+
+def test_hard_club_rule_leaving_no_slot_names_club_rule_no_slot() -> None:
+    # P4-272 ③ — the access window is 20:00-22:30 only; a HARD rule « pas après 18h »
+    # empties the (otherwise legal) domain → the match is unplaced with the NAMED
+    # reason `club_rule_no_slot` (told apart from no_access_window / no_league).
+    payload = _one_team_payload(
+        window=("20:00", "22:30"),
+        club_rules=[{"ruleType": "HARD", "daysOfWeek": [6], "kickoffMin": None, "kickoffMax": "18:00"}],
+    )
+    input_data = MatchPlacementInputSchema.model_validate(payload)
+    output = MatchPlacementOutputSchema.model_validate(solve_match_placement(input_data))
+
+    assert output.placements == []
+    assert len(output.unplaced) == 1
+    assert output.unplaced[0].reason == "club_rule_no_slot"
+    assert output.unplaced[0].message == REASON_MESSAGES["club_rule_no_slot"]
+
+
+def test_preferred_club_rule_orients_without_blocking() -> None:
+    # P4-272 ③ — a PREFERRED rule « pas après 18h » covers Saturday; the team's ideal
+    # is 20:30 (a habit, +20). The candidate 20:30 scores +20 − W_CLUB_RULE(30) = −10,
+    # so a NEUTRAL conforming slot (≤ 18:00, score 0) WINS: the ideal loses to a
+    # conforming slot. The match is still PLACED (a preference never blocks).
+    payload = _one_team_payload(
+        window=("13:00", "22:30"),
+        habits=[{"dayOfWeek": 6, "kickoff": "20:30", "venueId": "mateo"}],
+        club_rules=[{"ruleType": "PREFERRED", "daysOfWeek": [6], "kickoffMin": None, "kickoffMax": "18:00"}],
+    )
+    input_data = MatchPlacementInputSchema.model_validate(payload)
+    output = MatchPlacementOutputSchema.model_validate(solve_match_placement(input_data))
+
+    assert output.unplaced == []
+    assert len(output.placements) == 1
+    kick = output.placements[0].kickoff
+    assert kick <= time(18, 0), "the ideal loses to a neutral conforming slot"
+    assert kick != time(20, 30), "the violating ideal is not chosen"
+
+
+def test_preferred_club_rule_violated_everywhere_still_places() -> None:
+    # P4-272 ③ — a PREFERRED rule « pas après 18h » but the ONLY window is 20:00-22:30:
+    # every candidate violates the rule. A PREFERRED rule NEVER blocks (W_PLACE
+    # dominates every penalty), so the match is still placed.
+    payload = _one_team_payload(
+        window=("20:00", "22:30"),
+        club_rules=[{"ruleType": "PREFERRED", "daysOfWeek": [6], "kickoffMin": None, "kickoffMax": "18:00"}],
+    )
+    input_data = MatchPlacementInputSchema.model_validate(payload)
+    output = MatchPlacementOutputSchema.model_validate(solve_match_placement(input_data))
+
+    assert output.unplaced == []
+    assert len(output.placements) == 1
 
 
 def test_two_homes_sharing_an_ideal_slot_split_one_served_the_other_placed() -> None:

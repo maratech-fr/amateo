@@ -1,7 +1,7 @@
 # Module matchs (FFBB) — état courant
 
 Last verified @ 2026-09-29 (P4-271 — semaine type A/B = tag `week` sur le créneau idéal, rotations
-(`MatchSlotRotation`) supprimées, `CONTRACT_VERSION` **2.25** ; antérieur P4-272 ② — suggestion de
+(`MatchSlotRotation`) supprimées ; P4-272 ③ — règles de match du club (`MatchConstraint`, bloc `clubRules`), `CONTRACT_VERSION` **2.26** ; antérieur P4-272 ② — suggestion de
 plages de ligue (`LeagueResolver`, fonction SQL `league_window_suggestions`, `LeagueSuggestions.tsx`)
 et P4-272 ① — copie club de l'enveloppe ligue (`ClubLeagueWindow`, onglet `/matchs/contraintes`) ;
 `MatchPlacementPayloadBuilder::build` et `ConflictRadarLoader::conflicts` lisent la copie club, copie
@@ -478,7 +478,7 @@ Présentation pure — aucune formule de gravité redérivée.
 ## 3. Solveur de placement (`POST /api/fixtures/place` → engine `/place-matches`)
 
 Second problème solveur ([ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md)),
-même `CONTRACT_VERSION` **2.25** que `/generate`/`/validate-assignments` (un seul contrat pour les
+même `CONTRACT_VERSION` **2.26** que `/generate`/`/validate-assignments` (un seul contrat pour les
 trois endpoints — voir §6 `CLAUDE.md`). **Rail
 SYNCHRONE** (`PlaceMatchesController` — management + saison écrivable + socle pointé), anti-double-clic
 PAR CLUB `MatchPlacementLock` (Redis dédié — ne protège pas deux clubs l'un de l'autre : ils partagent le

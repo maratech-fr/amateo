@@ -9,6 +9,7 @@ use App\Entity\ClubLeagueWindow;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Fixture;
 use App\Entity\LeagueWindowInterface;
+use App\Entity\MatchConstraint;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
@@ -17,6 +18,7 @@ use App\Entity\TeamMatchHabit;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueUnavailability;
+use App\Enum\ConstraintScope;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
@@ -64,7 +66,7 @@ final class MatchPlacementPayloadBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '2.25';
+    public const string CONTRACT_VERSION = '2.26';
 
     /**
      * Borne du trajet aller-retour AWAY émis, alignée sur le schéma engine
@@ -127,6 +129,14 @@ final class MatchPlacementPayloadBuilder
         // règle de ligue (aucun HARD, un seul diagnostic club plus bas).
         /** @var list<ClubLeagueWindow> $clubWindows */
         $clubWindows = $this->entityManager->getRepository(ClubLeagueWindow::class)->findBy([]);
+        // P4-272 ③ — les RÈGLES DE MATCH du club (scope CLUB), émises en bloc
+        // top-level `clubRules`. Une règle HARD est HONORÉE par le solveur (le
+        // coup d'envoi doit tomber dans la fourchette les jours couverts), une
+        // règle PREFERRED est une pénalité. Les amicaux en sont exemptés
+        // (structurel : jamais confiés au solveur). Scopé club+saison par les
+        // filtres Doctrine.
+        /** @var list<MatchConstraint> $clubRules */
+        $clubRules = $this->entityManager->getRepository(MatchConstraint::class)->findBy(['scope' => ConstraintScope::CLUB]);
 
         $habitIndex = $this->awayKickoffEstimator->indexHabits($habits);
 
@@ -291,6 +301,15 @@ final class MatchPlacementPayloadBuilder
                     'type' => $link->getLinkType()->value,
                 ], $teamLinks),
                 'trainingOccupancies' => $this->trainingOccupancies($fixtures, $seasonId, $teamCoaches, $playerIdsByTeam),
+                // P4-272 ③ — bloc top-level : chaque règle porte son type, ses jours
+                // ISO et sa fourchette de coup d'envoi (bornes nullables). Le solveur
+                // fait respecter les HARD et pénalise les PREFERRED violées.
+                'clubRules' => array_map(static fn (MatchConstraint $rule): array => [
+                    'ruleType' => $rule->getRuleType()->value,
+                    'daysOfWeek' => $rule->getDaysOfWeek(),
+                    'kickoffMin' => $rule->getKickoffMin()?->format('H:i'),
+                    'kickoffMax' => $rule->getKickoffMax()?->format('H:i'),
+                ], $clubRules),
             ],
             'toPlaceCount' => $toPlaceCount,
             'infoDiagnostics' => $infoDiagnostics,
