@@ -8,6 +8,7 @@ use App\Entity\Season;
 use App\Enum\TravelComputeScope;
 use App\Message\ComputeTravelTimesMessage;
 use App\Repository\ClubRepository;
+use App\Repository\ClubTravelCacheRepository;
 use App\Service\Geo\BanGeocodingClient;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonResolver;
@@ -44,6 +45,7 @@ final class ClubSiegeController extends AbstractController
         private readonly BanGeocodingClient $geocoder,
         private readonly SeasonResolver $seasonResolver,
         private readonly MessageBusInterface $messageBus,
+        private readonly ClubTravelCacheRepository $clubTravelCache,
     ) {}
 
     #[Route('/api/club/siege', name: 'club_siege', methods: ['PATCH'])]
@@ -85,8 +87,11 @@ final class ClubSiegeController extends AbstractController
         }
 
         // Le siège bouge-t-il vraiment ? (comparé à ~1 m près, la granularité du cache.) Un
-        // re-géocodage de la MÊME adresse ne doit pas invalider tous les trajets.
-        $moved = $this->coordinatesChanged($club->getLatitude(), $club->getLongitude(), $hit['latitude'], $hit['longitude']);
+        // re-géocodage de la MÊME adresse ne doit pas invalider tous les trajets. On capture les
+        // ANCIENNES coordonnées AVANT les setters — elles servent à purger le cache si le siège bouge.
+        $oldLatitude = $club->getLatitude();
+        $oldLongitude = $club->getLongitude();
+        $moved = $this->coordinatesChanged($oldLatitude, $oldLongitude, $hit['latitude'], $hit['longitude']);
 
         $club->setAddress(mb_substr($hit['label'], 0, 255))
             ->setPostalCode(null === $hit['postalCode'] ? null : mb_substr($hit['postalCode'], 0, 16))
@@ -96,11 +101,15 @@ final class ClubSiegeController extends AbstractController
         $this->entityManager->flush();
 
         // C6 — le trajet d'un adversaire est calculé DEPUIS le siège : s'il déménage, on
-        // DISPATCHE un recalcul de la saison courante au worker. Amendement 2026-09-20 : rien à
-        // invalider — le trajet vit dans le cache CONSTANT club_travel_cache, directionnel ; la
-        // nouvelle origine est une nouvelle clé, les anciennes lignes ne sont plus jamais lues
-        // (dette de croissance connue, roadmap P4-249). Le worker remplit les paires manquantes.
+        // DISPATCHE un recalcul de la saison courante au worker. Le cache club_travel_cache est
+        // directionnel : la nouvelle origine est une nouvelle clé, les lignes de l'ANCIENNE ne
+        // seront plus jamais lues. P4-249 (dette de croissance fermée) : on les PURGE ici, AVANT
+        // le dispatch, pour qu'elles ne s'accumulent pas. Premier siège (null) → rien à purger.
+        // Le worker remplit ensuite les paires manquantes depuis la nouvelle origine.
         if ($moved) {
+            if (null !== $oldLatitude && null !== $oldLongitude) {
+                $this->clubTravelCache->deleteAllFromOrigin($clubId, $oldLatitude, $oldLongitude);
+            }
             $season = $this->seasonResolver->selectedOrCurrent($request, $clubId);
             if ($season instanceof Season) {
                 $this->messageBus->dispatch(new ComputeTravelTimesMessage($clubId, $season->getId(), TravelComputeScope::OPPONENTS));

@@ -101,9 +101,12 @@ d'un organisme rencontré à l'extérieur, une donnée du **module matchs** plut
   `App\Service\Basketball\OpponentLocationResolver` depuis les hits organismes qu'il tient DÉJÀ
   (`strictOrganismeMatch`/`resolveOrganismeByCode`, canal `search*`) — **zéro appel réseau de
   plus**. Upsert `COALESCE(EXCLUDED.logo_id, opponent_directory.logo_id)` : un logo déjà connu
-  n'est **jamais** effacé par une résolution qui n'en porte pas. ⚠ **Le canal `directVenue`
-  (rencontre API sans hit organisme) ne pose PAS de logo** — dette connue, `roadmap.md` P4-250.
-  Whitelist du partage : `OpponentDirectoryShareTest`.
+  n'est **jamais** effacé par une résolution qui n'en porte pas. **P4-250** : quand c'est le canal
+  `directVenue` (rencontre API) qui gagne la localisation — il ne porte pas de logo lui-même —,
+  `OpponentLocationResolver::logoIdForCode` va le chercher best-effort via l'organisme, réutilisé
+  s'il est déjà résolu par nom, sinon interrogé par CODE (un appel réseau de plus sur ce canal
+  seulement) ; toute panne est catchée localement et rend `null` — un logo manquant ne fait jamais
+  retomber l'adversaire en non-localisé. Whitelist du partage : `OpponentDirectoryShareTest`.
 - **`GET /api/opponents/{code}/logo`** (`App\Controller\Basketball\OpponentLogoController`) — route
   **MEMBRE** (`IS_AUTHENTICATED_FULLY`), jamais publique : contrairement au logo club (§3, exposé
   sans authentification car institutionnel), le logo d'un adversaire de CE club est une donnée du

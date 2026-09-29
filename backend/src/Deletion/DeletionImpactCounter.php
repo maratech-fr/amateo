@@ -51,6 +51,7 @@ final readonly class DeletionImpactCounter
             blocked: $engaged,
             reason: $engaged ? 'Cette équipe joue en compétition : ses matchs sont engagés auprès de la fédération. Elle ne peut plus être supprimée.' : null,
             slotField: 'teamId',
+            placedFixtures: 0,
             declaredFixtures: 0,
         );
     }
@@ -65,6 +66,7 @@ final readonly class DeletionImpactCounter
             blocked: false,
             reason: null,
             slotField: 'venueId',
+            placedFixtures: $this->placedFixturesOnVenue($target),
             declaredFixtures: $this->declaredFixturesOnVenue($target),
         );
     }
@@ -82,6 +84,7 @@ final readonly class DeletionImpactCounter
             // c'est bien la même colonne qu'on compte pour savoir si le planning en vigueur
             // est touché.
             slotField: 'coachId',
+            placedFixtures: 0,
             declaredFixtures: 0,
         );
     }
@@ -111,13 +114,13 @@ final readonly class DeletionImpactCounter
             $lines[] = ['key' => $label->key, 'count' => $count, 'one' => $label->one, 'many' => $label->many];
         }
 
-        return new DeletionImpact(blocked: false, reason: null, lines: $lines, slotsInForce: 0, declaredFixtures: 0);
+        return new DeletionImpact(blocked: false, reason: null, lines: $lines, slotsInForce: 0, placedFixtures: 0, declaredFixtures: 0);
     }
 
     /**
      * @param list<CascadeStep> $steps
      */
-    private function build(array $steps, DeletionTarget $target, bool $blocked, ?string $reason, string $slotField, int $declaredFixtures): DeletionImpact
+    private function build(array $steps, DeletionTarget $target, bool $blocked, ?string $reason, string $slotField, int $placedFixtures, int $declaredFixtures): DeletionImpact
     {
         $this->disableTenantFilters($this->entityManager);
 
@@ -135,7 +138,7 @@ final readonly class DeletionImpactCounter
             $lines[] = ['key' => $label->key, 'count' => $count, 'one' => $label->one, 'many' => $label->many];
         }
 
-        return new DeletionImpact($blocked, $reason, $lines, $this->slotsInForce($target, $slotField), $declaredFixtures);
+        return new DeletionImpact($blocked, $reason, $lines, $this->slotsInForce($target, $slotField), $placedFixtures, $declaredFixtures);
     }
 
     /**
@@ -173,6 +176,30 @@ final readonly class DeletionImpactCounter
             ->setParameter('clubId', $target->clubId)
             ->setParameter('seasonId', $target->seasonId)
             ->setParameter('chosen', $chosen)
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    /**
+     * P4-270 — les matchs DÉJÀ PLACÉS dans ce gymnase (statut PLACED/SUBMITTED/VALIDATED : ceux
+     * qui portent une salle). À la disparition du gymnase ils REDEVIENNENT « à placer »
+     * ({@see FixtureVenueLossStep}) — un compteur pour le dire, sur-ensemble de `declaredFixtures`.
+     * Même patron que {@see declaredFixturesOnVenue} : borne club+saison explicite, filtres
+     * Doctrine désactivés dans ce compteur (RLS double en base).
+     */
+    private function placedFixturesOnVenue(DeletionTarget $target): int
+    {
+        return (int) $this->entityManager->createQueryBuilder()
+            ->select('COUNT(e.id)')
+            ->from(Fixture::class, 'e')
+            ->where('e.venueId = :venueId')
+            ->andWhere('e.clubId = :clubId')
+            ->andWhere('e.seasonId = :seasonId')
+            ->andWhere('e.status IN (:placed)')
+            ->setParameter('venueId', $target->id)
+            ->setParameter('clubId', $target->clubId)
+            ->setParameter('seasonId', $target->seasonId)
+            ->setParameter('placed', [FixtureStatus::PLACED, FixtureStatus::SUBMITTED, FixtureStatus::VALIDATED])
             ->getQuery()
             ->getSingleScalarResult();
     }

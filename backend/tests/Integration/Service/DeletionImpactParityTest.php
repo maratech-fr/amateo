@@ -134,6 +134,12 @@ final class DeletionImpactParityTest extends KernelTestCase
             ->setMatchDate(new DateTimeImmutable('2026-01-10'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adversaire')
             ->setStatus(FixtureStatus::SUBMITTED, new DateTimeImmutable)->setVenueId($venue->getId());
         $this->em->persist($declared);
+        // P4-270 : un match PLACÉ mais PAS encore déclaré, posé dans ce gymnase — compté dans
+        // placedFixtures (redeviendra « à placer ») mais PAS dans declaredFixtures (rien à re-soumettre).
+        $placedOnly = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())
+            ->setMatchDate(new DateTimeImmutable('2026-01-17'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adversaire 2')
+            ->setStatus(FixtureStatus::PLACED, new DateTimeImmutable)->setVenueId($venue->getId());
+        $this->em->persist($placedOnly);
         // Un créneau du même club dans un AUTRE gymnase : il ne doit ni être compté ni partir.
         $this->em->persist((new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setVenueId($other->getId())->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('19:00'))->setDurationMinutes(90)->setCapacity(1));
@@ -149,8 +155,9 @@ final class DeletionImpactParityTest extends KernelTestCase
         self::assertSame(1, $announced['venue_reservation'] ?? 0, 'la réservation est annoncée');
         self::assertSame(1, $announced['venue_slot_template'] ?? 0, 'la séance placée est annoncée');
         self::assertSame(1, $announced['venue_forced_team'] ?? 0, 'l\'équipe qui perd son gymnase imposé est annoncée');
-        self::assertSame(1, $announced['venue_fixture'] ?? 0, 'le match qui perd sa salle est annoncé');
-        self::assertSame(1, $impact->declaredFixtures, 'DOC-2 : le match DÉJÀ DÉCLARÉ est compté à part');
+        self::assertSame(2, $announced['venue_fixture'] ?? 0, 'les deux matchs qui perdent leur salle sont annoncés');
+        self::assertSame(2, $impact->placedFixtures, 'P4-270 : les deux matchs PLACÉS (déclaré + placé-seul) sont comptés');
+        self::assertSame(1, $impact->declaredFixtures, 'DOC-2 : seul le match DÉJÀ DÉCLARÉ est le sous-ensemble à re-soumettre');
         self::assertFalse($impact->blocked, 'un gymnase ne se refuse pas : la décision fondateur laisse le geste passer');
 
         self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfVenue($venue);

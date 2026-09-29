@@ -8514,7 +8514,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "What deleting this entity would destroy \u2014 announced BEFORE confirmation. `lines` are counted by walking the SAME cascade plan the delete executes (App\\Deletion\\CascadePlan), labels included, so a destruction can never be added without its announcement. `blocked`/`reason` carry the engaged-perimeter refusal (the UI must not offer a gesture the server will 409). `slotsInForce` = touched sessions living in a version the plan POINTS AT. `declaredFixtures` = matches already SUBMITTED/VALIDATED to the federation that will lose their venue \u2014 announced, never blocking. Read-only."
+                        "description": "What deleting this entity would destroy \u2014 announced BEFORE confirmation. `lines` are counted by walking the SAME cascade plan the delete executes (App\\Deletion\\CascadePlan), labels included, so a destruction can never be added without its announcement. `blocked`/`reason` carry the engaged-perimeter refusal (the UI must not offer a gesture the server will 409). `slotsInForce` = touched sessions living in a version the plan POINTS AT. `placedFixtures` = matches currently placed in this venue (PLACED/SUBMITTED/VALIDATED) that will revert to \"to be placed\" when it is removed; `declaredFixtures` is the subset already SUBMITTED/VALIDATED to the federation that must be re-submitted \u2014 announced, never blocking. Read-only."
                     },
                     "401": {
                         "description": "Unauthorized"

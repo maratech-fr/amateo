@@ -28,10 +28,19 @@ final readonly class DeletionImpact
          */
         public int $slotsInForce,
         /**
+         * P4-270 — les matchs DÉJÀ PLACÉS dans ce gymnase (statut PLACED/SUBMITTED/VALIDATED, donc
+         * ceux qui portent une salle) qui, à sa disparition, REDEVIENNENT « à placer »
+         * (`FixtureVenueLossMarker` : venueId null, statut UNPLACED, raison `venue_lost`). Le geste
+         * n'est PAS refusé — un gymnase qui ferme, ça arrive, et le match reste récupérable — mais
+         * c'est annoncé. `declaredFixtures` en est le SOUS-ENSEMBLE déjà déposé à la fédération.
+         * Zéro hors suppression de gymnase.
+         */
+        public int $placedFixtures,
+        /**
          * DOC-2 — les matchs DÉJÀ DÉCLARÉS à la fédération (`SUBMITTED`/`VALIDATED`) qui vont
          * perdre leur salle. Le geste n'est PAS refusé (un gymnase qui ferme, ça arrive, et le
          * match redevient « à placer » donc récupérable) : il est ANNONCÉ, parce qu'il faudra
-         * le re-soumettre. Zéro hors suppression de gymnase.
+         * le re-soumettre. Sous-ensemble de `placedFixtures`. Zéro hors suppression de gymnase.
          */
         public int $declaredFixtures,
     ) {}

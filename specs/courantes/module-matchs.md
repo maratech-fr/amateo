@@ -255,8 +255,10 @@ worker/verrou/topic : `backend/docs/geo-api.md` § Calcul asynchrone.
 ### Logo fédéral d'un adversaire
 
 `OpponentDirectoryEntry.logoId` (table GLOBALE) est posé sans coût réseau supplémentaire depuis les
-hits organismes déjà résolus (canal `directVenue`, sans hit organisme, n'en pose pas — dette
-`roadmap.md` P4-250) ; `GET /api/opponents/{code}/logo` (route MEMBRE, jamais publique) le
+hits organismes déjà résolus ; quand c'est le canal `directVenue` qui gagne la localisation (pas de
+hit organisme en propre), il est enrichi best-effort par un appel organisme de plus, par CODE
+(P4-250, `OpponentLocationResolver::logoIdForCode`) — une panne n'y fait jamais perdre la
+localisation. `GET /api/opponents/{code}/logo` (route MEMBRE, jamais publique) le
 re-héberge paresseusement au premier accès. `shared/components/ui/opponent-logo.tsx` (rond, 16 px
 `AwayList`/24 px `AwayFixtureCard`, repli initiales — `initials` calculées par
 `lib/opponentInitials.ts`, hors du partagé) affiche l'image si un code organisme est connu et

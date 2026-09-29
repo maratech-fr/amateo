@@ -113,6 +113,13 @@ final class MembershipController extends AbstractController
         if ($pendingOnly instanceof JsonResponse) {
             return $pendingOnly;
         }
+        // P4-77 (ceinture) — un compte effacé (RGPD) ne s'approuve pas : approuver son
+        // adhésion la ferait revivre une identité anonymisée. Défense en profondeur (l'effacement
+        // désactive déjà les adhésions, `AccountErasureService`), mais atteignable si une pending
+        // porte un compte anonymisé.
+        if ($this->targetUserIsAnonymized($target)) {
+            return $this->json(['error' => 'Ce compte a été supprimé (RGPD) — il ne peut pas être approuvé.'], 409);
+        }
 
         // PR C : le rôle est désormais REQUIS — le front l'envoie toujours (choix
         // actif du gestionnaire, défaut Membre à l'écran). Corps absent ou sans
@@ -217,6 +224,11 @@ final class MembershipController extends AbstractController
         // ne se « réactive » pas — l'approbation est son seul chemin d'activation.
         if (null === $target->getDeactivatedAt()) {
             return $this->json(['error' => 'Ce membre n\'est pas désactivé.'], 409);
+        }
+        // P4-77 — un compte effacé (RGPD) a vu son identité écrasée : le réactiver ressusciterait
+        // une adhésion sans compte utilisable. On refuse AVANT toute écriture.
+        if ($this->targetUserIsAnonymized($target)) {
+            return $this->json(['error' => 'Ce compte a été supprimé (RGPD) — il ne peut pas être réactivé.'], 409);
         }
 
         $target->setIsActive(true);
@@ -330,6 +342,18 @@ final class MembershipController extends AbstractController
         }
 
         return $membership;
+    }
+
+    /**
+     * P4-77 — le compte utilisateur de cette adhésion a-t-il été effacé (RGPD) ? Un compte
+     * anonymisé (`User::anonymizedAt`) a vu son identité écrasée et ne peut plus s'authentifier :
+     * ni approuver ni réactiver son adhésion. Un compte introuvable n'est pas anonymisé (false).
+     */
+    private function targetUserIsAnonymized(ClubUser $target): bool
+    {
+        $user = $this->entityManager->getRepository(User::class)->find($target->getUserId());
+
+        return $user instanceof User && $user->getAnonymizedAt() instanceof DateTimeImmutable;
     }
 
     /**

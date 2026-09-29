@@ -1,14 +1,17 @@
-Last verified @ 2026-09-29 (snapshot régénéré depuis le backend vivant : P4-271 — la ressource
-`MatchSlotRotation` disparaît (les 2 routes `GET/POST /api/match_slot_rotations` et
-`GET/PUT/DELETE /api/match_slot_rotations/{id}` retirées, semaine type A/B désormais un tag `week`
-sur le créneau idéal) et `TeamMatchHabit` gagne le champ `week` (A/B/ALL) en lecture comme en
-écriture ; la description de la ressource (`TeamMatchHabitResource.php`) recalée sur « un par
-équipe » (l'ancien « un par jour de semaine » datait d'avant l'unicité par équipe) — même passe que
-le PUT qui peut désormais retirer le gymnase d'un créneau idéal (`d703af19`) ; les routes de
-P4-272 ② (plages de ligue suggérées) toujours présentes).
+Last verified @ 2026-09-29 (P4-270 — description texte de la réponse
+`GET /api/venues/{id}/deletion-impact` recalée à la main sur `UncoveredCustomPaths.php` : le champ
+additif `placedFixtures` [matchs déjà placés qui redeviendront « à placer »] est mentionné aux côtés
+de `declaredFixtures` [son sous-ensemble déjà déclaré, désormais explicitement « à re-soumettre »] —
+aucun path ajouté/retiré, pas de backend vivant disponible dans ce worktree pour une régénération
+complète ; antérieurement P4-271 — la ressource `MatchSlotRotation` disparaît [les 2 routes
+`GET/POST /api/match_slot_rotations` et `GET/PUT/DELETE /api/match_slot_rotations/{id}` retirées,
+semaine type A/B désormais un tag `week` sur le créneau idéal] et `TeamMatchHabit` gagne le champ
+`week` [A/B/ALL] en lecture comme en écriture ; la description de la ressource
+[`TeamMatchHabitResource.php`] recalée sur « un par équipe » ; les routes de P4-272 ② [plages de
+ligue suggérées] toujours présentes).
 
 **211 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`602d6b7d1646b60cec8f3ed33a59aa8897af7c24e03028dba62adaffedd85989` (`sha256sum` sur le fichier).
+`f392d4878a162e59c56a80db9061e41d7e1ff02bc500a69748f81054a8f3c185` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

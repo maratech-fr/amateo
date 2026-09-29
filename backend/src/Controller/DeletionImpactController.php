@@ -130,6 +130,7 @@ final class DeletionImpactController extends AbstractController
             'reason' => $impact->reason,
             'lines' => $impact->lines,
             'slotsInForce' => $impact->slotsInForce,
+            'placedFixtures' => $impact->placedFixtures,
             'declaredFixtures' => $impact->declaredFixtures,
         ]);
     }

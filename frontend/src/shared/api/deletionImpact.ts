@@ -26,6 +26,11 @@ export interface DeletionImpact {
   lines: DeletionImpactLine[];
   /** Séances touchées vivant dans une version EN VIGUEUR. */
   slotsInForce: number;
-  /** DOC-2 : matchs déjà déclarés à la fédération qui perdront leur salle. */
+  /**
+   * P4-270 : matchs déjà PLACÉS dans ce gymnase (PLACED/SUBMITTED/VALIDATED) qui redeviendront
+   * « à placer » à sa disparition. `declaredFixtures` en est le sous-ensemble.
+   */
+  placedFixtures: number;
+  /** DOC-2 : matchs déjà déclarés à la fédération qui perdront leur salle (sous-ensemble de placedFixtures). */
   declaredFixtures: number;
 }

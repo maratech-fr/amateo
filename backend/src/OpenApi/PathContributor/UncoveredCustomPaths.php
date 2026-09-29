@@ -234,7 +234,7 @@ final readonly class UncoveredCustomPaths implements CustomPathContributor
                 operationId: 'getApiVenueDeletionImpact',
                 tags: ['Deletion'],
                 responses: [
-                    '200' => new Response('What deleting this entity would destroy — announced BEFORE confirmation. `lines` are counted by walking the SAME cascade plan the delete executes (App\\Deletion\\CascadePlan), labels included, so a destruction can never be added without its announcement. `blocked`/`reason` carry the engaged-perimeter refusal (the UI must not offer a gesture the server will 409). `slotsInForce` = touched sessions living in a version the plan POINTS AT. `declaredFixtures` = matches already SUBMITTED/VALIDATED to the federation that will lose their venue — announced, never blocking. Read-only.'),
+                    '200' => new Response('What deleting this entity would destroy — announced BEFORE confirmation. `lines` are counted by walking the SAME cascade plan the delete executes (App\\Deletion\\CascadePlan), labels included, so a destruction can never be added without its announcement. `blocked`/`reason` carry the engaged-perimeter refusal (the UI must not offer a gesture the server will 409). `slotsInForce` = touched sessions living in a version the plan POINTS AT. `placedFixtures` = matches currently placed in this venue (PLACED/SUBMITTED/VALIDATED) that will revert to "to be placed" when it is removed; `declaredFixtures` is the subset already SUBMITTED/VALIDATED to the federation that must be re-submitted — announced, never blocking. Read-only.'),
                     '401' => $unauthorized,
                     '403' => new Response('Entity belongs to another club'),
                     '404' => $notFound,

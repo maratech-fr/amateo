@@ -45,6 +45,7 @@ const deletionImpact = {
     reason: null as string | null,
     lines: [{ key: "team_reservation", count: 1, one: "créneau réservé", many: "créneaux réservés" }],
     slotsInForce: 0,
+    placedFixtures: 0,
     declaredFixtures: 0,
   },
 };

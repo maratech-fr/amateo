@@ -1,10 +1,10 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-09-27 (`documentation-update`, P4-263 PR 2/2 — front). Re-confronté au code :
+Last verified @ 2026-09-29 (`documentation-update`, rotation de fraîcheur). Re-confronté au code :
 versions du § Outils de test et § Stack Versions Fixed toujours exactes contre
 `frontend/package.json`, `act-warnings-ceiling.json` + `tooling/actWarningsRatchet.ts` existent,
 `msw` déclaré (`^2.15.0`) mais zéro import dans `src`/`tests` ✓ ; la maison unique d'erreur est
-`shared/lib/errorMessage.ts` — `shared/api/errors.ts` (`apiErrorMessage`) a disparu, absorbé dans
+`shared/lib/errorMessage.ts` — `shared/api/errors.ts` (`apiErrorMessage`) reste absent, absorbé dans
 `errorMessage()` ✓. Chronique des passes antérieures : `git log -p --follow` ce fichier.
 
 > Fixe le mandat de test, les versions de la stack, les anti-patterns et les règles de

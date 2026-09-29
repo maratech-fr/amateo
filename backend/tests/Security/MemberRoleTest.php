@@ -31,7 +31,9 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  *    un désactivé quitte la file d'approbation, son `/api/me` dit `deactivated`,
  *    une pending ne se réactive pas (approve est son seul chemin) ;
  *  - l'invariant « au moins un gestionnaire actif » : rétrograder OU désactiver le
- *    DERNIER gestionnaire → 409, y compris sur soi-même.
+ *    DERNIER gestionnaire → 409, y compris sur soi-même ;
+ *  - P4-77 — un compte EFFACÉ (RGPD, `User::anonymizedAt`) ne se réactive ni ne s'approuve :
+ *    ressusciter une identité anonymisée est refusé (409), la réactivation normale intacte.
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -270,6 +272,35 @@ final class MemberRoleTest extends WebTestCase
         self::assertNotContains($memberId, $this->memberIds(), 'une adhésion effacée ne revient pas dans la file d\'approbation');
     }
 
+    /**
+     * P4-77 (axe auth & memberships) : un compte EFFACÉ (RGPD, `User::anonymizedAt`) ne peut
+     * être ni réactivé ni approuvé — le geste ressusciterait une identité anonymisée. Le gestionnaire
+     * qui veut ré-inclure la personne doit la faire ré-inscrire, pas ranimer le compte effacé.
+     *
+     * Falsification : chaque garde désactivée fait retomber son cas en 200 (le test rougit).
+     */
+    public function testAnonymizedAccountCannotBeReactivatedOrApproved(): void
+    {
+        [$adminToken, , $clubA] = $this->register('MRL');
+
+        // Adhésion DÉSACTIVÉE dont le compte est anonymisé : réactiver → 409 + message dédié.
+        [, , $erasedDeactivated] = $this->makeMembership($clubA, 'member', isActive: false, deactivated: true, anonymized: true);
+        $this->post('/api/memberships/' . $erasedDeactivated . '/reactivate', $adminToken);
+        self::assertResponseStatusCodeSame(409, 'un compte anonymisé ne se réactive pas');
+        self::assertStringContainsString('supprimé', (string) ($this->body()['error'] ?? ''), 'le message dit que le compte a été supprimé (RGPD)');
+
+        // Ceinture : une adhésion EN ATTENTE dont le compte est anonymisé ne s'approuve pas.
+        [, , $erasedPending] = $this->makeMembership($clubA, 'member', isActive: false, anonymized: true);
+        $this->post('/api/memberships/' . $erasedPending . '/approve', $adminToken, '{"role":"member"}');
+        self::assertResponseStatusCodeSame(409, 'une adhésion en attente dont le compte est anonymisé ne s\'approuve pas');
+
+        // Non-régression : un compte NON anonymisé se réactive normalement (la garde ne mord
+        // que sur l'anonymisation).
+        [, , $liveDeactivated] = $this->makeMembership($clubA, 'member', isActive: false, deactivated: true);
+        $this->post('/api/memberships/' . $liveDeactivated . '/reactivate', $adminToken);
+        self::assertResponseIsSuccessful('un compte vivant se réactive comme avant');
+    }
+
     public function testPublicTokenRoutesStayReachable(): void
     {
         // Les pages publiques à token (le token EST l'identité) répondent 404
@@ -325,7 +356,7 @@ final class MemberRoleTest extends WebTestCase
     /**
      * @return array{0: string, 1: string, 2: string} [token, userId, membershipId]
      */
-    private function makeMembership(string $clubId, string $role, bool $isActive, bool $deactivated = false): array
+    private function makeMembership(string $clubId, string $role, bool $isActive, bool $deactivated = false, bool $anonymized = false): array
     {
         $container = self::getContainer();
         $em = $container->get(EntityManagerInterface::class);
@@ -339,6 +370,9 @@ final class MemberRoleTest extends WebTestCase
         $user->setFirstName('N');
         $user->setLastName('Member');
         $user->setPasswordHash($hasher->hashPassword($user, self::PASSWORD));
+        if ($anonymized) {
+            $user->setAnonymizedAt(new DateTimeImmutable);
+        }
         $em->persist($user);
 
         $membership = new ClubUser;

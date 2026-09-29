@@ -1,6 +1,5 @@
 import type { DeletionImpact } from "@/shared/api/deletionImpact";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
-import { DeclaredFixturesNotice } from "@/shared/components/ui/declared-fixtures-notice";
 
 interface DeleteConfirmProps {
   open: boolean;
@@ -58,8 +57,16 @@ export function DeleteConfirm({
   // P4-108 — plus AUCUN compte local : les quatre gestes de suppression (salle, équipe,
   // coach, créneau) lisent l'impact du serveur. La prop `impacts` a disparu avec son dernier
   // appelant, pour qu'on ne puisse plus recompter ici par commodité.
-  const lines = impact?.lines ?? [];
   const blocked = true === impact?.blocked;
+  // P4-270 — matchs déjà placés dans ce gymnase qui redeviendront « à placer » ; `declared` en
+  // est le sous-ensemble déjà déposé à la fédération (à re-soumettre). Zéro hors gymnase.
+  const placedFixtures = impact?.placedFixtures ?? 0;
+  const declaredFixtures = impact?.declaredFixtures ?? 0;
+  // P4-270 — la phrase placedFixtures ci-dessous couvre EXACTEMENT le même ensemble que la ligne
+  // de cascade `venue_fixture` (les matchs qui perdent leur salle) : on retire cette puce quand la
+  // phrase est rendue, pour ne pas dire deux fois la même chose. Filtre par CLÉ (jamais le libellé,
+  // porté par le serveur). placedFixtures = 0 → la puce n'existe de toute façon pas.
+  const lines = (impact?.lines ?? []).filter((line) => !(placedFixtures > 0 && "venue_fixture" === line.key));
   const description = (
     <>
       {blocked ? (
@@ -88,10 +95,23 @@ export function DeleteConfirm({
               Dont <strong>{impact.slotsInForce}</strong> {impact.slotsInForce > 1 ? "séances" : "séance"} du planning <strong>en vigueur</strong>. Vos plannings terminés passeront en «&nbsp;périmé&nbsp;» — régénérez pour retrouver un état sûr.
             </p>
           ) : null}
-          {/* P2-52 — on ne refuse pas le geste (un gymnase qui ferme, ça arrive), on avertit :
-              le match redevient « à placer », mais un match déjà déclaré devra être re-soumis.
-              Phrase PARTAGÉE avec la validation de planning (même perte de salle). */}
-          {undefined !== impact && null !== impact ? <DeclaredFixturesNotice count={impact.declaredFixtures} /> : null}
+          {/* P4-270 — on ne refuse pas le geste (un gymnase qui ferme, ça arrive), on dit la
+              VÉRITÉ du comportement : les matchs placés ici redeviennent « à placer », et le
+              sous-ensemble déjà déclaré à la fédération devra être re-soumis. Une seule phrase,
+              pas de doublon avec l'ancienne alerte des déclarés. */}
+          {placedFixtures > 0 ? (
+            <p className="mt-3 text-foreground">
+              <strong>
+                {placedFixtures} {placedFixtures > 1 ? "matchs placés" : "match placé"} dans ce gymnase {placedFixtures > 1 ? "redeviendront" : "redeviendra"} «&nbsp;à placer&nbsp;».
+              </strong>
+              {declaredFixtures > 0 ? (
+                <>
+                  {" "}
+                  Dont {declaredFixtures} {declaredFixtures > 1 ? "déjà déclarés" : "déjà déclaré"}, à re-soumettre à la fédération.
+                </>
+              ) : null}
+            </p>
+          ) : null}
           <p className={lines.length > 0 ? "mt-3 font-medium text-foreground" : "font-medium text-foreground"}>
             Cette action est définitive{affectsPeriodPlans ? ", y compris les réservations des plannings de période" : ""}.
           </p>
