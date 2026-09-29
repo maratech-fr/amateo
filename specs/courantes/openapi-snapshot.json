@@ -32009,7 +32009,7 @@
             },
             "TeamMatchHabit": {
                 "type": "object",
-                "description": "A team's habitual match window \u2014 one per weekday, venue optional.",
+                "description": "A team's ideal match slot \u2014 one per team, venue optional, tagged week A/B/ALL.",
                 "properties": {
                     "id": {
                         "default": "",
@@ -32055,7 +32055,7 @@
             },
             "TeamMatchHabit.TeamMatchHabitInput": {
                 "type": "object",
-                "description": "A team's habitual match window \u2014 one per weekday, venue optional.",
+                "description": "A team's ideal match slot \u2014 one per team, venue optional, tagged week A/B/ALL.",
                 "required": [
                     "teamId",
                     "dayOfWeek",
@@ -32112,7 +32112,7 @@
             },
             "TeamMatchHabit.html": {
                 "type": "object",
-                "description": "A team's habitual match window \u2014 one per weekday, venue optional.",
+                "description": "A team's ideal match slot \u2014 one per team, venue optional, tagged week A/B/ALL.",
                 "properties": {
                     "id": {
                         "default": "",
@@ -32207,7 +32207,7 @@
                         }
                     }
                 ],
-                "description": "A team's habitual match window \u2014 one per weekday, venue optional."
+                "description": "A team's ideal match slot \u2014 one per team, venue optional, tagged week A/B/ALL."
             },
             "TeamPeriodOverride": {
                 "type": "object",
@@ -34488,7 +34488,7 @@
         },
         {
             "name": "TeamMatchHabit",
-            "description": "A team's habitual match window \u2014 one per weekday, venue optional."
+            "description": "A team's ideal match slot \u2014 one per team, venue optional, tagged week A/B/ALL."
         },
         {
             "name": "TeamPeriodOverride",

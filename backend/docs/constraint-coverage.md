@@ -1,7 +1,7 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-09-27 (rotation de fraîcheur `documentation-update`, sujet sans rapport — passe
-doc P4-265 frontend). Re-confronté au code : les poids cités pour `spacing` (−2), `preferredVenueId`
+Last verified @ 2026-09-29 (rotation de fraîcheur `documentation-update`, sujet sans rapport — passe
+doc P4-271 matchs). Re-confronté au code : les poids cités pour `spacing` (−2), `preferredVenueId`
 (+10) et les tiers (S=10000…D=1) toujours exacts contre `engine/app/solver/objective/weights.py`
 (`LEVEL_2_OBJECTIVE_WEIGHTS["spacing"]=-2`, `["preferred"]=10`, `["S"]=10000`/`["D"]=1`, même
 dict) ; `ConstraintFamily` (`backend/src/Enum/ConstraintFamily.php:11-14`) n'a toujours que 4 cas

@@ -74,16 +74,17 @@ vigueur, il n'a rien à comparer.
   bruit qu'autre chose » côté radar) — § « Détecteur de conflits » ci-dessous ; côté ENTRAÎNEMENT
   `TeamLinkIntensity` `PREFERRED`/`MANDATORY` (honoré par le solveur d'entraînement — arbitrage :
   cette intensité ne gouverne jamais les matchs, `engine/docs/constraint-vocabulary.md` §Passerelles).
-- **`MatchSlotRotation`** + **`MatchSlotRotationTeam`** (membres ORDONNÉS, `position` purement
-  FICTIF — aucun ancrage calendaire) : un créneau physique (gymnase **NOT NULL** + jour + heure,
-  unique) partagé par N équipes en alternance A/B/C (cas SM1/SM2 : pénurie de créneaux). Une
-  rotation tombée sous 2 membres est supprimée, un gymnase supprimé emporte la rotation entière.
-  L'image A/B (habitudes ∪ rotations) alimente aussi le solveur d'ENTRAÎNEMENT : `Team.matchDay`
+- **`TeamMatchHabit.week`** (`MatchWeek` `A`\|`B`\|`ALL`, P4-271) : le créneau idéal (ci-dessus)
+  porte un tag de semaine d'alternance — **AIDE VISUELLE**, jamais une contrainte : il alimente la
+  vue A/B de l'écran Semaine type (§10) côté frontend seulement, il **ne voyage jamais au moteur**
+  (le solveur voit une habitude, sans étiquette de semaine). Remplace l'ex-`MatchSlotRotation` +
+  `MatchSlotRotationTeam` (créneau physique partagé par N équipes en alternance ordonnée, retirés
+  par P4-271 — deux équipes qui alternent sur le même créneau déclarent désormais chacune LEUR
+  créneau idéal, tagué A ou B). L'habitude alimente aussi le solveur d'ENTRAÎNEMENT : `Team.matchDay`
   (`ScheduleConstraintBuilder::deriveMatchDay`, `POST /generate`) émet le DERNIER jour ISO de match
   de la semaine — le repos qui compte est celui d'après lui (`rest_day = match_day % 7 + 1`,
   `engine/app/solver/objective/terms.py`) — pour le bonus SOFT « jour de repos après un match ».
-  Sans image (ni habitude ni rotation), repli sur le champ déclaré `Team.matchDay` (0-based,
-  converti en ISO à l'émission).
+  Sans habitude, repli sur le champ déclaré `Team.matchDay` (0-based, converti en ISO à l'émission).
 - **`VenueMatchWindow`** (jour ISO + plage horaire, gymnase = « de match » ssi ≥ 1 fenêtre — aucun
   booléen sur `Venue`) et **`VenueUnavailability`** (plage de dates + motif, toutes circonstances,
   alerte seulement — jamais recopiée en N+1).
@@ -94,9 +95,10 @@ vigueur, il n'a rien à comparer.
   canal (`FBI_XLSX`/`FFBB_API`).
 - `Venue.externalLabels` (JSON normalisé/dédupliqué) : alias FBI/FFBB confirmés — voir §5.3.
 
-Recopie en N+1 (`SeasonTransitionService`) : habitudes, passerelles, fenêtres d'accès, rotations
-(remap équipe+gymnase), la copie club de l'enveloppe ligue (`ClubLeagueWindow`, verbatim depuis la
-saison source) ; les indisponibilités et les échéances **ne sont jamais recopiées**.
+Recopie en N+1 (`SeasonTransitionService`) : habitudes (créneau idéal + tag `week` remap
+équipe+gymnase), passerelles, fenêtres d'accès, la copie club de l'enveloppe ligue
+(`ClubLeagueWindow`, verbatim depuis la saison source) ; les indisponibilités et les échéances
+**ne sont jamais recopiées**.
 
 ### Tables GLOBALES fédérales (hors tenant, hors RLS)
 
@@ -490,7 +492,7 @@ sur l'occupation finale : `venue_full` = plus aucun créneau licite libre à sa 
 chaîne de timeouts `MatchPlacementLock` 120 s → HTTP contrôleur 90 s → nginx fastcgi/proxy 120 s → PHP
 `max_execution_time` 120 s → client frontend `ky` 120 s sur cet appel seul (`frontend/src/features/
 matches/api/fixtures.ts`). Avant le solve, un **warm-start glouton** déterministe (matchs triés
-date/équipe, candidat préféré = habitude/rotation, sinon placement SOLVER courant, sinon premier créneau
+date/équipe, candidat préféré = créneau idéal, sinon placement SOLVER courant, sinon premier créneau
 licite libre) pose un seul jeu de hints CP-SAT — il absorbe l'ancien hint de stabilité, jamais deux hints
 contradictoires sur un même match (ADR-0003 §4).
 
@@ -530,7 +532,7 @@ entraînements projetés — un match AWAY ne bloque plus aucun coach ni joueuse
 le solveur ne peut de toute façon pas déplacer un match extérieur (l'heure est imposée par
 l'adversaire) ; le RADAR (§2) reste la seule source qui signale une indisponibilité réelle liée à un
 extérieur, le gestionnaire arbitre après coup. Un AWAY reste émis au contrat : il libère la
-protection d'habitude/rotation de son équipe ce jour-là (`team_dates`). Conséquence : la fenêtre
+protection d'habitude de son équipe ce jour-là (`team_dates`). Conséquence : la fenêtre
 personne du solveur ne provient plus JAMAIS d'un trajet ni d'un échauffement — elle vaut toujours la
 fenêtre salle `[kickoff, kickoff+matchMinutes]` (lot M + décision B).
 
@@ -538,11 +540,14 @@ fenêtre salle `[kickoff, kickoff+matchMinutes]` (lot M + décision B).
 −10 · passerelle `NOT_SIMULTANEOUS` violée −40 (⚠ **asymétrie délibérée** : le radar §2 ne signale
 jamais cette famille, le solveur GARDE cette préférence souple — sens sûr, une pénalité SOFT ne
 bloque jamais rien, à ne pas « aligner » en la retirant) · habitude heure +15/gymnase +5 · fenêtre
-habituelle protégée −25 · `BACK_TO_BACK` enchaîné +15 · stabilité re-solve +8 · compactage −1/15 min
-de trou. La rotation A/B
-(`slotRotations`, §1) ajoute une attraction équivalente (`W_ROTATION_TIME=15`/`W_ROTATION_VENUE=5`)
-et une protection de fenêtre (`W_PROTECT_HABIT=25`) — une équipe ne porte jamais habitude ET
-rotation le même jour (suppléance côté backend), les deux bonus ne s'additionnent donc jamais.
+habituelle protégée −25 (`W_PROTECT_HABIT`, `match_placement.py:53`) · `BACK_TO_BACK` enchaîné +15 ·
+stabilité re-solve +8 · compactage −1/15 min de trou. **La protection ne s'applique JAMAIS au
+créneau idéal PROPRE de l'équipe candidate** (`is_own_ideal`, P4-271) — sans cette exception, le
+bonus +15+5 d'une équipe perdrait toujours face à la protection −25 dès qu'une AUTRE équipe déclare
+son créneau idéal sur le même gymnase+jour+heure (l'ex-alternance A/B). Deux créneaux idéaux qui
+coïncident physiquement (même gymnase+jour+heure) protègent la MÊME fenêtre sur une date sans
+membre — dédupliquée par `(gymnase, date)` pour qu'un troisième candidat chevauchant ne soit jamais
+pénalisé deux fois (`match_placement.py:433-439`).
 
 **Ancres — `Fixture.placementSource`** : geste manuel API → `MANUAL` ; `MANUAL` + `SUBMITTED`/
 `VALIDATED` = **FIXED**, ne bouge jamais ; `SOLVER` = re-plaçable. Un amical n'est **jamais**
@@ -1256,15 +1261,18 @@ asynchrone).
 ## 10. Écran Semaine type (`/matchs/semaine-type`)
 
 Le MODÈLE sans dates que le placement respecte au maximum : le gabarit idéal (`TypicalWeekendGrid`
-— habitudes Sam/Dim × gymnases, sans dates, collisions posées côte à côte) en vedette, et l'éditeur
-« Créneaux partagés (alternance) » (`MatchSlotRotationsEditor` — déclarer un créneau + ses équipes
-membres dans l'ordre, réordonnancement par flèches, `position` explicitement dit FICTIF à l'écran).
-Segmenté « Semaine A/B/… » sur le gabarit dès qu'une rotation ≥ 2 membres existe (sinon la grille
-reste identique à avant, aucun segmenté). Le bouton **« Habitudes & passerelles »**
-(`HabitsLinksDialog`, l'écran unique de ces deux réglages, ouvert aussi depuis le wizard) s'ouvre
-d'ici. Un signal « hors image » (écart entre placement réel et modèle de référence — habitude ou
-rotation du jour) et un signal « même week-end » (deux membres d'une même rotation reçus le même
-week-end, contredit l'image A/B) restent des SIGNAUX, jamais un blocage.
+— créneaux idéaux Sam/Dim × gymnases, sans dates, collisions posées côte à côte) en vedette, et
+l'éditeur **« Créneaux idéaux »** (`IdealSlotsEditor`, P4-271 — remplace l'ex-éditeur de rotations
+« Créneaux partagés (alternance) ») : UNE ligne par équipe, tous les champs du créneau idéal
+éditables EN PLACE (jour · heure · gymnase optionnel · semaine A/B/toutes) — une équipe porte UN
+SEUL créneau idéal. Segmenté « Semaine A/Semaine B » sur le gabarit dès qu'un créneau idéal porte le
+tag A ou B (sinon la grille reste identique à avant, aucun segmenté) — le tag est une AIDE VISUELLE,
+jamais une contrainte, il ne voyage jamais au moteur (§3). Le bouton **« Passerelles »**
+(`HabitsLinksDialog`, désormais dédiée aux seuls liens entre équipes — les créneaux idéaux ne s'y
+saisissent plus) s'ouvre d'ici. Un signal « hors image » (écart entre placement réel et créneau
+idéal du jour) et un signal « même week-end » (deux équipes dont le créneau idéal coïncide
+physiquement — même gymnase+jour+heure — reçues à domicile le même week-end, contredit
+l'alternance A/B) restent des SIGNAUX, jamais un blocage.
 
 ## 11. Le périmètre engagé (`TeamEngagementGuard`)
 
@@ -1302,7 +1310,7 @@ migration verbatim, zéro dérive). Client IGN : `IgnRoutingClientTest` (pacing 
 journalisé). Progression Mercure : `TravelProgressPublisherTest`. Logo fédéral :
 `OpponentLogoApiTest` (401 anonyme, 404, MIME, Cache-Control, code invalide). Contrats cross-stack
 (groupe `contract`) : `MatchPlacementContractSchemaTest`,
-`ValidateAssignmentsContractSchemaTest`, `SlotRotationPayloadParityTest`,
+`ValidateAssignmentsContractSchemaTest`, `HabitPayloadParityTest`,
 `MatchVisitDeltaParityTest`. Tables partagées : un `*ShareTest` par table (`OpponentDirectoryShareTest`
 — whitelist `logo_id` compris —, `OpponentVenueSuggestionShareTest`, `EntryDeadlineShareTest`).
 Périmètre engagé : `EngagedTeamGuardTest`,

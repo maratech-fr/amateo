@@ -1,11 +1,14 @@
-Last verified @ 2026-09-29 (snapshot régénéré depuis le backend vivant, rebasé sur #1008 : P4-271 —
-la ressource `MatchSlotRotation` disparaît (les 2 routes `GET/POST /api/match_slot_rotations` et
+Last verified @ 2026-09-29 (snapshot régénéré depuis le backend vivant : P4-271 — la ressource
+`MatchSlotRotation` disparaît (les 2 routes `GET/POST /api/match_slot_rotations` et
 `GET/PUT/DELETE /api/match_slot_rotations/{id}` retirées, semaine type A/B désormais un tag `week`
 sur le créneau idéal) et `TeamMatchHabit` gagne le champ `week` (A/B/ALL) en lecture comme en
-écriture ; les routes de P4-272 ② (plages de ligue suggérées) présentes via le rebase).
+écriture ; la description de la ressource (`TeamMatchHabitResource.php`) recalée sur « un par
+équipe » (l'ancien « un par jour de semaine » datait d'avant l'unicité par équipe) — même passe que
+le PUT qui peut désormais retirer le gymnase d'un créneau idéal (`d703af19`) ; les routes de
+P4-272 ② (plages de ligue suggérées) toujours présentes).
 
 **211 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`e438ee8c9ed3724b193c71245bb945fd225a8e0ba16f5db9d710407f8ddc16c4` (`sha256sum` sur le fichier).
+`602d6b7d1646b60cec8f3ed33a59aa8897af7c24e03028dba62adaffedd85989` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

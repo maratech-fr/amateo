@@ -131,13 +131,16 @@ jeton, l'autre vérifie que deux placements restent sérialisés.
   y porter. Le radar de conflits (backend, `MatchFootprint`) continue de le consommer : à
   l'extérieur, sa fenêtre de conflit personne compte désormais aussi l'échauffement avant le
   trajet aller (décision C, hors solveur).
-- **`slotRotations`** (RMM-5, `venueId`/`dayOfWeek`/`kickoff`/`teamIds`) : un créneau de match
-  PARTAGÉ tourne entre équipes membres (rareté des créneaux — la case SM1/SM2 20:30, semaine A
-  une équipe reçoit, semaine B l'autre). CONSOMMÉ en SOFT (jamais HARD) : le match HOME d'un
-  membre ce jour-là est ATTIRÉ vers `(kickoff, venueId)`, à parité stricte avec les termes
-  d'habitude, et la fenêtre de la rotation est protégée les dates où aucun membre n'y joue. Le
-  backend retire l'habitude du même jour pour un membre en rotation (suppléance) : un membre
-  reçoit soit la rotation, soit son habitude ce jour-là, jamais les deux.
+- **Semaine A/B (P4-271)** : `TeamMatchHabit.week` (`A`/`B`/`ALL`) est une AIDE VISUELLE côté
+  frontend seule — elle **ne voyage jamais** dans `TeamHabitSchema`, le solveur voit une habitude
+  sans étiquette de semaine. `slotRotations`/`SlotRotationSchema` (l'ex-créneau de match PARTAGÉ
+  tournant entre équipes membres, RMM-5) sont **retirés du contrat** : une équipe porte désormais
+  UN SEUL créneau idéal. La protection de fenêtre d'habitude (`W_PROTECT_HABIT`) ne s'applique
+  jamais au créneau idéal PROPRE de l'équipe candidate (`is_own_ideal`) — sans cette exception, le
+  bonus d'habitude d'une équipe perdrait toujours face à la protection posée par une AUTRE équipe
+  dont le créneau idéal coïncide physiquement (même gymnase+jour+heure, l'ex-alternance A/B) ; deux
+  créneaux idéaux physiquement identiques protègent la MÊME fenêtre, dédupliquée par
+  `(venueId, date)` pour qu'un troisième candidat chevauchant ne soit jamais pénalisé deux fois.
 - **Schémas dédiés** : `app/schemas/match_input_schema.py` / `match_output_schema.py` (§3 bis).
 
 ### POST /generate
@@ -311,7 +314,8 @@ Contrat **2.25** (le MÊME que `/generate` — un seul contrat pour les trois en
 (le problème n'a ni créneau récurrent ni séance) :
 
 - **`MatchPlacementInputSchema`** : `version`, `clubId`, `seasonId`, `matches`, `venues`, `teams`,
-  `coaches`, `teamLinks`, `slotRotations`, `trainingOccupancies`… Sous-schémas :
+  `coaches`, `teamLinks`, `trainingOccupancies`… (`slotRotations` retiré, P4-271, contrat **2.25**).
+  Sous-schémas :
   **`MatchVenueSchema`** (`matchWindows: list[MatchAccessWindowSchema]`
   = jour + plage `start`/`end` d'accès à la salle, `unavailabilities` datées),
   **`MatchTeamSchema`** (`leagueWindows: list[LeagueKickoffWindowSchema]` ≤50
@@ -325,9 +329,7 @@ Contrat **2.25** (le MÊME que `/generate` — un seul contrat pour les trois en
   105/30, cf. §POST /place-matches), **`MatchSchema`** (un match daté : `kind`
   `TO_PLACE`/`FIXED`/`AWAY`, `venueId`/`kickoff` (requis si `FIXED`), `currentVenueId`/
   `currentKickoff` pour le hint de stabilité, `roundTripMinutes` — trajet AWAY, **transporté mais
-  non consommé par le solveur depuis P4-240 ③ décision B**, cf. §POST /place-matches),
-  **`SlotRotationSchema`** (`venueId`/`dayOfWeek`/`kickoff`/`teamIds` ≤20 —
-  rotation de créneau partagé, cf. §POST /place-matches).
+  non consommé par le solveur depuis P4-240 ③ décision B**, cf. §POST /place-matches).
 - **`MatchPlacementOutputSchema`** : `status`, `placements: list[MatchPlacementSchema]`
   (`matchId`, `venueId`, `kickoff`), **`unplaced: list[UnplacedMatchSchema]`** (`matchId`,
   `reason`, `message` — le non-plaçable sort NOMMÉ, c'est le produit ; `reason` est un `str` libre,

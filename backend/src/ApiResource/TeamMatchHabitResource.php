@@ -19,7 +19,7 @@ use App\State\Provider\TeamMatchHabitStateProvider;
 use DateTimeImmutable;
 use Symfony\Component\Serializer\Attribute\Groups;
 
-/** A team's habitual match window — one per weekday, venue optional. */
+/** A team's ideal match slot — one per team, venue optional, tagged week A/B/ALL. */
 #[ApiResource(shortName: 'TeamMatchHabit', operations: [
     new GetCollection,
     new Get,
