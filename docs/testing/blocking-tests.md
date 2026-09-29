@@ -35,6 +35,11 @@ message d'avant à l'octet près) ·
 `CrossStack/PayloadVersionMatchesContractVersionTest` (la version que le payload s'attribue == `engine/CONTRACT_VERSION`, égalité STRICTE — la dérive avait vécu deux bumps en silence) ·
 `CrossStack/ValidateAssignmentsContractSchemaTest` (contrat du verdict `/validate-assignments`) ·
 `Security/RlsIsolationTest` (RLS en base) ·
+`Security/ReadOnlyRoleTest` (P5-20 : le rôle Postgres de lecture seule `amateo_read` — SELECT scopé au
+club via une policy `readonly_tenant` portant le prédicat canonique, aucune écriture [refus au niveau
+privilège, aucun GRANT DML], aucune porte `admin_all` ni `USING(true)` qui l'ouvrirait cross-club, et
+une garde du futur : toute table portant `club_id` doit porter EXACTEMENT une policy `readonly_tenant`
+pour `amateo_read` — sinon l'opérateur la verrait à 0 ligne, ou cross-club si posée à la main) ·
 `Security/LeagueWindowSuggestionShareTest` (P4-272 ② : la suggestion de plages de ligue lit à travers la frontière tenant via une fonction SQL SECURITY DEFINER — seuil ≥ 3 ET majorité, groupement d'instance comité/ligue/fédération, demandeur exclu, saisons non actives exclues, aucune donnée club-identifiante, repli fédéral ARA/rien pour GUY, apply recalculé serveur) ·
 `Security/ClubAccessTest` + `Security/UserSelfOnlyTest` + `Security/ImportAuthorizationTest` (lockdown API tenant) ·
 `Security/MercureHardeningTest` (Mercure durci) ·

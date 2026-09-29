@@ -394,6 +394,15 @@ jobs:
       - name: RlsIsolationTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/RlsIsolationTest.php --group phase1'
 
+      # P5-20 — rôle Postgres de lecture seule amateo_read : SELECT scopé au club,
+      # aucune écriture (refus privilège), aucune porte admin_all, et une garde du
+      # futur (toute table club_id doit porter sa policy readonly_tenant). Sans ce
+      # gate BLOQUANT, une table tenant ajoutée sans policy rendrait l'opérateur
+      # aveugle en silence, ou une policy USING(true) posée à la main lui ouvrirait
+      # le cross-club — invisible aux autres checks.
+      - name: ReadOnlyRoleTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/ReadOnlyRoleTest.php --group phase1'
+
       # P4-272 ② — la suggestion de plages de ligue LIT à travers la frontière tenant
       # (fonction SQL SECURITY DEFINER). Sans ce gate BLOQUANT, une régression du seuil,
       # de la majorité, du groupement d'instance, de l'exclusion du demandeur, ou une
