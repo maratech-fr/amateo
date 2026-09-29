@@ -51,6 +51,8 @@ class PdfGenerator
         private readonly ScheduleExportDataProvider $exportData,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly LogoStorage $logoStorage,
+        private readonly BrandAssets $brandAssets,
+        private readonly ProductIdentity $productIdentity,
     ) {}
 
     /**
@@ -101,7 +103,11 @@ class PdfGenerator
         // the worker, and forced a world-writable chmod).
 
         try {
-            $this->callWorker($html, $pdfFilename);
+            // P5-24 — le pied de marque « Généré avec … » posé sur CHAQUE page par
+            // Puppeteer (`footerTemplate`). Construit ici, côté backend : le worker
+            // reste bête, il ne fait que le câbler. Le nom vient de `ProductIdentity`
+            // (jamais un littéral de marque), l'icône est inlinée en data URI.
+            $this->callWorker($html, $pdfFilename, $this->buildFooterTemplate());
         } catch (TransportExceptionInterface $e) {
             throw new RuntimeException('PDF worker unreachable: ' . $e->getMessage(), $e->getCode(), $e);
         }
@@ -109,15 +115,18 @@ class PdfGenerator
         return ['pdf' => self::PUBLIC_PATH . '/' . $pdfFilename];
     }
 
-    private function callWorker(string $html, string $filename): void
+    private function callWorker(string $html, string $filename, string $footerTemplate): void
     {
         // L'export porte TOUJOURS ses deux sections depuis le retrait du PNG : le drapeau
         // reste explicite dans le payload plutôt qu'implicite côté worker.
+        // `footerTemplate` = le pied de marque déjà rendu (HTML inline, icône en data URI) :
+        // le worker le pose tel quel via `displayHeaderFooter`, sans rien composer lui-même.
         $json = [
             'html' => $html,
             'filename' => $filename,
             'landscape' => true,
             'multiSection' => true,
+            'footerTemplate' => $footerTemplate,
         ];
 
         $response = $this->httpClient->request('POST', self::PDF_WORKER_URL, [
@@ -130,6 +139,36 @@ class PdfGenerator
         if (!($result['success'] ?? false)) {
             throw new RuntimeException($result['error'] ?? 'Worker generation failed.');
         }
+    }
+
+    /**
+     * P5-24 — le pied de marque « Généré avec [icône] amateo », posé par Puppeteer sur
+     * CHAQUE page (`footerTemplate`), petit et aligné à droite (maquette option 2).
+     *
+     * Contraintes du pied Puppeteer respectées ICI, à la source : styles INLINE seulement
+     * (aucune feuille externe n'est chargée dans ce contexte) et `font-size` EXPLICITE (le
+     * défaut du pied est nul). L'icône est inlinée en data URI par `BrandAssets` — le worker
+     * ne joint aucune URL. Le nom vient de `ProductIdentity` (variable, jamais un littéral) et
+     * s'écrit en minuscules comme le logotype à l'écran (`BrandMark`).
+     */
+    private function buildFooterTemplate(): string
+    {
+        $logo = $this->brandAssets->pdfLogoDataUri();
+        $name = $this->productIdentity->name();
+        $word = htmlspecialchars(mb_strtolower($name));
+        $alt = htmlspecialchars($name);
+
+        return \sprintf(
+            '<div style="width:100%%;padding:0 24px;font-family:Arial,Helvetica,sans-serif;font-size:8px;color:#9ca3af;text-align:right;">'
+            . '<span style="display:inline-flex;align-items:center;gap:4px;vertical-align:middle;">'
+            . 'Généré avec'
+            . '<img src="%s" alt="%s" style="height:11px;width:11px;display:inline-block;">'
+            . '<span style="font-weight:600;color:#6b7280;">%s</span>'
+            . '</span></div>',
+            $logo,
+            $alt,
+            $word,
+        );
     }
 
     private function buildHtml(Schedule $schedule, ScheduleExportData $data, ?string $venueId, bool $multiSection = false): string
