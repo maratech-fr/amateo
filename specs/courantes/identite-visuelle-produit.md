@@ -1,16 +1,16 @@
 # Identité visuelle produit — la base est le produit, l'accent est le club
 
-Last verified @ 2026-09-27 (P4-265 — surfaces opaques). Confronté au code cette passe :
-`frontend/src/index.css` (jetons `--surface-warning|accent|destructive|muted`, `color-mix` clair
-10/10/8/60 %, sombre 12/12/12/60 %, `--color-surface-*` exposés à Tailwind), `frontend/src/shared/
-components/ui/notice-banner.tsx` (remplace `WarningPanel`, fond `bg-surface-<ton>`, texte
-`text-foreground`), `frontend/src/shared/components/ui/accordion.tsx` (`bg-card` + `border-l-2`
-accent à l'ouverture), `frontend/src/shared/components/ui/tabs.tsx` (peau `app` : barre `bg-card`),
-`frontend/src/test/surfaceOpacityGuard.test.ts`. Non re-vérifié cette passe (reformulé au présent
-tel quel lors de la passe 2026-09-26) : `useApplyClubTheme.ts`, `color.ts`
+Last verified @ 2026-09-29 (P4-274 — thème sombre vitrine). Confronté au code cette passe :
+`landing/index.html` (mini-script anti-flash `data-theme`, bloc `html[data-theme="dark"]` — jetons
+sombres, bouton `.theme-toggle`, `html[data-theme="dark"] body` → `fond-dark.svg`, logotype
+`mark.svg` + `.logo-word`), `landing/assets/brand/mark.svg` (arcs seuls, sans disque blanc),
+`landing/assets/brand/fond-dark.svg` (identique octet à `frontend/public/brand/fond-dark.svg`,
+vérifié par `diff`), `landing/config.js` (clé `logo`). Non re-vérifié cette passe (reformulé au
+présent tel quel lors des passes 2026-09-26/27) : `useApplyClubTheme.ts`, `color.ts`
 (`SURFACES`/`accentForMode`/`accentHoverForMode`), `accentTokenParity.test.ts`, `ClubPage.tsx`
 (`DEFAULT_ACCENT`), `brand-icon.tsx`, `favicon.svg`, `brand-mark.tsx`, `system-screen.tsx`,
-`AdminAuthLayout.tsx` — historique des vérifications précédentes : `git log -p --follow`. Les
+`AdminAuthLayout.tsx`, `frontend/src/index.css` (jetons `--surface-*`), `notice-banner.tsx`,
+`accordion.tsx`, `tabs.tsx` — historique des vérifications précédentes : `git log -p --follow`. Les
 ratios de contraste des jetons `--surface-*` sont ceux consignés en commentaire dans `index.css`
 (non recalculés indépendamment cette passe).
 
@@ -148,6 +148,11 @@ fixe — l'icône produit ne s'efface jamais devant celle d'un club.
   clair (sous la barre), et `aria-hidden` n'exempte pas le texte rendu de la règle color-contrast
   d'axe — la piste « logotype exempté de WCAG 1.4.3 » ne tient pas ; décision fondateur : une
   marque n'a pas deux visages.
+- **La vitrine recopie ce même patron pour son logotype (P4-274, 2026-09-29)** : `landing/config.js`
+  clé `logo` pointe `landing/assets/brand/mark.svg` (les trois arcs SEULS, sans le disque blanc du
+  favicon `icon.svg` — mark thème-neutre, comme `BrandIcon`) et le mot (`brand`) est injecté en
+  TEXTE à côté (`.logo-word`, `color: var(--ink)`), en minuscules — un seul rendu clair/sombre,
+  recopié par convention, jamais importé de `frontend/` (`CLAUDE.md` §2).
 
 ## Le fond d'écran
 
@@ -156,8 +161,9 @@ en `background-image` CSS sur `body` — pas de composant React, pas d'animation
 FIGÉ**.
 
 - **Assets** : `frontend/public/brand/fond-light.svg` / `fond-dark.svg` (thème clair/sombre de
-  l'app) et `landing/assets/brand/fond.svg` (vitrine, un seul thème — la landing n'a pas de mode
-  sombre). Les trois sont des copies **purgées** des SVG livrés par le fondateur (dossier
+  l'app) et `landing/assets/brand/fond.svg` / `fond-dark.svg` (vitrine — **thème au choix depuis le
+  2026-09-29 (P4-274)**, bouton de bascule ; `fond-dark.svg` est une copie OCTET-IDENTIQUE de celle
+  de l'app). Les quatre sont des copies **purgées** des SVG livrés par le fondateur (dossier
   `business/`, hors dépôt) : manifeste C2PA retiré (l'original portait la signature « Anthropic
   Claude Content Signing » — ces SVG sortent d'une session Claude, pas d'un outil de design),
   `<metadata>` retirée, `<rect>` de sol retiré (le sol est notre papier, pas le gris de la
@@ -167,8 +173,11 @@ FIGÉ**.
   background-position: center; background-repeat: no-repeat; background-attachment: fixed; }`
   (`frontend/src/index.css`), `.dark body` bascule sur `fond-dark.svg` ; la vitrine pose
   l'équivalent en un seul déclaratif (`background: var(--paper) url("assets/brand/fond.svg")
-  center / cover no-repeat fixed;`, `landing/index.html`). `fixed` : parallaxe de fond assumée
-  desktop-first — iOS Safari retombe en `scroll` (comportement natif, pas un bug).
+  center / cover no-repeat fixed;`, `landing/index.html`), et `html[data-theme="dark"] body`
+  bascule sur `fond-dark.svg` — même mécanique que l'app, posée en attribut plutôt qu'en classe
+  (`data-theme` posé par le mini-script anti-flash du `<head>`, cf. `.claude/rules/landing.md`).
+  `fixed` : parallaxe de fond assumée desktop-first — iOS Safari retombe en `scroll` (comportement
+  natif, pas un bug).
 - **Sol et opacité** : le sol est notre papier — `--background` côté app, `--paper` côté vitrine
   (`background-color` posé avant l'image). Opacité des motifs : **0,15 clair / 0,17 sombre** dans
   l'app, **0,26** sur la vitrine (contraste éditorial différent, vitrine = une seule page longue).
