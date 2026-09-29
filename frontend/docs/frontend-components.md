@@ -1,6 +1,11 @@
 # Conventions API, Layout et primitives UI partagées
 
-Last verified @ 2026-09-29 (P4-271 : entrée `VenueSelect` recalée — `matches/MatchSlotRotationsEditor.tsx`
+Last verified @ 2026-09-29 (feat/pastilles-offre-club : section « AppLayout » recalée contre
+`app/AppLayout.tsx`/`app/BetaBadge.tsx`/`shared/credits/CreditBadge.tsx` — `BetaBadge` (nouveau)
+et `CreditBadge` (déplacé de la nav de droite) rendent désormais dans la grappe de marque, décrits
+avec leur comportement vérifié aux tests (`AppLayout.test.tsx`, `BetaBadge.test.tsx`,
+`CreditBadge.test.tsx`) ; le reste de la section AppLayout et de la table §3 non rejoué à ce
+passage. P4-271 : entrée `VenueSelect` recalée — `matches/MatchSlotRotationsEditor.tsx`
 a disparu, remplacé par `matches/IdealSlotsEditor.tsx` dans la liste des consommateurs ; `PageHeader`
 re-confronté au passage : `shared/components/ui/page-header.tsx` exporte toujours `PageHeader` (props
 `title`, `screen`, `scheduleId`, `leading`, `beside`, `actions`, `subtitle`, `showFeedback`) ✓, le
@@ -82,10 +87,30 @@ En-tête, de gauche à droite :
   masqué sous `sm` (`hidden sm:inline`, `truncate` conservé ≥ `sm`, P4-261) — il ne se tronque
   plus visuellement jusqu'à un caractère (« B… »), il disparaît proprement ; le nom accessible
   du lien ne bouge pas.
+- Les **pastilles d'OFFRE** (`BetaBadge` puis `CreditBadge`, 2026-09-29), juste après le lien
+  d'accueil, dans la même grappe de marque — pas dans la nav de droite. Les deux lisent l'offre
+  du club servie par `/api/me` (`entitlements`), jamais un état recalculé, et sont mutuellement
+  exclusives en pratique (rien en payant/démo, rien sur les pages publiques puisque `AppLayout`
+  ne monte que dans l'espace authentifié) :
+  - `BetaBadge` (`app/BetaBadge.tsx`) — offre `beta` (`entitlements.planCode`) seulement, sinon
+    `null`. Bouton-disclosure « BÊTA » en teal PRODUIT (`PRODUCT_ACCENT` via `accentForMode`,
+    jamais l'accent du club — recette `StatusPill` : bordure/fond teintés, texte
+    `text-foreground` pour l'AA) qui ouvre un popover **non modal** (`role="dialog"
+    aria-modal="false"`) : Échap ferme et rend le focus à la pastille, clic extérieur ferme sans
+    forcer le focus, le CTA « Signaler un problème » ferme le popover et appelle `onReport`
+    (câblé par `AppLayout` sur le même `FeedbackDialog` que le menu du compte). La bêta se
+    termine club par club via l'attribution de plan de la console superadmin — aucun
+    interrupteur produit.
+  - `CreditBadge` (`shared/credits/CreditBadge.tsx`) — déplacé ici depuis la nav de droite,
+    offre Découverte bridée seulement (`useCredits()` rend `null` hors Découverte bridée).
+    Libellé « Découverte · N crédits » (accord singulier/pluriel), `StatusPill` variante
+    `warning` **permanente** (l'ancien seuil ≤ 5 crédits a disparu — l'ambre marque l'offre,
+    plus le solde), enveloppée d'un `Link` vers `/club` (le seul écran où consulter/faire
+    évoluer l'offre).
 - `DevClock`, seulement en `import.meta.env.DEV`.
 - La nav de droite (`<nav>`, ne se rétracte JAMAIS, y compris sous 360 px — décision fondateur
   desktop-first/mobile V2 ; le débordement horizontal résiduel de l'en-tête à cette largeur est
-  une dette DISTINCTE, en Vision) : `CreditBadge`, `SeasonSelector`, l'item « Matchs »
+  une dette DISTINCTE, en Vision) : `SeasonSelector`, l'item « Matchs »
   (verrouillé — `aria-disabled`, non cliquable — tant que `me.seasonPlan.chosenScheduleId` est
   nul, même condition que `SocleGuard` côté serveur), la bascule thème clair/sombre, puis le
   `Menu` du compte : Club (`/club`), Profil (`/profile`), Nouveautés (`/nouveautes`), Signaler
@@ -118,6 +143,19 @@ existe »)
 **And** l'ancienne icône de repli `CalendarCheck2` n'est plus utilisée
 (`AppLayout.test.tsx` — « sans blason : aucune image de club, l'icône produit suffit » /
 « n'utilise plus l'icône de repli CalendarCheck2 »)
+
+**Given** le club a chargé (peu importe l'offre)
+**When** `AppLayout` se rend
+**Then** `BetaBadge` et `CreditBadge` apparaissent dans la grappe de marque (parent du lien
+d'accueil), APRÈS ce lien
+**And** ni l'un ni l'autre n'apparaît dans la nav de droite (`<header> <nav>`)
+(`AppLayout.test.tsx` — « place les deux pastilles dans la grappe de marque, APRÈS le lien
+d'accueil, hors de la nav »)
+
+**Given** l'offre bêta (`BetaBadge` rendu)
+**When** son CTA « Signaler un problème » est activé (`onReport`)
+**Then** `FeedbackDialog` s'ouvre — le même canal que « Signaler un bug » du menu du compte
+(`AppLayout.test.tsx` — « BÊTA → onReport ouvre le canal de signalement (FeedbackDialog) »)
 
 **Given** un gestionnaire connecté navigue vers `/club` en viewport 360 px
 **When** la page se charge
