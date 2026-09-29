@@ -225,6 +225,54 @@ SET app.club_id = '<uuid-du-club>';           -- sans ce contexte, les tables te
 SELECT * FROM team_tag;                        -- ne voit que le club posé ; toute écriture est refusée
 ```
 
+#### Supprimer `amateo_read` (si tu n'en veux plus)
+
+Le rôle est isolé (que du `SELECT`, aucune dépendance) : le `down()` de la migration le retire, ou à la main
+sur la VM en `amateo_owner`. `DROP OWNED BY` d'abord — il révoque tous les droits (table ET colonne) et permet
+le `DROP ROLE`. (Le rôle est cluster-level : `DROP OWNED BY` ne touche qu'une base — le rejouer par base s'il a
+été créé dans plusieurs.)
+
+```bash
+ssh <hôte> "docker compose exec postgres psql -U amateo_owner -d amateo -c 'DROP OWNED BY amateo_read; DROP ROLE amateo_read;'"
+```
+
+### 1.9 Réparer une donnée en prod — le geste sûr
+
+Pour LIRE, `amateo_read` suffit (§1.8). Pour ÉCRIRE (corriger une donnée), il faut l'accès complet :
+`amateo_owner`. **Toujours SSH sur la VM puis `psql` — JAMAIS depuis un poste** (pas de tunnel : un client
+graphique en `amateo_owner`, c'est toutes les données de tous les clubs sur un portable, et un `UPDATE` mal
+collé qui touche du vrai sans filet).
+
+**Préférer une commande console applicative quand elle existe** (`bin/console app:…`) : elle passe par les
+règles métier et laisse une trace. La retouche SQL directe est le dernier recours.
+
+⚠ **RLS : `amateo_owner` bypasse le tenant** (policies `admin_all`, cf. [`../security/rls.md`](../security/rls.md)) —
+`SET app.club_id` NE le filtre PAS. Donc **filtrer TOUJOURS par `club_id` à la main** dans le `WHERE`, sinon la
+correction frappe TOUS les clubs.
+
+1. **AVANT — sauvegarder la cible** : dump ciblé de la/les table(s) ou du club, ou backup complet.
+   ```bash
+   ssh <hôte>
+   # dump ciblé d'une table (rejouable) :
+   docker compose exec postgres pg_dump -U amateo_owner -d amateo -t public.<table> -Fc -f /tmp/repair-<table>-$(date +%F).dump
+   # ou un backup complet applicatif (cf. backup-restore.md) :
+   docker compose exec php-fpm php bin/console app:db:backup --force
+   ```
+2. **PENDANT — transaction explicite, jamais d'autocommit** : contrôler, agir avec un `WHERE` explicite
+   (`club_id` COMPRIS), vérifier le nombre de lignes touchées, puis committer — ou tout annuler au moindre doute.
+   ```sql
+   BEGIN;
+   -- 1. contrôle : voir exactement les lignes visées (club_id explicite)
+   SELECT id, name FROM public.<table> WHERE club_id = '<uuid-du-club>' AND <condition>;
+   -- 2. correction : WHERE explicite, club_id TOUJOURS présent
+   UPDATE public.<table> SET <col> = <val> WHERE club_id = '<uuid-du-club>' AND <condition>;
+   -- 3. vérifier le compte de lignes touchées AVANT de committer (psql affiche « UPDATE <n> »)
+   SELECT count(*) FROM public.<table> WHERE club_id = '<uuid-du-club>' AND <condition>;
+   COMMIT;   -- ou ROLLBACK; si le compte n'est pas EXACTEMENT celui attendu
+   ```
+3. **APRÈS — tracer le geste** dans le journal ops : qui, quand, quoi (table + condition + lignes touchées),
+   pourquoi, et le dump pris avant. Une écriture directe en prod se justifie et se retrouve.
+
 ---
 
 ### 1.8 Jour J — données (seed initial, une seule fois)
