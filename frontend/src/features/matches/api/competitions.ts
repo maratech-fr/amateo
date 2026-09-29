@@ -106,6 +106,48 @@ export const updateClubLeagueWindow = (id: string, input: ClubLeagueWindowInput)
 export const deleteClubLeagueWindow = (id: string): Promise<void> => api.delete(`club_league_windows/${id}`).then(() => undefined);
 
 /**
+ * P4-272 ② — les plages SUGGÉRÉES au club : la tendance dominante de son instance
+ * fédérale (comité / ligue / fédération) plus un repli sur le catalogue fédéral. Le
+ * backend est la SEULE maison du calcul (seuil, majorité, masquage des lignes déjà
+ * identiques à la copie) — le front AFFICHE ce qu'il sert, il ne le redérive JAMAIS
+ * (🔴 .claude/rules/frontend.md). `clubCount` est un COMPTE, jamais un « qui ».
+ */
+export interface LeagueWindowSuggestionItem {
+  category: string;
+  level: LeagueWindowLevel;
+  gender: string | null;
+  /** ISO 1..7 */
+  dayOfWeek: number;
+  windows: { kickoffMin: string; kickoffMax: string }[];
+  /** Nombre de clubs de l'instance ayant saisi cet ensemble ; null pour un repli fédéral. */
+  clubCount: number | null;
+  /** "clubs" (tendance des clubs) | "federation" (repli catalogue fédéral). */
+  source: "clubs" | "federation";
+  /** "comite" | "ligue" | "federation" — l'instance qui a produit la ligne. */
+  scope: "comite" | "ligue" | "federation";
+}
+
+export interface LeagueWindowSuggestions {
+  /** null quand le code FFBB est illisible → réponse neutre, aucun item. */
+  instance: { ligue: string; comite: string } | null;
+  items: LeagueWindowSuggestionItem[];
+}
+
+/** Une combinaison à appliquer — les plages sont RECALCULÉES serveur, jamais fournies ici. */
+export interface LeagueWindowSuggestionCombination {
+  category: string;
+  level: LeagueWindowLevel;
+  gender: string | null;
+  dayOfWeek: number;
+}
+
+export const getLeagueWindowSuggestions = (): Promise<LeagueWindowSuggestions> =>
+  api.get("league-window-suggestions").json<LeagueWindowSuggestions>();
+
+export const applyLeagueWindowSuggestions = (combinations: LeagueWindowSuggestionCombination[]): Promise<{ applied: number }> =>
+  api.post("league-window-suggestions/apply", { json: { combinations } }).json<{ applied: number }>();
+
+/**
  * RMM-3 — le « gardien » à l'ouverture du module. Ce que le POST rapporte : ce qui
  * a CHANGÉ depuis la précédente visite de CET utilisateur (matchs arrivés, conflits
  * neufs par empreinte, planning de saison qui a bougé). Le serveur stampe la visite
