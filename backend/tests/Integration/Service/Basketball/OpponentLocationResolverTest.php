@@ -83,6 +83,11 @@ final class OpponentLocationResolverTest extends WebTestCase
 
     private const string FEDERAL_NOM = 'NOM FEDERAL OFFICIEL';
 
+    // P4-250 — le canal directVenue enrichit son VENUE avec le logo de l'organisme (par code).
+    private const string LOGO_CODE = 'ARA0069LOG';
+
+    private const string LOGO_UUID = 'ffffffff-0000-4000-8000-000000000abc';
+
     private EntityManagerInterface $em;
 
     public function testXlsxChannelCanNeverProduceVenuePrecisionOnTheSharedTable(): void
@@ -396,10 +401,82 @@ final class OpponentLocationResolverTest extends WebTestCase
         );
     }
 
+    /**
+     * P4-250 — le canal API (directVenue) ne porte pas de logo ; le résolveur l'enrichit
+     * best-effort via l'organisme retrouvé PAR SON CODE et pose logoId sur la ligne VENUE.
+     * Falsifié : sans l'enrichissement (logoIdForCode retiré), logoId reste null alors que
+     * le hit organisme porte un logo.
+     */
+    public function testApiChannelDirectVenueEnrichesLogoFromTheOrganismeByCode(): void
+    {
+        $resolver = $this->resolverOn($this->logoByCodeMock());
+
+        $outcome = $resolver->resolveObservations([[
+            'organismeCode' => self::LOGO_CODE,
+            'name' => 'ADVERSE LOGO FC',
+            'directVenue' => ['libelle' => 'GYMNASE LOGO', 'city' => 'Lyon', 'postalCode' => '69003', 'latitude' => 45.76, 'longitude' => 4.86],
+        ]]);
+
+        self::assertSame(1, $outcome['resolved']);
+
+        $entry = $this->repository()->findOneByFfbbOrganismeCode(self::LOGO_CODE);
+        self::assertNotNull($entry);
+        self::assertSame(OpponentLocationPrecision::VENUE, $entry->getPrecision(), 'le canal API garde sa précision VENUE');
+        self::assertSame('GYMNASE LOGO', $entry->getVenueLabel());
+        self::assertSame(self::LOGO_UUID, $entry->getLogoId(), 'le logo fédéral de l\'organisme (par code) enrichit la ligne VENUE');
+    }
+
+    /**
+     * P4-250 (best-effort strict) — organisme introuvable par code : la localisation VENUE de
+     * directVenue est CONSERVÉE, logoId à null. Un logo manquant ne fait jamais retomber
+     * l'adversaire en non-localisé.
+     */
+    public function testApiChannelDirectVenueKeepsVenueWhenLogoLookupFindsNothing(): void
+    {
+        // Le mock ne rend AUCUN organisme (le code ne matche jamais) → pas de logo, mais la
+        // salle directVenue autoritaire reste.
+        $resolver = $this->resolverOn(new MockHttpClient(fn (): MockResponse => $this->hits([])));
+
+        $outcome = $resolver->resolveObservations([[
+            'organismeCode' => self::LOGO_CODE,
+            'name' => 'ADVERSE SANS LOGO FC',
+            'directVenue' => ['libelle' => 'GYMNASE SANS LOGO', 'city' => 'Lyon', 'postalCode' => '69003', 'latitude' => 45.76, 'longitude' => 4.86],
+        ]]);
+
+        self::assertSame(1, $outcome['resolved'], 'la localisation VENUE survit à l\'absence de logo');
+
+        $entry = $this->repository()->findOneByFfbbOrganismeCode(self::LOGO_CODE);
+        self::assertNotNull($entry);
+        self::assertSame(OpponentLocationPrecision::VENUE, $entry->getPrecision());
+        self::assertNull($entry->getLogoId(), 'organisme introuvable par code → logo null, localisation conservée');
+    }
+
     protected function setUp(): void
     {
         self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    /**
+     * The FFBB organismes index answers `resolveOrganismeByCode(LOGO_CODE)` with a hit carrying
+     * that exact code AND a federal logo id — the shape that lets directVenue enrich its VENUE.
+     */
+    private function logoByCodeMock(): MockHttpClient
+    {
+        return new MockHttpClient(function (string $method, string $url, array $options): MockResponse {
+            $body = \is_string($options['body'] ?? null) ? $options['body'] : '';
+            if (str_contains($body, 'ffbbserver_organismes')) {
+                return $this->hits([[
+                    'code' => self::LOGO_CODE,
+                    'nom' => 'ADVERSE LOGO FC',
+                    'commune' => ['libelle' => 'Lyon', 'codePostal' => '69003'],
+                    '_geo' => ['lat' => 45.76, 'lng' => 4.86],
+                    'logo' => ['id' => self::LOGO_UUID],
+                ]]);
+            }
+
+            return $this->hits([]);
+        });
     }
 
     /**

@@ -307,8 +307,16 @@ final class OpponentLocationResolver
 
         // Step 3 — the best location, most precise first. VENUE is reserved to the
         // AUTHORITATIVE API channel (directVenue); the xlsx/catch-up channel caps at CITY.
-        $location = $this->locateVenueFromDirect($name, $observation['directVenue'])
-            ?? $this->locateCity($name, $code, $organismeHit);
+        $location = $this->locateVenueFromDirect($name, $observation['directVenue']);
+        if (null !== $location && null === $location['logoId']) {
+            // C7 (P4-250) — le hit rencontre (directVenue) ne porte pas de logo ; on le
+            // récupère best-effort via l'organisme (par code — le seul appel de plus sur ce
+            // canal). Un échec de CETTE résolution garde la localisation VENUE, logo à null :
+            // jamais un adversaire perdu pour un logo manquant (le try/catch est local, il ne
+            // laisse pas la panne remonter à la boucle qui renverrait l'adversaire en unresolved).
+            $location['logoId'] = $this->logoIdForCode($organismeHit, $code);
+        }
+        $location ??= $this->locateCity($name, $code, $organismeHit);
 
         if (null === $location) {
             // The code is a valid join key even without a location — stamp it.
@@ -408,6 +416,28 @@ final class OpponentLocationResolver
             // le COALESCE de l'upsert préserve un logo déjà connu.
             'logoId' => null,
         ];
+    }
+
+    /**
+     * P4-250 — best-effort strict : le logo fédéral de l'organisme, pour enrichir une
+     * localisation VENUE issue de directVenue (qui n'en porte pas). Réutilise l'organisme
+     * DÉJÀ résolu par nom s'il est là (canal nom), sinon interroge par CODE (canal API). Toute
+     * panne — réseau, donnée FFBB inattendue — est catchée ICI et rend null : l'appelant garde
+     * sa localisation, un logo manquant ne fait jamais retomber l'adversaire en non-localisé.
+     *
+     * @param array<string, mixed>|null $organismeHit organisme déjà résolu par nom, sinon null
+     */
+    private function logoIdForCode(?array $organismeHit, string $code): ?string
+    {
+        try {
+            $hit = $organismeHit ?? $this->resolveOrganismeByCode($code);
+
+            return null === $hit ? null : $this->logoIdOf($hit);
+        } catch (Throwable $e) {
+            $this->logger->warning('Opponent directory: logo lookup failed', ['code' => $code, 'error' => $e->getMessage()]);
+
+            return null;
+        }
     }
 
     /**
