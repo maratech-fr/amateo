@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\Persistence\ManagerRegistry;
@@ -12,21 +13,24 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
  * P5-20 non-régression — le rôle PostgreSQL de LECTURE SEULE `amateo_read`
- * (Version20260930090000) : l'opérateur qui explore la base depuis son poste peut
- * LIRE le club dont il pose le contexte, et RIEN d'autre — ni écrire, ni voir un
- * autre club, ni traverser le tenant.
+ * (Version20260930090000). Deux garanties, dans l'ordre d'importance :
+ *  1. Il ne voit AUCUN secret et ne peut RIEN écrire (garantie DURE) : liste blanche
+ *     de tables, colonnes secrètes exclues (app_user.password_hash, coach_wish_token.token),
+ *     tables de secrets/admin jamais accordées, écriture refusée au niveau privilège.
+ *  2. Sa lecture est scopée au club posé par SET app.club_id (AIDE, pas frontière —
+ *     le contexte est posable par qui a la session ; voir docs/security/rls.md).
  *
  * Comme RlsIsolationTest::testAdminDoorLetsOwnerCrossClubsWhileAppUserStaysScoped,
- * on prouve le rôle par `SET LOCAL ROLE amateo_read` sur la connexion admin plutôt
- * que par une vraie connexion : la RLS et les privilèges sont appliqués PAR RÔLE
- * (pg_has_role), l'enforcement est identique, et amateo_read naît sans mot de passe
- * (posé le jour J) donc on ne peut pas ouvrir de connexion nominative en test. En
- * dev/test amateo_owner est superuser (bypass total) : on bascule donc sur
- * amateo_read (NON-superuser) pour que FORCE RLS et les GRANT mordent réellement —
- * c'est exactement la situation d'un opérateur en prod.
+ * on prouve le comportement par `SET LOCAL ROLE` sur la connexion admin : la RLS et
+ * les privilèges sont appliqués PAR RÔLE (pg_has_role), l'enforcement est identique,
+ * et amateo_read naît sans mot de passe (posé le jour J) donc on ne peut pas ouvrir
+ * de connexion nominative en test.
  *
- * Tout le semis vit sur la connexion admin, dans SA transaction (rollback en
- * finally) : la connexion admin n'est pas enveloppée par DAMA.
+ * CLASSIFICATION OBLIGATOIRE (garde du futur) : toute table du schéma public doit être
+ * soit lisible (table club_id ∪ liste blanche globale), soit dans la liste noire
+ * explicite. Une nouvelle table non classée fait rougir testEveryPublicTableIsClassified
+ * — sinon une future table de secrets serait accordée en silence par un GRANT ON ALL,
+ * ou une future table tenant deviendrait invisible.
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -47,6 +51,56 @@ final class ReadOnlyRoleTest extends KernelTestCase
             WHERE a.attrelid = c.oid AND a.attname = 'club_id' AND NOT a.attisdropped
         )
         SQL;
+
+    /**
+     * Tables GLOBALES (sans club_id) que la migration accorde en lecture — liste BLANCHE
+     * explicite, miroir de Version20260930090000. app_user y est en colonnes (sans secret).
+     * Les tables club_id lisibles sont énumérées dynamiquement et s'ajoutent à celles-ci.
+     */
+    private const array GLOBAL_READABLE = [
+        'app_user',
+        'club',
+        'ffbb_committee',
+        'ffbb_league',
+        'league_match_window',
+        'opponent_directory',
+        'opponent_venue_suggestion',
+        'priority_tier',
+        'public_holiday',
+        'release_note',
+        'school_holiday_period',
+        'shared_competition_deadline',
+        'sport',
+        'subscription_plan',
+    ];
+
+    /**
+     * Tables GLOBALES que amateo_read ne doit JAMAIS pouvoir lire. Secrets (super_admin :
+     * password_hash + totp_secret ; les 4 tables de tokens), journal/exploitation admin,
+     * logs internes d'idempotence, infra, et le résiduel tenant sans club_id
+     * (constraint_conflict : non scopable — l'exploration profonde d'un planning passe par
+     * amateo_owner). Une table de secrets ajoutée demain DOIT atterrir ici, jamais en blanc.
+     */
+    private const array BLACKLIST = [
+        'super_admin',
+        'admin_audit_log',
+        'admin_alert_state',
+        'admin_job_run',
+        'club_creation_request',
+        'reset_password_request',
+        'email_change_token',
+        'email_verification_token',
+        'period_reminder_log',
+        'transition_reminder_log',
+        'doctrine_migration_versions',
+        'constraint_conflict',
+    ];
+
+    /** Noms de colonnes qui portent un secret — jamais lisibles via un GRANT table entière. */
+    private const array SECRET_COLUMN_NAMES = [
+        'password_hash', 'hashed_token', 'token', 'totp_secret', 'pending_email',
+        'api_key', 'credentials', 'secret', 'private_key',
+    ];
 
     private Connection $connection;
 
@@ -75,11 +129,7 @@ final class ReadOnlyRoleTest extends KernelTestCase
         self::assertIsString($canon, 'canon policy team_tag.tenant_isolation must exist');
         self::assertStringContainsString('current_setting', $canon, 'canon must reference the GUC');
 
-        /** @var list<string> $clubIdTables */
-        $clubIdTables = $this->connection->fetchFirstColumn(
-            'SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace '
-            . 'WHERE ' . self::CLUB_ID_TABLE_PREDICATE . ' ORDER BY c.relname',
-        );
+        $clubIdTables = $this->clubIdTables();
 
         $readonlyByTable = [];
         foreach ($rows as $row) {
@@ -111,8 +161,8 @@ final class ReadOnlyRoleTest extends KernelTestCase
     public function testNoAdminAllPolicyGrantsAmateoReadCrossClubAccess(): void
     {
         // amateo_read NE DOIT PAS être membre d'une porte admin_all : ce serait une
-        // lecture (voire écriture) cross-tenant. On vérifie qu'aucune policy dont le
-        // rôle inclut amateo_read n'est un admin_all / USING(true).
+        // lecture cross-tenant. On vérifie qu'aucune policy dont le rôle inclut
+        // amateo_read n'est un admin_all / USING(true).
         /** @var list<array<string, mixed>> $rows */
         $rows = $this->connection->fetchAllAssociative(
             'SELECT tablename, policyname, cmd, qual, roles FROM pg_policies '
@@ -121,6 +171,89 @@ final class ReadOnlyRoleTest extends KernelTestCase
         foreach ($rows as $row) {
             self::assertNotSame('admin_all', (string) $row['policyname'], \sprintf('%s.%s : amateo_read ne doit JAMAIS porter admin_all (porte de supervision cross-club).', (string) $row['tablename'], (string) $row['policyname']));
             self::assertNotSame('true', (string) $row['qual'], \sprintf('%s.%s : policy USING(true) pour amateo_read — le rôle lecture seule doit rester scopé au club.', (string) $row['tablename'], (string) $row['policyname']));
+        }
+    }
+
+    public function testBlacklistedTablesGrantNothingToReadOnlyRole(): void
+    {
+        // GARANTIE DURE : aucune table de la liste noire n'accorde le moindre droit à
+        // amateo_read — ni table, ni colonne. Falsifiable : un GRANT sur super_admin
+        // (ou toute table de la liste) fait rougir ce test.
+        foreach (self::BLACKLIST as $table) {
+            self::assertTrue($this->tableExists($table), \sprintf('table de la liste noire %s introuvable — entrée périmée (renommée/supprimée ?), à retirer de BLACKLIST.', $table));
+
+            // has_table_privilege / has_column_privilege ne sont PAS filtrées par le rôle
+            // courant (contrairement à information_schema.*_privileges, muettes vues depuis
+            // amateo_app) : on interroge donc directement le droit d'amateo_read.
+            self::assertFalse($this->hasTableSelect($table), \sprintf('table de la liste noire %s : amateo_read a un SELECT table-level — un secret pourrait fuiter.', $table));
+            self::assertFalse($this->hasAnySelectableColumn($table), \sprintf('table de la liste noire %s : amateo_read peut lire au moins une colonne (attendu aucune).', $table));
+        }
+    }
+
+    public function testSecretColumnsAreNeverReadable(): void
+    {
+        // Colonnes secrètes exclues explicitement des tables lisibles en colonnes.
+        self::assertFalse($this->hasColumnSelect('app_user', 'password_hash'), 'app_user.password_hash ne doit jamais être lisible par amateo_read');
+        self::assertFalse($this->hasColumnSelect('app_user', 'pending_email'), 'app_user.pending_email (secret du changement d\'e-mail) ne doit pas être lisible');
+        self::assertFalse($this->hasColumnSelect('coach_wish_token', 'token'), 'coach_wish_token.token (secret de la page publique) ne doit jamais être lisible');
+
+        // Témoins positifs : les colonnes non sensibles, elles, SONT lisibles (sinon la
+        // liste blanche colonne aurait pu tout exclure et le test passerait à vide).
+        self::assertTrue($this->hasColumnSelect('app_user', 'email'), 'app_user.email doit rester lisible (témoin positif)');
+        self::assertTrue($this->hasColumnSelect('coach_wish_token', 'club_id'), 'coach_wish_token.club_id doit rester lisible (témoin positif)');
+
+        // Garde du FUTUR : aucune table accordée TABLE ENTIÈRE n'expose une colonne au
+        // nom secret — une future table club_id gagnant une colonne `token` et accordée
+        // table-level rougirait ici (les tables en colonnes, elles, sont hors champ car
+        // has_table_privilege y est faux, et leurs secrets sont couverts ci-dessus).
+        /** @var list<string> $leaks */
+        $leaks = $this->connection->fetchFirstColumn(
+            'SELECT c.relname || \'.\' || a.attname '
+            . 'FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace '
+            . 'JOIN pg_attribute a ON a.attrelid = c.oid '
+            . 'WHERE n.nspname = \'public\' AND c.relkind IN (\'r\', \'p\') AND a.attnum > 0 AND NOT a.attisdropped '
+            . 'AND has_table_privilege(\'amateo_read\', c.oid, \'SELECT\') '
+            . 'AND a.attname IN (?)',
+            [self::SECRET_COLUMN_NAMES],
+            [ArrayParameterType::STRING],
+        );
+        self::assertSame([], $leaks, 'des colonnes au nom secret sont exposées via un GRANT table entière : ' . implode(', ', $leaks));
+    }
+
+    public function testEveryPublicTableIsClassifiedReadableOrBlacklisted(): void
+    {
+        // Exhaustivité : chaque table du schéma public est SOIT lisible (club_id ∪ liste
+        // blanche globale), SOIT dans la liste noire — jamais les deux, jamais aucune.
+        $allTables = $this->connection->fetchFirstColumn(
+            'SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace '
+            . 'WHERE n.nspname = \'public\' AND c.relkind IN (\'r\', \'p\') ORDER BY c.relname',
+        );
+        self::assertNotEmpty($allTables, 'expected public tables to exist');
+
+        $readable = array_merge($this->clubIdTables(), self::GLOBAL_READABLE);
+        $overlap = array_intersect($readable, self::BLACKLIST);
+        self::assertSame([], array_values($overlap), 'tables à la fois lisibles et en liste noire (classification incohérente) : ' . implode(', ', $overlap));
+
+        $classified = array_merge($readable, self::BLACKLIST);
+        $unclassified = array_diff($allTables, $classified);
+        self::assertSame(
+            [],
+            array_values($unclassified),
+            "Tables du schéma public NON classées :\n  - " . implode("\n  - ", $unclassified)
+            . "\nChaque table doit être ajoutée à la liste blanche globale (lisible) ou à la liste noire (secrets/infra) "
+            . 'de la migration Version20260930090000 ET de ce test — sinon un GRANT sur ALL exposerait une future table de secrets.',
+        );
+
+        // Les entrées EXPLICITES ne mentent pas : chaque table nommée existe (bidirectionnel).
+        foreach (self::GLOBAL_READABLE as $table) {
+            self::assertTrue($this->tableExists($table), \sprintf('table blanche %s introuvable — entrée périmée à retirer de GLOBAL_READABLE.', $table));
+        }
+        // Chaque table lisible est RÉELLEMENT accordée (table entière OU au moins une colonne).
+        foreach ($readable as $table) {
+            self::assertTrue(
+                $this->hasAnySelectableColumn($table),
+                \sprintf('table %s classée lisible mais amateo_read n\'a AUCUN droit dessus — la migration a-t-elle oublié son GRANT ?', $table),
+            );
         }
     }
 
@@ -153,7 +286,7 @@ final class ReadOnlyRoleTest extends KernelTestCase
                 'le probe doit être NON-superuser — sinon il bypasse RLS et ne prouve rien',
             );
 
-            // Contexte club A → ne voit QUE A.
+            // Contexte club A → ne voit QUE A (aide de scoping).
             $admin->executeStatement('SELECT set_config(?, ?, true)', ['app.club_id', self::CLUB_A]);
             /** @var list<string> $visible */
             $visible = $admin->fetchFirstColumn('SELECT DISTINCT club_id FROM team_tag WHERE club_id IN (?, ?)', [self::CLUB_A, self::CLUB_B]);
@@ -184,6 +317,55 @@ final class ReadOnlyRoleTest extends KernelTestCase
     {
         self::bootKernel();
         $this->connection = self::getContainer()->get(Connection::class);
+    }
+
+    /** @return list<string> */
+    private function clubIdTables(): array
+    {
+        return $this->connection->fetchFirstColumn(
+            'SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace '
+            . 'WHERE ' . self::CLUB_ID_TABLE_PREDICATE . ' ORDER BY c.relname',
+        );
+    }
+
+    private function tableExists(string $table): bool
+    {
+        return (bool) $this->connection->fetchOne(
+            'SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace '
+            . 'WHERE n.nspname = \'public\' AND c.relkind IN (\'r\', \'p\') AND c.relname = ?',
+            [$table],
+        );
+    }
+
+    private function hasTableSelect(string $table): bool
+    {
+        return (bool) $this->connection->fetchOne(
+            'SELECT has_table_privilege(\'amateo_read\', (\'public.\' || quote_ident(?))::regclass, \'SELECT\')',
+            [$table],
+        );
+    }
+
+    private function hasColumnSelect(string $table, string $column): bool
+    {
+        return (bool) $this->connection->fetchOne(
+            'SELECT has_column_privilege(\'amateo_read\', (\'public.\' || quote_ident(?))::regclass, ?, \'SELECT\')',
+            [$table, $column],
+        );
+    }
+
+    /**
+     * amateo_read peut-il lire AU MOINS une colonne de la table ? Couvre le GRANT table
+     * entière (chaque colonne est alors lisible) comme le GRANT colonne par colonne.
+     * Repose sur has_column_privilege, non filtrée par le rôle courant.
+     */
+    private function hasAnySelectableColumn(string $table): bool
+    {
+        return (bool) $this->connection->fetchOne(
+            'SELECT COALESCE(bool_or(has_column_privilege(\'amateo_read\', a.attrelid, a.attnum, \'SELECT\')), false) '
+            . 'FROM pg_attribute a '
+            . 'WHERE a.attrelid = (\'public.\' || quote_ident(?))::regclass AND a.attnum > 0 AND NOT a.attisdropped',
+            [$table],
+        );
     }
 
     private function adminConnection(): Connection
