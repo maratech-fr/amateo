@@ -91,10 +91,6 @@ vi.mock("@/features/matches/queries", () => ({
   useUpdateTeamLink: () => ({ mutate: updateLinkMut, isPending: false }),
   useDeleteTeamLink: () => ({ mutate: deleteLinkMut, isPending: false }),
 }));
-// Le bouton « Gérer les passerelles » (masqué dans la modale) est testé chez lui : ici on le stube.
-vi.mock("@/features/matches/HabitsLinksButton", () => ({
-  HabitsLinksButton: () => <button type="button">Gérer les passerelles</button>,
-}));
 // PeriodTeams est testé chez lui : on le stube pour que le mode période rende sans ses hooks —
 // le sujet ici est que l'affordance d'import n'y existe PAS (décision « saison seule »).
 vi.mock("./PeriodTeams", () => ({
