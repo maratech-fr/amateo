@@ -42,6 +42,11 @@ export function useLogin() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: authApi.login,
+    // P4-252 — la connexion a son PROPRE overlay (le splash « Signature », `app/LoginSplash.tsx`) :
+    // il remplace le voile d'action générique pour ce geste. Sans `veil: false`, `ActionVeil`
+    // afficherait EN PLUS son écran « Enregistrement » sous le splash (deux overlays, deux gérants
+    // de focus) — incohérent. On l'exempte donc du voile générique.
+    meta: { veil: false },
     // SEC-16 : la réponse ne porte plus de jeton (cookie httpOnly). On ne marque
     // que « une session est ouverte » — indice d'UI, l'autorisation reste au serveur.
     onSuccess: () => {

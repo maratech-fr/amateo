@@ -282,6 +282,21 @@
   --radius-lg: var(--radius);
 }
 
+/* Police SIGNATURE du logo — Poppins Medium (500), servie par le splash de connexion
+   (`shared/components/ui/brand-splash.tsx`, P4-252). EMBARQUÉE en sous-ensemble latin
+   (`public/fonts/poppins-500-latin.woff2`, ~8 ko, servie same-origin) : Google Fonts au runtime
+   est INTERDIT par la CSP (`font-src 'self'`, `docker/frontend/csp.conf`). Famille DÉDIÉE
+   « Poppins Signature » — elle ne sert QUE le logotype animé, jamais la typo de l'app (qui reste
+   `system-ui`, plus bas). `swap` : le mot n'apparaît qu'après ~0,3 s d'intro, la police est
+   chargée bien avant — aucun FOUT visible. */
+@font-face {
+  font-family: "Poppins Signature";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/poppins-500-latin.woff2") format("woff2");
+}
+
 /* Fond d'écran commun app + vitrine (P5-16) : le SOL est notre papier (`--background`), les MOTIFS
    multi-sport aux 3 couleurs du logo sont des SVG STATIQUES purgés (`public/brand/fond-*.svg`,
    `<metadata>`/c2pa/rect de sol retirés à la copie, opacité 0,15 clair / 0,17 sombre). En-tête et

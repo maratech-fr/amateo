@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useNavigation } from "react-router";
 
 import { errorMessage } from "@/shared/lib/errorMessage";
@@ -8,6 +8,7 @@ import { Label } from "@/shared/components/ui/label";
 import { PasswordInput } from "@/shared/components/ui/password-input";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { clearSessionExpired, peekSessionExpired } from "@/shared/lib/sessionExpiredNotice";
+import { useLoginSplashStore } from "@/shared/stores/loginSplashStore";
 
 import { AuthLayout } from "./AuthLayout";
 import { useLogin } from "./queries";
@@ -17,6 +18,9 @@ export function LoginPage() {
   // Le chunk du cockpit se télécharge après le login : la navigation n'est pas instantanée.
   const navigating = "idle" !== useNavigation().state;
   const login = useLogin();
+  const startSplash = useLoginSplashStore((s) => s.start);
+  const cancelSplash = useLoginSplashStore((s) => s.cancel);
+  const emailRef = useRef<HTMLInputElement>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -31,14 +35,28 @@ export function LoginPage() {
     clearSessionExpired();
   }, []);
 
+  // P4-252 — identifiants refusés : le splash s'efface (`cancelSplash`, appelé au catch) et le
+  // focus revient au champ e-mail (le vrai geste à reprendre). Clé sur `error` : `setError(null)`
+  // au submit puis le message à l'échec = la valeur change à chaque tentative, l'effet se rejoue.
+  // Il tourne APRÈS le commit qui a retiré l'`inert` (phase `cancelling`), donc le focus prend.
+  useEffect(() => {
+    if (null !== error) {
+      emailRef.current?.focus();
+    }
+  }, [error]);
+
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    // P4-252 — le splash « Signature » couvre l'écran DÈS le clic (avant même la réponse réseau).
+    startSplash();
     try {
       await login.mutateAsync({ email, password });
-      // AuthGuard routes to the app / waiting screen based on membership status.
+      // AuthGuard routes to the app / waiting screen based on membership status. Le splash, monté
+      // dans RootShell, survit à cette navigation et se termine quand l'app est prête.
       navigate("/", { replace: true });
     } catch (err) {
+      cancelSplash();
       setError(await errorMessage(err));
     }
   }
@@ -67,7 +85,7 @@ export function LoginPage() {
       <form className="flex flex-col gap-4" onSubmit={onSubmit} noValidate>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="email">Email</Label>
-          <Input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+          <Input ref={emailRef} id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">

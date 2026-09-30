@@ -1,10 +1,11 @@
 # Conventions API, Layout et primitives UI partagées
 
-Last verified @ 2026-09-30 (commit `19aed0f1` — `Listbox`/`VenueSelect` recalées contre
-`listbox.tsx`/`venue-select.tsx` : slot `badge` (nœud d'état aligné à droite, annoncé
-`aria-describedby`, distinct du `count` tabulaire) ajouté pour la pastille « À vérifier » du
-contrôle de cohérence de position, `backend/docs/geo-api.md` §5). Reste de la table héritée de la
-passe précédente (PR #1031), non rejouée ligne à ligne cette fois — historique : `git log -p
+Last verified @ 2026-09-30 (commit `debacf62` — splash de connexion `LoginSplash`/`BrandSplash`
+ajouté à la section « Layout », P4-252 : confronté à `shared/stores/loginSplashStore.ts`,
+`shared/components/ui/brand-splash.tsx`, `app/LoginSplash.tsx`, `app/RootShell.tsx`,
+`features/auth/{LoginPage,queries}.ts`, `index.css` (`@font-face` « Poppins Signature »)). Reste de
+la table héritée de la passe précédente (PR #1031 — `Listbox`/`VenueSelect` recalées contre
+`listbox.tsx`/`venue-select.tsx`), non rejouée ligne à ligne cette fois — historique : `git log -p
 --follow` sur ce fichier). **§3 est la maison unique
 des primitives UI partagées** (décision fondateur 2026-09-26) : les entrées déménagées depuis
 `frontend/AGENTS.md` § « Primitives that matter » sont vérifiées contre
@@ -65,6 +66,40 @@ l'affiche en couleur, bascule thème clair/sombre juste à côté ; `AdminAuthLa
 blanc sur son fond sombre, sous-titré « Console sécurisée ». Gardé par `AuthLayout.test.tsx` /
 `AdminAuthLayout.test.tsx` : le logotype nommé est présent, aucun texte nu ni icône
 `CalendarCheck2` ne subsiste.
+
+### Splash de connexion (`LoginSplash` / `BrandSplash`, P4-252)
+
+Au submit du formulaire de `/login` (`features/auth/LoginPage.tsx`), le logo joue une animation
+« Signature » **une fois par tentative** — jamais à la simple arrivée sur `/login`, jamais sur les
+autres écrans publics d'`AuthLayout`. Trois pièces :
+
+- **`shared/stores/loginSplashStore.ts`** : la machine à phases `idle → intro → (breathing) →
+  outro → idle`, ou `intro|breathing → cancelling → idle` sur identifiants refusés. Ne porte que la
+  grammaire des transitions légales ; le chronométrage vit dans `BrandSplash`.
+- **`shared/components/ui/brand-splash.tsx`** (+ `brand-splash.math.ts` pour les formules pures,
+  recopiées du handoff marque `business/`, hors dépôt) : le rendu SVG/HTML animé en
+  `requestAnimationFrame` — icône (trois arcs) + mot produit (`PRODUCT_NAME`, jamais un littéral)
+  dont les deux dernières lettres sont en teal (`#hex` en dur, même exception documentée que
+  `BrandIcon`, `.claude/rules/frontend.md`). Intro (icône qui glisse + mot qui sort du trait) ;
+  si l'app n'est pas prête, le logo respire en opacité (1 ↔ ~0,55, ~1,6 s cycle) jusqu'à ce
+  qu'elle le soit, puis outro en miroir de l'intro. `prefers-reduced-motion` → logo statique, pas
+  de respiration ni de glisse, juste les fondus d'entrée/sortie. Le mot est composé dans une
+  police **dédiée** « Poppins Signature » (Poppins Medium 500, sous-ensemble latin embarqué
+  `public/fonts/poppins-500-latin.woff2`, `@font-face` dans `index.css` — Google Fonts au runtime
+  est interdit par la CSP `font-src 'self'`) — cette famille ne sert QUE ce logotype animé, jamais
+  la typo de l'app (`system-ui`).
+- **`app/LoginSplash.tsx`** : l'orchestrateur, monté dans `RootShell` (donc **persistant** au
+  `navigate("/")` que déclenche un login réussi — un montage dans `LoginPage` aurait été démonté
+  par la navigation). Overlay plein écran en `createPortal(document.body)`, `z-[70]` — au-dessus du
+  voile d'action générique `ActionVeil` (`z-[60]`) : `useLogin` (`features/auth/queries.ts`) porte
+  `meta: { veil: false }` pour cette raison (liste des exemptions au voile :
+  `frontend/AGENTS.md` § « Toute mutation VOILE l'écran »). « Prêt » = login résolu + query `me` en
+  succès + navigation `idle` + route hors `/login` (une adhésion en attente rendue sur `/waiting`
+  compte donc comme prête). Pendant que l'overlay bloque, le contenu routé est rendu `inert`
+  (patron `ActionVeil`) — sauf en phase `cancelling`, où la main revient aussitôt au formulaire.
+  Identifiants refusés → `cancel()` efface l'overlay en douceur, le message d'erreur de
+  `LoginPage` reste inchangé et le focus revient au champ e-mail (`emailRef`, effet déclenché par
+  le changement d'`error`).
 
 ### AppLayout
 
@@ -200,7 +235,7 @@ qu'en récrire une copie locale.
 | `OpponentLogo` (`opponent-logo.tsx`) | Le logo fédéré d'un adversaire : `sm` (16 px, nu, pas de repli) / `md` (24 px, repli initiales via `features/matches/lib/opponentInitials.ts` si `hasLogo` est faux ou si `<img>` échoue), arrondi, `object-cover`, `loading="lazy"`, `alt=""` (décoratif). Récupère `GET /api/opponents/{code}/logo` seulement si `hasLogo` est vrai (booléen servi, jamais redeviné) | `hasLogo` | `features/matches/AwayList.tsx` |
 | Onglets (`tabs.tsx`) | Motif WAI-ARIA (roving tabindex, flèches/Home/End), deux peaux : `console` (admin, sombre, filet `border-b border-white/10`) et `app` (club, **défaut**, barre **opaque** `bg-card` — P4-265, la nav d'onglets ne laisse plus traverser le fond à motifs). ⚠ Des onglets dans une MODALE demandent deux précautions (revue #346) : le piège à focus de `useModalA11y` ignore les sous-arbres `hidden` — sans quoi le « dernier » focusable est un bouton du panneau inactif et Tab sort du dialogue — et toute bascule d'onglet PROGRAMMATIQUE doit emporter le focus, sinon il retombe sur `<body>`. La peau elle-même vit dans un foyer partagé (`shared/lib/surfaceSkin.ts`, `SurfaceSkin = "console" \| "app"`, P4-149) — elle n'appartient à aucun composant en particulier, `tabs.tsx` la consomme (table locale `TAB_SKINS`) au même titre qu'`empty-hint.tsx` | `SurfaceSkin` | Modale de sollicitation (`features/admin/` → déplacé en `shared/` le 2026-08-01) |
 | Palette console (jetons `--console-*`, `src/index.css`) | Décision UXC-12/P4-151 : chaque nuance Tailwind consommée par `features/admin/` a un jeton NOMMÉ par son rôle sémantique, construit par ALIASING (`--console-muted: var(--color-slate-500)`) — jamais une valeur `oklch` recopiée à la main — en BIJECTION stricte (une nuance = un jeton). Hors du système de thème clair/sombre de l'app (décision fermée, `etat-des-lieux.md` §2). `white`/`black` restent des littéraux (même décision). Gardé par `consolePalette.guard.test.ts` (`features/admin/`) | — | `features/admin/` |
-| `BrandIcon` (`brand-icon.tsx`) | La marque produit elle-même (trois arcs, en-tête d'`AppLayout` + `frontend/public/favicon.svg`), décorative par défaut. Ses couleurs de trait sont des littéraux `#hex` codés en dur **volontairement** — la seule exception admise à « jamais un `#hex` », un logo ayant des tons fixes par définition, pas un jeton thématisable (`.claude/rules/frontend.md` porte la règle) | — | `AppLayout`, favicon |
+| `BrandIcon` (`brand-icon.tsx`) | La marque produit elle-même (trois arcs, en-tête d'`AppLayout` + `frontend/public/favicon.svg`), décorative par défaut. Ses couleurs de trait sont des littéraux `#hex` codés en dur **volontairement** — une exception admise à « jamais un `#hex` » (avec `BrandSplash`, § « Splash de connexion » ci-dessus), un logo ayant des tons fixes par définition, pas un jeton thématisable (`.claude/rules/frontend.md` porte la règle) | — | `AppLayout`, favicon |
 | `BrandMark` (`brand-mark.tsx`) | Le logo COMPLET (`BrandIcon` + le mot produit), la maison unique partout où le produit se nomme comme MARQUE plutôt que dans une phrase : `AuthLayout`, `system-screen`, `AdminAuthLayout`. Le mot ne porte AUCUNE couleur codée en dur — il hérite `currentColor`, un seul ton dans chaque thème ; seul `BrandIcon` porte les arcs `#hex`. `role="img"` nommé `PRODUCT_NAME`, visuel `aria-hidden` | — | `AuthLayout`, `AdminAuthLayout`, `system-screen` |
 
 ---

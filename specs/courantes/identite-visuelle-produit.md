@@ -1,37 +1,23 @@
 # Identité visuelle produit — la base est le produit, l'accent est le club
 
-Last verified @ 2026-09-29 (P5-24 PR-1 — pied de marque de l'export PDF ; PR-2 — signature de
-marque des e-mails ; PR-3 — image OG + pied de la page doléances coachs, P5-24 livré en entier ;
-P4-274 — thème sombre vitrine). Confronté au code cette passe : `backend/src/Service/BrandAssets.php`
-(`pdfLogoDataUri()` + le nouveau `emailLogoPngBytes()`), `backend/src/Service/PdfGenerator.php`
-(`buildFooterTemplate`), `backend/src/Service/ProductIdentity.php` (les nouveaux `tagline()`/
-`siteUrl()`), `backend/src/EventListener/EmailSignatureListener.php`, `backend/assets/brand/
-icon.svg` + `email-icon.png` (+ leurs README de provenance), `frontend/worker.js` (câblage
-`footerTemplate`), `landing/index.html` (mini-script anti-flash `data-theme`, bloc `html[data-theme="dark"]` — jetons
-sombres, bouton `.theme-toggle`, `html[data-theme="dark"] body` → `fond-dark.svg`, logotype
-`mark.svg` + `.logo-word`), `landing/assets/brand/mark.svg` (arcs seuls, sans disque blanc),
-`landing/assets/brand/fond-dark.svg` (identique octet à `frontend/public/brand/fond-dark.svg`,
-vérifié par `diff`), `landing/config.js` (clé `logo`), `landing/assets/brand/og.png` (identique
-octet à `frontend/public/brand/og.png`, vérifié par `md5sum`), `scripts/brand-og/og.html`,
-`frontend/src/shared/lib/product.ts` (nouveau `PRODUCT_SITE_URL`), `frontend/src/features/
-coach-wishes/PublicWishPage.tsx` (pied `footer` d'`AuthLayout` sur les six états), `landing/
-index.html` + `landing/mentions-legales.html` + `frontend/index.html` (blocs `og:`/`twitter:`).
-— section « Ce qui reste à venir » ci-dessous recalée en conséquence (plus rien n'y est ouvert).
-Reste du fichier non re-vérifié cette passe (portée = le volet PDF/e-mails/OG/doléances) — repris
-tel quel de la passe P4-265 (2026-09-27) :
-`frontend/src/index.css` (jetons `--surface-warning|accent|destructive|muted`, `color-mix` clair
-10/10/8/60 %, sombre 12/12/12/60 %, `--color-surface-*` exposés à Tailwind), `frontend/src/shared/
-components/ui/notice-banner.tsx` (remplace `WarningPanel`, fond `bg-surface-<ton>`, texte
-`text-foreground`), `frontend/src/shared/components/ui/accordion.tsx` (`bg-card` + `border-l-2`
-accent à l'ouverture), `frontend/src/shared/components/ui/tabs.tsx` (peau `app` : barre `bg-card`),
-`frontend/src/test/surfaceOpacityGuard.test.ts`. Non re-vérifié cette passe (reformulé au présent
-tel quel lors de la passe 2026-09-26) : `useApplyClubTheme.ts`, `color.ts`
-(`SURFACES`/`accentForMode`/`accentHoverForMode`), `accentTokenParity.test.ts`, `ClubPage.tsx`
-(`DEFAULT_ACCENT`), `brand-icon.tsx`, `favicon.svg`, `brand-mark.tsx`, `system-screen.tsx`,
-`AdminAuthLayout.tsx`, `frontend/src/index.css` (jetons `--surface-*`), `notice-banner.tsx`,
-`accordion.tsx`, `tabs.tsx` — historique des vérifications précédentes : `git log -p --follow`. Les
-ratios de contraste des jetons `--surface-*` sont ceux consignés en commentaire dans `index.css`
-(non recalculés indépendamment cette passe).
+Last verified @ 2026-09-30 (rotation — P4-252 non graduée ici, voir plus bas). Confronté au code
+cette passe : `frontend/src/shared/lib/product.ts:44` (`PRODUCT_ACCENT = "#46AFAC"`),
+`frontend/src/shared/hooks/useApplyClubTheme.ts:36` (`accentDark ?? accentLight ?? PRODUCT_ACCENT`
+en sombre / l'inverse en clair — dérivation inchangée), `frontend/src/test/
+accentTokenParity.test.ts` (existe, garde toujours l'égalité stricte statique ⇄ dérivée),
+`frontend/src/index.css` (`--accent: #317a77` clair / `#46afac` sombre — inchangés). **P4-252** (le
+splash « Signature » du logo pendant la connexion) recopie les MÊMES trois teintes d'arc que
+`BrandIcon` (`#B51C8A`/`#D47800`/`#46AFAC`) dans un second composant React
+(`shared/components/ui/brand-splash.tsx`) — mise à jour de l'exception `.claude/rules/frontend.md`
+dans la même passe — mais l'écran lui-même (déclenché au submit de `/login`, jamais à l'arrivée) est
+une mécanique **frontend seule** documentée dans `frontend/docs/frontend-components.md` §
+« Splash de connexion », pas ici : ce fichier reste borné aux surfaces/accent/mark PRODUIT
+partagés entre zones. Reste du fichier non re-vérifié cette passe : le volet PDF/e-mails/OG/
+doléances (P5-24, confronté au code le 2026-09-29 — inchangé depuis), les jetons `--surface-*`
+(P4-265, 2026-09-27), `color.ts`/`ClubPage.tsx`/`brand-icon.tsx`/`favicon.svg`/`brand-mark.tsx`/
+`system-screen.tsx`/`AdminAuthLayout.tsx` (2026-09-26) — historique des vérifications précédentes :
+`git log -p --follow`. Les ratios de contraste des jetons `--surface-*` sont ceux consignés en
+commentaire dans `index.css` (non recalculés indépendamment cette passe).
 
 > Ce fichier est le pendant **PRODUIT** de [`identite-visuelle-club.md`](identite-visuelle-club.md)
 > (qui reste la maison du **CLUB** : logo, upload, palette extraite, écran « Gestion du club »).

@@ -41,4 +41,7 @@ test("login rejects invalid credentials without redirect loop", async ({ page })
 
   await expect(page.getByText(/erreur|invalid|identifiants|credentials/i)).toBeVisible();
   await expect(page).toHaveURL(/\/login$/);
+  // P4-252 — le splash « Signature » lancé au clic s'efface à l'échec et rend le focus au champ
+  // e-mail (le geste à reprendre), le message d'erreur inchangé au-dessus du formulaire.
+  await expect(page.getByLabel("Email", { exact: true })).toBeFocused();
 });
