@@ -93,20 +93,37 @@ php bin/console app:db:restore-check     # PREUVE que le dernier dump est restau
 échec = warning, jamais bloquant (le dump local reste la référence).
 
 Exemple **Scaleway Object Storage** (S3-compatible), credentials par variables
-d'env (pas de fichier de conf rclone à gérer) :
+d'env (pas de fichier de conf rclone à gérer). **Bucket `amateo-backups` en région
+`nl-ams` (Amsterdam) — VOLONTAIREMENT hors de la région du serveur** (Paris) : une
+sauvegarde qui vit dans la même région que le serveur qu'elle protège ne protège pas
+contre une panne RÉGIONALE (décision fondateur, posée le 2026-09-30).
 
-1. Console Scaleway → *Object Storage* → créer un bucket (ex. `amateo-backups`,
-   région `fr-par`, privé).
-2. *IAM → API Keys* → créer une clé dédiée backups (droits Object Storage seulement).
+1. Console Scaleway → *Object Storage* → créer un bucket (`amateo-backups`, région
+   `nl-ams`, **privé**), chiffrement **SSE-ONE** (côté serveur, clé gérée par
+   Scaleway) et **versioning ACTIVÉ** (une resynchronisation qui écraserait un dump
+   sain garde ses versions précédentes).
+2. *IAM → Applications* → créer une **APPLICATION IAM dédiée** (`amateo-backups`,
+   PAS un utilisateur « Moi-même » — celui-ci hérite de TOUS les droits du compte
+   Scaleway, une clé de backup n'en a besoin d'AUCUN autre) → attacher une **policy**
+   `ObjectStorageFullAccess` **restreinte au projet** → générer une clé API pour
+   cette application (la clé hérite des droits de l'application, jamais l'inverse).
+   **La clé expire — poser un rappel à son échéance** (1 an à la création ; l'alerte
+   de fraîcheur `freshness:db-backup` ne couvre que le dump LOCAL, jamais l'expiration
+   de la clé côté bucket).
 3. Dans `.env.prod` — via le rail chiffré (`make env-decode@prod` → éditer →
    `env-encode` → commit + deploy, cf. [`deploy.md`](deploy.md) § Secrets
    chiffrés), ou directement sur la VM en dépannage (puis reporter au `.gpg`) :
 
    ```bash
-   BACKUP_SYNC_COMMAND=rclone copyto /app/backend/var/backups :s3:amateo-backups/db --s3-provider=Scaleway --s3-endpoint=s3.fr-par.scw.cloud --s3-region=fr-par
+   BACKUP_SYNC_COMMAND=rclone copyto /app/backend/var/backups :s3:amateo-backups/db --s3-provider=Scaleway --s3-endpoint=s3.nl-ams.scw.cloud --s3-region=nl-ams
    RCLONE_S3_ACCESS_KEY_ID=<access-key>
    RCLONE_S3_SECRET_ACCESS_KEY=<secret-key>
    ```
+
+   Scaleway affiche la paire générée à l'étape 2 sous les noms `SCW_ACCESS_KEY` /
+   `SCW_SECRET_KEY` — ce sont les MÊMES valeurs que `RCLONE_S3_ACCESS_KEY_ID` /
+   `RCLONE_S3_SECRET_ACCESS_KEY` ci-dessus, juste un nom de variable différent
+   selon l'écran.
 
 4. `docker compose -f docker-compose.prod.yml --env-file .env.prod up -d` (SANS
    nom de service : compose recrée TOUS les conteneurs dont l'env a changé —
@@ -132,7 +149,10 @@ jusqu'au bundle). Il ne reste que du geste ops, **mais dans cet ORDRE précis** 
 échouer le prochain déploiement, sur un garde de build volontaire :
 
 1. Créer le compte sur sentry.io (free tier) + **3 projets** : `backend` (PHP), `engine`
-   (Python), `frontend` (JS) → un DSN par projet.
+   (Python), `frontend` (JS) → un DSN par projet. À la création de l'org, cocher
+   **seulement « Error Monitoring »** (pas Performance/Session Replay, hors périmètre) et
+   **ne PAS lier de compte GitHub** — Sentry n'a besoin d'aucun accès au dépôt, les DSN
+   suffisent.
 2. **Front d'abord, avant de poser le secret** : ajouter l'hôte d'ingestion du DSN front à la
    directive `connect-src` de `docker/frontend/csp.conf`. Sans lui, le navigateur jetterait
    chaque envoi en silence (SDK initialisé, rien ne part) — et le build refuse

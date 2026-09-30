@@ -13,11 +13,12 @@ import { FullPageSpinner } from "@/shared/components/ui/spinner";
 import { DAYS, dayLabelLong } from "@/shared/lib/days";
 import { readFailed } from "@/shared/lib/readState";
 
-import type { ClubLeagueWindow, ClubLeagueWindowInput, LeagueWindowLevel, MatchConstraint, MatchConstraintInput, MatchRuleType, Team, Venue } from "./api";
+import type { ClubLeagueWindow, ClubLeagueWindowInput, Coach, LeagueWindowLevel, MatchConstraint, MatchConstraintInput, MatchRuleType, Team, Venue } from "./api";
 import { frClock } from "./lib/clubRuleLabel";
 import { LeagueSuggestions } from "./LeagueSuggestions";
 import {
   useClubLeagueWindows,
+  useCoaches,
   useCreateClubLeagueWindow,
   useCreateMatchConstraint,
   useDeleteClubLeagueWindow,
@@ -31,12 +32,11 @@ import {
 } from "./queries";
 
 /**
- * P4-272 ① — l'écran UNIQUE des contraintes de match, en accordéon (patron
- * `ConfigurationPage`, section ouverte ancrée `?section=`). La section **Ligue**
- * est le CRUD gestionnaire de la copie club de l'enveloppe fédérale (le placement,
- * le radar et le calendrier lisent la même copie) ; les sections **Club**,
- * **Équipes** et **Coachs** arrivent dans les PR suivantes — en attendant, elles
- * pointent vers les écrans qui portent déjà ces réglages (liens croisés).
+ * P4-272 — l'écran UNIQUE des contraintes de match, en accordéon (patron
+ * `ConfigurationPage`, section ouverte ancrée `?section=`). Quatre sections, chacune
+ * un CRUD gestionnaire : **Ligue** (copie club de l'enveloppe fédérale), **Club**
+ * (règles de coup d'envoi), **Équipes** (interdictions de gymnase) et **Coachs**
+ * (indisponibilités) — toutes lues par le placement, le radar et le calendrier.
  *
  * Le badge « modifié »/« ajouté » est calculé SERVEUR (`badge`) : le front
  * l'AFFICHE, il ne le redérive pas (.claude/rules/frontend.md).
@@ -82,17 +82,8 @@ export function ConstraintsPage() {
       </AccordionSection>
 
       <AccordionSection {...sectionProps("coachs")} title="Coachs">
-        <ComingSoon>Les contraintes de coach arriveront ici.</ComingSoon>
+        <CoachsSection />
       </AccordionSection>
-    </div>
-  );
-}
-
-function ComingSoon({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-2">
-      <StatusPill>Bientôt</StatusPill>
-      <p className="text-sm text-muted-foreground">{children}</p>
     </div>
   );
 }
@@ -621,6 +612,179 @@ function AddTeamVenueBanRow({ teams, venues }: { teams: Team[]; venues: Venue[] 
       <Button size="sm" className="ml-auto" disabled={"" === teamId || "" === venueId || create.isPending} onClick={submit}>
         <Plus className="size-3.5" />
         Interdire
+      </Button>
+    </div>
+  );
+}
+
+// ── Section Coachs (P4-272 ⑤) : indisponibilités d'entraîneur ─────────────────────
+
+interface CoachUnavailabilityDraft {
+  coachId: string;
+  daysOfWeek: number[];
+  /** "" = borne ouverte de ce côté. */
+  kickoffMin: string;
+  kickoffMax: string;
+}
+
+const emptyCoachDraft = (rule: MatchConstraint | null): CoachUnavailabilityDraft => ({
+  coachId: rule?.scopeTargetId ?? "",
+  daysOfWeek: rule?.daysOfWeek ?? [6],
+  kickoffMin: rule?.kickoffMin ?? "",
+  kickoffMax: rule?.kickoffMax ?? "",
+});
+
+/** Un coach, au moins un jour ET au moins une borne (le serveur refuse sinon). min ≤ max reste au serveur. */
+const isCoachDraftComplete = (draft: CoachUnavailabilityDraft): boolean =>
+  "" !== draft.coachId && draft.daysOfWeek.length > 0 && ("" !== draft.kickoffMin || "" !== draft.kickoffMax);
+
+/** Une indisponibilité de coach = une règle de match scope COACH, TOUJOURS PREFERRED (SOFT). */
+const toCoachInput = (draft: CoachUnavailabilityDraft): MatchConstraintInput => ({
+  scope: "COACH",
+  scopeTargetId: draft.coachId,
+  ruleType: "PREFERRED",
+  daysOfWeek: draft.daysOfWeek,
+  kickoffMin: "" !== draft.kickoffMin ? draft.kickoffMin : null,
+  kickoffMax: "" !== draft.kickoffMax ? draft.kickoffMax : null,
+});
+
+const coachLabel = (coach: Coach | undefined): string => (undefined !== coach ? `${coach.firstName} ${coach.lastName}` : "Entraîneur ?");
+
+/**
+ * La section Coachs : le CRUD des INDISPONIBILITÉS d'entraîneur (« pas avant 14h le
+ * samedi »). Chaque indisponibilité vise un entraîneur, un ou plusieurs JOURS et une
+ * fourchette de coup d'envoi (chaque borne facultative) — plusieurs plages par
+ * entraîneur, même jour compris, sont légitimes. C'est une PRÉFÉRENCE (SOFT) : le
+ * placement l'évite quand il le peut, il ne rend jamais un match impossible.
+ */
+function CoachsSection() {
+  const rules = useMatchConstraints();
+  const coaches = useCoaches();
+
+  if (readFailed(rules) || readFailed(coaches)) {
+    return (
+      <LoadErrorHint
+        onRetry={() => {
+          void rules.refetch();
+          void coaches.refetch();
+        }}
+      />
+    );
+  }
+  if (undefined === rules.data || undefined === coaches.data) {
+    return <FullPageSpinner />;
+  }
+
+  // La section Coachs ne montre QUE les indisponibilités de coach (scope COACH). Simple tri
+  // d'affichage — jamais un verdict solveur (le backend décide, .claude/rules/frontend.md).
+  const unavailabilities = rules.data.filter((rule) => "COACH" === rule.scope);
+  const coachesById = new Map(coaches.data.map((c) => [c.id, c]));
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground">
+        Indiquez quand un entraîneur n'est pas disponible pour un match — par exemple « pas de match avant 14h le samedi ». Le
+        placement <strong>évite</strong> ces plages quand il le peut, sans jamais rendre un match impossible. Vous pouvez déclarer
+        plusieurs plages pour un même entraîneur, y compris le même jour.
+      </p>
+
+      {0 === unavailabilities.length ? (
+        <p className="text-sm text-muted-foreground">Aucune indisponibilité — chaque entraîneur est réputé disponible pour tous les matchs.</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {unavailabilities.map((rule) => (
+            <CoachUnavailabilityRow key={rule.id} rule={rule} coaches={coaches.data} coachName={coachLabel(coachesById.get(rule.scopeTargetId ?? ""))} />
+          ))}
+        </div>
+      )}
+
+      <AddCoachUnavailabilityRow coaches={coaches.data} />
+    </div>
+  );
+}
+
+/** Le sélecteur d'entraîneur + les champs jours/de/à — partagés par la ligne éditable et l'ajout. */
+function CoachFields({ draft, set, coaches, idLabel }: { draft: CoachUnavailabilityDraft; set: (patch: Partial<CoachUnavailabilityDraft>) => void; coaches: Coach[]; idLabel: string }) {
+  return (
+    <>
+      <Select aria-label="Entraîneur" value={draft.coachId} onChange={(e) => set({ coachId: e.target.value })} className="min-w-32">
+        <option value="">Entraîneur…</option>
+        {coaches.map((c) => (
+          <option key={c.id} value={c.id}>
+            {coachLabel(c)}
+          </option>
+        ))}
+      </Select>
+      <DayToggles label={`Jours (${idLabel})`} value={draft.daysOfWeek} onChange={(daysOfWeek) => set({ daysOfWeek })} />
+      <label className="flex items-center gap-1 text-sm text-muted-foreground">
+        Pas avant
+        <Input aria-label="Pas avant (heure de début)" type="time" value={draft.kickoffMin} onChange={(e) => set({ kickoffMin: e.target.value })} />
+      </label>
+      <label className="flex items-center gap-1 text-sm text-muted-foreground">
+        Pas après
+        <Input aria-label="Pas après (heure de fin)" type="time" value={draft.kickoffMax} onChange={(e) => set({ kickoffMax: e.target.value })} />
+      </label>
+    </>
+  );
+}
+
+/** Une indisponibilité éditable (PUT au « Enregistrer », DELETE au « Supprimer »). */
+function CoachUnavailabilityRow({ rule, coaches, coachName }: { rule: MatchConstraint; coaches: Coach[]; coachName: string }) {
+  const [draft, setDraft] = useState<CoachUnavailabilityDraft>(() => emptyCoachDraft(rule));
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const update = useUpdateMatchConstraint();
+  const remove = useDeleteMatchConstraint();
+  const set = (patch: Partial<CoachUnavailabilityDraft>): void => setDraft((d) => ({ ...d, ...patch }));
+
+  const dirty =
+    draft.coachId !== (rule.scopeTargetId ?? "") ||
+    !sameDays(draft.daysOfWeek, rule.daysOfWeek) ||
+    draft.kickoffMin !== (rule.kickoffMin ?? "") ||
+    draft.kickoffMax !== (rule.kickoffMax ?? "");
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
+      <CoachFields draft={draft} set={set} coaches={coaches} idLabel={coachName} />
+      <div className="ml-auto flex items-center gap-2">
+        <Button size="sm" disabled={!dirty || !isCoachDraftComplete(draft) || update.isPending} onClick={() => update.mutate({ id: rule.id, input: toCoachInput(draft) })}>
+          Enregistrer
+        </Button>
+        <Button variant="outline" size="sm" aria-label="Supprimer" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
+          <Trash2 className="size-3.5" />
+        </Button>
+      </div>
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Supprimer cette indisponibilité ?"
+        description="Le placement cessera d'éviter cette plage pour cet entraîneur."
+        confirmLabel="Supprimer"
+        destructive
+        onConfirm={() => {
+          setConfirmDelete(false);
+          remove.mutate(rule.id);
+        }}
+        onCancel={() => setConfirmDelete(false)}
+      />
+    </div>
+  );
+}
+
+/** La ligne d'ajout d'une indisponibilité (POST scope COACH, toujours PREFERRED). */
+function AddCoachUnavailabilityRow({ coaches }: { coaches: Coach[] }) {
+  const [draft, setDraft] = useState<CoachUnavailabilityDraft>(() => emptyCoachDraft(null));
+  const create = useCreateMatchConstraint();
+  const set = (patch: Partial<CoachUnavailabilityDraft>): void => setDraft((d) => ({ ...d, ...patch }));
+
+  const submit = (): void => {
+    create.mutate(toCoachInput(draft), { onSuccess: () => setDraft(emptyCoachDraft(null)) });
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-border px-3 py-2">
+      <CoachFields draft={draft} set={set} coaches={coaches} idLabel="nouvelle indisponibilité" />
+      <Button size="sm" className="ml-auto" disabled={!isCoachDraftComplete(draft) || create.isPending} onClick={submit}>
+        <Plus className="size-3.5" />
+        Ajouter
       </Button>
     </div>
   );

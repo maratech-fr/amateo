@@ -1,14 +1,14 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-29 (`documentation-update`, P4-272 ④ — interdiction de gymnase par équipe :
-`MatchConstraint` (`backend/src/Entity/MatchConstraint.php`, scope TEAM — `scopeTargetId`/`venueId`
-obligatoires et DU CLUB, `ruleType` HARD seulement) ⇄ `teams[].forbiddenVenueIds` du payload
-`/place-matches` (`match_input_schema.py:125`), domaine vidé par un gymnase interdit alors qu'un
-créneau y était licite → raison `team_venue_forbidden` (`match_placement.py:284`), précédence sur
-`club_rule_no_slot` ; radar `TEAM_VENUE_FORBIDDEN` sévérité 3, même gravité que
-`CLUB_RULE_VIOLATION` (`MatchConflictDetector::teamVenueForbiddenConflicts`,
-`MatchConflictDetector.php:753`) ; cascade suppression équipe/gymnase (`CascadePlan.php`) et
-recopie N+1 avec remap équipe+gymnase (`SeasonTransitionService.php`) confrontées au code ✓. Reste
+Last verified @ 2026-09-30 (`documentation-update`, P4-272 ⑤ — indisponibilité de coach : `MatchConstraint`
+(`backend/src/Entity/MatchConstraint.php`, scope COACH — `scopeTargetId` obligatoire et DU CLUB,
+`ruleType` PREFERRED forcé/HARD refusé, `applyCoachUnavailability`,
+`MatchConstraintStateProcessor.php:183-226`) ⇄ bloc top-level `coachUnavailabilities` du payload
+`/place-matches` (`MatchPlacementPayloadBuilder.php:158-172`, `match_input_schema.py:84-100`),
+pénalité SOFT `W_COACH_UNAVAILABLE=60` (`match_placement.py:57,619-623`, AUCUN élagage de domaine,
+AUCUNE raison `unplaced`, AUCUN radar) ; cascade suppression coach (`CascadePlan::forCoach`) et
+recopie N+1 avec remap coach (`SeasonTransitionService.php:428-436`, référence pendante →
+ligne abandonnée) confrontées au code ✓. P4-272 est désormais livré EN ENTIER (①②③④⑤). Reste
 du contenu (P4-240 et antérieur) non réaudité cette passe. Historique :
 `git log -p --follow specs/courantes/module-matchs.md`.
 
@@ -22,8 +22,8 @@ du contenu (P4-240 et antérieur) non réaudité cette passe. Historique :
 Le module vit dans `frontend/src/features/matches/` (nav `MatchesLayout`, sous `/matchs` :
 `index` = **route d'atterrissage conditionnelle** (`MatchesLanding` → Calendrier, ou renvoi sur
 Conflits s'il y a des conflits à traiter — § Écran Calendrier), `conflits`, `importer`,
-`configuration`, `contraintes` (§ Écran Contraintes, section Ligue éditable — sections Club/
-Équipes/Coachs à venir), `adversaires` (§ Écran Adversaires, onglet propre — plus un deep-link de
+`configuration`, `contraintes` (§ Écran Contraintes — sections Ligue/Club/Équipes/Coachs toutes
+éditables), `adversaires` (§ Écran Adversaires, onglet propre — plus un deep-link de
 Configuration), `semaine-type`, `consulter` en redirection permanente vers l'index, `reconciliation` accessible
 seulement depuis le canal API, `frontend/src/app/routes.tsx:141-186`) et dans les services backend `Match*`/`Fixture*`/
 `Opponent*`/`Ffbb*` (`backend/src/Service/`, `backend/src/Entity/`).
@@ -71,10 +71,11 @@ vigueur, il n'a rien à comparer.
   aucun HARD ligue au placement (§3), un seul diagnostic INFO `league_envelope_empty` pour tout le
   club (jamais un par équipe) ; une pose manuelle hors fenêtre reste PERMISE et SIGNALÉE (§5), le
   radar continue de porter `LEAGUE_WINDOW_VIOLATION` sur une copie non vide.
-- **`MatchConstraint`** (table `match_constraint`, P4-272 ③+④) : une RÈGLE DE MATCH — `scope`
-  `ConstraintScope` tranche la FORME (`CLUB` et `TEAM` sont saisis ; `COACH`/`FACILITY` réservés à
-  ⑤), `ruleType` `ConstraintRuleType`, `daysOfWeek` (ISO 1=lundi..7=dimanche) et une fourchette de
-  coup d'envoi `kickoffMin`/`kickoffMax` (HH:MM). Deux formes :
+- **`MatchConstraint`** (table `match_constraint`, P4-272 ③+④+⑤) : une RÈGLE DE MATCH — `scope`
+  `ConstraintScope` tranche la FORME (`CLUB`, `TEAM` et `COACH` sont saisis ; `FACILITY` seul reste
+  refusé — une règle inerte serait illisible), `ruleType` `ConstraintRuleType`, `daysOfWeek` (ISO
+  1=lundi..7=dimanche) et une fourchette de coup d'envoi `kickoffMin`/`kickoffMax` (HH:MM). Trois
+  formes :
   - **CLUB** (③) : `scopeTargetId`/`venueId` nuls, `daysOfWeek` + fourchette portent la règle
     (« pas après 21h le samedi ») — HARD (honorée par le solveur, le coup d'envoi doit tomber dans
     la fourchette les jours couverts) ou PREFERRED (pénalité `W_CLUB_RULE=30`, le solveur l'évite
@@ -87,26 +88,39 @@ vigueur, il n'a rien à comparer.
     §10) ; `daysOfWeek`/fourchette NON PERTINENTS (l'interdiction vaut tous les jours à toute
     heure), refusés s'ils sont renseignés, forcés à vide/null
     (`MatchConstraintStateProcessor::applyTeamVenueBan`).
+  - **COACH** (⑤, indisponibilité d'entraîneur) : `scopeTargetId` = le coach, OBLIGATOIRE et DU
+    CLUB (même lookup tenant-filtré qu'④, étranger/inconnu → 422) ; `daysOfWeek` + fourchette
+    portent la plage comme une règle CLUB (au moins un jour, au moins une borne, min ≤ max si les
+    deux) — PLUSIEURS plages par coach ET par jour sont légitimes (aucune unicité) ; TOUJOURS
+    PREFERRED (HARD refusé — une indisponibilité pèse au solveur, elle ne bloque JAMAIS un match) ;
+    `venueId` NON PERTINENT, refusé s'il est renseigné (`MatchConstraintStateProcessor::
+    applyCoachUnavailability`).
 
   Aucune unicité en base (plusieurs règles peuvent se recouvrir, une équipe peut s'interdire
-  plusieurs gymnases ; ⑤ en aura besoin aussi). CRUD gestionnaire (`GET`/`POST`/`PUT`/
-  `DELETE /api/match_constraints`), sections Club et Équipes de l'écran Contraintes (§8bis). Le
-  moteur reçoit les règles CLUB VERBATIM dans le bloc top-level `clubRules`, les interdictions TEAM
-  dans `teams[].forbiddenVenueIds` (liste triée, déterministe) du payload `/place-matches`
-  (`CONTRACT_VERSION` 2.27) — un domaine vidé par les seules règles CLUB HARD ressort `club_rule_
-  no_slot`, un domaine vidé par un gymnase interdit alors qu'un créneau licite y existait ressort
-  `team_venue_forbidden` (précédence sur `club_rule_no_slot`, §3) ; les amicaux (`competitionId`
+  plusieurs gymnases, un coach cumuler plusieurs plages). CRUD gestionnaire (`GET`/`POST`/`PUT`/
+  `DELETE /api/match_constraints`), sections Club, Équipes et Coachs de l'écran Contraintes (§8bis).
+  Le moteur reçoit les règles CLUB VERBATIM dans le bloc top-level `clubRules`, les interdictions
+  TEAM dans `teams[].forbiddenVenueIds` (liste triée, déterministe) et les indisponibilités COACH
+  dans le bloc top-level `coachUnavailabilities` (verbatim {coachId, daysOfWeek, kickoffMin,
+  kickoffMax}) du payload `/place-matches` (`CONTRACT_VERSION` 2.28) — un domaine vidé par les
+  seules règles CLUB HARD ressort `club_rule_no_slot`, un domaine vidé par un gymnase interdit
+  alors qu'un créneau licite y existait ressort `team_venue_forbidden` (précédence sur
+  `club_rule_no_slot`, §3) ; une indisponibilité COACH ne vide JAMAIS de domaine — elle pénalise
+  seulement le candidat retenu (`W_COACH_UNAVAILABLE=60`, §3 SOFT) ; les amicaux (`competitionId`
   nul) en sont exemptés structurellement, comme l'enveloppe ligue. Une pose MANUELLE hors d'une
   règle CLUB HARD ou dans un gymnase interdit à l'équipe reste PERMISE — le radar la SIGNALE
-  (`CLUB_RULE_VIOLATION`/`TEAM_VENUE_FORBIDDEN`, §2), il ne la bloque pas. L'**alerte de cohérence**
-  (lecture seule, rien stocké) croise chaque règle CLUB avec les créneaux idéaux (`TeamMatchHabit`)
-  qu'elle heurte (`ClubRuleCoherenceChecker`, `GET /api/match-constraints/coherence`, section Club
-  seulement — les interdictions TEAM n'y entrent pas), affichée sous la règle en section Club
-  (§8bis) ET sous le créneau idéal concerné en Semaine type (§10) — ne bloque jamais rien, le
-  gestionnaire décide. **Cascade suppression** : une équipe ou un gymnase supprimé emporte les
-  interdictions TEAM qui le visent (`scopeTargetId`/`venueId`, `CascadePlan::forTeam`/`forVenue`),
-  annoncée dans la modale d'impact (§ `deletion-impact`, `backend-inventory.md`) ; une règle CLUB ne
-  porte ni l'un ni l'autre, jamais concernée par ces deux étapes.
+  (`CLUB_RULE_VIOLATION`/`TEAM_VENUE_FORBIDDEN`, §2), il ne la bloque pas ; **une indisponibilité
+  COACH, elle, ne porte AUCUN radar** — une pénalité SOFT n'est pas un conflit à traiter (décision
+  fermée, `etat-des-lieux.md` §2). L'**alerte de cohérence** (lecture seule, rien stocké) croise
+  chaque règle CLUB avec les créneaux idéaux (`TeamMatchHabit`) qu'elle heurte
+  (`ClubRuleCoherenceChecker`, `GET /api/match-constraints/coherence`, section Club seulement — les
+  interdictions TEAM et les indisponibilités COACH n'y entrent pas), affichée sous la règle en
+  section Club (§8bis) ET sous le créneau idéal concerné en Semaine type (§10) — ne bloque jamais
+  rien, le gestionnaire décide. **Cascade suppression** : une équipe ou un gymnase supprimé emporte
+  les interdictions TEAM qui le visent (`scopeTargetId`/`venueId`, `CascadePlan::forTeam`/
+  `forVenue`), un coach supprimé emporte ses indisponibilités (`CascadePlan::forCoach`), annoncées
+  dans la modale d'impact (§ `deletion-impact`, `backend-inventory.md`) ; une règle CLUB ne porte
+  aucun des trois, jamais concernée par ces étapes.
 - **`TeamLink`** (couple symétrique `teamAId < teamBId`, cap `MAX_TEAM_LINKS = 50`) : côté MATCHS
   `TeamLinkType` `NOT_SIMULTANEOUS`/`BACK_TO_BACK` — rail SOFT **placement seul** ; le radar de
   conflits ne charge jamais `TeamLink` (décision fermée, `etat-des-lieux.md` §2 : « ça fait plus de
@@ -137,11 +151,12 @@ vigueur, il n'a rien à comparer.
 Recopie en N+1 (`SeasonTransitionService`) : habitudes (créneau idéal + tag `week` remap
 équipe+gymnase), passerelles, fenêtres d'accès, la copie club de l'enveloppe ligue
 (`ClubLeagueWindow`, verbatim depuis la saison source), les règles de match (`MatchConstraint`,
-P4-272 ③+④) — CLUB : verbatim (ni gymnase ni équipe à remapper, `scopeTargetId`/`venueId` restent
+P4-272 ③+④+⑤) — CLUB : verbatim (ni gymnase ni équipe à remapper, `scopeTargetId`/`venueId` restent
 nuls) ; TEAM (interdiction de gymnase) : remap de l'équipe ET du gymnase (mêmes tables de
-correspondance que les habitudes) — une référence PENDANTE d'un des deux côtés (équipe ou gymnase
-disparu en N+1) fait ABANDONNER la ligne, jamais un pointeur mort en base ; COACH/FACILITY (⑤) pas
-encore émis, une ligne héritée d'un état antérieur ne se propage pas. Les indisponibilités et les
+correspondance que les habitudes) ; COACH (indisponibilité d'entraîneur) : remap du coach seul
+(jours + fourchette conservés) — dans les trois cas une référence PENDANTE (équipe, gymnase ou
+coach disparu en N+1) fait ABANDONNER la ligne, jamais un pointeur mort en base. Les
+indisponibilités de GYMNASE (`VenueUnavailability` — travaux, fermeture ponctuelle) et les
 échéances **ne sont jamais recopiées**.
 
 ### Tables GLOBALES fédérales (hors tenant, hors RLS)
@@ -527,7 +542,7 @@ Présentation pure — aucune formule de gravité redérivée.
 ## 3. Solveur de placement (`POST /api/fixtures/place` → engine `/place-matches`)
 
 Second problème solveur ([ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md)),
-même `CONTRACT_VERSION` **2.27** que `/generate`/`/validate-assignments` (un seul contrat pour les
+même `CONTRACT_VERSION` **2.28** que `/generate`/`/validate-assignments` (un seul contrat pour les
 trois endpoints — voir §6 `CLAUDE.md`). **Rail
 SYNCHRONE** (`PlaceMatchesController` — management + saison écrivable + socle pointé), anti-double-clic
 PAR CLUB `MatchPlacementLock` (Redis dédié — ne protège pas deux clubs l'un de l'autre : ils partagent le
@@ -601,13 +616,18 @@ protection d'habitude de son équipe ce jour-là (`team_dates`). Conséquence : 
 personne du solveur ne provient plus JAMAIS d'un trajet ni d'un échauffement — elle vaut toujours la
 fenêtre salle `[kickoff, kickoff+matchMinutes]` (lot M + décision B).
 
-**SOFT (golden-épinglés)** : conflit personne (coach MAIN ou joueuse active) −60 · coach ASSISTANT
-−10 · passerelle `NOT_SIMULTANEOUS` violée −40 (⚠ **asymétrie délibérée** : le radar §2 ne signale
-jamais cette famille, le solveur GARDE cette préférence souple — sens sûr, une pénalité SOFT ne
-bloque jamais rien, à ne pas « aligner » en la retirant) · règle de match CLUB PREFERRED violée −30
-(`W_CLUB_RULE=30`, P4-272 ③, `match_placement.py:55` — arbitrage fondateur : plus qu'une habitude
-+15+5, moins qu'une passerelle `NOT_SIMULTANEOUS` −40 ou qu'un conflit coach −60 ; une règle HARD
-n'entre jamais dans l'objectif, elle élague le domaine, §3 ci-dessus) · habitude heure +15/gymnase +5 · fenêtre
+**SOFT (golden-épinglés)** : conflit personne (coach MAIN ou joueuse active) −60 · indisponibilité
+de coach violée −60 (`W_COACH_UNAVAILABLE=60`, P4-272 ⑤, `match_placement.py:57` — MÊME poids qu'un
+conflit personne ; le coup d'envoi du candidat retenu tombe dans une plage d'un coach de l'équipe,
+sur un jour couvert par cette plage ; jamais d'élagage de domaine, jamais de raison `unplaced`,
+jamais de radar — le placement l'évite quand une alternative existe, sans jamais rendre un match
+impossible) · coach ASSISTANT −10 · passerelle `NOT_SIMULTANEOUS` violée −40 (⚠ **asymétrie
+délibérée** : le radar §2 ne signale jamais cette famille, le solveur GARDE cette préférence
+souple — sens sûr, une pénalité SOFT ne bloque jamais rien, à ne pas « aligner » en la retirant) ·
+règle de match CLUB PREFERRED violée −30 (`W_CLUB_RULE=30`, P4-272 ③, `match_placement.py:55` —
+arbitrage fondateur : plus qu'une habitude +15+5, moins qu'une passerelle `NOT_SIMULTANEOUS` −40 ou
+qu'un conflit coach −60 ; une règle HARD n'entre jamais dans l'objectif, elle élague le domaine, §3
+ci-dessus) · habitude heure +15/gymnase +5 · fenêtre
 habituelle protégée −25 (`W_PROTECT_HABIT=25`, `match_placement.py:58`) · `BACK_TO_BACK` enchaîné +15 ·
 stabilité re-solve +8 · compactage −1/15 min de trou. **La protection ne s'applique JAMAIS au
 créneau idéal PROPRE de l'équipe candidate** (`is_own_ideal`, P4-271) — sans cette exception, le
@@ -1198,10 +1218,8 @@ décision fermée (une seule maison d'appariement, jamais une modale sur une mod
 L'écran UNIQUE des contraintes de match (P4-272 ①, demande fondateur « un endroit pour éditer les
 contraintes de match, ligue et personnelles, prises en compte pour le placement automatique »), en
 accordéon (`AccordionSection`, ancré `?section=<ligue|club|equipes|coachs>`, patron
-`ConfigurationPage`). Sections **Ligue**, **Club** et **Équipes** livrées ; **Coachs** reste un
-placeholder « Bientôt » qui pointe, en attendant, vers les écrans qui portent déjà ce réglage
-(indisponibilités coach — pas encore d'écran dédié) — voir P4-272 ⑤ (`specs/evolution/roadmap.md`)
-pour la suite.
+`ConfigurationPage`). Les quatre sections **Ligue**, **Club**, **Équipes** et **Coachs** sont
+livrées — P4-272 est désormais livré EN ENTIER (①②③④⑤).
 
 **Section Ligue** : le CRUD gestionnaire de la copie club de l'enveloppe fédérale
 (`ClubLeagueWindow`, §1) — un tableau éditable (catégorie, niveau, genre, jour, de/à),
@@ -1235,7 +1253,7 @@ gardée par le NR bloquant `Security/LeagueWindowSuggestionShareTest`
 
 **Section Club (P4-272 ③)** : le CRUD gestionnaire des règles de match du club
 (`MatchConstraint`, §1, scope CLUB seulement — TEAM ④ vit dans la section Équipes ci-dessous, COACH
-⑤ à venir). Chaque règle : un ou
+⑤ dans la section Coachs ci-après). Chaque règle : un ou
 plusieurs jours (`DayToggles`, bascule multi-sélection), un type — **Obligatoire** (HARD, honorée
 par le placement) ou **Préférée** (PREFERRED, une préférence, `W_CLUB_RULE=30`, §3) — et une
 fourchette de coup d'envoi « pas avant »/« pas après » (chaque borne facultative, au moins une
@@ -1262,6 +1280,19 @@ destructive) — pas d'édition en place (lever puis recréer). Liste vide → p
 équipe peut jouer dans n'importe quel gymnase du club »), jamais un tableau vide muet. Un rappel
 pointe vers la Semaine type pour la PRÉFÉRENCE de gymnase (l'inverse d'une interdiction). Pas
 d'alerte de cohérence sur cette section — `ClubRuleCoherenceChecker` ne croise que les règles CLUB.
+
+**Section Coachs (P4-272 ⑤)** : le CRUD gestionnaire des INDISPONIBILITÉS d'entraîneur
+(`CoachsSection`/`CoachUnavailabilityRow`/`AddCoachUnavailabilityRow`, `MatchConstraint` scope
+COACH, §1). Chaque ligne : un `Select` entraîneur, un ou plusieurs jours (`DayToggles`) et une
+fourchette « pas avant »/« pas après » (chaque borne facultative, au moins une exigée par le
+serveur, comme en section Club) — TOUJOURS PREFERRED (aucun choix de type à l'écran : une
+indisponibilité de coach ne bloque jamais un match, elle est une préférence par construction).
+Plusieurs plages pour un même entraîneur, y compris le même jour, sont légitimes. Une ligne
+pointillée en bas ajoute une indisponibilité (POST) ; chaque ligne existante s'édite en place (PUT,
+bouton Enregistrer actif seulement si modifiée et complète) et se supprime avec confirmation
+(`ConfirmDialog`, destructive). Liste vide → phrase neutre (« chaque entraîneur est réputé
+disponible pour tous les matchs »), jamais un tableau vide muet. Pas d'alerte de cohérence sur
+cette section — `ClubRuleCoherenceChecker` ne croise que les règles CLUB.
 
 ## 9. Écran Adversaires (`/matchs/adversaires`, au grain GYMNASE)
 

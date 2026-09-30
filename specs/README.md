@@ -1,6 +1,6 @@
 # Living Specs System
 
-Last verified @ 2026-09-28 (`documentation-update`, rotation de fraîcheur, P4-268 — sujet sans
+Last verified @ 2026-09-30 (`documentation-update`, rotation de fraîcheur, P4-272 ⑤ — sujet sans
 rapport avec ce fichier). Re-confronté : les cinq gardes `{DocPlacementTest,
 DocStampFreshnessTest, RoadmapIdentityTest, BlockingTestsListMatchesCiTest,
 SpecsCarryNoHistoryTest}.php` existent toujours, `WorkflowPermissionsDeclaredTest.php`

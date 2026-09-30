@@ -135,6 +135,16 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         self::assertSame([], $newVenueBan->getDaysOfWeek());
         self::assertContains($newVenueBan->getScopeTargetId(), $newTeamIds, 'l\'équipe visée est l\'équipe COPIÉE');
         self::assertSame($newVenues[0]->getId(), $newVenueBan->getVenueId(), 'le gymnase interdit est le gymnase COPIÉ (Gym A)');
+        // P4-272 ⑤ — l'indisponibilité d'entraîneur (scope COACH) suit la saison, REMAPPÉE :
+        // le coach pointe le coach COPIÉ (jamais un id de N), jours + fourchette conservés, SOFT.
+        $newCoachUnavailability = $this->em->getRepository(MatchConstraint::class)->findOneBy(['seasonId' => $target->getId(), 'scope' => ConstraintScope::COACH]);
+        self::assertNotNull($newCoachUnavailability);
+        self::assertSame(ConstraintRuleType::PREFERRED, $newCoachUnavailability->getRuleType());
+        self::assertSame([6], $newCoachUnavailability->getDaysOfWeek());
+        self::assertSame('14:00', $newCoachUnavailability->getKickoffMin()?->format('H:i'));
+        self::assertSame('16:00', $newCoachUnavailability->getKickoffMax()?->format('H:i'));
+        $copiedCoachIds = array_map(static fn (Coach $c): string => $c->getId(), $this->em->getRepository(Coach::class)->findBy(['seasonId' => $target->getId()]));
+        self::assertContains($newCoachUnavailability->getScopeTargetId(), $copiedCoachIds, 'le coach visé est le coach COPIÉ (jamais un id de N)');
         $newTeamLink = $this->em->getRepository(TeamLink::class)->findOneBy(['seasonId' => $target->getId()]);
         self::assertNotNull($newTeamLink);
         self::assertContains($newTeamLink->getTeamAId(), $newTeamIds);
@@ -269,6 +279,33 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         // La cible : seule l'interdiction légitime (équipe réelle) a été recopiée.
         $copiedBans = $this->em->getRepository(MatchConstraint::class)->findBy(['seasonId' => $target->getId(), 'scope' => ConstraintScope::TEAM]);
         self::assertCount(1, $copiedBans, 'l\'interdiction à l\'équipe fantôme est abandonnée, jamais recopiée');
+    }
+
+    /**
+     * P4-272 ⑤ — une INDISPONIBILITÉ d'entraîneur (scope COACH) dont le coach visé n'existe
+     * plus en N (référence pendante) n'est PAS propagée : elle est abandonnée, jamais recopiée
+     * avec un id mort. Seule l'indisponibilité LÉGITIME de createClubGraph (Anna) survit.
+     */
+    public function testDanglingCoachUnavailabilityIsAbandoned(): void
+    {
+        [$club, $season] = $this->createClubGraph();
+        // Une indisponibilité visant un coach FANTÔME (aucune ligne coach ne le porte).
+        $ghost = new MatchConstraint;
+        $ghost->setClubId($club->getId());
+        $ghost->setSeasonId($season->getId());
+        $ghost->setScope(ConstraintScope::COACH);
+        $ghost->setScopeTargetId('deadbeef-3333-4000-8000-000000000000');
+        $ghost->setRuleType(ConstraintRuleType::PREFERRED);
+        $ghost->setDaysOfWeek([6]);
+        $ghost->setKickoffMin(new DateTimeImmutable('14:00'));
+        $this->em->persist($ghost);
+        $this->em->flush();
+
+        $target = $this->service->transition($season);
+
+        // La cible : seule l'indisponibilité légitime (coach réel) a été recopiée.
+        $copied = $this->em->getRepository(MatchConstraint::class)->findBy(['seasonId' => $target->getId(), 'scope' => ConstraintScope::COACH]);
+        self::assertCount(1, $copied, 'l\'indisponibilité au coach fantôme est abandonnée, jamais recopiée');
     }
 
     public function testNothingGeneratedIsCopied(): void
@@ -514,6 +551,20 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $venueBan->setRuleType(ConstraintRuleType::HARD);
         $venueBan->setDaysOfWeek([]);
         $this->em->persist($venueBan);
+
+        // P4-272 ⑤ — une INDISPONIBILITÉ d'entraîneur (scope COACH) : Anna indisponible le
+        // samedi 14h00-16h00. Recopiée en N+1 avec REMAP du coach (coachMap), jours+fourchette
+        // conservés, toujours SOFT (PREFERRED).
+        $coachUnavailability = new MatchConstraint;
+        $coachUnavailability->setClubId($club->getId());
+        $coachUnavailability->setSeasonId($season->getId());
+        $coachUnavailability->setScope(ConstraintScope::COACH);
+        $coachUnavailability->setScopeTargetId($anna->getId());
+        $coachUnavailability->setRuleType(ConstraintRuleType::PREFERRED);
+        $coachUnavailability->setDaysOfWeek([6]);
+        $coachUnavailability->setKickoffMin(new DateTimeImmutable('14:00'));
+        $coachUnavailability->setKickoffMax(new DateTimeImmutable('16:00'));
+        $this->em->persist($coachUnavailability);
 
         $teamLink = new TeamLink;
         $teamLink->setClubId($club->getId());

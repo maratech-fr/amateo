@@ -389,6 +389,99 @@ def test_preferred_club_rule_violated_everywhere_still_places() -> None:
     assert len(output.placements) == 1
 
 
+def _coach_unavailability_payload(*, with_unavailability: bool) -> dict[str, Any]:
+    """A single home match to place Saturday, its team coached by C, ideal habit Saturday
+    15:30 in a WIDE window 13:00-22:30. With the unavailability (C unavailable 14:00-16:00,
+    covering the ideal), a candidate at 15:30 costs W_COACH_UNAVAILABLE(60), which beats the
+    habit attraction → the solver moves the match OUT of the window. `with_unavailability=False`
+    is the WITNESS: nothing penalises 15:30, so the habit is honoured."""
+    payload: dict[str, Any] = {
+        "version": read_contract_version(),
+        "clubId": "club-bccl",
+        "seasonId": "season-2026",
+        "solverSeed": 42,
+        "solverTimeoutSeconds": 30,
+        "matches": [{"id": "m1", "teamId": "t1", "date": SATURDAY, "kind": "TO_PLACE"}],
+        "venues": [
+            {
+                "id": "mateo",
+                "name": "Mateo",
+                "matchWindows": [{"dayOfWeek": 6, "start": "13:00", "end": "22:30"}],
+                "unavailabilities": [],
+            }
+        ],
+        "teams": [
+            {
+                "id": "t1",
+                "name": "T1",
+                "leagueWindows": [],
+                "habits": [{"dayOfWeek": 6, "kickoff": "15:30", "venueId": "mateo"}],
+                "coaches": [{"coachId": "c", "role": "MAIN"}],
+            }
+        ],
+        "teamLinks": [],
+        "trainingOccupancies": [],
+    }
+    if with_unavailability:
+        payload["coachUnavailabilities"] = [
+            {"coachId": "c", "daysOfWeek": [6], "kickoffMin": "14:00", "kickoffMax": "16:00"}
+        ]
+    return payload
+
+
+def test_coach_unavailability_steers_the_placement_out_of_the_window() -> None:
+    # P4-272 ⑤ constraint-semantics (§7.1) — a coach is UNAVAILABLE Saturday 14:00-16:00,
+    # which covers his team's ideal slot (15:30). SOFT penalty W_COACH_UNAVAILABLE(60) beats
+    # the habit attraction → the match is MOVED OUT of the [14:00, 16:00] window (before or
+    # after, both cost 0), still placed. WITNESS: without the unavailability, the ideal 15:30
+    # is honoured (proves the penalty — not the fixture — is what steers the placement).
+    with_unav = MatchPlacementOutputSchema.model_validate(
+        solve_match_placement(
+            MatchPlacementInputSchema.model_validate(_coach_unavailability_payload(with_unavailability=True))
+        )
+    )
+    assert with_unav.unplaced == []
+    assert len(with_unav.placements) == 1
+    chosen = with_unav.placements[0].kickoff
+    assert not (time(14, 0) <= chosen <= time(16, 0)), (
+        "the match avoids the coach's unavailability window when an alternative exists"
+    )
+    assert_no_hard_violation(
+        MatchPlacementInputSchema.model_validate(_coach_unavailability_payload(with_unavailability=True)), with_unav
+    )
+
+    witness = MatchPlacementOutputSchema.model_validate(
+        solve_match_placement(
+            MatchPlacementInputSchema.model_validate(_coach_unavailability_payload(with_unavailability=False))
+        )
+    )
+    assert len(witness.placements) == 1
+    assert _minutes(witness.placements[0].kickoff) == _minutes(time(15, 30)), (
+        "sans indisponibilité, l'habitude 15:30 est honorée — témoin cassé"
+    )
+
+
+def test_coach_unavailability_never_blocks_a_match_with_no_alternative() -> None:
+    # P4-272 ⑤ — the ONLY window (14:00-16:00) is fully inside the coach's unavailability:
+    # every candidate is penalised. A coach unavailability is SOFT — it NEVER blocks (W_PLACE
+    # dominates every penalty), so the match is still placed (no unplaced, no reason).
+    payload = _coach_unavailability_payload(with_unavailability=True)
+    payload["venues"] = [
+        {
+            "id": "mateo",
+            "name": "Mateo",
+            "matchWindows": [{"dayOfWeek": 6, "start": "14:00", "end": "16:00"}],
+            "unavailabilities": [],
+        }
+    ]
+    input_data = MatchPlacementInputSchema.model_validate(payload)
+    output = MatchPlacementOutputSchema.model_validate(solve_match_placement(input_data))
+
+    assert output.unplaced == []
+    assert len(output.placements) == 1
+    assert_no_hard_violation(input_data, output)
+
+
 def test_forbidden_venue_is_never_chosen_even_when_it_holds_the_ideal() -> None:
     # P4-272 ④ constraint-semantics (§7.1) — a team is FORBIDDEN to play at Mateo,
     # where its ideal slot sits (Saturday 20:30). Armand is also open. The HARD ban

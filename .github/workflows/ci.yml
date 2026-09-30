@@ -676,6 +676,14 @@ jobs:
       - name: ForbiddenVenuePayloadParityTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/ForbiddenVenuePayloadParityTest.php --group phase1'
 
+      # P4-272 ⑤ : ce qui est STOCKÉ (indisponibilités d'entraîneur, MatchConstraint scope COACH,
+      # toujours SOFT) == le bloc top-level `coachUnavailabilities` émis au moteur, verbatim {coachId,
+      # daysOfWeek, kickoffMin, kickoffMax} ; falsifié dans les deux sens (une indisponibilité voyage
+      # telle quelle, une règle CLUB et une interdiction TEAM ne fuient pas, un AUTRE club ne fuit pas).
+      # La promesse « une indisponibilité saisie pèse au moteur » à la source — constraint semantics + contract.
+      - name: CoachUnavailabilityPayloadParityTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/CoachUnavailabilityPayloadParityTest.php --group phase1'
+
       # P2-53 RMM-8 PR-2 : ce qui est STOCKÉ (matrice de trajet {venueAId, venueBId, driving,
       # walking}, STRUCTURE club+saison) == le bloc `venueTravelTimes` émis au moteur, TRIÉ ; et sa
       # présence — et elle seule — active la règle implicite `travelTime` (opt-in au 1er geste,

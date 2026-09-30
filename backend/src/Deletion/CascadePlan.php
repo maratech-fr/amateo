@@ -146,6 +146,10 @@ final class CascadePlan
             new DeleteByFieldStep(TeamCoach::class, 'coachId', new ImpactLabel('coach_team', 'équipe coachée', 'équipes coachées')),
             new DeleteByFieldStep(CoachPlayerMembership::class, 'coachId', new ImpactLabel('coach_player', 'équipe où il joue', 'équipes où il joue')),
             new DeleteByFieldStep(ScheduleDiagnostic::class, 'coachId', null),
+            // P4-272 ⑤ — les INDISPONIBILITÉS de ce coach (scope COACH, scopeTargetId = coachId ;
+            // les règles CLUB/interdictions TEAM portent un autre scopeTargetId, jamais touchées
+            // ici). Sans elle, l'indisponibilité pendrait sur un coach mort.
+            new DeleteByFieldStep(MatchConstraint::class, 'scopeTargetId', new ImpactLabel('coach_unavailability', 'indisponibilité de match', 'indisponibilités de match')),
             new ScopedConstraintStep(ConstraintScope::COACH, new ImpactLabel('coach_constraint', 'contrainte visant ce coach', 'contraintes visant ce coach')),
             // Une séance placée survit sans son coach — le moteur laisse `coachId` vide de
             // toute façon, on le remet à NULL plutôt que de détruire la séance.

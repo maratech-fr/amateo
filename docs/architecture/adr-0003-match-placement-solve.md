@@ -110,7 +110,10 @@ SOFT `NOT_SIMULTANEOUS` (−40) — une préférence souple ne bloque jamais un 
 recul silencieux si la famille revenait un jour au radar.
 
 Poids SOFT (produit, golden-épinglés) : conflit personne (coach MAIN ou joueuse active) −60 ·
-passerelle NOT_SIMULTANEOUS violée −40 · règle de match CLUB PREFERRED violée −30 (`W_CLUB_RULE`,
+indisponibilité de coach violée −60 (`W_COACH_UNAVAILABLE`, P4-272 ⑤ — MÊME poids qu'un conflit
+personne, jamais une raison `unplaced` ni un élagage de domaine : une indisponibilité de coach est
+TOUJOURS SOFT, PREFERRED forcé côté `MatchConstraint`, HARD refusé) · passerelle NOT_SIMULTANEOUS
+violée −40 · règle de match CLUB PREFERRED violée −30 (`W_CLUB_RULE`,
 P4-272 ③ — entre l'habitude et la passerelle ; une règle HARD, elle, n'entre jamais dans l'objectif,
 elle élague le domaine, §3 ci-dessus) · habitude heure +15 / gymnase +5 (le jour est constant) ·
 fenêtre habituelle protégée −25 · BACK_TO_BACK enchaîné +15 · coach ASSISTANT −10 · stabilité re-solve

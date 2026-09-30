@@ -67,7 +67,7 @@ final class MatchPlacementPayloadBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '2.27';
+    public const string CONTRACT_VERSION = '2.28';
 
     /**
      * Borne du trajet aller-retour AWAY émis, alignée sur le schéma engine
@@ -153,6 +153,27 @@ final class MatchPlacementPayloadBuilder
                 continue;
             }
             $forbiddenVenuesByTeam[$teamId][$venueId] = true;
+        }
+        // P4-272 ⑤ — les INDISPONIBILITÉS d'entraîneur (scope COACH, toujours SOFT). Émises
+        // en bloc top-level `coachUnavailabilities` : le solveur pénalise (W_COACH_UNAVAILABLE)
+        // un candidat dont le coup d'envoi tombe dans la plage d'un coach de l'équipe, sans
+        // jamais bloquer. Scopé club+saison par les filtres Doctrine.
+        /** @var list<MatchConstraint> $coachUnavailabilities */
+        $coachUnavailabilities = $this->entityManager->getRepository(MatchConstraint::class)->findBy(['scope' => ConstraintScope::COACH]);
+        $coachUnavailabilityRows = [];
+        foreach ($coachUnavailabilities as $unavailability) {
+            // Défensif : un coach est requis (le processeur l'exige) ; une ligne sans cible
+            // ne porterait aucune indisponibilité exploitable.
+            $coachId = $unavailability->getScopeTargetId();
+            if (null === $coachId) {
+                continue;
+            }
+            $coachUnavailabilityRows[] = [
+                'coachId' => $coachId,
+                'daysOfWeek' => $unavailability->getDaysOfWeek(),
+                'kickoffMin' => $unavailability->getKickoffMin()?->format('H:i'),
+                'kickoffMax' => $unavailability->getKickoffMax()?->format('H:i'),
+            ];
         }
 
         $habitIndex = $this->awayKickoffEstimator->indexHabits($habits);
@@ -330,6 +351,10 @@ final class MatchPlacementPayloadBuilder
                     'kickoffMin' => $rule->getKickoffMin()?->format('H:i'),
                     'kickoffMax' => $rule->getKickoffMax()?->format('H:i'),
                 ], $clubRules),
+                // P4-272 ⑤ — bloc top-level : chaque indisponibilité porte son coach, ses
+                // jours ISO et sa fourchette de coup d'envoi (bornes nullables). Le solveur
+                // pénalise (SOFT) un candidat dans la plage pour un coach de l'équipe.
+                'coachUnavailabilities' => $coachUnavailabilityRows,
             ],
             'toPlaceCount' => $toPlaceCount,
             'infoDiagnostics' => $infoDiagnostics,

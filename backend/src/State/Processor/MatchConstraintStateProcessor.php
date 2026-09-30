@@ -6,6 +6,7 @@ namespace App\State\Processor;
 
 use App\ApiResource\MatchConstraintResource;
 use App\Dto\MatchConstraintInput;
+use App\Entity\Coach;
 use App\Entity\MatchConstraint;
 use App\Entity\Team;
 use App\Entity\Venue;
@@ -14,7 +15,7 @@ use App\Enum\ConstraintScope;
 use DateTimeImmutable;
 
 /**
- * P4-272 ③+④ — CRUD gestionnaire des règles de match. Écriture = management par
+ * P4-272 ③+④+⑤ — CRUD gestionnaire des règles de match. Écriture = management par
  * défaut (403 sinon, AbstractStateProcessor). Le club+saison sont estampillés par le
  * socle ; on n'ajoute ici que la validation métier croisée, DIFFÉRENTE par scope :
  *  - CLUB (③) : une fourchette de coup d'envoi sur des jours — au moins un jour, au
@@ -22,9 +23,13 @@ use DateTimeImmutable;
  *  - TEAM (④) : une INTERDICTION de gymnase pour une équipe — équipe (scopeTargetId)
  *    ET gymnase (venueId) obligatoires et DU CLUB (lookup tenant-filtré, 422 sinon),
  *    ruleType HARD seulement (PREFERRED refusé), jours/coup d'envoi non pertinents
- *    (refusés s'ils sont renseignés).
- * COACH/FACILITY (⑤) restent refusés (une règle inerte serait illisible). La
- * sémantique du PUT est full-replace.
+ *    (refusés s'ils sont renseignés) ;
+ *  - COACH (⑤) : une INDISPONIBILITÉ d'entraîneur — coach (scopeTargetId) obligatoire
+ *    et DU CLUB, jours + fourchette de coup d'envoi comme une règle CLUB (plusieurs
+ *    plages par coach ET par jour légitimes), TOUJOURS SOFT (PREFERRED forcé, HARD
+ *    refusé — le placement l'évite, ne l'interdit jamais), sans gymnase.
+ * FACILITY reste refusé (une règle inerte serait illisible). La sémantique du PUT est
+ * full-replace.
  *
  * @extends AbstractStateProcessor<MatchConstraint, MatchConstraintInput, MatchConstraintResource>
  */
@@ -65,15 +70,16 @@ class MatchConstraintStateProcessor extends AbstractStateProcessor
 
     private function applyInput(MatchConstraint $entity, MatchConstraintInput $input): void
     {
-        // Le scope tranche la forme. CLUB (③) et TEAM (④) sont éditables ; COACH et
-        // FACILITY (⑤) sont refusés — un scope non honoré par le solveur laisserait
-        // une règle inerte et illisible. Refus NOMMÉ (jamais muet).
+        // Le scope tranche la forme. CLUB (③), TEAM (④) et COACH (⑤) sont éditables ;
+        // FACILITY reste refusé — un scope non honoré par le solveur laisserait une règle
+        // inerte et illisible. Refus NOMMÉ (jamais muet).
         $scope = ConstraintScope::from($input->scope ?? ConstraintScope::CLUB->value);
         $entity->setScope($scope);
         match ($scope) {
             ConstraintScope::CLUB => $this->applyClubRule($entity, $input),
             ConstraintScope::TEAM => $this->applyTeamVenueBan($entity, $input),
-            default => $this->refuse('Cette règle n\'est pas encore éditable (une règle par entraîneur viendra plus tard).'),
+            ConstraintScope::COACH => $this->applyCoachUnavailability($entity, $input),
+            default => $this->refuse('Cette règle n\'est pas encore éditable.'),
         };
     }
 
@@ -162,6 +168,61 @@ class MatchConstraintStateProcessor extends AbstractStateProcessor
         $entity->setDaysOfWeek([]);
         $entity->setKickoffMin(null);
         $entity->setKickoffMax(null);
+    }
+
+    /**
+     * ⑤ — une INDISPONIBILITÉ d'entraîneur (une plage de coup d'envoi où le coach ne peut
+     * pas être là). `scopeTargetId` = le coach, OBLIGATOIRE et DU CLUB : un lookup
+     * tenant-filtré (`findOneBy`, jamais `find()` qui sert l'identity map et saute les
+     * filtres — leçon TeamMatchHabit) rend null pour un coach étranger → 422. Jours +
+     * fourchette de coup d'envoi comme une règle CLUB (au moins un jour, au moins une
+     * borne, min ≤ max si les deux) ; PLUSIEURS plages par coach ET par jour sont
+     * légitimes (aucune unicité). TOUJOURS SOFT : une indisponibilité PÈSE au solveur
+     * (pénalité), elle ne bloque jamais — PREFERRED forcé, HARD refusé. Aucun gymnase.
+     */
+    private function applyCoachUnavailability(MatchConstraint $entity, MatchConstraintInput $input): void
+    {
+        $coachId = $input->scopeTargetId;
+        if (null === $coachId || '' === $coachId) {
+            $this->refuse('Choisissez l\'entraîneur concerné par l\'indisponibilité.');
+        }
+        // Référence étrangère/inconnue : résolue à null par les filtres tenant+saison → 422.
+        if (!$this->entityManager->getRepository(Coach::class)->findOneBy(['id' => $coachId]) instanceof Coach) {
+            $this->refuse('Entraîneur inconnu pour ce club.');
+        }
+        $entity->setScopeTargetId($coachId);
+
+        // Une indisponibilité ne vise pas un gymnase : venueId non pertinent, refusé.
+        if (null !== $input->venueId && '' !== $input->venueId) {
+            $this->refuse('Une indisponibilité d\'entraîneur ne vise pas un gymnase.');
+        }
+        $entity->setVenueId(null);
+
+        // TOUJOURS une préférence : le placement l'évite quand il le peut, sans jamais
+        // l'interdire (jamais de match « impossible » faute d'un coach). HARD refusé.
+        if (null !== $input->ruleType && ConstraintRuleType::PREFERRED !== ConstraintRuleType::from($input->ruleType)) {
+            $this->refuse('Une indisponibilité d\'entraîneur est une préférence : le placement l\'évite sans jamais l\'interdire.');
+        }
+        $entity->setRuleType(ConstraintRuleType::PREFERRED);
+
+        // Full-replace : les jours sont ré-émis en entier. Au moins un jour (le format 1..7
+        // est gardé par l'input ; la présence l'est ici).
+        $days = array_map(intval(...), $input->daysOfWeek ?? []);
+        if ([] === $days) {
+            $this->refuse('Une indisponibilité couvre au moins un jour.');
+        }
+        $entity->setDaysOfWeek($days);
+        $entity->setKickoffMin($this->parseTime($input->kickoffMin));
+        $entity->setKickoffMax($this->parseTime($input->kickoffMax));
+
+        $min = $entity->getKickoffMin();
+        $max = $entity->getKickoffMax();
+        if (!$min instanceof DateTimeImmutable && !$max instanceof DateTimeImmutable) {
+            $this->refuse('Une indisponibilité doit borner une plage horaire : renseignez au moins une heure (de et/ou à).');
+        }
+        if ($min instanceof DateTimeImmutable && $max instanceof DateTimeImmutable && $min > $max) {
+            $this->refuse('L\'heure de début doit précéder l\'heure de fin.');
+        }
     }
 
     private function parseTime(?string $value): ?DateTimeImmutable

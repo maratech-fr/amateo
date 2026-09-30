@@ -419,6 +419,47 @@ final class DeletionImpactParityTest extends KernelTestCase
     }
 
     /**
+     * P4-272 ⑤ — l'INDISPONIBILITÉ d'entraîneur (MatchConstraint scope COACH) est annoncée
+     * ET détruite quand le COACH visé (scopeTargetId) est supprimé. Une règle de CLUB (③,
+     * scopeTargetId nul) N'est JAMAIS touchée par cette étape — falsifié dans les deux sens.
+     */
+    public function testDeletingACoachAnnouncesAndDeletesItsUnavailability(): void
+    {
+        [$club, $season] = $this->seed();
+        $coach = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setFirstName('Alex')->setLastName('Martin')->setIsActive(true);
+        $this->em->persist($coach);
+        $this->em->flush();
+
+        // L'indisponibilité : le coach est indisponible le samedi 14h00-16h00.
+        $unavailability = (new MatchConstraint)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setScope(ConstraintScope::COACH)->setScopeTargetId($coach->getId())
+            ->setRuleType(ConstraintRuleType::PREFERRED)->setDaysOfWeek([6])
+            ->setKickoffMin(new DateTimeImmutable('14:00'))->setKickoffMax(new DateTimeImmutable('16:00'));
+        $this->em->persist($unavailability);
+        // Une règle de CLUB (③) : elle ne doit PAS partir avec un coach.
+        $clubRule = (new MatchConstraint)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setScope(ConstraintScope::CLUB)->setRuleType(ConstraintRuleType::HARD)->setDaysOfWeek([6])
+            ->setKickoffMax(new DateTimeImmutable('21:00'));
+        $this->em->persist($clubRule);
+        $this->em->flush();
+
+        $impact = self::getContainer()->get(DeletionImpactCounter::class)->forCoach($coach);
+        $announced = [];
+        foreach ($impact->lines as $line) {
+            $announced[$line['key']] = $line['count'];
+        }
+        self::assertSame(1, $announced['coach_unavailability'] ?? 0, 'l\'indisponibilité visant le coach est annoncée');
+
+        self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfCoach($coach);
+        $this->em->flush();
+        $this->em->clear();
+
+        self::assertNull($this->em->getRepository(MatchConstraint::class)->find($unavailability->getId()), 'l\'indisponibilité part avec le coach');
+        self::assertNotNull($this->em->getRepository(MatchConstraint::class)->find($clubRule->getId()), 'la règle de club ne part JAMAIS avec un coach');
+    }
+
+    /**
      * P4-272 ④ — l'INTERDICTION de gymnase (MatchConstraint scope TEAM) est annoncée ET
      * détruite par les DEUX portes qui l'orphelineraient : supprimer l'ÉQUIPE visée
      * (scopeTargetId) et supprimer le GYMNASE interdit (venueId). Une règle de CLUB (③,
