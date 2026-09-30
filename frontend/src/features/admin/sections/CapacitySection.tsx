@@ -1,5 +1,6 @@
 import { EmptyBlock, EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Spinner } from "@/shared/components/ui/spinner";
+import { formatMinutes } from "@/shared/lib/time";
 import { cn } from "@/shared/lib/utils";
 
 import type { AdminCapacityResponse } from "../api";
@@ -94,7 +95,7 @@ function VolumePanel({ volume }: { volume: AdminCapacityResponse["volume"] }) {
               <tbody>
                 {volume.hourly.map((row) => (
                   <tr key={row.hour} className="border-t border-white/10 text-console-text">
-                    <td className="py-2 pr-4 tabular-nums">{formatHour(row.hour)}</td>
+                    <td className="py-2 pr-4 tabular-nums">{formatMinutes(row.hour * 60)}</td>
                     <td className="py-2 tabular-nums text-white">{integerFormatter.format(row.solves)}</td>
                   </tr>
                 ))}
@@ -272,10 +273,6 @@ function formatBytes(value: number | null): string {
   if (value < 1024) return `${integerFormatter.format(value)} o`;
   if (value < 1024 * 1024) return `${new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 }).format(value / 1024)} Kio`;
   return `${new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 }).format(value / 1024 / 1024)} Mio`;
-}
-
-function formatHour(hour: number): string {
-  return `${String(hour).padStart(2, "0")} h`;
 }
 
 function formatDate(value: string): string {

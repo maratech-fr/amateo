@@ -3,14 +3,12 @@ import { DAYS, toHourMinute } from "./grid";
 
 const DAY_LABEL = new Map(DAYS.map((d) => [d.n, d.label]));
 
-/** « 18:30 » → « 18h30 » : le format du fondateur pour ces libellés (présentation pure). */
-const hLabel = (time: string): string => toHourMinute(time).replace(":", "h");
-
 /**
- * « Mar 18h30 Matéo » — un placement lisible (jour, heure, gymnase). MAISON UNIQUE partagée par le
- * panneau des écarts et la grille : les deux nomment un placement de la MÊME façon.
+ * « Mar 18:30 Matéo » — un placement lisible (jour, heure, gymnase). MAISON UNIQUE partagée par le
+ * panneau des écarts et la grille : les deux nomment un placement de la MÊME façon. L'heure passe
+ * par `toHourMinute` (« HH:MM », N3 uniformité des écrans 2026-09-30) — plus de forme « 18h30 ».
  */
-export const placementLabel = (day: number, time: string, venue: string): string => `${DAY_LABEL.get(day) ?? "?"} ${hLabel(time)} ${venue}`;
+export const placementLabel = (day: number, time: string, venue: string): string => `${DAY_LABEL.get(day) ?? "?"} ${toHourMinute(time)} ${venue}`;
 
 /**
  * P2-44 PR-4 — MAPPING DE PRÉSENTATION PUR : quels créneaux de la grille (par `slotId`) portent un

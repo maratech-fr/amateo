@@ -1,5 +1,6 @@
 import { frDateShortNoYear } from "@/shared/lib/date";
-import { formatDurationMinutes, formatMinutes, parseTime } from "@/shared/lib/time";
+import { formatDuration } from "@/shared/lib/duration";
+import { formatMinutes, parseTime } from "@/shared/lib/time";
 
 import type { Conflict, ConflictFixtureView, ConflictTrainingView, HomeAway, Team, Venue } from "../api";
 import { SIDE_ROLE_WORD } from "./conflictLabels";
@@ -64,7 +65,7 @@ export interface ConflictOverlapLine {
   start: string;
   /** « 17:25 ». */
   end: string;
-  /** Minutes de recouvrement (`end − start`) — pour `formatDurationMinutes`. */
+  /** Minutes de recouvrement (`end − start`) — pour `formatDuration`. */
   minutes: number;
   /** Début et fin tombent sur DEUX jours différents → répéter la date. */
   crossDay: boolean;
@@ -121,7 +122,7 @@ function matchTimes(side: ConflictFixtureView): { times: ConflictSideTimes; trav
       times: {
         kickoff: { value: kickoff, estimated: false },
         end: null !== kickoffMin && undefined !== duration ? formatMinutes(kickoffMin + duration) : undefined,
-        duration: undefined !== duration ? formatDurationMinutes(duration) : undefined,
+        duration: undefined !== duration ? formatDuration(duration) : undefined,
       },
     };
   }

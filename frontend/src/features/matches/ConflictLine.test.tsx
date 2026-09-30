@@ -63,7 +63,7 @@ describe("ConflictLine (extrait du radar, avec slot trailing)", () => {
     };
     renderLine({ conflict: clubRule });
     expect(screen.getByText("Hors règle du club")).toBeInTheDocument();
-    expect(screen.getByText(/règle : « pas après 21h »/)).toBeInTheDocument();
+    expect(screen.getByText(/règle : « pas après 21:00 »/)).toBeInTheDocument();
     expect(screen.getByText(/pose libre, à surveiller/)).toBeInTheDocument();
   });
 
@@ -218,8 +218,8 @@ describe("ConflictLine — détail par côté (P2-54)", () => {
     kickoffTime: "15:30",
     windowStart: "2026-11-08T15:00:00",
     windowEnd: "2026-11-08T17:25:00",
-    // 90 min so the home « durée estimée » (1 h 30) is distinct from the overlap
-    // (1 h 55) — the assertion below targets the chevauchement uniquely.
+    // 90 min so the home « durée estimée » (1h30) is distinct from the overlap
+    // (1h55) — the assertion below targets the chevauchement uniquely.
     matchDurationMinutes: 90,
     opponentLabel: "VAULX EN VELIN BASKET CLUB - 2",
     role: "PLAYER" as const,
@@ -262,9 +262,9 @@ describe("ConflictLine — détail par côté (P2-54)", () => {
     expect(screen.getByText("domicile")).toBeInTheDocument();
     expect(screen.getByText("vs ASVEL - 2")).toBeInTheDocument();
     expect(screen.getByText("vs VAULX EN VELIN BASKET CLUB - 2")).toBeInTheDocument();
-    // Le chevauchement, avec sa durée aérée.
+    // Le chevauchement, avec sa durée compacte.
     expect(screen.getByText(/Chevauchement/)).toBeInTheDocument();
-    expect(screen.getByText("1 h 55")).toBeInTheDocument();
+    expect(screen.getByText("1h55")).toBeInTheDocument();
   });
 
   it("le coup d'envoi est TOUJOURS la même colonne (index 2) — l'alignement est un fait DOM", () => {

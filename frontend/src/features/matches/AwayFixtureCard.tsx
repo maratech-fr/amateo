@@ -5,7 +5,8 @@ import { Button } from "@/shared/components/ui/button";
 import { Modal } from "@/shared/components/ui/modal";
 import { OpponentLogo } from "@/shared/components/ui/opponent-logo";
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
-import { formatDurationMinutes, formatMinutes, parseTime } from "@/shared/lib/time";
+import { formatDuration } from "@/shared/lib/duration";
+import { formatMinutes, parseTime } from "@/shared/lib/time";
 
 import type { Fixture, Team, TeamMatchHabit } from "./api";
 import { awayHour, awayTimeline } from "./lib/awayKickoff";
@@ -80,7 +81,7 @@ export function AwayFixtureCard({
     ...("" !== addressLine ? [{ label: "Adresse", value: addressLine }] : []),
     { label: "Date", value: frDateWeekdayNoYear(fixture.matchDate) },
     { label: "Coup d'envoi", value: null !== hour ? `${hour}${estimated ? " (estimé)" : ""}` : "heure inconnue" },
-    { label: "Durée du match", value: formatDurationMinutes(duration) },
+    { label: "Durée du match", value: formatDuration(duration) },
     { label: "Trajet", value: null !== oneWay ? `${approx}${oneWay} min` : "trajet indisponible" },
     ...(hasTravel
       ? [{ label: "Départ / retour estimés", value: `≈ ${departure} → ≈ ${back}` }]

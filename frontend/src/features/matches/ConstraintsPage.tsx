@@ -15,7 +15,7 @@ import { readFailed } from "@/shared/lib/readState";
 import { useMe } from "@/shared/session/queries";
 
 import type { ClubLeagueWindow, ClubLeagueWindowInput, Coach, LeagueWindowLevel, MatchConstraint, MatchConstraintInput, MatchRuleType, Team, Venue } from "./api";
-import { clubRuleLabel, frClock } from "./lib/clubRuleLabel";
+import { clockLabel, clubRuleLabel } from "./lib/clubRuleLabel";
 import { LeagueSuggestions } from "./LeagueSuggestions";
 import {
   useClubLeagueWindows,
@@ -211,13 +211,13 @@ function DraftFields({ draft, set }: { draft: ClubLeagueWindowInput; set: (patch
   );
 }
 
-/** Le résumé compact d'une fenêtre ligue : « U13F1 · Départemental · Samedi… · 13h–21h ». */
+/** Le résumé compact d'une fenêtre ligue : « U13F1 · Départemental · Samedi… · 13:00–21:00 ». */
 function leagueWindowSummary(window: ClubLeagueWindow): string {
   const parts = [window.category, LEVEL_LABEL.get(window.level) ?? window.level];
   if (null !== window.gender && "" !== window.gender) {
     parts.push(GENDER_LABEL.get(window.gender) ?? window.gender);
   }
-  parts.push(`${daysShort([window.dayOfWeek])} ${frClock(window.kickoffMin)}–${frClock(window.kickoffMax)}`);
+  parts.push(`${daysShort([window.dayOfWeek])} ${clockLabel(window.kickoffMin)}–${clockLabel(window.kickoffMax)}`);
   return parts.join(" · ");
 }
 
@@ -353,7 +353,7 @@ const toRuleInput = (draft: ClubRuleDraft): MatchConstraintInput => ({
 const sameDays = (a: number[], b: number[]): boolean => a.length === b.length && a.every((d) => b.includes(d));
 
 /**
- * La section Club : le CRUD des règles de match du club (« pas après 21h », …). Chaque
+ * La section Club : le CRUD des règles de match du club (« pas après 21:00 », …). Chaque
  * règle porte un ou plusieurs JOURS, une fourchette de coup d'envoi (chaque borne
  * facultative) et un type Obligatoire (HARD, honorée par le solveur) / Préférée
  * (PREFERRED, une préférence). Sous une règle, l'ALERTE DE COHÉRENCE — les créneaux
@@ -461,7 +461,7 @@ function ClubRuleAlerts({ alerts, weekendAlternates }: { alerts: { teamId: strin
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
           <span>
             Cette règle heurte le créneau idéal des {h.teamName}
-            {weekendAlternates ? ` (semaine ${h.week})` : ""} : {dayLabelLong(h.dayOfWeek)} {frClock(h.kickoff)}.
+            {weekendAlternates ? ` (semaine ${h.week})` : ""} : {dayLabelLong(h.dayOfWeek)} {clockLabel(h.kickoff)}.
           </span>
         </p>
       ))}
@@ -469,7 +469,7 @@ function ClubRuleAlerts({ alerts, weekendAlternates }: { alerts: { teamId: strin
   );
 }
 
-/** Le résumé compact d'une règle club : « Samedi · pas après 21h · Obligatoire ». */
+/** Le résumé compact d'une règle club : « Samedi · pas après 21:00 · Obligatoire ». */
 function clubRuleSummary(rule: MatchConstraint): string {
   return `${daysShort(rule.daysOfWeek)} · ${clubRuleLabel(rule)} · ${RULE_TYPE_LABEL.get(rule.ruleType) ?? rule.ruleType}`;
 }
@@ -805,7 +805,7 @@ function CoachFields({ draft, set, coaches, idLabel }: { draft: CoachUnavailabil
   );
 }
 
-/** Le résumé compact d'une indisponibilité : « Mateo Durand · Sam · pas avant 14h ». */
+/** Le résumé compact d'une indisponibilité : « Mateo Durand · Sam · pas avant 14:00 ». */
 function coachUnavailabilitySummary(rule: MatchConstraint, coachName: string): string {
   return `${coachName} · ${daysShort(rule.daysOfWeek)} · ${clubRuleLabel(rule)}`;
 }
