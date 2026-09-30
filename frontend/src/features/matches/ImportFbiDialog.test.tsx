@@ -237,8 +237,9 @@ describe("ImportFbiDialog", () => {
     expect(label.getAttribute("title")).toContain("Équipe 2");
 
     // B4 — la valeur pré-remplie du select se lit sans l'ouvrir (élargie + title de secours).
+    // La largeur vit désormais sur la BOÎTE (wrapperClassName), pas sur le trigger interne (PR 3/7).
     const select = screen.getByRole("button", { name: /Équipe pour Division 2 Masculine Séniors/ });
-    expect(select).toHaveClass("w-52");
+    expect(select.parentElement).toHaveClass("w-52");
     expect(select).toHaveAccessibleName(/SF3/); // la valeur pré-remplie se lit sans ouvrir la liste
   });
 

@@ -546,7 +546,7 @@ export function SlotReservationModal({
             <TeamSelect
               aria-label="Ajouter une équipe"
               aria-describedby={blockedMutualisations.length > 0 ? blockedGroupsDescId : undefined}
-              className="h-9 w-full"
+              wrapperClassName="w-full"
               value=""
               onValueChange={onSelect}
               disabled={busy}

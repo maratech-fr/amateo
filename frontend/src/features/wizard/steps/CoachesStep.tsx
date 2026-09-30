@@ -254,7 +254,7 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
                 attendu est de lier une équipe — d'où l'autoFocus, ciblé et non permanent. */}
             {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
             <TeamSelect autoFocus={autoFocusLink} aria-label="Équipe" className="h-8" wrapperClassName="w-40" teams={teams} tiers={tiers} value={linkTeam || firstTeam} onValueChange={setLinkTeam} />
-            <Select aria-label="Rôle" className="h-8 w-28" value={linkRole} onChange={(e) => setLinkRole(e.target.value as TeamCoachRole | "PLAYER")}>
+            <Select aria-label="Rôle" className="h-8" wrapperClassName="w-28" value={linkRole} onChange={(e) => setLinkRole(e.target.value as TeamCoachRole | "PLAYER")}>
               <option value="MAIN">Coach</option>
               <option value="ASSISTANT">Adjoint</option>
               <option value="PLAYER">Joueur</option>

@@ -182,7 +182,7 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
             <TeamSelect
               aria-label={`Équipe pour ${divisionLabel(division)}`}
               title={"" !== selected ? teamName(selected) : "Associer à…"}
-              className="w-52 shrink-0"
+              wrapperClassName="w-52 shrink-0"
               teams={teams}
               tiers={tiers}
               placeholder="Associer à…"

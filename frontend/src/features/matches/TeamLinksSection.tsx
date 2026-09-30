@@ -157,7 +157,8 @@ function EditableLinks<T extends TeamLike>({
               Entraînement
               <Select
                 aria-label={`Intensité d'entraînement, passerelle ${teamName(link.teamAId)} – ${teamName(link.teamBId)}`}
-                className="h-8 w-32"
+                className="h-8"
+                wrapperClassName="w-32"
                 value={link.trainingIntensity}
                 disabled={updateLink.isPending}
                 onChange={(e) => updateLink.mutate({ link, input: { trainingIntensity: e.target.value as TeamLinkIntensity } })}
@@ -200,23 +201,23 @@ function EditableLinks<T extends TeamLike>({
                 <span aria-hidden className="text-muted-foreground">↔</span>
               </span>
             ) : (
-              <TeamSelect aria-label="Première équipe du lien" className="w-full" teams={teams} tiers={tiers} placeholder="Équipe A…" value={selectedA} onValueChange={setSelectedA} />
+              <TeamSelect aria-label="Première équipe du lien" wrapperClassName="w-full" teams={teams} tiers={tiers} placeholder="Équipe A…" value={selectedA} onValueChange={setSelectedA} />
             )}
           </div>
           <div className="flex flex-col gap-1 text-xs text-muted-foreground">
             Équipe B
-            <TeamSelect aria-label="Seconde équipe du lien" className="w-full" teams={bTeams} tiers={tiers} placeholder="Équipe B…" value={linkTeamBId} onValueChange={setLinkTeamBId} />
+            <TeamSelect aria-label="Seconde équipe du lien" wrapperClassName="w-full" teams={bTeams} tiers={tiers} placeholder="Équipe B…" value={linkTeamBId} onValueChange={setLinkTeamBId} />
           </div>
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             Matchs
-            <Select aria-label="Type de lien côté matchs" className="h-9 w-full" value={linkType} onChange={(e) => setLinkType(e.target.value as TeamLinkType)}>
+            <Select aria-label="Type de lien côté matchs" className="h-9" wrapperClassName="w-full" value={linkType} onChange={(e) => setLinkType(e.target.value as TeamLinkType)}>
               <option value="NOT_SIMULTANEOUS">Jamais en même temps</option>
               <option value="BACK_TO_BACK">L'un après l'autre</option>
             </Select>
           </label>
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             Entraînement
-            <Select aria-label="Intensité d'entraînement du lien" className="h-9 w-full" value={linkIntensity} onChange={(e) => setLinkIntensity(e.target.value as TeamLinkIntensity)}>
+            <Select aria-label="Intensité d'entraînement du lien" className="h-9" wrapperClassName="w-full" value={linkIntensity} onChange={(e) => setLinkIntensity(e.target.value as TeamLinkIntensity)}>
               <option value="PREFERRED">{INTENSITY_LABEL.PREFERRED}</option>
               <option value="MANDATORY">{INTENSITY_LABEL.MANDATORY}</option>
             </Select>
