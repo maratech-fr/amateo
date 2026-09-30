@@ -40,11 +40,12 @@ use Symfony\Component\Routing\Attribute\Route;
  * prospect voit SON club naître, sans détour visible.
  *
  * Le rail d'inscription de PRODUCTION reste byte-intact : register/verify ne sont
- * pas touchés. Cette route est INOFFENSIVE hors démo — gardée par kernel.debug
- * (404 en prod, même patron que DevClockController / DevClubApprovalController ;
- * ProdSecretGuard refuse en plus un boot prod en APP_DEBUG=1) ET par l'adresse démo
- * configurée : toute autre adresse → 422 sans effet (ce qui laisse les e2e du
- * register passer par leur fallback silencieux).
+ * pas touchés. Cette route est INOFFENSIVE hors démo — en debug (dev/tunnel) elle se
+ * comporte comme avant ; en PROD elle n'agit QUE si la fenêtre d'activation du compte
+ * animateur démo est ouverte, et sinon rend le MÊME 422 not_demo_account qu'une adresse
+ * quelconque (aucun oracle « fenêtre fermée »). Gardée aussi par l'adresse démo
+ * configurée : toute autre adresse → 422 sans effet (ce qui laisse les e2e du register
+ * passer par leur fallback silencieux).
  *
  * Elle ne prend JAMAIS le contrôle d'un compte ni ne détruit un club d'autrui :
  * (1) compte existant → mot de passe VÉRIFIÉ, échec = 401 SANS le moindre effet,
@@ -85,12 +86,9 @@ final class DevDemoRegisterController extends AbstractController
     #[Route('/api/dev/demo-register', name: 'dev_demo_register', methods: ['POST'])]
     public function __invoke(Request $request): JsonResponse
     {
-        if (!$this->debug) {
-            throw $this->createNotFoundException();
-        }
-
         // Borne réelle sur une route atteignable par le tunnel (même limiteur IP que
-        // le register). En dev il est déjà relâché (rate_limiter.yaml when@dev).
+        // le register), AVANT toute autre garde. En dev il est déjà relâché
+        // (rate_limiter.yaml when@dev).
         if (!$this->authRegisterLimiter->create($request->getClientIp())->consume(1)->isAccepted()) {
             return $this->json(['error' => 'Too many attempts, please try again later'], 429);
         }
@@ -105,10 +103,16 @@ final class DevDemoRegisterController extends AbstractController
         $ara = isset($data['ara']) && \is_string($data['ara']) ? strtoupper(trim($data['ara'])) : '';
         $clubName = isset($data['clubName']) && \is_string($data['clubName']) ? trim($data['clubName']) : '';
 
-        // Garde MAISON : la route n'agit QUE pour l'adresse démo configurée. Toute
-        // autre adresse → 422 sans le moindre effet — c'est ce qui la rend inoffensive
-        // pour les e2e du register (leur adresse déclenche le fallback silencieux front).
-        if ('' === $email || $email !== strtolower($this->demoAnimatorEmail)) {
+        // Garde MAISON : la route n'agit QUE pour l'adresse démo configurée, et — hors
+        // debug (prod) — QUE si la fenêtre d'activation de ce compte est ouverte. Toute
+        // autre adresse, OU une fenêtre fermée en prod, → 422 not_demo_account sans le
+        // moindre effet ni oracle : la réponse est IDENTIQUE à celle d'une adresse
+        // quelconque (on ne dit JAMAIS « fenêtre fermée »). En debug (démo par tunnel)
+        // la fenêtre n'est pas requise — les e2e du register en dépendent (leur adresse
+        // déclenche le fallback silencieux front). La fenêtre est confrontée à l'horloge
+        // RÉELLE, jamais à demo_today.
+        if ('' === $email || $email !== strtolower($this->demoAnimatorEmail)
+            || (!$this->debug && !$this->animatorWindowIsOpen($email))) {
             return $this->json(['error' => 'not_demo_account'], 422);
         }
         if (1 !== preg_match('/^[A-Z0-9]{3,20}$/', $ara)) {
@@ -232,5 +236,18 @@ final class DevDemoRegisterController extends AbstractController
         );
 
         return [$animatorId] === $members;
+    }
+
+    /**
+     * La fenêtre d'activation démo du compte animateur (`$email`) est-elle ouverte à
+     * l'instant RÉEL ? Un compte absent → fenêtre fermée (false). Horloge réelle
+     * (`new DateTimeImmutable('now')`), jamais l'horloge démo simulée : un club démo ne
+     * doit pas rouvrir sa propre porte via demo_today. Lecture seule.
+     */
+    private function animatorWindowIsOpen(string $email): bool
+    {
+        $animator = $this->entityManager->getRepository(User::class)->findOneBy(['email' => $email]);
+
+        return $animator instanceof User && $animator->isDemoWindowOpen(new DateTimeImmutable('now'));
     }
 }

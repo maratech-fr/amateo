@@ -16,6 +16,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
  * P2-4 PR 2bis — (re)crée le club de DÉMONSTRATION permanent « Démo Basket
@@ -47,6 +48,11 @@ final class DemoSeedCommand extends Command
         private readonly BcclSeeder $seeder,
         private readonly ErasedClubPurger $erasedClubPurger,
         private readonly TenantConnectionContext $tenantConnectionContext,
+        // MAISON UNIQUE : le login du gestionnaire démo BCCL vit dans services.yaml
+        // (app.demo_bccl_email), plus un littéral ici. Même adresse que celle que
+        // UserChecker garde derrière la fenêtre d'activation.
+        #[Autowire(param: 'app.demo_bccl_email')]
+        private readonly string $demoBcclEmail,
     ) {
         parent::__construct();
     }
@@ -54,7 +60,7 @@ final class DemoSeedCommand extends Command
     protected function configure(): void
     {
         $this->addOption('password', null, InputOption::VALUE_REQUIRED, 'Password of the demo manager account (min 12 chars). Required at first creation, optional on reset.');
-        $this->addOption('email', null, InputOption::VALUE_REQUIRED, 'Demo manager login.', 'demo-bccl@amateo.fr');
+        $this->addOption('email', null, InputOption::VALUE_REQUIRED, 'Demo manager login.', $this->demoBcclEmail);
         $this->addOption('if-absent', null, InputOption::VALUE_NONE, 'Only create when absent: if the demo club already exists, do nothing (no reset).');
     }
 

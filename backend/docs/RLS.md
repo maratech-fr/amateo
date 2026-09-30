@@ -1,18 +1,18 @@
 # Amateo — PostgreSQL Row-Level Security (RLS)
 
-Last verified @ 2026-09-29 (`documentation-update`, P5-20 — ajout du rôle `amateo_read` ; seed BCCL de production qui traverse la RLS en connexion admin). Re-confronté
-au code : `TenantFilterListener` toujours `KernelEvents::REQUEST => ['onKernelRequest', 7]`
-(`backend/src/EventListener/TenantFilterListener.php:55`) ✓ · `TenantConnectionContext` pose
-`set_config('app.club_id', ?, false)` (`backend/src/Service/TenantConnectionContext.php:30`) ✓ ·
-`Version20260703120000` porte toujours le prédicat `TENANT_PREDICATE`
-(`NULLIF(current_setting('app.club_id', true), '')::uuid`,
+Last verified @ 2026-09-30 (`documentation-update`, rotation — sans rapport avec le sujet de la
+PR). Re-confronté au code : `TenantFilterListener` toujours `KernelEvents::REQUEST =>
+['onKernelRequest', 7]` (`backend/src/EventListener/TenantFilterListener.php:55`) ✓ ·
+`TenantConnectionContext` pose `set_config('app.club_id', ?, false)`
+(`backend/src/Service/TenantConnectionContext.php:30`) ✓ · `Version20260703120000` porte toujours
+le prédicat `TENANT_PREDICATE` (`NULLIF(current_setting('app.club_id', true), '')::uuid`,
 `backend/migrations/Version20260703120000.php:49`) ✓ · `Version20260813130000` pose bien un
 `admin_all` (FOR ALL, USING/WITH CHECK `true`, TO `amateo_owner`) énuméré `pg_class`-side sur
 chaque table FORCE existante (`backend/migrations/Version20260813130000.php:19-30`) ✓ ·
 `Version20260731090000` dépose bien `migration_user` (`DROP OWNED BY` + `DROP ROLE`,
 `Version20260731090000.php:50-51`) ✓ · `docker/postgres/init/02-users.sh` crée `amateo_app`
 `NOSUPERUSER NOCREATEDB NOCREATEROLE` avec seulement `SELECT, INSERT, UPDATE, DELETE` (DML, aucun
-DDL) ✓ · **nouveau cette passe** : `Version20260930090000` crée `amateo_read` `LOGIN` sans mot de
+DDL) ✓ · `Version20260930090000` crée `amateo_read` `LOGIN` sans mot de
 passe, `ALTER ROLE … NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOREPLICATION` explicite
 (`backend/migrations/Version20260930090000.php:143`), GRANT en liste blanche stricte (aucun `GRANT
 … ON ALL TABLES`, aucun `ALTER DEFAULT PRIVILEGES`), policy `readonly_tenant FOR SELECT TO

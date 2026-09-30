@@ -81,6 +81,14 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: 'datetimetz_immutable', nullable: true)]
     private ?DateTimeImmutable $releaseNotesSeenAt = null;
 
+    // Démos — la FENÊTRE d'activation d'un compte démo (animateur `demo@`, BCCL
+    // `demo-bccl@`). NULL = inactif (défaut) ; un instant futur = fenêtre ouverte.
+    // Lue par UserChecker (connexion) et le raccourci démo du register ; tout autre
+    // compte y est insensible. Toujours confrontée à l'horloge RÉELLE, jamais à
+    // `demo_today` (un club démo ne doit pas pouvoir rouvrir sa propre porte).
+    #[ORM\Column(type: 'datetimetz_immutable', nullable: true)]
+    private ?DateTimeImmutable $demoActiveUntil = null;
+
     public function __construct()
     {
         $this->id = $this->newUuid();
@@ -266,6 +274,28 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->emailVerifiedAt = $emailVerifiedAt;
 
         return $this;
+    }
+
+    public function getDemoActiveUntil(): ?DateTimeImmutable
+    {
+        return $this->demoActiveUntil;
+    }
+
+    public function setDemoActiveUntil(?DateTimeImmutable $demoActiveUntil): self
+    {
+        $this->demoActiveUntil = $demoActiveUntil;
+
+        return $this;
+    }
+
+    /**
+     * La fenêtre d'activation démo est-elle ouverte à l'instant `$now` ? NULL =
+     * inactif → jamais ouverte. `$now` DOIT être l'horloge réelle (le contrôleur/
+     * checker la passe), jamais l'horloge démo simulée.
+     */
+    public function isDemoWindowOpen(DateTimeImmutable $now): bool
+    {
+        return $this->demoActiveUntil instanceof DateTimeImmutable && $this->demoActiveUntil > $now;
     }
 
     public function getPendingEmail(): ?string

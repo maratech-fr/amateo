@@ -14,6 +14,15 @@ français — « Identifiants invalides. » via le socle `symfony/translation` +
 ET reste BYTE-IDENTIQUE entre mauvais mot de passe et compte non vérifié [anti-énumération de
 `UserChecker`, jamais touché] ; falsifié dans les deux sens — retirer la traduction rend la clé
 anglaise, un message distinct sur l'un des deux chemins ouvre un oracle) ·
+`Security/DemoWindowTest` (axe *auth & memberships*, Démos : la connexion des deux comptes démo
+[animateur `demo@`, BCCL `demo-bccl@`] n'est ouverte que pendant leur fenêtre d'activation
+[`app_user.demo_active_until`, horloge RÉELLE] — hors fenêtre `/api/login` refuse d'une manière
+BYTE-IDENTIQUE à un mauvais mot de passe [`UserChecker`, aucun oracle « fenêtre fermée »], dans la
+fenêtre le bon mot de passe connecte ; une adresse non démo est insensible à la colonne ; le
+raccourci démo `/api/dev/demo-register` en PROD est gardé par la fenêtre — fermée → 422
+`not_demo_account` identique à une adresse quelconque [jamais 404], ouverte → il matérialise le
+club ; `/api/register/config` hors debug n'expose le raccourci que fenêtre ouverte ; falsifié en
+retirant la garde `UserChecker`) ·
 `Integration/Command/BcclProdSeedCommandTest` (axe *auth & memberships* : le seed BCCL de PROD
 [`app:bccl:seed-prod`] pose des gestionnaires PRÉ-VÉRIFIÉS [le rail /register est mort en prod],
 rattachés au bon club [ARA0069036, jamais la démo], avec des mots de passe pilotés par options —

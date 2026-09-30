@@ -336,6 +336,13 @@ jobs:
       - name: LoginFailureCopyTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/LoginFailureCopyTest.php --group phase1'
 
+      # Axe auth & memberships — la connexion démo ne s'ouvre que pendant sa fenêtre
+      # d'activation : hors fenêtre, un compte démo est refusé d'une manière byte-identique
+      # à un mauvais mot de passe (aucun oracle) ; dans la fenêtre il se connecte. Sans ce
+      # gate, une régression rendrait la garde silencieuse et la démo joignable en prod.
+      - name: DemoWindowTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/DemoWindowTest.php --group phase1'
+
       # Axe auth & memberships — le seed BCCL de PROD pose des gestionnaires PRÉ-VÉRIFIÉS,
       # rattachés au bon club, avec des mots de passe pilotés par options (les mots de passe
       # dev du dépôt n'ouvrent pas les comptes prod), refuse sans credentials, create-only.

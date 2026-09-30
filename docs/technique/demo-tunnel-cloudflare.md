@@ -75,22 +75,24 @@ Données de démo : la base est vide par défaut, `make -C backend seed-demo` se
    terrain du BCCL sous identités FICTIVES) montre l'appli déjà peuplée.
 2. **Le club DU PROSPECT naît devant lui, depuis le vrai formulaire d'inscription** —
    `/register`, code FFBB du prospect, adresse démo fixe (`demo@amateo.fr`). Le rail register reste
-   intact (202 neutre, anti-énumération, Turnstile) : après ce 202, le front tente un raccourci
-   réservé au mode debug — `POST /api/dev/demo-register` (`DevDemoRegisterController`) — qui
-   matérialise le club **sans** le détour par le mail de vérification et l'approbation d'un tiers
-   qu'exige le parcours réel (injouable en direct). Il n'est tenté QUE si l'adresse saisie est
-   l'adresse démo (`GET /api/register/config` l'expose, `demoShortcut`/`demoEmail`, uniquement en
-   debug) : le mot de passe d'un vrai prospect ne part jamais vers cette route. Un club de
-   démonstration précédemment créé pour cette adresse est REMPLACÉ (détruit puis recréé), jamais
-   accumulé.
+   intact (202 neutre, anti-énumération, Turnstile) : après ce 202, le front tente un raccourci —
+   `POST /api/dev/demo-register` (`DevDemoRegisterController`) — qui matérialise le club **sans**
+   le détour par le mail de vérification et l'approbation d'un tiers qu'exige le parcours réel
+   (injouable en direct). Il n'est tenté QUE si l'adresse saisie est l'adresse démo
+   (`GET /api/register/config` l'expose, `demoShortcut`/`demoEmail`, en debug OU quand la
+   **fenêtre d'activation** du compte animateur est ouverte) : le mot de passe d'un vrai prospect
+   ne part jamais vers cette route. Un club de démonstration précédemment créé pour cette adresse
+   est REMPLACÉ (détruit puis recréé), jamais accumulé.
 
 Cette route est accessible **par le tunnel comme le reste de l'app** — la stack de démo tourne en
-`APP_ENV=dev` (`kernel.debug=1`), la même condition qui la rend active. Ses bornes : mot de passe
-d'un compte existant **vérifié, jamais écrasé** (une faute de frappe pendant la démo rend un 401
-explicite, pas une éjection vers l'écran de connexion) ; un code FFBB qui n'est pas la propre démo
-isolée de l'animateur (club réel, démo d'un autre animateur, démo partagée) refuse en 409 sans rien
-détruire ; en production la route n'existe pas (404, `kernel.debug=0`) et `ProdSecretGuard` refuse
-même de démarrer si `APP_DEBUG=1` y traînait. Détail complet : [`backend-inventory.md`](../../backend/docs/backend-inventory.md)
+`APP_ENV=dev` (`kernel.debug=1`), qui suffit à elle seule à l'activer sans condition de fenêtre.
+Ses bornes : mot de passe d'un compte existant **vérifié, jamais écrasé** (une faute de frappe
+pendant la démo rend un 401 explicite, pas une éjection vers l'écran de connexion) ; un code FFBB
+qui n'est pas la propre démo isolée de l'animateur (club réel, démo d'un autre animateur, démo
+partagée) refuse en 409 sans rien détruire ; **en production la route existe** mais n'agit que si
+la fenêtre d'activation du compte animateur (`app_user.demo_active_until`, posée par le
+superadmin) est ouverte — fermée, elle rend le même 422 `not_demo_account` qu'une adresse
+quelconque, sans oracle. Détail complet : [`backend-inventory.md`](../../backend/docs/backend-inventory.md)
 §« Module démo », [`commands.md`](../../backend/docs/commands.md).
 
 ## 5. Sécurité — à lire avant de partager l'URL

@@ -25,7 +25,6 @@ use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 /**
@@ -41,7 +40,9 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  * Sens « ça ne peut pas détruire le réel » : un ARA tenu par un club NON-démo → 409
  * données byte-intactes ; un club lié non-démo → refus sans destruction ; un club
  * démo PARTAGÉ (cas BCCL) → refus ; une adresse ≠ adresse démo → 422 sans effet ;
- * debug=false → 404. Et le rail register n'a fait qu'AJOUTER un champ à sa config.
+ * hors debug SANS fenêtre ouverte → 422 not_demo_account (plus un 404 — la fenêtre
+ * d'activation garde désormais la route en prod ; couverture complète dans
+ * DemoWindowTest). Et le rail register n'a fait qu'AJOUTER un champ à sa config.
  *
  * ⚠ N'est PAS un step bloquant (arbitrage fondateur) : tourne dans `unit-tests`.
  */
@@ -135,6 +136,14 @@ final class DevDemoRegisterTest extends WebTestCase
 
         // Le hash n'a PAS bougé (aucune réécriture) et le mot de passe prouvé authentifie.
         self::assertSame($hashBefore, $this->passwordHashByEmail(self::DEMO_EMAIL), 'le hash du compte existant n\'est JAMAIS réécrit');
+        // Depuis la fenêtre d'activation démo, /api/login est GARDÉ pour un compte démo :
+        // on ouvre la fenêtre pour prouver via login que le mot de passe (jamais réécrit)
+        // authentifie encore. Le raccourci lui-même a déjà ouvert une session par cookie ;
+        // ici on éprouve le rail /api/login. (La garde fenêtre : DemoWindowTest.)
+        $this->em()->getConnection()->executeStatement(
+            'UPDATE app_user SET demo_active_until = now() + interval \'1 day\' WHERE email = :email',
+            ['email' => self::DEMO_EMAIL],
+        );
         $this->startFreshBrowserSession($client);
         $client->request('POST', '/api/login', [], [], [
             'CONTENT_TYPE' => 'application/json', 'REMOTE_ADDR' => $this->nextIp(),
@@ -319,8 +328,14 @@ final class DevDemoRegisterTest extends WebTestCase
         self::assertSame($clubsBefore, $this->rowCount('club'), 'aucun effet');
     }
 
-    /** SENS 2 — hors debug, la route n'existe pas (404). Contrôleur instancié avec debug:false. */
-    public function testRouteIs404OutsideDebug(): void
+    /**
+     * SENS 2 — hors debug, la route N'EST PLUS un 404 : elle est gardée par la FENÊTRE
+     * d'activation du compte animateur. SANS fenêtre ouverte (ici l'animateur n'existe
+     * même pas), une adresse démo reçoit le MÊME 422 not_demo_account qu'une adresse
+     * quelconque — aucun oracle, jamais « fenêtre fermée ». Contrôleur instancié avec
+     * debug:false. (La fenêtre OUVERTE et la byte-identité complète : DemoWindowTest.).
+     */
+    public function testRouteOutsideDebugIsGatedByTheWindowNotA404(): void
     {
         self::bootKernel();
         $c = self::getContainer();
@@ -341,9 +356,23 @@ final class DevDemoRegisterTest extends WebTestCase
             debug: false,
             demoAnimatorEmail: self::DEMO_EMAIL,
         );
+        // Le chemin non-debug atteint $this->json() (contrairement à l'ancien 404) :
+        // le contrôleur instancié à la main a besoin de son conteneur.
+        $controller->setContainer($c);
 
-        $this->expectException(NotFoundHttpException::class);
-        $controller(new Request);
+        $request = Request::create('/api/dev/demo-register', 'POST', [], [], [], [
+            'REMOTE_ADDR' => '10.55.' . random_int(0, 254) . '.' . random_int(1, 254),
+            'CONTENT_TYPE' => 'application/json',
+        ], (string) json_encode([
+            'email' => self::DEMO_EMAIL, 'password' => 'Password123!',
+            'ara' => $this->freshAra(), 'clubName' => 'Hors fenêtre',
+        ], \JSON_THROW_ON_ERROR));
+
+        $response = $controller($request);
+
+        self::assertSame(422, $response->getStatusCode(), 'hors debug sans fenêtre ouverte : 422, jamais 404');
+        $body = json_decode((string) $response->getContent(), true);
+        self::assertSame('not_demo_account', \is_array($body) ? ($body['error'] ?? null) : null);
     }
 
     /** Neutralité du rail réel : register/config n'a fait qu'AJOUTER `demoShortcut`. */

@@ -7,6 +7,7 @@ use App\Tests\Behat\CoachWishesContext;
 use App\Tests\Behat\ConflictResolutionContext;
 use App\Tests\Behat\ConflictTruthContext;
 use App\Tests\Behat\ConstraintHonoredContext;
+use App\Tests\Behat\DemoWindowContext;
 use App\Tests\Behat\EngagedTeamContext;
 use App\Tests\Behat\ExportContext;
 use App\Tests\Behat\FbiCorrectionContext;
@@ -191,5 +192,10 @@ return (new Config)
                 new Suite('personne-deux-endroits')
                     ->withPaths('%paths.base%/features/une-personne-est-signalee-a-deux-endroits.feature')
                     ->withContexts(PlacedPersonConflictContext::class),
+            )
+            ->withSuite(
+                new Suite('demo-fenetre')
+                    ->withPaths('%paths.base%/features/la-demo-ne-s-ouvre-que-pendant-sa-fenetre.feature')
+                    ->withContexts(DemoWindowContext::class),
             ),
     );
