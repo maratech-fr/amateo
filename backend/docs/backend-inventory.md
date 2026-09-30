@@ -3,13 +3,12 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-09-30 (commit `13c821ab` — §Module démo confronté au code : `AdminDemoController`
-(routes `/api/admin/demos*`, `AdminDemoController.php:53,64,90,113,140`), `DemoResetRunner`
-(sous-processus `app:demo:seed`, `DemoResetRunner.php:35`), `DemoPurgeStaleCommand` +
-`AdminJobCatalog` clé `demo-purge-stale` quotidien 03:15 (`AdminJobCatalog.php:62`),
-`DemoClubMaterializer::teardownStaleDemos()` (`DemoClubMaterializer.php:210`)). Reste du
-fichier non rebalayé cette passe (portée = cette entrée) ; historique des passes complètes :
-`git log -p --follow` ce fichier — un stamp REMPLACE, il ne s'empile pas.
+Last verified @ 2026-09-30 (PR C du lot Démos — §Module démo confronté au code :
+`DevDemoRegisterController::__invoke` ne pose plus de cookie JWT (`DevDemoRegisterController.php:214`,
+les deux dépendances JWT retirées), `AuthController::__invoke` expose `club.isDemo`
+(`AuthController.php:436`) au `/api/me`). Reste du fichier non rebalayé cette passe (portée = cette
+entrée) ; historique des passes complètes : `git log -p --follow` ce fichier — un stamp REMPLACE,
+il ne s'empile pas.
 
 ---
 
@@ -186,7 +185,7 @@ est éclatée **par domaine** :
 | `/api/logout` | POST | **SEC-16, `PUBLIC_ACCESS`** — efface le cookie d'authentification. Seul le serveur le peut (httpOnly) : sans cette route, « Se déconnecter » laisserait la session vivre jusqu'à expiration. Idempotent, ne révèle rien ; public pour rester utilisable sur une session déjà expirée. |
 | `/api/register` | POST | Inscription **différée, sans auto-login** (anti-énumération A3, #153 — rate-limité par IP, `auth_register` : 5/15 min). Exige `consent:true` (RGPD, 400 sinon — validation payload-only, enumeration-safe) et stocke la preuve (`termsAcceptedAt`+`termsVersion`). Crée un `User` **non vérifié** (`emailVerifiedAt=null`) + un `EmailVerificationToken` portant l'intention club `{ara, clubName}`, envoie un mail de vérification, et renvoie un **202 générique identique** dans tous les cas (email neuf ou déjà inscrit) — **aucun token émis**. Email déjà connu → aucune création, mail « tu as déjà un compte » (compte non vérifié → renvoie un nouveau lien). **Le club n'est PAS créé ici.** Validation : email, mot de passe (`PasswordPolicy` : ≥12 car. + majuscule + spécial), ARA 3-20 alphanumérique majuscule, `club_name` requis si ARA nouveau. Le login rejette un compte non vérifié (`UserChecker`, message identique à un mauvais mot de passe). |
 | `/api/register/verify` | POST | Body `{ token }`. Consomme le token de vérification (verrou pessimiste `PESSIMISTIC_WRITE` anti-double-verify), passe `emailVerifiedAt`, **matérialise le club** sous GUC RLS (ARA nouveau → `Club` + `Season` + `Sport` + 12 `SportCategory` (`Service\Basketball\CategoryCatalog`) + `ClubUser` actif `admin`, `membershipStatus:"active"` ; ARA existant → `ClubUser` **inactif** pending), puis **émet le JWT** (login effectif) — **SEC-16 : posé en cookie httpOnly via `JwtCookieFactory`, plus dans le corps** ; la réponse est `{ membershipStatus, user }`. 400 token invalide/expiré ; 409 si le club à rejoindre a disparu. Purge des comptes non vérifiés > 7j : `app:users:purge-unverified` (cron-runner quotidien à 02:00). |
-| `/api/me` | GET | Profil courant — retourne `id`, `email`, `firstName`, `lastName`, `membershipStatus` (`none`/`pending`/`active`), `role`, `club` (id, name, `onboardingCompleted`, `logoUrl`, `accentColor`, `accentPalette`), **`seasonPlan`** (`{id, name, chosenScheduleId, hasFinishedVersion, currentStructureHash}` — LE plan de la saison sélectionnée, ADR-0002 : `chosenScheduleId` = la version choisie, `null` = espace de travail ; `hasFinishedVersion` = le plan porte ≥1 version terminée, ce qui débloque le cockpit ; `currentStructureHash` = hash du payload solver actuel pour comparer la version affichée et griser « Régénérer » quand elle est déjà identique), `hasGenerated` (booléen : `generationCountSeason > 0`), `seasons`. |
+| `/api/me` | GET | Profil courant — retourne `id`, `email`, `firstName`, `lastName`, `membershipStatus` (`none`/`pending`/`active`), `role`, `club` (id, name, `onboardingCompleted`, `logoUrl`, `accentColor`, `accentPalette`, `isDemo` — vrai pour un club de démonstration, la pastille « Démo » de l'en-tête s'y adosse), **`seasonPlan`** (`{id, name, chosenScheduleId, hasFinishedVersion, currentStructureHash}` — LE plan de la saison sélectionnée, ADR-0002 : `chosenScheduleId` = la version choisie, `null` = espace de travail ; `hasFinishedVersion` = le plan porte ≥1 version terminée, ce qui débloque le cockpit ; `currentStructureHash` = hash du payload solver actuel pour comparer la version affichée et griser « Régénérer » quand elle est déjà identique), `hasGenerated` (booléen : `generationCountSeason > 0`), `seasons`. |
 | `/api/me` | DELETE | **RGPD droit à l'effacement** (self-only, `DeleteAccountController`). Ré-authentification : body `{ password }` (mot de passe courant, 400 sinon — un JWT volé ne suffit pas). Anonymisation IMMÉDIATE (email → `deleted-{id}@anonymized.invalid`, hash aléatoire, memberships désactivés, transactionnel) ; plus aucun membre actif → `Club.erasureScheduledAt = +30 j` (purge du workspace par `app:clubs:purge-erased`, auto-annulée si un membre revient ; l'identité publique FFBB survit). Réponse `{ message, clubPurgeScheduled, gracePeriodDays }`. NR : `AccountErasureTest`. |
 | `/api/me/export` | GET | **RGPD portabilité** (self-only, `RgpdExportController`) : compte + adhésions + preuve de consentement + lastLoginAt, JAMAIS le hash. JSON en téléchargement (`Content-Disposition`). Rate-limité `rgpd_export` (10/h par user). NR : `RgpdExportTest`. |
 | `/api/club/export` | GET | **RGPD portabilité club** (management SEC-07, tenant du JWT — pas d'id de chemin ; 404 sans membership actif, 403 non-management) : workspace complet en lignes brutes, une clé par table (liste dans `RgpdExportService::CLUB_TABLES`, `schedule` traité à part hors colonnes lourdes), tenant-scoped garanti par RLS. Rate-limité `rgpd_export`. NR : `RgpdExportTest`. |
@@ -571,7 +570,11 @@ club démo précédent de l'animateur VALIDÉ intégralement avant la moindre de
 workspace + suppression de la ligne `club`, pour libérer son code FFBB —
 `DemoClubMaterializer::teardownPreviousDemo()`, `DemoTeardownRefusedException` en 409 sinon rien
 détruit). Une trace d'audit **globale** (`AuditAction::DEMO_SHORTCUT`, hors périmètre club — elle
-doit survivre à la destruction de la ligne club) est posée. La route est exposée au front par
+doit survivre à la destruction de la ligne club) est posée. **Elle ne connecte plus** (PR C,
+2026-09-30) : succès → `JsonResponse` `{membershipStatus, clubId}` SANS cookie JWT
+(`DevDemoRegisterController.php:214`, les deux dépendances JWT ont été retirées du contrôleur) —
+le front (`RegisterPage.tsx`) montre alors un écran « Démonstration » puis invite à se connecter
+normalement par `/api/login`. La route est exposée au front par
 `GET /api/register/config` (champs additifs `demoShortcut`/`demoEmail`) **quand `kernel.debug`
 OU la fenêtre d'activation de l'animateur est ouverte** (`AuthController::registerConfig()`,
 `AuthController.php:236`) — sinon les deux champs sont nuls, aucun oracle ; exposer `demoEmail`

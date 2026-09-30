@@ -54,6 +54,10 @@ export function RegisterPage() {
   const [emailError, setEmailError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  // P2-4 — après un raccourci démo réussi (2xx), on ne connecte plus : on montre un écran
+  // de démonstration (« ce clic fait les deux »), puis on invite à se connecter normalement.
+  // Deux étapes : "explain" (l'explication + Continuer) → "ready" (Se connecter → /login).
+  const [demoPhase, setDemoPhase] = useState<"explain" | "ready" | null>(null);
   // P5-3b — token Turnstile courant + un compteur qui, incrémenté, réarme le widget
   // (le token est à usage unique : après un refus serveur, il faut en redemander un).
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
@@ -96,11 +100,11 @@ export function RegisterPage() {
         // P5-3b — threadé seulement s'il existe (Turnstile inactif → aucun champ).
         ...(null !== turnstileToken ? { turnstileToken } : {}),
       });
-      // P2-4 — en démo, on enchaîne SANS détour visible : le raccourci matérialise le
-      // club et ouvre la session. 2xx → on entre dans l'app (club non onboardé →
-      // wizard). 409 → bannière explicite, SELON la cause serveur. Tout autre échec
-      // (422 adresse non-démo, 404 hors debug, panne) → fallback SILENCIEUX vers l'écran
-      // « vérifiez votre e-mail » : le rail register reste vrai.
+      // P2-4 — en démo, le raccourci matérialise le club (is_demo peuplé). 2xx → on ne
+      // connecte PLUS : on affiche l'écran de démonstration (« ce clic fait les deux »),
+      // puis on invite à se connecter normalement. 409 → bannière explicite, SELON la
+      // cause serveur. Tout autre échec (422 adresse non-démo, 404 hors debug, panne) →
+      // fallback SILENCIEUX vers l'écran « vérifiez votre e-mail » : le rail register reste vrai.
       // ⚠ Le raccourci n'est tenté QUE si l'adresse saisie EST l'adresse démo — sinon le
       // mot de passe d'un vrai prospect serait posté une 2e fois vers une route dev.
       if (demoShortcut && null !== demoEmail && form.email.trim().toLowerCase() === demoEmail.toLowerCase()) {
@@ -111,7 +115,7 @@ export function RegisterPage() {
             ara: form.ara.toUpperCase(),
             clubName: form.club_name,
           });
-          navigate("/", { replace: true });
+          setDemoPhase("explain");
           return;
         } catch (demoErr) {
           const err = demoErr as { response?: { status?: number }; data?: { error?: unknown } };
@@ -145,6 +149,28 @@ export function RegisterPage() {
         setTurnstileReset((nonce) => nonce + 1);
       }
     }
+  }
+
+  // P2-4 — écrans de démonstration (après le raccourci réussi). Aucun e-mail n'est
+  // envoyé sur ce chemin : le raccourci a déjà fait « les deux » côté serveur.
+  if (null !== demoPhase) {
+    return "explain" === demoPhase ? (
+      <AuthLayout title="Démonstration">
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-foreground">
+            Dans la vraie vie, vous confirmez votre e-mail et la boîte officielle de votre club valide votre inscription. Ce clic fait les deux.
+          </p>
+          <Button onClick={() => setDemoPhase("ready")}>Continuer</Button>
+        </div>
+      </AuthLayout>
+    ) : (
+      <AuthLayout title="Votre club est prêt">
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-foreground">Connectez-vous normalement.</p>
+          <Button onClick={() => navigate("/login")}>Se connecter</Button>
+        </div>
+      </AuthLayout>
+    );
   }
 
   if (sent) {

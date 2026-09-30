@@ -431,6 +431,9 @@ final class AuthController extends AbstractController
                     // (clock.ts) s'y cale pour que l'écran et le serveur disent la même
                     // date. Null pour tout vrai club.
                     'demoToday' => $clubEntity->getDemoToday()?->format('Y-m-d'),
+                    // Le club est-il un club de DÉMONSTRATION ? Le front pose la pastille
+                    // « Démo » de l'en-tête dessus (décision fondateur : une démo se dit).
+                    'isDemo' => $clubEntity->isDemo(),
                 ];
 
                 // FFBB club info: management-only (the /club section is admin-only).

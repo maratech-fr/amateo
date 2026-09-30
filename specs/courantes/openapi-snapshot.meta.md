@@ -1,11 +1,10 @@
-Last verified @ 2026-09-30 (Console démo — cinq routes superadmin `GET /api/admin/demos`,
-`POST /api/admin/demos/{target}/activate`, `.../deactivate`, `POST /api/admin/demos/bccl/reset` et
-`.../clock` (tag `AdminDemo`) : pilotage des deux comptes de démonstration — fenêtre d'activation de
-4 h à l'horloge réelle, réinitialisation de la démo BCCL et horloge simulée `demo_today`. **+5 path**.
-Déclarées dans `AdminDemoPaths`, régénéré à froid depuis le backend vivant).
+Last verified @ 2026-09-30 (Pastille « Démo » — `GET /api/me` expose désormais `club.isDemo`
+(booléen), le drapeau sur lequel le front adosse la pastille « Démo » de l'en-tête d'un club de
+démonstration. **+1 propriété** sur le bloc `club` de `/api/me` (aucun path nouveau), déclarée dans
+`AccountSessionPaths`, régénéré à froid depuis le backend vivant).
 
 **221 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`4bbc5e802f5e602a72e5836e16cdc81c5723790b711d5cf7b5e4d94d22001180` (`sha256sum` sur le fichier).
+`6e0ba1d5b18f049f3358a585d901ca91d5749e09df434630d7580599121ebc79` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

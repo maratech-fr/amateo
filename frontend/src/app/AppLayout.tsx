@@ -18,6 +18,7 @@ import { cn } from "@/shared/lib/utils";
 import { useThemeStore } from "@/shared/stores/themeStore";
 
 import { BetaBadge } from "./BetaBadge";
+import { DemoBadge } from "./DemoBadge";
 import { ReadonlySeasonBanner } from "./ReadonlySeasonBanner";
 import { DevClock } from "./DevClock";
 import { SeasonSelector } from "./SeasonSelector";
@@ -83,6 +84,8 @@ export function AppLayout() {
                 pratique — chacune ne se montre que pour son offre ; rien en payant/démo. */}
             <BetaBadge onReport={() => setFeedbackOpen(true)} />
             <CreditBadge />
+            {/* Pastille « Démo » : s'ajoute aux deux précédentes pour un club is_demo, rien sinon. */}
+            <DemoBadge />
             {import.meta.env.DEV ? <DevClock /> : null}
           </div>
           <nav className="flex items-center gap-1">

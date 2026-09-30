@@ -27,6 +27,7 @@ vi.mock("react-router", async (importOriginal) => {
 // un marqueur repérable pour vérifier LEUR PLACEMENT (grappe de marque, hors de la nav de droite).
 vi.mock("@/shared/credits/CreditBadge", () => ({ CreditBadge: () => <span data-testid="credit-badge" /> }));
 vi.mock("./BetaBadge", () => ({ BetaBadge: ({ onReport }: { onReport: () => void }) => <button data-testid="beta-badge" onClick={onReport} type="button" /> }));
+vi.mock("./DemoBadge", () => ({ DemoBadge: () => <span data-testid="demo-badge" /> }));
 vi.mock("@/shared/credits/CreditsBanner", () => ({ CreditsBanner: () => null }));
 vi.mock("./SeasonSelector", () => ({ SeasonSelector: () => null }));
 vi.mock("./ReadonlySeasonBanner", () => ({ ReadonlySeasonBanner: () => null }));
@@ -107,6 +108,20 @@ describe("AppLayout — en-tête marque produit", () => {
     expect(cluster.contains(credit)).toBe(true);
     expect(home.compareDocumentPosition(beta) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(home.compareDocumentPosition(credit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("place aussi la pastille « Démo » dans la grappe de marque, hors de la nav de droite", () => {
+    meData = { club: club({ name: "BCCL", logoUrl: null }) };
+    const { container } = renderLayout();
+    const nav = container.querySelector("header nav") as HTMLElement;
+    const demo = screen.getByTestId("demo-badge");
+    // Pas dans la nav de droite : elle s'ajoute aux deux autres pastilles d'offre.
+    expect(nav.contains(demo)).toBe(false);
+    // Dans la grappe de marque (le parent du lien d'accueil), APRÈS ce lien.
+    const home = screen.getByRole("link", { name: "BCCL" });
+    const cluster = home.parentElement as HTMLElement;
+    expect(cluster.contains(demo)).toBe(true);
+    expect(home.compareDocumentPosition(demo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("« BÊTA » → onReport ouvre le canal de signalement (FeedbackDialog)", () => {

@@ -178,8 +178,10 @@ describe("RegisterPage", () => {
   });
 
   // P2-4 — raccourci démo (config demoShortcut + adresse démo SAISIE) : après le 202, le
-  // front tente la route dev. 2xx → navigation dans l'app (jamais l'écran « e-mail »).
-  it("demo shortcut: on 2xx (demo address entered), navigates into the app", async () => {
+  // front tente la route dev. 2xx → PLUS de connexion directe : écran de démonstration
+  // (« ce clic fait les deux »), puis « Votre club est prêt » → « Se connecter » mène à
+  // /login. Jamais l'écran « e-mail », jamais navigate("/") vers l'app.
+  it("demo shortcut: on 2xx (demo address entered), shows the demo screen then routes to /login", async () => {
     h.config = { turnstileSiteKey: null, demoShortcut: true, demoEmail: "demo@amateo.fr" };
     h.register.mockResolvedValueOnce({ status: "verification_pending" });
     h.demoRegister.mockResolvedValueOnce({ membershipStatus: "active", clubId: "club-1" });
@@ -192,8 +194,19 @@ describe("RegisterPage", () => {
     await waitFor(() => expect(h.demoRegister).toHaveBeenCalledWith(
       expect.objectContaining({ email: "demo@amateo.fr", ara: "BCCL0123", clubName: "Basket Club" }),
     ));
-    await waitFor(() => expect(h.navigate).toHaveBeenCalledWith("/", { replace: true }));
+    // Écran intermédiaire « Démonstration » (texte EXACT du fondateur), pas l'app ni l'écran e-mail.
+    await waitFor(() => expect(screen.getByRole("heading", { name: /démonstration/i })).toBeInTheDocument());
+    expect(screen.getByText(/ce clic fait les deux/i)).toBeInTheDocument();
     expect(screen.queryByText(/email de confirmation/i)).not.toBeInTheDocument();
+    expect(h.navigate).not.toHaveBeenCalled();
+    // Continuer → « Votre club est prêt. Connectez-vous normalement. »
+    await user.click(screen.getByRole("button", { name: /continuer/i }));
+    expect(screen.getByRole("heading", { name: /votre club est prêt/i })).toBeInTheDocument();
+    expect(screen.getByText(/connectez-vous normalement/i)).toBeInTheDocument();
+    // Se connecter → /login (jamais navigate("/") vers l'app).
+    await user.click(screen.getByRole("button", { name: /se connecter/i }));
+    expect(h.navigate).toHaveBeenCalledWith("/login");
+    expect(h.navigate).not.toHaveBeenCalledWith("/", { replace: true });
   });
 
   // P2-4 (revue sécu) — le raccourci n'est tenté QUE sur l'adresse démo : un vrai

@@ -45,6 +45,12 @@ final class DemoWindowContext extends BaseContext
         // Défense : un run précédent interrompu a pu laisser le compte — on repart propre.
         $this->purgeDemoAccount();
 
+        // La boîte Mailpit est PARTAGÉE et jamais purgée entre runs : un mail de
+        // vérification périmé, adressé à la même adresse fixe, y traîne. On mémorise les
+        // messages DÉJÀ présents pour cette adresse AVANT l'inscription, afin de ne lire
+        // que le mail FRAÎCHEMENT émis par ce scénario (jamais un jeton d'un run passé).
+        $knownMailIds = $this->mailboxMessageIds(self::DEMO_EMAIL);
+
         $ara = 'DEM' . time() . random_int(100, 999);
         $registered = $this->publicPost('register', [
             'email' => self::DEMO_EMAIL,
@@ -59,7 +65,7 @@ final class DemoWindowContext extends BaseContext
             throw new RuntimeException(\sprintf('l\'inscription du compte démo a répondu %d (202 attendu)', $registered['status']));
         }
 
-        $rawToken = $this->pullVerificationToken(self::DEMO_EMAIL);
+        $rawToken = $this->pullVerificationToken(self::DEMO_EMAIL, $knownMailIds);
         $verified = $this->publicPost('register/verify', ['token' => $rawToken]);
         if (!\in_array($verified['status'], [200, 201, 204], true)) {
             throw new RuntimeException(\sprintf('la vérification de l\'e-mail a répondu %d (2xx attendu)', $verified['status']));
@@ -136,24 +142,60 @@ final class DemoWindowContext extends BaseContext
         $this->dbalExec('DELETE FROM app_user WHERE email = \'' . self::DEMO_EMAIL . '\'', true);
     }
 
-    private function pullVerificationToken(string $email): string
+    /**
+     * Le jeton de vérification du mail FRAÎCHEMENT émis. Mailpit trie ses résultats du
+     * plus récent au plus ancien : on retient le PREMIER message qui n'existait pas avant
+     * l'inscription (`$ignoreIds`), donc le mail neuf de ce scénario — jamais un jeton
+     * périmé d'un run précédent resté dans la boîte partagée. Boucle d'attente : le mail
+     * met un instant à être consommé et à arriver dans le webmail.
+     *
+     * @param list<string> $ignoreIds messages déjà présents pour cette adresse AVANT l'inscription
+     */
+    private function pullVerificationToken(string $email, array $ignoreIds): string
     {
         for ($attempt = 0; $attempt < 20; ++$attempt) {
             $search = $this->httpGet($this->mailpitBase . '/api/v1/search?query=' . rawurlencode('to:' . $email));
             $messages = $search['json']['messages'] ?? [];
-            $messageId = \is_array($messages) && isset($messages[0]['ID']) && \is_string($messages[0]['ID']) ? $messages[0]['ID'] : '';
 
-            if ('' !== $messageId) {
-                $message = $this->httpGet($this->mailpitBase . '/api/v1/message/' . $messageId);
-                $text = $message['json']['Text'] ?? '';
-                if (\is_string($text) && 1 === preg_match('#verify-email/([a-f0-9]{64})#', $text, $m)) {
-                    return $m[1];
+            if (\is_array($messages)) {
+                foreach ($messages as $message) {
+                    if (!\is_array($message) || !isset($message['ID']) || !\is_string($message['ID']) || \in_array($message['ID'], $ignoreIds, true)) {
+                        continue; // vide, illisible, ou mail périmé d'un run précédent
+                    }
+                    $body = $this->httpGet($this->mailpitBase . '/api/v1/message/' . $message['ID']);
+                    $text = $body['json']['Text'] ?? '';
+                    if (\is_string($text) && 1 === preg_match('#verify-email/([a-f0-9]{64})#', $text, $m)) {
+                        return $m[1];
+                    }
                 }
             }
 
             sleep(1);
         }
 
-        throw new RuntimeException('aucun e-mail de vérification trouvé dans le webmail — la file d\'envoi est-elle consommée ?');
+        throw new RuntimeException('aucun e-mail de vérification frais trouvé dans le webmail — la file d\'envoi est-elle consommée ?');
+    }
+
+    /**
+     * Les identifiants Mailpit des messages actuellement adressés à `$email`. Sert à
+     * photographier la boîte partagée AVANT l'inscription, pour distinguer le mail neuf
+     * des jetons périmés qui y traînent.
+     *
+     * @return list<string>
+     */
+    private function mailboxMessageIds(string $email): array
+    {
+        $search = $this->httpGet($this->mailpitBase . '/api/v1/search?query=' . rawurlencode('to:' . $email));
+        $messages = $search['json']['messages'] ?? [];
+        $ids = [];
+        if (\is_array($messages)) {
+            foreach ($messages as $message) {
+                if (\is_array($message) && isset($message['ID']) && \is_string($message['ID'])) {
+                    $ids[] = $message['ID'];
+                }
+            }
+        }
+
+        return $ids;
     }
 }

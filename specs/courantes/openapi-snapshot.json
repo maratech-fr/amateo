@@ -3126,6 +3126,9 @@
                                                     "items": {
                                                         "type": "string"
                                                     }
+                                                },
+                                                "isDemo": {
+                                                    "type": "boolean"
                                                 }
                                             }
                                         },
