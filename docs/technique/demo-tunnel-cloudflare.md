@@ -99,6 +99,17 @@ lui-même. Détail complet : [`superadmin-auth.md`](../../specs/courantes/supera
 §« Démos — console de pilotage », [`backend-inventory.md`](../../backend/docs/backend-inventory.md)
 §« Module démo », [`commands.md`](../../backend/docs/commands.md).
 
+3. **Le raccourci ne connecte plus automatiquement** : la route rend un 2xx SANS cookie JWT, et
+   `RegisterPage` n'entre plus dans l'app. Elle montre un écran « Démonstration » qui NOMME ce qui
+   vient de se passer (« Dans la vraie vie, vous confirmez votre e-mail et la boîte officielle de
+   votre club valide votre inscription. Ce clic fait les deux. » + « Continuer »), puis « Votre
+   club est prêt. Connectez-vous normalement. » (+ « Se connecter » → `/login`). Le fondateur se
+   connecte alors comme n'importe quel gestionnaire, avec l'adresse et le mot de passe qu'il vient
+   de saisir. Une fois connecté, l'en-tête porte la pastille « Démo » (`DemoBadge`,
+   `frontend/src/app/DemoBadge.tsx`) — visible UNIQUEMENT sur un club `isDemo` (exposé par
+   `/api/me`), à côté des pastilles d'offre existantes : le prospect voit que c'est une démo, elle
+   ne se cache jamais.
+
 ## 5. Sécurité — à lire avant de partager l'URL
 
 L'URL est aléatoire mais **il n'y a aucune authentification devant elle** : quiconque a le lien

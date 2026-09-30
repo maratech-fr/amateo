@@ -1,8 +1,7 @@
-Last verified @ 2026-09-29 (rotation de fraîcheur `documentation-update`, passe doc P4-271 matchs,
+Last verified @ 2026-09-30 (rotation de fraîcheur `documentation-update`, passe doc démos PR C,
 sujet sans rapport). Re-confronté au code : `POST /api/feedback` (`FeedbackController.php:68`) ✓ ;
-la porte (a) de D1 est toujours l'en-tête `PageHeader` de chaque écran principal et du wizard
-(`frontend/docs/frontend-components.md`), plus la seule paire planning/wizard d'origine —
-`FeedbackButton`/`FeedbackDialog` vivent toujours dans `frontend/src/shared/feedback/` ✓.
+`FeedbackButton`/`FeedbackDialog`/`api.ts`/`queries.ts` vivent toujours dans
+`frontend/src/shared/feedback/` ✓ (D1 porte (a) : `PageHeader`, `frontend/docs/frontend-components.md`).
 
 # Canal signalement, support & reproduction
 

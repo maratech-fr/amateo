@@ -1,12 +1,10 @@
 # Conventions API, Layout et primitives UI partagées
 
-Last verified @ 2026-09-30 (commit `debacf62` — splash de connexion `LoginSplash`/`BrandSplash`
-ajouté à la section « Layout », P4-252 : confronté à `shared/stores/loginSplashStore.ts`,
-`shared/components/ui/brand-splash.tsx`, `app/LoginSplash.tsx`, `app/RootShell.tsx`,
-`features/auth/{LoginPage,queries}.ts`, `index.css` (`@font-face` « Poppins Signature »)). Reste de
-la table héritée de la passe précédente (PR #1031 — `Listbox`/`VenueSelect` recalées contre
-`listbox.tsx`/`venue-select.tsx`), non rejouée ligne à ligne cette fois — historique : `git log -p
---follow` sur ce fichier). **§3 est la maison unique
+Last verified @ 2026-09-30 (PR C du lot Démos — `DemoBadge` ajouté à la section « AppLayout » :
+confronté à `app/DemoBadge.tsx`, `app/AppLayout.tsx`, `app/AppLayout.test.tsx`,
+`app/DemoBadge.test.tsx`). Reste de la table hérité des passes précédentes (P4-252 splash de
+connexion, PR #1031 `Listbox`/`VenueSelect`), non rejoué ligne à ligne cette fois — historique :
+`git log -p --follow` sur ce fichier). **§3 est la maison unique
 des primitives UI partagées** (décision fondateur 2026-09-26) : les entrées déménagées depuis
 `frontend/AGENTS.md` § « Primitives that matter » sont vérifiées contre
 `frontend/src/shared/components/ui/` (`ls` : tous les fichiers cités existent).
@@ -137,6 +135,10 @@ En-tête, de gauche à droite :
     `warning` **permanente** (l'ancien seuil ≤ 5 crédits a disparu — l'ambre marque l'offre,
     plus le solde), enveloppée d'un `Link` vers `/club` (le seul écran où consulter/faire
     évoluer l'offre).
+- `DemoBadge` (`app/DemoBadge.tsx`) — juste après `BetaBadge`/`CreditBadge`, dans la même grappe :
+  elle S'AJOUTE aux pastilles d'offre plutôt que d'en remplacer une. Lit `club.isDemo` (`/api/me`,
+  jamais recalculé) ; `null` pour tout vrai club. `StatusPill` variante `neutral`, texte « Démo » —
+  décision fondateur : une démo se dit, elle ne se cache pas.
 - `DevClock`, seulement en `import.meta.env.DEV`.
 - La nav de droite (`<nav>`, ne se rétracte JAMAIS, y compris sous 360 px — décision fondateur
   desktop-first/mobile V2 ; le débordement horizontal résiduel de l'en-tête à cette largeur est
@@ -181,6 +183,13 @@ d'accueil), APRÈS ce lien
 **And** ni l'un ni l'autre n'apparaît dans la nav de droite (`<header> <nav>`)
 (`AppLayout.test.tsx` — « place les deux pastilles dans la grappe de marque, APRÈS le lien
 d'accueil, hors de la nav »)
+
+**Given** le club courant est un club de démonstration (`club.isDemo`)
+**When** `AppLayout` se rend
+**Then** `DemoBadge` apparaît dans la grappe de marque, APRÈS le lien d'accueil, hors de la nav de
+droite — en plus des pastilles d'offre, jamais à leur place
+(`AppLayout.test.tsx` — « place aussi la pastille « Démo » dans la grappe de marque, hors de la
+nav de droite » ; `DemoBadge.test.tsx` — rien pour `isDemo` faux ou club non chargé)
 
 **Given** l'offre bêta (`BetaBadge` rendu)
 **When** son CTA « Signaler un problème » est activé (`onReport`)
