@@ -30,7 +30,7 @@ const jsxA11yRules = Object.fromEntries(
 )
 
 export default defineConfig([
-  globalIgnores(['dist', 'storybook-static']),
+  globalIgnores(['dist']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
