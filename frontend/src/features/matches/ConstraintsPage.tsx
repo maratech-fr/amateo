@@ -10,11 +10,13 @@ import { Input } from "@/shared/components/ui/input";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Select } from "@/shared/components/ui/select";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
+import { TeamSelect } from "@/shared/components/ui/team-select";
+import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { DAYS, dayLabelLong } from "@/shared/lib/days";
 import { readFailed } from "@/shared/lib/readState";
 import { useMe } from "@/shared/session/queries";
 
-import type { ClubLeagueWindow, ClubLeagueWindowInput, Coach, LeagueWindowLevel, MatchConstraint, MatchConstraintInput, MatchRuleType, Team, Venue } from "./api";
+import type { ClubLeagueWindow, ClubLeagueWindowInput, Coach, LeagueWindowLevel, MatchConstraint, MatchConstraintInput, MatchRuleType, PriorityTier, Team, Venue } from "./api";
 import { clockLabel, clubRuleLabel } from "./lib/clubRuleLabel";
 import { LeagueSuggestions } from "./LeagueSuggestions";
 import {
@@ -26,6 +28,7 @@ import {
   useDeleteMatchConstraint,
   useMatchConstraintCoherence,
   useMatchConstraints,
+  usePriorityTiers,
   useTeams,
   useUpdateClubLeagueWindow,
   useUpdateMatchConstraint,
@@ -572,19 +575,21 @@ function TeamsSection() {
   const rules = useMatchConstraints();
   const teams = useTeams();
   const venues = useVenues();
+  const tiers = usePriorityTiers();
 
-  if (readFailed(rules) || readFailed(teams) || readFailed(venues)) {
+  if (readFailed(rules) || readFailed(teams) || readFailed(venues) || readFailed(tiers)) {
     return (
       <LoadErrorHint
         onRetry={() => {
           void rules.refetch();
           void teams.refetch();
           void venues.refetch();
+          void tiers.refetch();
         }}
       />
     );
   }
-  if (undefined === rules.data || undefined === teams.data || undefined === venues.data) {
+  if (undefined === rules.data || undefined === teams.data || undefined === venues.data || undefined === tiers.data) {
     return <FullPageSpinner />;
   }
 
@@ -615,7 +620,7 @@ function TeamsSection() {
         </div>
       )}
 
-      <AddTeamVenueBanRow teams={teams.data} venues={venues.data} />
+      <AddTeamVenueBanRow teams={teams.data} venues={venues.data} tiers={tiers.data} />
     </div>
   );
 }
@@ -650,7 +655,7 @@ function TeamVenueBanRow({ ban, teamName, venueName }: { ban: MatchConstraint; t
 }
 
 /** La ligne d'ajout d'une interdiction (POST scope TEAM : équipe + gymnase, toujours HARD). */
-function AddTeamVenueBanRow({ teams, venues }: { teams: Team[]; venues: Venue[] }) {
+function AddTeamVenueBanRow({ teams, venues, tiers }: { teams: Team[]; venues: Venue[]; tiers: PriorityTier[] }) {
   const [teamId, setTeamId] = useState("");
   const [venueId, setVenueId] = useState("");
   const create = useCreateMatchConstraint();
@@ -669,23 +674,9 @@ function AddTeamVenueBanRow({ teams, venues }: { teams: Team[]; venues: Venue[] 
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-border px-3 py-2">
-      <Select aria-label="Équipe" value={teamId} onChange={(e) => setTeamId(e.target.value)} className="min-w-32">
-        <option value="">Équipe…</option>
-        {teams.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.name}
-          </option>
-        ))}
-      </Select>
+      <TeamSelect aria-label="Équipe" wrapperClassName="min-w-32" teams={teams} tiers={tiers} placeholder="Équipe…" value={teamId} onValueChange={setTeamId} />
       <span className="text-sm text-muted-foreground">ne joue jamais à</span>
-      <Select aria-label="Gymnase interdit" value={venueId} onChange={(e) => setVenueId(e.target.value)} className="min-w-32">
-        <option value="">Gymnase…</option>
-        {venues.map((v) => (
-          <option key={v.id} value={v.id}>
-            {v.name}
-          </option>
-        ))}
-      </Select>
+      <VenueSelect aria-label="Gymnase interdit" wrapperClassName="min-w-32" venues={venues.map((v) => ({ id: v.id, name: v.name, color: v.color }))} placeholder="Gymnase…" value={venueId} onValueChange={setVenueId} />
       <Button size="sm" className="ml-auto" disabled={"" === teamId || "" === venueId || create.isPending} onClick={submit}>
         <Plus className="size-3.5" />
         Interdire
@@ -784,7 +775,7 @@ function CoachsSection() {
 function CoachFields({ draft, set, coaches, idLabel }: { draft: CoachUnavailabilityDraft; set: (patch: Partial<CoachUnavailabilityDraft>) => void; coaches: Coach[]; idLabel: string }) {
   return (
     <>
-      <Select aria-label="Entraîneur" value={draft.coachId} onChange={(e) => set({ coachId: e.target.value })} className="min-w-32">
+      <Select aria-label="Entraîneur" value={draft.coachId} onChange={(e) => set({ coachId: e.target.value })} wrapperClassName="min-w-32">
         <option value="">Entraîneur…</option>
         {coaches.map((c) => (
           <option key={c.id} value={c.id}>

@@ -3,6 +3,7 @@ import { type ReactNode, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { DeleteConfirm } from "@/shared/components/ui/delete-confirm";
+import { Select } from "@/shared/components/ui/select";
 import { cn } from "@/shared/lib/utils";
 
 import { STATUS_LABELS, type Schedule } from "./api";
@@ -144,11 +145,11 @@ export function PlanningToolbar({
           generation step (embedded). */}
       <div className="flex flex-wrap items-center gap-2">
         {embedded ? (
-          <select
+          <Select
             aria-label="Version du planning"
             value={selectedScheduleId ?? ""}
             onChange={(event) => onSelectSchedule(event.target.value)}
-            className="h-8 rounded-md border border-input bg-background px-3 text-sm"
+            className="h-8"
           >
             {/* Season versions, plus — when an overlay is selected — that period's own
                 overlay versions (V1, V2…). The ★ marks the LOADED context (the version
@@ -165,7 +166,7 @@ export function PlanningToolbar({
                 {!scoped && !isSeasonPlanType(schedule.planType) ? " · période" : ""}
               </option>
             ))}
-          </select>
+          </Select>
         ) : null}
         {embedded && canDelete ? (
           <Button size="sm" variant="ghost" className="h-8 px-2 text-destructive" disabled={actionBusy} onClick={() => setConfirmDelete(true)} aria-label="Supprimer cette version" title="Supprimer cette version">
