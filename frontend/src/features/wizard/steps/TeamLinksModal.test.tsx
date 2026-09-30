@@ -24,9 +24,6 @@ vi.mock("@/features/matches/queries", () => ({
   useUpdateTeamLink: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteTeamLink: () => ({ mutate: vi.fn(), isPending: false }),
 }));
-vi.mock("@/features/matches/HabitsLinksButton", () => ({
-  HabitsLinksButton: () => <button type="button">Gérer les passerelles</button>,
-}));
 
 import { TeamLinksModal } from "./TeamLinksModal";
 

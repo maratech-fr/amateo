@@ -83,3 +83,6 @@ pnpm-debug.log*
 # tracked; the filled cleartext .env.prod never is (make env-encode@prod)
 /.env.prod
 /jwt/
+
+# Journaux de la navigation automatisée Playwright MCP (bruit, jamais versionné)
+/.playwright-mcp/

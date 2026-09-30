@@ -66,6 +66,19 @@
   100% { transform: translateY(126px); opacity: 0; }
 }
 
+/* Fondu d'apparition de la phrase d'attente tournante. Le `<p>` porte une `key` qui change à
+   chaque phrase (`GenerationWaiting.tsx`) : il se re-monte, donc cette animation de MONTAGE
+   rejoue à chaque rotation. Opacité de base 1 (état final) — l'animation ne fait que la révéler
+   depuis 0. Remplace `animate-in fade-in` (tailwindcss-animate, jamais branché comme `@plugin`,
+   donc inerte) : une keyframe maison, sans dépendance. */
+@keyframes gw-phraseFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.gw-phrase {
+  animation: gw-phraseFade 0.3s ease-out;
+}
+
 /* État ARRÊTÉ (P5-14 PR-2 — « le service de calcul ne répond pas »). La classe `gw-halted` vit
    sur le cadre : le décor tourne au ralenti SANS faire croire qu'un calcul avance. Cases VIDES
    (opacity 0), animations neutralisées, chrono barré ; le seul mouvement est le ballon posé au
@@ -103,6 +116,8 @@
    Le ballon au repos de l'ARRÊT ne roule pas non plus (il est posé). */
 @media (prefers-reduced-motion: reduce) {
   .gw-anim { animation: none !important; opacity: 1 !important; }
+  /* Phrase posée d'emblée, sans fondu (opacité de base 1). */
+  .gw-phrase { animation: none !important; }
   .gw-puffring { opacity: 0 !important; }
   .gw-bx { transform: translateX(180px); }
   .gw-by { transform: translateY(436px); }

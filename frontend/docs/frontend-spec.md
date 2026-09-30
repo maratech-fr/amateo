@@ -9,9 +9,10 @@ Last verified @ 2026-09-30 (`documentation-update`, P4-271 — ligne `/matchs` r
 `ConstraintsPage.tsx` (sections Ligue/Club/Coachs en lignes compactes résumé+✎+🗑),
 `TypicalWeekPage.tsx`/`TypicalWeekendGrid.tsx` (segmenté A/B piloté par `Club.weekendAlternates`,
 `FilterToggle` gestionnaire seul) recalés contre le code ✓ — `MatchWeek` n'a plus que `A`\|`B`
-(`ALL` supprimé, migration `Version20260930100000`). Reste non re-sondé cette passe — historique :
-`git log -p --follow` ce fichier. §6.7 reste hors périmètre (régime narratif plus dense, taille à
-l'aveugle refusée) — P4-262 en roadmap.
+(`ALL` supprimé, migration `Version20260930100000`) ; § Tests corrigé (MSW retiré du dépôt, chore
+nettoyage 2026-09-30 — `vi.mock` reste le seul mock réseau). Reste non re-sondé cette passe —
+historique : `git log -p --follow` ce fichier. §6.7 reste hors périmètre (régime narratif plus
+dense, taille à l'aveugle refusée) — P4-262 en roadmap.
 
 ## 1. Stack Decided
 
@@ -1574,6 +1575,6 @@ silencieuse est devenue bruyante. Il est inerte tant qu'aucun DSN n'est posé.
 
 ### Tests
 
-- Vitest + React Testing Library + MSW (Mock Service Worker) pour les tests composants (`*.test.tsx` co-localisés)
+- Vitest + React Testing Library, `vi.mock` pour l'intégration API (le seul mock réseau de la suite depuis le retrait de MSW, chore nettoyage 2026-09-30), pour les tests composants (`*.test.tsx` co-localisés)
 - Harnais E2E Playwright présent dans `frontend/tests/e2e/` (`@playwright/test` en devDependency)
 - Couverture : composants critiques (auth, planning, toolbar, grille, wizard)

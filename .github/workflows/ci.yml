@@ -57,6 +57,15 @@ jobs:
         working-directory: frontend
         run: npm run lint
 
+      # Garde d'hygiène des dépendances : knip rougit sur une dev/dép déclarée mais
+      # jamais importée, ou un fichier source inatteignable depuis les entrées
+      # (`knip.json`). Mode `--dependencies --files` : les exports inutilisés restent
+      # HORS du gate (bruit au départ). Le job `frontend` n'est pas dans les `needs`
+      # de `build-docker` : une dérive d'hygiène rougit ce check sans bloquer l'image.
+      - name: Dependency check (knip)
+        working-directory: frontend
+        run: npm run lint:deps
+
       - name: Build (tsc -b + vite)
         working-directory: frontend
         run: npm run build
@@ -245,6 +254,13 @@ jobs:
       # instead of rewriting files. Fix locally with `make -C backend cs-fix`.
       - name: Run PHP-CS-Fixer (dry-run)
         run: docker compose exec -T php-fpm composer cs-fix -- --dry-run --diff
+
+      # Garde d'hygiène des dépendances : composer-unused rougit sur un paquet de
+      # `require` dont plus aucun symbole n'est utilisé dans src/. Les faux positifs
+      # câblés par bundle/config/runtime sont ignorés EXPLICITEMENT, chacun avec sa
+      # raison (`backend/composer-unused.php`).
+      - name: Run composer-unused
+        run: docker compose exec -T php-fpm composer composer-unused
 
   # P4-24 : Rector dans son PROPRE job, sans `needs` et sans être
   # une dépendance de quoi que ce soit — exactement la forme de `dependency-audit`,
@@ -864,6 +880,13 @@ jobs:
 
       - name: Run bandit
         run: docker compose run --rm engine bandit -r app/
+
+      # Garde d'hygiène des dépendances : deptry rougit sur une dépendance déclarée
+      # mais jamais importée (DEP002), manquante (DEP001) ou seulement transitive
+      # (DEP003). Config dans pyproject.toml (`tests` réintégré, faux positifs des
+      # outils CLI/plugins pytest ignorés en DEP002).
+      - name: Run deptry
+        run: docker compose run --rm engine deptry .
 
   engine-perf:
     name: Engine Perf Gate (main only)

@@ -29,6 +29,7 @@ test: ## Run pytest (couverture : cible `coverage` dédiée, plus dans `test` �
 	$(RUN) ruff format --check .
 	$(RUN) mypy
 	$(RUN) bandit -r app/
+	$(RUN) deptry .
 	$(RUN) pytest
 
 coverage: ## Couverture + cliquet — plancher lu de ../coverage-floor.json (B3), miroir du job CI engine-coverage
@@ -41,6 +42,7 @@ lint: ## Run ruff + mypy
 	$(RUN) ruff format --check .
 	$(RUN) mypy
 	$(RUN) bandit -r app/
+	$(RUN) deptry .
 
 format: ## Format code with ruff (l'arbre est formaté ET gardé — P4-64)
 	$(RUN) ruff format .

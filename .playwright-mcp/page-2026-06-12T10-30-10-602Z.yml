@@ -1,4 +1,0 @@
-- generic [ref=e2]:
-  - heading "Unexpected Application Error!" [level=2] [ref=e24]
-  - 'heading "Minified React error #426; visit https://reactjs.org/docs/error-decoder.html?invariant=426 for the full message or use the non-minified dev environment for full errors and additional helpful warnings." [level=3] [ref=e25]'
-  - generic [ref=e26]: "Error: Minified React error #426; visit https://reactjs.org/docs/error-decoder.html?invariant=426 for the full message or use the non-minified dev environment for full errors and additional helpful warnings. at Dl (http://localhost:8081/assets/index-noFbwy6b.js:9:38328) at Al (http://localhost:8081/assets/index-noFbwy6b.js:9:39215) at vl (http://localhost:8081/assets/index-noFbwy6b.js:9:35621) at Sl (http://localhost:8081/assets/index-noFbwy6b.js:9:36421) at da (http://localhost:8081/assets/index-noFbwy6b.js:7:3256) at http://localhost:8081/assets/index-noFbwy6b.js:9:33964"

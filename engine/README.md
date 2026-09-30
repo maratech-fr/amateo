@@ -101,9 +101,9 @@ L'**engine** est un microservice Python qui reçoit un contexte complet (clubs, 
 # Toutes les commandes s'exécutent DANS le conteneur engine
 # Le Makefile les lance automatiquement dans le conteneur
 
-make test             # ruff + mypy + bandit + pytest
+make test             # ruff + mypy + bandit + deptry + pytest
 make coverage         # pytest --cov=app + cliquet — plancher lu de ../coverage-floor.json
-make lint             # ruff + mypy + bandit
+make lint             # ruff + mypy + bandit + deptry
 make format           # ruff format
 make exec             # Entrer dans le conteneur engine
 

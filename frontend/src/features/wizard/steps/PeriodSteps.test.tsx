@@ -180,9 +180,6 @@ vi.mock("@/features/matches/queries", () => ({
   useUpdateTeamLink: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteTeamLink: () => ({ mutate: vi.fn(), isPending: false }),
 }));
-vi.mock("@/features/matches/HabitsLinksButton", () => ({
-  HabitsLinksButton: () => <button type="button">Gérer les passerelles</button>,
-}));
 vi.mock("@/features/cockpit/queries", () => ({
   useEntryConflicts: () => ({ data: { venueIds: conflictState.venueIds, closures: conflictState.closures, fullyClosedVenueIds: conflictState.fullyClosedVenueIds, effectiveClosedWeekdays: conflictState.effectiveClosedWeekdays, disabledVenueIds: conflictState.disabledVenueIds }, isError: false, refetch: vi.fn() }),
   useCalendarEntry: () => ({ data: entryState.data, isLoading: false }),

@@ -175,7 +175,7 @@ vi.mock("@/features/cockpit/queries", () => ({
   useCalendarEntry: (id: string | null) => ({ data: null != id && id in calendarEntryById.map ? calendarEntryById.map[id] : calendarEntryState.data }),
 }));
 // Stub : le comportement interne de PeriodConstraints est couvert par
-// PeriodStructure.test — ici on ne teste que son PLACEMENT par onglet (#9).
+// PeriodSteps.test — ici on ne teste que son PLACEMENT par onglet (#9).
 vi.mock("./PeriodConstraints", () => ({
   PeriodConstraints: ({ family }: { family?: string }) => <div data-testid="inherited-section">{family ?? "all"}</div>,
 }));
@@ -1633,7 +1633,7 @@ describe("ConstraintsStep — affiner un groupe (targetTags / excludeTags)", () 
  * P2-45 — l'onglet « Mutualisation » A DÉMÉNAGÉ dans l'étape Équipes (modale par équipe) : il
  * n'existe plus DANS ConstraintsStep, ni en saison ni en période. La création d'un groupe et son
  * ancrage (socle `schedulePlanId` null / plan de période) sont désormais gardés depuis leurs
- * nouveaux hôtes (TeamsStep.test, PeriodStructure.test). Le wrapper `describe` survit pour son
+ * nouveaux hôtes (TeamsStep.test, PeriodSteps.test). Le wrapper `describe` survit pour son
  * `beforeEach`, dont dépend « le tableau des contraintes » niché ci-dessous.
  */
 describe("ConstraintsStep — l'onglet Mutualisation a déménagé (P2-45)", () => {

@@ -1,13 +1,10 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-29 (P4-272 ②, `documentation-update`). Re-confronté au code : nouveau NR
-bloquant `Security/LeagueWindowSuggestionShareTest` (`docs/testing/blocking-tests.md`, falsifie la
-fonction SQL `SECURITY DEFINER league_window_suggestions` — seuil/majorité, groupement d'instance,
-demandeur exclu, `search_path`/`EXECUTE` figés, aucune donnée club-identifiante) ✓ ;
-`Integration/MigrationLeagueWindowCatalogFixTest` prouve le VRAI SQL de `Version20260929130000`
-(catalogue vide → chargé + copies, catalogue plein → intouché, copie vidée non ressuscitée),
-couverte par la testsuite `Integration` (ligne PHPUnit `Integration/` ci-dessous, pas une ligne à
-part) ✓. Reste des lignes non re-sondées cette passe — historique complet :
+Last verified @ 2026-09-30 (rotation de fraîcheur, `documentation-update`). Re-confronté au code :
+ligne « Statique » (§1) corrigée — les trois gardes d'hygiène des dépendances posées le 2026-09-30
+(composer-unused, deptry, knip) manquaient à la table, ajoutées avec leur asymétrie Makefile
+(deptry seul est dans `make lint`/`make test`, détail complet : `testing-strategy.md` §1). Reste
+des lignes non re-sondées cette passe — historique complet :
 `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
@@ -28,7 +25,7 @@ part) ✓. Reste des lignes non re-sondées cette passe — historique complet :
 | Vitest + RTL | frontend | composants, hooks react-query, lib pure (`vi.mock` des queries) ; jsdom — **aucune mise en page** (`.claude/rules/frontend.md`) ; **couverture + cliquet** (`make -C frontend coverage`, plancher lu de `coverage-floor.json`, artefact `coverage-frontend`) ; **cliquet act-warnings** (reporter `tooling/actWarningsRatchet.ts`, plafond lu de `act-warnings-ceiling.json`, rougit `npm run test` — donc le job `frontend` — dès que les avertissements React « not wrapped in act » dépassent le plafond ; fil de détente à 0, FRT-34) | `frontend/src/**/*.test.ts*` | `make -C frontend test` (image tooling à rebâtir avant) · `make -C frontend coverage` (couverture, séparé — suite complète instrumentée, hors boucle courte) | `frontend` ; `frontend-coverage` (couverture, `needs: frontend`, hors `needs` de `build-docker`) |
 | Playwright | frontend + stack complète | 11 parcours nommés en §2 — dont **le seul test UI → API → engine → planning** (`journey.spec.ts`, qui prouve aussi la livraison PAR SSE : témoin Mercure, échec nommé si le hub reste muet — P4-168) et 4 specs **axe** (contraste 2 thèmes, reflow, voile, écrans système) | `frontend/tests/e2e/` | `make -C frontend e2e` | `e2e` |
 | Behat | stack complète | scénarios métier en français (Gherkin), une promesse par feature, lisibles et relisables par le fondateur, joués contre l'API réelle (aucun navigateur, aucun noyau in-process) — §5 : les 5 premières remplacent intégralement les smokes bash (`backend/scripts/*smoke*.sh`, SUPPRIMÉS — P4-165), les suivantes couvrent les règles qui détruisent/refusent/isolent (P4-175) | `backend/features/`, contexts `backend/tests/Behat/` | `make -C backend behat` (sous `with-sandbox.sh` en mode play) | `functional-tests` |
-| Statique | 3 zones | PHPStan 8 · CS-Fixer · Rector — ruff · `ruff format` · mypy strict · bandit — eslint · `tsc -b --force` | Makefiles | `make lint` | `phpstan`, `rector`, `engine-tests`, `frontend` |
+| Statique | 3 zones | PHPStan 8 · CS-Fixer · Rector · **composer-unused** (dépendances mortes) — ruff · `ruff format` · mypy strict · bandit · **deptry** (dépendances mortes) — eslint · `tsc -b --force` · **knip** (dépendances/fichiers morts) | Makefiles (composer-unused et knip **hors** de `make lint`, deptry dedans — détail : `testing-strategy.md` §1) | `make lint` (composer-unused/knip : commande directe, hors cible Make) | `phpstan`, `rector`, `engine-tests`, `frontend` |
 | Sécurité | dépôt, images | gitleaks (historique entier), semgrep, `composer`/`npm`/`pip audit` (retry sur endpoint indisponible seulement, `.github/scripts/audit-retry.sh`), Trivy CRITICAL sur les images prod | `.github/workflows/` | — | `secrets-scan`, `semgrep`, `dependency-audit`, `build-docker` + cron hebdo `security-weekly.yml` |
 
 Les trois testsuites (`Unit`, `Integration`, `Contract`) couvrent **tous** les sous-dossiers de

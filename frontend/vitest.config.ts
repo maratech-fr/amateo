@@ -34,7 +34,7 @@ export default mergeConfig(viteConfig, defineConfig({
     // P4-116 (AUD-FRT-25) — le plafond par test passe de 5 s (défaut Vitest) à 15 s.
     //
     // ⚠ **Ce n'est pas un pansement sur des tests lents, et la mesure le dit.** Le cas le plus
-    // lourd — `PeriodStructure.test.tsx` › « déplacer un créneau réservé » — met **5,2 s sans
+    // lourd — `PeriodSteps.test.tsx` › « déplacer un créneau réservé » — met **5,2 s sans
     // aucune charge concurrente** : il rend une grille hebdomadaire entière (7 jours × créneaux
     // de 15 min, des centaines de cellules) et chacun de ses quatre gestes la re-rend. C'est du
     // travail réel ; l'alléger reviendrait à ne plus tester le vrai écran. Sous contention (la
