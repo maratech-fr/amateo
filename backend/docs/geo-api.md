@@ -1,12 +1,10 @@
 # API géo — routes externes consommées
 
-Last verified @ 2026-09-29 (P4-246 — `BanGeocodingClient::fetchFeatures` et
-`IgnRoutingClient::pacedMinutes` bornent désormais leur réponse à 1 Mio, `MAX_RESPONSE_BYTES` +
-`on_progress` — re-confronté au code : `IgnRoutingClient::travelMinutesBatch` ignore toujours
-`$concurrency` (sériel, pacé 1/s), `MAX_RETRY_AFTER_SECONDS = 5.0`, `BATCH_BUDGET_SECONDS = 30.0`,
-`VenueTravelTimeAutofillService::MAX_AUTOFILL_PAIRS = 120`, `ClubTravelCache` reste TENANT RLS
-FORCE — tout juste). Historique des passes précédentes vit dans git :
-`git log -p --follow backend/docs/geo-api.md`.
+Last verified @ 2026-09-30 (P4-271 — `BanGeocodingClient::reverse` + route
+`GET /api/geocode/reverse` confrontées au code (`backend/src/Service/Geo/BanGeocodingClient.php`,
+`backend/src/Controller/GeocodeController.php`) ; `TravelMatrixModal.tsx` relu — la matrice est
+désormais une vraie table N×N, plus une liste groupée « Depuis {gymnase} »). Historique des passes
+précédentes vit dans git : `git log -p --follow backend/docs/geo-api.md`.
 
 > Répertoire des endpoints externes **géo** utilisés par le backend — deuxième famille de sorties
 > non-FFBB après `ffbb-api.md` (même patron : liste blanche de hosts codés en dur, SSRF-safe,
@@ -82,6 +80,32 @@ introuvable » (aucun candidat), 502 (BAN muette). Réponse `{address, postalCod
 vérité, consommé par `useClubGeolocated()` pour le bandeau « Trajets indisponibles » de l'onglet
 « Adversaires » (`/matchs/adversaires`) — voir `specs/courantes/module-matchs.md` § Écran
 Adversaires.
+
+### 1ter. Retrouver une adresse depuis des coordonnées (reverse-geocoding, P4-271)
+
+```
+GET https://api-adresse.data.gouv.fr/reverse/?lat={lat}&lon={lon}
+Headers:
+  Accept: application/json
+```
+
+Même hôte, mêmes garde-fous SSRF (host fixe, `max_redirects: 0`, timeout 5 s, réponse plafonnée à
+1 Mio) que la recherche ci-dessus — `BanGeocodingClient::reverse`. Coordonnées validées en plage
+AVANT tout appel (`BanGeocodingClient::isValidCoordinate`, lat ∈ [-90,90], lon ∈ [-180,180]) ;
+best-effort intégral : `null` sur un échec réseau, une réponse vide ou sans feature exploitable —
+**jamais** d'exception propagée. **Aucune écriture** : le libellé retrouvé sert à l'AFFICHAGE
+seul, jamais persisté.
+
+**Proxy backend** : `GET /api/geocode/reverse?lat=&lon=` (`GeocodeController::reverse`) —
+management-gated (SEC-07), 422 sur des coordonnées non numériques ou hors bornes. Rend
+`{label: string|null}`.
+
+**Consommateur front** : `AddressGeocodeField` (vue repliée, § ci-dessus) — quand un point porte
+des coordonnées mais aucune adresse saisie (siège/gymnase posé par le seed ou la FFBB),
+`useReverseGeocode` appelle cette route et affiche « Adresse retrouvée : {libellé} » à la place
+d'une adresse saisie ; sans résultat, « Adresse inconnue ». Un lien « Voir sur la carte »
+(OpenStreetMap, `?mlat=&mlon=#map=18/{lat}/{lon}`) accompagne tout point géolocalisé, saisi ou
+retrouvé.
 
 ## 2. Itinéraire (temps de trajet) — IGN Géoplateforme
 
@@ -296,8 +320,11 @@ les 5 règles de bien-être. Décision consignée `etat-des-lieux.md` §2.
   gymnases. Gardé par `CrossStack/VenueTravelTimePayloadParityTest`.
 - **L'écran** : `TravelMatrixModal` (bouton
   footerExtra « Trajets entre gymnases » de l'étape Gymnases, offert dès ≥2 gymnases) — première
-  ouverture (aucune ligne) = consentement passif à l'autofill, **jamais lancé sans clic** ; matrice
-  groupée « Depuis {gymnase} », deux colonnes voiture/à pied, badge AUTO/MANUEL (icône+texte),
+  ouverture (aucune ligne) = consentement passif à l'autofill, **jamais lancé sans clic** ; sinon
+  une vraie **matrice N×N** (gymnases en lignes ET en colonnes, même ordre, diagonale « — »,
+  symétrique — A→B = B→A), en-têtes collants au défilement, un filtre texte qui restreint les
+  LIGNES (les colonnes restent toutes) ; chaque cellule porte les deux modes empilés (voiture/à
+  pied), pictogramme du mode devant chaque champ, badge AUTO/MANUEL (icône+texte) sous le couple ;
   couples non résolus « À saisir » + raison servie ; éditer une valeur la passe MANUEL côté
   serveur, « Recalculer » préserve les MANUEL. La case **« Véhiculé »** sur la fiche coach
   (`CoachesStep`) choisit le barème appliqué à ses enchaînements. **`TravelRuleNotice`** (onglet

@@ -1,11 +1,10 @@
 # Accueil « cockpit temporel »
 
-Last verified @ 2026-09-28 (`documentation-update`, P4-268 PR B). Re-confronté au code :
-`SeasonPlanBanner.tsx` ne porte plus de bouton « Modifier » qui rouvre — seuls « Ouvrir » (→
-`/planning`, où vit « Rouvrir ») et, socle validé, « Modifier les données du club » (→ wizard
-étape Équipes, sans rouvrir) ✓ — les mentions narratives de « Modifier » = reopen dans ce fichier
-(§1bis, §2bis, §5, §6ter) sont recalées sur le libellé réel « Rouvrir ». `stalenessMessage`
-importée/utilisée dans `frontend/src/features/planning/PlanningPage.tsx:47,649` ✓,
+Last verified @ 2026-09-30 (`documentation-update`, rotation de fraîcheur). Re-confronté au code :
+`SeasonPlanBanner.tsx` (déplacé depuis dans `features/cockpit/`, même fichier) porte toujours
+« Ouvrir » (→ `/planning`) et, socle validé, « Modifier les données du club » (→ wizard étape
+Équipes, sans rouvrir) — aucun bouton « Modifier » qui rouvre ✓ ; `stalenessMessage`
+importée/utilisée dans `frontend/src/features/planning/PlanningPage.tsx:47` ✓,
 `App\Service\CalendarEntryRedatability::isRedatable` sert bien le champ `redatable`
 (`backend/src/Service/CalendarEntryRedatability.php:49`) ✓. Historique de ce fichier :
 `git log -p --follow` dessus.
