@@ -184,6 +184,9 @@ la remplir littéralement.
 2. Pas de `contracts/` ni `tests/` à la racine du dépôt — les tests cross-stack vivent dans
    `backend/tests/`.
 3. Tenant résolu côté serveur depuis le JWT : le front n'envoie **aucun** header `X-Club-Id`.
+4. ⚠ **Garde-fou actif** (hook PreToolUse Bash, `.claude/hooks/bounded-loop-guard.sh`) : toute
+   boucle d'attente `while`/`until` DOIT être bornée par `timeout <durée>` ≤ 4 h — sinon refus
+   (attendre la fin d'un journal, jamais un `pgrep -f` qui se trouve lui-même).
 
 **Pointers:** `docs/project-map.md` (**la carte** — zones, ops, sécurité, tout le reste) ·
 `docs/glossary.md` · `docs/testing/testing-strategy.md` · `specs/evolution/roadmap.md`
