@@ -52,13 +52,24 @@ const DEFERRED_GAPS: Exemption[] = [
 const EXEMPTIONS: Exemption[] = [...LEGIT_EXEMPTIONS, ...DEFERRED_GAPS];
 
 const CONFIRM_REF = /\b(?:ConfirmDialog|DeleteConfirm)\b/;
+// Regex LITTÉRALES uniquement (pas de `new RegExp(<variable>)`, gate Semgrep
+// detect-non-literal-regexp) : on collecte les bindings puis les invocations, et on
+// croise les deux ensembles — la capture `(\w+)` avant `.mutate` borne l'identifiant
+// complet (donc `xremove.mutate` ne compte pas pour un binding `remove`).
 const DELETE_BINDING = /const\s+(\w+)\s*=\s*useDelete\w*\s*\(/g;
+const MUTATE_INVOKE = /(\w+)\.mutate(?:Async)?\(/g;
 
 /** Un fichier « supprime » s'il LIE un hook `useDelete…` ET invoque ce binding via `.mutate(`/`.mutateAsync(`. */
 function bindsAndInvokesDelete(source: string): boolean {
+  const bindings = new Set<string>();
   for (const match of source.matchAll(DELETE_BINDING)) {
-    const name = match[1];
-    if (new RegExp(`\\b${name}\\.(?:mutate|mutateAsync)\\(`).test(source)) {
+    bindings.add(match[1]);
+  }
+  if (0 === bindings.size) {
+    return false;
+  }
+  for (const match of source.matchAll(MUTATE_INVOKE)) {
+    if (bindings.has(match[1])) {
       return true;
     }
   }
