@@ -1,10 +1,18 @@
-import { screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { markSessionExpired } from "@/shared/lib/sessionExpiredNotice";
+import { useLoginSplashStore } from "@/shared/stores/loginSplashStore";
 import { renderWithProviders } from "@/test/utils";
 
 import { LoginPage } from "./LoginPage";
+
+// P4-252 — la mutation login est mockée pour piloter succès/échec sans réseau (les tests d'UI
+// existants ci-dessus ne soumettent pas, ils tolèrent ce double).
+const { loginMock } = vi.hoisted(() => ({
+  loginMock: { mutateAsync: vi.fn(), isPending: false },
+}));
+vi.mock("./queries", () => ({ useLogin: () => loginMock }));
 
 describe("LoginPage", () => {
   it("renders the login form", () => {
@@ -53,5 +61,43 @@ describe("LoginPage — bloc « session expirée »", () => {
 
     renderWithProviders(<LoginPage />);
     expect(screen.queryByText(/fin du temps réglementaire/i)).toBeNull();
+  });
+});
+
+/**
+ * P4-252 — le submit lance le splash « Signature » (`loginSplashStore.start`) ; un échec
+ * l'annule (`cancel`), réaffiche le message d'erreur ACTUEL et rend le focus au champ e-mail.
+ */
+describe("LoginPage — splash de connexion", () => {
+  beforeEach(() => {
+    useLoginSplashStore.setState({ phase: "idle" });
+    loginMock.mutateAsync.mockReset();
+  });
+
+  function fillAndSubmit() {
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "coach@club.fr" } });
+    fireEvent.change(screen.getByLabelText("Mot de passe"), { target: { value: "s3cret-passphrase" } });
+    fireEvent.click(screen.getByRole("button", { name: /se connecter/i }));
+  }
+
+  it("au submit : le splash démarre (idle → intro)", async () => {
+    loginMock.mutateAsync.mockResolvedValueOnce(undefined);
+    renderWithProviders(<LoginPage />);
+    fillAndSubmit();
+    // start() est synchrone au submit — l'intro est lancée avant même la résolution réseau.
+    expect(useLoginSplashStore.getState().phase).toBe("intro");
+    await waitFor(() => expect(loginMock.mutateAsync).toHaveBeenCalled());
+  });
+
+  it("identifiants refusés : splash annulé, erreur affichée, focus au champ e-mail", async () => {
+    // Un rejet quelconque : `errorMessage` en tire un message FR (ici le repli connexion) — ce
+    // test garde le PARCOURS (annulation + message + focus), pas le texte exact de `errorMessage`.
+    loginMock.mutateAsync.mockRejectedValueOnce(new Error("boom"));
+    renderWithProviders(<LoginPage />);
+    fillAndSubmit();
+
+    await waitFor(() => expect(useLoginSplashStore.getState().phase).toBe("cancelling"));
+    expect(await screen.findByText(/problème de connexion/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("Email")).toHaveFocus());
   });
 });

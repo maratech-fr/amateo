@@ -1,5 +1,6 @@
 import { Outlet, useNavigation } from "react-router";
 
+import { LoginSplash } from "@/app/LoginSplash";
 import { OfflineBanner } from "@/app/OfflineBanner";
 
 /**
@@ -23,7 +24,12 @@ export function RootShell() {
           de tout le contenu de page, il ne recouvre pas (aucun overlay, aucun z-index). RootShell est
           sous Providers (react-query dispo) et couvre TOUTES les routes, page publique comprise. */}
       <OfflineBanner />
-      <Outlet />
+      {/* Le splash de connexion (P4-252) enveloppe le contenu routé : il PERSISTE au
+          `navigate("/")` du login (la signature continue à travers la navigation) et rend le
+          contenu `inert` tant qu'il couvre l'écran. Overlay en portal, z-[70] > voile d'action. */}
+      <LoginSplash>
+        <Outlet />
+      </LoginSplash>
     </>
   );
 }
