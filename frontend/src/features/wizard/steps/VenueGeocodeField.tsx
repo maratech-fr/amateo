@@ -21,6 +21,8 @@ export function VenueGeocodeField({
     <AddressGeocodeField
       address={venue.address}
       located={null != venue.latitude && null != venue.longitude}
+      latitude={null != venue.latitude ? Number(venue.latitude) : null}
+      longitude={null != venue.longitude ? Number(venue.longitude) : null}
       placeholder="Adresse du gymnase"
       label="Adresse"
       statusWord="Localisé"

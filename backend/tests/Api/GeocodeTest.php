@@ -66,6 +66,37 @@ final class GeocodeTest extends WebTestCase
         self::assertResponseStatusCodeSame(403, 'le géocodage est management-only');
     }
 
+    // ── /api/geocode/reverse — P4-271 (ajout fondateur) ──────────────────────────
+
+    public function testReverseServesALabelToAManager(): void
+    {
+        [, $user] = $this->createClubUser('d');
+
+        $this->client->request('GET', '/api/geocode/reverse', ['lat' => '45.76799', 'lon' => '4.88853'], [], $this->authHeaders($user));
+        self::assertResponseIsSuccessful();
+        self::assertArrayHasKey('label', $this->responseData());
+    }
+
+    public function testReverseRefusesInvalidCoordinates(): void
+    {
+        [, $user] = $this->createClubUser('e');
+
+        $this->client->request('GET', '/api/geocode/reverse', ['lat' => 'nord', 'lon' => '4.8'], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(422, 'une latitude non numérique est refusée');
+
+        $this->client->request('GET', '/api/geocode/reverse', ['lat' => '200', 'lon' => '4.8'], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(422, 'une latitude hors bornes est refusée');
+    }
+
+    public function testReverseIsManagementOnly(): void
+    {
+        [$club] = $this->createClubUser('f');
+        $member = $this->createMember($club, 'member');
+
+        $this->client->request('GET', '/api/geocode/reverse', ['lat' => '45.76', 'lon' => '4.88'], [], $this->authHeaders($member));
+        self::assertResponseStatusCodeSame(403, 'le reverse-geocoding est management-only');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();

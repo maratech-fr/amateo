@@ -17,6 +17,19 @@ export interface AppearanceResult {
 /** Partial update of the club identity (accent), scoped server-side to the JWT club. */
 export const updateAppearance = (body: AppearancePayload): Promise<AppearanceResult> => api.patch("club/appearance", { json: body }).json();
 
+/**
+ * P4-271 — pose le réglage d'affichage « modèle de week-end sur deux semaines » (management).
+ * Écriture via le PUT club générique (gaté sur le rôle de gestion). Le PUT est un full-replace
+ * qui exige les champs NotBlank : on relit d'abord le club pour renvoyer name/slug/timezone/locale
+ * inchangés, on ne bouge QUE le drapeau. Aucun effet sur le placement.
+ */
+export async function setWeekendAlternates(clubId: string, value: boolean): Promise<void> {
+  const club = await api.get(`clubs/${clubId}`).json<{ name: string; slug: string; timezone: string; locale: string }>();
+  await api
+    .put(`clubs/${clubId}`, { json: { name: club.name, slug: club.slug, timezone: club.timezone, locale: club.locale, weekendAlternates: value } })
+    .json();
+}
+
 export interface SiegeResult {
   address: string | null;
   postalCode: string | null;

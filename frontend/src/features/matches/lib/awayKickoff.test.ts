@@ -34,7 +34,7 @@ const habit = (over: Partial<TeamMatchHabit> = {}): TeamMatchHabit => ({
   dayOfWeek: 6, // Saturday
   kickoffTime: "20:30",
   venueId: null,
-  week: "ALL",
+  week: "A",
   ...over,
 });
 

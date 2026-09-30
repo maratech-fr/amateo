@@ -20,3 +20,14 @@ export const geocodeAddress = (q: string): Promise<GeocodeCandidate[]> =>
     .get("geocode", { searchParams: { q } })
     .json<{ candidates: GeocodeCandidate[] }>()
     .then((r) => r.candidates);
+
+/**
+ * GET /api/geocode/reverse?lat=&lon= (management) — le libellé d'adresse le plus proche de
+ * coordonnées, pour AFFICHER de quoi vérifier un « Localisé » sans adresse saisie. Best-effort
+ * côté serveur : `label` peut être null (la BAN n'a rien renvoyé). Jamais un appel tiers direct.
+ */
+export const reverseGeocode = (latitude: number, longitude: number): Promise<string | null> =>
+  api
+    .get("geocode/reverse", { searchParams: { lat: latitude, lon: longitude } })
+    .json<{ label: string | null }>()
+    .then((r) => r.label);

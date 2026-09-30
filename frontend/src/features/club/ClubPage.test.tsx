@@ -57,6 +57,7 @@ vi.mock("./queries", () => ({
 // Le géocodage (AddressGeocodeField du siège) — mutation réelle sinon : on la neutralise.
 vi.mock("@/shared/hooks/useGeocode", () => ({
   useGeocode: () => ({ mutate: vi.fn(), isPending: false }),
+  useReverseGeocode: () => ({ data: null, isPending: false }),
 }));
 
 import { ClubPage } from "./ClubPage";

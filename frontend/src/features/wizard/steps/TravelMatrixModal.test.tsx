@@ -98,7 +98,29 @@ describe("TravelMatrixModal — première ouverture (consentement)", () => {
   });
 });
 
-describe("TravelMatrixModal — la matrice", () => {
+describe("TravelMatrixModal — matrice N×N", () => {
+  it("rend une VRAIE matrice : chaque gymnase en en-tête de colonne ET de ligne", () => {
+    matrixState.data = [row({ id: "r1", venueAId: "v1", venueBId: "v2", drivingMinutes: 15, drivingSource: "AUTO" })];
+    renderWithProviders(<TravelMatrixModal onClose={vi.fn()} />);
+
+    for (const name of ["Alpha", "Beta", "Gamma"]) {
+      expect(screen.getByRole("columnheader", { name })).toBeInTheDocument();
+      expect(screen.getByRole("rowheader", { name })).toBeInTheDocument();
+    }
+    // La diagonale : un « — » par gymnase (Alpha↔Alpha…).
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("est SYMÉTRIQUE : A→B et B→A montrent la même valeur (même pairKey)", () => {
+    matrixState.data = [row({ id: "r1", venueAId: "v1", venueBId: "v2", drivingMinutes: 15, drivingSource: "AUTO" })];
+    renderWithProviders(<TravelMatrixModal onClose={vi.fn()} />);
+
+    const ab = screen.getByRole("textbox", { name: "En voiture — Alpha → Beta" }) as HTMLInputElement;
+    const ba = screen.getByRole("textbox", { name: "En voiture — Beta → Alpha" }) as HTMLInputElement;
+    expect(ab.value).toBe("15");
+    expect(ba.value).toBe("15");
+  });
+
   it("distingue AUTO et MANUEL d'un coup d'œil (icône + texte)", () => {
     matrixState.data = [row({ id: "r1", venueAId: "v1", venueBId: "v2", drivingMinutes: 15, drivingSource: "AUTO", walkingMinutes: 40, walkingSource: "MANUAL" })];
     renderWithProviders(<TravelMatrixModal onClose={vi.fn()} />);

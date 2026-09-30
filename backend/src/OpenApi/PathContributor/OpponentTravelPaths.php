@@ -42,6 +42,27 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
             parameters: [['name' => 'q', 'in' => 'query', 'required' => true, 'schema' => ['type' => 'string'], 'description' => 'Free-text address to geocode (3 to 200 characters)']],
         )));
 
+        $paths->addPath('/api/geocode/reverse', new PathItem(get: new Operation(
+            operationId: 'reverseGeocode',
+            tags: ['Venue'],
+            responses: [
+                '200' => $this->schemas->jsonResponse('The closest BAN address label for a pair of coordinates (for DISPLAY only — never stored). Best-effort: label is null when the geocoder returns nothing or is unreachable', [
+                    'type' => 'object',
+                    'properties' => [
+                        'label' => ['type' => 'string', 'nullable' => true],
+                    ],
+                ]),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+                '403' => new Response('Not a management member'),
+                '422' => new Response('Missing or out-of-range coordinates'),
+            ],
+            summary: 'Reverse-geocode coordinates to an address label via the Base Adresse Nationale (management only, tenant from JWT)',
+            parameters: [
+                ['name' => 'lat', 'in' => 'query', 'required' => true, 'schema' => ['type' => 'number', 'format' => 'float'], 'description' => 'Latitude (-90 to 90)'],
+                ['name' => 'lon', 'in' => 'query', 'required' => true, 'schema' => ['type' => 'number', 'format' => 'float'], 'description' => 'Longitude (-180 to 180)'],
+            ],
+        )));
+
         $paths->addPath('/api/venue-travel-times/autofill', new PathItem(post: new Operation(
             operationId: 'autofillVenueTravelTimes',
             tags: ['Venue'],

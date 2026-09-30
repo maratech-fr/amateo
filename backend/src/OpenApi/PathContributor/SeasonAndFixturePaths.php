@@ -79,7 +79,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                             'habits' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
                                 'teamId' => ['type' => 'string'],
                                 'teamName' => ['type' => 'string'],
-                                'week' => ['type' => 'string', 'enum' => ['A', 'B', 'ALL']],
+                                'week' => ['type' => 'string', 'enum' => ['A', 'B']],
                                 'dayOfWeek' => ['type' => 'integer'],
                                 'kickoff' => ['type' => 'string', 'description' => '« HH:MM »'],
                             ]]],

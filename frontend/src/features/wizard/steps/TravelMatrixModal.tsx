@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowRight, Car, Footprints, MapPinOff, Pencil, RefreshCw, Search, Wand2 } from "lucide-react";
+import { AlertTriangle, Car, Footprints, MapPinOff, Pencil, RefreshCw, Search, Wand2 } from "lucide-react";
 import { useState } from "react";
 
 import { SourceBadge } from "@/features/matches/SourceBadge";
@@ -81,6 +81,9 @@ function TravelCell({
   // entrée hors bornes.
   const served = null !== minutes ? String(minutes) : "";
 
+  const ModeIcon = "driving" === mode ? Car : Footprints;
+  const modeText = "driving" === mode ? "en voiture" : "à pied";
+
   const commit = (input: HTMLInputElement) => {
     const trimmed = input.value.trim();
     if ("" === trimmed) {
@@ -103,6 +106,9 @@ function TravelCell({
   return (
     <div className="flex flex-col items-start gap-0.5">
       <div className="flex items-center gap-1">
+        {/* Pictogramme du mode (voiture / piéton) — le texte accessible vit dans l'aria-label du champ. */}
+        <ModeIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="sr-only">{modeText}</span>
         <Input
           key={served}
           aria-label={`${"driving" === mode ? "En voiture" : "À pied"} — ${label}`}
@@ -228,15 +234,10 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
     : null;
 
   const needle = filter.trim().toLowerCase();
-  const sorted = [...venues].sort((a, b) => a.name.localeCompare(b.name, "fr"));
-  const sections = sorted
-    .map((from, i) => ({ from, dests: sorted.slice(i + 1) }))
-    .filter((s) => s.dests.length > 0)
-    .map((s) => ({
-      from: s.from,
-      dests: "" === needle ? s.dests : s.dests.filter((d) => d.name.toLowerCase().includes(needle) || s.from.name.toLowerCase().includes(needle)),
-    }))
-    .filter((s) => s.dests.length > 0);
+  // Ordre IDENTIQUE en lignes et en colonnes (la matrice est carrée et symétrique). Le filtre
+  // restreint les LIGNES (« depuis quels gymnases »), les colonnes restent tous les gymnases.
+  const cols = [...venues].sort((a, b) => a.name.localeCompare(b.name, "fr"));
+  const rows = "" === needle ? cols : cols.filter((v) => v.name.toLowerCase().includes(needle));
 
   const footer = showConsent ? undefined : (
     <>
@@ -316,47 +317,69 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
             ) : null}
           </div>
 
-          {/* Corps défilant : couples groupés par gymnase de départ. */}
-          {0 === sections.length ? (
+          {/* Corps défilant : la matrice N×N. Gymnases en LIGNES et en COLONNES (même ordre),
+              diagonale « — », symétrique (A→B = B→A, même `pairKey`). En-têtes collants au scroll. */}
+          {0 === rows.length ? (
             <p className="py-4 text-center text-sm text-muted-foreground">Aucun gymnase ne correspond à « {filter.trim()} ».</p>
           ) : (
-            <div className="flex flex-col gap-4">
-              {sections.map(({ from, dests }) => (
-                <section key={from.id}>
-                  <h3 className="sticky top-0 border-b border-border bg-card py-1.5 text-sm font-medium text-foreground">Depuis {from.name}</h3>
-                  <ul>
-                    {dests.map((dest) => {
-                      const row = rowByPair.get(pairKey(from.id, dest.id));
-                      const reason = reasonByPair.get(pairKey(from.id, dest.id)) ?? null;
-                      const label = `${from.name} → ${dest.name}`;
-                      return (
-                        <li key={dest.id} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-border/50 py-2">
-                          <span className="flex min-w-0 items-center gap-1 truncate text-sm">
-                            <ArrowRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                            <span className="truncate">{dest.name}</span>
-                          </span>
-                          <TravelCell
-                            mode="driving"
-                            minutes={row?.drivingMinutes ?? null}
-                            source={row?.drivingSource ?? null}
-                            reason={reason}
-                            label={label}
-                            onCommit={(m) => commitCell(from, dest, "driving", m)}
-                          />
-                          <TravelCell
-                            mode="walking"
-                            minutes={row?.walkingMinutes ?? null}
-                            source={row?.walkingSource ?? null}
-                            reason={reason}
-                            label={label}
-                            onCommit={(m) => commitCell(from, dest, "walking", m)}
-                          />
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </section>
-              ))}
+            // Défilement horizontal accepté sous 360 px (garde-fou existant, bureau d'abord).
+            <div className="max-h-[24rem] overflow-auto rounded-md border border-border">
+              <table className="border-collapse text-sm">
+                <caption className="sr-only">Temps de trajet entre gymnases, en voiture et à pied, du gymnase de la ligne vers celui de la colonne.</caption>
+                <thead>
+                  <tr>
+                    <th scope="col" className="sticky left-0 top-0 z-20 border-b border-r border-border bg-card px-2 py-1.5 text-left text-xs font-medium text-muted-foreground">Depuis \ vers</th>
+                    {cols.map((col) => (
+                      <th key={col.id} scope="col" className="sticky top-0 z-10 whitespace-nowrap border-b border-border bg-card px-2 py-1.5 text-left font-medium text-foreground">
+                        {col.name}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((from) => (
+                    <tr key={from.id}>
+                      <th scope="row" className="sticky left-0 z-10 whitespace-nowrap border-r border-border bg-card px-2 py-1.5 text-left font-medium text-foreground">
+                        {from.name}
+                      </th>
+                      {cols.map((dest) => {
+                        if (from.id === dest.id) {
+                          return (
+                            <td key={dest.id} className="border-b border-l border-border/50 bg-muted px-2 py-1.5 text-center text-muted-foreground" aria-label={`${from.name} — même gymnase`}>
+                              —
+                            </td>
+                          );
+                        }
+                        const row = rowByPair.get(pairKey(from.id, dest.id));
+                        const reason = reasonByPair.get(pairKey(from.id, dest.id)) ?? null;
+                        const label = `${from.name} → ${dest.name}`;
+                        return (
+                          <td key={dest.id} className="border-b border-l border-border/50 px-2 py-1.5 align-top">
+                            <div className="flex flex-col gap-1">
+                              <TravelCell
+                                mode="driving"
+                                minutes={row?.drivingMinutes ?? null}
+                                source={row?.drivingSource ?? null}
+                                reason={reason}
+                                label={label}
+                                onCommit={(m) => commitCell(from, dest, "driving", m)}
+                              />
+                              <TravelCell
+                                mode="walking"
+                                minutes={row?.walkingMinutes ?? null}
+                                source={row?.walkingSource ?? null}
+                                reason={reason}
+                                label={label}
+                                onCommit={(m) => commitCell(from, dest, "walking", m)}
+                              />
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

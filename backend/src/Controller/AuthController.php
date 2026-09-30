@@ -412,6 +412,8 @@ final class AuthController extends AbstractController
                     'id' => $clubEntity->getId(),
                     'name' => $clubEntity->getName(),
                     'onboardingCompleted' => $clubEntity->getOnboardingCompleted(),
+                    // P4-271 — modèle de week-end A/B : aide visuelle de « Semaine type ».
+                    'weekendAlternates' => $clubEntity->weekendAlternates(),
                     'logoUrl' => $clubEntity->getLogoUrl(),
                     'accentColor' => $clubEntity->getAccentColor(),
                     'accentColorDark' => $clubEntity->getAccentColorDark(),

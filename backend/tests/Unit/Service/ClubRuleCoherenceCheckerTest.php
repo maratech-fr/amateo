@@ -52,8 +52,8 @@ final class ClubRuleCoherenceCheckerTest extends TestCase
         $rule = $this->rule('rule-1', ConstraintRuleType::HARD, [6], null, '21:00');
         $team = $this->team('team-1', 'U13M');
         // Conforme (samedi 20:00) ET hors jour couvert (dimanche 21:30) → aucune collision.
-        $conforming = $this->habit('habit-1', 'team-1', 6, '20:00', MatchWeek::ALL);
-        $offDay = $this->habit('habit-2', 'team-1', 7, '21:30', MatchWeek::ALL);
+        $conforming = $this->habit('habit-1', 'team-1', 6, '20:00', MatchWeek::A);
+        $offDay = $this->habit('habit-2', 'team-1', 7, '21:30', MatchWeek::B);
 
         $result = $this->checker->check([$rule], [$conforming, $offDay], [$team]);
 
@@ -66,7 +66,7 @@ final class ClubRuleCoherenceCheckerTest extends TestCase
         // L'alerte de cohérence vaut pour HARD OU PREFERRED (décision fondateur).
         $rule = $this->rule('rule-1', ConstraintRuleType::PREFERRED, [6], null, '21:00');
         $team = $this->team('team-1', 'U13M');
-        $habit = $this->habit('habit-1', 'team-1', 6, '21:30', MatchWeek::ALL);
+        $habit = $this->habit('habit-1', 'team-1', 6, '21:30', MatchWeek::B);
 
         $result = $this->checker->check([$rule], [$habit], [$team]);
 

@@ -7,10 +7,10 @@ import type { GeocodeCandidate } from "@/shared/api/geocode";
 import * as geocodeApi from "@/shared/api/geocode";
 import { AddressGeocodeField } from "./address-geocode-field";
 
-// `geocodeAddress` est mocké À LA SOURCE (le hook `useGeocode` l'importe depuis là).
+// `geocodeAddress`/`reverseGeocode` sont mockés À LA SOURCE (les hooks les importent de là).
 vi.mock("@/shared/api/geocode", async (importActual) => {
   const actual = await importActual<typeof import("@/shared/api/geocode")>();
-  return { ...actual, geocodeAddress: vi.fn() };
+  return { ...actual, geocodeAddress: vi.fn(), reverseGeocode: vi.fn() };
 });
 
 const CANDIDATES: GeocodeCandidate[] = [
@@ -22,6 +22,7 @@ const baseProps = { placeholder: "Adresse", label: "Adresse", statusWord: "Local
 
 beforeEach(() => {
   vi.mocked(geocodeApi.geocodeAddress).mockReset();
+  vi.mocked(geocodeApi.reverseGeocode).mockReset();
 });
 
 describe("AddressGeocodeField — géocodage partagé", () => {
@@ -86,5 +87,35 @@ describe("AddressGeocodeField — géocodage partagé", () => {
     renderWithProviders(<AddressGeocodeField {...baseProps} address="5 rue X" located={false} onPick={vi.fn()} unlocatedStatus="Siège non localisé — …" />);
     expect(screen.getByText(/Siège non localisé/)).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Adresse" })).toHaveValue("5 rue X");
+  });
+
+  // P4-271 (ajout fondateur) — la vue repliée : adresse saisie vs retrouvée vs inconnue + lien carte.
+  it("localisé AVEC adresse saisie : l'adresse s'affiche, aucun reverse-geocoding", () => {
+    renderWithProviders(<AddressGeocodeField {...baseProps} address="5 rue X" located={true} latitude={45.7} longitude={4.8} onPick={vi.fn()} />);
+    expect(screen.getByText("5 rue X")).toBeInTheDocument();
+    expect(vi.mocked(geocodeApi.reverseGeocode)).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Adresse retrouvée/)).toBeNull();
+  });
+
+  it("localisé SANS adresse mais avec coordonnées : l'adresse RETROUVÉE s'affiche", async () => {
+    vi.mocked(geocodeApi.reverseGeocode).mockResolvedValue("5 Rue Émile Dunière, Villeurbanne");
+    renderWithProviders(<AddressGeocodeField {...baseProps} address={null} located={true} latitude={45.76799} longitude={4.88853} onPick={vi.fn()} />);
+
+    await waitFor(() => expect(vi.mocked(geocodeApi.reverseGeocode)).toHaveBeenCalledWith(45.76799, 4.88853));
+    expect(await screen.findByText("Adresse retrouvée : 5 Rue Émile Dunière, Villeurbanne")).toBeInTheDocument();
+  });
+
+  it("localisé SANS adresse et reverse-geocoding vide : « Adresse inconnue »", async () => {
+    vi.mocked(geocodeApi.reverseGeocode).mockResolvedValue(null);
+    renderWithProviders(<AddressGeocodeField {...baseProps} address={null} located={true} latitude={45.7} longitude={4.8} onPick={vi.fn()} />);
+    expect(await screen.findByText("Adresse retrouvée : Adresse inconnue")).toBeInTheDocument();
+  });
+
+  it("le lien « Voir sur la carte » pointe OpenStreetMap avec les coordonnées, en nouvel onglet sécurisé", () => {
+    renderWithProviders(<AddressGeocodeField {...baseProps} address="5 rue X" located={true} latitude={45.7} longitude={4.8} onPick={vi.fn()} />);
+    const link = screen.getByRole("link", { name: "Voir sur la carte" });
+    expect(link).toHaveAttribute("href", "https://www.openstreetmap.org/?mlat=45.7&mlon=4.8#map=18/45.7/4.8");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { MatchWeek, Team, TeamMatchHabit } from "../api";
-import { buildTypicalWeekend, hasAlternatingWeeks } from "./typicalWeekend";
+import { buildTypicalWeekend } from "./typicalWeekend";
 
 const habit = (over: Partial<TeamMatchHabit> = {}): TeamMatchHabit => ({
   id: "h-1",
@@ -9,7 +9,7 @@ const habit = (over: Partial<TeamMatchHabit> = {}): TeamMatchHabit => ({
   dayOfWeek: 6,
   kickoffTime: "15:30",
   venueId: "venue-1",
-  week: "ALL",
+  week: "A",
   ...over,
 });
 
@@ -95,30 +95,17 @@ describe("buildTypicalWeekend (P1-4 PR E2)", () => {
   });
 });
 
-describe("hasAlternatingWeeks — le club alterne (P4-271)", () => {
-  it("aucun tag A/B (tout « toutes ») → pas d'alternance", () => {
-    expect(hasAlternatingWeeks([habit(), habit({ id: "h-2", week: "ALL" })])).toBe(false);
-  });
-  it("au moins un tag A ou B → alternance", () => {
-    expect(hasAlternatingWeeks([habit({ week: "A" })])).toBe(true);
-    expect(hasAlternatingWeeks([habit(), habit({ id: "h-2", week: "B" })])).toBe(true);
-  });
-});
-
 describe("buildTypicalWeekend — filtrage par semaine A/B (P4-271)", () => {
-  it("la semaine A garde les créneaux tagués A ou « toutes », jamais ceux tagués B", () => {
+  it("la semaine A ne garde que les créneaux tagués A ; la semaine B, que les B", () => {
     const habits = [
       habit({ id: "a", teamId: "t-a", week: "A", venueId: "v", kickoffTime: "13:00" }),
       habit({ id: "b", teamId: "t-b", week: "B", venueId: "v", kickoffTime: "15:00" }),
-      habit({ id: "all", teamId: "t-all", week: "ALL", venueId: "v", kickoffTime: "17:00" }),
     ];
     const weekA = build(habits, "A");
-    const shownA = weekA.blocks.map((blk) => blk.key).sort();
-    expect(shownA).toEqual(["a", "all"]);
+    expect(weekA.blocks.map((blk) => blk.key).sort()).toEqual(["a"]);
 
     const weekB = build(habits, "B");
-    const shownB = weekB.blocks.map((blk) => blk.key).sort();
-    expect(shownB).toEqual(["all", "b"]);
+    expect(weekB.blocks.map((blk) => blk.key).sort()).toEqual(["b"]);
   });
 
   it("sans semaine (vue unique) tous les créneaux sont rendus", () => {

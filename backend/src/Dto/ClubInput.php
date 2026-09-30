@@ -42,6 +42,12 @@ class ClubInput
     #[Groups(['write'])]
     public ?bool $onboardingCompleted = null;
 
+    // P4-271 — modèle de week-end sur deux semaines (A/B). Aide visuelle de l'écran
+    // « Semaine type » ; écriture réservée au gestionnaire (le PUT club est déjà gaté
+    // sur le rôle de gestion). Aucun effet sur le placement.
+    #[Groups(['write'])]
+    public ?bool $weekendAlternates = null;
+
     #[Groups(['write'])]
     #[Assert\Length(max: 64, maxMessage: 'Le code club FFBB ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $ffbbClubCode = null;

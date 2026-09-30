@@ -86,4 +86,11 @@ describe("TeamSelect", () => {
     await user.click(trigger());
     expect(screen.getByRole("textbox", { name: "Rechercher une équipe" })).toBeInTheDocument();
   });
+
+  it("forwards wrapperClassName to the Listbox wrapper (régression 2026-09-06)", () => {
+    render(<TeamSelect aria-label="Équipe" teams={teams} tiers={tiers} wrapperClassName="w-40" value="" onValueChange={vi.fn()} />);
+    const wrapper = trigger().closest("div");
+    expect(wrapper).toHaveClass("w-40");
+    expect(wrapper).not.toHaveClass("w-full");
+  });
 });

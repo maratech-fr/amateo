@@ -1,10 +1,14 @@
 import { Link2 } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { useSetWeekendAlternates } from "@/features/club/queries";
 import { Button } from "@/shared/components/ui/button";
+import { FilterToggle } from "@/shared/components/ui/filter-toggle";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
+import { isManagementRole } from "@/shared/lib/roles";
 import { readFailed } from "@/shared/lib/readState";
+import { useMe } from "@/shared/session/queries";
 
 import type { Team, Venue } from "./api";
 import { HabitsLinksDialog } from "./HabitsLinksDialog";
@@ -30,8 +34,16 @@ export function TypicalWeekPage() {
   const venues = useVenues();
   const habitsQuery = useTeamMatchHabits();
   const categoryDurations = useSportCategoryDurations();
+  const me = useMe();
+  const setWeekendAlternates = useSetWeekendAlternates();
 
   const [linksDialogOpen, setLinksDialogOpen] = useState(false);
+
+  // P4-271 — le réglage d'affichage A/B est une VÉRITÉ SERVEUR (`me.club.weekendAlternates`),
+  // jamais redérivée des créneaux. Seul un gestionnaire peut le changer.
+  const clubId = me.data?.club?.id ?? null;
+  const weekendAlternates = me.data?.club?.weekendAlternates ?? false;
+  const canManage = isManagementRole(me.data?.role);
 
   const teamsMap = useMemo<Map<string, Team>>(() => byId(teams.data), [teams.data]);
   const venuesMap = useMemo<Map<string, Venue>>(() => byId(venues.data), [venues.data]);
@@ -80,13 +92,27 @@ export function TypicalWeekPage() {
         </Button>
       </div>
 
+      {canManage && null !== clubId ? (
+        <div>
+          <FilterToggle
+            checked={weekendAlternates}
+            onChange={(next) => setWeekendAlternates.mutate({ clubId, value: next })}
+          >
+            Mon modèle de week-end a deux semaines (A/B)
+          </FilterToggle>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Aide visuelle pour organiser les créneaux idéaux — sans effet sur le placement.
+          </p>
+        </div>
+      ) : null}
+
       <div className="h-[32rem] lg:h-[40rem]">
-        <TypicalWeekendGrid habits={habitsData} venues={venuesMap} teams={teamsMap} durations={matchDurations} />
+        <TypicalWeekendGrid habits={habitsData} venues={venuesMap} teams={teamsMap} durations={matchDurations} weekendAlternates={weekendAlternates} />
       </div>
 
       {/* Les créneaux idéaux (jour · heure · gymnase · semaine A/B) — l'éditeur porte son propre `<h3>`. */}
       <div id="creneaux" className="border-t border-border pt-4">
-        <IdealSlotsEditor teams={teamsData} venues={venuesData} />
+        <IdealSlotsEditor teams={teamsData} venues={venuesData} tiers={tiersData} weekendAlternates={weekendAlternates} />
       </div>
 
       {linksDialogOpen ? <HabitsLinksDialog teams={teamsData} tiers={tiersData} onClose={() => setLinksDialogOpen(false)} /> : null}

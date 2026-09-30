@@ -1,9 +1,9 @@
-import { AlertTriangle, MapPin, MapPinCheck } from "lucide-react";
+import { AlertTriangle, Map as MapIcon, MapPin, MapPinCheck } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import { errorMessage } from "@/shared/lib/errorMessage";
 import type { GeocodeCandidate } from "@/shared/api/geocode";
-import { useGeocode } from "@/shared/hooks/useGeocode";
+import { useGeocode, useReverseGeocode } from "@/shared/hooks/useGeocode";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
@@ -35,6 +35,9 @@ interface AddressGeocodeFieldProps {
   address?: string | null;
   /** Une localisation existe déjà (coordonnées posées). */
   located: boolean;
+  /** Coordonnées posées — servent le lien « Voir sur la carte » et le reverse-geocoding. */
+  latitude?: number | null;
+  longitude?: number | null;
   /** Le candidat FÉDÉRAL choisi — appelé au clic, jamais avant. */
   onPick: (candidate: GeocodeCandidate) => void;
   placeholder: string;
@@ -46,13 +49,21 @@ interface AddressGeocodeFieldProps {
   unlocatedStatus?: ReactNode;
 }
 
-export function AddressGeocodeField({ address, located, onPick, placeholder, label, statusWord, unlocatedStatus }: AddressGeocodeFieldProps) {
+export function AddressGeocodeField({ address, located, latitude, longitude, onPick, placeholder, label, statusWord, unlocatedStatus }: AddressGeocodeFieldProps) {
   const [editing, setEditing] = useState(!located);
   const [query, setQuery] = useState(address ?? "");
   const [candidates, setCandidates] = useState<GeocodeCandidate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState("");
   const geocode = useGeocode();
+
+  const hasAddress = null != address && "" !== address;
+  const hasCoords = null != latitude && null != longitude;
+  const collapsed = located && !editing;
+  // Aucune adresse saisie mais des coordonnées posées (seed/FFBB) → on RETROUVE une adresse
+  // pour l'afficher (jamais stockée). `enabled` gouverne le tir : le hook est toujours appelé.
+  const reverse = useReverseGeocode(latitude, longitude, collapsed && !hasAddress && hasCoords);
+  const mapHref = hasCoords ? `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=18/${latitude}/${longitude}` : null;
 
   const runSearch = () => {
     const q = query.trim();
@@ -77,14 +88,27 @@ export function AddressGeocodeField({ address, located, onPick, placeholder, lab
 
   // Vue REPLIÉE : localisé et on n'édite pas. On montre l'état, jamais un champ qui inviterait
   // à réécrire par mégarde.
-  if (located && !editing) {
+  if (collapsed) {
     return (
       <p role="status" className="flex flex-wrap items-center gap-2 text-sm">
         <span className="inline-flex items-center gap-1 text-muted-foreground">
           <MapPinCheck className="size-4 text-accent" aria-hidden="true" />
           {statusWord}
         </span>
-        {null != address && "" !== address ? <span className="truncate text-xs text-muted-foreground">{address}</span> : null}
+        {hasAddress ? (
+          <span className="truncate text-xs text-muted-foreground">{address}</span>
+        ) : hasCoords ? (
+          // Pas d'adresse saisie : on affiche celle RETROUVÉE (libellé distinct d'une adresse saisie).
+          <span className="truncate text-xs text-muted-foreground">
+            {reverse.isPending ? "Adresse en cours de recherche…" : `Adresse retrouvée : ${reverse.data ?? "Adresse inconnue"}`}
+          </span>
+        ) : null}
+        {null !== mapHref ? (
+          <a href={mapHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-accent underline">
+            <MapIcon className="size-3.5" aria-hidden="true" />
+            Voir sur la carte
+          </a>
+        ) : null}
         <Button
           size="sm"
           variant="ghost"

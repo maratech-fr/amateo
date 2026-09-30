@@ -170,7 +170,7 @@ final class MatchPlacementContext extends BaseContext
     public function unCreneauIdealSamedi2130(): void
     {
         $this->habitIdealId = $this->createdId(
-            $this->apiPost('team_match_habits', ['teamId' => $this->teamId, 'dayOfWeek' => 6, 'kickoffTime' => '21:30', 'venueId' => $this->venueId, 'week' => 'ALL'], $this->token),
+            $this->apiPost('team_match_habits', ['teamId' => $this->teamId, 'dayOfWeek' => 6, 'kickoffTime' => '21:30', 'venueId' => $this->venueId, 'week' => 'A'], $this->token),
             'créneau idéal tardif',
         );
     }

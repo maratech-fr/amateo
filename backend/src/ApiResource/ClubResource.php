@@ -86,6 +86,10 @@ class ClubResource
     #[Groups(['read'])]
     public bool $onboardingCompleted = false;
 
+    /** Modèle de week-end sur deux semaines (A/B) — aide visuelle « Semaine type ». */
+    #[Groups(['read'])]
+    public bool $weekendAlternates = false;
+
     #[Groups(['read'])]
     public ?string $ffbbClubCode = null;
 
@@ -117,6 +121,7 @@ class ClubResource
         $dto->timezone = $entity->getTimezone();
         $dto->locale = $entity->getLocale();
         $dto->onboardingCompleted = $entity->getOnboardingCompleted();
+        $dto->weekendAlternates = $entity->weekendAlternates();
         $dto->ffbbClubCode = $entity->getFfbbClubCode();
         $dto->logoUrl = $entity->getLogoUrl();
         $dto->accentColor = $entity->getAccentColor();

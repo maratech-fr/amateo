@@ -7,6 +7,8 @@ namespace App\Tests\Unit\Service\Geo;
 use App\Service\Geo\BanGeocodingClient;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
+use Symfony\Component\HttpClient\Exception\TransportException;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
@@ -52,5 +54,54 @@ final class BanGeocodingClientTest extends TestCase
         self::assertSame(45.75, $top['latitude']);
         self::assertSame(4.85, $top['longitude']);
         self::assertSame('69100', $top['postalCode']);
+    }
+
+    // ── reverse() — P4-271 (ajout fondateur) : best-effort, jamais d'exception ──────────
+
+    public function testReverseReturnsTheClosestAddressLabel(): void
+    {
+        $body = (string) json_encode(['features' => [[
+            'properties' => ['label' => '5 Rue Émile Dunière, Villeurbanne', 'score' => 0.9],
+            'geometry' => ['coordinates' => [4.85, 45.75]],
+        ]]], \JSON_THROW_ON_ERROR);
+
+        $client = new BanGeocodingClient(new MockHttpClient(static fn (): MockResponse => new MockResponse($body)));
+
+        self::assertSame('5 Rue Émile Dunière, Villeurbanne', $client->reverse(45.75, 4.85));
+    }
+
+    public function testReverseReturnsNullWhenNoFeatureIsReturned(): void
+    {
+        $client = new BanGeocodingClient(new MockHttpClient(static fn (): MockResponse => new MockResponse('{"features":[]}')));
+
+        self::assertNull($client->reverse(45.75, 4.85));
+    }
+
+    public function testReverseSwallowsTransportFailuresAndReturnsNull(): void
+    {
+        $client = new BanGeocodingClient(new MockHttpClient(static function (): MockResponse {
+            throw new TransportException('boom');
+        }));
+
+        // Contrairement à geocode(), reverse() est best-effort : l'échec devient null, jamais une exception.
+        self::assertNull($client->reverse(45.75, 4.85));
+    }
+
+    public function testReverseAbortsAnOversizedResponseAndReturnsNull(): void
+    {
+        $client = new BanGeocodingClient(new MockHttpClient(static fn (): MockResponse => new MockResponse(str_repeat('x', 1_100_000))));
+
+        self::assertNull($client->reverse(45.75, 4.85));
+    }
+
+    public function testReverseRejectsOutOfRangeCoordinatesWithoutAnyCall(): void
+    {
+        // Un client qui EXPLOSE si on l'appelle : la garde de bornes doit court-circuiter avant.
+        $client = new BanGeocodingClient(new MockHttpClient(static function (): MockResponse {
+            throw new RuntimeException('le réseau ne doit pas être touché pour des coordonnées hors bornes');
+        }));
+
+        self::assertNull($client->reverse(200.0, 4.85));
+        self::assertNull($client->reverse(45.75, 999.0));
     }
 }

@@ -19,7 +19,7 @@ use App\State\Provider\TeamMatchHabitStateProvider;
 use DateTimeImmutable;
 use Symfony\Component\Serializer\Attribute\Groups;
 
-/** A team's ideal match slot — one per team, venue optional, tagged week A/B/ALL. */
+/** A team's ideal match slot — one per team, venue optional, tagged week A or B. */
 #[ApiResource(shortName: 'TeamMatchHabit', operations: [
     new GetCollection,
     new Get,
@@ -55,9 +55,9 @@ class TeamMatchHabitResource
     #[Groups(['read'])]
     public ?string $venueId = null;
 
-    /** Semaine d'alternance du créneau idéal — A | B | ALL. */
+    /** Semaine d'alternance du créneau idéal — A | B. */
     #[Groups(['read'])]
-    public string $week = 'ALL';
+    public string $week = 'A';
 
     public static function fromEntity(TeamMatchHabit $entity): self
     {

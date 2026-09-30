@@ -35,7 +35,7 @@ function fx(over: Partial<Fixture> = {}): Fixture {
 
 /** ISO weekday of 2026-10-03 is Saturday = 6. */
 function habit(over: Partial<TeamMatchHabit> = {}): TeamMatchHabit {
-  return { id: over.id ?? "h", teamId: over.teamId ?? "team-1", dayOfWeek: over.dayOfWeek ?? 6, kickoffTime: over.kickoffTime ?? "16:00", venueId: over.venueId ?? null, week: over.week ?? "ALL" };
+  return { id: over.id ?? "h", teamId: over.teamId ?? "team-1", dayOfWeek: over.dayOfWeek ?? 6, kickoffTime: over.kickoffTime ?? "16:00", venueId: over.venueId ?? null, week: over.week ?? "A" };
 }
 
 function conflictOn(fixtureId: string): Conflict {

@@ -60,6 +60,25 @@ final class TeamMatchHabitVenueClearApiTest extends WebTestCase
         self::assertSame('A', $updated['week'] ?? null, 'les autres champs restent posés');
     }
 
+    public function testWeekOnlyAcceptsAOrBAndDefaultsToAWhenOmitted(): void
+    {
+        $team = $this->team();
+
+        // « ALL » n'existe plus dans l'enum : le validateur de choix refuse (422).
+        $this->requestJson('POST', '/api/team_match_habits', ['teamId' => $team, 'dayOfWeek' => 6, 'kickoffTime' => '15:30', 'week' => 'ALL']);
+        self::assertResponseStatusCodeSame(422, '« ALL » n\'est plus une semaine valide');
+
+        // Omise, la semaine retombe sur le défaut A.
+        $created = $this->requestJson('POST', '/api/team_match_habits', ['teamId' => $team, 'dayOfWeek' => 6, 'kickoffTime' => '15:30']);
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame('A', $created['week'] ?? null, 'la semaine omise vaut A');
+
+        // B est accepté.
+        $b = $this->requestJson('PUT', '/api/team_match_habits/' . $created['id'], ['teamId' => $team, 'dayOfWeek' => 6, 'kickoffTime' => '15:30', 'week' => 'B']);
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame('B', $b['week'] ?? null);
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();

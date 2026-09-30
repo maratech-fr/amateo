@@ -34,7 +34,7 @@ class TeamMatchHabitInput
     #[Groups(['write'])]
     public ?string $venueId = null;
 
-    // Semaine d'alternance du créneau idéal (A/B/toutes — P4-271). Omise ⇒ `ALL`
+    // Semaine d'alternance du créneau idéal (A ou B — P4-271). Omise ⇒ `A`
     // (le processor pose le défaut), pour qu'un ancien payload reste valide.
     #[Assert\Choice(callback: [MatchWeek::class, 'values'])]
     #[Groups(['write'])]

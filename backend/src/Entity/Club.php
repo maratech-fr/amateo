@@ -86,6 +86,14 @@ class Club
     #[ORM\Column(type: 'boolean')]
     private bool $onboardingCompleted = false;
 
+    // P4-271 — le club a-t-il un modèle de week-end sur deux semaines (A/B) ? Aide
+    // visuelle PURE pour le gestionnaire : quand vrai, l'écran « Semaine type »
+    // sépare les créneaux idéaux en semaines A et B, sinon une vue unique les montre
+    // tous. Aucun effet sur le placement — le tag de semaine ne voyage jamais au
+    // moteur. Décoché, les créneaux restés en B ne sont pas réécrits (réversible).
+    #[ORM\Column(type: 'boolean', options: ['default' => false])]
+    private bool $weekendAlternates = false;
+
     // P1-5 — l'abonnement se paie PAR SAISON (décision fondateur 2026-08-04) :
     // l'année-pivot de la DERNIÈRE saison réglée (2026 = saison 2026-2027). La
     // bascule vers la saison N+1 exige paidSeasonYear >= N+1 — le gate est la
@@ -507,6 +515,18 @@ class Club
     public function setOnboardingCompleted(bool $onboardingCompleted): self
     {
         $this->onboardingCompleted = $onboardingCompleted;
+
+        return $this;
+    }
+
+    public function weekendAlternates(): bool
+    {
+        return $this->weekendAlternates;
+    }
+
+    public function setWeekendAlternates(bool $weekendAlternates): self
+    {
+        $this->weekendAlternates = $weekendAlternates;
 
         return $this;
     }

@@ -2769,6 +2769,9 @@
                                                 "onboardingCompleted": {
                                                     "type": "boolean"
                                                 },
+                                                "weekendAlternates": {
+                                                    "type": "boolean"
+                                                },
                                                 "logoUrl": {
                                                     "type": "string",
                                                     "nullable": true
@@ -12290,6 +12293,7 @@
                                                             "VENUE_OVERLAP",
                                                             "LEAGUE_WINDOW_VIOLATION",
                                                             "CLUB_RULE_VIOLATION",
+                                                            "TEAM_VENUE_FORBIDDEN",
                                                             "MATCH_MATCH",
                                                             "MATCH_TRAINING",
                                                             "VENUE_UNAVAILABLE",
@@ -13050,6 +13054,7 @@
                                                             "no_access_window",
                                                             "no_league_intersection",
                                                             "club_rule_no_slot",
+                                                            "team_venue_forbidden",
                                                             "venue_unavailable",
                                                             "venue_full",
                                                             "not_selected"
@@ -13398,8 +13403,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                         "A",
-                                                                        "B",
-                                                                        "ALL"
+                                                                        "B"
                                                                     ]
                                                                 },
                                                                 "dayOfWeek": {
@@ -21640,6 +21644,64 @@
                 ]
             }
         },
+        "/api/geocode/reverse": {
+            "get": {
+                "operationId": "reverseGeocode",
+                "tags": [
+                    "Venue"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The closest BAN address label for a pair of coordinates (for DISPLAY only \u2014 never stored). Best-effort: label is null when the geocoder returns nothing or is unreachable",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "label": {
+                                            "type": "string",
+                                            "nullable": true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "422": {
+                        "description": "Missing or out-of-range coordinates"
+                    }
+                },
+                "summary": "Reverse-geocode coordinates to an address label via the Base Adresse Nationale (management only, tenant from JWT)",
+                "parameters": [
+                    {
+                        "name": "lat",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "number",
+                            "format": "float"
+                        },
+                        "description": "Latitude (-90 to 90)"
+                    },
+                    {
+                        "name": "lon",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "number",
+                            "format": "float"
+                        },
+                        "description": "Longitude (-180 to 180)"
+                    }
+                ]
+            }
+        },
         "/api/venue-travel-times/autofill": {
             "post": {
                 "operationId": "autofillVenueTravelTimes",
@@ -25091,6 +25153,11 @@
                         "default": false,
                         "type": "boolean"
                     },
+                    "weekendAlternates": {
+                        "description": "Mod\u00e8le de week-end sur deux semaines (A/B) \u2014 aide visuelle \u00ab Semaine type \u00bb.",
+                        "default": false,
+                        "type": "boolean"
+                    },
                     "ffbbClubCode": {
                         "type": [
                             "string",
@@ -25179,6 +25246,12 @@
                         ]
                     },
                     "onboardingCompleted": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "weekendAlternates": {
                         "type": [
                             "boolean",
                             "null"
@@ -25281,6 +25354,11 @@
                         "type": "string"
                     },
                     "onboardingCompleted": {
+                        "default": false,
+                        "type": "boolean"
+                    },
+                    "weekendAlternates": {
+                        "description": "Mod\u00e8le de week-end sur deux semaines (A/B) \u2014 aide visuelle \u00ab Semaine type \u00bb.",
                         "default": false,
                         "type": "boolean"
                     },
@@ -25390,6 +25468,11 @@
                                 "type": "string"
                             },
                             "onboardingCompleted": {
+                                "default": false,
+                                "type": "boolean"
+                            },
+                            "weekendAlternates": {
+                                "description": "Mod\u00e8le de week-end sur deux semaines (A/B) \u2014 aide visuelle \u00ab Semaine type \u00bb.",
                                 "default": false,
                                 "type": "boolean"
                             },
@@ -29011,7 +29094,7 @@
                         ]
                     },
                     "daysOfWeek": {
-                        "minItems": 1,
+                        "description": "Jours ISO couverts (1=lundi..7=dimanche). Requis pour une r\u00e8gle CLUB (le\nprocesseur le refuse si vide), non pertinent \u2014 donc null/refus\u00e9 \u2014 pour une\ninterdiction de gymnase TEAM. Seul le FORMAT est gard\u00e9 ici (bornes 1..7).",
                         "type": [
                             "array",
                             "null"
@@ -29046,8 +29129,7 @@
                     }
                 },
                 "required": [
-                    "ruleType",
-                    "daysOfWeek"
+                    "ruleType"
                 ]
             },
             "MatchConstraint.html": {
@@ -32813,7 +32895,7 @@
             },
             "TeamMatchHabit": {
                 "type": "object",
-                "description": "A team's ideal match slot \u2014 one per team, venue optional, tagged week A/B/ALL.",
+                "description": "A team's ideal match slot \u2014 one per team, venue optional, tagged week A or B.",
                 "properties": {
                     "id": {
                         "default": "",
@@ -32851,15 +32933,15 @@
                         ]
                     },
                     "week": {
-                        "description": "Semaine d'alternance du cr\u00e9neau id\u00e9al \u2014 A | B | ALL.",
-                        "default": "ALL",
+                        "description": "Semaine d'alternance du cr\u00e9neau id\u00e9al \u2014 A | B.",
+                        "default": "A",
                         "type": "string"
                     }
                 }
             },
             "TeamMatchHabit.TeamMatchHabitInput": {
                 "type": "object",
-                "description": "A team's ideal match slot \u2014 one per team, venue optional, tagged week A/B/ALL.",
+                "description": "A team's ideal match slot \u2014 one per team, venue optional, tagged week A or B.",
                 "required": [
                     "teamId",
                     "dayOfWeek",
@@ -32904,8 +32986,7 @@
                     "week": {
                         "enum": [
                             "A",
-                            "B",
-                            "ALL"
+                            "B"
                         ],
                         "type": [
                             "string",
@@ -32916,7 +32997,7 @@
             },
             "TeamMatchHabit.html": {
                 "type": "object",
-                "description": "A team's ideal match slot \u2014 one per team, venue optional, tagged week A/B/ALL.",
+                "description": "A team's ideal match slot \u2014 one per team, venue optional, tagged week A or B.",
                 "properties": {
                     "id": {
                         "default": "",
@@ -32954,8 +33035,8 @@
                         ]
                     },
                     "week": {
-                        "description": "Semaine d'alternance du cr\u00e9neau id\u00e9al \u2014 A | B | ALL.",
-                        "default": "ALL",
+                        "description": "Semaine d'alternance du cr\u00e9neau id\u00e9al \u2014 A | B.",
+                        "default": "A",
                         "type": "string"
                     }
                 }
@@ -33004,14 +33085,14 @@
                                 ]
                             },
                             "week": {
-                                "description": "Semaine d'alternance du cr\u00e9neau id\u00e9al \u2014 A | B | ALL.",
-                                "default": "ALL",
+                                "description": "Semaine d'alternance du cr\u00e9neau id\u00e9al \u2014 A | B.",
+                                "default": "A",
                                 "type": "string"
                             }
                         }
                     }
                 ],
-                "description": "A team's ideal match slot \u2014 one per team, venue optional, tagged week A/B/ALL."
+                "description": "A team's ideal match slot \u2014 one per team, venue optional, tagged week A or B."
             },
             "TeamPeriodOverride": {
                 "type": "object",
@@ -35296,7 +35377,7 @@
         },
         {
             "name": "TeamMatchHabit",
-            "description": "A team's ideal match slot \u2014 one per team, venue optional, tagged week A/B/ALL."
+            "description": "A team's ideal match slot \u2014 one per team, venue optional, tagged week A or B."
         },
         {
             "name": "TeamPeriodOverride",

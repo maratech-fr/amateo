@@ -340,7 +340,7 @@ final class SeasonTransitionService
             // A dangling venue reference degrades to a day+time habit — the
             // habit survives, its venue anchor does not.
             $copy->setVenueId(null !== $habit->getVenueId() ? ($venueMap[$habit->getVenueId()] ?? null) : null);
-            // P4-271 — le tag de semaine A/B/toutes se renouvelle avec la saison.
+            // P4-271 — le tag de semaine A/B se renouvelle avec la saison.
             $copy->setWeek($habit->getWeek());
             $this->entityManager->persist($copy);
         }

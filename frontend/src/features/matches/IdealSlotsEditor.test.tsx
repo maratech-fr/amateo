@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -39,66 +39,86 @@ beforeEach(() => {
 });
 
 describe("IdealSlotsEditor (P4-271)", () => {
-  it("rend une ligne par équipe", () => {
-    renderWithProviders(<IdealSlotsEditor teams={TEAMS} venues={VENUES} />);
+  it("liste vide : aucune ligne d'équipe, un message, et le bouton Ajouter", () => {
+    renderWithProviders(<IdealSlotsEditor teams={TEAMS} venues={VENUES} weekendAlternates={true} />);
     expect(screen.getByRole("heading", { name: "Créneaux idéaux", level: 3 })).toBeInTheDocument();
+    // Aucune équipe n'a de créneau → aucune ligne SM1/SM2 au repos.
+    expect(screen.queryByText("SM1")).toBeNull();
+    expect(screen.queryByText("SM2")).toBeNull();
+    expect(screen.getByRole("button", { name: "Ajouter un créneau idéal" })).toBeInTheDocument();
+  });
+
+  it("ne liste QUE les équipes ayant un créneau (au repos, en résumé)", () => {
+    habitsState.data = [habit()]; // h1 → SM1
+    renderWithProviders(<IdealSlotsEditor teams={TEAMS} venues={VENUES} weekendAlternates={true} />);
     expect(screen.getByText("SM1")).toBeInTheDocument();
-    expect(screen.getByText("SM2")).toBeInTheDocument();
+    expect(screen.queryByText("SM2")).toBeNull(); // SM2 n'a pas de créneau
+    // Résumé compact : semaine + jour/heure + gymnase.
+    expect(screen.getByText("Semaine A · Samedi 15:30 · Alpha")).toBeInTheDocument();
   });
 
-  it("crée un créneau idéal : heure posée, gymnase omis ⇒ venueId null explicite", async () => {
+  it("Ajouter : choisir une équipe SANS créneau, poser l'heure ⇒ POST (semaine A par défaut, gymnase null)", async () => {
     const user = userEvent.setup();
-    renderWithProviders(<IdealSlotsEditor teams={TEAMS} venues={VENUES} />);
+    renderWithProviders(<IdealSlotsEditor teams={TEAMS} venues={VENUES} weekendAlternates={true} />);
 
+    await user.click(screen.getByRole("button", { name: "Ajouter un créneau idéal" }));
+    await pickListboxOption(user, "Équipe du nouveau créneau idéal", "SM1");
     fireEvent.change(screen.getByLabelText("Heure du créneau idéal de SM1"), { target: { value: "12:15" } });
-    await user.selectOptions(screen.getByLabelText("Semaine du créneau idéal de SM1"), "A");
-    await user.click(screen.getByRole("button", { name: "Enregistrer le créneau idéal de SM1" }));
+    await user.click(screen.getByRole("button", { name: "Enregistrer le nouveau créneau idéal" }));
 
-    expect(createHabit).toHaveBeenCalledWith({ teamId: "t1", dayOfWeek: 6, kickoffTime: "12:15", week: "A", venueId: null });
+    expect(createHabit).toHaveBeenCalledWith({ teamId: "t1", dayOfWeek: 6, kickoffTime: "12:15", week: "A", venueId: null }, expect.anything());
   });
 
-  it("met à jour un créneau existant (changer la semaine) via PUT", async () => {
+  it("modifie un créneau existant : ✎ déplie, changer la semaine ⇒ PUT", async () => {
     const user = userEvent.setup();
     habitsState.data = [habit({ week: "A" })];
-    renderWithProviders(<IdealSlotsEditor teams={TEAMS} venues={VENUES} />);
+    renderWithProviders(<IdealSlotsEditor teams={TEAMS} venues={VENUES} weekendAlternates={true} />);
 
+    await user.click(screen.getByRole("button", { name: "Modifier le créneau idéal de SM1" }));
     await user.selectOptions(screen.getByLabelText("Semaine du créneau idéal de SM1"), "B");
     await user.click(screen.getByRole("button", { name: "Enregistrer le créneau idéal de SM1" }));
 
-    expect(updateHabit).toHaveBeenCalledWith({ id: "h1", input: { teamId: "t1", dayOfWeek: 6, kickoffTime: "15:30", week: "B", venueId: "v1" } });
+    expect(updateHabit).toHaveBeenCalledWith({ id: "h1", input: { teamId: "t1", dayOfWeek: 6, kickoffTime: "15:30", week: "B", venueId: "v1" } }, expect.anything());
   });
 
-  it("RETIRE le gymnase d'un créneau : choisir « — » ⇒ PUT venueId null", async () => {
+  it("RETIRE le gymnase d'un créneau : ✎ déplie, choisir « — » ⇒ PUT venueId null", async () => {
     const user = userEvent.setup();
     habitsState.data = [habit({ venueId: "v1" })];
-    renderWithProviders(<IdealSlotsEditor teams={TEAMS} venues={VENUES} />);
+    renderWithProviders(<IdealSlotsEditor teams={TEAMS} venues={VENUES} weekendAlternates={true} />);
 
+    await user.click(screen.getByRole("button", { name: "Modifier le créneau idéal de SM1" }));
     await pickListboxOption(user, "Gymnase du créneau idéal de SM1", "—");
     await user.click(screen.getByRole("button", { name: "Enregistrer le créneau idéal de SM1" }));
 
-    expect(updateHabit).toHaveBeenCalledWith({ id: "h1", input: { teamId: "t1", dayOfWeek: 6, kickoffTime: "15:30", week: "A", venueId: null } });
+    expect(updateHabit).toHaveBeenCalledWith({ id: "h1", input: { teamId: "t1", dayOfWeek: 6, kickoffTime: "15:30", week: "A", venueId: null } }, expect.anything());
   });
 
-  it("supprime un créneau idéal existant", async () => {
+  it("supprime un créneau idéal existant (au repos)", async () => {
     const user = userEvent.setup();
     habitsState.data = [habit()];
-    renderWithProviders(<IdealSlotsEditor teams={TEAMS} venues={VENUES} />);
+    renderWithProviders(<IdealSlotsEditor teams={TEAMS} venues={VENUES} weekendAlternates={true} />);
 
     await user.click(screen.getByRole("button", { name: "Supprimer le créneau idéal de SM1" }));
     expect(deleteHabit).toHaveBeenCalledWith("h1");
   });
 
-  it("le bouton Enregistrer reste désactivé tant que rien n'a changé (créneau existant) ou sans heure (création)", () => {
-    habitsState.data = [habit()];
-    renderWithProviders(<IdealSlotsEditor teams={TEAMS} venues={VENUES} />);
-    // SM1 a un créneau non modifié → Enregistrer désactivé ; SM2 n'a pas d'heure → désactivé aussi.
-    expect(screen.getByRole("button", { name: "Enregistrer le créneau idéal de SM1" })).toBeDisabled();
-    const sm2Save = screen.getByRole("button", { name: "Enregistrer le créneau idéal de SM2" });
-    expect(sm2Save).toBeDisabled();
-    // SM2 n'a pas de bouton Supprimer (aucun créneau).
-    expect(screen.queryByRole("button", { name: "Supprimer le créneau idéal de SM2" })).toBeNull();
-    // garde-fou : within limite l'assertion à une ligne, jamais un match global fortuit.
-    expect(within(document.body).getAllByRole("listitem").length).toBeGreaterThanOrEqual(2);
+  it("club sans alternance : le champ Semaine est masqué (édition) et absent du résumé", async () => {
+    const user = userEvent.setup();
+    habitsState.data = [habit({ week: "A" })];
+    renderWithProviders(<IdealSlotsEditor teams={TEAMS} venues={VENUES} weekendAlternates={false} />);
+
+    // Résumé sans « Semaine A ».
+    expect(screen.getByText("Samedi 15:30 · Alpha")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Modifier le créneau idéal de SM1" }));
+    expect(screen.queryByLabelText("Semaine du créneau idéal de SM1")).toBeNull();
+  });
+
+  it("club alternant : le champ Semaine est visible à l'ajout", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<IdealSlotsEditor teams={TEAMS} venues={VENUES} weekendAlternates={true} />);
+    await user.click(screen.getByRole("button", { name: "Ajouter un créneau idéal" }));
+    await pickListboxOption(user, "Équipe du nouveau créneau idéal", "SM1");
+    expect(screen.getByLabelText("Semaine du créneau idéal de SM1")).toBeInTheDocument();
   });
 
   it("affiche l'alerte de cohérence (calculée serveur) sous le créneau qui heurte une règle du club (P4-272 ③)", () => {
@@ -107,10 +127,9 @@ describe("IdealSlotsEditor (P4-271)", () => {
       byRule: [],
       byHabit: [{ habitId: "h1", rules: [{ ruleId: "r1", ruleType: "HARD", daysOfWeek: [6], kickoffMin: null, kickoffMax: "21:00" }] }],
     };
-    renderWithProviders(<IdealSlotsEditor teams={TEAMS} venues={VENUES} />);
+    renderWithProviders(<IdealSlotsEditor teams={TEAMS} venues={VENUES} weekendAlternates={true} />);
 
     expect(screen.getByText("Heurte la règle du club « pas après 21h ».")).toBeInTheDocument();
-    // Aucune alerte sur SM2 (pas de créneau, pas d'entrée byHabit).
     expect(screen.getAllByText(/Heurte la règle du club/)).toHaveLength(1);
   });
 });
