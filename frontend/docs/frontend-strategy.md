@@ -1,13 +1,17 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-09-30 (`documentation-update`, rotation de fraîcheur). Re-confronté au code :
-versions du § Stack Versions Fixed toujours exactes contre `frontend/package.json` (react ^19.2.8,
-vite ^8.2.2, typescript ~6.0.2, tailwindcss ^4.3.0, @tanstack/react-query ^5.102.8, zustand
-^5.0.15) ; `msw` déclaré (`^2.15.0`) toujours sans import dans `src`/`tests` ✓ ; `shared/api/errors.ts`
-toujours absent (grep vide), la maison unique d'erreur reste `shared/lib/errorMessage.ts` ✓ ;
-`testTimeout: 15_000` (`vitest.config.ts:49`) et `asyncUtilTimeout: 5_000`
-(`src/test/setup.ts:28`) toujours en vigueur ✓. Chronique des passes antérieures :
-`git log -p --follow` ce fichier.
+Last verified @ 2026-09-30 (`documentation-update`, dépendances inutiles retirées). Re-confronté au
+code : versions du § Stack Versions Fixed toujours exactes contre `frontend/package.json` (react
+^19.2.8, vite ^8.2.2, typescript ~6.0.2, tailwindcss ^4.3.0, @tanstack/react-query ^5.102.8,
+zustand ^5.0.15) ; **`msw`, `storybook`/`@storybook/react-vite`, `@vitest/ui`,
+`tailwindcss-animate` et `@tanstack/react-query-devtools` RETIRÉS de `package.json`** (chore
+nettoyage, 2026-09-30 — `msw` n'avait jamais eu d'import dans `src`/`tests`, Storybook n'allait pas
+au-delà d'une story, les trois autres étaient inertes) ; `shared/api/errors.ts` toujours absent
+(grep vide), la maison unique d'erreur reste `shared/lib/errorMessage.ts` ✓ ; `testTimeout: 15_000`
+(`vitest.config.ts:49`) et `asyncUtilTimeout: 5_000` (`src/test/setup.ts:28`) toujours en vigueur
+✓ ; `wizard/steps/PeriodStructure.test.tsx` renommé `PeriodSteps.test.tsx` (même chore) — le test
+« déplacer un créneau réservé » y vit toujours (`PeriodSteps.test.tsx:753`). Chronique des passes
+antérieures : `git log -p --follow` ce fichier.
 
 > Fixe le mandat de test, les versions de la stack, les anti-patterns et les règles de
 > préservation d'infrastructure. Le détail fonctionnel (routes, composants, wizard) est dans
@@ -59,8 +63,8 @@ cycle RED → GREEN → REFACTOR avant d'être considéré livrable.
   `specs/courantes/etat-des-lieux.md` §2), pas un reliquat.
 - **Routes** : tests de navigation (React Router memory router), guards d'auth, redirections.
 - **Intégration API** : `vi.mock` du module `queries`/`api` de la feature — l'outil de mock EN
-  SERVICE dans toute la suite —, vérification des payloads et headers. `msw` est RÉSERVÉ (voir la
-  table d'outillage) : il n'est utilisé nulle part aujourd'hui.
+  SERVICE dans toute la suite, et le SEUL depuis le retrait de `msw` (jamais importé, chore
+  nettoyage 2026-09-30) —, vérification des payloads et headers.
 
 ⚑ **Piège du barrel `./api` — le mock suit le SPÉCIFICATEUR importé, pas le module « final »**
 (`features/matches/api/`, barrel `index.ts` + 8 modules par domaine, FRT-33, 2026-09-23) : un
@@ -182,7 +186,7 @@ pas spontanément à la charge de la machine. Les échecs mesurés sous contenti
 **1,3 s**, très loin des 5 s qu'on croyait en cause.
 
 ⚑ **Pourquoi 15 s et pas 5 s.** Le cas le plus lourd du dépôt met **5,2 s sans aucune charge
-concurrente** (`PeriodStructure.test.tsx` › « déplacer un créneau réservé » : une grille hebdo
+concurrente** (`PeriodSteps.test.tsx` › « déplacer un créneau réservé » : une grille hebdo
 entière, des centaines de cellules, re-rendue à chacun de ses quatre gestes). C'est du travail
 réel. Un plafond qui rougit là-dessus ne mesure plus rien — il produit du bruit selon qui
 tourne à côté. ⚠ **Le corollaire à ne pas perdre** : `slowTestThreshold` est posé à **3 s** pour
@@ -195,17 +199,16 @@ au-delà de 3 s est colorié dans le rapport : c'est là qu'on regarde si le sc�
 | Outil | Version (`frontend/package.json`) | Rôle |
 |------|---------|------|
 | Vitest | 4.x | Runner de test (config `vitest.config.ts` : jsdom, `globals`, setup `src/test/setup.ts`, exclut `tests/e2e/`) |
-| @vitest/coverage-v8 · @vitest/ui | 4.x | Couverture (`vitest run --coverage`, `make coverage`, job CI `frontend-coverage` — mesure et cliquet détaillés dans `docs/testing/test-coverage-map.md`) · UI de debug |
+| @vitest/coverage-v8 | 4.x | Couverture (`vitest run --coverage`, `make coverage`, job CI `frontend-coverage` — mesure et cliquet détaillés dans `docs/testing/test-coverage-map.md`) |
 | @testing-library/react | 16.x | Rendu et queries DOM |
 | @testing-library/user-event | 14.x | Simulation d'interaction |
 | @testing-library/jest-dom | 7.x | Matchers DOM |
 | jsdom | 30.x | Environnement DOM |
-| `vi.mock` (Vitest) | — | **Mock réseau EN SERVICE** : remplace NOTRE module (`queries`/`api` de la feature). C'est l'outil utilisé partout. |
-| msw | 2.x | **DÉCLARÉ mais jamais importé — RÉSERVÉ.** Destiné aux tests ciblés d'erreurs HTTP RÉELLES (413, 422 avec `violations[]`, 429, 500 + `X-Request-Id`), là où `vi.mock` est structurellement aveugle : en remplaçant notre module, il court-circuite le client HTTP, la lecture du statut et la traduction d'une erreur en message affiché — jamais exercés. `msw` intercepte le réseau et exerce ce chemin. **Aucun test msw écrit à ce jour** (ex-roadmap P4-254, fermé sans correctif au triage du 2026-09-25 — dette de couverture assumée, msw reste dans l'outillage). |
+| `vi.mock` (Vitest) | — | **Mock réseau EN SERVICE, le seul de la suite** : remplace NOTRE module (`queries`/`api` de la feature). |
 | Cliquet act-warnings | — | `tooling/actWarningsRatchet.ts` (reporter Vitest) : compte les avertissements React « not wrapped in act » au processus principal, rougit le run dès qu'ils dépassent le plafond versionné `act-warnings-ceiling.json` (FRT-34, même patron que le plancher de couverture ; fil de détente si le compte tombe à 0 alors que le plafond > 0 = capture cassée). |
 | @playwright/test | 1.x | E2E (`frontend/tests/e2e/`) |
 | **vitest-axe** · **@axe-core/playwright** | 0.x · 4.x | **Assertions a11y** — suite unitaire (`src/test/a11y.test.tsx`) + spec de contraste e2e (`tests/e2e/a11y-contrast.spec.ts`) |
-| storybook · @storybook/react-vite | 10.x | Atelier de composants (`npm run storybook`) |
+| knip | 6.x | **Garde d'hygiène des dépendances** (`npm run lint:deps`, config `frontend/knip.json`), step CI du job `frontend` — détail : `docs/testing/testing-strategy.md` §1 |
 
 > ⚑ **Ces tables portent la MAJEURE, jamais la mineure** (décision du 2026-08-19, rotation de
 > fraîcheur). Elles donnaient `^4.1`, `^29.1`, `^10.68`… et **quatre avaient déjà dérivé** : une

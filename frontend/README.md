@@ -17,10 +17,13 @@ Le frontend est l'UI de la plateforme. Un gestionnaire de club y **saisit ses do
 # Aucun Node/npm requis sur l'hôte
 make dev               # Vite Docker, http://localhost:5173
 make build             # image frontend de production (tsc + Vite + Nginx)
-make lint              # ESLint + TypeScript dans Docker
+make lint              # ESLint + TypeScript dans Docker (n'inclut PAS knip, ci-dessous)
 make test              # Vitest dans Docker (inclut lint + typecheck)
 make coverage          # couverture + cliquet (suite complète instrumentée, ~4-5 min — hors boucle courte)
-make exec              # shell dans l'image de tooling Node
+make exec              # shell dans l'image de tooling Node — puis `npm run lint:deps` pour la
+                        # garde d'hygiène des dépendances (knip, config frontend/knip.json),
+                        # aucune cible Make dédiée ; détail + procédure faux-positif :
+                        # docs/testing/testing-strategy.md §1
 make e2e               # Playwright entièrement dockerisé — exige stack + `make dev` lancés
 ```
 

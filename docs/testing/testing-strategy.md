@@ -1,13 +1,21 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-09-29 (rotation de fraîcheur, `documentation-update`, passe P4-272 ③). Ce
-fichier ne couvre que backend+engine (« Scope » ci-dessous). Re-confronté au code : le graphe des
-jobs §1 (noms et `needs`) correspond toujours à `.github/workflows/ci.yml` — `e2e` (`ci.yml:1039`)
-et `backend-coverage` (`ci.yml:993`) sur `needs: blocking-tests`,
-`engine-coverage`/`engine-perf`/`engine-perf-pr` (`ci.yml:944,840,865`) sur `needs: engine-tests`,
-`build-docker` sur `needs: [blocking-tests, engine-tests]` seuls (`ci.yml:1417`) ✓ ;
-`docker-compose.yml` pose `restart: unless-stopped` sur les services de dev durables (toujours 11
-occurrences) ✓ ; **required checks de `main` re-confirmés** (`gh api
+Last verified @ 2026-09-30 (`documentation-update`, dépendances inutiles retirées + 3 gardes
+d'hygiène knip/composer-unused/deptry posées). Ce fichier ne couvre que backend+engine (« Scope »
+ci-dessous). Re-confronté au code : le graphe des jobs §1 (noms et `needs`) correspond toujours à
+`.github/workflows/ci.yml` — `blocking-tests` sur `needs: [lint, phpstan]` (`ci.yml:314`),
+`e2e`/`backend-coverage` sur `needs: blocking-tests`,
+`engine-coverage`/`engine-perf`/`engine-perf-pr` sur `needs: engine-tests`, `build-docker` sur
+`needs: [blocking-tests, engine-tests]` seuls (`ci.yml:1473`) ✓ ; les trois nouvelles gardes
+d'hygiène des dépendances vérifiées dans le code : **knip** (step « Dependency check (knip) », job
+`frontend`, `ci.yml:65-67`, script `lint:deps` → `frontend/knip.json`) ne bloque que le required
+check `Frontend (build + unit)`, jamais `build-docker` (`frontend` hors des `needs` de
+`blocking-tests`) ; **composer-unused** (step, job `phpstan`, `ci.yml:262-263`, config
+`backend/composer-unused.php`) bloque `build-docker` **transitivement** (`blocking-tests` a
+`phpstan` dans ses `needs`) ; **deptry** (step, job `engine-tests`, `ci.yml:881-882`, config
+`[tool.deptry]` de `engine/pyproject.toml`) bloque `build-docker` **directement** (`engine-tests`
+est dans ses `needs`). `docker-compose.yml` pose `restart: unless-stopped` sur les services de dev
+durables (toujours 11 occurrences) ✓ ; **required checks de `main` re-confirmés** (`gh api
 repos/maratech-fr/amateo/branches/main/protection --jq .required_status_checks.contexts`) : les 14
 contexts listés couvrent toujours `Engine semantics` et `Functional Tests (Behat)` ; le step
 `MatchPlacementSemanticsGateTest` reste dans le job `blocking-tests` (`ci.yml:744-745`). Reste du
@@ -88,6 +96,37 @@ dans le nom du FICHIER). Le sélecteur correct est `-k dense_club`, qui isole
 `test_dense_club_completes_under_budget`. `engine-perf` (main) garde les deux paliers, dense et BCCL, au
 même budget 60 s.
 
+**Gardes d'hygiène des dépendances (2026-09-30)** — trois outils, un par zone, chacun un step
+dans un job EXISTANT (pas de job dédié) :
+- **knip** (frontend) — `npm run lint:deps` (`frontend/knip.json` : entrées `worker.js`,
+  `worker-heartbeat.js`, `tests/e2e/*.setup.ts` ; projet `src/**`, `tests/**`, `tooling/**`),
+  step du job `frontend`. Rougit sur une dépendance déclarée mais jamais importée ou un fichier
+  source inatteignable depuis les entrées ; le mode `--dependencies --files` laisse les exports
+  inutilisés HORS du gate. **Pas dans `make -C frontend lint`** — un dev qui ne lance que la cible
+  Make ne voit pas de dérive knip avant la CI ; en local : `docker compose -f docker-compose.yml
+  --profile tools run --rm --no-deps frontend-tooling npm run lint:deps`. Faux positif : ajouter
+  le paquet à `ignoreDependencies` dans `frontend/knip.json`, avec sa raison en commentaire JSON
+  n'étant pas supporté, la documenter dans le message du commit qui l'ajoute.
+- **composer-unused** (backend) — `composer composer-unused` (config `backend/composer-unused.php`,
+  16 filtres nominatifs, chacun sa raison en commentaire PHP : bundle câblé par `bundles.php`,
+  DSN/YAML, ou runtime — jamais un symbole PHP importé), step du job `phpstan`. **Pas dans
+  `make -C backend lint`/`phpstan`/`tests-complete`** — en local :
+  `docker compose exec php-fpm composer composer-unused` (ou `sh -c 'cd /app/backend && composer
+  composer-unused'` en dehors du répertoire `backend/`). Faux positif : ajouter
+  `->addNamedFilter(NamedFilter::fromString('vendor/paquet'))` à `backend/composer-unused.php`
+  avec sa raison en commentaire.
+- **deptry** (engine) — `deptry .` (config `[tool.deptry]` de `engine/pyproject.toml` : exclusions
+  d'environnement + `per_rule_ignores.DEP002` pour les CLI/plugins pytest jamais `import`és —
+  `uvicorn`, `ruff`, `mypy`, `bandit`, `pytest-cov`, `pytest-timeout`, `deptry` lui-même), step du
+  job `engine-tests`. Rougit sur DEP001 (import manquant du lockfile), DEP002 (déclaré, jamais
+  importé) ou DEP003 (transitive seulement). **Déjà dans `make -C engine lint` ET `make -C engine
+  test`** (contrairement aux deux gardes ci-dessus) — une dérive se voit donc en local avant la
+  CI. Faux positif : ajouter l'entrée à `per_rule_ignores` dans `engine/pyproject.toml` avec sa
+  raison en commentaire.
+
+Les trois sont des gardes d'**hygiène**, pas de sécurité : elles bloquent sur un paquet mort, pas
+sur une faille (`dependency-audit`, ci-dessus, reste le seul gate de vulnérabilités).
+
 **SEPT jobs isolés sans `needs`** — `frontend`, `dependency-audit`, `rector`, `secrets-scan`, `semgrep`, `engine-semantics`, `functional-tests` (Behat — remplace les anciens smokes bash, tous supprimés) : un signal qui peut
 rougir sur un commit qui n'a rien changé (une règle Rector élargie par un bump, une advisory publiée
 ce matin) ne doit pas prendre en otage `blocking-tests` — donc l'isolation tenant/RLS — ni
@@ -107,16 +146,16 @@ All PHP test jobs first **create + migrate the test DB** (`doctrine:database:cre
 | Job | What it runs |
 |-----|--------------|
 | `lint` | `docker compose config` + `make -n help` |
-| `phpstan` (job name: **PHPStan & CS-Fixer**) | `composer phpstan` (level 8) **+ `composer cs-fix -- --dry-run --diff`** — needs postgres + redis. CS-Fixer vit ici, et non dans `lint`, parce que ce job a déjà le conteneur PHP que `lint` n'a pas (jusqu'au 2026-07-17 CS-Fixer ne tournait **nulle part** en CI, et `main` a été mergée rouge dessus deux fois) |
+| `phpstan` (job name: **PHPStan & CS-Fixer**) | `composer phpstan` (level 8) **+ `composer cs-fix -- --dry-run --diff`** **+ `composer composer-unused`** — needs postgres + redis. CS-Fixer vit ici, et non dans `lint`, parce que ce job a déjà le conteneur PHP que `lint` n'a pas (jusqu'au 2026-07-17 CS-Fixer ne tournait **nulle part** en CI, et `main` a été mergée rouge dessus deux fois) |
 | `rector` (**Rector (style gate)**) | `composer rector -- --dry-run` (P4-24). Job **dédié, sans `needs`**, dépendance d'aucun autre — mais le contexte « Rector (style gate) » fait partie des **required status checks de `main`**, donc **il bloque le merge**. Corriger en local : `docker compose exec php-fpm sh -c 'cd /app/backend && composer rector'` (`make -C backend rector` est un dry-run : il montre, il ne fixe pas) |
 | `blocking-tests` | les tests sécurité/queue/contrat lancés en **steps nommés**, chacun avec `--group phase1` — **gate du reste de la suite PHP** et de `build-docker`. ⚠ **La liste vit dans [`blocking-tests.md`](blocking-tests.md), et NULLE PART AILLEURS** : elle était recopiée ici et les deux copies ont dérivé l'une de l'autre (audit DOC-16 puis DOC-26, 3 éditions). Deux endroits pour une même vérité finissent par diverger — la copie est supprimée, pas resynchronisée. ⚠ **`--group phase1` ≠ le gate** : bien plus de fichiers `backend/tests/` portent l'annotation que le job n'a de steps nommés ; un fichier `phase1` non listé tourne dans `unit-tests`, donc après le gate et sans bloquer `build-docker`. La vérité exécutable est `.github/workflows/ci.yml` |
 | `unit-tests` | full PHPUnit `tests/` (does NOT gate build-docker) |
 | `backend-coverage` | `phpunit tests/ --exclude-group contract --coverage-clover` (pcov, `-d pcov.enabled=1`) + `scripts/coverage-gate.php` (plancher `backend` de `coverage-floor.json`, PHPUnit 11 n'a pas de `--fail-under` natif), needs `blocking-tests`, does **NOT** gate `build-docker` (P4-166) |
 | `e2e` | Playwright (full stack + Vite), needs blocking-tests. ⚠ **Deux cibles, pas une** : la suite tourne contre le **dev server** (:5173), puis un step dédié rejoue `security-headers.spec.ts` contre l'**image nginx** (:8081) avec `E2E_A17_REQUIRED=1`. Sans ce second passage, les tests A17 (CSP, HSTS, X-Frame-Options, nosniff) se **skippaient à chaque run** — les en-têtes n'existent que sur le build nginx — et le contrôle n'a jamais tourné en CI (audit D-04). La variable interdit au skip de revenir en silence : viser un dev server là devient un échec. **Fiabilité infra (2026-09-15)** : `COMPOSE_BAKE=false` (env du job) écarte le builder bake qui se figeait « waiting for BuildKit » ; un step **Pre-pull third-party images** (`docker compose pull --ignore-buildable`, enveloppé de `.github/scripts/retry.sh`) tire nginx/mercure/redis/postgres à part, l'image `engine` est bâtie dans son propre step relançable, et les steps d'infra (pull, build, `up --wait`) passent par `retry.sh` — un aléa de Docker Hub/BuildKit ne rougit plus une PR saine. Un step `if: failure()` écrit dans le résumé de job si l'échec est **AVANT Playwright (infra)** ou **Playwright**. **Un job vert peut cacher un flaky** (Playwright sort 0 dès qu'un retry passe, P4-256, toujours ouvert) : un step `always()` (`.github/scripts/flaky-summary.sh`) annonce dans le résumé de job les tests perdus-puis-rejoués, sans jamais faire rougir le job ni le gater. L'artefact `playwright-results` (traces `on-first-retry`) est lui aussi uploadé en `always()` — la trace de l'essai perdu survit donc même sur un run vert, récupérable 7 jours |
 | `functional-tests` | **Behat, Gherkin français, API seule** (`backend/features/`, contexts `backend/tests/Behat/`) — scénarios métier relus par le fondateur, joués contre la stack RÉELLE (nginx→php-fpm, vrai `messenger-worker`, vrai engine, **`pdf-worker`** compris — `l-export-du-planning.feature` attend un PDF Puppeteer réel, sans lui le worker d'export répond `failed`), sans navigateur ni noyau in-process. **Aucun `needs`** — ils répondent « la fonctionnalité marche-t-elle ? », indépendamment des suites unitaires, et n'installent ni npm ni Chromium : le verdict tombe plus tôt. Chaque feature est autosuffisante (JWT auto, données créées/nettoyées, pointeur socle rouvert PUIS restauré) : jouable seule et dans n'importe quel ordre. **Remplace intégralement les 5 smokes bash** (`smoke-solver.sh`, `onboarding-smoke.sh`, `smoke-place-matches.sh`, `smoke-overlay.sh`, `smoke-coach-wishes.sh`, tous SUPPRIMÉS de `backend/scripts/`) — parité prouvée assertion par assertion, même verdicts. Table feature ↔ ce qu'elle prouve : [`test-coverage-map.md`](test-coverage-map.md) §5 |
-| `engine-tests` | `pytest` + `ruff check .` + `mypy` + `bandit -r app/` (ENG-46, lot correctif de l'audit 0918 — bandit était déjà en local via `make test`, il ne gatait pas la CI) (in the engine container) |
+| `engine-tests` | `pytest` + `ruff check .` (+ `ruff format --check`) + `mypy` + `bandit -r app/` (ENG-46, lot correctif de l'audit 0918 — bandit était déjà en local via `make test`, il ne gatait pas la CI) + `deptry .` (in the engine container) |
 | `engine-coverage` | `pytest --cov=app --cov-fail-under=$FLOOR` (`$FLOOR` read from `coverage-floor.json`, key `engine`), needs `engine-tests`, does **NOT** gate `build-docker` (P4-166) |
-| `frontend` | `npm run lint` (dont `eslint-plugin-jsx-a11y`, §4bis) + `tsc -b` + `vite build` + `vitest` (parallel, no needs) |
+| `frontend` | `npm run lint` (dont `eslint-plugin-jsx-a11y`, §4bis) + `npm run lint:deps` (knip) + `tsc -b` + `vite build` + `vitest` (parallel, no needs) |
 | `frontend-coverage` | `npm run test:coverage` (`vitest run --coverage`, `thresholds.lines` lu de `coverage-floor.json`, clé `frontend`), needs `frontend`, does **NOT** gate `build-docker` (P4-166) |
 | `dependency-audit` | `composer audit` / `npm audit --audit-level=high` / `pip-audit` (A18, blocking, parallel, no needs). Les trois passent par `.github/scripts/audit-retry.sh` (P4-171) : 3 tentatives (10 s, 30 s) **seulement** quand la sortie porte une signature réseau (timeout, 5xx, DNS, `curl error`) — un `exit 1` d'audit sans cette signature est rendu tel quel, le gate ne s'aveugle pas |
 | `build-docker` | `docker compose build` (needs **blocking + engine** tests only) |
