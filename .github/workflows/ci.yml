@@ -57,6 +57,15 @@ jobs:
         working-directory: frontend
         run: npm run lint
 
+      # Garde d'hygiène des dépendances : knip rougit sur une dev/dép déclarée mais
+      # jamais importée, ou un fichier source inatteignable depuis les entrées
+      # (`knip.json`). Mode `--dependencies --files` : les exports inutilisés restent
+      # HORS du gate (bruit au départ). Le job `frontend` n'est pas dans les `needs`
+      # de `build-docker` : une dérive d'hygiène rougit ce check sans bloquer l'image.
+      - name: Dependency check (knip)
+        working-directory: frontend
+        run: npm run lint:deps
+
       - name: Build (tsc -b + vite)
         working-directory: frontend
         run: npm run build

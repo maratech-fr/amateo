@@ -1,0 +1,10 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "worker.js",
+    "worker-heartbeat.js",
+    "tests/e2e/*.setup.ts"
+  ],
+  "project": ["src/**", "tests/**", "tooling/**"],
+  "ignoreDependencies": ["puppeteer"]
+}
