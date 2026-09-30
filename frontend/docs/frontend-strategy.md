@@ -1,11 +1,13 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-09-29 (`documentation-update`, rotation de fraîcheur). Re-confronté au code :
-versions du § Outils de test et § Stack Versions Fixed toujours exactes contre
-`frontend/package.json`, `act-warnings-ceiling.json` + `tooling/actWarningsRatchet.ts` existent,
-`msw` déclaré (`^2.15.0`) mais zéro import dans `src`/`tests` ✓ ; la maison unique d'erreur est
-`shared/lib/errorMessage.ts` — `shared/api/errors.ts` (`apiErrorMessage`) reste absent, absorbé dans
-`errorMessage()` ✓. Chronique des passes antérieures : `git log -p --follow` ce fichier.
+Last verified @ 2026-09-30 (`documentation-update`, rotation de fraîcheur). Re-confronté au code :
+versions du § Stack Versions Fixed toujours exactes contre `frontend/package.json` (react ^19.2.8,
+vite ^8.2.2, typescript ~6.0.2, tailwindcss ^4.3.0, @tanstack/react-query ^5.102.8, zustand
+^5.0.15) ; `msw` déclaré (`^2.15.0`) toujours sans import dans `src`/`tests` ✓ ; `shared/api/errors.ts`
+toujours absent (grep vide), la maison unique d'erreur reste `shared/lib/errorMessage.ts` ✓ ;
+`testTimeout: 15_000` (`vitest.config.ts:49`) et `asyncUtilTimeout: 5_000`
+(`src/test/setup.ts:28`) toujours en vigueur ✓. Chronique des passes antérieures :
+`git log -p --follow` ce fichier.
 
 > Fixe le mandat de test, les versions de la stack, les anti-patterns et les règles de
 > préservation d'infrastructure. Le détail fonctionnel (routes, composants, wizard) est dans
