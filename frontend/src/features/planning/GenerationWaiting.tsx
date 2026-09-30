@@ -40,7 +40,7 @@ export function GenerationWaiting() {
       <div role="status" aria-live="polite" className="w-full max-w-md">
         <p className="text-lg font-medium text-foreground">Génération du planning…</p>
       </div>
-      <p key={i} aria-hidden="true" className="animate-in fade-in w-full max-w-md text-sm text-muted-foreground">
+      <p key={i} aria-hidden="true" className="gw-phrase w-full max-w-md text-sm text-muted-foreground">
         {PHRASES[i]}
       </p>
       <p className="w-full max-w-md text-xs leading-relaxed text-muted-foreground">La génération peut prendre 1 à 3 min selon la taille du club. Vous pouvez laisser cet écran ouvert.</p>
