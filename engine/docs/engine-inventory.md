@@ -1,12 +1,11 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-09-29 (P4-272 ④ : `CONTRACT_VERSION` **2.26 → 2.27** — `teams[].
-forbiddenVenueIds` ajouté au payload `/place-matches`, `MatchTeamSchema.forbidden_venue_ids`
-`match_input_schema.py`). Re-confronté au code : `_candidate_kickoffs`
-(`app/solver/match_placement.py:221-285`) retire un gymnase de `forbidden_venue_ids` du domaine
-AVANT tout calcul de créneau (jamais choisi par le solveur) et distingue le cas où un créneau y
-était licite (`saw_forbidden_legal`), pour rendre la raison `team_venue_forbidden` — testée AVANT
-`club_rule_no_slot` dans la même chaîne de retour ✓ ; `REASON_MESSAGES` porte désormais **sept**
+Last verified @ 2026-09-30 (PR #1031 — ligne `travel_time` du diagnostic recalée contre
+`engine/app/solver/constraints/travel.py::required_gap` : écart exigé = barème moins battement
+toléré, mode non véhiculé = vélo, cran OFF). Non re-sondé cette passe : le reste du fichier —
+dernière vérification structurelle P4-272 ④ (`CONTRACT_VERSION` 2.26 → 2.27, `teams[].
+forbiddenVenueIds`, `_candidate_kickoffs` — `app/solver/match_placement.py:221-285`) vit dans
+`git log -p --follow` ce fichier. `REASON_MESSAGES` porte désormais **sept**
 raisons (`venue_unavailable`, `no_access_window`, `no_league_intersection`, `venue_full`,
 `not_selected`, `club_rule_no_slot`, `team_venue_forbidden`, `match_placement.py:64-82`) ✓ ; les
 **six endpoints** inchangés (`/`, `/health`, `/generate`, `/place-matches`,
@@ -426,7 +425,7 @@ Familles de contraintes comptées dans `HardConstraintStats` (liste exhaustive :
 | 12 | `max_consecutive_days` | une ÉQUIPE ne s'entraîne pas `maxConsecutiveDays` jours de suite (défaut 3, bornes 2-5) ; posé seulement si la règle est HARD (opt-in, naît `OFF`) |
 | 13 | `shared_block` | mutualisation par BLOC, **SEULE notion de mutualisation** (le groupe {équipes, K} `sharedTrainings` n'existe plus) : un bloc (`sharedBlocks`) se comporte comme UNE équipe, ses séances lui APPARTIENNENT. Modélisation **LIAGE** (posée en tête de `add_level_1_hard_constraints`, AVANT la capacité gymnase, `constraints/__init__.py`) : pour chaque case candidate, une variable de décision propre au bloc `b[case]` liée à chaque membre par `x[membre, case] ≥ b[case]` (UNIDIRECTIONNEL, **pas** de réification depuis la co-présence — ce qui dissolvait le double-comptage de l'ancien modèle groupe). Le liage donne gratis la sémantique membre (consomme une séance, `one_session_per_day`, repos coach, enchaînements, objectif — tous exprimés sur `x`) ; seule la capacité gymnase demande une chirurgie (`(n_libres−1)·b`, `shared_block_room_relief`, même patron que le crédit des verrouillés). Garde de distinctness inter-blocs. Vide ⇒ aucune pose, chemin byte-identique, aucun golden avec bloc |
 | 14 | `team_link` | Lot PASSERELLES — deux équipes déclarées `MANDATORY` ne se chevauchent JAMAIS (`var_a + var_b ≤ 1`) ; 0 si `teamLinks` absent/vide ou tout `PREFERRED` (le PREFERRED est un malus objectif, pas une contrainte dure) |
-| 15 | `travel_time` | règle `travelTime` **MANDATORY** seule : interdit dur un enchaînement cross-gymnase dont le battement est plus court que le barème (voiture/à pied selon `isVehicled`, ou à pied pour une passerelle) ; 0 si la règle est inactive, `PREFERRED`, ou `venueTravelTimes` vide. Résidu possible SEULEMENT entre deux verrous HARD contradictoires, ANNONCÉ par le diagnostic `travel_time_infeasible` (`_diagnose_travel_times`), jamais un INFEASIBLE muet |
+| 15 | `travel_time` | règle `travelTime` **MANDATORY** seule : interdit dur un enchaînement cross-gymnase dont le battement est plus court que l'écart exigé (barème − battement toléré, voiture/vélo selon `isVehicled`, ou vélo pour une passerelle) ; 0 si la règle est inactive (cran OFF), `PREFERRED`, ou `venueTravelTimes` vide. Résidu possible SEULEMENT entre deux verrous HARD contradictoires, ANNONCÉ par le diagnostic `travel_time_infeasible` (`_diagnose_travel_times`), jamais un INFEASIBLE muet |
 
 Stubs (toujours satisfaits, 0 contraintes, **DISTINCTS** du `travel_time` ci-dessus — même sujet,
 mécanismes non reliés) : `travel_feasibility_stub`, `required_bridge_stub` (`ImplicitConstraint`

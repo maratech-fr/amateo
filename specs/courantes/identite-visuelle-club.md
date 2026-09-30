@@ -1,12 +1,13 @@
 # Identité visuelle par club (logo + couleur d'accent)
 
-Last verified @ 2026-09-28 (`documentation-update`, rotation de fraîcheur, P4-268) contre le code :
+Last verified @ 2026-09-30 (`documentation-update`, rotation de fraîcheur) contre le code :
 `Club.logoUrl` / `accentColor` / `accentColorDark` / `accentPalette`
-(`backend/src/Entity/Club.php:138-154`) ✓, `PATCH /api/club/appearance`
+(`backend/src/Entity/Club.php:146/150/154/162`, dérive de la précédente 138-154 — décalage
+d'entités ajoutées entre-temps) ✓, `PATCH /api/club/appearance`
 (`ClubAppearanceController::__invoke`, `:34`) ✓, `GenerationWaiting.tsx` toujours sans prop
-`logoUrl`/`initial` ✓, `frontend/src/app/AppLayout.tsx:72` — `BrandIcon` rendue avant le `<img>` du
-logo club (`:73`), aucun repli glyphe générique ✓. Historique : `git log -p --follow
-specs/courantes/identite-visuelle-club.md`.
+`logoUrl`/`initial` ✓, `frontend/src/app/AppLayout.tsx` — `BrandIcon` (`:77`) rendue avant le
+`<img>` du logo club (`:78`, décalé de `:72`/`:73`), aucun repli glyphe générique ✓. Historique :
+`git log -p --follow specs/courantes/identite-visuelle-club.md`.
 
 > **Ce que porte cette identité** : accent par club + logo + extraction 3 couleurs + écran
 > « Gestion du club ». Ce qui reste ⬜ est du confort (voir « Reste ⬜ » ci-dessous).

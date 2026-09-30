@@ -1,10 +1,13 @@
 # API géo — routes externes consommées
 
-Last verified @ 2026-09-30 (P4-271 — `BanGeocodingClient::reverse` + route
-`GET /api/geocode/reverse` confrontées au code (`backend/src/Service/Geo/BanGeocodingClient.php`,
-`backend/src/Controller/GeocodeController.php`) ; `TravelMatrixModal.tsx` relu — la matrice est
-désormais une vraie table N×N, plus une liste groupée « Depuis {gymnase} »). Historique des passes
-précédentes vit dans git : `git log -p --follow backend/docs/geo-api.md`.
+Last verified @ 2026-09-30 (PR #1031, commits `3b613baa`/`7f97d588`/`fd70ca99` — recalé contre le
+code : `BanGeocodingClient::mapFeature` (champ `type`), `parseCoordinates.ts` + `VenueInput`
+(saisie manuelle des coordonnées), `VenueStateProcessor::afterPersist` (recalcul auto au
+déplacement d'un gymnase), `IgnRoutingClient::readResult`/`VenueTravelTimeAutofillService::
+finalizeMinutes` (mode non véhiculé = vélo, distance IGN consommée), `App\Enum\
+VenueTravelRuleIntensity` + `VenueTravelRuleSetting` (cran OFF, `toleranceMinutes`/
+`defaultMinutes`) ; `TravelRuleNotice` relocalisé onglet Bien-être (`ConstraintsStep.tsx`).
+Historique des passes précédentes vit dans git : `git log -p --follow backend/docs/geo-api.md`.
 
 > Répertoire des endpoints externes **géo** utilisés par le backend — deuxième famille de sorties
 > non-FFBB après `ffbb-api.md` (même patron : liste blanche de hosts codés en dur, SSRF-safe,
@@ -39,7 +42,11 @@ Headers:
   réseau — `BanGeocodingClient::isValidQuery`).
 - Réponse GeoJSON : coordonnées en `[longitude, latitude]` (ordre inversé, mappé explicitement —
   `BanGeocodingClient::mapFeature`).
-- Champs re-servis au frontend, **jamais le hit brut** : `{label, latitude, longitude, score}`.
+- Champs re-servis au frontend, **jamais le hit brut** : `{label, latitude, longitude, score,
+  type}`. `type` (BAN `properties.type` : `housenumber`|`street`|`locality`|`municipality`, lot E
+  2026-09-30) est la PRÉCISION du point — le front avertit « Position approximative (rue entière) —
+  ajoutez le numéro » sur un candidat qui n'est pas `housenumber`
+  (`BanGeocodingClient::mapFeature`).
 
 **Proxy backend** : `GET /api/geocode?q=` (`GeocodeController`) — management-gated (SEC-07,
 `ManagementAccessGuard::assertManager`), 422 si la requête est vide/malformée, 502 nommé si le
@@ -107,6 +114,21 @@ d'une adresse saisie ; sans résultat, « Adresse inconnue ». Un lien « Voir s
 (OpenStreetMap, `?mlat=&mlon=#map=18/{lat}/{lon}`) accompagne tout point géolocalisé, saisi ou
 retrouvé.
 
+### 1quater. Saisir les coordonnées à la main (lot E, 2026-09-30)
+
+Aucune route dédiée — un geste **entièrement front** (`shared/lib/parseCoordinates.ts`) qui
+alimente la MÊME mutation que « Localiser » (mêmes effets de bord, dont le recalcul async des
+trajets § ci-dessous), en effaçant l'adresse. Affordance « Saisir les coordonnées » de
+`AddressGeocodeField`, offerte seulement si le caller passe `onManualCoords` (`VenueGeocodeField`
+— pas le siège du club). Reconnaît trois formats : un couple nu « 45.76799, 4.88853 » (virgule,
+point-virgule ou espace), un lien OpenStreetMap (`?mlat=&mlon=` ou `#map=z/lat/lon`), un lien
+Google Maps (`@lat,lon`) — bornes validées côté client (`parseCoordinates`, lat ∈ [-90,90], lon ∈
+[-180,180]) **et** re-validées côté serveur (`VenueInput`, `Assert\Range`, **422** sur une entrée
+hors bornes ou non numérique — le geste accepte une saisie utilisateur, jamais stockée sans
+contrôle). Affichage replié : « Position saisie à la main » (au lieu du libellé `statusWord`
+générique), adresse effacée donc RETROUVÉE par reverse-geocoding (§ 1ter) si des coordonnées
+existent, lien « Voir sur la carte ».
+
 ## 2. Itinéraire (temps de trajet) — IGN Géoplateforme
 
 ```
@@ -124,7 +146,11 @@ Headers:
   serveur-side** (`sprintf('%.6F,%.6F', ...)` — jamais une chaîne utilisateur dans l'URL, jamais un
   séparateur décimal locale-dépendant).
 - `duration` de la réponse (en **secondes**) → arrondie **au-dessus** à la minute
-  (`IgnRoutingClient::readMinutes`) ; `distance` en **mètres** (non consommée).
+  (`IgnRoutingClient::readMinutes`) ; `distance` en **mètres**, désormais **CONSOMMÉE** (décision
+  fondateur 2026-09-30) — `travelMinutesBatch` renvoie les deux (`minutes`/`meters` par clé) et
+  `VenueTravelTimeAutofillService::finalizeMinutes` dérive le temps à vélo du profil `pedestrian`
+  depuis `meters` (`ceil(m / 250) + 5`, § « L'autofill de la matrice », profil `car` inchangé —
+  `duration` directe).
 - Best-effort par appel : une coordonnée hors plage, une réponse sans `duration` numérique, ou un
   échec de transport rendent `null` — jamais une exception qui casserait le lot.
 
@@ -155,7 +181,10 @@ TTL du verrou (`ComputeTravelTimesHandler::LOCK_TTL_MARGIN_SECONDS`).
 ### Cache de trajets club-scoped (`ClubTravelCache`)
 
 Un trajet routier est une **CONSTANTE** : deux coordonnées (arrondies à 5 décimales, ~1 m) et un
-profil (voiture/à pied) ne changent jamais de durée. `App\Entity\ClubTravelCache` (table
+profil (voiture, ou `pedestrian` — la clé technique porte désormais le temps à VÉLO/trottinette
+dérivé, § « L'autofill », décision fondateur 2026-09-30 ; seul `VenueTravelTimeAutofillService` lit
+ce profil, `OpponentTravelResolver` reste `car` seul — pas de collision de clé) ne changent jamais
+de durée. `App\Entity\ClubTravelCache` (table
 `club_travel_cache`, **tenant, RLS FORCE** — les coordonnées croisées trahiraient le siège d'un club
 précis) tient donc, **club-scoped mais SANS saison**, la clé
 `(club, profil, origin_lat, origin_lon, dest_lat, dest_lon)` → minutes. `minutes` est NON NULL : un
@@ -196,8 +225,15 @@ gymnases à router. Le calcul (adversaires ET matrice de gymnases) part donc au 
 
 - **`App\Message\ComputeTravelTimesMessage`** `{clubId, seasonId, scope}` (`TravelComputeScope`
   `OPPONENTS`|`VENUE_MATRIX`) — dispatché par `POST /api/opponents/travel/resolve`,
-  `POST /api/venue-travel-times/autofill`, la passe (c) de `POST /api/opponents/refresh`, et
-  `PATCH /api/club/siege` quand le siège bouge réellement.
+  `POST /api/venue-travel-times/autofill`, la passe (c) de `POST /api/opponents/refresh`,
+  `PATCH /api/club/siege` quand le siège bouge réellement, et (lot G, 2026-09-30)
+  `PUT /api/venues/{id}` quand la position d'un gymnase change RÉELLEMENT (`VenueStateProcessor::
+  afterPersist`) — sous DEUX gardes : opt-in (le club a **déjà** ≥1 ligne de matrice pour la saison
+  — un simple déplacement ne fait jamais naître une matrice) et verrou non tenu. Les `AUTO` du
+  couple impliquant ce gymnase se recalculent (nouvelles coordonnées ⇒ MISS du cache, indexé par
+  coordonnées, ⇒ appel IGN) ; les `MANUAL` ne bougent jamais ; les autres couples retombent sur le
+  cache. **Aucun toast front dédié** (volontaire : pas d'écoute globale du flux `club:{id}:travel`
+  hors la modale déjà ouverte — la matrice se rafraîchit d'elle-même à la prochaine ouverture).
   ⚠ **Les trois dispatchers contrôleur (hors le siège) ne dispatchent PAS si un calcul est déjà en
   cours** : `App\Service\TravelComputeLock::isHeld($clubId)` lu
   AVANT le `dispatch` — un second message contre un verrou déjà tenu finirait en
@@ -241,19 +277,25 @@ deleteAllFromOrigin`, avant le dispatch) plutôt que de les laisser mortes en ba
 
 ## 3. L'autofill de la matrice de trajet (`POST /api/venue-travel-times/autofill`)
 
-Le geste qui remplit la matrice `venue_travel_time` (barème voiture + à pied par couple de
-gymnases du club+saison, entité `App\Entity\VenueTravelTime`) sans que l'utilisateur ne
-renseigne les paires à la main :
+Le geste qui remplit la matrice `venue_travel_time` (barème voiture + mode NON VÉHICULÉ par couple
+de gymnases du club+saison, entité `App\Entity\VenueTravelTime`) sans que l'utilisateur ne
+renseigne les paires à la main. ⚠ **Le mode non véhiculé de la matrice est le VÉLO / la
+TROTTINETTE** (décision fondateur 2026-09-30, remplace la marche) — la colonne/le champ gardent
+leur nom technique `walking*`/`pedestrian` (contrat, entité, cache), seul le SENS change :
 
 1. Le serveur relit **venues + géolocalisations EN BASE** (jamais les valeurs du client) et forme
    les paires non ordonnées de gymnases géolocalisés (`latitude`/`longitude` non nuls).
 2. **Cap dur : 120 paires** (`VenueTravelTimeAutofillService::MAX_AUTOFILL_PAIRS`) — au-delà, 422
    nommé (`AutofillCapExceededException`), rien n'est appelé côté IGN. Pour 16 gymnases
    (16×15/2=120), c'est la limite ; au-delà, saisie manuelle.
-3. Pour chaque paire, chaque mode (voiture/à pied) **déjà `MANUAL`** est SAUTÉ — le cœur de la
+3. Pour chaque paire, chaque mode (voiture/vélo) **déjà `MANUAL`** est SAUTÉ — le cœur de la
    feature : une correction gestionnaire n'est **jamais** écrasée par un re-calcul. Seuls les modes
    `AUTO` ou jamais renseignés partent en requête IGN, sériellement et pacés à 1/s
-   (`IgnRoutingClient::travelMinutesBatch`, § ci-dessus).
+   (`IgnRoutingClient::travelMinutesBatch`, § ci-dessus). **Le temps à vélo n'est PAS la durée IGN du
+   profil `pedestrian`** : `VenueTravelTimeAutofillService::finalizeMinutes` la dérive de la
+   **DISTANCE** de cet itinéraire piéton — `ceil(mètres / 250) + 5` (15 km/h + marge fixe de 5 min,
+   `BIKE_SPEED_METERS_PER_MINUTE`/`BIKE_MARGIN_MINUTES`) — le profil `car` reste la durée IGN
+   directe, inchangé.
 4. **Budget mural GLOBAL sur tout le lot** : `IgnRoutingClient::BATCH_BUDGET_SECONDS` = **30 s**
    (`IgnRoutingClient.php`) — sans lui, le cap de 120 paires × 2 profils = jusqu'à 240 appels pacés à
    1/s pouvait tenir la requête ~240 s. Le premier appel part toujours ; à partir du second, une fois
@@ -285,55 +327,79 @@ contraintes uniques concurrentes).
 
 ## 4. Le levier d'intensité (`GET`/`PUT /api/venue_travel_rule_settings/travelTime`)
 
-Le réglage qui décide si la règle implicite `travelTime` (§ ci-dessous) est une préférence souple
-ou une contrainte dure — vocabulaire des passerelles (PREFERRED|MANDATORY), store DÉDIÉ
-`VenueTravelRuleSetting` (singleton club+saison, `App\Entity\VenueTravelRuleSetting`) plutôt qu'une
-6ᵉ clé d'`ImplicitRuleSetting` : la colonne `intensity` de ce dernier est typée
-`enumType: ImplicitRuleIntensity` (HARD/PREFERRED/OFF), incapable de porter MANDATORY sans altérer
-les 5 règles de bien-être. Décision consignée `etat-des-lieux.md` §2.
+Le réglage qui décide si la règle implicite `travelTime` (§ ci-dessous) est inactive, une
+préférence souple ou une contrainte dure — store DÉDIÉ `VenueTravelRuleSetting` (singleton
+club+saison, `App\Entity\VenueTravelRuleSetting`) plutôt qu'une 6ᵉ clé d'`ImplicitRuleSetting` : la
+colonne `intensity` de ce dernier est typée `enumType: ImplicitRuleIntensity` (HARD/PREFERRED/OFF),
+incapable de porter MANDATORY sans altérer les 5 règles de bien-être. Décision consignée
+`etat-des-lieux.md` §2.
+
+**Trois réglages** (décision fondateur 2026-09-30, la règle gagne un troisième cran) :
+
+- **`intensity`** — vocabulaire DÉDIÉ `App\Enum\VenueTravelRuleIntensity` (`OFF`/`PREFERRED`/
+  `MANDATORY`) : **distinct** de `TeamLinkIntensity` (passerelles, PREFERRED/MANDATORY seulement),
+  qui n'a aucun sens pour `OFF`. `OFF` (« Inactive ») ⇒ la règle **n'est pas émise** au solveur (le
+  payload devient byte-identique à un club sans matrice) — la matrice `venue_travel_time`, elle,
+  reste **STOCKÉE**, elle n'est simplement pas envoyée.
+- **`toleranceMinutes`** (« battement toléré », défaut **20**, bornes 0-60 côté écran) — retranché
+  du barème pour l'écart RÉELLEMENT exigé : `max(0, barème − toleranceMinutes)` (`required_gap`,
+  `engine/app/solver/constraints/travel.py:146`) — « le club accepte de partir un peu avant la fin
+  ou de démarrer un peu après l'heure ».
+- **`defaultMinutes`** (défaut **20**, réglable) — le barème d'un couple de gymnases jamais arbitré
+  (colonne nulle ou couple absent de la matrice) ; remplace la constante figée d'origine.
+
+Mécanique commune :
 
 - **Identifiant fixe** : `travelKey` **toujours** `travelTime` (le nom de la règle gouvernée) —
   toute autre valeur de chemin rend **404** côté `GET` et `PUT` (le provider et le processor
   vérifient tous les deux `VenueTravelRuleSettingResource::RULE_KEY` : aucun alias silencieux sur
   l'unique réglage le jour où une 2ᵉ clé existera).
-- **`GET`** résout : la ligne stockée du club+saison, ou `PREFERRED` (défaut) si rien n'a jamais
-  été réglé — `{ruleKey, intensity, isDefault}`. Lecture ouverte (pas de garde management).
-- **`PUT`** upserte l'intensité — **management** (SEC-07, avant le 409 de saison archivée) ; seul
-  `PREFERRED`|`MANDATORY` est accepté, un vocabulaire bien-être (HARD/OFF) rend **422**
-  (`VenueTravelRuleSettingInput`, `Assert\Choice` dérivé de `TeamLinkIntensity::values()`).
+- **`GET`** résout : la ligne stockée du club+saison, ou les défauts (`PREFERRED`/20/20) si rien
+  n'a jamais été réglé — `{ruleKey, intensity, toleranceMinutes, defaultMinutes, isDefault}`.
+  Lecture ouverte (pas de garde management).
+- **`PUT`** upserte les trois réglages — **management** (SEC-07, avant le 409 de saison archivée) ;
+  `intensity` hors `OFF`/`PREFERRED`/`MANDATORY` (un vocabulaire bien-être HARD, par exemple) rend
+  **422** (`VenueTravelRuleSettingInput`, `Assert\Choice` dérivé de
+  `VenueTravelRuleIntensity::values()`).
 - **Recopie N+1** (`SeasonTransitionService`) et **purge** (`SeasonDataPurger`) suivent le même
   patron que la matrice qu'il gouverne.
-- Absence de ligne = défaut `PREFERRED` : un club qui n'a jamais touché le levier garde un payload
-  byte-identique.
+- Absence de ligne = défauts `PREFERRED`/20/20 : un club qui n'a jamais touché le levier garde un
+  payload byte-identique.
 
 ## Ce que la matrice + le levier alimentent
 
 - **Le solveur d'ENTRAÎNEMENT la lit** — `POST /generate` seul (jamais `/place-matches`) :
   `ScheduleConstraintBuilder` sérialise la matrice club+saison (TRIÉE) dans le bloc
   `venueTravelTimes` du payload, contrat **`CONTRACT_VERSION`** (`engine/CONTRACT_VERSION`, **2.29**
-  à ce jour, bumpé pour d'autres raisons que ce bloc). Sa présence (≥1 ligne) —
-  ELLE SEULE — active la règle implicite `travelTime` côté moteur (opt-in au premier geste, jamais
-  silencieux : un club sans matrice reçoit un payload byte-identique à avant) ; l'INTENSITÉ émise
-  est le réglage stocké **?? PREFERRED** (`resolveTravelRuleIntensity`, § ci-dessus). Détail du
-  mécanisme moteur (départage « moindre trajet » + battement PREFERRED/MANDATORY, barème coach
-  véhiculé/passerelle à pied, défaut 20 min) : `engine/docs/constraint-vocabulary.md` §Trajet entre
-  gymnases. Gardé par `CrossStack/VenueTravelTimePayloadParityTest`.
+  à ce jour — le bump 2.28→2.29 porte notamment ce bloc : sens de `walkingMinutes` désormais vélo,
+  plus les champs `implicitRules.travelTime.toleranceMinutes`/`defaultMinutes`). Sa présence (≥1
+  ligne) — ELLE SEULE — active la règle implicite `travelTime` côté moteur (opt-in au premier
+  geste, jamais silencieux : un club sans matrice reçoit un payload byte-identique à avant) ; sauf
+  si le levier vaut `OFF`, auquel cas la règle n'est PAS émise malgré la matrice présente.
+  L'INTENSITÉ émise est le réglage stocké **?? PREFERRED** (`resolveTravelRuleIntensity`, §
+  ci-dessus). Détail du mécanisme moteur (départage « moindre trajet » + battement
+  PREFERRED/MANDATORY, barème coach véhiculé/passerelle à vélo, battement toléré retranché, défaut
+  20 min) : `engine/docs/constraint-vocabulary.md` §Trajet entre gymnases. Gardé par
+  `CrossStack/VenueTravelTimePayloadParityTest`.
 - **L'écran** : `TravelMatrixModal` (bouton
   footerExtra « Trajets entre gymnases » de l'étape Gymnases, offert dès ≥2 gymnases) — première
   ouverture (aucune ligne) = consentement passif à l'autofill, **jamais lancé sans clic** ; sinon
-  une vraie **matrice N×N** (gymnases en lignes ET en colonnes, même ordre, diagonale « — »,
-  symétrique — A→B = B→A), en-têtes collants au défilement, un filtre texte qui restreint les
-  LIGNES (les colonnes restent toutes) ; chaque cellule porte les deux modes empilés (voiture/à
-  pied), pictogramme du mode devant chaque champ, badge AUTO/MANUEL (icône+texte) sous le couple ;
-  couples non résolus « À saisir » + raison servie ; éditer une valeur la passe MANUEL côté
-  serveur, « Recalculer » préserve les MANUEL. La case **« Véhiculé »** sur la fiche coach
-  (`CoachesStep`) choisit le barème appliqué à ses enchaînements. **`TravelRuleNotice`** (onglet
-  Base de l'étape Contraintes) — visible seulement si la matrice porte ≥1 ligne (même dérivation
-  que `ScheduleConstraintBuilder`) — offre un **vrai sélecteur** Préféré/Obligatoire
-  (patron exact de l'intensité des passerelles) : la copie dit le risque d'Obligatoire (« peut
-  rendre le planning infaisable »), toujours visible même en Préféré, pour être lu AVANT de
-  basculer ; désactivé (lecture seule) sur une saison archivée. Détail écran complet :
-  `frontend/docs/frontend-wizard.md` §Gymnases/§Coachs/§Contraintes.
-- Décisions fondateur détaillées (deux barèmes, `Coach.isVehicled`, défaut 20 min pour une paire
-  jamais arbitrée, le trajet jamais dominant, le store dédié du levier) : `etat-des-lieux.md` §2 et
-  §3.
+  une vraie **matrice N×N**, en LECTURE SEULE (gymnases en lignes ET en colonnes, même ordre,
+  diagonale « — », symétrique — A→B = B→A), en-têtes collants au défilement, un filtre texte qui
+  restreint les LIGNES (les colonnes restent toutes) ; chaque cellule affiche les deux modes
+  empilés (pictogramme voiture/vélo devant chaque valeur), teintés selon l'origine (calculé =
+  neutre, saisi à la main = accent + GRAS, légende dédiée) ; une case est un BOUTON qui ouvre une
+  modale d'édition à deux champs minutes ; couples non résolus « À saisir » + raison servie ; éditer
+  une valeur la passe MANUEL côté serveur, « Recalculer » préserve les MANUEL. Une phrase
+  d'explication (lot C) précède la matrice : qui voyage (coach véhiculé/à vélo, passerelle à vélo
+  d'office) et où régler le battement toléré. La case **« Véhiculé »** sur la fiche coach
+  (`CoachesStep`) choisit le barème appliqué à ses enchaînements. **`TravelRuleNotice`** (encart de
+  l'onglet **Bien-être** de l'étape Contraintes, PAS l'onglet Base) — visible seulement si la
+  matrice porte ≥1 ligne (même dérivation que `ScheduleConstraintBuilder`) — offre le sélecteur
+  Inactive/Préféré/Obligatoire ainsi que les deux champs `toleranceMinutes`/`defaultMinutes` : la
+  copie dit le risque d'Obligatoire (« peut rendre le planning infaisable »), toujours visible même
+  en Préféré, pour être lu AVANT de basculer ; désactivé (lecture seule) sur une saison archivée.
+  Détail écran complet : `frontend/docs/frontend-wizard.md` §Gymnases/§Coachs/§Contraintes.
+- Décisions fondateur détaillées (deux barèmes voiture/vélo, `Coach.isVehicled`, mode non véhiculé
+  = vélo (noms techniques `walking*` conservés), battement toléré retranché du barème, cran OFF, le
+  trajet jamais dominant, le store dédié du levier) : `etat-des-lieux.md` §2 et §3.

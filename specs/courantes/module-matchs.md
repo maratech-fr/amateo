@@ -1,15 +1,8 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-30 (`documentation-update`, P4-271 — semaine type pilotée par le club +
-lignes compactes : `Club::weekendAlternates`/`ClubResource`/`ClubInput`/`ClubStateProcessor`
-(`backend/src/Entity/Club.php:94-95`, écriture gatée management via `processPut`), `MatchWeek`
-réduit à `A`\|`B` (`backend/src/Enum/MatchWeek.php`, `ALL` supprimé par la migration
-`Version20260930100000`, ordre des étapes (b) avant (c) confronté), `TeamMatchHabit` unique
-`club_id/season_id/team_id` (pas par jour) confrontée à l'entité ; `IdealSlotsEditor.tsx`
-(équipes AYANT un créneau + bouton Ajouter, champ Semaine gaté par `weekendAlternates`),
-`ConstraintsPage.tsx` (lignes compactes Ligue/Club/Coachs) et `TypicalWeekendGrid.tsx` (segmenté
-piloté par la prop `weekendAlternates`, plus `hasAlternatingWeeks` dérivé) relus contre le code ✓.
-Reste du contenu (P4-272 et antérieur) non réaudité cette passe. Historique :
+Last verified @ 2026-09-30 (`documentation-update`, PR #1031 — CONTRACT_VERSION 2.29 confronté
+(`engine/CONTRACT_VERSION`), bouton d'aide (i) ajouté (`MatchesLayout.tsx`/`screenHelp.tsx`).
+Reste du contenu (P4-271/P4-272 et antérieur) non réaudité cette passe. Historique :
 `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
@@ -26,7 +19,9 @@ Conflits s'il y a des conflits à traiter — § Écran Calendrier), `conflits`,
 éditables), `adversaires` (§ Écran Adversaires, onglet propre — plus un deep-link de
 Configuration), `semaine-type`, `consulter` en redirection permanente vers l'index, `reconciliation` accessible
 seulement depuis le canal API, `frontend/src/app/routes.tsx:141-186`) et dans les services backend `Match*`/`Fixture*`/
-`Opponent*`/`Ffbb*` (`backend/src/Service/`, `backend/src/Entity/`).
+`Opponent*`/`Ffbb*` (`backend/src/Service/`, `backend/src/Entity/`). **Bouton d'aide (i)** (`HelpButton`,
+primitive partagée, `frontend/docs/frontend-components.md`) à gauche de la barre d'onglets — un
+seul, dont le contenu suit l'onglet actif (`MATCHES_TAB_HELP`, `features/matches/lib/screenHelp.tsx`).
 
 ## 0. Portée et gating
 

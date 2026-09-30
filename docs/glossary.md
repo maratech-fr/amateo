@@ -33,6 +33,8 @@
 | **FFBB / FBI** | Fédération / son outil de gestion (import matchs `externalRef`). |
 | **Code club FFBB** (`Club.ffbbClubCode`) | Identifiant d'affiliation FFBB : `<3 lettres ligue><4 chiffres comité><reste club>` — ex. `ARA0069036` (ligue **ARA**, comité **0069**, club 036) ou `GUY0973017` (ligue **GUY**, comité **0973**). Toute valeur de 3 lettres EST une ligue, outre-mer compris (`LeagueResolver::resolveFromFfbbCode`) : un préfixe catalogué rend sa clé interne (`ARA` → `AURA`), un préfixe lisible mais non catalogué se rend lui-même (jamais `null`) — seul un code sans 3 lettres en tête (illisible) rend `null`. |
 | **Instance qui fixe les horaires de match** | Le niveau (`TeamLevel`) de la plage/compétition décide de l'instance compétente, pas le club : `DEPARTEMENTAL` (et `PRE_REGION`, `HONNEUR`, `PROMOTION`, `LOISIR_ADULTE`/`LOISIR_JEUNE`) → **comité** (les 4 chiffres du code) ; `REGIONAL` (dont le pré-national PNM/PNF, régional 1) → **ligue** (les 3 lettres) ; `NATIONAL`/`ELITE` → **fédération** (tous). Sert au groupement de `league_window_suggestions` (P4-272 ②) — `LeagueWindowSuggestionService::scopeForLevel`. |
+| **Mode non véhiculé** (matrice de trajet) | Le barème appliqué à un coach non `isVehicled` ou à une passerelle entre équipes (joueurs partagés) : le **vélo/la trottinette** (décision fondateur 2026-09-30, remplace la marche) — nom technique `walkingMinutes`/`pedestrian` conservé, seul le SENS change. L'AUTO se dérive de la DISTANCE de l'itinéraire piéton IGN (`ceil(m/250)+5`), pas de sa durée. |
+| **Battement toléré** (`VenueTravelRuleSetting.toleranceMinutes`) | Marge que le club accepte de retrancher au barème d'un enchaînement cross-gymnase avant d'exiger un écart réel : `écart exigé = max(0, barème − toleranceMinutes)` (défaut 20 min). Source unique du retranchement, réglable côté écran Contraintes (onglet Bien-être). |
 
 ## Cycle de vie planning
 
@@ -80,6 +82,7 @@ Clés racine : `version` · `clubId` · `seasonId` · `scheduleName` · `solverS
 | `constraints[]` | `{scope, scopeTargetId, family, ruleType, config}` — familles TIME/DAY/FACILITY/COACH_AVAILABILITY. **Toute clé de `config` absente de `engine/docs/constraint-vocabulary.md` est ignorée sans erreur.** |
 | `ruleType` | `HARD`/`LOCK` = dur (jamais violé) · `PREFERRED` = soft (objectif). Liste fermée à ces trois valeurs — `BONUS` a été retiré du produit (2026-09-23), une écriture `ruleType: "BONUS"` rend 422. |
 | `config.targetTag` | Cible de groupe — le backend **éclate** en N contraintes TEAM avant l'envoi. |
+| `venueTravelTimes[]` | Matrice club+saison des trajets entre gymnases (`{venueAId, venueBId, drivingMinutes?, walkingMinutes?}`) + règle implicite `travelTime` — **`walkingMinutes` porte le barème à VÉLO/trottinette** (mode non véhiculé, nom technique conservé depuis le 2026-09-30) ; OPT-IN à la présence d'≥1 ligne, cran OFF/PREFERRED/MANDATORY (`VenueTravelRuleIntensity`), `toleranceMinutes`/`defaultMinutes` réglables. Détail : `engine/docs/constraint-vocabulary.md` §Trajet entre gymnases. |
 | `slotTemplates[]` | Épingles HARD (réservations, verrous manuels). |
 | `priorityTiers[].orToolsWeight` | Poids objectif du rang (S=10000…D=1). |
 | Sortie : `status` | `completed` \| `failed` (INFEASIBLE → `failed` + diagnostics ; **pas de fallback par relaxation**). |
