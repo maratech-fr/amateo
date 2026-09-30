@@ -255,6 +255,13 @@ jobs:
       - name: Run PHP-CS-Fixer (dry-run)
         run: docker compose exec -T php-fpm composer cs-fix -- --dry-run --diff
 
+      # Garde d'hygiène des dépendances : composer-unused rougit sur un paquet de
+      # `require` dont plus aucun symbole n'est utilisé dans src/. Les faux positifs
+      # câblés par bundle/config/runtime sont ignorés EXPLICITEMENT, chacun avec sa
+      # raison (`backend/composer-unused.php`).
+      - name: Run composer-unused
+        run: docker compose exec -T php-fpm composer composer-unused
+
   # P4-24 : Rector dans son PROPRE job, sans `needs` et sans être
   # une dépendance de quoi que ce soit — exactement la forme de `dependency-audit`,
   # et pour la même raison. `rector.php` tire ses règles des versions INSTALLÉES
