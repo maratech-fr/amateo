@@ -45,16 +45,24 @@ export interface RankedCoach {
 const COACH_GROUP_RANK: Record<CoachGroup, number> = { salaried: 0, player: 1, other: 2 };
 
 /**
+ * The staffing bucket a coach falls into — single home for the taxonomy (salarié →
+ * salaried, membre joueur actif → player, sinon other). `coachPlayerIds` is the set of
+ * coach ids with an active player membership.
+ */
+export function coachGroupOf(coach: Coach, coachPlayerIds: Set<string>): CoachGroup {
+  return coach.isEmployee ? "salaried" : coachPlayerIds.has(coach.id) ? "player" : "other";
+}
+
+/**
  * Display order for coaches: salaried employees first, then coach-players (a coach
  * with an active CoachPlayerMembership), then the rest — each bucket alphabetical.
  * `coachPlayerIds` is the set of coach ids with an active player membership.
  */
 export function orderedCoaches(coaches: Coach[], coachPlayerIds: Set<string>): RankedCoach[] {
-  const groupOf = (c: Coach): CoachGroup => (c.isEmployee ? "salaried" : coachPlayerIds.has(c.id) ? "player" : "other");
   // D-33 : formatage partagé (cette version était la seule à trimmer).
   const fullName = (c: Coach): string => coachFullName(c);
   return coaches
-    .map((coach) => ({ coach, group: groupOf(coach) }))
+    .map((coach) => ({ coach, group: coachGroupOf(coach, coachPlayerIds) }))
     .sort((a, b) => COACH_GROUP_RANK[a.group] - COACH_GROUP_RANK[b.group] || fullName(a.coach).localeCompare(fullName(b.coach), "fr"));
 }
 
