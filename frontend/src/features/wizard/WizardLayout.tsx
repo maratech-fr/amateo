@@ -17,6 +17,7 @@ import { useSchedules } from "@/features/planning/queries";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
+import { HelpButton } from "@/shared/components/ui/help-button";
 import { StepRail } from "@/shared/components/ui/step-rail";
 import { cn } from "@/shared/lib/utils";
 import { useSocleValidated } from "@/shared/lib/socle";
@@ -25,6 +26,7 @@ import { armNavTransition } from "@/shared/stores/navTransitionStore";
 import { toast } from "@/shared/stores/toastStore";
 
 import { parseWizardDeepLink, stepLockReason } from "./lib/deepLink";
+import { STEP_HELP_LABEL, STEP_HELP_TRIGGER, WIZARD_STEP_HELP } from "./lib/stepHelp";
 import { WizardFooterContext } from "./lib/footerSlot";
 import { WIZARD_STEPS, type WizardStepId } from "./lib/steps";
 import { useStepValidation } from "./lib/useStepValidation";
@@ -510,12 +512,18 @@ export function WizardPage() {
       <div className="flex min-h-[calc(100vh-5.5rem)] min-w-0 flex-1 flex-col">
         {/* Sticky step title + collapse toggle (W7 title, W8/N4 collapse) */}
         <div className="sticky top-0 z-20 mb-4 flex items-center justify-between gap-2 border-b border-border bg-background py-3">
-          <h2 className="text-lg font-semibold">
-            <span className="text-muted-foreground">
-              Étape {index + 1}/{WIZARD_STEPS.length} ·{" "}
-            </span>
-            {currentStep?.label}
-          </h2>
+          <div className="flex min-w-0 items-center gap-2">
+            {/* Aide contextuelle (i) — À GAUCHE du titre de l'étape (LOT D). */}
+            <HelpButton label={STEP_HELP_LABEL} triggerLabel={STEP_HELP_TRIGGER}>
+              {WIZARD_STEP_HELP[stepId]}
+            </HelpButton>
+            <h2 className="text-lg font-semibold">
+              <span className="text-muted-foreground">
+                Étape {index + 1}/{WIZARD_STEPS.length} ·{" "}
+              </span>
+              {currentStep?.label}
+            </h2>
+          </div>
           <div className="flex items-center gap-2">
             {/* P5-6 — porte contextuelle : l'étape courante voyage dans le contexte. */}
             <FeedbackButton screen={`wizard/${stepId}`} />
