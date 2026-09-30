@@ -4,15 +4,15 @@
 > Pas d'inventaire ligne à ligne (il dériverait), pas de décompte (« N messages »).
 > Le code fait foi ; ce doc dit **comment décider**, pas **combien**.
 
-Last verified @ 2026-09-29 (rotation `documentation-update`, zone sans rapport avec la PR
-P4-272 ②). Re-confronté au code : la règle « le corps du serveur ne parle qu'en deçà de 500 »
+Last verified @ 2026-09-30 (rotation `documentation-update`, zone sans rapport avec le lot
+Démos). Re-confronté au code : la règle « le corps du serveur ne parle qu'en deçà de 500 »
 tient toujours (`frontend/src/shared/lib/errorMessage.ts:55`) ✓ ; `ENGLISH_STATUS_TEXTS` déclarée
 `:16` ✓ ; `backend/tests/Unit/ValidationExceptionCarriesViolationsTest.php` et
 `backend/tests/Security/LoginFailureCopyTest.php` toujours présents ✓ ;
 `ConstraintStateProcessor::assertPreferredVenueIsNotMandatory`
 (`backend/src/State/Processor/ConstraintStateProcessor.php:174`) suit toujours l'idiome unique
-`$this->refuse(…)` ✓. Reste du fichier hérité de la passe P4-263 précédente, non re-sondé ligne à
-ligne cette passe.
+`$this->refuse(…)` ✓. Tout confirmé juste. Reste du fichier hérité de la passe P4-263
+précédente, non re-sondé ligne à ligne cette passe.
 
 ## La règle
 

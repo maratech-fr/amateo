@@ -23,6 +23,20 @@ raccourci démo `/api/dev/demo-register` en PROD est gardé par la fenêtre — 
 `not_demo_account` identique à une adresse quelconque [jamais 404], ouverte → il matérialise le
 club ; `/api/register/config` hors debug n'expose le raccourci que fenêtre ouverte ; falsifié en
 retirant la garde `UserChecker`) ·
+`Integration/Admin/AdminDemoResetTest` (axes *auth & memberships* + *tenant isolation*, Démos PR B,
+console `/api/admin/demos` : un JWT club ne franchit jamais le firewall admin [401] et toute écriture
+exige le CSRF [403] ; `activate` ouvre une fenêtre de 4 h à l'horloge RÉELLE et un re-clic la
+REDÉMARRE [jamais une addition], `deactivate` la ferme ; l'horloge simulée `club.demo_today` ne se
+pose que sur le club démo BCCL [is_demo], résolu SERVEUR depuis le compte `demo-bccl@` — refus 400 sur
+date malformée/ambiguë ; le reset remet demo_today à null SANS toucher la fenêtre du compte NI un
+autre club démo [échec du re-seed → 502, horloge intacte] ; et la garde de `app:demo:seed` REFUSE de
+purger un club NON démo tenant ARA9999999 — un vrai club et sa saison survivent, rien purgé) ·
+`Integration/Command/DemoPurgeStaleCommandTest` (axe *tenant isolation*, Démos PR B, purge nocturne
+`app:demo:purge-stale` : un club démo de l'animateur PROSPECT créé la VEILLE est détruit [ligne club
+supprimée, code FFBB libéré], tandis qu'un démo créé le JOUR MÊME, un démo PARTAGÉ [autre membre], un
+club NON démo et la démo BCCL permanente [autre compte `demo-bccl@`, hors scope] ne bougent JAMAIS —
+chemin sûr `DemoClubMaterializer::teardownStaleDemos`. Sans ce gate, un élargissement du prédicat
+détruirait un vrai club ou la démo permanente en silence) ·
 `Integration/Command/BcclProdSeedCommandTest` (axe *auth & memberships* : le seed BCCL de PROD
 [`app:bccl:seed-prod`] pose des gestionnaires PRÉ-VÉRIFIÉS [le rail /register est mort en prod],
 rattachés au bon club [ARA0069036, jamais la démo], avec des mots de passe pilotés par options —

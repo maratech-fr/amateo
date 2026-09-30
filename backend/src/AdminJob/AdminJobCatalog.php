@@ -56,6 +56,10 @@ final class AdminJobCatalog
             new AdminJobDefinition('purge-erased-clubs', 'Purge des clubs effacés', 'app:clubs:purge-erased', AdminJobSchedule::daily(2, 15)),
             new AdminJobDefinition('purge-inactive-users', 'Purge des comptes inactifs', 'app:users:purge-inactive', AdminJobSchedule::daily(2, 30)),
             new AdminJobDefinition('purge-seasons', 'Purge des anciennes saisons', 'app:seasons:purge', AdminJobSchedule::daily(3)),
+            // Démos — détruit chaque nuit les clubs démo PROSPECT de la veille (libère le
+            // code FFBB) ; la démo BCCL permanente n'est jamais concernée. Créneau libre
+            // entre purge-seasons (3:00) et purge-audit (3:30).
+            new AdminJobDefinition('demo-purge-stale', 'Purge des démos prospect périmées', 'app:demo:purge-stale', AdminJobSchedule::daily(3, 15)),
             new AdminJobDefinition('purge-audit-log', 'Purge du journal d’audit', 'app:audit:purge', AdminJobSchedule::daily(3, 30)),
             // P4-52 — les rendus d'export ne repartaient jamais. 3h45 : après les purges de
             // données, avant les imports du matin.

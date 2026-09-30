@@ -36,6 +36,13 @@ services:
     App\Tests\Double\RecordingAdminJobExecutor:
         public: true
 
+    # Console démo : le reset endpoint ne lance jamais le sous-processus seed réel en test.
+    App\Service\DemoResetRunnerInterface:
+        alias: App\Tests\Double\RecordingDemoResetRunner
+        public: true
+    App\Tests\Double\RecordingDemoResetRunner:
+        public: true
+
     # Wire the dev clock override in the test env too, so a non-regression test
     # can pin the clock and assert the season pivot / reminder crons follow it
     # (the structuring axis this simulator threads through). Unpinned, the

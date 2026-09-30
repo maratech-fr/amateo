@@ -1,4 +1,4 @@
-import { Activity, Building2, Database, History, MessageSquareWarning, Server, Workflow, type LucideIcon } from "lucide-react";
+import { Activity, Building2, Database, History, MessageSquareWarning, Presentation, Server, Workflow, type LucideIcon } from "lucide-react";
 
 export interface TabSubDef {
   id: string;
@@ -12,13 +12,14 @@ export interface TabDef {
   subTabs?: TabSubDef[];
 }
 
-/** 7 onglets principaux de la console superadmin. */
+/** 8 onglets principaux de la console superadmin. */
 export const ADMIN_TABS: TabDef[] = [
   { id: "vue-densemble", label: "Vue d'ensemble", icon: Activity },
   { id: "infrastructure", label: "Infrastructure", icon: Server },
   { id: "jobs", label: "Jobs", icon: Workflow },
   { id: "referentiels", label: "Référentiels", icon: Database },
   { id: "clubs", label: "Comptes clubs", icon: Building2 },
+  { id: "demos", label: "Démos", icon: Presentation },
   { id: "signalements", label: "Signalements", icon: MessageSquareWarning },
   {
     id: "journaux",

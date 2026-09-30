@@ -13,6 +13,7 @@ use App\Enum\ClubRole;
 use App\Exception\DemoTeardownRefusedException;
 use App\Service\Basketball\FfbbClubPopulator;
 use App\Service\Basketball\FfbbTeamImporter;
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Throwable;
 
@@ -180,6 +181,69 @@ final class DemoClubMaterializer
             // PAS : le journal est append-only (preuve RGPD) et ne contient aucune PII ;
             // la trace LISIBLE du remplacement est l'entrée GLOBALE DEMO_SHORTCUT posée par
             // l'appelant, hors scope club.
+            $fresh = $this->entityManager->getRepository(Club::class)->find($clubId);
+            if ($fresh instanceof Club) {
+                $this->entityManager->remove($fresh);
+                $this->entityManager->flush();
+            }
+        }
+
+        return $clubIds;
+    }
+
+    /**
+     * Purge NOCTURNE (app:demo:purge-stale) : détruit les clubs démo de l'animateur
+     * PROSPECT créés AVANT $cutoff, par le MÊME chemin sûr que teardownPreviousDemo.
+     * Différence : ici on ITÈRE plusieurs clubs et un club non éligible est SAUTÉ, jamais
+     * détruit (le geste nocturne ne doit pas s'abattre sur tout au premier cas douteux) :
+     *  - un club NON démo est sauté (un vrai club n'est JAMAIS détruit) ;
+     *  - un club démo PARTAGÉ (un autre membre) est sauté — c'est le garde-fou qui met la
+     *    démo BCCL permanente hors d'atteinte quel que soit le chemin (ARA9999999 / compte
+     *    demo-bccl@ : elle n'est de toute façon PAS une adhésion de l'animateur prospect) ;
+     *  - un club démo créé le JOUR MÊME est gardé ($cutoff = début du jour courant) : la
+     *    réactivation de la fenêtre le même jour réutilise ce club, jamais un neuf.
+     * Détruire = purger le workspace sous le GUC du club puis supprimer la ligne club (libère
+     * le code FFBB du prospect), exactement comme la passe 2 de teardownPreviousDemo.
+     *
+     * @return list<string> ids des clubs démo effectivement libérés
+     */
+    public function teardownStaleDemos(User $animator, DateTimeImmutable $cutoff): array
+    {
+        $animatorId = $animator->getId();
+
+        // PASSE 1 — sélection + validation, aucune destruction : on ne retient que les
+        // clubs démo, non partagés, créés avant le cutoff. Tout le reste est SAUTÉ.
+        $clubIds = [];
+        foreach ($this->entityManager->getRepository(ClubUser::class)->findBy(['userId' => $animatorId]) as $membership) {
+            $club = $this->entityManager->getRepository(Club::class)->find($membership->getClubId());
+            if (!$club instanceof Club) {
+                continue;
+            }
+            if (!$club->isDemo() || $club->getCreatedAt() >= $cutoff) {
+                continue;
+            }
+            if ($this->hasOtherMember($club->getId(), $animatorId)) {
+                continue;
+            }
+            $clubIds[] = $club->getId();
+        }
+
+        // PASSE 2 — destruction (miroir de la passe 2 de teardownPreviousDemo) : purge du
+        // workspace sous le GUC du club, puis suppression de la ligne club dans une unit of
+        // work propre. La table `club` est hors RLS et sans FK entrante — suppression sûre.
+        foreach ($clubIds as $clubId) {
+            $club = $this->entityManager->getRepository(Club::class)->find($clubId);
+            if (!$club instanceof Club) {
+                continue;
+            }
+            $this->tenantConnectionContext->setClubId($clubId);
+
+            try {
+                $this->erasedClubPurger->purge($club);
+            } finally {
+                $this->tenantConnectionContext->clear();
+            }
+
             $fresh = $this->entityManager->getRepository(Club::class)->find($clubId);
             if ($fresh instanceof Club) {
                 $this->entityManager->remove($fresh);

@@ -1,15 +1,12 @@
 # Console superadmin — authentification, télémétrie et API de supervision
 
-Last verified @ 2026-09-30 (rotation de fraîcheur, `documentation-update`). Re-vérifié contre le
-code : firewall `admin` = `pattern: ^/api/admin`, `provider: super_admin_provider`
-(`backend/config/packages/security.yaml:33,36`) ✓ ; `AdminCsrfListener` toujours à la priorité 6
-(`AdminCsrfListener.php:38`) ✓ ; `PasswordPolicy::MIN_LENGTH`/`REQUIREMENT_FR`
-(`PasswordPolicy.php:15,18`) ✓ ; challenge TOTP borné à 5 minutes (`time() - $startedAt > 300`,
-`AdminAuthController.php:72`) ✓ ; `SuperAdmin` toujours une entité séparée
-(`SuperAdmin.php:13`) ✓ ; les trois jobs `manualTriggerAllowed: true` (`club-approval-digest`,
-`import-school-holidays`, `import-public-holidays`) toujours dans `AdminJobCatalog.php` ✓ ;
-`GET /api/admin/capacity` (`AdminMonitoringController.php:47-48`) toujours exposée. Reste du
-fichier non re-confronté cette passe ; historique des vérifications précédentes :
+Last verified @ 2026-09-30 (console Démos, PR B du lot Démos). Re-vérifié contre le code :
+`AdminDemoController` (`/api/admin/demos*`, `AdminDemoController.php:53,64,90,113,140`) — 4 h à
+l'horloge RÉELLE, jamais une addition (`AdminDemoController.php:77`) ; `DemoResetRunner` en
+SOUS-PROCESSUS `app:demo:seed` (`DemoResetRunner.php:35`) ; `app:demo:purge-stale`
+(cron-runner quotidien 03:15, clé `demo-purge-stale`, `AdminJobCatalog.php:62`) ; 8ᵉ onglet
+« Démos » (`frontend/src/features/admin/tabs/tabsConfig.ts:22`). Reste du fichier non
+re-confronté cette passe ; historique des vérifications précédentes :
 `git log -p --follow specs/courantes/superadmin-auth.md`.
 
 > **État courant** : SA0, SA1, la console read-only SA2, le socle
@@ -20,7 +17,8 @@ fichier non re-confronté cette passe ; historique des vérifications précéden
 > alerting), et la console en
 > onglets avec monitoring conteneurs/dépendances externes + les journaux read-only
 > audit / échecs async / erreurs système (§Journaux read-only) + heartbeats
-> cron & pdf-worker**. Le redémarrage de conteneur depuis l'UI a été étudié puis **retiré**
+> cron & pdf-worker, et le pilotage des deux comptes de démonstration (§Démos — console de
+> pilotage)**. Le redémarrage de conteneur depuis l'UI a été étudié puis **retiré**
 > (socle `docker.sock` non transposable en prod — voir console-superadmin.md). Les actions
 > cross-tenant restent dans [`../evolution/console-superadmin.md`](../evolution/console-superadmin.md).
 
@@ -216,10 +214,11 @@ fermée calculée en `Europe/Paris` :
   l'activité des clubs, pas le calendrier ;
 - digest des doléances coach chaque jour à 07:00 — n'envoie que si une réponse est postérieure
   au dernier digest (silence total = aucun email), et pousse le récap final le lendemain de la
-  deadline ;
+  deadline ; digest des signalements chaque jour à 07:30 ;
 - rappels de périodes et de transition chaque jour à 08:00 ;
 - purges comptes non vérifiés à 02:00, clubs effacés à 02:15, comptes inactifs à 02:30,
-  saisons à 03:00 et audit à 03:30 ;
+  saisons à 03:00, **démos prospect périmées à 03:15** (`app:demo:purge-stale`, ci-dessous) et
+  audit à 03:30, rendus d'export à 03:45 ;
 - imports des vacances scolaires à 04:00 et des jours fériés à 04:30, le 1er janvier,
   avril, juillet et octobre.
 
@@ -380,3 +379,44 @@ par domaine que `CustomRoutesOpenApiFactory` compose depuis P4-138, 2026-08-30 �
 `backend/docs/backend-inventory.md` §OpenAPI).
 ⚠ Le contrat de `/api/admin/messenger/failed` porte explicitement que le **body d'un message
 n'est jamais rendu** (PII) : seuls la classe, l'horodatage et le message d'erreur sortent.
+
+## Démos — console de pilotage (PR B)
+
+`AdminDemoController` (`/api/admin/demos*`) pilote les deux comptes de démonstration — mêmes
+gardes que les actions de support (contexte d'audit posé AVANT toute garde, puis CSRF de
+session, puis identité `SuperAdmin`) — sur la connexion Doctrine `admin`, **aucun `club_id`
+posé** (surface cross-tenant, contrat SA0).
+
+- `GET /demos` rend l'état des deux comptes : fenêtre d'activation ISO, club démo courant
+  (résolu SERVEUR depuis l'adhésion active du compte, jamais depuis la requête), et — pour la
+  démo BCCL seule — sa date simulée (`demo_today`).
+- `POST /demos/{bccl|prospect}/activate` ouvre la fenêtre d'activation (`app_user.demo_active_until`)
+  pour **4 h à l'horloge RÉELLE** : un re-clic **redémarre** la fenêtre depuis maintenant, il ne
+  l'étend jamais (la valeur est remplacée, pas additionnée). `POST /demos/{target}/deactivate` la
+  ferme (`NULL`).
+- `POST /demos/bccl/reset` relance `app:demo:seed` en **sous-processus** (`DemoResetRunner`, via
+  `DATABASE_ADMIN_URL`, même patron `Process` que `DatabaseBackupCommand` — la requête console
+  tourne, elle, sur la connexion applicative, incapable de purger le workspace à travers la RLS),
+  puis remet `club.demo_today` à `NULL` (décision fondateur : le reset repart TOUJOURS à
+  aujourd'hui) **sans toucher la fenêtre d'activation du compte**. Un re-seed en échec rend 502,
+  l'horloge simulée reste intacte.
+- `POST /demos/bccl/clock` pose (`date`, `YYYY-MM-DD`) ou relâche (`clear`) la date simulée du
+  club BCCL — exactement l'un des deux, jamais les deux ni aucun ; la date doit se relire à
+  l'identique (`2026-02-31` refusé, même garde que `DemoClockCommand`) ; le club est résolu
+  SERVEUR depuis le compte `demo-bccl@`, et l'`UPDATE` reste gardé `is_demo = TRUE`.
+
+Front : 8ᵉ onglet « Démos » (`frontend/src/features/admin/tabs/tabsConfig.ts`, icône
+`Presentation`) — deux cartes (`DemosSection.tsx`) : « Démo BCCL » (fenêtre + réinitialisation
+sous `ConfirmDialog` nominatif + horloge simulée : champ date, Appliquer, Revenir à aujourd'hui)
+et « Démo prospect » (fenêtre seule). Les heures sont rendues à l'**heure de Paris**
+(`Intl.DateTimeFormat` dédié) — l'API répond en ISO UTC.
+
+**Purge nocturne du prospect périmé** : `app:demo:purge-stale` (cron-runner, quotidien
+**03:15**, clé `demo-purge-stale` dans `AdminJobCatalog`) détruit les clubs démo de l'animateur
+PROSPECT créés **avant le jour courant** (Europe/Paris) — la ligne `club` est supprimée, ce qui
+libère son code FFBB ; une réactivation le même jour réutilise le club existant. Chemin sûr
+`DemoClubMaterializer::teardownStaleDemos()` (miroir de `teardownPreviousDemo()` qui sert le
+raccourci register) : un club non démo ou démo **partagé** (un autre membre) est SAUTÉ, jamais
+détruit ; un club créé le **jour même** est gardé. La démo BCCL permanente n'est jamais une
+adhésion de l'animateur prospect — elle est hors scope par construction, pas par un cas
+particulier du job.

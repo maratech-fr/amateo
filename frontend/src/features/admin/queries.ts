@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { activateAdminMembership, type AdminFeedbackStatus, createAdminReleaseNote, decideAdminClubRequest, deleteAdminReleaseNote, getAdminActions, getAdminAuditLog, getAdminCapacity, getAdminClubRequests, getAdminClubs, getAdminFeedback, getAdminFeedbackDetail, getAdminFreshness, getAdminHealth, getAdminJobs, getAdminMessengerFailed, getAdminOverview, getAdminPendingMemberships, getAdminReleaseNotes, getAdminSession, getAdminSystemErrors, publishAdminReleaseNote, type ReleaseNoteWritePayload, runAdminClubAction, runAdminJob, treatAdminFeedback, untreatAdminFeedback } from "./api";
+import { activateAdminDemo, activateAdminMembership, type AdminDemoTarget, type AdminFeedbackStatus, createAdminReleaseNote, deactivateAdminDemo, decideAdminClubRequest, deleteAdminReleaseNote, getAdminActions, getAdminAuditLog, getAdminCapacity, getAdminClubRequests, getAdminClubs, getAdminDemos, getAdminFeedback, getAdminFeedbackDetail, getAdminFreshness, getAdminHealth, getAdminJobs, getAdminMessengerFailed, getAdminOverview, getAdminPendingMemberships, getAdminReleaseNotes, getAdminSession, getAdminSystemErrors, publishAdminReleaseNote, type ReleaseNoteWritePayload, resetAdminDemoBccl, runAdminClubAction, runAdminJob, setAdminDemoClock, treatAdminFeedback, untreatAdminFeedback } from "./api";
 import { useAdminStore } from "./store";
 
 /** Lit le jeton CSRF de la session admin, ou rejette — patron des mutations admin. */
@@ -314,5 +314,79 @@ export function useUntreatAdminFeedback() {
       void queryClient.invalidateQueries({ queryKey: ["admin-feedback"] });
       void queryClient.invalidateQueries({ queryKey: ["admin-feedback-detail"] });
     },
+  });
+}
+
+// Démos — état des deux comptes + gestes (activation, désactivation, reset BCCL, horloge BCCL).
+
+export function useAdminDemos() {
+  return useQuery({
+    queryKey: ["admin-demos"],
+    queryFn: getAdminDemos,
+    refetchInterval: 60_000,
+  });
+}
+
+export function useActivateAdminDemo() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (target: AdminDemoTarget) => {
+      const csrfToken = requireCsrf();
+      if (!csrfToken) {
+        return Promise.reject(new Error("Missing super-admin CSRF token."));
+      }
+
+      return activateAdminDemo(target, csrfToken);
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-demos"] }),
+  });
+}
+
+export function useDeactivateAdminDemo() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (target: AdminDemoTarget) => {
+      const csrfToken = requireCsrf();
+      if (!csrfToken) {
+        return Promise.reject(new Error("Missing super-admin CSRF token."));
+      }
+
+      return deactivateAdminDemo(target, csrfToken);
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-demos"] }),
+  });
+}
+
+export function useResetAdminDemoBccl() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => {
+      const csrfToken = requireCsrf();
+      if (!csrfToken) {
+        return Promise.reject(new Error("Missing super-admin CSRF token."));
+      }
+
+      return resetAdminDemoBccl(csrfToken);
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-demos"] }),
+  });
+}
+
+export function useSetAdminDemoClock() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: { date: string } | { clear: true }) => {
+      const csrfToken = requireCsrf();
+      if (!csrfToken) {
+        return Promise.reject(new Error("Missing super-admin CSRF token."));
+      }
+
+      return setAdminDemoClock(body, csrfToken);
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-demos"] }),
   });
 }

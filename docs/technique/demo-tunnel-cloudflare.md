@@ -90,9 +90,13 @@ Ses bornes : mot de passe d'un compte existant **vérifié, jamais écrasé** (u
 pendant la démo rend un 401 explicite, pas une éjection vers l'écran de connexion) ; un code FFBB
 qui n'est pas la propre démo isolée de l'animateur (club réel, démo d'un autre animateur, démo
 partagée) refuse en 409 sans rien détruire ; **en production la route existe** mais n'agit que si
-la fenêtre d'activation du compte animateur (`app_user.demo_active_until`, posée par le
-superadmin) est ouverte — fermée, elle rend le même 422 `not_demo_account` qu'une adresse
-quelconque, sans oracle. Détail complet : [`backend-inventory.md`](../../backend/docs/backend-inventory.md)
+la fenêtre d'activation du compte animateur (`app_user.demo_active_until`) est ouverte — fermée,
+elle rend le même 422 `not_demo_account` qu'une adresse quelconque, sans oracle. **La fenêtre se
+pose depuis la console superadmin** (`/admin` → onglet « Démos » → « Activer 4 h » sur la carte
+« Démo prospect » ; même geste sur « Démo BCCL » pour se connecter au compte gestionnaire
+`demo-bccl@amateo.fr`) — à faire AVANT le rendez-vous, un club seedé n'ouvre aucune fenêtre par
+lui-même. Détail complet : [`superadmin-auth.md`](../../specs/courantes/superadmin-auth.md)
+§« Démos — console de pilotage », [`backend-inventory.md`](../../backend/docs/backend-inventory.md)
 §« Module démo », [`commands.md`](../../backend/docs/commands.md).
 
 ## 5. Sécurité — à lire avant de partager l'URL

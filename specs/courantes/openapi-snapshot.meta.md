@@ -1,11 +1,11 @@
-Last verified @ 2026-09-30 (Gymnases — nouvelle route `GET /api/venues/geo-check` (tag `Venue`,
-management-only, tenant du JWT) : contrôle de cohérence LECTURE SEULE de la position stockée d'un
-gymnase rattaché à une salle FFBB, renvoie un tableau d'alertes `{venueId, reason:
-OTHER_STREET|FAR_FROM_ADDRESS, ffbbAddress, pointStreet|null, distanceM|null}`. +1 path. Régénéré à
-froid depuis le backend vivant).
+Last verified @ 2026-09-30 (Console démo — cinq routes superadmin `GET /api/admin/demos`,
+`POST /api/admin/demos/{target}/activate`, `.../deactivate`, `POST /api/admin/demos/bccl/reset` et
+`.../clock` (tag `AdminDemo`) : pilotage des deux comptes de démonstration — fenêtre d'activation de
+4 h à l'horloge réelle, réinitialisation de la démo BCCL et horloge simulée `demo_today`. **+5 path**.
+Déclarées dans `AdminDemoPaths`, régénéré à froid depuis le backend vivant).
 
-**216 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`72ce5eef7c27a9fbda91b73cc7dadeba819471250d3c1b7170203a285d92b8c4` (`sha256sum` sur le fichier).
+**221 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`4bbc5e802f5e602a72e5836e16cdc81c5723790b711d5cf7b5e4d94d22001180` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne
