@@ -29,6 +29,41 @@ const jsxA11yRules = Object.fromEntries(
   }),
 )
 
+// Banned migration anti-patterns (frontend-strategy §3) — GLOBAL, tous fichiers.
+const bannedSyntax = [
+  {
+    selector: "MemberExpression[object.name='ReactDOM'][property.name='render']",
+    message: 'ReactDOM.render is removed in React 19 — use createRoot().render().',
+  },
+  {
+    selector: "Property[key.name='onSuccess'][parent.parent.callee.name='useQuery']",
+    message: 'onSuccess was removed from useQuery in TanStack Query v5 — use useEffect on data, or select (useMutation.onSuccess is still valid).',
+  },
+]
+
+// Uniformité des sélecteurs (série « uniformité des écrans » PR 3/7, GO fondateur 2026-10-01).
+// Portée : les écrans PRODUIT (src/features/** + src/app/**) — JAMAIS src/features/admin/**
+// (palette console, décision UXC-12) ni src/shared/components/ui/** (le foyer des primitives, hors
+// du glob de portée : c'est là que vit le SEUL `<select>` natif légitime et la className interne).
+const selectorSyntax = [
+  {
+    // Un `<select>` natif brut : la primitive Select l'habille (flèche, focus, disabled) de façon
+    // uniforme — et TeamSelect/VenueSelect portent le sélecteur riche d'une équipe / d'un gymnase.
+    selector: "JSXOpeningElement[name.name='select']",
+    message: 'Utilisez la primitive Select (ou TeamSelect/VenueSelect pour une équipe/un gymnase).',
+  },
+  {
+    // La largeur d'un sélecteur vit sur la BOÎTE (wrapperClassName), pas sur le contrôle intérieur :
+    // une classe w-/min-w-/max-w-/flex-/shrink-/grow-/basis- en className cible le `<select>`/`<button>`
+    // interne (toujours `w-full`), jamais la boîte que la ligne flex mesure — même piège que le Listbox.
+    // AST volontairement PRÉCIS : className LITTÉRALE seulement ; un `cn(...)`/variable n'est pas couvert
+    // (choix documenté — ces cas restent à la revue, cf. rapport PR 3/7).
+    selector:
+      "JSXOpeningElement[name.name=/^(Listbox|TeamSelect|VenueSelect|Select)$/] > JSXAttribute[name.name='className'] > Literal[value=/(^|\\s)(w-|min-w-|max-w-|flex(\\s|-|$)|shrink(\\s|-|$)|grow(\\s|-|$)|basis-)/]",
+    message: "La largeur d'un sélecteur passe par wrapperClassName (la className vise le contrôle intérieur).",
+  },
+]
+
 export default defineConfig([
   globalIgnores(['dist']),
   {
@@ -53,18 +88,19 @@ export default defineConfig([
       'jsx-a11y/label-has-associated-control': [A11Y_LEVEL, { controlComponents: ['Input', 'Select', 'TeamSelect'] }],
       // shadcn/ui + router export constants (buttonVariants, router) alongside components.
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
-      // Banned migration anti-patterns (frontend-strategy §3).
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector: "MemberExpression[object.name='ReactDOM'][property.name='render']",
-          message: 'ReactDOM.render is removed in React 19 — use createRoot().render().',
-        },
-        {
-          selector: "Property[key.name='onSuccess'][parent.parent.callee.name='useQuery']",
-          message: 'onSuccess was removed from useQuery in TanStack Query v5 — use useEffect on data, or select (useMutation.onSuccess is still valid).',
-        },
-      ],
+      // Banned migration anti-patterns (frontend-strategy §3) — voir `bannedSyntax`.
+      'no-restricted-syntax': ['error', ...bannedSyntax],
+    },
+  },
+  // Uniformité des sélecteurs — écrans produit seulement (voir `selectorSyntax`). Ce bloc REMPLACE
+  // `no-restricted-syntax` pour src/features/** + src/app/** (le flat config ne fusionne pas les
+  // options d'une règle-tableau) : il REPREND donc `bannedSyntax` pour ne rien perdre, puis ajoute
+  // les deux règles de sélecteur. Admin exempté ; shared/ hors du glob (donc naturellement exempté).
+  {
+    files: ['src/features/**/*.{ts,tsx}', 'src/app/**/*.{ts,tsx}'],
+    ignores: ['src/features/admin/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': ['error', ...bannedSyntax, ...selectorSyntax],
     },
   },
   // AUD-FRT-21 — GELER la direction des dépendances : `shared/` est la couche du DESSOUS,
