@@ -21,10 +21,11 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 /**
  * La porte API du levier d'intensité de la règle « Trajet entre gymnases » (P2-53 RMM-8 PR-4).
  *
- * SINGLETON par club+saison, identifiant fixe `travelTime` : GET résout (défaut PREFERRED,
- * `isDefault=true`), PUT upserte (PREFERRED|MANDATORY), un vocabulaire bien-être (HARD/OFF) est
- * refusé 422. Les gardes management (403) et saison archivée (409) sont portées par les blocages
- * `ManagementRoleTest` / `SeasonReadonlyTest` (idiome partagé des processors).
+ * SINGLETON par club+saison, identifiant fixe `travelTime` : GET résout (défauts PREFERRED /
+ * tolérance 20 / défaut 20, `isDefault=true`), PUT upserte (cran OFF|PREFERRED|MANDATORY + battement
+ * toléré 0-60 + temps par défaut 1-120), une valeur inconnue ou hors bornes est refusée 422. Les
+ * gardes management (403) et saison archivée (409) sont portées par les blocages `ManagementRoleTest`
+ * / `SeasonReadonlyTest` (idiome partagé des processors).
  */
 #[Group('integration')]
 final class VenueTravelRuleSettingApiTest extends WebTestCase
@@ -44,7 +45,48 @@ final class VenueTravelRuleSettingApiTest extends WebTestCase
 
         $body = $this->body();
         self::assertSame('PREFERRED', $body['intensity'], 'sans réglage : le défaut PREFERRED');
+        self::assertSame(20, $body['toleranceMinutes'], 'défaut battement toléré 20');
+        self::assertSame(20, $body['defaultMinutes'], 'défaut temps par défaut 20');
         self::assertTrue($body['isDefault']);
+    }
+
+    public function testOffIsAcceptedAndReflected(): void
+    {
+        [$user] = $this->seed();
+        $auth = $this->authHeaders($user);
+
+        $this->client->request('PUT', '/api/venue_travel_rule_settings/travelTime', [], [], $auth + ['CONTENT_TYPE' => 'application/json'], json_encode(['intensity' => 'OFF'], \JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+        self::assertSame('OFF', $this->body()['intensity'], 'OFF « Inactive » est un cran valide (décision fondateur 2026-09-30)');
+    }
+
+    public function testUpsertToleranceAndDefaultMinutes(): void
+    {
+        [$user] = $this->seed();
+        $auth = $this->authHeaders($user);
+
+        $this->client->request('PUT', '/api/venue_travel_rule_settings/travelTime', [], [], $auth + ['CONTENT_TYPE' => 'application/json'], json_encode(['intensity' => 'PREFERRED', 'toleranceMinutes' => 5, 'defaultMinutes' => 45], \JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+        $body = $this->body();
+        self::assertSame(5, $body['toleranceMinutes']);
+        self::assertSame(45, $body['defaultMinutes']);
+
+        $this->client->request('GET', '/api/venue_travel_rule_settings/travelTime', [], [], $auth);
+        $body = $this->body();
+        self::assertSame(5, $body['toleranceMinutes'], 'le GET reflète le battement toléré stocké');
+        self::assertSame(45, $body['defaultMinutes'], 'le GET reflète le temps par défaut stocké');
+    }
+
+    public function testOutOfBoundsToleranceOrDefaultIs422(): void
+    {
+        [$user] = $this->seed();
+        $auth = $this->authHeaders($user);
+
+        // Battement toléré 0-60, temps par défaut 1-120 : hors bornes ⇒ 422.
+        foreach ([['toleranceMinutes' => 61], ['toleranceMinutes' => -1], ['defaultMinutes' => 0], ['defaultMinutes' => 121]] as $bad) {
+            $this->client->request('PUT', '/api/venue_travel_rule_settings/travelTime', [], [], $auth + ['CONTENT_TYPE' => 'application/json'], json_encode(['intensity' => 'PREFERRED'] + $bad, \JSON_THROW_ON_ERROR));
+            self::assertResponseStatusCodeSame(422, \sprintf('hors bornes : %s', json_encode($bad)));
+        }
     }
 
     public function testUpsertMandatoryAndGetReflectsIt(): void
@@ -82,9 +124,9 @@ final class VenueTravelRuleSettingApiTest extends WebTestCase
     {
         [$user] = $this->seed();
 
-        // HARD/OFF sont le vocabulaire des règles bien-être — la règle de trajet ne parle que
-        // PREFERRED|MANDATORY : Assert\Choice les refuse en 422.
-        foreach (['HARD', 'OFF', 'nope'] as $bad) {
+        // HARD n'est PAS un cran de trajet (OFF/PREFERRED/MANDATORY seulement) : Assert\Choice le
+        // refuse en 422, comme toute chaîne inconnue.
+        foreach (['HARD', 'nope', 'preferred'] as $bad) {
             $this->client->request('PUT', '/api/venue_travel_rule_settings/travelTime', [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], json_encode(['intensity' => $bad], \JSON_THROW_ON_ERROR));
             self::assertResponseStatusCodeSame(422, \sprintf('« %s » n’est pas une intensité de trajet valide', $bad));
         }
@@ -161,10 +203,10 @@ final class VenueTravelRuleSettingApiTest extends WebTestCase
         return [$user, $club, $season];
     }
 
-    /** @return array{ruleKey: string, intensity: string, isDefault: bool} */
+    /** @return array{ruleKey: string, intensity: string, toleranceMinutes: int, defaultMinutes: int, isDefault: bool} */
     private function body(): array
     {
-        /** @var array{ruleKey: string, intensity: string, isDefault: bool} $data */
+        /** @var array{ruleKey: string, intensity: string, toleranceMinutes: int, defaultMinutes: int, isDefault: bool} $data */
         $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
 
         return $data;

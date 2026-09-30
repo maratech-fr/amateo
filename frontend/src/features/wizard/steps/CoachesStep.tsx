@@ -143,7 +143,7 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks }: C
               Véhiculé
             </label>
             <span id={`vehicled-help-${coach.id}`} className="text-muted-foreground">
-              (trajet en voiture, à pied sinon)
+              (trajet en voiture, à vélo sinon)
             </span>
           </span>
           {/* P4-51 — le plafond de COMPTE : « peu importe quels jours, pas plus de N par

@@ -12,9 +12,11 @@ use Doctrine\ORM\Mapping as ORM;
 /**
  * Un barème de trajet ENTRE DEUX GYMNASES du club (P2-53 RMM-8 — « la matrice de
  * temps de trajet »). Deux minutes par paire : le temps ACCEPTABLE en VOITURE
- * (`drivingMinutes`) et À PIED (`walkingMinutes`) — c'est la réalité terrain que
- * le gestionnaire connaît, appliquée par le solveur selon que le coach est
- * véhiculé ou non (consommé en PR-2 ; ici on ne pose QUE le modèle).
+ * (`drivingMinutes`) et en mode NON VÉHICULÉ (`walkingMinutes`) — c'est la réalité
+ * terrain que le gestionnaire connaît, appliquée par le solveur selon que le coach
+ * est véhiculé ou non. ⚠ Le mode non véhiculé est désormais le VÉLO / la TROTTINETTE
+ * (décision fondateur 2026-09-30) : le champ garde son nom technique `walkingMinutes`,
+ * seul son SENS change (barème « à vélo », plus « à pied »).
  *
  * STRUCTURE de club+saison (patron `TeamLink` — pas de `schedulePlanId`, la
  * matrice nourrit tous les plans du club+saison).

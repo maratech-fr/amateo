@@ -30,7 +30,7 @@ use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintScope;
 use App\Enum\LockLevel;
 use App\Enum\SchedulePlanType;
-use App\Enum\TeamLinkIntensity;
+use App\Enum\VenueTravelRuleIntensity;
 use App\Repository\VenueTrainingSlotRepository;
 use App\Repository\VenueTravelRuleSettingRepository;
 use DateTimeInterface;
@@ -58,16 +58,9 @@ final class ScheduleConstraintBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '2.28';
+    public const string CONTRACT_VERSION = '2.29';
     private const CACHE_TTL_SECONDS = 14_400;
     private const DEFAULT_SOLVER_SEED = 42;
-    /**
-     * P2-53 RMM-8 PR-2 — le barème de trajet appliqué à un couple de gymnases jamais arbitré
-     * (« défaut 20 min pour une paire jamais arbitrée », arbitrage fondateur). Émis dans la
-     * règle implicite `travelTime` ; le moteur l'applique quand la colonne voiture/à pied d'un
-     * couple est nulle ou absente.
-     */
-    private const TRAVEL_TIME_DEFAULT_MINUTES = 20;
     /**
      * Upper bound on the solve budget (seconds), aligned with the engine input
      * schema default (`solver_timeout_seconds` = 650). The engine derives an
@@ -603,13 +596,23 @@ final class ScheduleConstraintBuilder
         // PR-4 — l'INTENSITÉ, elle, devient un RÉGLAGE stocké (levier Obligatoire) : le cran émis
         // = ce que le gestionnaire a réglé (`venue_travel_rule_setting`, club+saison, patron
         // matrice) ?? PREFERRED. Un club qui n'a rien réglé garde PREFERRED — payload
-        // byte-identique à avant PR-4. Le seuil `defaultMinutes: 20` reste EN DUR (hors arbitrage
-        // fondateur). Gardé par `VenueTravelTimePayloadParityTest`.
+        // byte-identique à avant PR-4. L'intensité, le battement TOLÉRÉ (`toleranceMinutes`) et le
+        // temps par défaut (`defaultMinutes`) viennent du réglage stocké (`venue_travel_rule_setting`)
+        // ou des défauts (PREFERRED, 20, 20). Gardé par `VenueTravelTimePayloadParityTest`.
+        //
+        // ⚠ Cran OFF « Inactive » (décision fondateur 2026-09-30) : la règle N'EST PAS émise ET la
+        // matrice non plus — payload d'un club sans matrice (la matrice reste STOCKÉE, simplement pas
+        // envoyée). On vide donc `serializedTravelTimes` avant l'émission.
+        $travelSetting = $this->resolveTravelRuleSetting($clubId, $seasonId);
         $serializedTravelTimes = $this->serializeVenueTravelTimes($venueTravelTimes);
+        if (VenueTravelRuleIntensity::OFF === $travelSetting->getIntensity()) {
+            $serializedTravelTimes = [];
+        }
         if ([] !== $serializedTravelTimes) {
             $implicitRules['travelTime'] = [
-                'intensity' => $this->resolveTravelRuleIntensity($clubId, $seasonId)->value,
-                'defaultMinutes' => self::TRAVEL_TIME_DEFAULT_MINUTES,
+                'intensity' => $travelSetting->getIntensity()->value,
+                'defaultMinutes' => $travelSetting->getDefaultMinutes(),
+                'toleranceMinutes' => $travelSetting->getToleranceMinutes(),
             ];
         }
 
@@ -954,20 +957,23 @@ final class ScheduleConstraintBuilder
     }
 
     /**
-     * L'intensité de la règle `travelTime` (P2-53 RMM-8 PR-4) : le réglage STOCKÉ du club+saison
-     * (`venue_travel_rule_setting`), ou PREFERRED — le défaut — quand rien n'est réglé, ou en mode
-     * léger sans DB. Portée club+saison SEULEMENT (la matrice qu'elle gouverne l'est aussi), donc
-     * NON scindée par plan : un plan de période émet la même intensité que le socle.
+     * Le réglage de la règle `travelTime` (P2-53 RMM-8 PR-4 + décision fondateur 2026-09-30) : le
+     * réglage STOCKÉ du club+saison (`venue_travel_rule_setting`), ou un réglage TRANSIENT aux
+     * défauts (PREFERRED, tolérance 20, défaut 20) quand rien n'est réglé, ou en mode léger sans DB.
+     * Portée club+saison SEULEMENT (la matrice qu'elle gouverne l'est aussi), donc NON scindée par
+     * plan : un plan de période émet le même réglage que le socle.
      */
-    private function resolveTravelRuleIntensity(string $clubId, string $seasonId): TeamLinkIntensity
+    private function resolveTravelRuleSetting(string $clubId, string $seasonId): VenueTravelRuleSetting
     {
-        if (!$this->travelRuleSettingRepository instanceof VenueTravelRuleSettingRepository || '' === $clubId || '' === $seasonId) {
-            return TeamLinkIntensity::PREFERRED;
+        if ($this->travelRuleSettingRepository instanceof VenueTravelRuleSettingRepository && '' !== $clubId && '' !== $seasonId) {
+            $stored = $this->travelRuleSettingRepository->findOneByClubSeason($clubId, $seasonId);
+            if ($stored instanceof VenueTravelRuleSetting) {
+                return $stored;
+            }
         }
 
-        $stored = $this->travelRuleSettingRepository->findOneByClubSeason($clubId, $seasonId);
-
-        return $stored instanceof VenueTravelRuleSetting ? $stored->getIntensity() : TeamLinkIntensity::PREFERRED;
+        // Réglage transient aux défauts — jamais persisté, sert uniquement à lire les défauts.
+        return (new VenueTravelRuleSetting)->setIntensity(VenueTravelRuleIntensity::PREFERRED);
     }
 
     /**

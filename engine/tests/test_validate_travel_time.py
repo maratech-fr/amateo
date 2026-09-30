@@ -61,7 +61,7 @@ def _payload(*, intensity: str, t1_start: str, t1_slots: list[tuple[int, str]]) 
         "teams": [make_team("t1"), make_team("t2")],
         "coaches": [_coach("c1")],
         "constraints": [team_coach("tc1", "t1", "c1"), team_coach("tc2", "t2", "c1")],
-        "implicitRules": {"travelTime": {"intensity": intensity}},
+        "implicitRules": {"travelTime": {"intensity": intensity, "toleranceMinutes": 0}},
         "venueTravelTimes": [_row("V1", "V2", 5, 30)],
         "slotTemplates": [_template("t1", "V1", 1, t1_start)],
         "candidate": {
@@ -137,7 +137,7 @@ class TestMandatoryTravelVerdictGroupMove:
             "teams": [make_team("t1"), make_team("t2")],
             "coaches": [_coach("c1")],
             "constraints": [team_coach("tc1", "t1", "c1"), team_coach("tc2", "t2", "c1")],
-            "implicitRules": {"travelTime": {"intensity": "MANDATORY"}},
+            "implicitRules": {"travelTime": {"intensity": "MANDATORY", "toleranceMinutes": 0}},
             "venueTravelTimes": [_row("V1", "V2", 5, 30)],
             "slotTemplates": [],  # les deux sources retirées : le chaînage naît des seuls candidats
             "candidates": [

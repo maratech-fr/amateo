@@ -67,7 +67,7 @@ class CoachResource
     #[Groups(['read'])]
     public bool $isEmployee = false;
 
-    /** Véhiculé (barème voiture) ou non (barème à pied). */
+    /** Véhiculé (barème voiture) ou non (barème à vélo). */
     #[Groups(['read'])]
     public bool $isVehicled = false;
 

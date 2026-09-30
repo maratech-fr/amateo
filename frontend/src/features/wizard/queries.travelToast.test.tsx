@@ -58,7 +58,7 @@ describe("les mutations de la matrice de trajet signalent leurs échecs (FRT-27)
     const errorSpy = vi.spyOn(toast, "error").mockImplementation(() => 0);
     const { result } = renderHook(() => useUpdateTravelRuleSetting(), { wrapper });
 
-    result.current.mutate("MANDATORY");
+    result.current.mutate({ intensity: "MANDATORY", toleranceMinutes: 20, defaultMinutes: 20 });
 
     await waitFor(() => expect(vi.mocked(wizardApi.updateTravelRuleSetting)).toHaveBeenCalled());
     await waitFor(() => expect(errorSpy).toHaveBeenCalledWith(expect.stringMatching(/\S/)));

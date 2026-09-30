@@ -1,4 +1,4 @@
-import { AlertTriangle, Car, Footprints, MapPinOff, RefreshCw, Search, Wand2 } from "lucide-react";
+import { AlertTriangle, Bike, Car, MapPinOff, RefreshCw, Search, Wand2 } from "lucide-react";
 import { useState } from "react";
 
 import { errorMessage } from "@/shared/lib/errorMessage";
@@ -72,7 +72,7 @@ function originWord(source: "AUTO" | "MANUAL" | null): string | null {
   return null;
 }
 
-const MODE_TEXT: Record<TravelMode, string> = { driving: "en voiture", walking: "à pied" };
+const MODE_TEXT: Record<TravelMode, string> = { driving: "en voiture", walking: "à vélo" };
 
 /** Le fragment accessible d'un temps pour l'aria-label de la case : « en voiture 3 min (calculé) ». */
 function timeAria(mode: TravelMode, minutes: number | null, source: "AUTO" | "MANUAL" | null, reason: AutofillUnresolvedReason | null): string {
@@ -88,7 +88,7 @@ function timeAria(mode: TravelMode, minutes: number | null, source: "AUTO" | "MA
 
 /** Un temps affiché dans une case : pictogramme + minutes, teinté selon l'origine (gras si MANUEL). */
 function TimeText({ mode, minutes, source }: { mode: TravelMode; minutes: number | null; source: "AUTO" | "MANUAL" | null }) {
-  const Icon = "driving" === mode ? Car : Footprints;
+  const Icon = "driving" === mode ? Car : Bike;
   // Code couleur : calculé = neutre ; saisi à la main = accent + GRAS (indice non chromatique).
   const tone = "MANUAL" === source ? "font-semibold text-accent" : "text-muted-foreground";
   return (
@@ -127,7 +127,7 @@ function MatrixCell({ from, dest, row, reason, onEdit }: { from: Venue; dest: Ve
 }
 
 /**
- * La modale d'édition d'un couple : deux champs minutes (voiture, à pied), l'origine de chaque
+ * La modale d'édition d'un couple : deux champs minutes (voiture, à vélo), l'origine de chaque
  * valeur, la raison `unresolved` le cas échéant. Enregistrer commit UNIQUEMENT les valeurs
  * MODIFIÉES (même geste que la matrice : `onCommit` bascule MANUEL côté serveur). Pas de retour
  * « en auto », pas de nouvelle API.
@@ -186,11 +186,11 @@ function TravelEditModal({
       <label className="flex flex-col gap-1 text-sm">
         <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
           <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
-          {"driving" === mode ? "En voiture" : "À pied"}
+          {"driving" === mode ? "En voiture" : "À vélo"}
         </span>
         <div className="flex items-center gap-1">
           <Input
-            aria-label={`${"driving" === mode ? "En voiture" : "À pied"} — ${from.name} ↔ ${dest.name} (minutes)`}
+            aria-label={`${"driving" === mode ? "En voiture" : "À vélo"} — ${from.name} ↔ ${dest.name} (minutes)`}
             inputMode="numeric"
             className="h-9 w-20 tabular-nums"
             placeholder="—"
@@ -221,7 +221,7 @@ function TravelEditModal({
         <p className="text-sm text-muted-foreground">Le temps de trajet dans les deux sens. Ce que vous saisissez est conservé lors d'un recalcul automatique.</p>
         <div className="flex flex-wrap gap-6">
           {field("driving", Car, driving, setDriving, row?.drivingSource ?? null)}
-          {field("walking", Footprints, walking, setWalking, row?.walkingSource ?? null)}
+          {field("walking", Bike, walking, setWalking, row?.walkingSource ?? null)}
         </div>
       </div>
     </Modal>
@@ -235,7 +235,7 @@ function AutofillConsent({ onRun, onClose, running, error }: { onRun: () => void
       <Wand2 className="size-8 text-accent" aria-hidden="true" />
       <h3 className="text-base font-semibold text-foreground">Calculer les trajets entre vos gymnases ?</h3>
       <p className="max-w-md text-sm text-muted-foreground">
-        L'application peut estimer les temps de trajet entre chaque gymnase, en voiture et à pied. Vous pourrez corriger n'importe quelle valeur à la main.
+        L'application peut estimer les temps de trajet entre chaque gymnase, en voiture et à vélo. Vous pourrez corriger n'importe quelle valeur à la main.
       </p>
       <p className="max-w-md text-sm text-muted-foreground">
         En les calculant, la règle « Trajet entre gymnases » s'active : le planning cherchera à enchaîner des gymnases proches. Elle démarre en « Préféré » (une préférence souple),
@@ -364,6 +364,13 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
       ) : (
         // `mt-3` : un espace entre le titre de la modale et le filtre (l'en-tête partagé n'en pose pas).
         <div className="mt-3 flex flex-col gap-3">
+          {/* LOT C — l'explication de ce à quoi servent ces temps, et où se règle le battement toléré. */}
+          <p className="text-xs text-muted-foreground">
+            Ces temps servent à la génération du planning. Quand une même personne enchaîne deux séances le même jour dans deux gymnases différents, le planning vérifie qu'elle a le temps
+            d'y aller : en voiture si le coach est déclaré véhiculé, à vélo ou en trottinette sinon — à vélo aussi pour les joueurs qui s'entraînent dans deux équipes reliées par une
+            passerelle. Votre club peut accepter qu'on parte un peu avant la fin ou qu'on commence un peu après l'heure : ce battement se règle, avec le niveau de la règle (inactive,
+            préférée ou obligatoire), à l'étape Contraintes, onglet Bien-être, encart «&nbsp;Trajet entre gymnases&nbsp;».
+          </p>
           {/* Zone d'en-tête non défilante : filtre + légende + gymnases sans adresse. */}
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
@@ -376,7 +383,7 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
                 <Car className="size-3.5" aria-hidden="true" /> En voiture
               </span>
               <span className="inline-flex items-center gap-1 text-muted-foreground">
-                <Footprints className="size-3.5" aria-hidden="true" /> À pied
+                <Bike className="size-3.5" aria-hidden="true" /> À vélo
               </span>
               <span className="text-muted-foreground">Calculé automatiquement</span>
               <span className="font-semibold text-accent">Saisi à la main</span>
@@ -418,7 +425,7 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
             // Défilement horizontal accepté sous 360 px (garde-fou existant, bureau d'abord).
             <div className="max-h-[24rem] overflow-auto rounded-md border border-border">
               <table className="border-collapse text-sm">
-                <caption className="sr-only">Temps de trajet entre gymnases, en voiture et à pied, du gymnase de la ligne vers celui de la colonne. Cliquez une case pour la modifier.</caption>
+                <caption className="sr-only">Temps de trajet entre gymnases, en voiture et à vélo, du gymnase de la ligne vers celui de la colonne. Cliquez une case pour la modifier.</caption>
                 <thead>
                   <tr>
                     <th scope="col" className="sticky left-0 top-0 z-20 border-b border-r border-border bg-card px-2 py-1.5 text-left text-xs font-medium text-muted-foreground">Depuis \ vers</th>

@@ -198,10 +198,15 @@ class TravelTimeRuleSchema(SerializableModel):
     ``travel_time_infeasible``). Le premier terme, le DÉPARTAGE « moindre trajet », s'applique
     dès que la règle est active, quel que soit le cran (arbitrage fondateur : un PLUS, préférable
     en cas d'égalité, jamais dominant). ``default_minutes`` = le barème appliqué à un couple de
-    gymnases jamais arbitré (défaut 20)."""
+    gymnases jamais arbitré (défaut 20). ``tolerance_minutes`` = le BATTEMENT TOLÉRÉ (décision
+    fondateur 2026-09-30) : le club accepte qu'on parte un peu avant la fin ou qu'on démarre un peu
+    après l'heure, donc l'écart RÉELLEMENT exigé vaut ``max(0, barème − tolerance_minutes)``. Défaut
+    20 pour tous les clubs. Le mode NON VÉHICULÉ (colonne ``walkingMinutes``) désigne désormais le
+    VÉLO / la TROTTINETTE, plus la marche — le nom technique du champ est conservé."""
 
     intensity: Literal["PREFERRED", "MANDATORY"] = "PREFERRED"
     default_minutes: int = Field(default=20, ge=0, le=600, alias="defaultMinutes")
+    tolerance_minutes: int = Field(default=20, ge=0, le=600, alias="toleranceMinutes")
 
 
 class ImplicitRulesSchema(SerializableModel):
@@ -318,7 +323,7 @@ class ScheduleInputSchema(SerializableModel):
     # la valeur du fil. On l'aligne néanmoins sur le contrat courant (engine/CONTRACT_VERSION) pour
     # qu'aucun lecteur ne le prenne pour une version concurrente ; gardé par
     # test_schema_version_defaults_match_contract_version.
-    version: str = "2.28"
+    version: str = "2.29"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     schedule_name: str | None = Field(default=None, alias="scheduleName")

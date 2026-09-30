@@ -8,7 +8,7 @@ use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProviderInterface;
 use App\ApiResource\VenueTravelRuleSettingResource;
 use App\Entity\VenueTravelRuleSetting;
-use App\Enum\TeamLinkIntensity;
+use App\Enum\VenueTravelRuleIntensity;
 use App\Repository\VenueTravelRuleSettingRepository;
 use App\Service\SeasonResolver;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -42,7 +42,9 @@ final class VenueTravelRuleSettingStateProvider implements ProviderInterface
         $stored = $this->repository->findOneByClubSeason($clubId, $seasonId);
 
         return VenueTravelRuleSettingResource::from(
-            $stored instanceof VenueTravelRuleSetting ? $stored->getIntensity() : TeamLinkIntensity::PREFERRED,
+            $stored instanceof VenueTravelRuleSetting ? $stored->getIntensity() : VenueTravelRuleIntensity::PREFERRED,
+            $stored instanceof VenueTravelRuleSetting ? $stored->getToleranceMinutes() : 20,
+            $stored instanceof VenueTravelRuleSetting ? $stored->getDefaultMinutes() : 20,
             !$stored instanceof VenueTravelRuleSetting,
         );
     }

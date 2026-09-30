@@ -99,7 +99,7 @@ final class IgnRoutingClientTest extends TestCase
     {
         $clock = new MockClock(new DateTimeImmutable('2026-01-01T00:00:00+00:00'));
         $client = new IgnRoutingClient(
-            new MockHttpClient(static fn (): MockResponse => new MockResponse((string) json_encode(['duration' => 900]))),
+            new MockHttpClient(static fn (): MockResponse => new MockResponse((string) json_encode(['duration' => 900, 'distance' => 3300]))),
             $clock,
         );
 
@@ -111,6 +111,9 @@ final class IgnRoutingClientTest extends TestCase
         $result = $client->travelMinutesBatch($jobs);
 
         self::assertSame(['a' => 15, 'b' => 15], $result['minutes'], 'chaque job résout ses minutes (900 s → 15 min)');
+        // La DISTANCE de l'itinéraire est désormais renvoyée par clé (le service en dérive le temps
+        // à vélo pour le mode non véhiculé) ; additif — les consommateurs voiture l'ignorent.
+        self::assertSame(['a' => 3300, 'b' => 3300], $result['meters'], 'la distance IGN (m) remonte par clé');
         self::assertSame([], $result['budgetExceededKeys'], 'budget large : rien de sauté');
         self::assertSame(1, $clock->now()->getTimestamp() - $start->getTimestamp(), 'un battement de pacing entre les deux jobs');
     }

@@ -278,13 +278,13 @@ export function useTravelRuleSetting(enabled = true) {
   return useQuery({ queryKey: TRAVEL_RULE_SETTING_KEY, queryFn: wizardApi.getTravelRuleSetting, staleTime: 30_000, enabled });
 }
 
-/** PUT du levier (PREFERRED↔MANDATORY). Réinvalide le levier après coup. */
+/** PUT du levier (cran OFF/PREFERRED/MANDATORY + battement toléré + temps par défaut). Réinvalide le levier après coup. */
 export function useUpdateTravelRuleSetting() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (intensity: wizardApi.VenueTravelRuleIntensity) => wizardApi.updateTravelRuleSetting(intensity),
+    mutationFn: (payload: wizardApi.VenueTravelRuleSettingPayload) => wizardApi.updateTravelRuleSetting(payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: TRAVEL_RULE_SETTING_KEY }),
-    // FRT-27 — cf. useCreateVenueTravelTime : un échec du changement d'intensité ne doit pas rester muet.
+    // FRT-27 — cf. useCreateVenueTravelTime : un échec du changement ne doit pas rester muet.
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }

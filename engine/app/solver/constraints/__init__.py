@@ -218,6 +218,7 @@ from .travel import add_travel_time_hard_constraints as add_travel_time_hard_con
 from .travel import add_travel_time_penalty as add_travel_time_penalty
 from .travel import build_travel_matrix as build_travel_matrix
 from .travel import is_travel_too_tight as is_travel_too_tight
+from .travel import required_gap as required_gap
 from .wellness import _find_consecutive_chains as _find_consecutive_chains
 from .wellness import add_age_ascending_constraints as add_age_ascending_constraints
 from .wellness import add_coach_rest_day_constraints as add_coach_rest_day_constraints
@@ -413,6 +414,7 @@ def add_level_1_hard_constraints(
             team_coach_map=team_coach_map,
             venue_travel_times=venue_travel_times,
             default_minutes=rules.travel_time_default_minutes,
+            tolerance_minutes=rules.travel_time_tolerance_minutes,
         )
 
     return stats
@@ -447,6 +449,7 @@ __all__ = [
     "is_travel_too_tight",
     "iter_team_link_overlaps",
     "parse_v2_constraints",
+    "required_gap",
     "team_link_placements_by_team",
     "team_share_declared_pairs",
 ]

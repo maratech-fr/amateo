@@ -208,6 +208,10 @@ class ResolvedImplicitRules:
     travel_time_active: bool = False
     travel_time_intensity: str = PREFERRED
     travel_time_default_minutes: int = 20
+    # Battement toléré retranché du barème (décision fondateur 2026-09-30) : l'écart exigé entre
+    # deux séances vaut ``max(0, barème − travel_time_tolerance_minutes)``. Le club « absorbe » ce
+    # temps (partir un peu avant la fin, démarrer un peu après l'heure). Défaut 20.
+    travel_time_tolerance_minutes: int = 20
 
 
 @dataclass

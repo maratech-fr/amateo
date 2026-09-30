@@ -1,12 +1,13 @@
-Last verified @ 2026-09-30 (P4-271 — le club porte `weekendAlternates` (bool) : la propriété
-apparaît sur les schémas `Club`/`ClubInput` (lecture + écriture) et sur l'objet `club` de la
-réponse `/api/me`. Nouvelle route `GET /api/geocode/reverse` (reverse-geocoding BAN, management,
-best-effort `{label}`) — d'où +1 path. Le champ `week` des créneaux idéaux (`TeamMatchHabit`)
-passe de l'énumération A/B/ALL à A/B seulement (ALL retiré, défaut A) : aucun nom de propriété ne
-change. Régénéré à froid depuis le backend vivant).
+Last verified @ 2026-09-30 (Trajets — le levier `VenueTravelRuleSetting` (`travelTime`) gagne deux
+propriétés lecture+écriture : `toleranceMinutes` (battement toléré) et `defaultMinutes` (temps par
+défaut d'un couple sans temps) ; son intensité accepte désormais `OFF` en plus de
+`PREFERRED`/`MANDATORY`. Descriptions de `Coach.isVehicled`/`CoachInput.isVehicled` et de
+`VenueTravelTimeInput.walkingMinutes` reformulées « à vélo » (mode non véhiculé = vélo/trottinette,
+le nom technique `walking*` reste). Aucun path ajouté ni retiré. Régénéré à froid depuis le backend
+vivant).
 
 **215 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`2e83a8dc16ed89d9515303e9710b2bed3345906c3f4f3b1734e3ea4383f6e61f` (`sha256sum` sur le fichier).
+`4258a4fded87fed24659c56a779fd9118f554af1dd706776218b76c7174b822d` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

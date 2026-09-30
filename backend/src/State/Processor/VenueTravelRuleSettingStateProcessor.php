@@ -9,7 +9,7 @@ use ApiPlatform\State\ProcessorInterface;
 use App\ApiResource\VenueTravelRuleSettingResource;
 use App\Dto\VenueTravelRuleSettingInput;
 use App\Entity\VenueTravelRuleSetting;
-use App\Enum\TeamLinkIntensity;
+use App\Enum\VenueTravelRuleIntensity;
 use App\Repository\VenueTravelRuleSettingRepository;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
@@ -23,7 +23,8 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  * Upsert (PUT) du levier de trajet — SINGLETON par club+saison (P2-53 RMM-8 PR-4).
  *
  * Écriture = management (403 AVANT le 409 de saison archivée, idiome AbstractStateProcessor).
- * L'intensité n'accepte que PREFERRED|MANDATORY : HARD/OFF (vocabulaire bien-être) rendent 422.
+ * L'intensité n'accepte que OFF|PREFERRED|MANDATORY ({@see VenueTravelRuleIntensity}) ; toute autre
+ * valeur rend 422. Battement toléré (0-60) et temps par défaut (1-120) bornés par le DTO.
  *
  * @implements ProcessorInterface<mixed, VenueTravelRuleSettingResource>
  */
@@ -58,19 +59,27 @@ final class VenueTravelRuleSettingStateProcessor implements ProcessorInterface
 
         \assert($data instanceof VenueTravelRuleSettingInput);
 
-        $intensity = TeamLinkIntensity::tryFrom($data->intensity ?? '')
-            ?? throw new UnprocessableEntityHttpException(\sprintf('« %s » n\'est pas une intensité connue. Valeurs acceptées : %s.', $data->intensity ?? '(absente)', implode(', ', TeamLinkIntensity::values())));
+        $intensity = VenueTravelRuleIntensity::tryFrom($data->intensity ?? '')
+            ?? throw new UnprocessableEntityHttpException(\sprintf('« %s » n\'est pas une intensité connue. Valeurs acceptées : %s.', $data->intensity ?? '(absente)', implode(', ', VenueTravelRuleIntensity::values())));
 
         $entity = $this->repository->findOneByClubSeason($clubId, $seasonId)
             ?? (new VenueTravelRuleSetting)
                 ->setClubId($clubId)
                 ->setSeasonId($seasonId);
         $entity->setIntensity($intensity);
+        // Battement toléré (0-60) et temps par défaut (1-120) : bornes déjà validées par le DTO ;
+        // un champ omis retombe sur le défaut existant de l'entité (20 à la création).
+        if (null !== $data->toleranceMinutes) {
+            $entity->setToleranceMinutes($data->toleranceMinutes);
+        }
+        if (null !== $data->defaultMinutes) {
+            $entity->setDefaultMinutes($data->defaultMinutes);
+        }
 
         $this->entityManager->persist($entity);
         $this->entityManager->flush();
 
-        return VenueTravelRuleSettingResource::from($intensity, false);
+        return VenueTravelRuleSettingResource::from($intensity, $entity->getToleranceMinutes(), $entity->getDefaultMinutes(), false);
     }
 
     /**
