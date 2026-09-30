@@ -1,14 +1,13 @@
 # Amateo — Tenant Isolation Architecture
 
-Last verified @ 2026-09-29 (`documentation-update`, P5-20 — ajout du rôle `amateo_read` ; seed BCCL de production qui traverse la RLS en connexion admin). Re-confronté
-au code : priorité 7 toujours en place (`TenantFilterListener.php:55`) ✓ · le skip `/api/admin`
-toujours en `str_starts_with` sur le path (`TenantFilterListener.php:81`) ✓ ·
-`TenantConnectionContext` pose toujours `set_config('app.club_id', ?, false)`
-(`TenantConnectionContext.php:30`) ✓ · `AbstractStateProcessor::requiresManagementRole()` retourne
-toujours `true` par défaut (`backend/src/State/Processor/AbstractStateProcessor.php:130-132`) ✓ ·
-**nouveau cette passe** : le claim « exactement un bypass RLS » reste vrai — `amateo_read`
-(`Version20260930090000`) porte `NOBYPASSRLS` explicite et aucune policy `admin_all`, il reste
-scopé par club comme `amateo_app`. Rien de faux trouvé cette passe.
+Last verified @ 2026-09-30 (rotation `documentation-update`, zone sans rapport avec la PR
+`19aed0f1`). Re-confronté au code : priorité 7 toujours en place
+(`TenantFilterListener.php:55`, `KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · le skip
+`/api/admin` toujours en `str_starts_with` sur le path (`TenantFilterListener.php:81`) ✓ ·
+`App\Service\TenantConnectionContext::setClubId` pose toujours
+`set_config('app.club_id', ?, false)` (`TenantConnectionContext.php:28-31`) ✓ ·
+`AbstractStateProcessor::requiresManagementRole()` retourne toujours `true` par défaut
+(`AbstractStateProcessor.php:130`) ✓. Rien de faux trouvé cette passe.
 
 ## Overview
 

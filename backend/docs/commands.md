@@ -1,19 +1,13 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-09-29 (`documentation-update`, P4-272 ② — `seed-league`/`app:league-windows:seed`
-recalés : la commande reste un RAFRAÎCHISSEMENT idempotent (`backend/src/Command/
-SeedLeagueWindowsCommand.php`), le chargement INITIAL du catalogue est désormais garanti par
-`Version20260929130000` (charge le JSON si `league_match_window` est vide, puis backfille les
-copies club×saison) ✓. Reste hérité de la passe précédente : `make test` = `phpunit --testsuite
-Unit` seule, `make phpunit` = `--group phase1` seule, `make tests-complete`/`make coverage` =
-`phpunit tests/ --exclude-group contract` (`backend/Makefile:37,50,61,87`) ✓ ; `PurgeExportsCommand`
-n'accepte toujours que `.pdf` (`RENDER_PATTERN`, `backend/src/Command/PurgeExportsCommand.php:61`)
-✓ ; `db-init-test` pose toujours `idle_in_transaction_session_timeout = 60s` sur `amateo_test`
-(`backend/Makefile:101`) ✓ ; `doctrine:fixtures:load` n'existe plus — le bundle
-`doctrine/doctrine-fixtures-bundle` a été RETIRÉ de `composer.json` et de `config/bundles.php`
-(aucune fixture Doctrine active, `BasketballInit`/`HolidayReferenceFixtures` absents de `src/`) ✓.
-Non re-sondé cette passe : le reste des commandes et gardes listées — un stamp
-REMPLACE, l'historique vit dans git.
+Last verified @ 2026-09-30 (rotation `documentation-update`, zone sans rapport avec la PR
+`19aed0f1`). Re-confronté au code : `make test`/`make tests-complete`/`make coverage`/`make phpunit`
+toujours `--testsuite Unit`/`tests/ --exclude-group contract`/`tests/ --exclude-group
+contract`/`--group phase1` (`backend/Makefile`) ✓ ; `PurgeExportsCommand` n'accepte toujours que
+`.pdf` (`RENDER_PATTERN`, `PurgeExportsCommand.php:61`) ✓ ; `db-init-test` pose toujours
+`idle_in_transaction_session_timeout = '60s'` sur `amateo_test` (`backend/Makefile`) ✓ ;
+`doctrine/doctrine-fixtures-bundle` toujours absent de `composer.json`/`config/bundles.php` ✓. Reste
+non re-sondé cette passe — un stamp REMPLACE, l'historique vit dans git.
 
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`
 > le font pour toi. PHPUnit exige `APP_ENV=test` (sinon `test.service_container` introuvable).
