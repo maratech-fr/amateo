@@ -73,8 +73,9 @@ security:
         - { path: ^/api/club-approvals/, methods: [GET, POST], roles: PUBLIC_ACCESS }
         # P2-4 : le raccourci démo du register (DevDemoRegisterController). PRÉ-AUTH par
         # construction — le compte vient d'être créé par le register, aucun JWT encore ;
-        # la route mint elle-même le cookie. Inoffensive hors démo : gardée par
-        # kernel.debug (404 en prod) ET par l'adresse démo configurée (422 sinon).
+        # la route mint elle-même le cookie. Inoffensive hors démo : en debug comme
+        # avant, en prod active seulement pendant la fenêtre d'activation du compte
+        # animateur — sinon 422 not_demo_account, comme toute autre adresse.
         - { path: ^/api/dev/demo-register$, methods: [POST], roles: PUBLIC_ACCESS }
         - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
 
