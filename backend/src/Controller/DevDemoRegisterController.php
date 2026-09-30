@@ -11,13 +11,11 @@ use App\Enum\AuditAction;
 use App\Exception\DemoTeardownRefusedException;
 use App\Repository\ClubRepository;
 use App\Repository\EmailVerificationTokenRepository;
-use App\Security\JwtCookieFactory;
 use App\Service\AuditTrail;
 use App\Service\DemoClubMaterializer;
 use App\Service\PasswordPolicy;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
-use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Clock\ClockInterface;
@@ -36,8 +34,9 @@ use Symfony\Component\Routing\Attribute\Route;
  * enchaîne le 202 neutre du register avec CETTE route, qui : PROUVE l'identité
  * (mot de passe VÉRIFIÉ, jamais réécrit — revue sécu), REMPLACE le club démo
  * précédent de l'animateur (purge + suppression de sa ligne club, pour libérer le
- * code FFBB), crée un club is_demo peuplé par la FFBB, et repose un cookie JWT — le
- * prospect voit SON club naître, sans détour visible.
+ * code FFBB) et crée un club is_demo peuplé par la FFBB, puis rend un 2xx SANS cookie —
+ * le front montre alors l'écran de démonstration (« ce clic fait les deux ») et invite
+ * le prospect à se connecter normalement, comme pour n'importe quel club.
  *
  * Le rail d'inscription de PRODUCTION reste byte-intact : register/verify ne sont
  * pas touchés. Cette route est INOFFENSIVE hors démo — en debug (dev/tunnel) elle se
@@ -68,8 +67,6 @@ final class DevDemoRegisterController extends AbstractController
         private readonly ClubRepository $clubRepository,
         private readonly EmailVerificationTokenRepository $verificationTokens,
         private readonly DemoClubMaterializer $materializer,
-        private readonly JWTTokenManagerInterface $jwtManager,
-        private readonly JwtCookieFactory $jwtCookieFactory,
         private readonly RateLimiterFactory $authRegisterLimiter,
         private readonly ClockInterface $clock,
         private readonly PasswordPolicy $passwordPolicy,
@@ -210,12 +207,11 @@ final class DevDemoRegisterController extends AbstractController
             ['replacedClubIds' => $tornDown],
         );
 
-        // Même sortie que /api/register/verify : le jeton part en COOKIE httpOnly (jamais
-        // dans le corps), via la fabrique partagée.
-        $response = $this->json(['membershipStatus' => 'active', 'clubId' => $club->getId()]);
-        $response->headers->setCookie($this->jwtCookieFactory->create($this->jwtManager->create($animator)));
-
-        return $response;
+        // Le raccourci ne CONNECTE plus : il matérialise le club puis rend un 2xx SANS
+        // cookie. Le front affiche alors l'écran de démonstration (« ce clic fait les
+        // deux ») et invite le prospect à se connecter normalement — la connexion passe
+        // par /api/login, comme pour n'importe quel club.
+        return $this->json(['membershipStatus' => 'active', 'clubId' => $club->getId()]);
     }
 
     /**

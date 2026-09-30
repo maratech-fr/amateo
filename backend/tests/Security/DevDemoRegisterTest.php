@@ -11,7 +11,6 @@ use App\Entity\User;
 use App\Enum\ClubRole;
 use App\Repository\ClubRepository;
 use App\Repository\EmailVerificationTokenRepository;
-use App\Security\JwtCookieFactory;
 use App\Service\AuditTrail;
 use App\Service\DemoClubMaterializer;
 use App\Service\PasswordPolicy;
@@ -19,7 +18,6 @@ use App\Tests\ReadsJwtCookie;
 use App\Tests\StartsFreshBrowserSession;
 use App\Tests\TenantGucTrait;
 use Doctrine\ORM\EntityManagerInterface;
-use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -32,8 +30,9 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  * (DevDemoRegisterController), falsifié DANS LES DEUX SENS.
  *
  * Sens « ça fait ce que ça annonce » : après le 202 neutre du register, la route
- * démo crée un club is_demo peuplé, membership MANAGER active UNIQUE, cookie JWT
- * posé, compte vérifié ; un 2e passage DÉTRUIT le club démo précédent EN BASE
+ * démo crée un club is_demo peuplé, membership MANAGER active UNIQUE, compte vérifié,
+ * et rend un 2xx SANS cookie (le raccourci ne connecte plus — la connexion passe par
+ * /api/login, comme pour tout club) ; un 2e passage DÉTRUIT le club démo précédent EN BASE
  * (ligne club ET adhésion absentes — l'effet est mesuré en base) et en crée un neuf,
  * et le mot de passe retapé authentifie.
  *
@@ -57,7 +56,7 @@ final class DevDemoRegisterTest extends WebTestCase
 
     private static int $ipCounter = 0;
 
-    /** SENS 1 — le raccourci matérialise le club démo, prêt au login, cookie posé. */
+    /** SENS 1 — le raccourci matérialise le club démo, prêt au login, SANS poser de cookie (connexion via /api/login). */
     public function testDemoShortcutMaterialisesTheClubReadyToLogIn(): void
     {
         $client = self::createClient();
@@ -72,7 +71,7 @@ final class DevDemoRegisterTest extends WebTestCase
         self::assertSame('active', $body['membershipStatus'] ?? null);
         $clubId = $body['clubId'] ?? null;
         self::assertIsString($clubId);
-        self::assertNotSame('', $this->jwtFromCookie($client), 'un cookie JWT doit être posé (session ouverte sans détour par verify)');
+        self::assertSame('', $this->jwtFromCookie($client), 'le raccourci ne connecte plus : AUCUN cookie JWT posé (la connexion passe par /api/login)');
 
         $this->em()->clear();
         $club = $this->em()->getRepository(Club::class)->find($clubId);
@@ -346,8 +345,6 @@ final class DevDemoRegisterTest extends WebTestCase
             $c->get(ClubRepository::class),
             $c->get(EmailVerificationTokenRepository::class),
             $c->get(DemoClubMaterializer::class),
-            $c->get(JWTTokenManagerInterface::class),
-            $c->get(JwtCookieFactory::class),
             $c->get('limiter.auth_register'),
             $c->get(ClockInterface::class),
             $c->get(PasswordPolicy::class),
