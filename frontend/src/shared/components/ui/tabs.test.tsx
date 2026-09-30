@@ -85,8 +85,9 @@ describe("Tabs", () => {
     const tablist = screen.getByRole("tablist", { name: "Sections admin" });
     expect(tablist).toBeInTheDocument();
     const tabs = screen.getAllByRole("tab");
-    expect(tabs).toHaveLength(7);
+    expect(tabs).toHaveLength(8);
     expect(screen.getByRole("tab", { name: /Vue d'ensemble/ })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Démos/ })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Signalements/ })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Journaux/ })).toBeInTheDocument();
   });

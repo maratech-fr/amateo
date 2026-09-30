@@ -34,6 +34,7 @@ import { useAdminActions, useAdminClubs, useAdminFreshness, useAdminHealth, useA
 import { CapacitySection } from "./sections/CapacitySection";
 import { ClubRequestsSection } from "./sections/ClubRequestsSection";
 import { ContainersSection } from "./sections/ContainersSection";
+import { DemosSection } from "./sections/DemosSection";
 import { ExternalDepsSection } from "./sections/ExternalDepsSection";
 import { FeedbackSection } from "./sections/FeedbackSection";
 import { ReleaseNotesSection } from "./sections/ReleaseNotesSection";
@@ -203,6 +204,10 @@ export function AdminDashboardPage() {
             />
           ) : null}
         </section>
+      </TabPanel>
+
+      <TabPanel variant="console" tabId="demos" idPrefix="admin" active={activeTab === "demos"} className="space-y-8 pt-6">
+        <DemosSection />
       </TabPanel>
 
       <TabPanel variant="console" tabId="signalements" idPrefix="admin" active={activeTab === "signalements"} className="space-y-8 pt-6">

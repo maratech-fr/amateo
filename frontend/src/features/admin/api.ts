@@ -548,3 +548,45 @@ export function treatAdminFeedback(id: string, csrfToken: string): Promise<Admin
 export function untreatAdminFeedback(id: string, csrfToken: string): Promise<AdminFeedbackItem> {
   return adminApi.post(`feedback/${encodeURIComponent(id)}/untreat`, { headers: { "X-CSRF-Token": csrfToken } }).json();
 }
+
+// Démos — pilotage des deux comptes de démonstration (PR B du lot Démos).
+
+export type AdminDemoTarget = "bccl" | "prospect";
+
+/**
+ * État d'un compte démo. `activeUntil` est un ISO (UTC) rendu à l'heure de Paris côté écran ;
+ * `clubName` est le club démo courant du compte (null s'il n'existe pas). `demoToday`
+ * (YYYY-MM-DD) n'existe QUE pour la démo BCCL — l'horloge simulée.
+ */
+export interface AdminDemoAccount {
+  email: string;
+  activeUntil: string | null;
+  clubName: string | null;
+  demoToday?: string | null;
+}
+
+export interface AdminDemosResponse {
+  bccl: AdminDemoAccount;
+  prospect: AdminDemoAccount;
+}
+
+export function getAdminDemos(): Promise<AdminDemosResponse> {
+  return adminApi.get("demos").json();
+}
+
+export function activateAdminDemo(target: AdminDemoTarget, csrfToken: string): Promise<{ target: AdminDemoTarget; activeUntil: string }> {
+  return adminApi.post(`demos/${target}/activate`, { headers: { "X-CSRF-Token": csrfToken } }).json();
+}
+
+export function deactivateAdminDemo(target: AdminDemoTarget, csrfToken: string): Promise<{ target: AdminDemoTarget; activeUntil: null }> {
+  return adminApi.post(`demos/${target}/deactivate`, { headers: { "X-CSRF-Token": csrfToken } }).json();
+}
+
+export function resetAdminDemoBccl(csrfToken: string): Promise<{ status: "reset" }> {
+  return adminApi.post("demos/bccl/reset", { headers: { "X-CSRF-Token": csrfToken } }).json();
+}
+
+/** Pose (`{date}`) ou relâche (`{clear:true}`) l'horloge simulée de la démo BCCL. */
+export function setAdminDemoClock(body: { date: string } | { clear: true }, csrfToken: string): Promise<{ demoToday: string | null }> {
+  return adminApi.post("demos/bccl/clock", { json: body, headers: { "X-CSRF-Token": csrfToken } }).json();
+}
