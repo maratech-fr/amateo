@@ -27,7 +27,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  *
  * P4-271 (ex-SlotRotationPayloadParityTest) : les créneaux de match partagés (rotations) ont
  * disparu. Ce que le club STOCKE (une {@see TeamMatchHabit} = le créneau idéal {jour, heure,
- * gymnase} d'une équipe, tagué semaine A/B/toutes) doit être EXACTEMENT ce que le payload
+ * gymnase} d'une équipe, tagué semaine A/B) doit être EXACTEMENT ce que le payload
  * `/place-matches` émet dans `teams[].habits` — SANS le tag de semaine (aide visuelle qui ne
  * voyage JAMAIS au moteur) et SANS suppléance (la chaîne rotation est supprimée : toutes les
  * habitudes voyagent).
