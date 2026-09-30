@@ -1,5 +1,7 @@
-import { act, fireEvent, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { createMemoryRouter, RouterProvider } from "react-router";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { type LoginSplashPhase, useLoginSplashStore } from "@/shared/stores/loginSplashStore";
 import { renderWithProviders } from "@/test/utils";
@@ -34,8 +36,8 @@ vi.mock("@/shared/components/ui/brand-splash", () => ({
   ),
 }));
 
-// `me` contrôlé pour piloter le « prêt ».
-const meState = { isSuccess: false };
+// `me` contrôlé pour piloter le « prêt » et l'échec de session.
+const meState = { isSuccess: false, isError: false };
 vi.mock("@/shared/session/queries", () => ({
   useMe: () => meState,
 }));
@@ -50,6 +52,7 @@ const setPhase = (phase: LoginSplashPhase) => act(() => store.setState({ phase }
 beforeEach(() => {
   store.setState({ phase: "idle" });
   meState.isSuccess = false;
+  meState.isError = false;
 });
 
 function mount(route: string) {
@@ -119,4 +122,51 @@ describe("LoginSplash — câblage", () => {
     fireEvent.click(screen.getByText("cancelComplete"));
     expect(phase()).toBe("idle");
   });
+});
+
+/**
+ * ANTI-BLOCAGE (revue sécu) : le splash ne doit JAMAIS laisser l'écran `inert` à vie si « prêt »
+ * n'arrive pas. Trois sorties douces (→ `cancelling`).
+ */
+describe("LoginSplash — filets anti-blocage", () => {
+  it("(1) la query me échoue après le démarrage ⇒ effacement doux", () => {
+    meState.isError = true;
+    mount("/"); // login abouti (navigué) mais me en erreur : jamais « prêt »
+    start();
+    expect(phase()).toBe("cancelling");
+  });
+
+  it("(2) retour à /login après l'avoir quitté ⇒ effacement doux", () => {
+    // Routeur NAVIGABLE : on démarre sur "/" (login abouti), puis on rebondit vers /login.
+    const router = createMemoryRouter(
+      [{ path: "*", element: <LoginSplash><div data-testid="content" /></LoginSplash> }],
+      { initialEntries: ["/"] },
+    );
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+    act(() => store.getState().start()); // intro sur "/" ⇒ leftEntry mémorise qu'on a quitté /login
+    expect(phase()).toBe("intro");
+    act(() => void router.navigate("/login")); // rebond
+    expect(phase()).toBe("cancelling");
+  });
+
+  it("(3) filet 30 s : « prêt » n'arrive pas ⇒ effacement doux (horloge factice)", () => {
+    vi.useFakeTimers();
+    try {
+      mount("/login"); // jamais prêt
+      start();
+      expect(phase()).toBe("intro");
+      act(() => vi.advanceTimersByTime(30_000));
+      expect(phase()).toBe("cancelling");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
