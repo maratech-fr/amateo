@@ -627,11 +627,15 @@ test("matches PR 2a: nav ordonnée, défilable à 400 px, Semaine type, Accès m
     // Nettoyage robuste : rouvre le gymnase et supprime la fenêtre Samedi 14:00 SI elle existe.
     if ("" !== venueName && (await modifierAfter.count()) > 0) {
       await modifierAfter.first().click();
-      const cleanupDialog = page.getByRole("dialog", { name: "Accès match" });
+      // `exact` : le titre de la confirmation N2 (« …fenêtre d'accès match ? ») CONTIENT « accès
+      // match » — sans `exact`, le locator matcherait DEUX dialogs et l'assertion compterait 2.
+      const cleanupDialog = page.getByRole("dialog", { name: "Accès match", exact: true });
       await expect(cleanupDialog).toBeVisible();
       const del = cleanupDialog.getByRole("button", { name: "Supprimer la fenêtre Samedi 14:00" });
       if ((await del.count()) > 0) {
         await del.first().click();
+        // N2 : la suppression passe désormais par une confirmation (ConfirmDialog portalé).
+        await page.getByRole("button", { name: "Supprimer", exact: true }).last().click();
         await expect(cleanupDialog.getByText(/Samedi 14:00/)).toHaveCount(0);
       }
       await cleanupDialog.locator("footer").getByRole("button", { name: "Fermer" }).click();

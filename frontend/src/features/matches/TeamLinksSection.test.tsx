@@ -146,6 +146,9 @@ describe("TeamLinksSection — lecture seule vs édition (P2-45, tranchage A)", 
     renderWithProviders(<TeamLinksSection teams={TEAMS} tiers={TIERS} />);
 
     await user.click(screen.getByRole("button", { name: "Supprimer la passerelle SM1 – SM2" }));
+    // N2 : la suppression passe désormais par une confirmation (ConfirmDialog).
+    expect(deleteLink).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Supprimer" }));
     expect(deleteLink).toHaveBeenCalledWith("l1");
   });
 

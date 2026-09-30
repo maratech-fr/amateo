@@ -1,4 +1,4 @@
-import { Check, Lock, Pencil, Plus, Trash2 } from "lucide-react";
+import { Lock, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
@@ -971,21 +971,27 @@ export function ConstraintsStep() {
             ))}
           </Select>
         )}
-        {null !== editingId && (
-          <Button size="sm" variant="ghost" className="ml-auto h-8" onClick={resetForm} title="Annuler la modification">
-            Annuler
+        {null !== editingId ? (
+          <>
+            <Button size="sm" variant="ghost" className="ml-auto h-8" onClick={resetForm} title="Annuler la modification">
+              Annuler
+            </Button>
+            <Button size="sm" className="h-8" onClick={submit} disabled={create.isPending || update.isPending} title="Enregistrer la contrainte" aria-label="Enregistrer la contrainte">
+              Enregistrer
+            </Button>
+          </>
+        ) : (
+          <Button
+            size="icon"
+            className="ml-auto size-8"
+            onClick={submit}
+            disabled={create.isPending || update.isPending}
+            title="Ajouter la contrainte"
+            aria-label="Ajouter la contrainte"
+          >
+            <Plus className="size-4" />
           </Button>
         )}
-        <Button
-          size="icon"
-          className={cn("size-8", null === editingId && "ml-auto")}
-          onClick={submit}
-          disabled={create.isPending || update.isPending}
-          title={null !== editingId ? "Enregistrer la contrainte" : "Ajouter la contrainte"}
-          aria-label={null !== editingId ? "Enregistrer la contrainte" : "Ajouter la contrainte"}
-        >
-          {null !== editingId ? <Check className="size-4" /> : <Plus className="size-4" />}
-        </Button>
       </div>
 
       {/* List for the active family — grouped by group (tag) then team (ranked). */}

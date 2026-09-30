@@ -2,6 +2,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
+import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Select } from "@/shared/components/ui/select";
 import { TeamSelect } from "@/shared/components/ui/team-select";
@@ -110,6 +111,8 @@ function EditableLinks<T extends TeamLike>({
   const [linkTeamBId, setLinkTeamBId] = useState("");
   const [linkType, setLinkType] = useState<TeamLinkType>("NOT_SIMULTANEOUS");
   const [linkIntensity, setLinkIntensity] = useState<TeamLinkIntensity>("PREFERRED");
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const pendingDelete = links.find((l) => l.id === pendingDeleteId) ?? null;
 
   // B proposables : ancrée → toutes − A − déjà liées à A (garde-fou d'ergonomie, le serveur refuse
   // le doublon en 422 quoi qu'il arrive) ; sans ancrage → toutes (comportement `/matchs` inchangé,
@@ -166,10 +169,10 @@ function EditableLinks<T extends TeamLike>({
             <Button
               variant="ghost"
               size="icon"
-              className="size-7"
+              className="size-8 text-destructive"
               aria-label={`Supprimer la passerelle ${teamName(link.teamAId)} – ${teamName(link.teamBId)}`}
               disabled={deleteLink.isPending}
-              onClick={() => deleteLink.mutate(link.id)}
+              onClick={() => setPendingDeleteId(link.id)}
             >
               <Trash2 className="size-4" />
             </Button>
@@ -230,6 +233,21 @@ function EditableLinks<T extends TeamLike>({
           </Button>
         </div>
       )}
+
+      <ConfirmDialog
+        open={null !== pendingDelete}
+        title="Supprimer cette passerelle ?"
+        description={pendingDelete ? <>La passerelle {teamName(pendingDelete.teamAId)} ↔ {teamName(pendingDelete.teamBId)} sera supprimée.</> : null}
+        confirmLabel="Supprimer"
+        destructive
+        onConfirm={() => {
+          if (null !== pendingDelete) {
+            deleteLink.mutate(pendingDelete.id);
+          }
+          setPendingDeleteId(null);
+        }}
+        onCancel={() => setPendingDeleteId(null)}
+      />
     </>
   );
 }
