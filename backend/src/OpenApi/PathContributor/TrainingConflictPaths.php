@@ -23,7 +23,7 @@ final readonly class TrainingConflictPaths implements CustomPathContributor
             'teamName' => ['type' => 'string'],
             'venueId' => ['type' => 'string'],
             'venueName' => ['type' => 'string'],
-            'startTime' => ['type' => 'string', 'description' => 'Session start « HHhMM » (e.g. « 18h00 »)'],
+            'startTime' => ['type' => 'string', 'description' => 'Session start « HH:MM » (e.g. « 18:00 »)'],
         ];
 
         $paths->addPath('/api/training/placed-conflicts', new PathItem(get: new Operation(

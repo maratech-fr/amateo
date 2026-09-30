@@ -100,15 +100,15 @@ describe("CoachesStep — conflit « personne à deux endroits » du planning en
     personId: "c1",
     personName: "Anna Dupont",
     dayOfWeek: 2,
-    first: { teamId: "tA", teamName: "U13F", venueId: "vB", venueName: "Gymnase B", startTime: "18h00" },
-    second: { teamId: "tB", teamName: "U11M1", venueId: "vA", venueName: "Gymnase A", startTime: "18h00" },
+    first: { teamId: "tA", teamName: "U13F", venueId: "vB", venueName: "Gymnase B", startTime: "18:00" },
+    second: { teamId: "tB", teamName: "U11M1", venueId: "vA", venueName: "Gymnase A", startTime: "18:00" },
   };
 
   it("affiche l'encart quand le backend signale un conflit", () => {
     placedConflictsState.data = { conflicts: [aConflict] };
     renderWithProviders(<CoachesStep />);
     expect(
-      screen.getByText("Anna Dupont est à deux endroits le mardi à 18h00 (U13F · Gymnase B / U11M1 · Gymnase A)"),
+      screen.getByText("Anna Dupont est à deux endroits le mardi à 18:00 (U13F · Gymnase B / U11M1 · Gymnase A)"),
     ).toBeInTheDocument();
   });
 

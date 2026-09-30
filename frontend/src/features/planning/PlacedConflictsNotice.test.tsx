@@ -10,8 +10,8 @@ const conflict = (over: Partial<PlacedConflict> = {}): PlacedConflict => ({
   personId: "p1",
   personName: "Anna Dupont",
   dayOfWeek: 2,
-  first: { teamId: "tA", teamName: "U13F", venueId: "vB", venueName: "Gymnase B", startTime: "18h00" },
-  second: { teamId: "tB", teamName: "U11M1", venueId: "vA", venueName: "Gymnase A", startTime: "18h00" },
+  first: { teamId: "tA", teamName: "U13F", venueId: "vB", venueName: "Gymnase B", startTime: "18:00" },
+  second: { teamId: "tB", teamName: "U11M1", venueId: "vA", venueName: "Gymnase A", startTime: "18:00" },
   ...over,
 });
 
@@ -25,7 +25,7 @@ describe("PlacedConflictsNotice", () => {
     renderWithProviders(<PlacedConflictsNotice conflicts={[conflict()]} />);
     expect(screen.getByText("Une personne est à deux endroits en même temps")).toBeInTheDocument();
     expect(
-      screen.getByText("Anna Dupont est à deux endroits le mardi à 18h00 (U13F · Gymnase B / U11M1 · Gymnase A)"),
+      screen.getByText("Anna Dupont est à deux endroits le mardi à 18:00 (U13F · Gymnase B / U11M1 · Gymnase A)"),
     ).toBeInTheDocument();
   });
 

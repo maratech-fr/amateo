@@ -258,7 +258,7 @@ final class PlacedSessionPersonConflictDetector
             'teamName' => $names['team'][$slot->getTeamId()] ?? 'une équipe',
             'venueId' => $slot->getVenueId(),
             'venueName' => $names['venue'][$slot->getVenueId()] ?? 'un gymnase',
-            'startTime' => $slot->getStartTime()->format('H\hi'),
+            'startTime' => $slot->getStartTime()->format('H:i'),
         ];
     }
 }

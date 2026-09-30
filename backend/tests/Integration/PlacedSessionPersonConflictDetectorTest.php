@@ -87,7 +87,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $gyms = [$conflict['first']['venueName'], $conflict['second']['venueName']];
         self::assertContains('Gymnase A', $gyms);
         self::assertContains('Gymnase B', $gyms);
-        self::assertSame('18h00', $conflict['first']['startTime']);
+        self::assertSame('18:00', $conflict['first']['startTime']);
     }
 
     /** L'ASSISTANT compte AUSSI (élargissement vs pré-solve) — l'exemple fondateur. */
