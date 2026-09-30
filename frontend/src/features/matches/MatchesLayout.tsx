@@ -2,11 +2,13 @@ import { Lock } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
 
+import { HelpButton } from "@/shared/components/ui/help-button";
 import { PageHeader } from "@/shared/components/ui/page-header";
 import { cn } from "@/shared/lib/utils";
 import { useSocleValidated } from "@/shared/lib/socle";
 
 import { openConflictCount } from "./lib/conflictResolution";
+import { MATCHES_HELP_LABEL, MATCHES_HELP_TRIGGER, MATCHES_TAB_HELP, activeMatchesTab } from "./lib/screenHelp";
 import { pendingReviewCount } from "./lib/reviewQueue";
 import { useConflicts, useFixtures, useModuleVisit } from "./queries";
 import { useMatchesStore } from "./store";
@@ -100,9 +102,15 @@ export function MatchesLayout() {
           courant) — un seul, en tête du module, à la place du bouton discret d'antan qui ne
           vivait que sur le Calendrier. */}
       <PageHeader title="Matchs" screen={pathname} />
-      {/* Nav défilable horizontalement (pas de `flex-wrap`, pas de `scrollbar-hide`) : à l'étroit
-          les onglets restent sur une ligne et l'actif est ramené en vue (`scrollIntoView` ci-dessus). */}
-      <nav ref={navRef} aria-label="Espaces matchs" className="flex gap-4 overflow-x-auto rounded-lg border border-border bg-card px-3 sm:gap-6">
+      {/* LOT F — l'aide contextuelle (i) de l'onglet courant, à GAUCHE de la barre d'onglets :
+          un seul bouton, cohérent sur les 7 écrans, dont le contenu suit l'onglet actif. */}
+      <div className="flex items-center gap-2">
+        <HelpButton label={MATCHES_HELP_LABEL} triggerLabel={MATCHES_HELP_TRIGGER}>
+          {MATCHES_TAB_HELP[activeMatchesTab(pathname)]}
+        </HelpButton>
+        {/* Nav défilable horizontalement (pas de `flex-wrap`, pas de `scrollbar-hide`) : à l'étroit
+            les onglets restent sur une ligne et l'actif est ramené en vue (`scrollIntoView` ci-dessus). */}
+        <nav ref={navRef} aria-label="Espaces matchs" className="flex flex-1 gap-4 overflow-x-auto rounded-lg border border-border bg-card px-3 sm:gap-6">
         {/* PR A — l'espace « Conflits » : tous les conflits de la saison, pivotés
             (coach/équipe/gymnase/journée), en lecture seule. P4-207 — badge = conflits
             À TRAITER, affiché seulement quand > 0. */}
@@ -138,7 +146,8 @@ export function MatchesLayout() {
         <NavLink to="/matchs/contraintes" className={linkClass}>
           Contraintes
         </NavLink>
-      </nav>
+        </nav>
+      </div>
       <Outlet />
     </div>
   );
