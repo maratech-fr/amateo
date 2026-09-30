@@ -96,6 +96,17 @@ paths:
   `frontend/src/test/timeFormatGuard.test.ts` (grep statique des sources `src/**`, zéro exemption
   nominative). Hors portée, délibérément : les durées ÉCOULÉES/CUMULÉES de la console superadmin
   et des gymnases (`venueStats.formatHours`), et les exemples rédigés des bulles d'aide.
+- 🔴 **Enregistrer/Annuler d'une ligne en édition = TEXTE, jamais une icône seule (N1) ; toute
+  suppression passe par une confirmation, jamais un clic direct (N2)** — mêmes normes fondateur
+  du 2026-09-30, PR 2/7 de la série « uniformité des écrans ». N1 : patron `IdealSlotsEditor`
+  (boutons `Enregistrer`/`Annuler` en texte) et le bouton d'enregistrement de `ConstraintsStep`.
+  N2 : `ConfirmDialog` avant suppression d'un créneau idéal, d'une fenêtre d'accès match
+  (`MatchWindowsEditor`), d'une passerelle (`TeamLinksSection`), d'une indisponibilité de gymnase
+  (`VenueUnavailabilityCard`) — seule exception : retirer une pastille de LIAISON coach/joueur↔équipe
+  (`CoachesStep`) reste immédiate, geste réversible sans conséquence. N2 gardé par
+  `frontend/src/test/deleteConfirmGuard.test.ts` (grep statique `src/features/**` : un fichier qui
+  lie ET invoque un `useDelete…` sans référencer `ConfirmDialog`/`DeleteConfirm` rougit, sauf
+  exemption nominative motivée) ; N1 n'a pas de garde automatique, seulement la revue.
 - 🔴 **Les racines de shell ne portent plus `bg-background` depuis le fond d'écran commun**
   (P5-16, `AppLayout.tsx`/`AuthLayout.tsx`) : le fond commun vit sur `body` (`index.css`), et une
   racine qui poserait `bg-background` par-dessus le masquerait entièrement. L'en-tête d'`AppLayout`

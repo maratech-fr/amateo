@@ -1,18 +1,12 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-09-29 (P4-272 ④ : contrat **2.26 → 2.27**, `teams[].forbiddenVenueIds` ajouté
-au payload `/place-matches` — la table des raisons `unplaced_match` ci-dessous EN TIENT COMPTE,
-passée de six à **sept** valeurs, détail dans `engine-inventory.md`). Re-confronté au code :
-`engine/CONTRACT_VERSION` = `2.29` ✓ ; la liste `type` de `DiagnosticSchema`
-(`app/schemas/output_schema.py:62-90`) porte **15 valeurs**, toutes présentes dans la table
-ci-dessous ✓ ; `SCORE_FORMULA_VERSION` = `T24_LEVEL_2_FIXED_WEIGHTS_V13`
+Last verified @ 2026-10-01. `engine/CONTRACT_VERSION` = `2.29` ✓ ; la liste `type` de
+`DiagnosticSchema` (`app/schemas/output_schema.py:69-95`) porte **15 valeurs**, toutes présentes
+dans la table ci-dessous ✓ ; `SCORE_FORMULA_VERSION` = `T24_LEVEL_2_FIXED_WEIGHTS_V13`
 (`app/solver/objective/weights.py:31`) ✓ ; `BUILD_BUDGET_SECONDS` = `10.0`
-(`app/solver/match_placement.py:77`) ✓ ; budget adaptatif 60/180/600 s selon `n_teams × n_venues`
+(`app/solver/match_placement.py:100`) ✓ ; budget adaptatif 60/180/600 s selon `n_teams × n_venues`
 (≤50/≤200/plus, `_adaptive_timeout`, `app/main.py:374-389`) et `solverTimeoutSeconds` défaut `650`
-(`app/schemas/input_schema.py:326`) ✓. Cette passe plie les ids/dates de lots au présent (garde
-`session_below_effective_min` gardée en une phrase, raison d'être de la mesure du score V10).
-Même date, P4-183 : la ligne `shared_block_not_honored` recale le comptage de la branche « solve
-abouti » sur le bloc ÉLU maximal (`_fold_case_occupant_identity`), miroir de `constraint-vocabulary.md`.
+(`app/schemas/input_schema.py:331`) ✓.
 
 > Ce document recense toutes les erreurs que le moteur peut produire, avec leurs causes et les actions correctives. Destine aux developpeurs et aux utilisateurs avances du club.
 
