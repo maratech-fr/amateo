@@ -125,6 +125,7 @@ final readonly class AccountSessionPaths implements CustomPathContributor
                                 'accentColor' => ['type' => 'string', 'nullable' => true],
                                 'accentColorDark' => ['type' => 'string', 'nullable' => true],
                                 'accentPalette' => ['type' => 'array', 'nullable' => true, 'items' => ['type' => 'string']],
+                                'isDemo' => ['type' => 'boolean'],
                             ]],
                             // ADR-0002 : le plan de saison — le calendrier de base. null si
                             // la saison n'en a pas encore. `chosenScheduleId` = la version

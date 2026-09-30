@@ -96,6 +96,8 @@ export interface MeResponse {
     ffbbTeamsImported?: boolean;
     /** P4-16/P2-4 — « aujourd'hui » simulé d'un club démo (null = horloge réelle). */
     demoToday?: string | null;
+    /** Vrai pour un club de DÉMONSTRATION (is_demo) — la pastille « Démo » de l'en-tête s'y adosse. */
+    isDemo: boolean;
     league: string | null;
     ffbbClubCode: string | null;
     committeeCode: string | null;
