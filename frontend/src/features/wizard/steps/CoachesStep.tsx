@@ -1,5 +1,5 @@
 import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
-import { type FormEvent, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -8,6 +8,8 @@ import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
 import { Select } from "@/shared/components/ui/select";
 import { TeamSelect } from "@/shared/components/ui/team-select";
+import { coachFullName } from "@/shared/lib/coachName";
+import { stripDiacritics } from "@/shared/lib/utils";
 
 import type { Coach, CoachPlayerMembership, PriorityTier, Team, TeamCoach, TeamCoachRole } from "../api";
 import {
@@ -25,7 +27,7 @@ import {
   useWizardTeamCoaches,
   useWizardTeams,
 } from "../queries";
-import { groupedCoaches } from "../lib/ranking";
+import { type CoachGroup, coachGroupOf, groupedCoaches } from "../lib/ranking";
 import { useWizardStore } from "../store";
 import { ReadonlyCoaches } from "./StructureSummary";
 import { PlacedConflictsNotice } from "@/features/planning/PlacedConflictsNotice";
@@ -51,9 +53,16 @@ interface CardProps {
   teamName: Map<string, string>;
   coachLinks: TeamCoach[];
   playerLinks: CoachPlayerMembership[];
+  /** Édition contrôlée par le parent (une seule carte à la fois) : lier une personne pendant
+   *  l'édition ne doit pas la faire sauter de section — le reclassement attend « Terminé ». */
+  editing: boolean;
+  onToggleEdit: () => void;
+  /** Coach qui vient d'être créé : on ouvre l'édition ET on met le focus sur le 1ᵉʳ contrôle de
+   *  liaison (l'équipe) — seulement s'il y a des équipes à lier. */
+  autoFocusLink: boolean;
 }
 
-function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks }: CardProps) {
+function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, editing, onToggleEdit, autoFocusLink }: CardProps) {
   const update = useUpdateCoach();
   const del = useDeleteCoach();
   const addTeamCoach = useCreateTeamCoach();
@@ -69,8 +78,6 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks }: C
   const [confirmDelete, setConfirmDelete] = useState(false);
   // P3-16 — l'impact vient du serveur.
   const coachImpact = useDeletionImpact("coach", confirmDelete ? coach.id : null);
-  // Cards are read-only by default; « Éditer » reveals the fields (batch item 4).
-  const [editing, setEditing] = useState(false);
 
   const firstTeam = teams[0]?.id ?? "";
   const addLink = () => {
@@ -87,7 +94,7 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks }: C
 
   const actions = (
     <div className="flex shrink-0 items-center gap-1">
-      <Button size="sm" variant={editing ? "outline" : "ghost"} className="h-8" aria-label={editing ? "Terminer l'édition" : "Éditer le coach"} onClick={() => setEditing((e) => !e)}>
+      <Button size="sm" variant={editing ? "outline" : "ghost"} className="h-8" aria-label={editing ? "Terminer l'édition" : "Éditer le coach"} onClick={onToggleEdit}>
         {editing ? <Check className="size-4" /> : <Pencil className="size-4" />}
         {editing ? "Terminé" : "Éditer"}
       </Button>
@@ -98,7 +105,7 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks }: C
   );
 
   return (
-    <div className="rounded-lg border border-border bg-card p-3">
+    <div data-coach-id={coach.id} className="rounded-lg border border-border bg-card p-3">
       {editing ? (
         <div className="flex flex-wrap items-center gap-2">
           <Input
@@ -243,7 +250,10 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks }: C
           ) : null}
 
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <TeamSelect aria-label="Équipe" className="h-8" wrapperClassName="w-40" teams={teams} tiers={tiers} value={linkTeam || firstTeam} onValueChange={setLinkTeam} />
+            {/* Focus d'ouverture du coach fraîchement créé (piloté par le parent) : le 1ᵉʳ geste
+                attendu est de lier une équipe — d'où l'autoFocus, ciblé et non permanent. */}
+            {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+            <TeamSelect autoFocus={autoFocusLink} aria-label="Équipe" className="h-8" wrapperClassName="w-40" teams={teams} tiers={tiers} value={linkTeam || firstTeam} onValueChange={setLinkTeam} />
             <Select aria-label="Rôle" className="h-8 w-28" value={linkRole} onChange={(e) => setLinkRole(e.target.value as TeamCoachRole | "PLAYER")}>
               <option value="MAIN">Coach</option>
               <option value="ASSISTANT">Adjoint</option>
@@ -284,12 +294,66 @@ function CoachesEditor() {
   const [last, setLast] = useState("");
   const [employee, setEmployee] = useState(false);
   const [firstError, setFirstError] = useState(false);
+  const [search, setSearch] = useState("");
   const firstRef = useRef<HTMLInputElement>(null);
+  // Édition contrôlée par le parent (une seule carte à la fois), avec la SECTION figée au
+  // démarrage de l'édition : lier une personne comme joueur pendant l'édition ne la fait pas
+  // sauter de « Bénévoles » à « Coachs-joueurs » sous le curseur — le reclassement attend
+  // « Terminé ». `justCreatedId` = coach fraîchement créé, ouvert d'office et défilé jusqu'à lui.
+  const [editingCoachId, setEditingCoachId] = useState<string | null>(null);
+  const [editingGroup, setEditingGroup] = useState<CoachGroup | null>(null);
+  const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
 
   const teamName = new Map(teams.map((t) => [t.id, t.name]));
   // Same taxonomy as the recap/constraint picker (ranking.ts): Salariés / Coachs-joueurs / Bénévoles.
   const coachPlayerIds = new Set(coachPlayers.filter((cp) => cp.isActive).map((cp) => cp.coachId));
-  const groups = groupedCoaches(coaches, coachPlayerIds);
+
+  // Défilement doux jusqu'à la carte du coach qu'on vient de créer, une fois qu'elle est rendue
+  // (l'invalidation react-query la fait apparaître). Même garde que ConstraintsStep : `scrollIntoView`
+  // n'existe pas en jsdom, d'où l'appel optionnel.
+  useEffect(() => {
+    if (null == justCreatedId || !coaches.some((c) => c.id === justCreatedId)) {
+      return;
+    }
+    const id = justCreatedId;
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-coach-id="${id}"]`)?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+      // Différé (hors corps d'effet) : consommer le drapeau une fois le défilement lancé, sans
+      // cascade de rendu synchrone.
+      setJustCreatedId(null);
+    });
+  }, [justCreatedId, coaches]);
+
+  const toggleEdit = (coach: Coach) => {
+    if (editingCoachId === coach.id) {
+      // « Terminé » — reclassement : on rend la carte à sa section EN VIGUEUR.
+      setEditingCoachId(null);
+      setEditingGroup(null);
+    } else {
+      setEditingCoachId(coach.id);
+      setEditingGroup(coachGroupOf(coach, coachPlayerIds));
+    }
+  };
+
+  // Recherche par nom (insensible à la casse et aux accents) ; la carte en édition reste visible
+  // même si elle ne correspond plus au filtre.
+  const query = stripDiacritics(search.trim().toLowerCase());
+  const matchesSearch = (coach: Coach) =>
+    "" === query || coach.id === editingCoachId || stripDiacritics(coachFullName(coach).toLowerCase()).includes(query);
+  const visible = coaches.filter(matchesSearch);
+
+  // Sections en vigueur, MAIS la carte en cours d'édition reste dans la section où elle était au
+  // démarrage (`editingGroup`) tant que « Terminé » n'a pas été cliqué.
+  const groups = groupedCoaches(visible, coachPlayerIds);
+  if (null != editingCoachId && null != editingGroup) {
+    const editing = visible.find((c) => c.id === editingCoachId);
+    if (editing && coachGroupOf(editing, coachPlayerIds) !== editingGroup) {
+      for (const g of ["salaried", "player", "other"] as const) {
+        groups[g] = groups[g].filter((c) => c.id !== editingCoachId);
+      }
+      groups[editingGroup] = [...groups[editingGroup], editing].sort((a, b) => coachFullName(a).localeCompare(coachFullName(b), "fr"));
+    }
+  }
 
   const add = (event: FormEvent) => {
     event.preventDefault();
@@ -300,7 +364,18 @@ function CoachesEditor() {
       return;
     }
     setFirstError(false);
-    create.mutate({ firstName: first.trim(), lastName: last.trim() || null, isEmployee: employee, isActive: true });
+    create.mutate(
+      { firstName: first.trim(), lastName: last.trim() || null, isEmployee: employee, isActive: true },
+      {
+        onSuccess: (created) => {
+          // Un coach créé s'ouvre directement en édition, figé dans sa section de naissance
+          // (aucun lien encore → salarié ou bénévole), et l'écran défile jusqu'à lui.
+          setEditingCoachId(created.id);
+          setEditingGroup(coachGroupOf(created, coachPlayerIds));
+          setJustCreatedId(created.id);
+        },
+      },
+    );
     setFirst("");
     setLast("");
     setEmployee(false);
@@ -356,34 +431,51 @@ function CoachesEditor() {
       {0 === coaches.length ? (
         <EmptyHint>Aucun coach pour le moment.</EmptyHint>
       ) : (
-        <div className="flex flex-col gap-4">
-          {(
-            [
-              ["Salariés", groups.salaried],
-              ["Coachs-joueurs", groups.player],
-              ["Bénévoles", groups.other],
-            ] as const
-          ).map(([label, list]) =>
-            list.length > 0 ? (
-              <section key={label}>
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</h3>
-                <div className="flex flex-col gap-3">
-                  {list.map((coach) => (
-                    <CoachCard
-                      key={coach.id}
-                      coach={coach}
-                      teams={teams}
-                      tiers={tiers}
-                      teamName={teamName}
-                      coachLinks={teamCoaches.filter((l) => l.coachId === coach.id)}
-                      playerLinks={coachPlayers.filter((l) => l.coachId === coach.id)}
-                    />
-                  ))}
-                </div>
-              </section>
-            ) : null,
+        <>
+          <Input
+            type="search"
+            aria-label="Rechercher un coach"
+            placeholder="Rechercher un coach…"
+            className="mb-3 h-9 w-full sm:w-72"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {0 === visible.length ? (
+            <EmptyHint>Aucun coach ne correspond.</EmptyHint>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {(
+                [
+                  ["Salariés", groups.salaried],
+                  ["Coachs-joueurs", groups.player],
+                  ["Bénévoles", groups.other],
+                ] as const
+              ).map(([label, list]) =>
+                list.length > 0 ? (
+                  <section key={label}>
+                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</h3>
+                    <div className="flex flex-col gap-3">
+                      {list.map((coach) => (
+                        <CoachCard
+                          key={coach.id}
+                          coach={coach}
+                          teams={teams}
+                          tiers={tiers}
+                          teamName={teamName}
+                          coachLinks={teamCoaches.filter((l) => l.coachId === coach.id)}
+                          playerLinks={coachPlayers.filter((l) => l.coachId === coach.id)}
+                          editing={editingCoachId === coach.id}
+                          onToggleEdit={() => toggleEdit(coach)}
+                          autoFocusLink={justCreatedId === coach.id && teams.length > 0}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                ) : null,
+              )}
+            </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );

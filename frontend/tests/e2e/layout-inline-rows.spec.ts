@@ -44,13 +44,13 @@ test("étape Coachs : équipe, rôle et « Lier » sur la même ligne (1280 px)"
   await page.getByRole("button", { name: "Lun 18:00", exact: true }).click();
   await page.getByRole("button", { name: "Suivant" }).click();
 
-  // Étape 3 — un coach, qu'on passe en édition pour révéler la ligne « Lier ».
+  // Étape 3 — un coach : la carte créée s'ouvre DÉJÀ en édition, révélant la ligne « Lier »
+  // sans clic (le témoin de création est donc le bouton « Terminer l'édition »).
   await expect(page.getByRole("heading", { name: /Étape 3\/6/ })).toBeVisible();
   await page.getByLabel("Prénom").fill("Coa");
   await page.getByLabel("Nom", { exact: true }).fill("Ch");
   await page.getByRole("button", { name: "Ajouter le coach" }).click();
-  await expect(page.getByText("Coa Ch", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Éditer le coach" }).click();
+  await expect(page.getByRole("button", { name: "Terminer l'édition" })).toBeVisible({ timeout: 15_000 });
 
   // On SCOPE à la ligne « Lier » : le rail du wizard porte aussi un bouton d'étape « Équipes »
   // (regex `/^Équipe/`), d'où deux correspondances en portée globale. Les trois contrôles sont

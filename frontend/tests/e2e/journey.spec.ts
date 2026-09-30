@@ -71,8 +71,9 @@ test("full journey: wizard → generation → validated planning → cockpit", a
   await page.getByLabel("Prénom").fill("Coa");
   await page.getByLabel("Nom", { exact: true }).fill("Ch");
   await page.getByRole("button", { name: "Ajouter le coach" }).click();
-  // Lot A: coach cards are read-only by default (name as text, edit on demand).
-  await expect(page.getByText("Coa Ch", { exact: true })).toBeVisible();
+  // Le coach créé s'ouvre DÉSORMAIS directement en édition (nom dans les champs, carte ouverte,
+  // prête à lier une équipe) — le témoin de création est donc le bouton « Terminer l'édition ».
+  await expect(page.getByRole("button", { name: "Terminer l'édition" })).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: "Suivant" }).click();
 
   // --- Step 4 · constraints (none — skip).
