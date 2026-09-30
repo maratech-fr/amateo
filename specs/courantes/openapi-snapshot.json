@@ -194,6 +194,342 @@
                 }
             }
         },
+        "/api/admin/demos": {
+            "get": {
+                "operationId": "getAdminDemos",
+                "tags": [
+                    "AdminDemo"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "State of the two demo accounts (bccl carries the simulated clock)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "bccl": {
+                                            "type": "object",
+                                            "properties": {
+                                                "email": {
+                                                    "type": "string"
+                                                },
+                                                "activeUntil": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ],
+                                                    "format": "date-time",
+                                                    "description": "ISO UTC \u2014 the activation window end, or null when closed. Rendered at Europe/Paris time by the console."
+                                                },
+                                                "clubName": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                },
+                                                "demoToday": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ],
+                                                    "format": "date",
+                                                    "description": "Simulated clock (bccl only)."
+                                                }
+                                            }
+                                        },
+                                        "prospect": {
+                                            "type": "object",
+                                            "properties": {
+                                                "email": {
+                                                    "type": "string"
+                                                },
+                                                "activeUntil": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ],
+                                                    "format": "date-time",
+                                                    "description": "ISO UTC \u2014 the activation window end, or null when closed. Rendered at Europe/Paris time by the console."
+                                                },
+                                                "clubName": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                },
+                                                "demoToday": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ],
+                                                    "format": "date",
+                                                    "description": "Simulated clock (bccl only)."
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No authenticated super-admin session"
+                    }
+                },
+                "summary": "Read the state of the two demonstration accounts"
+            }
+        },
+        "/api/admin/demos/bccl/clock": {
+            "post": {
+                "operationId": "setAdminDemoClock",
+                "tags": [
+                    "AdminDemo"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The simulated clock was set (or cleared)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "demoToday": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "format": "date"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Malformed body: not exactly one of a real YYYY-MM-DD date or clear:true"
+                    },
+                    "401": {
+                        "description": "No authenticated super-admin session"
+                    },
+                    "403": {
+                        "description": "Invalid CSRF token"
+                    },
+                    "404": {
+                        "description": "The BCCL demo club is absent"
+                    }
+                },
+                "summary": "Set or clear the simulated clock of the BCCL demonstration club",
+                "parameters": [
+                    {
+                        "name": "X-CSRF-Token",
+                        "in": "header",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "date": {
+                                        "type": "string",
+                                        "format": "date",
+                                        "description": "Simulated today, YYYY-MM-DD."
+                                    },
+                                    "clear": {
+                                        "type": "boolean",
+                                        "description": "Release the simulated clock (back to real time)."
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
+            }
+        },
+        "/api/admin/demos/bccl/reset": {
+            "post": {
+                "operationId": "resetAdminDemoBccl",
+                "tags": [
+                    "AdminDemo"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The BCCL demo was re-seeded and its simulated clock reset to today",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "enum": [
+                                                "reset"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No authenticated super-admin session"
+                    },
+                    "403": {
+                        "description": "Invalid CSRF token"
+                    },
+                    "502": {
+                        "description": "The re-seed sub-process failed"
+                    }
+                },
+                "summary": "Reset the permanent BCCL demonstration (re-seed + clear the simulated clock)",
+                "parameters": [
+                    {
+                        "name": "X-CSRF-Token",
+                        "in": "header",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            }
+        },
+        "/api/admin/demos/{target}/activate": {
+            "post": {
+                "operationId": "activateAdminDemo",
+                "tags": [
+                    "AdminDemo"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The activation window was opened for 4 hours (real clock); re-clicking restarts it, never adds up",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "target": {
+                                            "type": "string",
+                                            "enum": [
+                                                "bccl",
+                                                "prospect"
+                                            ]
+                                        },
+                                        "activeUntil": {
+                                            "type": "string",
+                                            "format": "date-time"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No authenticated super-admin session"
+                    },
+                    "403": {
+                        "description": "Invalid CSRF token"
+                    },
+                    "404": {
+                        "description": "Unknown demo target, or the demo account is missing"
+                    }
+                },
+                "summary": "Open a 4-hour activation window on a demo account",
+                "parameters": [
+                    {
+                        "name": "target",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "bccl",
+                                "prospect"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "X-CSRF-Token",
+                        "in": "header",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            }
+        },
+        "/api/admin/demos/{target}/deactivate": {
+            "post": {
+                "operationId": "deactivateAdminDemo",
+                "tags": [
+                    "AdminDemo"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The activation window was closed",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "target": {
+                                            "type": "string",
+                                            "enum": [
+                                                "bccl",
+                                                "prospect"
+                                            ]
+                                        },
+                                        "activeUntil": {
+                                            "type": "null"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No authenticated super-admin session"
+                    },
+                    "403": {
+                        "description": "Invalid CSRF token"
+                    },
+                    "404": {
+                        "description": "Unknown demo target, or the demo account is missing"
+                    }
+                },
+                "summary": "Close the activation window on a demo account",
+                "parameters": [
+                    {
+                        "name": "target",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "bccl",
+                                "prospect"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "X-CSRF-Token",
+                        "in": "header",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            }
+        },
         "/api/admin/jobs": {
             "get": {
                 "operationId": "getAdminJobs",

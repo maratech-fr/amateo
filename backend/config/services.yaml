@@ -71,6 +71,10 @@ parameters:
 services:
     App\AdminJob\AdminJobExecutorInterface: '@App\AdminJob\ConsoleAdminJobExecutor'
 
+    # Reset de la démo BCCL depuis la console : interface pour que l'endpoint soit testable
+    # sans lancer le sous-processus seed réel (double dans AdminDemoResetTest).
+    App\Service\DemoResetRunnerInterface: '@App\Service\DemoResetRunner'
+
     # default configuration for services in *this* file
     _defaults:
         autowire: true      # Automatically injects dependencies in your services.

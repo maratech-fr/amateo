@@ -9,6 +9,7 @@ use ApiPlatform\OpenApi\OpenApi;
 use App\OpenApi\PathContributor\AccountSessionPaths;
 use App\OpenApi\PathContributor\AdminAuthPaths;
 use App\OpenApi\PathContributor\AdminContentModerationPaths;
+use App\OpenApi\PathContributor\AdminDemoPaths;
 use App\OpenApi\PathContributor\AdminJobPaths;
 use App\OpenApi\PathContributor\AdminJournalPaths;
 use App\OpenApi\PathContributor\AdminMonitoringPaths;
@@ -73,6 +74,7 @@ final readonly class CustomRoutesOpenApiFactory implements OpenApiFactoryInterfa
             new AdminMonitoringPaths($schemas),
             new AdminJobPaths($schemas),
             new AdminSupportPaths($schemas),
+            new AdminDemoPaths($schemas),
             new AdminJournalPaths($schemas),
             new PublicTokenPaths($schemas),
             new FfbbProxyPaths($schemas),
