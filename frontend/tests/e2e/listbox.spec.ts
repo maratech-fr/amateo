@@ -48,7 +48,9 @@ async function reachReservationPicker(page: import("@playwright/test").Page): Pr
   await page.getByLabel("Prénom").fill("Coa");
   await page.getByLabel("Nom", { exact: true }).fill("Ch");
   await page.getByRole("button", { name: "Ajouter le coach" }).click();
-  await expect(page.getByText("Coa Ch", { exact: true })).toBeVisible({ timeout: 15_000 });
+  // Le coach créé s'ouvre directement en édition : le témoin de création est le bouton
+  // « Terminer l'édition » (le nom n'est plus rendu en texte, il vit dans les champs).
+  await expect(page.getByRole("button", { name: "Terminer l'édition" })).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: "Suivant" }).click();
 
   // Step 4 · constraints → the « Réserver » family tab holds the per-venue slot grid. The slot
