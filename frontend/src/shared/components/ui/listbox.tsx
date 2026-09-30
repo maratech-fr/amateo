@@ -15,6 +15,9 @@ export interface ListboxOption {
   swatch?: string | null;
   /** Right-aligned tabular count, e.g. "reste 2 créneaux". */
   count?: string;
+  /** Right-aligned status node (e.g. a StatusPill « À vérifier »). Its visible text is announced
+   *  as part of the option (aria-describedby), so it is never colour-only. */
+  badge?: ReactNode;
   /** Second line: a precision or a reason (also the disabled motive). */
   sub?: string;
   /** Reachable by keyboard but inert: Enter/Space/click are no-ops, list stays open. */
@@ -545,7 +548,8 @@ function Option({ opt, selected, onPick, leading }: { opt: ListboxOption; select
   const labelId = useId();
   const countId = useId();
   const subId = useId();
-  const describedBy = [opt.count !== undefined ? countId : null, opt.sub !== undefined ? subId : null].filter(Boolean).join(" ") || undefined;
+  const badgeId = useId();
+  const describedBy = [opt.count !== undefined ? countId : null, opt.sub !== undefined ? subId : null, opt.badge !== undefined ? badgeId : null].filter(Boolean).join(" ") || undefined;
 
   return (
     // Keyboard (select/roam/typeahead) is handled by the listbox container's roving handler, not
@@ -586,9 +590,14 @@ function Option({ opt, selected, onPick, leading }: { opt: ListboxOption; select
           </span>
         ) : null}
       </span>
-      {opt.count !== undefined ? (
-        <span id={countId} className="text-xs tabular-nums text-foreground">
-          {opt.count}
+      {opt.badge !== undefined || opt.count !== undefined ? (
+        <span className="flex items-center gap-1.5 justify-self-end">
+          {opt.badge !== undefined ? <span id={badgeId}>{opt.badge}</span> : null}
+          {opt.count !== undefined ? (
+            <span id={countId} className="text-xs tabular-nums text-foreground">
+              {opt.count}
+            </span>
+          ) : null}
         </span>
       ) : null}
     </li>

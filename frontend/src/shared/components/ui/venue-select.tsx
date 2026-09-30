@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { Listbox, type ListboxOption } from "@/shared/components/ui/listbox";
 
 /** One venue row. `color` drives the pastille (null → neutral dot). */
@@ -7,6 +9,8 @@ export interface VenueLike {
   color: string | null;
   /** Second line under the name: an effective state ("désactivé", "fermé lundi…"). Name stays intact. */
   sub?: string;
+  /** Right-aligned status node (e.g. a StatusPill « À vérifier ») — announced with the option. */
+  badge?: ReactNode;
   /** Reachable by keyboard but inert (Enter/click no-op, list stays open). */
   disabled?: boolean;
 }
@@ -53,7 +57,7 @@ interface VenueSelectProps {
  * intact, état en sous-ligne — au lieu d'être concaténé dans le libellé (`nom — état`).
  */
 export function VenueSelect({ venues, leadingOptions, placeholder, className, wrapperClassName, ...listbox }: VenueSelectProps) {
-  const options: ListboxOption[] = venues.map((v) => ({ value: v.id, label: v.name, swatch: v.color, sub: v.sub, disabled: v.disabled }));
+  const options: ListboxOption[] = venues.map((v) => ({ value: v.id, label: v.name, swatch: v.color, sub: v.sub, badge: v.badge, disabled: v.disabled }));
   // Head options ("Tous les gymnases"…) go through the primitive's `leadingOptions` so they stay
   // visible under a search filter and never count toward its threshold (P4-198).
   const leading: ListboxOption[] = (leadingOptions ?? []).map((o) => ({ value: o.value, label: o.label, disabled: o.disabled }));

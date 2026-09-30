@@ -61,7 +61,10 @@ final class BanGeocodingHttpClientStub implements HttpClientInterface
             'type' => 'Feature',
             // GeoJSON order: [longitude, latitude].
             'geometry' => ['type' => 'Point', 'coordinates' => [$longitude, $latitude]],
-            'properties' => ['label' => $label, 'score' => $score],
+            // `type` = la précision BAN d'un point (housenumber = adresse exacte), comme la vraie
+            // API : le contrôle de cohérence de position (VenueGeoCheck) ne compare une distance
+            // que sur un point exact.
+            'properties' => ['label' => $label, 'score' => $score, 'type' => 'housenumber'],
         ];
     }
 

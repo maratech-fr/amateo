@@ -79,4 +79,19 @@ describe("VenueSelect (Listbox — pastille couleur, P4-164 PR-2)", () => {
     await user.click(jdr);
     expect(onValueChange).not.toHaveBeenCalled();
   });
+
+  it("`badge` = pastille de droite (« À vérifier ») posée SEULEMENT sur le gymnase en alerte", async () => {
+    const user = userEvent.setup();
+    const flagged = [
+      { id: "v1", name: "ADN", color: "#ff0000", badge: <span>À vérifier</span> },
+      { id: "v2", name: "JDR", color: "#00ff00" },
+    ];
+    render(<VenueSelect aria-label="Gymnase" venues={flagged} value="v1" onValueChange={vi.fn()} />);
+    const list = await openListbox(user, "Gymnase");
+    const adn = within(list).getByRole("option", { name: "ADN" });
+    // Le nom reste le nom accessible (labelledby) ; la pastille est annoncée EN PLUS (describedby).
+    expect(adn).toHaveTextContent("À vérifier");
+    expect(adn).toHaveAttribute("aria-describedby");
+    expect(within(list).getByRole("option", { name: "JDR" })).not.toHaveTextContent("À vérifier");
+  });
 });

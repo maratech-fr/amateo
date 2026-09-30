@@ -1,13 +1,11 @@
-Last verified @ 2026-09-30 (Trajets — le levier `VenueTravelRuleSetting` (`travelTime`) gagne deux
-propriétés lecture+écriture : `toleranceMinutes` (battement toléré) et `defaultMinutes` (temps par
-défaut d'un couple sans temps) ; son intensité accepte désormais `OFF` en plus de
-`PREFERRED`/`MANDATORY`. Descriptions de `Coach.isVehicled`/`CoachInput.isVehicled` et de
-`VenueTravelTimeInput.walkingMinutes` reformulées « à vélo » (mode non véhiculé = vélo/trottinette,
-le nom technique `walking*` reste). Aucun path ajouté ni retiré. Régénéré à froid depuis le backend
-vivant).
+Last verified @ 2026-09-30 (Gymnases — nouvelle route `GET /api/venues/geo-check` (tag `Venue`,
+management-only, tenant du JWT) : contrôle de cohérence LECTURE SEULE de la position stockée d'un
+gymnase rattaché à une salle FFBB, renvoie un tableau d'alertes `{venueId, reason:
+OTHER_STREET|FAR_FROM_ADDRESS, ffbbAddress, pointStreet|null, distanceM|null}`. +1 path. Régénéré à
+froid depuis le backend vivant).
 
-**215 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`4258a4fded87fed24659c56a779fd9118f554af1dd706776218b76c7174b822d` (`sha256sum` sur le fichier).
+**216 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`72ce5eef7c27a9fbda91b73cc7dadeba819471250d3c1b7170203a285d92b8c4` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

@@ -209,6 +209,26 @@ export interface SlotPayload {
   schedulePlanId?: string | null;
 }
 
+/**
+ * Une alerte de cohérence de position (verdict SERVEUR, best-effort) : un gymnase rattaché à une
+ * salle FFBB dont le point enregistré paraît incohérent avec l'adresse fédérale. Le front l'AFFICHE
+ * (bandeau + pastille), il ne recalcule RIEN — la règle vit une seule fois, côté backend.
+ */
+export interface VenueGeoAlert {
+  venueId: string;
+  /** OTHER_STREET : le point tombe dans une autre rue ; FAR_FROM_ADDRESS : trop loin de l'adresse. */
+  reason: "OTHER_STREET" | "FAR_FROM_ADDRESS";
+  /** L'adresse fédérale de la salle (pour l'afficher au gestionnaire). */
+  ffbbAddress: string;
+  /** OTHER_STREET : la rue où tombe réellement le point (reverse) ; null sinon. */
+  pointStreet: string | null;
+  /** FAR_FROM_ADDRESS : la distance en mètres au point exact de l'adresse ; null sinon. */
+  distanceM: number | null;
+}
+
+/** Les gymnases du club+saison dont la position paraît incohérente (tableau vide = rien à signaler). */
+export const geoCheckVenues = (): Promise<VenueGeoAlert[]> => api.get("venues/geo-check").json<VenueGeoAlert[]>();
+
 export const listVenues = async (): Promise<Venue[]> => sortByName(await collectionAll<Venue>("venues"));
 export const listVenueSlots = (): Promise<VenueTrainingSlot[]> => collectionAll<VenueTrainingSlot>("venue_training_slots");
 /** #8 — la grille que la période POSSÈDE (copie du modèle de saison, plus rien d'additif). */
