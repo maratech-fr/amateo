@@ -6,7 +6,7 @@ import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
 import { tint } from "@/shared/lib/color";
 
 import type { MatchWeek, Team, TeamMatchHabit, Venue } from "./api";
-import { buildTypicalWeekend, hasAlternatingWeeks } from "./lib/typicalWeekend";
+import { buildTypicalWeekend } from "./lib/typicalWeekend";
 
 const ROW_HEIGHT = 16; // px per 15-min step — same scale as the dated grid
 const HEADER_ROW = "1.75rem";
@@ -19,6 +19,8 @@ interface TypicalWeekendGridProps {
   /** P4-206 — durée EFFECTIVE de match par catégorie (`sportCategoryId → minutes`), résolue par
    *  le serveur (`matchMinutesByCategory`) : chaque bloc s'étend sur la durée de son équipe. */
   durations: Map<string, number>;
+  /** P4-271 — le club déclare-t-il un modèle de week-end A/B ? (vérité serveur, jamais redérivée). */
+  weekendAlternates: boolean;
 }
 
 /**
@@ -26,14 +28,14 @@ interface TypicalWeekendGridProps {
  * Sat/Sun × venues grid. READ-ONLY — the manager's ideal template; ideal slots
  * are edited below in « Créneaux idéaux ».
  *
- * P4-271 — la semaine type A/B est une AIDE VISUELLE portée par le tag `week`. Dès
- * qu'un créneau idéal est tagué A ou B, l'en-tête gagne un segmenté « Semaine A /
- * Semaine B » et chaque semaine dessine ses créneaux (tagués cette semaine OU
- * « toutes »). Sans aucun tag A/B, AUCUN segmenté : la grille reste la vue unique.
- * Le modèle (`buildTypicalWeekend`) filtre par semaine ; ce composant porte le choix.
+ * P4-271 — la semaine type A/B est une AIDE VISUELLE. Quand le CLUB déclare alterner
+ * (`weekendAlternates`, vérité serveur), l'en-tête gagne un segmenté « Semaine A /
+ * Semaine B » et chaque semaine dessine ses créneaux (tagués cette semaine). Sinon,
+ * AUCUN segmenté : la grille reste la vue unique montrant tous les créneaux. Le modèle
+ * (`buildTypicalWeekend`) filtre par semaine ; ce composant porte le choix.
  */
-export function TypicalWeekendGrid({ habits, venues, teams, durations }: TypicalWeekendGridProps) {
-  const alternates = hasAlternatingWeeks(habits);
+export function TypicalWeekendGrid({ habits, venues, teams, durations, weekendAlternates }: TypicalWeekendGridProps) {
+  const alternates = weekendAlternates;
   const [week, setWeek] = useState<MatchWeek>("A");
   const activeWeek: MatchWeek | undefined = alternates ? week : undefined;
   const model = buildTypicalWeekend(habits, teams, durations, activeWeek);

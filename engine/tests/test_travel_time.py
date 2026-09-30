@@ -83,11 +83,16 @@ class TestResolveTravelRule:
         assert rules.travel_time_active is True
         assert rules.travel_time_intensity == "PREFERRED"
         assert rules.travel_time_default_minutes == 20
+        # Battement toléré : défaut 20 quand le bloc l'omet (décision fondateur 2026-09-30).
+        assert rules.travel_time_tolerance_minutes == 20
 
     def test_mandatory_and_custom_default(self) -> None:
-        rules = resolve_implicit_rules({"travelTime": {"intensity": "MANDATORY", "defaultMinutes": 35}})
+        rules = resolve_implicit_rules(
+            {"travelTime": {"intensity": "MANDATORY", "defaultMinutes": 35, "toleranceMinutes": 5}}
+        )
         assert rules.travel_time_intensity == "MANDATORY"
         assert rules.travel_time_default_minutes == 35
+        assert rules.travel_time_tolerance_minutes == 5
 
 
 class TestHardPose:

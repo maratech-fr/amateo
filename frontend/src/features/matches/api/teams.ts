@@ -75,9 +75,9 @@ export const updateSportCategoryDuration = (category: SportCategoryDuration, inp
 // ── Preferences layer (P1-4 PR C) ────────────────────────────────────────────
 
 /** Semaine d'alternance du créneau idéal (aide visuelle A/B — P4-271). */
-export type MatchWeek = "A" | "B" | "ALL";
+export type MatchWeek = "A" | "B";
 
-/** A team's ideal match slot — ONE per team (P4-271), venue optional, tagged week A/B/ALL. */
+/** A team's ideal match slot — ONE per team (P4-271), venue optional, tagged week A or B. */
 export interface TeamMatchHabit {
   id: string;
   teamId: string;
@@ -86,7 +86,7 @@ export interface TeamMatchHabit {
   /** HH:MM — an instant, not a range. */
   kickoffTime: string;
   venueId: string | null;
-  /** Alternation week — A | B | ALL (a club without A/B alternation). */
+  /** Alternation week — A (default) | B. */
   week: MatchWeek;
 }
 
@@ -112,7 +112,7 @@ export interface TeamLink {
 }
 
 export const getTeamMatchHabits = (): Promise<TeamMatchHabit[]> =>
-  (async () => (await collectionAll<TeamMatchHabit>("team_match_habits")).map((h) => ({ ...h, venueId: h.venueId ?? null, week: h.week ?? "ALL" })))();
+  (async () => (await collectionAll<TeamMatchHabit>("team_match_habits")).map((h) => ({ ...h, venueId: h.venueId ?? null, week: h.week ?? "A" })))();
 
 /** All ideal-slot fields the editor writes: day, kickoff, optional venue, week tag. */
 export interface TeamMatchHabitInput {
@@ -127,7 +127,7 @@ export interface TeamMatchHabitInput {
 export const createTeamMatchHabit = (input: TeamMatchHabitInput): Promise<TeamMatchHabit> =>
   api.post("team_match_habits", { json: input }).json<TeamMatchHabit>();
 
-/** PUT is a full replace: every field travels (an omitted venue clears it, an omitted week resets to ALL). */
+/** PUT is a full replace: every field travels (an omitted venue clears it, an omitted week resets to A). */
 export const updateTeamMatchHabit = (id: string, input: TeamMatchHabitInput): Promise<TeamMatchHabit> =>
   api.put(`team_match_habits/${id}`, { json: input }).json<TeamMatchHabit>();
 

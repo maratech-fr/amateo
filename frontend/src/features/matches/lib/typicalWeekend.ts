@@ -13,9 +13,11 @@ import type { MatchWeek, Team, TeamMatchHabit } from "../api";
  * dates) : la vue est un gabarit, pas un planning.
  *
  * P4-271 — la semaine type A/B est une AIDE VISUELLE portée par le tag `week` de
- * chaque créneau idéal (plus aucune entité de rotation). `buildTypicalWeekend` garde les
- * créneaux tagués `week` OU `ALL` (un club sans alternance) ; appelée sans `week` (ou avec
- * `ALL`), elle rend TOUS les créneaux (vue unique).
+ * chaque créneau idéal (plus aucune entité de rotation). Le club DÉCLARE s'il alterne
+ * (`me.club.weekendAlternates`, vérité serveur — le front ne le REDÉRIVE pas des créneaux,
+ * 🔴 `.claude/rules/frontend.md`). Appelée avec une `week`, `buildTypicalWeekend` ne garde
+ * que les créneaux tagués cette semaine ; appelée sans `week` (club sans alternance), elle
+ * rend TOUS les créneaux (vue unique).
  */
 
 import { matchMinutesOf } from "./weekendGrid";
@@ -56,17 +58,12 @@ function toMinutes(time: string): number {
 
 const isWeekendDay = (day: number): day is 6 | 7 => 6 === day || 7 === day;
 
-/** Au moins un créneau idéal est tagué A ou B → le club alterne, la vue se segmente. */
-export function hasAlternatingWeeks(habits: TeamMatchHabit[]): boolean {
-  return habits.some((h) => "A" === h.week || "B" === h.week);
-}
-
-/** Les créneaux visibles pour la semaine `week` : ceux tagués `week` ou `ALL`. */
+/** Les créneaux visibles pour la semaine `week` : ceux tagués cette semaine (sans `week`, tous). */
 function habitsForWeek(habits: TeamMatchHabit[], week: MatchWeek | undefined): TeamMatchHabit[] {
-  if (undefined === week || "ALL" === week) {
+  if (undefined === week) {
     return habits;
   }
-  return habits.filter((h) => h.week === week || "ALL" === h.week);
+  return habits.filter((h) => h.week === week);
 }
 
 export function buildTypicalWeekend(habits: TeamMatchHabit[], teams: Map<string, Team>, durations: Map<string, number>, week?: MatchWeek): TypicalWeekendModel {

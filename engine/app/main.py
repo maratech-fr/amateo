@@ -624,6 +624,7 @@ def _solve(
             team_coach_map=team_coach_map,
             venue_travel_times=data.get("venueTravelTimes", []),
             default_minutes=resolved_implicit_rules.travel_time_default_minutes,
+            tolerance_minutes=resolved_implicit_rules.travel_time_tolerance_minutes,
         )
 
     # PR-3 (comblement) — BONUS de référence socle (poids par tier), plié dans le PLACEMENT

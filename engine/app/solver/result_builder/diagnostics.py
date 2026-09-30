@@ -1099,6 +1099,10 @@ def _diagnose_travel_times(
     if not matrix:
         return []
     default_minutes = int(_get(travel, "defaultMinutes", "default_minutes", default=20))
+    # Battement toléré (décision fondateur 2026-09-30) : le diagnostic juge le MÊME écart exigé que
+    # la pose (barème − tolérance, borné à 0). Sans lui, un enchaînement accepté par le solveur
+    # serait faussement annoncé infaisable.
+    tolerance_minutes = int(_get(travel, "toleranceMinutes", "tolerance_minutes", default=20))
 
     placements = _team_link_placements_from_slots(slots)
     coach_names = _coach_name_map(model_data)
@@ -1113,7 +1117,9 @@ def _diagnose_travel_times(
         # (``is_travel_too_tight``, qui compose ``_cross_venue_gap`` + ``_barometer``) est celle-là
         # même que la pose du solveur consomme. Le diagnostic juge donc EXACTEMENT la géométrie que
         # ``add_travel_time_hard_constraints`` a interdite.
-        return is_travel_too_tight(pa, pb, driving=driving, matrix=matrix, default_minutes=default_minutes)
+        return is_travel_too_tight(
+            pa, pb, driving=driving, matrix=matrix, default_minutes=default_minutes, tolerance_minutes=tolerance_minutes
+        )
 
     diagnostics: list[dict[str, Any]] = []
     seen: set[tuple[str, ...]] = set()
@@ -1175,7 +1181,7 @@ def _diagnose_travel_times(
                         "message": (
                             f"Les équipes {_label(team_a, team_names)} et {_label(team_b, team_names)}, "
                             "déclarées en passerelle, ont des séances verrouillées à des gymnases différents "
-                            "sans le temps de faire le trajet à pied entre les deux."
+                            "sans le temps de faire le trajet à vélo entre les deux."
                         ),
                         "suggestions": [
                             "Déverrouillez l'une des séances, écartez-les dans la journée, "

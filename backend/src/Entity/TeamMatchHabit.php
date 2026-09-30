@@ -15,7 +15,7 @@ use Doctrine\ORM\Mapping as ORM;
  * not a range (every founder example is a kickoff instant), venue optional (the
  * away-kickoff estimation only needs day+time). ONE per team (DB unique on
  * club+season+team since P4-271) — a team declares a SINGLE ideal slot, tagged
- * week {@see MatchWeek} A, B or ALL (a club without A/B alternation).
+ * week {@see MatchWeek} A (the default) or B.
  *
  * The `week` tag is a VISUAL AID (the manager's ideal model), never a constraint:
  * it feeds the frontend's A/B typical-week view and NEVER travels to the engine —
@@ -70,11 +70,11 @@ class TeamMatchHabit implements TenantOwnedInterface
     private ?string $venueId = null;
 
     /**
-     * Semaine d'alternance du créneau idéal (aide visuelle A/B — P4-271). `ALL` par
-     * défaut : un club sans alternance. Ne voyage JAMAIS au moteur.
+     * Semaine d'alternance du créneau idéal (aide visuelle A/B — P4-271). `A` par
+     * défaut : un club sans alternance range tout en A. Ne voyage JAMAIS au moteur.
      */
-    #[ORM\Column(type: 'string', length: 8, enumType: MatchWeek::class, options: ['default' => 'ALL'])]
-    private MatchWeek $week = MatchWeek::ALL;
+    #[ORM\Column(type: 'string', length: 8, enumType: MatchWeek::class, options: ['default' => 'A'])]
+    private MatchWeek $week = MatchWeek::A;
 
     public function __construct()
     {

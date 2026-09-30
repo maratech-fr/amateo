@@ -1,15 +1,8 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-30 (`documentation-update`, P4-272 ⑤ — indisponibilité de coach : `MatchConstraint`
-(`backend/src/Entity/MatchConstraint.php`, scope COACH — `scopeTargetId` obligatoire et DU CLUB,
-`ruleType` PREFERRED forcé/HARD refusé, `applyCoachUnavailability`,
-`MatchConstraintStateProcessor.php:183-226`) ⇄ bloc top-level `coachUnavailabilities` du payload
-`/place-matches` (`MatchPlacementPayloadBuilder.php:158-172`, `match_input_schema.py:84-100`),
-pénalité SOFT `W_COACH_UNAVAILABLE=60` (`match_placement.py:57,619-623`, AUCUN élagage de domaine,
-AUCUNE raison `unplaced`, AUCUN radar) ; cascade suppression coach (`CascadePlan::forCoach`) et
-recopie N+1 avec remap coach (`SeasonTransitionService.php:428-436`, référence pendante →
-ligne abandonnée) confrontées au code ✓. P4-272 est désormais livré EN ENTIER (①②③④⑤). Reste
-du contenu (P4-240 et antérieur) non réaudité cette passe. Historique :
+Last verified @ 2026-09-30 (`documentation-update`, PR #1031 — CONTRACT_VERSION 2.29 confronté
+(`engine/CONTRACT_VERSION`), bouton d'aide (i) ajouté (`MatchesLayout.tsx`/`screenHelp.tsx`).
+Reste du contenu (P4-271/P4-272 et antérieur) non réaudité cette passe. Historique :
 `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
@@ -26,7 +19,9 @@ Conflits s'il y a des conflits à traiter — § Écran Calendrier), `conflits`,
 éditables), `adversaires` (§ Écran Adversaires, onglet propre — plus un deep-link de
 Configuration), `semaine-type`, `consulter` en redirection permanente vers l'index, `reconciliation` accessible
 seulement depuis le canal API, `frontend/src/app/routes.tsx:141-186`) et dans les services backend `Match*`/`Fixture*`/
-`Opponent*`/`Ffbb*` (`backend/src/Service/`, `backend/src/Entity/`).
+`Opponent*`/`Ffbb*` (`backend/src/Service/`, `backend/src/Entity/`). **Bouton d'aide (i)** (`HelpButton`,
+primitive partagée, `frontend/docs/frontend-components.md`) à gauche de la barre d'onglets — un
+seul, dont le contenu suit l'onglet actif (`MATCHES_TAB_HELP`, `features/matches/lib/screenHelp.tsx`).
 
 ## 0. Portée et gating
 
@@ -56,7 +51,8 @@ vigueur, il n'a rien à comparer.
   (champ additif en LECTURE seulement, `FixtureResource`, jamais persisté sur l'entité) : le trajet
   d'une rencontre EXTÉRIEURE, DÉRIVÉ de la rencontre elle-même — voir « Table TENANT
   `OpponentVenueLink` » ci-dessous.
-- **`TeamMatchHabit`** : jour ISO + heure-point + gymnase optionnel, une par jour et par équipe.
+- **`TeamMatchHabit`** : jour ISO + heure-point + gymnase optionnel — **UN par équipe** (unique
+  `club_id, season_id, team_id`, P4-271 ; l'ancienne unicité par jour a disparu avec les rotations).
 - **`ClubLeagueWindow`** (clé `(club, saison)`, colonnes métier identiques au catalogue GLOBAL
   `LeagueMatchWindow` ci-dessous) : la COPIE, propre au club, de l'enveloppe de fenêtres de coup
   d'envoi de la ligue — MAISON UNIQUE lue par le placement (`MatchPlacementPayloadBuilder`), le
@@ -102,7 +98,7 @@ vigueur, il n'a rien à comparer.
   Le moteur reçoit les règles CLUB VERBATIM dans le bloc top-level `clubRules`, les interdictions
   TEAM dans `teams[].forbiddenVenueIds` (liste triée, déterministe) et les indisponibilités COACH
   dans le bloc top-level `coachUnavailabilities` (verbatim {coachId, daysOfWeek, kickoffMin,
-  kickoffMax}) du payload `/place-matches` (`CONTRACT_VERSION` 2.28) — un domaine vidé par les
+  kickoffMax}) du payload `/place-matches` (`CONTRACT_VERSION` 2.29) — un domaine vidé par les
   seules règles CLUB HARD ressort `club_rule_no_slot`, un domaine vidé par un gymnase interdit
   alors qu'un créneau licite y existait ressort `team_venue_forbidden` (précédence sur
   `club_rule_no_slot`, §3) ; une indisponibilité COACH ne vide JAMAIS de domaine — elle pénalise
@@ -127,10 +123,13 @@ vigueur, il n'a rien à comparer.
   bruit qu'autre chose » côté radar) — § « Détecteur de conflits » ci-dessous ; côté ENTRAÎNEMENT
   `TeamLinkIntensity` `PREFERRED`/`MANDATORY` (honoré par le solveur d'entraînement — arbitrage :
   cette intensité ne gouverne jamais les matchs, `engine/docs/constraint-vocabulary.md` §Passerelles).
-- **`TeamMatchHabit.week`** (`MatchWeek` `A`\|`B`\|`ALL`, P4-271) : le créneau idéal (ci-dessus)
+- **`TeamMatchHabit.week`** (`MatchWeek` `A`\|`B`, P4-271) : le créneau idéal (ci-dessus)
   porte un tag de semaine d'alternance — **AIDE VISUELLE**, jamais une contrainte : il alimente la
   vue A/B de l'écran Semaine type (§10) côté frontend seulement, il **ne voyage jamais au moteur**
-  (le solveur voit une habitude, sans étiquette de semaine). Remplace l'ex-`MatchSlotRotation` +
+  (le solveur voit une habitude, sans étiquette de semaine). La segmentation A/B de cet écran n'est
+  affichée que si le club le déclare (`Club.weekendAlternates`, réglage gestionnaire — § « Écran
+  Semaine type » ci-dessous) ; défaut `A` pour un club sans alternance (`ALL` supprimé, migration
+  `Version20260930100000`). Remplace l'ex-`MatchSlotRotation` +
   `MatchSlotRotationTeam` (créneau physique partagé par N équipes en alternance ordonnée, retirés
   par P4-271 — deux équipes qui alternent sur le même créneau déclarent désormais chacune LEUR
   créneau idéal, tagué A ou B). L'habitude alimente aussi le solveur d'ENTRAÎNEMENT : `Team.matchDay`
@@ -542,7 +541,7 @@ Présentation pure — aucune formule de gravité redérivée.
 ## 3. Solveur de placement (`POST /api/fixtures/place` → engine `/place-matches`)
 
 Second problème solveur ([ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md)),
-même `CONTRACT_VERSION` **2.28** que `/generate`/`/validate-assignments` (un seul contrat pour les
+même `CONTRACT_VERSION` **2.29** que `/generate`/`/validate-assignments` (un seul contrat pour les
 trois endpoints — voir §6 `CLAUDE.md`). **Rail
 SYNCHRONE** (`PlaceMatchesController` — management + saison écrivable + socle pointé), anti-double-clic
 PAR CLUB `MatchPlacementLock` (Redis dédié — ne protège pas deux clubs l'un de l'autre : ils partagent le
@@ -1222,10 +1221,11 @@ accordéon (`AccordionSection`, ancré `?section=<ligue|club|equipes|coachs>`, p
 livrées — P4-272 est désormais livré EN ENTIER (①②③④⑤).
 
 **Section Ligue** : le CRUD gestionnaire de la copie club de l'enveloppe fédérale
-(`ClubLeagueWindow`, §1) — un tableau éditable (catégorie, niveau, genre, jour, de/à),
-ajout/suppression, badge `added`/`modified` calculé SERVEUR (affiché, jamais redérivé, § règle
-frontend « le backend dit »). Bandeau si la copie est VIDE (« Aucune fenêtre ligue — le placement
-n'applique plus de règle fédérale », §1). Le placement, le radar et cet écran lisent la MÊME copie
+(`ClubLeagueWindow`, §1) — une **ligne compacte par fenêtre** (résumé + ✎ + 🗑 au repos, dépliée en
+champs catégorie/niveau/genre/jour/de-à à l'édition, P4-271), ajout/suppression, badge
+`added`/`modified` calculé SERVEUR (affiché, jamais redérivé, § règle frontend « le backend dit »).
+Bandeau si la copie est VIDE (« Aucune fenêtre ligue — le placement n'applique plus de règle
+fédérale », §1). Le placement, le radar et cet écran lisent la MÊME copie
 — une correction ici est immédiatement honorée par le placement automatique (§3) et le radar (§2).
 
 **Bloc « Plages suggérées (estimation) » (P4-272 ②)** : sous le tableau, une aide FACULTATIVE
@@ -1253,7 +1253,8 @@ gardée par le NR bloquant `Security/LeagueWindowSuggestionShareTest`
 
 **Section Club (P4-272 ③)** : le CRUD gestionnaire des règles de match du club
 (`MatchConstraint`, §1, scope CLUB seulement — TEAM ④ vit dans la section Équipes ci-dessous, COACH
-⑤ dans la section Coachs ci-après). Chaque règle : un ou
+⑤ dans la section Coachs ci-après). Chaque règle est une **ligne compacte** (résumé + ✎ + 🗑 au
+repos, dépliée en champs à l'édition, P4-271) : un ou
 plusieurs jours (`DayToggles`, bascule multi-sélection), un type — **Obligatoire** (HARD, honorée
 par le placement) ou **Préférée** (PREFERRED, une préférence, `W_CLUB_RULE=30`, §3) — et une
 fourchette de coup d'envoi « pas avant »/« pas après » (chaque borne facultative, au moins une
@@ -1283,7 +1284,7 @@ d'alerte de cohérence sur cette section — `ClubRuleCoherenceChecker` ne crois
 
 **Section Coachs (P4-272 ⑤)** : le CRUD gestionnaire des INDISPONIBILITÉS d'entraîneur
 (`CoachsSection`/`CoachUnavailabilityRow`/`AddCoachUnavailabilityRow`, `MatchConstraint` scope
-COACH, §1). Chaque ligne : un `Select` entraîneur, un ou plusieurs jours (`DayToggles`) et une
+COACH, §1). Chaque ligne, **compacte au repos** (résumé + ✎ + 🗑, P4-271) : un `Select` entraîneur, un ou plusieurs jours (`DayToggles`) et une
 fourchette « pas avant »/« pas après » (chaque borne facultative, au moins une exigée par le
 serveur, comme en section Club) — TOUJOURS PREFERRED (aucun choix de type à l'écran : une
 indisponibilité de coach ne bloque jamais un match, elle est une préférence par construction).
@@ -1389,13 +1390,28 @@ asynchrone).
 
 ## 10. Écran Semaine type (`/matchs/semaine-type`)
 
-Le MODÈLE sans dates que le placement respecte au maximum : le gabarit idéal (`TypicalWeekendGrid`
-— créneaux idéaux Sam/Dim × gymnases, sans dates, collisions posées côte à côte) en vedette, et
-l'éditeur **« Créneaux idéaux »** (`IdealSlotsEditor`, P4-271 — remplace l'ex-éditeur de rotations
-« Créneaux partagés (alternance) ») : UNE ligne par équipe, tous les champs du créneau idéal
-éditables EN PLACE (jour · heure · gymnase optionnel · semaine A/B/toutes) — une équipe porte UN
-SEUL créneau idéal. Segmenté « Semaine A/Semaine B » sur le gabarit dès qu'un créneau idéal porte le
-tag A ou B (sinon la grille reste identique à avant, aucun segmenté) — le tag est une AIDE VISUELLE,
+Le MODÈLE sans dates que le placement respecte au maximum : le réglage d'affichage du club, le
+gabarit idéal (`TypicalWeekendGrid` — créneaux idéaux Sam/Dim × gymnases, sans dates, collisions
+posées côte à côte) en vedette, et l'éditeur **« Créneaux idéaux »** (`IdealSlotsEditor`, P4-271 —
+remplace l'ex-éditeur de rotations « Créneaux partagés (alternance) »).
+
+**Réglage `Club.weekendAlternates` (P4-271)** : case gestionnaire seule **« Mon modèle de week-end
+a deux semaines (A/B) »** (`FilterToggle`, en tête d'écran, sous `canManage`/`isManagementRole`) —
+VÉRITÉ SERVEUR (`GET /api/me` → `club.weekendAlternates`, écrite par `PUT /api/clubs/{id}`, gate
+management déjà posée sur la ressource Club, §1) jamais redérivée des créneaux existants. Décochée
+(défaut d'un club neuf) : le champ Semaine disparaît de l'éditeur, le segmenté disparaît du gabarit,
+tout reste en semaine `A` sans qu'aucun geste ne le réécrive (une valeur déjà `B` n'est pas touchée,
+seulement masquée). La semaine type reste une AIDE VISUELLE pour le gestionnaire — ce réglage
+change ce qu'elle MONTRE, jamais une obligation faite au club d'alterner.
+
+**Éditeur « Créneaux idéaux »** : une **ligne compacte par équipe AYANT un créneau** (résumé + ✎ +
+🗑 au repos — jour · heure · gymnase · semaine A/B si le club alterne —, dépliée en champs à
+l'édition) ; un bouton **« Ajouter un créneau idéal »** ouvre une ligne pour une équipe SANS
+créneau (`TeamSelect` des seules équipes qui n'en ont pas encore, désactivé une fois toutes les
+équipes servies) — une équipe porte UN SEUL créneau idéal. Le champ Semaine (A/B, plus de
+« toutes ») n'apparaît, en ligne comme à l'ajout, que si `weekendAlternates` est vrai. Segmenté
+« Semaine A/Semaine B » sur le gabarit ssi `weekendAlternates` est vrai (sinon la grille reste la
+vue unique montrant tous les créneaux, aucun segmenté) — le tag `week` reste une AIDE VISUELLE,
 jamais une contrainte, il ne voyage jamais au moteur (§3). Le bouton **« Passerelles »**
 (`HabitsLinksDialog`, désormais dédiée aux seuls liens entre équipes — les créneaux idéaux ne s'y
 saisissent plus) s'ouvre d'ici. Un signal « hors image » (écart entre placement réel et créneau

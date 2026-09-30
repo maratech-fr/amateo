@@ -602,7 +602,9 @@ class DiagnosticPrecisionTest(unittest.TestCase):
             "teams": [{"id": "t1", "name": "U11 A"}, {"id": "t2", "name": "U11 B"}],
             "venues": [{"id": "V1", "name": "Gymnase Nord"}, {"id": "V2", "name": "Gymnase Sud"}],
             "coaches": [{"id": "c1", "name": "Léa", "isVehicled": False}],
-            "implicitRules": {"travelTime": {"intensity": "MANDATORY"}},
+            # toleranceMinutes: 0 — ce test prouve le barème STRICT (battement 10 < 30) ; le
+            # battement toléré (défaut 20, décision fondateur 2026-09-30) est prouvé ailleurs (NR).
+            "implicitRules": {"travelTime": {"intensity": "MANDATORY", "toleranceMinutes": 0}},
             "venueTravelTimes": [{"venueAId": "V1", "venueBId": "V2", "drivingMinutes": 5, "walkingMinutes": 30}],
         }
         # Deux séances VERROUILLÉES du même coach non véhiculé : V1 finit 19:50 (18:20 + 90),

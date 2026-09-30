@@ -100,7 +100,7 @@ final class IgnRoutingClient
      */
     public function travelMinutes(string $profile, float $startLat, float $startLon, float $endLat, float $endLon): ?int
     {
-        return $this->pacedMinutes($profile, $startLat, $startLon, $endLat, $endLon);
+        return $this->pacedResult($profile, $startLat, $startLon, $endLat, $endLon)['minutes'];
     }
 
     /**
@@ -123,10 +123,16 @@ final class IgnRoutingClient
      * $onProgress, si fourni, est appelé APRÈS chaque job traité avec (jobs traités,
      * total) — le worker asynchrone (C6) s'en sert pour publier l'avancement.
      *
+     * Depuis le lot « mode non véhiculé = vélo » (2026-09-30), le lot renvoie AUSSI, par clé, la
+     * DISTANCE de l'itinéraire en mètres (`meters`) — le champ `distance` de la réponse IGN — en plus
+     * de la durée : l'appelant en dérive le temps à vélo (`ceil(m / vitesse) + marge`). `meters` est
+     * additif : un consommateur qui n'y touche pas (résolution des trajets adverses, voiture) ne voit
+     * aucun changement.
+     *
      * @param list<array{key: string, profile: string, startLat: float, startLon: float, endLat: float, endLon: float}> $jobs
      * @param (callable(int, int): void)|null                                                                           $onProgress
      *
-     * @return array{minutes: array<string, int|null>, budgetExceededKeys: list<string>} minutes keyed by the job's `key` (null = routing failure); keys never attempted because the budget ran out
+     * @return array{minutes: array<string, int|null>, meters: array<string, int|null>, budgetExceededKeys: list<string>} minutes/mètres keyed by the job's `key` (null = routing failure); keys never attempted because the budget ran out
      */
     public function travelMinutesBatch(array $jobs, int $concurrency = 8, ?float $budgetSeconds = null, ?callable $onProgress = null): array
     {
@@ -136,6 +142,7 @@ final class IgnRoutingClient
         $total = \count($jobs);
 
         $results = [];
+        $meters = [];
         $budgetExceededKeys = [];
         $overBudget = false;
         $processed = 0;
@@ -152,33 +159,38 @@ final class IgnRoutingClient
                 continue;
             }
 
-            $results[$job['key']] = $this->pacedMinutes(
+            $result = $this->pacedResult(
                 $job['profile'],
                 $job['startLat'],
                 $job['startLon'],
                 $job['endLat'],
                 $job['endLon'],
             );
+            $results[$job['key']] = $result['minutes'];
+            $meters[$job['key']] = $result['meters'];
             ++$processed;
             if (null !== $onProgress) {
                 $onProgress($processed, $total);
             }
         }
 
-        return ['minutes' => $results, 'budgetExceededKeys' => $budgetExceededKeys];
+        return ['minutes' => $results, 'meters' => $meters, 'budgetExceededKeys' => $budgetExceededKeys];
     }
 
     /**
-     * One paced request with 429 retry. Returns the minutes, or null on invalid
-     * input, transport failure, non-numeric duration, or exhausted retries.
+     * One paced request with 429 retry. Returns `{minutes, meters}` (route duration in minutes and
+     * route distance in metres), each null on invalid input, transport failure, a non-numeric
+     * duration/distance, or exhausted retries.
+     *
+     * @return array{minutes: ?int, meters: ?int}
      */
-    private function pacedMinutes(string $profile, float $startLat, float $startLon, float $endLat, float $endLon): ?int
+    private function pacedResult(string $profile, float $startLat, float $startLon, float $endLat, float $endLon): array
     {
         if (self::PROFILE_CAR !== $profile && self::PROFILE_PEDESTRIAN !== $profile) {
-            return null;
+            return ['minutes' => null, 'meters' => null];
         }
         if (!$this->inRange($startLat, $startLon) || !$this->inRange($endLat, $endLon)) {
-            return null;
+            return ['minutes' => null, 'meters' => null];
         }
 
         for ($attempt = 1; $attempt <= self::MAX_ATTEMPTS; ++$attempt) {
@@ -217,7 +229,7 @@ final class IgnRoutingClient
                     'exception' => $exception->getMessage(),
                 ]);
 
-                return null;
+                return ['minutes' => null, 'meters' => null];
             }
 
             if (429 === $status) {
@@ -231,7 +243,7 @@ final class IgnRoutingClient
                         'retryAfterSeconds' => $retryAfter,
                     ]);
 
-                    return null;
+                    return ['minutes' => null, 'meters' => null];
                 }
                 $this->logger->warning('IGN routing rate-limited (HTTP 429)', [
                     'profile' => $profile,
@@ -244,13 +256,13 @@ final class IgnRoutingClient
                     continue;
                 }
 
-                return null;
+                return ['minutes' => null, 'meters' => null];
             }
 
-            return $this->readMinutes($response, $profile, $attempt);
+            return $this->readResult($response, $profile, $attempt);
         }
 
-        return null;
+        return ['minutes' => null, 'meters' => null];
     }
 
     /** Sleep on the injected clock so at least MIN_INTERVAL_SECONDS separates two dispatches. */
@@ -283,8 +295,16 @@ final class IgnRoutingClient
         return self::MIN_INTERVAL_SECONDS;
     }
 
-    private function readMinutes(ResponseInterface $response, string $profile, int $attempt): ?int
+    /**
+     * Reads BOTH the route duration (→ minutes, rounded up) and the route distance (→ metres,
+     * rounded, IGN response field `distance`, cf. the class docblock). Each is null when absent or
+     * non-numeric: the caller derives car minutes from `minutes` and bike minutes from `meters`.
+     *
+     * @return array{minutes: ?int, meters: ?int}
+     */
+    private function readResult(ResponseInterface $response, string $profile, int $attempt): array
     {
+        $none = ['minutes' => null, 'meters' => null];
         try {
             $status = $response->getStatusCode();
             if ($status < 200 || $status >= 300) {
@@ -294,7 +314,7 @@ final class IgnRoutingClient
                     'status' => $status,
                 ]);
 
-                return null;
+                return $none;
             }
             $data = $response->toArray(false);
         } catch (ExceptionInterface $exception) {
@@ -306,15 +326,16 @@ final class IgnRoutingClient
                 'exception' => $exception->getMessage(),
             ]);
 
-            return null;
+            return $none;
         }
 
         $duration = $data['duration'] ?? null;
-        if (!is_numeric($duration) || (float) $duration < 0) {
-            return null;
-        }
+        $minutes = (is_numeric($duration) && (float) $duration >= 0) ? (int) ceil((float) $duration / 60) : null;
 
-        return (int) ceil((float) $duration / 60);
+        $distance = $data['distance'] ?? null;
+        $meters = (is_numeric($distance) && (float) $distance >= 0) ? (int) round((float) $distance) : null;
+
+        return ['minutes' => $minutes, 'meters' => $meters];
     }
 
     private function nowSeconds(): float

@@ -1,11 +1,14 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-09-30 (`documentation-update`, P4-272 ⑤). Re-confronté au code : la famille
-`COACH_AVAILABILITY` de ce fichier reste propre au solve hebdo `/generate`, sans lien avec
-l'indisponibilité de coach du placement de matchs (`MatchConstraint` scope COACH, bloc top-level
-`coachUnavailabilities`, TOUJOURS SOFT, `W_COACH_UNAVAILABLE=60`,
-`engine/app/solver/match_placement.py:57`) ✓. Non re-sondé cette passe : le reste du vocabulaire
-détaillé ci-dessous — un stamp REMPLACE, l'historique vit dans git.
+Last verified @ 2026-09-30 (`documentation-update`, PR #1031). §Trajet entre gymnases recalé contre
+`engine/app/solver/constraints/travel.py` (`required_gap`, `_barometer`) et
+`App\Enum\VenueTravelRuleIntensity` : mode non véhiculé = vélo (`walkingMinutes` gardé), cran `OFF`,
+`toleranceMinutes` retranché du barème pour l'écart exigé. La famille `COACH_AVAILABILITY` reste
+propre au solve hebdo `/generate`, sans lien avec l'indisponibilité de coach du placement de matchs
+(`MatchConstraint` scope COACH, bloc top-level `coachUnavailabilities`, TOUJOURS SOFT,
+`W_COACH_UNAVAILABLE=60`, `engine/app/solver/match_placement.py:57`) ✓ (re-confronté passe
+précédente, non re-sondé cette passe). Non re-sondé cette passe : le reste du vocabulaire détaillé
+ci-dessous — un stamp REMPLACE, l'historique vit dans git.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
@@ -269,12 +272,19 @@ chemin byte-identique, goldens inchangés (aucun golden avec bloc). Les 3 gestes
 déplacer le bloc entier) sont livrés — `POST /api/schedule-slots/move-group` (D11) consomme le
 miroir `_shared_block_move_violation` ci-dessus.
 
-## Trajet entre gymnases (`travelTime`) — départage + battement (P2-53 RMM-8)
+## Trajet entre gymnases (`travelTime`) — départage + battement (P2-53 RMM-8, vélo + tolérance 2026-09-30)
 
 Bloc d'entrée `venueTravelTimes[]` (matrice `{venueAId, venueBId, drivingMinutes?, walkingMinutes?}`,
-club+saison, symétrique) + règle implicite `implicitRules.travelTime`. **OPT-IN à la PRÉSENCE de
-matrice** : le backend n'émet la règle active que si le club a saisi au moins une ligne (précédent
-`maxConsecutiveDays`) — absent ⇒ payload byte-identique, ni départage ni battement. **Consommé par
+club+saison, symétrique) + règle implicite `implicitRules.travelTime`. ⚠ **Le champ `walkingMinutes`
+porte désormais le barème à VÉLO/trottinette** (décision fondateur 2026-09-30, remplace la marche) —
+le nom technique est CONSERVÉ (contrat, entité, module `travel.py`), seul le SENS change ; côté
+backend le temps AUTO se dérive de la DISTANCE de l'itinéraire piéton IGN (`ceil(m/250)+5`, pas de
+sa durée), le temps MANUEL reste une saisie libre. **OPT-IN à la PRÉSENCE de matrice** : le backend
+n'émet la règle active que si le club a saisi au moins une ligne (précédent `maxConsecutiveDays`) —
+absent ⇒ payload byte-identique, ni départage ni battement. **La règle peut en plus être désactivée
+sans perdre la matrice** : `implicitRules.travelTime` absent alors même que `venueTravelTimes` est
+présent (cran `OFF` côté levier `VenueTravelRuleSetting`, backend n'émet alors PAS la clé) — la
+matrice reste stockée, simplement pas envoyée ce tour-ci. **Consommé par
 `/generate` (solveur d'entraînement) ET `/validate-assignments` (le VERDICT d'un déplacement manuel,
 P2-55/ENG-36)** — `/place-matches` ne reçoit pas ce bloc. **Parité génération⇄verdict** : le verdict
 applique le même `_apply_hard` (matrice passée à `add_level_1_hard_constraints`) — sous `MANDATORY` un
@@ -285,26 +295,35 @@ il est accepté mais le **compromis famille `travel_time` est nommé** dans la s
 
 Deux « voyageurs » relient deux séances enchaînées le même jour à des gymnases différents et non
 chevauchantes :
-- un **coach commun** aux deux séances — barème **voiture** s'il est `isVehicled`, **à pied** sinon ;
-- une **passerelle** (`teamLinks`) — barème **à pied d'office** (joueurs partagés jamais modélisés
-  individuellement).
+- un **coach commun** aux deux séances — barème **voiture** s'il est `isVehicled`, **à vélo** sinon ;
+- une **passerelle** (`teamLinks`) — barème **à vélo d'office** (joueurs partagés jamais modélisés
+  individuellement, « des jeunes n'ont pas la voiture »).
 
-Le barème appliqué est la colonne (voiture/à pied) du couple de gymnases dans `venueTravelTimes` ;
+Le barème appliqué est la colonne (voiture/vélo) du couple de gymnases dans `venueTravelTimes` ;
 un couple/mode jamais arbitré (colonne `null` ou couple absent de la matrice) retombe sur
-`travelTime.defaultMinutes` (défaut **20**, réglable 0-600).
+`travelTime.defaultMinutes` (défaut **20**, réglable 0-600 contrat / 1-120 écran).
+
+**L'écart RÉELLEMENT exigé retranche le battement toléré du club** (`required_gap`, décision
+fondateur 2026-09-30, `engine/app/solver/constraints/travel.py:146`) :
+`écart_exigé = max(0, barème − toleranceMinutes)` — `toleranceMinutes` (défaut **20**, réglable
+0-60 côté écran) est SOURCE UNIQUE du retranchement, consommée par le HARD, la violation SOFT et le
+diagnostic (jamais par le départage, qui garde le barème BRUT pour son palier). `toleranceMinutes ≥
+barème` ⇒ 0 exigé — un enchaînement collé est accepté.
 
 Deux termes, jamais le même rôle :
 
 | Terme | Mécanisme | Poids/portée |
 |---|---|---|
-| **Départage « moindre trajet »** | s'applique dès que la règle est active, quel que soit le cran ; préfère l'enchaînement au barème le plus court | malus faible, `1 × palier(barème)` (palier 1 ≤15 min, 2 ≤40 min, 3 au-delà) — vit dans la SOUS-BANDE de phase 2, SOUS le placement (verrouillé à l'optimum de phase 1) ET sous le chaînage (×4096) : ne départage QUE des ex æquo exacts, jamais dominant |
-| **Battement insuffisant** (`gap` entre fin de A et début de B < barème) | `PREFERRED` (défaut) → violation SOFT, compromis nommé famille `travel_time` ; `MANDATORY` → interdit dur | `PREFERRED` : malus `−6` (même masse que les règles de bien-être PREFERRED) ; `MANDATORY` : `add_travel_time_hard_constraints`, patron passerelle MANDATORY — un résidu ne peut survenir qu'entre deux séances VERROUILLÉES contradictoires, ANNONCÉ par le diagnostic `travel_time_infeasible` (jamais INFEASIBLE muet) |
+| **Départage « moindre trajet »** | s'applique dès que la règle est active, quel que soit le cran ; préfère l'enchaînement au barème le plus court | malus faible, `1 × palier(barème)` (palier 1 ≤15 min, 2 ≤40 min, 3 au-delà, sur le BARÈME brut) — vit dans la SOUS-BANDE de phase 2, SOUS le placement (verrouillé à l'optimum de phase 1) ET sous le chaînage (×4096) : ne départage QUE des ex æquo exacts, jamais dominant |
+| **Battement insuffisant** (`gap` entre fin de A et début de B < écart RÉELLEMENT exigé, barème moins tolérance) | `PREFERRED` (défaut) → violation SOFT, compromis nommé famille `travel_time` ; `MANDATORY` → interdit dur | `PREFERRED` : malus `−6` (même masse que les règles de bien-être PREFERRED) ; `MANDATORY` : `add_travel_time_hard_constraints`, patron passerelle MANDATORY — un résidu ne peut survenir qu'entre deux séances VERROUILLÉES contradictoires, ANNONCÉ par le diagnostic `travel_time_infeasible` (jamais INFEASIBLE muet) |
 
-Le vocabulaire d'intensité est `PREFERRED`/`MANDATORY` (patron passerelle), **pas** `HARD`/`PREFERRED`
-comme les 5 règles de bien-être : le trajet suggère ou interdit, il ne « durcit » pas une préférence
-de confort. Le MÊME gymnase n'est jamais concerné (l'exemption coach-coach même-gymnase D-14 reste
-intacte). `venueTravelTimes` absent/vide OU règle inactive ⇒ aucune variable posée, chemin
-byte-identique, goldens inchangés.
+Le vocabulaire d'intensité côté backend est DÉDIÉ, `App\Enum\VenueTravelRuleIntensity`
+(`OFF`/`PREFERRED`/`MANDATORY`) — **pas** `TeamLinkIntensity` (passerelles, sans `OFF`) ni
+`HARD`/`PREFERRED` comme les 5 règles de bien-être : le trajet suggère ou interdit (ou se tait), il
+ne « durcit » pas une préférence de confort ; côté payload moteur, seules `PREFERRED`/`MANDATORY`
+voyagent (`OFF` ⇒ clé absente). Le MÊME gymnase n'est jamais concerné (l'exemption coach-coach
+même-gymnase D-14 reste intacte). `venueTravelTimes` absent/vide OU règle inactive ⇒ aucune variable
+posée, chemin byte-identique, goldens inchangés.
 
 ## Référence socle du comblement (`socleReferenceAssignments`) — bonus de PLACEMENT par tier
 

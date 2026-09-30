@@ -29,7 +29,7 @@ class VenueTravelTimeInput
     #[Groups(['write'])]
     public ?int $drivingMinutes = null;
 
-    /** Minutes ACCEPTABLES à pied (mêmes bornes). */
+    /** Minutes ACCEPTABLES à vélo/trottinette — mode non véhiculé (mêmes bornes). */
     #[Assert\Range(min: 1, max: 240)]
     #[Groups(['write'])]
     public ?int $walkingMinutes = null;

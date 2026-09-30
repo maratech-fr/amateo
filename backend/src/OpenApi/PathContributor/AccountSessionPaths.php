@@ -120,6 +120,7 @@ final readonly class AccountSessionPaths implements CustomPathContributor
                                 'id' => ['type' => 'string'],
                                 'name' => ['type' => 'string'],
                                 'onboardingCompleted' => ['type' => 'boolean'],
+                                'weekendAlternates' => ['type' => 'boolean'],
                                 'logoUrl' => ['type' => 'string', 'nullable' => true],
                                 'accentColor' => ['type' => 'string', 'nullable' => true],
                                 'accentColorDark' => ['type' => 'string', 'nullable' => true],

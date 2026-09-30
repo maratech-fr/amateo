@@ -95,6 +95,10 @@ def resolve_implicit_rules(raw: Mapping[str, Any] | None) -> ResolvedImplicitRul
         travel_time_active=travel is not None,
         travel_time_intensity=_travel_intensity(travel),
         travel_time_default_minutes=_int(travel, 20, "defaultMinutes", "default_minutes"),
+        # Battement toléré (décision fondateur 2026-09-30) : retranché du barème pour l'écart exigé
+        # (max(0, barème − tolérance)). Défaut 20 (le backend l'envoie toujours ; ce repli ne vaut
+        # que pour un bloc `travelTime` qui l'omettrait).
+        travel_time_tolerance_minutes=_int(travel, 20, "toleranceMinutes", "tolerance_minutes"),
     )
 
 

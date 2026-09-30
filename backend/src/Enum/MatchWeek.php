@@ -9,9 +9,9 @@ namespace App\Enum;
  *
  * AIDE VISUELLE, jamais une contrainte : le modèle IDÉAL du gestionnaire (« si j'avais
  * le choix »). La FFBB impose qui reçoit chaque week-end ; côté moteur, l'idéal reste un
- * BONUS d'attraction. `ALL` = un club sans alternance (le créneau vaut pour toutes les
- * semaines). Ce tag NE VOYAGE PAS au moteur : il ne sert qu'à l'aide visuelle A/B côté
- * frontend — le solveur voit une habitude, sans étiquette de semaine.
+ * BONUS d'attraction. Deux semaines seulement : `A` (le défaut, un club sans alternance
+ * range tout en A) et `B`. Ce tag NE VOYAGE PAS au moteur : il ne sert qu'à l'aide
+ * visuelle A/B côté frontend — le solveur voit une habitude, sans étiquette de semaine.
  */
 enum MatchWeek: string
 {
@@ -19,5 +19,4 @@ enum MatchWeek: string
 
     case A = 'A';
     case B = 'B';
-    case ALL = 'ALL';
 }

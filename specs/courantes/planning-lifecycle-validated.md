@@ -1,13 +1,13 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-09-28 (`documentation-update`, P4-269). Re-confronté au code :
+Last verified @ 2026-09-30 (`documentation-update`, rotation de fraîcheur). Re-confronté au code :
 `PlacedSessionPersonConflictDetector::detect` scanne la version **pointée** du plan SEASON
 (`SchedulePlanProvisioner::chosenOfSeasonPlan`) et rend `seasonPlanChosen: false` sans version
 pointée (`backend/src/Service/PlacedSessionPersonConflictDetector.php:68-73`) ✓ ;
 `GET /api/training/placed-conflicts` tire `ManagementAccessGuard::assertManager()` en premier
-(`backend/src/Controller/TrainingPlacedConflictsController.php:42`) ✓ ; les trois rendus front
-(`CoachesStep`, `/planning` autonome+en vigueur, pastille `SeasonPlanBanner`) confrontés au code
-(§2 ci-dessous). Historique des passes vit dans git :
+(`backend/src/Controller/TrainingPlacedConflictsController.php:42`) ✓. Non re-sondé cette passe :
+les trois rendus front (`CoachesStep`, `/planning` autonome+en vigueur, pastille
+`SeasonPlanBanner`, § 2 ci-dessous) et le reste du fichier. Historique des passes vit dans git :
 `git log -p --follow specs/courantes/planning-lifecycle-validated.md`.
 
 Le plan de type **SEASON** (`schedule_plan`) et **la version qu'il pointe**

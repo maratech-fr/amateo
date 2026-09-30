@@ -26,6 +26,8 @@ interface TeamSelectProps<T extends TeamLike> {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  /** Wraps the field (width usually lives here). Forwarded to Listbox; défaut "w-full". */
+  wrapperClassName?: string;
   id?: string;
   title?: string;
   autoFocus?: boolean;

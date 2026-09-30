@@ -33,6 +33,18 @@ export function useUpdateAppearance() {
 }
 
 /**
+ * P4-271 — pose le réglage « modèle de week-end sur deux semaines » ; refetch /me (le drapeau
+ * vit sur `me.club.weekendAlternates`, lu par la Semaine type et l'éditeur des créneaux idéaux).
+ */
+export function useSetWeekendAlternates() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ clubId, value }: { clubId: string; value: boolean }) => clubApi.setWeekendAlternates(clubId, value),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["me"] }),
+  });
+}
+
+/**
  * Pose le siège du club depuis un libellé d'adresse ; refetch /me (le siège + ses coordonnées
  * vivent sur `me.club`). Le voile global d'enregistrement couvre l'attente — aucun spinner ajouté.
  */

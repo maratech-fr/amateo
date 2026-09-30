@@ -1,15 +1,10 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-09-29 (rotation de fraîcheur `documentation-update`, sujet sans rapport — passe
-doc P4-271 matchs). Re-confronté au code : les poids cités pour `spacing` (−2), `preferredVenueId`
-(+10) et les tiers (S=10000…D=1) toujours exacts contre `engine/app/solver/objective/weights.py`
-(`LEVEL_2_OBJECTIVE_WEIGHTS["spacing"]=-2`, `["preferred"]=10`, `["S"]=10000`/`["D"]=1`, même
-dict) ; `ConstraintFamily` (`backend/src/Enum/ConstraintFamily.php:11-14`) n'a toujours que 4 cas
-(TIME/DAY/FACILITY/COACH_AVAILABILITY), `FACILITY_CAPACITY` absent de l'enum ✓. « Réserver un
-gymnase à un groupe » toujours ❌ : `ScheduleConstraintBuilder.php:256` confirme l'expansion
-`forbiddenVenueId` par équipe « GONE » (commentaire code) ✓. Les gardes
-`engine/tests/semantic/test_hard_lock_divisible_slot.py` et `test_consecutive_days.py` existent
-toujours ✓.
+Last verified @ 2026-09-30 (PR #1031 — ligne « Éviter d'enchaîner deux gymnases trop éloignés »
+recalée : cran Inactive/Préféré/Obligatoire + battement toléré, `VenueTravelRuleIntensity`).
+Non re-sondé cette passe : les poids `spacing`/`preferredVenueId`/tiers, `ConstraintFamily` (4 cas,
+`FACILITY_CAPACITY` absent), « Réserver un gymnase à un groupe » ❌, les gardes engine — dernière
+vérification structurelle le 2026-09-29, historique dans `git log -p --follow` ce fichier.
 
 > **But** : liste **exhaustive** des besoins qu'un gestionnaire de club peut vouloir exprimer, et
 > **ce que l'application couvre** aujourd'hui — pour voir clairement les cas couverts (✅), partiels
@@ -51,7 +46,7 @@ toujours ✓.
 | **« Au moins une séance dans tel gymnase »** | FACILITY `minAtVenueId` + `minAtVenueCount` (HARD, mode « au moins N ») — plancher, ≠ forçage ; les autres séances restent libres | ✅ *(ALIGN-05)* | « au moins 1 séance à Armand » ; fail-fast backend si N > séances/semaine |
 | « Nb max d'équipes par créneau d'un gymnase » | **`VenueTrainingSlot.capacity`** par créneau (écran Gymnases, borné à 1 si `canSplit=false`) | ✅ | ADN divisible en 3. ⚠ Il n'existe pas de famille `FACILITY_CAPACITY` (qui raboterait `maxTeams` sur TOUT un gymnase) |
 | « Réserver un créneau à une équipe (verrou) » | onglet « Réserver » → `ScheduleSlotTemplate` `lockLevel=HARD` (pin durable, pas une contrainte) — verrouille le **créneau entier**, divisible ou non : l'équipe épinglée est **seule**, le solveur ne remplit jamais l'autre moitié (`blocked_venue_slots`, `model.py`). Partager = **explicite** : réserver les N équipes (la modal borne le picker à `capacity`) — décision gestionnaire, aucun diagnostic tant que N ≤ `capacity`. Gardé par `engine/tests/semantic/test_hard_lock_divisible_slot.py` (T1/T2/T3) | ✅ *(ALIGN-07)* | SM1 seul sur samedi 18h (cap 2) ; SM1+SM2 co-épinglés = partage assumé |
-| **« Éviter d'enchaîner deux gymnases trop éloignés »** | règle implicite `travelTime` (matrice `venue_travel_time` renseignée sur l'écran Gymnases, autofill IGN ou saisie manuelle) — départage « moindre trajet » soft (jamais dominant) + battement Préféré/Obligatoire réglable (`VenueTravelRuleSetting`) | ✅ | Le gestionnaire choisit tout ce que le moteur sait consommer |
+| **« Éviter d'enchaîner deux gymnases trop éloignés »** | règle implicite `travelTime` (matrice `venue_travel_time` renseignée sur l'écran Gymnases, autofill IGN ou saisie manuelle — mode non véhiculé = vélo) — départage « moindre trajet » soft (jamais dominant, barème brut) + battement Inactive/Préféré/Obligatoire réglable, battement toléré retranché de l'écart exigé (`VenueTravelRuleSetting`) | ✅ | Le gestionnaire choisit tout ce que le moteur sait consommer |
 
 ## Axe COACH
 

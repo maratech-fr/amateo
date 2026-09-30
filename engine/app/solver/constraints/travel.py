@@ -2,13 +2,15 @@
 
 Deux séances qu'une même personne enchaîne le même jour à des gymnases DIFFÉRENTS imposent un
 trajet. La matrice ``venueTravelTimes`` donne, par couple de gymnases, le barème acceptable en
-VOITURE et À PIED ; un couple non arbitré retombe sur ``travelTime.default_minutes`` (20). Deux
+VOITURE et en mode NON VÉHICULÉ ; un couple non arbitré retombe sur ``travelTime.default_minutes``
+(20). ⚠ Le mode non véhiculé est désormais le VÉLO / la TROTTINETTE (décision fondateur 2026-09-30),
+plus la marche : le champ garde son nom technique ``walking*`` mais son barème vaut « à vélo ». Deux
 « voyageurs » relient des séances :
 
-  * un COACH commun aux deux séances — son barème est VOITURE s'il est véhiculé, À PIED sinon
-    (arbitrage fondateur : « si véhiculé le barème voiture, sinon la limite à pied ») ;
+  * un COACH commun aux deux séances — son barème est VOITURE s'il est véhiculé, À VÉLO sinon
+    (arbitrage fondateur : « si véhiculé le barème voiture, sinon la limite non véhiculée ») ;
   * une PASSERELLE (``teamLinks``) — des joueurs partagés, jamais modélisés individuellement, donc
-    barème À PIED d'office (« des jeunes ne conduisent pas »).
+    barème À VÉLO d'office (« des jeunes n'ont pas la voiture »).
 
 Deux termes en découlent (arbitrage fondateur 2026-08-26) :
 
@@ -111,7 +113,8 @@ def _barometer(
     driving: bool,
     default_minutes: int,
 ) -> int:
-    """Le barème applicable entre deux gymnases : colonne VOITURE si ``driving`` sinon À PIED ;
+    """Le barème applicable entre deux gymnases : colonne VOITURE si ``driving`` sinon la colonne
+    non véhiculée (``walking``, désormais « à vélo/trottinette », décision fondateur 2026-09-30) ;
     ``default_minutes`` (20) si la colonne est nulle ou le couple absent (« paire jamais
     arbitrée »)."""
     pair = matrix.get(frozenset({venue_a, venue_b}))
@@ -140,6 +143,15 @@ def _cross_venue_gap(pa: TravelPlacement, pb: TravelPlacement) -> int | None:
     return (b_start - a_end) if a_start <= b_start else (a_start - b_end)
 
 
+def required_gap(barometer: int, tolerance_minutes: int) -> int:
+    """L'écart RÉELLEMENT exigé entre deux séances : le barème MOINS le battement toléré, borné à 0
+    (décision fondateur 2026-09-30 — « le club absorbe le trajet : partir un peu avant la fin ou
+    démarrer un peu après l'heure »). ``tolerance_minutes`` ≥ barème ⇒ 0 exigé (l'enchaînement collé
+    est accepté). SOURCE UNIQUE du retranchement, consommée par le HARD, la violation SOFT et le
+    diagnostic — jamais par le DÉPARTAGE (qui garde le barème brut pour son palier)."""
+    return max(0, barometer - max(0, tolerance_minutes))
+
+
 def is_travel_too_tight(
     pa: TravelPlacement,
     pb: TravelPlacement,
@@ -147,18 +159,22 @@ def is_travel_too_tight(
     driving: bool,
     matrix: Mapping[frozenset[str], tuple[int | None, int | None]],
     default_minutes: int,
+    tolerance_minutes: int = 0,
 ) -> bool:
     """Prédicat « ces deux séances s'enchaînent trop serré » — SOURCE UNIQUE de la géométrie
     battement/barème côté verdict. Compose EXACTEMENT les deux primitives que l'énumérateur
     ``iter_travel_pairs_from_placements`` compose côté pose : ``_cross_venue_gap`` (la règle du
-    chevauchement + l'écart réel) et ``_barometer`` (la colonne du barème voiture/à pied). ``True``
+    chevauchement + l'écart réel) et ``_barometer`` (la colonne du barème voiture/à vélo). ``True``
     ssi les séances sont le MÊME jour, à des gymnases DIFFÉRENTS, non chevauchantes ET séparées d'un
-    écart ``< barème``. Consommée par ``result_builder._diagnose_travel_times`` au lieu d'un
-    recalcul local de gap/barème (résorbe ENG-37 côté diagnostic)."""
+    écart ``< écart exigé`` = ``max(0, barème − tolerance_minutes)`` ({@see required_gap} — le
+    battement toléré est retranché, décision fondateur 2026-09-30). Consommée par
+    ``result_builder._diagnose_travel_times`` au lieu d'un recalcul local (résorbe ENG-37 côté
+    diagnostic)."""
     gap = _cross_venue_gap(pa, pb)
     if gap is None:
         return False
-    return gap < _barometer(matrix, pa[3], pb[3], driving=driving, default_minutes=default_minutes)
+    barometer = _barometer(matrix, pa[3], pb[3], driving=driving, default_minutes=default_minutes)
+    return gap < required_gap(barometer, tolerance_minutes)
 
 
 def _coach_teams(team_coach_map: Mapping[str, list[str]] | None) -> dict[str, list[str]]:
@@ -193,8 +209,8 @@ def iter_travel_pairs_from_placements(
     ENG-37 côté verdict) : la pose du solveur ET le miroir déterministe de ``/validate-assignments``
     l'appellent — donc ils jugent EXACTEMENT la même géométrie, sans jamais recalculer gap/barème à
     la main. Énumère ``(traveler_key, gap, barometer, pa, pb)`` pour chaque enchaînement
-    cross-gymnase, même jour, non chevauchant, d'un voyageur (coach véhiculé/à pied, ou passerelle à
-    pied)."""
+    cross-gymnase, même jour, non chevauchant, d'un voyageur (coach véhiculé/à vélo, ou passerelle à
+    vélo)."""
     # Voyageur COACH : toutes les séances de SES équipes, barème voiture/à pied selon véhiculé.
     vehicled = _vehicled_by_coach(coaches)
     for coach_id, team_ids in _coach_teams(team_coach_map).items():
@@ -213,7 +229,7 @@ def iter_travel_pairs_from_placements(
                 )
                 yield f"coach:{coach_id}", gap, barometer, ordered[i], ordered[j]
 
-    # Voyageur PASSERELLE : les séances de team A face à celles de team B, barème À PIED d'office.
+    # Voyageur PASSERELLE : les séances de team A face à celles de team B, barème À VÉLO d'office.
     for link in team_links or ():
         team_a = str(_get(link, "teamAId", "team_a_id", default=""))
         team_b = str(_get(link, "teamBId", "team_b_id", default=""))
@@ -280,11 +296,13 @@ def add_travel_time_hard_constraints(
     team_coach_map: Mapping[str, list[str]] | None = None,
     venue_travel_times: Iterable[Any] = (),
     default_minutes: int = 20,
+    tolerance_minutes: int = 0,
 ) -> int:
     """Règle ``travelTime`` MANDATORY — INTERDIT DUR les enchaînements au battement trop court.
 
-    Pour chaque enchaînement cross-gymnase dont ``gap < barometer`` (le voyageur n'a pas le temps
-    de rejoindre le gymnase suivant), même patron que la passerelle MANDATORY :
+    Pour chaque enchaînement cross-gymnase dont ``gap < max(0, barometer − tolerance_minutes)``
+    (le voyageur n'a pas le temps de rejoindre le gymnase suivant, battement toléré retranché —
+    {@see required_gap}, décision fondateur 2026-09-30), même patron que la passerelle MANDATORY :
       * libre⇔libre : ``a + b <= 1`` (les deux ne coïncident pas dans cet enchaînement serré) ;
       * libre⇔verrou : la libre s'efface (== 0) et ``_record_closure`` nomme la cause
         (``kind="travel_time"``) pour le rail P4-99 ;
@@ -306,7 +324,7 @@ def add_travel_time_hard_constraints(
         matrix=matrix,
         default_minutes=default_minutes,
     ):
-        if gap >= barometer:
+        if gap >= required_gap(barometer, tolerance_minutes):
             continue
         a_var, b_var = pa[4], pb[4]
         cause = {"kind": "travel_time", "constraintId": None, "label": None}
@@ -334,11 +352,12 @@ def add_travel_time_penalty(
     team_coach_map: Mapping[str, list[str]] | None = None,
     venue_travel_times: Iterable[Any] = (),
     default_minutes: int = 20,
+    tolerance_minutes: int = 0,
     info_out: list[CompromiseTermInfo] | None = None,
 ) -> list[tuple[BoolVarLike, int]]:
     """Règle ``travelTime`` PREFERRED — MALUS SOFT (−6) par battement trop court CONCÉDÉ.
 
-    Chaque enchaînement ``gap < barometer`` dont les deux séances sont posées porte
+    Chaque enchaînement ``gap < max(0, barometer − tolerance_minutes)`` dont les deux séances sont posées porte
     ``−TRAVEL_BATTEMENT_VIOLATION_WEIGHT``. Le maximiseur écarte donc les enchaînements serrés
     quand il peut, sans jamais supprimer une séance (−6 < 21). ``info_out`` (chemin
     ``/validate-assignments``) reçoit un ``CompromiseTermInfo`` par littéral (MALUS →
@@ -358,7 +377,7 @@ def add_travel_time_penalty(
         matrix=matrix,
         default_minutes=default_minutes,
     ):
-        if gap >= barometer:
+        if gap >= required_gap(barometer, tolerance_minutes):
             continue
         literal = _both_placed_literal(model, pa, pb, f"travel_batt_{traveler_key}_{index}")
         if literal is None:

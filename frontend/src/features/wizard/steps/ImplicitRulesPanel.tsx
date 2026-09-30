@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useWorkingSeason } from "@/shared/session/queries";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
+import { Input } from "@/shared/components/ui/input";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Select } from "@/shared/components/ui/select";
 import { readState } from "@/shared/lib/readState";
@@ -218,83 +219,159 @@ export function ProductRulesPanel() {
   );
 }
 
-const TRAVEL_INTENSITY_LABEL: Record<VenueTravelRuleIntensity, string> = {
-  PREFERRED: "Préféré",
-  MANDATORY: "Obligatoire",
-};
+const TRAVEL_INTENSITY_CRANS: { value: VenueTravelRuleIntensity; label: string }[] = [
+  { value: "OFF", label: "Inactive" },
+  { value: "PREFERRED", label: "Préféré" },
+  { value: "MANDATORY", label: "Obligatoire" },
+];
+
+const TRAVEL_TOLERANCE_BOUNDS = { min: 0, max: 60 } as const;
+const TRAVEL_DEFAULT_BOUNDS = { min: 1, max: 120 } as const;
+
+function clampMinutes(raw: string, bounds: { min: number; max: number }, fallback: number): number {
+  const n = Number.parseInt(raw, 10);
+  if (Number.isNaN(n)) {
+    return fallback;
+  }
+  return Math.min(bounds.max, Math.max(bounds.min, n));
+}
 
 /**
- * P2-53 RMM-8 — l'entrée de la règle « Trajet entre gymnases », dans l'onglet Base.
+ * P2-53 RMM-8 — l'encart de la règle « Trajet entre gymnases », dans l'onglet Bien-être.
  *
- * ⚠ Régime 1 (`.claude/rules/frontend.md`) : le front N'INVENTE aucune règle. L'ACTIVATION est
- * DÉRIVÉE serveur-side de la présence de matrice (`ScheduleConstraintBuilder` — ≥1 ligne active
- * `travelTime`) : cette entrée n'apparaît QUE si la matrice servie porte au moins une ligne. Et
- * l'INTENSITÉ n'est pas redérivée non plus — elle est LUE du backend (`venue_travel_rule_setting`,
- * résolu défaut PREFERRED) et POSTÉE au choix du gestionnaire.
+ * ⚠ Régime 1 (`.claude/rules/frontend.md`) : le front N'INVENTE aucune règle. L'ACTIVATION possible
+ * est DÉRIVÉE serveur-side de la présence de matrice (`ScheduleConstraintBuilder` — ≥1 ligne) : cet
+ * encart n'apparaît QUE si la matrice servie porte au moins une ligne. Le cran, le battement toléré
+ * et le temps par défaut ne sont pas redérivés non plus — ils sont LUS du backend
+ * (`venue_travel_rule_setting`, résolu défauts PREFERRED/20/20) et POSTÉS au choix du gestionnaire.
  *
- * PR-4 (levier Obligatoire) : la lecture seule devient un vrai réglage Préféré/Obligatoire, patron
- * exact de l'intensité des passerelles (`TeamLinksSection`) — la copie DIT l'effet ET le risque
- * (« Obligatoire peut rendre le planning infaisable »). Écriture management ; désactivé (lecture)
- * sur une saison archivée, comme les règles bien-être.
+ * Trois réglages (décision fondateur 2026-09-30) : le cran Inactive/Préféré/Obligatoire, le
+ * battement toléré (retranché du barème pour l'écart exigé) et le temps par défaut d'un couple sans
+ * temps. Écriture management ; désactivé (lecture) sur une saison archivée, comme les règles
+ * bien-être.
  */
 export function TravelRuleNotice() {
   const { data: matrix = [] } = useVenueTravelTimes();
   const hasMatrix = matrix.length > 0;
-  // Le levier n'est lu QUE si une matrice existe (l'entrée n'apparaît pas sinon) : `enabled`
+  // Le levier n'est lu QUE si une matrice existe (l'encart n'apparaît pas sinon) : `enabled`
   // évite une requête inutile chez un club sans matrice.
   const settingQuery = useTravelRuleSetting(hasMatrix);
   const update = useUpdateTravelRuleSetting();
   const readOnly = true === useWorkingSeason()?.isReadonly;
 
+  const intensity: VenueTravelRuleIntensity = settingQuery.data?.intensity ?? "PREFERRED";
+  const tolerance = settingQuery.data?.toleranceMinutes ?? 20;
+  const defaultMinutes = settingQuery.data?.defaultMinutes ?? 20;
+
   if (!hasMatrix) {
     return null;
   }
 
-  const intensity: VenueTravelRuleIntensity = settingQuery.data?.intensity ?? "PREFERRED";
+  const off = "OFF" === intensity;
+  const commit = (patch: Partial<{ intensity: VenueTravelRuleIntensity; toleranceMinutes: number; defaultMinutes: number }>) =>
+    update.mutate({ intensity, toleranceMinutes: tolerance, defaultMinutes, ...patch });
+
   const applyIntensity = (next: VenueTravelRuleIntensity) => {
     if (next !== intensity) {
-      update.mutate(next);
+      commit({ intensity: next });
+    }
+  };
+  // Champs NON contrôlés (commit au blur, bornés) : leur `key` change avec la valeur serveur, ce qui
+  // les re-sème après une écriture — sans setState dans un effet.
+  const commitTolerance = (raw: string) => {
+    const n = clampMinutes(raw, TRAVEL_TOLERANCE_BOUNDS, tolerance);
+    if (n !== tolerance) {
+      commit({ toleranceMinutes: n });
+    }
+  };
+  const commitDefault = (raw: string) => {
+    const n = clampMinutes(raw, TRAVEL_DEFAULT_BOUNDS, defaultMinutes);
+    if (n !== defaultMinutes) {
+      commit({ defaultMinutes: n });
     }
   };
 
   return (
-    <div className="mt-2 flex flex-col gap-2 rounded-md border border-border bg-card px-3 py-2">
+    <div className="mb-3 flex flex-col gap-2 rounded-md border border-border bg-card px-3 py-2">
       <div className="flex flex-wrap items-center gap-2">
         <Route className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <p className="text-sm font-medium text-foreground">Trajet entre gymnases</p>
-        <StatusPill variant="accent" icon={<Check className="size-3 text-accent" aria-hidden="true" />}>
-          Actif
-        </StatusPill>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Le planning cherche à enchaîner des gymnases dont le trajet reste dans les temps que vous avez indiqués (en voiture ou à pied selon le coach). Elle s'est activée parce que vous
-        avez renseigné les temps de trajet.
-      </p>
-      <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor="travel-rule-intensity" className="text-xs font-medium text-foreground">
-          Niveau
-        </label>
-        {readOnly ? (
-          <span className="text-xs text-muted-foreground">{TRAVEL_INTENSITY_LABEL[intensity]}</span>
+        {off ? (
+          <StatusPill variant="neutral">Inactive</StatusPill>
         ) : (
-          <Select
-            id="travel-rule-intensity"
-            aria-label="Niveau de la règle de trajet entre gymnases"
-            className="h-9 w-40"
-            value={intensity}
-            disabled={update.isPending}
-            onChange={(e) => applyIntensity(e.target.value as VenueTravelRuleIntensity)}
-          >
-            <option value="PREFERRED">{TRAVEL_INTENSITY_LABEL.PREFERRED}</option>
-            <option value="MANDATORY">{TRAVEL_INTENSITY_LABEL.MANDATORY}</option>
-          </Select>
+          <StatusPill variant="accent" icon={<Check className="size-3 text-accent" aria-hidden="true" />}>
+            Active
+          </StatusPill>
         )}
       </div>
-      {/* Patron exact des passerelles (TeamLinksSection) : UNE ligne dit les DEUX niveaux, le
-          risque d'Obligatoire compris — pour que la conséquence soit lue AVANT de basculer. */}
       <p className="text-xs text-muted-foreground">
-        <em>Préféré</em> : une préférence souple — le planning s'y tient quand il peut. <em>Obligatoire</em> : il ne dépassera jamais vos temps de trajet — au risque de rendre le
-        planning infaisable si les enchaînements sont trop serrés.
+        Quand une même personne enchaîne deux séances le même jour dans deux gymnases différents, le planning vérifie qu'elle a le temps d'y aller — en voiture si le coach est véhiculé,
+        à vélo ou en trottinette sinon. Cet encart n'apparaît que parce que vous avez renseigné des temps de trajet entre vos gymnases.
+      </p>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-foreground">Niveau</span>
+        <div role="group" aria-label="Niveau de la règle de trajet entre gymnases" className="inline-flex overflow-hidden rounded-md border border-border">
+          {TRAVEL_INTENSITY_CRANS.map((cran) => {
+            const active = intensity === cran.value;
+            return (
+              <button
+                key={cran.value}
+                type="button"
+                aria-label={`${cran.label} — trajet entre gymnases`}
+                aria-pressed={active}
+                disabled={readOnly || update.isPending}
+                onClick={() => applyIntensity(cran.value)}
+                className={cn(
+                  "px-2.5 py-1 text-xs disabled:opacity-50",
+                  active ? "bg-accent text-accent-foreground" : "bg-transparent text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {cran.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-4">
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">Battement toléré (min)</span>
+          <Input
+            key={`tolerance-${tolerance}`}
+            type="number"
+            inputMode="numeric"
+            aria-label="Battement toléré, en minutes"
+            className="h-9 w-20"
+            min={TRAVEL_TOLERANCE_BOUNDS.min}
+            max={TRAVEL_TOLERANCE_BOUNDS.max}
+            defaultValue={String(tolerance)}
+            disabled={readOnly || off || update.isPending}
+            onBlur={(e) => commitTolerance(e.target.value)}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">Temps par défaut (min)</span>
+          <Input
+            key={`default-${defaultMinutes}`}
+            type="number"
+            inputMode="numeric"
+            aria-label="Temps par défaut pour un couple de gymnases sans temps, en minutes"
+            className="h-9 w-20"
+            min={TRAVEL_DEFAULT_BOUNDS.min}
+            max={TRAVEL_DEFAULT_BOUNDS.max}
+            defaultValue={String(defaultMinutes)}
+            disabled={readOnly || off || update.isPending}
+            onBlur={(e) => commitDefault(e.target.value)}
+          />
+        </label>
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Le club accepte que le coach parte un peu avant la fin ou démarre un peu après l'heure : ce <em>battement toléré</em> est retranché du trajet exigé. Le <em>temps par défaut</em>{" "}
+        s'applique à un couple de gymnases dont vous n'avez pas indiqué le temps. <em>Préféré</em> : le planning s'y tient quand il peut. <em>Obligatoire</em> : il ne dépassera jamais
+        vos temps — au risque de rendre le planning infaisable si les enchaînements sont trop serrés. <em>Inactive</em> : le planning ne vérifie plus les trajets (vos temps sont
+        conservés).
       </p>
     </div>
   );

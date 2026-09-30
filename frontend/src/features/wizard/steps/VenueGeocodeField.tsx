@@ -14,17 +14,23 @@ export function VenueGeocodeField({
   onLocate,
 }: {
   venue: Pick<Venue, "id" | "address" | "latitude" | "longitude">;
-  /** Pose address + lat/long (chaînes) sur le gymnase. Appelé au clic d'un candidat, jamais avant. */
+  /** Pose address + lat/long (chaînes) sur le gymnase. `address` vide = coordonnées saisies à la
+   *  main (le backend efface l'adresse). Appelé au clic d'un candidat ou d'une saisie, jamais avant. */
   onLocate: (geo: { address: string; latitude: string; longitude: string }) => void;
 }) {
   return (
     <AddressGeocodeField
       address={venue.address}
       located={null != venue.latitude && null != venue.longitude}
+      latitude={null != venue.latitude ? Number(venue.latitude) : null}
+      longitude={null != venue.longitude ? Number(venue.longitude) : null}
       placeholder="Adresse du gymnase"
       label="Adresse"
       statusWord="Localisé"
       onPick={(candidate) => onLocate({ address: candidate.label, latitude: String(candidate.latitude), longitude: String(candidate.longitude) })}
+      // Coordonnées saisies à la main : même écriture (mêmes effets de bord — recalcul des trajets),
+      // sans adresse (address vide ⇒ le backend l'efface).
+      onManualCoords={({ latitude, longitude }) => onLocate({ address: "", latitude: String(latitude), longitude: String(longitude) })}
     />
   );
 }

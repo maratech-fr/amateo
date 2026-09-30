@@ -220,7 +220,7 @@ describe("habit ghosts (P1-4 PR C)", () => {
     dayOfWeek: 6, // Saturday
     kickoffTime: "15:30",
     venueId: "venue-1",
-    week: "ALL",
+    week: "A",
     ...over,
   });
 
@@ -268,7 +268,7 @@ describe("colonne extérieur (lot 3 PR-3a)", () => {
   const away = (over: Partial<Fixture> = {}): Fixture =>
     fixture({ id: "ax", homeAway: "AWAY", venueId: null, kickoffTime: null, opponentLabel: "Épinouze", ...over });
   const habitSat = (over: Partial<import("../api").TeamMatchHabit> = {}): import("../api").TeamMatchHabit => ({
-    id: "h", teamId: "team-1", dayOfWeek: 6, kickoffTime: "15:30", venueId: null, week: "ALL", ...over,
+    id: "h", teamId: "team-1", dayOfWeek: 6, kickoffTime: "15:30", venueId: null, week: "A", ...over,
   });
 
   it("ajoute la colonne « Extérieur » EN DERNIER du groupe de date, jamais de pastille", () => {
@@ -406,9 +406,9 @@ describe("colonne extérieur (lot 3 PR-3a)", () => {
   it("showGhosts=false n'éteint QUE les fantômes d'habitude : l'heure d'un extérieur reste estimée", () => {
     const habits = [
       // Habitude samedi de team-1 → l'extérieur samedi de team-1 emprunte 15:30 (estimé).
-      { id: "ha", teamId: "team-1", dayOfWeek: 6, kickoffTime: "15:30", venueId: null, week: "ALL" } as import("../api").TeamMatchHabit,
+      { id: "ha", teamId: "team-1", dayOfWeek: 6, kickoffTime: "15:30", venueId: null, week: "A" } as import("../api").TeamMatchHabit,
       // Habitude d'une équipe FANTÔME (sans match) → un fantôme QUAND showGhosts.
-      { id: "hg", teamId: "team-ghost", dayOfWeek: 6, kickoffTime: "14:00", venueId: "venue-1", week: "ALL" } as import("../api").TeamMatchHabit,
+      { id: "hg", teamId: "team-ghost", dayOfWeek: 6, kickoffTime: "14:00", venueId: "venue-1", week: "A" } as import("../api").TeamMatchHabit,
     ];
     // dernier argument `showGhosts=false` : pas de fantôme, MAIS l'extérieur reste estimé (habitudes pleines).
     const grid = buildWeekendGrid([away()], venues, teams, new Set(), habits, "2026-10-03", 15, new Map(), new Map(), false);

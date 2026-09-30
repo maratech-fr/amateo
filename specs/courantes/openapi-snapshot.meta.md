@@ -1,14 +1,13 @@
-Last verified @ 2026-09-29 (P4-239 — le champ mort `ffbbTeamId` disparaît du schéma d'écriture de
-`Team` : la propriété était déclarée sur `TeamInput` mais aucun processor ne la lisait ; le champ
-moteur `ffbb_team_id` reste optionnel côté engine et n'est jamais envoyé, donc pas de bump de
-contrat. Régénéré à froid depuis le backend vivant. Correction incidente au passage : `scopeTargetId`
-et `venueId` de `MatchConstraint` gagnent `format: uuid` + `externalDocs` schema.org/identifier —
-tous deux portent `#[Assert\Uuid]`, l'export précédent [P4-272 ③] les avait ratés sur un cache de
-métadonnées api-platform tiède ; aucun nom de route ni de propriété ne change, la surface du contrat
-est identique. Aucune route ajoutée ni retirée [214 paths inchangé]).
+Last verified @ 2026-09-30 (Trajets — le levier `VenueTravelRuleSetting` (`travelTime`) gagne deux
+propriétés lecture+écriture : `toleranceMinutes` (battement toléré) et `defaultMinutes` (temps par
+défaut d'un couple sans temps) ; son intensité accepte désormais `OFF` en plus de
+`PREFERRED`/`MANDATORY`. Descriptions de `Coach.isVehicled`/`CoachInput.isVehicled` et de
+`VenueTravelTimeInput.walkingMinutes` reformulées « à vélo » (mode non véhiculé = vélo/trottinette,
+le nom technique `walking*` reste). Aucun path ajouté ni retiré. Régénéré à froid depuis le backend
+vivant).
 
-**214 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`18c11db41b451f307be002a6f1b50437f1d950d59576e7f3688c881bfac55a07` (`sha256sum` sur le fichier).
+**215 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`4258a4fded87fed24659c56a779fd9118f554af1dd706776218b76c7174b822d` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

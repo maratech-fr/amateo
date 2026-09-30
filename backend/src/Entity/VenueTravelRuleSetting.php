@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
-use App\Enum\TeamLinkIntensity;
+use App\Enum\VenueTravelRuleIntensity;
 use App\Repository\VenueTravelRuleSettingRepository;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
@@ -13,17 +13,17 @@ use Doctrine\ORM\Mapping as ORM;
  * Le levier d'intensité de la règle implicite « Trajet entre gymnases » (P2-53 RMM-8 PR-4).
  *
  * UN réglage par club+saison — un SINGLETON, pas une collection par clé : la règle de trajet est
- * unique, l'intensité est son seul cran (PREFERRED = préférence souple / MANDATORY = obligatoire).
- * Le vocabulaire est celui des passerelles ({@see TeamLinkIntensity}), déjà émis par
- * `ScheduleConstraintBuilder`, PAS `ImplicitRuleIntensity` (HARD/PREFERRED/OFF) — les 5 règles
- * bien-être et cette règle-ci ne parlent pas la même langue, d'où un store DÉDIÉ minimal plutôt
- * qu'une 6ᵉ clé forcée dans `implicit_rule_setting` (dont la colonne `intensity` est typée
- * `enumType: ImplicitRuleIntensity`, incapable de porter MANDATORY sans altérer les 5 autres).
+ * unique. Trois réglages : le cran {@see VenueTravelRuleIntensity} (OFF = inactive / PREFERRED =
+ * préférence souple / MANDATORY = obligatoire), le `toleranceMinutes` (battement toléré, retranché
+ * du barème pour l'écart exigé) et le `defaultMinutes` (barème d'un couple sans temps). Le
+ * vocabulaire d'intensité est DÉDIÉ, PAS `ImplicitRuleIntensity` (HARD/PREFERRED/OFF) ni
+ * `TeamLinkIntensity` (passerelles, sans OFF) : d'où un store minimal plutôt qu'une 6ᵉ clé forcée
+ * dans `implicit_rule_setting`.
  *
  * ⚠ Portée : club+saison SEULEMENT (patron de la matrice `venue_travel_time`, elle aussi
- * club+saison, jamais copiée au plan — ADR-0002). ABSENCE DE LIGNE = DÉFAUT (PREFERRED) : rien
- * n'est semé, une ligne n'existe que quand le gestionnaire a choisi Obligatoire (ou est repassé à
- * Préféré après coup). Le payload d'un club qui n'a rien réglé est byte-identique à avant.
+ * club+saison, jamais copiée au plan — ADR-0002). ABSENCE DE LIGNE = DÉFAUTS (PREFERRED,
+ * tolérance 20, défaut 20) : rien n'est semé, une ligne n'existe que quand le gestionnaire a réglé
+ * quelque chose. Le payload d'un club qui n'a rien réglé applique les défauts sans ligne.
  * Recopiée à la bascule de saison (`SeasonTransitionService`), comme la matrice qu'elle gouverne.
  */
 #[ORM\Entity(repositoryClass: VenueTravelRuleSettingRepository::class)]
@@ -54,12 +54,27 @@ class VenueTravelRuleSetting implements TenantOwnedInterface
     private string $seasonId;
 
     /**
-     * PREFERRED (défaut) : le solveur PRÉFÈRE des enchaînements de gymnases proches, sans jamais
-     * s'imposer. MANDATORY : il DOIT les honorer (contrainte dure — peut rendre le planning
-     * infaisable). Défaut PREFERRED reproduit le comportement d'avant PR-4 (émission en dur).
+     * OFF : la règle n'est pas émise (planning comme un club sans matrice, matrice conservée).
+     * PREFERRED (défaut) : le solveur PRÉFÈRE des enchaînements de gymnases proches, sans s'imposer.
+     * MANDATORY : il DOIT les honorer (contrainte dure — peut rendre le planning infaisable).
      */
-    #[ORM\Column(name: 'intensity', length: 20, enumType: TeamLinkIntensity::class, options: ['default' => 'PREFERRED'])]
-    private TeamLinkIntensity $intensity = TeamLinkIntensity::PREFERRED;
+    #[ORM\Column(name: 'intensity', length: 20, enumType: VenueTravelRuleIntensity::class, options: ['default' => 'PREFERRED'])]
+    private VenueTravelRuleIntensity $intensity = VenueTravelRuleIntensity::PREFERRED;
+
+    /**
+     * Battement toléré (minutes) : le club accepte qu'on parte un peu avant la fin ou qu'on démarre
+     * un peu après l'heure ; ce temps est RETRANCHÉ du barème pour l'écart exigé
+     * (`max(0, barème − tolérance)`). Défaut 20 pour tous les clubs (décision fondateur 2026-09-30).
+     */
+    #[ORM\Column(name: 'tolerance_minutes', type: 'integer', options: ['default' => 20])]
+    private int $toleranceMinutes = 20;
+
+    /**
+     * Barème appliqué à un couple de gymnases sans temps saisi. Défaut 20 (auparavant en dur dans
+     * `ScheduleConstraintBuilder`).
+     */
+    #[ORM\Column(name: 'default_minutes', type: 'integer', options: ['default' => 20])]
+    private int $defaultMinutes = 20;
 
     public function __construct()
     {
@@ -140,14 +155,38 @@ class VenueTravelRuleSetting implements TenantOwnedInterface
         return $this;
     }
 
-    public function getIntensity(): TeamLinkIntensity
+    public function getIntensity(): VenueTravelRuleIntensity
     {
         return $this->intensity;
     }
 
-    public function setIntensity(TeamLinkIntensity $intensity): self
+    public function setIntensity(VenueTravelRuleIntensity $intensity): self
     {
         $this->intensity = $intensity;
+
+        return $this;
+    }
+
+    public function getToleranceMinutes(): int
+    {
+        return $this->toleranceMinutes;
+    }
+
+    public function setToleranceMinutes(int $toleranceMinutes): self
+    {
+        $this->toleranceMinutes = $toleranceMinutes;
+
+        return $this;
+    }
+
+    public function getDefaultMinutes(): int
+    {
+        return $this->defaultMinutes;
+    }
+
+    public function setDefaultMinutes(int $defaultMinutes): self
+    {
+        $this->defaultMinutes = $defaultMinutes;
 
         return $this;
     }

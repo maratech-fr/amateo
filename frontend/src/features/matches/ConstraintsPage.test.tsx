@@ -19,6 +19,12 @@ const coherenceState: { data: MatchConstraintCoherence } = { data: { byRule: [],
 const teamsState: { data: Team[] | undefined; isError: boolean } = { data: [], isError: false };
 const venuesState: { data: Venue[] | undefined; isError: boolean } = { data: [], isError: false };
 const coachesState: { data: Coach[] | undefined; isError: boolean } = { data: [], isError: false };
+// P4-271 — le réglage d'affichage A/B vient de la session (`me.club.weekendAlternates`).
+const meState: { weekendAlternates: boolean } = { weekendAlternates: true };
+
+vi.mock("@/shared/session/queries", () => ({
+  useMe: () => ({ data: { role: "admin", club: { weekendAlternates: meState.weekendAlternates } } }),
+}));
 
 // On pilote les hooks (miroir de la copie stockée), jamais le réseau. Le badge et
 // l'alerte de cohérence viennent du SERVEUR : l'écran les affiche, on ne les recalcule pas ici.
@@ -101,6 +107,7 @@ beforeEach(() => {
   rulesState.data = [];
   rulesState.isError = false;
   coherenceState.data = { byRule: [], byHabit: [] };
+  meState.weekendAlternates = true;
   teamsState.data = [];
   teamsState.isError = false;
   venuesState.data = [];
@@ -144,23 +151,27 @@ describe("ConstraintsPage — section Ligue (P4-272 ①)", () => {
     );
   });
 
-  it("enregistre une correction de fenêtre via l'API (PUT id + input)", async () => {
+  it("enregistre une correction de fenêtre via l'API (PUT id + input) après avoir déplié la ligne", async () => {
     const user = userEvent.setup();
     windowsState.data = [window({ id: "w1", kickoffMax: "16:00" })];
     openLigue();
 
+    // Au repos, la ligne est compacte (résumé + ✎) — on la déplie.
+    await user.click(screen.getByRole("button", { name: "Modifier" }));
     // Le bouton reste inerte tant que rien n'a changé.
-    const save = screen.getByRole("button", { name: "Enregistrer" });
-    expect(save).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
     // La ligne d'édition rend AVANT la ligne d'ajout → le premier champ « À » est le sien.
     fireEvent.change(screen.getAllByLabelText("À")[0], { target: { value: "17:30" } });
     expect(screen.getByRole("button", { name: "Enregistrer" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "Enregistrer" }));
 
-    expect(updateWindow).toHaveBeenCalledWith({
-      id: "w1",
-      input: { category: "Seniors", level: "REGIONAL", gender: null, dayOfWeek: 6, kickoffMin: "14:00", kickoffMax: "17:30" },
-    });
+    expect(updateWindow).toHaveBeenCalledWith(
+      {
+        id: "w1",
+        input: { category: "Seniors", level: "REGIONAL", gender: null, dayOfWeek: 6, kickoffMin: "14:00", kickoffMax: "17:30" },
+      },
+      expect.anything(),
+    );
   });
 });
 
@@ -197,10 +208,11 @@ describe("ConstraintsPage — section Club (P4-272 ③)", () => {
     expect(screen.getByText("Cette règle heurte le créneau idéal des U13M (semaine A) : samedi 21h30.")).toBeInTheDocument();
   });
 
-  it("omet « (semaine …) » quand le créneau idéal vaut pour toutes les semaines", () => {
+  it("omet « (semaine …) » quand le club n'alterne pas (weekendAlternates faux)", () => {
+    meState.weekendAlternates = false;
     rulesState.data = [rule({ id: "r1", kickoffMax: "21:00" })];
     coherenceState.data = {
-      byRule: [{ ruleId: "r1", habits: [{ teamId: "t2", teamName: "SM1", week: "ALL", dayOfWeek: 7, kickoff: "21:45" }] }],
+      byRule: [{ ruleId: "r1", habits: [{ teamId: "t2", teamName: "SM1", week: "A", dayOfWeek: 7, kickoff: "21:45" }] }],
       byHabit: [],
     };
     openClub();
@@ -213,9 +225,9 @@ describe("ConstraintsPage — section Club (P4-272 ③)", () => {
     // Club ne rend QUE la règle CLUB (l'interdiction vit dans « Équipes »).
     rulesState.data = [rule({ id: "r1", scope: "CLUB", kickoffMax: "21:00" }), rule({ id: "b1", scope: "TEAM", scopeTargetId: "t1", venueId: "v1", daysOfWeek: [], kickoffMax: null })];
     openClub();
-    // La règle CLUB rend son bouton « Enregistrer » ; l'interdiction TEAM n'ajoute pas
-    // de seconde ligne éditable (une seule ligne de règle → un seul « Enregistrer »).
-    expect(screen.getAllByRole("button", { name: "Enregistrer" })).toHaveLength(1);
+    // Au repos, chaque règle CLUB porte un ✎ « Modifier » ; l'interdiction TEAM n'ajoute
+    // pas de seconde ligne (une seule règle CLUB → un seul « Modifier »).
+    expect(screen.getAllByRole("button", { name: "Modifier" })).toHaveLength(1);
     expect(screen.queryByText(/Aucune règle de club/)).not.toBeInTheDocument();
   });
 });
@@ -305,8 +317,8 @@ describe("ConstraintsPage — section Coachs (P4-272 ⑤)", () => {
     ];
     coachesState.data = [coachOf("c1", "Anna", "Martin")];
     openCoachs();
-    // Une seule indisponibilité éditable → un seul « Enregistrer » (ni la règle CLUB ni l'interdiction TEAM).
-    expect(screen.getAllByRole("button", { name: "Enregistrer" })).toHaveLength(1);
+    // Une seule indisponibilité (scope COACH) au repos → un seul « Modifier » (ni la règle CLUB ni l'interdiction TEAM).
+    expect(screen.getAllByRole("button", { name: "Modifier" })).toHaveLength(1);
     expect(screen.queryByText(/Aucune indisponibilité/)).not.toBeInTheDocument();
   });
 

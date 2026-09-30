@@ -137,6 +137,9 @@ final class BcclSeeder
             $club->setLocale('fr');
             // Established club: onboarding done → free wizard navigation.
             $club->setOnboardingCompleted(true);
+            // Le club utilise un modèle de week-end sur deux semaines (A/B) —
+            // co-construction fondateur : l'écran « Semaine type » sépare les créneaux.
+            $club->setWeekendAlternates(true);
             $manager->persist($club);
         }
         // Derive the academic zone + league from the FFBB code, exactly like the
@@ -388,7 +391,8 @@ final class BcclSeeder
             ['name' => 'Armand', 'var' => 'vArmand', 'color' => '#1E88E5', 'canSplit' => true, 'ref' => '166926610', 'lat' => '45.77935', 'lng' => '4.88604'],
             ['name' => 'ADN', 'var' => 'vAdn', 'color' => '#FDD835', 'canSplit' => true, 'ref' => '6926617', 'lat' => '45.77184', 'lng' => '4.87672'],
             ['name' => 'Debarros', 'var' => 'vDebarros', 'color' => '#2E7D32', 'canSplit' => false, 'ref' => '166926603', 'lat' => '45.76799', 'lng' => '4.88853'],
-            ['name' => 'Annexe', 'var' => 'vDebarrosAnnexe', 'color' => '#66BB6A', 'canSplit' => false, 'ref' => '166926616', 'lat' => '45.76294', 'lng' => '4.91014'],
+            // Annexe : même adresse que Debarros (une porte les sépare) — mêmes coordonnées (correction fondateur).
+            ['name' => 'Annexe', 'var' => 'vDebarrosAnnexe', 'color' => '#66BB6A', 'canSplit' => false, 'ref' => '166926616', 'lat' => '45.76799', 'lng' => '4.88853'],
             ['name' => 'Jean Vilar', 'var' => 'vJeanVilar', 'color' => '#1A237E', 'canSplit' => false, 'ref' => '166926613', 'lat' => '45.77926', 'lng' => '4.90377'],
             ['name' => 'Tonkin', 'var' => 'vTonkin', 'color' => '#FB8C00', 'canSplit' => false, 'ref' => '166926601', 'lat' => '45.77591', 'lng' => '4.86471'],
             ['name' => 'JDR', 'var' => 'vJdr', 'color' => '#F8BBD0', 'canSplit' => true, 'ref' => '6926616', 'lat' => '45.76499', 'lng' => '4.90510'],

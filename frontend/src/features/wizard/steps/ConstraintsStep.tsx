@@ -809,26 +809,27 @@ export function ConstraintsStep() {
       {/* Onglets de présentation : Base (immuables, lecture seule) et Bien-être (réglables). Aucun
           ne crée de contrainte. */}
       {"base" === mode ? (
-        <>
-          <ProductRulesPanel />
-          {/* P2-53 RMM-8 — entrée informative « Trajet entre gymnases », visible seulement si une
-              matrice existe (opt-in dérivé serveur-side). Lecture seule : aucun rail d'intensité. */}
-          <TravelRuleNotice />
-        </>
+        <ProductRulesPanel />
       ) : "wellbeing" === mode ? (
-        // Même ancrage que « Réserver » : en période le panneau règle la COPIE
-        // du plan (schedulePlanId), jamais le socle du club ; hors période, la saison (null).
-        periodMode ? (
-          <PeriodAnchorGate
-            anchor={anchor}
-            loadingLabel="Chargement du planning de la période…"
-            errorLabel="Impossible de charger le planning de la période."
-          >
-            {(schedulePlanId) => <WellbeingRulesPanel ruleTarget={ruleTarget} schedulePlanId={schedulePlanId} />}
-          </PeriodAnchorGate>
-        ) : (
-          <WellbeingRulesPanel ruleTarget={ruleTarget} schedulePlanId={null} />
-        )
+        <>
+          {/* P2-53 RMM-8 — encart « Trajet entre gymnases », visible seulement si une matrice existe
+              (opt-in dérivé serveur-side). Réglages club+saison (cran + battement toléré + temps par
+              défaut), NON scindés par plan — d'où un rendu unique, hors du gate de période. */}
+          <TravelRuleNotice />
+          {/* Même ancrage que « Réserver » : en période le panneau règle la COPIE du plan
+              (schedulePlanId), jamais le socle du club ; hors période, la saison (null). */}
+          {periodMode ? (
+            <PeriodAnchorGate
+              anchor={anchor}
+              loadingLabel="Chargement du planning de la période…"
+              errorLabel="Impossible de charger le planning de la période."
+            >
+              {(schedulePlanId) => <WellbeingRulesPanel ruleTarget={ruleTarget} schedulePlanId={schedulePlanId} />}
+            </PeriodAnchorGate>
+          ) : (
+            <WellbeingRulesPanel ruleTarget={ruleTarget} schedulePlanId={null} />
+          )}
+        </>
       ) : "reserve" === mode ? (
         // Une seule échelle d'états pour l'ancre — la PORTE. Le premier jet
         // re-implémentait ses quatre cas en ternaire imbriqué : les libellés

@@ -7,6 +7,7 @@ namespace App\Service\Geo;
 use App\Service\Basketball\FfbbApiClient;
 use RuntimeException;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
+use Throwable;
 
 /**
  * SSRF-safe client for the Base Adresse Nationale (BAN, api-adresse.data.gouv.fr):
@@ -23,6 +24,7 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 final class BanGeocodingClient
 {
     private const SEARCH_URL = 'https://api-adresse.data.gouv.fr/search/';
+    private const REVERSE_URL = 'https://api-adresse.data.gouv.fr/reverse/';
     private const TIMEOUT = 5.0;
 
     private const QUERY_MIN = 3;
@@ -48,12 +50,62 @@ final class BanGeocodingClient
         return $length >= self::QUERY_MIN && $length <= self::QUERY_MAX;
     }
 
+    /** Des coordonnées géographiques plausibles (latitude ∈ [-90, 90], longitude ∈ [-180, 180]). */
+    public static function isValidCoordinate(float $latitude, float $longitude): bool
+    {
+        return $latitude >= -90.0 && $latitude <= 90.0 && $longitude >= -180.0 && $longitude <= 180.0;
+    }
+
+    /**
+     * Reverse-geocode des coordonnées vers le LIBELLÉ d'adresse le plus proche (BAN /reverse/,
+     * requête SSRF-safe : hôte fixe hard-codé, timeout serré, pas de redirection, plafond de
+     * taille identique à la recherche). BEST-EFFORT : `null` si l'appel échoue, si la réponse
+     * est vide ou si aucune adresse exploitable — jamais d'exception propagée. Aucune écriture :
+     * l'adresse retrouvée est destinée à l'AFFICHAGE, elle n'est jamais stockée.
+     */
+    public function reverse(float $latitude, float $longitude): ?string
+    {
+        if (!self::isValidCoordinate($latitude, $longitude)) {
+            return null;
+        }
+
+        try {
+            $data = $this->httpClient->request('GET', self::REVERSE_URL, [
+                'query' => ['lat' => $latitude, 'lon' => $longitude],
+                'headers' => ['Accept' => 'application/json'],
+                'timeout' => self::TIMEOUT,
+                'max_duration' => self::TIMEOUT,
+                'max_redirects' => 0,
+                'on_progress' => static function (int $dlNow): void {
+                    if ($dlNow > self::MAX_RESPONSE_BYTES) {
+                        throw new RuntimeException(\sprintf('Réponse BAN trop volumineuse (> %d octets).', self::MAX_RESPONSE_BYTES));
+                    }
+                },
+            ])->toArray(false);
+        } catch (Throwable) {
+            return null; // best-effort : un échec réseau/HTTP n'est jamais une erreur ici.
+        }
+
+        $features = $data['features'] ?? null;
+        if (!\is_array($features)) {
+            return null;
+        }
+        foreach (array_values($features) as $feature) {
+            $simple = $this->mapFeature($feature);
+            if (null !== $simple) {
+                return $simple['label'];
+            }
+        }
+
+        return null;
+    }
+
     /**
      * Geocode a free-text address to at most $limit candidates. An invalid query
      * (too short/long) returns [] without any network call. Transport failures
      * propagate — the caller treats them best-effort (a 502, never a broken form).
      *
-     * @return list<array{label: string, latitude: float, longitude: float, score: float}>
+     * @return list<array{label: string, latitude: float, longitude: float, score: float, type: string|null}>
      */
     public function geocode(string $query, int $limit = 5): array
     {
@@ -143,7 +195,7 @@ final class BanGeocodingClient
     }
 
     /**
-     * @return array{label: string, latitude: float, longitude: float, score: float}|null
+     * @return array{label: string, latitude: float, longitude: float, score: float, type: string|null}|null
      */
     private function mapFeature(mixed $feature): ?array
     {
@@ -163,12 +215,16 @@ final class BanGeocodingClient
         }
 
         $score = $properties['score'] ?? null;
+        // BAN `type` : housenumber | street | locality | municipality — la PRÉCISION du point. Le
+        // front avertit « Position approximative (rue entière) » quand ce n'est pas un housenumber.
+        $type = $properties['type'] ?? null;
 
         return [
             'label' => $label,
             'latitude' => (float) $latitude,
             'longitude' => (float) $longitude,
             'score' => is_numeric($score) ? (float) $score : 0.0,
+            'type' => \is_string($type) && '' !== $type ? $type : null,
         ];
     }
 }

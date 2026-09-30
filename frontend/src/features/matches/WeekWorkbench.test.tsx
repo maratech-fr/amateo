@@ -292,8 +292,8 @@ describe("WeekWorkbench — badges de signal (rendus seulement si > 0, pluriels)
   it("« hors modèle » : absent à 0, singulier à 1, pluriel à 2", async () => {
     // Une habitude un jour AUTRE que le samedi du match ⇒ le domicile placé le samedi est hors modèle.
     const habits: TeamMatchHabit[] = [
-      { id: "h-a", teamId: "team-a", dayOfWeek: 1, kickoffTime: "18:00", venueId: "venue-1", week: "ALL" },
-      { id: "h-b", teamId: "team-b", dayOfWeek: 1, kickoffTime: "18:00", venueId: "venue-1", week: "ALL" },
+      { id: "h-a", teamId: "team-a", dayOfWeek: 1, kickoffTime: "18:00", venueId: "venue-1", week: "A" },
+      { id: "h-b", teamId: "team-b", dayOfWeek: 1, kickoffTime: "18:00", venueId: "venue-1", week: "A" },
     ];
     const first = renderWorkbench({ weekendFixtures: [], allFixtures: [], habits });
     await waitFor(() => expect(api.getVenueLabelInventory).toHaveBeenCalled());

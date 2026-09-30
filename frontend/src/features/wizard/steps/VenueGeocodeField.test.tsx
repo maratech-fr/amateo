@@ -16,8 +16,8 @@ vi.mock("@/shared/api/geocode", async (importActual) => {
 import { VenueGeocodeField } from "./VenueGeocodeField";
 
 const CANDIDATES: GeocodeCandidate[] = [
-  { label: "12 Rue du Sport, 69100 Villeurbanne", latitude: 45.766, longitude: 4.88, score: 0.92 },
-  { label: "12 Rue du Sport, 01000 Bourg", latitude: 46.2, longitude: 5.22, score: 0.31 },
+  { label: "12 Rue du Sport, 69100 Villeurbanne", latitude: 45.766, longitude: 4.88, score: 0.92, type: "housenumber" },
+  { label: "12 Rue du Sport, 01000 Bourg", latitude: 46.2, longitude: 5.22, score: 0.31, type: "housenumber" },
 ];
 
 beforeEach(() => {

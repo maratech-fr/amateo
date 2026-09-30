@@ -478,7 +478,7 @@ export interface Coach {
    *  nomme le dépassement quand il n'y arrive pas. */
   maxDaysOverride: number | null;
   /** P2-53 RMM-8 — le coach a un véhicule. Détermine le barème de trajet appliqué à ses
-   *  enchaînements (voiture s'il est véhiculé, à pied sinon). Défaut false. */
+   *  enchaînements (voiture s'il est véhiculé, à vélo sinon). Défaut false. */
   isVehicled: boolean;
 }
 
@@ -580,25 +580,38 @@ export const autofillVenueTravelTimes = (): Promise<{ queued: boolean; alreadyRu
 // --- Levier d'intensité de la règle de trajet (P2-53 RMM-8 PR-4) ---
 
 /**
- * L'intensité de la règle « Trajet entre gymnases » — vocabulaire des passerelles côté
- * entraînement : PREFERRED (préférence souple) ou MANDATORY (obligatoire). PAS le vocabulaire
- * bien-être (HARD/PREFERRED/OFF) : c'est un store DÉDIÉ, singleton par club+saison.
+ * Le cran de la règle « Trajet entre gymnases » — store DÉDIÉ, singleton par club+saison :
+ * OFF (Inactive — la règle n'est pas émise, la matrice reste stockée), PREFERRED (préférence
+ * souple) ou MANDATORY (obligatoire).
  */
-export type VenueTravelRuleIntensity = "PREFERRED" | "MANDATORY";
+export type VenueTravelRuleIntensity = "OFF" | "PREFERRED" | "MANDATORY";
 
-/** Le levier RÉSOLU (stocké OU défaut PREFERRED). `isDefault` : true tant qu'aucune ligne stockée. */
+/**
+ * Le levier RÉSOLU (stocké OU défauts : PREFERRED, tolérance 20, défaut 20). `isDefault` : true
+ * tant qu'aucune ligne stockée. `toleranceMinutes` = battement toléré retranché du barème ;
+ * `defaultMinutes` = temps d'un couple de gymnases sans temps saisi.
+ */
 export interface VenueTravelRuleSetting {
   ruleKey: "travelTime";
   intensity: VenueTravelRuleIntensity;
+  toleranceMinutes: number;
+  defaultMinutes: number;
   isDefault: boolean;
+}
+
+/** Corps du PUT du levier. */
+export interface VenueTravelRuleSettingPayload {
+  intensity: VenueTravelRuleIntensity;
+  toleranceMinutes?: number;
+  defaultMinutes?: number;
 }
 
 /** GET du levier résolu du club+saison courant (SeasonFilter serveur-side, identifiant fixe). */
 export const getTravelRuleSetting = (): Promise<VenueTravelRuleSetting> => api.get("venue_travel_rule_settings/travelTime").json();
 
-/** PUT du levier (management) — 422 sur un vocabulaire bien-être, 409 saison archivée. */
-export const updateTravelRuleSetting = (intensity: VenueTravelRuleIntensity): Promise<VenueTravelRuleSetting> =>
-  api.put("venue_travel_rule_settings/travelTime", { json: { intensity } }).json();
+/** PUT du levier (management) — 422 sur une valeur inconnue/hors bornes, 409 saison archivée. */
+export const updateTravelRuleSetting = (payload: VenueTravelRuleSettingPayload): Promise<VenueTravelRuleSetting> =>
+  api.put("venue_travel_rule_settings/travelTime", { json: payload }).json();
 
 // --- Constraints (W4) ---
 

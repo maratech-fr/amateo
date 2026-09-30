@@ -1,12 +1,11 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-09-29 (P4-272 ④ : `CONTRACT_VERSION` **2.26 → 2.27** — `teams[].
-forbiddenVenueIds` ajouté au payload `/place-matches`, `MatchTeamSchema.forbidden_venue_ids`
-`match_input_schema.py`). Re-confronté au code : `_candidate_kickoffs`
-(`app/solver/match_placement.py:221-285`) retire un gymnase de `forbidden_venue_ids` du domaine
-AVANT tout calcul de créneau (jamais choisi par le solveur) et distingue le cas où un créneau y
-était licite (`saw_forbidden_legal`), pour rendre la raison `team_venue_forbidden` — testée AVANT
-`club_rule_no_slot` dans la même chaîne de retour ✓ ; `REASON_MESSAGES` porte désormais **sept**
+Last verified @ 2026-09-30 (PR #1031 — ligne `travel_time` du diagnostic recalée contre
+`engine/app/solver/constraints/travel.py::required_gap` : écart exigé = barème moins battement
+toléré, mode non véhiculé = vélo, cran OFF). Non re-sondé cette passe : le reste du fichier —
+dernière vérification structurelle P4-272 ④ (`CONTRACT_VERSION` 2.26 → 2.27, `teams[].
+forbiddenVenueIds`, `_candidate_kickoffs` — `app/solver/match_placement.py:221-285`) vit dans
+`git log -p --follow` ce fichier. `REASON_MESSAGES` porte désormais **sept**
 raisons (`venue_unavailable`, `no_access_window`, `no_league_intersection`, `venue_full`,
 `not_selected`, `club_rule_no_slot`, `team_venue_forbidden`, `match_placement.py:64-82`) ✓ ; les
 **six endpoints** inchangés (`/`, `/health`, `/generate`, `/place-matches`,
@@ -26,7 +25,7 @@ l'inventaire (détail des sections sous la ligne 40) non re-sondé cette passe �
 - **Solver** : Google OR-Tools CP-SAT (`from ortools.sat.python import cp_model`).
 - **Validation** : Pydantic v2 (`BaseModel`, `ConfigDict`, `Field`, `populate_by_name=True`).
 - **Settings** : `pydantic-settings` (`engine/app/core/config.py`), prefix env `ENGINE_`, `.env` lu. Defaults : `app_name="engine"`, `app_version="1.0"`, `contract_version="2.0"`, `environment="dev"`, `log_level="info"`.
-- **Contract version** : lu depuis `engine/CONTRACT_VERSION` (**fichier = `2.28`** — source de vérité, `read_contract_version()` dans `main.py`). Un fichier manquant lève une `RuntimeError`, il n'est **jamais** remplacé par un défaut : le garde de contrat est MAJOR-only, un build amputé de son fichier passerait sinon le handshake et résoudrait un payload d'une AUTRE version mineure en se croyant d'accord. Gardé par `tests/test_contract_version_doc_sync.py`. **Politique de bump** : un changement de FORME ou de SÉMANTIQUE (champ/type/alias ajouté, retiré ou dont le sens change) bump le contrat ; un simple resserrage d'ENVELOPPE (`max_length` qui rétrécit ce qu'on acceptait déjà, sans toucher forme ni sémantique) ne bump pas. **UN SEUL `CONTRACT_VERSION` pour les TROIS endpoints** `/generate` · `/place-matches` · `/validate-assignments`, tous vérifient le même MAJOR — l'historique des bumps (ce que chaque version a changé) vit dans `git log -p --follow engine/CONTRACT_VERSION` et le journal `specs/courantes/etat-des-lieux.md` §3.
+- **Contract version** : lu depuis `engine/CONTRACT_VERSION` (**fichier = `2.29`** — source de vérité, `read_contract_version()` dans `main.py`). Un fichier manquant lève une `RuntimeError`, il n'est **jamais** remplacé par un défaut : le garde de contrat est MAJOR-only, un build amputé de son fichier passerait sinon le handshake et résoudrait un payload d'une AUTRE version mineure en se croyant d'accord. Gardé par `tests/test_contract_version_doc_sync.py`. **Politique de bump** : un changement de FORME ou de SÉMANTIQUE (champ/type/alias ajouté, retiré ou dont le sens change) bump le contrat ; un simple resserrage d'ENVELOPPE (`max_length` qui rétrécit ce qu'on acceptait déjà, sans toucher forme ni sémantique) ne bump pas. **UN SEUL `CONTRACT_VERSION` pour les TROIS endpoints** `/generate` · `/place-matches` · `/validate-assignments`, tous vérifient le même MAJOR — l'historique des bumps (ce que chaque version a changé) vit dans `git log -p --follow engine/CONTRACT_VERSION` et le journal `specs/courantes/etat-des-lieux.md` §3.
 - **Structure interne** :
   - `app/main.py` — endpoints FastAPI + pipeline solver.
   - `app/core/config.py` — settings.
@@ -268,13 +267,13 @@ Le verdict F2a (§ci-dessus) porte aussi les **compromis nommés** d'un verdict 
 
 ### ScheduleInputSchema (`engine/app/schemas/input_schema.py`)
 
-Version contrat active : **`"2.28"`** (fichier `CONTRACT_VERSION`, source de vérité). Le default Pydantic du champ `version` vaut **`"2.28"`** lui aussi (`input_schema.py:321`, gardé par `test_schema_version_defaults_match_contract_version`, ENG-44) : c'est un repli pour un payload qui n'annonce rien — le backend l'envoie TOUJOURS, ce défaut n'est donc jamais la valeur du fil — aligné sur le contrat courant pour qu'aucun lecteur ne le prenne pour une version concurrente. `ConfigDict(extra="forbid", populate_by_name=True)`.
+Version contrat active : **`"2.29"`** (fichier `CONTRACT_VERSION`, source de vérité). Le default Pydantic du champ `version` vaut **`"2.29"`** lui aussi (`input_schema.py:321`, gardé par `test_schema_version_defaults_match_contract_version`, ENG-44) : c'est un repli pour un payload qui n'annonce rien — le backend l'envoie TOUJOURS, ce défaut n'est donc jamais la valeur du fil — aligné sur le contrat courant pour qu'aucun lecteur ne le prenne pour une version concurrente. `ConfigDict(extra="forbid", populate_by_name=True)`.
 
 **Bornes A10** (anti-bombe de génération) : la plupart des listes portent un `max_length` (rejet **422** avant CP-SAT) — `teams` ≤200 · `venues` ≤50 · `coaches` ≤200 · `slot_templates` ≤2000 · `priority_tiers` ≤20 · `trainingSlots` ≤1000/gymnase ; plus un `model_validator` bornant le **total** des créneaux à ≤3000 (empêche 50×1000). **`constraints` est cappé par le PRODUIT ÉTENDU, pas un compte par règle** : `MAX_CONSTRAINTS_EXPANDED = 100_000` = brut(≤500)×équipes(≤200), parce que le backend éclate 1 règle CLUB en N rangées/équipe et qu'aucun compte fixe par règle ne peut à la fois borner une bombe et ne jamais faux-bloquer un club légitime — le produit étendu, lui, est une borne réelle et finie. Les vraies bornes amont restent aussi actives : cap **brut** backend (≤500) + la limite de body nginx (20 m) + le timeout solveur. Le backend (`GenerationComplexityGuard`) pré-vérifie teams/venues/coaches/contraintes permanentes/total créneaux (=3000) **plus** `teams×venues` ≤2000, **avant dispatch**. ⚠ Ce durcissement de validation n'a **pas** bumpé `CONTRACT_VERSION` : politique — un `max_length` resserre l'enveloppe acceptée sans changer forme/type ni MAJOR ; un bump n'est requis que pour un changement de forme/sémantique (champ/type/alias).
 
 | Champ | Alias JSON | Type | Default |
 |-------|-------------|------|---------|
-| `version` | — | `str` | `"2.28"` (repli — cf. ci-dessus) |
+| `version` | — | `str` | `"2.29"` (repli — cf. ci-dessus) |
 | `club_id` | `clubId` | `str` | requis |
 | `season_id` | `seasonId` | `str` | requis |
 | `schedule_name` | `scheduleName` | `str \| None` | `None` |
@@ -302,7 +301,7 @@ Sous-schemas clés :
 
 ### Schémas du placement de matchs (`match_input_schema.py` / `match_output_schema.py`)
 
-Contrat **2.28** (le MÊME que `/generate` — un seul contrat pour les trois endpoints), les schémas hebdomadaires n'étant pas réutilisés
+Contrat **2.29** (le MÊME que `/generate` — un seul contrat pour les trois endpoints), les schémas hebdomadaires n'étant pas réutilisés
 (le problème n'a ni créneau récurrent ni séance) :
 
 - **`MatchPlacementInputSchema`** : `version`, `clubId`, `seasonId`, `matches`, `venues`, `teams`,
@@ -426,7 +425,7 @@ Familles de contraintes comptées dans `HardConstraintStats` (liste exhaustive :
 | 12 | `max_consecutive_days` | une ÉQUIPE ne s'entraîne pas `maxConsecutiveDays` jours de suite (défaut 3, bornes 2-5) ; posé seulement si la règle est HARD (opt-in, naît `OFF`) |
 | 13 | `shared_block` | mutualisation par BLOC, **SEULE notion de mutualisation** (le groupe {équipes, K} `sharedTrainings` n'existe plus) : un bloc (`sharedBlocks`) se comporte comme UNE équipe, ses séances lui APPARTIENNENT. Modélisation **LIAGE** (posée en tête de `add_level_1_hard_constraints`, AVANT la capacité gymnase, `constraints/__init__.py`) : pour chaque case candidate, une variable de décision propre au bloc `b[case]` liée à chaque membre par `x[membre, case] ≥ b[case]` (UNIDIRECTIONNEL, **pas** de réification depuis la co-présence — ce qui dissolvait le double-comptage de l'ancien modèle groupe). Le liage donne gratis la sémantique membre (consomme une séance, `one_session_per_day`, repos coach, enchaînements, objectif — tous exprimés sur `x`) ; seule la capacité gymnase demande une chirurgie (`(n_libres−1)·b`, `shared_block_room_relief`, même patron que le crédit des verrouillés). Garde de distinctness inter-blocs. Vide ⇒ aucune pose, chemin byte-identique, aucun golden avec bloc |
 | 14 | `team_link` | Lot PASSERELLES — deux équipes déclarées `MANDATORY` ne se chevauchent JAMAIS (`var_a + var_b ≤ 1`) ; 0 si `teamLinks` absent/vide ou tout `PREFERRED` (le PREFERRED est un malus objectif, pas une contrainte dure) |
-| 15 | `travel_time` | règle `travelTime` **MANDATORY** seule : interdit dur un enchaînement cross-gymnase dont le battement est plus court que le barème (voiture/à pied selon `isVehicled`, ou à pied pour une passerelle) ; 0 si la règle est inactive, `PREFERRED`, ou `venueTravelTimes` vide. Résidu possible SEULEMENT entre deux verrous HARD contradictoires, ANNONCÉ par le diagnostic `travel_time_infeasible` (`_diagnose_travel_times`), jamais un INFEASIBLE muet |
+| 15 | `travel_time` | règle `travelTime` **MANDATORY** seule : interdit dur un enchaînement cross-gymnase dont le battement est plus court que l'écart exigé (barème − battement toléré, voiture/vélo selon `isVehicled`, ou vélo pour une passerelle) ; 0 si la règle est inactive (cran OFF), `PREFERRED`, ou `venueTravelTimes` vide. Résidu possible SEULEMENT entre deux verrous HARD contradictoires, ANNONCÉ par le diagnostic `travel_time_infeasible` (`_diagnose_travel_times`), jamais un INFEASIBLE muet |
 
 Stubs (toujours satisfaits, 0 contraintes, **DISTINCTS** du `travel_time` ci-dessus — même sujet,
 mécanismes non reliés) : `travel_feasibility_stub`, `required_bridge_stub` (`ImplicitConstraint`

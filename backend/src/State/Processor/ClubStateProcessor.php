@@ -93,6 +93,9 @@ class ClubStateProcessor extends AbstractStateProcessor
         if (null !== $input->onboardingCompleted) {
             $entity->setOnboardingCompleted($input->onboardingCompleted);
         }
+        if (null !== $input->weekendAlternates) {
+            $entity->setWeekendAlternates($input->weekendAlternates);
+        }
         if (null !== $input->ffbbClubCode) {
             $entity->setFfbbClubCode($input->ffbbClubCode);
         }
@@ -129,6 +132,9 @@ class ClubStateProcessor extends AbstractStateProcessor
         }
         if (null !== $input->onboardingCompleted) {
             $entity->setOnboardingCompleted($input->onboardingCompleted);
+        }
+        if (null !== $input->weekendAlternates) {
+            $entity->setWeekendAlternates($input->weekendAlternates);
         }
         if (null !== $input->ffbbClubCode) {
             $entity->setFfbbClubCode($input->ffbbClubCode);

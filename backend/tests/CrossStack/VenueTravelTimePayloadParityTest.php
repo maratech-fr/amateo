@@ -11,7 +11,7 @@ use App\Entity\User;
 use App\Entity\VenueTravelRuleSetting;
 use App\Entity\VenueTravelTime;
 use App\Enum\SeasonStatus;
-use App\Enum\TeamLinkIntensity;
+use App\Enum\VenueTravelRuleIntensity;
 use App\Enum\VenueTravelTimeSource;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\TenantGucTrait;
@@ -73,7 +73,7 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
 
         self::assertArrayHasKey('travelTime', $payload['implicitRules'], 'la présence de matrice active la règle');
         self::assertSame(
-            ['intensity' => 'PREFERRED', 'defaultMinutes' => 20],
+            ['intensity' => 'PREFERRED', 'defaultMinutes' => 20, 'toleranceMinutes' => 20],
             $payload['implicitRules']['travelTime'],
             'la règle naît PREFERRED avec le défaut 20 (l’écran PR-3 réglera le cran/seuil)',
         );
@@ -87,13 +87,13 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
     {
         [$club, $season] = $this->seed();
         $this->travelTime($club, $season, 'aaaaaaaa-0000-4000-8000-00000000000a', 'bbbbbbbb-0000-4000-8000-00000000000a', 10, 20);
-        $this->travelRuleSetting($club, $season, TeamLinkIntensity::MANDATORY);
+        $this->travelRuleSetting($club, $season, VenueTravelRuleIntensity::MANDATORY);
         $this->em->flush();
 
         $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
 
         self::assertSame(
-            ['intensity' => 'MANDATORY', 'defaultMinutes' => 20],
+            ['intensity' => 'MANDATORY', 'defaultMinutes' => 20, 'toleranceMinutes' => 20],
             $payload['implicitRules']['travelTime'],
             'l’intensité stockée MANDATORY est émise MANDATORY (le levier Obligatoire), défaut 20 conservé',
         );
@@ -109,16 +109,55 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
     {
         [$club, $season] = $this->seed();
         $this->travelTime($club, $season, 'aaaaaaaa-0000-4000-8000-00000000000b', 'bbbbbbbb-0000-4000-8000-00000000000b', 10, 20);
-        $this->travelRuleSetting($club, $season, TeamLinkIntensity::PREFERRED);
+        $this->travelRuleSetting($club, $season, VenueTravelRuleIntensity::PREFERRED);
         $this->em->flush();
 
         $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
 
         self::assertSame(
-            ['intensity' => 'PREFERRED', 'defaultMinutes' => 20],
+            ['intensity' => 'PREFERRED', 'defaultMinutes' => 20, 'toleranceMinutes' => 20],
             $payload['implicitRules']['travelTime'],
             'un réglage PREFERRED stocké émet PREFERRED (le builder LIT le réglage, ne devine pas)',
         );
+    }
+
+    /**
+     * Décision fondateur 2026-09-30 — les DEUX réglages minutes stockés voyagent : `toleranceMinutes`
+     * (battement toléré) et `defaultMinutes` (temps par défaut). Falsification : un builder qui
+     * garderait 20 en dur échoue ici.
+     */
+    public function testStoredToleranceAndDefaultMinutesAreEmitted(): void
+    {
+        [$club, $season] = $this->seed();
+        $this->travelTime($club, $season, 'aaaaaaaa-0000-4000-8000-00000000000c', 'bbbbbbbb-0000-4000-8000-00000000000c', 10, 20);
+        $this->travelRuleSetting($club, $season, VenueTravelRuleIntensity::MANDATORY, tolerance: 15, default: 30);
+        $this->em->flush();
+
+        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+
+        self::assertSame(
+            ['intensity' => 'MANDATORY', 'defaultMinutes' => 30, 'toleranceMinutes' => 15],
+            $payload['implicitRules']['travelTime'],
+            'le builder LIT le battement toléré et le temps par défaut stockés, il ne les devine pas',
+        );
+    }
+
+    /**
+     * Décision fondateur 2026-09-30 — cran OFF « Inactive » : la règle N'EST PAS émise ET la matrice
+     * non plus (payload d'un club sans matrice), MÊME quand des lignes sont stockées (elles restent en
+     * base). Falsification : un builder qui émettrait la matrice ou la règle malgré OFF échoue.
+     */
+    public function testOffIntensitySuppressesRuleAndMatrix(): void
+    {
+        [$club, $season] = $this->seed();
+        $this->travelTime($club, $season, 'aaaaaaaa-0000-4000-8000-00000000000d', 'bbbbbbbb-0000-4000-8000-00000000000d', 10, 20);
+        $this->travelRuleSetting($club, $season, VenueTravelRuleIntensity::OFF);
+        $this->em->flush();
+
+        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+
+        self::assertSame([], $payload['venueTravelTimes'], 'OFF ⇒ la matrice n’est pas émise (payload d’un club sans matrice)');
+        self::assertArrayNotHasKey('travelTime', $payload['implicitRules'], 'OFF ⇒ la règle n’est pas émise');
     }
 
     /**
@@ -204,12 +243,14 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
         return $row;
     }
 
-    private function travelRuleSetting(Club $club, Season $season, TeamLinkIntensity $intensity): VenueTravelRuleSetting
+    private function travelRuleSetting(Club $club, Season $season, VenueTravelRuleIntensity $intensity, int $tolerance = 20, int $default = 20): VenueTravelRuleSetting
     {
         $setting = new VenueTravelRuleSetting;
         $setting->setClubId($club->getId());
         $setting->setSeasonId($season->getId());
         $setting->setIntensity($intensity);
+        $setting->setToleranceMinutes($tolerance);
+        $setting->setDefaultMinutes($default);
         $this->em->persist($setting);
 
         return $setting;

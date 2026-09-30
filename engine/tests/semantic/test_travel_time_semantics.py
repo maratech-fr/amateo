@@ -20,7 +20,11 @@ from typing import Any
 
 from tests.support.pipeline import make_payload, make_team, make_venue, solve_payload, team_coach, team_constraint
 
-MATRIX_RULE = {"travelTime": {"intensity": "PREFERRED"}}
+# toleranceMinutes: 0 — la plupart de ces cas prouvent le barème STRICT (le battement toléré, défaut
+# 20, décision fondateur 2026-09-30, est prouvé à part par les cas « tolérance » plus bas). Sans ce
+# pin, tolérance 20 masquerait un battement de 10 min et rendrait les cas MANDATORY inertes.
+MATRIX_RULE = {"travelTime": {"intensity": "PREFERRED", "toleranceMinutes": 0}}
+MANDATORY_RULE = {"travelTime": {"intensity": "MANDATORY", "toleranceMinutes": 0}}
 
 
 def _coach(coach_id: str, *, vehicled: bool = False) -> dict[str, Any]:
@@ -83,7 +87,7 @@ def _tight_pair_payload(rule: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def test_mandatory_forbids_a_tight_enchainement() -> None:
-    result = solve_payload(_tight_pair_payload({"travelTime": {"intensity": "MANDATORY"}}))
+    result = solve_payload(_tight_pair_payload(MANDATORY_RULE))
     # Le coach ne peut pas faire V1(fin 19:50) → V2(début 20:00) en 10 min : une seule des deux
     # séances est plaçable.
     assert _placed_count(result, "t1", "t2") == 1
@@ -100,6 +104,52 @@ def test_rule_absent_is_inert_even_with_a_matrix() -> None:
     # sont placées comme avant la fonctionnalité (jamais un changement silencieux).
     result = solve_payload(_tight_pair_payload(None))
     assert _placed_count(result, "t1", "t2") == 2
+
+
+# --- BATTEMENT TOLÉRÉ (décision fondateur 2026-09-30) : écart exigé = max(0, barème − tolérance) ---
+
+
+def _colle_pair_payload(*, walking: int, intensity: str, tolerance: int) -> dict[str, Any]:
+    """Enchaînement COLLÉ (écart 0) : le coach NON VÉHICULÉ termine V1 pile à l'heure où V2 commence
+    (le cas Mara du BCCL : SM2 jusqu'à 20:00 puis Debarros à 20:00). ``walking`` = barème à vélo
+    (colonne non véhiculée), ``tolerance`` = battement toléré retranché du barème."""
+    payload = make_payload(
+        teams=[make_team("t1", sessions_per_week=1), make_team("t2", sessions_per_week=1)],
+        # V1 18:30 + 90 min = fin 20:00 ; V2 démarre 20:00 → écart 0 (collé).
+        venues=[make_venue("V1", [(1, "18:30")]), make_venue("V2", [(1, "20:00")])],
+        coaches=[_coach("c1")],  # non véhiculé → barème à vélo (colonne walkingMinutes)
+        constraints=[
+            team_coach("tc1", "t1", "c1"),
+            team_coach("tc2", "t2", "c1"),
+            _forced_venue("f1", "t1", "V1"),
+            _forced_venue("f2", "t2", "V2"),
+        ],
+        implicit_rules={"travelTime": {"intensity": intensity, "toleranceMinutes": tolerance}},
+    )
+    payload["venueTravelTimes"] = [_row("V1", "V2", 5, walking)]
+    return payload
+
+
+def test_zero_gap_accepted_with_tolerance_20_bike() -> None:
+    # Vélo 12 min, tolérance 20 : écart exigé max(0, 12−20) = 0 ⇒ l'enchaînement collé PASSE en
+    # MANDATORY (le club absorbe le trajet — cas Mara BCCL). Les deux séances tiennent.
+    result = solve_payload(_colle_pair_payload(walking=12, intensity="MANDATORY", tolerance=20))
+    assert _placed_count(result, "t1", "t2") == 2
+
+
+def test_zero_gap_refused_without_tolerance_bike() -> None:
+    # FALSIFICATION du cas ci-dessus : même enchaînement collé, tolérance 0 ⇒ écart exigé 12 > 0 ⇒
+    # MANDATORY en interdit une. Si la tolérance était ignorée (écart exigé = barème toujours), le
+    # test précédent tomberait ici (une seule séance) — d'où la preuve que la tolérance est LUE.
+    result = solve_payload(_colle_pair_payload(walking=12, intensity="MANDATORY", tolerance=0))
+    assert _placed_count(result, "t1", "t2") == 1
+
+
+def test_partial_tolerance_still_requires_a_gap() -> None:
+    # Barème 27 min, tolérance 20 ⇒ écart exigé 27 − 20 = 7 > 0 ; l'enchaînement collé (écart 0) est
+    # REFUSÉ. Prouve que la tolérance est RETRANCHÉE du barème, pas un interrupteur tout-ou-rien.
+    result = solve_payload(_colle_pair_payload(walking=27, intensity="MANDATORY", tolerance=20))
+    assert _placed_count(result, "t1", "t2") == 1
 
 
 # --- DÉPARTAGE : le gymnase suivant le plus proche, sans jamais dominer --------------------------
@@ -167,7 +217,7 @@ def test_mandatory_solve_leaves_no_tight_free_enchainement() -> None:
             _forced_venue("f1", "t1", "V1"),
             _forced_venue("f2", "t2", "V2"),
         ],
-        implicit_rules={"travelTime": {"intensity": "MANDATORY"}},
+        implicit_rules=MANDATORY_RULE,
     )
     payload["venueTravelTimes"] = [_row("V1", "V2", 30, 30)]
     result = solve_payload(payload)
@@ -189,7 +239,7 @@ def test_two_locks_that_contradict_travel_are_announced_not_muted() -> None:
         coaches=[_coach("c1")],
         constraints=[team_coach("tc1", "t1", "c1"), team_coach("tc2", "t2", "c1")],
         slot_templates=[_hard_lock("t1", "V1", 1, "18:20"), _hard_lock("t2", "V2", 1, "20:00")],
-        implicit_rules={"travelTime": {"intensity": "MANDATORY"}},
+        implicit_rules=MANDATORY_RULE,
     )
     payload["venueTravelTimes"] = [_row("V1", "V2", 30, 30)]
     result = solve_payload(payload)

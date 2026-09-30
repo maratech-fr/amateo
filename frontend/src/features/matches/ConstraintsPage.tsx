@@ -1,4 +1,4 @@
-import { AlertTriangle, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, Pencil, Plus, Trash2 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
@@ -12,9 +12,10 @@ import { Select } from "@/shared/components/ui/select";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
 import { DAYS, dayLabelLong } from "@/shared/lib/days";
 import { readFailed } from "@/shared/lib/readState";
+import { useMe } from "@/shared/session/queries";
 
 import type { ClubLeagueWindow, ClubLeagueWindowInput, Coach, LeagueWindowLevel, MatchConstraint, MatchConstraintInput, MatchRuleType, Team, Venue } from "./api";
-import { frClock } from "./lib/clubRuleLabel";
+import { clubRuleLabel, frClock } from "./lib/clubRuleLabel";
 import { LeagueSuggestions } from "./LeagueSuggestions";
 import {
   useClubLeagueWindows,
@@ -51,6 +52,9 @@ function isSection(value: string | null): value is ConstraintsSection {
 
 export function ConstraintsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const me = useMe();
+  // P4-271 — vérité serveur : n'annoter la cohérence d'une semaine A/B que si le club alterne.
+  const weekendAlternates = me.data?.club?.weekendAlternates ?? false;
   const openSection = isSection(searchParams.get("section")) ? (searchParams.get("section") as ConstraintsSection) : null;
 
   const setOpenSection = (section: ConstraintsSection | null): void => {
@@ -74,7 +78,7 @@ export function ConstraintsPage() {
       </AccordionSection>
 
       <AccordionSection {...sectionProps("club")} title="Club">
-        <ClubSection />
+        <ClubSection weekendAlternates={weekendAlternates} />
       </AccordionSection>
 
       <AccordionSection {...sectionProps("equipes")} title="Équipes">
@@ -99,6 +103,17 @@ const GENDERS: { value: string; label: string }[] = [
   { value: "F", label: "Féminin" },
   { value: "MIXTE", label: "Mixte" },
 ];
+
+/** Libellé court d'un jour ISO (Lun…Dim) — foyer unique `DAYS`, pour les résumés compacts. */
+const dayShort = (n: number): string => DAYS.find((d) => d.n === n)?.label ?? "";
+const daysShort = (days: number[]): string =>
+  [...days]
+    .sort((a, b) => a - b)
+    .map(dayShort)
+    .join(", ");
+
+const LEVEL_LABEL = new Map(LEVELS.map((l) => [l.value, l.label]));
+const GENDER_LABEL = new Map(GENDERS.map((g) => [g.value, g.label]));
 
 /**
  * La section Ligue : le tableau éditable de la copie club. Bandeau si la copie est
@@ -196,13 +211,29 @@ function DraftFields({ draft, set }: { draft: ClubLeagueWindowInput; set: (patch
   );
 }
 
-/** Une ligne éditable de la copie (PUT au « Enregistrer », DELETE au « Supprimer »). */
+/** Le résumé compact d'une fenêtre ligue : « U13F1 · Départemental · Samedi… · 13h–21h ». */
+function leagueWindowSummary(window: ClubLeagueWindow): string {
+  const parts = [window.category, LEVEL_LABEL.get(window.level) ?? window.level];
+  if (null !== window.gender && "" !== window.gender) {
+    parts.push(GENDER_LABEL.get(window.gender) ?? window.gender);
+  }
+  parts.push(`${daysShort([window.dayOfWeek])} ${frClock(window.kickoffMin)}–${frClock(window.kickoffMax)}`);
+  return parts.join(" · ");
+}
+
+/** Une ligne éditable de la copie : compacte au repos (résumé + ✎ + 🗑), dépliée en champs à l'édition. */
 function LeagueWindowRow({ window }: { window: ClubLeagueWindow }) {
+  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<ClubLeagueWindowInput>(() => emptyDraft(window));
   const [confirmDelete, setConfirmDelete] = useState(false);
   const update = useUpdateClubLeagueWindow();
   const remove = useDeleteClubLeagueWindow();
   const set = (patch: Partial<ClubLeagueWindowInput>): void => setDraft((d) => ({ ...d, ...patch }));
+
+  const openEdit = (): void => {
+    setDraft(emptyDraft(window));
+    setEditing(true);
+  };
 
   const dirty =
     draft.category !== window.category ||
@@ -214,20 +245,37 @@ function LeagueWindowRow({ window }: { window: ClubLeagueWindow }) {
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
-      <DraftFields draft={draft} set={set} />
-      <div className="ml-auto flex items-center gap-2">
-        {badgePill(window.badge)}
-        <Button
-          size="sm"
-          disabled={!dirty || !isComplete(draft) || update.isPending}
-          onClick={() => update.mutate({ id: window.id, input: { ...draft, gender: "" === draft.gender ? null : draft.gender } })}
-        >
-          Enregistrer
-        </Button>
-        <Button variant="outline" size="sm" aria-label="Supprimer" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
-          <Trash2 className="size-3.5" />
-        </Button>
-      </div>
+      {editing ? (
+        <>
+          <DraftFields draft={draft} set={set} />
+          <div className="ml-auto flex items-center gap-2">
+            {badgePill(window.badge)}
+            <Button
+              size="sm"
+              disabled={!dirty || !isComplete(draft) || update.isPending}
+              onClick={() => update.mutate({ id: window.id, input: { ...draft, gender: "" === draft.gender ? null : draft.gender } }, { onSuccess: () => setEditing(false) })}
+            >
+              Enregistrer
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
+              Annuler
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <span className="text-sm text-foreground">{leagueWindowSummary(window)}</span>
+          <div className="ml-auto flex items-center gap-2">
+            {badgePill(window.badge)}
+            <Button variant="ghost" size="icon" className="size-8" aria-label="Modifier" title="Modifier" onClick={openEdit}>
+              <Pencil className="size-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" className="size-8 text-destructive" aria-label="Supprimer" title="Supprimer" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
+        </>
+      )}
       <ConfirmDialog
         open={confirmDelete}
         title="Supprimer cette fenêtre de ligue ?"
@@ -275,6 +323,8 @@ const RULE_TYPES: { value: MatchRuleType; label: string }[] = [
   { value: "PREFERRED", label: "Préférée" },
 ];
 
+const RULE_TYPE_LABEL = new Map(RULE_TYPES.map((t) => [t.value, t.label]));
+
 interface ClubRuleDraft {
   ruleType: MatchRuleType;
   daysOfWeek: number[];
@@ -309,7 +359,7 @@ const sameDays = (a: number[], b: number[]): boolean => a.length === b.length &&
  * (PREFERRED, une préférence). Sous une règle, l'ALERTE DE COHÉRENCE — les créneaux
  * idéaux qu'elle heurte — est CALCULÉE côté serveur (`/coherence`), l'écran l'affiche.
  */
-function ClubSection() {
+function ClubSection({ weekendAlternates }: { weekendAlternates: boolean }) {
   const rules = useMatchConstraints();
   const coherence = useMatchConstraintCoherence();
 
@@ -340,7 +390,7 @@ function ClubSection() {
       ) : (
         <div className="flex flex-col gap-2">
           {clubRules.map((rule) => (
-            <ClubRuleRow key={rule.id} rule={rule} alerts={alertsByRule.get(rule.id) ?? []} />
+            <ClubRuleRow key={rule.id} rule={rule} alerts={alertsByRule.get(rule.id) ?? []} weekendAlternates={weekendAlternates} />
           ))}
         </div>
       )}
@@ -400,7 +450,7 @@ function RuleFields({ draft, set, idLabel }: { draft: ClubRuleDraft; set: (patch
 }
 
 /** L'alerte de cohérence sous une règle : les créneaux idéaux qu'elle heurte (calculée serveur). */
-function ClubRuleAlerts({ alerts }: { alerts: { teamId: string; teamName: string; week: string; dayOfWeek: number; kickoff: string }[] }) {
+function ClubRuleAlerts({ alerts, weekendAlternates }: { alerts: { teamId: string; teamName: string; week: string; dayOfWeek: number; kickoff: string }[]; weekendAlternates: boolean }) {
   if (0 === alerts.length) {
     return null;
   }
@@ -411,7 +461,7 @@ function ClubRuleAlerts({ alerts }: { alerts: { teamId: string; teamName: string
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
           <span>
             Cette règle heurte le créneau idéal des {h.teamName}
-            {"ALL" !== h.week ? ` (semaine ${h.week})` : ""} : {dayLabelLong(h.dayOfWeek)} {frClock(h.kickoff)}.
+            {weekendAlternates ? ` (semaine ${h.week})` : ""} : {dayLabelLong(h.dayOfWeek)} {frClock(h.kickoff)}.
           </span>
         </p>
       ))}
@@ -419,13 +469,24 @@ function ClubRuleAlerts({ alerts }: { alerts: { teamId: string; teamName: string
   );
 }
 
-/** Une règle éditable (PUT au « Enregistrer », DELETE au « Supprimer »). */
-function ClubRuleRow({ rule, alerts }: { rule: MatchConstraint; alerts: { teamId: string; teamName: string; week: string; dayOfWeek: number; kickoff: string }[] }) {
+/** Le résumé compact d'une règle club : « Samedi · pas après 21h · Obligatoire ». */
+function clubRuleSummary(rule: MatchConstraint): string {
+  return `${daysShort(rule.daysOfWeek)} · ${clubRuleLabel(rule)} · ${RULE_TYPE_LABEL.get(rule.ruleType) ?? rule.ruleType}`;
+}
+
+/** Une règle éditable : compacte au repos (résumé + ✎ + 🗑), dépliée en champs à l'édition. */
+function ClubRuleRow({ rule, alerts, weekendAlternates }: { rule: MatchConstraint; alerts: { teamId: string; teamName: string; week: string; dayOfWeek: number; kickoff: string }[]; weekendAlternates: boolean }) {
+  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<ClubRuleDraft>(() => emptyRuleDraft(rule));
   const [confirmDelete, setConfirmDelete] = useState(false);
   const update = useUpdateMatchConstraint();
   const remove = useDeleteMatchConstraint();
   const set = (patch: Partial<ClubRuleDraft>): void => setDraft((d) => ({ ...d, ...patch }));
+
+  const openEdit = (): void => {
+    setDraft(emptyRuleDraft(rule));
+    setEditing(true);
+  };
 
   const dirty =
     draft.ruleType !== rule.ruleType ||
@@ -435,16 +496,32 @@ function ClubRuleRow({ rule, alerts }: { rule: MatchConstraint; alerts: { teamId
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
-      <RuleFields draft={draft} set={set} idLabel="règle" />
-      <div className="ml-auto flex items-center gap-2">
-        <Button size="sm" disabled={!dirty || !isRuleComplete(draft) || update.isPending} onClick={() => update.mutate({ id: rule.id, input: toRuleInput(draft) })}>
-          Enregistrer
-        </Button>
-        <Button variant="outline" size="sm" aria-label="Supprimer" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
-          <Trash2 className="size-3.5" />
-        </Button>
-      </div>
-      <ClubRuleAlerts alerts={alerts} />
+      {editing ? (
+        <>
+          <RuleFields draft={draft} set={set} idLabel="règle" />
+          <div className="ml-auto flex items-center gap-2">
+            <Button size="sm" disabled={!dirty || !isRuleComplete(draft) || update.isPending} onClick={() => update.mutate({ id: rule.id, input: toRuleInput(draft) }, { onSuccess: () => setEditing(false) })}>
+              Enregistrer
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
+              Annuler
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <span className="text-sm text-foreground">{clubRuleSummary(rule)}</span>
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="ghost" size="icon" className="size-8" aria-label="Modifier" title="Modifier" onClick={openEdit}>
+              <Pencil className="size-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" className="size-8 text-destructive" aria-label="Supprimer" title="Supprimer" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
+        </>
+      )}
+      <ClubRuleAlerts alerts={alerts} weekendAlternates={weekendAlternates} />
       <ConfirmDialog
         open={confirmDelete}
         title="Supprimer cette règle de match ?"
@@ -728,13 +805,24 @@ function CoachFields({ draft, set, coaches, idLabel }: { draft: CoachUnavailabil
   );
 }
 
-/** Une indisponibilité éditable (PUT au « Enregistrer », DELETE au « Supprimer »). */
+/** Le résumé compact d'une indisponibilité : « Mateo Durand · Sam · pas avant 14h ». */
+function coachUnavailabilitySummary(rule: MatchConstraint, coachName: string): string {
+  return `${coachName} · ${daysShort(rule.daysOfWeek)} · ${clubRuleLabel(rule)}`;
+}
+
+/** Une indisponibilité éditable : compacte au repos (résumé + ✎ + 🗑), dépliée en champs à l'édition. */
 function CoachUnavailabilityRow({ rule, coaches, coachName }: { rule: MatchConstraint; coaches: Coach[]; coachName: string }) {
+  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<CoachUnavailabilityDraft>(() => emptyCoachDraft(rule));
   const [confirmDelete, setConfirmDelete] = useState(false);
   const update = useUpdateMatchConstraint();
   const remove = useDeleteMatchConstraint();
   const set = (patch: Partial<CoachUnavailabilityDraft>): void => setDraft((d) => ({ ...d, ...patch }));
+
+  const openEdit = (): void => {
+    setDraft(emptyCoachDraft(rule));
+    setEditing(true);
+  };
 
   const dirty =
     draft.coachId !== (rule.scopeTargetId ?? "") ||
@@ -744,15 +832,31 @@ function CoachUnavailabilityRow({ rule, coaches, coachName }: { rule: MatchConst
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
-      <CoachFields draft={draft} set={set} coaches={coaches} idLabel={coachName} />
-      <div className="ml-auto flex items-center gap-2">
-        <Button size="sm" disabled={!dirty || !isCoachDraftComplete(draft) || update.isPending} onClick={() => update.mutate({ id: rule.id, input: toCoachInput(draft) })}>
-          Enregistrer
-        </Button>
-        <Button variant="outline" size="sm" aria-label="Supprimer" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
-          <Trash2 className="size-3.5" />
-        </Button>
-      </div>
+      {editing ? (
+        <>
+          <CoachFields draft={draft} set={set} coaches={coaches} idLabel={coachName} />
+          <div className="ml-auto flex items-center gap-2">
+            <Button size="sm" disabled={!dirty || !isCoachDraftComplete(draft) || update.isPending} onClick={() => update.mutate({ id: rule.id, input: toCoachInput(draft) }, { onSuccess: () => setEditing(false) })}>
+              Enregistrer
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
+              Annuler
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <span className="text-sm text-foreground">{coachUnavailabilitySummary(rule, coachName)}</span>
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="ghost" size="icon" className="size-8" aria-label="Modifier" title="Modifier" onClick={openEdit}>
+              <Pencil className="size-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" className="size-8 text-destructive" aria-label="Supprimer" title="Supprimer" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
+        </>
+      )}
       <ConfirmDialog
         open={confirmDelete}
         title="Supprimer cette indisponibilité ?"

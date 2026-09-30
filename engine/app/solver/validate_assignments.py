@@ -23,7 +23,7 @@ from app.solver.constraints import (
     resolve_implicit_rules,
     team_share_declared_pairs,
 )
-from app.solver.constraints.travel import TravelPlacement, iter_travel_pairs_from_placements
+from app.solver.constraints.travel import TravelPlacement, iter_travel_pairs_from_placements, required_gap
 from app.solver.model import (
     DEFAULT_SESSION_MINUTES,
     HARD_LOCK_LEVEL,
@@ -343,8 +343,8 @@ def _travel_time_move_violation(
         matrix=matrix,
         default_minutes=resolved_rules.travel_time_default_minutes,
     ):
-        if gap >= barometer:
-            continue  # battement suffisant : la pose ne poserait rien ici non plus.
+        if gap >= required_gap(barometer, resolved_rules.travel_time_tolerance_minutes):
+            continue  # battement suffisant (toléré compris) : la pose ne poserait rien ici non plus.
         if id(pa) not in candidate_ids and id(pb) not in candidate_ids:
             continue  # enchaînement PRÉEXISTANT (baseline seule) : jamais imputé au déplacement.
         coach_id = traveler_key.split(":", 1)[1]
@@ -663,6 +663,7 @@ def _evaluate_state(
             team_coach_map=team_coach_map,
             venue_travel_times=data.get("venueTravelTimes", []),
             default_minutes=resolved_rules.travel_time_default_minutes,
+            tolerance_minutes=resolved_rules.travel_time_tolerance_minutes,
             info_out=info,
         )
 

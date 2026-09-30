@@ -1,6 +1,6 @@
 # Console superadmin — authentification, télémétrie et API de supervision
 
-Last verified @ 2026-09-28 (rotation de fraîcheur, `documentation-update`). Re-vérifié contre le
+Last verified @ 2026-09-30 (rotation de fraîcheur, `documentation-update`). Re-vérifié contre le
 code : firewall `admin` = `pattern: ^/api/admin`, `provider: super_admin_provider`
 (`backend/config/packages/security.yaml:33,36`) ✓ ; `AdminCsrfListener` toujours à la priorité 6
 (`AdminCsrfListener.php:38`) ✓ ; `PasswordPolicy::MIN_LENGTH`/`REQUIREMENT_FR`

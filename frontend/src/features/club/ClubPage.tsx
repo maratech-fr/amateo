@@ -286,6 +286,8 @@ function ClubSiegeSubsection({ club }: { club: NonNullable<MeResponse["club"]> }
       <AddressGeocodeField
         address={club.address}
         located={located}
+        latitude={club.latitude}
+        longitude={club.longitude}
         placeholder="Adresse du siège"
         label="Adresse du siège"
         statusWord="Siège localisé"

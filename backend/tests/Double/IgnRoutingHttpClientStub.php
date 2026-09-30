@@ -13,18 +13,21 @@ use Symfony\Contracts\HttpClient\ResponseStreamInterface;
 /**
  * Deterministic IGN routing backend for the TEST env (wired in services_test.yaml
  * as IgnRoutingClient's HTTP client): the matrix autofill must never hit the real
- * Géoplateforme. Returns a fixed duration by profile (car → 10 min, pedestrian →
- * 30 min after ceil), EXCEPT when either endpoint carries the « poison »
- * coordinate {@see self::POISON_COORD}: that request answers HTTP 500 with no
- * duration, so the pair resolves as unresolved (routing_failed) — proving the
+ * Géoplateforme. Returns a fixed duration + distance by profile. Car → 10 min (from
+ * duration). Non-vehicled mode (« pedestrian » profile) is now the BIKE: its AUTO time is
+ * DISTANCE-based — ceil(4200 m / 250) + 5 = 22 min (décision fondateur 2026-09-30), NOT the
+ * pedestrian duration. Poison coordinate {@see self::POISON_COORD}: HTTP 500 with no
+ * duration/distance, so the pair resolves as unresolved (routing_failed) — proving the
  * best-effort per-pair behaviour without a network call.
  */
 final class IgnRoutingHttpClientStub implements HttpClientInterface
 {
-    /** ceil(600/60) = 10 min in a car. */
+    /** ceil(600/60) = 10 min in a car (from IGN `duration`). */
     public const DRIVING_MINUTES = 10;
-    /** ceil(1800/60) = 30 min on foot. */
-    public const WALKING_MINUTES = 30;
+    /** ceil(4200/250) + 5 = 22 min à vélo (from IGN `distance`, 15 km/h + 5 min marge). */
+    public const WALKING_MINUTES = 22;
+    /** The pedestrian-route DISTANCE (metres) the stub returns — the bike time derives from it. */
+    public const WALKING_DISTANCE_METERS = 4200;
 
     /** A venue latitude/longitude the stub recognises to force a routing failure. */
     public const POISON_COORD = '1.234567';

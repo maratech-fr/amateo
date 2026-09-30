@@ -143,7 +143,7 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks }: C
               Véhiculé
             </label>
             <span id={`vehicled-help-${coach.id}`} className="text-muted-foreground">
-              (trajet en voiture, à pied sinon)
+              (trajet en voiture, à vélo sinon)
             </span>
           </span>
           {/* P4-51 — le plafond de COMPTE : « peu importe quels jours, pas plus de N par
@@ -243,7 +243,7 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks }: C
           ) : null}
 
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <TeamSelect aria-label="Équipe" className="h-8 w-40" teams={teams} tiers={tiers} value={linkTeam || firstTeam} onValueChange={setLinkTeam} />
+            <TeamSelect aria-label="Équipe" className="h-8" wrapperClassName="w-40" teams={teams} tiers={tiers} value={linkTeam || firstTeam} onValueChange={setLinkTeam} />
             <Select aria-label="Rôle" className="h-8 w-28" value={linkRole} onChange={(e) => setLinkRole(e.target.value as TeamCoachRole | "PLAYER")}>
               <option value="MAIN">Coach</option>
               <option value="ASSISTANT">Adjoint</option>

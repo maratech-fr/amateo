@@ -77,8 +77,10 @@ final class VenueTravelTimeAutofillBudgetTest extends WebTestCase
 
     private function autofillWith(ClockInterface $clock): VenueTravelTimeAutofillService
     {
+        // `distance` requise : le mode non véhiculé (vélo, lot A) dérive son temps de la DISTANCE de
+        // l'itinéraire, plus de la durée — un mock sans distance laisserait le mode vélo non résolu.
         $ign = new IgnRoutingClient(
-            new MockHttpClient(static fn (): MockResponse => new MockResponse((string) json_encode(['duration' => 600]))),
+            new MockHttpClient(static fn (): MockResponse => new MockResponse((string) json_encode(['duration' => 600, 'distance' => 3000]))),
             $clock,
         );
 

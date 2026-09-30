@@ -60,6 +60,13 @@ interface ListboxProps {
   id?: string;
   /** Applied to the trigger button (width/height overrides). */
   className?: string;
+  /**
+   * Wraps the whole field (trigger + popover anchor). Width usually lives here — the popover
+   * matches the wrapper width. Défaut `"w-full"` : les ~12 consommateurs restent pleine largeur ;
+   * un champ étroit (rôle de coach, w-40) passe la sienne (régression 2026-09-06 : le `w-full` était
+   * codé en dur et forçait la pleine largeur).
+   */
+  wrapperClassName?: string;
   autoFocus?: boolean;
   "aria-label"?: string;
   "aria-labelledby"?: string;
@@ -157,6 +164,7 @@ export function Listbox({
   searchLabel = "Rechercher",
   id,
   className,
+  wrapperClassName = "w-full",
   autoFocus,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledby,
@@ -423,7 +431,7 @@ export function Listbox({
   );
 
   return (
-    <div className="w-full">
+    <div className={wrapperClassName}>
       {ariaLabel !== undefined && ariaLabelledby === undefined ? (
         <span id={fallbackLabelId} className="sr-only">
           {ariaLabel}

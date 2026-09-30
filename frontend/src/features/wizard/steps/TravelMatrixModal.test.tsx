@@ -98,49 +98,94 @@ describe("TravelMatrixModal — première ouverture (consentement)", () => {
   });
 });
 
-describe("TravelMatrixModal — la matrice", () => {
-  it("distingue AUTO et MANUEL d'un coup d'œil (icône + texte)", () => {
+describe("TravelMatrixModal — matrice N×N", () => {
+  it("rend une VRAIE matrice : chaque gymnase en en-tête de colonne ET de ligne", () => {
+    matrixState.data = [row({ id: "r1", venueAId: "v1", venueBId: "v2", drivingMinutes: 15, drivingSource: "AUTO" })];
+    renderWithProviders(<TravelMatrixModal onClose={vi.fn()} />);
+
+    for (const name of ["Alpha", "Beta", "Gamma"]) {
+      expect(screen.getByRole("columnheader", { name })).toBeInTheDocument();
+      expect(screen.getByRole("rowheader", { name })).toBeInTheDocument();
+    }
+    // La diagonale : un « — » par gymnase (Alpha↔Alpha…).
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("est SYMÉTRIQUE : A↔B et B↔A montrent la même valeur (même pairKey)", () => {
+    matrixState.data = [row({ id: "r1", venueAId: "v1", venueBId: "v2", drivingMinutes: 15, drivingSource: "AUTO" })];
+    renderWithProviders(<TravelMatrixModal onClose={vi.fn()} />);
+
+    const has = (a: string, b: string) => (n: string) => n.includes(`${a} ↔ ${b}`) && n.includes("en voiture 15 min");
+    expect(screen.getByRole("button", { name: has("Alpha", "Beta") })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: has("Beta", "Alpha") })).toBeInTheDocument();
+  });
+
+  it("case en LECTURE SEULE : ni champ ni badge AUTO/MANUEL dans la case (seul le filtre est un textbox)", () => {
     matrixState.data = [row({ id: "r1", venueAId: "v1", venueBId: "v2", drivingMinutes: 15, drivingSource: "AUTO", walkingMinutes: 40, walkingSource: "MANUAL" })];
     renderWithProviders(<TravelMatrixModal onClose={vi.fn()} />);
 
-    // Les badges (texte exact) — distincts de la légende « Auto (calculé) » / « Manuel (saisi) ».
-    expect(screen.getAllByText("Auto").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Manuel").length).toBeGreaterThanOrEqual(1);
+    // Un seul textbox dans toute la vue : le filtre. Aucune case n'expose de champ.
+    expect(screen.getAllByRole("textbox")).toHaveLength(1);
+    // Plus aucun badge « Auto »/« Manuel » dans les cases.
+    expect(screen.queryByText("Auto")).toBeNull();
+    expect(screen.queryByText("Manuel")).toBeNull();
+    // Les temps s'affichent en lecture seule.
+    expect(screen.getAllByText("15′").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("40′").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("éditer une valeur d'un couple EXISTANT → PUT avec la valeur (MANUEL posé côté serveur)", () => {
+  it("code couleur/gras : calculé = neutre, saisi à la main = accent + GRAS (indice non chromatique)", () => {
+    matrixState.data = [row({ id: "r1", venueAId: "v1", venueBId: "v2", drivingMinutes: 15, drivingSource: "AUTO", walkingMinutes: 40, walkingSource: "MANUAL" })];
+    renderWithProviders(<TravelMatrixModal onClose={vi.fn()} />);
+
+    // Le temps SAISI (40′) porte le gras + l'accent ; le temps CALCULÉ (15′) reste neutre.
+    const manual = screen.getAllByText("40′")[0].parentElement as HTMLElement;
+    expect(manual.className).toContain("font-semibold");
+    expect(manual.className).toContain("text-accent");
+    const auto = screen.getAllByText("15′")[0].parentElement as HTMLElement;
+    expect(auto.className).toContain("text-muted-foreground");
+    expect(auto.className).not.toContain("font-semibold");
+    // Légende : même code (« Saisi à la main » en gras accent).
+    expect(screen.getByText("Calculé automatiquement")).toBeInTheDocument();
+    expect(screen.getByText("Saisi à la main").className).toContain("font-semibold");
+  });
+
+  it("clic sur une case → modale d'édition ; éditer un couple EXISTANT → PUT (MANUEL posé côté serveur)", () => {
     matrixState.data = [row({ id: "r1", venueAId: "v1", venueBId: "v2", drivingMinutes: 15, drivingSource: "AUTO" })];
     renderWithProviders(<TravelMatrixModal onClose={vi.fn()} />);
 
-    const input = screen.getByRole("textbox", { name: "En voiture — Alpha → Beta" });
-    fireEvent.change(input, { target: { value: "22" } });
-    fireEvent.blur(input);
+    fireEvent.click(screen.getByRole("button", { name: (n) => n.includes("Alpha ↔ Beta") }));
+    expect(screen.getByRole("heading", { name: "Alpha ↔ Beta" })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "En voiture — Alpha ↔ Beta (minutes)" }), { target: { value: "22" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
 
+    // Seule la valeur MODIFIÉE (voiture) est écrite ; la marche, inchangée, ne l'est pas.
+    expect(updateMut).toHaveBeenCalledTimes(1);
     expect(updateMut).toHaveBeenCalledWith(expect.objectContaining({ id: "r1", body: { venueAId: "v1", venueBId: "v2", drivingMinutes: 22 } }));
   });
 
-  it("éditer un couple SANS ligne → POST (création) avec la valeur", () => {
-    matrixState.data = [];
-    // Une matrice non vide (r1) pour éviter le consentement, tout en laissant Alpha→Gamma vierge.
+  it("éditer un couple SANS ligne via la modale → POST (création) avec la valeur", () => {
     matrixState.data = [row({ id: "r1", venueAId: "v1", venueBId: "v2", drivingMinutes: 15, drivingSource: "AUTO" })];
     renderWithProviders(<TravelMatrixModal onClose={vi.fn()} />);
 
-    const input = screen.getByRole("textbox", { name: "En voiture — Alpha → Gamma" });
-    fireEvent.change(input, { target: { value: "18" } });
-    fireEvent.blur(input);
+    fireEvent.click(screen.getByRole("button", { name: (n) => n.includes("Alpha ↔ Gamma") }));
+    fireEvent.change(screen.getByRole("textbox", { name: "En voiture — Alpha ↔ Gamma (minutes)" }), { target: { value: "18" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
 
     expect(createMut).toHaveBeenCalledWith({ venueAId: "v1", venueBId: "v3", drivingMinutes: 18 });
   });
 
-  it("les couples non résolus s'affichent « À saisir » avec leur raison (verdict servi)", () => {
+  it("les couples non résolus portent leur raison dans le nom accessible de la case (verdict servi)", () => {
     matrixState.data = [row({ id: "r1", venueAId: "v1", venueBId: "v2", drivingMinutes: 15, drivingSource: "AUTO" })];
     autofillResultState.value = { filled: 1, unresolved: [{ venueAId: "v1", venueBId: "v3", reason: "missing_geo" }] };
     renderWithProviders(<TravelMatrixModal onClose={vi.fn()} />);
 
-    // Avant recalcul : pas encore de raison affichée.
-    expect(screen.queryByText(/gymnase sans adresse/)).toBeNull();
+    // Avant recalcul : la case Alpha↔Gamma est « à saisir », pas encore de raison.
+    expect(screen.getByRole("button", { name: (n) => n.includes("Alpha ↔ Gamma") && n.includes("à saisir") })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Recalculer les trajets" }));
-    // Après le verdict : la raison du couple Alpha→Gamma est nommée.
+    // Après le verdict : la raison est dans le nom accessible + visible dans la modale.
+    const cell = screen.getByRole("button", { name: (n) => n.includes("Alpha ↔ Gamma") && n.includes("gymnase sans adresse") });
+    fireEvent.click(cell);
     expect(screen.getAllByText(/gymnase sans adresse/).length).toBeGreaterThanOrEqual(1);
   });
 
@@ -151,40 +196,36 @@ describe("TravelMatrixModal — la matrice", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Recalculer les trajets" }));
     // BCK-22 — le lot s'est arrêté sur son budget : le couple est à relancer, pas perdu.
-    expect(screen.getAllByText(/calcul interrompu, relancez/).length).toBeGreaterThanOrEqual(1);
-    expect(screen.queryByText(/calcul impossible/)).toBeNull();
+    expect(screen.getByRole("button", { name: (n) => n.includes("Alpha ↔ Gamma") && n.includes("calcul interrompu, relancez") })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: (n) => n.includes("calcul impossible") })).toBeNull();
   });
 
-  it("re-lancer l'autofill : les valeurs MANUEL restent affichées inchangées", () => {
+  it("re-lancer l'autofill : une valeur MANUEL reste affichée, inchangée et en gras", () => {
     matrixState.data = [row({ id: "r1", venueAId: "v1", venueBId: "v2", drivingMinutes: 15, drivingSource: "MANUAL" })];
     autofillResultState.value = { filled: 0, unresolved: [] };
     renderWithProviders(<TravelMatrixModal onClose={vi.fn()} />);
 
-    expect(screen.getAllByText("Manuel").length).toBeGreaterThanOrEqual(1);
     fireEvent.click(screen.getByRole("button", { name: "Recalculer les trajets" }));
-    // La ligne MANUEL servie n'a pas bougé : le badge « Manuel » est toujours là.
     expect(autofillMut).toHaveBeenCalledTimes(1);
-    expect(screen.getAllByText("Manuel").length).toBeGreaterThanOrEqual(1);
-    const input = screen.getByRole("textbox", { name: "En voiture — Alpha → Beta" }) as HTMLInputElement;
-    expect(input.value).toBe("15");
+    // La valeur MANUEL servie (15′) est toujours là, en gras accent (le nom accessible dit « saisi à la main »).
+    expect(screen.getAllByText("15′")[0].parentElement?.className).toContain("font-semibold");
+    expect(screen.getByRole("button", { name: (n) => n.includes("Alpha ↔ Beta") && n.includes("en voiture 15 min (saisi à la main)") })).toBeInTheDocument();
   });
 
-  it("une saisie HORS BORNES est rejetée AVEC un signal (toast) — plus de restauration muette (FRT-27)", () => {
+  it("une saisie HORS BORNES dans la modale est rejetée AVEC un signal (toast), rien d'écrit, modale ouverte (FRT-27)", () => {
     const errorSpy = vi.spyOn(toast, "error").mockImplementation(() => 0);
     matrixState.data = [row({ id: "r1", venueAId: "v1", venueBId: "v2", drivingMinutes: 15, drivingSource: "AUTO" })];
     renderWithProviders(<TravelMatrixModal onClose={vi.fn()} />);
 
-    const input = screen.getByRole("textbox", { name: "En voiture — Alpha → Beta" }) as HTMLInputElement;
-    fireEvent.change(input, { target: { value: "999" } }); // > MAX_MINUTES (240)
-    fireEvent.blur(input);
+    fireEvent.click(screen.getByRole("button", { name: (n) => n.includes("Alpha ↔ Beta") }));
+    fireEvent.change(screen.getByRole("textbox", { name: "En voiture — Alpha ↔ Beta (minutes)" }), { target: { value: "999" } }); // > MAX_MINUTES (240)
+    fireEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
 
-    // Le SIGNAL part…
     expect(errorSpy).toHaveBeenCalledWith(expect.stringMatching(/\S/));
-    // …la valeur servie est restaurée (logique inchangée)…
-    expect(input.value).toBe("15");
-    // …et rien n'est écrit côté serveur.
     expect(updateMut).not.toHaveBeenCalled();
     expect(createMut).not.toHaveBeenCalled();
+    // La modale reste OUVERTE (la saisie n'est pas perdue).
+    expect(screen.getByRole("heading", { name: "Alpha ↔ Beta" })).toBeInTheDocument();
   });
 
   it("nomme les gymnases sans adresse et offre le lien vers leur fiche", () => {

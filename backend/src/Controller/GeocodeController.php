@@ -48,4 +48,29 @@ final class GeocodeController extends AbstractController
 
         return $this->json(['candidates' => $candidates]);
     }
+
+    /**
+     * Reverse-geocoding : le LIBELLÉ d'adresse le plus proche de coordonnées posées (seed/FFBB)
+     * quand aucune adresse n'a été saisie — pour AFFICHER de quoi vérifier un « Localisé » nu.
+     * Management-gated (SEC-07), best-effort : `{label: null}` si la BAN ne renvoie rien ou
+     * échoue (jamais un geste cassé), 422 sur des coordonnées invalides. Aucune écriture en base.
+     */
+    #[Route('/api/geocode/reverse', name: 'api_geocode_reverse', methods: ['GET'])]
+    public function reverse(Request $request): JsonResponse
+    {
+        $this->managementAccessGuard->assertManager(); // SEC-07
+
+        $latRaw = (string) $request->query->get('lat', '');
+        $lonRaw = (string) $request->query->get('lon', '');
+        if (!is_numeric($latRaw) || !is_numeric($lonRaw)) {
+            return $this->json(['error' => 'Coordonnées invalides.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+        $latitude = (float) $latRaw;
+        $longitude = (float) $lonRaw;
+        if (!BanGeocodingClient::isValidCoordinate($latitude, $longitude)) {
+            return $this->json(['error' => 'Coordonnées hors bornes.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        return $this->json(['label' => $this->geocoder->reverse($latitude, $longitude)]);
+    }
 }

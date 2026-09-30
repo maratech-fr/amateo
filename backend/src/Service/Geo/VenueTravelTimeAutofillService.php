@@ -26,6 +26,17 @@ final class VenueTravelTimeAutofillService
 {
     public const MAX_AUTOFILL_PAIRS = 120;
 
+    /**
+     * Le mode NON VÉHICULÉ de la matrice est le VÉLO / la TROTTINETTE (décision fondateur
+     * 2026-09-30, remplace la marche). Son temps AUTO n'est plus la DURÉE piétonne d'IGN mais la
+     * DISTANCE de l'itinéraire piéton convertie à ~15 km/h — 250 m/min — plus une marge fixe. Le
+     * couple/colonne garde son nom technique `walking*` (contrat, entité), seul le SENS change.
+     */
+    private const int BIKE_SPEED_METERS_PER_MINUTE = 250;
+
+    /** Marge fixe ajoutée au temps à vélo (préparation/rangement du vélo, feux…), en minutes. */
+    private const int BIKE_MARGIN_MINUTES = 5;
+
     private const REASON_MISSING_GEO = 'missing_geo';
     private const REASON_ROUTING_FAILED = 'routing_failed';
     // The routing budget ran out before this pair's turn: NOT a failure, the lot
@@ -194,13 +205,26 @@ final class VenueTravelTimeAutofillService
     {
         $total = \count($jobs);
         if (!$this->travelCache instanceof TravelTimeCache) {
-            return $this->routingClient->travelMinutesBatch($jobs, budgetSeconds: $budgetSeconds, onProgress: $onProgress);
+            $batch = $this->routingClient->travelMinutesBatch($jobs, budgetSeconds: $budgetSeconds, onProgress: $onProgress);
+            $out = [];
+            foreach ($jobs as $job) {
+                $key = $job['key'];
+                // Seules les clés RÉELLEMENT tentées (présentes dans `minutes`) sont finalisées ;
+                // celles coupées par le budget restent absentes (le caller les liste budget_exceeded).
+                if (\array_key_exists($key, $batch['minutes'])) {
+                    $out[$key] = $this->finalizeMinutes($job['profile'], $batch['minutes'][$key], $batch['meters'][$key] ?? null);
+                }
+            }
+
+            return ['minutes' => $out, 'budgetExceededKeys' => $batch['budgetExceededKeys']];
         }
 
         $cached = [];
         $misses = [];
         $missByKey = [];
         foreach ($jobs as $job) {
+            // Le cache stocke la valeur FINALE par profil (voiture = durée, vélo = temps à vélo
+            // déjà converti), donc un hit se ressert tel quel — sans reconvertir.
             $hit = $this->travelCache->lookup($clubId, $job['profile'], $job['startLat'], $job['startLon'], $job['endLat'], $job['endLon']);
             if (null !== $hit) {
                 $cached[$job['key']] = $hit;
@@ -223,14 +247,35 @@ final class VenueTravelTimeAutofillService
                 $onProgress($cacheHitCount + $done, $total);
             },
         );
+        $fresh = [];
         foreach ($batch['minutes'] as $key => $minutes) {
-            if (null !== $minutes && isset($missByKey[$key])) {
-                $job = $missByKey[$key];
-                $this->travelCache->store($clubId, $job['profile'], $job['startLat'], $job['startLon'], $job['endLat'], $job['endLon'], $minutes);
+            if (!isset($missByKey[$key])) {
+                continue;
+            }
+            $job = $missByKey[$key];
+            $final = $this->finalizeMinutes($job['profile'], $minutes, $batch['meters'][$key] ?? null);
+            $fresh[$key] = $final;
+            if (null !== $final) {
+                $this->travelCache->store($clubId, $job['profile'], $job['startLat'], $job['startLon'], $job['endLat'], $job['endLon'], $final);
             }
         }
 
-        return ['minutes' => $cached + $batch['minutes'], 'budgetExceededKeys' => $batch['budgetExceededKeys']];
+        return ['minutes' => $cached + $fresh, 'budgetExceededKeys' => $batch['budgetExceededKeys']];
+    }
+
+    /**
+     * Le temps FINAL d'un couple pour un profil : la DURÉE (minutes) pour la voiture ; pour le mode
+     * non véhiculé (vélo/trottinette), la DISTANCE de l'itinéraire piéton convertie à
+     * {@see BIKE_SPEED_METERS_PER_MINUTE} m/min plus {@see BIKE_MARGIN_MINUTES}. `null` si la mesure
+     * requise (durée voiture / distance vélo) manque.
+     */
+    private function finalizeMinutes(string $profile, ?int $minutes, ?int $meters): ?int
+    {
+        if (IgnRoutingClient::PROFILE_PEDESTRIAN === $profile) {
+            return null === $meters ? null : (int) ceil($meters / self::BIKE_SPEED_METERS_PER_MINUTE) + self::BIKE_MARGIN_MINUTES;
+        }
+
+        return $minutes;
     }
 
     /**

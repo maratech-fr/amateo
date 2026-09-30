@@ -68,9 +68,9 @@ class TeamMatchHabitStateProcessor extends AbstractStateProcessor
         // « aucun gymnase », un UUID le pose. Le PUT peut donc RETIRER le gymnase d'un
         // créneau idéal, pas seulement le changer.
         $entity->setVenueId(null === $input->venueId || '' === $input->venueId ? null : $input->venueId);
-        // Semaine d'alternance : omise ⇒ `ALL` (défaut), sur création comme sur
+        // Semaine d'alternance : omise ⇒ `A` (défaut), sur création comme sur
         // PUT (idiome full-replace, cf. venueId ci-dessus).
-        $entity->setWeek(null !== $input->week ? MatchWeek::from($input->week) : MatchWeek::ALL);
+        $entity->setWeek(null !== $input->week ? MatchWeek::from($input->week) : MatchWeek::A);
 
         // Foreign/unknown references resolve to null through the tenant+season
         // filters → 422. `findOneBy`, NOT `find()`: a PK load can serve the

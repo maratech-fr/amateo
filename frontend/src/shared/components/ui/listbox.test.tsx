@@ -51,6 +51,20 @@ function Harness(props: { onValueChange?: (v: string) => void; initial?: string 
 const trigger = () => screen.getByRole("button", { name: /Équipe/ });
 const list = () => screen.getByRole("listbox");
 
+describe("Listbox — wrapperClassName (régression 2026-09-06)", () => {
+  it("le wrapper vaut `w-full` par défaut", () => {
+    render(<Harness />);
+    expect(trigger().closest("div")).toHaveClass("w-full");
+  });
+
+  it("un wrapperClassName explicite remplace le défaut (largeur contrainte)", () => {
+    render(<Harness wrapperClassName="w-40" />);
+    const wrapper = trigger().closest("div");
+    expect(wrapper).toHaveClass("w-40");
+    expect(wrapper).not.toHaveClass("w-full");
+  });
+});
+
 describe("Listbox — trigger & rôles", () => {
   it("expose un trigger button[aria-haspopup=listbox], fermé par défaut, sans listbox rendue", () => {
     render(<Harness />);

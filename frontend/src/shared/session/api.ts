@@ -85,6 +85,8 @@ export interface MeResponse {
     id: string;
     name: string;
     onboardingCompleted: boolean;
+    /** P4-271 — modèle de week-end sur deux semaines (A/B) : aide visuelle « Semaine type ». */
+    weekendAlternates: boolean;
     logoUrl: string | null;
     accentColor: string | null;
     accentColorDark: string | null;
