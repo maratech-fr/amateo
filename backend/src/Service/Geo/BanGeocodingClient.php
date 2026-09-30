@@ -65,36 +65,39 @@ final class BanGeocodingClient
      */
     public function reverse(float $latitude, float $longitude): ?string
     {
-        if (!self::isValidCoordinate($latitude, $longitude)) {
-            return null;
-        }
-
-        try {
-            $data = $this->httpClient->request('GET', self::REVERSE_URL, [
-                'query' => ['lat' => $latitude, 'lon' => $longitude],
-                'headers' => ['Accept' => 'application/json'],
-                'timeout' => self::TIMEOUT,
-                'max_duration' => self::TIMEOUT,
-                'max_redirects' => 0,
-                'on_progress' => static function (int $dlNow): void {
-                    if ($dlNow > self::MAX_RESPONSE_BYTES) {
-                        throw new RuntimeException(\sprintf('Réponse BAN trop volumineuse (> %d octets).', self::MAX_RESPONSE_BYTES));
-                    }
-                },
-            ])->toArray(false);
-        } catch (Throwable) {
-            return null; // best-effort : un échec réseau/HTTP n'est jamais une erreur ici.
-        }
-
-        $features = $data['features'] ?? null;
-        if (!\is_array($features)) {
-            return null;
-        }
-        foreach (array_values($features) as $feature) {
+        foreach ($this->reverseFeatures($latitude, $longitude) as $feature) {
             $simple = $this->mapFeature($feature);
             if (null !== $simple) {
                 return $simple['label'];
             }
+        }
+
+        return null;
+    }
+
+    /**
+     * Reverse-géocode pour un CONTRÔLE de cohérence de position (jamais un affichage d'adresse) :
+     * la RUE la plus proche (`properties.street`, sinon `properties.name`) et le TYPE de précision
+     * BAN (`housenumber` | `street` | `locality` | `municipality`), tels quels. BEST-EFFORT :
+     * `null` si l'appel échoue, si la réponse est vide, ou si aucune feature ne porte de rue.
+     * Aucune écriture : le résultat sert à COMPARER une position, jamais stocké.
+     *
+     * @return array{street: string, type: string|null}|null
+     */
+    public function reverseStreet(float $latitude, float $longitude): ?array
+    {
+        foreach ($this->reverseFeatures($latitude, $longitude) as $feature) {
+            if (!\is_array($feature)) {
+                continue;
+            }
+            $properties = \is_array($feature['properties'] ?? null) ? $feature['properties'] : [];
+            $street = $this->firstNonEmptyString($properties['street'] ?? null, $properties['name'] ?? null);
+            if (null === $street) {
+                continue;
+            }
+            $type = $properties['type'] ?? null;
+
+            return ['street' => $street, 'type' => \is_string($type) && '' !== $type ? $type : null];
         }
 
         return null;
@@ -135,6 +138,52 @@ final class BanGeocodingClient
             $structured = $this->mapFeatureStructured($feature);
             if (null !== $structured) {
                 return $structured;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Les features BRUTES du reverse-géocodage (requête SSRF-safe : hôte fixe hard-codé, timeout
+     * serré, pas de redirection, plafond de taille). Coordonnées invalides ou échec réseau/HTTP →
+     * `[]` (best-effort — aucun appelant du reverse ne lève jamais).
+     *
+     * @return list<mixed>
+     */
+    private function reverseFeatures(float $latitude, float $longitude): array
+    {
+        if (!self::isValidCoordinate($latitude, $longitude)) {
+            return [];
+        }
+
+        try {
+            $data = $this->httpClient->request('GET', self::REVERSE_URL, [
+                'query' => ['lat' => $latitude, 'lon' => $longitude],
+                'headers' => ['Accept' => 'application/json'],
+                'timeout' => self::TIMEOUT,
+                'max_duration' => self::TIMEOUT,
+                'max_redirects' => 0,
+                'on_progress' => static function (int $dlNow): void {
+                    if ($dlNow > self::MAX_RESPONSE_BYTES) {
+                        throw new RuntimeException(\sprintf('Réponse BAN trop volumineuse (> %d octets).', self::MAX_RESPONSE_BYTES));
+                    }
+                },
+            ])->toArray(false);
+        } catch (Throwable) {
+            return []; // best-effort : un échec réseau/HTTP n'est jamais une erreur ici.
+        }
+
+        $features = $data['features'] ?? null;
+
+        return \is_array($features) ? array_values($features) : [];
+    }
+
+    private function firstNonEmptyString(mixed ...$values): ?string
+    {
+        foreach ($values as $value) {
+            if (\is_string($value) && '' !== trim($value)) {
+                return trim($value);
             }
         }
 

@@ -1,4 +1,4 @@
-import { Lock, Plus, Route, Trash2 } from "lucide-react";
+import { AlertTriangle, Lock, Plus, Route, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
@@ -12,6 +12,7 @@ import { AccordionSection } from "@/shared/components/ui/accordion";
 import { Menu, MenuItem } from "@/shared/components/ui/menu";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Select } from "@/shared/components/ui/select";
+import { StatusPill } from "@/shared/components/ui/badge";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
 import { nextVenueColor } from "@/shared/lib/color";
@@ -28,7 +29,8 @@ import type { FfbbSalle, Venue, VenueTrainingSlot } from "../api";
 import { DAYS, durationOptions, DURATIONS, hhmm } from "../lib/days";
 import { filterSalles } from "../lib/salleSuggestions";
 import { slotPlacementError } from "../lib/slotOverlap";
-import { useCreateSlot, useCreateVenue, useDeleteSlot, useDeletionImpact, useDeleteVenue, useFfbbSalles, useFfbbSallesProches, useReservations, useUpdateSlot, useUpdateVenue, useVenueSlots, useWizardVenues } from "../queries";
+import { useCreateSlot, useCreateVenue, useDeleteSlot, useDeletionImpact, useDeleteVenue, useFfbbSalles, useFfbbSallesProches, useReservations, useUpdateSlot, useUpdateVenue, useVenueGeoCheck, useVenueSlots, useWizardVenues } from "../queries";
+import { venueGeoAlertMessage } from "../lib/venueGeoAlert";
 import { useWizardStore } from "../store";
 import { useWizardFooter } from "../lib/footerSlot";
 import { PeriodVenues } from "./PeriodVenues";
@@ -255,6 +257,11 @@ function VenuesEditor() {
   const { data: slots = [] } = useVenueSlots();
   const matchWindowsQuery = useVenueMatchWindows();
   const { data: reservations = [] } = useReservations();
+  // Contrôle de cohérence de position (verdict SERVEUR) : les gymnases FFBB dont le point
+  // enregistré paraît incohérent avec l'adresse fédérale. Le front ne fait qu'AFFICHER (bandeau
+  // sur la fiche + pastille « À vérifier » dans la liste) — aucune règle recalculée ici.
+  const { data: geoAlerts = [] } = useVenueGeoCheck();
+  const geoAlertById = new Map(geoAlerts.map((a) => [a.venueId, a] as const));
   const create = useCreateVenue();
   const update = useUpdateVenue();
   const delVenue = useDeleteVenue();
@@ -309,6 +316,7 @@ function VenuesEditor() {
   // Fall back to the first venue when the selected id isn't in the list yet
   // (just-created, list refetching) so the panel never flashes "no venue".
   const selected = (selectedId ? venues.find((v) => v.id === selectedId) : null) ?? venues[0] ?? null;
+  const selectedGeoAlert = null === selected ? undefined : geoAlertById.get(selected.id);
 
   // P2-53 RMM-8 — « Trajets entre gymnases » : un bouton du pied de page (à côté de « Suivant »),
   // patron du « Trier » des Équipes. Il n'a de sens qu'avec au moins deux gymnases (il faut une
@@ -611,7 +619,18 @@ function VenuesEditor() {
               aria-label="Gymnase"
               className="h-9"
               wrapperClassName="w-60"
-              venues={venues.map((v) => ({ id: v.id, name: v.name, color: v.color ?? DEFAULT_VENUE_COLOR }))}
+              venues={venues.map((v) => ({
+                id: v.id,
+                name: v.name,
+                color: v.color ?? DEFAULT_VENUE_COLOR,
+                // Pastille « À vérifier » sur les gymnases dont la position paraît incohérente
+                // (verdict serveur) — texte + icône, jamais la couleur seule.
+                badge: geoAlertById.has(v.id) ? (
+                  <StatusPill variant="warning" icon={<AlertTriangle className="size-3 text-warning" />}>
+                    À vérifier
+                  </StatusPill>
+                ) : undefined,
+              }))}
               value={selected.id}
               onValueChange={(next) => {
                 setSelectedId(next);
@@ -665,6 +684,19 @@ function VenuesEditor() {
                 (bouton « Trajets entre gymnases » du pied de page). PUT partiel : n'écrit que
                 address/lat/long, le reste du gymnase est préservé. */}
             <div className="mt-3 border-t border-border pt-3">
+              {/* Contrôle de cohérence de position (verdict serveur) : quand le point enregistré
+                  paraît incohérent avec l'adresse FFBB, on le dit ICI, au-dessus du champ géo — le
+                  gestionnaire vérifie sur la carte ou colle les coordonnées exactes (déjà offerts
+                  par le champ ci-dessous). L'alerte disparaît dès qu'il corrige. */}
+              {undefined === selectedGeoAlert ? null : (
+                <NoticeBanner
+                  tone="warning"
+                  role="status"
+                  className="mb-3"
+                  icon={<AlertTriangle className="size-4 text-warning" />}
+                  message={venueGeoAlertMessage(selectedGeoAlert)}
+                />
+              )}
               <VenueGeocodeField
                 key={`geo-${selected.id}`}
                 venue={selected}

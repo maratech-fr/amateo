@@ -1,13 +1,11 @@
 # API géo — routes externes consommées
 
-Last verified @ 2026-09-30 (PR #1031, commits `3b613baa`/`7f97d588`/`fd70ca99` — recalé contre le
-code : `BanGeocodingClient::mapFeature` (champ `type`), `parseCoordinates.ts` + `VenueInput`
-(saisie manuelle des coordonnées), `VenueStateProcessor::afterPersist` (recalcul auto au
-déplacement d'un gymnase), `IgnRoutingClient::readResult`/`VenueTravelTimeAutofillService::
-finalizeMinutes` (mode non véhiculé = vélo, distance IGN consommée), `App\Enum\
-VenueTravelRuleIntensity` + `VenueTravelRuleSetting` (cran OFF, `toleranceMinutes`/
-`defaultMinutes`) ; `TravelRuleNotice` relocalisé onglet Bien-être (`ConstraintsStep.tsx`).
-Historique des passes précédentes vit dans git : `git log -p --follow backend/docs/geo-api.md`.
+Last verified @ 2026-09-30 (commit `19aed0f1` — recalé contre le code : `VenueGeoCheck::checkVenue`
+(reverse puis forward BAN, seuil `FAR_THRESHOLD_METERS`), `FfbbSalleAddressResolver::resolveAddress`
+(rayon `VERIFY_RADIUS_METERS`), `BanGeocodingClient::reverseStreet`, `VenueGeoCheckController`
+(priority 10, `ManagementAccessGuard::assertManager`) — § 5 ci-dessous. Reste du fichier hérité de la
+passe précédente (PR #1031), non re-sondé ligne à ligne cette fois. Historique des passes
+précédentes vit dans git : `git log -p --follow backend/docs/geo-api.md`.
 
 > Répertoire des endpoints externes **géo** utilisés par le backend — deuxième famille de sorties
 > non-FFBB après `ffbb-api.md` (même patron : liste blanche de hosts codés en dur, SSRF-safe,
@@ -403,3 +401,54 @@ Mécanique commune :
 - Décisions fondateur détaillées (deux barèmes voiture/vélo, `Coach.isVehicled`, mode non véhiculé
   = vélo (noms techniques `walking*` conservés), battement toléré retranché du barème, cran OFF, le
   trajet jamais dominant, le store dédié du levier) : `etat-des-lieux.md` §2 et §3.
+
+## 5. Contrôle de cohérence de la position d'un gymnase rattaché FFBB (`GET /api/venues/geo-check`)
+
+Motif (étude BCCL 2026-09-30) : un point FFBB faux passe inaperçu et fausse tous les trajets qui en
+dépendent — la salle « Annexe » du BCCL (`externalRef` fédéral) portait un point à **1 931 m** de sa
+vraie adresse (tombant rue Léon Blum), la BAN ne connaissant par ailleurs pas les numéros 251/253 du
+cours Émile Zola en recherche directe. Décision fondateur : pas de carte à repère (P4-131, fermé
+2026-09-25, reste fermé) — la fiabilité se couvre par ce contrôle **plus** la saisie manuelle de
+coordonnées (§ 1quater).
+
+`App\Service\Geo\VenueGeoCheck::check($clubId, $seasonId)` relit les gymnases du club+saison (le
+filtre tenant Doctrine + la RLS scopent déjà, l'appel explicite reste une défense en profondeur) et,
+pour chacun portant un `externalRef` (salle FFBB) **et** des coordonnées, compare le point
+**ENREGISTRÉ** (jamais un point FFBB frais — l'alerte doit disparaître dès que le gestionnaire
+corrige) à l'adresse fédérale de la salle :
+
+1. **`FfbbSalleAddressResolver::resolveAddress`** re-résout l'adresse fédérale (rue + commune)
+   derrière le numéro de salle : `searchSallesNearby` autour du point stocké (rayon
+   `VERIFY_RADIUS_METERS` = 2000 m, même patron de VÉRIFICATION que
+   `FfbbSalleResolver::resolveByExternalRef` (résolution du gymnase fédéral pour la table partagée
+   `OpponentVenueSuggestion`, `module-matchs.md` §1 « Modèle & données transverses ») — frère
+   délibérément séparé, celui-ci lit le champ `adresse` que l'autre n'a pas besoin de lire, puis ne
+   garde que le hit dont `numero` est **exactement** celui demandé.
+2. **(a) `BanGeocodingClient::reverseStreet`** — reverse-géocode le point stocké : si la feature rend
+   un type `housenumber`/`street` (jamais `locality`/`municipality`) et que sa rue, normalisée
+   (minuscules, accents retirés, numéros de voie et virgules effacés, suffixes bis/ter/quater
+   retirés), diffère de la rue de l'adresse FFBB normalisée pareillement →
+   **`OTHER_STREET`** (`VenueGeoCheck::sameStreet`/`normalizeStreet`).
+3. **(b) sinon**, forward-géocode l'adresse FFBB (`BanGeocodingClient::geocode`) ; si le meilleur
+   candidat est un `housenumber` (le numéro EXACT, pas juste la rue) à plus de **300 m**
+   (`VenueGeoCheck::FAR_THRESHOLD_METERS`) du point stocké (haversine) → **`FAR_FROM_ADDRESS`**.
+4. **Best-effort intégral** : pas d'`externalRef`/coordonnées, salle FFBB introuvable, ou échec réseau
+   BAN → aucune alerte pour ce gymnase (jamais une exception, jamais un blocage). **Au plus une**
+   alerte par gymnase, (a) prime sur (b).
+
+**Route** `GET /api/venues/geo-check` (`VenueGeoCheckController`, priority 10 — sinon `geo-check`
+serait avalé comme un `{id}` par la route item `/api/venues/{id}` d'API Platform, même piège que
+`/api/venues/fbi-labels`) : management-gated (`ManagementAccessGuard::assertManager`, SEC-07), club
+et saison résolus depuis le contexte courant (jamais un `X-Club-Id` du front). **Lecture seule,
+aucune écriture** : le verdict est calculé côté serveur à chaque appel, jamais stocké. Réponse
+`list<{venueId, reason: "OTHER_STREET"|"FAR_FROM_ADDRESS", ffbbAddress, pointStreet: string|null,
+distanceM: int|null}>` (`OpponentTravelPaths::contribute`, OpenAPI).
+
+**Front** : `useVenueGeoCheck()` (`frontend/src/features/wizard/queries.ts`, `staleTime: Infinity`,
+`retry: false`) — invalidé au succès de `useCreateVenue`/`useUpdateVenue`/`useDeleteVenue` (l'alerte
+disparaît dès que les coordonnées sont corrigées). Deux affichages du même verdict, jamais recalculé
+côté client (`venueGeoAlertMessage`, `frontend/src/features/wizard/lib/venueGeoAlert.ts`) : un
+bandeau `NoticeBanner` (tone `warning`) « Position à vérifier » au-dessus du champ géo de la fiche
+gymnase sélectionnée, et une pastille `StatusPill` « À vérifier » dans le sélecteur de gymnases —
+slot `badge` ajouté à la primitive `Listbox`/`VenueSelect` pour ce besoin (`frontend/docs/
+frontend-components.md` §3). Détail écran : `frontend/docs/frontend-wizard.md` §Gymnases.

@@ -1,11 +1,11 @@
 # API FFBB — routes consommées
 
-Last verified @ 2026-09-29 (rotation `documentation-update`, zone sans rapport avec la PR
-P4-272 ②). Re-confronté au code : la liste blanche des deux hosts (`api.ffbb.com`,
-`meilisearch-prod.ffbb.app`) inchangée (`FfbbApiClient.php:13-25`) ✓ ; `matchingStrategy: all`
-toujours posé (`FfbbApiClient.php:216`) ✓ ; les routes `GET /api/ffbb/salles` et
-`GET /api/ffbb/salles-proches` toujours déclarées (`FfbbSallesController.php:50,104`) ✓. Reste du
-fichier non re-sondé ligne à ligne cette passe — historique des passes précédentes vit dans git :
+Last verified @ 2026-09-30 (commit `19aed0f1` — nouveau consommateur de `searchSallesNearby` :
+`FfbbSalleAddressResolver::resolveAddress` (contrôle de cohérence de position, § « Salles d'une
+commune » + pointeur `geo-api.md` §5) ; anchor stale corrigé vers `module-matchs.md` §1 « Modèle &
+données transverses » (l'ancien intitulé « Suggestions partagées de gymnases » n'existe plus dans le
+fichier cible). Reste du fichier hérité de la passe précédente (rotation 2026-09-29), non re-sondé
+ligne à ligne cette fois. Historique des passes précédentes vit dans git :
 `git log -p --follow backend/docs/ffbb-api.md`.
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les
@@ -186,8 +186,8 @@ Deux routes, mêmes hosts, même confinement SSRF, gate **management (SEC-07) + 
   (`FfbbSalleResolver::resolveByExternalRef`) — un mécanisme de VÉRIFICATION, pas de LOOKUP direct :
   il ne répond pas à l'appariement d'un hit rencontres SANS coordonnées de départ, une ligne
   `FFBB_API` et une ligne `MANUAL` de la MÊME salle restant donc deux suggestions disjointes dans
-  `opponent_venue_suggestion` (§ « Suggestions partagées de gymnases » de
-  [`module-matchs.md`](../../specs/courantes/module-matchs.md)).
+  `opponent_venue_suggestion` (§1 « Modèle & données transverses » de
+  [`module-matchs.md`](../../specs/courantes/module-matchs.md), table `OpponentVenueSuggestion`).
 - `apply` partage aussi les règles de naissance/fenêtre du xlsx (`FfbbRencontreReconciler` appelle
   `FbiFixtureImporter::treatOnArrival`/`sourceIsAuthoritativeForWindow`, foyer unique) — un extérieur
   créé par ce canal naît `REVIEWED` d'office, un domicile PLACÉ déphasé dont la date app OU la date
@@ -282,6 +282,12 @@ haut.
   voie CP/rayon ne rend pas un match unique (0 candidat, ou 0/≥2 égalités strictes),
   `OpponentVenueAutoLocator` retente par **NOM** (ci-dessous) avant de renoncer — le comptage
   `ambiguous`/`unmatched` de la voie commune ne bouge pas pour ce repli.
+- Autre consommateur (2026-09-30) : `App\Service\Basketball\FfbbSalleAddressResolver` — re-résout
+  l'ADRESSE (rue + commune) fédérale d'une salle depuis son `numero` (même patron de VÉRIFICATION
+  que `FfbbSalleResolver::resolveByExternalRef` ci-dessus : les coordonnées passées ne servent que
+  de graine, seul le hit dont `numero` est EXACT est retenu), pour le **contrôle de cohérence de
+  position d'un gymnase rattaché FFBB** (`GET /api/venues/geo-check`) — détail :
+  [`geo-api.md`](geo-api.md) §5.
 
 ### Recherche de salle par NOM
 

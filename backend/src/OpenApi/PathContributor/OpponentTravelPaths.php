@@ -63,6 +63,30 @@ final readonly class OpponentTravelPaths implements CustomPathContributor
             ],
         )));
 
+        $paths->addPath('/api/venues/geo-check', new PathItem(get: new Operation(
+            operationId: 'venuesGeoCheck',
+            tags: ['Venue'],
+            responses: [
+                '200' => $this->schemas->jsonResponse('Read-only, best-effort coherence check of the STORED position of each gym anchored to a FFBB salle: gyms whose registered point looks inconsistent with the salle\'s federal address (another street, or too far from its exact point). Empty when nothing looks off. The verdict is server-computed — the client displays it, never re-derives it.', [
+                    'type' => 'array',
+                    'items' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'venueId' => ['type' => 'string', 'description' => 'The gym whose stored position looks off'],
+                            'reason' => ['type' => 'string', 'enum' => ['OTHER_STREET', 'FAR_FROM_ADDRESS'], 'description' => 'OTHER_STREET: the point falls in a different street than the FFBB address; FAR_FROM_ADDRESS: the point is more than 300 m from the FFBB address\'s exact point'],
+                            'ffbbAddress' => ['type' => 'string', 'description' => 'The salle\'s federal street address'],
+                            'pointStreet' => ['type' => ['string', 'null'], 'description' => 'For OTHER_STREET: the street the stored point actually falls in (reverse-geocoded); null otherwise'],
+                            'distanceM' => ['type' => ['integer', 'null'], 'description' => 'For FAR_FROM_ADDRESS: the metres between the stored point and the FFBB address\'s exact point; null otherwise'],
+                        ],
+                    ],
+                ]),
+                '400' => new Response('No club or season in context'),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+                '403' => new Response('Not a management member'),
+            ],
+            summary: 'Coherence check of the gyms\' stored positions against their FFBB salle address (management only, tenant from JWT)',
+        )));
+
         $paths->addPath('/api/venue-travel-times/autofill', new PathItem(post: new Operation(
             operationId: 'autofillVenueTravelTimes',
             tags: ['Venue'],

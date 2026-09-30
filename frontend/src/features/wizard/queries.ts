@@ -175,11 +175,30 @@ export function useFfbbSallesProches(radiusKm: number | null) {
   });
 }
 
+/**
+ * Le contrôle de cohérence de position des gymnases FFBB (verdict SERVEUR). INVALIDÉ au succès de
+ * toute écriture de gymnase : l'alerte « Position à vérifier » doit disparaître dès que le
+ * gestionnaire corrige les coordonnées (collées ou relocalisées).
+ */
+const VENUE_GEO_CHECK_KEY = ["wizard", "venue_geo_check"] as const;
+
+const invalidateVenueGeoCheck = (queryClient: ReturnType<typeof useQueryClient>): Promise<void> =>
+  queryClient.invalidateQueries({ queryKey: VENUE_GEO_CHECK_KEY });
+
+/**
+ * Contrôle de cohérence de la position des gymnases rattachés à une salle FFBB (verdict serveur —
+ * le front l'AFFICHE, il ne recalcule rien). `staleTime` de session : le référentiel FFBB/BAN ne
+ * bouge pas pendant une saisie. Best-effort (`retry: false`) : management-only, un échec est muet.
+ */
+export function useVenueGeoCheck() {
+  return useQuery({ queryKey: VENUE_GEO_CHECK_KEY, queryFn: wizardApi.geoCheckVenues, staleTime: Infinity, retry: false });
+}
+
 export function useCreateVenue() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: VenuePayload) => wizardApi.createVenue(body),
-    onSuccess: () => invalidateEverywhere(queryClient, "venues"),
+    onSuccess: () => Promise.all([invalidateEverywhere(queryClient, "venues"), invalidateVenueGeoCheck(queryClient)]).then(() => undefined),
   });
 }
 
@@ -187,7 +206,7 @@ export function useUpdateVenue() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: VenuePayload }) => wizardApi.updateVenue(id, body),
-    onSuccess: () => invalidateEverywhere(queryClient, "venues"),
+    onSuccess: () => Promise.all([invalidateEverywhere(queryClient, "venues"), invalidateVenueGeoCheck(queryClient)]).then(() => undefined),
   });
 }
 
@@ -215,6 +234,7 @@ export function useDeleteVenue() {
     mutationFn: (id: string) => wizardApi.deleteVenue(id),
     onSuccess: () => {
       void invalidateEverywhere(queryClient, "venues");
+      void invalidateVenueGeoCheck(queryClient);
       void queryClient.invalidateQueries({ queryKey: ["wizard", "venue_slots"] });
     },
   });
