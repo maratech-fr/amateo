@@ -52,11 +52,15 @@ test("étape Coachs : équipe, rôle et « Lier » sur la même ligne (1280 px)"
   await expect(page.getByText("Coa Ch", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Éditer le coach" }).click();
 
-  const team = page.getByRole("button", { name: /^Équipe/ });
-  const role = page.getByRole("combobox", { name: "Rôle" });
+  // On SCOPE à la ligne « Lier » : le rail du wizard porte aussi un bouton d'étape « Équipes »
+  // (regex `/^Équipe/`), d'où deux correspondances en portée globale. Les trois contrôles sont
+  // enfants directs du même `div.mt-2.flex` que « Lier » (CoachesStep.tsx:245-255).
   const lier = page.getByRole("button", { name: "Lier" });
-  await expect(team).toBeVisible();
   await expect(lier).toBeVisible();
+  const row = lier.locator("xpath=..");
+  const team = row.getByRole("button", { name: /^Équipe/ });
+  const role = row.getByRole("combobox", { name: "Rôle" });
+  await expect(team).toBeVisible();
 
   const [teamTop, roleTop, lierTop] = await Promise.all([topOf(team), topOf(role), topOf(lier)]);
   // items-center : les trois contrôles partagent la même ligne → même offsetTop (tolérance 4 px).
