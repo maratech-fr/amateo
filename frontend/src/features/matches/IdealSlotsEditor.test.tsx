@@ -129,7 +129,7 @@ describe("IdealSlotsEditor (P4-271)", () => {
     };
     renderWithProviders(<IdealSlotsEditor teams={TEAMS} venues={VENUES} weekendAlternates={true} />);
 
-    expect(screen.getByText("Heurte la règle du club « pas après 21h ».")).toBeInTheDocument();
+    expect(screen.getByText("Heurte la règle du club « pas après 21:00 ».")).toBeInTheDocument();
     expect(screen.getAllByText(/Heurte la règle du club/)).toHaveLength(1);
   });
 });

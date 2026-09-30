@@ -17,7 +17,7 @@ const unplaced: SocleDeviationUnplaced[] = [
 ];
 
 describe("SocleDeviationPanel", () => {
-  it("NOMME l'agrégat puis chaque écart — déplacée « U13F1 · Mar 18h30 Matéo → Jeu 19h00 JDR »", () => {
+  it("NOMME l'agrégat puis chaque écart — déplacée « U13F1 · Mar 18:30 Matéo → Jeu 19:00 JDR »", () => {
     render(<SocleDeviationPanel moved={moved} unplaced={unplaced} teamName={teamName} venueName={venueName} />);
 
     const region = screen.getByRole("region", { name: /écarts avec le planning de saison/i });
@@ -29,7 +29,7 @@ describe("SocleDeviationPanel", () => {
     // La ligne déplacée, du socle vers la période — format exact du fondateur.
     const movedItem = within(region).getAllByRole("listitem").find((li) => li.textContent?.includes("→"));
     expect(movedItem).toBeDefined();
-    expect(movedItem).toHaveTextContent("U13F1 · Mar 18h30 Matéo → Jeu 19h00 JDR");
+    expect(movedItem).toHaveTextContent("U13F1 · Mar 18:30 Matéo → Jeu 19:00 JDR");
   });
 
   it("les non replacées portent la RAISON en clair, une raison nulle NE porte aucune étiquette", () => {

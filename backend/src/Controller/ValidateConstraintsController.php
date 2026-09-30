@@ -448,7 +448,7 @@ final class ValidateConstraintsController extends AbstractController
                 $teamNames[$reservation->getTeamId()] ?? 'cette équipe',
                 $venueNames[$reservation->getVenueId()] ?? 'ce gymnase',
                 self::DAY_NAMES[$reservation->getDayOfWeek()] ?? 'ce jour',
-                $reservation->getStartTime()->format('H\hi'),
+                $reservation->getStartTime()->format('H:i'),
             );
         }
 

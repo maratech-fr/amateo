@@ -8,24 +8,29 @@
  * contraintes ET l'écran Semaine type.
  */
 
-/** « 21:00 » → « 21h », « 21:30 » → « 21h30 », « 09:05 » → « 9h05 ». */
-export function frClock(hhmm: string): string {
-  const [h, m] = hhmm.split(":");
-  const hour = String(Number(h));
-  return "00" === m ? `${hour}h` : `${hour}h${m}`;
+import { formatMinutes, parseTime } from "@/shared/lib/time";
+
+/**
+ * Une borne « HH:MM(:SS) » servie par le backend → « 21:00 » (format horaire unique,
+ * N3, uniformité des écrans 2026-09-30) : DÉLÈGUE au foyer unique `formatMinutes`,
+ * ne fabrique aucune heure à la main. Repli défensif « 00:00 » si la valeur est illisible
+ * (le serveur ne sert que des bornes valides).
+ */
+export function clockLabel(hhmm: string): string {
+  return formatMinutes(parseTime(hhmm) ?? 0);
 }
 
 /** Le libellé d'une règle depuis ses bornes (chacune facultative). */
 export function clubRuleLabel(rule: { kickoffMin: string | null; kickoffMax: string | null }): string {
   const { kickoffMin, kickoffMax } = rule;
   if (null !== kickoffMin && null !== kickoffMax) {
-    return `entre ${frClock(kickoffMin)} et ${frClock(kickoffMax)}`;
+    return `entre ${clockLabel(kickoffMin)} et ${clockLabel(kickoffMax)}`;
   }
   if (null !== kickoffMax) {
-    return `pas après ${frClock(kickoffMax)}`;
+    return `pas après ${clockLabel(kickoffMax)}`;
   }
   if (null !== kickoffMin) {
-    return `pas avant ${frClock(kickoffMin)}`;
+    return `pas avant ${clockLabel(kickoffMin)}`;
   }
   // Défensif : le serveur refuse une règle sans borne, mais ne jamais rendre vide.
   return "règle horaire";

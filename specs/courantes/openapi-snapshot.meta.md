@@ -1,10 +1,10 @@
-Last verified @ 2026-09-30 (Pastille « Démo » — `GET /api/me` expose désormais `club.isDemo`
-(booléen), le drapeau sur lequel le front adosse la pastille « Démo » de l'en-tête d'un club de
-démonstration. **+1 propriété** sur le bloc `club` de `/api/me` (aucun path nouveau), déclarée dans
-`AccountSessionPaths`, régénéré à froid depuis le backend vivant).
+Last verified @ 2026-09-30 (Format horaire unique + pastille « Démo » — la description du champ
+`startTime` des côtés de conflit d'entraînement (`GET /api/training/placed-conflicts`, déclarée dans
+`TrainingConflictPaths`) passe de « HHhMM » (e.g. « 18h00 ») à « HH:MM » (e.g. « 18:00 ») ; `GET /api/me`
+expose `club.isDemo` (booléen, déclaré dans `AccountSessionPaths`). **±0 path**).
 
 **221 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`6e0ba1d5b18f049f3358a585d901ca91d5749e09df434630d7580599121ebc79` (`sha256sum` sur le fichier).
+`f9c6661ebed207fd06e6f4f5763aa5a618b292455c310e31f9da5ad56c9f2fb7` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

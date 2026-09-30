@@ -75,7 +75,7 @@ interface WeekGridProps {
   emphasizeEmpty?: boolean;
   /**
    * P2-44 (PR-4) — les créneaux de PÉRIODE qui S'ÉCARTENT du planning de saison, servis par la
-   * route `socle-deviation` : `slotId → libellé d'origine` (« Mar 18h30 Matéo », la place de
+   * route `socle-deviation` : `slotId → libellé d'origine` (« Mar 18:30 Matéo », la place de
    * saison). Le backend a DÉJÀ décidé l'écart (règle d'or) ; la grille NOMME — un symbole ⇄
    * (violet, `--diff`) AVANT le nom d'équipe + l'origine en `sr-only`/`title`, jamais le mot
    * « déplacée » à l'écran. Le CONFLIT et la SÉLECTION priment sur l'anneau, le symbole reste.
@@ -171,7 +171,7 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
   // P2-44 (PR-4) — le symbole d'ÉCART au socle : une pastille ⇄ violette (fond `--diff`), AVANT le
   // nom d'équipe, dans le flux du bouton. Auto-explicite (décision fondateur : pas de légende, pas
   // de tooltip porteur de sens) ; le SENS accessible vit en `sr-only` + le title de la carte. Le
-  // mot « déplacée » ne paraît JAMAIS à l'écran. `origin` = la place de saison (« Mar 18h30 Matéo »).
+  // mot « déplacée » ne paraît JAMAIS à l'écran. `origin` = la place de saison (« Mar 18:30 Matéo »).
   const renderDeviationChip = (origin: string) => (
     <>
       <span aria-hidden="true" className="shrink-0 rounded-sm bg-diff px-0.5 text-diff-foreground">

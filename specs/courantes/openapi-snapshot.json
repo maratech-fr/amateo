@@ -14877,7 +14877,7 @@
                                                             },
                                                             "startTime": {
                                                                 "type": "string",
-                                                                "description": "Session start \u00ab HHhMM \u00bb (e.g. \u00ab 18h00 \u00bb)"
+                                                                "description": "Session start \u00ab HH:MM \u00bb (e.g. \u00ab 18:00 \u00bb)"
                                                             }
                                                         }
                                                     },
@@ -14899,7 +14899,7 @@
                                                             },
                                                             "startTime": {
                                                                 "type": "string",
-                                                                "description": "Session start \u00ab HHhMM \u00bb (e.g. \u00ab 18h00 \u00bb)"
+                                                                "description": "Session start \u00ab HH:MM \u00bb (e.g. \u00ab 18:00 \u00bb)"
                                                             }
                                                         }
                                                     }

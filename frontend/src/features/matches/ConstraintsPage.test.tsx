@@ -182,7 +182,7 @@ describe("ConstraintsPage — section Club (P4-272 ③)", () => {
     expect(screen.getByText(/Aucune règle de club/)).toBeInTheDocument();
   });
 
-  it("ajoute une règle « pas après 21h » le samedi via l'API (bornes nullables)", async () => {
+  it("ajoute une règle « pas après 21:00 » le samedi via l'API (bornes nullables)", async () => {
     const user = userEvent.setup();
     rulesState.data = [];
     openClub();
@@ -205,7 +205,7 @@ describe("ConstraintsPage — section Club (P4-272 ③)", () => {
     };
     openClub();
 
-    expect(screen.getByText("Cette règle heurte le créneau idéal des U13M (semaine A) : samedi 21h30.")).toBeInTheDocument();
+    expect(screen.getByText("Cette règle heurte le créneau idéal des U13M (semaine A) : samedi 21:30.")).toBeInTheDocument();
   });
 
   it("omet « (semaine …) » quand le club n'alterne pas (weekendAlternates faux)", () => {
@@ -217,7 +217,7 @@ describe("ConstraintsPage — section Club (P4-272 ③)", () => {
     };
     openClub();
 
-    expect(screen.getByText("Cette règle heurte le créneau idéal des SM1 : dimanche 21h45.")).toBeInTheDocument();
+    expect(screen.getByText("Cette règle heurte le créneau idéal des SM1 : dimanche 21:45.")).toBeInTheDocument();
   });
 
   it("ne montre PAS les interdictions de gymnase (scope TEAM) dans la section Club", () => {

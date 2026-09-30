@@ -6,7 +6,7 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 import { coachFullName } from "@/shared/lib/coachName";
 import { frDateShortNoYear } from "@/shared/lib/date";
 import { dayLabelLong } from "@/shared/lib/days";
-import { formatDurationMinutes } from "@/shared/lib/time";
+import { formatDuration } from "@/shared/lib/duration";
 import { cn } from "@/shared/lib/utils";
 
 import type { Coach, Conflict, ConflictSideRole, LeagueKickoffWindow, Team, Venue, VenueAccessWindow } from "./api";
@@ -286,7 +286,7 @@ function OverlapPhrase({ overlap }: { overlap: ConflictOverlapLine }) {
         {overlap.crossDay ? `${overlap.endDay} ` : null}
         {overlap.end}
       </span>{" "}
-      · <span className="font-semibold">{formatDurationMinutes(overlap.minutes)}</span>
+      · <span className="font-semibold">{formatDuration(overlap.minutes)}</span>
     </p>
   );
 }

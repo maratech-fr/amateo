@@ -299,7 +299,7 @@ final class ValidateConstraintsTest extends WebTestCase
         $blockers = implode(' | ', $data['blockers']);
         self::assertStringContainsString('Matéo', $blockers);
         self::assertStringContainsString('mardi', $blockers, 'le jour, pour retrouver la ligne');
-        self::assertStringContainsString('18h00', $blockers, 'et l\'HEURE — le message d\'OrphanPinGuard ne la donnait pas');
+        self::assertStringContainsString('18:00', $blockers, 'et l\'HEURE — le message d\'OrphanPinGuard ne la donnait pas');
     }
 
     /** Témoin : la réservation retombe sur son créneau — rien à signaler. */

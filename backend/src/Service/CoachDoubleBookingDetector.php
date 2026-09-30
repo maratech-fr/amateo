@@ -366,7 +366,7 @@ final class CoachDoubleBookingDetector
         return [
             'teamName' => $names['team'][$reservation->getTeamId()] ?? 'une équipe',
             'venueName' => $names['venue'][$reservation->getVenueId()] ?? 'un gymnase',
-            'startTime' => $reservation->getStartTime()->format('H\hi'),
+            'startTime' => $reservation->getStartTime()->format('H:i'),
         ];
     }
 

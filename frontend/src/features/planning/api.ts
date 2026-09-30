@@ -891,7 +891,7 @@ export interface PlacedConflictSide {
   teamName: string;
   venueId: string;
   venueName: string;
-  /** Heure de début « HHhMM » (ex. « 18h00 »). */
+  /** Heure de début « HH:MM » (ex. « 18:00 »). */
   startTime: string;
 }
 

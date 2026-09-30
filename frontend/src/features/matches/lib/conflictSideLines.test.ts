@@ -76,7 +76,7 @@ describe("buildConflictSideLines — côté MATCH", () => {
     expect(home.times).toEqual({
       kickoff: { value: "15:30", estimated: false },
       end: "17:25",
-      duration: "1 h 55",
+      duration: "1h55",
     });
   });
 

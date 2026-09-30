@@ -87,6 +87,15 @@ paths:
   pages principales + exemptions `<h1` nominatives). Le canal feedback (`FeedbackButton`,
   `FeedbackDialog`) vit dans `shared/feedback/` avec la
   brique, une primitive `shared/` ne remontant jamais vers une feature (AUD-FRT-21).
+- 🔴 **Heure affichée = « 21:00 », durée affichée = « 1h30 » — deux foyers uniques, jamais
+  fabriqués à la main** (normes d'uniformité des écrans, GO fondateur sur captures A/B,
+  2026-09-30) : toute heure de pendule passe par `shared/lib/time.ts::formatMinutes` (jamais
+  `frClock` — supprimé — ni un « 21h »/« 09h » assemblé à la main) ; toute durée de créneau passe
+  par `shared/lib/duration.ts::formatDuration`, forme COMPACTE (jamais la forme aérée
+  `time.formatDurationMinutes` — supprimée). Gardé par
+  `frontend/src/test/timeFormatGuard.test.ts` (grep statique des sources `src/**`, zéro exemption
+  nominative). Hors portée, délibérément : les durées ÉCOULÉES/CUMULÉES de la console superadmin
+  et des gymnases (`venueStats.formatHours`), et les exemples rédigés des bulles d'aide.
 - 🔴 **Les racines de shell ne portent plus `bg-background` depuis le fond d'écran commun**
   (P5-16, `AppLayout.tsx`/`AuthLayout.tsx`) : le fond commun vit sur `body` (`index.css`), et une
   racine qui poserait `bg-background` par-dessus le masquerait entièrement. L'en-tête d'`AppLayout`

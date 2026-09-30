@@ -354,7 +354,7 @@ describe("WeekGrid", () => {
   describe("écart au socle (deviatedSlots, P2-44 PR-4)", () => {
     it("carte déviée : symbole ⇄ AVANT le nom + origine en sr-only ; carte non déviée : rien", () => {
       const model = buildGrid([slot], "gymnase", lookups);
-      const { container } = render(<WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} deviatedSlots={new Map([["a", "Mar 18h30 Matéo"]])} />);
+      const { container } = render(<WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} deviatedSlots={new Map([["a", "Mar 18:30 Matéo"]])} />);
 
       const card = container.querySelector('[data-slot-id="a"]');
       const chip = card?.querySelector(".bg-diff");
@@ -363,7 +363,7 @@ describe("WeekGrid", () => {
       const name = screen.getByText("U11");
       expect(chip && (chip.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0).toBe(true);
       // L'origine (place de saison) est portée pour le lecteur d'écran — jamais le mot « déplacée » à l'écran visuellement.
-      expect(screen.getByText(/déplacée — en saison : Mar 18h30 Matéo/)).toHaveClass("sr-only");
+      expect(screen.getByText(/déplacée — en saison : Mar 18:30 Matéo/)).toHaveClass("sr-only");
     });
 
     it("aucun deviatedSlots (ou slotId absent du set) : aucune pastille d'écart", () => {
@@ -372,7 +372,7 @@ describe("WeekGrid", () => {
       expect(container.querySelector(".bg-diff")).toBeNull();
 
       // Un set qui ne contient PAS ce créneau ne marque rien non plus.
-      rerender(<WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} deviatedSlots={new Map([["autre", "Lun 18h00 X"]])} />);
+      rerender(<WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} deviatedSlots={new Map([["autre", "Lun 18:00 X"]])} />);
       expect(container.querySelector(".bg-diff")).toBeNull();
     });
 
@@ -381,7 +381,7 @@ describe("WeekGrid", () => {
       const other: Slot = { ...slot, id: "b", dayOfWeek: 3 };
       const model = buildGrid([slot, other], "gymnase", lookups);
       const { container } = render(
-        <WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} deviatedSlots={new Map([["a", "Mar 18h30 Matéo"]])} highlightSlotIds={new Set(["a"])} />,
+        <WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} deviatedSlots={new Map([["a", "Mar 18:30 Matéo"]])} highlightSlotIds={new Set(["a"])} />,
       );
 
       const card = container.querySelector('[data-slot-id="a"]');
@@ -395,7 +395,7 @@ describe("WeekGrid", () => {
 
     it("carte déviée SANS conflit : anneau `diff`", () => {
       const model = buildGrid([slot], "gymnase", lookups);
-      const { container } = render(<WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} deviatedSlots={new Map([["a", "Mar 18h30 Matéo"]])} />);
+      const { container } = render(<WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} deviatedSlots={new Map([["a", "Mar 18:30 Matéo"]])} />);
       expect(container.querySelector('[data-slot-id="a"]')?.className).toContain("ring-diff");
     });
 

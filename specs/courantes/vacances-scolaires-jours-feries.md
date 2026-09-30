@@ -1,18 +1,13 @@
 # Vacances scolaires & jours fériés — référentiels calendaires
 
-Last verified @ 2026-09-29 (`documentation-update`, P4-272 ② — anatomie du code FFBB remplacée par
-un pointeur vers `docs/glossary.md` § « Code club FFBB » pour éviter la double maison ; la
-dérivation département confrontée à `SchoolZoneResolver.php:29-34` (table `DOM_TOM_ZONE` keyée sur
-les 3 chiffres du comité) ✓. Reste du fichier hérité de la passe précédente : `AdminJobCatalog`
-déclare `import-school-holidays`/`import-public-holidays` en `quarterly(4)`/`quarterly(4, 30)`,
-`manualTriggerAllowed: true` (`backend/src/AdminJob/AdminJobCatalog.php:63-64`) ✓ ;
-`SchoolZoneResolver::ZONES` porte exactement les 13 codes listés (`A`/`B`/`C`/`CORSE` + 9 DOM/TOM,
-`backend/src/Service/SchoolZoneResolver.php:27`) ✓ ; `HolidayPaths` composé par
-`CustomRoutesOpenApiFactory` (`backend/src/OpenApi/CustomRoutesOpenApiFactory.php:69`) ✓ ; le
-court-circuit zone `null` de `GET /api/school-holidays` (`{zone:null, items:[]}`,
-`SchoolHolidaysController.php:46-48`) en place, `GET /api/public-holidays` ne porte aucun
-court-circuit sur `zone` — la requête part avec `$zone` potentiellement `null`
-(`PublicHolidaysController.php:46-69`, fériés nationaux même sans zone) ✓.
+Last verified @ 2026-09-30 (`documentation-update`, rotation de fraîcheur — sujet sans rapport, PR
+uniformité heures/durées). Re-confronté : `SchoolZoneResolver::ZONES` porte exactement les 13 codes
+listés (`A`/`B`/`C`/`CORSE` + 9 DOM/TOM, `backend/src/Service/SchoolZoneResolver.php:27-33`) ✓ ;
+`HolidayPaths` toujours composé par `CustomRoutesOpenApiFactory` (`import App\OpenApi\PathContributor\HolidayPaths`,
+`backend/src/OpenApi/CustomRoutesOpenApiFactory.php:19,72`) ✓ ; `AdminJobCatalog` déclare toujours
+`import-school-holidays`/`import-public-holidays` en `quarterly(4)`/`quarterly(4, 30)`,
+`manualTriggerAllowed: true` (`backend/src/AdminJob/AdminJobCatalog.php:67-68`) ✓. Reste du fichier
+non re-contrôlé cette passe.
 *(historique des passes : `git log -p --follow specs/courantes/vacances-scolaires-jours-feries.md`)*
 
 Feed d'affichage du cockpit (accueil temporel) : vacances scolaires de la zone du club + jours fériés applicables. **Display-only — jamais consommé par le solveur** : si un férié ou une vacance gêne un entraînement, le gestionnaire pose une période (`CalendarEntry` `closure`/`holiday`), il n'y a aucune règle implicite.

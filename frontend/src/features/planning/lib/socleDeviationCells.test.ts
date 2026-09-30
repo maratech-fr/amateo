@@ -20,8 +20,8 @@ describe("deviatedSlots", () => {
 
     expect([...map.keys()].sort()).toEqual(["slot-A", "slot-B"]);
     // La valeur = le placement du SOCLE (`from`), pas de la période — c'est « où c'était en saison ».
-    expect(map.get("slot-A")).toBe("Mar 18h30 Matéo");
-    expect(map.get("slot-B")).toBe("Lun 20h00 Salle Bleue");
+    expect(map.get("slot-A")).toBe("Mar 18:30 Matéo");
+    expect(map.get("slot-B")).toBe("Lun 20:00 Salle Bleue");
   });
 
   it("les non replacées n'entrent PAS dans la table (pas de carte à viser)", () => {
@@ -36,7 +36,7 @@ describe("deviatedSlots", () => {
 });
 
 describe("placementLabel", () => {
-  it("compose « Jour HhMM Gymnase » — le format partagé panneau/grille", () => {
-    expect(placementLabel(4, "19:00", "JDR")).toBe("Jeu 19h00 JDR");
+  it("compose « Jour HH:MM Gymnase » — le format partagé panneau/grille", () => {
+    expect(placementLabel(4, "19:00", "JDR")).toBe("Jeu 19:00 JDR");
   });
 });

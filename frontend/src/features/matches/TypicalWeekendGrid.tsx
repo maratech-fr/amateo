@@ -4,6 +4,7 @@ import { EmptyBlock } from "@/shared/components/ui/empty-hint";
 import { TabPanel, Tabs } from "@/shared/components/ui/tabs";
 import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
 import { tint } from "@/shared/lib/color";
+import { formatMinutes } from "@/shared/lib/time";
 
 import type { MatchWeek, Team, TeamMatchHabit, Venue } from "./api";
 import { buildTypicalWeekend } from "./lib/typicalWeekend";
@@ -123,7 +124,7 @@ export function TypicalWeekendGrid({ habits, venues, teams, durations, weekendAl
 
             {Array.from({ length: rows }, (_, i) => (
               <div key={`t-${i}`} className="border-r border-border bg-card px-1 text-right text-[10px] text-muted-foreground" style={{ gridColumn: 1, gridRow: 3 + i }}>
-                {0 === (startMin + i * stepMin) % 60 ? `${String(Math.floor((startMin + i * stepMin) / 60)).padStart(2, "0")}h` : ""}
+                {0 === (startMin + i * stepMin) % 60 ? formatMinutes(startMin + i * stepMin) : ""}
               </div>
             ))}
 
