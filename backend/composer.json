@@ -21,7 +21,6 @@
         "symfony/asset": "7.4.*",
         "symfony/console": "7.4.*",
         "symfony/dotenv": "7.4.*",
-        "symfony/expression-language": "7.4.*",
         "symfony/flex": "^2",
         "symfony/framework-bundle": "7.4.*",
         "symfony/mailer": "7.4.*",
