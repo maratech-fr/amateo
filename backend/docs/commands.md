@@ -1,13 +1,10 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-09-30 (rotation `documentation-update`, zone sans rapport avec la PR
-`19aed0f1`). Re-confronté au code : `make test`/`make tests-complete`/`make coverage`/`make phpunit`
-toujours `--testsuite Unit`/`tests/ --exclude-group contract`/`tests/ --exclude-group
-contract`/`--group phase1` (`backend/Makefile`) ✓ ; `PurgeExportsCommand` n'accepte toujours que
-`.pdf` (`RENDER_PATTERN`, `PurgeExportsCommand.php:61`) ✓ ; `db-init-test` pose toujours
-`idle_in_transaction_session_timeout = '60s'` sur `amateo_test` (`backend/Makefile`) ✓ ;
-`doctrine/doctrine-fixtures-bundle` toujours absent de `composer.json`/`config/bundles.php` ✓. Reste
-non re-sondé cette passe — un stamp REMPLACE, l'historique vit dans git.
+Last verified @ 2026-09-30 (Démos PR B — ajout `app:demo:purge-stale`). Re-confronté au code :
+`AdminJobCatalog` clé `demo-purge-stale`, `app:demo:purge-stale`, quotidien 03:15
+(`AdminJobCatalog.php:62`) ✓ ; `DemoClubMaterializer::teardownStaleDemos()` existe et fait le
+tri non-démo/partagé/jour-même décrit (`DemoClubMaterializer.php:210`) ✓. Reste non re-sondé
+cette passe — un stamp REMPLACE, l'historique vit dans git.
 
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`
 > le font pour toi. PHPUnit exige `APP_ENV=test` (sinon `test.service_container` introuvable).
@@ -125,6 +122,7 @@ Toutes manuelles sauf mention. Détail : `ls backend/src/Command/`.
 | `app:load-test:seed-clubs` | Mesure de charge : seed `--count=N` (1..99) clubs JETABLES taille BCCL (`club-charge-N`, codes `ARA99990NN` hors plage réelle, coachs fictifs, offre Bêta posée par le seeder). **DEV-ONLY par construction** : non enregistrée hors env dev (services_dev.yaml) + garde runtime + garde superuser du seeder (connexion ADMIN requise). Consommée par `backend/scripts/load-test/run-load-test.sh` — procédure : `docs/ops/load-test.md` |
 | `app:demo:create` | P2-4 : crée un club de DÉMONSTRATION depuis `--ffbb=<code>` (`--name` requis) et y REPOINTE le compte animateur (`--animator-email`, défaut demo@amateo.fr ; `--animator-password` requis au premier passage) — adhésions précédentes supprimées (une seule active), populate FFBB synchrone best-effort **+ import des équipes engagées** (même étage que le vrai register — hors saison des poules : 0 équipe, no-op naturel), club non onboardé (le wizard guidé EST la démo). Le geste (`materialize()`) vit dans `DemoClubMaterializer`, partagé avec la route dev `POST /api/dev/demo-register` (le raccourci démo du register, même compte animateur — détail : [`backend-inventory.md`](backend-inventory.md) §Module démo) : **deux** chemins posent `is_demo`, un seul foyer. Le flag exempte aussi la bascule de saison du gate paiement P1-5 (« abonnement illimité »). CLI seulement (arguments libres — hors catalogue console) |
 | `app:demo:clock` | P4-16/P2-4 : pose (`--date=YYYY-MM-DD`) ou relâche (`--clear`) l'« aujourd'hui » simulé de `--club=<id>` — serveur (DemoAwareClock) ET front (`/api/me` → clock.ts) vivent à cette date ; réservé aux clubs de démonstration (`is_demo`) — action support **CLI seulement** (le catalogue console n'injecte que `--club`, jamais de date) |
+| `app:demo:purge-stale` | Démos PR B : détruit les clubs démo de l'animateur **PROSPECT** créés AVANT le jour courant (Europe/Paris) — libère leur code FFBB — via `DemoClubMaterializer::teardownStaleDemos()` ; un club non démo, démo PARTAGÉ ou créé le jour même est SAUTÉ, jamais détruit ; la démo BCCL permanente est hors scope par construction — **auto, quotidien à 03:15** (`AdminJobCatalog` clé `demo-purge-stale`). Détail : [`backend-inventory.md`](backend-inventory.md) §Module démo |
 | `app:clubs:mark-next-season-paid` | SA4/P1-5 : marque la saison SUIVANTE de `--club=<id>` comme payée (abonnement par saison — ouvre le gate de bascule) ; idempotent, le marqueur ne recule jamais — action support, aussi déclenchable depuis la console admin. Un club de démonstration épinglé (`is_demo` + `demo_today`) pivote sur sa date SIMULÉE, pas sur l'horloge réelle (D6 — sinon la démo de bascule ment) |
 | `app:clubs:set-plan` | P1-3 / A3 : attribue l'offre `--plan=<code>` (`decouverte`/`essentiel`/`club`/`grand-club`/`sans-limite`/`beta`) à `--club=<id>` — SEULE porte d'attribution (v1 = virement + geste superadmin ; l'offre Bêta n'a pas d'autre chemin par construction). Option `--paid-season=<current\|next>` : pose l'offre ET marque la saison encaissée (`paid_season_year = GREATEST(…)`, monotone) dans la MÊME transaction — pivot sur `demo_today` pour un club démo épinglé (D6). ⚠ **Une offre payante n'est EFFECTIVE qu'avec une saison réglée** (Bêta comprise, sinon elle naît expirée → Découverte) : c'est le rôle de `--paid-season`. **Interdit avec `decouverte`** (rien à encaisser). Sans l'option, l'offre est posée seule (voie CLI directe). Une SEULE entrée console « Offre » à schéma fermé (`plan` + `paidSeason` conditionnel) |
 | `app:clubs:reset-credits` | P1-3 PR A : remet `outputCreditsUsed` à 0 pour `--club=<id>` (ré-ouvre le pool de 10 crédits de sortie du plan Découverte — cas particuliers) — action support, aussi déclenchable depuis la console admin |

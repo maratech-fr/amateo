@@ -1,20 +1,17 @@
 # Project Map — Amateo (engine + backend)
 
-Last verified @ 2026-09-29 (P4-272 ③ : `CONTRACT_VERSION` **2.25 → 2.26** — bloc `clubRules` ajouté
-au payload `/place-matches` ; antérieur P4-271 : **2.24 → 2.25** — `slotRotations`/rotations
-retirées, la semaine type A/B devient un tag sur le créneau idéal, non transmis au moteur).
-Re-confronté au code :
-`engine/CONTRACT_VERSION` = **2.29** (`engine/CONTRACT_VERSION`) ✓ ;
-`match_placement.py::_place_matches` ne parcourt plus que `fixed`/`training_occupancies` pour les
-fenêtres personne (plus de jambe de trajet AWAY) ✓ ; `TenantFilterListener` en
+Last verified @ 2026-09-30 (rotation de fraîcheur, `documentation-update`). Re-confronté au code :
+`engine/CONTRACT_VERSION` = **2.29** (`engine/CONTRACT_VERSION`) ✓ ; `TenantFilterListener` en
 priorité **7** sur `KernelEvents::REQUEST`
-(`backend/src/EventListener/TenantFilterListener.php:55`) ✓ ; la liste des features frontend (§
-ci-dessous) correspond à `ls frontend/src/features/` (`admin`, `auth`, `club`, `coach-wishes`,
-`cockpit`, `feedback`, `legal`, `matches`, `planning`, `profile`, `release-notes`,
-`season-transition`, `wizard`) ✓. Reste du fichier (backend détaillé §2, engine
-§3, sécurité) non reconfronté cette passe — voir les stamps de zone.
+(`backend/src/EventListener/TenantFilterListener.php:55`) ✓ ; **corrigé** — la liste des features
+frontend (§ ci-dessous) citait `feedback` comme membre de `frontend/src/features/` : `ls` ce
+dossier ne le montre plus (`admin`, `auth`, `club`, `coach-wishes`, `cockpit`, `legal`, `matches`,
+`planning`, `profile`, `release-notes`, `season-transition`, `wizard`) — le bouton/la modale de
+signalement vivent dans `frontend/src/shared/feedback/` (primitive partagée, pas une feature).
+Reste du fichier (backend détaillé §2, engine §3, sécurité) non reconfronté cette passe — voir les
+stamps de zone.
 
-Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend has been **rebuilt (React 19) and is active** — features live under `frontend/src/features/` (`ls` it, no count here — it rots): `auth`, `wizard` (data entry), `planning` (work-loop), `cockpit`, `matches`, `coach-wishes` (doléances), `club`, `profile`, `season-transition`, `legal`, `feedback` (bouton + dialogue de signalement), `release-notes` (journal + modale « quoi de neuf ») et `admin` (console superadmin, garde et session distinctes) ; voir `../frontend/docs/frontend-wizard.md` et `frontend-spec.md`. Generated/verified during onboarding against the real code and the `code-review-graph` knowledge graph.
+Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend has been **rebuilt (React 19) and is active** — features live under `frontend/src/features/` (`ls` it, no count here — it rots): `auth`, `wizard` (data entry), `planning` (work-loop), `cockpit`, `matches`, `coach-wishes` (doléances), `club`, `profile`, `season-transition`, `legal`, `release-notes` (journal + modale « quoi de neuf ») et `admin` (console superadmin, garde et session distinctes). The feedback button/dialog are a shared primitive, not their own feature: `frontend/src/shared/feedback/`. See `../frontend/docs/frontend-wizard.md` and `frontend-spec.md`. Generated/verified during onboarding against the real code and the `code-review-graph` knowledge graph.
 
 ---
 

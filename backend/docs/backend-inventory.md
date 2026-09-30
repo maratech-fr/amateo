@@ -3,11 +3,11 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-09-30 (commit `31bb70e1` — §Module démo confronté au code : `User::$demoActiveUntil`/
-`isDemoWindowOpen()` (`User.php:90,296`), `UserChecker::checkPostAuth()` (`UserChecker.php:43-56`),
-`DevDemoRegisterController` n'a plus de garde `kernel.debug` seule (`DevDemoRegisterController.php:115,247`),
-`AuthController::registerConfig()` expose `demoShortcut`/`demoEmail` en debug OU fenêtre ouverte
-(`AuthController.php:236`), `app.demo_bccl_email` en maison unique (`services.yaml`)). Reste du
+Last verified @ 2026-09-30 (commit `13c821ab` — §Module démo confronté au code : `AdminDemoController`
+(routes `/api/admin/demos*`, `AdminDemoController.php:53,64,90,113,140`), `DemoResetRunner`
+(sous-processus `app:demo:seed`, `DemoResetRunner.php:35`), `DemoPurgeStaleCommand` +
+`AdminJobCatalog` clé `demo-purge-stale` quotidien 03:15 (`AdminJobCatalog.php:62`),
+`DemoClubMaterializer::teardownStaleDemos()` (`DemoClubMaterializer.php:210`)). Reste du
 fichier non rebalayé cette passe (portée = cette entrée) ; historique des passes complètes :
 `git log -p --follow` ce fichier — un stamp REMPLACE, il ne s'empile pas.
 
@@ -592,9 +592,36 @@ toujours confrontée à l'horloge **RÉELLE**, jamais à `demo_today` (un club d
 pouvoir rouvrir sa propre porte). `UserChecker::checkPostAuth()` (`UserChecker.php:43-56`) refuse
 la connexion des deux comptes démo hors fenêtre d'une manière **byte-identique** à un mauvais mot
 de passe (`Invalid credentials.`, aucun oracle « fenêtre fermée ») ; tout autre compte est
-insensible à la colonne. Le seed (`app:demo:seed`) n'ouvre jamais la fenêtre — seule une action
-superadmin (console, PR B) le fera. NR bloquant `DemoWindowTest` + feature Behat
-`la-demo-ne-s-ouvre-que-pendant-sa-fenetre`.
+insensible à la colonne. Le seed (`app:demo:seed`) n'ouvre jamais la fenêtre lui-même : c'est la
+**console superadmin** qui pose/retire l'activation (`AdminDemoController`, ci-dessous). NR
+bloquant `DemoWindowTest` + feature Behat `la-demo-ne-s-ouvre-que-pendant-sa-fenetre`.
+
+**Console démo** (`AdminDemoController`, `/api/admin/demos*`, PR B — mêmes gardes que les
+actions de support SA4, connexion `admin`, **aucun `club_id` posé**) : `GET /demos` lit l'état
+des deux comptes (fenêtre ISO, club démo courant résolu SERVEUR depuis l'adhésion active,
+`demo_today` pour BCCL seule) ; `POST /demos/{bccl|prospect}/activate` pose
+`demo_active_until` à now+4 h à l'horloge **RÉELLE** — un re-clic **REDÉMARRE** la fenêtre,
+jamais une addition ; `POST /demos/{target}/deactivate` la ferme (`NULL`). `POST
+/demos/bccl/reset` relance `app:demo:seed` en **SOUS-PROCESSUS** via `DemoResetRunner`
+(`src/Service/DemoResetRunner.php`, `DATABASE_ADMIN_URL`, patron `Process` — même patron que
+`DatabaseBackupCommand`, la requête console tournant elle sur la connexion applicative,
+incapable de purger le workspace à travers la RLS), puis remet `club.demo_today` à `NULL`
+(décision fondateur) **sans toucher la fenêtre du compte** — échec du re-seed → 502, horloge
+intacte. `POST /demos/bccl/clock` pose (`date`) ou relâche (`clear`) `demo_today` du club BCCL,
+résolu SERVEUR depuis le compte `demo-bccl@`, gardé `is_demo = TRUE` — même garde de calendrier
+que `DemoClockCommand` (`2026-02-31` refusé). Front : 8ᵉ onglet « Démos »
+(`frontend/src/features/admin/tabs/tabsConfig.ts`), deux cartes (`DemosSection.tsx`), heures
+rendues à l'heure de Paris. NR bloquant `Integration/Admin/AdminDemoResetTest`.
+
+**Purge nocturne du prospect périmé** : `app:demo:purge-stale`
+(`src/Command/DemoPurgeStaleCommand.php`, cron-runner quotidien **03:15**, clé
+`demo-purge-stale` dans `AdminJobCatalog`) détruit les clubs démo de l'animateur PROSPECT créés
+AVANT le jour courant (Europe/Paris) — la ligne `club` part, ce qui libère son code FFBB ; une
+réactivation le même jour réutilise le club existant. Chemin sûr
+`DemoClubMaterializer::teardownStaleDemos()` (miroir de `teardownPreviousDemo()` ci-dessus) : un
+club non démo ou démo PARTAGÉ (un autre membre) est SAUTÉ, jamais détruit ; un club créé le JOUR
+MÊME est gardé ; la démo BCCL permanente n'est jamais une adhésion de l'animateur prospect, donc
+hors scope par construction. NR bloquant `Integration/Command/DemoPurgeStaleCommandTest`.
 
 Distinct du club de démonstration : `app:bccl:seed` (`src/Command/BcclSeedCommand.php`) seede le
 club **dev BCCL RÉEL** (identités réelles, `mara.mb@bccl.fr`, code FFBB ARA0069036) via le même

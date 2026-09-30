@@ -318,9 +318,13 @@ Si la commande échoue sur « **An account already exists for … »** : un comp
 **Ne pas contourner** — vérifier qui l'a créé, le supprimer (ou le traiter à la main) puis relancer.
 Rien n'a été créé tant que ce refus s'affiche.
 
-⬜ **Le club de démonstration** (`app:demo:seed`) — jouable dès le jour J. `--password` (min 12) est
-requis à la première création ; pour éviter de le laisser en clair dans l'historique, préfixer la
-ligne d'un espace (avec `HISTCONTROL=ignorespace`) ou passer par une variable non historisée :
+⬜ **Le club de démonstration** (`app:demo:seed`) — le compte naît **INACTIF** par défaut
+(`app_user.demo_active_until` NULL) : ce seed ne suffit pas pour jouer la démo en rendez-vous,
+**activer sa fenêtre depuis la console superadmin AVANT chaque rendez-vous** (`/admin` → onglet
+« Démos » → « Activer 4 h » — `specs/courantes/superadmin-auth.md` §« Démos — console de
+pilotage »). `--password` (min 12) est requis à la première création ; pour éviter de le laisser
+en clair dans l'historique, préfixer la ligne d'un espace (avec `HISTCONTROL=ignorespace`) ou
+passer par une variable non historisée :
 
 ```bash
  docker compose exec php-fpm sh -c 'DATABASE_URL="$DATABASE_ADMIN_URL" php bin/console app:demo:seed --password=MOT-DE-PASSE-DEMO'
@@ -335,7 +339,9 @@ fichier FBI de la saison). Les localisations d'adversaires étant déjà amorcé
 les gymnases sans re-résoudre.
 
 ⬜ **Vérifications** :
-- se connecter aux **3 comptes** (fondateur, Nicolas, démo) — ils naissent pré-vérifiés ;
+- se connecter aux **3 comptes** (fondateur, Nicolas, démo) — ils naissent pré-vérifiés ; le
+  compte démo exige d'avoir activé sa fenêtre depuis la console superadmin au préalable
+  (ci-dessus), sinon la connexion échoue comme un mot de passe faux (aucun oracle) ;
 - non-fuite entre clubs (chaque club voit SES catégories, jamais celles d'un autre) :
 
 ```bash
