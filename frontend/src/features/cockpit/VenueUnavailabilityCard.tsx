@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { useCreateVenueUnavailability, useDeleteVenueUnavailability, useUnavailabilityImpact, useVenues, useVenueUnavailabilities } from "@/features/matches/queries";
 import { Button } from "@/shared/components/ui/button";
+import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Modal } from "@/shared/components/ui/modal";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
 
@@ -29,10 +30,12 @@ export function VenueUnavailabilityCard() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [label, setLabel] = useState("");
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const venues = venuesQuery.data ?? [];
   const venueName = (id: string): string => venues.find((v) => v.id === id)?.name ?? "Gymnase ?";
   const unavailabilities = unavailabilitiesQuery.data ?? [];
+  const pendingDelete = unavailabilities.find((u) => u.id === pendingDeleteId) ?? null;
   const impactByUnavailability = new Map((impactQuery.data?.items ?? []).map((item) => [item.unavailabilityId, item]));
 
   const rangeInvalid = "" === startDate || "" === endDate || startDate > endDate;
@@ -107,10 +110,10 @@ export function VenueUnavailabilityCard() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="size-7 shrink-0"
+                    className="size-8 shrink-0 text-destructive"
                     aria-label={`Supprimer l'indisponibilité de ${venueName(unavailability.venueId)}`}
                     disabled={remove.isPending}
-                    onClick={() => remove.mutate(unavailability.id)}
+                    onClick={() => setPendingDeleteId(unavailability.id)}
                   >
                     <Trash2 className="size-4" />
                   </Button>
@@ -177,6 +180,21 @@ export function VenueUnavailabilityCard() {
           </div>
         </Modal>
       ) : null}
+
+      <ConfirmDialog
+        open={null !== pendingDelete}
+        title="Supprimer cette indisponibilité ?"
+        description={pendingDelete ? <>La fermeture de {venueName(pendingDelete.venueId)} (du {frDate(pendingDelete.startDate)} au {frDate(pendingDelete.endDate)}) sera retirée.</> : null}
+        confirmLabel="Supprimer"
+        destructive
+        onConfirm={() => {
+          if (null !== pendingDelete) {
+            remove.mutate(pendingDelete.id);
+          }
+          setPendingDeleteId(null);
+        }}
+        onCancel={() => setPendingDeleteId(null)}
+      />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
+import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Select } from "@/shared/components/ui/select";
 
 import { useCreateVenueMatchWindow, useDeleteVenueMatchWindow, useVenueMatchWindows } from "./queries";
@@ -25,8 +26,10 @@ export function MatchWindowsEditor({ venueId }: MatchWindowsEditorProps) {
   const [dayOfWeek, setDayOfWeek] = useState(6);
   const [startTime, setStartTime] = useState("14:00");
   const [endTime, setEndTime] = useState("22:00");
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const windows = (windowsQuery.data ?? []).filter((w) => w.venueId === venueId);
+  const pendingDelete = windows.find((w) => w.id === pendingDeleteId) ?? null;
   const rangeInvalid = "" === startTime || "" === endTime || startTime >= endTime;
 
   const add = (): void => {
@@ -58,10 +61,10 @@ export function MatchWindowsEditor({ venueId }: MatchWindowsEditorProps) {
             <Button
               variant="ghost"
               size="icon"
-              className="size-7"
+              className="size-8 text-destructive"
               aria-label={`Supprimer la fenêtre ${DAY_LABELS[window.dayOfWeek] ?? "?"} ${window.startTime}`}
               disabled={remove.isPending}
-              onClick={() => remove.mutate(window.id)}
+              onClick={() => setPendingDeleteId(window.id)}
             >
               <Trash2 className="size-4" />
             </Button>
@@ -95,6 +98,21 @@ export function MatchWindowsEditor({ venueId }: MatchWindowsEditorProps) {
       {rangeInvalid && "" !== startTime && "" !== endTime ? (
         <p className="text-xs text-destructive">La fenêtre doit finir après son début, le même jour.</p>
       ) : null}
+
+      <ConfirmDialog
+        open={null !== pendingDelete}
+        title="Supprimer cette fenêtre d’accès match ?"
+        description={pendingDelete ? <>La fenêtre {DAY_LABELS[pendingDelete.dayOfWeek] ?? "?"} {pendingDelete.startTime} – {pendingDelete.endTime} sera retirée de ce gymnase.</> : null}
+        confirmLabel="Supprimer"
+        destructive
+        onConfirm={() => {
+          if (null !== pendingDelete) {
+            remove.mutate(pendingDelete.id);
+          }
+          setPendingDeleteId(null);
+        }}
+        onCancel={() => setPendingDeleteId(null)}
+      />
     </div>
   );
 }

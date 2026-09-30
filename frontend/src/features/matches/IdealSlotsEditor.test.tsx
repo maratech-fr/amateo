@@ -99,6 +99,9 @@ describe("IdealSlotsEditor (P4-271)", () => {
     renderWithProviders(<IdealSlotsEditor teams={TEAMS} venues={VENUES} weekendAlternates={true} />);
 
     await user.click(screen.getByRole("button", { name: "Supprimer le créneau idéal de SM1" }));
+    // N2 : la suppression passe désormais par une confirmation (ConfirmDialog).
+    expect(deleteHabit).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Supprimer" }));
     expect(deleteHabit).toHaveBeenCalledWith("h1");
   });
 

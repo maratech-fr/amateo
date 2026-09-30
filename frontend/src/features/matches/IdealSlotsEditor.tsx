@@ -2,6 +2,7 @@ import { AlertTriangle, Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
+import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Select } from "@/shared/components/ui/select";
 import { TeamSelect } from "@/shared/components/ui/team-select";
@@ -165,7 +166,7 @@ function SlotFields({
       {weekendAlternates ? (
         <label className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
           Semaine
-          <Select aria-label={`Semaine du créneau idéal de ${teamName}`} className="h-8 w-28" value={week} onChange={(e) => setWeek(e.target.value as MatchWeek)}>
+          <Select aria-label={`Semaine du créneau idéal de ${teamName}`} className="h-8 w-36" value={week} onChange={(e) => setWeek(e.target.value as MatchWeek)}>
             <option value="A">{WEEK_LABELS.A}</option>
             <option value="B">{WEEK_LABELS.B}</option>
           </Select>
@@ -229,6 +230,7 @@ function IdealSlotRow<T extends TeamLike>({
   const remove = useDeleteTeamMatchHabit();
 
   const [editing, setEditing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [week, setWeek] = useState<MatchWeek>(habit?.week ?? "A");
   const [day, setDay] = useState(habit?.dayOfWeek ?? 6);
   const [time, setTime] = useState(habit?.kickoffTime ?? "");
@@ -276,11 +278,11 @@ function IdealSlotRow<T extends TeamLike>({
             venues={venues}
             weekendAlternates={weekendAlternates}
           />
-          <Button size="icon" className="size-8" aria-label={`Enregistrer le créneau idéal de ${team.name}`} title="Enregistrer" disabled={!canSave} onClick={save}>
-            <Check className="size-4" />
+          <Button size="sm" aria-label={`Enregistrer le créneau idéal de ${team.name}`} title={`Enregistrer le créneau idéal de ${team.name}`} disabled={!canSave} onClick={save}>
+            Enregistrer
           </Button>
-          <Button variant="ghost" size="icon" className="size-8" aria-label={`Annuler la modification du créneau idéal de ${team.name}`} title="Annuler" onClick={() => setEditing(false)}>
-            <X className="size-4" />
+          <Button variant="outline" size="sm" aria-label={`Annuler la modification du créneau idéal de ${team.name}`} title={`Annuler la modification du créneau idéal de ${team.name}`} onClick={() => setEditing(false)}>
+            Annuler
           </Button>
         </div>
       ) : (
@@ -300,13 +302,28 @@ function IdealSlotRow<T extends TeamLike>({
               aria-label={`Supprimer le créneau idéal de ${team.name}`}
               title="Supprimer"
               disabled={remove.isPending}
-              onClick={() => remove.mutate(habit.id)}
+              onClick={() => setConfirmDelete(true)}
             >
               <Trash2 className="size-4" />
             </Button>
           ) : null}
         </div>
       )}
+
+      {null !== habit ? (
+        <ConfirmDialog
+          open={confirmDelete}
+          title={`Supprimer le créneau idéal de ${team.name} ?`}
+          description="Le placement n’aura plus de créneau idéal à approcher pour cette équipe."
+          confirmLabel="Supprimer"
+          destructive
+          onConfirm={() => {
+            setConfirmDelete(false);
+            remove.mutate(habit.id);
+          }}
+          onCancel={() => setConfirmDelete(false)}
+        />
+      ) : null}
 
       {clubRuleAlerts.length > 0 ? (
         <div className="mt-1 flex w-full flex-col gap-1 rounded-md border border-warning/40 bg-surface-warning px-3 py-1.5 text-sm text-foreground" role="status">
