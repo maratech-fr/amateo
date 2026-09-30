@@ -69,10 +69,13 @@ paths:
   est la SEULE maison d'un hex d'accent produit ; les valeurs statiques d'accent d'`index.css` sont
   la sortie EXACTE de sa dérivation, gardée par `src/test/accentTokenParity.test.ts` — **on ne les
   édite jamais à la main, on les recalcule** (`specs/courantes/identite-visuelle-produit.md`).
-  `BrandIcon` (`shared/components/ui/brand-icon.tsx`) est la SEULE exception admise à « jamais un
-  `#hex` » **en composant React** (ses trois arcs) ; les **SVG d'asset statiques de marque**
-  (`public/brand/*.svg` — `favicon.svg`, `fond-light.svg`/`fond-dark.svg`, P5-16) en sont une
-  seconde, pour la même raison : un fichier servi tel quel n'a pas de jeton de thème à consommer.
+  `BrandIcon` (`shared/components/ui/brand-icon.tsx`) est la première exception admise à « jamais
+  un `#hex` » **en composant React** (ses trois arcs) ; `BrandSplash`
+  (`shared/components/ui/brand-splash.tsx`, P4-252) en est une seconde — les MÊMES trois teintes du
+  mark, recopiées pour dessiner l'icône + le « eo » teal du splash de connexion animé — et les
+  **SVG d'asset statiques de marque** (`public/brand/*.svg` — `favicon.svg`,
+  `fond-light.svg`/`fond-dark.svg`, P5-16) une troisième, pour la même raison : un fichier servi tel
+  quel n'a pas de jeton de thème à consommer.
   `BrandMark` (`shared/components/ui/brand-mark.tsx`), le logo COMPLET
   (icône + mot) posé partout où le produit se nomme comme MARQUE (login/inscription, écrans
   système, console admin — jamais pour une mention dans une phrase), n'en porte aucune : le mot

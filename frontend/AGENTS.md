@@ -119,7 +119,10 @@ page` : voir la puce dédiée.
   pas ; clic Suivant arme).
 - **Les seules exemptions légitimes à ce jour** : les 4 mutations de lancement de solve (elles
   rendent 202 et passent la main à `GenerationWaiting` — les voiler ferait clignoter voile → écran
-  d'attente), la query `useScheduleStatus` (son premier fetch vit sous cet écran), et
+  d'attente), la query `useScheduleStatus` (son premier fetch vit sous cet écran), `useLogin`
+  (`features/auth/queries.ts`, P4-252) — elle a son PROPRE overlay, le splash « Signature »
+  (`app/LoginSplash.tsx`, z-[70] > voile générique z-[60]) : sans l'exemption, `ActionVeil`
+  afficherait EN PLUS son écran « Enregistrement » sous le splash —, et
   `useMarkReleaseNotesSeen` — la première d'une **seconde famille** : la mutation d'ENTRETIEN qui
   part **toute seule**, sans geste (le filigrane des nouveautés se pose en silence pour un nouvel
   inscrit, ~1,5 s après l'arrivée sur le wizard). Le blocage à 0 ms protège un geste parti d'un
