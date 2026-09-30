@@ -53,6 +53,11 @@ parameters:
     # commande support `app:demo:create`, pour que les deux chemins qui posent
     # is_demo parlent du MÊME login. Jamais un littéral dupliqué.
     app.demo_animator_email: !php/const App\Command\DemoCreateCommand::DEFAULT_ANIMATOR_EMAIL
+    # Démos — le compte gestionnaire du club démo BCCL (app:demo:seed). MAISON
+    # UNIQUE : le littéral vit ICI, DemoSeedCommand le lit (plus de défaut dupliqué
+    # dans son option --email). Avec app.demo_animator_email, ce sont les DEUX seules
+    # adresses dont UserChecker garde la connexion derrière la fenêtre d'activation.
+    app.demo_bccl_email: 'demo-bccl@amateo.fr'
     # DÉFAUT `true` — fail-closed délibéré : une variable oubliée en production
     # donne un cookie `Secure` (correct), alors que l'inverse donnerait un jeton
     # en clair sur le réseau sans que rien ne le signale. C'est le DEV qui la met

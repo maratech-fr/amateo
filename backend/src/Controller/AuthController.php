@@ -223,22 +223,26 @@ final class AuthController extends AbstractController
      * actuel, sans widget ni script tiers. Publique par le préfixe ^/api/register
      * de security.yaml.
      *
-     * P2-4 — champ ADDITIF `demoShortcut` : vrai en debug (démo), le front tente
-     * alors le raccourci démo après le 202 du register (DevDemoRegisterController,
-     * lui-même gardé par kernel.debug). Faux en prod → le front garde strictement
-     * l'écran « vérifiez votre e-mail ». Le rail register reste par ailleurs intact.
+     * P2-4 — champ ADDITIF `demoShortcut` : vrai en debug (démo) OU quand la fenêtre
+     * d'activation du compte animateur démo est ouverte ; le front tente alors le
+     * raccourci démo après le 202 du register (DevDemoRegisterController, aligné sur la
+     * même condition). Faux sinon → le front garde strictement l'écran « vérifiez votre
+     * e-mail ». Exposer `demoEmail` quand la fenêtre est ouverte est un mini-oracle
+     * limité à la fenêtre, assumé. Le rail register reste par ailleurs intact.
      */
     #[Route('/api/register/config', name: 'api_register_config', methods: ['GET'])]
     public function registerConfig(): JsonResponse
     {
+        $demoAvailable = $this->debug || $this->animatorWindowIsOpen();
+
         return $this->json([
             'turnstileSiteKey' => '' !== $this->turnstileSiteKey ? $this->turnstileSiteKey : null,
-            'demoShortcut' => $this->debug,
-            // Exposée SEULEMENT en debug : en prod (demoShortcut=false) elle est nulle,
-            // donc aucun oracle. Le front ne tente le raccourci que si l'adresse saisie
-            // est CETTE adresse — le mot de passe d'un vrai prospect ne part jamais vers
-            // la route dev.
-            'demoEmail' => $this->debug ? strtolower($this->demoAnimatorEmail) : null,
+            'demoShortcut' => $demoAvailable,
+            // Exposée uniquement quand le raccourci est disponible (debug ou fenêtre
+            // ouverte) ; sinon nulle, aucun oracle. Le front ne tente le raccourci que si
+            // l'adresse saisie EST cette adresse — le mot de passe d'un vrai prospect ne
+            // part jamais vers la route démo.
+            'demoEmail' => $demoAvailable ? strtolower($this->demoAnimatorEmail) : null,
         ]);
     }
 
@@ -769,6 +773,18 @@ final class AuthController extends AbstractController
         $this->entityManager->flush();
 
         return $this->json(['status' => 'cancelled']);
+    }
+
+    /**
+     * La fenêtre d'activation démo du compte animateur est-elle ouverte à l'instant
+     * RÉEL ? Compte absent → fermée. Horloge réelle (`new DateTimeImmutable('now')`),
+     * jamais demo_today. Lecture seule.
+     */
+    private function animatorWindowIsOpen(): bool
+    {
+        $animator = $this->entityManager->getRepository(User::class)->findOneBy(['email' => strtolower($this->demoAnimatorEmail)]);
+
+        return $animator instanceof User && $animator->isDemoWindowOpen(new DateTimeImmutable('now'));
     }
 
     /**
