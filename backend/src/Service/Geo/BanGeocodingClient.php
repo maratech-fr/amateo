@@ -105,7 +105,7 @@ final class BanGeocodingClient
      * (too short/long) returns [] without any network call. Transport failures
      * propagate — the caller treats them best-effort (a 502, never a broken form).
      *
-     * @return list<array{label: string, latitude: float, longitude: float, score: float}>
+     * @return list<array{label: string, latitude: float, longitude: float, score: float, type: string|null}>
      */
     public function geocode(string $query, int $limit = 5): array
     {
@@ -195,7 +195,7 @@ final class BanGeocodingClient
     }
 
     /**
-     * @return array{label: string, latitude: float, longitude: float, score: float}|null
+     * @return array{label: string, latitude: float, longitude: float, score: float, type: string|null}|null
      */
     private function mapFeature(mixed $feature): ?array
     {
@@ -215,12 +215,16 @@ final class BanGeocodingClient
         }
 
         $score = $properties['score'] ?? null;
+        // BAN `type` : housenumber | street | locality | municipality — la PRÉCISION du point. Le
+        // front avertit « Position approximative (rue entière) » quand ce n'est pas un housenumber.
+        $type = $properties['type'] ?? null;
 
         return [
             'label' => $label,
             'latitude' => (float) $latitude,
             'longitude' => (float) $longitude,
             'score' => is_numeric($score) ? (float) $score : 0.0,
+            'type' => \is_string($type) && '' !== $type ? $type : null,
         ];
     }
 }

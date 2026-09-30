@@ -14,9 +14,12 @@ vi.mock("@/shared/api/geocode", async (importActual) => {
 });
 
 const CANDIDATES: GeocodeCandidate[] = [
-  { label: "12 Rue du Sport, 69100 Villeurbanne", latitude: 45.766, longitude: 4.88, score: 0.92 },
-  { label: "12 Rue du Sport, 01000 Bourg", latitude: 46.2, longitude: 5.22, score: 0.31 },
+  { label: "12 Rue du Sport, 69100 Villeurbanne", latitude: 45.766, longitude: 4.88, score: 0.92, type: "housenumber" },
+  { label: "12 Rue du Sport, 01000 Bourg", latitude: 46.2, longitude: 5.22, score: 0.31, type: "housenumber" },
 ];
+
+// Un candidat au BON score mais de précision « rue » (pas un numéro) : la position est approximative.
+const STREET_CANDIDATE: GeocodeCandidate[] = [{ label: "Cours Émile Zola, 69100 Villeurbanne", latitude: 45.77, longitude: 4.87, score: 0.9, type: "street" }];
 
 const baseProps = { placeholder: "Adresse", label: "Adresse", statusWord: "Localisé" as const };
 
@@ -117,5 +120,46 @@ describe("AddressGeocodeField — géocodage partagé", () => {
     expect(link).toHaveAttribute("href", "https://www.openstreetmap.org/?mlat=45.7&mlon=4.8#map=18/45.7/4.8");
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  // Lot E — précision : une rue (pas un numéro) est signalée « approximatif » dans la liste des
+  // candidats (le point n'est pas un numéro de rue).
+  it("un candidat de précision « rue » est signalé approximatif dans la liste", async () => {
+    vi.mocked(geocodeApi.geocodeAddress).mockResolvedValue(STREET_CANDIDATE);
+    const onPick = vi.fn();
+    renderWithProviders(<AddressGeocodeField {...baseProps} address={null} located={false} onPick={onPick} />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Adresse" }), { target: { value: "cours emile zola" } });
+    fireEvent.click(screen.getByRole("button", { name: "Localiser" }));
+
+    const candidate = await screen.findByText("Cours Émile Zola, 69100 Villeurbanne");
+    expect(screen.getByText("rue entière — ajoutez le numéro")).toBeInTheDocument();
+    fireEvent.click(candidate);
+    expect(onPick).toHaveBeenCalledWith(STREET_CANDIDATE[0]);
+  });
+
+  // Lot E — saisie manuelle : le sous-formulaire n'apparaît qu'avec onManualCoords ; une saisie
+  // valide remonte les coordonnées bornées (même écriture que « Localiser »).
+  it("saisir des coordonnées valides remonte le couple parsé (onManualCoords)", () => {
+    const onManualCoords = vi.fn();
+    renderWithProviders(<AddressGeocodeField {...baseProps} address={null} located={false} onPick={vi.fn()} onManualCoords={onManualCoords} />);
+    fireEvent.click(screen.getByRole("button", { name: "Saisir les coordonnées" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Coordonnées (latitude, longitude) ou lien de carte" }), { target: { value: "45.76799, 4.88853" } });
+    fireEvent.click(screen.getByRole("button", { name: "Placer" }));
+    expect(onManualCoords).toHaveBeenCalledWith({ latitude: 45.76799, longitude: 4.88853 });
+  });
+
+  it("une saisie de coordonnées non reconnue montre une alerte, aucune écriture", () => {
+    const onManualCoords = vi.fn();
+    renderWithProviders(<AddressGeocodeField {...baseProps} address={null} located={false} onPick={vi.fn()} onManualCoords={onManualCoords} />);
+    fireEvent.click(screen.getByRole("button", { name: "Saisir les coordonnées" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Coordonnées (latitude, longitude) ou lien de carte" }), { target: { value: "pas des coordonnées" } });
+    fireEvent.click(screen.getByRole("button", { name: "Placer" }));
+    expect(onManualCoords).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+
+  it("sans onManualCoords, aucune affordance « Saisir les coordonnées »", () => {
+    renderWithProviders(<AddressGeocodeField {...baseProps} address={null} located={false} onPick={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Saisir les coordonnées" })).toBeNull();
   });
 });

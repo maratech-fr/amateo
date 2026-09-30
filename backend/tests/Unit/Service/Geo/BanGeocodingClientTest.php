@@ -56,6 +56,36 @@ final class BanGeocodingClientTest extends TestCase
         self::assertSame('69100', $top['postalCode']);
     }
 
+    /**
+     * Lot E — la PRÉCISION BAN (`properties.type`) voyage dans les candidats : `housenumber` pour un
+     * numéro, `street` pour une rue entière (le front avertit « Position approximative » sur ce
+     * dernier). Absente ⇒ null.
+     */
+    public function testGeocodeExposesTheBanPrecisionType(): void
+    {
+        $body = (string) json_encode(['features' => [
+            [
+                'properties' => ['label' => '12 Cours Émile Zola, Villeurbanne', 'score' => 0.95, 'type' => 'housenumber'],
+                'geometry' => ['coordinates' => [4.87, 45.77]],
+            ],
+            [
+                'properties' => ['label' => 'Cours Émile Zola, Villeurbanne', 'score' => 0.9, 'type' => 'street'],
+                'geometry' => ['coordinates' => [4.88, 45.76]],
+            ],
+            [
+                'properties' => ['label' => 'Villeurbanne', 'score' => 0.8], // type absent
+                'geometry' => ['coordinates' => [4.89, 45.78]],
+            ],
+        ]], \JSON_THROW_ON_ERROR);
+
+        $client = new BanGeocodingClient(new MockHttpClient(static fn (): MockResponse => new MockResponse($body)));
+
+        $candidates = $client->geocode('cours emile zola');
+        self::assertSame('housenumber', $candidates[0]['type'], 'un numéro de rue : type housenumber');
+        self::assertSame('street', $candidates[1]['type'], 'une rue entière : type street (position approximative)');
+        self::assertNull($candidates[2]['type'], 'type absent ⇒ null');
+    }
+
     // ── reverse() — P4-271 (ajout fondateur) : best-effort, jamais d'exception ──────────
 
     public function testReverseReturnsTheClosestAddressLabel(): void

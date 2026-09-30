@@ -21,9 +21,15 @@ class VenueInput
     #[Assert\Length(max: 20, maxMessage: 'La couleur ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $color = null;
 
+    // Bornes validées (422) : la saisie MANUELLE des coordonnées (lot E) accepte une entrée
+    // utilisateur — une latitude/longitude hors du globe est refusée, pas stockée.
+    #[Assert\Type(type: 'numeric', message: 'La latitude doit être un nombre.')]
+    #[Assert\Range(notInRangeMessage: 'La latitude doit être comprise entre {{ min }} et {{ max }}.', min: -90, max: 90)]
     #[Groups(['write'])]
     public ?string $latitude = null;
 
+    #[Assert\Type(type: 'numeric', message: 'La longitude doit être un nombre.')]
+    #[Assert\Range(notInRangeMessage: 'La longitude doit être comprise entre {{ min }} et {{ max }}.', min: -180, max: 180)]
     #[Groups(['write'])]
     public ?string $longitude = null;
 

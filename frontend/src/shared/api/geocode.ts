@@ -7,6 +7,9 @@ export interface GeocodeCandidate {
   longitude: number;
   /** Score de pertinence BAN, 0..1. */
   score: number;
+  /** Précision BAN : `housenumber` | `street` | `locality` | `municipality` — null si absent. Une
+   *  valeur autre que `housenumber` = position approximative (rue/quartier), pas un point précis. */
+  type: string | null;
 }
 
 /**
