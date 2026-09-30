@@ -874,6 +874,13 @@ jobs:
       - name: Run bandit
         run: docker compose run --rm engine bandit -r app/
 
+      # Garde d'hygiène des dépendances : deptry rougit sur une dépendance déclarée
+      # mais jamais importée (DEP002), manquante (DEP001) ou seulement transitive
+      # (DEP003). Config dans pyproject.toml (`tests` réintégré, faux positifs des
+      # outils CLI/plugins pytest ignorés en DEP002).
+      - name: Run deptry
+        run: docker compose run --rm engine deptry .
+
   engine-perf:
     name: Engine Perf Gate (main only)
     runs-on: ubuntu-latest

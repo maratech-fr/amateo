@@ -25,6 +25,7 @@ dev = [
   "ruff>=0.6,<1",
   "mypy>=1.11,<3",
   "bandit>=1.7,<2",
+  "deptry>=0.20,<1",
 ]
 
 [tool.setuptools]
@@ -92,3 +93,23 @@ ignore_missing_imports = true
 
 [tool.bandit]
 exclude_dirs = ["tests"]
+
+# Garde d'hygiène des dépendances (deptry).
+# ⚠ deptry EXCLUT `tests` par défaut : on redéfinit `exclude` SANS `tests` pour que
+# pytest et hypothesis — importés uniquement par les tests — soient vus utilisés
+# (sinon faux DEP002). `exclude` remplace entièrement la liste par défaut de deptry.
+[tool.deptry]
+exclude = ["\\.venv", "venv", "\\.direnv", "\\.git", "setup\\.py"]
+
+[tool.deptry.per_rule_ignores]
+# DEP002 = déclaré mais jamais importé — faux positifs légitimes : outils CLI et
+# plugins pytest lancés en commande, jamais par `import`, plus deptry lui-même.
+DEP002 = [
+  "uvicorn",         # serveur ASGI lancé en commande (uvicorn app.main:app), jamais importé
+  "ruff",            # linter/formateur CLI
+  "mypy",            # vérificateur de types CLI
+  "bandit",          # scanner de sécurité CLI
+  "pytest-cov",      # plugin pytest (couverture) — chargé par pytest, pas importé
+  "pytest-timeout",  # plugin pytest (timeout) — chargé par pytest, pas importé
+  "deptry",          # cette garde elle-même — CLI, jamais importée
+]
