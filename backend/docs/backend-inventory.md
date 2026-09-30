@@ -3,8 +3,11 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-09-30 (commit `19aed0f1` — ligne `GET /api/venues/geo-check` ajoutée et confrontée
-au code : `VenueGeoCheckController`, priority 10, `ManagementAccessGuard::assertManager`). Reste du
+Last verified @ 2026-09-30 (commit `31bb70e1` — §Module démo confronté au code : `User::$demoActiveUntil`/
+`isDemoWindowOpen()` (`User.php:90,296`), `UserChecker::checkPostAuth()` (`UserChecker.php:43-56`),
+`DevDemoRegisterController` n'a plus de garde `kernel.debug` seule (`DevDemoRegisterController.php:115,247`),
+`AuthController::registerConfig()` expose `demoShortcut`/`demoEmail` en debug OU fenêtre ouverte
+(`AuthController.php:236`), `app.demo_bccl_email` en maison unique (`services.yaml`)). Reste du
 fichier non rebalayé cette passe (portée = cette entrée) ; historique des passes complètes :
 `git log -p --follow` ce fichier — un stamp REMPLACE, il ne s'empile pas.
 
@@ -547,29 +550,51 @@ FFBB réel) se crée par `app:demo:create` (`src/Command/DemoCreateCommand.php`,
 `--ffbb`, `--name`, `--animator-email`, `--animator-password`), dont le cœur (déplacement de
 l'animateur, provisioning, populate FFBB + import des équipes engagées, best-effort synchrone)
 vit dans `DemoClubMaterializer::materialize()` (`src/Service/DemoClubMaterializer.php`). Trois
-contrôleurs dev-only relaient ces gestes en environnement e2e/test/démo (même garde
-`%kernel.debug%`, 404 en prod) : `POST /api/dev/approve-club-request` (`DevClubApprovalController`,
-approuve la demande PENDING de l'appelant), `POST /api/dev/mark-season-paid`
-(`DevSeasonPaymentController`, marque payée la saison SUIVANTE du club courant — respecte
-l'horloge simulée), et **`POST /api/dev/demo-register`**
-(`DevDemoRegisterController`) — le raccourci « effet waouw » : appelé par `RegisterPage` juste
-APRÈS le 202 neutre du vrai register (rail register/verify byte-intact), il fait naître le club
-DU PROSPECT depuis le formulaire réel plutôt qu'un terminal, pour l'adresse démo fixe SEULE
-(`app.demo_animator_email`, MAISON UNIQUE = `DemoCreateCommand::DEFAULT_ANIMATOR_EMAIL`,
-`demo@amateo.fr` — toute autre adresse : 422 sans effet). Ordre des gardes AVANT toute écriture :
-mot de passe d'un compte existant **VÉRIFIÉ, jamais écrasé** (401 sans effet) ; code FFBB visé
-remplaçable seulement s'il porte la propre démo ISOLÉE de l'animateur — un club réel, la démo
-d'un autre animateur ou une démo partagée refusent en 409 ; démontage du club démo précédent de
-l'animateur VALIDÉ intégralement avant la moindre destruction (purge du workspace + suppression
-de la ligne `club`, pour libérer son code FFBB — `DemoClubMaterializer::teardownPreviousDemo()`,
-`DemoTeardownRefusedException` en 409 sinon rien détruit). Une trace d'audit **globale**
-(`AuditAction::DEMO_SHORTCUT`, hors périmètre club — elle doit survivre à la destruction de la
-ligne club) est posée. La route est exposée au front SEULEMENT en debug par
-`GET /api/register/config` (champs additifs `demoShortcut`/`demoEmail`, tous deux
-`false`/`null` en prod). `ProdSecretGuard::assertForEnvironment()` (`src/Security/ProdSecretGuard.php`,
-invoqué depuis `Kernel::boot()`) refuse de démarrer en environnement `prod` avec
-`APP_DEBUG` résolu à `1`/`true` — un verrou qui couvre cette route ET les deux précédentes d'un
-seul coup, indépendamment d'un oubli de garde individuelle.
+contrôleurs relaient ces gestes en environnement e2e/test/démo : `POST /api/dev/approve-club-request`
+(`DevClubApprovalController`, approuve la demande PENDING de l'appelant) et
+`POST /api/dev/mark-season-paid` (`DevSeasonPaymentController`, marque payée la saison SUIVANTE
+du club courant — respecte l'horloge simulée) restent gardés `%kernel.debug%` seul (404 en prod).
+**`POST /api/dev/demo-register`** (`DevDemoRegisterController`) — le raccourci « effet waouw » :
+appelé par `RegisterPage` juste APRÈS le 202 neutre du vrai register (rail register/verify
+byte-intact), il fait naître le club DU PROSPECT depuis le formulaire réel plutôt qu'un terminal,
+pour l'adresse démo fixe SEULE (`app.demo_animator_email`, MAISON UNIQUE =
+`DemoCreateCommand::DEFAULT_ANIMATOR_EMAIL`, `demo@amateo.fr` — toute autre adresse : 422
+`not_demo_account` sans effet) — **n'a plus 404 hors debug** (`DevDemoRegisterController.php:115`) :
+en debug elle se comporte comme avant (aucune fenêtre requise, les e2e du register en dépendent) ;
+en PROD elle n'agit QUE si la **fenêtre d'activation** du compte animateur est ouverte
+(`animatorWindowIsOpen()`, `DevDemoRegisterController.php:247`), sinon le MÊME 422
+`not_demo_account` qu'une adresse quelconque (aucun oracle « fenêtre fermée »). Ordre des gardes
+AVANT toute écriture : mot de passe d'un compte existant **VÉRIFIÉ, jamais écrasé** (401 sans
+effet) ; code FFBB visé remplaçable seulement s'il porte la propre démo ISOLÉE de l'animateur —
+un club réel, la démo d'un autre animateur ou une démo partagée refusent en 409 ; démontage du
+club démo précédent de l'animateur VALIDÉ intégralement avant la moindre destruction (purge du
+workspace + suppression de la ligne `club`, pour libérer son code FFBB —
+`DemoClubMaterializer::teardownPreviousDemo()`, `DemoTeardownRefusedException` en 409 sinon rien
+détruit). Une trace d'audit **globale** (`AuditAction::DEMO_SHORTCUT`, hors périmètre club — elle
+doit survivre à la destruction de la ligne club) est posée. La route est exposée au front par
+`GET /api/register/config` (champs additifs `demoShortcut`/`demoEmail`) **quand `kernel.debug`
+OU la fenêtre d'activation de l'animateur est ouverte** (`AuthController::registerConfig()`,
+`AuthController.php:236`) — sinon les deux champs sont nuls, aucun oracle ; exposer `demoEmail`
+fenêtre ouverte est un mini-oracle limité à la fenêtre, assumé. `ProdSecretGuard::assertForEnvironment()`
+(`src/Security/ProdSecretGuard.php`, invoqué depuis `Kernel::boot()`) refuse de démarrer en
+environnement `prod` avec `APP_DEBUG` résolu à `1`/`true` — un verrou qui couvre `approve-club-request`
+et `mark-season-paid` d'un seul coup, indépendamment d'un oubli de garde individuelle ; il ne
+concerne plus `demo-register`, désormais joignable en prod par construction (gardée par la fenêtre,
+pas par `kernel.debug`).
+
+**Fenêtre d'activation démo** (décision fondateur 2026-09-30) : les deux comptes démo — animateur
+`demo@amateo.fr` et gestionnaire BCCL `demo-bccl@amateo.fr` (`app.demo_bccl_email`, MAISON UNIQUE
+en `services.yaml`, lu par `DemoSeedCommand` pour le défaut de son option `--email`) — ne se
+connectent que pendant leur fenêtre : `User::$demoActiveUntil` (`User.php:90`, colonne
+`app_user.demo_active_until`, additive nullable, NULL = inactif par défaut) et
+`User::isDemoWindowOpen(DateTimeImmutable $now)` (`User.php:296`, `$demoActiveUntil > $now`) —
+toujours confrontée à l'horloge **RÉELLE**, jamais à `demo_today` (un club démo ne doit pas
+pouvoir rouvrir sa propre porte). `UserChecker::checkPostAuth()` (`UserChecker.php:43-56`) refuse
+la connexion des deux comptes démo hors fenêtre d'une manière **byte-identique** à un mauvais mot
+de passe (`Invalid credentials.`, aucun oracle « fenêtre fermée ») ; tout autre compte est
+insensible à la colonne. Le seed (`app:demo:seed`) n'ouvre jamais la fenêtre — seule une action
+superadmin (console, PR B) le fera. NR bloquant `DemoWindowTest` + feature Behat
+`la-demo-ne-s-ouvre-que-pendant-sa-fenetre`.
 
 Distinct du club de démonstration : `app:bccl:seed` (`src/Command/BcclSeedCommand.php`) seede le
 club **dev BCCL RÉEL** (identités réelles, `mara.mb@bccl.fr`, code FFBB ARA0069036) via le même
