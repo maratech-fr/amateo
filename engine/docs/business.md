@@ -1,16 +1,16 @@
 # Documentation metier du moteur de generation
 
-Last verified @ 2026-09-29 (rotation de fraîcheur, `documentation-update`, brief P4-206). Re-confronté :
-tiers de poids S=10000/A=1000/B=100/C=10/D=1 toujours en dur dans
-`app/solver/objective/weights.py` ✓ ; `_adaptive_timeout` (`app/main.py:374-389`) applique bien les
-paliers ≤50→60 s · ≤200→180 s · sinon 600 s, plafonnés par `solverTimeoutSeconds` ✓ ; `orToolsWeight`
-reste déclaré requis (`app/schemas/input_schema.py:75`, alias de `or_tools_weight`) ✓ ;
-`MAX_CONSECUTIVE_DAYS` naît bien `OFF` en l'absence de bloc (`app/solver/constraints/parsing.py:89`,
-`max_consecutive_days_intensity=OFF if days is None else …`) ✓ ; le commentaire de retrait de
-`FACILITY_CAPACITY` vit toujours autour de `app/main.py:447-450` ✓ ; `ConstraintRuleType` PHP
-(`backend/src/Enum/ConstraintRuleType.php:11-13`) confirme la liste fermée HARD/PREFERRED/LOCK,
-`BONUS` absent ✓. Reste du fichier non re-vérifié cette passe — historique :
-`git log -p --follow engine/docs/business.md`.
+Last verified @ 2026-10-01 (rotation de fraîcheur, `documentation-update`, PR 7/7 « uniformité des
+écrans »). Re-confronté : tiers de poids S=10000/A=1000/B=100/C=10/D=1 toujours en dur dans
+`app/solver/objective/weights.py:35-37,66-67` ✓ ; `_adaptive_timeout` (`app/main.py:374-389`)
+applique bien les paliers ≤50→60 s · ≤200→180 s · sinon 600 s, plafonnés par `solverTimeoutSeconds`
+✓ ; `or_tools_weight` (alias `orToolsWeight`) reste déclaré requis, sans défaut
+(`app/schemas/input_schema.py:75`) ✓ ; `MAX_CONSECUTIVE_DAYS` naît bien `OFF` en l'absence de bloc
+(`app/solver/constraints/parsing.py:89`, `max_consecutive_days_intensity=OFF if days is None
+else …`) ✓ ; le commentaire de retrait de `FACILITY_CAPACITY` vit toujours à
+`app/main.py:447` ✓ ; `ConstraintRuleType` PHP (`backend/src/Enum/ConstraintRuleType.php:11-13`)
+confirme la liste fermée HARD/PREFERRED/LOCK, `BONUS` absent ✓. Reste du fichier non re-vérifié
+cette passe — historique : `git log -p --follow engine/docs/business.md`.
 
 > Ce document explique le domaine de la planification sportive et ce que le moteur `engine` resout. Destine aux nouveaux developpeurs rejoignant le projet ClubScheduler.
 
