@@ -244,7 +244,7 @@ final class MatchConflictDetector
      * @param list<TeamMatchHabit>                                                                                   $habits                scoped habitual windows (estimation source)
      * @param list<VenueMatchWindow>                                                                                 $matchWindows          scoped access windows (ACCESS_WINDOW_LOST)
      * @param array<string, list<LeagueWindowInterface>>                                                             $envelope              teamId → resolved league windows ([] = unmapped)
-     * @param list<Competition>                                                                                      $competitions          scoped competitions (COMPETITION_INCOMPLETE — severity 6)
+     * @param list<Competition>                                                                                      $competitions          scoped competitions (COMPETITION_INCOMPLETE — severity 6 alerte / 7 info)
      * @param array<string, MatchDurationProfile>                                                                    $profilesByTeam        teamId → match duration profile (P2-54 RMM-9); a team absent falls back to MatchDurationProfile::fallback()
      * @param array<string, int>                                                                                     $roundTripByFixtureId
      *                                                                                                                                      fixtureId → round-trip car travel minutes (P2-54 RMM-9 PR-3, AWAY only); absent = 0
@@ -266,7 +266,10 @@ final class MatchConflictDetector
      *                                                                                                                                      scope TEAM HARD rules). A HOME fixture posed in one is TEAM_VENUE_FORBIDDEN.
      * @param array<string, TeamLevel>                                                                               $levelByTeam
      *                                                                                                                                      teamId → niveau de l'équipe ; une équipe LOISIR est muette pour AWAY_NO_FOOTPRINT
-     *                                                                                                                                      (décision fondateur 2026-10-01).
+     *                                                                                                                                      (décision fondateur 2026-10-01)
+     * @param array<string, DateTimeImmutable>                                                                       $deadlineByCompetition
+     *                                                                                                                                      competitionId → échéance de saisie effective (club gagne, sinon défaut
+     *                                                                                                                                      communautaire) ; gradue la cohérence de complétude (info vs alerte)
      *
      * @return list<array<string, mixed>> conflict items ready to serialize
      */
@@ -288,6 +291,7 @@ final class MatchConflictDetector
         array $clubRules = [],
         array $forbiddenVenuesByTeam = [],
         array $levelByTeam = [],
+        array $deadlineByCompetition = [],
     ): array {
         // Two person maps by team. Coaches carry a role (MAIN/ASSISTANT, worst
         // engagement wins, cadrage §8); active players carry PLAYER. Kept apart
@@ -419,7 +423,7 @@ final class MatchConflictDetector
             ...$this->matchTrainingConflicts($personViews, $coachesByTeam, $playersByTeam, $roleByTeamPerson, $seasonScheduleId, $activePeriods, $slotsBySchedule),
             ...$this->venueUnavailableConflicts($activeFixtures, $unavailabilities),
             ...$this->accessWindowLostConflicts($activeFixtures, $matchWindows),
-            ...$this->competitionIncompleteItems($fixtures, $competitions),
+            ...$this->competitionIncompleteItems($fixtures, $competitions, $deadlineByCompetition, $clubToday),
             ...$this->awayNoFootprintItems($activeFixtures, $habitByTeamDay, $levelByTeam),
             ...$this->friendlyOnMatchSlotConflicts($views, $fixtures, $matchWindows),
         ];
@@ -548,17 +552,28 @@ final class MatchConflictDetector
     }
 
     /**
-     * Severity 6 (P1-4 PR F2, cadrage §8.6) — a PAIRED competition holding fewer
-     * fixtures than its frozen expectation (2×(N−1) matchdays): partial file, or
-     * a phase not out yet — either way, the manager should not have to count by
-     * hand across 14 teams × 3 phases. Competitions without a pairing are silent.
+     * Cohérence de complétude d'une compétition APPARIÉE (règle fondateur 2026-10-01).
+     * FBI (les matchs importés) fait FOI ; l'appariement FFBB n'est qu'une vérification.
+     * Une phase sort EN ENTIER, donc le nombre de rencontres `n` rattachées à la
+     * compétition doit valoir `adv` (aller simple) ou `2×adv` (aller-retour), où
+     * `adv` = adversaires RÉELS de la poule = (taille de poule − 1 pour le club) − exempts.
+     * `expectedMatchdays` stocké au confirm == 2×(taille de poule − 1), d'où
+     * `adv = expectedMatchdays/2 − exempts`. Table servie (type COMPETITION_INCOMPLETE,
+     * champ `reason`) :
+     *  - pas d'appariement (expectedMatchdays null, coupe comprise) ⇒ rien ;
+     *  - n == 0 ⇒ rien (phase pas encore sortie) ;
+     *  - n == adv ou n == 2×adv ⇒ cohérent, rien ;
+     *  - n > 2×adv ⇒ ALERTE (severity 6, reason OVER) « appariement/rattachement à vérifier » ;
+     *  - 0 < n < 2×adv, n ≠ adv ⇒ échéance de saisie dépassée : ALERTE (6, INCOHERENT) ;
+     *    sinon (pas dépassée, ou inconnue) : INFO discrète (severity 7, PENDING, repliée).
      *
-     * @param list<Fixture>     $fixtures
-     * @param list<Competition> $competitions
+     * @param list<Fixture>                    $fixtures
+     * @param list<Competition>                $competitions
+     * @param array<string, DateTimeImmutable> $deadlineByCompetition competitionId → échéance de saisie effective
      *
      * @return list<array<string, mixed>>
      */
-    private function competitionIncompleteItems(array $fixtures, array $competitions): array
+    private function competitionIncompleteItems(array $fixtures, array $competitions, array $deadlineByCompetition, ?DateTimeImmutable $clubToday): array
     {
         $countByCompetition = [];
         foreach ($fixtures as $fixture) {
@@ -568,24 +583,50 @@ final class MatchConflictDetector
             }
         }
 
+        $today = $clubToday?->format('Y-m-d');
         $items = [];
         foreach ($competitions as $competition) {
             $expected = $competition->getExpectedMatchdays();
             if (null === $expected) {
+                continue; // pas d'appariement (ou coupe) → aucune base de cohérence
+            }
+            $exempts = 0;
+            foreach ($competition->getFfbbPouleOpponents() ?? [] as $opponentName) {
+                if (false !== stripos($opponentName, 'exempt')) {
+                    ++$exempts;
+                }
+            }
+            $adv = intdiv($expected, 2) - $exempts;
+            if ($adv < 1) {
                 continue;
             }
-            $imported = $countByCompetition[$competition->getId()] ?? 0;
-            if ($imported >= $expected) {
-                continue;
+            $n = $countByCompetition[$competition->getId()] ?? 0;
+            if (0 === $n || $n === $adv || $n === 2 * $adv) {
+                continue; // phase pas sortie, aller simple ou aller-retour : cohérent
             }
+
+            if ($n > 2 * $adv) {
+                $reason = 'OVER';
+                $severity = 6;
+            } else {
+                $deadline = $deadlineByCompetition[$competition->getId()] ?? null;
+                $passed = $deadline instanceof DateTimeImmutable && null !== $today && $deadline->format('Y-m-d') < $today;
+                $reason = $passed ? 'INCOHERENT' : 'PENDING';
+                $severity = $passed ? 6 : 7;
+            }
+
             $items[] = [
                 'type' => 'COMPETITION_INCOMPLETE',
-                'severity' => 6,
+                'severity' => $severity,
+                'reason' => $reason,
                 'competitionId' => $competition->getId(),
                 'competitionName' => $competition->getName(),
                 'teamId' => $competition->getTeamId(),
-                'imported' => $imported,
-                'expected' => $expected,
+                'imported' => $n,
+                // `expected` = la cible ALLER-RETOUR, adversaires réels exclus des exempts
+                // (2×adv) : le front dérive l'aller simple (adv = expected/2) et compose le
+                // message FR par `reason`. Corrige l'ancienne valeur qui comptait les exempts.
+                'expected' => 2 * $adv,
             ];
         }
 

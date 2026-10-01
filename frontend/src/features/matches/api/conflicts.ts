@@ -170,12 +170,20 @@ export interface Conflict {
   windows?: LeagueKickoffWindow[] | VenueAccessWindow[];
   /** CLUB_RULE_VIOLATION (severity 3, P4-272 ③) — the HARD club rules the placed kickoff violates. */
   rules?: ClubRuleViolationRule[];
-  /** COMPETITION_INCOMPLETE (severity 6) — paired-competition completeness. */
+  /**
+   * COMPETITION_INCOMPLETE — cohérence de complétude d'une compétition appariée
+   * (règle fondateur 2026-10-01). `imported` = rencontres rattachées (n), `expected` =
+   * cible aller-retour (2×adv, exempts exclus → l'aller simple est expected/2). `reason`
+   * gradue le message : `OVER` (trop de matchs) et `INCOHERENT` (ni aller simple ni
+   * aller-retour, échéance passée) sont des ALERTES (severity 6) ; `PENDING` (phase pas
+   * encore entièrement sortie) est une INFO discrète (severity 7, repliée).
+   */
   competitionId?: string;
   competitionName?: string;
   teamId?: string;
   imported?: number;
   expected?: number;
+  reason?: "OVER" | "INCOHERENT" | "PENDING";
   /**
    * FRIENDLY_ON_MATCH_SLOT (severity 5, P4-193) — pourquoi l'amical est signalé :
    * `MATCH_SLOT_WINDOW` (empreinte sur une fenêtre d'accès match) et/ou

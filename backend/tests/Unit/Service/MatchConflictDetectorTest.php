@@ -24,6 +24,7 @@ use App\Service\MatchConflictDetector;
 use App\Service\MatchDurationProfile;
 use App\Service\MatchFootprint;
 use DateTimeImmutable;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use ReflectionProperty;
@@ -42,6 +43,12 @@ final class MatchConflictDetectorTest extends TestCase
     private const TEAM_2 = 'team-2';
     private const BASELINE = 'sched-baseline';
     private const OVERLAY = 'sched-overlay';
+
+    /** @return array<string, array{0: int}> */
+    public static function coherentCounts(): array
+    {
+        return ['phase pas sortie' => [0], 'aller simple' => [5], 'aller-retour' => [10]];
+    }
 
     public function testTwoMatchesOfSameCoachOverlappingRaiseOneConflict(): void
     {
@@ -782,27 +789,178 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame('MAIN', $conflicts[0]['coachRole']);
     }
 
-    public function testAPairedCompetitionShortOfItsExpectationIsNamed(): void
+    /**
+     * Règle de complétude fondateur 2026-10-01 — poule de 5 adversaires (expected = 2×5
+     * = 10) : n ∈ {0, 5, 10} est cohérent (phase pas sortie / aller simple / aller-retour).
+     */
+    #[DataProvider('coherentCounts')]
+    public function testACoherentFixtureCountIsSilent(int $n): void
     {
-        // P1-4 PR F2 (cadrage §8.6) — severity 6: 22 matchdays frozen at
-        // pairing, 1 fixture in base → the manager must not count by hand.
-        $competition = $this->competition('comp-1', 22);
-        $fx = $this->fixture('fx-1', self::TEAM_1, '2026-10-03', '15:00');
-        $fx->setCompetitionId('comp-1');
+        $competition = $this->competition('comp-1', 10); // adv = 5
+        $fixtures = [];
+        for ($i = 0; $i < $n; ++$i) {
+            $fx = $this->fixture('fx-' . $i, self::TEAM_1, '2026-10-03', '15:00');
+            $fx->setCompetitionId('comp-1');
+            $fixtures[] = $fx;
+        }
 
-        $items = $this->detect([$fx], [], null, [], [], [], [], [], [], [], [$competition]);
+        $items = array_values(array_filter(
+            $this->detect($fixtures, [], null, [], [], [], [], [], [], [], [$competition]),
+            static fn (array $item): bool => 'COMPETITION_INCOMPLETE' === $item['type'],
+        ));
+        self::assertSame([], $items, \sprintf('n=%d (poule de 5 adv) est cohérent', $n));
+    }
+
+    public function testTooManyFixturesForThePouleIsAnAlert(): void
+    {
+        // n (12) > 2×adv (10) ⇒ alerte « appariement/rattachement à vérifier ».
+        $competition = $this->competition('comp-1', 10); // adv = 5
+        $fixtures = [];
+        for ($i = 0; $i < 12; ++$i) {
+            $fx = $this->fixture('fx-' . $i, self::TEAM_1, '2026-10-03', '15:00');
+            $fx->setCompetitionId('comp-1');
+            $fixtures[] = $fx;
+        }
+
+        $items = $this->detect($fixtures, [], null, [], [], [], [], [], [], [], [$competition]);
 
         self::assertSame(['COMPETITION_INCOMPLETE'], array_column($items, 'type'));
-        self::assertSame(6, $items[0]['severity']);
-        self::assertSame(1, $items[0]['imported']);
-        self::assertSame(22, $items[0]['expected']);
+        self::assertSame(6, $items[0]['severity'], 'too many → alert');
+        self::assertSame('OVER', $items[0]['reason']);
+        self::assertSame(12, $items[0]['imported']);
+        self::assertSame(10, $items[0]['expected'], '2×adv = 2×5');
+    }
+
+    public function testAnInBetweenCountBeforeTheDeadlineIsADiscreetInfo(): void
+    {
+        // 0 < n (7) < 2×adv (10), n ≠ adv (5), échéance NON dépassée ⇒ info « pas encore
+        // tout là » (severity 7, repliée).
+        $competition = $this->competition('comp-1', 10); // adv = 5
+        $fixtures = [];
+        for ($i = 0; $i < 7; ++$i) {
+            $fx = $this->fixture('fx-' . $i, self::TEAM_1, '2026-10-03', '15:00');
+            $fx->setCompetitionId('comp-1');
+            $fixtures[] = $fx;
+        }
+
+        $items = $this->detect(
+            $fixtures,
+            [],
+            null,
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [$competition],
+            [],
+            new DateTimeImmutable('2026-10-05'),
+            [],
+            [],
+            [],
+            ['comp-1' => new DateTimeImmutable('2026-10-20')], // deadline in the future
+        );
+
+        self::assertSame(['COMPETITION_INCOMPLETE'], array_column($items, 'type'));
+        self::assertSame(7, $items[0]['severity'], 'before the deadline → info');
+        self::assertSame('PENDING', $items[0]['reason']);
+    }
+
+    public function testAnInBetweenCountAfterTheDeadlineIsAnAlert(): void
+    {
+        // Même compte (7), mais l'échéance est DÉPASSÉE ⇒ alerte « incohérence : ni aller
+        // simple ni aller-retour ».
+        $competition = $this->competition('comp-1', 10); // adv = 5
+        $fixtures = [];
+        for ($i = 0; $i < 7; ++$i) {
+            $fx = $this->fixture('fx-' . $i, self::TEAM_1, '2026-10-03', '15:00');
+            $fx->setCompetitionId('comp-1');
+            $fixtures[] = $fx;
+        }
+
+        $items = $this->detect(
+            $fixtures,
+            [],
+            null,
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [$competition],
+            [],
+            new DateTimeImmutable('2026-10-25'),
+            [],
+            [],
+            [],
+            ['comp-1' => new DateTimeImmutable('2026-10-20')], // deadline passed
+        );
+
+        self::assertSame('INCOHERENT', $items[0]['reason']);
+        self::assertSame(6, $items[0]['severity'], 'after the deadline → alert');
+    }
+
+    public function testAnInBetweenCountWithoutAKnownDeadlineIsAnInfo(): void
+    {
+        // Aucune échéance connue ⇒ info discrète (jamais une alerte sur un silence).
+        $competition = $this->competition('comp-1', 10); // adv = 5
+        $fixtures = [];
+        for ($i = 0; $i < 7; ++$i) {
+            $fx = $this->fixture('fx-' . $i, self::TEAM_1, '2026-10-03', '15:00');
+            $fx->setCompetitionId('comp-1');
+            $fixtures[] = $fx;
+        }
+
+        $items = $this->detect(
+            $fixtures,
+            [],
+            null,
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [$competition],
+            [],
+            new DateTimeImmutable('2026-10-25'), // no deadline map passed
+        );
+
+        self::assertSame('PENDING', $items[0]['reason']);
+        self::assertSame(7, $items[0]['severity']);
+    }
+
+    public function testAnExemptIsExcludedFromTheOpponentCount(): void
+    {
+        // Poule de 7 (expected = 2×6 = 12) dont 1 EXEMPT ⇒ adv = 5 : n = 10 (== 2×5) est
+        // cohérent. Sans l'exclusion de l'exempt, adv = 6, 2×6 = 12, n = 10 crierait.
+        $competition = $this->competition('comp-1', 12, ['AS A', 'BC B', 'ES C', 'US D', 'SO E', 'FC F', 'EXEMPT']);
+        $fixtures = [];
+        for ($i = 0; $i < 10; ++$i) {
+            $fx = $this->fixture('fx-' . $i, self::TEAM_1, '2026-10-03', '15:00');
+            $fx->setCompetitionId('comp-1');
+            $fixtures[] = $fx;
+        }
+
+        $items = array_values(array_filter(
+            $this->detect($fixtures, [], null, [], [], [], [], [], [], [], [$competition]),
+            static fn (array $item): bool => 'COMPETITION_INCOMPLETE' === $item['type'],
+        ));
+        self::assertSame([], $items, 'the exempt is excluded → adv = 5, n = 10 is aller-retour');
     }
 
     public function testACompetitionWithoutPairingExpectationStaysSilent(): void
     {
-        // No expectedMatchdays (never paired) → no way to judge, no noise.
+        // No expectedMatchdays (never paired, or a cup) → no basis, no noise.
         $competition = $this->competition('comp-1', null);
-        self::assertSame([], $this->detect([], [], null, [], [], [], [], [], [], [], [$competition]));
+        $fx = $this->fixture('fx-1', self::TEAM_1, '2026-10-03', '15:00');
+        $fx->setCompetitionId('comp-1');
+        self::assertSame([], $this->detect([$fx], [], null, [], [], [], [], [], [], [], [$competition]));
     }
 
     public function testACupWithoutExpectedMatchdaysNeverCriesIncompleteCalendar(): void
@@ -1508,7 +1666,8 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame('2026-10-04T17:00:00', $training[0]['start']);
     }
 
-    private function competition(string $id, ?int $expectedMatchdays): Competition
+    /** @param list<string>|null $opponents the poule's club names (for exempt counting) */
+    private function competition(string $id, ?int $expectedMatchdays, ?array $opponents = null): Competition
     {
         $competition = new Competition;
         $this->setId($competition, $id);
@@ -1518,6 +1677,9 @@ final class MatchConflictDetectorTest extends TestCase
         $competition->setName('D2');
         $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
         $competition->setExpectedMatchdays($expectedMatchdays);
+        if (null !== $opponents) {
+            $competition->setFfbbPouleOpponents($opponents);
+        }
 
         return $competition;
     }
@@ -1574,7 +1736,7 @@ final class MatchConflictDetectorTest extends TestCase
      *
      * @return list<array<string, mixed>>
      */
-    private function detect(array $fixtures, array $links, ?string $baselineScheduleId = null, array $overlayPeriods = [], array $slotsBySchedule = [], array $unavailabilities = [], array $habits = [], array $teamLinks = [], array $matchWindows = [], array $envelope = [], array $competitions = [], array $profilesByTeam = [], ?DateTimeImmutable $clubToday = null, array $playerMemberships = [], array $roundTripByFixtureId = [], array $levelByTeam = []): array
+    private function detect(array $fixtures, array $links, ?string $baselineScheduleId = null, array $overlayPeriods = [], array $slotsBySchedule = [], array $unavailabilities = [], array $habits = [], array $teamLinks = [], array $matchWindows = [], array $envelope = [], array $competitions = [], array $profilesByTeam = [], ?DateTimeImmutable $clubToday = null, array $playerMemberships = [], array $roundTripByFixtureId = [], array $levelByTeam = [], array $deadlineByCompetition = []): array
     {
         // Lot M — the TEAM_LINK family left the radar; the detector no longer takes
         // team links. `$teamLinks` is kept in THIS helper's positional shape only so
@@ -1583,7 +1745,7 @@ final class MatchConflictDetectorTest extends TestCase
         unset($teamLinks);
 
         return new MatchConflictDetector(new MatchFootprint, new EffectiveScheduleResolver, new AwayKickoffEstimator)
-            ->detect($fixtures, $links, $baselineScheduleId, $overlayPeriods, $slotsBySchedule, $unavailabilities, $habits, $matchWindows, $envelope, $competitions, $profilesByTeam, $roundTripByFixtureId, $clubToday, $playerMemberships, [], [], $levelByTeam);
+            ->detect($fixtures, $links, $baselineScheduleId, $overlayPeriods, $slotsBySchedule, $unavailabilities, $habits, $matchWindows, $envelope, $competitions, $profilesByTeam, $roundTripByFixtureId, $clubToday, $playerMemberships, [], [], $levelByTeam, $deadlineByCompetition);
     }
 
     private function membership(string $coachId, string $teamId, bool $active = true): CoachPlayerMembership

@@ -32,6 +32,27 @@ describe("ConflictLine (extrait du radar, avec slot trailing)", () => {
     expect(screen.getByText(/U13 et Seniors/)).toBeInTheDocument();
   });
 
+  it("COMPETITION_INCOMPLETE OVER : titre « Calendrier à vérifier », phrase « N matchs pour une poule de M adversaires »", () => {
+    const over: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null, teamId: "team-1", competitionName: "Championnat X", imported: 12, expected: 10, reason: "OVER" };
+    renderLine({ conflict: over, tone: "muted" });
+    expect(screen.getByText("Calendrier à vérifier")).toBeInTheDocument();
+    expect(screen.getByText(/12 matchs pour une poule de 5 adversaires/)).toBeInTheDocument();
+  });
+
+  it("COMPETITION_INCOMPLETE INCOHERENT : titre « Calendrier incohérent », phrase « ni aller simple ni aller-retour »", () => {
+    const incoherent: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 6, resolution: null, teamId: "team-1", competitionName: "Championnat X", imported: 7, expected: 10, reason: "INCOHERENT" };
+    renderLine({ conflict: incoherent, tone: "muted" });
+    expect(screen.getByText("Calendrier incohérent")).toBeInTheDocument();
+    expect(screen.getByText(/ni aller simple \(5\) ni aller-retour \(10\)/)).toBeInTheDocument();
+  });
+
+  it("COMPETITION_INCOMPLETE PENDING : titre « Calendrier incomplet », phrase « pas encore entièrement sortie »", () => {
+    const pending: Conflict = { type: "COMPETITION_INCOMPLETE", severity: 7, resolution: null, teamId: "team-1", competitionName: "Championnat X", imported: 3, expected: 10, reason: "PENDING" };
+    renderLine({ conflict: pending, tone: "muted" });
+    expect(screen.getByText("Calendrier incomplet")).toBeInTheDocument();
+    expect(screen.getByText(/3\/10 journées attendues : la phase n'est pas encore entièrement sortie/)).toBeInTheDocument();
+  });
+
   it("ACCESS_WINDOW_LOST : titre « Hors accès match » et phrase nommant le gymnase + les accès (jour du match d'abord)", () => {
     const access: Conflict = {
       type: "ACCESS_WINDOW_LOST",

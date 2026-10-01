@@ -19,6 +19,8 @@ use App\Entity\VenueUnavailability;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Repository\ClubRepository;
+use App\Repository\SharedCompetitionDeadlineRepository;
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -50,6 +52,7 @@ final class ConflictRadarLoader
         private readonly MatchDurationResolver $matchDurationResolver,
         private readonly OpponentTravelProjection $opponentTravelProjection,
         private readonly ClubDay $clubDay,
+        private readonly SharedCompetitionDeadlineRepository $sharedDeadlineRepository,
     ) {}
 
     /**
@@ -143,9 +146,30 @@ final class ConflictRadarLoader
                 $levelByTeam[$team->getId()] = $level;
             }
         }
-        // P1-4 PR F2 — severity 6 (completeness of PAIRED competitions).
+        // P1-4 PR F2 — cohérence de complétude des compétitions APPARIÉES.
         /** @var list<Competition> $competitions */
         $competitions = $this->entityManager->getRepository(Competition::class)->findBy([]);
+        // Échéances de saisie effectives par compétition (club gagne, sinon défaut
+        // communautaire — maison unique CompetitionDeadlineResolver) : le détecteur s'en
+        // sert pour graduer la cohérence de complétude (info « pas encore tout là » vs
+        // alerte « incohérence »). Le partagé n'est joint que pour une compétition appariée.
+        $ffbbIds = [];
+        foreach ($competitions as $competition) {
+            $ffbbId = $competition->getFfbbCompetitionId();
+            if (null !== $ffbbId) {
+                $ffbbIds[] = $ffbbId;
+            }
+        }
+        $sharedByFfbbId = [] === $ffbbIds ? [] : $this->sharedDeadlineRepository->mapByFfbbCompetitionIds($ffbbIds);
+        $deadlineByCompetition = [];
+        foreach ($competitions as $competition) {
+            $ffbbId = $competition->getFfbbCompetitionId();
+            $shared = null !== $ffbbId ? ($sharedByFfbbId[$ffbbId] ?? null) : null;
+            [$effective] = CompetitionDeadlineResolver::resolve($competition, $shared);
+            if ($effective instanceof DateTimeImmutable) {
+                $deadlineByCompetition[$competition->getId()] = $effective;
+            }
+        }
 
         // ADR-0002 context (chosen season version, active periods + overlays,
         // slots) — shared with the unavailability impact (TrainingCalendarContext).
@@ -175,6 +199,7 @@ final class ConflictRadarLoader
             $clubRules,
             $forbiddenVenuesByTeam,
             $levelByTeam,
+            $deadlineByCompetition,
         );
 
         return [

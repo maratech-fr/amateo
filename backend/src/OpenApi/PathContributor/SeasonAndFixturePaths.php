@@ -173,6 +173,12 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                                 'kickoffMin' => ['type' => 'string', 'nullable' => true, 'description' => '« HH:MM » or null (open lower bound)'],
                                 'kickoffMax' => ['type' => 'string', 'nullable' => true, 'description' => '« HH:MM » or null (open upper bound)'],
                             ]]],
+                            'competitionId' => ['type' => 'string', 'description' => 'COMPETITION_INCOMPLETE: the paired competition whose fixture count is checked'],
+                            'competitionName' => ['type' => 'string', 'description' => 'COMPETITION_INCOMPLETE: the competition name'],
+                            'teamId' => ['type' => 'string', 'description' => 'COMPETITION_INCOMPLETE: the team of that competition'],
+                            'imported' => ['type' => 'integer', 'description' => 'COMPETITION_INCOMPLETE: fixtures attached to the competition (n)'],
+                            'expected' => ['type' => 'integer', 'description' => 'COMPETITION_INCOMPLETE: the round-trip target (2×real opponents, exempts excluded); single-round is expected/2'],
+                            'reason' => ['type' => 'string', 'enum' => ['OVER', 'INCOHERENT', 'PENDING'], 'description' => 'COMPETITION_INCOMPLETE: OVER (too many matches) and INCOHERENT (neither single-round nor round-trip, deadline passed) are alerts (severity 6); PENDING (phase not fully out yet) is a discreet info (severity 7)'],
                             'fingerprint' => ['type' => 'string', 'description' => 'Stable identity of the conflict — same while it is the same dispute, changes when its nature changes (the guardian compares it across visits)'],
                             'resolution' => ['type' => 'object', 'nullable' => true, 'description' => 'The handling status a manager stamped on this conflict (null = « à traiter », the default with no row)', 'properties' => [
                                 'status' => ['type' => 'string', 'enum' => ['DEROGATION_REQUESTED', 'RESOLVED_INTERNALLY', 'NO_SOLUTION_YET', 'COACHES_NOT_PLAYING', 'PLAYS_NOT_COACHING', 'IMPORT_MISSING_MATCHES', 'FBI_ERROR', 'MATCH_TO_MOVE']],
