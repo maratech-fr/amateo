@@ -1,10 +1,12 @@
-Last verified @ 2026-10-01 (Cohérence de complétude des compétitions — le conflit `COMPETITION_INCOMPLETE`
-de `GET /api/fixtures/conflicts` (`SeasonAndFixturePaths`) documente désormais ses champs
-`competitionId`/`competitionName`/`teamId`/`imported`/`expected` et un nouveau `reason`
-(`OVER`/`INCOHERENT`/`PENDING`) qui gradue alerte (severity 6) vs info (severity 7). **±0 path**).
+Last verified @ 2026-10-02 (Le niveau d'une équipe jeune suit son engagement FFBB — chaque ligne de
+`GET /api/ffbb/engagements` (`FfbbEngagementPaths`) porte désormais `deducedLevel`
+(`DEPARTEMENTAL`/`REGIONAL`/`NATIONAL`, le niveau qu'implique une catégorie U9–U18 en championnat/
+brassage) et `alignment` (`MISSING`/`MISMATCH`) face à l'équipe suggérée ; le corps de
+`POST /api/ffbb/engagements/confirm` accepte un `alignLevel` par appariement (aligner le niveau sur
+la valeur serveur re-déduite, no-op sur une ligne inéligible). **±0 path**).
 
 **221 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`cd887d882b553ecddd6e222477e83f8e1301acd0969cd5481e2dc20c351a1d04` (`sha256sum` sur le fichier).
+`1506840e205e7fdea0fae09a851233a517d93560c9a76a3053cf5769fe79a462` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

@@ -31,3 +31,20 @@ export type TeamLevel =
   | "PROMOTION"
   | "LOISIR_ADULTE"
   | "LOISIR_JEUNE";
+
+/**
+ * Libellé français d'un niveau — maison partagée (aligné sur `App\Enum\TeamLevel::label`).
+ * Vit ici, avec le vocabulaire de niveau, pour que les features (matches, wizard) l'affichent
+ * sans ré-inventer de vocabulaire métier (🔴 `.claude/rules/frontend.md`).
+ */
+export const LEVEL_LABEL: Record<TeamLevel, string> = {
+  ELITE: "Élite",
+  NATIONAL: "National",
+  REGIONAL: "Régional",
+  PRE_REGION: "Pré-région",
+  DEPARTEMENTAL: "Départemental",
+  HONNEUR: "Honneur",
+  PROMOTION: "Promotion",
+  LOISIR_ADULTE: "Loisir adulte",
+  LOISIR_JEUNE: "Loisir jeune",
+};

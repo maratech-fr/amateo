@@ -486,6 +486,13 @@ jobs:
       - name: FfbbConfirmPerimeterTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/FfbbConfirmPerimeterTest.php --group phase1'
 
+      # Axes périmètre engagé + constraint semantics — le niveau d'une équipe jeune suit son
+      # engagement FFBB par clic : la garde générique du PUT reste souveraine, le confirm n'aligne
+      # que sur demande explicite et avec la valeur SERVEUR re-déduite. Sans ce gate, affaiblir la
+      # garde ou écrire un niveau client / sur une ligne inéligible passerait invisible.
+      - name: FfbbLevelAlignmentTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/FfbbLevelAlignmentTest.php --group phase1'
+
       - name: PeriodPlanBirthTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/PeriodPlanBirthTest.php --group phase1'
 

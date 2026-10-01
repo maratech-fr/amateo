@@ -877,6 +877,7 @@ function TeamsEditor() {
                 // qu'on ne lit plus. Chaque ligne porte son propre marqueur court.
                 <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
                   {ENGAGED_REASON} Leur niveau de jeu et leur suppression sont verrouillés ; le reste (nom, rang, créneaux, gymnase) se modifie librement.
+                  {" "}Pour (re)poser le niveau d'une équipe jeune depuis sa division, passez par Matchs › Importer › « Engagements FFBB ».
                 </p>
               )}
               {sessionsLocked && (

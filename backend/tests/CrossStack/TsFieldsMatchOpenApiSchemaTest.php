@@ -85,6 +85,9 @@ final class TsFieldsMatchOpenApiSchemaTest extends TestCase
         'matches/DeadlineOutlook' => ['ts' => 'matches/api/competitions.ts', 'interface' => 'DeadlineOutlook', 'response' => ['GET', '/api/matches/deadline-outlook']],
         'planning/ValidateImpact' => ['ts' => 'planning/api.ts', 'interface' => 'ValidateImpact', 'response' => ['GET', '/api/schedules/{id}/validate-impact']],
         'matches/FfbbRencontresResult' => ['ts' => 'matches/api/ffbb.ts', 'interface' => 'FfbbRencontresResult', 'response' => ['GET', '/api/ffbb/rencontres']],
+        // Une ligne d'engagement vit dans le tableau `engagements` du corps 200 : `items` descend
+        // dans le schéma d'UN élément (deducedLevel/alignment gardés contre une dérive de champ).
+        'matches/FfbbEngagement' => ['ts' => 'matches/api/ffbb.ts', 'interface' => 'FfbbEngagement', 'response' => ['GET', '/api/ffbb/engagements'], 'items' => 'engagements'],
     ];
     private const string SNAPSHOT = __DIR__ . '/../../../specs/courantes/openapi-snapshot.json';
     private const string FRONT = __DIR__ . '/../../../frontend/src/features';
@@ -207,6 +210,18 @@ final class TsFieldsMatchOpenApiSchemaTest extends TestCase
             $operation = $paths[$path][strtolower($method)] ?? null;
             self::assertIsArray($operation, \sprintf('Opération %s %s absente du snapshot.', $method, $path));
             $schema = $operation['responses']['200']['content']['application/json']['schema'] ?? null;
+        }
+
+        // `items` : l'interface décrit UN élément d'un tableau du corps (ex. `engagements`), pas le
+        // corps entier — on descend dans le schéma de l'élément.
+        if (isset($pair['items'])) {
+            $itemsKey = $pair['items'];
+            self::assertIsString($itemsKey);
+            self::assertIsArray($schema);
+            $arrayProperty = $schema['properties'][$itemsKey] ?? null;
+            self::assertIsArray($arrayProperty, \sprintf('La propriété tableau « %s » est absente du schéma de réponse.', $itemsKey));
+            $schema = $arrayProperty['items'] ?? null;
+            self::assertIsArray($schema, \sprintf('La propriété « %s » n\'a pas de bloc `items`.', $itemsKey));
         }
 
         self::assertIsArray($schema);

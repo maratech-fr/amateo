@@ -39,6 +39,10 @@ final readonly class FfbbEngagementPaths implements CustomPathContributor
                             'suggestionSource' => ['type' => 'string', 'enum' => ['pairing', 'canonical', 'fbi'], 'nullable' => true],
                             'suggestedTeamId' => ['type' => 'string', 'nullable' => true],
                             'suggestedCompetitionId' => ['type' => 'string', 'nullable' => true],
+                            // The TeamLevel a YOUNG (U9–U18) championship/brassage engagement implies — null otherwise.
+                            'deducedLevel' => ['type' => 'string', 'enum' => ['DEPARTEMENTAL', 'REGIONAL', 'NATIONAL'], 'nullable' => true],
+                            // How the deduced level compares to the suggested team's level: MISSING (no level yet), MISMATCH (differs) — null when aligned, undecidable, or no suggestion.
+                            'alignment' => ['type' => 'string', 'enum' => ['MISMATCH', 'MISSING'], 'nullable' => true],
                         ]]],
                     ],
                 ]),
@@ -83,6 +87,10 @@ final readonly class FfbbEngagementPaths implements CustomPathContributor
                         // on that already-mapped xlsx competition (honoured only when
                         // it belongs to the chosen team), instead of a twin empty one.
                         'competitionId' => ['type' => 'string', 'nullable' => true],
+                        // Optional: align the team's level on the one its young (U9–U18)
+                        // engagement implies — server-deduced, never a client value. No-op
+                        // on an ineligible line (seniors, cup, pré-régional/national).
+                        'alignLevel' => ['type' => 'boolean', 'nullable' => true],
                     ]]],
                 ],
             ]),
