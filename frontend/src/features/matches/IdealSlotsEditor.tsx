@@ -188,7 +188,7 @@ function SlotFields({
 
       <label className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
         Heure
-        <Input aria-label={`Heure du créneau idéal de ${teamName}`} type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+        <Input aria-label={`Heure du créneau idéal de ${teamName}`} type="time" className="w-28" value={time} onChange={(e) => setTime(e.target.value)} />
       </label>
 
       <div className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
