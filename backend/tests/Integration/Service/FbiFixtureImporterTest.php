@@ -302,6 +302,23 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertSame($this->team->getId(), $analysis['divisions'][0]['suggestedTeamId']);
     }
 
+    public function testAnalyzeBridgesAnUnmappedDivisionBySignatureWhenTheCanonicalNameMisses(): void
+    {
+        // Décision fondateur 2026-10-01 — le nom stocké n'est NI le libellé du fichier
+        // (« RM2 ») NI une variante normalisable du nom canonique : seul le PONT SIGNATURE
+        // (code FBI « RM2 » → {R, div 2, M, seniors} ⇄ « … - Division 2 ») retrouve la
+        // compétition appariée. Suggestion, jamais résolution (teamId reste null).
+        $this->pairedCompetition('ANCIEN CODE', ['AS VOISINS'], 14, canonicalName: 'Régionale masculine seniors - Division 2');
+        $file = $this->xlsx([
+            ['RM2', 'X1', 'BC TESTVILLE - 1', 'AS VOISINS', '03/10/2026', '', ''],
+        ]);
+
+        $analysis = $this->importer->analyze($file, $this->club);
+
+        self::assertNull($analysis['divisions'][0]['teamId'], 'a suggestion is never a resolution');
+        self::assertSame($this->team->getId(), $analysis['divisions'][0]['suggestedTeamId'], 'the signature bridge finds the paired competition');
+    }
+
     public function testARemapWithADriftedLabelUpdatesTheStoredOne(): void
     {
         // Multi-label division mapped once with « - 1 »… then the FBI export

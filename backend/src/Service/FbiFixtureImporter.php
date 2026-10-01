@@ -19,6 +19,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
 use App\Exception\ImportRejectedException;
+use App\Service\Basketball\FbiDivisionSignature;
 use App\Service\Basketball\FfbbRencontreReconciler;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\Basketball\VenueLabelNormalizer;
@@ -101,6 +102,7 @@ final class FbiFixtureImporter
         private readonly EntityManagerInterface $entityManager,
         private readonly ClockInterface $clock,
         private readonly VenueLabelNormalizer $labelNormalizer,
+        private readonly FbiDivisionSignature $divisionSignature,
         private readonly VenueAliasResolver $venueAliasResolver,
         private readonly ClubDay $clubDay,
         private readonly FbiCorrectionLedger $ledger,
@@ -150,7 +152,7 @@ final class FbiFixtureImporter
             // NEVER for a multi-label division: the canonical name cannot say
             // WHICH of the two club teams it is (same refusal as the resolver) —
             // a blind suggestion would import one team's calendar under the other.
-            $suggested = $competition instanceof Competition || $group['multiLabel'] ? null : $suggester($group['divisionKey']);
+            $suggested = $competition instanceof Competition || $group['multiLabel'] ? null : $suggester($group['name']);
             $guard = $competition instanceof Competition ? $this->pouleGuard($competition, $group['rows'], $group['name']) : null;
             $divisions[] = [
                 'name' => $group['name'],
@@ -1145,11 +1147,20 @@ final class FbiFixtureImporter
     }
 
     /**
-     * Suggestion resolver (6.3): normalized division label → a competition whose
-     * CANONICAL FFBB name matches. A suggestion, never a resolution — the
-     * manager confirms in the dialog (mapping stays the contract). Two paired
-     * competitions sharing one normalized canonical name = ambiguous → NO
-     * suggestion (never guess between teams).
+     * Suggestion resolver (6.3): a file division label → a PAIRED competition to
+     * pre-fill. A suggestion, never a resolution — the manager confirms in the
+     * dialog (mapping stays the contract). Two étapes :
+     *
+     *  1. nom canonique : la clé normalisée de la division == le nom FFBB canonique
+     *     d'une compétition appariée (deux appariées partageant la clé = ambigu → rien) ;
+     *  2. PONT SIGNATURE (décision fondateur 2026-10-01) : quand le nom canonique ne
+     *     matche pas, on réduit le libellé du FICHIER à sa signature FBI ({@see
+     *     FbiDivisionSignature::fromCode}) et on la ponte aux compétitions appariées,
+     *     réduites via leur nom canonique ({@see FbiDivisionSignature::fromFfbbRow}).
+     *     Plusieurs équipes DISTINCTES pontées → ambigu → rien (jamais deviner entre
+     *     équipes) ; plusieurs compétitions vers la MÊME équipe → la première par nom.
+     *     Ferme le défaut « résolveur = nom canonique seul » : une division xlsx (code
+     *     FBI « PNM ») retrouve la compétition appariée « Pré régionale masculine ».
      */
     private function buildSuggestionResolver(): callable
     {
@@ -1157,6 +1168,8 @@ final class FbiFixtureImporter
         $competitions = $this->entityManager->getRepository(Competition::class)->findBy([]);
         /** @var array<string, Competition|null> $byCanonical null = ambiguous */
         $byCanonical = [];
+        /** @var list<array{competition: Competition, signature: array{level: string|null, division: int|null, gender: string|null, category: string|null, type: string}}> $bridgeCandidates */
+        $bridgeCandidates = [];
         foreach ($competitions as $competition) {
             $canonical = $competition->getFfbbCompetitionName();
             if (null === $canonical) {
@@ -1164,9 +1177,37 @@ final class FbiFixtureImporter
             }
             $key = $this->normalizeLabel($canonical);
             $byCanonical[$key] = \array_key_exists($key, $byCanonical) ? null : $competition;
+            $bridgeCandidates[] = [
+                'competition' => $competition,
+                'signature' => $this->divisionSignature->fromFfbbRow(null, null, null, $canonical),
+            ];
         }
 
-        return static fn (string $divisionKey): ?Competition => $byCanonical[$divisionKey] ?? null;
+        return function (string $divisionName) use ($byCanonical, $bridgeCandidates): ?Competition {
+            $byName = $byCanonical[$this->normalizeLabel($divisionName)] ?? null;
+            if ($byName instanceof Competition) {
+                return $byName;
+            }
+
+            $fileSignature = $this->divisionSignature->fromCode($divisionName);
+            if (null === $fileSignature) {
+                return null;
+            }
+            $matches = [];
+            $teamIds = [];
+            foreach ($bridgeCandidates as $candidate) {
+                if ($this->divisionSignature->bridges($fileSignature, $candidate['signature'])) {
+                    $matches[] = $candidate['competition'];
+                    $teamIds[$candidate['competition']->getTeamId()] = true;
+                }
+            }
+            if (1 !== \count($teamIds)) {
+                return null;
+            }
+            usort($matches, static fn (Competition $a, Competition $b): int => strcmp($a->getName(), $b->getName()));
+
+            return $matches[0];
+        };
     }
 
     /**
