@@ -835,15 +835,15 @@ export function ConstraintsStep() {
           <>
             <label className="text-xs text-muted-foreground">
               Pas avant
-              <Input aria-label="Pas avant" type="time" className="mt-0.5 w-28" value={minTime} onChange={(e) => setMinTime(e.target.value)} />
+              <Input aria-label="Pas avant" type="time" className="mt-0.5 w-36" value={minTime} onChange={(e) => setMinTime(e.target.value)} />
             </label>
             <label className="text-xs text-muted-foreground">
               Pas après
-              <Input aria-label="Pas après" type="time" className="mt-0.5 w-28" value={maxTime} onChange={(e) => setMaxTime(e.target.value)} />
+              <Input aria-label="Pas après" type="time" className="mt-0.5 w-36" value={maxTime} onChange={(e) => setMaxTime(e.target.value)} />
             </label>
             <label className="text-xs text-muted-foreground">
               Fini avant
-              <Input aria-label="Fini avant" type="time" className="mt-0.5 w-28" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+              <Input aria-label="Fini avant" type="time" className="mt-0.5 w-36" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
             </label>
           </>
         )}
@@ -920,11 +920,11 @@ export function ConstraintsStep() {
             {/* Lot C: optional time window on the selected days (empty = whole day). */}
             <label className="flex items-center gap-1 text-xs text-muted-foreground">
               de
-              <Input type="time" aria-label="Heure de début" className="w-28" value={coachFrom} onChange={(e) => setCoachFrom(e.target.value)} />
+              <Input type="time" aria-label="Heure de début" className="w-36" value={coachFrom} onChange={(e) => setCoachFrom(e.target.value)} />
             </label>
             <label className="flex items-center gap-1 text-xs text-muted-foreground">
               à
-              <Input type="time" aria-label="Heure de fin" className="w-28" value={coachUntil} onChange={(e) => setCoachUntil(e.target.value)} />
+              <Input type="time" aria-label="Heure de fin" className="w-36" value={coachUntil} onChange={(e) => setCoachUntil(e.target.value)} />
             </label>
           </>
         )}

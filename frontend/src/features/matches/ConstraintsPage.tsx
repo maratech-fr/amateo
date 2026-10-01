@@ -209,8 +209,8 @@ function DraftFields({ draft, set }: { draft: ClubLeagueWindowInput; set: (patch
           </option>
         ))}
       </Select>
-      <Input aria-label="De" type="time" className="w-28" value={draft.kickoffMin} onChange={(e) => set({ kickoffMin: e.target.value })} />
-      <Input aria-label="À" type="time" className="w-28" value={draft.kickoffMax} onChange={(e) => set({ kickoffMax: e.target.value })} />
+      <Input aria-label="De" type="time" className="w-36" value={draft.kickoffMin} onChange={(e) => set({ kickoffMin: e.target.value })} />
+      <Input aria-label="À" type="time" className="w-36" value={draft.kickoffMax} onChange={(e) => set({ kickoffMax: e.target.value })} />
     </>
   );
 }
@@ -427,11 +427,11 @@ function RuleFields({ draft, set, idLabel, actions }: { draft: ClubRuleDraft; se
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-1 whitespace-nowrap text-sm text-muted-foreground">
           Pas avant
-          <Input aria-label="Pas avant (heure de début)" type="time" className="w-28" value={draft.kickoffMin} onChange={(e) => set({ kickoffMin: e.target.value })} />
+          <Input aria-label="Pas avant (heure de début)" type="time" className="w-36" value={draft.kickoffMin} onChange={(e) => set({ kickoffMin: e.target.value })} />
         </label>
         <label className="flex items-center gap-1 whitespace-nowrap text-sm text-muted-foreground">
           Pas après
-          <Input aria-label="Pas après (heure de fin)" type="time" className="w-28" value={draft.kickoffMax} onChange={(e) => set({ kickoffMax: e.target.value })} />
+          <Input aria-label="Pas après (heure de fin)" type="time" className="w-36" value={draft.kickoffMax} onChange={(e) => set({ kickoffMax: e.target.value })} />
         </label>
         {actions}
       </div>
@@ -792,11 +792,11 @@ function CoachFields({ draft, set, coaches, idLabel, actions }: { draft: CoachUn
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-1 whitespace-nowrap text-sm text-muted-foreground">
           Pas avant
-          <Input aria-label="Pas avant (heure de début)" type="time" className="w-28" value={draft.kickoffMin} onChange={(e) => set({ kickoffMin: e.target.value })} />
+          <Input aria-label="Pas avant (heure de début)" type="time" className="w-36" value={draft.kickoffMin} onChange={(e) => set({ kickoffMin: e.target.value })} />
         </label>
         <label className="flex items-center gap-1 whitespace-nowrap text-sm text-muted-foreground">
           Pas après
-          <Input aria-label="Pas après (heure de fin)" type="time" className="w-28" value={draft.kickoffMax} onChange={(e) => set({ kickoffMax: e.target.value })} />
+          <Input aria-label="Pas après (heure de fin)" type="time" className="w-36" value={draft.kickoffMax} onChange={(e) => set({ kickoffMax: e.target.value })} />
         </label>
         {actions}
       </div>
