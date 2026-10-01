@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
+import { Input } from "@/shared/components/ui/input";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Select } from "@/shared/components/ui/select";
 import { TeamSelect } from "@/shared/components/ui/team-select";
@@ -167,7 +168,7 @@ function SlotFields({
       {weekendAlternates ? (
         <label className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
           Semaine
-          <Select aria-label={`Semaine du créneau idéal de ${teamName}`} className="h-8" wrapperClassName="w-36" value={week} onChange={(e) => setWeek(e.target.value as MatchWeek)}>
+          <Select aria-label={`Semaine du créneau idéal de ${teamName}`} wrapperClassName="w-36" value={week} onChange={(e) => setWeek(e.target.value as MatchWeek)}>
             <option value="A">{WEEK_LABELS.A}</option>
             <option value="B">{WEEK_LABELS.B}</option>
           </Select>
@@ -176,7 +177,7 @@ function SlotFields({
 
       <label className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
         Jour
-        <Select aria-label={`Jour du créneau idéal de ${teamName}`} className="h-8" wrapperClassName="w-28" value={day} onChange={(e) => setDay(Number(e.target.value))}>
+        <Select aria-label={`Jour du créneau idéal de ${teamName}`} wrapperClassName="w-28" value={day} onChange={(e) => setDay(Number(e.target.value))}>
           {[1, 2, 3, 4, 5, 6, 7].map((d) => (
             <option key={d} value={d}>
               {dayLabelLongCap(d)}
@@ -187,20 +188,13 @@ function SlotFields({
 
       <label className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
         Heure
-        <input
-          aria-label={`Heure du créneau idéal de ${teamName}`}
-          type="time"
-          className="h-8 rounded-md border border-border bg-background px-2 text-sm"
-          value={time}
-          onChange={(e) => setTime(e.target.value)}
-        />
+        <Input aria-label={`Heure du créneau idéal de ${teamName}`} type="time" value={time} onChange={(e) => setTime(e.target.value)} />
       </label>
 
       <div className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
         Gymnase (optionnel)
         <VenueSelect
           aria-label={`Gymnase du créneau idéal de ${teamName}`}
-          className="h-8"
           wrapperClassName="w-36"
           placeholder="—"
           venues={venues.map((v) => ({ id: v.id, name: v.name, color: v.color }))}
@@ -379,7 +373,7 @@ function IdealSlotAddForm<T extends TeamLike>({
     <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed border-border bg-card px-2 py-1.5">
       <div className="flex min-w-32 flex-1 flex-col gap-0.5 text-[10px] text-muted-foreground">
         Équipe
-        <TeamSelect aria-label="Équipe du nouveau créneau idéal" className="h-8" wrapperClassName="w-44" teams={teams} tiers={tiers} placeholder="Choisir une équipe…" value={teamId} onValueChange={setTeamId} />
+        <TeamSelect aria-label="Équipe du nouveau créneau idéal" wrapperClassName="w-44" teams={teams} tiers={tiers} placeholder="Choisir une équipe…" value={teamId} onValueChange={setTeamId} />
       </div>
       <SlotFields
         teamName={selectedName}

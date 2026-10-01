@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { Input } from "@/shared/components/ui/input";
 import { Select } from "@/shared/components/ui/select";
 import { dayLabelLongCap } from "@/shared/lib/days";
 
@@ -74,7 +75,7 @@ export function MatchWindowsEditor({ venueId }: MatchWindowsEditorProps) {
       <div className="flex items-end gap-2">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           Jour
-          <Select aria-label="Jour de la fenêtre match" className="h-8" wrapperClassName="w-32" value={dayOfWeek} onChange={(e) => setDayOfWeek(Number(e.target.value))}>
+          <Select aria-label="Jour de la fenêtre match" wrapperClassName="w-32" value={dayOfWeek} onChange={(e) => setDayOfWeek(Number(e.target.value))}>
             {[1, 2, 3, 4, 5, 6, 7].map((day) => (
               <option key={day} value={day}>
                 {dayLabelLongCap(day)}
@@ -84,13 +85,13 @@ export function MatchWindowsEditor({ venueId }: MatchWindowsEditorProps) {
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           Début
-          <input aria-label="Début de la fenêtre match" type="time" className="h-8 rounded-md border border-border bg-background px-2 text-sm" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+          <Input aria-label="Début de la fenêtre match" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           Fin
-          <input aria-label="Fin de la fenêtre match" type="time" className="h-8 rounded-md border border-border bg-background px-2 text-sm" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+          <Input aria-label="Fin de la fenêtre match" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
         </label>
-        <Button size="icon" className="size-8" aria-label="Ajouter la fenêtre match" title="Ajouter la fenêtre match" disabled={rangeInvalid || create.isPending} onClick={add}>
+        <Button size="icon-sm" aria-label="Ajouter la fenêtre match" title="Ajouter la fenêtre match" disabled={rangeInvalid || create.isPending} onClick={add}>
           <Plus className="size-4" />
         </Button>
       </div>

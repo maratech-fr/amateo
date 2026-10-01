@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
+import { Input } from "@/shared/components/ui/input";
 import { Modal } from "@/shared/components/ui/modal";
 import { Select } from "@/shared/components/ui/select";
 import { TeamSelect } from "@/shared/components/ui/team-select";
@@ -19,8 +20,6 @@ interface FixtureFormDialogProps {
   fixture?: Fixture | null;
   onClose: () => void;
 }
-
-const fieldClass = "h-9 w-full rounded-md border border-input bg-background px-2 text-sm";
 
 /** Manual entry / edition of a fixture. Friendly = no competition. */
 export function FixtureFormDialog({ teams, tiers, competitions, fixture = null, onClose }: FixtureFormDialogProps) {
@@ -84,7 +83,7 @@ export function FixtureFormDialog({ teams, tiers, competitions, fixture = null, 
 
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-muted-foreground">Date</span>
-          <input aria-label="Date" type="date" className={fieldClass} value={matchDate} onChange={(e) => setMatchDate(e.target.value)} />
+          <Input aria-label="Date" type="date" value={matchDate} onChange={(e) => setMatchDate(e.target.value)} />
         </label>
 
         <label className="flex flex-col gap-1 text-sm">
@@ -97,7 +96,7 @@ export function FixtureFormDialog({ teams, tiers, competitions, fixture = null, 
 
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-muted-foreground">Adversaire</span>
-          <input aria-label="Adversaire" type="text" className={fieldClass} value={opponentLabel} onChange={(e) => setOpponentLabel(e.target.value)} placeholder="Nom de l'équipe adverse" />
+          <Input aria-label="Adversaire" type="text" value={opponentLabel} onChange={(e) => setOpponentLabel(e.target.value)} placeholder="Nom de l'équipe adverse" />
         </label>
 
         <label className="flex flex-col gap-1 text-sm">

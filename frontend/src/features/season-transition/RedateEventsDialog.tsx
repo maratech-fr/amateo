@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { CalendarEntry } from "@/features/cockpit/api";
 import { addDays, frDateShort } from "@/features/cockpit/lib/date";
 import { Button } from "@/shared/components/ui/button";
+import { Input } from "@/shared/components/ui/input";
 import { Modal } from "@/shared/components/ui/modal";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { errorMessage } from "@/shared/lib/errorMessage";
@@ -34,7 +35,6 @@ interface RowState {
  * (a mid-submit invalidation must not auto-close the dialog under the user). */
 type Decision = "pending" | "show" | "skip" | "error";
 
-const dateClass = "h-8 rounded-md border border-input bg-background px-2 text-xs";
 
 /**
  * "Reconduire les événements" step of the season transition (P2-PR1, spec
@@ -222,9 +222,9 @@ export function RedateEventsDialog({ sourceSeasonId, targetSeasonId, targetSeaso
                   </label>
                   {row.keep ? (
                     <div className="mt-2 flex items-center gap-2">
-                      <input aria-label={`Nouvelle date de début de ${event.title}`} type="date" className={dateClass} value={row.startDate} onChange={(e) => patchRow(event.id, { startDate: e.target.value })} />
+                      <Input aria-label={`Nouvelle date de début de ${event.title}`} type="date" compact className="w-40" value={row.startDate} onChange={(e) => patchRow(event.id, { startDate: e.target.value })} />
                       <span className="text-xs text-muted-foreground">→</span>
-                      <input aria-label={`Nouvelle date de fin de ${event.title}`} type="date" className={dateClass} value={row.endDate} onChange={(e) => patchRow(event.id, { endDate: e.target.value })} />
+                      <Input aria-label={`Nouvelle date de fin de ${event.title}`} type="date" compact className="w-40" value={row.endDate} onChange={(e) => patchRow(event.id, { endDate: e.target.value })} />
                     </div>
                   ) : null}
                   {invalid ? <p className="mt-1 text-xs text-destructive">Renseignez les deux dates (fin après début).</p> : null}

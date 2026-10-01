@@ -440,7 +440,7 @@ function VenuesEditor() {
             aria-invalid={null !== addError}
             aria-describedby={null !== addError ? "venue-add-error" : undefined}
             placeholder="Nom du gymnase"
-            className={`h-8 flex-1 ${null !== addError ? "border-destructive focus-visible:ring-destructive" : ""}`}
+            className={`flex-1 ${null !== addError ? "border-destructive focus-visible:ring-destructive" : ""}`}
             value={name}
             onFocus={() => setNameFocused(true)}
             onBlur={() => setNameFocused(false)}
@@ -460,11 +460,11 @@ function VenuesEditor() {
             placeholder="CP"
             inputMode="numeric"
             maxLength={5}
-            className="h-8 w-20"
+            className="w-20"
             value={cp}
             onChange={(e) => setSalleCp(e.target.value.replace(/\D/g, ""))}
           />
-          <Button type="submit" size="icon" className="size-8" disabled={create.isPending} title="Ajouter un gymnase" aria-label="Ajouter un gymnase">
+          <Button type="submit" size="icon-sm" disabled={create.isPending} title="Ajouter un gymnase" aria-label="Ajouter un gymnase">
             <Plus className="size-4" />
           </Button>
         </div>

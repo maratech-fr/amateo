@@ -550,11 +550,11 @@ function VenueStatsSection({ me }: { me: MeResponse }) {
       <div className="flex flex-wrap items-end gap-3">
         <div>
           <label htmlFor="vus-from" className="mb-1 block text-xs text-muted-foreground">Du</label>
-          <input id="vus-from" type="date" className="h-9 rounded-md border border-border bg-background px-2 text-sm" value={from} min={season?.startDate} max={to || season?.endDate} onChange={(e) => setFrom(e.target.value)} />
+          <Input id="vus-from" type="date" className="w-40" value={from} min={season?.startDate} max={to || season?.endDate} onChange={(e) => setFrom(e.target.value)} />
         </div>
         <div>
           <label htmlFor="vus-to" className="mb-1 block text-xs text-muted-foreground">Au</label>
-          <input id="vus-to" type="date" className="h-9 rounded-md border border-border bg-background px-2 text-sm" value={to} min={from || season?.startDate} max={season?.endDate} onChange={(e) => setTo(e.target.value)} />
+          <Input id="vus-to" type="date" className="w-40" value={to} min={from || season?.startDate} max={season?.endDate} onChange={(e) => setTo(e.target.value)} />
         </div>
         <p className="text-xs text-muted-foreground">Plage analysée : du {frDate(data.range.from)} au {frDate(data.range.to)}.</p>
       </div>

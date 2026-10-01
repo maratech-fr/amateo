@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { Input } from "@/shared/components/ui/input";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
@@ -55,8 +56,6 @@ interface PlacementPanelProps {
   /** RMM-1 PR 1 — repair path: hand a SUBMITTED match back to PLACED. */
   onReopen: () => void;
 }
-
-const fieldClass = "h-9 rounded-md border border-input bg-background px-2 text-sm";
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -227,13 +226,12 @@ export function PlacementPanel({
             <div className="grid grid-cols-2 gap-2">
               <VenueSelect
                 aria-label="Gymnase"
-                className={fieldClass}
                 placeholder="Gymnase…"
                 venues={selectableVenues.map((v) => ({ id: v.id, name: v.name, color: v.color }))}
                 value={venueId}
                 onValueChange={setVenueId}
               />
-              <input aria-label="Heure de coup d'envoi" type="time" value={kickoff} onChange={(e) => setKickoff(e.target.value)} className={fieldClass} />
+              <Input aria-label="Heure de coup d'envoi" type="time" value={kickoff} onChange={(e) => setKickoff(e.target.value)} />
             </div>
 
             {/* P2-52 — rappel de la raison PERSISTANTE « le gymnase n'est plus affilié » : INFO

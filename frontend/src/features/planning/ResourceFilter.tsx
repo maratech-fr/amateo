@@ -1,6 +1,7 @@
 import { Check, ChevronDown } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
+import { Input } from "@/shared/components/ui/input";
 import { cn } from "@/shared/lib/utils";
 
 import type { GridResourceGroup } from "./lib/grid";
@@ -115,7 +116,7 @@ export function ResourceFilter({ viewMode, groups, selected, onToggle, onClear }
           <button type="button" aria-hidden tabIndex={-1} className="fixed inset-0 z-50 cursor-default" onClick={() => setOpen(false)} />
           <div id={panelId} className="absolute z-[60] mt-1 w-72 rounded-md border border-border bg-card shadow-md">
             <div className="border-b border-border p-2">
-              <input
+              <Input
                 // eslint-disable-next-line jsx-a11y/no-autofocus -- search field inside a just-opened popover; focusing it is the expected behaviour
                 autoFocus
                 value={query}
@@ -129,7 +130,6 @@ export function ResourceFilter({ viewMode, groups, selected, onToggle, onClear }
                 // ne dirait pas lequel des deux parle.
                 aria-label={`Rechercher parmi les ${LABELS[viewMode].toLowerCase()}`}
                 placeholder="Rechercher…"
-                className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
             <ul className="max-h-64 overflow-y-auto p-1">
