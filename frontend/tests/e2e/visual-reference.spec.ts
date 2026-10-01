@@ -35,6 +35,14 @@ import { ensureValidated, forceTheme, landOnMatchesCalendar, loginSeededClub, se
  *    (runner `ubuntu-latest` + `npx playwright install chromium` épinglé par le lock, dans les DEUX
  *    cas), donc le bruit attendu se limite à l'anti-crénelage sub-pixel. Un vrai changement de layout
  *    ou de couleur déplace bien plus de 1 % des pixels ; un seuil plus bas rougirait sur du bruit.
+ *  - **INDÉPENDANCE À L'ORDRE** (la suite e2e partage le club seedé, muté par les specs amont) :
+ *    /planning affiche un bandeau « périmé » dès qu'une ressource change après génération — présent en
+ *    suite complète, absent en run solo, d'où un décalage de toute la grille. On le force donc nous-mêmes
+ *    (`markPlanStale`) pour une capture stable. Les placements, eux, ne bougent pas (moteur déterministe,
+ *    plan jamais régénéré par les autres specs). Les 8 autres écrans montrent des données de SEED ou des
+ *    états VIDES : ils restent stables grâce à la discipline « chaque spec nettoie ses données » ; leur
+ *    témoin ÉCHOUE bruyamment si cette donnée dérive (ce n'est jamais un faux vert). Si un jour l'un
+ *    d'eux rougit pour une mutation non nettoyée, re-baseliner (procédure ci-dessous) — pas l'ignorer.
  *
  * ── RE-BASELINE (UNE procédure, UNE commande) ────────────────────────────────────────────────────
  * Les PNG de référence DOIVENT être produits dans l'environnement EXACT de la CI (même image/OS/polices),
@@ -75,6 +83,28 @@ async function freezeServer(page: Page): Promise<void> {
 /** Relâche le pin serveur (retour à l'heure réelle) — impératif, les specs suivantes la supposent. */
 async function releaseServerClock(page: Page): Promise<void> {
   await page.request.post("/api/dev/clock", { data: { at: null } }).catch(() => undefined);
+}
+
+/**
+ * Rend le bandeau « planning périmé » DÉTERMINISTE sur /planning. Un coach éphémère créé PUIS supprimé
+ * marque le plan de saison périmé (`Schedule.resourcesChangedSinceGeneration`, via
+ * `ResourceChangeStaleScheduleListener`) — que d'autres specs de la suite l'aient déjà fait ou non.
+ *
+ * ⚠ Sans ça, la capture dépend de l'ORDRE : seule dans son workflow, la suite n'a rien périmé → PAS de
+ * bandeau ; en suite complète e2e, une spec amont a modifié une ressource → bandeau présent → la grille
+ * glisse de la hauteur du bandeau → toutes les lignes se décalent (31642 px de diff, stable).
+ *
+ * Net-zéro et sans effet sur les AUTRES captures : le coach n'apparaît dans AUCUNE (créé+supprimé AVANT
+ * toute navigation) ; le drapeau « périmé » ne change NI les placements (plan non régénéré, moteur
+ * déterministe `num_search_workers == 1` pour BCCL) NI l'apparence des écrans matchs/club/wizard (ils
+ * sont identiques périmé ou non — vérifié : ils PASSENT en suite complète, qui est périmée).
+ */
+async function markPlanStale(page: Page): Promise<void> {
+  const created = await page.request.post("/api/coaches", { data: { firstName: "ZZVISUALREF", lastName: "STALE" } });
+  expect(created.ok(), "POST /api/coaches (marquage périmé déterministe)").toBeTruthy();
+  const id = (await created.json()).id as string;
+  const deleted = await page.request.delete(`/api/coaches/${id}`);
+  expect(deleted.ok(), "DELETE /api/coaches (retrait du coach éphémère)").toBeTruthy();
 }
 
 /**
@@ -121,11 +151,14 @@ test("visual reference — écrans authentifiés (clair)", async ({ page }) => {
     await loginSeededClub(page);
     await freezeServer(page); // APRÈS le login : la route exige le cookie JWT
     await ensureValidated(page); // débloque /planning et /matchs (socle validé)
+    await markPlanStale(page); // bandeau « périmé » DÉTERMINISTE → /planning indépendant de l'ordre
     // Chaque capture authentifiée exclut le widget DevClock du diff (présence garantie par settleScreen).
     const authShot = { ...SHOT, mask: [devClock(page)] };
 
     // ── Planning (semaine) ───────────────────────────────────────────────────────────────────────
     // Témoin de donnée : une carte de séance RÉELLE (`WeekGrid` `data-slot-id`), posée par le plan.
+    // Le bandeau « planning périmé » (NoticeBanner) est TOUJOURS présent (markPlanStale ci-dessus) :
+    // la capture est donc stable, que la suite ait ou non déjà modifié une ressource amont.
     await page.goto("/planning");
     await settleScreen(page);
     await expect(page.locator("[data-slot-id]").first()).toBeVisible({ timeout: 30_000 });

@@ -121,10 +121,14 @@ jobs:
       # Playwright ne crée jamais une référence absente) — c'est voulu : on committe d'abord.
       - name: Run visual-reference (generate or compare)
         working-directory: frontend
+        # `inputs.update` passe par l'ENV, JAMAIS interpolé dans le corps du `run` (semgrep
+        # run-shell-injection) — même discipline que `ci.yml` pour toute valeur variable.
+        env:
+          UPDATE: ${{ inputs.update }}
         run: |
           set -o pipefail
           ARGS=""
-          if [ "${{ inputs.update }}" = "true" ]; then ARGS="--update-snapshots"; fi
+          if [ "$UPDATE" = "true" ]; then ARGS="--update-snapshots"; fi
           E2E_BASE_URL=http://localhost:5173 npx playwright test tests/e2e/visual-reference.spec.ts $ARGS
 
       # Les PNG de référence (après un run UPDATE) + les diffs d'un run COMPARE rouge. `always()` :
