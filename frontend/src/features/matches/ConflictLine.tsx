@@ -63,7 +63,7 @@ function conflictTitle(conflict: Conflict, coaches: Map<string, Coach>): string 
     case "ACCESS_WINDOW_LOST":
       return "Hors accès match";
     case "COMPETITION_INCOMPLETE":
-      return "Calendrier incomplet";
+      return "OVER" === conflict.reason ? "Calendrier à vérifier" : "INCOHERENT" === conflict.reason ? "Calendrier incohérent" : "Calendrier incomplet";
     case "AWAY_NO_FOOTPRINT":
       return "Extérieur sans heure ni habitude";
     case "FRIENDLY_ON_MATCH_SLOT":
@@ -127,7 +127,17 @@ function conflictSummary(conflict: Conflict, teams: Map<string, Team>, venues: M
     return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateShortNoYear(conflict.fixture.matchDate)} — posé dans ${venueName}, interdit à cette équipe. Pose libre, à surveiller.`;
   }
   if ("COMPETITION_INCOMPLETE" === conflict.type && undefined !== conflict.teamId) {
-    return `${conflict.competitionName ?? "?"} (${teamName(teams, conflict.teamId)}) — ${conflict.imported ?? 0}/${conflict.expected ?? "?"} journées : fichier partiel ou phase pas encore sortie`;
+    const name = `${conflict.competitionName ?? "?"} (${teamName(teams, conflict.teamId)})`;
+    const n = conflict.imported ?? 0;
+    const twoAdv = conflict.expected ?? 0;
+    const adv = Math.floor(twoAdv / 2); // adversaires réels (aller simple) ; expected = aller-retour
+    if ("OVER" === conflict.reason) {
+      return `${name} — ${n} matchs pour une poule de ${adv} adversaire${adv > 1 ? "s" : ""} : appariement ou rattachement à vérifier`;
+    }
+    if ("INCOHERENT" === conflict.reason) {
+      return `${name} — ${n} matchs : ni aller simple (${adv}) ni aller-retour (${twoAdv}), et l'échéance de saisie est passée — à vérifier`;
+    }
+    return `${name} — ${n}/${twoAdv} journées attendues : la phase n'est pas encore entièrement sortie`;
   }
   if ("AWAY_NO_FOOTPRINT" === conflict.type && conflict.fixture) {
     return `${teamName(teams, conflict.fixture.teamId)} · ${frDateShortNoYear(conflict.fixture.matchDate)} — invisible du radar, déclarez une habitude`;

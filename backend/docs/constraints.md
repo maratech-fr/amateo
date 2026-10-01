@@ -1,9 +1,13 @@
 # Documentation métier du système de contraintes
 
-Last verified @ 2026-09-29 (rotation de fraîcheur `documentation-update`, passe doc P4-271 matchs,
-sujet sans rapport — §4.1 étape 2 re-confrontée : `TeamTagService::syncTeamTags` court-circuite
-toujours sur ensemble de tags identique, `backend/src/Service/TeamTagService.php:84-104` ✓). Reste
-du fichier non re-contrôlé cette passe — historique : `git log -p --follow backend/docs/constraints.md`.
+Last verified @ 2026-10-01 (rotation de fraîcheur `documentation-update`, branche
+`fix/competitions-completude`, sujet sans rapport — confronté au code : §2.2 `COACH_AVAILABILITY`
+ne lit que `scope_target_id`, jamais `config.coachId` (`engine/app/solver/constraints/parsing.py:255`
+✓) ; §2.3 `LOCK` réservé aux familles `TIME`/`DAY` (`backend/src/Service/
+ConstraintValidationService.php:184` ✓) ; §2.4 liste des tags système — `BABY`/`ADULTE` (axe Âge) et
+`COMPETITION` (axe Niveau) manquaient au tableau, corrigés contre `TeamTagService::SYSTEM_TAG_AXES`
+(`backend/src/Service/TeamTagService.php:22-37`)). Reste du fichier non re-contrôlé cette passe —
+historique : `git log -p --follow backend/docs/constraints.md`.
 
 > Amateo — Symfony 7 + API Platform. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
@@ -111,10 +115,10 @@ Une contrainte `CLUB` avec `config.targetTag = "JEUNE"` s'applique uniquement au
 
 | Catégorie | Tags |
 |-----------|------|
-| Âge | `JEUNE`, `SENIOR`, `EMB` |
+| Âge | `BABY`, `EMB`, `JEUNE`, `ADULTE`, `SENIOR` |
 | Catégorie jeunes | `U9`, `U11`, `U13`, `U15`, `U18`, `U21` |
 | Genre | `FEMININE`, `MASCULINE`, `MIXTE` |
-| Niveau | `ELITE`, `REGIONAL`, `NATIONAL`, `DEPARTEMENTAL`, `LOISIR_ADULTE`, `LOISIR_JEUNE`, `HONNEUR`, `PROMOTION`, `PRE_REGION` |
+| Niveau | `ELITE`, `REGIONAL`, `NATIONAL`, `DEPARTEMENTAL`, `LOISIR_ADULTE`, `LOISIR_JEUNE`, `HONNEUR`, `PROMOTION`, `PRE_REGION`, `COMPETITION` (level non nul et hors loisir) |
 
 > Exemple : `targetTag: "U11"` cible toutes les équipes U11 du club (garçons et filles confondus). Pour cibler uniquement les U11 filles : `targetTags: ["U11", "FEMININE"]` — l'**intersection de tags**, avec `excludeTags` en soustraction ; `targetTag` (singulier) reste la forme historique, équivalente à une liste d'un élément, et **mélanger les deux formes rend 422**. La sémantique exacte et les refus : [`constraint-config-keys.md`](constraint-config-keys.md) (foyer `TeamTagResolver`).
 

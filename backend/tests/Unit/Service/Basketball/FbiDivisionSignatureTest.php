@@ -16,11 +16,13 @@ use PHPUnit\Framework\TestCase;
  * masculine seniors - Division 2 » + catégorie/niveau/sexe), réduits à la même
  * signature {niveau, division, sexe, catégorie, type}.
  *
- * Codes réels du fondateur : le « -k » collé après un séparateur est un n° de
- * POULE (ignoré, « DFU15-2 » et « DFU15-6 » → même signature) ; un chiffre COLLÉ
- * est une division (« RF3 », « DM2 ») ; « DFU11 » et « DFU11-2 » ont la même
- * signature (l'ambiguïté « deux équipes » se tranche côté contrôleur). Les coupes
- * (CRML/CMRL/ARA COUPE) et brassages entrent dans le pont ; un amical, jamais.
+ * Codes réels du fondateur : un chiffre COLLÉ est une division (« RF3 », « DM2 »).
+ * Un « -k » après un séparateur dépend de la catégorie (calendrier FFBB Rhône,
+ * décision fondateur 2026-10-01) : pour un code SENIOR c'est un n° de POULE (ignoré,
+ * « PRM-2 » → même signature que « PRM ») ; pour un code JEUNE (U…) c'est la DIVISION
+ * (gardée — « DFU9 » ≠ « DFU9-2 », sinon la suggestion d'appariement meurt sur
+ * l'ambiguïté). Les coupes (CRML/CMRL/ARA COUPE) et brassages entrent dans le pont ;
+ * un amical, jamais.
  */
 #[Group('phase1')]
 final class FbiDivisionSignatureTest extends TestCase
@@ -40,10 +42,11 @@ final class FbiDivisionSignatureTest extends TestCase
             'régionale masculine U21' => ['RMU21', ['level' => 'R', 'division' => null, 'gender' => 'M', 'category' => 'U21', 'type' => 'CHAMPIONSHIP']],
             'départementale masculine vétérans' => ['DMVE', ['level' => 'D', 'division' => null, 'gender' => 'M', 'category' => 'VETERANS', 'type' => 'CHAMPIONSHIP']],
             'départementale féminine loisir' => ['DFLOI', ['level' => 'D', 'division' => null, 'gender' => 'F', 'category' => 'LOISIR', 'type' => 'CHAMPIONSHIP']],
-            'poule -2 ignorée' => ['DFU15-2', ['level' => 'D', 'division' => null, 'gender' => 'F', 'category' => 'U15', 'type' => 'CHAMPIONSHIP']],
-            'poule -6 ignorée (même signature)' => ['DFU15-6', ['level' => 'D', 'division' => null, 'gender' => 'F', 'category' => 'U15', 'type' => 'CHAMPIONSHIP']],
-            'DFU11' => ['DFU11', ['level' => 'D', 'division' => null, 'gender' => 'F', 'category' => 'U11', 'type' => 'CHAMPIONSHIP']],
-            'DFU11-2 (même signature que DFU11)' => ['DFU11-2', ['level' => 'D', 'division' => null, 'gender' => 'F', 'category' => 'U11', 'type' => 'CHAMPIONSHIP']],
+            'jeune : -2 = division (U15)' => ['DFU15-2', ['level' => 'D', 'division' => 2, 'gender' => 'F', 'category' => 'U15', 'type' => 'CHAMPIONSHIP']],
+            'jeune : -6 = division (U15)' => ['DFU15-6', ['level' => 'D', 'division' => 6, 'gender' => 'F', 'category' => 'U15', 'type' => 'CHAMPIONSHIP']],
+            'jeune : DFU9 sans suffixe → division nulle' => ['DFU9', ['level' => 'D', 'division' => null, 'gender' => 'F', 'category' => 'U9', 'type' => 'CHAMPIONSHIP']],
+            'jeune : DFU9-2 ≠ DFU9 (division 2)' => ['DFU9-2', ['level' => 'D', 'division' => 2, 'gender' => 'F', 'category' => 'U9', 'type' => 'CHAMPIONSHIP']],
+            'senior : PRM-2 → poule ignorée (comportement inchangé)' => ['PRM-2', ['level' => 'PR', 'division' => null, 'gender' => 'M', 'category' => 'SENIORS', 'type' => 'CHAMPIONSHIP']],
             'coupe CRML U13 F' => ['CRMLU13F', ['level' => null, 'division' => null, 'gender' => 'F', 'category' => 'U13', 'type' => 'CUP']],
             'coupe CMRL U13 M (coquille)' => ['CMRLU13M', ['level' => null, 'division' => null, 'gender' => 'M', 'category' => 'U13', 'type' => 'CUP']],
             'coupe CRML seniors M' => ['CRMLSM', ['level' => null, 'division' => null, 'gender' => 'M', 'category' => 'SENIORS', 'type' => 'CUP']],

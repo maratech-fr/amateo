@@ -1,12 +1,14 @@
 # API FFBB — routes consommées
 
-Last verified @ 2026-09-30 (commit `19aed0f1` — nouveau consommateur de `searchSallesNearby` :
-`FfbbSalleAddressResolver::resolveAddress` (contrôle de cohérence de position, § « Salles d'une
-commune » + pointeur `geo-api.md` §5) ; anchor stale corrigé vers `module-matchs.md` §1 « Modèle &
-données transverses » (l'ancien intitulé « Suggestions partagées de gymnases » n'existe plus dans le
-fichier cible). Reste du fichier hérité de la passe précédente (rotation 2026-09-29), non re-sondé
-ligne à ligne cette fois. Historique des passes précédentes vit dans git :
-`git log -p --follow backend/docs/ffbb-api.md`.
+Last verified @ 2026-10-01 (branche `fix/competitions-completude`) — re-sondé contre
+`FbiDivisionSignature::fromCode` (`backend/src/Service/Basketball/FbiDivisionSignature.php`) : le
+suffixe `-N` après séparateur est une DIVISION pour un code JEUNE (catégorie `U…`), une poule
+ignorée pour un code SENIOR ; et contre `FfbbEngagementsController::confirm`
+(`backend/src/Controller/Basketball/FfbbEngagementsController.php`) : la résorption des jumelles au
+confirm retire les réfs de toute autre compétition portant le même id FFBB, y compris une jumelle
+de la même équipe, et supprime celle qui ne porte alors aucune fixture. Reste du fichier hérité des
+passes précédentes, non re-sondé ligne à ligne cette fois. Historique des passes précédentes vit
+dans git : `git log -p --follow backend/docs/ffbb-api.md`.
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les
 > données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit
@@ -235,8 +237,11 @@ porte `suggestionSource: "pairing"|"canonical"|"fbi"|null`, priorité inchangée
 premières sources (`pairing` = une `Competition` déjà appariée à cet id FFBB ; `canonical` = égalité
 normalisée stricte du nom canonique) puis, troisième source, `fbi` : `App\Service\Basketball\FbiDivisionSignature`
 parse le code de division FBI d'une `Competition` xlsx **non appariée** (`Competition::name`, ex. « PNM »,
-« RF3 », « CRMLSM », « RFU13 Brassage » — la poule collée après un séparateur, « DFU15-2 », est ignorée,
-c'est un n° de poule FBI, pas de division) en une signature `{level, division, gender, category, type}`,
+« RF3 », « CRMLSM », « RFU13 Brassage ») en une signature `{level, division, gender, category, type}` — un
+suffixe `-N` après séparateur (« DFU15-2 ») est, pour un code SENIOR, un n° de poule FBI, ignoré ; pour un
+code JEUNE (catégorie `U…`), c'est une DIVISION distincte, gardée (« DFU9 » ≠ « DFU9-2 » — calendrier FFBB
+Rhône, décision fondateur 2026-10-01 : sinon deux divisions jeunes partagent une signature et la suggestion
+meurt sur l'ambiguïté),
 et la ligne FFBB (`category`/`level`/`gender`/« Division n » du nom) en la signature équivalente
 (`FfbbEngagementsController::bridgeSuggestion`). Coupes et brassages entrent dans le pont (décision
 consignée `etat-des-lieux.md` §2), un amical (type `FRIENDLY`) jamais. Suggestion
@@ -251,6 +256,15 @@ reste le code FBI, la clé du résolveur xlsx ; `ffbbCompetitionName` reçoit le
 lieu d'une compétition jumelle vide. Sans `competitionId` (ou id étranger à l'équipe) : repli sur le
 comportement historique par `(teamId, nom canonique)`. Écrire sur la compétition xlsx n'engage
 toujours pas l'équipe (`FfbbPairingAuthorizationTest`).
+
+**Résorption des jumelles au confirm** (décision fondateur 2026-10-01) : après avoir posé les réfs
+FFBB sur la compétition choisie, `confirm` retire ces mêmes réfs (`ffbbCompetitionId`/`ffbbPouleId`/
+`ffbbPouleName`/`ffbbCompetitionName`/`expectedMatchdays`/`ffbbPouleOpponents`) de **toute autre**
+`Competition` qui les portait encore — y compris une jumelle de la **même** équipe (c'est là que
+naissent les jumelles vides, pas seulement sur une équipe différente). Une compétition qui, après
+ce retrait, ne porte **aucune fixture** est supprimée ; une compétition qui porte des fixtures est
+**toujours conservée** (axe périmètre engagé) et aucune de ses rencontres ne change d'équipe. Garde
+NR bloquante : `FfbbConfirmPerimeterTest` (`backend/tests/Security/`).
 
 `ffbbserver_rencontres` (ne porte que des amicaux pour le club de référence, zéro championnat) est
 un index DIFFÉRENT, exploité côté réconciliation — voir § « Réconciliation FBI, canal API » plus

@@ -1,10 +1,10 @@
-Last verified @ 2026-09-30 (Format horaire unique + pastille « Démo » — la description du champ
-`startTime` des côtés de conflit d'entraînement (`GET /api/training/placed-conflicts`, déclarée dans
-`TrainingConflictPaths`) passe de « HHhMM » (e.g. « 18h00 ») à « HH:MM » (e.g. « 18:00 ») ; `GET /api/me`
-expose `club.isDemo` (booléen, déclaré dans `AccountSessionPaths`). **±0 path**).
+Last verified @ 2026-10-01 (Cohérence de complétude des compétitions — le conflit `COMPETITION_INCOMPLETE`
+de `GET /api/fixtures/conflicts` (`SeasonAndFixturePaths`) documente désormais ses champs
+`competitionId`/`competitionName`/`teamId`/`imported`/`expected` et un nouveau `reason`
+(`OVER`/`INCOHERENT`/`PENDING`) qui gradue alerte (severity 6) vs info (severity 7). **±0 path**).
 
 **221 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`f9c6661ebed207fd06e6f4f5763aa5a618b292455c310e31f9da5ad56c9f2fb7` (`sha256sum` sur le fichier).
+`cd887d882b553ecddd6e222477e83f8e1301acd0969cd5481e2dc20c351a1d04` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne
