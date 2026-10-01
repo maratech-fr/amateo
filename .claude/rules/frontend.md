@@ -107,6 +107,13 @@ paths:
   `frontend/src/test/deleteConfirmGuard.test.ts` (grep statique `src/features/**` : un fichier qui
   lie ET invoque un `useDelete…` sans référencer `ConfirmDialog`/`DeleteConfirm` rougit, sauf
   exemption nominative motivée) ; N1 n'a pas de garde automatique, seulement la revue.
+- 🔴 **Tout bandeau d'information passe par `NoticeBanner`** (`shared/components/ui/notice-banner.tsx`
+  — fond opaque `bg-surface-<ton>`, bordure, rayon, padding, texte `text-foreground`), jamais une
+  boîte faite main (série « uniformité des écrans », PR 4/7, 2026-10-01 — les bandeaux de
+  Planning/Matchs/Assistant/Cockpit ont été ramenés dessus). Gardé par
+  `frontend/src/test/bannerPrimitiveGuard.test.ts` (grep statique `src/features/**` hors console
+  admin : un `role="status"`/`"alert"` + une classe de bordure de ton sur la MÊME ligne hors
+  `NoticeBanner` rougit).
 - 🔴 **La largeur d'un sélecteur passe par `wrapperClassName`, jamais `className`** (`Select`,
   `Listbox`, `TeamSelect`, `VenueSelect` — PR 3/7 de la série « uniformité des sélecteurs »,
   2026-10-01) : le contrôle intérieur (`<select>`/trigger) est toujours `w-full`, une classe
