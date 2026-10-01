@@ -1,5 +1,6 @@
 import { ArrowLeftRight } from "lucide-react";
 
+import { StatusPill } from "@/shared/components/ui/badge";
 import { cn } from "@/shared/lib/utils";
 
 import { placementLabel } from "./lib/socleDeviationCells";
@@ -84,7 +85,7 @@ export function SocleDeviationPanel({ moved, unplaced, teamName, venueName, onSe
           <li key={`u-${entry.teamId}-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
             <span className="font-medium text-foreground">{teamName(entry.teamId)}</span>
             <span className="text-muted-foreground">{placementLabel(entry.dayOfWeek, entry.startTime, venueName(entry.venueId))}</span>
-            {null !== entry.reason ? <span className="rounded-full border border-border px-2 py-0.5 text-xs text-foreground">{toReplaceReasonLabel(entry.reason)}</span> : null}
+            {null !== entry.reason ? <StatusPill>{toReplaceReasonLabel(entry.reason)}</StatusPill> : null}
           </li>
         ))}
       </ul>

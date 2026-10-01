@@ -2,6 +2,7 @@ import { Lock, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
+import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
@@ -56,7 +57,7 @@ const RULE_LABEL: Record<ConstraintRuleType, string> = {
  * patron paramétré par libellé, jamais deux `<span>` copiés.
  */
 function RuleBadge({ label }: { label: string }) {
-  return <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{label}</span>;
+  return <StatusPill>{label}</StatusPill>;
 }
 
 /** Coerce a JSON config value (unknown) into a day-number array. */
@@ -1064,19 +1065,16 @@ export function ConstraintsStep() {
                         </>
                       )}
                       <td className="px-3 py-2 align-top">
-                        <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{RULE_LABEL[c.ruleType]}</span>
+                        <StatusPill>{RULE_LABEL[c.ruleType]}</StatusPill>
                       </td>
                       <td className="px-3 py-2 align-top">
                         {isFact ? (
                           // Fait de la mère : lecture seule ici. Le badge DIT pourquoi (texte
                           // lisible, pas qu'une couleur) et où le régler — même idiome de badge
                           // que la colonne « Niveau ».
-                          <span
-                            className="inline-block rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
-                            title={motherTitle ? `Cette règle décrit un fait de « ${motherTitle} » : elle s'applique à toutes ses semaines et se règle à la source.` : undefined}
-                          >
+                          <StatusPill title={motherTitle ? `Cette règle décrit un fait de « ${motherTitle} » : elle s'applique à toutes ses semaines et se règle à la source.` : undefined}>
                             {motherTitle ? `Toutes les semaines de ${motherTitle}` : "Toutes les semaines"}
-                          </span>
+                          </StatusPill>
                         ) : (
                           // `p-1.5 -m-1.5` : 28 px cliquables autour d'une icône de 16, SANS
                           // épaissir la ligne — la passe de design nommait `w-6 h-6` comme le

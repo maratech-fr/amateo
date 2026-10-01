@@ -505,8 +505,8 @@ function CoachRow({ coach, campaignId, onEmailSaved, onCampaignRefreshed }: { co
             répondu le {frDate(coach.respondedAt.slice(0, 10))}
           </StatusPill>
         ) : null}
-        {hasEmail ? null : <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">pas d'email</span>}
-        {null !== coach.sentAt ? <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">envoyé le {frDate(coach.sentAt.slice(0, 10))}</span> : null}
+        {hasEmail ? null : <StatusPill>pas d'email</StatusPill>}
+        {null !== coach.sentAt ? <StatusPill>envoyé le {frDate(coach.sentAt.slice(0, 10))}</StatusPill> : null}
         {hasEmail ? (
           // Envoi CIBLÉ (ajout tardif d'un email, ou renvoi volontaire à CE coach — D1).
           <Button variant="ghost" size="sm" disabled={sendLinks.isPending} onClick={() => sendLinks.mutate({ id: campaignId, coachIds: [coach.coachId] }, { onSuccess: (r) => onCampaignRefreshed(r.campaign) })}>

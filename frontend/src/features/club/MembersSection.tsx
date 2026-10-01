@@ -2,6 +2,7 @@ import { RotateCcw, UserX } from "lucide-react";
 
 import type { ActiveMember, DeactivatedMember } from "@/features/auth/api";
 import { useChangeMemberRole, useDeactivateMember, useMembers, useReactivateMember } from "@/features/auth/queries";
+import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent } from "@/shared/components/ui/card";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
@@ -70,7 +71,7 @@ export function MembersSection() {
                     <div>
                       <p className="flex items-center gap-2 font-medium">
                         {member.firstName} {member.lastName}
-                        {member.isSelf ? <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground">vous</span> : null}
+                        {member.isSelf ? <StatusPill variant="accent-solid">vous</StatusPill> : null}
                       </p>
                       <p className="text-sm text-muted-foreground">{member.email}</p>
                     </div>

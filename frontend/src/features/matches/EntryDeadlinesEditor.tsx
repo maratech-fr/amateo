@@ -1,6 +1,7 @@
 import { CalendarCheck, Eraser, Info, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { errorMessage } from "@/shared/lib/errorMessage";
@@ -132,10 +133,9 @@ export function EntryDeadlinesEditor<T extends TeamLike>({ competitions, teams }
                 <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
                   <span>{teamName(c.teamId)}</span>
                   {null !== (c.ffbbCompetitionId ?? null) ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-surface-accent px-1.5 py-0.5 text-foreground">
-                      <Users className="size-3" aria-hidden />
+                    <StatusPill variant="accent" icon={<Users className="size-3 text-accent" aria-hidden />}>
                       partagée avec les autres clubs
-                    </span>
+                    </StatusPill>
                   ) : null}
                 </span>
               </span>
