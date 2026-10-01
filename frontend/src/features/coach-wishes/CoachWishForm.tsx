@@ -159,7 +159,7 @@ export function CoachWishForm({
         <legend className="mb-0.5">Jours indisponibles</legend>
         <div className="flex flex-wrap gap-1">
           {DAYS.map((d) => (
-            <label key={d.n} className={cn("cursor-pointer rounded border px-2 py-0.5", days.includes(d.n) ? "border-destructive bg-destructive/10 text-destructive" : "border-border")}>
+            <label key={d.n} className={cn("cursor-pointer rounded border px-2 py-0.5", days.includes(d.n) ? "border-destructive bg-surface-destructive text-foreground" : "border-border")}>
               <input type="checkbox" className="sr-only" checked={days.includes(d.n)} onChange={() => toggleDay(d.n)} />
               {d.label}
             </label>

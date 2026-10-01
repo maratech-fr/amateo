@@ -132,7 +132,7 @@ export function EntryDeadlinesEditor<T extends TeamLike>({ competitions, teams }
                 <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
                   <span>{teamName(c.teamId)}</span>
                   {null !== (c.ffbbCompetitionId ?? null) ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-1.5 py-0.5 text-accent-foreground">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-surface-accent px-1.5 py-0.5 text-foreground">
                       <Users className="size-3" aria-hidden />
                       partagée avec les autres clubs
                     </span>
