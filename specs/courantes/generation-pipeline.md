@@ -1,13 +1,12 @@
 # Génération d'un planning — conduite normalisée (bout en bout)
 
-Last verified @ 2026-09-29 (P4-271 : `CONTRACT_VERSION` **2.24 → 2.26** aux trois foyers —
-`slotRotations` retiré du payload, semaine type A/B = tag sur le créneau idéal, non transmis au
-moteur. `CONTRACT_VERSION` **`'2.29'`** aux trois foyers
-(`ScheduleConstraintBuilder.php:63`, `MoveSlotService.php:50`,
-`MatchPlacementPayloadBuilder.php:65`) et `engine/CONTRACT_VERSION`, inchangé ; la garde de
-redélivrance (`GenerateScheduleHandler.php`, lecture fraîche + après verrou, SEUL `COMPLETED`
-bloque) et la persistance de la greffe de convergence (`Schedule::payloadGraft`/`engineInput()`)
-toujours présentes, code relu ; aucun écran frontend n'affiche `score` (grep confirmé).
+Last verified @ 2026-10-01 (rotation de fraîcheur, `documentation-update`). `CONTRACT_VERSION`
+**`'2.29'`** confirmé aux trois foyers — `ScheduleConstraintBuilder.php:61`, `MoveSlotService.php:50`,
+`MatchPlacementPayloadBuilder.php:70` (deux citations de ligne corrigées cette passe) — et
+`engine/CONTRACT_VERSION` (`2.29`, inchangé). Garde de redélivrance
+(`GenerateScheduleHandler.php:143`, SEUL `COMPLETED` bloque) et persistance de la greffe de
+convergence (`Schedule::payloadGraft`/`engineInput()`, `Schedule.php:138`) toujours en place, code
+relu ; aucun écran frontend n'affiche `score` (grep confirmé, `frontend/src/features/planning/api.ts`).
 *(historique des passes vit dans git : `git log -p --follow specs/courantes/generation-pipeline.md`)*
 
 > Vérité courante. Décrit ce qui **doit** se passer, zone par zone, quand un

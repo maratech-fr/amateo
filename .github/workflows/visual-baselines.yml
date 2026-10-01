@@ -1,0 +1,145 @@
+name: Visual Baselines
+
+# Génération / vérification des CAPTURES DE RÉFÉRENCE de `tests/e2e/visual-reference.spec.ts`
+# (PR 8/8 série « uniformité des écrans »). Les PNG de référence doivent être produits dans
+# l'environnement EXACT de la CI (runner `ubuntu-latest` + `npx playwright install chromium`
+# épinglé par le lock) — mêmes polices que le job `e2e` de `ci.yml` qui les COMPARE. On ne les
+# génère donc jamais en local.
+#
+# Déclenché À LA DEMANDE uniquement (`workflow_dispatch`) — une fois ce workflow sur `main`,
+# `gh workflow run visual-baselines.yml --ref <branche> -f update=true` marche depuis N'IMPORTE
+# quelle branche. Deux modes selon l'entrée `update` :
+#   - update=true  (`--update-snapshots`) : (re)génère les PNG et les publie en artefact
+#     `visual-baselines` → on télécharge, on committe le dossier `-snapshots/`, on re-pousse.
+#   - update=false (défaut)                : compare aux PNG committés (vérification ad hoc).
+#
+# ⚠ Le GATE réel vit dans le job `e2e` de `ci.yml` (required check « E2E (Playwright) ») : il COMPARE
+# le spec aux références à chaque PR, il ne réécrit JAMAIS (aucun `--update-snapshots`). La
+# (re)génération vit ici, isolée.
+
+on:
+  workflow_dispatch:
+    inputs:
+      update:
+        description: "Régénérer les PNG de référence (--update-snapshots) au lieu de comparer"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  visual-baselines:
+    name: Visual Baselines
+    runs-on: ubuntu-latest
+    # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
+    # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
+    timeout-minutes: 40
+    env:
+      # Même raison que le job e2e : couper la délégation bake évite « waiting for BuildKit ».
+      COMPOSE_BAKE: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Prepare .env
+        run: |
+          cp .env.dist .env
+          printf 'USER_ID=%s\nGROUP_ID=%s\n' "$(id -u)" "$(id -g)" >> .env
+
+      - name: Pre-build php image (GHA cache)
+        uses: ./.github/actions/build-php-cached
+
+      - name: Pre-pull third-party images
+        run: .github/scripts/retry.sh 3 docker compose pull --ignore-buildable nginx mercure redis postgres
+
+      - name: Build the engine image
+        run: .github/scripts/retry.sh 2 docker compose build engine
+
+      - name: Start services
+        run: .github/scripts/retry.sh 3 docker compose up -d --wait php-fpm nginx engine mercure redis postgres
+
+      - name: Install PHP deps (cached + retried)
+        uses: ./.github/actions/composer-install-cached
+
+      - name: Generate JWT keys
+        run: docker compose exec -T php-fpm sh -c 'cd /app/backend && php bin/console lexik:jwt:generate-keypair --skip-if-exists --no-interaction'
+
+      - name: Migrate dev database
+        run: docker compose exec -T php-fpm sh -c 'cd /app/backend && php bin/console doctrine:migrations:migrate --no-interaction'
+
+      # Même seed que le job e2e : BCCL (create-only) sur la connexion ADMIN (le seeder refuse
+      # amateo_app) + les tables de référence vacances/fériés (globales, connexion simple).
+      - name: Seed dev data
+        run: |
+          docker compose exec -T php-fpm sh -c '
+            cd /app/backend
+            DBU=$(cat .env .env.local 2>/dev/null | sed -n "s/^DATABASE_ADMIN_URL=//p" | tail -n1 | tr -d "\"")
+            [ -n "$DBU" ] || { echo "DATABASE_ADMIN_URL introuvable dans backend/.env — le seed ne peut pas tourner sur la connexion admin"; exit 1; }
+            DATABASE_URL="$DBU" php bin/console app:bccl:seed --no-interaction
+            php bin/console app:school-holidays:seed --no-interaction
+            php bin/console app:public-holidays:seed --no-interaction
+          '
+
+      - name: Start messenger worker
+        run: docker compose up -d --wait messenger-worker
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+
+      - name: Install Playwright chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        working-directory: frontend
+        timeout-minutes: 10
+        run: npx playwright install chromium
+
+      - name: Start Vite dev server
+        working-directory: frontend
+        run: |
+          npm run dev &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:5173 >/dev/null && exit 0
+            sleep 1
+          done
+          echo "Vite dev server did not come up" && exit 1
+
+      # Génère OU compare, selon le mode. `set -o pipefail` explicite (le shell `run` par défaut
+      # est `bash -e {0}` SANS pipefail). En COMPARE une référence manquante fait ÉCHOUER (CI=true,
+      # Playwright ne crée jamais une référence absente) — c'est voulu : on committe d'abord.
+      - name: Run visual-reference (generate or compare)
+        working-directory: frontend
+        # `inputs.update` passe par l'ENV, JAMAIS interpolé dans le corps du `run` (semgrep
+        # run-shell-injection) — même discipline que `ci.yml` pour toute valeur variable.
+        env:
+          UPDATE: ${{ inputs.update }}
+        run: |
+          set -o pipefail
+          ARGS=""
+          if [ "$UPDATE" = "true" ]; then ARGS="--update-snapshots"; fi
+          E2E_BASE_URL=http://localhost:5173 npx playwright test tests/e2e/visual-reference.spec.ts $ARGS
+
+      # Les PNG de référence (après un run UPDATE) + les diffs d'un run COMPARE rouge. `always()` :
+      # en UPDATE le run est vert et on veut quand même les PNG ; en COMPARE rouge on veut les diffs.
+      - name: Upload snapshots + diffs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: visual-baselines
+          path: |
+            frontend/tests/e2e/visual-reference.spec.ts-snapshots/
+            frontend/test-results/
+          if-no-files-found: warn
+          retention-days: 7
