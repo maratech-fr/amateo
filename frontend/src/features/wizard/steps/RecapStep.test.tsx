@@ -290,6 +290,11 @@ describe("RecapStep — read-only summary", () => {
 
     await user.click(remove);
 
+    // N2 (PR 5/7) — le retrait passe désormais par une confirmation : rien n'est supprimé au
+    // premier clic, il faut confirmer « Retirer » dans la ConfirmDialog.
+    expect(deleteReservationAsyncMock).not.toHaveBeenCalled();
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Retirer" }));
+
     // N DELETE séquentiels (mutateAsync) puis un toast de succès nommant le lot.
     expect(deleteReservationAsyncMock).toHaveBeenCalledTimes(2);
     expect(deleteReservationAsyncMock).toHaveBeenCalledWith("rA");

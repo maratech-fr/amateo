@@ -1,9 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { anchorIsWritable, useCalendarEntry, useEntryConflicts, usePeriodAnchor } from "@/features/cockpit/queries";
 import { frDateShort } from "@/features/cockpit/lib/date";
 import { AccordionSection } from "@/shared/components/ui/accordion";
 import { Card, CardContent } from "@/shared/components/ui/card";
+import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { cn } from "@/shared/lib/utils";
 
@@ -249,6 +250,10 @@ export function RecapStep() {
     return "créneau supprimé ou déplacé";
   };
   const deleteReservation = useDeleteReservation();
+  // N2 (série « uniformité », PR 5/7) — tout retrait passe par une confirmation. Le récap porte
+  // DEUX gestes destructifs (une réservation orpheline, un lot mutualisé) : une seule cible en
+  // attente, discriminée, les deux confirmées par la même `ConfirmDialog`.
+  const [pendingRemoval, setPendingRemoval] = useState<{ kind: "reservation"; id: string; name: string } | { kind: "lot"; lot: PostedGroupLot; name: string } | null>(null);
 
   const sortedReservations = [...reservations].sort((a, b) => rankOf(a.teamId) - rankOf(b.teamId) || a.dayOfWeek - b.dayOfWeek || hhmm(a.startTime).localeCompare(hhmm(b.startTime)));
 
@@ -298,9 +303,9 @@ export function RecapStep() {
       }
       const lotName = lot.group.teamIds.map((id) => teamName.get(id) ?? "?").join(" + ");
       const where = `${venueName.get(r.venueId) ?? "?"} · ${dayLabel(r.dayOfWeek)} ${hhmm(r.startTime)}`;
-      return <MutualisationRemovalRow key={`lot-${r.id}`} label={lotName} where={where} reason={reservationReason(r)} onRemove={() => void removeLot(lot)} busy={deleteReservation.isPending} />;
+      return <MutualisationRemovalRow key={`lot-${r.id}`} label={lotName} where={where} reason={reservationReason(r)} onRemove={() => setPendingRemoval({ kind: "lot", lot, name: lotName })} busy={deleteReservation.isPending} />;
     }
-    return <ReservationRow key={r.id} reservation={r} teamName={teamName} venueName={venueName} reason={reservationReason(r)} onRemove={() => deleteReservation.mutate(r.id)} busy={deleteReservation.isPending} />;
+    return <ReservationRow key={r.id} reservation={r} teamName={teamName} venueName={venueName} reason={reservationReason(r)} onRemove={() => setPendingRemoval({ kind: "reservation", id: r.id, name: teamName.get(r.teamId) ?? "?" })} busy={deleteReservation.isPending} />;
   };
   // Coaches split into staffing groups (Salariés / Coachs-joueurs / Bénévoles),
   // each shown under its own header (user request — same as the constraint tab).
@@ -524,6 +529,25 @@ export function RecapStep() {
       )}
       {/* Respiration avant la barre du bouton « Continuer » (demande fondateur). */}
       <div className="h-4" aria-hidden />
+
+      <ConfirmDialog
+        open={null !== pendingRemoval}
+        title={null !== pendingRemoval && "lot" === pendingRemoval.kind ? "Retirer cet entraînement mutualisé ?" : "Retirer cette réservation ?"}
+        description={null !== pendingRemoval ? `« ${pendingRemoval.name} » sera retiré de la période.` : undefined}
+        confirmLabel="Retirer"
+        destructive
+        onConfirm={() => {
+          if (null !== pendingRemoval) {
+            if ("lot" === pendingRemoval.kind) {
+              void removeLot(pendingRemoval.lot);
+            } else {
+              deleteReservation.mutate(pendingRemoval.id);
+            }
+          }
+          setPendingRemoval(null);
+        }}
+        onCancel={() => setPendingRemoval(null)}
+      />
     </div>
   );
 }
