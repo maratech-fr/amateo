@@ -1,9 +1,11 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-09-30 (`documentation-update`, PR #1031 — CONTRACT_VERSION 2.29 confronté
-(`engine/CONTRACT_VERSION`), bouton d'aide (i) ajouté (`MatchesLayout.tsx`/`screenHelp.tsx`).
-Reste du contenu (P4-271/P4-272 et antérieur) non réaudité cette passe. Historique :
-`git log -p --follow specs/courantes/module-matchs.md`.
+Last verified @ 2026-10-01 (`documentation-update`, branche `fix/competitions-completude`) — §2
+« Cohérence de complétude » réécrit et confronté à `MatchConflictDetector::competitionIncompleteItems`
+(règle fondateur 2026-10-01 : FBI fait foi, l'appariement FFBB vérifie ; `reason`
+OVER/INCOHERENT/PENDING, sévérité 6/7) ; échelle de sévérité et `AWAY_NO_FOOTPRINT` (muet pour les
+équipes LOISIR) recalés en même temps. Reste du contenu (P4-271/P4-272 et antérieur) non réaudité
+cette passe. Historique : `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
 > d'une PR. Le JOURNAL (qui a livré quoi, quand, sous quel id) vit dans
@@ -492,6 +494,21 @@ toute rencontre `matchDate` strictement passée de **toutes** les familles sauf
 `COMPETITION_INCOMPLETE` et l'index des week-ends de match. Un match déjà joué ne porte ni ne reçoit
 plus aucun conflit.
 
+**Cohérence de complétude d'une compétition APPARIÉE** (décision fondateur 2026-10-01 : FBI — les
+matchs importés — fait FOI, l'appariement FFBB ne fait que VÉRIFIER ; la FFBB n'expose pas le
+format aller simple/aller-retour, aucun nombre attendu n'est deviné en amont). Une phase sort
+TOUJOURS en entier : le nombre `n` de rencontres rattachées à la compétition doit valoir `adv`
+(aller simple) ou `2×adv` (aller-retour), où `adv` = adversaires RÉELS de la poule (taille de poule
+− 1 pour le club − exempts, un exempt n'étant jamais un adversaire). Pas d'appariement
+(`expectedMatchdays` null, coupe comprise) ou `n ∈ {0, adv, 2×adv}` ⇒ silence, rien à signaler.
+`n > 2×adv` ⇒ ALERTE `OVER` (appariement ou rattachement à vérifier). `0 < n < 2×adv` avec `n ≠ adv`
+⇒ avant l'échéance de saisie effective de la poule (ou en son absence) : INFO discrète `PENDING`
+(« la phase n'est pas encore entièrement sortie ») ; après l'échéance : ALERTE `INCOHERENT`. Servi
+par `MatchConflictDetector::competitionIncompleteItems` (type `COMPETITION_INCOMPLETE`, champ
+`reason` OVER/INCOHERENT/PENDING, `expected` = la cible aller-retour `2×adv`) ;
+`ConflictRadarLoader` joint l'échéance effective de chaque compétition (club gagne, sinon le défaut
+communautaire — § « Échéances de saisie ligue/comité » ci-dessous).
+
 **Échelle de sévérité (1..7, émise par le serveur)** : 1 `VENUE_OVERLAP` · 2
 `LEAGUE_WINDOW_VIOLATION` (équipe mappée seulement) · 3 clash dur `MATCH_MATCH`/`MATCH_TRAINING` +
 `CLUB_RULE_VIOLATION` (P4-272 ③ — un domicile placé dont le coup d'envoi viole une règle CLUB
@@ -505,9 +522,11 @@ accès du gymnase de la fixture triés jour du match d'abord, hors identité de 
 aucune) · 5 clash adouci +
 `FRIENDLY_ON_MATCH_SLOT` (amical HOME placé sur un créneau de match — `reasons`:
 `MATCH_SLOT_WINDOW`/`MATCH_WEEKEND`, samedi = clé du week-end, le vendredi ne compte jamais) · 6
-`COMPETITION_INCOMPLETE` (compétitions APPARIÉES sous leur attendu, `expectedMatchdays` — jamais
-pour une `CUP`) · 7 `AWAY_NO_FOOTPRINT` (angle mort nommé : extérieur sans heure ni habitude du bon
-jour). Réponse : bornes datées en heure MURALE du club (jamais un offset).
+`COMPETITION_INCOMPLETE` reason `OVER`/`INCOHERENT` (alerte, § « Cohérence de complétude »
+ci-dessus) · 7 `COMPETITION_INCOMPLETE` reason `PENDING` (info, repliée) + `AWAY_NO_FOOTPRINT`
+(angle mort nommé : extérieur sans heure ni habitude du bon jour — JAMAIS émis pour une équipe
+LOISIR_ADULTE/LOISIR_JEUNE, qui n'a ni calendrier ligue ni habitude à déclarer). Réponse : bornes
+datées en heure MURALE du club (jamais un offset).
 
 **Détail par côté** : `MatchConflictDetector::fixtureView` sert quatre champs additifs par côté
 (`estimatedKickoffTime`, `travelOneWayMinutes` — `null` = trajet non modélisé,
