@@ -8,6 +8,7 @@ import { useWizardStore } from "@/features/wizard/store";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
+import { Input } from "@/shared/components/ui/input";
 import { Modal } from "@/shared/components/ui/modal";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { toast } from "@/shared/stores/toastStore";
@@ -652,8 +653,6 @@ function FormShell({ children, onBack }: { children: ReactNode; onBack: () => vo
   );
 }
 
-const fieldClass = "w-full rounded-md border border-input bg-background px-3 py-2 text-sm";
-
 /**
  * Shared "Du … Jusqu'au …" range of the three creation forms (event / closure /
  * cutoff). The clicked day is only the DEFAULT start — both ends are editable
@@ -669,11 +668,11 @@ function DateRangeFields({ startDate, endDate, onStart, onEnd, minStart, max }: 
     <div className="grid grid-cols-2 gap-2">
       <label className="block text-xs text-muted-foreground">
         Du
-        <input type="date" className={`${fieldClass} mt-1`} value={startDate} min={floor} max={max} onChange={(e) => onStart(e.target.value)} />
+        <Input type="date" className="mt-1" value={startDate} min={floor} max={max} onChange={(e) => onStart(e.target.value)} />
       </label>
       <label className="block text-xs text-muted-foreground">
         Jusqu'au
-        <input type="date" className={`${fieldClass} mt-1`} value={endDate} min={startDate} max={max} onChange={(e) => onEnd(e.target.value)} />
+        <Input type="date" className="mt-1" value={endDate} min={startDate} max={max} onChange={(e) => onEnd(e.target.value)} />
       </label>
     </div>
   );
@@ -715,7 +714,7 @@ function EventForm({ iso, onBack, onDone }: { iso: string; onBack: () => void; o
   return (
     <FormShell onBack={onBack}>
       {/* eslint-disable-next-line jsx-a11y/no-autofocus -- inside a Modal: focusing the first field on step change is intentional, better than the neutral panel */}
-      <input className={fieldClass} aria-label="Titre de l'événement" placeholder="Titre (AG, tournoi…)" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+      <Input aria-label="Titre de l'événement" placeholder="Titre (AG, tournoi…)" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
       <DateRangeFields startDate={startDate} endDate={endDate} onStart={setStart} onEnd={setEnd} />
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={isDisruptive} onChange={(e) => setDisruptive(e.target.checked)} />
@@ -765,7 +764,7 @@ function ClosureForm({ iso, onBack, onDone }: { iso: string; onBack: () => void;
         value={venueId}
         onValueChange={setVenueId}
       />
-      <input className={fieldClass} aria-label="Intitulé de l'indisponibilité (optionnel)" placeholder="Intitulé (optionnel)" maxLength={140} value={title} onChange={(e) => setTitle(e.target.value)} />
+      <Input aria-label="Intitulé de l'indisponibilité (optionnel)" placeholder="Intitulé (optionnel)" maxLength={140} value={title} onChange={(e) => setTitle(e.target.value)} />
       <DateRangeFields startDate={startDate} endDate={endDate} onStart={setStart} onEnd={setEnd} />
       <Button className="w-full" onClick={submit} disabled={createClosure.isPending || venueId === "" || !valid}>
         Enregistrer
@@ -791,7 +790,7 @@ function CutoffForm({ iso, onBack, onDone }: { iso: string; onBack: () => void; 
   return (
     <FormShell onBack={onBack}>
       {/* eslint-disable-next-line jsx-a11y/no-autofocus -- inside a Modal: focusing the first field on step change is intentional */}
-      <input className={fieldClass} aria-label="Intitulé de la coupure (optionnel)" placeholder="Intitulé (optionnel, ex. Coupure de Noël)" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+      <Input aria-label="Intitulé de la coupure (optionnel)" placeholder="Intitulé (optionnel, ex. Coupure de Noël)" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
       <DateRangeFields startDate={startDate} endDate={endDate} onStart={setStart} onEnd={setEnd} />
       <p className="text-xs text-muted-foreground">Rappel affiché au calendrier (🛑) et au radar — le planning de base reste inchangé, rien à générer.</p>
       <Button className="w-full" onClick={submit} disabled={createCutoff.isPending || !valid}>

@@ -157,7 +157,6 @@ function EditableLinks<T extends TeamLike>({
               Entraînement
               <Select
                 aria-label={`Intensité d'entraînement, passerelle ${teamName(link.teamAId)} – ${teamName(link.teamBId)}`}
-                className="h-8"
                 wrapperClassName="w-32"
                 value={link.trainingIntensity}
                 disabled={updateLink.isPending}

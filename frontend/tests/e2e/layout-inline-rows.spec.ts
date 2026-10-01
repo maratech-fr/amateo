@@ -15,7 +15,12 @@ import { ensureValidated, loginSeededClub, registerAndVerify, uniqueAra } from "
  *    déplié en permanence) ;
  *  - la ligne d'ajout d'une interdiction de gymnase (section Équipes) : équipe + gymnase +
  *    « Interdire » sur la même ligne (PR 3/7 « uniformité des sélecteurs », largeur en
- *    `wrapperClassName` — une largeur restée en `className` n'aurait pas tenu la boîte flex).
+ *    `wrapperClassName` — une largeur restée en `className` n'aurait pas tenu la boîte flex) ;
+ *  - la ligne d'ajout d'une règle de club (section Club) : disposition en DEUX rangées (décision
+ *    fondateur 2026-10-01 « aérer ») — rangée 1 jours + Type, rangée 2 Pas avant + Pas après +
+ *    Ajouter. Tous les contrôles à 36 px (= `h-9`, décision B) ; les trois de la rangée 2 sur la
+ *    MÊME ligne (jamais un bouton d'action orphelin sous la ligne) ; Type au-dessus ; 0 débordement
+ *    horizontal. Le groupe multi-jours (`DayMultiPicker`, boutons `min-h-6`) est hors mesure.
  */
 test.use({ viewport: { width: 1280, height: 900 } });
 
@@ -95,6 +100,53 @@ test("contraintes : une règle au repos tient sur une seule ligne (1280 px)", as
   // Nettoyage : on lève la règle qu'on vient de créer (la base de DEV n'est pas réinitialisée).
   await page.getByRole("button", { name: "Supprimer" }).first().click();
   await page.getByRole("dialog").getByRole("button", { name: "Supprimer", exact: true }).click();
+});
+
+test("contraintes club : la ligne d'ajout d'une règle est sur DEUX rangées, contrôles à 36 px (1280 px)", async ({ page }) => {
+  test.setTimeout(240_000);
+
+  await loginSeededClub(page);
+  await ensureValidated(page);
+
+  // La ligne d'AJOUT (AddClubRuleRow) est toujours là, même sans règle existante — rien à créer,
+  // donc rien à nettoyer. Disposition en DEUX rangées (décision fondateur 2026-10-01) : rangée 1 =
+  // jours + Type ; rangée 2 = Pas avant + Pas après + Ajouter. Le bouton « Ajouter » ancre la
+  // rangée 2 (son parent direct), dont le parent est le bloc RuleFields (flex-col) qui porte Type.
+  await page.goto("/matchs/contraintes?section=club");
+
+  const ajouter = page.getByRole("button", { name: "Ajouter" });
+  await expect(ajouter).toBeVisible({ timeout: 15_000 });
+  const row2 = ajouter.locator("xpath=..");
+  const block = row2.locator("xpath=..");
+
+  const typeSelect = block.getByRole("combobox", { name: "Type" });
+  const avant = row2.getByLabel("Pas avant (heure de début)");
+  const apres = row2.getByLabel("Pas après (heure de fin)");
+  await expect(typeSelect).toBeVisible();
+  await expect(avant).toBeVisible();
+  await expect(apres).toBeVisible();
+
+  const [typeBox, avantBox, apresBox, ajouterBox] = await Promise.all([typeSelect, avant, apres, ajouter].map((c) => c.boundingBox()));
+  const height = (b: Awaited<ReturnType<Locator["boundingBox"]>>): number => b?.height ?? -1;
+  const topY = (b: Awaited<ReturnType<Locator["boundingBox"]>>): number => b?.y ?? -1;
+
+  // Décision fondateur B : tout contrôle fait 36 px (= h-9).
+  for (const b of [typeBox, avantBox, apresBox, ajouterBox]) {
+    expect(height(b)).toBeGreaterThanOrEqual(35);
+    expect(height(b)).toBeLessThanOrEqual(37);
+  }
+
+  // Rangée 2 : Pas avant, Pas après et « Ajouter » sur la MÊME ligne (même offsetTop, ±4) — jamais
+  // un bouton orphelin tombé seul sous la ligne.
+  const row2Tops = [topY(avantBox), topY(apresBox), topY(ajouterBox)];
+  expect(Math.max(...row2Tops) - Math.min(...row2Tops)).toBeLessThanOrEqual(4);
+
+  // Structure en DEUX rangées voulue : « Type » (rangée 1) est AU-DESSUS de la rangée 2.
+  expect(topY(typeBox)).toBeLessThan(Math.min(...row2Tops) - 4);
+
+  // Aucun débordement horizontal, ni sur la rangée 2 ni sur le bloc (à 1280 px).
+  expect(await row2.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  expect(await block.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
 });
 
 test("contraintes équipes : équipe, gymnase et « Interdire » sur la même ligne (1280 px)", async ({ page }) => {

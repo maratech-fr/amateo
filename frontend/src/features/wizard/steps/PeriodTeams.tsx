@@ -9,6 +9,7 @@ import { readFailed, readLoading } from "@/shared/lib/readState";
 import { AccordionSection } from "@/shared/components/ui/accordion";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
+import { Input } from "@/shared/components/ui/input";
 import { groupTeamsByTier, tierGroupLabel } from "@/shared/lib/teamTiers";
 import { cn } from "@/shared/lib/utils";
 import { toast } from "@/shared/stores/toastStore";
@@ -28,8 +29,6 @@ import { SectionCountTitle } from "./StructureSummary";
 import { claimPeriodSeed, periodSeedWasClaimed } from "./periodSeed";
 import { PeriodAnchorGate } from "./PeriodAnchorGate";
 import { TeamLinksModal } from "./TeamLinksModal";
-
-const fieldClass = "h-8 rounded-md border border-input bg-background px-2 text-sm";
 
 // In-session guard against re-seeding between firing the Fanion-only seed and the
 // plan query reflecting teamSelectionInitialized (the DURABLE, reload-proof signal).
@@ -289,11 +288,12 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
                   <div className="flex items-center gap-2">
                     <label className={cn("flex items-center gap-1 text-xs text-muted-foreground", !active && "opacity-50")}>
                       séances
-                      <input
+                      <Input
                         type="number"
                         min={1}
                         max={7}
-                        className={cn(fieldClass, "w-14")}
+                        compact
+                        className="w-14"
                         value={sessionsOf(t)}
                         disabled={!active || busy}
                         onChange={(e) => setSessions(t, Number(e.target.value))}

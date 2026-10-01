@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useCreateVenueUnavailability, useDeleteVenueUnavailability, useUnavailabilityImpact, useVenues, useVenueUnavailabilities } from "@/features/matches/queries";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { Input } from "@/shared/components/ui/input";
 import { Modal } from "@/shared/components/ui/modal";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
 
@@ -163,11 +164,11 @@ export function VenueUnavailabilityCard() {
             <div className="grid grid-cols-2 gap-2">
               <label className="flex flex-col gap-1 text-sm">
                 <span className="text-muted-foreground">Du</span>
-                <input aria-label="Début de l'indisponibilité" type="date" className="h-9 rounded-md border border-border bg-background px-2 text-sm" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                <Input aria-label="Début de l'indisponibilité" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
               </label>
               <label className="flex flex-col gap-1 text-sm">
                 <span className="text-muted-foreground">Au (inclus)</span>
-                <input aria-label="Fin de l'indisponibilité" type="date" className="h-9 rounded-md border border-border bg-background px-2 text-sm" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                <Input aria-label="Fin de l'indisponibilité" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
               </label>
             </div>
             {"" !== startDate && "" !== endDate && startDate > endDate ? (
@@ -175,7 +176,7 @@ export function VenueUnavailabilityCard() {
             ) : null}
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted-foreground">Motif (optionnel)</span>
-              <input aria-label="Motif de l'indisponibilité" className="h-9 rounded-md border border-border bg-background px-2 text-sm" placeholder="travaux, reprise mairie…" value={label} onChange={(e) => setLabel(e.target.value)} />
+              <Input aria-label="Motif de l'indisponibilité" placeholder="travaux, reprise mairie…" value={label} onChange={(e) => setLabel(e.target.value)} />
             </label>
           </div>
         </Modal>

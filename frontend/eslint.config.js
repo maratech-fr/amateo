@@ -64,6 +64,24 @@ const selectorSyntax = [
   },
 ]
 
+// Uniformité des HAUTEURS (série « uniformité des écrans » PR 7/7, GO fondateur 2026-10-01, décision
+// B sur captures A/B : 36 px = `h-9` pour TOUT contrôle posé dans une ligne). La hauteur d'un contrôle
+// partagé vient de la PRIMITIVE (`h-9` par défaut) ou d'une variante NOMMÉE (`compact` → `h-8` pour un
+// tableau dense ; `size="icon-sm"` → 36 px) — jamais une classe `h-8`/`h-10`/`h-11` LITTÉRALE forcée en
+// className (qui remélangeait les hauteurs d'une même ligne). Même modèle que la règle de largeur
+// (PR 3/7) : admin exempté, shared/ hors du glob (c'est le foyer des primitives). Le `Literal`
+// DESCENDANT (combinateur espace) attrape aussi un `h-8` niché dans un `cn("h-8", …)` ; comme pour la
+// largeur, un `className={variable}` ou un `className={`h-8 …`}` (template literal) n'est PAS couvert
+// par l'AST — choix documenté, ces cas rares restent à la revue.
+const heightSyntax = [
+  {
+    selector:
+      "JSXOpeningElement[name.name=/^(Button|Input|Select|Listbox|TeamSelect|VenueSelect)$/] > JSXAttribute[name.name='className'] Literal[value=/(^|[^\\w-])h-(8|10|11)([^\\w-]|$)/]",
+    message:
+      "La hauteur d'un contrôle vient de la primitive (h-9 par défaut) ou d'une variante nommée (prop `compact` → h-8 ; `size=\"icon-sm\"` → 36 px) — jamais une classe h-8/h-10/h-11 littérale en className (série « uniformité des écrans », PR 7/7).",
+  },
+]
+
 export default defineConfig([
   globalIgnores(['dist']),
   {
@@ -100,7 +118,7 @@ export default defineConfig([
     files: ['src/features/**/*.{ts,tsx}', 'src/app/**/*.{ts,tsx}'],
     ignores: ['src/features/admin/**/*.{ts,tsx}'],
     rules: {
-      'no-restricted-syntax': ['error', ...bannedSyntax, ...selectorSyntax],
+      'no-restricted-syntax': ['error', ...bannedSyntax, ...selectorSyntax, ...heightSyntax],
     },
   },
   // AUD-FRT-21 — GELER la direction des dépendances : `shared/` est la couche du DESSOUS,

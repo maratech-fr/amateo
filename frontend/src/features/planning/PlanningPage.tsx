@@ -18,6 +18,7 @@ import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { Input } from "@/shared/components/ui/input";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { PageHeader } from "@/shared/components/ui/page-header";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
@@ -581,7 +582,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
         // l'édition). « Signaler » reste présent, comme dans l'en-tête au repos.
         <div className="mb-4 flex items-center gap-3">
           {me?.club?.logoUrl ? <img src={me.club.logoUrl} alt="" className="size-8 shrink-0 rounded object-contain" /> : null}
-          <input
+          <Input
             // eslint-disable-next-line jsx-a11y/no-autofocus -- inline rename field revealed on demand
             autoFocus
             aria-label="Nom du planning"
@@ -601,7 +602,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
               }
             }}
             onBlur={() => setEditingPlanningName(null)}
-            className="h-9 rounded-md border border-input bg-background px-3 text-xl font-semibold"
+            className="w-72 text-xl font-semibold"
           />
           {/* P5-6 — porte contextuelle : joint le planning affiché au signalement. */}
           <FeedbackButton className="ml-auto" screen="/planning" scheduleId={validScheduleId} />
@@ -632,7 +633,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                   l'écriture sur un id qu'on n'a pas (c'est ce qui la faisait retomber
                   sur le plan de saison). */}
               {null !== displayedPlan && workingSeason && !workingSeason.isReadonly ? (
-                <Button size="sm" variant="ghost" className="h-8 px-2" aria-label="Renommer le planning" title="Renommer le planning" onClick={() => setEditingPlanningName(displayedPlan.name)}>
+                <Button size="sm" variant="ghost" className="px-2" aria-label="Renommer le planning" title="Renommer le planning" onClick={() => setEditingPlanningName(displayedPlan.name)}>
                   <Pencil className="size-4" />
                 </Button>
               ) : null}
@@ -835,7 +836,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                     <span className="text-foreground">
                       <span className="font-medium">{teamNameOf(evictionNotice.evicted.teamId)}</span> est à replacer.
                     </span>
-                    <Button size="sm" variant="outline" className="h-8" disabled={busy} onClick={placeEvictedShortcut}>
+                    <Button size="sm" variant="outline" disabled={busy} onClick={placeEvictedShortcut}>
                       Remettre {teamNameOf(evictionNotice.evicted.teamId)} sur {DAY_ABBR.get(evictionNotice.freed.dayOfWeek) ?? "?"} {evictionNotice.freed.startTime}
                     </Button>
                   </>

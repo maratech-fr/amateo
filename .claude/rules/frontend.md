@@ -147,6 +147,26 @@ paths:
   picker d'équipe/gymnase), et une classe de largeur **littérale** en `className` sur ces quatre
   composants rougit — un `cn(...)`/une variable n'est pas couvert par l'AST (choix documenté,
   reste à la revue).
+- 🔴 **Hauteur d'un contrôle de ligne = 36 px (`h-9`) ; la variante dense est NOMMÉE, jamais une
+  classe forcée** (série « uniformité des écrans », PR 7/7, 2026-10-01) : `Input`/`Select`
+  rendent `h-9` par défaut, `Button` `default`/`icon` restent à 40 px (CTA pleine page, pied de
+  modale) et une ligne dense prend `size="sm"` ou le nouveau `size="icon-sm"` (36 px, bouton-icône
+  de ligne). La variante compacte `compact` (`h-8`, prop sur `Input`/`Select`) est réservée aux
+  TABLEAUX denses (`TeamsStep`, `PeriodTeams`, `RedateEventsDialog`) — jamais mélangée à du `h-9`
+  dans la même ligne. Les rares `<textarea>` (pas de `<input>` nu dans `features/`) passent par
+  `FIELD_CLASS` (`shared/components/ui/field.ts`), le foyer unique de la classe de champ natif,
+  même apparence que `Input` sans la hauteur (multi-lignes). Gardé par ESLint
+  (`frontend/eslint.config.js`, `no-restricted-syntax` sur `src/features/**`/`src/app/**`, admin
+  exempté) : une classe `h-8`/`h-10`/`h-11` littérale en `className` sur
+  `Button`/`Input`/`Select`/`Listbox`/`TeamSelect`/`VenueSelect` rougit — même limite que la règle
+  de largeur (PR 3/7) : un `cn(...)`/une variable/un template literal n'est pas couvert par l'AST,
+  reste à la revue. **Ligne d'ajout/édition dont l'action ne tient pas sur une ligne à 1280 px →
+  DEUX rangées structurées** (jamais un bouton d'action orphelin tombé par `flex-wrap`) : rangée 1
+  = la sélection, rangée 2 = les valeurs + le bouton d'action à droite — patron `RuleFields`/
+  `CoachFields` de `features/matches/ConstraintsPage.tsx` (règle de club, indisponibilité coach),
+  décision fondateur 2026-10-01. NR e2e `tests/e2e/layout-inline-rows.spec.ts` (deux rangées à
+  36 px, `Type` au-dessus, 0 débordement horizontal) ; le builder de contraintes du wizard
+  (`ConstraintsStep`) partage le même risque et n'a pas encore été repris (P4-283).
 - 🔴 **Tout choix de jours passe par `DayMultiPicker`, tout libellé de jour par `shared/lib/days.ts`**
   (`shared/components/ui/day-multi-picker.tsx` — PR 6/7 série « uniformité des écrans »,
   2026-10-01) : maison unique du sélecteur multi-jours (patron APG toggle button, `<fieldset>`/

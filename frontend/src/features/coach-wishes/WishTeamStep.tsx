@@ -1,5 +1,7 @@
 import { DayMultiPicker } from "@/shared/components/ui/day-multi-picker";
+import { FIELD_CLASS } from "@/shared/components/ui/field";
 import { Input } from "@/shared/components/ui/input";
+import { cn } from "@/shared/lib/utils";
 
 import { frDate, sectionKey, type SectionState } from "./wishSections";
 
@@ -33,7 +35,7 @@ export function WishTeamStep({ team, weeks, sections, onPatch, onToggleDay }: Wi
                 min={0}
                 max={7}
                 aria-label={`Séances souhaitées — ${team.name}, semaine du ${frDate(week)}`}
-                className="h-8 w-16"
+                className="w-16"
                 value={s.slotsWanted}
                 onChange={(e) => onPatch(key, { slotsWanted: Math.max(0, Math.min(7, Number(e.target.value) || 0)) })}
               />
@@ -61,7 +63,7 @@ export function WishTeamStep({ team, weeks, sections, onPatch, onToggleDay }: Wi
             <label className="mt-2 block text-sm">
               <span className="text-muted-foreground">Commentaire</span>
               <textarea
-                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
+                className={cn("mt-1", FIELD_CLASS)}
                 rows={2}
                 aria-label={`Commentaire — ${team.name}, semaine du ${frDate(week)}`}
                 value={s.comment}

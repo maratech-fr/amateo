@@ -583,7 +583,7 @@ export function ConstraintsStep() {
   }, [editTarget, genesisConstraints]);
 
   const teamPicker = (
-    <Select aria-label="Cible" title="Qui est concerné : tout le club, un groupe (tag), ou une équipe précise" className="h-8" wrapperClassName="w-48" value={target} onChange={(e) => changeTarget(e.target.value)}>
+    <Select aria-label="Cible" title="Qui est concerné : tout le club, un groupe (tag), ou une équipe précise" wrapperClassName="w-48" value={target} onChange={(e) => changeTarget(e.target.value)}>
       <option value="">Toutes les équipes</option>
       {/* Groups by axis: Genre, Niveau, Âge (Lot B) — then the teams by tier below. */}
       {groupTagsByAxis(visibleTags).map((group) => (
@@ -835,22 +835,22 @@ export function ConstraintsStep() {
           <>
             <label className="text-xs text-muted-foreground">
               Pas avant
-              <Input aria-label="Pas avant" type="time" className="mt-0.5 h-8 w-28" value={minTime} onChange={(e) => setMinTime(e.target.value)} />
+              <Input aria-label="Pas avant" type="time" className="mt-0.5 w-28" value={minTime} onChange={(e) => setMinTime(e.target.value)} />
             </label>
             <label className="text-xs text-muted-foreground">
               Pas après
-              <Input aria-label="Pas après" type="time" className="mt-0.5 h-8 w-28" value={maxTime} onChange={(e) => setMaxTime(e.target.value)} />
+              <Input aria-label="Pas après" type="time" className="mt-0.5 w-28" value={maxTime} onChange={(e) => setMaxTime(e.target.value)} />
             </label>
             <label className="text-xs text-muted-foreground">
               Fini avant
-              <Input aria-label="Fini avant" type="time" className="mt-0.5 h-8 w-28" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+              <Input aria-label="Fini avant" type="time" className="mt-0.5 w-28" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
             </label>
           </>
         )}
 
         {"DAY" === family && (
           <>
-            <Select aria-label="Type de jour" className="h-8" wrapperClassName="w-36" value={dayMode} onChange={(e) => setDayMode(e.target.value as "forbidden" | "only" | "atLeast")}>
+            <Select aria-label="Type de jour" wrapperClassName="w-36" value={dayMode} onChange={(e) => setDayMode(e.target.value as "forbidden" | "only" | "atLeast")}>
               <option value="forbidden">à éviter</option>
               <option value="only">uniquement</option>
               <option value="atLeast">au moins une</option>
@@ -861,7 +861,7 @@ export function ConstraintsStep() {
 
         {"FACILITY" === family && (
           <>
-            <Select aria-label="Préférence" className="h-8" wrapperClassName="w-28" value={effectiveVenueMode} onChange={(e) => setVenueMode(e.target.value as "preferred" | "forbidden" | "forced" | "min")}>
+            <Select aria-label="Préférence" wrapperClassName="w-28" value={effectiveVenueMode} onChange={(e) => setVenueMode(e.target.value as "preferred" | "forbidden" | "forced" | "min")}>
               <option value="preferred">préfère</option>
               <option value="forbidden">évite</option>
               <option value="forced">impose</option>
@@ -876,12 +876,11 @@ export function ConstraintsStep() {
             {"min" === effectiveVenueMode && (
               <label className="text-xs text-muted-foreground">
                 Combien
-                <Input aria-label="Nombre de séances" type="number" min={1} className="mt-0.5 h-8 w-16" value={venueMinCount} onChange={(e) => setVenueMinCount(Math.max(1, Number(e.target.value) || 1))} />
+                <Input aria-label="Nombre de séances" type="number" min={1} className="mt-0.5 w-16" value={venueMinCount} onChange={(e) => setVenueMinCount(Math.max(1, Number(e.target.value) || 1))} />
               </label>
             )}
             <VenueSelect
               aria-label="Gymnase"
-              className="h-8"
               wrapperClassName="w-48"
               placeholder="— gymnase —"
               venues={sortByName(editVenues).map((v) => ({ id: v.id, name: v.name, color: v.color, sub: disabledIds.has(v.id) ? "désactivé pour cette période" : undefined }))}
@@ -893,7 +892,7 @@ export function ConstraintsStep() {
 
         {"COACH_AVAILABILITY" === family && (
           <>
-            <Select aria-label="Coach" className="h-8" wrapperClassName="w-44" value={coachId} onChange={(e) => setCoachId(e.target.value)}>
+            <Select aria-label="Coach" wrapperClassName="w-44" value={coachId} onChange={(e) => setCoachId(e.target.value)}>
               <option value="">— coach —</option>
               {(
                 [
@@ -913,7 +912,7 @@ export function ConstraintsStep() {
                 ) : null,
               )}
             </Select>
-            <Select aria-label="Disponibilité" className="h-8" wrapperClassName="w-44" value={coachMode} onChange={(e) => setCoachMode(e.target.value as "unavailable" | "available")}>
+            <Select aria-label="Disponibilité" wrapperClassName="w-44" value={coachMode} onChange={(e) => setCoachMode(e.target.value as "unavailable" | "available")}>
               <option value="unavailable">indisponible</option>
               <option value="available">disponible uniquement</option>
             </Select>
@@ -921,11 +920,11 @@ export function ConstraintsStep() {
             {/* Lot C: optional time window on the selected days (empty = whole day). */}
             <label className="flex items-center gap-1 text-xs text-muted-foreground">
               de
-              <Input type="time" aria-label="Heure de début" className="h-8 w-28" value={coachFrom} onChange={(e) => setCoachFrom(e.target.value)} />
+              <Input type="time" aria-label="Heure de début" className="w-28" value={coachFrom} onChange={(e) => setCoachFrom(e.target.value)} />
             </label>
             <label className="flex items-center gap-1 text-xs text-muted-foreground">
               à
-              <Input type="time" aria-label="Heure de fin" className="h-8 w-28" value={coachUntil} onChange={(e) => setCoachUntil(e.target.value)} />
+              <Input type="time" aria-label="Heure de fin" className="w-28" value={coachUntil} onChange={(e) => setCoachUntil(e.target.value)} />
             </label>
           </>
         )}
@@ -942,7 +941,7 @@ export function ConstraintsStep() {
           // — une pastille figée « Préféré », comme « Obligatoire » l'est pour les règles dures.
           <RuleBadge label={RULE_LABEL.PREFERRED} />
         ) : (
-          <Select aria-label="Règle" className="h-8" wrapperClassName="w-28" value={ruleType} onChange={(e) => setRuleType(e.target.value as ConstraintRuleType)}>
+          <Select aria-label="Règle" wrapperClassName="w-28" value={ruleType} onChange={(e) => setRuleType(e.target.value as ConstraintRuleType)}>
             {RULES.map((r) => (
               <option key={r} value={r}>
                 {RULE_LABEL[r]}
@@ -952,10 +951,10 @@ export function ConstraintsStep() {
         )}
         {null !== editingId ? (
           <>
-            <Button size="sm" variant="ghost" className="ml-auto h-8" onClick={resetForm} title="Annuler la modification">
+            <Button size="sm" variant="ghost" className="ml-auto" onClick={resetForm} title="Annuler la modification">
               Annuler
             </Button>
-            <Button size="sm" className="h-8" onClick={submit} disabled={create.isPending || update.isPending} title="Enregistrer la contrainte" aria-label="Enregistrer la contrainte">
+            <Button size="sm" onClick={submit} disabled={create.isPending || update.isPending} title="Enregistrer la contrainte" aria-label="Enregistrer la contrainte">
               Enregistrer
             </Button>
           </>

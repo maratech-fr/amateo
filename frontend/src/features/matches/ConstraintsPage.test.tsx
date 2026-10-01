@@ -306,7 +306,9 @@ describe("ConstraintsPage — section Coachs (P4-272 ⑤)", () => {
     openCoachs();
 
     // La ligne d'ajout par défaut a samedi coché ; on choisit l'entraîneur et « Pas avant ».
-    const addRow = screen.getByRole("button", { name: "Ajouter" }).closest("div") as HTMLElement;
+    // Disposition en DEUX rangées (uniformité PR 7/7) : l'entraîneur est en rangée 1 et « Pas avant »
+    // en rangée 2 — on scope au bloc d'ajout ENTIER (bordure pointillée), pas au seul parent du bouton.
+    const addRow = screen.getByRole("button", { name: "Ajouter" }).closest(".border-dashed") as HTMLElement;
     await user.selectOptions(within(addRow).getByLabelText("Entraîneur"), "c1");
     fireEvent.change(within(addRow).getByLabelText("Pas avant (heure de début)"), { target: { value: "14:00" } });
     await user.click(screen.getByRole("button", { name: "Ajouter" }));

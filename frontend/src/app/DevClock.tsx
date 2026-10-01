@@ -3,6 +3,7 @@ import { Clock } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { api } from "@/shared/api/client";
+import { Input } from "@/shared/components/ui/input";
 
 /**
  * Dev-only clock simulator, sitting next to the club name. Shows the app's
@@ -83,11 +84,11 @@ export function DevClock() {
       {open ? (
         <div className="absolute left-0 z-40 mt-1 w-64 rounded-lg border border-border bg-card p-3 shadow-lg">
           <div className="mb-1 text-xs font-medium text-muted-foreground">Simuler la date / l'heure (dev)</div>
-          <input
+          <Input
             type="datetime-local"
             aria-label="Date et heure simulées"
             defaultValue={toInputValue(data.now)}
-            className="mb-2 h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+            className="mb-2"
             onChange={(e) => {
               const v = e.target.value;
               if ("" !== v) {

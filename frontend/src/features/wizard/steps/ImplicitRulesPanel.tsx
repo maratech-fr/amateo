@@ -172,7 +172,6 @@ function WellbeingRuleRow({
             {THRESHOLD_BOUNDS[threshold.field].label}
             <Select
               aria-label={`${THRESHOLD_BOUNDS[threshold.field].label} — ${meta.title}`}
-              className="h-8"
               wrapperClassName="w-16"
               value={String(threshold.value)}
               disabled={readOnly}
@@ -190,7 +189,7 @@ function WellbeingRuleRow({
         {/* « Réinitialiser » n'apparaît que hors défaut (le GET porte `isDefault`) : rien à
             réinitialiser tant que la règle est au défaut. */}
         {!setting.isDefault ? (
-          <Button size="sm" variant="ghost" className="ml-auto h-8 text-xs" disabled={readOnly} onClick={() => onReset(meta.ruleKey)}>
+          <Button size="sm" variant="ghost" className="ml-auto text-xs" disabled={readOnly} onClick={() => onReset(meta.ruleKey)}>
             Réinitialiser
           </Button>
         ) : null}

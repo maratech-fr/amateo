@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
+import { Input } from "@/shared/components/ui/input";
 import { errorMessage } from "@/shared/lib/errorMessage";
 import type { TeamLike } from "@/shared/lib/teamTiers";
 import { cn } from "@/shared/lib/utils";
@@ -91,13 +92,7 @@ export function EntryDeadlinesEditor<T extends TeamLike>({ competitions, teams }
       <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed border-border px-3 py-2">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           Échéance
-          <input
-            type="date"
-            aria-label="Échéance à appliquer"
-            className="h-9 rounded-md border border-border bg-background px-2 text-sm"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
+          <Input type="date" aria-label="Échéance à appliquer" value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
         <Button size="sm" disabled={0 === checked.size || "" === date || setDeadlines.isPending} onClick={() => apply(date)}>
           Appliquer{checked.size > 0 ? ` (${checked.size})` : ""}

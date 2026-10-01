@@ -94,7 +94,7 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
 
   const actions = (
     <div className="flex shrink-0 items-center gap-1">
-      <Button size="sm" variant={editing ? "outline" : "ghost"} className="h-8" aria-label={editing ? "Terminer l'édition" : "Éditer le coach"} onClick={onToggleEdit}>
+      <Button size="sm" variant={editing ? "outline" : "ghost"} aria-label={editing ? "Terminer l'édition" : "Éditer le coach"} onClick={onToggleEdit}>
         {editing ? <Check className="size-4" /> : <Pencil className="size-4" />}
         {editing ? "Terminé" : "Éditer"}
       </Button>
@@ -110,14 +110,14 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
         <div className="flex flex-wrap items-center gap-2">
           <Input
             aria-label="Prénom"
-            className="h-8 w-32"
+            className="w-32"
             value={first}
             onChange={(e) => setFirst(e.target.value)}
             onBlur={() => first.trim() && first !== coach.firstName && update.mutate({ id: coach.id, body: payload(coach, { firstName: first.trim() }) })}
           />
           <Input
             aria-label="Nom"
-            className="h-8 w-32"
+            className="w-32"
             value={last}
             onChange={(e) => setLast(e.target.value)}
             onBlur={() => last !== coach.lastName && update.mutate({ id: coach.id, body: payload(coach, { lastName: last }) })}
@@ -127,7 +127,7 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
             type="email"
             aria-label="Email"
             placeholder="email (optionnel)"
-            className="h-8 w-52"
+            className="w-52"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             onBlur={() => email.trim() !== (coach.email ?? "") && update.mutate({ id: coach.id, body: payload(coach, { email: email.trim() || null }) })}
@@ -165,7 +165,7 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
               min={1}
               max={6}
               aria-label="Jours maximum par semaine"
-              className="h-8 w-16"
+              className="w-16"
               value={coach.maxDaysOverride ?? ""}
               onChange={(e) => {
                 const raw = e.target.value;
@@ -253,8 +253,8 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
             {/* Focus d'ouverture du coach fraîchement créé (piloté par le parent) : le 1ᵉʳ geste
                 attendu est de lier une équipe — d'où l'autoFocus, ciblé et non permanent. */}
             {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
-            <TeamSelect autoFocus={autoFocusLink} aria-label="Équipe" className="h-8" wrapperClassName="w-40" teams={teams} tiers={tiers} value={linkTeam || firstTeam} onValueChange={setLinkTeam} />
-            <Select aria-label="Rôle" className="h-8" wrapperClassName="w-28" value={linkRole} onChange={(e) => setLinkRole(e.target.value as TeamCoachRole | "PLAYER")}>
+            <TeamSelect autoFocus={autoFocusLink} aria-label="Équipe" wrapperClassName="w-40" teams={teams} tiers={tiers} value={linkTeam || firstTeam} onValueChange={setLinkTeam} />
+            <Select aria-label="Rôle" wrapperClassName="w-28" value={linkRole} onChange={(e) => setLinkRole(e.target.value as TeamCoachRole | "PLAYER")}>
               <option value="MAIN">Coach</option>
               <option value="ASSISTANT">Adjoint</option>
               <option value="PLAYER">Joueur</option>

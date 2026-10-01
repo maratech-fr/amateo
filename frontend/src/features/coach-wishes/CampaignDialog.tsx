@@ -294,7 +294,7 @@ export function CampaignDialog({ entry, season, existing, onClose }: CampaignDia
 
         <label className="mt-4 flex items-center gap-2 text-sm font-medium">
           À renvoyer avant le
-          <Input type="date" min={today} className="h-8 w-40" value={deadline} onChange={(e) => setDeadline(e.target.value)} aria-label="Date limite" />
+          <Input type="date" min={today} className="w-40" value={deadline} onChange={(e) => setDeadline(e.target.value)} aria-label="Date limite" />
         </label>
 
         {failed ? <p className="mt-3 text-sm text-destructive">Enregistrement impossible. Vérifiez les semaines et équipes choisies.</p> : null}
@@ -520,7 +520,7 @@ function CoachRow({ coach, campaignId, onEmailSaved, onCampaignRefreshed }: { co
         </Button>
       </div>
       <div className="mt-1.5 flex items-center gap-2">
-        <Input type="email" placeholder="email (pour l'envoi du lien)" className="h-8 flex-1 text-xs" value={email} onChange={(e) => setEmail(e.target.value)} onBlur={saveEmail} aria-label={`Email de ${coach.firstName} ${coach.lastName}`} />
+        <Input type="email" placeholder="email (pour l'envoi du lien)" className="flex-1 text-xs" value={email} onChange={(e) => setEmail(e.target.value)} onBlur={saveEmail} aria-label={`Email de ${coach.firstName} ${coach.lastName}`} />
       </div>
     </li>
   );

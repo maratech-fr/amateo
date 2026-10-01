@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { FIELD_CLASS } from "@/shared/components/ui/field";
 import { Label } from "@/shared/components/ui/label";
 import { Menu, MenuItem } from "@/shared/components/ui/menu";
 import { Spinner } from "@/shared/components/ui/spinner";
@@ -304,7 +305,7 @@ export function ConflictResolutionControl({ conflict, teams, coaches, venues, to
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={onEditorKeyDown}
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            className={FIELD_CLASS}
           />
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs text-muted-foreground tabular-nums">{draft.length}/500</span>

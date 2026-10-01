@@ -158,19 +158,20 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
         ) : null}
         <Input
           aria-label="Nom"
-          className={cn("h-8", TEAM_COLUMNS.name)}
+          compact
+          className={TEAM_COLUMNS.name}
           value={name}
           onChange={(e) => setName(e.target.value)}
           onBlur={() => name.trim() && name !== team.name && onField(team, { name: name.trim() })}
         />
-        <Select aria-label="Catégorie" className={cn("h-8", TEAM_COLUMNS.category)} value={team.sportCategoryId} onChange={(e) => onField(team, { sportCategoryId: e.target.value })}>
+        <Select aria-label="Catégorie" compact className={TEAM_COLUMNS.category} value={team.sportCategoryId} onChange={(e) => onField(team, { sportCategoryId: e.target.value })}>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>
           ))}
         </Select>
-        <Select aria-label="Genre" className={cn("h-8", TEAM_COLUMNS.gender)} value={team.gender ?? ""} onChange={(e) => onField(team, { gender: (e.target.value || null) as Gender | null })}>
+        <Select aria-label="Genre" compact className={TEAM_COLUMNS.gender} value={team.gender ?? ""} onChange={(e) => onField(team, { gender: (e.target.value || null) as Gender | null })}>
           {GENDERS.map((g) => (
             <option key={g.value} value={g.value}>
               {g.label}
@@ -179,7 +180,8 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
         </Select>
         <Select
             aria-label="Niveau de jeu"
-            className={cn("h-8", TEAM_COLUMNS.level)}
+            compact
+            className={TEAM_COLUMNS.level}
             value={team.level ?? ""}
             disabled={engaged}
             onChange={(e) => onField(team, { level: (e.target.value || null) as TeamLevel | null })}
@@ -199,7 +201,8 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
           // onBlur est verrouillé aussi (ceinture + bretelles : readOnly bloque déjà la frappe).
           readOnly={true === sessionsLocked}
           title={true === sessionsLocked ? SESSIONS_LOCK_HINT : undefined}
-          className={cn("h-8", TEAM_COLUMNS.sessions, true === sessionsLocked && "cursor-not-allowed bg-muted/40 text-muted-foreground")}
+          compact
+          className={cn(TEAM_COLUMNS.sessions, true === sessionsLocked && "cursor-not-allowed bg-muted/40 text-muted-foreground")}
           value={sessions}
           onChange={(e) => setSessions(e.target.value)}
           onBlur={() => true !== sessionsLocked && Number(sessions) !== team.sessionsPerWeek && onField(team, { sessionsPerWeek: Number(sessions) })}
@@ -791,7 +794,8 @@ function TeamsEditor() {
               aria-invalid={nameError}
               aria-describedby={nameError ? "team-name-error" : undefined}
               placeholder="Nom de l'équipe"
-              className={cn("h-8", TEAM_COLUMNS.name, nameError ? "border-destructive focus-visible:ring-destructive" : "")}
+              compact
+              className={cn(TEAM_COLUMNS.name, nameError ? "border-destructive focus-visible:ring-destructive" : "")}
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
@@ -804,7 +808,8 @@ function TeamsEditor() {
               aria-label="Catégorie"
               aria-invalid={catError}
               aria-describedby={catError ? "team-cat-error" : undefined}
-              className={cn("h-8", TEAM_COLUMNS.category, catError ? "border-destructive focus-visible:ring-destructive" : "")}
+              compact
+              className={cn(TEAM_COLUMNS.category, catError ? "border-destructive focus-visible:ring-destructive" : "")}
               value={effectiveCat}
               onChange={(e) => {
                 setCatId(e.target.value);
@@ -818,22 +823,22 @@ function TeamsEditor() {
                 </option>
               ))}
             </Select>
-            <Select aria-label="Genre" className={cn("h-8", TEAM_COLUMNS.gender)} value={gender} onChange={(e) => setGender(e.target.value as Gender | "")}>
+            <Select aria-label="Genre" compact className={TEAM_COLUMNS.gender} value={gender} onChange={(e) => setGender(e.target.value as Gender | "")}>
               {GENDERS.map((g) => (
                 <option key={g.value} value={g.value}>
                   {g.label}
                 </option>
               ))}
             </Select>
-            <Select aria-label="Niveau de jeu" className={cn("h-8", TEAM_COLUMNS.level)} value={level} onChange={(e) => setLevel(e.target.value as TeamLevel | "")}>
+            <Select aria-label="Niveau de jeu" compact className={TEAM_COLUMNS.level} value={level} onChange={(e) => setLevel(e.target.value as TeamLevel | "")}>
               {LEVELS.map((l) => (
                 <option key={l.value} value={l.value}>
                   {l.label}
                 </option>
               ))}
             </Select>
-            <Input aria-label="Séances/sem" type="number" min={1} className={cn("h-8", TEAM_COLUMNS.sessions)} value={sessions} onChange={(e) => setSessions(e.target.value)} />
-            <Select aria-label="Rang" className={cn("h-8", TEAM_COLUMNS.tier)} value={tierId} onChange={(e) => setTierId(Number(e.target.value))}>
+            <Input aria-label="Séances/sem" type="number" min={1} compact className={TEAM_COLUMNS.sessions} value={sessions} onChange={(e) => setSessions(e.target.value)} />
+            <Select aria-label="Rang" compact className={TEAM_COLUMNS.tier} value={tierId} onChange={(e) => setTierId(Number(e.target.value))}>
               {tiers.map((t) => (
                 <option key={t.id} value={t.id}>
                   {tierGroupLabel(t)}

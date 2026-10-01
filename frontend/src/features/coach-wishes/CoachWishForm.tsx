@@ -3,13 +3,12 @@ import { type FormEvent, useState } from "react";
 import type { Coach, Team, TeamCoach } from "@/features/wizard/api";
 import { Button } from "@/shared/components/ui/button";
 import { DayMultiPicker } from "@/shared/components/ui/day-multi-picker";
+import { FIELD_CLASS } from "@/shared/components/ui/field";
 import { Select } from "@/shared/components/ui/select";
 import { cn } from "@/shared/lib/utils";
 
 import type { CoachWish, CoachWishPayload } from "./api";
 import type { WeekWindow } from "@/features/cockpit/lib/date";
-
-const fieldClass = "h-8 rounded-md border border-input bg-background px-2 text-sm";
 
 /**
  * Saisie « au nom d'un coach » d'une doléance (feature #10, lot C1) — ajout ou édition.
@@ -98,7 +97,7 @@ export function CoachWishForm({
           Équipe
           <Select
             aria-label="Équipe"
-            className={cn(fieldClass, "mt-0.5 block w-40")}
+            wrapperClassName="mt-0.5 w-40"
             value={teamId}
             disabled={null !== editing}
             onChange={(e) => {
@@ -115,7 +114,7 @@ export function CoachWishForm({
         </label>
         <label className="text-xs text-muted-foreground">
           Coach
-          <Select aria-label="Coach" className={cn(fieldClass, "mt-0.5 block w-40")} value={resolvedCoachId} onChange={(e) => setCoachId(e.target.value)}>
+          <Select aria-label="Coach" wrapperClassName="mt-0.5 w-40" value={resolvedCoachId} onChange={(e) => setCoachId(e.target.value)}>
             {!isEdit || wasDetached ? <option value="">Coach…</option> : null}
             {offeredCoaches.map((c) => (
               <option key={c.id} value={c.id}>
@@ -129,7 +128,7 @@ export function CoachWishForm({
           Semaine
           <Select
             aria-label="Semaine"
-            className={cn(fieldClass, "mt-0.5 block w-40")}
+            wrapperClassName="mt-0.5 w-40"
             value={weekStart}
             disabled={null !== lockedWeek || null !== editing}
             onChange={(e) => setWeekStart(e.target.value)}
@@ -143,7 +142,7 @@ export function CoachWishForm({
         </label>
         <label className="text-xs text-muted-foreground">
           Créneaux souhaités
-          <Select aria-label="Créneaux souhaités" className={cn(fieldClass, "mt-0.5 block w-24")} value={slotsWanted} onChange={(e) => setSlotsWanted(Number(e.target.value))}>
+          <Select aria-label="Créneaux souhaités" wrapperClassName="mt-0.5 w-24" value={slotsWanted} onChange={(e) => setSlotsWanted(Number(e.target.value))}>
             {[0, 1, 2, 3, 4, 5, 6, 7].map((n) => (
               <option key={n} value={n}>
                 {n}
@@ -158,7 +157,7 @@ export function CoachWishForm({
       <textarea
         aria-label="Commentaire"
         placeholder="Commentaire (mutualisation, contexte…)"
-        className="min-h-16 w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
+        className={cn("min-h-16", FIELD_CLASS)}
         maxLength={1000}
         value={comment}
         onChange={(e) => setComment(e.target.value)}

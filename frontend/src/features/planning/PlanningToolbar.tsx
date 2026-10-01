@@ -150,7 +150,6 @@ export function PlanningToolbar({
             aria-label="Version du planning"
             value={selectedScheduleId ?? ""}
             onChange={(event) => onSelectSchedule(event.target.value)}
-            className="h-8"
           >
             {/* Season versions, plus — when an overlay is selected — that period's own
                 overlay versions (V1, V2…). The ★ marks the LOADED context (the version
@@ -170,7 +169,7 @@ export function PlanningToolbar({
           </Select>
         ) : null}
         {embedded && canDelete ? (
-          <Button size="sm" variant="ghost" className="h-8 px-2 text-destructive" disabled={actionBusy} onClick={() => setConfirmDelete(true)} aria-label="Supprimer cette version" title="Supprimer cette version">
+          <Button size="sm" variant="ghost" className="px-2 text-destructive" disabled={actionBusy} onClick={() => setConfirmDelete(true)} aria-label="Supprimer cette version" title="Supprimer cette version">
             <Trash2 className="size-4" />
           </Button>
         ) : null}
@@ -188,7 +187,7 @@ export function PlanningToolbar({
           // de travail — il vit au wizard (où l'on choisit la version), et son succès
           // atterrit sur /planning. Sur /planning autonome (la version en vigueur), c'est
           // « Rouvrir » qui prend le relais, pas Valider.
-          <Button size="sm" variant="outline" className="h-8" disabled={actionBusy} onClick={onValidate}>
+          <Button size="sm" variant="outline" disabled={actionBusy} onClick={onValidate}>
             <CheckCircle2 className="size-4" />
             Valider
           </Button>
@@ -198,7 +197,7 @@ export function PlanningToolbar({
             symétriques — Valider atterrit sur /planning, Rouvrir ramène au wizard étape
             Génération. Dans le wizard, une version en vigueur ne montre donc plus Rouvrir. */}
         {!embedded && isChosen ? (
-          <Button size="sm" variant="outline" className="h-8" disabled={actionBusy} onClick={onReopen}>
+          <Button size="sm" variant="outline" disabled={actionBusy} onClick={onReopen}>
             <LockOpen className="size-4" />
             Rouvrir
           </Button>
@@ -239,7 +238,6 @@ export function PlanningToolbar({
             <Button
               size="sm"
               variant="default"
-              className="h-8"
               disabled={isGenerating || actionBusy || disableRegenerate || null === selectedScheduleId || (null !== outputCredits && outputCredits.blocked)}
               onClick={onRegenerate}
             >
@@ -255,7 +253,6 @@ export function PlanningToolbar({
           <Button
             size="sm"
             variant="ghost"
-            className="h-8"
             disabled={actionBusy || isGenerating || isLiveContext}
             onClick={onRegenerateFrom}
             title={isLiveContext ? "Déjà le contexte courant — rien à recharger (utilisez « Régénérer »)" : "Recharge la structure de cette version (sans régénérer) et affiche son planning"}

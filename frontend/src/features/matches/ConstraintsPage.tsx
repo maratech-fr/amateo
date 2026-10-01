@@ -209,8 +209,8 @@ function DraftFields({ draft, set }: { draft: ClubLeagueWindowInput; set: (patch
           </option>
         ))}
       </Select>
-      <Input aria-label="De" type="time" value={draft.kickoffMin} onChange={(e) => set({ kickoffMin: e.target.value })} />
-      <Input aria-label="À" type="time" value={draft.kickoffMax} onChange={(e) => set({ kickoffMax: e.target.value })} />
+      <Input aria-label="De" type="time" className="w-28" value={draft.kickoffMin} onChange={(e) => set({ kickoffMin: e.target.value })} />
+      <Input aria-label="À" type="time" className="w-28" value={draft.kickoffMax} onChange={(e) => set({ kickoffMax: e.target.value })} />
     </>
   );
 }
@@ -404,27 +404,38 @@ function ClubSection({ weekendAlternates }: { weekendAlternates: boolean }) {
   );
 }
 
-/** Les champs d'une règle (jours · type · de/à) — partagés par la ligne éditable et l'ajout. */
-function RuleFields({ draft, set, idLabel }: { draft: ClubRuleDraft; set: (patch: Partial<ClubRuleDraft>) => void; idLabel: string }) {
+/**
+ * Les champs d'une règle (jours · type · de/à) — partagés par la ligne éditable et l'ajout.
+ * Disposition en DEUX rangées explicites (décision fondateur 2026-10-01, série « uniformité »,
+ * PR 7/7) : rangée 1 = la sélection (jours + type), rangée 2 = les valeurs (heures) + le bouton
+ * d'action (`actions`, aligné à droite). Structure fixe, jamais un `flex-wrap` au hasard qui ferait
+ * tomber le bouton seul sous la ligne.
+ */
+function RuleFields({ draft, set, idLabel, actions }: { draft: ClubRuleDraft; set: (patch: Partial<ClubRuleDraft>) => void; idLabel: string; actions: ReactNode }) {
   return (
-    <>
-      <DayMultiPicker legend={`Jours (${idLabel})`} value={draft.daysOfWeek} onChange={(daysOfWeek) => set({ daysOfWeek })} />
-      <Select aria-label="Type" value={draft.ruleType} onChange={(e) => set({ ruleType: e.target.value as MatchRuleType })}>
-        {RULE_TYPES.map((t) => (
-          <option key={t.value} value={t.value}>
-            {t.label}
-          </option>
-        ))}
-      </Select>
-      <label className="flex items-center gap-1 text-sm text-muted-foreground">
-        Pas avant
-        <Input aria-label="Pas avant (heure de début)" type="time" value={draft.kickoffMin} onChange={(e) => set({ kickoffMin: e.target.value })} />
-      </label>
-      <label className="flex items-center gap-1 text-sm text-muted-foreground">
-        Pas après
-        <Input aria-label="Pas après (heure de fin)" type="time" value={draft.kickoffMax} onChange={(e) => set({ kickoffMax: e.target.value })} />
-      </label>
-    </>
+    <div className="flex w-full flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <DayMultiPicker legend={`Jours (${idLabel})`} value={draft.daysOfWeek} onChange={(daysOfWeek) => set({ daysOfWeek })} />
+        <Select aria-label="Type" value={draft.ruleType} onChange={(e) => set({ ruleType: e.target.value as MatchRuleType })}>
+          {RULE_TYPES.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-1 whitespace-nowrap text-sm text-muted-foreground">
+          Pas avant
+          <Input aria-label="Pas avant (heure de début)" type="time" className="w-28" value={draft.kickoffMin} onChange={(e) => set({ kickoffMin: e.target.value })} />
+        </label>
+        <label className="flex items-center gap-1 whitespace-nowrap text-sm text-muted-foreground">
+          Pas après
+          <Input aria-label="Pas après (heure de fin)" type="time" className="w-28" value={draft.kickoffMax} onChange={(e) => set({ kickoffMax: e.target.value })} />
+        </label>
+        {actions}
+      </div>
+    </div>
   );
 }
 
@@ -478,17 +489,21 @@ function ClubRuleRow({ rule, alerts, weekendAlternates }: { rule: MatchConstrain
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
       {editing ? (
-        <>
-          <RuleFields draft={draft} set={set} idLabel="règle" />
-          <div className="ml-auto flex items-center gap-2">
-            <Button size="sm" disabled={!dirty || !isRuleComplete(draft) || update.isPending} onClick={() => update.mutate({ id: rule.id, input: toRuleInput(draft) }, { onSuccess: () => setEditing(false) })}>
-              Enregistrer
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
-              Annuler
-            </Button>
-          </div>
-        </>
+        <RuleFields
+          draft={draft}
+          set={set}
+          idLabel="règle"
+          actions={
+            <div className="ml-auto flex items-center gap-2">
+              <Button size="sm" disabled={!dirty || !isRuleComplete(draft) || update.isPending} onClick={() => update.mutate({ id: rule.id, input: toRuleInput(draft) }, { onSuccess: () => setEditing(false) })}>
+                Enregistrer
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
+                Annuler
+              </Button>
+            </div>
+          }
+        />
       ) : (
         <>
           <span className="text-sm text-foreground">{clubRuleSummary(rule)}</span>
@@ -530,12 +545,18 @@ function AddClubRuleRow() {
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-border px-3 py-2">
-      <RuleFields draft={draft} set={set} idLabel="nouvelle règle" />
-      <Button size="sm" className="ml-auto" disabled={!isRuleComplete(draft) || create.isPending} onClick={submit}>
-        <Plus className="size-3.5" />
-        Ajouter
-      </Button>
+    <div className="rounded-md border border-dashed border-border px-3 py-2">
+      <RuleFields
+        draft={draft}
+        set={set}
+        idLabel="nouvelle règle"
+        actions={
+          <Button size="sm" className="ml-auto" disabled={!isRuleComplete(draft) || create.isPending} onClick={submit}>
+            <Plus className="size-3.5" />
+            Ajouter
+          </Button>
+        }
+      />
     </div>
   );
 }
@@ -749,28 +770,37 @@ function CoachsSection() {
   );
 }
 
-/** Le sélecteur d'entraîneur + les champs jours/de/à — partagés par la ligne éditable et l'ajout. */
-function CoachFields({ draft, set, coaches, idLabel }: { draft: CoachUnavailabilityDraft; set: (patch: Partial<CoachUnavailabilityDraft>) => void; coaches: Coach[]; idLabel: string }) {
+/**
+ * Le sélecteur d'entraîneur + les champs jours/de/à — partagés par la ligne éditable et l'ajout.
+ * Même disposition en DEUX rangées que `RuleFields` (décision fondateur 2026-10-01, même schéma
+ * sélection/jours/heures) : rangée 1 = entraîneur + jours, rangée 2 = heures + bouton d'action.
+ */
+function CoachFields({ draft, set, coaches, idLabel, actions }: { draft: CoachUnavailabilityDraft; set: (patch: Partial<CoachUnavailabilityDraft>) => void; coaches: Coach[]; idLabel: string; actions: ReactNode }) {
   return (
-    <>
-      <Select aria-label="Entraîneur" value={draft.coachId} onChange={(e) => set({ coachId: e.target.value })} wrapperClassName="min-w-32">
-        <option value="">Entraîneur…</option>
-        {coaches.map((c) => (
-          <option key={c.id} value={c.id}>
-            {coachLabel(c)}
-          </option>
-        ))}
-      </Select>
-      <DayMultiPicker legend={`Jours (${idLabel})`} value={draft.daysOfWeek} onChange={(daysOfWeek) => set({ daysOfWeek })} />
-      <label className="flex items-center gap-1 text-sm text-muted-foreground">
-        Pas avant
-        <Input aria-label="Pas avant (heure de début)" type="time" value={draft.kickoffMin} onChange={(e) => set({ kickoffMin: e.target.value })} />
-      </label>
-      <label className="flex items-center gap-1 text-sm text-muted-foreground">
-        Pas après
-        <Input aria-label="Pas après (heure de fin)" type="time" value={draft.kickoffMax} onChange={(e) => set({ kickoffMax: e.target.value })} />
-      </label>
-    </>
+    <div className="flex w-full flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Select aria-label="Entraîneur" value={draft.coachId} onChange={(e) => set({ coachId: e.target.value })} wrapperClassName="min-w-32">
+          <option value="">Entraîneur…</option>
+          {coaches.map((c) => (
+            <option key={c.id} value={c.id}>
+              {coachLabel(c)}
+            </option>
+          ))}
+        </Select>
+        <DayMultiPicker legend={`Jours (${idLabel})`} value={draft.daysOfWeek} onChange={(daysOfWeek) => set({ daysOfWeek })} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-1 whitespace-nowrap text-sm text-muted-foreground">
+          Pas avant
+          <Input aria-label="Pas avant (heure de début)" type="time" className="w-28" value={draft.kickoffMin} onChange={(e) => set({ kickoffMin: e.target.value })} />
+        </label>
+        <label className="flex items-center gap-1 whitespace-nowrap text-sm text-muted-foreground">
+          Pas après
+          <Input aria-label="Pas après (heure de fin)" type="time" className="w-28" value={draft.kickoffMax} onChange={(e) => set({ kickoffMax: e.target.value })} />
+        </label>
+        {actions}
+      </div>
+    </div>
   );
 }
 
@@ -802,17 +832,22 @@ function CoachUnavailabilityRow({ rule, coaches, coachName }: { rule: MatchConst
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
       {editing ? (
-        <>
-          <CoachFields draft={draft} set={set} coaches={coaches} idLabel={coachName} />
-          <div className="ml-auto flex items-center gap-2">
-            <Button size="sm" disabled={!dirty || !isCoachDraftComplete(draft) || update.isPending} onClick={() => update.mutate({ id: rule.id, input: toCoachInput(draft) }, { onSuccess: () => setEditing(false) })}>
-              Enregistrer
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
-              Annuler
-            </Button>
-          </div>
-        </>
+        <CoachFields
+          draft={draft}
+          set={set}
+          coaches={coaches}
+          idLabel={coachName}
+          actions={
+            <div className="ml-auto flex items-center gap-2">
+              <Button size="sm" disabled={!dirty || !isCoachDraftComplete(draft) || update.isPending} onClick={() => update.mutate({ id: rule.id, input: toCoachInput(draft) }, { onSuccess: () => setEditing(false) })}>
+                Enregistrer
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
+                Annuler
+              </Button>
+            </div>
+          }
+        />
       ) : (
         <>
           <span className="text-sm text-foreground">{coachUnavailabilitySummary(rule, coachName)}</span>
@@ -853,12 +888,19 @@ function AddCoachUnavailabilityRow({ coaches }: { coaches: Coach[] }) {
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-border px-3 py-2">
-      <CoachFields draft={draft} set={set} coaches={coaches} idLabel="nouvelle indisponibilité" />
-      <Button size="sm" className="ml-auto" disabled={!isCoachDraftComplete(draft) || create.isPending} onClick={submit}>
-        <Plus className="size-3.5" />
-        Ajouter
-      </Button>
+    <div className="rounded-md border border-dashed border-border px-3 py-2">
+      <CoachFields
+        draft={draft}
+        set={set}
+        coaches={coaches}
+        idLabel="nouvelle indisponibilité"
+        actions={
+          <Button size="sm" className="ml-auto" disabled={!isCoachDraftComplete(draft) || create.isPending} onClick={submit}>
+            <Plus className="size-3.5" />
+            Ajouter
+          </Button>
+        }
+      />
     </div>
   );
 }
