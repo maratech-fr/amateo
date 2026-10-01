@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 
 import { Button } from "@/shared/components/ui/button";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { TeamSelect } from "@/shared/components/ui/team-select";
 import { toast } from "@/shared/stores/toastStore";
 
@@ -97,13 +98,17 @@ export function ReconciliationView() {
       </div>
 
       {/* Bandeau d'honnêteté — INFO, pas alarme (role=status, ton accent). */}
-      <div role="status" className="flex items-start gap-2 rounded-md border border-accent bg-accent/40 px-3 py-2 text-sm text-accent-foreground">
-        <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-        <span>
-          Ce que la FFBB publie à cet instant — {formatFetchedAt(payload.fetchedAt)}. Une équipe absente ici peut avoir des matchs :
-          la couverture fédérale n'est pas garantie. L'import FBI reste la référence.
-        </span>
-      </div>
+      <NoticeBanner
+        tone="accent"
+        role="status"
+        icon={<Info className="size-4" aria-hidden="true" />}
+        message={
+          <>
+            Ce que la FFBB publie à cet instant — {formatFetchedAt(payload.fetchedAt)}. Une équipe absente ici peut avoir des matchs :
+            la couverture fédérale n'est pas garantie. L'import FBI reste la référence.
+          </>
+        }
+      />
 
       {/* Présents à la FFBB, absents de l'app — proposés à la création (jamais imposés). */}
       <CreatableSection

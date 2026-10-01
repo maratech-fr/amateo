@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router";
 
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { PeriodAnchorGate } from "./PeriodAnchorGate";
 import { ProductRulesPanel, TravelRuleNotice, WellbeingRulesPanel } from "./ImplicitRulesPanel";
 import { isWellbeingKey } from "../lib/implicitRules";
@@ -720,14 +721,15 @@ export function ConstraintsStep() {
           Le silence ici laissait relier une contrainte à un gymnase désactivé.
           CHARGER ≠ ÉCHOUER : le ton suit l'état, sinon le bandeau d'alerte se déclenche en
           régime normal et n'alerte plus de rien (revue #342 round 2). */}
-      {layerNotices.map((notice) => (
-        <p
-          key={notice.message}
-          className={cn("mb-3 rounded-md px-3 py-2 text-sm", notice.pending ? "text-muted-foreground" : "border border-warning/40 bg-surface-warning text-foreground")}
-        >
-          {notice.message}
-        </p>
-      ))}
+      {layerNotices.map((notice) =>
+        notice.pending ? (
+          <p key={notice.message} className="mb-3 rounded-md px-3 py-2 text-sm text-muted-foreground">
+            {notice.message}
+          </p>
+        ) : (
+          <NoticeBanner key={notice.message} tone="warning" className="mb-3" message={notice.message} />
+        ),
+      )}
 
       {/* Family + reservation tabs. « Base » puis « Bien-être » sont les DEUX PREMIERS onglets —
           décision fondateur : plus logique qu'un accordéon. Ce sont des onglets de PRÉSENTATION,

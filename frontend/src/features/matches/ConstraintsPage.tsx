@@ -8,6 +8,7 @@ import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Input } from "@/shared/components/ui/input";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Select } from "@/shared/components/ui/select";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
 import { TeamSelect } from "@/shared/components/ui/team-select";
@@ -145,9 +146,7 @@ function LeagueSection() {
       <LeagueSuggestions />
 
       {0 === rows.length ? (
-        <p className="rounded-md border border-warning/50 bg-surface-warning px-3 py-2 text-sm text-foreground" role="status">
-          Aucune fenêtre ligue — le placement n'applique plus de règle fédérale.
-        </p>
+        <NoticeBanner tone="warning" role="status" message="Aucune fenêtre ligue — le placement n'applique plus de règle fédérale." />
       ) : (
         <div className="flex flex-col gap-2">
           {rows.map((window) => (
@@ -458,17 +457,19 @@ function ClubRuleAlerts({ alerts, weekendAlternates }: { alerts: { teamId: strin
     return null;
   }
   return (
-    <div className="mt-1 flex w-full flex-col gap-1 rounded-md border border-warning/40 bg-surface-warning px-3 py-2 text-sm text-foreground" role="status">
-      {alerts.map((h) => (
-        <p key={`${h.teamId}-${h.dayOfWeek}-${h.kickoff}`} className="flex items-start gap-1.5">
-          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-          <span>
-            Cette règle heurte le créneau idéal des {h.teamName}
-            {weekendAlternates ? ` (semaine ${h.week})` : ""} : {dayLabelLong(h.dayOfWeek)} {clockLabel(h.kickoff)}.
-          </span>
-        </p>
-      ))}
-    </div>
+    <NoticeBanner tone="warning" role="status" className="mt-1 w-full">
+      <div className="flex flex-col gap-1">
+        {alerts.map((h) => (
+          <p key={`${h.teamId}-${h.dayOfWeek}-${h.kickoff}`} className="flex items-start gap-1.5">
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+            <span>
+              Cette règle heurte le créneau idéal des {h.teamName}
+              {weekendAlternates ? ` (semaine ${h.week})` : ""} : {dayLabelLong(h.dayOfWeek)} {clockLabel(h.kickoff)}.
+            </span>
+          </p>
+        ))}
+      </div>
+    </NoticeBanner>
   );
 }
 

@@ -1,17 +1,15 @@
 # Guide de génération de planning — Amateo
 
-Last verified @ 2026-09-29 (P4-272 ③ : `CONTRACT_VERSION` **2.25 → 2.26** — bloc `clubRules` ajouté
-au payload `/place-matches` ; antérieur P4-271 : **2.24 → 2.25** — `slotRotations` retiré du
-payload, semaine type A/B = tag sur le créneau idéal). Re-confronté contre le code : les 11 services de `docker-compose.yml` portent
-toujours `restart: unless-stopped` (`messenger-worker` compris, §6 Cas 1) ✓ ; le cycle des 5 statuts
+Last verified @ 2026-10-01 (rotation de fraîcheur `documentation-update`, passe doc PR 4/7
+« uniformité — bandeaux », sujet sans rapport avec ce fichier — simple tour de rotation).
+Re-confronté contre le code : `docker-compose.yml` porte 14 services nommés, 11 d'entre eux
+`restart: unless-stopped` (`messenger-worker` compris, §6 Cas 1) ✓ ; le cycle des 5 statuts
 (§5, `App\Enum\ScheduleStatus` : DRAFT/PENDING/GENERATING/COMPLETED/FAILED) ✓ ; la route
 `export-xlsx` (§11, `ScheduleResource.php:38-39` + `ExportXlsxController.php`) ✓ ; le budget solveur
-par défaut toujours 650 s (§6 Cas 2/3, `ScheduleConstraintBuilder.php:79`
-`DEFAULT_SOLVER_TIMEOUT_SECONDS`) ✓ ; `CONTRACT_VERSION` = `2.29` (`ScheduleConstraintBuilder.php:63`
-⇄ `engine/CONTRACT_VERSION`) ✓ ; l'absence de fixtures Doctrine actives (§1 — le bundle
-`doctrine/doctrine-fixtures-bundle` a été retiré de `composer.json`) ✓ ; l'absence d'export PNG (§8 —
-`PurgeExportsCommand::RENDER_PATTERN` ne matche toujours que `.pdf`) ✓. Reste du fichier non
-re-contrôlé cette passe.
+par défaut toujours 650 s (§6 Cas 2/3, `ScheduleConstraintBuilder.php:70`
+`DEFAULT_SOLVER_TIMEOUT_SECONDS`) ✓ ; `CONTRACT_VERSION` = `2.29` (`ScheduleConstraintBuilder.php:61`
+⇄ `engine/CONTRACT_VERSION`) ✓ ; l'absence d'export PNG (§8 — `PurgeExportsCommand::RENDER_PATTERN`
+ne matche toujours que `.pdf`) ✓. Reste du fichier non re-contrôlé cette passe.
 
 > Ce guide explique, étape par étape, comment générer un planning de matchs pour un club de basket dans le backend Amateo. Il s'adresse aux développeurs juniors qui découvrent le projet.
 

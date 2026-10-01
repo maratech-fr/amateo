@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Select } from "@/shared/components/ui/select";
 import { TeamSelect } from "@/shared/components/ui/team-select";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
@@ -326,14 +327,16 @@ function IdealSlotRow<T extends TeamLike>({
       ) : null}
 
       {clubRuleAlerts.length > 0 ? (
-        <div className="mt-1 flex w-full flex-col gap-1 rounded-md border border-warning/40 bg-surface-warning px-3 py-1.5 text-sm text-foreground" role="status">
-          {clubRuleAlerts.map((rule) => (
-            <p key={rule.ruleId} className="flex items-start gap-1.5">
-              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-              <span>Heurte la règle du club « {clubRuleLabel(rule)} ».</span>
-            </p>
-          ))}
-        </div>
+        <NoticeBanner tone="warning" role="status" className="mt-1 w-full">
+          <div className="flex flex-col gap-1">
+            {clubRuleAlerts.map((rule) => (
+              <p key={rule.ruleId} className="flex items-start gap-1.5">
+                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                <span>Heurte la règle du club « {clubRuleLabel(rule)} ».</span>
+              </p>
+            ))}
+          </div>
+        </NoticeBanner>
       ) : null}
     </li>
   );

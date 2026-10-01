@@ -1,5 +1,7 @@
 import { AlertTriangle } from "lucide-react";
 
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
+
 /**
  * The "À corriger avant de générer" panel, shared by the Récap step and the
  * Génération step so the two gates never drift. Keys are index-based: two
@@ -17,8 +19,8 @@ export function BlockerList({ blockers, className }: { blockers: string[]; class
     return null;
   }
   return (
-    <div role="alert" className={`rounded-lg border border-destructive/50 bg-surface-destructive p-3 ${className ?? ""}`}>
-      <div className="mb-1 flex items-center gap-2 text-sm font-medium text-destructive">
+    <NoticeBanner tone="destructive" role="alert" className={className}>
+      <div className="flex items-center gap-2 text-sm font-medium text-destructive">
         <AlertTriangle className="size-4" />À corriger avant de générer
       </div>
       <ul className="list-inside list-disc text-sm text-destructive">
@@ -26,6 +28,6 @@ export function BlockerList({ blockers, className }: { blockers: string[]; class
           <li key={`${i}-${b}`}>{b}</li>
         ))}
       </ul>
-    </div>
+    </NoticeBanner>
   );
 }

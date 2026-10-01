@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, Loader2, MapPinOff } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import { DeclaredFixturesNotice } from "@/shared/components/ui/declared-fixtures-notice";
 import { Modal } from "@/shared/components/ui/modal";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 
 /** P2-52 — l'impact de dépointage de la validation, tel que l'écran le connaît au moment de
  *  confirmer. `orphanCount` = matchs qui perdront leur salle ; `declaredCount` = sous-ensemble
@@ -62,19 +63,21 @@ export function ValidateDialog({ hasAlerts, siblingCount, busy, orphan, onConfir
       {/* P2-52 — l'annonce « salle perdue » N'APPARAÎT QUE si N>0 (aucun bruit préventif sinon).
           Ton destructif encadré, distinct des deux paragraphes en prose ci-dessus/dessous. */}
       {orphan.orphanCount > 0 ? (
-        <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/40 bg-surface-destructive px-3 py-2 text-sm text-foreground">
-          <MapPinOff aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-destructive" />
-          <div>
-            <p>
-              {orphan.orphanCount > 1 ? `${orphan.orphanCount} matchs perdront leur gymnase` : "1 match perdra son gymnase"}
-              {orphan.declaredCount > 0 ? `, dont ${orphan.declaredCount} déjà ${orphan.declaredCount > 1 ? "déclarés" : "déclaré"} à la fédération` : ""}.
-            </p>
-            <p className="mt-1 text-muted-foreground">
-              {orphan.orphanCount > 1 ? "Ils repasseront « à placer », leur horaire conservé — vous pourrez leur réattribuer un gymnase." : "Il repassera « à placer », son horaire conservé — vous pourrez lui réattribuer un gymnase."}
-            </p>
-            <DeclaredFixturesNotice count={orphan.declaredCount} />
+        <NoticeBanner tone="destructive" className="mt-3">
+          <div className="flex items-start gap-2">
+            <MapPinOff aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-destructive" />
+            <div>
+              <p>
+                {orphan.orphanCount > 1 ? `${orphan.orphanCount} matchs perdront leur gymnase` : "1 match perdra son gymnase"}
+                {orphan.declaredCount > 0 ? `, dont ${orphan.declaredCount} déjà ${orphan.declaredCount > 1 ? "déclarés" : "déclaré"} à la fédération` : ""}.
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                {orphan.orphanCount > 1 ? "Ils repasseront « à placer », leur horaire conservé — vous pourrez leur réattribuer un gymnase." : "Il repassera « à placer », son horaire conservé — vous pourrez lui réattribuer un gymnase."}
+              </p>
+              <DeclaredFixturesNotice count={orphan.declaredCount} />
+            </div>
           </div>
-        </div>
+        </NoticeBanner>
       ) : null}
       {/* En vol / échec : le bouton Valider est désactivé, et on DIT pourquoi (jamais un bouton
           grisé muet, jamais un impact inconnu présenté comme vide). */}

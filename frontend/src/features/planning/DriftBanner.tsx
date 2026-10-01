@@ -1,5 +1,7 @@
 import { CalendarClock } from "lucide-react";
 
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
+
 import type { DriftEntry } from "./lib/drift";
 
 /**
@@ -22,12 +24,12 @@ export function DriftBanner({ entries, teamName, onPlace, activeTeamId = null }:
     return null;
   }
   return (
-    <div className="mb-4 rounded-md border border-warning/40 bg-surface-warning px-3 py-2 text-sm" role="region" aria-label="Séances à replacer">
+    <NoticeBanner tone="warning" role="region" ariaLabel="Séances à replacer" className="mb-4">
       <p className="flex items-center gap-1.5 font-medium text-foreground">
         <CalendarClock aria-hidden="true" className="size-4 text-warning" />
         Séances à replacer
       </p>
-      <ul className="mt-1.5 flex flex-wrap gap-2">
+      <ul className="flex flex-wrap gap-2">
         {entries.map((entry) => (
           <li key={entry.teamId}>
             <button
@@ -43,6 +45,6 @@ export function DriftBanner({ entries, teamName, onPlace, activeTeamId = null }:
           </li>
         ))}
       </ul>
-    </div>
+    </NoticeBanner>
   );
 }

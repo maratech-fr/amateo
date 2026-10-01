@@ -2,6 +2,7 @@ import { Lock, LockOpen } from "lucide-react";
 import { useEffect } from "react";
 
 import { EmptyBlock } from "@/shared/components/ui/empty-hint";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { tint } from "@/shared/lib/color";
 import { cn } from "@/shared/lib/utils";
 
@@ -141,9 +142,16 @@ export function ClubViewTable({ model, selectedSlotId, onSelectSlot, highlightSl
     <div className="flex h-full flex-col gap-2">
       {targetActive ? (
         // La limite est ANNONCÉE, pas découverte par un clic sans effet.
-        <p role="status" className="shrink-0 rounded-md border border-accent/40 bg-surface-accent px-3 py-1.5 text-xs leading-tight text-foreground">
-          Désignez une séance existante pour {isMoveVariant ? "l'évincer" : "la remplacer"}. Pour poser sur un <strong>créneau libre</strong>, repassez en vue « Par gymnase » ou « Par jour » — un couple équipe/jour ne désigne ni gymnase ni horaire.
-        </p>
+        <NoticeBanner
+          tone="accent"
+          role="status"
+          className="shrink-0"
+          message={
+            <>
+              Désignez une séance existante pour {isMoveVariant ? "l'évincer" : "la remplacer"}. Pour poser sur un <strong>créneau libre</strong>, repassez en vue « Par gymnase » ou « Par jour » — un couple équipe/jour ne désigne ni gymnase ni horaire.
+            </>
+          }
+        />
       ) : null}
       <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-card">
         <table className="w-full border-collapse text-xs">

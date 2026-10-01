@@ -395,7 +395,7 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
               <NoticeBanner tone="warning" role="alert" icon={<AlertTriangle className="size-4 text-warning" />} message={autofillError} />
             ) : null}
             {venuesWithoutGeo.length > 0 ? (
-              <div className="flex flex-col gap-1 rounded-md border border-warning/40 bg-surface-warning px-3 py-2 text-sm">
+              <NoticeBanner tone="warning">
                 <span className="inline-flex items-center gap-2 text-foreground">
                   <MapPinOff className="size-4 shrink-0 text-warning" aria-hidden="true" />
                   {venuesWithoutGeo.length > 1 ? "Ces gymnases n'ont pas d'adresse" : "Ce gymnase n'a pas d'adresse"} : renseignez-la sur leur fiche pour calculer les trajets automatiquement.
@@ -413,7 +413,7 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
                     ),
                   )}
                 </div>
-              </div>
+              </NoticeBanner>
             ) : null}
           </div>
 
