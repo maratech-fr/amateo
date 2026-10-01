@@ -1,14 +1,14 @@
 # API FFBB — routes consommées
 
-Last verified @ 2026-10-01 (branche `fix/competitions-completude`) — re-sondé contre
-`FbiDivisionSignature::fromCode` (`backend/src/Service/Basketball/FbiDivisionSignature.php`) : le
-suffixe `-N` après séparateur est une DIVISION pour un code JEUNE (catégorie `U…`), une poule
-ignorée pour un code SENIOR ; et contre `FfbbEngagementsController::confirm`
-(`backend/src/Controller/Basketball/FfbbEngagementsController.php`) : la résorption des jumelles au
-confirm retire les réfs de toute autre compétition portant le même id FFBB, y compris une jumelle
-de la même équipe, et supprime celle qui ne porte alors aucune fixture. Reste du fichier hérité des
-passes précédentes, non re-sondé ligne à ligne cette fois. Historique des passes précédentes vit
-dans git : `git log -p --follow backend/docs/ffbb-api.md`.
+Last verified @ 2026-10-02 (branche `feat/niveau-jeune-suit-engagement`) — re-sondé contre
+`App\Service\Basketball\EngagementLevelDeducer` (`backend/src/Service/Basketball/EngagementLevelDeducer.php`) :
+mapping `D`/`R`/`N`→`DEPARTEMENTAL`/`REGIONAL`/`NATIONAL`, jamais `ELITE`, `PR`/`PN`→`null`,
+éligibilité U9–U18 + championnat/brassage, arbitrage par date de dernier match ; et contre
+`FfbbEngagementsController::list`/`confirm`
+(`backend/src/Controller/Basketball/FfbbEngagementsController.php`) : `deducedLevel`/`alignment` au
+GET, `alignLevel` + `setLevel()` direct + no-op sur ligne inéligible au confirm. Reste du fichier
+hérité des passes précédentes, non re-sondé ligne à ligne cette fois. Historique des passes
+précédentes vit dans git : `git log -p --follow backend/docs/ffbb-api.md`.
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les
 > données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit
@@ -265,6 +265,30 @@ naissent les jumelles vides, pas seulement sur une équipe différente). Une com
 ce retrait, ne porte **aucune fixture** est supprimée ; une compétition qui porte des fixtures est
 **toujours conservée** (axe périmètre engagé) et aucune de ses rencontres ne change d'équipe. Garde
 NR bloquante : `FfbbConfirmPerimeterTest` (`backend/tests/Security/`).
+
+**Niveau d'une équipe JEUNE déduit de son engagement** (décision fondateur 2026-10-01,
+`App\Service\Basketball\EngagementLevelDeducer`, consomme `FbiDivisionSignature::fromFfbbRow` — pas
+une seconde lecture du niveau). Une ligne d'engagement FFBB d'une catégorie **U9–U18** en
+championnat ou brassage déduit le `TeamLevel` qu'implique sa division : `D`→`DEPARTEMENTAL`,
+`R`→`REGIONAL`, `N`→`NATIONAL` (**jamais `ELITE`**) ; `PR`/`PN` et tout le reste → rien (indécidable,
+jamais comblé). `GET /api/ffbb/engagements` enrichit chaque ligne de `deducedLevel` et, contre
+l'équipe SUGGÉRÉE pour cette ligne, `alignment: "MISSING"` (équipe sans niveau) /
+`"MISMATCH"` (niveau différent) / `null` (rien à faire, ou équipe différente). Quand les lignes
+jeunes éligibles d'une équipe divergent de niveau, `EngagementLevelDeducer::arbitrate` départage par
+la date du dernier match importé de chaque compétition (la plus tardive gagne) ; indécidable (aucune
+date, ou égalité entre niveaux différents) → `null`.
+
+`POST /api/ffbb/engagements/confirm` accepte `alignLevel: true` par pairing : seul ce chemin écrit
+`Team::setLevel()` **directement** sur une équipe engagée — c'est l'exception nommée au périmètre
+engagé (le PUT générique `/api/teams/{id}` reste 409 sans exception, `TeamStateProcessor.php`). La
+valeur écrite est **RE-DÉDUITE côté serveur** après résolution des compétitions du même appel
+(jamais un `level` fourni par le client, qui est ignoré) ; une ligne inéligible (seniors, coupe,
+`PR`/`PN`) avec `alignLevel: true` est un no-op silencieux, pas un 422. Rang/tier ne sont jamais
+touchés, aucune régénération n'est déclenchée. Garde NR bloquante : `FfbbLevelAlignmentTest`
+(`backend/tests/Security/`) — falsifie le 409 du PUT générique, la valeur serveur contre un `level`
+client forgé, le no-op sur ligne inéligible et le rejet d'une équipe d'un autre club. Détail produit
+(modale, proposition liée à l'équipe suggérée) : [`module-matchs.md`](../../specs/courantes/module-matchs.md)
+§7 « Engagements FFBB — le niveau d'une équipe JEUNE suit son engagement, par clic ».
 
 `ffbbserver_rencontres` (ne porte que des amicaux pour le club de référence, zéro championnat) est
 un index DIFFÉRENT, exploité côté réconciliation — voir § « Réconciliation FBI, canal API » plus

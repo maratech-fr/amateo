@@ -1,11 +1,12 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-10-01 (`documentation-update`, branche `fix/competitions-completude`) — §2
-« Cohérence de complétude » réécrit et confronté à `MatchConflictDetector::competitionIncompleteItems`
-(règle fondateur 2026-10-01 : FBI fait foi, l'appariement FFBB vérifie ; `reason`
-OVER/INCOHERENT/PENDING, sévérité 6/7) ; échelle de sévérité et `AWAY_NO_FOOTPRINT` (muet pour les
-équipes LOISIR) recalés en même temps. Reste du contenu (P4-271/P4-272 et antérieur) non réaudité
-cette passe. Historique : `git log -p --follow specs/courantes/module-matchs.md`.
+Last verified @ 2026-10-02 (`documentation-update`, branche `feat/niveau-jeune-suit-engagement`) — §7
+gagne « Engagements FFBB — le niveau d'une équipe JEUNE suit son engagement, par clic » et §11
+l'exception nommée au périmètre engagé, confrontés à `EngagementLevelDeducer`,
+`FfbbEngagementsController::list`/`confirm` et `FfbbEngagementsDialog.tsx` (mapping de niveau, D5
+proposition liée à l'équipe suggérée, écriture `setLevel()` directe sur clic + re-déduction serveur).
+Reste du contenu (P4-271/P4-272 et antérieur) non réaudité cette passe. Historique :
+`git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
 > d'une PR. Le JOURNAL (qui a livré quoi, quand, sous quel id) vit dans
@@ -976,6 +977,31 @@ familles, pivot) ne compte plus que l'à traiter. Badge de nav « Conflits · N 
 Carte « Données de match » (dépôt FBI, canal API, Engagements FFBB, fraîcheur) + file de traitement
 par équipe (`ReviewQueue`, `AccordionSection` contrôlée, deep-link `?equipe=`).
 
+### Engagements FFBB — le niveau d'une équipe JEUNE suit son engagement, par clic
+
+Dans la modale « Engagements FFBB » (appariement 3 étages, mécanique côté serveur détaillée dans
+[`ffbb-api.md`](../../backend/docs/ffbb-api.md) § Engagements + compétitions), chaque ligne d'une
+catégorie JEUNE (U9–U18) en championnat ou brassage porte un niveau DÉDUIT de sa division FFBB
+(D→Départemental, R→Régional, N→National ; jamais Élite ; pré-régional/national → rien). Contre
+l'équipe SUGGÉRÉE pour cette ligne, un écart s'affiche — pastille d'état (« Niveau non renseigné »
+si l'équipe n'a aucun niveau, « Fiche : <niveau actuel> » sinon) + bouton d'action (« Renseigner :
+<déduit> » / « Aligner sur <déduit> ») — **jamais pré-coché**. Un clic bascule la pastille en neutre
+(« Sera aligné à la confirmation » + « Annuler ») ; l'écriture ne part qu'au « Confirmer » global,
+en bloc avec les autres appariements. **La proposition ne tient que sur l'équipe suggérée** : changer
+l'équipe d'une ligne la fait tomber jusqu'à réouverture de la modale — un écart calculé contre une
+équipe n'a plus de sens si une autre équipe a été choisie depuis. Quand les lignes jeunes d'une même
+équipe divergent de niveau, le serveur arbitre par la date du dernier match importé de chaque
+compétition (la plus tardive l'emporte) ; indécidable (aucune date, ou égalité entre niveaux
+différents) → rien n'est proposé pour cette équipe. **Un niveau non renseigné n'est jamais comblé en
+douce** : sans clic du gestionnaire, il reste vide.
+
+C'est l'**exception nommée** au périmètre engagé (§11) : la garde générique qui refuse tout
+changement de `Team.level` sur une équipe engagée (409) reste souveraine pour le PUT générique — le
+wizard reste grisé pour cette équipe, le bandeau de `TeamsStep` renvoie vers Matchs › Importer ›
+« Engagements FFBB ». Seul ce chemin, et seulement sur clic explicite, écrit un niveau sur une
+équipe engagée — toujours la valeur RE-DÉDUITE côté serveur (jamais un niveau fourni par le client).
+Rang/tier restent intouchés, aucune régénération n'est déclenchée.
+
 ### Import FBI (xlsx, une passe)
 
 Fichier GLOBAL club (colonnes Division · N° de match · Équipes · Date · Heure · Salle). `analyze()`
@@ -1456,12 +1482,18 @@ créneau plutôt que depuis la règle ; LECTURE SEULE, ne bloque rien.
 Valider le planning valide aussi un périmètre : les équipes qui font de la compétition. **Engagée**
 = porte au moins un `Fixture`, quel qu'en soit le statut (l'import crée tout en `UNPLACED` —
 filtrer sur le statut serait inerte au moment précis où la garde doit mordre). Sur une équipe
-engagée : suppression → **409** ; changement de `Team.level` → **409 sans exception** (le niveau
-alimente la photo de structure d'une version validée) ; nom/créneaux/gymnase/`isActive`/
-`priorityTierId` restent libres. La règle vit à un seul endroit (`TeamEngagementGuard`,
-`TeamResource.isEngaged`) ; les purges de masse et le restore de structure la contournent par
-construction — `StructureRestorer::assertRestoreKeepsEngagedTeams` refuse en 409 le chargement
-d'une version qui ne contiendrait pas une équipe engagée (avec son niveau).
+engagée : suppression → **409** ; changement de `Team.level` par le **PUT générique** → **409, sans
+exception sur ce chemin** (le niveau alimente la photo de structure d'une version validée) ;
+nom/créneaux/gymnase/`isActive`/`priorityTierId` restent libres. La règle vit à un seul endroit
+(`TeamEngagementGuard`, `TeamResource.isEngaged`) ; les purges de masse et le restore de structure
+la contournent par construction — `StructureRestorer::assertRestoreKeepsEngagedTeams` refuse en 409
+le chargement d'une version qui ne contiendrait pas une équipe engagée (avec son niveau).
+
+**Exception nommée, un seul chemin** : le confirm d'appariement FFBB
+(`POST /api/ffbb/engagements/confirm`) peut écrire `Team.level` sur une équipe engagée — « le niveau
+d'une équipe JEUNE suit son engagement FFBB » (détail § « Engagements FFBB » ci-dessus) — mais
+seulement sur clic explicite du gestionnaire, et toujours la valeur RE-DÉDUITE côté serveur (jamais
+un niveau fourni par le client). La garde générique reste souveraine partout ailleurs, PUT compris.
 
 **La salle d'un match, elle, n'est délibérément PAS protégée** — un gymnase qui ferme dépointe le
 match (y compris `SUBMITTED`/`VALIDATED`), **annoncé jamais refusé** (`DeletionImpactCounter`). Deux
