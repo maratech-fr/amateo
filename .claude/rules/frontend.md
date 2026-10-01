@@ -107,6 +107,16 @@ paths:
   `frontend/src/test/deleteConfirmGuard.test.ts` (grep statique `src/features/**` : un fichier qui
   lie ET invoque un `useDelete…` sans référencer `ConfirmDialog`/`DeleteConfirm` rougit, sauf
   exemption nominative motivée) ; N1 n'a pas de garde automatique, seulement la revue.
+- 🔴 **La largeur d'un sélecteur passe par `wrapperClassName`, jamais `className`** (`Select`,
+  `Listbox`, `TeamSelect`, `VenueSelect` — PR 3/7 de la série « uniformité des sélecteurs »,
+  2026-10-01) : le contrôle intérieur (`<select>`/trigger) est toujours `w-full`, une classe
+  `w-`/`min-w-`/`max-w-`/`flex-`/`shrink-`/`grow-`/`basis-` posée en `className` le vise, jamais
+  la boîte que la ligne flex mesure. Gardé par ESLint (`frontend/eslint.config.js`,
+  `no-restricted-syntax` sur `src/features/**`/`src/app/**`, admin exempté) en deux volets : un
+  `<select>` JSX natif brut est interdit (utiliser `Select`, ou `TeamSelect`/`VenueSelect` pour un
+  picker d'équipe/gymnase), et une classe de largeur **littérale** en `className` sur ces quatre
+  composants rougit — un `cn(...)`/une variable n'est pas couvert par l'AST (choix documenté,
+  reste à la revue).
 - 🔴 **Les racines de shell ne portent plus `bg-background` depuis le fond d'écran commun**
   (P5-16, `AppLayout.tsx`/`AuthLayout.tsx`) : le fond commun vit sur `body` (`index.css`), et une
   racine qui poserait `bg-background` par-dessus le masquerait entièrement. L'en-tête d'`AppLayout`
