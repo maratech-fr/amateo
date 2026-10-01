@@ -1,6 +1,7 @@
+import { DayMultiPicker } from "@/shared/components/ui/day-multi-picker";
 import { Input } from "@/shared/components/ui/input";
 
-import { DAY_LABELS, frDate, sectionKey, type SectionState } from "./wishSections";
+import { frDate, sectionKey, type SectionState } from "./wishSections";
 
 interface WishTeamStepProps {
   team: { id: string; name: string };
@@ -38,15 +39,22 @@ export function WishTeamStep({ team, weeks, sections, onPatch, onToggleDay }: Wi
               />
             </label>
             <div className="mt-2">
-              <span className="text-sm text-muted-foreground">Jours d'indisponibilité</span>
-              <div className="mt-1 flex flex-wrap gap-1.5">
-                {DAY_LABELS.map(({ day, label }) => (
-                  <label key={day} className="flex items-center gap-1 rounded-md border border-border px-2 py-1.5 text-xs">
-                    <input type="checkbox" className="size-3.5 accent-[var(--accent)]" checked={s.days.has(day)} onChange={() => onToggleDay(key, day)} aria-label={`${label} indisponible — ${team.name}, semaine du ${frDate(week)}`} />
-                    {label}
-                  </label>
-                ))}
-              </div>
+              <DayMultiPicker
+                legend="Jours d'indisponibilité"
+                legendVisible
+                tone="destructive"
+                value={[...s.days].sort((a, b) => a - b)}
+                // Le parent gère un `Set` par bascule d'UN jour : on rejoue la bascule pour chaque
+                // jour qui a changé (le sélecteur n'en change qu'un à la fois, mais on reste robuste).
+                onChange={(next) => {
+                  const nextSet = new Set(next);
+                  for (const day of new Set([...s.days, ...nextSet])) {
+                    if (s.days.has(day) !== nextSet.has(day)) {
+                      onToggleDay(key, day);
+                    }
+                  }
+                }}
+              />
             </div>
             <label className="mt-2 block text-sm">
               <span className="text-muted-foreground">Commentaire</span>

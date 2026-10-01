@@ -1,16 +1,5 @@
 import type { PublicWishContext, PublicWishSubmission } from "./publicApi";
 
-/** Jours ISO 1–7 (1 = lundi) et leur libellé court FR. */
-export const DAY_LABELS: { day: number; label: string }[] = [
-  { day: 1, label: "Lun" },
-  { day: 2, label: "Mar" },
-  { day: 3, label: "Mer" },
-  { day: 4, label: "Jeu" },
-  { day: 5, label: "Ven" },
-  { day: 6, label: "Sam" },
-  { day: 7, label: "Dim" },
-];
-
 /** Y-m-d → j/m/aaaa. */
 export const frDate = (iso: string): string => {
   const [y, m, d] = iso.split("-");

@@ -72,7 +72,7 @@ describe("PublicWishPage — parcours en étapes", () => {
     await start();
     // Pré-remplissage « au nom de » sur l'étape de l'équipe.
     expect(screen.getByLabelText(/Séances souhaitées — SM1/)).toHaveValue(2);
-    expect(screen.getByLabelText(/Mer indisponible — SM1/)).toBeChecked();
+    expect(screen.getByRole("button", { name: "mercredi", pressed: true })).toBeInTheDocument();
   });
 
   it("NR — le payload d'envoi reste octet-identique et ne part QU'À la validation (dirty-tracking)", async () => {

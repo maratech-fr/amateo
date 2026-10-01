@@ -6,6 +6,7 @@ import { frDateShort } from "@/features/cockpit/lib/date";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { readFailed, readLoading } from "@/shared/lib/readState";
+import { dayLabelLong, dayLabelLongCap } from "@/shared/lib/days";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { DeleteConfirm } from "@/shared/components/ui/delete-confirm";
@@ -163,7 +164,7 @@ function PeriodVenuesPanel({ calendarEntryId, schedulePlanId }: { calendarEntryI
       return "indisponible toute la période";
     }
     const days = Object.keys(effectiveClosedWeekdays?.[venueId] ?? {}).map(Number).sort((a, b) => a - b);
-    return days.length > 0 ? `fermé ${days.map((d) => DAY_LABELS_LONG[d].toLowerCase()).join(", ")}` : "";
+    return days.length > 0 ? `fermé ${days.map((d) => dayLabelLong(d)).join(", ")}` : "";
   };
   const venueSlots = periodSlots.filter((s) => s.venueId === selected.id);
   // Le bandeau rappelle TOUT ce qui ne sert pas : indisponibilités déclarées ET jours décochés
@@ -213,7 +214,7 @@ function PeriodVenuesPanel({ calendarEntryId, schedulePlanId }: { calendarEntryI
             }
             const manual = manualDaysFor(v.id);
             if (manual.length > 0) {
-              parts.push(`jours décochés à la main : ${manual.map((d) => DAY_LABELS_LONG[d].toLowerCase()).join(", ")}`);
+              parts.push(`jours décochés à la main : ${manual.map((d) => dayLabelLong(d)).join(", ")}`);
             }
             return (
               <p key={v.id}>
@@ -413,7 +414,7 @@ function PeriodVenuePanel({
                   checked={!closedDay}
                   disabled={modeBusy}
                   onChange={() => toggleDay(d.n, closedDay)}
-                  aria-label={`${DAY_LABELS_LONG[d.n]} — ${venue.name}`}
+                  aria-label={`${dayLabelLongCap(d.n)} — ${venue.name}`}
                   title={title}
                 />
                 <span>{d.label}</span>
@@ -498,7 +499,7 @@ function PeriodVenuePanel({
             {offGridSlots.map((sl) => (
               <li key={sl.id} className="flex items-center justify-between gap-2 text-xs">
                 <span>
-                  {DAY_LABELS_LONG[sl.dayOfWeek] ?? `jour ${sl.dayOfWeek}`} {hhmm(sl.startTime)} ({sl.durationMinutes} min)
+                  {dayLabelLongCap(sl.dayOfWeek) || `jour ${sl.dayOfWeek}`} {hhmm(sl.startTime)} ({sl.durationMinutes} min)
                 </span>
                 <Button type="button" size="sm" variant="destructive" disabled={deleteSlot.isPending} onClick={() => deleteSlot.mutate(sl.id)}>
                   <Trash2 className="size-4" />
@@ -718,7 +719,7 @@ function PeriodSlotEditor({
           tone="warning"
           role="note"
           className="mt-3"
-          message={`Créneau inactif — le ${DAY_LABELS_LONG[day]?.toLowerCase() ?? `jour ${day}`} est fermé (${closedCause}). Le poser reste possible ; il ne servira pas tant que ce jour reste fermé.`}
+          message={`Créneau inactif — le ${dayLabelLong(day) || `jour ${day}`} est fermé (${closedCause}). Le poser reste possible ; il ne servira pas tant que ce jour reste fermé.`}
         />
       ) : null}
 
@@ -765,4 +766,3 @@ function PeriodSlotEditor({
   );
 }
 
-const DAY_LABELS_LONG: Record<number, string> = { 1: "Lundi", 2: "Mardi", 3: "Mercredi", 4: "Jeudi", 5: "Vendredi", 6: "Samedi", 7: "Dimanche" };

@@ -4,10 +4,9 @@ import { useState } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Select } from "@/shared/components/ui/select";
+import { dayLabelLongCap } from "@/shared/lib/days";
 
 import { useCreateVenueMatchWindow, useDeleteVenueMatchWindow, useVenueMatchWindows } from "./queries";
-
-const DAY_LABELS = ["", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
 interface MatchWindowsEditorProps {
   venueId: string;
@@ -56,13 +55,13 @@ export function MatchWindowsEditor({ venueId }: MatchWindowsEditorProps) {
         {windows.map((window) => (
           <li key={window.id} className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-2 py-1 text-sm">
             <span>
-              {DAY_LABELS[window.dayOfWeek] ?? "?"} {window.startTime} – {window.endTime}
+              {dayLabelLongCap(window.dayOfWeek) || "?"} {window.startTime} – {window.endTime}
             </span>
             <Button
               variant="ghost"
               size="icon"
               className="size-8 text-destructive"
-              aria-label={`Supprimer la fenêtre ${DAY_LABELS[window.dayOfWeek] ?? "?"} ${window.startTime}`}
+              aria-label={`Supprimer la fenêtre ${dayLabelLongCap(window.dayOfWeek) || "?"} ${window.startTime}`}
               disabled={remove.isPending}
               onClick={() => setPendingDeleteId(window.id)}
             >
@@ -78,7 +77,7 @@ export function MatchWindowsEditor({ venueId }: MatchWindowsEditorProps) {
           <Select aria-label="Jour de la fenêtre match" className="h-8" wrapperClassName="w-32" value={dayOfWeek} onChange={(e) => setDayOfWeek(Number(e.target.value))}>
             {[1, 2, 3, 4, 5, 6, 7].map((day) => (
               <option key={day} value={day}>
-                {DAY_LABELS[day]}
+                {dayLabelLongCap(day)}
               </option>
             ))}
           </Select>
@@ -102,7 +101,7 @@ export function MatchWindowsEditor({ venueId }: MatchWindowsEditorProps) {
       <ConfirmDialog
         open={null !== pendingDelete}
         title="Supprimer cette fenêtre d’accès match ?"
-        description={pendingDelete ? <>La fenêtre {DAY_LABELS[pendingDelete.dayOfWeek] ?? "?"} {pendingDelete.startTime} – {pendingDelete.endTime} sera retirée de ce gymnase.</> : null}
+        description={pendingDelete ? <>La fenêtre {dayLabelLongCap(pendingDelete.dayOfWeek) || "?"} {pendingDelete.startTime} – {pendingDelete.endTime} sera retirée de ce gymnase.</> : null}
         confirmLabel="Supprimer"
         destructive
         onConfirm={() => {
