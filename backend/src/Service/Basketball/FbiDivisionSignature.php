@@ -58,9 +58,18 @@ final readonly class FbiDivisionSignature
      */
     public function fromCode(string $code): ?array
     {
-        // The FBI code appends a POULE number after a separator (« DFU15-2 » →
-        // poule 2, dropped) — a GLUED digit (« RF3 ») is the DIVISION, kept.
-        $withoutPoule = (string) preg_replace('/[\s\-]+\d+\s*$/u', '', trim($code));
+        // A trailing number after a separator (« DFU15-2 », « DM2 - 3 ») is, for a
+        // SENIOR code, the POULE (dropped) — a GLUED digit (« RF3 ») is the DIVISION.
+        // But a YOUTH code (catégorie U…) uses that same suffix to tell apart two
+        // DIVISIONS (« DFU9 » = division sans suffixe, « DFU9-2 » = division 2) :
+        // là on le GARDE comme division, jamais comme poule (calendrier FFBB Rhône,
+        // décision fondateur 2026-10-01 — sinon DFU9 et DFU9-2 ont la même signature
+        // et la suggestion d'appariement meurt sur l'ambiguïté). Le type de code (jeune
+        // vs senior) n'est connu qu'après parsing de la catégorie : on capte le nombre
+        // ici, on décide plus bas.
+        $trimmed = trim($code);
+        $trailingSeparated = 1 === preg_match('/[\s\-]+(\d+)\s*$/u', $trimmed, $trailing) ? (int) $trailing[1] : null;
+        $withoutPoule = (string) preg_replace('/[\s\-]+\d+\s*$/u', '', $trimmed);
         $normalized = $this->normalizer->normalize($withoutPoule);
         if ('' === $normalized) {
             return null;
@@ -120,6 +129,11 @@ final readonly class FbiDivisionSignature
         $division = null;
         if (1 === preg_match('/\d+/', $core, $digits)) {
             $division = (int) $digits[0];
+        }
+        // Youth only: the trailing separated number is the division (see fromCode top),
+        // never a poule. Seniors keep the historical behaviour (suffix dropped as poule).
+        if (null === $division && null !== $trailingSeparated && str_starts_with($category, 'U')) {
+            $division = $trailingSeparated;
         }
 
         return ['level' => $level, 'division' => $division, 'gender' => $gender, 'category' => $category, 'type' => $type];

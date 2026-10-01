@@ -606,7 +606,7 @@ final class BcclSeeder
             ['name' => 'U13F3', 'sportCategory' => $u13, 'level' => TeamLevel::DEPARTEMENTAL, 'sessionsPerWeek' => 2, 'priorityTierId' => 4, 'gender' => Gender::F],
             ['name' => 'U13M1', 'sportCategory' => $u13, 'level' => TeamLevel::REGIONAL, 'sessionsPerWeek' => 3, 'priorityTierId' => 2, 'gender' => Gender::M],
             ['name' => 'U13M2', 'sportCategory' => $u13, 'level' => TeamLevel::DEPARTEMENTAL, 'sessionsPerWeek' => 3, 'priorityTierId' => 3, 'gender' => Gender::M],
-            ['name' => 'U11M1', 'sportCategory' => $u11, 'level' => TeamLevel::REGIONAL, 'sessionsPerWeek' => 2, 'priorityTierId' => 3, 'gender' => Gender::M],
+            ['name' => 'U11M1', 'sportCategory' => $u11, 'level' => TeamLevel::DEPARTEMENTAL, 'sessionsPerWeek' => 2, 'priorityTierId' => 3, 'gender' => Gender::M],
             ['name' => 'U11M2', 'sportCategory' => $u11, 'level' => TeamLevel::REGIONAL, 'sessionsPerWeek' => 2, 'priorityTierId' => 4, 'gender' => Gender::M],
             ['name' => 'U11F1', 'sportCategory' => $u11, 'level' => TeamLevel::REGIONAL, 'sessionsPerWeek' => 2, 'priorityTierId' => 3, 'gender' => Gender::F],
             ['name' => 'U11F2', 'sportCategory' => $u11, 'level' => TeamLevel::DEPARTEMENTAL, 'sessionsPerWeek' => 2, 'priorityTierId' => 4, 'gender' => Gender::F],
