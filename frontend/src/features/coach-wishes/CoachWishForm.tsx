@@ -153,7 +153,7 @@ export function CoachWishForm({
         </label>
       </div>
 
-      <DayMultiPicker legend="Jours indisponibles" legendVisible tone="destructive" value={days} onChange={setDays} />
+      <DayMultiPicker legend="Jours indisponibles" legendVisible tone="accent" value={days} onChange={setDays} />
 
       <textarea
         aria-label="Commentaire"

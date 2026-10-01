@@ -42,7 +42,9 @@ export function WishTeamStep({ team, weeks, sections, onPatch, onToggleDay }: Wi
               <DayMultiPicker
                 legend="Jours d'indisponibilité"
                 legendVisible
-                tone="destructive"
+                // Les deux saisies de vœux (page publique ET modale gestionnaire CoachWishForm)
+                // sont en couleur du club (accent), jamais destructive (arbitrage fondateur 2026-10-01).
+                tone="accent"
                 value={[...s.days].sort((a, b) => a - b)}
                 // Le parent gère un `Set` par bascule d'UN jour : on rejoue la bascule pour chaque
                 // jour qui a changé (le sélecteur n'en change qu'un à la fois, mais on reste robuste).
