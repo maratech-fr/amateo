@@ -7,7 +7,7 @@ import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Modal } from "@/shared/components/ui/modal";
-import { FullPageSpinner } from "@/shared/components/ui/spinner";
+import { FullPageSpinner, Spinner } from "@/shared/components/ui/spinner";
 import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
 import { readFailed } from "@/shared/lib/readState";
 import { cn } from "@/shared/lib/utils";
@@ -58,7 +58,7 @@ function SectionBody<T>({ query, render }: { query: SectionQuery<T>; render: (da
     return <LoadErrorHint onRetry={() => void query.refetch()} />;
   }
   if (undefined === query.data) {
-    return <EmptyHint>Chargement…</EmptyHint>;
+    return <Spinner />;
   }
   return render(query.data);
 }

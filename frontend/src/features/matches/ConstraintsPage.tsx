@@ -6,6 +6,7 @@ import { AccordionSection } from "@/shared/components/ui/accordion";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
@@ -388,7 +389,7 @@ function ClubSection({ weekendAlternates }: { weekendAlternates: boolean }) {
       </p>
 
       {0 === clubRules.length ? (
-        <p className="text-sm text-muted-foreground">Aucune règle de club — le placement ne s'impose que les fenêtres de la ligue.</p>
+        <EmptyHint>Aucune règle de club — le placement ne s'impose que les fenêtres de la ligue.</EmptyHint>
       ) : (
         <div className="flex flex-col gap-2">
           {clubRules.map((rule) => (
@@ -612,7 +613,7 @@ function TeamsSection() {
       </p>
 
       {0 === bans.length ? (
-        <p className="text-sm text-muted-foreground">Aucune interdiction — chaque équipe peut jouer dans n'importe quel gymnase du club.</p>
+        <EmptyHint>Aucune interdiction — chaque équipe peut jouer dans n'importe quel gymnase du club.</EmptyHint>
       ) : (
         <div className="flex flex-col gap-2">
           {bans.map((ban) => (
@@ -758,7 +759,7 @@ function CoachsSection() {
       </p>
 
       {0 === unavailabilities.length ? (
-        <p className="text-sm text-muted-foreground">Aucune indisponibilité — chaque entraîneur est réputé disponible pour tous les matchs.</p>
+        <EmptyHint>Aucune indisponibilité — chaque entraîneur est réputé disponible pour tous les matchs.</EmptyHint>
       ) : (
         <div className="flex flex-col gap-2">
           {unavailabilities.map((rule) => (

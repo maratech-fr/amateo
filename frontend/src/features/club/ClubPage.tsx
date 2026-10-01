@@ -9,11 +9,13 @@ import { PendingMembersSection } from "@/features/auth/PendingMembersSection";
 import { MembersSection } from "@/features/club/MembersSection";
 import { AccordionSection } from "@/shared/components/ui/accordion";
 import { AddressGeocodeField } from "@/shared/components/ui/address-geocode-field";
+import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { FichePage } from "@/shared/components/ui/fiche-page";
 import { Input } from "@/shared/components/ui/input";
+import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { PageHeader } from "@/shared/components/ui/page-header";
 import { FullPageSpinner, Spinner } from "@/shared/components/ui/spinner";
 import { useCredits } from "@/shared/credits/useCredits";
@@ -640,7 +642,7 @@ function OfferSection({ me }: { me: MeResponse }) {
       ) : null}
 
       {readFailed(plansQuery) ? (
-        <p className="text-sm text-destructive">Les offres n'ont pas pu être chargées.</p>
+        <LoadErrorHint>Les offres n'ont pas pu être chargées.</LoadErrorHint>
       ) : readLoading(plansQuery) ? (
         <p className="text-sm text-muted-foreground">Chargement des offres…</p>
       ) : (
@@ -651,7 +653,7 @@ function OfferSection({ me }: { me: MeResponse }) {
               <div key={plan.id} className={cn("rounded-lg border p-3", current ? "border-accent bg-surface-accent" : "border-border bg-card")}>
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-medium">{plan.name}</p>
-                  {current ? <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground">Votre offre</span> : null}
+                  {current ? <StatusPill variant="accent-solid">Votre offre</StatusPill> : null}
                 </div>
                 <p className="text-sm text-muted-foreground">{planCapacityLabel(plan)}</p>
                 {/* Aucun montant dans l'app (décision fondateur) : « sur demande » partout,
