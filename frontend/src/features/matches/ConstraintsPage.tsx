@@ -416,11 +416,11 @@ function RuleFields({ draft, set, idLabel }: { draft: ClubRuleDraft; set: (patch
           </option>
         ))}
       </Select>
-      <label className="flex items-center gap-1 text-sm text-muted-foreground">
+      <label className="flex items-center gap-1 whitespace-nowrap text-sm text-muted-foreground">
         Pas avant
         <Input aria-label="Pas avant (heure de début)" type="time" value={draft.kickoffMin} onChange={(e) => set({ kickoffMin: e.target.value })} />
       </label>
-      <label className="flex items-center gap-1 text-sm text-muted-foreground">
+      <label className="flex items-center gap-1 whitespace-nowrap text-sm text-muted-foreground">
         Pas après
         <Input aria-label="Pas après (heure de fin)" type="time" value={draft.kickoffMax} onChange={(e) => set({ kickoffMax: e.target.value })} />
       </label>
@@ -762,11 +762,11 @@ function CoachFields({ draft, set, coaches, idLabel }: { draft: CoachUnavailabil
         ))}
       </Select>
       <DayMultiPicker legend={`Jours (${idLabel})`} value={draft.daysOfWeek} onChange={(daysOfWeek) => set({ daysOfWeek })} />
-      <label className="flex items-center gap-1 text-sm text-muted-foreground">
+      <label className="flex items-center gap-1 whitespace-nowrap text-sm text-muted-foreground">
         Pas avant
         <Input aria-label="Pas avant (heure de début)" type="time" value={draft.kickoffMin} onChange={(e) => set({ kickoffMin: e.target.value })} />
       </label>
-      <label className="flex items-center gap-1 text-sm text-muted-foreground">
+      <label className="flex items-center gap-1 whitespace-nowrap text-sm text-muted-foreground">
         Pas après
         <Input aria-label="Pas après (heure de fin)" type="time" value={draft.kickoffMax} onChange={(e) => set({ kickoffMax: e.target.value })} />
       </label>

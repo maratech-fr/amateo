@@ -178,7 +178,7 @@ export function SharedTrainingBlockPanel({
               type="search"
               aria-label="Rechercher une équipe"
               placeholder="Rechercher une équipe"
-              className="mb-2 h-8"
+              className="mb-2"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -211,7 +211,7 @@ export function SharedTrainingBlockPanel({
                 <Select
                   aria-label="Séances communes"
                   aria-describedby="block-sessions-help"
-                  className="mt-0.5 h-8"
+                  className="mt-0.5"
                   wrapperClassName="w-40"
                   disabled={!sessionsReady}
                   value={String(effectiveK)}
@@ -232,13 +232,13 @@ export function SharedTrainingBlockPanel({
                 {sessionsReady ? `Jusqu'à ${cap} avec les équipes choisies.` : "Sélectionnez les équipes pour connaître le maximum."}
               </span>
               {null !== editingId ? (
-                <Button size="sm" variant="ghost" className="ml-auto h-8" onClick={resetForm}>
+                <Button size="sm" variant="ghost" className="ml-auto" onClick={resetForm}>
                   Annuler
                 </Button>
               ) : null}
               <Button
                 size="sm"
-                className={cn("h-8 gap-1", null === editingId && "ml-auto")}
+                className={cn("gap-1", null === editingId && "ml-auto")}
                 disabled={!enoughTeams || !sessionsReady || busy}
                 onClick={() => void submit()}
               >

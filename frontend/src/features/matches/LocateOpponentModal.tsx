@@ -257,11 +257,11 @@ export function LocateOpponentModal({
               placeholder="Code postal du gymnase"
               inputMode="numeric"
               maxLength={5}
-              className="h-8 w-full sm:w-40"
+              className="w-full sm:w-40"
               value={cp}
               onChange={(e) => setCp(e.target.value.replace(/\D/g, ""))}
             />
-            <Input aria-label="Nom du gymnase" placeholder="Nom du gymnase" className="h-8 w-full sm:flex-1" value={name} onChange={(e) => setName(e.target.value)} />
+            <Input aria-label="Nom du gymnase" placeholder="Nom du gymnase" className="w-full sm:flex-1" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           {"failed" === sallesState ? (
             <LoadErrorHint onRetry={() => void (searchingByName ? nameSallesQuery.refetch() : sallesQuery.refetch())}>FFBB indisponible, réessayez plus tard.</LoadErrorHint>
