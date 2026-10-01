@@ -37,6 +37,12 @@ final class TeamTagService
     ];
 
     /**
+     * Les catégories d'âge JEUNES au sens « U9–U18 » (U21 et seniors exclus). Sous-ensemble
+     * nommé des tags d'âge système, consommé par {@see isYouthTeam}.
+     */
+    private const YOUTH_U_CATEGORIES = ['U9', 'U11', 'U13', 'U15', 'U18'];
+
+    /**
      * Les colonnes écrites par `insertMissingSystemTags`, dans l'ordre du tuple.
      *
      * ⚠ Le SQL est CONSTRUIT à partir de cette constante, il ne la recopie pas — sans quoi le
@@ -160,6 +166,17 @@ final class TeamTagService
         }
 
         return $brackets;
+    }
+
+    /**
+     * L'équipe est-elle JEUNE au sens U9–U18 (U21 et seniors exclus) ? Dérivé de sa catégorie
+     * sportive par {@see determineTagNames} — la SEULE maison du calcul d'âge d'une équipe,
+     * jamais une seconde règle (le niveau d'une équipe jeune suit son engagement FFBB, décision
+     * fondateur 2026-10-01 : un alignement de niveau ne s'écrit que sur une équipe jeune).
+     */
+    public function isYouthTeam(Team $team): bool
+    {
+        return [] !== array_intersect(self::YOUTH_U_CATEGORIES, $this->determineTagNames($team));
     }
 
     /**

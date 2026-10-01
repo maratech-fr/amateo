@@ -159,6 +159,30 @@ final class FfbbLevelAlignmentTest extends WebTestCase
         }
     }
 
+    public function testAlignLevelOnAYoungLineDoesNotWriteOnASeniorTeam(): void
+    {
+        // Revue sécurité 2026-10-02 — apparier une ligne JEUNE (U13) à une équipe SENIORS avec
+        // alignLevel ne doit JAMAIS écrire son niveau : l'éligibilité regarde aussi l'ÉQUIPE,
+        // pas seulement la ligne, sinon on contourne le verrou du périmètre engagé.
+        [$token, , $clubId] = $this->register('FLAG');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId, 'Seniors'); // équipe NON jeune, niveau null
+
+        $this->confirm($token, [[
+            'ffbbCompetitionId' => FfbbHttpClientStub::YOUNG_D13_COMPETITION_ID,
+            'teamId' => $team->getId(),
+            'alignLevel' => true,
+        ]]);
+        self::assertResponseStatusCodeSame(200);
+
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+        self::assertNull(
+            $this->em->getRepository(Team::class)->find($team->getId())?->getLevel(),
+            'une équipe senior ne reçoit jamais le niveau déduit d\'une ligne jeune',
+        );
+    }
+
     public function testConfirmCannotAlignTheLevelOfAForeignTeam(): void
     {
         [$tokenA, , $clubA] = $this->register('FLAE');
@@ -268,7 +292,7 @@ final class FfbbLevelAlignmentTest extends WebTestCase
         return $season;
     }
 
-    private function createTeam(string $clubId): Team
+    private function createTeam(string $clubId, string $categoryName = 'U13'): Team
     {
         $this->scopeGucToClub($clubId);
         $season = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $clubId])
@@ -286,10 +310,12 @@ final class FfbbLevelAlignmentTest extends WebTestCase
             $sport->setIsActive(true);
             $this->em->persist($sport);
         }
+        // Le NOM de catégorie porte la tranche d'âge (« U13 » → jeune, « Seniors » → non) :
+        // TeamTagService::isYouthTeam le lit.
         $category = new SportCategory;
         $category->setClubId($clubId);
         $category->setSportId($sport->getId());
-        $category->setName('U13-' . uniqid('', true));
+        $category->setName($categoryName . '-' . uniqid('', true));
         $this->em->persist($category);
 
         $team = new Team;
@@ -297,7 +323,7 @@ final class FfbbLevelAlignmentTest extends WebTestCase
         $team->setSeasonId($season->getId());
         $team->setSportCategoryId($category->getId());
         $team->setPriorityTierId(3);
-        $team->setName('U13-Test');
+        $team->setName($categoryName . '-Test');
         $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);

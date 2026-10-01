@@ -404,7 +404,7 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
     {
         [$tokenA, , $clubA] = $this->register('FFPU');
         $this->useStubClubCode($clubA);
-        $team = $this->createTeam($clubA); // no level set
+        $team = $this->createTeam($clubA, 'U13'); // équipe jeune, no level set
         $this->createCompetition($clubA, $this->seasonOf($clubA)->getId(), $team->getId(), FfbbHttpClientStub::YOUNG_D13_FBI_CODE);
 
         $row = $this->engagementRow($tokenA, FfbbHttpClientStub::YOUNG_D13_COMPETITION_ID);
@@ -413,11 +413,27 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
         self::assertSame('MISSING', $row['alignment'], 'the team carries no level yet');
     }
 
+    public function testEngagementProposesNoAlignmentWhenTheSuggestedTeamIsNotYoung(): void
+    {
+        // Revue sécurité 2026-10-02 — une ligne jeune appariée à une équipe SENIORS ne propose
+        // AUCUN alignement : l'écart ne se lit que sur une équipe jeune (sinon le confirm
+        // écrirait D/R/N sur une senior engagée, contournant le verrou).
+        [$tokenA, , $clubA] = $this->register('FFPW');
+        $this->useStubClubCode($clubA);
+        $team = $this->createTeam($clubA, 'Seniors'); // équipe NON jeune
+        $this->createCompetition($clubA, $this->seasonOf($clubA)->getId(), $team->getId(), FfbbHttpClientStub::YOUNG_D13_FBI_CODE);
+
+        $row = $this->engagementRow($tokenA, FfbbHttpClientStub::YOUNG_D13_COMPETITION_ID);
+        self::assertSame($team->getId(), $row['suggestedTeamId'], 'the bridge still suggests the team');
+        self::assertSame('DEPARTEMENTAL', $row['deducedLevel'], 'the LINE stays young — deducedLevel is its property');
+        self::assertNull($row['alignment'], 'but no proposal: the TEAM is not young');
+    }
+
     public function testAlignmentIsMismatchWhenTheSuggestedTeamLevelDiffers(): void
     {
         [$tokenA, , $clubA] = $this->register('FFPV');
         $this->useStubClubCode($clubA);
-        $team = $this->createTeam($clubA);
+        $team = $this->createTeam($clubA, 'U13'); // équipe jeune
         $this->setTeamLevel($team, TeamLevel::REGIONAL);
         $this->createCompetition($clubA, $this->seasonOf($clubA)->getId(), $team->getId(), FfbbHttpClientStub::YOUNG_D13_FBI_CODE);
 
@@ -524,7 +540,7 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
         return $season;
     }
 
-    private function createTeam(string $clubId): Team
+    private function createTeam(string $clubId, string $categoryName = 'Seniors'): Team
     {
         $this->scopeGucToClub($clubId);
         $season = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $clubId])
@@ -542,10 +558,12 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
             $sport->setIsActive(true);
             $this->em->persist($sport);
         }
+        // Le NOM de catégorie porte la tranche d'âge (« U13 » → équipe jeune, « Seniors » → non) :
+        // TeamTagService::isYouthTeam le lit (la seule maison du calcul d'âge).
         $category = new SportCategory;
         $category->setClubId($clubId);
         $category->setSportId($sport->getId());
-        $category->setName('Seniors-' . uniqid('', true));
+        $category->setName($categoryName . '-' . uniqid('', true));
         $this->em->persist($category);
 
         $team = new Team;
@@ -553,7 +571,7 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
         $team->setSeasonId($season->getId());
         $team->setSportCategoryId($category->getId());
         $team->setPriorityTierId(3);
-        $team->setName('SM-Test');
+        $team->setName($categoryName . '-Test');
         $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);

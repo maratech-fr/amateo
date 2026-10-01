@@ -19,6 +19,7 @@ use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
 use App\Service\SocleGuard;
+use App\Service\TeamTagService;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -69,6 +70,7 @@ final class FfbbEngagementsController extends AbstractController
         private readonly FfbbEngagementReader $reader,
         private readonly FbiDivisionSignature $divisionSignature,
         private readonly EngagementLevelDeducer $levelDeducer,
+        private readonly TeamTagService $teamTagService,
     ) {}
 
     #[Route('/api/ffbb/engagements', name: 'api_ffbb_engagements', methods: ['GET'])]
@@ -158,20 +160,26 @@ final class FfbbEngagementsController extends AbstractController
             ];
         }
 
-        // Batch the suggested teams' current level and the latest match date per
-        // suggested competition (the D4 divergence tie-break key).
+        // Batch the suggested teams' current level, youth flag, and the latest match date per
+        // suggested competition (the D4 divergence tie-break key). Un alignement de niveau ne
+        // concerne qu'une ÉQUIPE JEUNE (U9–U18) : un gestionnaire ne doit pas pouvoir, via une
+        // ligne jeune appariée à sa SM1/U21, écrire D/R/N sur une équipe senior engagée et
+        // contourner le verrou du périmètre engagé (revue sécurité 2026-10-02).
         $teamLevels = [];
+        $teamIsYouth = [];
         foreach ($this->entityManager->getRepository(Team::class)->findBy(['id' => array_keys($teamIds)]) as $team) {
             $teamLevels[$team->getId()] = $team->getLevel();
+            $teamIsYouth[$team->getId()] = $this->teamTagService->isYouthTeam($team);
         }
         $latestMatchDates = $this->latestMatchDates(array_keys($competitionIds));
 
         // Per suggested team, arbitrate the DOMINANT deduced level across its eligible
         // young rows (D4): a lone level wins outright; a divergence is decided by the
-        // competition with the latest match (undecidable → null).
+        // competition with the latest match (undecidable → null). A non-youth team never
+        // enters the arbitration → its rows keep `alignment` null (no proposal).
         $candidatesByTeam = [];
         foreach ($prepared as $entry) {
-            if (!$entry['deduced'] instanceof TeamLevel || null === $entry['suggestedTeamId']) {
+            if (!$entry['deduced'] instanceof TeamLevel || null === $entry['suggestedTeamId'] || true !== ($teamIsYouth[$entry['suggestedTeamId']] ?? false)) {
                 continue;
             }
             $candidatesByTeam[$entry['suggestedTeamId']][] = [
@@ -324,9 +332,12 @@ final class FfbbEngagementsController extends AbstractController
 
             // Niveau jeune déduit (D1/D3) : un engagement éligible nourrit l'arbitrage de
             // l'équipe ; une ligne cochée « aligner » marque l'équipe. Une ligne inéligible
-            // (seniors, coupe, PR/PN) déduit null → ni candidat ni no-op bruyant (D6).
+            // (seniors, coupe, PR/PN) déduit null → ni candidat ni no-op bruyant (D6). ⚠ Et
+            // l'ÉQUIPE doit elle-même être JEUNE (U9–U18) : apparier une ligne jeune à une
+            // équipe senior/U21 ne doit JAMAIS écrire son niveau (sinon contournement du verrou
+            // du périmètre engagé — revue sécurité 2026-10-02). No-op silencieux sinon (D6).
             $deduced = $this->levelDeducer->deduce($row['category'], $row['level'], $row['gender'], $row['competitionName']);
-            if ($deduced instanceof TeamLevel) {
+            if ($deduced instanceof TeamLevel && $this->teamTagService->isYouthTeam($team)) {
                 $alignCandidates[$teamId][] = ['level' => $deduced, 'competitionId' => $competition->getId()];
                 if ($alignLevel) {
                     $teamsToAlign[$teamId] = $team;
