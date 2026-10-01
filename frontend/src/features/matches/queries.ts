@@ -665,10 +665,13 @@ export function useFfbbEngagements(enabled: boolean) {
 export function useConfirmFfbbPairings() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (pairings: { ffbbCompetitionId: string; teamId: string; competitionId?: string }[]) => matchesApi.confirmFfbbPairings(pairings),
+    mutationFn: (pairings: matchesApi.FfbbPairing[]) => matchesApi.confirmFfbbPairings(pairings),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["competitions"] });
       void queryClient.invalidateQueries({ queryKey: ["ffbb", "engagements"] });
+      // Un alignement de niveau écrit sur l'équipe : rafraîchir la liste des équipes
+      // (et donc les pastilles d'alignement recalculées à la prochaine ouverture).
+      void queryClient.invalidateQueries({ queryKey: ["teams"] });
       toast.success("Appariements enregistrés");
     },
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),

@@ -1,4 +1,4 @@
-import { Sparkles } from "lucide-react";
+import { Check, Sparkles, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
@@ -7,8 +7,9 @@ import { Modal } from "@/shared/components/ui/modal";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { TeamSelect } from "@/shared/components/ui/team-select";
+import { LEVEL_LABEL } from "@/shared/lib/teamIdentity";
 
-import type { PriorityTier, Team } from "./api";
+import type { FfbbEngagement, FfbbPairing, PriorityTier, Team } from "./api";
 import { useConfirmFfbbPairings, useFfbbEngagements } from "./queries";
 
 interface FfbbEngagementsDialogProps {
@@ -29,25 +30,49 @@ export function FfbbEngagementsDialog({ teams, tiers, onClose }: FfbbEngagements
   const confirm = useConfirmFfbbPairings();
   // ffbbCompetitionId → teamId chosen ("" = not paired).
   const [choices, setChoices] = useState<Record<string, string>>({});
+  // ffbbCompetitionId → le gestionnaire a accepté d'aligner le niveau sur le déduit.
+  const [alignChoices, setAlignChoices] = useState<Record<string, boolean>>({});
 
   const rows = engagements.data?.engagements ?? [];
   const chosenOf = (id: string, suggested: string | null): string => choices[id] ?? suggested ?? "";
-  const pairings = rows
-    .map((row) => {
+  // La proposition d'alignement ne tient que SUR l'équipe suggérée (D5) : un écart calculé
+  // par le serveur ne vaut que si l'équipe choisie est encore celle qu'il a mesurée. Changer
+  // d'équipe fait tomber la proposition (et son intention) jusqu'à réouverture.
+  const canAlign = (row: FfbbEngagement, teamId: string): boolean =>
+    null !== row.alignment && null !== row.deducedLevel && "" !== teamId && teamId === row.suggestedTeamId;
+  const pairings: FfbbPairing[] = rows
+    .map((row): FfbbPairing => {
       const teamId = chosenOf(row.ffbbCompetitionId, row.suggestedTeamId);
-      const base = { ffbbCompetitionId: row.ffbbCompetitionId, teamId };
+      const base: FfbbPairing = { ffbbCompetitionId: row.ffbbCompetitionId, teamId };
       // Quand l'équipe choisie EST l'équipe suggérée (peu importe la source), la réf FFBB se pose
       // SUR la compétition xlsx déjà appariée (C1) : on transmet son `suggestedCompetitionId` pour
       // réutiliser la compétition côté serveur plutôt que d'en dupliquer une. Si le gestionnaire a
       // changé d'équipe, la suggestion ne tient plus — pas de `competitionId`.
       if ("" !== teamId && teamId === row.suggestedTeamId && null !== row.suggestedCompetitionId) {
-        return { ...base, competitionId: row.suggestedCompetitionId };
+        base.competitionId = row.suggestedCompetitionId;
+      }
+      // Intention d'alignement du niveau : seulement si la proposition tient encore ET a été acceptée.
+      if (canAlign(row, teamId) && true === alignChoices[row.ffbbCompetitionId]) {
+        base.alignLevel = true;
       }
       return base;
     })
     .filter((pairing) => "" !== pairing.teamId);
 
   const teamName = (id: string): string => teams.find((team) => team.id === id)?.name ?? "";
+  const teamLevelLabel = (id: string): string | null => {
+    const level = teams.find((team) => team.id === id)?.level ?? null;
+    return null === level ? null : LEVEL_LABEL[level];
+  };
+  const onTeamChange = (id: string, value: string): void => {
+    setChoices({ ...choices, [id]: value });
+    // L'équipe change → la proposition d'alignement tombe : on oublie l'acceptation.
+    setAlignChoices((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
 
   // Compteur d'en-tête (patron du compteur d'ImportFbi) : M = lignes, N = lignes rattachées
   // (équipe choisie OU suggestion conservée) = `pairings.length`.
@@ -133,12 +158,46 @@ export function FfbbEngagementsDialog({ teams, tiers, onClose }: FfbbEngagements
                       tiers={tiers}
                       placeholder="Non rattachée"
                       value={chosen}
-                      onValueChange={(v) => setChoices({ ...choices, [row.ffbbCompetitionId]: v })}
+                      onValueChange={(v) => onTeamChange(row.ffbbCompetitionId, v)}
                     />
                     {showFbiChip ? (
                       <StatusPill variant="neutral" icon={<Sparkles className="size-3.5 shrink-0" aria-hidden="true" />}>
                         suggéré depuis l'import FBI
                       </StatusPill>
+                    ) : null}
+                    {/* Niveau jeune déduit de l'engagement (D1/D5) : proposé, jamais pré-coché ni comblé
+                        en douce. La pastille dit l'ÉTAT (fiche), le bouton l'ACTION ; après acceptation,
+                        une pastille neutre + « Annuler » (texte, N1). Visible seulement sur l'équipe suggérée. */}
+                    {canAlign(row, chosen) && null !== row.deducedLevel ? (
+                      true === alignChoices[row.ffbbCompetitionId] ? (
+                        <span className="flex items-center gap-1.5">
+                          <StatusPill variant="neutral" icon={<Check className="size-3.5 shrink-0" aria-hidden="true" />}>
+                            Sera aligné à la confirmation
+                          </StatusPill>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setAlignChoices({ ...alignChoices, [row.ffbbCompetitionId]: false })}
+                          >
+                            Annuler
+                          </Button>
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1.5">
+                          <StatusPill variant="warning" icon={<TriangleAlert className="size-3.5 shrink-0" aria-hidden="true" />}>
+                            {"MISSING" === row.alignment ? "Niveau non renseigné" : `Fiche : ${teamLevelLabel(chosen) ?? "—"}`}
+                          </StatusPill>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setAlignChoices({ ...alignChoices, [row.ffbbCompetitionId]: true })}
+                          >
+                            {"MISSING" === row.alignment
+                              ? `Renseigner : ${LEVEL_LABEL[row.deducedLevel]}`
+                              : `Aligner sur ${LEVEL_LABEL[row.deducedLevel]}`}
+                          </Button>
+                        </span>
+                      )
                     ) : null}
                   </span>
                 </li>

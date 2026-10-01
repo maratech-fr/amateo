@@ -30,12 +30,33 @@ export interface FfbbEngagement {
   /** Pre-fill: the team already paired to this competition (or its next phase). */
   suggestedTeamId: string | null;
   suggestedCompetitionId: string | null;
+  /**
+   * Le niveau qu'implique une ligne JEUNE (U9–U18) en championnat/brassage — calculé par le
+   * serveur (`EngagementLevelDeducer`), jamais re-dérivé ici (🔴 `.claude/rules/frontend.md`).
+   * `null` hors du périmètre jeune ou si le niveau est indécidable (pré-régional/national).
+   */
+  deducedLevel: "DEPARTEMENTAL" | "REGIONAL" | "NATIONAL" | null;
+  /**
+   * Comparaison du niveau déduit à celui de l'équipe SUGGÉRÉE : `MISSING` (aucun niveau en
+   * fiche), `MISMATCH` (niveau différent). `null` = déjà aligné, divergence indécidable, ou
+   * aucune suggestion — rien à proposer. Le front AFFICHE, il n'arbitre pas.
+   */
+  alignment: "MISMATCH" | "MISSING" | null;
+}
+
+/** Un appariement à confirmer. `alignLevel` demande d'aligner le niveau de l'équipe sur
+ * celui que le serveur déduit (jeune uniquement, no-op ailleurs). */
+export interface FfbbPairing {
+  ffbbCompetitionId: string;
+  teamId: string;
+  competitionId?: string;
+  alignLevel?: boolean;
 }
 
 export const getFfbbEngagements = (): Promise<{ engagements: FfbbEngagement[] }> =>
   api.get("ffbb/engagements").json<{ engagements: FfbbEngagement[] }>();
 
-export const confirmFfbbPairings = (pairings: { ffbbCompetitionId: string; teamId: string; competitionId?: string }[]): Promise<void> =>
+export const confirmFfbbPairings = (pairings: FfbbPairing[]): Promise<void> =>
   api
     .post("ffbb/engagements/confirm", { json: { pairings } })
     .then(() => undefined);

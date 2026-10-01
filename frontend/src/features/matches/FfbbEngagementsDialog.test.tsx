@@ -18,6 +18,7 @@ vi.mock("./api", () => ({ getFfbbEngagements, confirmFfbbPairings }));
 const teams: Team[] = [
   { id: "team-sm1", name: "SM1", sportCategoryId: "cat", level: null, gender: null, priorityTierId: 1, tierOrder: 0 },
   { id: "team-sm2", name: "SM2", sportCategoryId: "cat", level: null, gender: null, priorityTierId: 3, tierOrder: 0 },
+  { id: "team-u13", name: "U13", sportCategoryId: "cat", level: "REGIONAL", gender: null, priorityTierId: 3, tierOrder: 1 },
 ];
 const tiers: PriorityTier[] = [
   { id: 1, label: "S", name: "Fanion", color: null },
@@ -38,6 +39,8 @@ const engagement = (over: Partial<FfbbEngagement> = {}): FfbbEngagement => ({
   suggestionSource: null,
   suggestedTeamId: null,
   suggestedCompetitionId: null,
+  deducedLevel: null,
+  alignment: null,
   ...over,
 });
 
@@ -200,6 +203,79 @@ describe("P4-200 C2 — refonte de la modale Engagements", () => {
     await pickListboxOption(user, "Équipe pour Pré régionale masculine", "SM2");
     await user.click(screen.getByRole("button", { name: "Confirmer 1 appariement" }));
 
+    expect(confirmFfbbPairings).toHaveBeenCalledWith([{ ffbbCompetitionId: "comp-1", teamId: "team-sm2" }]);
+  });
+});
+
+// ── « Le niveau d'une équipe jeune suit son engagement FFBB » (2026-10-01) ───────────────────
+describe("alignement du niveau jeune", () => {
+  const missing = (): FfbbEngagement =>
+    engagement({ competitionName: "Départementale masculine U13", suggestionSource: "fbi", suggestedTeamId: "team-sm1", deducedLevel: "DEPARTEMENTAL", alignment: "MISSING" });
+
+  it("MISSING → pastille « Niveau non renseigné » + bouton « Renseigner : Départemental »", async () => {
+    getFfbbEngagements.mockResolvedValue({ engagements: [missing()] });
+    renderWithProviders(<FfbbEngagementsDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    expect(await screen.findByText("Niveau non renseigné")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Renseigner : Départemental" })).toBeInTheDocument();
+  });
+
+  it("MISMATCH → pastille « Fiche : Régional » + bouton « Aligner sur Départemental »", async () => {
+    getFfbbEngagements.mockResolvedValue({
+      engagements: [engagement({ competitionName: "Départementale masculine U13", suggestedTeamId: "team-u13", deducedLevel: "DEPARTEMENTAL", alignment: "MISMATCH" })],
+    });
+    renderWithProviders(<FfbbEngagementsDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    expect(await screen.findByText("Fiche : Régional")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Aligner sur Départemental" })).toBeInTheDocument();
+  });
+
+  it("aucune pastille/bouton quand alignment est null", async () => {
+    getFfbbEngagements.mockResolvedValue({
+      engagements: [engagement({ suggestedTeamId: "team-sm1", deducedLevel: "DEPARTEMENTAL", alignment: null })],
+    });
+    renderWithProviders(<FfbbEngagementsDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await screen.findByText("Pré régionale masculine");
+    expect(screen.queryByText("Niveau non renseigné")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Renseigner|Aligner sur/ })).not.toBeInTheDocument();
+  });
+
+  it("clic « Renseigner » → pastille neutre, et l'intention part dans le POST", async () => {
+    const user = userEvent.setup();
+    getFfbbEngagements.mockResolvedValue({ engagements: [missing()] });
+    renderWithProviders(<FfbbEngagementsDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await user.click(await screen.findByRole("button", { name: "Renseigner : Départemental" }));
+    expect(screen.getByText("Sera aligné à la confirmation")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Confirmer 1 appariement" }));
+    expect(confirmFfbbPairings).toHaveBeenCalledWith([{ ffbbCompetitionId: "comp-1", teamId: "team-sm1", alignLevel: true }]);
+  });
+
+  it("re-clic « Annuler » → la proposition revient, l'intention ne part PAS", async () => {
+    const user = userEvent.setup();
+    getFfbbEngagements.mockResolvedValue({ engagements: [missing()] });
+    renderWithProviders(<FfbbEngagementsDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await user.click(await screen.findByRole("button", { name: "Renseigner : Départemental" }));
+    await user.click(screen.getByRole("button", { name: "Annuler" }));
+    expect(screen.getByRole("button", { name: "Renseigner : Départemental" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Confirmer 1 appariement" }));
+    expect(confirmFfbbPairings).toHaveBeenCalledWith([{ ffbbCompetitionId: "comp-1", teamId: "team-sm1" }]);
+  });
+
+  it("changer d'équipe fait tomber la proposition (D5) et son intention", async () => {
+    const user = userEvent.setup();
+    getFfbbEngagements.mockResolvedValue({ engagements: [missing()] });
+    renderWithProviders(<FfbbEngagementsDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+
+    await screen.findByRole("button", { name: "Renseigner : Départemental" });
+    await pickListboxOption(user, "Équipe pour Départementale masculine U13", "SM2");
+    expect(screen.queryByRole("button", { name: "Renseigner : Départemental" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Confirmer 1 appariement" }));
     expect(confirmFfbbPairings).toHaveBeenCalledWith([{ ffbbCompetitionId: "comp-1", teamId: "team-sm2" }]);
   });
 });
