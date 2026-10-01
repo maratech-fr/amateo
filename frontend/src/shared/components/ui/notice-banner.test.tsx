@@ -59,4 +59,31 @@ describe("NoticeBanner — le bandeau partagé opaque", () => {
     render(<NoticeBanner role="status" tone="accent" message="Info." />);
     expect(screen.getByRole("status")).toHaveTextContent("Info.");
   });
+
+  it("message est OPTIONNEL : sans lui, aucun <p> — seul children porte le contenu (listes, lignes à icône propre)", () => {
+    const { container } = render(
+      <NoticeBanner tone="destructive" role="alert">
+        <ul>
+          <li>Ligne 1</li>
+          <li>Ligne 2</li>
+        </ul>
+      </NoticeBanner>,
+    );
+    // La BOÎTE reste la primitive (fond opaque, texte foreground) ; pas de paragraphe vide.
+    expect(container.firstElementChild?.querySelector("p")).toBeNull();
+    expect(container.firstElementChild?.className).toContain("bg-surface-destructive");
+    expect(screen.getByRole("alert")).toHaveTextContent("Ligne 1");
+  });
+
+  it("role region/note + ariaLabel : un bandeau-repère permanent garde son landmark d'origine", () => {
+    render(
+      <NoticeBanner tone="warning" role="region" ariaLabel="Séances à replacer">
+        <p>Deux séances.</p>
+      </NoticeBanner>,
+    );
+    expect(screen.getByRole("region", { name: "Séances à replacer" })).toHaveTextContent("Deux séances.");
+
+    render(<NoticeBanner tone="warning" role="note" message="Créneau inactif — jour fermé." />);
+    expect(screen.getByRole("note")).toHaveTextContent("Créneau inactif");
+  });
 });
