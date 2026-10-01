@@ -452,7 +452,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
       {/* Gating (#5) : plan de saison non validé → tout ajustement est bloqué. Encart
           rouge en TÊTE, l'action la plus prioritaire : finir de valider la saison. */}
       {!socleValidated ? (
-        <div className="rounded-md border border-destructive/50 bg-surface-destructive p-3">
+        <NoticeBanner tone="destructive">
           <div className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
             <div className="min-w-0 flex-1">
@@ -460,12 +460,12 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
               <p className="text-xs text-muted-foreground">Validez le planning principal pour débloquer les ajustements.</p>
             </div>
           </div>
-          <div className="mt-2 flex justify-end">
+          <div className="flex justify-end">
             <Button variant="outline" size="sm" asChild>
               <Link to="/wizard">Valider le planning</Link>
             </Button>
           </div>
-        </div>
+        </NoticeBanner>
       ) : null}
 
       {zone === null && !zoneLoading ? (
