@@ -130,10 +130,17 @@ final class ConflictRadarLoader
             $categoriesById[$category->getId()] = $category;
         }
         $profilesByTeam = [];
+        // teamId → niveau : AWAY_NO_FOOTPRINT est muet pour une équipe LOISIR (le détecteur
+        // fait le tri lui-même, décision fondateur 2026-10-01).
+        $levelByTeam = [];
         foreach ($teams as $team) {
             $category = $categoriesById[$team->getSportCategoryId()] ?? null;
             if (null !== $category) {
                 $profilesByTeam[$team->getId()] = $this->matchDurationResolver->resolve($category);
+            }
+            $level = $team->getLevel();
+            if (null !== $level) {
+                $levelByTeam[$team->getId()] = $level;
             }
         }
         // P1-4 PR F2 — severity 6 (completeness of PAIRED competitions).
@@ -167,6 +174,7 @@ final class ConflictRadarLoader
             $playerMemberships,
             $clubRules,
             $forbiddenVenuesByTeam,
+            $levelByTeam,
         );
 
         return [

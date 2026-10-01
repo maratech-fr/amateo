@@ -17,6 +17,7 @@ use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\TeamCoachRole;
+use App\Enum\TeamLevel;
 use App\Service\AwayKickoffEstimator;
 use App\Service\EffectiveScheduleResolver;
 use App\Service\MatchConflictDetector;
@@ -458,6 +459,35 @@ final class MatchConflictDetectorTest extends TestCase
         self::assertSame('AWAY_NO_FOOTPRINT', $conflicts[0]['type']);
         self::assertSame(7, $conflicts[0]['severity']);
         self::assertSame('fx-1', $conflicts[0]['fixture']['fixtureId']);
+    }
+
+    public function testALoisirTeamNeverRaisesAwayNoFootprint(): void
+    {
+        // Décision fondateur 2026-10-01 — une équipe LOISIR n'a ni calendrier ligue ni
+        // habitude à déclarer : son extérieur sans heure n'est PAS un angle mort à nommer.
+        $away = $this->awayFixture('fx-1', self::TEAM_1, '2026-10-04', null); // Sunday, no habit
+        $links = [$this->link(self::COACH_A, self::TEAM_1)];
+
+        $conflicts = $this->detect(
+            [$away],
+            $links,
+            null,
+            [],
+            [],
+            [],
+            [], // no habit anywhere
+            [],
+            [],
+            [],
+            [],
+            [],
+            null,
+            [],
+            [],
+            [self::TEAM_1 => TeamLevel::LOISIR_JEUNE],
+        );
+
+        self::assertSame([], $conflicts, 'a loisir team is mute for AWAY_NO_FOOTPRINT');
     }
 
     // ── Graded diagnostic (P1-4 PR E2, cadrage §8) ───────────────────────────
@@ -1544,7 +1574,7 @@ final class MatchConflictDetectorTest extends TestCase
      *
      * @return list<array<string, mixed>>
      */
-    private function detect(array $fixtures, array $links, ?string $baselineScheduleId = null, array $overlayPeriods = [], array $slotsBySchedule = [], array $unavailabilities = [], array $habits = [], array $teamLinks = [], array $matchWindows = [], array $envelope = [], array $competitions = [], array $profilesByTeam = [], ?DateTimeImmutable $clubToday = null, array $playerMemberships = [], array $roundTripByFixtureId = []): array
+    private function detect(array $fixtures, array $links, ?string $baselineScheduleId = null, array $overlayPeriods = [], array $slotsBySchedule = [], array $unavailabilities = [], array $habits = [], array $teamLinks = [], array $matchWindows = [], array $envelope = [], array $competitions = [], array $profilesByTeam = [], ?DateTimeImmutable $clubToday = null, array $playerMemberships = [], array $roundTripByFixtureId = [], array $levelByTeam = []): array
     {
         // Lot M — the TEAM_LINK family left the radar; the detector no longer takes
         // team links. `$teamLinks` is kept in THIS helper's positional shape only so
@@ -1553,7 +1583,7 @@ final class MatchConflictDetectorTest extends TestCase
         unset($teamLinks);
 
         return new MatchConflictDetector(new MatchFootprint, new EffectiveScheduleResolver, new AwayKickoffEstimator)
-            ->detect($fixtures, $links, $baselineScheduleId, $overlayPeriods, $slotsBySchedule, $unavailabilities, $habits, $matchWindows, $envelope, $competitions, $profilesByTeam, $roundTripByFixtureId, $clubToday, $playerMemberships);
+            ->detect($fixtures, $links, $baselineScheduleId, $overlayPeriods, $slotsBySchedule, $unavailabilities, $habits, $matchWindows, $envelope, $competitions, $profilesByTeam, $roundTripByFixtureId, $clubToday, $playerMemberships, [], [], $levelByTeam);
     }
 
     private function membership(string $coachId, string $teamId, bool $active = true): CoachPlayerMembership

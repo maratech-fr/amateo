@@ -15,6 +15,7 @@ use App\Entity\VenueMatchWindow;
 use App\Entity\VenueUnavailability;
 use App\Enum\ConflictPersonRole;
 use App\Enum\FixtureHomeAway;
+use App\Enum\TeamLevel;
 use DateInterval;
 use DateTimeImmutable;
 
@@ -117,7 +118,8 @@ use DateTimeImmutable;
  *   full-footprint rule: a match the panel just allowed must not alert.
  * - AWAY_NO_FOOTPRINT (7, dette v): an AWAY fixture with no hour and no habit
  *   on its weekday — the residual blind spot is now NAMED (info; the UI folds
- *   the group).
+ *   the group). JAMAIS émis pour une équipe LOISIR (ni calendrier ligue ni habitude
+ *   à déclarer — décision fondateur 2026-10-01).
  * - FRIENDLY_ON_MATCH_SLOT (5, « À surveiller », P4-193): a placed HOME FRIENDLY
  *   (competitionId null, venue+kickoff) sitting on a match slot — its footprint
  *   overlaps a match access window of its gym (reason MATCH_SLOT_WINDOW) and/or
@@ -262,6 +264,9 @@ final class MatchConflictDetector
      * @param array<string, list<string>>                                                                            $forbiddenVenuesByTeam
      *                                                                                                                                      teamId → the venue ids that team is FORBIDDEN to play at (P4-272 ④,
      *                                                                                                                                      scope TEAM HARD rules). A HOME fixture posed in one is TEAM_VENUE_FORBIDDEN.
+     * @param array<string, TeamLevel>                                                                               $levelByTeam
+     *                                                                                                                                      teamId → niveau de l'équipe ; une équipe LOISIR est muette pour AWAY_NO_FOOTPRINT
+     *                                                                                                                                      (décision fondateur 2026-10-01).
      *
      * @return list<array<string, mixed>> conflict items ready to serialize
      */
@@ -282,6 +287,7 @@ final class MatchConflictDetector
         array $playerMemberships = [],
         array $clubRules = [],
         array $forbiddenVenuesByTeam = [],
+        array $levelByTeam = [],
     ): array {
         // Two person maps by team. Coaches carry a role (MAIN/ASSISTANT, worst
         // engagement wins, cadrage §8); active players carry PLAYER. Kept apart
@@ -414,7 +420,7 @@ final class MatchConflictDetector
             ...$this->venueUnavailableConflicts($activeFixtures, $unavailabilities),
             ...$this->accessWindowLostConflicts($activeFixtures, $matchWindows),
             ...$this->competitionIncompleteItems($fixtures, $competitions),
-            ...$this->awayNoFootprintItems($activeFixtures, $habitByTeamDay),
+            ...$this->awayNoFootprintItems($activeFixtures, $habitByTeamDay, $levelByTeam),
             ...$this->friendlyOnMatchSlotConflicts($views, $fixtures, $matchWindows),
         ];
     }
@@ -852,14 +858,21 @@ final class MatchConflictDetector
      *
      * @param list<Fixture>                             $fixtures
      * @param array<string, array<int, TeamMatchHabit>> $habitByTeamDay
+     * @param array<string, TeamLevel>                  $levelByTeam    teamId → niveau ; une équipe LOISIR est muette ici
      *
      * @return list<array<string, mixed>>
      */
-    private function awayNoFootprintItems(array $fixtures, array $habitByTeamDay): array
+    private function awayNoFootprintItems(array $fixtures, array $habitByTeamDay, array $levelByTeam): array
     {
         $items = [];
         foreach ($fixtures as $fixture) {
             if (FixtureHomeAway::AWAY !== $fixture->getHomeAway() || $fixture->getKickoffTime() instanceof DateTimeImmutable) {
+                continue;
+            }
+            // Une équipe LOISIR n'a ni calendrier ligue ni habitude à déclarer : son
+            // extérieur sans heure n'est pas un angle mort à nommer (décision fondateur
+            // 2026-10-01) — on ne l'émet pas pour LOISIR_ADULTE/LOISIR_JEUNE.
+            if (\in_array($levelByTeam[$fixture->getTeamId()] ?? null, [TeamLevel::LOISIR_ADULTE, TeamLevel::LOISIR_JEUNE], true)) {
                 continue;
             }
             $day = (int) $fixture->getMatchDate()->format('N');
