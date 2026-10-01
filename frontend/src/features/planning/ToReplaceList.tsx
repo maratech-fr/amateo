@@ -1,5 +1,7 @@
 import { CalendarClock } from "lucide-react";
 
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
+
 import { DAYS, toHourMinute } from "./lib/grid";
 import { type ToReplaceEntry, toReplaceReasonLabel } from "./lib/toReplaceReason";
 
@@ -28,18 +30,20 @@ export function ToReplaceList({ entries, teamName, venueName }: ToReplaceListPro
     return null;
   }
   return (
-    <section
-      className="mb-4 rounded-md border border-warning/40 bg-surface-warning px-3 py-2 text-sm"
-      aria-label={`Séances non reprises du planning de saison (${entries.length})`}
+    <NoticeBanner
+      tone="warning"
+      role="region"
+      ariaLabel={`Séances non reprises du planning de saison (${entries.length})`}
+      className="mb-4"
     >
       <p className="flex items-center gap-1.5 font-medium text-foreground">
         <CalendarClock aria-hidden="true" className="size-4 text-warning" />
         Séances non reprises du planning de saison ({entries.length})
       </p>
-      <p className="mt-0.5 text-xs text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         Elles n'ont pas pu être copiées telles quelles — à replacer sur un créneau libre.
       </p>
-      <ul className="mt-1.5 flex flex-col gap-1">
+      <ul className="flex flex-col gap-1">
         {entries.map((entry, i) => (
           <li
             key={`${entry.teamId}-${entry.dayOfWeek}-${entry.startTime}-${entry.venueId}-${i}`}
@@ -56,6 +60,6 @@ export function ToReplaceList({ entries, teamName, venueName }: ToReplaceListPro
           </li>
         ))}
       </ul>
-    </section>
+    </NoticeBanner>
   );
 }

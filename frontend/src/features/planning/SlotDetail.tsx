@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { WizardStepLink } from "@/features/wizard/WizardStepLink";
 
 import type { Constraint, LockOrigin, MoveViolation, Slot, Venue } from "./api";
@@ -255,35 +256,29 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
           {/* Le déplacement passe sous le verdict du moteur (F2b) : ici le résultat du dernier
               essai. On ne le montre que hors « pending » (le bouton porte déjà l'attente). */}
           {"rejected" === moveState.status ? (
-            <div className="rounded-md border border-destructive/40 bg-surface-destructive p-2 text-sm" role="alert">
+            <NoticeBanner tone="destructive" role="alert">
               <div className="flex items-center gap-2 font-medium text-destructive">
                 <AlertTriangle className="size-4" aria-hidden="true" />
                 <span>Déplacement refusé — le créneau n’a pas bougé.</span>
               </div>
-              <ul className="mt-1 flex list-disc flex-col gap-1 pl-6 text-muted-foreground">
+              <ul className="flex list-disc flex-col gap-1 pl-6 text-muted-foreground">
                 {moveState.violations.map((v, i) => (
                   <li key={`${v.rule}-${i}`}>{v.message}</li>
                 ))}
               </ul>
-            </div>
+            </NoticeBanner>
           ) : null}
 
           {"blocked" === moveState.status ? (
-            <p className="rounded-md border border-warning/40 bg-surface-warning p-2 text-sm text-foreground" role="alert">
-              Une génération est en cours pour ce club — réessayez le déplacement une fois qu’elle est terminée.
-            </p>
+            <NoticeBanner tone="warning" role="alert" message="Une génération est en cours pour ce club — réessayez le déplacement une fois qu’elle est terminée." />
           ) : null}
 
           {"interrupted" === moveState.status ? (
-            <p className="rounded-md border border-warning/40 bg-surface-warning p-2 text-sm text-foreground" role="alert">
-              La vérification a été interrompue avant la réponse — rien n’a été modifié, réessayez.
-            </p>
+            <NoticeBanner tone="warning" role="alert" message="La vérification a été interrompue avant la réponse — rien n’a été modifié, réessayez." />
           ) : null}
 
           {"error" === moveState.status ? (
-            <p className="rounded-md border border-warning/40 bg-surface-warning p-2 text-sm text-foreground" role="alert">
-              Le moteur n’a pas répondu — rien n’a été modifié, réessayez.
-            </p>
+            <NoticeBanner tone="warning" role="alert" message="Le moteur n’a pas répondu — rien n’a été modifié, réessayez." />
           ) : null}
         </div>
         )}

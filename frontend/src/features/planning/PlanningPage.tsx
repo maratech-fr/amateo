@@ -828,7 +828,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
               dessous les compromis NOMMÉS du dernier geste écrit. Le close efface les deux ; le
               geste suivant / le changement de version les remplacent. */}
           {null !== evictionNotice || null !== compromiseNotice ? (
-            <div className="mb-4 flex flex-col gap-2 rounded-md border border-accent/40 bg-surface-accent px-3 py-2 text-sm" role="status">
+            <NoticeBanner tone="accent" role="status" className="mb-4">
               <div className="flex flex-wrap items-center gap-3">
                 {null !== evictionNotice ? (
                   <>
@@ -857,7 +857,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                 </button>
               </div>
               {null !== compromiseNotice ? <CompromiseList compromises={compromiseNotice} /> : null}
-            </div>
+            </NoticeBanner>
           ) : null}
 
           {/* Ce planning a été généré quand un gymnase servait encore la période : ses
