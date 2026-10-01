@@ -18,6 +18,11 @@ import { cn } from "@/shared/lib/utils";
  *    du club (gain, source MANUEL). Même repli AA que `warning` : `text-accent` sur un fond teinté
  *    accent tombe sous 4,5:1 (cf. `AGENTS.md` gotcha #11) ; c'est l'ICÔNE, passée par l'appelant,
  *    qui porte `text-accent` (graphique, ≥ 3:1). Paires verrouillées elles aussi (P4-177).
+ *  - `accent-solid` : `border-accent bg-accent text-accent-foreground` — accent PLEIN (badge mis en
+ *    avant : « Votre offre », « principal », source API FFBB). Même paire accent/accent-foreground
+ *    que les boutons (AA par construction) ; le fond PLEIN (pas de `/NN`) ne tombe pas sous P4-265
+ *    et la bordure `border-accent` se fond dans le fond (pas de liseré visible). ⚠ statique : pas de
+ *    `hover:opacity-90` sur ce fond plein (compositerait l'accent, cf. AGENTS.md gotcha #11).
  *  - `neutral` : `border-border bg-muted text-muted-foreground` — un état informatif.
  *
  * L'icône est passée par l'appelant (aria-hidden — le texte visible EST l'annonce). La pastille
@@ -37,7 +42,7 @@ export function StatusPill({
 }: {
   icon?: ReactNode;
   children: ReactNode;
-  variant?: "warning" | "accent" | "neutral";
+  variant?: "warning" | "accent" | "accent-solid" | "neutral";
   className?: string;
   title?: string;
   "aria-label"?: string;
@@ -47,7 +52,9 @@ export function StatusPill({
       ? "border-warning/50 bg-warning/10 text-foreground"
       : "accent" === variant
         ? "border-accent/50 bg-accent/10 text-foreground"
-        : "border-border bg-muted text-muted-foreground";
+        : "accent-solid" === variant
+          ? "border-accent bg-accent text-accent-foreground"
+          : "border-border bg-muted text-muted-foreground";
   return (
     <span
       title={title}
