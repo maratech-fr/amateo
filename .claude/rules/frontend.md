@@ -47,7 +47,9 @@ paths:
   désactivée motivée), patron APG, P4-164 PR-1, maison des sélecteurs qui dépassent le `<select>`
   natif, recherche intégrée au panneau au-delà de 8 options réelles (P4-198) —, **StatusPill** — la pastille partagée, icône + texte, variantes warning/accent/accent-solid/neutral,
   P4-173 puis P4-177, `accent-solid` (fond accent PLEIN, un badge mis en avant plutôt qu'un état)
-  PR 5/7 série « uniformité des écrans » —, VenueSwatch…) ; `SourceBadge` (AUTO/MANUEL) est désormais lui aussi une maison
+  PR 5/7 série « uniformité des écrans » —, **DayMultiPicker** — le sélecteur multi-jours partagé
+  (`<fieldset>`/`<legend>`, boutons `aria-pressed`, libellé court visible + nom accessible complet,
+  `tone` accent/destructive), PR 6/7 série « uniformité des écrans » —, VenueSwatch…) ; `SourceBadge` (AUTO/MANUEL) est désormais lui aussi une maison
   unique — `features/matches/SourceBadge.tsx` (P4-177, adossée à `StatusPill`), consommée par
   `TravelMatrixModal.tsx` et `OpponentsPage.tsx` (ex-`OpponentTravelCard.tsx`, absorbée le
   2026-09-19 — les deux copies locales d'origine ont disparu) ;
@@ -145,6 +147,18 @@ paths:
   picker d'équipe/gymnase), et une classe de largeur **littérale** en `className` sur ces quatre
   composants rougit — un `cn(...)`/une variable n'est pas couvert par l'AST (choix documenté,
   reste à la revue).
+- 🔴 **Tout choix de jours passe par `DayMultiPicker`, tout libellé de jour par `shared/lib/days.ts`**
+  (`shared/components/ui/day-multi-picker.tsx` — PR 6/7 série « uniformité des écrans »,
+  2026-10-01) : maison unique du sélecteur multi-jours (patron APG toggle button, `<fieldset>`/
+  `<legend>` nommant le groupe, libellé COURT visible « Lun », nom accessible COMPLET « lundi »,
+  `tone` `accent`/`destructive` pour la polarité de l'état pressé, valeurs ISO 1-7 inchangées
+  côté API) et du libellé de jour (`DAYS`, `dayLabelShort`, `dayLabelLong`, `dayLabelLongCap`) —
+  absorbe les tables locales dispersées (wizard, matchs, doléances, club, gymnases, créneaux
+  idéaux), germe exact du bug D-22 (une copie de table « s'arrêtait au samedi »). Gardé par
+  `frontend/src/test/dayPickerGuard.test.ts` (grep statique `src/features/**`/`src/app/**` : un
+  triplet de libellés de jours consécutifs littéraux hors `shared/lib/days.ts` rougit, exemptions
+  nominatives motivées) — hors portée délibérée : les lettres seules d'un en-tête de calendrier
+  (`MonthCalendar`, pas une table de libellés).
 - 🔴 **Les racines de shell ne portent plus `bg-background` depuis le fond d'écran commun**
   (P5-16, `AppLayout.tsx`/`AuthLayout.tsx`) : le fond commun vit sur `body` (`index.css`), et une
   racine qui poserait `bg-background` par-dessus le masquerait entièrement. L'en-tête d'`AppLayout`

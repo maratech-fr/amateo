@@ -1,18 +1,15 @@
 # Documentation technique du flux de génération de planning
 
-Last verified @ 2026-09-29 (P4-272 ③ : `CONTRACT_VERSION` **2.25 → 2.26** — bloc `clubRules` ajouté
-au payload `/place-matches` ; antérieur P4-271 : **2.24 → 2.25** — `slotRotations` retiré du
-payload). Re-confronté contre le code : `CONTRACT_VERSION` = `'2.29'`
-(`ScheduleConstraintBuilder.php:63` ⇄ `engine/CONTRACT_VERSION`) ✓ ; le TTL du verrou
-(`GenerateScheduleHandler.php:62` `LOCK_TTL_MARGIN_SECONDS = 60`, ligne 117
+Last verified @ 2026-10-01 (rotation documentation-update, hors sujet de la PR). Re-confronté contre
+le code : `CONTRACT_VERSION` = `'2.29'` (`ScheduleConstraintBuilder.php:61` ⇄
+`engine/CONTRACT_VERSION`) ✓ ; le TTL du verrou (`GenerateScheduleHandler.php:62`
+`LOCK_TTL_MARGIN_SECONDS = 60`, ligne 117
 `acquire(... getTimeoutSeconds() + self::LOCK_TTL_MARGIN_SECONDS)`) ✓ ; `RedeliveredGenerationTest`
 toujours listé bloquant dans `docs/testing/blocking-tests.md` (§3a-bis) ✓ ; le payload Mercure porte
 toujours exactement **5** champs (`ScheduleProgressPublisher.php:40-44` — `scheduleId`, `status`,
 `score`, `unplaced`, `warnings`, §6.2) ✓ ; le schéma de sortie engine
 `Literal["queued", "generating", "completed", "failed"]` (`engine/app/schemas/output_schema.py:152`,
-§4.2/§5.2) ✓ ; l'abonnement frontend toujours en un seul `EventSource` par sélecteur TEMPLATE du
-club (§6.1, `frontend/src/features/planning/lib/scheduleStream.ts`) ✓. Reste du fichier non
-re-contrôlé cette passe.
+§4.2/§5.2) ✓. Reste du fichier non re-contrôlé cette passe.
 
 > Amateo — Symfony 7 + API Platform + Messenger Redis + Mercure SSE. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
