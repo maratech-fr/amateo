@@ -40,14 +40,11 @@ const LEGIT_EXEMPTIONS: Exemption[] = [
   { path: "features/wizard/steps/PeriodTeams.tsx", reason: "`del` retire l'OVERRIDE d'équipe de période = retour au défaut d'une bascule, pas une suppression destructive" },
   { path: "features/wizard/steps/SlotReservationModal.tsx", reason: "les retraits sont mis EN ATTENTE dans un brouillon (`removed`) et appliqués seulement au clic « Valider » de la modale — pas une suppression immédiate" },
   { path: "features/profile/ProfilePage.tsx", reason: "suppression de compte RGPD confirmée par RÉ-AUTHENTIFICATION (saisie du mot de passe) — garde-fou plus fort qu'une ConfirmDialog" },
+  { path: "features/matches/WeekWorkbench.tsx", reason: "les DEUX chemins de suppression de match confirment déjà DANS leurs enfants — la liste des extérieurs (`AwayList`, sa propre `ConfirmDialog`) et le panneau du match sélectionné (`PlacementPanel`, sa propre `ConfirmDialog` depuis août) ; la confirmation vit un cran plus bas que ce fichier, que le garde ne voit qu'à l'échelle du fichier (PR 5/7 : vérifié, aucune suppression sèche)" },
 ];
 
-// Vraies lacunes N2 hors périmètre de CETTE PR (2/7) — à traiter dans une PR ultérieure de la série.
-const DEFERRED_GAPS: Exemption[] = [
-  { path: "features/wizard/steps/RecapStep.tsx", reason: "retrait immédiat d'une réservation / lot mutualisé du récap, non confirmé — lacune N2 hors périmètre PR 2/7" },
-  { path: "features/matches/WeekWorkbench.tsx", reason: "suppression de match : la liste des extérieurs (enfant `AwayList`) confirme déjà, mais le panneau de match sélectionné supprime sans confirmation — lacune N2 hors périmètre PR 2/7" },
-  { path: "features/coach-wishes/CoachWishesModal.tsx", reason: "retrait immédiat d'un souhait sur la page publique coach (à token), non confirmé — lacune N2 hors périmètre PR 2/7" },
-];
+// Vraies lacunes N2 hors périmètre de CETTE PR — à traiter dans une PR ultérieure de la série.
+const DEFERRED_GAPS: Exemption[] = [];
 
 const EXEMPTIONS: Exemption[] = [...LEGIT_EXEMPTIONS, ...DEFERRED_GAPS];
 

@@ -1,6 +1,7 @@
 import { CheckCircle2, History, Lock, LockOpen, RefreshCw, Trash2 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
+import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { DeleteConfirm } from "@/shared/components/ui/delete-confirm";
 import { Select } from "@/shared/components/ui/select";
@@ -175,13 +176,8 @@ export function PlanningToolbar({
         ) : null}
         {null !== selected ? (
           <span className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5">
-              {isChosen ? <Lock className="size-3" /> : null}
-              {STATUS_LABELS[selected.status]}
-            </span>
-            {!isSeasonPlanType(selected.planType) ? (
-              <span className="rounded-full border border-accent/50 px-2 py-0.5 font-medium text-accent">Période</span>
-            ) : null}
+            <StatusPill icon={isChosen ? <Lock className="size-3" /> : undefined}>{STATUS_LABELS[selected.status]}</StatusPill>
+            {!isSeasonPlanType(selected.planType) ? <StatusPill variant="accent">Période</StatusPill> : null}
           </span>
         ) : null}
         {embedded && canValidate && !isChosen ? (

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import { useCalendarEntry, usePeriodAnchor } from "@/features/cockpit/queries";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
+import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { buildTagTeamIds, resolveConstraintTeamIds, targetsTags } from "@/shared/lib/tagTeamIds";
 import { cn } from "@/shared/lib/utils";
 
@@ -229,9 +230,7 @@ function PeriodConstraintsPanel({
           que le panneau doit éviter — le gestionnaire validerait la période en croyant que
           rien n'est hérité (revue #284 round 2). */}
       {constraintsError ? (
-        <p className="text-xs text-destructive">
-          Impossible de charger les contraintes du planning principal. Elles restent appliquées selon leur réglage actuel — rechargez la page pour les ajuster.
-        </p>
+        <LoadErrorHint>Impossible de charger les contraintes du planning principal. Elles restent appliquées selon leur réglage actuel — rechargez la page pour les ajuster.</LoadErrorHint>
       ) : bodyLoading ? null : 0 === visible.length ? (
         <EmptyHint>Aucune contrainte permanente.</EmptyHint>
       ) : (

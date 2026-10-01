@@ -14,6 +14,7 @@ import { coachFullName } from "@/shared/lib/coachName";
 import { readFailed, readLoading } from "@/shared/lib/readState";
 import { armNavTransition } from "@/shared/stores/navTransitionStore";
 import { useCredits } from "@/shared/credits/useCredits";
+import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
@@ -623,10 +624,9 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                   En portée période, il ne peut jamais apparaître (la portée n'expose aucune
                   version de saison — bug fondateur 2026-08-19). */}
               {!scoped && null !== selectedSchedule && isSeasonPlanType(selectedSchedule.planType) ? (
-                <span className="flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground">
-                  <Star className="size-3" />
+                <StatusPill variant="accent-solid" icon={<Star className="size-3" />}>
                   principal
-                </span>
+                </StatusPill>
               ) : null}
               {/* Pas de plan résolu = rien à renommer : proposer le geste enverrait
                   l'écriture sur un id qu'on n'a pas (c'est ce qui la faisait retomber

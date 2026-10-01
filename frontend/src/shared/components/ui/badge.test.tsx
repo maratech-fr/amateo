@@ -45,6 +45,16 @@ describe("StatusPill", () => {
     expect(pill.className).not.toContain("text-accent");
   });
 
+  it("variante accent-solid : accent PLEIN (bg-accent + text-accent-foreground), sans teinte /NN", () => {
+    render(<StatusPill variant="accent-solid">Votre offre</StatusPill>);
+    const pill = screen.getByText("Votre offre");
+    expect(pill.className).toContain("border-accent");
+    expect(pill.className).toContain("bg-accent");
+    expect(pill.className).toContain("text-accent-foreground");
+    // Fond PLEIN, jamais la teinte /10 (ne tomberait pas sous P4-265).
+    expect(pill.className).not.toContain("bg-accent/10");
+  });
+
   it("transmet title et aria-label au span (le texte visible peut différer de l'annonce)", () => {
     render(
       <StatusPill title="une infobulle" aria-label="annonce complète">

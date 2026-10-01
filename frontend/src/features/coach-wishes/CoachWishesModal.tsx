@@ -10,6 +10,7 @@ import { dayLabel } from "@/features/wizard/lib/days";
 import { groupedCoaches } from "@/features/wizard/lib/ranking";
 import { groupTeamsByTier, tierGroupLabel } from "@/shared/lib/teamTiers";
 import { Button } from "@/shared/components/ui/button";
+import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Modal } from "@/shared/components/ui/modal";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
@@ -45,6 +46,7 @@ export function CoachWishesModal({ mother, weekFilter, onClose }: { mother: Cale
   const [teamFilter, setTeamFilter] = useState<string[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<CoachWish | null>(null);
+  const [toDelete, setToDelete] = useState<CoachWish | null>(null);
 
   const weeks = useMemo(
     () => (null === season ? [] : periodAdjustWeeks(mother.startDate, mother.endDate, season, mother.periodType)),
@@ -198,7 +200,7 @@ export function CoachWishesModal({ mother, weekFilter, onClose }: { mother: Cale
                         >
                           <Pencil className="size-4" />
                         </Button>
-                        <Button type="button" size="icon" variant="ghost" className="size-7 text-destructive" aria-label="Supprimer" disabled={deleteWish.isPending} onClick={() => deleteWish.mutate(w.id)}>
+                        <Button type="button" size="icon" variant="ghost" className="size-7 text-destructive" aria-label="Supprimer" disabled={deleteWish.isPending} onClick={() => setToDelete(w)}>
                           <Trash2 className="size-4" />
                         </Button>
                       </div>
@@ -210,6 +212,21 @@ export function CoachWishesModal({ mother, weekFilter, onClose }: { mother: Cale
           );
         })}
       </div>
+
+      <ConfirmDialog
+        open={null !== toDelete}
+        title="Supprimer cette doléance ?"
+        description={null !== toDelete ? `La doléance de « ${teamName.get(toDelete.teamId) ?? "l'équipe"} » sera définitivement retirée.` : undefined}
+        confirmLabel="Supprimer"
+        destructive
+        onConfirm={() => {
+          if (null !== toDelete) {
+            deleteWish.mutate(toDelete.id);
+          }
+          setToDelete(null);
+        }}
+        onCancel={() => setToDelete(null)}
+      />
     </Modal>
   );
 }

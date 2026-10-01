@@ -1,5 +1,6 @@
 import { CalendarClock } from "lucide-react";
 
+import { StatusPill } from "@/shared/components/ui/badge";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 
 import { DAYS, toHourMinute } from "./lib/grid";
@@ -54,9 +55,7 @@ export function ToReplaceList({ entries, teamName, venueName }: ToReplaceListPro
               {DAY_LABEL.get(entry.dayOfWeek) ?? "?"} {toHourMinute(entry.startTime)}
             </span>
             <span className="text-muted-foreground">· {venueName(entry.venueId)}</span>
-            <span className="rounded-full border border-warning/50 px-2 py-0.5 text-xs text-foreground">
-              {toReplaceReasonLabel(entry.reason)}
-            </span>
+            <StatusPill variant="warning">{toReplaceReasonLabel(entry.reason)}</StatusPill>
           </li>
         ))}
       </ul>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { errorMessage } from "@/shared/lib/errorMessage";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
+import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Spinner } from "@/shared/components/ui/spinner";
@@ -420,7 +421,7 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
           {/* Corps défilant : la matrice N×N. Gymnases en LIGNES et en COLONNES (même ordre),
               diagonale « — », symétrique (A→B = B→A, même `pairKey`). En-têtes collants au scroll. */}
           {0 === rows.length ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">Aucun gymnase ne correspond à « {filter.trim()} ».</p>
+            <EmptyHint className="py-4 text-center">Aucun gymnase ne correspond à « {filter.trim()} ».</EmptyHint>
           ) : (
             // Défilement horizontal accepté sous 360 px (garde-fou existant, bureau d'abord).
             <div className="max-h-[24rem] overflow-auto rounded-md border border-border">

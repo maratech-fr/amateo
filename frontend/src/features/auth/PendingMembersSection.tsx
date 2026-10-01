@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Card, CardContent } from "@/shared/components/ui/card";
+import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Select } from "@/shared/components/ui/select";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { ASSIGNABLE_ROLES, roleLabel, type AssignableRole } from "@/shared/lib/roles";
@@ -34,7 +35,7 @@ export function PendingMembersSection() {
   }
 
   if (isError) {
-    return <p role="alert" className="py-4 text-center text-sm text-destructive">Impossible de charger les demandes. Réessayez plus tard.</p>;
+    return <LoadErrorHint className="justify-center py-4">Impossible de charger les demandes. Réessayez plus tard.</LoadErrorHint>;
   }
 
   const members = data?.members ?? [];

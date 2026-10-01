@@ -1,6 +1,7 @@
 import { Spinner } from "@/shared/components/ui/spinner";
 import { FichePage } from "@/shared/components/ui/fiche-page";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
+import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { PageHeader } from "@/shared/components/ui/page-header";
 
 import { useReleaseNotes } from "./queries";
@@ -22,12 +23,7 @@ export function ReleaseNotesPage() {
           <Spinner className="size-4" /> Chargement…
         </div>
       ) : isError ? (
-        <p className="text-sm text-destructive" role="alert">
-          Le journal n'a pas pu être chargé.{" "}
-          <button type="button" className="underline" onClick={() => void refetch()}>
-            Réessayer
-          </button>
-        </p>
+        <LoadErrorHint onRetry={() => void refetch()}>Le journal n'a pas pu être chargé.</LoadErrorHint>
       ) : 0 === data.items.length ? (
         <EmptyHint>Aucune nouveauté pour le moment.</EmptyHint>
       ) : (

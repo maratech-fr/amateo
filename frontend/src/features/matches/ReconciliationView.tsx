@@ -2,6 +2,7 @@ import { ArrowLeft, CalendarPlus, FileWarning, Info, Radar } from "lucide-react"
 import { useState } from "react";
 import { useNavigate } from "react-router";
 
+import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
@@ -91,10 +92,9 @@ export function ReconciliationView() {
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <h2 className="text-base font-semibold">Rencontres publiées par la FFBB</h2>
         {/* Provenance — le gestionnaire sait toujours d'où vient ce qu'il regarde. */}
-        <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground">
-          <Radar className="size-3" aria-hidden="true" />
+        <StatusPill variant="accent-solid" icon={<Radar className="size-3" aria-hidden="true" />}>
           Source : API FFBB
-        </span>
+        </StatusPill>
       </div>
 
       {/* Bandeau d'honnêteté — INFO, pas alarme (role=status, ton accent). */}

@@ -45,8 +45,9 @@ paths:
   **primitives** `shared/components/ui/*` (Button, Modal, Select, Input, Card, StepRail, Menu APG,
   **Listbox** — sélecteur riche à choix unique (couleur/icône, compte, sous-ligne, option
   désactivée motivée), patron APG, P4-164 PR-1, maison des sélecteurs qui dépassent le `<select>`
-  natif, recherche intégrée au panneau au-delà de 8 options réelles (P4-198) —, **StatusPill** — la pastille partagée, icône + texte, variantes warning/accent/neutral,
-  P4-173 puis P4-177 —, VenueSwatch…) ; `SourceBadge` (AUTO/MANUEL) est désormais lui aussi une maison
+  natif, recherche intégrée au panneau au-delà de 8 options réelles (P4-198) —, **StatusPill** — la pastille partagée, icône + texte, variantes warning/accent/accent-solid/neutral,
+  P4-173 puis P4-177, `accent-solid` (fond accent PLEIN, un badge mis en avant plutôt qu'un état)
+  PR 5/7 série « uniformité des écrans » —, VenueSwatch…) ; `SourceBadge` (AUTO/MANUEL) est désormais lui aussi une maison
   unique — `features/matches/SourceBadge.tsx` (P4-177, adossée à `StatusPill`), consommée par
   `TravelMatrixModal.tsx` et `OpponentsPage.tsx` (ex-`OpponentTravelCard.tsx`, absorbée le
   2026-09-19 — les deux copies locales d'origine ont disparu) ;
@@ -102,11 +103,14 @@ paths:
   (boutons `Enregistrer`/`Annuler` en texte) et le bouton d'enregistrement de `ConstraintsStep`.
   N2 : `ConfirmDialog` avant suppression d'un créneau idéal, d'une fenêtre d'accès match
   (`MatchWindowsEditor`), d'une passerelle (`TeamLinksSection`), d'une indisponibilité de gymnase
-  (`VenueUnavailabilityCard`) — seule exception : retirer une pastille de LIAISON coach/joueur↔équipe
-  (`CoachesStep`) reste immédiate, geste réversible sans conséquence. N2 gardé par
-  `frontend/src/test/deleteConfirmGuard.test.ts` (grep statique `src/features/**` : un fichier qui
-  lie ET invoque un `useDelete…` sans référencer `ConfirmDialog`/`DeleteConfirm` rougit, sauf
-  exemption nominative motivée) ; N1 n'a pas de garde automatique, seulement la revue.
+  (`VenueUnavailabilityCard`), d'une réservation ou d'un lot mutualisé au récap (`RecapStep`) et
+  d'une doléance coach (`CoachWishesModal`, PR 5/7) — seule exception : retirer une pastille de
+  LIAISON coach/joueur↔équipe (`CoachesStep`) reste immédiate, geste réversible sans conséquence.
+  `WeekWorkbench` (suppression de match) est une exemption légitime du garde, pas une lacune : ses
+  deux chemins de suppression confirment déjà DANS leurs enfants (`AwayList`, `PlacementPanel`).
+  N2 gardé par `frontend/src/test/deleteConfirmGuard.test.ts` (grep statique `src/features/**` : un
+  fichier qui lie ET invoque un `useDelete…` sans référencer `ConfirmDialog`/`DeleteConfirm`
+  rougit, sauf exemption nominative motivée) ; N1 n'a pas de garde automatique, seulement la revue.
 - 🔴 **Tout bandeau d'information passe par `NoticeBanner`** (`shared/components/ui/notice-banner.tsx`
   — fond opaque `bg-surface-<ton>`, bordure, rayon, padding, texte `text-foreground`), jamais une
   boîte faite main (série « uniformité des écrans », PR 4/7, 2026-10-01 — les bandeaux de
@@ -114,6 +118,23 @@ paths:
   `frontend/src/test/bannerPrimitiveGuard.test.ts` (grep statique `src/features/**` hors console
   admin : un `role="status"`/`"alert"` + une classe de bordure de ton sur la MÊME ligne hors
   `NoticeBanner` rougit).
+- 🔴 **Toute pastille d'état passe par `StatusPill`** (`shared/components/ui/badge.tsx` — icône +
+  texte, bordure + fond teinté, variantes warning/accent/accent-solid/neutral), jamais un
+  `<span>` arrondi recodé à la main (série « uniformité des écrans », PR 5/7, 2026-10-01 —
+  `SocleDeviationPanel`, `ToReplaceList` et les pastilles accent plein de `ClubPage`/
+  `MembersSection`/`ReconciliationView` ramenées dessus ; au passage, les derniers états vide/
+  échec/chargement faits main de `PendingMembersSection`/`ClubPage`/`ReleaseNotesPage`/
+  `ConfigurationPage` migrent sur `EmptyHint`/`LoadErrorHint`/`Spinner`). Gardé par
+  `frontend/src/test/pillPrimitiveGuard.test.ts` (grep statique `src/features/**` : une ligne
+  portant à la fois la FORME d'une pastille (`rounded-full` + `text-xs`) ET une classe de TON
+  (teinte/bordure warning|destructive|accent|success, ou une surface `bg-surface-*`) hors
+  `StatusPill` rougit — les pastilles NEUTRES `bg-muted`/`border-border` ne sont PAS attrapées,
+  largeur de grep documentée, leur passage relève de la revue). Exemptions nominatives :
+  `features/admin/**` (console superadmin, hors écrans de l'app club), `CoachesStep` (pastilles de
+  LIAISON coach/joueur↔équipe, hors contrat StatusPill), `CampaignDialog` (puces de FILTRE
+  interactives, relèvent de `FilterChip`), `DriftBanner` (bouton-bascule, pas une pastille d'état).
+  Hors portée, délibérément : les quatre indices de chargement restés en TEXTE (`ClubPage` §
+  statistiques et § offres, `PeriodTeams`, `PeriodVenues`).
 - 🔴 **La largeur d'un sélecteur passe par `wrapperClassName`, jamais `className`** (`Select`,
   `Listbox`, `TeamSelect`, `VenueSelect` — PR 3/7 de la série « uniformité des sélecteurs »,
   2026-10-01) : le contrôle intérieur (`<select>`/trigger) est toujours `w-full`, une classe

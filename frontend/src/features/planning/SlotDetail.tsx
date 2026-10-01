@@ -1,6 +1,7 @@
 import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Lock, LockOpen, Move, X } from "lucide-react";
 import { useState } from "react";
 
+import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
@@ -92,7 +93,7 @@ function ConstraintList({ label, items, describe }: { label: string; items: Cons
             <li key={c.id} className="flex flex-col gap-0.5 py-2 text-sm first:pt-0.5 last:pb-0.5">
               <div className="flex items-start justify-between gap-2">
                 <span className="min-w-0">{what ?? c.name}</span>
-                <span className="mt-0.5 shrink-0 rounded-full bg-muted px-1.5 text-xs text-muted-foreground">{"HARD" === c.ruleType ? "obligatoire" : "préférence"}</span>
+                <StatusPill className="mt-0.5 shrink-0">{"HARD" === c.ruleType ? "obligatoire" : "préférence"}</StatusPill>
               </div>
               {/* P2-25 lien B — un problème DÉSIGNÉ (la règle qui contraint ce créneau) mène à son
                   lieu de correction : l'éditeur du wizard, ouvert PRÉ-REMPLI sur elle. Rattaché
