@@ -211,7 +211,8 @@ export function SharedTrainingBlockPanel({
                 <Select
                   aria-label="Séances communes"
                   aria-describedby="block-sessions-help"
-                  className="mt-0.5 h-8 w-40"
+                  className="mt-0.5 h-8"
+                  wrapperClassName="w-40"
                   disabled={!sessionsReady}
                   value={String(effectiveK)}
                   onChange={(e) => setCommonSessions(Number(e.target.value) || 1)}

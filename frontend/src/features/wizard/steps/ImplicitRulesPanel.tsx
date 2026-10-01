@@ -172,7 +172,8 @@ function WellbeingRuleRow({
             {THRESHOLD_BOUNDS[threshold.field].label}
             <Select
               aria-label={`${THRESHOLD_BOUNDS[threshold.field].label} — ${meta.title}`}
-              className="h-8 w-16"
+              className="h-8"
+              wrapperClassName="w-16"
               value={String(threshold.value)}
               disabled={readOnly}
               onChange={(e) => onThreshold(setting, Number(e.target.value))}

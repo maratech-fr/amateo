@@ -167,7 +167,7 @@ export function FbiEntryList({ fixtures, corrections, teams, venues, competition
       {teamOptions.length > 1 ? (
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           Équipe
-          <Select aria-label="Filtrer par équipe" className="h-9 w-48" value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
+          <Select aria-label="Filtrer par équipe" className="h-9" wrapperClassName="w-48" value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
             <option value="">Toutes les équipes</option>
             {teamOptions.map((t) => (
               <option key={t.id} value={t.id}>

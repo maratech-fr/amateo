@@ -80,7 +80,7 @@ export function MembersSection() {
                       </label>
                       <Select
                         id={roleFieldId}
-                        className="w-40"
+                        wrapperClassName="w-40"
                         value={selectValue}
                         disabled={busy || selfIsOnlyManager}
                         title={selfIsOnlyManager ? SELF_LAST_MANAGER_HINT : undefined}

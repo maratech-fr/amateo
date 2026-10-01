@@ -7,12 +7,15 @@ import { ensureValidated, loginSeededClub, registerAndVerify, uniqueAra } from "
 /**
  * P4-271 — les lignes compactes tiennent sur UNE ligne à la largeur bureau (1280 px). jsdom
  * ne calcule aucune mise en page (`boundingBox` y vaut 0), donc le reflow d'une ligne ne se
- * mesure qu'en Playwright. Deux régressions gardées :
+ * mesure qu'en Playwright. Trois régressions gardées :
  *  - l'étape Coachs : équipe / rôle / Lier partagent le MÊME offsetTop (le `wrapperClassName`
  *    de la régression 2026-09-06 : un TeamSelect pleine largeur poussait « Lier » à la ligne
  *    suivante) ;
  *  - une contrainte au repos tient sur une seule ligne (résumé + ✎ + 🗑, jamais un formulaire
- *    déplié en permanence).
+ *    déplié en permanence) ;
+ *  - la ligne d'ajout d'une interdiction de gymnase (section Équipes) : équipe + gymnase +
+ *    « Interdire » sur la même ligne (PR 3/7 « uniformité des sélecteurs », largeur en
+ *    `wrapperClassName` — une largeur restée en `className` n'aurait pas tenu la boîte flex).
  */
 test.use({ viewport: { width: 1280, height: 900 } });
 
@@ -92,4 +95,36 @@ test("contraintes : une règle au repos tient sur une seule ligne (1280 px)", as
   // Nettoyage : on lève la règle qu'on vient de créer (la base de DEV n'est pas réinitialisée).
   await page.getByRole("button", { name: "Supprimer" }).first().click();
   await page.getByRole("dialog").getByRole("button", { name: "Supprimer", exact: true }).click();
+});
+
+test("contraintes équipes : équipe, gymnase et « Interdire » sur la même ligne (1280 px)", async ({ page }) => {
+  test.setTimeout(240_000);
+
+  await loginSeededClub(page);
+  await ensureValidated(page);
+
+  // Section Équipes : la ligne d'ajout d'une interdiction de gymnase par équipe. Depuis la
+  // PR 3/7 « uniformité des sélecteurs », équipe et gymnase passent par TeamSelect/VenueSelect
+  // (triggers `role="button"`, largeur portée par `wrapperClassName="min-w-32"`) : on garde que
+  // les deux sélecteurs riches et le bouton « Interdire » tiennent bien sur UNE ligne — une
+  // largeur restée en `className` serait allée au bouton interne, jamais à la boîte que la ligne
+  // flex mesure, et aurait pu faire déborder « Interdire » (le piège que le lint garde en amont).
+  await page.goto("/matchs/contraintes?section=equipes");
+
+  const interdire = page.getByRole("button", { name: "Interdire" });
+  await expect(interdire).toBeVisible({ timeout: 15_000 });
+
+  // La ligne d'ajout (div.flex) est le parent direct du bouton « Interdire » ; les deux sélecteurs
+  // riches en sont descendants (enveloppés dans leur `wrapperClassName`).
+  const row = interdire.locator("xpath=..");
+  const team = row.getByRole("button", { name: /Équipe/ });
+  const venue = row.getByRole("button", { name: /Gymnase interdit/ });
+  await expect(team).toBeVisible();
+  await expect(venue).toBeVisible();
+
+  const [teamTop, venueTop, interdireTop] = await Promise.all([topOf(team), topOf(venue), topOf(interdire)]);
+  // items-center : les trois contrôles partagent la même ligne → même offsetTop (tolérance 4 px).
+  expect(teamTop).toBeGreaterThan(0);
+  expect(Math.abs(teamTop - venueTop)).toBeLessThanOrEqual(4);
+  expect(Math.abs(teamTop - interdireTop)).toBeLessThanOrEqual(4);
 });

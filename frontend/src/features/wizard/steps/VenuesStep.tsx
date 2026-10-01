@@ -165,7 +165,7 @@ function SlotEditor({ slot, canSplit, otherSlots, onClose }: { slot: VenueTraini
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <label className="text-xs text-muted-foreground">
           Jour
-          <Select aria-label="Jour" className="mt-0.5 h-9 w-28" value={day} onChange={(e) => (setDay(Number(e.target.value)), setError(null))}>
+          <Select aria-label="Jour" className="mt-0.5 h-9" wrapperClassName="w-28" value={day} onChange={(e) => (setDay(Number(e.target.value)), setError(null))}>
             {/* Les SEPT jours, lus de la géométrie partagée. Ce select portait sa PROPRE
                 copie amputée du dimanche : un créneau du dimanche — désormais posable —
                 s'y ouvrait sur un champ VIDE, et le jour n'était pas rattrapable (P4-37). */}
@@ -182,7 +182,7 @@ function SlotEditor({ slot, canSplit, otherSlots, onClose }: { slot: VenueTraini
         </label>
         <label className="text-xs text-muted-foreground">
           Durée
-          <Select aria-label="Durée" className="mt-0.5 h-9 w-28" value={duration} onChange={(e) => (setDuration(Number(e.target.value)), setError(null))}>
+          <Select aria-label="Durée" className="mt-0.5 h-9" wrapperClassName="w-28" value={duration} onChange={(e) => (setDuration(Number(e.target.value)), setError(null))}>
             {durationOptions(duration, slot.durationMinutes).map((d) => (
               <option key={d} value={d}>
                 {formatDuration(d)}
@@ -520,7 +520,7 @@ function VenuesEditor() {
             <span className="text-xs font-medium text-muted-foreground">
               Gymnases à proximité (FFBB{null != nearbyQuery.data?.radiusKm ? `, ${nearbyQuery.data.radiusKm} km` : ""}) — cliquez pour ajouter, renommez ensuite à votre main :
             </span>
-            <Select aria-label="Rayon de recherche" className="ml-auto h-7 w-28 text-xs" value={nearbyRadius ?? "auto"} onChange={(e) => setNearbyRadius("auto" === e.target.value ? null : Number(e.target.value))}>
+            <Select aria-label="Rayon de recherche" className="ml-auto h-7 text-xs" wrapperClassName="w-28" value={nearbyRadius ?? "auto"} onChange={(e) => setNearbyRadius("auto" === e.target.value ? null : Number(e.target.value))}>
               <option value="auto">Auto</option>
               {[3, 5, 10, 20].map((km) => (
                 <option key={km} value={km}>
@@ -720,7 +720,7 @@ function VenuesEditor() {
               Capacity is set per-slot in the edit panel (a new slot is always 1). */
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <span className="text-xs text-muted-foreground">À poser :</span>
-            <Select aria-label="Durée à poser" className="h-9 w-24" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
+            <Select aria-label="Durée à poser" className="h-9" wrapperClassName="w-24" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
               {DURATIONS.map((d) => (
                 <option key={d} value={d}>
                   {formatDuration(d)}

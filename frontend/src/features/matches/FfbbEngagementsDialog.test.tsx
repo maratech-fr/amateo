@@ -125,7 +125,8 @@ describe("RMM-0 — lisibilité de l'appariement (B1/B2/B4)", () => {
     renderWithProviders(<FfbbEngagementsDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
 
     const select = await screen.findByRole("button", { name: /Équipe pour Pré régionale masculine/ });
-    expect(select).toHaveClass("w-52");
+    // La largeur vit désormais sur la BOÎTE (wrapperClassName), pas sur le trigger interne (PR 3/7).
+    expect(select.parentElement).toHaveClass("w-52");
     // La valeur pré-remplie (SM2) se lit sur le trigger sans ouvrir la liste.
     expect(select).toHaveAccessibleName(/SM2/);
   });

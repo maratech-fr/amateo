@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { Modal } from "@/shared/components/ui/modal";
+import { Select } from "@/shared/components/ui/select";
 import { TeamSelect } from "@/shared/components/ui/team-select";
 
 import type { Competition, Fixture, HomeAway, PriorityTier, Team } from "./api";
@@ -88,10 +89,10 @@ export function FixtureFormDialog({ teams, tiers, competitions, fixture = null, 
 
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-muted-foreground">Domicile / Extérieur</span>
-          <select aria-label="Domicile ou extérieur" className={fieldClass} value={homeAway} onChange={(e) => setHomeAway(e.target.value as HomeAway)}>
+          <Select aria-label="Domicile ou extérieur" value={homeAway} onChange={(e) => setHomeAway(e.target.value as HomeAway)}>
             <option value="HOME">Domicile</option>
             <option value="AWAY">Extérieur</option>
-          </select>
+          </Select>
         </label>
 
         <label className="flex flex-col gap-1 text-sm">
@@ -101,14 +102,14 @@ export function FixtureFormDialog({ teams, tiers, competitions, fixture = null, 
 
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-muted-foreground">Compétition (vide = amical)</span>
-          <select aria-label="Compétition" className={fieldClass} value={competitionId ?? ""} onChange={(e) => setCompetitionId(e.target.value)}>
+          <Select aria-label="Compétition" value={competitionId ?? ""} onChange={(e) => setCompetitionId(e.target.value)}>
             <option value="">Amical</option>
             {teamCompetitions.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
 
         {editing && "PLACED" === fixture.status && "HOME" !== homeAway ? (

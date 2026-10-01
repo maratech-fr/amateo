@@ -75,7 +75,7 @@ export function MatchWindowsEditor({ venueId }: MatchWindowsEditorProps) {
       <div className="flex items-end gap-2">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           Jour
-          <Select aria-label="Jour de la fenêtre match" className="h-8 w-32" value={dayOfWeek} onChange={(e) => setDayOfWeek(Number(e.target.value))}>
+          <Select aria-label="Jour de la fenêtre match" className="h-8" wrapperClassName="w-32" value={dayOfWeek} onChange={(e) => setDayOfWeek(Number(e.target.value))}>
             {[1, 2, 3, 4, 5, 6, 7].map((day) => (
               <option key={day} value={day}>
                 {DAY_LABELS[day]}

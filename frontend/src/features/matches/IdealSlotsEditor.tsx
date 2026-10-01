@@ -166,7 +166,7 @@ function SlotFields({
       {weekendAlternates ? (
         <label className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
           Semaine
-          <Select aria-label={`Semaine du créneau idéal de ${teamName}`} className="h-8 w-36" value={week} onChange={(e) => setWeek(e.target.value as MatchWeek)}>
+          <Select aria-label={`Semaine du créneau idéal de ${teamName}`} className="h-8" wrapperClassName="w-36" value={week} onChange={(e) => setWeek(e.target.value as MatchWeek)}>
             <option value="A">{WEEK_LABELS.A}</option>
             <option value="B">{WEEK_LABELS.B}</option>
           </Select>
@@ -175,7 +175,7 @@ function SlotFields({
 
       <label className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
         Jour
-        <Select aria-label={`Jour du créneau idéal de ${teamName}`} className="h-8 w-28" value={day} onChange={(e) => setDay(Number(e.target.value))}>
+        <Select aria-label={`Jour du créneau idéal de ${teamName}`} className="h-8" wrapperClassName="w-28" value={day} onChange={(e) => setDay(Number(e.target.value))}>
           {[1, 2, 3, 4, 5, 6, 7].map((d) => (
             <option key={d} value={d}>
               {DAY_LABELS[d]}

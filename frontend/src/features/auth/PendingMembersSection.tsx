@@ -65,7 +65,7 @@ export function PendingMembersSection() {
                   </label>
                   <Select
                     id={roleFieldId}
-                    className="w-40"
+                    wrapperClassName="w-40"
                     value={role}
                     disabled={busy}
                     onChange={(e) => setRoles((prev) => ({ ...prev, [member.id]: e.target.value as AssignableRole }))}

@@ -456,7 +456,7 @@ function PeriodVenuePanel({
             l'éditeur — un créneau neuf vaut toujours 1, comme en saison. */}
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground">À poser :</span>
-          <Select aria-label="Durée à poser" className="h-9 w-24" value={posingDuration} onChange={(e) => onPosingDuration(Number(e.target.value))}>
+          <Select aria-label="Durée à poser" className="h-9" wrapperClassName="w-24" value={posingDuration} onChange={(e) => onPosingDuration(Number(e.target.value))}>
             {DURATIONS.map((d) => (
               <option key={d} value={d}>
                 {formatDuration(d)}
@@ -677,7 +677,7 @@ function PeriodSlotEditor({
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <label className="text-xs text-muted-foreground">
           Jour
-          <Select aria-label="Jour" className="mt-0.5 h-9 w-28" value={day} onChange={(e) => (setDay(Number(e.target.value)), setError(null))}>
+          <Select aria-label="Jour" className="mt-0.5 h-9" wrapperClassName="w-28" value={day} onChange={(e) => (setDay(Number(e.target.value)), setError(null))}>
             {/* Idem `VenuesStep` : ce select filtrait le dimanche pour son compte, alors
                 que la grille le rend désormais (P4-37). Un créneau du dimanche s'y ouvrait
                 sur un champ vide. */}
@@ -694,7 +694,7 @@ function PeriodSlotEditor({
         </label>
         <label className="text-xs text-muted-foreground">
           Durée
-          <Select aria-label="Durée" className="mt-0.5 h-9 w-28" value={duration} onChange={(e) => (setDuration(Number(e.target.value)), setError(null))}>
+          <Select aria-label="Durée" className="mt-0.5 h-9" wrapperClassName="w-28" value={duration} onChange={(e) => (setDuration(Number(e.target.value)), setError(null))}>
             {durationOptions(duration, slot.durationMinutes).map((d) => (
               <option key={d} value={d}>
                 {formatDuration(d)}

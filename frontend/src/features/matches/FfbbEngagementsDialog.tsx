@@ -128,7 +128,7 @@ export function FfbbEngagementsDialog({ teams, tiers, onClose }: FfbbEngagements
                       // La valeur sélectionnée se lit sans ouvrir le select (§6bis B4) : élargi,
                       // et un `title` en secours pour le nom d'équipe qui déborderait encore.
                       title={"" !== chosen ? teamName(chosen) : "Non rattachée"}
-                      className="w-52 shrink-0"
+                      wrapperClassName="w-52 shrink-0"
                       teams={teams}
                       tiers={tiers}
                       placeholder="Non rattachée"

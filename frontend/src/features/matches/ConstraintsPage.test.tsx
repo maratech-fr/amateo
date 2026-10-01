@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
 
-import type { ClubLeagueWindow, Coach, MatchConstraint, MatchConstraintCoherence, Team, Venue } from "./api";
+import type { ClubLeagueWindow, Coach, MatchConstraint, MatchConstraintCoherence, PriorityTier, Team, Venue } from "./api";
 import { ConstraintsPage } from "./ConstraintsPage";
 
 const createWindow = vi.fn();
@@ -18,6 +18,9 @@ const rulesState: { data: MatchConstraint[] | undefined; isError: boolean } = { 
 const coherenceState: { data: MatchConstraintCoherence } = { data: { byRule: [], byHabit: [] } };
 const teamsState: { data: Team[] | undefined; isError: boolean } = { data: [], isError: false };
 const venuesState: { data: Venue[] | undefined; isError: boolean } = { data: [], isError: false };
+// Les paliers de rang alimentent le groupage du `TeamSelect` de la ligne d'ajout ; une liste
+// vide ⇒ liste plate (aucun groupe), ce qui suffit ici — on n'y teste que la valeur choisie.
+const tiersState: { data: PriorityTier[] | undefined; isError: boolean } = { data: [], isError: false };
 const coachesState: { data: Coach[] | undefined; isError: boolean } = { data: [], isError: false };
 // P4-271 — le réglage d'affichage A/B vient de la session (`me.club.weekendAlternates`).
 const meState: { weekendAlternates: boolean } = { weekendAlternates: true };
@@ -43,9 +46,10 @@ vi.mock("./queries", () => ({
   useCreateMatchConstraint: () => ({ mutate: createRule, isPending: false }),
   useUpdateMatchConstraint: () => ({ mutate: updateRule, isPending: false }),
   useDeleteMatchConstraint: () => ({ mutate: deleteRule, isPending: false }),
-  // Section Équipes (P4-272 ④) : équipes + gymnases pour les sélecteurs d'interdiction.
+  // Section Équipes (P4-272 ④) : équipes + gymnases + paliers pour les sélecteurs d'interdiction.
   useTeams: () => ({ ...teamsState, refetch: vi.fn() }),
   useVenues: () => ({ ...venuesState, refetch: vi.fn() }),
+  usePriorityTiers: () => ({ ...tiersState, refetch: vi.fn() }),
   // Section Coachs (P4-272 ⑤) : entraîneurs pour le sélecteur d'indisponibilité.
   useCoaches: () => ({ ...coachesState, refetch: vi.fn() }),
 }));
@@ -251,8 +255,13 @@ describe("ConstraintsPage — section Équipes (P4-272 ④)", () => {
     venuesState.data = [venueOf("v1", "Gymnase A")];
     openEquipes();
 
-    await user.selectOptions(screen.getByLabelText("Équipe"), "t1");
-    await user.selectOptions(screen.getByLabelText("Gymnase interdit"), "v1");
+    // Équipe et gymnase passent par TeamSelect/VenueSelect (Listbox) : on ouvre le trigger de la
+    // ligne d'ajout puis on clique l'option (le panneau est porté sur `document.body`).
+    const addRow = screen.getByRole("button", { name: "Interdire" }).closest("div") as HTMLElement;
+    await user.click(within(addRow).getByRole("button", { name: /Équipe/ }));
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: "SM1" }));
+    await user.click(within(addRow).getByRole("button", { name: /Gymnase interdit/ }));
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Gymnase A" }));
     await user.click(screen.getByRole("button", { name: "Interdire" }));
 
     expect(createRule).toHaveBeenCalledWith(
