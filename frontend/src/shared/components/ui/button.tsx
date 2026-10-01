@@ -30,6 +30,10 @@ const buttonVariants = cva(
         sm: "h-9 px-3",
         lg: "h-11 px-6",
         icon: "h-10 w-10",
+        // Bouton-icône de LIGNE : 36 px (= `h-9`), pour s'aligner sur les champs/sélecteurs/boutons
+        // d'une même ligne (décision fondateur B, série « uniformité des écrans » PR 7/7). `icon`
+        // (40 px) reste le bouton-icône AUTONOME ; une ligne dense garde son `size-8` nommé localement.
+        "icon-sm": "size-9",
       },
     },
     defaultVariants: { variant: "default", size: "default" },
