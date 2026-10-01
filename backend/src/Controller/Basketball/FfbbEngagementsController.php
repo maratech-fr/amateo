@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller\Basketball;
 
+use App\Enum\TeamLevel;
 use App\Controller\ResolvesCurrentClubTrait;
 use App\Entity\Competition;
 use App\Entity\Fixture;
@@ -11,12 +12,14 @@ use App\Entity\Season;
 use App\Entity\Team;
 use App\Enum\CompetitionType;
 use App\Repository\ClubRepository;
+use App\Service\Basketball\EngagementLevelDeducer;
 use App\Service\Basketball\FbiDivisionSignature;
 use App\Service\Basketball\FfbbEngagementReader;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
 use App\Service\SocleGuard;
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -65,6 +68,7 @@ final class FfbbEngagementsController extends AbstractController
         private readonly SocleGuard $socleGuard,
         private readonly FfbbEngagementReader $reader,
         private readonly FbiDivisionSignature $divisionSignature,
+        private readonly EngagementLevelDeducer $levelDeducer,
     ) {}
 
     #[Route('/api/ffbb/engagements', name: 'api_ffbb_engagements', methods: ['GET'])]
@@ -110,7 +114,12 @@ final class FfbbEngagementsController extends AbstractController
             }
         }
 
-        $engagements = [];
+        // First pass: resolve each row's suggestion + the level its FFBB line deduces
+        // (null unless an eligible YOUNG championship/brassage — D1/D3). Collect the
+        // suggested team ids and competition ids to batch-read levels and match dates.
+        $prepared = [];
+        $teamIds = [];
+        $competitionIds = [];
         foreach ($rows as $row) {
             // Suggestion priority (C1): (a) a Competition already paired to THIS
             // ffbb id → idempotent re-open ; (b) strict normalized canonical-name
@@ -129,10 +138,76 @@ final class FfbbEngagementsController extends AbstractController
                     $source = $suggested instanceof Competition ? 'fbi' : null;
                 }
             }
-            $engagements[] = $row + [
-                'suggestionSource' => $source,
-                'suggestedTeamId' => $suggested?->getTeamId(),
-                'suggestedCompetitionId' => $suggested?->getId(),
+
+            $deduced = $this->levelDeducer->deduce($row['category'], $row['level'], $row['gender'], $row['competitionName']);
+            $suggestedTeamId = $suggested?->getTeamId();
+            $suggestedCompetitionId = $suggested?->getId();
+            if (null !== $suggestedTeamId) {
+                $teamIds[$suggestedTeamId] = true;
+            }
+            if (null !== $suggestedCompetitionId) {
+                $competitionIds[$suggestedCompetitionId] = true;
+            }
+
+            $prepared[] = [
+                'row' => $row,
+                'source' => $source,
+                'suggestedTeamId' => $suggestedTeamId,
+                'suggestedCompetitionId' => $suggestedCompetitionId,
+                'deduced' => $deduced,
+            ];
+        }
+
+        // Batch the suggested teams' current level and the latest match date per
+        // suggested competition (the D4 divergence tie-break key).
+        $teamLevels = [];
+        foreach ($this->entityManager->getRepository(Team::class)->findBy(['id' => array_keys($teamIds)]) as $team) {
+            $teamLevels[$team->getId()] = $team->getLevel();
+        }
+        $latestMatchDates = $this->latestMatchDates(array_keys($competitionIds));
+
+        // Per suggested team, arbitrate the DOMINANT deduced level across its eligible
+        // young rows (D4): a lone level wins outright; a divergence is decided by the
+        // competition with the latest match (undecidable → null).
+        $candidatesByTeam = [];
+        foreach ($prepared as $entry) {
+            if (!$entry['deduced'] instanceof TeamLevel || null === $entry['suggestedTeamId']) {
+                continue;
+            }
+            $candidatesByTeam[$entry['suggestedTeamId']][] = [
+                'level' => $entry['deduced'],
+                'latestMatchDate' => $latestMatchDates[$entry['suggestedCompetitionId']] ?? null,
+            ];
+        }
+        $dominantByTeam = [];
+        foreach ($candidatesByTeam as $teamId => $candidates) {
+            $dominantByTeam[$teamId] = $this->levelDeducer->arbitrate($candidates);
+        }
+
+        $engagements = [];
+        foreach ($prepared as $entry) {
+            // `alignment` is computed AGAINST THE SUGGESTED TEAM (D5) and only for the
+            // row that carries the team's DOMINANT level : MISSING (team has no level),
+            // MISMATCH (team's level differs). A losing divergent row, an undecidable
+            // divergence, an already-aligned row, or no suggestion → null (nothing to do).
+            $alignment = null;
+            $deduced = $entry['deduced'];
+            $teamId = $entry['suggestedTeamId'];
+            if ($deduced instanceof TeamLevel && null !== $teamId && ($dominantByTeam[$teamId] ?? null) === $deduced) {
+                $current = $teamLevels[$teamId] ?? null;
+                if (null === $current) {
+                    $alignment = 'MISSING';
+                } elseif ($current !== $deduced) {
+                    $alignment = 'MISMATCH';
+                }
+            }
+
+            $engagements[] = $entry['row'] + [
+                'suggestionSource' => $entry['source'],
+                'suggestedTeamId' => $teamId,
+                'suggestedCompetitionId' => $entry['suggestedCompetitionId'],
+                'deducedLevel' => $deduced?->value,
+                'alignment' => $alignment,
             ];
         }
 
@@ -283,6 +358,36 @@ final class FfbbEngagementsController extends AbstractController
     private function competitionHasFixtures(string $competitionId): bool
     {
         return $this->entityManager->getRepository(Fixture::class)->count(['competitionId' => $competitionId]) > 0;
+    }
+
+    /**
+     * La date de match la plus TARDIVE par compétition (clé de départage D4). Une
+     * compétition sans match est absente du résultat (→ `null` côté appelant). SQL
+     * brut, scopé club par la RLS, en UNE requête — un MAX par id N+1-erait la liste.
+     *
+     * @param list<string> $competitionIds
+     *
+     * @return array<string, string> competitionId => 'Y-m-d' (date lexicographiquement triable)
+     */
+    private function latestMatchDates(array $competitionIds): array
+    {
+        if ([] === $competitionIds) {
+            return [];
+        }
+
+        /** @var list<array{competition_id: string, latest: string}> $rows */
+        $rows = $this->entityManager->getConnection()->fetchAllAssociative(
+            'SELECT competition_id, MAX(match_date) AS latest FROM fixture WHERE competition_id IN (:ids) GROUP BY competition_id',
+            ['ids' => $competitionIds],
+            ['ids' => ArrayParameterType::STRING],
+        );
+
+        $latest = [];
+        foreach ($rows as $row) {
+            $latest[$row['competition_id']] = $row['latest'];
+        }
+
+        return $latest;
     }
 
     /** @return array{0: string|null, 1: int|null, 2: JsonResponse|null} */

@@ -39,6 +39,10 @@ final readonly class FfbbEngagementPaths implements CustomPathContributor
                             'suggestionSource' => ['type' => 'string', 'enum' => ['pairing', 'canonical', 'fbi'], 'nullable' => true],
                             'suggestedTeamId' => ['type' => 'string', 'nullable' => true],
                             'suggestedCompetitionId' => ['type' => 'string', 'nullable' => true],
+                            // The TeamLevel a YOUNG (U9–U18) championship/brassage engagement implies — null otherwise.
+                            'deducedLevel' => ['type' => 'string', 'enum' => ['DEPARTEMENTAL', 'REGIONAL', 'NATIONAL'], 'nullable' => true],
+                            // How the deduced level compares to the suggested team's level: MISSING (no level yet), MISMATCH (differs) — null when aligned, undecidable, or no suggestion.
+                            'alignment' => ['type' => 'string', 'enum' => ['MISMATCH', 'MISSING'], 'nullable' => true],
                         ]]],
                     ],
                 ]),

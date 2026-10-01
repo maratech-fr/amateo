@@ -12249,6 +12249,23 @@
                                                     "suggestedCompetitionId": {
                                                         "type": "string",
                                                         "nullable": true
+                                                    },
+                                                    "deducedLevel": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "DEPARTEMENTAL",
+                                                            "REGIONAL",
+                                                            "NATIONAL"
+                                                        ],
+                                                        "nullable": true
+                                                    },
+                                                    "alignment": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "MISMATCH",
+                                                            "MISSING"
+                                                        ],
+                                                        "nullable": true
                                                     }
                                                 }
                                             }

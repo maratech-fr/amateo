@@ -14,6 +14,7 @@ use App\Entity\Team;
 use App\Entity\User;
 use App\Enum\CompetitionType;
 use App\Enum\SeasonStatus;
+use App\Enum\TeamLevel;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\Double\FfbbHttpClientStub;
@@ -374,10 +375,70 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
         self::assertSame('PNM', $reloadedForeign->getName());
     }
 
+    public function testEngagementRowCarriesTheDeducedLevelOfAYoungChampionship(): void
+    {
+        // « Le niveau d'une équipe JEUNE suit son engagement FFBB » (2026-10-01) — un
+        // championnat départemental U13 déduit DEPARTEMENTAL ; sans équipe suggérée,
+        // alignment est null (rien à comparer).
+        [$tokenA, , $clubA] = $this->register('FFPS');
+        $this->useStubClubCode($clubA);
+        $this->createTeam($clubA);
+
+        $row = $this->engagementRow($tokenA, FfbbHttpClientStub::YOUNG_D13_COMPETITION_ID);
+        self::assertSame('DEPARTEMENTAL', $row['deducedLevel'], 'a young championship deduces its level');
+        self::assertNull($row['alignment'], 'no suggested team → nothing to align against');
+    }
+
+    public function testASeniorRowDeducesNoLevel(): void
+    {
+        [$tokenA, , $clubA] = $this->register('FFPT');
+        $this->useStubClubCode($clubA);
+        $this->createTeam($clubA);
+
+        $row = $this->engagementRow($tokenA, FfbbHttpClientStub::COMPETITION_ID); // seniors PNM
+        self::assertNull($row['deducedLevel'], 'a seniors engagement is out of the young perimeter');
+        self::assertNull($row['alignment']);
+    }
+
+    public function testAlignmentIsMissingWhenTheSuggestedTeamHasNoLevel(): void
+    {
+        [$tokenA, , $clubA] = $this->register('FFPU');
+        $this->useStubClubCode($clubA);
+        $team = $this->createTeam($clubA); // no level set
+        $this->createCompetition($clubA, $this->seasonOf($clubA)->getId(), $team->getId(), FfbbHttpClientStub::YOUNG_D13_FBI_CODE);
+
+        $row = $this->engagementRow($tokenA, FfbbHttpClientStub::YOUNG_D13_COMPETITION_ID);
+        self::assertSame($team->getId(), $row['suggestedTeamId'], 'the xlsx competition bridges the team');
+        self::assertSame('DEPARTEMENTAL', $row['deducedLevel']);
+        self::assertSame('MISSING', $row['alignment'], 'the team carries no level yet');
+    }
+
+    public function testAlignmentIsMismatchWhenTheSuggestedTeamLevelDiffers(): void
+    {
+        [$tokenA, , $clubA] = $this->register('FFPV');
+        $this->useStubClubCode($clubA);
+        $team = $this->createTeam($clubA);
+        $this->setTeamLevel($team, TeamLevel::REGIONAL);
+        $this->createCompetition($clubA, $this->seasonOf($clubA)->getId(), $team->getId(), FfbbHttpClientStub::YOUNG_D13_FBI_CODE);
+
+        $row = $this->engagementRow($tokenA, FfbbHttpClientStub::YOUNG_D13_COMPETITION_ID);
+        self::assertSame('DEPARTEMENTAL', $row['deducedLevel']);
+        self::assertSame('MISMATCH', $row['alignment'], 'the fiche says REGIONAL, the engagement DEPARTEMENTAL');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    private function setTeamLevel(Team $team, TeamLevel $level): void
+    {
+        $this->scopeGucToClub($team->getClubId());
+        $managed = $this->em->getRepository(Team::class)->find($team->getId());
+        \assert($managed instanceof Team);
+        $managed->setLevel($level);
+        $this->em->flush();
     }
 
     private function confirm(string $token, string $ffbbCompetitionId, string $teamId): void

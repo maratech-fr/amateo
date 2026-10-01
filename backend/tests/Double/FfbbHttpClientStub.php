@@ -74,6 +74,20 @@ final class FfbbHttpClientStub implements HttpClientInterface
     public const BRIDGE_BRASSAGE_NAME = 'Régionale féminine U13 - Brassage';
     public const BRIDGE_BRASSAGE_FBI_CODE = 'RFU13 Brassage';
 
+    // « Le niveau d'une équipe JEUNE suit son engagement FFBB » (2026-10-01) — des
+    // engagements JEUNES éligibles (U9–U18, championnat/brassage) dont le niveau se
+    // DÉDUIT : un championnat départemental U13, et une PAIRE DIVERGENTE U15 (un
+    // départemental + un régional vers la même équipe) pour exercer l'arbitrage D4.
+    public const YOUNG_D13_COMPETITION_ID = '900000000000007';
+    public const YOUNG_D13_NAME = 'Départementale masculine U13';
+    public const YOUNG_D13_FBI_CODE = 'DMU13';
+    public const YOUNG_D15_COMPETITION_ID = '900000000000008';
+    public const YOUNG_D15_NAME = 'Départementale masculine U15';
+    public const YOUNG_D15_FBI_CODE = 'DMU15';
+    public const YOUNG_R15_COMPETITION_ID = '900000000000009';
+    public const YOUNG_R15_NAME = 'Régionale masculine U15';
+    public const YOUNG_R15_FBI_CODE = 'RMU15';
+
     /** @var list<array{code: string, compId: string, pouleId: string, name: string, sexe: string, categorie: array{code: string, libelle: string}, niveau: array{code: string, libelle: string}}> */
     private const BRIDGE = [
         ['code' => 'RMSD2', 'compId' => self::BRIDGE_D2_COMPETITION_ID, 'pouleId' => '910000000000003',
@@ -88,6 +102,17 @@ final class FfbbHttpClientStub implements HttpClientInterface
         ['code' => 'RFB13C', 'compId' => self::BRIDGE_BRASSAGE_COMPETITION_ID, 'pouleId' => '910000000000006',
             'name' => self::BRIDGE_BRASSAGE_NAME, 'sexe' => 'Féminin',
             'categorie' => ['code' => 'U13', 'libelle' => 'U13'], 'niveau' => ['code' => 'REG', 'libelle' => 'Régional']],
+        // Niveau jeune déduit — un championnat départemental U13.
+        ['code' => 'DMC13C', 'compId' => self::YOUNG_D13_COMPETITION_ID, 'pouleId' => '910000000000007',
+            'name' => self::YOUNG_D13_NAME, 'sexe' => 'Masculin',
+            'categorie' => ['code' => 'U13', 'libelle' => 'U13'], 'niveau' => ['code' => 'DEP', 'libelle' => 'Départemental']],
+        // Paire divergente U15 (même équipe, niveaux différents) — arbitrage D4.
+        ['code' => 'DMC15C', 'compId' => self::YOUNG_D15_COMPETITION_ID, 'pouleId' => '910000000000008',
+            'name' => self::YOUNG_D15_NAME, 'sexe' => 'Masculin',
+            'categorie' => ['code' => 'U15', 'libelle' => 'U15'], 'niveau' => ['code' => 'DEP', 'libelle' => 'Départemental']],
+        ['code' => 'RMC15C', 'compId' => self::YOUNG_R15_COMPETITION_ID, 'pouleId' => '910000000000009',
+            'name' => self::YOUNG_R15_NAME, 'sexe' => 'Masculin',
+            'categorie' => ['code' => 'U15', 'libelle' => 'U15'], 'niveau' => ['code' => 'REG', 'libelle' => 'Régional']],
     ];
 
     private readonly MockHttpClient $inner;
