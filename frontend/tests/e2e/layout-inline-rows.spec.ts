@@ -109,7 +109,7 @@ test("contraintes équipes : équipe, gymnase et « Interdire » sur la même li
   // les deux sélecteurs riches et le bouton « Interdire » tiennent bien sur UNE ligne — une
   // largeur restée en `className` serait allée au bouton interne, jamais à la boîte que la ligne
   // flex mesure, et aurait pu faire déborder « Interdire » (le piège que le lint garde en amont).
-  await page.goto("/matchs/contraintes?section=teams");
+  await page.goto("/matchs/contraintes?section=equipes");
 
   const interdire = page.getByRole("button", { name: "Interdire" });
   await expect(interdire).toBeVisible({ timeout: 15_000 });
