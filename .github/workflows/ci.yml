@@ -480,6 +480,12 @@ jobs:
       - name: EngagedTeamGuardTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/EngagedTeamGuardTest.php --group phase1'
 
+      # Axe périmètre engagé — la résorption des jumelles au confirm d'appariement FFBB
+      # ne supprime qu'une compétition VIDE et ne ré-affecte jamais un match. Sans ce gate,
+      # un élargissement effacerait un périmètre déjà engagé en silence.
+      - name: FfbbConfirmPerimeterTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/FfbbConfirmPerimeterTest.php --group phase1'
+
       - name: PeriodPlanBirthTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/PeriodPlanBirthTest.php --group phase1'
 

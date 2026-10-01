@@ -6,6 +6,7 @@ namespace App\Controller\Basketball;
 
 use App\Controller\ResolvesCurrentClubTrait;
 use App\Entity\Competition;
+use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Enum\CompetitionType;
@@ -195,20 +196,33 @@ final class FfbbEngagementsController extends AbstractController
                 return $this->json(['error' => 'Équipe inconnue pour ce club/cette saison.'], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
 
-            // One engagement = one team (D4): the refs leave any OTHER competition
-            // that carried them (its fixtures survive — only the pairing moves).
-            foreach ($competitions as $other) {
-                if ($other->getFfbbCompetitionId() === $ffbbCompetitionId && $other->getTeamId() !== $teamId) {
-                    $other->setFfbbCompetitionId(null);
-                    $other->setFfbbPouleId(null);
-                    $other->setFfbbPouleName(null);
-                    $other->setFfbbCompetitionName(null);
-                    $other->setExpectedMatchdays(null);
-                    $other->setFfbbPouleOpponents(null);
+            $competition = $this->resolveCompetition($competitions, $teamId, $competitionId, $row['competitionName'], $season->getId());
+
+            // Résorption des jumelles (D4 + décision fondateur 2026-10-01) : les refs
+            // quittent TOUTE autre compétition qui les portait — y compris une JUMELLE de
+            // la MÊME équipe (le défaut corrigé : avant, seule une équipe DIFFÉRENTE était
+            // nettoyée, alors que les jumelles vides naissent sur la même équipe). Une
+            // compétition qui perd ses refs ET ne porte AUCUN match est une jumelle vide →
+            // supprimée. Une compétition qui PORTE des fixtures est CONSERVÉE (axe périmètre
+            // engagé §7.1 : jamais supprimée ; et comme on ne la supprime pas, aucune fixture
+            // ne change d'équipe — les rencontres restent sur leur compétition d'origine).
+            foreach ($competitions as $index => $other) {
+                if ($other === $competition || $other->getFfbbCompetitionId() !== $ffbbCompetitionId) {
+                    continue;
+                }
+                $other->setFfbbCompetitionId(null);
+                $other->setFfbbPouleId(null);
+                $other->setFfbbPouleName(null);
+                $other->setFfbbCompetitionName(null);
+                $other->setExpectedMatchdays(null);
+                $other->setFfbbPouleOpponents(null);
+                if (!$this->competitionHasFixtures($other->getId())) {
+                    $this->entityManager->remove($other);
+                    unset($competitions[$index]);
                 }
             }
+            $competitions = array_values($competitions);
 
-            $competition = $this->resolveCompetition($competitions, $teamId, $competitionId, $row['competitionName'], $season->getId());
             $competition->setFfbbCompetitionId($row['ffbbCompetitionId']);
             $competition->setFfbbPouleId($row['ffbbPouleId']);
             $competition->setFfbbPouleName($row['pouleName']);
@@ -259,6 +273,16 @@ final class FfbbEngagementsController extends AbstractController
         usort($matches, static fn (Competition $a, Competition $b): int => strcmp($a->getName(), $b->getName()));
 
         return $matches[0];
+    }
+
+    /**
+     * Cette compétition porte-t-elle au moins un match ? (périmètre engagé §7.1 : une
+     * compétition avec fixtures n'est jamais supprimée au confirm). Scopé club par les
+     * filtres Doctrine + la RLS.
+     */
+    private function competitionHasFixtures(string $competitionId): bool
+    {
+        return $this->entityManager->getRepository(Fixture::class)->count(['competitionId' => $competitionId]) > 0;
     }
 
     /** @return array{0: string|null, 1: int|null, 2: JsonResponse|null} */

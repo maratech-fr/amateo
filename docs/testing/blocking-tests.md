@@ -71,6 +71,7 @@ pour `amateo_read` — sinon l'opérateur la verrait à 0 ligne, ou cross-club s
 `Security/ClubQuotaTest` (caps métier PAR CLUB, les 4 routes de solve — dont `/fill`, le comblement de période P2-44) ·
 `Security/SuperAdminAccessTest` (frontière SA0) ·
 `Security/EngagedTeamGuardTest` (périmètre engagé ; garde aussi, P2-52, qu'un match dépointé « salle perdue » par l'une ou l'autre gâchette EXISTE toujours, donc l'équipe reste engagée — DELETE → 409) ·
+`Security/FfbbConfirmPerimeterTest` (axe *périmètre engagé*, résorption des jumelles au confirm d'appariement FFBB `POST /api/ffbb/engagements/confirm` [décision fondateur 2026-10-01] : une compétition JUMELLE VIDE qui portait les refs est supprimée [la cible récupère les refs, ses matchs ne bougent pas], mais une compétition qui PORTE des fixtures n'est JAMAIS supprimée même quand elle perd ses refs, et AUCUNE fixture ne change d'équipe — falsifié dans les deux sens. Sans ce gate, un élargissement de la résorption effacerait un périmètre déjà engagé en silence) ·
 `Security/PeriodPlanBirthTest` (naissance du plan — ADR-0002 ; garde aussi, P2-38, le refus
 409 `window_already_planned` dans les deux sens quand deux plans de période se chevauchent ; garde
 aussi, D10bis, la COPIE des blocs de mutualisation du socle à la naissance d'un plan de FERMETURE —
