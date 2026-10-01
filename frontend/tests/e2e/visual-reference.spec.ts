@@ -39,13 +39,12 @@ import { ensureValidated, forceTheme, landOnMatchesCalendar, loginSeededClub, se
  * ── RE-BASELINE (UNE procédure, UNE commande) ────────────────────────────────────────────────────
  * Les PNG de référence DOIVENT être produits dans l'environnement EXACT de la CI (même image/OS/polices),
  * sinon diff de rendu de polices. On ne les génère donc JAMAIS en local : un workflow dédié le fait.
- *   1. `gh workflow run visual-baselines.yml --ref <branche> -f update=true`
- *      (ou, sans accès dispatch : pousser un commit dont le message contient `[update-snapshots]`).
+ *   1. `gh workflow run visual-baselines.yml --ref <branche> -f update=true` (déclenchement à la
+ *      DEMANDE seul ; le workflow doit être sur `main`, puis `--ref` cible n'importe quelle branche).
  *   2. `gh run download <run-id> -n visual-baselines` → récupérer le dossier
  *      `frontend/tests/e2e/visual-reference.spec.ts-snapshots/`.
- *   3. Committer les PNG, re-pousser : le job `e2e` (ci.yml) et le workflow en mode COMPARAISON
- *      valident alors les références. Le job `e2e` normal NE réécrit JAMAIS (il compare, pas de
- *      `--update-snapshots`) — voir `.github/workflows/visual-baselines.yml`.
+ *   3. Committer les PNG, re-pousser : le job `e2e` (ci.yml, required check « E2E (Playwright) »)
+ *      compare alors les références à chaque PR. Il NE réécrit JAMAIS (pas de `--update-snapshots`).
  *
  * ── HORS PÉRIMÈTRE délibéré ───────────────────────────────────────────────────────────────────────
  * La page publique des vœux (`/doleances/:token`) : l'atteindre exige de forger un token de doléance

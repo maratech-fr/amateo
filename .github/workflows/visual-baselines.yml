@@ -6,23 +6,18 @@ name: Visual Baselines
 # épinglé par le lock) — mêmes polices que le job `e2e` de `ci.yml` qui les COMPARE. On ne les
 # génère donc jamais en local.
 #
-# DEUX modes, un SEUL job :
-#   - UPDATE  (`--update-snapshots`) : (re)génère les PNG et les publie en artefact `visual-baselines`
-#     → on télécharge, on committe le dossier `-snapshots/`, on re-pousse.
-#   - COMPARE (défaut)               : compare la branche aux PNG committés → VERT = références valides ;
-#     ROUGE = écart (c'est aussi ce qui PROUVE que la garde mord).
+# Déclenché À LA DEMANDE uniquement (`workflow_dispatch`) — une fois ce workflow sur `main`,
+# `gh workflow run visual-baselines.yml --ref <branche> -f update=true` marche depuis N'IMPORTE
+# quelle branche. Deux modes selon l'entrée `update` :
+#   - update=true  (`--update-snapshots`) : (re)génère les PNG et les publie en artefact
+#     `visual-baselines` → on télécharge, on committe le dossier `-snapshots/`, on re-pousse.
+#   - update=false (défaut)                : compare aux PNG committés (vérification ad hoc).
 #
-# Déclenchement du mode UPDATE :
-#   - `workflow_dispatch` avec l'entrée `update=true` (exige le workflow sur la branche par défaut), OU
-#   - un commit dont le message contient `[update-snapshots]` (marche depuis une branche de feature).
-#
-# ⚠ Le job `e2e` de `ci.yml` reste INCHANGÉ : il COMPARE, il ne réécrit jamais (aucun
-# `--update-snapshots`). La génération vit ici, isolée.
+# ⚠ Le GATE réel vit dans le job `e2e` de `ci.yml` (required check « E2E (Playwright) ») : il COMPARE
+# le spec aux références à chaque PR, il ne réécrit JAMAIS (aucun `--update-snapshots`). La
+# (re)génération vit ici, isolée.
 
 on:
-  push:
-    branches:
-      - test/captures-reference
   workflow_dispatch:
     inputs:
       update:
@@ -45,20 +40,6 @@ jobs:
       COMPOSE_BAKE: "false"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      # Mode (UPDATE vs COMPARE). Le message de commit passe par l'ENV, JAMAIS interpolé dans le
-      # corps du shell (une entrée d'attaquant sur une PR de fork — finding semgrep run-shell-injection).
-      - name: Determine mode
-        id: mode
-        env:
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
-          DISPATCH_UPDATE: ${{ github.event_name == 'workflow_dispatch' && inputs.update }}
-        run: |
-          UPDATE=false
-          if [ "$DISPATCH_UPDATE" = "true" ]; then UPDATE=true; fi
-          case "$COMMIT_MSG" in *"[update-snapshots]"*) UPDATE=true ;; esac
-          echo "update=$UPDATE" >> "$GITHUB_OUTPUT"
-          echo "Mode: update-snapshots=$UPDATE"
 
       - name: Prepare .env
         run: |
@@ -143,7 +124,7 @@ jobs:
         run: |
           set -o pipefail
           ARGS=""
-          if [ "${{ steps.mode.outputs.update }}" = "true" ]; then ARGS="--update-snapshots"; fi
+          if [ "${{ inputs.update }}" = "true" ]; then ARGS="--update-snapshots"; fi
           E2E_BASE_URL=http://localhost:5173 npx playwright test tests/e2e/visual-reference.spec.ts $ARGS
 
       # Les PNG de référence (après un run UPDATE) + les diffs d'un run COMPARE rouge. `always()` :
