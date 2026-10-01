@@ -12370,6 +12370,10 @@
                                                 "competitionId": {
                                                     "type": "string",
                                                     "nullable": true
+                                                },
+                                                "alignLevel": {
+                                                    "type": "boolean",
+                                                    "nullable": true
                                                 }
                                             }
                                         }

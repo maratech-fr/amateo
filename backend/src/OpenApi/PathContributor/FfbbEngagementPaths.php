@@ -87,6 +87,10 @@ final readonly class FfbbEngagementPaths implements CustomPathContributor
                         // on that already-mapped xlsx competition (honoured only when
                         // it belongs to the chosen team), instead of a twin empty one.
                         'competitionId' => ['type' => 'string', 'nullable' => true],
+                        // Optional: align the team's level on the one its young (U9–U18)
+                        // engagement implies — server-deduced, never a client value. No-op
+                        // on an ineligible line (seniors, cup, pré-régional/national).
+                        'alignLevel' => ['type' => 'boolean', 'nullable' => true],
                     ]]],
                 ],
             ]),

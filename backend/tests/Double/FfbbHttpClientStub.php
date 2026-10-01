@@ -87,6 +87,10 @@ final class FfbbHttpClientStub implements HttpClientInterface
     public const YOUNG_R15_COMPETITION_ID = '900000000000009';
     public const YOUNG_R15_NAME = 'Régionale masculine U15';
     public const YOUNG_R15_FBI_CODE = 'RMU15';
+    // Jeune mais pré-régional : éligible en catégorie/type, mais PR n'a aucun cas
+    // TeamLevel → déduction null (jamais comblé) → alignement no-op.
+    public const YOUNG_PR17_COMPETITION_ID = '900000000000010';
+    public const YOUNG_PR17_NAME = 'Pré régionale masculine U17';
 
     /** @var list<array{code: string, compId: string, pouleId: string, name: string, sexe: string, categorie: array{code: string, libelle: string}, niveau: array{code: string, libelle: string}}> */
     private const BRIDGE = [
@@ -113,6 +117,10 @@ final class FfbbHttpClientStub implements HttpClientInterface
         ['code' => 'RMC15C', 'compId' => self::YOUNG_R15_COMPETITION_ID, 'pouleId' => '910000000000009',
             'name' => self::YOUNG_R15_NAME, 'sexe' => 'Masculin',
             'categorie' => ['code' => 'U15', 'libelle' => 'U15'], 'niveau' => ['code' => 'REG', 'libelle' => 'Régional']],
+        // Jeune pré-régional — éligible catégorie/type mais niveau PR → déduction null.
+        ['code' => 'PRC17C', 'compId' => self::YOUNG_PR17_COMPETITION_ID, 'pouleId' => '910000000000010',
+            'name' => self::YOUNG_PR17_NAME, 'sexe' => 'Masculin',
+            'categorie' => ['code' => 'U17', 'libelle' => 'U17'], 'niveau' => ['code' => 'PRR', 'libelle' => 'Pré régional']],
     ];
 
     private readonly MockHttpClient $inner;

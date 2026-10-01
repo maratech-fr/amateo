@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace App\Controller\Basketball;
 
-use App\Enum\TeamLevel;
 use App\Controller\ResolvesCurrentClubTrait;
 use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Enum\CompetitionType;
+use App\Enum\TeamLevel;
 use App\Repository\ClubRepository;
 use App\Service\Basketball\EngagementLevelDeducer;
 use App\Service\Basketball\FbiDivisionSignature;
@@ -255,6 +255,13 @@ final class FfbbEngagementsController extends AbstractController
         $competitions = $competitionRepository->findBy([]);
 
         $confirmed = [];
+        // « Le niveau d'une équipe JEUNE suit son engagement FFBB » (D1/D4) : on
+        // collecte les candidats d'arbitrage (niveau déduit + date du dernier match de
+        // la compétition RÉSOLUE) et les équipes dont une ligne a demandé l'alignement.
+        /** @var array<string, list<array{level: TeamLevel, competitionId: string}>> $alignCandidates */
+        $alignCandidates = [];
+        /** @var array<string, Team> $teamsToAlign */
+        $teamsToAlign = [];
         foreach ($pairings as $pairing) {
             if (!\is_array($pairing)) {
                 return $this->json(['error' => 'Appariement malformé.'], Response::HTTP_UNPROCESSABLE_ENTITY);
@@ -262,12 +269,14 @@ final class FfbbEngagementsController extends AbstractController
             $ffbbCompetitionId = \is_string($pairing['ffbbCompetitionId'] ?? null) ? $pairing['ffbbCompetitionId'] : '';
             $teamId = \is_string($pairing['teamId'] ?? null) ? $pairing['teamId'] : '';
             $competitionId = \is_string($pairing['competitionId'] ?? null) && '' !== $pairing['competitionId'] ? $pairing['competitionId'] : null;
+            $alignLevel = true === ($pairing['alignLevel'] ?? null);
             $row = $rowsByFfbbId[$ffbbCompetitionId] ?? null;
             if (null === $row) {
                 return $this->json(['error' => \sprintf('Engagement inconnu pour cette saison (%s).', $ffbbCompetitionId)], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
             // Tenant/season filters make a foreign team invisible → 422, nothing written.
-            if (!$teamRepository->findOneBy(['id' => $teamId]) instanceof Team) {
+            $team = $teamRepository->findOneBy(['id' => $teamId]);
+            if (!$team instanceof Team) {
                 return $this->json(['error' => 'Équipe inconnue pour ce club/cette saison.'], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
 
@@ -312,6 +321,39 @@ final class FfbbEngagementsController extends AbstractController
             );
             $competition->setFfbbPouleOpponents($row['pouleOpponents']);
             $confirmed[] = ['competitionId' => $competition->getId(), 'teamId' => $teamId, 'ffbbCompetitionId' => $row['ffbbCompetitionId']];
+
+            // Niveau jeune déduit (D1/D3) : un engagement éligible nourrit l'arbitrage de
+            // l'équipe ; une ligne cochée « aligner » marque l'équipe. Une ligne inéligible
+            // (seniors, coupe, PR/PN) déduit null → ni candidat ni no-op bruyant (D6).
+            $deduced = $this->levelDeducer->deduce($row['category'], $row['level'], $row['gender'], $row['competitionName']);
+            if ($deduced instanceof TeamLevel) {
+                $alignCandidates[$teamId][] = ['level' => $deduced, 'competitionId' => $competition->getId()];
+                if ($alignLevel) {
+                    $teamsToAlign[$teamId] = $team;
+                }
+            }
+        }
+
+        // Alignement du niveau APRÈS résolution des compétitions (D4, « état post-appariement ») :
+        // pour chaque équipe dont une ligne a demandé l'alignement, on écrit le niveau DOMINANT
+        // arbitré (match le plus tardif ; divergence indécidable → aucun écriture). La valeur est
+        // SERVEUR, re-déduite — jamais un niveau fourni par le client. Écriture DIRECTE (setLevel) :
+        // c'est le cas « import FFBB change un niveau » qu'annonçait TeamStateProcessor ; la garde
+        // générique du périmètre engagé (PUT) reste, elle, souveraine (gardée par le NR).
+        if ([] !== $teamsToAlign) {
+            $latestMatchDates = $this->latestMatchDates(array_values(array_unique(array_merge(
+                ...array_map(static fn (array $candidates): array => array_column($candidates, 'competitionId'), array_values($alignCandidates)),
+            ))));
+            foreach ($teamsToAlign as $teamId => $team) {
+                $candidates = array_map(static fn (array $candidate): array => [
+                    'level' => $candidate['level'],
+                    'latestMatchDate' => $latestMatchDates[$candidate['competitionId']] ?? null,
+                ], $alignCandidates[$teamId] ?? []);
+                $dominant = $this->levelDeducer->arbitrate($candidates);
+                if ($dominant instanceof TeamLevel) {
+                    $team->setLevel($dominant);
+                }
+            }
         }
 
         $this->entityManager->flush();
