@@ -15,7 +15,12 @@ import { ensureValidated, loginSeededClub, registerAndVerify, uniqueAra } from "
  *    déplié en permanence) ;
  *  - la ligne d'ajout d'une interdiction de gymnase (section Équipes) : équipe + gymnase +
  *    « Interdire » sur la même ligne (PR 3/7 « uniformité des sélecteurs », largeur en
- *    `wrapperClassName` — une largeur restée en `className` n'aurait pas tenu la boîte flex).
+ *    `wrapperClassName` — une largeur restée en `className` n'aurait pas tenu la boîte flex) ;
+ *  - la ligne d'ajout d'une règle de club (section Club) : Type / Pas avant / Pas après / Ajouter
+ *    ont la MÊME hauteur de 36 px (= `h-9`, décision fondateur B sur captures A/B, PR 7/7) et
+ *    tiennent sur UNE ligne, sans débordement horizontal — un `h-10` resté sur l'Input time les
+ *    remélangeait (le défaut mesuré de départ). Le groupe multi-jours (`DayMultiPicker`, boutons
+ *    `min-h-6`) est volontairement hors mesure : ce n'est pas un contrôle de champ à aligner.
  */
 test.use({ viewport: { width: 1280, height: 900 } });
 
@@ -95,6 +100,49 @@ test("contraintes : une règle au repos tient sur une seule ligne (1280 px)", as
   // Nettoyage : on lève la règle qu'on vient de créer (la base de DEV n'est pas réinitialisée).
   await page.getByRole("button", { name: "Supprimer" }).first().click();
   await page.getByRole("dialog").getByRole("button", { name: "Supprimer", exact: true }).click();
+});
+
+test("contraintes club : la ligne d'ajout d'une règle a des contrôles de même hauteur (36 px) sur une ligne (1280 px)", async ({ page }) => {
+  test.setTimeout(240_000);
+
+  await loginSeededClub(page);
+  await ensureValidated(page);
+
+  // La ligne d'AJOUT (AddClubRuleRow) est toujours là, même sans règle existante — rien à créer,
+  // donc rien à nettoyer. Les quatre contrôles de CHAMP de la ligne : Type, Pas avant, Pas après,
+  // Ajouter. Le bouton « Ajouter » ancre la ligne (son parent direct est le `div.flex` d'ajout).
+  await page.goto("/matchs/contraintes?section=club");
+
+  const ajouter = page.getByRole("button", { name: "Ajouter" });
+  await expect(ajouter).toBeVisible({ timeout: 15_000 });
+  const row = ajouter.locator("xpath=..");
+
+  const typeSelect = row.getByRole("combobox", { name: "Type" });
+  const avant = row.getByLabel("Pas avant (heure de début)");
+  const apres = row.getByLabel("Pas après (heure de fin)");
+  await expect(typeSelect).toBeVisible();
+  await expect(avant).toBeVisible();
+  await expect(apres).toBeVisible();
+
+  const controls = [typeSelect, avant, apres, ajouter];
+  const boxes = await Promise.all(controls.map((c) => c.boundingBox()));
+  const heights = boxes.map((b) => b?.height ?? -1);
+  const tops = boxes.map((b) => b?.y ?? -1);
+
+  // Décision fondateur B : tout contrôle d'une ligne fait 36 px (= h-9), aucune hauteur mélangée.
+  for (const h of heights) {
+    expect(h).toBeGreaterThanOrEqual(35);
+    expect(h).toBeLessThanOrEqual(37);
+  }
+  expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(1);
+
+  // Une seule ligne : même offsetTop (items-center, tolérance 4 px) — aucun contrôle n'est passé
+  // à la ligne suivante.
+  expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(4);
+
+  // Aucun débordement horizontal de la boîte d'ajout (elle ne scrolle pas sous 1280 px).
+  const overflow = await row.evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
 });
 
 test("contraintes équipes : équipe, gymnase et « Interdire » sur la même ligne (1280 px)", async ({ page }) => {
