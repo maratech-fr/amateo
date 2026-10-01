@@ -1,8 +1,16 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-09-30 (`documentation-update`, dépendances inutiles retirées + 3 gardes
-d'hygiène knip/composer-unused/deptry posées). Ce fichier ne couvre que backend+engine (« Scope »
-ci-dessous). Re-confronté au code : le graphe des jobs §1 (noms et `needs`) correspond toujours à
+Last verified @ 2026-10-01 (`documentation-update`, PR 8/8 série « uniformité des écrans » — garde
+de captures de référence). Ce fichier ne couvre que backend+engine (« Scope » ci-dessous), sauf le
+graphe CI §1 qui est cross-zone par nature. Vérifié dans le code cette passe : le job `e2e` porte
+le nom de required check « E2E (Playwright) » et `needs: blocking-tests` (`ci.yml:1117-1123`) ;
+`frontend/tests/e2e/visual-reference.spec.ts` existe (9 `toHaveScreenshot`) avec ses 9 PNG commités
+sous `frontend/tests/e2e/visual-reference.spec.ts-snapshots/` ; `.github/workflows/
+visual-baselines.yml` existe, `workflow_dispatch` seul (pas de `push`/`pull_request`), entrée
+`update` à deux modes. Reste du fichier (§2 backend tests, §3 engine tests, §4bis a11y, §5, le
+reste de §1) non re-sondé cette passe — dernier balayage complet du §1 : 2026-09-30, voir
+`git log -p --follow docs/testing/testing-strategy.md`. Re-confronté au code lors de cette passe
+antérieure : le graphe des jobs §1 (noms et `needs`) correspond toujours à
 `.github/workflows/ci.yml` — `blocking-tests` sur `needs: [lint, phpstan]` (`ci.yml:314`),
 `e2e`/`backend-coverage` sur `needs: blocking-tests`,
 `engine-coverage`/`engine-perf`/`engine-perf-pr` sur `needs: engine-tests`, `build-docker` sur
@@ -140,6 +148,24 @@ dans `unit-tests` et non dans le gate bloquant.
 **Régime de dépréciations** : `phpunit.xml.dist` fixe `SYMFONY_DEPRECATIONS_HELPER` à `max[direct]=0`, ce qui **définit ce qui peut rougir `unit-tests`** (et tout job PHPUnit) — une dépréciation `direct` (une API Symfony dépréciée appelée par notre code, dont l'avertissement part du vendor et non de nos fichiers) fait échouer la suite, attrapant la dérive vers Symfony 8.4 que le seuil `self` (dépréciations émises depuis nos seuls fichiers) laisserait passer.
 
 **Piège générique `run: … | tee …` dans un `step` GitHub Actions (P4-256, e2e)** : le shell par défaut d'un `run:` sur un runner Linux est `bash -e {0}`, **sans** `pipefail` (il ne s'arme qu'avec un `shell: bash` explicite au niveau du step ou du job, absent de ce workflow) — un `| tee` sans `set -o pipefail` explicite dans le corps du `run` renvoie le code de sortie de `tee` (toujours 0) et masque un échec de la commande en tête de pipe. Tout nouveau `run: … | …` dans `ci.yml` doit poser `set -o pipefail` en première ligne s'il doit pouvoir faire rougir le step.
+
+**Garde de captures de référence (`frontend/tests/e2e/visual-reference.spec.ts`, PR 8/8 série
+« uniformité des écrans »)** : 9 `toHaveScreenshot` figent l'apparence des écrans retravaillés par
+la série (login, register, planning semaine, matchs calendrier, matchs semaine type, matchs
+contraintes club, club, wizard coachs, wizard contraintes) — thème clair forcé, animations
+désactivées, horloge navigateur **et** serveur (`POST /api/dev/clock`) gelées sur l'instant
+canonique des features Behat et relâchées en `finally`, widget `DevClock` masqué,
+`maxDiffPixelRatio: 0.01`, viewport 1280×900. Le **gate** réel vit dans le job `e2e` ci-dessus
+(required check « E2E (Playwright) ») : il compare aux PNG commités
+(`frontend/tests/e2e/visual-reference.spec.ts-snapshots/`), il ne réécrit **jamais** les
+références. **Re-baseline — une procédure, un workflow dédié**
+(`.github/workflows/visual-baselines.yml`, `workflow_dispatch` seul, jamais en local — les PNG
+doivent naître dans l'environnement EXACT de la CI, même image/polices que le job `e2e`) :
+`gh workflow run visual-baselines.yml --ref <branche> -f update=true` → `gh run download <run-id>
+-n visual-baselines` → committer le dossier `-snapshots/`, re-pousser. Déclenche une re-baseline :
+un changement d'apparence VOULU, un changement d'image runner (`ubuntu-latest`), ou une dérive du
+seed BCCL. Hors périmètre, délibérément : la page publique des vœux (token non forgeable sans base
+réelle) et le thème sombre.
 
 All PHP test jobs first **create + migrate the test DB** (`doctrine:database:create --if-not-exists` + `migrations:migrate`, `--env=test`) and run phpunit with `-e APP_ENV=test` on the `docker compose exec` — the containers default to `APP_ENV=dev` (root `.env` env_file) and `phpunit.xml.dist`'s `<server APP_ENV=test>` is not `force`d, so the real env var must be set explicitly.
 

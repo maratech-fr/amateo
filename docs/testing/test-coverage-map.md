@@ -1,10 +1,12 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-09-30 (rotation de fraîcheur, `documentation-update`). Re-confronté au code :
-ligne « Statique » (§1) corrigée — les trois gardes d'hygiène des dépendances posées le 2026-09-30
-(composer-unused, deptry, knip) manquaient à la table, ajoutées avec leur asymétrie Makefile
-(deptry seul est dans `make lint`/`make test`, détail complet : `testing-strategy.md` §1). Reste
-des lignes non re-sondées cette passe — historique complet :
+Last verified @ 2026-10-01 (`documentation-update`, PR 8/8 série « uniformité des écrans »). Re-confronté
+au code : ligne « Playwright » (§1) — `frontend/tests/e2e/` porte désormais aussi
+`visual-reference.spec.ts` (garde de captures de référence `toHaveScreenshot`, détail/procédure de
+re-baseline : `testing-strategy.md` §1) ; le compte de specs nommées, volatile, est retiré au
+profit du renvoi à §2. §4 — la note « fond d'écran commun, non mesuré » est nuancée : un pixel-diff
+existe désormais pour 9 écrans authentifiés/publics en thème clair desktop, pas pour le reflow
+mobile ni le thème sombre. Reste des lignes non re-sondées cette passe — historique complet :
 `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
@@ -23,7 +25,7 @@ des lignes non re-sondées cette passe — historique complet :
 | PHPUnit `CrossStack/` | backend ⇄ engine, backend ⇄ frontend | contrats : forme du payload ⇄ Pydantic (`*ContractSchemaTest`), `CONTRACT_VERSION`, parités de payload — dont `LeagueWindowsPayloadParityTest` (P4-272 ①, bloquant : le bloc `leagueWindows` émis au placement == la COPIE club `club_league_window`, jamais le catalogue global, copie vide → un seul diagnostic `league_envelope_empty`), **miroirs front déclarés** (`FrontRederivationRegistryTest`, `CapacityMirrorParityTest`) | `backend/tests/CrossStack/` | `phpunit --group contract` | steps de `blocking-tests` + `engine-semantics` (groupe `contract` **contre le vrai engine**) |
 | pytest | engine | unitaires du solveur (racine), **sémantiques** (`tests/semantic/` : une contrainte saisie est honorée, pas juste `COMPLETED`), goldens (`tests/golden/`, BCCL d'acceptation compris), invariants, perf (`-m perf`, budget lu par `_budget_seconds()` — `PERF_BUDGET_SECONDS` en override) ; **couverture + cliquet** (`make -C engine coverage`, plancher lu de `coverage-floor.json`, artefact `coverage-engine`) | `engine/tests/` | `make -C engine test` (ruff + format + mypy + bandit + pytest, **sans** couverture, cible séparée) · `make -C engine coverage` (couverture + cliquet, séparé) | `engine-tests` ; `engine-coverage` (couverture, `needs: engine-tests`, hors `needs` de `build-docker`) ; `engine-perf` (main, dense + BCCL, 60 s) ; `engine-perf-pr` (PR, dense seul, quand `engine/**` ou `docker/engine/**` bouge) |
 | Vitest + RTL | frontend | composants, hooks react-query, lib pure (`vi.mock` des queries) ; jsdom — **aucune mise en page** (`.claude/rules/frontend.md`) ; **couverture + cliquet** (`make -C frontend coverage`, plancher lu de `coverage-floor.json`, artefact `coverage-frontend`) ; **cliquet act-warnings** (reporter `tooling/actWarningsRatchet.ts`, plafond lu de `act-warnings-ceiling.json`, rougit `npm run test` — donc le job `frontend` — dès que les avertissements React « not wrapped in act » dépassent le plafond ; fil de détente à 0, FRT-34) | `frontend/src/**/*.test.ts*` | `make -C frontend test` (image tooling à rebâtir avant) · `make -C frontend coverage` (couverture, séparé — suite complète instrumentée, hors boucle courte) | `frontend` ; `frontend-coverage` (couverture, `needs: frontend`, hors `needs` de `build-docker`) |
-| Playwright | frontend + stack complète | 11 parcours nommés en §2 — dont **le seul test UI → API → engine → planning** (`journey.spec.ts`, qui prouve aussi la livraison PAR SSE : témoin Mercure, échec nommé si le hub reste muet — P4-168) et 4 specs **axe** (contraste 2 thèmes, reflow, voile, écrans système) | `frontend/tests/e2e/` | `make -C frontend e2e` | `e2e` |
+| Playwright | frontend + stack complète | parcours nommés en §2 — dont **le seul test UI → API → engine → planning** (`journey.spec.ts`, qui prouve aussi la livraison PAR SSE : témoin Mercure, échec nommé si le hub reste muet — P4-168), les specs **axe** (contraste 2 thèmes, reflow, voile, écrans système, en-têtes de sécurité — portée détaillée en §2), et la garde de **captures de référence** `visual-reference.spec.ts` (`toHaveScreenshot`, pixel-diff, 9 écrans, thème clair desktop seul — procédure de re-baseline : `testing-strategy.md` §1) | `frontend/tests/e2e/` | `make -C frontend e2e` | `e2e` |
 | Behat | stack complète | scénarios métier en français (Gherkin), une promesse par feature, lisibles et relisables par le fondateur, joués contre l'API réelle (aucun navigateur, aucun noyau in-process) — §5 : les 5 premières remplacent intégralement les smokes bash (`backend/scripts/*smoke*.sh`, SUPPRIMÉS — P4-165), les suivantes couvrent les règles qui détruisent/refusent/isolent (P4-175) | `backend/features/`, contexts `backend/tests/Behat/` | `make -C backend behat` (sous `with-sandbox.sh` en mode play) | `functional-tests` |
 | Statique | 3 zones | PHPStan 8 · CS-Fixer · Rector · **composer-unused** (dépendances mortes) — ruff · `ruff format` · mypy strict · bandit · **deptry** (dépendances mortes) — eslint · `tsc -b --force` · **knip** (dépendances/fichiers morts) | Makefiles (composer-unused et knip **hors** de `make lint`, deptry dedans — détail : `testing-strategy.md` §1) | `make lint` (composer-unused/knip : commande directe, hors cible Make) | `phpstan`, `rector`, `engine-tests`, `frontend` |
 | Sécurité | dépôt, images | gitleaks (historique entier), semgrep, `composer`/`npm`/`pip audit` (retry sur endpoint indisponible seulement, `.github/scripts/audit-retry.sh`), Trivy CRITICAL sur les images prod | `.github/workflows/` | — | `secrets-scan`, `semgrep`, `dependency-audit`, `build-docker` + cron hebdo `security-weekly.yml` |
@@ -109,9 +111,13 @@ hors du graphe TypeScript, aucun outil de lint ne les lit, et le scan de contras
 liste, contrairement au texte posé au-dessus. La seule garde est
 `frontend/src/test/brandBackground.test.ts` (Vitest, jsdom) : elle prouve la PARITÉ clair/sombre et
 la PURGE des assets, jamais un ratio de contraste — elle assume explicitement ne rien assertir sur
-l'opacité. La preuve que le texte reste lisible par-dessus le fond est une **passe visuelle
-manuelle**, pas un gate automatisé — même angle mort que le reflow ci-dessus :
-un défaut de fond derrière du texte pourrait passer inaperçu jusqu'à une régression visible à l'œil.
+l'opacité. La preuve que le texte reste lisible par-dessus le fond reste une **passe visuelle
+manuelle** pour la majorité du produit — même angle mort que le reflow ci-dessus : un défaut de
+fond derrière du texte pourrait passer inaperçu jusqu'à une régression visible à l'œil. **Partiellement
+mitigé depuis la PR 8/8 « uniformité des écrans »** (`frontend/tests/e2e/visual-reference.spec.ts`) :
+un pixel-diff `toHaveScreenshot` couvre 9 écrans desktop en thème clair (dont le fond derrière leur
+texte), mais seulement ceux-là — aucune garde équivalente sur le reflow mobile, le thème sombre, ni
+les écrans hors de cette liste.
 
 **Appariement FFBB (engagements, tous canaux) — jamais de feature Behat, structurel.** L'env dev de
 Behat pointe la vraie FFBB (`with-sandbox.sh`) ; le double déterministe `FfbbHttpClientStub` n'est
