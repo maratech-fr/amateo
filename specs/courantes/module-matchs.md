@@ -1000,7 +1000,7 @@ changement de `Team.level` sur une équipe engagée (409) reste souveraine pour 
 wizard reste grisé pour cette équipe, le bandeau de `TeamsStep` renvoie vers Matchs › Importer ›
 « Engagements FFBB ». Seul ce chemin, et seulement sur clic explicite, écrit un niveau sur une
 équipe engagée — toujours la valeur RE-DÉDUITE côté serveur (jamais un niveau fourni par le client).
-Rang/tier restent intouchés, aucune régénération n'est déclenchée.
+L'ÉQUIPE elle-même doit être jeune (U9–U18 d'après sa catégorie, `TeamTagService::isYouthTeam`) : une ligne jeune appariée à une équipe U21 ou senior ne propose rien et un `alignLevel` sur elle est sans effet. Rang/tier restent intouchés, aucune régénération n'est déclenchée.
 
 ### Import FBI (xlsx, une passe)
 

@@ -283,7 +283,9 @@ date, ou égalité entre niveaux différents) → `null`.
 engagé (le PUT générique `/api/teams/{id}` reste 409 sans exception, `TeamStateProcessor.php`). La
 valeur écrite est **RE-DÉDUITE côté serveur** après résolution des compétitions du même appel
 (jamais un `level` fourni par le client, qui est ignoré) ; une ligne inéligible (seniors, coupe,
-`PR`/`PN`) avec `alignLevel: true` est un no-op silencieux, pas un 422. Rang/tier ne sont jamais
+`PR`/`PN`) — ou une ligne jeune appariée à une équipe qui n'est PAS elle-même jeune U9–U18
+(`TeamTagService::isYouthTeam`, d'après sa catégorie ; le GET ne propose alors rien) — avec
+`alignLevel: true` est un no-op silencieux, pas un 422. Rang/tier ne sont jamais
 touchés, aucune régénération n'est déclenchée. Garde NR bloquante : `FfbbLevelAlignmentTest`
 (`backend/tests/Security/`) — falsifie le 409 du PUT générique, la valeur serveur contre un `level`
 client forgé, le no-op sur ligne inéligible et le rejet d'une équipe d'un autre club. Détail produit
