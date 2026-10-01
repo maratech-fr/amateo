@@ -20,6 +20,7 @@ import { PageHeader } from "@/shared/components/ui/page-header";
 import { FullPageSpinner, Spinner } from "@/shared/components/ui/spinner";
 import { useCredits } from "@/shared/credits/useCredits";
 import { readableForeground } from "@/shared/lib/color";
+import { dayLabelLongCap, dayLabelShort } from "@/shared/lib/days";
 import { PRODUCT_ACCENT } from "@/shared/lib/product";
 import { readFailed, readLoading } from "@/shared/lib/readState";
 import { cn } from "@/shared/lib/utils";
@@ -428,9 +429,6 @@ function ContactsFfbbSection({ club }: { club: NonNullable<MeResponse["club"]> }
   );
 }
 
-const DAY_LABELS: Record<number, string> = { 1: "Lundi", 2: "Mardi", 3: "Mercredi", 4: "Jeudi", 5: "Vendredi", 6: "Samedi", 7: "Dimanche" };
-const DAY_SHORT: Record<number, string> = { 1: "Lun", 2: "Mar", 3: "Mer", 4: "Jeu", 5: "Ven", 6: "Sam", 7: "Dim" };
-
 /** Le total d'heures d'un jour dans une liste byDay (0 si le jour n'y figure pas). */
 function dayTotal(byDay: UsageDayHours[], day: number): number {
   return byDay.find((d) => d.day === day)?.total ?? 0;
@@ -484,7 +482,7 @@ function UsageTable({ caption, firstColHeader, rows, totalByDay, grandTotal, day
             <tr className="border-b border-border text-left text-xs text-muted-foreground">
               <th className="py-1.5 font-medium">{firstColHeader}</th>
               {days.map((d) => (
-                <th key={d} className={cn("py-1.5 text-right font-medium", 7 === d ? SEPARATOR : "")} title={DAY_LABELS[d]}>{DAY_SHORT[d]}</th>
+                <th key={d} className={cn("py-1.5 text-right font-medium", 7 === d ? SEPARATOR : "")} title={dayLabelLongCap(d)}>{dayLabelShort(d)}</th>
               ))}
               <th className="py-1.5 pl-3 text-right font-medium">Réalisé</th>
               <th className="py-1.5 text-right font-medium">À venir</th>

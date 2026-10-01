@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router";
 
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
+import { DayMultiPicker } from "@/shared/components/ui/day-multi-picker";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { PeriodAnchorGate } from "./PeriodAnchorGate";
@@ -23,7 +24,6 @@ import { excludeTagNames, targetTagNames } from "@/shared/lib/tagTeamIds";
 import { cn } from "@/shared/lib/utils";
 
 import type { Constraint, ConstraintFamily, ConstraintPayload, ConstraintRuleType } from "../api";
-import { DAYS } from "../lib/days";
 import { dayLabelLong } from "@/shared/lib/days";
 import { useCreateConstraint, useDeleteConstraint, usePriorityTiers, useUpdateConstraint, useWizardCoachPlayers, useWizardCoaches, useWizardConstraints, useWizardTeamTagAssignments, useWizardTeamTags, useWizardTeams, useActiveTeams, useActiveVenues, useWizardVenues, useReservations } from "../queries";
 import { useCalendarEntry, useEntryConflicts, usePeriodAnchor } from "@/features/cockpit/queries";
@@ -62,32 +62,6 @@ function RuleBadge({ label }: { label: string }) {
 
 /** Coerce a JSON config value (unknown) into a day-number array. */
 const asNums = (v: unknown): number[] => (Array.isArray(v) ? v.map(Number).filter((n) => !Number.isNaN(n)) : []);
-
-/**
- * ⚠ `legend` n'est pas décoratif : un jour coché est colorié pareil qu'il soit IMPOSÉ ou
- * ÉVITÉ. Le sens vit dans un `Select` voisin, que la couleur ne rappelle pas et qu'un
- * lecteur d'écran ne rattache à rien — les boutons n'annonçaient que « Lun », « Mar ».
- * P4-58(a) décrivait la polarité comme invisible ; elle ne l'est plus depuis que ce
- * sélecteur existe, mais le GROUPE, lui, restait muet. `aria-label` porté par le groupe
- * suit la polarité courante : le sens est dit là où le geste se fait.
- */
-function DayPicker({ days, toggle, legend }: { days: Set<number>; toggle: (n: number) => void; legend: string }) {
-  return (
-    <div role="group" aria-label={legend} className="flex flex-wrap gap-1">
-      {DAYS.map((d) => (
-        <button
-          key={d.n}
-          type="button"
-          onClick={() => toggle(d.n)}
-          aria-pressed={days.has(d.n)}
-          className={cn("rounded-md border px-2 py-1 text-xs", days.has(d.n) ? "border-accent bg-accent text-accent-foreground" : "border-border text-muted-foreground")}
-        >
-          {d.label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 export function ConstraintsStep() {
   const periodEntryId = useWizardStore((s) => (s.mode === "period" ? s.calendarEntryId : null));
@@ -336,7 +310,9 @@ export function ConstraintsStep() {
       });
     }
   };
-  const toggleDay = (n: number) => setDays((prev) => (prev.has(n) ? new Set([...prev].filter((x) => x !== n)) : new Set([...prev, n])));
+  // Les jours sélectionnés, pour le sélecteur partagé (value triée) — l'état reste un `Set`.
+  const daySelection = [...days].sort((a, b) => a - b);
+  const setDaySelection = (next: number[]) => setDays(new Set(next));
   // Le NOM auto-généré écrit les jours EN TOUTES LETTRES (« jeudi », pas « Jeu ») — le
   // court reste réservé aux colonnes de la grille. Forme longue au foyer unique (D-22).
   const dayNames = (set: Set<number>) => [...set].sort((a, b) => a - b).map(dayLabelLong).join(", ");
@@ -879,7 +855,7 @@ export function ConstraintsStep() {
               <option value="only">uniquement</option>
               <option value="atLeast">au moins une</option>
             </Select>
-            <DayPicker days={days} toggle={toggleDay} legend={"only" === dayMode ? "Seuls jours autorisés" : "atLeast" === dayMode ? "Au moins une séance l'un de ces jours" : "Jours à éviter"} />
+            <DayMultiPicker value={daySelection} onChange={setDaySelection} legend={"only" === dayMode ? "Seuls jours autorisés" : "atLeast" === dayMode ? "Au moins une séance l'un de ces jours" : "Jours à éviter"} />
           </>
         )}
 
@@ -941,7 +917,7 @@ export function ConstraintsStep() {
               <option value="unavailable">indisponible</option>
               <option value="available">disponible uniquement</option>
             </Select>
-            <DayPicker days={days} toggle={toggleDay} legend={"available" === coachMode ? "Jours de disponibilité exclusive" : "Jours d'indisponibilité"} />
+            <DayMultiPicker value={daySelection} onChange={setDaySelection} legend={"available" === coachMode ? "Jours de disponibilité exclusive" : "Jours d'indisponibilité"} />
             {/* Lot C: optional time window on the selected days (empty = whole day). */}
             <label className="flex items-center gap-1 text-xs text-muted-foreground">
               de

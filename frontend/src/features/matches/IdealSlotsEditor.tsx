@@ -8,13 +8,13 @@ import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Select } from "@/shared/components/ui/select";
 import { TeamSelect } from "@/shared/components/ui/team-select";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
+import { dayLabelLongCap } from "@/shared/lib/days";
 import { compareTeamsByRank, type TeamLike, type TierLike } from "@/shared/lib/teamTiers";
 
 import type { ClubRuleCoherenceRuleRef, MatchWeek, TeamMatchHabit, Venue } from "./api";
 import { clubRuleLabel } from "./lib/clubRuleLabel";
 import { useCreateTeamMatchHabit, useDeleteTeamMatchHabit, useMatchConstraintCoherence, useTeamMatchHabits, useUpdateTeamMatchHabit } from "./queries";
 
-const DAY_LABELS = ["", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 const WEEK_LABELS: Record<MatchWeek, string> = { A: "Semaine A", B: "Semaine B" };
 
 /** Le résumé d'un créneau au repos : « Semaine A · Samedi 13:00 · Matéo » (semaine omise si le club n'alterne pas). */
@@ -23,7 +23,7 @@ function slotSummary(habit: TeamMatchHabit, venuesById: Map<string, Venue>, week
   if (weekendAlternates) {
     parts.push(WEEK_LABELS[habit.week]);
   }
-  parts.push(`${DAY_LABELS[habit.dayOfWeek]} ${habit.kickoffTime}`);
+  parts.push(`${dayLabelLongCap(habit.dayOfWeek)} ${habit.kickoffTime}`);
   if (null !== habit.venueId) {
     const venue = venuesById.get(habit.venueId);
     if (undefined !== venue) {
@@ -179,7 +179,7 @@ function SlotFields({
         <Select aria-label={`Jour du créneau idéal de ${teamName}`} className="h-8" wrapperClassName="w-28" value={day} onChange={(e) => setDay(Number(e.target.value))}>
           {[1, 2, 3, 4, 5, 6, 7].map((d) => (
             <option key={d} value={d}>
-              {DAY_LABELS[d]}
+              {dayLabelLongCap(d)}
             </option>
           ))}
         </Select>

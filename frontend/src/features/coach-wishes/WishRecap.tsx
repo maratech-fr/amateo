@@ -1,7 +1,8 @@
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
+import { dayLabelShort } from "@/shared/lib/days";
 
-import { DAY_LABELS, frDate, isSectionDirty, sectionKey, type SectionState } from "./wishSections";
+import { frDate, isSectionDirty, sectionKey, type SectionState } from "./wishSections";
 
 interface WishRecapProps {
   teams: { id: string; name: string }[];
@@ -11,7 +12,7 @@ interface WishRecapProps {
   onEditTeam: (teamId: string) => void;
 }
 
-const dayLabel = (day: number): string => DAY_LABELS.find((d) => d.day === day)?.label ?? String(day);
+const dayLabel = (day: number): string => dayLabelShort(day) || String(day);
 
 /** Résumé lisible d'une semaine modifiée. */
 function weekSummary(s: SectionState): string {

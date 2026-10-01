@@ -331,7 +331,7 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
 
     // Pick coach + a day, add → the payload pins ruleType HARD.
     await user.selectOptions(screen.getByLabelText("Coach"), "co1");
-    await user.click(screen.getByRole("button", { name: "Lun" }));
+    await user.click(screen.getByRole("button", { name: "lundi" }));
     await user.click(screen.getByRole("button", { name: "Ajouter la contrainte" }));
 
     expect(h.createMut).toHaveBeenCalledOnce();
@@ -351,7 +351,7 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
     // auto-generated NAME must spell the day out.
     await user.click(screen.getByRole("button", { name: "Dispo coach" }));
     await user.selectOptions(screen.getByLabelText("Coach"), "co1");
-    await user.click(screen.getByRole("button", { name: "Jeu" }));
+    await user.click(screen.getByRole("button", { name: "jeudi" }));
     await user.click(screen.getByRole("button", { name: "Ajouter la contrainte" }));
 
     expect(h.createMut.mock.calls[0][0].name).toBe("Jean Dupont · indispo jeudi");
@@ -373,7 +373,7 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
     await user.click(screen.getByRole("button", { name: "Dispo coach" }));
     await user.selectOptions(screen.getByLabelText("Coach"), "co1");
     await user.selectOptions(screen.getByLabelText("Disponibilité"), "available");
-    await user.click(screen.getByRole("button", { name: "Mar" }));
+    await user.click(screen.getByRole("button", { name: "mardi" }));
     await user.click(screen.getByRole("button", { name: "Ajouter la contrainte" }));
 
     expect(h.createMut.mock.calls[0][0]).toMatchObject({ family: "COACH_AVAILABILITY", ruleType: "HARD", scopeTargetId: "co1", config: { availableDays: [2] } });
@@ -386,7 +386,7 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
 
     await user.click(screen.getByRole("button", { name: "Dispo coach" }));
     await user.selectOptions(screen.getByLabelText("Coach"), "co1");
-    await user.click(screen.getByRole("button", { name: "Mar" }));
+    await user.click(screen.getByRole("button", { name: "mardi" }));
     await user.type(screen.getByLabelText("Heure de début"), "20:00");
     await user.click(screen.getByRole("button", { name: "Ajouter la contrainte" }));
 
@@ -399,7 +399,7 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
     renderWithProviders(<ConstraintsStep />);
 
     await user.click(screen.getByRole("button", { name: "Jours" }));
-    await user.click(screen.getByRole("button", { name: "Mer" }));
+    await user.click(screen.getByRole("button", { name: "mercredi" }));
     // default ruleType = PREFERRED (soft "avoid these days", ENG-10 fix engine-side)
     await user.click(screen.getByRole("button", { name: "Ajouter la contrainte" }));
 
@@ -497,7 +497,7 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
 
     await user.click(screen.getByRole("button", { name: "Jours" }));
     await user.selectOptions(screen.getByLabelText("Type de jour"), "only");
-    await user.click(screen.getByRole("button", { name: "Ven" }));
+    await user.click(screen.getByRole("button", { name: "vendredi" }));
     await user.click(screen.getByRole("button", { name: "Ajouter la contrainte" }));
 
     expect(h.createMut.mock.calls[0][0]).toMatchObject({ family: "DAY", ruleType: "HARD", config: { allowedDays: [5] } });
@@ -511,7 +511,7 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
     // "au moins une" pins HARD (no rule selector) and emits forcedDays, not allowedDays.
     await user.selectOptions(screen.getByLabelText("Type de jour"), "atLeast");
     expect(screen.queryByLabelText("Règle")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Dim" }));
+    await user.click(screen.getByRole("button", { name: "dimanche" }));
     await user.click(screen.getByRole("button", { name: "Ajouter la contrainte" }));
 
     expect(h.createMut.mock.calls[0][0]).toMatchObject({ family: "DAY", ruleType: "HARD", config: { forcedDays: [7] } });
@@ -541,8 +541,8 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
     expect(screen.getByRole("group", { name: "Au moins une séance l'un de ces jours" })).toBeInTheDocument();
 
     // Et l'état de chaque jour est porté par le bouton lui-même, pas seulement par sa classe.
-    await user.click(screen.getByRole("button", { name: "Ven" }));
-    expect(screen.getByRole("button", { name: "Ven", pressed: true })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "vendredi" }));
+    expect(screen.getByRole("button", { name: "vendredi", pressed: true })).toBeInTheDocument();
   });
 
   it("keeps the target after a create so several constraints can be added in a row (F5)", async () => {
@@ -551,7 +551,7 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
 
     await user.click(screen.getByRole("button", { name: "Jours" }));
     await user.selectOptions(screen.getByLabelText("Cible"), "t1");
-    await user.click(screen.getByRole("button", { name: "Mer" }));
+    await user.click(screen.getByRole("button", { name: "mercredi" }));
     await user.click(screen.getByRole("button", { name: "Ajouter la contrainte" }));
 
     expect(h.createMut).toHaveBeenCalledOnce();
@@ -659,7 +659,7 @@ describe("ConstraintsStep — edit an existing constraint", () => {
     await user.click(screen.getByRole("button", { name: "Modifier" }));
     // forcedDays loads as the "au moins une" mode (HARD-pinned, no rule selector), day preselected.
     expect(screen.getByLabelText("Type de jour")).toHaveValue("atLeast");
-    expect(screen.getByRole("button", { name: "Ven", pressed: true })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "vendredi", pressed: true })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Enregistrer la contrainte" }));
 
     const arg = h.updateMut.mock.calls[0][0] as { body: Constraint };
@@ -1379,7 +1379,7 @@ describe("ConstraintsStep — genèses de la semaine vs faits de la mère (P2-59
     renderWithProviders(<ConstraintsStep />);
 
     await user.click(screen.getByRole("button", { name: "Jours" }));
-    await user.click(screen.getByRole("button", { name: "Mer" }));
+    await user.click(screen.getByRole("button", { name: "mercredi" }));
     await user.click(screen.getByRole("button", { name: "Ajouter la contrainte" }));
 
     expect(h.createMut.mock.calls[0][0].calendarEntryId).toBe("child-week");

@@ -6,6 +6,7 @@ import { AccordionSection } from "@/shared/components/ui/accordion";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { DayMultiPicker } from "@/shared/components/ui/day-multi-picker";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
@@ -403,36 +404,11 @@ function ClubSection({ weekendAlternates }: { weekendAlternates: boolean }) {
   );
 }
 
-/** Les 7 jours en bascule (aria-pressed) — le multi-jours d'une règle. */
-function DayToggles({ value, onChange, label }: { value: number[]; onChange: (days: number[]) => void; label: string }) {
-  const toggle = (n: number): void => onChange(value.includes(n) ? value.filter((d) => d !== n) : [...value, n].sort((a, b) => a - b));
-  return (
-    <div className="flex flex-wrap gap-1" role="group" aria-label={label}>
-      {DAYS.map((d) => {
-        const on = value.includes(d.n);
-        return (
-          <Button
-            key={d.n}
-            type="button"
-            size="sm"
-            variant={on ? "default" : "outline"}
-            aria-pressed={on}
-            aria-label={dayLabelLong(d.n)}
-            onClick={() => toggle(d.n)}
-          >
-            {d.label}
-          </Button>
-        );
-      })}
-    </div>
-  );
-}
-
 /** Les champs d'une règle (jours · type · de/à) — partagés par la ligne éditable et l'ajout. */
 function RuleFields({ draft, set, idLabel }: { draft: ClubRuleDraft; set: (patch: Partial<ClubRuleDraft>) => void; idLabel: string }) {
   return (
     <>
-      <DayToggles label={`Jours (${idLabel})`} value={draft.daysOfWeek} onChange={(daysOfWeek) => set({ daysOfWeek })} />
+      <DayMultiPicker legend={`Jours (${idLabel})`} value={draft.daysOfWeek} onChange={(daysOfWeek) => set({ daysOfWeek })} />
       <Select aria-label="Type" value={draft.ruleType} onChange={(e) => set({ ruleType: e.target.value as MatchRuleType })}>
         {RULE_TYPES.map((t) => (
           <option key={t.value} value={t.value}>
@@ -785,7 +761,7 @@ function CoachFields({ draft, set, coaches, idLabel }: { draft: CoachUnavailabil
           </option>
         ))}
       </Select>
-      <DayToggles label={`Jours (${idLabel})`} value={draft.daysOfWeek} onChange={(daysOfWeek) => set({ daysOfWeek })} />
+      <DayMultiPicker legend={`Jours (${idLabel})`} value={draft.daysOfWeek} onChange={(daysOfWeek) => set({ daysOfWeek })} />
       <label className="flex items-center gap-1 text-sm text-muted-foreground">
         Pas avant
         <Input aria-label="Pas avant (heure de début)" type="time" value={draft.kickoffMin} onChange={(e) => set({ kickoffMin: e.target.value })} />

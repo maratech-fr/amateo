@@ -1,8 +1,8 @@
 import { type FormEvent, useState } from "react";
 
 import type { Coach, Team, TeamCoach } from "@/features/wizard/api";
-import { DAYS } from "@/features/wizard/lib/days";
 import { Button } from "@/shared/components/ui/button";
+import { DayMultiPicker } from "@/shared/components/ui/day-multi-picker";
 import { Select } from "@/shared/components/ui/select";
 import { cn } from "@/shared/lib/utils";
 
@@ -71,8 +71,6 @@ export function CoachWishForm({
   // réattribuerait en silence à quelqu'un d'autre. Elle est gardée, et marquée.
   const offerableCoachIds = new Set(mainCoachIds(teamId));
   const offeredCoaches = coaches.filter((c) => offerableCoachIds.has(c.id) || c.id === resolvedCoachId);
-
-  const toggleDay = (n: number) => setDays((prev) => (prev.includes(n) ? prev.filter((d) => d !== n) : [...prev, n].sort((a, b) => a - b)));
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -155,17 +153,7 @@ export function CoachWishForm({
         </label>
       </div>
 
-      <fieldset className="text-xs text-muted-foreground">
-        <legend className="mb-0.5">Jours indisponibles</legend>
-        <div className="flex flex-wrap gap-1">
-          {DAYS.map((d) => (
-            <label key={d.n} className={cn("cursor-pointer rounded border px-2 py-0.5", days.includes(d.n) ? "border-destructive bg-surface-destructive text-foreground" : "border-border")}>
-              <input type="checkbox" className="sr-only" checked={days.includes(d.n)} onChange={() => toggleDay(d.n)} />
-              {d.label}
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      <DayMultiPicker legend="Jours indisponibles" legendVisible tone="accent" value={days} onChange={setDays} />
 
       <textarea
         aria-label="Commentaire"

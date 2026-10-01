@@ -27,6 +27,19 @@ export const DAY_LABEL_LONG: readonly string[] = ["", "lundi", "mardi", "mercred
 /** Le libellé long d'un jour ISO, ou une chaîne vide si le jour est hors bornes. */
 export const dayLabelLong = (isoDay: number): string => DAY_LABEL_LONG[isoDay] ?? "";
 
+/** Le libellé COURT d'un jour ISO (« Lun »…« Dim »), ou une chaîne vide hors bornes. Foyer unique (D-22). */
+export const dayLabelShort = (isoDay: number): string => DAYS.find((d) => d.n === isoDay)?.label ?? "";
+
+/**
+ * Le libellé long CAPITALISÉ d'un jour ISO (« Lundi »…« Dimanche »), pour un DÉBUT de ligne ou de
+ * cellule, ou une chaîne vide hors bornes. Même foyer que `dayLabelLong` — jamais une table locale.
+ */
+export const dayLabelLongCap = (isoDay: number): string => {
+  const long = dayLabelLong(isoDay);
+
+  return "" === long ? "" : long.charAt(0).toUpperCase() + long.slice(1);
+};
+
 /**
  * Jour ISO (1 = lundi … 7 = dimanche) d'une date civile « Y-m-d ». Foyer unique (D-30).
  *

@@ -1,11 +1,9 @@
 import type { VenueMatchWindow, VenueUnavailability } from "../api";
 
-const DAY_LABELS = ["", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
-
 // D-30 : cette implémentation (midi UTC) était la plus défensive des trois — elle est
 // devenue le foyer partagé.
 import { frDateShortNoYear } from "@/shared/lib/date";
-import { isoDayOf } from "@/shared/lib/days";
+import { dayLabelLong, isoDayOf } from "@/shared/lib/days";
 
 export { isoDayOf };
 
@@ -85,7 +83,7 @@ export function venueAccessError(
   const day = isoDayOf(matchDate);
   const dayWindows = windows.filter((w) => w.venueId === venueId && w.dayOfWeek === day);
   if (0 === dayWindows.length) {
-    return isFriendly ? friendlyOffSlot : { level: "error", message: `Pas d'accès match le ${DAY_LABELS[day] ?? "?"} à ${venueName}.` };
+    return isFriendly ? friendlyOffSlot : { level: "error", message: `Pas d'accès match le ${dayLabelLong(day) || "?"} à ${venueName}.` };
   }
   if (null !== kickoff && "" !== kickoff && !kickoffInsideWindow(venueId, day, kickoff, windows)) {
     const ranges = dayWindows.map((w) => `${w.startTime}–${w.endTime}`).join(", ");
