@@ -423,7 +423,7 @@ export function WizardPage() {
         // ⚠ Le titre porte DÉJÀ le repère de semaine : `cockpit/queries.ts:349` nomme une
         // semaine enfant « {mère} — semaine du {lundi} ». Rien à ajouter ici, sous peine de
         // l'écrire deux fois.
-        <div className="mb-4 flex flex-col gap-1 rounded-lg border border-accent/40 bg-surface-accent px-4 py-2 text-sm">
+        <NoticeBanner tone="accent" className="mb-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="flex items-center gap-2">
             <CalendarClock className="size-4 text-accent" />
@@ -464,7 +464,7 @@ export function WizardPage() {
               ) : null}
             </div>
           ) : null}
-        </div>
+        </NoticeBanner>
       ) : null}
       {/* Texte CONDITIONNEL : la vérité se lit au serveur À LA CONFIRMATION (une
           génération peut aboutir pendant que le dialogue est ouvert) — affirmer

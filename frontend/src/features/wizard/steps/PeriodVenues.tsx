@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useEntryConflicts, usePeriodAnchor } from "@/features/cockpit/queries";
 import { frDateShort } from "@/features/cockpit/lib/date";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { readFailed, readLoading } from "@/shared/lib/readState";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
@@ -489,8 +490,8 @@ function PeriodVenuePanel({
       </fieldset>
 
       {offGridSlots.length > 0 && !isDisabled ? (
-        <div className="mt-2 rounded-md border border-destructive/40 bg-surface-destructive p-2">
-          <p role="alert" className="mb-1 text-xs font-medium text-destructive">
+        <NoticeBanner tone="destructive" className="mt-2">
+          <p role="alert" className="text-xs font-medium text-destructive">
             Créneau(x) sur un jour non affichable — servi au système mais invisible sur la grille. Supprimez-le pour ne pas planifier ce jour-là.
           </p>
           <ul className="flex flex-col gap-1">
@@ -506,7 +507,7 @@ function PeriodVenuePanel({
               </li>
             ))}
           </ul>
-        </div>
+        </NoticeBanner>
       ) : null}
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -713,9 +714,12 @@ function PeriodSlotEditor({
 
       {/* P2-43 volet (i) — le jour édité est fermé : on le DIT, sans rien bloquer (poser reste permis). */}
       {undefined !== closedProvenance ? (
-        <p role="note" className="mt-3 rounded-md border border-warning/40 bg-surface-warning px-3 py-2 text-sm text-foreground">
-          Créneau inactif — le {DAY_LABELS_LONG[day]?.toLowerCase() ?? `jour ${day}`} est fermé ({closedCause}). Le poser reste possible ; il ne servira pas tant que ce jour reste fermé.
-        </p>
+        <NoticeBanner
+          tone="warning"
+          role="note"
+          className="mt-3"
+          message={`Créneau inactif — le ${DAY_LABELS_LONG[day]?.toLowerCase() ?? `jour ${day}`} est fermé (${closedCause}). Le poser reste possible ; il ne servira pas tant que ce jour reste fermé.`}
+        />
       ) : null}
 
       {canSplit ? <SharedSlotHint capacity={capacity} /> : null}

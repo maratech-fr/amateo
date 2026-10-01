@@ -4,6 +4,7 @@ import { anchorIsWritable, useCalendarEntry, useEntryConflicts, usePeriodAnchor 
 import { frDateShort } from "@/features/cockpit/lib/date";
 import { AccordionSection } from "@/shared/components/ui/accordion";
 import { Card, CardContent } from "@/shared/components/ui/card";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { cn } from "@/shared/lib/utils";
 
 import { FAMILY_LABEL, FAMILY_ORDER, groupConstraints } from "../lib/constraintOrder";
@@ -341,14 +342,15 @@ export function RecapStep() {
   return (
     <div>
       <p className="mb-4 text-sm text-muted-foreground">{null === periodEntryId ? "Cartographie de votre club avant génération." : "Cartographie de cette période avant génération."}</p>
-      {layerNotices.map((notice) => (
-        <p
-          key={notice.message}
-          className={cn("mb-3 rounded-md px-3 py-2 text-sm", notice.pending ? "text-muted-foreground" : "border border-warning/40 bg-surface-warning text-foreground")}
-        >
-          {notice.message}
-        </p>
-      ))}
+      {layerNotices.map((notice) =>
+        notice.pending ? (
+          <p key={notice.message} className="mb-3 rounded-md px-3 py-2 text-sm text-muted-foreground">
+            {notice.message}
+          </p>
+        ) : (
+          <NoticeBanner key={notice.message} tone="warning" className="mb-3" message={notice.message} />
+        ),
+      )}
       {/* P4-107 (4ᵉ tranche) — la bande de cartes est BORNÉE : à 1920 chacune faisait ~460 px
           pour porter un nombre à deux chiffres, et l'œil devait parcourir toute la largeur pour
           lire quatre chiffres qui se comparent. ⚠ Ce cap est un choix ERGONOMIQUE, pas une
@@ -501,18 +503,19 @@ export function RecapStep() {
           fondateur 2026-08-04) : tout ce qui pèse sur la décision de lancer vit au
           même endroit — en haut ils étaient incohérents avec les warnings du bas. */}
       {sharedSlotNotices.map((notice) => (
-        <p
+        // Partiel = warning (une place se PERD) ; non réservé = information neutre (le système
+        // fera un choix légitime). Même œil que layerNotices : le ton visuel suit la gravité,
+        // sinon tout bandeau finit par ne plus rien dire.
+        <NoticeBanner
           key={notice.key}
-          className={cn(
-            "mb-3 rounded-md px-3 py-2 text-sm",
-            // Partiel = warning (une place se PERD) ; non réservé = information neutre
-            // (le système fera un choix légitime). Même œil que layerNotices : le ton
-            // visuel suit la gravité, sinon tout bandeau finit par ne plus rien dire.
-            notice.partial ? "border border-warning/40 bg-surface-warning text-foreground" : "border border-border bg-surface-muted text-muted-foreground",
-          )}
-        >
-          <span className="font-medium">{notice.place}</span> : {notice.message}
-        </p>
+          tone={notice.partial ? "warning" : "muted"}
+          className="mb-3"
+          message={
+            <>
+              <span className="font-medium">{notice.place}</span> : {notice.message}
+            </>
+          }
+        />
       ))}
       {blockers.length > 0 ? (
         <BlockerList blockers={blockers} className="mb-4" />
