@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { LeagueToTreatFixture, LeagueValidationOutlook, MissingDeadlineCompetition } from "./api";
@@ -94,24 +95,26 @@ function LeagueToTreatNotice({ fixtures }: { fixtures: LeagueToTreatFixture[] })
   const named = fixtures.slice(0, NAMED_LIMIT);
   const overflow = fixtures.length - named.length;
   return (
-    <div role="status" aria-live="polite" className="flex flex-wrap items-start gap-2 rounded-lg border border-warning/40 bg-surface-warning px-3 py-2 text-sm text-foreground">
-      <ListTodo className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
-      <div className="grow">
-        <p className="tabular-nums">
-          {fixtures.length} {plural(fixtures.length)} de championnats commencés {fixtures.length > 1 ? "restent" : "reste"} à traiter (ni heure ni gymnase, ou écart en attente) :
-        </p>
-        <ul className="mt-1 flex flex-col gap-0.5 text-muted-foreground">
-          {named.map((fixture) => (
-            <li key={fixture.fixtureId}>{toTreatLabel(fixture)}</li>
-          ))}
-          {overflow > 0 ? <li>+ {overflow} autre{overflow > 1 ? "s" : ""}</li> : null}
-        </ul>
+    <NoticeBanner tone="warning" role="status">
+      <div className="flex flex-wrap items-start gap-2">
+        <ListTodo className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
+        <div className="grow">
+          <p className="tabular-nums">
+            {fixtures.length} {plural(fixtures.length)} de championnats commencés {fixtures.length > 1 ? "restent" : "reste"} à traiter (ni heure ni gymnase, ou écart en attente) :
+          </p>
+          <ul className="mt-1 flex flex-col gap-0.5 text-muted-foreground">
+            {named.map((fixture) => (
+              <li key={fixture.fixtureId}>{toTreatLabel(fixture)}</li>
+            ))}
+            {overflow > 0 ? <li>+ {overflow} autre{overflow > 1 ? "s" : ""}</li> : null}
+          </ul>
+        </div>
+        <Button variant="outline" size="sm" className="shrink-0" onClick={scrollToQueue}>
+          Traiter dans la file
+          <ArrowRight className="size-4" aria-hidden="true" />
+        </Button>
       </div>
-      <Button variant="outline" size="sm" className="shrink-0" onClick={scrollToQueue}>
-        Traiter dans la file
-        <ArrowRight className="size-4" aria-hidden="true" />
-      </Button>
-    </div>
+    </NoticeBanner>
   );
 }
 
@@ -124,16 +127,18 @@ function MissingDeadlineNotice({ competitions }: { competitions: MissingDeadline
   const navigate = useNavigate();
   const names = competitions.map((competition) => competition.name).join(", ");
   return (
-    <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-foreground">
-      <CalendarClock className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="grow">
-        {competitions.length} championnat{competitions.length > 1 ? "s" : ""} sans échéance {competitions.length > 1 ? "ont" : "a"} des rencontres prêtes ({names}) — renseignez leur échéance de saisie pour les valider.
-      </span>
-      <Button variant="outline" size="sm" className="shrink-0" onClick={() => void navigate(ENTRY_DEADLINES_PATH)}>
-        Échéances de saisie
-        <ArrowRight className="size-4" aria-hidden="true" />
-      </Button>
-    </div>
+    <NoticeBanner tone="muted" role="status">
+      <div className="flex flex-wrap items-center gap-2">
+        <CalendarClock className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="grow">
+          {competitions.length} championnat{competitions.length > 1 ? "s" : ""} sans échéance {competitions.length > 1 ? "ont" : "a"} des rencontres prêtes ({names}) — renseignez leur échéance de saisie pour les valider.
+        </span>
+        <Button variant="outline" size="sm" className="shrink-0" onClick={() => void navigate(ENTRY_DEADLINES_PATH)}>
+          Échéances de saisie
+          <ArrowRight className="size-4" aria-hidden="true" />
+        </Button>
+      </div>
+    </NoticeBanner>
   );
 }
 
@@ -156,15 +161,17 @@ export function LeagueValidationBanner() {
   return (
     <div className="flex flex-col gap-2">
       {totalValidatable > 0 ? (
-        <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-foreground">
-          <BadgeCheck className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <span className="grow tabular-nums">
-            {totalValidatable} {plural(totalValidatable)} de {matured.length} championnat{matured.length > 1 ? "s" : ""} commencé{matured.length > 1 ? "s" : ""} (échéance dépassée ou premier match joué) {totalValidatable > 1 ? "sont prêtes" : "est prête"} — à confirmer « validé ligue ».
-          </span>
-          <Button size="sm" className="shrink-0" onClick={() => setOpen(true)}>
-            {LEAGUE_VALIDATION_CONFIRM_LABEL}
-          </Button>
-        </div>
+        <NoticeBanner tone="muted" role="status">
+          <div className="flex flex-wrap items-center gap-2">
+            <BadgeCheck className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span className="grow tabular-nums">
+              {totalValidatable} {plural(totalValidatable)} de {matured.length} championnat{matured.length > 1 ? "s" : ""} commencé{matured.length > 1 ? "s" : ""} (échéance dépassée ou premier match joué) {totalValidatable > 1 ? "sont prêtes" : "est prête"} — à confirmer « validé ligue ».
+            </span>
+            <Button size="sm" className="shrink-0" onClick={() => setOpen(true)}>
+              {LEAGUE_VALIDATION_CONFIRM_LABEL}
+            </Button>
+          </div>
+        </NoticeBanner>
       ) : null}
       {toTreat.length > 0 ? <LeagueToTreatNotice fixtures={toTreat} /> : null}
       {missingDeadline.length > 0 ? <MissingDeadlineNotice competitions={missingDeadline} /> : null}

@@ -323,14 +323,16 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
 
   const swapBanner =
     null !== swapSource ? (
-      <p className="flex items-center justify-between gap-2 rounded-md border border-accent/50 bg-surface-accent px-3 py-2 text-sm">
-        <span>
-          Échange : cliquez le match à échanger avec <strong>{teamsMap.get(swapSource.teamId)?.name ?? "?"}</strong> (gymnase + heure — les dates ne bougent pas).
-        </span>
-        <Button variant="outline" size="sm" onClick={() => setSwapSourceId(null)}>
-          Annuler
-        </Button>
-      </p>
+      <NoticeBanner tone="accent">
+        <div className="flex items-center justify-between gap-2">
+          <span>
+            Échange : cliquez le match à échanger avec <strong>{teamsMap.get(swapSource.teamId)?.name ?? "?"}</strong> (gymnase + heure — les dates ne bougent pas).
+          </span>
+          <Button variant="outline" size="sm" onClick={() => setSwapSourceId(null)}>
+            Annuler
+          </Button>
+        </div>
+      </NoticeBanner>
     ) : null;
 
   const hiddenHomesThisWeek = weekendFixtures.filter((f) => "HOME" === f.homeAway && null === f.venueId).length;
