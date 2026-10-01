@@ -1,12 +1,15 @@
 # Modules produit — ce qu'Amateo vend, en langage club
 
-Last verified @ 2026-09-29 (rotation de fraîcheur, `documentation-update`, brief P4-272 ④). Re-confronté au code :
-le wizard compte toujours 6 étapes dans l'ordre cité (`frontend/src/features/wizard/lib/
-steps.ts:9-16` — teams/venues/coaches/constraints/recap/generate) ; `FfbbClubPopulator.php` et
-`FfbbTeamImporter.php` existent toujours (`backend/src/Service/Basketball/`) ; les rappels
-d'échéance J-14/J-7/J-3 tiennent (`PeriodReminderCommand.php:31,40`) ; l'échéance par compétition
-qui alerte sans bloquer (RMM-6) tient (`EntryDeadlineOutlook.php:39-40`, fenêtre J-7, aucune garde
-bloquante). Reste du fichier non re-sondé cette passe.
+Last verified @ 2026-10-01 (rotation de fraîcheur, `documentation-update`, PR 5/7 série
+« uniformité des écrans »). Re-confronté au code : les routes `/register`, `/wizard`,
+`/doleances/:token` et `/matchs/adversaires` existent toujours (`frontend/src/app/routes.tsx`,
+`frontend/src/features/matches/MatchesLayout.tsx`) ; **l'export planning n'a que deux formats,
+PDF et Excel** — l'ancien PNG n'existe plus (`frontend/src/features/planning/queries.ts:314`
+`ExportFormat = "pdf" | "xlsx"`, aucun contrôleur PNG côté backend) : la ligne « Export PDF / PNG /
+Excel » était stale, corrigée ici. Reste des claims déjà vérifiées à la passe précédente
+(2026-09-29) : wizard 6 étapes (`frontend/src/features/wizard/lib/steps.ts:9-16`),
+`FfbbClubPopulator.php`/`FfbbTeamImporter.php` (`backend/src/Service/Basketball/`), rappels
+J-14/J-7/J-3 (`PeriodReminderCommand.php:31,40`), échéance RMM-6 (`EntryDeadlineOutlook.php:39-40`).
 
 > **Rôle de ce fichier.** `etat-des-lieux.md` §1 est la carte technique (entités, PR, pointeurs) —
 > ce fichier est sa **couche en langage club** : ce que le produit fait, dit à qui le vit sur le
@@ -45,7 +48,7 @@ le planning de la saison sort seul, et vous gardez la main pour l'affiner.
   retirer) — `etat-des-lieux.md` §1.2.
 - Versions de travail et cycle de vie du planning validé (une seule porte pour le modifier : le
   rouvrir) — `etat-des-lieux.md` §1.3, `docs/architecture/adr-index.md` (ADR-0002).
-- Export PDF / PNG / Excel, une page A4 paysage, tous les gymnases ou un seul — `etat-des-lieux.md`
+- Export PDF / Excel, une page A4 paysage, tous les gymnases ou un seul — `etat-des-lieux.md`
   §1.9.
 
 **Où dans l'app :** `/wizard` (mise en place), `/planning` (grille et génération), `/` (cockpit —
