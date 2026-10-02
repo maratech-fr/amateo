@@ -60,38 +60,7 @@ export function DemosSection() {
 
 function BcclCard({ account }: { account: AdminDemoAccount }) {
   const reset = useResetAdminDemoBccl();
-  const clock = useSetAdminDemoClock();
   const [confirmingReset, setConfirmingReset] = useState(false);
-  const serverDate = account.simulatedToday ?? "";
-  const [dateDraft, setDateDraft] = useState(serverDate);
-  // Le champ suit la valeur serveur (après application / reset) : ajustement d'état pendant
-  // le rendu au changement de prop, sans effet ni cascade (même patron que ConfirmDialog).
-  const [lastServerDate, setLastServerDate] = useState(serverDate);
-  if (lastServerDate !== serverDate) {
-    setLastServerDate(serverDate);
-    setDateDraft(serverDate);
-  }
-
-  const applyDate = () => {
-    if ("" === dateDraft) return;
-    clock.mutate(
-      { date: dateDraft },
-      {
-        onSuccess: () => toast.success("Date simulée appliquée."),
-        onError: () => toast.error("Impossible d’appliquer la date simulée."),
-      },
-    );
-  };
-
-  const clearDate = () => {
-    clock.mutate(
-      { clear: true },
-      {
-        onSuccess: () => toast.success("La démo est revenue à aujourd’hui."),
-        onError: () => toast.error("Impossible de revenir à aujourd’hui."),
-      },
-    );
-  };
 
   const runReset = () => {
     setConfirmingReset(false);
@@ -103,43 +72,18 @@ function BcclCard({ account }: { account: AdminDemoAccount }) {
 
   return (
     <DemoCard title="Démo BCCL" account={account} target="bccl">
-      <div className="mt-5 space-y-4 border-t border-white/10 pt-5">
-        <div>
-          <p className="text-sm font-medium text-white">Date simulée</p>
-          <p className="mt-1 text-xs text-console-muted">
-            {account.simulatedToday ? `La démo vit au ${account.simulatedToday}.` : "La démo vit à la date du jour."}
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <label className="sr-only" htmlFor="demo-bccl-date">Date simulée de la démo</label>
-            <input
-              id="demo-bccl-date"
-              type="date"
-              value={dateDraft}
-              onChange={(event) => setDateDraft(event.target.value)}
-              className="h-10 rounded-md border border-white/15 bg-white/[0.04] px-3 text-sm text-white outline-none focus:border-console-accent/70 focus:ring-2 focus:ring-console-accent/20"
-            />
-            <Button type="button" size="sm" className="bg-console-accent text-console-surface hover:bg-console-accent-hover" disabled={"" === dateDraft || clock.isPending} onClick={applyDate}>
-              Appliquer
-            </Button>
-            <Button type="button" size="sm" variant="outline" className="border-white/15 text-console-text-bright hover:bg-white/10" disabled={null === (account.simulatedToday ?? null) || clock.isPending} onClick={clearDate}>
-              Revenir à aujourd’hui
-            </Button>
-          </div>
-        </div>
-
-        <div>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="border-console-destructive-edge/40 text-console-destructive hover:bg-console-destructive-surface/10"
-            disabled={reset.isPending}
-            onClick={() => setConfirmingReset(true)}
-          >
-            {reset.isPending ? <Spinner className="size-3.5" /> : null}
-            Réinitialiser
-          </Button>
-        </div>
+      <div className="mt-4">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="border-console-destructive-edge/40 text-console-destructive hover:bg-console-destructive-surface/10"
+          disabled={reset.isPending}
+          onClick={() => setConfirmingReset(true)}
+        >
+          {reset.isPending ? <Spinner className="size-3.5" /> : null}
+          Réinitialiser
+        </Button>
       </div>
 
       <ConfirmDialog
@@ -158,6 +102,72 @@ function BcclCard({ account }: { account: AdminDemoAccount }) {
 
 function ProspectCard({ account }: { account: AdminDemoAccount }) {
   return <DemoCard title="Démo prospect" account={account} target="prospect" />;
+}
+
+/**
+ * Carte horloge simulée d'un compte démo — maison unique factorisée entre BCCL et prospect.
+ * Un compte démo n'exige jamais de confirmation (droits pleins, aucun e-mail réel en jeu) ;
+ * la confirmation nominative est réservée aux VRAIS clubs, sur la liste des comptes clubs.
+ */
+function ClockCard({ account, target, label }: { account: AdminDemoAccount; target: AdminDemoTarget; label: string }) {
+  const clock = useSetAdminDemoClock();
+  const serverDate = account.simulatedToday ?? "";
+  const [dateDraft, setDateDraft] = useState(serverDate);
+  // Le champ suit la valeur serveur (après application / reset) : ajustement d'état pendant
+  // le rendu au changement de prop, sans effet ni cascade (même patron que ConfirmDialog).
+  const [lastServerDate, setLastServerDate] = useState(serverDate);
+  if (lastServerDate !== serverDate) {
+    setLastServerDate(serverDate);
+    setDateDraft(serverDate);
+  }
+
+  const inputId = `demo-${target}-date`;
+
+  const applyDate = () => {
+    if ("" === dateDraft) return;
+    clock.mutate(
+      { target, body: { date: dateDraft } },
+      {
+        onSuccess: () => toast.success("Date simulée appliquée."),
+        onError: () => toast.error("Impossible d’appliquer la date simulée."),
+      },
+    );
+  };
+
+  const clearDate = () => {
+    clock.mutate(
+      { target, body: { clear: true } },
+      {
+        onSuccess: () => toast.success("La démo est revenue à aujourd’hui."),
+        onError: () => toast.error("Impossible de revenir à aujourd’hui."),
+      },
+    );
+  };
+
+  return (
+    <div className="mt-5 border-t border-white/10 pt-5">
+      <p className="text-sm font-medium text-white">Date simulée</p>
+      <p className="mt-1 text-xs text-console-muted">
+        {account.simulatedToday ? `La démo vit au ${account.simulatedToday}.` : "La démo vit à la date du jour."}
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <label className="sr-only" htmlFor={inputId}>Date simulée — {label}</label>
+        <input
+          id={inputId}
+          type="date"
+          value={dateDraft}
+          onChange={(event) => setDateDraft(event.target.value)}
+          className="h-10 rounded-md border border-white/15 bg-white/[0.04] px-3 text-sm text-white outline-none focus:border-console-accent/70 focus:ring-2 focus:ring-console-accent/20"
+        />
+        <Button type="button" size="sm" className="bg-console-accent text-console-surface hover:bg-console-accent-hover" disabled={"" === dateDraft || clock.isPending} onClick={applyDate}>
+          Appliquer
+        </Button>
+        <Button type="button" size="sm" variant="outline" className="border-white/15 text-console-text-bright hover:bg-white/10" disabled={null === (account.simulatedToday ?? null) || clock.isPending} onClick={clearDate}>
+          Revenir à aujourd’hui
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function DemoCard({ title, account, target, children }: { title: string; account: AdminDemoAccount; target: AdminDemoTarget; children?: ReactNode }) {
@@ -203,6 +213,8 @@ function DemoCard({ title, account, target, children }: { title: string; account
           Désactiver
         </Button>
       </div>
+
+      <ClockCard account={account} target={target} label={title} />
 
       {children}
     </article>
