@@ -11,7 +11,6 @@ use App\Entity\ClubUser;
 use App\Entity\User;
 use App\Repository\ClubUserRepository;
 use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\QueryBuilder;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\RequestStack;
 
@@ -33,28 +32,6 @@ class ClubStateProvider extends AbstractStateProvider
     protected function getEntityClass(): string
     {
         return Club::class;
-    }
-
-    /**
-     * SEC-01: Club has no club_id column, so the tenant filter does not scope it.
-     * Bound the collection to the clubs the caller is an active member of.
-     */
-    protected function applyRequestFilters(QueryBuilder $qb): bool
-    {
-        $user = $this->security->getUser();
-        $clubIds = $user instanceof User ? $this->clubUserRepository->findActiveClubIds($user->getId()) : [];
-
-        if ([] === $clubIds) {
-            // Fail-closed: no authenticated user / no active membership → no clubs.
-            $qb->andWhere('1 = 0');
-
-            return false;
-        }
-
-        $qb->andWhere($qb->expr()->in('e.id', ':cs_club_ids'))
-            ->setParameter('cs_club_ids', $clubIds);
-
-        return false;
     }
 
     /**

@@ -20,7 +20,11 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  * SEC-14: the GLOBAL reference tables (PriorityTier, SubscriptionPlan, Sport) have no club_id and
  * are read by the solver / billing for EVERY tenant — a write through the tenant API
  * would tamper cross-club (solver catalogue) or falsify pricing. Writes must be rejected
- * (the operations are removed → 405). Reads stay open.
+ * (the operations are removed → 405).
+ *
+ * PriorityTier / SubscriptionPlan keep an open collection read. Sport, en revanche, n'expose
+ * plus que le Get item (sa GetCollection a été retirée au nettoyage API — le front ne la lit
+ * pas) : son cas dédié vérifie que la collection ET les écritures sont fermées.
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -37,7 +41,6 @@ final class GlobalReferenceTablesReadOnlyTest extends WebTestCase
     {
         yield 'priority-tiers' => ['/api/priority_tiers'];
         yield 'subscription-plans' => ['/api/subscription_plans'];
-        yield 'sports' => ['/api/sports'];
     }
 
     #[DataProvider('globalCollections')]
@@ -74,6 +77,39 @@ final class GlobalReferenceTablesReadOnlyTest extends WebTestCase
 
         $this->client->request('GET', $collection);
         self::assertResponseIsSuccessful();
+    }
+
+    /**
+     * Sport n'expose plus que le Get item : la collection ET toutes les écritures
+     * sont fermées. 404/405 cohérent — un refactor réintroduisant une opération
+     * rouvrirait cette surface.
+     */
+    public function testSportIsItemReadOnlyWithNoCollectionOrWrites(): void
+    {
+        $this->client->loginUser($this->seedMember());
+
+        // GetCollection retirée → la collection n'existe plus.
+        $this->client->request('GET', '/api/sports');
+        self::assertContains(
+            $this->client->getResponse()->getStatusCode(),
+            [404, 405],
+            'GET /api/sports collection must not exist',
+        );
+
+        // Aucune écriture. La collection n'existant plus du tout, un POST sur /api/sports
+        // tombe en 404 (route absente), pas en 405 — les deux ferment l'écriture.
+        $this->client->request('POST', '/api/sports', [], [], ['CONTENT_TYPE' => 'application/ld+json'], '{}');
+        self::assertContains(
+            $this->client->getResponse()->getStatusCode(),
+            [404, 405],
+            'POST /api/sports must be rejected',
+        );
+
+        $this->client->request('PUT', '/api/sports/1', [], [], ['CONTENT_TYPE' => 'application/ld+json'], '{}');
+        self::assertSame(405, $this->client->getResponse()->getStatusCode(), 'PUT /api/sports/1 must be rejected');
+
+        $this->client->request('DELETE', '/api/sports/1');
+        self::assertSame(405, $this->client->getResponse()->getStatusCode(), 'DELETE /api/sports/1 must be rejected');
     }
 
     protected function setUp(): void

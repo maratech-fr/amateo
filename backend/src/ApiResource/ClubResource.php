@@ -6,7 +6,6 @@ namespace App\ApiResource;
 
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
-use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
 use App\Dto\ClubInput;
@@ -20,10 +19,10 @@ use Symfony\Component\Serializer\Attribute\Groups;
 // (AuthController). Club deletion is intentionally NOT exposed over the API
 // yet: dropping a tenant must cascade its child rows (no DB cascade exists
 // today) and be confirmed — that dedicated flow is future work, not open CRUD.
-// GetCollection/Get/Put are tenant-scoped in the provider/processor to the
-// caller's active ClubUser memberships.
+// GetCollection retiré (nettoyage API) : le front ne liste jamais les clubs
+// (l'identité tenant vient du JWT, un seul club actif). Get/Put sont tenant-scopés
+// dans le provider/processor aux adhésions ClubUser actives de l'appelant.
 #[ApiResource(shortName: 'Club', operations: [
-    new GetCollection,
     new Get,
     new Put,
     new Post(
@@ -38,7 +37,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
         read: false,
         name: 'import_teams_analyze',
     ),
-], input: ClubInput::class, paginationEnabled: true, paginationItemsPerPage: 30, provider: ClubStateProvider::class, processor: ClubStateProcessor::class)]
+], input: ClubInput::class, provider: ClubStateProvider::class, processor: ClubStateProcessor::class)]
 class ClubResource
 {
     #[Groups(['read'])]
