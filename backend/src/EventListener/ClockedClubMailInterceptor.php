@@ -98,23 +98,39 @@ final readonly class ClockedClubMailInterceptor implements EventSubscriberInterf
 
     private function capture(Email $email, string $clubId, DateTimeImmutable $simulatedDate): ClubMailboxMessage
     {
-        $message = new ClubMailboxMessage();
+        $message = new ClubMailboxMessage;
         $message->setClubId($clubId);
         $message->setSimulatedDate($simulatedDate);
         $message->setFromAddress(mb_substr($this->joinAddresses($email->getFrom()), 0, 255));
         $message->setToAddress(mb_substr($this->joinAddresses($email->getTo()), 0, 1000));
         $message->setSubject(mb_substr($email->getSubject() ?? '', 0, 998));
-        $message->setBodyText($email->getTextBody());
-        $message->setBodyHtml($email->getHtmlBody());
+        $message->setBodyText($this->asString($email->getTextBody()));
+        $message->setBodyHtml($this->asString($email->getHtmlBody()));
 
         return $message;
     }
 
     /**
-     * @param list<Address> $addresses
+     * @param array<Address> $addresses
      */
     private function joinAddresses(array $addresses): string
     {
         return implode(', ', array_map(static fn (Address $a): string => $a->toString(), $addresses));
+    }
+
+    /**
+     * `Email::getTextBody()`/`getHtmlBody()` rendent `resource|string|null` : un corps posé comme
+     * flux doit être lu en chaîne. On rejette ce message (jamais envoyé), lire le flux du clone
+     * d'enfilage est donc sans effet de bord.
+     */
+    private function asString(mixed $body): ?string
+    {
+        if (\is_resource($body)) {
+            $contents = stream_get_contents($body);
+
+            return \is_string($contents) ? $contents : null;
+        }
+
+        return \is_string($body) ? $body : null;
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Mail;
 
 use App\Entity\Club;
+use App\EventListener\ClockedClubMailInterceptor;
 use App\Repository\ClubMailboxMessageRepository;
 use App\Service\TenantConnectionContext;
 use DateTimeImmutable;
@@ -24,7 +25,7 @@ use Symfony\Component\Mime\Email;
  *  2. club SANS horloge → e-mail enfilé normalement, RIEN en boîte ;
  *  3. un autre club ne voit jamais la boîte d'autrui (RLS : sous son GUC, 0 ligne).
  *
- * Falsifiable : désactiver le listener {@see \App\EventListener\ClockedClubMailInterceptor}
+ * Falsifiable : désactiver le listener {@see ClockedClubMailInterceptor}
  * (retirer `reject()`/le subscriber) fait enfiler l'e-mail du club à horloge → rouge sur (1).
  */
 #[Group('phase1')]
@@ -117,13 +118,13 @@ final class ClockedClubMailInterceptTest extends KernelTestCase
 
     private function email(string $to, string $subject, string $text): Email
     {
-        return (new Email())->from('noreply@amateo.test')->to($to)->subject($subject)->text($text);
+        return (new Email)->from('noreply@amateo.test')->to($to)->subject($subject)->text($text);
     }
 
     private function seedClub(?DateTimeImmutable $simulatedToday): string
     {
         $suffix = bin2hex(random_bytes(4));
-        $club = (new Club())->setName('Boîte ' . $suffix)->setSlug('boite-' . $suffix)->setTimezone('Europe/Paris')->setLocale('fr');
+        $club = (new Club)->setName('Boîte ' . $suffix)->setSlug('boite-' . $suffix)->setTimezone('Europe/Paris')->setLocale('fr');
         $club->setSimulatedToday($simulatedToday);
         $this->em->persist($club);
         $this->em->flush();

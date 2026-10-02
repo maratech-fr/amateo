@@ -94,9 +94,9 @@ final class ClubDayTest extends TestCase
     {
         $clubClock = new ClubClock(
             $clock,
-            new RequestStack(),
+            new RequestStack,
             $this->createMock(EntityManagerInterface::class),
-            new DevClockStore(new ArrayAdapter()),
+            new DevClockStore(new ArrayAdapter),
             false,
             'test',
         );

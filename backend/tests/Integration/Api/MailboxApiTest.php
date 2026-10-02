@@ -82,19 +82,19 @@ final class MailboxApiTest extends WebTestCase
     private function seedClubWithMember(): array
     {
         $suffix = bin2hex(random_bytes(4));
-        $club = (new Club())->setName('MB ' . $suffix)->setSlug('mb-' . $suffix)->setTimezone('Europe/Paris')->setLocale('fr')->setOnboardingCompleted(true);
+        $club = (new Club)->setName('MB ' . $suffix)->setSlug('mb-' . $suffix)->setTimezone('Europe/Paris')->setLocale('fr')->setOnboardingCompleted(true);
         $club->setSimulatedToday(new DateTimeImmutable('2026-12-24'));
         $this->em->persist($club);
 
         $hasher = self::getContainer()->get('security.user_password_hasher');
-        $user = (new User())->setEmail('m' . $suffix . '@test.fr')->setFirstName('M')->setLastName('B');
+        $user = (new User)->setEmail('m' . $suffix . '@test.fr')->setFirstName('M')->setLastName('B');
         $user->setPasswordHash($hasher->hashPassword($user, 'Password123!'));
         $this->em->persist($user);
         $this->em->flush();
 
         $this->scopeGucToClub($club->getId());
         // Simple MEMBRE (viewer), pas gestionnaire : la boîte est lisible par tout membre.
-        $this->em->persist((new ClubUser())->setClubId($club->getId())->setUserId($user->getId())->setRole('viewer')->setIsActive(true));
+        $this->em->persist((new ClubUser)->setClubId($club->getId())->setUserId($user->getId())->setRole('viewer')->setIsActive(true));
         $this->em->flush();
 
         return [$club->getId(), $user];
@@ -112,7 +112,7 @@ final class MailboxApiTest extends WebTestCase
     private function seedMessage(string $clubId, string $to, string $subject, string $text): string
     {
         $this->scopeGucToClub($clubId);
-        $message = (new ClubMailboxMessage())
+        $message = (new ClubMailboxMessage)
             ->setClubId($clubId)
             ->setSimulatedDate(new DateTimeImmutable('2026-12-24'))
             ->setFromAddress('noreply@amateo.test')
