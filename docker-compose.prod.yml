@@ -265,6 +265,7 @@ services:
     build:
       context: .
       dockerfile: docker/engine/Dockerfile
+      target: prod
     container_name: amateo-engine
     working_dir: /app/engine
     environment:

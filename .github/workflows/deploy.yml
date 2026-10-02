@@ -185,6 +185,7 @@ jobs:
         with:
           context: .
           file: docker/engine/Dockerfile
+          target: prod
           push: true
           tags: |
             ghcr.io/${{ steps.meta.outputs.owner }}/scheduler-engine:${{ steps.meta.outputs.version }}

@@ -1526,6 +1526,7 @@ jobs:
           docker build --target prod -f docker/php/Dockerfile -t scan/php-prod .
           docker build --target nginx-prod -f docker/php/Dockerfile -t scan/nginx-prod .
           docker build --target prod -f docker/frontend/Dockerfile -t scan/frontend-prod .
+          docker build --target prod -f docker/engine/Dockerfile -t scan/engine-prod .
           docker build -f docker/postgres/Dockerfile.prod -t scan/postgres-prod .
 
       # SEC A19 — Trivy sur les images PROD fraîchement construites : les paquets
