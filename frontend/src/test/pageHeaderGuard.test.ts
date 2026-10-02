@@ -31,6 +31,7 @@ const PRINCIPAL_PAGES = [
   "features/release-notes/ReleaseNotesPage.tsx",
   "features/legal/PrivacyPage.tsx",
   "features/cockpit/CockpitPage.tsx",
+  "features/mailbox/MailboxPage.tsx",
 ];
 
 // Fichiers autorisés à poser un `<h1` sans `PageHeader` — raison nominative.

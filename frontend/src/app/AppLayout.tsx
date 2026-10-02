@@ -3,6 +3,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useNavigation } from "react-router";
 
 import { useLogout } from "@/features/auth/queries";
+import { MailboxNavItem } from "@/features/mailbox/MailboxNavItem";
 import { useMe } from "@/shared/session/queries";
 import { FeedbackDialog } from "@/shared/feedback/FeedbackDialog";
 import { WhatsNewModal } from "@/features/release-notes/WhatsNewModal";
@@ -103,6 +104,9 @@ export function AppLayout() {
                 Matchs
               </span>
             )}
+            {/* « Boîte aux lettres » : visible seulement si le club vit à une horloge simulée
+                (P4-16), avec le compteur des e-mails interceptés. Décide elle-même (null sinon). */}
+            <MailboxNavItem />
             <Button
               variant="ghost"
               size="icon"
