@@ -675,11 +675,21 @@ e-mail est rangé dans sa « boîte » plutôt que parti.
   `kernel.event_subscriber`) écoute `Symfony\Mailer\Event\MessageEvent` à **priorité 100**, et
   n'agit **qu'à l'ENFILAGE** (`$event->isQueued()` — l'app envoie tout via le bus Messenger,
   `messenger.yaml` route `SendEmailMessage` en async ; rejeter ici empêche la mise en file, le
-  worker ne voit donc jamais le message). Le club courant vient du GUC `app.club_id` lu en SQL
-  brut (`current_setting`), jamais d'un header ; **hors contexte club** (reset mot de passe,
-  vérification e-mail, feedback, health) le GUC est vide et l'e-mail part **réellement**, c'est
-  voulu. Un club dont `ClubClock::simulatedTodayFor()` rend `null` (pas d'horloge active) enfile
-  lui aussi normalement. Le corps est capté **tel qu'il est à l'enfilage** — donc **avant** la
+  worker ne voit donc jamais le message). **Liste blanche, défaut fermé** (revue sécurité
+  2026-10-02) : seuls les e-mails MÉTIER marqués à la source par `App\Mail\ClubBusinessMail`
+  (`src/Mail/ClubBusinessMail.php`, posé par les trois builders `PeriodReminderMailBuilder`,
+  `TransitionReminderMailBuilder`, `CoachWishMailBuilder`) sont candidats ; les e-mails de COMPTE
+  (reset de mot de passe, vérification/changement d'adresse, inscription, feedback, health) ne
+  portent pas le marqueur et partent **toujours réellement**, même vers un membre du club — sans
+  quoi un membre connecté d'un club à horloge pouvait capter dans la boîte le lien de reset d'un
+  utilisateur d'un AUTRE club (`POST /api/password/forgot` est public mais le GUC est posé dès
+  qu'un JWT est présent). Deuxième garde : **tous** les destinataires (To/Cc/Cci) doivent
+  appartenir au club du GUC (membre actif `club_user`→`app_user.email`, ou `coach.email` — les
+  campagnes de vœux partent vers des coachs non-utilisateurs), comparaison normalisée ; un
+  destinataire hors club ⇒ envoi réel + warning sans contenu. Le club courant vient du GUC
+  `app.club_id` lu en SQL brut (`current_setting`), jamais d'un header ; hors contexte club le GUC
+  est vide et l'e-mail part réellement. Un club dont `ClubClock::simulatedTodayFor()` rend `null`
+  (pas d'horloge active) enfile lui aussi normalement. Le corps est capté **tel qu'il est à l'enfilage** — donc **avant** la
   signature de marque (`EmailSignatureListener`, posée chez le worker qui ne tourne jamais ici) :
   `body_text` porte le texte métier, `body_html` reste en général nul.
 - **`App\Entity\ClubMailboxMessage`** / table `club_mailbox_message` (migration
