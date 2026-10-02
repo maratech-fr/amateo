@@ -18,6 +18,7 @@ use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
 use App\Service\SocleGuard;
 use Doctrine\ORM\EntityManagerInterface;
+use LogicException;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
@@ -256,27 +257,13 @@ class ScheduleStateProcessor extends AbstractStateProcessor
     }
 
     /**
-     * @param Schedule      $entity
-     * @param ScheduleInput $input
+     * PUT retiré de cette ressource (nettoyage API) — le renommage d'une version passe
+     * désormais par PUT /api/schedule_plans/{id}, le cycle de vie par les routes dédiées.
+     * L'abstraction impose seulement que ce foyer existe ; il n'est plus atteignable.
      */
     protected function updateEntityFromInput(object $entity, object $input): void
     {
-        // ADR-0002 inv. 1 : la version choisie est le planning en vigueur — la
-        // rouvrir (dépointer) avant de l'éditer.
-        if ($this->schedulePlanProvisioner->isChosen($entity->getId())) {
-            throw new ConflictHttpException('La version choisie est le planning en vigueur. Rouvrez-le avant de l\'éditer.');
-        }
-        // Status transitions go through the dedicated endpoints (generate/validate/reopen),
-        // never a free-form PUT. The field is accepted but IGNORED (never applied):
-        // the frontend rename echoes a possibly-stale cached status, so rejecting a
-        // mismatch would 409 legitimate renames — while silently ignoring still makes
-        // fabricating a COMPLETED plan without generation impossible.
-        if (null !== $input->name) {
-            $entity->setName($input->name);
-        }
-        if (null !== $input->solverSeed) {
-            $entity->setSolverSeed($input->solverSeed);
-        }
+        throw new LogicException('La modification (PUT) n\'est pas exposée pour les plannings.');
     }
 
     /**

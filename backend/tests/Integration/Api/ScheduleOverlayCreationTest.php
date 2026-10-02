@@ -113,28 +113,6 @@ final class ScheduleOverlayCreationTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
     }
 
-    /**
-     * NR P4-41 (revue #339 round 2) — le contrat du PUT après l'assouplissement de `name` :
-     * ABSENT = INCHANGÉ (patron « absent = on garde », le même que les 4 champs alignés par
-     * P2-7a). Rien ne l'épinglait, alors que la contrainte `NotBlank` sec le refusait AVANT.
-     */
-    public function testAPutOmittingTheNameLeavesItUnchanged(): void
-    {
-        [$user, $club, $season] = $this->seed('OVP');
-        $entry = $this->period($club, $season, CalendarEntryPeriodType::HOLIDAY);
-        $this->post($user, $club, ['name' => 'Nom à garder', 'status' => 'DRAFT', 'schedulePlanId' => $this->planIdOf($entry)]);
-        self::assertResponseStatusCodeSame(201);
-        $id = json_decode((string) $this->client->getResponse()->getContent(), true)['id'];
-
-        $this->client->request('PUT', '/api/schedules/' . $id, [], [], [
-            ...$this->authHeaders($user, $club),
-            'CONTENT_TYPE' => 'application/ld+json',
-        ], json_encode(['status' => 'DRAFT'], \JSON_THROW_ON_ERROR));
-
-        self::assertResponseIsSuccessful();
-        self::assertSame('Nom à garder', json_decode((string) $this->client->getResponse()->getContent(), true)['name']);
-    }
-
     public function testHolidayOverlayAllowed(): void
     {
         [$user, $club, $season] = $this->seed('OV2');
@@ -231,27 +209,6 @@ final class ScheduleOverlayCreationTest extends WebTestCase
         // c'est celui du module matchs (même garde, même message actionnable).
         $this->post($user, $club, ['name' => 'X', 'status' => 'DRAFT', 'schedulePlanId' => $this->planIdOf($entry)]);
         self::assertResponseStatusCodeSame(409);
-    }
-
-    public function testSchedulePlanIdImmutableOnPut(): void
-    {
-        [$user, $club, $season] = $this->seed('OV8');
-        $entry = $this->period($club, $season, CalendarEntryPeriodType::CLOSURE);
-        $planId = $this->planIdOf($entry);
-        $this->post($user, $club, ['name' => 'O', 'status' => 'DRAFT', 'schedulePlanId' => $planId]);
-        $scheduleId = json_decode((string) $this->client->getResponse()->getContent(), true)['id'];
-
-        // PUT trying to detach the overlay marker must not change it.
-        $this->client->request('PUT', "/api/schedules/{$scheduleId}", [], [], [
-            ...$this->authHeaders($user, $club),
-            'CONTENT_TYPE' => 'application/ld+json',
-        ], json_encode(['name' => 'Renamed', 'status' => 'DRAFT', 'schedulePlanId' => null], \JSON_THROW_ON_ERROR));
-        self::assertResponseIsSuccessful();
-        // GET back through the API: the overlay marker is unchanged.
-        $this->client->request('GET', "/api/schedules/{$scheduleId}", [], [], $this->authHeaders($user, $club));
-        self::assertResponseIsSuccessful();
-        $reloaded = json_decode((string) $this->client->getResponse()->getContent(), true);
-        self::assertSame($planId, $reloaded['schedulePlanId'], 'overlay marker is immutable on PUT');
     }
 
     protected function setUp(): void
