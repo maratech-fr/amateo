@@ -28,7 +28,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * Sans l'option, comportement historique : l'offre seule (voie CLI directe, ex.
  * repasser un club en Découverte).
  *
- * Horloge démo (D6, décision fondateur) : le pivot d'encaissement lit `demo_today`
+ * Horloge démo (D6, décision fondateur) : le pivot d'encaissement lit `simulated_today`
  * du club cible quand il est de DÉMONSTRATION (même patron que MarkNextSeasonPaidCommand),
  * jamais l'horloge réelle — sinon la démo de bascule ment.
  *
@@ -111,13 +111,13 @@ final class SetClubPlanCommand extends Command
         }
 
         // Encaissement : offre + saison réglée dans la MÊME transaction. Le pivot lit
-        // demo_today du club démo (D6), sinon l'horloge réelle. Une valeur non-NULL
+        // simulated_today du club démo (D6), sinon l'horloge réelle. Une valeur non-NULL
         // n'existe QUE pour un club is_demo (DemoClockCommand ne l'écrit que là).
         // transactional() relaie le code de retour de la closure (int) — offre + marqueur
         // dans la MÊME transaction : un échec de l'un annule l'autre.
         return $connection->transactional(function (Connection $tx) use ($io, $clubId, $planId, $planCode, $paidSeason): int {
             $pin = $tx->fetchOne(
-                'SELECT CASE WHEN is_demo AND demo_today IS NOT NULL THEN demo_today END FROM club WHERE id = :id',
+                'SELECT CASE WHEN is_demo AND simulated_today IS NOT NULL THEN simulated_today END FROM club WHERE id = :id',
                 ['id' => $clubId],
             );
             if (false === $pin) {

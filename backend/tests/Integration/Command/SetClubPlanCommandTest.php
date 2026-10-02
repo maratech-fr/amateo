@@ -19,7 +19,7 @@ use Symfony\Component\Console\Tester\CommandTester;
  * SA4 / P1-3 — attribution d'une offre (A3). `--paid-season` (current|next) pose
  * l'offre ET marque la saison encaissée dans la MÊME transaction, sur l'horloge
  * DÉMO (D6, même patron que MarkNextSeasonPaidCommand) : un club de démonstration
- * épinglé pivote sur `demo_today`, jamais sur le temps réel. Le marqueur est
+ * épinglé pivote sur `simulated_today`, jamais sur le temps réel. Le marqueur est
  * monotone (GREATEST ne recule jamais). `decouverte` + `--paid-season` est interdit.
  * Sans l'option, l'offre est posée seule (voie CLI directe historique).
  */
@@ -37,7 +37,7 @@ final class SetClubPlanCommandTest extends KernelTestCase
         // Club démo épinglé au 2028-09-01 (après le pivot du 15 juillet → seasonYear 2028).
         // `current` → 2028 ; l'horloge réelle donnerait une autre année (garde-fou).
         self::assertNotSame(2028, (int) (new DateTimeImmutable)->format('Y'), 'garde-fou : le test perd son sens si le temps réel est déjà 2028');
-        $clubId = $this->club(isDemo: true, demoToday: '2028-09-01');
+        $clubId = $this->club(isDemo: true, simulatedToday: '2028-09-01');
 
         self::assertSame(Command::SUCCESS, $this->tester->execute(['--club' => $clubId, '--plan' => 'essentiel', '--paid-season' => 'current']), $this->tester->getDisplay());
 
@@ -49,7 +49,7 @@ final class SetClubPlanCommandTest extends KernelTestCase
 
     public function testPaidSeasonNextTargetsTheFollowingSeason(): void
     {
-        $clubId = $this->club(isDemo: true, demoToday: '2028-09-01');
+        $clubId = $this->club(isDemo: true, simulatedToday: '2028-09-01');
 
         self::assertSame(Command::SUCCESS, $this->tester->execute(['--club' => $clubId, '--plan' => 'club', '--paid-season' => 'next']));
 
@@ -60,7 +60,7 @@ final class SetClubPlanCommandTest extends KernelTestCase
     public function testTheMarkerNeverGoesBackwards(): void
     {
         // Déjà réglé jusqu'en 2030 : `current` sur pivot 2028 ne RECULE pas le marqueur.
-        $clubId = $this->club(isDemo: true, demoToday: '2028-09-01', paidSeasonYear: 2030);
+        $clubId = $this->club(isDemo: true, simulatedToday: '2028-09-01', paidSeasonYear: 2030);
 
         self::assertSame(Command::SUCCESS, $this->tester->execute(['--club' => $clubId, '--plan' => 'essentiel', '--paid-season' => 'current']));
 
@@ -70,7 +70,7 @@ final class SetClubPlanCommandTest extends KernelTestCase
 
     public function testDecouvertePlusPaidSeasonIsRejected(): void
     {
-        $clubId = $this->club(isDemo: true, demoToday: '2028-09-01');
+        $clubId = $this->club(isDemo: true, simulatedToday: '2028-09-01');
 
         self::assertSame(Command::FAILURE, $this->tester->execute(['--club' => $clubId, '--plan' => 'decouverte', '--paid-season' => 'current']));
         self::assertStringContainsString('not allowed', $this->tester->getDisplay());
@@ -105,13 +105,13 @@ final class SetClubPlanCommandTest extends KernelTestCase
         return $plan->getId();
     }
 
-    private function club(bool $isDemo, ?string $demoToday = null, ?int $paidSeasonYear = null): string
+    private function club(bool $isDemo, ?string $simulatedToday = null, ?int $paidSeasonYear = null): string
     {
         $suffix = bin2hex(random_bytes(4));
         $club = (new Club)->setName('Plan ' . $suffix)->setSlug('plan-cmd-' . $suffix)->setTimezone('Europe/Paris')->setLocale('fr');
         $club->setIsDemo($isDemo);
-        if (null !== $demoToday) {
-            $club->setDemoToday(new DateTimeImmutable($demoToday));
+        if (null !== $simulatedToday) {
+            $club->setSimulatedToday(new DateTimeImmutable($simulatedToday));
         }
         if (null !== $paidSeasonYear) {
             $club->setPaidSeasonYear($paidSeasonYear);

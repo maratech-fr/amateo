@@ -15,7 +15,7 @@ vi.mock("@/features/auth/queries", () => ({
   useLogout: () => vi.fn(),
 }));
 vi.mock("@/shared/hooks/useApplyClubTheme", () => ({ useApplyClubTheme: () => {} }));
-vi.mock("@/shared/hooks/useApplyDemoClock", () => ({ useApplyDemoClock: () => {} }));
+vi.mock("@/shared/hooks/useApplySimulatedClock", () => ({ useApplySimulatedClock: () => {} }));
 // `useNavigation` exige un data-router ; ici on n'exerce que l'en-tête, on le fige à `idle`.
 vi.mock("react-router", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-router")>();

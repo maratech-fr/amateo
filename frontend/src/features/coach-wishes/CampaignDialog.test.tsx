@@ -710,7 +710,12 @@ describe("CampaignDialog", () => {
     expect(screen.getByText(/Relance impossible/)).toBeInTheDocument();
   });
 
-  it("bloque la relance si déjà relancé aujourd'hui (D3)", async () => {
+  // D3 — « pas deux fois le même jour ». Le « aujourd'hui » du garde suit l'horloge de
+  // l'app (`todayISO`, horloge simulée comprise), PAS l'heure réelle du navigateur : sous
+  // la date simulée posée en beforeEach (2026-02-01), une relance datée de ce MÊME jour
+  // Paris bloque. (Avant le correctif, le garde comparait à `new Date()` réel → ce test est
+  // rouge.) Parité avec le throttle serveur `CoachWishCampaignActionController::remind`.
+  it("bloque la relance si déjà relancé le jour SIMULÉ courant (D3, suit todayISO)", async () => {
     const existing: CoachWishCampaign = {
       id: "camp1",
       calendarEntryId: "e1",
@@ -720,11 +725,31 @@ describe("CampaignDialog", () => {
       totalCoachCount: 1,
       respondedCoachCount: 0,
       openWishCount: 0,
-      lastReminderAt: new Date().toISOString(),
+      lastReminderAt: "2026-02-01T09:00:00+01:00", // même jour Europe/Paris que l'horloge simulée (2026-02-01)
       coaches: [{ coachId: "c1", firstName: "Maxime", lastName: "Durand", email: "max@test.fr", token: "a".repeat(64), respondedAt: null, sentAt: "2026-01-01T08:00:00Z" }],
     };
     render(<CampaignDialog entry={entry} season={season} existing={existing} onClose={vi.fn()} />);
 
     expect(screen.getByRole("button", { name: /Relancer les silencieux/ })).toBeDisabled();
+  });
+
+  // Le revers : une relance datée d'un AUTRE jour simulé ne bloque plus — l'avance de
+  // l'horloge « déverrouille » la relance (utile en démo pour rejouer une collecte).
+  it("laisse relancer si la dernière relance est un AUTRE jour que le jour simulé courant", async () => {
+    const existing: CoachWishCampaign = {
+      id: "camp1",
+      calendarEntryId: "e1",
+      deadline: "2027-06-30",
+      weeks: ["2026-02-16"],
+      teamIds: ["t1"],
+      totalCoachCount: 1,
+      respondedCoachCount: 0,
+      openWishCount: 0,
+      lastReminderAt: "2026-01-31T09:00:00+01:00", // veille (Paris) de l'horloge simulée (2026-02-01)
+      coaches: [{ coachId: "c1", firstName: "Maxime", lastName: "Durand", email: "max@test.fr", token: "a".repeat(64), respondedAt: null, sentAt: "2026-01-01T08:00:00Z" }],
+    };
+    render(<CampaignDialog entry={entry} season={season} existing={existing} onClose={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: /Relancer les silencieux/ })).toBeEnabled();
   });
 });

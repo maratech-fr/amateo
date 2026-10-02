@@ -24,6 +24,12 @@ parameters:
     # EnvHygieneTest) ; la sitekey est publique (servie au front par /api/register/config).
     env(TURNSTILE_SECRET): ''
     env(TURNSTILE_SITEKEY): ''
+    # Drapeau DEV : ouvre l'horloge simulée (ClubClock) à TOUS les clubs de
+    # l'environnement, en empruntant le pin global du widget DevClock. Défaut 0
+    # (fail-closed) — le `.env` committé le laisse à 0, seul `.env.dev` pose 1 ;
+    # et ClubClock le NEUTRALISE de toute façon en prod. La DATE ne vit jamais ici.
+    env(APP_CLUB_CLOCK_ALL): '0'
+    app.club_clock_all: '%env(bool:APP_CLUB_CLOCK_ALL)%'
     # P5-15 — l'expéditeur de TOUS les mails sortants (`MailFrom`). Le domaine doit
     # être celui VÉRIFIÉ chez le fournisseur transactionnel (SPF/DKIM/DMARC posés) :
     # un `from` hors domaine vérifié part en spam ou est refusé. Défauts = domaine
@@ -143,14 +149,16 @@ services:
         tags:
             - { name: kernel.event_subscriber }
 
-    # P4-16 / P2-4 — l'horloge sait mentir pour un club démo (club.demo_today).
+    # P4-16 / P2-4 — l'horloge d'un club : date simulée par club (club.simulated_today).
     # Décoration du service `clock` : TOUT consommateur de ClockInterface la
     # traverse. Hors requête (workers/crons/commandes) ou hors club (routes
     # publiques, firewall admin), passage direct — horloge réelle.
-    App\Service\DemoAwareClock:
+    App\Clock\ClubClock:
         decorates: 'clock'
         arguments:
             $inner: '@.inner'
+            $clockAllEnabled: '%app.club_clock_all%'
+            $environment: '%kernel.environment%'
 
     App\EventListener\CacheInvalidationListener:
         arguments:

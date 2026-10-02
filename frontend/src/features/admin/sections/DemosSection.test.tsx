@@ -29,7 +29,7 @@ const mockClock = vi.mocked(setAdminDemoClock);
 function demos(overrides: Partial<AdminDemosResponse> = {}): AdminDemosResponse {
   return {
     // 20:00 UTC en juin = 22:00 à Paris (CEST), et dans le futur → fenêtre ouverte.
-    bccl: { email: "demo-bccl@amateo.fr", activeUntil: "2099-06-15T20:00:00+00:00", clubName: "Démo Basket Club", demoToday: "2026-01-15" },
+    bccl: { email: "demo-bccl@amateo.fr", activeUntil: "2099-06-15T20:00:00+00:00", clubName: "Démo Basket Club", simulatedToday: "2026-01-15" },
     prospect: { email: "demo@amateo.fr", activeUntil: null, clubName: null },
     ...overrides,
   };
@@ -41,7 +41,7 @@ describe("DemosSection", () => {
     mockActivate.mockReset().mockResolvedValue({ target: "prospect", activeUntil: "2099-06-15T20:00:00+00:00" });
     mockDeactivate.mockReset().mockResolvedValue({ target: "bccl", activeUntil: null });
     mockReset.mockReset().mockResolvedValue({ status: "reset" });
-    mockClock.mockReset().mockResolvedValue({ demoToday: null });
+    mockClock.mockReset().mockResolvedValue({ simulatedToday: null });
     useAdminStore.getState().setSession({ id: "sa", email: "sa@x" }, "csrf-token");
   });
 

@@ -35,9 +35,9 @@ use Symfony\Component\Uid\Uuid;
  *  - un JWT club ne franchit JAMAIS le firewall admin (401), toute écriture exige le CSRF (403) ;
  *  - `activate` ouvre une fenêtre de 4 h à l'horloge RÉELLE et un re-clic la REDÉMARRE (jamais
  *    une addition), `deactivate` la ferme ;
- *  - l'horloge simulée (`club.demo_today`) ne se pose que sur le club démo BCCL (is_demo), résolu
+ *  - l'horloge simulée (`club.simulated_today`) ne se pose que sur le club démo BCCL (is_demo), résolu
  *    SERVEUR depuis le compte `demo-bccl@` — jamais depuis la requête ;
- *  - le reset remet demo_today à null SANS toucher la fenêtre du compte NI un autre club démo ;
+ *  - le reset remet simulated_today à null SANS toucher la fenêtre du compte NI un autre club démo ;
  *  - le re-seed du reset REFUSE de purger un club NON démo tenant ARA9999999 : un vrai club n'est
  *    jamais détruit (garde de `app:demo:seed`, sur laquelle le reset s'appuie).
  */
@@ -157,25 +157,25 @@ final class AdminDemoResetTest extends WebTestCase
     public function testClockSetsAndClearsTheBcclSimulatedClock(): void
     {
         $userId = $this->seedDemoUser(self::BCCL_EMAIL, null);
-        $clubId = $this->seedDemoClub($userId, isDemo: true, demoToday: null);
+        $clubId = $this->seedDemoClub($userId, isDemo: true, simulatedToday: null);
         [$secret] = $this->createSuperAdmin('clk@example.test', 'VeryStrongPassword!');
         $csrf = $this->authenticate('clk@example.test', 'VeryStrongPassword!', $secret);
 
         $this->json('POST', '/api/admin/demos/bccl/clock', ['date' => '2026-01-15'], ['HTTP_X_CSRF_TOKEN' => $csrf]);
         self::assertResponseIsSuccessful();
-        self::assertSame('2026-01-15', $this->responseBody()['demoToday']);
-        self::assertSame('2026-01-15', $this->admin()->fetchOne('SELECT demo_today FROM club WHERE id = :id', ['id' => $clubId]));
+        self::assertSame('2026-01-15', $this->responseBody()['simulatedToday']);
+        self::assertSame('2026-01-15', $this->admin()->fetchOne('SELECT simulated_today FROM club WHERE id = :id', ['id' => $clubId]));
 
         $this->json('POST', '/api/admin/demos/bccl/clock', ['clear' => true], ['HTTP_X_CSRF_TOKEN' => $csrf]);
         self::assertResponseIsSuccessful();
-        self::assertNull($this->responseBody()['demoToday']);
-        self::assertNull($this->admin()->fetchOne('SELECT demo_today FROM club WHERE id = :id', ['id' => $clubId]));
+        self::assertNull($this->responseBody()['simulatedToday']);
+        self::assertNull($this->admin()->fetchOne('SELECT simulated_today FROM club WHERE id = :id', ['id' => $clubId]));
     }
 
     public function testClockRejectsMalformedOrAmbiguousInput(): void
     {
         $userId = $this->seedDemoUser(self::BCCL_EMAIL, null);
-        $this->seedDemoClub($userId, isDemo: true, demoToday: null);
+        $this->seedDemoClub($userId, isDemo: true, simulatedToday: null);
         [$secret] = $this->createSuperAdmin('clk2@example.test', 'VeryStrongPassword!');
         $csrf = $this->authenticate('clk2@example.test', 'VeryStrongPassword!', $secret);
 
@@ -195,10 +195,10 @@ final class AdminDemoResetTest extends WebTestCase
         // Compte BCCL avec sa fenêtre ouverte + club démo BCCL avec une horloge simulée.
         $windowUntil = new DateTimeImmutable('now')->modify('+3 hours');
         $bcclUser = $this->seedDemoUser(self::BCCL_EMAIL, $windowUntil);
-        $bcclClub = $this->seedDemoClub($bcclUser, isDemo: true, demoToday: '2026-03-01');
+        $bcclClub = $this->seedDemoClub($bcclUser, isDemo: true, simulatedToday: '2026-03-01');
         // Un AUTRE club démo (prospect) avec sa propre horloge : le reset ne doit pas y toucher.
         $prospectUser = $this->seedDemoUser(self::PROSPECT_EMAIL, null);
-        $prospectClub = $this->seedDemoClub($prospectUser, isDemo: true, demoToday: '2026-05-05');
+        $prospectClub = $this->seedDemoClub($prospectUser, isDemo: true, simulatedToday: '2026-05-05');
 
         [$secret] = $this->createSuperAdmin('rst@example.test', 'VeryStrongPassword!');
         $csrf = $this->authenticate('rst@example.test', 'VeryStrongPassword!', $secret);
@@ -211,19 +211,19 @@ final class AdminDemoResetTest extends WebTestCase
         self::assertResponseIsSuccessful();
         self::assertSame(1, $runner->calls, 'le reset a bien déclenché le re-seed (sous-processus, ici doublé)');
 
-        self::assertNull($this->admin()->fetchOne('SELECT demo_today FROM club WHERE id = :id', ['id' => $bcclClub]), 'la date simulée BCCL revient à aujourd\'hui (NULL)');
+        self::assertNull($this->admin()->fetchOne('SELECT simulated_today FROM club WHERE id = :id', ['id' => $bcclClub]), 'la date simulée BCCL revient à aujourd\'hui (NULL)');
         // La fenêtre du compte BCCL n'est PAS touchée par le reset.
         $stored = $this->admin()->fetchOne('SELECT demo_active_until FROM app_user WHERE email = :e', ['e' => self::BCCL_EMAIL]);
         self::assertIsString($stored);
         self::assertEqualsWithDelta($windowUntil->getTimestamp(), new DateTimeImmutable($stored)->getTimestamp(), 5, 'la fenêtre du compte BCCL survit au reset');
         // L'horloge d'un AUTRE club démo est intacte : le reset scope au club BCCL seul.
-        self::assertSame('2026-05-05', $this->admin()->fetchOne('SELECT demo_today FROM club WHERE id = :id', ['id' => $prospectClub]));
+        self::assertSame('2026-05-05', $this->admin()->fetchOne('SELECT simulated_today FROM club WHERE id = :id', ['id' => $prospectClub]));
     }
 
     public function testResetFailureReturns502AndLeavesTheSimulatedClockUntouched(): void
     {
         $userId = $this->seedDemoUser(self::BCCL_EMAIL, null);
-        $clubId = $this->seedDemoClub($userId, isDemo: true, demoToday: '2026-03-01');
+        $clubId = $this->seedDemoClub($userId, isDemo: true, simulatedToday: '2026-03-01');
         [$secret] = $this->createSuperAdmin('rstf@example.test', 'VeryStrongPassword!');
         $csrf = $this->authenticate('rstf@example.test', 'VeryStrongPassword!', $secret);
         $this->client->disableReboot();
@@ -234,7 +234,7 @@ final class AdminDemoResetTest extends WebTestCase
         $this->json('POST', '/api/admin/demos/bccl/reset', [], ['HTTP_X_CSRF_TOKEN' => $csrf]);
         self::assertResponseStatusCodeSame(502);
         // Le re-seed a échoué → on ne touche pas l'horloge (le clear vient APRÈS le succès).
-        self::assertSame('2026-03-01', $this->admin()->fetchOne('SELECT demo_today FROM club WHERE id = :id', ['id' => $clubId]));
+        self::assertSame('2026-03-01', $this->admin()->fetchOne('SELECT simulated_today FROM club WHERE id = :id', ['id' => $clubId]));
     }
 
     public function testSeedRefusesToPurgeANonDemoClubHoldingAra9999999(): void
@@ -276,7 +276,7 @@ final class AdminDemoResetTest extends WebTestCase
     public function testStateReportsBothAccounts(): void
     {
         $bcclUser = $this->seedDemoUser(self::BCCL_EMAIL, new DateTimeImmutable('now')->modify('+1 hour'));
-        $this->seedDemoClub($bcclUser, isDemo: true, demoToday: '2026-02-02');
+        $this->seedDemoClub($bcclUser, isDemo: true, simulatedToday: '2026-02-02');
         [$secret] = $this->createSuperAdmin('st@example.test', 'VeryStrongPassword!');
         $this->authenticate('st@example.test', 'VeryStrongPassword!', $secret);
 
@@ -285,10 +285,10 @@ final class AdminDemoResetTest extends WebTestCase
         $body = $this->responseBody();
         self::assertSame(self::BCCL_EMAIL, $body['bccl']['email']);
         self::assertNotNull($body['bccl']['activeUntil']);
-        self::assertSame('2026-02-02', $body['bccl']['demoToday']);
+        self::assertSame('2026-02-02', $body['bccl']['simulatedToday']);
         self::assertSame(self::PROSPECT_EMAIL, $body['prospect']['email']);
         self::assertNull($body['prospect']['activeUntil']);
-        self::assertArrayNotHasKey('demoToday', $body['prospect'], 'l\'horloge simulée n\'existe que pour la démo BCCL');
+        self::assertArrayNotHasKey('simulatedToday', $body['prospect'], 'l\'horloge simulée n\'existe que pour la démo BCCL');
     }
 
     protected function setUp(): void
@@ -352,14 +352,14 @@ final class AdminDemoResetTest extends WebTestCase
         return $userId;
     }
 
-    private function seedDemoClub(string $ownerUserId, bool $isDemo, ?string $demoToday): string
+    private function seedDemoClub(string $ownerUserId, bool $isDemo, ?string $simulatedToday): string
     {
         $clubId = Uuid::v4()->toRfc4122();
         $this->clubIds[] = $clubId;
         $this->admin()->executeStatement(
-            'INSERT INTO club (id, version, created_at, updated_at, name, slug, generation_count_season, timezone, locale, onboarding_completed, is_demo, demo_today)'
+            'INSERT INTO club (id, version, created_at, updated_at, name, slug, generation_count_season, timezone, locale, onboarding_completed, is_demo, simulated_today)'
             . ' VALUES (:id, 1, NOW(), NOW(), :name, :slug, 0, :tz, :locale, FALSE, :demo, :today)',
-            ['id' => $clubId, 'name' => 'Démo ' . substr($clubId, 0, 8), 'slug' => 'demo-' . substr($clubId, 0, 8), 'tz' => 'Europe/Paris', 'locale' => 'fr', 'demo' => $isDemo, 'today' => $demoToday],
+            ['id' => $clubId, 'name' => 'Démo ' . substr($clubId, 0, 8), 'slug' => 'demo-' . substr($clubId, 0, 8), 'tz' => 'Europe/Paris', 'locale' => 'fr', 'demo' => $isDemo, 'today' => $simulatedToday],
             ['demo' => ParameterType::BOOLEAN],
         );
         $this->admin()->executeStatement(

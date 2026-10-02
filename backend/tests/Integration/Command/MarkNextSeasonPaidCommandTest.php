@@ -18,7 +18,7 @@ use Symfony\Component\Console\Tester\CommandTester;
  * SA4 / P1-5 — l'action support « Marquer la saison suivante payée ».
  *
  * D6 (décision fondateur) : un club de DÉMONSTRATION épinglé à une date simulée
- * (`demo_today`) pivote sur CETTE date, jamais sur l'horloge réelle — sinon la
+ * (`simulated_today`) pivote sur CETTE date, jamais sur l'horloge réelle — sinon la
  * démo de bascule ment. Un vrai club suit l'horloge réelle. Et le marqueur est
  * monotone : GREATEST ne recule jamais (relancer dans l'année est un no-op).
  */
@@ -35,12 +35,12 @@ final class MarkNextSeasonPaidCommandTest extends KernelTestCase
      * Recette fondateur : BCCL démo épinglé au 2028-05-15 → « saison suivante »
      * = 2028-2029 (l'année-pivot 2028), là où l'horloge réelle (2026) donnerait
      * 2027-2028. Mai est AVANT le pivot du 15 juillet, donc l'année-pivot du pin
-     * est 2027 et la suivante 2028 — la preuve que c'est bien `demo_today` qui
+     * est 2027 et la suivante 2028 — la preuve que c'est bien `simulated_today` qui
      * décide, pas l'année civile ni le temps réel.
      */
     public function testDemoClubPivotsOnItsSimulatedClock(): void
     {
-        $clubId = $this->club(isDemo: true, demoToday: '2028-05-15');
+        $clubId = $this->club(isDemo: true, simulatedToday: '2028-05-15');
 
         self::assertSame(0, $this->tester->execute(['--club' => $clubId]));
 
@@ -64,13 +64,13 @@ final class MarkNextSeasonPaidCommandTest extends KernelTestCase
     }
 
     /**
-     * Un vrai club SANS pin (`is_demo` mais `demo_today` NULL, ou tout simplement
+     * Un vrai club SANS pin (`is_demo` mais `simulated_today` NULL, ou tout simplement
      * un vrai club) suit le temps réel — la garde SQL n'ouvre le pin que sur un
      * club démo À DATE posée.
      */
     public function testDemoClubWithoutAPinFallsBackToRealClock(): void
     {
-        $clubId = $this->club(isDemo: true, demoToday: null);
+        $clubId = $this->club(isDemo: true, simulatedToday: null);
 
         self::assertSame(0, $this->tester->execute(['--club' => $clubId]));
 
@@ -104,13 +104,13 @@ final class MarkNextSeasonPaidCommandTest extends KernelTestCase
         $this->tester = new CommandTester($application->find('app:clubs:mark-next-season-paid'));
     }
 
-    private function club(bool $isDemo, ?string $demoToday = null, ?int $paidSeasonYear = null): string
+    private function club(bool $isDemo, ?string $simulatedToday = null, ?int $paidSeasonYear = null): string
     {
         $suffix = bin2hex(random_bytes(4));
         $club = (new Club)->setName('Pay ' . $suffix)->setSlug('pay-cmd-' . $suffix)->setTimezone('Europe/Paris')->setLocale('fr');
         $club->setIsDemo($isDemo);
-        if (null !== $demoToday) {
-            $club->setDemoToday(new DateTimeImmutable($demoToday));
+        if (null !== $simulatedToday) {
+            $club->setSimulatedToday(new DateTimeImmutable($simulatedToday));
         }
         if (null !== $paidSeasonYear) {
             $club->setPaidSeasonYear($paidSeasonYear);

@@ -555,14 +555,14 @@ export type AdminDemoTarget = "bccl" | "prospect";
 
 /**
  * État d'un compte démo. `activeUntil` est un ISO (UTC) rendu à l'heure de Paris côté écran ;
- * `clubName` est le club démo courant du compte (null s'il n'existe pas). `demoToday`
+ * `clubName` est le club démo courant du compte (null s'il n'existe pas). `simulatedToday`
  * (YYYY-MM-DD) n'existe QUE pour la démo BCCL — l'horloge simulée.
  */
 export interface AdminDemoAccount {
   email: string;
   activeUntil: string | null;
   clubName: string | null;
-  demoToday?: string | null;
+  simulatedToday?: string | null;
 }
 
 export interface AdminDemosResponse {
@@ -587,6 +587,6 @@ export function resetAdminDemoBccl(csrfToken: string): Promise<{ status: "reset"
 }
 
 /** Pose (`{date}`) ou relâche (`{clear:true}`) l'horloge simulée de la démo BCCL. */
-export function setAdminDemoClock(body: { date: string } | { clear: true }, csrfToken: string): Promise<{ demoToday: string | null }> {
+export function setAdminDemoClock(body: { date: string } | { clear: true }, csrfToken: string): Promise<{ simulatedToday: string | null }> {
   return adminApi.post("demos/bccl/clock", { json: body, headers: { "X-CSRF-Token": csrfToken } }).json();
 }

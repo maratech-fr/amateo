@@ -53,12 +53,12 @@ describe("clock — le « aujourd'hui » du front", () => {
     expect(todayISO()).toBe(toISODate(new Date()));
   });
 
-  // P4-16/P2-4 — la date SERVEUR d'un club démo (/api/me → demoToday).
+  // P4-16/P2-4 — la date SERVEUR d'un club démo (/api/me → simulatedToday).
   it("applyServerToday pose la date du club démo, et null la relâche", () => {
     applyServerToday("2026-12-15");
     expect(todayISO()).toBe("2026-12-15");
 
-    applyServerToday(null); // vrai club : demoToday null → horloge réelle
+    applyServerToday(null); // vrai club : simulatedToday null → horloge réelle
     expect(todayISO()).toBe(toISODate(new Date()));
   });
 

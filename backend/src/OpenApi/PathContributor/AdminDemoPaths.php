@@ -40,7 +40,7 @@ final readonly class AdminDemoPaths implements CustomPathContributor
                 'email' => ['type' => 'string'],
                 'activeUntil' => ['type' => ['string', 'null'], 'format' => 'date-time', 'description' => 'ISO UTC — the activation window end, or null when closed. Rendered at Europe/Paris time by the console.'],
                 'clubName' => ['type' => ['string', 'null']],
-                'demoToday' => ['type' => ['string', 'null'], 'format' => 'date', 'description' => 'Simulated clock (bccl only).'],
+                'simulatedToday' => ['type' => ['string', 'null'], 'format' => 'date', 'description' => 'Simulated clock (bccl only).'],
             ],
         ];
 
@@ -114,7 +114,7 @@ final readonly class AdminDemoPaths implements CustomPathContributor
                 responses: [
                     '200' => $this->schemas->jsonResponse('The simulated clock was set (or cleared)', [
                         'type' => 'object',
-                        'properties' => ['demoToday' => ['type' => ['string', 'null'], 'format' => 'date']],
+                        'properties' => ['simulatedToday' => ['type' => ['string', 'null'], 'format' => 'date']],
                     ]),
                     '400' => new Response('Malformed body: not exactly one of a real YYYY-MM-DD date or clear:true'),
                     '401' => new Response('No authenticated super-admin session'),

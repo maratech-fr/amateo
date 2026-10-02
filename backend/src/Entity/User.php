@@ -85,7 +85,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     // `demo-bccl@`). NULL = inactif (défaut) ; un instant futur = fenêtre ouverte.
     // Lue par UserChecker (connexion) et le raccourci démo du register ; tout autre
     // compte y est insensible. Toujours confrontée à l'horloge RÉELLE, jamais à
-    // `demo_today` (un club démo ne doit pas pouvoir rouvrir sa propre porte).
+    // `simulated_today` (un club démo ne doit pas pouvoir rouvrir sa propre porte).
     #[ORM\Column(type: 'datetimetz_immutable', nullable: true)]
     private ?DateTimeImmutable $demoActiveUntil = null;
 

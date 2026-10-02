@@ -113,19 +113,18 @@ class Club
     private ?DateTimeImmutable $ffbbTeamsImportedAt = null;
 
     // P2-4 — club de DÉMONSTRATION (vendeur) : hors métriques réelles de la console,
-    // horloge simulable (demo_today), et — quand le bridage Découverte existera (P1-3) —
+    // horloge simulable (simulated_today), et — quand le bridage Découverte existera (P1-3) —
     // exempté de tout quota. Jamais posé par un parcours utilisateur : seule la
     // commande support app:demo:create le crée.
     #[ORM\Column(type: 'boolean', options: ['default' => false])]
     private bool $isDemo = false;
 
-    // P4-16 / P2-4 — l'« aujourd'hui » SIMULÉ d'un club de démonstration. Non-null =
-    // toute l'application (serveur : DemoAwareClock ; front : /api/me → clock.ts) vit
-    // à cette date pour CE club — rejouer « à trois semaines des vacances » en plein
-    // été. Null = horloge réelle, le cas de tous les vrais clubs. Posé par la commande
-    // app:demo:clock (console superadmin à venir, PR 2 du lot démo).
+    // P4-16 / P2-4 — l'« aujourd'hui » SIMULÉ d'un club. Non-null = toute l'application
+    // (serveur : ClubClock ; front : /api/me → clock.ts) vit à cette date pour CE club —
+    // rejouer « à trois semaines des vacances » en plein été. Null = horloge réelle, le
+    // cas de tous les vrais clubs. Posé par la commande app:demo:clock / la console.
     #[ORM\Column(type: 'date_immutable', nullable: true)]
-    private ?DateTimeImmutable $demoToday = null;
+    private ?DateTimeImmutable $simulatedToday = null;
 
     // RGPD (droit à l'effacement) : non-null = purge du workspace programmée à
     // cette date (dernier admin effacé + délai de grâce 30 j). Annulable en la
@@ -469,14 +468,14 @@ class Club
         return $this;
     }
 
-    public function getDemoToday(): ?DateTimeImmutable
+    public function getSimulatedToday(): ?DateTimeImmutable
     {
-        return $this->demoToday;
+        return $this->simulatedToday;
     }
 
-    public function setDemoToday(?DateTimeImmutable $demoToday): self
+    public function setSimulatedToday(?DateTimeImmutable $simulatedToday): self
     {
-        $this->demoToday = $demoToday;
+        $this->simulatedToday = $simulatedToday;
 
         return $this;
     }

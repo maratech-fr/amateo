@@ -21,7 +21,7 @@ use Symfony\Component\Process\Process;
  *
  * AUCUN clubId ne vient du client : `app:demo:seed` résout ARA9999999 + `is_demo`
  * lui-même et REFUSE un club non-démo (fail-fast). La remise à zéro de la date simulée
- * (`club.demo_today`) et l'audit sont portés par le contrôleur appelant.
+ * (`club.simulated_today`) et l'audit sont portés par le contrôleur appelant.
  */
 final readonly class DemoResetRunner implements DemoResetRunnerInterface
 {

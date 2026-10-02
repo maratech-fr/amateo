@@ -12,7 +12,7 @@ import { Menu, MenuItem } from "@/shared/components/ui/menu";
 import { CreditBadge } from "@/shared/credits/CreditBadge";
 import { CreditsBanner } from "@/shared/credits/CreditsBanner";
 import { useApplyClubTheme } from "@/shared/hooks/useApplyClubTheme";
-import { useApplyDemoClock } from "@/shared/hooks/useApplyDemoClock";
+import { useApplySimulatedClock } from "@/shared/hooks/useApplySimulatedClock";
 import { PRODUCT_NAME } from "@/shared/lib/product";
 import { cn } from "@/shared/lib/utils";
 import { useThemeStore } from "@/shared/stores/themeStore";
@@ -44,7 +44,7 @@ export function AppLayout() {
   const { data } = useMe();
   const logout = useLogout();
   useApplyClubTheme();
-  useApplyDemoClock();
+  useApplySimulatedClock();
   const mode = useThemeStore((state) => state.mode);
   const toggleMode = useThemeStore((state) => state.toggleMode);
   const [feedbackOpen, setFeedbackOpen] = useState(false);

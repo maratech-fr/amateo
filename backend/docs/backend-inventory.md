@@ -3,13 +3,13 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-10-02 (branche `feat/niveau-jeune-suit-engagement` — deux entrées confrontées
-au code : `/api/ffbb/engagements` GET re-sondée contre `EngagementLevelDeducer`
-(`deducedLevel`/`alignment`) ; `/api/ffbb/engagements/confirm` re-sondée contre
-`FfbbEngagementsController::confirm` (`alignLevel` → `Team::setLevel()` direct, NR bloquant
-`FfbbLevelAlignmentTest`). Reste du fichier non rebalayé cette passe (portée = ces deux entrées) ;
-historique des passes complètes : `git log -p --follow` ce fichier — un stamp REMPLACE, il ne
-s'empile pas.
+Last verified @ 2026-10-02 (branche `feat/horloge-club-module` — section « Module démo »
+resondée contre `App\Clock\ClubClock` (`src/Clock/ClubClock.php`, décore `clock`,
+`simulatedTodayFor(Club)` point d'entrée unique) et le renommage `Club::$demoToday` →
+`$simulatedToday`/`club.simulated_today` (`Version20261002090000`) ; `AdminDemoController` et
+`DemoClockCommand` re-sondés sur les noms de champ exposés. Reste du fichier non rebalayé cette
+passe ; historique des passes complètes : `git log -p --follow` ce fichier — un stamp REMPLACE,
+il ne s'empile pas.
 
 ---
 
@@ -52,7 +52,7 @@ backend/
 │   ├── Message/ · MessageHandler/  # GenerateSchedule(Message|Handler), ExportPdf(Message|Handler)
 │   ├── Mercure/              # ClubTopicUpdate (payload publié sur le topic club:{clubId}:schedule:{id})
 │   ├── AdminJob/             # Catalogue + exécution des jobs planifiés de la console superadmin (SA3)
-│   ├── Clock/                # DevClockStore (Redis) + SimulatedClock — horloge dev globale, distincte de Club::$demoToday (§3 Module démo)
+│   ├── Clock/                # ClubClock (horloge PAR CLUB, décore `clock`) + DevClockStore (Redis)/SimulatedClock — horloge dev globale (§3 Module démo)
 │   ├── Seed/                 # BcclSeeder + BcclSeedProfile (club de démo permanent)
 │   ├── Export/                # ScheduleExportData(Provider) — table plate consommée par l'export Excel/PDF
 │   ├── OpenApi/               # CustomRoutesOpenApiFactory (composeur) + PathContributor/ (un par domaine, §3)
@@ -494,16 +494,24 @@ Champs `Club` : `accentColor` (hex), `accentPalette` (json ≤3 hex), `logoUrl` 
 
 Deux mécanismes distincts, à ne pas confondre :
 
-1. **Horloge simulée PAR CLUB** (`Club::$isDemo`/`$demoToday`, `src/Entity/Club.php:102,110`) —
-   `DemoAwareClock` (`src/Service/DemoAwareClock.php`) décore l'horloge réelle : si le club
-   résolu par le tenant (`_club_id`, posé par `TenantFilterListener` APRÈS le firewall) est
-   `isDemo` et porte un `demoToday`, `now()` rend la **date simulée** à l'**heure réelle** dans
-   le fuseau réel ; sinon l'horloge est vraie. **Aucune route HTTP n'écrit `demoToday`** — seule
-   la commande CLI `app:demo:clock` (`src/Command/DemoClockCommand.php`, options `--club`,
-   `--date`, `--clear`) le fait, une action de support (SA4).
+1. **Horloge simulée PAR CLUB** — capacité GÉNÉRIQUE, un seul module décide : `App\Clock\ClubClock`
+   (`src/Clock/ClubClock.php`, décore le service `clock`, `services.yaml`). Son point d'entrée
+   unique `simulatedTodayFor(Club $club)` lit `Club::$simulatedToday`
+   (`src/Entity/Club.php:127`, colonne `club.simulated_today`, ex `demo_today` — renommage pur,
+   `Version20261002090000`) ; si posée, `now()` rend la **date simulée** à l'**heure réelle** dans
+   le fuseau réel pour ce club ; sinon l'horloge est vraie. Le champ n'est **pas** réservé aux
+   clubs `isDemo` par construction — seul l'usage actuel (commande CLI + console démo) le pose
+   uniquement sur des clubs de démo. **Aucune route HTTP applicative n'écrit `simulatedToday`** —
+   seule la commande CLI `app:demo:clock` (`src/Command/DemoClockCommand.php`, options `--club`,
+   `--date`, `--clear`) et la console superadmin (`AdminDemoController`, ci-dessous) le font, des
+   actions de support (SA4). Drapeau DEV `APP_CLUB_CLOCK_ALL` (`.env`=0, `.env.dev`=1, défaut 0,
+   `%app.club_clock_all%` dans `services.yaml`) : si actif et l'environnement ≠ `prod`, un club
+   SANS `simulatedToday` emprunte le pin global du widget DevClock (point 2 ci-dessous) — neutralisé
+   en production quel que soit le réglage.
 2. **`DevClockController`** (`/api/dev/clock`, GET/POST) est un mécanisme **global**, sans
-   rapport avec `demoToday` : il pin/relâche l'horloge de TOUTE l'app dans Redis
-   (`DevClockStore`), lue par `SimulatedClock` (alias de `ClockInterface` en dev). Gardé par
+   rapport avec `simulatedToday` d'un club précis : il pin/relâche l'horloge de TOUTE l'app dans
+   Redis (`DevClockStore`), lue par `SimulatedClock` (alias de `ClockInterface` en dev) et — via
+   `APP_CLUB_CLOCK_ALL` — par `ClubClock` pour les clubs sans horloge propre (point 1). Gardé par
    `%kernel.debug%` — 404 en environnement non-debug (donc en prod).
 
 Le club de démonstration permanent (BCCL) est créé/réinitialisé par `app:demo:seed`
@@ -592,7 +600,7 @@ en `services.yaml`, lu par `DemoSeedCommand` pour le défaut de son option `--em
 connectent que pendant leur fenêtre : `User::$demoActiveUntil` (`User.php:90`, colonne
 `app_user.demo_active_until`, additive nullable, NULL = inactif par défaut) et
 `User::isDemoWindowOpen(DateTimeImmutable $now)` (`User.php:296`, `$demoActiveUntil > $now`) —
-toujours confrontée à l'horloge **RÉELLE**, jamais à `demo_today` (un club démo ne doit pas
+toujours confrontée à l'horloge **RÉELLE**, jamais à `simulated_today` (un club démo ne doit pas
 pouvoir rouvrir sa propre porte). `UserChecker::checkPostAuth()` (`UserChecker.php:43-56`) refuse
 la connexion des deux comptes démo hors fenêtre d'une manière **byte-identique** à un mauvais mot
 de passe (`Invalid credentials.`, aucun oracle « fenêtre fermée ») ; tout autre compte est
@@ -603,15 +611,15 @@ bloquant `DemoWindowTest` + feature Behat `la-demo-ne-s-ouvre-que-pendant-sa-fen
 **Console démo** (`AdminDemoController`, `/api/admin/demos*`, PR B — mêmes gardes que les
 actions de support SA4, connexion `admin`, **aucun `club_id` posé**) : `GET /demos` lit l'état
 des deux comptes (fenêtre ISO, club démo courant résolu SERVEUR depuis l'adhésion active,
-`demo_today` pour BCCL seule) ; `POST /demos/{bccl|prospect}/activate` pose
+`simulated_today` pour BCCL seule) ; `POST /demos/{bccl|prospect}/activate` pose
 `demo_active_until` à now+4 h à l'horloge **RÉELLE** — un re-clic **REDÉMARRE** la fenêtre,
 jamais une addition ; `POST /demos/{target}/deactivate` la ferme (`NULL`). `POST
 /demos/bccl/reset` relance `app:demo:seed` en **SOUS-PROCESSUS** via `DemoResetRunner`
 (`src/Service/DemoResetRunner.php`, `DATABASE_ADMIN_URL`, patron `Process` — même patron que
 `DatabaseBackupCommand`, la requête console tournant elle sur la connexion applicative,
-incapable de purger le workspace à travers la RLS), puis remet `club.demo_today` à `NULL`
+incapable de purger le workspace à travers la RLS), puis remet `club.simulated_today` à `NULL`
 (décision fondateur) **sans toucher la fenêtre du compte** — échec du re-seed → 502, horloge
-intacte. `POST /demos/bccl/clock` pose (`date`) ou relâche (`clear`) `demo_today` du club BCCL,
+intacte. `POST /demos/bccl/clock` pose (`date`) ou relâche (`clear`) `simulated_today` du club BCCL,
 résolu SERVEUR depuis le compte `demo-bccl@`, gardé `is_demo = TRUE` — même garde de calendrier
 que `DemoClockCommand` (`2026-02-31` refusé). Front : 8ᵉ onglet « Démos »
 (`frontend/src/features/admin/tabs/tabsConfig.ts`), deux cartes (`DemosSection.tsx`), heures

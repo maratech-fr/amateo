@@ -427,10 +427,10 @@ final class AuthController extends AbstractController
                     // du wizard ne s'affiche QUE si l'import FFBB a réellement créé
                     // les équipes (jamais sur une saisie manuelle).
                     'ffbbTeamsImported' => null !== $clubEntity->getFfbbTeamsImportedAt(),
-                    // P4-16/P2-4 — l'« aujourd'hui » simulé d'un club démo : le front
+                    // P4-16/P2-4 — l'« aujourd'hui » simulé d'un club : le front
                     // (clock.ts) s'y cale pour que l'écran et le serveur disent la même
-                    // date. Null pour tout vrai club.
-                    'demoToday' => $clubEntity->getDemoToday()?->format('Y-m-d'),
+                    // date. Null pour tout club à l'heure réelle.
+                    'simulatedToday' => $clubEntity->getSimulatedToday()?->format('Y-m-d'),
                     // Le club est-il un club de DÉMONSTRATION ? Le front pose la pastille
                     // « Démo » de l'en-tête dessus (décision fondateur : une démo se dit).
                     'isDemo' => $clubEntity->isDemo(),
@@ -781,7 +781,7 @@ final class AuthController extends AbstractController
     /**
      * La fenêtre d'activation démo du compte animateur est-elle ouverte à l'instant
      * RÉEL ? Compte absent → fermée. Horloge réelle (`new DateTimeImmutable('now')`),
-     * jamais demo_today. Lecture seule.
+     * jamais simulated_today. Lecture seule.
      */
     private function animatorWindowIsOpen(): bool
     {

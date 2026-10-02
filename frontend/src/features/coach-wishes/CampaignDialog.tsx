@@ -316,8 +316,14 @@ export function CampaignDialog({ entry, season, existing, onClose }: CampaignDia
 /** Jour calendaire Europe/Paris d'une date (YYYY-MM-DD) — le back throttle sur CE fuseau. */
 const parisDay = (d: Date): string => new Intl.DateTimeFormat("fr-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 
-/** lastReminderAt (ISO) est-il le MÊME jour Europe/Paris que maintenant ? (parité back, D3). */
-const isSameParisDay = (iso: string | null): boolean => null !== iso && parisDay(new Date(iso)) === parisDay(new Date());
+/**
+ * lastReminderAt (ISO) tombe-t-il le MÊME jour que l'« aujourd'hui » de l'app ? (parité
+ * back, D3). Le « aujourd'hui » vient de `todayISO()` (horloge simulée d'un club démo
+ * comprise), PAS de `new Date()` : sous une date simulée, le throttle « déjà relancé
+ * aujourd'hui » suit la même date que le serveur (`CoachWishCampaignActionController::
+ * remind`, qui compare le jour Europe/Paris de `clock->now()`).
+ */
+const isSameParisDay = (iso: string | null): boolean => null !== iso && parisDay(new Date(iso)) === todayISO();
 
 /** Message d'erreur d'une action d'envoi : 409 = saison close (jamais réessayable), sinon défaut. */
 const errorMessage = (error: unknown, fallback: string): string => (error instanceof HTTPError && 409 === error.response.status ? "Cette saison est archivée — la collecte est close." : fallback);

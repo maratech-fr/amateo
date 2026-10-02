@@ -1,13 +1,13 @@
 # Amateo — Tenant Isolation Architecture
 
-Last verified @ 2026-09-30 (rotation `documentation-update`, zone sans rapport avec la PR
-`19aed0f1`). Re-confronté au code : priorité 7 toujours en place
-(`TenantFilterListener.php:55`, `KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · le skip
-`/api/admin` toujours en `str_starts_with` sur le path (`TenantFilterListener.php:81`) ✓ ·
+Last verified @ 2026-10-02 (rotation `documentation-update`, zone sans rapport avec le lot
+horloge). Re-confronté au code : priorité 7 toujours en place (`TenantFilterListener.php:55`,
+`KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · le skip `/api/admin` toujours en
+`str_starts_with` sur le path (`TenantFilterListener.php:81`) ✓ ·
 `App\Service\TenantConnectionContext::setClubId` pose toujours
 `set_config('app.club_id', ?, false)` (`TenantConnectionContext.php:28-31`) ✓ ·
-`AbstractStateProcessor::requiresManagementRole()` retourne toujours `true` par défaut
-(`AbstractStateProcessor.php:130`) ✓. Rien de faux trouvé cette passe.
+`App\State\Processor\AbstractStateProcessor::requiresManagementRole()` retourne toujours `true`
+par défaut (`AbstractStateProcessor.php:130-133`) ✓. Rien de faux trouvé cette passe.
 
 ## Overview
 

@@ -33,11 +33,11 @@ final class DemoClockCommandTest extends KernelTestCase
 
         self::assertSame(0, $this->tester->execute(['--club' => $clubId, '--date' => '2026-12-15']));
         $this->em->clear();
-        self::assertSame('2026-12-15', $this->em->find(Club::class, $clubId)?->getDemoToday()?->format('Y-m-d'));
+        self::assertSame('2026-12-15', $this->em->find(Club::class, $clubId)?->getSimulatedToday()?->format('Y-m-d'));
 
         self::assertSame(0, $this->tester->execute(['--club' => $clubId, '--clear' => true]));
         $this->em->clear();
-        self::assertNull($this->em->find(Club::class, $clubId)?->getDemoToday(), 'l\'horloge est relâchée — retour au temps réel');
+        self::assertNull($this->em->find(Club::class, $clubId)?->getSimulatedToday(), 'l\'horloge est relâchée — retour au temps réel');
     }
 
     public function testUnrealDateIsRefused(): void
@@ -65,7 +65,7 @@ final class DemoClockCommandTest extends KernelTestCase
         self::assertSame(1, $this->tester->execute(['--club' => $realClubId, '--date' => '2026-12-15']));
         self::assertStringContainsString('demo-only', $this->tester->getDisplay());
         $this->em->clear();
-        self::assertNull($this->em->find(Club::class, $realClubId)?->getDemoToday(), 'le vrai club reste à l\'heure réelle');
+        self::assertNull($this->em->find(Club::class, $realClubId)?->getSimulatedToday(), 'le vrai club reste à l\'heure réelle');
     }
 
     protected function setUp(): void

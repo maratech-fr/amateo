@@ -18,7 +18,7 @@ use RuntimeException;
  * seedée dans le bac à sable BCCL), on pose sa fenêtre d'activation par SQL admin
  * (PR B posera la vraie porte console), puis on éprouve `/api/login` : fenêtre fermée →
  * refus « Identifiants invalides. » (indiscernable d'un mauvais mot de passe) ; fenêtre
- * ouverte → connexion réussie. La garde ne dépend pas de `demo_today` : la fenêtre est
+ * ouverte → connexion réussie. La garde ne dépend pas de `simulated_today` : la fenêtre est
  * confrontée à l'horloge réelle. Le contexte crée ET nettoie son propre compte (le bac
  * à sable dev n'est pas ré-initialisé entre deux runs), donc il rejoue à l'identique.
  */

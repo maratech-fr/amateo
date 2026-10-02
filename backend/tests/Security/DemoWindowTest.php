@@ -33,7 +33,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  *    ouverte.
  *
  * L'horloge est TOUJOURS réelle (`UserChecker`/contrôleurs passent
- * `new DateTimeImmutable('now')`), jamais `demo_today` : un club démo ne rouvre pas sa
+ * `new DateTimeImmutable('now')`), jamais `simulated_today` : un club démo ne rouvre pas sa
  * propre porte. La branche non-debug est éprouvée en bootant le noyau de test avec
  * `debug: false` (moyen propre, pas un contournement de garde).
  *

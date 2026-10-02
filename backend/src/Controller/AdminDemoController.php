@@ -25,7 +25,7 @@ use Throwable;
  * démo prospect du jour (`app.demo_animator_email`). Pour chacun, la console OUVRE/FERME
  * la fenêtre d'activation (`app_user.demo_active_until`, horloge RÉELLE — gardée par
  * UserChecker). La démo BCCL a en plus sa réinitialisation (sous-processus seed via
- * {@see DemoResetRunnerInterface}) et son horloge simulée (`club.demo_today`).
+ * {@see DemoResetRunnerInterface}) et son horloge simulée (`club.simulated_today`).
  *
  * Mêmes gardes que {@see AdminClubActionController} : contexte d'audit posé AVANT toute
  * garde, puis CSRF de session, puis identité SuperAdmin. AUCUN club_id posé (surface
@@ -73,7 +73,7 @@ final readonly class AdminDemoController
         }
 
         // now + 4 h, JAMAIS une addition : re-cliquer repart de maintenant (le stockage
-        // remplace la borne, il ne l'étend pas). Horloge réelle (jamais demo_today).
+        // remplace la borne, il ne l'étend pas). Horloge réelle (jamais simulated_today).
         $until = new DateTimeImmutable('now')->modify(\sprintf('+%d hours', self::WINDOW_HOURS));
         $updated = $this->connection()->executeStatement(
             'UPDATE app_user SET demo_active_until = :until WHERE email = :email',
@@ -124,11 +124,11 @@ final readonly class AdminDemoController
         }
 
         // Décision fondateur : le reset remet AUSSI la date simulée à aujourd'hui
-        // (demo_today → NULL). Le re-seed ne touche pas la fenêtre du compte BCCL.
+        // (simulated_today → NULL). Le re-seed ne touche pas la fenêtre du compte BCCL.
         $club = $this->resolveDemoClub('bccl');
         if (null !== $club) {
             $this->connection()->executeStatement(
-                'UPDATE club SET demo_today = NULL WHERE id = :id AND is_demo = TRUE',
+                'UPDATE club SET simulated_today = NULL WHERE id = :id AND is_demo = TRUE',
                 ['id' => $club['id']],
             );
         }
@@ -174,11 +174,11 @@ final readonly class AdminDemoController
         // Même UPDATE gardé is_demo = TRUE que DemoClockCommand : un vrai club ne peut
         // jamais recevoir d'horloge simulée par ce chemin.
         $this->connection()->executeStatement(
-            'UPDATE club SET demo_today = :date WHERE id = :id AND is_demo = TRUE',
+            'UPDATE club SET simulated_today = :date WHERE id = :id AND is_demo = TRUE',
             ['date' => $date, 'id' => $club['id']],
         );
 
-        return new JsonResponse(['demoToday' => $date]);
+        return new JsonResponse(['simulatedToday' => $date]);
     }
 
     /**
@@ -207,7 +207,7 @@ final readonly class AdminDemoController
     }
 
     /**
-     * @return array{email: string, activeUntil: string|null, clubName: string|null, demoToday?: string|null}
+     * @return array{email: string, activeUntil: string|null, clubName: string|null, simulatedToday?: string|null}
      */
     private function accountState(string $target, bool $withClock): array
     {
@@ -221,7 +221,7 @@ final readonly class AdminDemoController
             'clubName' => $club['name'] ?? null,
         ];
         if ($withClock) {
-            $state['demoToday'] = $club['demoToday'] ?? null;
+            $state['simulatedToday'] = $club['simulatedToday'] ?? null;
         }
 
         return $state;
@@ -231,7 +231,7 @@ final readonly class AdminDemoController
      * Le club démo courant d'un compte (démo BCCL pour bccl, démo prospect pour prospect) :
      * résolu SERVEUR depuis l'adhésion du compte, jamais depuis la requête.
      *
-     * @return array{id: string, name: string, demoToday: string|null}|null
+     * @return array{id: string, name: string, simulatedToday: string|null}|null
      */
     private function resolveDemoClub(string $target): ?array
     {
@@ -241,7 +241,7 @@ final readonly class AdminDemoController
         }
 
         $row = $this->connection()->fetchAssociative(
-            'SELECT c.id, c.name, c.demo_today AS "demoToday"'
+            'SELECT c.id, c.name, c.simulated_today AS "simulatedToday"'
             . ' FROM club c'
             . ' JOIN club_user cu ON cu.club_id = c.id'
             . ' JOIN app_user u ON u.id = cu.user_id'
@@ -256,7 +256,7 @@ final readonly class AdminDemoController
         return [
             'id' => (string) $row['id'],
             'name' => (string) $row['name'],
-            'demoToday' => \is_string($row['demoToday']) ? $row['demoToday'] : null,
+            'simulatedToday' => \is_string($row['simulatedToday']) ? $row['simulatedToday'] : null,
         ];
     }
 
