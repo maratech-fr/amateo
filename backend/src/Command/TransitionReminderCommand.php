@@ -85,9 +85,15 @@ final class TransitionReminderCommand extends Command
         // Coarse month gate: no bucket can match outside May–July whatever the
         // club timezone (buckets live in [May 15, July 15[; ±1 day of TZ drift
         // never leaves the May–July span) — skip the whole club walk off-season.
+        // ⚠ The gate reads the REAL clock (cron, no request context), so it only
+        // holds when every club lives on the real date. A club on a SIMULATED
+        // clock may sit inside the window while the server is off-season — then the
+        // walk MUST run so its per-club ClubDay date governs (P4-16, « au 15 mai →
+        // anticipation de la saison suivante » suit l'horloge). An explicit --date
+        // keeps the historical shortcut.
         $gateDay = $forcedToday ?? DateTimeImmutable::createFromInterface($this->clock->now());
         $month = (int) $gateDay->format('n');
-        if ($month < 5 || $month > 7) {
+        if (($month < 5 || $month > 7) && !$this->anyClubRunsASimulatedClock()) {
             $io->success('Outside the anticipation window (May–July) — nothing to do.');
 
             return Command::SUCCESS;
@@ -214,6 +220,19 @@ final class TransitionReminderCommand extends Command
         }
 
         return $days <= 30 ? 30 : 61;
+    }
+
+    /**
+     * Does ANY club carry a simulated clock (`simulated_today` set)? Then the real-clock
+     * month gate can't be trusted to skip the walk — that club may sit inside the window
+     * while the server is off-season. `club` has no RLS policy, so this counts across all
+     * tenants with an empty GUC (same assumption as the club walk below).
+     */
+    private function anyClubRunsASimulatedClock(): bool
+    {
+        return (int) $this->entityManager
+            ->createQuery('SELECT COUNT(c.id) FROM ' . Club::class . ' c WHERE c.simulatedToday IS NOT NULL')
+            ->getSingleScalarResult() > 0;
     }
 
     /** Strict: a real calendar date, else null (rejects rollovers like 2026-02-30). No --date → null (per-club today). */

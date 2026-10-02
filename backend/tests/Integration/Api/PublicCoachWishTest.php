@@ -260,6 +260,31 @@ final class PublicCoachWishTest extends WebTestCase
         self::assertCount(0, $this->em->getRepository(CoachWish::class)->findBy(['teamId' => $otherTeamId]), 'aucune doléance n’a franchi la frontière club');
     }
 
+    public function testSimulatedClockClosesALinkWhoseDeadlineIsStillInTheRealFuture(): void
+    {
+        // P4-16 — la page publique (pas de `_club_id` en requête) suit l'horloge DU club via
+        // ClubDay. Deadline DANS LE FUTUR réel : à l'heure réelle le lien serait OUVERT, mais
+        // l'horloge du club calée APRÈS la deadline le ferme (410). Red si ClubDay ignore
+        // simulated_today (il resterait ouvert — comparaison au jour RÉEL).
+        $this->setDeadline('2030-05-10');
+        $this->setSimulatedToday('2030-05-11'); // lendemain de la deadline, sous l'horloge du club
+
+        $this->client->request('GET', '/api/coach-wishes/public/' . $this->token);
+        self::assertResponseStatusCodeSame(410, 'horloge du club après la deadline → lien fermé, bien que la deadline soit dans le futur réel');
+    }
+
+    public function testSimulatedClockReopensALinkWhoseDeadlineIsAlreadyInTheRealPast(): void
+    {
+        // Miroir : deadline DANS LE PASSÉ réel → à l'heure réelle le lien serait FERMÉ, mais
+        // l'horloge du club calée LE JOUR de la deadline (incluse) le rouvre (200). Red si
+        // ClubDay ignore simulated_today (il resterait fermé — comparaison au jour RÉEL).
+        $this->setDeadline('2020-01-06');
+        $this->setSimulatedToday('2020-01-06'); // le jour même, deadline incluse
+
+        $this->client->request('GET', '/api/coach-wishes/public/' . $this->token);
+        self::assertResponseIsSuccessful();
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -324,6 +349,14 @@ final class PublicCoachWishTest extends WebTestCase
         $wish->setClubId($this->club->getId());
         $wish->setSeasonId($this->season->getId());
         $this->em->persist($wish);
+        $this->em->flush();
+    }
+
+    private function setSimulatedToday(?string $ymd): void
+    {
+        // `club` n'a pas de RLS → UPDATE direct, un seul mutation+requête par test (pas d'état
+        // partagé entre requêtes, le client rebâtit le noyau à chaque appel).
+        $this->club->setSimulatedToday(null === $ymd ? null : new DateTimeImmutable($ymd . ' 00:00:00'));
         $this->em->flush();
     }
 
