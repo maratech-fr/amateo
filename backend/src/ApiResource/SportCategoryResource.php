@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\ApiResource;
 
 use ApiPlatform\Metadata\ApiResource;
-use ApiPlatform\Metadata\Delete;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
@@ -18,12 +17,12 @@ use App\State\Provider\SportCategoryStateProvider;
 use DateTimeImmutable;
 use Symfony\Component\Serializer\Attribute\Groups;
 
+// DELETE retiré (nettoyage API) : non appelé par le front.
 #[ApiResource(shortName: 'SportCategory', operations: [
     new GetCollection,
     new Get,
     new Post,
     new Put,
-    new Delete,
 ], input: SportCategoryInput::class, paginationEnabled: true, paginationItemsPerPage: 30, provider: SportCategoryStateProvider::class, processor: SportCategoryStateProcessor::class)]
 class SportCategoryResource
 {

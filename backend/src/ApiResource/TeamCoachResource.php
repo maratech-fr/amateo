@@ -9,7 +9,6 @@ use ApiPlatform\Metadata\Delete;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
-use ApiPlatform\Metadata\Put;
 use App\Dto\TeamCoachInput;
 use App\Entity\TeamCoach;
 use App\Enum\TeamCoachRole;
@@ -18,11 +17,11 @@ use App\State\Provider\TeamCoachStateProvider;
 use DateTimeImmutable;
 use Symfony\Component\Serializer\Attribute\Groups;
 
+// PUT retiré (nettoyage API) : non appelé par le front (une liaison se crée/se retire).
 #[ApiResource(shortName: 'TeamCoach', operations: [
     new GetCollection,
     new Get,
     new Post,
-    new Put,
     new Delete,
 ], input: TeamCoachInput::class, paginationEnabled: true, paginationItemsPerPage: 30, provider: TeamCoachStateProvider::class, processor: TeamCoachStateProcessor::class)]
 class TeamCoachResource

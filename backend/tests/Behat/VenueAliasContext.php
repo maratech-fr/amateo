@@ -277,9 +277,8 @@ final class VenueAliasContext extends BaseContext
                 $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
             }
         }
-        if ('' !== $this->competitionId) {
-            $this->apiDelete(\sprintf('competitions/%s', $this->competitionId), $this->token);
-        }
+        // La compétition part avec l'équipe (cascade teams → competitions) : les matchs
+        // ayant été supprimés juste au-dessus, l'équipe n'est plus engagée et se supprime.
         if ('' !== $this->teamId) {
             $this->apiDelete(\sprintf('teams/%s', $this->teamId), $this->token);
         }

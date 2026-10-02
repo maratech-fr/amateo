@@ -6,7 +6,6 @@ namespace App\ApiResource;
 
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
-use ApiPlatform\Metadata\GetCollection;
 use App\Entity\Sport;
 use App\State\Provider\SportStateProvider;
 use DateTimeImmutable;
@@ -15,10 +14,11 @@ use Symfony\Component\Serializer\Attribute\Groups;
 // SEC-14: read-only over the tenant API. Sport is a GLOBAL reference table (no club_id);
 // clubs consume it, they don't edit it. Seeded via fixtures / register's seedNewClub (EM,
 // not the API). Any edit belongs to a super-admin/ops surface, never the tenant API.
+// GetCollection retiré (nettoyage API) : le front ne liste pas les sports par cette route ;
+// le Get item reste requis pour les IRI.
 #[ApiResource(shortName: 'Sport', operations: [
-    new GetCollection,
     new Get,
-], paginationEnabled: true, paginationItemsPerPage: 30, provider: SportStateProvider::class)]
+], provider: SportStateProvider::class)]
 class SportResource
 {
     #[Groups(['read'])]

@@ -5,11 +5,9 @@ declare(strict_types=1);
 namespace App\ApiResource;
 
 use ApiPlatform\Metadata\ApiResource;
-use ApiPlatform\Metadata\Delete;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
-use ApiPlatform\Metadata\Put;
 use App\Dto\SeasonInput;
 use App\Entity\Season;
 use App\State\Processor\SeasonStateProcessor;
@@ -17,12 +15,12 @@ use App\State\Provider\SeasonStateProvider;
 use DateTimeImmutable;
 use Symfony\Component\Serializer\Attribute\Groups;
 
+// PUT/DELETE retirés (nettoyage API) : non appelés par le front. Le POST (création de
+// saison) reste — il sert de fixture à plusieurs tests et provisionne le plan SEASON.
 #[ApiResource(shortName: 'Season', operations: [
     new GetCollection,
     new Get,
     new Post,
-    new Put,
-    new Delete,
 ], input: SeasonInput::class, paginationEnabled: true, paginationItemsPerPage: 30, provider: SeasonStateProvider::class, processor: SeasonStateProcessor::class)]
 class SeasonResource
 {

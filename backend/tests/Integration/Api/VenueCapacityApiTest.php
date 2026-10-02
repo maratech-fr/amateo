@@ -55,13 +55,6 @@ final class VenueCapacityApiTest extends WebTestCase
         $this->client->request('GET', '/api/venue_match_windows?venueId=' . $venue->getId(), [], [], $this->authHeaders($user));
         self::assertCount(1, $this->responseData()['member'] ?? []);
 
-        // Update.
-        $this->client->request('PUT', '/api/venue_match_windows/' . $id, [], [], $headers, json_encode([
-            'venueId' => $venue->getId(), 'dayOfWeek' => 7, 'startTime' => '09:00', 'endTime' => '18:00',
-        ], \JSON_THROW_ON_ERROR));
-        self::assertResponseStatusCodeSame(200);
-        self::assertSame(7, $this->responseData()['dayOfWeek']);
-
         // A window must end after it starts, same day (P4-61 family).
         $this->client->request('POST', '/api/venue_match_windows', [], [], $headers, json_encode([
             'venueId' => $venue->getId(), 'dayOfWeek' => 6, 'startTime' => '22:00', 'endTime' => '22:00',

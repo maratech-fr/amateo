@@ -1,13 +1,15 @@
 # Amateo — Tenant Isolation Architecture
 
-Last verified @ 2026-10-02 (rotation `documentation-update`, zone sans rapport avec le lot
-horloge). Re-confronté au code : priorité 7 toujours en place (`TenantFilterListener.php:55`,
+Last verified @ 2026-10-02 (nettoyage API — `UserStateProcessor` retiré, `User` passé en lecture
+seule). Re-confronté au code : priorité 7 toujours en place (`TenantFilterListener.php:55`,
 `KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · le skip `/api/admin` toujours en
 `str_starts_with` sur le path (`TenantFilterListener.php:81`) ✓ ·
 `App\Service\TenantConnectionContext::setClubId` pose toujours
 `set_config('app.club_id', ?, false)` (`TenantConnectionContext.php:28-31`) ✓ ·
 `App\State\Processor\AbstractStateProcessor::requiresManagementRole()` retourne toujours `true`
-par défaut (`AbstractStateProcessor.php:130-133`) ✓. Rien de faux trouvé cette passe.
+par défaut (`AbstractStateProcessor.php:130-133`) ✓ · `UserResource` n'a plus que `Get`
+(`backend/src/ApiResource/UserResource.php`), `UserStateProcessor` n'existe plus. Un fait faux
+trouvé et corrigé cette passe (§ User, § opt-out management).
 
 ## Overview
 
@@ -20,7 +22,7 @@ Tenant entities also carry the explicit `App\Entity\TenantOwnedInterface` marker
 
 ⚠ Entities **without** a `club_id` column (`Club`, `User`) are NOT covered by the Doctrine filter — the tenant barrier does not apply to them. Their access control is enforced explicitly in their API Platform state provider/processor (SEC-01/SEC-02, fixed):
 - **Club** (`ClubStateProvider` / `ClubStateProcessor`): the collection is bounded to the caller's active `ClubUser` memberships (resolved via `ClubUserRepository::findActiveClubIds`, a raw query so the tenant filter does not narrow a multi-club member to one club); item read requires an active membership (else 404); `Put` requires an active **management role** — `owner` or `admin` (404 if no membership, 403 if member but `editor`/`viewer`). No bare `Post`/`Delete` (a club is created via `/api/register`; deletion needs a dedicated cascade flow, not yet exposed).
-- **User** (`UserStateProvider` / `UserStateProcessor`): self-only — `Get`/`Put` restricted to the caller's own id (else 404); no `GetCollection` (email enumeration), no bare `Post`, and **no `Delete` on the resource** (would orphan `ClubUser` rows — no FK cascade — and could lock a club out). Account erasure **is shipped**, but deliberately off API Platform: `DELETE /api/me` (`DeleteAccountController`) — self-only, the target is ALWAYS the JWT user (no id in input, so no IDOR), confirmed by **re-authentication** (the current password is required — a stolen JWT is not enough), immediate and irreversible anonymisation via `AccountErasureService`, and the club left orphaned is purged after a **30-day grace period** (`app:clubs:purge-erased`).
+- **User** (`UserStateProvider`): self-only, **read-only** — `Get` restricted to the caller's own id (else 404); no `GetCollection` (email enumeration), no bare `Post`, no `Put` (the profile is edited via `PATCH /api/me`, not this resource — nettoyage API), and **no `Delete` on the resource** (would orphan `ClubUser` rows — no FK cascade — and could lock a club out). Account erasure **is shipped**, but deliberately off API Platform: `DELETE /api/me` (`DeleteAccountController`) — self-only, the target is ALWAYS the JWT user (no id in input, so no IDOR), confirmed by **re-authentication** (the current password is required — a stolen JWT is not enough), immediate and irreversible anonymisation via `AccountErasureService`, and the club left orphaned is purged after a **30-day grace period** (`app:clubs:purge-erased`).
 - **Import** (`ImportController`, `POST /clubs/{id}/import-teams`): requires an active management-role membership in the club named in the path (SEC-04) — the listener validates the header/JWT club, not the path `{id}`. No active membership → **404** (same no-existence-oracle semantics as the Club `Put` path); member but not a management role → 403.
 
 The shared membership lookups (`findActiveMembership`, `findActiveClubIds`, `isManagementRole`) live in `ClubUserRepository` — one source of truth for the Club provider, processor, and import controller.
@@ -120,9 +122,11 @@ services:
 - Defence in depth is real now: Doctrine filter (layer 2) **and** RLS (layer 3). Keep `TenantIsolationTest`, `TenantJwtIsolationTest` and `RlsIsolationTest` green — they are the blocking guards.
 - **Role layer on top of the membership (P1-1):** every API Platform write is
   **management-only by default** — `AbstractStateProcessor::requiresManagementRole()` defaults to `true`
-  (`ManagementAccessGuard`, SEC-07), with a single explicit opt-out (`UserStateProcessor`, self-only edits).
-  Custom write controllers carry their own guard (same SEC-07 rule). A non-management member reads
-  everything, writes nothing. Guarded by `ManagementRoleTest` (blocking gate step).
+  (`ManagementAccessGuard`, SEC-07) — no resource opts out of it (the former `UserStateProcessor`
+  exception was retired with `PUT /api/users`, nettoyage API : `User` is now read-only, edited via
+  `PATCH /api/me`). Custom write controllers carry their own guard (same SEC-07 rule). A
+  non-management member reads everything, writes nothing. Guarded by `ManagementRoleTest`
+  (blocking gate step).
 - **Connection separation (wired):** runtime = `amateo_app` (`DATABASE_URL`), migrations/ops/fixtures = `amateo_owner` via the Doctrine `admin` connection (`DATABASE_ADMIN_URL`). `amateo_owner` bypasses RLS — that is the deliberate superadmin supervision door (see `docs/security/rls.md`).
 - ⚠ pgbouncer transaction-pooling is incompatible with the session-scoped GUC — redesign before introducing a pooler.
 

@@ -7,6 +7,7 @@ namespace App\State\Processor;
 use App\ApiResource\CoachPlayerMembershipResource;
 use App\Dto\CoachPlayerMembershipInput;
 use App\Entity\CoachPlayerMembership;
+use LogicException;
 
 /**
  * @extends AbstractStateProcessor<CoachPlayerMembership, CoachPlayerMembershipInput, CoachPlayerMembershipResource>
@@ -41,23 +42,12 @@ class CoachPlayerMembershipStateProcessor extends AbstractStateProcessor
     }
 
     /**
-     * @param CoachPlayerMembership      $entity
-     * @param CoachPlayerMembershipInput $input
+     * PUT retiré de cette ressource (nettoyage API) — l'abstraction impose seulement
+     * que ce foyer existe ; il n'est plus atteignable par l'API.
      */
     protected function updateEntityFromInput(object $entity, object $input): void
     {
-        if (null !== $input->coachId) {
-            $entity->setCoachId($input->coachId);
-        }
-        if (null !== $input->teamId) {
-            $entity->setTeamId($input->teamId);
-        }
-        if (null !== $input->position) {
-            $entity->setPosition($input->position);
-        }
-        if (null !== $input->isActive) {
-            $entity->setIsActive($input->isActive);
-        }
+        throw new LogicException('La modification (PUT) n\'est pas exposée pour les liaisons coach-joueur.');
     }
 
     /**

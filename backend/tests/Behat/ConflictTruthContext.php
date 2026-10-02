@@ -723,11 +723,9 @@ final class ConflictTruthContext extends BaseContext
                 $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
             }
         }
-        foreach ([$this->competitionId, $this->cupCompetitionId] as $id) {
-            if ('' !== $id) {
-                $this->apiDelete(\sprintf('competitions/%s', $id), $this->token);
-            }
-        }
+        // Les compétitions (championnat + coupe) sont portées par l'équipe jetable :
+        // elles partent avec elle (cascade teams → competitions), les matchs ayant été
+        // supprimés juste au-dessus (l'équipe n'est alors plus engagée).
         // L'adhésion joueuse AVANT l'équipe qu'elle référence.
         if ('' !== $this->membershipId) {
             $this->apiDelete(\sprintf('coach_player_memberships/%s', $this->membershipId), $this->token);

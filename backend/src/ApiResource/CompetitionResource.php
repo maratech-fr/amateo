@@ -7,11 +7,9 @@ namespace App\ApiResource;
 use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
 use ApiPlatform\Metadata\ApiFilter;
 use ApiPlatform\Metadata\ApiResource;
-use ApiPlatform\Metadata\Delete;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
-use ApiPlatform\Metadata\Put;
 use App\Dto\CompetitionInput;
 use App\Entity\Competition;
 use App\Entity\SharedCompetitionDeadline;
@@ -21,12 +19,12 @@ use App\State\Provider\CompetitionStateProvider;
 use DateTimeImmutable;
 use Symfony\Component\Serializer\Attribute\Groups;
 
+// PUT/DELETE retirés (nettoyage API) : non appelés par le front. Supprimer une équipe
+// cascade déjà ses compétitions (EntityCascadeDeleter) ; le POST reste le seul écrivain.
 #[ApiResource(shortName: 'Competition', operations: [
     new GetCollection,
     new Get,
     new Post,
-    new Put,
-    new Delete,
 ], input: CompetitionInput::class, paginationEnabled: true, paginationItemsPerPage: 50, provider: CompetitionStateProvider::class, processor: CompetitionStateProcessor::class)]
 #[ApiFilter(SearchFilter::class, properties: ['seasonId' => 'exact', 'teamId' => 'exact'])]
 class CompetitionResource

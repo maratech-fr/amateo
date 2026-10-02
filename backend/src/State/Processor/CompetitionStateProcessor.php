@@ -9,6 +9,7 @@ use App\Dto\CompetitionInput;
 use App\Entity\Competition;
 use App\Enum\CompetitionType;
 use DateTimeImmutable;
+use LogicException;
 
 /**
  * @extends AbstractStateProcessor<Competition, CompetitionInput, CompetitionResource>
@@ -42,26 +43,12 @@ class CompetitionStateProcessor extends AbstractStateProcessor
     }
 
     /**
-     * @param Competition      $entity
-     * @param CompetitionInput $input
+     * PUT retiré de cette ressource (nettoyage API) — l'abstraction impose seulement
+     * que ce foyer existe ; il n'est plus atteignable par l'API.
      */
     protected function updateEntityFromInput(object $entity, object $input): void
     {
-        if (null !== $input->teamId) {
-            $entity->setTeamId($input->teamId);
-        }
-        if (null !== $input->name) {
-            $entity->setName($input->name);
-        }
-        if (null !== $input->competitionType) {
-            $entity->setCompetitionType(CompetitionType::from($input->competitionType));
-        }
-        if (null !== $input->startDate) {
-            $entity->setStartDate($this->parseDate($input->startDate));
-        }
-        if (null !== $input->endDate) {
-            $entity->setEndDate($this->parseDate($input->endDate));
-        }
+        throw new LogicException('La modification (PUT) n\'est pas exposée pour les compétitions.');
     }
 
     /**

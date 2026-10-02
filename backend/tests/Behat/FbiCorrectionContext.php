@@ -234,9 +234,8 @@ final class FbiCorrectionContext extends BaseContext
         if ('' !== $this->fixtureId) {
             $this->apiDelete(\sprintf('fixtures/%s', $this->fixtureId), $this->token);
         }
-        if ('' !== $this->competitionId) {
-            $this->apiDelete(\sprintf('competitions/%s', $this->competitionId), $this->token);
-        }
+        // La compétition part avec l'équipe (cascade teams → competitions) : le match
+        // ayant été supprimé juste au-dessus, l'équipe n'est plus engagée et se supprime.
         if ('' !== $this->matchWindowId) {
             $this->apiDelete(\sprintf('venue_match_windows/%s', $this->matchWindowId), $this->token);
         }

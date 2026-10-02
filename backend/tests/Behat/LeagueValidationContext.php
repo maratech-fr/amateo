@@ -309,12 +309,9 @@ final class LeagueValidationContext extends BaseContext
                 $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
             }
         }
-        if ('' !== $this->competitionId) {
-            $this->apiDelete(\sprintf('competitions/%s', $this->competitionId), $this->token);
-        }
-        if ('' !== $this->amicalCompetitionId) {
-            $this->apiDelete(\sprintf('competitions/%s', $this->amicalCompetitionId), $this->token);
-        }
+        // Les deux compétitions (championnat + amical) sont portées par la même équipe
+        // jetable : elles partent avec elle (cascade teams → competitions), les matchs
+        // ayant été supprimés juste au-dessus (l'équipe n'est alors plus engagée).
         if ('' !== $this->matchWindowId) {
             $this->apiDelete(\sprintf('venue_match_windows/%s', $this->matchWindowId), $this->token);
         }

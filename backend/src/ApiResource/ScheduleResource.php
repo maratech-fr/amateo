@@ -12,7 +12,6 @@ use ApiPlatform\Metadata\Delete;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
-use ApiPlatform\Metadata\Put;
 use App\Dto\ScheduleCapabilities;
 use App\Dto\ScheduleInput;
 use App\Entity\Schedule;
@@ -22,11 +21,13 @@ use App\State\Provider\ScheduleStateProvider;
 use DateTimeImmutable;
 use Symfony\Component\Serializer\Attribute\Groups;
 
+// PUT retiré (nettoyage API) : le front ne renomme plus une version via cette ressource
+// (il passe par PUT /api/schedule_plans/{id}) ; statut et graine passent par les routes
+// dédiées (generate/validate/reopen), jamais un PUT libre.
 #[ApiResource(shortName: 'Schedule', operations: [
     new GetCollection,
     new Get,
     new Post,
-    new Put,
     new Delete,
     new Post(
         uriTemplate: '/schedules/{id}/export-pdf',

@@ -77,32 +77,6 @@ final class SchedulePlanProvisionerTest extends KernelTestCase
         self::assertCount(1, $this->em->getRepository(SchedulePlan::class)->findBy(['seasonId' => $season->getId()]));
     }
 
-    public function testSeasonPlanIsResyncedWhenTheSeasonIsEdited(): void
-    {
-        $clubId = $this->seedClub();
-        $season = $this->makeSeason($clubId);
-        $plan = $this->provisioner->ensureSeasonPlan($season);
-        $this->em->flush();
-
-        $named = $fresh = $this->em->getRepository(SchedulePlan::class)->find($plan->getId());
-        self::assertInstanceOf(SchedulePlan::class, $named);
-        $named->setName('Saison définitive');
-        $season->setStartDate(new DateTimeImmutable('2025-08-15'));
-        $season->setEndDate(new DateTimeImmutable('2026-07-10'));
-        $this->em->flush();
-
-        $this->provisioner->syncSeasonPlan($season);
-
-        $this->em->clear();
-        $fresh = $this->em->getRepository(SchedulePlan::class)->find($plan->getId());
-        self::assertInstanceOf(SchedulePlan::class, $fresh);
-        self::assertSame('2025-08-15', $fresh->getStartDate()->format('Y-m-d'));
-        self::assertSame('2026-07-10', $fresh->getEndDate()->format('Y-m-d'));
-        // Le nom vit sur le plan (inv. 12) : une édition de la saison recale les
-        // DATES et ne doit jamais réécrire le nom que le gestionnaire a choisi.
-        self::assertSame('Saison définitive', $fresh->getName(), 'un resync de saison n\'écrase pas le nom du plan');
-    }
-
     public function testSeasonSchedulesLinkAsIncrementingVersions(): void
     {
         $clubId = $this->seedClub();

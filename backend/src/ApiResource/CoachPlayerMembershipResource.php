@@ -9,7 +9,6 @@ use ApiPlatform\Metadata\Delete;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
-use ApiPlatform\Metadata\Put;
 use App\Dto\CoachPlayerMembershipInput;
 use App\Entity\CoachPlayerMembership;
 use App\State\Processor\CoachPlayerMembershipStateProcessor;
@@ -17,11 +16,11 @@ use App\State\Provider\CoachPlayerMembershipStateProvider;
 use DateTimeImmutable;
 use Symfony\Component\Serializer\Attribute\Groups;
 
+// PUT retiré (nettoyage API) : non appelé par le front (une liaison se crée/se retire).
 #[ApiResource(shortName: 'CoachPlayerMembership', operations: [
     new GetCollection,
     new Get,
     new Post,
-    new Put,
     new Delete,
 ], input: CoachPlayerMembershipInput::class, paginationEnabled: true, paginationItemsPerPage: 30, provider: CoachPlayerMembershipStateProvider::class, processor: CoachPlayerMembershipStateProcessor::class)]
 class CoachPlayerMembershipResource

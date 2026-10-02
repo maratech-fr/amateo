@@ -112,39 +112,6 @@ final class ScheduleLifecycleGuardTest extends WebTestCase
         self::assertResponseStatusCodeSame(409);
     }
 
-    public function testStatusIsIgnoredOnPut(): void
-    {
-        [$user, $club, $season] = $this->seed('SLG4');
-        $schedule = $this->makeSchedule($club, $season, ScheduleStatus::DRAFT);
-
-        // Fabricating a COMPLETED plan without any generation must be impossible —
-        // the PUT succeeds (a stale echoed status must not break renames) but the
-        // status field is never applied.
-        $this->put($user, $club, $schedule->getId(), ['name' => 'Fake', 'status' => 'COMPLETED']);
-
-        self::assertResponseIsSuccessful();
-        $this->em->clear();
-        $this->scopeGucToClub($club->getId());
-        $reloaded = $this->em->getRepository(Schedule::class)->find($schedule->getId());
-        self::assertNotNull($reloaded);
-        self::assertSame(ScheduleStatus::DRAFT, $reloaded->getStatus(), 'status must never change through PUT');
-        self::assertSame('Fake', $reloaded->getName());
-    }
-
-    public function testRenameEchoingCurrentStatusIsAccepted(): void
-    {
-        [$user, $club, $season] = $this->seed('SLG5');
-        $schedule = $this->makeSchedule($club, $season, ScheduleStatus::COMPLETED);
-
-        // The frontend rename echoes the current status — that must keep working.
-        $this->put($user, $club, $schedule->getId(), ['name' => 'Nouveau nom', 'status' => 'COMPLETED']);
-
-        self::assertResponseIsSuccessful();
-        $data = json_decode((string) $this->client->getResponse()->getContent(), true);
-        self::assertSame('Nouveau nom', $data['name']);
-        self::assertSame('COMPLETED', $data['status']);
-    }
-
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -163,17 +130,6 @@ final class ScheduleLifecycleGuardTest extends WebTestCase
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->jwt->create($user),
             'HTTP_X-Club-Id' => $club->getId(),
         ];
-    }
-
-    /**
-     * @param array<string, mixed> $payload
-     */
-    private function put(User $user, Club $club, string $id, array $payload): void
-    {
-        $this->client->request('PUT', "/api/schedules/{$id}", [], [], [
-            ...$this->authHeaders($user, $club),
-            'CONTENT_TYPE' => 'application/ld+json',
-        ], json_encode($payload, \JSON_THROW_ON_ERROR));
     }
 
     private function makeSchedule(Club $club, Season $season, ScheduleStatus $status): Schedule
