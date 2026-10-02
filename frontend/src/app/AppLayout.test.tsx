@@ -31,6 +31,7 @@ vi.mock("react-router", async (importOriginal) => {
 vi.mock("@/shared/credits/CreditBadge", () => ({ CreditBadge: () => <span data-testid="credit-badge" /> }));
 vi.mock("./BetaBadge", () => ({ BetaBadge: ({ onReport }: { onReport: () => void }) => <button data-testid="beta-badge" onClick={onReport} type="button" /> }));
 vi.mock("./DemoBadge", () => ({ DemoBadge: () => <span data-testid="demo-badge" /> }));
+vi.mock("./DemoClockWidget", () => ({ DemoClockWidget: () => null }));
 vi.mock("@/shared/credits/CreditsBanner", () => ({ CreditsBanner: () => null }));
 vi.mock("./SeasonSelector", () => ({ SeasonSelector: () => null }));
 vi.mock("./ReadonlySeasonBanner", () => ({ ReadonlySeasonBanner: () => null }));

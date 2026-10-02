@@ -138,3 +138,12 @@ export interface MeResponse {
 export function getMe(): Promise<MeResponse> {
   return api.get("me").json();
 }
+
+/**
+ * Pose (`{date}`) ou relâche (`{clear:true}`) l'horloge simulée du club COURANT — réservé
+ * aux comptes de DÉMONSTRATION (le serveur refuse 403 un vrai club), posé par le gestionnaire
+ * depuis le widget d'en-tête. Le tenant est résolu côté serveur (JWT), jamais envoyé.
+ */
+export function setClubClock(body: { date: string } | { clear: true }): Promise<{ simulatedToday: string | null }> {
+  return api.post("club/clock", { json: body }).json();
+}
