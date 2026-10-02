@@ -1,4 +1,4 @@
-import { render, renderHook, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, renderHook, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +12,9 @@ let simulatedToday: string | null = null;
 vi.mock("@/shared/session/queries", () => ({ useMe: () => ({ data: { club: { simulatedToday } } }) }));
 
 afterEach(() => {
+  // Démonter AVANT de relâcher l'override : sinon le notify de setTodayOverride re-rend un
+  // composant encore monté HORS act (avertissement « not wrapped in act », cliquet FRT-34).
+  cleanup();
   setTodayOverride(null);
   simulatedToday = null;
 });
@@ -55,22 +58,21 @@ describe("useApplySimulatedClock — cale todayISO sur le serveur et invalide re
     expect(invalidate).not.toHaveBeenCalled();
   });
 
-  // Bug capture prod : l'override est posé dans un effet APRÈS le premier rendu ; un consommateur
-  // qui lit la date EN RENDU doit se recaler au premier rendu stable, sans aucun changement de
-  // données react-query (/api/me identique). `useTodayISO` (store externe) rend ça réactif.
-  it("un consommateur abonné via useTodayISO se recale sur la date serveur au premier rendu stable", async () => {
-    simulatedToday = "2099-12-15";
-
+  // Bug capture prod : poser l'override APRÈS le premier rendu (ce que fait useApplySimulatedClock
+  // dans son effet — couvert par les tests ci-dessus) ne recalait pas les consommateurs qui lisent
+  // la date EN RENDU. `useTodayISO` (store externe) les abonne : on prouve ici qu'un changement
+  // d'override les RE-REND. Falsifiable : sans le notify de setTodayOverride, la 2ᵉ assertion
+  // reste sur la date réelle. (On pilote l'override DANS act() — le re-rendu du store externe doit
+  // y être capturé, sinon un avertissement « not wrapped in act » fuirait, cliquet FRT-34.)
+  it("un consommateur abonné via useTodayISO se re-rend quand l'override serveur change", () => {
     function Probe() {
-      useApplySimulatedClock();
-
       return <span data-testid="today">{useTodayISO()}</span>;
     }
 
-    const client = new QueryClient();
-    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
-    render(<Probe />, { wrapper });
+    render(<Probe />);
+    expect(screen.getByTestId("today")).toHaveTextContent(toISODate(new Date()));
 
-    await waitFor(() => expect(screen.getByTestId("today")).toHaveTextContent("2099-12-15"));
+    act(() => setTodayOverride("2099-12-15"));
+    expect(screen.getByTestId("today")).toHaveTextContent("2099-12-15");
   });
 });
