@@ -11127,6 +11127,138 @@
                 }
             }
         },
+        "/api/mailbox": {
+            "get": {
+                "operationId": "getMailbox",
+                "tags": [
+                    "Mailbox"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The intercepted e-mails of the current club, newest first, with a count for the nav badge. Empty for a club without a simulated clock.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "messages": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    },
+                                                    "from": {
+                                                        "type": "string"
+                                                    },
+                                                    "to": {
+                                                        "type": "string"
+                                                    },
+                                                    "subject": {
+                                                        "type": "string"
+                                                    },
+                                                    "simulatedDate": {
+                                                        "type": "string",
+                                                        "format": "date",
+                                                        "description": "The club simulated day the message was boxed on."
+                                                    },
+                                                    "createdAt": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "description": "Real wall-clock write instant (sort order)."
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "count": {
+                                            "type": "integer"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "No club in context"
+                    }
+                },
+                "summary": "List the current club intercepted e-mails (simulated clock)"
+            }
+        },
+        "/api/mailbox/{id}": {
+            "get": {
+                "operationId": "getMailboxMessage",
+                "tags": [
+                    "Mailbox"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "One intercepted e-mail, with its body.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "from": {
+                                            "type": "string"
+                                        },
+                                        "to": {
+                                            "type": "string"
+                                        },
+                                        "subject": {
+                                            "type": "string"
+                                        },
+                                        "simulatedDate": {
+                                            "type": "string",
+                                            "format": "date",
+                                            "description": "The club simulated day the message was boxed on."
+                                        },
+                                        "createdAt": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "description": "Real wall-clock write instant (sort order)."
+                                        },
+                                        "bodyText": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "description": "Business text body, captured before the brand signature."
+                                        },
+                                        "bodyHtml": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "description": "HTML body when present (usually null at enqueue \u2014 the signature is added by the worker, which never runs for a boxed e-mail)."
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "No club in context"
+                    },
+                    "404": {
+                        "description": "Unknown message, or it belongs to another club"
+                    }
+                },
+                "summary": "Read one intercepted e-mail of the current club"
+            }
+        },
         "/api/schedule-slots/move-group": {
             "post": {
                 "operationId": "postScheduleSlotMoveGroup",

@@ -1,9 +1,9 @@
-Last verified @ 2026-10-02 (L'horloge simulée devient une capacité générique par club : la réponse
-de `POST /api/admin/demos/bccl/clock` et l'état `GET /api/admin/demos` exposent désormais
-`simulatedToday` (ex `demoToday`) ; renommage pur, même forme. **±0 path**).
+Last verified @ 2026-10-02 (Boîte aux lettres d'un club à horloge simulée : deux routes tenant en
+lecture seule `GET /api/mailbox` (liste + compteur) et `GET /api/mailbox/{id}` (détail avec corps)
+exposées par `MailboxController` et décrites par `MailboxPaths`. **+2 paths**).
 
-**221 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`0c7b75caa131e819e08e2cc2f6d18c65d39a8123fd3ac9e491c7b31e3b7909ff` (`sha256sum` sur le fichier).
+**223 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`6713065d3acee70b346830570c591980dd16ff2267bc7c84115c051177fb84b4` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

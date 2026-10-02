@@ -331,6 +331,32 @@ final class RlsIsolationTest extends KernelTestCase
         self::assertSame(0, (int) $this->connection->fetchOne('SELECT count(*) FROM team_tag'), 'no GUC → fail-closed, zero rows, no error');
     }
 
+    public function testClubMailboxMessageIsTenantIsolated(): void
+    {
+        // P4-16 — la boîte aux lettres d'un club à horloge simulée est une table tenant comme
+        // les autres : sous le GUC d'un AUTRE club elle rend 0 ligne, et un UPDATE/DELETE
+        // cross-club n'en touche aucune. Prouvé en SQL brut sur la connexion runtime (aucune
+        // couche applicative) — le même durcissement DB que team_tag.
+        $this->seedTwoClubsWithOneTeamEach();
+
+        $this->guc->setClubId(self::CLUB_A);
+        $this->connection->executeStatement(
+            'INSERT INTO club_mailbox_message (id, club_id, created_at, simulated_date, from_address, to_address, subject, body_text) '
+            . 'VALUES (gen_random_uuid(), ?, now(), ?, ?, ?, ?, ?)',
+            [self::CLUB_A, '2026-12-24', 'noreply@amateo.test', 'coach@club.fr', 'Privé A', 'Corps A'],
+        );
+
+        $this->guc->setClubId(self::CLUB_B);
+        self::assertSame(0, (int) $this->connection->fetchOne('SELECT count(*) FROM club_mailbox_message'), 'club B ne voit jamais la boîte de A');
+        $updated = $this->connection->executeStatement('UPDATE club_mailbox_message SET subject = ? WHERE club_id = ?', ['pwned', self::CLUB_A]);
+        $deleted = $this->connection->executeStatement('DELETE FROM club_mailbox_message WHERE club_id = ?', [self::CLUB_A]);
+        self::assertSame(0, $updated, 'UPDATE cross-club sur la boîte touche zéro ligne');
+        self::assertSame(0, $deleted, 'DELETE cross-club sur la boîte touche zéro ligne');
+
+        $this->guc->setClubId(self::CLUB_A);
+        self::assertSame(1, (int) $this->connection->fetchOne('SELECT count(*) FROM club_mailbox_message'), 'la ligne de A est intacte');
+    }
+
     public function testCrossTenantUpdateAndDeleteAffectZeroRows(): void
     {
         $this->seedTwoClubsWithOneTeamEach();
