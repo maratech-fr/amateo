@@ -71,11 +71,13 @@ DOCS_QUOTING_THE_ACTIVE_VERSION = (
 DOCS_WITH_ROBUST_ACTIVE_VERSION = (REPO_ROOT / "specs" / "courantes" / "module-matchs.md",)
 
 # Une version de contrat numérique CITÉE au contact du mot « contrat » ou de `CONTRACT_VERSION`
-# (dans un sens ou dans l'autre, à courte distance sur la même ligne). Un « 2.15 » isolé, loin de
+# (dans un sens ou dans l'autre, à courte distance sur la même ligne). Un « 1.15 » isolé, loin de
 # ces mots, n'est pas ferré : seule une valeur PRÉSENTÉE comme la version de contrat compte.
+# MAJOR.MINOR générique (le contrat est repassé en 1.0 pour la v1 — ne jamais re-câbler sur un
+# MAJOR précis, sinon le garde redeviendrait aveugle au prochain bump de majeure).
 _CONTRACT_NUMBER_NEAR = re.compile(
-    r"(?:contrat|CONTRACT_VERSION)[^\n]{0,40}?\*{0,2}`?\"?(2\.\d+)"
-    r"|(2\.\d+)`?\"?\*{0,2}[^\n]{0,20}?(?:contrat|CONTRACT_VERSION)"
+    r"(?:contrat|CONTRACT_VERSION)[^\n]{0,40}?\*{0,2}`?\"?(\d+\.\d+)"
+    r"|(\d+\.\d+)`?\"?\*{0,2}[^\n]{0,20}?(?:contrat|CONTRACT_VERSION)"
 )
 
 
@@ -139,7 +141,7 @@ def test_every_doc_quoting_the_contract_cites_the_current_version() -> None:
     for doc in DOCS_QUOTING_THE_ACTIVE_VERSION:
         text = doc.read_text(encoding="utf-8")
         # Le doc parle-t-il du contrat ? (sinon il n'a rien a citer)
-        if not re.search(r"CONTRACT_VERSION|contrat\s+`?\"?2\.", text):
+        if not re.search(r"CONTRACT_VERSION|contrat\s+`?\"?\d+\.", text):
             continue
         if version not in text:
             stale.append(str(doc.relative_to(REPO_ROOT)))

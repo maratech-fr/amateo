@@ -157,11 +157,11 @@ def _input_with_version(version: str) -> ScheduleInputSchema:
 def test_generate_rejects_incompatible_contract_major() -> None:
     # ENG-14 (backend↔engine contract axis): a payload whose contract MAJOR the
     # engine does not speak must be rejected up front, not solved against a
-    # schema it may misread. Engine CONTRACT_VERSION is 2.x → major 1 is refused.
+    # schema it may misread. Engine CONTRACT_VERSION is 1.x (reset for v1) → major 2 is refused.
     from fastapi import HTTPException
 
     try:
-        asyncio.run(main.generate_schedule(_input_with_version("1.0")))
+        asyncio.run(main.generate_schedule(_input_with_version("2.0")))
     except HTTPException as exc:
         assert exc.status_code == 422
         assert "contract version" in exc.detail.lower()
@@ -170,9 +170,9 @@ def test_generate_rejects_incompatible_contract_major() -> None:
 
 
 def test_generate_accepts_matching_contract_major() -> None:
-    # A payload on the engine's own major (2.x) passes the guard and reaches the
+    # A payload on the engine's own major (1.x) passes the guard and reaches the
     # solver (empty club → trivially completed).
-    result = asyncio.run(main.generate_schedule(_input_with_version("2.0")))
+    result = asyncio.run(main.generate_schedule(_input_with_version("1.0")))
     assert result.status == "completed"
 
 

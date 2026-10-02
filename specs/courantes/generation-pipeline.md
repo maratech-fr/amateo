@@ -1,9 +1,10 @@
 # Génération d'un planning — conduite normalisée (bout en bout)
 
-Last verified @ 2026-10-01 (rotation de fraîcheur, `documentation-update`). `CONTRACT_VERSION`
-**`'2.29'`** confirmé aux trois foyers — `ScheduleConstraintBuilder.php:61`, `MoveSlotService.php:50`,
-`MatchPlacementPayloadBuilder.php:70` (deux citations de ligne corrigées cette passe) — et
-`engine/CONTRACT_VERSION` (`2.29`, inchangé). Garde de redélivrance
+Last verified @ 2026-10-02 (P5-28 — contrat moteur repassé en 1.0 pour la v1, forme du payload
+inchangée). `CONTRACT_VERSION`
+**`'1.0'`** confirmé aux trois foyers — `ScheduleConstraintBuilder.php:61`, `MoveSlotService.php:50`,
+`MatchPlacementPayloadBuilder.php:70` — et
+`engine/CONTRACT_VERSION` (`1.0`). Garde de redélivrance
 (`GenerateScheduleHandler.php:143`, SEUL `COMPLETED` bloque) et persistance de la greffe de
 convergence (`Schedule::payloadGraft`/`engineInput()`, `Schedule.php:138`) toujours en place, code
 relu ; aucun écran frontend n'affiche `score` (grep confirmé, `frontend/src/features/planning/api.ts`).
