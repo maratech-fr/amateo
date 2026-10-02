@@ -29,7 +29,7 @@ ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN
 
 RUN npm run build
 
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.29-alpine AS runtime
 # SEC A19 — même règle que nginx-prod backend : ramener les paquets Alpine au
 # niveau des dépôts (le gate Trivy vérifie derrière).
 RUN apk upgrade --no-cache
