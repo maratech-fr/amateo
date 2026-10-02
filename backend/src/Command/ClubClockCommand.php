@@ -29,13 +29,11 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * qui ne le concernent pas (décision fondateur 2026-10-02) — un club réel est REFUSÉ, franc.
  *
  * Idiome support (connexion ADMIN, cross-tenant — même connexion que {@see ClubMailboxPurgerInterface},
- * pour que le vidage de boîte au `--clear` voie bien les lignes). Alias déprécié
- * `app:demo:clock` conservé le temps que les habitudes migrent.
+ * pour que le vidage de boîte au `--clear` voie bien les lignes).
  */
 #[AsCommand(
     name: 'app:club:clock',
     description: 'Set (or clear with --clear) the simulated "today" of a club. Support action.',
-    aliases: ['app:demo:clock'],
 )]
 final class ClubClockCommand extends Command
 {

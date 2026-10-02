@@ -6,7 +6,7 @@
 Last verified @ 2026-10-02 (`documentation-update`, lot horloge PR D — revirement fondateur :
 §Module démo recalé, l'horloge simulée ne vit plus QUE pour un compte de démonstration. La route
 superadmin `POST /api/admin/clubs/{clubId}/clock` (horloge sur n'importe quel club) est SUPPRIMÉE ;
-`app:club:clock` (ex `app:demo:clock`, alias déprécié conservé) refuse franc tout club non
+`app:club:clock` (l'alias déprécié `app:demo:clock` est retiré) refuse franc tout club non
 `is_demo`, `--yes` a disparu. Un gestionnaire démo pose désormais aussi l'horloge depuis l'app
 (`POST /api/club/clock`, `ClubClockController`, widget d'en-tête). Reste du fichier non rebalayé
 cette passe ; historique des passes complètes : `git log -p --follow` ce fichier — un stamp

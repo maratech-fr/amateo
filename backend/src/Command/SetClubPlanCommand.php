@@ -112,7 +112,7 @@ final class SetClubPlanCommand extends Command
 
         // Encaissement : offre + saison réglée dans la MÊME transaction. Le pivot lit
         // simulated_today du club démo (D6), sinon l'horloge réelle. Une valeur non-NULL
-        // n'existe QUE pour un club is_demo (DemoClockCommand ne l'écrit que là).
+        // n'existe QUE pour un club is_demo (ClubClockCommand ne l'écrit que là).
         // transactional() relaie le code de retour de la closure (int) — offre + marqueur
         // dans la MÊME transaction : un échec de l'un annule l'autre.
         return $connection->transactional(function (Connection $tx) use ($io, $clubId, $planId, $planCode, $paidSeason): int {

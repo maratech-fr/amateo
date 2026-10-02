@@ -44,7 +44,6 @@ L'**engine** est un microservice Python qui reçoit un contexte complet (clubs, 
 | `/generate` | POST | **Principal** — résout le planning hebdomadaire et retourne les créneaux |
 | `/place-matches` | POST | Placement daté des matchs (ADR-0003), rail séparé du `/generate` hebdomadaire |
 | `/validate-assignments` | POST | Verdict du moteur sur un déplacement manuel (rejoue la couche HARD) |
-| `/implicit-constraints` | POST | Sync règles implicites backend↔engine (200 synchronized / 409 desynchronized) |
 
 ### `POST /generate`
 

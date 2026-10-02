@@ -26,10 +26,6 @@ use ReflectionClass;
  * pas la panne, c'est le bump manqué — le jour où la FORME du payload change
  * sans toucher au MAJOR, les deux côtés se taisent. Ce garde exige l'ÉGALITÉ
  * STRICTE (pas « même MAJOR »), pour crier au prochain bump du fichier.
- *
- * (À ne PAS confondre avec `ImplicitConstraintConfig::RULESET_VERSION`, qui
- * versionne le JEU DE RÈGLES IMPLICITES — un autre concept, comparé octet à
- * octet par `ImplicitRulesMatchEngineTest`, et qui ne bouge pas ici.)
  */
 final class PayloadVersionMatchesContractVersionTest extends TestCase
 {

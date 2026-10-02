@@ -1,14 +1,13 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-09-30 (`documentation-update`, PR #1031). §Trajet entre gymnases recalé contre
-`engine/app/solver/constraints/travel.py` (`required_gap`, `_barometer`) et
-`App\Enum\VenueTravelRuleIntensity` : mode non véhiculé = vélo (`walkingMinutes` gardé), cran `OFF`,
-`toleranceMinutes` retranché du barème pour l'écart exigé. La famille `COACH_AVAILABILITY` reste
-propre au solve hebdo `/generate`, sans lien avec l'indisponibilité de coach du placement de matchs
-(`MatchConstraint` scope COACH, bloc top-level `coachUnavailabilities`, TOUJOURS SOFT,
-`W_COACH_UNAVAILABLE=60`, `engine/app/solver/match_placement.py:57`) ✓ (re-confronté passe
-précédente, non re-sondé cette passe). Non re-sondé cette passe : le reste du vocabulaire détaillé
-ci-dessous — un stamp REMPLACE, l'historique vit dans git.
+Last verified @ 2026-10-02 (rotation `documentation-update`, lot nettoyage code mort) — drift
+corrigé : `ONE_SESSION_PER_DAY` citait encore l'exception `allowMultipleSessionsPerDay`, retirée du
+contrat depuis P4-79 (`grep` zéro hit dans `engine/`/`backend/src` ; même correctif appliqué à
+`nominal-flow.md`). §Trajet entre gymnases confronté à `engine/app/solver/constraints/travel.py`
+(`required_gap`, `_barometer`) et `App\Enum\VenueTravelRuleIntensity` : mode non véhiculé = vélo
+(`walkingMinutes` gardé), cran `OFF`, `toleranceMinutes` retranché du barème pour l'écart exigé.
+Reste du vocabulaire détaillé ci-dessous non re-sondé cette passe — un stamp REMPLACE,
+l'historique vit dans git.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
@@ -183,7 +182,7 @@ supérieur l'emporte dans l'objectif. Le **minimum de séances** du rang est une
 | `COACH_REST_DAY` | **dur** : chaque coach a ≥ 1 jour de repos du lundi au vendredi (≤ 4 jours travaillés). Ignoré pour un coach dont le `maxDaysOverride` est déjà ≤ 4 |
 | `SALARIE_DISTRIBUTION` | **dur** : au moins un coach salarié (`isEmployee`) présent chaque jour lun-ven. Inactif si le club compte moins de 2 salariés |
 | `MAX_CONSECUTIVE_SESSIONS` | **dur** : une même personne n'est jamais sur les 3 créneaux d'un enchaînement A→B→C le même jour, **tous gymnases confondus** |
-| `ONE_SESSION_PER_DAY` | **dur** : ≤ 1 séance par jour et par équipe, sauf `allowMultipleSessionsPerDay` |
+| `ONE_SESSION_PER_DAY` | **dur** : ≤ 1 séance par jour et par équipe, sans exception (le drapeau `allowMultipleSessionsPerDay` est retiré du contrat, P4-79) |
 | `AGE_ASCENDING` | **dur** : à gymnase et jour égaux, une équipe plus jeune ne passe pas après une plus âgée. Exempt si `ageMin` est absent (Loisir, Baby) ou si l'équipe est verrouillée en HARD |
 | `MAX_CONSECUTIVE_DAYS` | **dur ou soft, au choix du club** : une ÉQUIPE ne s'entraîne pas `maxConsecutiveDays` jours de suite (défaut 3, bornes 2-5). ⚠ À ne pas confondre avec `MAX_CONSECUTIVE_SESSIONS`, presque homonyme : celle-là vise une PERSONNE sur des créneaux dos-à-dos DANS UNE JOURNÉE. **Seule règle dont l'absence du payload signifie NON APPLIQUÉE** — les autres retombent sur HARD (P2-42) |
 | jour de repos après match | bonus soft (`add_match_day_rest_bonus`) : préfère laisser le lendemain d'un match libre |

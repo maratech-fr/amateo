@@ -14,7 +14,6 @@ from typing import Any, cast
 from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from ortools.sat.python import cp_model
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging, request_id_var
@@ -58,7 +57,6 @@ from app.solver.validate_assignments import validate_assignment
 
 ENGINE_ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_VERSION_PATH = ENGINE_ROOT / "CONTRACT_VERSION"
-IMPLICIT_RULES_PATH = ENGINE_ROOT / "implicit_rules.json"
 
 settings = get_settings()
 # Structured JSON logs carrying the correlation id (P5-11). force=True: uvicorn
@@ -144,21 +142,6 @@ _placement_semaphore = asyncio.Semaphore(settings.max_concurrent_placements)
 _verdict_semaphore = asyncio.Semaphore(settings.max_concurrent_verdicts)
 
 
-class SerializableModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-
-class ImplicitRuleSchema(SerializableModel):
-    name: str
-    enabled: bool
-    description: str
-
-
-class ImplicitConstraintSyncRequest(SerializableModel):
-    version: str
-    rules: list[ImplicitRuleSchema] = Field(default_factory=list)
-
-
 def read_contract_version() -> str:
     """Version du contrat parlée par CE build — le fichier `engine/CONTRACT_VERSION` fait foi.
 
@@ -181,23 +164,6 @@ def read_contract_version() -> str:
             f"CONTRACT_VERSION introuvable ({CONTRACT_VERSION_PATH}) : ce build est incomplet. "
             "Ce fichier EST la version que l'engine parle au backend ; sans lui, aucune version "
             "ne peut être annoncée honnêtement. Vérifier le COPY du Dockerfile."
-        ) from exc
-
-
-def read_implicit_rules() -> ImplicitConstraintSyncRequest:
-    try:
-        return ImplicitConstraintSyncRequest.model_validate_json(
-            IMPLICIT_RULES_PATH.read_text(encoding="utf-8"),
-        )
-    except FileNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="implicit_rules.json not found",
-        ) from exc
-    except ValidationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="implicit_rules.json is invalid",
         ) from exc
 
 
@@ -842,45 +808,6 @@ async def validate_assignments(input_data: ValidateAssignmentsInputSchema) -> Va
     async with lock, _verdict_semaphore:
         result = await asyncio.to_thread(validate_assignment, input_data, contract_version=contract_version)
     return ValidateAssignmentsOutputSchema.model_validate(result)
-
-
-@app.post("/implicit-constraints")
-async def sync_implicit_constraints(input_data: ImplicitConstraintSyncRequest) -> JSONResponse:
-    engine_rules = read_implicit_rules()
-    backend_rules = sorted(rule.name for rule in input_data.rules if rule.enabled)
-    engine_enabled_rules = sorted(rule.name for rule in engine_rules.rules if rule.enabled)
-    missing_in_engine = sorted(set(backend_rules) - set(engine_enabled_rules))
-    missing_in_backend = sorted(set(engine_enabled_rules) - set(backend_rules))
-
-    # D-43 — ne comparer que les NOMS laissait passer une contradiction de fond : `MIN_SESSIONS`
-    # etait decrite comme un plancher dur cote backend alors que le solveur n'en fait qu'une
-    # cible (ENG-18). Deux cotes d'accord sur la liste, en desaccord sur ce qu'elle veut dire :
-    # l'endpoint repondait « synchronized » sur un mensonge.
-    engine_descriptions = {rule.name: rule.description for rule in engine_rules.rules if rule.enabled}
-    backend_descriptions = {rule.name: rule.description for rule in input_data.rules if rule.enabled}
-    contradicting = sorted(
-        name
-        for name, description in backend_descriptions.items()
-        if name in engine_descriptions and engine_descriptions[name] != description
-    )
-
-    if not missing_in_engine and not missing_in_backend and not contradicting:
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content={"status": "synchronized", "rules_count": len(engine_enabled_rules)},
-        )
-
-    return JSONResponse(
-        status_code=status.HTTP_409_CONFLICT,
-        content={
-            "status": "desynchronized",
-            "backend_rules": backend_rules,
-            "engine_rules": engine_enabled_rules,
-            "missing_in_engine": missing_in_engine,
-            "missing_in_backend": missing_in_backend,
-            "contradicting_descriptions": contradicting,
-        },
-    )
 
 
 @app.get("/")

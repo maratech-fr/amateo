@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Tests\CrossStack;
 
-use App\Command\ExportImplicitConstraintsCommand;
 use App\Service\AdminHealthService;
 use App\Service\EngineClient;
 use PHPUnit\Framework\Attributes\Group;
@@ -12,19 +11,18 @@ use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 
 /**
- * D-17 — l'hôte du moteur est écrit à QUATRE endroits, et rien ne les reliait.
+ * D-17 — l'hôte du moteur est écrit à PLUSIEURS endroits, et rien ne les reliait.
  *
- * `EngineClient` (solve + placement), `AdminHealthService` (le health-check de la console) et
- * `ExportImplicitConstraintsCommand` (la synchro des règles implicites) portent chacun leur
- * littéral. Le seul test qui semblait garder l'URL — `ContractSchemaTest` — la comparait à sa
- * PROPRE copie : passer `EngineClient` sur un autre port laissait les quatre tests CrossStack
- * verts, et seul le smoke tombait.
+ * `EngineClient` (solve + placement) et `AdminHealthService` (le health-check de la console)
+ * portent chacun leur littéral. Le seul test qui semblait garder l'URL — `ContractSchemaTest`
+ * — la comparait à sa PROPRE copie : passer `EngineClient` sur un autre port laissait les
+ * tests CrossStack verts, et seul le smoke tombait.
  *
  * Ce que la divergence coûte, concrètement : le health-check de la console interroge un hôte
  * que le client n'utilise plus. La console affiche « moteur OK » pendant que les générations
  * échouent — un tableau de bord qui rassure sur une machine que personne n'appelle.
  *
- * ⚠ Ce test ne demande PAS une constante unique : les quatre chemins sont légitimement
+ * ⚠ Ce test ne demande PAS une constante unique : les chemins sont légitimement
  * distincts (endpoints différents). Il exige seulement qu'ils visent le même **hôte**.
  */
 #[Group('phase1')]
@@ -36,7 +34,6 @@ final class EngineUrlIsSingleHostTest extends TestCase
             'EngineClient::ENGINE_URL' => $this->constant(EngineClient::class, 'ENGINE_URL'),
             'EngineClient::PLACE_MATCHES_URL' => $this->constant(EngineClient::class, 'PLACE_MATCHES_URL'),
             'AdminHealthService::ENGINE_HEALTH_URL' => $this->constant(AdminHealthService::class, 'ENGINE_HEALTH_URL'),
-            'ExportImplicitConstraintsCommand::ENGINE_URL' => $this->constant(ExportImplicitConstraintsCommand::class, 'ENGINE_URL'),
         ];
 
         $hosts = [];
