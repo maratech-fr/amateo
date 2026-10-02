@@ -1,4 +1,10 @@
-FROM ghcr.io/puppeteer/puppeteer:latest
+# Épinglé (tag semver + digest) — `latest` rendait l'image non reproductible : un
+# rebuild pouvait embarquer une paire puppeteer↔Chrome différente de celle qui tourne,
+# sans qu'aucun diff ne le montre. 25.12.0 = la version déjà en service (Node 24).
+# Mise à jour : Dependabot (écosystème `docker`, dossier docker/pdf-worker) propose
+# désormais les bumps — relever le tag ET le digest ensemble, jamais l'un sans l'autre
+# (le digest est la vérité immuable, le tag n'est qu'un libellé lisible).
+FROM ghcr.io/puppeteer/puppeteer:25.12.0@sha256:60ad89b1d8ca14877120250b9c96694dd19a4eda5890fdbad64f4740c6a27361
 
 WORKDIR /app/frontend
 
