@@ -227,11 +227,19 @@ cs-fix:
 rector:
 	$(EXEC) composer rector -- --dry-run
 
-.PHONY: lint ## Run PHPStan, CS, and Rector
+# Même script `composer-unused` (composer.json) + config composer-unused.php que le
+# job CI « Run composer-unused », jusqu'ici CI-only : il rougit sur un paquet déclaré
+# mais jamais utilisé.
+.PHONY: composer-unused ## Run composer-unused (dependency hygiene)
+composer-unused:
+	$(EXEC) composer composer-unused
+
+.PHONY: lint ## Run PHPStan, CS, Rector, and composer-unused
 lint:
 	$(MAKE) phpstan
 	$(MAKE) cs
 	$(MAKE) rector
+	$(MAKE) composer-unused
 
 .PHONY: fix-perms ## Fix permissions on var/generate so host user can read reports
 fix-perms:

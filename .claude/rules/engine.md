@@ -13,8 +13,9 @@ paths:
   step dédié du job `engine-tests`), pas seulement en local via `make test`.
 - **deptry** (`deptry .`, config `[tool.deptry]` de `pyproject.toml`) — garde d'hygiène des
   dépendances (déclarée-jamais-importée/manquante/transitive-seule), step du job `engine-tests`
-  ET déjà dans `make lint`/`make test` (contrairement aux gardes équivalentes knip/composer-unused
-  côté frontend/backend, CI-only) — détail : `docs/testing/testing-strategy.md` §1.
+  ET déjà dans `make lint`/`make test` (même patron que les gardes équivalentes knip/composer-unused
+  côté frontend/backend, désormais dans `make -C frontend lint` / `make -C backend lint` aussi) —
+  détail : `docs/testing/testing-strategy.md` §1.
 - **pytest** (`-ra`) + golden fixtures (`tests/golden/`, solves complets sur fixtures réelles) +
   invariants post-solve (`tests/invariants/`) + hypothesis + perf (`-m perf`, main only — dont un
   club synthétique volumineux pour `/place-matches`, `tests/perf/test_perf_place_matches.py`) ;

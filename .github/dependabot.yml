@@ -71,3 +71,73 @@ updates:
       github-actions:
         patterns: ["*"]
     labels: ["dependencies", "ci"]
+
+  # Docker — images de base des Dockerfiles (lit les `FROM`). Une entrée par
+  # DOSSIER contenant un Dockerfile : Dependabot docker ne scanne qu'un dossier
+  # à la fois et détecte tout fichier dont le nom contient « dockerfile »
+  # (docker/postgres/Dockerfile.prod inclus). Même cadence/refroidissement/
+  # regroupement/labels que les écosystèmes ci-dessus.
+  - package-ecosystem: "docker"
+    directory: "/docker/php"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      docker-php:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    labels: ["dependencies", "docker"]
+
+  - package-ecosystem: "docker"
+    directory: "/docker/engine"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      docker-engine:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    labels: ["dependencies", "docker"]
+
+  - package-ecosystem: "docker"
+    directory: "/docker/frontend"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      docker-frontend:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    labels: ["dependencies", "docker"]
+
+  - package-ecosystem: "docker"
+    directory: "/docker/pdf-worker"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      docker-pdf-worker:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    labels: ["dependencies", "docker"]
+
+  - package-ecosystem: "docker"
+    directory: "/docker/postgres"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      docker-postgres:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    labels: ["dependencies", "docker"]
