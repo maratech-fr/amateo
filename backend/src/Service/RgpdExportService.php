@@ -53,6 +53,10 @@ final class RgpdExportService
         // quiconque obtient le JSON peut écrire des souhaits au nom de n'importe quel coach.
         // Les souhaits eux-mêmes (coach_wish) sont exportés : c'est LA donnée de l'art. 20.
         'coach_wish_token' => 'secret en clair — l\'exporter serait une fuite de credentials',
+        // Artefact INTERNE de démonstration (P4-16) : e-mails interceptés d'un club à horloge
+        // SIMULÉE, jamais de la donnée d'un workspace réel. Les adresses qui y figurent sont
+        // celles des membres, déjà exportées via club_user/app_user. Hors art. 20.
+        'club_mailbox_message' => 'artefact de démo (e-mails interceptés d\'un club à horloge simulée), jamais une donnée de workspace réel ; adresses déjà exportées via les membres',
         // Base légale DIFFÉRENTE : le journal relève de l'accountability (art. 5.2, intérêt
         // légitime), pas du contrat ; la portabilité de l'art. 20 ne couvre que les données
         // fournies par la personne sur base contrat/consentement. Il est de surcroît

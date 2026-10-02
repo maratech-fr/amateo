@@ -92,6 +92,7 @@ final class SeasonDataPurger
         'opponent_venue_link' => 'club-scoped SANS saison (un libellé désigne le même gymnase d\'une saison à l\'autre — amendement 2026-09-20) : une purge de saison ne le touche jamais, sa porte de sortie est ErasedClubPurger (qui décrémente d\'abord le compteur partagé des liens MANUAL)',
         'audit_log' => 'accountability : rétention propre (app:audit:purge) ; l\'effacement écrit une ligne d\'audit APRÈS la purge',
         'coach_wish_token' => 'part par la FK ON DELETE CASCADE de sa campagne (jamais supprimé directement)',
+        'club_mailbox_message' => 'club-scoped SANS saison (boîte d\'un club à horloge simulée, P4-16) — porte de sortie ErasedClubPurger ; vidée aussi en direct au reset/désactivation de l\'horloge',
     ];
 
     /**
