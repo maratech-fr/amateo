@@ -836,11 +836,9 @@ final class MatchPlacementContext extends BaseContext
         if ('' !== $this->matchRuleId) {
             $this->apiDelete(\sprintf('match_constraints/%s', $this->matchRuleId), $this->token);
         }
-        foreach ([$this->competitionId, $this->competitionId2] as $id) {
-            if ('' !== $id) {
-                $this->apiDelete(\sprintf('competitions/%s', $id), $this->token);
-            }
-        }
+        // Les compétitions sont portées par les équipes jetables (A/B) : elles partent
+        // avec elles (cascade teams → competitions), les matchs ayant été supprimés
+        // juste au-dessus (les équipes ne sont alors plus engagées).
         if ('' !== $this->windowId) {
             $this->apiDelete(\sprintf('venue_match_windows/%s', $this->windowId), $this->token);
         }

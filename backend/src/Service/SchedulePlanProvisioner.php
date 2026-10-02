@@ -92,25 +92,6 @@ final class SchedulePlanProvisioner
     }
 
     /**
-     * ADR-0002 : la PÉRIODE du plan SEASON suit celle de la saison. Le NOM, lui,
-     * appartient au plan (inv. 12) et n'est écrit que par son renommage — un
-     * second écrivain le rendrait non durable.
-     */
-    public function syncSeasonPlan(Season $season): void
-    {
-        $this->entityManager->getConnection()->executeStatement(
-            'UPDATE schedule_plan SET start_date = :start, end_date = :end, updated_at = now(), version = version + 1 '
-            . 'WHERE season_id = :sid AND type = \'SEASON\'',
-            [
-                'start' => $season->getStartDate(),
-                'end' => $season->getEndDate(),
-                'sid' => $season->getId(),
-            ],
-            ['start' => Types::DATETIMETZ_IMMUTABLE, 'end' => Types::DATETIMETZ_IMMUTABLE],
-        );
-    }
-
-    /**
      * ADR-0002 C4 : NUMÉROTE une version fraîchement créée dans SON plan. Le plan est
      * DÉJÀ posé par l'appelant (`schedulePlanId`) — au POST (le client nomme le plan) ou
      * au regenerate (même plan que la source). linkSchedule ne le résout donc plus : il
@@ -338,8 +319,8 @@ final class SchedulePlanProvisioner
     /**
      * D3 v1 (décision fondateur 2026-09-04) — RE-DATER une racine CLOSURE « d'un bloc » déplace
      * la fenêtre de son plan sur les nouvelles dates de l'entrée. Le plan reste un gabarit hebdo
-     * SANS dates ; seule sa fenêtre (start/end) bouge, comme {@see syncSeasonPlan} pour le socle —
-     * rien n'orpheline, le build recoupe le gabarit à la nouvelle fenêtre. Appelé SOUS le verrou de
+     * SANS dates ; seule sa fenêtre (start/end) bouge — comme la fenêtre du plan SEASON suivait
+     * jadis celle de la saison — rien n'orpheline, le build recoupe le gabarit à la nouvelle fenêtre. Appelé SOUS le verrou de
      * plan-scope pris par l'appelant (CalendarEntryStateProcessor::processPut). No-op si l'entrée
      * ne porte pas de plan. SQL brut, comme toute écriture de plan ici : `season_filter` épingle les
      * lectures ORM à la saison active, or un plan peut vivre pour une autre saison ; RLS scope le club.

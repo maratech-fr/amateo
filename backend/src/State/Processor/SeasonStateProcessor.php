@@ -13,6 +13,7 @@ use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
 use Doctrine\ORM\EntityManagerInterface;
+use LogicException;
 use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
@@ -59,28 +60,6 @@ class SeasonStateProcessor extends AbstractStateProcessor
     }
 
     /**
-     * ADR-0002 Lot A: a season rename / date shift must re-sync the mirrored
-     * SEASON plan so /api/schedule_plans never serves a stale name or period.
-     *
-     * @param SeasonInput          $input
-     * @param array<string, mixed> $uriVariables
-     *
-     * @return SeasonResource
-     */
-    protected function processPut(object $input, array $uriVariables, ?string $clubId, ?string $seasonId): object
-    {
-        /** @var SeasonResource $output */
-        $output = parent::processPut($input, $uriVariables, $clubId, $seasonId);
-
-        $season = $this->entityManager->getRepository(Season::class)->find($output->id);
-        if ($season instanceof Season) {
-            $this->schedulePlanProvisioner->syncSeasonPlan($season);
-        }
-
-        return $output;
-    }
-
-    /**
      * @param SeasonInput $input
      */
     protected function createEntityFromInput(object $input): Season
@@ -103,25 +82,12 @@ class SeasonStateProcessor extends AbstractStateProcessor
     }
 
     /**
-     * @param Season      $entity
-     * @param SeasonInput $input
+     * PUT retiré de cette ressource (nettoyage API) — l'abstraction impose seulement
+     * que ce foyer existe ; il n'est plus atteignable par l'API.
      */
     protected function updateEntityFromInput(object $entity, object $input): void
     {
-        if (null !== $input->name) {
-            $entity->setName($input->name);
-        }
-        // Partial PUT: absent dates keep the current values — a client updating
-        // one field (e.g. planningName) must not echo (possibly stale) dates.
-        if (null !== $input->startDate) {
-            $entity->setStartDate($input->startDate);
-        }
-        if (null !== $input->endDate) {
-            $entity->setEndDate($input->endDate);
-        }
-        if (null !== $input->status) {
-            $entity->setStatus(SeasonStatus::from($input->status));
-        }
+        throw new LogicException('La modification (PUT) n\'est pas exposée pour les saisons.');
     }
 
     /**
