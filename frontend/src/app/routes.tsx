@@ -223,6 +223,13 @@ export const routes: RouteObject[] = [
             path: "/nouveautes",
             lazy: async () => ({ Component: (await import("@/features/release-notes/ReleaseNotesPage")).ReleaseNotesPage }),
           },
+          {
+            // P4-16 — la « Boîte aux lettres » d'un club à horloge simulée (e-mails interceptés).
+            // L'entrée de nav ne s'affiche que pour un club à horloge ; la page reste atteignable
+            // par URL (elle rend simplement une boîte vide pour un club sans horloge).
+            path: "/boite-aux-lettres",
+            lazy: async () => ({ Component: (await import("@/features/mailbox/MailboxPage")).MailboxPage }),
+          },
           // URL authentifiée inconnue → une vraie 404 (P5-14, EAGER), sous AppLayout
           // (en-tête et navigation conservés). Plus de téléportation muette vers
           // l'accueil : une URL inconnue le DIT. Cette même 404 sert au refus tenant

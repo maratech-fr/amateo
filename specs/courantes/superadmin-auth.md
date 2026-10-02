@@ -1,10 +1,11 @@
 # Console superadmin — authentification, télémétrie et API de supervision
 
-Last verified @ 2026-10-02 (horloge par club, `feat/horloge-club-module`). Re-vérifié contre le
-code : `club.demo_today` est devenu `club.simulated_today` (`Version20261002090000`,
-`Club::$simulatedToday`), lu/écrit par `AdminDemoController` sous ce nom
-(`AdminDemoController.php:181,224,244,259`) — les trois mentions de ce fichier recalées. Reste du
-fichier non re-confronté cette passe ; historique des vérifications précédentes :
+Last verified @ 2026-10-02 (horloge par club, `feat/horloge-boite-aux-lettres`). Re-vérifié contre
+le code : `club.demo_today` est devenu `club.simulated_today` (`Version20261002090000`,
+`Club::$simulatedToday`), lu/écrit par `AdminDemoController` sous ce nom ; §« Démos — console de
+pilotage » recalé — `reset` et `clock --clear` vident désormais aussi la boîte aux lettres du club
+(`AdminDemoController::emptyMailbox()`, `AdminDemoController.php`). Reste du fichier non
+re-confronté cette passe ; historique des vérifications précédentes :
 `git log -p --follow specs/courantes/superadmin-auth.md`.
 
 > **État courant** : SA0, SA1, la console read-only SA2, le socle
@@ -397,11 +398,15 @@ posé** (surface cross-tenant, contrat SA0).
   tourne, elle, sur la connexion applicative, incapable de purger le workspace à travers la RLS),
   puis remet `club.simulated_today` à `NULL` (décision fondateur : le reset repart TOUJOURS à
   aujourd'hui) **sans toucher la fenêtre d'activation du compte**. Un re-seed en échec rend 502,
-  l'horloge simulée reste intacte.
+  l'horloge simulée reste intacte. **Vide aussi la boîte aux lettres** (P4-16) — les e-mails
+  interceptés d'une démo précédente ne survivent pas à une réinitialisation.
 - `POST /demos/bccl/clock` pose (`date`, `YYYY-MM-DD`) ou relâche (`clear`) la date simulée du
   club BCCL — exactement l'un des deux, jamais les deux ni aucun ; la date doit se relire à
   l'identique (`2026-02-31` refusé, même garde que `DemoClockCommand`) ; le club est résolu
-  SERVEUR depuis le compte `demo-bccl@`, et l'`UPDATE` reste gardé `is_demo = TRUE`.
+  SERVEUR depuis le compte `demo-bccl@`, et l'`UPDATE` reste gardé `is_demo = TRUE`. **Relâcher la
+  date (`clear`) vide la boîte aux lettres** — hors horloge, le club redevient réel et enverrait
+  pour de vrai, les e-mails boxés n'ont plus de raison d'être ; **poser/changer une date ne la
+  touche jamais**.
 
 Front : 8ᵉ onglet « Démos » (`frontend/src/features/admin/tabs/tabsConfig.ts`, icône
 `Presentation`) — deux cartes (`DemosSection.tsx`) : « Démo BCCL » (fenêtre + réinitialisation

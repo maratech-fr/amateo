@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\CalendarEntry;
+use App\Mail\ClubBusinessMail;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mime\Email;
 
@@ -39,10 +40,14 @@ final class PeriodReminderMailBuilder
             $lines[] = rtrim($this->frontendBaseUrl, '/') . '/';
         }
 
-        return (new Email)
-            ->from($this->mailFrom->address())
-            ->to($to)
-            ->subject($subject)
-            ->text(implode("\n", $lines));
+        // E-mail MÉTIER club : candidat à l'interception « boîte aux lettres » d'un club à
+        // horloge simulée (jamais un e-mail de compte, cf. ClubBusinessMail).
+        return ClubBusinessMail::mark(
+            (new Email)
+                ->from($this->mailFrom->address())
+                ->to($to)
+                ->subject($subject)
+                ->text(implode("\n", $lines)),
+        );
     }
 }

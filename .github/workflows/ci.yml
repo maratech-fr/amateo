@@ -432,6 +432,14 @@ jobs:
       - name: RlsIsolationTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/RlsIsolationTest.php --group phase1'
 
+      # P4-16 — un club à horloge simulée n'envoie JAMAIS de vrai e-mail : il est rangé
+      # dans sa boîte, l'enfilage est rejeté, et un autre club ne voit jamais cette boîte
+      # (RLS). Sans ce gate BLOQUANT, une régression du listener d'interception enverrait
+      # de vrais e-mails aux gestionnaires pendant une démo rejouée dans le passé/futur —
+      # invisible aux autres checks, qui n'exercent pas l'enfilage sous horloge.
+      - name: ClockedClubMailInterceptTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Mail/ClockedClubMailInterceptTest.php --group phase1'
+
       # P5-20 — rôle Postgres de lecture seule amateo_read : SELECT scopé au club,
       # aucune écriture (refus privilège), aucune porte admin_all, et une garde du
       # futur (toute table club_id doit porter sa policy readonly_tenant). Sans ce

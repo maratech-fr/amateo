@@ -14,6 +14,9 @@ vi.mock("@/shared/session/queries", () => ({
 vi.mock("@/features/auth/queries", () => ({
   useLogout: () => vi.fn(),
 }));
+// L'entrée « Boîte aux lettres » décide elle-même sa visibilité (testée dans son propre fichier) :
+// réduite à un marqueur inerte ici pour isoler l'en-tête (elle tire react-query).
+vi.mock("@/features/mailbox/MailboxNavItem", () => ({ MailboxNavItem: () => null }));
 vi.mock("@/shared/hooks/useApplyClubTheme", () => ({ useApplyClubTheme: () => {} }));
 vi.mock("@/shared/hooks/useApplySimulatedClock", () => ({ useApplySimulatedClock: () => {} }));
 // `useNavigation` exige un data-router ; ici on n'exerce que l'en-tête, on le fige à `idle`.

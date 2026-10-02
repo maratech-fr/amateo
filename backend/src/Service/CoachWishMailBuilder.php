@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\CoachWishCampaign;
+use App\Mail\ClubBusinessMail;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mime\Email;
 
@@ -125,10 +126,16 @@ final class CoachWishMailBuilder
     /** @param list<string> $lines */
     private function email(string $to, string $subject, array $lines): Email
     {
-        return (new Email)
-            ->from($this->mailFrom->address())
-            ->to($to)
-            ->subject($subject)
-            ->text(implode("\n", $lines));
+        // E-mail MÉTIER club (lien coach, digest/relance gestionnaire, récap) : candidat à
+        // l'interception « boîte aux lettres » d'un club à horloge simulée (cf. ClubBusinessMail).
+        // Le destinataire coach peut être un NON-utilisateur : l'intercepteur vérifie aussi
+        // l'appartenance via Coach.email, pas seulement les membres.
+        return ClubBusinessMail::mark(
+            (new Email)
+                ->from($this->mailFrom->address())
+                ->to($to)
+                ->subject($subject)
+                ->text(implode("\n", $lines)),
+        );
     }
 }

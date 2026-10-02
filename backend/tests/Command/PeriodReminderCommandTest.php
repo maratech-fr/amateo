@@ -211,10 +211,86 @@ final class PeriodReminderCommandTest extends KernelTestCase
         self::assertSame([], $this->sentTo);
     }
 
+    /**
+     * P4-16 — chaque club suit SON horloge dans une MÊME exécution, SANS `--date`.
+     *
+     * Club A à horloge simulée au 15 janvier, club B à l'heure réelle. Le cron calcule J-N
+     * club par club via ClubDay : A est rappelé pour sa période du 29 janvier (J-14 sous SA
+     * date) et jamais pour une période calée sur le jour RÉEL (hors horizon sous janvier) ;
+     * B est rappelé pour sa période à J-14 sous le jour réel. La preuve que la date simulée
+     * d'un club n'écrase pas celle d'un autre, et que l'absence d'horloge reste le jour réel.
+     */
+    public function testEachClubFollowsItsOwnClockInASingleRunWithoutForcedDate(): void
+    {
+        $simulatedToday = new DateTimeImmutable('2026-01-15');
+        $realToday = $this->clubDayToday(); // le jour réel tel que ClubDay le voit (fuseau club)
+
+        [$clubA, $seasonA, $adminA] = $this->seedClub('CLKA');
+        $clubA->setSimulatedToday($simulatedToday);
+        $this->em->flush();
+        // A n'a QU'UNE période, calée à J-14 SOUS son horloge simulée (29 janvier). Sous le
+        // jour RÉEL (des mois plus tard), cette même date est dans le passé → aucun rappel :
+        // le rappel de A PROUVE qu'il lit sa date simulée, pas le jour réel.
+        $this->period($seasonA, $simulatedToday->modify('+14 days'));
+
+        [, $seasonB, $adminB] = $this->seedClub('CLKB'); // pas d'horloge → jour réel
+        $this->period($seasonB, $realToday->modify('+14 days'));
+        $this->em->flush();
+
+        $this->runCommandLive();
+
+        self::assertContains($adminA, $this->sentTo, 'A suit SA date simulée : la période du 29 janvier tombe à J-14 (red si ClubDay ignore simulated_today)');
+        self::assertContains($adminB, $this->sentTo, 'B sans horloge suit le jour réel dans la MÊME exécution : sa période à J-14 est rappelée');
+
+        // Idempotence à date figée : un second passage à la même horloge ne renvoie RIEN
+        // (le ledger PeriodReminderLog est clé par entrée + palier, indépendant de l'horloge).
+        $this->reset();
+        $this->runCommandLive();
+        self::assertSame([], $this->sentTo, 'pas de double envoi : le palier déjà journalisé est tenu quelle que soit l\'horloge');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    /** Le jour réel vu par ClubDay pour un club de fuseau Europe/Paris (aucune horloge). */
+    private function clubDayToday(): DateTimeImmutable
+    {
+        $probe = (new Club)->setTimezone('Europe/Paris');
+
+        return self::getContainer()->get(ClubDay::class)->todayFor($probe);
+    }
+
+    private function runCommandLive(): CommandTester
+    {
+        $container = self::getContainer();
+        $mailer = $this->createMock(MailerInterface::class);
+        $mailer->method('send')->willReturnCallback(function (RawMessage $message): void {
+            if ($message instanceof Email) {
+                $this->sentTo[] = $message->getTo()[0]->getAddress();
+                $this->sentSubjects[] = (string) $message->getSubject();
+            }
+        });
+
+        $command = new PeriodReminderCommand(
+            $this->em,
+            $container->get(TenantConnectionContext::class),
+            $mailer,
+            $container->get(CalendarEntryRepository::class),
+            $container->get(ClubUserRepository::class),
+            $container->get(SeasonResolver::class),
+            $container->get(PeriodReminderLogRepository::class),
+            new PeriodReminderMailBuilder('http://localhost:5173'),
+            $container->get(ClubDay::class),
+        );
+
+        $tester = new CommandTester($command);
+        $tester->execute([]);
+        $tester->assertCommandIsSuccessful();
+
+        return $tester;
     }
 
     private function reset(): void

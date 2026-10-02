@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\Club;
+use App\Entity\ClubMailboxMessage;
 use App\Entity\ClubTravelCache;
 use App\Entity\ClubUser;
 use App\Entity\Feedback;
@@ -79,6 +80,12 @@ final class ErasedClubPurger
         // partagé des liens MANUAL ({@see decrementSharedVenueChoices}) tourne AVANT ce
         // DELETE (les liens doivent encore exister).
         OpponentVenueLink::class,
+        // Boîte aux lettres d'un club à horloge simulée (P4-16), sans saison. La FK
+        // ON DELETE CASCADE la vide à la SUPPRESSION du club (purge prospect) ; mais
+        // l'effacement RGPD GARDE la fiche club (identité FFBB survit) → sans ce DELETE
+        // par clubId les adresses + corps d'e-mail resteraient. CE chemin en est donc
+        // la vraie porte de sortie RGPD.
+        ClubMailboxMessage::class,
     ];
 
     public function __construct(

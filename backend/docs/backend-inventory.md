@@ -3,13 +3,13 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-10-02 (branche `feat/horloge-club-module` — section « Module démo »
-resondée contre `App\Clock\ClubClock` (`src/Clock/ClubClock.php`, décore `clock`,
-`simulatedTodayFor(Club)` point d'entrée unique) et le renommage `Club::$demoToday` →
-`$simulatedToday`/`club.simulated_today` (`Version20261002090000`) ; `AdminDemoController` et
-`DemoClockCommand` re-sondés sur les noms de champ exposés. Reste du fichier non rebalayé cette
-passe ; historique des passes complètes : `git log -p --follow` ce fichier — un stamp REMPLACE,
-il ne s'empile pas.
+Last verified @ 2026-10-02 (branche `feat/horloge-boite-aux-lettres` — nouvelle section « Boîte
+aux lettres » ajoutée : `ClubMailboxMessage`/`club_mailbox_message` (tenant, RLS standard,
+`ON DELETE CASCADE` sur `club`, `Version20261002120000`), `ClockedClubMailInterceptor`
+(`MessageEvent`, priorité 100, enfilage seul), `MailboxController` (`GET /api/mailbox[/{id}]`) ;
+paragraphe « Console démo » recalé — `reset`/`clock --clear` vident désormais aussi la boîte.
+Reste du fichier non rebalayé cette passe ; historique des passes complètes :
+`git log -p --follow` ce fichier — un stamp REMPLACE, il ne s'empile pas.
 
 ---
 
@@ -621,7 +621,11 @@ incapable de purger le workspace à travers la RLS), puis remet `club.simulated_
 (décision fondateur) **sans toucher la fenêtre du compte** — échec du re-seed → 502, horloge
 intacte. `POST /demos/bccl/clock` pose (`date`) ou relâche (`clear`) `simulated_today` du club BCCL,
 résolu SERVEUR depuis le compte `demo-bccl@`, gardé `is_demo = TRUE` — même garde de calendrier
-que `DemoClockCommand` (`2026-02-31` refusé). Front : 8ᵉ onglet « Démos »
+que `DemoClockCommand` (`2026-02-31` refusé). **Vider la boîte aux lettres** (P4-16, ci-dessous) :
+`reset` la vide TOUJOURS (les e-mails interceptés d'une démo précédente ne survivent pas à une
+réinitialisation) ; `clock` ne la vide que sur **`clear`** — poser/changer une date ne la touche
+pas, seul le retour à « aujourd'hui » le fait (décision fondateur : hors horloge, le club redevient
+réel et enverrait pour de vrai, les e-mails boxés n'ont plus de raison d'être). Front : 8ᵉ onglet « Démos »
 (`frontend/src/features/admin/tabs/tabsConfig.ts`), deux cartes (`DemosSection.tsx`), heures
 rendues à l'heure de Paris. NR bloquant `Integration/Admin/AdminDemoResetTest`.
 
@@ -660,6 +664,60 @@ requise (RLS). **Anti-usurpation** : si un compte existe DÉJÀ pour `--email` o
 échoue AVANT tout prompt et ne crée rien, au lieu d'adopter ce compte (et son mot de passe) en
 gestionnaire du BCCL. NR bloquant : `BcclProdSeedCommandTest`. Runbook jour J complet :
 [`docs/ops/deploy.md`](../../docs/ops/deploy.md) §1.10. Détail commande : `backend/docs/commands.md`.
+
+### Boîte aux lettres d'un club à horloge simulée (P4-16)
+
+Corollaire de l'horloge générique par club (§ ci-dessus) : un club dont `simulatedToday` est posé
+ne doit **jamais** envoyer de vrai e-mail (décision fondateur 2026-10-02, « option A ») — chaque
+e-mail est rangé dans sa « boîte » plutôt que parti.
+
+- **`App\EventListener\ClockedClubMailInterceptor`** (`src/EventListener/ClockedClubMailInterceptor.php`,
+  `kernel.event_subscriber`) écoute `Symfony\Mailer\Event\MessageEvent` à **priorité 100**, et
+  n'agit **qu'à l'ENFILAGE** (`$event->isQueued()` — l'app envoie tout via le bus Messenger,
+  `messenger.yaml` route `SendEmailMessage` en async ; rejeter ici empêche la mise en file, le
+  worker ne voit donc jamais le message). **Liste blanche, défaut fermé** (revue sécurité
+  2026-10-02) : seuls les e-mails MÉTIER marqués à la source par `App\Mail\ClubBusinessMail`
+  (`src/Mail/ClubBusinessMail.php`, posé par les trois builders `PeriodReminderMailBuilder`,
+  `TransitionReminderMailBuilder`, `CoachWishMailBuilder`) sont candidats ; les e-mails de COMPTE
+  (reset de mot de passe, vérification/changement d'adresse, inscription, feedback, health) ne
+  portent pas le marqueur et partent **toujours réellement**, même vers un membre du club — sans
+  quoi un membre connecté d'un club à horloge pouvait capter dans la boîte le lien de reset d'un
+  utilisateur d'un AUTRE club (`POST /api/password/forgot` est public mais le GUC est posé dès
+  qu'un JWT est présent). Deuxième garde : **tous** les destinataires (To/Cc/Cci) doivent
+  appartenir au club du GUC (membre actif `club_user`→`app_user.email`, ou `coach.email` — les
+  campagnes de vœux partent vers des coachs non-utilisateurs), comparaison normalisée ; un
+  destinataire hors club ⇒ envoi réel + warning sans contenu. Le club courant vient du GUC
+  `app.club_id` lu en SQL brut (`current_setting`), jamais d'un header ; hors contexte club le GUC
+  est vide et l'e-mail part réellement. Un club dont `ClubClock::simulatedTodayFor()` rend `null`
+  (pas d'horloge active) enfile lui aussi normalement. Le corps est capté **tel qu'il est à l'enfilage** — donc **avant** la
+  signature de marque (`EmailSignatureListener`, posée chez le worker qui ne tourne jamais ici) :
+  `body_text` porte le texte métier, `body_html` reste en général nul.
+- **`App\Entity\ClubMailboxMessage`** / table `club_mailbox_message` (migration
+  `Version20261002120000`) : tenant + RLS **au patron standard** (`tenant_isolation FOR ALL`,
+  porte `admin_all`, policy `readonly_tenant` — rien d'exceptionnel, couvert par l'énumération
+  dynamique de `RlsIsolationTest`/`ReadOnlyRoleTest`, `docs/security/rls.md`), **append-only**
+  (ni `version` ni `updated_at` — jamais modifié après l'enfilage) et `ON DELETE CASCADE` sur
+  `club_id` (la purge d'un prospect emporte sa boîte sans ménage applicatif). `simulated_date` =
+  le jour **simulé** du club à l'interception (`ClubDay::todayFor`) ; `created_at` = l'instant
+  **réel** d'écriture (tri chronologique fiable, indépendant de l'horloge rejouée).
+- **`GET /api/mailbox`** / **`GET /api/mailbox/{id}`** (`MailboxController`, lecture seule) :
+  club résolu depuis `_club_id` (JWT, tenant pur, aucune garde gestionnaire — tout membre du club
+  lit sa boîte) ; liste triée du plus récent (`createdAt` desc), détail ajoute `bodyText`/`bodyHtml`.
+- **Vidage** : au reset de la démo BCCL et à la désactivation de l'horloge (`clock --clear`),
+  `AdminDemoController` vide la boîte sur la connexion **admin** (`DELETE FROM
+  club_mailbox_message WHERE club_id = …` — un `DELETE` sur la connexion runtime serait
+  fail-closed, le firewall admin ne posant jamais de GUC tenant). Détail § « Console démo »
+  ci-dessus.
+- **RGPD** : porte de sortie `ErasedClubPurger` (l'effacement RGPD **garde** la fiche club —
+  identité FFBB — donc sans ce `DELETE` par `clubId` les adresses + corps d'e-mail resteraient) ;
+  hors `SeasonDataPurger` (club-scoped sans saison, comme `opponent_venue_link`) ; exclue de
+  l'export RGPD (`RgpdExportService` — artefact interne de démo, jamais de la donnée d'un
+  workspace réel, les adresses y figurant sont déjà exportées via `club_user`/`app_user`).
+- **Front** : entrée de nav « Boîte aux lettres » dans la barre du haut
+  (`frontend/src/features/mailbox/MailboxNavItem.tsx`, compteur serveur), visible seulement si
+  `me.club.simulatedToday` est posé ; écran `/boite-aux-lettres`
+  (`frontend/src/features/mailbox/MailboxPage.tsx`, liste + détail).
+- NR bloquant `Integration/Mail/ClockedClubMailInterceptTest` (`docs/testing/blocking-tests.md`).
 
 ### Cockpit temporel (overlays période/événement)
 

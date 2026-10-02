@@ -59,6 +59,11 @@ message d'avant à l'octet près) ·
 `CrossStack/PayloadVersionMatchesContractVersionTest` (la version que le payload s'attribue == `engine/CONTRACT_VERSION`, égalité STRICTE — la dérive avait vécu deux bumps en silence) ·
 `CrossStack/ValidateAssignmentsContractSchemaTest` (contrat du verdict `/validate-assignments`) ·
 `Security/RlsIsolationTest` (RLS en base) ·
+`Integration/Mail/ClockedClubMailInterceptTest` (P4-16 : un club à horloge SIMULÉE n'envoie JAMAIS de
+vrai e-mail — à l'enfilage, l'e-mail d'un club à horloge active est rangé dans sa boîte et l'événement
+rejeté [aucun `SendEmailMessage` enfilé], un club SANS horloge enfile normalement [rien en boîte], et
+un autre club ne voit jamais la boîte d'autrui [RLS]. Falsifié en désactivant le listener. Sans ce
+gate, une régression du listener enverrait de vrais e-mails aux gestionnaires pendant une démo rejouée) ·
 `Security/ReadOnlyRoleTest` (P5-20 : le rôle Postgres de lecture seule `amateo_read` — SELECT scopé au
 club via une policy `readonly_tenant` portant le prédicat canonique, aucune écriture [refus au niveau
 privilège, aucun GRANT DML], aucune porte `admin_all` ni `USING(true)` qui l'ouvrirait cross-club, et
