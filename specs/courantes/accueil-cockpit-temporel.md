@@ -1,10 +1,10 @@
 # Accueil « cockpit temporel »
 
-Last verified @ 2026-10-02 (horloge par club, `feat/horloge-club-module`). Re-confronté au code : le
-§« Horloge simulée » recalé sur `App\Clock\ClubClock` (`backend/src/Clock/ClubClock.php`, décore
-`clock`, capacité générique par club) et `Club::$simulatedToday` (ex `demoToday`,
-`Version20261002090000`) — `DemoAwareClock` n'existe plus. Reste du fichier non re-confronté cette
-passe. Historique de ce fichier : `git log -p --follow` dessus.
+Last verified @ 2026-10-02 (horloge console tout club, `feat/horloge-console-tout-club`). Re-confronté
+au code : le §« Horloge simulée » recalé — la commande support est `app:club:clock` (ex
+`app:demo:clock`, alias déprécié conservé) et la console superadmin pose désormais cette même
+capacité sur N'IMPORTE QUEL club, pas seulement un club de démo. Reste du fichier non re-confronté
+cette passe. Historique de ce fichier : `git log -p --follow` dessus.
 
 > **Statut** : livré — cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2. Ce document fixe le
 > modèle d'UX + d'architecture de l'accueil cockpit et la fondation des **calendriers
@@ -344,7 +344,8 @@ front. En **dev uniquement** (`import.meta.env.DEV`), `?today=2026-12-20` le dé
 une situation datée — vérifiée comme une date RÉELLE, pas seulement dans sa forme, sinon une date
 invalide trie après toute date et vide le radar en affirmant « Tout roule ». Côté **serveur**,
 `App\Clock\ClubClock` est la capacité GÉNÉRIQUE par club : un club dont `simulatedToday` est posé
-(`Club.simulatedToday`, posé/relâché par `app:demo:clock` ou la console superadmin) voit tout
+(`Club.simulatedToday`, posé/relâché par `app:club:clock` ou la console superadmin, sur
+n'importe quel club) voit tout
 consommateur de l'horloge mentir pour LUI SEUL ; un club sans date posée garde l'heure vraie.
 
 ---

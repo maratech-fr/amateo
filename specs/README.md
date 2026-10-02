@@ -1,10 +1,10 @@
 # Living Specs System
 
-Last verified @ 2026-09-30 (`documentation-update`, rotation de fraîcheur, P4-272 ⑤ — sujet sans
-rapport avec ce fichier). Re-confronté : les cinq gardes `{DocPlacementTest,
+Last verified @ 2026-10-02 (`documentation-update`, rotation de fraîcheur — sujet de la PR sans
+rapport avec ce fichier). Re-confronté : les six gardes `{DocPlacementTest,
 DocStampFreshnessTest, RoadmapIdentityTest, BlockingTestsListMatchesCiTest,
-SpecsCarryNoHistoryTest}.php` existent toujours, `WorkflowPermissionsDeclaredTest.php`
-aussi (`ls backend/tests/Unit/Documentation/`) ; `engine/tests/test_contract_version_doc_sync.py`
+SpecsCarryNoHistoryTest, WorkflowPermissionsDeclaredTest}.php` existent toujours
+(`ls backend/tests/Unit/Documentation/`) ; `engine/tests/test_contract_version_doc_sync.py`
 existe toujours ; `docs/testing/blocking-tests.md` existe. **§ Files Overview confronté ligne à
 ligne à `ls specs/courantes/*.md`** : les **13** fichiers cités correspondent exactement au
 dossier, aucun absent, aucun fantôme. Rien de faux trouvé cette passe. `ls specs/evolution/` et
