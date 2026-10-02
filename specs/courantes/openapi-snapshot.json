@@ -194,6 +194,95 @@
                 }
             }
         },
+        "/api/admin/clubs/{clubId}/clock": {
+            "post": {
+                "operationId": "setAdminClubClock",
+                "tags": [
+                    "AdminDemo"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The simulated clock of the club was set (or cleared)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "simulatedToday": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "format": "date"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Malformed JSON body"
+                    },
+                    "401": {
+                        "description": "No authenticated super-admin session"
+                    },
+                    "403": {
+                        "description": "Invalid CSRF token"
+                    },
+                    "404": {
+                        "description": "Club not found"
+                    },
+                    "422": {
+                        "description": "Malformed date/clear, or a real (non-demo) club was dated without the matching confirmName"
+                    }
+                },
+                "summary": "Set or clear the simulated clock of any club (real clubs require confirmName when dated)",
+                "parameters": [
+                    {
+                        "name": "clubId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "name": "X-CSRF-Token",
+                        "in": "header",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "date": {
+                                        "type": "string",
+                                        "format": "date",
+                                        "description": "Simulated today, YYYY-MM-DD."
+                                    },
+                                    "clear": {
+                                        "type": "boolean",
+                                        "description": "Release the simulated clock (back to real time)."
+                                    },
+                                    "confirmName": {
+                                        "type": "string",
+                                        "description": "Exact club name \u2014 required to date a real (non-demo) club."
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
+            }
+        },
         "/api/admin/demos": {
             "get": {
                 "operationId": "getAdminDemos",
@@ -234,7 +323,7 @@
                                                         "null"
                                                     ],
                                                     "format": "date",
-                                                    "description": "Simulated clock (bccl only)."
+                                                    "description": "Simulated clock of the demo club, or null when on the real clock."
                                                 }
                                             }
                                         },
@@ -264,7 +353,7 @@
                                                         "null"
                                                     ],
                                                     "format": "date",
-                                                    "description": "Simulated clock (bccl only)."
+                                                    "description": "Simulated clock of the demo club, or null when on the real clock."
                                                 }
                                             }
                                         }
@@ -278,79 +367,6 @@
                     }
                 },
                 "summary": "Read the state of the two demonstration accounts"
-            }
-        },
-        "/api/admin/demos/bccl/clock": {
-            "post": {
-                "operationId": "setAdminDemoClock",
-                "tags": [
-                    "AdminDemo"
-                ],
-                "responses": {
-                    "200": {
-                        "description": "The simulated clock was set (or cleared)",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "simulatedToday": {
-                                            "type": [
-                                                "string",
-                                                "null"
-                                            ],
-                                            "format": "date"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Malformed body: not exactly one of a real YYYY-MM-DD date or clear:true"
-                    },
-                    "401": {
-                        "description": "No authenticated super-admin session"
-                    },
-                    "403": {
-                        "description": "Invalid CSRF token"
-                    },
-                    "404": {
-                        "description": "The BCCL demo club is absent"
-                    }
-                },
-                "summary": "Set or clear the simulated clock of the BCCL demonstration club",
-                "parameters": [
-                    {
-                        "name": "X-CSRF-Token",
-                        "in": "header",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "date": {
-                                        "type": "string",
-                                        "format": "date",
-                                        "description": "Simulated today, YYYY-MM-DD."
-                                    },
-                                    "clear": {
-                                        "type": "boolean",
-                                        "description": "Release the simulated clock (back to real time)."
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "required": false
-                }
             }
         },
         "/api/admin/demos/bccl/reset": {
@@ -464,6 +480,91 @@
                         }
                     }
                 ]
+            }
+        },
+        "/api/admin/demos/{target}/clock": {
+            "post": {
+                "operationId": "setAdminDemoClock",
+                "tags": [
+                    "AdminDemo"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The simulated clock was set (or cleared)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "simulatedToday": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "format": "date"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Malformed body: not exactly one of a real YYYY-MM-DD date or clear:true"
+                    },
+                    "401": {
+                        "description": "No authenticated super-admin session"
+                    },
+                    "403": {
+                        "description": "Invalid CSRF token"
+                    },
+                    "404": {
+                        "description": "Unknown demo target, or the demo club is absent"
+                    }
+                },
+                "summary": "Set or clear the simulated clock of a demonstration club",
+                "parameters": [
+                    {
+                        "name": "target",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "bccl",
+                                "prospect"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "X-CSRF-Token",
+                        "in": "header",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "date": {
+                                        "type": "string",
+                                        "format": "date",
+                                        "description": "Simulated today, YYYY-MM-DD."
+                                    },
+                                    "clear": {
+                                        "type": "boolean",
+                                        "description": "Release the simulated clock (back to real time)."
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
             }
         },
         "/api/admin/demos/{target}/deactivate": {
@@ -1251,6 +1352,14 @@
                                                     },
                                                     "ffbbClubCode": {
                                                         "type": "string",
+                                                        "nullable": true
+                                                    },
+                                                    "isDemo": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "simulatedToday": {
+                                                        "type": "string",
+                                                        "format": "date",
                                                         "nullable": true
                                                     },
                                                     "plan": {

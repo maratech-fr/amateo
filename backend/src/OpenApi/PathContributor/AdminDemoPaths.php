@@ -40,7 +40,7 @@ final readonly class AdminDemoPaths implements CustomPathContributor
                 'email' => ['type' => 'string'],
                 'activeUntil' => ['type' => ['string', 'null'], 'format' => 'date-time', 'description' => 'ISO UTC — the activation window end, or null when closed. Rendered at Europe/Paris time by the console.'],
                 'clubName' => ['type' => ['string', 'null']],
-                'simulatedToday' => ['type' => ['string', 'null'], 'format' => 'date', 'description' => 'Simulated clock (bccl only).'],
+                'simulatedToday' => ['type' => ['string', 'null'], 'format' => 'date', 'description' => 'Simulated clock of the demo club, or null when on the real clock.'],
             ],
         ];
 
@@ -108,7 +108,7 @@ final readonly class AdminDemoPaths implements CustomPathContributor
                 summary: 'Reset the permanent BCCL demonstration (re-seed + clear the simulated clock)',
                 parameters: [$csrfHeader],
             )),
-            '/api/admin/demos/bccl/clock' => new PathItem(post: new Operation(
+            '/api/admin/demos/{target}/clock' => new PathItem(post: new Operation(
                 operationId: 'setAdminDemoClock',
                 tags: ['AdminDemo'],
                 responses: [
@@ -119,15 +119,43 @@ final readonly class AdminDemoPaths implements CustomPathContributor
                     '400' => new Response('Malformed body: not exactly one of a real YYYY-MM-DD date or clear:true'),
                     '401' => new Response('No authenticated super-admin session'),
                     '403' => new Response('Invalid CSRF token'),
-                    '404' => new Response('The BCCL demo club is absent'),
+                    '404' => new Response('Unknown demo target, or the demo club is absent'),
                 ],
-                summary: 'Set or clear the simulated clock of the BCCL demonstration club',
-                parameters: [$csrfHeader],
+                summary: 'Set or clear the simulated clock of a demonstration club',
+                parameters: [$targetParam, $csrfHeader],
                 requestBody: $this->schemas->jsonBody([
                     'type' => 'object',
                     'properties' => [
                         'date' => ['type' => 'string', 'format' => 'date', 'description' => 'Simulated today, YYYY-MM-DD.'],
                         'clear' => ['type' => 'boolean', 'description' => 'Release the simulated clock (back to real time).'],
+                    ],
+                ]),
+            )),
+            '/api/admin/clubs/{clubId}/clock' => new PathItem(post: new Operation(
+                operationId: 'setAdminClubClock',
+                tags: ['AdminDemo'],
+                responses: [
+                    '200' => $this->schemas->jsonResponse('The simulated clock of the club was set (or cleared)', [
+                        'type' => 'object',
+                        'properties' => ['simulatedToday' => ['type' => ['string', 'null'], 'format' => 'date']],
+                    ]),
+                    '400' => new Response('Malformed JSON body'),
+                    '401' => new Response('No authenticated super-admin session'),
+                    '403' => new Response('Invalid CSRF token'),
+                    '404' => new Response('Club not found'),
+                    '422' => new Response('Malformed date/clear, or a real (non-demo) club was dated without the matching confirmName'),
+                ],
+                summary: 'Set or clear the simulated clock of any club (real clubs require confirmName when dated)',
+                parameters: [
+                    ['name' => 'clubId', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string', 'format' => 'uuid']],
+                    $csrfHeader,
+                ],
+                requestBody: $this->schemas->jsonBody([
+                    'type' => 'object',
+                    'properties' => [
+                        'date' => ['type' => 'string', 'format' => 'date', 'description' => 'Simulated today, YYYY-MM-DD.'],
+                        'clear' => ['type' => 'boolean', 'description' => 'Release the simulated clock (back to real time).'],
+                        'confirmName' => ['type' => 'string', 'description' => 'Exact club name — required to date a real (non-demo) club.'],
                     ],
                 ]),
             )),
