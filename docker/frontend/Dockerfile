@@ -1,4 +1,4 @@
-FROM node:24-alpine AS tooling
+FROM node:26-alpine AS tooling
 
 WORKDIR /app/frontend
 
