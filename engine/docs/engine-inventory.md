@@ -1,18 +1,13 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-10-02 (P5-28 — `CONTRACT_VERSION` repassé **2.29 → 1.0** pour la v1, cité à
-jour partout dans ce doc ; forme du payload inchangée. Passe précédente 2026-09-30, PR #1031 — ligne `travel_time` du diagnostic recalée contre
-`engine/app/solver/constraints/travel.py::required_gap` : écart exigé = barème moins battement
-toléré, mode non véhiculé = vélo, cran OFF). Non re-sondé cette passe : le reste du fichier —
-dernière vérification structurelle P4-272 ④ (`CONTRACT_VERSION` 2.26 → 2.27, `teams[].
-forbiddenVenueIds`, `_candidate_kickoffs` — `app/solver/match_placement.py:221-285`) vit dans
-`git log -p --follow` ce fichier. `REASON_MESSAGES` porte désormais **sept**
-raisons (`venue_unavailable`, `no_access_window`, `no_league_intersection`, `venue_full`,
-`not_selected`, `club_rule_no_slot`, `team_venue_forbidden`, `match_placement.py:64-82`) ✓ ; les
-**six endpoints** inchangés (`/`, `/health`, `/generate`, `/place-matches`,
-`/validate-assignments`, `/implicit-constraints`, `engine/app/main.py:775-885`) ✓. Reste de
-l'inventaire (détail des sections sous la ligne 40) non re-sondé cette passe — voir
-`git log -p --follow` pour sa dernière vérification.
+Last verified @ 2026-10-02 (lot nettoyage code mort — `POST /implicit-constraints` et son cluster
+supprimés : plus que **cinq endpoints** (`/`, `/health`, `/generate`, `/place-matches`,
+`/validate-assignments`, `engine/app/main.py:743-816`). Passe précédente P5-28 —
+`CONTRACT_VERSION` repassé **2.29 → 1.0** pour la v1, forme du payload inchangée. `REASON_MESSAGES`
+porte **sept** raisons (`venue_unavailable`, `no_access_window`, `no_league_intersection`,
+`venue_full`, `not_selected`, `club_rule_no_slot`, `team_venue_forbidden`,
+`match_placement.py:64-82`) ✓. Reste de l'inventaire (détail des sections sous la ligne 40) non
+re-sondé cette passe — voir `git log -p --follow` pour sa dernière vérification.
 
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.
 > Source de vérité : `engine/app/main.py`, `engine/app/schemas/input_schema.py`, `engine/app/schemas/output_schema.py`, `engine/app/solver/{model,constraints,objective,result_builder}.py`, `engine/app/core/config.py`.
@@ -54,7 +49,6 @@ Les endpoints exposés par `app/main.py` (santé + les trois du contrat) :
 | `/generate` | POST | **Principal** — résout un planning hebdomadaire | `ScheduleOutputSchema` |
 | `/place-matches` | POST | **Second problème** — place des matchs DATÉS (ADR-0003) | `MatchPlacementOutputSchema` |
 | `/validate-assignments` | POST | **Verdict sur N candidats sous UN verdict** (contrat 2.18) — « puis-je poser ces N déplacements ? » (N=1 pour le rail `/move`/`/place-slot`, N=membres d'un bloc pour `/move-group`). Baseline **entièrement figée** via `add_fixed_slots`, les N candidats épinglés à part : le solve du verdict ne fait qu'un test de faisabilité sur l'**état final** (jamais N jugements séquentiels d'un état intermédiaire faux). ⚠ **Le gel EST le verdict** — baseline non figée, le solveur déplace la séance en conflit et rend `valid=True` (falsifié). 1 seul worker (déterministe) quel que soit N. Budget 2 s par défaut, plafond 10 s ; mesuré **~500 ms** sur 49 équipes (le build du modèle domine, pas le solve). Un « non » **nomme les règles cassées** (`diagnose_candidate_conflicts`, chaque candidat diagnostiqué contre la baseline augmentée des AUTRES candidats) ; `baseline_infeasible` distingue une baseline déjà invalide d'un conflit non nommé. Un « oui » déclenche **jusqu'à deux solves de plus** pour nommer les **compromis** — voir §POST /validate-assignments | `ValidateAssignmentOutputSchema` |
-| `/implicit-constraints` | POST | Sync règles implicites backend↔engine | `JSONResponse` (200 synchronized / 409 desynchronized) |
 
 ### POST /place-matches
 
@@ -429,9 +423,8 @@ Familles de contraintes comptées dans `HardConstraintStats` (liste exhaustive :
 | 15 | `travel_time` | règle `travelTime` **MANDATORY** seule : interdit dur un enchaînement cross-gymnase dont le battement est plus court que l'écart exigé (barème − battement toléré, voiture/vélo selon `isVehicled`, ou vélo pour une passerelle) ; 0 si la règle est inactive (cran OFF), `PREFERRED`, ou `venueTravelTimes` vide. Résidu possible SEULEMENT entre deux verrous HARD contradictoires, ANNONCÉ par le diagnostic `travel_time_infeasible` (`_diagnose_travel_times`), jamais un INFEASIBLE muet |
 
 Stubs (toujours satisfaits, 0 contraintes, **DISTINCTS** du `travel_time` ci-dessus — même sujet,
-mécanismes non reliés) : `travel_feasibility_stub`, `required_bridge_stub` (`ImplicitConstraint`
-catalogue « extensions futures », `engine/implicit_rules.json` — gouvernance séparée de
-`implicitRules.travelTime`, jamais câblée).
+mécanismes non reliés) : `travel_feasibility_stub`, `required_bridge_stub`
+(`constraints/common.py`, extensions futures jamais câblées).
 
 ### 4.5 Time windows (`add_time_window_constraints`)
 
@@ -523,7 +516,6 @@ catalogue « extensions futures », `engine/implicit_rules.json` — gouvernance
 - **Frontend → Engine** : **jamais directement**. Le frontend passe toujours par le backend (`/api/*`).
 - **Réponse** : `ScheduleOutputSchema` retourné au backend, qui persiste les slots et publie sur Mercure.
 - **Isolation tenant** : `clubId` + `seasonId` dans le payload ; lock asyncio par `club_id`.
-- **Endpoint auxiliaire** : `POST /implicit-constraints` permet au backend de vérifier la synchronisation des règles implicites (200 synchronized / 409 desynchronized avec `missing_in_engine` / `missing_in_backend`).
 
 ---
 

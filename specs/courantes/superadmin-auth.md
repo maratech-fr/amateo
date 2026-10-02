@@ -243,8 +243,7 @@ la source `superadmin` et l'identité de l'acteur dans `admin_job_run`.
 L'exécution est synchrone, idempotente et protégée par le même verrou advisory que les
 passages planifiés ; une exécution déjà active répond 409. Le dashboard React demande
 confirmation, affiche l'état en cours puis rafraîchit l'historique. Les rappels,
-réconciliations et purges ne sont pas déclenchables depuis cette route ; en particulier
-`app:purge-orphans` reste volontairement manuel.
+réconciliations et purges ne sont pas déclenchables depuis cette route.
 
 ## Fraîcheur des données et alerting
 

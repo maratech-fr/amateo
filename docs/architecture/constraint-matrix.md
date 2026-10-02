@@ -196,11 +196,9 @@ n'existe pas — ADR-0001 pose un solve **single-pass sans relaxation**. Corrig�
 **Le garde anti-mensonge, dans les deux zones** : `ConstraintsStep.test.tsx` gèle le texte des
 règles côté écran, et `engine/tests/semantic/test_implicit_rules_are_still_applied.py` (P2-28)
 vérifie que les fonctions sont **appelées selon le réglage — défaut = toutes en
-HARD** et qu'une règle en PREFERRED reste **diagnostiquée**. L'inventaire cross-stack
-(`ImplicitConstraintConfig` ⇄ `engine/implicit_rules.json`, toutes les règles avec leur
-famille) est comparé par `ImplicitRulesMatchEngineTest` ; le réglage stocké ⇄ le bloc payload par
-`ImplicitRulePayloadParityTest` (step bloquant). Le réglage se fait depuis l'onglet **« Bien-être »**
-de l'étape Contraintes (`ImplicitRulesPanel.tsx`).
+HARD** et qu'une règle en PREFERRED reste **diagnostiquée**. Le réglage stocké ⇄ le bloc payload
+`implicitRules` du `/generate` est comparé par `ImplicitRulePayloadParityTest` (step bloquant). Le
+réglage se fait depuis l'onglet **« Bien-être »** de l'étape Contraintes (`ImplicitRulesPanel.tsx`).
 
 ## Verrous
 

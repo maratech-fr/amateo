@@ -206,7 +206,7 @@ Ces contraintes doivent etre satisfaites pour que la solution soit **faisable**.
 11. **COACH_REST_DAY** : chaque coach a au moins un jour de repos du lundi au vendredi (au plus 4 jours travailles). Ignore pour un coach dont le `maxDaysOverride` est deja inferieur ou egal a 4.
 12. **SALARIE_DISTRIBUTION** : au moins un coach salarie (`isEmployee`) est present chaque jour du lundi au vendredi. Inactif si le club compte moins de 2 salaries.
 13. **MAX_CONSECUTIVE_SESSIONS** : une meme personne n'est jamais sur les 3 creneaux d'un enchainement A -> B -> C le meme jour, tous gymnases confondus.
-14. **ONE_SESSION_PER_DAY** : au plus une seance par jour et par equipe, sauf si l'equipe porte `allowMultipleSessionsPerDay`.
+14. **ONE_SESSION_PER_DAY** : au plus une seance par jour et par equipe, sans exception (le drapeau `allowMultipleSessionsPerDay` est retire du contrat, P4-79).
 15. **AGE_ASCENDING** : a gymnase et jour egaux, une equipe plus jeune ne passe pas apres une plus agee. Exempt si `ageMin` est absent (Loisir, Baby) ou si l'equipe est verrouillee en HARD.
 16. **VENUE_MINIMUMS** (`minAtVenueId`) : au moins N seances de l'equipe dans ce gymnase — un plancher, pas un forcage. Si N est prouvablement inatteignable, l'engine n'ajoute pas la contrainte et emet un diagnostic `venue_minimum_unreachable` plutot qu'un INFEASIBLE.
 

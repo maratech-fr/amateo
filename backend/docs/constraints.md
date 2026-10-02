@@ -239,7 +239,7 @@ Le solveur CP-SAT (OR-Tools) raisonne sur des variables binaires du type "l'équ
 | **Configurables** | Invariants structurels : non. Règles de bien-être : intensité/seuils via `implicitRules` | Oui (CRUD complet) |
 | **Stockage** | Code de l'engine | Table `Constraint` en base de données |
 | **Exemples** | Un entraîneur = une équipe à la fois. Une salle = une équipe à la fois. | Les jeunes doivent finir avant 19h30. SM3 préfère le mercredi. |
-| **Visibilité API** | Endpoint `POST /implicit-constraints` de l'**engine** (aucune route backend) — consommé par la commande `app:constraint:export-implicit` | Endpoint `/api/constraints` (CRUD complet) |
+| **Visibilité API** | Aucune route — fait partie du solveur, consommé via `resolve_implicit_rules`/`implicitRules` du payload `/generate` | Endpoint `/api/constraints` (CRUD complet) |
 | **Impact sur le score** | `HARD` par défaut ; les règles de bien-être peuvent être assouplies en `PREFERRED` (pénalité au lieu d'invalidité), et `maxConsecutiveDays` naît OFF | Variable (`HARD`, `PREFERRED`, `LOCK`) |
 
 Les contraintes implicites sont les fondations du système. Sans elles, le solveur pourrait placer le coach Enzo sur deux terrains simultanément, ou assigner SM1 et SF3 dans la même salle à la même heure. Les contraintes utilisateur viennent affiner ce comportement de base pour refléter les réalités du BCCL : horaires des bus scolaires, disponibilités des salles municipales, préférences des entraîneurs bénévoles.
