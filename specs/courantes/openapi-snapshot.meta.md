@@ -1,7 +1,12 @@
-Last verified @ 2026-10-02 (L'horloge simulée ne vit que pour un compte de démonstration :
-la route superadmin `POST /api/admin/clubs/{clubId}/clock` est SUPPRIMÉE ; une nouvelle route
-tenant `POST /api/club/clock` (widget d'en-tête du compte démo, gestionnaire, 403 pour un vrai
-club) décrite par `ClubClockPaths` la remplace. **+0 path**).
+Last verified @ 2026-10-02 (tri des routes avant v1, décision fondateur : « une route inutile est
+un risque pour rien » — 19 opérations API retirées, non appelées par le front : `POST`/`PUT`/
+`DELETE` `schedule_diagnostics` ; `PUT`+`DELETE` `competitions` ; `PUT`+`DELETE` `seasons` ;
+`DELETE` `sport_categories` ; `PUT` `team_coaches`, `coach_player_memberships`,
+`venue_unavailabilities`, `venue_match_windows`, `schedules`, `users` ; `DELETE`
+`venue_travel_times`, `coach_wish_campaigns` ; `GET` collection `/api/clubs` et `/api/sports` ;
+`PATCH /api/admin/release-notes/{id}`. `/api/clubs` et `/api/sports` ne portaient plus qu'une
+collection : les retirer en vide le PATH entier (**-2 paths**) ; les autres retraits laissent le
+path en place (une autre méthode y reste)).
 
 **222 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
 `dfa55b5416f03de78965e145c8d3f6292868e3b7c7d02732cb753b660a361bd7` (`sha256sum` sur le fichier).
