@@ -3,8 +3,8 @@ la route superadmin `POST /api/admin/clubs/{clubId}/clock` est SUPPRIMÉE ; une 
 tenant `POST /api/club/clock` (widget d'en-tête du compte démo, gestionnaire, 403 pour un vrai
 club) décrite par `ClubClockPaths` la remplace. **+0 path**).
 
-**224 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`92239bd90f2b85034bec49a6b8e83d02dc99975afb7063aed34a1ea55e97b31d` (`sha256sum` sur le fichier).
+**222 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`dfa55b5416f03de78965e145c8d3f6292868e3b7c7d02732cb753b660a361bd7` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne
