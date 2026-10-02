@@ -2,7 +2,7 @@
  * La SESSION — l'utilisateur courant, son club, sa saison, son plan — vit dans
  * `shared/`, pas chez `features/auth/`. Elle est consommée par `app/` (garde,
  * bandeaux, sélecteur de saison) ET par quatre modules `shared/` (`lib/socle`,
- * `hooks/useApplyClubTheme`, `hooks/useApplyDemoClock`, `credits/useCredits`) :
+ * `hooks/useApplyClubTheme`, `hooks/useApplySimulatedClock`, `credits/useCredits`) :
  * c'était la plus grosse remontée `shared/ → features/` de l'audit AUD-FRT-21
  * (P4-123). Ce qui est lu de partout est du SOCLE, pas d'une feature.
  *
@@ -95,7 +95,7 @@ export interface MeResponse {
     /** P2-21 lot A — vérité serveur : les équipes viennent de l'import FFBB. */
     ffbbTeamsImported?: boolean;
     /** P4-16/P2-4 — « aujourd'hui » simulé d'un club démo (null = horloge réelle). */
-    demoToday?: string | null;
+    simulatedToday?: string | null;
     /** Vrai pour un club de DÉMONSTRATION (is_demo) — la pastille « Démo » de l'en-tête s'y adosse. */
     isDemo: boolean;
     league: string | null;

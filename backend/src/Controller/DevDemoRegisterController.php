@@ -107,7 +107,7 @@ final class DevDemoRegisterController extends AbstractController
         // quelconque (on ne dit JAMAIS « fenêtre fermée »). En debug (démo par tunnel)
         // la fenêtre n'est pas requise — les e2e du register en dépendent (leur adresse
         // déclenche le fallback silencieux front). La fenêtre est confrontée à l'horloge
-        // RÉELLE, jamais à demo_today.
+        // RÉELLE, jamais à simulated_today.
         if ('' === $email || $email !== strtolower($this->demoAnimatorEmail)
             || (!$this->debug && !$this->animatorWindowIsOpen($email))) {
             return $this->json(['error' => 'not_demo_account'], 422);
@@ -238,7 +238,7 @@ final class DevDemoRegisterController extends AbstractController
      * La fenêtre d'activation démo du compte animateur (`$email`) est-elle ouverte à
      * l'instant RÉEL ? Un compte absent → fenêtre fermée (false). Horloge réelle
      * (`new DateTimeImmutable('now')`), jamais l'horloge démo simulée : un club démo ne
-     * doit pas rouvrir sa propre porte via demo_today. Lecture seule.
+     * doit pas rouvrir sa propre porte via simulated_today. Lecture seule.
      */
     private function animatorWindowIsOpen(string $email): bool
     {

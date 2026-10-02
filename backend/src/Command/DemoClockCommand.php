@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Command;
 
-use App\Service\DemoAwareClock;
+use App\Clock\ClubClock;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
 use Doctrine\Persistence\ManagerRegistry;
@@ -19,7 +19,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * P4-16 / P2-4 — pose (ou relâche) l'« aujourd'hui » simulé d'un club de démo.
  *
  * Toute l'application vit alors à cette date pour CE club : le serveur via
- * {@see DemoAwareClock} (SeasonResolver, OverlayManager, guards…),
+ * {@see ClubClock} (SeasonResolver, OverlayManager, guards…),
  * le front via `/api/me` → `clock.ts`. Rejouer « à trois semaines des vacances »
  * en plein été, en rendez-vous.
  *
@@ -79,7 +79,7 @@ final class DemoClockCommand extends Command
         // P2-4 — RÉSERVÉ aux clubs de démonstration : décaler l'horloge d'un vrai
         // club mentirait à son gestionnaire (radar, bascule de saison, guards).
         $updated = $this->connection()->executeStatement(
-            'UPDATE club SET demo_today = :date WHERE id = :id AND is_demo = TRUE',
+            'UPDATE club SET simulated_today = :date WHERE id = :id AND is_demo = TRUE',
             ['date' => $date, 'id' => $clubId],
         );
         if (0 === $updated) {

@@ -228,7 +228,7 @@
                                                         "null"
                                                     ]
                                                 },
-                                                "demoToday": {
+                                                "simulatedToday": {
                                                     "type": [
                                                         "string",
                                                         "null"
@@ -258,7 +258,7 @@
                                                         "null"
                                                     ]
                                                 },
-                                                "demoToday": {
+                                                "simulatedToday": {
                                                     "type": [
                                                         "string",
                                                         "null"
@@ -294,7 +294,7 @@
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "demoToday": {
+                                        "simulatedToday": {
                                             "type": [
                                                 "string",
                                                 "null"

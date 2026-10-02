@@ -143,11 +143,11 @@ services:
         tags:
             - { name: kernel.event_subscriber }
 
-    # P4-16 / P2-4 — l'horloge sait mentir pour un club démo (club.demo_today).
+    # P4-16 / P2-4 — l'horloge d'un club : date simulée par club (club.simulated_today).
     # Décoration du service `clock` : TOUT consommateur de ClockInterface la
     # traverse. Hors requête (workers/crons/commandes) ou hors club (routes
     # publiques, firewall admin), passage direct — horloge réelle.
-    App\Service\DemoAwareClock:
+    App\Clock\ClubClock:
         decorates: 'clock'
         arguments:
             $inner: '@.inner'

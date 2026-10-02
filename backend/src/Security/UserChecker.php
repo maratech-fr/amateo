@@ -26,7 +26,7 @@ use Symfony\Component\Security\Core\User\UserInterface;
  * est refusée du même refus, à l'octet, qu'un mauvais mot de passe (aucun oracle
  * « fenêtre fermée »). Tout autre compte est strictement inchangé. La fenêtre est
  * toujours confrontée à l'horloge RÉELLE (`new DateTimeImmutable('now')`), jamais
- * à `demo_today` : un club démo ne doit pas pouvoir rouvrir sa propre porte.
+ * à `simulated_today` : un club démo ne doit pas pouvoir rouvrir sa propre porte.
  */
 final class UserChecker implements UserCheckerInterface
 {

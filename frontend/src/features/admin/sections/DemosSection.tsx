@@ -62,7 +62,7 @@ function BcclCard({ account }: { account: AdminDemoAccount }) {
   const reset = useResetAdminDemoBccl();
   const clock = useSetAdminDemoClock();
   const [confirmingReset, setConfirmingReset] = useState(false);
-  const serverDate = account.demoToday ?? "";
+  const serverDate = account.simulatedToday ?? "";
   const [dateDraft, setDateDraft] = useState(serverDate);
   // Le champ suit la valeur serveur (après application / reset) : ajustement d'état pendant
   // le rendu au changement de prop, sans effet ni cascade (même patron que ConfirmDialog).
@@ -107,7 +107,7 @@ function BcclCard({ account }: { account: AdminDemoAccount }) {
         <div>
           <p className="text-sm font-medium text-white">Date simulée</p>
           <p className="mt-1 text-xs text-console-muted">
-            {account.demoToday ? `La démo vit au ${account.demoToday}.` : "La démo vit à la date du jour."}
+            {account.simulatedToday ? `La démo vit au ${account.simulatedToday}.` : "La démo vit à la date du jour."}
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <label className="sr-only" htmlFor="demo-bccl-date">Date simulée de la démo</label>
@@ -121,7 +121,7 @@ function BcclCard({ account }: { account: AdminDemoAccount }) {
             <Button type="button" size="sm" className="bg-console-accent text-console-surface hover:bg-console-accent-hover" disabled={"" === dateDraft || clock.isPending} onClick={applyDate}>
               Appliquer
             </Button>
-            <Button type="button" size="sm" variant="outline" className="border-white/15 text-console-text-bright hover:bg-white/10" disabled={null === (account.demoToday ?? null) || clock.isPending} onClick={clearDate}>
+            <Button type="button" size="sm" variant="outline" className="border-white/15 text-console-text-bright hover:bg-white/10" disabled={null === (account.simulatedToday ?? null) || clock.isPending} onClick={clearDate}>
               Revenir à aujourd’hui
             </Button>
           </div>

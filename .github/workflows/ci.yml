@@ -362,7 +362,7 @@ jobs:
       # Axes auth & memberships + tenant isolation — la console démo (PR B du lot Démos) : un JWT
       # club ne franchit pas /api/admin/demos, toute écriture exige le CSRF, activate ouvre une
       # fenêtre de 4 h à l'horloge RÉELLE (re-clic = redémarrage, jamais addition), le reset remet
-      # demo_today à null SANS toucher la fenêtre ni un autre club démo, et le re-seed refuse de
+      # simulated_today à null SANS toucher la fenêtre ni un autre club démo, et le re-seed refuse de
       # purger un club non-démo tenant ARA9999999 (un vrai club n'est jamais détruit).
       - name: AdminDemoResetTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Admin/AdminDemoResetTest.php --group phase1'

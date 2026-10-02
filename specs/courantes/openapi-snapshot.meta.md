@@ -1,12 +1,9 @@
-Last verified @ 2026-10-02 (Le niveau d'une équipe jeune suit son engagement FFBB — chaque ligne de
-`GET /api/ffbb/engagements` (`FfbbEngagementPaths`) porte désormais `deducedLevel`
-(`DEPARTEMENTAL`/`REGIONAL`/`NATIONAL`, le niveau qu'implique une catégorie U9–U18 en championnat/
-brassage) et `alignment` (`MISSING`/`MISMATCH`) face à l'équipe suggérée ; le corps de
-`POST /api/ffbb/engagements/confirm` accepte un `alignLevel` par appariement (aligner le niveau sur
-la valeur serveur re-déduite, no-op sur une ligne inéligible). **±0 path**).
+Last verified @ 2026-10-02 (L'horloge simulée devient une capacité générique par club : la réponse
+de `POST /api/admin/demos/bccl/clock` et l'état `GET /api/admin/demos` exposent désormais
+`simulatedToday` (ex `demoToday`) ; renommage pur, même forme. **±0 path**).
 
 **221 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`1506840e205e7fdea0fae09a851233a517d93560c9a76a3053cf5769fe79a462` (`sha256sum` sur le fichier).
+`0c7b75caa131e819e08e2cc2f6d18c65d39a8123fd3ac9e491c7b31e3b7909ff` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne
