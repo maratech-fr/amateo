@@ -145,7 +145,7 @@ final class CatchUpFixtureReviewCommand extends Command
         }
 
         // Dry-run : les rencontres marquées en mémoire ne sont jamais flushées, le
-        // clear() du finally les jette (patron BackfillSchoolZoneCommand).
+        // clear() du finally les jette.
         if ($force) {
             $this->entityManager->flush();
         }
