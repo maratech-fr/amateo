@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\User;
 use App\Tests\VerifiesRegistration;
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
@@ -126,6 +128,30 @@ final class ClubAccessTest extends WebTestCase
             [404, 405],
             'bare POST /api/clubs must not exist',
         );
+    }
+
+    // P4-16/P2-4 — `/api/me` expose `club.simulatedToday` : c'est la SEULE source du
+    // front (clock.ts) pour caler son « aujourd'hui » sur l'horloge simulée d'un club
+    // démo. Une date posée revient ISO Y-m-d ; relâchée, elle revient null (tout vrai
+    // club). Le renommage demo_today → simulated_today doit se voir jusque dans le JSON.
+    public function testMeExposesTheSimulatedClockOfTheClub(): void
+    {
+        [$token, , $clubId] = $this->register('CLCK');
+
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $club = $em->getRepository(Club::class)->find($clubId);
+        self::assertInstanceOf(Club::class, $club);
+        $club->setSimulatedToday(new DateTimeImmutable('2026-12-15'));
+        $em->flush();
+
+        $me = $this->get('/api/me', $token);
+        self::assertSame('2026-12-15', $me['club']['simulatedToday'], 'la date simulée posée remonte dans /api/me');
+
+        $em->getRepository(Club::class)->find($clubId)?->setSimulatedToday(null);
+        $em->flush();
+
+        $me = $this->get('/api/me', $token);
+        self::assertNull($me['club']['simulatedToday'], 'relâchée, l\'horloge simulée revient null');
     }
 
     public function testDeleteClubIsGone(): void
