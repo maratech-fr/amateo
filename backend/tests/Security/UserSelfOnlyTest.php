@@ -16,11 +16,12 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 /**
  * SEC-02 non-regression: the User resource is self-only. No collection (email
- * enumeration), no bare POST; Get/Put/Delete restricted to the caller's own id.
+ * enumeration), no bare POST; only Get is exposed, restricted to the caller's own
+ * id. PUT/DELETE are not exposed (profile edits go through PATCH /api/me).
  *
  * P4-74 (axe auth & memberships) — le changement d'e-mail « confirmer d'abord,
- * basculer ensuite » : ni le PATCH /api/me ni le PUT /api/users ne mutent
- * l'e-mail en direct ; la demande stocke une adresse en attente sans toucher
+ * basculer ensuite » : le PATCH /api/me ne mute pas l'e-mail
+ * en direct ; la demande stocke une adresse en attente sans toucher
  * l'actuelle (l'utilisateur reste connectable) ; le token confirme et bascule ;
  * un token invalide/expiré/rejoué échoue ; une adresse déjà prise → 409 ; le
  * pending d'un compte n'est ni lisible ni annulable par un autre.
@@ -54,12 +55,18 @@ final class UserSelfOnlyTest extends WebTestCase
         self::assertResponseIsSuccessful();
     }
 
-    public function testPutSelfSucceeds(): void
+    public function testPutIsGone(): void
     {
         [$token, $userId] = $this->register('USRI');
 
+        // PUT retiré (nettoyage API) : le profil s'édite via PATCH /api/me, jamais
+        // cette ressource — seul Get item reste exposé.
         $this->request('PUT', '/api/users/' . $userId, $token, ['firstName' => 'Renamed', 'lastName' => 'Self']);
-        self::assertResponseIsSuccessful();
+        self::assertContains(
+            $this->client->getResponse()->getStatusCode(),
+            [404, 405],
+            'PUT /api/users/{id} must not exist',
+        );
     }
 
     public function testGetOtherUserReturns404(): void
@@ -68,15 +75,6 @@ final class UserSelfOnlyTest extends WebTestCase
         [, $userB] = $this->register('USRD');
 
         $this->request('GET', '/api/users/' . $userB, $tokenA);
-        self::assertResponseStatusCodeSame(404);
-    }
-
-    public function testPutOtherUserReturns404(): void
-    {
-        [$tokenA] = $this->register('USRE');
-        [, $userB] = $this->register('USRF');
-
-        $this->request('PUT', '/api/users/' . $userB, $tokenA, ['firstName' => 'Hijack']);
         self::assertResponseStatusCodeSame(404);
     }
 
@@ -107,17 +105,6 @@ final class UserSelfOnlyTest extends WebTestCase
         $this->request('PATCH', '/api/me', $token, ['email' => $email, 'firstName' => 'Renamed']);
         self::assertResponseIsSuccessful();
         self::assertSame('Renamed', $this->me($token)['firstName']);
-    }
-
-    public function testPutUserIgnoresTheEmailField(): void
-    {
-        [$token, $userId, $email] = $this->register('USRP');
-
-        // Le PUT ressource legacy IGNORE le champ email (n'échoue pas, ne bascule
-        // pas). PUT = remplacement complet → lastName requis (Assert\NotBlank).
-        $this->request('PUT', '/api/users/' . $userId, $token, ['firstName' => 'Kept', 'lastName' => 'Self', 'email' => 'via-put-' . $email]);
-        self::assertResponseIsSuccessful();
-        self::assertSame($email, $this->me($token)['email'], 'le PUT ne change pas l\'e-mail');
     }
 
     public function testEmailChangeStoresPendingKeepsCurrentActiveThenSwitchesOnConfirm(): void

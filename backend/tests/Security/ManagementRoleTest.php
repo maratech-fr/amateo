@@ -307,19 +307,18 @@ final class ManagementRoleTest extends WebTestCase
 
     public function testNonManagementMemberCanEditOwnProfile(): void
     {
-        // Opt-out P1-1 : éditer SON profil n'est pas une action de management
-        // (UserStateProcessor::requiresManagementRole() = false, self-only gardé
-        // par SEC-02/UserSelfOnlyTest). Un membre non-management doit pouvoir
-        // modifier son propre User malgré le défaut à true.
+        // Éditer SON profil n'est pas une action de management : le PATCH /api/me
+        // (seule surface d'édition du profil depuis le nettoyage API — le PUT
+        // ressource User a été retiré) doit passer pour un membre non-management.
         [, , $clubA] = $this->register('MGS');
-        [$memberToken, $memberId] = $this->addActiveMemberReturningId($clubA, 'member');
+        [$memberToken] = $this->addActiveMemberReturningId($clubA, 'member');
 
-        $this->client->request('PUT', '/api/users/' . $memberId, [], [], [
+        $this->client->request('PATCH', '/api/me', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $memberToken,
-            'CONTENT_TYPE' => 'application/ld+json',
+            'CONTENT_TYPE' => 'application/merge-patch+json',
         ], '{"firstName":"Renommé","lastName":"Member"}');
 
-        self::assertResponseIsSuccessful(); // 200 : l'opt-out laisse passer le self-edit
+        self::assertResponseIsSuccessful(); // 200 : un membre édite toujours son propre profil
     }
 
     #[DataProvider('clubUserWriteVerbs')]

@@ -122,7 +122,7 @@ abstract class AbstractStateProcessor implements ProcessorInterface
      * management by default. Any POST/PUT/PATCH/DELETE requires an owner/admin
      * membership (ManagementAccessGuard). Wizard/cockpit entities are all
      * management-sensitive, so this is the correct default; a processor only
-     * opts OUT explicitly, with its reason (see UserStateProcessor: self-edit).
+     * opts OUT explicitly, with its reason.
      *
      * (The former opt-in `true` overrides on the six cockpit processors are now
      * redundant but kept — removing them is out of this PR's scope.)
