@@ -7,27 +7,21 @@ namespace App\ApiResource;
 use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
 use ApiPlatform\Metadata\ApiFilter;
 use ApiPlatform\Metadata\ApiResource;
-use ApiPlatform\Metadata\Delete;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
-use ApiPlatform\Metadata\Post;
-use ApiPlatform\Metadata\Put;
 use App\Dto\DiagnosticCause;
-use App\Dto\ScheduleDiagnosticInput;
 use App\Entity\ScheduleDiagnostic;
 use App\Enum\ScheduleDiagnosticSeverity;
-use App\State\Processor\ScheduleDiagnosticStateProcessor;
 use App\State\Provider\ScheduleDiagnosticStateProvider;
 use DateTimeImmutable;
 use Symfony\Component\Serializer\Attribute\Groups;
 
+// Lecture seule : les diagnostics sont écrits par ScheduleDiagnosticsRecorder lors de
+// l'import d'une génération, jamais via l'API. Le Get item reste requis pour les IRI.
 #[ApiResource(shortName: 'ScheduleDiagnostic', operations: [
     new GetCollection,
     new Get,
-    new Post,
-    new Put,
-    new Delete,
-], input: ScheduleDiagnosticInput::class, paginationEnabled: true, paginationItemsPerPage: 30, provider: ScheduleDiagnosticStateProvider::class, processor: ScheduleDiagnosticStateProcessor::class)]
+], paginationEnabled: true, paginationItemsPerPage: 30, provider: ScheduleDiagnosticStateProvider::class)]
 #[ApiFilter(SearchFilter::class, properties: ['scheduleId' => 'exact'])]
 class ScheduleDiagnosticResource
 {
