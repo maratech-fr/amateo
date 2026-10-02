@@ -67,7 +67,7 @@ final class MatchPlacementPayloadBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '2.29';
+    public const string CONTRACT_VERSION = '1.0';
 
     /**
      * Borne du trajet aller-retour AWAY émis, alignée sur le schéma engine
