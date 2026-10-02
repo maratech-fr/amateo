@@ -1,12 +1,10 @@
 # Console superadmin — authentification, télémétrie et API de supervision
 
-Last verified @ 2026-09-30 (console Démos, PR B du lot Démos). Re-vérifié contre le code :
-`AdminDemoController` (`/api/admin/demos*`, `AdminDemoController.php:53,64,90,113,140`) — 4 h à
-l'horloge RÉELLE, jamais une addition (`AdminDemoController.php:77`) ; `DemoResetRunner` en
-SOUS-PROCESSUS `app:demo:seed` (`DemoResetRunner.php:35`) ; `app:demo:purge-stale`
-(cron-runner quotidien 03:15, clé `demo-purge-stale`, `AdminJobCatalog.php:62`) ; 8ᵉ onglet
-« Démos » (`frontend/src/features/admin/tabs/tabsConfig.ts:22`). Reste du fichier non
-re-confronté cette passe ; historique des vérifications précédentes :
+Last verified @ 2026-10-02 (horloge par club, `feat/horloge-club-module`). Re-vérifié contre le
+code : `club.demo_today` est devenu `club.simulated_today` (`Version20261002090000`,
+`Club::$simulatedToday`), lu/écrit par `AdminDemoController` sous ce nom
+(`AdminDemoController.php:181,224,244,259`) — les trois mentions de ce fichier recalées. Reste du
+fichier non re-confronté cette passe ; historique des vérifications précédentes :
 `git log -p --follow specs/courantes/superadmin-auth.md`.
 
 > **État courant** : SA0, SA1, la console read-only SA2, le socle
@@ -301,7 +299,7 @@ codes d'offre — `decouverte`…`beta`, miroir de `SetClubPlanCommand`) et `pai
 un `if` du contrôleur : `paidSeason` est **requis** pour toute offre payante (Bêta
 comprise — sans marqueur elle naît expirée) et **interdit** sur `decouverte` (rien à
 encaisser). Avec `paidSeason`, la commande pose l'offre ET marque la saison encaissée dans
-la MÊME transaction (pivot sur `demo_today` pour un club démo, D6). `reset-credits` (ré-ouvre
+la MÊME transaction (pivot sur `simulated_today` pour un club démo, D6). `reset-credits` (ré-ouvre
 le pool de crédits de sortie du plan Découverte) reste une entrée à part. C'est la **seule
 porte d'attribution** d'une offre — l'offre Bêta n'a aucun autre chemin par construction,
 et le paiement v1 (virement) se matérialise par `set-plan` (offre + saison encaissée)
@@ -389,7 +387,7 @@ posé** (surface cross-tenant, contrat SA0).
 
 - `GET /demos` rend l'état des deux comptes : fenêtre d'activation ISO, club démo courant
   (résolu SERVEUR depuis l'adhésion active du compte, jamais depuis la requête), et — pour la
-  démo BCCL seule — sa date simulée (`demo_today`).
+  démo BCCL seule — sa date simulée (`simulated_today`).
 - `POST /demos/{bccl|prospect}/activate` ouvre la fenêtre d'activation (`app_user.demo_active_until`)
   pour **4 h à l'horloge RÉELLE** : un re-clic **redémarre** la fenêtre depuis maintenant, il ne
   l'étend jamais (la valeur est remplacée, pas additionnée). `POST /demos/{target}/deactivate` la
@@ -397,7 +395,7 @@ posé** (surface cross-tenant, contrat SA0).
 - `POST /demos/bccl/reset` relance `app:demo:seed` en **sous-processus** (`DemoResetRunner`, via
   `DATABASE_ADMIN_URL`, même patron `Process` que `DatabaseBackupCommand` — la requête console
   tourne, elle, sur la connexion applicative, incapable de purger le workspace à travers la RLS),
-  puis remet `club.demo_today` à `NULL` (décision fondateur : le reset repart TOUJOURS à
+  puis remet `club.simulated_today` à `NULL` (décision fondateur : le reset repart TOUJOURS à
   aujourd'hui) **sans toucher la fenêtre d'activation du compte**. Un re-seed en échec rend 502,
   l'horloge simulée reste intacte.
 - `POST /demos/bccl/clock` pose (`date`, `YYYY-MM-DD`) ou relâche (`clear`) la date simulée du

@@ -1,13 +1,10 @@
 # Accueil « cockpit temporel »
 
-Last verified @ 2026-09-30 (`documentation-update`, rotation de fraîcheur). Re-confronté au code :
-`SeasonPlanBanner.tsx` (déplacé depuis dans `features/cockpit/`, même fichier) porte toujours
-« Ouvrir » (→ `/planning`) et, socle validé, « Modifier les données du club » (→ wizard étape
-Équipes, sans rouvrir) — aucun bouton « Modifier » qui rouvre ✓ ; `stalenessMessage`
-importée/utilisée dans `frontend/src/features/planning/PlanningPage.tsx:47` ✓,
-`App\Service\CalendarEntryRedatability::isRedatable` sert bien le champ `redatable`
-(`backend/src/Service/CalendarEntryRedatability.php:49`) ✓. Historique de ce fichier :
-`git log -p --follow` dessus.
+Last verified @ 2026-10-02 (horloge par club, `feat/horloge-club-module`). Re-confronté au code : le
+§« Horloge simulée » recalé sur `App\Clock\ClubClock` (`backend/src/Clock/ClubClock.php`, décore
+`clock`, capacité générique par club) et `Club::$simulatedToday` (ex `demoToday`,
+`Version20261002090000`) — `DemoAwareClock` n'existe plus. Reste du fichier non re-confronté cette
+passe. Historique de ce fichier : `git log -p --follow` dessus.
 
 > **Statut** : livré — cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2. Ce document fixe le
 > modèle d'UX + d'architecture de l'accueil cockpit et la fondation des **calendriers
@@ -342,13 +339,13 @@ traiter ») plutôt que de rester « Chargement… » pour toujours. Le squelett
 l'horizon. Tout roule. » ne coexistent jamais : `isEmpty` exige que toutes ces lectures soient
 résolues.
 
-**Horloge de démo** : `shared/lib/clock.ts` est le point de passage unique du « aujourd'hui » du
+**Horloge simulée** : `shared/lib/clock.ts` est le point de passage unique du « aujourd'hui » du
 front. En **dev uniquement** (`import.meta.env.DEV`), `?today=2026-12-20` le décale pour rejouer
 une situation datée — vérifiée comme une date RÉELLE, pas seulement dans sa forme, sinon une date
 invalide trie après toute date et vide le radar en affirmant « Tout roule ». Côté **serveur**,
-`DemoAwareClock` décale déjà la date pour un **club de démonstration** (`Club.demo_today`, posé/
-relâché par `app:demo:clock`) — tout consommateur de l'horloge la voit mentir pour ce club ; un
-club réel garde l'heure vraie.
+`App\Clock\ClubClock` est la capacité GÉNÉRIQUE par club : un club dont `simulatedToday` est posé
+(`Club.simulatedToday`, posé/relâché par `app:demo:clock` ou la console superadmin) voit tout
+consommateur de l'horloge mentir pour LUI SEUL ; un club sans date posée garde l'heure vraie.
 
 ---
 

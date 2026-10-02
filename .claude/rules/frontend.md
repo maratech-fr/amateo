@@ -272,6 +272,10 @@ paths:
   (grille week-end / région nommée / carte `[data-slot-id]` / `h1`) plutôt qu'un témoin global
   (`shadow-sm`/`role=region`/testid) — `/planning` (`WeekGrid`) ne porte AUCUN des trois, un témoin
   global le déclarait « vide » alors qu'il était peint.
+- 🔴 **Tout « aujourd'hui » passe par `shared/lib/clock.ts::todayISO`, jamais `new Date()`** — seule
+  maison qui compose l'override dev (`?today=`) et l'horloge simulée SERVEUR d'un club
+  (`/api/me` → `club.simulatedToday`, posée/décidée côté back par `App\Clock\ClubClock`, la seule
+  capacité à décider si un club a une horloge active).
 - 🔴 **Le survol d'un fond `bg-accent` plein n'est jamais une `opacity`** — c'est le jeton
   `bg-accent-hover` (`--accent-hover`, `accentHoverForMode` dans `shared/lib/color.ts`, posé par
   `useApplyClubTheme` à côté de `--accent`/`--accent-foreground`). `hover:opacity-90` compositait

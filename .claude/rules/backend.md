@@ -34,4 +34,10 @@ paths:
   exports. Les COMMENTAIRES de code (`//`, blocs, docblocks NON sérialisés), oui. La substance
   reste, la référence part. Gardé par `PublicTextIsFreeOfInternalIdentifiersTest`.
 - 🔴 **Jamais `new ValidationException('chaîne')`** — le 422 serait MUET (liste de violations VIDE, « An error occurred » à l'écran, le message meurt). L'idiome unique : `$this->refuse('…')` (`AbstractStateProcessor`), gardé par `Unit/ValidationExceptionCarriesViolationsTest` qui interdit le constructeur partout ailleurs dans `src/`. Détail et piège d'assertion (`\u0027`) : `backend/docs/error-copy.md` §rail 422.
+- 🔴 **Toute lecture de « aujourd'hui » métier passe par `ClockInterface`/`ClubDay`, jamais
+  `new DateTime('now')`** — `App\Clock\ClubClock` (`src/Clock/ClubClock.php`) décore le service
+  `clock` et est LE seul module qui décide si un club a une horloge simulée active
+  (`simulatedTodayFor(Club)`, lu sur `Club::$simulatedToday`) ; un appel direct à l'horloge système
+  contourne silencieusement cette capacité pour tout club qui en dépend. Côté front, le même rôle
+  est tenu par `shared/lib/clock.ts::todayISO` (jamais `new Date()`), cf. `.claude/rules/frontend.md`.
 - 🔴 **Une garde de sécurité dupliquée « en défense en profondeur » sur le MÊME chemin d'écriture peut rendre le NR intestable** — si la garde amont court-circuite le foyer qu'elle double, le test reste vert sans jamais atteindre ce foyer. Falsifier une garde, c'est la désactiver et vérifier le rouge — jamais seulement lire le code. Cas mesuré (`OpponentVenueSuggestionShareTest`, lot appariement gymnases, `93f36c29`→`5bfe2f92`) : un filtre contrôleur ajouté en ceinture rendait la garde manager intestable sur ce chemin, et le payload de test envoyait une référence qui ne résolvait fédéralement dans AUCUN des deux cas — le test restait vert les deux gardes désactivées.
