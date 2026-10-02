@@ -131,6 +131,9 @@ final readonly class AdminDemoController
                 'UPDATE club SET simulated_today = NULL WHERE id = :id AND is_demo = TRUE',
                 ['id' => $club['id']],
             );
+            // Décision fondateur : le reset VIDE aussi la boîte aux lettres — les e-mails
+            // interceptés pendant la démo précédente ne survivent pas à une réinitialisation.
+            $this->emptyMailbox($club['id']);
         }
 
         return new JsonResponse(['status' => 'reset']);
@@ -177,6 +180,14 @@ final readonly class AdminDemoController
             'UPDATE club SET simulated_today = :date WHERE id = :id AND is_demo = TRUE',
             ['date' => $date, 'id' => $club['id']],
         );
+
+        // Désactiver l'horloge (« Revenir à aujourd'hui ») VIDE la boîte aux lettres : hors
+        // horloge, le club redevient un club réel qui envoie pour de vrai, les e-mails boxés
+        // n'ont plus de raison d'être (décision fondateur 2026-10-02). Poser/changer une date
+        // ne touche pas la boîte.
+        if ($clear) {
+            $this->emptyMailbox($club['id']);
+        }
 
         return new JsonResponse(['simulatedToday' => $date]);
     }
@@ -302,5 +313,18 @@ final readonly class AdminDemoController
         \assert($connection instanceof Connection);
 
         return $connection;
+    }
+
+    /**
+     * Vide la boîte aux lettres d'un club. Sur la connexion ADMIN (amateo_owner, porte
+     * admin_all) : le firewall admin ne pose jamais de GUC tenant, un DELETE sur la connexion
+     * runtime serait donc fail-closed (0 ligne vue).
+     */
+    private function emptyMailbox(string $clubId): void
+    {
+        $this->connection()->executeStatement(
+            'DELETE FROM club_mailbox_message WHERE club_id = :id',
+            ['id' => $clubId],
+        );
     }
 }

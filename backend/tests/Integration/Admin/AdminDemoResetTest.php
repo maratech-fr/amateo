@@ -220,6 +220,43 @@ final class AdminDemoResetTest extends WebTestCase
         self::assertSame('2026-05-05', $this->admin()->fetchOne('SELECT simulated_today FROM club WHERE id = :id', ['id' => $prospectClub]));
     }
 
+    public function testResetEmptiesTheMailbox(): void
+    {
+        // P4-16 — le reset vide la boîte aux lettres du club de démo (décision fondateur).
+        $userId = $this->seedDemoUser(self::BCCL_EMAIL, null);
+        $clubId = $this->seedDemoClub($userId, isDemo: true, simulatedToday: '2026-03-01');
+        $this->seedMailboxRow($clubId);
+        self::assertSame(1, $this->mailboxCount($clubId), 'témoin : la boîte porte bien une ligne avant le reset');
+
+        [$secret] = $this->createSuperAdmin('rstmb@example.test', 'VeryStrongPassword!');
+        $csrf = $this->authenticate('rstmb@example.test', 'VeryStrongPassword!', $secret);
+        $this->client->disableReboot();
+        $this->resetRunner()->reset();
+
+        $this->json('POST', '/api/admin/demos/bccl/reset', [], ['HTTP_X_CSRF_TOKEN' => $csrf]);
+        self::assertResponseIsSuccessful();
+        self::assertSame(0, $this->mailboxCount($clubId), 'le reset vide la boîte aux lettres');
+    }
+
+    public function testClearingTheClockEmptiesTheMailboxButSettingADateDoesNot(): void
+    {
+        // Désactiver l'horloge (« Revenir à aujourd'hui ») vide la boîte ; poser/changer une
+        // date ne la touche pas (décision fondateur 2026-10-02).
+        $userId = $this->seedDemoUser(self::BCCL_EMAIL, null);
+        $clubId = $this->seedDemoClub($userId, isDemo: true, simulatedToday: null);
+        $this->seedMailboxRow($clubId);
+        [$secret] = $this->createSuperAdmin('clkmb@example.test', 'VeryStrongPassword!');
+        $csrf = $this->authenticate('clkmb@example.test', 'VeryStrongPassword!', $secret);
+
+        $this->json('POST', '/api/admin/demos/bccl/clock', ['date' => '2026-01-15'], ['HTTP_X_CSRF_TOKEN' => $csrf]);
+        self::assertResponseIsSuccessful();
+        self::assertSame(1, $this->mailboxCount($clubId), 'poser une date ne vide pas la boîte');
+
+        $this->json('POST', '/api/admin/demos/bccl/clock', ['clear' => true], ['HTTP_X_CSRF_TOKEN' => $csrf]);
+        self::assertResponseIsSuccessful();
+        self::assertSame(0, $this->mailboxCount($clubId), 'revenir à aujourd\'hui vide la boîte');
+    }
+
     public function testResetFailureReturns502AndLeavesTheSimulatedClockUntouched(): void
     {
         $userId = $this->seedDemoUser(self::BCCL_EMAIL, null);
@@ -368,6 +405,22 @@ final class AdminDemoResetTest extends WebTestCase
         );
 
         return $clubId;
+    }
+
+    private function seedMailboxRow(string $clubId): void
+    {
+        // Via la connexion ADMIN (amateo_owner, porte admin_all) : hors transaction DAMA,
+        // nettoyé par la CASCADE à la suppression du club en tearDown.
+        $this->admin()->executeStatement(
+            'INSERT INTO club_mailbox_message (id, club_id, created_at, simulated_date, from_address, to_address, subject, body_text)'
+            . ' VALUES (:id, :club, NOW(), :d, :f, :t, :s, :b)',
+            ['id' => Uuid::v4()->toRfc4122(), 'club' => $clubId, 'd' => '2026-03-01', 'f' => 'noreply@amateo.test', 't' => 'coach@club.fr', 's' => 'Relance des vœux', 'b' => 'Corps'],
+        );
+    }
+
+    private function mailboxCount(string $clubId): int
+    {
+        return (int) $this->admin()->fetchOne('SELECT count(*) FROM club_mailbox_message WHERE club_id = :id', ['id' => $clubId]);
     }
 
     /** @return array{0: string} */
