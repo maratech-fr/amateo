@@ -114,6 +114,11 @@ updates:
       docker-frontend:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    # Node est épinglé à une MAJEURE choisie (LTS) : un saut de majeure est une
+    # décision, pas un bump automatique (#1055 Node 26 fermée, fondateur 2026-10-02).
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
     labels: ["dependencies", "docker"]
 
   - package-ecosystem: "docker"
@@ -140,4 +145,9 @@ updates:
       docker-postgres:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    # PostgreSQL est épinglé à une MAJEURE : un saut de majeure impose une
+    # migration de données, c'est une décision (#1052 PG 18 fermée, fondateur 2026-10-02).
+    ignore:
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
     labels: ["dependencies", "docker"]
