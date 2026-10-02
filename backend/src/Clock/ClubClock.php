@@ -37,6 +37,16 @@ use Symfony\Component\HttpFoundation\RequestStack;
  * ⚠ Mémoïsé par (requête → date) et non par service : le worker et les tests
  * réutilisent le même service sur plusieurs contextes — un memo global
  * servirait la date d'un club au suivant.
+ *
+ * Drapeau DEV `APP_CLUB_CLOCK_ALL` : quand il est actif, la capacité d'horloge
+ * est ouverte à TOUS les clubs de l'environnement — un club sans `simulated_today`
+ * emprunte alors le pin GLOBAL du widget DevClock ({@see DevClockStore}, réglé au
+ * widget ou à la console, jamais dans le `.env`). Garde de sûreté : le drapeau est
+ * IGNORÉ si `kernel.environment === 'prod'` — l'horloge simulée ne peut jamais
+ * s'ouvrir à tous en production, même drapeau mal posé. Câblé par le paramètre
+ * conteneur `%app.club_clock_all%` (`%env(bool:APP_CLUB_CLOCK_ALL)%`, défaut 0),
+ * jamais lu via `$_ENV`. Le DevClock existant reste inchangé (il pilote toujours
+ * `ClockInterface` en dev).
  */
 final class ClubClock implements ClockInterface
 {
@@ -47,6 +57,9 @@ final class ClubClock implements ClockInterface
         private readonly ClockInterface $inner,
         private readonly RequestStack $requestStack,
         private readonly EntityManagerInterface $entityManager,
+        private readonly DevClockStore $devClockStore,
+        private readonly bool $clockAllEnabled,
+        private readonly string $environment,
     ) {}
 
     public function now(): DateTimeImmutable
@@ -72,7 +85,7 @@ final class ClubClock implements ClockInterface
 
     public function withTimeZone(DateTimeZone|string $timezone): static
     {
-        return new self($this->inner->withTimeZone($timezone), $this->requestStack, $this->entityManager);
+        return new self($this->inner->withTimeZone($timezone), $this->requestStack, $this->entityManager, $this->devClockStore, $this->clockAllEnabled, $this->environment);
     }
 
     /**
@@ -81,10 +94,27 @@ final class ClubClock implements ClockInterface
      * LE point d'entrée unique « ce club a-t-il une horloge active ? » : lit
      * l'entité directement (pas le memo de requête), donc utilisable hors de tout
      * contexte tenant.
+     *
+     * Ordre : (1) `simulated_today` du club s'il est posé ; (2) sinon, en DEV et
+     * drapeau `APP_CLUB_CLOCK_ALL` actif, la DATE du pin global DevClock s'il y en
+     * a un ; (3) sinon null (heure réelle). Le drapeau est neutralisé en prod.
      */
     public function simulatedTodayFor(Club $club): ?DateTimeImmutable
     {
-        return $club->getSimulatedToday();
+        $pinned = $club->getSimulatedToday();
+        if ($pinned instanceof DateTimeImmutable) {
+            return $pinned;
+        }
+
+        if ($this->clockAllEnabled && 'prod' !== $this->environment) {
+            $devPin = $this->devClockStore->get();
+            if ($devPin instanceof DateTimeImmutable) {
+                // La DATE du pin (l'heure réelle de la journée reste gérée par now()).
+                return $devPin->setTime(0, 0);
+            }
+        }
+
+        return null;
     }
 
     private function currentSimulatedToday(): ?DateTimeImmutable

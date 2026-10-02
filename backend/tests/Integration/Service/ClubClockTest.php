@@ -5,13 +5,16 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Service;
 
 use App\Clock\ClubClock;
+use App\Clock\DevClockStore;
 use App\Entity\Club;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Clock\ClockInterface;
+use Symfony\Component\Clock\MockClock;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 
@@ -94,6 +97,43 @@ final class ClubClockTest extends KernelTestCase
         self::assertNull($this->clubClock->simulatedTodayFor($club), 'un club sans horloge n\'en a pas');
     }
 
+    public function testDevFlagOffIgnoresThePinEvenWhenOneIsSet(): void
+    {
+        $clock = $this->clubClockWith(clockAllEnabled: false, environment: 'dev', devPin: new DateTimeImmutable('2026-07-01 10:00'));
+
+        self::assertNull($clock->simulatedTodayFor($this->clocklessClub()), 'drapeau OFF : le pin DevClock n\'ouvre rien');
+    }
+
+    public function testDevFlagOnBorrowsTheGlobalPinForAClubWithoutAClock(): void
+    {
+        $clock = $this->clubClockWith(clockAllEnabled: true, environment: 'dev', devPin: new DateTimeImmutable('2026-07-01 10:00'));
+
+        self::assertSame('2026-07-01', $clock->simulatedTodayFor($this->clocklessClub())?->format('Y-m-d'), 'drapeau ON + pin : la DATE du pin');
+    }
+
+    public function testDevFlagOnWithoutAPinIsStillRealTime(): void
+    {
+        $clock = $this->clubClockWith(clockAllEnabled: true, environment: 'dev', devPin: null);
+
+        self::assertNull($clock->simulatedTodayFor($this->clocklessClub()), 'drapeau ON mais aucun pin : heure réelle');
+    }
+
+    public function testTheClubOwnSimulatedTodayPrimesOverTheDevFlag(): void
+    {
+        $clock = $this->clubClockWith(clockAllEnabled: true, environment: 'dev', devPin: new DateTimeImmutable('2026-07-01 10:00'));
+        $club = $this->clocklessClub();
+        $club->setSimulatedToday(new DateTimeImmutable('2027-03-01'));
+
+        self::assertSame('2027-03-01', $clock->simulatedTodayFor($club)?->format('Y-m-d'), 'la date du club prime sur le pin global');
+    }
+
+    public function testTheDevFlagIsNeutralisedInProd(): void
+    {
+        $clock = $this->clubClockWith(clockAllEnabled: true, environment: 'prod', devPin: new DateTimeImmutable('2026-07-01 10:00'));
+
+        self::assertNull($clock->simulatedTodayFor($this->clocklessClub()), 'garde de sûreté : jamais actif en prod, même drapeau posé');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -110,6 +150,19 @@ final class ClubClockTest extends KernelTestCase
             $this->requestStack->pop();
         }
         parent::tearDown();
+    }
+
+    private function clocklessClub(): Club
+    {
+        return (new Club)->setName('Sans horloge')->setSlug('sans-' . bin2hex(random_bytes(4)))->setTimezone('Europe/Paris')->setLocale('fr');
+    }
+
+    private function clubClockWith(bool $clockAllEnabled, string $environment, ?DateTimeImmutable $devPin): ClubClock
+    {
+        $store = new DevClockStore(new ArrayAdapter);
+        $store->set($devPin);
+
+        return new ClubClock(new MockClock, new RequestStack, $this->em, $store, $clockAllEnabled, $environment);
     }
 
     private function club(?DateTimeImmutable $simulatedToday): string
