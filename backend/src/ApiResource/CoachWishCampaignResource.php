@@ -7,7 +7,6 @@ namespace App\ApiResource;
 use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
 use ApiPlatform\Metadata\ApiFilter;
 use ApiPlatform\Metadata\ApiResource;
-use ApiPlatform\Metadata\Delete;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
@@ -22,12 +21,12 @@ use Symfony\Component\Serializer\Attribute\Groups;
  * management-only. La sortie porte les compteurs du radar et la liste des coachs
  * avec leur token (le front construit l'URL publique) — jamais les doléances elles-mêmes.
  */
+// DELETE retiré (nettoyage API) : non appelé par le front.
 #[ApiResource(shortName: 'CoachWishCampaign', operations: [
     new GetCollection,
     new Get,
     new Post,
     new Put,
-    new Delete,
     // C3 — actions d'envoi (patron reset-grid : ACTION, pas état ; SEC-07 dans le contrôleur).
     // « Envoyer les liens » : coachs à email PAS ENCORE servis, ou coachIds ciblés (D2).
     new Post(

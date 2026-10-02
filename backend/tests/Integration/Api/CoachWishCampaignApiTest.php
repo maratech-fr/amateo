@@ -158,22 +158,6 @@ final class CoachWishCampaignApiTest extends WebTestCase
         self::assertNotNull($body['coaches'][0]['respondedAt']);
     }
 
-    public function testDeleteRemovesTokensButKeepsCoachWishes(): void
-    {
-        $wishId = $this->seedWish($this->teamA->getId(), '2026-02-16', false);
-        $created = $this->post($this->payload(['teamIds' => [$this->teamA->getId()]]));
-        self::assertResponseStatusCodeSame(201);
-
-        $this->client->request('DELETE', '/api/coach_wish_campaigns/' . $created['id'], [], [], $this->headers());
-        self::assertResponseStatusCodeSame(204);
-
-        $this->em->clear();
-        $this->scopeGucToClub($this->club->getId());
-        self::assertCount(0, $this->em->getRepository(CoachWishToken::class)->findBy(['campaignId' => $created['id']]), 'les tokens partent avec la campagne');
-        self::assertNull($this->em->getRepository(CoachWishCampaign::class)->find($created['id']));
-        self::assertNotNull($this->em->getRepository(CoachWish::class)->find($wishId), 'la todo-list C1 survit à la suppression de la campagne');
-    }
-
     public function testDeletingTheMotherEntryCascadesToCampaignAndTokens(): void
     {
         $created = $this->post($this->payload(['teamIds' => [$this->teamA->getId()]]));

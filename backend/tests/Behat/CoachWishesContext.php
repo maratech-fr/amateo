@@ -201,9 +201,9 @@ final class CoachWishesContext extends BaseContext
             return;
         }
 
-        if ('' !== $this->campaignId) {
-            $this->apiDelete(\sprintf('coach_wish_campaigns/%s', $this->campaignId), $this->token);
-        }
+        // La campagne (et ses tokens) partent avec la période mère : supprimer l'entrée
+        // de calendrier cascade sur la campagne ancrée (cf. CoachWishCampaignApiTest
+        // ::testDeletingTheMotherEntryCascadesToCampaignAndTokens).
         if ('' !== $this->entryId) {
             $this->apiDelete(\sprintf('calendar_entries/%s', $this->entryId), $this->token);
         }
