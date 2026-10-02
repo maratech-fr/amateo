@@ -4,15 +4,13 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-09-30 (`documentation-update`, P4-271 — ligne `/matchs` re-confrontée :
-`IdealSlotsEditor.tsx` (ligne compacte par équipe AYANT un créneau + bouton « Ajouter »),
-`ConstraintsPage.tsx` (sections Ligue/Club/Coachs en lignes compactes résumé+✎+🗑),
-`TypicalWeekPage.tsx`/`TypicalWeekendGrid.tsx` (segmenté A/B piloté par `Club.weekendAlternates`,
-`FilterToggle` gestionnaire seul) recalés contre le code ✓ — `MatchWeek` n'a plus que `A`\|`B`
-(`ALL` supprimé, migration `Version20260930100000`) ; § Tests corrigé (MSW retiré du dépôt, chore
-nettoyage 2026-09-30 — `vi.mock` reste le seul mock réseau). Reste non re-sondé cette passe —
-historique : `git log -p --follow` ce fichier. §6.7 reste hors périmètre (régime narratif plus
-dense, taille à l'aveugle refusée) — P4-262 en roadmap.
+Last verified @ 2026-10-02 (`documentation-update`, lot horloge/boîte aux lettres — rotation,
+plus ancien stamp du dépôt). Re-confronté au code : nouvelle route `/boite-aux-lettres`
+(`MailboxPage.tsx`, `routes.tsx`, lazy) + entrée de nav `MailboxNavItem` (barre du haut, visible
+ssi `me.club.simulatedToday`, `AppLayout.tsx`) ajoutées ; version React du tableau Stack corrigée
+`19.2` → `19.3` (`frontend/package.json` `^19.3.0`, les autres versions de la table restent
+exactes). Reste non re-sondé cette passe — historique : `git log -p --follow` ce fichier. §6.7
+reste hors périmètre (régime narratif plus dense, taille à l'aveugle refusée) — P4-262 en roadmap.
 
 ## 1. Stack Decided
 
@@ -20,7 +18,7 @@ Versions figées pour le rebuild. Aucune librairie ne sera ajoutée sans justifi
 
 | Catégorie | Choix | Version | Rôle |
 |-----------|------|---------|------|
-| Framework UI | React | 19.2 | Base composants, concurrent features, `use()` hook |
+| Framework UI | React | 19.3 | Base composants, concurrent features, `use()` hook |
 | Build tool | Vite | 8 | Dev server, HMR, build production |
 | Langage | TypeScript | ~6.0 | Typage statique, `strict: true` |
 | Styling | Tailwind CSS | 4 | Utility-first, engine Oxide, `@tailwindcss/vite` plugin |
@@ -94,6 +92,7 @@ Calendrier depuis `fixture.awayTravel` (dérivé de la rencontre, plus un appel 
 | `/club` | Identité du club : logo (upload + recadrage `LogoCropper` + suppression), couleur d'accent (+ palette), **section « Informations du club »** (champs FFBB — voir ci-dessous, admin) **et section « Demandes »** (approbation des adhésions `pending`, admin — l'ancienne route `/pending-members` a été repliée ici) | Required | `AppLayout` |
 | `/profile` | Profil utilisateur | Required | `AppLayout` |
 | `/nouveautes` | Journal des notes de version publiées, les plus récentes d'abord (P5-12, `ReleaseNotesPage`) — corps en texte brut, aucun rendu markdown/html | Required | `AppLayout` |
+| `/boite-aux-lettres` | **Boîte aux lettres** (P4-16, `MailboxPage`) — lecture seule des e-mails interceptés d'un club à **horloge simulée** (`ClockedClubMailInterceptor` côté backend, `backend-inventory.md` §« Boîte aux lettres ») : liste triée du plus récent, détail (corps) au clic. Entrée de nav dans la barre du haut (`MailboxNavItem`, à côté de « Matchs »), compteur serveur, **visible seulement si `me.club.simulatedToday` est posé** — un club réel ne la voit jamais, mais la route reste atteignable par URL directe (rend une boîte vide pour un club sans horloge, aucun secret n'y fuite) | Required | `AppLayout` |
 | `/confidentialite` | Politique de confidentialité (`PrivacyPage`) — atteignable depuis le menu compte | Public | aucun (autonome) |
 | **`/wizard`** | **Adressable depuis P2-25 (2026-08-12)** — `?step=<id>` + une cible : `&slot=<id>` (étape Gymnases **positionnée sur ce créneau** : gymnase sélectionné + éditeur ouvert), `&edit=<id>` (éditeur de contrainte **pré-rempli**), `&tab=reserve`, `&from=<origine>` (retour nommé). ⚑ **Arriver sur l'étape ne suffit pas — il faut arriver SUR l'objet**, sinon on a seulement raccourci le scroll. Paramètre inconnu (id supprimé, étape inexistante) → **atterrissage propre**, jamais d'écran cassé ni d'état vide silencieux. **`&edit=<id>` amène aussi la LIGNE ciblée à l'écran (P4-95, 2026-08-14)** : `data-constraint-id` + `scrollIntoView` centré, planifié APRÈS le scroll-formulaire de l'éditeur pré-rempli (celui-ci garde la priorité, la ligne finit centrée) ; le crayon manuel (édition directe depuis la liste) ne scrolle QUE le formulaire, comportement inchangé. ⚠ **Mode guidé** : un lien vers une étape verrouillée s'affiche **DÉSACTIVÉ avec sa raison** (`WizardStepLink` + `stepLockReason`) — jamais un saut qui casse l'invariant, jamais une disparition sans explication. **Retour nommé** (« ← Retour à… ») : affiché **seulement** si `from=` est présent, il **nomme** l'origine, et il est **éphémère** — effacé au changement d'étape ou dès qu'on a agi. Jamais persisté. | **Authentifié** | — |
 | **`/doleances/:token`** | **Page publique SANS login** (#10, lot C2 ; **stepper P2-24, 2026-08-11**) : parcours en ÉTAPES — intro (le pourquoi, + bandeau « déjà répondu le… » si `respondedAt`) → une étape PAR équipe (ses semaines, pré-remplies ; « Rien à signaler » avance sans rien modifier) → récap (« aucune modification » par équipe intacte, « Modifier » qui saute à l'équipe puis REVIENT au récap) qui porte la validation : « Valider et envoyer », ou « Confirmer sans modification » (envoie `submissions: []` — le coach passe ✓ répondu au lieu de rester silencieux). Envoi UNIQUE à la fin, seules les sections modifiées partent (payload inchangé, gardé par test NR) ; filet `sessionStorage` par token (restauré au montage, purgé au succès — jamais côté serveur). Route **plate, hors `AuthGuard`**. **Pied « Propulsé par [BrandMark] — découvrir » sur les six états** (prop `footer` d'`AuthLayout`, P5-24, 2026-09-29), lien vers `PRODUCT_SITE_URL` — le seul contact du coach avec le produit hors ce lien. Contrat : `types-de-planning.md` §E5 | **Public** | `AuthLayout` |
@@ -1310,6 +1309,7 @@ type AuthState = {
 | `/wizard` | CRUD `teams`/`venues`/`coaches`/`constraints`/`venue_training_slots`…, `GET /api/priority_tiers`, `GET /api/sport_categories`, `POST /api/teams/reorder` (mode tri), `POST /api/constraints/validate`, `POST /api/schedules` + `generate` (étape Génération), `GET /api/training/placed-conflicts` (encart étape Coachs, rafraîchi après un lien — P4-269) |
 | `/club` | `PATCH /api/club/appearance`, `POST/DELETE /api/club/logo`, `GET /api/clubs/{clubId}/logo` (public, cache-buster sur l'URL après upload), `POST /api/club/ffbb-import` (re-import institutionnel, seul geste de correction de la fiche FFBB, management-gated), `PATCH /api/club/siege` (siège du club, seule saisie de la page — §6.6 ter), `GET /api/memberships/pending`, `POST /api/memberships/{id}/approve`, `POST /api/memberships/{id}/reject` (section « Demandes » — l'ancienne route `/pending-members` a été repliée ici), `GET /api/venue-usage-stats?from=&to=` (encart stats d'utilisation des gymnases — §6.6 quater) |
 | `/profile` | `GET /api/me` |
+| `/boite-aux-lettres` | `GET /api/mailbox` (liste, triée du plus récent), `GET /api/mailbox/{id}` (détail + corps) — lecture seule, tenant pur (P4-16) |
 | `/doleances/:token` | Endpoints **publics** de la campagne de doléances (lecture du formulaire pré-rempli + soumission des seules sections modifiées) — aucun JWT |
 | `/admin*` | `POST /api/admin/auth/password`, `POST /api/admin/auth/totp`, `GET /api/admin/auth/me`, `GET /api/admin/{overview,health,clubs,jobs,actions}`, `POST /api/admin/jobs/{key}/run` (en-tête `X-CSRF-Token`) — client `adminApi` dédié, cookie de session `same-origin` |
 
