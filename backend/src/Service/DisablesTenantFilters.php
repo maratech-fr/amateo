@@ -7,8 +7,8 @@ namespace App\Service;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
- * Shared by the bulk-DQL services (SeasonDataPurger, EntityCascadeDeleter,
- * PurgeOrphansCommand): the tenant/season Doctrine filters alias the table
+ * Shared by the bulk-DQL services (SeasonDataPurger, EntityCascadeDeleter):
+ * the tenant/season Doctrine filters alias the table
  * name, which is invalid SQL for the reserved-word `constraint` table, so a
  * bulk DELETE/UPDATE that could touch it must run with them off. Deliberately
  * NOT restored — Doctrine drops a filter's bound parameters when it is disabled
