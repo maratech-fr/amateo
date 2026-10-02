@@ -1,10 +1,12 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-09-30 (PR #1031 — ligne « Éviter d'enchaîner deux gymnases trop éloignés »
-recalée : cran Inactive/Préféré/Obligatoire + battement toléré, `VenueTravelRuleIntensity`).
-Non re-sondé cette passe : les poids `spacing`/`preferredVenueId`/tiers, `ConstraintFamily` (4 cas,
-`FACILITY_CAPACITY` absent), « Réserver un gymnase à un groupe » ❌, les gardes engine — dernière
-vérification structurelle le 2026-09-29, historique dans `git log -p --follow` ce fichier.
+Last verified @ 2026-10-02 (`documentation-update`, rotation). Re-confronté au code :
+`ConstraintFamily` porte toujours exactement 4 cas (`TIME`, `DAY`, `FACILITY`,
+`COACH_AVAILABILITY` — `FACILITY_CAPACITY` absent, `backend/src/Enum/ConstraintFamily.php`),
+`VenueTravelRuleIntensity`/`VenueTravelRuleSetting`/`VenueClosureDays`/`minAtVenueId`+
+`minAtVenueCount` existent tels que décrits. Non re-sondé cette passe : les poids
+`spacing`/`preferredVenueId`/tiers, « Réserver un gymnase à un groupe » ❌, les gardes engine —
+historique dans `git log -p --follow` ce fichier.
 
 > **But** : liste **exhaustive** des besoins qu'un gestionnaire de club peut vouloir exprimer, et
 > **ce que l'application couvre** aujourd'hui — pour voir clairement les cas couverts (✅), partiels

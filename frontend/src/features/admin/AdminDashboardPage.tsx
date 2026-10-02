@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Clock,
   Cpu,
   Database,
   History,
@@ -31,7 +30,7 @@ import { cn } from "@/shared/lib/utils";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { AdminAction, AdminActionArgumentSpec, AdminClub, AdminFreshnessResponse, AdminHealthResponse, AdminJob, AdminJobStatus, AdminJobsResponse, AdminOverviewResponse } from "./api";
-import { useAdminActions, useAdminClubs, useAdminFreshness, useAdminHealth, useAdminJobs, useAdminOverview, useRunAdminClubAction, useRunAdminJob, useSetAdminClubClock } from "./queries";
+import { useAdminActions, useAdminClubs, useAdminFreshness, useAdminHealth, useAdminJobs, useAdminOverview, useRunAdminClubAction, useRunAdminJob } from "./queries";
 import { CapacitySection } from "./sections/CapacitySection";
 import { ClubRequestsSection } from "./sections/ClubRequestsSection";
 import { ContainersSection } from "./sections/ContainersSection";
@@ -599,7 +598,6 @@ function ClubsTable({ clubs, page, pages, total, query, loading, onPageChange }:
 }) {
   // SA4 : une action support à la fois — le dialog vit au niveau table, pas par ligne.
   const [actionClub, setActionClub] = useState<AdminClub | null>(null);
-  const [clockClub, setClockClub] = useState<AdminClub | null>(null);
 
   if (clubs.length === 0) {
     return <EmptyBlock variant="console">{query ? `Aucun club ne correspond à « ${query} ».` : "Aucun club à afficher."}</EmptyBlock>;
@@ -614,12 +612,11 @@ function ClubsTable({ clubs, page, pages, total, query, loading, onPageChange }:
             <tr><th className="px-5 py-4 font-medium">Club</th><th className="px-4 py-4 font-medium">Activité</th><th className="px-4 py-4 font-medium">Offre</th><th className="px-4 py-4 font-medium">Saison / volume</th><th className="px-4 py-4 font-medium">Solveur · 30 j</th><th className="px-4 py-4 font-medium">Support</th></tr>
           </thead>
           <tbody className="divide-y divide-white/10">
-            {clubs.map((club) => <ClubRow key={club.id} club={club} onActions={() => setActionClub(club)} onClock={() => setClockClub(club)} />)}
+            {clubs.map((club) => <ClubRow key={club.id} club={club} onActions={() => setActionClub(club)} />)}
           </tbody>
         </table>
       </div>
       {actionClub ? <ClubActionsDialog club={actionClub} onClose={() => setActionClub(null)} /> : null}
-      {clockClub ? <ClubClockDialog club={clockClub} onClose={() => setClockClub(null)} /> : null}
       <div className="flex items-center justify-between gap-4 border-t border-white/10 px-5 py-4">
         <p className="text-xs text-console-muted">{integerFormatter.format(total)} compte{total > 1 ? "s" : ""} · page {page} sur {Math.max(pages, 1)}</p>
         <div className="flex gap-2">
@@ -631,7 +628,7 @@ function ClubsTable({ clubs, page, pages, total, query, loading, onPageChange }:
   );
 }
 
-function ClubRow({ club, onActions, onClock }: { club: AdminClub; onActions: () => void; onClock: () => void }) {
+function ClubRow({ club, onActions }: { club: AdminClub; onActions: () => void }) {
   return (
     <tr className="align-top text-console-text hover:bg-white/[0.025]">
       <td className="px-5 py-5"><div className="flex items-start gap-3"><div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-white/[0.06] text-console-muted"><Building2 className="size-4" aria-hidden="true" /></div><div><p className="font-medium text-white">{club.name}</p><p className="mt-1 text-xs text-console-text-faint">{club.ffbbClubCode ?? club.slug}</p>{club.isDemo ? <span className="mt-2 mr-2 inline-block rounded bg-console-demo-surface/20 px-1.5 py-0.5 text-xs font-medium text-console-demo">Démo</span> : null}{club.unsubscribed ? <span className="mt-2 inline-block text-xs font-medium text-console-warning">Désabonné</span> : null}</div></div></td>
@@ -640,15 +637,9 @@ function ClubRow({ club, onActions, onClock }: { club: AdminClub; onActions: () 
       <td className="px-4 py-5"><p>{club.currentSeason?.name ?? "Aucune saison"}</p><p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-console-text-faint"><span className="flex items-center gap-1"><Users className="size-3" aria-hidden="true" />{club.volumes.teams} équipes · {club.volumes.coaches} coachs</span><span className="flex items-center gap-1"><MapPin className="size-3" aria-hidden="true" />{club.volumes.venues} salles</span><span>{club.volumes.constraints} contraintes</span></p></td>
       <td className="px-4 py-5"><p><span className="font-medium text-white">{club.solver.generations}</span> générations · {formatRate(club.solver.infeasibleRate)} inf.</p><p className="mt-1 text-xs text-console-text-faint">P50 {formatDuration(club.solver.p50WallTimeMs)} · P95 {formatDuration(club.solver.p95WallTimeMs)}</p>{club.solver.latestStatus ? <p className="mt-2 text-xs text-console-muted">Dernière : {club.solver.latestStatus}</p> : null}</td>
       <td className="px-4 py-5">
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" size="sm" variant="outline" className="border-white/15 text-console-text-bright hover:bg-white/10" onClick={onActions}>
-            Actions
-          </Button>
-          <Button type="button" size="sm" variant="outline" className="border-white/15 text-console-text-bright hover:bg-white/10" onClick={onClock}>
-            <Clock className="size-3.5" aria-hidden="true" />
-            Horloge{club.simulatedToday ? ` · ${club.simulatedToday}` : ""}
-          </Button>
-        </div>
+        <Button type="button" size="sm" variant="outline" className="border-white/15 text-console-text-bright hover:bg-white/10" onClick={onActions}>
+          Actions
+        </Button>
       </td>
     </tr>
   );
@@ -859,91 +850,6 @@ function ClubActionsDialog({ club, onClose }: { club: AdminClub; onClose: () => 
         confirmDisabled={run.isPending}
         onConfirm={doRun}
         onCancel={() => setConfirmingOffer(false)}
-      />
-    </Modal>
-  );
-}
-
-/**
- * Horloge simulée d'UN club, depuis la liste des comptes clubs (capacité générique).
- * Un club démo s'applique directement ; un club RÉEL exige une confirmation nominative AVANT
- * de POSER une date — il cesse d'envoyer ses e-mails réels (ils partent en boîte aux lettres).
- * « Revenir à aujourd'hui » restaure l'envoi réel : geste sûr, aucune confirmation.
- */
-function ClubClockDialog({ club, onClose }: { club: AdminClub; onClose: () => void }) {
-  const clock = useSetAdminClubClock();
-  const serverDate = club.simulatedToday ?? "";
-  const [dateDraft, setDateDraft] = useState(serverDate);
-  const [confirmingDate, setConfirmingDate] = useState<string | null>(null);
-
-  const run = (body: { date: string; confirmName?: string } | { clear: true }) => {
-    clock.mutate(
-      { clubId: club.id, body },
-      {
-        onSuccess: () => {
-          toast.success(`Horloge mise à jour pour ${club.name}.`);
-          onClose();
-        },
-        onError: () => toast.error(`Impossible de modifier l’horloge de ${club.name}.`),
-      },
-    );
-  };
-
-  const onApply = () => {
-    if ("" === dateDraft) return;
-    // Club démo → direct ; club réel → confirmation nominative (il perd ses e-mails réels).
-    if (club.isDemo) {
-      run({ date: dateDraft });
-      return;
-    }
-    setConfirmingDate(dateDraft);
-  };
-
-  return (
-    <Modal label={`Horloge simulée — ${club.name}`} title={`Horloge simulée — ${club.name}`} onClose={onClose}>
-      <div className="mt-4 space-y-4">
-        <p className="text-sm text-muted-foreground">
-          {club.simulatedToday ? `Ce club vit au ${club.simulatedToday}.` : "Ce club vit à la date du jour."}
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="sr-only" htmlFor="club-clock-date">Date simulée du club</label>
-          <input
-            id="club-clock-date"
-            type="date"
-            value={dateDraft}
-            onChange={(event) => setDateDraft(event.target.value)}
-            className="h-10 rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/40"
-          />
-          <Button type="button" disabled={"" === dateDraft || clock.isPending} onClick={onApply}>
-            {clock.isPending ? <Spinner className="size-4" /> : null}
-            Poser la date
-          </Button>
-          <Button type="button" variant="outline" disabled={null === (club.simulatedToday ?? null) || clock.isPending} onClick={() => run({ clear: true })}>
-            Revenir à aujourd’hui
-          </Button>
-        </div>
-        {club.isDemo ? null : (
-          <p className="text-xs text-muted-foreground">
-            Club réel : poser l’horloge demande de confirmer son nom — il ne recevra plus aucun e-mail réel tant qu’elle est posée.
-          </p>
-        )}
-      </div>
-
-      <ConfirmDialog
-        open={null !== confirmingDate}
-        title={`Poser l’horloge sur ${club.name} ?`}
-        description="Ce club ne recevra plus aucun e-mail réel tant que l’horloge est posée — ils seront rangés dans sa boîte aux lettres."
-        confirmPhrase={club.name}
-        confirmLabel="Poser l’horloge"
-        destructive
-        confirmDisabled={clock.isPending}
-        onConfirm={() => {
-          if (null !== confirmingDate) {
-            run({ date: confirmingDate, confirmName: club.name });
-            setConfirmingDate(null);
-          }
-        }}
-        onCancel={() => setConfirmingDate(null)}
       />
     </Modal>
   );

@@ -14,6 +14,7 @@ use App\OpenApi\PathContributor\AdminJobPaths;
 use App\OpenApi\PathContributor\AdminJournalPaths;
 use App\OpenApi\PathContributor\AdminMonitoringPaths;
 use App\OpenApi\PathContributor\AdminSupportPaths;
+use App\OpenApi\PathContributor\ClubClockPaths;
 use App\OpenApi\PathContributor\FfbbEngagementPaths;
 use App\OpenApi\PathContributor\FfbbProxyPaths;
 use App\OpenApi\PathContributor\HolidayPaths;
@@ -89,6 +90,7 @@ final readonly class CustomRoutesOpenApiFactory implements OpenApiFactoryInterfa
             new TrainingConflictPaths($schemas),
             new LeagueWindowSuggestionPaths($schemas),
             new MailboxPaths($schemas),
+            new ClubClockPaths($schemas),
         ] as $contributor) {
             $contributor->contribute($paths);
         }

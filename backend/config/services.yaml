@@ -81,6 +81,8 @@ services:
     # sans lancer le sous-processus seed réel (double dans AdminDemoResetTest).
     App\Service\DemoResetRunnerInterface: '@App\Service\DemoResetRunner'
 
+    App\Service\ClubMailboxPurgerInterface: '@App\Service\ClubMailboxPurger'
+
     # default configuration for services in *this* file
     _defaults:
         autowire: true      # Automatically injects dependencies in your services.

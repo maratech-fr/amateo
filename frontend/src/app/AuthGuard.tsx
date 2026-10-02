@@ -16,7 +16,7 @@ import { toast } from "@/shared/stores/toastStore";
 // missing here is a visible link that bounces back to /wizard. `/confidentialite`
 // was exactly that — and it is the page a user is most likely to want BEFORE
 // finishing signup.
-const ONBOARDING_ALLOWED = ["/wizard", "/profile", "/club", "/confidentialite"];
+const ONBOARDING_ALLOWED = ["/wizard", "/profile", "/club", "/confidentialite", "/boite-aux-lettres"];
 
 /**
  * Gate for authenticated routes:

@@ -1,13 +1,10 @@
 # Conventions API, Layout et primitives UI partagées
 
-Last verified @ 2026-10-01 (PR 7/7 « uniformité des hauteurs » — entrées `Button`, `Input`,
-`Select` confrontées à `shared/components/ui/button.tsx`/`input.tsx`/`select.tsx`/`field.ts` :
-`Input` et `Select` `h-9` par défaut + prop `compact` (`h-8`), `Button` gagne `size="icon-sm"`
-(`size-9`), `FIELD_CLASS` nouveau foyer du `<textarea>`, garde ESLint `heightSyntax`
-(`frontend/eslint.config.js`)). Reste de la table hérité des passes précédentes (PR 6/7
-`DayMultiPicker`, PR 4/7 bandeaux, PR 3/7 sélecteurs, P4-252 splash de connexion, PR #1031
-`Listbox`/`VenueSelect`), non rejoué ligne à ligne cette fois — historique :
-`git log -p --follow` sur ce fichier). **§3 est la maison unique
+Last verified @ 2026-10-02 (`documentation-update`, lot horloge PR D — en-tête `AppLayout.tsx`
+confronté : `DemoClockWidget` ajoutée juste après `DemoBadge`, avant `DevClock`). Reste de la table
+hérité des passes précédentes (PR 7/7 hauteurs, PR 6/7 `DayMultiPicker`, PR 4/7 bandeaux, PR 3/7
+sélecteurs, P4-252 splash de connexion, PR #1031 `Listbox`/`VenueSelect`), non rejoué ligne à ligne
+cette fois — historique : `git log -p --follow` sur ce fichier). **§3 est la maison unique
 des primitives UI partagées** (décision fondateur 2026-09-26) : les entrées déménagées depuis
 `frontend/AGENTS.md` § « Primitives that matter » sont vérifiées contre
 `frontend/src/shared/components/ui/` (`ls` : tous les fichiers cités existent).
@@ -142,6 +139,10 @@ En-tête, de gauche à droite :
   elle S'AJOUTE aux pastilles d'offre plutôt que d'en remplacer une. Lit `club.isDemo` (`/api/me`,
   jamais recalculé) ; `null` pour tout vrai club. `StatusPill` variante `neutral`, texte « Démo » —
   décision fondateur : une démo se dit, elle ne se cache pas.
+- `DemoClockWidget` (`app/DemoClockWidget.tsx`) — juste après `DemoBadge` : pastille-bouton
+  « Aujourd'hui : … » (ou « Horloge : aujourd'hui ») pour un club `isDemo` SEUL (`null` sinon, le
+  serveur refuse 403 de toute façon) ; au clic, popover champ date + « Appliquer »/« Revenir à
+  aujourd'hui » (texte, N1) qui pose `POST /api/club/clock` puis invalide `/api/me`.
 - `DevClock`, seulement en `import.meta.env.DEV`.
 - La nav de droite (`<nav>`, ne se rétracte JAMAIS, y compris sous 360 px — décision fondateur
   desktop-first/mobile V2 ; le débordement horizontal résiduel de l'en-tête à cette largeur est

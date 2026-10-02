@@ -1,10 +1,10 @@
-Last verified @ 2026-10-02 (Horloge simulée générique par club : nouvelle route superadmin
-`POST /api/admin/clubs/{clubId}/clock` (pose/relâche l'horloge de n'importe quel club, `confirmName`
-exigé pour un club réel daté) décrite par `AdminDemoPaths` ; l'ancienne `POST /api/admin/demos/bccl/clock`
-devient `POST /api/admin/demos/{target}/clock` (bccl ou prospect, même path). **+1 path**).
+Last verified @ 2026-10-02 (L'horloge simulée ne vit que pour un compte de démonstration :
+la route superadmin `POST /api/admin/clubs/{clubId}/clock` est SUPPRIMÉE ; une nouvelle route
+tenant `POST /api/club/clock` (widget d'en-tête du compte démo, gestionnaire, 403 pour un vrai
+club) décrite par `ClubClockPaths` la remplace. **+0 path**).
 
 **224 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`dc1b80ff6997b6a95637e07c8d8b56600c1b8e99d1a2b4b05897a7d52aa48753` (`sha256sum` sur le fichier).
+`92239bd90f2b85034bec49a6b8e83d02dc99975afb7063aed34a1ea55e97b31d` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

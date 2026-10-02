@@ -32,6 +32,13 @@ résolu SERVEUR depuis le compte `demo-bccl@` — refus 400 sur date malformée/
 remet `simulated_today` à null SANS toucher la fenêtre du compte NI un
 autre club démo [échec du re-seed → 502, horloge intacte] ; et la garde de `app:demo:seed` REFUSE de
 purger un club NON démo tenant ARA9999999 — un vrai club et sa saison survivent, rien purgé) ·
+`Integration/Api/ClubClockEndpointTest` (axes *auth & memberships* + *tenant isolation* : le widget
+d'horloge du compte DÉMO `POST /api/club/clock` — l'horloge simulée ne vit QUE pour un compte démo.
+Un GESTIONNAIRE d'un club démo pose/relâche l'horloge [200] ; un membre NON gestionnaire est refusé
+[403, SEC-07] ; un gestionnaire d'un VRAI club est refusé [403] et son `simulated_today` reste
+INTACT ; date malformée/ambiguë → 422 ; le `clear` relâche l'horloge [NULL] ET invoque la maison
+unique de vidage de boîte `ClubMailboxPurger` [vérifié par interaction] ; poser l'horloge d'un club
+n'en touche JAMAIS un autre. Sans ce gate, l'horloge redeviendrait posable sur un vrai club) ·
 `Integration/Command/DemoPurgeStaleCommandTest` (axe *tenant isolation*, Démos PR B, purge nocturne
 `app:demo:purge-stale` : un club démo de l'animateur PROSPECT créé la VEILLE est détruit [ligne club
 supprimée, code FFBB libéré], tandis qu'un démo créé le JOUR MÊME, un démo PARTAGÉ [autre membre], un

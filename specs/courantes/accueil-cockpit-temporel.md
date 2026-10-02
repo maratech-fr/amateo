@@ -1,10 +1,11 @@
 # Accueil « cockpit temporel »
 
-Last verified @ 2026-10-02 (horloge console tout club, `feat/horloge-console-tout-club`). Re-confronté
-au code : le §« Horloge simulée » recalé — la commande support est `app:club:clock` (ex
-`app:demo:clock`, alias déprécié conservé) et la console superadmin pose désormais cette même
-capacité sur N'IMPORTE QUEL club, pas seulement un club de démo. Reste du fichier non re-confronté
-cette passe. Historique de ce fichier : `git log -p --follow` dessus.
+Last verified @ 2026-10-02 (`documentation-update`, lot horloge PR D). Re-confronté au code : le
+§« Horloge simulée » recalé — l'horloge ne vit plus que pour un compte DÉMO (revirement fondateur
+sur « capacité générique activable pour tout club ») ; `app:club:clock` refuse franc tout club non
+`is_demo`, et un gestionnaire démo la pose désormais aussi depuis le widget d'en-tête de l'app
+(`POST /api/club/clock`). Reste du fichier non re-confronté cette passe. Historique de ce fichier :
+`git log -p --follow` dessus.
 
 > **Statut** : livré — cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2. Ce document fixe le
 > modèle d'UX + d'architecture de l'accueil cockpit et la fondation des **calendriers
@@ -340,13 +341,17 @@ l'horizon. Tout roule. » ne coexistent jamais : `isEmpty` exige que toutes ces 
 résolues.
 
 **Horloge simulée** : `shared/lib/clock.ts` est le point de passage unique du « aujourd'hui » du
-front. En **dev uniquement** (`import.meta.env.DEV`), `?today=2026-12-20` le décale pour rejouer
-une situation datée — vérifiée comme une date RÉELLE, pas seulement dans sa forme, sinon une date
-invalide trie après toute date et vide le radar en affirmant « Tout roule ». Côté **serveur**,
-`App\Clock\ClubClock` est la capacité GÉNÉRIQUE par club : un club dont `simulatedToday` est posé
-(`Club.simulatedToday`, posé/relâché par `app:club:clock` ou la console superadmin, sur
-n'importe quel club) voit tout
-consommateur de l'horloge mentir pour LUI SEUL ; un club sans date posée garde l'heure vraie.
+front — `useTodayISO()`/`useTodayDate()` pour tout composant qui LIT la date en rendu (réactifs,
+`useSyncExternalStore` : ils se recalent quand la date serveur arrive après le premier rendu),
+`todayISO()`/`todayDate()` pour une lib pure hors rendu React. En **dev uniquement**
+(`import.meta.env.DEV`), `?today=2026-12-20` le décale pour rejouer une situation datée — vérifiée
+comme une date RÉELLE, pas seulement dans sa forme, sinon une date invalide trie après toute date
+et vide le radar en affirmant « Tout roule ». Côté **serveur**, `App\Clock\ClubClock` est le point
+d'entrée unique qui décide si un club a une horloge active (`simulatedTodayFor`, lu sur
+`Club.simulatedToday`) — **réservé à un compte de DÉMONSTRATION** (décision fondateur 2026-10-02) :
+`app:club:clock` refuse franc un club non `is_demo`, et un gestionnaire démo la pose aussi depuis
+le widget d'en-tête de l'app (`POST /api/club/clock`, 403 sinon). Un club sans date posée garde
+l'heure vraie.
 
 ---
 

@@ -20,6 +20,7 @@ import { useThemeStore } from "@/shared/stores/themeStore";
 
 import { BetaBadge } from "./BetaBadge";
 import { DemoBadge } from "./DemoBadge";
+import { DemoClockWidget } from "./DemoClockWidget";
 import { ReadonlySeasonBanner } from "./ReadonlySeasonBanner";
 import { DevClock } from "./DevClock";
 import { SeasonSelector } from "./SeasonSelector";
@@ -87,6 +88,9 @@ export function AppLayout() {
             <CreditBadge />
             {/* Pastille « Démo » : s'ajoute aux deux précédentes pour un club is_demo, rien sinon. */}
             <DemoBadge />
+            {/* Widget d'horloge du compte démo (prod) : pose/relâche la date simulée du club.
+                Décide lui-même (null pour un vrai club). */}
+            <DemoClockWidget />
             {import.meta.env.DEV ? <DevClock /> : null}
           </div>
           <nav className="flex items-center gap-1">

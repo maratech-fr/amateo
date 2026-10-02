@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { activateAdminDemo, activateAdminMembership, type AdminDemoTarget, type AdminFeedbackStatus, createAdminReleaseNote, deactivateAdminDemo, decideAdminClubRequest, deleteAdminReleaseNote, getAdminActions, getAdminAuditLog, getAdminCapacity, getAdminClubRequests, getAdminClubs, getAdminDemos, getAdminFeedback, getAdminFeedbackDetail, getAdminFreshness, getAdminHealth, getAdminJobs, getAdminMessengerFailed, getAdminOverview, getAdminPendingMemberships, getAdminReleaseNotes, getAdminSession, getAdminSystemErrors, publishAdminReleaseNote, type ReleaseNoteWritePayload, resetAdminDemoBccl, runAdminClubAction, runAdminJob, setAdminClubClock, setAdminDemoClock, treatAdminFeedback, untreatAdminFeedback } from "./api";
+import { activateAdminDemo, activateAdminMembership, type AdminDemoTarget, type AdminFeedbackStatus, createAdminReleaseNote, deactivateAdminDemo, decideAdminClubRequest, deleteAdminReleaseNote, getAdminActions, getAdminAuditLog, getAdminCapacity, getAdminClubRequests, getAdminClubs, getAdminDemos, getAdminFeedback, getAdminFeedbackDetail, getAdminFreshness, getAdminHealth, getAdminJobs, getAdminMessengerFailed, getAdminOverview, getAdminPendingMemberships, getAdminReleaseNotes, getAdminSession, getAdminSystemErrors, publishAdminReleaseNote, type ReleaseNoteWritePayload, resetAdminDemoBccl, runAdminClubAction, runAdminJob, setAdminDemoClock, treatAdminFeedback, untreatAdminFeedback } from "./api";
 import { useAdminStore } from "./store";
 
 /** Lit le jeton CSRF de la session admin, ou rejette — patron des mutations admin. */
@@ -388,21 +388,5 @@ export function useSetAdminDemoClock() {
       return setAdminDemoClock(target, body, csrfToken);
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-demos"] }),
-  });
-}
-
-export function useSetAdminClubClock() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ clubId, body }: { clubId: string; body: { date: string; confirmName?: string } | { clear: true } }) => {
-      const csrfToken = requireCsrf();
-      if (!csrfToken) {
-        return Promise.reject(new Error("Missing super-admin CSRF token."));
-      }
-
-      return setAdminClubClock(clubId, body, csrfToken);
-    },
-    onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-clubs"] }),
   });
 }

@@ -3,7 +3,7 @@ import { CalendarPlus } from "lucide-react";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { useMe } from "@/shared/session/queries";
 import { useTransitionUiStore } from "@/shared/stores/transitionUiStore";
-import { todayDate } from "@/shared/lib/clock";
+import { useTodayDate } from "@/shared/lib/clock";
 
 import { frDayMonth, localIso, seasonPrepWindow } from "./seasonTransition";
 import { isManagementRole } from "@/shared/lib/roles";
@@ -18,9 +18,14 @@ import { isManagementRole } from "@/shared/lib/roles";
  * e-mail cron (app:seasons:remind-transition) is the out-of-app twin.
  * Not dismissible by design — the user asked for a permanent on-screen nudge.
  */
-export function SeasonTransitionBanner({ today = todayDate() }: { today?: Date }) {
+export function SeasonTransitionBanner({ today }: { today?: Date } = {}) {
   const { data: me } = useMe();
   const openConfirm = useTransitionUiStore((s) => s.openConfirm);
+  // Date du jour RÉACTIVE : l'horloge simulée serveur arrive après le premier rendu (via
+  // `useApplySimulatedClock`), et sans abonnement la bannière restait à la date réelle en
+  // prod. Le prop `today` (tests) prime quand il est fourni.
+  const reactiveToday = useTodayDate();
+  const effectiveToday = today ?? reactiveToday;
 
   const seasons = me?.seasons ?? [];
   const current = seasons.find((s) => s.isCurrent);
@@ -35,7 +40,7 @@ export function SeasonTransitionBanner({ today = todayDate() }: { today?: Date }
   // divergence). Ancrée sur AUJOURD'HUI (nudge un club dormant avant chaque pivot) ;
   // bannière = à partir du 15 mai. La deadline affichée est la borne réelle (fin de
   // saison), plus le 15 juillet codé en dur (revue D F2).
-  const { inWindow, successorExists, deadline } = seasonPrepWindow(localIso(today), seasons, "05-15");
+  const { inWindow, successorExists, deadline } = seasonPrepWindow(localIso(effectiveToday), seasons, "05-15");
   // La bannière (nag) se masque hors fenêtre ET quand un successeur existe déjà.
   if (!inWindow || successorExists) {
     return null;

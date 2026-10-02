@@ -37,6 +37,7 @@ function renderAt(path: string) {
           <Route path="/club" element={<div>CLUB</div>} />
           <Route path="/matchs" element={<div>MATCHS</div>} />
           <Route path="/confidentialite" element={<div>PRIVACY</div>} />
+          <Route path="/boite-aux-lettres" element={<div>MAILBOX</div>} />
         </Route>
         <Route path="/wizard" element={<div>WIZARD</div>} />
         <Route path="/waiting" element={<div>WAITING</div>} />
@@ -72,6 +73,14 @@ describe("AuthGuard — onboarding lock", () => {
     meState.data = activeMember(false);
     renderAt("/confidentialite");
     expect(screen.getByText("PRIVACY")).toBeInTheDocument();
+  });
+
+  // La boîte aux lettres est lisible à TOUT moment (entrée de nav visible dès que l'horloge
+  // est active) : l'omettre de ONBOARDING_ALLOWED renvoyait un club jamais généré vers /wizard.
+  it("keeps /boite-aux-lettres reachable while onboarding", () => {
+    meState.data = activeMember(false);
+    renderAt("/boite-aux-lettres");
+    expect(screen.getByText("MAILBOX")).toBeInTheDocument();
   });
 
   it("does NOT fire the cockpit hint for a pending (not-yet-active) member", () => {

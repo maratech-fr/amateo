@@ -17,6 +17,8 @@
  * réelle) : décaler le front seul suffit à rejouer un écran, pas un aller-retour complet.
  */
 
+import { useMemo, useSyncExternalStore } from "react";
+
 /** Local Y-m-d (évite le décalage UTC de toISOString). */
 export function toISODate(date: Date): string {
   const y = date.getFullYear();
@@ -51,15 +53,40 @@ let override: string | null = null;
 // bloc d'amorçage est éliminé du bundle).
 let devParamActive = false;
 
+// ── Réactivité (revue captures prod) ──────────────────────────────────────────
+// `useApplySimulatedClock` pose l'override SERVEUR dans un effet, APRÈS le premier rendu.
+// Sans abonnement, les consommateurs qui lisent `todayISO()`/`todayDate()` en rendu ne se
+// recalculent jamais (l'invalidation react-query ne re-rend pas si `/api/me` est identique) :
+// en build prod, la bannière « saison suivante » restait à la date réelle jusqu'à un re-rendu
+// fortuit (toggle de thème). Un store externe minimal règle ça à la racine : `setTodayOverride`
+// notifie, et `useTodayISO`/`useTodayDate` (via `useSyncExternalStore`) re-rendent leurs abonnés.
+const listeners = new Set<() => void>();
+
+function subscribeToday(listener: () => void): () => void {
+  listeners.add(listener);
+
+  return () => void listeners.delete(listener);
+}
+
 /**
  * Fixe le « aujourd'hui » du front, ou le relâche avec `null`.
  *
  * Une valeur invalide est IGNORÉE plutôt que propagée : un `?today=hier` qui traverserait
  * les comparaisons de chaînes ISO donnerait des filtres silencieusement faux (`"hier" > "2026-…"`
  * est vrai lexicographiquement) — un écran qui ment est pire qu'un paramètre sans effet.
+ *
+ * Ne notifie les abonnés que lorsque la valeur EFFECTIVE change (évite un re-rendu inutile et
+ * garde `getSnapshot` stable).
  */
 export function setTodayOverride(iso: string | null): void {
-  override = null !== iso && isRealDate(iso) ? iso : null;
+  const next = null !== iso && isRealDate(iso) ? iso : null;
+  if (next === override) {
+    return;
+  }
+  override = next;
+  for (const listener of listeners) {
+    listener();
+  }
 }
 
 /** La date du jour, ISO Y-m-d — l'override de dev s'il est posé, l'horloge sinon. */
@@ -101,4 +128,21 @@ if (import.meta.env.DEV && "undefined" !== typeof window) {
  */
 export function todayDate(): Date {
   return new Date(`${todayISO()}T00:00:00`);
+}
+
+/**
+ * Version RÉACTIVE de {@link todayISO} : un composant qui lit la date du jour EN RENDU doit
+ * passer par ce hook (ou {@link useTodayDate}) plutôt que d'appeler `todayISO()` directement,
+ * sinon il ne se recale pas quand l'horloge simulée serveur arrive après le premier rendu
+ * (`useApplySimulatedClock`). `getSnapshot` = `todayISO` (chaîne stable tant que rien ne bouge).
+ */
+export function useTodayISO(): string {
+  return useSyncExternalStore(subscribeToday, todayISO, todayISO);
+}
+
+/** Version RÉACTIVE de {@link todayDate} — mémoïsée sur l'ISO pour une `Date` stable. */
+export function useTodayDate(): Date {
+  const iso = useTodayISO();
+
+  return useMemo(() => new Date(`${iso}T00:00:00`), [iso]);
 }

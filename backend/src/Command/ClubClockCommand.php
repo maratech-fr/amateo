@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Clock\ClubClock;
+use App\Service\ClubMailboxPurgerInterface;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
 use Doctrine\Persistence\ManagerRegistry;
@@ -23,13 +24,13 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * (SeasonResolver, OverlayManager, guards…), le front via `/api/me` → `clock.ts`. Rejouer
  * « à trois semaines des vacances » en plein été, en rendez-vous.
  *
- * `--club` accepte un id (UUID) OU un code FFBB. Garde-fou : poser l'horloge sur un club
- * RÉEL (non démo) le coupe de tout e-mail réel (ils partent en boîte aux lettres) — la
- * commande l'EXIGE de confirmer avec `--yes`. Un club démo n'a jamais besoin de `--yes`.
+ * `--club` accepte un id (UUID) OU un code FFBB. RÉSERVÉ aux clubs de DÉMONSTRATION
+ * (`is_demo = TRUE`) : décaler l'horloge d'un vrai club donnerait la main sur des actions
+ * qui ne le concernent pas (décision fondateur 2026-10-02) — un club réel est REFUSÉ, franc.
  *
- * Idiome support (connexion PAR DÉFAUT : `club` n'a pas de colonne club_id, donc pas de
- * policy RLS — l'UPDATE ciblé par id passe). Alias déprécié `app:demo:clock` conservé le
- * temps que les habitudes migrent.
+ * Idiome support (connexion ADMIN, cross-tenant — même connexion que {@see ClubMailboxPurgerInterface},
+ * pour que le vidage de boîte au `--clear` voie bien les lignes). Alias déprécié
+ * `app:demo:clock` conservé le temps que les habitudes migrent.
  */
 #[AsCommand(
     name: 'app:club:clock',
@@ -40,8 +41,10 @@ final class ClubClockCommand extends Command
 {
     private const string UUID_PATTERN = '/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/';
 
-    public function __construct(private readonly ManagerRegistry $managerRegistry)
-    {
+    public function __construct(
+        private readonly ManagerRegistry $managerRegistry,
+        private readonly ClubMailboxPurgerInterface $mailboxPurger,
+    ) {
         parent::__construct();
     }
 
@@ -50,7 +53,6 @@ final class ClubClockCommand extends Command
         $this->addOption('club', null, InputOption::VALUE_REQUIRED, 'Target club id (UUID) or FFBB club code (required).');
         $this->addOption('date', null, InputOption::VALUE_REQUIRED, 'Simulated today, YYYY-MM-DD.');
         $this->addOption('clear', null, InputOption::VALUE_NONE, 'Release the simulated clock (back to real time).');
-        $this->addOption('yes', null, InputOption::VALUE_NONE, 'Confirm setting the clock on a real (non-demo) club — stops its real e-mails.');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -96,17 +98,25 @@ final class ClubClockCommand extends Command
             return Command::FAILURE;
         }
 
-        // Club RÉEL : poser l'horloge le coupe de ses e-mails réels — exiger --yes.
-        if (!(bool) $club['is_demo'] && !(bool) $input->getOption('yes')) {
-            $io->error('This is a REAL club — setting its clock stops its real e-mails. Pass --yes to confirm.');
+        // RÉSERVÉ aux clubs de démonstration : décaler l'horloge d'un vrai club donnerait la
+        // main sur des actions qui ne le concernent pas (radar, bascule de saison, e-mails).
+        if (!(bool) $club['is_demo']) {
+            $io->error(\sprintf('Club "%s" is NOT a demo club — the simulated clock is demo-only.', $clubRef));
 
             return Command::FAILURE;
         }
 
         $this->connection()->executeStatement(
-            'UPDATE club SET simulated_today = :date WHERE id = :id',
+            'UPDATE club SET simulated_today = :date WHERE id = :id AND is_demo = TRUE',
             ['date' => $date, 'id' => $club['id']],
         );
+
+        // Relâcher l'horloge VIDE la boîte aux lettres : hors horloge le club redevient un club
+        // qui envoie pour de vrai, les e-mails boxés n'ont plus de raison d'être (même maison que
+        // la console — décision fondateur 2026-10-02). Poser une date ne touche jamais la boîte.
+        if ($clear) {
+            $this->mailboxPurger->purge((string) $club['id']);
+        }
 
         $io->success(null === $date
             ? \sprintf('Club %s is back on the real clock.', $club['id'])
@@ -115,9 +125,14 @@ final class ClubClockCommand extends Command
         return Command::SUCCESS;
     }
 
+    /**
+     * Connexion ADMIN (amateo_owner) : action support cross-tenant, comme la console. Elle vise
+     * n'importe quel club sans dépendre d'un GUC tenant — et c'est la même connexion que
+     * {@see ClubMailboxPurgerInterface}, pour que le vidage de boîte au `--clear` voie bien les lignes.
+     */
     private function connection(): Connection
     {
-        $connection = $this->managerRegistry->getConnection();
+        $connection = $this->managerRegistry->getConnection('admin');
         \assert($connection instanceof Connection);
 
         return $connection;
