@@ -1,10 +1,9 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-09-30 (Démos PR B — ajout `app:demo:purge-stale`). Re-confronté au code :
-`AdminJobCatalog` clé `demo-purge-stale`, `app:demo:purge-stale`, quotidien 03:15
-(`AdminJobCatalog.php:62`) ✓ ; `DemoClubMaterializer::teardownStaleDemos()` existe et fait le
-tri non-démo/partagé/jour-même décrit (`DemoClubMaterializer.php:210`) ✓. Reste non re-sondé
-cette passe — un stamp REMPLACE, l'historique vit dans git.
+Last verified @ 2026-10-02 (lot images de prod — `make composer-unused` ajouté, branché dans
+`make lint`). Re-confronté au code : `backend/Makefile` porte bien une cible `composer-unused`
+dédiée, appelée par `lint` en plus de `phpstan`/`cs`/`rector` ✓. Reste non re-sondé cette passe —
+un stamp REMPLACE, l'historique vit dans git.
 
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`
 > le font pour toi. PHPUnit exige `APP_ENV=test` (sinon `test.service_container` introuvable).
@@ -73,8 +72,8 @@ Une stack pointe **une base à la fois**. Le défaut committé est le **bac à s
 | `make seed-holidays` | Rejoue les référentiels vacances scolaires + jours fériés (globaux, non-tenant, idempotents) — pas de connexion admin, non gardé |
 | `make seed-league` | RAFRAÎCHIT le catalogue des fenêtres de matchs de la ligue (global, non-tenant, `app:league-windows:seed`, idempotent — upsert par clé naturelle) — **le chargement INITIAL n'en dépend plus** : `Version20260929130000` (P4-272 ②) le charge depuis le JSON dès que `doctrine:migrations:migrate` tourne sur un catalogue vide, puis recopie chaque club×saison sans copie. Pas de connexion admin, non gardé |
 | `make phpstan` / `make cs` / `make cs-fix` / `make rector` | Analyses (cs/rector en dry-run, `cs-fix` applique). ⚠ PHPStan (`phpstan.neon`) a `paths: [src]` **seul** — `scripts/` (dont `coverage-gate.php`) n'est PAS analysé |
-| `make lint` | PHPStan + CS + Rector (tout en dry-run) — **n'inclut PAS** la garde d'hygiène des dépendances ci-dessous |
-| `composer composer-unused` (pas de cible Make — `docker compose exec php-fpm composer composer-unused`) | Garde d'hygiène des dépendances (config `composer-unused.php`, 16 faux positifs filtrés nommément) — step CI du job `phpstan`, détail et procédure faux-positif : `docs/testing/testing-strategy.md` §1 |
+| `make lint` | PHPStan + CS + Rector + `composer-unused` (tout en dry-run) |
+| `make composer-unused` | Garde d'hygiène des dépendances seule (config `composer-unused.php`, 16 faux positifs filtrés nommément) — même commande que le step CI du job `phpstan`, détail et procédure faux-positif : `docs/testing/testing-strategy.md` §1 |
 | `make migration-diff` / `make migration-migrate` | Diff / applique les migrations (connexion **admin**) |
 | `make fix-perms` | Répare les droits de `var/generate` (rapports lisibles côté host) |
 | `make exec` | Shell dans le container php-fpm |

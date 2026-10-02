@@ -1,15 +1,11 @@
 # Project Map — Amateo (engine + backend)
 
-Last verified @ 2026-09-30 (rotation de fraîcheur, `documentation-update`). Re-confronté au code :
-`engine/CONTRACT_VERSION` = **2.29** (`engine/CONTRACT_VERSION`) ✓ ; `TenantFilterListener` en
-priorité **7** sur `KernelEvents::REQUEST`
-(`backend/src/EventListener/TenantFilterListener.php:55`) ✓ ; **corrigé** — la liste des features
-frontend (§ ci-dessous) citait `feedback` comme membre de `frontend/src/features/` : `ls` ce
-dossier ne le montre plus (`admin`, `auth`, `club`, `coach-wishes`, `cockpit`, `legal`, `matches`,
-`planning`, `profile`, `release-notes`, `season-transition`, `wizard`) — le bouton/la modale de
-signalement vivent dans `frontend/src/shared/feedback/` (primitive partagée, pas une feature).
-Reste du fichier (backend détaillé §2, engine §3, sécurité) non reconfronté cette passe — voir les
-stamps de zone.
+Last verified @ 2026-10-02 (lot images de prod, `documentation-update`). Re-confronté au code :
+`.github/dependabot.yml` porte désormais **cinq** écosystèmes (pip/npm/composer/github-actions +
+**docker**, une entrée par dossier à Dockerfile : `docker/php`, `docker/engine`, `docker/frontend`,
+`docker/pdf-worker`, `docker/postgres`) — le § ci-dessous en citait quatre, corrigé. Reste du
+fichier (backend détaillé §2, engine §3, sécurité) non reconfronté cette passe — voir les stamps
+de zone.
 
 Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend has been **rebuilt (React 19) and is active** — features live under `frontend/src/features/` (`ls` it, no count here — it rots): `auth`, `wizard` (data entry), `planning` (work-loop), `cockpit`, `matches`, `coach-wishes` (doléances), `club`, `profile`, `season-transition`, `legal`, `release-notes` (journal + modale « quoi de neuf ») et `admin` (console superadmin, garde et session distinctes). The feedback button/dialog are a shared primitive, not their own feature: `frontend/src/shared/feedback/`. See `../frontend/docs/frontend-wizard.md` and `frontend-spec.md`. Generated/verified during onboarding against the real code and the `code-review-graph` knowledge graph.
 
@@ -194,7 +190,7 @@ The MCP server (`.mcp.json`: `uvx code-review-graph serve`) loads at session sta
 
 Two further MCP servers are configured in `.mcp.json` and enabled: **Serena** (`uvx … serena start-mcp-server`, LSP-based symbol navigation for PHP + Python + TS; `.serena/project.yml` excludes only frontend build artifacts `dist|node_modules|storybook-static`) and **Context7** (`@upstash/context7-mcp`, up-to-date external-library docs). Separately, the **Caveman** plugin is installed user-scope (opt-in compressed communication mode). All are dev-time tooling — no application-code impact.
 
-**Dependabot** (`.github/dependabot.yml`, audit supply-chain) scans the four dependency ecosystems weekly — **pip** (`/engine`), **npm** (`/frontend`), **composer** (`/backend`), **github-actions** (`/`) — opening grouped version-bump PRs (labelled `dependencies` + zone). Security PRs from GHSA alerts require Dependabot security-updates enabled at the repo (Settings → Code security). This is GitHub-side CI automation (not a local hook, not agent automation), so it is orthogonal to the "no hidden agent automation" rule (§7 CLAUDE.md). The open PRs are processed by the **manual `/dependabot` skill** (`.claude/skills/dependabot/`): verify → repair our code if the upgrade breaks it → zone test suite → merge; invoking the skill is the user's merge go **for those PRs only**.
+**Dependabot** (`.github/dependabot.yml`, audit supply-chain) scans the dependency ecosystems weekly — **pip** (`/engine`), **npm** (`/frontend`), **composer** (`/backend`), **github-actions** (`/`), **docker** (one entry per Dockerfile-containing directory: `docker/php`, `docker/engine`, `docker/frontend`, `docker/pdf-worker`, `docker/postgres` — base-image bumps) — opening grouped version-bump PRs (labelled `dependencies` + zone). Security PRs from GHSA alerts require Dependabot security-updates enabled at the repo (Settings → Code security). This is GitHub-side CI automation (not a local hook, not agent automation), so it is orthogonal to the "no hidden agent automation" rule (§7 CLAUDE.md). The open PRs are processed by the **manual `/dependabot` skill** (`.claude/skills/dependabot/`): verify → repair our code if the upgrade breaks it → zone test suite → merge; invoking the skill is the user's merge go **for those PRs only**.
 
 ---
 

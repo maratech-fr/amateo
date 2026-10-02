@@ -1,13 +1,13 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-10-01 (`documentation-update`, PR 8/8 série « uniformité des écrans »). Re-confronté
-au code : ligne « Playwright » (§1) — `frontend/tests/e2e/` porte désormais aussi
-`visual-reference.spec.ts` (garde de captures de référence `toHaveScreenshot`, détail/procédure de
-re-baseline : `testing-strategy.md` §1) ; le compte de specs nommées, volatile, est retiré au
-profit du renvoi à §2. §4 — la note « fond d'écran commun, non mesuré » est nuancée : un pixel-diff
-existe désormais pour 9 écrans authentifiés/publics en thème clair desktop, pas pour le reflow
-mobile ni le thème sombre. Reste des lignes non re-sondées cette passe — historique complet :
-`git log -p --follow docs/testing/test-coverage-map.md`.
+Last verified @ 2026-10-02 (`documentation-update`, lot images de prod). Re-confronté au code :
+ligne « Statique » (§1) — `backend/Makefile` (`composer-unused` dans `lint`) et `frontend/Makefile`
+(`lint:deps`/knip dans `lint`) confirment que les trois gardes de dépendances mortes (deptry,
+composer-unused, knip) sont désormais TOUTES dans le `make lint` de leur zone — la précédente
+affirmation (« composer-unused et knip hors de `make lint` ») datait d'avant ce lot et est
+corrigée ici. Reste des lignes non re-sondées cette passe (dernière vérification : 2026-10-01,
+PR 8/8 série « uniformité des écrans » — §1 Playwright, §4 captures de référence) — historique
+complet : `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
 > prouve**, **par quel job CI**, et **ce que personne ne prouve**. Il ne remplace ni
@@ -27,7 +27,7 @@ mobile ni le thème sombre. Reste des lignes non re-sondées cette passe — his
 | Vitest + RTL | frontend | composants, hooks react-query, lib pure (`vi.mock` des queries) ; jsdom — **aucune mise en page** (`.claude/rules/frontend.md`) ; **couverture + cliquet** (`make -C frontend coverage`, plancher lu de `coverage-floor.json`, artefact `coverage-frontend`) ; **cliquet act-warnings** (reporter `tooling/actWarningsRatchet.ts`, plafond lu de `act-warnings-ceiling.json`, rougit `npm run test` — donc le job `frontend` — dès que les avertissements React « not wrapped in act » dépassent le plafond ; fil de détente à 0, FRT-34) | `frontend/src/**/*.test.ts*` | `make -C frontend test` (image tooling à rebâtir avant) · `make -C frontend coverage` (couverture, séparé — suite complète instrumentée, hors boucle courte) | `frontend` ; `frontend-coverage` (couverture, `needs: frontend`, hors `needs` de `build-docker`) |
 | Playwright | frontend + stack complète | parcours nommés en §2 — dont **le seul test UI → API → engine → planning** (`journey.spec.ts`, qui prouve aussi la livraison PAR SSE : témoin Mercure, échec nommé si le hub reste muet — P4-168), les specs **axe** (contraste 2 thèmes, reflow, voile, écrans système, en-têtes de sécurité — portée détaillée en §2), et la garde de **captures de référence** `visual-reference.spec.ts` (`toHaveScreenshot`, pixel-diff, 9 écrans, thème clair desktop seul — procédure de re-baseline : `testing-strategy.md` §1) | `frontend/tests/e2e/` | `make -C frontend e2e` | `e2e` |
 | Behat | stack complète | scénarios métier en français (Gherkin), une promesse par feature, lisibles et relisables par le fondateur, joués contre l'API réelle (aucun navigateur, aucun noyau in-process) — §5 : les 5 premières remplacent intégralement les smokes bash (`backend/scripts/*smoke*.sh`, SUPPRIMÉS — P4-165), les suivantes couvrent les règles qui détruisent/refusent/isolent (P4-175) | `backend/features/`, contexts `backend/tests/Behat/` | `make -C backend behat` (sous `with-sandbox.sh` en mode play) | `functional-tests` |
-| Statique | 3 zones | PHPStan 8 · CS-Fixer · Rector · **composer-unused** (dépendances mortes) — ruff · `ruff format` · mypy strict · bandit · **deptry** (dépendances mortes) — eslint · `tsc -b --force` · **knip** (dépendances/fichiers morts) | Makefiles (composer-unused et knip **hors** de `make lint`, deptry dedans — détail : `testing-strategy.md` §1) | `make lint` (composer-unused/knip : commande directe, hors cible Make) | `phpstan`, `rector`, `engine-tests`, `frontend` |
+| Statique | 3 zones | PHPStan 8 · CS-Fixer · Rector · **composer-unused** (dépendances mortes) — ruff · `ruff format` · mypy strict · bandit · **deptry** (dépendances mortes) — eslint · `tsc -b --force` · **knip** (dépendances/fichiers morts) | Makefiles (les trois gardes de dépendances mortes sont dans leur `make lint` de zone — détail : `testing-strategy.md` §1) | `make lint` (composer-unused/knip/deptry inclus) | `phpstan`, `rector`, `engine-tests`, `frontend` |
 | Sécurité | dépôt, images | gitleaks (historique entier), semgrep, `composer`/`npm`/`pip audit` (retry sur endpoint indisponible seulement, `.github/scripts/audit-retry.sh`), Trivy CRITICAL sur les images prod | `.github/workflows/` | — | `secrets-scan`, `semgrep`, `dependency-audit`, `build-docker` + cron hebdo `security-weekly.yml` |
 
 Les trois testsuites (`Unit`, `Integration`, `Contract`) couvrent **tous** les sous-dossiers de

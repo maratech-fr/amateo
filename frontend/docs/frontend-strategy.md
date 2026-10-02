@@ -1,17 +1,10 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-09-30 (`documentation-update`, dépendances inutiles retirées). Re-confronté au
-code : versions du § Stack Versions Fixed toujours exactes contre `frontend/package.json` (react
-^19.2.8, vite ^8.2.2, typescript ~6.0.2, tailwindcss ^4.3.0, @tanstack/react-query ^5.102.8,
-zustand ^5.0.15) ; **`msw`, `storybook`/`@storybook/react-vite`, `@vitest/ui`,
-`tailwindcss-animate` et `@tanstack/react-query-devtools` RETIRÉS de `package.json`** (chore
-nettoyage, 2026-09-30 — `msw` n'avait jamais eu d'import dans `src`/`tests`, Storybook n'allait pas
-au-delà d'une story, les trois autres étaient inertes) ; `shared/api/errors.ts` toujours absent
-(grep vide), la maison unique d'erreur reste `shared/lib/errorMessage.ts` ✓ ; `testTimeout: 15_000`
-(`vitest.config.ts:49`) et `asyncUtilTimeout: 5_000` (`src/test/setup.ts:28`) toujours en vigueur
-✓ ; `wizard/steps/PeriodStructure.test.tsx` renommé `PeriodSteps.test.tsx` (même chore) — le test
-« déplacer un créneau réservé » y vit toujours (`PeriodSteps.test.tsx:753`). Chronique des passes
-antérieures : `git log -p --follow` ce fichier.
+Last verified @ 2026-10-02 (lot images de prod). Re-confronté au code : la ligne knip du § Testing
+Stack — `frontend/Makefile` (`lint`) lance désormais `npm run lint:deps` en plus d'ESLint/`tsc -b`,
+donc knip tourne par `make -C frontend lint` ET en CI, corrigé ici (elle ne disait que « step CI »).
+Reste du fichier (§ Stack Versions Fixed et le reste) non reconfronté cette passe. Chronique des
+passes antérieures : `git log -p --follow` ce fichier.
 
 > Fixe le mandat de test, les versions de la stack, les anti-patterns et les règles de
 > préservation d'infrastructure. Le détail fonctionnel (routes, composants, wizard) est dans
@@ -208,7 +201,7 @@ au-delà de 3 s est colorié dans le rapport : c'est là qu'on regarde si le sc�
 | Cliquet act-warnings | — | `tooling/actWarningsRatchet.ts` (reporter Vitest) : compte les avertissements React « not wrapped in act » au processus principal, rougit le run dès qu'ils dépassent le plafond versionné `act-warnings-ceiling.json` (FRT-34, même patron que le plancher de couverture ; fil de détente si le compte tombe à 0 alors que le plafond > 0 = capture cassée). |
 | @playwright/test | 1.x | E2E (`frontend/tests/e2e/`) |
 | **vitest-axe** · **@axe-core/playwright** | 0.x · 4.x | **Assertions a11y** — suite unitaire (`src/test/a11y.test.tsx`) + spec de contraste e2e (`tests/e2e/a11y-contrast.spec.ts`) |
-| knip | 6.x | **Garde d'hygiène des dépendances** (`npm run lint:deps`, config `frontend/knip.json`), step CI du job `frontend` — détail : `docs/testing/testing-strategy.md` §1 |
+| knip | 6.x | **Garde d'hygiène des dépendances** (`npm run lint:deps`, config `frontend/knip.json`), lancée par `make -C frontend lint` ET step CI du job `frontend` — mêmes commandes, détail : `docs/testing/testing-strategy.md` §1 |
 
 > ⚑ **Ces tables portent la MAJEURE, jamais la mineure** (décision du 2026-08-19, rotation de
 > fraîcheur). Elles donnaient `^4.1`, `^29.1`, `^10.68`… et **quatre avaient déjà dérivé** : une
