@@ -9,6 +9,7 @@ use App\Dto\VenueUnavailabilityInput;
 use App\Entity\Venue;
 use App\Entity\VenueUnavailability;
 use DateTimeImmutable;
+use LogicException;
 
 /**
  * Cockpit-surface write (the unavailability is posed on the club calendar) —
@@ -40,12 +41,12 @@ class VenueUnavailabilityStateProcessor extends AbstractStateProcessor
     }
 
     /**
-     * @param VenueUnavailability      $entity
-     * @param VenueUnavailabilityInput $input
+     * PUT retiré de cette ressource (nettoyage API) — l'abstraction impose seulement
+     * que ce foyer existe ; il n'est plus atteignable par l'API.
      */
     protected function updateEntityFromInput(object $entity, object $input): void
     {
-        $this->applyInput($entity, $input);
+        throw new LogicException('La modification (PUT) n\'est pas exposée pour les indisponibilités de gymnase.');
     }
 
     /**

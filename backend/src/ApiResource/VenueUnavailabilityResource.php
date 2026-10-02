@@ -11,7 +11,6 @@ use ApiPlatform\Metadata\Delete;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
-use ApiPlatform\Metadata\Put;
 use App\Dto\VenueUnavailabilityInput;
 use App\Entity\VenueUnavailability;
 use App\State\Processor\VenueUnavailabilityStateProcessor;
@@ -20,11 +19,11 @@ use DateTimeImmutable;
 use Symfony\Component\Serializer\Attribute\Groups;
 
 /** All-circumstances venue unavailability — alerts matches AND training, blocks nothing. */
+// PUT retiré (nettoyage API) : non appelé par le front (une indisponibilité se crée/se retire).
 #[ApiResource(shortName: 'VenueUnavailability', operations: [
     new GetCollection,
     new Get,
     new Post,
-    new Put,
     new Delete,
 ], input: VenueUnavailabilityInput::class, paginationEnabled: true, paginationItemsPerPage: 50, provider: VenueUnavailabilityStateProvider::class, processor: VenueUnavailabilityStateProcessor::class)]
 #[ApiFilter(SearchFilter::class, properties: ['venueId' => 'exact', 'seasonId' => 'exact'])]

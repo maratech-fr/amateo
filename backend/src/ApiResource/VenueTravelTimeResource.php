@@ -7,7 +7,6 @@ namespace App\ApiResource;
 use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
 use ApiPlatform\Metadata\ApiFilter;
 use ApiPlatform\Metadata\ApiResource;
-use ApiPlatform\Metadata\Delete;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
@@ -20,12 +19,12 @@ use DateTimeImmutable;
 use Symfony\Component\Serializer\Attribute\Groups;
 
 /** A per-couple travel-time bracket between two venues — symmetric, one per couple. */
+// DELETE retiré (nettoyage API) : non appelé par le front (un barème se crée/se modifie).
 #[ApiResource(shortName: 'VenueTravelTime', operations: [
     new GetCollection,
     new Get,
     new Post,
     new Put,
-    new Delete,
 ], input: VenueTravelTimeInput::class, paginationEnabled: true, paginationItemsPerPage: 50, provider: VenueTravelTimeStateProvider::class, processor: VenueTravelTimeStateProcessor::class)]
 #[ApiFilter(SearchFilter::class, properties: ['seasonId' => 'exact'])]
 class VenueTravelTimeResource

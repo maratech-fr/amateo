@@ -9,6 +9,7 @@ use App\Dto\VenueMatchWindowInput;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use DateTimeImmutable;
+use LogicException;
 
 /**
  * Wizard-surface structure entity (like VenueTrainingSlot): NOT management
@@ -35,12 +36,12 @@ class VenueMatchWindowStateProcessor extends AbstractStateProcessor
     }
 
     /**
-     * @param VenueMatchWindow      $entity
-     * @param VenueMatchWindowInput $input
+     * PUT retiré de cette ressource (nettoyage API) — l'abstraction impose seulement
+     * que ce foyer existe ; il n'est plus atteignable par l'API.
      */
     protected function updateEntityFromInput(object $entity, object $input): void
     {
-        $this->applyInput($entity, $input);
+        throw new LogicException('La modification (PUT) n\'est pas exposée pour les fenêtres d\'accès aux matchs.');
     }
 
     /**
