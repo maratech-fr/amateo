@@ -30,7 +30,7 @@ function demos(overrides: Partial<AdminDemosResponse> = {}): AdminDemosResponse 
   return {
     // 20:00 UTC en juin = 22:00 à Paris (CEST), et dans le futur → fenêtre ouverte.
     bccl: { email: "demo-bccl@amateo.fr", activeUntil: "2099-06-15T20:00:00+00:00", clubName: "Démo Basket Club", simulatedToday: "2026-01-15" },
-    prospect: { email: "demo@amateo.fr", activeUntil: null, clubName: null },
+    prospect: { email: "demo@amateo.fr", activeUntil: null, clubName: null, simulatedToday: null },
     ...overrides,
   };
 }
@@ -45,7 +45,7 @@ describe("DemosSection", () => {
     useAdminStore.getState().setSession({ id: "sa", email: "sa@x" }, "csrf-token");
   });
 
-  it("rend les deux comptes, la fenêtre à l'heure de Paris et l'horloge simulée", async () => {
+  it("rend les deux comptes, la fenêtre à l'heure de Paris et l'horloge des DEUX cartes", async () => {
     mockGet.mockResolvedValue(demos());
     renderWithProviders(<DemosSection />);
 
@@ -62,8 +62,9 @@ describe("DemosSection", () => {
     expect(screen.getByRole("button", { name: /Réactiver 4 h/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Activer 4 h" })).toBeInTheDocument();
 
-    // L'horloge simulée est présentée (seulement sur la carte BCCL).
-    expect((screen.getByLabelText(/Date simulée de la démo/) as HTMLInputElement).value).toBe("2026-01-15");
+    // L'horloge est désormais sur les DEUX cartes (capacité générique factorisée).
+    expect((screen.getByLabelText(/Date simulée — Démo BCCL/) as HTMLInputElement).value).toBe("2026-01-15");
+    expect((screen.getByLabelText(/Date simulée — Démo prospect/) as HTMLInputElement).value).toBe("");
   });
 
   it("active le compte prospect", async () => {
@@ -87,17 +88,29 @@ describe("DemosSection", () => {
     await waitFor(() => expect(mockReset).toHaveBeenCalledWith("csrf-token"));
   });
 
-  it("applique puis efface la date simulée BCCL", async () => {
+  it("applique puis efface la date simulée BCCL (cible bccl)", async () => {
     mockGet.mockResolvedValue(demos());
     renderWithProviders(<DemosSection />);
 
-    const input = await screen.findByLabelText(/Date simulée de la démo/);
+    const card = (await screen.findByText("Démo BCCL")).closest("article") as HTMLElement;
+    const input = within(card).getByLabelText(/Date simulée — Démo BCCL/);
     fireEvent.change(input, { target: { value: "2026-03-03" } });
-    fireEvent.click(screen.getByRole("button", { name: "Appliquer" }));
-    await waitFor(() => expect(mockClock).toHaveBeenCalledWith({ date: "2026-03-03" }, "csrf-token"));
+    fireEvent.click(within(card).getByRole("button", { name: "Appliquer" }));
+    await waitFor(() => expect(mockClock).toHaveBeenCalledWith("bccl", { date: "2026-03-03" }, "csrf-token"));
 
-    fireEvent.click(screen.getByRole("button", { name: /Revenir à aujourd/ }));
-    await waitFor(() => expect(mockClock).toHaveBeenCalledWith({ clear: true }, "csrf-token"));
+    fireEvent.click(within(card).getByRole("button", { name: /Revenir à aujourd/ }));
+    await waitFor(() => expect(mockClock).toHaveBeenCalledWith("bccl", { clear: true }, "csrf-token"));
+  });
+
+  it("applique la date simulée du compte prospect (cible prospect)", async () => {
+    mockGet.mockResolvedValue(demos());
+    renderWithProviders(<DemosSection />);
+
+    const card = (await screen.findByText("Démo prospect")).closest("article") as HTMLElement;
+    const input = within(card).getByLabelText(/Date simulée — Démo prospect/);
+    fireEvent.change(input, { target: { value: "2026-05-05" } });
+    fireEvent.click(within(card).getByRole("button", { name: "Appliquer" }));
+    await waitFor(() => expect(mockClock).toHaveBeenCalledWith("prospect", { date: "2026-05-05" }, "csrf-token"));
   });
 
   it("affiche l'indisponibilité quand la lecture échoue", async () => {

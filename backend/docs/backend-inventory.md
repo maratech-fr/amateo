@@ -3,13 +3,14 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-10-02 (branche `feat/horloge-boite-aux-lettres` — nouvelle section « Boîte
-aux lettres » ajoutée : `ClubMailboxMessage`/`club_mailbox_message` (tenant, RLS standard,
-`ON DELETE CASCADE` sur `club`, `Version20261002120000`), `ClockedClubMailInterceptor`
-(`MessageEvent`, priorité 100, enfilage seul), `MailboxController` (`GET /api/mailbox[/{id}]`) ;
-paragraphe « Console démo » recalé — `reset`/`clock --clear` vident désormais aussi la boîte.
-Reste du fichier non rebalayé cette passe ; historique des passes complètes :
-`git log -p --follow` ce fichier — un stamp REMPLACE, il ne s'empile pas.
+Last verified @ 2026-10-02 (branche `feat/horloge-console-tout-club` — §Module démo recalé : l'horloge
+simulée est désormais activable pour N'IMPORTE QUEL club depuis la console
+(`POST /api/admin/clubs/{clubId}/clock`, `AdminDemoController::clubClock()`), pas seulement un club
+démo — confirmation nominative (`confirmName`) exigée pour POSER une date sur un club RÉEL (jamais
+au `clear`) ; `app:demo:clock` renommé `app:club:clock` (`src/Command/ClubClockCommand.php`, alias
+déprécié conservé, `--club` résout id OU code FFBB, `--yes` exigé sur un club réel). Reste du fichier
+non rebalayé cette passe ; historique des passes complètes : `git log -p --follow` ce fichier — un
+stamp REMPLACE, il ne s'empile pas.
 
 ---
 
@@ -500,14 +501,19 @@ Deux mécanismes distincts, à ne pas confondre :
    (`src/Entity/Club.php:127`, colonne `club.simulated_today`, ex `demo_today` — renommage pur,
    `Version20261002090000`) ; si posée, `now()` rend la **date simulée** à l'**heure réelle** dans
    le fuseau réel pour ce club ; sinon l'horloge est vraie. Le champ n'est **pas** réservé aux
-   clubs `isDemo` par construction — seul l'usage actuel (commande CLI + console démo) le pose
-   uniquement sur des clubs de démo. **Aucune route HTTP applicative n'écrit `simulatedToday`** —
-   seule la commande CLI `app:demo:clock` (`src/Command/DemoClockCommand.php`, options `--club`,
-   `--date`, `--clear`) et la console superadmin (`AdminDemoController`, ci-dessous) le font, des
-   actions de support (SA4). Drapeau DEV `APP_CLUB_CLOCK_ALL` (`.env`=0, `.env.dev`=1, défaut 0,
-   `%app.club_clock_all%` dans `services.yaml`) : si actif et l'environnement ≠ `prod`, un club
-   SANS `simulatedToday` emprunte le pin global du widget DevClock (point 2 ci-dessous) — neutralisé
-   en production quel que soit le réglage.
+   clubs `isDemo` — depuis le 2026-10-02 la console superadmin l'active aussi sur un club RÉEL
+   (décision fondateur : « si demain j'ajoute 80 clubs, j'active juste l'horloge, le reste suit »).
+   **Aucune route HTTP APPLICATIVE n'écrit `simulatedToday`** (surface club) — seuls des chemins
+   de SUPPORT le font : la commande CLI `app:club:clock` (`src/Command/ClubClockCommand.php`,
+   options `--club` id|code FFBB, `--date`, `--clear`, `--yes` exigé sur un club non démo ; alias
+   déprécié `app:demo:clock`) et deux routes superadmin (`AdminDemoController`, ci-dessous) :
+   `POST /api/admin/demos/{target}/clock` (club démo courant d'un compte démo, résolu SERVEUR,
+   jamais de confirmation) et `POST /api/admin/clubs/{clubId}/clock` (N'IMPORTE QUEL club — un club
+   RÉEL exige `confirmName` égal à son nom exact pour POSER une date, sinon 422 ; le `clear` d'un
+   club réel ne demande jamais de confirmation). Drapeau DEV `APP_CLUB_CLOCK_ALL` (`.env`=0,
+   `.env.dev`=1, défaut 0, `%app.club_clock_all%` dans `services.yaml`) : si actif et
+   l'environnement ≠ `prod`, un club SANS `simulatedToday` emprunte le pin global du widget
+   DevClock (point 2 ci-dessous) — neutralisé en production quel que soit le réglage.
 2. **`DevClockController`** (`/api/dev/clock`, GET/POST) est un mécanisme **global**, sans
    rapport avec `simulatedToday` d'un club précis : il pin/relâche l'horloge de TOUTE l'app dans
    Redis (`DevClockStore`), lue par `SimulatedClock` (alias de `ClockInterface` en dev) et — via
@@ -610,24 +616,43 @@ bloquant `DemoWindowTest` + feature Behat `la-demo-ne-s-ouvre-que-pendant-sa-fen
 
 **Console démo** (`AdminDemoController`, `/api/admin/demos*`, PR B — mêmes gardes que les
 actions de support SA4, connexion `admin`, **aucun `club_id` posé**) : `GET /demos` lit l'état
-des deux comptes (fenêtre ISO, club démo courant résolu SERVEUR depuis l'adhésion active,
-`simulated_today` pour BCCL seule) ; `POST /demos/{bccl|prospect}/activate` pose
-`demo_active_until` à now+4 h à l'horloge **RÉELLE** — un re-clic **REDÉMARRE** la fenêtre,
-jamais une addition ; `POST /demos/{target}/deactivate` la ferme (`NULL`). `POST
-/demos/bccl/reset` relance `app:demo:seed` en **SOUS-PROCESSUS** via `DemoResetRunner`
-(`src/Service/DemoResetRunner.php`, `DATABASE_ADMIN_URL`, patron `Process` — même patron que
-`DatabaseBackupCommand`, la requête console tournant elle sur la connexion applicative,
-incapable de purger le workspace à travers la RLS), puis remet `club.simulated_today` à `NULL`
-(décision fondateur) **sans toucher la fenêtre du compte** — échec du re-seed → 502, horloge
-intacte. `POST /demos/bccl/clock` pose (`date`) ou relâche (`clear`) `simulated_today` du club BCCL,
-résolu SERVEUR depuis le compte `demo-bccl@`, gardé `is_demo = TRUE` — même garde de calendrier
-que `DemoClockCommand` (`2026-02-31` refusé). **Vider la boîte aux lettres** (P4-16, ci-dessous) :
-`reset` la vide TOUJOURS (les e-mails interceptés d'une démo précédente ne survivent pas à une
-réinitialisation) ; `clock` ne la vide que sur **`clear`** — poser/changer une date ne la touche
-pas, seul le retour à « aujourd'hui » le fait (décision fondateur : hors horloge, le club redevient
-réel et enverrait pour de vrai, les e-mails boxés n'ont plus de raison d'être). Front : 8ᵉ onglet « Démos »
-(`frontend/src/features/admin/tabs/tabsConfig.ts`), deux cartes (`DemosSection.tsx`), heures
-rendues à l'heure de Paris. NR bloquant `Integration/Admin/AdminDemoResetTest`.
+des deux comptes (fenêtre ISO, club démo courant résolu SERVEUR depuis l'adhésion active, et —
+pour les **deux** comptes depuis le 2026-10-02, plus seulement BCCL — `simulated_today`) ;
+`POST /demos/{bccl|prospect}/activate` pose `demo_active_until` à now+4 h à l'horloge **RÉELLE** —
+un re-clic **REDÉMARRE** la fenêtre, jamais une addition ; `POST /demos/{target}/deactivate` la
+ferme (`NULL`). `POST /demos/bccl/reset` relance `app:demo:seed` en **SOUS-PROCESSUS** via
+`DemoResetRunner` (`src/Service/DemoResetRunner.php`, `DATABASE_ADMIN_URL`, patron `Process` —
+même patron que `DatabaseBackupCommand`, la requête console tournant elle sur la connexion
+applicative, incapable de purger le workspace à travers la RLS), puis remet
+`club.simulated_today` à `NULL` (décision fondateur) **sans toucher la fenêtre du compte** —
+échec du re-seed → 502, horloge intacte. `POST /demos/{target}/clock` pose (`date`) ou relâche
+(`clear`) `simulated_today` du club démo COURANT de `bccl` ou `prospect`, résolu SERVEUR depuis le
+compte, gardé `is_demo = TRUE` — même garde de calendrier que `ClubClockCommand` (`2026-02-31`
+refusé), jamais de confirmation (un compte démo a les droits pleins, aucun e-mail réel en jeu).
+**Vider la boîte aux lettres** (P4-16, ci-dessous) : `reset` la vide TOUJOURS (les e-mails
+interceptés d'une démo précédente ne survivent pas à une réinitialisation) ; `clock` ne la vide
+que sur **`clear`** — poser/changer une date ne la touche pas, seul le retour à « aujourd'hui »
+le fait (décision fondateur : hors horloge, le club redevient réel et enverrait pour de vrai, les
+e-mails boxés n'ont plus de raison d'être).
+
+**Horloge sur N'IMPORTE QUEL club** (`POST /api/admin/clubs/{clubId}/clock`, 2026-10-02) —
+capacité GÉNÉRIQUE, même maison d'écriture que ci-dessus (`writeClock()`, une seule) : un club
+RÉEL (non démo) qui POSE une date doit confirmer en portant `confirmName` égal au nom exact du
+club, sinon **422** sans écriture (poser l'horloge le coupe de ses e-mails réels, boxés) ; le
+`clear` d'un club réel, lui, ne demande rien (restaure l'envoi réel, geste sûr) — un club démo
+n'exige jamais de confirmation. Mêmes gardes que les actions de support (contexte d'audit posé
+AVANT toute garde, CSRF, identité `SuperAdmin`), club résolu par forme UUID validée puis
+existence (404 sinon, jamais de 500 Postgres). Front : liste des comptes clubs, bouton
+« Horloge » par ligne (`ClubClockDialog` — champ date + Appliquer/Revenir à aujourd'hui, et pour
+un club réel un `ConfirmDialog` nominatif demandant de retaper le nom exact du club avant que le
+bouton de confirmation ne devienne actif) ; `AdminClub` expose `simulatedToday`.
+
+Front des deux cartes démo : 8ᵉ onglet « Démos » (`frontend/src/features/admin/tabs/tabsConfig.ts`),
+`DemosSection.tsx` — carte « Date simulée » (`ClockCard`, maison unique factorisée) rendue sur les
+**deux** comptes (BCCL ET prospect), heures de fenêtre rendues à l'heure de Paris. NR bloquant
+`Integration/Admin/AdminDemoResetTest` (étendu : 401/403, 422 sur date malformée ou `confirmName`
+absent/erroné, 200 sur un club démo sans confirmation, `clear` → `simulatedToday` NULL + boîte
+vidée + autre club intact, 404 club inconnu/forme malformée).
 
 **Purge nocturne du prospect périmé** : `app:demo:purge-stale`
 (`src/Command/DemoPurgeStaleCommand.php`, cron-runner quotidien **03:15**, clé

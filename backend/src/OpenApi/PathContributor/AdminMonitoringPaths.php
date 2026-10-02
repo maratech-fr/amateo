@@ -195,6 +195,8 @@ final readonly class AdminMonitoringPaths implements CustomPathContributor
                                 'name' => ['type' => 'string'],
                                 'slug' => ['type' => 'string'],
                                 'ffbbClubCode' => ['type' => 'string', 'nullable' => true],
+                                'isDemo' => ['type' => 'boolean'],
+                                'simulatedToday' => ['type' => 'string', 'format' => 'date', 'nullable' => true],
                                 'plan' => ['type' => 'object', 'nullable' => true, 'properties' => [
                                     'code' => ['type' => 'string'],
                                     'name' => ['type' => 'string'],

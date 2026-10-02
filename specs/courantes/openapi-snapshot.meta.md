@@ -1,9 +1,10 @@
-Last verified @ 2026-10-02 (Boîte aux lettres d'un club à horloge simulée : deux routes tenant en
-lecture seule `GET /api/mailbox` (liste + compteur) et `GET /api/mailbox/{id}` (détail avec corps)
-exposées par `MailboxController` et décrites par `MailboxPaths`. **+2 paths**).
+Last verified @ 2026-10-02 (Horloge simulée générique par club : nouvelle route superadmin
+`POST /api/admin/clubs/{clubId}/clock` (pose/relâche l'horloge de n'importe quel club, `confirmName`
+exigé pour un club réel daté) décrite par `AdminDemoPaths` ; l'ancienne `POST /api/admin/demos/bccl/clock`
+devient `POST /api/admin/demos/{target}/clock` (bccl ou prospect, même path). **+1 path**).
 
-**223 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`6713065d3acee70b346830570c591980dd16ff2267bc7c84115c051177fb84b4` (`sha256sum` sur le fichier).
+**224 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`dc1b80ff6997b6a95637e07c8d8b56600c1b8e99d1a2b4b05897a7d52aa48753` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

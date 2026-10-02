@@ -6,7 +6,7 @@ import { axe } from "vitest-axe";
 import { renderWithProviders } from "@/test/utils";
 
 import type { AdminActionsResponse, AdminClubsResponse, AdminFreshnessResponse, AdminHealthResponse, AdminJobsResponse, AdminOverviewResponse } from "./api";
-import { getAdminActions, getAdminClubs, getAdminFreshness, getAdminHealth, getAdminJobs, getAdminOverview, runAdminClubAction, runAdminJob } from "./api";
+import { getAdminActions, getAdminClubs, getAdminFreshness, getAdminHealth, getAdminJobs, getAdminOverview, runAdminClubAction, runAdminJob, setAdminClubClock } from "./api";
 import { AdminDashboardPage } from "./AdminDashboardPage";
 import { useAdminStore } from "./store";
 
@@ -21,6 +21,7 @@ vi.mock("./api", async (importOriginal) => {
     runAdminJob: vi.fn(),
     getAdminActions: vi.fn(),
     runAdminClubAction: vi.fn(),
+    setAdminClubClock: vi.fn(),
     getAdminFreshness: vi.fn(),
   };
 });
@@ -86,6 +87,7 @@ const clubs: AdminClubsResponse = {
       slug: "basket-club-des-lacs",
       ffbbClubCode: "ARA001",
       isDemo: false,
+      simulatedToday: null,
       plan: null,
       paidSeasonYear: null,
       effectivePlan: { code: "decouverte", name: "Découverte" },
@@ -210,6 +212,7 @@ const mockClubs = vi.mocked(getAdminClubs);
 const mockRunJob = vi.mocked(runAdminJob);
 const mockActions = vi.mocked(getAdminActions);
 const mockRunClubAction = vi.mocked(runAdminClubAction);
+const mockClubClock = vi.mocked(setAdminClubClock);
 const mockFreshness = vi.mocked(getAdminFreshness);
 
 describe("AdminDashboardPage", () => {
@@ -222,6 +225,7 @@ describe("AdminDashboardPage", () => {
     mockRunJob.mockReset().mockResolvedValue({ key: "import-school-holidays", status: "succeeded", exitCode: 0 });
     mockActions.mockReset().mockResolvedValue(actions);
     mockRunClubAction.mockReset().mockResolvedValue({ key: "reset-credits", clubId: "club-1", status: "succeeded", exitCode: 0 });
+    mockClubClock.mockReset().mockResolvedValue({ simulatedToday: null });
     mockFreshness.mockReset().mockResolvedValue(freshness);
     useAdminStore.setState({ identity: { id: "admin-1", email: "ops@example.test" }, csrfToken: "csrf-123" });
   });
@@ -517,5 +521,50 @@ describe("AdminDashboardPage", () => {
     for (const panel of screen.getAllByRole("tabpanel", { hidden: true })) {
       expect(panel.className).toContain("ring-console-accent/20");
     }
+  });
+
+  // Horloge simulée générique par club (PR C) — depuis la liste des comptes clubs.
+
+  it("pose l'horloge d'un club RÉEL derrière une confirmation nominative (nom exact)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
+
+    await user.click(await screen.findByRole("button", { name: /Horloge/ }));
+    const dialog = await screen.findByRole("dialog", { name: /Horloge simulée/ });
+    await user.type(within(dialog).getByLabelText("Date simulée du club"), "2026-01-15");
+    await user.click(within(dialog).getByRole("button", { name: "Poser la date" }));
+
+    // Club réel → une confirmation s'ouvre AVANT tout appel (warning e-mails + nom à retaper).
+    const confirm = await screen.findByRole("dialog", { name: /Poser l’horloge sur Basket Club des Lacs/ });
+    expect(within(confirm).getByText(/ne recevra plus aucun e-mail réel/i)).toBeInTheDocument();
+    const poser = within(confirm).getByRole("button", { name: "Poser l’horloge" });
+
+    // Tant que le nom exact n'est pas tapé, le bouton reste désactivé (aucun appel).
+    expect(poser).toBeDisabled();
+    expect(mockClubClock).not.toHaveBeenCalled();
+
+    // Nom exact → le bouton s'active et l'appel porte confirmName.
+    await user.type(within(confirm).getByLabelText(/pour confirmer/i), "Basket Club des Lacs");
+    expect(poser).toBeEnabled();
+    await user.click(poser);
+    await waitFor(() => expect(mockClubClock).toHaveBeenCalledWith("club-1", { date: "2026-01-15", confirmName: "Basket Club des Lacs" }, "csrf-123"));
+  });
+
+  it("pose l'horloge d'un club DÉMO sans aucune confirmation", async () => {
+    mockClubs.mockResolvedValue({
+      ...clubs,
+      items: [{ ...clubs.items[0], id: "club-demo", name: "Club Démo", isDemo: true }],
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
+
+    await user.click(await screen.findByRole("button", { name: /Horloge/ }));
+    const dialog = await screen.findByRole("dialog", { name: /Horloge simulée/ });
+    await user.type(within(dialog).getByLabelText("Date simulée du club"), "2026-01-15");
+    await user.click(within(dialog).getByRole("button", { name: "Poser la date" }));
+
+    // Démo → aucune modale de confirmation, appel direct SANS confirmName.
+    await waitFor(() => expect(mockClubClock).toHaveBeenCalledWith("club-demo", { date: "2026-01-15" }, "csrf-123"));
+    expect(screen.queryByRole("dialog", { name: /Poser l’horloge sur/ })).not.toBeInTheDocument();
   });
 });

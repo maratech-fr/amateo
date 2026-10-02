@@ -151,6 +151,8 @@ export interface AdminClub {
   ffbbClubCode: string | null;
   /** P2-4 — club de démonstration : badgé dans la liste, exclu des KPI. */
   isDemo: boolean;
+  /** Horloge simulée du club (capacité générique) : date posée, ou null sur l'heure réelle. */
+  simulatedToday: string | null;
   /** Offre STOCKÉE (plan_id résolu) : null en Découverte par défaut. */
   plan: { code: string; name: string } | null;
   paidSeasonYear: number | null;
@@ -586,7 +588,20 @@ export function resetAdminDemoBccl(csrfToken: string): Promise<{ status: "reset"
   return adminApi.post("demos/bccl/reset", { headers: { "X-CSRF-Token": csrfToken } }).json();
 }
 
-/** Pose (`{date}`) ou relâche (`{clear:true}`) l'horloge simulée de la démo BCCL. */
-export function setAdminDemoClock(body: { date: string } | { clear: true }, csrfToken: string): Promise<{ simulatedToday: string | null }> {
-  return adminApi.post("demos/bccl/clock", { json: body, headers: { "X-CSRF-Token": csrfToken } }).json();
+/** Pose (`{date}`) ou relâche (`{clear:true}`) l'horloge simulée d'un compte démo (bccl ou prospect). */
+export function setAdminDemoClock(target: AdminDemoTarget, body: { date: string } | { clear: true }, csrfToken: string): Promise<{ simulatedToday: string | null }> {
+  return adminApi.post(`demos/${target}/clock`, { json: body, headers: { "X-CSRF-Token": csrfToken } }).json();
+}
+
+/**
+ * Pose (`{date}`) ou relâche (`{clear:true}`) l'horloge simulée de N'IMPORTE QUEL club.
+ * Un club RÉEL (non démo) exige `confirmName` égal à son nom exact pour POSER une date (il
+ * cesse alors d'envoyer ses e-mails réels) ; un club démo ne demande jamais de confirmation.
+ */
+export function setAdminClubClock(
+  clubId: string,
+  body: { date: string; confirmName?: string } | { clear: true },
+  csrfToken: string,
+): Promise<{ simulatedToday: string | null }> {
+  return adminApi.post(`clubs/${encodeURIComponent(clubId)}/clock`, { json: body, headers: { "X-CSRF-Token": csrfToken } }).json();
 }
