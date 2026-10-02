@@ -63,17 +63,15 @@ final class ClubClockCommandTest extends KernelTestCase
     }
 
     // Capacité générique : un VRAI club est datable, mais seulement avec --yes — sans lui,
-    // refus franc, rien écrit (poser l'horloge coupe ses e-mails réels).
-    public function testRealClubIsRefusedWithoutYesAndAcceptedWithYes(): void
+    // RÉSERVÉ aux clubs de démonstration : un VRAI club est refusé franc, rien écrit (décaler
+    // son horloge donnerait la main sur des actions qui ne le concernent pas — décision fondateur).
+    public function testRealClubIsRefused(): void
     {
         $realClubId = $this->seedClub(isDemo: false);
 
         self::assertSame(1, $this->tester->execute(['--club' => $realClubId, '--date' => '2026-12-15']));
-        self::assertStringContainsString('--yes', $this->tester->getDisplay());
-        self::assertNull($this->simulatedToday($realClubId), 'sans --yes le vrai club reste à l\'heure réelle');
-
-        self::assertSame(0, $this->tester->execute(['--club' => $realClubId, '--date' => '2026-12-15', '--yes' => true]), $this->tester->getDisplay());
-        self::assertSame('2026-12-15', $this->simulatedToday($realClubId), 'avec --yes le vrai club est bien daté');
+        self::assertStringContainsString('demo-only', $this->tester->getDisplay());
+        self::assertNull($this->simulatedToday($realClubId), 'le vrai club reste à l\'heure réelle');
     }
 
     public function testResolvesByFfbbClubCode(): void

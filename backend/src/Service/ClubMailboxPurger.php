@@ -19,11 +19,10 @@ use Doctrine\Persistence\ManagerRegistry;
  * commande support n'en a pas), où un DELETE par la connexion runtime (amateo_app, policy
  * `tenant_isolation`) serait fail-closed — 0 ligne vue. La connexion admin traverse la RLS.
  */
-final readonly class ClubMailboxPurger
+final readonly class ClubMailboxPurger implements ClubMailboxPurgerInterface
 {
     public function __construct(private ManagerRegistry $managerRegistry) {}
 
-    /** Supprime toutes les lignes de boîte du club. Idempotent (0 ligne = rien à faire). */
     public function purge(string $clubId): void
     {
         $this->connection()->executeStatement(

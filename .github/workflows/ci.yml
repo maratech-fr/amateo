@@ -367,6 +367,14 @@ jobs:
       - name: AdminDemoResetTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Admin/AdminDemoResetTest.php --group phase1'
 
+      # Axes auth & memberships + tenant isolation — le widget d'horloge du compte DÉMO
+      # (POST /api/club/clock) : un gestionnaire d'un club démo pose/relâche l'horloge, un membre
+      # non gestionnaire est refusé (403), un gestionnaire d'un VRAI club est refusé (403) et son
+      # horloge reste intacte, date malformée 422, le clear relâche ET vide la boîte, et poser
+      # l'horloge d'un club n'en touche jamais un autre.
+      - name: ClubClockEndpointTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Api/ClubClockEndpointTest.php --group phase1'
+
       # Axe tenant isolation — la purge nocturne des démos prospect : le club démo de la veille est
       # détruit (FFBB libéré), mais un démo du jour, un démo partagé, un vrai club et la démo BCCL
       # permanente ne bougent jamais. Sans ce gate, un élargissement du prédicat détruirait un vrai

@@ -6,7 +6,7 @@ namespace App\Controller;
 
 use App\Entity\SuperAdmin;
 use App\Security\AdminSessionCsrf;
-use App\Service\ClubMailboxPurger;
+use App\Service\ClubMailboxPurgerInterface;
 use App\Service\DemoResetRunnerInterface;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
@@ -39,14 +39,12 @@ final readonly class AdminDemoController
 {
     private const int WINDOW_HOURS = 4;
 
-    private const string UUID_PATTERN = '/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/';
-
     public function __construct(
         private AdminSessionCsrf $csrf,
         private TokenStorageInterface $tokens,
         private ManagerRegistry $managerRegistry,
         private DemoResetRunnerInterface $resetRunner,
-        private ClubMailboxPurger $mailboxPurger,
+        private ClubMailboxPurgerInterface $mailboxPurger,
         #[Autowire(param: 'app.demo_bccl_email')]
         private string $bcclEmail,
         #[Autowire(param: 'app.demo_animator_email')]
@@ -149,8 +147,8 @@ final readonly class AdminDemoController
      * Pose (ou relâche) l'« aujourd'hui » simulé d'un compte DÉMO (bccl ou prospect) :
      * {date} ou {clear:true}. Club résolu SERVEUR depuis le compte, jamais depuis la
      * requête ; aucune confirmation (un compte démo a les droits pleins et n'envoie
-     * jamais d'e-mail réel). L'écriture et le vidage de boîte au clear sont mutualisés
-     * avec {@see self::clubClock()} ({@see self::writeClock()}, une seule maison).
+     * jamais d'e-mail réel). L'écriture et le vidage de boîte au clear passent par
+     * {@see self::writeClock()}.
      */
     #[Route('/demos/{target}/clock', methods: ['POST'])]
     public function clock(string $target, Request $request): JsonResponse
@@ -179,67 +177,6 @@ final readonly class AdminDemoController
         }
 
         $this->writeClock($club['id'], $parsed['date'], $parsed['clear']);
-
-        return new JsonResponse(['simulatedToday' => $parsed['date']]);
-    }
-
-    /**
-     * Pose (ou relâche) l'« aujourd'hui » simulé de N'IMPORTE QUEL club : {date} ou
-     * {clear:true}. L'horloge est une capacité générique (décision fondateur 2026-10-02) —
-     * « si demain j'ajoute 80 clubs, j'active juste l'horloge, le reste suit ».
-     *
-     * Garde-fou pour un club RÉEL (non démo) : POSER une date le coupe de tout e-mail réel
-     * (ils partent en boîte aux lettres), donc l'appel DOIT porter `confirmName` égal au nom
-     * exact du club — sinon 422, rien n'est écrit. REVENIR à aujourd'hui (`clear`) restaure
-     * l'envoi réel : geste sûr, aucune confirmation exigée. Un club démo n'exige jamais de
-     * confirmation (droits pleins, aucun e-mail réel en jeu).
-     */
-    #[Route('/clubs/{clubId}/clock', methods: ['POST'])]
-    public function clubClock(string $clubId, Request $request): JsonResponse
-    {
-        // Contexte d'audit posé AVANT toute garde : une tentative REFUSÉE trace QUEL club
-        // était visé (surface cross-tenant, même exigence que AdminClubActionController).
-        $request->attributes->set('_admin_audit_context', ['clubAction' => 'clock', 'clubId' => $clubId]);
-
-        if (!$this->csrf->isValid($request)) {
-            return new JsonResponse(['error' => 'Invalid CSRF token.'], 403);
-        }
-        $admin = $this->tokens->getToken()?->getUser();
-        if (!$admin instanceof SuperAdmin) {
-            return new JsonResponse(['error' => 'Unauthorized.'], 401);
-        }
-        $request->attributes->set('_admin_audit_actor_id', $admin->getId());
-
-        // Forme UUID validée ICI (après session+CSRF, avant le SQL) : un segment malformé est
-        // un 404 propre, jamais un 22P02 Postgres (500) — et la tentative est déjà tracée.
-        if (1 !== preg_match(self::UUID_PATTERN, $clubId)) {
-            return new JsonResponse(['error' => 'Club introuvable.'], 404);
-        }
-        $club = $this->connection()->fetchAssociative('SELECT id, name, is_demo FROM club WHERE id = :id', ['id' => $clubId]);
-        if (false === $club) {
-            return new JsonResponse(['error' => 'Club introuvable.'], 404);
-        }
-
-        $body = $this->decodeBody($request);
-        if (null === $body) {
-            return new JsonResponse(['error' => 'Corps JSON invalide.'], 400);
-        }
-        $parsed = $this->parseClockInstruction($body, 422);
-        if ($parsed instanceof JsonResponse) {
-            return $parsed;
-        }
-
-        // Club RÉEL + POSE d'une date → confirmation nominative obligatoire (le club cesse
-        // d'envoyer des e-mails réels). Le `clear` d'un club réel, lui, restaure l'envoi : sûr.
-        if (!(bool) $club['is_demo'] && !$parsed['clear']) {
-            $confirmName = $body['confirmName'] ?? null;
-            $expected = trim((string) $club['name']);
-            if (!\is_string($confirmName) || '' === $expected || trim($confirmName) !== $expected) {
-                return new JsonResponse(['error' => 'Confirmation requise : retapez le nom exact du club.'], 422);
-            }
-        }
-
-        $this->writeClock((string) $club['id'], $parsed['date'], $parsed['clear']);
 
         return new JsonResponse(['simulatedToday' => $parsed['date']]);
     }

@@ -239,7 +239,6 @@ final readonly class AdminMonitoringService
                 c.slug,
                 c.ffbb_club_code,
                 c.is_demo,
-                c.simulated_today,
                 c.paid_season_year,
                 c.billing_cycle,
                 c.generation_count_season,
@@ -337,9 +336,6 @@ final readonly class AdminMonitoringService
             'slug' => (string) $row['slug'],
             'ffbbClubCode' => $this->nullableString($row, 'ffbb_club_code'),
             'isDemo' => (bool) ($row['is_demo'] ?? false),
-            // Horloge simulée du club (capacité générique) : la date posée, ou null sur l'heure
-            // réelle — la console propose de la poser/relâcher par club.
-            'simulatedToday' => $this->nullableString($row, 'simulated_today'),
             // Offre STOCKÉE (plan_id résolu) vs paidSeasonYear vs offre EFFECTIVE calculée
             // ci-dessous — la console affiche l'effective, jamais un binaire sur le stocké.
             'plan' => null === $storedCode ? null : ['code' => $storedCode, 'name' => (string) $storedName],

@@ -194,95 +194,6 @@
                 }
             }
         },
-        "/api/admin/clubs/{clubId}/clock": {
-            "post": {
-                "operationId": "setAdminClubClock",
-                "tags": [
-                    "AdminDemo"
-                ],
-                "responses": {
-                    "200": {
-                        "description": "The simulated clock of the club was set (or cleared)",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "simulatedToday": {
-                                            "type": [
-                                                "string",
-                                                "null"
-                                            ],
-                                            "format": "date"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Malformed JSON body"
-                    },
-                    "401": {
-                        "description": "No authenticated super-admin session"
-                    },
-                    "403": {
-                        "description": "Invalid CSRF token"
-                    },
-                    "404": {
-                        "description": "Club not found"
-                    },
-                    "422": {
-                        "description": "Malformed date/clear, or a real (non-demo) club was dated without the matching confirmName"
-                    }
-                },
-                "summary": "Set or clear the simulated clock of any club (real clubs require confirmName when dated)",
-                "parameters": [
-                    {
-                        "name": "clubId",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
-                        "name": "X-CSRF-Token",
-                        "in": "header",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "date": {
-                                        "type": "string",
-                                        "format": "date",
-                                        "description": "Simulated today, YYYY-MM-DD."
-                                    },
-                                    "clear": {
-                                        "type": "boolean",
-                                        "description": "Release the simulated clock (back to real time)."
-                                    },
-                                    "confirmName": {
-                                        "type": "string",
-                                        "description": "Exact club name \u2014 required to date a real (non-demo) club."
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "required": false
-                }
-            }
-        },
         "/api/admin/demos": {
             "get": {
                 "operationId": "getAdminDemos",
@@ -1356,11 +1267,6 @@
                                                     },
                                                     "isDemo": {
                                                         "type": "boolean"
-                                                    },
-                                                    "simulatedToday": {
-                                                        "type": "string",
-                                                        "format": "date",
-                                                        "nullable": true
                                                     },
                                                     "plan": {
                                                         "type": "object",
@@ -4552,6 +4458,72 @@
                     }
                 },
                 "summary": "Club colours and display preferences"
+            }
+        },
+        "/api/club/clock": {
+            "post": {
+                "operationId": "setClubClock",
+                "tags": [
+                    "Club"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The simulated clock of the current (demo) club was set (or cleared)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "simulatedToday": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "format": "date"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Malformed JSON body"
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "Not a management role, or the club is not a demonstration account"
+                    },
+                    "404": {
+                        "description": "No club in context"
+                    },
+                    "422": {
+                        "description": "Not exactly one of a real YYYY-MM-DD date or clear:true"
+                    }
+                },
+                "summary": "Set or clear the simulated clock of the current demonstration club",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "date": {
+                                        "type": "string",
+                                        "format": "date",
+                                        "description": "Simulated today, YYYY-MM-DD."
+                                    },
+                                    "clear": {
+                                        "type": "boolean",
+                                        "description": "Release the simulated clock (back to real time)."
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
             }
         },
         "/api/club/export": {

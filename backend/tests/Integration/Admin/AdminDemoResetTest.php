@@ -39,11 +39,7 @@ use Symfony\Component\Uid\Uuid;
  *    SERVEUR depuis le compte `demo-bccl@` — jamais depuis la requête ;
  *  - le reset remet simulated_today à null SANS toucher la fenêtre du compte NI un autre club démo ;
  *  - le re-seed du reset REFUSE de purger un club NON démo tenant ARA9999999 : un vrai club n'est
- *    jamais détruit (garde de `app:demo:seed`, sur laquelle le reset s'appuie) ;
- *  - l'horloge simulée est une capacité GÉNÉRIQUE : `POST /api/admin/clubs/{clubId}/clock` date
- *    n'importe quel club (401/403 gardés, 404 club inconnu/malformé) — un club démo sans
- *    confirmation, un club RÉEL seulement avec `confirmName` égal à son nom exact ; le `clear`
- *    vide la boîte aux lettres du SEUL club visé, les autres intacts.
+ *    jamais détruit (garde de `app:demo:seed`, sur laquelle le reset s'appuie).
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -261,115 +257,6 @@ final class AdminDemoResetTest extends WebTestCase
         self::assertSame(0, $this->mailboxCount($clubId), 'revenir à aujourd\'hui vide la boîte');
     }
 
-    public function testClubClockRejectsAClubJwtAndAnonymousCallers(): void
-    {
-        $clubId = $this->seedPlainClub(isDemo: true, simulatedToday: null, name: 'Clock Anon');
-
-        // Anonyme : écriture refusée par le firewall admin.
-        $this->client->request('POST', '/api/admin/clubs/' . $clubId . '/clock');
-        self::assertResponseStatusCodeSame(401);
-
-        // Un JWT club — identité VALIDE côté app — ne franchit jamais /api/admin.
-        $token = $this->registerVerified('CLK1');
-        $this->startFreshBrowserSession($this->client);
-        $this->client->request('POST', '/api/admin/clubs/' . $clubId . '/clock', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
-        self::assertResponseStatusCodeSame(401);
-    }
-
-    public function testClubClockRequiresCsrf(): void
-    {
-        $clubId = $this->seedPlainClub(isDemo: true, simulatedToday: null, name: 'Clock Csrf');
-        [$secret] = $this->createSuperAdmin('clkcsrf@example.test', 'VeryStrongPassword!');
-        $this->authenticate('clkcsrf@example.test', 'VeryStrongPassword!', $secret);
-
-        // Authentifié (session dans le client) mais AUCUN X-CSRF-Token → 403.
-        $this->json('POST', '/api/admin/clubs/' . $clubId . '/clock', ['date' => '2026-01-15']);
-        self::assertResponseStatusCodeSame(403);
-    }
-
-    public function testClubClockDatesADemoClubWithoutConfirmation(): void
-    {
-        $clubId = $this->seedPlainClub(isDemo: true, simulatedToday: null, name: 'Démo générique');
-        [$secret] = $this->createSuperAdmin('clkdemo@example.test', 'VeryStrongPassword!');
-        $csrf = $this->authenticate('clkdemo@example.test', 'VeryStrongPassword!', $secret);
-
-        // Un club démo : aucune confirmation (droits pleins, aucun e-mail réel en jeu).
-        $this->json('POST', '/api/admin/clubs/' . $clubId . '/clock', ['date' => '2026-01-15'], ['HTTP_X_CSRF_TOKEN' => $csrf]);
-        self::assertResponseIsSuccessful();
-        self::assertSame('2026-01-15', $this->responseBody()['simulatedToday']);
-        self::assertSame('2026-01-15', $this->admin()->fetchOne('SELECT simulated_today FROM club WHERE id = :id', ['id' => $clubId]));
-    }
-
-    public function testClubClockRequiresTheExactNameForARealClub(): void
-    {
-        $clubId = $this->seedPlainClub(isDemo: false, simulatedToday: null, name: 'Vrai Club Horloge');
-        [$secret] = $this->createSuperAdmin('clkreal@example.test', 'VeryStrongPassword!');
-        $csrf = $this->authenticate('clkreal@example.test', 'VeryStrongPassword!', $secret);
-
-        // Poser une date sur un VRAI club SANS confirmName → 422, rien écrit.
-        $this->json('POST', '/api/admin/clubs/' . $clubId . '/clock', ['date' => '2026-01-15'], ['HTTP_X_CSRF_TOKEN' => $csrf]);
-        self::assertResponseStatusCodeSame(422);
-        self::assertNull($this->admin()->fetchOne('SELECT simulated_today FROM club WHERE id = :id', ['id' => $clubId]), 'rien écrit sans confirmation');
-
-        // Nom FAUX → 422, rien écrit.
-        $this->json('POST', '/api/admin/clubs/' . $clubId . '/clock', ['date' => '2026-01-15', 'confirmName' => 'Pas le bon nom'], ['HTTP_X_CSRF_TOKEN' => $csrf]);
-        self::assertResponseStatusCodeSame(422);
-        self::assertNull($this->admin()->fetchOne('SELECT simulated_today FROM club WHERE id = :id', ['id' => $clubId]));
-
-        // Nom EXACT → 200, date posée.
-        $this->json('POST', '/api/admin/clubs/' . $clubId . '/clock', ['date' => '2026-01-15', 'confirmName' => 'Vrai Club Horloge'], ['HTTP_X_CSRF_TOKEN' => $csrf]);
-        self::assertResponseIsSuccessful();
-        self::assertSame('2026-01-15', $this->admin()->fetchOne('SELECT simulated_today FROM club WHERE id = :id', ['id' => $clubId]));
-    }
-
-    public function testClubClockRejectsAMalformedDate(): void
-    {
-        $clubId = $this->seedPlainClub(isDemo: true, simulatedToday: null, name: 'Clock Malformed');
-        [$secret] = $this->createSuperAdmin('clkbad@example.test', 'VeryStrongPassword!');
-        $csrf = $this->authenticate('clkbad@example.test', 'VeryStrongPassword!', $secret);
-
-        // 2026-02-31 « parse » en 3 mars → refusée (422 sur l'endpoint générique).
-        $this->json('POST', '/api/admin/clubs/' . $clubId . '/clock', ['date' => '2026-02-31'], ['HTTP_X_CSRF_TOKEN' => $csrf]);
-        self::assertResponseStatusCodeSame(422);
-        self::assertNull($this->admin()->fetchOne('SELECT simulated_today FROM club WHERE id = :id', ['id' => $clubId]));
-    }
-
-    public function testClubClockClearEmptiesTheMailboxAndSparesOtherClubs(): void
-    {
-        $clubId = $this->seedPlainClub(isDemo: true, simulatedToday: '2026-03-01', name: 'Clock Clear');
-        $this->seedMailboxRow($clubId);
-        // Un AUTRE club avec son horloge et sa boîte : le clear ne doit pas y toucher.
-        $otherId = $this->seedPlainClub(isDemo: true, simulatedToday: '2026-05-05', name: 'Autre Club');
-        $this->seedMailboxRow($otherId);
-
-        [$secret] = $this->createSuperAdmin('clkclear@example.test', 'VeryStrongPassword!');
-        $csrf = $this->authenticate('clkclear@example.test', 'VeryStrongPassword!', $secret);
-
-        $this->json('POST', '/api/admin/clubs/' . $clubId . '/clock', ['clear' => true], ['HTTP_X_CSRF_TOKEN' => $csrf]);
-        self::assertResponseIsSuccessful();
-        self::assertNull($this->responseBody()['simulatedToday']);
-        self::assertNull($this->admin()->fetchOne('SELECT simulated_today FROM club WHERE id = :id', ['id' => $clubId]), 'l\'horloge revient à aujourd\'hui (NULL)');
-        self::assertSame(0, $this->mailboxCount($clubId), 'le clear vide la boîte');
-
-        // L'autre club est intact : horloge ET boîte préservées (le clear scope à un club).
-        self::assertSame('2026-05-05', $this->admin()->fetchOne('SELECT simulated_today FROM club WHERE id = :id', ['id' => $otherId]));
-        self::assertSame(1, $this->mailboxCount($otherId), 'la boîte de l\'autre club n\'est pas touchée');
-    }
-
-    public function testClubClockReturns404ForAnUnknownOrMalformedClub(): void
-    {
-        [$secret] = $this->createSuperAdmin('clk404@example.test', 'VeryStrongPassword!');
-        $csrf = $this->authenticate('clk404@example.test', 'VeryStrongPassword!', $secret);
-
-        // UUID bien formé mais inconnu → 404.
-        $this->json('POST', '/api/admin/clubs/00000000-0000-4000-8000-000000000000/clock', ['date' => '2026-01-15'], ['HTTP_X_CSRF_TOKEN' => $csrf]);
-        self::assertResponseStatusCodeSame(404);
-
-        // Segment malformé → 404 propre (jamais un 22P02 Postgres / 500).
-        $this->json('POST', '/api/admin/clubs/not-a-uuid/clock', ['date' => '2026-01-15'], ['HTTP_X_CSRF_TOKEN' => $csrf]);
-        self::assertResponseStatusCodeSame(404);
-    }
-
     public function testResetFailureReturns502AndLeavesTheSimulatedClockUntouched(): void
     {
         $userId = $this->seedDemoUser(self::BCCL_EMAIL, null);
@@ -518,21 +405,6 @@ final class AdminDemoResetTest extends WebTestCase
         $this->admin()->executeStatement(
             'INSERT INTO club_user (id, version, created_at, updated_at, joined_at, club_id, user_id, role, is_active) VALUES (:id, 1, NOW(), NOW(), NOW(), :club, :user, :role, TRUE)',
             ['id' => Uuid::v4()->toRfc4122(), 'club' => $clubId, 'user' => $ownerUserId, 'role' => 'manager'],
-        );
-
-        return $clubId;
-    }
-
-    /** Un club nu (sans compte ni adhésion) — l'endpoint générique vise le clubId directement. */
-    private function seedPlainClub(bool $isDemo, ?string $simulatedToday, string $name): string
-    {
-        $clubId = Uuid::v4()->toRfc4122();
-        $this->clubIds[] = $clubId;
-        $this->admin()->executeStatement(
-            'INSERT INTO club (id, version, created_at, updated_at, name, slug, generation_count_season, timezone, locale, onboarding_completed, is_demo, simulated_today)'
-            . ' VALUES (:id, 1, NOW(), NOW(), :name, :slug, 0, :tz, :locale, FALSE, :demo, :today)',
-            ['id' => $clubId, 'name' => $name, 'slug' => 'club-' . substr($clubId, 0, 8), 'tz' => 'Europe/Paris', 'locale' => 'fr', 'demo' => $isDemo, 'today' => $simulatedToday],
-            ['demo' => ParameterType::BOOLEAN],
         );
 
         return $clubId;
