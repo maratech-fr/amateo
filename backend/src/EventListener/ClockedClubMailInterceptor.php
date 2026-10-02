@@ -7,37 +7,47 @@ namespace App\EventListener;
 use App\Clock\ClubClock;
 use App\Entity\Club;
 use App\Entity\ClubMailboxMessage;
+use App\Mail\ClubBusinessMail;
 use App\Repository\ClubMailboxMessageRepository;
 use App\Service\ClubDay;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\Mailer\Event\MessageEvent;
 use Symfony\Component\Mime\Address;
 use Symfony\Component\Mime\Email;
 
 /**
- * P4-16 — un club à horloge SIMULÉE n'envoie JAMAIS de vrai e-mail : chaque message est rangé
- * dans sa « boîte aux lettres » (option A fondateur 2026-10-02). L'animateur de démo rejoue
- * « à trois semaines des vacances » et VOIT les relances/rappels dans l'app, sans spammer les
- * gestionnaires réels.
+ * P4-16 — un club à horloge SIMULÉE n'envoie JAMAIS de vrai e-mail MÉTIER : chaque rappel/relance
+ * est rangé dans sa « boîte aux lettres » (option A fondateur 2026-10-02). L'animateur de démo
+ * rejoue « à trois semaines des vacances » et VOIT ces e-mails dans l'app, sans spammer personne.
  *
  * On branche `Symfony\Mailer` au `MessageEvent`, à PRIORITÉ HAUTE, et SEULEMENT à l'ENFILAGE
- * (`isQueued()` — les envois de l'app passent par le bus Messenger, messenger.yaml route
- * `SendEmailMessage` en async). Rejeter l'événement à l'enfilage empêche la mise en file : le
- * message ne part donc jamais sur le bus, et le worker ne le voit jamais. On NE touche PAS à la
- * phase worker (`isQueued()` faux) : c'est l'envoi réel d'un club SANS horloge, qui doit partir.
+ * (`isQueued()` — les envois de l'app passent par le bus Messenger, `SendEmailMessage` en async).
+ * Rejeter à l'enfilage empêche la mise en file : le worker ne voit jamais le message. On ne touche
+ * PAS la phase worker (envoi réel d'un club sans horloge).
  *
- * Le club courant vient du GUC `app.club_id` (posé par TenantFilterListener en requête, par
- * TenantConnectionContext dans les crons) — jamais d'un header. Hors contexte club, le GUC est
- * vide : les e-mails SANS club (reset de mot de passe, vérification d'e-mail, feedback, health)
- * partent donc RÉELLEMENT, c'est voulu. Un club dont l'horloge n'est pas active
- * ({@see ClubClock::simulatedTodayFor()} = null) envoie lui aussi normalement.
+ * ⚠ DURCISSEMENT SÉCURITÉ (revue PR B) — l'interception est en LISTE BLANCHE, DEUX gardes :
  *
- * Le corps est capté TEL QU'IL EST à l'enfilage, donc AVANT la signature de marque
- * (EmailSignatureListener la pose chez le worker, qui ne tourne jamais ici) : `body_text` porte
- * le texte métier, `body_html` est en général nul. Décision assumée (plan horloge, 2026-10-02).
+ *  1. SEULS les e-mails MÉTIER explicitement marqués ({@see ClubBusinessMail}) sont candidats.
+ *     Le router `/api/*` pose le GUC tenant du DEMANDEUR sur TOUTE requête d'un membre connecté,
+ *     y compris les routes PUBLIC_ACCESS (`/api/password/forgot`, vérification d'e-mail…). Sans
+ *     ce filtre, un membre d'un club à horloge déclenchait un reset pour une VICTIME, captait le
+ *     mail dans la boîte (lisible par tout membre) et lisait le jeton → prise de compte. Les
+ *     e-mails de COMPTE (reset, vérif/changement d'adresse, inscription, feedback, santé) ne
+ *     portent PAS le marqueur et partent donc TOUJOURS réellement — y compris vers un membre du
+ *     club. Liste BLANCHE = défaut fermé : un e-mail non marqué n'est jamais capté.
+ *  2. TOUS les destinataires (To/Cc/Cci) doivent appartenir au club du GUC — membre actif
+ *     (`club_user`→`app_user.email`) ou coach du club (`coach.email` : les campagnes de vœux
+ *     visent des coachs NON-utilisateurs). Un seul destinataire hors club → l'e-mail part réel et
+ *     on logue un avertissement (sans contenu). Défense en profondeur : un builder métier buggé
+ *     qui adresserait hors club ne capte jamais. Comparaison normalisée (minuscules + trim).
+ *
+ * Le corps est capté TEL QU'IL EST à l'enfilage, donc AVANT la signature de marque (posée chez le
+ * worker, qui ne tourne jamais ici) : `body_text` porte le texte métier, `body_html` est en
+ * général nul. Décision assumée (plan horloge, 2026-10-02).
  */
 final readonly class ClockedClubMailInterceptor implements EventSubscriberInterface
 {
@@ -47,6 +57,7 @@ final readonly class ClockedClubMailInterceptor implements EventSubscriberInterf
         private ClubClock $clubClock,
         private ClubDay $clubDay,
         private ClubMailboxMessageRepository $mailbox,
+        private LoggerInterface $logger,
     ) {}
 
     /**
@@ -71,9 +82,15 @@ final readonly class ClockedClubMailInterceptor implements EventSubscriberInterf
             return;
         }
 
+        // Garde 1 — seuls les e-mails MÉTIER sont candidats. Un e-mail de compte (reset, vérif…)
+        // n'est jamais marqué → part toujours réel, même adressé à un membre du club.
+        if (!ClubBusinessMail::isClubBusiness($message)) {
+            return;
+        }
+
         $clubId = $this->currentClubId();
         if (null === $clubId) {
-            return; // hors contexte club → e-mail réel (reset mdp, vérif e-mail, feedback, health)
+            return; // hors contexte club → envoi réel
         }
 
         $club = $this->entityManager->find(Club::class, $clubId);
@@ -84,7 +101,23 @@ final readonly class ClockedClubMailInterceptor implements EventSubscriberInterf
             return; // club sans horloge active → envoi normal
         }
 
-        // Horloge active → jamais d'envoi réel : ranger dans la boîte, puis rejeter l'enfilage.
+        // Garde 2 — tous les destinataires doivent appartenir au club du GUC.
+        $recipients = $this->recipients($message);
+        if ([] === $recipients) {
+            return; // aucun destinataire exploitable → ne jamais capter
+        }
+        $clubEmails = $this->clubRecipientEmails($clubId);
+        foreach ($recipients as $recipient) {
+            if (!isset($clubEmails[$recipient])) {
+                // Un destinataire hors club sur un e-mail métier (builder buggé) : on NE capte
+                // PAS, l'e-mail part réel. Avertissement SANS contenu ni adresse.
+                $this->logger->warning('Clocked club business mail left real: a recipient is outside the club', ['club' => $clubId]);
+
+                return;
+            }
+        }
+
+        // Horloge active + e-mail métier adressé au club → ranger dans la boîte, puis rejeter.
         $this->mailbox->record($this->capture($message, $clubId, $this->clubDay->todayFor($club)));
         $event->reject();
     }
@@ -94,6 +127,56 @@ final readonly class ClockedClubMailInterceptor implements EventSubscriberInterf
         $clubId = (string) $this->connection->fetchOne('SELECT COALESCE(current_setting(\'app.club_id\', true), \'\')');
 
         return '' === $clubId ? null : $clubId;
+    }
+
+    /**
+     * Les adresses NORMALISÉES de tous les destinataires (To + Cc + Cci).
+     *
+     * @return list<string>
+     */
+    private function recipients(Email $email): array
+    {
+        $out = [];
+        foreach ([...$email->getTo(), ...$email->getCc(), ...$email->getBcc()] as $address) {
+            $out[] = $this->normalize($address->getAddress());
+        }
+
+        return $out;
+    }
+
+    /**
+     * Les e-mails NORMALISÉS autorisés à capter pour ce club : membres ACTIFS + coachs du club.
+     * Lu sous le GUC déjà posé (RLS borne `club_user`/`coach` au club), filtre club_id explicite
+     * en ceinture. `app_user` est global (pas de RLS).
+     *
+     * @return array<string, true>
+     */
+    private function clubRecipientEmails(string $clubId): array
+    {
+        /** @var list<mixed> $members */
+        $members = $this->connection->fetchFirstColumn(
+            'SELECT u.email FROM app_user u JOIN club_user cu ON cu.user_id = u.id WHERE cu.club_id = ? AND cu.is_active = true',
+            [$clubId],
+        );
+        /** @var list<mixed> $coaches */
+        $coaches = $this->connection->fetchFirstColumn(
+            'SELECT email FROM coach WHERE club_id = ? AND email IS NOT NULL',
+            [$clubId],
+        );
+
+        $set = [];
+        foreach ([...$members, ...$coaches] as $email) {
+            if (\is_string($email) && '' !== trim($email)) {
+                $set[$this->normalize($email)] = true;
+            }
+        }
+
+        return $set;
+    }
+
+    private function normalize(string $email): string
+    {
+        return mb_strtolower(trim($email));
     }
 
     private function capture(Email $email, string $clubId, DateTimeImmutable $simulatedDate): ClubMailboxMessage

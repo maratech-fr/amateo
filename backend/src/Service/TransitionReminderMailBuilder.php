@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Mail\ClubBusinessMail;
 use DateTimeImmutable;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mime\Email;
@@ -39,10 +40,13 @@ final class TransitionReminderMailBuilder
             $lines[] = rtrim($this->frontendBaseUrl, '/') . '/';
         }
 
-        return (new Email)
-            ->from($this->mailFrom->address())
-            ->to($to)
-            ->subject($subject)
-            ->text(implode("\n", $lines));
+        // E-mail MÉTIER club : candidat à l'interception « boîte aux lettres » (cf. ClubBusinessMail).
+        return ClubBusinessMail::mark(
+            (new Email)
+                ->from($this->mailFrom->address())
+                ->to($to)
+                ->subject($subject)
+                ->text(implode("\n", $lines)),
+        );
     }
 }
