@@ -124,7 +124,7 @@ final class DemoCreateCommand extends Command
             static fn (string $warning) => $io->warning($warning),
         );
 
-        $io->success(\sprintf('Demo club "%s" (%s) created — id %s. Log in as %s. Simulated clock: app:demo:clock --club=%s --date=YYYY-MM-DD.', $club->getName(), $ffbb, $club->getId(), $email, $club->getId()));
+        $io->success(\sprintf('Demo club "%s" (%s) created — id %s. Log in as %s. Simulated clock: app:club:clock --club=%s --date=YYYY-MM-DD.', $club->getName(), $ffbb, $club->getId(), $email, $club->getId()));
 
         return Command::SUCCESS;
     }

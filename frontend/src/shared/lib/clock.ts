@@ -99,7 +99,7 @@ export function todayISO(): string {
  *
  * Ouvre l'horloge simulée EN PROD, mais jamais à la main de l'utilisateur : la seule
  * source est la réponse authentifiée de `/api/me`, posée côté serveur par le support
- * (commande `app:demo:clock`) — un vrai club a `simulatedToday` null et cet appel relâche
+ * (commande `app:club:clock`) — un vrai club a `simulatedToday` null et cet appel relâche
  * l'override. Le `?today=` de dev garde la priorité (rejouer à la main doit gagner).
  */
 export function applyServerToday(iso: string | null): void {

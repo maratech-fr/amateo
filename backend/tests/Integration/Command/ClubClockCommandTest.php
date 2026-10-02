@@ -102,9 +102,7 @@ final class ClubClockCommandTest extends KernelTestCase
     {
         self::bootKernel();
         $application = new Application(self::$kernel);
-        // Le nom canonique ; l'alias déprécié `app:demo:clock` résout la MÊME commande.
         $this->tester = new CommandTester($application->find('app:club:clock'));
-        self::assertSame($application->find('app:club:clock'), $application->find('app:demo:clock'), 'l\'alias déprécié pointe sur la même commande');
     }
 
     protected function tearDown(): void

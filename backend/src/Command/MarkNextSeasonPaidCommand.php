@@ -59,7 +59,7 @@ final class MarkNextSeasonPaidCommand extends Command
         // doit régler la saison 2028-2029, quand l'horloge réelle réglerait 2027-2028).
         // ClubClock reste request-scoped ; hors requête, la commande lit
         // directement le pin du club cible — le même SELECT que l'UPDATE ci-dessous.
-        // Une valeur non-NULL n'existe QUE pour un club is_demo (DemoClockCommand
+        // Une valeur non-NULL n'existe QUE pour un club is_demo (ClubClockCommand
         // ne l'écrit que là), le CASE le réaffirme et fail-close sur un vrai club.
         $pin = $this->connection()->fetchOne(
             'SELECT CASE WHEN is_demo AND simulated_today IS NOT NULL THEN simulated_today END FROM club WHERE id = :id',

@@ -110,7 +110,7 @@ final class DemoSeedCommand extends Command
 
         $club = $this->seeder->run($this->entityManager, $profile);
 
-        $io->success(\sprintf('Demo club "%s" ready — id %s. Log in as %s. Simulated clock: app:demo:clock --club=%s --date=YYYY-MM-DD.', $club->getName(), $club->getId(), $email, $club->getId()));
+        $io->success(\sprintf('Demo club "%s" ready — id %s. Log in as %s. Simulated clock: app:club:clock --club=%s --date=YYYY-MM-DD.', $club->getName(), $club->getId(), $email, $club->getId()));
 
         return Command::SUCCESS;
     }

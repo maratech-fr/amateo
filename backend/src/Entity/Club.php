@@ -122,7 +122,7 @@ class Club
     // P4-16 / P2-4 — l'« aujourd'hui » SIMULÉ d'un club. Non-null = toute l'application
     // (serveur : ClubClock ; front : /api/me → clock.ts) vit à cette date pour CE club —
     // rejouer « à trois semaines des vacances » en plein été. Null = horloge réelle, le
-    // cas de tous les vrais clubs. Posé par la commande app:demo:clock / la console.
+    // cas de tous les vrais clubs. Posé par la commande app:club:clock / la console.
     #[ORM\Column(type: 'date_immutable', nullable: true)]
     private ?DateTimeImmutable $simulatedToday = null;
 
