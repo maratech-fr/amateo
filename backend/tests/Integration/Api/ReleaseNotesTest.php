@@ -79,7 +79,7 @@ final class ReleaseNotesTest extends WebTestCase
         self::assertNotNull($afterSeen['seenUpTo']);
     }
 
-    public function testSuperAdminCanCreateEditPublishAndDelete(): void
+    public function testSuperAdminCanCreatePublishAndDelete(): void
     {
         $csrf = $this->authenticateSuperAdmin('release-notes-crud@example.test');
 
@@ -87,11 +87,6 @@ final class ReleaseNotesTest extends WebTestCase
         $id = $this->createNote($csrf, 'Titre initial', 'Corps initial', '2026-08-12');
         self::assertResponseStatusCodeSame(201);
         self::assertNull($this->responseBody()['publishedAt']);
-
-        // Éditer.
-        $this->json('PATCH', '/api/admin/release-notes/' . $id, ['title' => 'Titre corrigé', 'body' => 'Corps corrigé', 'noteDate' => '2026-08-12'], ['HTTP_X_CSRF_TOKEN' => $csrf]);
-        self::assertResponseIsSuccessful();
-        self::assertSame('Titre corrigé', $this->responseBody()['title']);
 
         // Validation : titre vide → 400.
         $this->json('POST', '/api/admin/release-notes', ['title' => '  ', 'body' => 'x', 'noteDate' => '2026-08-12'], ['HTTP_X_CSRF_TOKEN' => $csrf]);

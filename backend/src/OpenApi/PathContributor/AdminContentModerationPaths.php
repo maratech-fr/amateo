@@ -99,20 +99,6 @@ final readonly class AdminContentModerationPaths implements CustomPathContributo
                     summary: 'Delete a release note',
                     parameters: [$idParameter, $csrfHeader],
                 ),
-                patch: new Operation(
-                    operationId: 'updateAdminReleaseNote',
-                    tags: ['AdminReleaseNotes'],
-                    responses: [
-                        '200' => $this->schemas->jsonResponse('Release note updated', $noteSchema),
-                        '400' => new Response('Validation error'),
-                        '401' => new Response('No authenticated super-admin session'),
-                        '403' => new Response('Invalid CSRF token'),
-                        '404' => new Response('Note not found'),
-                    ],
-                    summary: 'Update a release note (title, body, editorial date)',
-                    parameters: [$idParameter, $csrfHeader],
-                    requestBody: $writeBody,
-                ),
             ),
             '/api/admin/release-notes/{id}/publish' => new PathItem(post: new Operation(
                 operationId: 'publishAdminReleaseNote',

@@ -18,7 +18,7 @@ use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInt
 
 /**
  * P5-12 — l'atelier superadmin du journal de nouveautés : lister (brouillons
- * inclus), créer, éditer, publier, supprimer. `release_note` est GLOBALE (no
+ * inclus), créer, publier, supprimer. `release_note` est GLOBALE (no
  * RLS) donc l'EntityManager par défaut l'écrit via le GRANT amateo_app — aucune
  * connexion admin dédiée n'est requise (contrairement à club_user, tenant-scopé).
  *
@@ -75,36 +75,6 @@ final readonly class AdminReleaseNoteController
         $this->entityManager->flush();
 
         return new JsonResponse($this->serialize($note), 201);
-    }
-
-    #[Route('/{id}', methods: ['PATCH'])]
-    public function update(string $id, Request $request): JsonResponse
-    {
-        $request->attributes->set('_admin_audit_context', ['action' => 'release-note.update', 'id' => $id]);
-        $guard = $this->guard($request);
-        if ($guard instanceof JsonResponse) {
-            return $guard;
-        }
-        $note = $this->find($id);
-        if (!$note instanceof ReleaseNote) {
-            return new JsonResponse(['error' => 'Note introuvable.'], 404);
-        }
-
-        $payload = $this->decode($request);
-        if (!\is_array($payload)) {
-            return new JsonResponse(['error' => 'Corps de requête invalide.'], 400);
-        }
-        $error = $this->validate($payload);
-        if (null !== $error) {
-            return new JsonResponse(['error' => $error], 400);
-        }
-
-        $note->setTitle(trim((string) $payload['title']));
-        $note->setBody(trim((string) $payload['body']));
-        $note->setNoteDate($this->parseDate((string) $payload['noteDate']));
-        $this->entityManager->flush();
-
-        return new JsonResponse($this->serialize($note));
     }
 
     #[Route('/{id}/publish', methods: ['POST'])]
