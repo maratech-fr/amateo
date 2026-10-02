@@ -1,7 +1,7 @@
 # Postgres, prod — same postgres:16-alpine as dev, but the RLS/roles init
 # scripts are baked into the image (dev bind-mounts docker/postgres/init; the
 # prod VM has no repo checkout). Scripts run once on first cluster init only.
-FROM postgres:16-alpine
+FROM postgres:18-alpine
 # SEC A19 — même règle : paquets Alpine au niveau des dépôts.
 RUN apk upgrade --no-cache
 
