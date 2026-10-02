@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Command;
 
-use App\Entity\Club;
-use App\Tests\TenantGucTrait;
-use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\ParameterType;
+use Doctrine\Persistence\ManagerRegistry;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * La commande support qui pose/relâche l'« aujourd'hui » simulé d'un club.
@@ -20,38 +21,39 @@ use Symfony\Component\Console\Tester\CommandTester;
  * e-mails réels, d'où le `--yes` obligatoire — un club démo n'en a jamais besoin. Plus les
  * deux refus qui protègent d'une fausse manip en rendez-vous : date irréelle (2026-02-31
  * « parse » en reportant au 3 mars) et l'ambiguïté --date + --clear.
+ *
+ * Action support cross-tenant : la commande (comme la console) agit sur la connexion ADMIN.
+ * Le test seede/lit donc TOUT sur cette même connexion (committée, hors DAMA → nettoyée en
+ * tearDown), pour que seeds, commande et vidage de boîte partagent la même vue.
  */
 #[Group('integration')]
 final class ClubClockCommandTest extends KernelTestCase
 {
-    use TenantGucTrait;
-
-    private EntityManagerInterface $em;
-
     private CommandTester $tester;
+
+    /** @var list<string> clubs seedés sur la connexion admin (committés), nettoyés en tearDown */
+    private array $clubIds = [];
 
     public function testSetsThenClearsTheSimulatedTodayOnADemoClub(): void
     {
-        $clubId = $this->club();
+        $clubId = $this->seedClub(isDemo: true);
 
-        self::assertSame(0, $this->tester->execute(['--club' => $clubId, '--date' => '2026-12-15']));
-        $this->em->clear();
-        self::assertSame('2026-12-15', $this->em->find(Club::class, $clubId)?->getSimulatedToday()?->format('Y-m-d'));
+        self::assertSame(0, $this->tester->execute(['--club' => $clubId, '--date' => '2026-12-15']), $this->tester->getDisplay());
+        self::assertSame('2026-12-15', $this->simulatedToday($clubId));
 
-        self::assertSame(0, $this->tester->execute(['--club' => $clubId, '--clear' => true]));
-        $this->em->clear();
-        self::assertNull($this->em->find(Club::class, $clubId)?->getSimulatedToday(), 'l\'horloge est relâchée — retour au temps réel');
+        self::assertSame(0, $this->tester->execute(['--club' => $clubId, '--clear' => true]), $this->tester->getDisplay());
+        self::assertNull($this->simulatedToday($clubId), 'l\'horloge est relâchée — retour au temps réel');
     }
 
     public function testUnrealDateIsRefused(): void
     {
-        self::assertSame(1, $this->tester->execute(['--club' => $this->club(), '--date' => '2026-02-31']));
+        self::assertSame(1, $this->tester->execute(['--club' => $this->seedClub(isDemo: true), '--date' => '2026-02-31']));
         self::assertStringContainsString('not a real', $this->tester->getDisplay());
     }
 
     public function testDateAndClearTogetherAreAmbiguousAndRefused(): void
     {
-        self::assertSame(1, $this->tester->execute(['--club' => $this->club(), '--date' => '2026-12-15', '--clear' => true]));
+        self::assertSame(1, $this->tester->execute(['--club' => $this->seedClub(isDemo: true), '--date' => '2026-12-15', '--clear' => true]));
     }
 
     public function testUnknownClubFails(): void
@@ -64,50 +66,99 @@ final class ClubClockCommandTest extends KernelTestCase
     // refus franc, rien écrit (poser l'horloge coupe ses e-mails réels).
     public function testRealClubIsRefusedWithoutYesAndAcceptedWithYes(): void
     {
-        $realClubId = $this->club(isDemo: false);
+        $realClubId = $this->seedClub(isDemo: false);
 
         self::assertSame(1, $this->tester->execute(['--club' => $realClubId, '--date' => '2026-12-15']));
         self::assertStringContainsString('--yes', $this->tester->getDisplay());
-        $this->em->clear();
-        self::assertNull($this->em->find(Club::class, $realClubId)?->getSimulatedToday(), 'sans --yes le vrai club reste à l\'heure réelle');
+        self::assertNull($this->simulatedToday($realClubId), 'sans --yes le vrai club reste à l\'heure réelle');
 
-        self::assertSame(0, $this->tester->execute(['--club' => $realClubId, '--date' => '2026-12-15', '--yes' => true]));
-        $this->em->clear();
-        self::assertSame('2026-12-15', $this->em->find(Club::class, $realClubId)?->getSimulatedToday()?->format('Y-m-d'), 'avec --yes le vrai club est bien daté');
+        self::assertSame(0, $this->tester->execute(['--club' => $realClubId, '--date' => '2026-12-15', '--yes' => true]), $this->tester->getDisplay());
+        self::assertSame('2026-12-15', $this->simulatedToday($realClubId), 'avec --yes le vrai club est bien daté');
     }
 
     public function testResolvesByFfbbClubCode(): void
     {
         $code = 'ARA' . str_pad((string) random_int(0, 9_999_999), 7, '0', \STR_PAD_LEFT);
-        $clubId = $this->club(ffbbClubCode: $code);
+        $clubId = $this->seedClub(isDemo: true, ffbbClubCode: $code);
 
         self::assertSame(0, $this->tester->execute(['--club' => $code, '--date' => '2026-12-15']), $this->tester->getDisplay());
-        $this->em->clear();
-        self::assertSame('2026-12-15', $this->em->find(Club::class, $clubId)?->getSimulatedToday()?->format('Y-m-d'));
+        self::assertSame('2026-12-15', $this->simulatedToday($clubId));
+    }
+
+    // --clear vide AUSSI la boîte aux lettres (maison unique ClubMailboxPurger, partagée avec la
+    // console). Poser une date ne la touche jamais.
+    public function testClearEmptiesTheMailboxButSettingADateDoesNot(): void
+    {
+        $clubId = $this->seedClub(isDemo: true);
+        $this->seedMailboxRow($clubId);
+        self::assertSame(1, $this->mailboxCount($clubId), 'témoin : une ligne en boîte avant le clear');
+
+        self::assertSame(0, $this->tester->execute(['--club' => $clubId, '--date' => '2026-03-01']), $this->tester->getDisplay());
+        self::assertSame(1, $this->mailboxCount($clubId), 'poser une date ne vide pas la boîte');
+
+        self::assertSame(0, $this->tester->execute(['--club' => $clubId, '--clear' => true]), $this->tester->getDisplay());
+        self::assertSame(0, $this->mailboxCount($clubId), 'le clear a vidé la boîte');
     }
 
     protected function setUp(): void
     {
         self::bootKernel();
-        $this->em = self::getContainer()->get(EntityManagerInterface::class);
         $application = new Application(self::$kernel);
         // Le nom canonique ; l'alias déprécié `app:demo:clock` résout la MÊME commande.
         $this->tester = new CommandTester($application->find('app:club:clock'));
         self::assertSame($application->find('app:club:clock'), $application->find('app:demo:clock'), 'l\'alias déprécié pointe sur la même commande');
     }
 
-    private function club(bool $isDemo = true, ?string $ffbbClubCode = null): string
+    protected function tearDown(): void
     {
-        $suffix = bin2hex(random_bytes(4));
-        $club = (new Club)->setName('Demo ' . $suffix)->setSlug('demo-cmd-' . $suffix)->setTimezone('Europe/Paris')->setLocale('fr');
-        $club->setIsDemo($isDemo);
-        if (null !== $ffbbClubCode) {
-            $club->setFfbbClubCode($ffbbClubCode);
+        // Seeds sur la connexion admin = committés (hors DAMA) : cascade sur la boîte.
+        foreach ($this->clubIds as $id) {
+            $this->admin()->executeStatement('DELETE FROM club WHERE id = :id', ['id' => $id]);
         }
-        $this->em->persist($club);
-        $this->em->flush();
-        $this->scopeGucToClub($club->getId());
+        $this->clubIds = [];
+        parent::tearDown();
+    }
 
-        return $club->getId();
+    private function seedClub(bool $isDemo, ?string $ffbbClubCode = null): string
+    {
+        $clubId = Uuid::v4()->toRfc4122();
+        $this->clubIds[] = $clubId;
+        $this->admin()->executeStatement(
+            'INSERT INTO club (id, version, created_at, updated_at, name, slug, generation_count_season, timezone, locale, onboarding_completed, is_demo, ffbb_club_code)'
+            . ' VALUES (:id, 1, NOW(), NOW(), :name, :slug, 0, :tz, :locale, FALSE, :demo, :ffbb)',
+            ['id' => $clubId, 'name' => 'Demo ' . substr($clubId, 0, 8), 'slug' => 'demo-cmd-' . substr($clubId, 0, 8), 'tz' => 'Europe/Paris', 'locale' => 'fr', 'demo' => $isDemo, 'ffbb' => $ffbbClubCode],
+            ['demo' => ParameterType::BOOLEAN],
+        );
+
+        return $clubId;
+    }
+
+    private function seedMailboxRow(string $clubId): void
+    {
+        $this->admin()->executeStatement(
+            'INSERT INTO club_mailbox_message (id, club_id, created_at, simulated_date, from_address, to_address, subject, body_text)'
+            . ' VALUES (:id, :club, NOW(), :d, :f, :t, :s, :b)',
+            ['id' => Uuid::v4()->toRfc4122(), 'club' => $clubId, 'd' => '2026-03-01', 'f' => 'noreply@amateo.test', 't' => 'coach@club.fr', 's' => 'Relance', 'b' => 'Corps'],
+        );
+    }
+
+    private function simulatedToday(string $clubId): ?string
+    {
+        $value = $this->admin()->fetchOne('SELECT simulated_today FROM club WHERE id = :id', ['id' => $clubId]);
+
+        return \is_string($value) ? $value : null;
+    }
+
+    private function mailboxCount(string $clubId): int
+    {
+        return (int) $this->admin()->fetchOne('SELECT count(*) FROM club_mailbox_message WHERE club_id = :id', ['id' => $clubId]);
+    }
+
+    private function admin(): Connection
+    {
+        $connection = self::getContainer()->get(ManagerRegistry::class)->getConnection('admin');
+        \assert($connection instanceof Connection);
+
+        return $connection;
     }
 }

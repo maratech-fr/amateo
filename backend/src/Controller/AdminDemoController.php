@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\Entity\SuperAdmin;
 use App\Security\AdminSessionCsrf;
+use App\Service\ClubMailboxPurger;
 use App\Service\DemoResetRunnerInterface;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
@@ -45,6 +46,7 @@ final readonly class AdminDemoController
         private TokenStorageInterface $tokens,
         private ManagerRegistry $managerRegistry,
         private DemoResetRunnerInterface $resetRunner,
+        private ClubMailboxPurger $mailboxPurger,
         #[Autowire(param: 'app.demo_bccl_email')]
         private string $bcclEmail,
         #[Autowire(param: 'app.demo_animator_email')]
@@ -137,7 +139,7 @@ final readonly class AdminDemoController
             );
             // Décision fondateur : le reset VIDE aussi la boîte aux lettres — les e-mails
             // interceptés pendant la démo précédente ne survivent pas à une réinitialisation.
-            $this->emptyMailbox($club['id']);
+            $this->mailboxPurger->purge($club['id']);
         }
 
         return new JsonResponse(['status' => 'reset']);
@@ -409,20 +411,7 @@ final readonly class AdminDemoController
             ['date' => $date, 'id' => $clubId],
         );
         if ($clear) {
-            $this->emptyMailbox($clubId);
+            $this->mailboxPurger->purge($clubId);
         }
-    }
-
-    /**
-     * Vide la boîte aux lettres d'un club. Sur la connexion ADMIN (amateo_owner, porte
-     * admin_all) : le firewall admin ne pose jamais de GUC tenant, un DELETE sur la connexion
-     * runtime serait donc fail-closed (0 ligne vue).
-     */
-    private function emptyMailbox(string $clubId): void
-    {
-        $this->connection()->executeStatement(
-            'DELETE FROM club_mailbox_message WHERE club_id = :id',
-            ['id' => $clubId],
-        );
     }
 }

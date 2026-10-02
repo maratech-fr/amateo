@@ -70,15 +70,4 @@ final class ClubMailboxMessageRepository extends ServiceEntityRepository
     {
         return $this->findOneBy(['id' => $id, 'clubId' => $clubId]);
     }
-
-    /** Vide la boîte d'un club (reset de la démo, désactivation de l'horloge). Nombre supprimé. */
-    public function deleteForClub(string $clubId): int
-    {
-        return (int) $this->createQueryBuilder('m')
-            ->delete()
-            ->andWhere('m.clubId = :clubId')
-            ->setParameter('clubId', $clubId)
-            ->getQuery()
-            ->execute();
-    }
 }

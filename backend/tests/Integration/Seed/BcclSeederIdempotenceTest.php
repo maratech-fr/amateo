@@ -242,6 +242,20 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     }
 
     /**
+     * Le code FFBB de la démo est synthétique (ARA9999999) → le résolveur de zone n'y lit aucun
+     * département : sans repli, `school_zone` resterait NULL et le radar afficherait « zone scolaire
+     * à renseigner » au lieu du compte à rebours des vacances. Le seed démo pose la zone A (Rhône).
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testDemoSeedGivesTheClubTheRhoneSchoolZone(): void
+    {
+        $club = $this->seeder->run($this->em, BcclSeedProfile::demo('demo-pass-zone'));
+
+        self::assertSame('A', $club->getSchoolZone(), 'le club démo vit en zone A (Rhône)');
+    }
+
+    /**
      * NR — LE PLANNING RÉEL TRANSCRIT RESPECTE LES RÈGLES DURES QUE LE SEED DÉCLARE.
      *
      * Le seed fait deux choses qui peuvent se contredire : il transcrit le planning RÉEL du club

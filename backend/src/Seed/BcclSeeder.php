@@ -148,7 +148,12 @@ final class BcclSeeder
         // (no vacances zone shown, no league envelope). Only fill when empty so a
         // re-run never reverts a manual PATCH correction (resolver = best-effort).
         if (null === $club->getSchoolZone()) {
-            $club->setSchoolZone($this->schoolZoneResolver->resolveFromFfbbCode($profile->ffbbCode));
+            // Le code FFBB de la DÉMO est synthétique (ARA9999999) : le résolveur n'y lit aucun
+            // département et rend null — le radar afficherait alors « zone scolaire à renseigner »
+            // au lieu du compte à rebours des vacances. On pose explicitement la zone A (Rhône, où
+            // vit le club démo). Un VRAI club dont le code ne se lit pas reste null (saisie manuelle).
+            $resolved = $this->schoolZoneResolver->resolveFromFfbbCode($profile->ffbbCode);
+            $club->setSchoolZone($resolved ?? ($profile->isDemo ? 'A' : null));
         }
         if (null === $club->getLeague()) {
             $club->setLeague($this->leagueResolver->resolveFromFfbbCode($profile->ffbbCode));

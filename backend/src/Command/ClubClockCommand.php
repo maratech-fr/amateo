@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Clock\ClubClock;
+use App\Service\ClubMailboxPurger;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
 use Doctrine\Persistence\ManagerRegistry;
@@ -40,8 +41,10 @@ final class ClubClockCommand extends Command
 {
     private const string UUID_PATTERN = '/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/';
 
-    public function __construct(private readonly ManagerRegistry $managerRegistry)
-    {
+    public function __construct(
+        private readonly ManagerRegistry $managerRegistry,
+        private readonly ClubMailboxPurger $mailboxPurger,
+    ) {
         parent::__construct();
     }
 
@@ -108,6 +111,13 @@ final class ClubClockCommand extends Command
             ['date' => $date, 'id' => $club['id']],
         );
 
+        // Relâcher l'horloge VIDE la boîte aux lettres : hors horloge le club redevient un club
+        // qui envoie pour de vrai, les e-mails boxés n'ont plus de raison d'être (même maison que
+        // la console — décision fondateur 2026-10-02). Poser une date ne touche jamais la boîte.
+        if ($clear) {
+            $this->mailboxPurger->purge((string) $club['id']);
+        }
+
         $io->success(null === $date
             ? \sprintf('Club %s is back on the real clock.', $club['id'])
             : \sprintf('Club %s now lives on %s (server AND frontend).', $club['id'], $date));
@@ -115,9 +125,14 @@ final class ClubClockCommand extends Command
         return Command::SUCCESS;
     }
 
+    /**
+     * Connexion ADMIN (amateo_owner) : action support cross-tenant, comme la console. Elle vise
+     * n'importe quel club sans dépendre d'un GUC tenant — et c'est la même connexion que
+     * {@see ClubMailboxPurger}, pour que le vidage de boîte au `--clear` voie bien les lignes.
+     */
     private function connection(): Connection
     {
-        $connection = $this->managerRegistry->getConnection();
+        $connection = $this->managerRegistry->getConnection('admin');
         \assert($connection instanceof Connection);
 
         return $connection;
