@@ -412,6 +412,12 @@ export interface SlotMoveResult {
   violations?: MoveViolation[];
   evicted?: EvictedSlot;
   dryRun?: boolean;
+  /**
+   * ENG-51 — verdict « indéterminé » : le solveur n'a pas tranché dans le temps imparti. Un 200
+   * `{valid:false, indeterminate:true}` (ni accepté ni refusé — ce n'est PAS un 422) : rien n'est
+   * écrit, l'UI montre un bandeau NEUTRE « réessayez », jamais un style conflit.
+   */
+  indeterminate?: boolean;
 }
 
 /** Corps d'un placement de séance à la dérive (P2-30). `durationMinutes` est OPTIONNEL :
@@ -438,6 +444,9 @@ export interface PlaceSlotResult {
   compromises: Compromise[];
   violations?: MoveViolation[];
   dryRun?: boolean;
+  /** ENG-51 — verdict « indéterminé » (solveur non tranché) : 200 `{valid:false, indeterminate:true}`,
+   *  rien créé, bandeau NEUTRE « réessayez ». */
+  indeterminate?: boolean;
 }
 
 /**
@@ -717,6 +726,9 @@ export interface MoveGroupResult {
   compromises: Compromise[];
   violations?: MoveViolation[];
   movedSlotIds?: string[];
+  /** ENG-51 — verdict « indéterminé » (solveur non tranché) : 200 `{valid:false, indeterminate:true}`,
+   *  aucun des N créneaux ne bouge, bandeau NEUTRE « réessayez ». */
+  indeterminate?: boolean;
 }
 
 /**

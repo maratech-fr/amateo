@@ -25,7 +25,7 @@ import { cn } from "@/shared/lib/utils";
 
 import type { Constraint, ConstraintFamily, ConstraintPayload, ConstraintRuleType } from "../api";
 import { dayLabelLong } from "@/shared/lib/days";
-import { useCreateConstraint, useDeleteConstraint, usePriorityTiers, useUpdateConstraint, useWizardCoachPlayers, useWizardCoaches, useWizardConstraints, useWizardTeamTagAssignments, useWizardTeamTags, useWizardTeams, useActiveTeams, useActiveVenues, useWizardVenues, useReservations } from "../queries";
+import { useCreateConstraint, useDeleteConstraint, usePriorityTiers, useUpdateConstraint, useWizardCoachPlayers, useWizardCoaches, useWizardConstraints, useWizardTeamCoaches, useWizardTeamTagAssignments, useWizardTeamTags, useWizardTeams, useActiveTeams, useActiveVenues, useWizardVenues, useReservations } from "../queries";
 import { useCalendarEntry, useEntryConflicts, usePeriodAnchor } from "@/features/cockpit/queries";
 import { sortByName } from "@/shared/lib/nameOrder";
 import { useWizardStore } from "../store";
@@ -99,6 +99,21 @@ export function ConstraintsStep() {
   const { data: tagAssignments = [] } = useWizardTeamTagAssignments();
   const { data: coaches = [] } = useWizardCoaches();
   const { data: coachPlayers = [] } = useWizardCoachPlayers();
+  const { data: teamCoaches = [] } = useWizardTeamCoaches();
+  // ALIGN-19 — les coachs qui ne sont ADJOINTS sur AUCUNE équipe (jamais principal). Le moteur
+  // ne lit pas l'indisponibilité d'un adjoint (parsing.py les exclut) : sa règle est INDICATIVE,
+  // pas obligatoire. Un coach principal, même sur une seule équipe, n'y entre pas.
+  const adjointOnlyCoachIds = useMemo(() => {
+    const linked = new Set<string>();
+    const main = new Set<string>();
+    for (const tc of teamCoaches) {
+      linked.add(tc.coachId);
+      if ("MAIN" === tc.role) {
+        main.add(tc.coachId);
+      }
+    }
+    return new Set([...linked].filter((id) => !main.has(id)));
+  }, [teamCoaches]);
   // P2-15 : les sélecteurs d'une période ne proposent QUE les gymnases et les équipes
   // ACTIFS — décision fondateur : « je ne veux voir que les gymnases actifs ». Ce qui sort
   // du payload solveur ne doit pas être offert ici : le geste serait sans effet.
@@ -929,7 +944,15 @@ export function ConstraintsStep() {
           </>
         )}
 
-        {"COACH_AVAILABILITY" === family || ("TIME" === family && "" !== endTime) || ("DAY" === family && "forbidden" !== dayMode) || ("FACILITY" === family && ("forced" === effectiveVenueMode || "min" === effectiveVenueMode)) ? (
+        {"COACH_AVAILABILITY" === family && "" !== coachId && adjointOnlyCoachIds.has(coachId) ? (
+          // ALIGN-19 — pour un coach ADJOINT sur toutes ses équipes, le moteur ne lit pas
+          // l'indisponibilité : elle est INDICATIVE, pas obligatoire. Pastille « Indicatif » + la
+          // phrase qui le dit, au lieu de laisser croire qu'elle bloquera une séance.
+          <div className="flex flex-col gap-1">
+            <RuleBadge label="Indicatif" />
+            <span className="text-xs text-muted-foreground">un adjoint indisponible ne bloque jamais une séance</span>
+          </div>
+        ) : "COACH_AVAILABILITY" === family || ("TIME" === family && "" !== endTime) || ("DAY" === family && "forbidden" !== dayMode) || ("FACILITY" === family && ("forced" === effectiveVenueMode || "min" === effectiveVenueMode)) ? (
           // Coach availability + "impose"/"uniquement"/"au moins une" + "Fini avant" are
           // ALWAYS hard (a person can't be in two places; a forced venue, a whitelist/at-least
           // day rule, and a gym-closing end-bound are musts, not nudges) — the payload pins
@@ -1016,10 +1039,20 @@ export function ConstraintsStep() {
                   // semaines. Il s'affiche mais ne se règle pas d'ici (on ajuste l'incident à la
                   // source) — d'où le badge à la place des actions, pas un bouton désactivé.
                   const isFact = factIds.has(c.id);
+                  // ALIGN-19 — l'indisponibilité d'un coach ADJOINT sur toutes ses équipes est
+                  // INDICATIVE (le moteur ne la lit pas) : pastille « Indicatif » au lieu
+                  // d'« Obligatoire », + la phrase qui le dit. Un coach principal reste obligatoire.
+                  const isAdjointOnlyCoachAvailability =
+                    "COACH_AVAILABILITY" === c.family && null !== c.scopeTargetId && adjointOnlyCoachIds.has(c.scopeTargetId);
 
                   return (
                     <tr key={c.id} data-constraint-id={c.id} className={cn("border-b border-border/60 last:border-0", editingId === c.id ? "bg-accent/10 ring-1 ring-inset ring-accent" : "")}>
-                      <td className="px-3 py-2 align-top">{target ?? "—"}</td>
+                      <td className="px-3 py-2 align-top">
+                        {target ?? "—"}
+                        {isAdjointOnlyCoachAvailability ? (
+                          <div className="mt-1 text-xs text-muted-foreground">un adjoint indisponible ne bloque jamais une séance</div>
+                        ) : null}
+                      </td>
                       {0 === parts.length ? (
                         // Règle non descriptible fidèlement (clé inconnue, gymnase supprimé) : on
                         // rend le NOM en entier plutôt qu'une cellule vide, qui laisserait croire
@@ -1040,7 +1073,7 @@ export function ConstraintsStep() {
                         </>
                       )}
                       <td className="px-3 py-2 align-top">
-                        <StatusPill>{RULE_LABEL[c.ruleType]}</StatusPill>
+                        <StatusPill>{isAdjointOnlyCoachAvailability ? "Indicatif" : RULE_LABEL[c.ruleType]}</StatusPill>
                       </td>
                       <td className="px-3 py-2 align-top">
                         {isFact ? (

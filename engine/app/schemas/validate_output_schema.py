@@ -59,6 +59,12 @@ class ValidateAssignmentsOutputSchema(SerializableModel):
     """Le verdict moteur sur le candidat : valide, et sinon POURQUOI (nomme)."""
 
     valid: bool
+    # ENG-51 — 3ᵉ verdict « indéterminé » : le solveur a atteint sa limite de temps sans
+    # PROUVER ni SAT ni UNSAT. ``valid=false`` ET ``indeterminate=true`` : ce n'est PAS un
+    # refus (aucune règle nommée), le déplacement ne doit PAS être appliqué, et l'UI invite
+    # à réessayer (bandeau NEUTRE, pas un style conflit). Défaut ``false`` : un verdict
+    # tranché (OPTIMAL/FEASIBLE/INFEASIBLE) ne porte jamais ce drapeau.
+    indeterminate: bool = False
     violations: list[AssignmentViolationSchema] = Field(default_factory=list)
     # Le DELTA de confort d'un candidat ACCEPTÉ (P2-32) — rempli SEULEMENT quand ``valid=true``.
     # Sur un refus, la liste reste vide : le chemin REFUS du verdict est inchangé.

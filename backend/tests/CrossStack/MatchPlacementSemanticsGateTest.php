@@ -198,6 +198,28 @@ final class MatchPlacementSemanticsGateTest extends TestCase
         }
     }
 
+    public function testFixedMatchFinishingAfterMidnightStillPlacesTheOthers(): void
+    {
+        // ENG-48 (axe « constraint semantics ») — un match posé À LA MAIN (FIXED) qui démarre à
+        // 22:30 pour 120 min FINIT à 00:30 (après minuit ; la ligue peut l'autoriser, « pas de
+        // surprise », aucun refus backend). Le domaine de compaction du groupe (gymnase, date) doit
+        // atteindre cette fin : borné à 24:00, l'ancre rendait TOUT le groupe infaisable et un match
+        // par ailleurs plaçable à côté restait non placé. Le correctif absorbe l'ancre → l'autre
+        // match est placé.
+        $result = $this->solve([
+            'matches' => [
+                ['id' => 'm1', 'teamId' => 't1', 'date' => self::SATURDAY, 'kind' => 'TO_PLACE'],
+                ['id' => 'fx', 'teamId' => 't2', 'date' => self::SATURDAY, 'kind' => 'FIXED', 'venueId' => 'v1', 'kickoff' => '22:30'],
+            ],
+            'venues' => [$this->venue('v1', [['13:00', '18:00']])],
+            'teams' => [$this->team('t1'), $this->teamWithMatchMinutes('t2', 120)],
+        ]);
+
+        self::assertSame([], $result['unplaced'], 'un match plaçable à côté d\'une ancre finissant après minuit doit être placé');
+        self::assertCount(1, $result['placements']);
+        self::assertSame('m1', $result['placements'][0]['matchId']);
+    }
+
     /**
      * @param array{matches: list<array<string, mixed>>, venues: list<array<string, mixed>>, teams: list<array<string, mixed>>, clubRules?: list<array<string, mixed>>} $problem
      *
@@ -255,6 +277,12 @@ final class MatchPlacementSemanticsGateTest extends TestCase
     private function team(string $id): array
     {
         return ['id' => $id, 'name' => strtoupper($id), 'leagueWindows' => [], 'habits' => [], 'coaches' => []];
+    }
+
+    /** Une équipe avec une durée de match explicite — D1 : le gymnase tient [kickoff, kickoff+matchMinutes]. @return array<string, mixed> */
+    private function teamWithMatchMinutes(string $id, int $matchMinutes): array
+    {
+        return ['id' => $id, 'name' => strtoupper($id), 'leagueWindows' => [], 'habits' => [], 'coaches' => [], 'matchMinutes' => $matchMinutes];
     }
 
     /** Une équipe avec un créneau idéal (habitude) {jour ISO, heure, gymnase}. @return array<string, mixed> */

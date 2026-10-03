@@ -548,7 +548,7 @@ def _solve(model: ScheduleCpModel, *, timeout_seconds: int, seed: int) -> tuple[
     return solver.Solve(model), solver
 
 
-def _baseline_is_feasible(
+def _baseline_solve_status(
     data: dict[str, Any],
     parsed: ParsedConstraints,
     team_coach_map: dict[str, list[str]],
@@ -557,18 +557,19 @@ def _baseline_is_feasible(
     *,
     timeout_seconds: int,
     seed: int,
-) -> bool:
-    """Le planning courant, FIGE mais SANS le candidat, est-il faisable pour le
-    moteur ? Utilise seulement sur le chemin rare « infaisable + rien de nomme »
-    pour distinguer un candidat fautif d'une baseline deja invalide (condition
-    d'arret fondateur : figer un planning pourtant valide ne doit pas conclure
-    « non » a tout)."""
+) -> int:
+    """Statut CP-SAT du planning courant, FIGE mais SANS le candidat. Utilise seulement
+    sur le chemin rare « infaisable + rien de nomme » pour distinguer un candidat fautif
+    d'une baseline deja invalide (condition d'arret fondateur : figer un planning pourtant
+    valide ne doit pas conclure « non » a tout). Renvoie le STATUT brut (et non un booleen)
+    pour que l'appelant distingue un UNKNOWN (sonde expiree -> verdict indetermine, ENG-51)
+    d'un INFEASIBLE (baseline reellement invalide)."""
     model = build_model(data)
     model.team_coach_map = team_coach_map
     assignments = _build_assignments(model, team_coach_map, frozen_keys)
     _apply_hard(model, assignments, data, parsed, team_coach_map, team_player_map)
     status, _ = _solve(model, timeout_seconds=timeout_seconds, seed=seed)
-    return status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    return status
 
 
 def _slot_key_of(assignment: CandidateAssignmentSchema | None) -> SlotKey | None:
@@ -935,6 +936,14 @@ def validate_assignment(
     metrics["nb_constraints"] = len(model.Proto().constraints)
     metrics["wall_time_ms"] = int(solver.wall_time * 1000)
 
+    # ENG-51 — le solveur a épuisé son budget sans PROUVER la (in)faisabilité (UNKNOWN).
+    # On ne peut RIEN conclure : ni nommer une règle cassée (le diagnostic exige un UNSAT
+    # réel), ni sonder la baseline (ce serait un second UNKNOWN). Verdict NEUTRE
+    # « indéterminé » : le déplacement n'est PAS appliqué, l'UI invite à réessayer. Aucun
+    # mirror, aucune baseline sur ce chemin.
+    if status == cp_model.UNKNOWN:
+        return {"valid": False, "indeterminate": True, "violations": [], "compromises": [], "metrics": metrics}
+
     violations: list[dict[str, Any]] = []
     if not valid:
         # Chaque candidat est diagnostiqué contre la baseline gelée AUGMENTÉE des AUTRES candidats :
@@ -966,7 +975,7 @@ def validate_assignment(
             # Infaisable, mais aucun mirror n'a su l'attribuer : distinguer une
             # baseline deja invalide (condition d'arret) d'un conflit HARD reel
             # mais non nomme — jamais un « non » nu.
-            baseline_ok = _baseline_is_feasible(
+            baseline_status = _baseline_solve_status(
                 data,
                 parsed,
                 team_coach_map,
@@ -975,7 +984,18 @@ def validate_assignment(
                 timeout_seconds=input_data.solver_timeout_seconds,
                 seed=input_data.solver_seed,
             )
-            if not baseline_ok:
+            # ENG-51 — la sonde de baseline a elle-même expiré (UNKNOWN) : impossible de
+            # distinguer « baseline déjà invalide » d'un « conflit HARD réel ». Verdict
+            # indéterminé plutôt que `baseline_infeasible` affirmé à tort.
+            if baseline_status == cp_model.UNKNOWN:
+                return {
+                    "valid": False,
+                    "indeterminate": True,
+                    "violations": [],
+                    "compromises": [],
+                    "metrics": metrics,
+                }
+            if baseline_status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
                 violations = [
                     {
                         "rule": "baseline_infeasible",

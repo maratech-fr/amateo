@@ -10815,7 +10815,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "The whole block session was accepted by the solver and its member slots were moved together (schedule flagged manually edited, score now stale), carrying the named comfort trade-offs",
+                        "description": "The whole block session was accepted by the solver and its member slots were moved together (schedule flagged manually edited, score now stale), carrying the named comfort trade-offs \u2014 OR an INDETERMINATE verdict (the solver hit its time budget without proving SAT or UNSAT: valid=false, indeterminate=true, none of the member slots moved, retry)",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -10826,6 +10826,11 @@
                                         },
                                         "valid": {
                                             "type": "boolean"
+                                        },
+                                        "indeterminate": {
+                                            "type": "boolean",
+                                            "nullable": true,
+                                            "description": "True when the solver could not decide within its time budget \u2014 neither accepted nor refused (no rule named); nothing was written, retry"
                                         },
                                         "compromises": {
                                             "type": "array",
@@ -10892,7 +10897,7 @@
                                             "items": {
                                                 "type": "string"
                                             },
-                                            "description": "Ids of the member slots that were moved as one"
+                                            "description": "Ids of the member slots that were moved as one; absent on an indeterminate verdict"
                                         }
                                     }
                                 }
@@ -11141,7 +11146,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Move accepted by the solver and written (schedule flagged manually edited, score now stale) \u2014 OR a dryRun essai (valid may be false, nothing written). Both carry the named comfort trade-offs",
+                        "description": "Move accepted by the solver and written (schedule flagged manually edited, score now stale) \u2014 OR a dryRun essai (valid may be false, nothing written) \u2014 OR an INDETERMINATE verdict (the solver hit its time budget without proving SAT or UNSAT: valid=false, indeterminate=true, nothing written, retry). Both of the first two carry the named comfort trade-offs",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -11157,6 +11162,11 @@
                                             "type": "boolean",
                                             "nullable": true,
                                             "description": "When true, run the full verdict (pre-engine guards included) but write NOTHING; the response carries the verdict and its named trade-offs"
+                                        },
+                                        "indeterminate": {
+                                            "type": "boolean",
+                                            "nullable": true,
+                                            "description": "True when the solver could not decide within its time budget \u2014 neither accepted nor refused (no rule named); nothing was written, retry"
                                         },
                                         "violations": {
                                             "type": "array",
@@ -11198,7 +11208,7 @@
                                                 }
                                             },
                                             "nullable": true,
-                                            "description": "Present on a dryRun essai that the solver refused (valid=false); absent on a written move"
+                                            "description": "Present on a dryRun essai that the solver refused (valid=false); absent on a written move or an indeterminate verdict"
                                         },
                                         "compromises": {
                                             "type": "array",
@@ -11450,7 +11460,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Placement accepted by the solver and written (schedule flagged manually edited, score now stale) \u2014 OR a dryRun essai (valid may be false, nothing created). Both carry the named comfort trade-offs",
+                        "description": "Placement accepted by the solver and written (schedule flagged manually edited, score now stale) \u2014 OR a dryRun essai (valid may be false, nothing created) \u2014 OR an INDETERMINATE verdict (the solver hit its time budget without proving SAT or UNSAT: valid=false, indeterminate=true, nothing created, retry). The first two carry the named comfort trade-offs",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -11464,10 +11474,15 @@
                                             "nullable": true,
                                             "description": "When true, run the full verdict (pre-engine guards included) but write NOTHING; the response carries the verdict and its named trade-offs"
                                         },
+                                        "indeterminate": {
+                                            "type": "boolean",
+                                            "nullable": true,
+                                            "description": "True when the solver could not decide within its time budget \u2014 neither accepted nor refused (no rule named); nothing was written, retry"
+                                        },
                                         "slotId": {
                                             "type": "string",
                                             "nullable": true,
-                                            "description": "Id of the newly created (unlocked) slot; absent on a dryRun essai"
+                                            "description": "Id of the newly created (unlocked) slot; absent on a dryRun essai or an indeterminate verdict"
                                         },
                                         "violations": {
                                             "type": "array",
@@ -11509,7 +11524,7 @@
                                                 }
                                             },
                                             "nullable": true,
-                                            "description": "Present on a dryRun essai that the solver refused (valid=false); absent on a written placement"
+                                            "description": "Present on a dryRun essai that the solver refused (valid=false); absent on a written placement or an indeterminate verdict"
                                         },
                                         "compromises": {
                                             "type": "array",

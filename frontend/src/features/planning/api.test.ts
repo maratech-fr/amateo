@@ -91,3 +91,27 @@ describe("moveSlot / placeSlot — l'abandon client devient EngineVerificationIn
     await expect(placeSlot("sched-1", { teamId: "team-1", dayOfWeek: 1, startTime: "18:00", venueId: "venue-1" })).rejects.toBeInstanceOf(EngineVerificationInterruptedError);
   });
 });
+
+// ENG-51 — un verdict « indéterminé » (le solveur n'a pas tranché dans le temps imparti) arrive en
+// 200 `{valid:false, indeterminate:true}` : ni accepté ni refusé (ce n'est PAS un 422). Le parseur
+// le rend TEL QUEL (il ne lève pas), pour que l'UI montre un bandeau NEUTRE « réessayez ».
+describe("moveSlot / placeSlot — verdict indéterminé (ENG-51) résolu, jamais levé", () => {
+  afterEach(() => mockPost.mockReset());
+
+  const patch = { dayOfWeek: 1, startTime: "18:00", venueId: "venue-1" };
+
+  it("moveSlot : 200 {valid:false, indeterminate:true} résout avec indeterminate=true, sans throw", async () => {
+    mockPost.mockReturnValueOnce({ json: async () => ({ valid: false, indeterminate: true }) } as never);
+    const result = await moveSlot("slot-1", patch);
+    expect(result.valid).toBe(false);
+    expect(result.indeterminate).toBe(true);
+    expect(result.compromises).toEqual([]); // normalisé par le parseur
+  });
+
+  it("placeSlot : 200 {valid:false, indeterminate:true} résout avec indeterminate=true, sans throw", async () => {
+    mockPost.mockReturnValueOnce({ json: async () => ({ valid: false, indeterminate: true }) } as never);
+    const result = await placeSlot("sched-1", { teamId: "team-1", dayOfWeek: 1, startTime: "18:00", venueId: "venue-1" });
+    expect(result.valid).toBe(false);
+    expect(result.indeterminate).toBe(true);
+  });
+});

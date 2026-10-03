@@ -194,6 +194,55 @@ final class ConstraintKeysAreHonouredByEngineTest extends TestCase
     }
 
     /** Ce que le scénario regarde du résultat : heure, jour, gymnase, ou nombre placé. */
+    public function testForcedDayHonouredByALockedSessionStaysFeasible(): void
+    {
+        // ALIGN-16 (axe « constraint semantics ») — l'équipe DOIT s'entraîner le mercredi (jour
+        // imposé) ET sa séance du mercredi est VERROUILLÉE. Le verrou n'a pas de variable côté
+        // moteur (model.py le retire), donc l'UNIQUE créneau du mercredi disparaît de `x` : « au
+        // moins une séance mercredi » posé sur un ensemble VIDE rendait tout le planning infaisable
+        // (`failed`) alors que la réservation honore la règle. Le verrou satisfait le jour imposé →
+        // `completed`. Une régression (le verrou cesse de satisfaire le jour imposé) ferait ressortir
+        // `failed` ici — ce qu'aucun arbitrage interne ne peut masquer, le seul créneau étant verrouillé.
+        $payload = [
+            'version' => ScheduleConstraintBuilder::CONTRACT_VERSION,
+            'clubId' => 'club-proof',
+            'seasonId' => 'season-proof',
+            'solverSeed' => 42,
+            'teams' => [$this->team(self::TEAM)],
+            'venues' => [$this->venue(self::V1, [[3, '18:00', 1]])], // UNIQUE créneau : mercredi 18:00
+            'coaches' => [],
+            'constraints' => [[
+                'id' => 'force-wed',
+                'scope' => 'TEAM',
+                'scopeTargetId' => self::TEAM,
+                'family' => 'DAY',
+                'ruleType' => 'HARD',
+                'name' => 'mercredi imposé',
+                'config' => ['forcedDays' => [3]],
+                'sortOrder' => 0,
+                'isActive' => true,
+            ]],
+            'slotTemplates' => [[
+                'id' => 'lock-t1-wed',
+                'teamId' => self::TEAM,
+                'venueId' => self::V1,
+                'dayOfWeek' => 3,
+                'startTime' => '18:00',
+                'durationMinutes' => 90,
+                'lockLevel' => 'HARD', // le gestionnaire a verrouillé la séance du mercredi
+            ]],
+        ];
+
+        $result = $this->solve($payload);
+
+        self::assertSame('completed', $result['status'], 'le verrou du mercredi satisfait le jour imposé — la génération doit aboutir');
+        $dayConflicts = array_filter(
+            $result['diagnostics'] ?? [],
+            static fn (array $d): bool => ('day_constraint_conflict' === ($d['type'] ?? null)) && (self::TEAM === ($d['teamId'] ?? null)),
+        );
+        self::assertSame([], array_values($dayConflicts), 'un jour imposé couvert par un verrou n\'est pas un conflit');
+    }
+
     private function observe(string $grid, array $payload): string
     {
         $result = $this->solve($payload);

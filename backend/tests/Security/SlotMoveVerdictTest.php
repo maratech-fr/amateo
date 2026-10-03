@@ -88,6 +88,9 @@ final class SlotMoveVerdictTest extends KernelTestCase
     /** Accepté AVEC un compromis nommé (P2-32) : le déplacement casse une préférence de gymnase. */
     private const string ACCEPT_WITH_COMPROMISES = '{"valid":true,"violations":[],"compromises":[{"family":"venue_preference","effect":"broken","message":"U13 ne s\'entraîne plus dans son gymnase préféré (Gymnase Un).","teamId":"team-u13","coachId":null,"venueId":"venue-un","dayOfWeek":null,"startTime":null}],"metrics":{"solver_version":"cp-sat","nb_variables":0,"nb_constraints":0,"wall_time_ms":0}}';
 
+    /** ENG-51 — verdict INDÉTERMINÉ : le solveur n'a pas tranché dans le temps imparti (ni oui ni non). */
+    private const string INDETERMINATE = '{"valid":false,"indeterminate":true,"violations":[],"compromises":[],"metrics":{"solver_version":"cp-sat","nb_variables":0,"nb_constraints":0,"wall_time_ms":0}}';
+
     private EntityManagerInterface $em;
 
     /** Verdict « non » : le créneau ne bouge PAS, et le marqueur reste à false. */
@@ -126,6 +129,35 @@ final class SlotMoveVerdictTest extends KernelTestCase
         $schedule = $this->em->getRepository(Schedule::class)->find($ctx['scheduleId']);
         self::assertInstanceOf(Schedule::class, $schedule);
         self::assertFalse($schedule->isManuallyEditedSinceGeneration(), 'un refus ne marque pas le planning comme retouché');
+    }
+
+    /** ENG-51 — verdict INDÉTERMINÉ : le drapeau remonte, rien n'est écrit, aucune violation inventée. */
+    public function testIndeterminateMoveIsNotWrittenAndFlagIsPropagated(): void
+    {
+        $ctx = $this->seed();
+        $slot = $ctx['slot'];
+        $originalDay = $slot->getDayOfWeek();
+        $originalVenue = $slot->getVenueId();
+        $originalStart = $slot->getStartTime()->format('H:i');
+
+        $service = $this->service(new MockHttpClient(new MockResponse(self::INDETERMINATE, ['http_code' => 200])));
+        $result = $service->move($slot, 4, new DateTimeImmutable('20:00'), $ctx['venue2']);
+
+        self::assertFalse($result['valid']);
+        self::assertTrue($result['indeterminate'] ?? false, 'le drapeau indéterminé doit remonter du moteur jusqu\'au service');
+        self::assertSame([], $result['violations'], 'un verdict indéterminé ne nomme AUCUNE règle (ce n\'est pas un refus)');
+
+        $this->em->clear();
+        $this->scopeGucToClub($ctx['clubId']);
+        $reloaded = $this->em->getRepository(ScheduleSlotTemplate::class)->find($slot->getId());
+        self::assertInstanceOf(ScheduleSlotTemplate::class, $reloaded);
+        self::assertSame($originalDay, $reloaded->getDayOfWeek(), 'un verdict indéterminé ne déplace JAMAIS le créneau');
+        self::assertSame($originalVenue, $reloaded->getVenueId());
+        self::assertSame($originalStart, $reloaded->getStartTime()->format('H:i'));
+
+        $schedule = $this->em->getRepository(Schedule::class)->find($ctx['scheduleId']);
+        self::assertInstanceOf(Schedule::class, $schedule);
+        self::assertFalse($schedule->isManuallyEditedSinceGeneration(), 'un verdict indéterminé ne marque pas le planning comme retouché');
     }
 
     /** Verdict « oui » : le créneau bouge, et le score devient périmé (marqueur posé). */

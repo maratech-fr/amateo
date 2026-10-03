@@ -130,3 +130,42 @@ def test_candidate_when_coach_unavailable_is_invalid_and_named() -> None:
     assert result["valid"] is False
     conflicts = {v["rule"] for v in result["violations"]}
     assert "coach_unavailable" in conflicts, result["violations"]
+
+
+def test_solver_timeout_yields_a_neutral_indeterminate_verdict(monkeypatch: Any) -> None:
+    """ENG-51 — le solveur épuise son budget sans PROUVER la (in)faisabilité (UNKNOWN). Le
+    verdict n'est NI « oui » NI « non » : ``valid=false`` ET ``indeterminate=true``, sans règle
+    nommée ni compromis. Le déplacement ne sera pas appliqué, l'UI invite à réessayer (bandeau
+    NEUTRE). On force l'UNKNOWN sur un déplacement par ailleurs VALIDE (même gymnase, D-14) : sans
+    le drapeau, un ``baseline_infeasible`` serait affirmé à tort."""
+    from ortools.sat.python import cp_model
+
+    import app.solver.validate_assignments as va
+
+    real_solve = va._solve
+
+    def fake_solve(model: Any, *, timeout_seconds: int, seed: int) -> tuple[int, Any]:
+        _status, solver = real_solve(model, timeout_seconds=timeout_seconds, seed=seed)
+        return cp_model.UNKNOWN, solver
+
+    monkeypatch.setattr(va, "_solve", fake_solve)
+
+    payload = {
+        "clubId": "club",
+        "seasonId": "season",
+        "venues": [make_venue("A", [(4, "20:00")], capacity=2)],
+        "teams": [make_team("U13"), make_team("U15")],
+        "coaches": [_coach("C", "Marc", "Dupont")],
+        "constraints": [team_coach("tc13", "U13", "C"), team_coach("tc15", "U15", "C")],
+        "slotTemplates": [
+            {"id": "s1", "teamId": "U15", "venueId": "A", "dayOfWeek": 4, "startTime": "20:00", "durationMinutes": 90},
+        ],
+        "candidate": {"teamId": "U13", "venueId": "A", "dayOfWeek": 4, "startTime": "20:00", "durationMinutes": 90},
+    }
+
+    result = _run(payload)
+
+    assert result["valid"] is False
+    assert result["indeterminate"] is True
+    assert result["violations"] == []
+    assert result["compromises"] == []

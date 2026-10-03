@@ -69,6 +69,8 @@ final class MatchPlacementContext extends BaseContext
 
     private string $homeId = '';
 
+    private string $nightAnchorId = '';
+
     private string $travelCode = '';
 
     private string $saturday = '';
@@ -469,6 +471,52 @@ final class MatchPlacementContext extends BaseContext
         $this->fxSat = $this->homeId;
     }
 
+    #[Given('un match posé à la main le samedi à 23h00 sur ce gymnase, finissant après minuit')]
+    public function uneAncreDeNuitFinissantApresMinuit(): void
+    {
+        // ENG-48 — un match posé À LA MAIN à 23h00 : avec sa durée (≥ 75 min) il FINIT après
+        // minuit (23:00 + 75 = 00:15). C'est une ancre FIXED pour le solveur, hors de la fenêtre
+        // d'accès (le geste manuel est libre), sur le MÊME gymnase que le match à placer.
+        $competitionId = $this->createdId(
+            $this->apiPost('competitions', ['teamId' => $this->secondTeamId, 'name' => 'Championnat jetable nuit', 'competitionType' => 'CHAMPIONSHIP'], $this->token),
+            'compétition de l\'ancre de nuit',
+        );
+        $this->nightAnchorId = $this->createdId(
+            $this->apiPost('fixtures', ['teamId' => $this->secondTeamId, 'matchDate' => $this->saturday, 'homeAway' => 'HOME', 'opponentLabel' => 'Adversaire de nuit', 'competitionId' => $competitionId], $this->token),
+            'match de nuit posé à la main',
+        );
+        // Posé À LA MAIN (MANUAL) à 23h00 sur le gymnase jetable : ancre FIXED du payload.
+        $this->dbalExec(
+            \sprintf(
+                'UPDATE fixture SET status=\'PLACED\', placement_source=\'MANUAL\', venue_id=\'%s\', kickoff_time=\'23:00:00\' WHERE id=\'%s\'',
+                $this->venueId,
+                $this->nightAnchorId,
+            ),
+            admin: true,
+        );
+    }
+
+    #[Then('l\'autre match du samedi est placé par le solveur malgré l\'ancre de nuit')]
+    public function lAutreMatchEstPlaceMalgreLAncre(): void
+    {
+        // ENG-48 — l'ancre finissant après minuit NE rend PLUS tout le groupe (gymnase, date)
+        // infaisable : le match à placer à côté d'elle est posé normalement par le solveur.
+        $unplaced = \is_array($this->placeResult['unplaced'] ?? null) ? $this->placeResult['unplaced'] : [];
+        foreach ($unplaced as $entry) {
+            if (\is_array($entry) && ($entry['matchId'] ?? null) === $this->fxSat) {
+                throw new RuntimeException('le match à placer est resté non placé — l\'ancre finissant après minuit a vidé tout le groupe (régression ENG-48)');
+            }
+        }
+
+        $status = $this->satFixture['status'] ?? null;
+        if ('PLACED' !== $status) {
+            throw new RuntimeException(\sprintf('le match à placer n\'est pas placé (statut « %s »)', \is_string($status) ? $status : 'inconnu'));
+        }
+        if ('SOLVER' !== ($this->satFixture['placementSource'] ?? null)) {
+            throw new RuntimeException('le match à placer n\'a pas été posé par le solveur');
+        }
+    }
+
     #[Then('le match à domicile est placé par le solveur, sans être bloqué par l\'extérieur')]
     public function leDomicileEstPlaceParLeSolveur(): void
     {
@@ -810,7 +858,7 @@ final class MatchPlacementContext extends BaseContext
             return;
         }
 
-        foreach ([$this->fxSat, $this->fxSat2, $this->fxSun, $this->friendlyId, $this->awayId, $this->homeId] as $id) {
+        foreach ([$this->fxSat, $this->fxSat2, $this->fxSun, $this->friendlyId, $this->awayId, $this->homeId, $this->nightAnchorId] as $id) {
             if ('' !== $id) {
                 $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
             }

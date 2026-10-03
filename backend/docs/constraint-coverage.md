@@ -1,12 +1,13 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-10-02 (`documentation-update`, rotation). Re-confronté au code :
-`ConstraintFamily` porte toujours exactement 4 cas (`TIME`, `DAY`, `FACILITY`,
-`COACH_AVAILABILITY` — `FACILITY_CAPACITY` absent, `backend/src/Enum/ConstraintFamily.php`),
-`VenueTravelRuleIntensity`/`VenueTravelRuleSetting`/`VenueClosureDays`/`minAtVenueId`+
-`minAtVenueCount` existent tels que décrits. Non re-sondé cette passe : les poids
-`spacing`/`preferredVenueId`/tiers, « Réserver un gymnase à un groupe » ❌, les gardes engine —
-historique dans `git log -p --follow` ce fichier.
+Last verified @ 2026-10-03 (ENG-48/ALIGN-16/ENG-51/ALIGN-19, contrat 1.1). Re-confronté au code :
+`PreSolvePreventionWarnings::forcedDayEmptiedByClosingRules`/`adjointOnlyUnavailabilityIsIndicative`
+(`backend/src/Service/PreSolvePreventionWarnings.php`) ✓ ; `ConstraintFamily` porte toujours
+exactement 4 cas (`TIME`, `DAY`, `FACILITY`, `COACH_AVAILABILITY` — `FACILITY_CAPACITY` absent,
+`backend/src/Enum/ConstraintFamily.php`), `VenueTravelRuleIntensity`/`VenueTravelRuleSetting`/
+`VenueClosureDays`/`minAtVenueId`+`minAtVenueCount` existent tels que décrits. Non re-sondé cette
+passe : les poids `spacing`/`preferredVenueId`/tiers, « Réserver un gymnase à un groupe » ❌, les
+gardes engine — historique dans `git log -p --follow` ce fichier.
 
 > **But** : liste **exhaustive** des besoins qu'un gestionnaire de club peut vouloir exprimer, et
 > **ce que l'application couvre** aujourd'hui — pour voir clairement les cas couverts (✅), partiels
@@ -31,7 +32,7 @@ historique dans `git log -p --follow` ce fichier.
 | « Pas d'entraînement tel jour » (dur) | DAY `forbiddenDays` (HARD) | ✅ | U9/U11 pas le mercredi |
 | « Éviter tel jour » (préférence) | DAY `forbiddenDays` (PREFERRED) | ✅ soft | SM2 évite le vendredi |
 | « Uniquement tel(s) jour(s) » | DAY `allowedDays` (whitelist, HARD) | ✅ | Vétérans le vendredi uniquement |
-| **« Au moins une séance tel jour »** | DAY `forcedDays` (HARD — sémantique « l'un de ces jours » : UNE somme sur l'union par équipe) | ✅ *(ALIGN-09)* | mode wizard « au moins une » ; le gate pré-solve BLOQUE si aucun des jours imposés n'a de créneau candidat (décision fondateur : certitude arithmétique d'échec) et AVERTIT quand deux règles fusionnent |
+| **« Au moins une séance tel jour »** | DAY `forcedDays` (HARD — sémantique « l'un de ces jours » : UNE somme sur l'union par équipe) | ✅ *(ALIGN-09)* | mode wizard « au moins une » ; le gate pré-solve BLOQUE si aucun des jours imposés n'a de créneau candidat (décision fondateur : certitude arithmétique d'échec) et AVERTIT quand deux règles fusionnent. **Une séance déjà VERROUILLÉE le jour imposé SATISFAIT la règle** (ALIGN-16, patron P4-97 — aucune contrainte posée par-dessus). Si le jour a un créneau candidat mais que TOUTES ses places sont fermées par une autre règle HARD (indispo du coach principal toute la journée, fenêtre horaire), `PreSolvePreventionWarnings::forcedDayEmptiedByClosingRules` AVERTIT au récap pré-génération AVANT l'échec ; le moteur, lui, NOMME la même cause en diagnostic `day_constraint_conflict` (la génération reste infaisable, seule la cause est désormais dite) |
 | **« Espacer les séances d'un jour »** / « pas 2 jours d'affilée » | règle **implicite soft** `spacing` (poids −2, malus sur jours consécutifs) — activée pour toutes les équipes, ne bloque jamais | ✅ soft *(ALIGN-06)* | besoin BCCL « implicite » — préféré, pas garanti |
 | **« Pas 3 entraînements d'affilée »** (dur) | règle implicite `maxConsecutiveDays` (5e règle bien-être, contrat 2.13) | ✅ *(ALIGN-08)* | Réglable HARD (garantie) ou PREFERRED (objectif), seuil 2-5, **OFF par défaut** : un club l'active, sinon rien ne change. Prouvée par `engine/tests/semantic/test_consecutive_days.py` |
 
@@ -54,7 +55,7 @@ historique dans `git log -p --follow` ce fichier.
 
 | Besoin | Mécanisme | Statut | Exemple BCCL |
 |---|---|---|---|
-| « Coach indisponible tel jour » | COACH_AVAILABILITY `unavailableDays` (UNION, dur) | ✅ | Lionel indispo vendredi |
+| « Coach indisponible tel jour » | COACH_AVAILABILITY `unavailableDays` (UNION, dur) | ✅ | Lionel indispo vendredi. ⚠ **ALIGN-19** : honoré seulement pour un entraîneur **PRINCIPAL** d'au moins une équipe (`parsing.py`, rôle absent traité comme principal) — un coach **adjoint partout** dont l'indisponibilité est saisie ne ferme AUCUN créneau ; elle est **Indicative** (`PreSolvePreventionWarnings::adjointOnlyUnavailabilityIsIndicative`, récap + écran Contraintes des matchs), jamais bloquante |
 | « Coach disponible uniquement tel jour » | COACH_AVAILABILITY `availableDays` (INTERSECTION, dur) — mode « disponible uniquement » du wizard | ✅ *(le wizard l'expose)* | coach dispo seulement le mardi |
 | « Coach indispo/dispo sur une **plage horaire** tel jour » | COACH_AVAILABILITY `fromTime`/`untilTime` (Lot C, dur) | ✅ | dispo le mardi qu'à partir de 20h |
 | « Un coach ne peut pas être sur 2 séances à la fois » | `COACH_NO_OVERLAP` (implicite) | ✅ | — |

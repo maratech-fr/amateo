@@ -369,6 +369,91 @@ final class PreSolvePreventionWarningsTest extends TestCase
         self::assertSame([], array_filter($found, static fn (string $w): bool => str_contains($w, 'se combinent')));
     }
 
+    // ── ALIGN-19 — indispo d'un coach UNIQUEMENT adjoint = indicative ─────────────────────────
+
+    public function testAdjointOnlyCoachUnavailabilityIsFlaggedAsIndicative(): void
+    {
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1])],
+            teams: [$this->team('t1', 'U13 F1')],
+            coaches: [$this->coach('c1', 'Anna', 'B')],
+            constraints: [
+                $this->teamCoach('t1', 'c1', 'ASSISTANT'), // adjointe, jamais principale
+                $this->coachUnavailable('c1', [3]),
+            ],
+        ));
+
+        self::assertNotSame([], array_filter($found, static fn (string $w): bool => str_contains($w, 'Anna B') && str_contains($w, 'indicative')));
+    }
+
+    public function testAMainCoachUnavailabilityIsNotFlaggedAsIndicative(): void
+    {
+        // Même indisponibilité, mais le coach est PRINCIPAL : elle ferme bien → pas « indicative ».
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1])],
+            teams: [$this->team('t1', 'U13 F1')],
+            coaches: [$this->coach('c1', 'Anna', 'B')],
+            constraints: [
+                $this->teamCoach('t1', 'c1', 'MAIN'),
+                $this->coachUnavailable('c1', [3]),
+            ],
+        ));
+
+        self::assertSame([], array_filter($found, static fn (string $w): bool => str_contains($w, 'indicative')));
+    }
+
+    // ── ALIGN-16 — jour imposé VIDÉ par une autre règle HARD (créneau existe mais fermé) ──────
+
+    public function testForcedDayEmptiedByMainCoachFullDayUnavailabilityIsFlagged(): void
+    {
+        // t1 doit s'entraîner le mercredi (3), le gymnase A un créneau mercredi — MAIS son
+        // entraîneur PRINCIPAL est indisponible tout le mercredi : la génération échouera.
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [3])],
+            teams: [$this->team('t1', 'U13 F1')],
+            coaches: [$this->coach('c1', 'Anna', 'B')],
+            constraints: [
+                $this->dayRule('TEAM', 't1', ['forcedDays' => [3]]),
+                $this->teamCoach('t1', 'c1', 'MAIN'),
+                $this->coachUnavailable('c1', [3]),
+            ],
+        ));
+
+        self::assertNotSame([], array_filter($found, static fn (string $w): bool => str_contains($w, 'U13 F1') && str_contains($w, 'aucun créneau')));
+    }
+
+    public function testForcedDayEmptiedByTimeWindowIsFlagged(): void
+    {
+        // Créneau mercredi 18:00, mais une fenêtre HARD « pas avant 20:00 » ne laisse aucun créneau.
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [3])],
+            teams: [$this->team('t1', 'U13 F1')],
+            constraints: [
+                $this->dayRule('TEAM', 't1', ['forcedDays' => [3]]),
+                $this->timeRule('t1', ['minStartTime' => '20:00']),
+            ],
+        ));
+
+        self::assertNotSame([], array_filter($found, static fn (string $w): bool => str_contains($w, 'U13 F1') && str_contains($w, 'aucun créneau')));
+    }
+
+    public function testForcedDayWithAReachableSlotIsSilentAboutClosure(): void
+    {
+        // Le créneau mercredi est atteignable (coach disponible, aucune fenêtre) : rien à prévenir.
+        $found = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [3])],
+            teams: [$this->team('t1', 'U13 F1')],
+            coaches: [$this->coach('c1', 'Anna', 'B')],
+            constraints: [
+                $this->dayRule('TEAM', 't1', ['forcedDays' => [3]]),
+                $this->teamCoach('t1', 'c1', 'MAIN'),
+                $this->coachUnavailable('c1', [1]), // indisponible lundi, PAS mercredi
+            ],
+        ));
+
+        self::assertSame([], array_filter($found, static fn (string $w): bool => str_contains($w, 'une autre règle')));
+    }
+
     /** Un payload vide n'invente rien : zéro équipe, zéro gymnase, zéro bruit. */
     public function testAnEmptyPayloadSaysNothing(): void
     {
@@ -428,9 +513,35 @@ final class PreSolvePreventionWarningsTest extends TestCase
     }
 
     /** Forme v1 du lien équipe⇄coach, telle que le builder l'émet. @return array<string, mixed> */
-    private function teamCoach(string $teamId, string $coachId): array
+    private function teamCoach(string $teamId, string $coachId, string $role = 'MAIN'): array
     {
-        return ['type' => 'TEAM_COACH', 'teamId' => $teamId, 'metadata' => ['coachId' => $coachId]];
+        return ['type' => 'TEAM_COACH', 'teamId' => $teamId, 'metadata' => ['coachId' => $coachId, 'role' => $role]];
+    }
+
+    /** Un entraîneur, tel que le payload le porte. @return array<string, mixed> */
+    private function coach(string $id, string $firstName = 'Jean', string $lastName = 'Dupont'): array
+    {
+        return ['id' => $id, 'firstName' => $firstName, 'lastName' => $lastName, 'isActive' => true];
+    }
+
+    /**
+     * Une indisponibilité coach plein-jour (scope COACH, `unavailableDays`). @return array<string, mixed>.
+     *
+     * @param list<int> $days
+     */
+    private function coachUnavailable(string $coachId, array $days): array
+    {
+        return ['scope' => 'COACH', 'scopeTargetId' => $coachId, 'family' => 'COACH_AVAILABILITY', 'ruleType' => 'HARD', 'config' => ['unavailableDays' => $days]];
+    }
+
+    /**
+     * Une fenêtre horaire HARD (famille TIME, scope TEAM). @return array<string, mixed>.
+     *
+     * @param array<string, mixed> $config
+     */
+    private function timeRule(string $teamId, array $config): array
+    {
+        return ['scope' => 'TEAM', 'scopeTargetId' => $teamId, 'family' => 'TIME', 'ruleType' => 'HARD', 'config' => $config];
     }
 
     /**

@@ -58,6 +58,8 @@ final readonly class PreSolvePreventionWarnings
             ...$this->overloadedCoaches($payload, $teams, $venues, $constraints),
             ...$this->constraintsTargetingAbsentTeams($teams, $constraints),
             ...$this->mergedForcedDayRules($teams, $constraints),
+            ...$this->forcedDayEmptiedByClosingRules($teams, $venues, $constraints),
+            ...$this->adjointOnlyUnavailabilityIsIndicative($payload, $constraints),
         ];
     }
 
@@ -392,6 +394,269 @@ final readonly class PreSolvePreventionWarnings
         sort($messages);
 
         return $messages;
+    }
+
+    /**
+     * ALIGN-16 — un jour imposé QUI A des créneaux candidats mais dont TOUS sont fermés par une
+     * AUTRE règle HARD : l'entraîneur PRINCIPAL indisponible toute la journée (indispo plein-jour),
+     * ou une fenêtre horaire HARD qu'aucun créneau du jour ne satisfait. Le moteur rend alors la
+     * génération infaisable (le verrou de jour reste posé) et NOMME la cause en diagnostic ; le
+     * récap l'annonce AVANT (décision fondateur 2026-10-03). Distinct de {@see forcedDaysWithoutCandidateSlot}
+     * (bloqueur : AUCUN créneau sur aucun jour imposé) : ici le créneau EXISTE mais une autre règle
+     * le ferme. On ne crie QUE si TOUS les jours imposés candidats sont fermés — sinon la règle
+     * reste satisfiable et il n'y a rien à prévenir.
+     *
+     * ⚠ L'indispo d'un ADJOINT ne ferme jamais un créneau côté moteur (parsing.py exclut les
+     * adjoints) : seul l'entraîneur PRINCIPAL compte ici (ALIGN-19).
+     *
+     * @param list<array<string, mixed>> $teams
+     * @param list<array<string, mixed>> $venues
+     * @param list<array<string, mixed>> $constraints
+     *
+     * @return list<string>
+     */
+    private function forcedDayEmptiedByClosingRules(array $teams, array $venues, array $constraints): array
+    {
+        $slotsByVenueDay = [];
+        $slotsByDay = [];
+        foreach ($venues as $venue) {
+            $venueId = $this->stringOf($venue, 'id');
+            foreach ($this->listOf($venue, 'trainingSlots') as $slot) {
+                $day = (int) ($slot['dayOfWeek'] ?? 0);
+                $startMin = $this->minutesOf($this->stringOf($slot, 'startTime'));
+                $endMin = $startMin + (int) ($slot['durationMinutes'] ?? 0);
+                $slotsByVenueDay[$venueId][$day][] = [$startMin, $endMin];
+                $slotsByDay[$day][] = [$startMin, $endMin];
+            }
+        }
+
+        $messages = [];
+        foreach ($teams as $team) {
+            $teamId = $this->stringOf($team, 'id');
+            $rules = $this->teamHardDayRules($teamId, $constraints);
+            if ([] === $rules['forced']) {
+                continue;
+            }
+
+            $forcedVenueId = $this->forcedVenueOf($team, $constraints);
+            $forbidden = array_flip($rules['forbidden']);
+            $allowed = $rules['allowed'];
+
+            // Jours imposés qui ONT un créneau candidat (sinon → bloqueur, déjà couvert ailleurs).
+            $candidateDays = [];
+            foreach ($rules['forced'] as $day) {
+                if (isset($forbidden[$day])) {
+                    continue;
+                }
+                if (null !== $allowed && !\in_array($day, $allowed, true)) {
+                    continue;
+                }
+                $daySlots = '' !== $forcedVenueId ? ($slotsByVenueDay[$forcedVenueId][$day] ?? []) : ($slotsByDay[$day] ?? []);
+                if ([] !== $daySlots) {
+                    $candidateDays[$day] = $daySlots;
+                }
+            }
+            if ([] === $candidateDays) {
+                continue;
+            }
+
+            $windows = $this->teamHardTimeWindows($teamId, $constraints);
+            $mainUnavailableDays = $this->mainCoachFullDayUnavailableDays($teamId, $constraints);
+
+            $allEmptied = true;
+            foreach ($candidateDays as $day => $daySlots) {
+                $closedByCoach = isset($mainUnavailableDays[$day]);
+                $closedByWindow = [] !== $windows && !$this->anySlotFitsAllWindows($daySlots, $windows);
+                if (!$closedByCoach && !$closedByWindow) {
+                    $allEmptied = false;
+                    break;
+                }
+            }
+
+            if ($allEmptied) {
+                $messages[] = \sprintf(
+                    '%s : au moins une séance exigée le(s) %s, mais une autre règle (indisponibilité de l\'entraîneur principal toute la journée, ou fenêtre horaire) n\'y laisse aucun créneau — la génération échouera. Levez la règle qui ferme ces jours, ou retirez l\'exigence (étape Contraintes).',
+                    $this->nameOf($team),
+                    $this->dayList(array_keys($candidateDays)),
+                );
+            }
+        }
+
+        sort($messages);
+
+        return $messages;
+    }
+
+    /**
+     * ALIGN-19 — l'indisponibilité d'un entraîneur qui n'est ADJOINT sur AUCUNE équipe (jamais
+     * principal) est INDICATIVE : le moteur ne la lit pas (parsing.py exclut les adjoints), elle ne
+     * bloquera jamais une séance. On le DIT au récap pour que le gestionnaire ne croie pas avoir
+     * protégé un créneau qui reste ouvert. Un entraîneur principal, même sur une seule équipe, sort
+     * de ce lot (son indisponibilité, elle, ferme bien).
+     *
+     * @param array<string, mixed>       $payload
+     * @param list<array<string, mixed>> $constraints
+     *
+     * @return list<string>
+     */
+    private function adjointOnlyUnavailabilityIsIndicative(array $payload, array $constraints): array
+    {
+        $assistantOnly = $this->coachesNeverMain($constraints);
+        if ([] === $assistantOnly) {
+            return [];
+        }
+
+        $names = [];
+        foreach ($this->listOf($payload, 'coaches') as $coach) {
+            $coachId = $this->stringOf($coach, 'id');
+            if (!isset($assistantOnly[$coachId])) {
+                continue;
+            }
+            // Pas d'indisponibilité plein-jour déclarée → rien à clarifier pour ce coach.
+            if ([] === $this->unavailableDaysOf($coachId, $constraints)) {
+                continue;
+            }
+            $names[] = trim(($coach['firstName'] ?? '') . ' ' . ($coach['lastName'] ?? '')) ?: 'Un entraîneur';
+        }
+
+        if ([] === $names) {
+            return [];
+        }
+
+        sort($names);
+
+        return [\sprintf(
+            1 === \count($names)
+                ? 'L\'indisponibilité de %s (adjoint uniquement) est indicative : un adjoint indisponible ne bloque jamais une séance — seul un entraîneur principal indisponible en empêche une.'
+                : 'Les indisponibilités de %s (adjoints uniquement) sont indicatives : un adjoint indisponible ne bloque jamais une séance — seul un entraîneur principal indisponible en empêche une.',
+            implode(', ', $names),
+        )];
+    }
+
+    /**
+     * Les entraîneurs liés à AU MOINS une équipe mais jamais en PRINCIPAL (adjoints partout).
+     *
+     * @param list<array<string, mixed>> $constraints
+     *
+     * @return array<string, true>
+     */
+    private function coachesNeverMain(array $constraints): array
+    {
+        $linked = [];
+        $main = [];
+        foreach ($constraints as $constraint) {
+            if ('TEAM_COACH' !== ($constraint['type'] ?? null)) {
+                continue;
+            }
+            $metadata = \is_array($constraint['metadata'] ?? null) ? $constraint['metadata'] : [];
+            $coachId = $this->stringOf($metadata, 'coachId');
+            if ('' === $coachId) {
+                continue;
+            }
+            $linked[$coachId] = true;
+            if ('MAIN' === ($metadata['role'] ?? null)) {
+                $main[$coachId] = true;
+            }
+        }
+
+        return array_diff_key($linked, $main);
+    }
+
+    /**
+     * Les jours où un entraîneur PRINCIPAL de l'équipe est indisponible TOUTE la journée (union).
+     *
+     * @param list<array<string, mixed>> $constraints
+     *
+     * @return array<int, true>
+     */
+    private function mainCoachFullDayUnavailableDays(string $teamId, array $constraints): array
+    {
+        $days = [];
+        foreach ($constraints as $constraint) {
+            if ('TEAM_COACH' !== ($constraint['type'] ?? null) || $this->stringOf($constraint, 'teamId') !== $teamId) {
+                continue;
+            }
+            $metadata = \is_array($constraint['metadata'] ?? null) ? $constraint['metadata'] : [];
+            if ('MAIN' !== ($metadata['role'] ?? null)) {
+                continue;
+            }
+            $coachId = $this->stringOf($metadata, 'coachId');
+            if ('' === $coachId) {
+                continue;
+            }
+            foreach ($this->unavailableDaysOf($coachId, $constraints) as $day) {
+                $days[$day] = true;
+            }
+        }
+
+        return $days;
+    }
+
+    /**
+     * Les fenêtres horaires HARD d'une équipe (famille TIME). Chaque borne en minutes, ou `null`.
+     *
+     * @param list<array<string, mixed>> $constraints
+     *
+     * @return list<array{minStart: int|null, maxStart: int|null, maxEnd: int|null}>
+     */
+    private function teamHardTimeWindows(string $teamId, array $constraints): array
+    {
+        $windows = [];
+        foreach ($constraints as $constraint) {
+            if (ConstraintFamily::TIME->value !== ($constraint['family'] ?? null)
+                || $this->stringOf($constraint, 'scopeTargetId') !== $teamId
+                || ($constraint['ruleType'] ?? null) !== 'HARD'
+            ) {
+                continue;
+            }
+            $config = \is_array($constraint['config'] ?? null) ? $constraint['config'] : [];
+            $minStart = isset($config['minStartTime']) ? $this->minutesOf($this->stringOf($config, 'minStartTime')) : null;
+            $maxStart = isset($config['maxStartTime']) ? $this->minutesOf($this->stringOf($config, 'maxStartTime')) : null;
+            $maxEnd = isset($config['maxEndTime']) ? $this->minutesOf($this->stringOf($config, 'maxEndTime')) : null;
+            if (null === $minStart && null === $maxStart && null === $maxEnd) {
+                continue;
+            }
+            $windows[] = ['minStart' => $minStart, 'maxStart' => $maxStart, 'maxEnd' => $maxEnd];
+        }
+
+        return $windows;
+    }
+
+    /**
+     * Un créneau [startMin, endMin] satisfait-il TOUTES les fenêtres (chaque règle HARD s'ajoute) ?
+     *
+     * @param list<array{0: int, 1: int}>                                           $daySlots
+     * @param list<array{minStart: int|null, maxStart: int|null, maxEnd: int|null}> $windows
+     */
+    private function anySlotFitsAllWindows(array $daySlots, array $windows): bool
+    {
+        foreach ($daySlots as [$start, $end]) {
+            $fits = true;
+            foreach ($windows as $window) {
+                if ((null !== $window['minStart'] && $start < $window['minStart'])
+                    || (null !== $window['maxStart'] && $start > $window['maxStart'])
+                    || (null !== $window['maxEnd'] && $end > $window['maxEnd'])
+                ) {
+                    $fits = false;
+                    break;
+                }
+            }
+            if ($fits) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** "HH:MM" ou "HH:MM:SS" → minutes depuis minuit (0 si illisible). */
+    private function minutesOf(string $time): int
+    {
+        if (1 === preg_match('/^(\d{1,2}):(\d{2})/', $time, $m)) {
+            return ((int) $m[1]) * 60 + (int) $m[2];
+        }
+
+        return 0;
     }
 
     /**

@@ -47,7 +47,7 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 final class MoveSlotService
 {
     /** Contrat backend⇄engine du endpoint de validation (F2a). Un seul contrat, 3 endpoints. */
-    private const string CONTRACT_VERSION = '1.0';
+    private const string CONTRACT_VERSION = '1.1';
 
     /**
      * Budget SOLVEUR court PAR solve : la baseline est entièrement figée, le moteur ne place
@@ -95,7 +95,7 @@ final class MoveSlotService
      * réponse porte alors `dryRun => true` et, si une éviction était demandée, l'état qui SERAIT
      * évincé (`evicted`, sans suppression).
      *
-     * @return array{valid: bool, violations: list<array{rule: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string, conflictingTeamId: ?string}>, compromises: list<array{family: string, effect: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string}>, dryRun?: bool, evicted?: array{slotId: string, teamId: string, dayOfWeek: int, startTime: string, venueId: string, durationMinutes: int}}
+     * @return array{valid: bool, violations: list<array{rule: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string, conflictingTeamId: ?string}>, compromises: list<array{family: string, effect: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string}>, indeterminate?: bool, dryRun?: bool, evicted?: array{slotId: string, teamId: string, dayOfWeek: int, startTime: string, venueId: string, durationMinutes: int}}
      */
     public function move(ScheduleSlotTemplate $slot, int $dayOfWeek, DateTimeImmutable $startTime, string $venueId, ?string $evictSlotId = null, bool $dryRun = false): array
     {
@@ -172,6 +172,12 @@ final class MoveSlotService
         if (true !== ($result['valid'] ?? false)) {
             // (4) Le déplacement N'A PAS LIEU (ni l'éviction) — les règles violées sont rendues nommées.
             $refused = ['valid' => false, 'violations' => $this->namedViolations($result), 'compromises' => []];
+            // ENG-51 — verdict « indéterminé » (le solveur a expiré sans trancher) : on propage le
+            // drapeau pour que l'UI montre un bandeau NEUTRE « réessayez », jamais un style conflit.
+            // Rien n'est écrit (ce chemin ne persistait déjà rien).
+            if (true === ($result['indeterminate'] ?? false)) {
+                $refused['indeterminate'] = true;
+            }
             if ($dryRun) {
                 $refused['dryRun'] = true;
             }
@@ -243,7 +249,7 @@ final class MoveSlotService
      * comprise), puis retour AVANT toute écriture — aucune ligne créée, aucun marqueur, aucun
      * Mercure ; la réponse porte le verdict, ses compromis et `dryRun => true`
      *
-     * @return array{valid: bool, violations: list<array{rule: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string, conflictingTeamId: ?string}>, compromises: list<array{family: string, effect: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string}>, dryRun?: bool, slotId?: string}
+     * @return array{valid: bool, violations: list<array{rule: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string, conflictingTeamId: ?string}>, compromises: list<array{family: string, effect: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string}>, indeterminate?: bool, dryRun?: bool, slotId?: string}
      */
     public function place(Schedule $schedule, string $teamId, int $dayOfWeek, DateTimeImmutable $startTime, string $venueId, ?int $clientDurationMinutes = null, bool $dryRun = false): array
     {
@@ -279,6 +285,10 @@ final class MoveSlotService
 
         if (true !== ($result['valid'] ?? false)) {
             $refused = ['valid' => false, 'violations' => $this->namedViolations($result), 'compromises' => []];
+            // ENG-51 — verdict indéterminé (solveur expiré) propagé pour le bandeau NEUTRE ; rien écrit.
+            if (true === ($result['indeterminate'] ?? false)) {
+                $refused['indeterminate'] = true;
+            }
             if ($dryRun) {
                 $refused['dryRun'] = true;
             }
@@ -335,7 +345,7 @@ final class MoveSlotService
      * @throws EngineTimeoutException                le moteur a été trop lent (→ 504)
      * @throws TransportExceptionInterface           le moteur est injoignable/cassé (→ 502)
      *
-     * @return array{valid: bool, violations: list<array{rule: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string, conflictingTeamId: ?string}>, compromises: list<array{family: string, effect: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string}>, movedSlotIds?: list<string>}
+     * @return array{valid: bool, violations: list<array{rule: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string, conflictingTeamId: ?string}>, compromises: list<array{family: string, effect: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string}>, indeterminate?: bool, movedSlotIds?: list<string>}
      */
     public function moveGroup(
         Schedule $schedule,
@@ -399,7 +409,13 @@ final class MoveSlotService
 
         if (true !== ($result['valid'] ?? false)) {
             // (5a) Le déplacement N'A PAS LIEU — aucun des N créneaux ne bouge (atomicité par le refus).
-            return ['valid' => false, 'violations' => $this->namedViolations($result), 'compromises' => []];
+            $refused = ['valid' => false, 'violations' => $this->namedViolations($result), 'compromises' => []];
+            // ENG-51 — verdict indéterminé (solveur expiré) propagé pour le bandeau NEUTRE ; rien écrit.
+            if (true === ($result['indeterminate'] ?? false)) {
+                $refused['indeterminate'] = true;
+            }
+
+            return $refused;
         }
 
         // (5b) Écrire les N déplacements puis UN SEUL flush : Doctrine les enveloppe dans UNE

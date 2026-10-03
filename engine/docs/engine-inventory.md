@@ -1,10 +1,11 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-10-03 (ALIGN-18, branche `fix/audit-1003-align-verrou`) — §4.3, le mapping
-`ruleType == "LOCK"` recalé : ce cran a été retiré des contraintes (« on ne verrouille que les
-créneaux ») et `parse_v2_constraints` (`engine/app/solver/constraints/parsing.py`) ignore désormais
-tout `LOCK` reçu (`parse_warning`, jamais appliqué) au lieu de le router vers `time_windows`/
-`forced_venues`. Reste de l'inventaire non re-sondé cette passe — voir `git log -p --follow` pour
+Last verified @ 2026-10-03 (ENG-48/ALIGN-16/ENG-51/ALIGN-19, contrat 1.1) — §2 `/validate-assignments`
+re-confronté : le 3ᵉ verdict `indeterminate` (`validate_assignments.py`, `cp_model.UNKNOWN` sur le
+solve principal OU la sonde de baseline) ✓ ; §4.3, le mapping `ruleType == "LOCK"` toujours retiré
+des contraintes (« on ne verrouille que les créneaux ») et `parse_v2_constraints`
+(`engine/app/solver/constraints/parsing.py`) ignore toujours tout `LOCK` reçu (`parse_warning`,
+jamais appliqué). Reste de l'inventaire non re-sondé cette passe — voir `git log -p --follow` pour
 sa dernière vérification.
 
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.
@@ -19,7 +20,7 @@ sa dernière vérification.
 - **Solver** : Google OR-Tools CP-SAT (`from ortools.sat.python import cp_model`).
 - **Validation** : Pydantic v2 (`BaseModel`, `ConfigDict`, `Field`, `populate_by_name=True`).
 - **Settings** : `pydantic-settings` (`engine/app/core/config.py`), prefix env `ENGINE_`, `.env` lu. Defaults : `app_name="engine"`, `app_version="1.0"`, `contract_version="2.0"`, `environment="dev"`, `log_level="info"`.
-- **Contract version** : lu depuis `engine/CONTRACT_VERSION` (**fichier = `1.0`** — source de vérité, `read_contract_version()` dans `main.py`). Un fichier manquant lève une `RuntimeError`, il n'est **jamais** remplacé par un défaut : le garde de contrat est MAJOR-only, un build amputé de son fichier passerait sinon le handshake et résoudrait un payload d'une AUTRE version mineure en se croyant d'accord. Gardé par `tests/test_contract_version_doc_sync.py`. **Politique de bump** : un changement de FORME ou de SÉMANTIQUE (champ/type/alias ajouté, retiré ou dont le sens change) bump le contrat ; un simple resserrage d'ENVELOPPE (`max_length` qui rétrécit ce qu'on acceptait déjà, sans toucher forme ni sémantique) ne bump pas. **UN SEUL `CONTRACT_VERSION` pour les TROIS endpoints** `/generate` · `/place-matches` · `/validate-assignments`, tous vérifient le même MAJOR — l'historique des bumps (ce que chaque version a changé) vit dans `git log -p --follow engine/CONTRACT_VERSION` et le journal `specs/courantes/etat-des-lieux.md` §3.
+- **Contract version** : lu depuis `engine/CONTRACT_VERSION` (**fichier = `1.1`** — source de vérité, `read_contract_version()` dans `main.py`). Un fichier manquant lève une `RuntimeError`, il n'est **jamais** remplacé par un défaut : le garde de contrat est MAJOR-only, un build amputé de son fichier passerait sinon le handshake et résoudrait un payload d'une AUTRE version mineure en se croyant d'accord. Gardé par `tests/test_contract_version_doc_sync.py`. **Politique de bump** : un changement de FORME ou de SÉMANTIQUE (champ/type/alias ajouté, retiré ou dont le sens change) bump le contrat ; un simple resserrage d'ENVELOPPE (`max_length` qui rétrécit ce qu'on acceptait déjà, sans toucher forme ni sémantique) ne bump pas. **UN SEUL `CONTRACT_VERSION` pour les TROIS endpoints** `/generate` · `/place-matches` · `/validate-assignments`, tous vérifient le même MAJOR — l'historique des bumps (ce que chaque version a changé) vit dans `git log -p --follow engine/CONTRACT_VERSION` et le journal `specs/courantes/etat-des-lieux.md` §3.
 - **Structure interne** :
   - `app/main.py` — endpoints FastAPI + pipeline solver.
   - `app/core/config.py` — settings.
@@ -46,7 +47,7 @@ Les endpoints exposés par `app/main.py` (santé + les trois du contrat) :
 | `/health` | GET | Health simple | `{"status":"ok"}` |
 | `/generate` | POST | **Principal** — résout un planning hebdomadaire | `ScheduleOutputSchema` |
 | `/place-matches` | POST | **Second problème** — place des matchs DATÉS (ADR-0003) | `MatchPlacementOutputSchema` |
-| `/validate-assignments` | POST | **Verdict sur N candidats sous UN verdict** (contrat 2.18) — « puis-je poser ces N déplacements ? » (N=1 pour le rail `/move`/`/place-slot`, N=membres d'un bloc pour `/move-group`). Baseline **entièrement figée** via `add_fixed_slots`, les N candidats épinglés à part : le solve du verdict ne fait qu'un test de faisabilité sur l'**état final** (jamais N jugements séquentiels d'un état intermédiaire faux). ⚠ **Le gel EST le verdict** — baseline non figée, le solveur déplace la séance en conflit et rend `valid=True` (falsifié). 1 seul worker (déterministe) quel que soit N. Budget 2 s par défaut, plafond 10 s ; mesuré **~500 ms** sur 49 équipes (le build du modèle domine, pas le solve). Un « non » **nomme les règles cassées** (`diagnose_candidate_conflicts`, chaque candidat diagnostiqué contre la baseline augmentée des AUTRES candidats) ; `baseline_infeasible` distingue une baseline déjà invalide d'un conflit non nommé. Un « oui » déclenche **jusqu'à deux solves de plus** pour nommer les **compromis** — voir §POST /validate-assignments | `ValidateAssignmentOutputSchema` |
+| `/validate-assignments` | POST | **Verdict sur N candidats sous UN verdict** (contrat 2.18) — « puis-je poser ces N déplacements ? » (N=1 pour le rail `/move`/`/place-slot`, N=membres d'un bloc pour `/move-group`). Baseline **entièrement figée** via `add_fixed_slots`, les N candidats épinglés à part : le solve du verdict ne fait qu'un test de faisabilité sur l'**état final** (jamais N jugements séquentiels d'un état intermédiaire faux). ⚠ **Le gel EST le verdict** — baseline non figée, le solveur déplace la séance en conflit et rend `valid=True` (falsifié). 1 seul worker (déterministe) quel que soit N. Budget 2 s par défaut, plafond 10 s ; mesuré **~500 ms** sur 49 équipes (le build du modèle domine, pas le solve). Un « non » **nomme les règles cassées** (`diagnose_candidate_conflicts`, chaque candidat diagnostiqué contre la baseline augmentée des AUTRES candidats) ; `baseline_infeasible` distingue une baseline déjà invalide d'un conflit non nommé. **3ᵉ verdict INDÉTERMINÉ (ENG-51, contrat 1.1)** : si le solve PRINCIPAL ou la sonde de baseline retourne `UNKNOWN` (budget épuisé sans prouver SAT ni UNSAT), la réponse porte `valid:false, indeterminate:true, violations:[]` — jamais une règle inventée, jamais un `baseline_infeasible` affirmé à tort sur une sonde elle-même expirée. Un « oui » déclenche **jusqu'à deux solves de plus** pour nommer les **compromis** — voir §POST /validate-assignments | `ValidateAssignmentOutputSchema` |
 
 ### POST /place-matches
 
@@ -260,13 +261,13 @@ Le verdict F2a (§ci-dessus) porte aussi les **compromis nommés** d'un verdict 
 
 ### ScheduleInputSchema (`engine/app/schemas/input_schema.py`)
 
-Version contrat active : **`"1.0"`** (fichier `CONTRACT_VERSION`, source de vérité, repassé en 1.0 pour la v1). Le default Pydantic du champ `version` vaut **`"1.0"`** lui aussi (`input_schema.py:321`, gardé par `test_schema_version_defaults_match_contract_version`, ENG-44) : c'est un repli pour un payload qui n'annonce rien — le backend l'envoie TOUJOURS, ce défaut n'est donc jamais la valeur du fil — aligné sur le contrat courant pour qu'aucun lecteur ne le prenne pour une version concurrente. `ConfigDict(extra="forbid", populate_by_name=True)`.
+Version contrat active : **`"1.1"`** (fichier `CONTRACT_VERSION`, source de vérité, repassé en 1.0 pour la v1 puis bumpé 1.0 → 1.1). Le default Pydantic du champ `version` vaut **`"1.1"`** lui aussi (`input_schema.py:321`, gardé par `test_schema_version_defaults_match_contract_version`, ENG-44) : c'est un repli pour un payload qui n'annonce rien — le backend l'envoie TOUJOURS, ce défaut n'est donc jamais la valeur du fil — aligné sur le contrat courant pour qu'aucun lecteur ne le prenne pour une version concurrente. `ConfigDict(extra="forbid", populate_by_name=True)`.
 
 **Bornes A10** (anti-bombe de génération) : la plupart des listes portent un `max_length` (rejet **422** avant CP-SAT) — `teams` ≤200 · `venues` ≤50 · `coaches` ≤200 · `slot_templates` ≤2000 · `priority_tiers` ≤20 · `trainingSlots` ≤1000/gymnase ; plus un `model_validator` bornant le **total** des créneaux à ≤3000 (empêche 50×1000). **`constraints` est cappé par le PRODUIT ÉTENDU, pas un compte par règle** : `MAX_CONSTRAINTS_EXPANDED = 100_000` = brut(≤500)×équipes(≤200), parce que le backend éclate 1 règle CLUB en N rangées/équipe et qu'aucun compte fixe par règle ne peut à la fois borner une bombe et ne jamais faux-bloquer un club légitime — le produit étendu, lui, est une borne réelle et finie. Les vraies bornes amont restent aussi actives : cap **brut** backend (≤500) + la limite de body nginx (20 m) + le timeout solveur. Le backend (`GenerationComplexityGuard`) pré-vérifie teams/venues/coaches/contraintes permanentes/total créneaux (=3000) **plus** `teams×venues` ≤2000, **avant dispatch**. ⚠ Ce durcissement de validation n'a **pas** bumpé `CONTRACT_VERSION` : politique — un `max_length` resserre l'enveloppe acceptée sans changer forme/type ni MAJOR ; un bump n'est requis que pour un changement de forme/sémantique (champ/type/alias).
 
 | Champ | Alias JSON | Type | Default |
 |-------|-------------|------|---------|
-| `version` | — | `str` | `"1.0"` (repli — cf. ci-dessus) |
+| `version` | — | `str` | `"1.1"` (repli — cf. ci-dessus) |
 | `club_id` | `clubId` | `str` | requis |
 | `season_id` | `seasonId` | `str` | requis |
 | `schedule_name` | `scheduleName` | `str \| None` | `None` |
@@ -294,7 +295,7 @@ Sous-schemas clés :
 
 ### Schémas du placement de matchs (`match_input_schema.py` / `match_output_schema.py`)
 
-Contrat **1.0** (le MÊME que `/generate` — un seul contrat pour les trois endpoints), les schémas hebdomadaires n'étant pas réutilisés
+Contrat **1.1** (le MÊME que `/generate` — un seul contrat pour les trois endpoints), les schémas hebdomadaires n'étant pas réutilisés
 (le problème n'a ni créneau récurrent ni séance) :
 
 - **`MatchPlacementInputSchema`** : `version`, `clubId`, `seasonId`, `matches`, `venues`, `teams`,

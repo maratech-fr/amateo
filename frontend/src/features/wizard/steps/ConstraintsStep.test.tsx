@@ -194,6 +194,7 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
     h.createMut.mockClear();
     h.updateMut.mockClear();
     h.list = [];
+    h.teamCoaches = [];
     h.tags = [];
     h.tagAssignments = [];
     h.implicitRules = RESOLVED_IMPLICIT_RULES;
@@ -341,6 +342,33 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
     // est la cible, la seconde interdit qu'elle revienne en double.
     expect(h.createMut.mock.calls[0][0]).toMatchObject({ family: "COACH_AVAILABILITY", ruleType: "HARD", scopeTargetId: "co1", config: { unavailableDays: [1] } });
     expect(h.createMut.mock.calls[0][0].config).not.toHaveProperty("coachId");
+  });
+
+  it("ALIGN-19 — pour un coach UNIQUEMENT adjoint, la dispo est « Indicatif » (pas « Obligatoire ») + la phrase", async () => {
+    const user = userEvent.setup();
+    // co1 est ADJOINT sur son unique équipe → jamais principal.
+    h.teamCoaches = [{ id: "tc1", teamId: "t1", coachId: "co1", role: "ASSISTANT" }];
+    renderWithProviders(<ConstraintsStep />);
+
+    await user.click(screen.getByRole("button", { name: "Dispo coach" }));
+    await user.selectOptions(screen.getByLabelText("Coach"), "co1");
+
+    expect(screen.getByText("Indicatif")).toBeInTheDocument();
+    expect(screen.getByText("un adjoint indisponible ne bloque jamais une séance")).toBeInTheDocument();
+    expect(screen.queryByText("Obligatoire")).not.toBeInTheDocument();
+  });
+
+  it("ALIGN-19 — un coach PRINCIPAL (même sur une seule équipe) garde « Obligatoire », sans la phrase", async () => {
+    const user = userEvent.setup();
+    h.teamCoaches = [{ id: "tc1", teamId: "t1", coachId: "co1", role: "MAIN" }];
+    renderWithProviders(<ConstraintsStep />);
+
+    await user.click(screen.getByRole("button", { name: "Dispo coach" }));
+    await user.selectOptions(screen.getByLabelText("Coach"), "co1");
+
+    expect(screen.getByText("Obligatoire")).toBeInTheDocument();
+    expect(screen.queryByText("un adjoint indisponible ne bloque jamais une séance")).not.toBeInTheDocument();
+    expect(screen.queryByText("Indicatif")).not.toBeInTheDocument();
   });
 
   it("names generated constraints with full day words (« jeudi », not « Jeu ») — founder 2026-08-12", async () => {

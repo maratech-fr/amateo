@@ -22,6 +22,8 @@ const venuesState: { data: Venue[] | undefined; isError: boolean } = { data: [],
 // vide ⇒ liste plate (aucun groupe), ce qui suffit ici — on n'y teste que la valeur choisie.
 const tiersState: { data: PriorityTier[] | undefined; isError: boolean } = { data: [], isError: false };
 const coachesState: { data: Coach[] | undefined; isError: boolean } = { data: [], isError: false };
+// ALIGN-19 — liens équipe⇄coach (rôle) : sert à savoir si un coach n'est qu'adjoint.
+const teamCoachesState: { data: { id: string; teamId: string; coachId: string; role: "MAIN" | "ASSISTANT" }[] | undefined; isError: boolean } = { data: [], isError: false };
 // P4-271 — le réglage d'affichage A/B vient de la session (`me.club.weekendAlternates`).
 const meState: { weekendAlternates: boolean } = { weekendAlternates: true };
 
@@ -52,6 +54,8 @@ vi.mock("./queries", () => ({
   usePriorityTiers: () => ({ ...tiersState, refetch: vi.fn() }),
   // Section Coachs (P4-272 ⑤) : entraîneurs pour le sélecteur d'indisponibilité.
   useCoaches: () => ({ ...coachesState, refetch: vi.fn() }),
+  // ALIGN-19 : liens équipe⇄coach (rôle) pour repérer un coach uniquement adjoint.
+  useTeamCoaches: () => ({ ...teamCoachesState, refetch: vi.fn() }),
 }));
 
 const window = (over: Partial<ClubLeagueWindow> = {}): ClubLeagueWindow => ({
@@ -118,6 +122,8 @@ beforeEach(() => {
   venuesState.isError = false;
   coachesState.data = [];
   coachesState.isError = false;
+  teamCoachesState.data = [];
+  teamCoachesState.isError = false;
 });
 
 describe("ConstraintsPage — section Ligue (P4-272 ①)", () => {
@@ -317,6 +323,23 @@ describe("ConstraintsPage — section Coachs (P4-272 ⑤)", () => {
       { scope: "COACH", scopeTargetId: "c1", ruleType: "PREFERRED", daysOfWeek: [6], kickoffMin: "14:00", kickoffMax: null },
       expect.anything(),
     );
+  });
+
+  it("ALIGN-19 — une indisponibilité d'un coach UNIQUEMENT adjoint affiche la phrase « ne bloque jamais une séance »", () => {
+    rulesState.data = [rule({ id: "u1", scope: "COACH", scopeTargetId: "c1", daysOfWeek: [6], kickoffMin: "14:00", kickoffMax: null })];
+    coachesState.data = [coachOf("c1", "Anna", "Martin")];
+    // c1 est ADJOINT sur son unique équipe (jamais principal).
+    teamCoachesState.data = [{ id: "tc1", teamId: "t1", coachId: "c1", role: "ASSISTANT" }];
+    openCoachs();
+    expect(screen.getByText("un adjoint indisponible ne bloque jamais une séance")).toBeInTheDocument();
+  });
+
+  it("ALIGN-19 — un coach PRINCIPAL ne déclenche pas la phrase (son indisponibilité, elle, ferme)", () => {
+    rulesState.data = [rule({ id: "u1", scope: "COACH", scopeTargetId: "c1", daysOfWeek: [6], kickoffMin: "14:00", kickoffMax: null })];
+    coachesState.data = [coachOf("c1", "Anna", "Martin")];
+    teamCoachesState.data = [{ id: "tc1", teamId: "t1", coachId: "c1", role: "MAIN" }];
+    openCoachs();
+    expect(screen.queryByText("un adjoint indisponible ne bloque jamais une séance")).not.toBeInTheDocument();
   });
 
   it("ne montre PAS les règles CLUB ni les interdictions TEAM dans la section Coachs", () => {

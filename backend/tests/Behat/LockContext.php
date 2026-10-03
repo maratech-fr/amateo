@@ -192,6 +192,31 @@ final class LockContext extends BaseContext
         }
     }
 
+    #[Given('une règle « au moins une séance ce jour-là » pour cette équipe')]
+    public function uneRegleAuMoinsUneSeanceCeJour(): void
+    {
+        // ALIGN-16 — un jour IMPOSÉ (forcedDays) sur le jour de la séance verrouillée. Le verrou
+        // n'a pas de variable côté moteur ; sans le correctif, « au moins une séance ce jour »
+        // posé sur un jour dont les créneaux libres seraient fermés rendrait la génération
+        // infaisable. Le verrou SATISFAIT le jour imposé → la régénération doit aboutir.
+        $created = $this->apiPost('constraints', [
+            'name' => 'Au moins une séance ce jour (fonctionnel)',
+            'scope' => 'TEAM',
+            'scopeTargetId' => $this->lockTeamId,
+            'family' => 'DAY',
+            'ruleType' => 'HARD',
+            'config' => ['forcedDays' => [$this->lockDay]],
+            'isActive' => true,
+        ], $this->token);
+        if (!\in_array($created['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('la création de la règle « au moins une séance » a répondu %d (201 attendu)', $created['status']));
+        }
+        $this->constraintId = (string) ($created['json']['id'] ?? '');
+        if ('' === $this->constraintId) {
+            throw new RuntimeException('la règle « au moins une séance » n\'a pas rendu d\'identifiant');
+        }
+    }
+
     #[When('je tente de déplacer cette séance vers une case sans créneau ouvert')]
     public function jeTenteUnDeplacementImpossible(): void
     {
@@ -239,6 +264,18 @@ final class LockContext extends BaseContext
     {
         if ('COMPLETED' !== $this->finalStatus) {
             throw new RuntimeException(\sprintf('la régénération aurait dû aboutir (COMPLETED), statut obtenu « %s »', $this->finalStatus));
+        }
+
+        $this->assertSeanceALaMemeCaseDans($this->regeneratedId);
+    }
+
+    #[Then('la régénération aboutit, le verrou satisfaisant le jour imposé')]
+    public function laRegenerationAboutitVerrouSatisfaitJourImpose(): void
+    {
+        // ALIGN-16 — une séance verrouillée le jour imposé SATISFAIT « au moins une séance ce
+        // jour » : la génération ne doit jamais échouer pour ce motif, et le verrou reste intact.
+        if ('COMPLETED' !== $this->finalStatus) {
+            throw new RuntimeException(\sprintf('la régénération aurait dû aboutir (COMPLETED) : une séance verrouillée le jour imposé satisfait « au moins une séance ce jour-là » ; statut obtenu « %s »', $this->finalStatus));
         }
 
         $this->assertSeanceALaMemeCaseDans($this->regeneratedId);

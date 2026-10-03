@@ -1,11 +1,9 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-10-02 (`documentation-update`, branche `feat/niveau-jeune-suit-engagement`) — §7
-gagne « Engagements FFBB — le niveau d'une équipe JEUNE suit son engagement, par clic » et §11
-l'exception nommée au périmètre engagé, confrontés à `EngagementLevelDeducer`,
-`FfbbEngagementsController::list`/`confirm` et `FfbbEngagementsDialog.tsx` (mapping de niveau, D5
-proposition liée à l'équipe suggérée, écriture `setLevel()` directe sur clic + re-déduction serveur).
-Reste du contenu (P4-271/P4-272 et antérieur) non réaudité cette passe. Historique :
+Last verified @ 2026-10-03 (ENG-48/ALIGN-16/ENG-51/ALIGN-19, contrat 1.1) — `CONTRACT_VERSION` 1.1
+confirmé aux deux foyers cités (§1/§3) ; §8 gagne le bandeau Indicatif de la section Coachs
+(ALIGN-19, `ConstraintsPage.tsx`). Reste du contenu (P4-271/P4-272 et antérieur, dont §7
+« Engagements FFBB ») non réaudité cette passe. Historique :
 `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
@@ -101,7 +99,7 @@ vigueur, il n'a rien à comparer.
   Le moteur reçoit les règles CLUB VERBATIM dans le bloc top-level `clubRules`, les interdictions
   TEAM dans `teams[].forbiddenVenueIds` (liste triée, déterministe) et les indisponibilités COACH
   dans le bloc top-level `coachUnavailabilities` (verbatim {coachId, daysOfWeek, kickoffMin,
-  kickoffMax}) du payload `/place-matches` (`CONTRACT_VERSION` 1.0) — un domaine vidé par les
+  kickoffMax}) du payload `/place-matches` (`CONTRACT_VERSION` 1.1) — un domaine vidé par les
   seules règles CLUB HARD ressort `club_rule_no_slot`, un domaine vidé par un gymnase interdit
   alors qu'un créneau licite y existait ressort `team_venue_forbidden` (précédence sur
   `club_rule_no_slot`, §3) ; une indisponibilité COACH ne vide JAMAIS de domaine — elle pénalise
@@ -561,7 +559,7 @@ Présentation pure — aucune formule de gravité redérivée.
 ## 3. Solveur de placement (`POST /api/fixtures/place` → engine `/place-matches`)
 
 Second problème solveur ([ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md)),
-même `CONTRACT_VERSION` **1.0** que `/generate`/`/validate-assignments` (un seul contrat pour les
+même `CONTRACT_VERSION` **1.1** que `/generate`/`/validate-assignments` (un seul contrat pour les
 trois endpoints — voir §6 `CLAUDE.md`). **Rail
 SYNCHRONE** (`PlaceMatchesController` — management + saison écrivable + socle pointé), anti-double-clic
 PAR CLUB `MatchPlacementLock` (Redis dédié — ne protège pas deux clubs l'un de l'autre : ils partagent le
@@ -1338,7 +1336,13 @@ pointillée en bas ajoute une indisponibilité (POST) ; chaque ligne existante s
 bouton Enregistrer actif seulement si modifiée et complète) et se supprime avec confirmation
 (`ConfirmDialog`, destructive). Liste vide → phrase neutre (« chaque entraîneur est réputé
 disponible pour tous les matchs »), jamais un tableau vide muet. Pas d'alerte de cohérence sur
-cette section — `ClubRuleCoherenceChecker` ne croise que les règles CLUB.
+cette section — `ClubRuleCoherenceChecker` ne croise que les règles CLUB. **Bandeau Indicatif
+(ALIGN-19)** : si au moins une indisponibilité listée vise un entraîneur **adjoint sur toutes ses
+équipes** (jamais principal), un bandeau neutre (`NoticeBanner tone="muted"`) rappelle « un adjoint
+indisponible ne bloque jamais une séance » — le moteur de placement traite déjà toute
+indisponibilité coach en SOFT (§1/§3), la phrase reste donc vraie ici ; même nuance côté
+entraînement (`GET /api/constraints/validate` récap, `backend/docs/constraint-coverage.md`) où
+l'indisponibilité d'un adjoint n'est, elle, carrément jamais lue par le moteur.
 
 ## 9. Écran Adversaires (`/matchs/adversaires`, au grain GYMNASE)
 

@@ -1,12 +1,15 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-10-03 (ALIGN-18, branche `fix/audit-1003-align-verrou`) — `ruleType` ne compte
-plus que `HARD`/`PREFERRED` : le cran `LOCK` a été retiré (« on ne verrouille que les créneaux »,
-décision fondateur 2026-10-03). `parse_v2_constraints` (`engine/app/solver/constraints/parsing.py`)
-signale désormais un `LOCK` legacy résiduel par un `parse_warning` et ne l'applique jamais — il
-n'était qu'un `HARD` déguisé de bout en bout (TIME/DAY/FACILITY). Toutes les mentions `HARD/LOCK`
-du vocabulaire ci-dessous recalées à `HARD` seul. Reste du vocabulaire détaillé non re-sondé cette
-passe — un stamp REMPLACE, l'historique vit dans git.
+Last verified @ 2026-10-03 (ENG-48/ALIGN-16/ENG-51/ALIGN-19, contrat 1.1). Re-confronté contre le
+code : une séance verrouillée le jour imposé satisfait `forcedDays` sans poser de contrainte
+(`engine/app/solver/constraints/targeting.py`, `forced_day_set` amputé des jours déjà
+couverts par `_locked_team_days`) ✓ ; un jour imposé dont toutes les places candidates sont
+fermées par une autre règle HARD émet `day_constraint_conflict` nommé (même fichier) ✓ ; seul un
+coach `role != "ASSISTANT"` (défaut `MAIN`) ferme un créneau COACH_AVAILABILITY
+(`engine/app/solver/constraints/parsing.py`) ✓ ; `ruleType` ne compte toujours que `HARD`/`PREFERRED`
+(le cran `LOCK` reste retiré, `parse_v2_constraints` signale tout `LOCK` legacy résiduel par un
+`parse_warning` sans jamais l'appliquer). Reste du vocabulaire détaillé non re-sondé cette passe —
+un stamp REMPLACE, l'historique vit dans git.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
@@ -51,7 +54,7 @@ passe — un stamp REMPLACE, l'historique vit dans git.
 |---|---|---|
 | `forbiddenDays` (`[int]`) | **éviter** ces jours | `HARD` → jours interdits (dur) · `PREFERRED` → malus soft « éviter ces jours » |
 | `allowedDays` (`[int]`) | **uniquement** ces jours (whitelist) | l'engine **interdit tout jour hors liste**. Toujours dur. (liste vide = « non configuré », aucune restriction) |
-| `forcedDays` (`[int]`) | **au moins une** séance ces jours-là | pose `somme(vars de ces jours) ≥ 1`. **N'interdit PAS** les autres jours. **exposé au wizard (ALIGN-09)** (le wizard émet `allowedDays` pour « uniquement », cf. audit ENG-16) |
+| `forcedDays` (`[int]`) | **au moins une** séance ces jours-là | pose `somme(vars de ces jours) ≥ 1`. **N'interdit PAS** les autres jours. **exposé au wizard (ALIGN-09)** (le wizard émet `allowedDays` pour « uniquement », cf. audit ENG-16). **Une séance déjà VERROUILLÉE un jour imposé SATISFAIT la règle** (ALIGN-16, patron P4-97, `targeting.py` : le jour sort de `forced_day_set` avant de poser la somme — aucune contrainte ajoutée sur un jour déjà couvert par la réservation) |
 | `preferredDays` (`[int]`) | préférer ces jours | bonus objectif. **Engine-only** (jamais émis par le wizard) |
 
 > **Piège** : `allowedDays` (« uniquement ») ≠ `forcedDays` (« au moins un »). « Vétérans le vendredi
@@ -126,6 +129,15 @@ passe — un stamp REMPLACE, l'historique vit dans git.
 > overnight `20:00-08:00` que le modèle plat ne wrappe pas) ou une heure malformée retombe sur **journée
 > entière bloquée** (l'indispo est honorée, jamais silencieusement perdue ni crash du solve).
 
+> **Seul un coach PRINCIPAL ferme un créneau (ALIGN-19).** Le lien équipe↔coach porte un `role`
+> (`TEAM_COACH`, `metadata.role`, absent traité comme `MAIN` — `parsing.py` : `role != "ASSISTANT"`
+> pour qu'une équipe lie ce coach comme ressource bloquante). L'indisponibilité d'un coach
+> **ADJOINT sur toutes ses équipes** (jamais principal nulle part) n'entre donc dans AUCUNE union
+> `unavailableDays`/fenêtre horaire de ce document : le moteur ne la lit pas, elle ne retire jamais
+> un créneau candidat. Elle est **Indicative** — signalée par `PreSolvePreventionWarnings` au
+> récap pré-génération et à l'écran Contraintes des matchs (frontend), jamais bloquante. Un coach
+> principal d'au moins une équipe sort de ce lot (son indisponibilité, elle, ferme bien).
+>
 > **La cible est le `scope`, jamais le `config` (SEC-13).** La clé `coachId` n'existe plus : elle
 > valait exactement `scopeTargetId`, et un doublon de cible est une occasion de divergence (deux
 > sources pour la même vérité). Elle est absente de la liste blanche — un `config` qui la porte est
@@ -363,7 +375,7 @@ verrou avec les contraintes **saisies** et émet un `constraint_not_honored` de 
 | `minStartTime` / `maxStartTime` | comparaison sur l'heure de début |
 | `maxEndTime` | `début + durée **DU VERROU**` (pas celle du créneau de grille : un verrou de 120 min sur un créneau de 90 déborde réellement) |
 | `forbiddenDays` / `allowedDays` | évalués sur l'**UNION par équipe** — la seule sémantique que le solveur applique ; les règles nommées sont celles qui excluent effectivement le jour une fois l'union faite |
-| `forcedDays` | un verrou posé un **autre** jour peut consommer le créneau qui aurait satisfait l'exigence → avertissement dédié |
+| `forcedDays` | un verrou posé un **autre** jour peut consommer le créneau qui aurait satisfait l'exigence → avertissement dédié. **Exception (ALIGN-16)** : un verrou posé SUR le jour imposé lui-même ne rend rien inatteignable — il **satisfait** directement la règle (`targeting.py`, patron P4-97) : pas de ligne dans ce diagnostic, rien à signaler, le jour EST honoré. Si le jour imposé a un créneau candidat mais que toutes ses places sont fermées par une AUTRE règle HARD (indispo du coach principal toute la journée, fenêtre horaire), le moteur reste INFEASIBLE mais NOMME la cause en diagnostic `day_constraint_conflict` plutôt qu'un `causes: []` muet |
 | `forbiddenVenueId` | paire (équipe, gymnase) issue d'une contrainte `forbiddenVenueId` explicite — une fermeture datée de gymnase n'en pose pas : elle retire ses créneaux (§Famille FACILITY) |
 
 > **Hors périmètre volontaire** : les règles implicites **structurelles** (un coach dans deux gymnases à

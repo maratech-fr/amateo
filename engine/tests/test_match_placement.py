@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from ortools.sat.python import cp_model
 from pydantic import ValidationError
 
 from app.main import read_contract_version
@@ -619,3 +620,40 @@ def test_a_person_coaching_and_playing_the_same_team_is_counted_once() -> None:
         )
     )
     assert coach_only["placements"] == also_player["placements"]
+
+
+def test_fixed_match_finishing_after_midnight_still_places_the_others() -> None:
+    # ENG-48 — a FIXED home match kicking off at 22:30 for 120 min ENDS at 00:30
+    # (past midnight; the league may allow it, "no surprise"). The day-compaction
+    # span/gap domains must reach that end, else `span_end >= 1470` is infeasible
+    # against the old 24:00 cap and the WHOLE (venue, date) group unplaces — so a
+    # perfectly placeable match beside it is left `not_selected`. After the horizon
+    # fix the fixed anchor is absorbed and the free match is placed normally.
+    result = solve_match_placement(
+        payload(
+            matches=[
+                to_place("m1", "t1"),
+                {"id": "fx", "teamId": "t2", "date": SATURDAY, "kind": "FIXED", "venueId": "v1", "kickoff": "22:30"},
+            ],
+            venues=[venue()],  # Saturday 14:00-18:00
+            teams=[team("t1"), team("t2", matchMinutes=120)],
+        )
+    )
+    assert result["unplaced"] == []
+    assert kickoff_of(result, "m1") <= "16:15"
+
+
+def test_unknown_solver_status_names_each_unplaced_match(monkeypatch: pytest.MonkeyPatch) -> None:
+    # ENG-48 — the post-solve `else` branch is reachable on UNKNOWN (the budget ran
+    # out before any proof). It must leave `placements=[]` and still name a reason
+    # per match from the final occupancy, never a silent empty response.
+    real_solve = cp_model.CpSolver.solve
+
+    def fake_solve(self: cp_model.CpSolver, model: cp_model.CpModel) -> int:
+        real_solve(self, model)
+        return cp_model.UNKNOWN
+
+    monkeypatch.setattr(cp_model.CpSolver, "solve", fake_solve)
+    result = solve_match_placement(payload(matches=[to_place()], venues=[venue()], teams=[team()]))
+    assert result["placements"] == []
+    assert [item["reason"] for item in result["unplaced"]] == ["not_selected"]

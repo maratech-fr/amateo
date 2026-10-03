@@ -212,12 +212,22 @@ final class ManualEditController extends AbstractController implements SeasonSco
                 'violations' => $result['violations'],
                 'compromises' => $result['compromises'],
             ];
+            if (true === ($result['indeterminate'] ?? false)) {
+                // ENG-51 — le solveur n'a pas tranché dans le temps imparti : verdict NEUTRE.
+                $body['indeterminate'] = true;
+            }
             if (isset($result['evicted'])) {
                 // L'état qui SERAIT évincé (sans suppression).
                 $body['evicted'] = $result['evicted'];
             }
 
             return $this->json($body, Response::HTTP_OK);
+        }
+
+        if (true === ($result['indeterminate'] ?? false)) {
+            // ENG-51 — le solveur n'a PAS tranché dans le temps imparti (ni oui ni non) : 200 +
+            // drapeau NEUTRE, aucune écriture. Ce n'est pas un refus (422) : l'UI invite à réessayer.
+            return $this->json(['valid' => false, 'indeterminate' => true], Response::HTTP_OK);
         }
 
         if (false === $result['valid']) {
@@ -333,12 +343,23 @@ final class ManualEditController extends AbstractController implements SeasonSco
 
         if (isset($result['dryRun'])) {
             // Essai : 200, verdict complet, AUCUNE ligne créée.
-            return $this->json([
+            $body = [
                 'valid' => $result['valid'],
                 'dryRun' => true,
                 'violations' => $result['violations'],
                 'compromises' => $result['compromises'],
-            ], Response::HTTP_OK);
+            ];
+            if (true === ($result['indeterminate'] ?? false)) {
+                // ENG-51 — verdict NEUTRE : le solveur n'a pas tranché dans le temps imparti.
+                $body['indeterminate'] = true;
+            }
+
+            return $this->json($body, Response::HTTP_OK);
+        }
+
+        if (true === ($result['indeterminate'] ?? false)) {
+            // ENG-51 — ni oui ni non : 200 + drapeau NEUTRE, rien créé ; l'UI invite à réessayer.
+            return $this->json(['valid' => false, 'indeterminate' => true], Response::HTTP_OK);
         }
 
         if (false === $result['valid']) {
@@ -426,6 +447,12 @@ final class ManualEditController extends AbstractController implements SeasonSco
             $this->logger->error('Group slot move failed.', ['exception' => $e]);
 
             return $this->json(['error' => 'The request could not be processed.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        if (true === ($result['indeterminate'] ?? false)) {
+            // ENG-51 — le solveur n'a pas tranché dans le temps imparti : 200 + drapeau NEUTRE,
+            // AUCUN des N créneaux n'a bougé ; l'UI invite à réessayer.
+            return $this->json(['valid' => false, 'indeterminate' => true], Response::HTTP_OK);
         }
 
         if (false === $result['valid']) {

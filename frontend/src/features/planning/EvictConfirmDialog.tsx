@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { MODAL_WIDTH } from "@/shared/components/ui/modal-width";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { useModalA11y } from "@/shared/lib/useModalA11y";
 import { cn } from "@/shared/lib/utils";
 
@@ -23,13 +24,16 @@ import { CompromiseList } from "./CompromiseList";
  *  - `failed`   : l'essai n'a PAS ABOUTI (moteur trop lent / indisponible) — DISTINCT d'un refus :
  *    rien n'est tranché, la modale RESTE ouverte, DIT ce qui s'est passé et propose [Réessayer].
  *    C'est la demande fondateur : ne jamais fermer en silence sur un échec de la vérification.
+ *  - `indeterminate` (ENG-51) : le solveur n'a PAS tranché dans le temps imparti — ni accepté ni
+ *    refusé. Bandeau NEUTRE (jamais un style conflit : aucune règle n'est en cause), rien n'est
+ *    écrit, [Réessayer].
  *
  * Markup calqué sur `ConfirmDialog` (portail + overlay + focus-trap partagé) : celui-ci ne sait
  * pas rendre un état de chargement ni un refus sans bouton, d'où une modale dédiée à la zone
  * planning plutôt qu'une extension du composant partagé.
  */
 
-export type EvictDialogPhase = "checking" | "accepted" | "refused" | "failed";
+export type EvictDialogPhase = "checking" | "accepted" | "refused" | "failed" | "indeterminate";
 
 /**
  * Pourquoi l'essai a échoué (état `failed`) — trois causes DISTINCTES, jamais confondues (P4-119 b) :
@@ -74,7 +78,14 @@ export function EvictConfirmDialog({ open, phase, occupantName, compromises, vio
     return null;
   }
 
-  const title = "refused" === phase ? "Déplacement impossible" : "failed" === phase ? "La vérification n'a pas abouti" : "Déplacer vers un créneau occupé ?";
+  const title =
+    "refused" === phase
+      ? "Déplacement impossible"
+      : "failed" === phase
+        ? "La vérification n'a pas abouti"
+        : "indeterminate" === phase
+          ? "La vérification a pris trop de temps"
+          : "Déplacer vers un créneau occupé ?";
 
   return createPortal(
     <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
@@ -132,6 +143,12 @@ export function EvictConfirmDialog({ open, phase, occupantName, compromises, vio
               <span>{FAILURE_MESSAGE[failureKind]}</span>
             </div>
           ) : null}
+
+          {/* ENG-51 — verdict indéterminé : ton NEUTRE (`muted`), jamais un style conflit. Ce n'est
+              pas un refus (aucune règle en cause) — rien n'a bougé, on invite à réessayer. */}
+          {"indeterminate" === phase ? (
+            <NoticeBanner tone="muted" role="status" message="La vérification a pris trop de temps, réessayez." />
+          ) : null}
         </div>
 
         {/* Même filet que le pied ÉPINGLÉ de `Modal` / `ConfirmDialog` (P4-127 d) : bordure +
@@ -146,7 +163,7 @@ export function EvictConfirmDialog({ open, phase, occupantName, compromises, vio
               Déplacer et évincer
             </Button>
           ) : null}
-          {"failed" === phase ? (
+          {"failed" === phase || "indeterminate" === phase ? (
             <Button variant="default" onClick={onRetry}>
               Réessayer
             </Button>

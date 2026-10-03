@@ -349,6 +349,14 @@ describe("SlotDetail — verdict du déplacement (F2b)", () => {
     renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null }, moveState: { status: "error" } });
     expect(screen.getByText(/réessay/i)).toBeInTheDocument();
   });
+
+  it("ENG-51 — un verdict INDÉTERMINÉ montre un bandeau NEUTRE « réessayez », jamais un style de refus", () => {
+    renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null }, moveState: { status: "indeterminate" } });
+    expect(screen.getByText("La vérification a pris trop de temps, réessayez.")).toBeInTheDocument();
+    // Ton NEUTRE, pas un refus : aucun « Déplacement refusé » ni alerte conflit.
+    expect(screen.queryByText(/refusé/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });
 
 describe("SlotDetail — déplacer le GROUPE de mutualisation (P2-51 PR-6, D11)", () => {
