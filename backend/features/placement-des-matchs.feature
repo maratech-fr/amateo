@@ -122,6 +122,19 @@ Fonctionnalité: Le placement des matchs honore les fenêtres d'accès et nomme 
     Quand je lance le placement des matchs
     Alors le match du samedi est placé par le solveur, après 16h00
 
+  Scénario: Un match posé à la main finissant après minuit n'empêche pas de placer les autres
+    La ligue peut autoriser un match tard le soir qui se termine après minuit ; le gestionnaire
+    l'a posé à la main. Cette ancre ne doit PAS rendre tout le gymnase infaisable ce jour-là :
+    « Placer la semaine » pose normalement les autres matchs du même gymnase (ENG-48).
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et deux équipes et un gymnase jetables
+    Et une fenêtre d'accès le samedi de 14h00 à 18h00 sur ce gymnase
+    Et le club n'offre aucune autre fenêtre d'accès le samedi
+    Et un match posé à la main le samedi à 23h00 sur ce gymnase, finissant après minuit
+    Et un match à domicile de la première équipe le samedi à placer
+    Quand je lance le placement des matchs
+    Alors l'autre match du samedi est placé par le solveur malgré l'ancre de nuit
+
   Scénario: Un amical n'est jamais proposé au solveur et se place à la main hors créneau
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et deux équipes et un gymnase jetables

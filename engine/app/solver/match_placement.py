@@ -719,8 +719,22 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
     for key, group_cands in groups.items():
         _ensure_budget()
         fixed_entries = fixed_by_group.get(key, [])
-        span_start = model.new_int_var(day_start, day_end, f"span_start_{key[0]}_{key[1]}")
-        span_end = model.new_int_var(day_start, day_end, f"span_end_{key[0]}_{key[1]}")
+        # ENG-48 — a match may legitimately END after midnight (the league may
+        # allow a late kickoff; "no surprise, no backend refusal"). The compaction
+        # span/gap domains must reach the LATEST match end of the group, not stop
+        # at 24:00: a fixed anchor (or candidate) finishing past midnight makes
+        # `span_end >= kick + m_match` infeasible against a 1440-capped domain and
+        # the whole model then unplaces everything. The horizon is the max MATCH
+        # end over candidates AND fixed anchors, floored at day_end — so when
+        # nothing crosses midnight it equals day_end and the model is byte-identical
+        # (goldens intact).
+        horizon = day_end
+        for _var, kick, m_match in group_cands:
+            horizon = max(horizon, kick + m_match)
+        for kick, m_match in fixed_entries:
+            horizon = max(horizon, kick + m_match)
+        span_start = model.new_int_var(day_start, horizon, f"span_start_{key[0]}_{key[1]}")
+        span_end = model.new_int_var(day_start, horizon, f"span_end_{key[0]}_{key[1]}")
         placed_footprint: list[cp_model.LinearExpr] = []
         for var, kick, m_match in group_cands:
             model.add(span_start <= kick).only_enforce_if(var)
@@ -731,7 +745,7 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
             model.add(span_end >= kick + m_match)
         n_fixed = len(fixed_entries)
         fixed_footprint = sum(m_match for _, m_match in fixed_entries)
-        gap = model.new_int_var(0, day_end, f"gap_{key[0]}_{key[1]}")
+        gap = model.new_int_var(0, horizon, f"gap_{key[0]}_{key[1]}")
         # gap ≥ span − Σ matchMinutes ; NoOverlap guarantees span ≥ Σ matchMinutes
         # when all sit apart, so gap measures idle time. The maximiser pushes gap
         # down to its lower bound (it enters the objective negatively).
@@ -743,7 +757,7 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
             model.add(span_end == span_start).only_enforce_if(any_placed.Not())
         # Per 15-min STEP (not per minute) — a 6 h hole must never outweigh a
         # coach clash: 24 steps × 1 « 60 (the D5 hierarchy holds).
-        gap_steps = model.new_int_var(0, day_end // STEP_MIN, f"gap_steps_{key[0]}_{key[1]}")
+        gap_steps = model.new_int_var(0, horizon // STEP_MIN, f"gap_steps_{key[0]}_{key[1]}")
         model.add_division_equality(gap_steps, gap, STEP_MIN)
         objective.append((-W_GAP_PER_STEP) * gap_steps)
 
@@ -778,7 +792,12 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
                 )
             else:
                 unchosen.append(match)
-    else:  # pragma: no cover — the model is always feasible (placement optional)
+    else:
+        # Reachable on UNKNOWN: the solver hit its time limit before proving SAT
+        # or UNSAT (placement is optional, so INFEASIBLE is not expected, but it
+        # is handled the same way). Leave `placements` empty and let
+        # `_remaining_reason` name why each match stayed down from the FINAL
+        # occupancy (= the fixed anchors only, no free placement was retained).
         unchosen = list(solvable)
 
     for match in unchosen:

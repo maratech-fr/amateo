@@ -55,12 +55,21 @@ export interface Coach {
   lastName: string;
 }
 
+/** Lien équipe⇄entraîneur avec son rôle — sert à savoir si un coach n'est qu'ADJOINT (ALIGN-19). */
+export interface TeamCoach {
+  id: string;
+  teamId: string;
+  coachId: string;
+  role: "MAIN" | "ASSISTANT";
+}
+
 export const getTeams = (): Promise<Team[]> => collectionAll<Team>("teams");
 // Tiers are a tiny fixed set (S/A/B/C/D) and their id is numeric, so use the
 // unpaginated `collection` (collectionAll constrains T to a string id).
 export const getPriorityTiers = (): Promise<PriorityTier[]> => collection<PriorityTier>("priority_tiers");
 export const getCategories = (): Promise<Category[]> => collectionAll<Category>("sport_categories");
 export const getCoaches = (): Promise<Coach[]> => collectionAll<Coach>("coaches");
+export const getTeamCoaches = (): Promise<TeamCoach[]> => collectionAll<TeamCoach>("team_coaches");
 
 export const getSportCategoryDurations = (): Promise<SportCategoryDuration[]> => collectionAll<SportCategoryDuration>("sport_categories");
 

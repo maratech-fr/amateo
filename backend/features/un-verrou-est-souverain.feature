@@ -18,6 +18,16 @@ Fonctionnalité: Un verrou est souverain à la régénération
     Quand je tente de déplacer cette séance vers une case sans créneau ouvert
     Alors le déplacement est refusé et nommé, et la séance n'a pas bougé
 
+  Scénario: Un jour imposé couvert par une séance verrouillée ne fait pas échouer la régénération
+    Une séance verrouillée le jour imposé SATISFAIT « au moins une séance ce jour-là » : le verrou
+    tient la promesse à la place d'un créneau libre, et la régénération aboutit, le créneau
+    verrouillé intact. Sans cela, le jour imposé viderait le modèle et la génération échouerait.
+    Étant donné le club de démonstration, connecté, avec une version de saison rouverte
+    Et une séance de cette version verrouillée en dur
+    Et une règle « au moins une séance ce jour-là » pour cette équipe
+    Quand je régénère le planning de saison
+    Alors la régénération aboutit, le verrou satisfaisant le jour imposé
+
   Scénario: Une règle qui contredit un verrou est signalée, le créneau reste
     Étant donné le club de démonstration, connecté, avec une version de saison rouverte
     Et une séance de cette version verrouillée en dur

@@ -25,4 +25,14 @@ describe("EvictConfirmDialog", () => {
 
     expect(screen.getByText(new RegExp(`jusqu'à ${MOVE_VERDICT_TIMEOUT_SECONDS} s`))).toBeInTheDocument();
   });
+
+  it("ENG-51 — la phase INDÉTERMINÉE montre un bandeau NEUTRE « réessayez » + [Réessayer], jamais un style de refus", () => {
+    render(<EvictConfirmDialog {...baseProps} phase="indeterminate" />);
+
+    expect(screen.getByText("La vérification a pris trop de temps, réessayez.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Réessayer" })).toBeInTheDocument();
+    // Pas un refus : aucune mention « casse une règle » ni rôle d'alerte conflit.
+    expect(screen.queryByText(/casse une règle/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });

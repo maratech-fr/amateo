@@ -21,10 +21,21 @@ from .common import (
     _extract_interval,
     _get,
     _intervals_overlap,
+    _locked_team_days,
     _normalise_assignments,
     _record_closure,
     _scalar_id,
 )
+
+
+def _closure_index(var: BoolVarLike) -> int | None:
+    """L'index OR-Tools stable d'une variable (clé de ``model.candidate_closures``),
+    ou ``None`` pour un modèle nu de test sans ``.Index()``. Même idiome défensif
+    que ``_record_closure``."""
+    try:
+        return int(var.Index())
+    except (AttributeError, TypeError):
+        return None
 
 
 def add_time_window_constraints(
@@ -148,6 +159,15 @@ def add_time_window_constraints(
             continue
         team_day_vars[team_id_text][day_value].append(var)
 
+    # ALIGN-16 / P4-97 — jours portant une séance HARD-verrouillée, par équipe. Une
+    # séance verrouillée EST déjà la séance de son jour (le verrou n'a pas de variable,
+    # model.py) : un jour imposé qui en porte une est DÉJÀ satisfait, on ne pose pas
+    # « au moins une séance ce jour » par-dessus (sinon INFEASIBLE si le reste du jour
+    # est fermé). Vide sur un modèle nu / sans verrou (chemin byte-identique).
+    locked_days_by_team: dict[str, set[int]] = {
+        team: set(days_counts) for team, days_counts in _locked_team_days(model).items()
+    }
+
     for team_id_text, day_rules in day_rules_by_team.items():
         forced_day_set = day_rules["forced"]
         original_forbidden = set(day_rules["forbidden"])
@@ -207,9 +227,57 @@ def add_time_window_constraints(
                     _record_closure(model, var, {"kind": "day_forbidden"})
 
         if forced_day_set:
+            # ALIGN-16 / P4-97 — une séance VERROUILLÉE un jour imposé SATISFAIT déjà
+            # « au moins une séance ce jour ». Le verrou ne porte pas de variable, il
+            # n'entre donc jamais dans `forced_day_vars` : poser `sum(...) >= 1` par-dessus
+            # un jour par ailleurs fermé rendrait le modèle INFEASIBLE alors que la
+            # réservation honore la règle. Un jour imposé couvert par un verrou ⇒ aucune
+            # contrainte (la réservation EST la séance).
+            if forced_day_set & locked_days_by_team.get(team_id_text, set()):
+                continue
+
             forced_day_vars: list[BoolVarLike] = []
             for day_value in forced_day_set:
                 forced_day_vars.extend(team_day_vars.get(team_id_text, {}).get(day_value, []))
+
+            # ALIGN-16 — le jour imposé existe dans la grille mais TOUTES ses places sont
+            # fermées par une autre règle HARD (indispo coach, fenêtre horaire, jour interdit
+            # par liste blanche…). On NOMME les contraintes fermantes (patron
+            # `day_constraint_conflict`) plutôt que de laisser un INFEASIBLE muet avec
+            # `causes: []`. On NE RELÂCHE PAS pour autant la règle du jour imposé : le
+            # `sum(forced_day_vars) >= 1` ci-dessous reste posé (= `0 >= 1`), donc la génération
+            # RESTE infaisable — mais sa cause est désormais dite (décision fondateur 2026-10-03).
+            closures = getattr(model, "candidate_closures", None) or {}
+            if forced_day_vars and all(
+                (idx := _closure_index(var)) is not None and idx in closures for var in forced_day_vars
+            ):
+                closing_labels = sorted(
+                    {
+                        str(cause.get("label"))
+                        for var in forced_day_vars
+                        if (idx := _closure_index(var)) is not None
+                        for cause in closures.get(idx, [])
+                        if cause.get("label")
+                    }
+                )
+                detail = f" (constraints: {', '.join(closing_labels)})" if closing_labels else ""
+                conflicts.append(
+                    {
+                        "id": f"forced_day_emptied-{team_id_text}",
+                        "type": "day_constraint_conflict",
+                        "severity": "ERROR",
+                        "teamId": team_id_text,
+                        "message": (
+                            f"Team {team_id_text} is forced to train on a given day, but every slot of "
+                            f"that day is ruled out by other constraints{detail}; no session can be placed there."
+                        ),
+                        "suggestions": [
+                            "Relax the time/day rule, the coach unavailability or the access window "
+                            "that empties the forced day, or lock a session on that day.",
+                        ],
+                        "createdAt": datetime.now(UTC).isoformat(),
+                    }
+                )
 
             model.Add(sum(forced_day_vars) >= 1)
             added += 1

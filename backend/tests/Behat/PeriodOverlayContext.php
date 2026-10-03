@@ -54,6 +54,12 @@ final class PeriodOverlayContext extends BaseContext
 
     private string $freeTeam = '';
 
+    private string $forcedTeamId = '';
+
+    private int $forcedDay = 0;
+
+    private string $forcedConstraintId = '';
+
     private string $redatePlanId = '';
 
     private string $redateVersionId = '';
@@ -207,6 +213,65 @@ final class PeriodOverlayContext extends BaseContext
             \sprintf('DELETE FROM schedule_slot_template WHERE id = \'%s\'', $freeSlotId),
             admin: true,
         );
+    }
+
+    #[Given('une règle « au moins une séance » sur le jour d\'une séance épinglée du socle')]
+    public function uneRegleAuMoinsUneSeanceSurUnJourEpingle(): void
+    {
+        // ALIGN-16 — un jour IMPOSÉ sur le jour d'une séance que le socle a verrouillée (la
+        // transcription V1 que le remplissage épingle en HARD). Côté moteur, l'épingle n'a pas de
+        // variable : sans le correctif, « au moins une séance ce jour » posé par-dessus un jour
+        // par ailleurs fermé rendrait le remplissage infaisable. L'épingle SATISFAIT le jour imposé.
+        $row = $this->dbalScalar(
+            \sprintf(
+                'SELECT team_id || \'|\' || day_of_week AS behatval'
+                . ' FROM schedule_slot_template WHERE schedule_id=\'%s\' ORDER BY id LIMIT 1',
+                $this->v1Id,
+            ),
+            admin: true,
+        );
+        $parts = '' === $row ? [] : explode('|', $row);
+        if (2 !== \count($parts)) {
+            throw new RuntimeException('aucune séance transcrite trouvée sur la première version du plan de période');
+        }
+        [$this->forcedTeamId, $day] = $parts;
+        $this->forcedDay = (int) $day;
+
+        $created = $this->apiPost('constraints', [
+            'name' => 'Au moins une séance ce jour (remplissage fonctionnel)',
+            'scope' => 'TEAM',
+            'scopeTargetId' => $this->forcedTeamId,
+            'family' => 'DAY',
+            'ruleType' => 'HARD',
+            'config' => ['forcedDays' => [$this->forcedDay]],
+            'isActive' => true,
+        ], $this->token);
+        if (!\in_array($created['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('la création de la règle « au moins une séance » a répondu %d (201 attendu)', $created['status']));
+        }
+        $this->forcedConstraintId = (string) ($created['json']['id'] ?? '');
+        if ('' === $this->forcedConstraintId) {
+            throw new RuntimeException('la règle « au moins une séance » n\'a pas rendu d\'identifiant');
+        }
+    }
+
+    #[Then('le remplissage aboutit et l\'équipe au jour imposé garde sa séance ce jour-là')]
+    public function leRemplissageHonoreLeJourImpose(): void
+    {
+        // Le When a déjà exigé COMPLETED. On vérifie que l'équipe au jour imposé garde bien une
+        // séance ce jour-là dans la version de remplissage (l'épingle du socle a tenu la promesse).
+        $onForcedDay = (int) $this->dbalScalar(
+            \sprintf(
+                'SELECT COUNT(*) AS behatval FROM schedule_slot_template WHERE schedule_id=\'%s\' AND team_id=\'%s\' AND day_of_week=%d',
+                $this->v2Id,
+                $this->forcedTeamId,
+                $this->forcedDay,
+            ),
+            admin: true,
+        );
+        if ($onForcedDay < 1) {
+            throw new RuntimeException('l\'équipe au jour imposé n\'a aucune séance ce jour-là dans le remplissage — le jour imposé n\'a pas été honoré');
+        }
     }
 
     #[When('je lance le remplissage de la période')]
@@ -418,6 +483,10 @@ final class PeriodOverlayContext extends BaseContext
     {
         if ('' === $this->token) {
             return;
+        }
+
+        if ('' !== $this->forcedConstraintId) {
+            $this->apiDelete(\sprintf('constraints/%s', $this->forcedConstraintId), $this->token);
         }
 
         if ('' !== $this->entryId) {

@@ -105,6 +105,11 @@ final class ValidateAssignmentsContractSchemaTest extends TestCase
         self::assertArrayHasKey('compromises', $data);
         self::assertIsArray($data['compromises']);
         self::assertArrayHasKey('metrics', $data);
+        // ENG-51 — le verdict porte un 3ᵉ cas « indéterminé » (solveur non tranché dans le temps
+        // imparti) : le champ `indeterminate` est TOUJOURS présent (défaut false), jamais absent. Le
+        // contrat = la présence + le type booléen, pas un verdict précis (`MoveSlotService` le lit).
+        self::assertArrayHasKey('indeterminate', $data);
+        self::assertIsBool($data['indeterminate']);
     }
 
     /**

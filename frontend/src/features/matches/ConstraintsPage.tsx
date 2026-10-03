@@ -32,6 +32,7 @@ import {
   useMatchConstraintCoherence,
   useMatchConstraints,
   usePriorityTiers,
+  useTeamCoaches,
   useTeams,
   useUpdateClubLeagueWindow,
   useUpdateMatchConstraint,
@@ -727,18 +728,20 @@ const coachLabel = (coach: Coach | undefined): string => (undefined !== coach ? 
 function CoachsSection() {
   const rules = useMatchConstraints();
   const coaches = useCoaches();
+  const teamCoaches = useTeamCoaches();
 
-  if (readFailed(rules) || readFailed(coaches)) {
+  if (readFailed(rules) || readFailed(coaches) || readFailed(teamCoaches)) {
     return (
       <LoadErrorHint
         onRetry={() => {
           void rules.refetch();
           void coaches.refetch();
+          void teamCoaches.refetch();
         }}
       />
     );
   }
-  if (undefined === rules.data || undefined === coaches.data) {
+  if (undefined === rules.data || undefined === coaches.data || undefined === teamCoaches.data) {
     return <FullPageSpinner />;
   }
 
@@ -747,6 +750,15 @@ function CoachsSection() {
   const unavailabilities = rules.data.filter((rule) => "COACH" === rule.scope);
   const coachesById = new Map(coaches.data.map((c) => [c.id, c]));
 
+  // ALIGN-19 — les coachs ADJOINTS sur toutes leurs équipes (jamais principal). Le moteur de
+  // placement ne distingue pas le rôle (toute indisponibilité coach y est SOFT, jamais
+  // bloquante) ; la phrase reste donc vraie ici. On la montre quand une indisponibilité listée
+  // vise un tel coach, pour lever le doute du gestionnaire (« ai-je bloqué le match ? »).
+  const linkedCoaches = new Set(teamCoaches.data.map((tc) => tc.coachId));
+  const mainCoaches = new Set(teamCoaches.data.filter((tc) => "MAIN" === tc.role).map((tc) => tc.coachId));
+  const isAdjointOnly = (coachId: string): boolean => linkedCoaches.has(coachId) && !mainCoaches.has(coachId);
+  const hasAdjointOnlyUnavailability = unavailabilities.some((rule) => isAdjointOnly(rule.scopeTargetId ?? ""));
+
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
@@ -754,6 +766,10 @@ function CoachsSection() {
         placement <strong>évitera</strong> alors un coup d'envoi avant 14h. Il évite ces plages quand il le peut, sans jamais rendre
         un match impossible. Vous pouvez déclarer plusieurs plages pour un même entraîneur, y compris le même jour.
       </p>
+
+      {hasAdjointOnlyUnavailability ? (
+        <NoticeBanner tone="muted" role="status" message="un adjoint indisponible ne bloque jamais une séance" />
+      ) : null}
 
       {0 === unavailabilities.length ? (
         <EmptyHint>Aucune indisponibilité — chaque entraîneur est réputé disponible pour tous les matchs.</EmptyHint>

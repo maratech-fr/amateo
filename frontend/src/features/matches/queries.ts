@@ -294,6 +294,10 @@ export function useCoaches() {
   return useQuery({ queryKey: ["coaches"], queryFn: matchesApi.getCoaches, staleTime: 300_000 });
 }
 
+export function useTeamCoaches() {
+  return useQuery({ queryKey: ["team_coaches"], queryFn: matchesApi.getTeamCoaches, staleTime: 300_000 });
+}
+
 export function useSportCategoryDurations() {
   return useQuery({ queryKey: ["sport_category_durations"], queryFn: matchesApi.getSportCategoryDurations, staleTime: 300_000 });
 }

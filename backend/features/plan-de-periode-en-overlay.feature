@@ -20,6 +20,18 @@ Fonctionnalité: Un plan de période se génère en overlay, sur sa propre grill
     Quand je lance le remplissage de la période
     Alors le remplissage aboutit et le membre libéré partage de nouveau la case de son partenaire épinglé
 
+  Scénario: Un remplissage honore un jour imposé déjà couvert par une séance épinglée du socle
+    Le remplissage épingle en dur les séances de la version source : une séance épinglée le jour
+    imposé SATISFAIT « au moins une séance ce jour-là » (ALIGN-16), sans quoi le jour imposé
+    viderait le modèle et le remplissage échouerait. Il aboutit, l'équipe gardant sa séance ce jour.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une nouvelle période de fermeture dont le plan recopie les blocs partagés du socle
+    Et une transcription depuis le socle qui verrouille ces séances, aboutie en une première version
+    Et je libère un membre d'un bloc partagé en supprimant sa séance transcrite
+    Et une règle « au moins une séance » sur le jour d'une séance épinglée du socle
+    Quand je lance le remplissage de la période
+    Alors le remplissage aboutit et l'équipe au jour imposé garde sa séance ce jour-là
+
   Scénario: Je re-date l'incident : le plan survit et sa version est marquée à régénérer
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une fermeture à venir avec une version overlay aboutie

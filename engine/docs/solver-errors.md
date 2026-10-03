@@ -1,7 +1,7 @@
 # Erreurs et diagnostics du solveur
 
 Last verified @ 2026-10-02 (lot nettoyage code mort — `POST /implicit-constraints` et son
-`409 Conflict` retirés, la route n'existe plus). `engine/CONTRACT_VERSION` = `1.0` ✓ ; la liste `type` de
+`409 Conflict` retirés, la route n'existe plus). `engine/CONTRACT_VERSION` = `1.1` ✓ ; la liste `type` de
 `DiagnosticSchema` (`app/schemas/output_schema.py:69-95`) porte **15 valeurs**, toutes présentes
 dans la table ci-dessous ✓ ; `SCORE_FORMULA_VERSION` = `T24_LEVEL_2_FIXED_WEIGHTS_V13`
 (`app/solver/objective/weights.py:31`) ✓ ; `BUILD_BUDGET_SECONDS` = `10.0`
@@ -26,7 +26,7 @@ Ces erreurs sont retournees directement par l'API FastAPI, avant meme que le sol
 - `sessionsPerWeek: "trois"` au lieu d'un entier
 - Champ `sportCategoryId` manquant sur une equipe (requis)
 - Cle inconnue dans le payload (les schemas sont `extra=forbid`)
-- `version: "2.0"` alors que le moteur parle le **MAJOR 1** du contrat `1.0` (`"1.0"` comme `"1.1"` passent)
+- `version: "2.0"` alors que le moteur parle le **MAJOR 1** du contrat `1.1` (`"1.0"` comme `"1.1"` passent)
 
 **Attention — deux pieges qui ne provoquent PAS de 422** : `lockLevel` est une **chaine libre**, pas un enum (un `"FORT"` est accepte et simplement traite comme non-`HARD`), et le `dayOfWeek` d'un creneau de gymnase (`VenueTrainingSlotSchema`) est un entier **sans borne** — un `8` passe la validation (d'autres schemas du meme payload, eux, sont bornes `ge=1, le=7` : la tolerance n'est pas une regle generale).
 

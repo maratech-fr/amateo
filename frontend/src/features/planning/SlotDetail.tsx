@@ -30,6 +30,9 @@ export type MoveFeedback =
   // P4-119 (b) : l'attente a été coupée CÔTÉ CLIENT avant la réponse — DISTINCT d'un moteur muet
   // (`error`) : on ne sait rien de la santé du moteur, on le dit sans l'accuser.
   | { status: "interrupted" }
+  // ENG-51 : le solveur n'a PAS tranché dans le temps imparti (ni accepté ni refusé). Ce n'est pas
+  // un refus (aucune règle nommée) : rien n'a bougé, on invite à réessayer — bandeau NEUTRE.
+  | { status: "indeterminate" }
   | { status: "error" };
 
 interface SlotDetailProps {
@@ -276,6 +279,12 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
 
           {"interrupted" === moveState.status ? (
             <NoticeBanner tone="warning" role="alert" message="La vérification a été interrompue avant la réponse — rien n’a été modifié, réessayez." />
+          ) : null}
+
+          {/* ENG-51 : verdict indéterminé — le solveur n'a pas tranché à temps. Ton NEUTRE (`muted`),
+              jamais un style conflit : ce n'est pas un refus, rien n'a bougé, on invite à réessayer. */}
+          {"indeterminate" === moveState.status ? (
+            <NoticeBanner tone="muted" role="status" message="La vérification a pris trop de temps, réessayez." />
           ) : null}
 
           {"error" === moveState.status ? (

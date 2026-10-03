@@ -17,10 +17,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from tests.support.pipeline import make_payload, make_team, make_venue, solve_payload
+from tests.support.pipeline import (
+    coach_availability,
+    make_payload,
+    make_team,
+    make_venue,
+    solve_payload,
+    team_constraint,
+)
 from tests.support.pipeline import team_coach as team_coach_link
 
 TUESDAY = 2
+WEDNESDAY = 3
 THURSDAY = 4
 MATEO = "mateo"
 JDR = "jdr"
@@ -171,3 +179,57 @@ def test_person_locked_in_two_venues_at_once_completes_with_a_diagnostic() -> No
     messages = " || ".join(str(d.get("message", "")) for d in conflicts)
     assert conflicts, f"la personne dans deux gymnases doit être diagnostiquée : {result['diagnostics']}"
     assert "Mara" in messages, f"la personne doit être nommée : {messages}"
+
+
+# --- ALIGN-16 — un jour imposé + un verrou ce jour-là --------------------------------------
+
+
+def _forced_day(constraint_id: str, team_id: str, day: int) -> dict[str, Any]:
+    return team_constraint(
+        constraint_id=constraint_id,
+        team_id=team_id,
+        family="DAY",
+        rule_type="HARD",
+        config={"forcedDays": [day]},
+    )
+
+
+def test_forced_day_satisfied_by_a_locked_session_stays_feasible() -> None:
+    """ALIGN-16 — l'équipe DOIT s'entraîner le mercredi (jour imposé) ET le gestionnaire a
+    VERROUILLÉ sa séance du mercredi. Le verrou n'a pas de variable (``model.py`` le retire),
+    donc le SEUL créneau mercredi disparaît de ``x`` : poser « au moins une séance mercredi » sur
+    un ensemble VIDE rendait tout le modèle INFEASIBLE (``causes: []``) alors que la réservation
+    honore la règle. Le verrou satisfait le jour imposé → la génération sort ``completed``."""
+    payload = make_payload(
+        teams=[make_team("SF2", sessions_per_week=1)],
+        venues=[make_venue(MATEO, [(WEDNESDAY, "18:00")])],
+        constraints=[_forced_day("force-wed-sf2", "SF2", WEDNESDAY)],
+        slot_templates=[_hard_lock("SF2", MATEO, WEDNESDAY, "18:00")],
+    )
+
+    result = solve_payload(payload)
+
+    assert result["status"] == "completed", result.get("diagnostics")
+
+
+def test_forced_day_emptied_by_coach_unavailability_names_the_cause() -> None:
+    """ALIGN-16 — jour imposé mercredi, AUCUNE réservation, mais le coach de l'équipe est
+    indisponible TOUT le mercredi : toutes les places du mercredi sont fermées. La règle du jour
+    imposé reste insatisfiable (décision fondateur : la génération RESTE infaisable) MAIS sa cause
+    est désormais NOMMÉE (``day_constraint_conflict``) au lieu d'un INFEASIBLE muet (``causes: []``)."""
+    payload = make_payload(
+        teams=[make_team("SF2", sessions_per_week=1)],
+        venues=[make_venue(MATEO, [(WEDNESDAY, "18:00")])],
+        coaches=[{"id": "mara", "firstName": "Mara", "lastName": "B", "isActive": True}],
+        constraints=[
+            _forced_day("force-wed-sf2", "SF2", WEDNESDAY),
+            team_coach_link("tc-sf2", "SF2", "mara"),
+            coach_availability("cav-mara", "mara", unavailable_days=[WEDNESDAY]),
+        ],
+    )
+
+    result = solve_payload(payload)
+
+    assert result["status"] == "failed", result.get("diagnostics")
+    named = [d for d in result["diagnostics"] if d["type"] == "day_constraint_conflict" and d.get("teamId") == "SF2"]
+    assert named, result["diagnostics"]

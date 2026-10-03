@@ -67,6 +67,8 @@ export function useRetouchGestures(
     | { phase: "accepted"; sourceSlotId: string; targetSlot: Slot; compromises: Compromise[] }
     | { phase: "refused"; sourceSlotId: string; targetSlot: Slot; violations: MoveViolation[] }
     | { phase: "failed"; sourceSlotId: string; targetSlot: Slot; failureKind: EvictFailureKind }
+    // ENG-51 — le solveur n'a pas tranché dans le temps imparti (ni accepté ni refusé).
+    | { phase: "indeterminate"; sourceSlotId: string; targetSlot: Slot }
     | null
   >(null);
   // P2-32 (geste 3) — les compromis NOMMÉS du dernier geste ÉCRIT accepté (N>0), pour le bandeau
@@ -107,7 +109,11 @@ export function useRetouchGestures(
             ? { status: "idle" }
             : null !== moveMutation.error && undefined !== moveMutation.error
               ? { status: "error" }
-              : { status: "idle" };
+              : // ENG-51 : un 200 {valid:false, indeterminate:true} résout en DATA (pas une erreur) —
+                // le moteur n'a pas tranché. Bandeau NEUTRE, rien n'a bougé.
+                true === moveMutation.data?.indeterminate
+                ? { status: "indeterminate" }
+                : { status: "idle" };
 
   // P2-51 PR-6 — le verdict du dernier déplacement de GROUPE, même dérivation que `moveState` (un
   // refus 422 → rejected ; slot_unavailable/verrou → toasté, panneau idle ; interruption → nommée).
@@ -124,7 +130,10 @@ export function useRetouchGestures(
             ? { status: "idle" }
             : null !== moveGroupMutation.error && undefined !== moveGroupMutation.error
               ? { status: "error" }
-              : { status: "idle" };
+              : // ENG-51 : verdict indéterminé résolu en DATA (pas une erreur) — bandeau NEUTRE.
+                true === moveGroupMutation.data?.indeterminate
+                ? { status: "indeterminate" }
+                : { status: "idle" };
 
   // Changer de créneau sélectionné efface le verdict du précédent — sinon un refus resterait
   // affiché sous un autre créneau.
@@ -241,6 +250,14 @@ export function useRetouchGestures(
         onSuccess: (result) => {
           setEvictDialog(null);
           setTargetMode(null);
+          // ENG-51 — verdict indéterminé : le moteur n'a pas tranché, RIEN n'a bougé côté serveur.
+          // Pas d'undo, pas de toast de succès, pas de compromis — le bandeau NEUTRE (moveState,
+          // dérivé de `data.indeterminate`) invite à réessayer.
+          if (true === result.indeterminate) {
+            setCompromiseNotice(null);
+            setEvictionNotice(null);
+            return;
+          }
           // P2-32 — les compromis NOMMÉS du geste : bandeau (N>0) + suffixe de toast « — N compromis ».
           const compromises = result.compromises ?? [];
           setCompromiseNotice(compromises.length > 0 ? compromises : null);
@@ -292,6 +309,12 @@ export function useRetouchGestures(
           setUndo(null);
           setEvictionNotice(null);
           clearHighlight();
+          // ENG-51 — verdict indéterminé : aucun des N créneaux n'a bougé. Pas de toast de succès,
+          // pas de compromis — le bandeau NEUTRE (moveGroupState) invite à réessayer.
+          if (true === result.indeterminate) {
+            setCompromiseNotice(null);
+            return;
+          }
           const compromises = result.compromises ?? [];
           setCompromiseNotice(compromises.length > 0 ? compromises : null);
           toast.success(compromises.length > 0 ? `Groupe déplacé — ${compromises.length} compromis` : "Groupe déplacé.");
@@ -323,6 +346,13 @@ export function useRetouchGestures(
           setUndo(null); // un placement n'a pas d'inverse (aucun endpoint de suppression de créneau)
           setEvictionNotice(null);
           clearHighlight();
+          // ENG-51 — verdict indéterminé : rien n'a été créé. Message NEUTRE (ni succès ni erreur),
+          // on reste en mode placement pour réessayer.
+          if (true === result.indeterminate) {
+            setCompromiseNotice(null);
+            toast.info("La vérification a pris trop de temps, réessayez.");
+            return;
+          }
           const compromises = result.compromises ?? [];
           setCompromiseNotice(compromises.length > 0 ? compromises : null);
           toast.success(compromises.length > 0 ? `Séance placée — ${compromises.length} compromis` : "Séance placée.");
@@ -361,6 +391,12 @@ export function useRetouchGestures(
       { id: sourceSlotId, patch: { dayOfWeek: targetSlot.dayOfWeek, startTime: toHourMinute(targetSlot.startTime), venueId: targetSlot.venueId, evictSlotId: targetSlot.id } },
       {
         onSuccess: (result) => {
+          // ENG-51 — le moteur n'a pas tranché l'essai dans le temps imparti : ni accepté ni refusé.
+          // Phase NEUTRE (bandeau muted + [Réessayer]), jamais « refusé » (aucune règle en cause).
+          if (true === result.indeterminate) {
+            setEvictDialog({ phase: "indeterminate", sourceSlotId, targetSlot });
+            return;
+          }
           if (result.valid) {
             setEvictDialog({ phase: "accepted", sourceSlotId, targetSlot, compromises: result.compromises ?? [] });
           } else {
