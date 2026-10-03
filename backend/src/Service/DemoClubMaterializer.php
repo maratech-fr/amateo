@@ -254,11 +254,16 @@ final class DemoClubMaterializer
         return $clubIds;
     }
 
-    /** Le club porte-t-il un membre autre que l'animateur ? (raw DBAL — club_user se lit cross-tenant). */
+    /**
+     * Le club porte-t-il un membre ACTIF autre que l'animateur ? (raw DBAL — club_user
+     * se lit cross-tenant). Un membership INACTIF (sorti/effacé) ne protège pas le club :
+     * sans le filtre `is_active`, un club démo dont tous les autres membres ont quitté
+     * resterait indétachable à cause de lignes mortes.
+     */
     private function hasOtherMember(string $clubId, string $animatorId): bool
     {
         $count = $this->entityManager->getConnection()->fetchOne(
-            'SELECT COUNT(*) FROM club_user WHERE club_id = :cid AND user_id <> :uid',
+            'SELECT COUNT(*) FROM club_user WHERE club_id = :cid AND user_id <> :uid AND is_active = true',
             ['cid' => $clubId, 'uid' => $animatorId],
         );
 

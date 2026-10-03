@@ -30,6 +30,14 @@ final class DemoWindowContext extends BaseContext
 
     private string $mailpitBase;
 
+    private string $captureAra = '';
+
+    private string $demoClubId = '';
+
+    private string $realMembershipStatus = '';
+
+    private ?string $realClubId = null;
+
     /** @var array{status: int, json: array<mixed>, headers: array<string, list<string>>} */
     private array $loginResponse = ['status' => 0, 'json' => [], 'headers' => []];
 
@@ -120,6 +128,75 @@ final class DemoWindowContext extends BaseContext
     {
         if (204 !== $this->loginResponse['status']) {
             throw new RuntimeException(\sprintf('la connexion aurait dû réussir (204 attendu), elle a répondu %d', $this->loginResponse['status']));
+        }
+    }
+
+    #[Given('un club de démonstration portant un code FFBB')]
+    public function unClubDeDemonstrationPortantUnCodeFfbb(): void
+    {
+        $this->captureAra = 'DEMC' . time() . random_int(100, 999);
+        $ownerEmail = 'demo-owner-' . strtolower($this->captureAra) . '@amateo.fr';
+
+        // Inscription + vérification + approbation → un club réel naît, qu'on marque
+        // ensuite comme démo (ce que fait app:demo:create ; ici par SQL admin).
+        $known = $this->mailboxMessageIds($ownerEmail);
+        $registered = $this->publicPost('register', [
+            'email' => $ownerEmail, 'password' => self::PASSWORD,
+            'firstName' => 'Démo', 'lastName' => 'Owner',
+            'ara' => $this->captureAra, 'club_name' => 'Démo ' . $this->captureAra, 'consent' => true,
+        ]);
+        if (202 !== $registered['status']) {
+            throw new RuntimeException(\sprintf('l\'inscription du propriétaire démo a répondu %d (202 attendu)', $registered['status']));
+        }
+        $rawToken = $this->pullVerificationToken($ownerEmail, $known);
+        $this->publicPost('register/verify', ['token' => $rawToken]);
+
+        $ownerToken = $this->mintToken($ownerEmail);
+        $approved = $this->apiPost('dev/approve-club-request', [], $ownerToken);
+        if (200 !== $approved['status']) {
+            throw new RuntimeException(\sprintf('l\'approbation du club démo a répondu %d (200 attendu)', $approved['status']));
+        }
+
+        $me = $this->apiGet('me', $ownerToken);
+        $club = $me['json']['club'] ?? null;
+        $this->demoClubId = \is_array($club) && \is_string($club['id'] ?? null) ? $club['id'] : '';
+        if ('' === $this->demoClubId) {
+            throw new RuntimeException('le club démo n\'a pas été matérialisé par l\'approbation');
+        }
+        $this->dbalExec('UPDATE club SET is_demo = true WHERE id = \'' . $this->demoClubId . '\'', true);
+    }
+
+    #[When('une personne s\'inscrit réellement avec ce même code FFBB')]
+    public function unePersonneSInscritReellementAvecCeCode(): void
+    {
+        $email = 'real-' . strtolower($this->captureAra) . '@amateo.fr';
+        $known = $this->mailboxMessageIds($email);
+        $registered = $this->publicPost('register', [
+            'email' => $email, 'password' => self::PASSWORD,
+            'firstName' => 'Vrai', 'lastName' => 'Inscrit',
+            'ara' => $this->captureAra, 'club_name' => 'Vrai club', 'consent' => true,
+        ]);
+        if (202 !== $registered['status']) {
+            throw new RuntimeException(\sprintf('la vraie inscription a répondu %d (202 attendu)', $registered['status']));
+        }
+        $rawToken = $this->pullVerificationToken($email, $known);
+        $verified = $this->publicPost('register/verify', ['token' => $rawToken]);
+        $this->realMembershipStatus = \is_string($verified['json']['membershipStatus'] ?? null) ? $verified['json']['membershipStatus'] : '';
+
+        // /api/me du vrai inscrit : aucune adhésion ne doit pointer vers la démo.
+        $me = $this->apiGet('me', $this->mintToken($email));
+        $club = $me['json']['club'] ?? null;
+        $this->realClubId = \is_array($club) && \is_string($club['id'] ?? null) ? $club['id'] : null;
+    }
+
+    #[Then('elle n\'entre pas dans la démo mais ouvre sa propre demande de club')]
+    public function elleNEntrePasDansLaDemo(): void
+    {
+        if ('club_pending' !== $this->realMembershipStatus) {
+            throw new RuntimeException(\sprintf('la vraie inscription aurait dû ouvrir une demande (club_pending), statut obtenu « %s » — a-t-elle rejoint la démo ?', $this->realMembershipStatus));
+        }
+        if (null !== $this->realClubId) {
+            throw new RuntimeException(\sprintf('la vraie inscription a rejoint un club (« %s ») au lieu de rester sans club — capture par la démo ?', $this->realClubId));
         }
     }
 

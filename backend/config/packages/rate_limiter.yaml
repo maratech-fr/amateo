@@ -226,6 +226,15 @@ when@test:
                 policy: 'sliding_window'
                 limit: 30
                 interval: '1 minute'
+            # auth_register large en test : les suites d'inscription créent beaucoup de
+            # comptes sur des IP FIXES (10.1.0.x, compteur par classe) — la borne prod
+            # (5/15min) les fait rougir en 429 sur des reruns rapprochés de la suite
+            # complète. Keyée par IP, aucun effet prod (which keeps 5/15min). Le test (e)
+            # de RegisterTurnstileTest draine dynamiquement le budget, il reste vert.
+            auth_register:
+                policy: 'sliding_window'
+                limit: 100
+                interval: '15 minutes'
             coach_wish_public:
                 policy: 'sliding_window'
                 limit: 1000

@@ -208,8 +208,10 @@ final class AccountErasureTest extends WebTestCase
         $tester = new CommandTester($application->find('app:clubs:purge-erased'));
         self::assertSame(0, $tester->execute([]));
 
-        // Win-back : un nouveau compte s'inscrit avec le MÊME code FFBB → il
-        // reprend le club directement (owner actif), pas de pending sans issue.
+        // Win-back : un nouveau compte s'inscrit avec le MÊME code FFBB → la
+        // vérification ouvre une DEMANDE (club_pending), et l'approbation du contact
+        // officiel (ici le relais dev, joué par verifyRegistration) REPREND le club :
+        // le repreneur en devient gestionnaire actif, pas de pending sans issue.
         $ip = \sprintf('10.%d.%d.%d', random_int(1, 254), random_int(0, 254), random_int(1, 254));
         $newEmail = 'winback-' . strtolower($ara) . '@test.fr';
         $this->client->request('POST', '/api/register', [], [], [
@@ -223,7 +225,7 @@ final class AccountErasureTest extends WebTestCase
 
         $this->client->request('GET', '/api/me', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         $me = json_decode((string) $this->client->getResponse()->getContent(), true);
-        self::assertSame('active', $me['membershipStatus'], 'reprise directe, pas de pending inapprouvable');
+        self::assertSame('active', $me['membershipStatus'], 'reprise via approbation, pas de pending inapprouvable');
         self::assertSame($clubId, $me['club']['id'] ?? null, 'même fiche club (identité FFBB conservée)');
 
         $em->clear();

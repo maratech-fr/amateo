@@ -17,3 +17,9 @@ Fonctionnalité: Un club neuf s'inscrit et obtient son premier planning
     Étant donné un club neuf dont le gestionnaire vient d'inscrire son compte et de valider son e-mail
     Quand il tente de se connecter avec un mot de passe erroné
     Alors la connexion est refusée avec le message « Identifiants invalides. »
+
+  Scénario: Reprendre un club sans membre passe par l'approbation du contact officiel
+    Étant donné un club neuf dont le gestionnaire vient d'inscrire son compte et de valider son e-mail
+    Et le dernier membre actif de ce club s'en va
+    Quand une nouvelle personne s'inscrit avec le code FFBB de ce club et fait valider sa demande
+    Alors elle devient gestionnaire du club repris, sans qu'un second club soit créé

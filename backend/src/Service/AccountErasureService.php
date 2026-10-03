@@ -10,9 +10,14 @@ use App\Entity\EmailVerificationToken;
 use App\Entity\ResetPasswordRequest;
 use App\Entity\User;
 use App\Repository\ClubUserRepository;
+use App\Service\Basketball\FfbbClubDirectory;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Clock\ClockInterface;
+use Symfony\Component\Mailer\MailerInterface;
+use Symfony\Component\Mime\Email;
+use Throwable;
 
 /**
  * RGPD — droit à l'effacement (responsable de traitement, comptes User).
@@ -43,6 +48,11 @@ final class AccountErasureService
         private readonly ClubUserRepository $clubUserRepository,
         private readonly TenantConnectionContext $tenantConnectionContext,
         private readonly ClockInterface $clock,
+        private readonly FfbbClubDirectory $ffbbClubDirectory,
+        private readonly MailerInterface $mailer,
+        private readonly MailFrom $mailFrom,
+        private readonly ProductIdentity $productIdentity,
+        private readonly LoggerInterface $logger,
     ) {}
 
     /**
@@ -58,6 +68,12 @@ final class AccountErasureService
         } finally {
             $this->tenantConnectionContext->clear();
         }
+
+        // Post-commit, best-effort : prévenir le contact officiel de chaque club
+        // devenu orphelin que son espace sera supprimé à l'échéance. Hors transaction
+        // (le mail ne doit jamais référencer une programmation non persistée) ; un
+        // échec n'annule pas l'effacement, déjà commité.
+        $this->notifyOrphanedClubs($scheduled);
 
         return $scheduled;
     }
@@ -165,11 +181,58 @@ final class AccountErasureService
             $club = $this->entityManager->getRepository(Club::class)->find($clubId);
             if ($club instanceof Club && !$club->getErasureScheduledAt() instanceof DateTimeImmutable) {
                 $club->setErasureScheduledAt($now->modify(self::GRACE_PERIOD));
+                // Nouveau cycle d'effacement → le rappel J-7 doit pouvoir repartir
+                // (un stamp résiduel d'un cycle annulé bloquerait sinon le rappel).
+                $club->setErasureReminderSentAt(null);
                 $scheduled[] = $clubId;
             }
         }
         $this->entityManager->flush();
 
         return $scheduled;
+    }
+
+    /**
+     * Prévient le contact officiel de chaque club orphelin de la suppression à venir —
+     * mail institutionnel FFBB (même ancre que l'approbation), repli `Club.contactEmail`
+     * si la FFBB est muette/introuvable. Ni l'un ni l'autre → rien à envoyer (le
+     * superadmin voit la demande). Best-effort : un échec d'envoi est tracé, jamais fatal.
+     *
+     * @param list<string> $clubIds
+     */
+    private function notifyOrphanedClubs(array $clubIds): void
+    {
+        foreach ($clubIds as $clubId) {
+            $club = $this->entityManager->getRepository(Club::class)->find($clubId);
+            if (!$club instanceof Club) {
+                continue;
+            }
+            $deadline = $club->getErasureScheduledAt();
+            if (!$deadline instanceof DateTimeImmutable) {
+                continue;
+            }
+            $ffbbCode = $club->getFfbbClubCode();
+            $to = (null !== $ffbbCode ? $this->ffbbClubDirectory->lookupClubEmail($ffbbCode) : null) ?? $club->getContactEmail();
+            if (null === $to || '' === $to) {
+                continue;
+            }
+
+            $product = $this->productIdentity->name();
+            try {
+                $this->mailer->send(
+                    (new Email)
+                        ->from($this->mailFrom->address())
+                        ->to($to)
+                        ->subject(\sprintf('L\'espace %s du club %s va être supprimé', $product, $club->getName()))
+                        ->text(\sprintf(
+                            "Bonjour,\n\nLe dernier gestionnaire de l'espace {$product} du club %s vient de supprimer son compte : cet espace n'a plus de gestionnaire.\n\nSans reprise, il sera supprimé DÉFINITIVEMENT avec toutes ses données le %s.\n\nPour le conserver, un gestionnaire du club doit s'inscrire sur {$product} avec le code FFBB du club : sa demande vous sera soumise pour approbation.\n\n{$product}",
+                            $club->getName(),
+                            $deadline->format('d/m/Y'),
+                        )),
+                );
+            } catch (Throwable $e) {
+                $this->logger->warning('Orphaned-club erasure notice failed', ['clubId' => $clubId, 'error' => $e->getMessage()]);
+            }
+        }
     }
 }

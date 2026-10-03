@@ -37,6 +37,12 @@ final class OnboardingContext extends BaseContext
 
     private string $finalStatus = '';
 
+    private string $reclaimAra = '';
+
+    private string $reclaimClubId = '';
+
+    private string $reclaimToken = '';
+
     private string $mailpitBase;
 
     public function __construct()
@@ -179,6 +185,75 @@ final class OnboardingContext extends BaseContext
         $actual = $this->loginResponse['json']['message'] ?? null;
         if ($message !== $actual) {
             throw new RuntimeException(\sprintf('message attendu « %s », obtenu « %s »', $message, \is_string($actual) ? $actual : var_export($actual, true)));
+        }
+    }
+
+    #[Given('le dernier membre actif de ce club s\'en va')]
+    public function leDernierMembreActifSenVa(): void
+    {
+        // Le code FFBB et l'id du club sont lus sur /api/me (exposés au gestionnaire).
+        $me = $this->apiGet('me', $this->token);
+        $club = $me['json']['club'] ?? null;
+        if (!\is_array($club)) {
+            throw new RuntimeException('club introuvable sur /api/me — le Given d\'inscription a-t-il abouti ?');
+        }
+        $this->reclaimClubId = \is_string($club['id'] ?? null) ? $club['id'] : '';
+        $this->reclaimAra = \is_string($club['ffbbClubCode'] ?? null) ? $club['ffbbClubCode'] : '';
+        if ('' === $this->reclaimClubId || '' === $this->reclaimAra) {
+            throw new RuntimeException('id de club ou code FFBB manquant sur /api/me');
+        }
+
+        // Le dernier membre part : on désactive toutes les adhésions du club (connexion
+        // admin, hors RLS) → le club devient orphelin, exactement l'état que laisse
+        // l'effacement du dernier gestionnaire.
+        $this->dbalExec('UPDATE club_user SET is_active = false WHERE club_id = \'' . $this->reclaimClubId . '\'', true);
+    }
+
+    #[When('une nouvelle personne s\'inscrit avec le code FFBB de ce club et fait valider sa demande')]
+    public function uneNouvellePersonneReprendLeClub(): void
+    {
+        $email = 'reclaim-' . $this->reclaimAra . '@smoke.fr';
+        $registered = $this->publicPost('register', [
+            'email' => $email,
+            'password' => 'Password123!',
+            'firstName' => 'Re',
+            'lastName' => 'Prise',
+            'ara' => $this->reclaimAra,
+            'club_name' => 'Reprise ' . $this->reclaimAra,
+            'consent' => true,
+        ]);
+        if (202 !== $registered['status']) {
+            throw new RuntimeException(\sprintf('la ré-inscription a répondu %d (202 attendu)', $registered['status']));
+        }
+
+        $rawToken = $this->pullVerificationToken($email);
+        $verified = $this->publicPost('register/verify', ['token' => $rawToken]);
+        // La reprise d'un club sans membre ne matérialise RIEN à la vérification :
+        // la demande attend l'approbation du contact officiel (club_pending).
+        if ('club_pending' !== ($verified['json']['membershipStatus'] ?? null)) {
+            throw new RuntimeException(\sprintf('la vérification aurait dû mettre la demande en attente (club_pending), statut obtenu « %s »', var_export($verified['json']['membershipStatus'] ?? null, true)));
+        }
+        $this->reclaimToken = $this->extractBearerCookie($verified['headers']);
+
+        // Approbation du contact officiel (relais de dev) → reprise effective.
+        $approved = $this->apiPost('dev/approve-club-request', [], $this->reclaimToken);
+        if (200 !== $approved['status']) {
+            throw new RuntimeException(\sprintf('l\'approbation de la reprise a répondu %d (200 attendu)', $approved['status']));
+        }
+    }
+
+    #[Then('elle devient gestionnaire du club repris, sans qu\'un second club soit créé')]
+    public function elleDevientGestionnaireDuClubRepris(): void
+    {
+        $me = $this->apiGet('me', $this->reclaimToken);
+        $status = $me['json']['membershipStatus'] ?? null;
+        if ('active' !== $status) {
+            throw new RuntimeException(\sprintf('la repreneuse devrait être active, statut obtenu « %s »', var_export($status, true)));
+        }
+        $club = $me['json']['club'] ?? null;
+        $clubId = \is_array($club) && \is_string($club['id'] ?? null) ? $club['id'] : '';
+        if ($clubId !== $this->reclaimClubId) {
+            throw new RuntimeException('un SECOND club a été créé au lieu de reprendre le club existant (même code FFBB)');
         }
     }
 

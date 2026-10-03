@@ -852,6 +852,27 @@ jobs:
       - name: MatchPlacementSemanticsGateTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/MatchPlacementSemanticsGateTest.php --group phase1'
 
+      # Axe auth & memberships — le code FFBB est l'IDENTITÉ fédérale du club : un PUT
+      # qui le CHANGE est refusé 422 (le même code reste idempotent). Falsifié : garde
+      # désactivée → le PUT réécrit le code (200). Sans ce gate, un club pourrait migrer
+      # d'identité fédérale en silence par l'API.
+      - name: ClubIdentityImmutabilityTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/ClubIdentityImmutabilityTest.php --group phase1'
+
+      # Axes auth & memberships + tenant isolation (BCK-33) — une VRAIE inscription sur le
+      # code FFBB d'un club de DÉMONSTRATION n'entre JAMAIS dans la démo : tous les chemins
+      # résolvent le club par findRealByFfbbCode (is_demo=false). Falsifié : sans le filtre,
+      # le vrai inscrit rejoint la démo (même id). Sans ce gate, un prospect réel atterrirait
+      # dans l'espace vendeur.
+      - name: DemoClubCaptureTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/DemoClubCaptureTest.php --group phase1'
+
+      # Axe auth & memberships (RGPD) — effacement du dernier gestionnaire : anonymisation
+      # terminale, purge du club orphelin programmée à +30 j (revalidée à l'échéance, identité
+      # FFBB épargnée), et reprise d'un club sans membre via l'approbation du contact officiel.
+      - name: AccountErasureTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/AccountErasureTest.php --group phase1'
+
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
