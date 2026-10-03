@@ -1,16 +1,10 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-10-01 (`documentation-update`, rotation de fraîcheur — sujet sans rapport,
-PR 3/7 « uniformité des sélecteurs »). Re-confronté à `ConstraintConfigValidator::SPEC`
-(`backend/src/Service/ConstraintConfigValidator.php`) : les 4 familles et leurs clés/types
-correspondent trait pour trait à la table du fichier ✓. `App\Enum\ConstraintRuleType` ne compte
-que HARD/PREFERRED/LOCK ✓. `TeamTagResolver::resolveConstraintTeamIds`
-(`backend/src/Service/TeamTagResolver.php`), `PlanVenueClosures::effectiveStateForPlan`
-(`PlanVenueClosures.php`) et `CalendarEntryStateProcessor::redateEntryPairedConstraints`
-(`State/Processor/CalendarEntryStateProcessor.php`) existent toujours à ces signatures ✓. La
-migration `Version20260807190000` est confirmée en place ✓. Non re-sondé cette passe : les deux
-gardes `PeriodGatePayloadParityTest`/`ConstraintKeysAreHonouredByEngineTest` (déjà vérifiées la
-passe précédente). Historique : `git log -p --follow`. Un stamp REMPLACE, il ne s'empile pas.
+Last verified @ 2026-10-03 (ALIGN-18, branche `fix/audit-1003-align-verrou`). `App\Enum\ConstraintRuleType`
+(`backend/src/Enum/ConstraintRuleType.php`) ne compte plus que HARD/PREFERRED — le cran `LOCK` a
+été retiré (« on ne verrouille que les créneaux », décision fondateur 2026-10-03) ; la matrice
+d'intensité ci-dessous recalée à deux crans. Historique : `git log -p --follow`. Un stamp REMPLACE,
+il ne s'empile pas.
 
 > Source de vérité du code : `App\Service\ConstraintConfigValidator`.
 > Cette page explique le POURQUOI ; la liste qui fait foi est dans la classe.
@@ -52,19 +46,19 @@ avec le nom de la clé et les réglages acceptés pour la famille.
 ## Quelle INTENSITÉ pour quelle clé — la matrice muette
 
 Une clé de la liste blanche n'est pas honorée à tous les crans. Le moteur range les règles par
-`ruleType` **avant** de les appliquer : le chemin dur ne lit que HARD/LOCK
+`ruleType` **avant** de les appliquer : le chemin dur ne lit que HARD
 (`engine/app/solver/constraints/targeting.py`), le chemin souple filtre `ruleType == "PREFERRED"`
 strictement et ne connaît qu'une poignée de clés (`engine/app/solver/objective/terms.py`). Une clé
 posée au mauvais cran tombe donc entre les deux : **elle s'affiche comme active et ne fait rien**.
 
 | Clé | Cran refusé | Pourquoi elle serait muette |
 |---|---|---|
-| `maxEndTime` | hors HARD/LOCK | le chemin souple ne lit que `minStartTime`/`maxStartTime` |
-| `forcedDays` | hors HARD/LOCK | les règles DAY dures ne sont collectées que pour HARD/LOCK ; le souple ne lit que `preferredDays` |
-| `allowedDays` | hors HARD/LOCK | rangée en fenêtre de temps côté dur (sautée par le filtre de cran), jamais lue côté souple |
-| `forcedVenueId` | hors HARD/LOCK | la carte des gymnases imposés n'est nourrie qu'en HARD/LOCK |
-| `preferredDays` | **en HARD/LOCK** | symétrique : le chemin dur ne lit pas cette clé, et le souple exige PREFERRED. Une préférence ne peut pas être obligatoire par nature (décision fondateur) |
-| `preferredVenueId` | **en HARD/LOCK** | refusé plus tôt, **à l'écriture** (422) — seule cellule gardée par le write-path |
+| `maxEndTime` | hors HARD | le chemin souple ne lit que `minStartTime`/`maxStartTime` |
+| `forcedDays` | hors HARD | les règles DAY dures ne sont collectées que pour HARD ; le souple ne lit que `preferredDays` |
+| `allowedDays` | hors HARD | rangée en fenêtre de temps côté dur (sautée par le filtre de cran), jamais lue côté souple |
+| `forcedVenueId` | hors HARD | la carte des gymnases imposés n'est nourrie qu'en HARD |
+| `preferredDays` | **en HARD** | symétrique : le chemin dur ne lit pas cette clé, et le souple exige PREFERRED. Une préférence ne peut pas être obligatoire par nature (décision fondateur) |
+| `preferredVenueId` | **en HARD** | refusé plus tôt, **à l'écriture** (422) — seule cellule gardée par le write-path |
 
 ⚠ **Ces refus ne vivent PAS dans le chemin d'écriture** (sauf `preferredVenueId`) : ils sont rendus
 par `App\Service\ConstraintValidationService`, lue par le **récap pré-génération**
@@ -78,8 +72,9 @@ change ce qu'il fait. Une cellule souple s'y prouve par le **choix** — une gri
 coût identique où seul le terme souple les départage — jamais par un score : un score bouge aussi
 quand un bonus est accroché à la mauvaise condition.
 
-⚑ **`BONUS` n'existe pas comme cran de `ruleType`** : l'enum `ConstraintRuleType` ne compte que
-HARD/PREFERRED/LOCK — la table ci-dessus n'a donc que trois crans à connaître, jamais quatre.
+⚑ **`BONUS` et `LOCK` n'existent pas (plus) comme cran de `ruleType`** : l'enum `ConstraintRuleType`
+ne compte que HARD/PREFERRED (`LOCK` retiré, ALIGN-18, 2026-10-03 — « on ne verrouille que les
+créneaux ») — la table ci-dessus n'a donc que deux crans à connaître, jamais quatre.
 
 ## Trois règles pour maintenir cette liste
 
