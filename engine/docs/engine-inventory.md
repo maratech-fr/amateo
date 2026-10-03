@@ -1,13 +1,11 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-10-02 (lot nettoyage code mort — `POST /implicit-constraints` et son cluster
-supprimés : plus que **cinq endpoints** (`/`, `/health`, `/generate`, `/place-matches`,
-`/validate-assignments`, `engine/app/main.py:743-816`). Passe précédente P5-28 —
-`CONTRACT_VERSION` repassé **2.29 → 1.0** pour la v1, forme du payload inchangée. `REASON_MESSAGES`
-porte **sept** raisons (`venue_unavailable`, `no_access_window`, `no_league_intersection`,
-`venue_full`, `not_selected`, `club_rule_no_slot`, `team_venue_forbidden`,
-`match_placement.py:64-82`) ✓. Reste de l'inventaire (détail des sections sous la ligne 40) non
-re-sondé cette passe — voir `git log -p --follow` pour sa dernière vérification.
+Last verified @ 2026-10-03 (ALIGN-18, branche `fix/audit-1003-align-verrou`) — §4.3, le mapping
+`ruleType == "LOCK"` recalé : ce cran a été retiré des contraintes (« on ne verrouille que les
+créneaux ») et `parse_v2_constraints` (`engine/app/solver/constraints/parsing.py`) ignore désormais
+tout `LOCK` reçu (`parse_warning`, jamais appliqué) au lieu de le router vers `time_windows`/
+`forced_venues`. Reste de l'inventaire non re-sondé cette passe — voir `git log -p --follow` pour
+sa dernière vérification.
 
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.
 > Source de vérité : `engine/app/main.py`, `engine/app/schemas/input_schema.py`, `engine/app/schemas/output_schema.py`, `engine/app/solver/{model,constraints,objective,result_builder}.py`, `engine/app/core/config.py`.
@@ -382,8 +380,7 @@ Contrat **1.0** (le MÊME que `/generate` — un seul contrat pour les trois end
 
 | Condition de match | Collection alimentée |
 |--------------------|---------------------|
-| `ruleType == "LOCK"` + `family in ("TIME","DAY")` | `time_windows` (traité comme `HARD` par `add_time_window_constraints`) |
-| `ruleType == "LOCK"` + `family == "FACILITY"` | même traitement que `HARD` (`forced_venues` / `venue_minimums`) |
+| `ruleType == "LOCK"` (toute famille) | **ignorée** — `parse_warnings` → `constraint_not_honored` (ALIGN-18, 2026-10-03 : le cran a été retiré des contraintes, « on ne verrouille que les créneaux » ; un `LOCK` legacy résiduel n'est jamais appliqué, il n'était qu'un `HARD` déguisé) |
 | `type == "TEAM_COACH"` (legacy) | `team_coach_map[teamId]` → coachIds (MAIN seuls — un ASSISTANT n'est pas une ressource exclusive). **Posée sur le modèle** (`model.team_coach_map`, `main.py`, ENG-17) : c'est elle qui nomme le `coachId` des créneaux GÉNÉRÉS, pas les `slotTemplates` seuls — sans quoi les diagnostics coach resteraient muets sur le chemin dominant |
 | `type == "COACH_PLAYER_UNAVAILABILITY"` (legacy) | `team_player_map[teamId]` → coachIds |
 | `family == "COACH_AVAILABILITY"` | `coach_unavailability[scopeTargetId]` → `unavailableDays` |
@@ -392,7 +389,7 @@ Contrat **1.0** (le MÊME que `/generate` — un seul contrat pour les trois end
 | `family == "FACILITY"` + `preferredVenueId` + `PREFERRED` + `scope=TEAM` | `preferred_venues[scopeTargetId]` → **ensemble** de gymnases (les préférences se CUMULENT, bonus si la séance tombe dans l'un d'eux ; le last-wins + INFO ne reste que sur `forced_venues`) |
 | `family == "FACILITY"` + `forbiddenVenueId` | `forbidden_assignments` → `[{scope_target_id, venue_id}]` |
 | `family == "FACILITY"` + `forbiddenVenueId` + `PREFERRED` + cible | `avoided_venues` → `[{scope_target_id, venue_id}]` (malus objectif, poids `avoided_venue`). **Même clé** que l'interdiction dure : c'est le `ruleType` qui décide dur/soft (il n'existe **pas** de clé `avoidedVenueId`) |
-| `family == "FACILITY"` + `minAtVenueId` (+ `minAtVenueCount`, défaut 1) + HARD/LOCK + `scope=TEAM` | `venue_minimums` → plancher `somme(vars équipe@gymnase) ≥ N` (ALIGN-05) |
+| `family == "FACILITY"` + `minAtVenueId` (+ `minAtVenueCount`, défaut 1) + HARD + `scope=TEAM` | `venue_minimums` → plancher `somme(vars équipe@gymnase) ≥ N` (ALIGN-05) |
 | contrainte reconnue mais inapplicable (sans équipe cible, dispo coach reçue en non-HARD, règle de gymnase écrasée par une autre) | `parse_warnings` → diagnostics `constraint_not_honored` |
 | `type == "PRIORITY_TIER"` (legacy) | `priority_tiers[tierId]` = `defaultMinSessions` |
 | `family in ("TIME","DAY")` | `time_windows` (traité par `add_time_window_constraints`) |

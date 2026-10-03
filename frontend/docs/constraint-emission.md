@@ -1,20 +1,11 @@
 # Émission des contraintes (frontend) + alignement 3 couches
 
-Last verified @ 2026-09-30 (PR #1031). `resolveTravelRuleIntensity` a été **renommé**
-`resolveTravelRuleSetting` (`backend/src/Service/ScheduleConstraintBuilder.php:966`, rend
-désormais le `VenueTravelRuleSetting` complet — intensité + battement toléré + temps par défaut,
-plus seulement l'intensité — repli défauts `PREFERRED`/20/20 via `VenueTravelRuleIntensity::
-PREFERRED`, **pas** `TeamLinkIntensity`) : toujours le seul point de résolution de la règle
-`travelTime`, cran `OFF` recalé (§2 ci-dessous) ✓. `forcedDays` toujours câblé
-sur les 3 couches (`ConstraintValidationService.php:70` case DAY, `ConstraintConfigValidator.php:74`
-liste blanche, `frontend/src/features/wizard/steps/ConstraintsStep.tsx:374`,
-`engine/app/solver/constraints/targeting.py:74`, citation de ligne recalée cette passe) ✓ ; la
-famille `FACILITY_CAPACITY` toujours retirée du moteur, le commentaire au passé toujours à
-`engine/app/main.py:446-449` ✓ ; le mode « préfère » toujours sans sélecteur de règle
-(`ConstraintStateProcessor::assertPreferredVenueIsNotMandatory`,
-`backend/src/State/Processor/ConstraintStateProcessor.php:76,144,174`) ✓ ; le contrat backend⇄engine
-cité nulle part dans ce fichier — pas de version à recaler. Le reste de la table §2 n'a pas été
-rejoué ligne à ligne cette passe.
+Last verified @ 2026-10-03 (ALIGN-18, branche `fix/audit-1003-align-verrou`). Le cran `LOCK` a été
+retiré de `ConstraintRuleType` (« on ne verrouille que les créneaux ») : les deux mentions
+`HARD/LOCK` de la ligne `preferredVenueId` (§2) décrivaient un legacy forcé — recalées à `HARD`
+seul, le `LOCK` legacy résiduel n'étant plus qu'un `parse_warning` ignoré côté moteur
+(`engine/app/solver/constraints/parsing.py`). Le reste de la table §2 n'a pas été rejoué ligne à
+ligne cette passe.
 
 > **But** : (1) lister ce que le **wizard émet** réellement, et (2) mettre les **3 couches côte à côte**
 > (frontend → backend → engine) pour repérer les **scissions** et les **angles morts** — les cas où
@@ -72,7 +63,7 @@ Colonnes : le **front** l'émet-il ? · le **backend** le transmet/transforme-t-
 | `minStartTime` / `maxStartTime` | ✅ TIME | passe | ✅ fenêtre dure / bonus soft | ✅ **aligné** |
 | `forbiddenDays` | ✅ « à éviter » | passe | ✅ dur / soft | ✅ **aligné** |
 | `allowedDays` | ✅ « uniquement » | passe | ✅ whitelist (interdit le complément) | ✅ **aligné** *(depuis ENG-16)* |
-| `preferredVenueId` | ✅ « préfère » (D1 : émis **PREFERRED uniquement**, plus de sélecteur ; HARD/LOCK refusé en 422 à la source, `ConstraintStateProcessor::assertPreferredVenueIsNotMandatory`) | passe (engine reste défense-en-profondeur : un `preferredVenueId` HARD/LOCK legacy force toujours) | ✅ +10 soft ; forcé si legacy HARD/LOCK | ✅ **aligné** |
+| `preferredVenueId` | ✅ « préfère » (D1 : émis **PREFERRED uniquement**, plus de sélecteur ; HARD refusé en 422 à la source, `ConstraintStateProcessor::assertPreferredVenueIsNotMandatory`) | passe (engine reste défense-en-profondeur : un `preferredVenueId` HARD legacy force toujours) | ✅ +10 soft ; forcé si legacy HARD | ✅ **aligné** |
 | `forbiddenVenueId` | ✅ « évite » | passe | ✅ interdit / −10 soft | ✅ **aligné** |
 | `forcedVenueId` | ✅ « impose » | passe (D1 : plus d'exclusivité tag — ne réserve plus le gymnase aux autres équipes) | ✅ salle forcée | ✅ **aligné** |
 | `unavailableDays` | ✅ coach « indisponible » | passe | ✅ union, dur | ✅ **aligné** |

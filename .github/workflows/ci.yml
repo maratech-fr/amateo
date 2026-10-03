@@ -613,6 +613,14 @@ jobs:
       - name: HardLockSurvivesPayloadTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/HardLockSurvivesPayloadTest.php --group phase1'
 
+      # ALIGN-18 (axe constraint semantics) : « on ne verrouille que les créneaux » — le cran LOCK
+      # est retiré des CONTRAINTES. Une écriture `ruleType: "LOCK"` est refusée 422, jamais
+      # normalisée en silence (le moteur la traitait auparavant comme HARD). Sans ce gate BLOQUANT,
+      # remettre le case LOCK dans l'enum rouvrirait l'écriture (201) et le mapping muet, invisible
+      # aux autres checks requis. Falsifiable en remettant le case.
+      - name: ConstraintApiTest (cran LOCK retiré → 422)
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Api/ConstraintApiTest.php --group phase1'
+
       # P1-3 PR B — le pool de crédits de sortie du plan Découverte + les caps payants aux
       # portes de création d'équipes. Axes generation pipeline + auth/périmètre : le refus
       # avant solve, le décompte au succès (pool PAR CLUB, partagé/isolé), et le cap payant.

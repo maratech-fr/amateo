@@ -300,7 +300,7 @@ final class PreSolvePreventionWarningsTest extends TestCase
 
     /**
      * (e) `preferredVenueId` HARD alimente aussi le gate — le moteur le verse dans `forced_venues`
-     * ({@see parsing.py} branche preferredVenueId HARD/LOCK). Un helper qui ne lirait que
+     * ({@see parsing.py} branche preferredVenueId HARD). Un helper qui ne lirait que
      * `forcedVenueId` manquerait ce cas.
      */
     public function testPreferredVenueIdHardFeedsTheGate(): void
@@ -435,7 +435,7 @@ final class PreSolvePreventionWarningsTest extends TestCase
 
     /**
      * Une contrainte DAY telle que le builder l'émet (avec `family`/`ruleType`) — le calcul des
-     * règles de jour ne retient que HARD/LOCK, comme le moteur.
+     * règles de jour ne retient que HARD, comme le moteur.
      *
      * @param array<string, mixed> $config
      *

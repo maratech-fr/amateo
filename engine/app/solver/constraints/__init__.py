@@ -13,7 +13,7 @@ is a target, not a guarantee (ENG-18).
 
 Derived rules (parsed from v2 constraints[] payload → ParsedConstraints):
   forbidden_assignments, coach_unavailability, forced_venues,
-  preferred_venues, time_windows (TIME/DAY/LOCK).
+  preferred_venues, time_windows (TIME/DAY).
 
 Package layout (ENG-32). This file is the package entry point: it holds this
 shared docstring, the re-exports of every submodule (public AND private names —

@@ -314,11 +314,11 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
     expect(screen.getByText("Coach retiré · indispo vendredi")).toBeInTheDocument();
   });
 
-  it("offers exactly Obligatoire/Préféré/Verrouillé — BONUS is gone (ENG-12)", () => {
+  it("offers exactly Préféré/Obligatoire — Verrouillé and BONUS are gone (ALIGN-18)", () => {
     renderWithProviders(<ConstraintsStep />);
     const rule = screen.getByLabelText("Règle");
     const options = Array.from(rule.querySelectorAll("option")).map((o) => o.textContent);
-    expect(options).toEqual(["Préféré", "Obligatoire", "Verrouillé"]);
+    expect(options).toEqual(["Préféré", "Obligatoire"]);
   });
 
   it("forces HARD on coach availability (no rule selector — the engine always enforces it)", async () => {
@@ -440,14 +440,14 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
     expect(screen.getByText("Préféré")).toBeInTheDocument();
   });
 
-  it("FACILITY « évite » : le sélecteur Règle revient avec ses trois options (D1)", async () => {
+  it("FACILITY « évite » : le sélecteur Règle revient avec ses deux options (D1)", async () => {
     const user = userEvent.setup();
     renderWithProviders(<ConstraintsStep />);
 
     await user.click(screen.getByRole("button", { name: "Gymnase" }));
     await user.selectOptions(screen.getByLabelText("Préférence"), "forbidden");
     const rule = screen.getByLabelText("Règle");
-    expect(Array.from(rule.querySelectorAll("option")).map((o) => o.textContent)).toEqual(["Préféré", "Obligatoire", "Verrouillé"]);
+    expect(Array.from(rule.querySelectorAll("option")).map((o) => o.textContent)).toEqual(["Préféré", "Obligatoire"]);
   });
 
   it("FACILITY : une règle HARD posée sur « évite » ne FUIT pas sur « préfère » — le POST porte PREFERRED (D1)", async () => {

@@ -1232,7 +1232,7 @@ def _saturated_venue_minimum(
         if (
             _get(row, "family", default=None) != "FACILITY"
             or not config.get("minAtVenueId")
-            or _get(row, "ruleType", "rule_type", default=None) not in ("HARD", "LOCK")
+            or _get(row, "ruleType", "rule_type", default=None) != "HARD"
             or _get(row, "scope", default=None) != "TEAM"
             or _get(row, "isActive", "is_active", default=True) is False
         ):

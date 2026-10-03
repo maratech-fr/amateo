@@ -750,9 +750,9 @@ function CoachsSection() {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Indiquez quand un entraîneur n'est pas disponible pour un match — par exemple « pas de match avant 14h le samedi ». Le
-        placement <strong>évite</strong> ces plages quand il le peut, sans jamais rendre un match impossible. Vous pouvez déclarer
-        plusieurs plages pour un même entraîneur, y compris le même jour.
+        Indiquez quand un entraîneur n'est pas disponible pour un match — par exemple « indisponible jusqu'à 14:00 le samedi » : le
+        placement <strong>évitera</strong> alors un coup d'envoi avant 14h. Il évite ces plages quand il le peut, sans jamais rendre
+        un match impossible. Vous pouvez déclarer plusieurs plages pour un même entraîneur, y compris le même jour.
       </p>
 
       {0 === unavailabilities.length ? (
@@ -791,12 +791,12 @@ function CoachFields({ draft, set, coaches, idLabel, actions }: { draft: CoachUn
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-1 whitespace-nowrap text-sm text-muted-foreground">
-          Pas avant
-          <Input aria-label="Pas avant (heure de début)" type="time" className="w-28" value={draft.kickoffMin} onChange={(e) => set({ kickoffMin: e.target.value })} />
+          Indisponible de
+          <Input aria-label="Indisponible de (début de la plage)" type="time" className="w-28" value={draft.kickoffMin} onChange={(e) => set({ kickoffMin: e.target.value })} />
         </label>
         <label className="flex items-center gap-1 whitespace-nowrap text-sm text-muted-foreground">
-          Pas après
-          <Input aria-label="Pas après (heure de fin)" type="time" className="w-28" value={draft.kickoffMax} onChange={(e) => set({ kickoffMax: e.target.value })} />
+          Indisponible jusqu'à
+          <Input aria-label="Indisponible jusqu'à (fin de la plage)" type="time" className="w-28" value={draft.kickoffMax} onChange={(e) => set({ kickoffMax: e.target.value })} />
         </label>
         {actions}
       </div>
@@ -804,9 +804,30 @@ function CoachFields({ draft, set, coaches, idLabel, actions }: { draft: CoachUn
   );
 }
 
-/** Le résumé compact d'une indisponibilité : « Mateo Durand · Sam · pas avant 14:00 ». */
+/**
+ * La plage d'INDISPONIBILITÉ d'un coach, nommée dans le SENS de sa disponibilité (ALIGN-17) —
+ * présentation locale, distincte de `clubRuleLabel` (qui nomme une règle de match du club, dont
+ * le sens est inverse : « pas avant/pas après »). Une borne min seule = indisponible À PARTIR DE ;
+ * une borne max seule = indisponible JUSQU'À. Heures via `clockLabel` (foyer unique, N3).
+ */
+function coachUnavailabilityWindowLabel(rule: MatchConstraint): string {
+  const { kickoffMin, kickoffMax } = rule;
+  if (null !== kickoffMin && null !== kickoffMax) {
+    return `indisponible de ${clockLabel(kickoffMin)} à ${clockLabel(kickoffMax)}`;
+  }
+  if (null !== kickoffMin) {
+    return `indisponible à partir de ${clockLabel(kickoffMin)}`;
+  }
+  if (null !== kickoffMax) {
+    return `indisponible jusqu'à ${clockLabel(kickoffMax)}`;
+  }
+  // Défensif : le serveur refuse une indisponibilité sans borne, mais ne jamais rendre vide.
+  return "indisponibilité";
+}
+
+/** Le résumé compact d'une indisponibilité : « Mateo Durand · Sam · indisponible jusqu'à 14:00 ». */
 function coachUnavailabilitySummary(rule: MatchConstraint, coachName: string): string {
-  return `${coachName} · ${daysShort(rule.daysOfWeek)} · ${clubRuleLabel(rule)}`;
+  return `${coachName} · ${daysShort(rule.daysOfWeek)} · ${coachUnavailabilityWindowLabel(rule)}`;
 }
 
 /** Une indisponibilité éditable : compacte au repos (résumé + ✎ + 🗑), dépliée en champs à l'édition. */

@@ -33,6 +33,6 @@ final class ConstraintEnumsTest extends TestCase
     {
         self::assertSame('HARD', ConstraintRuleType::HARD->value);
         self::assertSame('PREFERRED', ConstraintRuleType::PREFERRED->value);
-        self::assertSame('LOCK', ConstraintRuleType::LOCK->value);
+        self::assertSame(['HARD', 'PREFERRED'], ConstraintRuleType::values());
     }
 }

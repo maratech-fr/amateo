@@ -174,7 +174,7 @@ final class ConstraintValidationServiceTest extends TestCase
 
     public function testForcedDaysAtPreferredIsRejected(): void
     {
-        // ALIGN-09 — le moteur n'honore forcedDays que sur HARD/LOCK (constraints.py) ; un
+        // ALIGN-09 — le moteur n'honore forcedDays que sur HARD (constraints.py) ; un
         // forcedDays PREFERRED serait un placebo muet (objective.py ne lit que preferredDays).
         $constraint = (new Constraint)->setScope(ConstraintScope::CLUB)->setFamily(ConstraintFamily::DAY)->setRuleType(ConstraintRuleType::PREFERRED)->setConfig(['forcedDays' => [1]]);
         self::assertContains('La règle « au moins une séance » n\'existe qu\'en règle obligatoire.', $this->service->validate($constraint));
@@ -187,9 +187,9 @@ final class ConstraintValidationServiceTest extends TestCase
     }
 
     /**
-     * ALIGN-14 — allowedDays (whitelist) hors HARD/LOCK est un placebo muet : le chemin dur du
+     * ALIGN-14 — allowedDays (whitelist) hors HARD est un placebo muet : le chemin dur du
      * moteur la saute (filtre ruleType, targeting.py) et le chemin souple ne lit jamais allowedDays
-     * (objective/terms.py). PREFERRED est le seul cran « hors HARD/LOCK » qui subsiste.
+     * (objective/terms.py). PREFERRED est le seul cran « hors HARD » qui subsiste.
      */
     public function testAllowedDaysAtPreferredIsRejected(): void
     {
@@ -204,19 +204,13 @@ final class ConstraintValidationServiceTest extends TestCase
     }
 
     /**
-     * ALIGN-14 — preferredDays en HARD/LOCK est un placebo muet : le chemin dur ne lit pas
+     * ALIGN-14 — preferredDays en HARD est un placebo muet : le chemin dur ne lit pas
      * preferredDays (targeting.py) et le chemin souple filtre ruleType == PREFERRED strict
      * (objective/terms.py). Une préférence ne peut pas être obligatoire par nature.
      */
     public function testPreferredDaysAtHardIsRejected(): void
     {
         $constraint = (new Constraint)->setScope(ConstraintScope::CLUB)->setFamily(ConstraintFamily::DAY)->setRuleType(ConstraintRuleType::HARD)->setConfig(['preferredDays' => [1]]);
-        self::assertContains('Un jour « à privilégier » ne peut pas être une règle obligatoire — repassez-la en préférence.', $this->service->validate($constraint));
-    }
-
-    public function testPreferredDaysAtLockIsRejected(): void
-    {
-        $constraint = (new Constraint)->setScope(ConstraintScope::CLUB)->setFamily(ConstraintFamily::DAY)->setRuleType(ConstraintRuleType::LOCK)->setConfig(['preferredDays' => [1]]);
         self::assertContains('Un jour « à privilégier » ne peut pas être une règle obligatoire — repassez-la en préférence.', $this->service->validate($constraint));
     }
 
@@ -229,8 +223,8 @@ final class ConstraintValidationServiceTest extends TestCase
     }
 
     /**
-     * ALIGN-14 — forcedVenueId hors HARD/LOCK est un placebo : le moteur ne l'honore qu'en dur
-     * (parse_v2_constraints exige HARD/LOCK) ; en souple il tombe sur le repli au libellé faux.
+     * ALIGN-14 — forcedVenueId hors HARD est un placebo : le moteur ne l'honore qu'en dur
+     * (parse_v2_constraints exige HARD) ; en souple il tombe sur le repli au libellé faux.
      */
     public function testForcedVenueIdAtPreferredIsRejected(): void
     {
@@ -361,45 +355,6 @@ final class ConstraintValidationServiceTest extends TestCase
         self::assertContains('Une contrainte de disponibilité doit cibler un coach.', $errors);
     }
 
-    public function testLockRuleTypeOnlyValidForTimeOrDay(): void
-    {
-        $constraint = new Constraint;
-        $constraint->setScope(ConstraintScope::CLUB);
-        $constraint->setFamily(ConstraintFamily::FACILITY);
-        $constraint->setRuleType(ConstraintRuleType::LOCK);
-        $constraint->setConfig(['venueId' => 'venue-1']);
-
-        $errors = $this->service->validate($constraint);
-
-        self::assertContains('Le verrouillage n\'est possible que sur une contrainte d\'horaire ou de jour.', $errors);
-    }
-
-    public function testLockRuleTypeValidForTimeFamily(): void
-    {
-        $constraint = new Constraint;
-        $constraint->setScope(ConstraintScope::CLUB);
-        $constraint->setFamily(ConstraintFamily::TIME);
-        $constraint->setRuleType(ConstraintRuleType::LOCK);
-        $constraint->setConfig(['maxStartTime' => '20:00']);
-
-        $errors = $this->service->validate($constraint);
-
-        self::assertNotContains('Le verrouillage n\'est possible que sur une contrainte d\'horaire ou de jour.', $errors);
-    }
-
-    public function testLockRuleTypeValidForDayFamily(): void
-    {
-        $constraint = new Constraint;
-        $constraint->setScope(ConstraintScope::CLUB);
-        $constraint->setFamily(ConstraintFamily::DAY);
-        $constraint->setRuleType(ConstraintRuleType::LOCK);
-        $constraint->setConfig(['allowedDays' => [1, 2]]);
-
-        $errors = $this->service->validate($constraint);
-
-        self::assertNotContains('Le verrouillage n\'est possible que sur une contrainte d\'horaire ou de jour.', $errors);
-    }
-
     public function testTimeFamilyAcceptsMaxEndTime(): void
     {
         $constraint = (new Constraint)->setScope(ConstraintScope::CLUB)->setFamily(ConstraintFamily::TIME)->setRuleType(ConstraintRuleType::HARD)->setConfig(['maxEndTime' => '20:30']);
@@ -414,7 +369,7 @@ final class ConstraintValidationServiceTest extends TestCase
 
     public function testMaxEndTimeAtPreferredIsRejected(): void
     {
-        // The engine only honors maxEndTime on HARD/LOCK — a PREFERRED end-bound is a placebo (C4).
+        // The engine only honors maxEndTime on HARD — a PREFERRED end-bound is a placebo (C4).
         $constraint = (new Constraint)->setScope(ConstraintScope::CLUB)->setFamily(ConstraintFamily::TIME)->setRuleType(ConstraintRuleType::PREFERRED)->setConfig(['maxEndTime' => '20:30']);
         self::assertContains('« Fini avant » n\'existe qu\'en règle OBLIGATOIRE — passez la contrainte en obligatoire, sinon elle serait ignorée.', $this->service->validate($constraint));
     }

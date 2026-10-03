@@ -175,6 +175,46 @@ final class ConstraintApiTest extends WebTestCase
     }
 
     /**
+     * Axe *constraint semantics* — « on ne verrouille que les créneaux » : le cran `LOCK` a été
+     * retiré des CONTRAINTES de bout en bout (ALIGN-18). Il n'est plus une valeur d'enum.
+     *
+     * ⚑ Le comportement d'AVANT : `ruleType: "LOCK"` était accepté à l'écriture puis traité
+     * exactement comme `HARD` par le moteur (mapping silencieux). Le gestionnaire posait un cran
+     * « verrouillé » qui n'existait plus et obtenait un dur, sans le savoir. Désormais la valeur
+     * est refusée à la SOURCE : un 422 qui nomme le champ fautif, jamais une normalisation muette.
+     *
+     * Falsifiable : remettre le case `LOCK` dans `ConstraintRuleType` fait repasser cette écriture
+     * en 201 (le `Assert\Choice` dérivé de `values()` l'admet de nouveau) — le test rougit ; le
+     * retirer le rend vert.
+     *
+     * ⚠ Contrairement à sa sœur `testBonusRuleTypeIsRefused…`, ce test est BLOQUANT : il est listé
+     * comme step nommé du job `blocking-tests` (ci.yml, `docs/testing/blocking-tests.md`) et porte
+     * donc `#[Group('phase1')]` au niveau de la méthode.
+     */
+    #[Group('phase1')]
+    public function testLockRuleTypeIsRefused(): void
+    {
+        $client = $this->client;
+        $client->loginUser($this->user);
+
+        $client->request('POST', '/api/constraints', [], [], [
+            'HTTP_X-Club-Id' => $this->club->getId(),
+            'CONTENT_TYPE' => 'application/ld+json',
+        ], json_encode([
+            'name' => 'Cran verrouillé retiré',
+            'scope' => 'CLUB',
+            'family' => 'DAY',
+            'ruleType' => 'LOCK',
+            'config' => ['forbiddenDays' => [6]],
+            'isActive' => true,
+            'sortOrder' => 1,
+        ], \JSON_THROW_ON_ERROR));
+
+        self::assertSame(422, $client->getResponse()->getStatusCode(), 'Un ruleType « LOCK » — cran retiré des contraintes — doit être REFUSÉ, jamais accepté puis traité comme HARD en silence.');
+        self::assertStringContainsString('ruleType', (string) $client->getResponse()->getContent(), 'La réponse doit NOMMER le champ fautif.');
+    }
+
+    /**
      * AUD-BCK-13 — un gymnase inconnu dans le `config` est REFUSÉ à l'écriture.
      *
      * ⚑ Mesuré côté moteur avant d'écrire le correctif : un `forcedVenueId` qui ne

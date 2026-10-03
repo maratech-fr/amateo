@@ -116,7 +116,7 @@ final class ConstraintKeysAreHonouredByEngineTest extends TestCase
         yield 'unavailableDays' => ['unavailableDays', 'only', 'COACH_AVAILABILITY', 'HARD', ['unavailableDays' => [1]], 'non placée'];
         yield 'availableDays' => ['availableDays', 'only', 'COACH_AVAILABILITY', 'HARD', ['availableDays' => [3]], 'non placée'];
         // ESCALADE (ALIGN-14) : la disponibilité coach est TOUJOURS appliquée en dur — tout ruleType
-        // non HARD/LOCK est escaladé (parsing.py ~305). C'est cette escalade qu'on prouve, pas un
+        // non HARD est escaladé (parsing.py ~305). C'est cette escalade qu'on prouve, pas un
         // cran souple : cette famille n'en a pas. Un `unavailableDays` PREFERRED bloque donc le
         // lundi comme un HARD → équipe non placée (mesuré : nslots=0 ; témoin sans règle = placée).
         yield 'unavailableDays escaladé' => ['unavailableDays', 'only', 'COACH_AVAILABILITY', 'PREFERRED', ['unavailableDays' => [1]], 'non placée'];

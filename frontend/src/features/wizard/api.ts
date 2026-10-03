@@ -637,7 +637,7 @@ export const updateTravelRuleSetting = (payload: VenueTravelRuleSettingPayload):
 
 export type ConstraintFamily = "TIME" | "DAY" | "FACILITY" | "COACH_AVAILABILITY";
 export type ConstraintScope = "CLUB" | "TEAM" | "COACH" | "FACILITY";
-export type ConstraintRuleType = "HARD" | "PREFERRED" | "LOCK";
+export type ConstraintRuleType = "HARD" | "PREFERRED";
 
 export interface Constraint {
   id: string;

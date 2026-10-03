@@ -389,12 +389,18 @@ def test_preferred_club_rule_violated_everywhere_still_places() -> None:
     assert len(output.placements) == 1
 
 
-def _coach_unavailability_payload(*, with_unavailability: bool) -> dict[str, Any]:
-    """A single home match to place Saturday, its team coached by C, ideal habit Saturday
-    15:30 in a WIDE window 13:00-22:30. With the unavailability (C unavailable 14:00-16:00,
-    covering the ideal), a candidate at 15:30 costs W_COACH_UNAVAILABLE(60), which beats the
-    habit attraction → the solver moves the match OUT of the window. `with_unavailability=False`
-    is the WITNESS: nothing penalises 15:30, so the habit is honoured."""
+def _coach_unavailability_payload(
+    *,
+    with_unavailability: bool,
+    habit_kickoff: str = "15:30",
+    unavailability: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """A single home match to place Saturday, its team coached by C, ideal `habit_kickoff` in a
+    WIDE window 13:00-22:30. With the unavailability (default: C unavailable 14:00-16:00, covering
+    the default ideal 15:30), a candidate inside the window costs W_COACH_UNAVAILABLE(60), which
+    beats the habit attraction → the solver moves the match OUT of the window. `unavailability`
+    overrides the default window (e.g. a SINGLE bound: an OPEN side). `with_unavailability=False`
+    is the WITNESS: nothing penalises the habit, so it is honoured."""
     payload: dict[str, Any] = {
         "version": read_contract_version(),
         "clubId": "club-bccl",
@@ -415,7 +421,7 @@ def _coach_unavailability_payload(*, with_unavailability: bool) -> dict[str, Any
                 "id": "t1",
                 "name": "T1",
                 "leagueWindows": [],
-                "habits": [{"dayOfWeek": 6, "kickoff": "15:30", "venueId": "mateo"}],
+                "habits": [{"dayOfWeek": 6, "kickoff": habit_kickoff, "venueId": "mateo"}],
                 "coaches": [{"coachId": "c", "role": "MAIN"}],
             }
         ],
@@ -424,7 +430,7 @@ def _coach_unavailability_payload(*, with_unavailability: bool) -> dict[str, Any
     }
     if with_unavailability:
         payload["coachUnavailabilities"] = [
-            {"coachId": "c", "daysOfWeek": [6], "kickoffMin": "14:00", "kickoffMax": "16:00"}
+            unavailability or {"coachId": "c", "daysOfWeek": [6], "kickoffMin": "14:00", "kickoffMax": "16:00"}
         ]
     return payload
 
@@ -456,6 +462,70 @@ def test_coach_unavailability_steers_the_placement_out_of_the_window() -> None:
         )
     )
     assert len(witness.placements) == 1
+    assert _minutes(witness.placements[0].kickoff) == _minutes(time(15, 30)), (
+        "sans indisponibilité, l'habitude 15:30 est honorée — témoin cassé"
+    )
+
+
+def test_coach_unavailable_until_pushes_the_kickoff_after_the_bound() -> None:
+    # ALIGN-17 NR d'effet — « Indisponible JUSQU'À 14:00 » = une SEULE borne kickoffMax (côté
+    # début OUVERT) : le coach est indisponible AVANT 14:00. L'habitude 13:30 tombe dans la plage
+    # bloquée → le placement pousse le coup d'envoi APRÈS 14:00. Le libellé renommé côté front
+    # (« Indisponible jusqu'à ») décrit EXACTEMENT cette borne — ce test fige l'effet.
+    input_data = MatchPlacementInputSchema.model_validate(
+        _coach_unavailability_payload(
+            with_unavailability=True,
+            habit_kickoff="13:30",
+            unavailability={"coachId": "c", "daysOfWeek": [6], "kickoffMin": None, "kickoffMax": "14:00"},
+        )
+    )
+    out = MatchPlacementOutputSchema.model_validate(solve_match_placement(input_data))
+    assert out.unplaced == []
+    assert len(out.placements) == 1
+    assert _minutes(out.placements[0].kickoff) > _minutes(time(14, 0)), (
+        "« indisponible jusqu'à 14:00 » = plage ouverte avant 14:00 → le coup d'envoi passe APRÈS 14:00"
+    )
+    assert_no_hard_violation(input_data, out)
+
+    witness = MatchPlacementOutputSchema.model_validate(
+        solve_match_placement(
+            MatchPlacementInputSchema.model_validate(
+                _coach_unavailability_payload(with_unavailability=False, habit_kickoff="13:30")
+            )
+        )
+    )
+    assert _minutes(witness.placements[0].kickoff) == _minutes(time(13, 30)), (
+        "sans indisponibilité, l'habitude 13:30 est honorée — témoin cassé"
+    )
+
+
+def test_coach_unavailable_from_pushes_the_kickoff_before_the_bound() -> None:
+    # ALIGN-17 NR d'effet — « Indisponible À PARTIR DE 14:00 » = une SEULE borne kickoffMin (côté
+    # fin OUVERT) : le coach est indisponible À PARTIR DE 14:00. L'habitude 15:30 tombe dans la
+    # plage bloquée → le placement pousse le coup d'envoi AVANT 14:00. Le libellé renommé côté
+    # front (« Indisponible de ») décrit EXACTEMENT cette borne — ce test fige l'effet.
+    input_data = MatchPlacementInputSchema.model_validate(
+        _coach_unavailability_payload(
+            with_unavailability=True,
+            habit_kickoff="15:30",
+            unavailability={"coachId": "c", "daysOfWeek": [6], "kickoffMin": "14:00", "kickoffMax": None},
+        )
+    )
+    out = MatchPlacementOutputSchema.model_validate(solve_match_placement(input_data))
+    assert out.unplaced == []
+    assert len(out.placements) == 1
+    assert _minutes(out.placements[0].kickoff) < _minutes(time(14, 0)), (
+        "« indisponible à partir de 14:00 » = plage ouverte après 14:00 → le coup d'envoi passe AVANT 14:00"
+    )
+    assert_no_hard_violation(input_data, out)
+
+    witness = MatchPlacementOutputSchema.model_validate(
+        solve_match_placement(
+            MatchPlacementInputSchema.model_validate(
+                _coach_unavailability_payload(with_unavailability=False, habit_kickoff="15:30")
+            )
+        )
+    )
     assert _minutes(witness.placements[0].kickoff) == _minutes(time(15, 30)), (
         "sans indisponibilité, l'habitude 15:30 est honorée — témoin cassé"
     )

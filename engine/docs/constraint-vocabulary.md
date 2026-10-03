@@ -1,13 +1,12 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-10-02 (rotation `documentation-update`, lot nettoyage code mort) — drift
-corrigé : `ONE_SESSION_PER_DAY` citait encore l'exception `allowMultipleSessionsPerDay`, retirée du
-contrat depuis P4-79 (`grep` zéro hit dans `engine/`/`backend/src` ; même correctif appliqué à
-`nominal-flow.md`). §Trajet entre gymnases confronté à `engine/app/solver/constraints/travel.py`
-(`required_gap`, `_barometer`) et `App\Enum\VenueTravelRuleIntensity` : mode non véhiculé = vélo
-(`walkingMinutes` gardé), cran `OFF`, `toleranceMinutes` retranché du barème pour l'écart exigé.
-Reste du vocabulaire détaillé ci-dessous non re-sondé cette passe — un stamp REMPLACE,
-l'historique vit dans git.
+Last verified @ 2026-10-03 (ALIGN-18, branche `fix/audit-1003-align-verrou`) — `ruleType` ne compte
+plus que `HARD`/`PREFERRED` : le cran `LOCK` a été retiré (« on ne verrouille que les créneaux »,
+décision fondateur 2026-10-03). `parse_v2_constraints` (`engine/app/solver/constraints/parsing.py`)
+signale désormais un `LOCK` legacy résiduel par un `parse_warning` et ne l'applique jamais — il
+n'était qu'un `HARD` déguisé de bout en bout (TIME/DAY/FACILITY). Toutes les mentions `HARD/LOCK`
+du vocabulaire ci-dessous recalées à `HARD` seul. Reste du vocabulaire détaillé non re-sondé cette
+passe — un stamp REMPLACE, l'historique vit dans git.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
@@ -25,13 +24,13 @@ l'historique vit dans git.
 | `scope` | `CLUB` · `TEAM` · `COACH` · `FACILITY` | cible de la règle |
 | `scopeTargetId` | uuid | l'équipe / coach / gymnase visé (null si CLUB) |
 | `config.targetTag` | tag système (`JEUNE`, `SENIOR`, `EMB`, `U9`…`U21`, `FEMININE`, `MASCULINE`, `REGIONAL`, `DEPARTEMENTAL`, `LOISIR_ADULTE`…) | **CLUB + targetTag** → le backend **éclate** en N contraintes `TEAM` (une par équipe du tag). Une règle sans cible qui atteindrait l'engine → **warning** (`constraint_not_honored`) |
-| `ruleType` | `HARD` · `LOCK` · `PREFERRED` — liste **fermée** (`BONUS` n'existe plus : zéro sémantique propre, jamais de ligne en base) | `HARD`/`LOCK` = **dur** (jamais violé ; sur-contraint → équipe non placée + diagnostic). `PREFERRED` = **soft** (oriente l'objectif, ne bloque jamais). |
+| `ruleType` | `HARD` · `PREFERRED` — liste **fermée** (`BONUS` et `LOCK` n'existent plus : zéro sémantique propre, jamais de ligne en base — `LOCK` retiré par ALIGN-18, 2026-10-03, « on ne verrouille que les créneaux ») | `HARD` = **dur** (jamais violé ; sur-contraint → équipe non placée + diagnostic). `PREFERRED` = **soft** (oriente l'objectif, ne bloque jamais). |
 
 ---
 
 ## Famille TIME — heures de début
 
-| Clé | Sens | Dur (HARD/LOCK) | Soft (PREFERRED) |
+| Clé | Sens | Dur (HARD) | Soft (PREFERRED) |
 |---|---|---|---|
 | `minStartTime` (`"HH:MM"`) | ne pas **commencer avant** | fenêtre dure (créneaux plus tôt interdits) | bonus objectif (préfère plus tard) |
 | `maxStartTime` (`"HH:MM"`) | ne pas **commencer après** | fenêtre dure | bonus objectif (préfère plus tôt) |
@@ -69,10 +68,10 @@ l'historique vit dans git.
 
 ## Famille FACILITY — gymnases
 
-| Clé | Sens | Dur (HARD/LOCK) | Soft (PREFERRED) |
+| Clé | Sens | Dur (HARD) | Soft (PREFERRED) |
 |---|---|---|---|
 | `forcedVenueId` (uuid) | **imposer** ce gymnase | l'équipe ne joue QUE là (tous les autres interdits) | — |
-| `preferredVenueId` (uuid) | ce gymnase | **HARD/LOCK = forcé** (comme `forcedVenueId`) | bonus objectif **+10** par séance dans ce gymnase |
+| `preferredVenueId` (uuid) | ce gymnase | **HARD = forcé** (comme `forcedVenueId`) | bonus objectif **+10** par séance dans ce gymnase |
 | `forbiddenVenueId` (uuid) | **éviter** ce gymnase | assignation interdite (dur) | malus objectif **−10** (soft « évite ») |
 | `minAtVenueId` (uuid) + `minAtVenueCount` (int, défaut 1) | **au moins N** séances dans ce gymnase (plancher, ≠ forçage) | pose `somme(vars de l'équipe dans ce gymnase) ≥ N` ; les autres séances restent libres | — **HARD-only** |
 

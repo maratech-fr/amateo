@@ -305,12 +305,12 @@ describe("ConstraintsPage — section Coachs (P4-272 ⑤)", () => {
     coachesState.data = [coachOf("c1", "Anna", "Martin")];
     openCoachs();
 
-    // La ligne d'ajout par défaut a samedi coché ; on choisit l'entraîneur et « Pas avant ».
-    // Disposition en DEUX rangées (uniformité PR 7/7) : l'entraîneur est en rangée 1 et « Pas avant »
+    // La ligne d'ajout par défaut a samedi coché ; on choisit l'entraîneur et « Indisponible de ».
+    // Disposition en DEUX rangées (uniformité PR 7/7) : l'entraîneur est en rangée 1 et « Indisponible de »
     // en rangée 2 — on scope au bloc d'ajout ENTIER (bordure pointillée), pas au seul parent du bouton.
     const addRow = screen.getByRole("button", { name: "Ajouter" }).closest(".border-dashed") as HTMLElement;
     await user.selectOptions(within(addRow).getByLabelText("Entraîneur"), "c1");
-    fireEvent.change(within(addRow).getByLabelText("Pas avant (heure de début)"), { target: { value: "14:00" } });
+    fireEvent.change(within(addRow).getByLabelText("Indisponible de (début de la plage)"), { target: { value: "14:00" } });
     await user.click(screen.getByRole("button", { name: "Ajouter" }));
 
     expect(createRule).toHaveBeenCalledWith(
@@ -331,6 +331,20 @@ describe("ConstraintsPage — section Coachs (P4-272 ⑤)", () => {
     // Une seule indisponibilité (scope COACH) au repos → un seul « Modifier » (ni la règle CLUB ni l'interdiction TEAM).
     expect(screen.getAllByRole("button", { name: "Modifier" })).toHaveLength(1);
     expect(screen.queryByText(/Aucune indisponibilité/)).not.toBeInTheDocument();
+  });
+
+  it("résume une indisponibilité dans le bon sens (ALIGN-17) : « à partir de » et « jusqu'à »", () => {
+    // kickoffMin seul = indisponible À PARTIR DE ; kickoffMax seul = indisponible JUSQU'À.
+    // Le résumé NOMME la plage dans le sens de la disponibilité du coach (plus de « pas avant »).
+    rulesState.data = [
+      rule({ id: "u1", scope: "COACH", scopeTargetId: "c1", daysOfWeek: [6], kickoffMin: "14:00", kickoffMax: null }),
+      rule({ id: "u2", scope: "COACH", scopeTargetId: "c1", daysOfWeek: [6], kickoffMin: null, kickoffMax: "14:00" }),
+    ];
+    coachesState.data = [coachOf("c1", "Anna", "Martin")];
+    openCoachs();
+    // Résumés EXACTS (préfixe coach + jour) — l'intro contient aussi « indisponible jusqu'à 14:00 ».
+    expect(screen.getByText("Anna Martin · Sam · indisponible à partir de 14:00")).toBeInTheDocument();
+    expect(screen.getByText("Anna Martin · Sam · indisponible jusqu'à 14:00")).toBeInTheDocument();
   });
 
   it("supprime une indisponibilité existante via l'API", async () => {

@@ -1,15 +1,10 @@
-Last verified @ 2026-10-02 (tri des routes avant v1, décision fondateur : « une route inutile est
-un risque pour rien » — 19 opérations API retirées, non appelées par le front : `POST`/`PUT`/
-`DELETE` `schedule_diagnostics` ; `PUT`+`DELETE` `competitions` ; `PUT`+`DELETE` `seasons` ;
-`DELETE` `sport_categories` ; `PUT` `team_coaches`, `coach_player_memberships`,
-`venue_unavailabilities`, `venue_match_windows`, `schedules`, `users` ; `DELETE`
-`venue_travel_times`, `coach_wish_campaigns` ; `GET` collection `/api/clubs` et `/api/sports` ;
-`PATCH /api/admin/release-notes/{id}`. `/api/clubs` et `/api/sports` ne portaient plus qu'une
-collection : les retirer en vide le PATH entier (**-2 paths**) ; les autres retraits laissent le
-path en place (une autre méthode y reste)).
+Last verified @ 2026-10-03 (ALIGN-18, décision fondateur « on ne verrouille que les créneaux » —
+le cran `LOCK` quitte l'enum `ConstraintRuleType`, régénéré depuis le backend courant ; seul
+changement du diff : `LOCK` disparaît de la liste des valeurs `ruleType` de la ressource
+`Constraint`, aucun path ajouté ni retiré).
 
 **222 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`dfa55b5416f03de78965e145c8d3f6292868e3b7c7d02732cb753b660a361bd7` (`sha256sum` sur le fichier).
+`d739a05c05908a810252f95f6fcbbac1ea8c646306bd8228246e1bc4f4bf9106` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

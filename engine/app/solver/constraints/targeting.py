@@ -58,8 +58,9 @@ def add_time_window_constraints(
             # PREFERRED TIME is a soft bonus handled in the objective (E-feat),
             # not a hard window here.
             continue
-        # LOCK on a time/day rule is enforced as HARD (a locked window is fixed).
-        if rule_type not in ("HARD", "LOCK") or family not in ("TIME", "DAY"):
+        # Only a HARD time/day rule produces a fixed window here (ALIGN-18: the LOCK
+        # rule-type is gone — surfaced + skipped upstream in parse_v2_constraints).
+        if rule_type != "HARD" or family not in ("TIME", "DAY"):
             continue
 
         team_id = constraint.get("scope_target_id") or constraint.get("scopeTargetId")

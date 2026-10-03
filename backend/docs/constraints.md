@@ -1,13 +1,11 @@
 # Documentation métier du système de contraintes
 
-Last verified @ 2026-10-01 (rotation de fraîcheur `documentation-update`, branche
-`fix/competitions-completude`, sujet sans rapport — confronté au code : §2.2 `COACH_AVAILABILITY`
-ne lit que `scope_target_id`, jamais `config.coachId` (`engine/app/solver/constraints/parsing.py:255`
-✓) ; §2.3 `LOCK` réservé aux familles `TIME`/`DAY` (`backend/src/Service/
-ConstraintValidationService.php:184` ✓) ; §2.4 liste des tags système — `BABY`/`ADULTE` (axe Âge) et
-`COMPETITION` (axe Niveau) manquaient au tableau, corrigés contre `TeamTagService::SYSTEM_TAG_AXES`
-(`backend/src/Service/TeamTagService.php:22-37`)). Reste du fichier non re-contrôlé cette passe —
-historique : `git log -p --follow backend/docs/constraints.md`.
+Last verified @ 2026-10-03 (ALIGN-18, branche `fix/audit-1003-align-verrou` — décision fondateur
+« on ne verrouille que les créneaux » : le cran `LOCK` quitte `ConstraintRuleType`
+(`backend/src/Enum/ConstraintRuleType.php`), une écriture `ruleType: "LOCK"` rend 422
+(`ConstraintValidationService` ne le valide plus, il n'existe plus) ; §2.3/§6 et les mentions
+`HARD`/`LOCK` du reste du fichier recalées à deux valeurs. Les verrous de CRÉNEAU/MATCH
+(`lockLevel`, onglet « Réserver ») sont un autre concept, non touchés, non décrits ici).
 
 > Amateo — Symfony 7 + API Platform. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
@@ -52,7 +50,7 @@ maison unique de cette liste ; ce qui suit est l'usage métier, pas un second in
 
 Restreint la fenêtre horaire de l'entraînement (`minStartTime`/`maxStartTime`/`maxEndTime` — au
 moins une des trois est exigée). `maxEndTime` (mode « fini avant », l'engine calcule fin = début +
-durée du créneau) n'est honoré qu'en `HARD`/`LOCK`.
+durée du créneau) n'est honoré qu'en `HARD`.
 
 > Exemple : `{maxStartTime: "19:30"}` signifie "l'entraînement doit commencer au plus tard à 19h30". Si la séance dure 1h30, elle finira donc à 21h00 au plus tard.
 
@@ -69,7 +67,7 @@ Définit les jours autorisés, à éviter ou imposés pour l'entraînement (`all
 
 Oriente ou bloque l'utilisation d'une salle spécifique (`forcedVenueId`/`forbiddenVenueId`/`preferredVenueId`/`minAtVenueId`
 — au moins une des quatre). `minAtVenueId` (au moins N séances dans cette salle, N = `minAtVenueCount`,
-défaut 1) exige une règle `HARD`/`LOCK` et un scope `TEAM`.
+défaut 1) exige une règle `HARD` et un scope `TEAM`.
 
 > Exemple : `{forbiddenVenueId: "uuid-jean-vilar"}` empêche toute équipe concernée d'aller au gymnase Jean Vilar.
 
@@ -101,9 +99,10 @@ Le champ `ruleType` (enum `ConstraintRuleType`) définit comment le solveur trai
 |--------|--------------|----------|
 | `HARD` | Doit être respectée. Si elle est violée, le planning est infaisable. | "C'est non négociable." |
 | `PREFERRED` | Devrait être respectée. Une violation est pénalisée dans le score, mais autorisée. | "C'est préférable, mais on peut déroger si nécessaire." |
-| `LOCK` | Figé. Le créneau est verrouillé, le solveur ne peut pas le déplacer. | "Ne touchez pas à ce créneau." |
 
-> Liste **fermée** à ces trois valeurs — `ruleType: "BONUS"` n'existe pas et rend 422.
+> Liste **fermée** à ces deux valeurs — `ruleType: "BONUS"` et `ruleType: "LOCK"` n'existent plus
+> et rendent 422 (ALIGN-18, 2026-10-03 : « on ne verrouille que les créneaux » — le verrou n'est
+> pas un concept de contrainte, c'est le verrou de créneau/match, `backend/docs/constraint-coverage.md`).
 
 ### 2.4 Tag targeting (pour le scope `CLUB`)
 
@@ -240,7 +239,7 @@ Le solveur CP-SAT (OR-Tools) raisonne sur des variables binaires du type "l'équ
 | **Stockage** | Code de l'engine | Table `Constraint` en base de données |
 | **Exemples** | Un entraîneur = une équipe à la fois. Une salle = une équipe à la fois. | Les jeunes doivent finir avant 19h30. SM3 préfère le mercredi. |
 | **Visibilité API** | Aucune route — fait partie du solveur, consommé via `resolve_implicit_rules`/`implicitRules` du payload `/generate` | Endpoint `/api/constraints` (CRUD complet) |
-| **Impact sur le score** | `HARD` par défaut ; les règles de bien-être peuvent être assouplies en `PREFERRED` (pénalité au lieu d'invalidité), et `maxConsecutiveDays` naît OFF | Variable (`HARD`, `PREFERRED`, `LOCK`) |
+| **Impact sur le score** | `HARD` par défaut ; les règles de bien-être peuvent être assouplies en `PREFERRED` (pénalité au lieu d'invalidité), et `maxConsecutiveDays` naît OFF | Variable (`HARD`, `PREFERRED`) |
 
 Les contraintes implicites sont les fondations du système. Sans elles, le solveur pourrait placer le coach Enzo sur deux terrains simultanément, ou assigner SM1 et SF3 dans la même salle à la même heure. Les contraintes utilisateur viennent affiner ce comportement de base pour refléter les réalités du BCCL : horaires des bus scolaires, disponibilités des salles municipales, préférences des entraîneurs bénévoles.
 
@@ -271,7 +270,6 @@ Toutes les combinaisons scope + family ne sont pas logiques. Voici les combinais
 Attention, ce tableau est un **guide métier**, pas une règle appliquée par le code : `ConstraintValidationService` n'implémente **aucune matrice scope × family**. Ce qu'il vérifie réellement :
 
 - la cohérence `scope` / `scopeTargetId` (un scope autre que `CLUB` exige une cible ; `CLUB` n'en admet pas) ;
-- la présence des clés de `config` attendues par chaque famille (voir §2.2), plus quelques règles de cohérence (ex. `maxEndTime` et `minAtVenueId` exigent `HARD`/`LOCK`) ;
-- `LOCK` réservé aux familles `TIME` et `DAY`.
+- la présence des clés de `config` attendues par chaque famille (voir §2.2), plus quelques règles de cohérence (ex. `maxEndTime` et `minAtVenueId` exigent `HARD`).
 
 Et il n'est **pas appelé à la création ni à la modification** d'une contrainte : il n'est exécuté que par `POST /api/constraints/validate` (gate consultatif pré-solve, déclenché avant une génération). Une combinaison « illogique » du tableau ci-dessus peut donc être enregistrée en base — elle sera au pire ignorée par l'engine.

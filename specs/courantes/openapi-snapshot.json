@@ -26153,8 +26153,7 @@
                     "ruleType": {
                         "enum": [
                             "HARD",
-                            "PREFERRED",
-                            "LOCK"
+                            "PREFERRED"
                         ],
                         "type": [
                             "string",

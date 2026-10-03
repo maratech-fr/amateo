@@ -24,7 +24,6 @@ import { PeriodAnchorGate } from "./PeriodAnchorGate";
 const RULE_LABEL: Record<ConstraintRuleType, string> = {
   HARD: "Obligatoire",
   PREFERRED: "Préféré",
-  LOCK: "Verrouillé",
 };
 
 /** L'onglet-famille où une contrainte héritée se range. (FACILITY_CAPACITY, qui

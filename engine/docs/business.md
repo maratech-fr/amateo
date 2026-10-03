@@ -1,16 +1,17 @@
 # Documentation metier du moteur de generation
 
-Last verified @ 2026-10-01 (rotation de fraîcheur, `documentation-update`, PR 7/7 « uniformité des
-écrans »). Re-confronté : tiers de poids S=10000/A=1000/B=100/C=10/D=1 toujours en dur dans
-`app/solver/objective/weights.py:35-37,66-67` ✓ ; `_adaptive_timeout` (`app/main.py:374-389`)
-applique bien les paliers ≤50→60 s · ≤200→180 s · sinon 600 s, plafonnés par `solverTimeoutSeconds`
-✓ ; `or_tools_weight` (alias `orToolsWeight`) reste déclaré requis, sans défaut
-(`app/schemas/input_schema.py:75`) ✓ ; `MAX_CONSECUTIVE_DAYS` naît bien `OFF` en l'absence de bloc
-(`app/solver/constraints/parsing.py:89`, `max_consecutive_days_intensity=OFF if days is None
-else …`) ✓ ; le commentaire de retrait de `FACILITY_CAPACITY` vit toujours à
-`app/main.py:447` ✓ ; `ConstraintRuleType` PHP (`backend/src/Enum/ConstraintRuleType.php:11-13`)
-confirme la liste fermée HARD/PREFERRED/LOCK, `BONUS` absent ✓. Reste du fichier non re-vérifié
-cette passe — historique : `git log -p --follow engine/docs/business.md`.
+Last verified @ 2026-10-03 (ALIGN-18, branche `fix/audit-1003-align-verrou`) — `ruleType` ne compte
+plus que `HARD`/`PREFERRED` : le cran `LOCK` a été retiré (§ Type de règle ci-dessous recalée).
+Reste du fichier non re-contrôlé cette passe (dernière vérification complète : tiers de poids
+S=10000/A=1000/B=100/C=10/D=1 en dur dans `app/solver/objective/weights.py:35-37,66-67` ;
+`_adaptive_timeout` (`app/main.py:374-389`) applique les paliers ≤50→60 s · ≤200→180 s · sinon
+600 s, plafonnés par `solverTimeoutSeconds` ; `or_tools_weight` (alias `orToolsWeight`) reste
+déclaré requis, sans défaut (`app/schemas/input_schema.py:75`) ; `MAX_CONSECUTIVE_DAYS` naît bien
+`OFF` en l'absence de bloc (`app/solver/constraints/parsing.py:89`, `max_consecutive_days_intensity
+=OFF if days is None else …`) ; le commentaire de retrait de `FACILITY_CAPACITY` vit toujours à
+`app/main.py:447` ; `ConstraintRuleType` PHP (`backend/src/Enum/ConstraintRuleType.php`)
+confirme la liste fermée HARD/PREFERRED, `BONUS`/`LOCK` absents ✓) — historique :
+`git log -p --follow engine/docs/business.md`.
 
 > Ce document explique le domaine de la planification sportive et ce que le moteur `engine` resout. Destine aux nouveaux developpeurs rejoignant le projet ClubScheduler.
 
@@ -72,11 +73,16 @@ Une regle metier qui faconne l'emploi du temps. Chaque contrainte a :
   - `COACH_AVAILABILITY` : indisponibilite d'un entraineur (ex. "Maxime Dupont indisponible le mercredi")
   - ~~`FACILITY_CAPACITY`~~ : famille absente du produit (`app/main.py:447-450` — commentaire mort, aucun chemin UI ne la creait). Le plafond d'equipes simultanees vit **par creneau** : `VenueTrainingSlot.capacity`, derive cote backend (`canSplit ? capacity : 1`). Les fermetures temporaires de gymnase **retirent les creneaux** du payload les jours fermes (`VenueClosureDays`) — aucune contrainte `forbiddenVenueId` n'est produite
 
-- **Type de regle (`ruleType`)** — liste **fermee** a trois valeurs (`BONUS` absent du produit :
-  zero semantique propre, jamais de ligne en base, `App\Enum\ConstraintRuleType` ne le porte pas) :
+- **Type de regle (`ruleType`)** — liste **fermee** a deux valeurs (`BONUS` absent du produit :
+  zero semantique propre, jamais de ligne en base ; `LOCK` retire a son tour — ALIGN-18,
+  2026-10-03, decision fondateur « on ne verrouille que les creneaux » : un `LOCK` n'avait aucune
+  semantique propre, le moteur le traitait de bout en bout comme `HARD`. `App\Enum\ConstraintRuleType`
+  ne porte plus ni l'un ni l'autre) :
   - `HARD` : doit absolument etre respectee. Si ce n'est pas possible, le solveur declare l'instance infaisable
   - `PREFERRED` : souhaitable, mais pas obligatoire. Penalisee si non respectee
-  - `LOCK` : fige un creneau. Toujours applique **en dur** par le moteur — le ruleType `LOCK` n'a pas de variantes SOFT/HARD. Ne pas confondre avec le `lockLevel` des `slotTemplates` (valeurs `NONE`/`SOFT`/`HARD`), qui est un autre mecanisme (voir plus bas)
+  - un `LOCK` legacy residuel recu par le moteur produit un `parse_warning` et n'est jamais applique
+    (`parse_v2_constraints`). Ne pas confondre avec le `lockLevel` des `slotTemplates` (valeurs
+    `NONE`/`SOFT`/`HARD`), un **verrou de creneau**, autre mecanisme, non touche (voir plus bas)
 
 - **Ciblage par tag** : une contrainte `CLUB` avec `targetTag=JEUNE` s'applique automatiquement a toutes les equipes portant le tag `JEUNE`. Cela evite de creer 15 contraintes identiques pour les 15 equipes jeunes.
 

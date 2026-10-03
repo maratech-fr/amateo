@@ -39,16 +39,16 @@ const FAMILIES: { key: ConstraintFamily; label: string }[] = [
   { key: "COACH_AVAILABILITY", label: "Dispo coach" },
 ];
 
-// Le cran BONUS a été entièrement retiré du produit : il n'avait de sémantique
-// propre nulle part (ni poids, ni branche moteur) et le backend ne peut plus
-// l'émettre — la valeur d'enum a disparu.
-const RULES: ConstraintRuleType[] = ["PREFERRED", "HARD", "LOCK"];
+// Les crans BONUS puis LOCK ont été entièrement retirés du produit : BONUS n'avait de
+// sémantique propre nulle part, et LOCK (« on ne verrouille que les créneaux », ALIGN-18)
+// n'était qu'un HARD déguisé. Le backend ne peut plus émettre ni l'un ni l'autre — les
+// valeurs d'enum ont disparu.
+const RULES: ConstraintRuleType[] = ["PREFERRED", "HARD"];
 
 /** Libellés gestionnaire (jamais l'enum brut à l'écran). */
 const RULE_LABEL: Record<ConstraintRuleType, string> = {
   HARD: "Obligatoire",
   PREFERRED: "Préféré",
-  LOCK: "Verrouillé",
 };
 
 /**

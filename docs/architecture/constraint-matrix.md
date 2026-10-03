@@ -16,24 +16,30 @@ de l'UI (verrouillé par le test Vitest).
 
 ## Offre du wizard (après P0.1)
 
-| Famille · config | HARD (Obligatoire) | LOCK (Verrouillé) | PREFERRED (Préféré) |
-|---|---|---|---|
-| TIME `minStartTime`/`maxStartTime` | dure | dure (fenêtre figée) | soft |
-| TIME `maxEndTime` | dure — mode **« Fini avant »** (fin = début + durée du créneau), toujours HARD (pas de sélecteur) *(ALIGN-04)* | — | — *(le chemin soft `preferredTime` ne lit que min/maxStartTime → une préférence serait un placebo)* |
-| DAY `forbiddenDays` | dure | dure | **soft « éviter ces jours »** *(fix ENG-10 — était un placebo)* |
-| DAY `allowedDays` | dure — mode **« uniquement »** (whitelist : l'engine interdit tous les autres jours), toujours HARD (pas de sélecteur) | — | — |
-| FACILITY `preferredVenueId` | **refusé à l'écriture** (D1, `ConstraintStateProcessor::assertPreferredVenueIsNotMandatory`, 422 — « choisissez « impose » ») ; honoré si donnée LEGACY : dure (salle forcée) | **refusé à l'écriture** (D1) ; honoré si donnée LEGACY : dure *(fix ENG-12 — était mort)* | soft |
-| FACILITY `forcedVenueId` | dure — mode **« impose »** (doit se dérouler ici), toujours HARD (pas de sélecteur) | — | — |
-| FACILITY `minAtVenueId` + `minAtVenueCount` | dure — mode **« au moins N »** (plancher de séances dans ce gymnase, ≠ forçage), toujours HARD (pas de sélecteur) *(ALIGN-05)* ; plancher inatteignable → **fail-soft** (diagnostic `venue_minimum_unreachable` ERROR, pas INFEASIBLE) ; **les jours déjà VERROUILLÉS de l'équipe à ce gymnase créditent le plancher** (P4-97 — une demande satisfaite par ses réservations ne réclame plus de place libre, ni au moteur ni au miroir pré-solve) ; le backend refuse `N > séances/semaine` avant génération | — | — |
-| FACILITY `forbiddenVenueId` | dure | dure | **soft « éviter ce gymnase »** *(fix ENG-11 — était escaladé en dur → INFEASIBLE possible sur une préférence)* |
-| COACH_AVAILABILITY `unavailableDays` | mode « indisponible » — dure + **union multi-contraintes** *(fix ENG-13)* | — l'UI force **Obligatoire** | — |
-| COACH_AVAILABILITY `availableDays` | mode « disponible uniquement » — dure (whitelist, **intersection** multi) *(ALIGN — l'UI expose la capacité engine)* | — l'UI force **Obligatoire** | — |
-| COACH_AVAILABILITY `fromTime` / `untilTime` | **fenêtre horaire** sur les jours listés (lot C #195, contrat 2.0→2.1) — dure. Absente = journée entière ; `fromTime` bloque `[from, 24:00)`, `untilTime` bloque `[00:00, until)`. Malformée ou inversée → repli journée entière (conservateur) | — l'UI force **Obligatoire** | — |
+| Famille · config | HARD (Obligatoire) | PREFERRED (Préféré) |
+|---|---|---|
+| TIME `minStartTime`/`maxStartTime` | dure | soft |
+| TIME `maxEndTime` | dure — mode **« Fini avant »** (fin = début + durée du créneau), toujours HARD (pas de sélecteur) *(ALIGN-04)* | — *(le chemin soft `preferredTime` ne lit que min/maxStartTime → une préférence serait un placebo)* |
+| DAY `forbiddenDays` | dure | **soft « éviter ces jours »** *(fix ENG-10 — était un placebo)* |
+| DAY `allowedDays` | dure — mode **« uniquement »** (whitelist : l'engine interdit tous les autres jours), toujours HARD (pas de sélecteur) | — |
+| FACILITY `preferredVenueId` | **refusé à l'écriture** (D1, `ConstraintStateProcessor::assertPreferredVenueIsNotMandatory`, 422 — « choisissez « impose » ») ; honoré si donnée LEGACY : dure (salle forcée) | soft |
+| FACILITY `forcedVenueId` | dure — mode **« impose »** (doit se dérouler ici), toujours HARD (pas de sélecteur) | — |
+| FACILITY `minAtVenueId` + `minAtVenueCount` | dure — mode **« au moins N »** (plancher de séances dans ce gymnase, ≠ forçage), toujours HARD (pas de sélecteur) *(ALIGN-05)* ; plancher inatteignable → **fail-soft** (diagnostic `venue_minimum_unreachable` ERROR, pas INFEASIBLE) ; **les jours déjà VERROUILLÉS de l'équipe à ce gymnase créditent le plancher** (P4-97 — une demande satisfaite par ses réservations ne réclame plus de place libre, ni au moteur ni au miroir pré-solve) ; le backend refuse `N > séances/semaine` avant génération | — |
+| FACILITY `forbiddenVenueId` | dure | **soft « éviter ce gymnase »** *(fix ENG-11 — était escaladé en dur → INFEASIBLE possible sur une préférence)* |
+| COACH_AVAILABILITY `unavailableDays` | mode « indisponible » — dure + **union multi-contraintes** *(fix ENG-13)* | — |
+| COACH_AVAILABILITY `availableDays` | mode « disponible uniquement » — dure (whitelist, **intersection** multi) *(ALIGN — l'UI expose la capacité engine)* | — |
+| COACH_AVAILABILITY `fromTime` / `untilTime` | **fenêtre horaire** sur les jours listés (lot C #195, contrat 2.0→2.1) — dure. Absente = journée entière ; `fromTime` bloque `[from, 24:00)`, `untilTime` bloque `[00:00, until)`. Malformée ou inversée → repli journée entière (conservateur) | — |
 
-- **BONUS retiré du produit** *(offre wizard dès ENG-12, puis retrait complet de l'enum —
-  aucune sémantique définie nulle part : zéro ligne en base, zéro poids, zéro branche
-  moteur)*. `App\Enum\ConstraintRuleType` ne compte plus que HARD/PREFERRED/LOCK ; une écriture
-  `ruleType: "BONUS"` rend 422 au lieu d'être acceptée puis transformée en silence.
+- **BONUS et LOCK retirés du produit** *(BONUS : offre wizard dès ENG-12, puis retrait complet de
+  l'enum — aucune sémantique définie nulle part : zéro ligne en base, zéro poids, zéro branche
+  moteur. LOCK : ALIGN-18, 2026-10-03, décision fondateur « on ne verrouille que les créneaux » —
+  un LOCK était un HARD déguisé de bout en bout, aucune sémantique propre)*.
+  `App\Enum\ConstraintRuleType` ne compte plus que HARD/PREFERRED ; une écriture
+  `ruleType: "BONUS"` ou `ruleType: "LOCK"` rend 422 au lieu d'être acceptée puis transformée en
+  silence. Un `LOCK` legacy reçu par le moteur (donnée résiduelle, scripts) produit un
+  `parse_warning` et n'est jamais appliqué (`engine/app/solver/constraints/parsing.py`) — distinct
+  du **verrou de créneau** (`lockLevel=HARD`, §« Le verrou HARD est SOUVERAIN » ci-dessous), qui
+  n'est pas une contrainte et n'a jamais porté ce cran.
 - **Cibles** : équipe (TEAM) · groupe (tag → expansion backend en N contraintes TEAM) ·
   **« Toutes les équipes » (CLUB) → expansion backend en N contraintes TEAM** *(fix P0.1 — la case
   était un no-op silencieux)*. Une contrainte TIME/DAY/FACILITY sans cible qui atteindrait quand

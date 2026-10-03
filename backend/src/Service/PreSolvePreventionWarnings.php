@@ -300,7 +300,7 @@ final readonly class PreSolvePreventionWarnings
      * n'a de créneau candidat pour l'équipe.
      *
      * Un jour imposé est CANDIDAT s'il porte un créneau que l'équipe peut atteindre (gymnase
-     * imposé respecté), qu'il n'est pas interdit (forbiddenDays HARD/LOCK), et — si une whitelist
+     * imposé respecté), qu'il n'est pas interdit (forbiddenDays HARD), et — si une whitelist
      * `allowedDays` existe — qu'il y appartient : son complément est interdit par le moteur
      * ({@see constraints.py} ~1732), donc un jour imposé hors whitelist est zéroté, sans candidat.
      * La FUSION (union des jours imposés) rend le constat par ensemble, jamais jour par jour : le
@@ -399,7 +399,7 @@ final readonly class PreSolvePreventionWarnings
      * champ d'équipe. Le champ `forcedVenueId` de l'équipe (écrit par {@see TeamStateProcessor},
      * jamais par une contrainte FACILITY) GAGNE s'il est non vide ({@see targeting.py}
      * `_forced_venue_id`) ; sinon la DERNIÈRE contrainte gagnante (last-wins, {@see parsing.py}
-     * `_set_venue_rule`) parmi les FACILITY de scope TEAM ciblant cette équipe, en HARD/LOCK,
+     * `_set_venue_rule`) parmi les FACILITY de scope TEAM ciblant cette équipe, en HARD,
      * portant `forcedVenueId` OU `preferredVenueId` — les deux nourrissent `forced_venues`
      * ({@see parsing.py} `parse_v2_constraints`, branches preferredVenueId puis forcedVenueId).
      * Dans une MÊME contrainte, `preferredVenueId` l'emporte (sa branche est testée avant celle de
@@ -426,7 +426,7 @@ final readonly class PreSolvePreventionWarnings
                 || ConstraintFamily::FACILITY->value !== ($constraint['family'] ?? null)
                 || ConstraintScope::TEAM->value !== ($constraint['scope'] ?? null)
                 || $this->stringOf($constraint, 'scopeTargetId') !== $teamId
-                || !\in_array($constraint['ruleType'] ?? null, ['HARD', 'LOCK'], true)
+                || ($constraint['ruleType'] ?? null) !== 'HARD'
             ) {
                 continue;
             }
@@ -447,7 +447,7 @@ final readonly class PreSolvePreventionWarnings
 
     /**
      * Les règles DAY d'une équipe telles que le MOTEUR les fusionne ({@see constraints.py}
-     * `add_time_window_constraints`) : uniquement HARD/LOCK, unionnées par clé. `allowed` vaut
+     * `add_time_window_constraints`) : uniquement HARD, unionnées par clé. `allowed` vaut
      * `null` tant qu'aucune whitelist non vide n'existe (= non configuré, jamais « aucun jour
      * permis »). `forcedRuleCount` compte les contraintes « au moins une séance » distinctes —
      * deux se combinent (avertissement de fusion).
@@ -466,7 +466,7 @@ final readonly class PreSolvePreventionWarnings
         foreach ($constraints as $constraint) {
             if (ConstraintFamily::DAY->value !== ($constraint['family'] ?? null)
                 || $this->stringOf($constraint, 'scopeTargetId') !== $teamId
-                || !\in_array($constraint['ruleType'] ?? null, ['HARD', 'LOCK'], true)
+                || ($constraint['ruleType'] ?? null) !== 'HARD'
             ) {
                 continue;
             }
