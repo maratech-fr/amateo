@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Service\Registration;
 
 use App\Entity\Club;
+use App\Entity\ClubUser;
 use App\Enum\ClubRole;
+use App\Repository\ClubUserRepository;
 use App\Service\ClubProvisioner;
 use App\Service\TenantConnectionContext;
 use Doctrine\ORM\EntityManagerInterface;
@@ -31,6 +33,7 @@ final class ClubWinBackService
         private readonly EntityManagerInterface $entityManager,
         private readonly TenantConnectionContext $tenantConnectionContext,
         private readonly ClubProvisioner $clubProvisioner,
+        private readonly ClubUserRepository $clubUserRepository,
     ) {}
 
     /** Aucun membre actif, tous rôles confondus (raw DBAL — club_user se lit cross-tenant). */
@@ -57,7 +60,18 @@ final class ClubWinBackService
     public function reprise(Club $existingClub, string $userId): void
     {
         $this->tenantConnectionContext->setClubId($existingClub->getId());
-        $this->clubProvisioner->createMembership($existingClub->getId(), $userId, true, ClubRole::MANAGER);
+        // Le repreneur peut DÉJÀ porter une adhésion à ce club (ancien membre parti,
+        // ligne désactivée ou pending) : la contrainte unique (club_id, user_id) interdit
+        // un second `club_user`. On RÉACTIVE et PROMEUT la ligne existante en Gestionnaire
+        // actif plutôt que d'en insérer une seconde ; à défaut, on en crée une.
+        $existing = $this->clubUserRepository->findOneBy(['clubId' => $existingClub->getId(), 'userId' => $userId]);
+        if ($existing instanceof ClubUser) {
+            $existing->setRole(ClubRole::MANAGER->value);
+            $existing->setIsActive(true);
+            $existing->setDeactivatedAt(null);
+        } else {
+            $this->clubProvisioner->createMembership($existingClub->getId(), $userId, true, ClubRole::MANAGER);
+        }
         $existingClub->setUnsubscribedAt(null);
         $existingClub->setErasureScheduledAt(null);
         $existingClub->setErasureReminderSentAt(null);
