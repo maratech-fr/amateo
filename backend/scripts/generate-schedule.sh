@@ -7,12 +7,8 @@ CLUB_ID="77e1e118-e702-4839-8a9c-7c34187541e6"
 # épinglé dans l'historique). Fournir SCHEDULER_TOKEN, ou SCHEDULER_EMAIL +
 # SCHEDULER_PASSWORD pour un login à la volée.
 TOKEN="${SCHEDULER_TOKEN:-}"
-if [[ -z "$TOKEN" && -n "${SCHEDULER_EMAIL:-}" ]]; then
-  # SEC-16 (audit) : /api/login rend 204 et pose le JWT en cookie httpOnly — le
-  # corps ne le porte plus. Un script n'est pas un navigateur : on le lit dans
-  # Set-Cookie et on continue en Bearer (extracteur resté actif pour l'outillage).
-  TOKEN=$(curl -si -X POST "$API_BASE/login" -H 'Content-Type: application/json'     -d "{\"email\":\"$SCHEDULER_EMAIL\",\"password\":\"$SCHEDULER_PASSWORD\"}"     | grep -oiP 'set-cookie: *BEARER=\K[^;]+' | head -1)
-fi
+# Le login à la volée (SCHEDULER_EMAIL/PASSWORD → cookie BEARER) vit plus bas,
+# APRÈS la définition de `die()` — sinon un login refusé n'aurait aucune voix.
 SCHEDULE_ID=""
 CLUB_ID_ARG=""
 POLL_INTERVAL=5
@@ -144,6 +140,28 @@ if value is None:
 print(value)
 ' "$field" <<<"$json"
 }
+
+# Login à la volée si l'on n'a qu'un couple email/mot de passe (le harnais de
+# charge). Placé APRÈS `die()` pour pouvoir échouer bruyamment, et AVANT le
+# parsing des options pour que `--token` garde le dernier mot (inchangé).
+if [[ -z "$TOKEN" && -n "${SCHEDULER_EMAIL:-}" ]]; then
+  # /api/login rend 204 et pose le JWT en cookie httpOnly — le corps ne le porte
+  # plus. Un script n'est pas un navigateur : on le lit dans Set-Cookie et on
+  # continue en Bearer (extracteur resté actif pour l'outillage).
+  # Code HTTP et en-têtes capturés SÉPARÉMENT : sinon un login refusé (401,
+  # identifiants désalignés) fait sortir le script en SILENCE sous
+  # `set -o pipefail` (grep sans match tue la substitution), log vide, cause
+  # invisible. Cookie absent ⇒ échec BRUYANT nommant l'email et le code HTTP.
+  login_headers=$(mktemp)
+  login_code=$(curl -s -o /dev/null -D "$login_headers" -w '%{http_code}' \
+    -X POST "$API_BASE/login" -H 'Content-Type: application/json' \
+    -d "{\"email\":\"$SCHEDULER_EMAIL\",\"password\":\"$SCHEDULER_PASSWORD\"}" || echo 000)
+  TOKEN=$(grep -oiP 'set-cookie: *BEARER=\K[^;]+' "$login_headers" | head -1 || true)
+  rm -f "$login_headers"
+  if [[ -z "$TOKEN" ]]; then
+    die "login refusé pour $SCHEDULER_EMAIL (HTTP $login_code)"
+  fi
+fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
