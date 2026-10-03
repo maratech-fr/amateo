@@ -1,11 +1,9 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-10-02 (`documentation-update`, branche `feat/niveau-jeune-suit-engagement`) — §7
-gagne « Engagements FFBB — le niveau d'une équipe JEUNE suit son engagement, par clic » et §11
-l'exception nommée au périmètre engagé, confrontés à `EngagementLevelDeducer`,
-`FfbbEngagementsController::list`/`confirm` et `FfbbEngagementsDialog.tsx` (mapping de niveau, D5
-proposition liée à l'équipe suggérée, écriture `setLevel()` directe sur clic + re-déduction serveur).
-Reste du contenu (P4-271/P4-272 et antérieur) non réaudité cette passe. Historique :
+Last verified @ 2026-10-03 (ENG-48/ALIGN-16/ENG-51/ALIGN-19, contrat 1.1) — `CONTRACT_VERSION` 1.1
+confirmé aux deux foyers cités (§1/§3) ; §8 gagne le bandeau Indicatif de la section Coachs
+(ALIGN-19, `ConstraintsPage.tsx`). Reste du contenu (P4-271/P4-272 et antérieur, dont §7
+« Engagements FFBB ») non réaudité cette passe. Historique :
 `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
@@ -1338,7 +1336,13 @@ pointillée en bas ajoute une indisponibilité (POST) ; chaque ligne existante s
 bouton Enregistrer actif seulement si modifiée et complète) et se supprime avec confirmation
 (`ConfirmDialog`, destructive). Liste vide → phrase neutre (« chaque entraîneur est réputé
 disponible pour tous les matchs »), jamais un tableau vide muet. Pas d'alerte de cohérence sur
-cette section — `ClubRuleCoherenceChecker` ne croise que les règles CLUB.
+cette section — `ClubRuleCoherenceChecker` ne croise que les règles CLUB. **Bandeau Indicatif
+(ALIGN-19)** : si au moins une indisponibilité listée vise un entraîneur **adjoint sur toutes ses
+équipes** (jamais principal), un bandeau neutre (`NoticeBanner tone="muted"`) rappelle « un adjoint
+indisponible ne bloque jamais une séance » — le moteur de placement traite déjà toute
+indisponibilité coach en SOFT (§1/§3), la phrase reste donc vraie ici ; même nuance côté
+entraînement (`GET /api/constraints/validate` récap, `backend/docs/constraint-coverage.md`) où
+l'indisponibilité d'un adjoint n'est, elle, carrément jamais lue par le moteur.
 
 ## 9. Écran Adversaires (`/matchs/adversaires`, au grain GYMNASE)
 

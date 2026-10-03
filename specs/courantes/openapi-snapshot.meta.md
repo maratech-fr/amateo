@@ -1,10 +1,9 @@
-Last verified @ 2026-10-03 (ALIGN-18, décision fondateur « on ne verrouille que les créneaux » —
-le cran `LOCK` quitte l'enum `ConstraintRuleType`, régénéré depuis le backend courant ; seul
-changement du diff : `LOCK` disparaît de la liste des valeurs `ruleType` de la ressource
-`Constraint`, aucun path ajouté ni retiré).
+Last verified @ 2026-10-03 (ENG-51 — verdict « indéterminé » additif, `indeterminate: boolean|null`
+sur les 3 réponses 200 de `ManualEditPaths` — `/schedule-slots/{id}/move`, `/schedules/{id}/place-slot`,
+`/schedule-slots/move-group` — régénéré depuis le backend courant ; aucun path ajouté ni retiré).
 
 **222 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`d739a05c05908a810252f95f6fcbbac1ea8c646306bd8228246e1bc4f4bf9106` (`sha256sum` sur le fichier).
+`4962271ab568957a9c2abcf5b05d6592a9354aa3023f331bf7b2a5f6ad218aaf` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

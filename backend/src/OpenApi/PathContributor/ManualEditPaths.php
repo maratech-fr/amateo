@@ -65,6 +65,10 @@ final readonly class ManualEditPaths implements CustomPathContributor
         ]]];
         // `dryRun` : un ESSAI. Même chemin jusqu'au verdict inclus, mais RIEN écrit.
         $dryRunProperty = ['type' => 'boolean', 'nullable' => true, 'description' => 'When true, run the full verdict (pre-engine guards included) but write NOTHING; the response carries the verdict and its named trade-offs'];
+        // Verdict INDÉTERMINÉ : le solveur a épuisé son budget sans prouver SAT ni UNSAT.
+        // Additive field — absent on a tranché OPTIMAL/FEASIBLE/INFEASIBLE verdict, never both
+        // true alongside named violations.
+        $indeterminateProperty = ['type' => 'boolean', 'nullable' => true, 'description' => 'True when the solver could not decide within its time budget — neither accepted nor refused (no rule named); nothing was written, retry'];
 
         return [
             '/api/schedule-slots/{id}/manual-edit/lock' => new PathItem(post: new Operation(
@@ -87,13 +91,14 @@ final readonly class ManualEditPaths implements CustomPathContributor
                 operationId: 'postScheduleSlotMove',
                 tags: ['ManualEdit'],
                 responses: [
-                    '200' => $this->schemas->jsonResponse('Move accepted by the solver and written (schedule flagged manually edited, score now stale) — OR a dryRun essai (valid may be false, nothing written). Both carry the named comfort trade-offs', [
+                    '200' => $this->schemas->jsonResponse('Move accepted by the solver and written (schedule flagged manually edited, score now stale) — OR a dryRun essai (valid may be false, nothing written) — OR an INDETERMINATE verdict (the solver hit its time budget without proving SAT or UNSAT: valid=false, indeterminate=true, nothing written, retry). Both of the first two carry the named comfort trade-offs', [
                         'type' => 'object',
                         'properties' => [
                             'message' => ['type' => 'string'],
                             'valid' => ['type' => 'boolean'],
                             'dryRun' => $dryRunProperty,
-                            'violations' => array_merge($dryViolations, ['nullable' => true, 'description' => 'Present on a dryRun essai that the solver refused (valid=false); absent on a written move']),
+                            'indeterminate' => $indeterminateProperty,
+                            'violations' => array_merge($dryViolations, ['nullable' => true, 'description' => 'Present on a dryRun essai that the solver refused (valid=false); absent on a written move or an indeterminate verdict']),
                             'compromises' => $compromises,
                             'evicted' => ['type' => 'object', 'nullable' => true, 'description' => 'Present only when an occupant was evicted from the target (or WOULD be, on a dryRun): its state BEFORE deletion, so the UI can offer to re-place it', 'properties' => [
                                 'slotId' => ['type' => 'string'],
@@ -152,13 +157,14 @@ final readonly class ManualEditPaths implements CustomPathContributor
                 operationId: 'postSchedulePlaceSlot',
                 tags: ['ManualEdit'],
                 responses: [
-                    '200' => $this->schemas->jsonResponse('Placement accepted by the solver and written (schedule flagged manually edited, score now stale) — OR a dryRun essai (valid may be false, nothing created). Both carry the named comfort trade-offs', [
+                    '200' => $this->schemas->jsonResponse('Placement accepted by the solver and written (schedule flagged manually edited, score now stale) — OR a dryRun essai (valid may be false, nothing created) — OR an INDETERMINATE verdict (the solver hit its time budget without proving SAT or UNSAT: valid=false, indeterminate=true, nothing created, retry). The first two carry the named comfort trade-offs', [
                         'type' => 'object',
                         'properties' => [
                             'valid' => ['type' => 'boolean'],
                             'dryRun' => $dryRunProperty,
-                            'slotId' => ['type' => 'string', 'nullable' => true, 'description' => 'Id of the newly created (unlocked) slot; absent on a dryRun essai'],
-                            'violations' => array_merge($dryViolations, ['nullable' => true, 'description' => 'Present on a dryRun essai that the solver refused (valid=false); absent on a written placement']),
+                            'indeterminate' => $indeterminateProperty,
+                            'slotId' => ['type' => 'string', 'nullable' => true, 'description' => 'Id of the newly created (unlocked) slot; absent on a dryRun essai or an indeterminate verdict'],
+                            'violations' => array_merge($dryViolations, ['nullable' => true, 'description' => 'Present on a dryRun essai that the solver refused (valid=false); absent on a written placement or an indeterminate verdict']),
                             'compromises' => $compromises,
                         ],
                     ]),
@@ -210,13 +216,14 @@ final readonly class ManualEditPaths implements CustomPathContributor
                 operationId: 'postScheduleSlotMoveGroup',
                 tags: ['ManualEdit'],
                 responses: [
-                    '200' => $this->schemas->jsonResponse('The whole block session was accepted by the solver and its member slots were moved together (schedule flagged manually edited, score now stale), carrying the named comfort trade-offs', [
+                    '200' => $this->schemas->jsonResponse('The whole block session was accepted by the solver and its member slots were moved together (schedule flagged manually edited, score now stale), carrying the named comfort trade-offs — OR an INDETERMINATE verdict (the solver hit its time budget without proving SAT or UNSAT: valid=false, indeterminate=true, none of the member slots moved, retry)', [
                         'type' => 'object',
                         'properties' => [
                             'message' => ['type' => 'string'],
                             'valid' => ['type' => 'boolean'],
+                            'indeterminate' => $indeterminateProperty,
                             'compromises' => $compromises,
-                            'movedSlotIds' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Ids of the member slots that were moved as one'],
+                            'movedSlotIds' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Ids of the member slots that were moved as one; absent on an indeterminate verdict'],
                         ],
                     ]),
                     '400' => new Response('Missing or invalid field (scheduleId, blockId, source or target case)'),

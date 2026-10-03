@@ -1,10 +1,11 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-10-03 (ALIGN-18, branche `fix/audit-1003-align-verrou`) — §4.3, le mapping
-`ruleType == "LOCK"` recalé : ce cran a été retiré des contraintes (« on ne verrouille que les
-créneaux ») et `parse_v2_constraints` (`engine/app/solver/constraints/parsing.py`) ignore désormais
-tout `LOCK` reçu (`parse_warning`, jamais appliqué) au lieu de le router vers `time_windows`/
-`forced_venues`. Reste de l'inventaire non re-sondé cette passe — voir `git log -p --follow` pour
+Last verified @ 2026-10-03 (ENG-48/ALIGN-16/ENG-51/ALIGN-19, contrat 1.1) — §2 `/validate-assignments`
+re-confronté : le 3ᵉ verdict `indeterminate` (`validate_assignments.py`, `cp_model.UNKNOWN` sur le
+solve principal OU la sonde de baseline) ✓ ; §4.3, le mapping `ruleType == "LOCK"` toujours retiré
+des contraintes (« on ne verrouille que les créneaux ») et `parse_v2_constraints`
+(`engine/app/solver/constraints/parsing.py`) ignore toujours tout `LOCK` reçu (`parse_warning`,
+jamais appliqué). Reste de l'inventaire non re-sondé cette passe — voir `git log -p --follow` pour
 sa dernière vérification.
 
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.
@@ -46,7 +47,7 @@ Les endpoints exposés par `app/main.py` (santé + les trois du contrat) :
 | `/health` | GET | Health simple | `{"status":"ok"}` |
 | `/generate` | POST | **Principal** — résout un planning hebdomadaire | `ScheduleOutputSchema` |
 | `/place-matches` | POST | **Second problème** — place des matchs DATÉS (ADR-0003) | `MatchPlacementOutputSchema` |
-| `/validate-assignments` | POST | **Verdict sur N candidats sous UN verdict** (contrat 2.18) — « puis-je poser ces N déplacements ? » (N=1 pour le rail `/move`/`/place-slot`, N=membres d'un bloc pour `/move-group`). Baseline **entièrement figée** via `add_fixed_slots`, les N candidats épinglés à part : le solve du verdict ne fait qu'un test de faisabilité sur l'**état final** (jamais N jugements séquentiels d'un état intermédiaire faux). ⚠ **Le gel EST le verdict** — baseline non figée, le solveur déplace la séance en conflit et rend `valid=True` (falsifié). 1 seul worker (déterministe) quel que soit N. Budget 2 s par défaut, plafond 10 s ; mesuré **~500 ms** sur 49 équipes (le build du modèle domine, pas le solve). Un « non » **nomme les règles cassées** (`diagnose_candidate_conflicts`, chaque candidat diagnostiqué contre la baseline augmentée des AUTRES candidats) ; `baseline_infeasible` distingue une baseline déjà invalide d'un conflit non nommé. Un « oui » déclenche **jusqu'à deux solves de plus** pour nommer les **compromis** — voir §POST /validate-assignments | `ValidateAssignmentOutputSchema` |
+| `/validate-assignments` | POST | **Verdict sur N candidats sous UN verdict** (contrat 2.18) — « puis-je poser ces N déplacements ? » (N=1 pour le rail `/move`/`/place-slot`, N=membres d'un bloc pour `/move-group`). Baseline **entièrement figée** via `add_fixed_slots`, les N candidats épinglés à part : le solve du verdict ne fait qu'un test de faisabilité sur l'**état final** (jamais N jugements séquentiels d'un état intermédiaire faux). ⚠ **Le gel EST le verdict** — baseline non figée, le solveur déplace la séance en conflit et rend `valid=True` (falsifié). 1 seul worker (déterministe) quel que soit N. Budget 2 s par défaut, plafond 10 s ; mesuré **~500 ms** sur 49 équipes (le build du modèle domine, pas le solve). Un « non » **nomme les règles cassées** (`diagnose_candidate_conflicts`, chaque candidat diagnostiqué contre la baseline augmentée des AUTRES candidats) ; `baseline_infeasible` distingue une baseline déjà invalide d'un conflit non nommé. **3ᵉ verdict INDÉTERMINÉ (ENG-51, contrat 1.1)** : si le solve PRINCIPAL ou la sonde de baseline retourne `UNKNOWN` (budget épuisé sans prouver SAT ni UNSAT), la réponse porte `valid:false, indeterminate:true, violations:[]` — jamais une règle inventée, jamais un `baseline_infeasible` affirmé à tort sur une sonde elle-même expirée. Un « oui » déclenche **jusqu'à deux solves de plus** pour nommer les **compromis** — voir §POST /validate-assignments | `ValidateAssignmentOutputSchema` |
 
 ### POST /place-matches
 
