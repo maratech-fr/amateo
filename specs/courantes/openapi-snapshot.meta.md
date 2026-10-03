@@ -1,9 +1,10 @@
-Last verified @ 2026-10-03 (ENG-51 — verdict « indéterminé » additif, `indeterminate: boolean|null`
-sur les 3 réponses 200 de `ManualEditPaths` — `/schedule-slots/{id}/move`, `/schedules/{id}/place-slot`,
-`/schedule-slots/move-group` — régénéré depuis le backend courant ; aucun path ajouté ni retiré).
+Last verified @ 2026-10-03 (deux changements additifs du jour, régénéré depuis le backend courant :
+`membershipStatus` de `POST /api/register/verify` gagne `club_pending` (reprise d'un club sans membre
+par approbation) ; `indeterminate: boolean|null` sur les 3 réponses 200 de `ManualEditPaths` (ENG-51) ;
+aucun path ajouté ni retiré).
 
 **222 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`4962271ab568957a9c2abcf5b05d6592a9354aa3023f331bf7b2a5f6ad218aaf` (`sha256sum` sur le fichier).
+`34ce49eae0c856b42a6e48f2c4bedeee2354bf756d6d52d2bb90aa3927119c96` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne
