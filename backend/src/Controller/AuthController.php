@@ -6,41 +6,31 @@ namespace App\Controller;
 
 use App\Entity\Basketball\FfbbCommittee;
 use App\Entity\Basketball\FfbbLeague;
-use App\Entity\Club;
 use App\Entity\ClubCreationRequest;
 use App\Entity\EmailChangeToken;
-use App\Entity\EmailVerificationToken;
 use App\Entity\Season;
 use App\Entity\User;
-use App\Enum\AuditAction;
-use App\Enum\ClubRole;
 use App\Repository\Basketball\FfbbCommitteeRepository;
 use App\Repository\Basketball\FfbbLeagueRepository;
 use App\Repository\ClubRepository;
 use App\Repository\ClubUserRepository;
 use App\Security\JwtCookieFactory;
-use App\Security\TurnstileVerifier;
-use App\Service\AuditTrail;
-use App\Service\ClubApprovalService;
-use App\Service\ClubProvisioner;
 use App\Service\EmailChangeVerifier;
-use App\Service\EmailVerifier;
 use App\Service\MailFrom;
 use App\Service\PasswordPolicy;
 use App\Service\PlanEntitlements;
 use App\Service\ProductIdentity;
+use App\Service\Registration\EmailVerificationService;
+use App\Service\Registration\RegisterService;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
-use App\Service\TenantConnectionContext;
 use DateTimeImmutable;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
-use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Clock\ClockInterface;
-use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Mailer\MailerInterface;
@@ -65,155 +55,31 @@ final class AuthController extends AbstractController
         private readonly JwtCookieFactory $jwtCookieFactory,
         private readonly ClubRepository $clubRepository,
         private readonly ClubUserRepository $clubUserRepository,
-        private readonly RateLimiterFactory $authRegisterLimiter,
-        private readonly TenantConnectionContext $tenantConnectionContext,
         private readonly SeasonResolver $seasonResolver,
         private readonly ClockInterface $clock,
         private readonly PasswordPolicy $passwordPolicy,
         private readonly MailerInterface $mailer,
-        private readonly EmailVerifier $emailVerifier,
         private readonly EmailChangeVerifier $emailChangeVerifier,
-        private readonly RateLimiterFactory $authRegisterVerifyLimiter,
         private readonly RateLimiterFactory $emailChangeLimiter,
         private readonly RateLimiterFactory $emailChangeConfirmLimiter,
         private readonly string $frontendBaseUrl,
         private readonly FfbbLeagueRepository $ffbbLeagues,
         private readonly FfbbCommitteeRepository $ffbbCommittees,
-        private readonly AuditTrail $auditTrail,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
-        private readonly ClubProvisioner $clubProvisioner,
-        private readonly ClubApprovalService $clubApprovalService,
         private readonly PlanEntitlements $planEntitlements,
-        private readonly TurnstileVerifier $turnstileVerifier,
-        private readonly string $turnstileSiteKey,
         private readonly MailFrom $mailFrom,
         private readonly ProductIdentity $productIdentity,
-        #[Autowire(param: 'kernel.debug')]
-        private readonly bool $debug,
-        // P2-4 (revue sécu) — l'adresse démo, exposée au front SEULEMENT en debug pour
-        // qu'il ne tente le raccourci démo QUE sur cette adresse. Maison unique côté
-        // controller démo : DevDemoRegisterController::$demoAnimatorEmail (même param).
-        #[Autowire(param: 'app.demo_animator_email')]
-        private readonly string $demoAnimatorEmail,
         private readonly LoggerInterface $logger,
+        // Inscription démembrée (démembrement VERBATIM) : le register et la
+        // vérification d'e-mail vivent désormais dans leurs services dédiés.
+        private readonly RegisterService $registerService,
+        private readonly EmailVerificationService $emailVerificationService,
     ) {}
 
     #[Route('/api/register', name: 'api_register', methods: ['POST'])]
     public function register(Request $request): JsonResponse
     {
-        // Rate-limit by client IP (anti-brute-force + anti-ARA-enumeration).
-        if (!$this->authRegisterLimiter->create($request->getClientIp())->consume(1)->isAccepted()) {
-            return $this->json(['error' => 'Trop de tentatives — réessayez dans quelques minutes.'], 429);
-        }
-
-        $data = json_decode((string) $request->getContent(), true);
-        if (!\is_array($data)) {
-            return $this->json(['error' => 'Invalid JSON'], 400);
-        }
-
-        $email = isset($data['email']) && \is_string($data['email']) ? trim($data['email']) : '';
-        $password = isset($data['password']) && \is_string($data['password']) ? $data['password'] : '';
-        $firstName = isset($data['firstName']) && \is_string($data['firstName']) ? trim($data['firstName']) : '';
-        $lastName = isset($data['lastName']) && \is_string($data['lastName']) ? trim($data['lastName']) : '';
-        $ara = isset($data['ara']) && \is_string($data['ara']) ? strtoupper(trim($data['ara'])) : '';
-        $clubName = isset($data['club_name']) && \is_string($data['club_name']) ? trim($data['club_name']) : '';
-        $consent = true === ($data['consent'] ?? false);
-
-        // Validation below is HOISTED above the email lookup and depends only on the
-        // submitted payload (or the ARA — public FFBB data), NEVER on whether the
-        // email exists. A differing 400 would otherwise be an account-enumeration
-        // oracle (A3). The success path returns an identical 202 for a fresh or an
-        // already-registered email — existence is signalled only out-of-band by mail.
-        if ('' === $email || !filter_var($email, \FILTER_VALIDATE_EMAIL)) {
-            return $this->json(['error' => 'Une adresse e-mail valide est requise.'], 400);
-        }
-        if (null !== ($passwordError = $this->passwordPolicy->validate($password))) {
-            return $this->json(['error' => $passwordError], 400);
-        }
-        if ('' === $firstName || '' === $lastName) {
-            return $this->json(['error' => 'Le prénom et le nom sont requis.'], 400);
-        }
-        if (!preg_match('/^[A-Z0-9]{3,20}$/', $ara)) {
-            return $this->json(['error' => 'L\'ARA doit comporter 3 à 20 caractères alphanumériques en majuscules.'], 400);
-        }
-        // RGPD : le consentement CGU/politique de confidentialité est requis —
-        // validation payload-only, donc toujours enumeration-safe (A3).
-        if (!$consent) {
-            return $this->json(['error' => 'Vous devez accepter les CGU et la politique de confidentialité.'], 400);
-        }
-
-        // P5-3b — Turnstile (preuve d'humanité). INERTE tant qu'aucun secret n'est
-        // configuré (dev/test) : le token est alors ignoré et le register reste
-        // byte-intact. Placé APRÈS les validations payload-only et AVANT tout lookup
-        // (ARA :129, e-mail :143) : le 403 ne dépend JAMAIS de l'existence d'un
-        // compte, donc il ne rouvre pas l'oracle d'énumération A3 que le reste de ce
-        // contrôleur ferme (message identique email frais vs email connu).
-        if ($this->turnstileVerifier->isEnabled()) {
-            $turnstileToken = isset($data['turnstileToken']) && \is_string($data['turnstileToken']) ? $data['turnstileToken'] : '';
-            if (!$this->turnstileVerifier->verify($turnstileToken, $request->getClientIp())) {
-                return $this->json(['error' => 'La vérification anti-robot a échoué. Veuillez réessayer.'], 403);
-            }
-        }
-
-        $email = strtolower($email);
-        $existingClub = $this->clubRepository->findOneBy(['ffbbClubCode' => $ara]);
-
-        // club_name is required to CREATE a club. Keyed on the ARA (public), not the
-        // email → still enumeration-safe: the 400 never depends on account existence.
-        if (null === $existingClub && '' === $clubName) {
-            return $this->json(['error' => 'Le nom du club est requis pour créer un nouveau club.'], 400);
-        }
-
-        // Intent captured at register time: a club NAME rides on the token ONLY when this
-        // registration creates a club (new ARA). A join (existing ARA) stores null, so
-        // verify can never silently promote a would-be pending member to admin if the
-        // target club has since vanished.
-        $intentClubName = null === $existingClub ? $clubName : null;
-
-        $existingUser = $this->entityManager->getRepository(User::class)->findOneBy(['email' => $email]);
-        if (null !== $existingUser) {
-            if (null === $existingUser->getEmailVerifiedAt()) {
-                // Re-registration of an UNVERIFIED account = recovery: the first email was
-                // lost/expired and neither login nor reset can activate it. Refresh the
-                // credentials + club intent and resend a fresh verification link. Same 202.
-                $existingUser->setPasswordHash($this->passwordHasher->hashPassword($existingUser, $password));
-                $existingUser->setFirstName($firstName);
-                $existingUser->setLastName($lastName);
-                $existingUser->setTermsAcceptedAt($this->clock->now());
-                $existingUser->setTermsVersion(self::TERMS_VERSION);
-                $rawToken = $this->emailVerifier->generateToken($existingUser, $ara, $intentClubName);
-                $this->entityManager->flush();
-                $this->sendVerificationEmail($request, $existingUser->getEmail(), $rawToken);
-            } else {
-                // Verified account: reveal nothing in the response. Spend an equivalent
-                // password hash (timing) and send an out-of-band "you already have an
-                // account" mail directing to login/reset.
-                // Accepted residual: this branch skips the DB writes the create/recover
-                // paths perform, so a fine-grained timing probe could still distinguish a
-                // *verified* account. Bounded by the per-IP register rate limiter
-                // (5/15min in prod) — network jitter dwarfs the sub-ms DB delta; not worth
-                // faking writes for. The response body/status stay identical.
-                $this->passwordHasher->hashPassword($existingUser, $password);
-                $this->sendAccountExistsEmail($existingUser->getEmail());
-            }
-
-            return $this->verificationPendingResponse();
-        }
-
-        // Fresh email: create the UNVERIFIED account only. User is a global entity (no
-        // club_id) so no tenant GUC is needed here — the club + seed are deferred to
-        // /api/register/verify, so an unverified (possibly fake) registration never
-        // materialises a tenant nor squats an ARA. The pending club intent (ffbb code
-        // + name) rides on the verification token until then.
-        $rawToken = '';
-        $this->entityManager->wrapInTransaction(function () use ($email, $password, $firstName, $lastName, $ara, $intentClubName, &$rawToken): void {
-            $user = $this->createUser($email, $password, $firstName, $lastName);
-            $rawToken = $this->emailVerifier->generateToken($user, $ara, $intentClubName);
-        });
-
-        $this->sendVerificationEmail($request, $email, $rawToken);
-
-        return $this->verificationPendingResponse();
+        return $this->registerService->register($request);
     }
 
     /**
@@ -233,137 +99,13 @@ final class AuthController extends AbstractController
     #[Route('/api/register/config', name: 'api_register_config', methods: ['GET'])]
     public function registerConfig(): JsonResponse
     {
-        $demoAvailable = $this->debug || $this->animatorWindowIsOpen();
-
-        return $this->json([
-            'turnstileSiteKey' => '' !== $this->turnstileSiteKey ? $this->turnstileSiteKey : null,
-            'demoShortcut' => $demoAvailable,
-            // Exposée uniquement quand le raccourci est disponible (debug ou fenêtre
-            // ouverte) ; sinon nulle, aucun oracle. Le front ne tente le raccourci que si
-            // l'adresse saisie EST cette adresse — le mot de passe d'un vrai prospect ne
-            // part jamais vers la route démo.
-            'demoEmail' => $demoAvailable ? strtolower($this->demoAnimatorEmail) : null,
-        ]);
+        return $this->registerService->registerConfig();
     }
 
     #[Route('/api/register/verify', name: 'api_register_verify', methods: ['POST'])]
     public function verifyEmail(Request $request): JsonResponse
     {
-        if (!$this->authRegisterVerifyLimiter->create($request->getClientIp())->consume(1)->isAccepted()) {
-            return $this->json(['error' => 'Trop de tentatives — réessayez dans quelques minutes.'], 429);
-        }
-
-        $data = json_decode((string) $request->getContent(), true);
-        $rawToken = \is_array($data) && isset($data['token']) && \is_string($data['token']) ? $data['token'] : '';
-
-        $token = $this->emailVerifier->resolve($rawToken);
-        if (!$token instanceof EmailVerificationToken) {
-            return $this->json(['error' => 'Lien de vérification invalide ou expiré.'], 400);
-        }
-
-        $tokenId = (int) $token->getId();
-        $userId = $token->getUser()->getId();
-        $ara = $token->getAra();
-        // Non-null club name ⟺ this token was a CREATE (new ARA at register). A join
-        // stores null; if its target club has since vanished, do NOT silently create a
-        // club and make the user its admin — that would escalate above the join intent.
-        $intentClubName = $token->getClubName();
-        if (null === $intentClubName && null === $this->clubRepository->findOneBy(['ffbbClubCode' => $ara])) {
-            return $this->json(['error' => 'Le club que vous vouliez rejoindre n\'existe plus.'], 409);
-        }
-
-        // Materialise the tenant now. Club-scoped inserts need the RLS GUC; set it once
-        // the club id is known, always clear afterwards (finally).
-        $status = 'pending';
-        $pendingRequestId = null;
-        try {
-            $this->entityManager->wrapInTransaction(function () use ($tokenId, $userId, $ara, $intentClubName, &$status, &$pendingRequestId): void {
-                // Serialize concurrent verifies of the SAME token (double-click / retry /
-                // two tabs): the winner holds the write lock and consumes the row; a loser
-                // then re-reads null and only resolves the (already-created) status — no
-                // duplicate club/membership.
-                $token = $this->entityManager->find(EmailVerificationToken::class, $tokenId, LockMode::PESSIMISTIC_WRITE);
-                if (null === $token) {
-                    $membership = $this->clubUserRepository->findOneBy(['userId' => $userId]);
-                    $status = null !== $membership && $membership->getIsActive() ? 'active' : 'pending';
-
-                    return;
-                }
-
-                $user = $token->getUser();
-                $user->setEmailVerifiedAt($this->clock->now());
-                // Re-resolve under the lock: the ARA may have been created since the outer read.
-                $existingClub = $this->clubRepository->findOneBy(['ffbbClubCode' => $ara]);
-                if (null !== $existingClub && $this->clubIsMemberless($existingClub->getId())) {
-                    // RGPD win-back : le club existe mais n'a PLUS AUCUN membre
-                    // actif (workspace purgé après effacement, seule la fiche
-                    // FFBB a survécu). Un "pending" serait inapprouvable à
-                    // jamais (le gate d'approbation exige un manager actif) et
-                    // l'ARA unique interdirait de recréer le club → l'inscrit
-                    // reprend le club directement (même confiance que la
-                    // création : premier arrivé sur un ARA sans propriétaire).
-                    $this->tenantConnectionContext->setClubId($existingClub->getId());
-                    // Reprise RGPD d'un club sans membre actif : le repreneur en
-                    // devient Gestionnaire, actif d'office (même confiance que la création).
-                    $this->createMembership($existingClub->getId(), $user->getId(), true, ClubRole::MANAGER);
-                    $existingClub->setUnsubscribedAt(null);
-                    $existingClub->setErasureScheduledAt(null);
-                    // Re-seed uniquement si le workspace a réellement été purgé
-                    // (repreneur PENDANT le délai de grâce → saisons intactes,
-                    // un seed dupliquerait saison + catégories).
-                    if ($this->clubHasNoSeason($existingClub->getId())) {
-                        $this->seedNewClub($existingClub);
-                    }
-                    $status = 'active';
-                } elseif (null !== $existingClub) {
-                    $this->tenantConnectionContext->setClubId($existingClub->getId());
-                    // Adhésion à un club existant : PENDING au moindre privilège
-                    // (Membre) — un gestionnaire du club l'approuvera.
-                    $this->createMembership($existingClub->getId(), $user->getId(), false, ClubRole::MEMBER);
-                    $status = 'pending';
-                } else {
-                    // P3-4 (décision fondateur 2026-08-05) — anti-squatting : un ARA
-                    // inconnu ne crée PLUS le club ici. La demande attend l'approbation
-                    // du CLUB (mail institutionnel FFBB) ou du superadmin ; c'est
-                    // ClubApprovalService::approve qui matérialisera (ClubProvisioner).
-                    $request = $this->clubApprovalService->openRequest($user, $ara, (string) $intentClubName);
-                    $pendingRequestId = $request->getId();
-                    $status = 'club_pending';
-                }
-                $this->emailVerifier->consume($token);
-            });
-        } finally {
-            $this->tenantConnectionContext->clear();
-        }
-
-        // P3-4 (le populate FFBB async — lot C — vit désormais dans
-        // ClubApprovalService::approve, au moment où le club naît réellement.)
-        // P3-4 : le mail « Approuver / Refuser » part APRÈS commit — le lien ne
-        // doit jamais référencer une demande non persistée. Best-effort (service).
-        if (null !== $pendingRequestId) {
-            $request = $this->entityManager->getRepository(ClubCreationRequest::class)->find($pendingRequestId);
-            $requester = $this->entityManager->getRepository(User::class)->find($userId);
-            if (null !== $request && null !== $requester) {
-                $this->clubApprovalService->sendApprovalEmail($request, $requester);
-            }
-        }
-
-        $user = $this->entityManager->getRepository(User::class)->find($userId);
-        if (null === $user) {
-            return $this->json(['error' => 'Verification failed'], 500);
-        }
-
-        // SEC-16 (audit) : même sortie que `/api/login` — le jeton part en COOKIE
-        // httpOnly, jamais dans le corps. Ce chemin crée le jeton à la main (il
-        // n'y a pas de handler lexik ici), d'où la fabrique partagée : deux
-        // recettes d'attributs finiraient par diverger.
-        $response = $this->json([
-            'membershipStatus' => $status,
-            'user' => ['id' => $user->getId(), 'email' => $user->getEmail()],
-        ]);
-        $response->headers->setCookie($this->jwtCookieFactory->create($this->jwtManager->create($user)));
-
-        return $response;
+        return $this->emailVerificationService->verify($request);
     }
 
     /**
@@ -778,54 +520,6 @@ final class AuthController extends AbstractController
         return $this->json(['status' => 'cancelled']);
     }
 
-    /**
-     * La fenêtre d'activation démo du compte animateur est-elle ouverte à l'instant
-     * RÉEL ? Compte absent → fermée. Horloge réelle (`new DateTimeImmutable('now')`),
-     * jamais simulated_today. Lecture seule.
-     */
-    private function animatorWindowIsOpen(): bool
-    {
-        $animator = $this->entityManager->getRepository(User::class)->findOneBy(['email' => strtolower($this->demoAnimatorEmail)]);
-
-        return $animator instanceof User && $animator->isDemoWindowOpen(new DateTimeImmutable('now'));
-    }
-
-    /**
-     * The single, identical response for every register outcome (fresh email, taken
-     * email, join or create) — byte-for-byte, so nothing distinguishes the branches.
-     */
-    private function verificationPendingResponse(): JsonResponse
-    {
-        return $this->json(['status' => 'verification_pending'], 202);
-    }
-
-    private function sendVerificationEmail(Request $request, string $email, string $rawToken): void
-    {
-        // FRONTEND_BASE_URL points at the browser-facing origin; fall back to the
-        // request host in dev/e2e (single origin via the Vite proxy). Prod sets it.
-        $base = '' !== $this->frontendBaseUrl ? rtrim($this->frontendBaseUrl, '/') : $request->getSchemeAndHttpHost();
-        $link = $base . '/verify-email/' . $rawToken;
-        $product = $this->productIdentity->name();
-
-        // mailer->send only ENQUEUES a SendEmailMessage on the bus now; an SMTP failure
-        // surfaces at the worker, where the failure transport retains it. Only a DISPATCH
-        // failure (Redis down) would land here — swallowed: a 500 on this branch alone
-        // would itself be an account-enumeration oracle (mirror PasswordController::forgot).
-        try {
-            $this->mailer->send(
-                (new Email)
-                    ->from($this->mailFrom->address())
-                    ->to($email)
-                    ->subject(\sprintf('Confirmez votre adresse e-mail %s', $product))
-                    ->text("Bienvenue sur {$product} !\n\nPour activer votre compte, ouvrez ce lien :\n{$link}\n\nCe lien expire dans 24 heures."),
-            );
-        } catch (Throwable $e) {
-            // Le mail est avalé (un 500 ici serait un oracle d'énumération) mais l'échec
-            // de DISPATCH est tracé — sans quoi une panne du bus (Redis) resterait muette.
-            $this->logger->warning('Mailer dispatch failed (transactional email not enqueued)', ['error' => $e->getMessage()]);
-        }
-    }
-
     /** P4-74 — l'adresse est-elle déjà revendiquée (active ou en attente) par un AUTRE compte ? */
     private function emailIsClaimedByAnother(string $email, string $selfId): bool
     {
@@ -901,45 +595,6 @@ final class AuthController extends AbstractController
         }
     }
 
-    private function sendAccountExistsEmail(string $email): void
-    {
-        // mailer->send ne fait plus qu'ENFILER un SendEmailMessage sur le bus ; un échec
-        // SMTP surgit chez le worker (le failure transport le retient). Seul un échec de
-        // DISPATCH (Redis down) tomberait ici — avalé : un 500 sur cette seule branche
-        // serait un oracle d'énumération.
-        try {
-            $this->mailer->send(
-                (new Email)
-                    ->from($this->mailFrom->address())
-                    ->to($email)
-                    ->subject(\sprintf('Tentative d’inscription sur %s', $this->productIdentity->name()))
-                    ->text("Une inscription vient d’être tentée avec cette adresse, mais un compte existe déjà.\n\nConnectez-vous, ou réinitialisez votre mot de passe si vous l’avez oublié."),
-            );
-        } catch (Throwable $e) {
-            // Le mail est avalé (un 500 ici serait un oracle d'énumération) mais l'échec
-            // de DISPATCH est tracé — sans quoi une panne du bus (Redis) resterait muette.
-            $this->logger->warning('Mailer dispatch failed (transactional email not enqueued)', ['error' => $e->getMessage()]);
-        }
-    }
-
-    private function createUser(string $email, string $password, string $firstName, string $lastName): User
-    {
-        $user = new User;
-        $user->setEmail($email);
-        $user->setFirstName($firstName);
-        $user->setLastName($lastName);
-        $user->setPasswordHash($this->passwordHasher->hashPassword($user, $password));
-        // RGPD : preuve de consentement (horodatage + version des textes).
-        $user->setTermsAcceptedAt($this->clock->now());
-        $user->setTermsVersion(self::TERMS_VERSION);
-        $this->entityManager->persist($user);
-        // RGPD audit : événement GLOBAL (pas encore de tenant) — l'id seul,
-        // jamais l'email (règle no-PII du journal).
-        $this->auditTrail->record(AuditAction::AUTH_REGISTER, $user->getId(), null, 'User', $user->getId());
-
-        return $user;
-    }
-
     /**
      * Shape a league/committee reference row for /api/me (null when not yet
      * populated → the frontend shows an empty state).
@@ -962,28 +617,6 @@ final class AuthController extends AbstractController
             'logoUrl' => $organisme->getLogoUrl(),
             'website' => $organisme->getWebsite(),
         ];
-    }
-
-    /** Aucun membre actif, tous rôles confondus (raw DBAL — club_user se lit cross-tenant). */
-    private function clubIsMemberless(string $clubId): bool
-    {
-        $count = $this->entityManager->getConnection()->fetchOne(
-            'SELECT COUNT(*) FROM club_user WHERE club_id = :cid AND is_active = true',
-            ['cid' => $clubId],
-        );
-
-        return 0 === (int) $count;
-    }
-
-    /** Le GUC du club doit déjà être posé (season est RLS-gardée). */
-    private function clubHasNoSeason(string $clubId): bool
-    {
-        $count = $this->entityManager->getConnection()->fetchOne(
-            'SELECT COUNT(*) FROM season WHERE club_id = :cid',
-            ['cid' => $clubId],
-        );
-
-        return 0 === (int) $count;
     }
 
     /**
@@ -1009,15 +642,5 @@ final class AuthController extends AbstractController
             // d'attente ne doit pas prétendre qu'un email est parti au club.
             'clubEmailKnown' => null !== $request->getClubEmail(),
         ] : null;
-    }
-
-    private function createMembership(string $clubId, string $userId, bool $isActive, ClubRole $role): void
-    {
-        $this->clubProvisioner->createMembership($clubId, $userId, $isActive, $role);
-    }
-
-    private function seedNewClub(Club $club): void
-    {
-        $this->clubProvisioner->seedWorkspace($club);
     }
 }
