@@ -73,6 +73,13 @@ parameters:
     # nginx prod écoute en 80 derrière la TLS et y répondrait faux
     # (docs/security/jwt-cookie.md).
     env(JWT_COOKIE_SECURE): 'true'
+    # Vérification de l'existence fédérale du code FFBB à l'inscription (chemin
+    # CRÉATION d'un club) — garde anti-squatting d'un code fédéral. DÉFAUT `true`
+    # (fail-closed, comme JWT_COOKIE_SECURE) : la prod vérifie. Le DEV et les tests
+    # posent `false` (`.env.dev`/`.env.test`) : Behat et les démos s'inscrivent sur
+    # des codes SYNTHÉTIQUES que la FFBB ignore. Patron Turnstile.
+    env(FFBB_REGISTER_EXISTENCE_CHECK): 'true'
+    app.ffbb_register_existence_check: '%env(bool:FFBB_REGISTER_EXISTENCE_CHECK)%'
 
 services:
     App\AdminJob\AdminJobExecutorInterface: '@App\AdminJob\ConsoleAdminJobExecutor'

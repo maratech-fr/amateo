@@ -1,11 +1,11 @@
 # Identité visuelle produit — la base est le produit, l'accent est le club
 
-Last verified @ 2026-09-30 (rotation — P4-252 non graduée ici, voir plus bas). Confronté au code
-cette passe : `frontend/src/shared/lib/product.ts:44` (`PRODUCT_ACCENT = "#46AFAC"`),
-`frontend/src/shared/hooks/useApplyClubTheme.ts:36` (`accentDark ?? accentLight ?? PRODUCT_ACCENT`
-en sombre / l'inverse en clair — dérivation inchangée), `frontend/src/test/
-accentTokenParity.test.ts` (existe, garde toujours l'égalité stricte statique ⇄ dérivée),
-`frontend/src/index.css` (`--accent: #317a77` clair / `#46afac` sombre — inchangés). **P4-252** (le
+Last verified @ 2026-10-03 (rotation de fraîcheur — sujet sans rapport, identité d'un
+club/inscription). Re-confronté au code : `frontend/src/shared/lib/product.ts:44`
+(`PRODUCT_ACCENT = "#46AFAC"`), `frontend/src/shared/hooks/useApplyClubTheme.ts:36`
+(`accentDark ?? accentLight ?? PRODUCT_ACCENT` en sombre / l'inverse en clair — dérivation
+inchangée), `frontend/src/test/accentTokenParity.test.ts` (existe), `frontend/src/index.css`
+(`--accent: #317a77` clair / `#46afac` sombre — inchangés). **P4-252** (le
 splash « Signature » du logo pendant la connexion) recopie les MÊMES trois teintes d'arc que
 `BrandIcon` (`#B51C8A`/`#D47800`/`#46AFAC`) dans un second composant React
 (`shared/components/ui/brand-splash.tsx`) — mise à jour de l'exception `.claude/rules/frontend.md`

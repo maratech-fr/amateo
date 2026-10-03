@@ -3624,7 +3624,8 @@
                                             "enum": [
                                                 "none",
                                                 "pending",
-                                                "active"
+                                                "active",
+                                                "club_pending"
                                             ]
                                         },
                                         "user": {

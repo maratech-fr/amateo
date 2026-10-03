@@ -210,7 +210,7 @@ final class SuperAdminAccessTest extends WebTestCase
         $this->client->request('GET', '/api/admin/jobs');
         self::assertResponseIsSuccessful();
         $jobs = $this->responseBody()['items'];
-        self::assertCount(17, $jobs); // +coach-wish-digest (#10 C3) +club-approval-digest (P3-4 PR B) +purge-exports (P4-52) +feedback-digest (P5-6) +demo-purge-stale (lot Démos)
+        self::assertCount(18, $jobs); // +coach-wish-digest (#10 C3) +club-approval-digest (P3-4 PR B) +purge-exports (P4-52) +feedback-digest (P5-6) +demo-purge-stale (lot Démos) +clubs-erasure-reminders (rappel J-7 suppression club)
         $jobsByKey = array_column($jobs, null, 'key');
         self::assertSame('daily', $jobsByKey['demo-purge-stale']['cadence']);
         self::assertFalse($jobsByKey['demo-purge-stale']['manualTriggerAllowed']);

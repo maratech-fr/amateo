@@ -81,7 +81,7 @@ final readonly class AccountSessionPaths implements CustomPathContributor
                 '200' => $this->schemas->jsonResponse('Verified — materialises the club and logs in (the JWT is set as the httpOnly BEARER cookie, NOT returned here)', [
                     'type' => 'object',
                     'properties' => [
-                        'membershipStatus' => ['type' => 'string', 'enum' => ['none', 'pending', 'active']],
+                        'membershipStatus' => ['type' => 'string', 'enum' => ['none', 'pending', 'active', 'club_pending']],
                         'user' => ['type' => 'object', 'properties' => [
                             'id' => ['type' => 'string'],
                             'email' => ['type' => 'string'],

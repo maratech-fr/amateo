@@ -96,9 +96,9 @@ class ClubStateProcessor extends AbstractStateProcessor
         if (null !== $input->weekendAlternates) {
             $entity->setWeekendAlternates($input->weekendAlternates);
         }
-        if (null !== $input->ffbbClubCode) {
-            $entity->setFfbbClubCode($input->ffbbClubCode);
-        }
+        // Le code FFBB n'est PAS posé ici : un club ne naît jamais par cette opération
+        // (seuls Get/Put et deux POST d'import ciblent ce processeur — aucun Post nu),
+        // et le code est immuable une fois le club né (updateEntityFromInput le refuse).
         if (null !== $input->accentColor) {
             $entity->setAccentColor($input->accentColor);
         }
@@ -136,8 +136,12 @@ class ClubStateProcessor extends AbstractStateProcessor
         if (null !== $input->weekendAlternates) {
             $entity->setWeekendAlternates($input->weekendAlternates);
         }
-        if (null !== $input->ffbbClubCode) {
-            $entity->setFfbbClubCode($input->ffbbClubCode);
+        // Le code FFBB est l'IDENTITÉ fédérale du club : immuable. Un PUT qui tente
+        // de le CHANGER est refusé (422) ; renvoyer le MÊME code est accepté sans
+        // effet (idempotent, un PUT porte souvent la ressource entière). Aucune voie
+        // d'exception — corriger un code erroné relève du support, pas de l'API.
+        if (null !== $input->ffbbClubCode && $input->ffbbClubCode !== $entity->getFfbbClubCode()) {
+            $this->refuse('Le code FFBB d\'un club ne peut pas être modifié.');
         }
         if (null !== $input->accentColor) {
             $entity->setAccentColor($input->accentColor);
