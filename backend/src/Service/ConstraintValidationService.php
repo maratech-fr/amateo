@@ -59,10 +59,10 @@ final class ConstraintValidationService
                 if (!isset($config['maxStartTime']) && !isset($config['minStartTime']) && !isset($config['maxEndTime'])) {
                     $errors[] = 'Une contrainte d\'horaire doit préciser au moins une heure (début au plus tôt, au plus tard, ou fin).';
                 }
-                // maxEndTime is honored by the engine ONLY on HARD/LOCK rules (the
+                // maxEndTime is honored by the engine ONLY on HARD rules (the
                 // soft path add_preferred_time_bonus reads only min/maxStartTime).
                 // A PREFERRED end-bound would be accepted here yet silently ignored.
-                if (isset($config['maxEndTime']) && !\in_array($constraint->getRuleType()->value, ['HARD', 'LOCK'], true)) {
+                if (isset($config['maxEndTime']) && 'HARD' !== $constraint->getRuleType()->value) {
                     $errors[] = '« Fini avant » n\'existe qu\'en règle OBLIGATOIRE — passez la contrainte en obligatoire, sinon elle serait ignorée.';
                 }
                 break;
@@ -72,24 +72,24 @@ final class ConstraintValidationService
                     $errors[] = 'Une contrainte de jour doit préciser au moins un jour (autorisé, à éviter ou imposé).';
                 }
                 // forcedDays (« au moins une séance l'un de ces jours ») n'est honoré par
-                // l'engine QUE sur HARD/LOCK : les règles DAY ne sont collectées que pour ces
-                // types (constraints.py), et le chemin soft ne lit que preferredDays
+                // l'engine QUE sur HARD : les règles DAY ne sont collectées que pour ce
+                // type (constraints.py), et le chemin soft ne lit que preferredDays
                 // (objective.py) — un forcedDays PREFERRED serait un placebo muet. Même patron
                 // que maxEndTime ci-dessus.
-                if (isset($config['forcedDays']) && !\in_array($constraint->getRuleType()->value, ['HARD', 'LOCK'], true)) {
+                if (isset($config['forcedDays']) && 'HARD' !== $constraint->getRuleType()->value) {
                     $errors[] = 'La règle « au moins une séance » n\'existe qu\'en règle obligatoire.';
                 }
-                // allowedDays (whitelist) hors HARD/LOCK : le moteur la range dans time_windows mais
+                // allowedDays (whitelist) hors HARD : le moteur la range dans time_windows mais
                 // le chemin dur la saute (filtre ruleType, targeting.py) et le chemin souple ne lit
                 // jamais allowedDays (objective/terms.py ne lit que preferredDays/forbiddenDays) —
                 // placebo muet. Même patron que forcedDays.
-                if (isset($config['allowedDays']) && !\in_array($constraint->getRuleType()->value, ['HARD', 'LOCK'], true)) {
+                if (isset($config['allowedDays']) && 'HARD' !== $constraint->getRuleType()->value) {
                     $errors[] = 'La règle « uniquement certains jours » n\'existe qu\'en règle obligatoire.';
                 }
-                // preferredDays en HARD/LOCK : le chemin dur ne lit pas preferredDays (targeting.py)
+                // preferredDays en HARD : le chemin dur ne lit pas preferredDays (targeting.py)
                 // et le chemin souple filtre ruleType == PREFERRED strict (objective/terms.py) —
                 // placebo muet. Une préférence ne peut pas être obligatoire par nature.
-                if (isset($config['preferredDays']) && \in_array($constraint->getRuleType()->value, ['HARD', 'LOCK'], true)) {
+                if (isset($config['preferredDays']) && 'HARD' === $constraint->getRuleType()->value) {
                     $errors[] = 'Un jour « à privilégier » ne peut pas être une règle obligatoire — repassez-la en préférence.';
                 }
                 break;
@@ -126,18 +126,18 @@ final class ConstraintValidationService
                 if (!isset($config['forcedVenueId']) && !isset($config['forbiddenVenueId']) && !isset($config['preferredVenueId']) && !isset($config['minAtVenueId'])) {
                     $errors[] = 'Une contrainte de gymnase doit désigner un gymnase.';
                 }
-                // forcedVenueId hors HARD/LOCK : le moteur ne l'honore qu'en dur (parse_v2_constraints
-                // exige HARD/LOCK) ; en souple il ne matche aucune branche et tombe sur le repli, avec
+                // forcedVenueId hors HARD : le moteur ne l'honore qu'en dur (parse_v2_constraints
+                // exige HARD) ; en souple il ne matche aucune branche et tombe sur le repli, avec
                 // un avertissement au libellé FAUX — placebo. (preferredVenueId, lui, EST honoré en
                 // souple → non concerné.)
-                if (isset($config['forcedVenueId']) && !\in_array($constraint->getRuleType()->value, ['HARD', 'LOCK'], true)) {
+                if (isset($config['forcedVenueId']) && 'HARD' !== $constraint->getRuleType()->value) {
                     $errors[] = '« Imposer ce gymnase » n\'existe qu\'en règle OBLIGATOIRE — passez la contrainte en obligatoire, sinon elle serait ignorée.';
                 }
                 // minAtVenueId ("au moins N ici") is honored by the engine ONLY as
-                // a per-TEAM, HARD/LOCK count. A CLUB-scoped or PREFERRED one is
+                // a per-TEAM, HARD count. A CLUB-scoped or PREFERRED one is
                 // accepted nowhere in parse_v2_constraints → silently dropped.
                 if (isset($config['minAtVenueId'])) {
-                    if (!\in_array($constraint->getRuleType()->value, ['HARD', 'LOCK'], true)) {
+                    if ('HARD' !== $constraint->getRuleType()->value) {
                         $errors[] = '« Au moins N séances dans ce gymnase » n\'existe qu\'en règle OBLIGATOIRE — passez la contrainte en obligatoire.';
                     }
                     // Une équipe précise, OU un groupe (tag) : l'éclatement CLUB+targetTag
@@ -177,12 +177,6 @@ final class ConstraintValidationService
                     $errors[] = 'L\'heure de début doit précéder l\'heure de fin.';
                 }
                 break;
-        }
-
-        // Validate rule type consistency
-        $ruleType = $constraint->getRuleType();
-        if ('LOCK' === $ruleType->value && ConstraintFamily::TIME !== $family && ConstraintFamily::DAY !== $family) {
-            $errors[] = 'Le verrouillage n\'est possible que sur une contrainte d\'horaire ou de jour.';
         }
 
         return $errors;

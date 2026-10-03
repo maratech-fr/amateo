@@ -486,7 +486,7 @@ def add_fixed_slots(model: Any, assignments: Sequence[AssignmentVariable]) -> in
     Ce qui a été RETIRÉ, c'est la seconde entrée : une liste d'identifiants
     ``fixed_assignments`` alimentée par ``parsed["fixed_slots"]``. Cette clé était
     initialisée à ``[]`` et **plus personne ne l'écrivait** depuis que le chemin UUID des
-    contraintes LOCK a été supprimé (il ne matchait jamais). Elle restait pourtant câblée
+    contraintes verrouillées (cran retiré) a été supprimé (il ne matchait jamais). Elle restait pourtant câblée
     jusqu'au solveur : du code qui annonce « le payload peut épingler des créneaux » alors
     qu'aucun payload ne le peut.
 

@@ -217,28 +217,32 @@ class ParseV2ConstraintsTest(unittest.TestCase):
 
     def test_inactive_constraints_are_skipped(self):
         constraints = [
-            {"id": "c1", "isActive": False, "ruleType": "LOCK"},
+            {"id": "c1", "isActive": False, "ruleType": "HARD"},
         ]
         result = parse_v2_constraints(constraints)
         assert result["forbidden_assignments"] == []
 
-    def test_lock_time_day_routes_to_time_windows(self):
-        # LOCK on a TIME/DAY rule is enforced as HARD (routed to time_windows).
-        # AUD-ENG-31 : la clé `fixed_slots` a disparu du parseur — le chemin UUID qui
-        # l'alimentait avait été supprimé (il ne matchait jamais), et la clé restait
-        # câblée au solveur en annonçant un mécanisme que le payload n'a pas.
+    def test_lock_rule_type_is_surfaced_not_honored(self):
+        # ALIGN-18 — « on ne verrouille que les créneaux » : le cran LOCK a été retiré des
+        # CONTRAINTES. Une ligne LOCK résiduelle (donnée legacy, script) n'est plus mappée
+        # silencieusement sur HARD : elle est SIGNALÉE (parse_warnings WARNING) et IGNORÉE
+        # (aucune fenêtre produite), jamais ré-appliquée en dur.
         constraints = [
             {
                 "id": "c1",
                 "isActive": True,
                 "ruleType": "LOCK",
-                "family": "DAY",
+                "family": "TIME",
                 "scopeTargetId": "team-1",
-                "config": {"forbiddenDays": [2]},
+                "config": {"maxStartTime": "19:00"},
             },
         ]
         result = parse_v2_constraints(constraints)
-        assert len(result["time_windows"]) == 1
+        assert result["time_windows"] == []
+        assert len(result["parse_warnings"]) == 1
+        warning = result["parse_warnings"][0]
+        assert warning["severity"] == "WARNING"
+        assert warning["type"] == "constraint_not_honored"
 
     def test_coach_availability_family(self):
         # Days are weekday ints; a day-only config → whole-day (0..1440) intervals.
@@ -393,7 +397,7 @@ class ParseV2ConstraintsTest(unittest.TestCase):
             {
                 "id": "c1",
                 "isActive": True,
-                "rule_type": "LOCK",
+                "rule_type": "HARD",
                 "family": "TIME",
                 "scope_target_id": "team-1",
                 "config": {"maxStartTime": "19:00"},

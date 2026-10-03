@@ -197,13 +197,21 @@ def parse_v2_constraints(constraints: list[dict[str, Any]]) -> ParsedConstraints
         config = c.get("config") or {}
         metadata = c.get("metadata") or {}
 
-        if rule_type == "LOCK" and family in ("TIME", "DAY"):
-            # A LOCK on a time/day rule means "keep this window fixed" — same
-            # effect as HARD for the solver. Route it through time_windows;
-            # add_time_window_constraints treats LOCK as HARD.
-            result["time_windows"].append(c)
+        if rule_type == "LOCK":
+            # ALIGN-18 — « on ne verrouille que les créneaux » : le cran LOCK a été retiré
+            # des CONTRAINTES. Plus de mapping silencieux LOCK→HARD (il était dur de bout en
+            # bout pour TIME/DAY/FACILITY). Une ligne LOCK résiduelle (donnée legacy, script)
+            # est SIGNALÉE et IGNORÉE, jamais ré-appliquée en dur.
+            result["parse_warnings"].append(
+                _not_honored_warning(
+                    c,
+                    "WARNING",
+                    "Le cran « verrouillé » a été retiré des contraintes — cette contrainte n'est pas appliquée.",
+                )
+            )
+            continue
 
-        elif c_type == "TEAM_COACH":
+        if c_type == "TEAM_COACH":
             team_id = c.get("teamId") or c.get("team_id") or scope_target_id
             coach_id = (
                 metadata.get("coachId")
@@ -299,7 +307,7 @@ def parse_v2_constraints(constraints: list[dict[str, Any]]) -> ParsedConstraints
                 )
             # Coach availability is always enforced HARD (a person cannot be in
             # two places); the UI now forces HARD — surface legacy soft rows.
-            if rule_type not in (None, "HARD", "LOCK"):
+            if rule_type not in (None, "HARD"):
                 result["parse_warnings"].append(
                     _not_honored_warning(
                         c,
@@ -312,9 +320,7 @@ def parse_v2_constraints(constraints: list[dict[str, Any]]) -> ParsedConstraints
         elif (
             family == "FACILITY"
             and config.get("preferredVenueId")
-            # LOCK on a venue rule = "keep this venue fixed" — dur, like
-            # LOCK TIME/DAY (was dead end-to-end, ENG-12).
-            and rule_type in ("HARD", "LOCK")
+            and rule_type == "HARD"
             and scope == "TEAM"
             and scope_target_id
         ):
@@ -330,7 +336,7 @@ def parse_v2_constraints(constraints: list[dict[str, Any]]) -> ParsedConstraints
         elif (
             family == "FACILITY"
             and config.get("forcedVenueId")
-            and rule_type in ("HARD", "LOCK")
+            and rule_type == "HARD"
             and scope == "TEAM"
             and scope_target_id
         ):
@@ -346,7 +352,7 @@ def parse_v2_constraints(constraints: list[dict[str, Any]]) -> ParsedConstraints
         elif (
             family == "FACILITY"
             and config.get("minAtVenueId")
-            and rule_type in ("HARD", "LOCK")
+            and rule_type == "HARD"
             and scope == "TEAM"
             and scope_target_id
         ):
@@ -379,7 +385,7 @@ def parse_v2_constraints(constraints: list[dict[str, Any]]) -> ParsedConstraints
             # rule_type decides HOW hard "avoid this venue" is (ENG-11 — this
             # branch used to escalate every ruleType into a hard interdiction,
             # making INFEASIBLE possible on a mere preference).
-            if rule_type in ("HARD", "LOCK", None):
+            if rule_type in ("HARD", None):
                 # P4-99 — l'id/le libellé de la contrainte accompagnent la paire, pour que la
                 # cause `venue_forbidden` soit cliquable. Consommé par `.get` en aval — un dict
                 # sans ces clés (tests hérités) reste valide, la cause dégrade au kind seul.
@@ -445,7 +451,7 @@ def parse_v2_constraints(constraints: list[dict[str, Any]]) -> ParsedConstraints
                 )
             )
 
-        elif family not in _KNOWN_FAMILIES and c_type not in _KNOWN_TYPES and rule_type != "LOCK":
+        elif family not in _KNOWN_FAMILIES and c_type not in _KNOWN_TYPES:
             # Only warn when neither the family NOR the type is recognised — a
             # genuine contract drift. A recognised family whose specific
             # config/scope variant isn't handled (e.g. a CLUB-scope FACILITY) is

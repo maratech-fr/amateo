@@ -101,7 +101,7 @@ def _is_enforced_window(constraint: Mapping[str, Any]) -> bool:
     if rule_type == "PREFERRED" and family == "TIME":
         return False
 
-    return rule_type in ("HARD", "LOCK") and family in ("TIME", "DAY")
+    return rule_type == "HARD" and family in ("TIME", "DAY")
 
 
 def diagnose_locked_slot_violations(
@@ -302,7 +302,7 @@ def diagnose_locked_slot_violations(
                 )
 
         # 4. Forced venue — le miroir du gymnase interdit. `parse_v2_constraints`
-        # aplatit la règle HARD/LOCK « impose ce gymnase » en team→gymnase unique
+        # aplatit la règle HARD « impose ce gymnase » en team→gymnase unique
         # (`forced_venues`), sans `id` ni `name` : on nomme donc une contrainte
         # synthétique portant le gymnase imposé, comme pour les paires interdites.
         # Le créneau verrouillé n'ayant PAS de variable (`model.py`), le forçage

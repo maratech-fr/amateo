@@ -150,25 +150,6 @@ def test_hard_day_allowed_days_excludes_others() -> None:
     assert _days_of(result, "t") <= {2}, "only allowed day 2 may carry a session"
 
 
-def test_lock_day_behaves_as_hard() -> None:
-    venue = make_venue("v", [(2, "18:00"), (4, "18:00")])
-    payload = make_payload(
-        teams=[_team("t")],
-        venues=[venue],
-        constraints=[
-            team_constraint(
-                constraint_id="c",
-                team_id="t",
-                family="DAY",
-                rule_type="LOCK",
-                config={"forbiddenDays": [2]},
-            )
-        ],
-    )
-    result = solve_payload(payload)
-    assert 2 not in _days_of(result, "t"), "LOCK day rule must be enforced as HARD"
-
-
 # --- COACH availability (ENG-01) ---------------------------------------------
 
 

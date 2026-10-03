@@ -122,10 +122,10 @@ final class PayloadCapacityMirror
                 continue;
             }
             $config = \is_array($row['config'] ?? null) ? $row['config'] : [];
-            // Mêmes gardes que la branche moteur (`constraints.py`) : HARD/LOCK, scope
+            // Mêmes gardes que la branche moteur (`constraints.py`) : HARD, scope
             // TEAM avec cible — ce que le validateur laisse passer d'autre est ignoré là-bas.
             if (empty($config['minAtVenueId'])
-                || !\in_array($row['ruleType'] ?? null, ['HARD', 'LOCK'], true)
+                || ($row['ruleType'] ?? null) !== 'HARD'
                 || 'TEAM' !== ($row['scope'] ?? null)
                 || empty($row['scopeTargetId'])
             ) {

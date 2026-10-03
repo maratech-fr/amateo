@@ -168,7 +168,7 @@ class ConstraintStateProcessor extends AbstractStateProcessor
      * D1 — « préférer ce gymnase » (preferredVenueId) est TOUJOURS une préférence
      * (PREFERRED) : jamais un must. L'obligatoire, c'est le mode « impose »
      * (forcedVenueId). On refuse à la SOURCE une préférence de gymnase épinglée
-     * HARD|LOCK (le wizard n'en émet plus, mais un script/une donnée legacy pourrait) —
+     * HARD (le wizard n'en émet plus, mais un script/une donnée legacy pourrait) —
      * garde sur l'état FINAL, create comme update.
      */
     private function assertPreferredVenueIsNotMandatory(Constraint $entity): void
@@ -180,7 +180,7 @@ class ConstraintStateProcessor extends AbstractStateProcessor
             return;
         }
         if (ConstraintFamily::FACILITY === $entity->getFamily()
-            && \in_array($entity->getRuleType(), [ConstraintRuleType::HARD, ConstraintRuleType::LOCK], true)
+            && ConstraintRuleType::HARD === $entity->getRuleType()
         ) {
             $this->refuse('Une préférence de gymnase ne peut pas être obligatoire — choisissez « impose ».');
         }
