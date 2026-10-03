@@ -13,3 +13,8 @@ Fonctionnalité: La démo ne s'ouvre que pendant sa fenêtre d'activation
     Quand sa fenêtre d'activation est ouverte
     Et il tente de se connecter avec son bon mot de passe
     Alors la connexion réussit
+
+  Scénario: Une vraie inscription sur le code d'une démo n'entre pas dans la démo
+    Étant donné un club de démonstration portant un code FFBB
+    Quand une personne s'inscrit réellement avec ce même code FFBB
+    Alors elle n'entre pas dans la démo mais ouvre sa propre demande de club

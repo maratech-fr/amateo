@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace App\Service\Registration;
 
 use App\Controller\AuthController;
+use App\Entity\Club;
 use App\Entity\User;
 use App\Enum\AuditAction;
 use App\Repository\ClubRepository;
 use App\Security\TurnstileVerifier;
 use App\Service\AuditTrail;
+use App\Service\Basketball\FfbbApiClient;
+use App\Service\Basketball\FfbbClubDirectory;
 use App\Service\EmailVerifier;
 use App\Service\MailFrom;
 use App\Service\PasswordPolicy;
@@ -61,6 +64,12 @@ final class RegisterService
         private readonly string $demoAnimatorEmail,
         private readonly LoggerInterface $logger,
         private readonly SerializerInterface $serializer,
+        private readonly FfbbClubDirectory $ffbbClubDirectory,
+        // Vérification de l'existence fédérale du code FFBB à la CRÉATION d'un club :
+        // active en prod (garde anti-squatting), inerte en dev/Behat & démos (codes
+        // synthétiques). Patron Turnstile (défaut d'environnement).
+        #[Autowire(param: 'app.ffbb_register_existence_check')]
+        private readonly bool $ffbbRegisterExistenceCheck,
     ) {}
 
     public function register(Request $request): JsonResponse
@@ -120,19 +129,36 @@ final class RegisterService
         }
 
         $email = strtolower($email);
-        $existingClub = $this->clubRepository->findOneBy(['ffbbClubCode' => $ara]);
+        $existingClub = $this->clubRepository->findRealByFfbbCode($ara);
 
         // club_name is required to CREATE a club. Keyed on the ARA (public), not the
         // email → still enumeration-safe: the 400 never depends on account existence.
-        if (null === $existingClub && '' === $clubName) {
+        if (!$existingClub instanceof Club && '' === $clubName) {
             return $this->json(['error' => 'Le nom du club est requis pour créer un nouveau club.'], 400);
+        }
+
+        // Vérification FFBB — chemin CRÉATION uniquement (ARA neuf, aucun club réel en
+        // base). Rejoindre un club déjà en base n'appelle JAMAIS la fédération (format
+        // hérité toléré). Keyée sur l'ARA (donnée publique FFBB), jamais sur l'e-mail →
+        // ne rouvre pas l'oracle d'énumération A3 que ce contrôleur ferme. Gardée par un
+        // flag d'environnement : active en prod (anti-squatting d'un code fédéral), inerte
+        // en dev/Behat & démos (codes synthétiques, patron Turnstile).
+        if (!$existingClub instanceof Club && $this->ffbbRegisterExistenceCheck) {
+            if (!FfbbApiClient::isValidClubCode($ara)) {
+                return $this->json(['error' => 'Ce code FFBB n\'est pas valide.'], 400);
+            }
+            // FFBB muette (null) → ne PAS bloquer : la demande s'ouvrira sans mail FFBB
+            // (file superadmin). Seul un « inconnu » FRANC (false) refuse l'inscription.
+            if (false === $this->ffbbClubDirectory->exists($ara)) {
+                return $this->json(['error' => 'Ce code FFBB est inconnu de la fédération.'], 400);
+            }
         }
 
         // Intent captured at register time: a club NAME rides on the token ONLY when this
         // registration creates a club (new ARA). A join (existing ARA) stores null, so
         // verify can never silently promote a would-be pending member to admin if the
         // target club has since vanished.
-        $intentClubName = null === $existingClub ? $clubName : null;
+        $intentClubName = $existingClub instanceof Club ? null : $clubName;
 
         $existingUser = $this->entityManager->getRepository(User::class)->findOneBy(['email' => $email]);
         if (null !== $existingUser) {

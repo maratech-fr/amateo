@@ -12,7 +12,12 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'club')]
 #[ORM\Index(name: 'idx_club_slug', columns: ['slug'])]
 #[ORM\UniqueConstraint(name: 'uniq_club_slug', columns: ['slug'])]
-#[ORM\UniqueConstraint(name: 'uniq_club_ffbb_club_code', columns: ['ffbb_club_code'])]
+// ⚠ Pas d'attribut UniqueConstraint sur `ffbb_club_code` ici (ni `unique: true`
+// sur la colonne) : l'unicité du code FFBB est PARTIELLE (`WHERE NOT is_demo`),
+// expression qu'un attribut Doctrine ne sait pas porter. L'index partiel
+// `uniq_club_ffbb_club_code` vit DANS une migration à la main — un club de démo
+// peut donc squatter le code d'un vrai club (BCK-33). Ne jamais remettre cet
+// attribut : il recréerait un index unique PLEIN en conflit avec le partiel.
 #[ORM\HasLifecycleCallbacks]
 class Club
 {
@@ -132,12 +137,23 @@ class Club
     #[ORM\Column(type: 'datetime_immutable', nullable: true)]
     private ?DateTimeImmutable $erasureScheduledAt = null;
 
+    // Non-null = le rappel « suppression définitive imminente » a déjà été envoyé
+    // au contact officiel du club (fenêtre J-7 de la commande de rappel) : empêche
+    // un second envoi pour la même échéance. Remis à null quand l'effacement est
+    // annulé (reprise du club / retour d'un membre actif), pour qu'un futur cycle
+    // puisse re-notifier.
+    #[ORM\Column(type: 'datetime_immutable', nullable: true)]
+    private ?DateTimeImmutable $erasureReminderSentAt = null;
+
     // Posé par la purge RGPD : le workspace a été vidé, seule l'identité
     // publique FFBB du club subsiste (référentiel adverse / win-back).
     #[ORM\Column(type: 'datetime_immutable', nullable: true)]
     private ?DateTimeImmutable $unsubscribedAt = null;
 
-    #[ORM\Column(type: 'string', length: 64, unique: true, nullable: true)]
+    // Unicité PARTIELLE (`WHERE NOT is_demo`) portée par l'index de migration
+    // `uniq_club_ffbb_club_code` — pas de `unique: true` ici (voir le commentaire
+    // de l'attribut de classe).
+    #[ORM\Column(type: 'string', length: 64, nullable: true)]
     private ?string $ffbbClubCode = null;
 
     /** Public URL of the club logo (served by the logo endpoint / storage). */
@@ -495,6 +511,18 @@ class Club
     public function setErasureScheduledAt(?DateTimeImmutable $erasureScheduledAt): self
     {
         $this->erasureScheduledAt = $erasureScheduledAt;
+
+        return $this;
+    }
+
+    public function getErasureReminderSentAt(): ?DateTimeImmutable
+    {
+        return $this->erasureReminderSentAt;
+    }
+
+    public function setErasureReminderSentAt(?DateTimeImmutable $erasureReminderSentAt): self
+    {
+        $this->erasureReminderSentAt = $erasureReminderSentAt;
 
         return $this;
     }

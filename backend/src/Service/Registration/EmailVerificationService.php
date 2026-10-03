@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service\Registration;
 
+use App\Entity\Club;
 use App\Entity\ClubCreationRequest;
 use App\Entity\EmailVerificationToken;
 use App\Entity\User;
@@ -69,7 +70,7 @@ final class EmailVerificationService
         // stores null; if its target club has since vanished, do NOT silently create a
         // club and make the user its admin — that would escalate above the join intent.
         $intentClubName = $token->getClubName();
-        if (null === $intentClubName && null === $this->clubRepository->findOneBy(['ffbbClubCode' => $ara])) {
+        if (null === $intentClubName && !$this->clubRepository->findRealByFfbbCode($ara) instanceof Club) {
             return $this->json(['error' => 'Le club que vous vouliez rejoindre n\'existe plus.'], 409);
         }
 
@@ -94,29 +95,22 @@ final class EmailVerificationService
                 $user = $token->getUser();
                 $user->setEmailVerifiedAt($this->clock->now());
                 // Re-resolve under the lock: the ARA may have been created since the outer read.
-                $existingClub = $this->clubRepository->findOneBy(['ffbbClubCode' => $ara]);
-                if (null !== $existingClub && $this->clubWinBackService->isMemberless($existingClub->getId())) {
-                    // RGPD win-back : le club existe mais n'a PLUS AUCUN membre
-                    // actif (workspace purgé après effacement, seule la fiche
-                    // FFBB a survécu). Un "pending" serait inapprouvable à
-                    // jamais (le gate d'approbation exige un manager actif) et
-                    // l'ARA unique interdirait de recréer le club → l'inscrit
-                    // reprend le club directement (même confiance que la
-                    // création : premier arrivé sur un ARA sans propriétaire).
-                    $this->clubWinBackService->reprise($existingClub, $user);
-                    $status = 'active';
-                } elseif (null !== $existingClub) {
+                $existingClub = $this->clubRepository->findRealByFfbbCode($ara);
+                if ($existingClub instanceof Club && !$this->clubWinBackService->isMemberless($existingClub->getId())) {
                     $this->tenantConnectionContext->setClubId($existingClub->getId());
-                    // Adhésion à un club existant : PENDING au moindre privilège
+                    // Adhésion à un club encore PEUPLÉ : PENDING au moindre privilège
                     // (Membre) — un gestionnaire du club l'approuvera.
                     $this->clubProvisioner->createMembership($existingClub->getId(), $user->getId(), false, ClubRole::MEMBER);
                     $status = 'pending';
                 } else {
-                    // P3-4 (décision fondateur 2026-08-05) — anti-squatting : un ARA
-                    // inconnu ne crée PLUS le club ici. La demande attend l'approbation
-                    // du CLUB (mail institutionnel FFBB) ou du superadmin ; c'est
-                    // ClubApprovalService::approve qui matérialisera (ClubProvisioner).
-                    $request = $this->clubApprovalService->openRequest($user, $ara, (string) $intentClubName);
+                    // Décision fondateur (2026-10-03) — anti-squatting ET reprise : un ARA
+                    // réel INCONNU, ou un club réel SANS membre actif, ouvrent tous deux une
+                    // DEMANDE en attente d'approbation du contact officiel (club_pending).
+                    // À l'approbation, ClubApprovalService crée le club (ARA neuf) OU reprend
+                    // le club sans membre (ClubWinBackService). Jamais de reprise/création
+                    // directe ici : la preuve du gestionnaire est l'approbation.
+                    $clubName = $existingClub instanceof Club ? $existingClub->getName() : (string) $intentClubName;
+                    $request = $this->clubApprovalService->openRequest($user, $ara, $clubName);
                     $pendingRequestId = $request->getId();
                     $status = 'club_pending';
                 }

@@ -54,6 +54,7 @@ final class AdminJobCatalog
             new AdminJobDefinition('transition-reminders', 'Rappels de transition de saison', 'app:seasons:remind-transition', AdminJobSchedule::daily(8)),
             new AdminJobDefinition('purge-unverified-users', 'Purge des comptes non vérifiés', 'app:users:purge-unverified', AdminJobSchedule::daily(2)),
             new AdminJobDefinition('purge-erased-clubs', 'Purge des clubs effacés', 'app:clubs:purge-erased', AdminJobSchedule::daily(2, 15)),
+            new AdminJobDefinition('clubs-erasure-reminders', 'Rappels avant suppression de club', 'app:clubs:erasure-remind', AdminJobSchedule::daily(8, 45)),
             new AdminJobDefinition('purge-inactive-users', 'Purge des comptes inactifs', 'app:users:purge-inactive', AdminJobSchedule::daily(2, 30)),
             new AdminJobDefinition('purge-seasons', 'Purge des anciennes saisons', 'app:seasons:purge', AdminJobSchedule::daily(3)),
             // Démos — détruit chaque nuit les clubs démo PROSPECT de la veille (libère le

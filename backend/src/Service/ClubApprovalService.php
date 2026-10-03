@@ -11,7 +11,8 @@ use App\Enum\ClubRole;
 use App\Message\Basketball\PopulateClubFromFfbbMessage;
 use App\Repository\ClubCreationRequestRepository;
 use App\Repository\ClubRepository;
-use App\Service\Basketball\FfbbApiClient;
+use App\Service\Basketball\FfbbClubDirectory;
+use App\Service\Registration\ClubWinBackService;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -45,7 +46,8 @@ final class ClubApprovalService
         private readonly ClubCreationRequestRepository $requests,
         private readonly ClubRepository $clubs,
         private readonly ClubProvisioner $provisioner,
-        private readonly FfbbApiClient $ffbbApi,
+        private readonly ClubWinBackService $clubWinBack,
+        private readonly FfbbClubDirectory $ffbbClubDirectory,
         private readonly TenantConnectionContext $tenantContext,
         private readonly MailerInterface $mailer,
         private readonly MessageBusInterface $messageBus,
@@ -71,7 +73,7 @@ final class ClubApprovalService
         $request->setUserId($user->getId());
         $request->setAra($ara);
         $request->setClubName($clubName);
-        $request->setClubEmail($this->lookupClubEmail($ara));
+        $request->setClubEmail($this->ffbbClubDirectory->lookupClubEmail($ara));
         $this->entityManager->persist($request);
 
         return $request;
@@ -132,10 +134,21 @@ final class ClubApprovalService
                     ['key' => 'club-approval:' . $request->getAra()],
                 );
 
-                $existing = $this->clubs->findOneBy(['ffbbClubCode' => $request->getAra()]);
+                $existing = $this->clubs->findRealByFfbbCode($request->getAra());
                 if ($existing instanceof Club) {
-                    // Le club est né entre-temps (autre demande approuvée) : cette
-                    // demande devient une adhésion pending — jamais un 2e club.
+                    if ($this->clubWinBack->isMemberless($existing->getId())) {
+                        // Reprise : le club RÉEL existe mais n'a PLUS AUCUN membre
+                        // actif (effacement du dernier gestionnaire). L'approbation du
+                        // contact officiel fait la preuve → le demandeur en devient
+                        // Gestionnaire actif, l'effacement/rappel programmés sont annulés
+                        // et le workspace re-seedé s'il avait été purgé. Jamais un 2e club.
+                        $this->clubWinBack->reprise($existing, $request->getUserId());
+                        $this->close($request, ClubCreationRequest::STATUS_APPROVED);
+
+                        return $existing;
+                    }
+                    // Le club est né / encore peuplé : cette demande devient une
+                    // adhésion pending — jamais un 2e club.
                     $this->tenantContext->setClubId($existing->getId());
                     // Adhésion sur un club déjà né : PENDING au moindre privilège
                     // (Membre) — un gestionnaire du club l'approuvera.
@@ -218,26 +231,5 @@ final class ClubApprovalService
         } catch (Throwable $e) {
             $this->logger->warning('Club approval requester notification failed', ['requestId' => $request->getId(), 'error' => $e->getMessage()]);
         }
-    }
-
-    /** Le mail institutionnel FFBB du club — best-effort, null = file superadmin. */
-    private function lookupClubEmail(string $ara): ?string
-    {
-        if (!FfbbApiClient::isValidClubCode($ara)) {
-            return null;
-        }
-        try {
-            foreach ($this->ffbbApi->search($ara) as $hit) {
-                if (0 === strcasecmp((string) ($hit['code'] ?? ''), $ara)) {
-                    $mail = $hit['mail'] ?? null;
-
-                    return \is_string($mail) && false !== filter_var(trim($mail), \FILTER_VALIDATE_EMAIL) ? trim($mail) : null;
-                }
-            }
-        } catch (Throwable $e) {
-            $this->logger->warning('FFBB club email lookup failed', ['ara' => $ara, 'error' => $e->getMessage()]);
-        }
-
-        return null;
     }
 }
