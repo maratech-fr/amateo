@@ -25,7 +25,14 @@ API_BASE="http://localhost:8080/api"
 # redis://redis:6379/messages (backend/.env MESSENGER_TRANSPORT_DSN) — verified
 # against the live stream on the first sample below.
 STREAM="messages"
-# Fixed password of every load-test manager account (BcclSeedProfile::loadTest()).
+# Identity of every load-test manager account — MUST mirror the seed, which is
+# the only source of truth: src/Seed/BcclSeedProfile::loadTest() builds
+# managerEmail = "charge-{index}@amateo.local" (BcclSeedProfile.php:214) and
+# managerPassword = "charge-load-test-pwd" (:217). The @amateo.local domain
+# follows the product rename; a drift here = login 401 on every club. There is
+# no shell-readable constant, so these mirror the PHP literals by hand — change
+# both sides together (guarded by Unit/Seed/BcclSeedProfileLoadTestTest).
+MANAGER_EMAIL_DOMAIN="amateo.local"
 MANAGER_PASSWORD="charge-load-test-pwd"
 # The services whose RAM the overlay caps (and that we sample / inspect).
 SERVICES=(php-fpm postgres redis messenger-worker engine pdf-worker mercure)
@@ -205,15 +212,23 @@ run_one_club() {
   local log="$OUT/round-${round}_club-${i}.log"
   local start end rc status score
   start=$(date +%s)
-  SCHEDULER_EMAIL="charge-$i@clubscheduler.local" \
+  SCHEDULER_EMAIL="charge-$i@${MANAGER_EMAIL_DOMAIN}" \
   SCHEDULER_PASSWORD="$MANAGER_PASSWORD" \
   TIMEOUT_SECONDS="$BURST_TIMEOUT" \
   PENDING_TIMEOUT_SECONDS="$BURST_TIMEOUT" \
     "$GEN_SCRIPT" --club-id "$club_id" >"$log" 2>&1 && rc=0 || rc=$?
   end=$(date +%s)
-  status=$(grep -oE 'Status: [A-Z]+' "$log" | tail -1 | awk '{print $2}')
+  # `|| true`: an empty / login-only log yields no "Status:" match; under
+  # `set -o pipefail` the failing grep would otherwise abort run_one_club BEFORE
+  # it writes its CSV row, and the lot would silently report "0 / 0".
+  status=$(grep -oE 'Status: [A-Z]+' "$log" | tail -1 | awk '{print $2}' || true)
+  # No status + explicit login refusal in the log = the account could not log in
+  # (generate-schedule.sh prints "login refusé pour <email> (HTTP <code>)").
+  if [[ -z "$status" ]] && grep -q 'login refusé' "$log"; then
+    status="LOGIN_FAILED"
+  fi
   [[ -z "$status" ]] && status="UNKNOWN"
-  score=$(grep -oE 'Score: [0-9]+' "$log" | tail -1 | awk '{print $2}')
+  score=$(grep -oE 'Score: [0-9]+' "$log" | tail -1 | awk '{print $2}' || true)
   [[ -z "$score" ]] && score="-"
   echo "$round,$i,club-charge-$i,$club_id,$start,$end,$((end - start)),$rc,$status,$score" >>"$CLUBS_CSV"
 }
@@ -288,7 +303,7 @@ peak_queue=$(awk -F, 'NR>1 && $3 ~ /^[0-9]+$/ {if ($3>m) m=$3} END{print m+0}' "
 # ---------------------------------------------------------------------------
 # Markdown report
 # ---------------------------------------------------------------------------
-completed=0; total_rows=0
+completed=0; total_rows=0; login_failed=0
 {
   echo "# Load-test report — $STAMP"
   echo
@@ -310,6 +325,7 @@ completed=0; total_rows=0
     [[ "$round" == "round" ]] && continue
     total_rows=$((total_rows + 1))
     [[ "$status" == "COMPLETED" ]] && completed=$((completed + 1))
+    [[ "$status" == "LOGIN_FAILED" ]] && login_failed=$((login_failed + 1))
     wall_ms="${DB_WALL[$slug]:-}"
     if [[ -n "$wall_ms" && "$wall_ms" =~ ^[0-9]+$ ]]; then
       wall_s=$(python3 -c "print(round($wall_ms/1000,1))")
@@ -327,6 +343,9 @@ completed=0; total_rows=0
     thr="-"
   fi
   echo "- **$completed / $total_rows** generation(s) COMPLETED"
+  if [[ "$login_failed" -gt 0 ]]; then
+    echo "- ⚠ **$login_failed club(s) LOGIN_FAILED** — le harnais s'est connecté avec un identifiant refusé (HTTP 401). Les comptes semés sont \`charge-N@${MANAGER_EMAIL_DOMAIN}\` / mot de passe \`${MANAGER_PASSWORD}\` (\`BcclSeedProfile::loadTest()\`) ; vérifier \`MANAGER_EMAIL_DOMAIN\` en tête de script. Détail par club : \`round-*_club-*.log\`."
+  fi
   echo "- Throughput: **$thr** completed generation(s) / hour"
   echo
   echo "## Peak RAM per container vs limit"
@@ -359,5 +378,10 @@ if [[ "$LIMITS" -eq 1 ]]; then
   warn "Teardown reminder: drop the load overlay with — docker compose -f docker-compose.yml up -d"
 fi
 
-[[ "$completed" -eq "$total_rows" && "$total_rows" -gt 0 ]] || die "not every generation reached COMPLETED (see report)"
-ok "every generation COMPLETED"
+if [[ "$completed" -eq "$total_rows" && "$total_rows" -gt 0 ]]; then
+  ok "every generation COMPLETED"
+elif [[ "$login_failed" -gt 0 ]]; then
+  die "not every generation reached COMPLETED: $login_failed club(s) LOGIN_FAILED — the harness logged in with a rejected identity. Seeded accounts are charge-N@${MANAGER_EMAIL_DOMAIN} (BcclSeedProfile::loadTest()); check MANAGER_EMAIL_DOMAIN at the top of this script. See report."
+else
+  die "not every generation reached COMPLETED (see report)"
+fi
