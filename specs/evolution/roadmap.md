@@ -300,7 +300,7 @@ rien à faire en propre) → **P5-28 en dernier** (contrat backend⇄engine repa
 
 ---
 
-## Findings d'audit ouverts (registre `/audit`) — 25
+## Findings d'audit ouverts (registre `/audit`) — 22
 
 > **À quoi sert cette section.** Le skill `/audit` tient un **registre à IDs stables** : un finding garde son
 > identifiant d'une édition à l'autre, ce qui rend la comparaison inter-éditions possible (« ce défaut est-il
