@@ -79,9 +79,11 @@ pnpm-debug.log*
 /backend/.codegraph
 /backend/.omo/
 
-# Prod runtime files — the .dist template and the ENCRYPTED .env.prod.gpg are
-# tracked; the filled cleartext .env.prod never is (make env-encode@prod)
+# Prod runtime files — only the .dist template is tracked. The filled cleartext
+# .env.prod lives in the GitHub secret ENV_PROD (source of truth), never in the
+# repo; the old encrypted .env.prod.gpg rail is gone and must never come back.
 /.env.prod
+/.env.prod.gpg
 /jwt/
 
 # Journaux de la navigation automatisée Playwright MCP (bruit, jamais versionné)

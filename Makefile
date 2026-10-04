@@ -140,34 +140,6 @@ reset-install: ## Force next make start to reinstall dependencies
 services: .env ## List Docker Compose services
 	$(DOCKER_COMPOSE) config --services
 
-# Prod secrets rail — the filled .env.prod is NEVER committed; its GPG-encrypted
-# copy .env.prod.gpg IS (repo = source of truth, decoded onto the VM by the
-# deploy job — docs/ops/deploy.md). Symmetric AES256, one passphrase: founder's
-# password manager + GitHub Actions secret ENV_GPG_PASSPHRASE.
-# gpg runs on the HOST — assumed exception to "everything in Docker": it is
-# standard on any Linux/WSL box and on ubuntu-latest, a container would add an
-# image for a one-liner. Non-interactive when ENV_GPG_PASSPHRASE is set (CI),
-# interactive pinentry otherwise. The passphrase travels over stdin only —
-# never as a command-line argument (visible in `ps`) — and is never echoed.
-env-encode@%: ## Encrypt .env.<env> into the committed .env.<env>.gpg (e.g. env-encode@prod)
-	@test -f .env.$* || { echo "ERROR: .env.$* not found — nothing to encrypt (start from .env.$*.dist or make env-decode@$*)" >&2; exit 1; }
-	@if [ -n "$$ENV_GPG_PASSPHRASE" ]; then \
-		printf '%s' "$$ENV_GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --symmetric --cipher-algo AES256 -o .env.$*.gpg .env.$*; \
-	else \
-		gpg --yes --symmetric --cipher-algo AES256 -o .env.$*.gpg .env.$*; \
-	fi
-	@echo ".env.$*.gpg written — commit it; .env.$* itself stays untracked"
-
-env-decode@%: ## Decrypt .env.<env>.gpg into .env.<env> (overwrites — the .gpg is the truth)
-	@test -f .env.$*.gpg || { echo "ERROR: .env.$*.gpg not found — nothing to decrypt" >&2; exit 1; }
-	@if [ -n "$$ENV_GPG_PASSPHRASE" ]; then \
-		printf '%s' "$$ENV_GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 -o .env.$* --decrypt .env.$*.gpg; \
-	else \
-		gpg --yes -o .env.$* --decrypt .env.$*.gpg; \
-	fi
-	@chmod 600 .env.$*
-	@echo ".env.$* decrypted (chmod 600) — never commit it"
-
 # Release helper — the normal path is `git tag vX.Y.Z && git push origin vX.Y.Z`
 # (the tag push triggers .github/workflows/deploy.yml by itself). This target
 # is the manual/hotfix path: refuses an out-of-sync HEAD, dispatches, then
