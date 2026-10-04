@@ -16,6 +16,9 @@ backend/.env.dev
 backend/.env.dist
 backend/.env.test
 backend/config/jwt
+# Real demo identities override (local-only, gitignored) — must NEVER reach an
+# image: COPY backend/ would otherwise bake the real coach names into the build.
+backend/config/seed/bccl.identities.local.json
 backend/var
 backend/vendor
 # assets:install output — regenerated INSIDE the prod build; excluding it keeps
