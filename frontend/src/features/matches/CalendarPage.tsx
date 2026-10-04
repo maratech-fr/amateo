@@ -1,5 +1,6 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, CalendarX2, Info, Plus, Upload, Wand2 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
 import { useCoachPlayers, useTeamCoaches } from "@/features/planning/queries";
@@ -7,6 +8,7 @@ import { Button } from "@/shared/components/ui/button";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Modal } from "@/shared/components/ui/modal";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
 import { todayISO } from "@/shared/lib/clock";
 import { readFailed, readLoading } from "@/shared/lib/readState";
@@ -15,7 +17,7 @@ import { useCredits } from "@/shared/credits/useCredits";
 import { useMe } from "@/shared/session/queries";
 import { toast } from "@/shared/stores/toastStore";
 
-import type { Category, Coach, Competition, Conflict, Fixture, Team, Venue } from "./api";
+import type { Category, Coach, Competition, Conflict, Fixture, PlaceMatchesResult, PlacementRunResult, Team, Venue } from "./api";
 import { CalendarControls } from "./CalendarControls";
 import { FbiEntryList } from "./FbiEntryList";
 import { FfbbEngagementsDialog } from "./FfbbEngagementsDialog";
@@ -33,6 +35,7 @@ import { useMatchFilterChain } from "./lib/useMatchFilterChain";
 import { useMonthView } from "./lib/useMonthView";
 import { usePhaseView } from "./lib/usePhaseView";
 import { usePlacementGuards } from "./lib/usePlacementGuards";
+import { usePlacementStream } from "./lib/placementStream";
 import { useWeekView } from "./lib/useWeekView";
 import { applyFbiToParams, decodeFbiParam } from "./lib/urlState";
 import { isPlacedOnGrid, matchMinutesByCategory, warmupMinutesByCategory, weekendKeyOf } from "./lib/weekendGrid";
@@ -52,6 +55,7 @@ import {
   useLatestFbiIngestion,
   useLeagueWindows,
   useModuleVisit,
+  usePlacementRun,
   usePlaceMatches,
   usePriorityTiers,
   useReopenFbiCorrection,
@@ -71,6 +75,20 @@ import { GRID_CONTAINER_ID, PLACE_HEADING_ID, WeekWorkbench } from "./WeekWorkbe
 function byId<T extends { id: string }>(rows: T[] | undefined): Map<string, T> {
   return new Map((rows ?? []).map((row) => [row.id, row]));
 }
+
+/** Le résultat PERSISTÉ d'un run (partiel par défense) ramené à la forme attendue par
+ * `placementToastMessage` — jamais de confiance aveugle au payload. */
+function placeResultOf(result: PlacementRunResult | null | undefined): PlaceMatchesResult {
+  return { placed: result?.placed ?? 0, skipped: result?.skipped ?? 0, unplaced: result?.unplaced ?? [], diagnostics: result?.diagnostics ?? [] };
+}
+
+/** Message affiché/annoncé tant qu'un run est en cours. À deux minutes, on invite à quitter la
+ * page (l'e-mail de fin prendra le relais) — nom produit JAMAIS en littéral (product.ts). */
+const PLACEMENT_RUNNING = "Placement automatique en cours…";
+const PLACEMENT_SLOW = "Le placement automatique prend plus de temps que prévu. Vous pouvez quitter cette page : vous recevrez un e-mail à la fin.";
+const PLACEMENT_FAILED_FALLBACK = "Le placement automatique a échoué. Réessayez.";
+/** Délai avant le message « plus long que prévu » — aligné sur le seuil d'e-mail du worker (120 s). */
+const SLOW_NOTICE_MS = 120_000;
 
 /**
  * PR 3b — le **Calendrier**, l'écran unique du module matchs : il FUSIONNE l'ancienne
@@ -106,6 +124,8 @@ export function CalendarPage() {
   const teamCoaches = useTeamCoaches();
   const coachPlayers = useCoachPlayers();
   const placeMatches = usePlaceMatches();
+  const placementRun = usePlacementRun();
+  const queryClient = useQueryClient();
   const submitFixture = useSubmitFixture();
   const moduleVisit = useModuleVisit();
   const { data: me } = useMe();
@@ -150,6 +170,76 @@ export function CalendarPage() {
   // A5 — région live persistante : remplie après la levée des masques (« N matchs affichés »),
   // elle survit au retrait de l'indice « masqués » (qui disparaît dès que rien n'est masqué).
   const [revealLive, setRevealLive] = useState("");
+
+  // ── Rail ASYNCHRONE du placement (ADR-0003) ─────────────────────────────────────
+  // Le DERNIER run du club : lu au montage (un autre membre / un autre onglet voit aussi « en
+  // cours »), relu à chaque bascule Mercure. Le GESTE reste gestionnaire, l'ÉTAT est pour tous.
+  const run = placementRun.data?.run ?? null;
+  const runInFlight = null !== run && ("PENDING" === run.status || "RUNNING" === run.status);
+  // Flux Mercure tenu ouvert tant qu'un run est en vol ; sa bascule terminale invalide le GET
+  // (relecture) et les rencontres. Repli relecture (reconnexion / retour sur l'onglet) ci-dessous.
+  usePlacementStream(runInFlight);
+  // Le bouton se bloque pendant la requête ET tant qu'un run du club est ouvert.
+  const placeBusy = placeMatches.isPending || runInFlight;
+
+  // À deux minutes de run encore ouvert : on invite à quitter la page (annonce polie, une fois).
+  // Le reset vit dans le CLEANUP (fin du run / démontage), jamais en synchrone dans le corps.
+  const [slowNotice, setSlowNotice] = useState(false);
+  useEffect(() => {
+    if (!runInFlight) {
+      return;
+    }
+    const timer = setTimeout(() => setSlowNotice(true), SLOW_NOTICE_MS);
+    return () => {
+      clearTimeout(timer);
+      setSlowNotice(false);
+    };
+  }, [runInFlight]);
+
+  // Repli de relecture SANS polling permanent : au retour sur l'onglet (ou à la reconnexion), si
+  // un run est en vol, on relit le GET — un événement Mercure a pu être manqué pendant l'absence.
+  useEffect(() => {
+    if (!runInFlight) {
+      return;
+    }
+    const refetch = (): void => void placementRun.refetch();
+    window.addEventListener("focus", refetch);
+    window.addEventListener("online", refetch);
+    return () => {
+      window.removeEventListener("focus", refetch);
+      window.removeEventListener("online", refetch);
+    };
+  }, [runInFlight, placementRun]);
+
+  // Fin d'un run : afficher le résultat (placés/non placés) comme avant, et — SI on regardait ce
+  // run partir en vol — toaster une fois et rafraîchir le calendrier. Un run déjà terminé AU
+  // MONTAGE (session précédente) restaure l'affichage des raisons sans toaster.
+  const watchedRunId = useRef<string | null>(null);
+  const displayedRunId = useRef<string | null>(null);
+  useEffect(() => {
+    if (null === run) {
+      return;
+    }
+    if ("PENDING" === run.status || "RUNNING" === run.status) {
+      watchedRunId.current = run.id;
+      return;
+    }
+    // Terminal. Restaure l'affichage des raisons de non-placement UNE fois par run (jamais à
+    // chaque refetch de semaine, qui purgerait/réécrirait inutilement).
+    if ("COMPLETED" === run.status && displayedRunId.current !== run.id) {
+      displayedRunId.current = run.id;
+      setUnplacedReasons(new Map((run.result?.unplaced ?? []).map((u) => [u.matchId, u.message])));
+    }
+    if (watchedRunId.current === run.id) {
+      watchedRunId.current = null;
+      if ("COMPLETED" === run.status) {
+        toast.success(placementToastMessage(placeResultOf(run.result)));
+      } else {
+        toast.error(run.result?.error ?? PLACEMENT_FAILED_FALLBACK);
+      }
+      void queryClient.invalidateQueries({ queryKey: ["fixtures"] });
+    }
+  }, [run, setUnplacedReasons, queryClient]);
 
   const teamsMap = useMemo<Map<string, Team>>(() => byId(teams.data), [teams.data]);
   const venuesMap = useMemo<Map<string, Venue>>(() => byId(venues.data), [venues.data]);
@@ -294,9 +384,15 @@ export function CalendarPage() {
   // to})`, la semaine affichée) lancent LE MÊME rail — même rafraîchissement, même toast.
   const runPlacement = (window?: { from: string; to: string }): void => {
     placeMatches.mutate(window, {
-      onSuccess: (result) => {
-        setUnplacedReasons(new Map(result.unplaced.map((u) => [u.matchId, u.message])));
-        toast.success(placementToastMessage(result));
+      onSuccess: (response) => {
+        if (response.accepted) {
+          // Le run est enfilé : la relecture du GET (invalidée par la mutation) fait passer
+          // l'écran en « en cours » ; la fin (résultat + toast) arrivera par Mercure.
+          return;
+        }
+        // 200 « aucun match à placer » : rien n'a été enfilé, on le dit comme avant.
+        setUnplacedReasons(new Map(response.result.unplaced.map((u) => [u.matchId, u.message])));
+        toast.success(response.result.message ?? placementToastMessage(response.result));
       },
     });
   };
@@ -410,20 +506,40 @@ export function CalendarPage() {
           (MatchesLayout), visible sur tous les onglets. */}
       <div className="flex flex-col items-end gap-1">
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={() => setFixtureFormOpen(true)}>
-            <Plus className="size-4" />
-            Nouveau match
-          </Button>
-          <Button size="sm" disabled={placeMatches.isPending || placeRestricted || placeCreditsBlocked} onClick={() => runPlacement()}>
-            <Wand2 className="size-4" />
-            {placeMatches.isPending ? "Placement…" : `Placer automatiquement${placeCreditSuffix}`}
-          </Button>
+          {/* Décision fondateur 2026-10-04 : tout le monde VOIT l'écran des matchs, seul le
+              gestionnaire peut AGIR. Tous les boutons d'action (création, placement, édition,
+              suppression, import, saisie FBI, appariement FFBB) sont donc gardés par `canManage`
+              — le backend reste seul juge (403 via `ManagementAccessGuard`), `canManage` évite
+              d'offrir un geste voué au refus. */}
+          {canManage ? (
+            <Button variant="outline" size="sm" onClick={() => setFixtureFormOpen(true)}>
+              <Plus className="size-4" />
+              Nouveau match
+            </Button>
+          ) : null}
+          {/* Le GESTE de placement est réservé au gestionnaire ; l'ÉTAT « en cours » (ci-dessous)
+              reste visible par tous. */}
+          {canManage ? (
+            <Button size="sm" disabled={placeBusy || placeRestricted || placeCreditsBlocked} onClick={() => runPlacement()}>
+              <Wand2 className="size-4" />
+              {/* Tant qu'un run tourne, le bouton reste « Placer automatiquement » mais DÉSACTIVÉ —
+                  l'avancement est porté par le bandeau « en cours » ci-dessous, pas par le libellé.
+                  Seul le bref POST (`isPending`) affiche « Placement… ». */}
+              {placeMatches.isPending ? "Placement…" : `Placer automatiquement${placeCreditSuffix}`}
+            </Button>
+          ) : null}
         </div>
         {/* Découverte : le placement global est fermé, on renvoie vers « Placer ce week-end ». */}
-        {placeRestricted ? (
+        {canManage && placeRestricted ? (
           <p className="text-sm text-muted-foreground">En offre Découverte, placez week-end par week-end depuis la vue Semaine.</p>
         ) : null}
       </div>
+
+      {/* État du placement ASYNCHRONE, visible par TOUS les membres (un autre onglet / un autre
+          membre voit aussi « en cours »). À 2 min, le message invite à quitter la page : role=status
+          (poli) l'annonce une fois au changement de texte, pas en boucle. */}
+      {runInFlight ? <NoticeBanner tone="accent" role="status" message={slowNotice ? PLACEMENT_SLOW : PLACEMENT_RUNNING} /> : null}
+      {null !== run && "FAILED" === run.status ? <NoticeBanner tone="destructive" role="alert" message={run.result?.error ?? PLACEMENT_FAILED_FALLBACK} /> : null}
 
       {/* Filtre PR-1 partagé (équipe/coach/gymnase). */}
       <MatchesFilterBar
@@ -479,7 +595,7 @@ export function CalendarPage() {
           {null === activeWeekend ? (
             <div className="flex flex-col items-start gap-3">
               <EmptyState icon={Upload} title="Aucun match importé" description="Importez vos rencontres FBI pour commencer la saison." />
-              {filterActive ? null : (
+              {filterActive || !canManage ? null : (
                 <Button variant="outline" size="sm" asChild>
                   <Link to="/matchs/importer">
                     <Upload className="size-4" />
@@ -533,9 +649,10 @@ export function CalendarPage() {
               onFocusConflict={focusConflict}
               onQuitFocus={quitFocus}
               onPlaceWeekend={runPlacement}
-              placePending={placeMatches.isPending}
+              placePending={placeBusy}
               placeCreditsBlocked={placeCreditsBlocked}
               placeCreditSuffix={placeCreditSuffix}
+              canManage={canManage}
             />
           )}
         </>
@@ -569,7 +686,7 @@ export function CalendarPage() {
           coachRoles={coachTeamRoles}
           onSelectFixture={onSelectFromTable}
           onFocusConflict={focusConflictFromTable}
-          onOpenFfbb={() => setFfbbDialogOpen(true)}
+          onOpenFfbb={canManage ? () => setFfbbDialogOpen(true) : undefined}
         />
       ) : null}
 
@@ -598,6 +715,7 @@ export function CalendarPage() {
             venues={venuesMap}
             competitions={competitionsMap}
             today={todayISO()}
+            canManage={canManage}
             busy={submitFixture.isPending || closeFbiCorrection.isPending || reopenFbiCorrection.isPending}
             onSubmit={(fixture) => submitFixture.mutate(fixture, { onSuccess: () => toast.success("Match marqué saisi dans FBI") })}
             onCorrected={(entries) => {

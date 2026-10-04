@@ -4,8 +4,10 @@
 # end-to-end timings, solver wall-time, queue waiting, RAM peaks vs limits, and
 # OOM kills. It MEASURES; it changes no quota, budget or worker count.
 #
-#   backend/scripts/load-test/run-load-test.sh [--clubs N] [--rounds R] [--no-limits]
+#   backend/scripts/load-test/run-load-test.sh [--mode generation|placement] [--clubs N] [--rounds R] [--no-limits]
 #
+# --mode generation (default): fires N concurrent async GENERATIONS and reports
+# end-to-end timings, solver wall-time, queue waiting, RAM peaks and OOM kills.
 # Two serializers stand between "N clubs at once" and "N solves at once", by
 # DESIGN — the report restates them so a slow lot is not misread as a bug:
 #   1. a SINGLE messenger-worker consumes the async queue one message at a time;
@@ -13,7 +15,18 @@
 # So generations queue up: club i's end-to-end legitimately includes the wait
 # behind clubs 1..i-1. "Wait" in the report = end-to-end − solver wall-time.
 #
-# Exit: 0 = every club reached COMPLETED across every round, 1 = any failure.
+# --mode placement: seeds fictional clubs at mixed sizes (small/medium/large),
+# each with a validated season plan + a fictional championship, then fires N
+# concurrent "Placer automatiquement" calls over a whole PHASE window, twice per
+# club. The rail is ASYNCHRONOUS (POST /api/fixtures/place → 202 + run id, ADR-0003):
+# each call is polled to its terminal run status, and the measured e2e covers queue
+# wait + solve. Pass 1 places the phase (the peak); between passes 30% of SOLVER
+# placements are frozen to MANUAL (anchors), and pass 2 re-places the rest. The report
+# shows HTTP + run status (409 / run FAILED / run TIMEOUT = a capacity SIGNAL, NOT a
+# harness failure), end-to-end timings and placed/unplaced counts per pass.
+#
+# Exit (generation): 0 = every club reached COMPLETED across every round, 1 = any
+# failure. Exit (placement): 0 unless a login/transport/no-run-id failure occurred.
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -21,6 +34,7 @@ ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 COMPOSE_BASE="$ROOT/docker-compose.yml"
 COMPOSE_LOAD="$ROOT/docker-compose.load.yml"
 GEN_SCRIPT="$ROOT/backend/scripts/generate-schedule.sh"
+PLACE_SCRIPT="$SCRIPT_DIR/place-matches.sh"
 API_BASE="http://localhost:8080/api"
 # redis://redis:6379/messages (backend/.env MESSENGER_TRANSPORT_DSN) — verified
 # against the live stream on the first sample below.
@@ -40,6 +54,7 @@ SERVICES=(php-fpm postgres redis messenger-worker engine pdf-worker mercure)
 CLUBS=5
 ROUNDS=1
 LIMITS=1
+MODE=generation
 
 GREEN=$'\033[0;32m'; RED=$'\033[0;31m'; YEL=$'\033[1;33m'; BLUE=$'\033[0;34m'; NC=$'\033[0m'
 info() { printf '%b==>%b %s\n' "$BLUE" "$NC" "$1"; }
@@ -51,7 +66,8 @@ usage() {
   cat <<EOF
 Usage: $(basename "$0") [OPTIONS]
 
-  --clubs N     Number of clubs generating at once (default 5, 1..99)
+  --mode M      generation (default) or placement
+  --clubs N     Number of clubs in the burst at once (default 5, 1..99)
   --rounds R    Repeat the burst R times (default 1)
   --no-limits   Do NOT apply the prod memory-limit overlay (measure uncapped)
   --help, -h    Show this help
@@ -65,6 +81,8 @@ while [[ $# -gt 0 ]]; do
     --rounds)    [[ $# -ge 2 ]] || die "--rounds requires a value"; ROUNDS="$2"; shift 2 ;;
     --rounds=*)  ROUNDS="${1#*=}"; shift ;;
     --no-limits) LIMITS=0; shift ;;
+    --mode)      [[ $# -ge 2 ]] || die "--mode requires a value"; MODE="$2"; shift 2 ;;
+    --mode=*)    MODE="${1#*=}"; shift ;;
     --help|-h)   usage; exit 0 ;;
     *)           die "Unknown option: $1" ;;
   esac
@@ -72,6 +90,16 @@ done
 
 [[ "$CLUBS" =~ ^[0-9]+$ && "$CLUBS" -ge 1 && "$CLUBS" -le 99 ]] || die "--clubs must be 1..99"
 [[ "$ROUNDS" =~ ^[0-9]+$ && "$ROUNDS" -ge 1 ]] || die "--rounds must be >= 1"
+[[ "$MODE" == "generation" || "$MODE" == "placement" ]] || die "--mode must be generation or placement"
+
+# Mode-dependent identities. Generation reuses the historical BcclSeeder clubs
+# (club-charge-N / charge-N@); placement uses the isolated fictional clubs
+# (club-placement-N / place-N@) and passes --with-matches to the seed command.
+if [[ "$MODE" == "placement" ]]; then
+  SLUG_PREFIX="club-placement-"; MANAGER_EMAIL_PREFIX="place-"; SEED_FLAGS=(--with-matches)
+else
+  SLUG_PREFIX="club-charge-"; MANAGER_EMAIL_PREFIX="charge-"; SEED_FLAGS=()
+fi
 
 # Compose invocation: base always, overlay only when limits are on.
 dc() {
@@ -90,8 +118,13 @@ DB_ADMIN_URL=$(cat "$ROOT/backend/.env" "$ROOT/backend/.env.local" 2>/dev/null \
   | awk -F= '$1=="DATABASE_ADMIN_URL" {sub(/^[^=]*=/,""); gsub(/"/,""); print}' | tail -n 1 || true)
 [[ -n "$DB_ADMIN_URL" ]] || die "DATABASE_ADMIN_URL not found in backend/.env(.local)"
 
+# `</dev/null` est CRUCIAL : `dc exec -T` (docker compose exec) hérite du stdin de
+# l'appelant. Appelé DANS une boucle `while read … done <fichier` (table du rapport),
+# il avalait sinon le reste du fichier → la boucle s'arrêtait après la 1ʳᵉ ligne
+# (rapport « à une seule ligne »). psql lit son SQL via `-c`, jamais le stdin : le
+# fermer ici est sans effet de bord et protège tous les appels, en boucle ou non.
 psql_admin() { dc exec -T -e DATABASE_URL="$DB_ADMIN_URL" postgres \
-  psql -U amateo_owner -d "$SANDBOX_DB" -tA -c "$1"; }
+  psql -U amateo_owner -d "$SANDBOX_DB" -tA -c "$1" </dev/null; }
 
 # ---------------------------------------------------------------------------
 # Pre-flight
@@ -130,16 +163,26 @@ info "artifacts → $OUT"
 # ---------------------------------------------------------------------------
 # Seed N throwaway clubs (admin connection; dev-only command)
 # ---------------------------------------------------------------------------
-info "seeding $CLUBS load-test club(s)"
+# Placement needs the GLOBAL league-window catalog so each seeded club gets its
+# ClubLeagueWindow copy (the solver bounds kickoffs by it). Idempotent, global,
+# no admin connection — mirrors `make play` / `make seed-league`.
+if [[ "$MODE" == "placement" ]]; then
+  info "seeding league-window catalog (global, idempotent)"
+  dc exec -T -e APP_ENV=dev php-fpm \
+    php bin/console app:league-windows:seed --no-interaction >/dev/null \
+    || warn "league-windows seed failed — ClubLeagueWindow copies may be empty (solver loses league kickoff bounds)"
+fi
+
+info "seeding $CLUBS load-test club(s) [mode: $MODE]"
 dc exec -T -e APP_ENV=dev -e DATABASE_URL="$DB_ADMIN_URL" php-fpm \
-  php bin/console app:load-test:seed-clubs --count="$CLUBS" \
+  php bin/console app:load-test:seed-clubs --count="$CLUBS" "${SEED_FLAGS[@]}" \
   || die "seeding failed"
 
 # Resolve each club id by its deterministic slug.
 declare -A CLUB_ID
 for ((i = 1; i <= CLUBS; i++)); do
-  id=$(psql_admin "SELECT id FROM club WHERE slug='club-charge-$i'" | tr -d '[:space:]')
-  [[ -n "$id" ]] || die "could not resolve club id for club-charge-$i"
+  id=$(psql_admin "SELECT id FROM club WHERE slug='${SLUG_PREFIX}$i'" | tr -d '[:space:]')
+  [[ -n "$id" ]] || die "could not resolve club id for ${SLUG_PREFIX}$i"
   CLUB_ID[$i]="$id"
 done
 ok "resolved $CLUBS club id(s)"
@@ -205,7 +248,12 @@ trap cleanup EXIT
 # ---------------------------------------------------------------------------
 BURST_TIMEOUT=$((CLUBS * 700))
 CLUBS_CSV="$OUT/clubs.csv"
-echo "round,club,slug,club_id,start_epoch,end_epoch,e2e_s,exit_code,status,score" >"$CLUBS_CSV"
+PLACE_CSV="$OUT/placements.csv"
+if [[ "$MODE" == "placement" ]]; then
+  echo "round,pass,club,slug,club_id,from,to,http,run,e2e_s,placed,skipped,unplaced" >"$PLACE_CSV"
+else
+  echo "round,club,slug,club_id,start_epoch,end_epoch,e2e_s,exit_code,status,score" >"$CLUBS_CSV"
+fi
 
 run_one_club() {
   local round="$1" i="$2" club_id="$3"
@@ -233,12 +281,74 @@ run_one_club() {
   echo "$round,$i,club-charge-$i,$club_id,$start,$end,$((end - start)),$rc,$status,$score" >>"$CLUBS_CSV"
 }
 
+# Placement: ASYNC POST /api/fixtures/place (202 + run, polled to terminal) over the
+# club's PHASE-1 window, TWICE. Pass 1 places the whole phase (the peak). Between the
+# passes, 30% of pass-1 SOLVER placements are FROZEN to MANUAL — a manager keeping part
+# of the result by hand (ADR-0003 §5: SOLVER = re-plaçable, MANUAL = ancre FIXED). Pass 2
+# then re-places the REST around those anchors (adjustment), instead of blindly redoing
+# the identical pass 1. The phase window is the span of the "Championnat Phase 1" comps.
+run_one_placement_club() {
+  local round="$1" i="$2" club_id="$3"
+  local slug="${SLUG_PREFIX}$i"
+  local win from to
+  win=$(psql_admin "SELECT COALESCE(min(start_date)::text,'')||'|'||COALESCE(max(end_date)::text,'') FROM competition WHERE club_id='$club_id' AND name = 'Championnat Phase 1'" | tr -d '[:space:]')
+  from="${win%%|*}"; to="${win##*|}"
+  if [[ -z "$from" || -z "$to" ]]; then
+    echo "$round,-,$i,$slug,$club_id,,,NOWIN,-,0,-,-,-" >>"$PLACE_CSV"
+    return
+  fi
+  local pass
+  for pass in 1 2; do
+    # Entre les deux passes : gèle 30% des placements SOLVER de la passe 1 en MANUAL
+    # (gestionnaire qui en garde une partie à la main). Ces ancres FIXED ne bougent plus ;
+    # la passe 2 replace le reste autour d'elles — un vrai geste d'ajustement, pas un
+    # rejeu à l'identique. GREATEST(1, …) garantit au moins une ancre dès qu'un match a été
+    # placé. Déterministe (ORDER BY id) pour un tir reproductible.
+    if [[ "$pass" -eq 2 ]]; then
+      psql_admin "UPDATE fixture SET placement_source='MANUAL'
+        WHERE id IN (
+          SELECT id FROM fixture
+          WHERE club_id='$club_id' AND status='PLACED' AND placement_source='SOLVER'
+            AND match_date BETWEEN '$from' AND '$to'
+          ORDER BY id
+          LIMIT GREATEST(1, (
+            SELECT (count(*)*3/10)::int FROM fixture
+            WHERE club_id='$club_id' AND status='PLACED' AND placement_source='SOLVER'
+              AND match_date BETWEEN '$from' AND '$to'))
+        )" >/dev/null 2>&1 || warn "freeze 30% MANUAL (pass 2) failed for $slug — pass 2 re-places everything"
+    fi
+    local log="$OUT/round-${round}_${slug}_pass-${pass}.log"
+    local start end http run placed skipped unplaced e2e line
+    start=$(date +%s)
+    SCHEDULER_EMAIL="${MANAGER_EMAIL_PREFIX}$i@${MANAGER_EMAIL_DOMAIN}" \
+    SCHEDULER_PASSWORD="$MANAGER_PASSWORD" \
+      "$PLACE_SCRIPT" --club-id "$club_id" --from "$from" --to "$to" >"$log" 2>&1 || true
+    end=$(date +%s)
+    # The machine-readable PLACE_RESULT line carries http/run/e2e/placed/skipped/unplaced;
+    # absent (empty) line = login/transport death before the call → http ERR, run ERR.
+    line=$(grep '^PLACE_RESULT' "$log" | tail -1 || true)
+    http=$(sed -n 's/.*http=\([^ ]*\).*/\1/p' <<<"$line"); [[ -z "$http" ]] && http="ERR"
+    run=$(sed -n 's/.*run=\([^ ]*\).*/\1/p' <<<"$line"); [[ -z "$run" ]] && run="ERR"
+    e2e=$(sed -n 's/.*e2e_s=\([^ ]*\).*/\1/p' <<<"$line"); [[ -z "$e2e" ]] && e2e="$((end - start))"
+    placed=$(sed -n 's/.*placed=\([^ ]*\).*/\1/p' <<<"$line"); [[ -z "$placed" ]] && placed="-"
+    skipped=$(sed -n 's/.*skipped=\([^ ]*\).*/\1/p' <<<"$line"); [[ -z "$skipped" ]] && skipped="-"
+    unplaced=$(sed -n 's/.*unplaced=\([^ ]*\).*/\1/p' <<<"$line"); [[ -z "$unplaced" ]] && unplaced="-"
+    echo "$round,$pass,$i,$slug,$club_id,$from,$to,$http,$run,$e2e,$placed,$skipped,$unplaced" >>"$PLACE_CSV"
+  done
+}
+
 LOT_START=$(date +%s)
 for ((r = 1; r <= ROUNDS; r++)); do
-  info "round $r/$ROUNDS — launching $CLUBS concurrent generation(s)"
+  if [[ "$MODE" == "placement" ]]; then
+    info "round $r/$ROUNDS — launching $CLUBS concurrent placement(s), 2 passes each"
+    runner=run_one_placement_club
+  else
+    info "round $r/$ROUNDS — launching $CLUBS concurrent generation(s)"
+    runner=run_one_club
+  fi
   pids=()
   for ((i = 1; i <= CLUBS; i++)); do
-    run_one_club "$r" "$i" "${CLUB_ID[$i]}" &
+    "$runner" "$r" "$i" "${CLUB_ID[$i]}" &
     pids+=($!)
   done
   for p in "${pids[@]}"; do wait "$p" || true; done
@@ -254,17 +364,19 @@ trap - EXIT
 # Post-lot facts from the DB (solver wall-time, final status, timestamps)
 # ---------------------------------------------------------------------------
 declare -A DB_WALL DB_STATUS
-while IFS='|' read -r slug status wall; do
-  [[ -z "$slug" ]] && continue
-  # Keep the FIRST row per slug (query is ordered newest-first).
-  if [[ -z "${DB_WALL[$slug]:-}" ]]; then
-    DB_WALL[$slug]="${wall:-}"
-    DB_STATUS[$slug]="$status"
-  fi
-done < <(psql_admin "SELECT c.slug, s.status, s.solver_wall_time_ms
-                     FROM schedule s JOIN club c ON c.id = s.club_id
-                     WHERE c.slug LIKE 'club-charge-%'
-                     ORDER BY c.slug, s.created_at DESC" | tr -s ' ')
+if [[ "$MODE" == "generation" ]]; then
+  while IFS='|' read -r slug status wall; do
+    [[ -z "$slug" ]] && continue
+    # Keep the FIRST row per slug (query is ordered newest-first).
+    if [[ -z "${DB_WALL[$slug]:-}" ]]; then
+      DB_WALL[$slug]="${wall:-}"
+      DB_STATUS[$slug]="$status"
+    fi
+  done < <(psql_admin "SELECT c.slug, s.status, s.solver_wall_time_ms
+                       FROM schedule s JOIN club c ON c.id = s.club_id
+                       WHERE c.slug LIKE 'club-charge-%'
+                       ORDER BY c.slug, s.created_at DESC" | tr -s ' ')
+fi
 
 # OOM kills per container.
 declare -A OOM
@@ -304,6 +416,8 @@ peak_queue=$(awk -F, 'NR>1 && $3 ~ /^[0-9]+$/ {if ($3>m) m=$3} END{print m+0}' "
 # Markdown report
 # ---------------------------------------------------------------------------
 completed=0; total_rows=0; login_failed=0
+place_rows=0; place_err=0; place_signal=0; place_completed=0; place_failed=0
+declare -A TEAMS_OF
 {
   echo "# Load-test report — $STAMP"
   echo
@@ -313,46 +427,92 @@ completed=0; total_rows=0; login_failed=0
   echo "- Messenger stream: \`$STREAM\` (existence verified: $([[ "$STREAM_VERIFIED" -eq 1 ]] && echo yes || echo 'no / drained at first sample'))   peak queue length: **$peak_queue**"
   echo "- Lot wall-clock: **${LOT_DURATION}s**"
   echo
-  echo "> Two serializers by design: a SINGLE messenger-worker (one async message"
-  echo "> at a time) and the engine's global \`max_concurrent_solves=1\`. Generations"
-  echo "> therefore queue; a club's wait = end-to-end − solver wall-time."
-  echo
-  echo "## Per club (all rounds)"
-  echo
-  echo "| Round | Club | Status (run/db) | End-to-end (s) | Solver wall (s) | Wait (s) | Score |"
-  echo "|------:|:-----|:----------------|---------------:|----------------:|---------:|:------|"
-  while IFS=, read -r round club slug club_id start end e2e rc status score; do
-    [[ "$round" == "round" ]] && continue
-    total_rows=$((total_rows + 1))
-    [[ "$status" == "COMPLETED" ]] && completed=$((completed + 1))
-    [[ "$status" == "LOGIN_FAILED" ]] && login_failed=$((login_failed + 1))
-    wall_ms="${DB_WALL[$slug]:-}"
-    if [[ -n "$wall_ms" && "$wall_ms" =~ ^[0-9]+$ ]]; then
-      wall_s=$(python3 -c "print(round($wall_ms/1000,1))")
-      wait_s=$(python3 -c "print(round($e2e - $wall_ms/1000,1))")
-    else
-      wall_s="-"; wait_s="-"
+  if [[ "$MODE" == "placement" ]]; then
+    echo "> Placement is ASYNCHRONOUS (POST /api/fixtures/place → 202 + run id, polled"
+    echo "> to terminal, ADR-0003): the e2e (s) column is BOTH queue wait and solve, as"
+    echo "> for generation. Each club places its whole PHASE-1 window twice — pass 1 places"
+    echo "> the phase (the peak); between passes 30% of SOLVER placements are frozen to"
+    echo "> MANUAL (anchors), pass 2 re-places the rest (adjustment). Mixed sizes: see the"
+    echo "> \`Équipes\` column. HTTP 409 / run FAILED / run TIMEOUT are capacity SIGNALS."
+    echo
+    echo "## Placement par club (tous passages)"
+    echo
+    echo "| Round | Pass | Club | Équipes | HTTP | Run | e2e (s) | placed | unplaced |"
+    echo "|------:|-----:|:-----|--------:|:-----|:----|--------:|-------:|---------:|"
+    while IFS=, read -r round pass club slug club_id from to http run e2e placed skipped unplaced; do
+      [[ "$round" == "round" ]] && continue
+      place_rows=$((place_rows + 1))
+      teams="${TEAMS_OF[$slug]:-}"
+      if [[ -z "$teams" ]]; then
+        teams=$(psql_admin "SELECT count(*) FROM team WHERE club_id='$club_id'" | tr -d '[:space:]')
+        [[ -z "$teams" ]] && teams="?"
+        TEAMS_OF[$slug]="$teams"
+      fi
+      # Verdict combiné HTTP + run : 202→COMPLETED (ou 200 « rien à placer ») = succès ;
+      # 409/429 ou run FAILED/TIMEOUT = signal de charge ; tout le reste = erreur harnais.
+      case "$http" in
+        200|201) place_completed=$((place_completed + 1)) ;;
+        202)
+          case "$run" in
+            COMPLETED) place_completed=$((place_completed + 1)) ;;
+            FAILED)    place_failed=$((place_failed + 1)); place_signal=$((place_signal + 1)) ;;
+            TIMEOUT)   place_signal=$((place_signal + 1)) ;;
+            *)         place_err=$((place_err + 1)) ;;
+          esac ;;
+        409|429|502) place_signal=$((place_signal + 1)) ;;
+        *)           place_err=$((place_err + 1)) ;;
+      esac
+      echo "| $round | $pass | $slug | $teams | $http | $run | $e2e | $placed | $unplaced |"
+    done <"$PLACE_CSV"
+    echo
+    echo "- **$place_rows** placement call(s) = $CLUBS club(s) × 2 pass(es) × $ROUNDS round(s)"
+    echo "- Runs **COMPLETED: $place_completed**   **FAILED: $place_failed**"
+    echo "- HTTP 409/429 / run FAILED / run TIMEOUT = **capacity signal** (socle/lock, rate-limit, engine), NOT a harness failure: **$place_signal**"
+    if [[ "$place_err" -gt 0 ]]; then
+      echo "- ⚠ **$place_err call(s) in ERROR** (login refusé / transport / no phase window / no run id) — seeded accounts \`place-N@${MANAGER_EMAIL_DOMAIN}\` / \`${MANAGER_PASSWORD}\` (\`LoadTestClubSeeder\`); detail: \`round-*_pass-*.log\`."
     fi
-    echo "| $round | $slug | $status / ${DB_STATUS[$slug]:-?} | $e2e | $wall_s | $wait_s | $score |"
-  done <"$CLUBS_CSV"
-  echo
-  # Throughput: completed generations per hour over the lot.
-  if [[ "$LOT_DURATION" -gt 0 ]]; then
-    thr=$(python3 -c "print(round($completed*3600/$LOT_DURATION,1))")
   else
-    thr="-"
+    echo "> Two serializers by design: a SINGLE messenger-worker (one async message"
+    echo "> at a time) and the engine's global \`max_concurrent_solves=1\`. Generations"
+    echo "> therefore queue; a club's wait = end-to-end − solver wall-time."
+    echo
+    echo "## Per club (all rounds)"
+    echo
+    echo "| Round | Club | Status (run/db) | End-to-end (s) | Solver wall (s) | Wait (s) | Score |"
+    echo "|------:|:-----|:----------------|---------------:|----------------:|---------:|:------|"
+    while IFS=, read -r round club slug club_id start end e2e rc status score; do
+      [[ "$round" == "round" ]] && continue
+      total_rows=$((total_rows + 1))
+      [[ "$status" == "COMPLETED" ]] && completed=$((completed + 1))
+      [[ "$status" == "LOGIN_FAILED" ]] && login_failed=$((login_failed + 1))
+      wall_ms="${DB_WALL[$slug]:-}"
+      if [[ -n "$wall_ms" && "$wall_ms" =~ ^[0-9]+$ ]]; then
+        wall_s=$(python3 -c "print(round($wall_ms/1000,1))")
+        wait_s=$(python3 -c "print(round($e2e - $wall_ms/1000,1))")
+      else
+        wall_s="-"; wait_s="-"
+      fi
+      echo "| $round | $slug | $status / ${DB_STATUS[$slug]:-?} | $e2e | $wall_s | $wait_s | $score |"
+    done <"$CLUBS_CSV"
+    echo
+    # Throughput: completed generations per hour over the lot.
+    if [[ "$LOT_DURATION" -gt 0 ]]; then
+      thr=$(python3 -c "print(round($completed*3600/$LOT_DURATION,1))")
+    else
+      thr="-"
+    fi
+    echo "- **$completed / $total_rows** generation(s) COMPLETED"
+    if [[ "$login_failed" -gt 0 ]]; then
+      echo "- ⚠ **$login_failed club(s) LOGIN_FAILED** — le harnais s'est connecté avec un identifiant refusé (HTTP 401). Les comptes semés sont \`charge-N@${MANAGER_EMAIL_DOMAIN}\` / mot de passe \`${MANAGER_PASSWORD}\` (\`BcclSeedProfile::loadTest()\`) ; vérifier \`MANAGER_EMAIL_DOMAIN\` en tête de script. Détail par club : \`round-*_club-*.log\`."
+    fi
+    echo "- Throughput: **$thr** completed generation(s) / hour"
   fi
-  echo "- **$completed / $total_rows** generation(s) COMPLETED"
-  if [[ "$login_failed" -gt 0 ]]; then
-    echo "- ⚠ **$login_failed club(s) LOGIN_FAILED** — le harnais s'est connecté avec un identifiant refusé (HTTP 401). Les comptes semés sont \`charge-N@${MANAGER_EMAIL_DOMAIN}\` / mot de passe \`${MANAGER_PASSWORD}\` (\`BcclSeedProfile::loadTest()\`) ; vérifier \`MANAGER_EMAIL_DOMAIN\` en tête de script. Détail par club : \`round-*_club-*.log\`."
-  fi
-  echo "- Throughput: **$thr** completed generation(s) / hour"
   echo
   echo "## Peak RAM per container vs limit"
   echo
   echo "| Container | Peak RAM (MiB) | Prod limit | OOMKilled |"
   echo "|:----------|---------------:|:-----------|:----------|"
-  declare -A LIMIT_MB=( [php-fpm]=1024 [postgres]=512 [redis]=256 [messenger-worker]=384 [engine]=512 [pdf-worker]=512 [mercure]=128 )
+  declare -A LIMIT_MB=( [php-fpm]=1024 [postgres]=512 [redis]=256 [messenger-worker]=384 [engine]=1024 [pdf-worker]=512 [mercure]=512 )
   for svc in "${SERVICES[@]}"; do
     cname=$(docker inspect --format '{{.Name}}' "${CID[$svc]}" 2>/dev/null | sed 's#^/##')
     [[ -z "$cname" ]] && cname="$svc"
@@ -364,10 +524,18 @@ completed=0; total_rows=0; login_failed=0
   echo
   echo "## Artifacts"
   echo
-  echo "- Per-club timings: \`clubs.csv\`"
+  if [[ "$MODE" == "placement" ]]; then
+    echo "- Per-pass placements: \`placements.csv\`"
+  else
+    echo "- Per-club timings: \`clubs.csv\`"
+  fi
   echo "- Resource samples (5s): \`stats.csv\`"
   echo "- Queue length (5s): \`queue.csv\`"
-  echo "- Per-run logs: \`round-*_club-*.log\`"
+  if [[ "$MODE" == "placement" ]]; then
+    echo "- Per-run logs: \`round-*_pass-*.log\`"
+  else
+    echo "- Per-run logs: \`round-*_club-*.log\`"
+  fi
 } >"$REPORT"
 
 echo
@@ -376,6 +544,14 @@ cat "$REPORT"
 echo
 if [[ "$LIMITS" -eq 1 ]]; then
   warn "Teardown reminder: drop the load overlay with — docker compose -f docker-compose.yml up -d"
+fi
+
+if [[ "$MODE" == "placement" ]]; then
+  if [[ "$place_err" -eq 0 ]]; then
+    ok "placement burst done — $place_signal capacity signal(s) (409/429/502), no harness error"
+    exit 0
+  fi
+  die "placement harness error on $place_err call(s) — login refusé / transport / no phase window; see report."
 fi
 
 if [[ "$completed" -eq "$total_rows" && "$total_rows" -gt 0 ]]; then

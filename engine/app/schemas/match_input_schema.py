@@ -216,8 +216,10 @@ class MatchPlacementInputSchema(SerializableModel):
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     solver_seed: int = Field(default=42, alias="solverSeed")
-    # 30 s default; the payload value is a CEILING, capped at 60 s — this
-    # problem is tiny (~10^4 booleans), a long budget only hides a modelling bug.
+    # Budget PAR SEMAINE ISO (ENG-50) : le moteur découpe la demande semaine par
+    # semaine et accorde ce budget À CHACUNE. 30 s par défaut ; valeur = plafond,
+    # capée à 60 s — chaque semaine est minuscule (~10^4 booléens), un budget long
+    # ne masque qu'un bug de modélisation. Le backend envoie 35 (par semaine).
     solver_timeout_seconds: int = Field(default=30, alias="solverTimeoutSeconds", ge=1, le=MAX_TIMEOUT_SECONDS)
     matches: list[MatchSchema] = Field(default_factory=list, max_length=MAX_MATCHES)
     venues: list[MatchVenueSchema] = Field(default_factory=list, max_length=MAX_MATCH_VENUES)

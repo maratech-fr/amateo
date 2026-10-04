@@ -16,6 +16,7 @@ use App\Enum\SeasonStatus;
 use App\EventListener\CreditBudgetSubscriber;
 use App\Exception\ImportRejectedException;
 use App\Service\Basketball\FfbbExcelImporter;
+use App\Service\OutputCreditLedger;
 use App\Service\PlanEntitlements;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -148,16 +149,18 @@ final class PlanEntitlementsTest extends WebTestCase
     }
 
     /**
-     * Une fenêtre Lun→Dim (7 jours) PASSE la porte crédit ; sans match à placer le contrôleur
-     * répond 200 « Aucun match à placer » et le subscriber décompte 1 crédit (1 clic = 1 crédit).
+     * Une fenêtre Lun→Dim (7 jours) PASSE la porte crédit (pas de 403). Sans match à placer le
+     * contrôleur répond 200 « Aucun match à placer » : aucun run enfilé, donc AUCUN crédit — le
+     * placement est désormais asynchrone et le crédit se décompte AU SUCCÈS dans le worker
+     * (couvert par PlaceMatchesHandlerTest), jamais sur le 202 ni sur un « rien à placer ».
      */
-    public function testRestrictedAllowsAWeekWindowAndDecrementsOneCredit(): void
+    public function testRestrictedAllowsAWeekWindowAndNothingToPlaceDoesNotDecrement(): void
     {
         $ctx = $this->seedClub(credits: 0, settleSocle: true);
 
         // Lun 5 → Dim 11 oct. : 7 jours calendaires, la borne exacte acceptée.
         self::assertSame(200, $this->postJson($ctx['user'], '/api/fixtures/place', ['from' => '2026-10-05', 'to' => '2026-10-11']), 'une fenêtre d\'une semaine doit passer en Découverte');
-        self::assertSame(1, $this->creditsOf($ctx['club']->getId()), 'un placement week-end réussi décompte 1 crédit');
+        self::assertSame(0, $this->creditsOf($ctx['club']->getId()), '« rien à placer » ne crée pas de run et ne décompte aucun crédit');
     }
 
     /** Hors mode restreint (offre payante), un placement SANS fenêtre reste libre (aucun 403). */
@@ -182,10 +185,13 @@ final class PlanEntitlementsTest extends WebTestCase
         $this->fireResponse($ctx, 'generate_schedule', 202); // dispatch accepté = LA sortie
         self::assertSame(1, $this->creditsOf($ctx['club']->getId()), 'un 202 accepté décompte une sortie');
 
-        // Le placement de matchs (200) et l'export PDF (202) décomptent aussi.
-        $this->fireResponse($ctx, 'api_fixtures_place', 200);
+        // L'export PDF (202) décompte aussi à la réponse. Le PLACEMENT, lui, N'EST PLUS décompté
+        // à la réponse (son 202 = sortie enfilée, pas produite) : le worker le décompte au
+        // COMPLETED (couvert par PlaceMatchesHandlerTest) — firer sa réponse ne doit rien brûler.
+        $this->fireResponse($ctx, 'api_fixtures_place', 202);
+        self::assertSame(1, $this->creditsOf($ctx['club']->getId()), 'le 202 du placement ne décompte pas à la réponse');
         $this->fireResponse($ctx, 'export_pdf', 202);
-        self::assertSame(3, $this->creditsOf($ctx['club']->getId()), 'chaque sortie réussie consomme un crédit');
+        self::assertSame(2, $this->creditsOf($ctx['club']->getId()), 'chaque sortie synchrone réussie consomme un crédit');
     }
 
     /** Payant, bêta et démo : jamais bridés (outputBudget), jamais décomptés, jamais refusés business. */
@@ -471,7 +477,7 @@ final class PlanEntitlementsTest extends WebTestCase
         $subscriber = new CreditBudgetSubscriber(
             self::getContainer()->get(PlanEntitlements::class),
             $this->em,
-            $this->em->getConnection(),
+            new OutputCreditLedger($this->em->getConnection()),
         );
 
         $request = new Request;

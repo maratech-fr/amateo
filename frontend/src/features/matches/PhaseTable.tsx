@@ -28,8 +28,9 @@ interface PhaseTableProps {
   coachRoles?: Map<string, CoachTeamRole>;
   onSelectFixture: (fixtureId: string) => void;
   onFocusConflict: (conflict: Conflict) => void;
-  /** Ouvre le dialogue « Engagements FFBB » (état « aucune compétition appariée »). */
-  onOpenFfbb: () => void;
+  /** Ouvre le dialogue « Engagements FFBB » (état « aucune compétition appariée »). Appariement =
+   *  geste gestionnaire (2026-10-04) : absent (membre) ⇒ pas de bouton, l'état vide reste visible. */
+  onOpenFfbb?: () => void;
 }
 
 /**
@@ -43,10 +44,12 @@ export function PhaseTable({ phaseCount, groups, competition, teams, venues, coa
     return (
       <div className="flex flex-col items-start gap-3">
         <EmptyState icon={Link2} title="Aucune compétition appariée" description="Appariez une compétition FFBB à une de vos équipes pour la consulter par phase." />
-        <Button variant="outline" size="sm" onClick={onOpenFfbb}>
-          <Link2 className="size-4" />
-          Engagements FFBB
-        </Button>
+        {undefined !== onOpenFfbb ? (
+          <Button variant="outline" size="sm" onClick={onOpenFfbb}>
+            <Link2 className="size-4" />
+            Engagements FFBB
+          </Button>
+        ) : null}
       </div>
     );
   }

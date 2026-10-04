@@ -281,7 +281,10 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
-    mem_limit: 512m
+    # Pic de placement mesuré 378 Mio après le découpage par semaine ISO ; 1g = filet,
+    # le vrai correctif est le processus fils jetable + le découpage (le solve ne vit
+    # plus dans uvicorn).
+    mem_limit: 1g
     restart: unless-stopped
     <<: *logging
     networks:
@@ -341,7 +344,9 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
-    mem_limit: 128m
+    # Le hub porte désormais un 3ᵉ topic par club (placement async) en plus de la
+    # génération et des trajets : marge au-dessus du plancher d'origine.
+    mem_limit: 512m
     restart: unless-stopped
     <<: *logging
     networks:

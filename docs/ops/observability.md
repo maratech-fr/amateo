@@ -34,6 +34,18 @@ front (ky beforeRequest : crypto.randomUUID → X-Request-Id)
   pleine arrive avec Sentry (les tags `request_id` sont posés partout, inertes tant que les
   DSN sont vides) et un éventuel shipping futur.
 
+## Sentry — filtre `before_send` backend (2026-10-03)
+
+Un refus HTTP **client** (statut < 500 — `NotFoundHttpException`, `MethodNotAllowedHttpException`,
+`BadRequestHttpException`, `AccessDeniedHttpException`, `UnauthorizedHttpException`…) n'est PLUS
+envoyé à Sentry : `App\Sentry\BeforeSend` (`backend/config/packages/sentry.yaml`, `before_send`)
+filtre sur le statut de toute `HttpExceptionInterface`, pas sur une liste fermée de classes — un
+scan de robot (404/405/400/401/403 en rafale) n'inonde plus le projet de faux positifs. Les 5xx
+(vraie panne serveur), les échecs Messenger et les erreurs de commande console passent tels quels
+(aucun statut HTTP < 500 à filtrer). `Symfony\Component\Security\Core\Exception\AccessDeniedException`
+(distincte de la `HttpException` du même nom) est écartée séparément via `ignore_exceptions` dans le
+même fichier de config. Gardé par `backend/tests/Unit/Sentry/BeforeSendTest.php`.
+
 ## Se servir de la corrélation (support)
 
 1. Le club donne la « réf. incident » affichée (8 chars) — ou le canal signalement la joint.

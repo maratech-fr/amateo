@@ -100,6 +100,11 @@ interface WeekWorkbenchProps {
   placeCreditsBlocked: boolean;
   /** Suffixe de crédits « (n) » en offre Découverte, "" sinon (même affichage que le bouton global). */
   placeCreditSuffix: string;
+  /** Décision fondateur 2026-10-04 : tout le monde VOIT, seul le gestionnaire AGIT. `false`
+   *  masque tous les gestes d'écriture de l'établi (placer ce week-end, panneau de placement,
+   *  crayon/corbeille des extérieurs) — les lectures (grille, liste « À placer », radar,
+   *  bandeaux) restent visibles. Le backend reste seul juge (403). */
+  canManage: boolean;
 }
 
 /**
@@ -146,6 +151,7 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
     placePending,
     placeCreditsBlocked,
     placeCreditSuffix,
+    canManage,
   } = props;
 
   const { selectedFixtureId, setSelectedFixtureId, highlightedFixtureIds, swapSourceId, setSwapSourceId, unplacedReasons, setSelectedWeekend } = useMatchesStore();
@@ -261,7 +267,9 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
   // (FBI/FFBB) s'ouvre en LECTURE SEULE (la fédération en est la source). MÊME logique pour le
   // clic grille ET le crayon de la bande « À l'extérieur » : une seule maison, jamais deux chemins.
   function openAway(fixture: Fixture): void {
-    if (isEditableAway(fixture)) {
+    // Un non-gestionnaire ne peut rien éditer : même un extérieur saisi à la main s'ouvre en
+    // fiche LECTURE SEULE (décision fondateur 2026-10-04) — l'édition est un geste réservé.
+    if (canManage && isEditableAway(fixture)) {
       onEditFixture(fixture);
     } else {
       setAwayReadOnly(fixture);
@@ -364,19 +372,21 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
     <div className="grid gap-4 lg:grid-cols-[minmax(18rem,20rem)_minmax(0,1fr)]">
       <div className="flex flex-col gap-4">
         {/* P4-240 ④ — place la SEULE semaine affichée (fenêtre Lun→Dim), le seul rail de
-            placement automatique ouvert en offre Découverte. */}
-        <Button
-          size="sm"
-          className="w-full"
-          disabled={placePending || placeCreditsBlocked}
-          onClick={() => {
-            const { monday, sunday } = weekBounds(activeWeekend);
-            onPlaceWeekend({ from: monday, to: sunday });
-          }}
-        >
-          <Wand2 className="size-4" />
-          {placePending ? "Placement…" : `Placer ce week-end${placeCreditSuffix}`}
-        </Button>
+            placement automatique ouvert en offre Découverte. Geste gestionnaire (2026-10-04). */}
+        {canManage ? (
+          <Button
+            size="sm"
+            className="w-full"
+            disabled={placePending || placeCreditsBlocked}
+            onClick={() => {
+              const { monday, sunday } = weekBounds(activeWeekend);
+              onPlaceWeekend({ from: monday, to: sunday });
+            }}
+          >
+            <Wand2 className="size-4" />
+            {placePending ? "Placement…" : `Placer ce week-end${placeCreditSuffix}`}
+          </Button>
+        ) : null}
         <Card>
           <CardHeader>
             <CardTitle id={PLACE_HEADING_ID} tabIndex={-1} className="text-base outline-none">
@@ -387,7 +397,10 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
             <UnplacedList fixtures={filteredFixtures} teams={teamsMap} selectedFixtureId={selectedFixtureId} unplacedReasons={unplacedReasons} coachRoles={coachRoles} onSelect={setSelectedFixtureId} />
           </CardContent>
         </Card>
-        {panelSlot}
+        {/* Le panneau de placement (et son placeholder) est un établi d'ÉCRITURE : réservé au
+            gestionnaire (2026-10-04). Un membre sélectionne/survole la grille en lecture, sans
+            panneau d'action. */}
+        {canManage ? panelSlot : null}
       </div>
       <div className="flex min-w-0 flex-col gap-2">
         {/* Correctif 2 — bandeau de focus d'un conflit, en tête de la semaine. */}
@@ -413,7 +426,16 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
             showTravel={grid.cells.some((c) => true === c.hasTravel)}
           />
         </div>
-        <AwayList fixtures={weekendFixtures} teams={teamsMap} habits={habits} coachRoles={coachRoles} onEdit={openAway} onDelete={(fixture) => deleteFixture.mutate(fixture.id)} />
+        {/* Bande des extérieurs : crayon/corbeille seulement pour le gestionnaire (2026-10-04) —
+            sans handlers, `AwayList` rend sa bande en LECTURE SEULE (mécanisme existant). */}
+        <AwayList
+          fixtures={weekendFixtures}
+          teams={teamsMap}
+          habits={habits}
+          coachRoles={coachRoles}
+          onEdit={canManage ? openAway : undefined}
+          onDelete={canManage ? (fixture) => deleteFixture.mutate(fixture.id) : undefined}
+        />
         {radarLoaded ? <ConflictRadar conflicts={radarConflicts} teams={teamsMap} coaches={coachesMap} venues={venuesMap} newFingerprints={newFingerprints} onFocusConflict={onFocusConflict} /> : null}
       </div>
       {null !== awayReadOnly ? (

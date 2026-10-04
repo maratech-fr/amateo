@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Mercure;
 
+use App\Service\MatchPlacementLock;
 use App\Service\TravelComputeLock;
 
 /**
@@ -61,5 +62,17 @@ final class MercureTopic
     public static function forTravel(string $clubId): string
     {
         return \sprintf('club:%s:travel', $clubId);
+    }
+
+    /**
+     * Le topic du PLACEMENT ASYNCHRONE des matchs d'un club : `club:{clubId}:placement`.
+     * UN topic FIXE par club (pas de joker `{id}` : un seul placement à la fois par club,
+     * cf. {@see MatchPlacementLock}), sur lequel on PUBLIE la bascule terminale
+     * du run (COMPLETED/FAILED) ET auquel le JWT d'abonnement autorise à s'abonner tel quel
+     * (aucune interpolation d'identifiant variable — la frontière de sécurité reste le club).
+     */
+    public static function forPlacement(string $clubId): string
+    {
+        return \sprintf('club:%s:placement', $clubId);
     }
 }

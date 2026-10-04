@@ -1,10 +1,9 @@
-Last verified @ 2026-10-03 (deux changements additifs du jour, régénéré depuis le backend courant :
-`membershipStatus` de `POST /api/register/verify` gagne `club_pending` (reprise d'un club sans membre
-par approbation) ; `indeterminate: boolean|null` sur les 3 réponses 200 de `ManualEditPaths` (ENG-51) ;
-aucun path ajouté ni retiré).
+Last verified @ 2026-10-04 (placement des matchs ASYNCHRONE — `POST /api/fixtures/place` répond
+désormais 202 (run enfilé) en plus du 200 « rien à placer », 502 retiré ; nouvelle route
+`GET /api/fixtures/placement-run` (dernier run du club/saison). +1 path ; régénéré après rebase sur #1069 — `club_pending` de l'inscription conservé).
 
-**222 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`34ce49eae0c856b42a6e48f2c4bedeee2354bf756d6d52d2bb90aa3927119c96` (`sha256sum` sur le fichier).
+**223 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`89dd7c2b248a0a6988876c02228579ea8bfbd3167d5cd6c728eadef0692c9d87` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

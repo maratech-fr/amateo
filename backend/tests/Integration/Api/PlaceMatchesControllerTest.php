@@ -8,9 +8,11 @@ use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Competition;
 use App\Entity\Fixture;
+use App\Entity\MatchPlacementRun;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
+use App\Entity\SubscriptionPlan;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
@@ -19,7 +21,11 @@ use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
+use App\Enum\MatchPlacementRunStatus;
 use App\Enum\SeasonStatus;
+use App\Message\PlaceMatchesMessage;
+use App\MessageHandler\PlaceMatchesHandler;
+use App\Service\MatchPlacementLock;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
@@ -29,12 +35,16 @@ use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 
 /**
- * POST /api/fixtures/place — gardes, application du résultat, et la règle
- * souveraine : une ancre MANUELLE n'est JAMAIS réécrite (P1-4 PR D).
- * Les cas qui solvent vraiment passent par l'engine réel du docker-compose ;
- * s'il est indisponible, ils se skippent (même rituel que le groupe contract).
+ * POST /api/fixtures/place — le rail est désormais ASYNCHRONE : le contrôleur garde ses
+ * gardes, enfile un {@see PlaceMatchesMessage} et répond 202 + id du run. Les cas qui solvent
+ * vraiment tirent le message de la file et jouent le VRAI handler (engine réel du
+ * docker-compose) ; s'il est indisponible, ils se skippent. La règle souveraine tient : une
+ * ancre MANUELLE n'est JAMAIS réécrite (P1-4 PR D).
+ *
+ * Plus GET /api/fixtures/placement-run (lecture du dernier run, scopé tenant).
  */
 #[Group('integration')]
 final class PlaceMatchesControllerTest extends WebTestCase
@@ -67,14 +77,124 @@ final class PlaceMatchesControllerTest extends WebTestCase
     {
         [$token] = $this->createClub();
 
-        // Une borne qui n'est pas une date → 422 nommé (avant tout appel moteur).
         $this->client->request('POST', '/api/fixtures/place', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json'], '{"from":"pas-une-date","to":"2026-10-04"}');
         self::assertResponseStatusCodeSame(422);
         self::assertStringContainsString('Semaine invalide', (string) $this->client->getResponse()->getContent());
 
-        // from après to → 422.
         $this->client->request('POST', '/api/fixtures/place', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json'], '{"from":"2026-10-10","to":"2026-10-04"}');
         self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testEnqueuesAndReturnsAPendingRun(): void
+    {
+        [$token, $clubId, $seasonId] = $this->createClub();
+        $this->scopeGucToClub($clubId);
+        $team = $this->createTeam($clubId, $seasonId);
+        $venue = $this->createVenue($clubId, $seasonId);
+        $this->createWindow($clubId, $seasonId, $venue->getId(), 6, '14:00', '18:00');
+        $this->createFixture($clubId, $seasonId, $team->getId(), '2026-10-03');
+
+        $this->client->request('POST', '/api/fixtures/place', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseStatusCodeSame(202);
+
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertSame('PENDING', $data['status'] ?? null);
+        self::assertNotEmpty($data['runId'] ?? null);
+
+        // Le run existe en base, PENDING ; un message a été enfilé.
+        $this->scopeGucToClub($clubId);
+        $run = $this->em->getRepository(MatchPlacementRun::class)->find($data['runId']);
+        self::assertInstanceOf(MatchPlacementRun::class, $run);
+        self::assertSame(MatchPlacementRunStatus::PENDING, $run->getStatus());
+        self::assertNotNull($this->lastQueuedMessage());
+    }
+
+    public function testASecondDemandWhileARunIsOpenIs409(): void
+    {
+        [$token, $clubId, $seasonId] = $this->createClub();
+        $this->scopeGucToClub($clubId);
+        $team = $this->createTeam($clubId, $seasonId);
+        $venue = $this->createVenue($clubId, $seasonId);
+        $this->createWindow($clubId, $seasonId, $venue->getId(), 6, '14:00', '18:00');
+        $this->createFixture($clubId, $seasonId, $team->getId(), '2026-10-03');
+
+        // Le verrou tenu (par une 1ʳᵉ demande, simulé ici en l'acquérant) → la 2ᵉ est refusée.
+        $lock = self::getContainer()->get(MatchPlacementLock::class);
+        $token2 = $lock->acquire($clubId, 120);
+        self::assertNotNull($token2);
+
+        try {
+            $this->client->request('POST', '/api/fixtures/place', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+            self::assertResponseStatusCodeSame(409);
+            // Le JSON échappe l'unicode (é → é) : on vise une sous-chaîne ASCII du message.
+            self::assertStringContainsString('en cours', (string) $this->client->getResponse()->getContent());
+        } finally {
+            $lock->release($clubId, $token2);
+        }
+    }
+
+    public function testCreditExhaustedRefusesBeforeEnqueuing(): void
+    {
+        // Club NON démo (Découverte bridée) dont le pool est à sec → 403 au kernel.request,
+        // AVANT le contrôleur : aucun run créé, aucun message enfilé.
+        $max = $this->decouverteMaxGenerations();
+        [$token, $clubId, $seasonId] = $this->createClub(isDemo: false, credits: $max);
+        $this->scopeGucToClub($clubId);
+        $team = $this->createTeam($clubId, $seasonId);
+        $venue = $this->createVenue($clubId, $seasonId);
+        $this->createWindow($clubId, $seasonId, $venue->getId(), 6, '14:00', '18:00');
+        $this->createFixture($clubId, $seasonId, $team->getId(), '2026-10-03');
+
+        $before = $this->queuedCount();
+        $this->client->request('POST', '/api/fixtures/place', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json'], '{"from":"2026-10-03","to":"2026-10-04"}');
+        self::assertResponseStatusCodeSame(403);
+
+        $this->scopeGucToClub($clubId);
+        self::assertSame(0, $this->em->getRepository(MatchPlacementRun::class)->count([]), 'aucun run ne doit être créé');
+        self::assertSame($before, $this->queuedCount(), 'rien ne doit être enfilé');
+    }
+
+    public function testAnotherClubNeverSeesTheRun(): void
+    {
+        [, $clubA, $seasonA, $userA] = $this->createClub();
+        [$tokenB, $clubB] = $this->createClub();
+
+        // Un run du club A.
+        $this->scopeGucToClub($clubA);
+        $run = new MatchPlacementRun($clubA, $seasonA, $userA, new DateTimeImmutable);
+        $this->em->persist($run);
+        $this->em->flush();
+
+        // Le club B lit le dernier run : il ne voit JAMAIS celui de A → {run: null}.
+        $this->client->request('GET', '/api/fixtures/placement-run', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $tokenB]);
+        self::assertResponseIsSuccessful();
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertArrayHasKey('run', $data);
+        self::assertNull($data['run'], 'un autre club ne voit pas le run (frontière tenant)');
+        self::assertNotSame($clubA, $clubB);
+    }
+
+    public function testTheClubReadsItsOwnLatestRun(): void
+    {
+        [$token, $clubId, $seasonId, $userId] = $this->createClub();
+
+        $this->scopeGucToClub($clubId);
+        $run = new MatchPlacementRun($clubId, $seasonId, $userId, new DateTimeImmutable);
+        $run->setStatus(MatchPlacementRunStatus::COMPLETED);
+        $run->setStartedAt(new DateTimeImmutable);
+        $run->setFinishedAt(new DateTimeImmutable);
+        $run->setResultData(['placed' => 3, 'unplaced' => [], 'skipped' => 0]);
+        $this->em->persist($run);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/fixtures/placement-run', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseIsSuccessful();
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertSame($run->getId(), $data['run']['id'] ?? null);
+        self::assertSame('COMPLETED', $data['run']['status'] ?? null);
+        self::assertSame(3, $data['run']['result']['placed'] ?? null);
+        self::assertNotNull($data['run']['createdAt'] ?? null);
+        self::assertNotNull($data['run']['finishedAt'] ?? null);
     }
 
     public function testPlacesTheSaturdayMatchAndNamesTheSundayOne(): void
@@ -84,28 +204,30 @@ final class PlaceMatchesControllerTest extends WebTestCase
         $team = $this->createTeam($clubId, $seasonId);
         $venue = $this->createVenue($clubId, $seasonId);
         $this->createWindow($clubId, $seasonId, $venue->getId(), 6, '14:00', '18:00');
-        $saturday = $this->createFixture($clubId, $seasonId, $team->getId(), '2026-10-03');
-        $sunday = $this->createFixture($clubId, $seasonId, $team->getId(), '2026-10-04');
+        $saturdayId = $this->createFixture($clubId, $seasonId, $team->getId(), '2026-10-03')->getId();
+        $sundayId = $this->createFixture($clubId, $seasonId, $team->getId(), '2026-10-04')->getId();
 
-        $this->placeOrSkip($token);
+        // placeAndRunOrSkip vide l'EM (le worker clôt en nettoyant le GUC puis on re-scope) :
+        // on RELIT les fixtures par id plutôt que refresh sur une entité détachée.
+        $run = $this->placeAndRunOrSkip($token, $clubId);
+        $result = (array) $run->getResultData();
 
-        $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
-        self::assertSame(1, $data['placed']);
-        self::assertCount(1, $data['unplaced']);
-        self::assertSame('no_access_window', $data['unplaced'][0]['reason']);
+        self::assertSame(1, $result['placed'] ?? null);
+        self::assertCount(1, $result['unplaced'] ?? []);
+        self::assertSame('no_access_window', $result['unplaced'][0]['reason'] ?? null);
 
-        $this->em->refresh($saturday);
+        $saturday = $this->em->find(Fixture::class, $saturdayId);
+        self::assertInstanceOf(Fixture::class, $saturday);
         self::assertSame(FixtureStatus::PLACED, $saturday->getStatus());
         self::assertSame(FixturePlacementSource::SOLVER, $saturday->getPlacementSource());
         self::assertSame($venue->getId(), $saturday->getVenueId());
-        // U13 → match 90 min ; la salle ne tient que la durée du match (D1) →
-        // coup d'envoi légal 14:00..16:30 (le match peut ouvrir la fenêtre).
         $kickoff = $saturday->getKickoffTime()?->format('H:i');
         self::assertNotNull($kickoff);
         self::assertGreaterThanOrEqual('14:00', $kickoff);
         self::assertLessThanOrEqual('16:30', $kickoff);
 
-        $this->em->refresh($sunday);
+        $sunday = $this->em->find(Fixture::class, $sundayId);
+        self::assertInstanceOf(Fixture::class, $sunday);
         self::assertSame(FixtureStatus::UNPLACED, $sunday->getStatus());
     }
 
@@ -116,7 +238,6 @@ final class PlaceMatchesControllerTest extends WebTestCase
         $team = $this->createTeam($clubId, $seasonId);
         $venue = $this->createVenue($clubId, $seasonId);
         $this->createWindow($clubId, $seasonId, $venue->getId(), 6, '14:00', '22:30');
-        // Placed BY THE MANAGER at 20:30 — the solver must arrange around it.
         $anchor = $this->createFixture($clubId, $seasonId, $team->getId(), '2026-10-03');
         $anchor->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
         $anchor->setPlacementSource(FixturePlacementSource::MANUAL);
@@ -124,18 +245,18 @@ final class PlaceMatchesControllerTest extends WebTestCase
         $anchor->setKickoffTime(new DateTimeImmutable('20:30'));
         $other = $this->createFixture($clubId, $seasonId, $team->getId(), '2026-10-03');
         $this->em->flush();
+        [$anchorId, $otherId] = [$anchor->getId(), $other->getId()];
 
-        $this->placeOrSkip($token);
+        $this->placeAndRunOrSkip($token, $clubId);
 
-        $this->em->refresh($anchor);
+        // L'EM a été vidé par le rail : on relit par id (find réattache depuis la base).
+        $anchor = $this->em->find(Fixture::class, $anchorId);
+        self::assertInstanceOf(Fixture::class, $anchor);
         self::assertSame('20:30', $anchor->getKickoffTime()?->format('H:i'));
         self::assertSame(FixturePlacementSource::MANUAL, $anchor->getPlacementSource());
 
-        // The other match landed clear of the anchor's VENUE window (D1 — match
-        // only: 20:30-22:00 for a U13). Its own match window [k, k+90] must end
-        // by 20:30 → kickoff ≤ 19:00 (back-to-back contiguity is legal — half-open
-        // no-overlap).
-        $this->em->refresh($other);
+        $other = $this->em->find(Fixture::class, $otherId);
+        self::assertInstanceOf(Fixture::class, $other);
         self::assertSame(FixtureStatus::PLACED, $other->getStatus());
         $kickoff = $other->getKickoffTime()?->format('H:i');
         self::assertNotNull($kickoff);
@@ -148,20 +269,66 @@ final class PlaceMatchesControllerTest extends WebTestCase
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
     }
 
-    /** POST /api/fixtures/place — skip the test when the engine is not up (502). */
-    private function placeOrSkip(string $token): void
+    /**
+     * POST (202) puis joue le VRAI handler sur le message enfilé (engine réel). Skip si
+     * l'engine est indisponible (le run revient FAILED « n'a pas répondu »).
+     */
+    private function placeAndRunOrSkip(string $token, string $clubId): MatchPlacementRun
     {
         $this->client->request('POST', '/api/fixtures/place', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
-        if (502 === $this->client->getResponse()->getStatusCode()) {
+        self::assertResponseStatusCodeSame(202);
+        $runId = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR)['runId'];
+
+        $message = $this->lastQueuedMessage();
+        self::assertInstanceOf(PlaceMatchesMessage::class, $message);
+
+        self::getContainer()->get(PlaceMatchesHandler::class)->__invoke($message);
+
+        $this->em->clear();
+        $this->scopeGucToClub($clubId);
+        $run = $this->em->getRepository(MatchPlacementRun::class)->find($runId);
+        self::assertInstanceOf(MatchPlacementRun::class, $run);
+        if (MatchPlacementRunStatus::FAILED === $run->getStatus()
+            && str_contains((string) ($run->getResultData()['error'] ?? ''), 'n\'a pas répondu')) {
             self::markTestSkipped('Engine not available');
         }
-        self::assertResponseStatusCodeSame(200);
+
+        return $run;
+    }
+
+    private function lastQueuedMessage(): ?PlaceMatchesMessage
+    {
+        $transport = self::getContainer()->get('messenger.transport.placement_in_memory');
+        \assert($transport instanceof InMemoryTransport);
+        $sent = $transport->getSent();
+        if ([] === $sent) {
+            return null;
+        }
+        $message = end($sent)->getMessage();
+
+        return $message instanceof PlaceMatchesMessage ? $message : null;
+    }
+
+    private function queuedCount(): int
+    {
+        $transport = self::getContainer()->get('messenger.transport.placement_in_memory');
+        \assert($transport instanceof InMemoryTransport);
+
+        return \count($transport->getSent());
+    }
+
+    private function decouverteMaxGenerations(): int
+    {
+        $plan = $this->em->getRepository(SubscriptionPlan::class)->findOneBy(['code' => 'decouverte']);
+        \assert($plan instanceof SubscriptionPlan);
+
+        return (int) $plan->getMaxGenerations();
     }
 
     /**
-     * @return array{0: string, 1: string, 2: string} [adminToken, clubId, seasonId]
+     * @return array{0: string, 1: string, 2: string, 3: string} [adminToken, clubId, seasonId, userId]
      */
-    private function createClub(bool $settleSocle = true): array
+    private function createClub(bool $settleSocle = true, bool $isDemo = true, int $credits = 0): array
     {
         $uid = uniqid('', true);
         $hasher = self::getContainer()->get('security.user_password_hasher');
@@ -172,11 +339,8 @@ final class PlaceMatchesControllerTest extends WebTestCase
         $club->setTimezone('Europe/Paris');
         $club->setLocale('fr');
         $club->setOnboardingCompleted(true);
-        // Club démo = jamais bridé (P4-240 ④) : ces tests portent sur la MÉCANIQUE de
-        // placement, pas sur le crédit. Sans cela un club frais (Découverte) exigerait une
-        // fenêtre {from,to} et ces appels sans corps seraient refusés 403. La règle crédit a
-        // sa propre garde (PlanEntitlementsTest).
-        $club->setIsDemo(true);
+        $club->setIsDemo($isDemo);
+        $club->setOutputCreditsUsed($credits);
         $club->setFfbbClubCode('ARA' . strtoupper(substr(md5($uid), 0, 10)));
         $this->em->persist($club);
 
@@ -212,7 +376,7 @@ final class PlaceMatchesControllerTest extends WebTestCase
 
         $token = self::getContainer()->get(JWTTokenManagerInterface::class)->create($user);
 
-        return [$token, $club->getId(), $season->getId()];
+        return [$token, $club->getId(), $season->getId(), $user->getId()];
     }
 
     private function addMember(string $clubId, string $role): string
@@ -297,8 +461,6 @@ final class PlaceMatchesControllerTest extends WebTestCase
 
     private function createFixture(string $clubId, string $seasonId, string $teamId, string $date): Fixture
     {
-        // Match de COMPÉTITION : le solveur ne place plus les amicaux (P4-193), un
-        // domicile sans compétition sortirait du payload de placement.
         $competition = new Competition;
         $competition->setClubId($clubId);
         $competition->setSeasonId($seasonId);

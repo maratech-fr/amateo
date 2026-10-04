@@ -112,11 +112,14 @@ pour que le geste courant ne puisse rien casser ni tout voir.
 ## Limites RAM (INF-03) & logs
 
 `mem_limit` par service (base v3 §2.2, ajustés pour laisser la limite PHP mordre
-AVANT l'OOM-killer) : **php-fpm 640M** (2 children × `memory_limit` 192M +
-opcache 192M + master — pool `zz-prod-pool.conf`) · nginx 64M · postgres 512M ·
+AVANT l'OOM-killer) : **php-fpm 1G** (4 children × `memory_limit` 192M + opcache 192M shm +
+master — pool `zz-prod-pool.conf`) · nginx 64M · postgres 512M ·
 redis 256M · **messenger-worker 384M** et **cron-runner 384M** (au-dessus du
-`--memory-limit=256M` applicatif / du pg_dump des jobs) · engine 512M ·
-pdf-worker 512M · mercure 128M · frontend 64M.
+`--memory-limit=256M` applicatif / du pg_dump des jobs) · **engine 1G** (relevé de 512M le
+2026-10-04 : pic de placement mesuré 480 MiB après le découpage par semaine ISO, ENG-49/50 —
+1G reste un filet, le vrai correctif est le processus fils jetable + le découpage) ·
+pdf-worker 512M · **mercure 512M** (relevé de 128M le 2026-10-04 : 3ᵉ topic par club, marge
+au-dessus du plancher) · frontend 64M.
 Rotation logs : `json-file` 10 Mo × 3 par service (ancre `x-logging`).
 `restart: unless-stopped` partout. Healthchecks réels : php-fpm = accept
 FastCGI (`fsockopen :9000`, pas un parse de conf) ; cron-runner = témoin de

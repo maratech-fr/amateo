@@ -14,7 +14,13 @@ framework:
             # contrôleurs (refresh/resolve/autofill/siège) est inspectable, sans Redis, et le
             # handler s'exerce DIRECTEMENT dans son test (ComputeTravelTimesHandlerTest).
             travel_in_memory: 'in-memory://'
+            # Le placement des matchs part en mémoire en test : sa mise en file par le
+            # contrôleur (202 + run PENDING) est inspectable, sans Redis, et le handler
+            # s'exerce DIRECTEMENT dans son test (PlaceMatchesHandlerTest), ou en tirant le
+            # message du transport pour un bout-en-bout moteur réel (PlaceMatchesControllerTest).
+            placement_in_memory: 'in-memory://'
         routing:
             App\Message\Basketball\PopulateClubFromFfbbMessage: ffbb_in_memory
             Symfony\Component\Mailer\Messenger\SendEmailMessage: mailer_in_memory
             App\Message\ComputeTravelTimesMessage: travel_in_memory
+            App\Message\PlaceMatchesMessage: placement_in_memory

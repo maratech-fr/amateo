@@ -25,6 +25,10 @@ interface FbiEntryListProps {
   competitions?: Map<string, Competition>;
   /** App today (`todayISO`, ancrage démo inclus) — « vu dans FBI » relatif + compte à rebours. */
   today?: string;
+  /** Décision fondateur 2026-10-04 : tout le monde VOIT la liste « FBI — à faire », seul le
+   *  gestionnaire peut cocher (saisi / corrigé). `false` masque les contrôles d'action, la
+   *  liste reste lisible. Défaut `true` (contexte gestionnaire). Le backend reste seul juge (403). */
+  canManage?: boolean;
   busy: boolean;
   /** Cocher une ligne « à saisir » PLACÉE → elle passe SUBMITTED (« saisi dans FBI »). */
   onSubmit: (fixture: Fixture) => void;
@@ -60,7 +64,7 @@ interface CorrectionGroup {
  * « saisi ». PRÉSENTATION pure : gras = la valeur Amateo (à taper), la valeur FBI reste
  * en sourdine, jamais barrée. Le front n'invente aucune règle.
  */
-export function FbiEntryList({ fixtures, corrections, teams, venues, competitions, today = todayISO(), busy, onSubmit, onCorrected, onUndoCorrected }: FbiEntryListProps) {
+export function FbiEntryList({ fixtures, corrections, teams, venues, competitions, today = todayISO(), canManage = true, busy, onSubmit, onCorrected, onUndoCorrected }: FbiEntryListProps) {
   const [teamFilter, setTeamFilter] = useState("");
   const [confirmBatch, setConfirmBatch] = useState(false);
   const [submittedSession, setSubmittedSession] = useState<ReadonlySet<string>>(() => new Set());
@@ -213,7 +217,7 @@ export function FbiEntryList({ fixtures, corrections, teams, venues, competition
                     <ul className="mt-1 flex flex-col gap-0.5">{group.corrections.map((c) => <CorrectionField key={c.id} correction={c} />)}</ul>
                   </div>
 
-                  {group.done ? (
+                  {!canManage ? null : group.done ? (
                     <Button variant="ghost" size="sm" className="ml-auto shrink-0" disabled={busy} onClick={() => undoCorrected(group)}>
                       <Undo2 className="size-3.5" />
                       Annuler
@@ -244,16 +248,18 @@ export function FbiEntryList({ fixtures, corrections, teams, venues, competition
             <h3 id={enterHeadingId} className="text-sm font-semibold">
               À saisir · {submitToDo}
             </h3>
-            <Button
-              variant="outline"
-              size="sm"
-              className="ml-auto border-success/40 text-success hover:bg-success/10"
-              disabled={busy || 0 === shownToSubmit.length}
-              onClick={() => setConfirmBatch(true)}
-            >
-              <Check className="size-3.5" />
-              Tout marquer saisi
-            </Button>
+            {canManage ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-auto border-success/40 text-success hover:bg-success/10"
+                disabled={busy || 0 === shownToSubmit.length}
+                onClick={() => setConfirmBatch(true)}
+              >
+                <Check className="size-3.5" />
+                Tout marquer saisi
+              </Button>
+            ) : null}
           </div>
           <ul className="flex flex-col gap-1.5">
             {submitRows.map((f) => {
@@ -272,7 +278,7 @@ export function FbiEntryList({ fixtures, corrections, teams, venues, competition
                     <span aria-hidden className="grid size-5 shrink-0 place-items-center rounded bg-success/20 text-success">
                       <Check className="size-3.5" />
                     </span>
-                  ) : (
+                  ) : canManage ? (
                     <button
                       type="button"
                       aria-label={`Marquer saisi : ${teamName} contre ${f.opponentLabel}`}
@@ -282,6 +288,9 @@ export function FbiEntryList({ fixtures, corrections, teams, venues, competition
                     >
                       <Check className="size-3.5 opacity-0 transition-opacity group-hover:opacity-100" />
                     </button>
+                  ) : (
+                    // Membre : repère statique « reste à saisir », aucune action (2026-10-04).
+                    <span aria-hidden className="grid size-5 shrink-0 place-items-center rounded border border-input" />
                   )}
 
                   <span className={cn("min-w-0 flex-1", done ? "text-muted-foreground" : "")}>

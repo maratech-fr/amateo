@@ -21,6 +21,7 @@ use App\Entity\Fixture;
 use App\Entity\ImplicitRuleSetting;
 use App\Entity\MatchConstraint;
 use App\Entity\MatchModuleVisit;
+use App\Entity\MatchPlacementRun;
 use App\Entity\PeriodReminderLog;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
@@ -152,6 +153,11 @@ final class SeasonDataPurger
         // RMM-3 — instantané de visite du module matchs (club_id+season_id, aucun
         // enfant) : purgé avec la saison comme les autres tables tenant+saison.
         MatchModuleVisit::class,
+        // Runs de placement asynchrone (club_id+season_id, aucun enfant) : purgés avec la
+        // saison ; ErasedClubPurger les suit via ce purger. (season_id nullable : un run
+        // sans saison — cas de bord — survivrait à une purge de saison ; en pratique le
+        // contrôleur résout toujours une saison.)
+        MatchPlacementRun::class,
         // P4-207 — statut de traitement d'un conflit (club_id+season_id, aucun
         // enfant) : purgé avec la saison. C'est la SEULE porte de sortie d'une
         // ligne orpheline (empreinte disparue du flux) — jamais nettoyée à la volée.

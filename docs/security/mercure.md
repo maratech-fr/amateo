@@ -149,3 +149,29 @@ Guarded by `TenantIsolationTest::testANonCanonicalClubHeaderIsRejectedEvenForOwn
 (phase1) and `MercureAuthTest::testANonCanonicalClubIdNeverReachesTheSelector`.
 **Rule for any future selector**: never interpolate a client-influenced string
 into a topic selector without canonical validation.
+
+## Third topic: async match placement (ADR-0003 amendment, 2026-10-04)
+
+`POST /api/fixtures/place` moved from a synchronous rail to the same async pattern as generation
+(controller → Messenger → `PlaceMatchesHandler`, transport `async` shared with generation). The
+worker solves (the engine now splits the solve ISO-week by ISO-week, ENG-50) and publishes
+**one terminal event only** (`{runId, status}`, COMPLETED or FAILED) on a **third, FIXED topic per
+club** (no `{id}` wildcard: `MatchPlacementLock` already guarantees at most one placement run in
+flight per club):
+
+- **Topic**: `club:{clubId}:placement` (`App\Mercure\MercureTopic::forPlacement`). Same
+  publish/subscribe split as the other two topics — the backend publishes, the browser subscribes.
+- **Auth**: the same `GET /api/mercure/auth` call mints one JWT whose `subscribe` claim now carries
+  **three** topics (schedule template, travel, placement); the response body gains an additive
+  `placementTopic` field alongside `topicTemplate`/`travelTopic` (`MercureAuthController.php`). No
+  third auth round-trip, no third cookie.
+- **Client**: `frontend/src/features/matches/lib/placementStream.ts` — same ref-counted
+  `EventSource` singleton pattern as `scheduleStream.ts`/`travelStream.ts`. On any message it
+  invalidates the `fixtures`/`placement-run` react-query caches; `GET /api/fixtures/placement-run`
+  stays the source of truth, re-read behind the invalidation. Mercure stays best-effort: the screen
+  also re-reads that GET on tab focus / reconnect, never a permanent poll.
+- **Visibility**: the run's state ("in progress" banner) is visible to **every** club member (a
+  second tab, a second member); the **gesture** (the "Placer automatiquement" button) stays
+  manager-only.
+
+`anonymous` stays off; nothing here relaxes the hub configuration above.

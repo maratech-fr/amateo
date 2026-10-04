@@ -6,8 +6,9 @@ namespace App\EventListener;
 
 use App\Entity\Club;
 use App\Entity\Season;
+use App\MessageHandler\PlaceMatchesHandler;
+use App\Service\OutputCreditLedger;
 use App\Service\PlanEntitlements;
-use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\Request;
@@ -52,10 +53,25 @@ final class CreditBudgetSubscriber implements EventSubscriberInterface
         // d'export (revue sécu PR B, décision fondateur 2026-08-10)
     ];
 
+    /**
+     * Routes de sortie décomptées AU SUCCÈS de la RÉPONSE (2xx). `api_fixtures_place` en
+     * est ABSENTE à dessein : le placement est désormais asynchrone (202 = sortie ENFILÉE,
+     * pas produite). Son crédit est décompté PAR LE WORKER quand le run passe COMPLETED
+     * ({@see PlaceMatchesHandler}, via le MÊME {@see OutputCreditLedger}) —
+     * un run FAILED ne consomme rien. La garde « crédit épuisé » (kernel.request ci-dessous)
+     * garde, elle, `api_fixtures_place` : le refus se fait AVANT d'enfiler.
+     */
+    private const array RESPONSE_DECREMENT_ROUTES = [
+        'generate_schedule',
+        'api_schedule_regenerate',
+        'export_pdf',
+        'export_xlsx',
+    ];
+
     public function __construct(
         private readonly PlanEntitlements $planEntitlements,
         private readonly EntityManagerInterface $entityManager,
-        private readonly Connection $connection,
+        private readonly OutputCreditLedger $creditLedger,
     ) {}
 
     /** @return array<string, array{0: string, 1: int}> */
@@ -89,7 +105,11 @@ final class CreditBudgetSubscriber implements EventSubscriberInterface
         }
     }
 
-    /** Décompte au SUCCÈS (2xx) : un dispatch accepté (202) EST la sortie ; un 409/422 amont ne brûle rien. */
+    /**
+     * Décompte au SUCCÈS (2xx) des sorties SYNCHRONES (export). Le placement async en est
+     * exclu (RESPONSE_DECREMENT_ROUTES) : son 202 n'est pas une sortie produite, le worker
+     * décompte au COMPLETED. Un 409/422 amont ne brûle rien.
+     */
     public function onKernelResponse(ResponseEvent $event): void
     {
         if (!$event->isMainRequest()) {
@@ -97,7 +117,7 @@ final class CreditBudgetSubscriber implements EventSubscriberInterface
         }
 
         $request = $event->getRequest();
-        if (!$this->isOutputRoute($request)) {
+        if (!\in_array((string) $request->attributes->get('_route'), self::RESPONSE_DECREMENT_ROUTES, true)) {
             return;
         }
 
@@ -116,13 +136,7 @@ final class CreditBudgetSubscriber implements EventSubscriberInterface
             return;
         }
 
-        // Incrément SQL ATOMIQUE (pas de read-modify-write en PHP) : le pool est PAR CLUB,
-        // partagé entre gestionnaires par construction. `club` n'a pas de colonne club_id —
-        // pas de policy RLS —, l'UPDATE ciblé par id passe sur la connexion par défaut.
-        $this->connection->executeStatement(
-            'UPDATE club SET output_credits_used = output_credits_used + 1 WHERE id = :id',
-            ['id' => $clubId],
-        );
+        $this->creditLedger->consume($clubId);
     }
 
     private function isOutputRoute(Request $request): bool

@@ -1,12 +1,11 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-10-03 (ENG-48/ALIGN-16/ENG-51/ALIGN-19, contrat 1.1) — §2 `/validate-assignments`
-re-confronté : le 3ᵉ verdict `indeterminate` (`validate_assignments.py`, `cp_model.UNKNOWN` sur le
-solve principal OU la sonde de baseline) ✓ ; §4.3, le mapping `ruleType == "LOCK"` toujours retiré
-des contraintes (« on ne verrouille que les créneaux ») et `parse_v2_constraints`
-(`engine/app/solver/constraints/parsing.py`) ignore toujours tout `LOCK` reçu (`parse_warning`,
-jamais appliqué). Reste de l'inventaire non re-sondé cette passe — voir `git log -p --follow` pour
-sa dernière vérification.
+Last verified @ 2026-10-04 (amendement ADR-0003, `/place-matches` seul) — §2 re-confronté : le rail
+est maintenant découpé **semaine ISO par semaine ISO** (`_partition_by_iso_week`/
+`_merge_week_results`, ENG-50, `solverTimeoutSeconds` devenu un budget PAR SEMAINE) et le solve
+tourne dans un **processus fils jetable** (`ProcessPoolExecutor`, ENG-49) plutôt qu'un thread
+worker — le reste de l'inventaire (`/generate`, `/validate-assignments`) non re-sondé cette passe,
+voir `git log -p --follow` pour sa dernière vérification.
 
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.
 > Source de vérité : `engine/app/main.py`, `engine/app/schemas/input_schema.py`, `engine/app/schemas/output_schema.py`, `engine/app/solver/{model,constraints,objective,result_builder}.py`, `engine/app/core/config.py`.
@@ -58,9 +57,29 @@ Le **second problème CP-SAT**, distinct du solve hebdomadaire (ADR-0003 ; compo
   garde de contrat que `/generate` — MAJOR seul, 422 sinon : **un seul `CONTRACT_VERSION` pour les
   trois endpoints**.
 - **Verrou par club PRÉFIXÉ** (`f"matches:{club_id}"`) : un solve hebdomadaire long ne bloque pas
-  un placement de 3 s, alors qu'un même verrou l'aurait fait. Le rail a son **propre** sémaphore
+  un placement, alors qu'un même verrou l'aurait fait. Le rail a son **propre** sémaphore
   de concurrence, `_placement_semaphore` — pas le `_solve_semaphore` global de `/generate` : un
   verrou préfixé sous un sémaphore partagé n'aurait aucun effet propre.
+- **Découpage SEMAINE ISO par SEMAINE ISO (ENG-50, amendement ADR-0003 2026-10-04)** :
+  `solve_match_placement` (point d'entrée public) partitionne la demande par `(année ISO, semaine
+  ISO)` (`_partition_by_iso_week`), solve chaque semaine isolément sous `solverTimeoutSeconds` —
+  désormais le budget **DE CHAQUE SEMAINE**, plus un budget de bout en bout — puis fusionne en une
+  seule réponse (`_merge_week_results` : placements/diagnostics concatenés en ordre stable,
+  métriques sommées, `status="failed"` seulement si TOUTES les semaines tentées ont échoué).
+  Correct parce qu'aucun terme du modèle ne lie deux dates : chaque date appartient à exactement
+  une semaine ISO, la résolution par semaine est donc équivalente au solve global. Côté backend,
+  `MatchPlacementPayloadBuilder::WEEK_BUDGET_SECONDS = 35`.
+- **Solve en processus fils JETABLE (ENG-49, même amendement)** : `_run_match_placement`
+  (`main.py`) exécute `solve_match_placement` via `ProcessPoolExecutor(max_workers=1,
+  max_tasks_per_child=1, mp_context=spawn)` plutôt que l'ancien `asyncio.to_thread` — CP-SAT
+  libère sa mémoire native mais glibc gardait les arènes dans le processus uvicorn (constat :
+  ~474-539 Mio au repos après quelques placements sous `mem_limit: 512m`). Un fils neuf par
+  placement meurt et rend 100 % de sa mémoire ; `malloc_trim(0)` côté parent (ctypes, no-op si la
+  libc ne l'expose pas) rend le reste des arènes de l'orchestration FastAPI elle-même. `spawn`
+  (jamais `fork`, qui hériterait de threads uvicorn verrouillés) : le fils ré-importe le module
+  cible pour dépickler — coût du spawn, payé à chaque placement, acceptable sous le verrou club +
+  `_placement_semaphore` qui sérialisent déjà les placements. Un fils tué (OOM) casse le pool
+  (`BrokenProcessPool`), recréé pour que le placement suivant reparte sur un pool sain.
 - **Budget de CONSTRUCTION du modèle** (`match_placement.py`, `BUILD_BUDGET_SECONDS = 10.0`,
   ENG-40, contrat 2.22) : le `max_time_in_seconds` du `CpSolver` ne borne que le SOLVE — les
   boucles chaudes qui bâtissent candidats/no-overlap/passerelles sont O(matchs²)/O(candidats²) et
@@ -78,7 +97,7 @@ Le **second problème CP-SAT**, distinct du solve hebdomadaire (ADR-0003 ; compo
 | Rail | Sémaphore | Défaut | Pourquoi séparé |
 |---|---|---|---|
 | `/generate` | `_solve_semaphore` | 1 | un solve peut tenir 600 s ; deux en parallèle sont exclus **exprès** |
-| `/place-matches` | `_placement_semaphore` | 1 | AUD-ENG-30 — synchrone (ADR-0003), le gestionnaire attend la réponse HTTP |
+| `/place-matches` | `_placement_semaphore` | 1 | AUD-ENG-30 — un solve de placement ne doit pas attendre derrière un solve hebdomadaire de 600 s ; le rail backend est asynchrone depuis le 2026-10-04 (ADR-0003 amendé) mais la contrainte de concurrence côté engine, elle, reste la même |
 | `/validate-assignments` | `_verdict_semaphore` | 1 | **AUD-ENG-33** — budgets asymétriques : le placement dispose de 30 s de solveur quand le verdict abandonne à **20 s** côté client (`MoveSlotService::VALIDATE_HTTP_TIMEOUT_SECONDS`, calé sur 9-9,6 s mesurés sur le club réel). Un placement du club A affamait le verdict LÉGAL du club B |
 
 ⚠ **Résidu ASSUMÉ** : à 1, deux verdicts de deux clubs se sérialisent encore — sur la mesure
@@ -86,9 +105,9 @@ connue (~10 s), deux verdicts empilés frôlent les 20 s. Monter à 2 doublerait
 classe d'incident jamais observée. Les deux tests jumeaux de `tests/test_runtime.py` gardent la
 propriété **et** sa borne : l'un exerce l'endpoint verdict pendant qu'un placement tient son
 jeton, l'autre vérifie que deux placements restent sérialisés.
-- **Solve** : `solve_match_placement(input_data)` dans un thread worker
-  (`app/solver/match_placement.py`). Best-effort à poids dominant : aucune HARD violée, le
-  non-plaçable ressort **nommé**.
+- **Solve** : `solve_match_placement(input_data)`, dans un **processus fils jetable** depuis
+  ENG-49 (voir plus haut), plus un simple thread worker. Best-effort à poids dominant : aucune
+  HARD violée, le non-plaçable ressort **nommé**.
 - **Durées PAR ÉQUIPE et fenêtres personne/salle** (`match_placement.py`) : chaque équipe porte
   `matchMinutes`/`warmupMinutes` (défauts Pydantic **105/30**, résolus côté backend par
   `MatchDurationResolver` — catégorie sinon défaut de famille 75/90/105). La **salle** ne tient

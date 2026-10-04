@@ -25,6 +25,7 @@ import {
   useOpponentTravel,
   usePlaceFixture,
   usePlaceMatches,
+  usePlacementRun,
   useResolveOpponentTravel,
   useAddOpponentVenue,
   useDeleteVenueLink,
@@ -70,7 +71,8 @@ vi.mock("./api", () => ({
 
   deleteFixture: vi.fn().mockResolvedValue(undefined),
   placeFixture: vi.fn().mockResolvedValue({}),
-  placeMatches: vi.fn().mockResolvedValue({ placed: 0, skipped: 0, unplaced: [], diagnostics: [] }),
+  placeMatches: vi.fn().mockResolvedValue({ accepted: true, runId: "run-1", status: "PENDING" }),
+  getPlacementRun: vi.fn().mockResolvedValue({ run: null }),
   addOpponentVenue: vi.fn().mockResolvedValue({ id: "l1", opponentOrganismeCode: "ORG9", fbiLabel: "SALLE X", label: "Salle X", externalRef: null, source: "MANUAL", travelMinutes: 10, targetFixtureCount: 1 }),
   pairOpponentVenueLabel: vi.fn().mockResolvedValue({ id: "l2", opponentOrganismeCode: "ORG9", fbiLabel: "SALLE Y", label: "Salle Y", externalRef: null, source: "MANUAL", travelMinutes: 10, targetFixtureCount: 1 }),
   repointVenueLink: vi.fn().mockResolvedValue({ id: "l1", opponentOrganismeCode: "ORG9", fbiLabel: "SALLE X", label: "Salle Z", externalRef: null, source: "MANUAL", travelMinutes: 10, targetFixtureCount: 2 }),
@@ -162,21 +164,21 @@ describe("matches queries — le radar de conflits est réellement rafraîchi (e
     expect(spy).toHaveBeenCalledWith({ queryKey: ["wizard", "teams"] });
   });
 
-  it("usePlaceMatches n'invalide QUE ['fixtures'] — et pourtant le radar refetche (le rail synchrone remet le radar à jour par préfixe)", async () => {
+  it("usePlaceMatches (rail async) invalide le RUN de placement — le lecteur du run refetche (l'écran passe en « en cours »)", async () => {
     const client = makeClient();
     const { result } = renderHook(
-      () => ({ fixtures: useFixtures(), conflicts: useConflicts(), place: usePlaceMatches() }),
+      () => ({ run: usePlacementRun(), place: usePlaceMatches() }),
       { wrapper: wrapperFor(client) },
     );
 
-    await waitFor(() => expect(result.current.fixtures.isSuccess).toBe(true));
-    await waitFor(() => expect(result.current.conflicts.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.run.isSuccess).toBe(true));
+    expect(matchesApi.getPlacementRun).toHaveBeenCalledTimes(1);
 
     result.current.place.mutate(undefined as never);
 
+    // onSettled invalide ['fixtures','placement-run'] : le lecteur du run relit (2ᵉ appel).
     await waitFor(() => expect(result.current.place.isSuccess).toBe(true));
-    await waitFor(() => expect(matchesApi.getFixtures).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(matchesApi.getConflicts).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(matchesApi.getPlacementRun).toHaveBeenCalledTimes(2));
   });
 });
 

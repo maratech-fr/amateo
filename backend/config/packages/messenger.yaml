@@ -37,6 +37,7 @@ framework:
             App\Message\ExportPdfMessage: async
             App\Message\Basketball\PopulateClubFromFfbbMessage: async
             App\Message\ComputeTravelTimesMessage: async
+            App\Message\PlaceMatchesMessage: async
             # Les e-mails (vérification, reset, changement d'adresse…) partent par le bus :
             # le contrôleur enfile un SendEmailMessage, le SMTP se joue chez le worker (échec
             # retenu par le failure transport). Un envoi synchrone ferait d'un 500 SMTP un

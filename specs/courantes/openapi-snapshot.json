@@ -13112,7 +13112,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Synchronous match placement: the solver places every placeable UNPLACED home match; the rest comes back named",
+                        "description": "Nothing to place: there was no placeable UNPLACED home match (no run is enqueued, no credit consumed)",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -13122,33 +13122,12 @@
                                             "type": "integer"
                                         },
                                         "skipped": {
-                                            "type": "integer",
-                                            "description": "Placements refused at write time (a manual gesture won during the solve)"
+                                            "type": "integer"
                                         },
                                         "unplaced": {
                                             "type": "array",
                                             "items": {
-                                                "type": "object",
-                                                "properties": {
-                                                    "matchId": {
-                                                        "type": "string"
-                                                    },
-                                                    "reason": {
-                                                        "type": "string",
-                                                        "enum": [
-                                                            "no_access_window",
-                                                            "no_league_intersection",
-                                                            "club_rule_no_slot",
-                                                            "team_venue_forbidden",
-                                                            "venue_unavailable",
-                                                            "venue_full",
-                                                            "not_selected"
-                                                        ]
-                                                    },
-                                                    "message": {
-                                                        "type": "string"
-                                                    }
-                                                }
+                                                "type": "object"
                                             }
                                         },
                                         "diagnostics": {
@@ -13157,9 +13136,29 @@
                                                 "type": "object"
                                             }
                                         },
-                                        "metrics": {
-                                            "type": "object",
-                                            "nullable": true
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "202": {
+                        "description": "Placement enqueued (asynchronous rail): the solve runs in the worker. Poll GET /api/fixtures/placement-run (or subscribe to the placement Mercure topic) for the terminal result",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "runId": {
+                                            "type": "string"
+                                        },
+                                        "status": {
+                                            "type": "string",
+                                            "enum": [
+                                                "PENDING"
+                                            ]
                                         }
                                     }
                                 }
@@ -13167,7 +13166,7 @@
                         }
                     },
                     "400": {
-                        "description": "No club in context"
+                        "description": "No club or no user in context"
                     },
                     "401": {
                         "description": "Unauthorized (missing/expired JWT)"
@@ -13176,16 +13175,13 @@
                         "description": "Not a management member \u2014 or, on the D\u00e9couverte credit plan, automatic placement must be week-end by week-end (send a one-week window)"
                     },
                     "409": {
-                        "description": "Placement already running, season plan not chosen, or archived season"
+                        "description": "Placement already running for this club, season plan not chosen, or archived season"
                     },
                     "422": {
                         "description": "Invalid window (a bound is not a date, or from is after to)"
-                    },
-                    "502": {
-                        "description": "Engine unreachable \u2014 retry, nothing was written"
                     }
                 },
-                "summary": "Auto-place the unplaced home matches (writes PLACED+SOLVER; manual anchors never move)",
+                "summary": "Enqueue the auto-placement of the unplaced home matches (async; writes PLACED+SOLVER in the worker; manual anchors never move)",
                 "requestBody": {
                     "content": {
                         "application/json": {
@@ -13209,6 +13205,125 @@
                     },
                     "required": false
                 }
+            }
+        },
+        "/api/fixtures/placement-run": {
+            "get": {
+                "operationId": "getPlacementRun",
+                "tags": [
+                    "Match"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The latest async match-placement run of the current club/season (so the screen knows on open whether a placement is in progress and can show a finished run's result) \u2014 {run: null} when there is none, and never another club's run",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "run": {
+                                            "type": "object",
+                                            "nullable": true,
+                                            "properties": {
+                                                "id": {
+                                                    "type": "string"
+                                                },
+                                                "status": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "PENDING",
+                                                        "RUNNING",
+                                                        "COMPLETED",
+                                                        "FAILED"
+                                                    ]
+                                                },
+                                                "createdAt": {
+                                                    "type": "string",
+                                                    "format": "date-time"
+                                                },
+                                                "startedAt": {
+                                                    "type": "string",
+                                                    "format": "date-time",
+                                                    "nullable": true
+                                                },
+                                                "finishedAt": {
+                                                    "type": "string",
+                                                    "format": "date-time",
+                                                    "nullable": true
+                                                },
+                                                "result": {
+                                                    "type": "object",
+                                                    "nullable": true,
+                                                    "description": "The run result (the former synchronous body) on a COMPLETED run, or {error} on a FAILED one, null while pending/running",
+                                                    "properties": {
+                                                        "placed": {
+                                                            "type": "integer"
+                                                        },
+                                                        "skipped": {
+                                                            "type": "integer",
+                                                            "description": "Placements refused at write time (a manual gesture won during the solve)"
+                                                        },
+                                                        "unplaced": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "type": "object",
+                                                                "properties": {
+                                                                    "matchId": {
+                                                                        "type": "string"
+                                                                    },
+                                                                    "reason": {
+                                                                        "type": "string",
+                                                                        "enum": [
+                                                                            "no_access_window",
+                                                                            "no_league_intersection",
+                                                                            "club_rule_no_slot",
+                                                                            "team_venue_forbidden",
+                                                                            "venue_unavailable",
+                                                                            "venue_full",
+                                                                            "not_selected"
+                                                                        ]
+                                                                    },
+                                                                    "message": {
+                                                                        "type": "string"
+                                                                    }
+                                                                }
+                                                            }
+                                                        },
+                                                        "diagnostics": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "type": "object"
+                                                            }
+                                                        },
+                                                        "metrics": {
+                                                            "type": "object",
+                                                            "nullable": true
+                                                        },
+                                                        "message": {
+                                                            "type": "string",
+                                                            "description": "Set when nothing was to place"
+                                                        },
+                                                        "error": {
+                                                            "type": "string",
+                                                            "description": "Set on a FAILED run"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No club in context"
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    }
+                },
+                "summary": "The latest async match-placement run of the current club/season (read-only, open to any member)"
             }
         },
         "/api/fixtures/review": {

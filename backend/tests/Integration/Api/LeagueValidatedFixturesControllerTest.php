@@ -8,6 +8,7 @@ use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Competition;
 use App\Entity\Fixture;
+use App\Entity\MatchPlacementRun;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
@@ -19,7 +20,10 @@ use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
+use App\Enum\MatchPlacementRunStatus;
 use App\Enum\SeasonStatus;
+use App\Message\PlaceMatchesMessage;
+use App\MessageHandler\PlaceMatchesHandler;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -30,6 +34,7 @@ use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 
 /**
  * GET/POST /api/fixtures/league-validation — le geste « validé ligue » en lot (lot L).
@@ -436,7 +441,7 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         // Le rail de placement vide l'EM : on RELIT par id (find réattache depuis la base)
         // plutôt que refresh sur une entité devenue détachée.
         [$anchorId, $otherId] = [$anchor->getId(), $other->getId()];
-        $this->placeOrSkip($token);
+        $this->placeOrSkip($token, $clubId);
         $this->em->clear();
         $freshAnchor = $this->em->find(Fixture::class, $anchorId);
         self::assertInstanceOf(Fixture::class, $freshAnchor);
@@ -508,14 +513,35 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
     }
 
-    /** POST /api/fixtures/place — skip the test when the engine is not up (502). */
-    private function placeOrSkip(string $token): void
+    /**
+     * POST /api/fixtures/place (202, async) puis joue le VRAI handler sur le message enfilé
+     * (engine réel). Skip si l'engine est indisponible (run FAILED « n'a pas répondu »). Le
+     * handler clôt en vidant le GUC tenant : on le re-scope au club pour que les `find`
+     * suivants du test traversent la RLS.
+     */
+    private function placeOrSkip(string $token, string $clubId): void
     {
         $this->client->request('POST', '/api/fixtures/place', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
-        if (502 === $this->client->getResponse()->getStatusCode()) {
+        self::assertResponseStatusCodeSame(202);
+        $runId = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR)['runId'];
+
+        $transport = self::getContainer()->get('messenger.transport.placement_in_memory');
+        \assert($transport instanceof InMemoryTransport);
+        $sent = $transport->getSent();
+        self::assertNotEmpty($sent);
+        $message = end($sent)->getMessage();
+        \assert($message instanceof PlaceMatchesMessage);
+
+        self::getContainer()->get(PlaceMatchesHandler::class)->__invoke($message);
+
+        $this->em->clear();
+        $this->scopeGucToClub($clubId);
+        $run = $this->em->find(MatchPlacementRun::class, $runId);
+        if ($run instanceof MatchPlacementRun
+            && MatchPlacementRunStatus::FAILED === $run->getStatus()
+            && str_contains((string) ($run->getResultData()['error'] ?? ''), 'n\'a pas répondu')) {
             self::markTestSkipped('Engine not available');
         }
-        self::assertResponseStatusCodeSame(200);
     }
 
     /**

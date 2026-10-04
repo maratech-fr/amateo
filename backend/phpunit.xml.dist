@@ -54,6 +54,10 @@
             <file>src/Kernel.php</file>
             <directory>src/Seed</directory>
             <directory>src/DataFixtures</directory>
+            <!-- Dev-only seeding command (services_dev.yaml + runtime `dev`-env guard):
+                 its body early-returns FAILURE under APP_ENV=test, so it is uncoverable
+                 by construction — same rationale as the src/Seed exclusion it drives. -->
+            <file>src/Command/LoadTestSeedClubsCommand.php</file>
         </exclude>
     </source>
 </phpunit>

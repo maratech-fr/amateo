@@ -22,23 +22,27 @@ dates : forcer les matchs dedans aurait tordu les deux problèmes.
 gardé MAJOR-only côté engine (`engine/CONTRACT_VERSION`) — un bump ajout reste MINOR. Gardé par
 `ContractSchemaTest` + `MatchPlacementContractSchemaTest` (phase1 + contract).
 
-### 2. Rail SYNCHRONE — pas de Messenger, pas de Mercure
+### 2. Rail ASYNCHRONE (amendement 2026-10-04) — Messenger, patron de la génération
 
-Le problème est minuscule pour CP-SAT (~10⁴ booléens : ~124 matchs × ~80 candidats) : solve mesuré en
-secondes sur un club réel, assumé jusqu'à un budget de 60 s de bout en bout (§4). Le rail asynchrone du
-planning existe pour des solves de plusieurs centaines de secondes ; aucun de ses coûts (message, statut,
-topic, watchdog) n'est justifié ici — et le topic Mercure durci est façonné sur un `Schedule` qu'un
-placement n'a pas. `POST /api/fixtures/place` répond dans la requête ; anti-double-clic PAR CLUB par
-`MatchPlacementLock` (Redis, préfixe dédié — ne partage PAS le verrou de génération : données disjointes).
+`POST /api/fixtures/place` enfile désormais un `PlaceMatchesMessage` et répond **202** avec
+`{runId, status}` ; `PlaceMatchesHandler` (transport `async` partagé avec la génération) solve,
+applique le résultat, décompte le crédit Découverte au SUCCÈS et publie la bascule terminale
+(COMPLETED/FAILED) sur le 3ᵉ topic Mercure fixe par club `club:{clubId}:placement`
+(`App\Mercure\MercureTopic::forPlacement`). `GET /api/fixtures/placement-run` rend le dernier run
+du club+saison courants (lecture seule, ouverte à tout membre). Anti-double-clic PAR CLUB inchangé
+(`MatchPlacementLock`, Redis, préfixe dédié) — **pris par le contrôleur**, tenu pendant tout le run,
+**relâché par le worker** (token porté par le message) ; TTL = le budget du run entier
+(`PlaceMatchesMessage::budgetSecondsFor`, §4). Motif du basculement : le solve est désormais
+découpé **semaine ISO par semaine ISO** côté engine (§4, ENG-50) — un lot réel (141 domiciles)
+dépasse en pratique tout budget tenable dans la requête HTTP d'un gestionnaire, et la mémoire du
+solve (ENG-49) doit pouvoir être rendue au système entre deux semaines sans tenir le processus
+uvicorn du bout en bout.
 
 **Concurrence inter-clubs** : l'engine tient en plus un sémaphore GLOBAL, tous clubs confondus,
 `max_concurrent_placements = 1` (`engine/app/core/config.py`, acquis dans `engine/app/main.py` autour du
 solve). Le verrou club de `MatchPlacementLock` n'isole PAS deux clubs l'un de l'autre : ils partagent ce
-jeton unique, et le second appel attend derrière le solve du premier. Si cette attente plus son propre
-solve dépasse le timeout HTTP du contrôleur (`PlaceMatchesController::HTTP_TIMEOUT_SECONDS`, 90 s), il
-reçoit un 502 propre (« Le solveur n'a pas répondu — réessayez. ») — rien n'est écrit, l'applier ne tourne
-jamais sur un appel qui a levé une exception de transport. **Seuil de bascule vers l'async** : à re-poser
-sur mesure si un club réel dépasse en pratique le budget de 60 s — le contrat engine ne changerait pas.
+jeton unique, et le second appel attend derrière le solve du premier — l'attente ne pèse plus que sur le
+worker Messenger, jamais sur une requête HTTP d'un gestionnaire.
 
 ### 3. Best-effort « placement optionnel à poids dominant » — articulation avec ADR-0001
 
@@ -64,14 +68,27 @@ retenu dans son budget, message « relancez le placement ». Reclassification pu
 deux sens sans avoir à saturer un budget pour de vrai (`_remaining_reason`,
 `engine/app/solver/match_placement.py`).
 
-### 4. Budget fixe, déterminisme, poids documentés
+### 4. Budget PAR SEMAINE (amendement 2026-10-04), déterminisme, poids documentés
 
-60 s de bout en bout (`solverTimeoutSeconds` du payload, `MatchPlacementPayloadBuilder`) — porté de 30 s
-par P4-240 pour absorber un gros lot (une fixture réelle à 141 matchs domicile) sans changer de rail. La
-chaîne de timeouts qui l'encadre (verrou `MatchPlacementLock` 120 s, HTTP contrôleur 90 s, nginx
-fastcgi/proxy 120 s, PHP `max_execution_time` 120 s, client frontend `ky` 120 s sur cet appel seul) est
-détaillée dans `specs/courantes/module-matchs.md` §3. **1 worker** (bit-stable — les golden en dépendent),
-seed 42. Candidats au pas de **15 min** dans (accès ∩ ligue).
+Le moteur découpe désormais le placement **semaine ISO par semaine ISO** (`_partition_by_iso_week`,
+`engine/app/solver/match_placement.py`, ENG-50) : chaque semaine (matchs TO_PLACE/FIXED/AWAY de la
+semaine + ses `training_occupancies`) est solvée isolément, puis les résultats sont concaténés
+(`_merge_week_results` — placements/non-plaçables/diagnostics en ordre stable, métriques SOMMÉES,
+`status="failed"` seulement si TOUTES les semaines tentées ont échoué). `solverTimeoutSeconds` du
+payload (`MatchPlacementPayloadBuilder::WEEK_BUDGET_SECONDS = 35`) est désormais le budget **DE CHAQUE
+SEMAINE**, pas un budget de bout en bout — un lot de N semaines ISO distinctes à placer consomme
+jusqu'à `N × 35 s` de solve. `BUILD_BUDGET_SECONDS = 10.0` reste le budget de CONSTRUCTION de
+**chaque sous-build** hebdomadaire (inchangé dans sa valeur, réappliqué par semaine). Le TTL du
+verrou `MatchPlacementLock` et le timeout HTTP backend→engine suivent la même formule
+(`PlaceMatchesMessage::budgetSecondsFor` : `N × (35 + 15) s + 60 s` de marge, `35` = budget/semaine,
+`15` = `ENGINE_PER_WEEK_OVERHEAD_SECONDS`, `60` = `LOCK_TTL_MARGIN_SECONDS`) — détail complet dans
+`specs/courantes/module-matchs.md` §3. Le solve lui-même vit dans un **processus fils jetable**
+(ENG-49, `ProcessPoolExecutor(max_workers=1, max_tasks_per_child=1, mp_context=spawn)`,
+`engine/app/main.py`) : toute sa mémoire native meurt avec le fils à chaque placement, et
+`malloc_trim(0)` côté parent rend le reste des arènes glibc de l'orchestration FastAPI — un fils tué
+(OOM) casse le pool (`BrokenProcessPool`), recréé pour que le placement suivant reparte sain. **1
+worker** (bit-stable — les golden en dépendent), seed 42. Candidats au pas de **15 min** dans
+(accès ∩ ligue).
 
 **Warm-start glouton** (P4-240) : avant le solve, un premier-ajustement déterministe, matchs triés
 (date, équipe), choisit pour chacun le candidat préféré — créneau idéal (habitude), sinon le

@@ -15,8 +15,9 @@ use RuntimeException;
 /**
  * Placement des matchs de bout en bout, sur la stack qui tourne.
  *
- * Reproduit ce que faisait le smoke « place-matches » : rail SYNCHRONE de
- * POST /api/fixtures/place. On possède TOUTES les ressources dont dépendent les
+ * Reproduit ce que faisait le smoke « place-matches », désormais sur le rail ASYNCHRONE
+ * de POST /api/fixtures/place (202 + run enfilé, résultat lu via GET placement-run une fois
+ * terminal, patron de la génération). On possède TOUTES les ressources dont dépendent les
  * assertions (deux équipes + un gymnase jetables, une fenêtre samedi, un
  * créneau idéal samedi 15:30, deux fixtures) pour que la donnée WE réelle du seed ne
  * les perturbe pas. Deux gardes de restauration, exécutées quoi qu'il arrive :
@@ -28,6 +29,10 @@ use RuntimeException;
 final class MatchPlacementContext extends BaseContext
 {
     private const string USER_EMAIL = 'mara.mb@bccl.fr';
+
+    private const int POLL_INTERVAL_SECONDS = 2;
+
+    private const int TIMEOUT_SECONDS = 650;
 
     private string $token = '';
 
@@ -90,6 +95,9 @@ final class MatchPlacementContext extends BaseContext
 
     /** @var array<mixed> */
     private array $placeResult = [];
+
+    /** @var array{status: int, json: array<mixed>} */
+    private array $secondPlaceResponse = ['status' => 0, 'json' => []];
 
     /** @var array<mixed> */
     private array $satFixture = [];
@@ -627,11 +635,7 @@ final class MatchPlacementContext extends BaseContext
     #[When('je lance le placement des matchs')]
     public function jeLanceLePlacement(): void
     {
-        $result = $this->apiPost('fixtures/place', [], $this->token);
-        if (200 !== $result['status']) {
-            throw new RuntimeException(\sprintf('le placement des matchs a répondu %d (200 attendu)', $result['status']));
-        }
-        $this->placeResult = $result['json'];
+        $this->placeResult = $this->lancerEtAttendreLeRun([]);
 
         if ('' !== $this->fxSat) {
             $fixture = $this->apiGet(\sprintf('fixtures/%s', $this->fxSat), $this->token);
@@ -809,11 +813,7 @@ final class MatchPlacementContext extends BaseContext
         $from = new DateTimeImmutable($this->saturday, $paris)->modify('-5 days')->format('Y-m-d');
         $to = new DateTimeImmutable($this->saturday, $paris)->modify('+1 day')->format('Y-m-d');
 
-        $result = $this->apiPost('fixtures/place', ['from' => $from, 'to' => $to], $this->token);
-        if (200 !== $result['status']) {
-            throw new RuntimeException(\sprintf('le placement du week-end a répondu %d (200 attendu)', $result['status']));
-        }
-        $this->placeResult = $result['json'];
+        $this->placeResult = $this->lancerEtAttendreLeRun(['from' => $from, 'to' => $to]);
 
         $this->satFixture = $this->apiGet(\sprintf('fixtures/%s', $this->fxSat), $this->token)['json'];
         $this->otherFixture = $this->apiGet(\sprintf('fixtures/%s', $this->fxSat2), $this->token)['json'];
@@ -842,6 +842,41 @@ final class MatchPlacementContext extends BaseContext
         }
         if (($this->otherFixture['venueId'] ?? null) !== $this->venueId) {
             throw new RuntimeException('le match de l\'autre week-end a changé de gymnase — l\'ancre n\'a pas été respectée');
+        }
+    }
+
+    #[When('je lance un placement puis, aussitôt, un second pour le même club')]
+    public function jeLanceDeuxPlacementsConcurrents(): void
+    {
+        // Rail async (ADR-0003) : le verrou par club est pris par le CONTRÔLEUR dès l'enfilage
+        // et tenu jusqu'à la fin du run côté worker. Juste après le 202 du premier, le verrou
+        // est donc détenu : une seconde demande immédiate échoue DÉTERMINISTEMENT à l'acquisition.
+        $first = $this->apiPost('fixtures/place', [], $this->token);
+        if (202 !== $first['status']) {
+            throw new RuntimeException(\sprintf('le premier placement a répondu %d (202 attendu)', $first['status']));
+        }
+        $runId = $first['json']['runId'] ?? null;
+        if (!\is_string($runId) || '' === $runId) {
+            throw new RuntimeException('le premier placement enfilé n\'a pas renvoyé d\'identifiant de run');
+        }
+
+        // Seconde demande PENDANT le run ouvert : réponse capturée pour l'assertion.
+        $this->secondPlaceResponse = $this->apiPost('fixtures/place', [], $this->token);
+
+        // On laisse le premier run aller à son terme : ni verrou résiduel ni run en vol au
+        // nettoyage (la suppression des fixtures ne doit pas croiser un placement en cours).
+        $this->awaitRunTerminal($runId);
+    }
+
+    #[Then('la seconde demande est refusée par un conflit, avec un message métier')]
+    public function laSecondeDemandeEstRefusee(): void
+    {
+        if (409 !== $this->secondPlaceResponse['status']) {
+            throw new RuntimeException(\sprintf('la seconde demande aurait dû être refusée par un conflit (409), obtenu %d', $this->secondPlaceResponse['status']));
+        }
+        $error = $this->secondPlaceResponse['json']['error'] ?? null;
+        if (!\is_string($error) || '' === $error) {
+            throw new RuntimeException('le conflit de double placement n\'a pas porté de message métier');
         }
     }
 
@@ -922,6 +957,68 @@ final class MatchPlacementContext extends BaseContext
                 admin: true,
             );
         }
+    }
+
+    /**
+     * Lance le placement (rail async) et rend le RÉSULTAT du run une fois terminal.
+     * Un corps vide/`{from,to}` enfile un run (202) ; le seul 200 synchrone restant est
+     * « aucun match à placer » (corps direct), que l'on rend tel quel. Patron copié de
+     * {@see SeasonGenerationContext::pollUntilTerminal} : sondage borné du dernier run.
+     *
+     * @param array<string, string> $body
+     *
+     * @return array<mixed> le `result` du run COMPLETED (placed / unplaced / diagnostics…)
+     */
+    private function lancerEtAttendreLeRun(array $body): array
+    {
+        $result = $this->apiPost('fixtures/place', $body, $this->token);
+        if (200 === $result['status']) {
+            return $result['json']; // « aucun match à placer » : réponse directe, pas de run.
+        }
+        if (202 !== $result['status']) {
+            throw new RuntimeException(\sprintf('le placement des matchs a répondu %d (202 attendu)', $result['status']));
+        }
+        $runId = $result['json']['runId'] ?? null;
+        if (!\is_string($runId) || '' === $runId) {
+            throw new RuntimeException('le placement enfilé n\'a pas renvoyé d\'identifiant de run');
+        }
+
+        return $this->awaitRunTerminal($runId);
+    }
+
+    /**
+     * Sonde GET /api/fixtures/placement-run jusqu'à l'état terminal du run visé, puis rend son
+     * `result`. Exige COMPLETED (un FAILED nomme l'échec) — borné par {@see TIMEOUT_SECONDS}.
+     *
+     * @return array<mixed>
+     */
+    private function awaitRunTerminal(string $runId): array
+    {
+        $deadline = time() + self::TIMEOUT_SECONDS;
+        $status = 'PENDING';
+
+        do {
+            $response = $this->apiGet('fixtures/placement-run', $this->token);
+            if (200 !== $response['status']) {
+                throw new RuntimeException(\sprintf('lecture du run de placement en échec (HTTP %d)', $response['status']));
+            }
+            $run = $response['json']['run'] ?? null;
+            if (\is_array($run) && ($run['id'] ?? null) === $runId) {
+                $status = \is_string($run['status'] ?? null) ? $run['status'] : 'PENDING';
+                if (\in_array($status, ['COMPLETED', 'FAILED'], true)) {
+                    if ('COMPLETED' !== $status) {
+                        throw new RuntimeException(\sprintf('le run de placement a terminé en « %s » au lieu de COMPLETED', $status));
+                    }
+                    $data = $run['result'] ?? [];
+
+                    return \is_array($data) ? $data : [];
+                }
+            }
+
+            sleep(self::POLL_INTERVAL_SECONDS);
+        } while (time() < $deadline);
+
+        throw new RuntimeException(\sprintf('le placement n\'a pas abouti dans le délai imparti (dernier statut « %s »)', $status));
     }
 
     private function kickoff(): string
