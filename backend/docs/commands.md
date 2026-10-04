@@ -1,6 +1,6 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-10-02 (`documentation-update`, lot nettoyage code mort : `app:club:clock`
+Last verified @ 2026-10-04 (ajout de `app:clubs:erasure-remind` — rappel RGPD J-7 au contact officiel d'un club orphelin, lot identité du club #1069, vérifié contre `src/Command/ClubErasureReminderCommand.php` ; avant cela, 2026-10-02, lot nettoyage code mort : `app:club:clock`
 (`src/Command/ClubClockCommand.php`) n'a plus d'alias déprécié — `app:demo:clock` est retiré ;
 `app:constraint:export-implicit`, `app:purge-orphans` et `app:clubs:backfill-school-zone` sont
 supprimés du catalogue, aucun appelant restant. `app:club:clock` n'écrit QUE sur un club
