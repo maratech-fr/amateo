@@ -409,7 +409,6 @@ final class RecapCapacityWarningTest extends WebTestCase
     {
         $this->client->request('POST', '/api/constraints/validate', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->jwt->create($user),
-            'HTTP_X-Club-Id' => $club->getId(),
             'CONTENT_TYPE' => 'application/json',
         ], json_encode(null === $calendarEntryId ? [] : ['calendarEntryId' => $calendarEntryId], \JSON_THROW_ON_ERROR));
         self::assertResponseIsSuccessful();

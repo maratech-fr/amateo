@@ -423,7 +423,6 @@ final class RegenerateFromVersionTest extends WebTestCase
     private function headers(): array
     {
         return [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
             'CONTENT_TYPE' => 'application/ld+json',
         ];

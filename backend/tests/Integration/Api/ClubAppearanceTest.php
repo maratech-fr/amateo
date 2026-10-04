@@ -40,7 +40,6 @@ final class ClubAppearanceTest extends WebTestCase
         $this->client->loginUser($this->user);
 
         $this->client->request('PATCH', '/api/club/appearance', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/json',
         ], json_encode(['accentColor' => '#e11d48', 'accentColorDark' => '#f59e0b', 'accentPalette' => ['#e11d48', '#1e293b', '#f59e0b']], \JSON_THROW_ON_ERROR));
 
@@ -54,7 +53,7 @@ final class ClubAppearanceTest extends WebTestCase
         // The stateless JWT firewall needs a Bearer on this request (loginUser's
         // session is ignored there).
         $token = self::getContainer()->get(JWTTokenManagerInterface::class)->create($this->user);
-        $this->client->request('GET', '/api/me', [], [], ['HTTP_X-Club-Id' => $this->club->getId(), 'HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        $this->client->request('GET', '/api/me', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         self::assertResponseIsSuccessful();
         $me = json_decode((string) $this->client->getResponse()->getContent(), true);
         self::assertSame('#e11d48', $me['club']['accentColor']);
@@ -66,7 +65,6 @@ final class ClubAppearanceTest extends WebTestCase
         $this->client->loginUser($this->user);
 
         $this->client->request('PATCH', '/api/club/appearance', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/json',
         ], json_encode(['accentColorDark' => 'noir'], \JSON_THROW_ON_ERROR));
 
@@ -78,7 +76,6 @@ final class ClubAppearanceTest extends WebTestCase
         $this->client->loginUser($this->user);
 
         $this->client->request('PATCH', '/api/club/appearance', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/json',
         ], json_encode(['accentColor' => 'rouge'], \JSON_THROW_ON_ERROR));
 
@@ -94,7 +91,7 @@ final class ClubAppearanceTest extends WebTestCase
         file_put_contents($tmp, $png);
         $file = new UploadedFile($tmp, 'logo.png', 'image/png', null, true);
 
-        $this->client->request('POST', '/api/club/logo', [], ['file' => $file], ['HTTP_X-Club-Id' => $this->club->getId()]);
+        $this->client->request('POST', '/api/club/logo', [], ['file' => $file], []);
         self::assertResponseIsSuccessful();
         $data = json_decode((string) $this->client->getResponse()->getContent(), true);
         $base = '/api/clubs/' . $this->club->getId() . '/logo';

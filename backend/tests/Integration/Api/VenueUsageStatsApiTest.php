@@ -112,7 +112,6 @@ final class VenueUsageStatsApiTest extends WebTestCase
     {
         $this->client->request('GET', '/api/venue-usage-stats' . $query, [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->jwt->create($user),
-            'HTTP_X-Club-Id' => $clubId,
         ]);
     }
 

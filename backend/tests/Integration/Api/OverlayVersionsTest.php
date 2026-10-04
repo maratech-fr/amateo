@@ -90,7 +90,6 @@ final class OverlayVersionsTest extends WebTestCase
         // « active » = plan.chosenScheduleId, que la création ne touche jamais.
         $this->client->request('POST', '/api/schedules', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->jwt->create($user),
-            'HTTP_X-Club-Id' => $club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode(['name' => 'V2', 'status' => 'DRAFT', 'schedulePlanId' => self::getContainer()->get(SchedulePlanProvisioner::class)->periodPlanId($entry->getId())], \JSON_THROW_ON_ERROR));
         self::assertResponseStatusCodeSame(201);
@@ -146,7 +145,6 @@ final class OverlayVersionsTest extends WebTestCase
     {
         $this->client->request('POST', $url, [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->jwt->create($user),
-            'HTTP_X-Club-Id' => $club->getId(),
         ]);
     }
 

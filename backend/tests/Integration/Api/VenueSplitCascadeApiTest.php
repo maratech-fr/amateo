@@ -156,7 +156,6 @@ final class VenueSplitCascadeApiTest extends WebTestCase
     private function putVenueCanSplit(string $venueId, bool $canSplit, bool $confirm): void
     {
         $this->client->request('PUT', '/api/venues/' . $venueId, [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'HTTP_X-Season-Id' => $this->season->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
             'CONTENT_TYPE' => 'application/ld+json',

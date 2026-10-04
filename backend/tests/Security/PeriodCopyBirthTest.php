@@ -268,7 +268,6 @@ final class PeriodCopyBirthTest extends WebTestCase
     {
         return [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->jwt->create($user),
-            'HTTP_X-Club-Id' => $club->getId(),
             'HTTP_X-Season-Id' => $season->getId(),
             'CONTENT_TYPE' => 'application/json',
         ];

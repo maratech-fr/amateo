@@ -144,7 +144,6 @@ final class SlotMoveCarriesReservationsTest extends WebTestCase
         self::assertInstanceOf(VenueTrainingSlot::class, $slot);
 
         $this->client->request('PUT', '/api/venue_training_slots/' . $slotId, [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'venueId' => $slot->getVenueId(),

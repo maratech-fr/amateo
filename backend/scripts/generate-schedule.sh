@@ -2,7 +2,6 @@
 set -euo pipefail
 
 API_BASE="http://localhost:8080/api"
-CLUB_ID="77e1e118-e702-4839-8a9c-7c34187541e6"
 # P3-4/SEC : plus jamais de jeton en dur dans un script versionné (Gitleaks l'a
 # épinglé dans l'historique). Fournir SCHEDULER_TOKEN, ou SCHEDULER_EMAIL +
 # SCHEDULER_PASSWORD pour un login à la volée.
@@ -10,7 +9,6 @@ TOKEN="${SCHEDULER_TOKEN:-}"
 # Le login à la volée (SCHEDULER_EMAIL/PASSWORD → cookie BEARER) vit plus bas,
 # APRÈS la définition de `die()` — sinon un login refusé n'aurait aucune voix.
 SCHEDULE_ID=""
-CLUB_ID_ARG=""
 POLL_INTERVAL=5
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-650}"
 # Watchdog: how long the schedule may stay PENDING (never reaching GENERATING)
@@ -32,16 +30,19 @@ usage() {
   cat <<EOF
 Usage: $(basename "$0") [OPTIONS]
 
+Le club est TOUJOURS celui du compte connecté (JWT) — il n'y a plus d'option
+pour le choisir : le serveur ne lit aucun en-tête de club (AUD-SEC-25).
+
 Options:
   --schedule-id ID   Utilise un schedule existant (skip la création)
-  --club-id ID       Crée un nouveau schedule pour ce club
-  --name NAME        Nom du schedule (avec --club-id uniquement)
-  --token TOKEN      JWT Bearer token (surcharge la variable TOKEN hardcodée)
+  --name NAME        Nom du schedule créé (sinon un nom horodaté)
+  --token TOKEN      JWT Bearer token (sinon SCHEDULER_TOKEN, ou
+                     SCHEDULER_EMAIL/SCHEDULER_PASSWORD pour un login à la volée)
   --help, -h         Show this help
 
 Exemples:
   $(basename "$0") --schedule-id a1b2c3d4-e5f6-7890-abcd-ef1234567890
-  $(basename "$0") --club-id 11111111-1111-1111-1111-111111111111 --name "Planning 2025-26"
+  SCHEDULER_EMAIL=... SCHEDULER_PASSWORD=... $(basename "$0") --name "Planning 2025-26"
 EOF
 }
 
@@ -174,15 +175,6 @@ while [[ $# -gt 0 ]]; do
       SCHEDULE_ID="${1#*=}"
       shift
       ;;
-    --club-id)
-      [[ $# -ge 2 ]] || die "--club-id requires a value"
-      CLUB_ID_ARG="$2"
-      shift 2
-      ;;
-    --club-id=*)
-      CLUB_ID_ARG="${1#*=}"
-      shift
-      ;;
     --name)
       [[ $# -ge 2 ]] || die "--name requires a value"
       SCHEDULE_NAME="$2"
@@ -223,18 +215,14 @@ fi
 # (Under generate-schedule-test.sh the guard is a no-op via SANDBOX_GUARD_SELFTEST.)
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/sandbox-guard.sh"
 
-if [[ -n "$SCHEDULE_ID" && -n "$CLUB_ID_ARG" ]]; then
-  die "--schedule-id et --club-id sont mutuellement exclusifs"
-fi
-
 if [[ -n "$SCHEDULE_ID" ]]; then
   info "Utilisation du schedule existant: $SCHEDULE_ID"
 else
-  local_club_id="${CLUB_ID_ARG:-$CLUB_ID}"
   schedule_payload=$(python3 -c 'import json,sys; print(json.dumps({"name": sys.argv[1], "status": "DRAFT"}, ensure_ascii=False))' "$SCHEDULE_NAME")
 
+  # Le club vient du compte connecté (JWT) — aucun en-tête de club (AUD-SEC-25).
   info "Création du schedule: $SCHEDULE_NAME"
-  http_request POST "$API_BASE/schedules" "$schedule_payload" "X-Club-Id: $local_club_id"
+  http_request POST "$API_BASE/schedules" "$schedule_payload"
   case "$HTTP_STATUS" in
     200|201) ;;
     404) die "Endpoint /schedules introuvable (HTTP 404). Le backend est-il bien démarré ?" ;;

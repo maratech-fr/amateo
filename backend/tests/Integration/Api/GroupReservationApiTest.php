@@ -170,7 +170,6 @@ final class GroupReservationApiTest extends WebTestCase
 
         foreach ([['abc', $venue->getId()], [$block->getId(), 'not-a-uuid'], ['', $venue->getId()]] as [$blockId, $venueId]) {
             $this->client->request('POST', '/api/reservations/group', [], [], [
-                'HTTP_X-Club-Id' => $this->club->getId(),
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
                 'CONTENT_TYPE' => 'application/json',
             ], json_encode([
@@ -203,7 +202,6 @@ final class GroupReservationApiTest extends WebTestCase
                 'dayOfWeek' => 2, 'startTime' => '18:00', 'durationMinutes' => 90,
             ];
             $this->client->request('POST', '/api/reservations/group', [], [], [
-                'HTTP_X-Club-Id' => $this->club->getId(),
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
                 'CONTENT_TYPE' => 'application/json',
             ], json_encode(array_merge($body, $override), \JSON_THROW_ON_ERROR));
@@ -373,7 +371,6 @@ final class GroupReservationApiTest extends WebTestCase
         $editorToken = $this->addActiveMember($this->club->getId(), 'member');
 
         $this->client->request('POST', '/api/reservations/group', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . $editorToken,
             'CONTENT_TYPE' => 'application/json',
         ], json_encode([
@@ -510,7 +507,6 @@ final class GroupReservationApiTest extends WebTestCase
     private function postBlock(string $blockId, string $venueId, int $dayOfWeek, string $startTime, ?string $planId): void
     {
         $this->client->request('POST', '/api/reservations/group', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
             'CONTENT_TYPE' => 'application/json',
         ], json_encode([
@@ -625,7 +621,6 @@ final class GroupReservationApiTest extends WebTestCase
     private function postIndividual(string $teamId, string $venueId, int $dayOfWeek, string $startTime, ?string $planId): void
     {
         $this->client->request('POST', '/api/reservations', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([

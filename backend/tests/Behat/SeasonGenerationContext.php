@@ -73,11 +73,11 @@ final class SeasonGenerationContext extends BaseContext
     #[When('je lance la génération du planning de saison')]
     public function jeLanceLaGeneration(): void
     {
+        // Le club vient du JWT (membership) — aucun en-tête de club (AUD-SEC-25).
         $created = $this->apiPost(
             'schedules',
             ['name' => 'Planning fonctionnel ' . date('Y-m-d_H:i:s'), 'status' => 'DRAFT'],
             $this->token,
-            ['X-Club-Id' => $this->clubId],
         );
         if (!\in_array($created['status'], [200, 201], true)) {
             throw new RuntimeException(\sprintf('création du planning refusée (HTTP %d)', $created['status']));

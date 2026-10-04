@@ -156,7 +156,6 @@ final class RegenerateTest extends WebTestCase
     private function post(string $scheduleId): void
     {
         $this->client->request('POST', '/api/schedules/' . $scheduleId . '/regenerate', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
         ]);
     }

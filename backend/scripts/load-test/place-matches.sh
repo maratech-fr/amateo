@@ -98,7 +98,6 @@ start=$(date +%s)
 http=$(curl -sS -o "$body_file" -w '%{http_code}' \
   -X POST "$API_BASE/fixtures/place" \
   -H "Authorization: Bearer $TOKEN" \
-  -H "X-Club-Id: $CLUB_ID" \
   -H 'Content-Type: application/json' \
   --data "$body" 2>/dev/null) || { rm -f "$body_file"; die "Backend injoignable sur POST /fixtures/place"; }
 resp=$(<"$body_file"); rm -f "$body_file"
@@ -137,8 +136,7 @@ print(d.get("runId", "") if isinstance(d, dict) else "")
       while :; do
         run_body=$(curl -sS \
           -X GET "$API_BASE/fixtures/placement-run" \
-          -H "Authorization: Bearer $TOKEN" \
-          -H "X-Club-Id: $CLUB_ID" 2>/dev/null || echo '{}')
+          -H "Authorization: Bearer $TOKEN" 2>/dev/null || echo '{}')
         # On ne lit QUE le run attendu (id), pour ne jamais confondre avec un run antérieur.
         read -r run_status placed skipped unplaced < <(RUN_ID="$run_id" python3 -c '
 import json, os, sys
