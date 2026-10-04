@@ -117,7 +117,6 @@ final class TeamMatchHabitVenueClearApiTest extends WebTestCase
     private function requestJson(string $method, string $uri, array $payload): array
     {
         $this->client->request($method, $uri, [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode($payload, \JSON_THROW_ON_ERROR));

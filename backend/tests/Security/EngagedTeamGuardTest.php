@@ -79,7 +79,6 @@ final class EngagedTeamGuardTest extends WebTestCase
         $client->loginUser($this->user);
 
         $client->request('DELETE', \sprintf('/api/teams/%s', $team->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
         ]);
 
         self::assertResponseStatusCodeSame(409, 'une équipe qui joue ne se supprime pas');
@@ -103,7 +102,6 @@ final class EngagedTeamGuardTest extends WebTestCase
         $client->loginUser($this->user);
 
         $client->request('DELETE', \sprintf('/api/teams/%s', $team->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
         ]);
 
         self::assertResponseStatusCodeSame(409, 'un match importé, même non placé, engage l\'équipe');
@@ -128,7 +126,6 @@ final class EngagedTeamGuardTest extends WebTestCase
         $client->loginUser($this->user);
 
         $client->request('DELETE', \sprintf('/api/teams/%s', $team->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
         ]);
 
         self::assertResponseStatusCodeSame(409, 'un amical créé via l\'API FFBB engage l\'équipe');
@@ -146,7 +143,6 @@ final class EngagedTeamGuardTest extends WebTestCase
         $client->loginUser($this->user);
 
         $client->request('DELETE', \sprintf('/api/teams/%s', $team->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
         ]);
 
         self::assertResponseStatusCodeSame(204);
@@ -164,7 +160,6 @@ final class EngagedTeamGuardTest extends WebTestCase
         $client->loginUser($this->user);
 
         $client->request('DELETE', \sprintf('/api/teams/%s', $team->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
         ]);
 
         self::assertResponseStatusCodeSame(409);
@@ -180,7 +175,6 @@ final class EngagedTeamGuardTest extends WebTestCase
         $client->loginUser($this->user);
 
         $client->request('PUT', \sprintf('/api/teams/%s', $team->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'name' => 'U15 régionale',
@@ -214,7 +208,6 @@ final class EngagedTeamGuardTest extends WebTestCase
         $client->loginUser($this->user);
 
         $client->request('PUT', \sprintf('/api/teams/%s', $team->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'name' => 'U15 Élite Filles',
@@ -251,7 +244,7 @@ final class EngagedTeamGuardTest extends WebTestCase
         $free = $this->createTeam('Libre');
         $client->loginUser($this->user);
 
-        $client->request('GET', '/api/teams', [], [], ['HTTP_X-Club-Id' => $this->club->getId()]);
+        $client->request('GET', '/api/teams', [], [], []);
         self::assertResponseIsSuccessful();
         $byId = [];
         foreach (json_decode((string) $client->getResponse()->getContent(), true)['member'] as $row) {
@@ -276,7 +269,6 @@ final class EngagedTeamGuardTest extends WebTestCase
         $client->loginUser($this->user);
 
         $client->request('PUT', \sprintf('/api/teams/%s', $team->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'name' => 'U15 sans niveau',
@@ -306,7 +298,6 @@ final class EngagedTeamGuardTest extends WebTestCase
         $client->loginUser($this->user);
 
         $client->request('PUT', \sprintf('/api/teams/%s', $team->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'name' => 'U15 inscrite renommée',
@@ -332,7 +323,6 @@ final class EngagedTeamGuardTest extends WebTestCase
         $client->loginUser($this->user);
 
         $client->request('PUT', \sprintf('/api/teams/%s', $team->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'name' => 'U15 engagée renommée',
@@ -357,14 +347,12 @@ final class EngagedTeamGuardTest extends WebTestCase
         $client->loginUser($this->user);
 
         $client->request('DELETE', \sprintf('/api/fixtures/%s', $fixture->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
         ]);
         self::assertResponseStatusCodeSame(204, 'supprimer un match d\'une équipe engagée passe — ce n\'est pas le DELETE d\'équipe');
 
         // Stateless firewall: loginUser only arms ONE request — the second rides a real JWT.
         $token = self::getContainer()->get('lexik_jwt_authentication.jwt_manager')->create($this->user);
         $client->request('DELETE', \sprintf('/api/teams/%s', $team->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . $token,
         ]);
         self::assertResponseStatusCodeSame(204, 'sans plus aucun match, l\'équipe redevient supprimable');
@@ -391,7 +379,6 @@ final class EngagedTeamGuardTest extends WebTestCase
 
         $client->loginUser($this->user);
         $client->request('DELETE', \sprintf('/api/teams/%s', $team->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
         ]);
         self::assertResponseStatusCodeSame(409, 'un match dépointé engage toujours son équipe');
         $this->em->clear();
@@ -425,7 +412,6 @@ final class EngagedTeamGuardTest extends WebTestCase
 
         $client->loginUser($this->user);
         $client->request('DELETE', \sprintf('/api/teams/%s', $team->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
         ]);
         self::assertResponseStatusCodeSame(409, 'un match dont le gymnase a été supprimé engage toujours son équipe');
     }

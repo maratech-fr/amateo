@@ -93,7 +93,6 @@ final class ValidateImpactApiTest extends WebTestCase
     {
         $this->client->request('GET', "/api/schedules/{$scheduleId}/validate-impact", [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->jwt->create($user),
-            'HTTP_X-Club-Id' => $clubId,
         ]);
     }
 

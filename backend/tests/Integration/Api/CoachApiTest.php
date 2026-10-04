@@ -39,7 +39,6 @@ final class CoachApiTest extends WebTestCase
         $this->client->loginUser($this->user);
 
         $this->client->request('POST', '/api/coaches', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode(['firstName' => 'Jean', 'lastName' => 'Dupont', 'isEmployee' => true], \JSON_THROW_ON_ERROR));
 
@@ -65,7 +64,6 @@ final class CoachApiTest extends WebTestCase
         \assert($manager instanceof JWTTokenManagerInterface);
         $headers = [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $manager->create($this->user),
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ];
 

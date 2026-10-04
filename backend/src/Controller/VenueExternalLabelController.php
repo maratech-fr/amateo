@@ -269,9 +269,8 @@ final class VenueExternalLabelController extends AbstractController implements S
         if (\is_string($clubId) && '' !== $clubId) {
             return $clubId;
         }
-        $clubId = $request?->headers->get('X-Club-Id');
 
-        return \is_string($clubId) && '' !== $clubId ? $clubId : null;
+        return null;
     }
 
     /**

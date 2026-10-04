@@ -7,8 +7,9 @@ namespace App\Controller;
 use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
- * Resolves the current club id from the request (the tenant listener's
- * `_club_id` attribute, else the `X-Club-Id` header). Shared by cockpit
+ * Resolves the current club id from the request — the tenant listener's
+ * `_club_id` attribute, derived server-side from the authenticated user's
+ * membership (no client-supplied header since AUD-SEC-25). Shared by cockpit
  * controllers so this security-sensitive idiom lives in one place.
  *
  * NOTE: several older controllers (Validate/Reopen/Generate…) still inline the
@@ -21,11 +22,6 @@ trait ResolvesCurrentClubTrait
         $request = $requestStack->getCurrentRequest();
 
         $clubId = $request?->attributes->get('_club_id');
-        if (\is_string($clubId) && '' !== $clubId) {
-            return $clubId;
-        }
-
-        $clubId = $request?->headers->get('X-Club-Id');
         if (\is_string($clubId) && '' !== $clubId) {
             return $clubId;
         }

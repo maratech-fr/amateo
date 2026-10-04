@@ -52,7 +52,6 @@ final class TeamApiTest extends WebTestCase
         $client->loginUser($this->user);
 
         $client->request('POST', '/api/teams', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'name' => 'U11 Boys',
@@ -78,7 +77,6 @@ final class TeamApiTest extends WebTestCase
         $client->loginUser($this->user);
 
         $client->request('POST', '/api/teams', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'name' => 'Ranked',
@@ -122,7 +120,6 @@ final class TeamApiTest extends WebTestCase
 
         $headers = [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $token,
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ];
         $uri = \sprintf('/api/teams/%s', $team->getId());
@@ -158,7 +155,6 @@ final class TeamApiTest extends WebTestCase
         $client->loginUser($this->user);
 
         $client->request('PUT', \sprintf('/api/teams/%s', $team->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'name' => 'Ranked',
@@ -180,7 +176,6 @@ final class TeamApiTest extends WebTestCase
         $this->createTeam('Team Beta');
 
         $client->request('GET', '/api/teams', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
         ]);
 
         self::assertResponseStatusCodeSame(200);
@@ -197,7 +192,6 @@ final class TeamApiTest extends WebTestCase
         $team = $this->createTeam('Test Team');
 
         $client->request('GET', \sprintf('/api/teams/%s', $team->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
         ]);
 
         self::assertResponseStatusCodeSame(200);
@@ -214,7 +208,6 @@ final class TeamApiTest extends WebTestCase
         $team = $this->createTeam('Original Name');
 
         $client->request('PUT', \sprintf('/api/teams/%s', $team->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'name' => 'Updated Name',
@@ -242,7 +235,6 @@ final class TeamApiTest extends WebTestCase
         $teamId = $team->getId();
 
         $client->request('DELETE', \sprintf('/api/teams/%s', $teamId), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
         ]);
 
         self::assertResponseStatusCodeSame(204);
@@ -273,7 +265,6 @@ final class TeamApiTest extends WebTestCase
         $ownTeam = $this->createTeam('Own Team');
 
         $client->request('GET', '/api/teams', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
         ]);
 
         self::assertResponseStatusCodeSame(200);
@@ -291,7 +282,6 @@ final class TeamApiTest extends WebTestCase
         $client->loginUser($this->user);
 
         $client->request('POST', '/api/teams/reorder', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/json',
         ], json_encode(['items' => [
             ['id' => $a->getId(), 'priorityTierId' => $this->priorityTier->getId(), 'tierOrder' => 3],
@@ -310,7 +300,6 @@ final class TeamApiTest extends WebTestCase
         $client->loginUser($this->user);
 
         $client->request('POST', '/api/teams', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'name' => 'Regional Team',
@@ -342,7 +331,6 @@ final class TeamApiTest extends WebTestCase
 
         // Rename WITHOUT the level key — the minimal client the old contract broke.
         $client->request('PUT', \sprintf('/api/teams/%s', $team->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'name' => 'Leveled Renamed',
@@ -366,7 +354,6 @@ final class TeamApiTest extends WebTestCase
         $client->loginUser($this->user);
 
         $client->request('POST', '/api/teams', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'name' => 'Bad Level',

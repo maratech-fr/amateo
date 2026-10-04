@@ -62,7 +62,6 @@ final class ConstraintApiTest extends WebTestCase
         $client->loginUser($this->user);
 
         $client->request('POST', '/api/constraints', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'name' => 'No Saturday Practice',
@@ -124,7 +123,6 @@ final class ConstraintApiTest extends WebTestCase
         $payload[$field] = $value;
 
         $client->request('POST', '/api/constraints', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode($payload, \JSON_THROW_ON_ERROR));
 
@@ -158,7 +156,6 @@ final class ConstraintApiTest extends WebTestCase
         $client->loginUser($this->user);
 
         $client->request('POST', '/api/constraints', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'name' => 'Cran retiré',
@@ -198,7 +195,6 @@ final class ConstraintApiTest extends WebTestCase
         $client->loginUser($this->user);
 
         $client->request('POST', '/api/constraints', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'name' => 'Cran verrouillé retiré',
@@ -236,7 +232,6 @@ final class ConstraintApiTest extends WebTestCase
         $client->loginUser($this->user);
 
         $client->request('POST', '/api/constraints', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'name' => 'Impose un gymnase fantôme',
@@ -284,7 +279,6 @@ final class ConstraintApiTest extends WebTestCase
         // PUT = remplacement complet (le DTO exige name/scope/family/ruleType) : on renvoie
         // l'identité, on ne change QUE la règle → HARD sur une préférence de gymnase.
         $this->client->request('PUT', \sprintf('/api/constraints/%s', $constraint->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'name' => 'Gymnase D1',
@@ -309,7 +303,6 @@ final class ConstraintApiTest extends WebTestCase
         // La règle reste HARD, mais le config bascule d'un « impose » (forcedVenueId) à une
         // « préférence » (preferredVenueId) : l'état final FACILITY+preferredVenueId+HARD est refusé.
         $this->client->request('PUT', \sprintf('/api/constraints/%s', $constraint->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'name' => 'Gymnase D1',
@@ -440,7 +433,6 @@ final class ConstraintApiTest extends WebTestCase
         $this->createConstraint('Constraint B', 'TEAM');
 
         $client->request('GET', '/api/constraints', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
         ]);
 
         self::assertResponseStatusCodeSame(200);
@@ -457,7 +449,6 @@ final class ConstraintApiTest extends WebTestCase
         $constraint = $this->createConstraint('Test Constraint', 'CLUB');
 
         $client->request('GET', \sprintf('/api/constraints/%s', $constraint->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
         ]);
 
         self::assertResponseStatusCodeSame(200);
@@ -475,7 +466,6 @@ final class ConstraintApiTest extends WebTestCase
         $constraint = $this->createConstraint('Original Name', 'CLUB');
 
         $client->request('PUT', \sprintf('/api/constraints/%s', $constraint->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'name' => 'Updated Name',
@@ -519,7 +509,6 @@ final class ConstraintApiTest extends WebTestCase
         $this->em->flush();
 
         $client->request('PUT', \sprintf('/api/constraints/%s', $constraint->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'name' => 'Permanente décochée',
@@ -546,7 +535,6 @@ final class ConstraintApiTest extends WebTestCase
         $constraint = $this->createConstraint('Permanente à dater', 'CLUB');
 
         $client->request('PUT', \sprintf('/api/constraints/%s', $constraint->getId()), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
             'name' => 'Permanente à dater',
@@ -571,7 +559,6 @@ final class ConstraintApiTest extends WebTestCase
         $constraintId = $constraint->getId();
 
         $client->request('DELETE', \sprintf('/api/constraints/%s', $constraintId), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
         ]);
 
         self::assertResponseStatusCodeSame(204);
@@ -583,7 +570,6 @@ final class ConstraintApiTest extends WebTestCase
     public function testUnauthorized(): void
     {
         $this->client->request('GET', '/api/constraints', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
         ]);
 
         self::assertResponseStatusCodeSame(401);
@@ -670,7 +656,6 @@ final class ConstraintApiTest extends WebTestCase
     {
         $this->client->loginUser($this->user);
         $this->client->request('POST', '/api/constraints', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode($body + ['isActive' => true, 'sortOrder' => 1], \JSON_THROW_ON_ERROR));
 

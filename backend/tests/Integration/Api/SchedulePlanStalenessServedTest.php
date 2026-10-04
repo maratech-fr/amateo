@@ -177,7 +177,6 @@ final class SchedulePlanStalenessServedTest extends WebTestCase
 
         $this->client->request('GET', $uri, [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->jwt->create($user),
-            'HTTP_X-Club-Id' => $club->getId(),
         ]);
         self::assertResponseIsSuccessful();
 

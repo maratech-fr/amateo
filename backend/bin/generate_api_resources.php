@@ -403,7 +403,7 @@ $abstractProvider = <<<'PHP'
         public function provide(Operation $operation, array $uriVariables = [], array $context = []): object|array|null
         {
             $request = $this->requestStack->getCurrentRequest();
-            $clubId = $request?->attributes->get('_club_id') ?? $request?->headers->get('X-Club-Id');
+            $clubId = $request?->attributes->get('_club_id');
 
             if ($operation instanceof \ApiPlatform\Metadata\GetCollection) {
                 return $this->provideCollection($operation, $context, $clubId);
@@ -486,7 +486,7 @@ $abstractProcessor = <<<'PHP'
         public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): object|void
         {
             $request = $this->requestStack->getCurrentRequest();
-            $clubId = $request?->attributes->get('_club_id') ?? $request?->headers->get('X-Club-Id');
+            $clubId = $request?->attributes->get('_club_id');
             $seasonId = $request?->attributes->get('_season_id') ?? $request?->headers->get('X-Season-Id');
 
             if ($operation instanceof DeleteOperationInterface) {

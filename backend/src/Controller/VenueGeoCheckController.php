@@ -19,8 +19,8 @@ use Symfony\Component\Routing\Attribute\Route;
  * (étude BCCL 2026-09-30). LECTURE SEULE, best-effort : renvoie les gymnases du
  * club+saison courant dont le point enregistré paraît incohérent avec l'adresse
  * fédérale de leur salle (autre rue, ou trop loin du point exact). Management-gated
- * (SEC-07) comme les autres proxies géo ; le tenant vient du JWT (jamais un
- * `X-Club-Id` du front). Aucune écriture, jamais bloquant : le verdict est calculé
+ * (SEC-07) comme les autres proxies géo ; le tenant vient du JWT (aucun en-tête
+ * client, AUD-SEC-25). Aucune écriture, jamais bloquant : le verdict est calculé
  * côté serveur, le front l'AFFICHE sans rien recalculer.
  */
 #[AsController]

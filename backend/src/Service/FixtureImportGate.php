@@ -42,7 +42,7 @@ final class FixtureImportGate
     {
         // The tenant listener resolved the club (JWT membership; a spoofed
         // header already died in 403 before reaching here).
-        $clubId = $request->attributes->get('_club_id') ?? $request->headers->get('X-Club-Id');
+        $clubId = $request->attributes->get('_club_id');
         if (!\is_string($clubId) || '' === $clubId) {
             return new JsonResponse(['error' => 'Club not found.'], Response::HTTP_NOT_FOUND);
         }

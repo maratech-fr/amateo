@@ -57,7 +57,7 @@ final class ValidateConstraintsTest extends WebTestCase
     public function testCleanConstraintsAreValid(): void
     {
         $this->client->loginUser($this->user);
-        $this->client->request('POST', '/api/constraints/validate', [], [], ['HTTP_X-Club-Id' => $this->club->getId()]);
+        $this->client->request('POST', '/api/constraints/validate', [], [], []);
 
         self::assertResponseStatusCodeSame(200);
         self::assertTrue(json_decode((string) $this->client->getResponse()->getContent(), true)['valid']);
@@ -70,7 +70,7 @@ final class ValidateConstraintsTest extends WebTestCase
         $this->constraint(['minStartTime' => '12:00']);
 
         $this->client->loginUser($this->user);
-        $this->client->request('POST', '/api/constraints/validate', [], [], ['HTTP_X-Club-Id' => $this->club->getId()]);
+        $this->client->request('POST', '/api/constraints/validate', [], [], []);
 
         self::assertResponseStatusCodeSame(422);
         $data = json_decode((string) $this->client->getResponse()->getContent(), true);
@@ -97,7 +97,7 @@ final class ValidateConstraintsTest extends WebTestCase
         $this->em->flush();
 
         $this->client->loginUser($this->user);
-        $this->client->request('POST', '/api/constraints/validate', [], [], ['HTTP_X-Club-Id' => $this->club->getId()]);
+        $this->client->request('POST', '/api/constraints/validate', [], [], []);
 
         self::assertResponseStatusCodeSame(422);
         $data = json_decode((string) $this->client->getResponse()->getContent(), true);
@@ -130,7 +130,7 @@ final class ValidateConstraintsTest extends WebTestCase
         $this->reservation($occupier, $venueId, dayOfWeek: 1, start: '18:00');
 
         $this->client->loginUser($this->user);
-        $this->client->request('POST', '/api/constraints/validate', [], [], ['HTTP_X-Club-Id' => $this->club->getId()]);
+        $this->client->request('POST', '/api/constraints/validate', [], [], []);
 
         self::assertResponseStatusCodeSame(422);
         $data = json_decode((string) $this->client->getResponse()->getContent(), true);
@@ -159,7 +159,7 @@ final class ValidateConstraintsTest extends WebTestCase
         $this->reservation($teamA, $venueId, dayOfWeek: 2, start: '18:00');
 
         $this->client->loginUser($this->user);
-        $this->client->request('POST', '/api/constraints/validate', [], [], ['HTTP_X-Club-Id' => $this->club->getId()]);
+        $this->client->request('POST', '/api/constraints/validate', [], [], []);
 
         self::assertResponseStatusCodeSame(200);
         $data = json_decode((string) $this->client->getResponse()->getContent(), true);
@@ -177,7 +177,7 @@ final class ValidateConstraintsTest extends WebTestCase
         $this->minAtVenue($this->team(sessionsPerWeek: 1), $venueId);
 
         $this->client->loginUser($this->user);
-        $this->client->request('POST', '/api/constraints/validate', [], [], ['HTTP_X-Club-Id' => $this->club->getId()]);
+        $this->client->request('POST', '/api/constraints/validate', [], [], []);
 
         self::assertResponseStatusCodeSame(200);
         $data = json_decode((string) $this->client->getResponse()->getContent(), true);
@@ -215,7 +215,7 @@ final class ValidateConstraintsTest extends WebTestCase
         $this->em->flush();
 
         $this->client->loginUser($this->user);
-        $this->client->request('POST', '/api/constraints/validate', [], [], ['HTTP_X-Club-Id' => $this->club->getId()]);
+        $this->client->request('POST', '/api/constraints/validate', [], [], []);
 
         self::assertResponseStatusCodeSame(200);
         $data = json_decode((string) $this->client->getResponse()->getContent(), true);
@@ -243,7 +243,7 @@ final class ValidateConstraintsTest extends WebTestCase
         $this->reservation($teamId, $venueId, dayOfWeek: 3, start: '18:00');
 
         $this->client->loginUser($this->user);
-        $this->client->request('POST', '/api/constraints/validate', [], [], ['HTTP_X-Club-Id' => $this->club->getId()]);
+        $this->client->request('POST', '/api/constraints/validate', [], [], []);
 
         self::assertResponseStatusCodeSame(422);
         $data = json_decode((string) $this->client->getResponse()->getContent(), true);
@@ -266,7 +266,7 @@ final class ValidateConstraintsTest extends WebTestCase
         $this->reservation($teamId, $venueId, dayOfWeek: 2, start: '18:00');
 
         $this->client->loginUser($this->user);
-        $this->client->request('POST', '/api/constraints/validate', [], [], ['HTTP_X-Club-Id' => $this->club->getId()]);
+        $this->client->request('POST', '/api/constraints/validate', [], [], []);
 
         self::assertResponseStatusCodeSame(200);
         $data = json_decode((string) $this->client->getResponse()->getContent(), true);
@@ -291,7 +291,7 @@ final class ValidateConstraintsTest extends WebTestCase
         $this->reservation($teamId, $venueId, dayOfWeek: 2, start: '18:00'); // l'ancien horaire
 
         $this->client->loginUser($this->user);
-        $this->client->request('POST', '/api/constraints/validate', [], [], ['HTTP_X-Club-Id' => $this->club->getId()]);
+        $this->client->request('POST', '/api/constraints/validate', [], [], []);
 
         self::assertResponseStatusCodeSame(422);
         $data = json_decode((string) $this->client->getResponse()->getContent(), true);
@@ -310,7 +310,7 @@ final class ValidateConstraintsTest extends WebTestCase
         $this->reservation($this->team(sessionsPerWeek: 1), $venueId, dayOfWeek: 2, start: '18:00');
 
         $this->client->loginUser($this->user);
-        $this->client->request('POST', '/api/constraints/validate', [], [], ['HTTP_X-Club-Id' => $this->club->getId()]);
+        $this->client->request('POST', '/api/constraints/validate', [], [], []);
 
         self::assertResponseStatusCodeSame(200);
         self::assertSame([], json_decode((string) $this->client->getResponse()->getContent(), true)['blockers']);
@@ -328,7 +328,7 @@ final class ValidateConstraintsTest extends WebTestCase
             '/api/constraints/validate',
             [],
             [],
-            ['HTTP_X-Club-Id' => $this->club->getId()],
+            [],
             json_encode(['calendarEntryId' => $entry->getId()], \JSON_THROW_ON_ERROR),
         );
 
@@ -461,7 +461,6 @@ final class ValidateConstraintsTest extends WebTestCase
 
         $this->client->request('POST', '/api/constraints', [], [], [
             'CONTENT_TYPE' => 'application/ld+json',
-            'HTTP_X-Club-Id' => $this->club->getId(),
         ], json_encode([
             'scope' => 'CLUB', 'family' => 'TIME', 'ruleType' => 'HARD',
             'name' => 'Rien après 19h (faute de frappe)',
@@ -483,7 +482,6 @@ final class ValidateConstraintsTest extends WebTestCase
 
         $this->client->request('POST', '/api/constraints', [], [], [
             'CONTENT_TYPE' => 'application/ld+json',
-            'HTTP_X-Club-Id' => $this->club->getId(),
         ], json_encode([
             'scope' => 'CLUB', 'family' => 'TIME', 'ruleType' => 'HARD',
             'name' => 'Heure impossible',
@@ -502,7 +500,6 @@ final class ValidateConstraintsTest extends WebTestCase
 
         $this->client->request('POST', '/api/constraints', [], [], [
             'CONTENT_TYPE' => 'application/ld+json',
-            'HTTP_X-Club-Id' => $this->club->getId(),
         ], json_encode([
             'scope' => 'CLUB', 'family' => 'TIME', 'ruleType' => 'PREFERRED',
             'name' => 'Rien après 19h',
@@ -704,7 +701,7 @@ final class ValidateConstraintsTest extends WebTestCase
             '/api/constraints/validate',
             [],
             [],
-            ['HTTP_X-Club-Id' => $this->club->getId()],
+            [],
             json_encode(['calendarEntryId' => $entry->getId()], \JSON_THROW_ON_ERROR),
         );
 

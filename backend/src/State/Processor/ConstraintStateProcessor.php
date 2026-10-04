@@ -233,11 +233,11 @@ class ConstraintStateProcessor extends AbstractStateProcessor
         }
 
         $request = $this->requestStack->getCurrentRequest();
-        $clubId = $request?->attributes->get('_club_id') ?? $request?->headers->get('X-Club-Id');
+        $clubId = $request?->attributes->get('_club_id');
         if (!\is_string($clubId) || '' === $clubId) {
             return; // hors contexte HTTP tenant (fixtures, CLI) : rien à résoudre ici.
         }
-        $rawSeason = $request?->attributes->get('_season_id') ?? $request?->headers->get('X-Season-Id');
+        $rawSeason = $request->attributes->get('_season_id') ?? $request->headers->get('X-Season-Id');
         $seasonId = $this->resolveSeasonId($clubId, \is_string($rawSeason) ? $rawSeason : null);
         if (!\is_string($seasonId) || '' === $seasonId) {
             return;

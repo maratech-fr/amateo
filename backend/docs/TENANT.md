@@ -1,6 +1,6 @@
 # Amateo — Tenant Isolation Architecture
 
-Last verified @ 2026-10-02 (nettoyage API — `UserStateProcessor` retiré, `User` passé en lecture
+Last verified @ 2026-10-04 (AUD-SEC-25 — résolution du club recalée : l'en-tête `X-Club-Id` n'existe plus côté serveur, le club vient de l'adhésion active du compte ou de `_club_id` posé par les pages publiques à token, vérifié contre `TenantFilterListener::resolveClubId` ; avant cela, 2026-10-02 : nettoyage API — `UserStateProcessor` retiré, `User` passé en lecture
 seule). Re-confronté au code : priorité 7 toujours en place (`TenantFilterListener.php:55`,
 `KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · le skip `/api/admin` toujours en
 `str_starts_with` sur le path (`TenantFilterListener.php:81`) ✓ ·
@@ -45,8 +45,8 @@ The shared membership lookups (`findActiveMembership`, `findActiveClubIds`, `isM
 - Subscribes to `kernel.request` at **priority 7 — AFTER the security firewall** (priority 8), so the JWT user is authenticated by the time the tenant is resolved.
 - **Returns immediately for `/api/admin/**`.** The super-admin console has no tenant by construction: separate identity (`SuperAdmin`, never a `User`), Doctrine `admin` connection which bypasses RLS, and the SA0 contract states the admin session never sets `app.club_id`. Guarded by `AdminRequestBoundaryTest::testAnAdminRequestNeverSetsTheTenantGuc`.
 - On each **main HTTP request**:
-  1. Resolves the current `club_id`: `_club_id` route attribute → `X-Club-Id` header → **the authenticated JWT user's single active `ClubUser` membership** (the frontend sends no header — the club is derived from the token).
-  2. If a club came from a header/attribute and a user is present, validates the membership (403 if the user is not an active member — blocks a spoofed `X-Club-Id`).
+  1. Resolves the current `club_id`: `_club_id` route attribute → **the authenticated JWT user's single active `ClubUser` membership** (oldest active membership, `AUD-BCK-10`) — there is **no client-supplied override anymore** (`X-Club-Id` removed server-side, AUD-SEC-25, `TenantFilterListener::resolveClubId`). Public token-controllers that set `_club_id` themselves are the only other source of this attribute.
+  2. If a club came from the attribute and a user is present, validates the membership (403 if the user is not an active member — this belt stays defensive now that the only setter is the listener itself).
   3. Enables the `tenant_filter` SQL filter and sets its `club_id` parameter.
   4. Executes `set_config('app.club_id', '<uuid>', false)` (session-scoped, via `TenantConnectionContext`) on the PostgreSQL connection so that RLS policies are satisfied. *(The historical out-of-transaction `SET LOCAL` was a no-op — see point 2 above.)*
   5. Resolves the **season** (after the GUC — the season table is RLS-protected): explicit `_season_id` attribute / `X-Season-Id` header, **validated against the club** (unknown, malformed or foreign-club id → 403, never a silent fallback) → else the **calendar-derived current season** (`SeasonResolver`, July-15 pivot on `startDate` — `Season.status` is display metadata, never read for resolution). Sets `_season_id` + `_season_readonly` attributes and enables the **`season_filter`** SQL filter (clone of the tenant filter keyed on `season_id`) so every season-scoped read stays inside the selected season.
@@ -64,9 +64,8 @@ The shared membership lookups (`findActiveMembership`, `findActiveClubIds`, `isM
 > **Ordering is load-bearing: priority 7, strictly AFTER the firewall (priority 8).** Were this
 > listener to run before authentication, a header-less request would have no authenticated user
 > yet → no club resolved → the SQL filter would stay disabled and no RLS scope would be set →
-> **collection reads would leak every club's data** — exactly the real frontend flow (no
-> `X-Club-Id` header sent). Guarded by `TenantJwtIsolationTest` (a real Bearer JWT) and
-> `OnboardingFlowTest`.
+> **collection reads would leak every club's data**. Guarded by `TenantJwtIsolationTest` (a real
+> Bearer JWT) and `OnboardingFlowTest`.
 
 ### 3. CLI Context
 

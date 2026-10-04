@@ -33,7 +33,9 @@ final class ResetSeasonController extends AbstractController
     public function __invoke(): JsonResponse
     {
         $request = $this->requestStack->getCurrentRequest();
-        $clubId = $this->resolveIdentifier($request?->attributes->get('_club_id'), $request?->headers->get('X-Club-Id'));
+        // Club resolved server-side from the caller's JWT membership (no header
+        // since AUD-SEC-25); X-Season-Id stays a legitimate selector.
+        $clubId = $this->resolveIdentifier($request?->attributes->get('_club_id'));
         $seasonId = $this->resolveIdentifier($request?->attributes->get('_season_id'), $request?->headers->get('X-Season-Id'));
 
         if (null === $clubId || null === $seasonId) {
@@ -71,7 +73,7 @@ final class ResetSeasonController extends AbstractController
         ]);
     }
 
-    private function resolveIdentifier(mixed $attribute, mixed $header): ?string
+    private function resolveIdentifier(mixed $attribute, mixed $header = null): ?string
     {
         foreach ([$attribute, $header] as $value) {
             if (\is_string($value) && '' !== $value) {

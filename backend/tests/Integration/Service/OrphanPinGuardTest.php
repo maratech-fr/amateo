@@ -522,7 +522,6 @@ final class OrphanPinGuardTest extends WebTestCase
     private function headers(): array
     {
         return [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'HTTP_X-Season-Id' => $this->season->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . self::getContainer()->get(JWTTokenManagerInterface::class)->create($this->user),
             'CONTENT_TYPE' => 'application/ld+json',

@@ -53,7 +53,7 @@ final class TeamSoloBudgetStateProvider implements ProviderInterface
             return [];
         }
 
-        $clubIdRaw = $request->attributes->get('_club_id') ?? $request->headers->get('X-Club-Id');
+        $clubIdRaw = $request->attributes->get('_club_id');
         $clubId = \is_string($clubIdRaw) ? $clubIdRaw : null;
         if (null === $clubId) {
             return [];

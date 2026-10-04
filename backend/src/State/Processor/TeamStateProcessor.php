@@ -212,7 +212,7 @@ class TeamStateProcessor extends AbstractStateProcessor
     private function assertWithinTeamCap(): void
     {
         $request = $this->requestStack->getCurrentRequest();
-        $clubId = $request?->attributes->get('_club_id') ?? $request?->headers->get('X-Club-Id');
+        $clubId = $request?->attributes->get('_club_id');
         if (!\is_string($clubId) || '' === $clubId) {
             return;
         }
@@ -222,7 +222,7 @@ class TeamStateProcessor extends AbstractStateProcessor
             return;
         }
 
-        $seasonId = $request?->attributes->get('_season_id') ?? $request?->headers->get('X-Season-Id');
+        $seasonId = $request->attributes->get('_season_id') ?? $request->headers->get('X-Season-Id');
         $season = \is_string($seasonId) && '' !== $seasonId
             ? $this->entityManager->getRepository(Season::class)->find($seasonId)
             : $this->seasonResolver->currentSeason($clubId);

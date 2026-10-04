@@ -238,7 +238,7 @@ class ReservationStateProcessor extends AbstractStateProcessor
         }
 
         $request = $this->requestStack->getCurrentRequest();
-        $clubIdRaw = $request?->attributes->get('_club_id') ?? $request?->headers->get('X-Club-Id');
+        $clubIdRaw = $request?->attributes->get('_club_id');
         $seasonIdRaw = $request?->attributes->get('_season_id') ?? $request?->headers->get('X-Season-Id');
         $clubId = \is_string($clubIdRaw) ? $clubIdRaw : null;
         $seasonId = $this->resolveSeasonId($clubId, \is_string($seasonIdRaw) ? $seasonIdRaw : null);

@@ -3,7 +3,8 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-10-04 (`documentation-update`, amendement ADR-0003 — placement des matchs
+Last verified @ 2026-10-04 (`documentation-update`, retrait serveur de `X-Club-Id` — résolution
+tenant recontrôlée dans `TenantFilterListener.php` ; amendement ADR-0003 — placement des matchs
 passé du rail synchrone à l'asynchrone) : `POST /api/fixtures/place` recalé (202 + `runId`,
 `MatchPlacementRun`, `PlaceMatchesMessage`/`PlaceMatchesHandler` sur le transport `async` partagé
 avec la génération, verrou pris au contrôleur/relâché au worker) et `GET
@@ -486,7 +487,7 @@ consomme le limiteur `xlsx_import` **deux fois** (un jeton par appel `gate()`), 
 
 | Route | Méthode | Contrôleur | Description |
 |-------|---------|------------|-------------|
-| `/api/reset-season` | DELETE | `ResetSeasonController` | Supprime toutes les données d'une saison pour un club. Résout `clubId` et `seasonId` depuis `_club_id` / `X-Club-Id` et `_season_id` / `X-Season-Id`. Supprime en cascade : `ScheduleDiagnostic`, `ScheduleSlotTemplate`, `Constraint`, `TeamCoach`, `CoachPlayerMembership`, `Schedule`, `Team`, `Coach`, `Venue`. Retourne 200 avec `deleted`. |
+| `/api/reset-season` | DELETE | `ResetSeasonController` | Supprime toutes les données d'une saison pour un club. Résout `clubId` et `seasonId` depuis `_club_id` (posé par le listener tenant depuis le JWT) et `_season_id` / `X-Season-Id`. Supprime en cascade : `ScheduleDiagnostic`, `ScheduleSlotTemplate`, `Constraint`, `TeamCoach`, `CoachPlayerMembership`, `Schedule`, `Team`, `Coach`, `Venue`. Retourne 200 avec `deleted`. |
 
 ### Identité du club (accent + logo)
 
@@ -907,9 +908,11 @@ l'isolation multi-tenant au niveau de chaque requête. Il **retourne immédiatem
 `^/api/admin` (SEC-17, `src/EventListener/TenantFilterListener.php:70`) — la console
 superadmin n'a pas de tenant, §3 :
 
-1. **Résolution du clubId** : attribut de requête `_club_id`, sinon header `X-Club-Id`,
-   sinon **la membership `ClubUser` active de l'utilisateur JWT** (le frontend n'envoie
-   aucun header tenant — c'est le chemin nominal).
+1. **Résolution du clubId** : attribut de requête `_club_id` (posé par les contrôleurs publics
+   à token), sinon **la membership `ClubUser` active la plus ancienne de l'utilisateur JWT**
+   (AUD-BCK-10). **Il n'y a plus de surcharge côté client** : l'en-tête `X-Club-Id` a été retiré
+   côté serveur (AUD-SEC-25, `TenantFilterListener::resolveClubId`) — un en-tête envoyé par un
+   client quelconque est désormais totalement ignoré.
 2. **Résolution du seasonId** : attribut `_season_id`, sinon header `X-Season-Id` (validé →
    403 si étranger/inconnu), sinon la **saison courante dérivée du calendrier** via
    `SeasonResolver::currentAmong` (pivot 15 juillet — remplace l'ancien lookup unique
@@ -923,7 +926,8 @@ superadmin n'a pas de tenant, §3 :
    (`clear-grid`/`transcribe`/`/fill`) est refusé 409 au lieu de détruire en silence.
 3. **Validation d'appartenance** : si un `clubId` est résolu et un utilisateur est authentifié,
    le listener vérifie qu'un `ClubUser` **actif** existe pour `(userId, clubId)`. Sinon → 403
-   (bloque un header `X-Club-Id` spoofé ; une membership `pending` n'a accès à rien).
+   (défense en profondeur maintenant que le seul poseur de `_club_id` côté authentifié est le
+   listener lui-même ; une membership `pending` n'a accès à rien).
 4. **Filtre Doctrine** : active le filtre `tenant_filter` avec le paramètre `club_id` (UUID).
    Toutes les requêtes Doctrine sur les entités à `club_id` sont automatiquement filtrées.
 5. **GUC PostgreSQL** : `TenantConnectionContext::setClubId()` pose `app.club_id` via

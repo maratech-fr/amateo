@@ -124,7 +124,6 @@ final class ScheduleSlotTemplateApiTest extends WebTestCase
 
         $url = '/api/schedule_slot_templates' . ($item ? '/' . $slotId : '');
         $this->client->request($method, $url, [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/ld+json',
         ], '{"scheduleId":"' . $schedule->getId() . '","teamId":"' . Uuid::v4()->toRfc4122() . '","venueId":"' . Uuid::v4()->toRfc4122() . '","dayOfWeek":1,"startTime":"18:00"}');
 
@@ -184,7 +183,7 @@ final class ScheduleSlotTemplateApiTest extends WebTestCase
      */
     private function getMembers(string $url): array
     {
-        $this->client->request('GET', $url, [], [], ['HTTP_X-Club-Id' => $this->club->getId()]);
+        $this->client->request('GET', $url, [], [], []);
         self::assertResponseStatusCodeSame(200);
         $data = json_decode((string) $this->client->getResponse()->getContent(), true);
         self::assertIsArray($data);

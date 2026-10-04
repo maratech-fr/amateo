@@ -171,7 +171,6 @@ final class TeamPeriodOverrideApiTest extends WebTestCase
     private function headers(): array
     {
         return [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'HTTP_X-Season-Id' => $this->season->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
             'CONTENT_TYPE' => 'application/ld+json',

@@ -48,9 +48,10 @@ class TenantFilterListener implements EventSubscriberInterface
     public static function getSubscribedEvents(): array
     {
         // Priority 7: AFTER the security firewall (priority 8) so the JWT user is
-        // authenticated — the club is derived from the user's membership when no
-        // X-Club-Id header is sent. Running before auth left the tenant unresolved
-        // (no RLS) and leaked other clubs' data on collection reads.
+        // authenticated — the club is derived SOLELY from the user's active
+        // membership (the frontend sends no header; AUD-SEC-25). Running before
+        // auth left the tenant unresolved (no RLS) and leaked other clubs' data
+        // on collection reads.
         return [
             KernelEvents::REQUEST => ['onKernelRequest', 7],
         ];
@@ -71,22 +72,19 @@ class TenantFilterListener implements EventSubscriberInterface
         // SEC-17 — la console super-admin n'a PAS de tenant, par construction.
         // Son identité est un `SuperAdmin` (jamais un `User`), elle travaille sur
         // la connexion Doctrine `admin` qui contourne RLS, et le contrat SA0 dit
-        // « la session admin ne pose jamais app.club_id ». Or ce listener y posait
-        // quand même le GUC dès qu'un `X-Club-Id` traînait dans la requête :
-        // l'anti-spoof ne s'arme que `if ($user instanceof User)` (plus bas), donc
-        // hors identité club le club VOULU par l'appelant passait sans contrôle
-        // d'appartenance. Impact mesuré nul — les endpoints admin ne lisent pas
-        // par cette connexion — mais un mécanisme qui contredit son propre
-        // contrat est une bombe à retardement pour le prochain qui l'étend.
+        // « la session admin ne pose jamais app.club_id ». On sort donc avant toute
+        // résolution de club. (Depuis AUD-SEC-25 le club ne vient plus que de
+        // l'adhésion de l'utilisateur authentifié — un SuperAdmin n'en a aucune —
+        // mais la sortie explicite reste le contrat.)
         if (str_starts_with($request->getPathInfo(), '/api/admin')) {
             return;
         }
         $user = $this->authenticatedUser();
 
-        // Single active club per user: when no explicit tenant is supplied, derive
-        // it from the JWT user's active membership. Header/attribute stay as an
-        // override (e.g. tests). club_user is readable without a GUC by design
-        // (RLS bootstrap exception).
+        // Single active club per user: the tenant is derived from the JWT user's
+        // active membership. There is NO client-supplied override anymore
+        // (AUD-SEC-25 removed the X-Club-Id header). club_user is readable without
+        // a GUC by design (RLS bootstrap exception).
         $clubId = $this->resolveClubId($request, $user);
 
         if (null === $clubId) {
@@ -102,15 +100,17 @@ class TenantFilterListener implements EventSubscriberInterface
             return;
         }
 
-        // FORME du club AVANT tout le reste (revue sécu FRT-04, exploit mesuré) :
-        // PostgreSQL normalise `{710a290720ce...}` en l'UUID canonique, donc un
-        // membre pouvait envoyer SON club sous une forme dégradée, passer le
-        // contrôle d'adhésion — et faire écrire cette chaîne telle quelle dans un
-        // aval qui, lui, ne normalise pas. Sur `/api/mercure/auth` le sélecteur
-        // devenait `club:{710a29...}:schedule:{id}` : DEUX variables URI-template,
-        // qui matchent les topics de N'IMPORTE QUEL club. Le club est ici la
-        // frontière tenant : sa forme se valide comme celle de la saison (l. 166),
-        // et un écart se refuse — jamais une normalisation silencieuse.
+        // FORME du club AVANT tout le reste (revue sécu FRT-04). Le club résolu
+        // vient de l'adhésion (UUID canonique en base) ; cette garde reste la
+        // CEINTURE du chemin attribut `_club_id` : si un jour un poseur amont y
+        // injectait une forme dégradée (`{710a290720ce...}`), PostgreSQL la
+        // normaliserait, l'adhésion passerait — et la chaîne brute s'écrirait
+        // telle quelle dans un aval qui, lui, ne normalise pas. Sur
+        // `/api/mercure/auth` le sélecteur devenait `club:{710a29...}:schedule:{id}`
+        // : DEUX variables URI-template, qui matchent les topics de N'IMPORTE
+        // QUEL club. Le club est ici la frontière tenant : sa forme se valide
+        // comme celle de la saison (l. 166), et un écart se refuse — jamais une
+        // normalisation silencieuse.
         if (!$this->isUuid($clubId)) {
             $event->setResponse(new JsonResponse(['error' => 'Vous n\'avez pas accès à ce club.'], 403));
 
@@ -119,8 +119,10 @@ class TenantFilterListener implements EventSubscriberInterface
 
         $request->attributes->set('_club_id', $clubId);
 
-        // Validate that the authenticated user belongs to the requested club
-        // (blocks a spoofed X-Club-Id header pointing at another tenant).
+        // Belt on the `_club_id` attribute path: validate that the authenticated
+        // user belongs to the resolved club. With the membership fallback this is
+        // always satisfied, but it stays as defence should an upstream setter of
+        // `_club_id` ever appear.
         if ($user instanceof User) {
             $membership = $this->clubUserRepository->findOneBy([
                 'userId' => $user->getId(),
@@ -156,7 +158,7 @@ class TenantFilterListener implements EventSubscriberInterface
         if (null !== $explicitSeasonId) {
             $season = $this->findClubSeason($explicitSeasonId, $clubId);
             // Unknown, malformed or foreign-club season → 403, never a silent
-            // fallback (mirror of the spoofed X-Club-Id check above). RLS
+            // fallback (mirror of the club membership check above). RLS
             // already hides other clubs' seasons from the lookup.
             if (!$season instanceof Season) {
                 // Distinct signal so the frontend self-heals a STALE selected
@@ -230,11 +232,6 @@ class TenantFilterListener implements EventSubscriberInterface
     private function resolveClubId(Request $request, ?User $user): ?string
     {
         $clubId = $request->attributes->get('_club_id');
-        if (\is_string($clubId) && '' !== $clubId) {
-            return $clubId;
-        }
-
-        $clubId = $request->headers->get('X-Club-Id');
         if (\is_string($clubId) && '' !== $clubId) {
             return $clubId;
         }

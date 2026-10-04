@@ -57,12 +57,12 @@ final class VenueTravelRuleSettingStateProvider implements ProviderInterface
     private function resolveScope(): array
     {
         $request = $this->requestStack->getCurrentRequest();
-        $clubId = $request?->attributes->get('_club_id') ?? $request?->headers->get('X-Club-Id');
+        $clubId = $request?->attributes->get('_club_id');
         if (!\is_string($clubId) || '' === $clubId) {
             return [null, null];
         }
 
-        $seasonId = $request?->attributes->get('_season_id') ?? $request?->headers->get('X-Season-Id');
+        $seasonId = $request->attributes->get('_season_id') ?? $request->headers->get('X-Season-Id');
         if (!\is_string($seasonId) || '' === $seasonId) {
             $seasonId = $this->seasonResolver->currentSeason($clubId)?->getId();
         }

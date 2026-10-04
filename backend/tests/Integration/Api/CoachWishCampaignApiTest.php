@@ -181,7 +181,6 @@ final class CoachWishCampaignApiTest extends WebTestCase
 
         $jwt = $this->memberJwt('editor'); // rôle non-management
         $this->client->request('GET', '/api/coach_wish_campaigns', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'HTTP_X-Season-Id' => $this->season->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . $jwt,
             'CONTENT_TYPE' => 'application/ld+json',
@@ -322,7 +321,6 @@ final class CoachWishCampaignApiTest extends WebTestCase
     private function headers(): array
     {
         return [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'HTTP_X-Season-Id' => $this->season->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->jwt,
             'CONTENT_TYPE' => 'application/ld+json',

@@ -7,7 +7,11 @@ namespace App\Tests\Security;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\ImplicitRuleSetting;
+use App\Entity\PriorityTier;
 use App\Entity\Season;
+use App\Entity\Sport;
+use App\Entity\SportCategory;
+use App\Entity\Team;
 use App\Entity\User;
 use App\Enum\ImplicitRuleIntensity;
 use App\Enum\ImplicitRuleKey;
@@ -30,31 +34,55 @@ final class TenantIsolationTest extends WebTestCase
 
     private EntityManagerInterface $em;
 
-    public function testUserCannotAccessOtherClubData(): void
+    /**
+     * NR AUD-SEC-25 (axe tenant isolation). Le client ne peut plus CHOISIR son
+     * club : l'en-tête `X-Club-Id` n'est plus lu côté serveur. Un membre du
+     * club A qui porte l'UUID du club B dans l'en-tête ne bascule pas vers B —
+     * il ne voit QUE les données de SON club A (hier un 403, aujourd'hui une
+     * assertion sur les DONNÉES : la frontière tient par le tenant dérivé du
+     * JWT, pas par un refus de l'en-tête).
+     *
+     * Falsifiable : rendre à nouveau l'en-tête prioritaire dans
+     * `TenantFilterListener::resolveClubId` ferait voir à A les données de B
+     * (ou un 403 d'adhésion) — ce test rougirait.
+     */
+    public function testForeignClubHeaderIsIgnoredAndOnlyOwnDataIsReturned(): void
     {
         [$clubA, $clubB, $userA] = $this->createTwoClubs();
+        $teamA = $this->createTeam($clubA, 'Team A');
+        $this->createTeam($clubB, 'Team B');
 
         $this->client->loginUser($userA);
         $this->client->request('GET', '/api/teams', [], [], [
             'HTTP_X-Club-Id' => $clubB->getId(),
         ]);
-        self::assertResponseStatusCodeSame(403);
+
+        self::assertResponseStatusCodeSame(200);
+        /** @var array{member?: list<array{id: string}>} $data */
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        $ids = array_column($data['member'] ?? [], 'id');
+        self::assertSame([$teamA->getId()], $ids, 'l’en-tête d’un club étranger est ignoré : seules les données du club A du JWT remontent');
     }
 
     public function testUserCanAccessOwnClubData(): void
     {
-        [$clubA, , $userA] = $this->createTwoClubs();
+        [, , $userA] = $this->createTwoClubs();
 
         $this->client->loginUser($userA);
-        $this->client->request('GET', '/api/teams', [], [], [
-            'HTTP_X-Club-Id' => $clubA->getId(),
-        ]);
+        $this->client->request('GET', '/api/teams');
         self::assertResponseStatusCodeSame(200);
     }
 
-    public function testInactiveMembershipBlocksAccess(): void
+    /**
+     * Adhésion inactive = aucun club résolu (fail-closed AUD-BCK-10) : la requête
+     * passe mais ne voit AUCUNE donnée d'un club — le filtre tenant reste éteint,
+     * la collection est vide. Pas de fuite. Un écran dédié et la suppression du
+     * compte à J+30 viendront ailleurs, hors de ce périmètre.
+     */
+    public function testInactiveMembershipSeesNoClubData(): void
     {
         [$clubA, , $userA] = $this->createTwoClubs();
+        $this->createTeam($clubA, 'Team A');
 
         $membership = $this->em->getRepository(ClubUser::class)->findOneBy([
             'userId' => $userA->getId(),
@@ -64,42 +92,12 @@ final class TenantIsolationTest extends WebTestCase
         $this->em->flush();
 
         $this->client->loginUser($userA);
-        $this->client->request('GET', '/api/teams', [], [], [
-            'HTTP_X-Club-Id' => $clubA->getId(),
-        ]);
-        self::assertResponseStatusCodeSame(403);
-    }
+        $this->client->request('GET', '/api/teams');
 
-    /**
-     * Le club porté par le header doit être un UUID CANONIQUE — revue sécurité
-     * FRT-04, exploit mesuré sur la stack de dev.
-     *
-     * PostgreSQL accepte `{710a290720ce40ffa67fc2674ca0dbe7}` comme le même uuid
-     * que `710a2907-20ce-...` : un membre pouvait donc envoyer SON PROPRE club
-     * sous cette forme dégradée et passer le contrôle d'adhésion (la comparaison
-     * est faite par la base, qui normalise). La chaîne, elle, continuait son
-     * chemin telle quelle dans `_club_id` — et tout aval qui ne normalise pas
-     * héritait d'une valeur choisie par le client. Sur `/api/mercure/auth` elle
-     * produisait le sélecteur `club:{710a29...}:schedule:{id}`, soit DEUX
-     * variables URI-template : le hub y délivrait les événements de génération
-     * de N'IMPORTE QUEL club (reçus en vivant avant correctif).
-     *
-     * Le club est la frontière tenant : sa FORME se valide au listener, comme
-     * celle de la saison, et un écart se refuse — jamais une normalisation
-     * silencieuse, qui rendrait le club sous deux graphies « le même » ici et
-     * « deux valeurs » ailleurs.
-     */
-    public function testANonCanonicalClubHeaderIsRejectedEvenForOwnClub(): void
-    {
-        [$clubA, , $userA] = $this->createTwoClubs();
-        $mangled = '{' . str_replace('-', '', $clubA->getId()) . '}';
-
-        $this->client->loginUser($userA);
-        $this->client->request('GET', '/api/teams', [], [], [
-            'HTTP_X-Club-Id' => $mangled,
-        ]);
-
-        self::assertResponseStatusCodeSame(403, 'un club sous forme non canonique doit être refusé, même si c’est le sien');
+        self::assertResponseStatusCodeSame(200);
+        /** @var array{member?: list<mixed>} $data */
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertSame([], $data['member'] ?? [], 'sans adhésion active, aucun club n’est résolu : zéro donnée');
     }
 
     public function testNoClubHeaderReturnsData(): void
@@ -109,6 +107,39 @@ final class TenantIsolationTest extends WebTestCase
         $this->client->loginUser($userA);
         $this->client->request('GET', '/api/teams');
         self::assertResponseIsSuccessful();
+    }
+
+    /**
+     * NR AUD-SEC-25 (axes tenant isolation + auth & memberships). L'exploit
+     * fermé : une requête ANONYME portant l'UUID d'un club (une démo) se plaçait
+     * dans son contexte, car l'anti-spoof ne s'armait que `if ($user instanceof
+     * User)` et l'en-tête était lu avant. Conséquence : horloge simulée d'une
+     * démo → échéance publique d'un vrai club contournée. Désormais le club ne
+     * vient QUE de l'utilisateur authentifié : une requête anonyme ne pose JAMAIS
+     * le GUC `app.club_id`, quel que soit l'en-tête.
+     *
+     * On tire sur une route PUBLIC_ACCESS (`/api/health`) pour que le firewall
+     * laisse passer et que le listener tourne, puis on lit le GUC posé sur la
+     * connexion runtime : il doit être VIDE.
+     *
+     * Falsifiable : rendre à `resolveClubId` la lecture de l'en-tête → l'anonyme
+     * re-poserait le GUC sur le club porté → ce test rougirait.
+     */
+    public function testAnonymousRequestCarryingAClubHeaderNeverSetsTheTenantContext(): void
+    {
+        [$clubA] = $this->createTwoClubs();
+
+        // Aucun loginUser : requête anonyme, en-tête du club A.
+        $this->client->request('GET', '/api/health', [], [], [
+            'HTTP_X-Club-Id' => $clubA->getId(),
+        ]);
+        self::assertResponseIsSuccessful();
+
+        $guc = (string) self::getContainer()
+            ->get(EntityManagerInterface::class)
+            ->getConnection()
+            ->fetchOne('SELECT COALESCE(current_setting(\'app.club_id\', true), \'\')');
+        self::assertSame('', $guc, 'une requête anonyme ne doit jamais poser le GUC tenant, même avec un en-tête de club');
     }
 
     /**
@@ -168,9 +199,7 @@ final class TenantIsolationTest extends WebTestCase
 
         // Le club B ne voit QUE le défaut — la ligne du club A lui est invisible.
         $this->client->loginUser($userB);
-        $this->client->request('GET', '/api/implicit_rule_settings', [], [], [
-            'HTTP_X-Club-Id' => $clubB->getId(),
-        ]);
+        $this->client->request('GET', '/api/implicit_rule_settings');
         self::assertResponseStatusCodeSame(200);
         /** @var array{member?: list<array{ruleKey: string, intensity: string}>} $data */
         $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
@@ -229,5 +258,65 @@ final class TenantIsolationTest extends WebTestCase
         $this->em->flush();
 
         return [$clubA, $clubB, $userA];
+    }
+
+    /**
+     * Seeds a team for $club in its current season (created on the fly).
+     * Writes go through the amateo_app connection → scope the GUC to $club first.
+     */
+    private function createTeam(Club $club, string $name): Team
+    {
+        $this->scopeGucToClub($club->getId());
+
+        $year = SeasonResolver::seasonYear(new DateTimeImmutable('today'));
+        $season = new Season;
+        $season->setClubId($club->getId());
+        $season->setName($year . '-' . ($year + 1));
+        $season->setStartDate(new DateTimeImmutable($year . '-08-01'));
+        $season->setEndDate(new DateTimeImmutable(($year + 1) . '-07-15'));
+        $season->setStatus(SeasonStatus::ACTIVE);
+        $season->setTransitionData([]);
+        $this->em->persist($season);
+
+        $sport = new Sport;
+        $sport->setName('Basketball');
+        $sport->setSlug('bball-' . uniqid('', true));
+        $sport->setIsActive(true);
+        $this->em->persist($sport);
+        $this->em->flush();
+
+        $category = new SportCategory;
+        $category->setClubId($club->getId());
+        $category->setSportId($sport->getId());
+        $category->setName('U11');
+        $category->setIsCustom(false);
+        $category->setSortOrder(0);
+        $this->em->persist($category);
+
+        $tier = $this->em->getRepository(PriorityTier::class)->find(1);
+        if (!$tier instanceof PriorityTier) {
+            $tier = new PriorityTier;
+            $tier->setId(1);
+            $tier->setLabel('S');
+            $tier->setName('Senior');
+            $tier->setColor('#FF0000');
+            $tier->setOrToolsWeight(100);
+            $tier->setDefaultMinSessions(2);
+            $this->em->persist($tier);
+        }
+        $this->em->flush();
+
+        $team = new Team;
+        $team->setClubId($club->getId());
+        $team->setSeasonId($season->getId());
+        $team->setSportCategoryId($category->getId());
+        $team->setPriorityTierId($tier->getId());
+        $team->setName($name);
+        $team->setSessionsPerWeek(2);
+        $team->setIsActive(true);
+        $this->em->persist($team);
+        $this->em->flush();
+
+        return $team;
     }
 }

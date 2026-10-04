@@ -996,7 +996,7 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
             return null;
         }
         $request = $this->requestStack->getCurrentRequest();
-        $clubId = $request?->attributes->get('_club_id') ?? $request?->headers->get('X-Club-Id');
+        $clubId = $request?->attributes->get('_club_id');
         if (!\is_string($clubId)) {
             return null;
         }

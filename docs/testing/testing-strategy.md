@@ -1,6 +1,6 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-10-01 (`documentation-update`, PR 8/8 série « uniformité des écrans » — garde
+Last verified @ 2026-10-04 (AUD-SEC-25 — ligne `TenantIsolationTest` recalée sur ses tests réels (en-tête étranger ignoré, requête anonyme sans contexte, adhésion inactive sans donnée) ; avant cela, 2026-10-01 : `documentation-update`, PR 8/8 série « uniformité des écrans » — garde
 de captures de référence). Ce fichier ne couvre que backend+engine (« Scope » ci-dessous), sauf le
 graphe CI §1 qui est cross-zone par nature. Vérifié dans le code cette passe : le job `e2e` porte
 le nom de required check « E2E (Playwright) » et `needs: blocking-tests` (`ci.yml:1117-1123`) ;
@@ -211,7 +211,7 @@ Groups (PHP attributes): `#[Group('phase1')]`, `#[Group('integration')]`, `#[Gro
 ### Blocking guardrails (`phase1`)
 | Test | Asserts |
 |------|---------|
-| `Security/TenantIsolationTest` | 403 on another club's data · 200 on own club · 403 when membership inactive · 200 with no `X-Club-Id` |
+| `Security/TenantIsolationTest` | a `X-Club-Id` header is ignored (own club's data only, not 403) · 200 on own club · 403 when membership inactive · 200 with no header · an anonymous request carrying the header never sets the tenant context |
 | `Security/TenantCacheIsolationTest` | 2 real tests: cache invalidation isolates clubs; entity without `club_id` purges nothing. |
 | `Queue/ConcurrentGenerationTest` | 2nd `ClubGenerationLock` acquire for same club fails · different clubs acquire concurrently · wrong token cannot release |
 | `CrossStack/ContractSchemaTest` (`phase1`+`contract`) | engine payload shape valid (version, clubId, seasonId, teams, venues, coaches, constraints, trainingSlots, sportCategoryId, scopeTargetId…) · POSTs to the real engine when reachable, else skips |

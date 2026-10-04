@@ -139,7 +139,6 @@ final class ValidationMessageReachesBodyApiTest extends WebTestCase
     private function post(string $uri, array $payload): void
     {
         $this->client->request('POST', $uri, [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode($payload, \JSON_THROW_ON_ERROR));

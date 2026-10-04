@@ -40,7 +40,6 @@ final class ClubSiegeTest extends WebTestCase
         $this->client->loginUser($this->user);
 
         $this->client->request('PATCH', '/api/club/siege', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/json',
         ], json_encode(['address' => '5 rue Emile Duniere Villeurbanne', 'latitude' => 99.0, 'longitude' => 99.0], \JSON_THROW_ON_ERROR));
 
@@ -77,7 +76,6 @@ final class ClubSiegeTest extends WebTestCase
         // Le siège DÉMÉNAGE (le stub BAN rend 45.75/4.85, ≠ 40/3).
         $this->client->loginUser($this->user);
         $this->client->request('PATCH', '/api/club/siege', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/json',
         ], json_encode(['address' => '5 rue Emile Duniere Villeurbanne'], \JSON_THROW_ON_ERROR));
         self::assertResponseIsSuccessful();
@@ -117,7 +115,6 @@ final class ClubSiegeTest extends WebTestCase
         // Le siège DÉMÉNAGE (le stub BAN rend 45.75/4.85, ≠ 40/3).
         $this->client->loginUser($this->user);
         $this->client->request('PATCH', '/api/club/siege', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/json',
         ], json_encode(['address' => '5 rue Emile Duniere Villeurbanne'], \JSON_THROW_ON_ERROR));
         self::assertResponseIsSuccessful();
@@ -141,7 +138,6 @@ final class ClubSiegeTest extends WebTestCase
 
         $this->client->loginUser($this->user);
         $this->client->request('PATCH', '/api/club/siege', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/json',
         ], json_encode(['address' => '5 rue Emile Duniere Villeurbanne'], \JSON_THROW_ON_ERROR));
         self::assertResponseIsSuccessful();
@@ -155,7 +151,6 @@ final class ClubSiegeTest extends WebTestCase
 
         // Requête trop courte (< 3 caractères) → aucun hit → 422 parlant, aucune écriture.
         $this->client->request('PATCH', '/api/club/siege', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'CONTENT_TYPE' => 'application/json',
         ], json_encode(['address' => 'ab'], \JSON_THROW_ON_ERROR));
 

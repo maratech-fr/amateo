@@ -4,7 +4,7 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-10-02 (`documentation-update`, lot horloge/boîte aux lettres — rotation,
+Last verified @ 2026-10-04 (AUD-SEC-25 — §6.4 : un `X-Club-Id` reçu est ignoré par le serveur, plus refusé en 403 ; avant cela, 2026-10-02 : `documentation-update`, lot horloge/boîte aux lettres — rotation,
 plus ancien stamp du dépôt). Re-confronté au code : nouvelle route `/boite-aux-lettres`
 (`MailboxPage.tsx`, `routes.tsx`, lazy) + entrée de nav `MailboxNavItem` (barre du haut, visible
 ssi `me.club.simulatedToday`, `AppLayout.tsx`) ajoutées ; version React du tableau Stack corrigée
@@ -203,8 +203,9 @@ export const api = ky.create({
 ### Règles
 
 - **Toutes les requêtes passent par l'instance `api` ky.** Pas de `fetch()` direct dans les composants.
-- **Aucun header `X-Club-Id`.** Le club actif est résolu **côté serveur** depuis la membership
-  du JWT (`backend-inventory.md` §4) — un header falsifié est refusé en 403.
+- **Aucun header `X-Club-Id`** — il n'existe même plus côté serveur (AUD-SEC-25). Le club actif
+  est résolu **côté serveur** depuis la membership du JWT (`backend-inventory.md` §4) ; un
+  header de ce nom envoyé par un client est ignoré, pas analysé.
 - **`X-Season-Id` est envoyé, mais seulement s'il y a une sélection explicite.** Le hook
   `beforeRequest` pose l'en-tête depuis `seasonStore.selectedSeasonId` quand il est non nul et
   que la requête n'en porte pas déjà un (un appel cross-saison ponctuel — re-datation lors

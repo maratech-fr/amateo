@@ -61,7 +61,6 @@ final class VenueTrainingSlotApiTest extends WebTestCase
         $venue = $this->createVenue($canSplit);
 
         $this->client->request('POST', '/api/venue_training_slots', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
@@ -141,7 +140,6 @@ final class VenueTrainingSlotApiTest extends WebTestCase
         $id = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR)['id'];
 
         $this->client->request('PUT', '/api/venue_training_slots/' . $id, [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([
@@ -163,7 +161,6 @@ final class VenueTrainingSlotApiTest extends WebTestCase
         $venue = $this->createVenue(false);
 
         $this->client->request('PUT', '/api/venues/' . $venue->getId(), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode(['name' => $venue->getName(), 'source' => 'manual', 'canSplit' => true], \JSON_THROW_ON_ERROR));
@@ -174,7 +171,6 @@ final class VenueTrainingSlotApiTest extends WebTestCase
 
         // And un-checking must persist too (false !== null guard).
         $this->client->request('PUT', '/api/venues/' . $venue->getId(), [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode(['name' => $venue->getName(), 'source' => 'manual', 'canSplit' => false], \JSON_THROW_ON_ERROR));
@@ -220,7 +216,6 @@ final class VenueTrainingSlotApiTest extends WebTestCase
         $ids = [];
         foreach ([1, 2] as $page) {
             $this->client->request('GET', '/api/venue_training_slots?page=' . $page, [], [], [
-                'HTTP_X-Club-Id' => $this->club->getId(),
                 'HTTP_X-Season-Id' => $this->season->getId(),
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
             ]);
@@ -305,7 +300,6 @@ final class VenueTrainingSlotApiTest extends WebTestCase
     private function postPeriodSlot(string $venueId, int $day, string $start, int $duration, string $schedulePlanId): void
     {
         $this->client->request('POST', '/api/venue_training_slots', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode(['venueId' => $venueId, 'dayOfWeek' => $day, 'startTime' => $start, 'durationMinutes' => $duration, 'capacity' => 1, 'schedulePlanId' => $schedulePlanId], \JSON_THROW_ON_ERROR));
@@ -317,7 +311,6 @@ final class VenueTrainingSlotApiTest extends WebTestCase
     private function listPlanIds(string $query): array
     {
         $this->client->request('GET', '/api/venue_training_slots' . $query, [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'HTTP_X-Season-Id' => $this->season->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
         ]);
@@ -331,7 +324,6 @@ final class VenueTrainingSlotApiTest extends WebTestCase
     private function postSlot(string $venueId, int $day, string $start, int $duration): void
     {
         $this->client->request('POST', '/api/venue_training_slots', [], [], [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
             'CONTENT_TYPE' => 'application/ld+json',
         ], json_encode([

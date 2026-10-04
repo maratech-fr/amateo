@@ -139,7 +139,6 @@ final class PeriodGatePayloadParityTest extends WebTestCase
         //    solveur ; et le gymnase désactivé est annoncé, pas passé sous silence.
         $this->client->request('POST', '/api/constraints/validate', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->jwt->create($user),
-            'HTTP_X-Club-Id' => $club->getId(),
             'CONTENT_TYPE' => 'application/json',
         ], json_encode(['calendarEntryId' => $entry->getId()], \JSON_THROW_ON_ERROR));
         self::assertResponseIsSuccessful();
@@ -254,7 +253,6 @@ final class PeriodGatePayloadParityTest extends WebTestCase
 
         $this->client->request('POST', '/api/constraints/validate', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->jwt->create($user),
-            'HTTP_X-Club-Id' => $club->getId(),
             'CONTENT_TYPE' => 'application/json',
         ], json_encode(['calendarEntryId' => $entry->getId()], \JSON_THROW_ON_ERROR));
 

@@ -43,7 +43,7 @@ final class ClubClockController extends AbstractController
     public function __invoke(Request $request): JsonResponse
     {
         // SEC-07 : réservé aux gestionnaires (403 sinon). L'appartenance active au club de
-        // contexte est déjà prouvée par le listener tenant (X-Club-Id spoofé → 403 en amont).
+        // contexte est déjà prouvée par le listener tenant (le club vient du JWT — AUD-SEC-25).
         $this->managementAccessGuard->assertManager();
 
         $clubId = $this->resolveCurrentClubId();

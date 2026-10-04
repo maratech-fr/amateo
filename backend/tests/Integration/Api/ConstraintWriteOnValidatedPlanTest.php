@@ -75,7 +75,7 @@ final class ConstraintWriteOnValidatedPlanTest extends WebTestCase
         // JWT Bearer du gestionnaire — l'API est stateless (le front l'envoie en cookie ;
         // Bearer accepté pour scripts/tests), donc on l'attache à CHAQUE requête.
         $token = $container->get(JWTTokenManagerInterface::class)->create($user);
-        $auth = ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'HTTP_X-Club-Id' => $club->getId()];
+        $auth = ['HTTP_AUTHORIZATION' => 'Bearer ' . $token];
 
         // (1) VALIDER via la route réelle.
         $this->client->request('POST', '/api/schedules/' . $schedule->getId() . '/validate', [], [], [

@@ -186,7 +186,6 @@ final class TeamSoloBudgetApiTest extends WebTestCase
     private function headers(): array
     {
         return [
-            'HTTP_X-Club-Id' => $this->club->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
             'HTTP_ACCEPT' => 'application/ld+json',
         ];

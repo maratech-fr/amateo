@@ -264,7 +264,7 @@ run_one_club() {
   SCHEDULER_PASSWORD="$MANAGER_PASSWORD" \
   TIMEOUT_SECONDS="$BURST_TIMEOUT" \
   PENDING_TIMEOUT_SECONDS="$BURST_TIMEOUT" \
-    "$GEN_SCRIPT" --club-id "$club_id" >"$log" 2>&1 && rc=0 || rc=$?
+    "$GEN_SCRIPT" >"$log" 2>&1 && rc=0 || rc=$?
   end=$(date +%s)
   # `|| true`: an empty / login-only log yields no "Status:" match; under
   # `set -o pipefail` the failing grep would otherwise abort run_one_club BEFORE
