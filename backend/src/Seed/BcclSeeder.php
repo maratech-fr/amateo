@@ -362,6 +362,9 @@ final class BcclSeeder
             // gate rejects emailVerifiedAt = null).
             $user->setEmailVerifiedAt(new DateTimeImmutable);
             $user->setPasswordHash($this->passwordHasher->hashPassword($user, $profile->managerPassword));
+            // SEC-28 — le gestionnaire d'un club de DÉMONSTRATION est lui-même un compte
+            // démo (pérenne, non modifiable). Les profils réels (dev/prod) posent false.
+            $user->setIsDemo($profile->isDemo);
             $manager->persist($user);
         }
 

@@ -97,6 +97,16 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: 'datetimetz_immutable', nullable: true)]
     private ?DateTimeImmutable $demoActiveUntil = null;
 
+    // SEC-28 — ce compte est un compte de DÉMONSTRATION (animateur `demo@`, BCCL
+    // `demo-bccl@`). Drapeau d'IDENTITÉ, distinct de la fenêtre `demoActiveUntil` :
+    // il vaut `true` en permanence pour un compte démo, fenêtre ouverte ou non. Posé
+    // à la création (commande/raccourci/seed), jamais par un parcours ordinaire. Un
+    // compte démo ne peut ni changer d'e-mail/mot de passe/prénom-nom ni se supprimer
+    // (gardé par UserChecker, AuthController, DeleteAccountController), et il est hors
+    // de la règle des comptes orphelins (OrphanAccountNotifier).
+    #[ORM\Column(type: 'boolean', options: ['default' => false])]
+    private bool $isDemo = false;
+
     public function __construct()
     {
         $this->id = $this->newUuid();
@@ -316,6 +326,18 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function isDemoWindowOpen(DateTimeImmutable $now): bool
     {
         return $this->demoActiveUntil instanceof DateTimeImmutable && $this->demoActiveUntil > $now;
+    }
+
+    public function isDemo(): bool
+    {
+        return $this->isDemo;
+    }
+
+    public function setIsDemo(bool $isDemo): self
+    {
+        $this->isDemo = $isDemo;
+
+        return $this;
     }
 
     public function getPendingEmail(): ?string

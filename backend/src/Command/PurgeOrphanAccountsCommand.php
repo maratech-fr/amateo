@@ -20,7 +20,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mailer\MailerInterface;
 use Throwable;
 
@@ -59,10 +58,6 @@ final class PurgeOrphanAccountsCommand extends Command
         private readonly ClockInterface $clock,
         private readonly ManagerRegistry $managerRegistry,
         private readonly AuditTrail $auditTrail,
-        #[Autowire(param: 'app.demo_animator_email')]
-        private readonly string $demoAnimatorEmail,
-        #[Autowire(param: 'app.demo_bccl_email')]
-        private readonly string $demoBcclEmail,
     ) {
         parent::__construct();
     }
@@ -94,15 +89,15 @@ final class PurgeOrphanAccountsCommand extends Command
     /** @return array{int, bool} [processed, hadFailure] */
     private function warn(SymfonyStyle $io, DateTimeImmutable $now, bool $dryRun): array
     {
-        // Pré-filtre (borne le balayage) : comptes non anonymisés, sans stamp, non démo, et
-        // SANS adhésion active. Le prédicat complet isOrphan (pending + demande vivante) est
-        // revérifié en PHP ci-dessous sur un fetch frais.
+        // Pré-filtre (borne le balayage) : comptes non anonymisés, sans stamp, non démo
+        // (SEC-28 : drapeau is_demo, plus la comparaison d'adresse), et SANS adhésion
+        // active. Le prédicat complet isOrphan (pending + demande vivante) est revérifié
+        // en PHP ci-dessous sur un fetch frais.
         $users = $this->entityManager->getRepository(User::class)->createQueryBuilder('u')
             ->where('u.anonymizedAt IS NULL')
             ->andWhere('u.orphanNoticeSentAt IS NULL')
-            ->andWhere('LOWER(u.email) NOT IN (:demo)')
+            ->andWhere('u.isDemo = false')
             ->andWhere('NOT EXISTS (SELECT cu.id FROM App\\Entity\\ClubUser cu WHERE cu.userId = u.id AND cu.isActive = true)')
-            ->setParameter('demo', [strtolower($this->demoAnimatorEmail), strtolower($this->demoBcclEmail)])
             ->getQuery()
             ->getResult();
         // Ids d'abord : après un resetManager (échec d'un flush), les entités déjà

@@ -137,7 +137,7 @@ final class OrphanAccountLifecycleTest extends WebTestCase
     {
         [, , $clubId] = $this->registerManager('ORPF');
         $pending = $this->insertMember($clubId, 'member-orpf-' . uniqid() . '@test.fr', 'editor', false, null); // pending = deactivatedAt null
-        $demo = $this->insertMember($clubId, $this->demoAnimatorEmail(), 'editor', false, new DateTimeImmutable);
+        $demo = $this->insertMember($clubId, $this->demoAnimatorEmail(), 'editor', false, new DateTimeImmutable, isDemo: true);
 
         $notifier = $this->notifier();
         self::assertFalse($notifier->isOrphan($this->reload($pending)), 'une adhésion pending protège de la règle');
@@ -298,7 +298,7 @@ final class OrphanAccountLifecycleTest extends WebTestCase
         return [$email, $user->getId()];
     }
 
-    private function insertMember(string $clubId, string $email, string $role, bool $active, ?DateTimeImmutable $deactivatedAt): User
+    private function insertMember(string $clubId, string $email, string $role, bool $active, ?DateTimeImmutable $deactivatedAt, bool $isDemo = false): User
     {
         $em = $this->em();
         $user = new User;
@@ -307,6 +307,8 @@ final class OrphanAccountLifecycleTest extends WebTestCase
         $user->setLastName('Orphelin');
         $user->setPasswordHash('x');
         $user->setEmailVerifiedAt(new DateTimeImmutable);
+        // SEC-28 — un compte démo est reconnu par le drapeau is_demo (plus par adresse).
+        $user->setIsDemo($isDemo);
         $em->persist($user);
         $em->flush();
         $this->insertMembershipFor($clubId, $user->getId(), $role, $active, $deactivatedAt);

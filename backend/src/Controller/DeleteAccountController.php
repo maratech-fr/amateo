@@ -42,6 +42,11 @@ final class DeleteAccountController extends AbstractController
         if (!$user instanceof User) {
             return $this->json(['error' => 'Unauthorized'], 401);
         }
+        // SEC-28 — un compte de démonstration ne se supprime pas (il est pérenne et
+        // partagé par tous les rendez-vous). Refus AVANT toute lecture du corps.
+        if ($user->isDemo()) {
+            return $this->json(['error' => 'Ce compte de démonstration ne peut pas être modifié.'], 403);
+        }
 
         $data = json_decode($request->getContent(), true);
         $password = \is_array($data) && \is_string($data['password'] ?? null) ? $data['password'] : '';

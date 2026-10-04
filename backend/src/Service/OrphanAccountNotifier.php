@@ -44,12 +44,14 @@ final class OrphanAccountNotifier
         private readonly ClubCreationRequestRepository $clubCreationRequests,
         private readonly OrphanAccountMailBuilder $mailBuilder,
         private readonly MailerInterface $mailer,
+        // BCK-34 — horloge RÉELLE : le préavis + délai de grâce (+30 j) avant
+        // suppression d'un compte orphelin est de MÊME NATURE que le délai RGPD
+        // (rétention/suppression). Les déclencheurs immédiats tournent dans le
+        // contexte tenant de l'appelant (un gestionnaire de club démo désactive un
+        // membre) — l'échéance annoncée dans le mail doit rester sur le calendrier réel.
+        #[Autowire(service: 'app.clock.real')]
         private readonly ClockInterface $clock,
         private readonly LoggerInterface $logger,
-        #[Autowire(param: 'app.demo_animator_email')]
-        private readonly string $demoAnimatorEmail,
-        #[Autowire(param: 'app.demo_bccl_email')]
-        private readonly string $demoBcclEmail,
     ) {}
 
     /**
@@ -142,15 +144,13 @@ final class OrphanAccountNotifier
     }
 
     /**
-     * Comptes de DÉMONSTRATION, exclus de la règle. Isolé dans CETTE méthode : au lot 2,
-     * la bascule se fera sur `app_user.is_demo` (un drapeau d'entité) plutôt que sur la
-     * comparaison d'adresse — un seul point à changer.
+     * Comptes de DÉMONSTRATION, exclus de la règle. SEC-28 : la reconnaissance se fait
+     * désormais sur le drapeau d'entité `app_user.is_demo`, plus par comparaison
+     * d'adresse (un seul point de vérité, cf. UserChecker).
      */
     private function isDemoAccount(User $user): bool
     {
-        $email = strtolower($user->getEmail());
-
-        return $email === strtolower($this->demoAnimatorEmail) || $email === strtolower($this->demoBcclEmail);
+        return $user->isDemo();
     }
 
     private function pendingMembershipCount(string $userId): int
