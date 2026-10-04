@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Sister of generate-schedule.sh for the PLACEMENT rail (POST /api/fixtures/place,
 # « Placer automatiquement »). Logs in with a load-test manager account, posts a
-# phase window {from,to} (dates AAAA-MM-JJ), and reports HTTP code, wall time and
-# placed/skipped/unplaced counts. It MEASURES; it changes no quota or budget.
+# phase window {from,to} (dates AAAA-MM-JJ) and — the rail being ASYNCHRONOUS now
+# (202 + run id, ADR-0003) — polls GET /api/fixtures/placement-run until the run is
+# terminal, reporting the POST code, the terminal run status, the END-TO-END wall
+# time (queue + solve) and placed/skipped/unplaced. It MEASURES; it changes no quota.
 #
 #   SCHEDULER_EMAIL=... SCHEDULER_PASSWORD=... \
 #     place-matches.sh --club-id ID --from 2026-09-05 --to 2026-11-29
@@ -37,7 +39,8 @@ Options:
   --token TOKEN      JWT Bearer (sinon SCHEDULER_EMAIL/SCHEDULER_PASSWORD)
   --help, -h         Affiche cette aide
 
-La réponse de /api/fixtures/place est JSON { placed, skipped, unplaced[], ... }.
+POST /api/fixtures/place répond 202 { runId, status } ; le résultat (placed,
+skipped, unplaced[]) est lu dans le run via GET /api/fixtures/placement-run.
 EOF
 }
 
@@ -80,22 +83,28 @@ done
 # sauf le bac à sable IA (amateo_dev) ou *_test. Après --help/token comme ses sœurs.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/sandbox-guard.sh"
 
+# Borne du sondage de l'état terminal du run (file d'attente + solve). Généreuse :
+# le budget moteur est de 35 s par semaine ISO et une phase en porte une quinzaine,
+# auxquels s'ajoute l'attente derrière les autres clubs (worker unique, solve global
+# sérialisé). Au-delà, on NOMME un TIMEOUT plutôt que de boucler sans fin.
+POLL_TIMEOUT_SECONDS="${PLACE_POLL_TIMEOUT_SECONDS:-1800}"
+POLL_INTERVAL_SECONDS=3
+
 body=$(python3 -c 'import json,sys; print(json.dumps({"from": sys.argv[1], "to": sys.argv[2]}))' "$FROM" "$TO")
 
 info "Placement $CLUB_ID — fenêtre $FROM → $TO"
 body_file=$(mktemp)
 start=$(date +%s)
-code=$(curl -sS -o "$body_file" -w '%{http_code}' \
+http=$(curl -sS -o "$body_file" -w '%{http_code}' \
   -X POST "$API_BASE/fixtures/place" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Club-Id: $CLUB_ID" \
   -H 'Content-Type: application/json' \
   --data "$body" 2>/dev/null) || { rm -f "$body_file"; die "Backend injoignable sur POST /fixtures/place"; }
-end=$(date +%s)
 resp=$(<"$body_file"); rm -f "$body_file"
 
-# placed / skipped / unplaced lus dans la réponse JSON (absents si 4xx/5xx).
-read -r placed skipped unplaced < <(python3 -c '
+# Extrait un champ d'un objet JSON de résultat de placement (placed/skipped + len(unplaced)).
+counts_of() { python3 -c '
 import json, sys
 try:
     d = json.loads(sys.stdin.read() or "{}")
@@ -105,18 +114,79 @@ if not isinstance(d, dict):
     d = {}
 u = d.get("unplaced")
 print(d.get("placed", "-"), d.get("skipped", "-"), len(u) if isinstance(u, list) else "-")
+'; }
+
+run_status="-"; placed="-"; skipped="-"; unplaced="-"
+case "$http" in
+  202)
+    # Rail ASYNCHRONE (ADR-0003) : 202 { runId, status }. On attend l'état terminal du
+    # run via GET /api/fixtures/placement-run (dernier run du club+saison courants), puis
+    # on lit placed/skipped/unplaced dans son `result`. L'e2e couvre file + solve.
+    run_id=$(python3 -c '
+import json, sys
+try:
+    d = json.loads(sys.stdin.read() or "{}")
+except Exception:
+    d = {}
+print(d.get("runId", "") if isinstance(d, dict) else "")
 ' <<<"$resp")
+    if [[ -z "$run_id" ]]; then
+      run_status="NO_RUN_ID"
+    else
+      deadline=$((start + POLL_TIMEOUT_SECONDS))
+      while :; do
+        run_body=$(curl -sS \
+          -X GET "$API_BASE/fixtures/placement-run" \
+          -H "Authorization: Bearer $TOKEN" \
+          -H "X-Club-Id: $CLUB_ID" 2>/dev/null || echo '{}')
+        # On ne lit QUE le run attendu (id), pour ne jamais confondre avec un run antérieur.
+        read -r run_status placed skipped unplaced < <(RUN_ID="$run_id" python3 -c '
+import json, os, sys
+try:
+    d = json.loads(sys.stdin.read() or "{}")
+except Exception:
+    d = {}
+run = d.get("run") if isinstance(d, dict) else None
+want = os.environ.get("RUN_ID", "")
+if not isinstance(run, dict) or run.get("id") != want:
+    print("PENDING - - -"); raise SystemExit
+status = run.get("status") or "PENDING"
+res = run.get("result") if isinstance(run.get("result"), dict) else {}
+u = res.get("unplaced")
+print(status, res.get("placed", "-"), res.get("skipped", "-"), len(u) if isinstance(u, list) else "-")
+' <<<"$run_body")
+        [[ "$run_status" == "COMPLETED" || "$run_status" == "FAILED" ]] && break
+        if (( $(date +%s) >= deadline )); then run_status="TIMEOUT"; break; fi
+        sleep "$POLL_INTERVAL_SECONDS"
+      done
+    fi
+    ;;
+  200|201)
+    # 200 synchrone restant = « aucun match à placer » (corps direct, pas de run).
+    read -r placed skipped unplaced < <(counts_of <<<"$resp")
+    run_status="COMPLETED"
+    ;;
+  *) ;; # 409/429/502 : signal de charge, pas de run à attendre.
+esac
+end=$(date +%s)
 
-# Ligne machine-lisible consommée par run-load-test.sh (préfixe stable).
-printf 'PLACE_RESULT code=%s e2e_s=%s placed=%s skipped=%s unplaced=%s\n' \
-  "$code" "$((end - start))" "$placed" "$skipped" "$unplaced"
+# Ligne machine-lisible consommée par run-load-test.sh (préfixe + champs stables).
+printf 'PLACE_RESULT http=%s run=%s e2e_s=%s placed=%s skipped=%s unplaced=%s\n' \
+  "$http" "$run_status" "$((end - start))" "$placed" "$skipped" "$unplaced"
 
-case "$code" in
-  200|201) info "Placement OK (HTTP $code) : placed=$placed skipped=$skipped unplaced=$unplaced en $((end - start))s" ;;
-  409|429|502) warn "SIGNAL de charge (HTTP $code) — pas un échec du harnais : $resp" ;;
-  *) warn "Réponse inattendue (HTTP $code) : $resp" ;;
+case "$http" in
+  202)
+    case "$run_status" in
+      COMPLETED) info "Placement OK (202 → run COMPLETED) : placed=$placed skipped=$skipped unplaced=$unplaced en $((end - start))s" ;;
+      FAILED)    warn "Run FAILED (202 → le solveur a échoué) — signal de charge en $((end - start))s" ;;
+      TIMEOUT)   warn "Run NON TERMINÉ dans ${POLL_TIMEOUT_SECONDS}s (202 → TIMEOUT) — signal de charge" ;;
+      *)         warn "Run d'état « $run_status » (202) : $resp" ;;
+    esac ;;
+  200|201)     info "Placement OK (HTTP $http) : placed=$placed skipped=$skipped unplaced=$unplaced en $((end - start))s" ;;
+  409|429|502) warn "SIGNAL de charge (HTTP $http) — pas un échec du harnais : $resp" ;;
+  *)           warn "Réponse inattendue (HTTP $http) : $resp" ;;
 esac
 
-# Exit 0 même sur signal de charge (409/429/502) : le harnais mesure, il ne juge
-# pas. Seuls un transport mort ou un login refusé (plus haut) sortent non-zéro.
+# Exit 0 même sur signal de charge (409/429/502) ou run FAILED/TIMEOUT : le harnais
+# mesure, il ne juge pas. Seuls un transport mort ou un login refusé sortent non-zéro.
 exit 0

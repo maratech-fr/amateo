@@ -14,22 +14,22 @@
 
 services:
   php-fpm:
-    mem_limit: 1g       # docker-compose.prod.yml:90
+    mem_limit: 1g       # docker-compose.prod.yml:97
 
   postgres:
-    mem_limit: 512m     # docker-compose.prod.yml:141
+    mem_limit: 512m     # docker-compose.prod.yml:148
 
   redis:
-    mem_limit: 256m     # docker-compose.prod.yml:161
+    mem_limit: 256m     # docker-compose.prod.yml:168
 
   messenger-worker:
-    mem_limit: 384m     # docker-compose.prod.yml:201
+    mem_limit: 384m     # docker-compose.prod.yml:208
 
   engine:
-    mem_limit: 512m     # docker-compose.prod.yml:276
+    mem_limit: 1g       # docker-compose.prod.yml:287
 
   pdf-worker:
-    mem_limit: 512m     # docker-compose.prod.yml:311
+    mem_limit: 512m     # docker-compose.prod.yml:322
 
   mercure:
-    mem_limit: 128m     # docker-compose.prod.yml:336
+    mem_limit: 512m     # docker-compose.prod.yml:349

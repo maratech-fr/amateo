@@ -17,13 +17,16 @@
 #
 # --mode placement: seeds fictional clubs at mixed sizes (small/medium/large),
 # each with a validated season plan + a fictional championship, then fires N
-# concurrent "Placer automatiquement" calls (synchronous, POST /api/fixtures/place)
-# over a whole PHASE window, twice per club (1st pass = place the phase, 2nd pass =
-# adjustments). The report shows HTTP codes (409/429/502 = a capacity SIGNAL, NOT a
-# harness failure) and placed/unplaced counts per pass.
+# concurrent "Placer automatiquement" calls over a whole PHASE window, twice per
+# club. The rail is ASYNCHRONOUS (POST /api/fixtures/place → 202 + run id, ADR-0003):
+# each call is polled to its terminal run status, and the measured e2e covers queue
+# wait + solve. Pass 1 places the phase (the peak); between passes 30% of SOLVER
+# placements are frozen to MANUAL (anchors), and pass 2 re-places the rest. The report
+# shows HTTP + run status (409 / run FAILED / run TIMEOUT = a capacity SIGNAL, NOT a
+# harness failure), end-to-end timings and placed/unplaced counts per pass.
 #
 # Exit (generation): 0 = every club reached COMPLETED across every round, 1 = any
-# failure. Exit (placement): 0 unless a login/transport failure occurred.
+# failure. Exit (placement): 0 unless a login/transport/no-run-id failure occurred.
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -115,8 +118,13 @@ DB_ADMIN_URL=$(cat "$ROOT/backend/.env" "$ROOT/backend/.env.local" 2>/dev/null \
   | awk -F= '$1=="DATABASE_ADMIN_URL" {sub(/^[^=]*=/,""); gsub(/"/,""); print}' | tail -n 1 || true)
 [[ -n "$DB_ADMIN_URL" ]] || die "DATABASE_ADMIN_URL not found in backend/.env(.local)"
 
+# `</dev/null` est CRUCIAL : `dc exec -T` (docker compose exec) hérite du stdin de
+# l'appelant. Appelé DANS une boucle `while read … done <fichier` (table du rapport),
+# il avalait sinon le reste du fichier → la boucle s'arrêtait après la 1ʳᵉ ligne
+# (rapport « à une seule ligne »). psql lit son SQL via `-c`, jamais le stdin : le
+# fermer ici est sans effet de bord et protège tous les appels, en boucle ou non.
 psql_admin() { dc exec -T -e DATABASE_URL="$DB_ADMIN_URL" postgres \
-  psql -U amateo_owner -d "$SANDBOX_DB" -tA -c "$1"; }
+  psql -U amateo_owner -d "$SANDBOX_DB" -tA -c "$1" </dev/null; }
 
 # ---------------------------------------------------------------------------
 # Pre-flight
@@ -242,7 +250,7 @@ BURST_TIMEOUT=$((CLUBS * 700))
 CLUBS_CSV="$OUT/clubs.csv"
 PLACE_CSV="$OUT/placements.csv"
 if [[ "$MODE" == "placement" ]]; then
-  echo "round,pass,club,slug,club_id,from,to,http_code,e2e_s,placed,skipped,unplaced" >"$PLACE_CSV"
+  echo "round,pass,club,slug,club_id,from,to,http,run,e2e_s,placed,skipped,unplaced" >"$PLACE_CSV"
 else
   echo "round,club,slug,club_id,start_epoch,end_epoch,e2e_s,exit_code,status,score" >"$CLUBS_CSV"
 fi
@@ -273,10 +281,12 @@ run_one_club() {
   echo "$round,$i,club-charge-$i,$club_id,$start,$end,$((end - start)),$rc,$status,$score" >>"$CLUBS_CSV"
 }
 
-# Placement: synchronous POST /api/fixtures/place over the club's PHASE-1 window,
-# TWICE (pass 1 = place the whole phase — the peak; pass 2 = adjustments after a
-# partial placement). The phase window is the span of the club's "Championnat
-# Phase 1" competitions.
+# Placement: ASYNC POST /api/fixtures/place (202 + run, polled to terminal) over the
+# club's PHASE-1 window, TWICE. Pass 1 places the whole phase (the peak). Between the
+# passes, 30% of pass-1 SOLVER placements are FROZEN to MANUAL — a manager keeping part
+# of the result by hand (ADR-0003 §5: SOLVER = re-plaçable, MANUAL = ancre FIXED). Pass 2
+# then re-places the REST around those anchors (adjustment), instead of blindly redoing
+# the identical pass 1. The phase window is the span of the "Championnat Phase 1" comps.
 run_one_placement_club() {
   local round="$1" i="$2" club_id="$3"
   local slug="${SLUG_PREFIX}$i"
@@ -284,26 +294,46 @@ run_one_placement_club() {
   win=$(psql_admin "SELECT COALESCE(min(start_date)::text,'')||'|'||COALESCE(max(end_date)::text,'') FROM competition WHERE club_id='$club_id' AND name = 'Championnat Phase 1'" | tr -d '[:space:]')
   from="${win%%|*}"; to="${win##*|}"
   if [[ -z "$from" || -z "$to" ]]; then
-    echo "$round,-,$i,$slug,$club_id,,,NOWIN,0,-,-,-" >>"$PLACE_CSV"
+    echo "$round,-,$i,$slug,$club_id,,,NOWIN,-,0,-,-,-" >>"$PLACE_CSV"
     return
   fi
   local pass
   for pass in 1 2; do
+    # Entre les deux passes : gèle 30% des placements SOLVER de la passe 1 en MANUAL
+    # (gestionnaire qui en garde une partie à la main). Ces ancres FIXED ne bougent plus ;
+    # la passe 2 replace le reste autour d'elles — un vrai geste d'ajustement, pas un
+    # rejeu à l'identique. GREATEST(1, …) garantit au moins une ancre dès qu'un match a été
+    # placé. Déterministe (ORDER BY id) pour un tir reproductible.
+    if [[ "$pass" -eq 2 ]]; then
+      psql_admin "UPDATE fixture SET placement_source='MANUAL'
+        WHERE id IN (
+          SELECT id FROM fixture
+          WHERE club_id='$club_id' AND status='PLACED' AND placement_source='SOLVER'
+            AND match_date BETWEEN '$from' AND '$to'
+          ORDER BY id
+          LIMIT GREATEST(1, (
+            SELECT (count(*)*3/10)::int FROM fixture
+            WHERE club_id='$club_id' AND status='PLACED' AND placement_source='SOLVER'
+              AND match_date BETWEEN '$from' AND '$to'))
+        )" >/dev/null 2>&1 || warn "freeze 30% MANUAL (pass 2) failed for $slug — pass 2 re-places everything"
+    fi
     local log="$OUT/round-${round}_${slug}_pass-${pass}.log"
-    local start end code placed skipped unplaced line
+    local start end http run placed skipped unplaced e2e line
     start=$(date +%s)
     SCHEDULER_EMAIL="${MANAGER_EMAIL_PREFIX}$i@${MANAGER_EMAIL_DOMAIN}" \
     SCHEDULER_PASSWORD="$MANAGER_PASSWORD" \
       "$PLACE_SCRIPT" --club-id "$club_id" --from "$from" --to "$to" >"$log" 2>&1 || true
     end=$(date +%s)
-    # The machine-readable PLACE_RESULT line carries code/placed/skipped/unplaced;
-    # absent (empty) line = login/transport death before the call → code ERR.
+    # The machine-readable PLACE_RESULT line carries http/run/e2e/placed/skipped/unplaced;
+    # absent (empty) line = login/transport death before the call → http ERR, run ERR.
     line=$(grep '^PLACE_RESULT' "$log" | tail -1 || true)
-    code=$(sed -n 's/.*code=\([^ ]*\).*/\1/p' <<<"$line"); [[ -z "$code" ]] && code="ERR"
+    http=$(sed -n 's/.*http=\([^ ]*\).*/\1/p' <<<"$line"); [[ -z "$http" ]] && http="ERR"
+    run=$(sed -n 's/.*run=\([^ ]*\).*/\1/p' <<<"$line"); [[ -z "$run" ]] && run="ERR"
+    e2e=$(sed -n 's/.*e2e_s=\([^ ]*\).*/\1/p' <<<"$line"); [[ -z "$e2e" ]] && e2e="$((end - start))"
     placed=$(sed -n 's/.*placed=\([^ ]*\).*/\1/p' <<<"$line"); [[ -z "$placed" ]] && placed="-"
     skipped=$(sed -n 's/.*skipped=\([^ ]*\).*/\1/p' <<<"$line"); [[ -z "$skipped" ]] && skipped="-"
     unplaced=$(sed -n 's/.*unplaced=\([^ ]*\).*/\1/p' <<<"$line"); [[ -z "$unplaced" ]] && unplaced="-"
-    echo "$round,$pass,$i,$slug,$club_id,$from,$to,$code,$((end - start)),$placed,$skipped,$unplaced" >>"$PLACE_CSV"
+    echo "$round,$pass,$i,$slug,$club_id,$from,$to,$http,$run,$e2e,$placed,$skipped,$unplaced" >>"$PLACE_CSV"
   done
 }
 
@@ -386,7 +416,7 @@ peak_queue=$(awk -F, 'NR>1 && $3 ~ /^[0-9]+$/ {if ($3>m) m=$3} END{print m+0}' "
 # Markdown report
 # ---------------------------------------------------------------------------
 completed=0; total_rows=0; login_failed=0
-place_rows=0; place_err=0; place_signal=0
+place_rows=0; place_err=0; place_signal=0; place_completed=0; place_failed=0
 declare -A TEAMS_OF
 {
   echo "# Load-test report — $STAMP"
@@ -398,16 +428,18 @@ declare -A TEAMS_OF
   echo "- Lot wall-clock: **${LOT_DURATION}s**"
   echo
   if [[ "$MODE" == "placement" ]]; then
-    echo "> Placement is SYNCHRONOUS (POST /api/fixtures/place): no async queue, no"
-    echo "> solver wall-time row. Each club places its whole PHASE-1 window twice"
-    echo "> (pass 1 = place the phase — the peak; pass 2 = adjustments). Mixed sizes:"
-    echo "> see the \`Équipes\` column. HTTP 409/429/502 are capacity SIGNALS."
+    echo "> Placement is ASYNCHRONOUS (POST /api/fixtures/place → 202 + run id, polled"
+    echo "> to terminal, ADR-0003): the e2e (s) column is BOTH queue wait and solve, as"
+    echo "> for generation. Each club places its whole PHASE-1 window twice — pass 1 places"
+    echo "> the phase (the peak); between passes 30% of SOLVER placements are frozen to"
+    echo "> MANUAL (anchors), pass 2 re-places the rest (adjustment). Mixed sizes: see the"
+    echo "> \`Équipes\` column. HTTP 409 / run FAILED / run TIMEOUT are capacity SIGNALS."
     echo
     echo "## Placement par club (tous passages)"
     echo
-    echo "| Round | Pass | Club | Équipes | HTTP | e2e (s) | placed | unplaced |"
-    echo "|------:|-----:|:-----|--------:|:-----|--------:|-------:|---------:|"
-    while IFS=, read -r round pass club slug club_id from to code e2e placed skipped unplaced; do
+    echo "| Round | Pass | Club | Équipes | HTTP | Run | e2e (s) | placed | unplaced |"
+    echo "|------:|-----:|:-----|--------:|:-----|:----|--------:|-------:|---------:|"
+    while IFS=, read -r round pass club slug club_id from to http run e2e placed skipped unplaced; do
       [[ "$round" == "round" ]] && continue
       place_rows=$((place_rows + 1))
       teams="${TEAMS_OF[$slug]:-}"
@@ -416,18 +448,28 @@ declare -A TEAMS_OF
         [[ -z "$teams" ]] && teams="?"
         TEAMS_OF[$slug]="$teams"
       fi
-      case "$code" in
-        200|201) ;;
+      # Verdict combiné HTTP + run : 202→COMPLETED (ou 200 « rien à placer ») = succès ;
+      # 409/429 ou run FAILED/TIMEOUT = signal de charge ; tout le reste = erreur harnais.
+      case "$http" in
+        200|201) place_completed=$((place_completed + 1)) ;;
+        202)
+          case "$run" in
+            COMPLETED) place_completed=$((place_completed + 1)) ;;
+            FAILED)    place_failed=$((place_failed + 1)); place_signal=$((place_signal + 1)) ;;
+            TIMEOUT)   place_signal=$((place_signal + 1)) ;;
+            *)         place_err=$((place_err + 1)) ;;
+          esac ;;
         409|429|502) place_signal=$((place_signal + 1)) ;;
-        *) place_err=$((place_err + 1)) ;;
+        *)           place_err=$((place_err + 1)) ;;
       esac
-      echo "| $round | $pass | $slug | $teams | $code | $e2e | $placed | $unplaced |"
+      echo "| $round | $pass | $slug | $teams | $http | $run | $e2e | $placed | $unplaced |"
     done <"$PLACE_CSV"
     echo
     echo "- **$place_rows** placement call(s) = $CLUBS club(s) × 2 pass(es) × $ROUNDS round(s)"
-    echo "- HTTP 409/429/502 = **capacity signal** (socle/lock, rate-limit, engine), NOT a harness failure: **$place_signal**"
+    echo "- Runs **COMPLETED: $place_completed**   **FAILED: $place_failed**"
+    echo "- HTTP 409/429 / run FAILED / run TIMEOUT = **capacity signal** (socle/lock, rate-limit, engine), NOT a harness failure: **$place_signal**"
     if [[ "$place_err" -gt 0 ]]; then
-      echo "- ⚠ **$place_err call(s) in ERROR** (login refusé / transport / no phase window) — seeded accounts \`place-N@${MANAGER_EMAIL_DOMAIN}\` / \`${MANAGER_PASSWORD}\` (\`LoadTestClubSeeder\`); detail: \`round-*_pass-*.log\`."
+      echo "- ⚠ **$place_err call(s) in ERROR** (login refusé / transport / no phase window / no run id) — seeded accounts \`place-N@${MANAGER_EMAIL_DOMAIN}\` / \`${MANAGER_PASSWORD}\` (\`LoadTestClubSeeder\`); detail: \`round-*_pass-*.log\`."
     fi
   else
     echo "> Two serializers by design: a SINGLE messenger-worker (one async message"
@@ -470,7 +512,7 @@ declare -A TEAMS_OF
   echo
   echo "| Container | Peak RAM (MiB) | Prod limit | OOMKilled |"
   echo "|:----------|---------------:|:-----------|:----------|"
-  declare -A LIMIT_MB=( [php-fpm]=1024 [postgres]=512 [redis]=256 [messenger-worker]=384 [engine]=512 [pdf-worker]=512 [mercure]=128 )
+  declare -A LIMIT_MB=( [php-fpm]=1024 [postgres]=512 [redis]=256 [messenger-worker]=384 [engine]=1024 [pdf-worker]=512 [mercure]=512 )
   for svc in "${SERVICES[@]}"; do
     cname=$(docker inspect --format '{{.Name}}' "${CID[$svc]}" 2>/dev/null | sed 's#^/##')
     [[ -z "$cname" ]] && cname="$svc"

@@ -438,7 +438,17 @@ final class LoadTestClubSeeder
     private function seedCoaches(EntityManagerInterface $manager, string $clubId, string $seasonId, LoadTestClubSize $size, array $teams): array
     {
         $teamCount = $size->teamCount();
-        $coachCount = max(2, (int) ceil($teamCount * 0.7));
+        $teamsTotal = \count($teams);
+
+        // Vivier de PERSONNES calé sur un vrai gros club — le BCCL, mesuré sur le payload
+        // de placement réel (payload_bccl.json, 50 équipes) : 32 personnes, ~37 présences
+        // coach, partage RARE (≈4 personnes sur plus d'une équipe, portée MAX 3) et ~1 équipe
+        // sur 4 SANS coach déclaré (les jeunes). ~0,64 personne par équipe. L'ancienne
+        // répartition (0,7 coach/équipe, un coach tous les `i % coachCount`, adjoints et
+        // joueurs croisés) gonflait artificiellement l'empreinte personne (mesuré : 35
+        // personnes, portée jusqu'à 5, 22 personnes partagées, AUCUNE équipe sans coach) et
+        // densifiait le graphe de chevauchement personne bien au-delà d'un club réel.
+        $coachCount = max(2, (int) round($teamCount * 0.64));
         $coaches = [];
         for ($k = 0; $k < $coachCount; ++$k) {
             $firstName = self::COACH_FIRST_NAMES[$k % \count(self::COACH_FIRST_NAMES)];
@@ -457,28 +467,46 @@ final class LoadTestClubSeeder
         }
         $manager->flush();
 
-        foreach ($teams as $i => $team) {
-            $teamId = $team['entity']->getId();
-            $main = $coaches[$i % $coachCount];
-            $this->linkCoach($manager, $clubId, $seasonId, $teamId, $main->getId(), TeamCoachRole::MAIN);
-            // Mutualisation : un adjoint partagé tous les 4 clubs.
-            if (0 === $i % 4 && $i + 1 < \count($teams)) {
-                $assistant = $coaches[($i + 1) % $coachCount];
-                $this->linkCoach($manager, $clubId, $seasonId, $teamId, $assistant->getId(), TeamCoachRole::ASSISTANT);
-            }
-            // Un coach jouant comme JOUEUR dans une autre équipe (protégé comme un MAIN).
-            if (0 === $i % 5) {
-                $player = $coaches[($i + 2) % $coachCount];
-                $membership = new CoachPlayerMembership;
-                $membership->setClubId($clubId);
-                $membership->setSeasonId($seasonId);
-                $membership->setCoachId($player->getId());
-                $membership->setTeamId($teamId);
-                $membership->setIsActive(true);
-                $manager->persist($membership);
-            }
+        // 1) Un MAIN DISTINCT par coach, sur les premières équipes ; les équipes restantes
+        //    (les plus jeunes) n'ont AUCUN coach déclaré — comme au BCCL. Portée 1 pour tous.
+        $mainTeams = min($teamsTotal, $coachCount);
+        for ($i = 0; $i < $mainTeams; ++$i) {
+            $this->linkCoach($manager, $clubId, $seasonId, $teams[$i]['entity']->getId(), $coaches[$i]->getId(), TeamCoachRole::MAIN);
         }
-        $counter = \count($teams);
+
+        // 2) Partage RARE et de faible portée : quelques coachs reprennent une équipe laissée
+        //    sans coach (portée 2 pour ~8% des équipes, BCCL), et UN seul monte à la portée 3.
+        $next = $mainTeams;
+        $shareBudget = max(1, (int) round($teamCount * 0.08));
+        for ($s = 0; $s < $shareBudget && $next < $teamsTotal; ++$s, ++$next) {
+            $this->linkCoach($manager, $clubId, $seasonId, $teams[$next]['entity']->getId(), $coaches[$s % $coachCount]->getId(), TeamCoachRole::MAIN);
+        }
+        if ($next < $teamsTotal) {
+            $this->linkCoach($manager, $clubId, $seasonId, $teams[$next]['entity']->getId(), $coaches[0]->getId(), TeamCoachRole::MAIN);
+        }
+
+        // 3) Quelques équipes à DEUX coachs (un adjoint toutes les ~8 équipes) : l'adjoint est
+        //    un coach déjà titulaire, pris par le HAUT du vivier pour borner sa portée à 2.
+        for ($i = 0, $k = $coachCount - 1; $i < $mainTeams; $i += 8, --$k) {
+            if ($k <= 0) {
+                break;
+            }
+            $this->linkCoach($manager, $clubId, $seasonId, $teams[$i]['entity']->getId(), $coaches[$k]->getId(), TeamCoachRole::ASSISTANT);
+        }
+
+        // 4) Quelques coachs qui JOUENT AUSSI (double casquette, fréquente au BCCL) : inscrits
+        //    joueurs dans LEUR PROPRE équipe — la double casquette existe sans ajouter d'équipe
+        //    à leur empreinte personne (même paire coach↔équipe, aucun chevauchement nouveau).
+        for ($i = 0; $i < $mainTeams; $i += 3) {
+            $membership = new CoachPlayerMembership;
+            $membership->setClubId($clubId);
+            $membership->setSeasonId($seasonId);
+            $membership->setCoachId($coaches[$i]->getId());
+            $membership->setTeamId($teams[$i]['entity']->getId());
+            $membership->setIsActive(true);
+            $manager->persist($membership);
+        }
+        $counter = $teamsTotal;
 
         // Quelques passerelles « pas en même temps » entre équipes consécutives.
         for ($i = 0; $i + 1 < $counter; $i += 2) {
