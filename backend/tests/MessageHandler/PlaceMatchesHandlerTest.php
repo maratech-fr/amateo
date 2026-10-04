@@ -31,6 +31,7 @@ use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\MatchPlacementProgressPublisher;
 use App\Service\MatchPlacementResultApplier;
 use App\Service\OutputCreditLedger;
+use App\Service\PlacementRunEmailBuilder;
 use App\Service\PlanEntitlements;
 use App\Service\RequestIdContext;
 use App\Service\SeasonResolver;
@@ -44,8 +45,11 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
+use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Mercure\HubInterface;
 use Symfony\Component\Mercure\Update;
+use Symfony\Component\Mime\Email;
+use Symfony\Component\Mime\RawMessage;
 
 /**
  * NR du worker de PLACEMENT asynchrone (axes §7.1 : generation pipeline, tenant). Le handler
@@ -62,6 +66,9 @@ final class PlaceMatchesHandlerTest extends WebTestCase
 
     /** @var list<Update> */
     private array $published = [];
+
+    /** @var list<Email> */
+    private array $sentEmails = [];
 
     public function testSuccessCompletesAppliesTheResultDecrementsTheCreditAndPublishes(): void
     {
@@ -149,11 +156,52 @@ final class PlaceMatchesHandlerTest extends WebTestCase
         self::assertSame(MatchPlacementRunStatus::FAILED, $reloaded->getStatus());
     }
 
+    public function testALongRunEmailsTheRequestingManagerWithTheCounts(): void
+    {
+        [$clubId, $seasonId, $userId, $fixtureId, $venueId, $userEmail] = $this->seed(isDemo: true);
+        // Le run a été créé il y a plus de 2 min : la fin (horloge réelle) dépasse le seuil.
+        $run = $this->seedRun($clubId, $seasonId, $userId, new DateTimeImmutable('-3 minutes'));
+
+        $engine = $this->engineReturning([
+            'status' => 'completed',
+            'placements' => [['matchId' => $fixtureId, 'venueId' => $venueId, 'kickoff' => '15:00']],
+            'unplaced' => [['matchId' => 'x', 'reason' => 'venue_full', 'message' => 'm']],
+        ]);
+
+        $this->handler($engine)->__invoke($this->message($run, $clubId, $seasonId));
+
+        self::assertCount(1, $this->sentEmails, 'un run de plus de 2 min prévient le demandeur');
+        $email = $this->sentEmails[0];
+        self::assertSame($userEmail, $email->getTo()[0]->getAddress(), 'le destinataire est le gestionnaire qui a cliqué');
+        $body = $email->getTextBody();
+        self::assertStringContainsString('1 match placé', $body);
+        self::assertStringContainsString('1 match restant à traiter', $body);
+        // Aucun identifiant interne (id de run) dans le texte.
+        self::assertStringNotContainsString($run->getId(), $body);
+    }
+
+    public function testAShortRunDoesNotEmail(): void
+    {
+        [$clubId, $seasonId, $userId, $fixtureId, $venueId] = $this->seed(isDemo: true);
+        $run = $this->seedRun($clubId, $seasonId, $userId); // createdAt = maintenant → run instantané
+
+        $engine = $this->engineReturning([
+            'status' => 'completed',
+            'placements' => [['matchId' => $fixtureId, 'venueId' => $venueId, 'kickoff' => '15:00']],
+            'unplaced' => [],
+        ]);
+
+        $this->handler($engine)->__invoke($this->message($run, $clubId, $seasonId));
+
+        self::assertCount(0, $this->sentEmails, 'un run court ne prévient personne');
+    }
+
     protected function setUp(): void
     {
         self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
         $this->published = [];
+        $this->sentEmails = [];
     }
 
     private function message(MatchPlacementRun $run, string $clubId, string $seasonId): PlaceMatchesMessage
@@ -180,6 +228,14 @@ final class PlaceMatchesHandlerTest extends WebTestCase
             return 'spy';
         });
 
+        // Mailer espion : on collecte les e-mails envoyés (l'e-mail de fin part par le bus).
+        $spyMailer = $this->createMock(MailerInterface::class);
+        $spyMailer->method('send')->willReturnCallback(function (RawMessage $message): void {
+            if ($message instanceof Email) {
+                $this->sentEmails[] = $message;
+            }
+        });
+
         return new PlaceMatchesHandler(
             $container->get(TenantConnectionContext::class),
             $this->em,
@@ -191,6 +247,8 @@ final class PlaceMatchesHandlerTest extends WebTestCase
             $container->get(OutputCreditLedger::class),
             $container->get(PlanEntitlements::class),
             $container->get(ClockInterface::class),
+            $spyMailer,
+            $container->get(PlacementRunEmailBuilder::class),
             new NullLogger,
         );
     }
@@ -214,7 +272,7 @@ final class PlaceMatchesHandlerTest extends WebTestCase
     }
 
     /**
-     * @return array{0: string, 1: string, 2: string, 3: string, 4: string} [clubId, seasonId, userId, fixtureId, venueId]
+     * @return array{0: string, 1: string, 2: string, 3: string, 4: string, 5: string} [clubId, seasonId, userId, fixtureId, venueId, userEmail]
      */
     private function seed(bool $isDemo): array
     {
@@ -231,8 +289,9 @@ final class PlaceMatchesHandlerTest extends WebTestCase
         $club->setFfbbClubCode('PH' . strtoupper(substr(md5($uid), 0, 9)));
         $this->em->persist($club);
 
+        $userEmail = 'ph-' . $uid . '@test.com';
         $user = new User;
-        $user->setEmail('ph-' . $uid . '@test.com');
+        $user->setEmail($userEmail);
         $user->setFirstName('Place');
         $user->setLastName('Handler');
         $user->setPasswordHash($hasher->hashPassword($user, 'pass'));
@@ -320,13 +379,13 @@ final class PlaceMatchesHandlerTest extends WebTestCase
         $this->em->persist($fixture);
         $this->em->flush();
 
-        return [$club->getId(), $season->getId(), $user->getId(), $fixture->getId(), $venue->getId()];
+        return [$club->getId(), $season->getId(), $user->getId(), $fixture->getId(), $venue->getId(), $userEmail];
     }
 
-    private function seedRun(string $clubId, string $seasonId, string $userId): MatchPlacementRun
+    private function seedRun(string $clubId, string $seasonId, string $userId, ?DateTimeImmutable $createdAt = null): MatchPlacementRun
     {
         $this->scopeGucToClub($clubId);
-        $run = new MatchPlacementRun($clubId, $seasonId, $userId, new DateTimeImmutable);
+        $run = new MatchPlacementRun($clubId, $seasonId, $userId, $createdAt ?? new DateTimeImmutable);
         $this->em->persist($run);
         $this->em->flush();
 

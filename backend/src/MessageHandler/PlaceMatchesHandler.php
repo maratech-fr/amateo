@@ -7,6 +7,7 @@ namespace App\MessageHandler;
 use App\Entity\Club;
 use App\Entity\MatchPlacementRun;
 use App\Entity\Season;
+use App\Entity\User;
 use App\Enum\MatchPlacementRunStatus;
 use App\Message\PlaceMatchesMessage;
 use App\Service\EngineClient;
@@ -15,6 +16,7 @@ use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\MatchPlacementProgressPublisher;
 use App\Service\MatchPlacementResultApplier;
 use App\Service\OutputCreditLedger;
+use App\Service\PlacementRunEmailBuilder;
 use App\Service\PlanEntitlements;
 use App\Service\TenantConnectionContext;
 use DateTimeImmutable;
@@ -22,6 +24,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
 use Symfony\Component\Clock\ClockInterface;
+use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Contracts\HttpClient\Exception\ExceptionInterface as HttpClientExceptionInterface;
 use Throwable;
@@ -47,6 +50,9 @@ use Throwable;
 #[AsMessageHandler]
 final class PlaceMatchesHandler
 {
+    /** Seuil au-delà duquel on prévient par e-mail le gestionnaire qui a lancé le run. */
+    private const int EMAIL_THRESHOLD_SECONDS = 120;
+
     public function __construct(
         private readonly TenantConnectionContext $tenantConnectionContext,
         private readonly EntityManagerInterface $entityManager,
@@ -58,6 +64,8 @@ final class PlaceMatchesHandler
         private readonly OutputCreditLedger $creditLedger,
         private readonly PlanEntitlements $planEntitlements,
         private readonly ClockInterface $clock,
+        private readonly MailerInterface $mailer,
+        private readonly PlacementRunEmailBuilder $emailBuilder,
         private readonly ?LoggerInterface $logger = null,
     ) {}
 
@@ -152,6 +160,37 @@ final class PlaceMatchesHandler
 
         $this->consumeCreditIfRestricted($run);
         $this->publisher->publishTerminal((string) $run->getClubId(), $run->getId(), MatchPlacementRunStatus::COMPLETED->value);
+        $this->emailManagerIfRunWasLong($run, $result);
+    }
+
+    /**
+     * Prévient par e-mail le gestionnaire qui a lancé le run quand celui-ci a duré plus de deux
+     * minutes (il a eu le temps de partir de l'écran). Best-effort : un échec d'envoi n'annule
+     * jamais un run COMPLETED déjà persisté (l'e-mail part de toute façon par le bus).
+     *
+     * @param array<string, mixed> $result
+     */
+    private function emailManagerIfRunWasLong(MatchPlacementRun $run, array $result): void
+    {
+        $finishedAt = $run->getFinishedAt();
+        if (!$finishedAt instanceof DateTimeImmutable
+            || $finishedAt->getTimestamp() - $run->getCreatedAt()->getTimestamp() <= self::EMAIL_THRESHOLD_SECONDS) {
+            return;
+        }
+
+        $user = $this->entityManager->getRepository(User::class)->find($run->getRequestedByUserId());
+        if (!$user instanceof User) {
+            return;
+        }
+
+        $placed = \is_int($result['placed'] ?? null) ? $result['placed'] : 0;
+        $toTreat = \is_array($result['unplaced'] ?? null) ? \count($result['unplaced']) : 0;
+
+        try {
+            $this->mailer->send($this->emailBuilder->build($user->getEmail(), $placed, $toTreat));
+        } catch (Throwable $exception) {
+            $this->logger?->warning('Match placement completion e-mail failed (best-effort)', ['runId' => $run->getId(), 'exception' => $exception]);
+        }
     }
 
     private function fail(MatchPlacementRun $run, string $message): void
