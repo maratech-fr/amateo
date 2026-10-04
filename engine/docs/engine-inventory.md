@@ -1,6 +1,8 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-10-04 (amendement ADR-0003, `/place-matches` seul) — §2 re-confronté : le rail
+Last verified @ 2026-10-05 (contrat 1.1 → 1.2 : vocabulaire `/place-matches` resserré en énums
+fermées — `clubRules[].ruleType`, `teams[].coaches[].role`, `teamLinks[].type` → 422 sur valeur
+inconnue, ENG-56). Antérieurement @ 2026-10-04 (amendement ADR-0003, `/place-matches` seul) — §2 re-confronté : le rail
 est maintenant découpé **semaine ISO par semaine ISO** (`_partition_by_iso_week`/
 `_merge_week_results`, ENG-50, `solverTimeoutSeconds` devenu un budget PAR SEMAINE) et le solve
 tourne dans un **processus fils jetable** (`ProcessPoolExecutor`, ENG-49) plutôt qu'un thread
@@ -19,7 +21,7 @@ voir `git log -p --follow` pour sa dernière vérification.
 - **Solver** : Google OR-Tools CP-SAT (`from ortools.sat.python import cp_model`).
 - **Validation** : Pydantic v2 (`BaseModel`, `ConfigDict`, `Field`, `populate_by_name=True`).
 - **Settings** : `pydantic-settings` (`engine/app/core/config.py`), prefix env `ENGINE_`, `.env` lu. Defaults : `app_name="engine"`, `app_version="1.0"`, `contract_version="2.0"`, `environment="dev"`, `log_level="info"`.
-- **Contract version** : lu depuis `engine/CONTRACT_VERSION` (**fichier = `1.1`** — source de vérité, `read_contract_version()` dans `main.py`). Un fichier manquant lève une `RuntimeError`, il n'est **jamais** remplacé par un défaut : le garde de contrat est MAJOR-only, un build amputé de son fichier passerait sinon le handshake et résoudrait un payload d'une AUTRE version mineure en se croyant d'accord. Gardé par `tests/test_contract_version_doc_sync.py`. **Politique de bump** : un changement de FORME ou de SÉMANTIQUE (champ/type/alias ajouté, retiré ou dont le sens change) bump le contrat ; un simple resserrage d'ENVELOPPE (`max_length` qui rétrécit ce qu'on acceptait déjà, sans toucher forme ni sémantique) ne bump pas. **UN SEUL `CONTRACT_VERSION` pour les TROIS endpoints** `/generate` · `/place-matches` · `/validate-assignments`, tous vérifient le même MAJOR — l'historique des bumps (ce que chaque version a changé) vit dans `git log -p --follow engine/CONTRACT_VERSION` et le journal `specs/courantes/etat-des-lieux.md` §3.
+- **Contract version** : lu depuis `engine/CONTRACT_VERSION` (**fichier = `1.2`** — source de vérité, `read_contract_version()` dans `main.py`). Un fichier manquant lève une `RuntimeError`, il n'est **jamais** remplacé par un défaut : le garde de contrat est MAJOR-only, un build amputé de son fichier passerait sinon le handshake et résoudrait un payload d'une AUTRE version mineure en se croyant d'accord. Gardé par `tests/test_contract_version_doc_sync.py`. **Politique de bump** : un changement de FORME ou de SÉMANTIQUE (champ/type/alias ajouté, retiré ou dont le sens change) bump le contrat ; un simple resserrage d'ENVELOPPE (`max_length` qui rétrécit ce qu'on acceptait déjà, sans toucher forme ni sémantique) ne bump pas. **UN SEUL `CONTRACT_VERSION` pour les TROIS endpoints** `/generate` · `/place-matches` · `/validate-assignments`, tous vérifient le même MAJOR — l'historique des bumps (ce que chaque version a changé) vit dans `git log -p --follow engine/CONTRACT_VERSION` et le journal `specs/courantes/etat-des-lieux.md` §3.
 - **Structure interne** :
   - `app/main.py` — endpoints FastAPI + pipeline solver.
   - `app/core/config.py` — settings.
@@ -280,13 +282,13 @@ Le verdict F2a (§ci-dessus) porte aussi les **compromis nommés** d'un verdict 
 
 ### ScheduleInputSchema (`engine/app/schemas/input_schema.py`)
 
-Version contrat active : **`"1.1"`** (fichier `CONTRACT_VERSION`, source de vérité, repassé en 1.0 pour la v1 puis bumpé 1.0 → 1.1). Le default Pydantic du champ `version` vaut **`"1.1"`** lui aussi (`input_schema.py:321`, gardé par `test_schema_version_defaults_match_contract_version`, ENG-44) : c'est un repli pour un payload qui n'annonce rien — le backend l'envoie TOUJOURS, ce défaut n'est donc jamais la valeur du fil — aligné sur le contrat courant pour qu'aucun lecteur ne le prenne pour une version concurrente. `ConfigDict(extra="forbid", populate_by_name=True)`.
+Version contrat active : **`"1.2"`** (fichier `CONTRACT_VERSION`, source de vérité, repassé en 1.0 pour la v1 puis bumpé 1.0 → 1.1 → 1.2 ; 1.2 = resserrage du vocabulaire `/place-matches` en énums fermées, cf. §POST /place-matches). Le default Pydantic du champ `version` vaut **`"1.2"`** lui aussi (`input_schema.py:321`, gardé par `test_schema_version_defaults_match_contract_version`, ENG-44) : c'est un repli pour un payload qui n'annonce rien — le backend l'envoie TOUJOURS, ce défaut n'est donc jamais la valeur du fil — aligné sur le contrat courant pour qu'aucun lecteur ne le prenne pour une version concurrente. `ConfigDict(extra="forbid", populate_by_name=True)`.
 
 **Bornes A10** (anti-bombe de génération) : la plupart des listes portent un `max_length` (rejet **422** avant CP-SAT) — `teams` ≤200 · `venues` ≤50 · `coaches` ≤200 · `slot_templates` ≤2000 · `priority_tiers` ≤20 · `trainingSlots` ≤1000/gymnase ; plus un `model_validator` bornant le **total** des créneaux à ≤3000 (empêche 50×1000). **`constraints` est cappé par le PRODUIT ÉTENDU, pas un compte par règle** : `MAX_CONSTRAINTS_EXPANDED = 100_000` = brut(≤500)×équipes(≤200), parce que le backend éclate 1 règle CLUB en N rangées/équipe et qu'aucun compte fixe par règle ne peut à la fois borner une bombe et ne jamais faux-bloquer un club légitime — le produit étendu, lui, est une borne réelle et finie. Les vraies bornes amont restent aussi actives : cap **brut** backend (≤500) + la limite de body nginx (20 m) + le timeout solveur. Le backend (`GenerationComplexityGuard`) pré-vérifie teams/venues/coaches/contraintes permanentes/total créneaux (=3000) **plus** `teams×venues` ≤2000, **avant dispatch**. ⚠ Ce durcissement de validation n'a **pas** bumpé `CONTRACT_VERSION` : politique — un `max_length` resserre l'enveloppe acceptée sans changer forme/type ni MAJOR ; un bump n'est requis que pour un changement de forme/sémantique (champ/type/alias).
 
 | Champ | Alias JSON | Type | Default |
 |-------|-------------|------|---------|
-| `version` | — | `str` | `"1.1"` (repli — cf. ci-dessus) |
+| `version` | — | `str` | `"1.2"` (repli — cf. ci-dessus) |
 | `club_id` | `clubId` | `str` | requis |
 | `season_id` | `seasonId` | `str` | requis |
 | `schedule_name` | `scheduleName` | `str \| None` | `None` |
@@ -314,8 +316,8 @@ Sous-schemas clés :
 
 ### Schémas du placement de matchs (`match_input_schema.py` / `match_output_schema.py`)
 
-Contrat **1.1** (le MÊME que `/generate` — un seul contrat pour les trois endpoints), les schémas hebdomadaires n'étant pas réutilisés
-(le problème n'a ni créneau récurrent ni séance) :
+Contrat **1.2** (le MÊME que `/generate` — un seul contrat pour les trois endpoints), les schémas hebdomadaires n'étant pas réutilisés
+(le problème n'a ni créneau récurrent ni séance). **1.2 = vocabulaire de placement FERMÉ** : trois champs naguère `str` libres sont désormais des `Literal` (miroirs stricts des énums backend) — `clubRules[].ruleType` ∈ {HARD, PREFERRED} (`ConstraintRuleType`), `teams[].coaches[].role` ∈ {MAIN, ASSISTANT} (`TeamCoachRole`), `teamLinks[].type` ∈ {NOT_SIMULTANEOUS, BACK_TO_BACK} (`TeamLinkType`). Une valeur hors liste était auparavant avalée en silence (règle/rôle/lien évaporé sans trace) ; elle rend maintenant **422**. Le backend n'émet jamais hors liste (ses getters renvoient l'énum) ; gardé cross-stack par `MatchPlacementSemanticsGateTest` (groupe `contract`).
 
 - **`MatchPlacementInputSchema`** : `version`, `clubId`, `seasonId`, `matches`, `venues`, `teams`,
   `coaches`, `teamLinks`, `trainingOccupancies`… (`slotRotations` retiré, P4-271, contrat **2.25**).
