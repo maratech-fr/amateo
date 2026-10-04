@@ -126,6 +126,8 @@ final class ClubAccessTest extends WebTestCase
         $em = self::getContainer()->get(EntityManagerInterface::class);
         $club = $em->getRepository(Club::class)->find($clubId);
         self::assertInstanceOf(Club::class, $club);
+        // SEC-30 — la date simulée est réservée aux clubs démo (contrainte CHECK).
+        $club->setIsDemo(true);
         $club->setSimulatedToday(new DateTimeImmutable('2026-12-15'));
         $em->flush();
 

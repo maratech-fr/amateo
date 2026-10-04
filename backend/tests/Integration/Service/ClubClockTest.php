@@ -85,9 +85,24 @@ final class ClubClockTest extends KernelTestCase
     {
         // Point d'entrée unique : pas de requête poussée, on interroge l'entité.
         $club = (new Club)->setName('Horloge')->setSlug('horloge-' . bin2hex(random_bytes(4)))->setTimezone('Europe/Paris')->setLocale('fr');
+        // SEC-30 — la date simulée n'est honorée que pour un club démo.
+        $club->setIsDemo(true);
         $club->setSimulatedToday(new DateTimeImmutable('2027-03-01'));
 
         self::assertSame('2027-03-01', $this->clubClock->simulatedTodayFor($club)?->format('Y-m-d'));
+    }
+
+    public function testSimulatedTodayForIgnoresAPinOnANonDemoClub(): void
+    {
+        // SEC-30 — ceinture côté LECTURE : un pin posé sur un club NON démo (cas d'un
+        // objet non persisté — en base la contrainte CHECK l'interdit déjà) n'est JAMAIS
+        // honoré. Falsification : retirer `&& $club->isDemo()` de ClubClock fait rendre
+        // la date ici → rouge.
+        $club = (new Club)->setName('Réel pin')->setSlug('reel-pin-' . bin2hex(random_bytes(4)))->setTimezone('Europe/Paris')->setLocale('fr');
+        $club->setIsDemo(false);
+        $club->setSimulatedToday(new DateTimeImmutable('2027-03-01'));
+
+        self::assertNull($this->clubClock->simulatedTodayFor($club), 'un pin sur un club non démo est ignoré (SEC-30)');
     }
 
     public function testSimulatedTodayForIsNullForAClubWithoutAClock(): void
@@ -122,6 +137,8 @@ final class ClubClockTest extends KernelTestCase
     {
         $clock = $this->clubClockWith(clockAllEnabled: true, environment: 'dev', devPin: new DateTimeImmutable('2026-07-01 10:00'));
         $club = $this->clocklessClub();
+        // SEC-30 — la date simulée n'est honorée que pour un club démo.
+        $club->setIsDemo(true);
         $club->setSimulatedToday(new DateTimeImmutable('2027-03-01'));
 
         self::assertSame('2027-03-01', $clock->simulatedTodayFor($club)?->format('Y-m-d'), 'la date du club prime sur le pin global');

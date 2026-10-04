@@ -83,6 +83,8 @@ final class MailboxApiTest extends WebTestCase
     {
         $suffix = bin2hex(random_bytes(4));
         $club = (new Club)->setName('MB ' . $suffix)->setSlug('mb-' . $suffix)->setTimezone('Europe/Paris')->setLocale('fr')->setOnboardingCompleted(true);
+        // SEC-30 — la boîte aux lettres sous horloge simulée est une capacité de club démo.
+        $club->setIsDemo(true);
         $club->setSimulatedToday(new DateTimeImmutable('2026-12-24'));
         $this->em->persist($club);
 

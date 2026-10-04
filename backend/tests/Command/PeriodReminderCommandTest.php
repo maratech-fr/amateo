@@ -226,6 +226,8 @@ final class PeriodReminderCommandTest extends KernelTestCase
         $realToday = $this->clubDayToday(); // le jour réel tel que ClubDay le voit (fuseau club)
 
         [$clubA, $seasonA, $adminA] = $this->seedClub('CLKA');
+        // SEC-30 — la date simulée n'est honorée (et persistable) que pour un club démo.
+        $clubA->setIsDemo(true);
         $clubA->setSimulatedToday($simulatedToday);
         $this->em->flush();
         // A n'a QU'UNE période, calée à J-14 SOUS son horloge simulée (29 janvier). Sous le

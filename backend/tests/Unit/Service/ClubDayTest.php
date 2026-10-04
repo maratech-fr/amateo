@@ -74,7 +74,8 @@ final class ClubDayTest extends TestCase
     public function testASimulatedClockOverridesTheRealCivilDay(): void
     {
         $service = $this->clubDay(new MockClock('2026-06-16 01:30:00', 'UTC'));
-        $club = $this->club('America/Guadeloupe')->setSimulatedToday(new DateTimeImmutable('2027-01-20'));
+        // SEC-30 — l'horloge simulée n'est honorée QUE pour un club de démonstration.
+        $club = $this->club('America/Guadeloupe')->setIsDemo(true)->setSimulatedToday(new DateTimeImmutable('2027-01-20'));
 
         self::assertSame('2027-01-20', $service->todayYmdFor($club), 'un club à horloge posée vit à SA date, pas au jour réel de son fuseau');
     }

@@ -197,6 +197,9 @@ final class ClockedClubMailInterceptTest extends WebTestCase
     {
         $suffix = bin2hex(random_bytes(4));
         $club = (new Club)->setName('Boîte ' . $suffix)->setSlug('boite-' . $suffix)->setTimezone('Europe/Paris')->setLocale('fr');
+        // SEC-30 — l'interception d'e-mails sous horloge simulée est une capacité de club
+        // DÉMO : la date simulée n'est honorée (et persistable) que pour is_demo = true.
+        $club->setIsDemo($withClock);
         $club->setSimulatedToday($withClock ? new DateTimeImmutable(self::CLOCK) : null);
         $this->em->persist($club);
         $this->em->flush();
