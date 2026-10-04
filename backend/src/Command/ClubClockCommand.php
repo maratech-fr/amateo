@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Clock\ClubClock;
+use App\Entity\Season;
 use App\Service\ClubMailboxPurgerInterface;
+use App\Service\SeasonResolver;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
 use Doctrine\Persistence\ManagerRegistry;
@@ -104,6 +106,25 @@ final class ClubClockCommand extends Command
             return Command::FAILURE;
         }
 
+        // BCK-34 — une date simulée doit rester dans la fenêtre des saisons du club
+        // (début de la saison en cours → fin de la saison suivante). Hors bornes → échec.
+        if (null !== $date) {
+            $bounds = SeasonResolver::simulatedClockBoundsAmong(
+                $this->seasonsForClub((string) $club['id']),
+                new DateTimeImmutable('now'),
+            );
+            $parsed = new DateTimeImmutable($date);
+            if (null !== $bounds && ($parsed < $bounds[0] || $parsed > $bounds[1])) {
+                $io->error(\sprintf(
+                    'La date simulée doit être comprise entre le %s et le %s.',
+                    $bounds[0]->format('Y-m-d'),
+                    $bounds[1]->format('Y-m-d'),
+                ));
+
+                return Command::FAILURE;
+            }
+        }
+
         $this->connection()->executeStatement(
             'UPDATE club SET simulated_today = :date WHERE id = :id AND is_demo = TRUE',
             ['date' => $date, 'id' => $club['id']],
@@ -121,6 +142,28 @@ final class ClubClockCommand extends Command
             : \sprintf('Club %s now lives on %s (server AND frontend).', $club['id'], $date));
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Les saisons du club, hydratées en entités TRANSIENTES depuis la connexion ADMIN
+     * (cross-tenant) pour nourrir {@see SeasonResolver::simulatedClockBoundsAmong}.
+     *
+     * @return list<Season>
+     */
+    private function seasonsForClub(string $clubId): array
+    {
+        $rows = $this->connection()->fetchAllAssociative(
+            'SELECT start_date, end_date FROM season WHERE club_id = :id ORDER BY start_date ASC',
+            ['id' => $clubId],
+        );
+
+        return array_map(
+            static fn (array $row): Season => new Season()
+                ->setClubId($clubId)
+                ->setStartDate(new DateTimeImmutable((string) $row['start_date']))
+                ->setEndDate(new DateTimeImmutable((string) $row['end_date'])),
+            $rows,
+        );
     }
 
     /**

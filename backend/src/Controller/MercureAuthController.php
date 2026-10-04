@@ -45,6 +45,10 @@ final class MercureAuthController extends AbstractController
         #[Autowire(env: 'bool:JWT_COOKIE_SECURE')]
         private readonly bool $cookieSecure,
         private readonly RequestStack $requestStack,
+        // BCK-34 — horloge RÉELLE : le TTL du jeton de souscription est une durée de
+        // SÉCURITÉ. Sous l'horloge décorée, un membre d'un club démo à date simulée
+        // PASSÉE aurait un jeton déjà expiré, à date FUTURE un jeton quasi éternel.
+        #[Autowire(service: 'app.clock.real')]
         private readonly ClockInterface $clock,
     ) {}
 

@@ -107,6 +107,52 @@ final class SeasonResolver
     }
 
     /**
+     * BCK-34 — les BORNES d'une date d'horloge simulée pour un club démo : du DÉBUT
+     * de la saison EN COURS à la FIN de la saison SUIVANTE (décision fondateur
+     * 2026-10-02). Hors de cet intervalle une date simulée n'a pas de sens métier et
+     * fausserait les écrans datés et les durées de sécurité.
+     *
+     * `$realToday` DOIT être l'horloge RÉELLE : la saison « en cours » se dérive du
+     * calendrier réel, jamais de la date simulée elle-même (qui, non bornée, pourrait
+     * se re-valider circulairement).
+     *
+     * La saison suivante = la plus proche dont le début dépasse celui de la courante.
+     * À défaut (club sans saison préparée), la borne haute est PROJETÉE un an après la
+     * fin de la saison en cours — une saison dure ~un an ; une endDate aberrante
+     * (héritage : endDate < startDate) est rattrapée par la même projection. Null si
+     * le club n'a AUCUNE saison (le foyer d'écriture laisse alors passer : rien à
+     * borner — un club démo seedé a toujours sa saison).
+     *
+     * @param list<Season> $seasons ordered by startDate ASC
+     *
+     * @return array{0: DateTimeImmutable, 1: DateTimeImmutable}|null [min, max] inclusifs
+     */
+    public static function simulatedClockBoundsAmong(array $seasons, DateTimeImmutable $realToday): ?array
+    {
+        $current = self::currentAmong($seasons, $realToday);
+        if (!$current instanceof Season) {
+            return null;
+        }
+        $min = $current->getStartDate();
+
+        $next = null;
+        foreach ($seasons as $season) {
+            if ($season->getStartDate() > $current->getStartDate()
+                && (!$next instanceof Season || $season->getStartDate() < $next->getStartDate())) {
+                $next = $season;
+            }
+        }
+
+        $projected = $current->getEndDate()->modify('+1 year');
+        $max = $next instanceof Season ? $next->getEndDate() : $projected;
+        if ($max <= $min) {
+            $max = $projected > $min ? $projected : $min->modify('+2 years');
+        }
+
+        return [$min, $max];
+    }
+
+    /**
      * The season-year a date belongs to: 2026-07-14 → 2025 (season 2025-26),
      * 2026-07-15 → 2026 (season 2026-27). Lexicographic 'm-d' compare is safe.
      */
