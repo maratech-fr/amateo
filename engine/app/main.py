@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import ctypes
+import ctypes.util
 import logging
+import multiprocessing
 import re
 import resource
 import time
 import uuid
 from collections.abc import Awaitable, Callable
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
 from typing import Any, cast
 
@@ -140,6 +145,104 @@ _placement_semaphore = asyncio.Semaphore(settings.max_concurrent_placements)
 # 30 s tenait le jeton pendant qu'un verdict, qui abandonne à 20 s côté client, attendait. Le
 # détail des budgets et le résidu assumé vivent dans `core/config.py`, à côté du réglage.
 _verdict_semaphore = asyncio.Semaphore(settings.max_concurrent_verdicts)
+
+# ── ENG-49 — mémoire du placement : solve de /place-matches dans un PROCESSUS FILS ──
+# Constat mesuré : `solve_match_placement` (CP-SAT) tournait dans CE processus uvicorn
+# via `asyncio.to_thread`. CP-SAT libère bien sa mémoire native en fin de solve, mais
+# glibc garde les arènes : le conteneur engine restait à ~474-539 Mio au repos après
+# quelques placements (limite `mem_limit 512m`, à NE PAS augmenter — décision fondateur).
+# Un processus fils JETABLE rend 100 % de cette mémoire à sa mort ; `malloc_trim(0)` en
+# ceinture côté parent rend le reste (les arènes de l'orchestration FastAPI elle-même).
+#
+# Choix : `ProcessPoolExecutor(max_workers=1, max_tasks_per_child=1, mp_context=spawn)`,
+# plutôt qu'un `multiprocessing.Process` fabriqué à la main, parce que c'est le PLUS SIMPLE
+# qui soit robuste :
+#   * `max_tasks_per_child=1` ⇒ un fils NEUF par placement, puis il meurt — l'isolation
+#     mémoire visée est obtenue sans gérer nous-mêmes spawn/join/sérialisation ;
+#   * l'executor sérialise déjà result-dict et exceptions par pickle, et RELÈVE dans le
+#     parent l'exception du fils telle quelle ⇒ même remontée qu'avant (→ handler 500) ;
+#   * `spawn` (pas `fork`) est OBLIGATOIRE : uvicorn a des threads, un `fork` hériterait
+#     d'un état verrouillé. Le fils ré-importe `app.solver.match_placement` (donc ortools)
+#     pour dépickler la cible : c'est le COÛT DU SPAWN, payé à chaque placement (mesuré
+#     dans le rapport de PR ; `_placement_semaphore`/verrou club sérialisent déjà les
+#     placements, un worker unique suffit).
+# Un fils tué (OOM `mem_limit`) casse le pool (`BrokenProcessPool`) : on le RECRÉE pour que
+# les placements suivants repartent sur un pool sain, et on remonte une erreur claire.
+_PLACEMENT_MP_CONTEXT = multiprocessing.get_context("spawn")
+_placement_executor: ProcessPoolExecutor | None = None
+
+
+def _get_placement_executor() -> ProcessPoolExecutor:
+    """L'executor à fils jetable du rail /place-matches (créé paresseusement).
+
+    Partagé par l'endpoint ET son test de non-régression : si on le remplaçait un jour par
+    un ThreadPoolExecutor (solve de retour dans le processus parent), le test du fils rougirait.
+    """
+    global _placement_executor
+    if _placement_executor is None:
+        _placement_executor = ProcessPoolExecutor(
+            max_workers=1,
+            max_tasks_per_child=1,
+            mp_context=_PLACEMENT_MP_CONTEXT,
+        )
+    return _placement_executor
+
+
+def _reset_placement_executor() -> None:
+    """Jette l'executor courant (fils mort/OOM) ; le prochain placement en recrée un sain."""
+    global _placement_executor
+    broken = _placement_executor
+    _placement_executor = None
+    if broken is not None:
+        with contextlib.suppress(Exception):
+            broken.shutdown(wait=False, cancel_futures=True)
+
+
+def _resolve_malloc_trim() -> Callable[[int], int] | None:
+    """`libc.malloc_trim` via ctypes, ou None quand indisponible (musl, non-Linux).
+
+    Tolérant : une libc introuvable ou sans `malloc_trim` rend None ⇒ `_malloc_trim` est
+    un no-op, jamais une erreur (le solve reste correct, on perd juste la ceinture)."""
+    try:
+        libc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6")
+        trim = libc.malloc_trim  # AttributeError sur une libc sans ce symbole (musl)
+    except (OSError, AttributeError):
+        return None
+    trim.argtypes = [ctypes.c_size_t]
+    trim.restype = ctypes.c_int
+    return cast("Callable[[int], int]", trim)
+
+
+_MALLOC_TRIM = _resolve_malloc_trim()
+
+
+def _malloc_trim() -> None:
+    """ENG-49 — rend au système la mémoire retenue par glibc côté PARENT après un placement.
+
+    Le solve lui-même vit dans un fils jetable (toute sa mémoire meurt avec lui) ; cette
+    ceinture ne concerne que les arènes du parent (désérialisation du résultat, etc.).
+    No-op si `malloc_trim` est absent."""
+    if _MALLOC_TRIM is not None:
+        with contextlib.suppress(OSError):
+            _MALLOC_TRIM(0)
+
+
+async def _run_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
+    """Exécute `solve_match_placement` dans un fils jetable, puis `malloc_trim(0)`.
+
+    Remontée d'erreur IDENTIQUE à l'ancien `asyncio.to_thread` : l'executor relève dans le
+    parent l'exception levée par le fils (→ handler 500). Un fils TUÉ (OOM) donne un
+    `BrokenProcessPool` : on recrée l'executor (pool sain pour la suite) et on remonte une
+    erreur claire plutôt qu'un pool cassé en cascade."""
+    loop = asyncio.get_running_loop()
+    try:
+        return await loop.run_in_executor(_get_placement_executor(), solve_match_placement, input_data)
+    except BrokenProcessPool as exc:
+        _reset_placement_executor()
+        logger.error("match placement child died (OOM?) club=%s", input_data.club_id, exc_info=exc)
+        raise RuntimeError("Le placement des matchs a épuisé la mémoire disponible du moteur.") from exc
+    finally:
+        _malloc_trim()
 
 
 def read_contract_version() -> str:
@@ -781,7 +884,9 @@ async def place_matches(input_data: MatchPlacementInputSchema) -> MatchPlacement
     lock = await get_club_lock(f"matches:{input_data.club_id}")
     async with lock, _placement_semaphore:
         logger.info("match placement start club=%s matches=%d", input_data.club_id, len(input_data.matches))
-        result = await asyncio.to_thread(solve_match_placement, input_data)
+        # ENG-49 — le solve tourne dans un fils JETABLE (mémoire rendue à sa mort) + malloc_trim(0)
+        # en ceinture côté parent ; le verrou club et le sémaphore ci-dessus restent inchangés.
+        result = await _run_match_placement(input_data)
     return MatchPlacementOutputSchema.model_validate(result)
 
 
