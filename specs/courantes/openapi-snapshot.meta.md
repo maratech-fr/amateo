@@ -1,9 +1,9 @@
-Last verified @ 2026-10-04 (placement des matchs ASYNCHRONE — `POST /api/fixtures/place` répond
-désormais 202 (run enfilé) en plus du 200 « rien à placer », 502 retiré ; nouvelle route
-`GET /api/fixtures/placement-run` (dernier run du club/saison). +1 path ; régénéré après rebase sur #1069 — `club_pending` de l'inscription conservé).
+Last verified @ 2026-10-04 (P4-301 compte sans club — `GET /api/me` expose
+`accountDeletionScheduledFor` (échéance de suppression d'un compte sans club, nullable) et son
+`membershipStatus` gagne la valeur `deactivated` à l'énumération. +0 path, schéma seul).
 
 **223 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`89dd7c2b248a0a6988876c02228579ea8bfbd3167d5cd6c728eadef0692c9d87` (`sha256sum` sur le fichier).
+`b1cc75be551ac567099b1ccadf850382bbb79846a82b0268d025dffb8969efb9` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

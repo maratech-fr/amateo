@@ -114,8 +114,13 @@ final readonly class AccountSessionPaths implements CustomPathContributor
                             'pendingEmail' => ['type' => ['string', 'null']],
                             'firstName' => ['type' => 'string'],
                             'lastName' => ['type' => 'string'],
-                            'membershipStatus' => ['type' => 'string', 'enum' => ['none', 'pending', 'active']],
+                            // P4-301 — `deactivated` (adhésion sortie, `deactivatedAt` posé)
+                            // manquait à l'énumération, alors que /api/me le renvoie déjà.
+                            'membershipStatus' => ['type' => 'string', 'enum' => ['none', 'pending', 'active', 'deactivated']],
                             'role' => ['type' => 'string', 'nullable' => true],
+                            // P4-301 — échéance (Y-m-d) de suppression d'un compte sans club
+                            // (préavis + 30 j) ; null si aucun préavis en cours ou compte actif.
+                            'accountDeletionScheduledFor' => ['type' => ['string', 'null']],
                             'club' => ['type' => 'object', 'nullable' => true, 'properties' => [
                                 'id' => ['type' => 'string'],
                                 'name' => ['type' => 'string'],

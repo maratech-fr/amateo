@@ -17,6 +17,7 @@ use App\Repository\ClubUserRepository;
 use App\Security\JwtCookieFactory;
 use App\Service\EmailChangeVerifier;
 use App\Service\MailFrom;
+use App\Service\OrphanAccountNotifier;
 use App\Service\PasswordPolicy;
 use App\Service\PlanEntitlements;
 use App\Service\ProductIdentity;
@@ -137,7 +138,17 @@ final class AuthController extends AbstractController
             return $this->json(['error' => 'Unauthorized'], 401);
         }
 
-        $clubUser = $this->clubUserRepository->findOneBy(['userId' => $user->getId()]);
+        // P4-301 / AUD-BCK-10 — ACTIF D'ABORD, ordre explicite : un multi-club avec UNE
+        // adhésion active est `active` (sans ORDER BY, PostgreSQL rendait une ligne
+        // arbitraire — un désactivé pouvait masquer un actif). À défaut d'active, la plus
+        // ancienne adhésion (déterministe) porte l'état `deactivated`/`pending`.
+        $clubUser = $this->clubUserRepository->findOneBy(
+            ['userId' => $user->getId(), 'isActive' => true],
+            ['createdAt' => 'ASC', 'id' => 'ASC'],
+        ) ?? $this->clubUserRepository->findOneBy(
+            ['userId' => $user->getId()],
+            ['createdAt' => 'ASC', 'id' => 'ASC'],
+        );
         $membershipStatus = 'none';
         $club = null;
         $clubEntity = null;
@@ -268,6 +279,13 @@ final class AuthController extends AbstractController
             // création en cours — le frontend affiche « demande transmise au club »
             // (et son issue) au lieu d'un état « aucun club » mensonger.
             'clubRequest' => $this->clubRequestState($user->getId(), $clubUser),
+            // P4-301 — échéance de suppression d'un compte sans club : la date (Y-m-d) où
+            // le compte sera supprimé faute de nouvel accès = préavis + 30 j. Non-null
+            // SEULEMENT quand le préavis est posé ET que l'utilisateur n'est pas actif —
+            // un actif ne risque rien, un stamp résiduel ne doit pas afficher d'échéance.
+            'accountDeletionScheduledFor' => ('active' !== $membershipStatus && $user->getOrphanNoticeSentAt() instanceof DateTimeImmutable)
+                ? $user->getOrphanNoticeSentAt()->modify(OrphanAccountNotifier::GRACE_PERIOD)->format('Y-m-d')
+                : null,
             'club' => $club,
             'seasonPlan' => $seasonPlan,
             'hasGenerated' => null !== $clubEntity && $clubEntity->getGenerationCountSeason() > 0,

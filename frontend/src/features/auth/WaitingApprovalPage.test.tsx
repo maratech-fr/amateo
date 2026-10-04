@@ -80,4 +80,29 @@ describe("WaitingApprovalPage", () => {
     renderPage({ membershipStatus: "active", clubRequest: null });
     await vi.waitFor(() => expect(h.navigate).toHaveBeenCalledWith("/", { replace: true }));
   });
+
+  // P4-301 — un compte sans club prévenu de sa suppression.
+  it("désactivé stampé : affiche l'échéance de suppression au format JJ/MM/AAAA", async () => {
+    renderPage({
+      membershipStatus: "deactivated",
+      clubRequest: null,
+      club: { name: "BC Testville" } as MeResponse["club"],
+      accountDeletionScheduledFor: "2026-11-03",
+    });
+    expect(await screen.findByText(/supprimé le 03\/11\/2026/)).toBeInTheDocument();
+  });
+
+  it("orphelin (none, sans demande) : bloc dédié « plus accès à aucun club » + échéance, jamais « demande en attente »", async () => {
+    renderPage({ membershipStatus: "none", clubRequest: null, accountDeletionScheduledFor: "2026-11-03" });
+    expect(await screen.findByText("Vous n'avez plus accès à aucun club")).toBeInTheDocument();
+    expect(screen.getByText(/rapprochez-vous d'un gestionnaire/)).toBeInTheDocument();
+    expect(screen.getByText(/supprimé le 03\/11\/2026/)).toBeInTheDocument();
+    expect(screen.queryByText("Demande en attente")).not.toBeInTheDocument();
+  });
+
+  it("refus : l'échéance de suppression s'ajoute au message", async () => {
+    renderPage({ membershipStatus: "none", clubRequest: request("refused"), accountDeletionScheduledFor: "2026-11-03" });
+    expect(await screen.findByText("Demande refusée")).toBeInTheDocument();
+    expect(screen.getByText(/supprimé le 03\/11\/2026/)).toBeInTheDocument();
+  });
 });
