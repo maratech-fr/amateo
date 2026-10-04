@@ -107,6 +107,7 @@ function baseProps(over: Partial<Props> = {}): Props {
     placePending: false,
     placeCreditsBlocked: false,
     placeCreditSuffix: "",
+    canManage: true,
     ...over,
   };
 }
@@ -355,5 +356,54 @@ describe("WeekWorkbench — « Placer ce week-end » (P4-240 ④)", () => {
     expect(button).toBeDisabled();
     await user.click(button);
     expect(onPlaceWeekend).not.toHaveBeenCalled();
+  });
+});
+
+describe("WeekWorkbench — membre non gestionnaire : voit, n'agit pas (2026-10-04)", () => {
+  it("aucun bouton d'action de l'établi (Placer ce week-end, panneau de placement)", async () => {
+    const sel = fx({ id: "fx-sel", teamId: "team-a", opponentLabel: "AdvSel", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00", placementSource: "MANUAL" });
+    // Un domicile sélectionné : chez un gestionnaire, le panneau de placement s'ouvrirait.
+    useMatchesStore.setState({ selectedFixtureId: "fx-sel" });
+    renderWorkbench({ weekendFixtures: [sel], allFixtures: [sel], canManage: false });
+    await waitFor(() => expect(api.getVenueLabelInventory).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: /Placer ce week-end/ })).not.toBeInTheDocument();
+    // Panneau de placement absent : aucun de ses gestes.
+    expect(screen.queryByRole("button", { name: "Déplacer" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dé-placer" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Verrouiller" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Modifier" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Supprimer" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Marquer saisi dans FBI/ })).not.toBeInTheDocument();
+  });
+
+  it("la bande des extérieurs est en lecture seule (ni crayon, ni corbeille, ni « Voir »)", async () => {
+    const manual = fx({ id: "fx-man", teamId: "team-a", opponentLabel: "AdvManuel", homeAway: "AWAY", status: "UNPLACED", venueId: null, kickoffTime: null, externalRef: null, ffbbRencontreId: null, placementSource: null });
+    const imported = fx({ id: "fx-imp", teamId: "team-b", opponentLabel: "AdvImport", homeAway: "AWAY", status: "UNPLACED", venueId: null, kickoffTime: null, externalRef: "999", placementSource: null });
+    renderWorkbench({ weekendFixtures: [manual, imported], allFixtures: [manual, imported], canManage: false });
+    await waitFor(() => expect(api.getVenueLabelInventory).toHaveBeenCalled());
+    // La bande est bien rendue (lecture), mais sans aucun contrôle d'action.
+    expect(screen.getByText(/À l'extérieur ce week-end/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Modifier le match contre AdvManuel/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Voir le match contre AdvImport/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Supprimer le match contre/ })).not.toBeInTheDocument();
+  });
+
+  it("clic grille sur un extérieur éditable → fiche LECTURE SEULE, jamais la modale d'édition", async () => {
+    const away = fx({ id: "fx-man", teamId: "team-a", opponentLabel: "AdvManuel", homeAway: "AWAY", status: "UNPLACED", venueId: null, kickoffTime: null, externalRef: null, ffbbRencontreId: null, placementSource: null });
+    const onEdit = vi.fn();
+    const user = userEvent.setup();
+    const { container } = renderWorkbench({ weekendFixtures: [away], allFixtures: [away], onEditFixture: onEdit, canManage: false });
+    await user.click(container.querySelector('[data-away="true"]') as HTMLElement);
+    expect(await screen.findByText("Match à l'extérieur")).toBeInTheDocument();
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+
+  it("un gestionnaire, lui, voit « Placer ce week-end » et le panneau de placement", async () => {
+    const sel = fx({ id: "fx-sel", teamId: "team-a", opponentLabel: "AdvSel", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00", placementSource: "MANUAL" });
+    useMatchesStore.setState({ selectedFixtureId: "fx-sel" });
+    renderWorkbench({ weekendFixtures: [sel], allFixtures: [sel], canManage: true });
+    expect(await screen.findByRole("button", { name: /Placer ce week-end/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Modifier" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Supprimer" })).toBeInTheDocument();
   });
 });

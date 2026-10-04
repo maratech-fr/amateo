@@ -506,10 +506,17 @@ export function CalendarPage() {
           (MatchesLayout), visible sur tous les onglets. */}
       <div className="flex flex-col items-end gap-1">
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={() => setFixtureFormOpen(true)}>
-            <Plus className="size-4" />
-            Nouveau match
-          </Button>
+          {/* Décision fondateur 2026-10-04 : tout le monde VOIT l'écran des matchs, seul le
+              gestionnaire peut AGIR. Tous les boutons d'action (création, placement, édition,
+              suppression, import, saisie FBI, appariement FFBB) sont donc gardés par `canManage`
+              — le backend reste seul juge (403 via `ManagementAccessGuard`), `canManage` évite
+              d'offrir un geste voué au refus. */}
+          {canManage ? (
+            <Button variant="outline" size="sm" onClick={() => setFixtureFormOpen(true)}>
+              <Plus className="size-4" />
+              Nouveau match
+            </Button>
+          ) : null}
           {/* Le GESTE de placement est réservé au gestionnaire ; l'ÉTAT « en cours » (ci-dessous)
               reste visible par tous. */}
           {canManage ? (
@@ -588,7 +595,7 @@ export function CalendarPage() {
           {null === activeWeekend ? (
             <div className="flex flex-col items-start gap-3">
               <EmptyState icon={Upload} title="Aucun match importé" description="Importez vos rencontres FBI pour commencer la saison." />
-              {filterActive ? null : (
+              {filterActive || !canManage ? null : (
                 <Button variant="outline" size="sm" asChild>
                   <Link to="/matchs/importer">
                     <Upload className="size-4" />
@@ -645,6 +652,7 @@ export function CalendarPage() {
               placePending={placeBusy}
               placeCreditsBlocked={placeCreditsBlocked}
               placeCreditSuffix={placeCreditSuffix}
+              canManage={canManage}
             />
           )}
         </>
@@ -678,7 +686,7 @@ export function CalendarPage() {
           coachRoles={coachTeamRoles}
           onSelectFixture={onSelectFromTable}
           onFocusConflict={focusConflictFromTable}
-          onOpenFfbb={() => setFfbbDialogOpen(true)}
+          onOpenFfbb={canManage ? () => setFfbbDialogOpen(true) : undefined}
         />
       ) : null}
 
@@ -707,6 +715,7 @@ export function CalendarPage() {
             venues={venuesMap}
             competitions={competitionsMap}
             today={todayISO()}
+            canManage={canManage}
             busy={submitFixture.isPending || closeFbiCorrection.isPending || reopenFbiCorrection.isPending}
             onSubmit={(fixture) => submitFixture.mutate(fixture, { onSuccess: () => toast.success("Match marqué saisi dans FBI") })}
             onCorrected={(entries) => {

@@ -411,6 +411,17 @@ describe("CalendarPage — la Semaine (ex-boucle, fusion PR 3b)", () => {
     expect(screen.queryByRole("button", { name: /Importer FBI/ })).not.toBeInTheDocument();
   });
 
+  it("Membre → aucun bouton d'action (ni « Nouveau match » ni le lien « Importer »), la vue reste visible (2026-10-04)", async () => {
+    meState.role = "member";
+    vi.mocked(matchesApi.getFixtures).mockResolvedValueOnce([]);
+    vi.mocked(matchesApi.getConflicts).mockResolvedValueOnce({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: [] });
+    renderWithProviders(<CalendarPage />, { route: EXPLICIT });
+    // La vue reste visible (lecture), seuls les gestes disparaissent.
+    expect(await screen.findByText("Aucun match importé")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Nouveau match/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Importer des rencontres/ })).not.toBeInTheDocument();
+  });
+
   it("un delta plein affiche le bandeau du gardien sans changer les compteurs", async () => {
     const { postModuleVisit } = await import("./api");
     (postModuleVisit as ReturnType<typeof vi.fn>).mockResolvedValueOnce({

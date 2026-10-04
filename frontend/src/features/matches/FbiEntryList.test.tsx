@@ -180,3 +180,26 @@ describe("FbiEntryList — l'échéance de saisie servie (ligne « à saisir »)
     expect(screen.queryByText(/avant le/)).not.toBeInTheDocument();
   });
 });
+
+describe("FbiEntryList — membre non gestionnaire : liste lisible, aucun geste (2026-10-04)", () => {
+  it("masque tous les contrôles d'action (cocher/corriger/tout marquer), garde la liste", () => {
+    const fixtures = [fx({ id: "fxA1", status: "SUBMITTED" }), fx({ id: "fxB1", teamId: "tB", opponentLabel: "Rivaux" })];
+    renderList(fixtures, [correction({ id: "c1", fixtureId: "fxA1" })], { canManage: false });
+    // Les deux sections restent lisibles.
+    expect(screen.getByRole("heading", { name: /À corriger dans FBI/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /À saisir/ })).toBeInTheDocument();
+    expect(screen.getByText(/vs Rivaux/)).toBeInTheDocument();
+    // Aucun geste d'écriture.
+    expect(screen.queryByRole("button", { name: /Corrigé dans FBI/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Tout marquer saisi/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Marquer saisi/ })).not.toBeInTheDocument();
+  });
+
+  it("un gestionnaire (défaut) voit, lui, les contrôles d'action", () => {
+    const fixtures = [fx({ id: "fxA1", status: "SUBMITTED" }), fx({ id: "fxB1", teamId: "tB", opponentLabel: "Rivaux" })];
+    renderList(fixtures, [correction({ id: "c1", fixtureId: "fxA1" })]);
+    expect(screen.getByRole("button", { name: /Corrigé dans FBI/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Tout marquer saisi/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Marquer saisi/ })).toBeInTheDocument();
+  });
+});
