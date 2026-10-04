@@ -465,7 +465,13 @@ voit**.
    `.env.prod.dist` → **déployer** (tag ou `make deploy`) : le workflow pousse
    le fichier et `remote-deploy.sh` recrée les conteneurs ;
 4. cas particuliers : rotation du `JWT_PASSPHRASE` = régénérer aussi le keypair
-   (§1.3) ; rotation DB = `ALTER USER` côté postgres d'abord.
+   (§1.3) ; rotation DB = `ALTER USER` côté postgres d'abord ; ⚠ **rotation
+   d'`APP_SECRET` = re-chiffrer le TOTP des superadmins** : `super_admin.totp_secret`
+   est chiffré en AES-256-GCM avec `sha256(APP_SECRET)` (`TotpService::key()`) —
+   sans re-chiffrement (déchiffrer avec l'ancienne valeur, rechiffrer avec la
+   nouvelle), plus aucun code TOTP ne passe et la console `/admin` est fermée
+   (vécu lors de la rotation SEC-23 du 2026-10-04). Le faire avant d'effacer la
+   copie de l'ancien `.env.prod`.
 
 Urgence sans release : éditer `.env.prod` sur la VM +
 `docker compose -f docker-compose.prod.yml --env-file .env.prod up -d`, **puis
