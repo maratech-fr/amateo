@@ -503,13 +503,14 @@ class TestGenerateContract:
         # Pas de venueId sur le schéma de référence socle (gymnase libre).
         assert not hasattr(socle[0], "venue_id")
 
-    def test_current_contract_version_is_1_1_and_payload_stays_recevable(self) -> None:
-        """Le contrat courant est 1.1 (fichier source de vérité : v1 a remis le contrat à 1.0, ce lot
-        le bumpe en 1.1) et un payload qui s'attribue cette version est recevable comme un payload
-        qui n'annonce rien."""
+    def test_current_contract_version_is_1_2_and_payload_stays_recevable(self) -> None:
+        """Le contrat courant est 1.2 (fichier source de vérité : v1 a remis le contrat à 1.0, puis
+        1.0 → 1.1, puis 1.1 → 1.2 — resserrage du vocabulaire de `/place-matches` en énums fermées)
+        et un payload qui s'attribue cette version est recevable comme un payload qui n'annonce
+        rien."""
         from app.main import read_contract_version
 
-        assert read_contract_version() == "1.1"
+        assert read_contract_version() == "1.2"
 
-        stamped = ScheduleInputSchema.model_validate({"clubId": "club-v", "seasonId": "season-v", "version": "1.1"})
-        assert stamped.version == "1.1"
+        stamped = ScheduleInputSchema.model_validate({"clubId": "club-v", "seasonId": "season-v", "version": "1.2"})
+        assert stamped.version == "1.2"
