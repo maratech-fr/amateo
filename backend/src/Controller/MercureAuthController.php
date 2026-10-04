@@ -79,13 +79,16 @@ final class MercureAuthController extends AbstractController
         // `club:X:schedule:abc` contre ce sélecteur — et RIEN d'un autre club.
         $topicTemplate = MercureTopic::selectorForClub($clubId);
         // C6 — le topic du CALCUL DES TRAJETS, FIXE (pas de joker) et scopé au club : le
-        // même JWT autorise l'abonnement aux deux flux (génération + trajets), aucun autre
+        // même JWT autorise l'abonnement aux flux (génération + trajets + placement), aucun autre
         // club (le club est déjà revalidé canonique ci-dessus, aucune interpolation variable).
         $travelTopic = MercureTopic::forTravel($clubId);
+        // Le topic du PLACEMENT ASYNCHRONE des matchs, FIXE et scopé au club (un seul placement
+        // à la fois) — ajouté au MÊME endroit, même garde canonique, jamais un joker inter-club.
+        $placementTopic = MercureTopic::forPlacement($clubId);
         $token = $config->builder()
             ->issuedAt($now)
             ->expiresAt($now->modify(\sprintf('+%d seconds', self::TTL_SECONDS)))
-            ->withClaim('mercure', ['subscribe' => [$topicTemplate, $travelTopic]])
+            ->withClaim('mercure', ['subscribe' => [$topicTemplate, $travelTopic, $placementTopic]])
             ->getToken($config->signer(), $config->signingKey());
 
         // Le template est AUSSI le topic auquel s'abonner : le front ne connaît pas
@@ -94,7 +97,8 @@ final class MercureAuthController extends AbstractController
         // un seul EventSource (délivrance template↔topic exact prouvée sur le hub).
         // `travelTopic` (champ ADDITIF, C6) : le topic FIXE du calcul des trajets, auquel le
         // front s'abonne tel quel (il ne connaît pas son clubId — tenant résolu serveur).
-        $response = $this->json(['expiresIn' => self::TTL_SECONDS, 'topicTemplate' => $topicTemplate, 'travelTopic' => $travelTopic]);
+        // `placementTopic` (champ ADDITIF) : le topic FIXE du placement async des matchs, même usage.
+        $response = $this->json(['expiresIn' => self::TTL_SECONDS, 'topicTemplate' => $topicTemplate, 'travelTopic' => $travelTopic, 'placementTopic' => $placementTopic]);
         $response->headers->setCookie(new Cookie(
             name: 'mercureAuthorization',
             value: $token->toString(),

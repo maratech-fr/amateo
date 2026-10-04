@@ -56,11 +56,22 @@ final class MercureAuthTest extends WebTestCase
         $cookieA = $this->fetchAuthCookie($tokenA);
         $cookieB = $this->fetchAuthCookie($tokenB);
 
-        // Le claim `subscribe` est EXACTEMENT les deux topics du club du porteur (génération
-        // + calcul des trajets, C6) — pas de wildcard global, pas le club du voisin.
-        self::assertSame([\sprintf('club:%s:schedule:{id}', $clubA), \sprintf('club:%s:travel', $clubA)], $this->subscribeClaim($cookieA->getValue()));
-        self::assertSame([\sprintf('club:%s:schedule:{id}', $clubB), \sprintf('club:%s:travel', $clubB)], $this->subscribeClaim($cookieB->getValue()));
+        // Le claim `subscribe` est EXACTEMENT les trois topics du club du porteur (génération
+        // + calcul des trajets, C6 + placement async) — pas de wildcard global, pas le club
+        // du voisin. L'égalité stricte EST le test négatif inter-club : le topic placement de
+        // A (`club:A:placement`) ne figure jamais dans le claim de B, et réciproquement.
+        self::assertSame(
+            [\sprintf('club:%s:schedule:{id}', $clubA), \sprintf('club:%s:travel', $clubA), \sprintf('club:%s:placement', $clubA)],
+            $this->subscribeClaim($cookieA->getValue()),
+        );
+        self::assertSame(
+            [\sprintf('club:%s:schedule:{id}', $clubB), \sprintf('club:%s:travel', $clubB), \sprintf('club:%s:placement', $clubB)],
+            $this->subscribeClaim($cookieB->getValue()),
+        );
         self::assertNotSame($clubA, $clubB);
+        // Explicite : le topic placement d'un club n'est JAMAIS autorisé à l'autre.
+        self::assertNotContains(\sprintf('club:%s:placement', $clubB), $this->subscribeClaim($cookieA->getValue()));
+        self::assertNotContains(\sprintf('club:%s:placement', $clubA), $this->subscribeClaim($cookieB->getValue()));
     }
 
     /**
@@ -118,6 +129,8 @@ final class MercureAuthTest extends WebTestCase
         self::assertSame(\sprintf('club:%s:schedule:{id}', $clubId), $body['topicTemplate'] ?? null);
         // C6 — champ additif : le topic FIXE du calcul des trajets.
         self::assertSame(\sprintf('club:%s:travel', $clubId), $body['travelTopic'] ?? null);
+        // Champ additif : le topic FIXE du placement async des matchs.
+        self::assertSame(\sprintf('club:%s:placement', $clubId), $body['placementTopic'] ?? null);
     }
 
     /**

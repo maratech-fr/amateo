@@ -406,32 +406,53 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
             summary: 'Venue unavailability impact (alert-only, computed on the fly — blocks nothing)',
         )));
 
+        $placementRunResult = [
+            'type' => 'object',
+            'nullable' => true,
+            'description' => 'The run result (the former synchronous body) on a COMPLETED run, or {error} on a FAILED one, null while pending/running',
+            'properties' => [
+                'placed' => ['type' => 'integer'],
+                'skipped' => ['type' => 'integer', 'description' => 'Placements refused at write time (a manual gesture won during the solve)'],
+                'unplaced' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                    'matchId' => ['type' => 'string'],
+                    'reason' => ['type' => 'string', 'enum' => ['no_access_window', 'no_league_intersection', 'club_rule_no_slot', 'team_venue_forbidden', 'venue_unavailable', 'venue_full', 'not_selected']],
+                    'message' => ['type' => 'string'],
+                ]]],
+                'diagnostics' => ['type' => 'array', 'items' => ['type' => 'object']],
+                'metrics' => ['type' => 'object', 'nullable' => true],
+                'message' => ['type' => 'string', 'description' => 'Set when nothing was to place'],
+                'error' => ['type' => 'string', 'description' => 'Set on a FAILED run'],
+            ],
+        ];
+
         $paths->addPath('/api/fixtures/place', new PathItem(post: new Operation(
             operationId: 'placeMatches',
             tags: ['Match'],
             responses: [
-                '200' => $this->schemas->jsonResponse('Synchronous match placement: the solver places every placeable UNPLACED home match; the rest comes back named', [
+                '200' => $this->schemas->jsonResponse('Nothing to place: there was no placeable UNPLACED home match (no run is enqueued, no credit consumed)', [
                     'type' => 'object',
                     'properties' => [
                         'placed' => ['type' => 'integer'],
-                        'skipped' => ['type' => 'integer', 'description' => 'Placements refused at write time (a manual gesture won during the solve)'],
-                        'unplaced' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
-                            'matchId' => ['type' => 'string'],
-                            'reason' => ['type' => 'string', 'enum' => ['no_access_window', 'no_league_intersection', 'club_rule_no_slot', 'team_venue_forbidden', 'venue_unavailable', 'venue_full', 'not_selected']],
-                            'message' => ['type' => 'string'],
-                        ]]],
+                        'skipped' => ['type' => 'integer'],
+                        'unplaced' => ['type' => 'array', 'items' => ['type' => 'object']],
                         'diagnostics' => ['type' => 'array', 'items' => ['type' => 'object']],
-                        'metrics' => ['type' => 'object', 'nullable' => true],
+                        'message' => ['type' => 'string'],
                     ],
                 ]),
-                '400' => new Response('No club in context'),
+                '202' => $this->schemas->jsonResponse('Placement enqueued (asynchronous rail): the solve runs in the worker. Poll GET /api/fixtures/placement-run (or subscribe to the placement Mercure topic) for the terminal result', [
+                    'type' => 'object',
+                    'properties' => [
+                        'runId' => ['type' => 'string'],
+                        'status' => ['type' => 'string', 'enum' => ['PENDING']],
+                    ],
+                ]),
+                '400' => new Response('No club or no user in context'),
                 '401' => new Response('Unauthorized (missing/expired JWT)'),
                 '403' => new Response('Not a management member — or, on the Découverte credit plan, automatic placement must be week-end by week-end (send a one-week window)'),
-                '409' => new Response('Placement already running, season plan not chosen, or archived season'),
+                '409' => new Response('Placement already running for this club, season plan not chosen, or archived season'),
                 '422' => new Response('Invalid window (a bound is not a date, or from is after to)'),
-                '502' => new Response('Engine unreachable — retry, nothing was written'),
             ],
-            summary: 'Auto-place the unplaced home matches (writes PLACED+SOLVER; manual anchors never move)',
+            summary: 'Enqueue the auto-placement of the unplaced home matches (async; writes PLACED+SOLVER in the worker; manual anchors never move)',
             requestBody: $this->schemas->jsonBody([
                 'type' => 'object',
                 'description' => 'Optional placement window: place only the matches dated within [from, to] (« Placer ce week-end »); the already-placed matches outside it stay fixed. No body = the whole club. On the Découverte credit plan the window is mandatory and at most one week (Mon→Sun).',
@@ -440,6 +461,33 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                     'to' => ['type' => 'string', 'format' => 'date', 'description' => 'Last day of the window (AAAA-MM-JJ), inclusive'],
                 ],
             ]),
+        )));
+
+        $paths->addPath('/api/fixtures/placement-run', new PathItem(get: new Operation(
+            operationId: 'getPlacementRun',
+            tags: ['Match'],
+            responses: [
+                '200' => $this->schemas->jsonResponse('The latest async match-placement run of the current club/season (so the screen knows on open whether a placement is in progress and can show a finished run\'s result) — {run: null} when there is none, and never another club\'s run', [
+                    'type' => 'object',
+                    'properties' => [
+                        'run' => [
+                            'type' => 'object',
+                            'nullable' => true,
+                            'properties' => [
+                                'id' => ['type' => 'string'],
+                                'status' => ['type' => 'string', 'enum' => ['PENDING', 'RUNNING', 'COMPLETED', 'FAILED']],
+                                'createdAt' => ['type' => 'string', 'format' => 'date-time'],
+                                'startedAt' => ['type' => 'string', 'format' => 'date-time', 'nullable' => true],
+                                'finishedAt' => ['type' => 'string', 'format' => 'date-time', 'nullable' => true],
+                                'result' => $placementRunResult,
+                            ],
+                        ],
+                    ],
+                ]),
+                '400' => new Response('No club in context'),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+            ],
+            summary: 'The latest async match-placement run of the current club/season (read-only, open to any member)',
         )));
 
         $paths->addPath('/api/fixtures/review', new PathItem(post: new Operation(

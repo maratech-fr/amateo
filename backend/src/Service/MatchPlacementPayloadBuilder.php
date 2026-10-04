@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Controller\PlaceMatchesController;
 use App\Entity\Club;
 use App\Entity\ClubLeagueWindow;
 use App\Entity\CoachPlayerMembership;
@@ -68,6 +69,15 @@ final class MatchPlacementPayloadBuilder
      * `PayloadVersionMatchesContractVersionTest`.
      */
     public const string CONTRACT_VERSION = '1.1';
+
+    /**
+     * Budget du solveur PAR SEMAINE ISO (secondes). Depuis ENG-50 le moteur découpe la
+     * demande semaine par semaine et résout chacune sous ce budget (une seule réponse
+     * fusionnée) — c'est donc le budget d'UNE semaine, pas de tout le run. Le rail
+     * asynchrone s'en sert pour dimensionner le TTL du verrou et le timeout HTTP du worker
+     * (nb de semaines × ce budget + marge, {@see PlaceMatchesController}).
+     */
+    public const int WEEK_BUDGET_SECONDS = 35;
 
     /**
      * Borne du trajet aller-retour AWAY émis, alignée sur le schéma engine
@@ -334,7 +344,7 @@ final class MatchPlacementPayloadBuilder
                 'solverSeed' => 42,
                 // Budget PAR SEMAINE ISO : depuis ENG-50 le moteur découpe la demande semaine
                 // par semaine et résout chacune sous ce budget (une seule réponse fusionnée).
-                'solverTimeoutSeconds' => 35,
+                'solverTimeoutSeconds' => self::WEEK_BUDGET_SECONDS,
                 'matches' => $matchRows,
                 'venues' => $venueRows,
                 'teams' => $teamRows,
