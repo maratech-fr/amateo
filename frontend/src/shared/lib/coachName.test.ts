@@ -5,15 +5,15 @@ import { isManagementRole, MANAGEMENT_ROLES } from "./roles";
 
 /**
  * D-33 — trois formatages coexistaient, dont deux SANS `.trim()` : un coach sans nom de
- * famille s'affichait « Emerick » dans le wizard et « Emerick␣ » sur le planning et le radar
+ * famille s'affichait « Alex » dans le wizard et « Alex␣ » sur le planning et le radar
  * de conflits — espace final visible en badge et en infobulle. Et trois replis différents
  * désignaient le même vide.
  */
 describe("nom affiché d'un coach (foyer unique, D-33)", () => {
   it("ne laisse pas d'espace parasite quand une moitié manque", () => {
-    expect(coachFullName({ firstName: "Emerick", lastName: null })).toBe("Emerick");
-    expect(coachFullName({ firstName: null, lastName: "Blanchini" })).toBe("Blanchini");
-    expect(coachFullName({ firstName: "Luca", lastName: "Blanchini" })).toBe("Luca Blanchini");
+    expect(coachFullName({ firstName: "Alex", lastName: null })).toBe("Alex");
+    expect(coachFullName({ firstName: null, lastName: "Dupont" })).toBe("Dupont");
+    expect(coachFullName({ firstName: "Alex", lastName: "Dupont" })).toBe("Alex Dupont");
   });
 
   it("un coach absent ou sans nom rend UN seul libellé", () => {

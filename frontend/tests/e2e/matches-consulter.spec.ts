@@ -13,8 +13,8 @@ import { landOnMatchesCalendar } from "./support";
  * données du seed (le club CI n'a aucune rencontre). Déterministe et sans dépendance
  * au sandbox.
  */
-const EMAIL = "mara.mb@bccl.fr";
-const PASSWORD = "maraboubccl";
+const EMAIL = "dev-bccl@amateo.local";
+const PASSWORD = "charge-load-test-pwd";
 
 type Page = import("@playwright/test").Page;
 

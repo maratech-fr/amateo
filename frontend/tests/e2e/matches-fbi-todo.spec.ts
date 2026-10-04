@@ -10,8 +10,8 @@ import { landOnMatchesCalendar } from "./support";
  * faire » compte alors AU MOINS cette rencontre ; on ouvre la liste, on coche « saisi »,
  * on éprouve le toast. Un geste qui n'exerce rien laisserait le toast absent.
  */
-const EMAIL = "mara.mb@bccl.fr";
-const PASSWORD = "maraboubccl";
+const EMAIL = "dev-bccl@amateo.local";
+const PASSWORD = "charge-load-test-pwd";
 
 type Page = import("@playwright/test").Page;
 

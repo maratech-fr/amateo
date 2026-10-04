@@ -38,8 +38,8 @@ async function expectNoPreviewContrastViolations(page: import("./fixtures").Page
  * semaine du 19/10 (un seul segment).
  */
 
-const EMAIL = "mara.mb@bccl.fr";
-const PASSWORD = "maraboubccl";
+const EMAIL = "dev-bccl@amateo.local";
+const PASSWORD = "charge-load-test-pwd";
 const TITLE = "Fermeture e2e à re-dater";
 // Un seul bout : lundi → vendredi (une semaine entamée = un segment), bien après l'incident du seed
 // (fin 18/10) et dans la saison. Re-datage vers jeudi = toujours la même semaine (un segment).

@@ -4,8 +4,8 @@ import { landOnMatchesCalendar } from "./support";
 /** Seeded dev club (BasketballInit) — full data, but INCOMPLETE onboarding
  * (cockpit state 1: no plan generated yet). Matches are locked until the main
  * plan is validated, so this spec onboards the club first (idempotent). */
-const EMAIL = "mara.mb@bccl.fr";
-const PASSWORD = "maraboubccl";
+const EMAIL = "dev-bccl@amateo.local";
+const PASSWORD = "charge-load-test-pwd";
 
 type Page = import("@playwright/test").Page;
 

@@ -31,7 +31,7 @@ use RuntimeException;
  */
 final class ConflictTruthContext extends BaseContext
 {
-    private const string USER_EMAIL = 'mara.mb@bccl.fr';
+    private const string USER_EMAIL = 'dev-bccl@amateo.local';
 
     /** Catégorie DISTINCTIVE (aucune vraie équipe ne la porte → zéro collision d'enveloppe). */
     private const string CUP_CATEGORY_NAME = 'BEHAT Coupe P4-194';
@@ -210,7 +210,7 @@ final class ConflictTruthContext extends BaseContext
 
         // Équipe SŒUR du MÊME coach : la règle 2 de D1 tait l'entraînement de la
         // PROPRE équipe du match ; le conflit vit sur la séance de la sœur (le cas
-        // Dionnet SM1 + U18M1). Utilisée par le scénario « enfant milieu ».
+        // Coach Max SM1 + U18M1). Utilisée par le scénario « enfant milieu ».
         $sister = $this->apiPost('teams', [
             'name' => 'Équipe sœur jetable (vérité conflits)',
             'sportCategoryId' => $sportCategoryId,

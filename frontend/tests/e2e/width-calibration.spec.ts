@@ -24,8 +24,8 @@ type Page = import("@playwright/test").Page;
  */
 
 // Club de dev seedé (BasketballInit) — même porte que `matches.spec.ts`.
-const EMAIL = "mara.mb@bccl.fr";
-const PASSWORD = "maraboubccl";
+const EMAIL = "dev-bccl@amateo.local";
+const PASSWORD = "charge-load-test-pwd";
 
 /** 52rem : le token `--container-fiche`. La valeur est écrite ICI en dur, exprès — si elle
  *  change dans `index.css`, ce test doit rougir et obliger à venir dire que c'était voulu. */

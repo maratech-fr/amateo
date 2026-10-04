@@ -27,7 +27,7 @@ use RuntimeException;
  */
 final class SoclePlansContext extends BaseContext
 {
-    private const string USER_EMAIL = 'mara.mb@bccl.fr';
+    private const string USER_EMAIL = 'dev-bccl@amateo.local';
 
     private string $token = '';
 

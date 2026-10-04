@@ -25,7 +25,7 @@ use RuntimeException;
  */
 final class OpponentSuggestionContext extends BaseContext
 {
-    private const string USER_EMAIL = 'mara.mb@bccl.fr';
+    private const string USER_EMAIL = 'dev-bccl@amateo.local';
 
     // ⚠ Numéros de salle FÉDÉRAUX RÉELS (sondés le 2026-09-15) : la suggestion partagée
     // n'est alimentée qu'après re-résolution serveur contre l'index FFBB (revue sécurité

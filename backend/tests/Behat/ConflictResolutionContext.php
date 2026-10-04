@@ -28,7 +28,7 @@ use RuntimeException;
  */
 final class ConflictResolutionContext extends BaseContext
 {
-    private const string USER_EMAIL = 'mara.mb@bccl.fr';
+    private const string USER_EMAIL = 'dev-bccl@amateo.local';
 
     /** Dans la MÊME saison que « aujourd'hui » réel (2026-2027) → socle courant en vigueur. */
     private const string PINNED_NOW = '2026-12-01T09:00:00';
