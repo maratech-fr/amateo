@@ -1,9 +1,9 @@
 Last verified @ 2026-10-04 (placement des matchs ASYNCHRONE — `POST /api/fixtures/place` répond
 désormais 202 (run enfilé) en plus du 200 « rien à placer », 502 retiré ; nouvelle route
-`GET /api/fixtures/placement-run` (dernier run du club/saison). +1 path).
+`GET /api/fixtures/placement-run` (dernier run du club/saison). +1 path ; régénéré après rebase sur #1069 — `club_pending` de l'inscription conservé).
 
 **223 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`2dd90186763eb8a5dbdbf25d5188c07a965988215f6d7685e502bc4c2a82a092` (`sha256sum` sur le fichier).
+`89dd7c2b248a0a6988876c02228579ea8bfbd3167d5cd6c728eadef0692c9d87` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne
