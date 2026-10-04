@@ -172,9 +172,7 @@ final class PlaceMatchesHandler
      */
     private function emailManagerIfRunWasLong(MatchPlacementRun $run, array $result): void
     {
-        $finishedAt = $run->getFinishedAt();
-        if (!$finishedAt instanceof DateTimeImmutable
-            || $finishedAt->getTimestamp() - $run->getCreatedAt()->getTimestamp() <= self::EMAIL_THRESHOLD_SECONDS) {
+        if (!$this->runExceededEmailThreshold($run)) {
             return;
         }
 
@@ -199,6 +197,40 @@ final class PlaceMatchesHandler
         $this->entityManager->flush();
 
         $this->publisher->publishTerminal((string) $run->getClubId(), $run->getId(), MatchPlacementRunStatus::FAILED->value);
+        $this->emailManagerIfFailedRunWasLong($run);
+    }
+
+    /**
+     * Prévient par e-mail le gestionnaire quand un run ÉCHOUÉ a duré plus de deux minutes. Décision
+     * fondateur (2026-10-03) : on envoie aussi en cas d'échec, sinon le gestionnaire parti de
+     * l'écran croit que le moteur travaille encore et ne revient jamais. Best-effort, comme la
+     * variante succès — un échec d'envoi n'altère pas le run FAILED déjà persisté.
+     */
+    private function emailManagerIfFailedRunWasLong(MatchPlacementRun $run): void
+    {
+        if (!$this->runExceededEmailThreshold($run)) {
+            return;
+        }
+
+        $user = $this->entityManager->getRepository(User::class)->find($run->getRequestedByUserId());
+        if (!$user instanceof User) {
+            return;
+        }
+
+        try {
+            $this->mailer->send($this->emailBuilder->buildFailure($user->getEmail()));
+        } catch (Throwable $exception) {
+            $this->logger?->warning('Match placement failure e-mail failed (best-effort)', ['runId' => $run->getId(), 'exception' => $exception]);
+        }
+    }
+
+    /** Le run a-t-il dépassé le seuil d'e-mail (le demandeur a eu le temps de quitter l'écran) ? */
+    private function runExceededEmailThreshold(MatchPlacementRun $run): bool
+    {
+        $finishedAt = $run->getFinishedAt();
+
+        return $finishedAt instanceof DateTimeImmutable
+            && $finishedAt->getTimestamp() - $run->getCreatedAt()->getTimestamp() > self::EMAIL_THRESHOLD_SECONDS;
     }
 
     /**

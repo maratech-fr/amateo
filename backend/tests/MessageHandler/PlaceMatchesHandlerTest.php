@@ -196,12 +196,52 @@ final class PlaceMatchesHandlerTest extends WebTestCase
         self::assertCount(0, $this->sentEmails, 'un run court ne prévient personne');
     }
 
+    public function testALongFailedRunAlsoEmailsTheRequester(): void
+    {
+        // Décision fondateur : on prévient AUSSI en cas d'échec (sinon le gestionnaire parti de
+        // l'écran croit que le moteur travaille encore). Run lancé il y a plus de 2 min → échec moteur.
+        [$clubId, $seasonId, $userId, , , $userEmail] = $this->seed(isDemo: false);
+        $run = $this->seedRun($clubId, $seasonId, $userId, new DateTimeImmutable('-3 minutes'));
+
+        $this->handler($this->engineThrowing())->__invoke($this->message($run, $clubId, $seasonId));
+
+        self::assertCount(1, $this->sentEmails, 'un échec de plus de 2 min prévient aussi le demandeur');
+        $email = $this->sentEmails[0];
+        self::assertSame($userEmail, $email->getTo()[0]->getAddress());
+        $body = $email->getTextBody();
+        self::assertStringContainsString('n\'a pas abouti', $body);
+        self::assertStringContainsString('relancer', $body);
+        // Aucun identifiant interne ni détail technique dans le texte.
+        self::assertStringNotContainsString($run->getId(), $body);
+    }
+
+    public function testAShortFailedRunDoesNotEmail(): void
+    {
+        [$clubId, $seasonId, $userId] = $this->seed(isDemo: false);
+        $run = $this->seedRun($clubId, $seasonId, $userId); // createdAt = maintenant → échec instantané
+
+        $this->handler($this->engineThrowing())->__invoke($this->message($run, $clubId, $seasonId));
+
+        self::assertSame(MatchPlacementRunStatus::FAILED, $this->reloadRun($run, $clubId)->getStatus());
+        self::assertCount(0, $this->sentEmails, 'un échec court ne prévient personne');
+    }
+
     protected function setUp(): void
     {
         self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
         $this->published = [];
         $this->sentEmails = [];
+    }
+
+    private function reloadRun(MatchPlacementRun $run, string $clubId): MatchPlacementRun
+    {
+        $this->em->clear();
+        $this->scopeGucToClub($clubId);
+        $reloaded = $this->em->getRepository(MatchPlacementRun::class)->find($run->getId());
+        self::assertInstanceOf(MatchPlacementRun::class, $reloaded);
+
+        return $reloaded;
     }
 
     private function message(MatchPlacementRun $run, string $clubId, string $seasonId): PlaceMatchesMessage

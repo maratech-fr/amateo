@@ -30,14 +30,41 @@ final class PlacementRunEmailBuilder
 
     public function build(string $to, int $placed, int $toTreat): Email
     {
-        $subject = 'Placement automatique terminé';
-
         $lines = [
             'Le placement automatique de vos matchs est terminé.',
             '',
             \sprintf('%d match%s placé%s.', $placed, $placed > 1 ? 's' : '', $placed > 1 ? 's' : ''),
             \sprintf('%d match%s restant%s à traiter.', $toTreat, $toTreat > 1 ? 's' : '', $toTreat > 1 ? 's' : ''),
         ];
+
+        return $this->compose('Placement automatique terminé', $lines, $to);
+    }
+
+    /**
+     * L'e-mail « placement automatique NON ABOUTI », envoyé AU GESTIONNAIRE qui a lancé un run qui
+     * a ÉCHOUÉ après plus de deux minutes. Décision fondateur (2026-10-03) : « on envoie que ce
+     * soit un échec ou un succès, sinon il ne reviendra jamais car il pensera que le moteur
+     * travaille toute la nuit. » Aucun détail technique, aucun identifiant interne : juste le fait
+     * et comment relancer.
+     */
+    public function buildFailure(string $to): Email
+    {
+        $lines = [
+            'Le placement automatique n\'a pas abouti.',
+            'Vous pouvez le relancer depuis le calendrier des matchs.',
+        ];
+
+        return $this->compose('Le placement automatique n\'a pas abouti', $lines, $to);
+    }
+
+    /**
+     * Compose l'e-mail métier : ajoute le lien vers le calendrier des matchs (quand l'URL est
+     * configurée) et pose la marque « boîte aux lettres » commune aux deux variantes.
+     *
+     * @param list<string> $lines
+     */
+    private function compose(string $subject, array $lines, string $to): Email
+    {
         if ('' !== $this->frontendBaseUrl) {
             $lines[] = '';
             $lines[] = 'Voir le calendrier des matchs :';
