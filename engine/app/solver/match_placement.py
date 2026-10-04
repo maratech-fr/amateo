@@ -376,7 +376,7 @@ def _solve_one_week(sub_input: MatchPlacementInputSchema, week_key: tuple[int, i
 
 def _merge_week_results(results: list[dict[str, Any]]) -> dict[str, Any]:
     """Concatenate the per-week results into the single response the contract
-    expects (no schema change, CONTRACT_VERSION stays 1.1).
+    expects (no schema change, CONTRACT_VERSION stays 1.2).
 
     Placements / unplaced / diagnostics are concatenated in week order (stable,
     deterministic). ``metrics``: ``wall_time_ms`` SUMMED (total solve time of the
