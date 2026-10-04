@@ -565,9 +565,17 @@ export interface AdminDemoAccount {
   simulatedToday?: string | null;
 }
 
+/** Un club démo CONSERVÉ (P4-294) : détaché de l'animateur, gardé 14 jours. Nom + échéance (YYYY-MM-DD). */
+export interface AdminRetainedDemoClub {
+  name: string;
+  retainedUntil: string;
+}
+
 export interface AdminDemosResponse {
   bccl: AdminDemoAccount;
   prospect: AdminDemoAccount;
+  /** Les clubs démo conservés, lus par la table (jamais par adhésion) ; pas de prolongation (14 j fixes). */
+  retained: AdminRetainedDemoClub[];
 }
 
 export function getAdminDemos(): Promise<AdminDemosResponse> {
@@ -589,4 +597,9 @@ export function resetAdminDemoBccl(csrfToken: string): Promise<{ status: "reset"
 /** Pose (`{date}`) ou relâche (`{clear:true}`) l'horloge simulée d'un compte démo (bccl ou prospect). */
 export function setAdminDemoClock(target: AdminDemoTarget, body: { date: string } | { clear: true }, csrfToken: string): Promise<{ simulatedToday: string | null }> {
   return adminApi.post(`demos/${target}/clock`, { json: body, headers: { "X-CSRF-Token": csrfToken } }).json();
+}
+
+/** Conserve 14 jours le club démo prospect (P4-294) — refusé (409) tant que la fenêtre d'accès est ouverte. */
+export function retainAdminDemoProspect(csrfToken: string): Promise<{ retainedUntil: string }> {
+  return adminApi.post("demos/prospect/retain", { headers: { "X-CSRF-Token": csrfToken } }).json();
 }

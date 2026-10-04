@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/utils";
 
 import type { AdminDemosResponse } from "../api";
-import { activateAdminDemo, deactivateAdminDemo, getAdminDemos, resetAdminDemoBccl, setAdminDemoClock } from "../api";
+import { activateAdminDemo, deactivateAdminDemo, getAdminDemos, resetAdminDemoBccl, retainAdminDemoProspect, setAdminDemoClock } from "../api";
 import { useAdminStore } from "../store";
 import { DemosSection } from "./DemosSection";
 
@@ -17,6 +17,7 @@ vi.mock("../api", async (importOriginal) => {
     deactivateAdminDemo: vi.fn(),
     resetAdminDemoBccl: vi.fn(),
     setAdminDemoClock: vi.fn(),
+    retainAdminDemoProspect: vi.fn(),
   };
 });
 
@@ -25,12 +26,14 @@ const mockActivate = vi.mocked(activateAdminDemo);
 const mockDeactivate = vi.mocked(deactivateAdminDemo);
 const mockReset = vi.mocked(resetAdminDemoBccl);
 const mockClock = vi.mocked(setAdminDemoClock);
+const mockRetain = vi.mocked(retainAdminDemoProspect);
 
 function demos(overrides: Partial<AdminDemosResponse> = {}): AdminDemosResponse {
   return {
     // 20:00 UTC en juin = 22:00 à Paris (CEST), et dans le futur → fenêtre ouverte.
     bccl: { email: "demo-bccl@amateo.fr", activeUntil: "2099-06-15T20:00:00+00:00", clubName: "Démo Basket Club", simulatedToday: "2026-01-15" },
     prospect: { email: "demo@amateo.fr", activeUntil: null, clubName: null, simulatedToday: null },
+    retained: [],
     ...overrides,
   };
 }
@@ -42,6 +45,7 @@ describe("DemosSection", () => {
     mockDeactivate.mockReset().mockResolvedValue({ target: "bccl", activeUntil: null });
     mockReset.mockReset().mockResolvedValue({ status: "reset" });
     mockClock.mockReset().mockResolvedValue({ simulatedToday: null });
+    mockRetain.mockReset().mockResolvedValue({ retainedUntil: "2026-10-19" });
     useAdminStore.getState().setSession({ id: "sa", email: "sa@x" }, "csrf-token");
   });
 
@@ -111,6 +115,37 @@ describe("DemosSection", () => {
     fireEvent.change(input, { target: { value: "2026-05-05" } });
     fireEvent.click(within(card).getByRole("button", { name: "Appliquer" }));
     await waitFor(() => expect(mockClock).toHaveBeenCalledWith("prospect", { date: "2026-05-05" }, "csrf-token"));
+  });
+
+  it("conserve le club prospect 14 jours quand la fenêtre est fermée (avec confirmation)", async () => {
+    mockGet.mockResolvedValue(demos());
+    renderWithProviders(<DemosSection />);
+
+    const card = (await screen.findByText("Démo prospect")).closest("article") as HTMLElement;
+    const button = within(card).getByRole("button", { name: /Conserver 14 jours/ });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /Conserver 14 jours/ }));
+    await waitFor(() => expect(mockRetain).toHaveBeenCalledWith("csrf-token"));
+  });
+
+  it("désactive « Conserver » tant que la fenêtre prospect est ouverte, avec explication", async () => {
+    mockGet.mockResolvedValue(demos({ prospect: { email: "demo@amateo.fr", activeUntil: "2099-06-15T20:00:00+00:00", clubName: "Prospect FC", simulatedToday: null } }));
+    renderWithProviders(<DemosSection />);
+
+    const card = (await screen.findByText("Démo prospect")).closest("article") as HTMLElement;
+    expect(within(card).getByRole("button", { name: /Conserver 14 jours/ })).toBeDisabled();
+    expect(within(card).getByText(/Fermez d’abord l’accès de la démonstration/i)).toBeInTheDocument();
+  });
+
+  it("liste les clubs conservés avec leur échéance", async () => {
+    mockGet.mockResolvedValue(demos({ retained: [{ name: "Club Conservé", retainedUntil: "2026-10-19" }] }));
+    renderWithProviders(<DemosSection />);
+
+    expect(await screen.findByText("Club Conservé")).toBeInTheDocument();
+    expect(screen.getByText(/jusqu’au 19\/10\/2026/)).toBeInTheDocument();
   });
 
   it("affiche l'indisponibilité quand la lecture échoue", async () => {

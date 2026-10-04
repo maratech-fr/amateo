@@ -5,14 +5,21 @@ import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { toast } from "@/shared/stores/toastStore";
 
-import type { AdminDemoAccount, AdminDemoTarget } from "../api";
-import { useActivateAdminDemo, useAdminDemos, useDeactivateAdminDemo, useResetAdminDemoBccl, useSetAdminDemoClock } from "../queries";
+import type { AdminDemoAccount, AdminDemoTarget, AdminRetainedDemoClub } from "../api";
+import { useActivateAdminDemo, useAdminDemos, useDeactivateAdminDemo, useResetAdminDemoBccl, useRetainAdminDemoProspect, useSetAdminDemoClock } from "../queries";
 
 // Fenêtre d'activation rendue à l'heure de PARIS (décision fondateur) : l'API renvoie l'ISO UTC.
 const parisTime = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" });
 
 function isWindowOpen(activeUntil: string | null): boolean {
   return null !== activeUntil && Date.parse(activeUntil) > Date.now();
+}
+
+// L'échéance de conservation arrive en YYYY-MM-DD (une DATE, pas un instant) : on la rend
+// JJ/MM/AAAA sans passer par Date (aucun décalage de fuseau sur une date pure).
+function formatRetainedUntil(iso: string): string {
+  const [year, month, day] = iso.split("-");
+  return `${day}/${month}/${year}`;
 }
 
 /**
@@ -54,7 +61,32 @@ export function DemosSection() {
         <BcclCard account={demos.data.bccl} />
         <ProspectCard account={demos.data.prospect} />
       </div>
+      <RetainedClubsList retained={demos.data.retained} />
     </section>
+  );
+}
+
+/**
+ * Les clubs démo CONSERVÉS (P4-294) : lus par la table côté serveur (jamais par adhésion),
+ * nom + échéance. Aucune action (pas de prolongation : 14 j fixes).
+ */
+function RetainedClubsList({ retained }: { retained: AdminRetainedDemoClub[] }) {
+  if (0 === retained.length) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-5">
+      <p className="text-sm font-medium text-white">Clubs conservés</p>
+      <ul className="mt-3 space-y-1">
+        {retained.map((club) => (
+          <li key={`${club.name}-${club.retainedUntil}`} className="flex items-center justify-between gap-3 text-xs">
+            <span className="text-console-text-bright">{club.name}</span>
+            <span className="text-console-text-dim">jusqu’au {formatRetainedUntil(club.retainedUntil)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -101,7 +133,50 @@ function BcclCard({ account }: { account: AdminDemoAccount }) {
 }
 
 function ProspectCard({ account }: { account: AdminDemoAccount }) {
-  return <DemoCard title="Démo prospect" account={account} target="prospect" />;
+  const retain = useRetainAdminDemoProspect();
+  const [confirming, setConfirming] = useState(false);
+  // Conservation et fenêtre d'accès ne se chevauchent jamais (décision fondateur) : tant que
+  // l'accès est ouvert, « Conserver » est désactivé côté écran (et le serveur refuse en 409).
+  const windowOpen = isWindowOpen(account.activeUntil);
+
+  const runRetain = () => {
+    setConfirming(false);
+    retain.mutate(undefined, {
+      onSuccess: () => toast.success("Le club de démonstration est conservé 14 jours."),
+      onError: () => toast.error("Impossible de conserver le club de démonstration."),
+    });
+  };
+
+  return (
+    <DemoCard title="Démo prospect" account={account} target="prospect">
+      <div className="mt-4">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="border-white/15 text-console-text-bright hover:bg-white/10"
+          disabled={windowOpen || retain.isPending}
+          onClick={() => setConfirming(true)}
+        >
+          {retain.isPending ? <Spinner className="size-3.5" /> : null}
+          Conserver 14 jours
+        </Button>
+        {windowOpen ? (
+          <p className="mt-2 text-xs text-console-muted">Fermez d’abord l’accès de la démonstration pour conserver le club.</p>
+        ) : null}
+      </div>
+
+      <ConfirmDialog
+        open={confirming}
+        title="Conserver le club de démonstration ?"
+        description="Le club est détaché de la démonstration et conservé 14 jours : le contact officiel du club pourra ensuite le reprendre en s’inscrivant avec son code FFBB."
+        confirmLabel="Conserver 14 jours"
+        confirmDisabled={retain.isPending}
+        onConfirm={runRetain}
+        onCancel={() => setConfirming(false)}
+      />
+    </DemoCard>
+  );
 }
 
 /**

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { activateAdminDemo, activateAdminMembership, type AdminDemoTarget, type AdminFeedbackStatus, createAdminReleaseNote, deactivateAdminDemo, decideAdminClubRequest, deleteAdminReleaseNote, getAdminActions, getAdminAuditLog, getAdminCapacity, getAdminClubRequests, getAdminClubs, getAdminDemos, getAdminFeedback, getAdminFeedbackDetail, getAdminFreshness, getAdminHealth, getAdminJobs, getAdminMessengerFailed, getAdminOverview, getAdminPendingMemberships, getAdminReleaseNotes, getAdminSession, getAdminSystemErrors, publishAdminReleaseNote, type ReleaseNoteWritePayload, resetAdminDemoBccl, runAdminClubAction, runAdminJob, setAdminDemoClock, treatAdminFeedback, untreatAdminFeedback } from "./api";
+import { activateAdminDemo, activateAdminMembership, type AdminDemoTarget, type AdminFeedbackStatus, createAdminReleaseNote, deactivateAdminDemo, decideAdminClubRequest, deleteAdminReleaseNote, getAdminActions, getAdminAuditLog, getAdminCapacity, getAdminClubRequests, getAdminClubs, getAdminDemos, getAdminFeedback, getAdminFeedbackDetail, getAdminFreshness, getAdminHealth, getAdminJobs, getAdminMessengerFailed, getAdminOverview, getAdminPendingMemberships, getAdminReleaseNotes, getAdminSession, getAdminSystemErrors, publishAdminReleaseNote, type ReleaseNoteWritePayload, resetAdminDemoBccl, retainAdminDemoProspect, runAdminClubAction, runAdminJob, setAdminDemoClock, treatAdminFeedback, untreatAdminFeedback } from "./api";
 import { useAdminStore } from "./store";
 
 /** Lit le jeton CSRF de la session admin, ou rejette — patron des mutations admin. */
@@ -386,6 +386,22 @@ export function useSetAdminDemoClock() {
       }
 
       return setAdminDemoClock(target, body, csrfToken);
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-demos"] }),
+  });
+}
+
+export function useRetainAdminDemoProspect() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => {
+      const csrfToken = requireCsrf();
+      if (!csrfToken) {
+        return Promise.reject(new Error("Missing super-admin CSRF token."));
+      }
+
+      return retainAdminDemoProspect(csrfToken);
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-demos"] }),
   });
