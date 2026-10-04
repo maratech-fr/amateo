@@ -55,6 +55,7 @@ final class ClubApprovalService
         private readonly string $frontendBaseUrl,
         private readonly MailFrom $mailFrom,
         private readonly ProductIdentity $productIdentity,
+        private readonly OrphanAccountNotifier $orphanAccountNotifier,
     ) {}
 
     /**
@@ -200,9 +201,14 @@ final class ClubApprovalService
 
     public function refuse(ClubCreationRequest $request): void
     {
+        $userId = $request->getUserId();
         $this->close($request, ClubCreationRequest::STATUS_REFUSED);
         $this->entityManager->flush();
         $this->notifyRequester($request, approved: false);
+        // P4-301 (décision fondateur Q1) — un refus de création peut laisser le demandeur
+        // sans aucun accès : s'il est orphelin, préavis « compte sans club » (best-effort,
+        // après le flush). Une demande refusée ne protège plus de la règle.
+        $this->orphanAccountNotifier->notifyAccessRemoved($userId);
     }
 
     private function close(ClubCreationRequest $request, string $status): void
