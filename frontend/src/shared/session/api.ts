@@ -77,6 +77,12 @@ export interface MeResponse {
   pendingEmail: string | null;
   firstName: string;
   lastName: string;
+  /**
+   * SEC-28 — ce compte est un compte de DÉMONSTRATION : il ne peut ni changer de
+   * prénom/nom, d'e-mail ou de mot de passe, ni se supprimer (le backend refuse ces
+   * gestes en 403). Le profil désactive alors ces actions et l'explique.
+   */
+  isDemo: boolean;
   membershipStatus: MembershipStatus;
   role: string | null;
   /** P3-4 : la demande de CRÉATION du club (la plus récente) — null dès qu'un membership existe. */

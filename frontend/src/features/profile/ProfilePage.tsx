@@ -8,6 +8,7 @@ import { FichePage } from "@/shared/components/ui/fiche-page";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { NewPasswordFields } from "@/shared/components/ui/new-password-fields";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { PageHeader } from "@/shared/components/ui/page-header";
 import { PasswordInput } from "@/shared/components/ui/password-input";
 import { isPasswordValid } from "@/shared/lib/passwordPolicy";
@@ -28,11 +29,13 @@ function ProfileForm({
   lastName,
   email,
   pendingEmail,
+  readOnly,
 }: {
   firstName: string;
   lastName: string;
   email: string;
   pendingEmail: string | null;
+  readOnly: boolean;
 }) {
   const update = useUpdateProfile();
   const requestEmail = useRequestEmailChange();
@@ -77,14 +80,14 @@ function ProfileForm({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label htmlFor="firstName">Prénom</Label>
-              <Input id="firstName" value={first} onChange={(e) => setFirst(e.target.value)} required />
+              <Input id="firstName" value={first} onChange={(e) => setFirst(e.target.value)} required disabled={readOnly} />
             </div>
             <div className="space-y-1">
               <Label htmlFor="lastName">Nom</Label>
-              <Input id="lastName" value={last} onChange={(e) => setLast(e.target.value)} required />
+              <Input id="lastName" value={last} onChange={(e) => setLast(e.target.value)} required disabled={readOnly} />
             </div>
           </div>
-          <Button type="submit" disabled={!nameDirty || update.isPending}>
+          <Button type="submit" disabled={readOnly || !nameDirty || update.isPending}>
             {update.isPending ? <Spinner className="size-4" /> : null}
             Enregistrer
           </Button>
@@ -92,7 +95,7 @@ function ProfileForm({
 
         <div className="space-y-2 border-t border-border pt-4">
           <Label htmlFor="email">E-mail</Label>
-          <Input id="email" type="email" value={mail} onChange={(e) => setMail(e.target.value)} />
+          <Input id="email" type="email" value={mail} onChange={(e) => setMail(e.target.value)} disabled={readOnly} />
           <p className="text-xs text-muted-foreground">
             Changer d'adresse envoie un lien de confirmation à la nouvelle adresse. Votre adresse actuelle reste active
             tant que vous n'avez pas confirmé, et reçoit un avertissement.
@@ -118,7 +121,7 @@ function ProfileForm({
               </Button>
             </div>
           ) : null}
-          <Button type="button" variant="outline" disabled={!emailChanged || emailPassword === "" || requestEmail.isPending} onClick={requestEmailChange}>
+          <Button type="button" variant="outline" disabled={readOnly || !emailChanged || emailPassword === "" || requestEmail.isPending} onClick={requestEmailChange}>
             {requestEmail.isPending ? <Spinner className="size-4" /> : null}
             Envoyer un lien de confirmation
           </Button>
@@ -128,7 +131,7 @@ function ProfileForm({
   );
 }
 
-function PasswordForm() {
+function PasswordForm({ readOnly }: { readOnly: boolean }) {
   const change = useChangePassword();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
@@ -157,10 +160,10 @@ function PasswordForm() {
         <form className="space-y-4" onSubmit={submit}>
           <div className="space-y-1">
             <Label htmlFor="current">Mot de passe actuel</Label>
-            <PasswordInput id="current" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required />
+            <PasswordInput id="current" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required disabled={readOnly} />
           </div>
           <NewPasswordFields password={next} confirm={confirm} onPasswordChange={setNext} onConfirmChange={setConfirm} idPrefix="profile-" passwordLabel="Nouveau mot de passe" />
-          <Button type="submit" disabled={current === "" || !isPasswordValid(next) || next !== confirm || change.isPending}>
+          <Button type="submit" disabled={readOnly || current === "" || !isPasswordValid(next) || next !== confirm || change.isPending}>
             {change.isPending ? <Spinner className="size-4" /> : null}
             Changer le mot de passe
           </Button>
@@ -203,7 +206,7 @@ function ExportSection() {
  * membre actif, les données du club sont supprimées après un délai de grâce de
  * 30 jours (annulé si un membre revient avant l'échéance).
  */
-function DangerZone() {
+function DangerZone({ readOnly }: { readOnly: boolean }) {
   const deleteAccount = useDeleteAccount();
   const logout = useLogout();
   const [password, setPassword] = useState("");
@@ -241,9 +244,10 @@ function DangerZone() {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              disabled={readOnly}
             />
           </div>
-          <Button type="submit" variant="destructive" disabled={password === "" || deleteAccount.isPending}>
+          <Button type="submit" variant="destructive" disabled={readOnly || password === "" || deleteAccount.isPending}>
             {deleteAccount.isPending ? <Spinner className="size-4" /> : null}
             Supprimer définitivement mon compte
           </Button>
@@ -260,13 +264,19 @@ export function ProfilePage() {
     return <FullPageSpinner />;
   }
 
+  // SEC-28 — un compte de démonstration ne peut pas modifier son profil ni se
+  // supprimer (le backend refuse ces gestes en 403) : on désactive les actions et on
+  // l'explique. L'export RGPD (lecture seule) reste ouvert.
+  const readOnly = data.isDemo;
+
   return (
     <FichePage className="space-y-4">
       <PageHeader title="Profil" screen="/profile" subtitle={`${data.club?.name ?? "—"} · ${data.role ?? "—"}`} />
-      <ProfileForm firstName={data.firstName} lastName={data.lastName} email={data.email} pendingEmail={data.pendingEmail} />
-      <PasswordForm />
+      {readOnly ? <NoticeBanner tone="muted" message="Ce compte de démonstration ne peut pas être modifié." /> : null}
+      <ProfileForm firstName={data.firstName} lastName={data.lastName} email={data.email} pendingEmail={data.pendingEmail} readOnly={readOnly} />
+      <PasswordForm readOnly={readOnly} />
       <ExportSection />
-      <DangerZone />
+      <DangerZone readOnly={readOnly} />
     </FichePage>
   );
 }

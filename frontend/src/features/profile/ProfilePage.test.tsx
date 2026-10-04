@@ -8,6 +8,7 @@ const requestEmailMut = vi.fn();
 const cancelEmailMut = vi.fn();
 const logoutFn = vi.fn();
 let pendingEmail: string | null = null;
+let isDemo = false;
 
 vi.mock("./queries", () => ({
   useUpdateProfile: () => ({ mutate: vi.fn(), isPending: false }),
@@ -20,7 +21,7 @@ vi.mock("./queries", () => ({
 
 vi.mock("@/shared/session/queries", () => ({
   useMe: () => ({
-    data: { id: "u1", email: "flo@club.fr", pendingEmail, firstName: "Flo", lastName: "Journey", role: "admin", club: { name: "BCCL" } },
+    data: { id: "u1", email: "flo@club.fr", pendingEmail, firstName: "Flo", lastName: "Journey", isDemo, role: "admin", club: { name: "BCCL" } },
     isLoading: false,
   }),
 }));
@@ -37,6 +38,7 @@ describe("ProfilePage — zone de danger (RGPD)", () => {
     requestEmailMut.mockClear();
     cancelEmailMut.mockClear();
     pendingEmail = null;
+    isDemo = false;
   });
 
   it("désarme la suppression tant que le mot de passe n'est pas saisi (ré-authentification)", () => {
@@ -105,6 +107,24 @@ describe("ProfilePage — zone de danger (RGPD)", () => {
 
     await user.click(screen.getByRole("button", { name: /Annuler/ }));
     expect(cancelEmailMut).toHaveBeenCalled();
+  });
+});
+
+describe("ProfilePage — compte de démonstration (SEC-28)", () => {
+  beforeEach(() => {
+    isDemo = true;
+  });
+
+  it("annonce que le compte démo ne peut pas être modifié et désactive tous les gestes de profil", () => {
+    render(<ProfilePage />);
+
+    expect(screen.getByText(/Ce compte de démonstration ne peut pas être modifié/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Enregistrer$/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Envoyer un lien de confirmation/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Changer le mot de passe/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Supprimer définitivement mon compte/ })).toBeDisabled();
+    expect(screen.getByLabelText("Prénom")).toBeDisabled();
+    expect(screen.getByLabelText("E-mail")).toBeDisabled();
   });
 });
 
