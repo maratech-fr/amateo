@@ -1,6 +1,6 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-10-01 (`documentation-update`, PR 8/8 série « uniformité des écrans » — garde
+Last verified @ 2026-10-04 (AUD-SEC-25 — ligne `TenantIsolationTest` recalée sur ses tests réels (en-tête étranger ignoré, requête anonyme sans contexte, adhésion inactive sans donnée) ; avant cela, 2026-10-01 : `documentation-update`, PR 8/8 série « uniformité des écrans » — garde
 de captures de référence). Ce fichier ne couvre que backend+engine (« Scope » ci-dessous), sauf le
 graphe CI §1 qui est cross-zone par nature. Vérifié dans le code cette passe : le job `e2e` porte
 le nom de required check « E2E (Playwright) » et `needs: blocking-tests` (`ci.yml:1117-1123`) ;

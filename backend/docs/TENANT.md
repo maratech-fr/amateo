@@ -1,6 +1,6 @@
 # Amateo — Tenant Isolation Architecture
 
-Last verified @ 2026-10-02 (nettoyage API — `UserStateProcessor` retiré, `User` passé en lecture
+Last verified @ 2026-10-04 (AUD-SEC-25 — résolution du club recalée : l'en-tête `X-Club-Id` n'existe plus côté serveur, le club vient de l'adhésion active du compte ou de `_club_id` posé par les pages publiques à token, vérifié contre `TenantFilterListener::resolveClubId` ; avant cela, 2026-10-02 : nettoyage API — `UserStateProcessor` retiré, `User` passé en lecture
 seule). Re-confronté au code : priorité 7 toujours en place (`TenantFilterListener.php:55`,
 `KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · le skip `/api/admin` toujours en
 `str_starts_with` sur le path (`TenantFilterListener.php:81`) ✓ ·

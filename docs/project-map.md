@@ -1,6 +1,6 @@
 # Project Map — Amateo (engine + backend)
 
-Last verified @ 2026-10-02 (lot images de prod, `documentation-update`). Re-confronté au code :
+Last verified @ 2026-10-04 (AUD-SEC-25 — §2.5 listener tenant recalé (plus de source `X-Club-Id`) ; contrat moteur 1.1 de #1068 relu ; avant cela, 2026-10-02 : lot images de prod, `documentation-update`). Re-confronté au code :
 `.github/dependabot.yml` porte désormais **cinq** écosystèmes (pip/npm/composer/github-actions +
 **docker**, une entrée par dossier à Dockerfile : `docker/php`, `docker/engine`, `docker/frontend`,
 `docker/pdf-worker`, `docker/postgres`) — le § ci-dessous en citait quatre, corrigé. Reste du

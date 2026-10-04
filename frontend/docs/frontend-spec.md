@@ -4,7 +4,7 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-10-02 (`documentation-update`, lot horloge/boîte aux lettres — rotation,
+Last verified @ 2026-10-04 (AUD-SEC-25 — §6.4 : un `X-Club-Id` reçu est ignoré par le serveur, plus refusé en 403 ; avant cela, 2026-10-02 : `documentation-update`, lot horloge/boîte aux lettres — rotation,
 plus ancien stamp du dépôt). Re-confronté au code : nouvelle route `/boite-aux-lettres`
 (`MailboxPage.tsx`, `routes.tsx`, lazy) + entrée de nav `MailboxNavItem` (barre du haut, visible
 ssi `me.club.simulatedToday`, `AppLayout.tsx`) ajoutées ; version React du tableau Stack corrigée

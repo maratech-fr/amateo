@@ -1,6 +1,6 @@
 # Guide de génération de planning — Amateo
 
-Last verified @ 2026-10-02 (P5-28 — `CONTRACT_VERSION` repassé 2.29 → 1.0 pour la v1, forme du
+Last verified @ 2026-10-04 (AUD-SEC-25 — le script et l'API n'acceptent plus `X-Club-Id` (club = compte connecté, `generate-schedule.sh` sans `--club-id`) ; contrat moteur 1.1 de #1068 relu ; avant cela, 2026-10-02 : P5-28 — `CONTRACT_VERSION` repassé 2.29 → 1.0 pour la v1, forme du
 payload inchangée ; cité à jour §5).
 Re-confronté contre le code : `docker-compose.yml` porte 14 services nommés, 11 d'entre eux
 `restart: unless-stopped` (`messenger-worker` compris, §6 Cas 1) ✓ ; le cycle des 5 statuts
