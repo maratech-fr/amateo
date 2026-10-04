@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HTTPError } from "ky";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setTodayOverride } from "@/shared/lib/clock";
 import { pickListboxOption } from "@/test/pickListboxOption";
@@ -53,6 +54,30 @@ const { placeFixture, unplaceFixture, submitFixture } = vi.hoisted(() => ({
   submitFixture: vi.fn(() => Promise.resolve({})),
 }));
 
+// Toast espionné : le rail async toaste la FIN d'un run (succès/échec) et le 409 (déjà en cours).
+const toastSpy = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock("@/shared/stores/toastStore", () => ({ toast: toastSpy }));
+
+// `@/shared/api/client` n'est touché QUE par le flux Mercure du placement (auth puis EventSource) —
+// toute la couche data de l'écran passe par `./api`, mocké. On rend donc l'auth déterministe.
+vi.mock("@/shared/api/client", () => ({
+  api: {
+    get: vi.fn(() => ({ json: () => Promise.resolve({ placementTopic: "club:c1:placement" }) })),
+    post: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn(),
+  },
+}));
+
+// EventSource n'existe pas sous jsdom : un faux inerte suffit (le flux n'est qu'un déclencheur
+// d'invalidation ; l'écran lit l'état via le GET placement-run).
+class FakeEventSource {
+  onopen: (() => void) | null = null;
+  onmessage: ((event: MessageEvent<string>) => void) | null = null;
+  onerror: (() => void) | null = null;
+  close(): void {}
+}
+
 const meState = vi.hoisted(() => ({ club: undefined as Record<string, unknown> | undefined, role: undefined as string | undefined }));
 vi.mock("@/shared/session/queries", () => ({
   useMe: () => ({ data: { seasonPlan: { id: "p1", name: "Planning", chosenScheduleId: "s1", hasFinishedVersion: true }, club: meState.club, role: meState.role } }),
@@ -94,14 +119,9 @@ vi.mock("./api", () => ({
   getVenueUnavailabilities: vi.fn(() => Promise.resolve([])),
   getTeamMatchHabits: vi.fn(() => Promise.resolve([])),
   getTeamLinks: vi.fn(() => Promise.resolve([])),
-  placeMatches: vi.fn(() =>
-    Promise.resolve({
-      placed: 1,
-      skipped: 0,
-      unplaced: [{ matchId: "fx-unplaced", reason: "no_access_window", message: "Aucune fenêtre d'accès match ne contient l'empreinte de 2h15 ce jour-là." }],
-      diagnostics: [],
-    }),
-  ),
+  // Rail ASYNCHRONE : POST → 202 (run enfilé) par défaut ; le résultat arrive via le GET.
+  placeMatches: vi.fn(() => Promise.resolve({ accepted: true, runId: "run-1", status: "PENDING" })),
+  getPlacementRun: vi.fn(() => Promise.resolve({ run: null })),
   getConflicts: vi.fn(() =>
     Promise.resolve({
       clubId: "c",
@@ -147,8 +167,17 @@ beforeEach(() => {
   placeFixture.mockClear();
   unplaceFixture.mockClear();
   submitFixture.mockClear();
+  toastSpy.success.mockClear();
+  toastSpy.error.mockClear();
+  // Les tests du rail async posent des `mockResolvedValue` PERSISTANTS : on remet les deux mocks
+  // de placement à leur défaut avant chaque test pour qu'aucun run fantôme ne fuite.
+  vi.mocked(matchesApi.getPlacementRun).mockReset().mockResolvedValue({ run: null });
+  vi.mocked(matchesApi.placeMatches).mockReset().mockResolvedValue({ accepted: true, runId: "run-1", status: "PENDING" });
+  vi.stubGlobal("EventSource", FakeEventSource as unknown as typeof EventSource);
   meState.club = undefined;
-  meState.role = undefined;
+  // Gestionnaire par défaut : le bouton « Placer automatiquement » est réservé au gestionnaire ;
+  // les tests du cas Membre reposent `meState.role = "member"` eux-mêmes.
+  meState.role = "admin";
   planningLinks.teamCoaches = [];
   planningLinks.coachPlayers = [];
   setTodayOverride(null);
@@ -173,6 +202,10 @@ beforeEach(() => {
     consultPhaseId: null,
     unplacedReasons: new Map(),
   });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe("CalendarPage — la Semaine (ex-boucle, fusion PR 3b)", () => {
@@ -269,13 +302,20 @@ describe("CalendarPage — la Semaine (ex-boucle, fusion PR 3b)", () => {
     expect(placeFixture).not.toHaveBeenCalled();
   });
 
-  it("« Placer automatiquement » (barre d'actions) auto-place et fait remonter la raison", async () => {
+  it("« Placer automatiquement » (202) → l'écran passe en « placement en cours » et bloque le bouton", async () => {
     const user = userEvent.setup();
+    // Rail async : au montage aucun run ; après le POST (202), la relecture du GET voit le run en vol.
+    vi.mocked(matchesApi.getPlacementRun)
+      .mockResolvedValueOnce({ run: null })
+      .mockResolvedValue({ run: { id: "run-1", status: "RUNNING", createdAt: "2026-10-03T10:00:00+00:00", startedAt: null, finishedAt: null, result: null } });
     renderWithProviders(<CalendarPage />, { route: EXPLICIT });
-    await user.click(await screen.findByRole("button", { name: /Placer automatiquement/ }));
+    const place = await screen.findByRole("button", { name: /Placer automatiquement/ });
+    await user.click(place);
     const { placeMatches: placeMatchesMock } = await import("./api");
     expect(placeMatchesMock).toHaveBeenCalledOnce();
-    expect(await screen.findByText(/Aucune fenêtre d'accès match/)).toBeInTheDocument();
+    // L'écran bascule en « en cours » et le bouton se bloque (relecture du GET → run RUNNING).
+    expect(await screen.findByText(/Placement automatique en cours/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: /Placer automatiquement/ })).toBeDisabled());
   });
 
   it("« Placer automatiquement » affiche le solde et se désactive à 0 (Découverte bridée)", async () => {
@@ -993,5 +1033,88 @@ describe("CalendarPage — mémoire de session des filtres Consulter", () => {
     expect(await screen.findByRole("switch", { name: "Extérieurs" })).toHaveAttribute("aria-checked", "false");
     expect(screen.getByRole("button", { name: "Amical" })).toHaveAttribute("aria-pressed", "false");
     expect(useMatchesStore.getState().consultKinds).toBeNull();
+  });
+});
+
+// ── Rail ASYNCHRONE du placement (ADR-0003) ────────────────────────────────────────
+describe("CalendarPage — placement asynchrone (en cours · 2 min · échec · 409)", () => {
+  const runningRun = { id: "run-1", status: "RUNNING" as const, createdAt: "2026-10-03T10:00:00+00:00", startedAt: null, finishedAt: null, result: null };
+
+  it("un run en cours AU MONTAGE affiche « en cours » et désactive le bouton (gestionnaire)", async () => {
+    vi.mocked(matchesApi.getPlacementRun).mockResolvedValue({ run: runningRun });
+    renderWithProviders(<CalendarPage />, { route: EXPLICIT });
+    expect(await screen.findByText(/Placement automatique en cours/)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Placer automatiquement/ })).toBeDisabled();
+  });
+
+  it("un MEMBRE voit l'état « en cours » mais AUCUN bouton « Placer automatiquement »", async () => {
+    meState.role = "member";
+    vi.mocked(matchesApi.getPlacementRun).mockResolvedValue({ run: runningRun });
+    renderWithProviders(<CalendarPage />, { route: EXPLICIT });
+    expect(await screen.findByText(/Placement automatique en cours/)).toBeInTheDocument();
+    await screen.findByRole("group", { name: "Semaine affichée" });
+    expect(screen.queryByRole("button", { name: /Placer automatiquement/ })).not.toBeInTheDocument();
+  });
+
+  it("à 2 min de run encore ouvert, invite à quitter la page (e-mail de fin)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.mocked(matchesApi.getPlacementRun).mockResolvedValue({ run: runningRun });
+      renderWithProviders(<CalendarPage />, { route: EXPLICIT });
+      expect(await screen.findByText(/Placement automatique en cours/)).toBeInTheDocument();
+      expect(screen.queryByText(/prend plus de temps que prévu/)).not.toBeInTheDocument();
+      await act(async () => {
+        vi.advanceTimersByTime(120_000);
+      });
+      expect(await screen.findByText(/prend plus de temps que prévu/)).toBeInTheDocument();
+      expect(screen.getByText(/vous recevrez un e-mail à la fin/)).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("un run FAILED affiche le message d'erreur du serveur et LAISSE le bouton actif", async () => {
+    vi.mocked(matchesApi.getPlacementRun).mockResolvedValue({
+      run: { id: "run-2", status: "FAILED", createdAt: "2026-10-03T10:00:00+00:00", startedAt: "2026-10-03T10:00:01+00:00", finishedAt: "2026-10-03T10:00:05+00:00", result: { error: "Le solveur n'a pas répondu — réessayez." } },
+    });
+    renderWithProviders(<CalendarPage />, { route: EXPLICIT });
+    expect(await screen.findByText(/Le solveur n'a pas répondu/)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Placer automatiquement/ })).toBeEnabled();
+  });
+
+  it("un run COMPLETED au montage RESTAURE l'affichage des non-placés, SANS toaster (pas regardé)", async () => {
+    vi.mocked(matchesApi.getPlacementRun).mockResolvedValue({
+      run: {
+        id: "run-3",
+        status: "COMPLETED",
+        createdAt: "2026-10-03T10:00:00+00:00",
+        startedAt: "2026-10-03T10:00:01+00:00",
+        finishedAt: "2026-10-03T10:00:05+00:00",
+        result: { placed: 1, skipped: 0, unplaced: [{ matchId: "fx-unplaced", reason: "no_access_window", message: "Aucune fenêtre d'accès match ne contient l'empreinte de 2h15 ce jour-là." }], diagnostics: [] },
+      },
+    });
+    renderWithProviders(<CalendarPage />, { route: EXPLICIT });
+    expect(await screen.findByText(/Aucune fenêtre d'accès match/)).toBeInTheDocument();
+    expect(toastSpy.success).not.toHaveBeenCalled();
+  });
+
+  it("409 : affiche le message métier du serveur et garde le bouton bloqué (run découvert)", async () => {
+    const user = userEvent.setup();
+    vi.mocked(matchesApi.getPlacementRun)
+      .mockResolvedValueOnce({ run: null })
+      .mockResolvedValue({ run: runningRun });
+    const conflict = Object.assign(Object.create(HTTPError.prototype), {
+      response: { status: 409 },
+      data: { error: "Un placement est déjà en cours — réessayez dans un instant." },
+    }) as HTTPError;
+    vi.mocked(matchesApi.placeMatches).mockRejectedValueOnce(conflict);
+
+    renderWithProviders(<CalendarPage />, { route: EXPLICIT });
+    await user.click(await screen.findByRole("button", { name: /Placer automatiquement/ }));
+
+    await waitFor(() => expect(toastSpy.error).toHaveBeenCalledWith("Un placement est déjà en cours — réessayez dans un instant."));
+    // La relecture (onSettled) découvre le run en vol : « en cours » + bouton bloqué.
+    expect(await screen.findByText(/Placement automatique en cours/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: /Placer automatiquement/ })).toBeDisabled());
   });
 });

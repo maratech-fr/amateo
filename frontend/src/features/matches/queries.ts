@@ -962,15 +962,26 @@ export function useDeleteTeamLink() {
   });
 }
 
-/** « Placer automatiquement » (P1-4 PR D) — synchronous solve; every fixture
- * surface moves (placements + radar + engagement stays as-is). */
+/** Le DERNIER run de placement du club+saison : « un placement est-il en cours, quel est le
+ * résultat du dernier ? ». Lu au montage de l'écran (et relu à chaque bascule Mercure, qui
+ * invalide cette clé). Ouvert à tout membre. `staleTime` court : une relecture déclenchée par
+ * le flux doit refetcher, pas servir un cache figé. */
+export function usePlacementRun() {
+  return useQuery({ queryKey: ["fixtures", "placement-run"], queryFn: matchesApi.getPlacementRun, staleTime: 5_000 });
+}
+
+/** « Placer automatiquement » (P1-4 PR D, rail ASYNCHRONE ADR-0003) — enfile un run (202) ou
+ * répond « aucun match à placer » (200). L'invalidation de `placement-run` fait passer l'écran en
+ * « en cours » dès l'acquittement ; la fin arrive par Mercure. Un 409 (placement déjà en cours)
+ * remonte par `onError`. L'orchestration (toast de fin, affichage du résultat) vit dans
+ * `CalendarPage`, qui lit le run. */
 export function usePlaceMatches() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: matchesApi.placeMatches,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["fixtures"] });
-    },
+    // onSettled (succès ET erreur) : relire le run. Après un 202 l'écran passe en « en cours » ;
+    // après un 409 (un run a démarré ailleurs) il DÉCOUVRE ce run et garde le bouton bloqué.
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ["fixtures", "placement-run"] }),
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }

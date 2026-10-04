@@ -181,6 +181,8 @@ export interface PlaceMatchesResult {
   skipped: number;
   unplaced: { matchId: string; reason: UnplacedReason; message: string }[];
   diagnostics: { type: string; severity: string; message: string }[];
+  /** 200 « aucun match à placer » : phrase métier servie telle quelle par le backend. */
+  message?: string;
 }
 
 /** P4-240 ④ — an optional calendar window {from, to} (dates AAAA-MM-JJ, both
@@ -191,15 +193,68 @@ export interface PlaceMatchesWindow {
   to: string;
 }
 
-/** Synchronous solve: the engine places every placeable home match (seconds).
- * A non-placeable match is NOT an error — it comes back named in `unplaced`.
- * With a `window`, only the matches dated inside it are (re)placed; the ones
- * already placed outside it stay fixed (P4-240 ④). */
-export const placeMatches = (window?: PlaceMatchesWindow): Promise<PlaceMatchesResult> =>
-  // The solve takes up to ~90 s (engine 60 s budget + import) — ky's 10 s default
-  // would abort a request the backend is honouring. Override it HERE only, never on
-  // the shared client (P4-240). The timeout chain (proxy/nginx/PHP) matches, 120 s.
-  api.post("fixtures/place", { timeout: 120_000, ...(undefined === window ? {} : { json: window }) }).json<PlaceMatchesResult>();
+export type PlacementRunStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+
+/**
+ * Le résultat PERSISTÉ d'un run de placement terminé. Un run COMPLETED porte le bilan du solve
+ * (`placed`/`skipped`/`unplaced`/`diagnostics`, + un `message` quand il n'y avait rien à placer) ;
+ * un run FAILED porte le message métier d'échec dans `error`. Tous les champs sont optionnels : le
+ * consommateur comble avec des défauts (jamais de confiance aveugle au payload d'un run).
+ */
+export interface PlacementRunResult extends Partial<PlaceMatchesResult> {
+  message?: string;
+  error?: string;
+}
+
+/** Un run du rail ASYNCHRONE de placement (GET /api/fixtures/placement-run). */
+export interface PlacementRun {
+  id: string;
+  status: PlacementRunStatus;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  result: PlacementRunResult | null;
+}
+
+/** 202 : le run est enfilé, sa fin arrivera par Mercure (cf. lib/placementStream). */
+export interface PlacementAccepted {
+  accepted: true;
+  runId: string;
+  status: PlacementRunStatus;
+}
+
+/** 200 : rien à placer (aucun match éligible) — le backend répond en synchrone, pas de run. */
+export interface PlacementNoop {
+  accepted: false;
+  result: PlaceMatchesResult;
+}
+
+export type PlaceMatchesResponse = PlacementAccepted | PlacementNoop;
+
+/**
+ * Rail ASYNCHRONE du placement (ADR-0003). La requête revient TOUT DE SUITE : soit 202 avec l'id du
+ * run (le solve vit dans le worker, sa fin arrive par Mercure), soit 200 « aucun match à placer »
+ * (rien n'a été enfilé). Un 409 (placement déjà en cours) remonte comme une `HTTPError` ky, dont le
+ * message métier est franci par {@link errorMessage}. Plus de timeout long : il n'y a plus d'attente
+ * d'un solve synchrone côté client.
+ * With a `window`, only the matches dated inside it are (re)placed; the ones already placed outside
+ * it stay fixed (P4-240 ④).
+ */
+export const placeMatches = async (window?: PlaceMatchesWindow): Promise<PlaceMatchesResponse> => {
+  const response = await api.post("fixtures/place", undefined === window ? {} : { json: window });
+  if (202 === response.status) {
+    const body = await response.json<{ runId: string; status: PlacementRunStatus }>();
+    return { accepted: true, runId: body.runId, status: body.status };
+  }
+
+  return { accepted: false, result: await response.json<PlaceMatchesResult>() };
+};
+
+/** Le DERNIER run de placement du club+saison (null si aucun). Lu au montage de l'écran et à
+ * chaque bascule Mercure : « y a-t-il un placement en cours, et quel est le résultat du dernier ? ».
+ * Ouvert à tout membre (le GESTE de placement, lui, reste réservé au gestionnaire). */
+export const getPlacementRun = (): Promise<{ run: PlacementRun | null }> =>
+  api.get("fixtures/placement-run").json<{ run: PlacementRun | null }>();
 
 /** RMM-4 — the reconciliation perimeter: the three home fields that become a
  * CHOICE when the file diverges from an already-placed match. */
