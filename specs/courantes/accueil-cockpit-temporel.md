@@ -1,10 +1,9 @@
 # Accueil « cockpit temporel »
 
-Last verified @ 2026-10-02 (`documentation-update`, lot horloge PR D). Re-confronté au code : le
-§« Horloge simulée » recalé — l'horloge ne vit plus que pour un compte DÉMO (revirement fondateur
-sur « capacité générique activable pour tout club ») ; `app:club:clock` refuse franc tout club non
-`is_demo`, et un gestionnaire démo la pose désormais aussi depuis le widget d'en-tête de l'app
-(`POST /api/club/clock`). Reste du fichier non re-confronté cette passe. Historique de ce fichier :
+Last verified @ 2026-10-05 (`documentation-update`, lot backend « horloge & démo » — BCK-34). Le
+§« Horloge simulée » gagne les BORNES de la date simulée (début de la saison en cours → fin de la
+saison suivante, `SeasonResolver::simulatedClockBoundsAmong`, 422 hors fenêtre) — confronté à
+`ClubClockController.php`. Reste du fichier non re-confronté cette passe. Historique de ce fichier :
 `git log -p --follow` dessus.
 
 > **Statut** : livré — cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2. Ce document fixe le
@@ -351,7 +350,11 @@ d'entrée unique qui décide si un club a une horloge active (`simulatedTodayFor
 `Club.simulatedToday`) — **réservé à un compte de DÉMONSTRATION** (décision fondateur 2026-10-02) :
 `app:club:clock` refuse franc un club non `is_demo`, et un gestionnaire démo la pose aussi depuis
 le widget d'en-tête de l'app (`POST /api/club/clock`, 403 sinon). Un club sans date posée garde
-l'heure vraie.
+l'heure vraie. **La date posée doit tomber entre le début de la saison EN COURS et la fin de la
+saison SUIVANTE** du club (`SeasonResolver::simulatedClockBoundsAmong`, décision fondateur
+2026-10-02) — hors de cette fenêtre, le widget affiche le refus serveur (422, les deux dates
+nommées) ; sans saison suivante préparée, la borne haute est projetée à un an après la fin de la
+saison en cours.
 
 ---
 

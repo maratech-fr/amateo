@@ -22,7 +22,9 @@ fenêtre le bon mot de passe connecte ; une adresse non démo est insensible à 
 raccourci démo `/api/dev/demo-register` en PROD est gardé par la fenêtre — fermée → 422
 `not_demo_account` identique à une adresse quelconque [jamais 404], ouverte → il matérialise le
 club ; `/api/register/config` hors debug n'expose le raccourci que fenêtre ouverte ; falsifié en
-retirant la garde `UserChecker`) ·
+retirant la garde `UserChecker`. **SEC-28** : un compte démo (`is_demo`) reçoit 403 sur les quatre
+gestes de profil [PATCH `/api/me`, POST `/api/me/password`, POST `/api/me/email`, DELETE
+`/api/me`] ; un compte ORDINAIRE les garde tous — jamais de 403 sur ce drapeau) ·
 `Integration/Admin/AdminDemoResetTest` (axes *auth & memberships* + *tenant isolation*, Démos PR B,
 console `/api/admin/demos` : un JWT club ne franchit jamais le firewall admin [401] et toute écriture
 exige le CSRF [403] ; `activate` ouvre une fenêtre de 4 h à l'horloge RÉELLE et un re-clic la
@@ -38,7 +40,11 @@ Un GESTIONNAIRE d'un club démo pose/relâche l'horloge [200] ; un membre NON ge
 [403, SEC-07] ; un gestionnaire d'un VRAI club est refusé [403] et son `simulated_today` reste
 INTACT ; date malformée/ambiguë → 422 ; le `clear` relâche l'horloge [NULL] ET invoque la maison
 unique de vidage de boîte `ClubMailboxPurger` [vérifié par interaction] ; poser l'horloge d'un club
-n'en touche JAMAIS un autre. Sans ce gate, l'horloge redeviendrait posable sur un vrai club) ·
+n'en touche JAMAIS un autre. **BCK-34** : une date avant le début de la saison en cours ou après la
+fin de la saison suivante → 422, rien écrit ; une date dans la fenêtre est acceptée. **SEC-30** : la
+contrainte CHECK en base (`club_simulated_today_demo_only`) refuse, même en contournant le
+contrôleur, une écriture de `simulated_today` sur un club non démo. Sans ce gate, l'horloge
+redeviendrait posable sur un vrai club ou sans bornes de saison) ·
 `Integration/Command/DemoPurgeStaleCommandTest` (axe *tenant isolation*, Démos PR B, purge nocturne
 `app:demo:purge-stale` : un club démo de l'animateur PROSPECT créé la VEILLE est détruit [ligne club
 supprimée, code FFBB libéré], tandis qu'un démo créé le JOUR MÊME, un démo PARTAGÉ [autre membre], un

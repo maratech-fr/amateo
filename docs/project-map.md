@@ -1,11 +1,11 @@
 # Project Map — Amateo (engine + backend)
 
-Last verified @ 2026-10-04 (AUD-SEC-25 — §2.5 listener tenant recalé (plus de source `X-Club-Id`) ; contrat moteur 1.1 de #1068 relu ; avant cela, 2026-10-02 : lot images de prod, `documentation-update`). Re-confronté au code :
-`.github/dependabot.yml` porte désormais **cinq** écosystèmes (pip/npm/composer/github-actions +
-**docker**, une entrée par dossier à Dockerfile : `docker/php`, `docker/engine`, `docker/frontend`,
-`docker/pdf-worker`, `docker/postgres`) — le § ci-dessous en citait quatre, corrigé. Reste du
-fichier (backend détaillé §2, engine §3, sécurité) non reconfronté cette passe — voir les stamps
-de zone.
+Last verified @ 2026-10-05 (`documentation-update`, lot backend « horloge & démo » — DOC-53). §2.5
+gagne un point 4 : `App\Clock\ClubClock` (horloge simulée réservée aux clubs `is_demo`, CHECK en
+base, `backend/src/Clock/ClubClock.php`) + `app.clock.real` (horloge réelle explicite pour les
+durées/horodatages de sécurité, `backend/config/services.yaml`) — confronté au code de la PR
+(`ClubClock.php`, `SeasonResolver::simulatedClockBoundsAmong`, `services.yaml`). Reste du fichier
+non reconfronté cette passe — voir les stamps de zone.
 
 Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend has been **rebuilt (React 19) and is active** — features live under `frontend/src/features/` (`ls` it, no count here — it rots): `auth`, `wizard` (data entry), `planning` (work-loop), `cockpit`, `matches`, `coach-wishes` (doléances), `club`, `profile`, `season-transition`, `legal`, `release-notes` (journal + modale « quoi de neuf ») et `admin` (console superadmin, garde et session distinctes). The feedback button/dialog are a shared primitive, not their own feature: `frontend/src/shared/feedback/`. See `../frontend/docs/frontend-wizard.md` and `frontend-spec.md`. Generated/verified during onboarding against the real code and the `code-review-graph` knowledge graph.
 
@@ -122,6 +122,7 @@ All services share the Docker network `amateo_network`.
 1. `TenantFilter` (Doctrine SQL filter) appends `{table}.club_id = :param` on entities owning a `club_id` column (fail-secure — column-based, not marker-based); registered in `config/packages/doctrine.yaml`. Entities also carry the explicit `App\Entity\TenantOwnedInterface` marker (BCK-03) that drives the **app-layer** State provider/processor guards via `instanceof` (replacing `method_exists` duck-typing); `TenantOwnedInterfaceCompletenessTest` keeps the marker set ≡ the club_id-column set.
 2. `TenantFilterListener` (kernel REQUEST, **priority 7 — AFTER the firewall (8)**; source: `backend/src/EventListener/TenantFilterListener.php`): resolves club from `_club_id` attr (set by public token-controllers) / **else the authenticated JWT user's single active `ClubUser` membership** — there is **no client-supplied override** (`X-Club-Id` header removed server-side, AUD-SEC-25). Enables the Doctrine filter and sets the `app.club_id` GUC via `TenantConnectionContext` (`set_config`). ⚠ Priority 8 (before auth) was the historical cross-club leak bug — never move it back. **RLS is ACTIVE** (migration `Version20260703120000`, SEC-03): FORCE policies on all `club_id` tables, runtime = `amateo_app`; migrations/ops via the `admin` connection (`amateo_owner`, bypasses RLS = superadmin door). 3 layers: Doctrine filter + RLS + provider/processor scoping for Club/User. See `backend/docs/TENANT.md`, `docs/security/rls.md`.
 3. Cache pool `cache.schedule` (4h, Redis, tag-aware) — le payload solveur, purgé par TAG club via `CacheInvalidationListener` à la fin du travail (kernel.terminate ET événements worker Messenger). Le pool `cache.tenant` n'existe pas (aucun writer).
+4. **Horloge de club** (`App\Clock\ClubClock`, décore le service `clock`) : un club peut vivre à une date simulée, **réservé aux clubs de démonstration** (`club.is_demo`, contrainte `CHECK` en base — `club.simulated_today IS NULL OR is_demo`). Partout où une DURÉE/HORODATAGE de sécurité se calcule (TTL du JWT Mercure, lien de changement d'e-mail, délai d'effacement RGPD, journal d'audit, préavis compte orphelin), l'horloge **réelle** est injectée explicitement (`app.clock.real`) pour ne jamais suivre une date simulée. Comptes de démonstration (`app_user.is_demo`) : ne peuvent ni changer d'e-mail/mot de passe/prénom-nom ni se supprimer. Détail : `backend/docs/backend-inventory.md` §Module démo, `specs/courantes/accueil-cockpit-temporel.md`.
 - Reference docs: `backend/docs/TENANT.md`, `backend/docs/RLS.md`.
 
 ### 2.6 Tooling (verified)

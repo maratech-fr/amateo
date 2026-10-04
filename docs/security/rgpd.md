@@ -77,11 +77,12 @@ couverte ou exclue — le même défaut par défaut que pour l'export.
 
 ## 3. Mécanismes clés (pointeurs code)
 
-- **Anonymisation** : `AccountErasureService` — email → `deleted-{id}@anonymized.invalid`, hash aléatoire, transactionnel, memberships désactivés club-par-club sous GUC RLS. **P4-77** (ceinture) : `MembershipController` refuse en 409 de réactiver ou approuver une adhésion dont `User::anonymizedAt` est posé — ressusciter une identité anonymisée est impossible même si une pending y échappait.
+- **Anonymisation** : `AccountErasureService` — email → `deleted-{id}@anonymized.invalid`, hash aléatoire, transactionnel, memberships désactivés club-par-club sous GUC RLS. **P4-77** (ceinture) : `MembershipController` refuse en 409 de réactiver ou approuver une adhésion dont `User::anonymizedAt` est posé — ressusciter une identité anonymisée est impossible même si une pending y échappait. **BCK-34** : l'horodatage d'effacement est posé sur l'horloge **réelle** (`#[Autowire(service: 'app.clock.real')]`) — la date simulée d'un club démo ne peut ni raccourcir ni allonger ce délai.
 - **Purge club différée** : `Club.erasureScheduledAt` (+30 j) → `PurgeErasedClubsCommand` (revalide à l'échéance, auto-annule si un membre actif est revenu). Fiche FFBB épargnée, état d'abonnement vidé (`ErasedClubPurger`).
+- **Préavis compte orphelin** (P4-301) : `OrphanAccountNotifier` horodate aussi sur l'horloge réelle (même garde BCK-34), comptes démo exclus par le drapeau `is_demo` (SEC-28).
 - **Win-back** : ré-inscription sur l'ARA d'un club sans membre actif (`ClubRepository::findRealByFfbbCode`, démos ignorées) n'inscrit plus directement (décision fondateur 2026-10-03) — elle ouvre une demande `club_pending`, approuvée par le contact officiel FFBB (même porte que la création d'un club neuf) ; à l'approbation, `ClubApprovalService::approve` appelle `ClubWinBackService::reprise` (owner actif d'office, re-seed si le workspace a été purgé). Rappel J-7 avant la suppression définitive au contact officiel : `app:clubs:erasure-remind` (`ClubErasureReminderCommand`, job quotidien `AdminJobCatalog`), idempotent via `Club.erasureReminderSentAt`.
 - **Activité** : `LoginSuccessListener` (throttlé 1 écriture/jour, best-effort — l'authenticator JWT déclenche l'événement à chaque requête).
-- **Audit** : `AuditTrail` (INSERT DBAL + SAVEPOINT, no-PII) ; append-only tenu par la DB (aucune policy UPDATE/DELETE) ; lecture = future console superadmin (SA1).
+- **Audit** : `AuditTrail` (INSERT DBAL + SAVEPOINT, no-PII) ; append-only tenu par la DB (aucune policy UPDATE/DELETE) ; horodatage sur l'horloge réelle (BCK-34, même raison) ; lecture = future console superadmin (SA1).
 - **Consentement** : requis au register (400 sinon, validation payload-only = enumeration-safe A3) ; version des textes = `AuthController::TERMS_VERSION`.
 
 ## 4. Doctrine backups (**livrée** — cf. `docs/ops/backup-restore.md`)
