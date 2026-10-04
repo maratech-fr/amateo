@@ -1763,8 +1763,8 @@
         },
         {
             "id": "1c4ec1b1-a955-4e09-8250-f6d362bdcbe2",
-            "firstName": "Nicolas",
-            "lastName": "Barilleau",
+            "firstName": "Coach PoivreSel",
+            "lastName": "",
             "email": null,
             "phone": null,
             "maxDaysOverride": null,
@@ -1787,8 +1787,8 @@
         },
         {
             "id": "32e619e7-0c05-495f-9463-8a2d82e5a2f4",
-            "firstName": "Lionel",
-            "lastName": "Lacroute",
+            "firstName": "Coach Lio",
+            "lastName": "",
             "email": null,
             "phone": null,
             "maxDaysOverride": null,
@@ -1835,8 +1835,8 @@
         },
         {
             "id": "3dcf9c78-f60f-4465-86b0-f847a90f1d34",
-            "firstName": "Emerick",
-            "lastName": "Creantor",
+            "firstName": "Coach Eme",
+            "lastName": "",
             "email": null,
             "phone": null,
             "maxDaysOverride": null,
@@ -1919,8 +1919,8 @@
         },
         {
             "id": "98ab8e6a-1ff4-4c0c-af3c-b67fe78dbc55",
-            "firstName": "Flo",
-            "lastName": "Tapaunat",
+            "firstName": "Coach Flo",
+            "lastName": "",
             "email": null,
             "phone": null,
             "maxDaysOverride": null,
@@ -1955,8 +1955,8 @@
         },
         {
             "id": "b5d2125b-ccd1-4b6f-9c88-fcfb4c468afd",
-            "firstName": "Luca",
-            "lastName": "Blanchini",
+            "firstName": "Coach Luc",
+            "lastName": "",
             "email": null,
             "phone": null,
             "maxDaysOverride": null,
@@ -2015,8 +2015,8 @@
         },
         {
             "id": "f85037c7-3bae-4985-919a-7f5b8611adba",
-            "firstName": "Pierre",
-            "lastName": "Chauvin",
+            "firstName": "Coach Pie",
+            "lastName": "",
             "email": null,
             "phone": null,
             "maxDaysOverride": null,
@@ -2027,8 +2027,8 @@
         },
         {
             "id": "f857a3fe-9c00-4477-b053-b4f964e8ab74",
-            "firstName": "Maxime",
-            "lastName": "Dionnet",
+            "firstName": "Coach Max",
+            "lastName": "",
             "email": null,
             "phone": null,
             "maxDaysOverride": null,
@@ -5050,7 +5050,7 @@
             "scopeTargetId": "32e619e7-0c05-495f-9463-8a2d82e5a2f4",
             "family": "COACH_AVAILABILITY",
             "ruleType": "HARD",
-            "name": "Lionel Lacroute · indispo vendredi",
+            "name": "Coach Lio · indispo vendredi",
             "config": {
                 "unavailableDays": [
                     5
@@ -5110,7 +5110,7 @@
             "scopeTargetId": "3dcf9c78-f60f-4465-86b0-f847a90f1d34",
             "family": "COACH_AVAILABILITY",
             "ruleType": "HARD",
-            "name": "Emerick Creantor · indispo jeudi",
+            "name": "Coach Eme · indispo jeudi",
             "config": {
                 "unavailableDays": [
                     4
@@ -5125,7 +5125,7 @@
             "scopeTargetId": "1c4ec1b1-a955-4e09-8250-f6d362bdcbe2",
             "family": "COACH_AVAILABILITY",
             "ruleType": "HARD",
-            "name": "Nicolas Barilleau · indispo jeudi",
+            "name": "Coach PoivreSel · indispo jeudi",
             "config": {
                 "unavailableDays": [
                     4

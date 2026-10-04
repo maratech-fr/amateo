@@ -1,5 +1,5 @@
 {
-  "clubId": "club-overlap-nicolas",
+  "clubId": "club-overlap-shared-coach",
   "seasonId": "season-2026",
   "version": "2.0",
   "solverSeed": 42,
@@ -52,34 +52,34 @@
   ],
   "coaches": [
     {
-      "id": "nicolas",
-      "firstName": "Nicolas",
-      "lastName": "Barilleau",
+      "id": "shared-coach",
+      "firstName": "Coach PoivreSel",
+      "lastName": "",
       "isActive": true
     }
   ],
   "slotTemplates": [],
   "constraints": [
     {
-      "id": "tc-u18m1-nicolas",
+      "id": "tc-u18m1-shared-coach",
       "type": "TEAM_COACH",
       "teamId": "u18m1",
       "severity": "HARD",
-      "value": "nicolas",
+      "value": "shared-coach",
       "metadata": {
-        "coachId": "nicolas",
+        "coachId": "shared-coach",
         "role": "MAIN",
         "isRequired": true
       }
     },
     {
-      "id": "cpu-sm2-nicolas",
+      "id": "cpu-sm2-shared-coach",
       "type": "COACH_PLAYER_UNAVAILABILITY",
       "teamId": "sm2",
       "severity": "HARD",
-      "value": "nicolas",
+      "value": "shared-coach",
       "metadata": {
-        "coachId": "nicolas",
+        "coachId": "shared-coach",
         "teamId": "sm2",
         "position": null,
         "isActive": true
