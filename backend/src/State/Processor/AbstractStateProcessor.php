@@ -81,7 +81,7 @@ abstract class AbstractStateProcessor implements ProcessorInterface
     public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): mixed
     {
         $request = $this->requestStack->getCurrentRequest();
-        $clubId = $request?->attributes->get('_club_id') ?? $request?->headers->get('X-Club-Id');
+        $clubId = $request?->attributes->get('_club_id');
         $seasonId = $request?->attributes->get('_season_id') ?? $request?->headers->get('X-Season-Id');
 
         // SEC-07 — before the season guard so 403 wins over 409 (Import idiom).

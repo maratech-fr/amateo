@@ -324,11 +324,10 @@ final class MembershipController extends AbstractController
         // le trait partagé, au lieu d'être un second tirage indépendant
         // (`findOneBy(userId, isActive)`). Ce que ça corrige : deux endroits ne
         // peuvent plus répondre différemment à « quel club ? » dans une même
-        // requête. Ce que ça NE corrige PAS : pour un gestionnaire multi-club
-        // SANS `X-Club-Id` (le front n'en envoie pas), c'est
-        // `TenantFilterListener::resolveClubId` qui choisit arbitrairement —
-        // le non-déterminisme vit là, et sa résolution est un choix produit
-        // (quel club est « courant » ?) rattaché à P1-1. Voir P4-8 (rouverte).
+        // requête. Ce que ça NE corrige PAS : pour un gestionnaire multi-club,
+        // c'est `TenantFilterListener::resolveClubId` qui choisit (l'adhésion
+        // active la plus ancienne, AUD-BCK-10) — un déterminisme, pas un choix
+        // produit (quel club est « courant » ?) rattaché à P1-1. Voir P4-8 (rouverte).
         $clubId = $this->resolveCurrentClubId($this->requestStack);
         if (null === $clubId) {
             return $this->json(['error' => 'Accès refusé.'], 403);

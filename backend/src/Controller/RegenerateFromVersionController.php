@@ -140,11 +140,6 @@ final class RegenerateFromVersionController extends AbstractController implement
             return $clubId;
         }
 
-        $clubId = $request?->headers->get('X-Club-Id');
-        if (\is_string($clubId) && '' !== $clubId) {
-            return $clubId;
-        }
-
         return null;
     }
 }

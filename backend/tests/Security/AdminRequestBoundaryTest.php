@@ -129,22 +129,17 @@ final class AdminRequestBoundaryTest extends WebTestCase
     }
 
     /**
-     * SEC-17 — une requête admin ne pose JAMAIS le tenant, même si elle porte un
-     * `X-Club-Id`.
+     * SEC-17 — une requête admin ne pose JAMAIS le tenant, même si elle tente de
+     * réclamer un club dans un en-tête.
      *
-     * Le contrat SA0 dit « la session admin ne pose jamais `app.club_id` ». Le
-     * listener tenant le contredisait : il tourne sur toutes les requêtes, et son
-     * anti-spoof ne s'arme que `if ($user instanceof User)`. Sous identité
-     * `SuperAdmin`, le club RÉCLAMÉ par l'en-tête passait donc sans aucun contrôle
-     * d'appartenance — filtre Doctrine activé et GUC RLS posé sur la connexion
-     * applicative, au nom d'un club choisi par l'appelant.
-     *
-     * Impact mesuré nul aujourd'hui (les endpoints admin lisent par la connexion
-     * `admin`, qui contourne RLS). Mais un mécanisme qui contredit son propre
-     * contrat est une bombe pour le prochain qui l'étend : le jour où un endpoint
-     * admin lira par la connexion applicative, il lira le club que l'attaquant a
-     * demandé. D'où l'early-return — et ce test, sans lequel rien ne le retenait
-     * (vérifié : le retirer laissait toute la suite verte).
+     * Le contrat SA0 dit « la session admin ne pose jamais `app.club_id` ».
+     * L'early-return `/api/admin` du listener tenant le garantit : il sort avant
+     * toute résolution de club. (Depuis AUD-SEC-25, le club ne vient de toute
+     * façon plus que de l'adhésion d'un `User` authentifié — un `SuperAdmin` n'en
+     * a aucune, et l'en-tête `X-Club-Id` n'est plus lu nulle part ; l'en-tête
+     * porté ici est donc inerte, mais le test épingle que même une telle tentative
+     * ne pose aucun GUC.) Ce test est le seul filet de l'early-return (vérifié :
+     * le retirer laissait toute la suite verte).
      */
     public function testAnAdminRequestNeverSetsTheTenantGuc(): void
     {

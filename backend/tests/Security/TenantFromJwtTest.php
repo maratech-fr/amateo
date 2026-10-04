@@ -56,15 +56,26 @@ final class TenantFromJwtTest extends WebTestCase
         self::assertSame($team->getId(), $data['member'][0]['id']);
     }
 
-    public function testSpoofedHeaderForForeignClubIsForbidden(): void
+    /**
+     * NR AUD-SEC-25. L'en-tête `X-Club-Id` d'un club étranger n'est plus lu : le
+     * tenant reste celui de l'adhésion du JWT. Hier un 403 ; aujourd'hui une
+     * assertion sur les DONNÉES — le membre du club JWT3 ne voit que son équipe,
+     * jamais celle de JWT4 porté dans l'en-tête.
+     */
+    public function testForeignClubHeaderIsIgnoredAndOnlyOwnDataIsReturned(): void
     {
-        [$user] = $this->seedClub('JWT3');
-        [, $otherClub] = $this->seedClub('JWT4');
+        [$user, $club, $season] = $this->seedClub('JWT3');
+        $team = $this->createTeam($club, $season, 'Own Team');
+        [, $otherClub, $otherSeason] = $this->seedClub('JWT4');
+        $this->createTeam($otherClub, $otherSeason, 'Foreign Team');
 
         $this->client->loginUser($user);
         $this->client->request('GET', '/api/teams', [], [], ['HTTP_X-Club-Id' => $otherClub->getId()]);
 
-        self::assertResponseStatusCodeSame(403);
+        self::assertResponseStatusCodeSame(200);
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertCount(1, $data['member']);
+        self::assertSame($team->getId(), $data['member'][0]['id'], 'l’en-tête du club étranger est ignoré : seules les données du club du JWT remontent');
     }
 
     protected function setUp(): void

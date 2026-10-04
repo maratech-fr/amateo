@@ -100,7 +100,7 @@ class ClubLeagueWindowStateProcessor extends AbstractStateProcessor
     private function effectiveLeagueOfCurrentClub(): string
     {
         $request = $this->requestStack->getCurrentRequest();
-        $clubId = $request?->attributes->get('_club_id') ?? $request?->headers->get('X-Club-Id');
+        $clubId = $request?->attributes->get('_club_id');
         $league = \is_string($clubId) ? $this->entityManager->getRepository(Club::class)->find($clubId)?->getLeague() : null;
 
         /** @var LeagueMatchWindowRepository $seedRepository */

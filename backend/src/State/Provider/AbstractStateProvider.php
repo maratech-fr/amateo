@@ -36,7 +36,7 @@ abstract class AbstractStateProvider implements ProviderInterface
     public function provide(Operation $operation, array $uriVariables = [], array $context = []): object|array|null
     {
         $request = $this->requestStack->getCurrentRequest();
-        $clubId = $request?->attributes->get('_club_id') ?? $request?->headers->get('X-Club-Id');
+        $clubId = $request?->attributes->get('_club_id');
 
         if ($operation instanceof GetCollection) {
             return $this->provideCollection($operation, $context, $clubId);

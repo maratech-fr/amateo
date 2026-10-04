@@ -69,7 +69,7 @@ final class ValidateConstraintsController extends AbstractController
         $this->managementAccessGuard->assertManager();
 
         $request = $this->requestStack->getCurrentRequest();
-        $clubId = $request?->attributes->get('_club_id') ?? $request?->headers->get('X-Club-Id');
+        $clubId = $request?->attributes->get('_club_id');
         if (!\is_string($clubId) || '' === $clubId) {
             return $this->json(['error' => 'No club in context.'], Response::HTTP_BAD_REQUEST);
         }

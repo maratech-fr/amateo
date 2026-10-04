@@ -15,7 +15,8 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
  * SEC-07: authorization guard for management-only write endpoints.
  *
  * The tenant listener already proved the caller holds an *active* membership on
- * the current club (spoofed `X-Club-Id` → 403). This guard adds the missing
+ * the current club (the club is derived from the JWT membership — AUD-SEC-25).
+ * This guard adds the missing
  * layer for the write choke points that only compared the club id
  * (validate/reopen/manual-edit/generate/reorder/appearance):
  * the membership must be a **management** role (owner/admin).
@@ -47,9 +48,6 @@ final class ManagementAccessGuard
     {
         $request = $this->requestStack->getCurrentRequest();
         $clubId = $request?->attributes->get('_club_id');
-        if (!\is_string($clubId) || '' === $clubId) {
-            $clubId = $request?->headers->get('X-Club-Id');
-        }
 
         $user = $this->security->getUser();
         $membership = ($user instanceof User && \is_string($clubId) && '' !== $clubId)

@@ -186,8 +186,6 @@ final class CoachWishCampaignActionController extends AbstractController
             return $clubId;
         }
 
-        $clubId = $request?->headers->get('X-Club-Id');
-
-        return \is_string($clubId) && '' !== $clubId ? $clubId : null;
+        return null;
     }
 }
