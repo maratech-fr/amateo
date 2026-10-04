@@ -98,7 +98,7 @@ curl -X POST http://localhost:8080/api/schedules \
 | `Content-Type` | `application/json` | Format du body |
 | `Authorization` | `Bearer <jwt>` | **Toute** route `/api/*` exige un JWT ; le club est dérivé du membership de l'utilisateur authentifié |
 
-Le header `X-Club-Id` n'est **pas** obligatoire (le frontend ne l'envoie jamais) : le backend résout le club depuis le JWT. Un `X-Club-Id` pointant vers un club étranger est rejeté en 403. Attention aussi aux rôles : les **écritures** (création de schedule, génération, export) exigent le rôle **management** dans le club (SEC-07).
+Il n'existe **plus** de header `X-Club-Id` côté serveur (AUD-SEC-25) : le backend résout le club UNIQUEMENT depuis la membership active de l'utilisateur authentifié par le JWT ; un en-tête de ce nom envoyé par un client est ignoré. Attention aussi aux rôles : les **écritures** (création de schedule, génération, export) exigent le rôle **management** dans le club (SEC-07).
 
 ### Réponse
 
@@ -696,7 +696,7 @@ chaque régénération, dé-grisant le bouton « Régénérer » en permanence e
 
 - `{id}` est toujours l'UUID du schedule (ex. `a1b2c3d4-e5f6-7890-abcd-ef1234567890`).
 - Toutes les routes sous `/api/*` passent par API Platform, sauf `/generate` et `/export-pdf` qui sont des contrôleurs personnalisés.
-- Le header `Authorization: Bearer <jwt>` est obligatoire sur **toutes** les routes `/api/*` (le club est dérivé du JWT — `X-Club-Id` n'est pas requis). Les écritures exigent le rôle management (SEC-07).
+- Le header `Authorization: Bearer <jwt>` est obligatoire sur **toutes** les routes `/api/*` (le club est dérivé du JWT — il n'y a plus de header `X-Club-Id` côté serveur, AUD-SEC-25). Les écritures exigent le rôle management (SEC-07).
 
 ---
 

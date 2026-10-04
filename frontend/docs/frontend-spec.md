@@ -203,8 +203,9 @@ export const api = ky.create({
 ### Règles
 
 - **Toutes les requêtes passent par l'instance `api` ky.** Pas de `fetch()` direct dans les composants.
-- **Aucun header `X-Club-Id`.** Le club actif est résolu **côté serveur** depuis la membership
-  du JWT (`backend-inventory.md` §4) — un header falsifié est refusé en 403.
+- **Aucun header `X-Club-Id`** — il n'existe même plus côté serveur (AUD-SEC-25). Le club actif
+  est résolu **côté serveur** depuis la membership du JWT (`backend-inventory.md` §4) ; un
+  header de ce nom envoyé par un client est ignoré, pas analysé.
 - **`X-Season-Id` est envoyé, mais seulement s'il y a une sélection explicite.** Le hook
   `beforeRequest` pose l'en-tête depuis `seasonStore.selectedSeasonId` quand il est non nul et
   que la requête n'en porte pas déjà un (un appel cross-saison ponctuel — re-datation lors

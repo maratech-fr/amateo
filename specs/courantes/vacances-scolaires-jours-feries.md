@@ -1,12 +1,12 @@
 # Vacances scolaires & jours fériés — référentiels calendaires
 
-Last verified @ 2026-09-30 (`documentation-update`, rotation de fraîcheur — sujet sans rapport, PR
-uniformité heures/durées). Re-confronté : `SchoolZoneResolver::ZONES` porte exactement les 13 codes
-listés (`A`/`B`/`C`/`CORSE` + 9 DOM/TOM, `backend/src/Service/SchoolZoneResolver.php:27-33`) ✓ ;
+Last verified @ 2026-10-04 (`documentation-update`, rotation de fraîcheur — sujet sans rapport, PR
+suppression serveur de `X-Club-Id`). Re-confronté : `SchoolZoneResolver::ZONES` porte exactement
+les 13 codes listés (`A`/`B`/`C`/`CORSE` + 9 DOM/TOM, `backend/src/Service/SchoolZoneResolver.php:27-32`) ✓ ;
 `HolidayPaths` toujours composé par `CustomRoutesOpenApiFactory` (`import App\OpenApi\PathContributor\HolidayPaths`,
-`backend/src/OpenApi/CustomRoutesOpenApiFactory.php:19,72`) ✓ ; `AdminJobCatalog` déclare toujours
+`backend/src/OpenApi/CustomRoutesOpenApiFactory.php:20,74`) ✓ ; `AdminJobCatalog` déclare toujours
 `import-school-holidays`/`import-public-holidays` en `quarterly(4)`/`quarterly(4, 30)`,
-`manualTriggerAllowed: true` (`backend/src/AdminJob/AdminJobCatalog.php:67-68`) ✓. Reste du fichier
+`manualTriggerAllowed: true` (`backend/src/AdminJob/AdminJobCatalog.php:68-69`) ✓. Reste du fichier
 non re-contrôlé cette passe.
 *(historique des passes : `git log -p --follow specs/courantes/vacances-scolaires-jours-feries.md`)*
 

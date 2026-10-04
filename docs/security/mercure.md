@@ -138,15 +138,17 @@ braces, no hyphens — is a valid template varname, so the selector
 **every club's** topics. Measured live on the dev stack before the fix: a member
 of club A received club B's generation events.
 
-The entry point was `X-Club-Id`: the membership check compares in Postgres,
-which normalises, so a member could pass their own club in the degraded form and
-have that raw string land in `_club_id`. Fixed at the source —
-`TenantFilterListener` now validates the club's **shape** exactly like the
-season's (`backend/src/EventListener/TenantFilterListener.php`, `isUuid` guard
-before `_club_id` is set, 403 otherwise: refused, never silently normalised) —
-plus a defence-in-depth re-check in `MercureAuthController` before signing.
-Guarded by `TenantIsolationTest::testANonCanonicalClubHeaderIsRejectedEvenForOwnClub`
-(phase1) and `MercureAuthTest::testANonCanonicalClubIdNeverReachesTheSelector`.
+The entry point used to be `X-Club-Id` (the membership check compared in
+Postgres, which normalises, so a member could pass their own club in the
+degraded form and have that raw string land in `_club_id`); the header has
+since been removed server-side entirely (AUD-SEC-25) — the club now comes
+solely from the JWT membership, so this specific entry point is gone. The
+**guard stays active regardless of the source**: `TenantFilterListener`
+validates the club's **shape** exactly like the season's
+(`backend/src/EventListener/TenantFilterListener.php`, `isUuid` guard before
+`_club_id` is set, 403 otherwise: refused, never silently normalised) — plus a
+defence-in-depth re-check in `MercureAuthController` before signing. Guarded by
+`MercureAuthTest::testANonCanonicalClubIdNeverReachesTheSelector`.
 **Rule for any future selector**: never interpolate a client-influenced string
 into a topic selector without canonical validation.
 

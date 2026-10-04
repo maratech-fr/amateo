@@ -93,7 +93,7 @@ Axe **dédié et systématique** : « l'app est-elle protégée contre les attaq
 
 | # | Attaque (nommée, concrète) | Protection attendue | Vecteur |
 |---|---|---|---|
-| A1 | **Accès cross-tenant** — un gestionnaire du club X lit/écrit les données du club Y (forcer `X-Club-Id`/`X-Season-Id`, IDOR sur un UUID d'une autre org) | Résolution tenant serveur (JWT), RLS `FORCE` sur `club_id`, header espoofé → 403 | Autorisation/IDOR |
+| A1 | **Accès cross-tenant** — un gestionnaire du club X lit/écrit les données du club Y (forcer `X-Season-Id`, IDOR sur un UUID d'une autre org) | Résolution tenant serveur depuis le JWT **uniquement** (`X-Club-Id` retiré côté serveur, AUD-SEC-25 — un en-tête de ce nom est ignoré), RLS `FORCE` sur `club_id` | Autorisation/IDOR |
 | A2 | **Brute-force / credential stuffing** sur `/login` (password spray sur emails devinés) | Rate-limit + éventuel lockout, latence/réponse uniforme | Auth · Rate-limit |
 | A3 | **Énumération de comptes** — register/login/reset révèlent si un email existe (réponse ou timing) | Réponses & latences uniformes, message générique | Auth |
 | A4 | **Falsification de JWT** — `alg:none`, secret faible, token expiré accepté, confusion HS/RS | Algo fixé, clé forte hors repo, exp courte, vérif signature | Auth |
@@ -120,7 +120,7 @@ Pour **chaque vecteur** ci-dessous : verdict **protégé / partiel / absent / no
 
 1. **Injection** — SQLi : Doctrine en paramètres liés partout, **zéro** DQL/SQL concaténé avec de l'input (y compris le GUC `app.club_id` via `bindValue`) ; commande/OS (`exec`, `shell_exec`, `proc_open`, `os.system` côté engine) ; **XSS** front : `dangerouslySetInnerHTML`, injection dans `href`/`src`, HTML non échappé ; injection de log/header.
 2. **Auth & session** — JWT : algo fixé (pas de `none`/`HS↔RS` confusion), expiration courte, clé hors repo ; **anti-brute-force sur le login** (throttle + éventuel lockout) ; **énumération d'emails** (réponses/latences uniformes register/login/reset) ; token de reset (usage unique, TTL) ; politique de mot de passe ; pas d'auto-login après register sans garde.
-3. **Autorisation / IDOR / escalade** — franchissement club/saison **sous angle attaque** (forcer `X-Club-Id`/`X-Season-Id`, IDOR sur un UUID d'entité d'un autre club), escalade de rôle (SEC-07 gate management), opération API Platform exposée sans `security`.
+3. **Autorisation / IDOR / escalade** — franchissement club/saison **sous angle attaque** (forcer `X-Season-Id` ; `X-Club-Id` n'a plus d'effet côté serveur depuis AUD-SEC-25, ne pas le retester comme vecteur vivant ; IDOR sur un UUID d'entité d'un autre club), escalade de rôle (SEC-07 gate management), opération API Platform exposée sans `security`.
 4. **CSRF** — recenser toute mutation qui s'appuie sur un **cookie envoyé automatiquement** ; SPA + JWT `Bearer` = risque faible **si** aucun cookie de session ambiant n'autorise une écriture — le **vérifier**, ne pas le supposer.
 5. **Rate-limiting / DoS** — throttle API par utilisateur (SEC-11) et sur les routes anonymes (login/register/reset) ; **taille max de payload** (upload logo, payload de génération) ; **borne de complexité de génération** (bombe combinatoire → solveur) ; timeout solveur ; abus Mercure (abonnements) ; épuisement Redis (locks).
 6. **SSRF / requêtes sortantes** — backend→engine sur URL **fixe** (jamais dérivée d'input) ; fetch de logo / futur **import FFBB** : URL externe contrôlée par l'utilisateur ? suivit de redirections ? plage IP interne atteignable ? taille/MIME bornés ?

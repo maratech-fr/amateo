@@ -211,7 +211,7 @@ Groups (PHP attributes): `#[Group('phase1')]`, `#[Group('integration')]`, `#[Gro
 ### Blocking guardrails (`phase1`)
 | Test | Asserts |
 |------|---------|
-| `Security/TenantIsolationTest` | 403 on another club's data · 200 on own club · 403 when membership inactive · 200 with no `X-Club-Id` |
+| `Security/TenantIsolationTest` | a `X-Club-Id` header is ignored (own club's data only, not 403) · 200 on own club · 403 when membership inactive · 200 with no header · an anonymous request carrying the header never sets the tenant context |
 | `Security/TenantCacheIsolationTest` | 2 real tests: cache invalidation isolates clubs; entity without `club_id` purges nothing. |
 | `Queue/ConcurrentGenerationTest` | 2nd `ClubGenerationLock` acquire for same club fails · different clubs acquire concurrently · wrong token cannot release |
 | `CrossStack/ContractSchemaTest` (`phase1`+`contract`) | engine payload shape valid (version, clubId, seasonId, teams, venues, coaches, constraints, trainingSlots, sportCategoryId, scopeTargetId…) · POSTs to the real engine when reachable, else skips |
