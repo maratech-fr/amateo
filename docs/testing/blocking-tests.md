@@ -51,6 +51,17 @@ supprimée, code FFBB libéré], tandis qu'un démo créé le JOUR MÊME, un dé
 club NON démo et la démo BCCL permanente [autre compte `demo-bccl@`, hors scope] ne bougent JAMAIS —
 chemin sûr `DemoClubMaterializer::teardownStaleDemos`. Sans ce gate, un élargissement du prédicat
 détruirait un vrai club ou la démo permanente en silence) ·
+`Security/DemoRetainedClubReclaimTest` (axe *auth & memberships*, P4-294 — conserver 14 j le club
+démo d'un prospect puis le reprendre par l'approbation P3-4 : la console « Conserver » est refusée
+[409] tant que la fenêtre démo est OUVERTE [horloge réelle], acceptée fermée → l'animateur est
+DÉTACHÉ, l'horloge revient à null, l'échéance J+14 est posée ; l'approbation d'un code dont le seul
+porteur est un club démo CONSERVÉ le REPREND [`findRetainedDemoByFfbbCode` → `is_demo=false`, crédits
+remis à 0, horloge/conservation effacées, gestionnaire ACTIF, nom conservé, JAMAIS un 2e club], un
+club RÉEL du même code garde la priorité [démo intacte], deux conservés même code → le PLUS RÉCENT ;
+la purge nocturne `teardownExpiredRetainedDemos` détruit un conservé expiré, épargne un non expiré et
+un repris [membre actif]. Falsifié dans les deux sens [refus 409 neutralisé, priorité du club réel
+neutralisée]. Sans ce gate, un club conservé serait immortel, ou l'approbation créerait un club neuf
+au lieu de reprendre l'espace de la démo) ·
 `Integration/Command/BcclProdSeedCommandTest` (axe *auth & memberships* : le seed BCCL de PROD
 [`app:bccl:seed-prod`] pose des gestionnaires PRÉ-VÉRIFIÉS [le rail /register est mort en prod],
 rattachés au bon club [ARA0069036, jamais la démo], avec des mots de passe pilotés par options —

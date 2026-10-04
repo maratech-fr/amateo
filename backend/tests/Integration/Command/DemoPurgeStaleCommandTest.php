@@ -25,7 +25,9 @@ use Symfony\Component\Console\Tester\CommandTester;
  *  - créé le JOUR MÊME → gardé (réactiver la fenêtre le même jour réutilise le club) ;
  *  - un club démo PARTAGÉ (autre membre) → jamais détruit ;
  *  - un club NON démo de l'animateur → jamais détruit (un vrai club) ;
- *  - la démo BCCL permanente (autre compte, demo-bccl@) → hors scope, jamais concernée.
+ *  - la démo BCCL permanente (autre compte, demo-bccl@) → hors scope, jamais concernée ;
+ *  - (P4-294) un club démo CONSERVÉ expiré (par la table, détaché de l'animateur) est détruit
+ *    SANS compte animateur, un conservé encore dans ses 14 jours survit.
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -73,6 +75,24 @@ final class DemoPurgeStaleCommandTest extends KernelTestCase
     {
         self::assertSame(Command::SUCCESS, $this->tester->execute([]), $this->tester->getDisplay());
         self::assertStringContainsString('No demo animator account', $this->tester->getDisplay());
+    }
+
+    /**
+     * P4-294 — la purge nocturne détruit AUSSI les clubs démo CONSERVÉS expirés (détachés de
+     * l'animateur, sélectionnés par la table), indépendamment du compte animateur : un conservé
+     * dont l'échéance est PASSÉE part, un conservé encore dans ses 14 jours survit.
+     */
+    public function testExpiredRetainedDemosArePurgedIndependentlyOfTheAnimator(): void
+    {
+        // AUCUN compte animateur seedé : la purge des conservés ne doit pas en dépendre.
+        $expired = $this->seedRetainedClub(new DateTimeImmutable('now')->modify('-1 day'));
+        $alive = $this->seedRetainedClub(new DateTimeImmutable('now')->modify('+3 days'));
+
+        self::assertSame(Command::SUCCESS, $this->tester->execute([]), $this->tester->getDisplay());
+
+        $this->em->clear();
+        self::assertNull($this->em->getRepository(Club::class)->find($expired), 'un conservé expiré est détruit, sans animateur');
+        self::assertNotNull($this->em->getRepository(Club::class)->find($alive), 'un conservé encore dans ses 14 jours survit');
     }
 
     protected function setUp(): void
@@ -126,6 +146,21 @@ final class DemoPurgeStaleCommandTest extends KernelTestCase
         $this->clearGuc();
 
         return $clubId;
+    }
+
+    /** Un club démo CONSERVÉ (détaché de l'animateur) avec l'échéance donnée — aucune adhésion. */
+    private function seedRetainedClub(DateTimeImmutable $retainedUntil): string
+    {
+        $suffix = bin2hex(random_bytes(4));
+        $club = new Club;
+        $club->setName('Conservé ' . $suffix)->setSlug('conserve-' . $suffix)->setTimezone('Europe/Paris')->setLocale('fr');
+        $club->setFfbbClubCode($this->ara());
+        $club->setIsDemo(true);
+        $club->setDemoRetainedUntil($retainedUntil);
+        $this->em->persist($club);
+        $this->em->flush();
+
+        return $club->getId();
     }
 
     /** Un code FFBB syntaxiquement valide et unique par test (3 lettres + 7 chiffres). */
