@@ -512,7 +512,7 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                 {/* A11Y-22 — case RÉELLE teintée (`tint(venueColor)`) : sous-ligne en `text-foreground`,
                     dé-emphase par la TAILLE seule (`text-[10px]`), jamais par l'opacité/`muted` (même
                     recette que `WeekendGrid`). Le `text-muted-foreground` tombait à 4,24-4,33 en sombre
-                    (coach « … Patin », « Sans coach ») sur une teinte de gymnase composée sur card. */}
+                    (un coach, « Sans coach ») sur une teinte de gymnase composée sur card. */}
                 <span className="truncate text-[10px] text-foreground">{cell.secondaryLabel}</span>
               </button>
               {renderLock(cell.slotId, cell.teamLabel, cell.locked)}

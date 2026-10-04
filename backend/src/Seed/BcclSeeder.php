@@ -1082,7 +1082,7 @@ final class BcclSeeder
         foreach ([$coachEme, $coachPoivreSel] as $coach) {
             $staleNames[] = \sprintf('%s - Indisponible le jeudi', $coach->getFirstName());
         }
-        // Ancienne indispo coach du jeudi retirée de la base (Nico Patin) — nom dérivé
+        // Ancienne indispo coach du jeudi retirée de la base (Coach Nic) — nom dérivé
         // de l'entité pour suivre l'anonymisation du profil démo.
         $staleNames[] = \sprintf('%s - Indisponible le jeudi', $coachNic->getFirstName());
         // « <équipe> - Pas d'entraînement le mercredi » : la base réelle n'en a aucune
