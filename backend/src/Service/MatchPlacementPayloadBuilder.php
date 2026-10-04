@@ -332,7 +332,9 @@ final class MatchPlacementPayloadBuilder
                 'clubId' => $club->getId(),
                 'seasonId' => $seasonId ?? '',
                 'solverSeed' => 42,
-                'solverTimeoutSeconds' => 60,
+                // Budget PAR SEMAINE ISO : depuis ENG-50 le moteur découpe la demande semaine
+                // par semaine et résout chacune sous ce budget (une seule réponse fusionnée).
+                'solverTimeoutSeconds' => 35,
                 'matches' => $matchRows,
                 'venues' => $venueRows,
                 'teams' => $teamRows,
