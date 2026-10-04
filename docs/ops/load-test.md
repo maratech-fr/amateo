@@ -9,17 +9,31 @@
 ## Lancer
 
 ```bash
-bash backend/scripts/load-test/run-load-test.sh --clubs 5          # défaut : limites mémoire de PROD
+bash backend/scripts/load-test/run-load-test.sh --clubs 5          # défaut : --mode generation, limites mémoire de PROD
 bash backend/scripts/load-test/run-load-test.sh --clubs 5 --no-limits
 bash backend/scripts/load-test/run-load-test.sh --clubs 3 --rounds 2
+bash backend/scripts/load-test/run-load-test.sh --mode placement --clubs 6   # rail PLACEMENT (2026-10-04)
 ```
 
 Prérequis : stack dev up (`make start`), `DATABASE_ADMIN_URL` disponible (`.env`). Le script :
-applique l'overlay `docker-compose.load.yml` (les 7 `mem_limit` de `docker-compose.prod.yml`),
-seed N clubs jetables (`app:load-test:seed-clubs`, commande DEV-ONLY — inexistante hors env dev,
-garde runtime en plus), tire N générations en rafale via `generate-schedule.sh`, échantillonne
-`docker stats` + la file Redis toutes les 5 s, et écrit rapport + CSV dans **`var/load-test/`**
-(non versionné).
+applique l'overlay `docker-compose.load.yml` (les `mem_limit` de `docker-compose.prod.yml`),
+seed N clubs jetables, tire une rafale en rafale, échantillonne `docker stats` + la file Redis
+toutes les 5 s, et écrit rapport + CSV dans **`var/load-test/`** (non versionné).
+
+**Deux modes** (`--mode generation|placement`) :
+
+- **`generation`** (défaut) : `app:load-test:seed-clubs` (commande DEV-ONLY) + rafale de
+  générations via `generate-schedule.sh`.
+- **`placement`** (`place-matches.sh`, ADR-0003) : clubs 100 % fictifs bâtis comme le BCCL
+  (`LoadTestClubSeeder`, isolé de `BcclSeeder`), mélange de tailles réalistes petit/moyen/grand
+  et un calendrier de championnat (`LoadTestMatchPlan`, phases, alternance domicile/extérieur,
+  ~17 % déjà fixés). Chaque club place sa fenêtre de phase ENTIÈRE deux fois : la **passe 1**
+  place le pic, puis **30 % des placements SOLVER de la passe 1 sont gelés en MANUAL** (ancre
+  FIXED — un gestionnaire qui garde une partie à la main, ADR-0003 §5) avant que la **passe 2**
+  replace le reste autour de ces ancres (ajustement, pas un rejeu à l'identique). Le rail étant
+  ASYNCHRONE (202 + `runId`, `ADR-0003` §2), le harnais **sonde** `GET
+  /api/fixtures/placement-run` jusqu'au statut terminal plutôt que de lire une réponse
+  synchrone — la colonne `e2e (s)` du rapport est donc, comme en mode génération, file + solve.
 
 ## Lire le rapport
 
@@ -58,8 +72,8 @@ dev WSL2 — INDICATIF :
   (bout-en-bout − wall), linéaire.
 - **Murs mémoire : AUCUN à cette taille** — pics vs limites prod : engine **324/512 MiB** (contre
   190 au run du 2026-08-13 : la marge du moteur a fondu), php-fpm 110/1024, worker 61/384,
-  postgres 40/512 ; zéro OOMKilled. ⚠ Le placement des matchs (`/place-matches`) n'est PAS
-  couvert par ce harnais — mesuré à part à 435 MiB pour 600 matchs (audit 2026-10-03, ENG-49).
+  postgres 40/512 ; zéro OOMKilled. ⚠ Ce run (mode génération) ne couvre pas le placement des
+  matchs — son propre run `--mode placement` est détaillé plus bas (2026-10-04, après ENG-49/50).
 - File Redis : pic à 5 (attendu). Reste ouvert : re-run sur le VPS de prod.
 - Le harnais se connecte avec les comptes `charge-N@<MANAGER_EMAIL_DOMAIN>` dérivés de
   `BcclSeedProfile::loadTest()` ; un login refusé sort en statut `LOGIN_FAILED` nommé dans le
@@ -77,3 +91,22 @@ dev WSL2 — INDICATIF :
 > (ADR-0001, amendé 2026-07-07 — 1 worker stalle 612 s sur BCCL là où le portefeuille 8 workers
 > prouve l'optimum en ~2 s). Les tiers actuels (`_adaptive_workers` : ≤200 → 1, sinon 8) sont
 > **contractuels pour les golden fixtures**, qui dépendent du déterminisme à 1 worker.
+
+### Mesures — run local `--mode placement` du 2026-10-04 (après ENG-49/ENG-50)
+
+6 clubs fictifs tailles mixtes (10/21/49 équipes), **limites mémoire de PROD appliquées**
+(`mem_limit` engine 1g, mercure 512m — §2 de ce run), machine dev WSL2 — INDICATIF :
+`var/load-test/2026-10-04_12-38-22/`.
+
+- **12/12 placements COMPLETED** (6 clubs × 2 passes × 1 round), **0 échec, 0 signal de
+  capacité** (409/429/502) — lot entier en 191 s.
+- **Murs mémoire** (pic vs limite prod) : engine **480/1024 MiB** (contre 324/512 au run
+  génération du 2026-10-03 — le pic du PLACEMENT dépasse celui de la génération sur ce lot),
+  retombé à **106 MiB au repos** entre deux appels (le processus fils jetable + `malloc_trim`
+  rendent la mémoire, ENG-49) ; php-fpm 89/1024, messenger-worker 57/384, postgres 35/512,
+  mercure **12,6/512 MiB** (3ᵉ topic club ajouté, toujours loin du plancher) ; zéro OOMKilled.
+- File Messenger : pic à 7 (le placement partage le transport `async` avec la génération).
+
+⚠ Ce run mesure la **mécanique** (rail async, découpage semaine, mémoire) sur des clubs
+fictifs — il ne remplace pas une mesure sur un lot réel volumineux (`engine/tests/perf/
+test_perf_place_matches_real.py`, fixture BCCL 141 domiciles).

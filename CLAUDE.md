@@ -27,9 +27,10 @@ exposes the API, **engine** solves, **frontend** renders (wizard → generate �
 | `specs/` | Markdown | `specs/README.md` | Living specs (initiales/courantes/evolution) |
 
 **Boundaries (critical — never cross):** `frontend → backend` via `/api/*` · `backend → engine` via
-`POST http://engine:8000/generate` · `backend → frontend` via Mercure SSE, two fixed topics per
-club — `club:{clubId}:schedule:{scheduleId}` (generation progress) and `club:{clubId}:travel`
-(async travel-time computation, `docs/security/mercure.md`) · **engine is reactive, it NEVER calls the backend** ·
+`POST http://engine:8000/generate` · `backend → frontend` via Mercure SSE, three fixed topics per
+club — `club:{clubId}:schedule:{scheduleId}` (generation progress), `club:{clubId}:travel`
+(async travel-time computation) and `club:{clubId}:placement` (async match-placement run,
+terminal bascule only, `docs/security/mercure.md`) · **engine is reactive, it NEVER calls the backend** ·
 **frontend NEVER calls the engine directly** — et **aucun proxy `/engine` nulle part, ne jamais en
 (ré)introduire** (l'ancien exposait le solveur SANS authentification) : pour debugger,
 `docker compose exec engine …` fait le travail.
@@ -88,7 +89,8 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
   byte-identique, rate-limit IP ; le contrôleur pose lui-même `app.club_id` (relâché en
   `finally`). → `docs/security/rls.md`.
 - **Concurrence** : `ClubGenerationLock` Redis + verrou asyncio par club côté engine ; placement
-  matchs = rail **synchrone** avec son propre `MatchPlacementLock` (ADR-0003) ; naissance/re-datage
+  matchs = rail **asynchrone** (Messenger, patron de la génération) avec son propre
+  `MatchPlacementLock` (ADR-0003, amendement 2026-10-04) ; naissance/re-datage
   d'une fenêtre de plan de période = `SchedulePlanProvisioner::lockClubWindows` (grain club+saison,
   pris **avant** `lockPlanScope`, ordre club → entrée uniforme sur les trois écritures).
 - **Génération async** : controller → Messenger (Redis) → handler (snapshot figé → POST engine →

@@ -1,9 +1,10 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-10-03 (ENG-48/ALIGN-16/ENG-51/ALIGN-19, contrat 1.1) — `CONTRACT_VERSION` 1.1
-confirmé aux deux foyers cités (§1/§3) ; §8 gagne le bandeau Indicatif de la section Coachs
-(ALIGN-19, `ConstraintsPage.tsx`). Reste du contenu (P4-271/P4-272 et antérieur, dont §7
-« Engagements FFBB ») non réaudité cette passe. Historique :
+Last verified @ 2026-10-04 (amendement ADR-0003 : §3 recalé sur le rail ASYNCHRONE — budget par
+semaine ISO plutôt que de bout en bout, chaîne de timeouts, bandeau d'écran visible de tous/geste
+gestionnaire seul, e-mail à 2 min) — `CONTRACT_VERSION` 1.1 confirmé aux deux foyers cités (§1/§3).
+Reste du contenu (P4-271/P4-272 et antérieur, dont §7 « Engagements FFBB ») non réaudité cette
+passe. Historique :
 `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
@@ -560,10 +561,16 @@ Présentation pure — aucune formule de gravité redérivée.
 
 Second problème solveur ([ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md)),
 même `CONTRACT_VERSION` **1.1** que `/generate`/`/validate-assignments` (un seul contrat pour les
-trois endpoints — voir §6 `CLAUDE.md`). **Rail
-SYNCHRONE** (`PlaceMatchesController` — management + saison écrivable + socle pointé), anti-double-clic
-PAR CLUB `MatchPlacementLock` (Redis dédié — ne protège pas deux clubs l'un de l'autre : ils partagent le
-sémaphore GLOBAL `max_concurrent_placements=1` de l'engine, détail ADR-0003 §2). Best-effort à poids
+trois endpoints — voir §6 `CLAUDE.md`). **Rail ASYNCHRONE** (amendement ADR-0003 2026-10-04, patron
+exact de la génération) : `PlaceMatchesController` garde toutes ses gardes (management + saison
+écrivable + socle pointé), prend le verrou, ENFILE un `PlaceMatchesMessage` et répond **202**
+`{runId, status}` ; `PlaceMatchesHandler` (transport `async` partagé avec la génération) solve,
+applique, décompte le crédit Découverte au SUCCÈS et publie la bascule terminale (COMPLETED/FAILED)
+sur le 3ᵉ topic Mercure fixe `club:{clubId}:placement`. `GET /api/fixtures/placement-run` rend le
+dernier run du club+saison (lecture seule, ouvert à tout membre). Anti-double-clic PAR CLUB
+`MatchPlacementLock` (Redis dédié — pris par le contrôleur, relâché par le worker ; ne protège pas
+deux clubs l'un de l'autre : ils partagent le sémaphore GLOBAL `max_concurrent_placements=1` de
+l'engine, détail ADR-0003 §2). Best-effort à poids
 dominant : `10 000 × Σ placés + SOFT` — **aucune contrainte HARD n'est jamais violée en sortie** ; un
 match sans candidat licite sort NOMMÉ (`no_access_window` · `no_league_intersection` ·
 `team_venue_forbidden` · `club_rule_no_slot` · `venue_unavailable` · `venue_full` · `not_selected`,
@@ -580,13 +587,21 @@ distinguent post-solve sur l'occupation finale : `venue_full` = plus aucun crén
 sa date (gymnase saturé) ; `not_selected` = un créneau licite restait libre mais le solve ne l'a
 pas retenu dans son budget — « relancez le placement » (ADR-0003 §3).
 
-**Budget 60 s de bout en bout** (`solverTimeoutSeconds` du payload — 30 s avant P4-240), encadré par la
-chaîne de timeouts `MatchPlacementLock` 120 s → HTTP contrôleur 90 s → nginx fastcgi/proxy 120 s → PHP
-`max_execution_time` 120 s → client frontend `ky` 120 s sur cet appel seul (`frontend/src/features/
-matches/api/fixtures.ts`). Avant le solve, un **warm-start glouton** déterministe (matchs triés
-date/équipe, candidat préféré = créneau idéal, sinon placement SOLVER courant, sinon premier créneau
-licite libre) pose un seul jeu de hints CP-SAT — il absorbe l'ancien hint de stabilité, jamais deux hints
-contradictoires sur un même match (ADR-0003 §4).
+**Budget PAR SEMAINE ISO, pas de bout en bout** (amendement 2026-10-04, ENG-50) : l'engine découpe le
+lot en semaines ISO distinctes et solve chacune isolément, puis concatène (placements/raisons/
+diagnostics en ordre stable, métriques sommées). `solverTimeoutSeconds` du payload
+(`MatchPlacementPayloadBuilder::WEEK_BUDGET_SECONDS = 35`) est désormais le budget **de chaque
+semaine** — un lot de N semaines consomme jusqu'à `N × 35 s` de solve. Chaîne de timeouts dimensionnée
+sur ce total : TTL `MatchPlacementLock` = `N × (35 + 15) s + 60 s` de marge
+(`PlaceMatchesMessage::budgetSecondsFor`, `15 s` = marge par semaine côté engine, `60 s` = marge de
+queue/dispatch) — pris par le contrôleur à l'enfilage, relâché par le worker en fin de run ; le run
+tourne sur le rail Messenger (`messenger-worker`), plus aucun timeout HTTP/nginx/PHP/`ky` côté
+navigateur ne l'encadre (le gestionnaire peut quitter l'écran, §5 ci-dessous). Le solve lui-même vit
+dans un **processus fils jetable** côté engine (ENG-49) : sa mémoire native est rendue au système à
+chaque placement, pas seulement en fin de requête. Avant le solve de chaque semaine, un **warm-start
+glouton** déterministe (matchs triés date/équipe, candidat préféré = créneau idéal, sinon placement
+SOLVER courant, sinon premier créneau licite libre) pose un seul jeu de hints CP-SAT — il absorbe
+l'ancien hint de stabilité, jamais deux hints contradictoires sur un même match (ADR-0003 §4).
 
 **Fenêtre de placement optionnelle `{from, to}` (P4-240 ④)** : le corps JSON de la requête est
 optionnel — deux dates AAAA-MM-JJ incluses (422 si invalide ou `from` postérieur à `to`), sinon
@@ -661,10 +676,16 @@ protégé), sinon simplement absent du payload — le contrat n'a pas bougé pou
 laissée libre est couverte par `FRIENDLY_ON_MATCH_SLOT` (§2), pas par une contrainte moteur.
 
 Le backend PROJETTE (occupations d'entraînement datées, heure extérieure estimée, enveloppe ligue
-résolue serveur), l'engine reste plat. UI : bouton « Placer automatiquement » sur le Calendrier
-(spinner, toast « N placés · M non plaçables », raisons par match) — désactivé, avec une explication,
-en offre Découverte ; bouton dédié « Placer ce week-end » dans l'établi Semaine (P4-240 ④, §5), même
-rail (`runPlacement`), même toast, fenêtre posée sur la semaine lundi→dimanche affichée.
+résolue serveur), l'engine reste plat. UI (rail asynchrone, amendement 2026-10-04) : bouton « Placer
+automatiquement » sur le Calendrier — geste réservé au gestionnaire, désactivé pendant un run ouvert,
+désactivé avec une explication en offre Découverte ; bouton dédié « Placer ce week-end » dans
+l'établi Semaine (P4-240 ④, §5), même rail (`runPlacement`, maison unique), fenêtre posée sur la
+semaine lundi→dimanche affichée. L'**état** « en cours » est un bandeau visible de TOUS les membres
+(un autre onglet, un autre membre voit aussi « en cours ») — relu au GET `/api/fixtures/placement-run`
+et rafraîchi par la bascule Mercure (`club:{clubId}:placement`) ; à 2 min, le bandeau invite à quitter
+la page (« vous recevrez un e-mail à la fin ») puisque le run tourne sur le worker Messenger, pas sur
+la requête du navigateur. Fin de run : toast « N placés · M non plaçables » (raisons par match) + le
+GET relu derrière l'invalidation.
 
 **Boucle manuelle** : chaque match cliquable ouvre `PlacementPanel` — Déplacer, Dé-placer,
 Verrouiller/Rendre au solveur (`placementSource` écho — refusé en 422 si le placement bouge),
@@ -730,6 +751,14 @@ ligue » en lot) — jamais affichée à un Membre.
 
 L'écran unique du module : place/échange/verrouille/saisit dans FBI ET lit Semaine·Mois·Phase.
 Importer garde sa maison propre (§6).
+
+**Décision fondateur (2026-10-04) : tout le monde VOIT, seul le gestionnaire AGIT.** Tous les
+boutons d'action de l'écran des matchs (placement automatique, édition/suppression d'un extérieur,
+panneau de placement, validation en lot « Validé ligue ») sont masqués pour un non-gestionnaire —
+un membre lit la grille, les todo, les filtres, sans aucun geste disponible ; l'état « en vide »
+reste visible même sans bouton. `canManage`/`isManager` propagé en prop (`WeekWorkbench.tsx`,
+`FbiEntryList.tsx`, `PhaseTable.tsx`), le backend reste seul juge (403 sur chaque écriture,
+le masquage front n'est qu'un confort).
 
 **Atterrissage conditionnel de l'index.** L'index `/matchs` n'est pas
 inconditionnellement le Calendrier : une route d'atterrissage (`MatchesLanding.tsx`) tranche au

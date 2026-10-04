@@ -302,7 +302,7 @@ rien à faire en propre) → **P5-28 en dernier** (contrat backend⇄engine repa
 
 ---
 
-## Findings d'audit ouverts (registre `/audit`) — 22
+## Findings d'audit ouverts (registre `/audit`) — 21
 
 > **À quoi sert cette section.** Le skill `/audit` tient un **registre à IDs stables** : un finding garde son
 > identifiant d'une édition à l'autre, ce qui rend la comparaison inter-éditions possible (« ce défaut est-il
@@ -323,7 +323,6 @@ rien à faire en propre) → **P5-28 en dernier** (contrat backend⇄engine repa
 | ID | Sujet | Gravité | Zone | Depuis | Note |
 |---|-------|:---:|:---:|:---:|---|
 | AUD-SEC-29 | **[APRÈS PROD]** **Le dépôt PUBLIC publie l'identité réelle d'un club, de ses coachs et des identifiants dev d'un compte gestionnaire réel** | Élevée | cyber/RGPD | 2026-10-03 | `BcclSeedProfile.php:118-128,145,149-153`, `BcclSeeder.php:727-745,845-850,1212+` — irrévocable dans l'historique git, exposé dès que le tunnel démo (`docs/technique/demo-tunnel-cloudflare.md`) tourne. **Lot backend « dépôt public » (2026-10-03)** : identités BCCL sorties du dépôt (profil fictif, injection hors dépôt), rotation des secrets concernés sans réécriture d'historique |
-| AUD-ENG-49 | **[APRÈS PROD]** **Placement de matchs : mémoire non budgétée, budget de solve non aligné sur le plateau mesuré, aucun quota par club** | Moyenne | engine/cyber | 2026-10-03 | ENG-49 (RSS 435 MiB/600 matchs face à `mem_limit: 512m`, `docker-compose.prod.yml:284`) + ENG-50 (budget 60 s brûlé pour un plateau atteint à 8 s, `main.py:138`) + SEC-24 (jeton de placement global sans quota par club, `PlaceMatchesController.php:54`). **Lot moteur, PR2 « budgets » (2026-10-03)** : mode « placement » ajouté au harnais de charge (N clubs simultanés) → budgets sur mesure |
 | AUD-SEC-25 | **[APRÈS PROD]** **Une requête ANONYME qui porte `X-Club-Id` fixe le contexte club → l'horloge d'une démo pilote les échéances publiques d'un vrai club** | Moyenne | cyber | 2026-10-03 | `TenantFilterListener.php:120-122` pose `_club_id` sans vérifier l'appartenance pour un anonyme ; `ClubDay::todayFor()` (`ClubDay.php:76`) suit ce contexte. Contredit la décision du 2026-10-02 (« un club réel n'est jamais affecté »). **Lot backend « horloge & démo » (2026-10-03)** |
 | AUD-SEC-28 | **[APRÈS PROD]** **Compte démo reconnu par son e-mail, gestes de compte ouverts → un compte démo devient permanent** | Moyenne | cyber | 2026-10-03 | `UserChecker.php:54,59-64` indexe sur l'adresse ; aucune garde sur `POST /api/me/email`/`/password`, `DELETE /api/me` (`AuthController.php:592-680`, `DeleteAccountController.php:38`) pendant la fenêtre de 4 h. **Lot backend « horloge & démo » (2026-10-03)** : garde par drapeau `is_demo`, pas par adresse |
 | AUD-BCK-34 | **[APRÈS PROD]** **Sous une date simulée, l'horloge falsifie des durées de sécurité (Mercure, jeton de changement d'e-mail)** | Moyenne | backend | 2026-10-03 | `MercureAuthController.php:48,77-81` et `EmailChangeVerifier.php:42-43` suivent l'horloge simulée sans borne (`ClubClockController.php:105-111` accepte 0001→9999). **Lot backend « horloge & démo » (2026-10-03)** : `is_demo` vérifié à la LECTURE + CHECK en base, horloge réelle pour ces échéances |
