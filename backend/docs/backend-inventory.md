@@ -3,16 +3,15 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-10-05 (`documentation-update`, lot backend « horloge & démo » — SEC-30/BCK-34/
-SEC-28). §Module démo recalé : lecture `ClubClock::simulatedTodayFor` contrôle désormais `is_demo`
-(plus seulement les écritures) + contrainte `CHECK` en base (`club_simulated_today_demo_only`,
-`Version20261004140000`) ; bornes de la date simulée dérivées des saisons
-(`SeasonResolver::simulatedClockBoundsAmong`) ; horloge RÉELLE explicite `app.clock.real` pour les
-durées/horodatages de sécurité (Mercure, changement d'e-mail, RGPD, audit, préavis orphelin) ;
-drapeau d'identité `app_user.is_demo` (`Version20261004150000`) remplaçant la reconnaissance par
-adresse sur les gestes de profil/suppression. Citations `User.php`/`UserChecker.php` recalées sur
-les lignes réelles. Reste du fichier non rebalayé cette passe ; historique des passes complètes :
-`git log -p --follow` ce fichier — un stamp REMPLACE, il ne s'empile pas.
+Last verified @ 2026-10-05 (`documentation-update`, P4-294 « conserver le club démo »). §Module
+démo gagne `POST /demos/prospect/retain` (409 fenêtre ouverte, détache l'animateur, échéance J+14
+fixe sur `club.demo_retained_until`), `GET /demos.retained` et la purge nocturne des conservés
+expirés (`DemoClubMaterializer::teardownExpiredRetainedDemos`) ; §P3-4 gagne la reprise d'un club
+démo conservé homonyme (`ClubRepository::findRetainedDemoByFfbbCode`) — confronté à
+`AdminDemoController.php`, `DemoClubMaterializer.php`, `ClubApprovalService.php`,
+`ClubRepository.php`, `Version20261005100000`. Reste du fichier non rebalayé cette passe ;
+historique des passes complètes : `git log -p --follow` ce fichier — un stamp REMPLACE, il ne
+s'empile pas.
 
 ---
 
@@ -351,7 +350,7 @@ le club n'existe pas encore au moment de la demande) via `ClubCreationRequestRep
 | Route | Méthode | Description |
 |-------|---------|-------------|
 | `/api/club-approvals/{token}` | GET | Résout le token (forme `^[0-9a-f]{64}$`, sinon 404), 410 si expiré. Rend `clubName`, `ara`, `requesterName`, `expiresAt`. |
-| `/api/club-approvals/{token}` | POST | Body `{decision: "approve"\|"refuse"}` (422 sinon). Décision **unique** : la demande passe hors statut PENDING, un second appel revoit 404. `approve` délègue à `ClubApprovalService::approve` — verrou consultatif Postgres `pg_advisory_xact_lock(hashtext('club-approval:'.ara))` (anti-double-club sur deux demandes concurrentes pour le même ARA) ; résolution `ClubRepository::findRealByFfbbCode` (un club de démo sur ce code est ignoré, BCK-33) : club réel né entre-temps **et encore peuplé** → la demande devient une adhésion `pending` (jamais un second club) ; club réel **sans aucun membre actif** (SEC-27, 2026-10-03 — reprise RGPD) → `ClubWinBackService::reprise` (le demandeur devient Gestionnaire actif d'office, effacement/rappel J-7 programmés annulés, workspace re-seedé si purgé) ; sinon `ClubProvisioner::createClub`. `refuse` délègue à `ClubApprovalService::refuse` — P4-301 : une demande de création refusée peut laisser le demandeur orphelin, préavis « compte sans club » best-effort (`OrphanAccountNotifier::notifyAccessRemoved`, décision fondateur Q1 : une demande refusée ne protège plus de la règle). |
+| `/api/club-approvals/{token}` | POST | Body `{decision: "approve"\|"refuse"}` (422 sinon). Décision **unique** : la demande passe hors statut PENDING, un second appel revoit 404. `approve` délègue à `ClubApprovalService::approve` — verrou consultatif Postgres `pg_advisory_xact_lock(hashtext('club-approval:'.ara))` (anti-double-club sur deux demandes concurrentes pour le même ARA) ; résolution `ClubRepository::findRealByFfbbCode` (un club de démo sur ce code est ignoré, BCK-33) : club réel né entre-temps **et encore peuplé** → la demande devient une adhésion `pending` (jamais un second club) ; club réel **sans aucun membre actif** (SEC-27, 2026-10-03 — reprise RGPD) → `ClubWinBackService::reprise` (le demandeur devient Gestionnaire actif d'office, effacement/rappel J-7 programmés annulés, workspace re-seedé si purgé) ; **sinon, un club démo CONSERVÉ homonyme** (`ClubRepository::findRetainedDemoByFfbbCode`, P4-294 — le prospect convaincu a été « Conservé 14 j » par la console, cf. §Module démo) → même `ClubWinBackService::reprise`, puis bascule `isDemo=false` + `demoRetainedUntil=null` + `simulatedToday=null` + `outputCreditsUsed=0` dans la MÊME écriture (le club garde son nom et ses données de démo, n'est PAS re-populé depuis la FFBB) ; sinon `ClubProvisioner::createClub`. Le club réel garde toujours la priorité sur un conservé homonyme. `refuse` délègue à `ClubApprovalService::refuse` — P4-301 : une demande de création refusée peut laisser le demandeur orphelin, préavis « compte sans club » best-effort (`OrphanAccountNotifier::notifyAccessRemoved`, décision fondateur Q1 : une demande refusée ne protège plus de la règle). |
 
 ### Validation des contraintes
 
@@ -655,7 +654,10 @@ bloquant `DemoWindowTest` + feature Behat `la-demo-ne-s-ouvre-que-pendant-sa-fen
 **Console démo** (`AdminDemoController`, `/api/admin/demos*`, PR B — mêmes gardes que les
 actions de support SA4, connexion `admin`, **aucun `club_id` posé**) : `GET /demos` lit l'état
 des deux comptes (fenêtre ISO, club démo courant résolu SERVEUR depuis l'adhésion active, et
-`simulated_today` pour les **deux** comptes, bccl ET prospect) ;
+`simulated_today` pour les **deux** comptes, bccl ET prospect) **ainsi que la liste des clubs démo
+CONSERVÉS** (`retained`, P4-294 — lue par la TABLE `club.demo_retained_until`, jamais par une
+adhésion : un club conservé est détaché de l'animateur) : nom + échéance, triés par échéance
+croissante, aucune action de prolongation ;
 `POST /demos/{bccl|prospect}/activate` pose `demo_active_until` à now+4 h à l'horloge **RÉELLE** —
 un re-clic **REDÉMARRE** la fenêtre, jamais une addition ; `POST /demos/{target}/deactivate` la
 ferme (`NULL`). `POST /demos/bccl/reset` relance `app:demo:seed` en **SOUS-PROCESSUS** via
@@ -673,6 +675,16 @@ que sur **`clear`** — poser/changer une date ne la touche pas, seul le retour 
 le fait (décision fondateur : hors horloge, le club redevient réel et enverrait pour de vrai, les
 e-mails boxés n'ont plus de raison d'être). L'écriture et le vidage de boîte au `clear` passent par
 `writeClock()`, maison unique du contrôleur.
+
+**Conserver le club démo prospect 14 jours** (`POST /demos/prospect/retain`, P4-294, décision
+fondateur 2026-10-03 option B) : refusée en **409** tant que la fenêtre démo prospect est OUVERTE
+(conservation et fenêtre d'accès ne se chevauchent jamais) ; geste atomique sinon — l'horloge
+revient à `NULL` (boîte vidée, même `writeClock(..., clear:true)` que `clock`), l'animateur est
+**DÉTACHÉ** du club (`DELETE FROM club_user`, sinon le raccourci démo suivant refuse en 409 et la
+purge nocturne par adhésion le détruirait), et `club.demo_retained_until` reçoit aujourd'hui + 14 j
+(Europe/Paris, horloge RÉELLE, durée FIXE sans prolongation — `AdminDemoController::RETENTION_DAYS`).
+Reprise ensuite par l'approbation P3-4 du contact officiel homonyme (`ClubRepository::
+findRetainedDemoByFfbbCode`, ci-dessus) ou détruit à expiration par la purge nocturne (ci-dessous).
 
 **L'horloge simulée ne vit que pour un compte de démonstration** (décision fondateur 2026-10-02) :
 il n'existe plus de route superadmin posant `simulated_today` sur un club réel — `AdminDemoController`
@@ -708,7 +720,12 @@ réactivation le même jour réutilise le club existant. Chemin sûr
 `DemoClubMaterializer::teardownStaleDemos()` (miroir de `teardownPreviousDemo()` ci-dessus) : un
 club non démo ou démo PARTAGÉ (un autre membre) est SAUTÉ, jamais détruit ; un club créé le JOUR
 MÊME est gardé ; la démo BCCL permanente n'est jamais une adhésion de l'animateur prospect, donc
-hors scope par construction. NR bloquant `Integration/Command/DemoPurgeStaleCommandTest`.
+hors scope par construction. **Purge aussi les clubs démo CONSERVÉS EXPIRÉS** (P4-294,
+`DemoClubMaterializer::teardownExpiredRetainedDemos()`, indépendante du compte animateur) :
+sélection par la TABLE `club` (`is_demo AND demo_retained_until < aujourd'hui` — un club vit
+jusqu'à la FIN de son jour d'échéance), jamais par adhésion (un club conservé en est détaché,
+sinon il serait immortel) ; skip défensif si un membre actif existe (repris entre-temps). NR
+bloquant `Integration/Command/DemoPurgeStaleCommandTest` + `Security/DemoRetainedClubReclaimTest`.
 
 Distinct du club de démonstration : `app:bccl:seed` (`src/Command/BcclSeedCommand.php`) seede le
 club **dev BCCL** (identités FICTIVES par défaut — gestionnaire `dev-bccl@amateo.local`, coachs aux

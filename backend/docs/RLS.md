@@ -1,8 +1,8 @@
 # Amateo — PostgreSQL Row-Level Security (RLS)
 
-Last verified @ 2026-10-02 (`documentation-update`, rotation — sans rapport avec le sujet de la
+Last verified @ 2026-10-05 (`documentation-update`, rotation — sans rapport avec le sujet de la
 PR). Re-confronté au code : `TenantFilterListener` toujours `KernelEvents::REQUEST =>
-['onKernelRequest', 7]` (`backend/src/EventListener/TenantFilterListener.php:55`) ✓ ·
+['onKernelRequest', 7]` (`backend/src/EventListener/TenantFilterListener.php:56`) ✓ ·
 `TenantConnectionContext` pose `set_config('app.club_id', ?, false)`
 (`backend/src/Service/TenantConnectionContext.php:30`) ✓ · `Version20260703120000` porte toujours
 le prédicat `TENANT_PREDICATE` (`club_id = NULLIF(current_setting('app.club_id', true),
