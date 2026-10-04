@@ -110,9 +110,10 @@ contre une panne RÉGIONALE (décision fondateur, posée le 2026-09-30).
    **La clé expire — poser un rappel à son échéance** (1 an à la création ; l'alerte
    de fraîcheur `freshness:db-backup` ne couvre que le dump LOCAL, jamais l'expiration
    de la clé côté bucket).
-3. Dans `.env.prod` — via le rail chiffré (`make env-decode@prod` → éditer →
-   `env-encode` → commit + deploy, cf. [`deploy.md`](deploy.md) § Secrets
-   chiffrés), ou directement sur la VM en dépannage (puis reporter au `.gpg`) :
+3. Dans `.env.prod` — via le secret GitHub `ENV_PROD` (éditer la copie de
+   référence → mettre à jour le secret → deploy, cf. [`deploy.md`](deploy.md)
+   § Secret `ENV_PROD`), ou directement sur la VM en dépannage (puis reporter
+   au secret `ENV_PROD`) :
 
    ```bash
    BACKUP_SYNC_COMMAND=rclone copyto /app/backend/var/backups :s3:amateo-backups/db --s3-provider=Scaleway --s3-endpoint=s3.nl-ams.scw.cloud --s3-region=nl-ams

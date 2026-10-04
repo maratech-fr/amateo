@@ -12,13 +12,13 @@
   pousse sur **ghcr.io** (le registre d'images de GitHub, lié au repo, gratuit).
 - La VM ne contient QUE : `docker-compose.prod.yml`, `.env.prod` (les secrets),
   le dossier `jwt/`, et les volumes de données. **Jamais le code source.**
-- **La source de vérité des secrets est le repo, chiffrée** : `.env.prod.gpg`
-  (GPG symétrique, `make env-encode@prod` / `make env-decode@prod` — voir
-  [§ Secrets chiffrés](#secrets-chiffrés-envprodgpg)). Le deploy le décode sur
-  le runner et pousse `.env.prod` sur la VM.
+- **La source de vérité des secrets est le secret GitHub `ENV_PROD`** (le
+  `.env.prod` entier collé tel quel — voir
+  [§ Secret `ENV_PROD`](#secret-env_prod)). Le deploy l'écrit sur le runner et
+  pousse `.env.prod` sur la VM. Le dépôt ne contient plus aucun secret.
 - Déployer = la VM télécharge les images taguées `vX.Y.Z` et redémarre dessus.
   Le deploy **ré-envoie aussi `docker-compose.prod.yml` + le script + le
-  `.env.prod` décodé** sur la VM à chaque passage — n'édite aucun de ces
+  `.env.prod` du secret `ENV_PROD`** sur la VM à chaque passage — n'édite aucun de ces
   fichiers directement sur la VM (écrasés au prochain deploy).
 - Revenir en arrière = redéployer le tag précédent : le workflow détecte que
   ses images existent déjà sur ghcr et les **réutilise telles quelles** (jamais
@@ -65,11 +65,12 @@ cd /srv/amateo
 - `docker-compose.prod.yml` (racine du repo).
 
 ⬜ **En LOCAL** (pas sur la VM) : `.env.prod.dist` → copié en `.env.prod`,
-remplir **chaque CHANGEME** (le fichier se commente lui-même), puis
-`make env-encode@prod` et **commiter `.env.prod.gpg`** — le premier deploy
-(§1.7) poussera le fichier décodé sur la VM, en 600. (Poser un `.env.prod` à la
-main sur la VM reste possible en dépannage, mais il sera écrasé au prochain
-deploy dès qu'un `.env.prod.gpg` existe dans le repo.)
+remplir **chaque CHANGEME** (le fichier se commente lui-même), puis coller le
+contenu intégral du fichier dans le **secret GitHub `ENV_PROD`** (§1.6,
+`gh secret set ENV_PROD < .env.prod`). Le premier deploy (§1.7) poussera le
+fichier sur la VM, en 600. (Poser un `.env.prod` à la main sur la VM reste
+possible en dépannage, mais il sera écrasé au prochain deploy dès que le secret
+`ENV_PROD` est renseigné.)
 ⬜ Vérifier que `.env.prod` **ne pose PAS `JWT_COOKIE_SECURE=false`** (SEC-16 — le JWT
    applicatif voyage en cookie httpOnly). Le laisser ABSENT est sûr : le `backend/.env.prod`
    committé le met à `true`, et le défaut du conteneur aussi. En revanche une vraie variable
@@ -158,7 +159,7 @@ et `sudo -u caddy cat /srv/amateo/system-pages/503.html | head -1`.
 | Secret | `DEPLOY_HOST` | IP (ou domaine) de la VM |
 | Secret | `DEPLOY_USER` | l'utilisateur SSH (ex. `root` ou ton user) |
 | Secret | `DEPLOY_SSH_KEY` | une clé privée SSH dédiée au deploy (générer : `ssh-keygen -t ed25519 -f deploy_key`, mettre `deploy_key.pub` dans `~/.ssh/authorized_keys` de la VM, coller `deploy_key` ici) |
-| Secret | `ENV_GPG_PASSPHRASE` | la passphrase du `.env.prod.gpg` (celle du gestionnaire de mots de passe — voir § Secrets chiffrés) |
+| Secret | `ENV_PROD` | le contenu intégral du `.env.prod` collé tel quel (`gh secret set ENV_PROD < .env.prod`) — voir § Secret `ENV_PROD` |
 | Variable | `DEPLOY_ENABLED` | `true` |
 | Variable | `DEPLOY_PATH` | `/srv/amateo` (optionnelle, c'est le défaut) |
 
@@ -382,6 +383,12 @@ redéploie **exactement les artefacts qui tournaient** (pas un rebuild aux
 couches de base dérivées). Marche aussi pour un hotfix sha :
 `make deploy VERSION=sha-abc1234`.
 
+⚠ **Toujours `make deploy VERSION=<tag>`, jamais re-pousser un ancien tag.**
+`make deploy` fait un *dispatch* : le workflow qui s'exécute est celui de `main`
+(secrets courants, dont `ENV_PROD`). Re-pousser un ancien tag ferait tourner le
+**workflow d'alors**, qui attendait le rail chiffré disparu depuis SEC-23 et
+avorterait avant toute mutation de la VM.
+
 ⚠ Le rollback rejoue le code d'avant mais **ne dé-migre pas la base**. Si la
 release fautive contenait une migration destructive : restaurer le dump pris
 automatiquement AVANT la migration (`backup-restore.md` §3 — le script refuse
@@ -449,50 +456,45 @@ voit**.
 
 ### Changer un secret / une variable d'env
 
-1. En local : `make env-decode@prod` (rafraîchit `.env.prod` depuis le `.gpg`) ;
-2. éditer `.env.prod`, puis `make env-encode@prod` ;
-3. commiter `.env.prod.gpg` (et la ligne CHANGEME dans `.env.prod.dist` si la
-   variable est nouvelle) → **déployer** (tag ou `make deploy`) : le workflow
-   pousse le fichier et `remote-deploy.sh` recrée les conteneurs ;
+1. En local : éditer la copie du `.env.prod` du gestionnaire de mots de passe
+   du fondateur (la copie de référence, hors dépôt) ;
+2. mettre à jour le secret GitHub `ENV_PROD` avec le contenu intégral
+   (`gh secret set ENV_PROD < .env.prod`, ou coller dans *Settings → Secrets*) ;
+3. si la variable est nouvelle, ajouter aussi sa ligne CHANGEME dans
+   `.env.prod.dist` → **déployer** (tag ou `make deploy`) : le workflow pousse
+   le fichier et `remote-deploy.sh` recrée les conteneurs ;
 4. cas particuliers : rotation du `JWT_PASSPHRASE` = régénérer aussi le keypair
    (§1.3) ; rotation DB = `ALTER USER` côté postgres d'abord.
 
 Urgence sans release : éditer `.env.prod` sur la VM +
 `docker compose -f docker-compose.prod.yml --env-file .env.prod up -d`, **puis
-reporter le changement dans le `.gpg` du repo** — sinon le prochain deploy
+reporter le changement dans le secret `ENV_PROD`** — sinon le prochain deploy
 restaure l'ancienne valeur.
 
-### Secrets chiffrés (`.env.prod.gpg`)
+### Secret `ENV_PROD`
 
-Modèle à trois fichiers (racine du repo) :
+Modèle à deux fichiers (racine du repo) + un secret :
 
-| Fichier | Rôle | Git |
+| Élément | Rôle | Git |
 |---|---|---|
 | `.env.prod.dist` | template commenté = la liste lisible des variables | commité en clair (zéro secret) |
 | `.env.prod` | rempli, secrets réels | jamais commité (gitignoré, chmod 600) |
-| `.env.prod.gpg` | le `.env.prod` chiffré (GPG symétrique AES256) | **commité — la vérité** |
+| secret GitHub `ENV_PROD` | le `.env.prod` entier collé tel quel | **la source de vérité** (hors dépôt) |
 
-- `make env-encode@prod` chiffre, `make env-decode@prod` déchiffre (écrase la
-  copie locale : le `.gpg` du repo fait foi, typiquement après un `git pull`).
-  En local gpg prompte la passphrase ; en CI elle arrive par la variable
-  d'environnement `ENV_GPG_PASSPHRASE` (stdin gpg, jamais en argument).
-  ⚠ gpg tourne sur l'**hôte** (exception assumée au « tout dans Docker » —
-  standard partout, y compris `ubuntu-latest`).
-- **Au deploy** : `.gpg` présent → décodé sur le runner, poussé sur la VM
-  (chmod 600) avant `remote-deploy.sh`. `.gpg` **absent** du ref → warning, la
-  copie VM existante est conservée (indispensable au rollback : un ancien tag
-  n'a pas le fichier). `.gpg` présent mais passphrase absente/fausse → **deploy
-  avorté avant toute mutation de la VM**.
-- **La ligne `VERSION=` du `.gpg` n'est pas significative** : le step de deploy
+- Le secret se renseigne avec le contenu **intégral** du `.env.prod` collé tel
+  quel, ou `gh secret set ENV_PROD < .env.prod`. GitHub masque les `secrets.*`
+  ligne à ligne dans les logs ; le deploy n'affiche jamais le contenu.
+- **Au deploy** : le step écrit `ENV_PROD` sur le runner (`umask 077`), le pousse
+  sur la VM (chmod 600) avant `remote-deploy.sh`. Secret **vide ou absent** →
+  **deploy avorté avant toute mutation de la VM** (message : créer le secret).
+- **La ligne `VERSION=` du secret n'est pas significative** : le step de deploy
   préserve le pin `VERSION` courant de la VM (posé par `remote-deploy.sh` en
   fin de deploy réussi) — un `up -d` manuel entre deux deploys continue de
   tirer la version qui tourne.
-- **Passphrase** : générée une fois (`openssl rand -base64 32`), stockée dans
-  le gestionnaire de mots de passe du fondateur + le secret Actions
-  `ENV_GPG_PASSPHRASE` (§1.6). Rotation : `env-decode` → `env-encode` avec la
-  nouvelle passphrase → commit + mise à jour du secret Actions. Perte de la
-  passphrase SANS copie claire : repartir du `.env.prod` de la VM (ou du
-  `.dist`) et ré-encoder.
+- **Copie de référence** : le `.env.prod` rempli vit dans le gestionnaire de
+  mots de passe du fondateur. Rotation : éditer cette copie → mettre à jour le
+  secret `ENV_PROD` → redéployer. Perte de la copie SANS secret : repartir du
+  `.env.prod` de la VM (ou du `.dist`).
 
 ### Restaurer un backup
 
