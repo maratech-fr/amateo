@@ -3,7 +3,10 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-10-04 (`documentation-update`, P4-301 « compte sans club »). Recontrôlé contre
+Last verified @ 2026-10-04 (AUD-SEC-29 : seed BCCL dev/prod re-décrit — identités fictives par
+défaut, gestionnaire unique par options, fichier local d'identités — vérifié contre
+`BcclSeedCommand`/`BcclProdSeedCommand`/`BcclSeedProfile`/`BcclSeedIdentities` ; + P4-301
+« compte sans club »). Recontrôlé contre
 `AuthController::me` (`membershipStatus` actif-d'abord, `accountDeletionScheduledFor`) et
 `MembershipController.php` (routes `/api/memberships`, `/role`, `/deactivate`, `/reactivate` —
 absentes de ce fichier jusqu'ici, ajoutées ; `OrphanAccountNotifier` câblé sur approve/reject/
@@ -676,8 +679,9 @@ MÊME est gardé ; la démo BCCL permanente n'est jamais une adhésion de l'anim
 hors scope par construction. NR bloquant `Integration/Command/DemoPurgeStaleCommandTest`.
 
 Distinct du club de démonstration : `app:bccl:seed` (`src/Command/BcclSeedCommand.php`) seede le
-club **dev BCCL RÉEL** (identités réelles, `mara.mb@bccl.fr`, code FFBB ARA0069036) via le même
-`BcclSeeder` + `BcclSeedProfile::dev()`. **CREATE-ONLY** — à l'inverse d'`app:demo:seed` (créer OU
+club **dev BCCL** (identités FICTIVES par défaut — gestionnaire `dev-bccl@amateo.local`, coachs aux
+surnoms ; vraies identités via le fichier local gitignoré `config/seed/bccl.identities.local.json`,
+code FFBB ARA0069036) via le même `BcclSeeder` + `BcclSeedProfile::dev()`. **CREATE-ONLY** — à l'inverse d'`app:demo:seed` (créer OU
 RESET, purge le workspace à chaque appel sauf `--if-absent`) : cette commande ne fait RIEN
 (SUCCESS, aucune écriture) si le club existe déjà ; le reset délibéré passe par `make db-empty`
 (ou `make reset`, racine) sur une base jetable — aucune fixture Doctrine ne porte plus ce rôle.
@@ -691,11 +695,12 @@ porter cette restriction, `app:demo:seed` n'en a aucune. Connexion admin requise
 Le pendant PRODUCTION du club BCCL réel est `app:bccl:seed-prod`
 (`src/Command/BcclProdSeedCommand.php`) — même `BcclSeeder` + `BcclSeedProfile::prod()`,
 **CREATE-ONLY** comme `app:bccl:seed`, mais **AUTO-ENREGISTRÉE** (disponible en prod, à l'inverse
-d'`app:bccl:seed` qui reste dev-only). Les gestionnaires (fondateur + Nicolas Barilleau) arrivent
-100 % par `--email`/`--co-email`/`--password`/`--co-password` (prompt masqué `askHidden` si les
-mots de passe sont absents, min. 12 caractères) — **aucun credential réel dans le dépôt**, comptes
-posés **pré-vérifiés** (le rail `/register` est mort sans e-mail sortant en prod). Connexion admin
-requise (RLS). **Anti-usurpation** : si un compte existe DÉJÀ pour `--email` ou `--co-email`
+d'`app:bccl:seed` qui reste dev-only). Le gestionnaire (fondateur) arrive 100 % par
+`--email`/`--first-name`/`--last-name`/`--password` (prompt masqué `askHidden` si le mot de passe
+est absent, min. 12 caractères) — AUCUN prénom, nom ni credential en dur (AUD-SEC-29) ; d'éventuels
+co-gestionnaires et vrais noms de coachs viennent du fichier local gitignoré. Comptes posés
+**pré-vérifiés** (le rail `/register` est mort sans e-mail sortant en prod). Connexion admin
+requise (RLS). **Anti-usurpation** : si un compte existe DÉJÀ pour `--email`
 (vérifié ou non — ex. inscrit via `/register` entre le déploiement et le seed), la commande
 échoue AVANT tout prompt et ne crée rien, au lieu d'adopter ce compte (et son mot de passe) en
 gestionnaire du BCCL. NR bloquant : `BcclProdSeedCommandTest`. Runbook jour J complet :
