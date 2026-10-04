@@ -10,3 +10,11 @@ sentry:
     options:
         environment: '%kernel.environment%'
         traces_sample_rate: 0
+        # 2026-10-03 — un scan Nuclei a rempli Sentry de 404/405/400/401/403 (bruit de robots,
+        # aucune vraie erreur). On n'y remonte plus les refus HTTP NORMAUX : toute HttpException
+        # 4xx est filtrée par STATUT dans before_send (App\Sentry\BeforeSend) ; l'AccessDeniedException
+        # de sécurité (pas une HttpException, donc hors filtre de statut) est écartée ici. Les 5xx,
+        # les échecs Messenger et les erreurs de commande console restent remontés.
+        ignore_exceptions:
+            - Symfony\Component\Security\Core\Exception\AccessDeniedException
+        before_send: 'App\Sentry\BeforeSend'
