@@ -30,3 +30,7 @@
 
 # Generated schedule exports (PDF/PNG)
 /public/exports/
+
+# AUD-SEC-29 — vraies identités du club du fondateur (jamais au dépôt public).
+# Absent → les seeds BCCL repartent sur leurs identités fictives déterministes.
+/config/seed/bccl.identities.local.json

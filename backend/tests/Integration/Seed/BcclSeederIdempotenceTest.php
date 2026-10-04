@@ -519,8 +519,8 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      * comptent un groupe mutualisé pour UN occupant : plus aucune case en capacité 2 (le
      * palliatif d'avant les blocs laissait le solveur y glisser une équipe de plus). Et la
      * semaine du 17 décoche AUSSI les deux indisponibilités coach héritées de la saison que le
-     * réel de la semaine contredit (U18M1 s'entraîne le jeudi de Nicolas Barilleau, U15M1 le
-     * vendredi de Thomas Francon) — sans quoi la génération ne peut pas atteindre le planning
+     * réel de la semaine contredit (U18M1 s'entraîne le jeudi de Coach PoivreSel, U15M1 le
+     * vendredi de Coach Tho) — sans quoi la génération ne peut pas atteindre le planning
      * transcrit. Falsifiable : remettre `++capacity` par séance, ou retirer un des deux noms de
      * `deactivatedConstraints`, rend ce test ROUGE en nommant l'invariant.
      */
@@ -548,12 +548,12 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             . 'JOIN "constraint" c ON c.id = o.constraint_id '
             . 'JOIN schedule_plan sp ON sp.id = o.schedule_plan_id '
             . 'WHERE sp.club_id = ? AND sp.name = ? AND o.is_active = false '
-            . 'AND c.name IN (\'Nicolas Barilleau · indispo jeudi\', \'Thomas Francon · indispo vendredi\', \'SM2 · pas vendredi\') '
+            . 'AND c.name IN (\'Coach PoivreSel · indispo jeudi\', \'Coach Tho · indispo vendredi\', \'SM2 · pas vendredi\') '
             . 'ORDER BY c.name',
             [$club->getId(), 'Reprise du 17 août'],
         );
         self::assertSame(
-            ['Nicolas Barilleau · indispo jeudi', 'SM2 · pas vendredi', 'Thomas Francon · indispo vendredi'],
+            ['Coach PoivreSel · indispo jeudi', 'Coach Tho · indispo vendredi', 'SM2 · pas vendredi'],
             array_map('strval', $deactivated),
             'la semaine du 17 décoche les deux indisponibilités coach héritées ET « SM2 · pas vendredi » (le bloc est figé lun/mar/jeu par réservation)',
         );
@@ -758,7 +758,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      *
      * Le modèle FAIT/GENÈSE : une contrainte de genèse vit sur l'entrée-ENFANT (la semaine), pas
      * sur la mère. Les 3 genèses du 17 (le bloc SM mutualisé ≥ 20:30 sur SM1 ET SM2, l'indispo
-     * lun/ven de Nicolas Barilleau) portent calendar_entry_id = l'entrée du 17, avec leurs configs
+     * lun/ven de Coach PoivreSel) portent calendar_entry_id = l'entrée du 17, avec leurs configs
      * exactes. La semaine du 24 (exercice solveur CLOS le 2026-09-01) porte SES 16 genèses sur SON
      * entrée-enfant — « Mineurs · pas après 19:50 » (10 équipes), « U15M · pas après 18:15 » (2),
      * « U18F{1,2} · préfère JDR » (FACILITY PREFERRED), « SF1 · pas vendredi », « SM3 · préfère
@@ -794,7 +794,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         $sm2 = (string) $this->connection->fetchOne('SELECT id FROM team WHERE club_id = ? AND name = ?', [$clubId, 'SM2']);
         $nico = (string) $this->connection->fetchOne(
             'SELECT id FROM coach WHERE club_id = ? AND first_name = ? AND last_name = ?',
-            [$clubId, 'Nicolas', 'Barilleau'],
+            [$clubId, 'Coach PoivreSel', ''],
         );
         $jdrId = (string) $this->connection->fetchOne('SELECT id FROM venue WHERE club_id = ? AND name = ?', [$clubId, 'JDR']);
         $armandId = (string) $this->connection->fetchOne('SELECT id FROM venue WHERE club_id = ? AND name = ?', [$clubId, 'Armand']);
@@ -807,7 +807,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
 
         $expected17 = [
             [
-                'name' => 'Nicolas Barilleau · indispo lundi, vendredi',
+                'name' => 'Coach PoivreSel · indispo lundi, vendredi',
                 'scope' => 'COACH', 'family' => 'COACH_AVAILABILITY', 'rule_type' => 'HARD',
                 'scope_target_id' => $nico, 'config' => ['unavailableDays' => [1, 5]],
             ],
@@ -1160,14 +1160,15 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     }
 
     /**
-     * P5-13 — les reprises et le compte Nicolas ne visent QUE le profil dev. Le club de
-     * DÉMONSTRATION ne porte aucun plan de période (HOLIDAY/CLOSURE), aucune entrée calendrier
-     * (l'incident Matéo compris), et le compte gestionnaire Nicolas n'existe pas. La répartition WE
-     * des matchs est dev-only aussi : aucune fenêtre d'accès match ni créneau idéal de match.
+     * P5-13 — les reprises et les gestionnaires additionnels ne visent QUE le profil dev. Le club
+     * de DÉMONSTRATION ne porte aucun plan de période (HOLIDAY/CLOSURE), aucune entrée calendrier
+     * (l'incident Matéo compris), et le gestionnaire du club dev n'existe pas chez la démo (identités
+     * disjointes). La répartition WE des matchs est dev-only aussi : aucune fenêtre d'accès match ni
+     * créneau idéal de match.
      */
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
-    public function testDemoSeedCarriesNoRepriseNorNicolasAccount(): void
+    public function testDemoSeedCarriesNoRepriseNorDevManagerAccount(): void
     {
         $club = $this->seeder->run($this->em, BcclSeedProfile::demo('demo-pass-reprise'));
 
@@ -1183,11 +1184,12 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         );
         self::assertSame(0, $entries, 'la démo ne pose aucune entrée calendrier');
 
-        $nicolas = $this->connection->fetchOne(
+        // Identités disjointes : le gestionnaire fictif du club dev n'est pas créé par la démo.
+        $devManager = $this->connection->fetchOne(
             'SELECT 1 FROM app_user WHERE email = ?',
-            ['nicolas.barilleau@bccl.fr'],
+            ['dev-bccl@amateo.local'],
         );
-        self::assertFalse($nicolas, 'la démo ne crée pas le compte gestionnaire Nicolas');
+        self::assertFalse($devManager, 'la démo ne crée pas le compte gestionnaire du club dev');
 
         foreach (['team_match_habit', 'venue_match_window', 'opponent_venue_link'] as $table) {
             $count = (int) $this->connection->fetchOne(
@@ -1595,8 +1597,8 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             // par plan+provenance) ni doubler ses 90 créneaux (purge l.853 + réinsertion).
             'schedules' => $this->rowsIn('schedule'),
             'slotTemplates' => $this->rowsIn('schedule_slot_template'),
-            // P5-13 : le compte gestionnaire additionnel (Nicolas), les deux entrées-semaines
-            // + leur mère, les plans de reprise et TOUS leurs réglages ancrés au plan
+            // P5-13 : les gestionnaires (le principal, + d'éventuels additionnels du fichier local),
+            // les deux entrées-semaines + leur mère, les plans de reprise et TOUS leurs réglages ancrés au plan
             // (mutualisation, overrides gymnase/équipe/contrainte) entrent dans la mesure —
             // find-or-create / purge-recréation partout, deux runs = mêmes comptes.
             'clubUsers' => $this->rowsIn('club_user'),

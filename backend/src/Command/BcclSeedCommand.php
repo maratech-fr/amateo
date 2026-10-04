@@ -6,6 +6,7 @@ namespace App\Command;
 
 use App\Entity\Club;
 use App\Seed\BcclSeeder;
+use App\Seed\BcclSeedIdentities;
 use App\Seed\BcclSeedProfile;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -30,8 +31,9 @@ use Symfony\Component\HttpKernel\KernelInterface;
  * enregistrement (`services.yaml`) et n'est déclarée que dans `services_dev.yaml`
  * et `services_test.yaml` (jamais dans le conteneur de prod, ni dans
  * `bin/console list` là-bas), ET un garde runtime refuse tout autre environnement.
- * Le club porte des identités RÉELLES (nom, coachs, gestionnaire `mara.mb@bccl.fr`) :
- * invisible en prod par construction, il n'expose donc aucune donnée personnelle.
+ * AUD-SEC-29 — par défaut le club porte des identités FICTIVES (gestionnaire
+ * `dev-bccl@amateo.local`, coachs aux surnoms). Les vraies identités du fondateur
+ * arrivent du fichier local gitignoré {@see BcclSeedIdentities} s'il est présent.
  *
  * ⚠ Comme `app:demo:seed`, le seeder traverse la RLS et exige la connexion ADMIN :
  * lancer sous `DATABASE_URL=$DATABASE_ADMIN_URL` — le garde superuser du seeder
@@ -62,7 +64,8 @@ final class BcclSeedCommand extends Command
             return Command::FAILURE;
         }
 
-        $profile = BcclSeedProfile::dev();
+        $identities = BcclSeedIdentities::loadFromFile(BcclSeedIdentities::defaultPath($this->kernel->getProjectDir()));
+        $profile = BcclSeedProfile::dev($identities);
 
         $existing = $this->entityManager->getRepository(Club::class)->findOneBy(['ffbbClubCode' => $profile->ffbbCode]);
         if ($existing instanceof Club) {

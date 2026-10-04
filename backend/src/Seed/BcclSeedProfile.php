@@ -9,13 +9,20 @@ use InvalidArgumentException;
 
 /**
  * P2-4 PR 2bis — l'IDENTITÉ d'un seed BCCL : le même club réaliste (équipes,
- * gymnases, créneaux, contraintes, réservations — l'état terrain), sous deux
+ * gymnases, créneaux, contraintes, réservations — l'état terrain), sous plusieurs
  * visages.
  *
- * - `dev()` : le BCCL réel (logo compris) — le club dev de `make seed-bccl`.
- * - `demo(password)` : le club de DÉMONSTRATION permanent — noms de club et de
- *   coachs FICTIFS (RGPD : l'écran part en rendez-vous), pas de logo BCCL, flag
- *   `is_demo` posé.
+ * AUD-SEC-29 — le dépôt est PUBLIC, il ne porte donc QUE du fictif : par défaut,
+ * `dev()`/`prod()` posent un gestionnaire fictif (`dev-bccl@amateo.local`, mot de
+ * passe évidemment fictif commité) et des coachs aux SURNOMS (« Coach … »). Les
+ * VRAIES identités du club du fondateur vivent hors dépôt, dans un fichier local
+ * gitignoré ({@see BcclSeedIdentities}) : présent → injecté (gestionnaires réels +
+ * remplacement positionnel des coachs), absent (CI, autre dev) → le fictif.
+ *
+ * - `dev([identities])` : le club dev de `make seed-bccl`.
+ * - `prod(email, password, firstName, lastName[, identities])` : le même club en PROD.
+ * - `demo(password)` : le club de DÉMONSTRATION permanent — identités fictives
+ *   « réalistes » ({@see FICTIONAL_COACHES}), pas de logo, flag `is_demo` posé.
  *
  * Les gymnases gardent leurs noms/ancrages réels : ce sont des bâtiments
  * publics, et l'ancre fédérale fait marcher les écrans (stats, autocomplétion).
@@ -23,11 +30,13 @@ use InvalidArgumentException;
 final readonly class BcclSeedProfile
 {
     /**
-     * 26 identités fictives, une par coach du seed, DANS L'ORDRE de sa liste —
-     * le remplacement est positionnel, donc déterministe d'un reset à l'autre.
-     * Les libellés qui citent un coach (« %s - Indisponible mercredi ») suivent
-     * automatiquement : l'entité est renommée AVANT que les contraintes ne
-     * lisent son prénom.
+     * Identités fictives « réalistes » pour le club de DÉMONSTRATION et les clubs de CHARGE,
+     * une par coach du seed, DANS L'ORDRE de sa liste — remplacement positionnel, déterministe.
+     * Depuis AUD-SEC-29 le seed par défaut est DÉJÀ fictif (surnoms « Coach … ») : cette liste
+     * n'est plus l'anonymisation RGPD du dépôt, elle donne juste à la démo des noms plus crédibles
+     * que les surnoms. La garde « liste au moins aussi longue que le seed » reste (le seeder lève
+     * sinon). Les libellés qui citent un coach (« %s · indispo %s ») suivent automatiquement :
+     * l'entité est renommée AVANT que les contraintes ne lisent son prénom.
      */
     private const array FICTIONAL_COACHES = [
         ['firstName' => 'Mathéo', 'lastName' => 'Verne'],
@@ -113,22 +122,33 @@ final readonly class BcclSeedProfile
         public array $additionalManagers,
     ) {}
 
-    public static function dev(): self
+    public static function dev(?BcclSeedIdentities $identities = null): self
     {
+        // Dépôt public : gestionnaire FICTIF par défaut (mot de passe évidemment fictif, commité —
+        // même patron que loadTest()). Les vraies identités arrivent du fichier local gitignoré via
+        // $identities (absent en CI / chez un autre dev → ce gestionnaire fictif).
+        $manager = $identities instanceof BcclSeedIdentities && null !== $identities->manager ? $identities->manager : [
+            'email' => 'dev-bccl@amateo.local',
+            'firstName' => 'Mara',
+            'lastName' => 'Mb',
+            'password' => 'charge-load-test-pwd',
+        ];
+
         return new self(
             clubName: 'B CHARPENNES CROIX LUIZET',
             clubSlug: 'b-charpennes-croix-luizet',
             ffbbCode: 'ARA0069036',
-            managerEmail: 'mara.mb@bccl.fr',
-            managerFirstName: 'Mara',
-            managerLastName: 'Mb',
-            managerPassword: 'maraboubccl',
+            managerEmail: $manager['email'],
+            managerFirstName: $manager['firstName'],
+            managerLastName: $manager['lastName'],
+            managerPassword: $manager['password'],
             seedLogo: true,
             isDemo: false,
-            coachNames: null,
+            // null → surnoms fictifs par défaut ; une liste (fichier local) → remplacement positionnel.
+            coachNames: self::coachNamesFrom($identities),
             transcribeRealSchedule: true,
             // P5-13 — le club dev porte, EN PLUS du planning de saison, deux plans de reprise
-            // (17 et 24 août) et le compte gestionnaire Nicolas. Dev SEULEMENT.
+            // (17 et 24 août). Dev SEULEMENT.
             seedReprisePeriods: true,
             // P5-13 « incident Matéo » — le club dev porte aussi l'état d'adaptation EN COURS du
             // gestionnaire (fermeture de Matéo + son plan d'ajustement non validé). Dev SEULEMENT.
@@ -139,52 +159,45 @@ final readonly class BcclSeedProfile
             // Amorçage des adversaires — le club dev porte les localisations/appariements/suggestions
             // fédéraux relevés de la base réelle (le ré-import des matchs les retrouve sans re-résoudre).
             seedOpponentData: true,
-            additionalManagers: [
-                // Mot de passe EN CLAIR, hashé au seed (patron du gestionnaire principal
-                // ci-dessus). Find-or-create par email, jamais écrasé s'il existe déjà.
-                ['email' => 'nicolas.barilleau@bccl.fr', 'firstName' => 'Nicolas', 'lastName' => 'Barilleau', 'password' => 'NicolasB'],
-            ],
+            // Co-gestionnaires EN PLUS, uniquement depuis le fichier local (jamais au dépôt).
+            additionalManagers: $identities instanceof BcclSeedIdentities ? $identities->additionalManagers : [],
         );
     }
 
     /**
-     * Le club BCCL RÉEL, jouable en PROD (identités réelles comme {@see dev()} : club, coachs,
-     * logo, mêmes drapeaux — la transcription du planning réel, les reprises, l'incident Matéo, la
-     * répartition WE, l'amorçage des adversaires). Parité avec la base locale du fondateur.
+     * Le club BCCL RÉEL, jouable en PROD (même état terrain que {@see dev()} : club, coachs, logo,
+     * mêmes drapeaux — transcription du planning réel, reprises, incident Matéo, répartition WE,
+     * amorçage des adversaires). Parité avec la base locale du fondateur.
      *
-     * SEULE différence avec dev() : les GESTIONNAIRES sont 100 % en paramètres — AUCUNE adresse
-     * ni mot de passe réels dans le code (invisible en prod par construction sinon, mais un mot de
-     * passe dev en clair y serait une porte). Le gestionnaire principal garde l'identité réelle
-     * (Mara Mb, déjà au dépôt via {@see dev()}) ; le co-gestionnaire est Nicolas Barilleau
-     * (prénom/nom déjà au dépôt). La commande {@see BcclProdSeedCommand} exige les
-     * deux mots de passe (≥ 12 caractères) et pose des comptes PRÉ-VÉRIFIÉS (le rail /register est
-     * mort sans e-mail sortant en prod).
+     * AUD-SEC-29 — AUCUN prénom/nom/e-mail/mot de passe en dur : le gestionnaire arrive 100 % par
+     * paramètres (options CLI de {@see BcclProdSeedCommand}, mots de passe ≥ 12). Co-gestionnaires
+     * et vrais noms de coachs, s'ils sont voulus, viennent du fichier local gitignoré via
+     * $identities. Comptes PRÉ-VÉRIFIÉS (le rail /register est mort sans e-mail sortant en prod).
      */
     public static function prod(
         string $managerEmail,
         string $managerPassword,
-        string $coManagerEmail,
-        string $coManagerPassword,
+        string $managerFirstName,
+        string $managerLastName,
+        ?BcclSeedIdentities $identities = null,
     ): self {
         return new self(
             clubName: 'B CHARPENNES CROIX LUIZET',
             clubSlug: 'b-charpennes-croix-luizet',
             ffbbCode: 'ARA0069036',
             managerEmail: $managerEmail,
-            managerFirstName: 'Mara',
-            managerLastName: 'Mb',
+            managerFirstName: $managerFirstName,
+            managerLastName: $managerLastName,
             managerPassword: $managerPassword,
             seedLogo: true,
             isDemo: false,
-            coachNames: null,
+            coachNames: self::coachNamesFrom($identities),
             transcribeRealSchedule: true,
             seedReprisePeriods: true,
             seedMateoIncident: true,
             seedWeekendMatchLayout: true,
             seedOpponentData: true,
-            additionalManagers: [
-                ['email' => $coManagerEmail, 'firstName' => 'Nicolas', 'lastName' => 'Barilleau', 'password' => $coManagerPassword],
-            ],
+            additionalManagers: $identities instanceof BcclSeedIdentities ? $identities->additionalManagers : [],
         );
     }
 
@@ -261,5 +274,20 @@ final readonly class BcclSeedProfile
             seedOpponentData: false,
             additionalManagers: [],
         );
+    }
+
+    /**
+     * Les noms de coachs à injecter positionnellement, depuis le fichier local : `null` quand il
+     * est absent ou n'en porte pas (le seed garde alors ses surnoms fictifs par défaut).
+     *
+     * @return list<array{firstName: string, lastName: string}>|null
+     */
+    private static function coachNamesFrom(?BcclSeedIdentities $identities): ?array
+    {
+        if (!$identities instanceof BcclSeedIdentities || [] === $identities->coachNames) {
+            return null;
+        }
+
+        return $identities->coachNames;
     }
 }
