@@ -94,15 +94,15 @@ def _count_overlaps(intervals: dict[str, list[tuple[int, int, str]]]) -> list[st
 
 
 class TestOverlapConstraints:
-    def test_nicolas_no_overlap(self) -> None:
-        """Nicolas Barilleau must not be coach+joueur on overlapping slots.
+    def test_shared_coach_no_overlap(self) -> None:
+        """A coach who is also a player must not be coach+joueur on overlapping slots.
 
-        BCCL case: Nicolas coaches U18M1 at Jean Vilar Tuesday 18:45-20:15
+        BCCL case: the coach coaches U18M1 at Jean Vilar Tuesday 18:45-20:15
         and plays SM2 at Debarros Tuesday 19:00-20:30. These intervals overlap
         (18:45 < 20:30 and 19:00 < 20:15) but have different start times, so
         the old ``_time_key`` grouping missed the conflict.
         """
-        data = _load_fixture("overlap_nicolas")
+        data = _load_fixture("overlap_shared_coach")
         result = _run_build_schedule(data)
 
         # If status=failed, no slots to check — acceptable (constraints too tight).
@@ -113,7 +113,7 @@ class TestOverlapConstraints:
         overlaps = _count_overlaps(person_intervals)
 
         assert overlaps == [], (
-            f"Expected 0 overlaps for Nicolas, got {len(overlaps)}: {overlaps}. Person intervals: {person_intervals}"
+            f"Expected 0 overlaps for the shared coach, got {len(overlaps)}: {overlaps}. Person intervals: {person_intervals}"
         )
 
     def test_anna_no_overlap(self) -> None:

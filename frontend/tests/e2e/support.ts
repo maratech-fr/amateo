@@ -147,7 +147,7 @@ export async function expectNoA11yViolations(
  * jusqu'à « planning principal validé » vivent ICI (maison unique) : `matches.spec` en porte
  * historiquement une copie (candidat de convergence — à faire pointer sur ces exports).
  */
-export const SEEDED_CLUB = { email: "mara.mb@bccl.fr", password: "maraboubccl" } as const;
+export const SEEDED_CLUB = { email: "dev-bccl@amateo.local", password: "charge-load-test-pwd" } as const;
 
 export async function loginSeededClub(page: Page): Promise<void> {
   await page.goto("/login");

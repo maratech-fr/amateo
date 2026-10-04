@@ -304,15 +304,16 @@ docker compose exec php-fpm php bin/console app:league-windows:seed
 
 ⬜ **Le club BCCL réel** (`app:bccl:seed-prod`) — CREATE-ONLY (no-op si déjà là). Les mots de passe
 sont demandés en **prompt masqué** (ne pas les mettre en `--password` pour ne pas les laisser dans
-l'historique shell). `--email` = ton compte fondateur, `--co-email` = celui de Nicolas Barilleau.
+l'historique shell). `--email` = ton compte fondateur, `--first-name`/`--last-name` = ton identité
+(aucun nom n'est en dur ; d'éventuels co-gestionnaires passent par le fichier local d'identités).
 ⚠ **Lancer ce seed JUSTE APRÈS le déploiement**, avant d'ouvrir l'inscription publique à qui que ce
 soit : le seeder crée les comptes gestionnaires à ces e-mails, et il **refuse** si un compte existe
 déjà pour l'un d'eux (garde anti-usurpation — un compte créé entre-temps via `/register` avec ton
 e-mail ne doit jamais être adopté par le seed).
 
 ```bash
-docker compose exec php-fpm sh -c 'DATABASE_URL="$DATABASE_ADMIN_URL" php bin/console app:bccl:seed-prod --email=TON-EMAIL --co-email=EMAIL-NICOLAS'
-# → deux prompts masqués : mot de passe gestionnaire, puis co-gestionnaire (min 12 caractères).
+docker compose exec php-fpm sh -c 'DATABASE_URL="$DATABASE_ADMIN_URL" php bin/console app:bccl:seed-prod --email=TON-EMAIL --first-name=TON-PRENOM --last-name=TON-NOM'
+# → un prompt masqué : mot de passe gestionnaire (min 12 caractères).
 ```
 
 Si la commande échoue sur « **An account already exists for … »** : un compte porte déjà cet e-mail.
@@ -340,7 +341,7 @@ fichier FBI de la saison). Les localisations d'adversaires étant déjà amorcé
 les gymnases sans re-résoudre.
 
 ⬜ **Vérifications** :
-- se connecter aux **3 comptes** (fondateur, Nicolas, démo) — ils naissent pré-vérifiés ; le
+- se connecter aux **2 comptes** (fondateur, démo) — ils naissent pré-vérifiés ; le
   compte démo exige d'avoir activé sa fenêtre depuis la console superadmin au préalable
   (ci-dessus), sinon la connexion échoue comme un mot de passe faux (aucun oracle) ;
 - non-fuite entre clubs (chaque club voit SES catégories, jamais celles d'un autre) :
@@ -464,7 +465,13 @@ voit**.
    `.env.prod.dist` → **déployer** (tag ou `make deploy`) : le workflow pousse
    le fichier et `remote-deploy.sh` recrée les conteneurs ;
 4. cas particuliers : rotation du `JWT_PASSPHRASE` = régénérer aussi le keypair
-   (§1.3) ; rotation DB = `ALTER USER` côté postgres d'abord.
+   (§1.3) ; rotation DB = `ALTER USER` côté postgres d'abord ; ⚠ **rotation
+   d'`APP_SECRET` = re-chiffrer le TOTP des superadmins** : `super_admin.totp_secret`
+   est chiffré en AES-256-GCM avec `sha256(APP_SECRET)` (`TotpService::key()`) —
+   sans re-chiffrement (déchiffrer avec l'ancienne valeur, rechiffrer avec la
+   nouvelle), plus aucun code TOTP ne passe et la console `/admin` est fermée
+   (vécu lors de la rotation SEC-23 du 2026-10-04). Le faire avant d'effacer la
+   copie de l'ancien `.env.prod`.
 
 Urgence sans release : éditer `.env.prod` sur la VM +
 `docker compose -f docker-compose.prod.yml --env-file .env.prod up -d`, **puis

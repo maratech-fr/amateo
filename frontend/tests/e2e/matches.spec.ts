@@ -4,8 +4,8 @@ import { landOnMatchesCalendar } from "./support";
 /** Seeded dev club (BasketballInit) — full data, but INCOMPLETE onboarding
  * (cockpit state 1: no plan generated yet). Matches are locked until the main
  * plan is validated, so this spec onboards the club first (idempotent). */
-const EMAIL = "mara.mb@bccl.fr";
-const PASSWORD = "maraboubccl";
+const EMAIL = "dev-bccl@amateo.local";
+const PASSWORD = "charge-load-test-pwd";
 
 type Page = import("@playwright/test").Page;
 
@@ -485,7 +485,7 @@ test("matches: create a fixture, place it, radar renders", async ({ page }) => {
  * puce, chercher un coach, le cocher → la sélection s'active (chip « 1
  * sélectionné ») ET l'URL porte le deep-link (`?vue=coach&filtre=…`), preuve que
  * le filtre recadre la vue sur le périmètre du coach. Suppose que le club seedé
- * (BCCL) a un coach « Thomas » ; sinon, remplacer le terme de recherche.
+ * (BCCL) a un coach « Coach Tho » ; sinon, remplacer le terme de recherche.
  */
 test("matches: filtre par coach recadre la vue et porte le deep-link", async ({ page }) => {
   test.setTimeout(240_000); // onboarding may run a real CP-SAT generation
@@ -505,8 +505,8 @@ test("matches: filtre par coach recadre la vue et porte le deep-link", async ({ 
 
   // Ouvrir la puce de ressources et chercher le coach.
   await page.getByRole("button", { name: /Coachs :/ }).click();
-  await page.getByPlaceholder("Rechercher…").fill("Thomas");
-  await page.getByRole("button", { name: /Thomas/ }).first().click();
+  await page.getByPlaceholder("Rechercher…").fill("Coach Tho");
+  await page.getByRole("button", { name: /Coach Tho/ }).first().click();
 
   // La sélection est active (chip « 1 sélectionné ») et l'URL porte le deep-link.
   await expect(page.getByRole("button", { name: /Coachs : 1 sélectionné/ })).toBeVisible({ timeout: 15_000 });

@@ -1072,7 +1072,7 @@ final class MatchConflictDetectorTest extends TestCase
 
     public function testMatchOnTheCoachsOtherTeamTrainingConflictsWhileTheOwnTeamIsSilent(): void
     {
-        // The real case (Dionnet SM1 + U18M1): coach A holds team-1's match AND
+        // The real case (Coach Max SM1 + U18M1): coach A holds team-1's match AND
         // team-2's overlapping training. His OWN team's (team-1) session is silent,
         // the SISTER team's (team-2) is the double-booking. Both slots overlap the
         // match window; exactly ONE conflict comes out, on the sister slot.

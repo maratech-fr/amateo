@@ -15,8 +15,8 @@ import { landOnMatchesCalendar } from "./support";
  * données du seed. Le TÉMOIN (la rencontre INVISIBLE avant l'interrupteur, VISIBLE
  * après) échoue si le geste n'exerce rien.
  */
-const EMAIL = "mara.mb@bccl.fr";
-const PASSWORD = "maraboubccl";
+const EMAIL = "dev-bccl@amateo.local";
+const PASSWORD = "charge-load-test-pwd";
 
 type Page = import("@playwright/test").Page;
 

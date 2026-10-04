@@ -117,8 +117,8 @@ atteint l'appli. C'est acceptable pour une démo courte et surveillée, pas pour
 
 - **Ne jamais laisser le tunnel ouvert** au-delà de la démo. Pas de tunnel « au cas où ».
 - La stack de démo est la stack **de dev** : `APP_ENV=dev`, secrets par défaut du `.env`, comptes
-  de fixtures à mots de passe connus (`mara.mb@bccl.fr` / `maraboubccl`). Ne jamais pointer un
-  tunnel vers une base contenant de vraies données personnelles de club.
+  de fixtures fictifs (gestionnaire `dev-bccl@amateo.local`, mot de passe dev fictif du seed). Ne
+  jamais pointer un tunnel vers une base contenant de vraies données personnelles de club.
 - Le nginx frontend ne porte aucun `location /engine/`, en dev comme en prod : le solveur n'est
   jamais atteignable par le tunnel, seulement par le backend, comme le veut la frontière §2 de
   `CLAUDE.md`.

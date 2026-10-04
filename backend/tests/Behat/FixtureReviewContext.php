@@ -30,7 +30,7 @@ use Symfony\Component\Mime\Part\Multipart\FormDataPart;
  */
 final class FixtureReviewContext extends BaseContext
 {
-    private const string USER_EMAIL = 'mara.mb@bccl.fr';
+    private const string USER_EMAIL = 'dev-bccl@amateo.local';
 
     private const string DIVISION = 'BEHAT REVIEW D';
 

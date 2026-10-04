@@ -33,8 +33,8 @@ import { settleVeil } from "./support";
  * RIEN — même verdict en CI comme en local. C'est la leçon de `matches.spec.ts`.
  */
 
-const EMAIL = "mara.mb@bccl.fr";
-const PASSWORD = "maraboubccl";
+const EMAIL = "dev-bccl@amateo.local";
+const PASSWORD = "charge-load-test-pwd";
 
 /** Les fenêtres des deux segments de l'incident, telles que « Tous les plannings » les affiche. */
 const MILIEU_WINDOW = "31-08-2026 → 11-10-2026";

@@ -28,7 +28,7 @@ use RuntimeException;
  */
 final class ExportContext extends BaseContext
 {
-    private const string USER_EMAIL = 'mara.mb@bccl.fr';
+    private const string USER_EMAIL = 'dev-bccl@amateo.local';
 
     private const int POLL_INTERVAL_SECONDS = 2;
 

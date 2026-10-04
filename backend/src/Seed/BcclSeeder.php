@@ -380,7 +380,7 @@ final class BcclSeeder
         }
         $manager->flush();
 
-        // P5-13 — gestionnaires ADDITIONNELS du profil (Nicolas en dev). Find-or-create par
+        // P5-13 — gestionnaires ADDITIONNELS du profil (co-gestionnaires du fichier local d'identités). Find-or-create par
         // email, jamais écrasés : même patron que le gestionnaire principal ci-dessus.
         $this->seedAdditionalManagers($manager, $club, $profile);
 
@@ -723,43 +723,50 @@ final class BcclSeeder
         // ============================================================
         // SECTION 5 — NEW COACHES
         // ============================================================
+        // DÉPÔT PUBLIC — identités FICTIVES par défaut (surnoms « Coach … », nom de famille vide,
+        // validés fondateur) : le dépôt ne porte QUE du fictif (AUD-SEC-29). Les vraies identités du
+        // club du fondateur vivent dans un fichier local gitignoré, injecté POSITIONNELLEMENT via
+        // {@see BcclSeedProfile::$coachNames} (absent en CI / chez un autre dev → ces surnoms). La
+        // `key` est un index INTERNE stable (jamais affiché, jamais sérialisé) : il découple
+        // l'indexation de `$coaches` du libellé affiché — deux coachs peuvent partager un surnom
+        // (« Coach Flo », « Coach Amb ») sans collision de clé.
         $newCoachesData = [
-            ['firstName' => 'Maxime', 'lastName' => 'Dionnet'],
-            ['firstName' => 'Mara', 'lastName' => ''],
-            ['firstName' => 'Emerick', 'lastName' => 'Creantor'],
-            ['firstName' => 'Nico', 'lastName' => 'Patin'],
-            ['firstName' => 'Enzo', 'lastName' => 'Camerino'],
-            ['firstName' => 'Thomas', 'lastName' => 'Francon'],
-            ['firstName' => 'Florian', 'lastName' => 'Tapaunat'],
-            ['firstName' => 'Christophe', 'lastName' => 'Renaud'],
-            ['firstName' => 'Marlon', 'lastName' => 'Depierre'],
-            ['firstName' => 'Lionel', 'lastName' => 'Lacroute'],
-            ['firstName' => 'Nicolas', 'lastName' => 'Barilleau'],
-            ['firstName' => 'Ines', 'lastName' => ''],
-            ['firstName' => 'Florian', 'lastName' => ''],
-            ['firstName' => 'Luca', 'lastName' => 'Blanchini'],
-            ['firstName' => 'Thalie', 'lastName' => 'Charpenet'],
-            ['firstName' => 'Cyril', 'lastName' => 'Benveniste'],
-            ['firstName' => 'Mathis', 'lastName' => 'Bidaux'],
-            ['firstName' => 'Anna', 'lastName' => 'Textoris'],
-            ['firstName' => 'Pierre', 'lastName' => 'Chauvin'],
-            ['firstName' => 'Maeleen', 'lastName' => 'Creantor'],
-            ['firstName' => 'Jordan', 'lastName' => 'Rabeuf'],
-            ['firstName' => 'Ethan', 'lastName' => 'Barale-Reghellin'],
-            ['firstName' => 'Ambrine', 'lastName' => 'Azizi'],
-            ['firstName' => 'Aela', 'lastName' => 'Desplanque'],
-            ['firstName' => 'Charlie', 'lastName' => 'Lefort'],
-            ['firstName' => 'Julia', 'lastName' => 'Patin'],
-            // Ajoutés par le gestionnaire dans l'app le 2026-08-18 (relevé de la base réelle) :
-            // le seed les ignorait, un environnement neuf repartait donc sans eux.
-            ['firstName' => 'Alexis', 'lastName' => 'Kuriyan'],
-            ['firstName' => 'Ambrine', 'lastName' => 'Hamani'],
-            ['firstName' => 'Chaima', 'lastName' => 'Othmane'],
-            ['firstName' => 'Joseph', 'lastName' => 'Enama'],
+            ['key' => 'c01', 'firstName' => 'Coach Max', 'lastName' => ''],
+            ['key' => 'c02', 'firstName' => 'Coach Mara', 'lastName' => ''],
+            ['key' => 'c03', 'firstName' => 'Coach Eme', 'lastName' => ''],
+            ['key' => 'c04', 'firstName' => 'Coach Nic', 'lastName' => ''],
+            ['key' => 'c05', 'firstName' => 'Coach Enz', 'lastName' => ''],
+            ['key' => 'c06', 'firstName' => 'Coach Tho', 'lastName' => ''],
+            ['key' => 'c07', 'firstName' => 'Coach Flo', 'lastName' => ''],
+            ['key' => 'c08', 'firstName' => 'Coach Chr', 'lastName' => ''],
+            ['key' => 'c09', 'firstName' => 'Coach Marl', 'lastName' => ''],
+            ['key' => 'c10', 'firstName' => 'Coach Lio', 'lastName' => ''],
+            ['key' => 'c11', 'firstName' => 'Coach PoivreSel', 'lastName' => ''],
+            ['key' => 'c12', 'firstName' => 'Coach Ine', 'lastName' => ''],
+            ['key' => 'c13', 'firstName' => 'Coach Flo', 'lastName' => ''],
+            ['key' => 'c14', 'firstName' => 'Coach Luc', 'lastName' => ''],
+            ['key' => 'c15', 'firstName' => 'Coach Tha', 'lastName' => ''],
+            ['key' => 'c16', 'firstName' => 'Coach Cyr', 'lastName' => ''],
+            ['key' => 'c17', 'firstName' => 'Coach Mat', 'lastName' => ''],
+            ['key' => 'c18', 'firstName' => 'Coach Ann', 'lastName' => ''],
+            ['key' => 'c19', 'firstName' => 'Coach Pie', 'lastName' => ''],
+            ['key' => 'c20', 'firstName' => 'Coach Mae', 'lastName' => ''],
+            ['key' => 'c21', 'firstName' => 'Coach Jor', 'lastName' => ''],
+            ['key' => 'c22', 'firstName' => 'Coach Eth', 'lastName' => ''],
+            ['key' => 'c23', 'firstName' => 'Coach Amb', 'lastName' => ''],
+            ['key' => 'c24', 'firstName' => 'Coach Ael', 'lastName' => ''],
+            ['key' => 'c25', 'firstName' => 'Coach Charl', 'lastName' => ''],
+            ['key' => 'c26', 'firstName' => 'Coach Jul', 'lastName' => ''],
+            // Quatre coachs de plus (le seed a gagné quatre entrées le 2026-08-18) : la liste doit
+            // rester AU MOINS aussi longue que le remplacement positionnel, sinon la garde lève.
+            ['key' => 'c27', 'firstName' => 'Coach Ale', 'lastName' => ''],
+            ['key' => 'c28', 'firstName' => 'Coach Amb', 'lastName' => ''],
+            ['key' => 'c29', 'firstName' => 'Coach Chaim', 'lastName' => ''],
+            ['key' => 'c30', 'firstName' => 'Coach Jos', 'lastName' => ''],
         ];
 
         foreach ($newCoachesData as $coachData) {
-            $key = '' !== $coachData['lastName'] ? $coachData['firstName'] . ' ' . $coachData['lastName'] : $coachData['firstName'];
+            $key = $coachData['key'];
             $existing = $manager->getRepository(Coach::class)->findOneBy([
                 'clubId' => $club->getId(),
                 'firstName' => $coachData['firstName'],
@@ -783,22 +790,22 @@ final class BcclSeeder
         }
         $manager->flush();
 
-        // P2-4 PR 2bis — ANONYMISATION (profil démo) : remplacement POSITIONNEL des
-        // identités de coachs, ICI et pas en post-passe. Tout ce qui se construit
-        // plus bas lit l'ENTITÉ (« %s - Indisponible mercredi » via getFirstName())
-        // et suit donc automatiquement — aucun libellé à réécrire après coup. Les
-        // clés du tableau $coaches restent les noms du seed : c'est un index
-        // interne au fichier, il ne sort jamais de cette méthode.
+        // REMPLACEMENT POSITIONNEL des identités de coachs, ICI et pas en post-passe. Deux usages,
+        // même mécanisme : (1) injecter les VRAIES identités du club du fondateur depuis le fichier
+        // local gitignoré (profils dev/prod avec identités fournies) ; (2) donner au club de
+        // démonstration / de charge un jeu d'identités fictives DISTINCT des surnoms par défaut.
+        // Tout ce qui se construit plus bas lit l'ENTITÉ (« %s · indispo %s » via getFirstName())
+        // et suit donc automatiquement — aucun libellé à réécrire après coup. Les clés de $coaches
+        // sont un index INTERNE stable (« c07 »…), il ne sort jamais de cette méthode.
         if (null !== $profile->coachNames) {
-            // STRICT : une liste fictive plus courte que le seed laisserait des vrais
-            // noms à l'écran en silence — c'est précisément ce que le profil démo
-            // existe pour empêcher. On refuse, on n'anonymise jamais « en partie ».
+            // STRICT : une liste de remplacement plus courte que le seed laisserait des identités
+            // par défaut à l'écran en silence — on refuse, on ne remplace jamais « en partie ».
             if (\count($profile->coachNames) < \count($newCoachesData)) {
-                throw new RuntimeException(\sprintf('Anonymisation incomplète : %d identités fictives pour %d coachs seedés.', \count($profile->coachNames), \count($newCoachesData)));
+                throw new RuntimeException(\sprintf('Remplacement d\'identités incomplet : %d identités pour %d coachs seedés.', \count($profile->coachNames), \count($newCoachesData)));
             }
             $position = 0;
             foreach ($newCoachesData as $coachData) {
-                $key = '' !== $coachData['lastName'] ? $coachData['firstName'] . ' ' . $coachData['lastName'] : $coachData['firstName'];
+                $key = $coachData['key'];
                 $replacement = $profile->coachNames[$position] ?? null;
                 if (null !== $replacement && isset($coaches[$key])) {
                     $coaches[$key]->setFirstName($replacement['firstName']);
@@ -809,89 +816,89 @@ final class BcclSeeder
             $manager->flush();
         }
 
-        // Extract typed coach references for PHPStan level 8
+        // Extract typed coach references for PHPStan level 8 — indexés par la clé INTERNE du seed.
         /** @var array<string, Coach> $coaches */
-        $coachMaxime = $coaches['Maxime Dionnet'];
-        $coachMara = $coaches['Mara'];
-        $coachEmerick = $coaches['Emerick Creantor'];
-        $coachNicoPatin = $coaches['Nico Patin'];
-        $coachEnzo = $coaches['Enzo Camerino'];
-        $coachThomas = $coaches['Thomas Francon'];
-        $coachFlo = $coaches['Florian Tapaunat'];
-        $coachChris = $coaches['Christophe Renaud'];
-        $coachMarlon = $coaches['Marlon Depierre'];
-        $coachLionel = $coaches['Lionel Lacroute'];
-        $coachNicolasBarilleau = $coaches['Nicolas Barilleau'];
-        $coachInes = $coaches['Ines'];
-        $coachFlorian = $coaches['Florian'];
-        $coachLuca = $coaches['Luca Blanchini'];
-        $coachThalie = $coaches['Thalie Charpenet'];
-        $coachJordan = $coaches['Jordan Rabeuf'];
-        $coachEthan = $coaches['Ethan Barale-Reghellin'];
-        $coachCyril = $coaches['Cyril Benveniste'];
-        $coachMathis = $coaches['Mathis Bidaux'];
-        $coachAnna = $coaches['Anna Textoris'];
-        $coachAlexis = $coaches['Alexis Kuriyan'];
-        $coachAmbrineHamani = $coaches['Ambrine Hamani'];
-        $coachChaima = $coaches['Chaima Othmane'];
-        $coachJoseph = $coaches['Joseph Enama'];
-        $coachMaeleen = $coaches['Maeleen Creantor'];
-        $coachPierreChauvin = $coaches['Pierre Chauvin'];
-        $coachAmbrine = $coaches['Ambrine Azizi'];
-        $coachAela = $coaches['Aela Desplanque'];
-        $coachCharlie = $coaches['Charlie Lefort'];
-        $coachJulia = $coaches['Julia Patin'];
+        $coachMax = $coaches['c01'];
+        $coachMara = $coaches['c02'];
+        $coachEme = $coaches['c03'];
+        $coachNic = $coaches['c04'];
+        $coachEnz = $coaches['c05'];
+        $coachTho = $coaches['c06'];
+        $coachFloSm3 = $coaches['c07'];
+        $coachChr = $coaches['c08'];
+        $coachMarl = $coaches['c09'];
+        $coachLio = $coaches['c10'];
+        $coachPoivreSel = $coaches['c11'];
+        $coachIne = $coaches['c12'];
+        $coachFloU18f3 = $coaches['c13'];
+        $coachLuc = $coaches['c14'];
+        $coachTha = $coaches['c15'];
+        $coachCyr = $coaches['c16'];
+        $coachMat = $coaches['c17'];
+        $coachAnn = $coaches['c18'];
+        $coachPie = $coaches['c19'];
+        $coachMae = $coaches['c20'];
+        $coachJor = $coaches['c21'];
+        $coachEth = $coaches['c22'];
+        $coachAmbU9m2 = $coaches['c23'];
+        $coachAel = $coaches['c24'];
+        $coachCharl = $coaches['c25'];
+        $coachJul = $coaches['c26'];
+        $coachAle = $coaches['c27'];
+        $coachAmbBaby1 = $coaches['c28'];
+        $coachChaim = $coaches['c29'];
+        $coachJos = $coaches['c30'];
 
-        $coachNicolasBarilleau->setIsEmployee(true);
-        $coachNicoPatin->setIsEmployee(true);
-        $coachEnzo->setIsEmployee(true);
-        $coachEmerick->setIsEmployee(true);
-        $coachThomas->setIsEmployee(true);
-        $coachJordan->setIsEmployee(true);
+        $coachPoivreSel->setIsEmployee(true);
+        $coachNic->setIsEmployee(true);
+        $coachEnz->setIsEmployee(true);
+        $coachEme->setIsEmployee(true);
+        $coachTho->setIsEmployee(true);
+        $coachJor->setIsEmployee(true);
 
         // ============================================================
         // SECTION 6 — NEW TEAM-COACH LINKS
         // ============================================================
         $newTeamCoachLinks = [
-            ['coach' => $coachEmerick, 'team' => $sf1, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachEme, 'team' => $sf1, 'role' => TeamCoachRole::MAIN],
             ['coach' => $coachMara, 'team' => $sf2, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachLionel, 'team' => $sf3, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachMaxime, 'team' => $sm1, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachThomas, 'team' => $sm1, 'role' => TeamCoachRole::ASSISTANT],
-            ['coach' => $coachNicoPatin, 'team' => $sm2, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachFlo, 'team' => $sm3, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachChris, 'team' => $sm4, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachThomas, 'team' => $u21m1, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachMarlon, 'team' => $u21m2, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachNicolasBarilleau, 'team' => $u18m1, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachInes, 'team' => $u18f2, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachEnzo, 'team' => $u18f1, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachFlorian, 'team' => $u18f3, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachThomas, 'team' => $u15m1, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachLuca, 'team' => $u15m2, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachEmerick, 'team' => $teams['U15F1'], 'role' => TeamCoachRole::MAIN],
-            //            ['coach' => $coachThalie, 'team' => $u15f2, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachThalie, 'team' => $u15f3, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachCyril, 'team' => $teams['U13M1'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachMathis, 'team' => $teams['U13M2'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachEnzo, 'team' => $u13f1, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachJordan, 'team' => $teams['U13F2'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachEthan, 'team' => $teams['U13F3'], 'role' => TeamCoachRole::MAIN],
-            //            ['coach' => $coachEnzo, 'team' => $teams['U11M1'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachLio, 'team' => $sf3, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachMax, 'team' => $sm1, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachTho, 'team' => $sm1, 'role' => TeamCoachRole::ASSISTANT],
+            ['coach' => $coachNic, 'team' => $sm2, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachFloSm3, 'team' => $sm3, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachChr, 'team' => $sm4, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachTho, 'team' => $u21m1, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachMarl, 'team' => $u21m2, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachPoivreSel, 'team' => $u18m1, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachIne, 'team' => $u18f2, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachEnz, 'team' => $u18f1, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachFloU18f3, 'team' => $u18f3, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachTho, 'team' => $u15m1, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachLuc, 'team' => $u15m2, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachEme, 'team' => $teams['U15F1'], 'role' => TeamCoachRole::MAIN],
+            //            ['coach' => $coachTha, 'team' => $u15f2, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachTha, 'team' => $u15f3, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachCyr, 'team' => $teams['U13M1'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachMat, 'team' => $teams['U13M2'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachEnz, 'team' => $u13f1, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachJor, 'team' => $teams['U13F2'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachEth, 'team' => $teams['U13F3'], 'role' => TeamCoachRole::MAIN],
+            //            ['coach' => $coachEnz, 'team' => $teams['U11M1'], 'role' => TeamCoachRole::MAIN],
             // Correction 2026-08-18 (fondateur) : Anna est sur U11M1, pas U11M2 — l'erreur
             // venait du seed lui-même, d'où deux coachs principaux sur U11M2 et U11M1 sans coach.
-            ['coach' => $coachAnna, 'team' => $teams['U11M1'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachJoseph, 'team' => $teams['U11M2'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachAlexis, 'team' => $teams['U18M2'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachAmbrineHamani, 'team' => $teams['Baby 1'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachChaima, 'team' => $teams['Baby 2'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachPierreChauvin, 'team' => $teams['U11F1'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachMaeleen, 'team' => $teams['U11F2'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachJordan, 'team' => $teams['U9M1'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachAmbrine, 'team' => $teams['U9M2'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachAela, 'team' => $teams['U9F1'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachJulia, 'team' => $teams['U9F2'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachCharlie, 'team' => $teams['U9F2'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachAnn, 'team' => $teams['U11M1'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachJos, 'team' => $teams['U11M2'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachAle, 'team' => $teams['U18M2'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachAmbBaby1, 'team' => $teams['Baby 1'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachChaim, 'team' => $teams['Baby 2'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachPie, 'team' => $teams['U11F1'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachMae, 'team' => $teams['U11F2'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachJor, 'team' => $teams['U9M1'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachAmbU9m2, 'team' => $teams['U9M2'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachAel, 'team' => $teams['U9F1'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachJul, 'team' => $teams['U9F2'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coachCharl, 'team' => $teams['U9F2'], 'role' => TeamCoachRole::MAIN],
         ];
 
         // Purge existing team-coach links (club/season) before recreating, so an
@@ -929,32 +936,32 @@ final class BcclSeeder
         // SECTION 7 — NEW COACH-PLAYER MEMBERSHIPS
         // ============================================================
         // Doctrine fondateur (2026-09-01, définitive) : un lien coach-joueur ne se coupe JAMAIS —
-        // ni globalement, ni par plan. Quand le réel le contredit (reprises : Enzo, Emerick, Mara,
-        // Thomas), le gestionnaire IMPOSE le créneau par RÉSERVATION : le verrou est souverain,
+        // ni globalement, ni par plan. Quand le réel le contredit (reprises : Coach Enz, Coach Eme, Coach Mara,
+        // Coach Tho), le gestionnaire IMPOSE le créneau par RÉSERVATION : le verrou est souverain,
         // le moteur crie en diagnostic, et ce cri est pleinement assumé — « si ça crie, c'est que
         // j'ai fait une réservation, donc un geste volontaire ». Le planning transcrit pointé
         // s'affiche tel quel ; une régénération libre, elle, respecte les liens.
         /** @var list<array{coach: Coach, team: Team, active?: bool}> $newPlayerLinks */
         $newPlayerLinks = [
-            ['coach' => $coachEnzo, 'team' => $sm1],
-            ['coach' => $coachLuca, 'team' => $sm1],
-            ['coach' => $coachNicolasBarilleau, 'team' => $sm2],
-            ['coach' => $coachMaxime, 'team' => $sm2],
+            ['coach' => $coachEnz, 'team' => $sm1],
+            ['coach' => $coachLuc, 'team' => $sm1],
+            ['coach' => $coachPoivreSel, 'team' => $sm2],
+            ['coach' => $coachMax, 'team' => $sm2],
             ['coach' => $coachMara, 'team' => $sm2],
-            ['coach' => $coachEmerick, 'team' => $sm2],
-            ['coach' => $coachThomas, 'team' => $sm3],
-            ['coach' => $coachInes, 'team' => $sf2],
-            ['coach' => $coachThalie, 'team' => $sf3],
-            ['coach' => $coachAela, 'team' => $sf3],
-            ['coach' => $coachJordan, 'team' => $sm2],
-            ['coach' => $coachAnna, 'team' => $u18f1],
-            ['coach' => $coachCharlie, 'team' => $u15f1],
-            ['coach' => $coachJulia, 'team' => $u15f1],
+            ['coach' => $coachEme, 'team' => $sm2],
+            ['coach' => $coachTho, 'team' => $sm3],
+            ['coach' => $coachIne, 'team' => $sf2],
+            ['coach' => $coachTha, 'team' => $sf3],
+            ['coach' => $coachAel, 'team' => $sf3],
+            ['coach' => $coachJor, 'team' => $sm2],
+            ['coach' => $coachAnn, 'team' => $u18f1],
+            ['coach' => $coachCharl, 'team' => $u15f1],
+            ['coach' => $coachJul, 'team' => $u15f1],
             // Mathis entraîne U13M2 mais joue aussi en U21M1 ; Florian entraîne
             // U18F3 et joue en Loisir 3 — le solveur en tire un conflit coach
             // (impossible d'être aux deux séances en même temps).
-            ['coach' => $coachMathis, 'team' => $u21m1],
-            ['coach' => $coachFlorian, 'team' => $teams['Loisir 3']],
+            ['coach' => $coachMat, 'team' => $u21m1],
+            ['coach' => $coachFloU18f3, 'team' => $teams['Loisir 3']],
         ];
 
         foreach ($newPlayerLinks as $link) {
@@ -1069,15 +1076,15 @@ final class BcclSeeder
         // + Tonkin mercredi, zéro Armand — la préférence contredisait le réel). Nom au format
         // wizard, à purger pour qu'un reseed en append ne garde pas la ligne d'avant.
         $staleNames[] = 'U18F2 · préfère ' . $venues['vArmand']->getName();
-        foreach ([$coachLionel, $coachThomas, $coachEnzo, $coachJordan] as $coach) {
+        foreach ([$coachLio, $coachTho, $coachEnz, $coachJor] as $coach) {
             $staleNames[] = \sprintf('%s - Indisponible le vendredi', $coach->getFirstName());
         }
-        foreach ([$coachEmerick, $coachNicolasBarilleau] as $coach) {
+        foreach ([$coachEme, $coachPoivreSel] as $coach) {
             $staleNames[] = \sprintf('%s - Indisponible le jeudi', $coach->getFirstName());
         }
-        // Ancienne indispo coach du jeudi retirée de la base (Nico Patin) — nom dérivé
+        // Ancienne indispo coach du jeudi retirée de la base (Coach Nic) — nom dérivé
         // de l'entité pour suivre l'anonymisation du profil démo.
-        $staleNames[] = \sprintf('%s - Indisponible le jeudi', $coachNicoPatin->getFirstName());
+        $staleNames[] = \sprintf('%s - Indisponible le jeudi', $coachNic->getFirstName());
         // « <équipe> - Pas d'entraînement le mercredi » : la base réelle n'en a aucune
         // (le CEC du mercredi a disparu, les jeunes s'entraînent ce jour-là).
         foreach (['U11F1', 'U11F2', 'U11M2', 'U9M1', 'U9M2', 'U9F1', 'U9F2'] as $teamName) {
@@ -1211,7 +1218,7 @@ final class BcclSeeder
 
         // --- COACH_AVAILABILITY (indisponibilités ; 5 = vendredi, 4 = jeudi) ---
         // Variables coach déjà résolues (l.618+) : un coach manquant lève une erreur PHP au lieu de disparaître en silence.
-        foreach ([[$coachLionel, 5], [$coachThomas, 5], [$coachEnzo, 5], [$coachJordan, 5], [$coachEmerick, 4], [$coachNicolasBarilleau, 4]] as [$coach, $day]) {
+        foreach ([[$coachLio, 5], [$coachTho, 5], [$coachEnz, 5], [$coachJor, 5], [$coachEme, 4], [$coachPoivreSel, 4]] as [$coach, $day]) {
             // SEC-13 : la cible du coach est le SCOPE (3e argument), plus une clé du config —
             // `coachId` en doublon est refusé depuis la validation stricte, et un club seedé
             // qui le porte ferme le gate du récap (bouton « Continuer » gris, e2e bloquée).
@@ -1926,7 +1933,7 @@ final class BcclSeeder
     }
 
     /**
-     * P5-13 — gestionnaires ADDITIONNELS d'un profil (Nicolas en dev) : chacun un couple
+     * P5-13 — gestionnaires ADDITIONNELS d'un profil (co-gestionnaires du fichier local d'identités) : chacun un couple
      * User (email vérifié, mot de passe hashé au seed) + ClubUser admin actif. Find-or-create
      * par email — un compte déjà présent n'est JAMAIS écrasé (mot de passe, nom conservés),
      * exactement comme le gestionnaire principal. `[]` (démo/charge) = no-op.
@@ -2920,12 +2927,12 @@ final class BcclSeeder
                 // Contraintes de GENÈSE de CETTE semaine (P2-59, construites pendant l'exercice
                 // solveur du 2026-09-01, validées fondateur) : elles pendent à l'entrée-enfant du
                 // 17, invisibles de la semaine du 24. Le bloc SM mutualisé ne démarre pas avant
-                // 20:30 (la transcription le pose à 20:45 ≥ 20:30, honorée), Nico Barilleau est
+                // 20:30 (la transcription le pose à 20:45 ≥ 20:30, honorée), Coach PoivreSel est
                 // indispo lundi + vendredi (U18M1, son équipe, ne s'entraîne que mardi/jeudi).
                 'constraints' => [
                     ['name' => 'Séniors masculins mutualisés · pas avant 20:30', 'scope' => ConstraintScope::TEAM, 'target' => 'SM1', 'family' => ConstraintFamily::TIME, 'rule' => ConstraintRuleType::HARD, 'config' => ['minStartTime' => '20:30']],
                     ['name' => 'Séniors masculins mutualisés · pas avant 20:30', 'scope' => ConstraintScope::TEAM, 'target' => 'SM2', 'family' => ConstraintFamily::TIME, 'rule' => ConstraintRuleType::HARD, 'config' => ['minStartTime' => '20:30']],
-                    ['name' => 'Nicolas Barilleau · indispo lundi, vendredi', 'scope' => ConstraintScope::COACH, 'target' => 'Nicolas Barilleau', 'family' => ConstraintFamily::COACH_AVAILABILITY, 'rule' => ConstraintRuleType::HARD, 'config' => ['unavailableDays' => [1, 5]]],
+                    ['name' => 'Coach PoivreSel · indispo lundi, vendredi', 'scope' => ConstraintScope::COACH, 'target' => 'c11', 'family' => ConstraintFamily::COACH_AVAILABILITY, 'rule' => ConstraintRuleType::HARD, 'config' => ['unavailableDays' => [1, 5]]],
                 ],
                 // Seuls les créneaux CHOISIS sont figés (équipes fanion — « on les impose au
                 // modèle car ça nous arrange », exercice solveur du 2026-09-01) : les deux blocs
@@ -2948,8 +2955,8 @@ final class BcclSeeder
                 //  - Senior +22 Compétition ≥ 20:00 : SM3/SF1/SF2 à 19:30.
                 //  - SF2 · pas vendredi : SF2 s'entraîne le vendredi.
                 //  - SM2 · au moins 1 à Matéo : Matéo est fermé (0 séance possible à Matéo).
-                //  - Nicolas Barilleau · indispo jeudi : U18M1 (son équipe) s'entraîne le JEUDI 18:15.
-                //  - Thomas Francon · indispo vendredi : U15M1 (son équipe) s'entraîne le VENDREDI 17:00.
+                //  - Coach PoivreSel · indispo jeudi : U18M1 (son équipe) s'entraîne le JEUDI 18:15.
+                //  - Coach Tho · indispo vendredi : U15M1 (son équipe) s'entraîne le VENDREDI 17:00.
                 //    (Les deux indispos sont des faits de SAISON hérités, pas de la semaine de reprise —
                 //    arbitrage fondateur 2026-09-01, révélé par l'exercice solveur : sans décochage la
                 //    génération ne peut pas atteindre le planning réel.)
@@ -2958,8 +2965,8 @@ final class BcclSeeder
                     'Groupe Senior (+ de 22) + Compétition (hors loisir) · pas avant 20:00',
                     'SF2 · pas vendredi',
                     'SM2 · au moins 1 à Matéo',
-                    'Nicolas Barilleau · indispo jeudi',
-                    'Thomas Francon · indispo vendredi',
+                    'Coach PoivreSel · indispo jeudi',
+                    'Coach Tho · indispo vendredi',
                     // Le bloc SM1+SM2 est figé lun/mar/jeu par réservation — la règle héritée
                     // « pas vendredi » n'a plus d'objet et gênerait le solveur pour rien.
                     'SM2 · pas vendredi',
@@ -3081,8 +3088,8 @@ final class BcclSeeder
                 //  - Groupe Jeune (U13-U18) · pas après 19:50 : remplacée par la genèse « Mineurs ».
                 //  - SM2 · au moins 1 à Matéo : Matéo est fermé.
                 //  - Indisponibilités coach de SAISON que le réel contredit (arbitrage fondateur
-                //    2026-09-01) : Nicolas Barilleau indispo jeudi (U18M1 s'entraîne jeudi), Enzo
-                //    Camerino indispo vendredi (U13F1/U18F1 vendredi), Thomas Francon indispo
+                //    2026-09-01) : Coach PoivreSel indispo jeudi (U18M1 s'entraîne jeudi), Coach
+                //    Enz indispo vendredi (U13F1/U18F1 vendredi), Coach Tho indispo
                 //    vendredi (U15M1/U21M1 vendredi).
                 'deactivatedConstraints' => [
                     'SM1 · uniquement mardi, jeudi',
@@ -3090,9 +3097,9 @@ final class BcclSeeder
                     'Groupe U15 · pas après 19:00',
                     'Groupe Jeune (U13-U18) · pas après 19:50',
                     'SM2 · au moins 1 à Matéo',
-                    'Nicolas Barilleau · indispo jeudi',
-                    'Enzo Camerino · indispo vendredi',
-                    'Thomas Francon · indispo vendredi',
+                    'Coach PoivreSel · indispo jeudi',
+                    'Coach Enz · indispo vendredi',
+                    'Coach Tho · indispo vendredi',
                 ],
             ],
         ];
