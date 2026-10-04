@@ -1,13 +1,10 @@
 # Modules produit — ce qu'Amateo vend, en langage club
 
-Last verified @ 2026-10-01 (rotation de fraîcheur, `documentation-update`, PR 5/7 série
-« uniformité des écrans »). Re-confronté au code : les routes `/register`, `/wizard`,
-`/doleances/:token` et `/matchs/adversaires` existent toujours (`frontend/src/app/routes.tsx`,
-`frontend/src/features/matches/MatchesLayout.tsx`) ; **l'export planning n'a que deux formats,
-PDF et Excel** — l'ancien PNG n'existe plus (`frontend/src/features/planning/queries.ts:314`
-`ExportFormat = "pdf" | "xlsx"`, aucun contrôleur PNG côté backend) : la ligne « Export PDF / PNG /
-Excel » était stale, corrigée ici. Reste des claims déjà vérifiées à la passe précédente
-(2026-09-29) : wizard 6 étapes (`frontend/src/features/wizard/lib/steps.ts:9-16`),
+Last verified @ 2026-10-04 (rotation de fraîcheur, `documentation-update`, passe P4-301).
+Re-confronté au code : la route `/doleances/:token` existe toujours (`frontend/src/app/routes.tsx:119`),
+l'export planning n'a toujours que deux formats PDF/Excel (`frontend/src/features/planning/queries.ts:314`,
+`ExportFormat = "pdf" | "xlsx"`). Reste des claims déjà vérifiées aux passes précédentes
+(2026-09-29/2026-10-01) : wizard 6 étapes (`frontend/src/features/wizard/lib/steps.ts:9-16`),
 `FfbbClubPopulator.php`/`FfbbTeamImporter.php` (`backend/src/Service/Basketball/`), rappels
 J-14/J-7/J-3 (`PeriodReminderCommand.php:31,40`), échéance RMM-6 (`EntryDeadlineOutlook.php:39-40`).
 

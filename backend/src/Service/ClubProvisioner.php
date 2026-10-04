@@ -39,6 +39,7 @@ final class ClubProvisioner
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly DefaultConstraintSeeder $defaultConstraintSeeder,
         private readonly ClubLeagueWindowSeeder $clubLeagueWindowSeeder,
+        private readonly OrphanAccountNotifier $orphanAccountNotifier,
     ) {}
 
     public function createClub(string $clubName, string $ara): Club
@@ -72,6 +73,13 @@ final class ClubProvisioner
         $clubUser->setRole($role->value);
         $clubUser->setIsActive($isActive);
         $this->entityManager->persist($clubUser);
+
+        // P4-301 — toute NAISSANCE d'une adhésion ACTIVE (création d'un club, reprise)
+        // annule un éventuel préavis « compte sans club ». Foyer unique
+        // OrphanAccountNotifier::cancelFor ; flushé par la transaction de l'appelant.
+        if ($isActive) {
+            $this->orphanAccountNotifier->cancelFor($userId);
+        }
     }
 
     public function seedWorkspace(Club $club): void

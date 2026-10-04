@@ -93,6 +93,7 @@ final class ErasedClubPurger
         private readonly SeasonDataPurger $seasonDataPurger,
         private readonly AuditTrail $auditTrail,
         private readonly OpponentVenueSuggestionRepository $venueSuggestions,
+        private readonly OrphanAccountNotifier $orphanAccountNotifier,
     ) {}
 
     /** @return int nombre de lignes supprimées (workspace complet) */
@@ -100,6 +101,16 @@ final class ErasedClubPurger
     {
         $clubId = $club->getId();
         $deleted = 0;
+
+        // P4-301 — les titulaires des adhésions de ce club, COLLECTÉS AVANT le DELETE de
+        // masse des `club_user` (étape 2 ci-dessous les supprime). On les préviendra APRÈS
+        // la purge (hors toute transaction), variante « espace supprimé » : ceux qui restent
+        // sans aucun accès deviennent orphelins. Le dernier gestionnaire qui s'est effacé est
+        // déjà anonymisé → isOrphan l'écarte, pas de second mail.
+        $memberUserIds = $this->entityManager->getConnection()->fetchFirstColumn(
+            'SELECT DISTINCT user_id FROM club_user WHERE club_id = :clubId',
+            ['clubId' => $clubId],
+        );
 
         // 1. Toutes les saisons du club, ligne Season comprise.
         $this->disableTenantFilters($this->entityManager);
@@ -147,6 +158,15 @@ final class ErasedClubPurger
 
         // Audit APRÈS le clear (l'insert DBAL ne touche pas l'unit of work).
         $this->auditTrail->record(AuditAction::CLUB_PURGED, null, $clubId, 'Club', $clubId, ['rowsDeleted' => $deleted]);
+
+        // P4-301 — préavis « compte sans club » aux membres devenus orphelins par cette
+        // purge (adhésions de ce club déjà supprimées ci-dessus). Best-effort, hors
+        // transaction : chaque appel vérifie lui-même isOrphan et n'envoie rien sinon.
+        foreach ($memberUserIds as $userId) {
+            if (\is_string($userId)) {
+                $this->orphanAccountNotifier->notifyClubDeleted($userId);
+            }
+        }
 
         return $deleted;
     }

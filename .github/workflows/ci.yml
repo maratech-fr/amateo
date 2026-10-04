@@ -873,6 +873,15 @@ jobs:
       - name: AccountErasureTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/AccountErasureTest.php --group phase1'
 
+      # Axe auth & memberships (P4-301) — un compte qui a perdu son dernier club : le retrait
+      # du dernier accès (désactivation/refus/purge de club) envoie un préavis ET pose un stamp,
+      # le cron l'anonymise 30 j APRÈS un envoi réussi (jamais sans mail), la réactivation annule
+      # le préavis, la revalidation saute un compte redevenu actif, et pending/démo/multi-club
+      # actif ne sont jamais concernés. Sans ce gate, une régression supprimerait des comptes sans
+      # préavis, ou n'en supprimerait jamais — invisible aux autres checks.
+      - name: OrphanAccountLifecycleTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/OrphanAccountLifecycleTest.php --group phase1'
+
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest

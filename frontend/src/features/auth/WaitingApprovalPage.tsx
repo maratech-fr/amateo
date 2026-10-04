@@ -44,15 +44,28 @@ export function WaitingApprovalPage() {
   // dire « demande en attente » ici mentirait. Distinct, et réversible : la page entre
   // toute seule dès la réactivation (le poll bascule sur `active`).
   const deactivated = data?.membershipStatus === "deactivated";
+  // P4-301 : un compte qui a perdu son DERNIER club (espace purgé, ou demande d'adhésion
+  // refusée) n'a plus aucune adhésion NI demande — statut `none` sans `clubRequest`. Ce
+  // n'est pas « demande en attente » (ça, c'est une adhésion `pending` à un club existant).
+  const orphaned = data?.membershipStatus === "none" && request === null;
+  // P4-301 : la date butoir de suppression du compte (préavis + 30 j), servie par /api/me.
+  const deletionDate = formatDeletionDate(data?.accountDeletionScheduledFor);
   const state = deactivated
     ? ({ title: "Accès désactivé", description: "Votre accès au club a été suspendu.", icon: ShieldX } as const)
-    : request === null
-      ? ({ title: "Demande en attente", description: "Votre demande a bien été enregistrée.", icon: Clock } as const)
-      : request.status === "refused"
-        ? ({ title: "Demande refusée", description: `La création de l'espace ${request.clubName} a été refusée.`, icon: ShieldX } as const)
-        : request.status === "expired"
-          ? ({ title: "Demande expirée", description: `Le club n'a pas répondu dans les 7 jours.`, icon: MailX } as const)
-          : ({ title: "En attente du club", description: `Votre demande de création de l'espace ${request.clubName} est transmise.`, icon: Clock } as const);
+    : orphaned
+      ? ({ title: "Vous n'avez plus accès à aucun club", description: "Votre dernier accès a été retiré.", icon: ShieldX } as const)
+      : request === null
+        ? ({ title: "Demande en attente", description: "Votre demande a bien été enregistrée.", icon: Clock } as const)
+        : request.status === "refused"
+          ? ({ title: "Demande refusée", description: `La création de l'espace ${request.clubName} a été refusée.`, icon: ShieldX } as const)
+          : request.status === "expired"
+            ? ({ title: "Demande expirée", description: `Le club n'a pas répondu dans les 7 jours.`, icon: MailX } as const)
+            : ({ title: "En attente du club", description: `Votre demande de création de l'espace ${request.clubName} est transmise.`, icon: Clock } as const);
+
+  // P4-301 : la phrase d'échéance, réutilisée là où un préavis de suppression court.
+  const deadlineSentence = deletionDate
+    ? ` Sans nouvel accès, votre compte sera supprimé le ${deletionDate}.`
+    : "";
 
   return (
     <AuthLayout
@@ -70,7 +83,11 @@ export function WaitingApprovalPage() {
         </span>
         {deactivated ? (
           <p className="text-sm text-muted-foreground">
-            Votre accès a été désactivé par un gestionnaire du club. Rapprochez-vous de lui pour le réactiver. Cette page se mettra à jour automatiquement dès la réactivation.
+            Votre accès a été désactivé par un gestionnaire du club. Rapprochez-vous de lui pour le réactiver. Cette page se mettra à jour automatiquement dès la réactivation.{deadlineSentence}
+          </p>
+        ) : orphaned ? (
+          <p className="text-sm text-muted-foreground">
+            Vous n'avez plus accès à aucun club. Pour en retrouver un, rapprochez-vous d'un gestionnaire qui approuvera votre demande.{deadlineSentence}
           </p>
         ) : request === null ? (
           <p className="text-sm text-muted-foreground">
@@ -78,7 +95,7 @@ export function WaitingApprovalPage() {
           </p>
         ) : request.status === "refused" ? (
           <p className="text-sm text-muted-foreground">
-            Le club ({request.ara}) a refusé la demande. Si vous pensez qu'il s'agit d'une erreur, rapprochez-vous de votre club — ou recommencez l'inscription après clarification.
+            Le club ({request.ara}) a refusé la demande. Si vous pensez qu'il s'agit d'une erreur, rapprochez-vous de votre club — ou recommencez l'inscription après clarification.{deadlineSentence}
           </p>
         ) : request.status === "expired" ? (
           <p className="text-sm text-muted-foreground">
@@ -96,4 +113,13 @@ export function WaitingApprovalPage() {
       </div>
     </AuthLayout>
   );
+}
+
+/** P4-301 — une date SERVEUR `Y-m-d` rendue en `JJ/MM/AAAA` (sans fuseau, parse littéral). */
+function formatDeletionDate(iso: string | null | undefined): string | null {
+  if (!iso) {
+    return null;
+  }
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : null;
 }

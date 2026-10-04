@@ -9,6 +9,7 @@ use App\Entity\ClubUser;
 use App\Enum\ClubRole;
 use App\Repository\ClubUserRepository;
 use App\Service\ClubProvisioner;
+use App\Service\OrphanAccountNotifier;
 use App\Service\TenantConnectionContext;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -34,6 +35,7 @@ final class ClubWinBackService
         private readonly TenantConnectionContext $tenantConnectionContext,
         private readonly ClubProvisioner $clubProvisioner,
         private readonly ClubUserRepository $clubUserRepository,
+        private readonly OrphanAccountNotifier $orphanAccountNotifier,
     ) {}
 
     /** Aucun membre actif, tous rôles confondus (raw DBAL — club_user se lit cross-tenant). */
@@ -69,6 +71,10 @@ final class ClubWinBackService
             $existing->setRole(ClubRole::MANAGER->value);
             $existing->setIsActive(true);
             $existing->setDeactivatedAt(null);
+            // P4-301 — reprise d'une ligne existante : retour d'un accès actif → annule le
+            // préavis « compte sans club » (la branche `else` passe par createMembership,
+            // qui l'annule déjà). Flushé par la transaction de l'appelant.
+            $this->orphanAccountNotifier->cancelFor($userId);
         } else {
             $this->clubProvisioner->createMembership($existingClub->getId(), $userId, true, ClubRole::MANAGER);
         }

@@ -56,6 +56,9 @@ final class AdminJobCatalog
             new AdminJobDefinition('purge-erased-clubs', 'Purge des clubs effacés', 'app:clubs:purge-erased', AdminJobSchedule::daily(2, 15)),
             new AdminJobDefinition('clubs-erasure-reminders', 'Rappels avant suppression de club', 'app:clubs:erasure-remind', AdminJobSchedule::daily(8, 45)),
             new AdminJobDefinition('purge-inactive-users', 'Purge des comptes inactifs', 'app:users:purge-inactive', AdminJobSchedule::daily(2, 30)),
+            // P4-301 — comptes sans club : préavis puis suppression à 30 j. Créneau libre
+            // après purge-inactive-users (2:30), avant purge-seasons (3:00).
+            new AdminJobDefinition('purge-orphan-users', 'Purge des comptes sans club', 'app:users:purge-orphaned', AdminJobSchedule::daily(2, 45)),
             new AdminJobDefinition('purge-seasons', 'Purge des anciennes saisons', 'app:seasons:purge', AdminJobSchedule::daily(3)),
             // Démos — détruit chaque nuit les clubs démo PROSPECT de la veille (libère le
             // code FFBB) ; la démo BCCL permanente n'est jamais concernée. Créneau libre

@@ -1,15 +1,9 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-10-04 (ajout de `app:clubs:erasure-remind` — rappel RGPD J-7 au contact officiel d'un club orphelin, lot identité du club #1069, vérifié contre `src/Command/ClubErasureReminderCommand.php` ; avant cela, 2026-10-02, lot nettoyage code mort : `app:club:clock`
-(`src/Command/ClubClockCommand.php`) n'a plus d'alias déprécié — `app:demo:clock` est retiré ;
-`app:constraint:export-implicit`, `app:purge-orphans` et `app:clubs:backfill-school-zone` sont
-supprimés du catalogue, aucun appelant restant. `app:club:clock` n'écrit QUE sur un club
-`is_demo = TRUE` — `--club` résout un UUID OU un code FFBB, `--yes` a disparu (refus franc sur
-tout club non démo). La console ne pose plus l'horloge sur un club réel (route superadmin
-générique SUPPRIMÉE) ; un gestionnaire démo la pose désormais aussi depuis l'app
-(`POST /api/club/clock`, détail : `backend-inventory.md` §Module démo, `superadmin-auth.md`
-§Démos). `mark-next-season-paid`/`set-plan` non re-sondées cette passe — un stamp REMPLACE,
-l'historique vit dans git.
+Last verified @ 2026-10-04 (ajout de `app:users:purge-orphaned` — P4-301, « compte sans club »,
+vérifié contre `src/Command/PurgeOrphanAccountsCommand.php` et l'entrée `AdminJobCatalog`
+(créneau 02:45, entre `purge-inactive-users` et `purge-seasons`)). `mark-next-season-paid`/
+`set-plan` non re-sondées cette passe — un stamp REMPLACE, l'historique vit dans git.
 
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`
 > le font pour toi. PHPUnit exige `APP_ENV=test` (sinon `test.service_container` introuvable).
@@ -109,6 +103,7 @@ Toutes manuelles sauf mention. Détail : `ls backend/src/Command/`.
 | `app:audit:purge` | RGPD : purge le journal d'audit > 12 mois — **connexion admin** (append-only : le rôle runtime n'a pas de policy DELETE) — **auto, quotidien à 03:30** |
 | `app:exports:purge` | Supprime les rendus PDF **orphelins** (planning disparu) et ceux de **plus de 90 jours** — le motif de fichier n'accepte que `.pdf` (`PurgeExportsCommand.php:61`, aucun PNG dans le projet) — **sauf** l'export que pointe `Season.exportPdfUrl` — cet épinglage-là remplace la colonne `is_pinned` du croquis v3, qui aurait supposé un geste qu'aucun écran n'offre. **Connexion admin** (purge transverse : les policies RLS étant en `FORCE`, sans contexte de club une requête ne rend AUCUNE ligne) — **auto, quotidien à 03:45** ; `--dry-run` / `--days` |
 | `app:users:purge-unverified` | Supprime les comptes non vérifiés > 7 j — **auto, quotidien à 02:00** |
+| `app:users:purge-orphaned` | RGPD : un compte qui a perdu son DERNIER club (zéro adhésion active/pending, zéro demande de création vivante) est prévenu par email puis anonymisé 30 j après un envoi réussi (jamais supprimé sans mail, prédicat unique `OrphanAccountNotifier::isOrphan`) — **auto, quotidien à 02:45** ; `--dry-run` |
 | `app:clubs:purge-erased` | RGPD : purge le workspace des clubs dont le délai de grâce d'effacement (30 j) est échu — l'identité publique FFBB survit — **auto, quotidien à 02:15** |
 | `app:clubs:erasure-remind` | RGPD : rappel J-7 au contact officiel (annuaire FFBB, repli `Club.contactEmail`) d'un club orphelin dont la suppression définitive est imminente — un seul rappel par échéance (`Club.erasureReminderSentAt`), remis à zéro par une nouvelle programmation ou une reprise. N'agit jamais seul (la purge reste `app:clubs:purge-erased`) — **auto, quotidien à 08:45** ; `--dry-run` / `--date` |
 | `app:coach-wishes:digest` | Digest quotidien des doléances (#10 C3) aux gestionnaires : email **seulement si nouvelle réponse depuis la veille** (silence = rien) + récap **une fois** le lendemain de la deadline, quel que soit l'état — **auto, quotidien à 07:00** ; `--dry-run` / `--date` |

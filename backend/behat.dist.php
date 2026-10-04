@@ -20,6 +20,7 @@ use App\Tests\Behat\MatchPlacementContext;
 use App\Tests\Behat\OnboardingContext;
 use App\Tests\Behat\OpponentAutoLocateContext;
 use App\Tests\Behat\OpponentSuggestionContext;
+use App\Tests\Behat\OrphanAccountContext;
 use App\Tests\Behat\PeriodOverlayContext;
 use App\Tests\Behat\PlacedPersonConflictContext;
 use App\Tests\Behat\RepriseWeekContext;
@@ -197,5 +198,10 @@ return (new Config)
                 new Suite('demo-fenetre')
                     ->withPaths('%paths.base%/features/la-demo-ne-s-ouvre-que-pendant-sa-fenetre.feature')
                     ->withContexts(DemoWindowContext::class),
+            )
+            ->withSuite(
+                new Suite('compte-sans-club')
+                    ->withPaths('%paths.base%/features/un-compte-sans-club-est-supprime-a-trente-jours.feature')
+                    ->withContexts(OrphanAccountContext::class),
             ),
     );

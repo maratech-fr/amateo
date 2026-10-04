@@ -8,6 +8,7 @@ use App\Entity\ClubUser;
 use App\Entity\User;
 use App\Enum\ClubRole;
 use App\Repository\ClubUserRepository;
+use App\Service\OrphanAccountNotifier;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -37,6 +38,7 @@ final class MembershipController extends AbstractController
         private readonly EntityManagerInterface $entityManager,
         private readonly ClubUserRepository $clubUserRepository,
         private readonly RequestStack $requestStack,
+        private readonly OrphanAccountNotifier $orphanAccountNotifier,
     ) {}
 
     #[Route('/api/memberships', name: 'api_memberships_list', methods: ['GET'])]
@@ -131,6 +133,9 @@ final class MembershipController extends AbstractController
 
         $target->setRole($role->value);
         $target->setIsActive(true);
+        // P4-301 — regagner une adhésion active annule le préavis « compte sans club »
+        // (foyer unique OrphanAccountNotifier::cancelFor ; flushé avec la ligne ci-dessous).
+        $this->orphanAccountNotifier->cancelFor($target->getUserId());
         $this->entityManager->flush();
 
         return $this->json(['id' => $target->getId(), 'isActive' => true, 'role' => $target->getRole()]);
@@ -152,8 +157,13 @@ final class MembershipController extends AbstractController
             return $pendingOnly;
         }
 
+        // P4-301 — capturé AVANT la suppression : un refus d'adhésion peut laisser la
+        // cible sans aucun accès (orpheline). Notifié APRÈS le flush, best-effort.
+        $targetUserId = $target->getUserId();
         $this->entityManager->remove($target);
         $this->entityManager->flush();
+
+        $this->orphanAccountNotifier->notifyAccessRemoved($targetUserId);
 
         return $this->json(null, 204);
     }
@@ -196,7 +206,7 @@ final class MembershipController extends AbstractController
         // `requireActive` : on ne désactive QUE l'actif — désactiver une pending
         // en ferait un « désactivé » réactivable, chemin de contournement de
         // l'approbation (approve reste le seul passage pending → actif).
-        return $this->mutateUnderManagementLock(
+        $result = $this->mutateUnderManagementLock(
             $adminMembership,
             $id,
             removesManagement: true,
@@ -206,6 +216,18 @@ final class MembershipController extends AbstractController
                 $target->setDeactivatedAt(new DateTimeImmutable);
             },
         );
+
+        // P4-301 — une désactivation peut laisser la cible sans aucun accès : si elle
+        // est devenue orpheline, préavis « compte sans club » (best-effort, après le
+        // commit de la transaction du verrou). Jamais sur un échec (404/409).
+        if (200 === $result->getStatusCode()) {
+            $target = $this->clubUserRepository->find($id);
+            if ($target instanceof ClubUser) {
+                $this->orphanAccountNotifier->notifyAccessRemoved($target->getUserId());
+            }
+        }
+
+        return $result;
     }
 
     #[Route('/api/memberships/{id}/reactivate', name: 'api_memberships_reactivate', methods: ['POST'])]
@@ -233,6 +255,8 @@ final class MembershipController extends AbstractController
 
         $target->setIsActive(true);
         $target->setDeactivatedAt(null);
+        // P4-301 — réactivation = retour d'un accès actif → annule le préavis (flushé ci-dessous).
+        $this->orphanAccountNotifier->cancelFor($target->getUserId());
         $this->entityManager->flush();
 
         return $this->json(['id' => $target->getId(), 'isActive' => true, 'role' => $target->getRole()]);

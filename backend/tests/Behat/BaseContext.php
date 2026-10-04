@@ -111,6 +111,18 @@ abstract class BaseContext implements Context
         return '';
     }
 
+    /**
+     * Exécute une commande console sur la stack (patron mintToken/dbalExec, APP_ENV=dev).
+     * Sert les scénarios qui éprouvent un cron réel de bout en bout (ex. la purge des
+     * comptes sans club). Rend la sortie standard de la commande.
+     *
+     * @param list<string> $args ex. ['php', 'bin/console', 'app:users:purge-orphaned']
+     */
+    protected function runConsole(array $args): string
+    {
+        return $this->console($args);
+    }
+
     protected function dbalExec(string $sql, bool $admin = false): void
     {
         $args = ['php', 'bin/console', 'dbal:run-sql'];

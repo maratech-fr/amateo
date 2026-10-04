@@ -81,6 +81,12 @@ export interface MeResponse {
   role: string | null;
   /** P3-4 : la demande de CRÉATION du club (la plus récente) — null dès qu'un membership existe. */
   clubRequest: { status: "pending" | "approved" | "refused" | "expired"; clubName: string; ara: string; clubEmailKnown: boolean } | null;
+  /**
+   * P4-301 — échéance (Y-m-d) de suppression d'un compte sans club (préavis + 30 j).
+   * null si aucun préavis n'est en cours ou si le compte est actif. La salle d'attente
+   * l'affiche à un désactivé / orphelin / refusé pour dire la date butoir.
+   */
+  accountDeletionScheduledFor?: string | null;
   club: {
     id: string;
     name: string;
