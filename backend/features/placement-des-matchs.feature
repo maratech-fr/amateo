@@ -135,6 +135,18 @@ Fonctionnalité: Le placement des matchs honore les fenêtres d'accès et nomme 
     Quand je lance le placement des matchs
     Alors l'autre match du samedi est placé par le solveur malgré l'ancre de nuit
 
+  Scénario: Une deuxième demande du même club pendant un placement en cours est refusée
+    Le placement automatique tient un verrou par club le temps du run : une seconde
+    demande lancée pendant qu'un placement est déjà en cours ne double pas le travail,
+    elle est refusée par un conflit avec un message métier. Le gestionnaire comprend
+    qu'il doit patienter, pas que l'application est cassée.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et deux équipes et un gymnase jetables
+    Et une fenêtre d'accès le samedi de 14h00 à 18h00 sur ce gymnase
+    Et un match à domicile de la première équipe le samedi à placer
+    Quand je lance un placement puis, aussitôt, un second pour le même club
+    Alors la seconde demande est refusée par un conflit, avec un message métier
+
   Scénario: Un amical n'est jamais proposé au solveur et se place à la main hors créneau
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et deux équipes et un gymnase jetables
