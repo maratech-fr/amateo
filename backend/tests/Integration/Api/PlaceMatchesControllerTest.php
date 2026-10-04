@@ -174,6 +174,29 @@ final class PlaceMatchesControllerTest extends WebTestCase
         self::assertNotSame($clubA, $clubB);
     }
 
+    public function testTheClubReadsItsOwnLatestRun(): void
+    {
+        [$token, $clubId, $seasonId, $userId] = $this->createClub();
+
+        $this->scopeGucToClub($clubId);
+        $run = new MatchPlacementRun($clubId, $seasonId, $userId, new DateTimeImmutable);
+        $run->setStatus(MatchPlacementRunStatus::COMPLETED);
+        $run->setStartedAt(new DateTimeImmutable);
+        $run->setFinishedAt(new DateTimeImmutable);
+        $run->setResultData(['placed' => 3, 'unplaced' => [], 'skipped' => 0]);
+        $this->em->persist($run);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/fixtures/placement-run', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseIsSuccessful();
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertSame($run->getId(), $data['run']['id'] ?? null);
+        self::assertSame('COMPLETED', $data['run']['status'] ?? null);
+        self::assertSame(3, $data['run']['result']['placed'] ?? null);
+        self::assertNotNull($data['run']['createdAt'] ?? null);
+        self::assertNotNull($data['run']['finishedAt'] ?? null);
+    }
+
     public function testPlacesTheSaturdayMatchAndNamesTheSundayOne(): void
     {
         [$token, $clubId, $seasonId] = $this->createClub();

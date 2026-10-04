@@ -13,11 +13,6 @@ namespace App\Enum;
  */
 enum MatchPlacementRunStatus: string
 {
-    /** Un run ouvert (non terminal) : un deuxième placement du même club est refusé. */
-    public function isOpen(): bool
-    {
-        return self::PENDING === $this || self::RUNNING === $this;
-    }
     case PENDING = 'PENDING';
     case RUNNING = 'RUNNING';
     case COMPLETED = 'COMPLETED';

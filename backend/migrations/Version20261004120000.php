@@ -54,10 +54,20 @@ final class Version20261004120000 extends AbstractMigration
         if ($hasOwner) {
             $this->addSql('CREATE POLICY admin_all ON public.match_placement_run FOR ALL TO amateo_owner USING (true) WITH CHECK (true)');
         }
+        // P5-20 — rôle de LECTURE SEULE `amateo_read` (créé par Version20260930090000) : toute
+        // table club_id créée APRÈS le balayage doit se poser elle-même son GRANT SELECT + sa
+        // policy `readonly_tenant` (sous FORCE RLS, un GRANT sans policy rend 0 ligne). Gardé par
+        // ReadOnlyRoleTest.
+        $hasRead = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'amateo_read\'');
+        if ($hasRead) {
+            $this->addSql('GRANT SELECT ON public.match_placement_run TO amateo_read');
+            $this->addSql(\sprintf('CREATE POLICY readonly_tenant ON public.match_placement_run FOR SELECT TO amateo_read USING (%s)', self::TENANT_PREDICATE));
+        }
     }
 
     public function down(Schema $schema): void
     {
+        $this->addSql('DROP POLICY IF EXISTS readonly_tenant ON public.match_placement_run');
         $this->addSql('DROP POLICY IF EXISTS tenant_isolation ON public.match_placement_run');
         $this->addSql('DROP POLICY IF EXISTS admin_all ON public.match_placement_run');
         $this->addSql('DROP TABLE match_placement_run');

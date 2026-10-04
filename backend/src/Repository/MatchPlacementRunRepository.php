@@ -28,20 +28,4 @@ final class MatchPlacementRunRepository extends ServiceEntityRepository
     {
         return $this->findOneBy([], ['createdAt' => 'DESC']);
     }
-
-    /**
-     * Y a-t-il un run OUVERT (PENDING/RUNNING) pour le club+saison courants ? Lecture
-     * d'appoint — l'anti-double-demande SOUVERAIN reste le verrou Redis du contrôleur
-     * (un run ouvert sans verrou ne peut venir que d'un worker tué, cas résiduel).
-     */
-    public function hasOpenRun(): bool
-    {
-        foreach ($this->findBy([], ['createdAt' => 'DESC'], 5) as $run) {
-            if ($run->getStatus()->isOpen()) {
-                return true;
-            }
-        }
-
-        return false;
-    }
 }
