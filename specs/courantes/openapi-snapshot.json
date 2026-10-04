@@ -202,7 +202,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "State of the two demo accounts (bccl carries the simulated clock)",
+                        "description": "State of the two demo accounts (bccl carries the simulated clock) plus the kept demo clubs",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -267,6 +267,23 @@
                                                     "description": "Simulated clock of the demo club, or null when on the real clock."
                                                 }
                                             }
+                                        },
+                                        "retained": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "name": {
+                                                        "type": "string"
+                                                    },
+                                                    "retainedUntil": {
+                                                        "type": "string",
+                                                        "format": "date",
+                                                        "description": "Retention deadline (14 days), after which the kept demo club is purged unless an approval reclaimed it."
+                                                    }
+                                                }
+                                            },
+                                            "description": "Demo clubs kept for 14 days, listed by the club table (never by membership)."
                                         }
                                     }
                                 }
@@ -316,6 +333,55 @@
                     }
                 },
                 "summary": "Reset the permanent BCCL demonstration (re-seed + clear the simulated clock)",
+                "parameters": [
+                    {
+                        "name": "X-CSRF-Token",
+                        "in": "header",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            }
+        },
+        "/api/admin/demos/prospect/retain": {
+            "post": {
+                "operationId": "retainAdminDemoProspect",
+                "tags": [
+                    "AdminDemo"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The prospect demo club was kept for 14 days (clock reset, animator detached, deadline set)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "retainedUntil": {
+                                            "type": "string",
+                                            "format": "date"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No authenticated super-admin session"
+                    },
+                    "403": {
+                        "description": "Invalid CSRF token"
+                    },
+                    "404": {
+                        "description": "The prospect demo club is absent"
+                    },
+                    "409": {
+                        "description": "The prospect demo access window is still open \u2014 close it first"
+                    }
+                },
+                "summary": "Keep the prospect demonstration club for 14 days",
                 "parameters": [
                     {
                         "name": "X-CSRF-Token",

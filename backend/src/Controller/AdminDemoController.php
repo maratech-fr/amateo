@@ -11,6 +11,7 @@ use App\Service\ClubMailboxPurgerInterface;
 use App\Service\DemoResetRunnerInterface;
 use App\Service\SeasonResolver;
 use DateTimeImmutable;
+use DateTimeZone;
 use Doctrine\DBAL\Connection;
 use Doctrine\Persistence\ManagerRegistry;
 use JsonException;
@@ -41,6 +42,9 @@ final readonly class AdminDemoController
 {
     private const int WINDOW_HOURS = 4;
 
+    /** P4-294 — durée FIXE de conservation d'un club démo prospect (décision fondateur : 14 j, pas de prolongation). */
+    private const int RETENTION_DAYS = 14;
+
     public function __construct(
         private AdminSessionCsrf $csrf,
         private TokenStorageInterface $tokens,
@@ -63,7 +67,63 @@ final readonly class AdminDemoController
         return new JsonResponse([
             'bccl' => $this->accountState('bccl', withClock: true),
             'prospect' => $this->accountState('prospect', withClock: true),
+            // P4-294 — les clubs démo CONSERVÉS, lus par la TABLE (demo_retained_until non null),
+            // jamais par une adhésion : un club conservé est DÉTACHÉ de l'animateur, il sortirait
+            // sinon de tout radar. Nom + échéance, pas de bouton de prolongation (14 j fixes).
+            'retained' => $this->retainedClubs(),
         ]);
+    }
+
+    /**
+     * Conserve 14 jours le club démo PROSPECT (décision fondateur 2026-10-03, option B) :
+     * l'horloge revient à aujourd'hui + boîte vidée, l'animateur est DÉTACHÉ du club (sinon le
+     * raccourci démo suivant refuse en 409 et la purge nocturne — qui itère ses adhésions —
+     * le détruirait), et le club reçoit une échéance à J+14 (Europe/Paris, horloge RÉELLE).
+     *
+     * La fenêtre démo et la conservation ne se chevauchent JAMAIS (décision fondateur) : tant
+     * que l'accès prospect est OUVERT (horloge réelle), le geste est refusé (409).
+     */
+    #[Route('/demos/prospect/retain', methods: ['POST'])]
+    public function retain(Request $request): JsonResponse
+    {
+        if (($denied = $this->guard($request, ['demoAction' => 'retain', 'target' => 'prospect'])) instanceof JsonResponse) {
+            return $denied;
+        }
+        $email = $this->emailForTarget('prospect');
+        if (null === $email) {
+            return $this->unknownTarget();
+        }
+
+        // Conservation et fenêtre d'accès ne se chevauchent jamais : fenêtre encore ouverte
+        // (horloge RÉELLE) → 409, on ne conserve pas un club encore en démonstration.
+        $rawUntil = $this->connection()->fetchOne('SELECT demo_active_until FROM app_user WHERE email = :email', ['email' => $email]);
+        if (\is_string($rawUntil) && new DateTimeImmutable($rawUntil) > new DateTimeImmutable('now')) {
+            return new JsonResponse(['error' => 'Fermez d’abord l’accès de la démonstration avant de conserver le club.'], 409);
+        }
+
+        $club = $this->resolveDemoClub('prospect');
+        if (null === $club) {
+            return new JsonResponse(['error' => 'Le club de démonstration est absent.'], 404);
+        }
+
+        // Geste atomique. writeClock(..., clear:true) = maison unique « horloge à NULL + boîte
+        // vidée » : les données de démo ne doivent jamais rester datées dans le futur.
+        $this->writeClock($club['id'], null, true);
+        // Détache l'animateur (connexion admin, qui traverse la RLS) : le club sort du radar des
+        // deux teardowns par adhésion, la purge des conservés le reprend par la table.
+        $this->connection()->executeStatement(
+            'DELETE FROM club_user WHERE club_id = :club AND user_id = (SELECT id FROM app_user WHERE email = :email)',
+            ['club' => $club['id'], 'email' => $email],
+        );
+        $retainedUntil = new DateTimeImmutable('now')
+            ->setTimezone(new DateTimeZone('Europe/Paris'))
+            ->modify(\sprintf('+%d days', self::RETENTION_DAYS));
+        $this->connection()->executeStatement(
+            'UPDATE club SET demo_retained_until = :until WHERE id = :id AND is_demo = TRUE',
+            ['until' => $retainedUntil->format('Y-m-d'), 'id' => $club['id']],
+        );
+
+        return new JsonResponse(['retainedUntil' => $retainedUntil->format('Y-m-d')]);
     }
 
     /** Ouvre (ou ré-ouvre) la fenêtre d'activation d'un compte démo pour 4 h, horloge RÉELLE. */
@@ -266,6 +326,30 @@ final readonly class AdminDemoController
             'name' => (string) $row['name'],
             'simulatedToday' => \is_string($row['simulatedToday']) ? $row['simulatedToday'] : null,
         ];
+    }
+
+    /**
+     * Les clubs démo CONSERVÉS (P4-294), lus par la TABLE `club` (`demo_retained_until`
+     * non null), jamais par une adhésion — un club conservé est détaché de l'animateur.
+     * Nom + échéance, triés par échéance croissante.
+     *
+     * @return list<array{name: string, retainedUntil: string}>
+     */
+    private function retainedClubs(): array
+    {
+        $rows = $this->connection()->fetchAllAssociative(
+            'SELECT name, demo_retained_until AS "retainedUntil" FROM club'
+            . ' WHERE demo_retained_until IS NOT NULL'
+            . ' ORDER BY demo_retained_until ASC, name ASC',
+        );
+
+        return array_map(
+            static fn (array $row): array => [
+                'name' => (string) $row['name'],
+                'retainedUntil' => (string) $row['retainedUntil'],
+            ],
+            $rows,
+        );
     }
 
     private function emailForTarget(string $target): ?string

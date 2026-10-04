@@ -131,6 +131,14 @@ class Club
     #[ORM\Column(type: 'date_immutable', nullable: true)]
     private ?DateTimeImmutable $simulatedToday = null;
 
+    // P4-294 — club démo PROSPECT CONSERVÉ : non-null = échéance (J+14, Europe/Paris,
+    // horloge RÉELLE) jusqu'à laquelle le club démo détaché de l'animateur survit à la
+    // purge nocturne et reste repris-able par l'approbation P3-4 du contact officiel
+    // (code FFBB homonyme). Posé par la console superadmin (« Conserver 14 jours »),
+    // remis à null quand l'approbation reprend le club (il redevient un vrai club).
+    #[ORM\Column(type: 'date_immutable', nullable: true)]
+    private ?DateTimeImmutable $demoRetainedUntil = null;
+
     // RGPD (droit à l'effacement) : non-null = purge du workspace programmée à
     // cette date (dernier admin effacé + délai de grâce 30 j). Annulable en la
     // remettant à null tant que app:clubs:purge-erased n'est pas passé.
@@ -499,6 +507,18 @@ class Club
     public function setFfbbTeamsImportedAt(?DateTimeImmutable $ffbbTeamsImportedAt): self
     {
         $this->ffbbTeamsImportedAt = $ffbbTeamsImportedAt;
+
+        return $this;
+    }
+
+    public function getDemoRetainedUntil(): ?DateTimeImmutable
+    {
+        return $this->demoRetainedUntil;
+    }
+
+    public function setDemoRetainedUntil(?DateTimeImmutable $demoRetainedUntil): self
+    {
+        $this->demoRetainedUntil = $demoRetainedUntil;
 
         return $this;
     }
