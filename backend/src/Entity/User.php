@@ -75,6 +75,14 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: 'datetime_immutable', nullable: true)]
     private ?DateTimeImmutable $inactivityWarnedAt = null;
 
+    // P4-301 — préavis « compte sans club » envoyé (orphelin : plus aucune
+    // adhésion active, pending ni demande de création). Non-null = la date d'envoi
+    // RÉUSSI du mail ; l'échéance de suppression = ce stamp + 30 j. Remis à null
+    // dès que le compte regagne une adhésion active (OrphanAccountNotifier::cancelFor) —
+    // sinon un stamp d'un cycle annulé ferait supprimer sans nouveau mail au cycle suivant.
+    #[ORM\Column(type: 'datetime_immutable', nullable: true)]
+    private ?DateTimeImmutable $orphanNoticeSentAt = null;
+
     // P5-12 : jusqu'où l'utilisateur a lu le journal de nouveautés — posé par
     // POST /api/release-notes/seen. La modale « quoi de neuf » ne s'ouvre que sur
     // une note publiée APRÈS cet instant. Null = jamais marqué (nouvel inscrit).
@@ -253,6 +261,18 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setInactivityWarnedAt(?DateTimeImmutable $inactivityWarnedAt): self
     {
         $this->inactivityWarnedAt = $inactivityWarnedAt;
+
+        return $this;
+    }
+
+    public function getOrphanNoticeSentAt(): ?DateTimeImmutable
+    {
+        return $this->orphanNoticeSentAt;
+    }
+
+    public function setOrphanNoticeSentAt(?DateTimeImmutable $orphanNoticeSentAt): self
+    {
+        $this->orphanNoticeSentAt = $orphanNoticeSentAt;
 
         return $this;
     }
