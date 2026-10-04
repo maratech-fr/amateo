@@ -7,10 +7,13 @@ namespace App\Controller;
 use App\Entity\Club;
 use App\Service\ClubMailboxPurgerInterface;
 use App\Service\ManagementAccessGuard;
+use App\Service\SeasonResolver;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use JsonException;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\Clock\ClockInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -37,6 +40,11 @@ final class ClubClockController extends AbstractController
         private readonly RequestStack $requestStack,
         private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly ClubMailboxPurgerInterface $mailboxPurger,
+        private readonly SeasonResolver $seasonResolver,
+        // BCK-34 — bornes de l'horloge simulée : la saison « en cours » se dérive du
+        // calendrier RÉEL, jamais de la date simulée déjà posée sur ce club.
+        #[Autowire(service: 'app.clock.real')]
+        private readonly ClockInterface $realClock,
     ) {}
 
     #[Route('/api/club/clock', name: 'api_club_clock', methods: ['POST'])]
@@ -63,6 +71,12 @@ final class ClubClockController extends AbstractController
             return $parsed;
         }
         [$date, $clear] = $parsed;
+
+        // BCK-34 — une date simulée doit rester dans la fenêtre des saisons du club
+        // (début de la saison en cours → fin de la saison suivante). Hors bornes → 422.
+        if (null !== $date && ($outOfBounds = $this->bordageRefusal($club->getId(), $date)) instanceof JsonResponse) {
+            return $outOfBounds;
+        }
 
         $club->setSimulatedToday(null === $date ? null : new DateTimeImmutable($date));
         $this->entityManager->flush();
@@ -112,6 +126,35 @@ final class ClubClockController extends AbstractController
         }
 
         return [$date, $clear];
+    }
+
+    /**
+     * BCK-34 — refuse (422) une date simulée hors des bornes de saison du club, ou
+     * null si elle est dans la fenêtre (ou si le club n'a aucune saison à borner).
+     * Les saisons du club sont lues dans le contexte tenant courant (`season` n'est
+     * pas filtré par saison) ; la saison en cours se dérive de l'horloge RÉELLE.
+     */
+    private function bordageRefusal(string $clubId, string $date): ?JsonResponse
+    {
+        $bounds = SeasonResolver::simulatedClockBoundsAmong(
+            $this->seasonResolver->seasonsForClub($clubId),
+            DateTimeImmutable::createFromInterface($this->realClock->now()),
+        );
+        if (null === $bounds) {
+            return null;
+        }
+        $parsed = new DateTimeImmutable($date);
+        if ($parsed < $bounds[0] || $parsed > $bounds[1]) {
+            return $this->json([
+                'error' => \sprintf(
+                    'La date simulée doit être comprise entre le %s et le %s.',
+                    $bounds[0]->format('d/m/Y'),
+                    $bounds[1]->format('d/m/Y'),
+                ),
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        return null;
     }
 
     private function resolveCurrentClubId(): ?string

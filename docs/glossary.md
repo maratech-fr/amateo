@@ -101,6 +101,8 @@ Clés racine : `version` · `clubId` · `seasonId` · `scheduleName` · `solverS
 | **phase1** | Groupe PHPUnit bloquant (tests structurants tenant/RLS/contrat/vie du planning). |
 | **Gestionnaire / Membre** | Les deux rôles assignables d'une adhésion (`ClubRole`, P1-1) : Gestionnaire (`admin`) pilote tout ; Membre (`member`) lit tout, n'écrit rien — toute écriture API est management par défaut. `owner` : legacy, toléré en lecture comme management, jamais assignable. |
 | **Désactivé** | État d'adhésion (`deactivated_at`) distinct de « en attente » : sorti du club, réversible par le geste Réactiver du gestionnaire — jamais par la file d'approbation ni par la console superadmin. |
+| **Horloge simulée** | La date « aujourd'hui » d'un club, décalée à dessein (`Club.simulatedToday` / `club.simulated_today`). **Réservée aux clubs de démonstration** (`is_demo`, CHECK en base) — un vrai club vit toujours à l'heure réelle. Capacité générique portée par `App\Clock\ClubClock` (décore le service `clock`) ; certaines durées/horodatages de sécurité (TTL Mercure, lien de changement d'e-mail, délai RGPD, audit, préavis orphelin) utilisent explicitement l'horloge **réelle** (`app.clock.real`) et ne suivent jamais la date simulée. |
+| **Compte démo** | `app_user.is_demo` : drapeau d'identité (animateur `demo@`, gestionnaire BCCL `demo-bccl@`), permanent qu'importe la fenêtre d'activation. Ne peut ni changer d'e-mail/mot de passe/prénom-nom ni se supprimer (403 — `UserChecker`, `AuthController`, `DeleteAccountController`) ; hors de la règle des comptes orphelins. Distinct de la **fenêtre d'activation** (`demo_active_until`), toujours confrontée à l'horloge réelle. |
 
 ## Wizard & frontend
 

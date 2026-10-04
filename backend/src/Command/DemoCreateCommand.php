@@ -96,6 +96,9 @@ final class DemoCreateCommand extends Command
             $animator->setFirstName('Démo');
             $animator->setLastName('Amateo');
             $animator->setPasswordHash($this->passwordHasher->hashPassword($animator, $password));
+            // SEC-28 — compte de DÉMONSTRATION : pérenne, non modifiable, hors règle
+            // des comptes orphelins. Posé à la création de l'animateur démo.
+            $animator->setIsDemo(true);
             // Compte INTERNE : jamais passé par register, on matérialise ce que le
             // flux d'inscription aurait posé (login refusé sans email vérifié).
             $animator->setEmailVerifiedAt(new DateTimeImmutable);

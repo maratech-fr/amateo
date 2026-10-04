@@ -1,11 +1,9 @@
 # Console superadmin — authentification, télémétrie et API de supervision
 
-Last verified @ 2026-10-02 (`documentation-update`, lot horloge PR D — revirement fondateur :
-l'horloge simulée ne vit plus que pour un compte DÉMO). Re-confronté contre le code : §« Démos —
-console de pilotage » recalé — `POST /api/admin/clubs/{clubId}/clock` (horloge sur n'importe quel
-club) est RETIRÉE ainsi que le bouton « Horloge »/`ClubClockDialog` de la liste des comptes clubs ;
-seules `demos/{bccl|prospect}/clock` et les cartes `ClockCard` de l'onglet Démos subsistent. Reste
-du fichier non re-confronté cette passe ; historique des vérifications précédentes :
+Last verified @ 2026-10-05 (`documentation-update`, lot backend « horloge & démo » — BCK-34). §
+« Démos — console de pilotage » gagne la BORNE de saison sur `demos/{target}/clock` (même garde
+que le widget d'en-tête, `AdminDemoController::clockBoundsRefusal`) — confronté au code. Reste du
+fichier non re-confronté cette passe ; historique des vérifications précédentes :
 `git log -p --follow specs/courantes/superadmin-auth.md`.
 
 > **État courant** : SA0, SA1, la console read-only SA2, le socle
@@ -404,9 +402,11 @@ posé** (surface cross-tenant, contrat SA0).
   aucun ; la date doit se relire à l'identique (`2026-02-31` refusé, même garde que
   `ClubClockCommand`) ; le club est résolu SERVEUR depuis le compte, et l'`UPDATE` reste gardé
   `is_demo = TRUE`, **jamais de confirmation** (un compte démo a les droits pleins, aucun e-mail
-  réel en jeu). **Relâcher la date (`clear`) vide la boîte aux lettres** — hors horloge, le club
-  redevient réel et enverrait pour de vrai, les e-mails boxés n'ont plus de raison d'être ;
-  **poser/changer une date ne la touche jamais**.
+  réel en jeu). **Bornée comme le widget d'en-tête** (BCK-34) : hors de la fenêtre début de la
+  saison en cours → fin de la saison suivante du club visé, 422 nommant les deux dates. **Relâcher
+  la date (`clear`) vide la boîte aux lettres** — hors horloge, le club redevient réel et
+  enverrait pour de vrai, les e-mails boxés n'ont plus de raison d'être ; **poser/changer une
+  date ne la touche jamais**.
 
 **L'horloge simulée ne vit que pour un compte de démonstration** (décision fondateur 2026-10-02,
 revirement sur « capacité générique activable pour tout club ») : il n'existe plus de route

@@ -9,6 +9,7 @@ use DAMA\DoctrineTestBundle\Doctrine\DBAL\StaticDriver;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Clock\ClockInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Uid\Uuid;
 use Throwable;
 
@@ -28,6 +29,10 @@ final class AuditTrail
 {
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
+        // BCK-34 — horloge RÉELLE : l'horodatage du journal d'audit (preuve RGPD,
+        // art. 5.2) doit être le temps réel, jamais l'« aujourd'hui » simulé d'un
+        // club démo sous lequel l'écriture peut se produire.
+        #[Autowire(service: 'app.clock.real')]
         private readonly ClockInterface $clock,
         private readonly ?LoggerInterface $logger = null,
     ) {}

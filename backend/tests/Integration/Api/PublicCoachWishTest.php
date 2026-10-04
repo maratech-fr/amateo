@@ -293,7 +293,9 @@ final class PublicCoachWishTest extends WebTestCase
         $hasher = $c->get('security.user_password_hasher');
         $uid = uniqid('', true);
 
-        $this->club = (new Club)->setName('PCW ' . $uid)->setSlug('pcw-' . $uid)->setTimezone('Europe/Paris')->setLocale('fr')->setOnboardingCompleted(true);
+        // SEC-30 — les tests d'échéance sous horloge simulée (setSimulatedToday) exigent
+        // un club démo : la date simulée n'est honorée/persistable que pour is_demo = true.
+        $this->club = (new Club)->setName('PCW ' . $uid)->setSlug('pcw-' . $uid)->setTimezone('Europe/Paris')->setLocale('fr')->setOnboardingCompleted(true)->setIsDemo(true);
         $this->em->persist($this->club);
         $user = (new User)->setEmail('pcw' . $uid . '@test.com')->setFirstName('P')->setLastName('W');
         $user->setPasswordHash($hasher->hashPassword($user, 'Password123!'));

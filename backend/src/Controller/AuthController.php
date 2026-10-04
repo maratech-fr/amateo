@@ -286,6 +286,10 @@ final class AuthController extends AbstractController
             'accountDeletionScheduledFor' => ('active' !== $membershipStatus && $user->getOrphanNoticeSentAt() instanceof DateTimeImmutable)
                 ? $user->getOrphanNoticeSentAt()->modify(OrphanAccountNotifier::GRACE_PERIOD)->format('Y-m-d')
                 : null,
+            // SEC-28 — ce compte est-il un compte de DÉMONSTRATION ? Le front masque/
+            // désactive alors les gestes de profil (prénom-nom, e-mail, mot de passe,
+            // suppression), que le backend refuse de toute façon en 403.
+            'isDemo' => $user->isDemo(),
             'club' => $club,
             'seasonPlan' => $seasonPlan,
             'hasGenerated' => null !== $clubEntity && $clubEntity->getGenerationCountSeason() > 0,
@@ -301,6 +305,9 @@ final class AuthController extends AbstractController
         $user = $this->getUser();
         if (!$user instanceof User) {
             return $this->json(['error' => 'Unauthorized'], 401);
+        }
+        if (($demoRefusal = $this->refuseDemoMutation($user)) instanceof JsonResponse) {
+            return $demoRefusal;
         }
 
         $data = json_decode($request->getContent(), true);
@@ -356,6 +363,9 @@ final class AuthController extends AbstractController
         if (!$user instanceof User) {
             return $this->json(['error' => 'Unauthorized'], 401);
         }
+        if (($demoRefusal = $this->refuseDemoMutation($user)) instanceof JsonResponse) {
+            return $demoRefusal;
+        }
 
         $data = json_decode($request->getContent(), true);
         if (!\is_array($data)) {
@@ -394,6 +404,9 @@ final class AuthController extends AbstractController
         $user = $this->getUser();
         if (!$user instanceof User) {
             return $this->json(['error' => 'Unauthorized'], 401);
+        }
+        if (($demoRefusal = $this->refuseDemoMutation($user)) instanceof JsonResponse) {
+            return $demoRefusal;
         }
 
         // Anti-abus : borne PAR UTILISATEUR — la route envoie un mail vers une
@@ -539,6 +552,18 @@ final class AuthController extends AbstractController
     }
 
     /** P4-74 — l'adresse est-elle déjà revendiquée (active ou en attente) par un AUTRE compte ? */
+    /**
+     * SEC-28 — un compte de DÉMONSTRATION ne peut pas être modifié : changement de
+     * prénom/nom, d'e-mail, de mot de passe et suppression sont refusés (403). Retourne
+     * la réponse de refus, ou null pour un compte ordinaire (geste inchangé).
+     */
+    private function refuseDemoMutation(User $user): ?JsonResponse
+    {
+        return $user->isDemo()
+            ? $this->json(['error' => 'Ce compte de démonstration ne peut pas être modifié.'], 403)
+            : null;
+    }
+
     private function emailIsClaimedByAnother(string $email, string $selfId): bool
     {
         $repo = $this->entityManager->getRepository(User::class);

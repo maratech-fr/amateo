@@ -169,6 +169,17 @@ services:
             $clockAllEnabled: '%app.club_clock_all%'
             $environment: '%kernel.environment%'
 
+    # BCK-34 — l'horloge RÉELLE explicite : le service `clock` natif AVANT sa
+    # décoration par ClubClock. Injectée (via #[Autowire(service: 'app.clock.real')])
+    # partout où une DURÉE ou un HORODATAGE DE SÉCURITÉ se calcule et ne doit JAMAIS
+    # suivre l'« aujourd'hui » simulé d'un club démo : jeton de souscription Mercure,
+    # lien de changement d'e-mail, délai d'effacement RGPD, préavis de suppression
+    # d'un compte orphelin, horodatage du journal d'audit. Les DATES MÉTIER (saisons,
+    # échéances) continuent, elles, de traverser le service `clock` décoré.
+    app.clock.real:
+        alias: 'App\Clock\ClubClock.inner'
+        public: false
+
     App\EventListener\CacheInvalidationListener:
         arguments:
             $scheduleCachePool: '@cache.schedule'

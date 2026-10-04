@@ -9,6 +9,7 @@ use App\Entity\User;
 use App\Tests\StartsFreshBrowserSession;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -118,11 +119,39 @@ final class DemoWindowTest extends WebTestCase
         $client = self::createClient();
         // Valeur passée (fermerait une fenêtre démo) posée sur un compte NON démo :
         // il doit se connecter quand même — la garde ne le concerne pas.
-        $this->seedDemoUser('someone@club.fr', new DateTimeImmutable('-1 day'));
+        $this->seedDemoUser('someone@club.fr', new DateTimeImmutable('-1 day'), isDemo: false);
 
         [$status] = $this->login($client, 'someone@club.fr', self::PASSWORD);
 
         self::assertSame(204, $status, 'un compte non démo se connecte quelle que soit la colonne demo_active_until');
+    }
+
+    /**
+     * SEC-28 — un compte de DÉMONSTRATION ne peut ni modifier son profil (prénom/nom,
+     * e-mail, mot de passe) ni se supprimer : chacun des quatre gestes répond 403.
+     */
+    public function testDemoAccountCannotMutateItsProfileNorDeleteItself(): void
+    {
+        $client = self::createClient();
+        $token = $this->tokenFor($this->seedDemoUser(self::ANIMATOR_EMAIL, new DateTimeImmutable('+1 day')));
+
+        self::assertSame(403, $this->authedStatus($client, 'PATCH', '/api/me', $token, ['firstName' => 'Nouveau', 'lastName' => 'Nom']), 'prénom/nom refusés');
+        self::assertSame(403, $this->authedStatus($client, 'POST', '/api/me/password', $token, ['currentPassword' => self::PASSWORD, 'newPassword' => 'AnotherPass123!']), 'mot de passe refusé');
+        self::assertSame(403, $this->authedStatus($client, 'POST', '/api/me/email', $token, ['currentPassword' => self::PASSWORD, 'email' => 'new-demo@club.fr']), 'changement d\'e-mail refusé');
+        self::assertSame(403, $this->authedStatus($client, 'DELETE', '/api/me', $token, ['password' => self::PASSWORD]), 'suppression refusée');
+    }
+
+    /**
+     * Un compte ORDINAIRE garde tous ses gestes de profil : le drapeau démo ne le
+     * concerne pas (jamais de 403 sur le drapeau — tout au plus un 400 métier).
+     */
+    public function testNonDemoAccountKeepsItsProfileGestures(): void
+    {
+        $client = self::createClient();
+        $token = $this->tokenFor($this->seedDemoUser('normal@club.fr', null, isDemo: false));
+
+        self::assertSame(200, $this->authedStatus($client, 'PATCH', '/api/me', $token, ['firstName' => 'Nouveau', 'lastName' => 'Nom']), 'un compte ordinaire change son prénom/nom');
+        self::assertNotSame(403, $this->authedStatus($client, 'POST', '/api/me/password', $token, ['currentPassword' => self::PASSWORD, 'newPassword' => 'AnotherPass123!']), 'le mot de passe d\'un compte ordinaire n\'est jamais refusé sur le drapeau démo');
     }
 
     /**
@@ -182,8 +211,12 @@ final class DemoWindowTest extends WebTestCase
 
     // --- Helpers -----------------------------------------------------------
 
-    /** Persiste un compte VÉRIFIÉ (global, hors RLS) avec un mot de passe et une fenêtre donnée. */
-    private function seedDemoUser(string $email, ?DateTimeImmutable $window): void
+    /**
+     * Persiste un compte VÉRIFIÉ (global, hors RLS) avec un mot de passe et une fenêtre
+     * donnée. `$isDemo` pose le drapeau d'identité SEC-28 (la garde de connexion s'y
+     * appuie désormais, plus sur l'adresse) ; false pour un compte ordinaire.
+     */
+    private function seedDemoUser(string $email, ?DateTimeImmutable $window, bool $isDemo = true): string
     {
         $em = $this->em();
         $hasher = self::getContainer()->get(UserPasswordHasherInterface::class);
@@ -197,9 +230,13 @@ final class DemoWindowTest extends WebTestCase
         $user->setEmailVerifiedAt(new DateTimeImmutable);
         $user->setTermsAcceptedAt(new DateTimeImmutable);
         $user->setDemoActiveUntil($window);
+        $user->setIsDemo($isDemo);
         $em->persist($user);
         $em->flush();
+        $id = $user->getId();
         $em->clear();
+
+        return $id;
     }
 
     /**
@@ -241,6 +278,34 @@ final class DemoWindowTest extends WebTestCase
         $body = json_decode((string) $client->getResponse()->getContent(), true);
 
         return \is_array($body) ? $body : [];
+    }
+
+    /** Mint un JWT pour le compte d'id donné (test direct du contrôleur, sans login). */
+    private function tokenFor(string $userId): string
+    {
+        $user = $this->em()->getRepository(User::class)->find($userId);
+        \assert($user instanceof User);
+        $manager = self::getContainer()->get(JWTTokenManagerInterface::class);
+        \assert($manager instanceof JWTTokenManagerInterface);
+
+        return $manager->create($user);
+    }
+
+    /**
+     * Rejoue une requête authentifiée (Bearer) et rend son statut.
+     *
+     * @param array<string, mixed> $body
+     */
+    private function authedStatus(KernelBrowser $client, string $method, string $uri, string $token, array $body): int
+    {
+        $this->startFreshBrowserSession($client);
+        $client->request($method, $uri, [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $token,
+            'REMOTE_ADDR' => $this->nextIp(),
+        ], (string) json_encode($body, \JSON_THROW_ON_ERROR));
+
+        return $client->getResponse()->getStatusCode();
     }
 
     private function em(): EntityManagerInterface

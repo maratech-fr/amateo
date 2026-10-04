@@ -9,6 +9,7 @@ use App\Entity\User;
 use App\Repository\EmailChangeTokenRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
  * Issues and consumes single-use e-mail-CHANGE confirmation tokens (P4-74).
@@ -26,6 +27,9 @@ final class EmailChangeVerifier
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly EmailChangeTokenRepository $repository,
+        // BCK-34 — horloge RÉELLE : la TTL (24 h) du lien de confirmation est une
+        // durée de SÉCURITÉ, elle ne doit pas suivre l'horloge simulée d'un club démo.
+        #[Autowire(service: 'app.clock.real')]
         private readonly ClockInterface $clock,
     ) {}
 

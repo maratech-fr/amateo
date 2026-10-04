@@ -12,6 +12,7 @@ use App\Tests\Double\RecordingClubMailboxPurger;
 use App\Tests\StartsFreshBrowserSession;
 use App\Tests\VerifiesRegistration;
 use DateTimeImmutable;
+use Doctrine\DBAL\Exception as DbalException;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
@@ -84,6 +85,56 @@ final class ClubClockEndpointTest extends WebTestCase
         $this->post($token, ['date' => '2027-05-15']);
         self::assertResponseStatusCodeSame(403, 'l\'horloge est réservée aux comptes de démonstration');
         self::assertNull($this->simulatedToday($clubId), 'le vrai club reste à l\'heure réelle');
+    }
+
+    public function testADateBeforeTheCurrentSeasonIsRejected(): void
+    {
+        // BCK-34 — un club issu du register porte une seule saison (15/07 de l'année en
+        // cours → 14/07 suivante). Une date AVANT ce début est hors bornes.
+        [$token, , $clubId] = $this->register('CLKF');
+        $this->makeDemo($clubId);
+
+        $this->post($token, ['date' => '2026-01-01']);
+        self::assertResponseStatusCodeSame(422, 'avant le début de la saison en cours → hors bornes');
+        self::assertNull($this->simulatedToday($clubId), 'rien écrit hors bornes');
+    }
+
+    public function testADateAfterTheNextSeasonIsRejected(): void
+    {
+        // La borne haute = fin de la saison SUIVANTE (ici projetée, le club n'a qu'une
+        // saison) ≈ +2 ans. Une date bien au-delà est hors bornes.
+        [$token, , $clubId] = $this->register('CLKG');
+        $this->makeDemo($clubId);
+
+        $this->post($token, ['date' => '2029-06-01']);
+        self::assertResponseStatusCodeSame(422, 'après la fin de la saison suivante → hors bornes');
+        self::assertNull($this->simulatedToday($clubId));
+    }
+
+    public function testADateInsideTheSeasonWindowIsAccepted(): void
+    {
+        [$token, , $clubId] = $this->register('CLKH');
+        $this->makeDemo($clubId);
+
+        $this->post($token, ['date' => '2027-05-15']);
+        self::assertResponseIsSuccessful('une date dans la fenêtre des saisons est acceptée');
+        self::assertSame('2027-05-15', $this->simulatedToday($clubId));
+    }
+
+    public function testTheCheckConstraintRefusesASimulatedDateOnARealClub(): void
+    {
+        // SEC-30 — défense BASE : même en contournant les contrôleurs, la contrainte
+        // CHECK (simulated_today IS NULL OR is_demo) refuse l'écriture sur un vrai club.
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $suffix = substr(md5(uniqid('', true)), 0, 8);
+        $club = new Club;
+        $club->setName('Réel ' . $suffix)->setSlug('reel-' . $suffix)->setTimezone('Europe/Paris')->setLocale('fr');
+        $club->setIsDemo(false);
+        $club->setSimulatedToday(new DateTimeImmutable('2027-05-15'));
+        $em->persist($club);
+
+        $this->expectException(DbalException::class);
+        $em->flush();
     }
 
     public function testMalformedDateIsRejected(): void

@@ -86,6 +86,11 @@ final class DemoWindowContext extends BaseContext
         if ('' === $verifiedAt) {
             throw new RuntimeException('le compte démo n\'est pas vérifié après /register/verify');
         }
+
+        // SEC-28 — la garde de connexion démo s'appuie désormais sur le DRAPEAU is_demo
+        // (plus sur l'adresse) : un vrai inscrit par /register ne l'a pas, on le pose ici
+        // pour ce compte de scénario (les commandes/raccourci/seed le posent en vrai).
+        $this->dbalExec('UPDATE app_user SET is_demo = true WHERE email = \'' . self::DEMO_EMAIL . '\'', true);
     }
 
     #[When('sa fenêtre d\'activation est fermée')]

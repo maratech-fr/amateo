@@ -82,7 +82,10 @@ on the next poll).
   `MERCURE_JWT_SECRET` as the publisher**, `subscribe` claim = the single URI
   template `club:{clubId}:schedule:{id}` where `clubId` is the **authenticated
   member's resolved tenant** (`_club_id` request attribute — never a client
-  parameter). No wildcard, no other club. TTL 1 h.
+  parameter). No wildcard, no other club. TTL 1 h, computed on the **real
+  clock** (`#[Autowire(service: 'app.clock.real')]`, `MercureAuthController.php:48` —
+  BCK-34: a demo club's simulated date must never shorten or extend this
+  security TTL).
 - **Delivery**: `mercureAuthorization` **cookie, httpOnly, SameSite strict,
   `Secure` from `JWT_COOKIE_SECURE`** (the same switch as the app JWT cookie —
   never `$request->isSecure()`, which answers false behind the prod nginx:

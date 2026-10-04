@@ -169,6 +169,9 @@ final class DevDemoRegisterController extends AbstractController
             // Création SEULEMENT : le mot de passe soumis (déjà validé) EST celui du compte.
             // Un compte existant, lui, n'est JAMAIS réécrit (C-1) — il vient d'être prouvé.
             $animator->setPasswordHash($this->passwordHasher->hashPassword($animator, $password));
+            // SEC-28 — l'animateur créé par le raccourci démo est un compte de
+            // DÉMONSTRATION (pérenne, non modifiable, hors règle des comptes orphelins).
+            $animator->setIsDemo(true);
             $this->entityManager->persist($animator);
         }
         // emailVerifiedAt : posé à la CRÉATION, ou quand il est nul ET que le mot de passe

@@ -95,14 +95,19 @@ final class ClubClock implements ClockInterface
      * l'entité directement (pas le memo de requête), donc utilisable hors de tout
      * contexte tenant.
      *
-     * Ordre : (1) `simulated_today` du club s'il est posé ; (2) sinon, en DEV et
-     * drapeau `APP_CLUB_CLOCK_ALL` actif, la DATE du pin global DevClock s'il y en
-     * a un ; (3) sinon null (heure réelle). Le drapeau est neutralisé en prod.
+     * Ordre : (1) `simulated_today` du club s'il est posé ET que le club est un
+     * club de DÉMONSTRATION (SEC-30, décision fondateur 2026-10-02 : l'horloge
+     * simulée est réservée aux démos — un vrai club vit toujours à l'heure réelle ;
+     * la contrainte CHECK `simulated_today IS NULL OR is_demo` garantit déjà qu'un
+     * vrai club n'en porte jamais en base, ce garde est la ceinture côté lecture et
+     * couvre un club non persisté) ; (2) sinon, en DEV et drapeau
+     * `APP_CLUB_CLOCK_ALL` actif, la DATE du pin global DevClock s'il y en a un ;
+     * (3) sinon null (heure réelle). Le drapeau est neutralisé en prod.
      */
     public function simulatedTodayFor(Club $club): ?DateTimeImmutable
     {
         $pinned = $club->getSimulatedToday();
-        if ($pinned instanceof DateTimeImmutable) {
+        if ($pinned instanceof DateTimeImmutable && $club->isDemo()) {
             return $pinned;
         }
 

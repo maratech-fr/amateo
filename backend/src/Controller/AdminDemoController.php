@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Entity\Season;
 use App\Entity\SuperAdmin;
 use App\Security\AdminSessionCsrf;
 use App\Service\ClubMailboxPurgerInterface;
 use App\Service\DemoResetRunnerInterface;
+use App\Service\SeasonResolver;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
 use Doctrine\Persistence\ManagerRegistry;
@@ -176,6 +178,12 @@ final readonly class AdminDemoController
             return new JsonResponse(['error' => 'Le club de démonstration est absent.'], 404);
         }
 
+        // BCK-34 — une date simulée doit rester dans la fenêtre des saisons du club
+        // (début de la saison en cours → fin de la saison suivante). Hors bornes → 422.
+        if (null !== $parsed['date'] && ($outOfBounds = $this->clockBoundsRefusal($club['id'], $parsed['date'])) instanceof JsonResponse) {
+            return $outOfBounds;
+        }
+
         $this->writeClock($club['id'], $parsed['date'], $parsed['clear']);
 
         return new JsonResponse(['simulatedToday' => $parsed['date']]);
@@ -341,6 +349,54 @@ final readonly class AdminDemoController
      * touche jamais la boîte. Maison unique de l'écriture, partagée par les deux endpoints
      * d'horloge — l'appelant a déjà décidé (démo résolu serveur, ou club réel confirmé).
      */
+    /**
+     * BCK-34 — refuse (422) une date simulée hors des bornes de saison du club, null
+     * sinon. Lecture des saisons par la connexion ADMIN (cross-tenant, aucun GUC posé
+     * côté console) ; la saison en cours se dérive de l'horloge RÉELLE (`now`, le
+     * firewall admin ne porte jamais de club → pas d'horloge simulée de toute façon).
+     */
+    private function clockBoundsRefusal(string $clubId, string $date): ?JsonResponse
+    {
+        $bounds = SeasonResolver::simulatedClockBoundsAmong($this->seasonsForClub($clubId), new DateTimeImmutable('now'));
+        if (null === $bounds) {
+            return null;
+        }
+        $parsed = new DateTimeImmutable($date);
+        if ($parsed < $bounds[0] || $parsed > $bounds[1]) {
+            return new JsonResponse([
+                'error' => \sprintf(
+                    'La date simulée doit être comprise entre le %s et le %s.',
+                    $bounds[0]->format('d/m/Y'),
+                    $bounds[1]->format('d/m/Y'),
+                ),
+            ], 422);
+        }
+
+        return null;
+    }
+
+    /**
+     * Les saisons du club, hydratées en entités TRANSIENTES (connexion ADMIN,
+     * cross-tenant) pour {@see SeasonResolver::simulatedClockBoundsAmong}.
+     *
+     * @return list<Season>
+     */
+    private function seasonsForClub(string $clubId): array
+    {
+        $rows = $this->connection()->fetchAllAssociative(
+            'SELECT start_date, end_date FROM season WHERE club_id = :id ORDER BY start_date ASC',
+            ['id' => $clubId],
+        );
+
+        return array_map(
+            static fn (array $row): Season => new Season()
+                ->setClubId($clubId)
+                ->setStartDate(new DateTimeImmutable((string) $row['start_date']))
+                ->setEndDate(new DateTimeImmutable((string) $row['end_date'])),
+            $rows,
+        );
+    }
+
     private function writeClock(string $clubId, ?string $date, bool $clear): void
     {
         $this->connection()->executeStatement(

@@ -15,6 +15,7 @@ use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Clock\ClockInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Mime\Email;
 use Throwable;
@@ -47,6 +48,12 @@ final class AccountErasureService
         private readonly EntityManagerInterface $entityManager,
         private readonly ClubUserRepository $clubUserRepository,
         private readonly TenantConnectionContext $tenantConnectionContext,
+        // BCK-34 — horloge RÉELLE : le délai de grâce RGPD (+30 j) est une durée de
+        // SÉCURITÉ/rétention. DELETE /api/me s'exécute dans le contexte tenant de
+        // l'appelant (potentiellement un club démo à date simulée) — l'échéance doit
+        // rester sur le calendrier réel, exactement comme app:clubs:purge-erased (CLI,
+        // déjà à l'heure réelle hors requête).
+        #[Autowire(service: 'app.clock.real')]
         private readonly ClockInterface $clock,
         private readonly FfbbClubDirectory $ffbbClubDirectory,
         private readonly MailerInterface $mailer,
@@ -92,9 +99,10 @@ final class AccountErasureService
     /** @return list<string> */
     private function doErase(User $user): array
     {
-        // Horloge applicative (SimulatedClock en dev) : la MÊME que celle de
-        // app:clubs:purge-erased, sinon le délai de grâce se lit sur deux
-        // horloges différentes.
+        // Horloge RÉELLE (BCK-34) : la MÊME que celle de app:clubs:purge-erased
+        // (CLI, hors requête → heure réelle), sinon le délai de grâce se lirait sur
+        // deux horloges différentes — et un club démo à date simulée fausserait le
+        // délai RGPD.
         $now = DateTimeImmutable::createFromInterface($this->clock->now());
 
         // 1. Tokens rattachés au compte (vérification email, reset password) —

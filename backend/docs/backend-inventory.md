@@ -3,16 +3,16 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-10-04 (AUD-SEC-29 : seed BCCL dev/prod re-décrit — identités fictives par
-défaut, gestionnaire unique par options, fichier local d'identités — vérifié contre
-`BcclSeedCommand`/`BcclProdSeedCommand`/`BcclSeedProfile`/`BcclSeedIdentities` ; + P4-301
-« compte sans club »). Recontrôlé contre
-`AuthController::me` (`membershipStatus` actif-d'abord, `accountDeletionScheduledFor`) et
-`MembershipController.php` (routes `/api/memberships`, `/role`, `/deactivate`, `/reactivate` —
-absentes de ce fichier jusqu'ici, ajoutées ; `OrphanAccountNotifier` câblé sur approve/reject/
-deactivate/reactivate) ainsi que `ClubApprovalService::refuse`. Reste du fichier non rebalayé cette
-passe ; historique des passes complètes : `git log -p --follow` ce fichier — un stamp REMPLACE,
-il ne s'empile pas.
+Last verified @ 2026-10-05 (`documentation-update`, lot backend « horloge & démo » — SEC-30/BCK-34/
+SEC-28). §Module démo recalé : lecture `ClubClock::simulatedTodayFor` contrôle désormais `is_demo`
+(plus seulement les écritures) + contrainte `CHECK` en base (`club_simulated_today_demo_only`,
+`Version20261004140000`) ; bornes de la date simulée dérivées des saisons
+(`SeasonResolver::simulatedClockBoundsAmong`) ; horloge RÉELLE explicite `app.clock.real` pour les
+durées/horodatages de sécurité (Mercure, changement d'e-mail, RGPD, audit, préavis orphelin) ;
+drapeau d'identité `app_user.is_demo` (`Version20261004150000`) remplaçant la reconnaissance par
+adresse sur les gestes de profil/suppression. Citations `User.php`/`UserChecker.php` recalées sur
+les lignes réelles. Reste du fichier non rebalayé cette passe ; historique des passes complètes :
+`git log -p --follow` ce fichier — un stamp REMPLACE, il ne s'empile pas.
 
 ---
 
@@ -505,12 +505,17 @@ Deux mécanismes distincts, à ne pas confondre :
    (`src/Clock/ClubClock.php`, décore le service `clock`, `services.yaml`). Son point d'entrée
    unique `simulatedTodayFor(Club $club)` lit `Club::$simulatedToday`
    (`src/Entity/Club.php:127`, colonne `club.simulated_today`, ex `demo_today` — renommage pur,
-   `Version20261002090000`) ; si posée, `now()` rend la **date simulée** à l'**heure réelle** dans
-   le fuseau réel pour ce club ; sinon l'horloge est vraie. **Réservée à un compte de
-   DÉMONSTRATION** (`is_demo = TRUE` — décision fondateur 2026-10-02, revirement sur une capacité
-   un temps généralisée à tout club : décaler l'horloge d'un vrai club lui donnerait la main sur
-   des mécanismes datés qui ne le concernent pas, radar/bascule de saison/e-mails). Trois chemins
-   écrivent `simulatedToday`, tous gardés `is_demo` : la commande CLI `app:club:clock`
+   `Version20261002090000`) ; si posée **ET que le club est démo**, `now()` rend la **date
+   simulée** à l'**heure réelle** dans le fuseau réel pour ce club ; sinon l'horloge est vraie.
+   **Réservée à un compte de DÉMONSTRATION** (`is_demo = TRUE` — décision fondateur 2026-10-02,
+   revirement sur une capacité un temps généralisée à tout club : décaler l'horloge d'un vrai club
+   lui donnerait la main sur des mécanismes datés qui ne le concernent pas, radar/bascule de
+   saison/e-mails), **au niveau LECTURE** (`ClubClock::simulatedTodayFor`, pas seulement les
+   écritures — SEC-30, 2026-10-04 : la lecture seule ne contrôlait pas encore `is_demo`), et par
+   une contrainte **CHECK** en base (`club_simulated_today_demo_only` —
+   `simulated_today IS NULL OR is_demo`, `Version20261004140000`, backstop si un chemin
+   applicatif oubliait la garde). Trois chemins écrivent `simulatedToday`, tous gardés `is_demo` :
+   la commande CLI `app:club:clock`
    (`src/Command/ClubClockCommand.php`, options `--club` id|code FFBB, `--date`, `--clear`, refus
    franc sur un club non démo — `--yes` n'existe plus) ; deux routes superadmin (`AdminDemoController`,
    ci-dessous) `POST /api/admin/demos/{bccl|prospect}/clock` (club démo courant d'un compte démo,
@@ -520,6 +525,20 @@ Deux mécanismes distincts, à ne pas confondre :
    `.env.dev`=1, défaut 0, `%app.club_clock_all%` dans `services.yaml`) : si actif et
    l'environnement ≠ `prod`, un club SANS `simulatedToday` emprunte le pin global du widget
    DevClock (point 2 ci-dessous) — neutralisé en production quel que soit le réglage.
+   **Bornes de la date simulée** (BCK-34, décision fondateur 2026-10-02) : une date posée via
+   `ClubClockController` ou `AdminDemoController` doit tomber entre le **début de la saison EN
+   COURS** et la **fin de la saison SUIVANTE** du club — `SeasonResolver::simulatedClockBoundsAmong`
+   (`src/Service/SeasonResolver.php`), confrontée à l'horloge **RÉELLE** (jamais la date déjà
+   simulée, qui se re-validerait circulairement) ; hors bornes → 422 nommant les deux dates ; sans
+   saison suivante, le plafond est PROJETÉ à un an après la fin de la saison en cours. **Horloge
+   RÉELLE explicite** (`app.clock.real`, alias public:false du service `clock` natif AVANT sa
+   décoration par `ClubClock`, `services.yaml`) : injectée (`#[Autowire(service: 'app.clock.real')]`)
+   partout où une DURÉE ou un HORODATAGE DE SÉCURITÉ ne doit JAMAIS suivre la date simulée d'un
+   club démo — TTL du jeton Mercure (`MercureAuthController`), lien de changement d'e-mail
+   (`EmailChangeVerifier`), délai d'effacement RGPD (`AccountErasureService`), préavis de
+   suppression d'un compte orphelin (`OrphanAccountNotifier`), horodatage du journal d'audit
+   (`AuditTrail`). Les DATES MÉTIER (saisons, échéances) continuent de traverser le service `clock`
+   décoré.
 2. **`DevClockController`** (`/api/dev/clock`, GET/POST) est un mécanisme **global**, sans
    rapport avec `simulatedToday` d'un club précis : il pin/relâche l'horloge de TOUTE l'app dans
    Redis (`DevClockStore`), lue par `SimulatedClock` (alias de `ClockInterface` en dev) et — via
@@ -606,14 +625,27 @@ et `mark-season-paid` d'un seul coup, indépendamment d'un oubli de garde indivi
 concerne plus `demo-register`, désormais joignable en prod par construction (gardée par la fenêtre,
 pas par `kernel.debug`).
 
+**Drapeau d'identité `app_user.is_demo`** (SEC-28, 2026-10-04) : distinct de la fenêtre
+d'activation ci-dessous — il vaut `true` en PERMANENCE pour un compte démo (animateur, BCCL),
+fenêtre ouverte ou non, posé à la création (`DemoCreateCommand`, `DevDemoRegisterController`,
+`DemoSeedCommand`) et backfillé sur les comptes existants par adresse
+(`Version20261004150000`). Remplace la reconnaissance historique **par adresse** sur les gestes
+d'identité : `UserChecker::checkPostAuth` (gate connexion hors fenêtre), `AuthController::
+updateMe/changePassword/requestEmailChange` et `DeleteAccountController` (`refuseDemoMutation()`,
+403 « Ce compte de démonstration ne peut pas être modifié. ») refusent désormais sur CE drapeau —
+un compte démo ne peut ni changer de prénom/nom/e-mail/mot de passe ni se supprimer, et il est
+hors de la règle des comptes orphelins (`OrphanAccountNotifier`). Côté écran, le profil d'un
+compte démo est en lecture seule (bandeau, `frontend/src/features/profile/ProfilePage.tsx`),
+depuis `/api/me.isDemo`.
+
 **Fenêtre d'activation démo** (décision fondateur 2026-09-30) : les deux comptes démo — animateur
 `demo@amateo.fr` et gestionnaire BCCL `demo-bccl@amateo.fr` (`app.demo_bccl_email`, MAISON UNIQUE
 en `services.yaml`, lu par `DemoSeedCommand` pour le défaut de son option `--email`) — ne se
-connectent que pendant leur fenêtre : `User::$demoActiveUntil` (`User.php:90`, colonne
+connectent que pendant leur fenêtre : `User::$demoActiveUntil` (`User.php:98`, colonne
 `app_user.demo_active_until`, additive nullable, NULL = inactif par défaut) et
-`User::isDemoWindowOpen(DateTimeImmutable $now)` (`User.php:296`, `$demoActiveUntil > $now`) —
+`User::isDemoWindowOpen(DateTimeImmutable $now)` (`User.php:326`, `$demoActiveUntil > $now`) —
 toujours confrontée à l'horloge **RÉELLE**, jamais à `simulated_today` (un club démo ne doit pas
-pouvoir rouvrir sa propre porte). `UserChecker::checkPostAuth()` (`UserChecker.php:43-56`) refuse
+pouvoir rouvrir sa propre porte). `UserChecker::checkPostAuth()` (`UserChecker.php:36-50`) refuse
 la connexion des deux comptes démo hors fenêtre d'une manière **byte-identique** à un mauvais mot
 de passe (`Invalid credentials.`, aucun oracle « fenêtre fermée ») ; tout autre compte est
 insensible à la colonne. Le seed (`app:demo:seed`) n'ouvre jamais la fenêtre lui-même : c'est la
