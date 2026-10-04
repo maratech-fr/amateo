@@ -35,8 +35,8 @@ Now (`docker-compose.yml`, service `mercure`):
 Both hold dev placeholders. **Prod: replace `MERCURE_JWT_SECRET` with a random
 32+ byte secret** and keep it in sync between the hub (compose) and the backend
 publisher (`backend/config/packages/mercure.yaml` reads `%env(MERCURE_JWT_SECRET)%`).
-Where the secret is generated and stored (encrypted `.env.prod.gpg` rail,
-pushed to the VM at deploy): `docs/ops/deploy.md` (§ Secrets chiffrés).
+Where the secret is generated and stored (the `ENV_PROD` GitHub secret, pushed
+to the VM at deploy): `docs/ops/deploy.md` (§ Secret `ENV_PROD`).
 
 ## Prod (`docker-compose.prod.yml`)
 

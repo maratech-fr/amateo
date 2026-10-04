@@ -222,29 +222,27 @@ jobs:
           ref: ${{ (inputs.version != '' && !startsWith(inputs.version, 'sha-')) && inputs.version || '' }}
           fetch-depth: 0
 
-      # Secrets rail: the repo's .env.prod.gpg (GPG symmetric — `make
-      # env-encode@prod`) is the source of truth for the VM's .env.prod.
-      # Decoded on the RUNNER so the passphrase never leaves Actions; the
-      # cleartext travels only over scp (SSH) and lands where it already
-      # lives today, chmod 600.
-      # Missing .gpg = warning + keep the VM's copy: a rollback re-checkouts
-      # an old tag that predates the rail — failing closed would break
-      # rollback (docs/ops/deploy.md §Rollback). Present .gpg with a missing
-      # or wrong passphrase = hard fail BEFORE any VM mutation.
-      - name: Decode and push .env.prod
+      # Secrets rail: the ENV_PROD GitHub secret holds the VM's whole .env.prod
+      # (the filled file pasted verbatim). GitHub masks secrets.* line by line
+      # in the logs; we never echo the content and never `set -x`. It is written
+      # to the runner under umask 077, travels only over scp (SSH) and lands
+      # where it already lives today, chmod 600.
+      # Empty/absent ENV_PROD = hard fail BEFORE any VM mutation (the message
+      # says to create the secret). Rollback: `make deploy VERSION=<tag>`
+      # (dispatch → the workflow of main → current secrets) — NEVER re-push an
+      # old tag: its workflow still expects the old encrypted env rail and its
+      # passphrase secret (both removed here) and would FATAL before any
+      # mutation (docs/ops/deploy.md §Rollback).
+      - name: Push .env.prod from the ENV_PROD secret
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/srv/amateo' }}
-          ENV_GPG_PASSPHRASE: ${{ secrets.ENV_GPG_PASSPHRASE }}
+          ENV_PROD: ${{ secrets.ENV_PROD }}
         run: |
-          if [ ! -f .env.prod.gpg ]; then
-            echo "WARNING: no .env.prod.gpg at this ref — keeping the VM's existing .env.prod" >&2
-            exit 0
-          fi
-          if [ -z "$ENV_GPG_PASSPHRASE" ]; then
-            echo "FATAL: .env.prod.gpg is present but the ENV_GPG_PASSPHRASE secret is not set" >&2
+          if [ -z "$ENV_PROD" ]; then
+            echo "FATAL: the ENV_PROD secret is empty or not set — create it (the full .env.prod pasted verbatim)" >&2
             exit 1
           fi
           # Same strict validation discipline as the SSH deploy step below.
@@ -253,15 +251,14 @@ jobs:
             exit 1
           fi
           umask 077
-          printf '%s' "$ENV_GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback \
-            --passphrase-fd 0 -o "$RUNNER_TEMP/.env.prod" --decrypt .env.prod.gpg
+          printf '%s\n' "$ENV_PROD" > "$RUNNER_TEMP/.env.prod"
           mkdir -p ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           SSH=(ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new "$DEPLOY_USER@$DEPLOY_HOST")
           SCP=(scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new)
           # remote-deploy.sh pins VERSION= into the VM's .env.prod after every
-          # successful deploy; the VERSION line inside the .gpg is stale by
+          # successful deploy; the VERSION line in the secret is stale by
           # design. Preserve the VM's current pin so a manual `up -d` between
           # deploys keeps pulling the running version.
           current_pin=$("${SSH[@]}" "grep '^VERSION=' '$DEPLOY_PATH/.env.prod' 2>/dev/null || true")
