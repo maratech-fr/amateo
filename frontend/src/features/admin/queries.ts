@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { toast } from "@/shared/stores/toastStore";
 import { activateAdminDemo, activateAdminMembership, type AdminDemoTarget, type AdminFeedbackStatus, createAdminReleaseNote, deactivateAdminDemo, decideAdminClubRequest, deleteAdminReleaseNote, getAdminActions, getAdminAuditLog, getAdminCapacity, getAdminClubRequests, getAdminClubs, getAdminDemos, getAdminFeedback, getAdminFeedbackDetail, getAdminFreshness, getAdminHealth, getAdminJobs, getAdminMessengerFailed, getAdminOverview, getAdminPendingMemberships, getAdminReleaseNotes, getAdminSession, getAdminSystemErrors, publishAdminReleaseNote, type ReleaseNoteWritePayload, resetAdminDemoBccl, retainAdminDemoProspect, runAdminClubAction, runAdminJob, setAdminDemoClock, treatAdminFeedback, untreatAdminFeedback } from "./api";
 import { useAdminStore } from "./store";
 
@@ -225,6 +226,9 @@ export function useCreateAdminReleaseNote() {
       return createAdminReleaseNote(body, csrfToken);
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-release-notes"] }),
+    // FRT-38 — le toast d'erreur vit au niveau HOOK (un onError de niveau mutate() que le filet
+    // global ne désarme pas en ferait deux). L'appelant ne re-toaste pas.
+    onError: () => toast.error("Impossible d'enregistrer la note."),
   });
 }
 
@@ -241,6 +245,7 @@ export function usePublishAdminReleaseNote() {
       return publishAdminReleaseNote(id, csrfToken);
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-release-notes"] }),
+    onError: () => toast.error("Impossible de publier."),
   });
 }
 
@@ -257,6 +262,7 @@ export function useDeleteAdminReleaseNote() {
       return deleteAdminReleaseNote(id, csrfToken);
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-release-notes"] }),
+    onError: () => toast.error("Impossible de supprimer."),
   });
 }
 
@@ -342,6 +348,7 @@ export function useActivateAdminDemo() {
       return activateAdminDemo(target, csrfToken);
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-demos"] }),
+    onError: () => toast.error("Impossible d’activer le compte de démonstration."),
   });
 }
 
@@ -358,6 +365,7 @@ export function useDeactivateAdminDemo() {
       return deactivateAdminDemo(target, csrfToken);
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-demos"] }),
+    onError: () => toast.error("Impossible de désactiver le compte de démonstration."),
   });
 }
 
@@ -374,6 +382,7 @@ export function useResetAdminDemoBccl() {
       return resetAdminDemoBccl(csrfToken);
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-demos"] }),
+    onError: () => toast.error("La réinitialisation de la démo n’a pas pu être lancée."),
   });
 }
 
@@ -390,6 +399,9 @@ export function useSetAdminDemoClock() {
       return setAdminDemoClock(target, body, csrfToken);
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-demos"] }),
+    // Deux gestes partagent ce hook : appliquer une date vs revenir à aujourd'hui (body.clear).
+    onError: (_error, variables) =>
+      toast.error("clear" in variables.body ? "Impossible de revenir à aujourd’hui." : "Impossible d’appliquer la date simulée."),
   });
 }
 
@@ -406,5 +418,6 @@ export function useRetainAdminDemoProspect() {
       return retainAdminDemoProspect(csrfToken);
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-demos"] }),
+    onError: () => toast.error("Impossible de conserver le club de démonstration."),
   });
 }

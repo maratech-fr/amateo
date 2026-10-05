@@ -138,6 +138,19 @@ paths:
   interactives, relèvent de `FilterChip`), `DriftBanner` (bouton-bascule, pas une pastille d'état).
   Hors portée, délibérément : les quatre indices de chargement restés en TEXTE (`ClubPage` §
   statistiques et § offres, `PeriodTeams`, `PeriodVenues`).
+- 🔴 **Le toast d'erreur d'une mutation vit UNE fois, au NIVEAU HOOK** (`useMutation({ onError })`),
+  jamais passé à `mutate(vars, { onError })` (FRT-38, 2026-10-06). Le filet global
+  `MutationCache.onError` (`shared/lib/queryClient.ts`) ne se DÉSARME que sur
+  `mutation.options.onError` (niveau hook) : un `onError` de niveau `mutate()` ne le voit pas, donc
+  un toast d'erreur posé là en fait DEUX (ou double le toast du hook). Gardé par
+  `frontend/src/test/mutateOnErrorToastGuard.test.ts` (grep statique `src/features/**`+`src/app/**` :
+  un `onError` passé à `.mutate(`/`.mutateAsync(` dont le CORPS référence `toast.` rougit — un
+  `onError` qui ne fait que poser de l'état local, p.ex. `setError`, ou appelle un handler NOMMÉ
+  n'est PAS attrapé). Exemptions nominatives motivées : `useRetouchGestures.ts` (patron
+  split-feedback documenté `planning/queries.ts:51-74` — le hook TAIT les erreurs MÉTIER pour que la
+  page les toaste avec CONTEXTE : noms d'équipes, timeout nommé, surlignage ; le reliquat de double
+  toast PARTIEL sur transport = P4-305) et `AdminDashboardPage.tsx` (messages contextuels runtime
+  `job.label`/`club.name`). Les messages SERVEUR passent par `errorMessage()` (patron UXS-13).
 - 🔴 **La largeur d'un sélecteur passe par `wrapperClassName`, jamais `className`** (`Select`,
   `Listbox`, `TeamSelect`, `VenueSelect` — PR 3/7 de la série « uniformité des sélecteurs »,
   2026-10-01) : le contrôle intérieur (`<select>`/trigger) est toujours `w-full`, une classe
