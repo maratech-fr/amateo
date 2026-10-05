@@ -28,6 +28,14 @@ paths:
   neutre, logotype masqué, lien support masqué, page ENTIÈREMENT fonctionnelle.** Le repli est
   *sans marque*, jamais une marque recréée. Aucun `mailto:` en dur : l'adresse vient de
   `contactEmail`, et le lien reste masqué tant que le config n'a pas chargé.
+- **Le logotype porte le MARK, pas seulement le mot (P4-302)** : les trois arcs de
+  `landing/assets/brand/mark.svg` sont inlinés à la main dans le `<svg>` du logotype (couleurs
+  FIXES, thème-neutre, `aria-hidden` — même recopie assumée que la scène décorative ci-dessous,
+  zéro dépendance réseau), masqué comme le reste tant que `config.js` n'a pas chargé. Le logotype
+  (mark + mot) est **cliquable vers la vitrine** : le script injecte `logo.href = c.siteUrl` quand
+  cette clé existe dans `landing/config.js` (défensif — absente, l'`href="/"` d'origine reste).
+  Décision fondateur : le logo est FIXE (pas d'icône/texte alternatif), le logotype EST le lien,
+  jamais un geste séparé en plus.
 - **Zéro dépendance réseau, inventaire imposé** : CSS **inline** · police **`system-ui`
   seule** (pas même une police auto-hébergée) · image **SVG inline ou rien** · **< 100 Ko** par
   page (borne DURE) — et [`../../scripts/test-system-pages.sh`](../../scripts/test-system-pages.sh)

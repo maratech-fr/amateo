@@ -21,6 +21,10 @@ paths:
   **Maratech**) et `config.js` est recalé dessus ; la règle du point unique reste, elle : c'est
   elle qui a rendu le renommage gratuit, et c'est elle qui rendra gratuit un changement de domaine.
   ⚠ `appUrl` s'écrit **sans slash final** — les CTA concatènent (`appUrl + "/register"`).
+  **Clé `siteUrl` (P4-302, 2026-10-05)** : l'URL de la vitrine elle-même (domaine nu, même règle
+  sans slash final) — consommée par `system-pages/503.html`/`maintenance.html` pour pointer leur
+  logotype cliquable vers la page de vente plutôt que vers l'app morte ; point unique, un
+  changement de domaine ne touche que cette ligne.
   **Le logo suit le même patron (P5-25, 2026-09-25)** : `config.js` clé `logo` (source définitive
   du handoff marque, `assets/brand/`) injecté par script sur chaque `[data-brand-logo]` — jamais un
   chemin d'asset en dur dans `index.html`. `config.js` est chargé depuis `index.html` avec

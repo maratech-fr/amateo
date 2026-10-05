@@ -1,15 +1,14 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-10-03 (ENG-48/ALIGN-16/ENG-51/ALIGN-19, contrat 1.1). Re-confronté contre le
-code : une séance verrouillée le jour imposé satisfait `forcedDays` sans poser de contrainte
-(`engine/app/solver/constraints/targeting.py`, `forced_day_set` amputé des jours déjà
-couverts par `_locked_team_days`) ✓ ; un jour imposé dont toutes les places candidates sont
-fermées par une autre règle HARD émet `day_constraint_conflict` nommé (même fichier) ✓ ; seul un
-coach `role != "ASSISTANT"` (défaut `MAIN`) ferme un créneau COACH_AVAILABILITY
-(`engine/app/solver/constraints/parsing.py`) ✓ ; `ruleType` ne compte toujours que `HARD`/`PREFERRED`
-(le cran `LOCK` reste retiré, `parse_v2_constraints` signale tout `LOCK` legacy résiduel par un
-`parse_warning` sans jamais l'appliquer). Reste du vocabulaire détaillé non re-sondé cette passe —
-un stamp REMPLACE, l'historique vit dans git.
+Last verified @ 2026-10-05 (rotation de fraîcheur — sujet sans rapport, P4-302). Re-confronté
+contre le code : `engine/CONTRACT_VERSION` vaut **1.2** (le lot ENG-56 — vocabulaire fermé de
+`/place-matches`, cf. `etat-des-lieux.md` §3 — a bumpé le contrat depuis la dernière passe qui
+citait encore 1.1, corrigé ici) ; une séance verrouillée le jour imposé satisfait `forcedDays`
+sans poser de contrainte (`engine/app/solver/constraints/targeting.py`, `forced_day_set` amputé
+des jours déjà couverts par `_locked_team_days`) ✓ ; seul un coach `role != "ASSISTANT"` (défaut
+`MAIN`) ferme un créneau COACH_AVAILABILITY (`engine/app/solver/constraints/parsing.py`) ✓ ;
+`ruleType` ne compte toujours que `HARD`/`PREFERRED` (le cran `LOCK` reste retiré). Reste du
+vocabulaire détaillé non re-sondé cette passe — un stamp REMPLACE, l'historique vit dans git.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.

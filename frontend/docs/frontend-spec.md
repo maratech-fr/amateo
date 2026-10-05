@@ -4,9 +4,9 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-10-05 (`documentation-update`, lot backend « horloge & démo » — SEC-28).
-Recontrôlé contre `ProfilePage.tsx` : un compte démo (`me.isDemo`) rend le profil en lecture seule
-(bandeau + champs/boutons désactivés) — route `/profile` mise à jour. Reste non re-sondé cette
+Last verified @ 2026-10-05 (`documentation-update`, P4-302 — logo signature + logotype cliquable
+des écrans système). Recontrôlé contre `shared/components/ui/system-screen.tsx` : le `BrandMark`
+de pied est enveloppé dans un `<a href={PRODUCT_SITE_URL}>` (§6.8). Reste non re-sondé cette
 passe — historique : `git log -p --follow` ce fichier. §6.7 reste hors périmètre (régime narratif
 plus dense, taille à l'aveugle refusée) — P4-262 en roadmap.
 
@@ -928,6 +928,15 @@ d'écran** : chaque écran est un CONSOMMATEUR qui apporte sa copie et ses geste
 règle « un seul composant d'état, jamais un deuxième » sans fabriquer un composant fourre-tout.
 ⚠ Contrainte dure : la primitive rend **sans aucun provider** — elle sert sous `ErrorBoundary`, monté
 hors providers ; donc pas de `useQuery`, pas de `FeedbackDialog` à l'intérieur.
+
+**Le logotype de pied est cliquable vers la vitrine (P4-302, 2026-10-05)** : le `BrandMark` du
+pied de `SystemScreen` est enveloppé dans un `<a href={PRODUCT_SITE_URL} target="_blank"
+rel="noopener">` (`shared/lib/product.ts`) — seul lien vers le produit porté par un écran système,
+cohérent avec `system-pages/503.html`/`maintenance.html` (mêmes pages de panne, logotype cliquable
+vers le même domaine, `.claude/rules/system-pages.md`). Décisions fermées (logo FIXE, le logotype
+EST le lien, généralisé à tout écran du même type) : `specs/courantes/etat-des-lieux.md` §2.
+`features/planning/GenerationServiceDown.tsx` (§ plus bas) ne passe pas par `SystemScreen` et
+n'est pas concerné.
 
 | Écran | Consommateur | Déclencheur |
 |---|---|---|
