@@ -23,6 +23,7 @@ use App\Service\Basketball\FbiDivisionSignature;
 use App\Service\Basketball\FfbbRencontreReconciler;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\Basketball\VenueLabelNormalizer;
+use App\Service\Fbi\FbiArrivalReview;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -104,7 +105,7 @@ final class FbiFixtureImporter
         private readonly VenueLabelNormalizer $labelNormalizer,
         private readonly FbiDivisionSignature $divisionSignature,
         private readonly VenueAliasResolver $venueAliasResolver,
-        private readonly ClubDay $clubDay,
+        private readonly FbiArrivalReview $arrivalReview,
         private readonly FbiCorrectionLedger $ledger,
     ) {}
 
@@ -745,9 +746,7 @@ final class FbiFixtureImporter
      */
     public function treatOnArrival(Fixture $fixture, DateTimeImmutable $now, Club $club): void
     {
-        if ($this->qualifiesForArrivalTreatment($fixture, $this->currentIsoWeekEnd($club))) {
-            $fixture->markReviewed($now);
-        }
+        $this->arrivalReview->treatOnArrival($fixture, $now, $club);
     }
 
     /**
@@ -763,13 +762,7 @@ final class FbiFixtureImporter
      */
     public function catchUpReview(Fixture $existing, DateTimeImmutable $now, DateTimeImmutable $weekEnd): bool
     {
-        if (FixtureReviewState::NEW !== $existing->getReviewState()
-            || !$this->qualifiesForArrivalTreatment($existing, $weekEnd)) {
-            return false;
-        }
-        $existing->markReviewed($now);
-
-        return true;
+        return $this->arrivalReview->catchUpReview($existing, $now, $weekEnd);
     }
 
     /**
@@ -780,10 +773,7 @@ final class FbiFixtureImporter
      */
     public function currentIsoWeekEnd(Club $club): DateTimeImmutable
     {
-        $today = $this->clubDay->todayFor($club);
-        $isoWeekday = (int) $today->format('N');
-
-        return $today->modify(\sprintf('+%d days', 7 - $isoWeekday));
+        return $this->arrivalReview->currentIsoWeekEnd($club);
     }
 
     /**
@@ -796,10 +786,7 @@ final class FbiFixtureImporter
      */
     public function sourceIsAuthoritativeForWindow(Fixture $existing, array $row, DateTimeImmutable $weekEnd): bool
     {
-        $end = $weekEnd->format('Y-m-d');
-
-        return $existing->getMatchDate()->format('Y-m-d') <= $end
-            || $row['matchDate']->format('Y-m-d') <= $end;
+        return $this->arrivalReview->sourceIsAuthoritativeForWindow($existing, $row, $weekEnd);
     }
 
     /**
@@ -1008,18 +995,6 @@ final class FbiFixtureImporter
         $fixture->setVenueId($venueId);
 
         return true;
-    }
-
-    /**
-     * Le prédicat « naît/est rattrapée traitée » PARTAGÉ par {@see treatOnArrival}
-     * et {@see catchUpReview} (jamais recopié) : un EXTÉRIEUR (le club ne le place
-     * pas, rien à examiner), ou une date ≤ dimanche de la semaine ISO en cours
-     * (rencontre déjà jouée ou imminente). Un domicile futur hors fenêtre est faux.
-     */
-    private function qualifiesForArrivalTreatment(Fixture $fixture, DateTimeImmutable $weekEnd): bool
-    {
-        return FixtureHomeAway::AWAY === $fixture->getHomeAway()
-            || $fixture->getMatchDate()->format('Y-m-d') <= $weekEnd->format('Y-m-d');
     }
 
     /**
