@@ -37,6 +37,8 @@ use Throwable;
 #[AsController]
 final class ClubSiegeController extends AbstractController
 {
+    use ResolvesCurrentClubTrait;
+
     public function __construct(
         private readonly ClubRepository $clubRepository,
         private readonly EntityManagerInterface $entityManager,
@@ -54,8 +56,8 @@ final class ClubSiegeController extends AbstractController
         $this->managementAccessGuard->assertManager(); // SEC-07
 
         $request = $this->requestStack->getCurrentRequest();
-        $clubId = $request?->attributes->get('_club_id');
-        if (!\is_string($clubId) || '' === $clubId) {
+        $clubId = $this->resolveCurrentClubId($this->requestStack);
+        if (null === $request || null === $clubId) {
             return $this->json(['error' => 'No club in context.'], Response::HTTP_BAD_REQUEST);
         }
         $club = $this->clubRepository->find($clubId);
@@ -63,7 +65,6 @@ final class ClubSiegeController extends AbstractController
             return $this->json(['error' => 'Club not found.'], Response::HTTP_NOT_FOUND);
         }
 
-        // $clubId n'est une chaîne que si $request n'est pas null (l'attribut vient de lui).
         $data = json_decode((string) $request->getContent(), true);
         if (!\is_array($data)) {
             return $this->json(['error' => 'Invalid JSON.'], Response::HTTP_BAD_REQUEST);
