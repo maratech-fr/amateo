@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\EventListener;
 
 use App\Clock\ClubClock;
+use App\Controller\MailboxController;
 use App\Entity\Club;
 use App\Entity\ClubMailboxMessage;
 use App\Mail\ClubBusinessMail;
@@ -51,6 +52,15 @@ use Symfony\Component\Mime\Email;
  */
 final readonly class ClockedClubMailInterceptor implements EventSubscriberInterface
 {
+    /**
+     * SEC-31 — le libellé neutre qui remplace AU STOCKAGE le lien personnel à jeton du coach
+     * (`…/doleances/<jeton>`). Ce jeton EST l'identité du coach : le garder en clair dans la
+     * boîte le rendrait lisible par TOUT membre du club (le détail n'a pas de garde gestionnaire,
+     * {@see MailboxController}) et par le rôle `amateo_read` — une prise de
+     * doléances d'autrui, à un clic. Le message garde son sens de démo, jamais le jeton.
+     */
+    private const string MASKED_LINK_LABEL = 'lien personnel masqué';
+
     public function __construct(
         private Connection $connection,
         private EntityManagerInterface $entityManager,
@@ -187,10 +197,25 @@ final readonly class ClockedClubMailInterceptor implements EventSubscriberInterf
         $message->setFromAddress(mb_substr($this->joinAddresses($email->getFrom()), 0, 255));
         $message->setToAddress(mb_substr($this->joinAddresses($email->getTo()), 0, 1000));
         $message->setSubject(mb_substr($email->getSubject() ?? '', 0, 998));
-        $message->setBodyText($this->asString($email->getTextBody()));
-        $message->setBodyHtml($this->asString($email->getHtmlBody()));
+        $message->setBodyText($this->maskPersonalLinks($this->asString($email->getTextBody())));
+        $message->setBodyHtml($this->maskPersonalLinks($this->asString($email->getHtmlBody())));
 
         return $message;
+    }
+
+    /**
+     * SEC-31 — masque tout lien personnel à jeton (`…/doleances/<jeton>`) AVANT l'écriture en
+     * boîte : le jeton est remplacé par un libellé neutre, pour text ET html. Le `\S+` capte le
+     * jeton seul (aucune espace), `\S*` en amont capte l'URL absolue qui le précède sur sa ligne.
+     * `preg_replace` ne rend `null` que sur erreur regex (motif constant ici) — repli défensif.
+     */
+    private function maskPersonalLinks(?string $body): ?string
+    {
+        if (null === $body) {
+            return null;
+        }
+
+        return preg_replace('~\S*/doleances/\S+~', self::MASKED_LINK_LABEL, $body) ?? $body;
     }
 
     /**

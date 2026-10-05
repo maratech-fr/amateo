@@ -113,6 +113,18 @@ final class ConstraintConfigValidator
 
         foreach ($config as $key => $value) {
             $key = (string) $key;
+
+            // ALIGN-21 — le ciblage par groupe (`targetTag`/`targetTags`/`excludeTags`) ne
+            // résout QUE des lignes TEAM (`ScheduleConstraintBuilder::serializeUnifiedConstraints`,
+            // le tag → teamIds, sur scope CLUB) : posé sur une disponibilité de COACH il serait
+            // ACCEPTÉ puis sans aucune ligne moteur ni avertissement — le motif « déclaré ≠
+            // effectif ». On le refuse à l'écriture : une disponibilité vise un coach (le scope).
+            if (ConstraintFamily::COACH_AVAILABILITY === $family
+                && \in_array($key, [self::TAG_KEY, self::TARGET_TAGS_KEY, self::EXCLUDE_TAGS_KEY], true)) {
+                $errors[] = \sprintf('« %s » ne peut pas cibler une contrainte de disponibilité : une disponibilité vise un coach précis, pas un groupe.', $key);
+                continue;
+            }
+
             if (self::TAG_KEY === $key) {
                 if (!\is_string($value) || '' === trim($value)) {
                     $errors[] = \sprintf('« %s » attend un libellé de groupe non vide.', $key);

@@ -20,6 +20,9 @@
 #     le fondateur a pu l'éditer).
 #   - Les workers long-lived (messenger-worker, cron-runner) sont redémarrés aux
 #     deux bascules — ils tiennent la config DB en mémoire.
+#   - Le schéma du bac à sable (amateo_dev) est mis à niveau AVANT la commande si
+#     des migrations manquent (INF-06), bruyamment — plus de Behat rouge inexpliqué
+#     sur un sandbox en retard. Une seule vérification, jamais de boucle d'attente.
 #   - La restauration passe par un trap sur EXIT INT TERM : une commande qui
 #     échoue ou est interrompue laisse quand même le fondateur en mode play.
 #   - Ce wrapper NE SOURCE PAS la garde (elle le tuerait avant qu'il puisse
@@ -48,6 +51,28 @@ restart_workers() {
   compose restart messenger-worker cron-runner >/dev/null 2>&1 || true
 }
 
+dev_console() {
+  compose exec -T -e APP_ENV=dev php-fpm php bin/console "$@"
+}
+
+# INF-06 — le bac à sable (amateo_dev) est JETABLE mais SURVIT entre les runs : après un pull
+# qui ajoute des migrations, un Behat lancé dessus échouait en masse sans rien dire (schéma en
+# retard). On remet le bac à sable à niveau AVANT la commande, bruyamment, en nommant ce qui est
+# fait — équivalent `make -C backend db-init` (create --if-not-exists + migrate). Aucune boucle
+# d'attente : une seule vérification, puis la migration si besoin (garde-fou boucles bornées).
+ensure_sandbox_migrated() {
+  echo "==> with-sandbox: vérification du schéma du bac à sable (amateo_dev)…" >&2
+  # `up-to-date` sort 0 si à jour, non-zéro sinon (y compris base absente → on crée puis migre).
+  if dev_console doctrine:migrations:up-to-date --no-interaction >/dev/null 2>&1; then
+    echo "==> with-sandbox: bac à sable à jour, aucune migration à appliquer." >&2
+    return 0
+  fi
+  echo "==> with-sandbox: bac à sable EN RETARD — création si besoin + migration (make -C backend db-init)…" >&2
+  dev_console doctrine:database:create --if-not-exists --connection admin >&2 || true
+  dev_console doctrine:migrations:migrate --no-interaction >&2
+  echo "==> with-sandbox: schéma du bac à sable mis à niveau." >&2
+}
+
 restore() {
   [[ "$_restored" == "1" ]] && return 0
   _restored=1
@@ -68,6 +93,9 @@ if [[ -f "$ENV_LOCAL" ]]; then
 else
   echo "==> with-sandbox: déjà en bac à sable (aucun backend/.env.local) — exécution directe." >&2
 fi
+
+# Pointé sur amateo_dev dans les deux cas — on garantit son schéma avant la commande.
+ensure_sandbox_migrated
 
 "$@"
 rc=$?
