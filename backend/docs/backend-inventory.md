@@ -3,18 +3,12 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-10-05 (`documentation-update`, P4-300 — nouvel endpoint lecture
-`GET /api/venue_closures`/`VenueClosureResource` et fusion des fermetures du calendrier dans le
-payload `/api/fixtures/place`, confrontés au code ; lot backend 5 « architecture » — BCK-19
-partie 1 : `FbiFixtureImporter` (`backend/src/Service/`) reste la façade publique
-(`treatOnArrival`, `applyFieldTakeFile`, `attachConfirmedVenue`, `detectUnplacedVenueDeviation`,
-`sourceIsAuthoritativeForWindow`, mêmes signatures) et délègue à `backend/src/Service/Fbi/`
-(`FbiDeviationService`, `FbiArrivalReview`, `FbiMappingGuards`) ; 19 contrôleurs utilisent
-`ResolvesCurrentClubTrait`, `LeagueValidatedFixturesController` reste inline par exception
-documentée ; **partie 2** : `MatchConflictDetector` (`backend/src/Service/`) reste la façade
-unique (`detect()`, 4 prédicats statiques publics inchangés) et délègue à
-`backend/src/Service/Conflicts/` (`VenueConflicts`, `RuleWindowConflicts`, `PersonConflicts`,
-`ConflictMoments`) — BCK-19 SOLDÉ pour les deux fichiers nommés).
+Last verified @ 2026-10-05 (`documentation-update`, P4-304 — trois restes « horloge & démo »
+fermés, confrontés au code : TTL + `emailVerifiedAt` du lien de vérification d'e-mail
+(`EmailVerifier`/`EmailVerificationService`), péremption d'une demande de création de club
+(`ClubApprovalController`), `termsAcceptedAt` (`RegisterService`), `lastLoginAt`
+(`LoginSuccessListener`) — tous désormais sur `app.clock.real` ; `PurgeInactiveUsersCommand`
+exclut les comptes `is_demo` (warn() ET erase())).
 Reste du fichier non rebalayé cette passe ; historique des passes complètes : `git log -p --follow` ce
 fichier — un stamp REMPLACE, il ne s'empile pas.
 
@@ -543,8 +537,17 @@ Deux mécanismes distincts, à ne pas confondre :
    club démo — TTL du jeton Mercure (`MercureAuthController`), lien de changement d'e-mail
    (`EmailChangeVerifier`), délai d'effacement RGPD (`AccountErasureService`), préavis de
    suppression d'un compte orphelin (`OrphanAccountNotifier`), horodatage du journal d'audit
-   (`AuditTrail`). Les DATES MÉTIER (saisons, échéances) continuent de traverser le service `clock`
-   décoré.
+   (`AuditTrail`). **P4-304** (2026-10-05, trois restes fermés) : TTL du lien de vérification
+   d'e-mail (`EmailVerifier`) et son horodatage `emailVerifiedAt`
+   (`EmailVerificationService`), péremption d'une demande de création de club
+   (`ClubApprovalController`), preuve de consentement `termsAcceptedAt`
+   (`RegisterService`), dernière connexion `lastLoginAt` (`LoginSuccessListener`) — toutes
+   publiques ou déclenchées par un JWT, donc exposées à la date simulée d'un club démo via
+   `TenantFilterListener`. Les DATES MÉTIER (saisons, échéances) continuent de traverser le
+   service `clock` décoré. **Rétention RGPD des comptes inactifs** (`PurgeInactiveUsersCommand`,
+   `app:users:purge-inactive`) exclut désormais les comptes `is_demo` (P4-304, warn() ET erase()) —
+   même motif que `OrphanAccountNotifier`, une horloge simulée souvent passée les ferait paraître
+   inactifs dès leur création.
 2. **`DevClockController`** (`/api/dev/clock`, GET/POST) est un mécanisme **global**, sans
    rapport avec `simulatedToday` d'un club précis : il pin/relâche l'horloge de TOUTE l'app dans
    Redis (`DevClockStore`), lue par `SimulatedClock` (alias de `ClockInterface` en dev) et — via
