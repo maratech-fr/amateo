@@ -1,11 +1,13 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-10-05 (`CONTRACT_VERSION` bumpé en 1.2 : le vocabulaire `/place-matches` —
-`clubRules[].ruleType`, `teams[].coaches[].role`, `teamLinks[].type` — est désormais une énum
-fermée côté moteur, valeur inconnue = 422, ENG-56). Antérieurement @ 2026-10-04 (amendement
-ADR-0003 : §3 recalé sur le rail ASYNCHRONE — budget par semaine ISO plutôt que de bout en bout,
-chaîne de timeouts, bandeau d'écran visible de tous/geste gestionnaire seul, e-mail à 2 min) —
-`CONTRACT_VERSION` 1.2 confirmé aux deux foyers cités (§1/§3).
+Last verified @ 2026-10-05 : `CONTRACT_VERSION` 1.2 (vocabulaire `/place-matches` —
+`clubRules[].ruleType`, `teams[].coaches[].role`, `teamLinks[].type` — énum fermée côté moteur,
+valeur inconnue = 422, ENG-56) et P4-300 — une fermeture `venue_closed` du calendrier s'applique
+aussi aux matchs, maison unique `PlanVenueClosures::closureIntervals`, consommée par le payload
+`/place-matches`, le radar, le refus serveur et le sélecteur grisé, plus l'endpoint lecture
+`GET /api/venue_closures` — confirmés contre `MatchPlacementPayloadBuilder.php`,
+`ConflictRadarLoader.php`, `FixtureStateProcessor.php`, `matchAccess.ts`, `usePlacementGuards.ts`,
+`PlacementPanel.tsx`.
 Reste du contenu (P4-271/P4-272 et antérieur, dont §7 « Engagements FFBB ») non réaudité cette
 passe. Historique :
 `git log -p --follow specs/courantes/module-matchs.md`.
@@ -144,7 +146,15 @@ vigueur, il n'a rien à comparer.
   Sans habitude, repli sur le champ déclaré `Team.matchDay` (0-based, converti en ISO à l'émission).
 - **`VenueMatchWindow`** (jour ISO + plage horaire, gymnase = « de match » ssi ≥ 1 fenêtre — aucun
   booléen sur `Venue`) et **`VenueUnavailability`** (plage de dates + motif, toutes circonstances,
-  alerte seulement — jamais recopiée en N+1).
+  alerte seulement — jamais recopiée en N+1). **Fermeture du calendrier** (`venue_closed`,
+  P4-300) : pas une entité propre — une contrainte `Constraint`/FACILITY datée, portée par une
+  entrée de calendrier (§ « Gymnases » de `accueil-cockpit-temporel.md`). Elle s'applique AUSSI
+  aux matchs : maison unique `PlanVenueClosures::closureIntervals` (le FAIT brut — dates du
+  `config`, repli legacy = fenêtre de l'entrée porteuse, **jamais** la composition
+  `VenuePeriodOverride` d'un plan d'entraînement) consommée par `MatchPlacementPayloadBuilder`
+  (fusionnée dans `venues[].unavailabilities` du payload `/place-matches`, contrat 1.2 inchangé),
+  `ConflictRadarLoader` (fusionnée avec `VenueUnavailability` dans la même famille radar), et
+  `FixtureStateProcessor::assertVenueAccessAllowed` (refus 422, placement manuel).
 - **`ConflictResolution`** (clé `(club, saison, fingerprint)`, l'empreinte STABLE d'un conflit) :
   statut de traitement — voir §6.
 - **`MatchModuleVisit`** (clé `(club, saison, user)`) : référence de visite pour le delta — voir §8.
@@ -809,7 +819,10 @@ le layout — la nav des onglets reste inchangée.
   LA MAIN reste éditable (`FixtureFormDialog`), même logique côté grille et côté bande — une seule
   maison (`openAway`).
 - **Refus serveur du placement (D2)** : `FixtureStateProcessor::assertVenueAccessAllowed` (geste
-  gestionnaire, create ET update d'un domicile) refuse en 422 (1) toute rencontre — amical compris
+  gestionnaire, create ET update d'un domicile) refuse en 422 (0, P4-300) toute rencontre — amical
+  compris — posée dans un gymnase couvert par une FERMETURE du calendrier (`venue_closed`) à sa
+  date (« X est fermée du … au … — titre », même maison `PlanVenueClosures::closureIntervals`
+  que le payload de placement et le radar) ; (1) toute rencontre — amical compris
   — posée dans un gymnase couvert par une `VenueUnavailability` à sa date ; (2) pour une rencontre
   de COMPÉTITION seulement, quand le club déclare ≥ 1 `VenueMatchWindow` : aucune fenêtre `(gymnase,
   jour)` ou coup d'envoi hors fenêtre (même prédicat que le diagnostic,
@@ -818,12 +831,16 @@ le layout — la nav des onglets reste inchangée.
   amical reste libre hors fenêtre d'accès. `/api/fixtures/place`
   (rail solveur, §3 — le solveur pose déjà les mêmes fenêtres/indispos en HARD) et la
   réconciliation FBI n'empruntent **pas** ce processor : intacts, hors du geste manuel gestionnaire
-  que D2 vise. `PlacementPanel` lit trois gardes du club (accès match,
-  indisponibilités, enveloppe ligue) via `readState` ; le GESTE de placement est SUSPENDU
+  que D2 vise. `PlacementPanel` lit QUATRE gardes du club (accès match, indisponibilités,
+  fermetures du calendrier — P4-300 — et enveloppe ligue) via `readState` ; le GESTE de placement
+  est SUSPENDU
   (`LoadErrorHint` + retry en échec, spinner en chargement) tant qu'elles ne sont pas `ready` — un
   échec de première lecture ne se lit jamais « aucune restriction ». Les mutations de placement/
   édition restituent le message 422 du serveur dans le toast (`errorMessage`) au lieu d'un
-  générique.
+  générique. **Sélecteur de gymnase grisé (P4-300)** : tant que les gardes sont `ready`, l'option
+  d'un gymnase FERMÉ (calendrier) ou INDISPONIBLE (déclaré) à la date du match est grisée et
+  inerte, avec une sous-ligne nommant la cause et les bornes — miroir du refus serveur, jamais de
+  grisage sur une lecture en cours ou en échec (`PlacementPanel::blockedSubFor`).
 - **Enveloppe ligue — miroir déclaré (FRT-32)** : le prédicat d'appartenance au coup d'envoi
   (intervalle FERMÉ `[kickoffMin, kickoffMax]`, filtré par jour) vit dans
   `MatchConflictDetector::kickoffInsideLeagueWindow` (backend, DIAGNOSTIQUE `LEAGUE_WINDOW_VIOLATION`)
