@@ -666,7 +666,8 @@ créneau (`MatchPlacementPayloadBuilder::trainingOccupancies`).
 **Le solveur IGNORE toute empreinte personne d'un match EXTÉRIEUR (P4-240 ③, décision B)** : la
 boucle des fenêtres personne ne parcourt plus que les ancres FIXED (domicile, déjà posées) et les
 entraînements projetés — un match AWAY ne bloque plus aucun coach ni joueuse côté solveur
-(`roundTripMinutes` reste transporté par le contrat, plus consommé). « C'est la vie » (fondateur) :
+(`roundTripMinutes` n'est plus transporté par le contrat depuis la version 1.3 — le radar le
+recalcule depuis l'entité, hors payload). « C'est la vie » (fondateur) :
 le solveur ne peut de toute façon pas déplacer un match extérieur (l'heure est imposée par
 l'adversaire) ; le RADAR (§2) reste la seule source qui signale une indisponibilité réelle liée à un
 extérieur, le gestionnaire arbitre après coup. Un AWAY reste émis au contrat : il libère la
