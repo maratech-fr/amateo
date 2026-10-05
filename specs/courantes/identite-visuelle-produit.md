@@ -1,11 +1,12 @@
 # Identité visuelle produit — la base est le produit, l'accent est le club
 
-Last verified @ 2026-10-03 (rotation de fraîcheur — sujet sans rapport, identité d'un
-club/inscription). Re-confronté au code : `frontend/src/shared/lib/product.ts:44`
-(`PRODUCT_ACCENT = "#46AFAC"`), `frontend/src/shared/hooks/useApplyClubTheme.ts:36`
-(`accentDark ?? accentLight ?? PRODUCT_ACCENT` en sombre / l'inverse en clair — dérivation
-inchangée), `frontend/src/test/accentTokenParity.test.ts` (existe), `frontend/src/index.css`
-(`--accent: #317a77` clair / `#46afac` sombre — inchangés). **P4-252** (le
+Last verified @ 2026-10-05 (P4-302 — logo signature sur les pages système + logotype cliquable).
+Re-confronté au code : `system-pages/503.html`/`maintenance.html` inlinent les trois arcs du mark
+(mêmes couleurs `#B51C8A`/`#D47800`/`#46AFAC`, `aria-hidden`), masqués jusqu'au chargement de
+`landing/config.js` ; `landing/config.js` porte désormais une clé `siteUrl` ; côté app,
+`frontend/src/shared/components/ui/system-screen.tsx` enveloppe son `BrandMark` de pied dans un
+`<a href={PRODUCT_SITE_URL}>` (`shared/lib/product.ts:23`) — `features/planning/
+GenerationServiceDown.tsx` n'est pas concerné (hors `SystemScreen`). **P4-252** (le
 splash « Signature » du logo pendant la connexion) recopie les MÊMES trois teintes d'arc que
 `BrandIcon` (`#B51C8A`/`#D47800`/`#46AFAC`) dans un second composant React
 (`shared/components/ui/brand-splash.tsx`) — mise à jour de l'exception `.claude/rules/frontend.md`
@@ -158,6 +159,18 @@ fixe — l'icône produit ne s'efface jamais devant celle d'un club.
   favicon `icon.svg` — mark thème-neutre, comme `BrandIcon`) et le mot (`brand`) est injecté en
   TEXTE à côté (`.logo-word`, `color: var(--ink)`), en minuscules — un seul rendu clair/sombre,
   recopié par convention, jamais importé de `frontend/` (`CLAUDE.md` §2).
+- **Les pages système (503/maintenance) recopient le même mark, en couleurs FIXES (P4-302,
+  2026-10-05)** : `system-pages/503.html`/`maintenance.html` inlinent les trois arcs de
+  `landing/assets/brand/mark.svg` (mêmes `stroke`/`stroke-dasharray` que `BrandIcon`, zéro
+  dépendance réseau, `aria-hidden`), masqués tant que `landing/config.js` n'a pas chargé — même
+  convention que la vitrine, une 3ᵉ recopie assumée. Le logotype (mark + mot) devient alors un
+  lien CLIQUABLE vers la vitrine (`c.siteUrl` de `landing/config.js`, repli sur `/` si absent).
+  Côté app, le footer de `SystemScreen` (404/403/500/hors-ligne + `ErrorBoundary` racine) suit la
+  même décision : son `BrandMark` est désormais le SEUL lien vers `PRODUCT_SITE_URL`
+  (`shared/lib/product.ts`) porté par un écran système — décisions fermées (logo FIXE, le
+  logotype EST le lien, jamais un 3ᵉ geste séparé) : `etat-des-lieux.md` §2.
+  `features/planning/GenerationServiceDown.tsx` reste hors de ce lot (ne passe pas par
+  `SystemScreen`, cf. `frontend/docs/frontend-spec.md` §6.8).
 
 ## Le fond d'écran
 

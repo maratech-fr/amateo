@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useId, useRef } from "react";
 import { BrandMark } from "@/shared/components/ui/brand-mark";
 import { DevIncidentDetails } from "@/shared/components/ui/dev-incident-details";
 import { SystemScene } from "@/shared/components/ui/system-scene";
+import { PRODUCT_SITE_URL } from "@/shared/lib/product";
 
 /**
  * P5-14 — la primitive PRÉSENTATIONNELLE des écrans système (404, 403, 500,
@@ -96,8 +97,21 @@ export function SystemScreen({ title, children, primaryAction, secondaryAction, 
             du focus posé sur le h1 au montage ; le composant ne vole jamais le focus. */}
         <DevIncidentDetails />
         {/* Pied atténué : « amat » suit `text-muted-foreground` (5,32:1 sur bg), « eo » teal
-            reste le mark (logotype, exempté du contraste texte). */}
-        <BrandMark size="sm" className="text-muted-foreground" />
+            reste le mark (logotype, exempté du contraste texte).
+            Le logotype du pied est CLIQUABLE → la vitrine (`PRODUCT_SITE_URL`, maison unique
+            du lien vers la page de vente côté front), le seul lien vers le produit depuis un
+            écran système : quand cet écran sert sous l'ErrorBoundary racine (HORS providers,
+            SANS l'en-tête d'`AppLayout`), c'est la seule porte vers la marque. Pas de 3ᵉ geste :
+            le logotype EST le lien (mirroir de la décision pages système). `target="_blank"`
+            pour garder l'écran d'erreur ouvert ; `<a>` nu, légal sans router. */}
+        <a
+          href={PRODUCT_SITE_URL}
+          target="_blank"
+          rel="noopener"
+          className="rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          <BrandMark size="sm" />
+        </a>
       </footer>
     </section>
   );

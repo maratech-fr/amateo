@@ -71,10 +71,17 @@
     }
     .logotype {
       font-size: 20px; font-weight: 800; letter-spacing: -0.02em;
-      color: var(--ink); margin-bottom: 40px;
-      /* Masqué tant que config.js n'a pas donné la marque — jamais un littéral ici. */
+      color: var(--ink); margin-bottom: 40px; text-decoration: none;
+      /* Masqué tant que config.js n'a pas donné la marque — jamais un littéral ici.
+         Le script bascule sur `inline-flex` (icône + mot alignés) quand la marque arrive. */
       display: none;
+      align-items: center; justify-content: center; gap: 9px;
     }
+    .logotype:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+    /* Mark de marque INLINE (les trois arcs de landing/assets/brand/mark.svg, recopiés
+       EXPRÈS — zéro dépendance réseau : « image SVG inline ou rien »). Couleurs FIXES,
+       thème-neutre, aucune animation. Décoratif (aria-hidden), le sens vit dans le mot. */
+    .logotype .mark { width: 26px; height: 26px; flex: none; display: block; }
     .logotype .dot { color: var(--accent); }
     h1 {
       font-size: clamp(26px, 5vw, 36px); line-height: 1.12; letter-spacing: -0.02em;
@@ -126,7 +133,7 @@
 </head>
 <body>
   <main>
-    <a class="logotype" data-brand-logotype href="/"><span data-brand></span><span class="dot">.</span></a>
+    <a class="logotype" data-brand-logotype href="/"><svg class="mark" viewBox="0 0 1000 1000" aria-hidden="true"><circle cx="500" cy="500" r="313" fill="none" stroke="#B51C8A" stroke-width="83" stroke-linecap="round" pathLength="360" stroke-dasharray="133 400" transform="rotate(98 500 500)"/><circle cx="500" cy="500" r="325" fill="none" stroke="#D47800" stroke-width="66" stroke-linecap="round" pathLength="360" stroke-dasharray="69 400" transform="rotate(252 500 500)"/><circle cx="500" cy="500" r="332" fill="none" stroke="#46AFAC" stroke-width="50" stroke-linecap="round" pathLength="360" stroke-dasharray="89 400" transform="rotate(334.5 500 500)"/></svg><span data-brand></span><span class="dot">.</span></a>
 
     <!-- SCÈNE système (P5-22 PR-2). MÊME DESSIN que la scène in-app
          (frontend/src/shared/components/ui/system-scene.tsx) et que sa VOISINE
@@ -212,7 +219,12 @@
         var slots = document.querySelectorAll("[data-brand]");
         for (var i = 0; i < slots.length; i++) slots[i].textContent = c.brand;
         var logo = document.querySelector("[data-brand-logotype]");
-        if (logo) logo.style.display = "inline-block";
+        if (logo) {
+          logo.style.display = "inline-flex";
+          // Logotype cliquable → la VITRINE (domaine nu), pas l'app morte. Défensif :
+          // `siteUrl` absent → href inchangé (reste "/"), jamais un littéral de domaine ici.
+          if (c.siteUrl) logo.href = c.siteUrl;
+        }
       }
       if (c.contactEmail) {
         var mail = document.querySelector('[data-cta="support"]');

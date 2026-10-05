@@ -17,6 +17,11 @@ window.LANDING_CONFIG = {
   // ce qu'on vend mérite l'adresse qu'on écrit sur une plaquette.
   // ⚠ SANS slash final : les CTA concatènent (`appUrl + "/register"`).
   appUrl: "https://app.amateo.app",
+  // L'URL de la VITRINE (domaine nu). Même convention que `appUrl` : SANS slash final.
+  // Consommée par les pages système (503/maintenance) pour pointer le logotype
+  // cliquable vers la page de vente plutôt que vers l'app morte. Point unique :
+  // un changement de domaine ne touche que cette ligne.
+  siteUrl: "https://amateo.app",
   // Contact démo / questions — adresse pro du domaine produit (décision fondateur
   // 2026-08-17). Règle business tenue : jamais un Gmail perso sur la page.
   contactEmail: "contact@amateo.app",
