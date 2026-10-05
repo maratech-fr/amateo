@@ -27,6 +27,8 @@ use Symfony\Component\Routing\Attribute\Route;
 #[AsController]
 final class DevSeasonPaymentController extends AbstractController
 {
+    use ResolvesCurrentClubTrait;
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
@@ -42,9 +44,8 @@ final class DevSeasonPaymentController extends AbstractController
             throw $this->createNotFoundException();
         }
 
-        $request = $this->requestStack->getCurrentRequest();
-        $clubId = $request?->attributes->get('_club_id');
-        $club = \is_string($clubId) && '' !== $clubId ? $this->entityManager->getRepository(Club::class)->find($clubId) : null;
+        $clubId = $this->resolveCurrentClubId($this->requestStack);
+        $club = null !== $clubId ? $this->entityManager->getRepository(Club::class)->find($clubId) : null;
         if (!$club instanceof Club) {
             return $this->json(['error' => 'No club in context.'], 400);
         }

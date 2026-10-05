@@ -48,6 +48,8 @@ use Symfony\Component\Routing\Attribute\Route;
 #[AsController]
 final class VenueExternalLabelController extends AbstractController implements SeasonScopedWriteInterface
 {
+    use ResolvesCurrentClubTrait;
+
     /** Un libellé de salle fédéral tient en quelques mots ; au-delà, c'est un corps forgé (revue sécurité). */
     private const MAX_LABEL_LENGTH = 120;
 
@@ -88,7 +90,7 @@ final class VenueExternalLabelController extends AbstractController implements S
     #[Route('/api/venues/fbi-labels', name: 'api_venue_fbi_labels', methods: ['GET'], priority: 10)]
     public function inventory(): JsonResponse
     {
-        $clubId = $this->currentClubId();
+        $clubId = $this->resolveCurrentClubId($this->requestStack);
         if (null === $clubId) {
             return $this->json(['labels' => []]);
         }
@@ -257,20 +259,9 @@ final class VenueExternalLabelController extends AbstractController implements S
         if (!$venue instanceof Venue) {
             return null;
         }
-        $currentClubId = $this->currentClubId();
+        $currentClubId = $this->resolveCurrentClubId($this->requestStack);
 
         return null === $currentClubId || $venue->getClubId() === $currentClubId ? $venue : null;
-    }
-
-    private function currentClubId(): ?string
-    {
-        $request = $this->requestStack->getCurrentRequest();
-        $clubId = $request?->attributes->get('_club_id');
-        if (\is_string($clubId) && '' !== $clubId) {
-            return $clubId;
-        }
-
-        return null;
     }
 
     /**

@@ -22,6 +22,8 @@ use Throwable;
  */
 final class ReorderTeamsController extends AbstractController implements SeasonScopedWriteInterface
 {
+    use ResolvesCurrentClubTrait;
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
@@ -49,7 +51,7 @@ final class ReorderTeamsController extends AbstractController implements SeasonS
             return $this->json(['error' => 'Expected a list of { id, priorityTierId, tierOrder }.'], Response::HTTP_BAD_REQUEST);
         }
 
-        $currentClubId = $this->resolveCurrentClubId();
+        $currentClubId = $this->resolveCurrentClubId($this->requestStack);
         $repository = $this->entityManager->getRepository(Team::class);
         $updated = 0;
 
@@ -78,17 +80,5 @@ final class ReorderTeamsController extends AbstractController implements SeasonS
         $this->entityManager->flush();
 
         return $this->json(['updated' => $updated], Response::HTTP_OK);
-    }
-
-    private function resolveCurrentClubId(): ?string
-    {
-        $request = $this->requestStack->getCurrentRequest();
-
-        $clubId = $request?->attributes->get('_club_id');
-        if (\is_string($clubId) && '' !== $clubId) {
-            return $clubId;
-        }
-
-        return null;
     }
 }

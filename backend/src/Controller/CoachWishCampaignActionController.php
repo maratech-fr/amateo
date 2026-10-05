@@ -43,6 +43,8 @@ use Throwable;
 #[AsController]
 final class CoachWishCampaignActionController extends AbstractController
 {
+    use ResolvesCurrentClubTrait;
+
     public function __construct(
         private readonly RequestStack $requestStack,
         private readonly ManagementAccessGuard $managementAccessGuard,
@@ -67,7 +69,7 @@ final class CoachWishCampaignActionController extends AbstractController
         // Le club vient de la LIGNE, jamais du corps — un id d'un autre club est déjà
         // invisible ici (RLS + filtre tenant), la comparaison est le filet app-layer.
         $request = $this->requestStack->getCurrentRequest();
-        $currentClubId = $this->resolveCurrentClubId();
+        $currentClubId = $this->resolveCurrentClubId($this->requestStack);
         if (null !== $currentClubId && $campaign->getClubId() !== $currentClubId) {
             return $this->json(['error' => 'Accès refusé.'], Response::HTTP_FORBIDDEN);
         }
@@ -175,17 +177,5 @@ final class CoachWishCampaignActionController extends AbstractController
         $coach = $this->entityManager->getRepository(Coach::class)->find($coachId);
 
         return $coach instanceof Coach ? $coach : null;
-    }
-
-    private function resolveCurrentClubId(): ?string
-    {
-        $request = $this->requestStack->getCurrentRequest();
-
-        $clubId = $request?->attributes->get('_club_id');
-        if (\is_string($clubId) && '' !== $clubId) {
-            return $clubId;
-        }
-
-        return null;
     }
 }

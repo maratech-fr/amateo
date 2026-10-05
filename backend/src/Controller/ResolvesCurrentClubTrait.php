@@ -12,8 +12,10 @@ use Symfony\Component\HttpFoundation\RequestStack;
  * membership (no client-supplied header since AUD-SEC-25). Shared by cockpit
  * controllers so this security-sensitive idiom lives in one place.
  *
- * NOTE: several older controllers (Validate/Reopen/Generate…) still inline the
- * same helper — migrating them is a separate cleanup.
+ * NOTE: the cockpit & planning-lifecycle controllers that duplicated this helper
+ * now `use` the trait. A few still read `_club_id` inline where the Request is
+ * reused non-nullably right after (its non-null-ness is inferred from the resolved
+ * id), so the substitution would not be purely mechanical there.
  */
 trait ResolvesCurrentClubTrait
 {

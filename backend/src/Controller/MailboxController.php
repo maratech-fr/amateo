@@ -28,6 +28,8 @@ use Symfony\Component\Routing\Attribute\Route;
 #[AsController]
 final class MailboxController extends AbstractController
 {
+    use ResolvesCurrentClubTrait;
+
     public function __construct(
         private readonly RequestStack $requestStack,
         private readonly ClubMailboxMessageRepository $repository,
@@ -76,8 +78,8 @@ final class MailboxController extends AbstractController
 
     private function currentClubId(): string
     {
-        $clubId = $this->requestStack->getCurrentRequest()?->attributes->get('_club_id');
-        if (!\is_string($clubId) || '' === $clubId) {
+        $clubId = $this->resolveCurrentClubId($this->requestStack);
+        if (null === $clubId) {
             // Un utilisateur authentifié d'un club porte toujours `_club_id` ; sinon pas de tenant.
             throw $this->createAccessDeniedException();
         }

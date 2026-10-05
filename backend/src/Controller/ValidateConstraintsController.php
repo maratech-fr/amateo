@@ -39,6 +39,8 @@ use Throwable;
  */
 final class ValidateConstraintsController extends AbstractController
 {
+    use ResolvesCurrentClubTrait;
+
     /** ISO-8601 : 1 = lundi (même table que {@see CoachDoubleBookingDetector}). */
     private const array DAY_NAMES = [1 => 'lundi', 2 => 'mardi', 3 => 'mercredi', 4 => 'jeudi', 5 => 'vendredi', 6 => 'samedi', 7 => 'dimanche'];
 
@@ -69,8 +71,8 @@ final class ValidateConstraintsController extends AbstractController
         $this->managementAccessGuard->assertManager();
 
         $request = $this->requestStack->getCurrentRequest();
-        $clubId = $request?->attributes->get('_club_id');
-        if (!\is_string($clubId) || '' === $clubId) {
+        $clubId = $this->resolveCurrentClubId($this->requestStack);
+        if (null === $clubId) {
             return $this->json(['error' => 'No club in context.'], Response::HTTP_BAD_REQUEST);
         }
 

@@ -29,6 +29,8 @@ use Throwable;
 #[AsController]
 final class GenerateScheduleController extends AbstractController implements SeasonScopedWriteInterface
 {
+    use ResolvesCurrentClubTrait;
+
     public function __construct(
         private EntityManagerInterface $entityManager,
         private MessageBusInterface $messageBus,
@@ -64,7 +66,7 @@ final class GenerateScheduleController extends AbstractController implements Sea
             return $this->json(['error' => 'Planning introuvable.'], Response::HTTP_NOT_FOUND);
         }
 
-        $currentClubId = $this->resolveCurrentClubId();
+        $currentClubId = $this->resolveCurrentClubId($this->requestStack);
         if (null !== $currentClubId && $schedule->getClubId() !== $currentClubId) {
             return $this->json(['error' => 'Accès refusé.'], Response::HTTP_FORBIDDEN);
         }
@@ -151,17 +153,5 @@ final class GenerateScheduleController extends AbstractController implements Sea
         );
 
         return $this->json(['message' => 'Schedule generation queued'], Response::HTTP_ACCEPTED);
-    }
-
-    private function resolveCurrentClubId(): ?string
-    {
-        $request = $this->requestStack->getCurrentRequest();
-
-        $clubId = $request?->attributes->get('_club_id');
-        if (\is_string($clubId) && '' !== $clubId) {
-            return $clubId;
-        }
-
-        return null;
     }
 }

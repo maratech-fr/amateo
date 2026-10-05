@@ -22,6 +22,8 @@ use Symfony\Component\Routing\Attribute\Route;
 #[Route('/api/reset-season', name: 'reset_season', methods: ['DELETE'])]
 final class ResetSeasonController extends AbstractController
 {
+    use ResolvesCurrentClubTrait;
+
     public function __construct(
         private readonly RequestStack $requestStack,
         private readonly ClubUserRepository $clubUserRepository,
@@ -35,7 +37,7 @@ final class ResetSeasonController extends AbstractController
         $request = $this->requestStack->getCurrentRequest();
         // Club resolved server-side from the caller's JWT membership (no header
         // since AUD-SEC-25); X-Season-Id stays a legitimate selector.
-        $clubId = $this->resolveIdentifier($request?->attributes->get('_club_id'));
+        $clubId = $this->resolveCurrentClubId($this->requestStack);
         $seasonId = $this->resolveIdentifier($request?->attributes->get('_season_id'), $request?->headers->get('X-Season-Id'));
 
         if (null === $clubId || null === $seasonId) {

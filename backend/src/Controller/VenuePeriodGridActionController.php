@@ -37,6 +37,8 @@ use Symfony\Component\HttpKernel\Attribute\AsController;
 #[AsController]
 final class VenuePeriodGridActionController extends AbstractController implements SeasonScopedWriteInterface
 {
+    use ResolvesCurrentClubTrait;
+
     public function __construct(
         private readonly RequestStack $requestStack,
         private readonly ManagementAccessGuard $managementAccessGuard,
@@ -77,7 +79,7 @@ final class VenuePeriodGridActionController extends AbstractController implement
 
         // Le club vient du PLAN, jamais du corps de la requête : accepter un plan d'un
         // autre club recopierait/viderait sa grille chez nous (et inversement).
-        $currentClubId = $this->resolveCurrentClubId();
+        $currentClubId = $this->resolveCurrentClubId($this->requestStack);
         if (null !== $currentClubId && $context['clubId'] !== $currentClubId) {
             return $this->json(['error' => 'Accès refusé.'], Response::HTTP_FORBIDDEN);
         }
@@ -103,17 +105,5 @@ final class VenuePeriodGridActionController extends AbstractController implement
         $decoded = json_decode((string) $request?->getContent(), true);
 
         return \is_array($decoded) ? $decoded : [];
-    }
-
-    private function resolveCurrentClubId(): ?string
-    {
-        $request = $this->requestStack->getCurrentRequest();
-
-        $clubId = $request?->attributes->get('_club_id');
-        if (\is_string($clubId) && '' !== $clubId) {
-            return $clubId;
-        }
-
-        return null;
     }
 }
