@@ -46,5 +46,13 @@
       "windows": [],
       "inside": false
     }
+  ],
+  "_closureComment": "P4-300 — cas de PARITÉ MÉCANIQUE du prédicat « la date d'un match tombe dans l'intervalle d'une fermeture de gymnase [startDate, endDate] », bornes INCLUSES. Consommé par matchAccess.parity.test.ts (front, matchAccess.ts::dateInsideClosure) ET MatchAccessMirrorParityTest.php (backend, MatchConflictDetector::dateInsideClosure). `inside` = le verdict des deux implémentations.",
+  "closureCases": [
+    { "name": "date couverte par la fermeture — dedans", "matchDate": "2026-09-15", "startDate": "2026-08-31", "endDate": "2026-10-16", "inside": true },
+    { "name": "borne de début INCLUSE", "matchDate": "2026-08-31", "startDate": "2026-08-31", "endDate": "2026-10-16", "inside": true },
+    { "name": "borne de fin INCLUSE", "matchDate": "2026-10-16", "startDate": "2026-08-31", "endDate": "2026-10-16", "inside": true },
+    { "name": "hors intervalle, avant — dehors", "matchDate": "2026-08-30", "startDate": "2026-08-31", "endDate": "2026-10-16", "inside": false },
+    { "name": "hors intervalle, après — dehors", "matchDate": "2026-10-17", "startDate": "2026-08-31", "endDate": "2026-10-16", "inside": false }
   ]
 }

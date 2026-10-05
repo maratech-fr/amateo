@@ -233,6 +233,51 @@ final class VenueClosureDays
         return $summaries;
     }
 
+    /**
+     * P4-300 — l'INTERVALLE BRUT de chaque fermeture `venue_closed`, SANS clip : les dates du
+     * `config` si elles sont valides, sinon la fenêtre de REPLI legacy (l'entrée porteuse). C'est
+     * le FAIT brut que les MATCHS consomment (décision fondateur D1) — aucune intersection avec
+     * une fenêtre de plan, aucune composition `VenuePeriodOverride` (un jour rouvert dans un plan
+     * d'entraînement NE rouvre PAS la salle aux matchs). Une fermeture entièrement hors de toute
+     * saison reste émise telle quelle : c'est l'appelant (match à une date) qui tranche l'inclusion.
+     *
+     * Contrairement à {@see closureSummaries} (qui CLIPE à la fenêtre et laisse tomber une
+     * fermeture disjointe), ici rien n'est clipé ni filtré : une entrée par contrainte.
+     *
+     * @param iterable<Constraint> $datedConstraints
+     *
+     * @return list<array{constraintId: string, venueId: string, title: string, startDate: string, endDate: string}>
+     */
+    public static function rawIntervals(iterable $datedConstraints, DateTimeImmutable $fallbackStart, DateTimeImmutable $fallbackEnd): array
+    {
+        $fallbackStartDay = $fallbackStart->format('Y-m-d');
+        $fallbackEndDay = $fallbackEnd->format('Y-m-d');
+
+        $intervals = [];
+        foreach ($datedConstraints as $constraint) {
+            if (!self::isVenueClosure($constraint)) {
+                continue;
+            }
+            $config = $constraint->getConfig();
+            $start = self::isoDate($config['startDate'] ?? null);
+            $end = self::isoDate($config['endDate'] ?? null);
+            // Config partiel/legacy : repli sur la fenêtre de l'entrée porteuse (jamais clipé).
+            if (null === $start || null === $end) {
+                $start = $fallbackStartDay;
+                $end = $fallbackEndDay;
+            }
+            $intervals[] = [
+                'constraintId' => $constraint->getId(),
+                'venueId' => (string) $constraint->getScopeTargetId(),
+                'title' => $constraint->getName(),
+                'startDate' => $start,
+                'endDate' => $end,
+            ];
+        }
+
+        return $intervals;
+    }
+
     /** Nombre de jours calendaires de la fenêtre, bornes incluses (0 si fenêtre inversée). */
     private static function windowDayCount(DateTimeImmutable $windowStart, DateTimeImmutable $windowEnd): int
     {

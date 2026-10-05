@@ -10,6 +10,7 @@ use App\Entity\VenuePeriodOverride;
 use App\Enum\VenueDayState;
 use App\Enum\VenuePeriodMode;
 use App\Repository\ConstraintRepository;
+use App\State\Processor\FixtureStateProcessor;
 use DateInterval;
 use DatePeriod;
 use DateTimeImmutable;
@@ -143,6 +144,30 @@ final class PlanVenueClosures
         }
 
         return $this->forEntry($entry);
+    }
+
+    /**
+     * P4-300 — le FAIT BRUT des fermetures d'un club+saison, pour les MATCHS : un intervalle par
+     * fermeture `venue_closed` ({@see VenueClosureDays::rawIntervals}), lu dans le `config` de la
+     * contrainte (repli legacy = fenêtre de l'entrée porteuse), SANS clip ni composition
+     * `VenuePeriodOverride` (décision fondateur D1 — un jour rouvert dans un plan d'entraînement NE
+     * rouvre PAS la salle aux matchs). C'est la MAISON UNIQUE des trois consommateurs matchs : le
+     * payload de placement ({@see MatchPlacementPayloadBuilder}), le radar ({@see ConflictRadarLoader})
+     * et le refus serveur ({@see FixtureStateProcessor}), ainsi que l'endpoint
+     * `GET /api/venue_closures` qui l'expose au front.
+     *
+     * @return list<array{constraintId: string, venueId: string, title: string, startDate: string, endDate: string}>
+     */
+    public function closureIntervals(string $clubId, string $seasonId): array
+    {
+        $intervals = [];
+        foreach ($this->closuresByCarrier($clubId, $seasonId) as [$constraints, $carrierStart, $carrierEnd]) {
+            foreach (VenueClosureDays::rawIntervals($constraints, $carrierStart, $carrierEnd) as $interval) {
+                $intervals[] = $interval;
+            }
+        }
+
+        return $intervals;
     }
 
     /**

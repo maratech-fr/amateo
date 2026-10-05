@@ -12,7 +12,6 @@ use App\Entity\ScheduleSlotTemplate;
 use App\Entity\TeamCoach;
 use App\Entity\TeamMatchHabit;
 use App\Entity\VenueMatchWindow;
-use App\Entity\VenueUnavailability;
 use App\Enum\ConflictPersonRole;
 use App\Enum\FixtureHomeAway;
 use App\Enum\TeamLevel;
@@ -234,13 +233,25 @@ final class MatchConflictDetector
     }
 
     /**
+     * P4-300 — le prédicat PUR « la date tombe dans l'intervalle de fermeture [startDate, endDate] »,
+     * bornes INCLUSES (dates `Y-m-d` zero-paddées → comparaison lexicographique = comparaison de
+     * dates). MIROIR DÉCLARÉ avec `matches/lib/matchAccess.ts::dateInsideClosure` (le front REFUSE
+     * la pose, rail synchrone ; le backend DIAGNOSTIQUE puis refuse) — cas partagés
+     * `matchAccess.parity.json`, gardés par `MatchAccessMirrorParityTest`.
+     */
+    public static function dateInsideClosure(string $date, string $startDate, string $endDate): bool
+    {
+        return $date >= $startDate && $date <= $endDate;
+    }
+
+    /**
      * @param list<Fixture>                                                                                          $fixtures              season fixtures (already club+season scoped)
      * @param list<TeamCoach>                                                                                        $teamCoachRows         coach↔team links (scoped)
      * @param string|null                                                                                            $seasonScheduleId      the season's calendar (the version its plan points at), or null
      * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}>                 $activePeriods
      *                                                                                                                                      active period windows (ordered), scheduleId = their overlay or null
      * @param array<string, list<ScheduleSlotTemplate>>                                                              $slotsBySchedule       slots indexed by their scheduleId
-     * @param list<VenueUnavailability>                                                                              $unavailabilities      scoped all-circumstances closures
+     * @param list<array{venueId: string, startDate: string, endDate: string, label: string|null, sourceId: string}> $unavailabilities      indispos déclarées + fermetures `venue_closed`, forme commune (P4-300)
      * @param list<TeamMatchHabit>                                                                                   $habits                scoped habitual windows (estimation source)
      * @param list<VenueMatchWindow>                                                                                 $matchWindows          scoped access windows (ACCESS_WINDOW_LOST)
      * @param array<string, list<LeagueWindowInterface>>                                                             $envelope              teamId → resolved league windows ([] = unmapped)
@@ -948,8 +959,15 @@ final class MatchConflictDetector
      * math: the closure is all-circumstances, the DATE match suffices (a
      * kickoff-less home fixture with a venue is affected too).
      *
-     * @param list<Fixture>             $fixtures
-     * @param list<VenueUnavailability> $unavailabilities
+     * P4-300 — les deux SOURCES d'indisponibilité (une `VenueUnavailability` déclarée ET une
+     * FERMETURE `venue_closed` du calendrier) arrivent fusionnées en UNE forme tableau commune
+     * `{venueId, startDate, endDate, label, sourceId}`, montée par {@see ConflictRadarLoader}. Le
+     * détecteur reste PUR : il ne distingue pas la source, le radar signale (sévérité 4), jamais de
+     * dé-placement automatique d'un match déjà posé (décision fondateur D3). Le champ émis reste
+     * `unavailabilityId` (le front le lit déjà) et porte le `sourceId` quelle que soit la source.
+     *
+     * @param list<Fixture>                                                                                          $fixtures
+     * @param list<array{venueId: string, startDate: string, endDate: string, label: string|null, sourceId: string}> $unavailabilities
      *
      * @return list<array<string, mixed>>
      */
@@ -967,21 +985,21 @@ final class MatchConflictDetector
             }
             $date = $fixture->getMatchDate()->format('Y-m-d');
             foreach ($unavailabilities as $unavailability) {
-                if ($unavailability->getVenueId() !== $venueId) {
+                if ($unavailability['venueId'] !== $venueId) {
                     continue;
                 }
                 // Inclusive bounds: « du 4 au 28 février » covers the 28th.
-                if ($date < $unavailability->getStartDate()->format('Y-m-d') || $date > $unavailability->getEndDate()->format('Y-m-d')) {
+                if (!self::dateInsideClosure($date, $unavailability['startDate'], $unavailability['endDate'])) {
                     continue;
                 }
                 $conflicts[] = [
                     'type' => 'VENUE_UNAVAILABLE',
                     'severity' => 4,
                     'venueId' => $venueId,
-                    'unavailabilityId' => $unavailability->getId(),
-                    'label' => $unavailability->getLabel(),
-                    'unavailableFrom' => $unavailability->getStartDate()->format('Y-m-d'),
-                    'unavailableUntil' => $unavailability->getEndDate()->format('Y-m-d'),
+                    'unavailabilityId' => $unavailability['sourceId'],
+                    'label' => $unavailability['label'],
+                    'unavailableFrom' => $unavailability['startDate'],
+                    'unavailableUntil' => $unavailability['endDate'],
                     'fixture' => [
                         'fixtureId' => $fixture->getId(),
                         'teamId' => $fixture->getTeamId(),

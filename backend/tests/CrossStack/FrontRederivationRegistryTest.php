@@ -99,8 +99,8 @@ final class FrontRederivationRegistryTest extends TestCase
             'parityTest' => 'OrphanReservationsMirrorParityTest.php',
         ],
         'features/matches/lib/matchAccess.ts' => [
-            'decides' => 'coup d\'envoi dans une fenêtre d\'accès match de (gymnase, jour)',
-            'backendTruth' => 'App\\Service\\MatchConflictDetector::kickoffInsideWindow',
+            'decides' => 'coup d\'envoi dans une fenêtre d\'accès match de (gymnase, jour) ; date d\'un match dans l\'intervalle d\'une fermeture de gymnase du calendrier (P4-300)',
+            'backendTruth' => 'App\\Service\\MatchConflictDetector::kickoffInsideWindow + ::dateInsideClosure',
             'parityTest' => 'MatchAccessMirrorParityTest.php',
         ],
         'features/matches/lib/envelope.ts' => [

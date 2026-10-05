@@ -78,6 +78,13 @@ final class MatchPlacementContext extends BaseContext
 
     private string $travelCode = '';
 
+    private string $closureEntryId = '';
+
+    private string $closureConstraintId = '';
+
+    /** @var array{status: int, json: array<mixed>} */
+    private array $manualPlaceResponse = ['status' => 0, 'json' => []];
+
     private string $saturday = '';
 
     private string $sunday = '';
@@ -462,6 +469,160 @@ final class MatchPlacementContext extends BaseContext
             admin: true,
         );
         unset($seasonId);
+    }
+
+    #[Given('une fermeture du calendrier couvrant le samedi sur ce gymnase')]
+    public function uneFermetureDuCalendrierCouvrantLeSamedi(): void
+    {
+        // P4-300 — une fermeture `venue_closed` du calendrier : une entrée de période PORTEUSE
+        // (son id borne le repli legacy) + une contrainte FACILITY datée sur le gymnase jetable.
+        // Semée en base (admin) : c'est un FAIT daté, pas un geste exposé à un POST simple.
+        $paris = new DateTimeZone('Europe/Paris');
+        $from = new DateTimeImmutable($this->saturday, $paris)->modify('-3 days')->format('Y-m-d');
+        $to = new DateTimeImmutable($this->saturday, $paris)->modify('+3 days')->format('Y-m-d');
+        $seasonId = $this->dbalScalar(
+            \sprintf('SELECT season_id AS behatval FROM schedule_plan WHERE club_id=\'%s\' AND type=\'SEASON\' LIMIT 1', $this->clubId),
+            admin: true,
+        );
+        if ('' === $seasonId) {
+            throw new RuntimeException('aucune saison pour poser la fermeture du calendrier');
+        }
+
+        $this->closureEntryId = $this->uuid();
+        $this->dbalExec(
+            \sprintf(
+                'INSERT INTO calendar_entry (id, created_at, updated_at, club_id, season_id, kind, title, start_date, end_date, is_disruptive, period_type, status)'
+                . ' VALUES (\'%s\', now(), now(), \'%s\', \'%s\', \'period\', \'Fermeture Matéo (fonctionnel matchs)\', \'%s\', \'%s\', false, \'closure\', \'active\')',
+                $this->closureEntryId,
+                $this->clubId,
+                $seasonId,
+                $from,
+                $to,
+            ),
+            admin: true,
+        );
+
+        $this->closureConstraintId = $this->uuid();
+        $this->dbalExec(
+            \sprintf(
+                'INSERT INTO "constraint" (id, version, created_at, updated_at, club_id, season_id, name, scope, scope_target_id, family, rule_type, config, calendar_entry_id, is_active, sort_order)'
+                . ' VALUES (\'%s\', 1, now(), now(), \'%s\', \'%s\', \'Gymnase en travaux\', \'FACILITY\', \'%s\', \'FACILITY\', \'HARD\', \'{"type":"venue_closed","startDate":"%s","endDate":"%s"}\', \'%s\', true, 0)',
+                $this->closureConstraintId,
+                $this->clubId,
+                $seasonId,
+                $this->venueId,
+                $from,
+                $to,
+                $this->closureEntryId,
+            ),
+            admin: true,
+        );
+    }
+
+    #[Given('un match à domicile de la première équipe le samedi, déjà posé dans ce gymnase à 15h00')]
+    public function unDomicileDejaPoseDansCeGymnase(): void
+    {
+        $this->competitionId = $this->createdId(
+            $this->apiPost('competitions', ['teamId' => $this->teamId, 'name' => 'Championnat jetable posé', 'competitionType' => 'CHAMPIONSHIP'], $this->token),
+            'compétition',
+        );
+        $this->fxSat = $this->createdId(
+            $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $this->saturday, 'homeAway' => 'HOME', 'opponentLabel' => 'Adversaire posé', 'competitionId' => $this->competitionId], $this->token),
+            'match à domicile posé',
+        );
+        // Posé À LA MAIN dans le gymnase jetable à 15h00, AVANT la fermeture (le PUT est alors libre).
+        $result = $this->apiPut(\sprintf('fixtures/%s', $this->fxSat), [
+            'teamId' => $this->teamId,
+            'matchDate' => $this->saturday,
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Adversaire posé',
+            'competitionId' => $this->competitionId,
+            'venueId' => $this->venueId,
+            'kickoffTime' => '15:00',
+            'status' => 'PLACED',
+        ], $this->token);
+        if (200 !== $result['status']) {
+            throw new RuntimeException(\sprintf('le placement manuel initial a répondu %d (200 attendu)', $result['status']));
+        }
+    }
+
+    #[Then('le match du samedi reste sans créneau, faute d\'un gymnase fermé par le calendrier')]
+    public function leMatchDuSamediResteSansCreneauFermeture(): void
+    {
+        $reason = null;
+        $unplaced = $this->placeResult['unplaced'] ?? [];
+        foreach (\is_array($unplaced) ? $unplaced : [] as $entry) {
+            if (\is_array($entry) && ($entry['matchId'] ?? null) === $this->fxSat) {
+                $reason = $entry['reason'] ?? null;
+
+                break;
+            }
+        }
+
+        if ('venue_unavailable' !== $reason) {
+            throw new RuntimeException(\sprintf('le match aurait dû rester sans créneau pour un gymnase fermé, raison obtenue « %s »', \is_string($reason) ? $reason : 'aucune'));
+        }
+    }
+
+    #[Then('poser ce match à la main dans le gymnase fermé est refusé, avec un message de fermeture')]
+    public function poserAlaMainDansLeGymnaseFermeEstRefuse(): void
+    {
+        $this->manualPlaceResponse = $this->apiPut(\sprintf('fixtures/%s', $this->fxSat), [
+            'teamId' => $this->teamId,
+            'matchDate' => $this->saturday,
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Adversaire domicile',
+            'competitionId' => $this->competitionId,
+            'venueId' => $this->venueId,
+            'kickoffTime' => '15:00',
+            'status' => 'PLACED',
+        ], $this->token);
+
+        if (422 !== $this->manualPlaceResponse['status']) {
+            throw new RuntimeException(\sprintf('le placement manuel dans un gymnase fermé aurait dû être refusé (422), obtenu %d', $this->manualPlaceResponse['status']));
+        }
+        // Le message vit dans les violations (rail 422 `$this->refuse`) ; `detail`/`hydra:description`
+        // les concatènent. On ratisse les deux pour être robuste au format sérialisé.
+        $json = $this->manualPlaceResponse['json'];
+        $message = '';
+        foreach (['detail', 'hydra:description'] as $key) {
+            if (\is_string($json[$key] ?? null)) {
+                $message .= $json[$key];
+            }
+        }
+        $violations = $json['violations'] ?? [];
+        foreach (\is_array($violations) ? $violations : [] as $violation) {
+            if (\is_array($violation) && \is_string($violation['message'] ?? null)) {
+                $message .= $violation['message'];
+            }
+        }
+        if (!str_contains($message, 'fermée')) {
+            throw new RuntimeException(\sprintf('le refus n\'a pas porté de message de fermeture (reçu « %s »)', $message));
+        }
+    }
+
+    #[Then('le radar signale la fermeture de ce gymnase pour le match du samedi')]
+    public function leRadarSignaleLaFermeture(): void
+    {
+        $response = $this->apiGet('fixtures/conflicts', $this->token);
+        if (200 !== $response['status']) {
+            throw new RuntimeException(\sprintf('GET /api/fixtures/conflicts a répondu %d (200 attendu)', $response['status']));
+        }
+        $conflicts = $response['json']['conflicts'] ?? [];
+        foreach (\is_array($conflicts) ? $conflicts : [] as $conflict) {
+            if (!\is_array($conflict) || 'VENUE_UNAVAILABLE' !== ($conflict['type'] ?? null)) {
+                continue;
+            }
+            if (($conflict['venueId'] ?? null) !== $this->venueId) {
+                continue;
+            }
+            $fixture = \is_array($conflict['fixture'] ?? null) ? $conflict['fixture'] : [];
+            if (($fixture['fixtureId'] ?? null) === $this->fxSat) {
+                return;
+            }
+        }
+
+        throw new RuntimeException('le radar n\'a pas signalé la fermeture du gymnase pour le match du samedi');
     }
 
     #[Given('un match à domicile de la première équipe le samedi à placer')]
@@ -905,6 +1066,13 @@ final class MatchPlacementContext extends BaseContext
         if ('' !== $this->clubId) {
             $this->dbalExec(\sprintf('DELETE FROM club_travel_cache WHERE club_id=\'%s\'', $this->clubId), admin: true);
         }
+        // P4-300 — la fermeture du calendrier (contrainte puis entrée porteuse).
+        if ('' !== $this->closureConstraintId) {
+            $this->dbalExec(\sprintf('DELETE FROM "constraint" WHERE id=\'%s\'', $this->closureConstraintId), admin: true);
+        }
+        if ('' !== $this->closureEntryId) {
+            $this->dbalExec(\sprintf('DELETE FROM calendar_entry WHERE id=\'%s\'', $this->closureEntryId), admin: true);
+        }
         foreach ([$this->teamCoachAId, $this->teamCoachBId] as $id) {
             if ('' !== $id) {
                 $this->apiDelete(\sprintf('team_coaches/%s', $id), $this->token);
@@ -1019,6 +1187,15 @@ final class MatchPlacementContext extends BaseContext
         } while (time() < $deadline);
 
         throw new RuntimeException(\sprintf('le placement n\'a pas abouti dans le délai imparti (dernier statut « %s »)', $status));
+    }
+
+    private function uuid(): string
+    {
+        $bytes = random_bytes(16);
+        $bytes[6] = \chr((\ord($bytes[6]) & 0x0F) | 0x40);
+        $bytes[8] = \chr((\ord($bytes[8]) & 0x3F) | 0x80);
+
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4));
     }
 
     private function kickoff(): string

@@ -66,6 +66,11 @@ return (new Config)
                     ->withContexts(MatchPlacementContext::class),
             )
             ->withSuite(
+                new Suite('fermeture-matchs')
+                    ->withPaths('%paths.base%/features/une-fermeture-du-calendrier-s-applique-aux-matchs.feature')
+                    ->withContexts(MatchPlacementContext::class),
+            )
+            ->withSuite(
                 new Suite('traitement')
                     ->withPaths('%paths.base%/features/une-rencontre-importee-dit-si-elle-est-traitee.feature')
                     ->withContexts(FixtureReviewContext::class),

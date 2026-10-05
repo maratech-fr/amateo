@@ -235,6 +235,50 @@ final class VenueClosureDaysTest extends TestCase
         self::assertSame([], $fully);
     }
 
+    public function testRawIntervalsReadTheConfigDatesUnclipped(): void
+    {
+        // P4-300 — l'intervalle BRUT = les dates du config, SANS clip à la fenêtre de repli.
+        $intervals = VenueClosureDays::rawIntervals(
+            [$this->venueClosed('2026-08-31', '2026-10-16', 'Gymnase en travaux')],
+            new DateTimeImmutable('2026-09-01'),
+            new DateTimeImmutable('2026-09-07'),
+        );
+
+        self::assertCount(1, $intervals);
+        self::assertSame(self::VENUE, $intervals[0]['venueId']);
+        self::assertSame('Gymnase en travaux', $intervals[0]['title']);
+        self::assertSame('2026-08-31', $intervals[0]['startDate']);
+        self::assertSame('2026-10-16', $intervals[0]['endDate']);
+    }
+
+    public function testRawIntervalsFallBackToTheCarrierWindowWhenDatesAreMissing(): void
+    {
+        // Config legacy / nu (pas de dates) → repli sur la fenêtre de l'entrée porteuse.
+        $intervals = VenueClosureDays::rawIntervals(
+            [$this->venueClosed(null, null)],
+            new DateTimeImmutable('2026-09-01'),
+            new DateTimeImmutable('2026-09-07'),
+        );
+
+        self::assertCount(1, $intervals);
+        self::assertSame('2026-09-01', $intervals[0]['startDate']);
+        self::assertSame('2026-09-07', $intervals[0]['endDate']);
+    }
+
+    public function testRawIntervalsTreatInvalidDatesAsLegacyFallback(): void
+    {
+        // Une date impossible (2026-13-45) est invalide → repli sur la fenêtre porteuse.
+        $intervals = VenueClosureDays::rawIntervals(
+            [$this->venueClosed('2026-13-45', '2026-10-16')],
+            new DateTimeImmutable('2026-09-01'),
+            new DateTimeImmutable('2026-09-07'),
+        );
+
+        self::assertCount(1, $intervals);
+        self::assertSame('2026-09-01', $intervals[0]['startDate']);
+        self::assertSame('2026-09-07', $intervals[0]['endDate']);
+    }
+
     private function venueClosed(?string $start, ?string $end, string $name = 'Salle fermée'): Constraint
     {
         $c = new Constraint;

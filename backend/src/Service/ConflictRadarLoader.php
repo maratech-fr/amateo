@@ -53,6 +53,7 @@ final class ConflictRadarLoader
         private readonly OpponentTravelProjection $opponentTravelProjection,
         private readonly ClubDay $clubDay,
         private readonly SharedCompetitionDeadlineRepository $sharedDeadlineRepository,
+        private readonly PlanVenueClosures $planVenueClosures,
     ) {}
 
     /**
@@ -73,8 +74,34 @@ final class ConflictRadarLoader
         // carte personne→équipes du détecteur. Chargés sous les mêmes filtres tenant.
         /** @var list<CoachPlayerMembership> $playerMemberships */
         $playerMemberships = $this->entityManager->getRepository(CoachPlayerMembership::class)->findBy([]);
-        /** @var list<VenueUnavailability> $unavailabilities */
-        $unavailabilities = $this->entityManager->getRepository(VenueUnavailability::class)->findBy([]);
+        /** @var list<VenueUnavailability> $unavailabilityRows */
+        $unavailabilityRows = $this->entityManager->getRepository(VenueUnavailability::class)->findBy([]);
+        // P4-300 — le radar signale un match posé dans un gymnase indisponible SA DATE, que
+        // l'indisponibilité vienne d'une `VenueUnavailability` déclarée OU d'une FERMETURE
+        // `venue_closed` du calendrier (décision fondateur D3 : même type VENUE_UNAVAILABLE,
+        // sévérité 4, label = titre de la fermeture ; jamais de dé-placement automatique). On
+        // fusionne les deux sources dans la forme commune que le détecteur consomme.
+        $unavailabilities = [];
+        foreach ($unavailabilityRows as $row) {
+            $unavailabilities[] = [
+                'venueId' => $row->getVenueId(),
+                'startDate' => $row->getStartDate()->format('Y-m-d'),
+                'endDate' => $row->getEndDate()->format('Y-m-d'),
+                'label' => $row->getLabel(),
+                'sourceId' => $row->getId(),
+            ];
+        }
+        if (null !== $seasonId) {
+            foreach ($this->planVenueClosures->closureIntervals($clubId, $seasonId) as $closure) {
+                $unavailabilities[] = [
+                    'venueId' => $closure['venueId'],
+                    'startDate' => $closure['startDate'],
+                    'endDate' => $closure['endDate'],
+                    'label' => $closure['title'],
+                    'sourceId' => $closure['constraintId'],
+                ];
+            }
+        }
         /** @var list<TeamMatchHabit> $habits */
         $habits = $this->entityManager->getRepository(TeamMatchHabit::class)->findBy([]);
         // Lot M — the TEAM_LINK conflict family has left the radar (founder

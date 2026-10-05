@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Api;
 
+use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Competition;
+use App\Entity\Constraint;
 use App\Entity\Fixture;
 use App\Entity\OpponentVenueLink;
 use App\Entity\Season;
@@ -14,7 +16,11 @@ use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueUnavailability;
+use App\Enum\CalendarEntryKind;
 use App\Enum\CompetitionType;
+use App\Enum\ConstraintFamily;
+use App\Enum\ConstraintRuleType;
+use App\Enum\ConstraintScope;
 use App\Enum\FixtureHomeAway;
 use App\Enum\OpponentVenueLinkSource;
 use App\Enum\SeasonStatus;
@@ -272,6 +278,26 @@ final class FixtureApiTest extends WebTestCase
         ], \JSON_THROW_ON_ERROR));
         self::assertResponseStatusCodeSame(422);
         self::assertStringContainsString('indisponible', (string) $this->client->getResponse()->getContent());
+    }
+
+    public function testRefusesPlacementOnAVenueClosedByTheCalendarEvenForAFriendly(): void
+    {
+        // P4-300 D4 — une FERMETURE du calendrier (`venue_closed`) couvrant la date du match
+        // refuse TOUTE pose, amical compris (aucune compétition ici). Le message nomme la
+        // fermeture (« fermée … »), jamais un 422 muet.
+        $this->persistVenue();
+        $this->persistClosure('2026-11-01', '2026-11-30', 'Gymnase en travaux');
+        $this->client->request('POST', '/api/fixtures', [], [], $this->authHeaders() + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'teamId' => self::TEAM_ID,
+            'matchDate' => '2026-11-07',
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Voisin',
+            'venueId' => self::VENUE_ID,
+            'kickoffTime' => '16:30',
+            'status' => 'PLACED',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('fermée', (string) $this->client->getResponse()->getContent());
     }
 
     public function testRefusesCompetitionPlacementWhenNoMatchWindowThatDay(): void
@@ -602,6 +628,34 @@ final class FixtureApiTest extends WebTestCase
         $unavailability->setEndDate(new DateTimeImmutable($end));
         $unavailability->setLabel($label);
         $this->em->persist($unavailability);
+        $this->em->flush();
+    }
+
+    private function persistClosure(string $start, string $end, string $title): void
+    {
+        // P4-300 — une fermeture `venue_closed` portée par une entrée de calendrier (période),
+        // comme en production : son id borne le repli legacy, le `config` porte les dates.
+        $entry = new CalendarEntry;
+        $entry->setClubId($this->club->getId());
+        $entry->setSeasonId($this->season->getId());
+        $entry->setKind(CalendarEntryKind::PERIOD);
+        $entry->setTitle('Fermeture gymnase');
+        $entry->setStartDate(new DateTimeImmutable($start));
+        $entry->setEndDate(new DateTimeImmutable($end));
+        $this->em->persist($entry);
+        $this->em->flush();
+
+        $closure = new Constraint;
+        $closure->setClubId($this->club->getId());
+        $closure->setSeasonId($this->season->getId());
+        $closure->setFamily(ConstraintFamily::FACILITY);
+        $closure->setScope(ConstraintScope::FACILITY);
+        $closure->setScopeTargetId(self::VENUE_ID);
+        $closure->setRuleType(ConstraintRuleType::HARD);
+        $closure->setName($title);
+        $closure->setCalendarEntryId($entry->getId());
+        $closure->setConfig(['type' => 'venue_closed', 'startDate' => $start, 'endDate' => $end]);
+        $this->em->persist($closure);
         $this->em->flush();
     }
 

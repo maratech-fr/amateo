@@ -862,6 +862,16 @@ jobs:
       - name: MatchPlacementSemanticsGateTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/MatchPlacementSemanticsGateTest.php --group phase1'
 
+      # P4-300 (axes constraint semantics + backend↔engine contract) — une FERMETURE de gymnase
+      # du calendrier (`venue_closed`) s'applique AUSSI aux matchs. De bout en bout contre le VRAI
+      # moteur : un domicile à placer sur un samedi où son seul gymnase est fermé n'est posé nulle
+      # part (raison `venue_unavailable`) ; TÉMOIN — sans la fermeture, le même payload rebâti l'y
+      # pose. Plus la parité à la source (intervalle émis == config, repli legacy, pas de fuite
+      # cross-club). Skip propre si l'engine est absent. Sans ce gate, une fermeture cesserait en
+      # silence de protéger les matchs.
+      - name: VenueClosureSemanticsGateTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/VenueClosureSemanticsGateTest.php --group phase1'
+
       # Axe auth & memberships — le code FFBB est l'IDENTITÉ fédérale du club : un PUT
       # qui le CHANGE est refusé 422 (le même code reste idempotent). Falsifié : garde
       # désactivée → le PUT réécrit le code (200). Sans ce gate, un club pourrait migrer
