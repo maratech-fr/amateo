@@ -335,6 +335,45 @@ final class AccountErasureTest extends WebTestCase
         $this->clearGuc();
     }
 
+    public function testPurgeErasedNullsTheClubSiege(): void
+    {
+        // RGPD-02 — l'adresse du SIÈGE (saisie par le gestionnaire, re-géocodée) ne survit PAS
+        // à la purge d'un club : adresse + CP + ville + lat + lon reviennent à NULL, alors que
+        // l'identité publique FFBB (nom, code) est épargnée.
+        [, $user] = $this->registerVerified('ERAG');
+        $clubId = $this->clubIdOf($user);
+
+        $em = $this->em();
+        $club = $em->getRepository(Club::class)->find($clubId);
+        self::assertInstanceOf(Club::class, $club);
+        $club->setName('SIEGE SURVIVOR TEST');
+        $club->setAddress('5 rue Emile Duniere, Villeurbanne');
+        $club->setPostalCode('69100');
+        $club->setCity('Villeurbanne');
+        $club->setLatitude(45.75);
+        $club->setLongitude(4.85);
+        $club->setErasureScheduledAt(new DateTimeImmutable('-1 hour'));
+        // Vrai flux : les memberships sont désactivés (sinon la commande auto-annule la purge).
+        $this->scopeGucToClub($clubId);
+        $em->getConnection()->executeStatement('UPDATE club_user SET is_active = false WHERE club_id = :cid', ['cid' => $clubId]);
+        $this->clearGuc();
+        $em->flush();
+        $em->clear();
+
+        $tester = new CommandTester(new Application(self::$kernel)->find('app:clubs:purge-erased'));
+        self::assertSame(0, $tester->execute([]));
+
+        $em->clear();
+        $survivor = $em->getRepository(Club::class)->find($clubId);
+        self::assertInstanceOf(Club::class, $survivor, 'la fiche club survit (identité FFBB)');
+        self::assertSame('SIEGE SURVIVOR TEST', $survivor->getName(), 'le nom (identité FFBB) est épargné');
+        self::assertNull($survivor->getAddress(), 'adresse du siège effacée');
+        self::assertNull($survivor->getPostalCode(), 'code postal du siège effacé');
+        self::assertNull($survivor->getCity(), 'ville du siège effacée');
+        self::assertNull($survivor->getLatitude(), 'latitude du siège effacée');
+        self::assertNull($survivor->getLongitude(), 'longitude du siège effacée');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
