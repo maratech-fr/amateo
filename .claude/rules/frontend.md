@@ -116,10 +116,11 @@ paths:
 - 🔴 **Tout bandeau d'information passe par `NoticeBanner`** (`shared/components/ui/notice-banner.tsx`
   — fond opaque `bg-surface-<ton>`, bordure, rayon, padding, texte `text-foreground`), jamais une
   boîte faite main (série « uniformité des écrans », PR 4/7, 2026-10-01 — les bandeaux de
-  Planning/Matchs/Assistant/Cockpit ont été ramenés dessus). Gardé par
-  `frontend/src/test/bannerPrimitiveGuard.test.ts` (grep statique `src/features/**` hors console
-  admin : un `role="status"`/`"alert"` + une classe de bordure de ton sur la MÊME ligne hors
-  `NoticeBanner` rougit).
+  Planning/Matchs/Assistant/Cockpit ont été ramenés dessus ; portée étendue à `src/shared/**`
+  au reliquat UX de l'audit 2026-10-03, UXC-27 — `CreditsBanner`). Gardé par
+  `frontend/src/test/bannerPrimitiveGuard.test.ts` (grep statique `src/features/**` ET
+  `src/shared/**` hors console admin : un `role="status"`/`"alert"` + une classe de bordure de
+  ton sur la MÊME ligne hors `NoticeBanner` rougit).
 - 🔴 **Toute pastille d'état passe par `StatusPill`** (`shared/components/ui/badge.tsx` — icône +
   texte, bordure + fond teinté, variantes warning/accent/accent-solid/neutral), jamais un
   `<span>` arrondi recodé à la main (série « uniformité des écrans », PR 5/7, 2026-10-01 —
