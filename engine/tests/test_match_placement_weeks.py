@@ -1,6 +1,6 @@
 """ISO-week slicing of the match placement (ENG-50): the solver splits a request
 week by week, solves each under a PER-WEEK budget, and returns ONE merged
-response (no schema change, CONTRACT_VERSION stays 1.1).
+response (no schema change, CONTRACT_VERSION stays 1.2).
 
 Covered here: the partition key (a weekend stays whole, a Sunday and the next
 Monday split), an AWAY match riding in its week's slice, the deterministic merge,

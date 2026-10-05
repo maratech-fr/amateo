@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, time
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -75,7 +76,11 @@ class ClubRuleSchema(SerializableModel):
     (never handed to the solver).
     """
 
-    rule_type: str = Field(alias="ruleType")  # HARD | PREFERRED
+    # Vocabulaire FERMÉ (contrat 1.2) : une valeur hors liste N'EST PLUS ignorée en silence
+    # (le solveur ne la lirait ni en HARD ni en PREFERRED, la règle disparaissait sans trace) —
+    # Pydantic la refuse désormais, l'engine répond 422. Miroir strict de `ConstraintRuleType`
+    # (backend), dont `MatchConstraint::getRuleType()` ne peut émettre que ces deux valeurs.
+    rule_type: Literal["HARD", "PREFERRED"] = Field(alias="ruleType")
     days_of_week: list[int] = Field(default_factory=list, alias="daysOfWeek", max_length=7)
     kickoff_min: time | None = Field(default=None, alias="kickoffMin")
     kickoff_max: time | None = Field(default=None, alias="kickoffMax")
@@ -108,7 +113,11 @@ class TeamHabitSchema(SerializableModel):
 
 class TeamCoachRefSchema(SerializableModel):
     coach_id: str = Field(alias="coachId")
-    role: str = "MAIN"  # MAIN | ASSISTANT
+    # Vocabulaire FERMÉ (contrat 1.2) : un rôle inconnu N'EST PLUS traité par défaut comme un
+    # ASSISTANT (`role_weight = W_COACH_MAIN if role == "MAIN" else W_COACH_ASSISTANT`), ce qui
+    # pesait une personne au mauvais poids sans trace — Pydantic le refuse, l'engine répond 422.
+    # Miroir strict de `TeamCoachRole` (backend : MAIN | ASSISTANT).
+    role: Literal["MAIN", "ASSISTANT"] = "MAIN"
 
 
 class MatchTeamSchema(SerializableModel):
@@ -193,7 +202,11 @@ class MatchSchema(SerializableModel):
 class TeamLinkSchema(SerializableModel):
     team_a_id: str = Field(alias="teamAId")
     team_b_id: str = Field(alias="teamBId")
-    type: str = "NOT_SIMULTANEOUS"  # NOT_SIMULTANEOUS | BACK_TO_BACK
+    # Vocabulaire FERMÉ (contrat 1.2) : un type de lien inconnu N'EST PLUS laissé tomber en
+    # silence (ni la branche NOT_SIMULTANEOUS ni la branche BACK_TO_BACK ne le lisait, le lien
+    # s'évaporait) — Pydantic le refuse, l'engine répond 422. Miroir strict de `TeamLinkType`
+    # (backend : NOT_SIMULTANEOUS | BACK_TO_BACK).
+    type: Literal["NOT_SIMULTANEOUS", "BACK_TO_BACK"] = "NOT_SIMULTANEOUS"
 
 
 class TrainingOccupancySchema(SerializableModel):
@@ -212,7 +225,7 @@ class MatchPlacementInputSchema(SerializableModel):
     # courant pour qu'aucun lecteur ne le prenne pour une version concurrente.
     # L'autorité reste `engine/CONTRACT_VERSION`, comparée au MAJOR à l'entrée ;
     # gardé par test_schema_version_defaults_match_contract_version.
-    version: str = "1.1"
+    version: str = "1.2"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     solver_seed: int = Field(default=42, alias="solverSeed")

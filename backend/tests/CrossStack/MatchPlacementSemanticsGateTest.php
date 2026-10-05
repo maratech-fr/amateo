@@ -221,6 +221,93 @@ final class MatchPlacementSemanticsGateTest extends TestCase
     }
 
     /**
+     * Axes « constraint semantics » + « backend↔engine contract » (§7.1) — le VOCABULAIRE de
+     * placement est FERMÉ côté moteur réel : un type de règle club, un rôle de coach ou un type
+     * de lien hors énumération n'est plus avalé en silence (la règle / le rôle / le lien
+     * s'évaporait sans trace), le moteur répond 422.
+     *
+     * C'est le MIROIR strict des énums backend (`ConstraintRuleType`, `TeamCoachRole`,
+     * `TeamLinkType`) : le builder n'émet jamais hors liste (ses getters renvoient l'énum), donc
+     * une valeur inconnue ne peut venir que d'une dérive de contrat — qu'on veut bruyante, jamais
+     * muette. On POSTe une valeur que le backend ne saurait pas produire, directement au moteur,
+     * précisément parce que le builder ne peut pas la fabriquer.
+     */
+    public function testUnknownPlacementVocabularyIsRejectedByTheRealEngine(): void
+    {
+        // Règle club : un `ruleType` hors { HARD, PREFERRED }.
+        self::assertSame(
+            422,
+            $this->postStatus($this->payloadWith(['clubRules' => [
+                ['ruleType' => 'SORT_OF_HARD', 'daysOfWeek' => [6], 'kickoffMin' => null, 'kickoffMax' => '18:00'],
+            ]])),
+            'un type de règle club inconnu doit être refusé (422), jamais honoré comme rien',
+        );
+
+        // Rôle de coach : hors { MAIN, ASSISTANT }.
+        $teamWithBadRole = $this->team('t1');
+        $teamWithBadRole['coaches'] = [['coachId' => 'c1', 'role' => 'head_coach']];
+        self::assertSame(
+            422,
+            $this->postStatus($this->payloadWith(['teams' => [$teamWithBadRole, $this->team('t2')]])),
+            'un rôle de coach inconnu doit être refusé (422), jamais pesé par défaut comme un adjoint',
+        );
+
+        // Type de lien : hors { NOT_SIMULTANEOUS, BACK_TO_BACK }.
+        self::assertSame(
+            422,
+            $this->postStatus($this->payloadWith(['teamLinks' => [
+                ['teamAId' => 't1', 'teamBId' => 't2', 'type' => 'MAYBE_SIMULTANEOUS'],
+            ]])),
+            'un type de lien inconnu doit être refusé (422), jamais laissé tomber en silence',
+        );
+    }
+
+    /**
+     * Un payload de placement MINIMAL et valide (deux matchs plaçables), fusionné avec les
+     * surcharges données — le vecteur pour injecter UNE valeur hors vocabulaire.
+     *
+     * @param array<string, mixed> $overrides
+     *
+     * @return array<string, mixed>
+     */
+    private function payloadWith(array $overrides): array
+    {
+        return array_merge([
+            'version' => MatchPlacementPayloadBuilder::CONTRACT_VERSION,
+            'clubId' => 'club-placement-gate',
+            'seasonId' => 'season-placement-gate',
+            'solverSeed' => 42,
+            'solverTimeoutSeconds' => 10,
+            'matches' => [
+                ['id' => 'm1', 'teamId' => 't1', 'date' => self::SATURDAY, 'kind' => 'TO_PLACE'],
+                ['id' => 'm2', 'teamId' => 't2', 'date' => self::SATURDAY, 'kind' => 'TO_PLACE'],
+            ],
+            'venues' => [$this->venue('v1', [['13:00', '22:30']])],
+            'teams' => [$this->team('t1'), $this->team('t2')],
+            'teamLinks' => [],
+            'trainingOccupancies' => [],
+            'clubRules' => [],
+        ], $overrides);
+    }
+
+    /**
+     * POSTe un payload BRUT au moteur et rend le code HTTP, sans rien exiger du corps — pour les
+     * cas où l'on attend précisément un refus. Skip propre si le moteur est absent.
+     *
+     * @param array<string, mixed> $payload
+     */
+    private function postStatus(array $payload): int
+    {
+        $client = HttpClient::create(['timeout' => 30]);
+
+        try {
+            return $client->request('POST', self::ENGINE_URL, ['json' => $payload])->getStatusCode();
+        } catch (TransportExceptionInterface $exception) {
+            self::markTestSkipped('Engine not available: ' . $exception->getMessage());
+        }
+    }
+
+    /**
      * @param array{matches: list<array<string, mixed>>, venues: list<array<string, mixed>>, teams: list<array<string, mixed>>, clubRules?: list<array<string, mixed>>} $problem
      *
      * @return array<string, mixed>

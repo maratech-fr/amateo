@@ -1,7 +1,9 @@
 # API géo — routes externes consommées
 
-Last verified @ 2026-10-02 (P5-28 — `CONTRACT_VERSION` repassé **2.29 → 1.0** pour la v1, cité à
-jour au § solveur d'entraînement ; forme du payload inchangée. Passe précédente 2026-09-30, commit `19aed0f1` — recalé contre le code : `VenueGeoCheck::checkVenue`
+Last verified @ 2026-10-05 (contrat `CONTRACT_VERSION` 1.1 → 1.2 — resserrage du vocabulaire
+`/place-matches` en énums fermées, ENG-56 ; le bloc `venueTravelTimes` de `/generate` est
+inchangé, cité à jour au § solveur d'entraînement). Antérieurement @ 2026-10-02 (P5-28 —
+`CONTRACT_VERSION` repassé **2.29 → 1.0** pour la v1, forme du payload inchangée. Passe précédente 2026-09-30, commit `19aed0f1` — recalé contre le code : `VenueGeoCheck::checkVenue`
 (reverse puis forward BAN, seuil `FAR_THRESHOLD_METERS`), `FfbbSalleAddressResolver::resolveAddress`
 (rayon `VERIFY_RADIUS_METERS`), `BanGeocodingClient::reverseStreet`, `VenueGeoCheckController`
 (priority 10, `ManagementAccessGuard::assertManager`) — § 5 ci-dessous. Reste du fichier hérité de la
@@ -369,8 +371,8 @@ Mécanique commune :
 
 - **Le solveur d'ENTRAÎNEMENT la lit** — `POST /generate` seul (jamais `/place-matches`) :
   `ScheduleConstraintBuilder` sérialise la matrice club+saison (TRIÉE) dans le bloc
-  `venueTravelTimes` du payload, contrat **`CONTRACT_VERSION`** (`engine/CONTRACT_VERSION`, **1.1**
-  à ce jour, repassé en 1.0 pour la v1 puis bumpé 1.0 → 1.1 — l'historique : le bump 2.28→2.29 avait porté notamment ce
+  `venueTravelTimes` du payload, contrat **`CONTRACT_VERSION`** (`engine/CONTRACT_VERSION`, **1.2**
+  à ce jour, repassé en 1.0 pour la v1 puis bumpé 1.0 → 1.1 → 1.2 — l'historique : le bump 2.28→2.29 avait porté notamment ce
   bloc : sens de `walkingMinutes` désormais vélo,
   plus les champs `implicitRules.travelTime.toleranceMinutes`/`defaultMinutes`). Sa présence (≥1
   ligne) — ELLE SEULE — active la règle implicite `travelTime` côté moteur (opt-in au premier

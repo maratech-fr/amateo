@@ -1,9 +1,10 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-10-04 (amendement ADR-0003) — `unplaced_match` recalé : le rail
+Last verified @ 2026-10-05 (contrat 1.1 → 1.2 — vocabulaire `/place-matches` resserré en énums
+fermées, valeur inconnue = 422, ENG-56). Antérieurement @ 2026-10-04 (amendement ADR-0003) — `unplaced_match` recalé : le rail
 `/place-matches` est désormais ASYNCHRONOUS côté backend et découpé semaine ISO par semaine ISO
 côté moteur (ENG-50), `solverTimeoutSeconds` un budget PAR SEMAINE (35 s envoyés par le backend)
-plutôt que de bout en bout. `engine/CONTRACT_VERSION` = `1.1` ✓ ; la liste `type` de
+plutôt que de bout en bout. `engine/CONTRACT_VERSION` = `1.2` ✓ ; la liste `type` de
 `DiagnosticSchema` (`app/schemas/output_schema.py:69-95`) porte **15 valeurs**, toutes présentes
 dans la table ci-dessous ✓ ; `SCORE_FORMULA_VERSION` = `T24_LEVEL_2_FIXED_WEIGHTS_V13`
 (`app/solver/objective/weights.py:31`) ✓ ; `BUILD_BUDGET_SECONDS` = `10.0`
@@ -29,7 +30,7 @@ Ces erreurs sont retournees directement par l'API FastAPI, avant meme que le sol
 - `sessionsPerWeek: "trois"` au lieu d'un entier
 - Champ `sportCategoryId` manquant sur une equipe (requis)
 - Cle inconnue dans le payload (les schemas sont `extra=forbid`)
-- `version: "2.0"` alors que le moteur parle le **MAJOR 1** du contrat `1.1` (`"1.0"` comme `"1.1"` passent)
+- `version: "2.0"` alors que le moteur parle le **MAJOR 1** du contrat `1.2` (`"1.0"` comme `"1.2"` passent)
 
 **Attention — deux pieges qui ne provoquent PAS de 422** : `lockLevel` est une **chaine libre**, pas un enum (un `"FORT"` est accepte et simplement traite comme non-`HARD`), et le `dayOfWeek` d'un creneau de gymnase (`VenueTrainingSlotSchema`) est un entier **sans borne** — un `8` passe la validation (d'autres schemas du meme payload, eux, sont bornes `ge=1, le=7` : la tolerance n'est pas une regle generale).
 

@@ -1,8 +1,11 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-10-04 (amendement ADR-0003 : §3 recalé sur le rail ASYNCHRONE — budget par
-semaine ISO plutôt que de bout en bout, chaîne de timeouts, bandeau d'écran visible de tous/geste
-gestionnaire seul, e-mail à 2 min) — `CONTRACT_VERSION` 1.1 confirmé aux deux foyers cités (§1/§3).
+Last verified @ 2026-10-05 (`CONTRACT_VERSION` bumpé en 1.2 : le vocabulaire `/place-matches` —
+`clubRules[].ruleType`, `teams[].coaches[].role`, `teamLinks[].type` — est désormais une énum
+fermée côté moteur, valeur inconnue = 422, ENG-56). Antérieurement @ 2026-10-04 (amendement
+ADR-0003 : §3 recalé sur le rail ASYNCHRONE — budget par semaine ISO plutôt que de bout en bout,
+chaîne de timeouts, bandeau d'écran visible de tous/geste gestionnaire seul, e-mail à 2 min) —
+`CONTRACT_VERSION` 1.2 confirmé aux deux foyers cités (§1/§3).
 Reste du contenu (P4-271/P4-272 et antérieur, dont §7 « Engagements FFBB ») non réaudité cette
 passe. Historique :
 `git log -p --follow specs/courantes/module-matchs.md`.
@@ -100,7 +103,7 @@ vigueur, il n'a rien à comparer.
   Le moteur reçoit les règles CLUB VERBATIM dans le bloc top-level `clubRules`, les interdictions
   TEAM dans `teams[].forbiddenVenueIds` (liste triée, déterministe) et les indisponibilités COACH
   dans le bloc top-level `coachUnavailabilities` (verbatim {coachId, daysOfWeek, kickoffMin,
-  kickoffMax}) du payload `/place-matches` (`CONTRACT_VERSION` 1.1) — un domaine vidé par les
+  kickoffMax}) du payload `/place-matches` (`CONTRACT_VERSION` 1.2) — un domaine vidé par les
   seules règles CLUB HARD ressort `club_rule_no_slot`, un domaine vidé par un gymnase interdit
   alors qu'un créneau licite y existait ressort `team_venue_forbidden` (précédence sur
   `club_rule_no_slot`, §3) ; une indisponibilité COACH ne vide JAMAIS de domaine — elle pénalise
@@ -560,7 +563,7 @@ Présentation pure — aucune formule de gravité redérivée.
 ## 3. Solveur de placement (`POST /api/fixtures/place` → engine `/place-matches`)
 
 Second problème solveur ([ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md)),
-même `CONTRACT_VERSION` **1.1** que `/generate`/`/validate-assignments` (un seul contrat pour les
+même `CONTRACT_VERSION` **1.2** que `/generate`/`/validate-assignments` (un seul contrat pour les
 trois endpoints — voir §6 `CLAUDE.md`). **Rail ASYNCHRONE** (amendement ADR-0003 2026-10-04, patron
 exact de la génération) : `PlaceMatchesController` garde toutes ses gardes (management + saison
 écrivable + socle pointé), prend le verrou, ENFILE un `PlaceMatchesMessage` et répond **202**
