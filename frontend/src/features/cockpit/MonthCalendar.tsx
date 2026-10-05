@@ -100,7 +100,9 @@ export function MonthCalendar({ year, month, entries, holidays, publicHolidays, 
                 // School-holiday days get a clear amber BACKGROUND (kept apart from
                 // the accent, which marks "today") so a break is obvious at a glance.
                 // Jours fériés keep only their "F" badge — no background (per product).
-                holiday && cell.inMonth ? "bg-warning/30 dark:bg-warning/20" : "",
+                // A11Y-25 — surface OPAQUE (`bg-surface-warning`, P4-265), pas une teinte `/NN` :
+                // le texte (numéro du jour, libellé) reste `text-foreground` et tient l'AA.
+                holiday && cell.inMonth ? "bg-surface-warning" : "",
               )}
               aria-label={isPast ? `${dayLabel}, passé (non modifiable)` : dayLabel}
             >
@@ -112,7 +114,7 @@ export function MonthCalendar({ year, month, entries, holidays, publicHolidays, 
                 {publicHoliday ? (
                   // A11Y-08: was a bare red dot (info by colour alone). A shape + the
                   // letter "F" makes "férié" legible without relying on colour.
-                  <span title={`Férié — ${publicHoliday.label}`} className="rounded-sm bg-destructive/15 px-0.5 text-[10px] font-bold leading-none text-destructive">
+                  <span title={`Férié — ${publicHoliday.label}`} className="rounded-sm bg-surface-destructive px-0.5 text-[10px] font-bold leading-none text-foreground">
                     F
                   </span>
                 ) : null}
@@ -123,7 +125,7 @@ export function MonthCalendar({ year, month, entries, holidays, publicHolidays, 
                 ))}
               </span>
               {holiday && cell.inMonth ? (
-                <span className="w-full truncate text-[10px] leading-tight text-warning" title={holiday.label}>
+                <span className="w-full truncate text-[10px] leading-tight text-foreground" title={holiday.label}>
                   {holiday.label}
                 </span>
               ) : null}
@@ -131,6 +133,12 @@ export function MonthCalendar({ year, month, entries, holidays, publicHolidays, 
           );
         })}
       </div>
+
+      {/* UXS-15 — légende discrète des pictogrammes du calendrier : le sens ne vit plus au seul
+          survol (`title`). Emojis décoratifs (`aria-hidden`), le mot porte le sens. */}
+      <p className="mt-3 text-xs text-muted-foreground">
+        <span aria-hidden>⛔</span> fermeture · <span aria-hidden>🛑</span> date butoir · <span aria-hidden>🚫</span> événement perturbant
+      </p>
 
       {selectedDay !== null ? (
         <DayDialog iso={selectedDay} entries={entriesOn(selectedDay)} holiday={holidayOn(selectedDay)} publicHoliday={publicHolidayOn(selectedDay)} onClose={() => setSelectedDay(null)} />

@@ -17,7 +17,8 @@ import { describe, expect, it } from "vitest";
  *   passer par `<NoticeBanner …>`.
  *
  * PORTÉE délibérée :
- *  - `src/features/**` seulement ; la console superadmin (`features/admin/`) a sa propre palette.
+ *  - `src/features/**` ET `src/shared/**` (UXC-27 — les bandeaux faits main de `shared/`, p.ex.
+ *    `CreditsBanner`, étaient hors du grep) ; la console superadmin (`features/admin/`) a sa propre palette.
  *  - `.test.tsx` EXCLUS (ce fichier est un `.test.ts`).
  *  - heuristique MÊME LIGNE : les bandeaux faits main posent toujours `role` et `className` sur la
  *    même balise ouvrante — c'est le patron à bloquer. Un ton rangé dans une VARIABLE puis appliqué
@@ -33,6 +34,7 @@ import { describe, expect, it } from "vitest";
  */
 const SRC_ROOT = join(import.meta.dirname, "..");
 const FEATURES_ROOT = join(SRC_ROOT, "features");
+const SHARED_ROOT = join(SRC_ROOT, "shared");
 
 const EXEMPTIONS: { file: string; reason: string }[] = [];
 
@@ -62,7 +64,7 @@ function tsxFiles(dir: string): string[] {
 describe("bandeau d'info unifié — plus aucun bandeau fait main (NoticeBanner est la maison unique)", () => {
   it("aucun `role=status|alert` + bordure de ton sur une même ligne hors NoticeBanner", () => {
     const offenders: string[] = [];
-    for (const file of tsxFiles(FEATURES_ROOT)) {
+    for (const file of [...tsxFiles(FEATURES_ROOT), ...tsxFiles(SHARED_ROOT)]) {
       const rel = file.slice(SRC_ROOT.length + 1);
       if (isExempt(rel)) {
         continue;
