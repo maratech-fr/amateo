@@ -1,12 +1,13 @@
 # Conventions API, Layout et primitives UI partagées
 
-Last verified @ 2026-10-02 (`documentation-update`, lot horloge PR D — en-tête `AppLayout.tsx`
-confronté : `DemoClockWidget` ajoutée juste après `DemoBadge`, avant `DevClock`). Reste de la table
-hérité des passes précédentes (PR 7/7 hauteurs, PR 6/7 `DayMultiPicker`, PR 4/7 bandeaux, PR 3/7
-sélecteurs, P4-252 splash de connexion, PR #1031 `Listbox`/`VenueSelect`), non rejoué ligne à ligne
-cette fois — historique : `git log -p --follow` sur ce fichier). **§3 est la maison unique
-des primitives UI partagées** (décision fondateur 2026-09-26) : les entrées déménagées depuis
-`frontend/AGENTS.md` § « Primitives that matter » sont vérifiées contre
+Last verified @ 2026-10-05 (rotation `documentation-update`, lot backend « robustesse » — sans
+rapport avec le sujet). Re-confronté : `AppLayout.tsx` (`frontend/src/app/AppLayout.tsx`) importe
+et rend toujours `DemoBadge` puis `DemoClockWidget` puis `DevClock` (dev seul) dans cet ordre ✓.
+Reste de la table hérité des passes précédentes (PR 7/7 hauteurs, PR 6/7 `DayMultiPicker`, PR 4/7
+bandeaux, PR 3/7 sélecteurs, P4-252 splash de connexion, PR #1031 `Listbox`/`VenueSelect`), non
+rejoué ligne à ligne cette fois — historique : `git log -p --follow` sur ce fichier). **§3 est la
+maison unique des primitives UI partagées** (décision fondateur 2026-09-26) : les entrées
+déménagées depuis `frontend/AGENTS.md` § « Primitives that matter » sont vérifiées contre
 `frontend/src/shared/components/ui/` (`ls` : tous les fichiers cités existent).
 
 > **Où est la vérité :**

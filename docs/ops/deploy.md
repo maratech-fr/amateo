@@ -198,6 +198,8 @@ jamais de porte `admin_all` (→ [`prod-stack.md`](prod-stack.md) § « Avec que
 [`../security/rls.md`](../security/rls.md)). Il naît **sans mot de passe** — donc aucun secret en git — et ne
 peut pas se connecter tant que tu n'en poses pas un.
 
+Sur le déploiement courant, ce mot de passe **est posé** (le rôle est utilisable).
+
 ⚠ `amateo_read` est un rôle **de confiance** : le `SET app.club_id` ci-dessous ne fait qu'**éviter de mélanger
 les clubs à l'écran**, ce n'est **pas une frontière** (l'opérateur peut poser n'importe quel club). Sa
 protection réelle : il ne voit aucun secret et ne peut rien écrire. Conséquence : son mot de passe donne accès
@@ -216,12 +218,17 @@ ssh <hôte> "docker compose exec postgres psql -U amateo_owner -d amateo -c '\du
 ssh -t <hôte> "docker compose exec postgres psql -U amateo_owner -d amateo -c '\\password amateo_read'"
 ```
 
-⬜ Se connecter ensuite depuis ton poste par **tunnel SSH** (jamais de port Postgres ouvert —
-[`prod-stack.md`](prod-stack.md) § Accès opérateur), puis **poser le club** avant toute lecture :
+⬜ Se connecter ensuite depuis ton poste par **tunnel SSH vers l'IP interne du conteneur**
+(jamais de port Postgres publié — [`prod-stack.md`](prod-stack.md) § Accès opérateur), puis
+**poser le club** avant toute lecture :
 
 ```bash
-ssh -N -L 5433:localhost:5432 <hôte>          # publie le port sur la loopback de l'hôte, cf. prod-stack.md
-# puis, dans le client (psql/DBeaver) connecté à localhost:5433 en amateo_read :
+# IP du conteneur sur le réseau Docker interne (change si le conteneur est recréé — rejouer la commande) :
+ssh <hôte> "docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' amateo-postgres"
+# → ex. 172.19.0.3 : un client graphique (PhpStorm, DBeaver, TablePlus) fait le tunnel SSH
+# lui-même depuis son propre onglet « SSH » — hôte SSH = <hôte>, hôte distant = <IP conteneur>,
+# port 5432, rôle amateo_read. Pas de `ssh -L` séparé à tenir ouvert dans un terminal.
+# Une fois connecté :
 SET app.club_id = '<uuid-du-club>';           -- sans ce contexte, les tables tenant rendent 0 ligne (fail-closed)
 SELECT * FROM team_tag;                        -- ne voit que le club posé ; toute écriture est refusée
 ```
