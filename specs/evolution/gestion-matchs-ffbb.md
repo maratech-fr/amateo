@@ -85,8 +85,9 @@ terrain, cette ressource est **la dualité coach/joueur** :
 
 > **Une personne ne peut pas coacher et jouer en même temps, ni coacher/jouer deux équipes en même temps.**
 
-C'est **exactement** `COACH_NO_OVERLAP` + `COACH_PLAYER_NO_OVERLAP` (`backend/src/Enum/ImplicitConstraint.php`),
-déjà codées pour l'entraînement, gardées par l'invariant Hypothesis « coach-joueur cohérent » (roadmap §7).
+C'est **exactement** les no-overlap structurels coach / coach-joueur du solveur
+(`engine/app/solver/constraints/structural.py::add_coach_at_most_one` et `::add_coach_player_non_overlap`),
+déjà codés pour l'entraînement, gardés par l'invariant Hypothesis « coach-joueur cohérent » (roadmap §7).
 
 > **Un match n'est qu'un nouveau TYPE D'ÉVÉNEMENT sur la même timeline de disponibilité des personnes.**
 > Le moteur de conflits matchs **réutilise** le no-overlap personne. Aucune nouvelle sémantique de conflit
@@ -292,7 +293,7 @@ préféré. Le radar signale tout placement **hors envelope**.
 > gymnase adverse est une surcharge côté club. Le lieu adverse suit l'échelle « salle exacte du hit
 > API, sinon VILLE » (décision fondateur, §5bis amendé). Détail : `../courantes/module-matchs.md`
 > § « Annuaire adverse » + § « Trajet AWAY & radar spatial ». ⚠ N'est PAS câblé au SOLVEUR de
-> placement (`/place-matches` garde son empreinte 105 fixe, contrat 2.16 inchangé) — le trajet
+> placement (`/place-matches` garde son empreinte 105 fixe, contrat moteur inchangé) — le trajet
 > nourrit le RADAR (préventif), pas l'optimisation ; réconciliation moteur laissée ouverte si un
 > club la réclame.
 

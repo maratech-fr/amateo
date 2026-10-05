@@ -21,12 +21,13 @@ use ZipArchive;
  * tailles déclarées ni `<dimension ref>`.
  *
  * Le cas VERT est le fichier réel du fondateur (22 Ko / 291 lignes / ×7,3 à la
- * décompression), utilisé EN LECTURE SEULE.
+ * décompression), utilisé EN LECTURE SEULE — une COPIE figée en fixture (DOC-57),
+ * pour que `specs/initiales/` redevienne strictement immuable.
  */
 #[Group('unit')]
 final class XlsxUploadGuardTest extends TestCase
 {
-    private const string REAL_FILE = __DIR__ . '/../../../../specs/initiales/rechercherRencontre.xlsx';
+    private const string REAL_FILE = __DIR__ . '/../../Fixtures/xlsx-upload-guard/founder-export-rechercherRencontre.xlsx';
 
     private const string XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 

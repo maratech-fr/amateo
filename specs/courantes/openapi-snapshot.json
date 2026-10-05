@@ -27982,7 +27982,7 @@
             },
             "ImplicitRuleSetting": {
                 "type": "object",
-                "description": "Les 4 r\u00e8gles implicites \u00ab bien-\u00eatre \u00bb, R\u00c9GLABLES par club/saison (contrat moteur 2.7).\n\nL'identifiant EST `ruleKey` (la cl\u00e9 camelCase du contrat), pas un uuid : le front r\u00e8gle une\nr\u00e8gle par son nom, sans conna\u00eetre de ligne en base. La collection est R\u00c9SOLUE \u2014 toujours 4\nentr\u00e9es, d\u00e9fauts inclus, pour que le front n'invente rien. Le PUT UPSERTE (cr\u00e9e la ligne au\npremier r\u00e9glage), le DELETE R\u00c9INITIALISE (supprime la ligne \u2192 retour au d\u00e9faut).",
+                "description": "Les 4 r\u00e8gles implicites \u00ab bien-\u00eatre \u00bb, R\u00c9GLABLES par club/saison.\n\nL'identifiant EST `ruleKey` (la cl\u00e9 camelCase du contrat), pas un uuid : le front r\u00e8gle une\nr\u00e8gle par son nom, sans conna\u00eetre de ligne en base. La collection est R\u00c9SOLUE \u2014 toujours 4\nentr\u00e9es, d\u00e9fauts inclus, pour que le front n'invente rien. Le PUT UPSERTE (cr\u00e9e la ligne au\npremier r\u00e9glage), le DELETE R\u00c9INITIALISE (supprime la ligne \u2192 retour au d\u00e9faut).",
                 "properties": {
                     "ruleKey": {
                         "default": "",
@@ -28022,7 +28022,7 @@
             },
             "ImplicitRuleSetting.ImplicitRuleSettingInput": {
                 "type": "object",
-                "description": "Les 4 r\u00e8gles implicites \u00ab bien-\u00eatre \u00bb, R\u00c9GLABLES par club/saison (contrat moteur 2.7).\n\nL'identifiant EST `ruleKey` (la cl\u00e9 camelCase du contrat), pas un uuid : le front r\u00e8gle une\nr\u00e8gle par son nom, sans conna\u00eetre de ligne en base. La collection est R\u00c9SOLUE \u2014 toujours 4\nentr\u00e9es, d\u00e9fauts inclus, pour que le front n'invente rien. Le PUT UPSERTE (cr\u00e9e la ligne au\npremier r\u00e9glage), le DELETE R\u00c9INITIALISE (supprime la ligne \u2192 retour au d\u00e9faut).",
+                "description": "Les 4 r\u00e8gles implicites \u00ab bien-\u00eatre \u00bb, R\u00c9GLABLES par club/saison.\n\nL'identifiant EST `ruleKey` (la cl\u00e9 camelCase du contrat), pas un uuid : le front r\u00e8gle une\nr\u00e8gle par son nom, sans conna\u00eetre de ligne en base. La collection est R\u00c9SOLUE \u2014 toujours 4\nentr\u00e9es, d\u00e9fauts inclus, pour que le front n'invente rien. Le PUT UPSERTE (cr\u00e9e la ligne au\npremier r\u00e9glage), le DELETE R\u00c9INITIALISE (supprime la ligne \u2192 retour au d\u00e9faut).",
                 "properties": {
                     "schedulePlanId": {
                         "format": "uuid",
@@ -28067,7 +28067,7 @@
             },
             "ImplicitRuleSetting.html": {
                 "type": "object",
-                "description": "Les 4 r\u00e8gles implicites \u00ab bien-\u00eatre \u00bb, R\u00c9GLABLES par club/saison (contrat moteur 2.7).\n\nL'identifiant EST `ruleKey` (la cl\u00e9 camelCase du contrat), pas un uuid : le front r\u00e8gle une\nr\u00e8gle par son nom, sans conna\u00eetre de ligne en base. La collection est R\u00c9SOLUE \u2014 toujours 4\nentr\u00e9es, d\u00e9fauts inclus, pour que le front n'invente rien. Le PUT UPSERTE (cr\u00e9e la ligne au\npremier r\u00e9glage), le DELETE R\u00c9INITIALISE (supprime la ligne \u2192 retour au d\u00e9faut).",
+                "description": "Les 4 r\u00e8gles implicites \u00ab bien-\u00eatre \u00bb, R\u00c9GLABLES par club/saison.\n\nL'identifiant EST `ruleKey` (la cl\u00e9 camelCase du contrat), pas un uuid : le front r\u00e8gle une\nr\u00e8gle par son nom, sans conna\u00eetre de ligne en base. La collection est R\u00c9SOLUE \u2014 toujours 4\nentr\u00e9es, d\u00e9fauts inclus, pour que le front n'invente rien. Le PUT UPSERTE (cr\u00e9e la ligne au\npremier r\u00e9glage), le DELETE R\u00c9INITIALISE (supprime la ligne \u2192 retour au d\u00e9faut).",
                 "properties": {
                     "ruleKey": {
                         "default": "",
@@ -28150,7 +28150,7 @@
                         }
                     }
                 ],
-                "description": "Les 4 r\u00e8gles implicites \u00ab bien-\u00eatre \u00bb, R\u00c9GLABLES par club/saison (contrat moteur 2.7).\n\nL'identifiant EST `ruleKey` (la cl\u00e9 camelCase du contrat), pas un uuid : le front r\u00e8gle une\nr\u00e8gle par son nom, sans conna\u00eetre de ligne en base. La collection est R\u00c9SOLUE \u2014 toujours 4\nentr\u00e9es, d\u00e9fauts inclus, pour que le front n'invente rien. Le PUT UPSERTE (cr\u00e9e la ligne au\npremier r\u00e9glage), le DELETE R\u00c9INITIALISE (supprime la ligne \u2192 retour au d\u00e9faut)."
+                "description": "Les 4 r\u00e8gles implicites \u00ab bien-\u00eatre \u00bb, R\u00c9GLABLES par club/saison.\n\nL'identifiant EST `ruleKey` (la cl\u00e9 camelCase du contrat), pas un uuid : le front r\u00e8gle une\nr\u00e8gle par son nom, sans conna\u00eetre de ligne en base. La collection est R\u00c9SOLUE \u2014 toujours 4\nentr\u00e9es, d\u00e9fauts inclus, pour que le front n'invente rien. Le PUT UPSERTE (cr\u00e9e la ligne au\npremier r\u00e9glage), le DELETE R\u00c9INITIALISE (supprime la ligne \u2192 retour au d\u00e9faut)."
             },
             "MatchConstraint": {
                 "type": "object",
@@ -34524,7 +34524,7 @@
         },
         {
             "name": "ImplicitRuleSetting",
-            "description": "Les 4 r\u00e8gles implicites \u00ab bien-\u00eatre \u00bb, R\u00c9GLABLES par club/saison (contrat moteur 2.7).\n\nL'identifiant EST `ruleKey` (la cl\u00e9 camelCase du contrat), pas un uuid : le front r\u00e8gle une\nr\u00e8gle par son nom, sans conna\u00eetre de ligne en base. La collection est R\u00c9SOLUE \u2014 toujours 4\nentr\u00e9es, d\u00e9fauts inclus, pour que le front n'invente rien. Le PUT UPSERTE (cr\u00e9e la ligne au\npremier r\u00e9glage), le DELETE R\u00c9INITIALISE (supprime la ligne \u2192 retour au d\u00e9faut)."
+            "description": "Les 4 r\u00e8gles implicites \u00ab bien-\u00eatre \u00bb, R\u00c9GLABLES par club/saison.\n\nL'identifiant EST `ruleKey` (la cl\u00e9 camelCase du contrat), pas un uuid : le front r\u00e8gle une\nr\u00e8gle par son nom, sans conna\u00eetre de ligne en base. La collection est R\u00c9SOLUE \u2014 toujours 4\nentr\u00e9es, d\u00e9fauts inclus, pour que le front n'invente rien. Le PUT UPSERTE (cr\u00e9e la ligne au\npremier r\u00e9glage), le DELETE R\u00c9INITIALISE (supprime la ligne \u2192 retour au d\u00e9faut)."
         },
         {
             "name": "MatchConstraint",

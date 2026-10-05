@@ -1,15 +1,6 @@
 # Guide de génération de planning — Amateo
 
-Last verified @ 2026-10-05 (contrat moteur 1.1 → 1.2 — vocabulaire `/place-matches` resserré en énums fermées, ENG-56 ; forme du payload `/generate` inchangée). Antérieurement @ 2026-10-04 (AUD-SEC-25 — le script et l'API n'acceptent plus `X-Club-Id` (club = compte connecté, `generate-schedule.sh` sans `--club-id`) ; contrat moteur 1.1 de #1068 relu ; avant cela, 2026-10-02 : P5-28 — `CONTRACT_VERSION` repassé 2.29 → 1.0 pour la v1, forme du
-payload inchangée ; cité à jour §5).
-Re-confronté contre le code : `docker-compose.yml` porte 14 services nommés, 11 d'entre eux
-`restart: unless-stopped` (`messenger-worker` compris, §6 Cas 1) ✓ ; le cycle des 5 statuts
-(§5, `App\Enum\ScheduleStatus` : DRAFT/PENDING/GENERATING/COMPLETED/FAILED) ✓ ; la route
-`export-xlsx` (§11, `ScheduleResource.php:38-39` + `ExportXlsxController.php`) ✓ ; le budget solveur
-par défaut toujours 650 s (§6 Cas 2/3, `ScheduleConstraintBuilder.php:70`
-`DEFAULT_SOLVER_TIMEOUT_SECONDS`) ✓ ; `CONTRACT_VERSION` = `1.2` (`ScheduleConstraintBuilder.php:61`
-⇄ `engine/CONTRACT_VERSION`) ✓ ; l'absence d'export PNG (§8 — `PurgeExportsCommand::RENDER_PATTERN`
-ne matche toujours que `.pdf`) ✓. Reste du fichier non re-contrôlé cette passe.
+Last verified @ 2026-10-06 (reliquat DOC de l'audit 2026-10-03 — AUD-DOC-51). Étiquette de version « contrat 2.11 » historique retirée (substance au présent) ; `CONTRACT_VERSION` = `1.2` (`ScheduleConstraintBuilder.php:61` ⇄ `engine/CONTRACT_VERSION`) ✓ ; budget solveur par défaut 650 s (`ScheduleConstraintBuilder.php:70` `DEFAULT_SOLVER_TIMEOUT_SECONDS`) ✓. Reste du fichier non re-contrôlé cette passe.
 
 > Ce guide explique, étape par étape, comment générer un planning de matchs pour un club de basket dans le backend Amateo. Il s'adresse aux développeurs juniors qui découvrent le projet.
 
@@ -660,7 +651,7 @@ noms de classes exacts : [`generation-flow.md`](generation-flow.md) §1 « Vue d
 ### Injection du placement précédent (après le hash de snapshot)
 
 Entre la construction du payload et l'appel au moteur (`generation-flow.md` §3b/§3c),
-`GenerateScheduleHandler` greffe un bloc `previousAssignments` (terme de **stabilité** moteur, contrat 2.11 : à score égal, le
+`GenerateScheduleHandler` greffe un bloc `previousAssignments` (terme de **stabilité** moteur : à score égal, le
 solveur garde une équipe sur son créneau précédent plutôt que d'en tirer un autre au hasard —
 avec en plus une **proximité** de poids 9 dans le placement lui-même : une règle saisie ≥ 10
 prime, le confort interne cède, ADR-0001) —

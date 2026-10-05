@@ -1,14 +1,6 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-10-05 (rotation de fraîcheur — sujet sans rapport, P4-302). Re-confronté
-contre le code : `engine/CONTRACT_VERSION` vaut **1.2** (le lot ENG-56 — vocabulaire fermé de
-`/place-matches`, cf. `etat-des-lieux.md` §3 — a bumpé le contrat depuis la dernière passe qui
-citait encore 1.1, corrigé ici) ; une séance verrouillée le jour imposé satisfait `forcedDays`
-sans poser de contrainte (`engine/app/solver/constraints/targeting.py`, `forced_day_set` amputé
-des jours déjà couverts par `_locked_team_days`) ✓ ; seul un coach `role != "ASSISTANT"` (défaut
-`MAIN`) ferme un créneau COACH_AVAILABILITY (`engine/app/solver/constraints/parsing.py`) ✓ ;
-`ruleType` ne compte toujours que `HARD`/`PREFERRED` (le cran `LOCK` reste retiré). Reste du
-vocabulaire détaillé non re-sondé cette passe — un stamp REMPLACE, l'historique vit dans git.
+Last verified @ 2026-10-06 (reliquat DOC de l'audit 2026-10-03 — DOC-60). `allowedDays` recalé : la whitelist n'est honorée QUE pour une règle `HARD` (`targeting.py::add_time_window_constraints` lit `allowedDays` après le filtre `ruleType == HARD`), un `PREFERRED` passe par `preferredDays` ; exemple « Camus » recalé (`forcedVenueId` force l'équipe sans réserver le gymnase) ; `engine/CONTRACT_VERSION` = `1.2`. Reste du vocabulaire non re-sondé cette passe — un stamp REMPLACE, il ne s'empile pas.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
@@ -52,7 +44,7 @@ vocabulaire détaillé non re-sondé cette passe — un stamp REMPLACE, l'histor
 | Clé | Sens | Mécanisme |
 |---|---|---|
 | `forbiddenDays` (`[int]`) | **éviter** ces jours | `HARD` → jours interdits (dur) · `PREFERRED` → malus soft « éviter ces jours » |
-| `allowedDays` (`[int]`) | **uniquement** ces jours (whitelist) | l'engine **interdit tout jour hors liste**. Toujours dur. (liste vide = « non configuré », aucune restriction) |
+| `allowedDays` (`[int]`) | **uniquement** ces jours (whitelist) | l'engine **interdit tout jour hors liste**, mais **seulement quand la règle est `HARD`** (`targeting.py::add_time_window_constraints` ne lit `allowedDays` qu'APRÈS le filtre `ruleType == HARD`) ; un `allowedDays` `PREFERRED` n'est pas consommé — la préférence de jour passe par `preferredDays`. (liste vide = « non configuré », aucune restriction) |
 | `forcedDays` (`[int]`) | **au moins une** séance ces jours-là | pose `somme(vars de ces jours) ≥ 1`. **N'interdit PAS** les autres jours. **exposé au wizard (ALIGN-09)** (le wizard émet `allowedDays` pour « uniquement », cf. audit ENG-16). **Une séance déjà VERROUILLÉE un jour imposé SATISFAIT la règle** (ALIGN-16, patron P4-97, `targeting.py` : le jour sort de `forced_day_set` avant de poser la somme — aucune contrainte ajoutée sur un jour déjà couvert par la réservation) |
 | `preferredDays` (`[int]`) | préférer ces jours | bonus objectif. **Engine-only** (jamais émis par le wizard) |
 
@@ -102,7 +94,7 @@ vocabulaire détaillé non re-sondé cette passe — un stamp REMPLACE, l'histor
 
 **Exemples BCCL**
 - `SM4 - Jean Vilar obligatoire` → `{ FACILITY, HARD, scope:"TEAM", scopeTargetId:<SM4>, config:{ forcedVenueId:<Jean Vilar> } }`
-- `Camus - Réservé Loisir 1 exclusivement` → `{ FACILITY, HARD, TEAM:<Loisir 1>, { forcedVenueId:<Camus> } }`
+- `Camus - Loisir 1 obligatoirement à Camus` → `{ FACILITY, HARD, TEAM:<Loisir 1>, { forcedVenueId:<Camus> } }` (force Loisir 1 SUR Camus ; ne RÉSERVE pas Camus aux autres équipes — l'exclusivité exige un `forbiddenVenueId` par équipe hors groupe, cf. `backend/docs/constraint-coverage.md`)
 - `Jean Vilar - Pas équipes féminines` → `{ FACILITY, HARD, CLUB, { forbiddenVenueId:<Jean Vilar>, targetTag:"FEMININE" } }`
 - `Matéo - Préféré équipes régionales` → `{ FACILITY, PREFERRED, CLUB, { preferredVenueId:<Matéo>, targetTag:"REGIONAL" } }` (soft, +10)
 
@@ -161,7 +153,7 @@ La famille est **supprimée des trois couches**. Le moteur rabotait la capacité
 (`min(capacité du créneau, maxTeams)`) — un mécanisme réel, mais **aucun chemin UI ne pouvait créer la
 contrainte** et **zéro ligne n'existait en base** : du code honoré que personne ne pouvait atteindre.
 Elle est absente de la liste blanche `config` (une écriture est refusée en 422) et il ne reste dans le
-moteur qu'un commentaire au passé (`app/main.py:488-491`).
+moteur qu'un commentaire au passé (commentaire FACILITY_CAPACITY, `app/main.py`).
 
 **La divisibilité d'un gymnase n'a jamais transité par cette famille** : elle est saisie à l'**écran
 Gymnases** (`canSplit`) et voyage dans `trainingSlots[].capacity` (`canSplit ? capacity : 1`) — c'est

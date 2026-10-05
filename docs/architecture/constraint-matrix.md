@@ -29,7 +29,7 @@ de l'UI (verrouillé par le test Vitest).
 | FACILITY `forbiddenVenueId` | dure | **soft « éviter ce gymnase »** *(fix ENG-11 — était escaladé en dur → INFEASIBLE possible sur une préférence)* |
 | COACH_AVAILABILITY `unavailableDays` | mode « indisponible » — dure + **union multi-contraintes** *(fix ENG-13)* ; **mais seulement pour un entraîneur PRINCIPAL** (`parsing.py` : `role != "ASSISTANT"`, rôle absent traité comme principal) — l'indisponibilité d'un entraîneur **adjoint sur toutes ses équipes** n'est jamais lue par le moteur : elle est **Indicative** (ALIGN-19), signalée à l'écran Contraintes des matchs et au récap pré-génération, jamais bloquante | — |
 | COACH_AVAILABILITY `availableDays` | mode « disponible uniquement » — dure (whitelist, **intersection** multi) *(ALIGN — l'UI expose la capacité engine)* | — |
-| COACH_AVAILABILITY `fromTime` / `untilTime` | **fenêtre horaire** sur les jours listés (lot C #195, contrat 2.0→2.1) — dure. Absente = journée entière ; `fromTime` bloque `[from, 24:00)`, `untilTime` bloque `[00:00, until)`. Malformée ou inversée → repli journée entière (conservateur) | — |
+| COACH_AVAILABILITY `fromTime` / `untilTime` | **fenêtre horaire** sur les jours listés (lot C #195) — dure. Absente = journée entière ; `fromTime` bloque `[from, 24:00)`, `untilTime` bloque `[00:00, until)`. Malformée ou inversée → repli journée entière (conservateur) | — |
 
 - **BONUS et LOCK retirés du produit** *(BONUS : offre wizard dès ENG-12, puis retrait complet de
   l'enum — aucune sémantique définie nulle part : zéro ligne en base, zéro poids, zéro branche
@@ -169,8 +169,8 @@ une séance JOUÉE ; deux coachs-joueurs sont présents les 5 soirs).
 
 - **Règles du produit — immuables** (rien à régler) : capacité, coach mono-gymnase (D-14),
   coach-joueur non simultané, équipe non dédoublée, une séance/jour. Le modèle lui-même.
-- **Règles de bien-être — RÉGLABLES PAR PORTÉE** (bloc **introduit au contrat 2.7** — la
-  version COURANTE se lit dans `engine/CONTRACT_VERSION`, jamais ici ; bloc optionnel
+- **Règles de bien-être — RÉGLABLES PAR PORTÉE** (bloc **optionnel** — la
+  version COURANTE du contrat se lit dans `engine/CONTRACT_VERSION`, jamais ici ; bloc optionnel
   `implicitRules` ; entité `ImplicitRuleSetting`, absence de ligne = défaut) : **jour de repos
   coach** (`coachRestDay`, seuil `minRestDays` 1-4, défaut 1), **distribution des salariés**
   (`salarieDistribution`), **jamais N créneaux dos-à-dos** (`maxConsecutiveSessions`, seuil

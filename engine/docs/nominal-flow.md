@@ -1,16 +1,6 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-10-05 (contrat 1.1 → 1.2 — vocabulaire `/place-matches` resserré en énums
-fermées, ENG-56 ; flux `/generate` inchangé). Antérieurement @ 2026-10-02 (rotation
-`documentation-update`) — re-confronté au code, tout juste : `engine/CONTRACT_VERSION` = `1.2` ✓ ; `DiagnosticSchema.id` toujours requis, sans défaut,
-`app/schemas/output_schema.py:61-62` ✓ ; paliers de budget adaptatif
-(`_adaptive_timeout`, `app/main.py:374-389`) toujours ≤50→60 s · ≤200→180 s · sinon 600 s,
-plafonnés par `solver_timeout_seconds` ✓ ; un créneau verrouillé HARD ne crée toujours aucune
-variable `x[...]` (`app/solver/model.py:129-130`, `continue` sur `hard_slot_keys`) ✓ ; une
-fermeture de gymnase retire toujours les `trainingSlots` du gymnase les jours fermés plutôt que de
-poser une contrainte `forbiddenVenueId` (`VenueClosureDays`, `backend/src/Service/
-ScheduleConstraintBuilder.php:252-257`) ✓. Reste non re-parcouru ligne à ligne cette passe —
-historique : `git log -p --follow engine/docs/nominal-flow.md`.
+Last verified @ 2026-10-06 (reliquat DOC de l'audit 2026-10-03 — AUD-DOC-50). Citation `_adaptive_timeout` ré-ancrée sur le symbole (`app/main.py::_adaptive_timeout`, paliers ≤50→60 s · ≤200→180 s · sinon 600 s) ; `engine/CONTRACT_VERSION` = `1.2` ✓, flux `/generate` inchangé. Reste non re-parcouru ligne à ligne cette passe.
 
 > Ce document decrit le chemin complet d'une requete de generation d'emploi du temps, du moment ou le backend construit le payload jusqu'a la notification en temps reel du frontend. Destine aux developpeurs travaillant sur l'integration backend/engine.
 
@@ -201,7 +191,7 @@ Ces contraintes doivent etre satisfaites pour que la solution soit **faisable**.
 5. **FIXED_SLOTS** : chemin residuel. La collection `fixed_slots` n'est alimentee par aucune branche de `parse_v2_constraints` aujourd'hui, donc cette contrainte ne pose rien en production. Les verrous `HARD` ne passent **pas** par la : ils sont pre-places hors du modele (voir etape 1).
 6. **FORBIDDEN_ASSIGNMENTS** : pour chaque contrainte `HARD` de type interdiction, la variable vaut 0. Exemple : si le SM1 a une contrainte "pas le vendredi", toutes les variables `x[t-sm1, *, 5, *]` valent 0.
 7. **COACH_UNAVAILABILITY** : pour chaque contrainte `COACH_AVAILABILITY`, les variables correspondantes valent 0.
-8. **FACILITY_CAPACITY** : cette famille de contrainte n'existe pas (`ConstraintFamily` ne porte que TIME/DAY/FACILITY/COACH_AVAILABILITY, `backend/src/Enum/ConstraintFamily.php`). Le rabot `min(capacite du creneau, maxTeams)` qu'elle aurait pose est absent du moteur (`engine/app/main.py:447-450`, commentaire mort conserve comme garde contre sa reintroduction) — la capacite se regle **uniquement par CRENEAU** (`trainingSlots.capacity`, etape 1 ci-dessus). Une fermeture temporaire de salle (`venue_closed`) n'est de toute facon pas une contrainte : le gymnase ferme perd ses `trainingSlots` les jours effectivement fermes (`VenueClosureDays`, `backend/src/Service/ScheduleConstraintBuilder.php:252-257`) — sans creneau, aucune variable n'existe pour ce jour, donc rien a interdire.
+8. **FACILITY_CAPACITY** : cette famille de contrainte n'existe pas (`ConstraintFamily` ne porte que TIME/DAY/FACILITY/COACH_AVAILABILITY, `backend/src/Enum/ConstraintFamily.php`). Le rabot `min(capacite du creneau, maxTeams)` qu'elle aurait pose est absent du moteur (commentaire FACILITY_CAPACITY mort dans `engine/app/main.py`, conserve comme garde contre sa reintroduction) — la capacite se regle **uniquement par CRENEAU** (`trainingSlots.capacity`, etape 1 ci-dessus). Une fermeture temporaire de salle (`venue_closed`) n'est de toute facon pas une contrainte : le gymnase ferme perd ses `trainingSlots` les jours effectivement fermes (`VenueClosureDays`, `backend/src/Service/ScheduleConstraintBuilder.php:252-257`) — sans creneau, aucune variable n'existe pour ce jour, donc rien a interdire.
 9. **MIN_SESSIONS** : attention, ce n'est **pas** une contrainte dure — c'est une **cible soft** (audit ENG-18). Le nombre de seances souhaite (`sessionsPerWeek`) est encourage via l'objectif, jamais impose (plancher dur 0 en production) : une equipe peut recevoir moins de seances que demande sans rendre l'instance infaisable.
 10. **FORCED_VENUES** : si une equipe a une contrainte `FACILITY` `HARD` l'obligeant a une salle specifique, toutes les variables `x[team, autre_salle, *, *]` valent 0.
 11. **COACH_REST_DAY** : chaque coach a au moins un jour de repos du lundi au vendredi (au plus 4 jours travailles). Ignore pour un coach dont le `maxDaysOverride` est deja inferieur ou egal a 4.

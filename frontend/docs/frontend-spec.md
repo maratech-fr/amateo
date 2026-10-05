@@ -4,11 +4,7 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-10-05 (`documentation-update`, P4-302 — logo signature + logotype cliquable
-des écrans système). Recontrôlé contre `shared/components/ui/system-screen.tsx` : le `BrandMark`
-de pied est enveloppé dans un `<a href={PRODUCT_SITE_URL}>` (§6.8). Reste non re-sondé cette
-passe — historique : `git log -p --follow` ce fichier. §6.7 reste hors périmètre (régime narratif
-plus dense, taille à l'aveugle refusée) — P4-262 en roadmap.
+Last verified @ 2026-10-06 (reliquat DOC de l'audit 2026-10-03 — AUD-DOC-51). Étiquettes de version « contrat 2.8 »/« 2.10 » historiques retirées des §6 (substance au présent, miroirs `AssignmentViolationSchema`/`CompromiseSchema` inchangés). Reste non re-sondé cette passe ; §6.7 hors périmètre (régime narratif dense, taille à l'aveugle refusée) — P4-262 en roadmap.
 
 ## 1. Stack Decided
 
@@ -591,7 +587,7 @@ par un CRUD brut sur la ressource :
       NOMMÉES (`SlotDetail`, déjà documenté §6.2 F2b) — le **mode cible reste armé** pour
       réessayer. Chaque violation porte aussi les ids de l'entité fautive
       (`teamId`/`coachId`/`venueId`/`dayOfWeek`/`startTime`/`conflictingTeamId`, null-safe —
-      miroir de `AssignmentViolationSchema`, contrat 2.8) : la grille **surligne** le créneau de
+      miroir de `AssignmentViolationSchema`) : la grille **surligne** le créneau de
       l'équipe déjà en place que le moteur a nommée (`violationHighlightSlotIds` — présentation
       pure, aucune redérivation de règle ; une équipe absente du cache affiché n'ajoute aucun
       surlignage fantôme). Le surlignage s'efface au retour à `idle`/`pending` (nouveau créneau
@@ -654,8 +650,7 @@ par un CRUD brut sur la ressource :
     cible move OU place, écrit **directement** (`doMove`/`doPlace`, sans essai préalable) — « un
     clic = écrit, l'undo (geste 4) est le filet » ; pas de bouton « Essayer » séparé (différé,
     hors scope P2-32). Seule la case **occupée** passe par l'essai de la modale d'éviction.
-  - **Compromis nommés (P2-32)** — un compromis (type `Compromise`, miroir de `CompromiseSchema`,
-    contrat 2.10) est une préférence **SOUPLE** que le geste accepté **casse** (`effect:
+  - **Compromis nommés (P2-32)** — un compromis (type `Compromise`, miroir de `CompromiseSchema`) est une préférence **SOUPLE** que le geste accepté **casse** (`effect:
     "broken"`) ou **rétablit** (`effect: "gained"`), déjà `message` HUMAIN (le moteur y nomme
     équipe/coach/gymnase, aucun id interne). `CompromiseList`
     (`frontend/src/features/planning/CompromiseList.tsx`) l'affiche en **présentation pure** :

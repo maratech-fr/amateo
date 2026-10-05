@@ -1,11 +1,6 @@
 # Émission des contraintes (frontend) + alignement 3 couches
 
-Last verified @ 2026-10-03 (ALIGN-18, branche `fix/audit-1003-align-verrou`). Le cran `LOCK` a été
-retiré de `ConstraintRuleType` (« on ne verrouille que les créneaux ») : les deux mentions
-`HARD/LOCK` de la ligne `preferredVenueId` (§2) décrivaient un legacy forcé — recalées à `HARD`
-seul, le `LOCK` legacy résiduel n'étant plus qu'un `parse_warning` ignoré côté moteur
-(`engine/app/solver/constraints/parsing.py`). Le reste de la table §2 n'a pas été rejoué ligne à
-ligne cette passe.
+Last verified @ 2026-10-06 (reliquat DOC de l'audit 2026-10-03 — AUD-DOC-50/51, DOC-45). Citation du commentaire mort FACILITY_CAPACITY ré-ancrée sur `app/main.py` (plus de numéro de ligne), étiquettes de version « contrat 2.x » historiques retirées ; poids préféré/évité toujours +10/−10 (`app/solver/objective/weights.py`, gardé par `test_weights_doc_sync.py`). Reste de la table §2 non rejoué ligne à ligne cette passe.
 
 > **But** : (1) lister ce que le **wizard émet** réellement, et (2) mettre les **3 couches côte à côte**
 > (frontend → backend → engine) pour repérer les **scissions** et les **angles morts** — les cas où
@@ -68,7 +63,7 @@ Colonnes : le **front** l'émet-il ? · le **backend** le transmet/transforme-t-
 | `forcedVenueId` | ✅ « impose » | passe (D1 : plus d'exclusivité tag — ne réserve plus le gymnase aux autres équipes) | ✅ salle forcée | ✅ **aligné** |
 | `unavailableDays` | ✅ coach « indisponible » | passe | ✅ union, dur | ✅ **aligné** |
 | `availableDays` (coach « disponible **uniquement** ») | ✅ coach *(depuis ALIGN)* | passe | ✅ whitelist (intersection) | ✅ **aligné** |
-| `maxTeams` / famille `FACILITY_CAPACITY` | ❌ jamais émis (l'écran Gymnases n'émet pas de contrainte) | ❌ famille **retirée** le 2026-08-08 (SEC-13 PR C) — absente de la liste blanche | ❌ retirée du moteur le même jour (`main.py:487-489`, commentaire au passé) | ✅ **sans objet** : la divisibilité voyage **uniquement** par `trainingSlots[].capacity` (`canSplit ? capacity : 1`). La famille était honorée par le moteur alors qu'aucun chemin UI ne pouvait la créer — zéro ligne en base |
+| `maxTeams` / famille `FACILITY_CAPACITY` | ❌ jamais émis (l'écran Gymnases n'émet pas de contrainte) | ❌ famille **retirée** le 2026-08-08 (SEC-13 PR C) — absente de la liste blanche | ❌ retirée du moteur le même jour (commentaire FACILITY_CAPACITY au passé dans `app/main.py`) | ✅ **sans objet** : la divisibilité voyage **uniquement** par `trainingSlots[].capacity` (`canSplit ? capacity : 1`). La famille était honorée par le moteur alors qu'aucun chemin UI ne pouvait la créer — zéro ligne en base |
 | `venue_closed` (période) | ✅ (cockpit) | → **retrait des créneaux** du gymnase les jours fermés (`VenueClosureDays`, P2-5 5b #263) | ✅ | ✅ **aligné** *(plus d'expansion `forbiddenVenueId` : `expandClosedVenues` supprimé — le créneau fermé est retiré du payload à la source)* |
 | `targetTag` (groupe) | ✅ | → N contraintes TEAM | ✅ (par équipe) | ✅ **aligné** |
 | `targetTags` / `excludeTags` (groupe « et aussi » / « sauf », P2-29) | ✅ `ConstraintsStep.tsx` (« et aussi » = intersection `targetTags`, « sauf » = union soustraite `excludeTags` — jamais avec `targetTag` legacy, 422 sinon) | ✅ `ScheduleConstraintBuilder::resolveTagToTeamIds` (∩ `targetTags`) − (∪ `excludeTags`) résout en N contraintes **TEAM**, les deux clés retirées du `config` transmis (D11 : aucune clé de tag ne part au moteur) | ✅ reçoit des contraintes **TEAM déjà éclatées** — zéro clé `targetTags`/`excludeTags` dans le payload engine | ✅ **aligné** |
