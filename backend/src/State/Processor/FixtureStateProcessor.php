@@ -20,6 +20,7 @@ use App\Service\Basketball\VenueAliasResolver;
 use App\Service\ConflictRadarLoader;
 use App\Service\FbiCorrectionLedger;
 use App\Service\MatchConflictDetector;
+use App\Service\PlanVenueClosures;
 use App\Service\SocleGuard;
 use DateTimeImmutable;
 use Symfony\Component\Clock\ClockInterface;
@@ -42,10 +43,18 @@ class FixtureStateProcessor extends AbstractStateProcessor
 
     private FbiCorrectionLedger $fbiCorrectionLedger;
 
+    private PlanVenueClosures $planVenueClosures;
+
     #[Required]
     public function setSocleGuard(SocleGuard $socleGuard): void
     {
         $this->socleGuard = $socleGuard;
+    }
+
+    #[Required]
+    public function setPlanVenueClosures(PlanVenueClosures $planVenueClosures): void
+    {
+        $this->planVenueClosures = $planVenueClosures;
     }
 
     #[Required]
@@ -216,6 +225,9 @@ class FixtureStateProcessor extends AbstractStateProcessor
      * D2 — refus serveur du placement d'une rencontre (geste gestionnaire, entité
      * FINALE). Une rencontre HOME posée dans un gymnase :
      *  1. couvert par une indisponibilité à sa date → refus TOUJOURS (amical compris) ;
+     *  1bis. couvert par une FERMETURE du calendrier (`venue_closed`) à sa date → refus TOUJOURS
+     *     (amical compris, P4-300 D4). Le FAIT brut (config, repli legacy) vient de la maison
+     *     unique `PlanVenueClosures`, jamais de la composition `VenuePeriodOverride` ;
      *  2. de COMPÉTITION (competitionId non null), quand le club déclare ≥ 1 accès
      *     match : aucun accès (gymnase, jour) ou coup d'envoi hors fenêtre → refus ;
      *     un amical reste libre (le solveur ne le pose plus, le radar signale).
@@ -254,6 +266,25 @@ class FixtureStateProcessor extends AbstractStateProcessor
                     $unavailability->getStartDate()->format('j/n'),
                     $unavailability->getEndDate()->format('j/n'),
                     $label,
+                ));
+            }
+        }
+
+        // (1bis) FERMETURE du calendrier couvrante — TOUS les matchs, amical compris (P4-300 D4).
+        $request = $this->requestStack->getCurrentRequest();
+        $clubId = $request?->attributes->get('_club_id');
+        $seasonId = $request?->attributes->get('_season_id') ?? $request?->headers->get('X-Season-Id');
+        if (\is_string($clubId) && '' !== $clubId && \is_string($seasonId) && '' !== $seasonId) {
+            foreach ($this->planVenueClosures->closureIntervals($clubId, $seasonId) as $closure) {
+                if ($closure['venueId'] !== $venueId || !MatchConflictDetector::dateInsideClosure($date, $closure['startDate'], $closure['endDate'])) {
+                    continue;
+                }
+                $this->refuse(\sprintf(
+                    '%s est fermée du %s au %s — %s : le match ne peut pas y être placé. Choisissez un autre gymnase.',
+                    $this->venueName($venueId),
+                    new DateTimeImmutable($closure['startDate'])->format('j/n'),
+                    new DateTimeImmutable($closure['endDate'])->format('j/n'),
+                    $closure['title'],
                 ));
             }
         }

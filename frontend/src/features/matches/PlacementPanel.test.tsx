@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { listboxTrigger, openListbox, pickListboxOption } from "@/test/pickListboxOption";
 
-import type { Fixture, TeamMatchHabit, Venue, VenueMatchWindow, VenueUnavailability } from "./api";
+import type { Fixture, TeamMatchHabit, Venue, VenueClosure, VenueMatchWindow, VenueUnavailability } from "./api";
 import type { EnvelopeResult } from "./lib/envelope";
 import { PlacementPanel } from "./PlacementPanel";
 
@@ -48,6 +48,7 @@ const openEnvelope: EnvelopeResult = { mapped: false, windows: [], dayOk: false,
 interface Overrides {
   matchWindows?: VenueMatchWindow[];
   unavailabilities?: VenueUnavailability[];
+  closures?: VenueClosure[];
   guardState?: "loading" | "failed" | "ready";
   retry?: () => void;
   habits?: TeamMatchHabit[];
@@ -70,6 +71,7 @@ function renderPanel(envelope: EnvelopeResult, onPlace = vi.fn(), overrides: Ove
         state: overrides.guardState ?? "ready",
         matchWindows: overrides.matchWindows ?? [],
         unavailabilities: overrides.unavailabilities ?? [],
+        closures: overrides.closures ?? [],
         retry: overrides.retry ?? vi.fn(),
       }}
       habits={overrides.habits ?? []}
@@ -481,5 +483,39 @@ describe("PlacementPanel — D2 : le geste de placement suspendu tant que les ga
     expect(place).toBeEnabled();
     await user.click(place);
     expect(onPlace).toHaveBeenCalledWith({ venueId: "venue-1", kickoffTime: "14:00" });
+  });
+});
+
+describe("PlacementPanel — gymnase fermé ou indisponible grisé (P4-300)", () => {
+  const windowVenue1: VenueMatchWindow[] = [{ id: "w1", venueId: "venue-1", dayOfWeek: 6, startTime: "14:00", endTime: "18:00" }];
+
+  it("grise l'option d'un gymnase fermé par le calendrier à la date du match, avec la raison", async () => {
+    const user = userEvent.setup();
+    const closures: VenueClosure[] = [{ id: "c1", venueId: "venue-1", title: "Gymnase en travaux", startDate: "2026-08-31", endDate: "2026-10-16" }];
+    renderPanel(openEnvelope, vi.fn(), { matchWindows: windowVenue1, closures });
+
+    const list = await openListbox(user, "Gymnase");
+    const option = within(list).getByRole("option", { name: /Gymnase Alpha/ });
+    expect(option).toHaveAttribute("aria-disabled", "true");
+    expect(within(list).getByText(/Fermée du .* au .* — Gymnase en travaux/)).toBeInTheDocument();
+  });
+
+  it("grise aussi un gymnase indisponible à la date du match", async () => {
+    const user = userEvent.setup();
+    const unavailabilities: VenueUnavailability[] = [{ id: "u1", venueId: "venue-1", startDate: "2026-10-01", endDate: "2026-10-05", label: "travaux" }];
+    renderPanel(openEnvelope, vi.fn(), { matchWindows: windowVenue1, unavailabilities });
+
+    const list = await openListbox(user, "Gymnase");
+    expect(within(list).getByRole("option", { name: /Gymnase Alpha/ })).toHaveAttribute("aria-disabled", "true");
+    expect(within(list).getByText(/Indisponible du .* au .* — travaux/)).toBeInTheDocument();
+  });
+
+  it("ne grise pas un gymnase dont la fermeture ne couvre pas la date du match (falsification)", async () => {
+    const user = userEvent.setup();
+    const closures: VenueClosure[] = [{ id: "c1", venueId: "venue-1", title: "Plus tard", startDate: "2026-11-01", endDate: "2026-11-30" }];
+    renderPanel(openEnvelope, vi.fn(), { matchWindows: windowVenue1, closures });
+
+    const list = await openListbox(user, "Gymnase");
+    expect(within(list).getByRole("option", { name: /Gymnase Alpha/ })).not.toHaveAttribute("aria-disabled", "true");
   });
 });

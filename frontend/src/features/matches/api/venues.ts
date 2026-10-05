@@ -122,6 +122,21 @@ export interface VenueUnavailability {
   label: string | null;
 }
 
+/**
+ * P4-300 — une FERMETURE de gymnase du calendrier (`venue_closed`), lecture seule. Le serveur la
+ * dérive comme FAIT brut (dates du `config`, repli legacy) via `PlanVenueClosures::closureIntervals` ;
+ * le front la MIROITE pour refuser/griser la pose d'un match dans un gymnase fermé à sa date (il ne
+ * la redérive pas — `.claude/rules/frontend.md`). `title` est le libellé saisi par le gestionnaire.
+ */
+export interface VenueClosure {
+  id: string;
+  venueId: string;
+  title: string;
+  /** Y-m-d, inclusive. */
+  startDate: string;
+  endDate: string;
+}
+
 export interface UnavailabilityImpactItem {
   unavailabilityId: string;
   venueId: string;
@@ -159,3 +174,6 @@ export const deleteVenueUnavailability = (id: string): Promise<void> => api.dele
 /** Alert-only impact feed (cockpit card): what each unavailability affects. */
 export const getUnavailabilityImpact = (): Promise<UnavailabilityImpactResponse> =>
   api.get("venue-unavailability-impact").json<UnavailabilityImpactResponse>();
+
+/** P4-300 — les fermetures de gymnase du calendrier (`venue_closed`) du club+saison courants. */
+export const getVenueClosures = (): Promise<VenueClosure[]> => collectionAll<VenueClosure>("venue_closures");

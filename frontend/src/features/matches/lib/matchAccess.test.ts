@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { VenueMatchWindow, VenueUnavailability } from "../api";
+import type { VenueClosure, VenueMatchWindow, VenueUnavailability } from "../api";
 import { venueAccessError } from "./matchAccess";
 
 // Une fenêtre d'accès match le samedi (jour ISO 6), 14:00–18:00, sur venue-1.
@@ -52,5 +52,30 @@ describe("venueAccessError — error dure vs warning amical", () => {
   it("dans la fenêtre : null (rien à signaler), amical ou non", () => {
     expect(venueAccessError("venue-1", "Alpha", SATURDAY, "15:00", windows, [], false)).toBeNull();
     expect(venueAccessError("venue-1", "Alpha", SATURDAY, "15:00", windows, [], true)).toBeNull();
+  });
+});
+
+/**
+ * P4-300 — une FERMETURE de gymnase du calendrier à la date du match est un refus DUR, amical
+ * compris (miroir du refus serveur D4). Hors de l'intervalle, elle ne gêne pas.
+ */
+describe("venueAccessError — fermeture du calendrier (P4-300)", () => {
+  const closures: VenueClosure[] = [{ id: "c1", venueId: "venue-1", title: "Gymnase en travaux", startDate: "2026-08-31", endDate: "2026-10-16" }];
+
+  it("gymnase fermé à la date du match : error nommée, même pour un amical", () => {
+    const comp = venueAccessError("venue-1", "Alpha", SATURDAY, "15:00", windows, [], false, closures);
+    expect(comp?.level).toBe("error");
+    expect(comp?.message).toMatch(/Alpha est fermée du .* au .* — Gymnase en travaux\./);
+    expect(venueAccessError("venue-1", "Alpha", SATURDAY, "15:00", windows, [], true, closures)?.level).toBe("error");
+  });
+
+  it("date hors de l'intervalle de fermeture : la fermeture ne gêne pas", () => {
+    const closed: VenueClosure[] = [{ id: "c1", venueId: "venue-1", title: "T", startDate: "2026-11-01", endDate: "2026-11-30" }];
+    expect(venueAccessError("venue-1", "Alpha", SATURDAY, "15:00", windows, [], false, closed)).toBeNull();
+  });
+
+  it("fermeture d'un AUTRE gymnase : sans effet sur celui-ci", () => {
+    const elsewhere: VenueClosure[] = [{ id: "c2", venueId: "venue-2", title: "T", startDate: "2026-08-31", endDate: "2026-10-16" }];
+    expect(venueAccessError("venue-1", "Alpha", SATURDAY, "15:00", windows, [], false, elsewhere)).toBeNull();
   });
 });

@@ -855,6 +855,12 @@ export function useVenueUnavailabilities() {
   return useQuery({ queryKey: ["venue_unavailabilities"], queryFn: matchesApi.getVenueUnavailabilities, staleTime: 60_000 });
 }
 
+/** P4-300 — les fermetures de gymnase du calendrier : 4ᵉ garde du geste de placement (une
+ * fermeture refuse/grise la pose comme une indisponibilité). Miroir du refus serveur. */
+export function useVenueClosures() {
+  return useQuery({ queryKey: ["venue_closures"], queryFn: matchesApi.getVenueClosures, staleTime: 60_000 });
+}
+
 /** Any unavailability write moves both alert surfaces (impact card + radar). */
 function invalidateUnavailabilities(queryClient: ReturnType<typeof useQueryClient>): void {
   void queryClient.invalidateQueries({ queryKey: ["venue_unavailabilities"] });

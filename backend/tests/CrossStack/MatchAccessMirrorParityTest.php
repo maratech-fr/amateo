@@ -42,6 +42,22 @@ final class MatchAccessMirrorParityTest extends TestCase
         }
     }
 
+    public function testBackendDateInsideClosureMatchesTheSharedCases(): void
+    {
+        foreach ($this->closureCases() as $case) {
+            $expected = (bool) $case['inside'];
+            self::assertSame(
+                $expected,
+                MatchConflictDetector::dateInsideClosure((string) $case['matchDate'], (string) $case['startDate'], (string) $case['endDate']),
+                \sprintf(
+                    "PARITÉ ROMPUE (« %s ») : l'algèbre de fermeture de gymnase backend diverge du front.\n"
+                    . 'Front `dateInsideClosure` et backend `MatchConflictDetector::dateInsideClosure` doivent coïncider sur matchAccess.parity.json (closureCases).',
+                    (string) $case['name'],
+                ),
+            );
+        }
+    }
+
     /** @return list<array{name: string, venueId: string, day: int, kickoff: string, windows: list<array<string, mixed>>, inside: bool}> */
     private function cases(): array
     {
@@ -52,6 +68,20 @@ final class MatchAccessMirrorParityTest extends TestCase
         /** @var list<array{name: string, venueId: string, day: int, kickoff: string, windows: list<array<string, mixed>>, inside: bool}> $list */
         $list = $decoded['cases'] ?? [];
         self::assertNotEmpty($list, 'matchAccess.parity.json ne porte plus aucun cas.');
+
+        return $list;
+    }
+
+    /** @return list<array{name: string, matchDate: string, startDate: string, endDate: string, inside: bool}> */
+    private function closureCases(): array
+    {
+        $raw = file_get_contents(self::CASES);
+        self::assertIsString($raw, 'Illisible : ' . self::CASES);
+        $decoded = json_decode($raw, true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($decoded);
+        /** @var list<array{name: string, matchDate: string, startDate: string, endDate: string, inside: bool}> $list */
+        $list = $decoded['closureCases'] ?? [];
+        self::assertNotEmpty($list, 'matchAccess.parity.json ne porte plus aucun cas de fermeture (closureCases).');
 
         return $list;
     }

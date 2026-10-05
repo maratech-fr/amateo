@@ -117,6 +117,7 @@ vi.mock("./api", () => ({
   getLeagueWindows: vi.fn(() => Promise.resolve({ league: "AURA", items: [], resolvedTeamWindows: {} })),
   getVenueMatchWindows: vi.fn(() => Promise.resolve([])),
   getVenueUnavailabilities: vi.fn(() => Promise.resolve([])),
+  getVenueClosures: vi.fn(() => Promise.resolve([])),
   getTeamMatchHabits: vi.fn(() => Promise.resolve([])),
   getTeamLinks: vi.fn(() => Promise.resolve([])),
   // Rail ASYNCHRONE : POST → 202 (run enfilé) par défaut ; le résultat arrive via le GET.

@@ -21734,6 +21734,65 @@
                 "summary": "Retirer un libell\u00e9 de salle rattach\u00e9 \u00e0 un gymnase"
             }
         },
+        "/api/venue_closures": {
+            "get": {
+                "operationId": "api_venue_closures_get_collection",
+                "tags": [
+                    "VenueClosure"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "VenueClosure collection",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "type": "object",
+                                    "description": "VenueClosure.jsonld collection.",
+                                    "allOf": [
+                                        {
+                                            "$ref": "#/components/schemas/HydraCollectionBaseSchemaNoPagination"
+                                        },
+                                        {
+                                            "type": "object",
+                                            "required": [
+                                                "member"
+                                            ],
+                                            "properties": {
+                                                "member": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/VenueClosure.jsonld"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/VenueClosure"
+                                    }
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/VenueClosure.html"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "summary": "Retrieves the collection of VenueClosure resources.",
+                "description": "Retrieves the collection of VenueClosure resources.",
+                "parameters": []
+            }
+        },
         "/api/venue_match_windows": {
             "get": {
                 "operationId": "api_venue_match_windows_get_collection",
@@ -33154,6 +33213,103 @@
                     }
                 ]
             },
+            "VenueClosure": {
+                "type": "object",
+                "description": "Une fermeture de gymnase du calendrier, en lecture seule : le gymnase, le titre et l'intervalle\nde dates o\u00f9 il est ferm\u00e9. Scop\u00e9 au club et \u00e0 la saison courants.",
+                "properties": {
+                    "id": {
+                        "description": "L'id de la contrainte `venue_closed` qui porte la fermeture \u2014 identifiant de la ligne.",
+                        "default": "",
+                        "type": "string"
+                    },
+                    "venueId": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "title": {
+                        "description": "Le titre saisi par le gestionnaire (affich\u00e9 dans la sous-ligne du s\u00e9lecteur de gymnase).",
+                        "default": "",
+                        "type": "string"
+                    },
+                    "startDate": {
+                        "description": "Y-m-d, borne INCLUSE.",
+                        "default": "",
+                        "type": "string"
+                    },
+                    "endDate": {
+                        "description": "Y-m-d, borne INCLUSE.",
+                        "default": "",
+                        "type": "string"
+                    }
+                }
+            },
+            "VenueClosure.html": {
+                "type": "object",
+                "description": "Une fermeture de gymnase du calendrier, en lecture seule : le gymnase, le titre et l'intervalle\nde dates o\u00f9 il est ferm\u00e9. Scop\u00e9 au club et \u00e0 la saison courants.",
+                "properties": {
+                    "id": {
+                        "description": "L'id de la contrainte `venue_closed` qui porte la fermeture \u2014 identifiant de la ligne.",
+                        "default": "",
+                        "type": "string"
+                    },
+                    "venueId": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "title": {
+                        "description": "Le titre saisi par le gestionnaire (affich\u00e9 dans la sous-ligne du s\u00e9lecteur de gymnase).",
+                        "default": "",
+                        "type": "string"
+                    },
+                    "startDate": {
+                        "description": "Y-m-d, borne INCLUSE.",
+                        "default": "",
+                        "type": "string"
+                    },
+                    "endDate": {
+                        "description": "Y-m-d, borne INCLUSE.",
+                        "default": "",
+                        "type": "string"
+                    }
+                }
+            },
+            "VenueClosure.jsonld": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/HydraItemBaseSchema"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "description": "L'id de la contrainte `venue_closed` qui porte la fermeture \u2014 identifiant de la ligne.",
+                                "default": "",
+                                "type": "string"
+                            },
+                            "venueId": {
+                                "default": "",
+                                "type": "string"
+                            },
+                            "title": {
+                                "description": "Le titre saisi par le gestionnaire (affich\u00e9 dans la sous-ligne du s\u00e9lecteur de gymnase).",
+                                "default": "",
+                                "type": "string"
+                            },
+                            "startDate": {
+                                "description": "Y-m-d, borne INCLUSE.",
+                                "default": "",
+                                "type": "string"
+                            },
+                            "endDate": {
+                                "description": "Y-m-d, borne INCLUSE.",
+                                "default": "",
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "description": "Une fermeture de gymnase du calendrier, en lecture seule : le gymnase, le titre et l'intervalle\nde dates o\u00f9 il est ferm\u00e9. Scop\u00e9 au club et \u00e0 la saison courants."
+            },
             "VenueMatchWindow": {
                 "type": "object",
                 "description": "Match access window of a venue \u2014 \u2265 1 window makes it a MATCH venue (derived flag).",
@@ -34453,6 +34609,10 @@
         {
             "name": "User",
             "description": "Resource 'User' operations."
+        },
+        {
+            "name": "VenueClosure",
+            "description": "Une fermeture de gymnase du calendrier, en lecture seule : le gymnase, le titre et l'intervalle\nde dates o\u00f9 il est ferm\u00e9. Scop\u00e9 au club et \u00e0 la saison courants."
         },
         {
             "name": "VenueMatchWindow",

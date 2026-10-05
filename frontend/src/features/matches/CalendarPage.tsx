@@ -63,6 +63,7 @@ import {
   useSubmitFixture,
   useTeamMatchHabits,
   useTeams,
+  useVenueClosures,
   useVenueMatchWindows,
   useVenues,
   useVenueUnavailabilities,
@@ -120,6 +121,7 @@ export function CalendarPage() {
   const coaches = useCoaches();
   const matchWindows = useVenueMatchWindows();
   const unavailabilities = useVenueUnavailabilities();
+  const venueClosures = useVenueClosures();
   const habitsQuery = useTeamMatchHabits();
   const teamCoaches = useTeamCoaches();
   const coachPlayers = useCoachPlayers();
@@ -262,9 +264,9 @@ export function CalendarPage() {
   const habits = useMemo(() => habitsQuery.data ?? [], [habitsQuery.data]);
   const allConflicts = useMemo<Conflict[]>(() => conflicts.data?.conflicts ?? [], [conflicts.data]);
 
-  // D2 — les trois lectures du club qui GARDENT le geste de placement (accès match,
-  // indisponibilités, enveloppe ligue), suspendues tant qu'elles ne sont pas prêtes.
-  const placementGuards = usePlacementGuards(matchWindows, unavailabilities, leagueWindows);
+  // D2 — les quatre lectures du club qui GARDENT le geste de placement (accès match,
+  // indisponibilités, fermetures du calendrier, enveloppe ligue), suspendues tant qu'elles ne sont pas prêtes.
+  const placementGuards = usePlacementGuards(matchWindows, unavailabilities, venueClosures, leagueWindows);
 
   // Chaîne de filtrage : PR-1 (équipe/coach/gymnase) → types → « Extérieurs ».
   const { filtered, coachTeamRoles, filterActive, filterLabel, effectiveKinds, effectiveFamilies, kindResult, visibleFixtures } = useMatchFilterChain(

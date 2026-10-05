@@ -1,9 +1,9 @@
-Last verified @ 2026-10-05 (BCK-35 — `POST /api/admin/demos/bccl/reset` devient ASYNCHRONE :
-réponse 202 `accepted` (au lieu de 200 `reset`) + 409 si un reset tourne déjà, et `GET
-/api/admin/demos` gagne le bloc `reset` (état du reset async : running/succeeded/failed). +0 path).
+Last verified @ 2026-10-05 (P4-300 — une fermeture de gymnase du calendrier s'applique aux matchs :
+nouvelle ressource lecture seule `GET /api/venue_closures` (`VenueClosure`, intervalle brut d'une
+fermeture `venue_closed` : id/venueId/title/startDate/endDate). +1 path).
 
-**224 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`7d8f20e2c568701185bdf43d71ad6845e6885d600a4468de21e08a4f2683a838` (`sha256sum` sur le fichier).
+**225 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`262e754b3850323f5b52b4fc76c4b2b15cdd73f36cfa0140917773c78ed55950` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

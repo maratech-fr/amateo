@@ -1,4 +1,4 @@
-import type { VenueMatchWindow, VenueUnavailability } from "../api";
+import type { VenueClosure, VenueMatchWindow, VenueUnavailability } from "../api";
 
 // D-30 : cette implémentation (midi UTC) était la plus défensive des trois — elle est
 // devenue le foyer partagé.
@@ -29,6 +29,17 @@ export function kickoffInsideWindow(venueId: string, day: number, kickoff: strin
   return windows.some((w) => w.venueId === venueId && w.dayOfWeek === day && kickoff >= w.startTime && kickoff < w.endTime);
 }
 
+/**
+ * P4-300 — le prédicat PUR « la date tombe dans l'intervalle de fermeture [startDate, endDate] »,
+ * bornes INCLUSES (dates `Y-m-d` zero-paddées → comparaison lexicographique = comparaison de dates).
+ * MIROIR DÉCLARÉ avec `App\Service\MatchConflictDetector::dateInsideClosure` (le backend refuse 422 ;
+ * le front REFUSE la pose sur le rail synchrone) — cas `closureCases` de `matchAccess.parity.json`,
+ * gardés par `MatchAccessMirrorParityTest`. Ce module figure au registre `FrontRederivationRegistryTest`.
+ */
+export function dateInsideClosure(matchDate: string, startDate: string, endDate: string): boolean {
+  return matchDate >= startDate && matchDate <= endDate;
+}
+
 /** Le geste de placement est-il refusé (error) ou seulement signalé (warning) ? */
 export interface VenueAccessIssue {
   level: "error" | "warning";
@@ -50,6 +61,7 @@ export interface VenueAccessIssue {
  *
  * Rules, in order:
  * 1. venue unavailable on the match date (all-circumstances closure) → error;
+ * 1bis. venue closed by the CALENDAR on the match date (P4-300) → error, friendly included;
  * 2. the club declares match windows but this venue has none on that day;
  * 3. a kickoff outside every window of (venue, day).
  * A club with NO window anywhere has not adopted the data → nothing to enforce.
@@ -62,6 +74,7 @@ export function venueAccessError(
   windows: VenueMatchWindow[],
   unavailabilities: VenueUnavailability[],
   isFriendly: boolean,
+  closures: VenueClosure[] = [],
 ): VenueAccessIssue | null {
   for (const unavailability of unavailabilities) {
     if (unavailability.venueId === venueId && matchDate >= unavailability.startDate && matchDate <= unavailability.endDate) {
@@ -69,6 +82,17 @@ export function venueAccessError(
       return {
         level: "error",
         message: `${venueName} est indisponible du ${frDateShortNoYear(unavailability.startDate)} au ${frDateShortNoYear(unavailability.endDate)}${label}.`,
+      };
+    }
+  }
+
+  // P4-300 — une FERMETURE du calendrier à la date du match est un refus dur, amical compris
+  // (miroir du refus serveur D4). `dateInsideClosure` est le prédicat-miroir déclaré.
+  for (const closure of closures) {
+    if (closure.venueId === venueId && dateInsideClosure(matchDate, closure.startDate, closure.endDate)) {
+      return {
+        level: "error",
+        message: `${venueName} est fermée du ${frDateShortNoYear(closure.startDate)} au ${frDateShortNoYear(closure.endDate)} — ${closure.title}.`,
       };
     }
   }

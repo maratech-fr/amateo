@@ -68,7 +68,7 @@ function fx(over: Partial<Fixture> & { id: string }): Fixture {
   };
 }
 
-const guards: PlacementGuards = { state: "ready", matchWindows: [], unavailabilities: [], retry: vi.fn() };
+const guards: PlacementGuards = { state: "ready", matchWindows: [], unavailabilities: [], closures: [], retry: vi.fn() };
 const emptyBreakdown: HiddenWeekBreakdown = { total: 0, away: 0, byKind: new Map() };
 
 type Props = Parameters<typeof WeekWorkbench>[0];

@@ -1,9 +1,9 @@
 # Identité visuelle par club (logo + couleur d'accent)
 
-Last verified @ 2026-10-02 (`documentation-update`, rotation de fraîcheur) contre le code :
-`Club.logoUrl` / `accentColor` / `accentColorDark` / `accentPalette`
-(`backend/src/Entity/Club.php:145/149/153/161`, dérive de la précédente 146/150/154/162 — décalage
-d'un champ ajouté entre-temps) ✓, `PATCH /api/club/appearance`
+Last verified @ 2026-10-05 (`documentation-update`, rotation de fraîcheur, sujet sans rapport —
+P4-300) contre le code : `Club.logoUrl` / `accentColor` / `accentColorDark` / `accentPalette`
+(`backend/src/Entity/Club.php:169/173/177/185` — décalage attendu, des champs se sont ajoutés
+entre-temps, ex. `demoRetainedUntil`) ✓, `PATCH /api/club/appearance`
 (`ClubAppearanceController::__invoke`, `:34`) ✓, `GenerationWaiting.tsx` toujours sans prop
 `logoUrl`/`initial` ✓. `AppLayout.tsx` non re-sondé ligne à ligne cette passe. Historique :
 `git log -p --follow specs/courantes/identite-visuelle-club.md`.

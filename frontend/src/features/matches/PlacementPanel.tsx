@@ -8,20 +8,20 @@ import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Input } from "@/shared/components/ui/input";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Spinner } from "@/shared/components/ui/spinner";
-import { frDateWeekdayNoYear } from "@/shared/lib/date";
+import { frDateShortNoYear, frDateWeekdayNoYear } from "@/shared/lib/date";
 import type { ReadState } from "@/shared/lib/readState";
 
-import type { Fixture, PlaceFixtureInput, TeamMatchHabit, Venue, VenueMatchWindow, VenueUnavailability } from "./api";
+import type { Fixture, PlaceFixtureInput, TeamMatchHabit, Venue, VenueClosure, VenueMatchWindow, VenueUnavailability } from "./api";
 import { isInEnvelope, isoWeekday } from "./lib/envelope";
 import type { EnvelopeResult } from "./lib/envelope";
 import { FIXTURE_STATUS_LABEL } from "./lib/fixtureStatusLabel";
-import { matchVenueIds, venueAccessError } from "./lib/matchAccess";
+import { dateInsideClosure, matchVenueIds, venueAccessError } from "./lib/matchAccess";
 import { unplacedReasonLabel } from "./lib/unplacedReasonLabel";
 
 /**
- * The read state of the three club-owned guards the placement gesture leans on
- * (match access windows, venue unavailabilities, league envelope). The gesture is
- * SUSPENDED unless all three are `ready`: a `failed` first-load must never
+ * The read state of the four club-owned guards the placement gesture leans on
+ * (match access windows, venue unavailabilities, calendar venue closures, league
+ * envelope). The gesture is SUSPENDED unless all four are `ready`: a `failed` first-load must never
  * fabricate « no window → nothing to enforce » and slip a match into a restricted
  * gym; a `loading` read is simply not ready yet. Derived by the page (readState).
  */
@@ -29,6 +29,8 @@ export interface PlacementGuards {
   state: ReadState;
   matchWindows: VenueMatchWindow[];
   unavailabilities: VenueUnavailability[];
+  /** P4-300 — les fermetures de gymnase du calendrier : un gymnase fermé à la date du match refuse la pose. */
+  closures: VenueClosure[];
   retry: () => void;
 }
 
@@ -113,7 +115,7 @@ export function PlacementPanel({
   onSubmit,
   onReopen,
 }: PlacementPanelProps) {
-  const { matchWindows, unavailabilities } = guards;
+  const { matchWindows, unavailabilities, closures } = guards;
   const guardsReady = "ready" === guards.state;
   // Masquer n'est légitime que pour un CHOIX (§7.2.3) : le sélecteur n'offre
   // que les gymnases de match — mais seulement si le club a déclaré des
@@ -122,6 +124,25 @@ export function PlacementPanel({
   // sur une lecture en cours / en échec).
   const matchIds = matchVenueIds(matchWindows);
   const selectableVenues = !guardsReady || 0 === matchIds.size ? venues : venues.filter((v) => matchIds.has(v.id));
+
+  // P4-300 — grisé : l'option d'un gymnase FERMÉ ou INDISPONIBLE à la date du match est inerte,
+  // avec une sous-ligne qui dit pourquoi (miroir du refus serveur). Tant que les gardes ne sont
+  // pas prêtes, on ne grise rien (ne jamais décider sur une lecture en cours / en échec).
+  const blockedSubFor = (venueId: string): string | undefined => {
+    if (!guardsReady) {
+      return undefined;
+    }
+    const unavailability = unavailabilities.find((u) => u.venueId === venueId && fixture.matchDate >= u.startDate && fixture.matchDate <= u.endDate);
+    if (undefined !== unavailability) {
+      const label = null !== unavailability.label ? ` — ${unavailability.label}` : "";
+      return `Indisponible du ${frDateShortNoYear(unavailability.startDate)} au ${frDateShortNoYear(unavailability.endDate)}${label}`;
+    }
+    const closure = closures.find((c) => c.venueId === venueId && dateInsideClosure(fixture.matchDate, c.startDate, c.endDate));
+    if (undefined !== closure) {
+      return `Fermée du ${frDateShortNoYear(closure.startDate)} au ${frDateShortNoYear(closure.endDate)} — ${closure.title}`;
+    }
+    return undefined;
+  };
 
   // P1-4 PR C — the team's habit on the MATCH's weekday prefills the empty
   // fields (venue must survive the selectable filter). Guards stay sovereign:
@@ -155,7 +176,7 @@ export function PlacementPanel({
   // visible (`EnvelopeHint`) et le radar continue de signaler ; le solveur garde,
   // lui, la ligue en HARD. Le gymnase indisponible reste le seul refus dur.
   const venueName = venues.find((v) => v.id === venueId)?.name ?? "ce gymnase";
-  const accessIssue = "" === venueId ? null : venueAccessError(venueId, venueName, fixture.matchDate, kickoff, matchWindows, unavailabilities, isFriendly);
+  const accessIssue = "" === venueId ? null : venueAccessError(venueId, venueName, fixture.matchDate, kickoff, matchWindows, unavailabilities, isFriendly, closures);
   const accessBlocked = null !== accessIssue && "error" === accessIssue.level;
   const unchanged = placed && venueId === (fixture.venueId ?? "") && kickoff === (fixture.kickoffTime ?? "");
   // « Confirmer ce placement » : la rencontre est UNPLACED mais porte DÉJÀ un gymnase et
@@ -227,7 +248,10 @@ export function PlacementPanel({
               <VenueSelect
                 aria-label="Gymnase"
                 placeholder="Gymnase…"
-                venues={selectableVenues.map((v) => ({ id: v.id, name: v.name, color: v.color }))}
+                venues={selectableVenues.map((v) => {
+                  const sub = blockedSubFor(v.id);
+                  return { id: v.id, name: v.name, color: v.color, sub, disabled: undefined !== sub };
+                })}
                 value={venueId}
                 onValueChange={setVenueId}
               />
@@ -251,8 +275,8 @@ export function PlacementPanel({
               </p>
             ) : null}
             {hasKickoff ? <EnvelopeHint envelope={envelope} kickoff={kickoff} /> : null}
-            {/* D2 — le geste s'appuie sur trois lectures du club (accès match,
-                indisponibilités, enveloppe ligue). Tant qu'elles ne sont pas prêtes,
+            {/* D2 — le geste s'appuie sur quatre lectures du club (accès match,
+                indisponibilités, fermetures du calendrier, enveloppe ligue). Tant qu'elles ne sont pas prêtes,
                 le placement est SUSPENDU : un échec ne doit jamais se lire « aucune
                 restriction ». Les autres gestes (dé-placer, verrouiller, échanger,
                 modifier, supprimer) restent actifs. */}

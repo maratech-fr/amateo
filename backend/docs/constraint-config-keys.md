@@ -1,8 +1,12 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-10-03 (ENG-48/ALIGN-16/ENG-51/ALIGN-19, contrat 1.1) — `forcedDays`/
-`unavailableDays` re-confrontées contre `engine/app/solver/constraints/targeting.py` et
-`parsing.py` (table ci-dessous) ; `App\Enum\ConstraintRuleType`
+Last verified @ 2026-10-05 (P4-300) — la ligne FACILITY `venue_closed` confrontée aux trois
+consommateurs MATCHS (`MatchPlacementPayloadBuilder.php`, `ConflictRadarLoader.php`,
+`FixtureStateProcessor.php`) et à `PlanVenueClosures::closureIntervals`/`VenueClosureDays::rawIntervals` :
+le fait brut qu'ils lisent (dates du `config`, repli legacy) reste distinct de la composition
+`VenuePeriodOverride` consommée par le payload d'entraînement. `forcedDays`/`unavailableDays`
+non ré-auditées cette passe (dernière confrontation : ENG-48/ALIGN-16/ENG-51/ALIGN-19, contrat
+1.1, contre `engine/app/solver/constraints/targeting.py`/`parsing.py`) ; `App\Enum\ConstraintRuleType`
 (`backend/src/Enum/ConstraintRuleType.php`) ne compte toujours que HARD/PREFERRED — le cran `LOCK`
 reste retiré (« on ne verrouille que les créneaux »), la matrice d'intensité ci-dessous à deux
 crans. Historique : `git log -p --follow`. Un stamp REMPLACE, il ne s'empile pas.
@@ -27,7 +31,7 @@ avec le nom de la clé et les réglages acceptés pour la famille.
 | **COACH_AVAILABILITY** | `unavailableDays` `availableDays` | liste d'entiers 1-7 | moteur (`constraints/` — paquet). **Honoré seulement pour un coach PRINCIPAL d'au moins une équipe (ALIGN-19)** : un coach adjoint partout a une indisponibilité jamais lue par le moteur, signalée Indicative au récap et à l'écran Contraintes des matchs — détail : `engine/docs/constraint-vocabulary.md` §COACH_AVAILABILITY |
 | **FACILITY** | `forcedVenueId` `forbiddenVenueId` `preferredVenueId` `minAtVenueId` | UUID de gymnase | moteur (`constraints/` — paquet) |
 | **FACILITY** | `minAtVenueCount` | entier ≥ 1 | moteur |
-| **FACILITY** | `type` (`venue_closed`) · `startDate` · `endDate` | constante · `AAAA-MM-JJ` | **backend seul** (`VenueClosureDays`) — une fermeture datée DÉRIVE un défaut de jours fermés (jamais stockée telle quelle) ; le réglage du plan (`VenuePeriodOverride.mode`/`dayOverrides`) peut le contredire jour par jour — la composition des deux vit dans `PlanVenueClosures::effectiveStateForPlan/Entry` (l'indisponibilité déclarée est INFORMATIVE), et c'est l'état EFFECTIF qui ne produit aucune ligne de payload pour les jours fermés. **Suit le re-datage d'une racine CLOSURE (D3 v1)** : quand `startDate`/`endDate` de cette contrainte valent EXACTEMENT l'ancienne fenêtre de l'entrée, ils sont recalés sur la nouvelle (`CalendarEntryStateProcessor::redateEntryPairedConstraints`) — une fermeture datée plus finement par le gestionnaire (dates différentes) reste intouchée |
+| **FACILITY** | `type` (`venue_closed`) · `startDate` · `endDate` | constante · `AAAA-MM-JJ` | **backend seul** (`VenueClosureDays`) — une fermeture datée DÉRIVE un défaut de jours fermés (jamais stockée telle quelle) ; le réglage du plan (`VenuePeriodOverride.mode`/`dayOverrides`) peut le contredire jour par jour — la composition des deux vit dans `PlanVenueClosures::effectiveStateForPlan/Entry` (l'indisponibilité déclarée est INFORMATIVE), et c'est l'état EFFECTIF qui ne produit aucune ligne de payload pour les jours fermés. **Suit le re-datage d'une racine CLOSURE (D3 v1)** : quand `startDate`/`endDate` de cette contrainte valent EXACTEMENT l'ancienne fenêtre de l'entrée, ils sont recalés sur la nouvelle (`CalendarEntryStateProcessor::redateEntryPairedConstraints`) — une fermeture datée plus finement par le gestionnaire (dates différentes) reste intouchée. **P4-300 — MATCHS** : trois consommateurs distincts lisent le FAIT BRUT de cette même contrainte via `PlanVenueClosures::closureIntervals` (dates du `config`, repli legacy = fenêtre de l'entrée porteuse, **jamais** la composition `VenuePeriodOverride` ci-dessus) : `MatchPlacementPayloadBuilder` (fusion dans `venues[].unavailabilities` du payload `/place-matches`), `ConflictRadarLoader` (radar, famille `VENUE_UNAVAILABLE`) et `FixtureStateProcessor` (refus 422 du placement manuel) — ainsi que l'endpoint lecture `GET /api/venue_closures` |
 | **COACH_AVAILABILITY** | `fromTime` `untilTime` | `HH:MM` | moteur — bornent l'indisponibilité dans la journée |
 | **toutes** | `targetTag` | libellé de groupe non vide | **backend seul** — éclaté en N contraintes par équipe, puis RETIRÉ du payload (`ScheduleConstraintBuilder`). **Forme HISTORIQUE, toujours lue** : équivaut à `targetTags: [x]` |
 | **toutes** | `targetTags` | liste de tags | **INTERSECTION** — l'équipe doit porter TOUS ces tags (ex. `["SENIOR","COMPETITION"]`). Mélanger avec `targetTag` → **422** (jamais d'ambiguïté silencieuse) |

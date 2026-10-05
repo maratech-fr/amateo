@@ -12,7 +12,6 @@ use App\Entity\ScheduleSlotTemplate;
 use App\Entity\TeamCoach;
 use App\Entity\TeamMatchHabit;
 use App\Entity\VenueMatchWindow;
-use App\Entity\VenueUnavailability;
 use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
@@ -330,6 +329,30 @@ final class MatchConflictDetectorTest extends TestCase
 
         self::assertCount(1, $conflicts);
         self::assertSame('fx-1', $conflicts[0]['fixture']['fixtureId']);
+    }
+
+    public function testVenueUnavailableCarriesTheSourceIdAndLabelWhateverTheSource(): void
+    {
+        // P4-300 — une FERMETURE du calendrier arrive dans la MÊME forme commune : le détecteur
+        // émet VENUE_UNAVAILABLE (sévérité 4), le `sourceId` (ici l'id de contrainte) sous
+        // `unavailabilityId`, et le TITRE de la fermeture sous `label`.
+        $fixture = $this->fixture('fx-1', self::TEAM_1, '2026-09-19', '15:30');
+        $fixture->setVenueId('venue-armand');
+        $closure = [
+            'venueId' => 'venue-armand',
+            'startDate' => '2026-08-31',
+            'endDate' => '2026-10-16',
+            'label' => 'Gymnase en travaux',
+            'sourceId' => 'constraint-7',
+        ];
+
+        $conflicts = $this->detect([$fixture], [], null, [], [], [$closure]);
+
+        self::assertCount(1, $conflicts);
+        self::assertSame('VENUE_UNAVAILABLE', $conflicts[0]['type']);
+        self::assertSame(4, $conflicts[0]['severity']);
+        self::assertSame('constraint-7', $conflicts[0]['unavailabilityId']);
+        self::assertSame('Gymnase en travaux', $conflicts[0]['label']);
     }
 
     // ── Estimation d'heure extérieure + passerelles (P1-4 PR C) ─────────────
@@ -1704,35 +1727,39 @@ final class MatchConflictDetectorTest extends TestCase
         return $fixture;
     }
 
-    private function unavailability(string $venueId, string $from, string $until, ?string $label): VenueUnavailability
+    /**
+     * P4-300 — la forme COMMUNE que le détecteur consomme (indispo déclarée OU fermeture du
+     * calendrier, fusionnées par `ConflictRadarLoader`). Le détecteur ne distingue plus la source.
+     *
+     * @return array{venueId: string, startDate: string, endDate: string, label: string|null, sourceId: string}
+     */
+    private function unavailability(string $venueId, string $from, string $until, ?string $label): array
     {
-        $unavailability = new VenueUnavailability;
-        $unavailability->setClubId('club');
-        $unavailability->setSeasonId('season');
-        $unavailability->setVenueId($venueId);
-        $unavailability->setStartDate(new DateTimeImmutable($from));
-        $unavailability->setEndDate(new DateTimeImmutable($until));
-        $unavailability->setLabel($label);
-
-        return $unavailability;
+        return [
+            'venueId' => $venueId,
+            'startDate' => $from,
+            'endDate' => $until,
+            'label' => $label,
+            'sourceId' => 'src-' . $venueId . '-' . $from,
+        ];
     }
 
     /**
-     * @param list<Fixture>                                                                          $fixtures
-     * @param list<TeamCoach>                                                                        $links
-     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}> $overlayPeriods
-     * @param array<string, list<ScheduleSlotTemplate>>                                              $slotsBySchedule
-     * @param list<VenueUnavailability>                                                              $unavailabilities
+     * @param list<Fixture>                                                                                          $fixtures
+     * @param list<TeamCoach>                                                                                        $links
+     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}>                 $overlayPeriods
+     * @param array<string, list<ScheduleSlotTemplate>>                                                              $slotsBySchedule
+     * @param list<array{venueId: string, startDate: string, endDate: string, label: string|null, sourceId: string}> $unavailabilities
      *
      * @return list<array<string, mixed>>
      */
     /**
-     * @param list<Fixture>                                                                          $fixtures
-     * @param list<TeamCoach>                                                                        $links
-     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}> $overlayPeriods
-     * @param array<string, list<ScheduleSlotTemplate>>                                              $slotsBySchedule
-     * @param list<VenueUnavailability>                                                              $unavailabilities
-     * @param list<CoachPlayerMembership>                                                            $playerMemberships
+     * @param list<Fixture>                                                                                          $fixtures
+     * @param list<TeamCoach>                                                                                        $links
+     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}>                 $overlayPeriods
+     * @param array<string, list<ScheduleSlotTemplate>>                                                              $slotsBySchedule
+     * @param list<array{venueId: string, startDate: string, endDate: string, label: string|null, sourceId: string}> $unavailabilities
+     * @param list<CoachPlayerMembership>                                                                            $playerMemberships
      *
      * @return list<array<string, mixed>>
      */
