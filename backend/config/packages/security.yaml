@@ -71,6 +71,11 @@ security:
         # P3-4 : page publique d'approbation de création de club — le token (mail
         # institutionnel FFBB, pas de compte) porte l'identité. 404 byte-identique.
         - { path: ^/api/club-approvals/, methods: [GET, POST], roles: PUBLIC_ACCESS }
+        # P4-299 : page publique d'une invitation — le token (envoyé à l'adresse invitée,
+        # pas de compte) porte l'identité. 404 byte-identique. Seul le préfixe /public/ est
+        # ouvert : l'acceptation CONNECTÉE (/api/invitations/{token}/accept) et les gestes
+        # de gestion (/api/invitations…) restent authentifiés (catch-all ^/api plus bas).
+        - { path: ^/api/invitations/public/, methods: [GET, POST], roles: PUBLIC_ACCESS }
         # P2-4 : le raccourci démo du register (DevDemoRegisterController). PRÉ-AUTH par
         # construction — le compte vient d'être créé par le register, aucun JWT encore ;
         # la route mint elle-même le cookie. Inoffensive hors démo : en debug comme

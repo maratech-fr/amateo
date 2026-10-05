@@ -10734,6 +10734,441 @@
                 ]
             }
         },
+        "/api/invitations": {
+            "get": {
+                "operationId": "listClubInvitations",
+                "tags": [
+                    "Invitation"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The pending invitations of the manager's club",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "invitations": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    },
+                                                    "email": {
+                                                        "type": "string",
+                                                        "format": "email"
+                                                    },
+                                                    "role": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "admin",
+                                                            "member"
+                                                        ]
+                                                    },
+                                                    "expiresAt": {
+                                                        "type": "string",
+                                                        "format": "date"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The caller is not an active manager of the club"
+                    }
+                },
+                "summary": "List the invitations of the current club (active manager only)"
+            },
+            "post": {
+                "operationId": "createClubInvitation",
+                "tags": [
+                    "Invitation"
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Invitation created (or an existing one for the same email renewed)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "email": {
+                                            "type": "string",
+                                            "format": "email"
+                                        },
+                                        "role": {
+                                            "type": "string",
+                                            "enum": [
+                                                "admin",
+                                                "member"
+                                            ]
+                                        },
+                                        "expiresAt": {
+                                            "type": "string",
+                                            "format": "date"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not an active manager, or a demo manager (demo accounts cannot invite)"
+                    },
+                    "422": {
+                        "description": "Invalid email/role, an address that cannot be invited (demo), or already an active member of this club"
+                    },
+                    "429": {
+                        "description": "Too many invitations sent (per-user rate limit)"
+                    }
+                },
+                "summary": "Invite an email address to join the club at a role (default Member)",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "email"
+                                ],
+                                "properties": {
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email"
+                                    },
+                                    "role": {
+                                        "type": "string",
+                                        "enum": [
+                                            "admin",
+                                            "member"
+                                        ],
+                                        "description": "Default member"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
+            }
+        },
+        "/api/invitations/public/{token}": {
+            "get": {
+                "operationId": "getPublicClubInvitation",
+                "tags": [
+                    "Invitation"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "What the invited person must decide on (no account, no JWT)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "clubName": {
+                                            "type": "string"
+                                        },
+                                        "email": {
+                                            "type": "string",
+                                            "format": "email"
+                                        },
+                                        "role": {
+                                            "type": "string",
+                                            "enum": [
+                                                "admin",
+                                                "member"
+                                            ]
+                                        },
+                                        "hasAccount": {
+                                            "type": "boolean",
+                                            "description": "A verified account exists for the invited address (drives log-in vs create)"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found \u2014 identical for an unknown, malformed, expired or revoked token"
+                    },
+                    "429": {
+                        "description": "Too many attempts from this IP (rate limited before any resolution)"
+                    }
+                },
+                "summary": "Read an invitation from its public link (no account, no JWT)",
+                "parameters": [
+                    {
+                        "name": "token",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{64}$"
+                        },
+                        "description": "The raw 64-hex token from the emailed link \u2014 it IS the identity"
+                    }
+                ]
+            }
+        },
+        "/api/invitations/public/{token}/accept": {
+            "post": {
+                "operationId": "acceptPublicClubInvitation",
+                "tags": [
+                    "Invitation"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Account created (verified) + active membership; JWT set as an httpOnly cookie",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "membershipStatus": {
+                                            "type": "string",
+                                            "enum": [
+                                                "active"
+                                            ]
+                                        },
+                                        "user": {
+                                            "type": "object",
+                                            "properties": {
+                                                "id": {
+                                                    "type": "string",
+                                                    "format": "uuid"
+                                                },
+                                                "email": {
+                                                    "type": "string",
+                                                    "format": "email"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found \u2014 identical for an unknown, malformed, expired or revoked token"
+                    },
+                    "409": {
+                        "description": "An account already exists for this address \u2014 log in to accept"
+                    },
+                    "422": {
+                        "description": "Missing first/last name, weak password, or missing consent"
+                    },
+                    "429": {
+                        "description": "Too many attempts from this IP (rate limited before any resolution)"
+                    }
+                },
+                "summary": "Accept an invitation by creating an account (address locked to the invited one)",
+                "parameters": [
+                    {
+                        "name": "token",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{64}$"
+                        },
+                        "description": "The raw 64-hex token from the emailed link \u2014 it IS the identity"
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "firstName",
+                                    "lastName",
+                                    "password",
+                                    "consent"
+                                ],
+                                "properties": {
+                                    "firstName": {
+                                        "type": "string"
+                                    },
+                                    "lastName": {
+                                        "type": "string"
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "format": "password"
+                                    },
+                                    "consent": {
+                                        "type": "boolean",
+                                        "description": "Acceptance of the terms and privacy policy (account creation)"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
+            }
+        },
+        "/api/invitations/{id}": {
+            "delete": {
+                "operationId": "revokeClubInvitation",
+                "tags": [
+                    "Invitation"
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Invitation revoked \u2014 its link now returns the identical 404"
+                    },
+                    "403": {
+                        "description": "The caller is not an active manager of the club"
+                    },
+                    "404": {
+                        "description": "Invitation not found in the manager's club"
+                    }
+                },
+                "summary": "Revoke an invitation (deletes the row, kills the link)",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "The invitation id (management routes)"
+                    }
+                ]
+            }
+        },
+        "/api/invitations/{id}/resend": {
+            "post": {
+                "operationId": "resendClubInvitation",
+                "tags": [
+                    "Invitation"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Invitation renewed (fresh token, pushed-back expiry) and re-emailed",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "email": {
+                                            "type": "string",
+                                            "format": "email"
+                                        },
+                                        "role": {
+                                            "type": "string",
+                                            "enum": [
+                                                "admin",
+                                                "member"
+                                            ]
+                                        },
+                                        "expiresAt": {
+                                            "type": "string",
+                                            "format": "date"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not an active manager, or a demo manager"
+                    },
+                    "404": {
+                        "description": "Invitation not found in the manager's club"
+                    },
+                    "429": {
+                        "description": "Too many invitations sent (per-user rate limit)"
+                    }
+                },
+                "summary": "Regenerate and re-send an invitation link",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "The invitation id (management routes)"
+                    }
+                ]
+            }
+        },
+        "/api/invitations/{token}/accept": {
+            "post": {
+                "operationId": "acceptClubInvitationAsConnectedUser",
+                "tags": [
+                    "Invitation"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Accepted \u2014 active membership at the invited role",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "membershipStatus": {
+                                            "type": "string",
+                                            "enum": [
+                                                "active"
+                                            ]
+                                        },
+                                        "clubId": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not authenticated"
+                    },
+                    "403": {
+                        "description": "The connected account's email is not the invited address"
+                    },
+                    "404": {
+                        "description": "Not found \u2014 identical for an unknown, malformed, expired or revoked token"
+                    }
+                },
+                "summary": "Accept an invitation as the connected user (one click)",
+                "parameters": [
+                    {
+                        "name": "token",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{64}$"
+                        },
+                        "description": "The raw 64-hex token from the emailed link \u2014 it IS the identity"
+                    }
+                ]
+            }
+        },
         "/api/login": {
             "post": {
                 "operationId": "login_check_post",

@@ -135,6 +135,9 @@ final class RlsIsolationTest extends KernelTestCase
         $selectPredicateOverrides = [
             'club_user.club_user_read.SELECT' => $hybridSelectPredicate,
             'coach_wish_token.coach_wish_token_read.SELECT' => $hybridSelectPredicate,
+            // P4-299 — club_invitation : la page publique résout le jeton AVANT de poser le
+            // GUC (la ligne lue PORTE le club), même besoin de bootstrap hybride.
+            'club_invitation.club_invitation_read.SELECT' => $hybridSelectPredicate,
         ];
 
         // D4 : audit_log INSERT n'est PAS ouvert mais s'écarte du canon par FORME —

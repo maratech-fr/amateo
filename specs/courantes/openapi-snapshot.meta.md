@@ -1,10 +1,10 @@
-Last verified @ 2026-10-06 (reliquat DOC de l'audit 2026-10-03 — AUD-DOC-51 : mention de version
-« (contrat moteur 2.7) » retirée des descriptions sérialisées des réglages de règle implicite
-(5 occurrences de la description `ImplicitRuleSettingResource`/`ImplicitRuleKey`). Aucune route,
-aucun champ, aucun type modifié — 0 path en plus ou en moins).
+Last verified @ 2026-10-06 (P4-299 — un gestionnaire invite une adresse e-mail à rejoindre son club :
+6 routes custom (`InvitationPaths`) — gestion `GET`/`POST /api/invitations`, `POST /api/invitations/{id}/resend`,
+`DELETE /api/invitations/{id}`, acceptation connectée `POST /api/invitations/{token}/accept`, et la page
+publique à jeton `GET`/`POST /api/invitations/public/{token}[/accept]`. +6 paths).
 
-**225 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`4143c069b1d141c67e46a2870ea8d5238aad772acbba16042781d5edd13ab834` (`sha256sum` sur le fichier).
+**231 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`e9b901515c23b31289ff8e9c2250dd3c36b4e2afd8b626455bbd94666ab0a60a` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

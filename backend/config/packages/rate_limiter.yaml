@@ -124,6 +124,22 @@ framework:
             policy: 'sliding_window'
             limit: 20
             interval: '15 minutes'
+        # P4-299 — émettre/renvoyer une invitation (POST /api/invitations[/{id}/resend]),
+        # keyé PAR UTILISATEUR (JWT) : la route envoie un mail vers une adresse tierce, donc
+        # une borne dédiée en plus du limiteur `api` global. 20/h couvre un gestionnaire qui
+        # invite tout son bureau d'affilée et borne une boucle d'envoi. Même famille que
+        # email_change (per-user, route qui e-maille un tiers), mais plus large.
+        invitation_send:
+            policy: 'sliding_window'
+            limit: 20
+            interval: '1 hour'
+        # P4-299 — page publique d'une invitation (GET pré-remplissage + POST acceptation),
+        # par IP. Un invité légitime fait 2-3 requêtes — borne anti-énumération de tokens,
+        # même patron que club_approval_public.
+        invitation_public:
+            policy: 'sliding_window'
+            limit: 20
+            interval: '15 minutes'
         # SEC-11: global throttle on the authenticated API, keyed PER USER (JWT),
         # applied by ApiRateLimitSubscriber on ^/api. 300/min = 5 req/s — well
         # above legitimate use (the frontend polls a schedule every few seconds)
@@ -212,6 +228,12 @@ when@dev:
                 policy: 'sliding_window'
                 limit: 1000
                 interval: '15 minutes'
+            # P4-299 — la page publique d'invitation est jouée en rafale par la suite e2e
+            # depuis une IP fixe ; borne dev large, jamais reprise en prod (20/15min).
+            invitation_public:
+                policy: 'sliding_window'
+                limit: 1000
+                interval: '15 minutes'
             email_change:
                 policy: 'sliding_window'
                 limit: 100
@@ -248,6 +270,12 @@ when@test:
                 limit: 100
                 interval: '15 minutes'
             coach_wish_public:
+                policy: 'sliding_window'
+                limit: 1000
+                interval: '15 minutes'
+            # P4-299 : large en test (par IP) pour ne pas tripper pendant les suites qui
+            # rejouent la page publique d'invitation ; prod garde 20/15min.
+            invitation_public:
                 policy: 'sliding_window'
                 limit: 1000
                 interval: '15 minutes'

@@ -85,9 +85,9 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
 - **Superadmin SA0** : identité globale séparée, firewall stateful `/api/admin/**`, TOTP ; un JWT
   club ne franchit jamais ce firewall, la session admin ne pose jamais `app.club_id`. →
   `specs/courantes/superadmin-auth.md`.
-- **Pages publiques à token** (coach-wish, club-approval) : le token EST l'identité, 404
-  byte-identique, rate-limit IP ; le contrôleur pose lui-même `app.club_id` (relâché en
-  `finally`). → `docs/security/rls.md`.
+- **Pages publiques à token** (coach-wish, club-approval, invitation) : le token EST
+  l'identité, 404 byte-identique, rate-limit IP ; le contrôleur pose lui-même `app.club_id`
+  (relâché en `finally`). → `docs/security/rls.md`.
 - **Concurrence** : `ClubGenerationLock` Redis + verrou asyncio par club côté engine ; placement
   matchs = rail **asynchrone** (Messenger, patron de la génération) avec son propre
   `MatchPlacementLock` (ADR-0003, amendement 2026-10-04) ; naissance/re-datage

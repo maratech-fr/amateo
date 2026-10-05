@@ -67,6 +67,11 @@ final class RgpdExportService
         // personne) ; l'exporter verserait de surcroît les coordonnées du siège dans un
         // fichier utilisateur. Purgée par club à l'effacement (ErasedClubPurger).
         'club_travel_cache' => 'donnée d\'établissement recomputable, sans PII — hors art. 20',
+        // P4-299 — invitation ÉMISE PAR un gestionnaire VERS une adresse tierce : un artefact
+        // de gestion du club, pas une donnée fournie par le titulaire du compte exporté
+        // (hors art. 20). Elle porte de surcroît un secret (sha256 du jeton). L'adhésion née
+        // d'une acceptation, elle, est exportée via club_user.
+        'club_invitation' => 'artefact de gestion (invitation émise par un gestionnaire vers un tiers), hors art. 20 ; porte un secret (hash de jeton)',
     ];
 
     public function __construct(
