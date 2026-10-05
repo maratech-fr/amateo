@@ -15,6 +15,7 @@ use App\Entity\VenueMatchWindow;
 use App\Enum\ConflictPersonRole;
 use App\Enum\FixtureHomeAway;
 use App\Enum\TeamLevel;
+use App\Service\Conflicts\RuleWindowConflicts;
 use App\Service\Conflicts\VenueConflicts;
 use DateInterval;
 use DateTimeImmutable;
@@ -167,12 +168,15 @@ final class MatchConflictDetector
      */
     private readonly VenueConflicts $venueConflicts;
 
+    private readonly RuleWindowConflicts $ruleWindowConflicts;
+
     public function __construct(
         private readonly MatchFootprint $footprint,
         private readonly EffectiveScheduleResolver $effectiveScheduleResolver,
         private readonly AwayKickoffEstimator $awayKickoffEstimator,
     ) {
         $this->venueConflicts = new VenueConflicts;
+        $this->ruleWindowConflicts = new RuleWindowConflicts;
     }
 
     /**
@@ -439,8 +443,8 @@ final class MatchConflictDetector
 
         return [
             ...$this->venueConflicts->venueOverlapConflicts($views),
-            ...$this->leagueWindowViolations($activeFixtures, $envelope),
-            ...$this->clubRuleViolations($activeFixtures, $clubRules),
+            ...$this->ruleWindowConflicts->leagueWindowViolations($activeFixtures, $envelope),
+            ...$this->ruleWindowConflicts->clubRuleViolations($activeFixtures, $clubRules),
             ...$this->venueConflicts->teamVenueForbiddenConflicts($activeFixtures, $forbiddenVenuesByTeam),
             ...$this->matchMatchConflicts($personViews, $roleByTeamPerson),
             ...$this->matchTrainingConflicts($personViews, $coachesByTeam, $playersByTeam, $roleByTeamPerson, $seasonScheduleId, $activePeriods, $slotsBySchedule),
@@ -654,116 +658,6 @@ final class MatchConflictDetector
         }
 
         return $items;
-    }
-
-    /**
-     * Severity 2 — a placed HOME fixture of a MAPPED team outside every resolved
-     * league window (day or kickoff). Unmapped team ([] envelope) = silent, same
-     * tolerance as the solver and the placement screen.
-     *
-     * @param list<Fixture>                              $fixtures
-     * @param array<string, list<LeagueWindowInterface>> $envelope
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function leagueWindowViolations(array $fixtures, array $envelope): array
-    {
-        $conflicts = [];
-        foreach ($fixtures as $fixture) {
-            $kickoffTime = $fixture->getKickoffTime();
-            if (FixtureHomeAway::HOME !== $fixture->getHomeAway() || !$kickoffTime instanceof DateTimeImmutable) {
-                continue;
-            }
-            // Un amical (competitionId null) n'obéit à aucune enveloppe de ligue
-            // FFBB : il ne peut donc jamais être « hors fenêtre autorisée par la
-            // ligue » (décision fondateur, 2026-09-08, P4-190). Les autres
-            // familles (VENUE_OVERLAP, MATCH_MATCH…) continuent de s'appliquer.
-            if (null === $fixture->getCompetitionId()) {
-                continue;
-            }
-            $windows = $envelope[$fixture->getTeamId()] ?? [];
-            if ([] === $windows) {
-                continue;
-            }
-            $day = (int) $fixture->getMatchDate()->format('N');
-            $kickoff = $kickoffTime->format('H:i');
-            $windowArrays = array_map(static fn (LeagueWindowInterface $w): array => [
-                'dayOfWeek' => $w->getDayOfWeek(),
-                'kickoffMin' => $w->getKickoffMin()->format('H:i'),
-                'kickoffMax' => $w->getKickoffMax()->format('H:i'),
-            ], $windows);
-            if (self::kickoffInsideLeagueWindow($day, $kickoff, $windowArrays)) {
-                continue;
-            }
-            $conflicts[] = [
-                'type' => 'LEAGUE_WINDOW_VIOLATION',
-                'severity' => 2,
-                'windows' => $windowArrays,
-                'fixture' => $this->bareFixtureView($fixture),
-            ];
-        }
-
-        return $conflicts;
-    }
-
-    /**
-     * Severity 3 (P4-272 ③, entre LEAGUE_WINDOW_VIOLATION 2 et ACCESS_WINDOW_LOST 4)
-     * — un domicile POSÉ dont le coup d'envoi viole une règle de match HARD du club le
-     * jour du match. Règles HARD SEULEMENT (une PREFERRED ne fait jamais violation, elle
-     * n'oriente que le solveur). Amicaux EXEMPTÉS (comme LEAGUE_WINDOW_VIOLATION, même
-     * décision). La pose manuelle hors règle HARD reste PERMISE — ceci la SIGNALE, il ne
-     * la bloque pas. `rules` porte les règles violées, de quoi nommer le motif à l'écran.
-     *
-     * @param list<Fixture>                                                                                          $fixtures
-     * @param list<array{ruleType: string, daysOfWeek: list<int>, kickoffMin: string|null, kickoffMax: string|null}> $clubRules
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function clubRuleViolations(array $fixtures, array $clubRules): array
-    {
-        $hard = array_values(array_filter($clubRules, static fn (array $rule): bool => 'HARD' === $rule['ruleType']));
-        if ([] === $hard) {
-            return [];
-        }
-
-        $conflicts = [];
-        foreach ($fixtures as $fixture) {
-            $kickoffTime = $fixture->getKickoffTime();
-            if (FixtureHomeAway::HOME !== $fixture->getHomeAway() || !$kickoffTime instanceof DateTimeImmutable) {
-                continue;
-            }
-            // Amical (competitionId null) : exempté de toute règle de match (comme
-            // l'enveloppe ligue) — il se joue quand le club veut.
-            if (null === $fixture->getCompetitionId()) {
-                continue;
-            }
-            $day = (int) $fixture->getMatchDate()->format('N');
-            $kickoff = $kickoffTime->format('H:i');
-            $violated = [];
-            foreach ($hard as $rule) {
-                if (!\in_array($day, $rule['daysOfWeek'], true)) {
-                    continue;
-                }
-                if (!self::kickoffSatisfiesClubRule($kickoff, $rule)) {
-                    $violated[] = [
-                        'daysOfWeek' => $rule['daysOfWeek'],
-                        'kickoffMin' => $rule['kickoffMin'],
-                        'kickoffMax' => $rule['kickoffMax'],
-                    ];
-                }
-            }
-            if ([] === $violated) {
-                continue;
-            }
-            $conflicts[] = [
-                'type' => 'CLUB_RULE_VIOLATION',
-                'severity' => 3,
-                'rules' => $violated,
-                'fixture' => $this->bareFixtureView($fixture),
-            ];
-        }
-
-        return $conflicts;
     }
 
     /**
