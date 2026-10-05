@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 
 import { clearLastIncident, recordIncident } from "@/shared/api/lastIncidentStore";
-import { PRODUCT_NAME } from "@/shared/lib/product";
+import { PRODUCT_NAME, PRODUCT_SITE_URL } from "@/shared/lib/product";
 
 import { SystemScreen } from "./system-screen";
 
@@ -128,6 +128,20 @@ describe("SystemScreen — primitive présentationnelle", () => {
     // Plus de nom en texte nu ni d'icône calendrier de repli.
     expect(screen.queryByText(PRODUCT_NAME)).toBeNull();
     expect(container.querySelector('[class*="calendar-check"]')).toBeNull();
+  });
+
+  it("le logotype du pied est un lien cliquable vers la VITRINE (PRODUCT_SITE_URL)", () => {
+    render(
+      <SystemScreen title="T" primaryAction={{ label: "P", onClick: noop }}>
+        corps
+      </SystemScreen>,
+    );
+    // Le lien tire son nom accessible du logotype qu'il enveloppe (= PRODUCT_NAME).
+    const link = screen.getByRole("link", { name: PRODUCT_NAME });
+    expect(link).toHaveAttribute("href", PRODUCT_SITE_URL);
+    // Nouvel onglet, sans fuite d'opener — l'écran d'erreur reste ouvert derrière.
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", expect.stringContaining("noopener"));
   });
 
   it("passe axe (structure, rôles, noms)", async () => {
