@@ -80,7 +80,7 @@ export function CockpitPage() {
           icon={<Lock className="size-4 text-accent" />}
           message={
             <span className="text-muted-foreground">
-              Planning principal <strong className="text-foreground">non validé</strong> — validez-le pour débloquer les <strong className="text-foreground">matchs</strong> et les <strong className="text-foreground">plannings secondaires</strong>.
+              Planning de saison <strong className="text-foreground">non validé</strong> — validez-le pour débloquer les <strong className="text-foreground">matchs</strong> et les <strong className="text-foreground">plannings secondaires</strong>.
             </span>
           }
         />

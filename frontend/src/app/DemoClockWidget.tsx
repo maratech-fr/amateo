@@ -34,7 +34,6 @@ export function DemoClockWidget() {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(simulatedToday ?? "");
   const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
 
   // Ouvrir repart de la valeur serveur courante ; fermer ne touche à rien. La saisie se règle
   // dans le GESTIONNAIRE (jamais dans un effet — pas de rendu en cascade).
@@ -69,7 +68,9 @@ export function DemoClockWidget() {
       if ("Escape" === event.key) {
         event.preventDefault();
         setOpen(false);
-        triggerRef.current?.focus();
+        // Le déclencheur est le seul `aria-haspopup="dialog"` de la racine — on lui rend le focus
+        // (la primitive Button ne transmet pas de `ref`).
+        rootRef.current?.querySelector<HTMLButtonElement>('[aria-haspopup="dialog"]')?.focus();
       }
     };
     const onDown = (event: MouseEvent): void => {
@@ -95,7 +96,6 @@ export function DemoClockWidget() {
   return (
     <div ref={rootRef} className="relative shrink-0">
       <Button
-        ref={triggerRef}
         type="button"
         size="sm"
         variant="outline"

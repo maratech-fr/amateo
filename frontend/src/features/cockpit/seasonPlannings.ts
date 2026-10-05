@@ -26,7 +26,7 @@ export interface PlanningRow {
  */
 export function seasonPlannings(schedules: Schedule[], seasonPlanName: string | null = null, plans: SchedulePlan[] = [], entries: CalendarEntry[] = [], schedulesResolved = true): PlanningRow[] {
   const rows: PlanningRow[] = [];
-  const seasonLabel = seasonPlanName ?? "Planning principal";
+  const seasonLabel = seasonPlanName ?? "Planning de saison";
   const seasonVersions = visibleSeasonPlans(schedules);
   const seasonMain = planRepresentative(seasonVersions);
   // Un planning sans version terminée reste VISIBLE (retour fondateur 2026-07-18) :
