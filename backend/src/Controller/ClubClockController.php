@@ -35,6 +35,8 @@ use Symfony\Component\Routing\Attribute\Route;
  */
 final class ClubClockController extends AbstractController
 {
+    use ResolvesCurrentClubTrait;
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
@@ -54,7 +56,7 @@ final class ClubClockController extends AbstractController
         // contexte est déjà prouvée par le listener tenant (le club vient du JWT — AUD-SEC-25).
         $this->managementAccessGuard->assertManager();
 
-        $clubId = $this->resolveCurrentClubId();
+        $clubId = $this->resolveCurrentClubId($this->requestStack);
         $club = null === $clubId ? null : $this->entityManager->getRepository(Club::class)->find($clubId);
         if (!$club instanceof Club) {
             return $this->json(['error' => 'Club introuvable.'], Response::HTTP_NOT_FOUND);
@@ -155,12 +157,5 @@ final class ClubClockController extends AbstractController
         }
 
         return null;
-    }
-
-    private function resolveCurrentClubId(): ?string
-    {
-        $clubId = $this->requestStack->getCurrentRequest()?->attributes->get('_club_id');
-
-        return \is_string($clubId) && '' !== $clubId ? $clubId : null;
     }
 }

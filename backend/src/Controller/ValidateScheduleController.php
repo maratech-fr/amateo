@@ -40,6 +40,8 @@ use Throwable;
  */
 final class ValidateScheduleController extends AbstractController implements SeasonScopedWriteInterface
 {
+    use ResolvesCurrentClubTrait;
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
@@ -75,7 +77,7 @@ final class ValidateScheduleController extends AbstractController implements Sea
             return $this->json(['error' => 'Planning introuvable.'], Response::HTTP_NOT_FOUND);
         }
 
-        $currentClubId = $this->resolveCurrentClubId();
+        $currentClubId = $this->resolveCurrentClubId($this->requestStack);
         if (null !== $currentClubId && $schedule->getClubId() !== $currentClubId) {
             return $this->json(['error' => 'Accès refusé.'], Response::HTTP_FORBIDDEN);
         }
@@ -249,17 +251,5 @@ final class ValidateScheduleController extends AbstractController implements Sea
         $data = json_decode($content, true);
 
         return \is_array($data) && true === ($data['confirmDeleteOverlays'] ?? false);
-    }
-
-    private function resolveCurrentClubId(): ?string
-    {
-        $request = $this->requestStack->getCurrentRequest();
-
-        $clubId = $request?->attributes->get('_club_id');
-        if (\is_string($clubId) && '' !== $clubId) {
-            return $clubId;
-        }
-
-        return null;
     }
 }

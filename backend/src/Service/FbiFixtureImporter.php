@@ -19,10 +19,11 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
 use App\Exception\ImportRejectedException;
-use App\Service\Basketball\FbiDivisionSignature;
 use App\Service\Basketball\FfbbRencontreReconciler;
-use App\Service\Basketball\VenueAliasResolver;
 use App\Service\Basketball\VenueLabelNormalizer;
+use App\Service\Fbi\FbiArrivalReview;
+use App\Service\Fbi\FbiDeviationService;
+use App\Service\Fbi\FbiMappingGuards;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -102,9 +103,9 @@ final class FbiFixtureImporter
         private readonly EntityManagerInterface $entityManager,
         private readonly ClockInterface $clock,
         private readonly VenueLabelNormalizer $labelNormalizer,
-        private readonly FbiDivisionSignature $divisionSignature,
-        private readonly VenueAliasResolver $venueAliasResolver,
-        private readonly ClubDay $clubDay,
+        private readonly FbiArrivalReview $arrivalReview,
+        private readonly FbiDeviationService $deviationService,
+        private readonly FbiMappingGuards $mappingGuards,
         private readonly FbiCorrectionLedger $ledger,
     ) {}
 
@@ -128,7 +129,7 @@ final class FbiFixtureImporter
 
         $groups = $this->groupRows($parsed['rows']);
         $resolver = $this->buildCompetitionResolver();
-        $suggester = $this->buildSuggestionResolver();
+        $suggester = $this->mappingGuards->buildSuggestionResolver();
 
         // Reconciliation (RMM-4): the deviations of home fixtures ALREADY placed
         // are computed against what is persisted, read-only. Only a resolvable
@@ -153,7 +154,7 @@ final class FbiFixtureImporter
             // WHICH of the two club teams it is (same refusal as the resolver) —
             // a blind suggestion would import one team's calendar under the other.
             $suggested = $competition instanceof Competition || $group['multiLabel'] ? null : $suggester($group['name']);
-            $guard = $competition instanceof Competition ? $this->pouleGuard($competition, $group['rows'], $group['name']) : null;
+            $guard = $competition instanceof Competition ? $this->mappingGuards->pouleGuard($competition, $group['rows'], $group['name']) : null;
             $divisions[] = [
                 'name' => $group['name'],
                 'fbiTeamLabel' => $group['multiLabel'] ? $group['label'] : null,
@@ -258,7 +259,7 @@ final class FbiFixtureImporter
         // (le dialog n'a pas de geste de re-mapping — une suggestion fautive
         // auto-envoyée collerait pour toujours).
         $blockedKeys = [];
-        $mappings = $this->rejectGuardBlockedMappings($mappings, $groups, $errors, $blockedKeys);
+        $mappings = $this->mappingGuards->rejectGuardBlockedMappings($mappings, $groups, $errors, $blockedKeys);
 
         $this->persistMappings($mappings, $club);
         $resolver = $this->buildCompetitionResolver();
@@ -302,7 +303,7 @@ final class FbiFixtureImporter
             // opponents do not belong to the PAIRED poule is a wrong file/team/
             // phase — refused NAMED and SKIPPED, the other divisions go through.
             // Offline by construction: the poule club list was copied at pairing.
-            $guard = $this->pouleGuard($competition, $group['rows'], $group['name']);
+            $guard = $this->mappingGuards->pouleGuard($competition, $group['rows'], $group['name']);
             if (null !== $guard) {
                 if ($guard['blocking']) {
                     $errors[] = $guard['message'];
@@ -429,48 +430,7 @@ final class FbiFixtureImporter
      */
     public function detectFieldDeviations(Fixture $existing, array $row, array $venueNames): ?array
     {
-        $inPerimeter = FixtureHomeAway::HOME === $existing->getHomeAway()
-            && FixtureHomeAway::HOME === $row['homeAway']
-            && FixtureStatus::UNPLACED !== $existing->getStatus();
-        if (!$inPerimeter) {
-            return null;
-        }
-
-        $fields = [];
-
-        if ($existing->getMatchDate()->format('Y-m-d') !== $row['matchDate']->format('Y-m-d')) {
-            $fields['date'] = ['app' => $existing->getMatchDate()->format('Y-m-d'), 'file' => $row['matchDate']->format('Y-m-d')];
-        }
-
-        // The 00:00 sentinel is parsed to null upstream (fact F2): a null file
-        // kickoff is « not set », never a divergence.
-        if ($row['kickoffTime'] instanceof DateTimeImmutable) {
-            $current = $existing->getKickoffTime();
-            if (!$current instanceof DateTimeImmutable || $current->format('H:i') !== $row['kickoffTime']->format('H:i')) {
-                $fields['kickoff'] = ['app' => $current?->format('H:i'), 'file' => $row['kickoffTime']->format('H:i')];
-            }
-        }
-
-        // Salle (D13): app = the placed Venue's name, file = the free FBI label.
-        // A placed home fixture without a venue id, or an unknown venue, cannot be
-        // compared → no deviation (degrade safe). Fuzzy: normalized equality OR
-        // whole-word containment either way (« Coubertin » ≈ « GYMNASE … COUBERTIN »).
-        // Conforme AUSSI quand l'alias confirmé du libellé pointe le gymnase courant :
-        // la MÊME clause alias que le chemin non placé ({@see detectUnplacedVenueDeviation}),
-        // sans quoi un domicile placé dans le bon gymnase mais que la source nomme par
-        // un alias lèverait un FAUX écart à chaque dépôt. L'égalité reste STRICTE sur
-        // l'identité : un alias pointant un AUTRE gymnase lève toujours l'écart.
-        $venueId = $existing->getVenueId();
-        $fileLabel = $row['venueLabel'];
-        if (null !== $venueId && null !== $fileLabel && isset($venueNames[$venueId])) {
-            $appLabel = $venueNames[$venueId];
-            if (!$this->venueMatches($appLabel, $fileLabel)
-                && $this->venueAliasResolver->resolveConfirmed($fileLabel) !== $venueId) {
-                $fields['venue'] = ['app' => $appLabel, 'file' => $fileLabel];
-            }
-        }
-
-        return $fields;
+        return $this->deviationService->detectFieldDeviations($existing, $row, $venueNames);
     }
 
     /**
@@ -497,41 +457,7 @@ final class FbiFixtureImporter
      */
     public function detectUnplacedVenueDeviation(Fixture $existing, array $row, array $venueNames): ?array
     {
-        if (FixtureHomeAway::HOME !== $existing->getHomeAway()
-            || FixtureHomeAway::HOME !== $row['homeAway']
-            || FixtureStatus::UNPLACED !== $existing->getStatus()) {
-            return null;
-        }
-
-        $venueId = $existing->getVenueId();
-        $fileLabel = $row['venueLabel'];
-        if (null === $venueId || null === $fileLabel || !isset($venueNames[$venueId])) {
-            return null;
-        }
-
-        // Un re-datage n'est pas un écart salle : il suit le chemin actuel (dé-place
-        // puis ré-adopte le libellé) — au point d'appel de l'import, `unplace` a déjà
-        // vidé le venueId, donc la clause ci-dessus n'y lève plus (décision C).
-        if ($existing->getMatchDate()->format('Y-m-d') !== $row['matchDate']->format('Y-m-d')) {
-            return null;
-        }
-
-        $appLabel = $venueNames[$venueId];
-        // Conforme si le fuzzy nom↔libellé matche OU si l'alias confirmé du libellé
-        // pointe le gymnase courant (sans la clause alias, un domicile déjà rattaché
-        // au bon gymnase par alias lèverait un faux écart).
-        if ($this->venueMatches($appLabel, $fileLabel)
-            || $this->venueAliasResolver->resolveConfirmed($fileLabel) === $venueId) {
-            return null;
-        }
-
-        // Idempotence « Garder l'appli » (E) : un libellé déjà mémorisé ne repose pas
-        // la question tant que la source le répète.
-        if ($this->labelNormalizer->normalize($fileLabel) === $existing->getKeptVenueLabel()) {
-            return null;
-        }
-
-        return ['app' => $appLabel, 'file' => $fileLabel];
+        return $this->deviationService->detectUnplacedVenueDeviation($existing, $row, $venueNames);
     }
 
     /**
@@ -548,35 +474,7 @@ final class FbiFixtureImporter
      */
     public function applyFieldTakeFile(Fixture $existing, string $field, array $row, DateTimeImmutable $now): void
     {
-        switch ($field) {
-            case 'date':
-                $existing->setMatchDate($row['matchDate']);
-                $this->unplace($existing, $now);
-                break;
-            case 'kickoff':
-                if ($row['kickoffTime'] instanceof DateTimeImmutable) {
-                    $existing->setKickoffTime($row['kickoffTime']);
-                }
-                $this->demoteSubmitted($existing, $now, 'kickoff', $row['kickoffTime']?->format('H:i'));
-                break;
-            case 'venue':
-                // Un NON PLACÉ (les 20 cas) : après avoir vidé le gymnase erroné, on
-                // relit le libellé adopté depuis un alias confirmé — la salle correcte
-                // (Debarros) se repose seule, un libellé inconnu laisse venueId null (la
-                // salle remonte dans l'inventaire « à rattacher »). Le statut reste
-                // UNPLACED. Un PLACÉ garde le comportement actuel (pas de re-rattachement
-                // auto : le gestionnaire re-place).
-                $wasUnplaced = FixtureStatus::UNPLACED === $existing->getStatus();
-                if (null !== $row['venueLabel']) {
-                    $existing->setFbiVenueLabel($row['venueLabel']);
-                }
-                $existing->setKeptVenueLabel(null);
-                $this->unplace($existing, $now);
-                if ($wasUnplaced) {
-                    $this->attachConfirmedVenue($existing, $row['venueLabel']);
-                }
-                break;
-        }
+        $this->deviationService->applyFieldTakeFile($existing, $field, $row, $now);
     }
 
     /**
@@ -589,9 +487,7 @@ final class FbiFixtureImporter
      */
     public function applyVenueKeepApp(Fixture $fixture, string $fileLabel): void
     {
-        $fixture->setKeptVenueLabel($this->labelNormalizer->normalize($fileLabel));
-        $fixture->setFbiVenueLabel($fileLabel);
-        $fixture->removePendingDeviation('venue');
+        $this->deviationService->applyVenueKeepApp($fixture, $fileLabel);
     }
 
     /**
@@ -602,17 +498,7 @@ final class FbiFixtureImporter
      */
     public function deviationRecord(Fixture $existing, string $field, array $vals, string $divisionName, string $effect, ?string $status = null): array
     {
-        return [
-            'fixtureId' => $existing->getId(),
-            'externalRef' => (string) $existing->getExternalRef(),
-            'division' => $divisionName,
-            'teamId' => $existing->getTeamId(),
-            'status' => $status ?? $existing->getStatus()->value,
-            'field' => $field,
-            'app' => $vals['app'],
-            'file' => $vals['file'],
-            'effect' => $effect,
-        ];
+        return $this->deviationService->deviationRecord($existing, $field, $vals, $divisionName, $effect, $status);
     }
 
     /**
@@ -628,28 +514,7 @@ final class FbiFixtureImporter
      */
     public function groupDeviations(array $records, array $persistingSet): array
     {
-        /** @var array<string, array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, persisting: bool, fields: array<string, array{app: string|null, file: string|null}>}> $byFixture */
-        $byFixture = [];
-        foreach ($records as $record) {
-            $id = $record['fixtureId'];
-            if (!isset($byFixture[$id])) {
-                $byFixture[$id] = [
-                    'fixtureId' => $id,
-                    'externalRef' => $record['externalRef'],
-                    'division' => $record['division'],
-                    'teamId' => $record['teamId'],
-                    'status' => $record['status'],
-                    'persisting' => false,
-                    'fields' => [],
-                ];
-            }
-            $byFixture[$id]['fields'][$record['field']] = ['app' => $record['app'], 'file' => $record['file']];
-            if (isset($persistingSet[$id . '|' . $record['field']])) {
-                $byFixture[$id]['persisting'] = true;
-            }
-        }
-
-        return array_values($byFixture);
+        return $this->deviationService->groupDeviations($records, $persistingSet);
     }
 
     /**
@@ -745,9 +610,7 @@ final class FbiFixtureImporter
      */
     public function treatOnArrival(Fixture $fixture, DateTimeImmutable $now, Club $club): void
     {
-        if ($this->qualifiesForArrivalTreatment($fixture, $this->currentIsoWeekEnd($club))) {
-            $fixture->markReviewed($now);
-        }
+        $this->arrivalReview->treatOnArrival($fixture, $now, $club);
     }
 
     /**
@@ -763,13 +626,7 @@ final class FbiFixtureImporter
      */
     public function catchUpReview(Fixture $existing, DateTimeImmutable $now, DateTimeImmutable $weekEnd): bool
     {
-        if (FixtureReviewState::NEW !== $existing->getReviewState()
-            || !$this->qualifiesForArrivalTreatment($existing, $weekEnd)) {
-            return false;
-        }
-        $existing->markReviewed($now);
-
-        return true;
+        return $this->arrivalReview->catchUpReview($existing, $now, $weekEnd);
     }
 
     /**
@@ -780,10 +637,7 @@ final class FbiFixtureImporter
      */
     public function currentIsoWeekEnd(Club $club): DateTimeImmutable
     {
-        $today = $this->clubDay->todayFor($club);
-        $isoWeekday = (int) $today->format('N');
-
-        return $today->modify(\sprintf('+%d days', 7 - $isoWeekday));
+        return $this->arrivalReview->currentIsoWeekEnd($club);
     }
 
     /**
@@ -796,10 +650,7 @@ final class FbiFixtureImporter
      */
     public function sourceIsAuthoritativeForWindow(Fixture $existing, array $row, DateTimeImmutable $weekEnd): bool
     {
-        $end = $weekEnd->format('Y-m-d');
-
-        return $existing->getMatchDate()->format('Y-m-d') <= $end
-            || $row['matchDate']->format('Y-m-d') <= $end;
+        return $this->arrivalReview->sourceIsAuthoritativeForWindow($existing, $row, $weekEnd);
     }
 
     /**
@@ -862,10 +713,10 @@ final class FbiFixtureImporter
                 // `autoApplied` remplace l'écart à arbitrer pour ALLUMER le bandeau
                 // « la source a déplacé ce match » — la rencontre reste traitée.
                 $this->applyFieldTakeFile($existing, $field, $row, $now);
-                $existing->putPendingDeviation($this->pendingEntry($existing, $field, $vals, $channel, $now, true));
+                $existing->putPendingDeviation($this->deviationService->pendingEntry($existing, $field, $vals, $channel, $now, true));
                 // (d) Fenêtre imminente : l'appli s'aligne d'office sur la source — toute
                 // entrée « à corriger dans FBI » de ce champ n'a plus d'objet, elle se ferme.
-                $this->closeOpenCorrection($existing, $field, $now);
+                $this->deviationService->closeOpenCorrection($existing, $field, $now);
                 $changed = true;
                 $effect = 'take_file';
             } else {
@@ -883,7 +734,7 @@ final class FbiFixtureImporter
                     // caduque (fermée par le dépôt) ET un écart normal s'ouvre à arbitrer.
                     $this->ledger->closeBySource($openCorrection, $now);
                 }
-                $existing->putPendingDeviation($this->pendingEntry($existing, $field, $vals, $channel, $now, false));
+                $existing->putPendingDeviation($this->deviationService->pendingEntry($existing, $field, $vals, $channel, $now, false));
             }
             $records[] = $this->deviationRecord($existing, $field, $vals, $divisionName, $effect, $status);
         }
@@ -899,7 +750,7 @@ final class FbiFixtureImporter
             }
             // (b) Le champ ne diverge plus : FBI reflète de nouveau l'appli → l'entrée
             // « à corriger dans FBI » est FAITE (fermée par le dépôt).
-            $this->closeOpenCorrection($existing, $field, $now);
+            $this->deviationService->closeOpenCorrection($existing, $field, $now);
             if (null !== $existing->getPendingDeviation($field)) {
                 $existing->removePendingDeviation($field);
             }
@@ -981,233 +832,16 @@ final class FbiFixtureImporter
     }
 
     /**
-     * P4-187a D3 — un domicile sans salle retrouve son gymnase depuis un alias
-     * CONFIRMÉ ({@see VenueAliasResolver::resolveConfirmed}). Foyer UNIQUE de la
-     * résolution automatique, partagé par l'import xlsx et le canal API : on ne
-     * pose QUE le venueId — jamais un setStatus, jamais sur un AWAY, jamais sur une
-     * rencontre qui a déjà un gymnase. La rencontre reste UNPLACED et son
-     * reviewState intact ; on la rend seulement visible de la collision de gymnase
-     * (VENUE_OVERLAP) et de la fermeture (VENUE_UNAVAILABLE), statut indifférent.
-     *
-     * « Naît avec son gymnase mais jamais placée d'office » : ce chemin de création ne
-     * pose donc AUCUN statut placé. L'UNIQUE exception CONSENTIE est un geste séparé,
-     * explicite et confirmé — le « validé ligue » en lot ({@see
-     * App\Controller\LeagueValidatedFixturesController}) —, jamais l'import lui-même.
+     * Façade conservée pour les consommateurs (p. ex.
+     * {@see App\Service\Basketball\FfbbRencontreReconciler}) : délègue au foyer
+     * {@see FbiDeviationService::attachConfirmedVenue} (P4-187a D3 — rattachement
+     * d'un gymnase depuis un alias confirmé, jamais de placement d'office).
      *
      * @return bool vrai = un gymnase a été rattaché (la rencontre a « changé »)
      */
     public function attachConfirmedVenue(Fixture $fixture, ?string $venueLabel): bool
     {
-        if (FixtureHomeAway::HOME !== $fixture->getHomeAway() || null !== $fixture->getVenueId()) {
-            return false;
-        }
-        $venueId = $this->venueAliasResolver->resolveConfirmed($venueLabel);
-        if (null === $venueId) {
-            return false;
-        }
-        $fixture->setVenueId($venueId);
-
-        return true;
-    }
-
-    /**
-     * Le prédicat « naît/est rattrapée traitée » PARTAGÉ par {@see treatOnArrival}
-     * et {@see catchUpReview} (jamais recopié) : un EXTÉRIEUR (le club ne le place
-     * pas, rien à examiner), ou une date ≤ dimanche de la semaine ISO en cours
-     * (rencontre déjà jouée ou imminente). Un domicile futur hors fenêtre est faux.
-     */
-    private function qualifiesForArrivalTreatment(Fixture $fixture, DateTimeImmutable $weekEnd): bool
-    {
-        return FixtureHomeAway::AWAY === $fixture->getHomeAway()
-            || $fixture->getMatchDate()->format('Y-m-d') <= $weekEnd->format('Y-m-d');
-    }
-
-    /**
-     * Guard-before-write (revue F2 round 1): a mapping whose division the poule
-     * guard REFUSES is dropped (named error) instead of persisted — the dialog
-     * has no remap gesture, a wrong write would stick. The target competition
-     * is resolved WITHOUT writing: the suggestion's competitionId, else the
-     * exact (team, name) lookup persistMappings would use. A target without
-     * pairing has no poule → never checked, mapping passes.
-     *
-     * @param list<array{division: string, fbiTeamLabel: string|null, teamId: string, competitionId: string|null}>                                                                                                                                                                                              $mappings
-     * @param list<array{name: string, divisionKey: string, label: string, labelKey: string, multiLabel: bool, rowCount: int, rows: list<array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null}>}> $groups
-     * @param list<string>                                                                                                                                                                                                                                                                                      $errors
-     * @param array<string, true>                                                                                                                                                                                                                                                                               $blockedKeys divisionKey|labelKey of refused divisions
-     *
-     * @return list<array{division: string, fbiTeamLabel: string|null, teamId: string, competitionId: string|null}> the surviving mappings
-     */
-    private function rejectGuardBlockedMappings(array $mappings, array $groups, array &$errors, array &$blockedKeys): array
-    {
-        if ([] === $mappings) {
-            return [];
-        }
-        $competitionRepository = $this->entityManager->getRepository(Competition::class);
-
-        $survivors = [];
-        foreach ($mappings as $mapping) {
-            $divisionKey = $this->normalizeLabel($mapping['division']);
-            $labelKey = null !== $mapping['fbiTeamLabel'] ? $this->normalizeLabel($mapping['fbiTeamLabel']) : null;
-            $group = null;
-            foreach ($groups as $candidate) {
-                if ($candidate['divisionKey'] === $divisionKey && (null === $labelKey || $candidate['labelKey'] === $labelKey)) {
-                    $group = $candidate;
-                    break;
-                }
-            }
-
-            $target = null;
-            $mappingCompetitionId = $mapping['competitionId'] ?? null;
-            if (null !== $mappingCompetitionId) {
-                $byId = $competitionRepository->findOneBy(['id' => $mappingCompetitionId]);
-                if ($byId instanceof Competition && $byId->getTeamId() === $mapping['teamId']) {
-                    $target = $byId;
-                }
-            }
-            $target ??= $competitionRepository->findOneBy(['teamId' => $mapping['teamId'], 'name' => mb_substr(trim($mapping['division']), 0, 180)]);
-
-            $guard = null !== $group && $target instanceof Competition ? $this->pouleGuard($target, $group['rows'], $group['name']) : null;
-            if (null !== $guard && $guard['blocking']) {
-                $errors[] = $guard['message'];
-                $blockedKeys[$group['divisionKey'] . '|' . $group['labelKey']] = true;
-                continue;
-            }
-            $survivors[] = $mapping;
-        }
-
-        return $survivors;
-    }
-
-    /**
-     * The poule guard (6.1): confront the division's DISTINCT opponents to the
-     * paired poule's club list (whole-word normalized containment via
-     * {@see containsClub} — « FIRMINY CHAZEAU-FAYOL AL - 1 » matches the poule
-     * club « FIRMINY CHAZEAU-FAYOL AL »). > 50 % unknown → blocking; 1..50 % →
-     * warning; competition without a paired opponent list → never checked
-     * (today's behaviour). Null = nothing to report.
-     *
-     * @param list<array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null}> $rows
-     *
-     * @return array{blocking: bool, message: string, unknown: list<string>}|null
-     */
-    private function pouleGuard(Competition $competition, array $rows, string $divisionName): ?array
-    {
-        $pouleClubs = $competition->getFfbbPouleOpponents();
-        if (null === $pouleClubs || [] === $pouleClubs) {
-            return null;
-        }
-        $needles = array_map(fn (string $club): string => $this->normalizeLabel($club), $pouleClubs);
-
-        $unknown = [];
-        $seen = [];
-        foreach ($rows as $row) {
-            $key = $this->normalizeLabel($row['opponentLabel']);
-            if (isset($seen[$key])) {
-                continue;
-            }
-            $seen[$key] = true;
-            $known = false;
-            foreach ($needles as $needle) {
-                // The SAME whole-word join as the club-side detection — one idiom.
-                if ('' !== $needle && $this->containsClub($row['opponentLabel'], $needle)) {
-                    $known = true;
-                    break;
-                }
-            }
-            if (!$known) {
-                $unknown[] = $row['opponentLabel'];
-            }
-        }
-
-        if ([] === $unknown) {
-            return null;
-        }
-        $total = \count($seen);
-        $blocking = \count($unknown) * 2 > $total;
-        $pouleName = $competition->getFfbbPouleName() ?? '?';
-        $message = $blocking
-            ? \sprintf(
-                'Division « %s » ignorée : %d adversaire(s) sur %d hors de la poule « %s » (%s) — mauvais fichier, mauvaise équipe ou mauvaise phase ? Données de la ligue — un écart se corrige auprès d\'elle.',
-                $divisionName,
-                \count($unknown),
-                $total,
-                $pouleName,
-                implode(', ', \array_slice($unknown, 0, 5)),
-            )
-            : \sprintf(
-                'Division « %s » : %d adversaire(s) sur %d hors de la poule « %s » (%s).',
-                $divisionName,
-                \count($unknown),
-                $total,
-                $pouleName,
-                implode(', ', \array_slice($unknown, 0, 5)),
-            );
-
-        return ['blocking' => $blocking, 'message' => $message, 'unknown' => $unknown];
-    }
-
-    /**
-     * Suggestion resolver (6.3): a file division label → a PAIRED competition to
-     * pre-fill. A suggestion, never a resolution — the manager confirms in the
-     * dialog (mapping stays the contract). Two étapes :
-     *
-     *  1. nom canonique : la clé normalisée de la division == le nom FFBB canonique
-     *     d'une compétition appariée (deux appariées partageant la clé = ambigu → rien) ;
-     *  2. PONT SIGNATURE (décision fondateur 2026-10-01) : quand le nom canonique ne
-     *     matche pas, on réduit le libellé du FICHIER à sa signature FBI ({@see
-     *     FbiDivisionSignature::fromCode}) et on la ponte aux compétitions appariées,
-     *     réduites via leur nom canonique ({@see FbiDivisionSignature::fromFfbbRow}).
-     *     Plusieurs équipes DISTINCTES pontées → ambigu → rien (jamais deviner entre
-     *     équipes) ; plusieurs compétitions vers la MÊME équipe → la première par nom.
-     *     Ferme le défaut « résolveur = nom canonique seul » : une division xlsx (code
-     *     FBI « PNM ») retrouve la compétition appariée « Pré régionale masculine ».
-     */
-    private function buildSuggestionResolver(): callable
-    {
-        /** @var list<Competition> $competitions */
-        $competitions = $this->entityManager->getRepository(Competition::class)->findBy([]);
-        /** @var array<string, Competition|null> $byCanonical null = ambiguous */
-        $byCanonical = [];
-        /** @var list<array{competition: Competition, signature: array{level: string|null, division: int|null, gender: string|null, category: string|null, type: string}}> $bridgeCandidates */
-        $bridgeCandidates = [];
-        foreach ($competitions as $competition) {
-            $canonical = $competition->getFfbbCompetitionName();
-            if (null === $canonical) {
-                continue;
-            }
-            $key = $this->normalizeLabel($canonical);
-            $byCanonical[$key] = \array_key_exists($key, $byCanonical) ? null : $competition;
-            $bridgeCandidates[] = [
-                'competition' => $competition,
-                'signature' => $this->divisionSignature->fromFfbbRow(null, null, null, $canonical),
-            ];
-        }
-
-        return function (string $divisionName) use ($byCanonical, $bridgeCandidates): ?Competition {
-            $byName = $byCanonical[$this->normalizeLabel($divisionName)] ?? null;
-            if ($byName instanceof Competition) {
-                return $byName;
-            }
-
-            $fileSignature = $this->divisionSignature->fromCode($divisionName);
-            if (null === $fileSignature) {
-                return null;
-            }
-            $matches = [];
-            $teamIds = [];
-            foreach ($bridgeCandidates as $candidate) {
-                if ($this->divisionSignature->bridges($fileSignature, $candidate['signature'])) {
-                    $matches[] = $candidate['competition'];
-                    $teamIds[$candidate['competition']->getTeamId()] = true;
-                }
-            }
-            if (1 !== \count($teamIds)) {
-                return null;
-            }
-            usort($matches, static fn (Competition $a, Competition $b): int => strcmp($a->getName(), $b->getName()));
-
-            return $matches[0];
-        };
+        return $this->deviationService->attachConfirmedVenue($fixture, $venueLabel);
     }
 
     /**
@@ -1273,7 +907,7 @@ final class FbiFixtureImporter
             $oldIso = $existing->getMatchDate()->format('Y-m-d');
             $oldDate = $existing->getMatchDate()->format('d/m/Y');
             $existing->setMatchDate($row['matchDate']);
-            $this->unplace($existing, $now);
+            $this->deviationService->unplace($existing, $now);
             $warnings[] = [
                 'type' => 'RESCHEDULED',
                 'division' => $divisionName,
@@ -1293,7 +927,7 @@ final class FbiFixtureImporter
 
         if ($existing->getHomeAway() !== $row['homeAway']) {
             $existing->setHomeAway($row['homeAway']);
-            $this->unplace($existing, $now);
+            $this->deviationService->unplace($existing, $now);
             $warnings[] = [
                 'type' => 'SWITCHED',
                 'division' => $divisionName,
@@ -1340,7 +974,7 @@ final class FbiFixtureImporter
             $changed = true;
         }
 
-        $this->recordAutoApplied($existing, $autoApplied, FbiIngestionSource::FBI_XLSX->value, $now);
+        $this->deviationService->recordAutoApplied($existing, $autoApplied, FbiIngestionSource::FBI_XLSX->value, $now);
 
         // P4-187a — un domicile UNPLACED (hors périmètre) dont le libellé égale un
         // alias confirmé retrouve son gymnase, toujours sans le placer. No-op quand un
@@ -1372,78 +1006,6 @@ final class FbiFixtureImporter
         return $changed ? 'updated' : 'unchanged';
     }
 
-    /**
-     * A match ALREADY treated (REVIEWED/OUT_OF_SYNC) whose source silently changed
-     * a value out of the perimeter records an « auto-applied » entry per changed
-     * field so the manager sees what the league moved. A NEW match (never treated)
-     * keeps NEW — there is nothing to be out of sync with.
-     *
-     * Décision fondateur P4-199 — un EXTÉRIEUR PREND ACTE de la source : la valeur
-     * est appliquée d'office (déjà écrite en amont), la trace `autoApplied` allume
-     * le bandeau, mais la rencontre RESTE traitée (REVIEWED, jamais OUT_OF_SYNC) —
-     * le club ne place pas un extérieur, il n'y a rien à re-arbitrer. Un domicile
-     * hors périmètre (UNPLACED) déjà traité, lui, retombe OUT_OF_SYNC.
-     *
-     * @param array<string, array{app: string|null, file: string|null}> $autoApplied
-     * @param 'FBI_XLSX'|'FFBB_API'                                     $channel
-     */
-    private function recordAutoApplied(Fixture $existing, array $autoApplied, string $channel, DateTimeImmutable $now): void
-    {
-        if ([] === $autoApplied || FixtureReviewState::NEW === $existing->getReviewState()) {
-            return;
-        }
-        foreach ($autoApplied as $field => $vals) {
-            $existing->putPendingDeviation($this->pendingEntry($existing, $field, $vals, $channel, $now, true));
-        }
-        if (FixtureHomeAway::AWAY === $existing->getHomeAway()) {
-            $existing->markReviewed($now);
-
-            return;
-        }
-        $existing->setReviewState(FixtureReviewState::OUT_OF_SYNC);
-    }
-
-    /** Ferme (par le dépôt) l'entrée « à corriger dans FBI » OUVERTE de ce champ, s'il y en a une. */
-    private function closeOpenCorrection(Fixture $fixture, string $field, DateTimeImmutable $now): void
-    {
-        $entry = $this->ledger->findOpen($fixture, FbiCorrectionField::from($field));
-        if ($entry instanceof FbiCorrection) {
-            $this->ledger->closeBySource($entry, $now);
-        }
-    }
-
-    /** The league re-decided: the match goes back to « à placer ». */
-    private function unplace(Fixture $fixture, DateTimeImmutable $now): void
-    {
-        $fixture->setStatus(FixtureStatus::UNPLACED, $now);
-        $fixture->setVenueId(null);
-    }
-
-    /**
-     * Build the pending-deviation entry for a field, preserving the ORIGINAL
-     * `seenAt` when the écart was already open for that field (« depuis quand »),
-     * fresh otherwise.
-     *
-     * @param array{app: string|null, file: string|null} $vals
-     * @param 'FBI_XLSX'|'FFBB_API'                      $channel
-     *
-     * @return array{field: 'date'|'kickoff'|'venue', appValue: string|null, sourceValue: string|null, channel: 'FBI_XLSX'|'FFBB_API', seenAt: string, autoApplied: bool}
-     */
-    private function pendingEntry(Fixture $existing, string $field, array $vals, string $channel, DateTimeImmutable $now, bool $autoApplied): array
-    {
-        \assert('date' === $field || 'kickoff' === $field || 'venue' === $field);
-        $previous = $existing->getPendingDeviation($field);
-
-        return [
-            'field' => $field,
-            'appValue' => $vals['app'],
-            'sourceValue' => $vals['file'],
-            'channel' => $channel,
-            'seenAt' => $previous['seenAt'] ?? $now->format(DateTimeImmutable::ATOM),
-            'autoApplied' => $autoApplied,
-        ];
-    }
-
     /** Still pending ⇒ OUT_OF_SYNC ; all resolved ⇒ REVIEWED + horodaté (D5). */
     private function finalizeReview(Fixture $existing, DateTimeImmutable $now): void
     {
@@ -1453,23 +1015,6 @@ final class FbiFixtureImporter
             return;
         }
         $existing->markReviewed($now);
-    }
-
-    /**
-     * D2: an in-place take_file un-submits a SUBMITTED/VALIDATED fixture to PLACED.
-     * La coche FBI portait une mauvaise valeur : la rencontre retombe « à saisir », et
-     * on POSE le mémo `fbiEcho` (« FBI affiche `$sourceValue` ») pour l'afficher sur la
-     * ligne « à saisir » de la liste FBI. Sans rétrogradation (déjà PLACED/UNPLACED),
-     * aucun mémo — il n'y a rien à re-saisir de plus qu'avant.
-     */
-    private function demoteSubmitted(Fixture $fixture, DateTimeImmutable $now, string $field, ?string $sourceValue): void
-    {
-        if (FixtureStatus::SUBMITTED === $fixture->getStatus() || FixtureStatus::VALIDATED === $fixture->getStatus()) {
-            $fixture->setStatus(FixtureStatus::PLACED, $now);
-            if (null !== $sourceValue) {
-                $fixture->setFbiEcho(['field' => $field, 'value' => $sourceValue, 'at' => $now->format(DateTimeImmutable::ATOM)]);
-            }
-        }
     }
 
     /**
@@ -1488,18 +1033,6 @@ final class FbiFixtureImporter
         };
 
         return ['type' => 'RESCHEDULED', 'division' => $divisionName, 'externalRef' => $row['numero'], 'message' => $message];
-    }
-
-    /**
-     * Fuzzy salle match (D13): normalized equality OR whole-word containment
-     * either direction, reusing the {@see containsClub} idiom. Degrades to « no
-     * deviation » when a side is empty. NAMED fallback if real-world false
-     * positives appear: compare the stored fbiVenueLabel (old) to the new one
-     * instead of the placed Venue name.
-     */
-    private function venueMatches(string $appLabel, string $fileLabel): bool
-    {
-        return $this->labelNormalizer->fuzzyMatches($appLabel, $fileLabel);
     }
 
     /**

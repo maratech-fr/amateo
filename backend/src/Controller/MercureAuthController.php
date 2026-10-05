@@ -37,6 +37,8 @@ use Symfony\Component\Routing\Attribute\Route;
  */
 final class MercureAuthController extends AbstractController
 {
+    use ResolvesCurrentClubTrait;
+
     private const int TTL_SECONDS = 3600;
 
     public function __construct(
@@ -55,11 +57,10 @@ final class MercureAuthController extends AbstractController
     #[Route('/api/mercure/auth', name: 'api_mercure_auth', methods: ['GET'])]
     public function __invoke(): JsonResponse
     {
-        $request = $this->requestStack->getCurrentRequest();
         // Le club vient du TENANT RÉSOLU (listener après firewall) — jamais d'un
         // paramètre client : le scope du jeton EST la frontière de sécurité.
-        $clubId = $request?->attributes->get('_club_id');
-        if (!\is_string($clubId) || '' === $clubId) {
+        $clubId = $this->resolveCurrentClubId($this->requestStack);
+        if (null === $clubId) {
             return $this->json(['error' => 'No club in context.'], Response::HTTP_BAD_REQUEST);
         }
 

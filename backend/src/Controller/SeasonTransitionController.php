@@ -28,6 +28,8 @@ use Symfony\Component\Routing\Attribute\Route;
 #[Route('/api/seasons/{id}/transition', name: 'season_transition', methods: ['POST'])]
 final class SeasonTransitionController extends AbstractController
 {
+    use ResolvesCurrentClubTrait;
+
     public function __construct(
         private readonly SeasonRepository $seasonRepository,
         private readonly ClubUserRepository $clubUserRepository,
@@ -37,9 +39,8 @@ final class SeasonTransitionController extends AbstractController
 
     public function __invoke(string $id): JsonResponse
     {
-        $request = $this->requestStack->getCurrentRequest();
-        $clubId = $request?->attributes->get('_club_id');
-        if (!\is_string($clubId) || '' === $clubId) {
+        $clubId = $this->resolveCurrentClubId($this->requestStack);
+        if (null === $clubId) {
             return $this->json(['error' => 'No club in context.'], Response::HTTP_BAD_REQUEST);
         }
 

@@ -32,6 +32,8 @@ use Symfony\Component\Routing\Attribute\Route;
 #[AsController]
 final class TranscribePeriodPlanController extends AbstractController implements SeasonScopedWriteInterface
 {
+    use ResolvesCurrentClubTrait;
+
     public function __construct(
         private readonly RequestStack $requestStack,
         private readonly ManagementAccessGuard $managementAccessGuard,
@@ -61,7 +63,7 @@ final class TranscribePeriodPlanController extends AbstractController implements
             return $this->json(['error' => 'Plan introuvable.'], Response::HTTP_NOT_FOUND);
         }
 
-        $currentClubId = $this->resolveCurrentClubId();
+        $currentClubId = $this->resolveCurrentClubId($this->requestStack);
         if (null !== $currentClubId && $context['clubId'] !== $currentClubId) {
             return $this->json(['error' => 'Accès refusé.'], Response::HTTP_FORBIDDEN);
         }
@@ -84,17 +86,5 @@ final class TranscribePeriodPlanController extends AbstractController implements
             'copiedCount' => $result->copiedCount,
             'toReplace' => $result->toReplace,
         ], Response::HTTP_CREATED);
-    }
-
-    private function resolveCurrentClubId(): ?string
-    {
-        $request = $this->requestStack->getCurrentRequest();
-
-        $clubId = $request?->attributes->get('_club_id');
-        if (\is_string($clubId) && '' !== $clubId) {
-            return $clubId;
-        }
-
-        return null;
     }
 }

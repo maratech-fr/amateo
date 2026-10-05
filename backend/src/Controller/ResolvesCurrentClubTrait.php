@@ -12,8 +12,12 @@ use Symfony\Component\HttpFoundation\RequestStack;
  * membership (no client-supplied header since AUD-SEC-25). Shared by cockpit
  * controllers so this security-sensitive idiom lives in one place.
  *
- * NOTE: several older controllers (Validate/Reopen/Generate…) still inline the
- * same helper — migrating them is a separate cleanup.
+ * NOTE: the cockpit & planning-lifecycle controllers that duplicated this helper
+ * now `use` the trait (those reusing the Request right after add an explicit
+ * `null === $request` guard, same 4xx as before, since its non-null-ness no longer
+ * flows from the resolved id). One reader stays inline on purpose:
+ * LeagueValidatedFixturesController keeps an empty string as a valid id, which the
+ * trait would turn into null — a different behaviour, not a dedup.
  */
 trait ResolvesCurrentClubTrait
 {
