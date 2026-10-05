@@ -138,3 +138,32 @@ export interface VenueUsageStats {
 
 export const getVenueUsageStats = (from?: string, to?: string): Promise<VenueUsageStats> =>
   api.get("venue-usage-stats", from && to ? { searchParams: { from, to } } : undefined).json();
+
+/**
+ * P4-299 — les invitations EN COURS d'un club (management). Le token n'est JAMAIS
+ * exposé (il est hashé en base, e-mailé en clair une seule fois) : la ligne ne porte
+ * que l'adresse, le rôle visé et la date d'expiration. Le serveur borne la portée au
+ * club du gestionnaire (RLS + provider) — le front n'ajoute aucun filtre.
+ */
+export interface ClubInvitation {
+  id: string;
+  email: string;
+  /** `admin` | `member` (enum `ClubRole` côté serveur ; libellé via `roleLabel`). */
+  role: string;
+  /** Date d'expiration ISO `YYYY-MM-DD` (horloge RÉELLE, jamais l'horloge simulée). */
+  expiresAt: string;
+}
+
+export const listInvitations = (): Promise<{ invitations: ClubInvitation[] }> => api.get("invitations").json();
+
+/** Émet une invitation (management). 422 « déjà membre »/« adresse non invitable », 429 quota. */
+export const createInvitation = (email: string, role: string): Promise<ClubInvitation> =>
+  api.post("invitations", { json: { email, role } }).json();
+
+/** Ré-émet l'e-mail (régénère le token, invalide l'ancien) — jamais une seconde ligne. */
+export const resendInvitation = (id: string): Promise<ClubInvitation> => api.post(`invitations/${id}/resend`).json();
+
+/** Révoque : supprime la ligne et tue le lien (404 byte-identique ensuite côté invité). */
+export const revokeInvitation = async (id: string): Promise<void> => {
+  await api.delete(`invitations/${id}`);
+};

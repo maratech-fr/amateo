@@ -85,6 +85,14 @@ describe("router — les filets du découpage", () => {
     }
   });
 
+  // P4-299 — la page PUBLIQUE d'invitation : route lazy, SOUS la racine (couverte par les
+  // filets), et HORS du shell authentifié (le porteur du lien n'a pas de session).
+  it("la page d'invitation est une route publique lazy sous la racine", () => {
+    const invitation = root.children?.find((r) => "/invitation/:token" === r.path);
+    expect(invitation, "la route /invitation/:token doit vivre sous la racine").toBeDefined();
+    expect(invitation?.lazy, "/invitation/:token doit rester lazy").toBeDefined();
+  });
+
   // RMM-1 PR2 — /matchs est désormais un LAYOUT (garde socle + nav) avec deux espaces
   // enfants : la boucle hebdo (index) et la Configuration. Les deux sont lazy (la
   // Configuration rare ne charge pas avec la boucle) et vivent SOUS les filets.

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { errorMessage } from "@/shared/lib/errorMessage";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { AppearancePayload } from "./api";
@@ -108,5 +109,52 @@ export function useDownloadClubExport() {
   return useMutation({
     mutationFn: () => clubApi.downloadClubExport(),
     onSuccess: () => toast.success("Export téléchargé."),
+  });
+}
+
+/** P4-299 — invitations EN COURS du club (management). readState à 3 états via le hook. */
+export function useInvitations(enabled = true) {
+  return useQuery({ queryKey: ["invitations"], queryFn: clubApi.listInvitations, enabled });
+}
+
+/**
+ * Émet une invitation ; rafraîchit la liste au succès. L'ERREUR n'est PAS « toastée »
+ * ici — l'appelant la RESTITUE inline, près du formulaire (« déjà membre », quota) :
+ * c'est un retour de saisie, pas un incident de fond. Succès → toast + ligne ajoutée.
+ */
+export function useCreateInvitation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ email, role }: { email: string; role: string }) => clubApi.createInvitation(email, role),
+    onSuccess: () => {
+      toast.success("Invitation envoyée.");
+      void queryClient.invalidateQueries({ queryKey: ["invitations"] });
+    },
+  });
+}
+
+/** Renvoie l'e-mail (régénère le lien). Succès → toast ; la liste repousse l'expiration. */
+export function useResendInvitation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => clubApi.resendInvitation(id),
+    onSuccess: () => {
+      toast.success("Invitation renvoyée.");
+      void queryClient.invalidateQueries({ queryKey: ["invitations"] });
+    },
+    onError: (err) => void errorMessage(err).then((m) => toast.error(m)),
+  });
+}
+
+/** Révoque l'invitation (derrière une confirmation côté UI) ; rafraîchit la liste. */
+export function useRevokeInvitation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => clubApi.revokeInvitation(id),
+    onSuccess: () => {
+      toast.success("Invitation révoquée.");
+      void queryClient.invalidateQueries({ queryKey: ["invitations"] });
+    },
+    onError: (err) => void errorMessage(err).then((m) => toast.error(m)),
   });
 }

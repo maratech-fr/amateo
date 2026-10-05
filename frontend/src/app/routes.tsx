@@ -106,6 +106,12 @@ export const routes: RouteObject[] = [
         lazy: async () => ({ Component: (await import("@/features/auth/ClubApprovalPage")).ClubApprovalPage }),
       },
       {
+        // P4-299 — page PUBLIQUE d'invitation (le token du mail EST l'identité de
+        // l'adresse ; pas de session requise — le porteur crée son compte ou se connecte).
+        path: "/invitation/:token",
+        lazy: async () => ({ Component: (await import("@/features/auth/InvitationPage")).InvitationPage }),
+      },
+      {
         path: "/waiting",
         lazy: async () => ({ Component: (await import("@/features/auth/WaitingApprovalPage")).WaitingApprovalPage }),
       },
