@@ -5,12 +5,16 @@
 
 Last verified @ 2026-10-05 (`documentation-update`, P4-300 — nouvel endpoint lecture
 `GET /api/venue_closures`/`VenueClosureResource` et fusion des fermetures du calendrier dans le
-payload `/api/fixtures/place`, confrontés au code ; lot backend 5 « architecture » — BCK-19 partie 1 :
-`FbiFixtureImporter` (`backend/src/Service/`) reste la façade publique (`treatOnArrival`,
-`applyFieldTakeFile`, `attachConfirmedVenue`, `detectUnplacedVenueDeviation`,
+payload `/api/fixtures/place`, confrontés au code ; lot backend 5 « architecture » — BCK-19
+partie 1 : `FbiFixtureImporter` (`backend/src/Service/`) reste la façade publique
+(`treatOnArrival`, `applyFieldTakeFile`, `attachConfirmedVenue`, `detectUnplacedVenueDeviation`,
 `sourceIsAuthoritativeForWindow`, mêmes signatures) et délègue à `backend/src/Service/Fbi/`
 (`FbiDeviationService`, `FbiArrivalReview`, `FbiMappingGuards`) ; 19 contrôleurs utilisent
-`ResolvesCurrentClubTrait`, `LeagueValidatedFixturesController` reste inline par exception documentée).
+`ResolvesCurrentClubTrait`, `LeagueValidatedFixturesController` reste inline par exception
+documentée ; **partie 2** : `MatchConflictDetector` (`backend/src/Service/`) reste la façade
+unique (`detect()`, 4 prédicats statiques publics inchangés) et délègue à
+`backend/src/Service/Conflicts/` (`VenueConflicts`, `RuleWindowConflicts`, `PersonConflicts`,
+`ConflictMoments`) — BCK-19 SOLDÉ pour les deux fichiers nommés).
 Reste du fichier non rebalayé cette passe ; historique des passes complètes : `git log -p --follow` ce
 fichier — un stamp REMPLACE, il ne s'empile pas.
 
@@ -43,6 +47,7 @@ backend/
 │   ├── MessageHandler/       # GenerateScheduleHandler, ExportPdfHandler
 │   ├── Service/              # ScheduleConstraintBuilder, ScheduleResultImporter, ClubGenerationLock, ManualEditService, FfbbExcelImporter, ConstraintValidationService, ... — liste : ls backend/src/Service/
 │   ├── Service/Fbi/          # Découpage verbatim, iso-comportement, de `FbiFixtureImporter` (BCK-19 partie 1) : `FbiDeviationService` (moteur de réconciliation app⇄fichier, foyer unique des 2 canaux import xlsx + API FFBB), `FbiArrivalReview` (traitement à l'arrivée + rattrapage de revue), `FbiMappingGuards` (gardes d'appariement poule/suggestion) — `FbiFixtureImporter` reste dans `Service/` et garde des façades publiques de même signature
+│   ├── Service/Conflicts/    # Découpage verbatim, iso-comportement, de `MatchConflictDetector` (BCK-19 partie 2) par famille de conflit : `VenueConflicts` (gymnase — chevauchements, indisponibilités/fermetures, gymnase interdit, fenêtre d'accès perdue), `RuleWindowConflicts` (fenêtres ligue, règles club), `PersonConflicts` (personnes — match×match, match×entraînement, sévérités), `ConflictMoments` (helpers purs partagés, zéro doublon) — `MatchConflictDetector` reste dans `Service/`, façade unique (`detect()`, 4 prédicats statiques publics inchangés)
 │   ├── State/Provider/       # State providers API Platform (par ressource)
 │   ├── State/Processor/      # State processors API Platform (par ressource)
 │   ├── EventListener/        # TenantFilterListener (résolution tenant : attribut / header / JWT), EmailSignatureListener (signature de marque sur tout e-mail sortant, MessageEvent symfony/mailer — P5-24)
