@@ -8,6 +8,7 @@ use App\Entity\User;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
 use Symfony\Component\Security\Http\Event\LoginSuccessEvent;
 use Throwable;
@@ -32,6 +33,12 @@ final class LoginSuccessListener
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
+        // P4-304 — horloge RÉELLE : `lastLoginAt` sert à mesurer l'inactivité (purge
+        // RGPD à 24 mois) — un horodatage de SÉCURITÉ. L'authenticator JWT déclenche
+        // cet événement à CHAQUE requête authentifiée, y compris celles d'un membre
+        // de club démo dont l'horloge décorée simulerait la date : une date passée
+        // rendrait le compte faussement inactif, une date future repousserait sa purge.
+        #[Autowire(service: 'app.clock.real')]
         private readonly ClockInterface $clock,
     ) {}
 

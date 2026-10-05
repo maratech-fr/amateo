@@ -90,6 +90,10 @@ final class PurgeInactiveUsersCommand extends Command
         $users = $this->entityManager->getRepository(User::class)->createQueryBuilder('u')
             ->where('u.anonymizedAt IS NULL')
             ->andWhere('u.inactivityWarnedAt IS NULL')
+            // P4-304 — les comptes de DÉMONSTRATION sont hors rétention RGPD : ils vivent
+            // à une horloge simulée (souvent une date passée) qui les ferait paraître
+            // inactifs depuis « 25 mois » dès leur création. Modèle PurgeOrphanAccountsCommand.
+            ->andWhere('u.isDemo = false')
             ->andWhere('COALESCE(u.lastLoginAt, u.createdAt) < :threshold')
             ->setParameter('threshold', $now->modify(self::WARN_AFTER))
             ->getQuery()
@@ -138,6 +142,10 @@ final class PurgeInactiveUsersCommand extends Command
     {
         $users = $this->entityManager->getRepository(User::class)->createQueryBuilder('u')
             ->where('u.anonymizedAt IS NULL')
+            // P4-304 — défense en profondeur jumelle de warn() : un compte démo (horloge
+            // simulée) ne doit jamais être anonymisé pour « inactivité ». Modèle
+            // PurgeOrphanAccountsCommand.
+            ->andWhere('u.isDemo = false')
             ->andWhere('COALESCE(u.lastLoginAt, u.createdAt) < :threshold')
             ->andWhere('u.inactivityWarnedAt IS NOT NULL')
             ->andWhere('u.inactivityWarnedAt < :minWarningAge')

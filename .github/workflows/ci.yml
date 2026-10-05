@@ -902,6 +902,14 @@ jobs:
       - name: OrphanAccountLifecycleTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/OrphanAccountLifecycleTest.php --group phase1'
 
+      # Axe auth & memberships (RGPD, P4-304) — rétention des comptes inactifs ET exclusion des
+      # comptes de DÉMONSTRATION : un démo vit à une horloge simulée (souvent passée) qui le ferait
+      # paraître inactif depuis 25 mois dès sa création. Falsifié : retirer `isDemo = false` de warn()
+      # ferait prévenir le démo, de erase() l'anonymiserait. Promu step NOMMÉ (gate, pas après) car il
+      # garde une promesse LÉGALE : des comptes démo supprimés à tort, ou de vrais comptes jamais purgés.
+      - name: InactiveUsersRetentionTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/InactiveUsersRetentionTest.php --group phase1'
+
       # Axe tenant isolation (BCK-24/BCK-38) — garde de COMPLÉTUDE des purges : toute entité
       # tenant doit être purgée (par saison, par club) ou nommément exclue AVEC sa raison, pour
       # la rétention/reset de saison ET pour l'effacement RGPD (art. 17). Le test DÉRIVE des

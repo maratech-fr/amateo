@@ -173,13 +173,21 @@ services:
             $clockAllEnabled: '%app.club_clock_all%'
             $environment: '%kernel.environment%'
 
-    # BCK-34 — l'horloge RÉELLE explicite : le service `clock` natif AVANT sa
+    # BCK-34 / P4-304 — l'horloge RÉELLE explicite : le service `clock` natif AVANT sa
     # décoration par ClubClock. Injectée (via #[Autowire(service: 'app.clock.real')])
     # partout où une DURÉE ou un HORODATAGE DE SÉCURITÉ se calcule et ne doit JAMAIS
-    # suivre l'« aujourd'hui » simulé d'un club démo : jeton de souscription Mercure,
-    # lien de changement d'e-mail, délai d'effacement RGPD, préavis de suppression
-    # d'un compte orphelin, horodatage du journal d'audit. Les DATES MÉTIER (saisons,
-    # échéances) continuent, elles, de traverser le service `clock` décoré.
+    # suivre l'« aujourd'hui » simulé d'un club démo. Consommateurs :
+    #   - MercureAuthController        — TTL du jeton de souscription Mercure
+    #   - EmailChangeVerifier          — TTL du lien de changement d'e-mail
+    #   - EmailVerifier                — TTL du lien de vérification d'e-mail (P4-304)
+    #   - EmailVerificationService     — horodatage emailVerifiedAt (P4-304)
+    #   - ClubApprovalController       — péremption d'une demande de création (P4-304)
+    #   - RegisterService              — preuve de consentement termsAcceptedAt (P4-304)
+    #   - LoginSuccessListener         — lastLoginAt (mesure d'inactivité RGPD) (P4-304)
+    #   - AccountErasureService / purges RGPD — délai d'effacement, préavis orphelin
+    #   - AuditTrail                   — horodatage du journal d'audit
+    # Les DATES MÉTIER (saisons, échéances) continuent, elles, de traverser le service
+    # `clock` décoré.
     app.clock.real:
         alias: 'App\Clock\ClubClock.inner'
         public: false
