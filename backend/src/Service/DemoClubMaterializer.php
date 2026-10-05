@@ -255,6 +255,59 @@ final class DemoClubMaterializer
     }
 
     /**
+     * Purge NOCTURNE (app:demo:purge-stale) des clubs démo CONSERVÉS EXPIRÉS (P4-294) :
+     * sélectionnés par la TABLE club (`is_demo AND demo_retained_until < $today`, Europe/Paris),
+     * JAMAIS par une adhésion — un club conservé est DÉTACHÉ de l'animateur et sortirait sinon
+     * des deux teardowns par adhésion (club immortel). Un club conservé mais REPRIS par
+     * l'approbation a `is_demo=false` ET `demo_retained_until=NULL` : il ne matche plus. Skip
+     * défensif d'un club avec un membre ACTIF (repris entre la sélection et la purge). Détruire =
+     * purger le workspace sous le GUC du club puis supprimer la ligne club, comme la passe 2 de
+     * {@see self::teardownStaleDemos}. La table `club` est hors RLS et sans FK entrante.
+     *
+     * @return list<string> ids des clubs conservés expirés effectivement détruits
+     */
+    public function teardownExpiredRetainedDemos(DateTimeImmutable $today): array
+    {
+        // Sélection par la table (club hors RLS) : les conservés dont l'échéance est PASSÉE.
+        // `< $today` : un club vit jusqu'à la FIN de son jour d'échéance (purgé le lendemain).
+        $clubIds = array_map(
+            static fn (mixed $id): string => (string) $id,
+            $this->entityManager->getConnection()->fetchFirstColumn(
+                'SELECT id FROM club WHERE is_demo = true AND demo_retained_until IS NOT NULL AND demo_retained_until < :today',
+                ['today' => $today->format('Y-m-d')],
+            ),
+        );
+
+        $destroyed = [];
+        foreach ($clubIds as $clubId) {
+            // Un club repris entre-temps porte un membre actif — on n'y touche jamais.
+            if ($this->hasAnyActiveMember($clubId)) {
+                continue;
+            }
+            $club = $this->entityManager->getRepository(Club::class)->find($clubId);
+            if (!$club instanceof Club) {
+                continue;
+            }
+            $this->tenantConnectionContext->setClubId($clubId);
+
+            try {
+                $this->erasedClubPurger->purge($club);
+            } finally {
+                $this->tenantConnectionContext->clear();
+            }
+
+            $fresh = $this->entityManager->getRepository(Club::class)->find($clubId);
+            if ($fresh instanceof Club) {
+                $this->entityManager->remove($fresh);
+                $this->entityManager->flush();
+            }
+            $destroyed[] = $clubId;
+        }
+
+        return $destroyed;
+    }
+
+    /**
      * Le club porte-t-il un membre ACTIF autre que l'animateur ? (raw DBAL — club_user
      * se lit cross-tenant). Un membership INACTIF (sorti/effacé) ne protège pas le club :
      * sans le filtre `is_active`, un club démo dont tous les autres membres ont quitté
@@ -265,6 +318,17 @@ final class DemoClubMaterializer
         $count = $this->entityManager->getConnection()->fetchOne(
             'SELECT COUNT(*) FROM club_user WHERE club_id = :cid AND user_id <> :uid AND is_active = true',
             ['cid' => $clubId, 'uid' => $animatorId],
+        );
+
+        return (int) $count > 0;
+    }
+
+    /** Le club conservé porte-t-il un membre ACTIF ? (raw DBAL — club_user se lit cross-tenant.) */
+    private function hasAnyActiveMember(string $clubId): bool
+    {
+        $count = $this->entityManager->getConnection()->fetchOne(
+            'SELECT COUNT(*) FROM club_user WHERE club_id = :cid AND is_active = true',
+            ['cid' => $clubId],
         );
 
         return (int) $count > 0;

@@ -1,8 +1,9 @@
 # Console superadmin — authentification, télémétrie et API de supervision
 
-Last verified @ 2026-10-05 (`documentation-update`, lot backend « horloge & démo » — BCK-34). §
-« Démos — console de pilotage » gagne la BORNE de saison sur `demos/{target}/clock` (même garde
-que le widget d'en-tête, `AdminDemoController::clockBoundsRefusal`) — confronté au code. Reste du
+Last verified @ 2026-10-05 (`documentation-update`, P4-294 « conserver le club démo »). §
+« Démos — console de pilotage » gagne `GET /demos.retained`, `POST /demos/prospect/retain`
+(409 fenêtre ouverte, détache l'animateur, échéance J+14 fixe) et la purge nocturne des clubs
+conservés expirés — confronté à `AdminDemoController.php`/`DemoClubMaterializer.php`. Reste du
 fichier non re-confronté cette passe ; historique des vérifications précédentes :
 `git log -p --follow specs/courantes/superadmin-auth.md`.
 
@@ -385,7 +386,18 @@ posé** (surface cross-tenant, contrat SA0).
 
 - `GET /demos` rend l'état des deux comptes : fenêtre d'activation ISO, club démo courant
   (résolu SERVEUR depuis l'adhésion active du compte, jamais depuis la requête), et la date
-  simulée (`simulated_today`) de chacun des **deux** comptes (bccl ET prospect).
+  simulée (`simulated_today`) de chacun des **deux** comptes (bccl ET prospect) ; **ainsi que la
+  liste des clubs démo CONSERVÉS** (`retained` — nom + échéance, triés par échéance croissante),
+  lue par la table `club` (pas par une adhésion : un club conservé en est détaché).
+- `POST /demos/prospect/retain` **conserve 14 jours** le club démo prospect (décision fondateur
+  2026-10-03, option B) : refusé en **409** tant que la fenêtre démo prospect est OUVERTE
+  (conservation et fenêtre d'accès ne se chevauchent jamais). Sinon, geste atomique : l'horloge
+  revient à aujourd'hui + boîte vidée, l'animateur est **détaché** du club (sinon le raccourci
+  démo suivant refuse en 409, et la purge nocturne par adhésion le détruirait), et
+  `demo_retained_until` reçoit aujourd'hui + 14 j (Europe/Paris, horloge RÉELLE, durée **fixe**,
+  aucun bouton de prolongation). Le club garde son code FFBB, son nom et ses données de démo
+  jusqu'à la reprise (approbation classique P3-4 du contact officiel homonyme, cf.
+  `backend-inventory.md` §P3-4) ou l'expiration (purge nocturne, ci-dessous).
 - `POST /demos/{bccl|prospect}/activate` ouvre la fenêtre d'activation (`app_user.demo_active_until`)
   pour **4 h à l'horloge RÉELLE** : un re-clic **redémarre** la fenêtre depuis maintenant, il ne
   l'étend jamais (la valeur est remplacée, pas additionnée). `POST /demos/{target}/deactivate` la
@@ -431,4 +443,8 @@ libère son code FFBB ; une réactivation le même jour réutilise le club exist
 raccourci register) : un club non démo ou démo **partagé** (un autre membre) est SAUTÉ, jamais
 détruit ; un club créé le **jour même** est gardé. La démo BCCL permanente n'est jamais une
 adhésion de l'animateur prospect — elle est hors scope par construction, pas par un cas
-particulier du job.
+particulier du job. **Purge aussi les clubs démo CONSERVÉS expirés**
+(`DemoClubMaterializer::teardownExpiredRetainedDemos()`, indépendante du compte animateur) :
+sélection par la table `club` (`is_demo AND demo_retained_until < aujourd'hui`, un club conservé
+vivant jusqu'à la fin de son jour d'échéance), jamais par adhésion — un club conservé en est
+détaché, sinon il serait immortel ; sauté s'il porte un membre actif (repris entre-temps).

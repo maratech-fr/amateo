@@ -1,9 +1,9 @@
-Last verified @ 2026-10-04 (P4-301 compte sans club — `GET /api/me` expose
-`accountDeletionScheduledFor` (échéance de suppression d'un compte sans club, nullable) et son
-`membershipStatus` gagne la valeur `deactivated` à l'énumération. +0 path, schéma seul).
+Last verified @ 2026-10-05 (P4-294 conserver le club démo — `POST /api/admin/demos/prospect/retain`
+(garder 14 j le club démo prospect : 200/403/404/409) et `GET /api/admin/demos` gagne le bloc
+`retained` (clubs démo conservés : nom + échéance). +1 path).
 
-**223 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`b1cc75be551ac567099b1ccadf850382bbb79846a82b0268d025dffb8969efb9` (`sha256sum` sur le fichier).
+**224 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`cca26735f076b6bf931d4d4e51c57d5c2c0c3939ede0e364d5d6cb32831d6c71` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

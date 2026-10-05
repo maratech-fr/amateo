@@ -159,6 +159,42 @@ final class ClubApprovalService
                     return $existing;
                 }
 
+                // P4-294 — aucun club RÉEL : le code appartient peut-être à un club démo
+                // CONSERVÉ (prospect convaincu, détaché de l'animateur par la console). On le
+                // REPREND au lieu de créer un club neuf — il redevient un vrai club avec ses
+                // données de démo. Le club réel a toujours la priorité (branche ci-dessus).
+                $retained = $this->clubs->findRetainedDemoByFfbbCode($request->getAra());
+                if ($retained instanceof Club) {
+                    $this->tenantContext->setClubId($retained->getId());
+                    // Membership MANAGER actif + annulation du préavis orphelin (et d'un
+                    // effacement éventuel) : patron ClubWinBackService::reprise — il RÉACTIVE
+                    // une ligne club_user existante plutôt que d'en insérer une 2e, et ne
+                    // re-seede PAS (les saisons de la démo sont déjà là).
+                    $this->clubWinBack->reprise($retained, $request->getUserId());
+                    // Bascule démo → réel : plus de bride (Découverte classique), crédits remis
+                    // à zéro, horloge & conservation effacées. is_demo=false ET simulated_today=NULL
+                    // dans la MÊME écriture — la CHECK du lot 2 (simulated_today IS NULL OR is_demo)
+                    // l'exige. Le club GARDE son nom (le nom saisi au register est ignoré,
+                    // décision fondateur) et n'est PAS re-populé depuis la FFBB.
+                    $retained->setIsDemo(false);
+                    $retained->setDemoRetainedUntil(null);
+                    $retained->setSimulatedToday(null);
+                    $retained->setOutputCreditsUsed(0);
+                    $this->close($request, ClubCreationRequest::STATUS_APPROVED);
+
+                    // Demandes concurrentes sur le même code → adhésion pending MEMBER (comme
+                    // à la création). La demande approuvée est encore `pending` EN BASE : l'exclure.
+                    foreach ($this->requests->findPendingByAra($request->getAra()) as $sibling) {
+                        if ($sibling->getId() === $request->getId()) {
+                            continue;
+                        }
+                        $this->provisioner->createMembership($retained->getId(), $sibling->getUserId(), false, ClubRole::MEMBER);
+                        $this->close($sibling, ClubCreationRequest::STATUS_APPROVED);
+                    }
+
+                    return $retained;
+                }
+
                 $club = $this->provisioner->createClub($request->getClubName(), $request->getAra());
                 $this->tenantContext->setClubId($club->getId());
                 // Le créateur du club en est le premier Gestionnaire, actif d'office.

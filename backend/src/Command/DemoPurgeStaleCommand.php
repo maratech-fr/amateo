@@ -29,6 +29,11 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
  * n'est JAMAIS concernée : elle n'est pas une adhésion de l'animateur prospect, et le
  * chemin sûr {@see DemoClubMaterializer::teardownStaleDemos()} saute de toute façon tout
  * club partagé ou non-démo.
+ *
+ * P4-294 — la commande purge AUSSI les clubs démo CONSERVÉS EXPIRÉS
+ * ({@see DemoClubMaterializer::teardownExpiredRetainedDemos()}) : détachés de l'animateur, ils
+ * sont sélectionnés par la table club (`demo_retained_until < aujourd'hui`), indépendamment du
+ * compte animateur — sans quoi un club conservé non repris serait immortel.
  */
 #[AsCommand(
     name: 'app:demo:purge-stale',
@@ -50,25 +55,34 @@ final class DemoPurgeStaleCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
 
-        $animator = $this->entityManager->getRepository(User::class)->findOneBy(['email' => strtolower($this->demoAnimatorEmail)]);
-        if (!$animator instanceof User) {
-            $io->writeln('No demo animator account — nothing to purge.');
-
-            return Command::SUCCESS;
-        }
-
         // Cutoff = début du jour COURANT en Europe/Paris : un club démo créé aujourd'hui
         // est gardé (réactiver la fenêtre le même jour réutilise ce club), la veille part.
+        // Même date pour l'expiration des conservés (`demo_retained_until < aujourd'hui`).
         $cutoff = DateTimeImmutable::createFromInterface($this->clock->now())
             ->setTimezone(new DateTimeZone('Europe/Paris'))
             ->setTime(0, 0);
+
+        // P4-294 — les clubs démo CONSERVÉS expirés (par la table club, détachés de
+        // l'animateur) : purge INDÉPENDANTE du compte animateur.
+        $freedRetained = $this->materializer->teardownExpiredRetainedDemos($cutoff);
+        foreach ($freedRetained as $clubId) {
+            $io->writeln(\sprintf('  <info>✓</info> kept demo club %s destroyed — retention expired', $clubId));
+        }
+
+        $animator = $this->entityManager->getRepository(User::class)->findOneBy(['email' => strtolower($this->demoAnimatorEmail)]);
+        if (!$animator instanceof User) {
+            $io->writeln('No demo animator account — only expired kept demos were purged.');
+            $io->success(\sprintf('%d expired kept demo club(s) purged.', \count($freedRetained)));
+
+            return Command::SUCCESS;
+        }
 
         $freed = $this->materializer->teardownStaleDemos($animator, $cutoff);
         foreach ($freed as $clubId) {
             $io->writeln(\sprintf('  <info>✓</info> demo club %s destroyed — FFBB code freed', $clubId));
         }
 
-        $io->success(\sprintf('%d stale prospect demo club(s) purged.', \count($freed)));
+        $io->success(\sprintf('%d stale prospect demo club(s) + %d expired kept demo club(s) purged.', \count($freed), \count($freedRetained)));
 
         return Command::SUCCESS;
     }

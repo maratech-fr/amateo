@@ -1,12 +1,11 @@
 # API FFBB — routes consommées
 
-Last verified @ 2026-10-02 (branche `feat/niveau-jeune-suit-engagement`) — re-sondé contre
-`App\Service\Basketball\EngagementLevelDeducer` (`backend/src/Service/Basketball/EngagementLevelDeducer.php`) :
-mapping `D`/`R`/`N`→`DEPARTEMENTAL`/`REGIONAL`/`NATIONAL`, jamais `ELITE`, `PR`/`PN`→`null`,
-éligibilité U9–U18 + championnat/brassage, arbitrage par date de dernier match ; et contre
-`FfbbEngagementsController::list`/`confirm`
-(`backend/src/Controller/Basketball/FfbbEngagementsController.php`) : `deducedLevel`/`alignment` au
-GET, `alignLevel` + `setLevel()` direct + no-op sur ligne inéligible au confirm. Reste du fichier
+Last verified @ 2026-10-05 (`documentation-update`, rotation — sans rapport avec le sujet de la
+PR). Re-confronté : mapping `EngagementLevelDeducer` toujours `D`/`R`/`N`→
+`DEPARTEMENTAL`/`REGIONAL`/`NATIONAL`, jamais `ELITE`, `PR`/`PN`/absent→`null`
+(`backend/src/Service/Basketball/EngagementLevelDeducer.php:46-49`) ✓ · les deux hosts de la liste
+blanche (`api.ffbb.com`, `meilisearch-prod.ffbb.app`) toujours ceux effectivement appelés
+(`FfbbApiClient.php`, `FfbbLogoFetcher.php`, `FfbbSallesController.php`) ✓. Reste du fichier
 hérité des passes précédentes, non re-sondé ligne à ligne cette fois. Historique des passes
 précédentes vit dans git : `git log -p --follow backend/docs/ffbb-api.md`.
 

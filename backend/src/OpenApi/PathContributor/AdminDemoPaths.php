@@ -44,18 +44,46 @@ final readonly class AdminDemoPaths implements CustomPathContributor
             ],
         ];
 
+        $retainedClub = [
+            'type' => 'object',
+            'properties' => [
+                'name' => ['type' => 'string'],
+                'retainedUntil' => ['type' => 'string', 'format' => 'date', 'description' => 'Retention deadline (14 days), after which the kept demo club is purged unless an approval reclaimed it.'],
+            ],
+        ];
+
         return [
             '/api/admin/demos' => new PathItem(get: new Operation(
                 operationId: 'getAdminDemos',
                 tags: ['AdminDemo'],
                 responses: [
-                    '200' => $this->schemas->jsonResponse('State of the two demo accounts (bccl carries the simulated clock)', [
+                    '200' => $this->schemas->jsonResponse('State of the two demo accounts (bccl carries the simulated clock) plus the kept demo clubs', [
                         'type' => 'object',
-                        'properties' => ['bccl' => $account, 'prospect' => $account],
+                        'properties' => [
+                            'bccl' => $account,
+                            'prospect' => $account,
+                            'retained' => ['type' => 'array', 'items' => $retainedClub, 'description' => 'Demo clubs kept for 14 days, listed by the club table (never by membership).'],
+                        ],
                     ]),
                     '401' => new Response('No authenticated super-admin session'),
                 ],
                 summary: 'Read the state of the two demonstration accounts',
+            )),
+            '/api/admin/demos/prospect/retain' => new PathItem(post: new Operation(
+                operationId: 'retainAdminDemoProspect',
+                tags: ['AdminDemo'],
+                responses: [
+                    '200' => $this->schemas->jsonResponse('The prospect demo club was kept for 14 days (clock reset, animator detached, deadline set)', [
+                        'type' => 'object',
+                        'properties' => ['retainedUntil' => ['type' => 'string', 'format' => 'date']],
+                    ]),
+                    '401' => new Response('No authenticated super-admin session'),
+                    '403' => new Response('Invalid CSRF token'),
+                    '404' => new Response('The prospect demo club is absent'),
+                    '409' => new Response('The prospect demo access window is still open — close it first'),
+                ],
+                summary: 'Keep the prospect demonstration club for 14 days',
+                parameters: [$csrfHeader],
             )),
             '/api/admin/demos/{target}/activate' => new PathItem(post: new Operation(
                 operationId: 'activateAdminDemo',

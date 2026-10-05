@@ -7,6 +7,7 @@ use App\Tests\Behat\CoachWishesContext;
 use App\Tests\Behat\ConflictResolutionContext;
 use App\Tests\Behat\ConflictTruthContext;
 use App\Tests\Behat\ConstraintHonoredContext;
+use App\Tests\Behat\DemoRetainedContext;
 use App\Tests\Behat\DemoWindowContext;
 use App\Tests\Behat\EngagedTeamContext;
 use App\Tests\Behat\ExportContext;
@@ -203,5 +204,10 @@ return (new Config)
                 new Suite('compte-sans-club')
                     ->withPaths('%paths.base%/features/un-compte-sans-club-est-supprime-a-trente-jours.feature')
                     ->withContexts(OrphanAccountContext::class),
+            )
+            ->withSuite(
+                new Suite('demo-conservee')
+                    ->withPaths('%paths.base%/features/le-club-demo-d-un-prospect-se-conserve.feature')
+                    ->withContexts(DemoRetainedContext::class),
             ),
     );
