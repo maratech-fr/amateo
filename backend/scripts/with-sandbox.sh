@@ -23,6 +23,9 @@
 #   - Le schéma du bac à sable (amateo_dev) est mis à niveau AVANT la commande si
 #     des migrations manquent (INF-06), bruyamment — plus de Behat rouge inexpliqué
 #     sur un sandbox en retard. Une seule vérification, jamais de boucle d'attente.
+#     Durcissement INF-06 : avant tout create/migrate, la base RÉELLEMENT visée est
+#     prouvée == amateo_dev (via current_database()) ; sinon ABANDON bruyant et rien
+#     n'est écrit — parade au bind-mount WSL figé qui sert encore .env.local (play).
 #   - La restauration passe par un trap sur EXIT INT TERM : une commande qui
 #     échoue ou est interrompue laisse quand même le fondateur en mode play.
 #   - Ce wrapper NE SOURCE PAS la garde (elle le tuerait avant qu'il puisse
@@ -55,6 +58,34 @@ dev_console() {
   compose exec -T -e APP_ENV=dev php-fpm php bin/console "$@"
 }
 
+# Résolution de la base RÉELLEMENT visée par l'app (via `current_database()`, donc honorant toute
+# la précédence dotenv Symfony, .env.local compris) — même idiome que sandbox-guard.sh. Vide si la
+# stack est à l'arrêt ou la résolution échoue.
+resolve_target_db() {
+  dev_console dbal:run-sql "SELECT current_database() AS db" 2>/dev/null \
+    | sed -E 's/[[:space:]]//g' | grep -vE '^-*$' | grep -vxE 'db' | head -1
+}
+
+# INF-06 (durcissement) — on NE crée/migre JAMAIS sans avoir d'abord prouvé que la base visée est
+# bien le bac à sable amateo_dev. Le piège : sous WSL, un bind-mount figé peut continuer à servir
+# backend/.env.local (mode play) À L'INTÉRIEUR du conteneur même après qu'on l'a retiré côté hôte —
+# la migration partirait alors sur amateo_local, la base de JEU du fondateur. Toute autre cible =
+# ABANDON bruyant (exit non nul ; le trap restore rétablit le mode play). Aucune boucle d'attente.
+assert_target_is_sandbox() {
+  local db
+  db="$(resolve_target_db || true)"
+  if [[ -z "$db" ]]; then
+    echo "==> with-sandbox: ABANDON — base visée non résolue (stack à l'arrêt ? make start). Aucune migration lancée." >&2
+    exit 1
+  fi
+  if [[ "$db" != "amateo_dev" ]]; then
+    echo "==> with-sandbox: ABANDON — la base visée est « $db », PAS amateo_dev. Aucune création ni migration lancée." >&2
+    echo "    Cause probable : bind-mount WSL figé servant encore backend/.env.local (mode play) dans le conteneur." >&2
+    echo "    Rien n'a été écrit. Redémarre la stack (make stop && make start) pour purger le montage, puis relance." >&2
+    exit 1
+  fi
+}
+
 # INF-06 — le bac à sable (amateo_dev) est JETABLE mais SURVIT entre les runs : après un pull
 # qui ajoute des migrations, un Behat lancé dessus échouait en masse sans rien dire (schéma en
 # retard). On remet le bac à sable à niveau AVANT la commande, bruyamment, en nommant ce qui est
@@ -62,6 +93,8 @@ dev_console() {
 # d'attente : une seule vérification, puis la migration si besoin (garde-fou boucles bornées).
 ensure_sandbox_migrated() {
   echo "==> with-sandbox: vérification du schéma du bac à sable (amateo_dev)…" >&2
+  # Garde-fou INF-06 : prouver la cible AVANT tout create/migrate (bind-mount WSL figé).
+  assert_target_is_sandbox
   # `up-to-date` sort 0 si à jour, non-zéro sinon (y compris base absente → on crée puis migre).
   if dev_console doctrine:migrations:up-to-date --no-interaction >/dev/null 2>&1; then
     echo "==> with-sandbox: bac à sable à jour, aucune migration à appliquer." >&2
