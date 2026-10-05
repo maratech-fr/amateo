@@ -202,7 +202,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "State of the two demo accounts (bccl carries the simulated clock) plus the kept demo clubs",
+                        "description": "State of the two demo accounts (bccl carries the simulated clock) plus the kept demo clubs and the async reset state",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -284,6 +284,28 @@
                                                 }
                                             },
                                             "description": "Demo clubs kept for 14 days, listed by the club table (never by membership)."
+                                        },
+                                        "reset": {
+                                            "type": [
+                                                "object",
+                                                "null"
+                                            ],
+                                            "description": "State of the asynchronous BCCL demo reset: running while a re-seed is in flight, then succeeded/failed; null when no recent reset.",
+                                            "properties": {
+                                                "state": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "running",
+                                                        "succeeded",
+                                                        "failed"
+                                                    ]
+                                                },
+                                                "at": {
+                                                    "type": "string",
+                                                    "format": "date-time",
+                                                    "description": "ISO UTC timestamp of the last state transition."
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -304,8 +326,8 @@
                     "AdminDemo"
                 ],
                 "responses": {
-                    "200": {
-                        "description": "The BCCL demo was re-seeded and its simulated clock reset to today",
+                    "202": {
+                        "description": "The BCCL demo reset was queued (async worker re-seeds, clears the simulated clock and empties the mailbox)",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -314,7 +336,7 @@
                                         "status": {
                                             "type": "string",
                                             "enum": [
-                                                "reset"
+                                                "accepted"
                                             ]
                                         }
                                     }
@@ -328,11 +350,14 @@
                     "403": {
                         "description": "Invalid CSRF token"
                     },
+                    "409": {
+                        "description": "A reset is already in progress"
+                    },
                     "502": {
-                        "description": "The re-seed sub-process failed"
+                        "description": "The reset could not be queued"
                     }
                 },
-                "summary": "Reset the permanent BCCL demonstration (re-seed + clear the simulated clock)",
+                "summary": "Queue a reset of the permanent BCCL demonstration (async re-seed)",
                 "parameters": [
                     {
                         "name": "X-CSRF-Token",
@@ -31601,12 +31626,20 @@
                 ],
                 "properties": {
                     "teamId": {
+                        "format": "uuid",
+                        "externalDocs": {
+                            "url": "https://schema.org/identifier"
+                        },
                         "type": [
                             "string",
                             "null"
                         ]
                     },
                     "coachId": {
+                        "format": "uuid",
+                        "externalDocs": {
+                            "url": "https://schema.org/identifier"
+                        },
                         "type": [
                             "string",
                             "null"

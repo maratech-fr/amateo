@@ -52,17 +52,27 @@ final readonly class AdminDemoPaths implements CustomPathContributor
             ],
         ];
 
+        $resetState = [
+            'type' => ['object', 'null'],
+            'description' => 'State of the asynchronous BCCL demo reset: running while a re-seed is in flight, then succeeded/failed; null when no recent reset.',
+            'properties' => [
+                'state' => ['type' => 'string', 'enum' => ['running', 'succeeded', 'failed']],
+                'at' => ['type' => 'string', 'format' => 'date-time', 'description' => 'ISO UTC timestamp of the last state transition.'],
+            ],
+        ];
+
         return [
             '/api/admin/demos' => new PathItem(get: new Operation(
                 operationId: 'getAdminDemos',
                 tags: ['AdminDemo'],
                 responses: [
-                    '200' => $this->schemas->jsonResponse('State of the two demo accounts (bccl carries the simulated clock) plus the kept demo clubs', [
+                    '200' => $this->schemas->jsonResponse('State of the two demo accounts (bccl carries the simulated clock) plus the kept demo clubs and the async reset state', [
                         'type' => 'object',
                         'properties' => [
                             'bccl' => $account,
                             'prospect' => $account,
                             'retained' => ['type' => 'array', 'items' => $retainedClub, 'description' => 'Demo clubs kept for 14 days, listed by the club table (never by membership).'],
+                            'reset' => $resetState,
                         ],
                     ]),
                     '401' => new Response('No authenticated super-admin session'),
@@ -125,15 +135,16 @@ final readonly class AdminDemoPaths implements CustomPathContributor
                 operationId: 'resetAdminDemoBccl',
                 tags: ['AdminDemo'],
                 responses: [
-                    '200' => $this->schemas->jsonResponse('The BCCL demo was re-seeded and its simulated clock reset to today', [
+                    '202' => $this->schemas->jsonResponse('The BCCL demo reset was queued (async worker re-seeds, clears the simulated clock and empties the mailbox)', [
                         'type' => 'object',
-                        'properties' => ['status' => ['type' => 'string', 'enum' => ['reset']]],
+                        'properties' => ['status' => ['type' => 'string', 'enum' => ['accepted']]],
                     ]),
                     '401' => new Response('No authenticated super-admin session'),
                     '403' => new Response('Invalid CSRF token'),
-                    '502' => new Response('The re-seed sub-process failed'),
+                    '409' => new Response('A reset is already in progress'),
+                    '502' => new Response('The reset could not be queued'),
                 ],
-                summary: 'Reset the permanent BCCL demonstration (re-seed + clear the simulated clock)',
+                summary: 'Queue a reset of the permanent BCCL demonstration (async re-seed)',
                 parameters: [$csrfHeader],
             )),
             '/api/admin/demos/{target}/clock' => new PathItem(post: new Operation(

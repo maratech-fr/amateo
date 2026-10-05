@@ -1,11 +1,10 @@
 # Console superadmin — authentification, télémétrie et API de supervision
 
-Last verified @ 2026-10-05 (`documentation-update`, P4-294 « conserver le club démo »). §
-« Démos — console de pilotage » gagne `GET /demos.retained`, `POST /demos/prospect/retain`
-(409 fenêtre ouverte, détache l'animateur, échéance J+14 fixe) et la purge nocturne des clubs
-conservés expirés — confronté à `AdminDemoController.php`/`DemoClubMaterializer.php`. Reste du
-fichier non re-confronté cette passe ; historique des vérifications précédentes :
-`git log -p --follow specs/courantes/superadmin-auth.md`.
+Last verified @ 2026-10-05 (`documentation-update`, lot backend « robustesse » — BCK-35). §
+« Démos — console de pilotage » : `POST /demos/bccl/reset` confronté au rail ASYNCHRONE
+(`DemoResetTracker::begin/finish`, `ResetDemoBcclMessage`/`ResetDemoBcclHandler`, 202/409) et
+`GET /demos` à l'état `reset` exposé. Reste du fichier non re-confronté cette passe ; historique
+des vérifications précédentes : `git log -p --follow specs/courantes/superadmin-auth.md`.
 
 > **État courant** : SA0, SA1, la console read-only SA2, le socle
 > d'historisation SA3-A, la supervision SA3-B, la planification fiable SA3-C et
@@ -388,7 +387,9 @@ posé** (surface cross-tenant, contrat SA0).
   (résolu SERVEUR depuis l'adhésion active du compte, jamais depuis la requête), et la date
   simulée (`simulated_today`) de chacun des **deux** comptes (bccl ET prospect) ; **ainsi que la
   liste des clubs démo CONSERVÉS** (`retained` — nom + échéance, triés par échéance croissante),
-  lue par la table `club` (pas par une adhésion : un club conservé en est détaché).
+  lue par la table `club` (pas par une adhésion : un club conservé en est détaché) ; **ainsi que
+  l'état du reset BCCL** (`reset` — `{state: running|succeeded|failed, at}` ou `null`, voir
+  ci-dessous).
 - `POST /demos/prospect/retain` **conserve 14 jours** le club démo prospect (décision fondateur
   2026-10-03, option B) : refusé en **409** tant que la fenêtre démo prospect est OUVERTE
   (conservation et fenêtre d'accès ne se chevauchent jamais). Sinon, geste atomique : l'horloge
@@ -402,13 +403,21 @@ posé** (surface cross-tenant, contrat SA0).
   pour **4 h à l'horloge RÉELLE** : un re-clic **redémarre** la fenêtre depuis maintenant, il ne
   l'étend jamais (la valeur est remplacée, pas additionnée). `POST /demos/{target}/deactivate` la
   ferme (`NULL`).
-- `POST /demos/bccl/reset` relance `app:demo:seed` en **sous-processus** (`DemoResetRunner`, via
-  `DATABASE_ADMIN_URL`, même patron `Process` que `DatabaseBackupCommand` — la requête console
-  tourne, elle, sur la connexion applicative, incapable de purger le workspace à travers la RLS),
-  puis remet `club.simulated_today` à `NULL` (décision fondateur : le reset repart TOUJOURS à
-  aujourd'hui) **sans toucher la fenêtre d'activation du compte**. Un re-seed en échec rend 502,
-  l'horloge simulée reste intacte. **Vide aussi la boîte aux lettres** (P4-16) — les e-mails
-  interceptés d'une démo précédente ne survivent pas à une réinitialisation.
+- `POST /demos/bccl/reset` (**BCK-35, lot robustesse 2026-10-03 : rail ASYNCHRONE**, l'ancien
+  sous-processus synchrone tenu depuis la requête HTTP — nginx coupait à 120 s en laissant le
+  seed continuer en arrière-plan, 504 trompeur, et deux clics lançaient deux seeds concurrents).
+  Le contrôleur prend d'abord un verrou Redis (`DemoResetTracker::begin()`, `SET NX EX 900`) :
+  un reset déjà en cours → **409** net ; succès → enfile `ResetDemoBcclMessage` (Messenger) et
+  répond **202**. Le worker (`ResetDemoBcclHandler`) relance `app:demo:seed` en sous-processus
+  (toujours `DemoResetRunner`, `DATABASE_ADMIN_URL`), remet `club.simulated_today` à `NULL`
+  (décision fondateur : le reset repart TOUJOURS à aujourd'hui) **sans toucher la fenêtre
+  d'activation du compte**, pose l'issue terminale (`succeeded`/`failed`) puis relâche le verrou
+  par compare-and-delete du token en `finally` — un worker tué (`SIGKILL`) n'enlise jamais le
+  verrou au-delà de son TTL (900 s, au-dessus du budget max du seed) ; un `running` sans verrou
+  vivant est rendu comme absent par `GET /demos` plutôt que figé à l'écran. **Vide aussi la
+  boîte aux lettres** (P4-16) — les e-mails interceptés d'une démo précédente ne survivent pas à
+  une réinitialisation. La console affiche « Réinitialisation en cours… » et bloque le bouton
+  tant que l'état `running` est lu.
 - `POST /demos/{bccl|prospect}/clock` pose (`date`, `YYYY-MM-DD`) ou relâche (`clear`) la date
   simulée du club démo COURANT du compte visé — exactement l'un des deux, jamais les deux ni
   aucun ; la date doit se relire à l'identique (`2026-02-31` refusé, même garde que

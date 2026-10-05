@@ -103,11 +103,21 @@ jour J (`docs/ops/deploy.md` §1.8).
 ## Fonction `SECURITY DEFINER` — l'exception au modèle RLS
 
 **Une seule fonction du dépôt tourne en `SECURITY DEFINER`** : `league_window_suggestions(uuid)`
-(P4-272 ②, `Version20260929120000`) — la tendance dominante des plages de match saisies par les
-AUTRES clubs de l'instance fédérale (comité/ligue/fédération) du demandeur. C'est le SEUL endroit
-du produit qui **lit à travers la frontière tenant** : `amateo_app` (RLS le borne à son club) ne
-peut pas agréger `club_league_window` de tous les clubs pairs, il fallait un contexte qui voie
-tout.
+(P4-272 ②, `Version20260929120000`, durcie par `Version20261005110000` — BCK-36, lot robustesse
+2026-10-03) — la tendance dominante des plages de match saisies par les AUTRES clubs de l'instance
+fédérale (comité/ligue/fédération) du demandeur. C'est le SEUL endroit du produit qui **lit à
+travers la frontière tenant** : `amateo_app` (RLS le borne à son club) ne peut pas agréger
+`club_league_window` de tous les clubs pairs, il fallait un contexte qui voie tout.
+
+- **BCK-36 — deux durcissements** (`Version20261005110000`) : (1) les clubs de DÉMONSTRATION
+  n'entrent jamais dans les pairs agrégés (`AND NOT c.is_demo` dans la CTE `peers` — sans lui, un
+  club vendeur comme ARA9999999 et ses clones comptaient dans la « tendance » servie à de vrais
+  clubs, du bruit et une fuite de l'existence des démos) ; (2) `p_requesting_club` est LIÉ au
+  tenant courant — la CTE `me` exige `id = NULLIF(current_setting('app.club_id', true), '')::uuid`,
+  **exactement** le prédicat des policies RLS du dépôt (fail-closed) : un appel avec un club ≠ GUC
+  (ou sans GUC posé) rend `me` vide → zéro ligne, la fonction `SECURITY DEFINER` ne peut plus
+  agréger l'instance d'un club arbitraire, seulement celle du club du GUC posé par le listener
+  tenant de la requête HTTP courante.
 
 - **Exécutée comme son PROPRIÉTAIRE** (`amateo_owner`, qui porte la policy `admin_all` — bypasse
   la RLS, cf. « Porte superadmin » ci-dessus), pas comme l'appelant — c'est la définition même de

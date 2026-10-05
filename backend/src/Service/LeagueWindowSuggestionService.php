@@ -196,6 +196,11 @@ final class LeagueWindowSuggestionService
     {
         $map = [];
 
+        // BCK-36 : la fonction SQL exige désormais que `:club` soit le club du GUC tenant
+        // courant (prédicat RLS, fail-closed). `$this->connection` est la connexion applicative
+        // sur laquelle le listener tenant a posé `app.club_id` = club courant au début de la
+        // requête HTTP ; et $clubId EST ce club courant (résolu depuis le même listener côté
+        // contrôleur). Le prédicat passe donc ; un appel avec un autre club rendrait zéro ligne.
         /** @var list<array{category: string, level: string, gender: string|null, day_of_week: int|string, windows: string, club_count: int|string}> $rows */
         $rows = $this->connection->fetchAllAssociative(
             'SELECT category, level, gender, day_of_week, windows, club_count FROM league_window_suggestions(:club)',

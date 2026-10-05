@@ -31,6 +31,8 @@ use Doctrine\ORM\EntityManagerInterface;
  * nom, ffbbClubCode, logo, ligue/comité, contacts président/correspondant tels
  * que publiés par la FFBB (source FfbbClubPopulator, base légale intérêt
  * légitime — organisation des rencontres, futur annuaire adverse, win-back).
+ * MAIS l'adresse du SIÈGE (adresse/CP/ville/lat/lon, saisie par le gestionnaire)
+ * n'est PAS de l'identité publique FFBB : elle est remise à NULL (RGPD-02).
  * Les comptes User des membres NE sont PAS touchés : ils appartiennent à leurs
  * titulaires (responsable de traitement = Maratech), qui peuvent les
  * effacer eux-mêmes via DELETE /api/me.
@@ -143,6 +145,12 @@ final class ErasedClubPurger
         //    de l'identité publique : plan, cycle de facturation et compteurs
         //    sont remis à zéro (revue sécurité PR-1 — « seule l'identité FFBB
         //    survit » doit être vrai à la lettre).
+        //
+        //    RGPD-02 (lot robustesse) — l'adresse du SIÈGE n'est PAS de l'identité
+        //    publique FFBB : c'est la localisation opérationnelle saisie par le
+        //    gestionnaire (ClubSiegeController, re-géocodée). Adresse + CP + ville +
+        //    latitude + longitude sont remis à NULL à l'effacement — sinon ils
+        //    survivaient à la purge, promis détruits et jamais effacés.
         $club = $this->entityManager->getRepository(Club::class)->find($clubId);
         if ($club instanceof Club) {
             $club->setErasureScheduledAt(null);
@@ -152,6 +160,11 @@ final class ErasedClubPurger
             $club->setBillingCycle(null);
             $club->setPlanExpiresAt(null);
             $club->setGenerationCountSeason(0);
+            $club->setAddress(null);
+            $club->setPostalCode(null);
+            $club->setCity(null);
+            $club->setLatitude(null);
+            $club->setLongitude(null);
             $this->entityManager->flush();
         }
         $this->entityManager->clear();

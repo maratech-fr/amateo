@@ -5,7 +5,7 @@ import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { toast } from "@/shared/stores/toastStore";
 
-import type { AdminDemoAccount, AdminDemoTarget, AdminRetainedDemoClub } from "../api";
+import type { AdminDemoAccount, AdminDemoResetState, AdminDemoTarget, AdminRetainedDemoClub } from "../api";
 import { useActivateAdminDemo, useAdminDemos, useDeactivateAdminDemo, useResetAdminDemoBccl, useRetainAdminDemoProspect, useSetAdminDemoClock } from "../queries";
 
 // Fenêtre d'activation rendue à l'heure de PARIS (décision fondateur) : l'API renvoie l'ISO UTC.
@@ -58,7 +58,7 @@ export function DemosSection() {
         <h2 id="demos-heading" className="mt-2 text-xl font-semibold text-white">Comptes de démonstration</h2>
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
-        <BcclCard account={demos.data.bccl} />
+        <BcclCard account={demos.data.bccl} resetState={demos.data.reset} />
         <ProspectCard account={demos.data.prospect} />
       </div>
       <RetainedClubsList retained={demos.data.retained} />
@@ -90,15 +90,18 @@ function RetainedClubsList({ retained }: { retained: AdminRetainedDemoClub[] }) 
   );
 }
 
-function BcclCard({ account }: { account: AdminDemoAccount }) {
+function BcclCard({ account, resetState }: { account: AdminDemoAccount; resetState: AdminDemoResetState | null }) {
   const reset = useResetAdminDemoBccl();
   const [confirmingReset, setConfirmingReset] = useState(false);
+  // BCK-35 — le reset est ASYNCHRONE : « en cours » tant que le serveur le signale (le worker
+  // re-seed), le bouton reste bloqué (et le serveur refuse un 2ᵉ reset en 409).
+  const running = "running" === resetState?.state;
 
   const runReset = () => {
     setConfirmingReset(false);
     reset.mutate(undefined, {
-      onSuccess: () => toast.success("La démo BCCL a été réinitialisée."),
-      onError: () => toast.error("La réinitialisation de la démo a échoué."),
+      onSuccess: () => toast.success("Réinitialisation de la démo BCCL lancée."),
+      onError: () => toast.error("La réinitialisation de la démo n’a pas pu être lancée."),
     });
   };
 
@@ -110,12 +113,13 @@ function BcclCard({ account }: { account: AdminDemoAccount }) {
           size="sm"
           variant="outline"
           className="border-console-destructive-edge/40 text-console-destructive hover:bg-console-destructive-surface/10"
-          disabled={reset.isPending}
+          disabled={reset.isPending || running}
           onClick={() => setConfirmingReset(true)}
         >
-          {reset.isPending ? <Spinner className="size-3.5" /> : null}
+          {reset.isPending || running ? <Spinner className="size-3.5" /> : null}
           Réinitialiser
         </Button>
+        {running ? <p className="mt-2 text-xs text-console-muted">Réinitialisation en cours…</p> : null}
       </div>
 
       <ConfirmDialog

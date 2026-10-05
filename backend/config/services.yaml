@@ -90,6 +90,10 @@ services:
 
     App\Service\ClubMailboxPurgerInterface: '@App\Service\ClubMailboxPurger'
 
+    # BCK-37 — interface pour que la route de logo adverse soit testable sans appel réseau réel
+    # (double RecordingFfbbLogoFetcher dans OpponentLogoApiTest).
+    App\Service\Basketball\FfbbLogoFetcherInterface: '@App\Service\Basketball\FfbbLogoFetcher'
+
     # default configuration for services in *this* file
     _defaults:
         autowire: true      # Automatically injects dependencies in your services.

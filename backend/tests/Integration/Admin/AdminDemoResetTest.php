@@ -8,6 +8,8 @@ use App\Entity\Club;
 use App\Entity\Season;
 use App\Entity\SuperAdmin;
 use App\Enum\SeasonStatus;
+use App\Message\ResetDemoBcclMessage;
+use App\MessageHandler\ResetDemoBcclHandler;
 use App\Security\TotpService;
 use App\Tests\Double\RecordingDemoResetRunner;
 use App\Tests\StartsFreshBrowserSession;
@@ -20,11 +22,13 @@ use Doctrine\DBAL\ParameterType;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use PHPUnit\Framework\Attributes\Group;
+use Redis;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Uid\Uuid;
 
@@ -190,52 +194,112 @@ final class AdminDemoResetTest extends WebTestCase
         }
     }
 
-    public function testResetClearsTheClockKeepsTheWindowAndSparesOtherDemoClubs(): void
+    public function testResetEnqueuesAsyncAndTheHandlerClearsTheClockKeepsTheWindowSparesOtherDemoClubs(): void
     {
-        // Compte BCCL avec sa fenêtre ouverte + club démo BCCL avec une horloge simulée.
+        // BCK-35 — le POST ENFILE (202) et le WORKER fait le travail : horloge BCCL à null,
+        // boîte vidée, fenêtre du compte intacte, autre club démo épargné.
         $windowUntil = new DateTimeImmutable('now')->modify('+3 hours');
         $bcclUser = $this->seedDemoUser(self::BCCL_EMAIL, $windowUntil);
         $bcclClub = $this->seedDemoClub($bcclUser, isDemo: true, simulatedToday: '2026-03-01');
+        $this->seedMailboxRow($bcclClub);
         // Un AUTRE club démo (prospect) avec sa propre horloge : le reset ne doit pas y toucher.
         $prospectUser = $this->seedDemoUser(self::PROSPECT_EMAIL, null);
         $prospectClub = $this->seedDemoClub($prospectUser, isDemo: true, simulatedToday: '2026-05-05');
 
         [$secret] = $this->createSuperAdmin('rst@example.test', 'VeryStrongPassword!');
         $csrf = $this->authenticate('rst@example.test', 'VeryStrongPassword!', $secret);
-        // disableReboot : le contrôleur et le test partagent alors la MÊME instance du double.
+        // disableReboot : contrôleur, transport in-memory et double partagent la MÊME instance.
         $this->client->disableReboot();
         $runner = $this->resetRunner();
         $runner->reset();
 
+        // Rail asynchrone : 202 accepted, le re-seed n'a PAS encore tourné.
         $this->json('POST', '/api/admin/demos/bccl/reset', [], ['HTTP_X_CSRF_TOKEN' => $csrf]);
+        self::assertResponseStatusCodeSame(202);
+        self::assertSame('accepted', $this->responseBody()['status']);
+        self::assertSame(0, $runner->calls, 'le POST n\'exécute pas le seed — il l\'enfile');
+        self::assertSame('2026-03-01', $this->admin()->fetchOne('SELECT simulated_today FROM club WHERE id = :id', ['id' => $bcclClub]), 'rien touché avant le worker');
+
+        // On CAPTURE le message AVANT toute autre requête (le transport in-memory est remis à
+        // zéro par le reset de services à CHAQUE requête du client).
+        $message = $this->lastQueuedResetMessage();
+        self::assertInstanceOf(ResetDemoBcclMessage::class, $message);
+
+        // L'état exposé est « en cours » tant que le worker n'a pas fini (verrou encore tenu).
+        $this->client->request('GET', '/api/admin/demos');
         self::assertResponseIsSuccessful();
-        self::assertSame(1, $runner->calls, 'le reset a bien déclenché le re-seed (sous-processus, ici doublé)');
+        self::assertSame('running', $this->responseBody()['reset']['state']);
+
+        // Le worker joue le message enfilé.
+        $this->resetHandler()->__invoke($message);
+        self::assertSame(1, $runner->calls, 'le worker a déclenché le re-seed (sous-processus, ici doublé)');
 
         self::assertNull($this->admin()->fetchOne('SELECT simulated_today FROM club WHERE id = :id', ['id' => $bcclClub]), 'la date simulée BCCL revient à aujourd\'hui (NULL)');
+        self::assertSame(0, $this->mailboxCount($bcclClub), 'le reset vide la boîte aux lettres');
         // La fenêtre du compte BCCL n'est PAS touchée par le reset.
         $stored = $this->admin()->fetchOne('SELECT demo_active_until FROM app_user WHERE email = :e', ['e' => self::BCCL_EMAIL]);
         self::assertIsString($stored);
         self::assertEqualsWithDelta($windowUntil->getTimestamp(), new DateTimeImmutable($stored)->getTimestamp(), 5, 'la fenêtre du compte BCCL survit au reset');
         // L'horloge d'un AUTRE club démo est intacte : le reset scope au club BCCL seul.
         self::assertSame('2026-05-05', $this->admin()->fetchOne('SELECT simulated_today FROM club WHERE id = :id', ['id' => $prospectClub]));
+
+        // Issue terminale exposée : succeeded, verrou relâché.
+        $this->client->request('GET', '/api/admin/demos');
+        self::assertResponseIsSuccessful();
+        self::assertSame('succeeded', $this->responseBody()['reset']['state']);
     }
 
-    public function testResetEmptiesTheMailbox(): void
+    public function testASecondResetWhileOneRunsIsRejectedWith409(): void
     {
-        // P4-16 — le reset vide la boîte aux lettres du club de démo (décision fondateur).
+        // BCK-35 — anti-double-clic : le 1er POST prend le verrou (202), le 2ᵉ pendant qu'il
+        // tourne échoue à l'acquisition → 409 net, et un SEUL message est enfilé.
         $userId = $this->seedDemoUser(self::BCCL_EMAIL, null);
-        $clubId = $this->seedDemoClub($userId, isDemo: true, simulatedToday: '2026-03-01');
-        $this->seedMailboxRow($clubId);
-        self::assertSame(1, $this->mailboxCount($clubId), 'témoin : la boîte porte bien une ligne avant le reset');
-
-        [$secret] = $this->createSuperAdmin('rstmb@example.test', 'VeryStrongPassword!');
-        $csrf = $this->authenticate('rstmb@example.test', 'VeryStrongPassword!', $secret);
+        $this->seedDemoClub($userId, isDemo: true, simulatedToday: null);
+        [$secret] = $this->createSuperAdmin('rst409@example.test', 'VeryStrongPassword!');
+        $csrf = $this->authenticate('rst409@example.test', 'VeryStrongPassword!', $secret);
         $this->client->disableReboot();
         $this->resetRunner()->reset();
 
         $this->json('POST', '/api/admin/demos/bccl/reset', [], ['HTTP_X_CSRF_TOKEN' => $csrf]);
+        self::assertResponseStatusCodeSame(202);
+        // On capture le 1er message AVANT le 2ᵉ POST (chaque requête remet le transport à zéro).
+        $message = $this->lastQueuedResetMessage();
+        self::assertInstanceOf(ResetDemoBcclMessage::class, $message, 'le 1er reset a bien enfilé un message');
+
+        // Verrou encore tenu → le 2ᵉ reset échoue à l'acquisition → 409 net.
+        $this->json('POST', '/api/admin/demos/bccl/reset', [], ['HTTP_X_CSRF_TOKEN' => $csrf]);
+        self::assertResponseStatusCodeSame(409);
+        self::assertSame([], $this->resetTransport()->getSent(), 'le 2ᵉ POST (409) n\'enfile aucun message');
+
+        // On libère le verrou en jouant le 1er message (hygiène d'isolation).
+        $this->resetHandler()->__invoke($message);
+    }
+
+    public function testHandlerFailureMarksTheResetFailedAndLeavesTheSimulatedClockUntouched(): void
+    {
+        $userId = $this->seedDemoUser(self::BCCL_EMAIL, null);
+        $clubId = $this->seedDemoClub($userId, isDemo: true, simulatedToday: '2026-03-01');
+        [$secret] = $this->createSuperAdmin('rstf@example.test', 'VeryStrongPassword!');
+        $csrf = $this->authenticate('rstf@example.test', 'VeryStrongPassword!', $secret);
+        $this->client->disableReboot();
+        $runner = $this->resetRunner();
+        $runner->reset();
+        $runner->shouldFail = true;
+
+        $this->json('POST', '/api/admin/demos/bccl/reset', [], ['HTTP_X_CSRF_TOKEN' => $csrf]);
+        self::assertResponseStatusCodeSame(202);
+
+        // Le worker échoue : l'exception est ACQUITTÉE (jamais rejouée), l'issue devient failed.
+        $message = $this->lastQueuedResetMessage();
+        self::assertInstanceOf(ResetDemoBcclMessage::class, $message);
+        $this->resetHandler()->__invoke($message);
+
+        // Le re-seed a échoué → l'horloge n'est pas touchée (le clear vient APRÈS le succès).
+        self::assertSame('2026-03-01', $this->admin()->fetchOne('SELECT simulated_today FROM club WHERE id = :id', ['id' => $clubId]));
+
+        $this->client->request('GET', '/api/admin/demos');
         self::assertResponseIsSuccessful();
-        self::assertSame(0, $this->mailboxCount($clubId), 'le reset vide la boîte aux lettres');
+        self::assertSame('failed', $this->responseBody()['reset']['state'], 'l\'issue terminale « failed » est exposée, verrou relâché');
     }
 
     public function testClearingTheClockEmptiesTheMailboxButSettingADateDoesNot(): void
@@ -255,23 +319,6 @@ final class AdminDemoResetTest extends WebTestCase
         $this->json('POST', '/api/admin/demos/bccl/clock', ['clear' => true], ['HTTP_X_CSRF_TOKEN' => $csrf]);
         self::assertResponseIsSuccessful();
         self::assertSame(0, $this->mailboxCount($clubId), 'revenir à aujourd\'hui vide la boîte');
-    }
-
-    public function testResetFailureReturns502AndLeavesTheSimulatedClockUntouched(): void
-    {
-        $userId = $this->seedDemoUser(self::BCCL_EMAIL, null);
-        $clubId = $this->seedDemoClub($userId, isDemo: true, simulatedToday: '2026-03-01');
-        [$secret] = $this->createSuperAdmin('rstf@example.test', 'VeryStrongPassword!');
-        $csrf = $this->authenticate('rstf@example.test', 'VeryStrongPassword!', $secret);
-        $this->client->disableReboot();
-        $runner = $this->resetRunner();
-        $runner->reset();
-        $runner->shouldFail = true;
-
-        $this->json('POST', '/api/admin/demos/bccl/reset', [], ['HTTP_X_CSRF_TOKEN' => $csrf]);
-        self::assertResponseStatusCodeSame(502);
-        // Le re-seed a échoué → on ne touche pas l'horloge (le clear vient APRÈS le succès).
-        self::assertSame('2026-03-01', $this->admin()->fetchOne('SELECT simulated_today FROM club WHERE id = :id', ['id' => $clubId]));
     }
 
     public function testSeedRefusesToPurgeANonDemoClubHoldingAra9999999(): void
@@ -338,6 +385,10 @@ final class AdminDemoResetTest extends WebTestCase
         // Aucune ligne démo committée résiduelle (les seeds admin ne passent pas par DAMA).
         $this->admin()->executeStatement('DELETE FROM club_user WHERE user_id IN (SELECT id FROM app_user WHERE email IN (:e))', ['e' => [self::BCCL_EMAIL, self::PROSPECT_EMAIL]], ['e' => ArrayParameterType::STRING]);
         $this->admin()->executeStatement('DELETE FROM app_user WHERE email IN (:e)', ['e' => [self::BCCL_EMAIL, self::PROSPECT_EMAIL]], ['e' => ArrayParameterType::STRING]);
+        // BCK-35 — le verrou/statut du reset vit dans Redis (TTL 900 s) : on l'efface par DEL
+        // CIBLÉ (jamais FLUSHALL) pour qu'un run d'un test précédent ne provoque pas un 409
+        // parasite au begin() du test courant.
+        $this->clearResetTracker();
     }
 
     protected function tearDown(): void
@@ -484,6 +535,58 @@ final class AdminDemoResetTest extends WebTestCase
         \assert($runner instanceof RecordingDemoResetRunner);
 
         return $runner;
+    }
+
+    private function resetHandler(): ResetDemoBcclHandler
+    {
+        $handler = self::getContainer()->get(ResetDemoBcclHandler::class);
+        \assert($handler instanceof ResetDemoBcclHandler);
+
+        return $handler;
+    }
+
+    private function resetTransport(): InMemoryTransport
+    {
+        $transport = self::getContainer()->get('messenger.transport.reset_in_memory');
+        \assert($transport instanceof InMemoryTransport);
+
+        return $transport;
+    }
+
+    private function lastQueuedResetMessage(): ?ResetDemoBcclMessage
+    {
+        $sent = $this->resetTransport()->getSent();
+        if ([] === $sent) {
+            return null;
+        }
+        $message = end($sent)->getMessage();
+
+        return $message instanceof ResetDemoBcclMessage ? $message : null;
+    }
+
+    /** DEL ciblé des deux clés Redis du suivi de reset (jamais FLUSHALL). */
+    private function clearResetTracker(): void
+    {
+        $url = $_SERVER['REDIS_URL'] ?? getenv('REDIS_URL');
+        if (!\is_string($url) || '' === $url) {
+            return;
+        }
+        $parts = parse_url($url);
+        if (!\is_array($parts) || !isset($parts['host'])) {
+            return;
+        }
+        $redis = new Redis;
+        $redis->connect($parts['host'], (int) ($parts['port'] ?? 6379));
+        if (isset($parts['pass'])) {
+            $redis->auth($parts['pass']);
+        }
+        if (isset($parts['path']) && '' !== $parts['path'] && '/' !== $parts['path']) {
+            $db = ltrim($parts['path'], '/');
+            if (ctype_digit($db)) {
+                $redis->select((int) $db);
+            }
+        }
+        $redis->del('demo_reset:bccl:lock', 'demo_reset:bccl:status');
     }
 
     private function admin(): Connection

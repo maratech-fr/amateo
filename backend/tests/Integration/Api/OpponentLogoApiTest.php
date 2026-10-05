@@ -10,9 +10,12 @@ use App\Entity\OpponentDirectoryEntry;
 use App\Entity\User;
 use App\Enum\OpponentLocationPrecision;
 use App\Storage\LogoStorage;
+use App\Tests\Double\RecordingFfbbLogoFetcher;
 use App\Tests\TenantGucTrait;
 use Doctrine\ORM\EntityManagerInterface;
+use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
+use Psr\Cache\CacheItemPoolInterface;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
@@ -76,6 +79,47 @@ final class OpponentLogoApiTest extends WebTestCase
         self::assertSame(404, $this->client->getResponse()->getStatusCode());
     }
 
+    public function testAFailedDownloadIsNotRetriedWhileTheNegativeMarkerLives(): void
+    {
+        // BCK-37 — une entrée AVEC logo_id dont le téléchargement ÉCHOUE : premier GET tente
+        // une fois (404 + marqueur négatif posé), les GET suivants ne re-téléchargent plus.
+        // disableReboot : le double fetcher (état en mémoire, non resettable) et son compteur
+        // survivent aux deux GET. Auth par JWT Bearer (stateless, rejoué à chaque requête).
+        $this->client->disableReboot();
+        $code = 'ARA0069FAIL';
+        $this->seedDirectoryWithLogo($code, 'cafecafe-dead-4beef-8bad-c0ffeec0ffee');
+        $this->fetcher()->returns = null; // téléchargement en échec
+        $auth = $this->authHeaders();
+
+        $this->client->request('GET', \sprintf('/api/opponents/%s/logo', $code), [], [], $auth);
+        self::assertSame(404, $this->client->getResponse()->getStatusCode());
+        self::assertSame(1, $this->fetcher()->calls, 'premier GET : une tentative de téléchargement');
+
+        $this->client->request('GET', \sprintf('/api/opponents/%s/logo', $code), [], [], $auth);
+        self::assertSame(404, $this->client->getResponse()->getStatusCode());
+        self::assertSame(1, $this->fetcher()->calls, 'second GET : le marqueur négatif évite un re-téléchargement');
+    }
+
+    public function testASuccessfulDownloadIsStoredThenServedFromStorageWithoutRedownloading(): void
+    {
+        // BCK-37 — un téléchargement RÉUSSI est stocké : le GET suivant sert les octets stockés
+        // sans re-télécharger (un seul appel au fetcher).
+        $this->client->disableReboot();
+        $code = 'ARA0069OK';
+        $this->seedDirectoryWithLogo($code, 'feedface-0000-4000-8000-feedface0000');
+        $this->fetcher()->returns = self::PNG_1X1;
+        $auth = $this->authHeaders();
+
+        $this->client->request('GET', \sprintf('/api/opponents/%s/logo', $code), [], [], $auth);
+        self::assertResponseIsSuccessful();
+        self::assertSame('image/png', $this->client->getResponse()->headers->get('Content-Type'));
+        self::assertSame(1, $this->fetcher()->calls);
+
+        $this->client->request('GET', \sprintf('/api/opponents/%s/logo', $code), [], [], $auth);
+        self::assertResponseIsSuccessful();
+        self::assertSame(1, $this->fetcher()->calls, 'servi depuis le stockage : aucun re-téléchargement');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -107,5 +151,52 @@ final class OpponentLogoApiTest extends WebTestCase
         $cu->setIsActive(true);
         $this->em->persist($cu);
         $this->em->flush();
+    }
+
+    private function seedDirectoryWithLogo(string $code, string $logoId): void
+    {
+        // Cache (Redis) non transactionnel : on efface le marqueur négatif résiduel d'un run
+        // précédent (DEL ciblé, jamais FLUSHALL).
+        $this->cache()->deleteItem('ffbb_logo_miss_' . $code);
+        $this->storage()->delete(\sprintf('ffbb-opponent-%s', $code));
+
+        $entry = new OpponentDirectoryEntry($code, 'Adverse avec logo', OpponentLocationPrecision::CITY);
+        $entry->setCity('Lyon');
+        $entry->setLogoId($logoId);
+        $this->em->persist($entry);
+        $this->em->flush();
+        $this->fetcher()->reset();
+    }
+
+    private function fetcher(): RecordingFfbbLogoFetcher
+    {
+        $fetcher = self::getContainer()->get(RecordingFfbbLogoFetcher::class);
+        \assert($fetcher instanceof RecordingFfbbLogoFetcher);
+
+        return $fetcher;
+    }
+
+    private function cache(): CacheItemPoolInterface
+    {
+        $cache = self::getContainer()->get('cache.app');
+        \assert($cache instanceof CacheItemPoolInterface);
+
+        return $cache;
+    }
+
+    private function storage(): LogoStorage
+    {
+        $storage = self::getContainer()->get(LogoStorage::class);
+        \assert($storage instanceof LogoStorage);
+
+        return $storage;
+    }
+
+    /** @return array{HTTP_AUTHORIZATION: string} */
+    private function authHeaders(): array
+    {
+        $token = self::getContainer()->get(JWTTokenManagerInterface::class)->create($this->user);
+
+        return ['HTTP_AUTHORIZATION' => 'Bearer ' . $token];
     }
 }

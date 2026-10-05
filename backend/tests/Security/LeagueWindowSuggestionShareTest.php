@@ -40,7 +40,9 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *  (i) code illisible → réponse neutre (instance null, zéro item) ;
  *  (j) pg_proc : SECURITY DEFINER, search_path figé, EXECUTE au seul rôle applicatif ;
  *  (k) repli fédéral servi pour ARA (→ AURA), RIEN pour GUY (ligue non cataloguée) ;
- *  (l) apply : recalcul serveur (jamais les plages du client), transactionnel, 403 non-gestionnaire.
+ *  (l) apply : recalcul serveur (jamais les plages du client), transactionnel, 403 non-gestionnaire ;
+ *  (m) BCK-36 : un club de DÉMONSTRATION n'entre JAMAIS dans les pairs (exclu de l'agrégat) ;
+ *  (n) BCK-36 : un appel de la fonction avec un club ≠ GUC tenant → zéro ligne (fail-closed RLS).
  */
 #[Group('phase1')]
 #[Group('security')]
@@ -391,6 +393,60 @@ final class LeagueWindowSuggestionShareTest extends WebTestCase
         self::assertResponseStatusCodeSame(403);
     }
 
+    // ── (m) BCK-36 : un club de démonstration n'entre jamais dans les pairs ───
+
+    public function testDemoClubsNeverEnterThePeers(): void
+    {
+        $ligue = $this->uniqueLigue();
+        $comite = '0069';
+        // 2 VRAIS pairs + 1 club DÉMO, tous la MÊME copie U13 samedi.
+        [, $r1] = $this->makeClub($this->code($ligue, $comite));
+        [, $r2] = $this->makeClub($this->code($ligue, $comite));
+        $this->addCopy($r1, 'U13', 'DEPARTEMENTAL', null, 6, [['13:00', '18:00']]);
+        $this->addCopy($r2, 'U13', 'DEPARTEMENTAL', null, 6, [['13:00', '18:00']]);
+        [, $demoSeason] = $this->makeClub($this->code($ligue, $comite), isDemo: true);
+        $this->addCopy($demoSeason, 'U13', 'DEPARTEMENTAL', null, 6, [['13:00', '18:00']]);
+        [, , $reader] = $this->makeClub($this->code($ligue, $comite));
+
+        // 2 vrais + 1 démo : le démo ne compte pas → sous le seuil de 3 → rien.
+        self::assertNull($this->itemFor($this->suggestions($reader), 'U13', 6), 'un club démo n\'entre jamais dans les pairs');
+
+        // Témoin : un 3ᵉ VRAI pair identique → servi, compte 3 (le démo n'a jamais compté).
+        [, $r3] = $this->makeClub($this->code($ligue, $comite));
+        $this->addCopy($r3, 'U13', 'DEPARTEMENTAL', null, 6, [['13:00', '18:00']]);
+        $item = $this->itemFor($this->suggestions($reader), 'U13', 6);
+        self::assertNotNull($item, '3 vrais pairs → servi');
+        self::assertSame(3, $item['clubCount'], 'le compte ne porte QUE les 3 vrais pairs, jamais le démo');
+    }
+
+    // ── (n) BCK-36 : la fonction refuse un club ≠ GUC tenant ──────────────────
+
+    public function testFunctionRefusesACallForAClubThatIsNotTheCurrentTenant(): void
+    {
+        $ligue = $this->uniqueLigue();
+        $comite = '0069';
+        foreach (['p1', 'p2', 'p3'] as $tag) {
+            [, $s] = $this->makeClub($this->code($ligue, $comite));
+            $this->addCopy($s, 'U13', 'DEPARTEMENTAL', null, 6, [['13:00', '18:00']]);
+        }
+        [$reader] = $this->makeClub($this->code($ligue, $comite));
+        [$other] = $this->makeClub($this->code($ligue, $comite));
+
+        // GUC = reader, p_requesting_club = reader → la tendance est servie (témoin).
+        $this->scopeGucToClub($reader->getId());
+        self::assertNotSame([], $this->conn()->fetchAllAssociative(
+            'SELECT * FROM league_window_suggestions(:club)',
+            ['club' => $reader->getId()],
+        ), 'GUC = club demandeur → la tendance est servie');
+
+        // GUC = other, p_requesting_club = reader → `me` vide → zéro ligne (fail-closed).
+        $this->scopeGucToClub($other->getId());
+        self::assertSame([], $this->conn()->fetchAllAssociative(
+            'SELECT * FROM league_window_suggestions(:club)',
+            ['club' => $reader->getId()],
+        ), 'un appel pour un club ≠ GUC tenant ne rend AUCUNE ligne');
+    }
+
     // ── Infrastructure ────────────────────────────────────────────────────────
 
     protected function setUp(): void
@@ -414,7 +470,7 @@ final class LeagueWindowSuggestionShareTest extends WebTestCase
     }
 
     /** @return array{0: Club, 1: Season, 2: User} */
-    private function makeClub(string $ffbbCode): array
+    private function makeClub(string $ffbbCode, bool $isDemo = false): array
     {
         $uid = uniqid('lws', true);
         $hasher = self::getContainer()->get('security.user_password_hasher');
@@ -426,6 +482,7 @@ final class LeagueWindowSuggestionShareTest extends WebTestCase
         $club->setLocale('fr');
         $club->setOnboardingCompleted(true);
         $club->setFfbbClubCode($ffbbCode);
+        $club->setIsDemo($isDemo);
         $this->em->persist($club);
 
         $user = new User;
@@ -566,9 +623,14 @@ final class LeagueWindowSuggestionShareTest extends WebTestCase
         return $data;
     }
 
-    /** Reads the SQL function's own count for a combination (bypasses the service masking). */
+    /**
+     * Reads the SQL function's own count for a combination (bypasses the service masking).
+     * BCK-36 : la fonction exige désormais GUC = club demandeur — on scope le GUC au club
+     * interrogé (c'est ce que fait le listener tenant en HTTP pour le club courant).
+     */
     private function functionCount(string $clubId, string $category, int $dayOfWeek): ?int
     {
+        $this->scopeGucToClub($clubId);
         $value = $this->conn()->fetchOne(
             'SELECT club_count FROM league_window_suggestions(:club) WHERE category = :cat AND day_of_week = :day',
             ['club' => $clubId, 'cat' => $category, 'day' => $dayOfWeek],

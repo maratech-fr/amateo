@@ -571,11 +571,22 @@ export interface AdminRetainedDemoClub {
   retainedUntil: string;
 }
 
+/**
+ * État du reset ASYNCHRONE de la démo BCCL (BCK-35) : `running` tant que le worker re-seed,
+ * puis `succeeded`/`failed`. `null` quand aucun reset récent. `at` est un ISO UTC.
+ */
+export interface AdminDemoResetState {
+  state: "running" | "succeeded" | "failed";
+  at: string;
+}
+
 export interface AdminDemosResponse {
   bccl: AdminDemoAccount;
   prospect: AdminDemoAccount;
   /** Les clubs démo conservés, lus par la table (jamais par adhésion) ; pas de prolongation (14 j fixes). */
   retained: AdminRetainedDemoClub[];
+  /** L'état du reset asynchrone de la démo BCCL (null quand aucun reset récent). */
+  reset: AdminDemoResetState | null;
 }
 
 export function getAdminDemos(): Promise<AdminDemosResponse> {
@@ -590,7 +601,8 @@ export function deactivateAdminDemo(target: AdminDemoTarget, csrfToken: string):
   return adminApi.post(`demos/${target}/deactivate`, { headers: { "X-CSRF-Token": csrfToken } }).json();
 }
 
-export function resetAdminDemoBccl(csrfToken: string): Promise<{ status: "reset" }> {
+/** Enfile le reset ASYNCHRONE de la démo BCCL (BCK-35) — 202 accepted ; 409 si un reset tourne déjà. */
+export function resetAdminDemoBccl(csrfToken: string): Promise<{ status: "accepted" }> {
   return adminApi.post("demos/bccl/reset", { headers: { "X-CSRF-Token": csrfToken } }).json();
 }
 

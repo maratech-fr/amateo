@@ -71,9 +71,17 @@ Deux gestes, par ordre de préférence :
 # 1. Rien n'écoute, rien n'est publié — le plus sûr.
 ssh <hôte> 'docker compose exec postgres psql -U <rôle> -d amateo'
 
-# 2. Tunnel SSH, seulement si un client graphique est nécessaire (DBeaver, TablePlus).
-#    Exige de publier le port sur la LOOPBACK de l'hôte (127.0.0.1:5432:5432), JAMAIS 0.0.0.0.
-ssh -N -L 5433:localhost:5432 <hôte>   # puis se connecter à localhost:5433
+# 2. Tunnel SSH, seulement si un client graphique est nécessaire (DBeaver, PhpStorm, TablePlus).
+#    AUCUN port à publier sur l'hôte — Postgres ne publie toujours rien. Le tunnel SSH vise
+#    directement l'IP du conteneur sur le réseau Docker INTERNE (jointe par l'hôte, pas par
+#    Internet) :
+ssh <hôte> "docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' amateo-postgres"
+# → ex. 172.19.0.3 : c'est l'hôte du tunnel, PAS localhost ; un client graphique (PhpStorm,
+# DBeaver) qui porte son propre onglet SSH (« SSH/SSL » ou « SSH tunnel ») fait le tunnel
+# lui-même — pas de `ssh -L` séparé à tenir dans un terminal. Pointer la connexion sur
+# <IP conteneur>:5432, hôte SSH = <hôte>. ⚠ Cette IP peut CHANGER quand le conteneur
+# `postgres` est recréé (déploiement, redémarrage) — rejouer la commande `docker inspect`
+# si la connexion tombe.
 ```
 
 SSH **par clé, authentification par mot de passe désactivée**.

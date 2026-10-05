@@ -892,6 +892,25 @@ jobs:
       - name: OrphanAccountLifecycleTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/OrphanAccountLifecycleTest.php --group phase1'
 
+      # Axe tenant isolation (BCK-24/BCK-38) — garde de COMPLÉTUDE des purges : toute entité
+      # tenant doit être purgée (par saison, par club) ou nommément exclue AVEC sa raison, pour
+      # la rétention/reset de saison ET pour l'effacement RGPD (art. 17). Le test DÉRIVE des
+      # constantes des deux purgers — une entité tenant nouvelle tombe en échec par défaut.
+      # Falsifié : une table tenant NI purgée NI exclue (comme opponent_travel au 2026-09-18)
+      # fait rougir. Non bloquant jusqu'ici (tournait dans unit-tests, après le gate) : promu
+      # step NOMMÉ car il garde une promesse LÉGALE (une donnée personnelle promise détruite).
+      - name: PurgeCompletenessTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/PurgeCompletenessTest.php --group phase1'
+
+      # Axe tenant isolation (BCK-03/BCK-38) — garde de COMPLÉTUDE du marqueur tenant : l'ensemble
+      # des entités qui implémentent TenantOwnedInterface DOIT être exactement l'ensemble des
+      # entités portant une colonne club_id. Les gardes applicatives (providers/processors) keyent
+      # sur ce marqueur ; un écart le rend muet (entité éditable/supprimable cross-club à la couche
+      # app, défense en profondeur perdue) ou mensonger (ligne globale déguisée en tenant). Falsifié
+      # dans les deux sens. Même raison de promotion que PurgeCompletenessTest (gate, pas après).
+      - name: TenantOwnedInterfaceCompletenessTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/TenantOwnedInterfaceCompletenessTest.php --group phase1'
+
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest

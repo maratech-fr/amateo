@@ -88,6 +88,18 @@ framework:
             policy: 'sliding_window'
             limit: 30
             interval: '1 hour'
+        # BCK-37 — le re-hébergement PARESSEUX d'un logo adverse (GET /api/opponents/{code}/logo),
+        # keyé PAR UTILISATEUR (JWT) : un cache miss SANS marqueur d'échec déclenche un
+        # téléchargement sortant vers l'hôte d'assets FFBB (FfbbLogoFetcher, timeout 8 s). La
+        # borne n'est consommée QUE sur ce chemin de TÉLÉCHARGEMENT réel (jamais sur un logo déjà
+        # stocké, ni sur un code sans logo, ni quand le marqueur négatif 24 h court) : les GET
+        # ordinaires d'une page de logos ne la touchent pas. 60/h borne une rafale de premiers
+        # affichages tout en couvrant un gros calendrier. Même patron per-user que
+        # opponent_travel_manual (non assoupli en test À DESSEIN).
+        opponent_logo:
+            policy: 'sliding_window'
+            limit: 60
+            interval: '1 hour'
         # P2-54 PR-2b — l'orchestrateur « Mettre à jour les adversaires » (POST /api/opponents/refresh),
         # keyé PAR UTILISATEUR (JWT) : la route enchaîne les TROIS passes (rattrapage des codes,
         # auto-localisation des gymnases depuis le fichier, recalcul des trajets) → la plus grosse
