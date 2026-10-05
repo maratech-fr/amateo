@@ -1,14 +1,13 @@
 # Living Specs System
 
-Last verified @ 2026-10-02 (`documentation-update`, rotation de fraîcheur — sujet de la PR sans
-rapport avec ce fichier). Re-confronté : les six gardes `{DocPlacementTest,
+Last verified @ 2026-10-05 (`documentation-update`, rotation de fraîcheur — sujet de la PR sans
+rapport, lot backend 5 « architecture »). Re-confronté : les six gardes `{DocPlacementTest,
 DocStampFreshnessTest, RoadmapIdentityTest, BlockingTestsListMatchesCiTest,
 SpecsCarryNoHistoryTest, WorkflowPermissionsDeclaredTest}.php` existent toujours
-(`ls backend/tests/Unit/Documentation/`) ; `engine/tests/test_contract_version_doc_sync.py`
-existe toujours ; `docs/testing/blocking-tests.md` existe. **§ Files Overview confronté ligne à
-ligne à `ls specs/courantes/*.md`** : les **13** fichiers cités correspondent exactement au
-dossier, aucun absent, aucun fantôme. Rien de faux trouvé cette passe. `ls specs/evolution/` et
-`ls specs/audit/` non re-sondés cette passe (zone non touchée par ce fichier).
+(`ls backend/tests/Unit/Documentation/`) ; `docs/testing/blocking-tests.md` existe ;
+`ls specs/courantes/*.md` rend toujours 13 fichiers, inchangé. Rien de faux trouvé cette passe.
+`ls specs/evolution/` et `ls specs/audit/` non re-sondés cette passe (zone non touchée par ce
+fichier).
 
 ## 3-Tier Structure
 

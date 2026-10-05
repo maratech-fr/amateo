@@ -1,10 +1,11 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-10-02 (lot images de prod). Re-confronté au code : la ligne knip du § Testing
-Stack — `frontend/Makefile` (`lint`) lance désormais `npm run lint:deps` en plus d'ESLint/`tsc -b`,
-donc knip tourne par `make -C frontend lint` ET en CI, corrigé ici (elle ne disait que « step CI »).
-Reste du fichier (§ Stack Versions Fixed et le reste) non reconfronté cette passe. Chronique des
-passes antérieures : `git log -p --follow` ce fichier.
+Last verified @ 2026-10-05 (`documentation-update`, rotation de fraîcheur — sujet de la PR sans
+rapport, lot backend 5 « architecture »). Re-confronté : `testTimeout: 15_000` (`vitest.config.ts:49`)
+et `asyncUtilTimeout: 5_000` (`src/test/setup.ts:28`) toujours les valeurs posées ✓ ; `lint:deps`
+toujours câblé dans `package.json`/`Makefile` ✓. Reste du fichier (§ Stack Versions Fixed et le
+reste) non reconfronté cette passe. Chronique des passes antérieures : `git log -p --follow` ce
+fichier.
 
 > Fixe le mandat de test, les versions de la stack, les anti-patterns et les règles de
 > préservation d'infrastructure. Le détail fonctionnel (routes, composants, wizard) est dans

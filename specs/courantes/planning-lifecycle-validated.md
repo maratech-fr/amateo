@@ -1,13 +1,12 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-10-04 (`documentation-update`, rotation de fraîcheur — sujet sans rapport, PR
-suppression serveur de `X-Club-Id`). Re-confronté au code :
-`PlacedSessionPersonConflictDetector::detect` scanne la version **pointée** du plan SEASON
-(`SchedulePlanProvisioner::chosenOfSeasonPlan`) et rend `seasonPlanChosen: false` sans version
-pointée (`backend/src/Service/PlacedSessionPersonConflictDetector.php:68-73`) ✓ ;
-`GET /api/training/placed-conflicts` tire `ManagementAccessGuard::assertManager()` en premier
-(`backend/src/Controller/TrainingPlacedConflictsController.php:41`) ✓. Non re-sondé cette passe :
-les trois rendus front (`CoachesStep`, `/planning` autonome+en vigueur, pastille
+Last verified @ 2026-10-05 (`documentation-update`, lot backend 5 « architecture » — BCK-19
+partie 1). Re-confronté au code : `ReopenScheduleController`/`ValidateScheduleController`
+appellent désormais `ResolvesCurrentClubTrait::resolveCurrentClubId`
+(`backend/src/Controller/ReopenScheduleController.php:66`,
+`backend/src/Controller/ValidateScheduleController.php:80`) — même comportement (null → skip,
+mismatch → 403), dédupliqué depuis un helper privé jusque-là recopié par contrôleur. Non re-sondé
+cette passe : les trois rendus front (`CoachesStep`, `/planning` autonome+en vigueur, pastille
 `SeasonPlanBanner`, § 2 ci-dessous) et le reste du fichier. Historique des passes vit dans git :
 `git log -p --follow specs/courantes/planning-lifecycle-validated.md`.
 
@@ -93,7 +92,7 @@ conflits d'entraînement ».
 - « Valider » reste le mot FR du bouton demandé par le gestionnaire ; ce qu'il fait, c'est **pointer**.
 - **`POST /api/schedules/{id}/set-baseline` est supprimé** (inv. 18) : il n'y a plus qu'une vérité — le pointeur — donc plus de second geste pour la déplacer.
 - **Aucun pointage automatique** (inv. 2) : la génération ne pointe jamais.
-- **Tenant** : les deux endpoints de cycle de vie réutilisent le pattern `resolveCurrentClubId` (null → skip, RLS 404 ; mismatch → 403). Les deux exigent en plus le rôle management (SEC-07).
+- **Tenant** : les deux endpoints de cycle de vie partagent `ResolvesCurrentClubTrait::resolveCurrentClubId` (null → skip, RLS 404 ; mismatch → 403). Les deux exigent en plus le rôle management (SEC-07).
 
 ### 3.2 Verrou lecture seule **côté serveur** (les 3 chemins)
 Le verrou se dérive du **pointeur** : « verrouillé » = **le plan pointe cette version** (`SchedulePlanProvisioner::isChosen`), jamais un statut. Les mutations de **contenu** sont alors refusées (409 « planning en vigueur ») :

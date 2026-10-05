@@ -3,14 +3,17 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-10-05 (`documentation-update`, lot backend « robustesse » — BCK-35/36/37).
-§Module démo : reset BCCL confronté au rail ASYNCHRONE (`DemoResetTracker`, `ResetDemoBcclMessage`/
-`ResetDemoBcclHandler`, `AdminDemoController::reset`) — verrou Redis, 202/409, état exposé par
-`GET /demos`. Table des routes : `league_window_suggestions` confrontée à `Version20261005110000`
-(exclusion démo + liaison GUC) ; `/api/opponents/{code}/logo` confrontée à
-`OpponentLogoController.php` (marqueur d'échec + limiteur `opponent_logo`). Reste du fichier non
-rebalayé cette passe ; historique des passes complètes : `git log -p --follow` ce fichier — un
-stamp REMPLACE, il ne s'empile pas.
+Last verified @ 2026-10-05 (`documentation-update`, lot backend 5 « architecture » — BCK-19
+partie 1). § Structure des dossiers confronté : `FbiFixtureImporter` (`backend/src/Service/`)
+reste la façade publique (`treatOnArrival`, `applyFieldTakeFile`, `attachConfirmedVenue`,
+`detectUnplacedVenueDeviation`, `sourceIsAuthoritativeForWindow` toujours présents, mêmes
+signatures) et délègue à trois services neufs de `backend/src/Service/Fbi/` (`FbiDeviationService`,
+`FbiArrivalReview`, `FbiMappingGuards`). Dédup de la résolution du club courant confrontée :
+19 contrôleurs utilisent `ResolvesCurrentClubTrait` (`backend/src/Controller/
+ResolvesCurrentClubTrait.php`), `LeagueValidatedFixturesController` reste inline par exception
+documentée (chaîne vide valide). Aucun comportement, aucune API, aucun schéma changé — reste du
+fichier non rebalayé cette passe ; historique des passes complètes : `git log -p --follow` ce
+fichier — un stamp REMPLACE, il ne s'empile pas.
 
 ---
 
@@ -40,6 +43,7 @@ backend/
 │   ├── Controller/           # Contrôleurs custom — liste : ls backend/src/Controller/ (détail §3)
 │   ├── MessageHandler/       # GenerateScheduleHandler, ExportPdfHandler
 │   ├── Service/              # ScheduleConstraintBuilder, ScheduleResultImporter, ClubGenerationLock, ManualEditService, FfbbExcelImporter, ConstraintValidationService, ... — liste : ls backend/src/Service/
+│   ├── Service/Fbi/          # Découpage verbatim, iso-comportement, de `FbiFixtureImporter` (BCK-19 partie 1) : `FbiDeviationService` (moteur de réconciliation app⇄fichier, foyer unique des 2 canaux import xlsx + API FFBB), `FbiArrivalReview` (traitement à l'arrivée + rattrapage de revue), `FbiMappingGuards` (gardes d'appariement poule/suggestion) — `FbiFixtureImporter` reste dans `Service/` et garde des façades publiques de même signature
 │   ├── State/Provider/       # State providers API Platform (par ressource)
 │   ├── State/Processor/      # State processors API Platform (par ressource)
 │   ├── EventListener/        # TenantFilterListener (résolution tenant : attribut / header / JWT), EmailSignatureListener (signature de marque sur tout e-mail sortant, MessageEvent symfony/mailer — P5-24)
