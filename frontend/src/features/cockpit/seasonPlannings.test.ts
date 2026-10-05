@@ -15,8 +15,8 @@ describe("seasonPlannings — open plannings & plan name (founder feedback 2026-
     expect(rows[0].label).toBe("Planning de la saison 2026-2027");
   });
 
-  it("falls back to « Planning principal » without a plan name", () => {
-    expect(seasonPlannings([s({ id: "v1" })])[0].label).toBe("Planning principal");
+  it("falls back to « Planning de saison » without a plan name", () => {
+    expect(seasonPlannings([s({ id: "v1" })])[0].label).toBe("Planning de saison");
   });
 
   it("lists an overlay with NO finished version as an OPEN row on its latest version", () => {
