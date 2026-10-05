@@ -15,6 +15,7 @@ use App\Tests\Behat\FbiCorrectionContext;
 use App\Tests\Behat\FbiErrorLedgerContext;
 use App\Tests\Behat\FixtureReviewContext;
 use App\Tests\Behat\HolidayWeekContext;
+use App\Tests\Behat\InvitationContext;
 use App\Tests\Behat\LeagueValidationContext;
 use App\Tests\Behat\LockContext;
 use App\Tests\Behat\MatchPlacementContext;
@@ -214,5 +215,10 @@ return (new Config)
                 new Suite('demo-conservee')
                     ->withPaths('%paths.base%/features/le-club-demo-d-un-prospect-se-conserve.feature')
                     ->withContexts(DemoRetainedContext::class),
+            )
+            ->withSuite(
+                new Suite('invitation')
+                    ->withPaths('%paths.base%/features/une-invitation-fait-entrer-dans-le-club.feature')
+                    ->withContexts(InvitationContext::class),
             ),
     );
