@@ -158,7 +158,7 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
               Contraintes). Vide = pas de plafond. Le solveur le traite en PRÉFÉRÉ : il
               regroupe quand il peut, ne sacrifie jamais une séance, et le récap nomme le
               dépassement sinon. */}
-          <label className="flex items-center gap-1 text-xs text-muted-foreground" title="Nombre maximum de jours au club par semaine — le solveur regroupe les séances quand c'est possible, et le récap signale s'il n'y arrive pas. Vide = pas de plafond.">
+          <label className="flex items-center gap-1 text-xs text-muted-foreground" title="Nombre maximum de jours au club par semaine — les séances sont regroupées quand c'est possible, et le récap signale si ce n'est pas le cas. Vide = pas de plafond.">
             Max
             <Input
               type="number"
@@ -192,7 +192,7 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
             </StatusPill>
           ) : null}
           {null !== coach.maxDaysOverride ? (
-            <StatusPill variant="accent" className="shrink-0" title="Plafond préféré : le solveur regroupe les séances quand c'est possible, le récap signale sinon.">
+            <StatusPill variant="accent" className="shrink-0" title="Plafond préféré : les séances sont regroupées quand c'est possible, le récap signale sinon.">
               ≤ {coach.maxDaysOverride} j/sem
             </StatusPill>
           ) : null}

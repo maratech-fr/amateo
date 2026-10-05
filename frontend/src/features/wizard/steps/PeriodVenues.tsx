@@ -175,7 +175,7 @@ function PeriodVenuesPanel({ calendarEntryId, schedulePlanId }: { calendarEntryI
   return (
     <div>
       <p className="mb-3 text-sm text-muted-foreground">
-        Ces créneaux sont repris de votre planning principal à l’ouverture de la période. Les modifier ici ne change que cette période — cliquez dans la grille pour poser un créneau, un créneau pour l’ajuster.
+        Ces créneaux sont repris de votre planning de saison à l’ouverture de la période. Les modifier ici ne change que cette période — cliquez dans la grille pour poser un créneau, un créneau pour l’ajuster.
       </p>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -513,7 +513,7 @@ function PeriodVenuePanel({
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button type="button" size="sm" variant="outline" disabled={isDisabled || gridBusy} onClick={() => setPending("reset")}>
-          Reprendre la grille du planning principal
+          Reprendre la grille du planning de saison
         </Button>
         <Button type="button" size="sm" variant="outline" disabled={isDisabled || gridBusy || 0 === slots.length} onClick={() => setPending("clear")}>
           Vider la grille
@@ -542,7 +542,7 @@ function PeriodVenuePanel({
         title={"reset" === pending ? `Reprendre la grille de ${venue.name} ?` : `Vider la grille de ${venue.name} ?`}
         description={
           "reset" === pending
-            ? `Les créneaux de ${venue.name} pour cette période seront remplacés par ceux de votre planning principal.${reservationCount > 0 ? ` ${reservationCount} réservation${reservationCount > 1 ? "s" : ""} sur ce gymnase ser${reservationCount > 1 ? "ont" : "a"} supprimée${reservationCount > 1 ? "s" : ""}.` : ""}`
+            ? `Les créneaux de ${venue.name} pour cette période seront remplacés par ceux de votre planning de saison.${reservationCount > 0 ? ` ${reservationCount} réservation${reservationCount > 1 ? "s" : ""} sur ce gymnase ser${reservationCount > 1 ? "ont" : "a"} supprimée${reservationCount > 1 ? "s" : ""}.` : ""}`
             : `Tous les créneaux de ${venue.name} pour cette période seront supprimés, à ressaisir.${reservationCount > 0 ? ` ${reservationCount} réservation${reservationCount > 1 ? "s" : ""} sur ce gymnase part${reservationCount > 1 ? "iront" : "ira"} avec eux.` : ""}`
         }
         confirmLabel={"reset" === pending ? "Reprendre" : "Vider"}
@@ -550,7 +550,7 @@ function PeriodVenuePanel({
           // Actions atomiques et idempotentes des deux côtés : jamais un PUT de mode, dont
           // l'idempotence rendrait « vider » un no-op quand le mode ne change pas.
           if ("reset" === pending) {
-            resetGrid.mutate(venue.id, { onSuccess: () => toast.success("Grille reprise du planning principal") });
+            resetGrid.mutate(venue.id, { onSuccess: () => toast.success("Grille reprise du planning de saison") });
           } else {
             clearGrid.mutate(venue.id, { onSuccess: () => toast.success("Grille vidée") });
           }

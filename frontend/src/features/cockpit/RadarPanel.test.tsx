@@ -787,7 +787,7 @@ describe("RadarPanel", () => {
     meData = { seasonPlan: { chosenScheduleId: null } };
     renderRadar({ holidays: [holiday] });
 
-    expect(screen.getByText("Planning de la saison à valider")).toBeInTheDocument();
+    expect(screen.getByText("Planning de saison à valider")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Adapter" })).toBeDisabled();
   });
 

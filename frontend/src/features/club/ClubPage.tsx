@@ -529,7 +529,7 @@ function VenueStatsSection({ me }: { me: MeResponse }) {
   const statsQuery = useVenueUsageStats(from || undefined, to || undefined, null !== chosenId);
 
   if (null === chosenId) {
-    return <p className="text-sm text-muted-foreground">Les statistiques se calculent sur le planning en vigueur — validez d'abord le planning principal de la saison.</p>;
+    return <p className="text-sm text-muted-foreground">Les statistiques se calculent sur le planning en vigueur — validez d'abord le planning de saison.</p>;
   }
   if (statsQuery.isLoading) {
     return <p className="text-sm text-muted-foreground">Chargement des statistiques…</p>;

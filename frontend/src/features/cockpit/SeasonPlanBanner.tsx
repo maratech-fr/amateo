@@ -109,7 +109,7 @@ export function SeasonPlanBanner({ schedules, socleValidated, loading = false, e
           ) : loading ? (
             "Chargement…"
           ) : (
-            "Aucun planning principal désigné"
+            "Aucun planning de saison désigné"
           )}
         </p>
       </div>

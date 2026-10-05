@@ -1157,8 +1157,8 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
 
       <ConfirmDialog
         open={validateOverlayCount !== null}
-        title={`Valider « ${displayedPlanName ?? "cette version"} » et remplacer le planning principal ?`}
-        description={`Cette version deviendra le planning principal ; ${validateOverlayCount ?? 0} planning${(validateOverlayCount ?? 0) > 1 ? "s" : ""} de période bâti${(validateOverlayCount ?? 0) > 1 ? "s" : ""} sur l'ancien principal ser${(validateOverlayCount ?? 0) > 1 ? "ont" : "a"} supprimé${(validateOverlayCount ?? 0) > 1 ? "s" : ""} (à refaire ensuite).`}
+        title={`Valider « ${displayedPlanName ?? "cette version"} » et remplacer le planning de saison ?`}
+        description={`Cette version deviendra le planning de saison ; ${validateOverlayCount ?? 0} planning${(validateOverlayCount ?? 0) > 1 ? "s" : ""} de période bâti${(validateOverlayCount ?? 0) > 1 ? "s" : ""} sur l'ancien planning de saison ser${(validateOverlayCount ?? 0) > 1 ? "ont" : "a"} supprimé${(validateOverlayCount ?? 0) > 1 ? "s" : ""} (à refaire ensuite).`}
         confirmLabel="Valider et remplacer"
         destructive
         onConfirm={() => validate(true)}

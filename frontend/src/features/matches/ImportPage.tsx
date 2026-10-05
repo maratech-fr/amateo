@@ -99,7 +99,7 @@ export function ImportPage() {
         </CardHeader>
         <CardContent>
           <p className="mb-3 text-sm text-muted-foreground">
-            L'export FBI complet du club (début de saison ou de phase), le canal API FFBB (souvent
+            L'export FBI complet du club (début de saison ou de phase), le Canal FFBB (souvent
             des amicaux) et les engagements. L'import FBI fait foi.
           </p>
           <div className="flex flex-wrap items-center gap-2">
@@ -109,7 +109,7 @@ export function ImportPage() {
             </Button>
             <Button variant="ghost" size="sm" disabled={rencontres.isFetching} onClick={() => void checkViaApi()}>
               <Radar className="size-4" />
-              {rencontres.isFetching ? "Vérification…" : "Vérifier via l'API FFBB"}
+              {rencontres.isFetching ? "Vérification…" : "Vérifier via le Canal FFBB"}
             </Button>
             <Button variant="ghost" size="sm" onClick={() => setFfbbDialogOpen(true)}>
               <Link2 className="size-4" />

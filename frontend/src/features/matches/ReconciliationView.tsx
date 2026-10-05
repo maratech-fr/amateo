@@ -49,7 +49,7 @@ export function ReconciliationView() {
         <EmptyState
           icon={FileWarning}
           title="Rien à examiner"
-          description="Depuis Importer, relancez « Vérifier via l'API FFBB » pour proposer les rencontres publiées absentes de l'app."
+          description="Depuis Importer, relancez « Vérifier via le Canal FFBB » pour proposer les rencontres publiées absentes de l'app."
         />
         <Button variant="outline" size="sm" className="w-fit" onClick={() => void navigate("/matchs/importer")}>
           <ArrowLeft className="size-4" />
@@ -93,7 +93,7 @@ export function ReconciliationView() {
         <h2 className="text-base font-semibold">Rencontres publiées par la FFBB</h2>
         {/* Provenance — le gestionnaire sait toujours d'où vient ce qu'il regarde. */}
         <StatusPill variant="accent-solid" icon={<Radar className="size-3" aria-hidden="true" />}>
-          Source : API FFBB
+          Source : Canal FFBB
         </StatusPill>
       </div>
 

@@ -31,8 +31,8 @@ describe("autoAppliedPhrase — les valeurs imposées d'office, en UNE phrase", 
   });
 
   it("salle seule : « (salle) : X → Y » — brut, la source est nommée", () => {
-    expect(autoAppliedPhrase([dev("venue", "Gymnase A", "Gymnase B")], "API FFBB")).toBe(
-      "API FFBB a déplacé ce match (salle) : Gymnase A → Gymnase B",
+    expect(autoAppliedPhrase([dev("venue", "Gymnase A", "Gymnase B")], "Canal FFBB")).toBe(
+      "Canal FFBB a déplacé ce match (salle) : Gymnase A → Gymnase B",
     );
   });
 

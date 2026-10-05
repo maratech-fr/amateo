@@ -103,7 +103,7 @@ export function AppLayout() {
               <span
                 aria-disabled="true"
                 className="cursor-not-allowed rounded-md px-3 py-1.5 text-sm text-muted-foreground/40"
-                title="Validez le planning principal pour débloquer les matchs"
+                title="Validez le planning de saison pour débloquer les matchs"
               >
                 Matchs
               </span>

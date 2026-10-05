@@ -262,7 +262,7 @@ describe("ReviewQueueRow — valider / pris en compte / bandeau (P4-199)", () =>
       reviewedAt: "2026-10-01T10:00:00+00:00",
       pendingDeviations: [{ field: "venue", appValue: "Gymnase Alpha", sourceValue: "Coubertin", channel: "FFBB_API", seenAt: "2026-10-01T00:00:00+00:00", autoApplied: true }],
     }));
-    expect(screen.getByText("API FFBB a déplacé ce match (salle) : Gymnase Alpha → Coubertin")).toBeInTheDocument();
+    expect(screen.getByText("Canal FFBB a déplacé ce match (salle) : Gymnase Alpha → Coubertin")).toBeInTheDocument();
   });
 
   it("OUT_OF_SYNC à écart arbitrable : ni « Valider » ni « Pris en compte » (on tranche par champ)", () => {

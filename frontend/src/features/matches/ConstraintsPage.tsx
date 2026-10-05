@@ -716,7 +716,7 @@ const toCoachInput = (draft: CoachUnavailabilityDraft): MatchConstraintInput => 
   kickoffMax: "" !== draft.kickoffMax ? draft.kickoffMax : null,
 });
 
-const coachLabel = (coach: Coach | undefined): string => (undefined !== coach ? `${coach.firstName} ${coach.lastName}` : "Entraîneur ?");
+const coachLabel = (coach: Coach | undefined): string => (undefined !== coach ? `${coach.firstName} ${coach.lastName}` : "Coach ?");
 
 /**
  * La section Coachs : le CRUD des INDISPONIBILITÉS d'entraîneur (« pas avant 14h le
@@ -762,9 +762,9 @@ function CoachsSection() {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Indiquez quand un entraîneur n'est pas disponible pour un match — par exemple « indisponible jusqu'à 14:00 le samedi » : le
+        Indiquez quand un coach n'est pas disponible pour un match — par exemple « indisponible jusqu'à 14:00 le samedi » : le
         placement <strong>évitera</strong> alors un coup d'envoi avant 14h. Il évite ces plages quand il le peut, sans jamais rendre
-        un match impossible. Vous pouvez déclarer plusieurs plages pour un même entraîneur, y compris le même jour.
+        un match impossible. Vous pouvez déclarer plusieurs plages pour un même coach, y compris le même jour.
       </p>
 
       {hasAdjointOnlyUnavailability ? (
@@ -772,7 +772,7 @@ function CoachsSection() {
       ) : null}
 
       {0 === unavailabilities.length ? (
-        <EmptyHint>Aucune indisponibilité — chaque entraîneur est réputé disponible pour tous les matchs.</EmptyHint>
+        <EmptyHint>Aucune indisponibilité — chaque coach est réputé disponible pour tous les matchs.</EmptyHint>
       ) : (
         <div className="flex flex-col gap-2">
           {unavailabilities.map((rule) => (
@@ -795,8 +795,8 @@ function CoachFields({ draft, set, coaches, idLabel, actions }: { draft: CoachUn
   return (
     <div className="flex w-full flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <Select aria-label="Entraîneur" value={draft.coachId} onChange={(e) => set({ coachId: e.target.value })} wrapperClassName="min-w-32">
-          <option value="">Entraîneur…</option>
+        <Select aria-label="Coach" value={draft.coachId} onChange={(e) => set({ coachId: e.target.value })} wrapperClassName="min-w-32">
+          <option value="">Coach…</option>
           {coaches.map((c) => (
             <option key={c.id} value={c.id}>
               {coachLabel(c)}
@@ -901,7 +901,7 @@ function CoachUnavailabilityRow({ rule, coaches, coachName }: { rule: MatchConst
       <ConfirmDialog
         open={confirmDelete}
         title="Supprimer cette indisponibilité ?"
-        description="Le placement cessera d'éviter cette plage pour cet entraîneur."
+        description="Le placement cessera d'éviter cette plage pour ce coach."
         confirmLabel="Supprimer"
         destructive
         onConfirm={() => {

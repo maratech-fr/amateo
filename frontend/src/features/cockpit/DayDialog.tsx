@@ -792,7 +792,7 @@ function CutoffForm({ iso, onBack, onDone }: { iso: string; onBack: () => void; 
       {/* eslint-disable-next-line jsx-a11y/no-autofocus -- inside a Modal: focusing the first field on step change is intentional */}
       <Input aria-label="Intitulé de la coupure (optionnel)" placeholder="Intitulé (optionnel, ex. Coupure de Noël)" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
       <DateRangeFields startDate={startDate} endDate={endDate} onStart={setStart} onEnd={setEnd} />
-      <p className="text-xs text-muted-foreground">Rappel affiché au calendrier (🛑) et au radar — le planning de base reste inchangé, rien à générer.</p>
+      <p className="text-xs text-muted-foreground">Rappel affiché au calendrier (🛑) et au radar — le planning de saison reste inchangé, rien à générer.</p>
       <Button className="w-full" onClick={submit} disabled={createCutoff.isPending || !valid}>
         Enregistrer
       </Button>

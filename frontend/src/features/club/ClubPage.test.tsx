@@ -357,7 +357,7 @@ describe("ClubPage", () => {
     const user = userEvent.setup();
     render(<ClubPage />);
     await user.click(screen.getByRole("button", { name: /Statistiques des gymnases/ }));
-    expect(screen.getByText(/validez d'abord le planning principal/)).toBeInTheDocument();
+    expect(screen.getByText(/validez d'abord le planning de saison/)).toBeInTheDocument();
     expect(screen.queryByText("Par gymnase")).toBeNull();
   });
 });

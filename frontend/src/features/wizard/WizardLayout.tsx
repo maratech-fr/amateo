@@ -408,9 +408,9 @@ export function WizardPage() {
           role="status"
           className="mb-4"
           icon={<CalendarClock className="size-4 text-accent" />}
-          message="Le planning de la saison reste en vigueur — vos modifications s'appliqueront à la prochaine génération."
+          message="Le planning de saison reste en vigueur — vos modifications s'appliqueront à la prochaine génération."
         >
-          <p>Rouvrez le planning de la saison pour modifier les contraintes ou régénérer.</p>
+          <p>Rouvrez le planning de saison pour modifier les contraintes ou régénérer.</p>
         </NoticeBanner>
       ) : null}
       {periodMode ? (

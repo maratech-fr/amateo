@@ -319,8 +319,8 @@ describe("Wizard (integration)", () => {
 describe("mode saison, socle validé (P4-268)", () => {
   it("affiche le bandeau « le planning reste en vigueur » avec le motif du verrou", async () => {
     renderWithProviders(<WizardPage />, { route: "/wizard" });
-    expect(await screen.findByText(/Le planning de la saison reste en vigueur/)).toBeInTheDocument();
-    expect(screen.getByText(/Rouvrez le planning de la saison pour modifier les contraintes/)).toBeInTheDocument();
+    expect(await screen.findByText(/Le planning de saison reste en vigueur/)).toBeInTheDocument();
+    expect(screen.getByText(/Rouvrez le planning de saison pour modifier les contraintes/)).toBeInTheDocument();
   });
 
   it("verrouille Contraintes et Génération dans le rail (boutons désactivés)", async () => {
@@ -347,7 +347,7 @@ describe("mode saison, socle validé (P4-268)", () => {
     socleChosen = null;
     renderWithProviders(<WizardPage />, { route: "/wizard" });
     await screen.findByDisplayValue("SF1");
-    expect(screen.queryByText(/Le planning de la saison reste en vigueur/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Le planning de saison reste en vigueur/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Contraintes/ })).toBeEnabled();
   });
 

@@ -347,7 +347,7 @@ export function WeekWorkbench(props: WeekWorkbenchProps) {
 
   const conflictErrorBlock =
     false === seasonPlanChosen ? (
-      <NoticeBanner tone="destructive" message="Le planning de la saison n'est plus validé — les conflits avec les entraînements ne sont pas évalués." />
+      <NoticeBanner tone="destructive" message="Le planning de saison n'est plus validé — les conflits avec les entraînements ne sont pas évalués." />
     ) : conflictsError ? (
       <NoticeBanner tone="destructive" message="Les conflits n'ont pas pu être vérifiés — rechargez la page avant de placer un match." />
     ) : null;
