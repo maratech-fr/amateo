@@ -1,14 +1,13 @@
 {
   "clubId": "club-overlap-shared-coach",
   "seasonId": "season-2026",
-  "version": "2.0",
+  "version": "1.3",
   "solverSeed": 42,
   "solverTimeoutSeconds": 10,
   "venues": [
     {
       "id": "jean-vilar",
       "name": "Jean Vilar",
-      "isActive": true,
       "trainingSlots": [
         {
           "dayOfWeek": 2,
@@ -21,7 +20,6 @@
     {
       "id": "debarros",
       "name": "Debarros",
-      "isActive": true,
       "trainingSlots": [
         {
           "dayOfWeek": 2,
@@ -38,24 +36,21 @@
       "sportCategoryId": "cat-u18",
       "priorityTierId": 3,
       "name": "U18M1",
-      "sessionsPerWeek": 1,
-      "isActive": true
+      "sessionsPerWeek": 1
     },
     {
       "id": "sm2",
       "sportCategoryId": "cat-senior",
       "priorityTierId": 2,
       "name": "SM2",
-      "sessionsPerWeek": 1,
-      "isActive": true
+      "sessionsPerWeek": 1
     }
   ],
   "coaches": [
     {
       "id": "shared-coach",
       "firstName": "Coach PoivreSel",
-      "lastName": "",
-      "isActive": true
+      "lastName": ""
     }
   ],
   "slotTemplates": [],
@@ -85,12 +80,5 @@
         "isActive": true
       }
     }
-  ],
-  "priorityTiers": [
-    { "id": 1, "label": "S", "orToolsWeight": 10000, "defaultMinSessions": 2 },
-    { "id": 2, "label": "A", "orToolsWeight": 1000, "defaultMinSessions": 2 },
-    { "id": 3, "label": "B", "orToolsWeight": 100, "defaultMinSessions": 1 },
-    { "id": 4, "label": "C", "orToolsWeight": 10, "defaultMinSessions": 1 },
-    { "id": 5, "label": "D", "orToolsWeight": 1, "defaultMinSessions": 1 }
   ]
 }

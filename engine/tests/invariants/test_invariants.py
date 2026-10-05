@@ -96,13 +96,13 @@ def random_fixture(draw: st.DrawFn) -> dict[str, Any]:
     for _ in range(num_venues):
         vid = draw(venue_id_st)
         if not any(v["id"] == vid for v in venues):
-            venues.append({"id": vid, "name": f"Venue {vid}", "isActive": True})
+            venues.append({"id": vid, "name": f"Venue {vid}"})
 
     coaches = []
     for i in range(num_coaches):
         cid = draw(coach_id_st)
         if not any(c["id"] == cid for c in coaches):
-            coaches.append({"id": cid, "firstName": f"Coach{i}", "lastName": "X", "isActive": True})
+            coaches.append({"id": cid, "firstName": f"Coach{i}", "lastName": "X"})
 
     teams = []
     for _ in range(num_teams):
@@ -116,7 +116,6 @@ def random_fixture(draw: st.DrawFn) -> dict[str, Any]:
                     "priorityTierId": tier,
                     "name": f"Team {tid}",
                     "sessionsPerWeek": draw(st.integers(min_value=1, max_value=2)),
-                    "isActive": True,
                 }
             )
 
@@ -200,13 +199,6 @@ def random_fixture(draw: st.DrawFn) -> dict[str, Any]:
         "coaches": coaches,
         "slotTemplates": templates,
         "constraints": constraints,
-        "priorityTiers": [
-            {"id": 1, "label": "S", "orToolsWeight": 10000, "defaultMinSessions": 2},
-            {"id": 2, "label": "A", "orToolsWeight": 1000, "defaultMinSessions": 2},
-            {"id": 3, "label": "B", "orToolsWeight": 100, "defaultMinSessions": 1},
-            {"id": 4, "label": "C", "orToolsWeight": 10, "defaultMinSessions": 1},
-            {"id": 5, "label": "D", "orToolsWeight": 1, "defaultMinSessions": 1},
-        ],
     }
 
 
@@ -312,7 +304,6 @@ class TestInvariants:
                 {
                     "id": "gym-a",
                     "name": "Venue gym-a",
-                    "isActive": True,
                     "trainingSlots": [{"dayOfWeek": 1, "startTime": "17:00", "durationMinutes": 60, "capacity": 1}],
                 }
             ],
@@ -323,11 +314,10 @@ class TestInvariants:
                     "priorityTierId": 1,
                     "name": f"Team {tid}",
                     "sessionsPerWeek": 1,
-                    "isActive": True,
                 }
                 for tid in ("team-s", "team-a")
             ],
-            "coaches": [{"id": "coach-1", "firstName": "Coach0", "lastName": "X", "isActive": True}],
+            "coaches": [{"id": "coach-1", "firstName": "Coach0", "lastName": "X"}],
             "slotTemplates": [
                 {
                     "id": f"tpl-{i}",
@@ -342,7 +332,6 @@ class TestInvariants:
                 for i, tid in enumerate(("team-s", "team-a"))
             ],
             "constraints": [team_coach(f"tc-{i}", tid, "coach-1") for i, tid in enumerate(("team-s", "team-a"))],
-            "priorityTiers": [{"id": 1, "label": "S", "orToolsWeight": 10000, "defaultMinSessions": 2}],
         }
 
         result = solve_payload(data, timeout=5)
@@ -387,7 +376,6 @@ class TestInvariants:
                 {
                     "id": "gym-a",
                     "name": "Venue gym-a",
-                    "isActive": True,
                     "trainingSlots": [{"dayOfWeek": 1, "startTime": "18:00", "durationMinutes": 60, "capacity": 1}],
                 }
             ],
@@ -398,13 +386,12 @@ class TestInvariants:
                     "priorityTierId": 1,
                     "name": f"Team {tid}",
                     "sessionsPerWeek": 1,
-                    "isActive": True,
                 }
                 for tid in ("team-pinned", "team-greedy")
             ],
             "coaches": [
-                {"id": "coach-1", "firstName": "A", "lastName": "X", "isActive": True},
-                {"id": "coach-2", "firstName": "B", "lastName": "X", "isActive": True},
+                {"id": "coach-1", "firstName": "A", "lastName": "X"},
+                {"id": "coach-2", "firstName": "B", "lastName": "X"},
             ],
             "slotTemplates": [
                 {
@@ -424,7 +411,6 @@ class TestInvariants:
                 team_coach("tc-0", "team-pinned", "coach-1"),
                 team_coach("tc-1", "team-greedy", "coach-2"),
             ],
-            "priorityTiers": [{"id": 1, "label": "S", "orToolsWeight": 10000, "defaultMinSessions": 1}],
         }
 
         result = solve_payload(data, timeout=5)
@@ -577,14 +563,12 @@ class TestInvariants:
                     "priorityTierId": 1,
                     "name": f"Team {d}",
                     "sessionsPerWeek": 1,
-                    "isActive": True,
                 }
                 for d in range(1, 6)
             ],
             venues=[make_venue("venue-1", [(d, "18:00") for d in range(1, 6)], duration_minutes=60)],
-            coaches=[{"id": "coach-1", "firstName": "Coach", "lastName": "One", "isActive": True}],
+            coaches=[{"id": "coach-1", "firstName": "Coach", "lastName": "One"}],
             constraints=constraints,
-            priority_tiers=[{"id": 1, "label": "S", "orToolsWeight": 10000, "defaultMinSessions": 1}],
             timeout=10,
         )
         if coach_rest_intensity is not None:
@@ -666,7 +650,6 @@ class TestInvariants:
                 {
                     "id": "gym-a",
                     "name": "Gym A",
-                    "isActive": True,
                     "trainingSlots": [{"dayOfWeek": 1, "startTime": "18:00", "durationMinutes": 15, "capacity": 1}],
                 }
             ],
@@ -677,7 +660,6 @@ class TestInvariants:
                     "priorityTierId": 1,
                     "name": "Team S",
                     "sessionsPerWeek": 1,
-                    "isActive": True,
                 },
                 {
                     "id": "team-d",
@@ -685,16 +667,11 @@ class TestInvariants:
                     "priorityTierId": 5,
                     "name": "Team D",
                     "sessionsPerWeek": 0,
-                    "isActive": True,
                 },
             ],
             "coaches": [],
             "slotTemplates": [],
             "constraints": [],
-            "priorityTiers": [
-                {"id": 1, "label": "S", "orToolsWeight": 10000, "defaultMinSessions": 1},
-                {"id": 5, "label": "D", "orToolsWeight": 1, "defaultMinSessions": 0},
-            ],
         }
         result = solve_payload(data, timeout=5)
 

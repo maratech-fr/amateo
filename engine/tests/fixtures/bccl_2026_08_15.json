@@ -1,5 +1,5 @@
 {
-    "version": "2.7",
+    "version": "1.3",
     "clubId": "996eadca-1bbc-47c7-85db-b09607bfe79d",
     "seasonId": "ce37eb82-f6c9-4ee7-bd40-e0b4c40e9385",
     "solverSeed": 42,
@@ -14,7 +14,6 @@
             "longitude": "4.8885300",
             "source": "fixture",
             "externalRef": "166926603",
-            "isActive": true,
             "parentVenueId": null,
             "trainingSlots": [
                 {
@@ -106,7 +105,6 @@
             "longitude": "4.9101400",
             "source": "fixture",
             "externalRef": "166926616",
-            "isActive": true,
             "parentVenueId": null,
             "trainingSlots": [
                 {
@@ -162,7 +160,6 @@
             "longitude": "4.9037700",
             "source": "fixture",
             "externalRef": "166926613",
-            "isActive": true,
             "parentVenueId": null,
             "trainingSlots": [
                 {
@@ -200,7 +197,6 @@
             "longitude": "4.8647100",
             "source": "fixture",
             "externalRef": "166926601",
-            "isActive": true,
             "parentVenueId": null,
             "trainingSlots": [
                 {
@@ -244,7 +240,6 @@
             "longitude": "4.8767200",
             "source": "fixture",
             "externalRef": "6926617",
-            "isActive": true,
             "parentVenueId": null,
             "trainingSlots": [
                 {
@@ -276,7 +271,6 @@
             "longitude": "4.8860400",
             "source": "fixture",
             "externalRef": "166926610",
-            "isActive": true,
             "parentVenueId": null,
             "trainingSlots": [
                 {
@@ -374,7 +368,6 @@
             "longitude": "4.9051000",
             "source": "fixture",
             "externalRef": "6926616",
-            "isActive": true,
             "parentVenueId": null,
             "trainingSlots": [
                 {
@@ -442,7 +435,6 @@
             "longitude": "4.9141700",
             "source": "fixture",
             "externalRef": "166926606",
-            "isActive": true,
             "parentVenueId": null,
             "trainingSlots": [
                 {
@@ -474,7 +466,6 @@
             "longitude": "4.8847300",
             "source": "fixture",
             "externalRef": "166926608",
-            "isActive": true,
             "parentVenueId": null,
             "trainingSlots": [
                 {
@@ -629,14 +620,9 @@
             "gender": null,
             "level": "LOISIR_JEUNE",
             "sessionsPerWeek": 1,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "LOISIR_JEUNE"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "0c394786-d9cc-4446-afa4-d93919f3a5a7",
@@ -648,18 +634,9 @@
             "gender": "M",
             "level": "REGIONAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "ADULTE",
-                "COMPETITION",
-                "MASCULINE",
-                "REGIONAL",
-                "SENIOR"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "0e66b6b7-1d9b-4319-8c22-1eef44a3a55b",
@@ -671,18 +648,9 @@
             "gender": "F",
             "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "ADULTE",
-                "COMPETITION",
-                "DEPARTEMENTAL",
-                "FEMININE",
-                "SENIOR"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "1dc8f525-76ff-487d-87bd-70d3c01343a0",
@@ -694,14 +662,9 @@
             "gender": null,
             "level": "LOISIR_ADULTE",
             "sessionsPerWeek": 1,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "LOISIR_ADULTE"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "21cb5e0b-1da3-402b-9bc7-1ff9946c76af",
@@ -713,18 +676,9 @@
             "gender": "M",
             "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 3,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "DEPARTEMENTAL",
-                "JEUNE",
-                "MASCULINE",
-                "U13"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "2a8de4fc-394a-42c8-a977-b07ec1181402",
@@ -736,17 +690,9 @@
             "gender": "M",
             "level": "LOISIR_JEUNE",
             "sessionsPerWeek": 1,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "JEUNE",
-                "LOISIR_JEUNE",
-                "MASCULINE",
-                "U18"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "2ae79624-4d31-4672-9503-7097b7814eb1",
@@ -758,15 +704,9 @@
             "gender": "MIXTE",
             "level": "LOISIR_ADULTE",
             "sessionsPerWeek": 1,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "LOISIR_ADULTE",
-                "MIXTE"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "34ee9b39-fdff-4f95-8034-e7fa2e6ef4d8",
@@ -778,18 +718,9 @@
             "gender": "F",
             "level": "REGIONAL",
             "sessionsPerWeek": 3,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "FEMININE",
-                "JEUNE",
-                "REGIONAL",
-                "U15"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "3bf60e32-de16-414c-b98e-0afb4117a928",
@@ -801,18 +732,9 @@
             "gender": "F",
             "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "DEPARTEMENTAL",
-                "EMB",
-                "FEMININE",
-                "U9"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "41ab7fec-fd2c-4458-83cc-32a6f28a6fbc",
@@ -824,18 +746,9 @@
             "gender": "M",
             "level": "REGIONAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "EMB",
-                "MASCULINE",
-                "REGIONAL",
-                "U11"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "44dfa833-0b06-4783-a336-1a3f5f33cc45",
@@ -847,18 +760,9 @@
             "gender": "F",
             "level": "REGIONAL",
             "sessionsPerWeek": 3,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "FEMININE",
-                "JEUNE",
-                "REGIONAL",
-                "U13"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "47dfed4d-d590-46dd-a4c3-94222d95f2bc",
@@ -870,14 +774,9 @@
             "gender": null,
             "level": "LOISIR_ADULTE",
             "sessionsPerWeek": 1,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "LOISIR_ADULTE"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "493d1245-e3c7-4c81-be71-784293d9b1a8",
@@ -889,18 +788,9 @@
             "gender": "F",
             "level": "REGIONAL",
             "sessionsPerWeek": 3,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "FEMININE",
-                "JEUNE",
-                "REGIONAL",
-                "U18"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "5245cb7a-2ebe-4070-a97d-3b58803b4584",
@@ -912,18 +802,9 @@
             "gender": "F",
             "level": "REGIONAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "ADULTE",
-                "COMPETITION",
-                "FEMININE",
-                "REGIONAL",
-                "SENIOR"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "5327bf02-3fc6-4c5c-ab2d-3c405c18d61e",
@@ -935,16 +816,9 @@
             "gender": "MIXTE",
             "level": "LOISIR_JEUNE",
             "sessionsPerWeek": 1,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "BABY",
-                "LOISIR_JEUNE",
-                "MIXTE"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "58cd16dc-a4d4-4533-90d1-015b12f80c91",
@@ -956,17 +830,9 @@
             "gender": "F",
             "level": "LOISIR_JEUNE",
             "sessionsPerWeek": 1,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "FEMININE",
-                "JEUNE",
-                "LOISIR_JEUNE",
-                "U18"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "5a6e1b21-b09d-44fe-b641-1aef11db620a",
@@ -978,18 +844,9 @@
             "gender": "M",
             "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 1,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "ADULTE",
-                "COMPETITION",
-                "DEPARTEMENTAL",
-                "MASCULINE",
-                "SENIOR"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "5b133669-3f8a-4fd3-abec-7ce5582e1a4a",
@@ -1001,18 +858,9 @@
             "gender": "F",
             "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 3,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "DEPARTEMENTAL",
-                "FEMININE",
-                "JEUNE",
-                "U13"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "5cda9dd3-b353-4269-81bc-59b706fc0170",
@@ -1024,14 +872,9 @@
             "gender": null,
             "level": "LOISIR_JEUNE",
             "sessionsPerWeek": 1,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "LOISIR_JEUNE"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "66273b72-d447-4e09-ab2e-a89c14d4f8cd",
@@ -1043,16 +886,9 @@
             "gender": null,
             "level": "LOISIR_JEUNE",
             "sessionsPerWeek": 3,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "JEUNE",
-                "LOISIR_JEUNE",
-                "U15"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "798fbf7d-ed65-4f14-b2ce-5092267dc1e9",
@@ -1064,16 +900,9 @@
             "gender": "MIXTE",
             "level": "LOISIR_JEUNE",
             "sessionsPerWeek": 1,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "BABY",
-                "LOISIR_JEUNE",
-                "MIXTE"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "7a5bb446-ba2c-4828-a6e6-132eb7382edc",
@@ -1085,18 +914,9 @@
             "gender": "M",
             "level": "REGIONAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "EMB",
-                "MASCULINE",
-                "REGIONAL",
-                "U11"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "7e823764-7aec-47af-8d4e-e956b438f978",
@@ -1108,14 +928,9 @@
             "gender": null,
             "level": "LOISIR_JEUNE",
             "sessionsPerWeek": 1,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "LOISIR_JEUNE"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "7ed3f110-3a62-43ff-92f2-915d8fe0e8cb",
@@ -1127,18 +942,9 @@
             "gender": "M",
             "level": "REGIONAL",
             "sessionsPerWeek": 3,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "JEUNE",
-                "MASCULINE",
-                "REGIONAL",
-                "U15"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "807e0a44-2e30-4eed-abab-16c24d733de0",
@@ -1150,18 +956,9 @@
             "gender": "M",
             "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "DEPARTEMENTAL",
-                "EMB",
-                "MASCULINE",
-                "U9"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "8a2a2d50-b290-4781-b604-9000daa49a01",
@@ -1173,18 +970,9 @@
             "gender": "F",
             "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "DEPARTEMENTAL",
-                "FEMININE",
-                "JEUNE",
-                "U18"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "91373f8d-c7b7-4871-b0aa-508ca9e34286",
@@ -1196,18 +984,9 @@
             "gender": "F",
             "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "DEPARTEMENTAL",
-                "EMB",
-                "FEMININE",
-                "U11"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "97761286-7ae5-4586-a449-2e1ac2c4a3f4",
@@ -1219,18 +998,9 @@
             "gender": "M",
             "level": "REGIONAL",
             "sessionsPerWeek": 3,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "JEUNE",
-                "MASCULINE",
-                "REGIONAL",
-                "U18"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "9ad7d487-6232-4470-adce-efd6c7870ad0",
@@ -1242,17 +1012,9 @@
             "gender": "MIXTE",
             "level": "LOISIR_ADULTE",
             "sessionsPerWeek": 1,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "ADULTE",
-                "LOISIR_ADULTE",
-                "MIXTE",
-                "SENIOR"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "9c4452fa-1a53-46fb-abc0-378ba2273b8c",
@@ -1264,18 +1026,9 @@
             "gender": "M",
             "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "DEPARTEMENTAL",
-                "JEUNE",
-                "MASCULINE",
-                "U18"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "9d47f599-fcb5-4264-81ad-270df50fcefd",
@@ -1287,18 +1040,9 @@
             "gender": "F",
             "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "DEPARTEMENTAL",
-                "FEMININE",
-                "JEUNE",
-                "U18"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "9fc06bda-871f-49f0-8e0e-40b8e45f5a03",
@@ -1310,18 +1054,9 @@
             "gender": "M",
             "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "DEPARTEMENTAL",
-                "EMB",
-                "MASCULINE",
-                "U9"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "a0422e40-7d4d-4980-899c-77b6b570e53c",
@@ -1333,18 +1068,9 @@
             "gender": "M",
             "level": "REGIONAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "ADULTE",
-                "COMPETITION",
-                "MASCULINE",
-                "REGIONAL",
-                "SENIOR"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "adfe901a-dd66-4c2d-8a3c-ea9e2883d8c9",
@@ -1356,15 +1082,9 @@
             "gender": "MIXTE",
             "level": "LOISIR_JEUNE",
             "sessionsPerWeek": 1,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "LOISIR_JEUNE",
-                "MIXTE"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "b4369491-93ee-4488-8a16-11e3423c1182",
@@ -1376,18 +1096,9 @@
             "gender": "M",
             "level": "REGIONAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "ADULTE",
-                "COMPETITION",
-                "MASCULINE",
-                "REGIONAL",
-                "U21"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "bba569e6-3c34-4709-84a5-5ffaa22aa920",
@@ -1399,18 +1110,9 @@
             "gender": "F",
             "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "DEPARTEMENTAL",
-                "FEMININE",
-                "JEUNE",
-                "U13"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "bdb9d8ba-c95d-4dad-8a21-2fa7aba2aee1",
@@ -1422,18 +1124,9 @@
             "gender": "M",
             "level": "REGIONAL",
             "sessionsPerWeek": 3,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "JEUNE",
-                "MASCULINE",
-                "REGIONAL",
-                "U13"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "bf1cddd3-71b6-42a2-ac42-7b391389d5fa",
@@ -1445,17 +1138,9 @@
             "gender": "M",
             "level": "LOISIR_ADULTE",
             "sessionsPerWeek": 1,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "ADULTE",
-                "LOISIR_ADULTE",
-                "MASCULINE",
-                "SENIOR"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "bf81bf5f-1f68-4c81-bbb4-b1e8d5071038",
@@ -1467,17 +1152,9 @@
             "gender": "MIXTE",
             "level": "LOISIR_ADULTE",
             "sessionsPerWeek": 1,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "ADULTE",
-                "LOISIR_ADULTE",
-                "MIXTE",
-                "SENIOR"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "c2b67628-0c80-4646-ac66-04fdec5c064b",
@@ -1489,15 +1166,9 @@
             "gender": "F",
             "level": "LOISIR_ADULTE",
             "sessionsPerWeek": 1,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "FEMININE",
-                "LOISIR_ADULTE"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "c7125665-6440-4dfc-a5c8-5808d430e9e1",
@@ -1509,18 +1180,9 @@
             "gender": "F",
             "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "DEPARTEMENTAL",
-                "EMB",
-                "FEMININE",
-                "U9"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "cc459028-b824-4cb8-9474-1be840f29bb8",
@@ -1532,18 +1194,9 @@
             "gender": "F",
             "level": "REGIONAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "EMB",
-                "FEMININE",
-                "REGIONAL",
-                "U11"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "d9392725-7d25-411a-a03a-c4e808dd6658",
@@ -1555,18 +1208,9 @@
             "gender": "F",
             "level": "REGIONAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "ADULTE",
-                "COMPETITION",
-                "FEMININE",
-                "REGIONAL",
-                "SENIOR"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "d98f20a0-c747-4c6d-ba92-71ebaa2425ac",
@@ -1578,18 +1222,9 @@
             "gender": "F",
             "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "DEPARTEMENTAL",
-                "FEMININE",
-                "JEUNE",
-                "U15"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "da085461-a075-4175-87e3-2a5d0470e6cc",
@@ -1601,18 +1236,9 @@
             "gender": "M",
             "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "ADULTE",
-                "COMPETITION",
-                "DEPARTEMENTAL",
-                "MASCULINE",
-                "U21"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "dc5b4935-1bd6-434e-a315-bab429c124e0",
@@ -1624,16 +1250,9 @@
             "gender": "MIXTE",
             "level": "LOISIR_JEUNE",
             "sessionsPerWeek": 1,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "BABY",
-                "LOISIR_JEUNE",
-                "MIXTE"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "df07d50c-86dd-44f5-bae3-97b5223eec2a",
@@ -1645,18 +1264,9 @@
             "gender": "F",
             "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "DEPARTEMENTAL",
-                "FEMININE",
-                "JEUNE",
-                "U15"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "ebafbbba-380a-44b8-a3fd-5d8323aeb675",
@@ -1668,14 +1278,9 @@
             "gender": null,
             "level": "LOISIR_ADULTE",
             "sessionsPerWeek": 1,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "LOISIR_ADULTE"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "ebbb33c0-678a-4773-93e3-313722bb7437",
@@ -1687,18 +1292,9 @@
             "gender": "M",
             "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 1,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "ADULTE",
-                "COMPETITION",
-                "DEPARTEMENTAL",
-                "MASCULINE",
-                "SENIOR"
-            ]
+            "parentTeamId": null
         },
         {
             "id": "f682b6a2-7914-4cc9-a7f7-8760011b06d4",
@@ -1710,18 +1306,9 @@
             "gender": "M",
             "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
-            "minSessionsOverride": null,
             "matchDay": null,
             "forcedVenueId": null,
-            "isActive": true,
-            "parentTeamId": null,
-            "tags": [
-                "COMPETITION",
-                "DEPARTEMENTAL",
-                "JEUNE",
-                "MASCULINE",
-                "U15"
-            ]
+            "parentTeamId": null
         }
     ],
     "coaches": [
@@ -1729,11 +1316,8 @@
             "id": "03a130aa-75bc-48b8-a833-35ede449dc7d",
             "firstName": "Coach Enz",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": true,
             "parentCoachId": null
         },
@@ -1741,11 +1325,8 @@
             "id": "1810d2c2-ffe0-4cff-8b84-ed81bb87c1ea",
             "firstName": "Coach Jor",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": true,
             "parentCoachId": null
         },
@@ -1753,11 +1334,8 @@
             "id": "185314d3-92e5-4e8f-9462-df47939082e1",
             "firstName": "Coach Jul",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1765,11 +1343,8 @@
             "id": "1c4ec1b1-a955-4e09-8250-f6d362bdcbe2",
             "firstName": "Coach PoivreSel",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": true,
             "parentCoachId": null
         },
@@ -1777,11 +1352,8 @@
             "id": "261e0252-911e-42bc-b419-7d2c7a5e8c22",
             "firstName": "Coach Mat",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1789,11 +1361,8 @@
             "id": "32e619e7-0c05-495f-9463-8a2d82e5a2f4",
             "firstName": "Coach Lio",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1801,11 +1370,8 @@
             "id": "3b4a0855-37ad-4467-8479-bd81aaa0d8c1",
             "firstName": "Coach Mae",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1813,11 +1379,8 @@
             "id": "3bd80cd7-3d0b-4b9f-9cf4-c185bce7d607",
             "firstName": "Coach Chr",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1825,11 +1388,8 @@
             "id": "3c09970d-cd2f-4aa2-9b8f-91b864dac6e0",
             "firstName": "Coach Mara",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1837,11 +1397,8 @@
             "id": "3dcf9c78-f60f-4465-86b0-f847a90f1d34",
             "firstName": "Coach Eme",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": true,
             "parentCoachId": null
         },
@@ -1849,11 +1406,8 @@
             "id": "4d388ee0-b98a-4c4d-a10c-a479d4b09ec3",
             "firstName": "Coach Tho",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": true,
             "parentCoachId": null
         },
@@ -1861,11 +1415,8 @@
             "id": "5edde7a9-10fb-40bc-a761-a83e1b95be80",
             "firstName": "Coach Marl",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1873,11 +1424,8 @@
             "id": "69b30a89-9ccc-4365-81d8-3a72b7ea5ead",
             "firstName": "Coach Flo",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1885,11 +1433,8 @@
             "id": "77603dd0-15e4-4531-8e6f-9512157c07b7",
             "firstName": "Coach Nic",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": true,
             "parentCoachId": null
         },
@@ -1897,11 +1442,8 @@
             "id": "77bbd815-05f9-4d90-9430-dd93e050a302",
             "firstName": "Coach Eth",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1909,11 +1451,8 @@
             "id": "7bdc88c2-b6d2-4944-bead-3a72f993c9fe",
             "firstName": "Coach Ine",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1921,11 +1460,8 @@
             "id": "98ab8e6a-1ff4-4c0c-af3c-b67fe78dbc55",
             "firstName": "Coach Flo",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1933,11 +1469,8 @@
             "id": "a320678b-f50a-421c-8c3d-689c6478386d",
             "firstName": "Coach Charl",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1945,11 +1478,8 @@
             "id": "b5ce2702-9187-4cde-81cc-acc117f28eda",
             "firstName": "Coach Cyr",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1957,11 +1487,8 @@
             "id": "b5d2125b-ccd1-4b6f-9c88-fcfb4c468afd",
             "firstName": "Coach Luc",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1969,11 +1496,8 @@
             "id": "dfb04fa6-6cc8-4467-8a17-5f8839d74637",
             "firstName": "Coach Amb",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1981,11 +1505,8 @@
             "id": "e17ca10a-bf85-4b11-b8ac-1a478bce5081",
             "firstName": "Coach Ann",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -1993,11 +1514,8 @@
             "id": "ec85a721-a4c1-45e8-98cf-64d621d94837",
             "firstName": "Coach Tha",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -2005,11 +1523,8 @@
             "id": "f4e98bc0-b34d-4103-8dae-aedc3d8a31e5",
             "firstName": "Coach Ael",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -2017,11 +1532,8 @@
             "id": "f85037c7-3bae-4985-919a-7f5b8611adba",
             "firstName": "Coach Pie",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": false,
             "parentCoachId": null
         },
@@ -2029,11 +1541,8 @@
             "id": "f857a3fe-9c00-4477-b053-b4f964e8ab74",
             "firstName": "Coach Max",
             "lastName": "",
-            "email": null,
-            "phone": null,
             "maxDaysOverride": null,
             "acceptableLateMinutes": null,
-            "isActive": true,
             "isEmployee": false,
             "parentCoachId": null
         }

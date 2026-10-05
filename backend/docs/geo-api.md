@@ -1,6 +1,6 @@
 # API géo — routes externes consommées
 
-Last verified @ 2026-10-05 (contrat `CONTRACT_VERSION` 1.1 → 1.2 — resserrage du vocabulaire
+Last verified @ 2026-10-06 (contrat `CONTRACT_VERSION` 1.2 → 1.3 — retrait des champs morts du fil — PII coach email/phone, flags isActive/tags/minSessionsOverride, priorityTiers, kickoffEstimated/roundTripMinutes, ENG-53/RGPD-03/ALIGN-20 ; antérieurement 1.1 → 1.2, resserrage du vocabulaire
 `/place-matches` en énums fermées, ENG-56 ; le bloc `venueTravelTimes` de `/generate` est
 inchangé, cité à jour au § solveur d'entraînement). Antérieurement @ 2026-10-02 (P5-28 —
 `CONTRACT_VERSION` repassé **2.29 → 1.0** pour la v1, forme du payload inchangée. Passe précédente 2026-09-30, commit `19aed0f1` — recalé contre le code : `VenueGeoCheck::checkVenue`
@@ -371,8 +371,8 @@ Mécanique commune :
 
 - **Le solveur d'ENTRAÎNEMENT la lit** — `POST /generate` seul (jamais `/place-matches`) :
   `ScheduleConstraintBuilder` sérialise la matrice club+saison (TRIÉE) dans le bloc
-  `venueTravelTimes` du payload, contrat **`CONTRACT_VERSION`** (`engine/CONTRACT_VERSION`, **1.2**
-  à ce jour, repassé en 1.0 pour la v1 puis bumpé 1.0 → 1.1 → 1.2 — l'historique : le bump 2.28→2.29 avait porté notamment ce
+  `venueTravelTimes` du payload, contrat **`CONTRACT_VERSION`** (`engine/CONTRACT_VERSION`, **1.3**
+  à ce jour, repassé en 1.0 pour la v1 puis bumpé 1.0 → 1.1 → 1.2 → 1.3 — l'historique : le bump 2.28→2.29 avait porté notamment ce
   bloc : sens de `walkingMinutes` désormais vélo,
   plus les champs `implicitRules.travelTime.toleranceMinutes`/`defaultMinutes`). Sa présence (≥1
   ligne) — ELLE SEULE — active la règle implicite `travelTime` côté moteur (opt-in au premier

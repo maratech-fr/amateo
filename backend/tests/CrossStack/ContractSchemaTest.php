@@ -367,7 +367,8 @@ final class ContractSchemaTest extends TestCase
         self::assertArrayHasKey('id', $payload['venues'][0]);
         self::assertIsString($payload['venues'][0]['id']);
         self::assertSame('manual', $payload['venues'][0]['source']);
-        self::assertIsBool($payload['venues'][0]['isActive']);
+        // Contrat 1.3 (ENG-53) — `isActive` d'entité ne voyage plus (jamais lu par le solveur).
+        self::assertArrayNotHasKey('isActive', $payload['venues'][0]);
         self::assertArrayHasKey('trainingSlots', $payload['venues'][0]);
         self::assertIsArray($payload['venues'][0]['trainingSlots']);
         // D-44 — cette branche NE S'EXÉCUTE JAMAIS ici : le fixture construit le builder sans
@@ -391,11 +392,21 @@ final class ContractSchemaTest extends TestCase
         self::assertArrayHasKey('sportCategoryId', $payload['teams'][0]);
         self::assertSame(1, $payload['teams'][0]['priorityTierId']);
         self::assertSame(2, $payload['teams'][0]['sessionsPerWeek']);
-        self::assertIsBool($payload['teams'][0]['isActive']);
+        // Contrat 1.3 (ENG-53) — flags/champs d'entité morts retirés du fil (jamais lus).
+        self::assertArrayNotHasKey('isActive', $payload['teams'][0]);
+        self::assertArrayNotHasKey('minSessionsOverride', $payload['teams'][0]);
+        self::assertArrayNotHasKey('tags', $payload['teams'][0]);
 
         self::assertArrayHasKey('firstName', $payload['coaches'][0]);
         self::assertArrayHasKey('lastName', $payload['coaches'][0]);
-        self::assertIsBool($payload['coaches'][0]['isActive']);
+        self::assertArrayNotHasKey('isActive', $payload['coaches'][0]);
+        // Contrat 1.3 (RGPD-03) — la PII du coach ne part plus au moteur.
+        self::assertArrayNotHasKey('email', $payload['coaches'][0]);
+        self::assertArrayNotHasKey('phone', $payload['coaches'][0]);
+
+        // Contrat 1.3 (ENG-53) — le schéma mort `priorityTiers` de tête n'est jamais émis
+        // (les tiers voyagent en contraintes `PRIORITY_TIER`).
+        self::assertArrayNotHasKey('priorityTiers', $payload);
 
         self::assertArrayHasKey('scopeTargetId', $payload['constraints'][0]);
         self::assertSame('TEAM', $payload['constraints'][0]['scope']);

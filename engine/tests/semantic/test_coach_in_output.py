@@ -31,8 +31,8 @@ def _payload(*constraints: dict[str, Any]) -> dict[str, Any]:
         teams=[make_team("t1", sessions_per_week=1)],
         venues=[make_venue("gym", [(DAY, "18:00")])],
         coaches=[
-            {"id": "coach-1", "firstName": "Ana", "lastName": "K", "isActive": True},
-            {"id": "coach-2", "firstName": "Bo", "lastName": "L", "isActive": True},
+            {"id": "coach-1", "firstName": "Ana", "lastName": "K"},
+            {"id": "coach-2", "firstName": "Bo", "lastName": "L"},
         ],
         constraints=list(constraints),
     )

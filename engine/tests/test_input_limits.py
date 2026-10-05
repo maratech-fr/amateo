@@ -28,7 +28,6 @@ def _team(i: int) -> dict[str, object]:
         "priorityTierId": 1,
         "name": f"T{i}",
         "sessionsPerWeek": 2,
-        "isActive": True,
     }
 
 

@@ -84,7 +84,10 @@ class TestGoldenDatasets:
             tid = slot["teamId"]
             team_sessions[tid] = team_sessions.get(tid, 0) + int(slot["durationMinutes"]) // SLOT_MINUTES
 
-        tier_s_a_teams = [t for t in data["teams"] if t["priorityTierId"] in (1, 2) and t.get("isActive", False)]
+        # Toutes les équipes du payload sont « actives » : la désactivation réelle passe par les
+        # overrides de période, qui les FILTRENT du payload en amont (le flag entité isActive a
+        # quitté le contrat 1.3, ENG-53). Le filtre porte donc sur le seul tier.
+        tier_s_a_teams = [t for t in data["teams"] if t["priorityTierId"] in (1, 2)]
         tier_defaults = {1: 3, 2: 2, 3: 2, 4: 2, 5: 1}
         for team in tier_s_a_teams:
             spw = team["sessionsPerWeek"]

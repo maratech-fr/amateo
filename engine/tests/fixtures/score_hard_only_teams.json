@@ -1,7 +1,7 @@
 {
   "clubId": "club-score-test",
   "seasonId": "season-2026",
-  "version": "2.0",
+  "version": "1.3",
   "scheduleName": "Score HARD-only teams",
   "solverSeed": 42,
   "solverTimeoutSeconds": 10,
@@ -9,7 +9,6 @@
     {
       "id": "gym-1",
       "name": "Gymnasium 1",
-      "isActive": true,
       "trainingSlots": [
         {
           "dayOfWeek": 1,
@@ -32,44 +31,38 @@
       "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Team A (HARD-only)",
-      "sessionsPerWeek": 1,
-      "isActive": true
+      "sessionsPerWeek": 1
     },
     {
       "id": "team-b",
       "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Team B",
-      "sessionsPerWeek": 1,
-      "isActive": true
+      "sessionsPerWeek": 1
     },
     {
       "id": "team-c",
       "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Team C",
-      "sessionsPerWeek": 1,
-      "isActive": true
+      "sessionsPerWeek": 1
     }
   ],
   "coaches": [
     {
       "id": "coach-1",
       "firstName": "Coach",
-      "lastName": "One",
-      "isActive": true
+      "lastName": "One"
     },
     {
       "id": "coach-2",
       "firstName": "Coach",
-      "lastName": "Two",
-      "isActive": true
+      "lastName": "Two"
     },
     {
       "id": "coach-3",
       "firstName": "Coach",
-      "lastName": "Three",
-      "isActive": true
+      "lastName": "Three"
     }
   ],
   "slotTemplates": [
@@ -109,26 +102,25 @@
       "id": "c-team-a-coach",
       "type": "TEAM_COACH",
       "teamId": "team-a",
-      "metadata": { "coachId": "coach-1" }
+      "metadata": {
+        "coachId": "coach-1"
+      }
     },
     {
       "id": "c-team-b-coach",
       "type": "TEAM_COACH",
       "teamId": "team-b",
-      "metadata": { "coachId": "coach-2" }
+      "metadata": {
+        "coachId": "coach-2"
+      }
     },
     {
       "id": "c-team-c-coach",
       "type": "TEAM_COACH",
       "teamId": "team-c",
-      "metadata": { "coachId": "coach-3" }
+      "metadata": {
+        "coachId": "coach-3"
+      }
     }
-  ],
-  "priorityTiers": [
-    { "id": 1, "label": "S", "orToolsWeight": 10000, "defaultMinSessions": 2 },
-    { "id": 2, "label": "A", "orToolsWeight": 1000, "defaultMinSessions": 2 },
-    { "id": 3, "label": "B", "orToolsWeight": 100, "defaultMinSessions": 1 },
-    { "id": 4, "label": "C", "orToolsWeight": 10, "defaultMinSessions": 1 },
-    { "id": 5, "label": "D", "orToolsWeight": 1, "defaultMinSessions": 1 }
   ]
 }

@@ -99,11 +99,22 @@ final class ConstraintKeysAreHonouredByEngineTest extends TestCase
         // elle doit faire pencher vers le LUNDI — que le solveur ne choisit pas
         // spontanément sur cette grille (mesuré : il prend mercredi).
         yield 'preferredDays' => ['preferredDays', 'days', 'DAY', 'PREFERRED', ['preferredDays' => [1]], '1'];
+        // SOUPLE (ALIGN-14) : `forbiddenDays` prouvée AUSSI en PREFERRED, pas seulement en dur — une
+        // clé honorée en obligatoire pouvait être un placebo muet en souple. Le chemin soft
+        // (`add_preferred_day_bonus`) récompense tout jour HORS de l'ensemble interdit. Sur la grille
+        // `days` le solveur prend spontanément mercredi (3, cf. `preferredDays`) ; « éviter le 3 »
+        // doit le faire pencher vers lundi (1) — le jour qu'il ne choisit pas seul.
+        yield 'forbiddenDays souple' => ['forbiddenDays', 'days', 'DAY', 'PREFERRED', ['forbiddenDays' => [3]], '1'];
 
         // ---- FACILITY : deux gymnases équivalents, même jour, même heure -----
         yield 'forcedVenueId' => ['forcedVenueId', 'venues', 'FACILITY', 'HARD', ['forcedVenueId' => self::V2], self::V2];
         yield 'forbiddenVenueId' => ['forbiddenVenueId', 'venues', 'FACILITY', 'HARD', ['forbiddenVenueId' => self::V1], self::V2];
         yield 'preferredVenueId' => ['preferredVenueId', 'venues', 'FACILITY', 'PREFERRED', ['preferredVenueId' => self::V2], self::V2];
+        // SOUPLE (ALIGN-14) : `forbiddenVenueId` prouvée AUSSI en PREFERRED. Le chemin soft
+        // (`avoided_venues`, parsing.py) pénalise le gymnase visé sans l'interdire. Sur la grille
+        // `venues` le solveur prend spontanément V1 (c'est pourquoi `preferredVenueId => V2` CHANGE
+        // le résultat vers V2) ; « éviter V1 » doit donc faire choisir V2.
+        yield 'forbiddenVenueId souple' => ['forbiddenVenueId', 'venues', 'FACILITY', 'PREFERRED', ['forbiddenVenueId' => self::V1], self::V2];
         yield 'minAtVenueId' => ['minAtVenueId', 'venues', 'FACILITY', 'HARD', ['minAtVenueId' => self::V2, 'minAtVenueCount' => 1], self::V2];
         yield 'minAtVenueCount' => ['minAtVenueCount', 'venues', 'FACILITY', 'HARD', ['minAtVenueId' => self::V2, 'minAtVenueCount' => 1], self::V2];
 
@@ -304,7 +315,7 @@ final class ConstraintKeysAreHonouredByEngineTest extends TestCase
         // c'est la contrainte legacy TEAM_COACH qui crée ce lien. Sans elle, la
         // disponibilité du coach ne contraint rien et le témoin serait faux.
         if ('COACH_AVAILABILITY' === $family) {
-            $coaches[] = ['id' => self::COACH, 'firstName' => 'Co', 'lastName' => 'Ach', 'isActive' => true];
+            $coaches[] = ['id' => self::COACH, 'firstName' => 'Co', 'lastName' => 'Ach'];
             $constraints[] = [
                 'id' => 'link', 'type' => 'TEAM_COACH', 'teamId' => self::TEAM,
                 'metadata' => ['coachId' => self::COACH, 'role' => 'MAIN', 'isRequired' => true],
@@ -342,7 +353,7 @@ final class ConstraintKeysAreHonouredByEngineTest extends TestCase
     /** @return array<string, mixed> */
     private function team(string $id): array
     {
-        return ['id' => $id, 'name' => strtoupper($id), 'sportCategoryId' => 'cat', 'priorityTierId' => 3, 'sessionsPerWeek' => 1, 'isActive' => true];
+        return ['id' => $id, 'name' => strtoupper($id), 'sportCategoryId' => 'cat', 'priorityTierId' => 3, 'sessionsPerWeek' => 1];
     }
 
     /**
@@ -353,7 +364,7 @@ final class ConstraintKeysAreHonouredByEngineTest extends TestCase
     private function venue(string $id, array $slots): array
     {
         return [
-            'id' => $id, 'name' => 'V-' . substr($id, 0, 4), 'isActive' => true,
+            'id' => $id, 'name' => 'V-' . substr($id, 0, 4),
             'trainingSlots' => array_map(
                 static fn (array $s): array => ['dayOfWeek' => $s[0], 'startTime' => $s[1], 'durationMinutes' => 90, 'capacity' => $s[2]],
                 $slots,

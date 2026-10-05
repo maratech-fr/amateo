@@ -32,8 +32,9 @@ use App\Service\Geo\TravelTimeCache;
  *
  * Trois vues, UNE source :
  *   - {@see roundTripByFixtureId} (fixtureId → 2 × aller simple) — forme `array<string,int>`
- *     INCHANGÉE, ses deux consommateurs de contrat (radar {@see ConflictRadarLoader}, payload
- *     de placement D3 {@see MatchPlacementPayloadBuilder}) n'ont pas bougé (aucun bump) ;
+ *     INCHANGÉE. Depuis le contrat 1.3 (ALIGN-20) le payload de placement ne transporte plus
+ *     aucun trajet (le solveur ignore l'empreinte personne d'un extérieur) : le radar de conflits
+ *     {@see ConflictRadarLoader} est désormais SON SEUL consommateur ;
  *   - {@see roundTripDetailByFixtureId} (+ `approximated`) ;
  *   - {@see awayTravelByFixtureId} — le DÉTAIL complet (lieu + aller simple + cause) que
  *     `FixtureResource.awayTravel` expose au calendrier (chip par rencontre).

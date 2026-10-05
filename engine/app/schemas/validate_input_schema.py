@@ -13,7 +13,6 @@ from app.schemas.input_schema import (
     CoachSchema,
     ConstraintV2Schema,
     ImplicitRulesSchema,
-    PriorityTierSchema,
     ScheduleSlotTemplateSchema,
     SerializableModel,
     SharedTrainingBlockSchema,
@@ -25,7 +24,7 @@ from app.schemas.input_schema import (
 
 # P2-2 F2a / P2-51 PR-5b — verdict moteur sur N deplacements sous UN verdict (contrat 2.18).
 # Le vocabulaire est celui de /generate — on ne reinvente pas un dialecte : venues/teams/
-# coaches/constraints/priorityTiers arrivent tels quels, et `slotTemplates` porte le planning
+# coaches/constraints arrivent tels quels, et `slotTemplates` porte le planning
 # courant a FIGER (baseline). Les candidats sont la seule chose libre : `candidates` est une
 # LISTE (un deplacement simple = une liste a UN element ; un deplacement de bloc = N sources
 # retirees de la baseline + N candidats juges ENSEMBLE, etat final, sous UN verdict). Un seul
@@ -34,7 +33,6 @@ MAX_VENUES = 50
 MAX_TEAMS = 200
 MAX_COACHES = 200
 MAX_SLOT_TEMPLATES = 2000
-MAX_PRIORITY_TIERS = 20
 # Un deplacement de bloc reunit au plus les membres d'un bloc (2..10) ; ce plafond laisse de la
 # marge sans jamais laisser un batch non borne.
 MAX_CANDIDATES = 50
@@ -62,7 +60,7 @@ class ValidateAssignmentsInputSchema(SerializableModel):
     # Fallback quand le champ est OMIS ; le backend l'envoie TOUJOURS. Aligné sur le contrat
     # courant (engine/CONTRACT_VERSION) pour qu'aucun lecteur ne le prenne pour une version
     # concurrente ; gardé par test_schema_version_defaults_match_contract_version.
-    version: str = "1.2"
+    version: str = "1.3"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     solver_seed: int = Field(default=42, alias="solverSeed")
@@ -81,9 +79,6 @@ class ValidateAssignmentsInputSchema(SerializableModel):
     # hors solveur (comme /generate), le reste est FIGE via add_fixed_slots.
     slot_templates: list[ScheduleSlotTemplateSchema] = Field(
         default_factory=list, alias="slotTemplates", max_length=MAX_SLOT_TEMPLATES
-    )
-    priority_tiers: list[PriorityTierSchema] = Field(
-        default_factory=list, alias="priorityTiers", max_length=MAX_PRIORITY_TIERS
     )
     # Le verdict accepte ET CONSOMME le bloc `sharedBlocks` (parité de vocabulaire ET de couche
     # HARD avec /generate : le backend émet le même dialecte, `_apply_hard` le passe à

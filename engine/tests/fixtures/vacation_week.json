@@ -1,13 +1,12 @@
 {
   "clubId": "club-vacation",
   "seasonId": "season-2024",
-  "version": "2.0",
+  "version": "1.3",
   "solverSeed": 42,
   "venues": [
     {
       "id": "gym-a",
       "name": "Gymnasium A",
-      "isActive": true,
       "trainingSlots": [
         {
           "dayOfWeek": 3,
@@ -32,7 +31,6 @@
     {
       "id": "gym-b",
       "name": "Gymnasium B",
-      "isActive": true,
       "trainingSlots": [
         {
           "dayOfWeek": 3,
@@ -61,112 +59,97 @@
       "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Senior Men 1",
-      "sessionsPerWeek": 2,
-      "isActive": true
+      "sessionsPerWeek": 2
     },
     {
       "id": "sm2",
       "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Senior Men 2",
-      "sessionsPerWeek": 2,
-      "isActive": true
+      "sessionsPerWeek": 2
     },
     {
       "id": "sw1",
       "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Senior Women 1",
-      "sessionsPerWeek": 2,
-      "isActive": true
+      "sessionsPerWeek": 2
     },
     {
       "id": "u18m",
       "sportCategoryId": "u18",
       "priorityTierId": 2,
       "name": "U18 Men",
-      "sessionsPerWeek": 2,
-      "isActive": true
+      "sessionsPerWeek": 2
     },
     {
       "id": "u18w",
       "sportCategoryId": "u18",
       "priorityTierId": 2,
       "name": "U18 Women",
-      "sessionsPerWeek": 2,
-      "isActive": true
+      "sessionsPerWeek": 2
     },
     {
       "id": "u15m",
       "sportCategoryId": "u15",
       "priorityTierId": 3,
       "name": "U15 Men",
-      "sessionsPerWeek": 1,
-      "isActive": true
+      "sessionsPerWeek": 1
     },
     {
       "id": "u15w",
       "sportCategoryId": "u15",
       "priorityTierId": 3,
       "name": "U15 Women",
-      "sessionsPerWeek": 1,
-      "isActive": true
+      "sessionsPerWeek": 1
     },
     {
       "id": "u13m",
       "sportCategoryId": "u13",
       "priorityTierId": 4,
       "name": "U13 Men",
-      "sessionsPerWeek": 1,
-      "isActive": true
+      "sessionsPerWeek": 1
     },
     {
       "id": "u13w",
       "sportCategoryId": "u13",
       "priorityTierId": 4,
       "name": "U13 Women",
-      "sessionsPerWeek": 1,
-      "isActive": true
+      "sessionsPerWeek": 1
     },
     {
       "id": "u11",
       "sportCategoryId": "u11",
       "priorityTierId": 5,
       "name": "U11 Mixed",
-      "sessionsPerWeek": 1,
-      "isActive": true
+      "sessionsPerWeek": 1
     }
   ],
   "coaches": [
     {
       "id": "coach-1",
       "firstName": "Alice",
-      "lastName": "Martin",
-      "isActive": true
+      "lastName": "Martin"
     },
     {
       "id": "coach-2",
       "firstName": "Bob",
-      "lastName": "Dupont",
-      "isActive": true
+      "lastName": "Dupont"
     },
     {
       "id": "coach-3",
       "firstName": "Charlie",
-      "lastName": "Bernard",
-      "isActive": true
+      "lastName": "Bernard"
     },
     {
       "id": "coach-4",
       "firstName": "Diana",
-      "lastName": "Petit",
-      "isActive": true
+      "lastName": "Petit"
     },
     {
       "id": "coach-5",
       "firstName": "Eric",
-      "lastName": "Moreau",
-      "isActive": true
+      "lastName": "Moreau"
     }
   ],
   "slotTemplates": [
@@ -306,37 +289,5 @@
       "lockLevel": "NONE"
     }
   ],
-  "constraints": [],
-  "priorityTiers": [
-    {
-      "id": 1,
-      "label": "S",
-      "orToolsWeight": 10000,
-      "defaultMinSessions": 2
-    },
-    {
-      "id": 2,
-      "label": "A",
-      "orToolsWeight": 1000,
-      "defaultMinSessions": 2
-    },
-    {
-      "id": 3,
-      "label": "B",
-      "orToolsWeight": 100,
-      "defaultMinSessions": 1
-    },
-    {
-      "id": 4,
-      "label": "C",
-      "orToolsWeight": 10,
-      "defaultMinSessions": 1
-    },
-    {
-      "id": 5,
-      "label": "D",
-      "orToolsWeight": 1,
-      "defaultMinSessions": 1
-    }
-  ]
+  "constraints": []
 }

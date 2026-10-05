@@ -35,7 +35,7 @@ def _payload(**window: str) -> dict[str, Any]:
     return make_payload(
         teams=[make_team("t", sessions_per_week=1)],
         venues=[make_venue("gym", [(DAY, "17:00"), (DAY, "20:00")])],
-        coaches=[{"id": "coach-1", "firstName": "Ana", "lastName": "K", "isActive": True}],
+        coaches=[{"id": "coach-1", "firstName": "Ana", "lastName": "K"}],
         constraints=[
             team_coach("tc", "t", "coach-1"),
             coach_availability("ca", "coach-1", unavailable_days=[DAY], **window),

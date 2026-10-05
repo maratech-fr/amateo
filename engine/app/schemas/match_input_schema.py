@@ -164,8 +164,8 @@ class MatchSchema(SerializableModel):
     - AWAY — informative only, and IGNORED by the placement solver since P4-240 ③
       (décision B): it occupies no venue and no longer projects a person window
       either (« c'est la vie »). It still feeds `team_dates` (a team away a given
-      day frees its habit protection). `kickoff` may be the real hour or
-      the habit estimation (kickoffEstimated).
+      day frees its habit protection). `kickoff` may be the real hour or a
+      habit estimation.
     """
 
     id: str
@@ -174,19 +174,8 @@ class MatchSchema(SerializableModel):
     kind: str = "TO_PLACE"  # TO_PLACE | FIXED | AWAY
     venue_id: str | None = Field(default=None, alias="venueId")
     kickoff: time | None = None
-    # Transporté par le contrat mais NON consommé par le solveur : décision produit en attente
-    # (peser un clash de coach sur une heure ESTIMÉE moins qu'un clash sur une heure CERTAINE).
-    # En l'état, une heure estimée pèse autant qu'une heure réelle dans les termes de coach.
-    kickoff_estimated: bool = Field(default=False, alias="kickoffEstimated")
     current_venue_id: str | None = Field(default=None, alias="currentVenueId")
     current_kickoff: time | None = Field(default=None, alias="currentKickoff")
-    # D3 — trajet aller-retour vers l'adversaire (minutes, 2 × aller simple), AWAY
-    # seulement. TRANSPORTÉ par le contrat mais NON CONSOMMÉ par le solveur depuis
-    # P4-240 ③ (décision B) : le placement IGNORE désormais toute empreinte personne
-    # d'un match EXTÉRIEUR (« c'est la vie ; le radar signale le conflit, on gère
-    # après »). Le champ reste sur le fil (le radar et la fiche s'en servent encore,
-    # et un re-bump serait gratuit). 0 = inconnu / non AWAY. Borne haute = 24 h.
-    round_trip_minutes: int = Field(default=0, ge=0, le=1440, alias="roundTripMinutes")
 
     @model_validator(mode="after")
     def _fixed_is_anchored(self) -> MatchSchema:
@@ -225,7 +214,7 @@ class MatchPlacementInputSchema(SerializableModel):
     # courant pour qu'aucun lecteur ne le prenne pour une version concurrente.
     # L'autorité reste `engine/CONTRACT_VERSION`, comparée au MAJOR à l'entrée ;
     # gardé par test_schema_version_defaults_match_contract_version.
-    version: str = "1.2"
+    version: str = "1.3"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     solver_seed: int = Field(default=42, alias="solverSeed")

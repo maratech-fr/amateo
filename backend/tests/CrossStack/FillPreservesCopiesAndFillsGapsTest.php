@@ -147,11 +147,11 @@ final class FillPreservesCopiesAndFillsGapsTest extends TestCase
             'seasonId' => 'season-fill',
             'solverSeed' => 42,
             'teams' => [
-                ['id' => self::TEAM, 'name' => 'FILL', 'sportCategoryId' => 'cat', 'priorityTierId' => 3, 'sessionsPerWeek' => 2, 'isActive' => true],
+                ['id' => self::TEAM, 'name' => 'FILL', 'sportCategoryId' => 'cat', 'priorityTierId' => 3, 'sessionsPerWeek' => 2],
             ],
             'venues' => [
                 [
-                    'id' => self::VENUE, 'name' => 'V-FILL', 'isActive' => true,
+                    'id' => self::VENUE, 'name' => 'V-FILL',
                     'trainingSlots' => [
                         ['dayOfWeek' => self::MONDAY, 'startTime' => self::SLOT_TIME, 'durationMinutes' => 90, 'capacity' => 1],
                         ['dayOfWeek' => self::WEDNESDAY, 'startTime' => self::SLOT_TIME, 'durationMinutes' => 90, 'capacity' => 1],

@@ -54,7 +54,7 @@ final class CapacityMirrorParityTest extends TestCase
         $payload = $this->basePayload(
             teams: $this->teams(6),
             venues: [[
-                'id' => 'v1', 'name' => 'V1', 'isActive' => true,
+                'id' => 'v1', 'name' => 'V1',
                 'trainingSlots' => [
                     ['dayOfWeek' => 1, 'startTime' => '18:00', 'durationMinutes' => 90, 'capacity' => 3],
                     ['dayOfWeek' => 1, 'startTime' => '18:00', 'durationMinutes' => 90, 'capacity' => 3], // doublon exact
@@ -89,7 +89,7 @@ final class CapacityMirrorParityTest extends TestCase
     public function testSaturationVerdictMatchesEngineFeasibility(): void
     {
         $venues = [[
-            'id' => 'v1', 'name' => 'V1', 'isActive' => true,
+            'id' => 'v1', 'name' => 'V1',
             'trainingSlots' => [
                 ['dayOfWeek' => 1, 'startTime' => '18:00', 'durationMinutes' => 90, 'capacity' => 1],
                 ['dayOfWeek' => 3, 'startTime' => '18:00', 'durationMinutes' => 90, 'capacity' => 1],
@@ -136,7 +136,7 @@ final class CapacityMirrorParityTest extends TestCase
         $payload = $this->basePayload(
             teams: $this->teams(1),
             venues: [[
-                'id' => 'v1', 'name' => 'V1', 'isActive' => true,
+                'id' => 'v1', 'name' => 'V1',
                 'trainingSlots' => [['dayOfWeek' => 2, 'startTime' => '18:30', 'durationMinutes' => 90, 'capacity' => 1]],
             ]],
             slotTemplates: [[
@@ -176,14 +176,14 @@ final class CapacityMirrorParityTest extends TestCase
         // pin ne libère aucun jour de grille, donc le plancher redevient inatteignable des
         // deux côtés. Le second pin (mercredi) est hors grille, comme une réservation.
         $venues = [[
-            'id' => 'v1', 'name' => 'V1', 'isActive' => true,
+            'id' => 'v1', 'name' => 'V1',
             'trainingSlots' => [
                 ['dayOfWeek' => 1, 'startTime' => '18:00', 'durationMinutes' => 90, 'capacity' => 1],
             ],
         ]];
         $team = [[
             'id' => 't1', 'name' => 'T1', 'sportCategoryId' => 'cat-1',
-            'priorityTierId' => 3, 'sessionsPerWeek' => 2, 'isActive' => true,
+            'priorityTierId' => 3, 'sessionsPerWeek' => 2,
         ]];
         $minTwo = [$this->minAtVenue('t1', 'v1', count: 2)];
 
@@ -244,7 +244,7 @@ final class CapacityMirrorParityTest extends TestCase
     public function testDemandIsBlocAwareLikeTheEngine(): void
     {
         $venues = [[
-            'id' => 'v1', 'name' => 'V1', 'isActive' => true,
+            'id' => 'v1', 'name' => 'V1',
             'trainingSlots' => [
                 ['dayOfWeek' => 1, 'startTime' => '18:00', 'durationMinutes' => 90, 'capacity' => 1],
             ],
@@ -318,7 +318,6 @@ final class CapacityMirrorParityTest extends TestCase
             'sportCategoryId' => 'cat-1',
             'priorityTierId' => 3,
             'sessionsPerWeek' => 1,
-            'isActive' => true,
         ], range(1, $count));
     }
 

@@ -31,7 +31,7 @@ def _run(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _coach(coach_id: str, *, vehicled: bool = False) -> dict[str, Any]:
-    return {"id": coach_id, "firstName": "C", "lastName": coach_id, "isActive": True, "isVehicled": vehicled}
+    return {"id": coach_id, "firstName": "C", "lastName": coach_id, "isVehicled": vehicled}
 
 
 def _row(a: str, b: str, driving: int | None, walking: int | None) -> dict[str, Any]:

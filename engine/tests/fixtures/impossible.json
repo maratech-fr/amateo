@@ -1,13 +1,12 @@
 {
   "clubId": "club-impossible",
   "seasonId": "season-2024",
-  "version": "2.0",
+  "version": "1.3",
   "solverSeed": 42,
   "venues": [
     {
       "id": "gym-a",
       "name": "Gymnasium A",
-      "isActive": true,
       "trainingSlots": [
         {
           "dayOfWeek": 1,
@@ -24,16 +23,14 @@
       "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Greedy Team",
-      "sessionsPerWeek": 50,
-      "isActive": true
+      "sessionsPerWeek": 50
     }
   ],
   "coaches": [
     {
       "id": "coach-1",
       "firstName": "Alice",
-      "lastName": "Martin",
-      "isActive": true
+      "lastName": "Martin"
     }
   ],
   "slotTemplates": [
@@ -48,37 +45,5 @@
       "lockLevel": "NONE"
     }
   ],
-  "constraints": [],
-  "priorityTiers": [
-    {
-      "id": 1,
-      "label": "S",
-      "orToolsWeight": 10000,
-      "defaultMinSessions": 2
-    },
-    {
-      "id": 2,
-      "label": "A",
-      "orToolsWeight": 1000,
-      "defaultMinSessions": 2
-    },
-    {
-      "id": 3,
-      "label": "B",
-      "orToolsWeight": 100,
-      "defaultMinSessions": 1
-    },
-    {
-      "id": 4,
-      "label": "C",
-      "orToolsWeight": 10,
-      "defaultMinSessions": 1
-    },
-    {
-      "id": 5,
-      "label": "D",
-      "orToolsWeight": 1,
-      "defaultMinSessions": 1
-    }
-  ]
+  "constraints": []
 }

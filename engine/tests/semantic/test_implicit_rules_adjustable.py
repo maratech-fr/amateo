@@ -20,8 +20,6 @@ from typing import Any
 
 from tests.support import make_payload, make_venue, solve_payload, team_coach
 
-_TIER_D = [{"id": 5, "label": "D", "orToolsWeight": 1, "defaultMinSessions": 1}]
-
 
 def _team(team_id: str, *, sessions: int = 1, tier: int = 1, age_min: int | None = None) -> dict[str, Any]:
     team: dict[str, Any] = {
@@ -30,7 +28,6 @@ def _team(team_id: str, *, sessions: int = 1, tier: int = 1, age_min: int | None
         "priorityTierId": tier,
         "name": team_id,
         "sessionsPerWeek": sessions,
-        "isActive": True,
     }
     if age_min is not None:
         team["ageMin"] = age_min
@@ -42,7 +39,6 @@ def _coach(coach_id: str, *, employee: bool = False) -> dict[str, Any]:
         "id": coach_id,
         "firstName": coach_id,
         "lastName": "X",
-        "isActive": True,
         "isEmployee": employee,
     }
 
@@ -348,7 +344,6 @@ def test_preferred_never_drops_a_session_worst_case() -> None:
         ],
         coaches=[_coach("c1"), _coach("c2")],
         constraints=constraints,
-        priority_tiers=_TIER_D,
         timeout=15,
     )
     payload["implicitRules"] = {

@@ -16,7 +16,6 @@ use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\ConflictRadarLoader;
 use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\TravelTimeCache;
-use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\OpponentTravelProjection;
 use App\Service\SeasonResolver;
 use App\Tests\TenantGucTrait;
@@ -149,20 +148,20 @@ final class OpponentTravelProjectionTest extends KernelTestCase
         self::assertSame([], $this->projection->roundTripByFixtureId($this->season->getId(), [$away]));
     }
 
-    public function testRadarAndPayloadShareTheSameProjection(): void
+    public function testRadarInjectsTheSharedProjection(): void
     {
-        // Parité de SOURCE : les deux consommateurs INJECTENT la projection partagée, jamais
-        // une copie inline de la boucle de trajet.
-        foreach ([ConflictRadarLoader::class, MatchPlacementPayloadBuilder::class] as $consumer) {
-            $types = [];
-            foreach (new ReflectionClass($consumer)->getConstructor()?->getParameters() ?? [] as $parameter) {
-                $type = $parameter->getType();
-                if ($type instanceof ReflectionNamedType) {
-                    $types[] = $type->getName();
-                }
+        // Parité de SOURCE : le radar INJECTE la projection partagée, jamais une copie inline
+        // de la boucle de trajet. Depuis le contrat 1.3 (ALIGN-20), le payload de placement ne
+        // transporte plus aucun trajet — le solveur ignore l'empreinte personne d'un extérieur —
+        // donc MatchPlacementPayloadBuilder ne consomme plus cette projection : seul le radar la lit.
+        $types = [];
+        foreach (new ReflectionClass(ConflictRadarLoader::class)->getConstructor()?->getParameters() ?? [] as $parameter) {
+            $type = $parameter->getType();
+            if ($type instanceof ReflectionNamedType) {
+                $types[] = $type->getName();
             }
-            self::assertContains(OpponentTravelProjection::class, $types, $consumer . ' doit consommer OpponentTravelProjection (projection partagée)');
         }
+        self::assertContains(OpponentTravelProjection::class, $types, ConflictRadarLoader::class . ' doit consommer OpponentTravelProjection (projection partagée)');
     }
 
     protected function setUp(): void

@@ -20,8 +20,6 @@ use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\TeamLink;
 use App\Entity\TeamMatchHabit;
-use App\Entity\TeamTag;
-use App\Entity\TeamTagAssignment;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Entity\VenueTravelRuleSetting;
@@ -58,7 +56,7 @@ final class ScheduleConstraintBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '1.2';
+    public const string CONTRACT_VERSION = '1.3';
     private const CACHE_TTL_SECONDS = 14_400;
     private const DEFAULT_SOLVER_SEED = 42;
     /**
@@ -1031,7 +1029,6 @@ final class ScheduleConstraintBuilder
             'longitude' => $venue->getLongitude(),
             'source' => $venue->getSource(),
             'externalRef' => $venue->getExternalRef(),
-            'isActive' => $venue->getIsActive(),
             'parentVenueId' => $venue->getParentVenueId(),
             'trainingSlots' => $this->buildTrainingSlots($this->currentAvailabilitiesByVenue[$venue->getId()] ?? [], $venue->getCanSplit()),
         ];
@@ -1070,47 +1067,17 @@ final class ScheduleConstraintBuilder
     /** @return array<string, mixed> */
     private function serializeTeam(Team $team, string $seasonId): array
     {
-        $tags = [];
         $sportCategory = null;
         if ($this->entityManager instanceof EntityManagerInterface) {
             $sportCategory = $this->entityManager->getRepository(SportCategory::class)->find($team->getSportCategoryId());
         }
-        // P2-9ter — LECTURE SEULE. Les tags sont LUS ici, jamais resynchronisés : c'est
-        // `TeamTagSyncListener` (postPersist/postUpdate sur Team, resync au postFlush) qui
-        // les maintient au write-path. `determineTagNames` dérive des champs de l'équipe
-        // — sa `SportCategory`, son genre et son niveau — donc tout changement de tag
-        // passe par un update de `Team`… SAUF l'édition de la `SportCategory` elle-même,
-        // que le listener n'écoute pas (dette inscrite en roadmap, ligne `team_tags`).
-        // ⚠ L'appel à `syncTeamTags` qui vivait ici SUPPRIMAIT puis recréait les
-        // assignations avec un flush INTERMÉDIAIRE (TeamTagService : le flush de
-        // getOrCreateSystemTags commit les remove, les persist restent en attente). La
-        // relecture ci-dessous tombait donc sur une table vidée : `tags` sortait VIDE pour
-        // les 49 équipes des générations réelles, alors que la base portait 160
-        // assignations. Et sans flush ultérieur (le récap n'en fait aucun), les
-        // suppressions restaient définitives — la perte de données de la 3e tentative.
-        if ($this->entityManager instanceof EntityManagerInterface) {
-            $tagAssignments = $this->entityManager->getRepository(TeamTagAssignment::class)->findBy([
-                'teamId' => $team->getId(),
-                'seasonId' => $seasonId,
-            ]);
 
-            foreach ($tagAssignments as $assignment) {
-                $tag = $this->entityManager->getRepository(TeamTag::class)->find($assignment->getTagId());
-                if ($tag instanceof TeamTag) {
-                    $tags[] = $tag->getName();
-                }
-            }
-            // Tri sur le NOM — la seule valeur qui parte réellement dans le payload.
-            // ⚠ Trier la REQUÊTE sur `id` ne suffirait pas : l'id d'une
-            // `TeamTagAssignment` est un UUID v4 tiré à la construction, et
-            // `TeamTagSyncListener` supprime puis recrée les lignes à CHAQUE écriture sur
-            // l'équipe — l'ordre changerait donc à chaque édition. Or `snapshotHash` et
-            // `currentStructureHash` sont deux sha256 du payload sérialisé : une simple
-            // permutation les ferait diverger sans qu'aucune structure n'ait bougé, et le
-            // cockpit annoncerait « structure modifiée » de façon permanente.
-            sort($tags);
-        }
-
+        // Contrat 1.3 (ENG-53) — `tags`, `minSessionsOverride` et `isActive` d'entité ont quitté le
+        // payload : aucun n'était lu par le solveur. La désactivation qui compte passe par les
+        // overrides de période (`deactivatedTeamIds`), qui filtrent l'équipe du payload en amont ;
+        // `Team.isActive` reste un attribut d'archivage SANS effet solveur. Les tags, eux, étaient
+        // lus ici en SEULE lecture (jamais resynchronisés — c'est `TeamTagSyncListener` qui les tient
+        // au write-path) : plus rien à relire puisqu'ils ne voyagent plus.
         return [
             'id' => $team->getId(),
             'sportCategoryId' => $team->getSportCategoryId(),
@@ -1121,12 +1088,9 @@ final class ScheduleConstraintBuilder
             'gender' => $team->getGender()?->value,
             'level' => $team->getLevel()?->value,
             'sessionsPerWeek' => $this->currentSessionOverrides[$team->getId()] ?? $team->getSessionsPerWeek(),
-            'minSessionsOverride' => $team->getMinSessionsOverride(),
             'matchDay' => $this->deriveMatchDay($team, $seasonId),
             'forcedVenueId' => $team->getForcedVenueId(),
-            'isActive' => $team->getIsActive(),
             'parentTeamId' => $team->getParentTeamId(),
-            'tags' => $tags,
         ];
     }
 
@@ -1180,11 +1144,11 @@ final class ScheduleConstraintBuilder
             'id' => $coach->getId(),
             'firstName' => $coach->getFirstName(),
             'lastName' => $coach->getLastName(),
-            'email' => $coach->getEmail(),
-            'phone' => $coach->getPhone(),
+            // Contrat 1.3 (RGPD-03) — `email`/`phone` du coach ne voyagent plus : le solveur ne les
+            // lisait jamais, ils n'ont donc plus à partir ni à se dupliquer dans les snapshots et les
+            // feedbacks. `isActive` d'entité (jamais lu) retiré avec eux (ENG-53).
             'maxDaysOverride' => $coach->getMaxDaysOverride(),
             'acceptableLateMinutes' => $coach->getAcceptableLateMinutes(),
-            'isActive' => $coach->getIsActive(),
             'isEmployee' => $coach->isEmployee(),
             'parentCoachId' => $coach->getParentCoachId(),
             // P2-53 RMM-8 PR-2 — statut véhiculé : décide du barème de trajet du coach

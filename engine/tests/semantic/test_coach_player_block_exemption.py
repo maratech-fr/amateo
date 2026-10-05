@@ -43,7 +43,7 @@ def _coach_player(team_id: str, person_id: str) -> dict[str, Any]:
 
 
 def _person(person_id: str) -> dict[str, Any]:
-    return {"id": person_id, "firstName": person_id, "lastName": "X", "isActive": True}
+    return {"id": person_id, "firstName": person_id, "lastName": "X"}
 
 
 def _slots_of_team(output: dict[str, Any], team_id: str) -> set[tuple[str, int, str]]:

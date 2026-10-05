@@ -1,20 +1,44 @@
 {
   "clubId": "club-no-rest",
   "seasonId": "season-2026",
-  "version": "2.0",
+  "version": "1.3",
   "solverSeed": 42,
   "solverTimeoutSeconds": 10,
   "venues": [
     {
       "id": "gym-enzo",
       "name": "Gymnase Enzo",
-      "isActive": true,
       "trainingSlots": [
-        { "dayOfWeek": 1, "startTime": "19:00", "durationMinutes": 60, "capacity": 1 },
-        { "dayOfWeek": 2, "startTime": "19:00", "durationMinutes": 60, "capacity": 1 },
-        { "dayOfWeek": 3, "startTime": "19:00", "durationMinutes": 60, "capacity": 1 },
-        { "dayOfWeek": 4, "startTime": "19:00", "durationMinutes": 60, "capacity": 1 },
-        { "dayOfWeek": 5, "startTime": "19:00", "durationMinutes": 60, "capacity": 1 }
+        {
+          "dayOfWeek": 1,
+          "startTime": "19:00",
+          "durationMinutes": 60,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 2,
+          "startTime": "19:00",
+          "durationMinutes": 60,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 3,
+          "startTime": "19:00",
+          "durationMinutes": 60,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 4,
+          "startTime": "19:00",
+          "durationMinutes": 60,
+          "capacity": 1
+        },
+        {
+          "dayOfWeek": 5,
+          "startTime": "19:00",
+          "durationMinutes": 60,
+          "capacity": 1
+        }
       ]
     }
   ],
@@ -24,40 +48,35 @@
       "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Team Monday",
-      "sessionsPerWeek": 1,
-      "isActive": true
+      "sessionsPerWeek": 1
     },
     {
       "id": "team-tue",
       "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Team Tuesday",
-      "sessionsPerWeek": 1,
-      "isActive": true
+      "sessionsPerWeek": 1
     },
     {
       "id": "team-wed",
       "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Team Wednesday",
-      "sessionsPerWeek": 1,
-      "isActive": true
+      "sessionsPerWeek": 1
     },
     {
       "id": "team-thu",
       "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Team Thursday",
-      "sessionsPerWeek": 1,
-      "isActive": true
+      "sessionsPerWeek": 1
     },
     {
       "id": "team-fri",
       "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Team Friday",
-      "sessionsPerWeek": 1,
-      "isActive": true
+      "sessionsPerWeek": 1
     }
   ],
   "coaches": [
@@ -65,7 +84,6 @@
       "id": "coach-enzo",
       "firstName": "Enzo",
       "lastName": "Test",
-      "isActive": true,
       "isEmployee": false
     }
   ],
@@ -126,35 +144,45 @@
       "id": "tc-mon",
       "type": "TEAM_COACH",
       "teamId": "team-mon",
-      "metadata": { "coachId": "coach-enzo" },
+      "metadata": {
+        "coachId": "coach-enzo"
+      },
       "isActive": true
     },
     {
       "id": "tc-tue",
       "type": "TEAM_COACH",
       "teamId": "team-tue",
-      "metadata": { "coachId": "coach-enzo" },
+      "metadata": {
+        "coachId": "coach-enzo"
+      },
       "isActive": true
     },
     {
       "id": "tc-wed",
       "type": "TEAM_COACH",
       "teamId": "team-wed",
-      "metadata": { "coachId": "coach-enzo" },
+      "metadata": {
+        "coachId": "coach-enzo"
+      },
       "isActive": true
     },
     {
       "id": "tc-thu",
       "type": "TEAM_COACH",
       "teamId": "team-thu",
-      "metadata": { "coachId": "coach-enzo" },
+      "metadata": {
+        "coachId": "coach-enzo"
+      },
       "isActive": true
     },
     {
       "id": "tc-fri",
       "type": "TEAM_COACH",
       "teamId": "team-fri",
-      "metadata": { "coachId": "coach-enzo" },
+      "metadata": {
+        "coachId": "coach-enzo"
+      },
       "isActive": true
     },
     {
@@ -163,7 +191,11 @@
       "scopeTargetId": "team-mon",
       "family": "DAY",
       "ruleType": "HARD",
-      "config": { "forcedDays": [1] },
+      "config": {
+        "forcedDays": [
+          1
+        ]
+      },
       "isActive": true
     },
     {
@@ -172,7 +204,11 @@
       "scopeTargetId": "team-tue",
       "family": "DAY",
       "ruleType": "HARD",
-      "config": { "forcedDays": [2] },
+      "config": {
+        "forcedDays": [
+          2
+        ]
+      },
       "isActive": true
     },
     {
@@ -181,7 +217,11 @@
       "scopeTargetId": "team-wed",
       "family": "DAY",
       "ruleType": "HARD",
-      "config": { "forcedDays": [3] },
+      "config": {
+        "forcedDays": [
+          3
+        ]
+      },
       "isActive": true
     },
     {
@@ -190,7 +230,11 @@
       "scopeTargetId": "team-thu",
       "family": "DAY",
       "ruleType": "HARD",
-      "config": { "forcedDays": [4] },
+      "config": {
+        "forcedDays": [
+          4
+        ]
+      },
       "isActive": true
     },
     {
@@ -199,16 +243,12 @@
       "scopeTargetId": "team-fri",
       "family": "DAY",
       "ruleType": "HARD",
-      "config": { "forcedDays": [5] },
+      "config": {
+        "forcedDays": [
+          5
+        ]
+      },
       "isActive": true
-    }
-  ],
-  "priorityTiers": [
-    {
-      "id": 1,
-      "label": "S",
-      "orToolsWeight": 10000,
-      "defaultMinSessions": 1
     }
   ]
 }

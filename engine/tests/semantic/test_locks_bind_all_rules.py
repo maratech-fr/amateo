@@ -57,7 +57,7 @@ def _coach_player(team_id: str, coach_id: str) -> dict[str, Any]:
 
 
 def _coaches() -> list[dict[str, Any]]:
-    return [{"id": "mara", "firstName": "Mara", "lastName": "B", "isActive": True}]
+    return [{"id": "mara", "firstName": "Mara", "lastName": "B"}]
 
 
 def _slots_of(result: dict[str, Any], team_id: str) -> list[dict[str, Any]]:
@@ -220,7 +220,7 @@ def test_forced_day_emptied_by_coach_unavailability_names_the_cause() -> None:
     payload = make_payload(
         teams=[make_team("SF2", sessions_per_week=1)],
         venues=[make_venue(MATEO, [(WEDNESDAY, "18:00")])],
-        coaches=[{"id": "mara", "firstName": "Mara", "lastName": "B", "isActive": True}],
+        coaches=[{"id": "mara", "firstName": "Mara", "lastName": "B"}],
         constraints=[
             _forced_day("force-wed-sf2", "SF2", WEDNESDAY),
             team_coach_link("tc-sf2", "SF2", "mara"),

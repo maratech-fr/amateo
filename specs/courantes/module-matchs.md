@@ -1,6 +1,6 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-10-05 : `CONTRACT_VERSION` 1.2 (vocabulaire `/place-matches` —
+Last verified @ 2026-10-06 : `CONTRACT_VERSION` 1.3 (retrait des champs morts du fil — PII coach email/phone, flags isActive/tags/minSessionsOverride, priorityTiers, kickoffEstimated/roundTripMinutes, ENG-53/RGPD-03/ALIGN-20 ; antérieurement 1.2, vocabulaire `/place-matches` —
 `clubRules[].ruleType`, `teams[].coaches[].role`, `teamLinks[].type` — énum fermée côté moteur,
 valeur inconnue = 422, ENG-56) et P4-300 — une fermeture `venue_closed` du calendrier s'applique
 aussi aux matchs, maison unique `PlanVenueClosures::closureIntervals`, consommée par le payload
@@ -109,7 +109,7 @@ vigueur, il n'a rien à comparer.
   Le moteur reçoit les règles CLUB VERBATIM dans le bloc top-level `clubRules`, les interdictions
   TEAM dans `teams[].forbiddenVenueIds` (liste triée, déterministe) et les indisponibilités COACH
   dans le bloc top-level `coachUnavailabilities` (verbatim {coachId, daysOfWeek, kickoffMin,
-  kickoffMax}) du payload `/place-matches` (`CONTRACT_VERSION` 1.2) — un domaine vidé par les
+  kickoffMax}) du payload `/place-matches` (`CONTRACT_VERSION` 1.3) — un domaine vidé par les
   seules règles CLUB HARD ressort `club_rule_no_slot`, un domaine vidé par un gymnase interdit
   alors qu'un créneau licite y existait ressort `team_venue_forbidden` (précédence sur
   `club_rule_no_slot`, §3) ; une indisponibilité COACH ne vide JAMAIS de domaine — elle pénalise
@@ -156,7 +156,7 @@ vigueur, il n'a rien à comparer.
   aux matchs : maison unique `PlanVenueClosures::closureIntervals` (le FAIT brut — dates du
   `config`, repli legacy = fenêtre de l'entrée porteuse, **jamais** la composition
   `VenuePeriodOverride` d'un plan d'entraînement) consommée par `MatchPlacementPayloadBuilder`
-  (fusionnée dans `venues[].unavailabilities` du payload `/place-matches`, contrat 1.2 inchangé),
+  (fusionnée dans `venues[].unavailabilities` du payload `/place-matches`, contrat 1.3 inchangé),
   `ConflictRadarLoader` (fusionnée avec `VenueUnavailability` dans la même famille radar), et
   `FixtureStateProcessor::assertVenueAccessAllowed` (refus 422, placement manuel).
 - **`ConflictResolution`** (clé `(club, saison, fingerprint)`, l'empreinte STABLE d'un conflit) :
@@ -586,7 +586,7 @@ Présentation pure — aucune formule de gravité redérivée.
 ## 3. Solveur de placement (`POST /api/fixtures/place` → engine `/place-matches`)
 
 Second problème solveur ([ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md)),
-même `CONTRACT_VERSION` **1.2** que `/generate`/`/validate-assignments` (un seul contrat pour les
+même `CONTRACT_VERSION` **1.3** que `/generate`/`/validate-assignments` (un seul contrat pour les
 trois endpoints — voir §6 `CLAUDE.md`). **Rail ASYNCHRONE** (amendement ADR-0003 2026-10-04, patron
 exact de la génération) : `PlaceMatchesController` garde toutes ses gardes (management + saison
 écrivable + socle pointé), prend le verrou, ENFILE un `PlaceMatchesMessage` et répond **202**
@@ -666,7 +666,8 @@ créneau (`MatchPlacementPayloadBuilder::trainingOccupancies`).
 **Le solveur IGNORE toute empreinte personne d'un match EXTÉRIEUR (P4-240 ③, décision B)** : la
 boucle des fenêtres personne ne parcourt plus que les ancres FIXED (domicile, déjà posées) et les
 entraînements projetés — un match AWAY ne bloque plus aucun coach ni joueuse côté solveur
-(`roundTripMinutes` reste transporté par le contrat, plus consommé). « C'est la vie » (fondateur) :
+(`roundTripMinutes` n'est plus transporté par le contrat depuis la version 1.3 — le radar le
+recalcule depuis l'entité, hors payload). « C'est la vie » (fondateur) :
 le solveur ne peut de toute façon pas déplacer un match extérieur (l'heure est imposée par
 l'adversaire) ; le RADAR (§2) reste la seule source qui signale une indisponibilité réelle liée à un
 extérieur, le gestionnaire arbitre après coup. Un AWAY reste émis au contrat : il libère la
