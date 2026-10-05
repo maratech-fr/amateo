@@ -9,6 +9,7 @@ use App\Service\ManagementAccessGuard;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
@@ -39,7 +40,7 @@ final class ClubAppearanceController extends AbstractController
 
         $request = $this->requestStack->getCurrentRequest();
         $clubId = $this->resolveCurrentClubId($this->requestStack);
-        if (null === $request || null === $clubId) {
+        if (!$request instanceof Request || null === $clubId) {
             return $this->json(['error' => 'No club in context.'], Response::HTTP_BAD_REQUEST);
         }
         $club = $this->clubRepository->find($clubId);
