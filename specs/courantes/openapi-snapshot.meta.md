@@ -1,9 +1,9 @@
-Last verified @ 2026-10-05 (P4-294 conserver le club démo — `POST /api/admin/demos/prospect/retain`
-(garder 14 j le club démo prospect : 200/403/404/409) et `GET /api/admin/demos` gagne le bloc
-`retained` (clubs démo conservés : nom + échéance). +1 path).
+Last verified @ 2026-10-05 (BCK-35 — `POST /api/admin/demos/bccl/reset` devient ASYNCHRONE :
+réponse 202 `accepted` (au lieu de 200 `reset`) + 409 si un reset tourne déjà, et `GET
+/api/admin/demos` gagne le bloc `reset` (état du reset async : running/succeeded/failed). +0 path).
 
 **224 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`cca26735f076b6bf931d4d4e51c57d5c2c0c3939ede0e364d5d6cb32831d6c71` (`sha256sum` sur le fichier).
+`7d8f20e2c568701185bdf43d71ad6845e6885d600a4468de21e08a4f2683a838` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

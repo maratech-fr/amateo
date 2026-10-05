@@ -19,8 +19,13 @@ framework:
             # s'exerce DIRECTEMENT dans son test (PlaceMatchesHandlerTest), ou en tirant le
             # message du transport pour un bout-en-bout moteur réel (PlaceMatchesControllerTest).
             placement_in_memory: 'in-memory://'
+            # BCK-35 : le reset de la démo BCCL part en mémoire en test — sa mise en file par
+            # le contrôleur (202 + verrou) est inspectable sans Redis, et le handler s'exerce
+            # DIRECTEMENT dans son test (AdminDemoResetTest).
+            reset_in_memory: 'in-memory://'
         routing:
             App\Message\Basketball\PopulateClubFromFfbbMessage: ffbb_in_memory
             Symfony\Component\Mailer\Messenger\SendEmailMessage: mailer_in_memory
             App\Message\ComputeTravelTimesMessage: travel_in_memory
             App\Message\PlaceMatchesMessage: placement_in_memory
+            App\Message\ResetDemoBcclMessage: reset_in_memory

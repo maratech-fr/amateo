@@ -323,7 +323,9 @@ export function useAdminDemos() {
   return useQuery({
     queryKey: ["admin-demos"],
     queryFn: getAdminDemos,
-    refetchInterval: 60_000,
+    // BCK-35 — on sonde vite tant qu'un reset BCCL tourne (pour voir l'issue arriver), sinon
+    // la cadence lente habituelle.
+    refetchInterval: (query) => ("running" === query.state.data?.reset?.state ? 2_000 : 60_000),
   });
 }
 

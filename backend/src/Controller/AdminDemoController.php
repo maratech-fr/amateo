@@ -6,18 +6,21 @@ namespace App\Controller;
 
 use App\Entity\Season;
 use App\Entity\SuperAdmin;
+use App\Message\ResetDemoBcclMessage;
 use App\Security\AdminSessionCsrf;
 use App\Service\ClubMailboxPurgerInterface;
-use App\Service\DemoResetRunnerInterface;
+use App\Service\DemoResetTracker;
 use App\Service\SeasonResolver;
 use DateTimeImmutable;
 use DateTimeZone;
 use Doctrine\DBAL\Connection;
 use Doctrine\Persistence\ManagerRegistry;
 use JsonException;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
 use Throwable;
@@ -49,8 +52,10 @@ final readonly class AdminDemoController
         private AdminSessionCsrf $csrf,
         private TokenStorageInterface $tokens,
         private ManagerRegistry $managerRegistry,
-        private DemoResetRunnerInterface $resetRunner,
+        private DemoResetTracker $resetTracker,
+        private MessageBusInterface $messageBus,
         private ClubMailboxPurgerInterface $mailboxPurger,
+        private LoggerInterface $logger,
         #[Autowire(param: 'app.demo_bccl_email')]
         private string $bcclEmail,
         #[Autowire(param: 'app.demo_animator_email')]
@@ -71,6 +76,10 @@ final readonly class AdminDemoController
             // jamais par une adhésion : un club conservé est DÉTACHÉ de l'animateur, il sortirait
             // sinon de tout radar. Nom + échéance, pas de bouton de prolongation (14 j fixes).
             'retained' => $this->retainedClubs(),
+            // BCK-35 — l'état du reset ASYNCHRONE de la démo BCCL : `running` tant qu'un
+            // re-seed tourne (console bloque le bouton), puis `succeeded`/`failed` ; null si
+            // aucun reset récent. Lu sur le verrou Redis + son statut, jamais sur une table.
+            'reset' => $this->resetTracker->snapshot(),
         ]);
     }
 
@@ -175,7 +184,17 @@ final readonly class AdminDemoController
         return new JsonResponse(['target' => $target, 'activeUntil' => null]);
     }
 
-    /** Réinitialise la démo BCCL : re-seed (sous-processus admin) + horloge simulée à null. */
+    /**
+     * Réinitialise la démo BCCL (BCK-35) — rail ASYNCHRONE : le POST ENFILE un
+     * {@see ResetDemoBcclMessage} et répond 202. Le re-seed (sous-processus `app:demo:seed`,
+     * jusqu'à 600 s) tournait auparavant SYNCHRONE depuis la requête — nginx coupait à 120 s
+     * en laissant le seed continuer (504 trompeur) et deux clics lançaient deux seeds.
+     *
+     * Un verrou Redis ({@see DemoResetTracker}) est pris ICI : un 2ᵉ reset pendant qu'un
+     * tourne échoue à l'acquisition → 409 net. Le worker ({@see ResetDemoBcclHandler}) remet
+     * la date simulée à null, vide la boîte aux lettres, pose l'issue terminale et relâche le
+     * verrou. L'état est exposé par `GET /api/admin/demos` (clé `reset`).
+     */
     #[Route('/demos/bccl/reset', methods: ['POST'])]
     public function reset(Request $request): JsonResponse
     {
@@ -183,26 +202,23 @@ final readonly class AdminDemoController
             return $denied;
         }
 
+        $token = $this->resetTracker->begin();
+        if (null === $token) {
+            return new JsonResponse(['error' => 'Une réinitialisation est déjà en cours.'], 409);
+        }
+
         try {
-            $this->resetRunner->run();
-        } catch (Throwable) {
-            return new JsonResponse(['error' => 'La réinitialisation de la démo a échoué.'], 502);
+            $this->messageBus->dispatch(new ResetDemoBcclMessage($token));
+        } catch (Throwable $exception) {
+            // L'enfilage a échoué : le worker ne rendra pas le verrou — on pose l'issue et on
+            // le relâche ici pour ne pas bloquer le club pendant tout le TTL.
+            $this->resetTracker->finish($token, false);
+            $this->logger->error('Failed to enqueue demo BCCL reset', ['exception' => $exception]);
+
+            return new JsonResponse(['error' => 'La réinitialisation de la démo n’a pas pu être lancée.'], 502);
         }
 
-        // Décision fondateur : le reset remet AUSSI la date simulée à aujourd'hui
-        // (simulated_today → NULL). Le re-seed ne touche pas la fenêtre du compte BCCL.
-        $club = $this->resolveDemoClub('bccl');
-        if (null !== $club) {
-            $this->connection()->executeStatement(
-                'UPDATE club SET simulated_today = NULL WHERE id = :id AND is_demo = TRUE',
-                ['id' => $club['id']],
-            );
-            // Décision fondateur : le reset VIDE aussi la boîte aux lettres — les e-mails
-            // interceptés pendant la démo précédente ne survivent pas à une réinitialisation.
-            $this->mailboxPurger->purge($club['id']);
-        }
-
-        return new JsonResponse(['status' => 'reset']);
+        return new JsonResponse(['status' => 'accepted'], 202);
     }
 
     /**

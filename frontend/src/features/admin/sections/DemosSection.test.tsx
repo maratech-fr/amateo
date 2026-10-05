@@ -34,6 +34,7 @@ function demos(overrides: Partial<AdminDemosResponse> = {}): AdminDemosResponse 
     bccl: { email: "demo-bccl@amateo.fr", activeUntil: "2099-06-15T20:00:00+00:00", clubName: "Démo Basket Club", simulatedToday: "2026-01-15" },
     prospect: { email: "demo@amateo.fr", activeUntil: null, clubName: null, simulatedToday: null },
     retained: [],
+    reset: null,
     ...overrides,
   };
 }
@@ -43,7 +44,7 @@ describe("DemosSection", () => {
     mockGet.mockReset();
     mockActivate.mockReset().mockResolvedValue({ target: "prospect", activeUntil: "2099-06-15T20:00:00+00:00" });
     mockDeactivate.mockReset().mockResolvedValue({ target: "bccl", activeUntil: null });
-    mockReset.mockReset().mockResolvedValue({ status: "reset" });
+    mockReset.mockReset().mockResolvedValue({ status: "accepted" });
     mockClock.mockReset().mockResolvedValue({ simulatedToday: null });
     mockRetain.mockReset().mockResolvedValue({ retainedUntil: "2026-10-19" });
     useAdminStore.getState().setSession({ id: "sa", email: "sa@x" }, "csrf-token");
@@ -90,6 +91,16 @@ describe("DemosSection", () => {
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Réinitialiser" }));
     await waitFor(() => expect(mockReset).toHaveBeenCalledWith("csrf-token"));
+  });
+
+  it("montre « Réinitialisation en cours… » et bloque le bouton tant que le reset tourne", async () => {
+    mockGet.mockResolvedValue(demos({ reset: { state: "running", at: "2026-10-05T10:00:00+00:00" } }));
+    renderWithProviders(<DemosSection />);
+
+    expect(await screen.findByText("Réinitialisation en cours…")).toBeInTheDocument();
+    // Pendant le reset, le bouton porte aussi le Spinner (aria-label « Chargement ») : son nom
+    // accessible contient « Réinitialiser » sans y être égal — d'où le match par regex.
+    expect(screen.getByRole("button", { name: /Réinitialiser/ })).toBeDisabled();
   });
 
   it("applique puis efface la date simulée BCCL (cible bccl)", async () => {
