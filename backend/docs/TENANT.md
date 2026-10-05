@@ -1,15 +1,6 @@
 # Amateo — Tenant Isolation Architecture
 
-Last verified @ 2026-10-04 (AUD-SEC-25 — résolution du club recalée : l'en-tête `X-Club-Id` n'existe plus côté serveur, le club vient de l'adhésion active du compte ou de `_club_id` posé par les pages publiques à token, vérifié contre `TenantFilterListener::resolveClubId` ; avant cela, 2026-10-02 : nettoyage API — `UserStateProcessor` retiré, `User` passé en lecture
-seule). Re-confronté au code : priorité 7 toujours en place (`TenantFilterListener.php:55`,
-`KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · le skip `/api/admin` toujours en
-`str_starts_with` sur le path (`TenantFilterListener.php:81`) ✓ ·
-`App\Service\TenantConnectionContext::setClubId` pose toujours
-`set_config('app.club_id', ?, false)` (`TenantConnectionContext.php:28-31`) ✓ ·
-`App\State\Processor\AbstractStateProcessor::requiresManagementRole()` retourne toujours `true`
-par défaut (`AbstractStateProcessor.php:130-133`) ✓ · `UserResource` n'a plus que `Get`
-(`backend/src/ApiResource/UserResource.php`), `UserStateProcessor` n'existe plus. Un fait faux
-trouvé et corrigé cette passe (§ User, § opt-out management).
+Last verified @ 2026-10-06 (rotation de fraîcheur `documentation-update`, sujet sans rapport avec le reliquat DOC — numéros de ligne recalés après dérive). Re-confronté au code : priorité 7 toujours en place (`TenantFilterListener.php:56`, `KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · le skip `/api/admin` toujours en `str_starts_with` sur le path (`TenantFilterListener.php:79`) ✓ · `App\Service\TenantConnectionContext::setClubId` pose toujours `set_config('app.club_id', ?, false)` (`TenantConnectionContext.php:28-31`) ✓ · `App\State\Processor\AbstractStateProcessor::requiresManagementRole()` retourne toujours `true` par défaut (`AbstractStateProcessor.php:130`) ✓ · `UserResource` n'a plus que `Get`.
 
 ## Overview
 

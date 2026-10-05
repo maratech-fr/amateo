@@ -1,15 +1,6 @@
 # Documentation metier du moteur de generation
 
-Last verified @ 2026-10-05 (rotation de fraîcheur — sujet sans rapport, P4-302). Re-confronté au
-code : tiers de poids S=10000/A=1000/B=100/C=10/D=1 toujours en dur dans
-`app/solver/objective/weights.py` (`LEVEL_2_OBJECTIVE_WEIGHTS`) ; `_adaptive_timeout`
-(`app/main.py:443`, déplacée depuis la dernière passe) applique bien les paliers ≤50→60 s ·
-≤200→180 s · sinon 600 s, plafonnés par `solverTimeoutSeconds` ; `or_tools_weight` (alias
-`orToolsWeight`) reste déclaré requis, sans défaut (`app/schemas/input_schema.py:75`) ;
-`ConstraintRuleType` PHP (`backend/src/Enum/ConstraintRuleType.php`) confirme la liste fermée
-HARD/PREFERRED, `BONUS`/`LOCK` toujours absents. Reste non re-sondé cette passe : `MAX_CONSECUTIVE_
-DAYS`/`FACILITY_CAPACITY`, dernier contrôle 2026-10-03 (inchangés à l'œil) — historique :
-`git log -p --follow engine/docs/business.md`.
+Last verified @ 2026-10-06 (reliquat DOC de l'audit 2026-10-03 — AUD-DOC-50). Citations de `engine/app/main.py` ré-ancrées sur le symbole : `_adaptive_timeout` (paliers ≤50→60 s · ≤200→180 s · sinon 600 s, confronté à `app/main.py`) et le commentaire mort FACILITY_CAPACITY ; tiers de poids S=10000/A=1000/B=100/C=10/D=1 toujours en dur dans `app/solver/objective/weights.py` (`LEVEL_2_OBJECTIVE_WEIGHTS`). Reste non re-sondé cette passe.
 
 > Ce document explique le domaine de la planification sportive et ce que le moteur `engine` resout. Destine aux nouveaux developpeurs rejoignant le projet ClubScheduler.
 
@@ -69,7 +60,7 @@ Une regle metier qui faconne l'emploi du temps. Chaque contrainte a :
   - `DAY` : jours preferes ou interdits (ex. "pas le vendredi", "preferer le mardi")
   - `FACILITY` : assignation de salle (ex. "le SM1 doit etre au Gymnase A")
   - `COACH_AVAILABILITY` : indisponibilite d'un entraineur (ex. "Maxime Dupont indisponible le mercredi")
-  - ~~`FACILITY_CAPACITY`~~ : famille absente du produit (`app/main.py:447-450` — commentaire mort, aucun chemin UI ne la creait). Le plafond d'equipes simultanees vit **par creneau** : `VenueTrainingSlot.capacity`, derive cote backend (`canSplit ? capacity : 1`). Les fermetures temporaires de gymnase **retirent les creneaux** du payload les jours fermes (`VenueClosureDays`) — aucune contrainte `forbiddenVenueId` n'est produite
+  - ~~`FACILITY_CAPACITY`~~ : famille absente du produit (commentaire FACILITY_CAPACITY mort dans `app/main.py`, aucun chemin UI ne la creait). Le plafond d'equipes simultanees vit **par creneau** : `VenueTrainingSlot.capacity`, derive cote backend (`canSplit ? capacity : 1`). Les fermetures temporaires de gymnase **retirent les creneaux** du payload les jours fermes (`VenueClosureDays`) — aucune contrainte `forbiddenVenueId` n'est produite
 
 - **Type de regle (`ruleType`)** — liste **fermee** a deux valeurs (`BONUS` absent du produit :
   zero semantique propre, jamais de ligne en base ; `LOCK` retire a son tour — ALIGN-18,

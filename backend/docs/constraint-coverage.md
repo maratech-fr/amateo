@@ -1,13 +1,6 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-10-05 (rotation `documentation-update`, ENG-48/ALIGN-16/ENG-51/ALIGN-19, contrat 1.1). Re-confronté au code :
-`PreSolvePreventionWarnings::forcedDayEmptiedByClosingRules`/`adjointOnlyUnavailabilityIsIndicative`
-(`backend/src/Service/PreSolvePreventionWarnings.php`) ✓ ; `ConstraintFamily` porte toujours
-exactement 4 cas (`TIME`, `DAY`, `FACILITY`, `COACH_AVAILABILITY` — `FACILITY_CAPACITY` absent,
-`backend/src/Enum/ConstraintFamily.php`), `VenueTravelRuleIntensity`/`VenueTravelRuleSetting`/
-`VenueClosureDays`/`minAtVenueId`+`minAtVenueCount` existent tels que décrits. Non re-sondé cette
-passe : les poids `spacing`/`preferredVenueId`/tiers, « Réserver un gymnase à un groupe » ❌, les
-gardes engine — historique dans `git log -p --follow` ce fichier.
+Last verified @ 2026-10-06 (reliquat DOC de l'audit 2026-10-03 — DOC-60). `MIN_SESSIONS` recalé en « soft par décision » (triage 2026-09-25, plus « à trancher ») ; `ConstraintFamily` porte toujours exactement 4 cas (`TIME`/`DAY`/`FACILITY`/`COACH_AVAILABILITY`, `FACILITY_CAPACITY` absent, `backend/src/Enum/ConstraintFamily.php`) ✓ ; « Réserver un gymnase à un groupe » toujours ❌ (`forcedVenueId` ne réserve rien aux autres). Non re-sondé cette passe : les poids.
 
 > **But** : liste **exhaustive** des besoins qu'un gestionnaire de club peut vouloir exprimer, et
 > **ce que l'application couvre** aujourd'hui — pour voir clairement les cas couverts (✅), partiels
@@ -34,7 +27,7 @@ gardes engine — historique dans `git log -p --follow` ce fichier.
 | « Uniquement tel(s) jour(s) » | DAY `allowedDays` (whitelist, HARD) | ✅ | Vétérans le vendredi uniquement |
 | **« Au moins une séance tel jour »** | DAY `forcedDays` (HARD — sémantique « l'un de ces jours » : UNE somme sur l'union par équipe) | ✅ *(ALIGN-09)* | mode wizard « au moins une » ; le gate pré-solve BLOQUE si aucun des jours imposés n'a de créneau candidat (décision fondateur : certitude arithmétique d'échec) et AVERTIT quand deux règles fusionnent. **Une séance déjà VERROUILLÉE le jour imposé SATISFAIT la règle** (ALIGN-16, patron P4-97 — aucune contrainte posée par-dessus). Si le jour a un créneau candidat mais que TOUTES ses places sont fermées par une autre règle HARD (indispo du coach principal toute la journée, fenêtre horaire), `PreSolvePreventionWarnings::forcedDayEmptiedByClosingRules` AVERTIT au récap pré-génération AVANT l'échec ; le moteur, lui, NOMME la même cause en diagnostic `day_constraint_conflict` (la génération reste infaisable, seule la cause est désormais dite) |
 | **« Espacer les séances d'un jour »** / « pas 2 jours d'affilée » | règle **implicite soft** `spacing` (poids −2, malus sur jours consécutifs) — activée pour toutes les équipes, ne bloque jamais | ✅ soft *(ALIGN-06)* | besoin BCCL « implicite » — préféré, pas garanti |
-| **« Pas 3 entraînements d'affilée »** (dur) | règle implicite `maxConsecutiveDays` (5e règle bien-être, contrat 2.13) | ✅ *(ALIGN-08)* | Réglable HARD (garantie) ou PREFERRED (objectif), seuil 2-5, **OFF par défaut** : un club l'active, sinon rien ne change. Prouvée par `engine/tests/semantic/test_consecutive_days.py` |
+| **« Pas 3 entraînements d'affilée »** (dur) | règle implicite `maxConsecutiveDays` (5e règle bien-être) | ✅ *(ALIGN-08)* | Réglable HARD (garantie) ou PREFERRED (objectif), seuil 2-5, **OFF par défaut** : un club l'active, sinon rien ne change. Prouvée par `engine/tests/semantic/test_consecutive_days.py` |
 
 ## Axe GYMNASE
 
@@ -81,7 +74,7 @@ gardes engine — historique dans `git log -p --follow` ce fichier.
 
 ## Synthèse des trous restants (❌ / 🟡)
 
-1. **Minimum de séances garanti** (🟡) — `MIN_SESSIONS` est une cible soft ; à trancher si un plancher dur est voulu (risque d'INFEASIBLE si capacité insuffisante).
+1. **Minimum de séances garanti** — `MIN_SESSIONS` est une cible **soft par décision** (triage 2026-09-25) : aucun plancher dur n'est voulu, un plancher dur risquant l'INFEASIBLE quand la capacité est insuffisante. Ce n'est donc pas un trou mais un choix assumé.
 
 > Détail moteur exhaustif (toutes les clés + mécanismes) : `engine/docs/constraint-vocabulary.md`.
 > Offre réellement câblée dans le wizard : `docs/architecture/constraint-matrix.md`.

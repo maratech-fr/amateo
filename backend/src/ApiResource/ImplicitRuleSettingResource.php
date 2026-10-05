@@ -17,7 +17,7 @@ use App\State\Provider\ImplicitRuleSettingStateProvider;
 use Symfony\Component\Serializer\Attribute\Groups;
 
 /**
- * Les 4 règles implicites « bien-être », RÉGLABLES par club/saison (contrat moteur 2.7).
+ * Les 4 règles implicites « bien-être », RÉGLABLES par club/saison.
  *
  * L'identifiant EST `ruleKey` (la clé camelCase du contrat), pas un uuid : le front règle une
  * règle par son nom, sans connaître de ligne en base. La collection est RÉSOLUE — toujours 4

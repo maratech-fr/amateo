@@ -11,7 +11,7 @@ use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
- * Le réglage d'UNE règle implicite « bien-être », par PORTÉE (contrat moteur 2.7).
+ * Le réglage d'UNE règle implicite « bien-être », par PORTÉE.
  *
  * La portée est le couple club+saison PLUS `schedulePlanId` (ADR-0002 inv. 5) : NULL = la
  * SAISON (base et repli des plans legacy), un UUID = un plan de période, qui possède SA COPIE

@@ -1,9 +1,10 @@
-Last verified @ 2026-10-05 (P4-300 — une fermeture de gymnase du calendrier s'applique aux matchs :
-nouvelle ressource lecture seule `GET /api/venue_closures` (`VenueClosure`, intervalle brut d'une
-fermeture `venue_closed` : id/venueId/title/startDate/endDate). +1 path).
+Last verified @ 2026-10-06 (reliquat DOC de l'audit 2026-10-03 — AUD-DOC-51 : mention de version
+« (contrat moteur 2.7) » retirée des descriptions sérialisées des réglages de règle implicite
+(5 occurrences de la description `ImplicitRuleSettingResource`/`ImplicitRuleKey`). Aucune route,
+aucun champ, aucun type modifié — 0 path en plus ou en moins).
 
 **225 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`262e754b3850323f5b52b4fc76c4b2b15cdd73f36cfa0140917773c78ed55950` (`sha256sum` sur le fichier).
+`4143c069b1d141c67e46a2870ea8d5238aad772acbba16042781d5edd13ab834` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

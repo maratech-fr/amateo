@@ -42,6 +42,7 @@ VOCAB = REPO_ROOT / "engine" / "docs" / "constraint-vocabulary.md"
 EMISSION = REPO_ROOT / "frontend" / "docs" / "constraint-emission.md"
 COVERAGE = REPO_ROOT / "backend" / "docs" / "constraint-coverage.md"
 MODULE_MATCHS = REPO_ROOT / "specs" / "courantes" / "module-matchs.md"
+ADR_0003 = REPO_ROOT / "docs" / "architecture" / "adr-0003-match-placement-solve.md"
 
 # AUD-DOC-45 (bis) — un STAMP n'est pas du CONTENU. La ligne « Last verified @ … » et son
 # paragraphe de continuation sont de la MÉTADONNÉE de fraîcheur, réécrite à chaque passe
@@ -88,6 +89,10 @@ PRODUCT_ARBITRATION_WEIGHTS: dict[str, int] = {
     "team_link_S": w.TEAM_LINK_TIER_WEIGHTS["S"],
     # Placement de match (hors weights.py) — protection de la fenêtre du créneau partagé.
     "W_PROTECT_HABIT": mp.W_PROTECT_HABIT,
+    # Poids SOFT de placement de match cités AVEC VALEUR par l'ADR-0003 (DOC-54) : une
+    # indisponibilité de coach violée et une règle de match CLUB PREFERRED violée.
+    "W_COACH_UNAVAILABLE": mp.W_COACH_UNAVAILABLE,
+    "W_CLUB_RULE": mp.W_CLUB_RULE,
     # Nommé par le brief DOC-45, gardé pour preuve d'import. AUCUNE ligne de citation vivante
     # (voir le module docstring) : présent ici, absent de CITATIONS — c'est un cas documenté.
     "W_COACH_MAIN": mp.W_COACH_MAIN,
@@ -127,6 +132,10 @@ CITATIONS: tuple[tuple[str, pathlib.Path, str], ...] = (
     # ferre QUE le littéral « W_PROTECT_HABIT=NN » — absent → pas d'assertion, présent → doit
     # citer la valeur du code.
     ("W_PROTECT_HABIT", MODULE_MATCHS, r"W_PROTECT_HABIT=(\d+)"),
+    # ADR-0003 (DOC-54) — valeur citée JUSTE avant le symbole (« violée −60 (`W_COACH_UNAVAILABLE` »,
+    # « violée −30 (`W_CLUB_RULE` »). Signe « − » U+2212, tel qu'écrit dans l'ADR.
+    ("W_COACH_UNAVAILABLE", ADR_0003, r"−(\d+) \(`W_COACH_UNAVAILABLE`"),
+    ("W_CLUB_RULE", ADR_0003, r"−(\d+) \(`W_CLUB_RULE`"),
 )
 
 

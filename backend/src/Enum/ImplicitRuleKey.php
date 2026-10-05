@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Enum;
 
 /**
- * Les 4 règles implicites « bien-être » RÉGLABLES par club/saison (contrat moteur 2.7).
+ * Les 4 règles implicites « bien-être » RÉGLABLES par club/saison.
  *
  * La valeur de chaque cas EST la clé camelCase du bloc `implicitRules` du payload — c'est
  * elle que le moteur lit (aliases Pydantic `coachRestDay`/`salarieDistribution`/
