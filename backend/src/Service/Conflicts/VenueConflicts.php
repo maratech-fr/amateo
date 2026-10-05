@@ -6,7 +6,6 @@ namespace App\Service\Conflicts;
 
 use App\Entity\Fixture;
 use App\Entity\VenueMatchWindow;
-use App\Enum\ConflictPersonRole;
 use App\Enum\FixtureHomeAway;
 use App\Service\ConflictRadarLoader;
 use App\Service\MatchConflictDetector;
@@ -27,17 +26,6 @@ use DateTimeImmutable;
  */
 final class VenueConflicts
 {
-    /**
-     * Occupancy bounds are the club's WALL-CLOCK time, carried WITHOUT an
-     * offset (P4-191): `2026-10-03T15:00:00`, not the ATOM `…+02:00`. A match
-     * and a training are wall-clock facts of one club — appending the server
-     * offset let a browser in another zone shift « 20:45 » by an hour. The UI
-     * parses these as local and re-formats them, so no offset must ride along.
-     * Only these datetime bounds use it; `matchDate` (Y-m-d) and `kickoffTime`
-     * (H:i) are unaffected.
-     */
-    private const string WALL_CLOCK_FORMAT = 'Y-m-d\TH:i:s';
-
     /**
      * Severity 1 — two fixtures on the SAME venue whose VENUE windows overlap.
      * The manual loop lets this happen on purpose (a derogation or the league
@@ -60,17 +48,17 @@ final class VenueConflicts
             for ($j = $i + 1; $j < $count; ++$j) {
                 $left = $withVenue[$i];
                 $right = $withVenue[$j];
-                if ($left['fixture']->getVenueId() !== $right['fixture']->getVenueId() || !$this->overlaps($left['venueWindow'], $right['venueWindow'])) {
+                if ($left['fixture']->getVenueId() !== $right['fixture']->getVenueId() || !ConflictMoments::overlaps($left['venueWindow'], $right['venueWindow'])) {
                     continue;
                 }
                 $conflicts[] = [
                     'type' => 'VENUE_OVERLAP',
                     'severity' => 1,
                     'venueId' => $left['fixture']->getVenueId(),
-                    'start' => $this->maxMoment($left['venueWindow']['start'], $right['venueWindow']['start'])->format(self::WALL_CLOCK_FORMAT),
-                    'end' => $this->minMoment($left['venueWindow']['end'], $right['venueWindow']['end'])->format(self::WALL_CLOCK_FORMAT),
-                    'left' => $this->fixtureView($left),
-                    'right' => $this->fixtureView($right),
+                    'start' => ConflictMoments::maxMoment($left['venueWindow']['start'], $right['venueWindow']['start'])->format(ConflictMoments::WALL_CLOCK_FORMAT),
+                    'end' => ConflictMoments::minMoment($left['venueWindow']['end'], $right['venueWindow']['end'])->format(ConflictMoments::WALL_CLOCK_FORMAT),
+                    'left' => ConflictMoments::fixtureView($left),
+                    'right' => ConflictMoments::fixtureView($right),
                 ];
             }
         }
@@ -117,7 +105,7 @@ final class VenueConflicts
                 'type' => 'TEAM_VENUE_FORBIDDEN',
                 'severity' => 3,
                 'venueId' => $venueId,
-                'fixture' => $this->bareFixtureView($fixture),
+                'fixture' => ConflictMoments::bareFixtureView($fixture),
             ];
         }
 
@@ -175,7 +163,7 @@ final class VenueConflicts
                 'type' => 'ACCESS_WINDOW_LOST',
                 'severity' => 4,
                 'venueId' => $venueId,
-                'fixture' => $this->bareFixtureView($fixture),
+                'fixture' => ConflictMoments::bareFixtureView($fixture),
                 'windows' => array_map(static fn (array $w): array => [
                     'dayOfWeek' => $w['dayOfWeek'],
                     'startTime' => $w['startTime'],
@@ -246,81 +234,5 @@ final class VenueConflicts
         }
 
         return $conflicts;
-    }
-
-    /** @return array<string, mixed> */
-    private function bareFixtureView(Fixture $fixture): array
-    {
-        return [
-            'fixtureId' => $fixture->getId(),
-            'teamId' => $fixture->getTeamId(),
-            'homeAway' => $fixture->getHomeAway()->value,
-            'matchDate' => $fixture->getMatchDate()->format('Y-m-d'),
-            'kickoffTime' => $fixture->getKickoffTime()?->format('H:i'),
-            'status' => $fixture->getStatus()->value,
-        ];
-    }
-
-    /**
-     * @param array{start: DateTimeImmutable, end: DateTimeImmutable} $a
-     * @param array{start: DateTimeImmutable, end: DateTimeImmutable} $b
-     */
-    private function overlaps(array $a, array $b): bool
-    {
-        // Half-open: back-to-back windows (endA == startB) do NOT conflict.
-        return $a['start'] < $b['end'] && $b['start'] < $a['end'];
-    }
-
-    private function maxMoment(DateTimeImmutable $a, DateTimeImmutable $b): DateTimeImmutable
-    {
-        return $a >= $b ? $a : $b;
-    }
-
-    private function minMoment(DateTimeImmutable $a, DateTimeImmutable $b): DateTimeImmutable
-    {
-        return $a <= $b ? $a : $b;
-    }
-
-    /**
-     * @param FixtureView             $view
-     * @param ConflictPersonRole|null $role the person's role on this fixture's team, on a PERSON conflict
-     *                                      (MATCH_MATCH/MATCH_TRAINING). null for the gym/link families,
-     *                                      which share this view but carry no person → no `role` key.
-     *
-     * @return array<string, mixed>
-     */
-    private function fixtureView(array $view, ?ConflictPersonRole $role = null): array
-    {
-        $fixture = $view['fixture'];
-        $window = $view['window'];
-        $serialized = [
-            'fixtureId' => $fixture->getId(),
-            'teamId' => $fixture->getTeamId(),
-            'homeAway' => $fixture->getHomeAway()->value,
-            'matchDate' => $fixture->getMatchDate()->format('Y-m-d'),
-            'kickoffTime' => $fixture->getKickoffTime()?->format('H:i'),
-            // P1-4 PR C — the window was built on the team's HABITUAL kickoff,
-            // not a real hour: the UI must say « heure estimée ».
-            'estimatedKickoff' => $view['estimated'],
-            // P2-54 conflict side details — ADDITIVE per-side fields served on
-            // EVERY family that shares this view, because the conflicts screen now
-            // renders a per-side line for the gym family too: VENUE_OVERLAP reads
-            // opponentLabel + matchDurationMinutes (matches/lib/conflictSideLines.ts
-            // ::venueSide), not only MATCH_MATCH/MATCH_TRAINING. The
-            // ConflictFingerprinter is a whitelist and never reads them.
-            // `opponentPlace` is NOT here — it is decorated by
-            // FixtureConflictsController on AWAY sides after detection.
-            'estimatedKickoffTime' => $view['estimatedKickoffTime'],
-            'travelOneWayMinutes' => $view['travelOneWayMinutes'],
-            'matchDurationMinutes' => $view['matchDurationMinutes'],
-            'opponentLabel' => $fixture->getOpponentLabel(),
-            'windowStart' => $window['start']->format(self::WALL_CLOCK_FORMAT),
-            'windowEnd' => $window['end']->format(self::WALL_CLOCK_FORMAT),
-        ];
-        if ($role instanceof ConflictPersonRole) {
-            $serialized['role'] = $role->value;
-        }
-
-        return $serialized;
     }
 }

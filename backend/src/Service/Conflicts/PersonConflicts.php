@@ -25,17 +25,6 @@ use DateTimeImmutable;
  */
 final class PersonConflicts
 {
-    /**
-     * Occupancy bounds are the club's WALL-CLOCK time, carried WITHOUT an
-     * offset (P4-191): `2026-10-03T15:00:00`, not the ATOM `…+02:00`. A match
-     * and a training are wall-clock facts of one club — appending the server
-     * offset let a browser in another zone shift « 20:45 » by an hour. The UI
-     * parses these as local and re-formats them, so no offset must ride along.
-     * Only these datetime bounds use it; `matchDate` (Y-m-d) and `kickoffTime`
-     * (H:i) are unaffected.
-     */
-    private const string WALL_CLOCK_FORMAT = 'Y-m-d\TH:i:s';
-
     public function __construct(
         private readonly EffectiveScheduleResolver $effectiveScheduleResolver,
     ) {}
@@ -62,11 +51,11 @@ final class PersonConflicts
                 // untouched).
                 $conflictA = $a['conflictWindow'];
                 $conflictB = $b['conflictWindow'];
-                if (!$this->overlaps($conflictA, $conflictB)) {
+                if (!ConflictMoments::overlaps($conflictA, $conflictB)) {
                     continue;
                 }
-                $overlapStart = $this->maxMoment($conflictA['start'], $conflictB['start']);
-                $overlapEnd = $this->minMoment($conflictA['end'], $conflictB['end']);
+                $overlapStart = ConflictMoments::maxMoment($conflictA['start'], $conflictB['start']);
+                $overlapEnd = ConflictMoments::minMoment($conflictA['end'], $conflictB['end']);
                 // Chronological order: the fixture whose window starts earliest is
                 // the left side (the fingerprint sorts the pair, so this is only for
                 // a stable, readable view).
@@ -81,10 +70,10 @@ final class PersonConflicts
                         'severity' => $this->pairSeverity($leftRole, $rightRole),
                         'coachRole' => $this->aggregateRole($leftRole, $rightRole)->value,
                         'coachId' => $personId,
-                        'start' => $overlapStart->format(self::WALL_CLOCK_FORMAT),
-                        'end' => $overlapEnd->format(self::WALL_CLOCK_FORMAT),
-                        'left' => $this->fixtureView($left, $leftRole),
-                        'right' => $this->fixtureView($right, $rightRole),
+                        'start' => $overlapStart->format(ConflictMoments::WALL_CLOCK_FORMAT),
+                        'end' => $overlapEnd->format(ConflictMoments::WALL_CLOCK_FORMAT),
+                        'left' => ConflictMoments::fixtureView($left, $leftRole),
+                        'right' => ConflictMoments::fixtureView($right, $rightRole),
                     ];
                 }
             }
@@ -162,7 +151,7 @@ final class PersonConflicts
                     // runs into the window) still clashes. `spannedDates` above still
                     // scans on the FULL window, a superset, so no day is missed.
                     $matchWindow = $view['conflictWindow'];
-                    if (!$this->overlaps($matchWindow, $trainingWindow)) {
+                    if (!ConflictMoments::overlaps($matchWindow, $trainingWindow)) {
                         continue;
                     }
 
@@ -174,9 +163,9 @@ final class PersonConflicts
                             'severity' => $this->trainingSeverity($matchRole, $trainingRole),
                             'coachRole' => $this->aggregateRole($matchRole, $trainingRole)->value,
                             'coachId' => $personId,
-                            'start' => $this->maxMoment($matchWindow['start'], $trainingWindow['start'])->format(self::WALL_CLOCK_FORMAT),
-                            'end' => $this->minMoment($matchWindow['end'], $trainingWindow['end'])->format(self::WALL_CLOCK_FORMAT),
-                            'fixture' => $this->fixtureView($view, $matchRole),
+                            'start' => ConflictMoments::maxMoment($matchWindow['start'], $trainingWindow['start'])->format(ConflictMoments::WALL_CLOCK_FORMAT),
+                            'end' => ConflictMoments::minMoment($matchWindow['end'], $trainingWindow['end'])->format(ConflictMoments::WALL_CLOCK_FORMAT),
+                            'fixture' => ConflictMoments::fixtureView($view, $matchRole),
                             'training' => [
                                 'slotTemplateId' => $slot->getId(),
                                 'scheduleId' => $slot->getScheduleId(),
@@ -186,8 +175,8 @@ final class PersonConflicts
                                 'startTime' => $slot->getStartTime()->format('H:i'),
                                 'durationMinutes' => $slot->getDurationMinutes(),
                                 'role' => $trainingRole->value,
-                                'windowStart' => $trainingWindow['start']->format(self::WALL_CLOCK_FORMAT),
-                                'windowEnd' => $trainingWindow['end']->format(self::WALL_CLOCK_FORMAT),
+                                'windowStart' => $trainingWindow['start']->format(ConflictMoments::WALL_CLOCK_FORMAT),
+                                'windowEnd' => $trainingWindow['end']->format(ConflictMoments::WALL_CLOCK_FORMAT),
                             ],
                         ];
                     }
@@ -229,16 +218,6 @@ final class PersonConflicts
         $start = $date->setTime((int) $slotStart->format('H'), (int) $slotStart->format('i'));
 
         return ['start' => $start, 'end' => $start->add(new DateInterval('PT' . $slot->getDurationMinutes() . 'M'))];
-    }
-
-    /**
-     * @param array{start: DateTimeImmutable, end: DateTimeImmutable} $a
-     * @param array{start: DateTimeImmutable, end: DateTimeImmutable} $b
-     */
-    private function overlaps(array $a, array $b): bool
-    {
-        // Half-open: back-to-back windows (endA == startB) do NOT conflict.
-        return $a['start'] < $b['end'] && $b['start'] < $a['end'];
     }
 
     /**
@@ -295,58 +274,5 @@ final class PersonConflicts
         }
 
         return ConflictPersonRole::PLAYER;
-    }
-
-    private function maxMoment(DateTimeImmutable $a, DateTimeImmutable $b): DateTimeImmutable
-    {
-        return $a >= $b ? $a : $b;
-    }
-
-    private function minMoment(DateTimeImmutable $a, DateTimeImmutable $b): DateTimeImmutable
-    {
-        return $a <= $b ? $a : $b;
-    }
-
-    /**
-     * @param FixtureView             $view
-     * @param ConflictPersonRole|null $role the person's role on this fixture's team, on a PERSON conflict
-     *                                      (MATCH_MATCH/MATCH_TRAINING). null for the gym/link families,
-     *                                      which share this view but carry no person → no `role` key.
-     *
-     * @return array<string, mixed>
-     */
-    private function fixtureView(array $view, ?ConflictPersonRole $role = null): array
-    {
-        $fixture = $view['fixture'];
-        $window = $view['window'];
-        $serialized = [
-            'fixtureId' => $fixture->getId(),
-            'teamId' => $fixture->getTeamId(),
-            'homeAway' => $fixture->getHomeAway()->value,
-            'matchDate' => $fixture->getMatchDate()->format('Y-m-d'),
-            'kickoffTime' => $fixture->getKickoffTime()?->format('H:i'),
-            // P1-4 PR C — the window was built on the team's HABITUAL kickoff,
-            // not a real hour: the UI must say « heure estimée ».
-            'estimatedKickoff' => $view['estimated'],
-            // P2-54 conflict side details — ADDITIVE per-side fields served on
-            // EVERY family that shares this view, because the conflicts screen now
-            // renders a per-side line for the gym family too: VENUE_OVERLAP reads
-            // opponentLabel + matchDurationMinutes (matches/lib/conflictSideLines.ts
-            // ::venueSide), not only MATCH_MATCH/MATCH_TRAINING. The
-            // ConflictFingerprinter is a whitelist and never reads them.
-            // `opponentPlace` is NOT here — it is decorated by
-            // FixtureConflictsController on AWAY sides after detection.
-            'estimatedKickoffTime' => $view['estimatedKickoffTime'],
-            'travelOneWayMinutes' => $view['travelOneWayMinutes'],
-            'matchDurationMinutes' => $view['matchDurationMinutes'],
-            'opponentLabel' => $fixture->getOpponentLabel(),
-            'windowStart' => $window['start']->format(self::WALL_CLOCK_FORMAT),
-            'windowEnd' => $window['end']->format(self::WALL_CLOCK_FORMAT),
-        ];
-        if ($role instanceof ConflictPersonRole) {
-            $serialized['role'] = $role->value;
-        }
-
-        return $serialized;
     }
 }

@@ -65,7 +65,7 @@ final class RuleWindowConflicts
                 'type' => 'LEAGUE_WINDOW_VIOLATION',
                 'severity' => 2,
                 'windows' => $windowArrays,
-                'fixture' => $this->bareFixtureView($fixture),
+                'fixture' => ConflictMoments::bareFixtureView($fixture),
             ];
         }
 
@@ -125,23 +125,10 @@ final class RuleWindowConflicts
                 'type' => 'CLUB_RULE_VIOLATION',
                 'severity' => 3,
                 'rules' => $violated,
-                'fixture' => $this->bareFixtureView($fixture),
+                'fixture' => ConflictMoments::bareFixtureView($fixture),
             ];
         }
 
         return $conflicts;
-    }
-
-    /** @return array<string, mixed> */
-    private function bareFixtureView(Fixture $fixture): array
-    {
-        return [
-            'fixtureId' => $fixture->getId(),
-            'teamId' => $fixture->getTeamId(),
-            'homeAway' => $fixture->getHomeAway()->value,
-            'matchDate' => $fixture->getMatchDate()->format('Y-m-d'),
-            'kickoffTime' => $fixture->getKickoffTime()?->format('H:i'),
-            'status' => $fixture->getStatus()->value,
-        ];
     }
 }

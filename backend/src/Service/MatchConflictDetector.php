@@ -15,6 +15,7 @@ use App\Entity\VenueMatchWindow;
 use App\Enum\ConflictPersonRole;
 use App\Enum\FixtureHomeAway;
 use App\Enum\TeamLevel;
+use App\Service\Conflicts\ConflictMoments;
 use App\Service\Conflicts\PersonConflicts;
 use App\Service\Conflicts\RuleWindowConflicts;
 use App\Service\Conflicts\VenueConflicts;
@@ -509,7 +510,7 @@ final class MatchConflictDetector
                 if ($window->getVenueId() !== $fixture->getVenueId() || $window->getDayOfWeek() !== $day) {
                     continue;
                 }
-                if ($this->overlaps($view['venueWindow'], $this->matchWindowOnDate($fixture->getMatchDate(), $window))) {
+                if (ConflictMoments::overlaps($view['venueWindow'], $this->matchWindowOnDate($fixture->getMatchDate(), $window))) {
                     $reasons[] = 'MATCH_SLOT_WINDOW';
 
                     break;
@@ -529,7 +530,7 @@ final class MatchConflictDetector
                 'type' => 'FRIENDLY_ON_MATCH_SLOT',
                 'severity' => 5,
                 'reasons' => $reasons,
-                'fixture' => $this->bareFixtureView($fixture),
+                'fixture' => ConflictMoments::bareFixtureView($fixture),
             ];
             if (\in_array('MATCH_SLOT_WINDOW', $reasons, true)) {
                 $conflict['venueId'] = $fixture->getVenueId();
@@ -683,33 +684,10 @@ final class MatchConflictDetector
             $items[] = [
                 'type' => 'AWAY_NO_FOOTPRINT',
                 'severity' => 7,
-                'fixture' => $this->bareFixtureView($fixture),
+                'fixture' => ConflictMoments::bareFixtureView($fixture),
             ];
         }
 
         return $items;
-    }
-
-    /** @return array<string, mixed> */
-    private function bareFixtureView(Fixture $fixture): array
-    {
-        return [
-            'fixtureId' => $fixture->getId(),
-            'teamId' => $fixture->getTeamId(),
-            'homeAway' => $fixture->getHomeAway()->value,
-            'matchDate' => $fixture->getMatchDate()->format('Y-m-d'),
-            'kickoffTime' => $fixture->getKickoffTime()?->format('H:i'),
-            'status' => $fixture->getStatus()->value,
-        ];
-    }
-
-    /**
-     * @param array{start: DateTimeImmutable, end: DateTimeImmutable} $a
-     * @param array{start: DateTimeImmutable, end: DateTimeImmutable} $b
-     */
-    private function overlaps(array $a, array $b): bool
-    {
-        // Half-open: back-to-back windows (endA == startB) do NOT conflict.
-        return $a['start'] < $b['end'] && $b['start'] < $a['end'];
     }
 }
