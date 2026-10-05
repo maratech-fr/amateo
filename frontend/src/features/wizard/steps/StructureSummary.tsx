@@ -66,7 +66,7 @@ function LockedBanner({ title }: { title: string }) {
   return (
     <p className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
       <Lock className="size-4 shrink-0" />
-      {title} — hérité du planning principal, en lecture seule pour cette période.
+      {title} — hérité du planning de saison, en lecture seule pour cette période.
     </p>
   );
 }

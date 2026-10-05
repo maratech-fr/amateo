@@ -315,7 +315,7 @@ describe("ConstraintsPage — section Coachs (P4-272 ⑤)", () => {
     // Disposition en DEUX rangées (uniformité PR 7/7) : l'entraîneur est en rangée 1 et « Indisponible de »
     // en rangée 2 — on scope au bloc d'ajout ENTIER (bordure pointillée), pas au seul parent du bouton.
     const addRow = screen.getByRole("button", { name: "Ajouter" }).closest(".border-dashed") as HTMLElement;
-    await user.selectOptions(within(addRow).getByLabelText("Entraîneur"), "c1");
+    await user.selectOptions(within(addRow).getByLabelText("Coach"), "c1");
     fireEvent.change(within(addRow).getByLabelText("Indisponible de (début de la plage)"), { target: { value: "14:00" } });
     await user.click(screen.getByRole("button", { name: "Ajouter" }));
 

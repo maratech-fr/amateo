@@ -456,8 +456,8 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
           <div className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-destructive">Planning de la saison à valider</p>
-              <p className="text-xs text-muted-foreground">Validez le planning principal pour débloquer les ajustements.</p>
+              <p className="text-sm font-medium text-destructive">Planning de saison à valider</p>
+              <p className="text-xs text-muted-foreground">Validez le planning de saison pour débloquer les ajustements.</p>
             </div>
           </div>
           <div className="flex justify-end">

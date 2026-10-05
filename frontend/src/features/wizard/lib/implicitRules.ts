@@ -24,7 +24,7 @@ export const PRODUCT_RULES: ImplicitRule[] = [
     id: "coach-two-venues",
     title: "Un coach n'est jamais dans deux gymnases à la fois",
     detail:
-      "Deux équipes au même moment dans deux gymnases différents, c'est physiquement impossible : le solveur ne le proposera pas. En revanche, deux équipes au même moment dans le MÊME gymnase sont autorisées — le coach est présent une fois et surveille deux groupes.",
+      "Deux équipes au même moment dans deux gymnases différents, c'est physiquement impossible : le planning ne le proposera pas. En revanche, deux équipes au même moment dans le MÊME gymnase sont autorisées — le coach est présent une fois et surveille deux groupes.",
   },
   {
     id: "coach-player",
@@ -44,12 +44,12 @@ export const PRODUCT_RULES: ImplicitRule[] = [
   {
     id: "reservations-honored",
     title: "Vos réservations, indisponibilités et gymnases imposés sont toujours honorés",
-    detail: "Ce que vous avez fixé vous-même — un créneau réservé, un coach indisponible, un gymnase imposé — n'est jamais remis en cause par le solveur.",
+    detail: "Ce que vous avez fixé vous-même — un créneau réservé, un coach indisponible, un gymnase imposé — n'est jamais remis en cause par la génération.",
   },
   {
     id: "team-minimum-target",
     title: "Chaque équipe vise son minimum de séances",
-    detail: "Le solveur cherche à donner à chaque équipe son nombre de séances par semaine. C'est une cible, pas une loi : quand le gymnase manque, une séance peut sauter — et le planning vous le dit.",
+    detail: "La génération cherche à donner à chaque équipe son nombre de séances par semaine. C'est une cible, pas une loi : quand le gymnase manque, une séance peut sauter — et le planning vous le dit.",
   },
 ];
 

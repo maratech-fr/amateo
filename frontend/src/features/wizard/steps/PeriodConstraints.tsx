@@ -220,8 +220,8 @@ function PeriodConstraintsPanel({
 
   return (
     <div className="mb-4 space-y-2 rounded-lg border border-border bg-card p-3">
-      <p className="text-sm font-medium">Contraintes du planning principal</p>
-      <p className="text-xs text-muted-foreground">Cochez celles à garder pendant cette période — le planning principal n'est pas modifié.</p>
+      <p className="text-sm font-medium">Contraintes du planning de saison</p>
+      <p className="text-xs text-muted-foreground">Cochez celles à garder pendant cette période — le planning de saison n'est pas modifié.</p>
       {/* Le corps attend les requêtes qui pilotent l'ÉTAT des cases (overrides de la période —
           sinon un toggle 422 sur une ligne existante — et overrides d'équipes, qui donnent le
           défaut reprise et le barré non-applicable). Sur ERREUR des contraintes on le dit
@@ -229,7 +229,7 @@ function PeriodConstraintsPanel({
           que le panneau doit éviter — le gestionnaire validerait la période en croyant que
           rien n'est hérité (revue #284 round 2). */}
       {constraintsError ? (
-        <LoadErrorHint>Impossible de charger les contraintes du planning principal. Elles restent appliquées selon leur réglage actuel — rechargez la page pour les ajuster.</LoadErrorHint>
+        <LoadErrorHint>Impossible de charger les contraintes du planning de saison. Elles restent appliquées selon leur réglage actuel — rechargez la page pour les ajuster.</LoadErrorHint>
       ) : bodyLoading ? null : 0 === visible.length ? (
         <EmptyHint>Aucune contrainte permanente.</EmptyHint>
       ) : (

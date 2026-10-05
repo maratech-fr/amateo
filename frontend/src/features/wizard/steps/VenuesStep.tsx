@@ -103,7 +103,7 @@ export function ColorField({ venue, onApply }: { venue: Venue; onApply: (color: 
         value={HEX_RE.test(hex) ? hex : current}
         onChange={(e) => commit(e.target.value)}
       />
-      <Input aria-label="Couleur (hexadécimal)" className="h-9 w-24 font-mono text-xs" value={hex} placeholder="#3498DB" onChange={(e) => commit(e.target.value)} />
+      <Input aria-label="Couleur (code)" className="h-9 w-24 font-mono text-xs" value={hex} placeholder="#3498DB" onChange={(e) => commit(e.target.value)} />
     </div>
   );
 }
@@ -713,7 +713,7 @@ function VenuesEditor() {
               role="status"
               className="mb-3"
               icon={<Lock className="size-4 text-muted-foreground" />}
-              message="Les créneaux d'entraînement sont une contrainte du planning : rouvrez le planning de la saison pour les modifier."
+              message="Les créneaux d'entraînement sont une contrainte du planning : rouvrez le planning de saison pour les modifier."
             />
           ) : (
           /* Slot-placement toolbar — only the duration of the next dropped slot.

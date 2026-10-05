@@ -211,7 +211,7 @@ describe("TeamsStep", () => {
     expect(sessions).toHaveAttribute("readonly");
     expect((sessions as HTMLInputElement).value).toBe("1"); // valeur de la fixture, toujours lisible
     // Une explication, UNE fois pour la liste, cohérente avec le bandeau d'en-tête.
-    expect(screen.getByText(/séances par semaine fait partie du planning de la saison en vigueur/i)).toBeInTheDocument();
+    expect(screen.getByText(/séances par semaine fait partie du planning de saison en vigueur/i)).toBeInTheDocument();
     // Ce qui reste libre le reste : le rang (flèches) et le niveau ne sont pas des créneaux.
     expect(within(row).getByRole("combobox", { name: "Niveau de jeu" })).toBeEnabled();
     expect(within(row).getByRole("button", { name: /Descendre SM3/ })).toBeInTheDocument();
@@ -225,7 +225,7 @@ describe("TeamsStep", () => {
     const sessions = within(row).getByRole("spinbutton", { name: "Séances/sem" });
     expect(sessions).not.toHaveAttribute("readonly");
     expect(sessions).toBeEnabled();
-    expect(screen.queryByText(/séances par semaine fait partie du planning de la saison en vigueur/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/séances par semaine fait partie du planning de saison en vigueur/i)).not.toBeInTheDocument();
   });
 
   it("laisse CRÉER une équipe avec son nombre de séances même socle en vigueur (le verrou porte sur l'édition)", async () => {

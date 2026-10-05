@@ -124,10 +124,10 @@ beforeEach(() => {
 });
 
 describe("ImportPage — les entrées de données", () => {
-  it("porte les trois entrées (Importer FBI · Vérifier via l'API FFBB · Engagements FFBB) + la fraîcheur", async () => {
+  it("porte les trois entrées (Importer FBI · Vérifier via le Canal FFBB · Engagements FFBB) + la fraîcheur", async () => {
     renderPage([]);
     expect(await screen.findByRole("button", { name: /Importer FBI/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Vérifier via l'API FFBB/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Vérifier via le Canal FFBB/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Engagements FFBB/ })).toBeInTheDocument();
     expect(screen.getByText(/Aucun dépôt FBI cette saison/i)).toBeInTheDocument();
   });
@@ -260,7 +260,7 @@ describe("ImportPage — la file de traitement", () => {
   it("une valeur auto-appliquée hors périmètre se signale (bandeau), pas d'arbitrage", async () => {
     renderPage([fx("team-2", "OUT_OF_SYNC", "2026-12-05", { pendingDeviations: [autoDev] })], "/matchs/importer?equipe=team-2");
     // Bandeau P4-199 : « <source> a déplacé ce match (champ) : ancien → nouveau ».
-    expect(await screen.findByText(/API FFBB a déplacé ce match.*15:00 → 16:00/)).toBeInTheDocument();
+    expect(await screen.findByText(/Canal FFBB a déplacé ce match.*15:00 → 16:00/)).toBeInTheDocument();
     // Rien à arbitrer → un « Valider » d'acquittement, pas de « Prendre FBI ».
     expect(screen.getByRole("button", { name: "Valider" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Prendre/ })).not.toBeInTheDocument();
@@ -375,7 +375,7 @@ describe("ImportPage — rattacher un gymnase depuis le libellé (P4-187b)", () 
   });
 });
 
-describe("ImportPage — Vérifier via l'API FFBB (D3, cas a/b/c)", () => {
+describe("ImportPage — Vérifier via le Canal FFBB (D3, cas a/b/c)", () => {
   it("(a) des rencontres à créer → payload API porté + navigation vers la vue d'intégration", async () => {
     getFfbbRencontres.mockResolvedValueOnce({
       deviations: [],
@@ -384,7 +384,7 @@ describe("ImportPage — Vérifier via l'API FFBB (D3, cas a/b/c)", () => {
     });
     const user = userEvent.setup();
     renderPage([]);
-    await user.click(await screen.findByRole("button", { name: /Vérifier via l'API FFBB/i }));
+    await user.click(await screen.findByRole("button", { name: /Vérifier via le Canal FFBB/i }));
     await waitFor(() => expect(getFfbbRencontres).toHaveBeenCalledOnce());
     const carried = useMatchesStore.getState().reconciliation;
     expect(carried?.channel).toBe("api");
@@ -401,7 +401,7 @@ describe("ImportPage — Vérifier via l'API FFBB (D3, cas a/b/c)", () => {
     });
     const user = userEvent.setup();
     renderPage([]);
-    await user.click(await screen.findByRole("button", { name: /Vérifier via l'API FFBB/i }));
+    await user.click(await screen.findByRole("button", { name: /Vérifier via le Canal FFBB/i }));
     await waitFor(() => expect(applyFfbbRencontres).toHaveBeenCalledWith([], []));
     // Pas de navigation vers la vue d'intégration (rien à créer).
     expect(screen.queryByText("RECONCILIATION")).not.toBeInTheDocument();
@@ -411,7 +411,7 @@ describe("ImportPage — Vérifier via l'API FFBB (D3, cas a/b/c)", () => {
     getFfbbRencontres.mockResolvedValueOnce({ deviations: [], creatable: [], fetchedAt: "2026-08-24T14:05:00+00:00" });
     const user = userEvent.setup();
     renderPage([]);
-    await user.click(await screen.findByRole("button", { name: /Vérifier via l'API FFBB/i }));
+    await user.click(await screen.findByRole("button", { name: /Vérifier via le Canal FFBB/i }));
     await waitFor(() => expect(getFfbbRencontres).toHaveBeenCalledOnce());
     expect(applyFfbbRencontres).not.toHaveBeenCalled();
     expect(useMatchesStore.getState().reconciliation).toBeNull();

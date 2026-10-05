@@ -16,9 +16,9 @@ import { isUnattachedHome } from "./lib/reviewQueue";
 
 const HOME_AWAY_LABEL = { HOME: "Domicile", AWAY: "Extérieur" } as const;
 
-/** « FBI » (dépôt xlsx) ou « API FFBB » (canal API) — le nom humain de la source. */
+/** « FBI » (dépôt xlsx) ou « Canal FFBB » (canal API) — le nom humain de la source. */
 function sourceLabel(channel: PendingDeviation["channel"]): string {
-  return "FBI_XLSX" === channel ? "FBI" : "API FFBB";
+  return "FBI_XLSX" === channel ? "FBI" : "Canal FFBB";
 }
 
 /** L'état de TRAITEMENT en un mot (présentation pure) — « traité le … » horodaté. */

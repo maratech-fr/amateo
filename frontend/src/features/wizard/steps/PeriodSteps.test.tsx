@@ -1285,7 +1285,7 @@ describe("PeriodConstraints — inherited constraints toggle", () => {
     constraintsState.data = [];
     constraintsState.isError = true;
     render(<PeriodConstraints calendarEntryId="e1" family="TIME" />);
-    expect(screen.getByText("Contraintes du planning principal")).toBeInTheDocument();
+    expect(screen.getByText("Contraintes du planning de saison")).toBeInTheDocument();
     expect(screen.getByText(/Impossible de charger les contraintes/)).toBeInTheDocument();
     expect(screen.queryByText("Aucune contrainte permanente.")).toBeNull();
   });
@@ -1316,7 +1316,7 @@ describe("PeriodConstraints — inherited constraints toggle", () => {
     constraintsState.data = [constraint({ id: "kt", name: "Pas après 20h", family: "TIME" })];
     constraintOverridesLoadingState.value = true;
     render(<PeriodConstraints calendarEntryId="e1" family="TIME" />);
-    expect(screen.getByText("Contraintes du planning principal")).toBeInTheDocument();
+    expect(screen.getByText("Contraintes du planning de saison")).toBeInTheDocument();
   });
 
   it("closure: lists the club's permanent constraints, all kept by default", () => {
