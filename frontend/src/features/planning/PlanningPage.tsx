@@ -1,6 +1,6 @@
 import { IN_FLIGHT_STATUSES } from "@/shared/lib/scheduleStatus";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, GitCompare, Loader2, Lock, Pencil, Sparkles, Star, Undo2, X } from "lucide-react";
+import { AlertTriangle, GitCompare, Lock, Pencil, Sparkles, Star, Undo2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
@@ -21,7 +21,7 @@ import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Input } from "@/shared/components/ui/input";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { PageHeader } from "@/shared/components/ui/page-header";
-import { FullPageSpinner } from "@/shared/components/ui/spinner";
+import { FullPageSpinner, Spinner } from "@/shared/components/ui/spinner";
 
 import { type Slot } from "./api";
 import { CompromiseList } from "./CompromiseList";
@@ -895,7 +895,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
               // fois la réponse arrivée et RÉELLEMENT vide, `slotsBusy` retombe → « Planning vide ».
               <div className="flex h-64 items-center justify-center rounded-lg border border-border bg-card" role="status" aria-busy="true" aria-live="polite">
                 <span className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  <Spinner className="size-4" />
                   Chargement des créneaux…
                 </span>
               </div>
@@ -1021,7 +1021,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                       {slotsBusy ? (
                         <div className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-background/50" role="status" aria-live="polite">
                           <span className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground shadow-lg">
-                            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                            <Spinner className="size-4" />
                             Chargement des créneaux…
                           </span>
                         </div>

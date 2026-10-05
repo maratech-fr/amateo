@@ -1,4 +1,6 @@
-import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Lock, LockOpen, Move, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, Lock, LockOpen, Move, X } from "lucide-react";
+
+import { Spinner } from "@/shared/components/ui/spinner";
 import { useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
@@ -6,6 +8,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
+import { formatDuration } from "@/shared/lib/duration";
 import { WizardStepLink } from "@/features/wizard/WizardStepLink";
 
 import type { Constraint, LockOrigin, MoveViolation, Slot, Venue } from "./api";
@@ -162,7 +165,7 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
             omis sans « · » orphelin ; wrapping naturel (pas de troncature). Sans coach, le
             préfixe reste et le nom devient une croix rouge (décision fondateur 2026-08-16). */}
         <p className="text-sm text-muted-foreground">
-          {[categoryLabel || null, `${slot.durationMinutes} min`].filter(Boolean).join(" · ")}
+          {[categoryLabel || null, formatDuration(slot.durationMinutes)].filter(Boolean).join(" · ")}
           {cell.coachLabel ? (
             <>
               {" · Coach "}
@@ -226,7 +229,7 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
             >
               {"pending" === moveState.status ? (
                 <>
-                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  <Spinner className="size-4" />
                   Vérification…
                 </>
               ) : (

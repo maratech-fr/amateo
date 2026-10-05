@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type LoginSplashPhase, useLoginSplashStore } from "@/shared/stores/loginSplashStore";
 import { renderWithProviders } from "@/test/utils";
 
-import { isConnectionReady, LoginSplash } from "./LoginSplash";
+import { LoginSplash } from "./LoginSplash";
+import { isConnectionReady } from "./loginReady";
 
 // BrandSplash est mocké : on ne teste PAS ici l'animation (ça, ce sont ses fns pures), mais le
 // CÂBLAGE de l'orchestrateur — quelles transitions il déclenche selon `ready`, et son overlay.

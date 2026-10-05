@@ -62,8 +62,8 @@ describe("MatchDurationsEditor — la durée de match par catégorie (P2-54 RMM-
   it("la légende du tableau énonce le défaut de famille SERVI (jamais recalculé côté front)", () => {
     renderWithProviders(<MatchDurationsEditor categories={CATEGORIES} />);
     // Le serveur sert 90/30 pour U13 et 105/30 pour Seniors : deux légendes distinctes.
-    expect(screen.getByText(/90 min de match/)).toBeInTheDocument();
-    expect(screen.getByText(/105 min de match/)).toBeInTheDocument();
+    expect(screen.getByText(/1h30 de match/)).toBeInTheDocument();
+    expect(screen.getByText(/1h45 de match/)).toBeInTheDocument();
   });
 
   it("catégorie héritée : champ vide + placeholder = défaut servi + marque « défaut »", () => {

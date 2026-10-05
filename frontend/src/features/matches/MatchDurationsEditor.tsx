@@ -5,6 +5,7 @@ import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
+import { formatDuration } from "@/shared/lib/duration";
 
 import type { SportCategoryDuration } from "./api";
 import { useUpdateSportCategoryDuration } from "./queries";
@@ -205,7 +206,7 @@ export function MatchDurationsEditor({ categories }: { categories: SportCategory
           {groups.map((group) => (
             <Table key={`${group.match}|${group.warmup}`}>
               <TableCaption>
-                Défaut : {group.match} min de match + {group.warmup} min d'échauffement
+                Défaut : {formatDuration(group.match)} de match + {formatDuration(group.warmup)} d'échauffement
               </TableCaption>
               <TableHeader>
                 <TableRow>

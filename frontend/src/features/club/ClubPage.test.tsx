@@ -2,12 +2,40 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { MeResponse } from "@/shared/session/api";
+import type { ClubEntitlements, MeResponse } from "@/shared/session/api";
 
-type ClubMock = (Partial<NonNullable<MeResponse["club"]>> & { name: string }) | null;
-type MeData = { role: string; club: ClubMock; seasonPlan?: MeResponse["seasonPlan"]; seasons?: MeResponse["seasons"]; currentSeasonId?: string | null };
+// FRT-42 — le fixture conforme au VRAI type `MeResponse["club"]` (plus un `Partial` qui laissait
+// passer un ajout/retrait de champ sans que le test le voie). Chaque littéral de club part de
+// `baseClub` (tous les champs requis) et ne surcharge que ce qui compte pour le cas.
+type Club = NonNullable<MeResponse["club"]>;
+type MeData = { role: MeResponse["role"]; club: Club | null; seasonPlan?: MeResponse["seasonPlan"]; seasons?: MeResponse["seasons"]; currentSeasonId?: string | null };
+const baseClub: Club = {
+  id: "club-1",
+  name: "BC Test",
+  onboardingCompleted: true,
+  weekendAlternates: false,
+  logoUrl: null,
+  accentColor: null,
+  accentColorDark: null,
+  accentPalette: null,
+  schoolZone: null,
+  isDemo: false,
+  league: null,
+  ffbbClubCode: null,
+  committeeCode: null,
+  contactPhone: null,
+  contactEmail: null,
+  address: null,
+  postalCode: null,
+  city: null,
+  website: null,
+  latitude: null,
+  longitude: null,
+  ffbbCommittee: null,
+  ffbbLeague: null,
+};
 const me: { data: MeData; isLoading: boolean } = {
-  data: { role: "admin", club: { name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null }, seasons: [], currentSeasonId: null },
+  data: { role: "admin", club: { ...baseClub, name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null }, seasons: [], currentSeasonId: null },
   isLoading: false,
 };
 
@@ -68,7 +96,7 @@ import { ClubPage } from "./ClubPage";
 
 describe("ClubPage", () => {
   beforeEach(() => {
-    me.data = { role: "admin", club: { name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null }, seasons: [], currentSeasonId: null };
+    me.data = { role: "admin", club: { ...baseClub, name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null }, seasons: [], currentSeasonId: null };
     venueStats.data = undefined;
     venueStats.isLoading = false;
     venueStats.isError = false;
@@ -96,7 +124,7 @@ describe("ClubPage", () => {
     // est — pas d'étiquette au-dessus d'un nom tronqué.
     me.data = {
       role: "admin",
-      club: {
+      club: { ...baseClub,
         name: "BC Test",
         accentColor: null,
         accentColorDark: null,
@@ -132,7 +160,7 @@ describe("ClubPage", () => {
     // côté serveur) — la seule saisie de la fiche. Le contact reste compact et nu.
     me.data = {
       role: "admin",
-      club: {
+      club: { ...baseClub,
         name: "BC Test",
         accentColor: null,
         accentColorDark: null,
@@ -168,7 +196,7 @@ describe("ClubPage", () => {
   it("siège NON localisé (pas de coordonnées) : statut « Siège non localisé » + champ pré-rempli avec l'adresse FFBB", async () => {
     me.data = {
       role: "admin",
-      club: { name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null, address: "5 RUE EMILE DUNIERE", latitude: null, longitude: null },
+      club: { ...baseClub, name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null, address: "5 RUE EMILE DUNIERE", latitude: null, longitude: null },
     };
     const user = userEvent.setup();
     render(<ClubPage />);
@@ -181,7 +209,7 @@ describe("ClubPage", () => {
   it("siège localisé (coordonnées présentes) : statut « Siège localisé » + bouton « Modifier l'adresse »", async () => {
     me.data = {
       role: "admin",
-      club: { name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null, address: "5 RUE EMILE DUNIERE", latitude: 45.78, longitude: 4.88 },
+      club: { ...baseClub, name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null, address: "5 RUE EMILE DUNIERE", latitude: 45.78, longitude: 4.88 },
     };
     const user = userEvent.setup();
     render(<ClubPage />);
@@ -193,13 +221,13 @@ describe("ClubPage", () => {
   });
 
   it("hides the club-info section for a non-admin", () => {
-    me.data = { role: "member", club: { name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null } };
+    me.data = { role: "member", club: { ...baseClub, name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null } };
     render(<ClubPage />);
     expect(screen.queryByRole("button", { name: /Informations du club/ })).toBeNull();
   });
 
   it("hides the Demandes section for a non-admin", () => {
-    me.data = { role: "member", club: { name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null } };
+    me.data = { role: "member", club: { ...baseClub, name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null } };
     render(<ClubPage />);
     expect(screen.queryByRole("button", { name: /Demandes/ })).toBeNull();
     expect(screen.getByRole("button", { name: /Visuel/ })).toBeInTheDocument();
@@ -215,7 +243,7 @@ describe("ClubPage", () => {
   });
 
   it("hides the Membres section for a non-management member", () => {
-    me.data = { role: "member", club: { name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null } };
+    me.data = { role: "member", club: { ...baseClub, name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null } };
     render(<ClubPage />);
     expect(screen.queryByRole("button", { name: /^Membres$/ })).toBeNull();
   });
@@ -238,14 +266,7 @@ describe("ClubPage", () => {
 
   // --- P1-3 §4bis pt 5 — section « Offre » ---------------------------------
 
-  const withEntitlements = (entitlements: Record<string, unknown>): ClubMock => ({
-    name: "BC Test",
-    accentColor: null,
-    accentColorDark: null,
-    accentPalette: null,
-    logoUrl: null,
-    entitlements: entitlements as never,
-  });
+  const withEntitlements = (entitlements: ClubEntitlements): Club => ({ ...baseClub, entitlements });
 
   it("Offre (Découverte) : offre courante + solde de crédits + paliers « sur demande », aucun montant", () => {
     me.data = { role: "admin", club: withEntitlements({ planCode: "decouverte", planName: "Découverte", maxTeams: null, teamsUsed: 6, creditsMax: 10, creditsUsed: 3, canGenerate: true, canPlaceMatches: true, canExportPdf: true, seasonTransition: false }) };
@@ -279,7 +300,7 @@ describe("ClubPage", () => {
   });
 
   it("hides the Offre section for a non-management member", () => {
-    me.data = { role: "member", club: { name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null } };
+    me.data = { role: "member", club: { ...baseClub, name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null } };
     render(<ClubPage />);
     expect(screen.queryByRole("button", { name: /^Offre$/ })).toBeNull();
   });
@@ -290,7 +311,7 @@ describe("ClubPage", () => {
   const withSeasonPlan = (): void => {
     me.data = {
       role: "admin",
-      club: { name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null },
+      club: { ...baseClub, name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null },
       seasonPlan: { id: "sp", name: "Plan", chosenScheduleId: "sched", hasFinishedVersion: true, currentStructureHash: null },
       seasons: [{ id: "s1", name: "2026-2027", startDate: "2026-09-01", endDate: "2027-06-30", isCurrent: true, isReadonly: false }],
       currentSeasonId: "s1",
@@ -349,7 +370,7 @@ describe("ClubPage", () => {
   it("Stats gymnases : sans planning en vigueur, la section explique au lieu d'afficher des zéros", async () => {
     me.data = {
       role: "admin",
-      club: { name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null },
+      club: { ...baseClub, name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null },
       seasonPlan: { id: "sp", name: "Plan", chosenScheduleId: null, hasFinishedVersion: false, currentStructureHash: null },
       seasons: [{ id: "s1", name: "2026-2027", startDate: "2026-09-01", endDate: "2027-06-30", isCurrent: true, isReadonly: false }],
       currentSeasonId: "s1",

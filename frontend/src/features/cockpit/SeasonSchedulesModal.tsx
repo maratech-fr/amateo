@@ -1,4 +1,6 @@
-import { Download, Eye, Loader2, Pencil, Star } from "lucide-react";
+import { Download, Eye, Pencil, Star } from "lucide-react";
+
+import { Spinner } from "@/shared/components/ui/spinner";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 
@@ -56,7 +58,7 @@ function CompactExport({ scheduleId, label }: { scheduleId: string; label: strin
               onClick={() => void run(key, null)}
               className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"
             >
-              {busy === key ? <Loader2 className="size-3 animate-spin" /> : null}
+              {busy === key ? <Spinner className="size-3" /> : null}
               {fmt}
             </button>
           ))}

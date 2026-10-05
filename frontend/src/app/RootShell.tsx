@@ -43,7 +43,7 @@ function NavigationPending() {
   return (
     <div className="fixed inset-x-0 top-0 z-50" role="status" aria-live="polite">
       <div className="h-0.5 w-full overflow-hidden bg-transparent">
-        <div className="h-full w-1/3 animate-[loading-bar_1s_ease-in-out_infinite] bg-accent" />
+        <div className="h-full w-1/3 animate-[loading-bar_1s_ease-in-out_infinite] bg-accent motion-reduce:animate-none" />
       </div>
       <span className="sr-only">Chargement de la page…</span>
     </div>

@@ -499,7 +499,7 @@ function PeriodVenuePanel({
             {offGridSlots.map((sl) => (
               <li key={sl.id} className="flex items-center justify-between gap-2 text-xs">
                 <span>
-                  {dayLabelLongCap(sl.dayOfWeek) || `jour ${sl.dayOfWeek}`} {hhmm(sl.startTime)} ({sl.durationMinutes} min)
+                  {dayLabelLongCap(sl.dayOfWeek) || `jour ${sl.dayOfWeek}`} {hhmm(sl.startTime)} ({formatDuration(sl.durationMinutes)})
                 </span>
                 <Button type="button" size="sm" variant="destructive" disabled={deleteSlot.isPending} onClick={() => deleteSlot.mutate(sl.id)}>
                   <Trash2 className="size-4" />
