@@ -1,10 +1,11 @@
 # Modules produit — ce qu'Amateo vend, en langage club
 
-Last verified @ 2026-10-04 (rotation de fraîcheur, `documentation-update`, passe P4-301).
-Re-confronté au code : la route `/doleances/:token` existe toujours (`frontend/src/app/routes.tsx:119`),
-l'export planning n'a toujours que deux formats PDF/Excel (`frontend/src/features/planning/queries.ts:314`,
-`ExportFormat = "pdf" | "xlsx"`). Reste des claims déjà vérifiées aux passes précédentes
-(2026-09-29/2026-10-01) : wizard 6 étapes (`frontend/src/features/wizard/lib/steps.ts:9-16`),
+Last verified @ 2026-10-06 (rotation de fraîcheur, `documentation-update`, reliquat UX de l'audit
+2026-10-03 — sans rapport direct avec le sujet). Re-confronté au code : la route `/doleances/:token`
+existe toujours (`frontend/src/app/routes.tsx:119`), l'export planning n'a toujours que deux
+formats PDF/Excel (`frontend/src/features/planning/queries.ts:314`, `ExportFormat = "pdf" | "xlsx"`),
+le wizard reste à 6 étapes dans le même ordre (`frontend/src/features/wizard/lib/steps.ts:9-16`).
+Reste des claims déjà vérifiées aux passes précédentes, non re-sondées cette fois :
 `FfbbClubPopulator.php`/`FfbbTeamImporter.php` (`backend/src/Service/Basketball/`), rappels
 J-14/J-7/J-3 (`PeriodReminderCommand.php:31,40`), échéance RMM-6 (`EntryDeadlineOutlook.php:39-40`).
 
