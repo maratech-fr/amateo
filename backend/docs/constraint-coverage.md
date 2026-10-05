@@ -1,6 +1,6 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-10-03 (ENG-48/ALIGN-16/ENG-51/ALIGN-19, contrat 1.1). Re-confronté au code :
+Last verified @ 2026-10-05 (rotation `documentation-update`, ENG-48/ALIGN-16/ENG-51/ALIGN-19, contrat 1.1). Re-confronté au code :
 `PreSolvePreventionWarnings::forcedDayEmptiedByClosingRules`/`adjointOnlyUnavailabilityIsIndicative`
 (`backend/src/Service/PreSolvePreventionWarnings.php`) ✓ ; `ConstraintFamily` porte toujours
 exactement 4 cas (`TIME`, `DAY`, `FACILITY`, `COACH_AVAILABILITY` — `FACILITY_CAPACITY` absent,

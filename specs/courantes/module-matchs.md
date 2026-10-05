@@ -7,7 +7,11 @@ aussi aux matchs, maison unique `PlanVenueClosures::closureIntervals`, consommé
 `/place-matches`, le radar, le refus serveur et le sélecteur grisé, plus l'endpoint lecture
 `GET /api/venue_closures` — confirmés contre `MatchPlacementPayloadBuilder.php`,
 `ConflictRadarLoader.php`, `FixtureStateProcessor.php`, `matchAccess.ts`, `usePlacementGuards.ts`,
-`PlacementPanel.tsx`.
+`PlacementPanel.tsx` ; et BCK-19 partie 2 — `MatchConflictDetector` reste l'unique façade
+(`detect()`, 4 prédicats statiques publics inchangés), son corps découpé VERBATIM dans
+`backend/src/Service/Conflicts/` (`VenueConflicts`, `RuleWindowConflicts`, `PersonConflicts`,
+`ConflictMoments`) — confirmé contre `backend/src/Service/MatchConflictDetector.php` et les
+quatre fichiers de `Conflicts/`.
 Reste du contenu (P4-271/P4-272 et antérieur, dont §7 « Engagements FFBB ») non réaudité cette
 passe. Historique :
 `git log -p --follow specs/courantes/module-matchs.md`.
@@ -442,6 +446,15 @@ unique).
 
 ## 2. Détecteur de conflits (`MatchConflictDetector`, service pur)
 
+Façade unique (`detect()`, point d'entrée appelé par `ConflictRadarLoader` ; les 4 prédicats
+statiques `kickoffInsideWindow`/`kickoffInsideLeagueWindow`/`kickoffSatisfiesClubRule`/
+`dateInsideClosure` y restent publics). Depuis BCK-19 partie 2, le corps est découpé VERBATIM,
+iso-comportement, par famille dans `backend/src/Service/Conflicts/` : `VenueConflicts` (gymnase —
+chevauchements, indisponibilités/fermetures, gymnase interdit, fenêtre d'accès perdue),
+`RuleWindowConflicts` (fenêtres ligue, règles club), `PersonConflicts` (personnes — match×match,
+match×entraînement, sévérités), `ConflictMoments` (helpers purs partagés — chevauchement,
+bornes min/max, `fixtureView`). Aucun comportement ni signature publique de `detect()` n'a changé.
+
 Recalculé **à la volée** à chaque appel (`GET /api/fixtures/conflicts`, `FixtureConflictsController`,
 `priority: 10`) — rien n'est persisté. Le chargement (fixtures, coachs/joueurs, périodes-overlay,
 slots effectifs, profils de durée, trajet) vit dans la maison UNIQUE `App\Service\
@@ -541,7 +554,7 @@ ci-dessus) · 7 `COMPETITION_INCOMPLETE` reason `PENDING` (info, repliée) + `AW
 LOISIR_ADULTE/LOISIR_JEUNE, qui n'a ni calendrier ligue ni habitude à déclarer). Réponse : bornes
 datées en heure MURALE du club (jamais un offset).
 
-**Détail par côté** : `MatchConflictDetector::fixtureView` sert quatre champs additifs par côté
+**Détail par côté** : `ConflictMoments::fixtureView` sert quatre champs additifs par côté
 (`estimatedKickoffTime`, `travelOneWayMinutes` — `null` = trajet non modélisé,
 `matchDurationMinutes`, `opponentLabel`) ; `opponentPlace` (ville de l'adversaire, jamais un
 gymnase) est décoré EN AVAL par `FixtureConflictsController::decorateOpponentPlace` sur les côtés

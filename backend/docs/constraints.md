@@ -1,6 +1,8 @@
 # Documentation métier du système de contraintes
 
-Last verified @ 2026-10-03 (ALIGN-18, branche `fix/audit-1003-align-verrou` — décision fondateur
+Last verified @ 2026-10-05 (rotation `documentation-update` — `ConstraintRuleType` confirmé à
+deux cas (`HARD`/`PREFERRED`, `backend/src/Enum/ConstraintRuleType.php`) ; ALIGN-18, branche
+`fix/audit-1003-align-verrou` — décision fondateur
 « on ne verrouille que les créneaux » : le cran `LOCK` quitte `ConstraintRuleType`
 (`backend/src/Enum/ConstraintRuleType.php`), une écriture `ruleType: "LOCK"` rend 422
 (`ConstraintValidationService` ne le valide plus, il n'existe plus) ; §2.3/§6 et les mentions
