@@ -77,7 +77,7 @@ export function useDeleteClubLeagueWindow() {
   return useMutation({
     mutationFn: matchesApi.deleteClubLeagueWindow,
     onSuccess: () => invalidateClubLeagueWindows(queryClient),
-    onError: () => toast.error("Suppression de la fenêtre de ligue impossible"),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 
@@ -126,7 +126,7 @@ export function useDeleteMatchConstraint() {
   return useMutation({
     mutationFn: matchesApi.deleteMatchConstraint,
     onSuccess: () => invalidateMatchConstraints(queryClient),
-    onError: () => toast.error("Suppression de la règle de match impossible"),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 
@@ -244,7 +244,7 @@ export function useCloseFbiCorrection() {
   return useMutation({
     mutationFn: (id: string) => matchesApi.closeFbiCorrection(id),
     onSuccess: () => invalidateFbiCorrections(queryClient),
-    onError: () => toast.error("Impossible de marquer la correction faite dans FBI"),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 
@@ -253,7 +253,7 @@ export function useReopenFbiCorrection() {
   return useMutation({
     mutationFn: (id: string) => matchesApi.reopenFbiCorrection(id),
     onSuccess: () => invalidateFbiCorrections(queryClient),
-    onError: () => toast.error("Impossible d'annuler cette correction"),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 
@@ -368,7 +368,7 @@ export function useDeleteFixture() {
   return useMutation({
     mutationFn: (id: string) => matchesApi.deleteFixture(id),
     onSuccess: () => invalidateFixtures(queryClient),
-    onError: () => toast.error("Suppression du match impossible"),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 
@@ -377,7 +377,7 @@ export function useUnplaceFixture() {
   return useMutation({
     mutationFn: (fixture: Fixture) => matchesApi.unplaceFixture(fixture),
     onSuccess: () => invalidateFixtures(queryClient),
-    onError: () => toast.error("Dé-placement impossible"),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 
@@ -387,7 +387,7 @@ export function useSubmitFixture() {
   return useMutation({
     mutationFn: (fixture: Fixture) => matchesApi.submitFixture(fixture),
     onSuccess: () => invalidateFixtures(queryClient),
-    onError: () => toast.error("Impossible de marquer le match saisi dans FBI"),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 
@@ -397,7 +397,7 @@ export function useReopenFixture() {
   return useMutation({
     mutationFn: (fixture: Fixture) => matchesApi.reopenFixture(fixture),
     onSuccess: () => invalidateFixtures(queryClient),
-    onError: () => toast.error("Impossible de repasser le match en Placé"),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 
@@ -415,7 +415,7 @@ export function useLockFixture() {
   return useMutation({
     mutationFn: (fixture: Fixture) => matchesApi.lockFixture(fixture),
     onSuccess: () => invalidateFixtures(queryClient),
-    onError: () => toast.error("Verrouillage impossible"),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 
@@ -424,7 +424,7 @@ export function useUnlockFixture() {
   return useMutation({
     mutationFn: (fixture: Fixture) => matchesApi.unlockFixture(fixture),
     onSuccess: () => invalidateFixtures(queryClient),
-    onError: () => toast.error("Impossible de rendre le match au système"),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 
@@ -435,6 +435,8 @@ export function useSwapFixtures() {
     // A failed second PUT still moved the first match — refresh in BOTH outcomes
     // so the grid always shows the real state.
     onSettled: () => invalidateFixtures(queryClient),
+    // Message DÉLIBÉRÉ (pas le message serveur) : l'échange peut laisser la grille à mi-chemin,
+    // l'utilisateur doit savoir que l'affichage rafraîchi (onSettled) est l'état RÉEL (UXS-13 — gardé).
     onError: () => toast.error("Échange interrompu — vérifiez la grille, l'état affiché est le réel"),
   });
 }
@@ -847,7 +849,7 @@ export function useDeleteVenueMatchWindow() {
   return useMutation({
     mutationFn: matchesApi.deleteVenueMatchWindow,
     onSuccess: () => invalidateMatchWindows(queryClient),
-    onError: () => toast.error("Suppression de la fenêtre impossible"),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 
@@ -882,7 +884,7 @@ export function useDeleteVenueUnavailability() {
   return useMutation({
     mutationFn: matchesApi.deleteVenueUnavailability,
     onSuccess: () => invalidateUnavailabilities(queryClient),
-    onError: () => toast.error("Suppression de l'indisponibilité impossible"),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 
@@ -927,7 +929,7 @@ export function useDeleteTeamMatchHabit() {
   return useMutation({
     mutationFn: matchesApi.deleteTeamMatchHabit,
     onSuccess: () => invalidateHabits(queryClient),
-    onError: () => toast.error("Suppression du créneau idéal impossible"),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 
@@ -964,7 +966,7 @@ export function useDeleteTeamLink() {
   return useMutation({
     mutationFn: matchesApi.deleteTeamLink,
     onSuccess: () => invalidateTeamLinks(queryClient),
-    onError: () => toast.error("Suppression du lien impossible"),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }
 

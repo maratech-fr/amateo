@@ -1,4 +1,6 @@
-import { Download, FileSpreadsheet, FileText, Loader2 } from "lucide-react";
+import { Download, FileSpreadsheet, FileText } from "lucide-react";
+
+import { Spinner } from "@/shared/components/ui/spinner";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
@@ -117,7 +119,7 @@ export function ExportMenu({
                 onClick={() => void run(key, venueId)}
                 className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted disabled:opacity-50"
               >
-                {busy === key ? <Loader2 className="size-4 animate-spin" /> : <Icon className="size-4" />}
+                {busy === key ? <Spinner className="size-4" /> : <Icon className="size-4" />}
                 {label}
                 {creditSuffix}
               </button>

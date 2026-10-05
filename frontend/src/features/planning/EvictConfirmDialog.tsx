@@ -1,4 +1,6 @@
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
+
+import { Spinner } from "@/shared/components/ui/spinner";
 import { useId, useRef } from "react";
 import { createPortal } from "react-dom";
 
@@ -109,7 +111,7 @@ export function EvictConfirmDialog({ open, phase, occupantName, compromises, vio
             // un club dense — on le DIT, plutôt que de laisser croire à un gel puis de mentir « moteur
             // indisponible » si le front raccroche. La borne suit le budget client (cf. api.ts).
             <div className="flex items-center gap-2 text-muted-foreground" role="status">
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              <Spinner className="size-4" />
               Vérification en cours — le moteur calcule, cela peut prendre jusqu'à {MOVE_VERDICT_TIMEOUT_SECONDS} s.
             </div>
           ) : null}
