@@ -546,21 +546,26 @@ final class MatchPlacementContext extends BaseContext
         }
     }
 
-    #[Then('le match du samedi reste sans créneau, faute d\'un gymnase fermé par le calendrier')]
-    public function leMatchDuSamediResteSansCreneauFermeture(): void
+    #[Then('le match du samedi est placé par le solveur, hors du gymnase fermé')]
+    public function leMatchDuSamediPlaceHorsGymnaseFerme(): void
     {
-        $reason = null;
-        $unplaced = $this->placeResult['unplaced'] ?? [];
-        foreach (\is_array($unplaced) ? $unplaced : [] as $entry) {
-            if (\is_array($entry) && ($entry['matchId'] ?? null) === $this->fxSat) {
-                $reason = $entry['reason'] ?? null;
-
-                break;
-            }
+        // P4-300 — une fermeture `venue_closed` du calendrier RETIRE le gymnase du domaine du
+        // solveur, exactement comme une interdiction d'équipe. Le créneau idéal (15h30 sur le
+        // gymnase jetable) aurait attiré le domicile sur ce gymnase SANS la fermeture — le
+        // solveur le pose donc dans un AUTRE gymnase du club (les gymnases du seed gardent leurs
+        // fenêtres du samedi), JAMAIS dans le gymnase fermé. C'est le témoin de la promesse : la
+        // fermeture arrive bien au payload et vide le gymnase pour les matchs comme pour les
+        // entraînements.
+        $status = $this->satFixture['status'] ?? null;
+        if ('PLACED' !== $status) {
+            throw new RuntimeException(\sprintf('le match du samedi n\'est pas placé (statut « %s »)', \is_string($status) ? $status : 'inconnu'));
         }
-
-        if ('venue_unavailable' !== $reason) {
-            throw new RuntimeException(\sprintf('le match aurait dû rester sans créneau pour un gymnase fermé, raison obtenue « %s »', \is_string($reason) ? $reason : 'aucune'));
+        if ('SOLVER' !== ($this->satFixture['placementSource'] ?? null)) {
+            throw new RuntimeException('le match du samedi n\'a pas été placé par le solveur');
+        }
+        // Le gymnase fermé ne peut JAMAIS être retenu (retiré du domaine par la fermeture).
+        if (($this->satFixture['venueId'] ?? null) === $this->venueId) {
+            throw new RuntimeException('le match a atterri sur le gymnase FERMÉ — la fermeture du calendrier n\'a pas été honorée côté matchs');
         }
     }
 
