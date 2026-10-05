@@ -252,12 +252,17 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
           ) : null}
 
           {armed ? (
-            <p className="rounded-md border border-accent/40 bg-surface-accent p-2 text-xs text-muted-foreground">
-              {null !== groupSession
-                ? "Cliquez la case cible de la grille pour y déplacer tout le groupe."
-                : "Cliquez une case libre de la grille pour y déplacer ce créneau, ou une séance à évincer."}{" "}
-              <span className="font-medium text-foreground">Échap</span> pour annuler.
-            </p>
+            <NoticeBanner
+              tone="accent"
+              message={
+                <>
+                  {null !== groupSession
+                    ? "Cliquez la case cible de la grille pour y déplacer tout le groupe."
+                    : "Cliquez une case libre de la grille pour y déplacer ce créneau, ou une séance à évincer."}{" "}
+                  <span className="font-medium">Échap</span> pour annuler.
+                </>
+              }
+            />
           ) : null}
 
           {/* Le déplacement passe sous le verdict du moteur (F2b) : ici le résultat du dernier

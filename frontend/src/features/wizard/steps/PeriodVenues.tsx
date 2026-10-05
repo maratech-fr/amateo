@@ -363,7 +363,7 @@ function PeriodVenuePanel({
             fermeture, grain jour), qu'elle soit partielle ou totale. Elle ne remplace plus
             l'interrupteur : le serveur accepte désormais le geste. */}
         {closures.map((c) => (
-          <span key={c.constraintId} className="rounded bg-destructive/10 px-1.5 py-0.5 text-xs font-semibold text-destructive">
+          <span key={c.constraintId} className="rounded bg-surface-destructive px-1.5 py-0.5 text-xs font-semibold text-foreground">
             {closurePeriodLabel(c)}
           </span>
         ))}

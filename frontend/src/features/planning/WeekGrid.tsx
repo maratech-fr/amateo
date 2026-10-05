@@ -340,7 +340,10 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                   onClick={() => onPickTarget?.(cell.slotId)}
                   aria-label={`Placer ici — ${cell.venueLabel}, ${dayLabel} ${cell.startLabel}–${cell.endLabel}`}
                   className={cn(
-                    "z-10 m-px flex items-center justify-center overflow-hidden rounded border border-dashed border-accent/60 bg-accent/5 px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent transition hover:border-accent hover:bg-accent/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+                    // A11Y-25 — cellule « placer ici » : fond accent OPAQUE (`--surface-accent`) + texte
+                    // foreground au repos (l'ex-`bg-accent/5 text-accent` tombait sous l'AA) ; le survol
+                    // renforce la bordure, sans teinte translucide sous le texte.
+                    "z-10 m-px flex items-center justify-center overflow-hidden rounded border border-dashed border-accent/60 bg-surface-accent px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-foreground transition hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
                     flagged ? "border-warning ring-2 ring-warning text-warning" : "",
                   )}
                   style={emptyStyle}
@@ -363,8 +366,10 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                   flagged ? "border-warning ring-2 ring-warning text-warning" : "",
                   // Une fenêtre vide n'a aucun verrou : sous la lentille, elle s'estompe (grayscale, A11Y-22).
                   lensActive ? "grayscale" : "",
-                  // Discret mais repérable : bordure pleine + fond teinté accent + texte accent.
-                  emphasized ? "border-solid border-accent bg-accent/10 text-accent" : "",
+                  // Discret mais repérable : bordure pleine + fond accent OPAQUE + texte foreground
+                  // (A11Y-25 — la teinte translucide d'accent sous un texte de même teinte tombait sous
+                  // l'AA ; on pose la surface opaque `--surface-accent` et un texte foreground).
+                  emphasized ? "border-solid border-accent bg-surface-accent text-foreground" : "",
                 )}
                 style={emptyStyle}
               >

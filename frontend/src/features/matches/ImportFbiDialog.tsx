@@ -268,7 +268,9 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
             ))}
             {/* P1-4 PR F2 (6.1) — poule guard verdicts of the dry-run. */}
             {analysis.divisions.some((d) => null !== d.pouleError || d.pouleUnknownOpponents.length > 0) ? (
-              <ul className="max-h-32 flex-col gap-0.5 overflow-y-auto text-xs">
+              // A11Y-26 — une liste QUI DÉFILE (max-h + overflow) doit être atteignable au clavier (WCAG 2.1.1).
+              // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- région défilante nommée, non-interactive mais focusable
+              <ul aria-label="Vérification des poules" tabIndex={0} className="max-h-32 flex-col gap-0.5 overflow-y-auto text-xs">
                 {analysis.divisions
                   .filter((d) => null !== d.pouleError)
                   .map((d) => (
@@ -286,7 +288,8 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
               </ul>
             ) : null}
             {analysis.errors.length > 0 ? (
-              <ul className="max-h-32 list-inside list-disc overflow-y-auto text-xs text-destructive">
+              // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- liste défilante nommée, atteignable au clavier (WCAG 2.1.1, A11Y-26)
+              <ul aria-label="Erreurs d'analyse" tabIndex={0} className="max-h-32 list-inside list-disc overflow-y-auto text-xs text-destructive">
                 {analysis.errors.map((error, i) => (
                   <li key={i}>{error}</li>
                 ))}
@@ -303,7 +306,8 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
               {report.exempted > 0 ? ` · ${report.exempted} exempt${report.exempted > 1 ? "s" : ""}` : ""}
             </p>
             {report.warnings.length > 0 ? (
-              <ul className="max-h-40 list-inside list-disc overflow-y-auto text-xs text-warning">
+              // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- liste défilante nommée, atteignable au clavier (WCAG 2.1.1, A11Y-26)
+              <ul aria-label="Avertissements de l'import" tabIndex={0} className="max-h-40 list-inside list-disc overflow-y-auto text-xs text-warning">
                 {report.warnings.map((warning, i) => (
                   <li key={i}>{warning.message}</li>
                 ))}
@@ -327,7 +331,8 @@ export function ImportFbiDialog({ teams, tiers, onClose }: ImportFbiDialogProps)
               </p>
             ) : null}
             {report.errors.length > 0 ? (
-              <ul className="max-h-40 list-inside list-disc overflow-y-auto text-xs text-destructive">
+              // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- liste défilante nommée, atteignable au clavier (WCAG 2.1.1, A11Y-26)
+              <ul aria-label="Erreurs de l'import" tabIndex={0} className="max-h-40 list-inside list-disc overflow-y-auto text-xs text-destructive">
                 {report.errors.map((error, i) => (
                   <li key={i}>{error}</li>
                 ))}
