@@ -18,7 +18,7 @@ use Throwable;
  * are disabled; the response MIME is checked from the actual bytes (SVG rejected,
  * cf. ClubLogoController) and the size is bounded.
  */
-final class FfbbLogoFetcher
+final class FfbbLogoFetcher implements FfbbLogoFetcherInterface
 {
     private const ASSET_BASE = 'https://api.ffbb.com/assets/';
     private const TIMEOUT = 8.0;
