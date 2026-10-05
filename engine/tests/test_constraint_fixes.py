@@ -14,7 +14,6 @@ def make_team(team_id: str, sessions_per_week: int) -> dict[str, object]:
         "priorityTierId": 3,
         "name": team_id.replace("-", " ").title(),
         "sessionsPerWeek": sessions_per_week,
-        "isActive": True,
     }
 
 
@@ -41,7 +40,6 @@ def make_input(
                 {
                     "id": "venue-1",
                     "name": "Gymnasium",
-                    "isActive": True,
                     "trainingSlots": slots_per_venue or [],
                 }
             ],
@@ -455,13 +453,11 @@ def _two_venue_input(team_sessions: int, constraints: list[dict[str, object]]) -
                 {
                     "id": "venue-A",
                     "name": "A",
-                    "isActive": True,
                     "trainingSlots": [make_slot(1, "18:00"), make_slot(2, "18:00")],
                 },
                 {
                     "id": "venue-B",
                     "name": "B",
-                    "isActive": True,
                     "trainingSlots": [make_slot(3, "18:00"), make_slot(4, "18:00")],
                 },
             ],
@@ -507,13 +503,11 @@ class TestVenueMinimum:
                     {
                         "id": "venue-A",
                         "name": "A",
-                        "isActive": True,
                         "trainingSlots": [make_slot(1, "18:00"), make_slot(1, "20:00")],
                     },
                     {
                         "id": "venue-B",
                         "name": "B",
-                        "isActive": True,
                         "trainingSlots": [make_slot(3, "18:00"), make_slot(4, "18:00")],
                     },
                 ],

@@ -116,10 +116,10 @@ final class NestedBlockOccupantFoldParityTest extends KernelTestCase
     {
         $team = static fn (string $id, int $sessions): array => [
             'id' => $id, 'name' => strtoupper($id), 'sportCategoryId' => 'cat-1',
-            'priorityTierId' => 3, 'sessionsPerWeek' => $sessions, 'isActive' => true,
+            'priorityTierId' => 3, 'sessionsPerWeek' => $sessions,
         ];
         $venue = static fn (string $id, int $day): array => [
-            'id' => $id, 'name' => $id, 'isActive' => true,
+            'id' => $id, 'name' => $id,
             'trainingSlots' => [['dayOfWeek' => $day, 'startTime' => '17:30', 'durationMinutes' => 90, 'capacity' => 1]],
         ];
         $pin = static fn (string $teamId): array => [

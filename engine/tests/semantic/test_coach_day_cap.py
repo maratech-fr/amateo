@@ -22,7 +22,7 @@ from tests.support.pipeline import make_payload, make_team, make_venue, solve_pa
 
 
 def _coach(coach_id: str, cap: int | None) -> dict[str, Any]:
-    coach: dict[str, Any] = {"id": coach_id, "firstName": "Matthieu", "lastName": "Cap", "isActive": True}
+    coach: dict[str, Any] = {"id": coach_id, "firstName": "Matthieu", "lastName": "Cap"}
     if cap is not None:
         coach["maxDaysOverride"] = cap
     return coach

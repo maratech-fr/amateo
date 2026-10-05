@@ -596,52 +596,17 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         // creux — vert sans avoir jamais exécuté serializeTeam.
         self::getContainer()->get('cache.schedule')->deleteItem(ScheduleConstraintBuilder::cacheKey($club->getId(), $season->getId()));
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        // Contrat 1.3 (ENG-53) — le champ `tags` a quitté le payload moteur (jamais lu par le
+        // solveur ; les tags servent encore à la résolution `targetTag` → contraintes TEAM, via
+        // TeamTagResolver, gardée ailleurs). Ce test ne garde plus que l'INVARIANT « construire ne
+        // doit RIEN écrire » — l'ancien foyer de la perte de données (serializeTeam resync).
+        $this->builder->buildForClubSeason($club->getId(), $season->getId());
 
         // Reproduit le flush que fait GenerateScheduleHandler après le build : si le
         // build avait laissé des remove/persist en attente, ils partiraient ICI.
         $this->em->flush();
 
         self::assertSame($before, $this->assignmentIdsOf($team->getId(), $season->getId()), 'construire un payload ne doit RIEN écrire');
-
-        $tags = [];
-        foreach ($payload['teams'] ?? [] as $row) {
-            if (($row['id'] ?? null) === $team->getId()) {
-                $tags = $row['tags'] ?? [];
-            }
-        }
-        self::assertSame(['U13'], $tags, 'le payload LIT les tags en base au lieu de les réécrire');
-    }
-
-    /**
-     * P2-9ter NR-1ter — l'ordre des `tags` du payload est déterministe.
-     *
-     * `snapshotHash` (gelé dans la version) et `currentStructureHash` (recalculé à chaque
-     * `/api/me`) sont deux sha256 du payload sérialisé : une simple PERMUTATION des tags
-     * les fait diverger, et le cockpit annonce « structure modifiée » sur un planning
-     * pourtant intact. ⚠ Trier la requête sur l'`id` de l'assignation ne suffirait PAS —
-     * c'est un UUID v4 tiré à la construction, et `TeamTagSyncListener` recrée les lignes
-     * à chaque écriture sur l'équipe. Seul le tri sur le NOM est stable.
-     */
-    public function testPayloadTagOrderIsDeterministicAcrossReinsertion(): void
-    {
-        [$club, $season] = $this->seed();
-        $team = $this->team($club, $season, 'SM1');
-        $this->em->flush();
-
-        // Trois tags insérés dans un ordre volontairement anti-alphabétique.
-        foreach (['ZULU', 'ALPHA', 'MIKE'] as $name) {
-            $tag = (new TeamTag)->setClubId($club->getId())->setName($name)->setIsSystem(true);
-            $this->em->persist($tag);
-            $this->em->flush();
-            $this->em->persist((new TeamTagAssignment)->setClubId($team->getClubId())->setTagId($tag->getId())->setTeamId($team->getId())->setSeasonId($season->getId()));
-        }
-        $this->em->flush();
-
-        self::getContainer()->get('cache.schedule')->deleteItem(ScheduleConstraintBuilder::cacheKey($club->getId(), $season->getId()));
-        $tags = $this->payloadTagsOf($this->builder->buildForClubSeason($club->getId(), $season->getId()), $team->getId());
-
-        self::assertSame(['ALPHA', 'MIKE', 'ZULU'], $tags, 'les tags du payload sortent triés par NOM, quel que soit l’ordre des lignes');
     }
 
     /**
@@ -1127,27 +1092,6 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         )->fetchFirstColumn();
 
         return $ids;
-    }
-
-    /**
-     * Les `tags` d'une équipe dans un payload construit.
-     *
-     * @param array<string, mixed> $payload
-     *
-     * @return list<string>
-     */
-    private function payloadTagsOf(array $payload, string $teamId): array
-    {
-        foreach ($payload['teams'] ?? [] as $row) {
-            if (($row['id'] ?? null) === $teamId) {
-                /** @var list<string> $tags */
-                $tags = $row['tags'] ?? [];
-
-                return $tags;
-            }
-        }
-
-        return [];
     }
 
     private function team(Club $club, Season $season, string $name): Team

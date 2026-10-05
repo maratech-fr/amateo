@@ -15,7 +15,6 @@ def _team(team_id: str, *, sessions: int = 1, match_day: int | None = None) -> d
         "priorityTierId": 3,
         "name": team_id,
         "sessionsPerWeek": sessions,
-        "isActive": True,
     }
     if match_day is not None:
         team["matchDay"] = match_day

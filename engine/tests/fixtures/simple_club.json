@@ -1,13 +1,12 @@
 {
   "clubId": "club-simple",
   "seasonId": "season-2024",
-  "version": "2.0",
+  "version": "1.3",
   "solverSeed": 42,
   "venues": [
     {
       "id": "gym-a",
       "name": "Gymnasium A",
-      "isActive": true,
       "trainingSlots": [
         {
           "dayOfWeek": 1,
@@ -26,7 +25,6 @@
     {
       "id": "gym-b",
       "name": "Gymnasium B",
-      "isActive": true,
       "trainingSlots": [
         {
           "dayOfWeek": 2,
@@ -49,60 +47,52 @@
       "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Senior Men",
-      "sessionsPerWeek": 2,
-      "isActive": true
+      "sessionsPerWeek": 2
     },
     {
       "id": "u17-m",
       "sportCategoryId": "u17",
       "priorityTierId": 2,
       "name": "U17 Men",
-      "sessionsPerWeek": 2,
-      "isActive": true
+      "sessionsPerWeek": 2
     },
     {
       "id": "u15-m",
       "sportCategoryId": "u15",
       "priorityTierId": 3,
       "name": "U15 Men",
-      "sessionsPerWeek": 1,
-      "isActive": true
+      "sessionsPerWeek": 1
     },
     {
       "id": "u13-m",
       "sportCategoryId": "u13",
       "priorityTierId": 4,
       "name": "U13 Men",
-      "sessionsPerWeek": 1,
-      "isActive": true
+      "sessionsPerWeek": 1
     },
     {
       "id": "u11-m",
       "sportCategoryId": "u11",
       "priorityTierId": 5,
       "name": "U11 Men",
-      "sessionsPerWeek": 1,
-      "isActive": true
+      "sessionsPerWeek": 1
     }
   ],
   "coaches": [
     {
       "id": "coach-1",
       "firstName": "Alice",
-      "lastName": "Martin",
-      "isActive": true
+      "lastName": "Martin"
     },
     {
       "id": "coach-2",
       "firstName": "Bob",
-      "lastName": "Dupont",
-      "isActive": true
+      "lastName": "Dupont"
     },
     {
       "id": "coach-3",
       "firstName": "Charlie",
-      "lastName": "Bernard",
-      "isActive": true
+      "lastName": "Bernard"
     }
   ],
   "slotTemplates": [
@@ -177,37 +167,5 @@
       "lockLevel": "NONE"
     }
   ],
-  "constraints": [],
-  "priorityTiers": [
-    {
-      "id": 1,
-      "label": "S",
-      "orToolsWeight": 10000,
-      "defaultMinSessions": 2
-    },
-    {
-      "id": 2,
-      "label": "A",
-      "orToolsWeight": 1000,
-      "defaultMinSessions": 2
-    },
-    {
-      "id": 3,
-      "label": "B",
-      "orToolsWeight": 100,
-      "defaultMinSessions": 1
-    },
-    {
-      "id": 4,
-      "label": "C",
-      "orToolsWeight": 10,
-      "defaultMinSessions": 1
-    },
-    {
-      "id": 5,
-      "label": "D",
-      "orToolsWeight": 1,
-      "defaultMinSessions": 1
-    }
-  ]
+  "constraints": []
 }

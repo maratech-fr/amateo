@@ -78,7 +78,7 @@ def _payload(*, locked: bool) -> dict[str, Any]:
     return make_payload(
         teams=[make_team("SM1", sessions_per_week=1)],
         venues=[make_venue("gym", [(SATURDAY, "18:00"), (TUESDAY, "18:00")])],
-        coaches=[{"id": "c1", "firstName": "Maxime", "lastName": "Durand", "isActive": True}],
+        coaches=[{"id": "c1", "firstName": "Maxime", "lastName": "Durand"}],
         constraints=[_coach_link("SM1", "c1"), _coach_off("c1", SATURDAY)],
         slot_templates=[_hard_lock("SM1", "gym", SATURDAY, "18:00")] if locked else [],
     )
@@ -136,7 +136,7 @@ def test_a_lock_that_violates_nothing_stays_quiet() -> None:
     payload = make_payload(
         teams=[make_team("SM1", sessions_per_week=1)],
         venues=[make_venue("gym", [(SATURDAY, "18:00"), (TUESDAY, "18:00")])],
-        coaches=[{"id": "c1", "firstName": "Maxime", "lastName": "Durand", "isActive": True}],
+        coaches=[{"id": "c1", "firstName": "Maxime", "lastName": "Durand"}],
         constraints=[_coach_link("SM1", "c1"), _coach_off("c1", SATURDAY)],
         slot_templates=[_hard_lock("SM1", "gym", TUESDAY, "18:00")],
     )
@@ -219,7 +219,7 @@ def test_two_distinct_locks_violating_the_same_rule_are_both_reported() -> None:
     payload = make_payload(
         teams=[make_team("SM1", sessions_per_week=2)],
         venues=[make_venue("gym", [(SATURDAY, "18:00"), (SATURDAY, "20:00"), (TUESDAY, "18:00")])],
-        coaches=[{"id": "c1", "firstName": "Maxime", "lastName": "Durand", "isActive": True}],
+        coaches=[{"id": "c1", "firstName": "Maxime", "lastName": "Durand"}],
         constraints=[_coach_link("SM1", "c1"), _coach_off("c1", SATURDAY)],
         slot_templates=[
             _hard_lock("SM1", "gym", SATURDAY, "18:00"),
@@ -324,7 +324,7 @@ def test_two_locks_differing_only_by_duration_are_both_reported() -> None:
     payload = make_payload(
         teams=[make_team("SM1", sessions_per_week=2)],
         venues=[make_venue("gym", [(SATURDAY, "18:00"), (TUESDAY, "18:00")])],
-        coaches=[{"id": "c1", "firstName": "Maxime", "lastName": "Durand", "isActive": True}],
+        coaches=[{"id": "c1", "firstName": "Maxime", "lastName": "Durand"}],
         constraints=[_coach_link("SM1", "c1"), _coach_off("c1", SATURDAY)],
         slot_templates=[_hard_lock("SM1", "gym", SATURDAY, "18:00"), long_lock],
     )

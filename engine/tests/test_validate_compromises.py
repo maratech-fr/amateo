@@ -191,7 +191,7 @@ def test_coach_day_cap_broken_when_placing_a_session_over_the_cap() -> None:
             "seasonId": "s",
             "venues": [make_venue("A", [(2, "20:00"), (3, "20:00")])],
             "teams": [make_team("U13", sessions_per_week=2)],
-            "coaches": [{"id": "C", "firstName": "Jean", "lastName": "Dupont", "isActive": True, "maxDaysOverride": 1}],
+            "coaches": [{"id": "C", "firstName": "Jean", "lastName": "Dupont", "maxDaysOverride": 1}],
             "constraints": [team_coach("tc13", "U13", "C")],
             "slotTemplates": [
                 {
@@ -221,7 +221,7 @@ def test_chaining_broken_requires_the_objective() -> None:
             "seasonId": "s",
             "venues": [make_venue("A", [(4, "18:00"), (4, "19:30")]), make_venue("B", [(4, "19:30")])],
             "teams": [make_team("U13"), make_team("U15")],
-            "coaches": [{"id": "C", "firstName": "Jean", "lastName": "Dupont", "isActive": True}],
+            "coaches": [{"id": "C", "firstName": "Jean", "lastName": "Dupont"}],
             "constraints": [team_coach("tc13", "U13", "C"), team_coach("tc15", "U15", "C")],
             "slotTemplates": [
                 {

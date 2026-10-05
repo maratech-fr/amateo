@@ -18,14 +18,12 @@ def test_time_hard_min_start_time_blocks_early_slot() -> None:
                     "priorityTierId": 3,
                     "name": "Team Senior",
                     "sessionsPerWeek": 1,
-                    "isActive": True,
                 },
             ],
             "venues": [
                 {
                     "id": "venue-1",
                     "name": "Gymnasium",
-                    "isActive": True,
                     "trainingSlots": [
                         {"dayOfWeek": 3, "startTime": "17:30", "durationMinutes": 90, "capacity": 1},
                         {"dayOfWeek": 3, "startTime": "19:00", "durationMinutes": 90, "capacity": 1},
@@ -65,14 +63,12 @@ def test_time_hard_max_start_time_blocks_late_slot() -> None:
                     "priorityTierId": 3,
                     "name": "Team Jeune",
                     "sessionsPerWeek": 1,
-                    "isActive": True,
                 },
             ],
             "venues": [
                 {
                     "id": "venue-1",
                     "name": "Gymnasium",
-                    "isActive": True,
                     "trainingSlots": [
                         {"dayOfWeek": 3, "startTime": "19:00", "durationMinutes": 90, "capacity": 1},
                         {"dayOfWeek": 3, "startTime": "20:30", "durationMinutes": 90, "capacity": 1},
@@ -112,14 +108,12 @@ def test_day_hard_forbidden_days_blocks_forbidden_weekday() -> None:
                     "priorityTierId": 3,
                     "name": "Team Forbidden",
                     "sessionsPerWeek": 1,
-                    "isActive": True,
                 },
             ],
             "venues": [
                 {
                     "id": "venue-1",
                     "name": "Gymnasium",
-                    "isActive": True,
                     "trainingSlots": [
                         {"dayOfWeek": 1, "startTime": "18:00", "durationMinutes": 90, "capacity": 1},
                         {"dayOfWeek": 2, "startTime": "18:00", "durationMinutes": 90, "capacity": 1},
@@ -159,14 +153,12 @@ def test_day_preferred_day_places_team_on_preferred_weekday() -> None:
                     "priorityTierId": 3,
                     "name": "Team Preferred",
                     "sessionsPerWeek": 1,
-                    "isActive": True,
                 },
             ],
             "venues": [
                 {
                     "id": "venue-1",
                     "name": "Gymnasium",
-                    "isActive": True,
                     "trainingSlots": [
                         {"dayOfWeek": 1, "startTime": "18:00", "durationMinutes": 90, "capacity": 1},
                         {"dayOfWeek": 2, "startTime": "18:00", "durationMinutes": 90, "capacity": 1},

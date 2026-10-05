@@ -20,10 +20,8 @@ MAX_COACHES = 200
 # ever trips it, finite enough that a bomb can't smuggle an unbounded list past the boundary.
 MAX_CONSTRAINTS_EXPANDED = 100_000
 MAX_SLOT_TEMPLATES = 2000
-MAX_PRIORITY_TIERS = 20
 MAX_SLOTS_PER_VENUE = 1000
 MAX_SLOTS_TOTAL = 3000
-MAX_TAGS_PER_TEAM = 50
 # P2-51 — mutualisation par BLOC : plafonds du bloc `sharedBlocks`. Un bloc se comporte comme UNE
 # équipe (ses séances lui appartiennent, ``commonSessions``), 2..10 équipes membres (cap technique
 # fondateur, minimum métier 2). 50 blocs = défense en profondeur au bord (le backend ne borne pas
@@ -62,18 +60,10 @@ class VenueSchema(SerializableModel):
     longitude: str | None = None
     source: str = ""
     external_ref: str | None = Field(default=None, alias="externalRef")
-    is_active: bool = Field(default=False, alias="isActive")
     parent_venue_id: str | None = Field(default=None, alias="parentVenueId")
     training_slots: list[VenueTrainingSlotSchema] = Field(
         default_factory=list, alias="trainingSlots", max_length=MAX_SLOTS_PER_VENUE
     )
-
-
-class PriorityTierSchema(SerializableModel):
-    id: int
-    label: str
-    or_tools_weight: int = Field(alias="orToolsWeight")
-    default_min_sessions: int = Field(alias="defaultMinSessions")
 
 
 class TeamSchema(SerializableModel):
@@ -87,24 +77,18 @@ class TeamSchema(SerializableModel):
     gender: str | None = None
     level: str | None = None
     sessions_per_week: int = Field(alias="sessionsPerWeek")
-    min_sessions_override: int | None = Field(default=None, alias="minSessionsOverride")
     match_day: int | None = Field(default=None, alias="matchDay")
     forced_venue_id: str | None = Field(default=None, alias="forcedVenueId")
-    is_active: bool = Field(default=False, alias="isActive")
     parent_team_id: str | None = Field(default=None, alias="parentTeamId")
     ffbb_team_id: str | None = Field(default=None, alias="ffbbTeamId")
-    tags: list[str] = Field(default_factory=list, max_length=MAX_TAGS_PER_TEAM)
 
 
 class CoachSchema(SerializableModel):
     id: str
     first_name: str = Field(alias="firstName")
     last_name: str = Field(alias="lastName")
-    email: str | None = None
-    phone: str | None = None
     max_days_override: int | None = Field(default=None, alias="maxDaysOverride")
     acceptable_late_minutes: int | None = Field(default=None, alias="acceptableLateMinutes")
-    is_active: bool = Field(default=False, alias="isActive")
     parent_coach_id: str | None = Field(default=None, alias="parentCoachId")
     is_employee: bool = Field(default=False, alias="isEmployee")
     # P2-53 RMM-8 PR-2 — le coach est-il VÉHICULÉ ? Décide de SON barème de trajet
@@ -323,7 +307,7 @@ class ScheduleInputSchema(SerializableModel):
     # la valeur du fil. On l'aligne néanmoins sur le contrat courant (engine/CONTRACT_VERSION) pour
     # qu'aucun lecteur ne le prenne pour une version concurrente ; gardé par
     # test_schema_version_defaults_match_contract_version.
-    version: str = "1.2"
+    version: str = "1.3"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     schedule_name: str | None = Field(default=None, alias="scheduleName")
@@ -339,9 +323,6 @@ class ScheduleInputSchema(SerializableModel):
     constraints: list[ConstraintV2Schema] = Field(default_factory=list, max_length=MAX_CONSTRAINTS_EXPANDED)
     slot_templates: list[ScheduleSlotTemplateSchema] = Field(
         default_factory=list, alias="slotTemplates", max_length=MAX_SLOT_TEMPLATES
-    )
-    priority_tiers: list[PriorityTierSchema] = Field(
-        default_factory=list, alias="priorityTiers", max_length=MAX_PRIORITY_TIERS
     )
     # Réglage par club des 4 règles implicites (bien-être). None = tout HARD, seuils
     # historiques — un payload sans ce bloc est byte-identique à l'ancien contrat.

@@ -25,7 +25,6 @@ def _build_input_with_three_tiers() -> ScheduleInputSchema:
                     "priorityTierId": 1,  # S tier (weight=10000)
                     "name": "Team S",
                     "sessionsPerWeek": 1,
-                    "isActive": True,
                 },
                 {
                     "id": "team-c",
@@ -33,7 +32,6 @@ def _build_input_with_three_tiers() -> ScheduleInputSchema:
                     "priorityTierId": 4,  # C tier (weight=10)
                     "name": "Team C",
                     "sessionsPerWeek": 1,
-                    "isActive": True,
                 },
                 {
                     "id": "team-d",
@@ -41,14 +39,12 @@ def _build_input_with_three_tiers() -> ScheduleInputSchema:
                     "priorityTierId": 5,  # D tier (weight=1)
                     "name": "Team D",
                     "sessionsPerWeek": 1,
-                    "isActive": True,
                 },
             ],
             "venues": [
                 {
                     "id": "venue-1",
                     "name": "Gymnasium",
-                    "isActive": True,
                     "trainingSlots": [
                         {"dayOfWeek": 1, "startTime": "18:00", "durationMinutes": 90, "capacity": 1},
                         {"dayOfWeek": 2, "startTime": "18:00", "durationMinutes": 90, "capacity": 1},

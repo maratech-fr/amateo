@@ -195,7 +195,6 @@ class TestAgeOrder:
             "priorityTierId": 3,
             "name": "U13 Women",
             "sessionsPerWeek": 1,
-            "isActive": True,
         }
         result = _run_pipeline(data)
 

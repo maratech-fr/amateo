@@ -118,7 +118,7 @@ final class SharedBlockHonouredByEngineTest extends TestCase
     /** @return array<string, mixed> */
     private function team(string $id): array
     {
-        return ['id' => $id, 'name' => strtoupper($id), 'sportCategoryId' => 'cat', 'priorityTierId' => 3, 'sessionsPerWeek' => 1, 'isActive' => true];
+        return ['id' => $id, 'name' => strtoupper($id), 'sportCategoryId' => 'cat', 'priorityTierId' => 3, 'sessionsPerWeek' => 1];
     }
 
     /**
@@ -129,7 +129,7 @@ final class SharedBlockHonouredByEngineTest extends TestCase
     private function venue(string $id, array $slots): array
     {
         return [
-            'id' => $id, 'name' => 'V-' . substr($id, 0, 4), 'isActive' => true,
+            'id' => $id, 'name' => 'V-' . substr($id, 0, 4),
             'trainingSlots' => array_map(
                 static fn (array $s): array => ['dayOfWeek' => $s[0], 'startTime' => $s[1], 'durationMinutes' => 90, 'capacity' => $s[2]],
                 $slots,

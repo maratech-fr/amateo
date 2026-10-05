@@ -21,7 +21,7 @@ from tests.support import make_payload, make_team, make_venue, solve_payload, te
 
 
 def _coach(coach_id: str) -> dict[str, Any]:
-    return {"id": coach_id, "firstName": coach_id, "lastName": "X", "isActive": True, "isEmployee": False}
+    return {"id": coach_id, "firstName": coach_id, "lastName": "X", "isEmployee": False}
 
 
 def _forced_venue(cid: str, team_id: str, venue_id: str) -> dict[str, Any]:

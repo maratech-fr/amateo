@@ -74,7 +74,6 @@ def make_venue(
     return {
         "id": venue_id,
         "name": venue_id,
-        "isActive": True,
         "trainingSlots": [
             {
                 "dayOfWeek": day,
@@ -175,7 +174,6 @@ def make_payload(
     venues: list[dict[str, Any]],
     constraints: list[dict[str, Any]] | None = None,
     slot_templates: list[dict[str, Any]] | None = None,
-    priority_tiers: list[dict[str, Any]] | None = None,
     coaches: list[dict[str, Any]] | None = None,
     seed: int = 42,
     timeout: int = 30,
@@ -203,14 +201,6 @@ def make_payload(
         # (les règles implicites retombent alors sur leurs défauts historiques). Ne le
         # poser que lorsqu'un test règle explicitement une règle.
         **({"implicitRules": implicit_rules} if implicit_rules else {}),
-        "priorityTiers": priority_tiers
-        or [
-            {"id": 1, "label": "S", "orToolsWeight": 10000, "defaultMinSessions": 2},
-            {"id": 2, "label": "A", "orToolsWeight": 1000, "defaultMinSessions": 2},
-            {"id": 3, "label": "B", "orToolsWeight": 100, "defaultMinSessions": 2},
-            {"id": 4, "label": "C", "orToolsWeight": 10, "defaultMinSessions": 2},
-            {"id": 5, "label": "D", "orToolsWeight": 1, "defaultMinSessions": 1},
-        ],
     }
 
 
@@ -227,7 +217,6 @@ def make_team(
         "priorityTierId": priority_tier_id,
         "name": team_id,
         "sessionsPerWeek": sessions_per_week,
-        "isActive": True,
     }
     if match_day is not None:
         team["matchDay"] = match_day

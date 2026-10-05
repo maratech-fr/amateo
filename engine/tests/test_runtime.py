@@ -37,7 +37,6 @@ def _minimal_input() -> ScheduleInputSchema:
             "coaches": [],
             "slotTemplates": [],
             "constraints": [],
-            "priorityTiers": [],
         }
     )
 
@@ -149,7 +148,6 @@ def _input_with_version(version: str) -> ScheduleInputSchema:
             "coaches": [],
             "slotTemplates": [],
             "constraints": [],
-            "priorityTiers": [],
         }
     )
 

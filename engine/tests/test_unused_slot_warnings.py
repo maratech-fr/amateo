@@ -26,14 +26,12 @@ def _build_input() -> ScheduleInputSchema:
                     "priorityTierId": 3,
                     "name": "Team 1",
                     "sessionsPerWeek": 1,
-                    "isActive": True,
                 },
             ],
             "venues": [
                 {
                     "id": "venue-1",
                     "name": "Gymnase Test",
-                    "isActive": True,
                     "trainingSlots": [
                         {"dayOfWeek": 1, "startTime": "17:30", "durationMinutes": 90, "capacity": 1},
                         {"dayOfWeek": 1, "startTime": "19:00", "durationMinutes": 90, "capacity": 1},

@@ -24,7 +24,6 @@ def _team(team_id: str, sessions: int = 1) -> dict[str, Any]:
         "priorityTierId": 3,
         "name": team_id,
         "sessionsPerWeek": sessions,
-        "isActive": True,
     }
 
 

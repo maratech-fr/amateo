@@ -28,7 +28,6 @@ def test_capacity_2_slot_allows_two_teams() -> None:
                     "priorityTierId": 3,
                     "name": "Team A",
                     "sessionsPerWeek": 1,
-                    "isActive": True,
                 },
                 {
                     "id": "team-b",
@@ -36,14 +35,12 @@ def test_capacity_2_slot_allows_two_teams() -> None:
                     "priorityTierId": 3,
                     "name": "Team B",
                     "sessionsPerWeek": 1,
-                    "isActive": True,
                 },
             ],
             "venues": [
                 {
                     "id": "venue-1",
                     "name": "Gymnasium",
-                    "isActive": True,
                     "trainingSlots": [
                         {"dayOfWeek": 1, "startTime": "18:00", "durationMinutes": 90, "capacity": 2},
                     ],
@@ -74,7 +71,6 @@ def test_capacity_1_slot_allows_only_one_team() -> None:
                     "priorityTierId": 3,
                     "name": "Team A",
                     "sessionsPerWeek": 1,
-                    "isActive": True,
                 },
                 {
                     "id": "team-b",
@@ -82,14 +78,12 @@ def test_capacity_1_slot_allows_only_one_team() -> None:
                     "priorityTierId": 3,
                     "name": "Team B",
                     "sessionsPerWeek": 1,
-                    "isActive": True,
                 },
             ],
             "venues": [
                 {
                     "id": "venue-1",
                     "name": "Gymnasium",
-                    "isActive": True,
                     "trainingSlots": [
                         {"dayOfWeek": 1, "startTime": "18:00", "durationMinutes": 90, "capacity": 1},
                     ],
@@ -124,14 +118,12 @@ def test_capacity_0_slot_is_rejected_by_validation() -> None:
                         "priorityTierId": 3,
                         "name": "Team A",
                         "sessionsPerWeek": 1,
-                        "isActive": True,
                     },
                 ],
                 "venues": [
                     {
                         "id": "venue-1",
                         "name": "Gymnasium",
-                        "isActive": True,
                         "trainingSlots": [
                             {"dayOfWeek": 1, "startTime": "18:00", "durationMinutes": 90, "capacity": 0},
                         ],

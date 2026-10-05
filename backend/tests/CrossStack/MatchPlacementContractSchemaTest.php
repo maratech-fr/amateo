@@ -7,7 +7,6 @@ namespace App\Tests\CrossStack;
 use App\Entity\Club;
 use App\Entity\Competition;
 use App\Entity\Fixture;
-use App\Entity\OpponentVenueLink;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
@@ -19,13 +18,8 @@ use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
-use App\Enum\OpponentVenueLinkSource;
 use App\Enum\SeasonStatus;
-use App\Service\Basketball\VenueLabelNormalizer;
-use App\Service\Geo\IgnRoutingClient;
-use App\Service\Geo\TravelTimeCache;
 use App\Service\MatchPlacementPayloadBuilder;
-use App\Service\OpponentTravelProjection;
 use App\Service\SeasonResolver;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -226,83 +220,13 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         self::assertSame($venue->getId(), $byId[$friendlyPlaced->getId()]['venueId'] ?? null);
         // Amical extérieur : AWAY, comme une rencontre de compétition.
         self::assertSame('AWAY', $byId[$friendlyAway->getId()]['kind'] ?? null);
-        // D3 — la ligne AWAY porte le champ de contrat roundTripMinutes ; trajet
-        // inconnu (aucun opponent_travel seedé) → 0 (aucune extension côté solveur).
-        self::assertArrayHasKey('roundTripMinutes', $byId[$friendlyAway->getId()]);
-        self::assertSame(0, $byId[$friendlyAway->getId()]['roundTripMinutes']);
+        // Contrat 1.3 (ALIGN-20) — la ligne AWAY ne porte plus ni roundTripMinutes ni
+        // kickoffEstimated : le solveur IGNORE l'empreinte d'un extérieur (P4-240 ③ décision B),
+        // le radar calcule le trajet depuis l'entité, hors payload moteur.
+        self::assertArrayNotHasKey('roundTripMinutes', $byId[$friendlyAway->getId()]);
+        self::assertArrayNotHasKey('kickoffEstimated', $byId[$friendlyAway->getId()]);
         // Championnat (la rencontre seedée, UNPLACED) : TO_PLACE — inchangé.
         self::assertSame('TO_PLACE', $byId[$seededFixture->getId()]['kind'] ?? null);
-    }
-
-    /**
-     * NR D3 (§7.1 contrat backend↔engine) : la ligne AWAY du payload de placement
-     * porte le trajet aller-retour (2 × aller simple) projeté par
-     * {@see OpponentTravelProjection} — la MÊME projection que le radar.
-     * Le solveur étend la fenêtre AWAY du coach de cette durée (réplique de
-     * MatchFootprint). Un adversaire sans trajet reste à 0.
-     */
-    #[Group('phase1')]
-    public function testAwayLineCarriesTheProjectedRoundTripTravel(): void
-    {
-        [, $seededFixture, $club, $season, $builder] = $this->buildFromSeededClub();
-        $em = self::getContainer()->get('doctrine.orm.entity_manager');
-        $teamId = $seededFixture->getTeamId();
-
-        // Une rencontre extérieure estampillée d'un code organisme dont le club a un
-        // trajet aller simple de 40 min.
-        $away = $this->makeFixture($em, $club, $season, $teamId, '2026-10-24', FixtureHomeAway::AWAY);
-        $away->setOpponentOrganismeCode('ORGCONTRAT');
-        $away->setOpponentLabel('ASVEL - 2');
-        $away->setFbiVenueLabel('SALLE CONTRAT');
-        $em->flush();
-
-        // Le trajet se résout par le lien de la salle + le cache (siège → gymnase) : lien vers
-        // un gymnase (45.76, 4.86) et trajet aller simple 40 min en cache.
-        $this->seedLinkAndCache($em, $club, 'ORGCONTRAT', 'SALLE CONTRAT', 45.76, 4.86, 40);
-
-        $matches = $builder->build($club, $season->getId())['payload']['matches'];
-        $awayRow = null;
-        foreach ($matches as $row) {
-            if ($row['id'] === $away->getId()) {
-                $awayRow = $row;
-            }
-        }
-        self::assertNotNull($awayRow, 'la rencontre extérieure figure au payload');
-        // 2 × aller simple : 40 → 80.
-        self::assertSame(80, $awayRow['roundTripMinutes']);
-    }
-
-    /**
-     * NR D3 (§7.1 contrat backend↔engine) : le trajet aller-retour émis est CLAMPÉ à la
-     * borne du schéma engine (24 h = 1440 min). Un aller-simple aberrant (800 min → 1600
-     * aller-retour) ferait sinon rejeter TOUT le payload en 422 (`round_trip_minutes` `le=1440`).
-     */
-    #[Group('phase1')]
-    public function testRoundTripTravelIsClampedToTheSchemaBound(): void
-    {
-        [, $seededFixture, $club, $season, $builder] = $this->buildFromSeededClub();
-        $em = self::getContainer()->get('doctrine.orm.entity_manager');
-        $teamId = $seededFixture->getTeamId();
-
-        $away = $this->makeFixture($em, $club, $season, $teamId, '2026-10-24', FixtureHomeAway::AWAY);
-        $away->setOpponentOrganismeCode('ORGLOIN');
-        $away->setOpponentLabel('Bout du monde');
-        $away->setFbiVenueLabel('SALLE LOIN');
-        $em->flush();
-
-        // Aller simple aberrant de 800 min → aller-retour 1600, au-delà de la borne engine.
-        $this->seedLinkAndCache($em, $club, 'ORGLOIN', 'SALLE LOIN', 46.50, 5.50, 800);
-
-        $matches = $builder->build($club, $season->getId())['payload']['matches'];
-        $awayRow = null;
-        foreach ($matches as $row) {
-            if ($row['id'] === $away->getId()) {
-                $awayRow = $row;
-            }
-        }
-        self::assertNotNull($awayRow, 'la rencontre extérieure figure au payload');
-        // Clampé à 1440 (24 h), pas 1600 : le payload reste recevable par le schéma engine.
-        self::assertSame(1440, $awayRow['roundTripMinutes']);
     }
 
     private function makeFixture(EntityManagerInterface $em, Club $club, Season $season, string $teamId, string $date, FixtureHomeAway $homeAway): Fixture
@@ -317,27 +241,6 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         $em->persist($fixture);
 
         return $fixture;
-    }
-
-    /**
-     * Apparie un libellé de salle à un gymnase ({@see OpponentVenueLink}) et met en cache le
-     * trajet siège(45.70,4.90) → gymnase — la façon dont un trajet AWAY se résout désormais.
-     */
-    private function seedLinkAndCache(EntityManagerInterface $em, Club $club, string $code, string $fbiLabel, float $lat, float $lon, int $oneWay): void
-    {
-        $normalizer = self::getContainer()->get(VenueLabelNormalizer::class);
-        $link = (new OpponentVenueLink)
-            ->setClubId($club->getId())
-            ->setOpponentOrganismeCode($code)
-            ->setFbiLabel($fbiLabel)
-            ->setFbiLabelNorm($normalizer->normalize($fbiLabel))
-            ->setVenueLabel($fbiLabel)
-            ->setLatitude($lat)
-            ->setLongitude($lon)
-            ->setSource(OpponentVenueLinkSource::MANUAL);
-        $em->persist($link);
-        $em->flush();
-        self::getContainer()->get(TravelTimeCache::class)->store($club->getId(), IgnRoutingClient::PROFILE_CAR, 45.70, 4.90, $lat, $lon, $oneWay);
     }
 
     /**

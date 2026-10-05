@@ -1,6 +1,6 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-10-06 (reliquat DOC de l'audit 2026-10-03 — AUD-DOC-51). Étiquettes de version « contrat 2.x » historiques retirées du corps (substance au présent), citation `main.py::place_matches` ré-ancrée sur le symbole ; `engine/CONTRACT_VERSION` = `1.2`, un seul contrat pour les trois endpoints, confronté au fichier. Reste de l'inventaire non re-sondé cette passe.
+Last verified @ 2026-10-06 (contrat 1.2 → 1.3 : champs MORTS retirés du fil — PII coach `email`/`phone` (RGPD-03), flags d'entité `isActive` (gymnase/équipe/coach), `minSessionsOverride`, `tags`, schéma mort `priorityTiers`/`PriorityTierSchema`, et `kickoffEstimated`/`roundTripMinutes` du placement ; aucun n'était lu par le solveur, `extra="forbid"` refuse désormais leur retour — ENG-53, RGPD-03, ALIGN-20. **ENG-52 fermé par décision** : déterminisme best-effort ASSUMÉ, pas de `max_deterministic_time` — le budget reste en temps mural, cf. §5. Même passe DOC (AUD-DOC-51) : étiquettes de version « contrat 2.x » historiques retirées du corps, citation `main.py::place_matches` ré-ancrée sur le symbole). Antérieurement @ 2026-10-05 (contrat 1.1 → 1.2 : vocabulaire `/place-matches` resserré en énums fermées — `clubRules[].ruleType`, `teams[].coaches[].role`, `teamLinks[].type` → 422 sur valeur inconnue, ENG-56). Antérieurement @ 2026-10-04 (amendement ADR-0003, `/place-matches` seul) — §2 re-confronté : le rail est maintenant découpé **semaine ISO par semaine ISO** (`_partition_by_iso_week`/`_merge_week_results`, ENG-50, `solverTimeoutSeconds` devenu un budget PAR SEMAINE) et le solve tourne dans un **processus fils jetable** (`ProcessPoolExecutor`, ENG-49) plutôt qu'un thread worker — le reste de l'inventaire (`/generate`, `/validate-assignments`) non re-sondé cette passe, voir `git log -p --follow` pour sa dernière vérification.
 
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.
 > Source de vérité : `engine/app/main.py`, `engine/app/schemas/input_schema.py`, `engine/app/schemas/output_schema.py`, `engine/app/solver/{model,constraints,objective,result_builder}.py`, `engine/app/core/config.py`.
@@ -14,7 +14,7 @@ Last verified @ 2026-10-06 (reliquat DOC de l'audit 2026-10-03 — AUD-DOC-51). 
 - **Solver** : Google OR-Tools CP-SAT (`from ortools.sat.python import cp_model`).
 - **Validation** : Pydantic v2 (`BaseModel`, `ConfigDict`, `Field`, `populate_by_name=True`).
 - **Settings** : `pydantic-settings` (`engine/app/core/config.py`), prefix env `ENGINE_`, `.env` lu. Defaults : `app_name="engine"`, `app_version="1.0"`, `contract_version="2.0"`, `environment="dev"`, `log_level="info"`.
-- **Contract version** : lu depuis `engine/CONTRACT_VERSION` (**fichier = `1.2`** — source de vérité, `read_contract_version()` dans `main.py`). Un fichier manquant lève une `RuntimeError`, il n'est **jamais** remplacé par un défaut : le garde de contrat est MAJOR-only, un build amputé de son fichier passerait sinon le handshake et résoudrait un payload d'une AUTRE version mineure en se croyant d'accord. Gardé par `tests/test_contract_version_doc_sync.py`. **Politique de bump** : un changement de FORME ou de SÉMANTIQUE (champ/type/alias ajouté, retiré ou dont le sens change) bump le contrat ; un simple resserrage d'ENVELOPPE (`max_length` qui rétrécit ce qu'on acceptait déjà, sans toucher forme ni sémantique) ne bump pas. **UN SEUL `CONTRACT_VERSION` pour les TROIS endpoints** `/generate` · `/place-matches` · `/validate-assignments`, tous vérifient le même MAJOR — l'historique des bumps (ce que chaque version a changé) vit dans `git log -p --follow engine/CONTRACT_VERSION` et le journal `specs/courantes/etat-des-lieux.md` §3.
+- **Contract version** : lu depuis `engine/CONTRACT_VERSION` (**fichier = `1.3`** — source de vérité, `read_contract_version()` dans `main.py`). Un fichier manquant lève une `RuntimeError`, il n'est **jamais** remplacé par un défaut : le garde de contrat est MAJOR-only, un build amputé de son fichier passerait sinon le handshake et résoudrait un payload d'une AUTRE version mineure en se croyant d'accord. Gardé par `tests/test_contract_version_doc_sync.py`. **Politique de bump** : un changement de FORME ou de SÉMANTIQUE (champ/type/alias ajouté, retiré ou dont le sens change) bump le contrat ; un simple resserrage d'ENVELOPPE (`max_length` qui rétrécit ce qu'on acceptait déjà, sans toucher forme ni sémantique) ne bump pas. **UN SEUL `CONTRACT_VERSION` pour les TROIS endpoints** `/generate` · `/place-matches` · `/validate-assignments`, tous vérifient le même MAJOR — l'historique des bumps (ce que chaque version a changé) vit dans `git log -p --follow engine/CONTRACT_VERSION` et le journal `specs/courantes/etat-des-lieux.md` §3.
 - **Structure interne** :
   - `app/main.py` — endpoints FastAPI + pipeline solver.
   - `app/core/config.py` — settings.
@@ -122,14 +122,14 @@ jeton, l'autre vérifie que deux placements restent sérialisés.
   applique la même exclusion en défense (`_team_players`) et pèse une joueuse comme un coach MAIN
   (`W_COACH_MAIN`, SOFT). `trainingOccupancies` est étendu côté backend aux joueurs actifs de
   l'équipe du créneau, en plus des coachs.
-- **`roundTripMinutes`** (`matches[]`, AWAY seulement, `int` 0-1440, défaut 0) : le trajet
-  aller-retour vers l'adversaire, projeté par la maison unique
-  `App\Service\OpponentTravelProjection` (partagée avec le radar de conflits côté backend).
-  TRANSPORTÉ par le contrat mais **plus consommé** par le solveur depuis P4-240 ③ (décision B) —
-  un match `AWAY` ne projette plus de fenêtre personne du tout, donc plus de jambe de trajet à
-  y porter. Le radar de conflits (backend, `MatchFootprint`) continue de le consommer : à
-  l'extérieur, sa fenêtre de conflit personne compte désormais aussi l'échauffement avant le
-  trajet aller (décision C, hors solveur).
+- **`roundTripMinutes` / `kickoffEstimated` (RETIRÉS du contrat 1.3, ALIGN-20/ALIGN-13)** : le
+  trajet aller-retour AWAY et le drapeau « heure estimée » étaient TRANSPORTÉS mais **jamais
+  consommés** par le solveur depuis P4-240 ③ (décision B) — un match `AWAY` ne projette plus de
+  fenêtre personne du tout, donc plus de jambe de trajet ni d'heure à pondérer. Ils quittent donc
+  le fil ; `extra="forbid"` refuse leur retour. Le radar de conflits (backend, `MatchFootprint`,
+  via `App\Service\OpponentTravelProjection`) continue de calculer le trajet et l'échauffement
+  depuis l'entité, HORS payload moteur : à l'extérieur, sa fenêtre de conflit personne compte
+  désormais aussi l'échauffement avant le trajet aller (décision C, hors solveur).
 - **Semaine A/B (P4-271)** : `TeamMatchHabit.week` (`A`/`B`/`ALL`) est une AIDE VISUELLE côté
   frontend seule — elle **ne voyage jamais** dans `TeamHabitSchema`, le solveur voit une habitude
   sans étiquette de semaine. `slotRotations`/`SlotRotationSchema` (l'ex-créneau de match PARTAGÉ
@@ -275,13 +275,13 @@ Le verdict F2a (§ci-dessus) porte aussi les **compromis nommés** d'un verdict 
 
 ### ScheduleInputSchema (`engine/app/schemas/input_schema.py`)
 
-Version contrat active : **`"1.2"`** (fichier `CONTRACT_VERSION`, source de vérité, repassé en 1.0 pour la v1 puis bumpé 1.0 → 1.1 → 1.2 ; 1.2 = resserrage du vocabulaire `/place-matches` en énums fermées, cf. §POST /place-matches). Le default Pydantic du champ `version` vaut **`"1.2"`** lui aussi (`input_schema.py:321`, gardé par `test_schema_version_defaults_match_contract_version`, ENG-44) : c'est un repli pour un payload qui n'annonce rien — le backend l'envoie TOUJOURS, ce défaut n'est donc jamais la valeur du fil — aligné sur le contrat courant pour qu'aucun lecteur ne le prenne pour une version concurrente. `ConfigDict(extra="forbid", populate_by_name=True)`.
+Version contrat active : **`"1.3"`** (fichier `CONTRACT_VERSION`, source de vérité, repassé en 1.0 pour la v1 puis bumpé 1.0 → 1.1 → 1.2 → 1.3 ; 1.3 = retrait des champs MORTS du fil — PII coach `email`/`phone`, flags d'entité `isActive`, `minSessionsOverride`, `tags`, schéma mort `priorityTiers`, et `kickoffEstimated`/`roundTripMinutes` du placement, cf. §POST /place-matches). Le default Pydantic du champ `version` vaut **`"1.3"`** lui aussi (`input_schema.py`, gardé par `test_schema_version_defaults_match_contract_version`, ENG-44) : c'est un repli pour un payload qui n'annonce rien — le backend l'envoie TOUJOURS, ce défaut n'est donc jamais la valeur du fil — aligné sur le contrat courant pour qu'aucun lecteur ne le prenne pour une version concurrente. `ConfigDict(extra="forbid", populate_by_name=True)`.
 
-**Bornes A10** (anti-bombe de génération) : la plupart des listes portent un `max_length` (rejet **422** avant CP-SAT) — `teams` ≤200 · `venues` ≤50 · `coaches` ≤200 · `slot_templates` ≤2000 · `priority_tiers` ≤20 · `trainingSlots` ≤1000/gymnase ; plus un `model_validator` bornant le **total** des créneaux à ≤3000 (empêche 50×1000). **`constraints` est cappé par le PRODUIT ÉTENDU, pas un compte par règle** : `MAX_CONSTRAINTS_EXPANDED = 100_000` = brut(≤500)×équipes(≤200), parce que le backend éclate 1 règle CLUB en N rangées/équipe et qu'aucun compte fixe par règle ne peut à la fois borner une bombe et ne jamais faux-bloquer un club légitime — le produit étendu, lui, est une borne réelle et finie. Les vraies bornes amont restent aussi actives : cap **brut** backend (≤500) + la limite de body nginx (20 m) + le timeout solveur. Le backend (`GenerationComplexityGuard`) pré-vérifie teams/venues/coaches/contraintes permanentes/total créneaux (=3000) **plus** `teams×venues` ≤2000, **avant dispatch**. ⚠ Ce durcissement de validation n'a **pas** bumpé `CONTRACT_VERSION` : politique — un `max_length` resserre l'enveloppe acceptée sans changer forme/type ni MAJOR ; un bump n'est requis que pour un changement de forme/sémantique (champ/type/alias).
+**Bornes A10** (anti-bombe de génération) : la plupart des listes portent un `max_length` (rejet **422** avant CP-SAT) — `teams` ≤200 · `venues` ≤50 · `coaches` ≤200 · `slot_templates` ≤2000 · `trainingSlots` ≤1000/gymnase ; plus un `model_validator` bornant le **total** des créneaux à ≤3000 (empêche 50×1000). **`constraints` est cappé par le PRODUIT ÉTENDU, pas un compte par règle** : `MAX_CONSTRAINTS_EXPANDED = 100_000` = brut(≤500)×équipes(≤200), parce que le backend éclate 1 règle CLUB en N rangées/équipe et qu'aucun compte fixe par règle ne peut à la fois borner une bombe et ne jamais faux-bloquer un club légitime — le produit étendu, lui, est une borne réelle et finie. Les vraies bornes amont restent aussi actives : cap **brut** backend (≤500) + la limite de body nginx (20 m) + le timeout solveur. Le backend (`GenerationComplexityGuard`) pré-vérifie teams/venues/coaches/contraintes permanentes/total créneaux (=3000) **plus** `teams×venues` ≤2000, **avant dispatch**. ⚠ Ce durcissement de validation n'a **pas** bumpé `CONTRACT_VERSION` : politique — un `max_length` resserre l'enveloppe acceptée sans changer forme/type ni MAJOR ; un bump n'est requis que pour un changement de forme/sémantique (champ/type/alias).
 
 | Champ | Alias JSON | Type | Default |
 |-------|-------------|------|---------|
-| `version` | — | `str` | `"1.2"` (repli — cf. ci-dessus) |
+| `version` | — | `str` | `"1.3"` (repli — cf. ci-dessus) |
 | `club_id` | `clubId` | `str` | requis |
 | `season_id` | `seasonId` | `str` | requis |
 | `schedule_name` | `scheduleName` | `str \| None` | `None` |
@@ -292,25 +292,24 @@ Version contrat active : **`"1.2"`** (fichier `CONTRACT_VERSION`, source de vér
 | `coaches` | — | `list[CoachSchema]` | `[]` |
 | `constraints` | — | `list[ConstraintV2Schema]` | `[]` |
 | `slot_templates` | `slotTemplates` | `list[ScheduleSlotTemplateSchema]` | `[]` |
-| `priority_tiers` | `priorityTiers` | `list[PriorityTierSchema]` | `[]` (le backend ne le peuple jamais — les tiers voyagent en contraintes `PRIORITY_TIER`, §4.3) |
 | `previous_assignments` | `previousAssignments` | `list[PreviousAssignmentSchema]` | `[]` |
 | `socle_reference_assignments` | `socleReferenceAssignments` | `list[SocleReferenceAssignmentSchema]` | `[]` |
 
 Sous-schemas clés :
 - **PreviousAssignmentSchema** : `teamId`, `venueId`, `dayOfWeek` (1-7), `startTime` (str `"19:00"`) — un placement de la génération PRÉCÉDENTE, pour le terme de **stabilité** (§POST /generate, §5 Solver). Cap `max_length` = `MAX_SLOT_TEMPLATES` (2000, même ordre de grandeur qu'un placement par séance). Patron `implicitRules` : absent/vide ⇒ chemin byte-identique. ÉMIS par le backend en régénération (`ScheduleConstraintBuilder::previousAssignments`) — absent seulement en toute première génération d'un plan.
 - **SocleReferenceAssignmentSchema** : `teamId`, `dayOfWeek` (1-7), `startTime` (str), SANS `venueId` — un placement de la version POINTÉE du socle, pour le bonus de comblement (§5 Solver « Socle reference bonus »). Cap `max_length` = `MAX_SLOT_TEMPLATES`. ÉMIS par le backend UNIQUEMENT en comblement (jamais en régénération complète — branche exclusive de `previousAssignments`).
-- **VenueSchema** : `id`, `name`, `isExternal`, `color`, `latitude`, `longitude`, `source`, `externalRef`, `isActive`, `parentVenueId`, `trainingSlots: list[VenueTrainingSlotSchema]`.
+- **VenueSchema** : `id`, `name`, `isExternal`, `color`, `latitude`, `longitude`, `source`, `externalRef`, `parentVenueId`, `trainingSlots: list[VenueTrainingSlotSchema]`. (contrat 1.3 — `isActive` d'entité RETIRÉ : jamais lu par le solveur ; la désactivation qui compte passe par les overrides de période, qui FILTRENT l'entité du payload en amont.)
 - **VenueTrainingSlotSchema** : `dayOfWeek`, `startTime` (str `"19:00"`), `durationMinutes`, `capacity` (≥1, default 1).
-- **TeamSchema** : `id`, `sportCategoryId`, `ageMin`, `ageMax`, `priorityTierId`, `name`, `gender`, `level`, `sessionsPerWeek`, `minSessionsOverride`, `matchDay`, `forcedVenueId`, `isActive`, `parentTeamId`, `ffbbTeamId`, `tags`.
-- **CoachSchema** : `id`, `firstName`, `lastName`, `email`, `phone`, `maxDaysOverride`, `maxDaysOverrideConfirmed`, `acceptableLateMinutes`, `isActive`, `parentCoachId`, `isEmployee`.
+- **TeamSchema** : `id`, `sportCategoryId`, `ageMin`, `ageMax`, `priorityTierId`, `name`, `gender`, `level`, `sessionsPerWeek`, `matchDay`, `forcedVenueId`, `parentTeamId`, `ffbbTeamId`. (contrat 1.3 — `minSessionsOverride`, `isActive`, `tags` RETIRÉS : aucun n'était lu par le solveur ; `Team.isActive` reste un attribut d'archivage côté backend SANS effet solveur — l'override de période est LE mécanisme de désactivation.)
+- **CoachSchema** : `id`, `firstName`, `lastName`, `maxDaysOverride`, `maxDaysOverrideConfirmed`, `acceptableLateMinutes`, `parentCoachId`, `isEmployee`. (contrat 1.3 — `email`/`phone` RETIRÉS, RGPD-03 : le solveur ne les lisait jamais, ils n'ont plus à voyager ni à se dupliquer dans les snapshots/feedbacks ; `isActive` RETIRÉ, jamais lu.)
 - **ConstraintV2Schema** : unifié v2/legacy. `ConfigDict(extra="ignore")`. Champs v2 : `scope`, `scopeTargetId`, `family`, `ruleType`, `name`, `config`, `sortOrder`, `isActive`. Champs legacy v1 : `teamId`, `type`, `severity`, `value`, `metadata`.
 - **ScheduleSlotTemplateSchema** : `id`, `teamId`, `venueId`, `coachId`, `dayOfWeek`, `startTime` (time), `durationMinutes`, `lockLevel` (default `"NONE"`), `pendingConstraintSuggestion`.
-- **PriorityTierSchema** : `id`, `label`, `orToolsWeight`, `defaultMinSessions`.
+- **PriorityTierSchema** / top-level `priorityTiers` : RETIRÉS du contrat 1.3 (schéma mort — le backend ne les a jamais émis : les tiers voyagent en contraintes `PRIORITY_TIER`, §4.3, et le solveur bâtit sa carte tier→plancher depuis CES contraintes). `extra="forbid"` refuse désormais un `priorityTiers` de tête.
 
 ### Schémas du placement de matchs (`match_input_schema.py` / `match_output_schema.py`)
 
-Contrat **1.2** (le MÊME que `/generate` — un seul contrat pour les trois endpoints), les schémas hebdomadaires n'étant pas réutilisés
-(le problème n'a ni créneau récurrent ni séance). **1.2 = vocabulaire de placement FERMÉ** : trois champs naguère `str` libres sont désormais des `Literal` (miroirs stricts des énums backend) — `clubRules[].ruleType` ∈ {HARD, PREFERRED} (`ConstraintRuleType`), `teams[].coaches[].role` ∈ {MAIN, ASSISTANT} (`TeamCoachRole`), `teamLinks[].type` ∈ {NOT_SIMULTANEOUS, BACK_TO_BACK} (`TeamLinkType`). Une valeur hors liste était auparavant avalée en silence (règle/rôle/lien évaporé sans trace) ; elle rend maintenant **422**. Le backend n'émet jamais hors liste (ses getters renvoient l'énum) ; gardé cross-stack par `MatchPlacementSemanticsGateTest` (groupe `contract`).
+Contrat **1.3** (le MÊME que `/generate` — un seul contrat pour les trois endpoints), les schémas hebdomadaires n'étant pas réutilisés
+(le problème n'a ni créneau récurrent ni séance). **1.3 = retrait des champs MORTS du placement** : `matches[].kickoffEstimated` et `matches[].roundTripMinutes`, transportés mais JAMAIS consommés par le solveur (le placement ignore toute empreinte d'un match EXTÉRIEUR depuis P4-240 ③, décision B — ALIGN-20/ALIGN-13 fermé), sont retirés du contrat ; `extra="forbid"` refuse leur retour. **1.2 = vocabulaire de placement FERMÉ** (historique) : trois champs naguère `str` libres sont des `Literal` (miroirs stricts des énums backend) — `clubRules[].ruleType` ∈ {HARD, PREFERRED} (`ConstraintRuleType`), `teams[].coaches[].role` ∈ {MAIN, ASSISTANT} (`TeamCoachRole`), `teamLinks[].type` ∈ {NOT_SIMULTANEOUS, BACK_TO_BACK} (`TeamLinkType`). Une valeur hors liste était auparavant avalée en silence (règle/rôle/lien évaporé sans trace) ; elle rend maintenant **422**. Le backend n'émet jamais hors liste (ses getters renvoient l'énum) ; gardé cross-stack par `MatchPlacementSemanticsGateTest` (groupe `contract`).
 
 - **`MatchPlacementInputSchema`** : `version`, `clubId`, `seasonId`, `matches`, `venues`, `teams`,
   `coaches`, `teamLinks`, `trainingOccupancies`… (`slotRotations` retiré, P4-271).
@@ -329,8 +328,8 @@ Contrat **1.2** (le MÊME que `/generate` — un seul contrat pour les trois end
   `MAX_MATCH_VENUES`) — gymnases INTERDITS à cette équipe, triés, `[]` par défaut ; le solveur les
   retire du domaine AVANT tout calcul de créneau, jamais choisis), cf. §POST /place-matches), **`MatchSchema`** (un match daté : `kind`
   `TO_PLACE`/`FIXED`/`AWAY`, `venueId`/`kickoff` (requis si `FIXED`), `currentVenueId`/
-  `currentKickoff` pour le hint de stabilité, `roundTripMinutes` — trajet AWAY, **transporté mais
-  non consommé par le solveur depuis P4-240 ③ décision B**, cf. §POST /place-matches).
+  `currentKickoff` pour le hint de stabilité ; `roundTripMinutes`/`kickoffEstimated` **RETIRÉS au
+  contrat 1.3** — transportés mais jamais consommés depuis P4-240 ③ décision B, cf. §POST /place-matches).
 - **`MatchPlacementOutputSchema`** : `status`, `placements: list[MatchPlacementSchema]`
   (`matchId`, `venueId`, `kickoff`), **`unplaced: list[UnplacedMatchSchema]`** (`matchId`,
   `reason`, `message` — le non-plaçable sort NOMMÉ, c'est le produit ; `reason` est un `str` libre,
@@ -455,6 +454,7 @@ mécanismes non reliés) : `travel_feasibility_stub`, `required_bridge_stub`
 - **Granularité** : `SLOT_MINUTES = 15` (model.py).
 - **Durée session default** : `DEFAULT_SESSION_MINUTES = 90`.
 - **Timeout solver** : adaptatif (`_adaptive_timeout`, voir §2) — `n_teams × n_venues` ≤50 : 60 s · ≤200 : 180 s · sinon 600 s, plafonné par `solver_timeout_seconds` du payload (default **650 s** dans `ScheduleInputSchema`). Phase 2 (chaînage) plafonnée en plus par `CHAINING_PHASE_MAX_SECONDS = 10`.
+  - **ENG-52 — déterminisme best-effort ASSUMÉ (fermé par décision)** : les trois rails budgètent en **temps MURAL** (`max_time_in_seconds`), pas en `max_deterministic_time`. À charge CPU variable, le même payload peut donc placer un nombre différent de séances au même budget. C'est assumé : brancher `max_deterministic_time` imposerait de recalibrer TOUS les budgets ET de rejouer tous les goldens pour un gain marginal (lignée ENG-34, « ouvert, assumé »). Le déterminisme qui compte — celui des goldens — est garanti autrement : seed fixe + worker unique sous ≤200 de complexité (`_adaptive_workers`, ci-dessous).
 - **Seed** : `solver.parameters.random_seed = input_data.solver_seed` (default 42) — les deux phases.
 - **Déterminisme (ENG-25)** : les agrégations par équipe itèrent sur des clés `str`,
   dont le hash est randomisé PAR PROCESSUS. `add_preferred_day_bonus` **trie**

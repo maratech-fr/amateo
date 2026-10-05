@@ -507,7 +507,6 @@ def test_away_match_never_pushes_the_home_match_of_a_shared_coach() -> None:
                         "date": SATURDAY,
                         "kind": "AWAY",
                         "kickoff": "15:00",
-                        "roundTripMinutes": round_trip,
                     },
                 ],
                 venues=[venue(windows=[{"dayOfWeek": 6, "start": "14:00", "end": "17:00"}])],
