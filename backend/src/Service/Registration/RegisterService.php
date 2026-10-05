@@ -45,6 +45,13 @@ final class RegisterService
         private readonly UserPasswordHasherInterface $passwordHasher,
         private readonly ClubRepository $clubRepository,
         private readonly RateLimiterFactory $authRegisterLimiter,
+        // P4-304 (Q1) — horloge RÉELLE : `termsAcceptedAt` est la preuve RGPD du
+        // consentement, un horodatage de SÉCURITÉ. La route publique /api/register
+        // peut porter le `_club_id` d'un club démo (JWT présent) ; l'horloge décorée
+        // simulerait alors sa date et dater la preuve en 2000/2099. Seul usage de
+        // l'horloge ici (termsAcceptedAt) ; `animatorWindowIsOpen` lit déjà l'instant
+        // réel en direct.
+        #[Autowire(service: 'app.clock.real')]
         private readonly ClockInterface $clock,
         private readonly PasswordPolicy $passwordPolicy,
         private readonly MailerInterface $mailer,

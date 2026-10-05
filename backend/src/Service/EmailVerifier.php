@@ -9,6 +9,7 @@ use App\Entity\User;
 use App\Repository\EmailVerificationTokenRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
  * Issues and consumes single-use email-verification tokens. Kept deliberately
@@ -23,6 +24,13 @@ final class EmailVerifier
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly EmailVerificationTokenRepository $repository,
+        // P4-304 — horloge RÉELLE : la TTL (24 h) du lien de vérification est une
+        // durée de SÉCURITÉ ; elle ne doit JAMAIS suivre l'« aujourd'hui » simulé
+        // d'un club démo (TenantFilterListener pose `_club_id` même sur la route
+        // publique quand un JWT est présent). Sinon un porteur sous horloge démo
+        // future verrait un lien quasi éternel, sous horloge passée un lien déjà
+        // mort. Patron EmailChangeVerifier.
+        #[Autowire(service: 'app.clock.real')]
         private readonly ClockInterface $clock,
     ) {}
 

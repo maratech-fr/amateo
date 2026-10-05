@@ -11,6 +11,7 @@ use App\Service\ClubApprovalService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Clock\ClockInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -38,6 +39,11 @@ final class ClubApprovalController extends AbstractController
         private readonly ClubCreationRequestRepository $requests,
         private readonly ClubApprovalService $approvalService,
         private readonly EntityManagerInterface $entityManager,
+        // P4-304 — horloge RÉELLE : l'expiration (+7 j) de la demande est une durée
+        // de SÉCURITÉ. Cette page est publique mais un JWT (ex. un gestionnaire de
+        // club démo) la ferait porter le `_club_id` du démo et l'horloge décorée
+        // simulerait sa date ; la péremption doit se mesurer à l'instant réel.
+        #[Autowire(service: 'app.clock.real')]
         private readonly ClockInterface $clock,
         private readonly RateLimiterFactory $clubApprovalPublicLimiter,
     ) {}

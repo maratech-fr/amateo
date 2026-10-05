@@ -30,9 +30,16 @@ use Symfony\Component\HttpFoundation\RequestStack;
  * Périmètre de `now()` STRICTEMENT tenant : la date simulée est lue sur le club
  * de la REQUÊTE (`_club_id`, posé par TenantFilterListener APRÈS le firewall — un
  * header spoofé est déjà refusé en amont). Hors requête (workers, crons,
- * commandes) ou hors club (routes publiques, firewall admin — le superadmin ne
- * porte jamais de `_club_id`), l'horloge est VRAIE. Un club sans horloge a
- * `simulated_today` NULL : passage direct, zéro changement de comportement.
+ * commandes) ou hors club (firewall admin — le superadmin ne porte jamais de
+ * `_club_id`), l'horloge est VRAIE. Un club sans horloge a `simulated_today` NULL :
+ * passage direct, zéro changement de comportement.
+ *
+ * ⚠ P4-304 — une route PUBLIQUE n'est PAS « hors club » : TenantFilterListener pose
+ * `_club_id` dès qu'un JWT est présent, même sur /api/register ou /api/club-approvals.
+ * Un gestionnaire de club démo qui porte son cookie/JWT sur ces routes fait donc
+ * retourner la date SIMULÉE par `now()`. Toute DURÉE ou tout HORODATAGE de SÉCURITÉ
+ * doit pour cela s'injecter l'horloge réelle `app.clock.real`, jamais ce service
+ * décoré (cf. config/services.yaml, la liste des consommateurs).
  *
  * ⚠ Mémoïsé par (requête → date) et non par service : le worker et les tests
  * réutilisent le même service sur plusieurs contextes — un memo global

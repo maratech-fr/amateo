@@ -20,6 +20,7 @@ use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
@@ -40,6 +41,11 @@ final class EmailVerificationService
         private readonly ClubRepository $clubRepository,
         private readonly ClubUserRepository $clubUserRepository,
         private readonly TenantConnectionContext $tenantConnectionContext,
+        // P4-304 — horloge RÉELLE : `emailVerifiedAt` est un horodatage de SÉCURITÉ.
+        // Cette route publique peut porter le `_club_id` d'un club démo (JWT présent),
+        // donc l'horloge décorée simulerait sa date ; l'horodatage de vérification doit
+        // rester l'instant réel.
+        #[Autowire(service: 'app.clock.real')]
         private readonly ClockInterface $clock,
         private readonly EmailVerifier $emailVerifier,
         private readonly RateLimiterFactory $authRegisterVerifyLimiter,
