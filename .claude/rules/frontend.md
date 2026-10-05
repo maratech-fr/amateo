@@ -149,7 +149,7 @@ paths:
   n'est PAS attrapé). Exemptions nominatives motivées : `useRetouchGestures.ts` (patron
   split-feedback documenté `planning/queries.ts:51-74` — le hook TAIT les erreurs MÉTIER pour que la
   page les toaste avec CONTEXTE : noms d'équipes, timeout nommé, surlignage ; le reliquat de double
-  toast PARTIEL sur transport = P4-305) et `AdminDashboardPage.tsx` (messages contextuels runtime
+  toast PARTIEL sur transport = P4-306) et `AdminDashboardPage.tsx` (messages contextuels runtime
   `job.label`/`club.name`). Les messages SERVEUR passent par `errorMessage()` (patron UXS-13).
 - 🔴 **La largeur d'un sélecteur passe par `wrapperClassName`, jamais `className`** (`Select`,
   `Listbox`, `TeamSelect`, `VenueSelect` — PR 3/7 de la série « uniformité des sélecteurs »,
