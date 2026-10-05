@@ -19,9 +19,9 @@ import { dateInsideClosure, matchVenueIds, venueAccessError } from "./lib/matchA
 import { unplacedReasonLabel } from "./lib/unplacedReasonLabel";
 
 /**
- * The read state of the three club-owned guards the placement gesture leans on
- * (match access windows, venue unavailabilities, league envelope). The gesture is
- * SUSPENDED unless all three are `ready`: a `failed` first-load must never
+ * The read state of the four club-owned guards the placement gesture leans on
+ * (match access windows, venue unavailabilities, calendar venue closures, league
+ * envelope). The gesture is SUSPENDED unless all four are `ready`: a `failed` first-load must never
  * fabricate « no window → nothing to enforce » and slip a match into a restricted
  * gym; a `loading` read is simply not ready yet. Derived by the page (readState).
  */
@@ -275,8 +275,8 @@ export function PlacementPanel({
               </p>
             ) : null}
             {hasKickoff ? <EnvelopeHint envelope={envelope} kickoff={kickoff} /> : null}
-            {/* D2 — le geste s'appuie sur trois lectures du club (accès match,
-                indisponibilités, enveloppe ligue). Tant qu'elles ne sont pas prêtes,
+            {/* D2 — le geste s'appuie sur quatre lectures du club (accès match,
+                indisponibilités, fermetures du calendrier, enveloppe ligue). Tant qu'elles ne sont pas prêtes,
                 le placement est SUSPENDU : un échec ne doit jamais se lire « aucune
                 restriction ». Les autres gestes (dé-placer, verrouiller, échanger,
                 modifier, supprimer) restent actifs. */}

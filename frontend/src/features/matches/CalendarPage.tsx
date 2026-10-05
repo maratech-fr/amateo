@@ -264,8 +264,8 @@ export function CalendarPage() {
   const habits = useMemo(() => habitsQuery.data ?? [], [habitsQuery.data]);
   const allConflicts = useMemo<Conflict[]>(() => conflicts.data?.conflicts ?? [], [conflicts.data]);
 
-  // D2 — les trois lectures du club qui GARDENT le geste de placement (accès match,
-  // indisponibilités, enveloppe ligue), suspendues tant qu'elles ne sont pas prêtes.
+  // D2 — les quatre lectures du club qui GARDENT le geste de placement (accès match,
+  // indisponibilités, fermetures du calendrier, enveloppe ligue), suspendues tant qu'elles ne sont pas prêtes.
   const placementGuards = usePlacementGuards(matchWindows, unavailabilities, venueClosures, leagueWindows);
 
   // Chaîne de filtrage : PR-1 (équipe/coach/gymnase) → types → « Extérieurs ».
