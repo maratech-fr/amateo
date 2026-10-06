@@ -225,3 +225,47 @@ export function getClubApproval(token: string): Promise<ClubApprovalInfo> {
 export function decideClubApproval(token: string, decision: "approve" | "refuse"): Promise<{ status: string }> {
   return api.post(`club-approvals/${encodeURIComponent(token)}`, { json: { decision } }).json();
 }
+
+/**
+ * P4-299 — la page PUBLIQUE d'une invitation (le token EST l'identité, pas de JWT).
+ * 404 byte-identique pour un lien inconnu, expiré OU révoqué (rien ne les distingue).
+ */
+export interface InvitationInfo {
+  clubName: string;
+  /** L'adresse invitée — affichée en lecture seule au formulaire de création. */
+  email: string;
+  /** `admin` | `member` (libellé via `roleLabel`). */
+  role: string;
+  /** Un compte VÉRIFIÉ existe pour cette adresse → « se connecter » plutôt que « créer ». */
+  hasAccount: boolean;
+}
+
+export function getInvitation(token: string): Promise<InvitationInfo> {
+  return api.get(`invitations/public/${encodeURIComponent(token)}`).json();
+}
+
+/** SEC : la réponse ne porte pas de jeton — le serveur pose le cookie httpOnly de la nouvelle identité. */
+export interface AcceptInvitationResponse {
+  membershipStatus: MembershipStatus;
+  user?: { id: string; email: string };
+  clubId?: string;
+}
+
+/**
+ * Accepte SANS compte : crée le compte (né vérifié) et l'adhésion ACTIVE au rôle invité.
+ * Consentement RGPD requis (même gate que l'inscription). 409 si un compte existe déjà.
+ */
+export function acceptInvitationWithoutAccount(
+  token: string,
+  body: { firstName: string; lastName: string; password: string; consent: boolean },
+): Promise<AcceptInvitationResponse> {
+  return api.post(`invitations/public/${encodeURIComponent(token)}/accept`, { json: body }).json();
+}
+
+/**
+ * Accepte CONNECTÉ (un clic) : l'e-mail du compte DOIT être l'adresse invitée (403 sinon).
+ * La route est authentifiée (cookie), aucun corps.
+ */
+export function acceptInvitationConnected(token: string): Promise<AcceptInvitationResponse> {
+  return api.post(`invitations/${encodeURIComponent(token)}/accept`).json();
+}

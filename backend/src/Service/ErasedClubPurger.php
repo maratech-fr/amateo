@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\Club;
+use App\Entity\ClubInvitation;
 use App\Entity\ClubMailboxMessage;
 use App\Entity\ClubTravelCache;
 use App\Entity\ClubUser;
@@ -88,6 +89,11 @@ final class ErasedClubPurger
         // par clubId les adresses + corps d'e-mail resteraient. CE chemin en est donc
         // la vraie porte de sortie RGPD.
         ClubMailboxMessage::class,
+        // P4-299 — invitations en attente d'un club (club-scoped, SANS saison). La FK
+        // ON DELETE CASCADE les vide à la SUPPRESSION du club (purge prospect) ; mais
+        // l'effacement RGPD GARDE la fiche club → sans ce DELETE par clubId les adresses
+        // invitées resteraient. CE chemin en est la porte de sortie RGPD.
+        ClubInvitation::class,
     ];
 
     public function __construct(

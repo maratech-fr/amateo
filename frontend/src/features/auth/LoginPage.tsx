@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useNavigation } from "react-router";
+import { Link, useLocation, useNavigate, useNavigation } from "react-router";
 
 import { errorMessage } from "@/shared/lib/errorMessage";
 import { Button } from "@/shared/components/ui/button";
@@ -15,6 +15,12 @@ import { useLogin } from "./queries";
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  // P4-299 — retour après « Se connecter pour accepter » (page d'invitation) : `?next=`
+  // n'est honoré QUE s'il est un chemin INTERNE (commence par un seul `/`), jamais une
+  // URL absolue ni protocol-relative `//…` (open-redirect). Absent/refusé → accueil.
+  const nextParam = new URLSearchParams(location.search).get("next");
+  const nextTarget = null !== nextParam && /^\/(?!\/)/.test(nextParam) ? nextParam : "/";
   // Le chunk du cockpit se télécharge après le login : la navigation n'est pas instantanée.
   const navigating = "idle" !== useNavigation().state;
   const login = useLogin();
@@ -53,8 +59,9 @@ export function LoginPage() {
     try {
       await login.mutateAsync({ email, password });
       // AuthGuard routes to the app / waiting screen based on membership status. Le splash, monté
-      // dans RootShell, survit à cette navigation et se termine quand l'app est prête.
-      navigate("/", { replace: true });
+      // dans RootShell, survit à cette navigation et se termine quand l'app est prête. `nextTarget`
+      // renvoie sur la page d'invitation quand on arrive de « Se connecter pour accepter ».
+      navigate(nextTarget, { replace: true });
     } catch (err) {
       cancelSplash();
       setError(await errorMessage(err));

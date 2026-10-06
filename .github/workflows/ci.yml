@@ -887,6 +887,15 @@ jobs:
       - name: DemoClubCaptureTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/DemoClubCaptureTest.php --group phase1'
 
+      # Axes auth & memberships + tenant isolation (P4-299) — une invitation nominative fait
+      # entrer dans le club par un lien à usage unique : un club ne liste/révoque jamais une
+      # invitation d'un autre (RLS), jeton inconnu/expiré/révoqué → 404 byte-identique, single-use,
+      # adhésion née ACTIVE au rôle invité, absorption d'une pending, refus démo des deux côtés,
+      # expiration sur l'horloge réelle sous un JWT démo (P4-304). Sans ce gate, un lien ouvrirait
+      # une adhésion à la mauvaise personne, ou fuiterait les invitations d'un autre club.
+      - name: ClubInvitationTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/ClubInvitationTest.php --group phase1'
+
       # Axe auth & memberships (RGPD) — effacement du dernier gestionnaire : anonymisation
       # terminale, purge du club orphelin programmée à +30 j (revalidée à l'échéance, identité
       # FFBB épargnée), et reprise d'un club sans membre via l'approbation du contact officiel.

@@ -6,6 +6,7 @@ import { errorMessage } from "@/shared/lib/errorMessage";
 import { useMe } from "@/shared/session/queries";
 import type { FfbbOrganisme, MeResponse } from "@/shared/session/api";
 import { PendingMembersSection } from "@/features/auth/PendingMembersSection";
+import { InvitationsSection } from "@/features/club/InvitationsSection";
 import { MembersSection } from "@/features/club/MembersSection";
 import { AccordionSection } from "@/shared/components/ui/accordion";
 import { AddressGeocodeField } from "@/shared/components/ui/address-geocode-field";
@@ -689,6 +690,12 @@ function ClubHub({ me }: { me: MeResponse }) {
           <AccordionSection title="Demandes d'adhésion" defaultOpen>
             <p className="mb-3 text-sm text-muted-foreground">Approuvez ou refusez les personnes qui souhaitent rejoindre votre club.</p>
             <PendingMembersSection />
+          </AccordionSection>
+        ) : null}
+        {isAdmin ? (
+          <AccordionSection title="Invitations">
+            <p className="mb-3 text-sm text-muted-foreground">Invitez une adresse e-mail à rejoindre votre club. L'invité crée son compte (ou se connecte) et devient membre, sans passer par la file d'approbation.</p>
+            <InvitationsSection />
           </AccordionSection>
         ) : null}
         {isManagement ? (

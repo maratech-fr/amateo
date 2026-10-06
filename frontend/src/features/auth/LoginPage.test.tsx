@@ -9,10 +9,14 @@ import { LoginPage } from "./LoginPage";
 
 // P4-252 — la mutation login est mockée pour piloter succès/échec sans réseau (les tests d'UI
 // existants ci-dessus ne soumettent pas, ils tolèrent ce double).
-const { loginMock } = vi.hoisted(() => ({
+const { loginMock, navigateMock } = vi.hoisted(() => ({
   loginMock: { mutateAsync: vi.fn(), isPending: false },
+  navigateMock: vi.fn(),
 }));
 vi.mock("./queries", () => ({ useLogin: () => loginMock }));
+// P4-299 — espion de navigation : le reste de react-router (RouterProvider, useLocation, Link…)
+// reste RÉEL, seul `useNavigate` est doublé pour asserter la cible de retour.
+vi.mock("react-router", async (orig) => ({ ...(await orig<typeof import("react-router")>()), useNavigate: () => navigateMock }));
 
 describe("LoginPage", () => {
   it("renders the login form", () => {
@@ -99,5 +103,37 @@ describe("LoginPage — splash de connexion", () => {
     await waitFor(() => expect(useLoginSplashStore.getState().phase).toBe("cancelling"));
     expect(await screen.findByText(/problème de connexion/i)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByLabelText("Email")).toHaveFocus());
+  });
+});
+
+/**
+ * P4-299 — retour « Se connecter pour accepter » : un `?next=` INTERNE est honoré après le
+ * login ; une cible externe (open-redirect) est ignorée au profit de l'accueil.
+ */
+describe("LoginPage — retour ?next=", () => {
+  beforeEach(() => {
+    useLoginSplashStore.setState({ phase: "idle" });
+    loginMock.mutateAsync.mockReset();
+    navigateMock.mockReset();
+  });
+
+  function fillAndSubmit() {
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "paul@club.fr" } });
+    fireEvent.change(screen.getByLabelText("Mot de passe"), { target: { value: "s3cret-passphrase" } });
+    fireEvent.click(screen.getByRole("button", { name: /se connecter/i }));
+  }
+
+  it("honore un chemin interne (retour vers la page d'invitation)", async () => {
+    loginMock.mutateAsync.mockResolvedValueOnce(undefined);
+    renderWithProviders(<LoginPage />, { route: "/login?next=%2Finvitation%2Fabc123" });
+    fillAndSubmit();
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith("/invitation/abc123", { replace: true }));
+  });
+
+  it("ignore une cible externe (open-redirect) → accueil", async () => {
+    loginMock.mutateAsync.mockResolvedValueOnce(undefined);
+    renderWithProviders(<LoginPage />, { route: "/login?next=https%3A%2F%2Fevil.example" });
+    fillAndSubmit();
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith("/", { replace: true }));
   });
 });

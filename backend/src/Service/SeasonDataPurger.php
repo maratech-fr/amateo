@@ -94,6 +94,7 @@ final class SeasonDataPurger
         'audit_log' => 'accountability : rétention propre (app:audit:purge) ; l\'effacement écrit une ligne d\'audit APRÈS la purge',
         'coach_wish_token' => 'part par la FK ON DELETE CASCADE de sa campagne (jamais supprimé directement)',
         'club_mailbox_message' => 'club-scoped SANS saison (boîte d\'un club à horloge simulée, P4-16) — porte de sortie ErasedClubPurger ; vidée aussi en direct au reset/désactivation de l\'horloge',
+        'club_invitation' => 'club-scoped SANS saison (invitation nominative à rejoindre le club, P4-299 : indépendante de toute saison) — une purge de saison ne doit jamais balayer une invitation en attente ; porte de sortie ErasedClubPurger',
     ];
 
     /**

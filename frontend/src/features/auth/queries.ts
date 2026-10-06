@@ -90,6 +90,51 @@ export function useVerifyEmail() {
 }
 
 /**
+ * P4-299 — la page PUBLIQUE d'une invitation. GET du contexte (club, adresse invitée,
+ * rôle, `hasAccount`). `retry: false` : un 404 (lien mort) est un ÉTAT, pas une panne à
+ * réessayer. Pas de gate d'auth — le porteur du lien n'est pas forcément connecté.
+ */
+export function useInvitationInfo(token: string) {
+  return useQuery({
+    queryKey: ["invitation", token],
+    queryFn: () => authApi.getInvitation(token),
+    retry: false,
+  });
+}
+
+/**
+ * Accepte SANS compte : le serveur crée le compte (né vérifié), l'adhésion ACTIVE et
+ * pose un cookie JWT frais. Miroir de `useVerifyEmail` — on marque la session ouverte et
+ * on invalide `me` ; la page enchaîne la navigation DANS l'app (jamais `/waiting`).
+ */
+export function useAcceptInvitationNewAccount(token: string) {
+  const setAuthenticated = useAuthStore((state) => state.setAuthenticated);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { firstName: string; lastName: string; password: string; consent: boolean }) =>
+      authApi.acceptInvitationWithoutAccount(token, body),
+    onSuccess: () => {
+      setAuthenticated(true);
+      void queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+}
+
+/**
+ * Accepte CONNECTÉ (un clic). L'adhésion devient active ; on invalide `me` (le rôle /
+ * l'appartenance au club changent). 403 si l'e-mail du compte ≠ l'adresse invitée.
+ */
+export function useAcceptInvitationConnected(token: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => authApi.acceptInvitationConnected(token),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+}
+
+/**
  * P2-4 — le raccourci démo du register. Miroir EXACT de useVerifyEmail : le serveur
  * pose un cookie JWT frais, on marque la session ouverte et on invalide `me` (le
  * club vient de naître). La page enchaîne ensuite la navigation dans l'app.

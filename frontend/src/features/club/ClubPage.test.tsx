@@ -52,6 +52,10 @@ vi.mock("./queries", () => ({
   useDownloadClubExport: () => ({ mutate: vi.fn(), isPending: false }),
   useSubscriptionPlans: () => plans,
   useVenueUsageStats: () => venueStats,
+  useInvitations: () => ({ data: { invitations: [] }, isError: false, refetch: vi.fn() }),
+  useCreateInvitation: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+  useResendInvitation: () => ({ mutate: vi.fn(), isPending: false }),
+  useRevokeInvitation: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 // Le géocodage (AddressGeocodeField du siège) — mutation réelle sinon : on la neutralise.
@@ -214,6 +218,22 @@ describe("ClubPage", () => {
     me.data = { role: "member", club: { name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null } };
     render(<ClubPage />);
     expect(screen.queryByRole("button", { name: /^Membres$/ })).toBeNull();
+  });
+
+  // P4-299 — la section « Invitations » (gate isAdmin), entre Demandes d'adhésion et Membres.
+  it("shows the Invitations section for an admin (expand → the invite form)", async () => {
+    const user = userEvent.setup();
+    render(<ClubPage />);
+    const invitations = screen.getByRole("button", { name: /^Invitations$/ });
+    await user.click(invitations);
+    expect(screen.getByRole("button", { name: /Inviter/ })).toBeInTheDocument();
+    expect(screen.getByText(/Aucune invitation en cours/)).toBeInTheDocument();
+  });
+
+  it("hides the Invitations section for a non-admin member", () => {
+    me.data = { role: "member", club: { name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null } };
+    render(<ClubPage />);
+    expect(screen.queryByRole("button", { name: /^Invitations$/ })).toBeNull();
   });
 
   // --- P1-3 §4bis pt 5 — section « Offre » ---------------------------------
