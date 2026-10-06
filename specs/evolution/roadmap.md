@@ -304,7 +304,7 @@ lecture seule `amateo_read` (**P5-20 livré**, geste jour J documenté `docs/ops
 
 ---
 
-## Findings d'audit ouverts (registre `/audit`) — 3
+## Findings d'audit ouverts (registre `/audit`) — 2
 
 > **À quoi sert cette section.** Le skill `/audit` tient un **registre à IDs stables** : un finding garde son
 > identifiant d'une édition à l'autre, ce qui rend la comparaison inter-éditions possible (« ce défaut est-il
@@ -325,7 +325,6 @@ lecture seule `amateo_read` (**P5-20 livré**, geste jour J documenté `docs/ops
 | ID | Sujet | Gravité | Zone | Depuis | Note |
 |---|-------|:---:|:---:|:---:|---|
 | AUD-ALIGN-FAIBLES-1003 | **[APRÈS PROD]** **Alignement — reliquat Faibles de l'édition 2026-10-03 (résidu ALIGN-14)** | Faible | align | 2026-10-03 | ALIGN-14 (minStartTime PREFERRED : non prouvable sur les grilles existantes — le solveur choisit 20:00 spontanément —, à prouver sur une grille mesurée ; forbiddenDays/forbiddenVenueId PREFERRED livrés ; décision finale fondateur, `#953`) |
-| AUD-UX-FAIBLES-1003 | **[APRÈS PROD]** **UX — reliquat Faibles/Info de l'édition 2026-10-03** | Faible | ux | 2026-10-03 | A11Y-31 **résidu** (seul `RootShell.tsx:46` a reçu `motion-reduce` ; restent `animate-pulse`/`animate-spin` sans égard, dont `shared/components/ui/spinner.tsx:6` — le corriger là couvrirait d'un coup la plupart des sites `Spinner` consolidés par UXC-31) · A11Y-32 (cibles < 24 px). _Soldés le 2026-10-06 (branche `fix/audit-1003-design-pass`) : UXC-28 (primitive `SegmentedControl`), UXC-29 (`h-7` → 36 px + garde ESLint étendu), A11Y-28 (noms accessibles contextualisés), A11Y-30 (`disabledReason` focalisable), A11Y-26 résidu (`CoachesStep.tsx:199`)._ |
 | AUD-DOC-FAIBLES-1003 | **[APRÈS PROD]** **Doc — reliquat Faibles/Mineures/Info de l'édition 2026-10-03** | Faible | doc | 2026-10-03 | DOC-56 (graduation non faite sur ~1 200 l. d'`evolution/` closes) · DOC-59 (croissance sans borne de `frontend-spec.md`/`backend-inventory.md`). DOC-50/51/52/54/55/57/58/60 soldés par le reliquat DOC (`etat-des-lieux.md` §3) |
 
 > **`UXC-10` est fait hors admin** (2026-08-30) : 21 sites ralliés sur la primitive `EmptyHint`

@@ -2,6 +2,7 @@ import { AlertTriangle, X } from "lucide-react";
 import { useReducer } from "react";
 import { Link } from "react-router";
 
+import { Button } from "@/shared/components/ui/button";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 
 import { useCredits } from "./useCredits";
@@ -66,9 +67,9 @@ export function CreditsBanner() {
           Il ne vous reste que {credits.remaining} crédit{credits.remaining > 1 ? "s" : ""} gratuit{credits.remaining > 1 ? "s" : ""} — chaque génération, placement de matchs ou export en consomme un.
         </span>
         {offersCta}
-        <button type="button" onClick={close} aria-label="Masquer l'alerte crédits" className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground">
+        <Button type="button" variant="ghost" size="icon-sm" onClick={close} aria-label="Masquer l'alerte crédits" className="shrink-0 text-muted-foreground">
           <X className="size-4" />
-        </button>
+        </Button>
       </div>
     </NoticeBanner>
   );

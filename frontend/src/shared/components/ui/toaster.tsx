@@ -1,3 +1,4 @@
+import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/lib/utils";
 import { useToastStore, type ToastVariant } from "@/shared/stores/toastStore";
 
@@ -31,16 +32,18 @@ export function Toaster() {
           )}
         >
           <span className="flex-1 break-words">{t.message}</span>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-sm"
             onClick={() => dismiss(t.id)}
             aria-label="Fermer la notification"
-            className="-mr-1 -mt-0.5 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+            className="-mr-2 -mt-1 shrink-0 text-muted-foreground"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <path d="M18 6 6 18M6 6l12 12" />
             </svg>
-          </button>
+          </Button>
         </div>
       ))}
     </div>

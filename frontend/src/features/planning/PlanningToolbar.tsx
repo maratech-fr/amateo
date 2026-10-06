@@ -230,7 +230,7 @@ export function PlanningToolbar({
               disabled={isGenerating || actionBusy || disableRegenerate || null === selectedScheduleId || (null !== outputCredits && outputCredits.blocked)}
               onClick={onRegenerate}
             >
-              <RefreshCw className={cn("size-4", isGenerating ? "animate-spin" : "")} />
+              <RefreshCw className={cn("size-4", isGenerating ? "animate-spin motion-reduce:animate-none" : "")} />
               {isGenerating ? "Génération…" : `Régénérer${null !== outputCredits ? ` (${outputCredits.count})` : ""}`}
             </Button>
             {/* La garantie ne vivait qu'en commentaire de code (api.ts) : on la DIT ici, contre le

@@ -439,7 +439,7 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                         className={cn(
                           "flex w-full items-center gap-1 px-1 py-0.5 pr-6 text-left font-medium hover:ring-1 hover:ring-accent disabled:cursor-not-allowed disabled:opacity-50",
                           memberSelected ? "ring-1 ring-accent" : "",
-                          isSource(member.slotId) ? "animate-pulse ring-2 ring-accent" : "",
+                          isSource(member.slotId) ? "animate-pulse ring-2 ring-accent motion-reduce:animate-none" : "",
                         )}
                       >
                         {undefined !== memberDeviatedOrigin ? renderDeviationChip(memberDeviatedOrigin) : null}
@@ -481,7 +481,7 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                 selected ? "ring-2 ring-accent" : "",
                 dimmed ? "grayscale" : "",
                 // Mode cible : la SOURCE pulse et porte un anneau distinctif.
-                isSource(cell.slotId) ? "animate-pulse ring-2 ring-accent" : "",
+                isSource(cell.slotId) ? "animate-pulse ring-2 ring-accent motion-reduce:animate-none" : "",
                 // Lentille : sans verrou → estompé ; verrouillé → anneau de sa catégorie.
                 lensActive && null === cell.lockOrigin ? "grayscale" : "",
                 lensActive && null !== cell.lockOrigin ? LOCK_LENS_META[cell.lockOrigin].ringClass : "",

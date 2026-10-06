@@ -274,9 +274,15 @@ export function FbiEntryList({ fixtures, corrections, teams, venues, competition
                   key={f.id}
                   className={cn("flex items-center gap-3 rounded-md border px-3 py-2 text-sm", done ? "border-success/40 bg-success/10" : "border-border")}
                 >
+                  {/* A11Y-32 — la colonne de tête fait 36 px (`size-9`) pour que la CIBLE interactive
+                      « Marquer saisi » atteigne la norme maison (UXC-29, WCAG 2.5.8) ; la boîte VISUELLE
+                      reste à 20 px (`size-5`), centrée, identique dans les trois états pour rester alignée
+                      d'une ligne à l'autre. */}
                   {done ? (
-                    <span aria-hidden className="grid size-5 shrink-0 place-items-center rounded bg-success/20 text-success">
-                      <Check className="size-3.5" />
+                    <span aria-hidden className="grid size-9 shrink-0 place-items-center">
+                      <span className="grid size-5 place-items-center rounded bg-success/20 text-success">
+                        <Check className="size-3.5" />
+                      </span>
                     </span>
                   ) : canManage ? (
                     <button
@@ -284,13 +290,19 @@ export function FbiEntryList({ fixtures, corrections, teams, venues, competition
                       aria-label={`Marquer saisi : ${teamName} contre ${f.opponentLabel}`}
                       disabled={busy}
                       onClick={() => markSubmitted(f)}
-                      className="group grid size-5 shrink-0 place-items-center rounded border border-input text-success transition-colors hover:border-success/60 hover:bg-success/10 disabled:opacity-50"
+                      className="group grid size-9 shrink-0 place-items-center rounded-md outline-none disabled:opacity-50"
                     >
-                      <Check className="size-3.5 opacity-0 transition-opacity group-hover:opacity-100" />
+                      <span className="grid size-5 place-items-center rounded border border-input text-success transition-colors group-hover:border-success/60 group-hover:bg-success/10 group-focus-visible:ring-2 group-focus-visible:ring-ring group-focus-visible:ring-offset-1 group-focus-visible:ring-offset-background">
+                        {/* Révélée au survol ET au focus clavier (A11Y-32) : sans `group-focus-visible`, la
+                            coche restait invisible à qui navigue sans souris. */}
+                        <Check className="size-3.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+                      </span>
                     </button>
                   ) : (
                     // Membre : repère statique « reste à saisir », aucune action (2026-10-04).
-                    <span aria-hidden className="grid size-5 shrink-0 place-items-center rounded border border-input" />
+                    <span aria-hidden className="grid size-9 shrink-0 place-items-center">
+                      <span className="grid size-5 place-items-center rounded border border-input" />
+                    </span>
                   )}
 
                   <span className={cn("min-w-0 flex-1", done ? "text-muted-foreground" : "")}>
