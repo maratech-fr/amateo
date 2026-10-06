@@ -142,9 +142,13 @@ branche puis PR ; **JAMAIS de merge sans le GO explicite du user** ; push libre,
 6. Résumé + **`documentation-update` (avant CHAQUE PR, les deux lanes)** — « rien d'impacté » se
    conclut en regardant, jamais en supposant.
 7. **`/code-review` : le fondateur seul le déclenche.** **`/security-review` RESTE systématique**
-   si la PR touche auth/données/intégrations externes. Répondre à une revue : skill
+   si la PR touche un item de cette **liste fermée** : auth · memberships · code FFBB / identité
+   club · démo · horloge simulée · page publique à token · RGPD / purge ou export de données ·
+   intégration externe sortante (FFBB, IGN, télémétrie). Répondre à une revue : skill
    `review-response` (plafond 4 rounds, GO fondateur dès le round 2).
-8. PR → **GO explicite du user** → merge.
+8. PR → **GO explicite du user** → merge. **Après chaque merge, toute PR suivante / empilée est
+   rebasée sur `main` à jour et RE-VALIDÉE (les suites de l'étape 5 rejouées sur la base réelle)
+   AVANT de proposer le GO suivant** — une PR empilée n'hérite jamais du vert d'avant le merge.
 
 ### 7.1 Structuring axes (liste fermée — NR requis si touché ; l'étendre = décision user)
 
@@ -190,6 +194,10 @@ la remplir littéralement.
 4. ⚠ **Garde-fou actif** (hook PreToolUse Bash, `.claude/hooks/bounded-loop-guard.sh`) : toute
    boucle d'attente `while`/`until` DOIT être bornée par `timeout <durée>` ≤ 4 h — sinon refus
    (attendre la fin d'un journal, jamais un `pgrep -f` qui se trouve lui-même).
+5. ⚠ **Worktree + `docker compose exec` = code du dépôt PRINCIPAL** : les cibles Docker (make test,
+   vitest tooling) montent/copient le dépôt principal — depuis un worktree elles valident du code
+   qui n'est pas le tien ; `tests-complete`/e2e/Behat se jouent sur le dépôt principal, sérialisés
+   (`.claude/agents/coder.md` §Worktree).
 
 **Pointers:** `docs/project-map.md` (**la carte** — zones, ops, sécurité, tout le reste) ·
 `docs/glossary.md` · `docs/testing/testing-strategy.md` · `specs/evolution/roadmap.md`

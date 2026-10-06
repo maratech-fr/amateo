@@ -21,6 +21,9 @@ This file is the **single home** of the scope checklist (`CLAUDE.md` §9 points 
 - conditions qui exigeraient de revenir demander une validation ;
 - confirmation explicite qu'aucun refactoring hors scope n'est prévu ;
 - axes structurants (§7.1) touchés → test de non-régression prévu (lequel, quel groupe) ;
+- **tests d'abus hérités du cadrage** : chaque chemin d'abus de la section 3bis du cadrage a un **test d'abus nommé** dans le plan (fichier + suite/groupe) ; un chemin sans test se justifie explicitement (jamais abandonné en silence) ;
+- **liste /security-review** : la PR touche-t-elle un item de la liste fermée — **auth · memberships · code FFBB / identité club · démo · horloge simulée · page publique à token · RGPD / purge ou export de données · intégration externe sortante (FFBB, IGN, télémétrie)** ? Si oui, le plan le dit (`/security-review` systématique, CLAUDE.md §7.7) ;
+- **e2e/Behat impactés** : specs Playwright (`frontend/tests/e2e/`) et features Behat (`backend/features/`) dont les sélecteurs, libellés visibles ou parcours touchent le scope — liste **NOMINATIVE** (quel fichier), ou « aucun » motivé ;
 - si backend/engine touché → section vérification incluant la feature fonctionnelle de génération de saison (`make -C backend behat`, COMPLETED attendu).
 
 Respect the boundaries of `CLAUDE.md` §2 (`frontend → backend → engine`, no reverse calls, Mercure topic shape) and the conventions of §5 as you read them. End with a clear go/no-go recommendation and, if relevant, a one-line note on what you deliberately left out of scope.
