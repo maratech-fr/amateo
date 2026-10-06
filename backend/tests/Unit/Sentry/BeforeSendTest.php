@@ -8,6 +8,7 @@ use App\Entity\Club;
 use App\Entity\User;
 use App\Sentry\BeforeSend;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Exception\EntityManagerClosed;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -129,6 +130,34 @@ final class BeforeSendTest extends TestCase
 
         self::assertNotNull($event);
         self::assertNull($event->getUser());
+        self::assertSame([], $event->getTags());
+    }
+
+    public function testAClosedEntityManagerNeverBreaksErrorSending(): void
+    {
+        // Cas réel : l'événement naît d'une 5xx dont la cause est une erreur DB, la transaction
+        // Doctrine est avortée et l'EntityManager FERMÉ — `find()` jette alors. L'enrichissement
+        // best-effort ne doit jamais masquer l'erreur d'origine ni faire échouer l'envoi : le `try`
+        // de `currentClubFfbbCode` attrape tout `Throwable` (EntityManagerClosed en est un).
+        $user = (new User)->setId('44444444-4444-4444-4444-444444444444');
+
+        $tokenStorage = new TokenStorage;
+        $tokenStorage->setToken(new UsernamePasswordToken($user, 'main'));
+
+        $request = new Request;
+        $request->attributes->set('_club_id', 'club-uuid');
+        $requestStack = new RequestStack([$request]);
+
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->method('find')->willThrowException(EntityManagerClosed::create());
+
+        $beforeSend = new BeforeSend($requestStack, $tokenStorage, $entityManager);
+
+        $event = $beforeSend(Event::createEvent(), EventHint::fromArray(['exception' => new RuntimeException('db down')]));
+
+        // L'événement part quand même : id utilisateur conservé, pas de tag club (lecture avortée).
+        self::assertNotNull($event);
+        self::assertSame('44444444-4444-4444-4444-444444444444', $event->getUser()?->getId());
         self::assertSame([], $event->getTags());
     }
 
