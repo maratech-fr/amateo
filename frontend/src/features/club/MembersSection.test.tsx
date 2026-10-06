@@ -69,7 +69,8 @@ describe("MembersSection", () => {
     await screen.findByText("Grace Hopper");
     expect(screen.getByLabelText("Rôle de Grace Hopper")).toBeDisabled();
     const deactivate = screen.getByRole("button", { name: /Désactiver/ });
-    expect(deactivate).toBeDisabled();
+    // Désactivé mais DÉCOUVRABLE (A11Y-30, `disabledReason`) : aria-disabled + raison en description.
+    expect(deactivate).toHaveAttribute("aria-disabled", "true");
     expect(deactivate).toHaveAttribute("title", expect.stringContaining("seul gestionnaire"));
   });
 

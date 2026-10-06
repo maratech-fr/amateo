@@ -623,7 +623,7 @@ describe("ConstraintsStep — edit an existing constraint", () => {
     expect(forcedRow).toHaveTextContent("Gymnase A");
 
     // Enter edit mode → the form pre-fills from config.
-    await user.click(screen.getByRole("button", { name: "Modifier" }));
+    await user.click(screen.getByRole("button", { name: /^Modifier la contrainte/ }));
     expect(screen.getByLabelText("Préférence")).toHaveValue("forced");
     expect(listboxTrigger(/Gymnase Gymnase A/)).toHaveTextContent("Gymnase A");
 
@@ -643,7 +643,7 @@ describe("ConstraintsStep — edit an existing constraint", () => {
     renderWithProviders(<ConstraintsStep />);
 
     await user.click(screen.getByRole("button", { name: "Gymnase" }));
-    await user.click(screen.getByRole("button", { name: "Modifier" }));
+    await user.click(screen.getByRole("button", { name: /^Modifier la contrainte/ }));
     // Switch impose → préfère: the inherited HARD must NOT leak (HARD preferredVenueId
     // is still a forced venue engine-side — the opposite of what the user wants).
     await user.selectOptions(screen.getByLabelText("Préférence"), "preferred");
@@ -659,7 +659,7 @@ describe("ConstraintsStep — edit an existing constraint", () => {
     renderWithProviders(<ConstraintsStep />);
 
     await user.click(screen.getByRole("button", { name: "Gymnase" }));
-    await user.click(screen.getByRole("button", { name: "Modifier" }));
+    await user.click(screen.getByRole("button", { name: /^Modifier la contrainte/ }));
     await pickListboxOption(user, /Gymnase Gymnase A/, "Gymnase B");
     await user.click(screen.getByRole("button", { name: "Enregistrer la contrainte" }));
 
@@ -684,7 +684,7 @@ describe("ConstraintsStep — edit an existing constraint", () => {
     renderWithProviders(<ConstraintsStep />);
 
     await user.click(screen.getByRole("button", { name: "Jours" }));
-    await user.click(screen.getByRole("button", { name: "Modifier" }));
+    await user.click(screen.getByRole("button", { name: /^Modifier la contrainte/ }));
     // forcedDays loads as the "au moins une" mode (HARD-pinned, no rule selector), day preselected.
     expect(screen.getByLabelText("Type de jour")).toHaveValue("atLeast");
     expect(screen.getByRole("button", { name: "vendredi", pressed: true })).toBeInTheDocument();
@@ -754,7 +754,7 @@ describe("ConstraintsStep — P4-95 : la ligne ciblée est surlignée et amenée
     const raf = runRafImmediately();
     const { container } = renderWithProviders(<ConstraintsStep />);
 
-    await user.click(screen.getByRole("button", { name: "Modifier" }));
+    await user.click(screen.getByRole("button", { name: /^Modifier la contrainte/ }));
 
     const li = container.querySelector('[data-constraint-id="c-time"]');
     expect(li?.className).toContain("ring-accent");
@@ -1133,7 +1133,7 @@ describe("ConstraintsStep — période : choisir, nommer, atteindre", () => {
     await user.click(screen.getByRole("button", { name: "Gymnase" }));
     expect(scrollIntoView).not.toHaveBeenCalled(); // rien ne bouge tant qu'on n'édite pas
 
-    await user.click(screen.getByRole("button", { name: "Modifier" }));
+    await user.click(screen.getByRole("button", { name: /^Modifier la contrainte/ }));
     expect(scrollIntoView).toHaveBeenCalled();
 
     raf.mockRestore();
@@ -1424,13 +1424,13 @@ describe("ConstraintsStep — genèses de la semaine vs faits de la mère (P2-59
     expect(factRow).not.toBeNull();
 
     // Genèse : modifiable et supprimable ici.
-    expect(within(genesisRow).getByRole("button", { name: "Modifier" })).toBeInTheDocument();
-    expect(within(genesisRow).getByRole("button", { name: "Supprimer" })).toBeInTheDocument();
+    expect(within(genesisRow).getByRole("button", { name: /^Modifier la contrainte/ })).toBeInTheDocument();
+    expect(within(genesisRow).getByRole("button", { name: /^Supprimer la contrainte/ })).toBeInTheDocument();
 
     // Fait : badge lisible « Toutes les semaines de {mère} », AUCUNE action.
     expect(within(factRow).getByText(/Toutes les semaines de Vacances d'été/)).toBeInTheDocument();
-    expect(within(factRow).queryByRole("button", { name: "Modifier" })).toBeNull();
-    expect(within(factRow).queryByRole("button", { name: "Supprimer" })).toBeNull();
+    expect(within(factRow).queryByRole("button", { name: /^Modifier la contrainte/ })).toBeNull();
+    expect(within(factRow).queryByRole("button", { name: /^Supprimer la contrainte/ })).toBeNull();
   });
 
   it("entrée RACINE : ses datées restent éditables, aucun badge de mère", async () => {
@@ -1442,7 +1442,7 @@ describe("ConstraintsStep — genèses de la semaine vs faits de la mère (P2-59
     await user.click(screen.getByRole("button", { name: "Jours" }));
 
     const genesisRow = document.querySelector('[data-constraint-id="g1"]') as HTMLElement;
-    expect(within(genesisRow).getByRole("button", { name: "Modifier" })).toBeInTheDocument();
+    expect(within(genesisRow).getByRole("button", { name: /^Modifier la contrainte/ })).toBeInTheDocument();
     expect(screen.queryByText(/Toutes les semaines de/)).toBeNull();
   });
 });
@@ -1621,7 +1621,7 @@ describe("ConstraintsStep — affiner un groupe (targetTags / excludeTags)", () 
     const user = userEvent.setup();
     renderWithProviders(<ConstraintsStep />);
 
-    await user.click(screen.getByRole("button", { name: "Modifier" }));
+    await user.click(screen.getByRole("button", { name: /^Modifier la contrainte/ }));
 
     // La cible principale = le 1er targetTags ; l'affinage est DÉPLIÉ (non vide) et pré-coché.
     expect(screen.getByRole("combobox", { name: "Cible" })).toHaveValue("tag:ADULTE");
@@ -1644,7 +1644,7 @@ describe("ConstraintsStep — affiner un groupe (targetTags / excludeTags)", () 
     const user = userEvent.setup();
     renderWithProviders(<ConstraintsStep />);
 
-    await user.click(screen.getByRole("button", { name: "Modifier" }));
+    await user.click(screen.getByRole("button", { name: /^Modifier la contrainte/ }));
     expect(screen.getByRole("combobox", { name: "Cible" })).toHaveValue("tag:ADULTE");
     // Affinage replié (rien à montrer) : le lien est là, aria-expanded false.
     expect(screen.getByRole("button", { name: refineLink })).toHaveAttribute("aria-expanded", "false");

@@ -524,7 +524,7 @@ export function CalendarPage() {
               variant="outline"
               size="sm"
               disabled={competitionsFailed}
-              title={competitionsFailed ? "Compétitions indisponibles — réessayez avant de créer un match." : undefined}
+              disabledReason={competitionsFailed ? "Compétitions indisponibles — réessayez avant de créer un match." : undefined}
               onClick={() => setFixtureFormOpen(true)}
             >
               <Plus className="size-4" />

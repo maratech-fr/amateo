@@ -3,6 +3,7 @@ import { useRef } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { FilterChip } from "@/shared/components/ui/filter-chip";
+import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import { Select } from "@/shared/components/ui/select";
 import { todayISO } from "@/shared/lib/clock";
 import { cn } from "@/shared/lib/utils";
@@ -68,11 +69,9 @@ export function CalendarControls(props: CalendarControlsProps) {
   const isPhase = "phase" === consultTemporality;
   const todayWeekKey = weekendKeyOf(todayISO());
   const todayMonthKey = todayISO().slice(0, 7);
-  const chipClass = (checked: boolean): string => cn("h-7", checked ? "" : "text-muted-foreground");
   const typesRef = useRef<HTMLDivElement>(null);
 
   const effectiveKinds = consultKinds ?? DEFAULT_KINDS;
-  const isKindChecked = (kind: Kind): boolean => effectiveKinds.includes(kind);
   const toggleKind = (kind: Kind): void => {
     const active = new Set<Kind>(effectiveKinds);
     if (active.has(kind)) {
@@ -109,17 +108,11 @@ export function CalendarControls(props: CalendarControlsProps) {
     <>
       {/* Rangée « Types » + « Afficher » (interrupteurs) + « Réinitialiser ». */}
       <div className="flex flex-wrap items-center gap-2">
-        <div role="group" aria-labelledby="calendar-types-label" className="flex flex-wrap items-center gap-2">
+        <div ref={typesRef} className="flex flex-wrap items-center gap-2">
           <span id="calendar-types-label" className="text-xs font-medium text-muted-foreground">
             Types
           </span>
-          <div ref={typesRef} className="flex flex-wrap items-center gap-1 rounded-md border border-border bg-card p-0.5">
-            {KINDS.map((kind) => (
-              <Button key={kind} type="button" size="sm" aria-pressed={isKindChecked(kind)} variant={isKindChecked(kind) ? "default" : "ghost"} className={chipClass(isKindChecked(kind))} onClick={() => toggleKind(kind)}>
-                {KIND_LABEL[kind]}
-              </Button>
-            ))}
-          </div>
+          <SegmentedControl mode="multiple" labelledBy="calendar-types-label" options={KINDS.map((kind) => ({ key: kind, label: KIND_LABEL[kind] }))} values={effectiveKinds} onToggle={toggleKind} />
         </div>
 
         <div role="group" aria-labelledby="calendar-afficher-label" className="flex flex-wrap items-center gap-2">
@@ -133,7 +126,7 @@ export function CalendarControls(props: CalendarControlsProps) {
               size="sm"
               aria-checked={consultTypicalWeek}
               variant={consultTypicalWeek ? "default" : "ghost"}
-              className={cn("h-7 gap-1.5", consultTypicalWeek ? "" : "text-muted-foreground")}
+              className={cn("gap-1.5", consultTypicalWeek ? "" : "text-muted-foreground")}
               onClick={() => setConsultTypicalWeek(!consultTypicalWeek)}
             >
               <CalendarCheck2 className="size-3.5" aria-hidden="true" />
@@ -146,7 +139,7 @@ export function CalendarControls(props: CalendarControlsProps) {
             size="sm"
             aria-checked={consultAway}
             variant={consultAway ? "default" : "ghost"}
-            className={cn("h-7 gap-1.5", consultAway ? "" : "text-muted-foreground")}
+            className={cn("gap-1.5", consultAway ? "" : "text-muted-foreground")}
             onClick={() => setConsultAway(!consultAway)}
           >
             <Bus className="size-3.5" aria-hidden="true" />
@@ -155,7 +148,7 @@ export function CalendarControls(props: CalendarControlsProps) {
         </div>
 
         {dirty ? (
-          <Button type="button" variant="ghost" size="sm" className="h-7 gap-1.5" onClick={reset}>
+          <Button type="button" variant="ghost" size="sm" className="gap-1.5" onClick={reset}>
             <RotateCcw className="size-3.5" aria-hidden="true" />
             Réinitialiser
           </Button>
@@ -178,25 +171,17 @@ export function CalendarControls(props: CalendarControlsProps) {
 
       {/* Contrôle segmenté « Période » + navigateur propre + rappel de fraîcheur. */}
       <div className="flex flex-wrap items-center gap-2">
-        <div role="group" aria-labelledby="calendar-periode-label" className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span id="calendar-periode-label" className="text-xs font-medium text-muted-foreground">
             Période
           </span>
-          <div className="flex flex-wrap items-center gap-1 rounded-md border border-border bg-card p-0.5">
-            {TEMPORALITIES.map((temporality) => (
-              <Button
-                key={temporality}
-                type="button"
-                size="sm"
-                aria-pressed={temporality === consultTemporality}
-                variant={temporality === consultTemporality ? "default" : "ghost"}
-                className={chipClass(temporality === consultTemporality)}
-                onClick={() => setConsultTemporality(temporality)}
-              >
-                {TEMPORALITY_LABEL[temporality]}
-              </Button>
-            ))}
-          </div>
+          <SegmentedControl
+            mode="single"
+            labelledBy="calendar-periode-label"
+            options={TEMPORALITIES.map((temporality) => ({ key: temporality, label: TEMPORALITY_LABEL[temporality] }))}
+            value={consultTemporality}
+            onValueChange={setConsultTemporality}
+          />
         </div>
 
         {isWeek ? (

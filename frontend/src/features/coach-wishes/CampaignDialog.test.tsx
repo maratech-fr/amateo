@@ -730,7 +730,8 @@ describe("CampaignDialog", () => {
     };
     render(<CampaignDialog entry={entry} season={season} existing={existing} onClose={vi.fn()} />);
 
-    expect(screen.getByRole("button", { name: /Relancer les silencieux/ })).toBeDisabled();
+    // Désactivé mais DÉCOUVRABLE (A11Y-30, `disabledReason`) : aria-disabled, pas le `disabled` natif.
+    expect(screen.getByRole("button", { name: /Relancer les silencieux/ })).toHaveAttribute("aria-disabled", "true");
   });
 
   // Le revers : une relance datée d'un AUTRE jour simulé ne bloque plus — l'avance de
