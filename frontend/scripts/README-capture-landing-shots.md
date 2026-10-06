@@ -59,6 +59,8 @@ dérive ce nom toute seule (`landing/index.html`), **aucun code vitrine à édit
 | `OUT_DIR` | Dossier de sortie (relatif = depuis la racine du dépôt). | `captures/landing-shots/` |
 | `IMPORT_FBI` | Chemin d'un export FBI `.xlsx` à importer avant les captures matchs. Vide ⇒ pas d'import. | aucun |
 | `FORCE_IMPORT` | `1` ⇒ réimporte même si la saison a déjà des rencontres (sinon la garde d'idempotence saute l'import). | aucun |
+| `DIVISION_MAP` | Objet JSON inline `{ "Division": "Nom d'équipe" }` **fusionné** par-dessus l'appariement BCCL par défaut. | appariement fondateur BCCL (ci-dessous) |
+| `DIVISION_MAP_FILE` | Chemin d'un JSON local `{ "Division": "Nom d'équipe" }` **fusionné** par-dessus le défaut (avant `DIVISION_MAP`). | aucun |
 | `SCRUB_FILE` | JSON local `{ "À remplacer": "Valeur démo" }` **fusionné** par-dessus la table par défaut. | aucun |
 | `MATCHS_WEEKEND` | Samedi ISO (`YYYY-MM-DD`) du week-end à afficher pour le calendrier matchs. | `2026-11-14` |
 
@@ -124,10 +126,27 @@ Préparations par écran :
   **avertissement** est loggé (à vous de décider de garder l'écran vide).
 
 Si `IMPORT_FBI` est fourni, l'import FBI passe **une seule fois** avant la boucle, via l'UI
-`/matchs/importer` (dépôt du fichier → appariements proposés par l'écran appliqués tels quels →
-« Importer »). **Idempotent sur la PRÉSENCE de rencontres** (plus sur la date du dernier dépôt FBI) :
-si la saison a déjà des rencontres (l'état vide « Aucun match importé » du calendrier est absent),
-l'import est sauté — `FORCE_IMPORT=1` passe outre. Sortie : 8 fichiers dans `OUT_DIR`.
+`/matchs/importer` (dépôt du fichier → appariement Division→équipe **explicite** → « Importer »).
+Le bac à sable n'ayant pas les engagements FFBB, l'écran ne **propose aucune** équipe
+(`suggestedTeamId: null` partout) : sans appariement, l'import ne crée **aucune** rencontre. Le
+script pose donc, avant de cliquer « Importer », l'appariement validé par le fondateur pour le
+BCCL (surchargeable par `DIVISION_MAP`/`DIVISION_MAP_FILE`) :
+
+```json
+{ "PNM": "SM1", "RM2": "SM2", "PRM": "SM3", "DM2": "SM4",
+  "PNF": "SF1", "RF3": "SF2", "DF2": "SF3", "RMU21": "U21M1" }
+```
+
+Le nom à droite est le **libellé d'équipe du club** tel qu'il s'affiche dans le sélecteur
+« Associer à… » (c.-à-d. `team.name` du seed). Pour chaque division visible : dans la table ⇒
+l'équipe est sélectionnée (le script déplie chaque onglet de famille — Départemental / Régional /
+Brassage… — et ouvre le sélecteur) ; hors table ⇒ laissée non associée (ses rencontres sont
+ignorées, avec la confirmation « Importer quand même » gérée). Le script journalise les divisions
+associées / ignorées / sans équipe correspondante, et **avertit (`⚠`)** si le rapport d'import ne
+fait état d'**aucune rencontre créée**. **Idempotent sur la PRÉSENCE de rencontres** (plus sur la
+date du dernier dépôt FBI) : si la saison a déjà des rencontres (l'état vide « Aucun match
+importé » du calendrier est absent), l'import est sauté — `FORCE_IMPORT=1` passe outre. Sortie :
+8 fichiers dans `OUT_DIR`.
 
 ## 3. Vérifier, puis copier à la main
 

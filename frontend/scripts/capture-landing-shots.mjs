@@ -82,6 +82,28 @@ const IMPORT_FBI = process.env.IMPORT_FBI ?? "";
 // même si la saison a déjà des rencontres. Sans ça, la garde saute l'import dès qu'une rencontre
 // existe (l'import serveur dédoublonne de toute façon).
 const FORCE_IMPORT = process.env.FORCE_IMPORT ?? "";
+// Appariement Division → équipe pour l'import FBI (cf. `runImport`/`applyDivisionMap`). Le bac à
+// sable n'a PAS les engagements FFBB qui produiraient les suggestions FFBB (`suggestedTeamId`
+// reste `null` partout) : sans appariement explicite, l'écran laisse TOUTES les divisions « à
+// associer » et l'import ne crée AUCUNE rencontre. On fournit donc l'appariement validé par le
+// fondateur pour le BCCL (le nom à DROITE = libellé d'équipe du club tel qu'il s'affiche dans le
+// sélecteur « Associer à… », c.-à-d. `team.name` — vérifié contre `BcclSeeder::$newTeamsData`).
+// Les divisions ABSENTES de la table sont laissées non associées (l'import les ignore, avec la
+// confirmation « Importer quand même » déjà gérée). `DIVISION_MAP` (objet JSON inline) et
+// `DIVISION_MAP_FILE` (chemin d'un JSON local, relatif = depuis la racine du dépôt) sont FUSIONNÉS
+// par-dessus ce défaut (fichier puis inline) : ils surchargent/complètent, ils ne remplacent pas.
+const DEFAULT_DIVISION_MAP = {
+  PNM: "SM1",
+  RM2: "SM2",
+  PRM: "SM3",
+  DM2: "SM4",
+  PNF: "SF1",
+  RF3: "SF2",
+  DF2: "SF3",
+  RMU21: "U21M1",
+};
+const DIVISION_MAP_INLINE = process.env.DIVISION_MAP ?? "";
+const DIVISION_MAP_FILE = process.env.DIVISION_MAP_FILE ?? "";
 // Calendrier des matchs : samedi ISO du week-end affiché. Défaut = un week-end de
 // novembre 2026 (saison en cours sur l'horloge RÉELLE du club). Épingler le week-end
 // évite le vide ET la bascule d'atterrissage vers Conflits (lien profond prioritaire,
@@ -162,6 +184,38 @@ async function loadScrubMap() {
   return map;
 }
 
+/** Objet JSON `{ "Division": "Nom d'équipe" }` — valeurs string non vides. */
+function assertDivisionMap(parsed, origin) {
+  if (null === parsed || "object" !== typeof parsed || Array.isArray(parsed)) {
+    throw new Error(`${origin} doit être un objet JSON { "Division": "Nom d'équipe" }.`);
+  }
+  for (const [division, team] of Object.entries(parsed)) {
+    if ("string" !== typeof team || "" === team) {
+      throw new Error(`${origin} : l'équipe de « ${division} » doit être une chaîne non vide.`);
+    }
+  }
+}
+
+/**
+ * Appariement Division → équipe pour l'import FBI : défaut fondateur (`DEFAULT_DIVISION_MAP`),
+ * complété/surchargé par `DIVISION_MAP_FILE` (fichier) puis `DIVISION_MAP` (inline).
+ */
+async function loadDivisionMap() {
+  const map = { ...DEFAULT_DIVISION_MAP };
+  if ("" !== DIVISION_MAP_FILE) {
+    const path = isAbsolute(DIVISION_MAP_FILE) ? DIVISION_MAP_FILE : resolve(REPO_ROOT, DIVISION_MAP_FILE);
+    const parsed = JSON.parse(await readFile(path, "utf8"));
+    assertDivisionMap(parsed, `DIVISION_MAP_FILE (${path})`);
+    Object.assign(map, parsed);
+  }
+  if ("" !== DIVISION_MAP_INLINE) {
+    const parsed = JSON.parse(DIVISION_MAP_INLINE);
+    assertDivisionMap(parsed, "DIVISION_MAP");
+    Object.assign(map, parsed);
+  }
+  return map;
+}
+
 /**
  * Anonymise le DOM rendu AVANT la capture (patron P5-26) :
  *  - retire TOUS les blasons du club, où qu'ils soient dans la page (en-tête d'app,
@@ -225,16 +279,88 @@ async function login(page) {
 }
 
 /**
- * Import FBI OPTIONNEL via l'UI réelle (`/matchs/importer` → modale « Importer FBI »).
- * La modale analyse le fichier, PRÉ-REMPLIT les appariements Division↔équipe depuis les
- * mappings persistés ET les suggestions FFBB (que `buildMappings` envoie telles quelles) :
- * un clic « Importer » suffit donc, sans toucher un seul sélecteur. Les divisions sans
- * appariement effectif déclenchent une confirmation « Importer quand même » (leurs
- * rencontres sont simplement laissées de côté). Idempotent sur la PRÉSENCE de rencontres
- * (pas sur la date du dernier dépôt FBI) : si la saison a déjà des rencontres, on ne
- * réimporte pas (et l'import serveur dédoublonne de toute façon). `FORCE_IMPORT=1` passe outre.
+ * Applique l'appariement Division → équipe DANS la modale d'import, AVANT le clic « Importer ».
+ *
+ * Les divisions sont rangées en onglets de FAMILLE (`ImportFbiDialog` : Départemental / Régional /
+ * Brassage…). Chaque `TeamSelect` est bâti sur la primitive `Listbox` (pas un `<select>` natif) :
+ *  - le TEXTE de chaque division vit dans un `<span class="sr-only">` « Équipe pour <division> »
+ *    référencé par l'`aria-labelledby` du bouton déclencheur (`button[aria-haspopup="listbox"]`) ;
+ *  - un panneau de famille INACTIF est rendu `hidden` → ses sélecteurs sont incliquables, d'où
+ *    l'activation de chaque onglet tour à tour (`role="tab"`) avant de le traiter ;
+ *  - ouvrir un sélecteur porte son panneau d'options dans un PORTAL (`document.body`) ; chaque
+ *    `role="option"` a pour nom accessible le `team.name` (aucune méta ici) — on clique celui qui
+ *    correspond au libellé cible.
+ *
+ * Pour chaque division VISIBLE : dans la table ⇒ on sélectionne l'équipe ; absente ⇒ on la laisse
+ * (ignorée à l'import). On journalise : associées / ignorées / équipe introuvable.
  */
-async function runImport(browser) {
+async function applyDivisionMap(page, divisionMap) {
+  const paired = [];
+  const ignored = [];
+  const notFound = [];
+
+  // Onglets de famille (absents si une seule famille implicite — alors une seule passe).
+  const tabCount = await page.getByRole("tab").count();
+  const passes = tabCount > 0 ? tabCount : 1;
+
+  for (let t = 0; t < passes; t++) {
+    if (tabCount > 0) {
+      await page.getByRole("tab").nth(t).click();
+      await page.locator('[role="tabpanel"]:not([hidden])').first().waitFor({ state: "visible", timeout: NAV_TIMEOUT });
+    }
+    // Les sélecteurs du SEUL panneau visible (les autres familles sont `hidden`).
+    const panel = tabCount > 0 ? page.locator('[role="tabpanel"]:not([hidden])') : page.locator("body");
+    const triggers = panel.locator('button[aria-haspopup="listbox"]');
+    const count = await triggers.count();
+    for (let i = 0; i < count; i++) {
+      const trigger = triggers.nth(i);
+      // Division portée par le libellé sr-only « Équipe pour <division> » (on retire un éventuel
+      // « (libellé FBI) » suffixé quand deux équipes du club partagent la division).
+      const divisionLabel = await trigger.evaluate((btn) => {
+        const id = (btn.getAttribute("aria-labelledby") ?? "").split(" ")[0];
+        const span = "" !== id ? document.getElementById(id) : null;
+        return (span?.textContent ?? "").replace(/^Équipe pour /, "").trim();
+      });
+      const division = divisionLabel.replace(/\s*\(.*\)\s*$/, "").trim();
+      const teamLabel = divisionMap[division];
+      if (undefined === teamLabel) {
+        ignored.push(division);
+        continue;
+      }
+      await trigger.click();
+      await page.locator('[role="listbox"]').first().waitFor({ state: "visible", timeout: NAV_TIMEOUT });
+      const option = page.getByRole("option", { name: teamLabel, exact: true });
+      if (0 === (await option.count())) {
+        notFound.push(`${division} → ${teamLabel}`);
+        await page.keyboard.press("Escape");
+        continue;
+      }
+      await option.first().click();
+      paired.push(`${division} → ${teamLabel}`);
+    }
+  }
+
+  console.log(`• appariement Division→équipe : ${paired.length} associée(s)${paired.length > 0 ? ` (${paired.join(", ")})` : ""}`);
+  if (ignored.length > 0) {
+    console.log(`• ${ignored.length} division(s) ignorée(s) (hors table, laissées non associées) : ${ignored.join(", ")}`);
+  }
+  if (notFound.length > 0) {
+    console.warn(`⚠ ${notFound.length} appariement(s) sans équipe correspondante dans le sélecteur (libellé introuvable) : ${notFound.join(", ")}`);
+  }
+}
+
+/**
+ * Import FBI OPTIONNEL via l'UI réelle (`/matchs/importer` → modale « Importer FBI »).
+ * La modale analyse le fichier puis AFFICHE les appariements Division↔équipe : le bac à sable
+ * n'ayant pas les engagements FFBB, aucune suggestion n'est proposée (`suggestedTeamId: null`),
+ * donc `applyDivisionMap` pose l'appariement explicite (défaut fondateur BCCL ou `DIVISION_MAP`)
+ * AVANT le clic « Importer ». Les divisions laissées sans équipe déclenchent une confirmation
+ * « Importer quand même » (leurs rencontres sont simplement laissées de côté). Idempotent sur la
+ * PRÉSENCE de rencontres (pas sur la date du dernier dépôt FBI) : si la saison a déjà des
+ * rencontres, on ne réimporte pas (et l'import serveur dédoublonne de toute façon).
+ * `FORCE_IMPORT=1` passe outre.
+ */
+async function runImport(browser, divisionMap) {
   const filePath = isAbsolute(IMPORT_FBI) ? IMPORT_FBI : resolve(REPO_ROOT, IMPORT_FBI);
   const context = await browser.newContext({ baseURL: BASE_URL });
   const page = await context.newPage();
@@ -269,18 +395,36 @@ async function runImport(browser) {
     // du pied de modale s'active quand elle aboutit.
     const importBtn = page.getByRole("button", { name: "Importer", exact: true });
     await expect(importBtn).toBeEnabled({ timeout: NAV_TIMEOUT });
+
+    // Appariement explicite AVANT l'import : sans lui, aucune division n'est associée et l'import
+    // ne crée AUCUNE rencontre (le bac à sable n'a pas les engagements FFBB qui suggèrent l'équipe).
+    await applyDivisionMap(page, divisionMap);
+
     await importBtn.click();
 
-    // Divisions sans équipe ⇒ confirmation (best-effort : absente si tout est apparié).
+    // Divisions sans équipe ⇒ confirmation (celles hors table restent non associées).
     await page
       .getByRole("button", { name: /importer quand même/i })
       .click({ timeout: 3_000 })
       .catch(() => {});
 
     // Le rapport d'import (« … créé · … mis à jour · … inchangé ») apparaît en place.
-    await page.getByText(/mis à jour/).first().waitFor({ timeout: NAV_TIMEOUT });
+    const reportLine = page.getByText(/mis à jour/).first();
+    await reportLine.waitFor({ timeout: NAV_TIMEOUT });
     await waitForStability(page);
-    console.log(`✓ import FBI depuis ${filePath}`);
+    const reportText = (await reportLine.textContent()) ?? "";
+    const created = Number(reportText.match(/(\d+)\s*créé/)?.[1] ?? "0");
+    const updated = Number(reportText.match(/(\d+)\s*mis à jour/)?.[1] ?? "0");
+    if (created > 0) {
+      console.log(`✓ import FBI depuis ${filePath} — ${reportText.trim()}`);
+    } else {
+      console.warn(
+        `⚠ import FBI depuis ${filePath} : 0 rencontre CRÉÉE (${reportText.trim()}). ` +
+          (updated > 0
+            ? "Des rencontres ont été mises à jour (ré-import ?) — vérifier que le calendrier n'est pas vide."
+            : "Vérifier l'appariement Division→équipe et le fichier d'import avant de garder les captures matchs."),
+      );
+    }
   } finally {
     await context.close();
   }
@@ -430,16 +574,20 @@ async function captureTheme(browser, theme, scrubMap) {
 async function main() {
   await mkdir(OUT_DIR, { recursive: true });
   const scrubMap = await loadScrubMap();
+  const divisionMap = await loadDivisionMap();
   console.log(`Cible : ${BASE_URL}`);
   console.log(`Sortie : ${OUT_DIR}`);
   console.log(`Import FBI : ${"" === IMPORT_FBI ? "aucun" : IMPORT_FBI}`);
   console.log(`Week-end matchs : ${"" === MATCHS_WEEKEND ? "auto" : MATCHS_WEEKEND}`);
   console.log(`Anonymisation : ${Object.keys(scrubMap).length} remplacement(s) + blason club retiré de l'en-tête`);
+  if ("" !== IMPORT_FBI) {
+    console.log(`Appariement Division→équipe : ${Object.keys(divisionMap).length} entrée(s) (${Object.entries(divisionMap).map(([d, t]) => `${d}→${t}`).join(", ")})`);
+  }
 
   const browser = await chromium.launch();
   try {
     if ("" !== IMPORT_FBI) {
-      await runImport(browser);
+      await runImport(browser, divisionMap);
     }
     for (const theme of THEMES) {
       await captureTheme(browser, theme, scrubMap);
