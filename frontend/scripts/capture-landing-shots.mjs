@@ -239,12 +239,6 @@ async function anonymize(page, scrubMap) {
         img.remove();
       }
     }
-    // (a bis) horloge simulée DEV de l'en-tête → retirée avec sa racine (`<div class="relative">`
-    // de DevClock). Sélecteur = le `title` du bouton, stable (DevClock.tsx), pas le libellé daté.
-    const devClock = document.querySelector('button[title="Horloge simulée (dev) — cliquer pour modifier"]');
-    if (null !== devClock) {
-      (devClock.closest("div.relative") ?? devClock).remove();
-    }
     // (b) remplacements texte, insensibles à la casse.
     const regexes = pairs.map(([pattern, to]) => [new RegExp(pattern, "gi"), to]);
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
