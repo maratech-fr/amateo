@@ -52,7 +52,8 @@ final class OverlayManager
      *    que les périodes validées laissait derrière des grilles copiées d'un socle qui
      *    n'existe plus, invisibles pour le gestionnaire ;
      *  - sauf celles DÉJÀ COMMENCÉES : « rien du passé, rien de ce qui est en cours »
-     *    (décision fondateur 2026-07-16, specs/evolution/reprise-perimetre-engage.md §4).
+     *    (décision fondateur 2026-07-16, docs/architecture/adr-0002-pattern-plan.md ;
+     *    décision fermée specs/courantes/etat-des-lieux.md §2).
      *    Une période en cours est déjà annoncée aux coachs et à moitié jouée ; la
      *    détruire au milieu coûterait plus que de la laisser finir sur l'ancien socle.
      * Le pivot est donc la date de DÉBUT : seules les périodes ENTIÈREMENT à venir.

@@ -33,16 +33,16 @@
 > **Fichiers de détail actifs** : le programme plannings BCCL (ex-P2-58, **entièrement clos le 2026-09-06**) est
 > **archivé dans [`docs/archive/`](../../docs/archive/plannings-bccl-2026-08-31.md)** — ses décisions D1-D17 y restent lisibles, son seul
 > résidu ouvert est l'item **P4-182** ci-dessous ·
-> [`gestion-matchs-ffbb.md`](gestion-matchs-ffbb.md) (module matchs — palier A livré (P1-4), **palier B
-> TRAJET+ANNUAIRE livré (RMM-8/P2-53 + RMM-9/P2-54, soldés 2026-08-28)** ; reste OUVERT : palier B
-> **dérogation** (§8, workflow tracker) et palier C (effet réseau — heures/tendances adverses cross-club) ;
-> `refonte-module-matchs.md` (programme RMM entièrement livré) est **archivé dans [`docs/archive/`](../../docs/archive/refonte-module-matchs.md)** depuis le 2026-08-28.
-> **Le programme RMM (refonte + net-neufs RMM-0→10) est ENTIÈREMENT clos** ; ce qui reste du module vit
-> ici, en paliers) ·
-> le besoin [`ffbb-appariement-source-de-verite.md`](ffbb-appariement-source-de-verite.md) (**« on accompagne, on ne décide pas »** — nourrit les paliers B/C (P3-7 et P4-35 livrés/soldés, voir état des lieux) ; ses mesures de référence — reconnaissance P2-19 + traces brutes + complétion club, lots tous soldés — sont **archivées** dans [`docs/archive/`](../../docs/archive/api-ffbb-app-reconnaissance.md) depuis le 2026-08-18) ·
+> [`gestion-matchs-ffbb.md`](gestion-matchs-ffbb.md) (module matchs — **aminci à l'ouvert (DOC-56)** :
+> paliers A (P1-4) et B TRAJET+ANNUAIRE (RMM-8/P2-53 + RMM-9/P2-54) **livrés** — comportement dans
+> `module-matchs.md`, décisions tranchées dans `etat-des-lieux.md` §2 ; la **dérogation est fermée
+> sans code** (`etat-des-lieux.md` §2) ; reste OUVERT le seul **palier C** (effet réseau cross-club,
+> §5bis pts 2-3 + §11). `refonte-module-matchs.md` (programme RMM entièrement livré) est **archivé dans
+> [`docs/archive/`](../../docs/archive/refonte-module-matchs.md)** depuis le 2026-08-28 ; le programme
+> RMM est ENTIÈREMENT clos) ·
+> le besoin [`ffbb-appariement-source-de-verite.md`](ffbb-appariement-source-de-verite.md) (**« on accompagne, on ne décide pas »** — **aminci à l'ouvert (DOC-56)** : le besoin est livré (paliers B/C, P3-7 et P4-35 soldés — comportement dans `module-matchs.md`, décisions fermées dans `etat-des-lieux.md` §2) ; reste OUVERT les **gymnases de match** (§7, besoin neuf non codé), la **résolution de gymnase** (§6.8, citée par P4-282) et les **questions résiduelles** (§8) ; ses mesures de référence — reconnaissance P2-19 + traces brutes + complétion club, lots tous soldés — sont **archivées** dans [`docs/archive/`](../../docs/archive/api-ffbb-app-reconnaissance.md) depuis le 2026-08-18) ·
 > [`etude-tailles-clubs-ffbb.md`](etude-tailles-clubs-ffbb.md) (**tailles des clubs mesurées sur l'API FFBB** — a nourri le cadrage P1-3, sert la grille tarifaire par taille) ·
 > [`console-superadmin.md`](console-superadmin.md) (P4-54) ·
-> [`reprise-perimetre-engage.md`](reprise-perimetre-engage.md) (mémoire produit du planning de saison) ·
 > [`duplications-de-verite.md`](duplications-de-verite.md) (**doctrine du motif « une vérité, deux
 > endroits »** — le test de fusion réutilisé par `documentation-update`, les duplications
 > délibérées à ne jamais mutualiser, et l'ouvert. **Refondu le 2026-09-18 (AUD-DOC-43)** : le
@@ -304,7 +304,7 @@ lecture seule `amateo_read` (**P5-20 livré**, geste jour J documenté `docs/ops
 
 ---
 
-## Findings d'audit ouverts (registre `/audit`) — 2
+## Findings d'audit ouverts (registre `/audit`) — 0
 
 > **À quoi sert cette section.** Le skill `/audit` tient un **registre à IDs stables** : un finding garde son
 > identifiant d'une édition à l'autre, ce qui rend la comparaison inter-éditions possible (« ce défaut est-il
@@ -324,8 +324,6 @@ lecture seule `amateo_read` (**P5-20 livré**, geste jour J documenté `docs/ops
 
 | ID | Sujet | Gravité | Zone | Depuis | Note |
 |---|-------|:---:|:---:|:---:|---|
-| AUD-ALIGN-FAIBLES-1003 | **[APRÈS PROD]** **Alignement — reliquat Faibles de l'édition 2026-10-03 (résidu ALIGN-14)** | Faible | align | 2026-10-03 | ALIGN-14 (minStartTime PREFERRED : non prouvable sur les grilles existantes — le solveur choisit 20:00 spontanément —, à prouver sur une grille mesurée ; forbiddenDays/forbiddenVenueId PREFERRED livrés ; décision finale fondateur, `#953`) |
-| AUD-DOC-FAIBLES-1003 | **[APRÈS PROD]** **Doc — reliquat Faibles/Mineures/Info de l'édition 2026-10-03** | Faible | doc | 2026-10-03 | DOC-56 (graduation non faite sur ~1 200 l. d'`evolution/` closes) · DOC-59 (croissance sans borne de `frontend-spec.md`/`backend-inventory.md`). DOC-50/51/52/54/55/57/58/60 soldés par le reliquat DOC (`etat-des-lieux.md` §3) |
 
 > **`UXC-10` est fait hors admin** (2026-08-30) : 21 sites ralliés sur la primitive `EmptyHint`
 > (`frontend/shared/components/ui/empty-hint.tsx`). **4 exceptions structurelles gardées** — le
