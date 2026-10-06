@@ -368,7 +368,7 @@ services:
   # (docs/ops/backup-restore.md). Create the db + expose stats.amateo.app:
   # founder runbook docs/ops/deploy.md § Umami.
   umami:
-    image: ghcr.io/umami-software/umami:postgresql-v2.20.2@sha256:0138ba7f0c0a3435e7eb030a303582eeb6825f79f6d066077a4bc970ce196606
+    image: ghcr.io/umami-software/umami:postgresql-3.0.0@sha256:818105b05d6b460d5526b2d426017fa1664025e87b1a4f03770b613df5fca6e1
     container_name: amateo-umami
     environment:
       DATABASE_TYPE: postgresql
