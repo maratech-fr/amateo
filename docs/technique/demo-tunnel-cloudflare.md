@@ -96,7 +96,7 @@ pose depuis la console superadmin** (`/admin` → onglet « Démos » → « Act
 « Démo prospect » ; même geste sur « Démo BCCL » pour se connecter au compte gestionnaire
 `demo-bccl@amateo.fr`) — à faire AVANT le rendez-vous, un club seedé n'ouvre aucune fenêtre par
 lui-même. Détail complet : [`superadmin-auth.md`](../../specs/courantes/superadmin-auth.md)
-§« Démos — console de pilotage », [`backend-inventory.md`](../../backend/docs/backend-inventory.md)
+§« Démos — console de pilotage », [`backend-demo.md`](../../backend/docs/backend-demo.md)
 §« Module démo », [`commands.md`](../../backend/docs/commands.md).
 
 3. **Le raccourci ne connecte plus automatiquement** : la route rend un 2xx SANS cookie JWT, et

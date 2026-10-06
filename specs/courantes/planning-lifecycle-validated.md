@@ -73,7 +73,7 @@ Trois rendus de la même primitive de présentation (`PlacedConflictsNotice`,
   paires.
 
 Détail exhaustif (règle de collision, forme du payload) : le service et le contrôleur eux-mêmes,
-inventoriés dans [`backend-inventory.md`](../../backend/docs/backend-inventory.md) § « Radar de
+inventoriés dans [`backend-controllers.md`](../../backend/docs/backend-controllers.md) § « Radar de
 conflits d'entraînement ».
 
 ## 3. Décisions de conception

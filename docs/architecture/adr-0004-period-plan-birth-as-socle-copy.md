@@ -93,7 +93,7 @@ moteur, contrat backend⇄engine intact. Quotas : `ClubQuotaSubscriber` couvre 4
 NR sémantique (groupe `contract`, job `engine-semantics`) :
 `CrossStack/FillPreservesCopiesAndFillsGapsTest` — falsifie que les placements copiés restent
 INTACTS et que les orphelines sont placées, avec un vrai solveur. Détail :
-`backend/docs/backend-inventory.md` §3, `frontend/docs/frontend-spec.md` §6.7 bis.
+`backend/docs/backend-controllers.md` §3, `frontend/docs/frontend-workloop.md` §6.7 bis.
 
 ### La transcription est le défaut sur une fermeture vierge
 

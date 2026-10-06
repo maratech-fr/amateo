@@ -60,6 +60,10 @@ final class ConstraintKeysAreHonouredByEngineTest extends TestCase
      *   `days`   — un gymnase, lundi et mercredi 18:00   → on observe le jour
      *   `hours`  — un gymnase, lundi 18:00 ET lundi 20:00 → on observe l'HEURE (format
      *              rendu par le moteur : `'18:00:00'`/`'20:00:00'`, mesuré — avec secondes)
+     *   `hours-rest` — lundi 17:00 ET mardi 20:00, l'équipe joue le lundi (matchDay=1) →
+     *              le mardi est son jour de repos (bonus implicite `rest`, poids 3), ce qui
+     *              penche le choix spontané vers le TÔT ; on observe l'HEURE. Grille taillée
+     *              pour `minStartTime` souple (voir le yield), le tard étant spontané ailleurs.
      *   `venues` — deux gymnases, lundi 18:00            → on observe le gymnase
      *
      * ⚠ Pourquoi le STATUT pour les règles dures : mesuré le 2026-08-07, sur une
@@ -88,6 +92,16 @@ final class ConstraintKeysAreHonouredByEngineTest extends TestCase
         // choisit spontanément 20:00 (mesuré) ; la préférence « au plus tard 19:00 » doit le faire
         // pencher vers 18:00 — l'AUTRE heure, celle qu'il ne prend pas seul.
         yield 'maxStartTime souple' => ['maxStartTime', 'hours', 'TIME', 'PREFERRED', ['maxStartTime' => '19:00'], '18:00:00'];
+        // SOUPLE (ALIGN-14) : `minStartTime` prouvée AUSSI en PREFERRED. ⚠ Sur une grille d'heures le
+        // solveur place spontanément TARD (mesuré) — or `minStartTime` récompense justement le tard :
+        // un témoin y serait VERT sans rien prouver (le placebo de cellule que ce garde traque). On
+        // penche donc le choix spontané vers le TÔT par un levier d'un cran plus FAIBLE que
+        // `preferred_time` (5) : le bonus implicite de repos (`add_match_day_rest_bonus`, poids 3).
+        // Grille `hours-rest` — lundi 17:00 / mardi 20:00, l'équipe joue le lundi (matchDay=1) donc le
+        // mardi est son jour de repos, ce qui pénalise le créneau de 20:00 : sans règle le solveur
+        // prend 17:00 (mesuré le 2026-10-06, stable sur tous les seeds). La préférence « au plus tôt
+        // 19:00 » (poids 5 > 3) renverse vers 20:00 — l'heure que le solveur ne prend pas seul.
+        yield 'minStartTime souple' => ['minStartTime', 'hours-rest', 'TIME', 'PREFERRED', ['minStartTime' => '19:00'], '20:00:00'];
 
         // ---- DAY : même grille, la règle doit exclure le lundi ---------------
         yield 'forbiddenDays' => ['forbiddenDays', 'only', 'DAY', 'HARD', ['forbiddenDays' => [1]], 'non placée'];
@@ -277,7 +291,7 @@ final class ConstraintKeysAreHonouredByEngineTest extends TestCase
         self::assertCount(1, $slots, 'ces grilles placent EXACTEMENT une séance — sinon l\'observation est ambiguë');
 
         return match ($grid) {
-            'hours' => (string) $slots[0]['startTime'],
+            'hours', 'hours-rest' => (string) $slots[0]['startTime'],
             'days' => (string) $slots[0]['dayOfWeek'],
             default => (string) $slots[0]['venueId'],
         };
@@ -292,7 +306,9 @@ final class ConstraintKeysAreHonouredByEngineTest extends TestCase
      */
     private function payload(string $grid, string $family, string $ruleType, array $config): array
     {
-        $teams = [$this->team(self::TEAM)];
+        // `hours-rest` : l'équipe joue le lundi → son jour de repos (mardi) penche le choix
+        // spontané vers le créneau du lundi (voir le yield `minStartTime souple`).
+        $teams = [$this->team(self::TEAM, 'hours-rest' === $grid ? 1 : null)];
         $coaches = [];
         $constraints = [];
 
@@ -302,6 +318,8 @@ final class ConstraintKeysAreHonouredByEngineTest extends TestCase
             'days' => [$this->venue(self::V1, [[1, '18:00', 1], [3, '18:00', 1]])],
             // Deux heures le MÊME jour, capacité 1 chacune : la préférence horaire départage.
             'hours' => [$this->venue(self::V1, [[1, '18:00', 1], [1, '20:00', 1]])],
+            // Lundi 17:00 (tôt) / mardi 20:00 (tard) : le repos du mardi rend le tôt spontané.
+            'hours-rest' => [$this->venue(self::V1, [[1, '17:00', 1], [2, '20:00', 1]])],
             'venues' => [$this->venue(self::V1, [[1, '18:00', 1]]), $this->venue(self::V2, [[1, '18:00', 1]])],
             // Un SEUL créneau de capacité 2 et deux équipes : sans rabot les deux
             // y tiennent, avec rabot une seule — le nombre placé fait la preuve.
@@ -351,9 +369,14 @@ final class ConstraintKeysAreHonouredByEngineTest extends TestCase
     }
 
     /** @return array<string, mixed> */
-    private function team(string $id): array
+    private function team(string $id, ?int $matchDay = null): array
     {
-        return ['id' => $id, 'name' => strtoupper($id), 'sportCategoryId' => 'cat', 'priorityTierId' => 3, 'sessionsPerWeek' => 1];
+        $team = ['id' => $id, 'name' => strtoupper($id), 'sportCategoryId' => 'cat', 'priorityTierId' => 3, 'sessionsPerWeek' => 1];
+        if (null !== $matchDay) {
+            $team['matchDay'] = $matchDay;
+        }
+
+        return $team;
     }
 
     /**

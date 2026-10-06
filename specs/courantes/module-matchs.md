@@ -126,7 +126,7 @@ vigueur, il n'a rien à comparer.
   rien, le gestionnaire décide. **Cascade suppression** : une équipe ou un gymnase supprimé emporte
   les interdictions TEAM qui le visent (`scopeTargetId`/`venueId`, `CascadePlan::forTeam`/
   `forVenue`), un coach supprimé emporte ses indisponibilités (`CascadePlan::forCoach`), annoncées
-  dans la modale d'impact (§ `deletion-impact`, `backend-inventory.md`) ; une règle CLUB ne porte
+  dans la modale d'impact (§ `deletion-impact`, `backend-controllers.md`) ; une règle CLUB ne porte
   aucun des trois, jamais concernée par ces étapes.
 - **`TeamLink`** (couple symétrique `teamAId < teamBId`, cap `MAX_TEAM_LINKS = 50`) : côté MATCHS
   `TeamLinkType` `NOT_SIMULTANEOUS`/`BACK_TO_BACK` — rail SOFT **placement seul** ; le radar de

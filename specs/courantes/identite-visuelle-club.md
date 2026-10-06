@@ -20,7 +20,7 @@ entre-temps, ex. `demoRetainedUntil`) ✓, `PATCH /api/club/appearance`
 > couleurs lisent uniquement les tokens de thème (`--card`/`--muted`/`--border`/`--muted-foreground`)
 > et l'accent du club via `--accent` — jamais de littéral de couleur, jamais de logo re-fetché.
 > Comportement détaillé (composition de la scène, `prefers-reduced-motion`) :
-> [`frontend-spec.md`](../../frontend/docs/frontend-spec.md) §6.2. `GenerationWaiting` ne prend
+> [`frontend-features.md`](../../frontend/docs/frontend-features.md) §6.2. `GenerationWaiting` ne prend
 > aucune prop `initial`/`logoUrl` — `GenerateStep` n'appelle donc plus `useMe()` ; `PlanningPage`
 > le garde (autres usages : renommage, logo affiché ailleurs sur la page).
 >

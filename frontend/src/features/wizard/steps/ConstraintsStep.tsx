@@ -1019,7 +1019,7 @@ export function ConstraintsStep() {
         // colonnes de contenu court étalées sur 1650 px rejouent le défaut qu'on corrige —
         // les actions se retrouvent à ~700 px du libellé qu'elles concernent. La ligne doit
         // se lire comme UNE unité. (Choix ergonomique : le corpus de design est muet sur la
-        // largeur d'un tableau de données — cf. `frontend-spec.md` §6.9.)
+        // largeur d'un tableau de données — cf. `frontend-features.md` §6.9.)
         <div className="max-w-5xl overflow-x-auto rounded-lg border border-border bg-card">
           <table className="w-full border-collapse text-sm">
             <thead>

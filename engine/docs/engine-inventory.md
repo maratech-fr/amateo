@@ -172,7 +172,7 @@ jeton, l'autre vérifie que deux placements restent sérialisés.
 
 Le verdict F2a (§ci-dessus) porte aussi les **compromis nommés** d'un verdict ACCEPTÉ (contrat
 2.10). Ce qui est propre à l'engine (comportement produit côté backend/front :
-`backend-inventory.md` §route `move`/`place-slot`) :
+`backend-controllers.md` §route `move`/`place-slot`) :
 
 - **Périmètre** : un compromis est le delta de confort d'un déplacement, **jamais** un verdict —
   le booléen `valid` continue de venir SEUL du test de faisabilité HARD (`_apply_hard` sur les N

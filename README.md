@@ -115,7 +115,7 @@ docs/      architecture, testing, glossaire, cartes
 |------|--------|--------------------|
 | `backend/` | [`backend/README.md`](backend/README.md) | [`docs/TENANT.md`](backend/docs/TENANT.md) · [`docs/RLS.md`](backend/docs/RLS.md) · [`scripts/generate-schedule.sh`](backend/scripts/generate-schedule.sh) (guide) · [`AGENTS.md`](backend/AGENTS.md) |
 | `engine/` | [`engine/README.md`](engine/README.md) | [`docs/business.md`](engine/docs/business.md) (cœur métier) · [`docs/nominal-flow.md`](engine/docs/nominal-flow.md) · [`docs/solver-errors.md`](engine/docs/solver-errors.md) · [`AGENTS.md`](engine/AGENTS.md) |
-| `frontend/` | [`frontend/README.md`](frontend/README.md) | [`AGENTS.md`](frontend/AGENTS.md) · [`frontend/docs/`](frontend/docs/) (`frontend-spec.md`, `frontend-wizard.md`, `frontend-components.md`, `frontend-strategy.md`, `constraint-emission.md`) |
+| `frontend/` | [`frontend/README.md`](frontend/README.md) | [`AGENTS.md`](frontend/AGENTS.md) · [`frontend/docs/`](frontend/docs/) (`frontend-spec.md` + `frontend-data.md`/`frontend-api-contract.md`/`frontend-workloop.md`/`frontend-features.md`, `frontend-wizard.md`, `frontend-components.md`, `frontend-strategy.md`, `constraint-emission.md`) |
 
 **Transverse** :
 - **`CLAUDE.md`** — index opérationnel (stack, frontières, conventions) · racine **`AGENTS.md`** y pointe.

@@ -110,7 +110,7 @@ dur : `tests/e2e/a11y-contrast.spec.ts` (inchangé par ce lot).
 - **Scènes** (`GenerationWaiting`, écrans système `SystemScreen`) : elles ne lisent que des
   jetons de thème (`var(--card|muted|border|muted-foreground|accent)`), jamais un littéral — elles
   héritent donc la base chaude sans aucune modification de leur code, cf.
-  [`identite-visuelle-club.md`](identite-visuelle-club.md) et `frontend/docs/frontend-spec.md` §6.8.
+  [`identite-visuelle-club.md`](identite-visuelle-club.md) et `frontend/docs/frontend-features.md` §6.8.
 
 ## Décision 3 — en-tête : la marque PRODUIT d'abord, le club ensuite
 
@@ -163,7 +163,7 @@ fixe — l'icône produit ne s'efface jamais devant celle d'un club.
   (`shared/lib/product.ts`) porté par un écran système — décisions fermées (logo FIXE, le
   logotype EST le lien, jamais un 3ᵉ geste séparé) : `etat-des-lieux.md` §2.
   `features/planning/GenerationServiceDown.tsx` reste hors de ce lot (ne passe pas par
-  `SystemScreen`, cf. `frontend/docs/frontend-spec.md` §6.8).
+  `SystemScreen`, cf. `frontend/docs/frontend-features.md` §6.8).
 
 ## Le fond d'écran
 
@@ -248,7 +248,7 @@ FIGÉ**.
   le fond d'écran ci-dessus : zéro import cross-zone entre `backend/` et `frontend/`,
   `CLAUDE.md` §2). **Décision fermée** : le mark va en PIED, jamais en en-tête, et reste en couleur
   (pas de variante grayscale distincte) — `etat-des-lieux.md` §2. Détail de la chaîne worker
-  (marge basse, `footerOptions`) : `backend/docs/backend-inventory.md` § « Export PDF / Excel ».
+  (marge basse, `footerOptions`) : `backend/docs/backend-controllers.md` § « Export PDF / Excel ».
 - **E-mails — posé (P5-24 PR-2, 2026-09-29)** : `App\EventListener\EmailSignatureListener`
   (branché sur le `MessageEvent` de `symfony/mailer`) pose la signature de marque sur TOUS les
   e-mails automatiques dont le corps HTML est encore nul — envois club ET superadmin, un seul

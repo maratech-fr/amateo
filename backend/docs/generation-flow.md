@@ -377,7 +377,7 @@ du club (§6.1) — sans lui, l'événement ne dirait pas de quel planning il pa
 Le frontend maintient la connexion `EventSource` unique décrite en §6.1 et retombe sur le polling
 react-query si le flux se coupe — comportement propre à la zone frontend, détaillé (clés
 react-query invalidées, repli, diagnostic observable) dans
-[`frontend/docs/frontend-spec.md`](../../frontend/docs/frontend-spec.md) §5 « Suivi temps réel de
+[`frontend/docs/frontend-data.md`](../../frontend/docs/frontend-data.md) §5 « Suivi temps réel de
 la génération ».
 
 ---

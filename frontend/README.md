@@ -56,7 +56,7 @@ make e2e               # Playwright entièrement dockerisé — exige stack + `m
 | [`docs/constraint-emission.md`](docs/constraint-emission.md) | Ce que le wizard émet réellement + alignement 3 couches (frontend → backend → engine). |
 | [`specs/courantes/superadmin-auth.md`](../specs/courantes/superadmin-auth.md) · [`types-de-planning.md`](../specs/courantes/types-de-planning.md) | Console superadmin (`/admin`) · doléances coachs (#10, dont `/doleances/{token}`). |
 | [`docs/frontend-wizard.md`](docs/frontend-wizard.md) | Flux réel du wizard (6 étapes) + principes (save par entité, modes, reprise). |
-| [`docs/frontend-spec.md`](docs/frontend-spec.md) · [`frontend-strategy.md`](docs/frontend-strategy.md) | Architecture (routes, state), stack figée, anti-patterns, mandat TDD. |
+| [`docs/frontend-spec.md`](docs/frontend-spec.md) (+ `frontend-data.md`/`frontend-api-contract.md`/`frontend-workloop.md`/`frontend-features.md`, éclaté par thème DOC-59) · [`frontend-strategy.md`](docs/frontend-strategy.md) | Architecture (shell : stack, routes, conventions ; état & données ; contrat API ; work-loop ; surface fonctionnelle), anti-patterns, mandat TDD. |
 | [`docs/frontend-components.md`](docs/frontend-components.md) | Conventions API, Layout et primitives UI partagées — maison unique. |
 
 ## Stack

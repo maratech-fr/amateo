@@ -347,7 +347,8 @@ final class ValidateScheduleTest extends WebTestCase
     public function testAPeriodAlreadyUnderWaySurvivesTheSeasonChange(): void
     {
         // « Rien du passé, rien de ce qui est en cours » (décision fondateur 2026-07-16,
-        // specs/evolution/reprise-perimetre-engage.md §4) : le pivot est la date de DÉBUT,
+        // docs/architecture/adr-0002-pattern-plan.md, décision fermée etat-des-lieux.md §2) :
+        // le pivot est la date de DÉBUT,
         // pas celle de fin. Une période COMMENCÉE mais pas finie est déjà annoncée aux
         // coachs et à moitié jouée — la détruire au milieu coûterait plus que de la
         // laisser finir sur l'ancien socle. Le cas se produit dès qu'on ajuste la saison
