@@ -14,6 +14,12 @@
 Exclus par décision (2026-07-18) : WAL/PITR, réplication, HA — RPO = la journée d'activité en
 cours, suffisant pré-commercialisation.
 
+⚠ **La base `umami`** (mesure d'audience de la vitrine, P4-276) est **hors des dumps `pg_dump`** :
+`app:db:backup` ne dumpe que `POSTGRES_DB` (= `amateo`, `DatabaseBackupCommand`). Elle n'est
+couverte que par la couche **snapshots disque** ci-dessus — **perte acceptée** par décision
+(2026-10-06) : des statistiques d'audience se reconstituent, elles ne valent pas une 2ᵉ cible de
+sauvegarde. Elle vit dans le même cluster postgres (volume `postgres_data`).
+
 ## 2. Les dumps
 
 - **Cadence** : tick nocturne (01:00) qui **skippe sans activité** — zéro club = zéro dump,

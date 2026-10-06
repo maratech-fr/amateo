@@ -99,6 +99,18 @@ export function PrivacyPage() {
         </p>
       </Section>
 
+      <Section title="8. Mesure d'audience (vitrine)">
+        <p>
+          Notre page de vente publique (la vitrine <strong>{PRODUCT_NAME}</strong>, hors application) utilise{" "}
+          <strong>Umami</strong>, une solution de mesure d'audience auto-hébergée sur notre serveur en France.
+          Elle produit des statistiques <strong>anonymes</strong> (pages vues, provenance des visites) pour
+          améliorer la page, <strong>sans cookie</strong> et sans aucun suivi entre différents sites. L'adresse IP
+          ne sert qu'à un décompte agrégé côté serveur, sans être conservée de façon identifiante ; aucune donnée
+          n'est transmise à des tiers. Base légale : intérêt légitime. L'application elle-même n'est pas concernée
+          par cette mesure.
+        </p>
+      </Section>
+
       <p className="pt-4 text-sm">
         <Link className="text-accent hover:underline" to="/">← Retour à l'application</Link>
       </p>

@@ -42,11 +42,38 @@ stage prod red le job même si aucun build dev ne l'utilise.
 
 ## Sécurité réseau
 
-- **Un seul port publié** : `frontend` sur `127.0.0.1:${FRONTEND_PORT}` — le
-  reverse-proxy TLS de l'hôte (Caddy) est la vraie porte d'entrée.
+- **Deux ports publiés, tous deux sur localhost** — Caddy (TLS, hôte) reste la
+  seule porte d'entrée : `frontend` sur `127.0.0.1:${FRONTEND_PORT}` (l'app) et,
+  depuis P4-276, `umami` sur `127.0.0.1:${UMAMI_PORT}` (le tableau de bord
+  d'audience de la vitrine, derrière `stats.amateo.app`). Aucun n'écoute sur
+  l'IP publique.
 - postgres, redis, engine, mercure, nginx : réseau interne uniquement.
 - Mercure : `cors_origins` = `PUBLIC_BASE_URL` seul ; le navigateur passe par le
   proxy frontend (`/.well-known/mercure`).
+
+## Mesure d'audience de la vitrine (Umami — P4-276)
+
+Service `umami` (image `ghcr.io/umami-software/umami`, **v2 épinglée tag + digest**,
+patron Mercure) : il mesure l'audience de la **page de vente** (`landing/`) seule, pas
+l'application. Le navigateur d'un visiteur de `amateo.app` charge un script sans cookie (injecté
+par `landing/config.js`, double garde clés + hostname) ; le fondateur lit les chiffres sur
+`https://stats.amateo.app`, derrière le login Umami.
+
+- **Base `umami` SÉPARÉE** dans le postgres existant, rôle dédié `umami` propriétaire de SA base
+  seule — **aucun GRANT sur `amateo`**, ne traverse jamais la RLS (posée table par table DANS
+  `amateo`). `amateo_app`/`amateo_read` ne la voient pas. Création : runbook fondateur manuel sur
+  le cluster prod déjà initialisé (`deploy.md` § Umami) ; `docker/postgres/init/04-umami.sh` ne
+  sert qu'un futur cluster vierge (skip si `UMAMI_DB_PASSWORD` absent).
+- **HORS des sauvegardes applicatives** : `app:db:backup` ne dumpe que `POSTGRES_DB=amateo`
+  (`DatabaseBackupCommand`) — la base `umami` n'est couverte que par les **snapshots disque** de
+  la VM (couche 1 de `backup-restore.md`), perte acceptée (des stats d'audience se reconstituent).
+  Ses données vivent dans le volume `postgres_data` comme le reste du cluster.
+- **Aucun service applicatif ne `depends_on` umami** : un Umami en échec (base absente, secret
+  manquant) n'affecte jamais l'app. Les variables du service portent `:?` → un deploy sans les
+  secrets Umami est refusé au `compose config`, avant toute mutation de la VM.
+- **Dependabot** suit cette image via l'écosystème `docker-compose` (`.github/dependabot.yml`,
+  ajouté avec Umami) — semver-major ignoré (on reste en v2). Ce même scan couvre désormais aussi
+  les autres pins compose (`dunglas/mercure`, `redis:7-alpine`).
 
 ## Accès opérateur à la base — jamais un port ouvert
 

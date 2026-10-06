@@ -156,6 +156,18 @@ app.amateo.app {
 	}
 }
 
+stats.amateo.app {
+	# Statistiques d'audience de la VITRINE (Umami auto-hébergé, P4-276). Le
+	# conteneur `umami` ne publie que sur localhost (`127.0.0.1:${UMAMI_PORT}`,
+	# 8082 par défaut dans .env.prod) — comme l'app, Caddy est la seule porte
+	# d'entrée. La protection du tableau de bord est le LOGIN Umami lui-même
+	# (pas de basic_auth ici ; ajout une-ligne possible plus tard si souhaité).
+	# Avant que le DNS `stats` propage et que le conteneur tourne, ce bloc rend
+	# 502 — sans effet sur les deux sites ci-dessus.
+	reverse_proxy 127.0.0.1:8082
+	encode gzip zstd
+}
+
 # ── NOTE sur /config.js ───────────────────────────────────────────────────────
 # Les pages 503/maintenance font `<script src="/config.js">`. Sur une app VIVANTE,
 # cette requête part au reverse_proxy comme n'importe quelle autre — sans

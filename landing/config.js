@@ -50,4 +50,19 @@ window.LANDING_CONFIG = {
       phone: "+33 1 84 13 00 00",
     },
   },
+  // Mesure d'audience de la vitrine (Umami auto-hébergé, sans cookie — P4-276).
+  // VIDE dans cette PR : le script n'est PAS injecté tant que les deux clés sont
+  // vides (l'instance Umami de prod n'existe pas encore, le `websiteId` non plus).
+  // PR de suivi (une fois le site créé dans l'UI Umami) :
+  //   scriptUrl: "https://stats.amateo.app/script.js"
+  //   websiteId: "<uuid fourni par l'UI Umami>"
+  // → remplir ces deux-là ET bumper le `?v=` de config.js dans les DEUX pages.
+  // Double garde à l'injection (index.html / mentions-legales.html) : les deux
+  // clés non vides ET le hostname courant = l'hôte de `siteUrl` — rien ne part
+  // en local/:5173 ni sur un autre domaine. Le `websiteId` n'est PAS un secret
+  // (il est visible dans toute page trackée), sa place en git est correcte.
+  analytics: {
+    scriptUrl: "",
+    websiteId: "",
+  },
 };

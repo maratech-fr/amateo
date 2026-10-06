@@ -360,6 +360,71 @@ docker compose exec php-fpm sh -c 'DATABASE_URL="$DATABASE_ADMIN_URL" php bin/co
 
 ---
 
+### 1.11 Umami — mesure d'audience de la vitrine (P4-276)
+
+Umami mesure l'audience de la **page de vente** (`landing/`) SEULE — pas l'application. Service
+`umami` dans `docker-compose.prod.yml`, sous-domaine `stats.amateo.app` servi par Caddy, base
+`umami` **séparée** dans le postgres existant (**hors sauvegardes applicatives**, couverte par les
+seuls snapshots disque — [`backup-restore.md`](backup-restore.md)). Détail de la stack :
+[`prod-stack.md`](prod-stack.md) § Mesure d'audience.
+
+⚠ **ORDRE OBLIGATOIRE** — ne JAMAIS taguer un deploy avant d'avoir fait **F1 ET F2** : le service
+porte `:?` sur ses trois variables, un deploy sans elles est **refusé au `compose config`**
+(fail-closed, avant toute mutation de la VM) ; et sans la base, le conteneur partirait en boucle
+d'échec — sans jamais toucher l'app (aucun service ne `depends_on` umami).
+
+⬜ **F1 — créer la base et le rôle** (une seule fois, sur la VM). Le cluster prod est déjà
+initialisé, donc `docker/postgres/init/04-umami.sh` ne rejouera pas : on le fait à la main.
+Générer d'abord le mot de passe et le coller dans la copie de référence `.env.prod`
+(`UMAMI_DB_PASSWORD`) — jamais dans l'historique shell, le relire depuis le fichier :
+
+```bash
+ssh <hôte>
+cd /srv/amateo
+# psql en superuser bootstrap du cluster (POSTGRES_USER = amateo_owner) :
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec postgres psql -U "$POSTGRES_USER" -d postgres
+```
+
+```sql
+-- dans psql, en collant le mot de passe choisi (IDENTIQUE à UMAMI_DB_PASSWORD de .env.prod) :
+CREATE ROLE umami WITH LOGIN PASSWORD '<UMAMI_DB_PASSWORD>' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+CREATE DATABASE umami OWNER umami;
+REVOKE CONNECT ON DATABASE umami FROM PUBLIC;
+\l    -- la base `umami` doit apparaître
+\q
+```
+
+Vérifs : `\l` montre `umami` ; côté `umami`, une connexion à SA base passe et à `amateo` échoue
+(le rôle n'a aucun accès à la base applicative). Si `CREATE ROLE` est refusé (owner non-superuser
+et sans CREATEROLE sur l'hébergeur) : **STOP**, remonter — le runbook serait à revoir.
+
+⬜ **F2 — secrets** : remplir les **trois** variables dans la copie de référence `.env.prod`
+(`UMAMI_PORT`, `UMAMI_DB_PASSWORD` identique à F1, `UMAMI_APP_SECRET` = `openssl rand -hex 32`),
+puis `gh secret set ENV_PROD < .env.prod` (§ Secret `ENV_PROD`).
+
+⬜ **F3 — DNS** : enregistrement A `stats.amateo.app` → IP de la VM.
+
+⬜ **F4 — déployer** : taguer / `make deploy` quand tu veux (§ Partie 2). `umami` démarre, crée son
+schéma au premier boot, passe `healthy`. L'app n'est pas touchée.
+
+⬜ **F5 — Caddy** : ajouter le 4ᵉ bloc `stats.amateo.app` du modèle
+([`Caddyfile.example`](Caddyfile.example)) à `/etc/caddy/Caddyfile`, puis
+`sudo systemctl reload caddy`. (Peut précéder F4 : un proxy vers un port fermé rend juste 502 sur
+`stats.`, sans effet ailleurs.)
+
+⬜ **F6 — UI Umami** : ouvrir `https://stats.amateo.app` → login par défaut `admin` / `umami` →
+🔴 **CHANGER LE MOT DE PASSE IMMÉDIATEMENT** → créer le site « amateo.app » → copier le
+`websiteId`. Reporter l'URL, l'identifiant admin et où vit le mot de passe dans la fiche
+d'instance `business/3-runbooks/` (**hors dépôt**, aucun secret ni URL d'admin en git).
+
+⬜ **F7 — brancher le script** : ouvrir une **PR** qui remplit `analytics.scriptUrl` +
+`analytics.websiteId` dans `landing/config.js` (et bumpe le `?v=` des DEUX pages). **Jamais une
+édition directe sur la VM** : le deploy réécrit `landing/` à chaque passage, elle serait écrasée.
+Un `websiteId` est public (visible dans toute page trackée) — sa place en git est correcte.
+Prochain deploy → premiers hits dans le dashboard.
+
+---
+
 ## Partie 2 — Au quotidien
 
 ### Déployer une release
@@ -498,6 +563,10 @@ Modèle à deux fichiers (racine du repo) + un secret :
 - Le secret se renseigne avec le contenu **intégral** du `.env.prod` collé tel
   quel, ou `gh secret set ENV_PROD < .env.prod`. GitHub masque les `secrets.*`
   ligne à ligne dans les logs ; le deploy n'affiche jamais le contenu.
+- **Umami (P4-276)** ajoute trois variables à `.env.prod` (donc au secret) :
+  `UMAMI_PORT`, `UMAMI_DB_PASSWORD`, `UMAMI_APP_SECRET`. Elles sont **requises** par
+  le service `umami` (`:?` dans le compose) — un deploy sans elles est refusé au
+  `compose config`. Procédure complète : §1.11.
 - **Au deploy** : le step écrit `ENV_PROD` sur le runner (`umask 077`), le pousse
   sur la VM (chmod 600) avant `remote-deploy.sh`. Secret **vide ou absent** →
   **deploy avorté avant toute mutation de la VM** (message : créer le secret).

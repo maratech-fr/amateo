@@ -104,10 +104,26 @@ paths:
   contrastes qui « paraissaient » bons).
 - **Mentions légales livrées (P4-275, 2026-09-29)** : `landing/mentions-legales.html` (LCEN
   art. 6-III — éditeur, responsable de publication, hébergeur Scaleway ; renvoie vers la politique
-  de confidentialité de l'app pour le volet RGPD). **Aucune donnée personnelle collectée sur cette
-  page** — la démo passe par un `mailto:` (client de messagerie du visiteur, rien n'est posté côté
-  serveur) : un futur formulaire de contact POSTÉ déclencherait, lui, l'obligation RGPD complète —
-  `business/administratif-mise-en-prod.md` §9.
+  de confidentialité de l'app pour le volet RGPD). **Aucun FORMULAIRE n'est posté sur cette page** —
+  la démo passe par un `mailto:` (client de messagerie du visiteur, rien n'est posté côté serveur) :
+  un futur formulaire de contact POSTÉ déclencherait, lui, l'obligation RGPD complète —
+  `business/administratif-mise-en-prod.md` §9. ⚠ **Nuance depuis P4-276 (mesure d'audience)** : la
+  page n'est plus « zéro donnée » au sens strict — Umami mesure l'audience **sans cookie** (IP
+  hachée côté serveur, agrégats anonymes), donc **pas de bandeau de consentement** mais une
+  **transparence écrite obligatoire** : paragraphe « Mesure d'audience » de `mentions-legales.html`,
+  section de `PrivacyPage.tsx` (app), registre `docs/security/rgpd.md` §2.
+- **Mesure d'audience — clé `analytics` de `config.js` (P4-276, 2026-10-06)** : `analytics:
+  { scriptUrl, websiteId }`, point unique comme le reste de `config.js`. Le script Umami n'est
+  injecté (dans `index.html` ET `mentions-legales.html`, scripts dupliqués VOLONTAIREMENT) que sous
+  **double garde** : (a) les deux clés non vides ; (b) `location.hostname` égal à l'hôte dérivé de
+  `siteUrl` (`new URL(siteUrl).hostname`, aucun nouveau littéral de domaine) — en local, sur :5173
+  ou sur un autre domaine, **rien n'est injecté, aucune requête ne part**. Tout est défensif
+  (try/catch, ancien cache sans la clé → page intacte). Le `websiteId` n'est **pas un secret** (il
+  est visible dans toute page trackée) : sa place en git est correcte. Renseigner/retirer ces clés
+  = **bumper le `?v=` de `config.js` dans les DEUX pages** (règle du point unique ci-dessus).
+  L'instance Umami vit dans la stack prod (`docker-compose.prod.yml`, `docs/ops/prod-stack.md` §
+  Mesure d'audience, runbook `deploy.md` §1.11). **Vitrine seulement** — jamais l'app (volet « app »
+  de P4-276 encore ouvert en roadmap).
 - **Aucun job CI ne couvre `landing/`** (`.github/workflows/ci.yml` ne la mentionne nulle part) —
   la seule preuve d'une passe (design, contraste, rendu) est un axe joué **à la main** dans un
   vrai navigateur, captures à l'appui dans `captures/` (racine du dépôt, gitignoré).

@@ -137,6 +137,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
       # Consumed once by the 02-users.sh init script (first cluster init only).
       APP_USER_PASSWORD: ${APP_USER_PASSWORD:?}
+      # Consumed once by 04-umami.sh on a FRESH cluster ONLY (the current prod
+      # cluster is already initialised → that script never replays; the umami
+      # DB/role are created by the founder runbook, docs/ops/deploy.md § Umami).
+      # `:-` (NOT `:?`): a cluster deployed WITHOUT Umami must still boot.
+      UMAMI_DB_PASSWORD: ${UMAMI_DB_PASSWORD:-}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -346,6 +351,50 @@ services:
       start_period: 20s
     # Le hub porte désormais un 3ᵉ topic par club (placement async) en plus de la
     # génération et des trajets : marge au-dessus du plancher d'origine.
+    mem_limit: 512m
+    restart: unless-stopped
+    <<: *logging
+    networks:
+      - amateo_network
+
+  # Audience analytics for the PUBLIC sales page (landing/) only — self-hosted,
+  # cookie-less (no consent banner). Pinned tag + digest, same immutability
+  # contract as mercure above; Dependabot bumps it but STAYS on v2 (semver-major
+  # ignored, .github/dependabot.yml). Last v2 stable at pin time: v2.20.2.
+  # ⚠ NO app service depends_on umami: a crashed Umami (DB absent, bad secret)
+  # NEVER affects the app. Its database `umami` is a SEPARATE db in the existing
+  # postgres cluster (role `umami`, no grant on `amateo`, never crosses the RLS)
+  # and is OUT of the application backups — disk snapshots only
+  # (docs/ops/backup-restore.md). Create the db + expose stats.amateo.app:
+  # founder runbook docs/ops/deploy.md § Umami.
+  umami:
+    image: ghcr.io/umami-software/umami:postgresql-v2.20.2@sha256:0138ba7f0c0a3435e7eb030a303582eeb6825f79f6d066077a4bc970ce196606
+    container_name: amateo-umami
+    environment:
+      DATABASE_TYPE: postgresql
+      # Dedicated role/db in the SAME cluster. `:?` → a deploy without the
+      # secret fails at `compose config` (fail-closed) rather than booting
+      # half-configured. Password REPEATED by hand (no ${} self-reference — see
+      # the interpolation warning in .env.prod.dist).
+      DATABASE_URL: "postgresql://umami:${UMAMI_DB_PASSWORD:?set UMAMI_DB_PASSWORD in .env.prod}@postgres:5432/umami"
+      APP_SECRET: ${UMAMI_APP_SECRET:?set UMAMI_APP_SECRET in .env.prod}
+      DISABLE_TELEMETRY: "1"
+    # 2nd (and last) published port of the stack — localhost only, the host
+    # Caddy proxies stats.amateo.app to it. Umami listens on 3000.
+    ports:
+      - "127.0.0.1:${UMAMI_PORT:-8082}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # BusyBox wget ships in the image (node 22 too) — same pattern as
+      # frontend/nginx. Umami serves its schema migrations at first boot, hence
+      # the longer start_period.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/heartbeat >/dev/null"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
     mem_limit: 512m
     restart: unless-stopped
     <<: *logging
