@@ -102,7 +102,7 @@
         }
     },
     "require-dev": {
-        "behat/behat": "^3.33",
+        "behat/behat": "^4.0",
         "dama/doctrine-test-bundle": "^8.6",
         "friendsofphp/php-cs-fixer": "^3.95.24",
         "icanhazstring/composer-unused": "^0.9.6",
