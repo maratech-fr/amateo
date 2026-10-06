@@ -661,11 +661,27 @@ async function ensureNonEmptyWeek(page) {
  */
 async function removeCalendarBanners(page) {
   await page.evaluate(() => {
-    const NEEDLES = ["Depuis votre dernière visite", "à traiter (ni heure ni gymnase"];
-    for (const p of Array.from(document.querySelectorAll("p"))) {
-      if (NEEDLES.some((n) => (p.textContent ?? "").includes(n))) {
-        const banner = p.closest("div.rounded-md.border") ?? p.parentElement;
-        banner?.remove();
+    // Le « gardien » (ModuleVisitBanner, « Depuis votre dernière visite… ») et TOUTES les variantes
+    // du rattrapage ligue (LeagueValidationBanner : « … restent à traiter », « … sont prêtes — à
+    // confirmer validé ligue », « … sans échéance ») : toutes portent « championnat ». L'appariement
+    // des salles (`pairVenueLabels`) peut faire basculer la variante « à traiter » (ni heure ni
+    // gymnase) vers « prêtes » — d'où un ciblage par la BOÎTE `NoticeBanner` (`rounded-md border`) et
+    // son TEXTE, robuste quel que soit le balisage interne (<p> OU <span>, selon la variante).
+    const NEEDLES = ["Depuis votre dernière visite", "championnat"];
+    const parents = new Set();
+    for (const box of Array.from(document.querySelectorAll("div.rounded-md.border"))) {
+      if (NEEDLES.some((n) => (box.textContent ?? "").includes(n))) {
+        if (null !== box.parentElement) {
+          parents.add(box.parentElement);
+        }
+        box.remove();
+      }
+    }
+    // L'enveloppe ligue (`flex flex-col gap-2`) devenue vide → retirée pour ne pas laisser d'espace
+    // mort au-dessus de la grille (le conteneur du « gardien » est la racine de page, jamais vidé).
+    for (const parent of parents) {
+      if (parent.isConnected && "" === (parent.textContent ?? "").trim() && 0 === parent.querySelectorAll("button, a, svg, img, input").length) {
+        parent.remove();
       }
     }
   });
