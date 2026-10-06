@@ -98,7 +98,8 @@ class CoachWishStateProcessor extends AbstractStateProcessor
         $unavailableDays = array_map('intval', $input->unavailableDays);
         $wishedDays = array_map('intval', $input->wishedDays);
         // Un jour ne peut pas être à la fois souhaité ET indisponible (P4-312). `refuse()` porte
-        // le motif dans le 422 — jamais `new ValidationException('chaîne')` (422 muet).
+        // le motif dans le 422 — jamais l'exception de validation construite avec une chaîne
+        // (422 muet) — voir AbstractStateProcessor::refuse.
         if ([] !== array_intersect($wishedDays, $unavailableDays)) {
             $this->refuse('Un jour ne peut pas être à la fois souhaité et indisponible.');
         }
