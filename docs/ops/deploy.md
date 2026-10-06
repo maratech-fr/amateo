@@ -381,22 +381,37 @@ Générer d'abord le mot de passe et le coller dans la copie de référence `.en
 ```bash
 ssh <hôte>
 cd /srv/amateo
-# psql en superuser bootstrap du cluster (POSTGRES_USER = amateo_owner) :
-docker compose -f docker-compose.prod.yml --env-file .env.prod exec postgres psql -U "$POSTGRES_USER" -d postgres
+# psql en superuser bootstrap du cluster (POSTGRES_USER = amateo_owner). `$POSTGRES_USER` doit
+# être développé par le shell DU CONTENEUR (où il est défini), pas par celui de l'hôte → `sh -c` :
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec postgres sh -c 'psql -U "$POSTGRES_USER" -d postgres'
 ```
 
 ```sql
--- dans psql, en collant le mot de passe choisi (IDENTIQUE à UMAMI_DB_PASSWORD de .env.prod) :
-CREATE ROLE umami WITH LOGIN PASSWORD '<UMAMI_DB_PASSWORD>' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+-- dans psql. Le mot de passe NE se tape PAS dans CREATE ROLE (il finirait dans le .psql_history
+-- du conteneur) : rôle d'abord, mot de passe ensuite via \password (saisie masquée).
+CREATE ROLE umami LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE;
+\password umami   -- saisie MASQUÉE : coller la valeur de UMAMI_DB_PASSWORD du .env.prod
 CREATE DATABASE umami OWNER umami;
 REVOKE CONNECT ON DATABASE umami FROM PUBLIC;
 \l    -- la base `umami` doit apparaître
 \q
 ```
 
-Vérifs : `\l` montre `umami` ; côté `umami`, une connexion à SA base passe et à `amateo` échoue
-(le rôle n'a aucun accès à la base applicative). Si `CREATE ROLE` est refusé (owner non-superuser
-et sans CREATEROLE sur l'hébergeur) : **STOP**, remonter — le runbook serait à revoir.
+Vérif d'isolation — le rôle `umami` PEUT se connecter à `amateo` (`CONNECT` n'est PAS révoqué de
+`PUBLIC` sur `amateo`), mais n'y a **aucun droit de lecture** : aucune table applicative ne lui est
+accessible. Le prouver (résultat attendu : `permission denied`) :
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec postgres \
+  psql -U umami -d amateo -c 'select count(*) from club'
+# → ERROR:  permission denied for table club   (attendu ; si un mot de passe est demandé,
+#   coller UMAMI_DB_PASSWORD). Un SELECT qui PASSE = STOP, l'isolation est cassée.
+```
+
+`\l` doit montrer `umami`. Durcissement possible (à décider — non appliqué ici) :
+`REVOKE CONNECT, TEMP ON DATABASE amateo FROM PUBLIC;` fermerait aussi la connexion elle-même.
+Si `CREATE ROLE` est refusé (owner non-superuser et sans CREATEROLE sur l'hébergeur) : **STOP**,
+remonter — le runbook serait à revoir.
 
 ⬜ **F2 — secrets** : remplir les **trois** variables dans la copie de référence `.env.prod`
 (`UMAMI_PORT`, `UMAMI_DB_PASSWORD` identique à F1, `UMAMI_APP_SECRET` = `openssl rand -hex 32`),
@@ -407,15 +422,28 @@ puis `gh secret set ENV_PROD < .env.prod` (§ Secret `ENV_PROD`).
 ⬜ **F4 — déployer** : taguer / `make deploy` quand tu veux (§ Partie 2). `umami` démarre, crée son
 schéma au premier boot, passe `healthy`. L'app n'est pas touchée.
 
-⬜ **F5 — Caddy** : ajouter le 4ᵉ bloc `stats.amateo.app` du modèle
-([`Caddyfile.example`](Caddyfile.example)) à `/etc/caddy/Caddyfile`, puis
-`sudo systemctl reload caddy`. (Peut précéder F4 : un proxy vers un port fermé rend juste 502 sur
-`stats.`, sans effet ailleurs.)
+⬜ **F5 — UI Umami par tunnel SSH, AVANT toute exposition publique** : tant que le mot de passe
+par défaut `admin`/`umami` est en place, Umami ne doit JAMAIS être joignable depuis Internet. Le
+conteneur n'écoute que sur `127.0.0.1:8082` de la VM — on l'atteint par un tunnel SSH, sans passer
+par Caddy :
 
-⬜ **F6 — UI Umami** : ouvrir `https://stats.amateo.app` → login par défaut `admin` / `umami` →
+```bash
+ssh -L 8082:127.0.0.1:8082 <hôte>    # laisser ouvert le temps de F5
+```
+
+puis, dans le navigateur local, `http://localhost:8082` → login par défaut `admin` / `umami` →
 🔴 **CHANGER LE MOT DE PASSE IMMÉDIATEMENT** → créer le site « amateo.app » → copier le
 `websiteId`. Reporter l'URL, l'identifiant admin et où vit le mot de passe dans la fiche
-d'instance `business/3-runbooks/` (**hors dépôt**, aucun secret ni URL d'admin en git).
+d'instance `business/3-runbooks/` (**hors dépôt**, aucun secret ni URL d'admin en git). Fermer le
+tunnel. Le mot de passe par défaut est ainsi changé **avant** que `stats.` n'existe publiquement.
+
+⬜ **F6 — Caddy (exposition publique)** : SEULEMENT une fois F5 fait. Ajouter le 4ᵉ bloc
+`stats.amateo.app` du modèle ([`Caddyfile.example`](Caddyfile.example)) à `/etc/caddy/Caddyfile`,
+puis `sudo systemctl reload caddy`. ⚠ Caddy demande aussitôt un certificat → le nom
+`stats.amateo.app` paraît dans les journaux publics Certificate Transparency → des scanners le
+découvrent en minutes. C'est pourquoi ce bloc ne vient **jamais avant F5** : l'ajouter plus tôt
+ouvrirait une fenêtre où l'UI est exposée avec son mot de passe par défaut. (Avant que le DNS
+propage / le conteneur tourne, le bloc rend juste 502 sur `stats.`, sans effet ailleurs.)
 
 ⬜ **F7 — brancher le script** : ouvrir une **PR** qui remplit `analytics.scriptUrl` +
 `analytics.websiteId` dans `landing/config.js` (et bumpe le `?v=` des DEUX pages). **Jamais une

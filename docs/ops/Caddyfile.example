@@ -162,6 +162,11 @@ stats.amateo.app {
 	# 8082 par défaut dans .env.prod) — comme l'app, Caddy est la seule porte
 	# d'entrée. La protection du tableau de bord est le LOGIN Umami lui-même
 	# (pas de basic_auth ici ; ajout une-ligne possible plus tard si souhaité).
+	# ⚠ ORDRE — n'ajouter ce bloc QU'APRÈS avoir changé le mot de passe admin par
+	# défaut d'Umami (deploy.md §1.11, F5 par tunnel SSH). Un reload ici fait
+	# demander un certificat à Caddy : le nom `stats.amateo.app` part alors dans
+	# les journaux Certificate Transparency (publics) et les scanners le trouvent
+	# en minutes — l'activer avant F5 exposerait l'UI avec `admin`/`umami`.
 	# Avant que le DNS `stats` propage et que le conteneur tourne, ce bloc rend
 	# 502 — sans effet sur les deux sites ci-dessus.
 	reverse_proxy 127.0.0.1:8082
