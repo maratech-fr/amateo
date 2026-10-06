@@ -42,8 +42,7 @@ final class RoadmapCarriesNoHistoryTest extends TestCase
      * @var array<string, string> motif PCRE => ce qu'il désigne
      */
     private const array HISTORY_MARKERS = [
-        '/\b(livr[ée]e?s?|sold[ée]e?s?|clos|clôtur[ée]e?s?|ferm[ée]e?s?|archiv[ée]e?s?)\b[^.\n|]{0,40}\b20\d\d-\d\d-\d\d/iu'
-            => 'un marqueur de clôture (livré/soldé/clos/fermé/archivé) daté',
+        '/\b(livr[ée]e?s?|sold[ée]e?s?|clos|clôtur[ée]e?s?|ferm[ée]e?s?|archiv[ée]e?s?)\b[^.\n|]{0,40}\b20\d\d-\d\d-\d\d/iu' => 'un marqueur de clôture (livré/soldé/clos/fermé/archivé) daté',
         '/a quitté la roadmap/iu' => '« a quitté la roadmap » (récit de MOVE, déjà gardé par ailleurs)',
         '/décidé(e)? ce jour-là/iu' => '« décidé ce jour-là » (chronologie de décision)',
         '/mémoire longue/iu' => '« mémoire longue » (renvoi narratif à une édition d\'audit)',
@@ -79,7 +78,7 @@ final class RoadmapCarriesNoHistoryTest extends TestCase
         }
 
         self::assertSame([], $offenders, \sprintf(
-            "Ces lignes ouvrent une table de journal datée — la roadmap n'en tient pas, "
+            'Ces lignes ouvrent une table de journal datée — la roadmap n\'en tient pas, '
             . "etat-des-lieux.md §3 est le journal :\n  - %s",
             implode("\n  - ", $offenders),
         ));
