@@ -281,7 +281,7 @@ score du solveur ne s'affiche nulle part** (décision fermée, `etat-des-lieux.m
   compléter le modèle (coach déclaré tard, équipe, gymnase) pendant que le planning de saison
   reste en vigueur. Contraintes et Génération y restent verrouillées, et la grille des créneaux
   d'entraînement passe en lecture seule — les créneaux et les contraintes sont ce qui reste
-  derrière « Rouvrir ». Détail mécanique : `frontend/docs/frontend-spec.md` §6.6bis.
+  derrière « Rouvrir ». Détail mécanique : `frontend/docs/frontend-features.md` §6.6bis.
 
 **Calendrier** = **la couche des événements / exceptions**, **PAS la semaine type** (elle est la
 base, accessible derrière le bandeau — inutile de la redessiner). Il montre **uniquement ce qui

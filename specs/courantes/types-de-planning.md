@@ -98,7 +98,7 @@ début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
   passent plus nommées « à replacer ». **Écran** : un bouton « Partir du planning de
   saison » propose la transcription à côté du bouton de génération tant que le plan est vierge
   (`GenerateStep`) ; l'écran embarqué affiche ensuite le panneau « à replacer » et une modale de
-  comparaison avec le socle — détail : `frontend/docs/frontend-spec.md` §6.7 bis. **Sur une
+  comparaison avec le socle — détail : `frontend/docs/frontend-workloop.md` §6.7 bis. **Sur une
   fermeture, la transcription est le DÉFAUT** : elle se déclenche automatiquement à l'arrivée sur
   l'étape, sans clic — le bouton manuel reste le geste de repli. **Restriction assumée** : ce
   défaut ne s'applique QU'aux périodes de type fermeture — voir §3 pour les vacances, qui gardent
@@ -112,8 +112,8 @@ début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
   **dans le payload du solve seulement**, jamais persistés) et le solveur ne place QUE les trous.
   Miroir « Régénérer » côté rail (savepoint, verrou de génération, Mercure, import — tous
   réutilisés, zéro changement moteur/contrat) mais borné à une version de PÉRIODE ; le socle se
-  régénère toujours via `/regenerate`. Détail : `backend/docs/backend-inventory.md` §3,
-  `frontend/docs/frontend-spec.md` §6.7 bis.
+  régénère toujours via `/regenerate`. Détail : `backend/docs/backend-controllers.md` §3,
+  `frontend/docs/frontend-workloop.md` §6.7 bis.
 - **Manipulation** : structure verrouillée (équipes entières, gymnases/créneaux, coachs) ;
   **exception validée** : le **nombre de séances par équipe** est ajustable — un
   gestionnaire réel passe une équipe de 3 à 2 créneaux, ou supprime les créneaux d'une

@@ -50,7 +50,7 @@ cycle RED → GREEN → REFACTOR avant d'être considéré livrable.
   DONNÉE bouge (refetch, ou cache vidé) — pas un espion sur `invalidateQueries`, qui prouve
   l'appel et ne voit **jamais** une invalidation absente. C'est cette exigence, et elle seule, qui
   a débusqué le seul défaut réel du lot (`matches/queries.ts` : une invalidation manquante
-  laissait le radar de conflits en faux vert, cf. `frontend-spec.md` § « Radar de conflits »).
+  laissait le radar de conflits en faux vert, cf. `frontend-api-contract.md` § « Radar de conflits »).
   Modules `queries.ts` restant sans test dédié (`club`, `coach-wishes`, `feedback`, `profile`,
   `release-notes`, `shared/session`) : hors scope de ce lot, à reprendre par le même risque si un
   incident les désigne. `admin/queries.ts` est un abandon délibéré (persona fondateur, décision

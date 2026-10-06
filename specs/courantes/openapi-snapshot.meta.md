@@ -16,7 +16,7 @@ Piège : une route custom n'apparaît dans l'export que si elle est déclarée d
 `CustomPathContributor` de son domaine (`backend/src/OpenApi/PathContributor/`), composé par
 `CustomRoutesOpenApiFactory` — ajouter une entrée directement à la factory ne fait rien, elle ne
 fait que composer les contributeurs dans un ordre significatif
-(`backend/docs/backend-inventory.md` §OpenAPI). Régénérer seul ne suffit donc pas non plus : une
+(`backend/docs/backend-controllers.md` §OpenAPI). Régénérer seul ne suffit donc pas non plus : une
 route custom oubliée de son contributeur reste invisible même après régénération.
 
 L'historique des changements d'API vit dans git (`git log -p --follow

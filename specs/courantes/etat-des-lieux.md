@@ -227,7 +227,7 @@ Le coach émet un **souhait**, le gestionnaire **arbitre et tranche** — le lie
   FFBB ») à une exception, le **siège du club** (`PATCH /api/club/siege`, texte re-géocodé serveur),
   amendement 2026-09-19 de la décision « 100 % lecture seule » du 2026-08-04 (décision §2) — un
   siège posé à la main n'est plus jamais écrasé par un ré-import FFBB.
-  → `backend/docs/geo-api.md` §1bis, `frontend/docs/frontend-spec.md` §6.6 ter
+  → `backend/docs/geo-api.md` §1bis, `frontend/docs/frontend-features.md` §6.6 ter
 - **Horloge simulée, réservée à un compte de DÉMONSTRATION** (`App\Clock\ClubClock`, point d'entrée unique, contrôle `is_demo` à la LECTURE + contrainte CHECK en base ; posée/relâchée par la commande support `app:club:clock`, la console superadmin [`/demos/{bccl|prospect}/clock`], ou le gestionnaire démo lui-même depuis le widget d'en-tête de l'app [`POST /api/club/clock`] — un club réel est refusé 403/franc partout, et toute date posée doit tomber dans la fenêtre début de la saison en cours → fin de la saison suivante) : tout consommateur du « aujourd'hui » du club démo (front, page publique à token, crons) suit SA date simulée, **sauf les durées/horodatages de sécurité** (TTL Mercure, lien de changement d'e-mail, délai RGPD, audit, préavis orphelin — horloge réelle explicite) ; un club à horloge active n'envoie JAMAIS de vrai e-mail — chaque message est rangé dans sa **boîte aux lettres** (`/boite-aux-lettres`, lecture seule, visible seulement club à horloge). **Compte de démonstration** (`app_user.is_demo`) : ne peut ni changer d'e-mail/mot de passe/prénom-nom ni se supprimer (profil en lecture seule à l'écran).
 - **Console superadmin** : stats d'usage append-only, board de fraîcheur des référentiels, alerting sur transition.
 - **Tout texte affiché est en français** (P4-263) : messages atteignables par un gestionnaire francisés
@@ -286,7 +286,7 @@ assignable. NR : `MemberRoleTest` (step du gate) + parité TS⇄PHP des rôles (
 prévenu par email puis anonymisé 30 j après l'envoi — prédicat unique `OrphanAccountNotifier::isOrphan`,
 cron `app:users:purge-orphaned`, `/api/me` expose `accountDeletionScheduledFor`.
 → [`docs/security/rgpd.md`](../../docs/security/rgpd.md) §2 (registre) ·
-[`backend-inventory.md`](../../backend/docs/backend-inventory.md) § Approbation des membres ·
+[`backend-controllers.md`](../../backend/docs/backend-controllers.md) § Approbation des membres ·
 [`commands.md`](../../backend/docs/commands.md)
 
 → [`TENANT.md`](../../backend/docs/TENANT.md) (couche rôle) · [`superadmin-auth.md`](superadmin-auth.md)

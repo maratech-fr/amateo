@@ -40,7 +40,7 @@ matchs, import FFBB, transition de saison, console superadmin). **Ce README ne l
 source de vérité exhaustive :
 
 - `http://localhost:8080/api/docs` (Swagger UI) / `.../api/docs.json` (OpenAPI JSON)
-- [`docs/backend-inventory.md`](docs/backend-inventory.md) — inventaire ressource par ressource et contrôleur par contrôleur
+- [`docs/backend-inventory.md`](docs/backend-inventory.md) — architecture, ressources API Platform, pagination ; contrôleurs détaillés dans [`backend-controllers.md`](docs/backend-controllers.md), module démo & horloge simulée dans [`backend-demo.md`](docs/backend-demo.md), sécurité/auth & Mercure dans [`backend-auth-mercure.md`](docs/backend-auth-mercure.md) (DOC-59)
 - [`specs/courantes/openapi-snapshot.json`](../specs/courantes/openapi-snapshot.json) — snapshot figé consommé par le frontend
 
 Quelques repères pour s'orienter avant d'aller lire l'inventaire :

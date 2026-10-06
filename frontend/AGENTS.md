@@ -3,8 +3,10 @@
 > React 19 · Vite 8 · TypeScript ~6.0 · Tailwind 4. The web UI of the club-scheduling
 > platform. Rebuilt from scratch and **active** — every path below exists in `src/`.
 >
-> Canonical detail lives in `README.md` (role & boundaries) and
-> `docs/frontend-spec.md` (routes, state, API contract). This file is the
+> Canonical detail lives in `README.md` (role & boundaries) and the frontend spec,
+> éclatée par thème (DOC-59) : `docs/frontend-spec.md` (shell : stack, routes, conventions),
+> `frontend-data.md` (state & données), `frontend-api-contract.md`, `frontend-workloop.md`,
+> `frontend-features.md`. This file is the
 > agent cheat-sheet: what breaks, what is a trap, what is non-negotiable.
 
 ---
@@ -188,7 +190,7 @@ Donc : pour un champ, assertion EXPLICITE du nom —
 ### Generation status = SSE, polling as fallback (FRT-04)
 
 Full mechanics (topic, auth via `GET /api/mercure/auth`, cache invalidation, polling fallback):
-[`frontend-spec.md`](docs/frontend-spec.md) §5.
+[`frontend-data.md`](docs/frontend-data.md) §5.
 
 **Second stream, `shared/lib/travelStream.ts` (C6, 2026-09-19) — the ONE exception to "an SSE
 consumer lives in the feature that uses it" (`P4-123`, `specs/courantes/etat-des-lieux.md` §2
@@ -387,7 +389,7 @@ survive is naturally bounded by a modal's lifetime.
 ---
 
 **Pointers:** `README.md` (role, boundaries, delivered features) ·
-`docs/frontend-spec.md` (routes, state, API contract) ·
+`docs/frontend-spec.md` (shell : stack, routes, conventions) + `frontend-data.md` (state & données) · `frontend-api-contract.md` · `frontend-workloop.md` · `frontend-features.md` ·
 `docs/frontend-wizard.md` (wizard & period mode) ·
 `docs/frontend-components.md` (shared UI primitives, §3) ·
 `docs/constraint-emission.md` (what the wizard emits, 3-layer alignment) ·

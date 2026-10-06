@@ -372,7 +372,7 @@ Ces trois routes sont des **contrôleurs purs**, donc invisibles de l'export tan
 entrée ne les déclare pas — elles le sont depuis le 2026-08-11 (P4-47, soldée), avec toute
 la surface `/api/admin/**`, dans `AdminJournalPaths::contribute()` (un des 16 contributeurs
 par domaine que `CustomRoutesOpenApiFactory` compose depuis P4-138, 2026-08-30 —
-`backend/docs/backend-inventory.md` §OpenAPI).
+`backend/docs/backend-controllers.md` §OpenAPI).
 ⚠ Le contrat de `/api/admin/messenger/failed` porte explicitement que le **body d'un message
 n'est jamais rendu** (PII) : seuls la classe, l'horodatage et le message d'erreur sortent.
 
@@ -398,7 +398,7 @@ posé** (surface cross-tenant, contrat SA0).
   `demo_retained_until` reçoit aujourd'hui + 14 j (Europe/Paris, horloge RÉELLE, durée **fixe**,
   aucun bouton de prolongation). Le club garde son code FFBB, son nom et ses données de démo
   jusqu'à la reprise (approbation classique P3-4 du contact officiel homonyme, cf.
-  `backend-inventory.md` §P3-4) ou l'expiration (purge nocturne, ci-dessous).
+  `backend-controllers.md` §P3-4) ou l'expiration (purge nocturne, ci-dessous).
 - `POST /demos/{bccl|prospect}/activate` ouvre la fenêtre d'activation (`app_user.demo_active_until`)
   pour **4 h à l'horloge RÉELLE** : un re-clic **redémarre** la fenêtre depuis maintenant, il ne
   l'étend jamais (la valeur est remplacée, pas additionnée). `POST /demos/{target}/deactivate` la
@@ -435,7 +435,7 @@ superadmin posant `simulated_today` sur un club réel — décaler l'horloge d'u
 donnerait la main sur des mécanismes datés qui ne le concernent pas (radar, bascule de saison,
 e-mails). L'horloge d'un compte démo se pose désormais aussi depuis l'app elle-même, par son
 gestionnaire : `POST /api/club/clock` (widget d'en-tête, rôle MANAGER, 403 si le club n'est pas
-`is_demo`), détail `backend-inventory.md` §Module démo.
+`is_demo`), détail `backend-demo.md` §Module démo.
 
 Front : 8ᵉ onglet « Démos » (`frontend/src/features/admin/tabs/tabsConfig.ts`, icône
 `Presentation`) — deux cartes (`DemosSection.tsx`) : « Démo BCCL » (fenêtre + réinitialisation

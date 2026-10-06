@@ -361,7 +361,7 @@ export function RecapStep() {
           lire quatre chiffres qui se comparent. ⚠ Ce cap est un choix ERGONOMIQUE, pas une
           prescription : le corpus de design est muet sur la taille d'une tuile de chiffre, et
           `max-w-3xl` y est une mesure de longueur de LIGNE DE TEXTE — l'emprunter sans le dire
-          serait lui faire dire ce qu'il ne dit pas (cf. `frontend-spec.md` §6.9). */}
+          serait lui faire dire ce qu'il ne dit pas (cf. `frontend-features.md` §6.9). */}
       <div className="mb-4 grid max-w-3xl grid-cols-2 gap-2 sm:grid-cols-4">
         <Counter label="Équipes" value={teams.length} />
         <Counter label="Gymnases" value={venues.length} />
