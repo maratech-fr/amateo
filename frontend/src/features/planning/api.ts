@@ -1,6 +1,7 @@
 import { HTTPError, TimeoutError } from "ky";
 
 import { api } from "@/shared/api/client";
+import type { CoachGender } from "@/shared/lib/coachWording";
 import { sortByName } from "@/shared/lib/nameOrder";
 import type { ScheduleStatus } from "@/shared/lib/scheduleStatus";
 
@@ -327,6 +328,8 @@ export interface Coach {
   id: string;
   firstName: string;
   lastName: string;
+  /** P4-311 — genre pour l'accord du tag de rôle planning (`coachWording`). */
+  gender: CoachGender;
 }
 
 export interface Category {

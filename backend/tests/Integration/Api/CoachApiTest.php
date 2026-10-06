@@ -87,6 +87,42 @@ final class CoachApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(422, 'un plafond hors bornes (1..6) doit être refusé');
     }
 
+    /**
+     * P4-311 — le genre : défaut UNSPECIFIED à la création, puis le cycle PUT (poser,
+     * garder sur un PUT muet, refuser une valeur hors enum). Le genre accorde les
+     * libellés côté front ; sans ce test, un défaut raté ou un PUT partiel qui écrase
+     * le genre passerait inaperçu.
+     */
+    public function testGenderDefaultsToUnspecifiedAndIsWritable(): void
+    {
+        $manager = self::getContainer()->get(JWTTokenManagerInterface::class);
+        \assert($manager instanceof JWTTokenManagerInterface);
+        $headers = [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $manager->create($this->user),
+            'CONTENT_TYPE' => 'application/ld+json',
+        ];
+
+        // Création sans genre → UNSPECIFIED (double forme à l'écran).
+        $this->client->request('POST', '/api/coaches', [], [], $headers, json_encode(['firstName' => 'Anna', 'lastName' => 'Durand'], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+        $coach = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertSame('UNSPECIFIED', $coach['gender'], 'un coach créé sans genre doit être « non précisé »');
+
+        // PUT qui pose le genre.
+        $this->client->request('PUT', '/api/coaches/' . $coach['id'], [], [], $headers, json_encode(['firstName' => 'Anna', 'gender' => 'FEMALE'], \JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+        self::assertSame('FEMALE', json_decode((string) $this->client->getResponse()->getContent(), true)['gender']);
+
+        // PUT muet sur le genre : ne doit pas le toucher (PUT partiel, null = inchangé).
+        $this->client->request('PUT', '/api/coaches/' . $coach['id'], [], [], $headers, json_encode(['firstName' => 'Anna', 'isEmployee' => true], \JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+        self::assertSame('FEMALE', json_decode((string) $this->client->getResponse()->getContent(), true)['gender'], 'un PUT muet sur le genre ne doit pas le réinitialiser');
+
+        // Valeur hors enum : refusée, jamais corrigée en silence.
+        $this->client->request('PUT', '/api/coaches/' . $coach['id'], [], [], $headers, json_encode(['firstName' => 'Anna', 'gender' => 'OTHER'], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422, 'un genre hors enum doit être refusé');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();

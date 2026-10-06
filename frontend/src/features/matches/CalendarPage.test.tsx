@@ -472,8 +472,8 @@ describe("CalendarPage — filtres PR-1 + navigation de semaine", () => {
 
   it("filtre « par coach » : grille, compteurs et radar recadrés sur le périmètre du coach", async () => {
     vi.mocked(matchesApi.getCoaches).mockResolvedValueOnce([
-      { id: "thomas", firstName: "Thomas", lastName: "Martin" },
-      { id: "autre", firstName: "Autre", lastName: "Coach" },
+      { id: "thomas", firstName: "Thomas", lastName: "Martin", gender: "UNSPECIFIED" },
+      { id: "autre", firstName: "Autre", lastName: "Coach", gender: "UNSPECIFIED" },
     ]);
     vi.mocked(matchesApi.getTeams).mockResolvedValueOnce([
       { id: "sm1", name: "SM1", sportCategoryId: "c", level: null, gender: null, priorityTierId: 1, tierOrder: 0 },

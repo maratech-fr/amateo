@@ -13,7 +13,6 @@ import { compareAway } from "./lib/awayColumn";
 import { awayHour } from "./lib/awayKickoff";
 import { isEditableAway } from "./lib/fixtureOrigin";
 import { awayTravelTitle } from "./lib/awayTravelTitle";
-import type { CoachTeamRole } from "./lib/matchFilter";
 import { opponentInitials } from "./lib/opponentInitials";
 
 interface AwayListProps {
@@ -22,7 +21,7 @@ interface AwayListProps {
   teams: Map<string, Team>;
   habits: TeamMatchHabit[];
   /** PR-1 — en vue coach : rôle du coach filtré sur l'équipe, affiché en pastille. */
-  coachRoles?: Map<string, CoachTeamRole>;
+  coachRoles?: Map<string, string>;
   /**
    * PR-2a — actions OPTIONNELLES : l'onglet Consulter rend la bande en LECTURE
    * SEULE (aucun handler ⇒ ni crayon ni corbeille). La boucle (Placer) les fournit.

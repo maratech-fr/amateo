@@ -6,7 +6,7 @@ import type { Coach, Competition, Conflict, ConflictType, Fixture, Team, Venue }
 import { CONFLICT_FAMILIES } from "./conflictLabels";
 import { applyKindFilter, DEFAULT_KINDS } from "./consultFilter";
 import type { Kind } from "./consultFilter";
-import { applyMatchFilter } from "./matchFilter";
+import { applyMatchFilter, coachRoleLabel } from "./matchFilter";
 import type { MatchFilterMode } from "./matchFilter";
 
 /**
@@ -36,7 +36,19 @@ export function useMatchFilterChain(
     () => applyMatchFilter({ mode: filterMode, ids: filterIds, fixtures: allFixtures, conflicts: allConflicts, teamCoaches: teamCoaches.data ?? [], coachPlayers: coachPlayers.data ?? [] }),
     [filterMode, filterIds, allFixtures, allConflicts, teamCoaches.data, coachPlayers.data],
   );
-  const coachTeamRoles = filtered.coachTeamRoles ?? undefined;
+  // P4-311 — le mot de rôle par équipe, accordé au genre du coach GAGNANT (foyer
+  // `coachWording` via `coachRoleLabel`). Dérivé du genre du coach de `coachesMap`.
+  const coachTeamRoles = useMemo(() => {
+    const winners = filtered.coachTeamRoles;
+    if (null === winners) {
+      return undefined;
+    }
+    const labels = new Map<string, string>();
+    for (const [teamId, winner] of winners) {
+      labels.set(teamId, coachRoleLabel(winner.role, coachesMap.get(winner.coachId)?.gender ?? "UNSPECIFIED"));
+    }
+    return labels;
+  }, [filtered.coachTeamRoles, coachesMap]);
   const filterActive = filterIds.length > 0;
   const filterLabel = useMemo(() => {
     if (!filterActive) {

@@ -4,7 +4,6 @@ import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
 
 import type { Fixture, Team } from "./api";
-import type { CoachTeamRole } from "./lib/matchFilter";
 import { unplacedReasonLabel } from "./lib/unplacedReasonLabel";
 
 interface UnplacedListProps {
@@ -15,7 +14,7 @@ interface UnplacedListProps {
    * votre dérogation tôt »). Not persisted: lives until the next data refresh. */
   unplacedReasons?: Map<string, string>;
   /** PR-1 — en vue coach : rôle du coach filtré sur l'équipe, affiché en pastille. */
-  coachRoles?: Map<string, CoachTeamRole>;
+  coachRoles?: Map<string, string>;
   onSelect: (id: string) => void;
 }
 

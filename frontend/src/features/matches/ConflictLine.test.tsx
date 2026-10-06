@@ -144,7 +144,7 @@ describe("ConflictLine (extrait du radar, avec slot trailing)", () => {
 });
 
 describe("ConflictLine — personne en double, rôle PAR CÔTÉ (une personne = ses équipes)", () => {
-  const coachesMap = new Map<string, Coach>([["p-1", { id: "p-1", firstName: "Mara", lastName: "MB" }]]);
+  const coachesMap = new Map<string, Coach>([["p-1", { id: "p-1", firstName: "Mara", lastName: "MB", gender: "FEMALE" }]]);
 
   function personSide(fixtureId: string, teamId: string, role: "MAIN" | "ASSISTANT" | "PLAYER") {
     return { ...side(fixtureId, teamId), role };
@@ -195,7 +195,7 @@ describe("ConflictLine — personne en double, rôle PAR CÔTÉ (une personne = 
       left: personSide("fx-1", "team-1", "MAIN"),
       right: personSide("fx-2", "team-2", "PLAYER"),
     });
-    expect(screen.getByText(/U13 \(coach\) et Seniors \(joueur\) —/)).toBeInTheDocument();
+    expect(screen.getByText(/U13 \(coach\) et Seniors \(joueuse\) —/)).toBeInTheDocument();
   });
 
   it("MATCH_TRAINING : le match d'abord, annoté (« Match Seniors (joueur) × entraînement U13 (coach) »)", () => {
@@ -208,12 +208,12 @@ describe("ConflictLine — personne en double, rôle PAR CÔTÉ (une personne = 
       fixture: { ...side("fx-1", "team-2"), role: "PLAYER" },
       training: { slotTemplateId: "t", scheduleId: "sc", teamId: "team-1", venueId: "v", dayOfWeek: 3, startTime: "18:00", durationMinutes: 90, role: "MAIN", windowStart: "", windowEnd: "" },
     });
-    expect(screen.getByText("Match Seniors (joueur) × entraînement U13 (coach)")).toBeInTheDocument();
+    expect(screen.getByText("Match Seniors (joueuse) × entraînement U13 (coach)")).toBeInTheDocument();
   });
 });
 
 describe("ConflictLine — détail par côté (P2-54)", () => {
-  const coachesMap = new Map<string, Coach>([["p-1", { id: "p-1", firstName: "Mara", lastName: "MB" }]]);
+  const coachesMap = new Map<string, Coach>([["p-1", { id: "p-1", firstName: "Mara", lastName: "MB", gender: "UNSPECIFIED" }]]);
 
   const awayEstimated = {
     fixtureId: "fx-a",

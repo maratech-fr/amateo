@@ -101,7 +101,7 @@ function openCoachs(): void {
   renderWithProviders(<ConstraintsPage />, { route: "/matchs/contraintes?section=coachs" });
 }
 
-const coachOf = (id: string, firstName: string, lastName: string): Coach => ({ id, firstName, lastName });
+const coachOf = (id: string, firstName: string, lastName: string): Coach => ({ id, firstName, lastName, gender: "UNSPECIFIED" });
 
 beforeEach(() => {
   createWindow.mockClear();

@@ -32,7 +32,7 @@ function fx(partial: Partial<Fixture> & Pick<Fixture, "id">): Fixture {
 const teams = new Map<string, Team>([["team-1", { id: "team-1", name: "U13", sportCategoryId: "c", level: null, gender: null, priorityTierId: 1, tierOrder: 0 }]]);
 const venues = new Map<string, Venue>([["venue-1", { id: "venue-1", name: "Gymnase Alpha", color: "#0a0", externalLabels: [] }]]);
 
-const coaches = new Map<string, Coach>([["coach-1", { id: "coach-1", firstName: "Emerick", lastName: "" }]]);
+const coaches = new Map<string, Coach>([["coach-1", { id: "coach-1", firstName: "Emerick", lastName: "", gender: "UNSPECIFIED" }]]);
 
 function renderTable(props: Partial<Parameters<typeof MatchRowsTable>[0]> = {}) {
   const onSelectFixture = props.onSelectFixture ?? vi.fn();
@@ -121,7 +121,7 @@ describe("MatchRowsTable (PR-2b — ligne de match partagée Mois/Phase)", () =>
   });
 
   it("deux personnes en double sur le même match → « Emerick +1 »", () => {
-    const withSecond = new Map<string, Coach>([...coaches, ["coach-2", { id: "coach-2", firstName: "Nadia", lastName: "" }]]);
+    const withSecond = new Map<string, Coach>([...coaches, ["coach-2", { id: "coach-2", firstName: "Nadia", lastName: "", gender: "UNSPECIFIED" }]]);
     const second = mm({ coachId: "coach-2" });
     renderTable({ conflictsByFixture: new Map([["fx-1", [mm(), second]]]), coaches: withSecond });
     expect(screen.getByRole("button", { name: /Emerick \+1/ })).toBeInTheDocument();

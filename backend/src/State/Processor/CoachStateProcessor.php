@@ -7,6 +7,7 @@ namespace App\State\Processor;
 use App\ApiResource\CoachResource;
 use App\Dto\CoachInput;
 use App\Entity\Coach;
+use App\Enum\CoachGender;
 
 /**
  * @extends AbstractStateProcessor<Coach, CoachInput, CoachResource>
@@ -60,6 +61,9 @@ class CoachStateProcessor extends AbstractStateProcessor
         if (null !== $input->isVehicled) {
             $entity->setIsVehicled($input->isVehicled);
         }
+        if (null !== $input->gender) {
+            $entity->setGender(CoachGender::from($input->gender));
+        }
         if (null !== $input->parentCoachId) {
             $entity->setParentCoachId($input->parentCoachId);
         }
@@ -102,6 +106,9 @@ class CoachStateProcessor extends AbstractStateProcessor
         }
         if (null !== $input->isVehicled) {
             $entity->setIsVehicled($input->isVehicled);
+        }
+        if (null !== $input->gender) {
+            $entity->setGender(CoachGender::from($input->gender));
         }
         if (null !== $input->parentCoachId) {
             $entity->setParentCoachId($input->parentCoachId);

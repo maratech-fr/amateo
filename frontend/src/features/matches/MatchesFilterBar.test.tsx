@@ -10,7 +10,7 @@ const teams: Team[] = [
   { id: "u13", name: "U13", sportCategoryId: "c", level: null, gender: null, priorityTierId: 3, tierOrder: 0 },
 ];
 const tiers: PriorityTier[] = [{ id: 1, label: "S", name: "Fanion", color: null }, { id: 3, label: "B", name: "Moyenne", color: null }];
-const coaches: Coach[] = [{ id: "thomas", firstName: "Thomas", lastName: "Martin" }, { id: "jean", firstName: "Jean", lastName: "Dupont" }];
+const coaches: Coach[] = [{ id: "thomas", firstName: "Thomas", lastName: "Martin", gender: "UNSPECIFIED" }, { id: "jean", firstName: "Jean", lastName: "Dupont", gender: "UNSPECIFIED" }];
 const venues: Venue[] = [{ id: "v1", name: "Gymnase Alpha", color: null, externalLabels: [] }];
 
 function setup(over: Partial<Parameters<typeof MatchesFilterBar>[0]> = {}) {

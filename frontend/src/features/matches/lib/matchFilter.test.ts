@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { CoachPlayerMembership, TeamCoach } from "@/features/planning/api";
 
 import type { Conflict, Fixture } from "../api";
-import { applyMatchFilter, conflictTeamIds, expandCoachTeams } from "./matchFilter";
+import { applyMatchFilter, coachRoleLabel, conflictTeamIds, expandCoachTeams } from "./matchFilter";
 
 function fixture(over: Partial<Fixture> & Pick<Fixture, "id" | "teamId">): Fixture {
   return {
@@ -35,11 +35,11 @@ const teamCoaches: TeamCoach[] = [
 const coachPlayers: CoachPlayerMembership[] = [{ id: "cp1", teamId: "u18", coachId: "thomas", isActive: true }, { id: "cp2", teamId: "u20", coachId: "thomas", isActive: false }];
 
 describe("expandCoachTeams", () => {
-  it("map une équipe par rôle : principal, assistant, joueur ACTIF ; ignore les inactifs", () => {
+  it("map une équipe par rôle + coach gagnant : principal, assistant, joueur ACTIF ; ignore les inactifs", () => {
     const roles = expandCoachTeams(["thomas"], teamCoaches, coachPlayers);
-    expect(roles.get("u15m1")).toBe("principal");
-    expect(roles.get("sm1")).toBe("assistant");
-    expect(roles.get("u18")).toBe("joueur");
+    expect(roles.get("u15m1")).toEqual({ role: "principal", coachId: "thomas" });
+    expect(roles.get("sm1")?.role).toBe("assistant");
+    expect(roles.get("u18")?.role).toBe("joueur");
     expect(roles.has("u20")).toBe(false); // isActive false
     expect(roles.has("u13")).toBe(false); // coach jean, pas thomas
   });
@@ -48,7 +48,16 @@ describe("expandCoachTeams", () => {
     const also: TeamCoach[] = [...teamCoaches, { id: "tc4", teamId: "u18", coachId: "thomas", role: "ASSISTANT" }];
     const roles = expandCoachTeams(["thomas"], also, coachPlayers);
     // u18 est joueur (coachPlayers) ET assistant (teamCoaches) → assistant l'emporte.
-    expect(roles.get("u18")).toBe("assistant");
+    expect(roles.get("u18")?.role).toBe("assistant");
+  });
+});
+
+describe("coachRoleLabel (P4-311)", () => {
+  it("accorde « joueur » au genre, laisse « principal »/« assistant » intacts", () => {
+    expect(coachRoleLabel("joueur", "FEMALE")).toBe("joueuse");
+    expect(coachRoleLabel("joueur", "UNSPECIFIED")).toBe("joueur·euse");
+    expect(coachRoleLabel("principal", "FEMALE")).toBe("principal");
+    expect(coachRoleLabel("assistant", "MALE")).toBe("assistant");
   });
 });
 
@@ -100,8 +109,8 @@ describe("applyMatchFilter — coach", () => {
   it("étend au périmètre du coach (T(c)) et expose les rôles", () => {
     const out = applyMatchFilter({ mode: "coach", ids: ["thomas"], fixtures, conflicts: [], teamCoaches, coachPlayers });
     expect(out.fixtures.map((f) => f.id).sort()).toEqual(["f-sm1", "f-u15"]);
-    expect(out.coachTeamRoles?.get("u15m1")).toBe("principal");
-    expect(out.coachTeamRoles?.get("sm1")).toBe("assistant");
+    expect(out.coachTeamRoles?.get("u15m1")?.role).toBe("principal");
+    expect(out.coachTeamRoles?.get("sm1")?.role).toBe("assistant");
   });
 
   it("garde un conflit par coachId même sans équipe dans le périmètre ; exclut le sans-lien", () => {

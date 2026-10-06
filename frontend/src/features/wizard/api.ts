@@ -3,6 +3,7 @@ import { HTTPError } from "ky";
 import { api } from "@/shared/api/client";
 import { collection, collectionAll } from "@/shared/api/collection";
 import type { DeletionImpact } from "@/shared/api/deletionImpact";
+import type { CoachGender } from "@/shared/lib/coachWording";
 import type { ToReplaceEntry } from "@/features/planning/lib/toReplaceReason";
 import { sortByName } from "@/shared/lib/nameOrder";
 // P4-148 — `Gender`/`TeamLevel` (l'identité FFBB d'une équipe) sont descendus dans shared/lib/ ;
@@ -500,6 +501,8 @@ export interface Coach {
   /** P2-53 RMM-8 — le coach a un véhicule. Détermine le barème de trajet appliqué à ses
    *  enchaînements (voiture s'il est véhiculé, à vélo sinon). Défaut false. */
   isVehicled: boolean;
+  /** P4-311 — genre pour l'accord des libellés (`coachWording`). Défaut UNSPECIFIED. */
+  gender: CoachGender;
 }
 
 export interface TeamCoach {
@@ -525,6 +528,8 @@ export interface CoachPayload {
   maxDaysOverride?: number | null;
   /** P2-53 RMM-8 — statut véhiculé (PUT partiel : null = inchangé côté serveur). */
   isVehicled?: boolean | null;
+  /** P4-311 — genre (PUT partiel : null = inchangé côté serveur). */
+  gender?: CoachGender | null;
 }
 
 export const listCoaches = (): Promise<Coach[]> => collectionAll<Coach>("coaches");

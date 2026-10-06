@@ -1,3 +1,5 @@
+import { type CoachGender, playerWord } from "@/shared/lib/coachWording";
+
 import type { ConflictSideRole, ConflictType } from "../api";
 
 /**
@@ -32,12 +34,16 @@ export const CONFLICT_FAMILIES = Object.keys(CONFLICT_FAMILY_LABEL) as ConflictT
 
 /**
  * Le mot d'un rôle PAR CÔTÉ, pour annoter une équipe dans le résumé d'un conflit
- * personne-en-double (« SF2 (coach) et SM2 (joueur) »). Table exhaustive
- * (`Record<ConflictSideRole, …>` → TypeScript exige les 3 clés) : PRÉSENTATION pure,
- * jamais un décideur de comportement (`.claude/rules/frontend.md`).
+ * personne-en-double (« SF2 (coach) et SM2 (joueuse) »). PRÉSENTATION pure, jamais un
+ * décideur de comportement (`.claude/rules/frontend.md`). P4-311 : seul « joueur »
+ * désigne la personne et s'accorde au genre (le coach du conflit, `conflict.coachId`,
+ * est le MÊME sur les deux côtés) ; « coach » et « assistant » restent tels quels.
  */
-export const SIDE_ROLE_WORD: Record<ConflictSideRole, string> = {
+const SIDE_ROLE_FIXED: Record<Exclude<ConflictSideRole, "PLAYER">, string> = {
   MAIN: "coach",
   ASSISTANT: "assistant",
-  PLAYER: "joueur",
 };
+
+export function sideRoleWord(role: ConflictSideRole, gender: CoachGender): string {
+  return "PLAYER" === role ? playerWord(gender) : SIDE_ROLE_FIXED[role];
+}

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Dto;
 
+use App\Enum\CoachGender;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 
@@ -48,6 +49,11 @@ class CoachInput
     /** Véhiculé (barème voiture) ou non (barème à vélo). */
     #[Groups(['write'])]
     public ?bool $isVehicled = null;
+
+    /** Genre pour l'accord des libellés (PUT partiel : null = inchangé). */
+    #[Assert\Choice(callback: [CoachGender::class, 'values'], message: 'Genre de coach inconnu.')]
+    #[Groups(['write'])]
+    public ?string $gender = null;
 
     #[Groups(['write'])]
     public ?string $parentCoachId = null;

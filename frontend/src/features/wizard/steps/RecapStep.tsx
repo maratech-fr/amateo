@@ -431,7 +431,7 @@ export function RecapStep() {
                       <SummaryRow
                         key={c.id}
                         label={`${fullName}${teamsOf.length > 0 ? ` (${teamsOf.join(", ")})` : ""}`}
-                        meta={coachMeta(c.isEmployee, coachPlayerIds.has(c.id))}
+                        meta={coachMeta(c.isEmployee, coachPlayerIds.has(c.id), c.gender)}
                       />
                     );
                   })}

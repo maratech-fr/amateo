@@ -452,7 +452,7 @@ def diagnose_candidate_conflicts(
                 else:
                     _emit(
                         "coach_player_no_overlap",
-                        f"{_coach(person_id)} est déjà pris par {_team(s_team)} le {_day_label(c_day)} à "
+                        f"{_coach(person_id)} a déjà un engagement avec {_team(s_team)} le {_day_label(c_day)} à "
                         f"{c_start_text} dans un autre gymnase (impossible de coacher et jouer en même temps).",
                         coach_id=person_id,
                         team_id=c_team,

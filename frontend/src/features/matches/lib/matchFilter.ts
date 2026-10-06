@@ -1,4 +1,5 @@
 import type { CoachPlayerMembership, TeamCoach } from "@/features/planning/api";
+import { type CoachGender, playerWord } from "@/shared/lib/coachWording";
 
 import type { Conflict, Fixture } from "../api";
 
@@ -15,9 +16,27 @@ export type MatchFilterMode = "equipe" | "coach" | "gymnase";
 /** Rôle d'un coach vis-à-vis d'une équipe, pour l'affichage en vue coach. */
 export type CoachTeamRole = "principal" | "assistant" | "joueur";
 
+/**
+ * Le rôle GAGNANT d'une équipe + le coach qui l'a gagné (P4-311) : l'affichage accorde
+ * « joueur » avec le genre de CE coach, règle nette même en multi-sélection.
+ */
+export interface CoachTeamWinner {
+  role: CoachTeamRole;
+  coachId: string;
+}
+
 // Précédence quand un coach porte plusieurs rôles sur la même équipe (principal
 // l'emporte sur assistant, qui l'emporte sur joueur).
 const ROLE_RANK: Record<CoachTeamRole, number> = { principal: 0, assistant: 1, joueur: 2 };
+
+/**
+ * Le mot affiché du rôle d'un coach dans une équipe (vue coach du Calendrier). Seul
+ * « joueur » désigne la personne et s'accorde (foyer `coachWording`) ; « principal » et
+ * « assistant » restent tels quels (hors liste d'accord, décision fondateur).
+ */
+export function coachRoleLabel(role: CoachTeamRole, gender: CoachGender): string {
+  return "joueur" === role ? playerWord(gender) : role;
+}
 
 export interface MatchFilterInput {
   mode: MatchFilterMode;
@@ -33,8 +52,8 @@ export interface MatchFilterInput {
 export interface MatchFilterResult {
   fixtures: Fixture[];
   conflicts: Conflict[];
-  /** Rôle par équipe des coachs sélectionnés — `null` hors vue coach. */
-  coachTeamRoles: Map<string, CoachTeamRole> | null;
+  /** Rôle gagnant + coach gagnant par équipe des coachs sélectionnés — `null` hors vue coach. */
+  coachTeamRoles: Map<string, CoachTeamWinner> | null;
 }
 
 /**
@@ -43,23 +62,23 @@ export interface MatchFilterResult {
  * (`coach_player_memberships`). Le meilleur rôle l'emporte (principal > assistant
  * > joueur), même patron que `PlanningPage` (teamCoach + teamPlayerCoaches).
  */
-export function expandCoachTeams(coachIds: string[], teamCoaches: TeamCoach[], coachPlayers: CoachPlayerMembership[]): Map<string, CoachTeamRole> {
+export function expandCoachTeams(coachIds: string[], teamCoaches: TeamCoach[], coachPlayers: CoachPlayerMembership[]): Map<string, CoachTeamWinner> {
   const wanted = new Set(coachIds);
-  const roles = new Map<string, CoachTeamRole>();
-  const assign = (teamId: string, role: CoachTeamRole): void => {
+  const roles = new Map<string, CoachTeamWinner>();
+  const assign = (teamId: string, role: CoachTeamRole, coachId: string): void => {
     const current = roles.get(teamId);
-    if (undefined === current || ROLE_RANK[role] < ROLE_RANK[current]) {
-      roles.set(teamId, role);
+    if (undefined === current || ROLE_RANK[role] < ROLE_RANK[current.role]) {
+      roles.set(teamId, { role, coachId });
     }
   };
   for (const link of teamCoaches) {
     if (wanted.has(link.coachId)) {
-      assign(link.teamId, "MAIN" === link.role ? "principal" : "assistant");
+      assign(link.teamId, "MAIN" === link.role ? "principal" : "assistant", link.coachId);
     }
   }
   for (const link of coachPlayers) {
     if (link.isActive && wanted.has(link.coachId)) {
-      assign(link.teamId, "joueur");
+      assign(link.teamId, "joueur", link.coachId);
     }
   }
   return roles;

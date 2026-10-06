@@ -1,9 +1,10 @@
+import type { CoachGender } from "@/shared/lib/coachWording";
 import { frDateShortNoYear } from "@/shared/lib/date";
 import { formatDuration } from "@/shared/lib/duration";
 import { formatMinutes, parseTime } from "@/shared/lib/time";
 
 import type { Conflict, ConflictFixtureView, ConflictTrainingView, HomeAway, Team, Venue } from "../api";
-import { SIDE_ROLE_WORD } from "./conflictLabels";
+import { sideRoleWord } from "./conflictLabels";
 
 /**
  * « détail par côté » — le BUILDER PUR du modèle de lignes d'un conflit qui gagne à
@@ -97,8 +98,8 @@ function overlapMinutes(startIso: string, endIso: string): number {
   return Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60000);
 }
 
-function roleWordOf(side: { role?: ConflictFixtureView["role"] }): string | undefined {
-  return undefined !== side.role ? SIDE_ROLE_WORD[side.role] : undefined;
+function roleWordOf(side: { role?: ConflictFixtureView["role"] }, gender: CoachGender): string | undefined {
+  return undefined !== side.role ? sideRoleWord(side.role, gender) : undefined;
 }
 
 /** Le groupe « lieu » d'un côté MATCH : domicile, ou extérieur (avec le lieu connu, sinon « lieu inconnu »). */
@@ -144,11 +145,11 @@ function matchTimes(side: ConflictFixtureView): { times: ConflictSideTimes; trav
   };
 }
 
-function matchSide(side: ConflictFixtureView, teams: Map<string, Team>): ConflictSideLine {
+function matchSide(side: ConflictFixtureView, teams: Map<string, Team>, gender: CoachGender): ConflictSideLine {
   const { times, travelUnknown } = matchTimes(side);
   return {
     teamName: teams.get(side.teamId)?.name ?? "Équipe ?",
-    roleWord: roleWordOf(side),
+    roleWord: roleWordOf(side, gender),
     kind: HOME_AWAY_KIND[side.homeAway],
     place: matchPlace(side),
     opponent: undefined !== side.opponentLabel && "" !== side.opponentLabel ? `vs ${side.opponentLabel}` : undefined,
@@ -182,11 +183,11 @@ function venueSide(side: ConflictFixtureView, teams: Map<string, Team>, venueNam
   };
 }
 
-function trainingSide(training: ConflictTrainingView, teams: Map<string, Team>, venues: Map<string, Venue>): ConflictSideLine {
+function trainingSide(training: ConflictTrainingView, teams: Map<string, Team>, venues: Map<string, Venue>, gender: CoachGender): ConflictSideLine {
   const venueName = venues.get(training.venueId)?.name ?? "Gymnase ?";
   return {
     teamName: teams.get(training.teamId)?.name ?? "Équipe ?",
-    roleWord: roleWordOf(training),
+    roleWord: roleWordOf(training, gender),
     kind: "training",
     place: `Entraînement · ${venueName}`,
     // Entraînement : son début va en colonne coup d'envoi, sa fin en colonne fin/retour.
@@ -219,18 +220,18 @@ function isFixtureView(fixture: Conflict["fixture"]): fixture is ConflictFixture
  * VENUE_OVERLAP (left/right + venueId) → variante `venue`. Un VENUE_OVERLAP sans
  * `venueId` (donnée dégradée : on ne peut pas nommer le gymnase) retombe sur `null`.
  */
-export function buildConflictSideLines(conflict: Conflict, teams: Map<string, Team>, venues: Map<string, Venue>): ConflictSideModel | null {
+export function buildConflictSideLines(conflict: Conflict, teams: Map<string, Team>, venues: Map<string, Venue>, coachGender: CoachGender = "UNSPECIFIED"): ConflictSideModel | null {
   if ("MATCH_MATCH" === conflict.type && undefined !== conflict.left && undefined !== conflict.right && undefined !== conflict.start && undefined !== conflict.end) {
     return {
       kind: "person",
-      sides: [matchSide(conflict.left, teams), matchSide(conflict.right, teams)],
+      sides: [matchSide(conflict.left, teams, coachGender), matchSide(conflict.right, teams, coachGender)],
       overlap: overlapLine(conflict.start, conflict.end),
     };
   }
   if ("MATCH_TRAINING" === conflict.type && isFixtureView(conflict.fixture) && undefined !== conflict.training && undefined !== conflict.start && undefined !== conflict.end) {
     return {
       kind: "person",
-      sides: [matchSide(conflict.fixture, teams), trainingSide(conflict.training, teams, venues)],
+      sides: [matchSide(conflict.fixture, teams, coachGender), trainingSide(conflict.training, teams, venues, coachGender)],
       overlap: overlapLine(conflict.start, conflict.end),
     };
   }

@@ -93,7 +93,7 @@ export function ReadonlyCoaches() {
         <ul className="flex flex-col gap-1 rounded-md border border-border">
           {orderedCoaches(coaches, coachPlayerIds).map(({ coach: c }) => {
             const teamsOf = coachTeamNames(c.id, teamCoaches, teamName);
-            const meta = coachMeta(c.isEmployee, coachPlayerIds.has(c.id));
+            const meta = coachMeta(c.isEmployee, coachPlayerIds.has(c.id), c.gender);
             return (
               <li key={c.id} className="flex items-center justify-between gap-3 border-b border-border/60 px-3 py-1.5 text-sm last:border-0">
                 <span>{`${c.firstName} ${c.lastName}`.trim() + (teamsOf.length > 0 ? ` (${teamsOf.join(", ")})` : "")}</span>
