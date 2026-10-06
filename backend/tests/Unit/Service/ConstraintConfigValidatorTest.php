@@ -80,6 +80,11 @@ final class ConstraintConfigValidatorTest extends TestCase
         // Alias snake_case : le moteur les lisait, ils en sont retirés dans la
         // même PR — une seule orthographe partout (décision fondateur).
         yield 'alias snake_case' => [ConstraintFamily::DAY, ['forbidden_days' => [3]], 'forbidden_days'];
+        // ALIGN-21 — le ciblage par groupe ne résout que des lignes TEAM : sur une
+        // disponibilité de COACH il serait accepté puis sans effet. Refusé à l'écriture.
+        yield 'targetTag sur une disponibilité (sans effet)' => [ConstraintFamily::COACH_AVAILABILITY, ['unavailableDays' => [5], 'targetTag' => 'JEUNE'], 'disponibilité'];
+        yield 'targetTags sur une disponibilité' => [ConstraintFamily::COACH_AVAILABILITY, ['unavailableDays' => [5], 'targetTags' => ['JEUNE']], 'disponibilité'];
+        yield 'excludeTags sur une disponibilité' => [ConstraintFamily::COACH_AVAILABILITY, ['unavailableDays' => [5], 'excludeTags' => ['JEUNE']], 'disponibilité'];
     }
 
     #[DataProvider('acceptedProvider')]

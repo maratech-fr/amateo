@@ -1,12 +1,14 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-10-05 (P4-300) — la ligne FACILITY `venue_closed` confrontée aux trois
-consommateurs MATCHS (`MatchPlacementPayloadBuilder.php`, `ConflictRadarLoader.php`,
-`FixtureStateProcessor.php`) et à `PlanVenueClosures::closureIntervals`/`VenueClosureDays::rawIntervals` :
-le fait brut qu'ils lisent (dates du `config`, repli legacy) reste distinct de la composition
-`VenuePeriodOverride` consommée par le payload d'entraînement. `forcedDays`/`unavailableDays`
-non ré-auditées cette passe (dernière confrontation : ENG-48/ALIGN-16/ENG-51/ALIGN-19, contrat
-1.1, contre `engine/app/solver/constraints/targeting.py`/`parsing.py`) ; `App\Enum\ConstraintRuleType`
+Last verified @ 2026-10-06 (ALIGN-21 : le refus 422 des clés de tag sur la famille
+`COACH_AVAILABILITY` ajouté à la liste des refus d'écriture — vérifié contre
+`ConstraintConfigValidator::errors` et `ScheduleConstraintBuilder::serializeUnifiedConstraints`,
+qui ne résout les tags qu'en lignes TEAM). Le reste de la page non ré-audité cette passe
+(dernière confrontation P4-300 : la ligne FACILITY `venue_closed` confrontée aux trois
+consommateurs MATCHS `MatchPlacementPayloadBuilder.php`/`ConflictRadarLoader.php`/`FixtureStateProcessor.php`
+et à `PlanVenueClosures::closureIntervals`/`VenueClosureDays::rawIntervals` ;
+ENG-48/ALIGN-16/ENG-51/ALIGN-19, contrat 1.1, contre
+`engine/app/solver/constraints/targeting.py`/`parsing.py`). `App\Enum\ConstraintRuleType`
 (`backend/src/Enum/ConstraintRuleType.php`) ne compte toujours que HARD/PREFERRED — le cran `LOCK`
 reste retiré (« on ne verrouille que les créneaux »), la matrice d'intensité ci-dessous à deux
 crans. Historique : `git log -p --follow`. Un stamp REMPLACE, il ne s'empile pas.
@@ -45,8 +47,11 @@ avec le nom de la clé et les réglages acceptés pour la famille.
 > step bloquant (`PeriodGatePayloadParityTest`). **Le contrat moteur ne bouge pas** : les 3 clés de
 > tag sont retirées à la sérialisation, le moteur ne reçoit que des contraintes d'ÉQUIPE résolues.
 > Refus à l'écriture (422) : tag inconnu du club · `targetTags ∩ excludeTags` non vide · mélange
-> `targetTag`+`targetTags` · résolution VIDE sur la saison courante. Le no-op+warning du builder
-> reste en backstop (une résolution peut se vider APRÈS coup — équipes désactivées).
+> `targetTag`+`targetTags` · résolution VIDE sur la saison courante · **clé de tag sur la famille
+> `COACH_AVAILABILITY`** (ALIGN-21 : la résolution ne produit que des lignes d'ÉQUIPE — une
+> disponibilité coach ciblée par groupe serait acceptée puis sans effet ni avertissement ; une
+> disponibilité vise un coach, le scope). Le no-op+warning du builder reste en backstop (une
+> résolution peut se vider APRÈS coup — équipes désactivées).
 
 ## Quelle INTENSITÉ pour quelle clé — la matrice muette
 

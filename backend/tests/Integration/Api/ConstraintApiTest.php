@@ -249,6 +249,30 @@ final class ConstraintApiTest extends WebTestCase
     }
 
     /**
+     * ALIGN-21 — une disponibilité de coach ciblée par GROUPE est refusée à l'écriture.
+     *
+     * La résolution de tag ne produit que des lignes d'ÉQUIPE
+     * (`ScheduleConstraintBuilder::serializeUnifiedConstraints`) : une famille
+     * `COACH_AVAILABILITY` ciblée par `targetTag` était acceptée (201) puis n'émettait
+     * AUCUNE ligne moteur — le motif « déclaré ≠ effectif ». Le refus à la source NOMME
+     * la clé fautive, jamais un 201 muet suivi d'un solve qui ignore la règle.
+     */
+    public function testACoachAvailabilityTargetedByTagIsRefused(): void
+    {
+        $status = $this->postConstraint([
+            'name' => 'Indispo d\'un groupe de coachs',
+            'scope' => 'COACH',
+            'scopeTargetId' => '11111111-1111-4111-8111-111111111111',
+            'family' => 'COACH_AVAILABILITY',
+            'ruleType' => 'HARD',
+            'config' => ['unavailableDays' => [5], 'targetTag' => 'JEUNE'],
+        ]);
+
+        self::assertSame(422, $status, 'Un ciblage par groupe sur une disponibilité de coach serait sans effet — il doit être refusé, jamais accepté en silence.');
+        self::assertStringContainsString('targetTag', (string) $this->client->getResponse()->getContent(), 'La réponse doit NOMMER la clé fautive.');
+    }
+
+    /**
      * D1 — « préférer ce gymnase » (preferredVenueId) est TOUJOURS une préférence :
      * l'obligatoire, c'est « impose » (forcedVenueId). Une préférence de gymnase épinglée
      * HARD|LOCK est refusée à la SOURCE, à la création…

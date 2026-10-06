@@ -32,10 +32,13 @@ use Symfony\Component\Uid\Uuid;
  *    prise de compte) — cas (a) cross-club et (b) same-club via le vrai `/api/password/forgot` ;
  *  - un e-mail MÉTIER (rappel, campagne de vœux) marqué {@see ClubBusinessMail} ET adressé au club
  *    (membre ou coach) est capté — cas (c) membre, (d) coach ;
- *  - un e-mail métier avec un destinataire HORS club part réel — cas (e).
+ *  - un e-mail métier avec un destinataire HORS club part réel — cas (e) ;
+ *  - SEC-31 : un e-mail métier captant un lien personnel à jeton (`…/doleances/<jeton>`) range
+ *    le corps SANS le jeton, remplacé par un libellé neutre — cas (f).
  *
  * Falsifiable : retirer la garde `isClubBusiness` → (b) capté (ROUGE) ; retirer la garde
- * destinataires → (a)/(e) captés (ROUGE).
+ * destinataires → (a)/(e) captés (ROUGE) ; retirer `maskPersonalLinks` → (f) stocke le jeton
+ * en clair (ROUGE).
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -76,6 +79,24 @@ final class ClockedClubMailInterceptTest extends WebTestCase
 
         self::assertSame([], $this->queuedEmails());
         self::assertSame(1, $this->mailbox->countForClub($clubId), 'un e-mail métier vers un coach du club est capté');
+    }
+
+    public function testBusinessMailPersonalTokenLinkIsMaskedInTheBox(): void
+    {
+        // Un coach du club, destinataire légitime du lien personnel (campagne de vœux).
+        [$clubId, , $coachEmail] = $this->seedClockedClub();
+
+        $token = bin2hex(random_bytes(32));
+        $link = 'https://app.amateo.test/doleances/' . $token;
+        $this->sendBusinessAs($clubId, $coachEmail, 'Vos disponibilités pour Période 2', "Bonjour,\n\n" . $link . "\n\nMerci.");
+
+        self::assertSame([], $this->queuedEmails());
+        $stored = $this->mailbox->findForClubNewestFirst($clubId);
+        self::assertCount(1, $stored, 'l\'e-mail métier est rangé dans la boîte');
+        $body = (string) $stored[0]->getBodyText();
+        self::assertStringNotContainsString($token, $body, 'le jeton personnel ne doit JAMAIS être stocké en clair (SEC-31)');
+        self::assertStringNotContainsString('/doleances/', $body, 'le lien personnel entier est masqué');
+        self::assertStringContainsString('lien personnel masqué', $body, 'il est remplacé par un libellé neutre');
     }
 
     public function testBusinessMailToAnOutOfClubRecipientIsSentReal(): void
