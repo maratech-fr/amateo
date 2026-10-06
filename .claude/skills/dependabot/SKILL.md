@@ -28,7 +28,12 @@ règle « jamais merger sans go » reste en vigueur pour tout le reste).
    jamais sur l'hôte (voir l'encart Flex ci-dessous : c'est le container qui porte les plugins qui
    contraignent la résolution).
 2. **Majeur ?** Lire le changelog/notes de migration du paquet (WebFetch sur le repo GitHub du
-   paquet) AVANT de lancer les tests — savoir quoi surveiller.
+   paquet) AVANT de lancer les tests — savoir quoi surveiller. **Si le paquet collecte ou émet des
+   données** (télémétrie, monitoring, analytics, crash-reporting) : vérifier dans le changelog les
+   **défauts de collecte / PII qui changent** (une majeure peut rallumer une catégorie éteinte).
+   S'il en change un ⇒ poser un **verrou d'options + test** dans la MÊME PR, patron
+   `frontend/src/test/sentryOptions.test.ts` (il fige chaque catégorie de collecte, défaut v11
+   « non défini = tout collecter »).
 3. Installer et lancer la **suite de la zone** :
    - `frontend/` : **dans le container**, jamais sur l'hôte — `make -C frontend test` (qui enchaîne
      `lint` = eslint + `tsc -b --force`, puis vitest). ⚠️ **Rebuilder l'image tooling d'abord**

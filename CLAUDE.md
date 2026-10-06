@@ -142,9 +142,13 @@ branche puis PR ; **JAMAIS de merge sans le GO explicite du user** ; push libre,
 6. Résumé + **`documentation-update` (avant CHAQUE PR, les deux lanes)** — « rien d'impacté » se
    conclut en regardant, jamais en supposant.
 7. **`/code-review` : le fondateur seul le déclenche.** **`/security-review` RESTE systématique**
-   si la PR touche auth/données/intégrations externes. Répondre à une revue : skill
+   si la PR touche un item de cette **liste fermée** : auth · memberships · code FFBB / identité
+   club · démo · horloge simulée · page publique à token · RGPD / purge ou export de données ·
+   intégration externe sortante (FFBB, IGN, télémétrie). Répondre à une revue : skill
    `review-response` (plafond 4 rounds, GO fondateur dès le round 2).
-8. PR → **GO explicite du user** → merge.
+8. PR → **GO explicite du user** → merge. **Après chaque merge, toute PR suivante / empilée est
+   rebasée sur `main` à jour et RE-VALIDÉE (les suites de l'étape 5 rejouées sur la base réelle)
+   AVANT de proposer le GO suivant** — une PR empilée n'hérite jamais du vert d'avant le merge.
 
 ### 7.1 Structuring axes (liste fermée — NR requis si touché ; l'étendre = décision user)
 
