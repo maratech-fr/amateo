@@ -106,6 +106,11 @@ MATRIX: tuple[MatrixCell, ...] = (
         "TEAM",
         Expectation.HONORED_SOFT,
         True,
+        # Le scénario mixte généré ci-dessous place spontanément TARD (mesuré), or minStartTime
+        # récompense le tard : il prouve la clé, pas la cellule. Le TÉMOIN d'orientation (grille
+        # spontanément tôt via le repos, puis renversement) vit dans
+        # test_min_start_preferred_steers_later.py (ALIGN-14).
+        note="orientation prouvée avec témoin dans test_min_start_preferred_steers_later",
         config={"minStartTime": "19:00"},
         lock_silence=LockSilence.SOFT,
     ),
