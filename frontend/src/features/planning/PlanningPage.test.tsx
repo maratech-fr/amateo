@@ -2457,3 +2457,22 @@ describe("PlanningPage — version antérieure (P4-98)", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 });
+
+describe("PlanningPage — échec de lecture jamais rendu comme du vide (UXS-09)", () => {
+  it("schedules en échec → « Le chargement a échoué » (jamais « Aucun planning » qui renvoie au wizard)", async () => {
+    vi.mocked(listSchedules).mockRejectedValue(new Error("boom"));
+    renderWithProviders(<PlanningPage />);
+
+    expect(await screen.findByText("Le chargement a échoué.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Réessayer" })).toBeInTheDocument();
+    expect(screen.queryByText("Aucun planning")).not.toBeInTheDocument();
+  });
+
+  it("slots en échec → « Le chargement a échoué » à la place de « Planning vide »", async () => {
+    vi.mocked(getSlots).mockRejectedValue(new Error("boom"));
+    renderWithProviders(<PlanningPage />);
+
+    expect(await screen.findByText("Le chargement a échoué.")).toBeInTheDocument();
+    expect(screen.queryByText("Planning vide")).not.toBeInTheDocument();
+  });
+});

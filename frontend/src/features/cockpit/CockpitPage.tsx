@@ -4,9 +4,11 @@ import { Navigate } from "react-router";
 
 import { useMe } from "@/shared/session/queries";
 import { useSchedules } from "@/features/planning/queries";
+import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { PageHeader } from "@/shared/components/ui/page-header";
-import { FullPageSpinner } from "@/shared/components/ui/spinner";
+import { FullPageSpinner, Spinner } from "@/shared/components/ui/spinner";
+import { readFailed, readLoading } from "@/shared/lib/readState";
 
 import { SeasonPlanBanner } from "./SeasonPlanBanner";
 import { FbiDeadlineCard } from "./FbiDeadlineCard";
@@ -30,23 +32,32 @@ export function CockpitPage() {
   const [cursor, setCursor] = useState({ year: openingYear, month: openingMonth - 1 });
 
   const { from, to } = monthWindow(cursor.year, cursor.month);
-  const { data: entries = [] } = useCalendarEntries(from, to);
+  // UXS-09 — on garde les objets query (pas un `data ?? []` destructuré) pour distinguer « vide »
+  // d'« échec de lecture » et dégrader PAR ZONE (décision fondateur), au lieu d'un calendrier nu.
+  const entriesQuery = useCalendarEntries(from, to);
+  const entries = entriesQuery.data ?? [];
   // The radar surfaces upcoming to-dos season-wide, not just the visible month.
   const radarToday = todayISO();
-  const { data: radarEntries = [] } = useCalendarEntries(radarToday, addDays(radarToday, 300));
+  const radarEntriesQuery = useCalendarEntries(radarToday, addDays(radarToday, 300));
+  const radarEntries = radarEntriesQuery.data ?? [];
   // School holidays: season-wide for the radar (reminders), visible-month for the
   // calendar (so summer — and any month outside the season — shows when browsed).
-  const { data: holidays, isLoading: holidaysLoading } = useSchoolHolidays();
-  const { data: monthHolidays } = useSchoolHolidays(from, to);
+  const holidaysQuery = useSchoolHolidays();
+  const { data: holidays, isLoading: holidaysLoading } = holidaysQuery;
+  const monthHolidaysQuery = useSchoolHolidays(from, to);
+  const monthHolidays = monthHolidaysQuery.data;
   // Toutes les vacances sont adaptables — l'été inclus (planning de reprise,
   // retour fondateur 2026-07-18 ; lève l'exclusion `ete` de la revue #204, P2-5 E2).
   // Le radar clampe les dates à la fenêtre de saison avant toute création.
   const radarHolidays = holidays?.items ?? [];
   // Two explicit windows (the endpoint 400s without one when no season is active):
   // the visible month grid for the calendar dots, the radar horizon for reminders.
-  const { data: publicHolidays } = usePublicHolidays(from, to);
-  const { data: radarPublicHolidays, isLoading: publicHolidaysLoading } = usePublicHolidays(radarToday, addDays(radarToday, PUBLIC_HOLIDAY_HORIZON_DAYS));
-  const { data: schedules = [], isLoading: schedulesLoading } = useSchedules();
+  const monthPublicHolidaysQuery = usePublicHolidays(from, to);
+  const publicHolidays = monthPublicHolidaysQuery.data;
+  const radarPublicHolidaysQuery = usePublicHolidays(radarToday, addDays(radarToday, PUBLIC_HOLIDAY_HORIZON_DAYS));
+  const { data: radarPublicHolidays, isLoading: publicHolidaysLoading } = radarPublicHolidaysQuery;
+  const schedulesQuery = useSchedules();
+  const { data: schedules = [], isLoading: schedulesLoading } = schedulesQuery;
   // D-28 : le prédicat partagé est un HOOK — il s'appelle donc ici, avec les autres, et
   // jamais après un early return (la version inline qu'il remplace n'était pas un hook,
   // et vivait plus bas : les règles des hooks l'auraient refusée là).
@@ -85,7 +96,15 @@ export function CockpitPage() {
           }
         />
       ) : null}
-      <SeasonPlanBanner schedules={schedules} socleValidated={socleValidated} loading={schedulesLoading} entries={radarEntries} />
+      {/* UXS-09 — échec de lecture des plannings : « Réessayer » à la place du bandeau (jamais un
+          bandeau calculé sur zéro plan). S'il a lu (donnée, même périmée), le bandeau reste. */}
+      {readFailed(schedulesQuery) ? (
+        <div className="rounded-lg border border-border bg-card p-4">
+          <LoadErrorHint onRetry={() => void schedulesQuery.refetch()}>Le planning de saison n'a pas pu être chargé.</LoadErrorHint>
+        </div>
+      ) : (
+        <SeasonPlanBanner schedules={schedules} socleValidated={socleValidated} loading={schedulesLoading} entries={radarEntries} />
+      )}
       {/* RMM-6 PR-3 — le rappel de saisie FBI « remonte dès le login » : pleine largeur
           sous le bandeau planning, au-dessus de la grille. MUET (rend null) hors d'une
           fenêtre J-7 servie par le backend — zéro encombrement dans le cas courant. */}
@@ -95,13 +114,36 @@ export function CockpitPage() {
             DÉBORDE sa mère (queue/tête hors incident), la filtrer laisserait ces
             jours sans marqueur ni accès (revue #262 round 1). Le calendrier
             empile les entrées chevauchantes comme avant. */}
-        <MonthCalendar year={cursor.year} month={cursor.month} entries={entries} holidays={monthHolidays?.items ?? []} publicHolidays={publicHolidays?.items ?? []} onPrev={prev} onNext={next} />
+        {/* UXS-09 — zone calendrier : échec ⇒ « Réessayer » (jamais une grille muette), premier
+            chargement ⇒ spinner de zone ; sinon la grille, avec un bandeau discret si seules les
+            vacances/fériés du mois ont échoué (le reste vit). */}
+        <div className="space-y-3">
+          {readFailed(entriesQuery) ? (
+            <div className="rounded-lg border border-border bg-card p-4">
+              <LoadErrorHint onRetry={() => void entriesQuery.refetch()}>Le calendrier n'a pas pu être chargé.</LoadErrorHint>
+            </div>
+          ) : readLoading(entriesQuery) ? (
+            <div className="flex items-center justify-center rounded-lg border border-border bg-card p-10" role="status" aria-live="polite">
+              <Spinner className="size-5" />
+            </div>
+          ) : (
+            <>
+              <MonthCalendar year={cursor.year} month={cursor.month} entries={entries} holidays={monthHolidays?.items ?? []} publicHolidays={publicHolidays?.items ?? []} onPrev={prev} onNext={next} />
+              {readFailed(monthHolidaysQuery) || readFailed(monthPublicHolidaysQuery) ? (
+                <NoticeBanner tone="warning" role="status" message="Les vacances scolaires ou les jours fériés du mois n'ont pas pu être chargés — réessayez." />
+              ) : null}
+            </>
+          )}
+        </div>
         <div className="flex flex-col gap-4">
           <RadarPanel
             entries={radarEntries}
+            entriesFailed={readFailed(radarEntriesQuery)}
+            entriesLoading={readLoading(radarEntriesQuery)}
             holidays={radarHolidays}
             publicHolidays={radarPublicHolidays?.items ?? []}
             publicHolidaysLoading={publicHolidaysLoading}
+            publicHolidaysFailed={readFailed(radarPublicHolidaysQuery)}
             zone={holidays?.zone ?? null}
             zoneLoading={holidaysLoading}
           />

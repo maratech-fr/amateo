@@ -430,3 +430,15 @@ describe("Wizard — le voile s'arme au GESTE, pas au montage (NR)", () => {
     await waitFor(() => expect(useNavTransition.getState().token).toBeGreaterThan(before));
   });
 });
+
+describe("Wizard — échec de lecture fondatrice jamais rendu comme une étape vide (UXS-10)", () => {
+  it("une lecture fondatrice en échec → porte unique « Le chargement a échoué » (jamais l'étape Équipes à zéro)", async () => {
+    vi.mocked(api.listTeams).mockRejectedValue(new Error("boom"));
+    renderWithProviders(<WizardPage />, { route: "/wizard" });
+
+    expect(await screen.findByText("Le chargement a échoué.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Réessayer" })).toBeInTheDocument();
+    // L'étape Équipes ne s'affiche PAS (pas de grille d'équipe invitant à re-saisir).
+    expect(screen.queryByDisplayValue("SF1")).not.toBeInTheDocument();
+  });
+});

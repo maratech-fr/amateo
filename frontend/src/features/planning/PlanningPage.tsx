@@ -17,6 +17,7 @@ import { useCredits } from "@/shared/credits/useCredits";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
+import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Input } from "@/shared/components/ui/input";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
@@ -94,7 +95,12 @@ const DAY_ABBR = new Map(DAYS.map((d) => [d.n, d.label]));
  *  du panneau « Écarts avec le planning de saison » : sur une vacance ou `/planning` autonome, la route
  *  n'est JAMAIS appelée. */
 export function PlanningPage({ embedded = false, scopePlanId = null, calendarEntryId = null, toReplace = null, isClosurePeriod = false }: { embedded?: boolean; scopePlanId?: string | null; calendarEntryId?: string | null; toReplace?: ToReplaceEntry[] | null; isClosurePeriod?: boolean } = {}) {
-  const { data: schedules = [], isLoading: schedulesLoading } = useSchedules();
+  // UXS-09 — on garde l'objet query : `readFailed` distingue « aucun planning » d'« échec de
+  // lecture », pour ne pas renvoyer le gestionnaire au wizard sur une panne réseau. `useMemo` et non
+  // `?? []` : le repli littéral fabriquait un tableau NEUF à chaque rendu, invalidant les `useMemo`
+  // en aval (scopeInFlight…) — même raison que `allDiagnostics`/`generatedSlots` plus bas.
+  const schedulesQuery = useSchedules();
+  const schedules = useMemo(() => schedulesQuery.data ?? [], [schedulesQuery.data]);
   const { data: me } = useMe();
   // §4bis pt 2 — solde de crédits sur « Régénérer » (Découverte bridée seulement).
   const credits = useCredits();
@@ -544,8 +550,17 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
     return category?.name ?? "—";
   }, [selectedCell, slots, lookups, categories]);
 
-  if (schedulesLoading) {
+  if (readLoading(schedulesQuery)) {
     return <FullPageSpinner />;
+  }
+  // UXS-09 — échec de lecture des plannings SANS cache : « Réessayer » pleine page, jamais
+  // l'EmptyState « Aucun planning » qui renverrait activement vers le wizard sur une panne.
+  if (readFailed(schedulesQuery)) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center p-6">
+        <LoadErrorHint onRetry={() => void schedulesQuery.refetch()} />
+      </div>
+    );
   }
 
   // P2-44 (PR-2) — le surfaçage de la transcription ne vit QUE sur l'écran de génération d'une
@@ -888,6 +903,12 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           ) : 0 === slots.length ? (
             isFailed ? (
               <EmptyState title="Génération en échec" description="Aucun créneau n'a été placé, et ce planning n'a aucune réservation à afficher. Corrigez les contraintes signalées puis régénérez." />
+            ) : readFailed(slotsQuery) ? (
+              // UXS-09 — la lecture des créneaux a échoué SANS cache : « Réessayer », jamais le
+              // « Planning vide » menteur (doctrine readState — `isFetching` retombe à false sur erreur).
+              <div className="flex h-64 items-center justify-center rounded-lg border border-border bg-card">
+                <LoadErrorHint onRetry={() => void slotsQuery.refetch()} />
+              </div>
             ) : slotsBusy ? (
               // PREMIER chargement d'une version (aucune donnée précédente à voiler) : « Planning
               // vide » MENTIRAIT tant que la requête n'a pas répondu. On affiche l'état de
