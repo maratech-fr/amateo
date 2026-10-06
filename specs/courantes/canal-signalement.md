@@ -1,5 +1,5 @@
-Last verified @ 2026-10-05 (rotation de fraîcheur `documentation-update`, passe doc matchs/
-fermetures P4-300, sujet sans rapport). Re-confronté au code : `POST /api/feedback`
+Last verified @ 2026-10-07 (Sentry actif : les deux mentions « roadmap P5-1, pas encore activé »
+recalées, cf. `etat-des-lieux.md` §3). Re-confronté au code : `POST /api/feedback`
 (`FeedbackController.php:68`) ✓ ; `FeedbackButton`/`FeedbackDialog`/`api.ts`/`queries.ts` vivent
 toujours dans `frontend/src/shared/feedback/` ✓ ; `Schedule::$snapshotData` toujours présent
 (`backend/src/Entity/Schedule.php:123`) ✓ (D1 porte (a) : `PageHeader`, `frontend/docs/frontend-components.md`).

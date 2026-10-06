@@ -13,12 +13,7 @@
 > ⚠ **Deux séries coexistent dans ce fichier, ne jamais les confondre.** Le **backlog** (`Pn-x`/`SEC-n`/`DOC-n`,
 > compté par le `(N)` ci-dessus) et les **findings d'audit** (`AUD-*`, section dédiée en bas, compteur propre —
 > `grep -cE '^\| AUD-' specs/evolution/roadmap.md`). Les deux numérotations ont grandi séparément, et le préfixe
-> **`AUD-`** existe pour rendre l'amalgame impossible. ⚑ **L'exemple qui vivait ici a été DÉSAMORCÉ le
-> 2026-08-21** : le rituel ZAP portait `SEC-13`, comme un finding d'audit livré (validation du `config`) — ET
-> comme un second item de backlog né depuis. Trois sens pour un id. Le rituel a pris l'id **SEC-19** jusqu'à sa
-> sortie du backlog (2026-10-06 — c'est désormais un geste récurrent de déploiement, pas un item de backlog,
-> [`docs/security/scanners.md`](../../docs/security/scanners.md) §Rituel) ; les traces d'août qui disent
-> « SEC-13 » dans l'état des lieux parlent de l'**audit**, pas du backlog.
+> **`AUD-`** existe pour rendre l'amalgame impossible.
 >
 > **Corollaire à ne pas contourner** : si vous cherchez « est-ce que X est fait ? », ce fichier ne répond pas —
 > [`etat-des-lieux.md`](../courantes/etat-des-lieux.md) répond. Et si un sujet a été **tranché contre** une option
@@ -32,31 +27,23 @@
 > **Effort** : XS/S ≤ 1 PR · M 2-3 PR · L lot phasé · XL recherche + gros lot.
 > Cap de commercialisation : **mi-2027**.
 >
-> **Fichiers de détail actifs** : le programme plannings BCCL (ex-P2-58, **entièrement clos le 2026-09-06**) est
-> **archivé dans [`docs/archive/`](../../docs/archive/plannings-bccl-2026-08-31.md)** — ses décisions D1-D17 y restent lisibles, son seul
-> résidu ouvert est l'item **P4-182** ci-dessous ·
-> [`gestion-matchs-ffbb.md`](gestion-matchs-ffbb.md) (module matchs — **aminci à l'ouvert (DOC-56)** :
-> paliers A (P1-4) et B TRAJET+ANNUAIRE (RMM-8/P2-53 + RMM-9/P2-54) **livrés** — comportement dans
-> `module-matchs.md`, décisions tranchées dans `etat-des-lieux.md` §2 ; la **dérogation est fermée
-> sans code** (`etat-des-lieux.md` §2) ; reste OUVERT le seul **palier C** (effet réseau cross-club,
-> §5bis pts 2-3 + §11). `refonte-module-matchs.md` (programme RMM entièrement livré) est **archivé dans
-> [`docs/archive/`](../../docs/archive/refonte-module-matchs.md)** depuis le 2026-08-28 ; le programme
-> RMM est ENTIÈREMENT clos) ·
-> le besoin [`ffbb-appariement-source-de-verite.md`](ffbb-appariement-source-de-verite.md) (**« on accompagne, on ne décide pas »** — **aminci à l'ouvert (DOC-56)** : le besoin est livré (paliers B/C, P3-7 et P4-35 soldés — comportement dans `module-matchs.md`, décisions fermées dans `etat-des-lieux.md` §2) ; reste OUVERT les **gymnases de match** (§7, besoin neuf non codé), la **résolution de gymnase** (§6.8, citée par P4-282) et les **questions résiduelles** (§8) ; ses mesures de référence — reconnaissance P2-19 + traces brutes + complétion club, lots tous soldés — sont **archivées** dans [`docs/archive/`](../../docs/archive/api-ffbb-app-reconnaissance.md) depuis le 2026-08-18) ·
-> [`etude-tailles-clubs-ffbb.md`](etude-tailles-clubs-ffbb.md) (**tailles des clubs mesurées sur l'API FFBB** — a nourri le cadrage P1-3, sert la grille tarifaire par taille) ·
+> **Fichiers de détail actifs** — référencés depuis des lignes ci-dessous quand le sujet dépasse une ligne :
+> [`gestion-matchs-ffbb.md`](gestion-matchs-ffbb.md) (module matchs — reste OUVERT le seul **palier C**,
+> effet réseau cross-club, §5bis pts 2-3 + §11) ·
+> [`ffbb-appariement-source-de-verite.md`](ffbb-appariement-source-de-verite.md) (**« on accompagne, on ne
+> décide pas »** — restent OUVERTS les **gymnases de match** (§7), la **résolution de gymnase** (§6.8, citée
+> par P4-282) et les **questions résiduelles** (§8)) ·
+> [`etude-tailles-clubs-ffbb.md`](etude-tailles-clubs-ffbb.md) (tailles des clubs mesurées sur l'API FFBB,
+> sert la grille tarifaire par taille) ·
 > [`console-superadmin.md`](console-superadmin.md) (P4-54) ·
-> [`duplications-de-verite.md`](duplications-de-verite.md) (**doctrine du motif « une vérité, deux
-> endroits »** — le test de fusion réutilisé par `documentation-update`, les duplications
-> délibérées à ne jamais mutualiser, et l'ouvert. **Refondu le 2026-09-18 (AUD-DOC-43)** : le
-> cimetière des 40 cas déjà livrés est parti — leur détail vit dans git. Reste **D-11**, dormant :
-> `match_day` est NULL sur toutes les équipes et aucun écran ne l'expose — à traiter le jour où le
-> champ sera exposé, pas avant).
+> [`duplications-de-verite.md`](duplications-de-verite.md) (doctrine du motif « une vérité, deux endroits » —
+> le test de fusion réutilisé par `documentation-update`, les duplications délibérées à ne jamais mutualiser.
+> Reste **D-11**, dormant : `match_day` est NULL sur toutes les équipes et aucun écran ne l'expose — à traiter
+> le jour où le champ sera exposé, pas avant).
 >
 > ⚠ **Cette liste ne contient QUE de l'ouvert, et c'est une règle d'entretien** : un fichier de détail dont
 > l'item est soldé **quitte cette liste ET le dépôt** — l'historique vit dans git, et un cadrage pré-décision
-> n'a plus de valeur une fois ses questions tranchées. `compte-demo.md` (P2-4) et `enregistrement-ffbb.md`
-> (P3-4) y ont survécu à leur livraison jusqu'au 2026-08-11 : un agent qui lisait ce header en concluait que
-> le sujet restait à faire. Supprimés ce jour, décision fondateur.
+> n'a plus de valeur une fois ses questions tranchées.
 >
 > **Réf historiques** : `FF#n` / `BG G#n` = identifiants des anciens `features-futures.md` / `backend-gaps.md`,
 > absorbés le 2026-07-05. `v3 §x` / `contraintes-v2` = specs figées de `specs/initiales/`.
@@ -65,9 +52,7 @@
 
 ## P1 — Enablers à fort levier
 
-> **Section VIDE depuis le 2026-08-10** : les deux enablers (P1-1 rôles, P1-3 offres) sont livrés le
-> même jour — état des lieux §1.11/§1.12. Elle reste ici parce que la numérotation `P1-x` est stable
-> et qu'un futur enabler structurant s'y rangera.
+> Section vide : la numérotation `P1-x` est réservée à un futur enabler structurant qui s'y rangera.
 
 ---
 
@@ -78,7 +63,7 @@
 | P4-159 | **Balayage d'intervalle des verrous : une épingle ALIGNÉE sur une case de grille tue ses voisines chevauchantes** | ⚪ | M | Autopsie du 2026-09-01 (exercice reprise-24, avant correction de la grille) : `engine/app/solver/constraints/structural.py:97-123` (« P4-97 bis ») ferme `var==0` toute case libre chevauchant un verrou, par sous-créneaux de 15′ — alors que les séances LIBRES entre elles ne se voient pas (cases = ressources indépendantes, add_room_at_most_one groupe par heure exacte). Incohérence : épingler l'exacte solution libre dégradait 38→36 placements sur une grille à rangées chevauchantes. Plus déclenchée par les données BCCL (grille corrigée #816) mais LATENTE pour tout club à rangées chevauchantes. Direction validée par l'autopsie : restreindre le balayage aux verrous NON alignés sur une case de la grille (un verrou aligné consomme SA case, déjà fait par blocked_venue_slots) |
 | P2-39 | **Ajouter une contrainte au planning de SAISON depuis l'overlay, sans le rouvrir** | 🟡 | ? | Retour terrain 2026-08-18 : en travaillant l'overlay, le gestionnaire *« se rend compte qu'il a oublié une contrainte pour une équipe qui n'a plus de réservation »* et voudrait l'ajouter aux règles de base sans rouvrir le planning de saison. **Besoin à CHALLENGER au cadrage, comme demandé par le fondateur** : écrire dans le socle depuis une vue de période casse l'isolation qui fait tout l'intérêt des périodes (ADR-0002), et un planning de saison VALIDÉ est en lecture seule par décision — le rouvrir est un geste conscient, pas une friction gratuite. Alternative à instruire : **noter** la contrainte manquante depuis l'overlay (un pense-bête daté, visible au retour en saison) plutôt que l'écrire à distance ; le besoin réel est « ne pas perdre l'information », pas « écrire dans le socle » |
 | P4-96 | **Diagnostic d'infaisabilité riche — nommer la chaîne causale, pas juste INFEASIBLE** | 🟡 | M | Constaté fondateur 2026-08-14 pendant P5-13 : chaque INFEASIBLE rend le même message générique (« contraintes impossibles à satisfaire toutes ensemble ») alors que la cause était une chaîne précise (verrou SM2 → U21M1 expulsé → coach Thomas indispo vendredi → fenêtre jeunes) reconstruite À LA MAIN en interrogeant la base — un gestionnaire seul est aveugle. Piste : unsat core CP-SAT (assumptions par groupe de contraintes) → diagnostics nommant les 2-3 contraintes en conflit. À cadrer avec le coût solveur (double solve ?). Recoupe P2-28 (ses diagnostics « règle violée » réduiront une partie des cas) |
-| P2-3 | **Versions — « Travailler sur cette version » + savepoint auto (D4)** | 🟡 | M | Moitié manquante de la décision 5 ; D1→D3quater livrés (état des lieux). ⚠ **Ne recouvre pas le rail de retouche** conçu le 2026-08-16 (programme work-loop, intégralement SOLDÉ — état des lieux) : ce D4 vise un savepoint entre DEUX générations, pas un filet intra-génération |
+| P2-3 | **Versions — « Travailler sur cette version » + savepoint auto (D4)** | 🟡 | M | Moitié manquante de la décision 5 (`etat-des-lieux.md`). ⚠ **Ne recouvre pas le rail de retouche** (programme work-loop, `etat-des-lieux.md`) : ce D4 vise un savepoint entre DEUX générations, pas un filet intra-génération |
 
 ---
 
@@ -99,91 +84,16 @@
 |---|-------|:---:|:---:|---|
 | P4-10 | **Désactiver « Régénérer » si rien n'a changé** | ⚪ | M | Demande une détection de changement fiable |
 | P4-266 | **La péremption « à régénérer » se déclenche sur ÉVÉNEMENT et ne s'efface qu'à la régénération : un aller-retour au résultat net NUL laisse le planning signalé à tort** | ⚪ | M | `ResourceChangeStaleScheduleListener` (`backend/src/EventListener/ResourceChangeStaleScheduleListener.php`) marque `Schedule.resourcesChangedSinceGeneration` (`Schedule.php:113`) à CHAQUE écriture d'une ressource écoutée, jamais sur une comparaison d'état — un ajout puis une suppression qui ramènent les données à l'identique (ex. ~40 jours fériés ajoutés puis retirés le 2026-09-05 chez BCCL) laissent le drapeau posé, sans que rien n'ait réellement changé pour le solveur. Deux exclusions cosmétiques existent déjà (§ ci-dessus, alias FFBB de gymnase, `TeamTagService::syncTeamTags` court-circuité si l'ensemble de tags est identique) mais elles filtrent un CHANGESET, pas un résultat NET après plusieurs écritures. Remède envisagé : comparer l'empreinte du payload `/generate` RECALCULÉ à `Schedule.snapshotHash` stocké, et ne marquer que si elle diverge — risque à cadrer : un changement de CODE (version du builder de payload) ferait alors diverger l'empreinte de tous les plannings existants, les marquant tous périmés d'un coup |
-| P4-59 | **Convertir un déplacement manuel en règle d'ÉQUIPE pérenne** (v3 §11.4 · FF#4) | 🟡 | M | Décision fondateur 2026-08-16 (option a) : l'endpoint placebo `POST /api/schedule-slots/{id}/manual-edit/constraint` (`ManualEditService::applyPermanentConstraint`) est **supprimé** — il écrivait une contrainte sur des clés `config` que le solveur ne lit jamais, contournant `ConstraintConfigValidator`. Le BESOIN reste, recadré proprement : un dialogue « convertir ce déplacement en règle ? » qui pose une vraie contrainte d'ÉQUIPE (DAY/TIME/FACILITY, honorée via `ConstraintConfigValidator` — pas de clé morte) et refuse explicitement, avec la raison, quand c'est infaisable (`sessionsPerWeek > 1` + `forcedDays` en conflit, etc.). Question ouverte au cadrage : que devient le verrou du créneau une fois la règle posée (reste-t-il, se lève-t-il) ? Ne jamais pousser ce dialogue à la demande — l'utilisateur doit le déclencher (anti-harcèlement). Le `source_occurrence_id` dépendait du modèle « templates → occurrences » (ex-P3-3, fermé au triage roadmap 2026-09-25 — vision v3 hors GA, `etat-des-lieux.md` §2) : à repenser sans cette table si ce dialogue se cadre un jour |
+| P4-59 | **Convertir un déplacement manuel en règle d'ÉQUIPE pérenne** (v3 §11.4 · FF#4) | 🟡 | M | Décision fondateur 2026-08-16 (option a) : l'endpoint placebo `POST /api/schedule-slots/{id}/manual-edit/constraint` (`ManualEditService::applyPermanentConstraint`) est **supprimé** — il écrivait une contrainte sur des clés `config` que le solveur ne lit jamais, contournant `ConstraintConfigValidator`. Le BESOIN reste, recadré proprement : un dialogue « convertir ce déplacement en règle ? » qui pose une vraie contrainte d'ÉQUIPE (DAY/TIME/FACILITY, honorée via `ConstraintConfigValidator` — pas de clé morte) et refuse explicitement, avec la raison, quand c'est infaisable (`sessionsPerWeek > 1` + `forcedDays` en conflit, etc.). Question ouverte au cadrage : que devient le verrou du créneau une fois la règle posée (reste-t-il, se lève-t-il) ? Ne jamais pousser ce dialogue à la demande — l'utilisateur doit le déclencher (anti-harcèlement). Le `source_occurrence_id` dépendait du modèle « templates → occurrences » (fermé sans correctif, `etat-des-lieux.md` §2) : à repenser sans cette table si ce dialogue se cadre un jour |
 
 ### Matchs
 
-> Ordre fondateur : (1) Consulter — PR-1 filtres, PR-2a onglet et PR-2b Mois/Phase livrés ; puis
-> l'espace Importer — **PR-3a (backend) et PR-3b (frontend) livrées le 2026-09-08** :
-> `FixtureReviewState` (NEW/OUT_OF_SYNC/REVIEWED), `Fixture.pendingDeviations`/`reviewedAt`,
-> `POST /api/fixtures/review` + `/review/deviations`, moteur de traitement partagé xlsx⇄API, et
-> l'onglet Importer (`ImportPage.tsx`, file de traitement par équipe `ReviewQueue.tsx`, badge
-> « Importer · N ») branché dessus — **P4-186 SOLDÉ** (le dépôt FBI/canal API ont quitté la
-> Configuration pour l'onglet Importer) et le texte de `PlacementPanel.tsx` sur `VALIDATED` recalé
-> (« Attesté par FBI… », plus « La ligue a validé ce match… ») ; détail :
-> [`module-matchs.md`](../courantes/module-matchs.md) §7 « Écran Importer » ; (2) le repli visuel de
-> la Configuration — **P4-185 SOLDÉ (2026-09-09)** : six sections en accordéons contrôlés ancrés
-> `?section=`, rotations en liste compacte, durées en tableau partagé, détail
-> [`module-matchs.md`](../courantes/module-matchs.md) §8 « Écran Configuration ». (3) gymnase
-> depuis le libellé — **P4-187 SOLDÉ (187a backend + 187b écran, 2026-09-09)** : alias de salle
-> confirmés (`Venue.externalLabels`), résolution automatique aux deux canaux d'import (jamais un
-> placement), routes `POST`/`DELETE /api/venues/{id}/external-labels[/{label}]`, geste
-> « Rattacher » sur la file de traitement Importer (`ReviewQueueRow.tsx`), détail
-> [`module-matchs.md`](../courantes/module-matchs.md) §1 « Modèle & données transverses ». (4) le
-> détecteur de conflits (vérité de date + règle coach + bornes murales) — **P4-188 + P4-189 +
-> P4-191 SOLDÉS (2026-09-09)**, détail [`module-matchs.md`](../courantes/module-matchs.md) §
-> « Détection — MatchConflictDetector ». (5) le solveur de placement et l'amical — **P4-193 SOLDÉ
-> (2026-09-10), autrement que sa ligne ne le disait** : décision fondateur « un amical n'est pas sur
-> un créneau de match » — au lieu de lui faire honorer les fenêtres ligue (ce qu'annonçait la ligne,
-> avec un bump `CONTRACT_VERSION` 2.21), l'amical **quitte le rail solveur** (jamais proposé,
-> `MatchPlacementPayloadBuilder`) et gagne une alerte dédiée (`FRIENDLY_ON_MATCH_SLOT`) — **zéro
-> champ moteur, zéro bump, le contrat reste 2.20**, détail
-> [`module-matchs.md`](../courantes/module-matchs.md) §3 « Solveur de placement » et §2 « Détecteur de
-> gradué ». (6) le canal API FFBB et l'appariement — **P4-194 + P4-195 SOLDÉS
-> (2026-09-10)** : une rencontre de coupe non appariée fait naître ou réutilise une `Competition`
-> CUP rattachée à l'équipe (le libellé fédéral tranche l'amical, plus l'absence d'appariement), et
-> une CUP n'attend aucune journée (`expectedMatchdays` null, un réappariement répare un type
-> stocké à tort), détail
-> [`module-matchs.md`](../courantes/module-matchs.md) §7 « Écran Importer » (§7 « Écran Importer »). (7) les alias FFBB d'un gymnase, voir/retirer — **P4-196 SOLDÉ (2026-09-11)** : 7ᵉ
-> `AccordionSection` de `ConfigurationPage` (`VenueLabelsSection.tsx`, `?section=libelles`),
-> détail [`module-matchs.md`](../courantes/module-matchs.md) §1 « Modèle & données transverses ». (8)
-> l'atterrissage de Placer et la fermeture clavier de la puce de filtre — **P4-192 + P4-184 SOLDÉS
-> (2026-09-11)** : `defaultLoopStep` bascule sur « Domiciles posés » quand le seul trou restant est
-> « Saisi dans FBI » et qu'il est VIDE (champ `LoopStep.empty`, jamais le libellé « (0/0) »),
-> mesuré sur un week-end 100 % déplacements (SF1/SM1/U21M1, 2026-09-08) ; `Échap` ferme la puce
-> `ResourceFilter` et rend le focus au déclencheur (listener natif + `stopPropagation`, patron
-> `listbox.tsx`), détail [`module-matchs.md`](../courantes/module-matchs.md) §5 « Écran Calendrier » (ex-Refonte UX —
-> RMM-1 » et §5 « Écran Calendrier ». **P4-197 SOLDÉ (2026-09-16, PR 3b
-> « Calendrier — l'écran unique »)** : la liste « à placer » couvre désormais TOUTES les semaines
-> filtrées (plus de bornage à la semaine affichée) et un match placé recadre la semaine dessus
-> automatiquement — détail [`module-matchs.md`](../courantes/module-matchs.md) §5 « Écran Calendrier ».
-> **P4-198 SOLDÉ (2026-09-14)** — recherche mesurée le 2026-09-12 en
-> rangeant le dépôt FBI en onglets par famille : champ de recherche intégré à la primitive
-> `Listbox` au-delà de 8 options réelles, trigger-bouton conservé, détail
-> [`module-matchs.md`](../courantes/module-matchs.md) §7 « Écran Importer » et
-> [`frontend-components.md`](../../frontend/docs/frontend-components.md). **P4-199/200/201**
-> ouverts le 2026-09-12 lors de la passe de tests
-> manuels du fondateur sur ses 256 rencontres réelles (82 sans heure) : règles d'import à recaler
-> (extérieur/passé-semaine-en-cours/suffixe équipe) — **P4-199 SOLDÉ le même jour**, détail
-> [`module-matchs.md`](../courantes/module-matchs.md) §7 « Écran Importer » (§7 « Écran Importer ») — **P4-200 SOLDÉ (C1 le 2026-09-12, C2 le 2026-09-13)**. **P4-201 SOLDÉ (2026-09-16)** —
-> quota e2e superadmin : session unique par run (projet Playwright `setup` + `storageState`),
-> détail [`testing-strategy.md`](../../docs/testing/testing-strategy.md) § « Le socle superadmin
-> e2e ». **D1 SOLDÉ (2026-09-13)** — le détecteur de conflits dit la vérité (salle = fenêtre
-> match seul, jamais de conflit avec l'entraînement de sa propre équipe, passé muet), détail
-> [`module-matchs.md`](../courantes/module-matchs.md) §2 « Détecteur de conflits » ; différé une phrase d'aide
-> « Durée des matchs » (P4-202, ci-dessous). **E1 + E2 SOLDÉS (2026-09-14)** — vécu fondateur
-> (libellé rattaché au mauvais gymnase, 83 domiciles mal placés, aucun geste de correction
-> existant) : inventaire agrégé + ré-affectation en un geste (`reassign: true`, E1) qui re-pointe
-> les non placés sans jamais toucher un placé, **exposé par l'écran d'appariement** (E2 —
-> l'ancienne section « Libellés FFBB des gymnases » devient l'écran, un signal partagé renvoie
-> vers lui depuis Importer/Semaine/Consulter), détail
-> [`module-matchs.md`](../courantes/module-matchs.md) §1 « Modèle & données transverses ». **Le pont
-> par référence FFBB de salle (P4-204) est FERMÉ (2026-09-21, décision fondateur)** — piste
-> abandonnée après trois sondes réseau réelles concordantes : l'objet `salle` d'un hit rencontres
-> FFBB ne porte jamais l'identifiant nécessaire, et le canal principal du fondateur (fichier Excel)
-> n'en porte aucun non plus — le pont ne servirait donc qu'au canal API secondaire, les alias
-> restant de toute façon obligatoires pour l'autre, détail `etat-des-lieux.md` §2. **P4-203 SOLDÉ
-> (2026-09-14)** — le solveur de placement adopte la règle D1 : la salle tient le match SEUL,
-> l'échauffement reste une fenêtre personne, contrat backend⇄engine **2.21** (durées de match par
-> équipe), détail [`module-matchs.md`](../courantes/module-matchs.md) §3 « Solveur de placement » et
-> [ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md) §4. **P4-206 SOLDÉ
-> (2026-09-29)** — la vue « week-end type » suit désormais la même géométrie que la grille datée
-> (coup d'envoi → coup d'envoi + durée réelle par catégorie, sans échauffement dessiné), détail
-> `etat-des-lieux.md` §2/§3.
+> Comportement livré du module matchs : [`module-matchs.md`](../courantes/module-matchs.md) ;
+> décisions fermées : `etat-des-lieux.md` §2 ; traces datées : `etat-des-lieux.md` §3.
 
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
-| P4-276 | **Mesurer l'usage : suivi d'activité dans l'APP (le volet vitrine est livré)** | 🟡 | S | Demande fondateur 2026-09-29. **Volet VITRINE LIVRÉ le 2026-10-06** (Umami auto-hébergé, sans cookie, `stats.amateo.app` — `etat-des-lieux.md` §3) : il quitte cette ligne. **Reste ouvert : le volet APP** — instrumenter l'espace authentifié multi-tenant est un AUTRE sujet (RGPD : données derrière login ; `User.lastLoginAt` (`backend/src/Entity/User.php:71`) + Sentry couvrent déjà le minimum). Décision à prendre : comptage anonyme type Umami (étendre le site existant à `app.amateo.app`) vs produit orienté parcours (cartes de clics Hotjar/Clarity ⇒ cookies + bandeau) ; et périmètre RGPD d'un suivi en espace authentifié. Non cadré |
+| P4-276 | **Mesurer l'usage : suivi d'activité dans l'APP** (le volet vitrine est livré, `etat-des-lieux.md` §3) | 🟡 | S | Instrumenter l'espace authentifié multi-tenant est un sujet distinct de la mesure vitrine (RGPD : données derrière login ; `User.lastLoginAt` (`backend/src/Entity/User.php:71`) + Sentry couvrent déjà le minimum). Décision à prendre : comptage anonyme type Umami (étendre le site existant à `app.amateo.app`) vs produit orienté parcours (cartes de clics Hotjar/Clarity ⇒ cookies + bandeau) ; et périmètre RGPD d'un suivi en espace authentifié. Non cadré |
 | P4-277 | **Vitrine : « Ils nous font confiance » — montrer les clubs partenaires** | 🟡 | S | Demande fondateur 2026-09-29 : afficher sur la vitrine les clubs qui utilisent le produit, bêta-testeurs compris (valorise le travail, preuve sociale). Constat : aucune section de ce type dans `landing/index.html` (vérifié par grep, 2026-09-29). Pistes : bandeau de logos/noms de clubs, liste pilotée par `landing/config.js` (zéro littéral), **accord écrit de chaque club avant publication de son nom/logo** (droit à l'image / marque du club). Candidats connus : BCCL, ASUL Lyon Basket (bêta). Non cadré |
 | P4-279 | **Toast/notification quand les trajets d'un gymnase déplacé ont été recalculés** | ⚪ | S | Le déplacement RÉEL des coordonnées d'un gymnase relance déjà le recalcul asynchrone de la matrice (`VenueStateProcessor::afterPersist`, lot G 2026-09-30, `backend/docs/geo-api.md`) — mais AUCUN toast front ne le signale (décision volontaire du lot : pas d'écoute globale du flux Mercure `club:{id}:travel`, seule la modale `TravelMatrixModal` déjà ouverte l'écoute via `useTravelStream`). Un gestionnaire qui déplace un gymnase puis ferme l'écran Gymnases n'est jamais informé que le recalcul a eu lieu (ni qu'il est terminé) sans rouvrir la matrice. Nécessite une écoute globale du topic `club:{id}:travel` (hors de la modale) — portée et forme (toast ponctuel ? bandeau persistant ?) non cadrées |
 | P4-247 | **(retours de tests du 18-19/09) « Mettre à jour les adversaires » n'a pas de `resetManager()` — un `EntityManager` fermé en passe (a) prive (b)/(c) d'exécution utile** | ⚪ | S | Décision assumée (`OpponentRefreshController::step`, docblock) : si une passe ferme l'`EntityManager` (ex. une violation d'unicité qui échapperait encore au correctif `ON CONFLICT` de `OpponentDirectoryEntryRepository::upsert`), les passes suivantes du MÊME appel le reçoivent fermé (injecté au constructeur, un `resetManager()` ne recâblerait pas ces références déjà injectées et détacherait les entités préchargées) et retombent elles aussi sur leur résultat neutre via `failedSteps`. La réponse reste HONNÊTE (jamais un succès mensonger, le front invite à relancer) mais une seule casse en cascade sur les trois passes d'un même appel — dette assumée, pas un bug caché |
@@ -194,7 +104,7 @@
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
 | P4-289 | **Annonce lecteur d'écran (`aria-live="polite"`) du changement d'état d'alignement dans la modale Engagements FFBB** | ⚪ | S | Recommandation ui-ux-pro-max (lot « le niveau d'une équipe jeune suit son engagement FFBB », 2026-10-01) : le clic sur « Aligner sur X »/« Renseigner : X » bascule silencieusement la pastille (`StatusPill` warning → neutre « Sera aligné à la confirmation ») sans annonce pour un lecteur d'écran — vérifié, aucun `aria-live` dans `FfbbEngagementsDialog.tsx`. Non cadré |
-| P4-149 | **UXC-12 résiduel — 4 hints inline de la console rendent dans une nuance plus CLAIRE que leurs 14 voisins ralliés ; arbitrage visuel fondateur à trancher** | ⚪ | XS | Le patron et le prérequis sont livrés (trace [`etat-des-lieux.md`](../courantes/etat-des-lieux.md) §3, 2026-08-30) : `EmptyHint`/`EmptyBlock` portent une prop `variant` (`app` par défaut, `console` sur les jetons `--console-*`, foyer `shared/lib/surfaceSkin.ts::SurfaceSkin`) et 14 des 18 empty states admin sont ralliés sans changement de rendu. **Ce qui reste** : 4 sites — `ClubRequestsSection.tsx:49`, `ClubRequestsSection.tsx:109`, `FeedbackSection.tsx:90`, `ReleaseNotesSection.tsx:111` — rendent en `text-console-text-dim` (jeton = `--color-slate-400`, `src/index.css:88`), alors que la peau `console` d'`EmptyHint` porte `--console-muted` (`--color-slate-500`, `src/index.css:89`) — la nuance MAJORITAIRE parmi les 10 sites inline d'origine. Sur la coque sombre `--console-surface`, `slate-400` est plus CLAIR que `slate-500` : ces 4 sites ressortent donc **davantage** que les 14 ralliés, pas moins — fait constaté, intention inconnue (accident ou choix). **Trois issues, à trancher par le fondateur** : (1) les rallier sur `variant="console"` tel quel — assume le changement de couleur (ils passeraient de `slate-400` à `slate-500`, plus discrets) ; (2) donner à `EmptyHint` une **seconde peau console** (ex. `console-bright`, sur `--console-text-dim`) pour préserver leur nuance actuelle en les sortant quand même du balisage `<p>` local ; (3) les laisser tels quels et clore la ligne en décision fermée. Effort XS quelle que soit l'issue retenue |
+| P4-149 | **UXC-12 résiduel — 4 hints inline de la console rendent dans une nuance plus CLAIRE que leurs 14 voisins ralliés ; arbitrage visuel fondateur à trancher** | ⚪ | XS | Le patron et le prérequis sont livrés (trace [`etat-des-lieux.md`](../courantes/etat-des-lieux.md) §3) : `EmptyHint`/`EmptyBlock` portent une prop `variant` (`app` par défaut, `console` sur les jetons `--console-*`, foyer `shared/lib/surfaceSkin.ts::SurfaceSkin`) et 14 des 18 empty states admin sont ralliés sans changement de rendu. **Ce qui reste** : 4 sites — `ClubRequestsSection.tsx:49`, `ClubRequestsSection.tsx:109`, `FeedbackSection.tsx:90`, `ReleaseNotesSection.tsx:111` — rendent en `text-console-text-dim` (jeton = `--color-slate-400`, `src/index.css:88`), alors que la peau `console` d'`EmptyHint` porte `--console-muted` (`--color-slate-500`, `src/index.css:89`) — la nuance MAJORITAIRE parmi les 10 sites inline d'origine. Sur la coque sombre `--console-surface`, `slate-400` est plus CLAIR que `slate-500` : ces 4 sites ressortent donc **davantage** que les 14 ralliés, pas moins — fait constaté, intention inconnue (accident ou choix). **Trois issues, à trancher par le fondateur** : (1) les rallier sur `variant="console"` tel quel — assume le changement de couleur (ils passeraient de `slate-400` à `slate-500`, plus discrets) ; (2) donner à `EmptyHint` une **seconde peau console** (ex. `console-bright`, sur `--console-text-dim`) pour préserver leur nuance actuelle en les sortant quand même du balisage `<p>` local ; (3) les laisser tels quels et clore la ligne en décision fermée. Effort XS quelle que soit l'issue retenue |
 | P4-76 | **UX Membre : les boutons d'écriture restent visibles (403 serveur au clic)** | ⚪ | M | Assumé à la livraison de P1-1 (2026-08-10, décision de plan) : le serveur refuse TOUTES les écritures d'un Membre (gate PR A), mais le front ne masque que les sections déjà keyées `isManagement` (page club). Un Membre voit ailleurs des boutons Générer/éditer qui rendront 403. Polish : consommer `me.role` pour griser/masquer écran par écran — sans jamais recalculer une règle (P2-8) |
 
 ### Sécurité & données
@@ -202,22 +112,14 @@
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
 | P4-128 | **Les réservations n'ont ni verrou de concurrence ni borne d'intervalle — l'exclusivité mutualisée est vérifiée puis écrite** | ⚪ | M | Trois constats de la revue de sécurité du 2026-08-23 (lot P2-46 PR-2), aucun exploitable, tous intra-club — mais ils bornent une invariante que le moteur tient pour acquise. **(1) TOCTOU** : `ReservationGroupOccupancy` juge AVANT la transaction, sans `FOR UPDATE` ni index unique sur `(club, saison, plan, gymnase, jour, heure, équipe)` — deux POST de groupe concurrents sur la même case vide passent tous deux la règle (a) et écrivent 2N lignes, l'état « ni libre ni groupe-complète » que le rail existe pour empêcher. Correctif le moins cher : index unique (la course devient une `UniqueConstraintViolationException` déjà gérée) — donc une MIGRATION, exclue du périmètre de PR-2. **(2) Chevauchement non borné** : une « case » est `(gymnase, jour, heure H:i)` exacte ; rien n'oblige une réservation à s'aligner sur la grille, donc une individuelle à 18h30 n'apparaît pas sur la case 18h00 et coexiste avec le groupe. Limitation, pas régression (aucun contrôle d'intervalle n'existait). Correctif : comparer les intervalles, ou imposer l'alignement grille à l'écriture. **(3) `venueId` jamais vérifié** (les DEUX rails, préexistant) : aucune vérification que le gymnase appartient au club, aucune FK sur `reservation.venue_id` — pollution de référence pendante, sans fuite (la ligne est estampillée du club appelant, un gymnase étranger est indiscernable d'un inexistant). |
-| P4-8 | **`resolveClubId` choisit arbitrairement pour un gestionnaire multi-club** | ⚪ | M | Le front n'envoie pas `X-Club-Id`, donc `TenantFilterListener::resolveClubId` retombe sur `findOneBy(['userId','isActive'])` **sans ORDER BY** : pour un humain gérant deux clubs, « quel club est courant ? » n'a pas de réponse définie. **Fix = choix produit** (sélecteur de club explicite, ou club par défaut sur l'adhésion). ⚑ P1-1 (rôles) est livrée le 2026-08-10 SANS ce volet — différé sur décision fondateur (« aucun humain ne gère deux clubs ») ; la ligne vit seule |
+| P4-8 | **`resolveClubId` choisit arbitrairement pour un gestionnaire multi-club** | ⚪ | M | Le front n'envoie pas `X-Club-Id`, donc `TenantFilterListener::resolveClubId` retombe sur `findOneBy(['userId','isActive'])` **sans ORDER BY** : pour un humain gérant deux clubs, « quel club est courant ? » n'a pas de réponse définie. **Fix = choix produit** (sélecteur de club explicite, ou club par défaut sur l'adhésion). ⚑ P1-1 (rôles) a volontairement laissé ce volet de côté — différé sur décision fondateur (« aucun humain ne gère deux clubs ») ; la ligne vit seule |
 | P4-54 | **Console super-admin — SA4 v2 puis SA5** | ⚪ | M | SA0→SA4 v1 livrés + monitoring + alerting (état des lieux §1.8). Suite au signal → [`console-superadmin.md`](console-superadmin.md). ⚠ Suspension de club et approbation fallback **délibérément différées** au premier cas réel |
 
 ### Dette technique & tooling
 
-> 8 findings de cette édition sont **livrés** (PR `fix/audit-0918-backend`, traces §3 de
-> `etat-des-lieux.md`) : BCK-24 (purge complète, `PurgeCompletenessTest`), BCK-23
-> (`ConflictRadarLoader` unique), SEC-19 (limiteur `opponent_travel_manual`), BCK-32 (budget de mur
-> + réponse partielle sur `/opponents/refresh`), BCK-27 (`Assert\Length` sur 26 champs DTO), BCK-28
-> (six `catch (Throwable)` loggent désormais), INF-04 (`restart: unless-stopped` parité dev/prod),
-> INF-05 (`migration-rollback-drill.sh`). **DOC-45/46/48** partiellement corrigés par la rotation de
-> fraîcheur de la même passe (valeurs de poids, deux renvois faux). **Les findings encore ouverts
-> vivent dans la section « Findings d'audit ouverts (registre `/audit`) » plus bas dans ce fichier
-> (préfixe `AUD-`) — pas ici** : ce backlog `Pn-x` n'est pas leur maison, l'espace de noms `AUD-`
-> existe précisément pour empêcher la collision (avertissement en tête de cette section). Seule
-> trouvaille de dette backlog PURE (pas un finding d'audit) reste ci-dessous.
+> Les findings d'audit ouverts vivent dans la section « Findings d'audit ouverts (registre
+> `/audit`) » plus bas dans ce fichier (préfixe `AUD-`) — pas ici : ce backlog `Pn-x` n'est pas
+> leur maison. Seule trouvaille de dette backlog PURE (pas un finding d'audit) reste ci-dessous.
 
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
@@ -265,8 +167,8 @@
 
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
-| P5-27 | **Avant la PROD : reprendre TOUTES les captures de la vitrine après les changements visuels** | 🟠 | S | Demande fondateur 2026-09-25. Les captures actuelles de la vitrine figent une app qui a changé avant l'ouverture publique : le logo est entré dans le produit (**P5-24 livré et clos** — favicon, en-tête app clair/sombre, PDF, e-mails, image OG et pied de la page doléances coachs, `etat-des-lieux.md` §2/§3 ; la vitrine a son logo et sa palette recalée, `.claude/rules/landing.md`), et le chantier DA qui étend la palette de la vitrine à l'app elle-même a **commencé le 2026-09-25** (base chaude + accent produit par défaut, en-tête + favicon app, `specs/courantes/identite-visuelle-produit.md`). **Déclencheur atteint** : le fond d'écran commun (ex-P5-16, **livré et soldé le 2026-09-25**, `specs/courantes/identite-visuelle-produit.md` § « Le fond d'écran ») était la dernière PR visuelle annoncée de ce chantier — cette ligne peut désormais se lancer. **Captures concernées, toutes dans [`landing/assets/`](../../landing/assets/)** : `planning.png` (hero, P5-5 — en-tête pris avant la PR B du chantier DA, l'icône de repli `CalendarCheck2` d'`AppLayout` qu'elle montre a disparu du code, et avant le fond d'écran commun), `matchs.jpg` (section matchs, P5-26), et toute capture ajoutée d'ici là. **Règle à respecter, inchangée** — décision fermée `etat-des-lieux.md` §2 et `.claude/rules/landing.md` : en-tête « Démo Basket Club », zéro nom de personne dans l'image, données visibles publiques (codes d'équipe, clubs adverses, gymnases) ; deux méthodes valides pour y arriver, le **seed démo** (`app:demo:seed`) ou une **prise de vue sur une stack réelle** anonymisée dans le DOM au moment de la capture. **Déclencheur : le jour J de la prod** (`landing/config.js?v=` cache-bust déjà en place, mode sombre livré par P4-274 — la reprise attend donc uniquement la dernière PR visuelle) — une seule passe qui reprend tout, pas une capture refaite à chaque PR intermédiaire. **Chaque capture désormais en DEUX thèmes** : convention de nommage `nom.ext` → `nom-dark.ext` (même dossier), le swap est déjà câblé côté vitrine (`landing/index.html`, script de bascule de thème — `onerror` retombe sur la version claire tant qu'une `-dark` n'existe pas, `.claude/rules/landing.md`) — poser les fichiers suffit, aucun code à toucher |
-| P5-4b | **Re-run de la mesure de charge sur la VM de prod (Scaleway Instances)** | ⚪ | XS | Le harness et le premier run local sont livrés (2026-08-13 — 5 clubs sous limites mémoire de prod : 5/5 COMPLETED, zéro mur mémoire à cette taille, files nominales ; synthèse : [`docs/ops/load-test.md`](../../docs/ops/load-test.md) §Mesures — maison unique depuis que l'étude d'hébergement a quitté le repo pour `business/`, dossier local du fondateur, 2026-08-18). **Ce qui reste est le run qui DIMENSIONNE** : mêmes commandes (`docs/ops/load-test.md`) sur le VPS après mise en prod — en particulier le pic RAM engine d'un solve DENSE de 600 s (un solve local de 0,2 s ne stresse pas la mémoire comme 600 s de branch-and-bound) et le verdict PRO2-XXS vs PRO2-XS. Positionné « la semaine d'après » dans la checklist Scaleway ⚑ **La cible n'est plus indéterminée** : hébergeur CHOISI le 2026-08-21 — **Scaleway, produit Instances** (VM auto-gérée, stack Docker entière dessus, pas de base managée). La mesure porte donc sur CE gabarit de VM, pas sur « un VPS » générique — trace et conséquences en décision fermée, `etat-des-lieux.md` §2. |
+| P5-27 | **Avant la PROD : reprendre TOUTES les captures de la vitrine après les changements visuels** | 🟠 | S | Les captures actuelles de la vitrine figent une app visuellement périmée (logo, palette — `specs/courantes/identite-visuelle-produit.md`). **Captures concernées, toutes dans [`landing/assets/`](../../landing/assets/)** : `planning.png` (hero, P5-5 — montre l'icône de repli `CalendarCheck2` d'`AppLayout`, disparue du code), `matchs.jpg` (section matchs, P5-26), et toute capture ajoutée d'ici là. **Règle à respecter** — décision fermée `etat-des-lieux.md` §2 et `.claude/rules/landing.md` : en-tête « Démo Basket Club », zéro nom de personne dans l'image, données visibles publiques (codes d'équipe, clubs adverses, gymnases) ; deux méthodes valides, le **seed démo** (`app:demo:seed`) ou une **prise de vue sur une stack réelle** anonymisée dans le DOM au moment de la capture. **Déclencheur : le jour J de la prod** (`landing/config.js?v=` cache-bust déjà en place) — une seule passe qui reprend tout, pas une capture refaite à chaque PR intermédiaire. **Chaque capture en DEUX thèmes** : convention de nommage `nom.ext` → `nom-dark.ext` (même dossier), le swap est déjà câblé côté vitrine (`landing/index.html`, script de bascule de thème — `onerror` retombe sur la version claire tant qu'une `-dark` n'existe pas, `.claude/rules/landing.md`) — poser les fichiers suffit, aucun code à toucher |
+| P5-4b | **Re-run de la mesure de charge sur la VM de prod (Scaleway Instances)** | ⚪ | XS | Le harnais et le premier run local sont livrés (synthèse : [`docs/ops/load-test.md`](../../docs/ops/load-test.md) §Mesures). **Ce qui reste est le run qui DIMENSIONNE** : mêmes commandes (`docs/ops/load-test.md`) sur le VPS après mise en prod — en particulier le pic RAM engine d'un solve DENSE de 600 s (un solve local de 0,2 s ne stresse pas la mémoire comme 600 s de branch-and-bound) et le verdict PRO2-XXS vs PRO2-XS. **Hébergeur** : Scaleway, produit Instances (VM auto-gérée, stack Docker entière dessus, pas de base managée) — trace et conséquences en décision fermée, `etat-des-lieux.md` §2. |
 ---
 
 ## Findings d'audit ouverts (registre `/audit`) — 0
@@ -277,8 +179,7 @@
 > **cette section est le miroir ACTIONNABLE de leur reste-à-faire** — l'audit constate, la roadmap engage.
 >
 > ⚠ **Espace de noms distinct du backlog.** Un `SEC-n` d'audit n'est PAS le `SEC-n` du backlog ci-dessus —
-> les deux séries ont grandi séparément. (L'ancienne collision d'exemple, `SEC-13`, a été levée le 2026-08-21 :
-> le rituel ZAP est désormais `SEC-19`.) D'où le préfixe **`AUD-`** ici : il rend la collision
+> les deux séries ont grandi séparément. D'où le préfixe **`AUD-`** ici : il rend la collision
 > impossible à commettre. Le compteur du titre de ce fichier ne les compte pas (son `grep` cible `Pn`/`SEC-n`/`DOC-n`) ;
 > **cette section porte son propre compteur**, à entretenir à la même règle : un finding corrigé quitte la
 > section et laisse sa trace dans [`../courantes/etat-des-lieux.md`](../courantes/etat-des-lieux.md).
@@ -290,21 +191,9 @@
 | ID | Sujet | Gravité | Zone | Depuis | Note |
 |---|-------|:---:|:---:|:---:|---|
 
-> **`UXC-10` est fait hors admin** (2026-08-30) : 21 sites ralliés sur la primitive `EmptyHint`
-> (`frontend/shared/components/ui/empty-hint.tsx`). **4 exceptions structurelles gardées** — le
-> composant ne rend pas l'intention du site, détail et raison en décision fermée
-> [`etat-des-lieux.md`](../courantes/etat-des-lieux.md) §2. **`features/admin/`** (persona
-> fondateur, hors gestionnaire) reste à traiter, **avec `UXC-12`** (console hors design system).
-> ⚠ **Le « même lot, mêmes fichiers » décidé ce jour-là ne tient pas** — vérifié au code plus tard
-> le même 2026-08-30 : la console garde son identité sombre à dessein (décision fermée §2 plus
-> haut) et `EmptyHint`/`EmptyBlock` sont câblés sur les jetons de thème app, jamais égaux à ses
-> gris fixes. Le ralliement (**P4-149**) était donc **bloqué par** la tokenisation de la palette
-> console — livrée **le même jour** (jetons `--console-*` par aliasing, `src/index.css`) : le
-> prérequis est levé — depuis, la peau `console` a été posée sur la primitive (foyer partagé
-> `SurfaceSkin`, `shared/lib/surfaceSkin.ts`, même jour), **P4-149 reste ouvert** pour un arbitrage
-> visuel résiduel sur 4 sites (ligne réécrite ci-dessus). Le résidu `INF-02` (hook
-> off-site des backups) a rejoint la checklist Avant PROD (**P5-2**) le 2026-08-09.
-> Ces sujets restent lisibles dans l'édition d'audit, qui est la mémoire longue.
+> Reste ouvert, hors ce registre : **`features/admin/`** (persona fondateur, hors gestionnaire,
+> `UXC-12` — console hors design system) et son arbitrage visuel résiduel, voir **P4-149** ci-dessus.
+> Détail et décisions fermées : [`etat-des-lieux.md`](../courantes/etat-des-lieux.md) §2.
 
 ---
 
@@ -315,7 +204,7 @@
 
 | Sujet | Effort | Note |
 |---|:---:|---|
-| **Effet réseau du module matchs — palier C** (auto-remplissage des heures/positions extérieures par le cross-club, [`gestion-matchs-ffbb.md`](gestion-matchs-ffbb.md) §5bis pts 2-3, §11) | L | **Le seul morceau du module matchs encore devant** (paliers A/B livrés, dérogation fermée sans code). Quand l'adversaire est LUI-MÊME client et a saisi sa rencontre à domicile, le club récupère l'heure/le gymnase RÉELS de son match extérieur, sans travail — l'estimation (`AwayKickoffEstimator`) laisse place à l'exact. ⚠ **Valeur = fonction du nombre de clubs** (nulle aujourd'hui, forte à densité locale) → **V2, pas avant des clients payants dans une même ligue**. ⚠⚠ **C'est LE vecteur fermé par la revue sécu de RMM-9** : écrire dans la table PARTAGÉE `opponent_directory` une donnée dérivée d'un club (heure saisie par X, lue par Y) = A21/BCK-18, corollaire F-2 opposable. **Prérequis bloquant : un modèle de provenance/confiance inter-clubs** (même question fermée sans réponse en P4-137, décision fermée `etat-des-lieux.md` §2 — toujours ouverte ICI) — à trancher AVANT toute écriture cross-club. **Premier cas concret LIVRÉ (2026-09-15, PR-2 du lot « adversaire multi-gymnases », table `opponent_venue_suggestion`)** : « un compte, jamais un qui » — des suggestions PARTAGÉES agrégées, sans identité de club écrite, sont désormais en base et servies (`GET /api/opponents/{code}/venue-suggestions`) ; pas encore le cross-club de ce palier C (qui resterait, lui, à trancher). Ne pas rouvrir sans revue sécurité dédiée |
+| **Effet réseau du module matchs — palier C** (auto-remplissage des heures/positions extérieures par le cross-club, [`gestion-matchs-ffbb.md`](gestion-matchs-ffbb.md) §5bis pts 2-3, §11) | L | **Le seul morceau du module matchs encore devant** (paliers A/B livrés, dérogation fermée sans code). Quand l'adversaire est LUI-MÊME client et a saisi sa rencontre à domicile, le club récupère l'heure/le gymnase RÉELS de son match extérieur, sans travail — l'estimation (`AwayKickoffEstimator`) laisse place à l'exact. ⚠ **Valeur = fonction du nombre de clubs** (nulle aujourd'hui, forte à densité locale) → **V2, pas avant des clients payants dans une même ligue**. ⚠⚠ **C'est LE vecteur fermé par la revue sécu de RMM-9** : écrire dans la table PARTAGÉE `opponent_directory` une donnée dérivée d'un club (heure saisie par X, lue par Y) = A21/BCK-18, corollaire F-2 opposable. **Prérequis bloquant : un modèle de provenance/confiance inter-clubs** (même question fermée sans réponse en P4-137, décision fermée `etat-des-lieux.md` §2 — toujours ouverte ICI) — à trancher AVANT toute écriture cross-club. Un premier palier (suggestions PARTAGÉES agrégées, sans identité de club écrite — « un compte, jamais un qui », `GET /api/opponents/{code}/venue-suggestions`) est déjà livré ; pas encore le cross-club de ce palier C, qui resterait à trancher. Ne pas rouvrir sans revue sécurité dédiée |
 | **Reverse-engineering des contraintes** (dériver des PREFERRED du planning existant) | XL | Fort attrait, aucun cadrage. **Décisions déjà actées** : suggestions **PREFERRED uniquement** (des HARD dérivées figeraient le plan et neutraliseraient le solveur), **agrégation obligatoire** (« 4/4 séances mardi → 1 PREFERRED mardi » + score de confiance), analyse = **service backend pur, engine intouché**. Réutilise le rail `pendingConstraintSuggestion` déjà câblé |
 | **Régénération partielle guidée** (`PartialRegenService` — v3 §6.2, §14.2 · FF#1) | 🔴 | Partiellement couvert par les overlays (une période génère un plan borné sans toucher au socle) ; reste la regen **ciblée du plan de base** hors période. À requalifier quand un besoin réel se présente |
 | **Déterminisme exact du plan sur gros clubs** | 🟡 | Les 8 workers rendent l'assignation non déterministe (la **valeur** d'objectif reste stable). `interleave_search` seul ne suffit pas → refonte du budget timeout. À ne faire **que si** un club demande la repro exacte — aujourd'hui jugé inutile (le gestionnaire ajuste). Alternative : un mode « repro exacte » optionnel (1 worker + budget élargi) |
@@ -323,9 +212,9 @@
 | **App mobile** (React Native/Expo — v3 §1.4 · FF#14) | 🔴 | **À ne pas faire avant d'avoir des clients payants** — web responsive + PDF suffisent |
 | **Reflow cassé sous 360 px sur tout le produit** (WCAG 2.1 §1.4.10, ex-P4-251, déplacé ici au triage roadmap 2026-09-25 — décision fondateur : desktop-first, mobile en V2) | M | Mesuré le 2026-09-20 sur la base réelle, viewport 360 px (Playwright, `document.scrollingElement.scrollWidth` vs `clientWidth`, lecture seule) : accueil **558 px**, `/planning` **501 px**, `/matchs` **370 px**, `/club` **370 px**, `/matchs/adversaires` **370 px** — cinq routes débordent horizontalement. Coupable commun des trois `370 px` : le bouton horloge de l'en-tête global (`DevClock`, `frontend/src/app/AppLayout.tsx:64`, monté seulement en DEV) ; accueil et `/planning` débordent pour leurs PROPRES raisons, non instruites. Seul `/matchs/adversaires` porte un test ciblé (`frontend/tests/e2e/matches.spec.ts`) — les autres routes n'ont aucune garde. Détail : `docs/testing/test-coverage-map.md` §4. À reprendre si le mobile sort du parking |
 | **Notifications coach** (push + lien de consultation sans login — v3 §1.4 · FF#17) | 🟡 | Le rail tokenisé sans login existe déjà pour les doléances |
-| **Stats & analytics club** (taux de remplissage, heures-coach/semaine — v3 §1.4 · FF#16) | 🟡 | Peu coûteux une fois les occurrences là (modèle « templates → occurrences », ex-P3-3, fermé au triage roadmap 2026-09-25 — vision v3 hors GA) ; demande d'AG |
+| **Stats & analytics club** (taux de remplissage, heures-coach/semaine — v3 §1.4 · FF#16) | 🟡 | Peu coûteux une fois les occurrences là (modèle « templates → occurrences », fermé sans correctif — vision v3 hors GA, `etat-des-lieux.md` §2) ; demande d'AG |
 | **Dashboard multi-clubs** (au-delà de la console superadmin — v3 §14.3 · FF#15) | 🔴 | V2 |
-| **Multi-sport** (handball, gym, volley — v3 §1.4 · FF#18) | 🔴 | **Attendre une vraie demande** — mais la STRATÉGIE est posée (fondateur 2026-08-13) : **un socle GÉNÉRIQUE full-manuel + une branche PAR SPORT au fur et à mesure qu'on apprend le métier** (« je maîtrise le basket, pas les autres ; le volley a d'autres formats de match, d'autres terrains, sa propre API »). ⚑ Le socle générique est PLUS PROCHE qu'il n'y paraît : la saisie est DÉJÀ manuelle (le populate FFBB n'est qu'une assistance best-effort), le cœur solveur (équipes × gymnases × créneaux) est sport-agnostique, et le sport-spécifique est déjà ISOLÉ en couches débrayables — `FfbbApiClient` (seule intégration fédérale, confinée), le module matchs (formats FFBB), les règles de tags d'âge (EMB/BABY). Une « branche sport » = son API fédérale + ses formats de match + sa sémantique de catégories, PAS une refonte. Conséquence assumée inchangée : le fond d'écran commun (P5-16, livré le 2026-09-25 — `specs/courantes/identite-visuelle-produit.md` § « Le fond d'écran ») part du mono-sport (motifs multi-sport génériques du logo, pas un habillage par sport) et ne prépare rien pour une branche sport future |
+| **Multi-sport** (handball, gym, volley — v3 §1.4 · FF#18) | 🔴 | **Attendre une vraie demande** — mais la STRATÉGIE est posée : **un socle GÉNÉRIQUE full-manuel + une branche PAR SPORT au fur et à mesure qu'on apprend le métier** (« je maîtrise le basket, pas les autres ; le volley a d'autres formats de match, d'autres terrains, sa propre API »). ⚑ Le socle générique est PLUS PROCHE qu'il n'y paraît : la saisie est DÉJÀ manuelle (le populate FFBB n'est qu'une assistance best-effort), le cœur solveur (équipes × gymnases × créneaux) est sport-agnostique, et le sport-spécifique est déjà ISOLÉ en couches débrayables — `FfbbApiClient` (seule intégration fédérale, confinée), le module matchs (formats FFBB), les règles de tags d'âge (EMB/BABY). Une « branche sport » = son API fédérale + ses formats de match + sa sémantique de catégories, PAS une refonte. Conséquence assumée : le fond d'écran commun (`specs/courantes/identite-visuelle-produit.md` § « Le fond d'écran ») part du mono-sport (motifs multi-sport génériques du logo, pas un habillage par sport) et ne prépare rien pour une branche sport future |
 
 ---
 
@@ -333,12 +222,12 @@
 
 > Décision fondateur 2026-09-26/27 : aucune de ces idées n'est cadrée.
 
-- **Plannings de FIN DE SAISON — un 4ᵉ type de plan ?** (besoin fondateur 2026-08-07, à mûrir). En fin de saison trois choses se cumulent : les **détections** (internes, parfois sur les créneaux d'entraînement), les **playoffs** — où l'on se concentre sur l'effectif encore en compétition —, et surtout le **changement d'équipe** : les U15 deuxième année s'entraînent déjà avec leur future U18M1 ou M2. Le planning devient très spécial : même structure, mais certains créneaux disparaissent et les équipes ne contiennent plus les mêmes joueurs. Piste : un plan qui se dérive de qui CHANGE d'équipe et de qui est ENCORE en compétition, en gardant la structure ou en retirant des créneaux — ce serait un **4ᵉ type de plan** à côté de SEASON/CLOSURE/HOLIDAY. **À spécifier en profondeur avant tout cadrage** : ni le modèle de données (appartenance d'un joueur à deux équipes ?) ni le geste UI ne sont tranchés.
-- **Mode démo self-service** (ex-volet C de P2-4, jamais demandé par le terrain) : bouton public « Essayer avec des données d'exemple », sandbox jetable par visiteur SANS accompagnement (TTL/purge auto, zéro humain dans la boucle), à cadrer avec le bridage P1-3. ⚠ **À ne pas confondre avec le raccourci démo VENDEUR livré le 2026-08-20** (`POST /api/dev/demo-register`) : actionné par le FONDATEUR en rendez-vous avec une adresse démo fixe, joignable en PROD seulement pendant la fenêtre d'activation posée par le superadmin (`specs/courantes/etat-des-lieux.md` §2, 2026-09-30) — ce n'est PAS un bouton public, aucun visiteur ne peut se le fabriquer seul. Le volet VENDEUR est livré et couvre l'usage réel (état des lieux 2026-08-07, 2026-08-20). Rouvrir le self-service si la landing/le volume de prospects le justifie.
-- **Que devient un club de démonstration si le prospect qui l'a vu naître signe pour de bon ?** (ouvert par le raccourci démo du register livré le 2026-08-20). Aujourd'hui `is_demo` exempte le club de tous les plafonds (bascule de saison hors gate paiement P1-5, exclu des KPI d'adoption) — un club qui resterait `is_demo` après une vraie signature vivrait hors quota indéfiniment. La seule voie propre aujourd'hui : détruire le club démo (le raccourci le fait déjà pour la démo PRÉCÉDENTE de l'animateur) puis refaire une inscription réelle avec le même code FFBB. Aucune conversion `is_demo → réel` n'existe. Pas de signal terrain à ce jour (aucun prospect n'a encore signé sur son club de démo) ; à cadrer si/quand le cas se présente.
-- **Réservation de salle de convivialité** (self-service coach : réserver une soirée dans une salle non sportive → notif gestionnaire). La résa est **triviale** (salle = `Venue`, pas de solveur, juste un check de conflit). ⚠ **Le vrai coût n'est pas la résa** : « le coach réserve lui-même » exige des **comptes coach + un modèle de rôles** (P1-1). **Question stratégique** : veut-on que l'appli devienne le *hub du club* (self-service coach) ou reste l'*outil de planning* (piloté gestionnaire) ? Déclencheur de réouverture : P1-1 livré, ou demande d'un club pilote — la feature devient alors quasi gratuite.
+- **Plannings de FIN DE SAISON — un 4ᵉ type de plan ?** (besoin fondateur, à mûrir). En fin de saison trois choses se cumulent : les **détections** (internes, parfois sur les créneaux d'entraînement), les **playoffs** — où l'on se concentre sur l'effectif encore en compétition —, et surtout le **changement d'équipe** : les U15 deuxième année s'entraînent déjà avec leur future U18M1 ou M2. Le planning devient très spécial : même structure, mais certains créneaux disparaissent et les équipes ne contiennent plus les mêmes joueurs. Piste : un plan qui se dérive de qui CHANGE d'équipe et de qui est ENCORE en compétition, en gardant la structure ou en retirant des créneaux — ce serait un **4ᵉ type de plan** à côté de SEASON/CLOSURE/HOLIDAY. **À spécifier en profondeur avant tout cadrage** : ni le modèle de données (appartenance d'un joueur à deux équipes ?) ni le geste UI ne sont tranchés.
+- **Mode démo self-service** (jamais demandé par le terrain) : bouton public « Essayer avec des données d'exemple », sandbox jetable par visiteur SANS accompagnement (TTL/purge auto, zéro humain dans la boucle), à cadrer avec le bridage P1-3. ⚠ **À ne pas confondre avec le raccourci démo VENDEUR** (`POST /api/dev/demo-register`) : actionné par le FONDATEUR en rendez-vous avec une adresse démo fixe, joignable en PROD seulement pendant la fenêtre d'activation posée par le superadmin (`specs/courantes/etat-des-lieux.md` §2) — ce n'est PAS un bouton public, aucun visiteur ne peut se le fabriquer seul ; ce volet VENDEUR couvre déjà l'usage réel. Rouvrir le self-service si la landing/le volume de prospects le justifie.
+- **Que devient un club de démonstration si le prospect qui l'a vu naître signe pour de bon ?** Aujourd'hui `is_demo` exempte le club de tous les plafonds (bascule de saison hors gate paiement P1-5, exclu des KPI d'adoption) — un club qui resterait `is_demo` après une vraie signature vivrait hors quota indéfiniment. La seule voie propre aujourd'hui : détruire le club démo (le raccourci du register le fait déjà pour la démo PRÉCÉDENTE de l'animateur) puis refaire une inscription réelle avec le même code FFBB. Aucune conversion `is_demo → réel` n'existe. Pas de signal terrain à ce jour ; à cadrer si/quand le cas se présente.
+- **Réservation de salle de convivialité** (self-service coach : réserver une soirée dans une salle non sportive → notif gestionnaire). La résa est **triviale** (salle = `Venue`, pas de solveur, juste un check de conflit). ⚠ **Le vrai coût n'est pas la résa** : « le coach réserve lui-même » exige des **comptes coach + un modèle de rôles** (P1-1, livré). **Question stratégique** : veut-on que l'appli devienne le *hub du club* (self-service coach) ou reste l'*outil de planning* (piloté gestionnaire) ? Déclencheur de réouverture : demande d'un club pilote — la feature devient alors quasi gratuite.
 - **Reset du club : la route s'appelle encore `DELETE /api/reset-season`** alors que le geste rendu est « reset club ». Reliquat cosmétique, sans conséquence fonctionnelle.
-- **« Et si les règles de bien-être étaient tenues ? » — montrer au gestionnaire le planning idéal** (fondateur 2026-08-14, pendant P5-13) : montrer au gestionnaire BCCL ce que SON planning aurait donné avec repos coach et non-enchaînement respectés. Forme non tranchée : vraie feature de l'app (générer une variante comparative côte à côte — recoupe le diff de versions, ex-P3-5, fermé au triage roadmap 2026-09-25, hors périmètre D assumé) ou simple **compte parallèle** avec les mêmes données et les règles en HARD (zéro code, juste un seed/duplicata). Commencer par le compte parallèle le jour venu — si la comparaison convainc, la feature se cadrera sur un besoin prouvé. Dépend de P2-28 (il faut pouvoir régler les règles pour avoir deux mondes à comparer).
+- **« Et si les règles de bien-être étaient tenues ? » — montrer au gestionnaire le planning idéal** : montrer au gestionnaire BCCL ce que SON planning aurait donné avec repos coach et non-enchaînement respectés. Forme non tranchée : vraie feature de l'app (générer une variante comparative côte à côte, hors périmètre assumé) ou simple **compte parallèle** avec les mêmes données et les règles en HARD (zéro code, juste un seed/duplicata). Commencer par le compte parallèle le jour venu — si la comparaison convainc, la feature se cadrera sur un besoin prouvé. Dépend de P2-28 (il faut pouvoir régler les règles pour avoir deux mondes à comparer).
 - **Affiliation / parrainage entre clubs** (fondateur 2026-08-09) : douteux pour la cible asso (le canal réel = bouche-à-oreille direct + comité/ligue). À réévaluer seulement avec des clients payants.
 - **Contrainte « réserve un gymnase à un groupe » (exclusivité explicite)** — issu de la décision D1 (audit 2026-09-18, ex-`AUD-ALIGN-11`) : « impose Y au groupe X » (`ScheduleConstraintBuilder.php`, `PeriodConstraintSelector::clubTagVerdict`) FORCE le groupe sur le gymnase mais ne réserve plus rien aux autres équipes — le gestionnaire qui veut vraiment exclure les autres doit poser une seconde contrainte `forbiddenVenueId` par équipe/tag hors groupe, à la main. Aucun mode UI dédié pour « impose ET exclut » aujourd'hui (`backend/docs/constraint-coverage.md` §Axe GYMNASE, ❌). À cadrer si le terrain demande une exclusivité en un geste — pas avant.
 
