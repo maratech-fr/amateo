@@ -1,24 +1,17 @@
 # Identité visuelle produit — la base est le produit, l'accent est le club
 
-Last verified @ 2026-10-05 (P4-302 — logo signature sur les pages système + logotype cliquable).
-Re-confronté au code : `system-pages/503.html`/`maintenance.html` inlinent les trois arcs du mark
-(mêmes couleurs `#B51C8A`/`#D47800`/`#46AFAC`, `aria-hidden`), masqués jusqu'au chargement de
-`landing/config.js` ; `landing/config.js` porte désormais une clé `siteUrl` ; côté app,
-`frontend/src/shared/components/ui/system-screen.tsx` enveloppe son `BrandMark` de pied dans un
-`<a href={PRODUCT_SITE_URL}>` (`shared/lib/product.ts:23`) — `features/planning/
-GenerationServiceDown.tsx` n'est pas concerné (hors `SystemScreen`). **P4-252** (le
-splash « Signature » du logo pendant la connexion) recopie les MÊMES trois teintes d'arc que
-`BrandIcon` (`#B51C8A`/`#D47800`/`#46AFAC`) dans un second composant React
-(`shared/components/ui/brand-splash.tsx`) — mise à jour de l'exception `.claude/rules/frontend.md`
-dans la même passe — mais l'écran lui-même (déclenché au submit de `/login`, jamais à l'arrivée) est
-une mécanique **frontend seule** documentée dans `frontend/docs/frontend-components.md` §
-« Splash de connexion », pas ici : ce fichier reste borné aux surfaces/accent/mark PRODUIT
-partagés entre zones. Reste du fichier non re-vérifié cette passe : le volet PDF/e-mails/OG/
-doléances (P5-24, confronté au code le 2026-09-29 — inchangé depuis), les jetons `--surface-*`
-(P4-265, 2026-09-27), `color.ts`/`ClubPage.tsx`/`brand-icon.tsx`/`favicon.svg`/`brand-mark.tsx`/
-`system-screen.tsx`/`AdminAuthLayout.tsx` (2026-09-26) — historique des vérifications précédentes :
-`git log -p --follow`. Les ratios de contraste des jetons `--surface-*` sont ceux consignés en
-commentaire dans `index.css` (non recalculés indépendamment cette passe).
+Last verified @ 2026-10-06 (balisage JSON-LD `schema.org` de la vitrine). Re-confronté au code :
+`landing/index.html` injecte par script (`[data-brand-jsonld]`) un graphe `SoftwareApplication` +
+`Organization` depuis `config.js` (`brand`/`editor`/`siteUrl`/`logo`), sans `offers` (paliers
+payants non publics) ; `landing/mentions-legales.html` porte son propre `og:title` (« Mentions
+légales ») au lieu de celui de l'accueil. Reste du fichier non re-vérifié cette passe : le logo
+signature des pages système (P4-302, confronté au code le 2026-10-05 — inchangé depuis), le volet
+PDF/e-mails/OG image/doléances (P5-24, confronté au code le 2026-09-29 — inchangé depuis), les
+jetons `--surface-*` (P4-265, 2026-09-27), `color.ts`/`ClubPage.tsx`/`brand-icon.tsx`/
+`favicon.svg`/`brand-mark.tsx`/`system-screen.tsx`/`AdminAuthLayout.tsx` (2026-09-26) — historique
+des vérifications précédentes : `git log -p --follow`. Les ratios de contraste des jetons
+`--surface-*` sont ceux consignés en commentaire dans `index.css` (non recalculés
+indépendamment cette passe).
 
 > Ce fichier est le pendant **PRODUIT** de [`identite-visuelle-club.md`](identite-visuelle-club.md)
 > (qui reste la maison du **CLUB** : logo, upload, palette extraite, écran « Gestion du club »).
@@ -293,6 +286,14 @@ FIGÉ**.
   (seul le domaine `amateo.app` y figure, une adresse plutôt que la marque). Gardé par
   `frontend/tooling/og.test.ts`. **Décision fermée** : une seule image pour vitrine ET app, fond
   clair (lisible dans un aperçu qui n'adapte pas au thème du visiteur) — `etat-des-lieux.md` §2.
+- **Balisage JSON-LD `schema.org` — posé (2026-10-06)** : `landing/index.html` injecte par
+  script, depuis `config.js` (`brand`/`editor`/`siteUrl`/`logo`, même point unique que le reste de
+  la page), un graphe `SoftwareApplication` (le produit) + `Organization` (l'éditeur) — jamais la
+  marque en littéral dans le balisage. La description reprend la `<meta name="description">` de
+  la page. `offers` est **omis volontairement** : seul le palier Découverte est public, les
+  paliers payants restent « sur demande ». `landing/mentions-legales.html` n'a pas ce bloc (page
+  sans offre produit) mais porte désormais son propre `og:title` (« Mentions légales ») au lieu de
+  celui de l'accueil. Détail : `.claude/rules/landing.md`.
 - **Page publique de doléances des coachs — posée (P5-24 PR-3, 2026-09-29)** : un pied « Propulsé
   par [`BrandMark`] — découvrir » se pose sous la carte des SIX états de `PublicWishPage`
   (`frontend/src/features/coach-wishes/PublicWishPage.tsx` — chargement, lien expiré, lien

@@ -50,6 +50,16 @@ paths:
   `scripts/brand-og/`, README de régénération à côté — piège du cache immuable : renommer le
   fichier à toute retouche visuelle). Détail : `specs/courantes/identite-visuelle-produit.md`
   § « Ce qui reste à venir ».
+- **Balisage JSON-LD `schema.org` (`<script type="application/ld+json" data-brand-jsonld>` dans
+  `index.html`, 2026-10-06)** : INJECTÉ par script depuis `config.js` (`brand`/`editor`/
+  `siteUrl`/`logo`) — un graphe `SoftwareApplication` (le produit) + `Organization` (l'éditeur),
+  **jamais la marque en littéral dans le balisage**, même convention que le titre/`og:title`
+  ci-dessus. La description reprend la `<meta name="description">` de la page (point unique, pas
+  de recopie). `offers` est **omis volontairement** : seul le palier Découverte est public
+  (gratuit), les paliers payants restent « sur demande » — inexprimable proprement en une
+  offre/fourchette tant que leur prix n'est pas public. `mentions-legales.html` n'a pas ce bloc
+  (page sans offre produit) ; elle porte en revanche son propre `og:title` (« Mentions légales »,
+  cohérent avec son `<title>`) au lieu de recopier celui de l'accueil.
 - **Thème AU CHOIX, clair par défaut (P4-274, 2026-09-29)** : un mini-script en tête de `<head>`
   (avant le `<style>`, anti-flash) pose `data-theme="dark"` sur `<html>` depuis `localStorage.theme`
   (choix explicite du visiteur) sinon `prefers-color-scheme`, enveloppé (navigation privée,
