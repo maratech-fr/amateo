@@ -225,6 +225,9 @@ async function loadDivisionMap() {
  *    L'icône produit est un `<svg>`, jamais un `<img>` : elle reste. L'app retombe sur
  *    le monogramme produit neutre là où un blason club a été retiré ;
  *  - remplace, insensible à la casse, chaque entrée de `scrubMap` dans le TEXTE.
+ *
+ * NB : l'horloge simulée DEV de l'en-tête est retirée à part, par `hideDevChrome`, appelée juste
+ * avant celle-ci dans `captureTheme` (chrome de dev, pas une donnée de club à anonymiser).
  */
 async function anonymize(page, scrubMap) {
   await page.evaluate((pairs) => {
@@ -235,6 +238,12 @@ async function anonymize(page, scrubMap) {
       if (CLUB_LOGO.test(img.src)) {
         img.remove();
       }
+    }
+    // (a bis) horloge simulée DEV de l'en-tête → retirée avec sa racine (`<div class="relative">`
+    // de DevClock). Sélecteur = le `title` du bouton, stable (DevClock.tsx), pas le libellé daté.
+    const devClock = document.querySelector('button[title="Horloge simulée (dev) — cliquer pour modifier"]');
+    if (null !== devClock) {
+      (devClock.closest("div.relative") ?? devClock).remove();
     }
     // (b) remplacements texte, insensibles à la casse.
     const regexes = pairs.map(([pattern, to]) => [new RegExp(pattern, "gi"), to]);
@@ -253,6 +262,24 @@ async function anonymize(page, scrubMap) {
       }
     }
   }, Object.entries(scrubMap).map(([from, to]) => [escapeRegExp(from), to]));
+}
+
+/**
+ * Retire l'HORLOGE SIMULÉE (dev) de l'en-tête AVANT la capture (toutes les captures) : la stack
+ * dev tourne sous `import.meta.env.DEV`, qui monte le widget `DevClock` (pastille « ⏱ 06/10/2026
+ * 23:32 », à côté de « BÊTA ») — un artefact de développement qui n'a rien à faire sur la vitrine.
+ * Ciblé par le `title` STABLE de son bouton déclencheur (`frontend/src/app/DevClock.tsx:75`), jamais
+ * par le texte de la date (variable) : on retire la racine `div.relative` du widget (le bouton +
+ * son éventuel popover). À ne pas confondre avec l'horloge de DÉMO (`DemoClockWidget`, title
+ * « Horloge simulée de la démo … »), absente ici (le club dev n'est pas un compte démo).
+ */
+async function hideDevChrome(page) {
+  await page.evaluate(() => {
+    const trigger = document.querySelector('button[title="Horloge simulée (dev) — cliquer pour modifier"]');
+    if (null !== trigger) {
+      (trigger.closest("div.relative") ?? trigger.parentElement ?? trigger).remove();
+    }
+  });
 }
 
 /** Attend la stabilité : réseau calme + plus aucun spinner visible (aria-label="Chargement"). */
@@ -350,6 +377,74 @@ async function applyDivisionMap(page, divisionMap) {
 }
 
 /**
+ * Apparie les libellés de salle FBI NON APPARIÉS à un gymnase du club, APRÈS l'import. Sans ça,
+ * les domiciles importés n'ont pas de `venueId` : ils n'apparaissent pas sur la grille du
+ * Calendrier (bandeau « N libellés de salle non appariés — M domiciles n'apparaissent pas »,
+ * `UnpairedVenueLabelsBanner`), et la grille reste vide.
+ *
+ * Voie API (plus robuste que piloter le `VenueSelect`/`Listbox` de l'écran d'appariement) : on
+ * réutilise les COOKIES de la page connectée via `page.request` (JWT httpOnly, aucune en-tête
+ * spéciale — pas de CSRF, `X-Request-Id` régénéré côté serveur s'il manque, cf.
+ * `RequestIdListener`). Trois appels, exactement ceux de `features/matches/api/venues.ts` :
+ *   - `GET /api/venues/fbi-labels` → inventaire `{ labels: [...] }`, `venueId: null` = non apparié ;
+ *   - `GET /api/venues` → les gymnases du club (JSON-LD `{ member: [...] }` ou tableau) ;
+ *   - `POST /api/venues/{venueId}/external-labels` `{ label }` → attache + backfill des domiciles
+ *     encore sans salle (management-gated : le gestionnaire du club dev est autorisé).
+ * Cible = `suggestedVenueId` quand le serveur en propose une (gymnase unanime des placés), sinon le
+ * premier gymnase du club (il suffit d'UN gymnase pour sortir les domiciles du néant). IDEMPOTENT :
+ * rien à faire si aucun libellé n'est non apparié. On journalise chaque appariement.
+ */
+async function pairVenueLabels(page) {
+  const invResp = await page.request.get(`${BASE_URL}/api/venues/fbi-labels`);
+  if (!invResp.ok()) {
+    console.warn(`⚠ appariement salles : lecture de l'inventaire impossible (HTTP ${invResp.status()}) — étape ignorée.`);
+    return;
+  }
+  const inv = await invResp.json().catch(() => ({}));
+  const labels = Array.isArray(inv?.labels) ? inv.labels : [];
+  const unpaired = labels.filter((row) => null === row.venueId);
+  if (0 === unpaired.length) {
+    console.log("• appariement salles : rien à apparier (tous les libellés sont déjà appariés).");
+    return;
+  }
+
+  const venuesResp = await page.request.get(`${BASE_URL}/api/venues`);
+  if (!venuesResp.ok()) {
+    console.warn(`⚠ appariement salles : lecture des gymnases impossible (HTTP ${venuesResp.status()}) — étape ignorée.`);
+    return;
+  }
+  const venuesRaw = await venuesResp.json().catch(() => null);
+  const venues = Array.isArray(venuesRaw)
+    ? venuesRaw
+    : Array.isArray(venuesRaw?.member)
+      ? venuesRaw.member
+      : [];
+  if (0 === venues.length) {
+    console.warn("⚠ appariement salles : le club n'a AUCUN gymnase — impossible d'apparier. Vérifiez le seed.");
+    return;
+  }
+
+  const paired = [];
+  const failed = [];
+  for (const row of unpaired) {
+    const target = venues.find((v) => v.id === row.suggestedVenueId) ?? venues[0];
+    const resp = await page.request.post(`${BASE_URL}/api/venues/${target.id}/external-labels`, { data: { label: row.labelKey } });
+    if (resp.ok()) {
+      const result = await resp.json().catch(() => ({}));
+      paired.push(`${row.displayLabel} → ${target.name} (${result.attached ?? "?"} domicile(s) rattaché(s))`);
+    } else {
+      failed.push(`${row.displayLabel} → ${target.name} (HTTP ${resp.status()})`);
+    }
+  }
+  if (paired.length > 0) {
+    console.log(`✓ appariement salles : ${paired.length} libellé(s) apparié(s) — ${paired.join(" ; ")}`);
+  }
+  if (failed.length > 0) {
+    console.warn(`⚠ appariement salles : ${failed.length} échec(s) — ${failed.join(" ; ")}`);
+  }
+}
+
+/**
  * Import FBI OPTIONNEL via l'UI réelle (`/matchs/importer` → modale « Importer FBI »).
  * La modale analyse le fichier puis AFFICHE les appariements Division↔équipe : le bac à sable
  * n'ayant pas les engagements FFBB, aucune suggestion n'est proposée (`suggestedTeamId: null`),
@@ -368,6 +463,7 @@ async function runImport(browser, divisionMap) {
   try {
     await login(page);
 
+    let skipImport = false;
     // Idempotence sur la PRÉSENCE de rencontres. On atterrit sur le CALENDRIER (le paramètre
     // d'URL force l'atterrissage calendrier — MatchesLanding : sinon un éventuel conflit
     // renverrait vers Conflits) et on lit l'état vide « Aucun match importé ». Il n'apparaît
@@ -381,8 +477,16 @@ async function runImport(browser, divisionMap) {
       const noFixtures = await page.getByText("Aucun match importé").isVisible().catch(() => false);
       if (!noFixtures) {
         console.log("• import FBI ignoré — la saison a déjà des rencontres (état « Aucun match importé » absent). FORCE_IMPORT=1 pour réimporter.");
-        return;
+        // On N'IMPORTE pas, mais on PASSE à l'appariement des salles (idempotent) : des rencontres
+        // existantes peuvent très bien avoir un libellé de salle resté non apparié.
+        skipImport = true;
       }
+    }
+
+    if (skipImport) {
+      // Rien à (ré)importer : on apparie quand même (idempotent) puis on sort.
+      await pairVenueLabels(page);
+      return;
     }
 
     await page.goto(`${BASE_URL}/matchs/importer`, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
@@ -448,6 +552,10 @@ async function runImport(browser, divisionMap) {
             : "Vérifier l'appariement Division→équipe et le fichier d'import avant de garder les captures matchs."),
       );
     }
+
+    // Appariement des salles après l'import (idempotent). Sans lui, les domiciles importés
+    // restent sans gymnase et la grille du Calendrier est vide.
+    await pairVenueLabels(page);
   } finally {
     await context.close();
   }
@@ -492,7 +600,9 @@ async function scrollWeekGridToEvening(page) {
  *  (b) masque les bandeaux d'ÉTAT restants — décision 2026-10-06, c'est une capture marketing :
  *      on retire les NŒUDS NoticeBanner des deux messages d'état par leur TEXTE (« périmé »,
  *      ton warning ; « version antérieure », ton muted role=status), JAMAIS tout le DOM ;
- *  (c) fait défiler la grille jusqu'aux heures du soir (sinon cadre vide).
+ *  (c) retire la pastille « Diagnostics du système (N) · M erreurs » (signal négatif sur une
+ *      page de vente) — un `<button>` repéré par le TEXTE de son `<span>` (PlanningPage.tsx) ;
+ *  (d) fait défiler la grille jusqu'aux heures du soir (sinon cadre vide).
  */
 async function preparePlanning(page) {
   const openLatest = page.getByRole("button", { name: "Ouvrir la dernière version" });
@@ -510,48 +620,96 @@ async function preparePlanning(page) {
         banner?.remove();
       }
     }
+    // (c) la pastille repliée « Diagnostics du système (N) » : son libellé vit dans un <span>,
+    // on retire le <button> qui le porte (sa rangée `empty:hidden` se replie si elle se vide).
+    for (const span of Array.from(document.querySelectorAll("button span"))) {
+      if ((span.textContent ?? "").startsWith("Diagnostics du système")) {
+        span.closest("button")?.remove();
+      }
+    }
   });
   await scrollWeekGridToEvening(page);
 }
 
 /**
- * Calendrier matchs : si le week-end affiché est VIDE (pas de grille `#matches-week-grid` — soit
- * « Aucun match importé », soit « Aucun match cette semaine »), avance au premier week-end non vide
- * via « Semaine suivante », borné. On ne garde JAMAIS une boucle non bornée (CLAUDE.md §10.4).
+ * Calendrier matchs : si le week-end affiché n'a AUCUN match SUR LA GRILLE (le conteneur
+ * `#matches-week-grid` peut exister pour une semaine 100 % extérieurs, ou l'écran rendre
+ * « Aucun match importé »/« Aucun match cette semaine »), avance au premier week-end dont la
+ * grille porte au moins une carte de match (`[data-fixture-id]`, domicile placé — cf.
+ * WeekendGrid) via « Semaine suivante », borné. On ne garde JAMAIS une boucle non bornée
+ * (CLAUDE.md §10.4). Juger sur les CARTES rendues, pas sur la seule présence du conteneur :
+ * une semaine sans domicile sur grille resterait un cadre vide.
  */
 async function ensureNonEmptyWeek(page) {
   const MAX_WEEKS = 12;
   for (let i = 0; i <= MAX_WEEKS; i++) {
-    if ((await page.locator("#matches-week-grid").count()) > 0) {
+    if ((await page.locator("#matches-week-grid [data-fixture-id]").count()) > 0) {
       return;
     }
     const next = page.getByRole("button", { name: "Semaine suivante" });
     if (0 === (await next.count()) || (await next.isDisabled().catch(() => true))) {
-      console.warn(`⚠ calendrier matchs : aucune semaine non vide atteignable à partir de ${MATCHS_WEEKEND} (navigation épuisée) — capture laissée en l'état.`);
+      console.warn(`⚠ calendrier matchs : aucune semaine avec un match sur la grille atteignable à partir de ${MATCHS_WEEKEND} (navigation épuisée) — capture laissée en l'état.`);
       return;
     }
     await next.click();
     await waitForStability(page);
   }
-  console.warn(`⚠ calendrier matchs : ${MAX_WEEKS} semaines parcourues sans grille non vide à partir de ${MATCHS_WEEKEND} — capture laissée en l'état.`);
+  console.warn(`⚠ calendrier matchs : ${MAX_WEEKS} semaines parcourues sans match sur la grille à partir de ${MATCHS_WEEKEND} — capture laissée en l'état.`);
 }
 
-/** Conflits : si la saison n'a AUCUN conflit, on laisse la capture en l'état mais on PRÉVIENT. */
-async function warnIfNoConflicts(page) {
+/**
+ * Masque les deux bandeaux d'ÉTAT du Calendrier (capture marketing, même technique que le
+ * Planning : on retire la BOÎTE NoticeBanner `rounded-md border` par le TEXTE, pas tout le DOM) —
+ * le « gardien » (« Depuis votre dernière visite : … ») et le rattrapage ligue
+ * (« … restent à traiter (ni heure ni gymnase… ») qui, empilés, repoussaient la grille sous le
+ * cadre. À appeler APRÈS `ensureNonEmptyWeek` : la navigation de semaine re-rend React et
+ * ré-afficherait des bandeaux retirés trop tôt.
+ */
+async function removeCalendarBanners(page) {
+  await page.evaluate(() => {
+    const NEEDLES = ["Depuis votre dernière visite", "à traiter (ni heure ni gymnase"];
+    for (const p of Array.from(document.querySelectorAll("p"))) {
+      if (NEEDLES.some((n) => (p.textContent ?? "").includes(n))) {
+        const banner = p.closest("div.rounded-md.border") ?? p.parentElement;
+        banner?.remove();
+      }
+    }
+  });
+}
+
+/**
+ * Conflits : prévient si la saison n'a AUCUN conflit (capture vide), puis DÉPLIE le premier
+ * groupe (les accordéons sont tous repliés par défaut, cadre quasi vide) en cliquant son en-tête
+ * — un `<button aria-expanded>` dans `[data-conflicts-entries]` (ConflictsPage/AccordionSection).
+ * Idempotent : si le groupe est déjà ouvert (cas d'un seul groupe, ouvert d'office), on ne clique
+ * pas (un clic le replierait).
+ */
+async function prepareConflicts(page) {
   const empty = await page.getByText("Aucun conflit sur la saison").isVisible().catch(() => false);
   if (empty) {
     console.warn("⚠ conflits : « Aucun conflit sur la saison » — la capture Conflits sera un écran VIDE. Vérifiez l'import / le week-end avant de garder cette image.");
+    return;
+  }
+  const firstHeader = page.locator("[data-conflicts-entries] button[aria-expanded]").first();
+  if (0 === (await firstHeader.count())) {
+    return;
+  }
+  if ("true" !== (await firstHeader.getAttribute("aria-expanded"))) {
+    await firstHeader.click();
+    await waitForStability(page);
   }
 }
 
-/** Préparations propres à un écran (version en vigueur, semaine non vide, avertissements). */
+/** Préparations propres à un écran (version en vigueur, semaine non vide, bandeaux, groupe ouvert). */
 async function prepareShot(page, shot) {
   if ("planning.png" === shot.base) {
     await preparePlanning(page);
   } else if ("matchs.jpg" === shot.base) {
+    // Naviguer d'abord (re-rend React), masquer les bandeaux ENSUITE (sinon ré-affichés).
     await ensureNonEmptyWeek(page);
+    await removeCalendarBanners(page);
   } else if ("matchs-conflits.jpg" === shot.base) {
-    await warnIfNoConflicts(page);
+    await prepareConflicts(page);
   }
 }
 
@@ -576,6 +734,8 @@ async function captureTheme(browser, theme, scrubMap) {
       // Préparation propre à l'écran AVANT l'anonymisation (elle peut re-rendre la page :
       // ouverture de la dernière version, navigation de semaine…).
       await prepareShot(page, shot);
+      // Retire l'horloge simulée dev de l'en-tête (toutes les captures) AVANT l'anonymisation.
+      await hideDevChrome(page);
       await anonymize(page, scrubMap);
       // Laisse les webfonts/images se poser après l'anonymisation (deviceScaleFactor 2).
       await waitForStability(page);

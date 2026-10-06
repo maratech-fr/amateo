@@ -31,6 +31,8 @@ script avant **chaque** capture, même sans réglage :
   Planning à côté du titre, page Club…) — ciblés par leur SOURCE `/api/clubs/{id}/logo` ; le logo
   fédéral d'un **adversaire** (`/api/opponents/{code}/logo`) est public et CONSERVÉ. L'app retombe
   sur le monogramme produit neutre là où un blason club a été retiré (patron P5-26) ;
+- l'**horloge simulée DEV** de l'en-tête (badge « 06/10/2026 23:32 » à côté de « BÊTA », `DevClock`)
+  est retirée du DOM — du chrome de développement qui n'a pas sa place sur une capture de vente ;
 - `SCRUB_FILE` (optionnel, local, jamais commité) **complète/surcharge** cette table pour un nom
   supplémentaire repéré sur une capture.
 
@@ -118,12 +120,19 @@ Préparations par écran :
 - **Planning** : ouvre d'abord la **dernière version** si le bandeau « version antérieure » l'offre
   (sélection locale, aucune écriture), **masque** à l'écran les bandeaux d'état restants (« périmé »,
   « version antérieure » — décision 2026-10-06, capture marketing : on retire par leur texte les
-  nœuds `NoticeBanner`, pas tout le DOM), puis **fait défiler la grille** jusqu'aux heures du soir
-  (elle démarre à 09:00 et serait vide dans le cadre).
-- **Calendrier matchs** : si le week-end `MATCHS_WEEKEND` est vide, **avance** au premier week-end
-  non vide via « Semaine suivante » (borné à 12 itérations).
+  nœuds `NoticeBanner`, pas tout le DOM), **retire la pastille** « Diagnostics du système (N) ·
+  M erreurs » (signal négatif sur une page de vente), puis **fait défiler la grille** jusqu'aux
+  heures du soir (elle démarre à 09:00 et serait vide dans le cadre).
+- **Calendrier matchs** : **avance** au premier week-end dont la grille porte au moins une **carte
+  de match** (`[data-fixture-id]` — on juge sur les cartes rendues, pas sur la seule présence du
+  conteneur : une semaine 100 % extérieurs ou sans domicile placé resterait un cadre vide) à partir
+  de `MATCHS_WEEKEND`, via « Semaine suivante » (borné à 12 itérations) ; puis **masque** les deux
+  bandeaux d'état empilés au-dessus de la grille (« Depuis votre dernière visite : … » et « …
+  restent à traiter (ni heure ni gymnase… ») — même technique que le Planning. (Le masquage a lieu
+  **après** la navigation, qui re-rend React.)
 - **Conflits** : si la saison n'a **aucun conflit**, la capture est laissée en l'état mais un
-  **avertissement** est loggé (à vous de décider de garder l'écran vide).
+  **avertissement** est loggé ; sinon le **premier groupe** (accordéon) est **déplié** (ils sont
+  tous repliés par défaut, cadre quasi vide) — idempotent (un groupe déjà ouvert n'est pas cliqué).
 
 Si `IMPORT_FBI` est fourni, l'import FBI passe **une seule fois** avant la boucle, via l'UI
 `/matchs/importer` (dépôt du fichier → appariement Division→équipe **explicite** → « Importer »).
@@ -145,8 +154,17 @@ ignorées, avec la confirmation « Importer quand même » gérée). Le script j
 associées / ignorées / sans équipe correspondante, et **avertit (`⚠`)** si le rapport d'import ne
 fait état d'**aucune rencontre créée**. **Idempotent sur la PRÉSENCE de rencontres** (plus sur la
 date du dernier dépôt FBI) : si la saison a déjà des rencontres (l'état vide « Aucun match
-importé » du calendrier est absent), l'import est sauté — `FORCE_IMPORT=1` passe outre. Sortie :
-8 fichiers dans `OUT_DIR`.
+importé » du calendrier est absent), l'import est sauté — `FORCE_IMPORT=1` passe outre.
+
+**Appariement des salles** (après l'import, idempotent) : les rencontres FBI portent un **libellé
+de salle** qui, tant qu'il n'est pas apparié à un gymnase du club, laisse les domiciles **sans
+`venueId`** — invisibles sur la grille du Calendrier (bandeau « N libellés de salle non appariés —
+M domiciles n'apparaissent pas »). Le script lit l'inventaire `GET /api/venues/fbi-labels`, et pour
+chaque libellé **non apparié** `POST /api/venues/{venueId}/external-labels` `{ label }` (cookies de
+la page connectée via `page.request` — JWT httpOnly, aucune en-tête spéciale) vers le gymnase
+`suggestedVenueId` quand le serveur en propose un, sinon le **premier gymnase** du club. Il
+journalise chaque appariement et **ne fait rien** si tout est déjà apparié. Sortie : 8 fichiers dans
+`OUT_DIR`.
 
 ## 3. Vérifier, puis copier à la main
 
