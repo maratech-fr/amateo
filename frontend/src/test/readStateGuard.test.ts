@@ -79,6 +79,7 @@ const EXEMPTIONS: { file: string; reason: string }[] = [
   { file: "features/auth/VerifyEmailPage.tsx", reason: "écran d'auth à token hors shell club — action, pas d'écran de données de club" },
   { file: "features/auth/ConfirmEmailChangePage.tsx", reason: "écran d'auth à token hors shell club — action" },
   { file: "features/auth/ClubApprovalPage.tsx", reason: "page publique d'approbation à token (le token EST l'identité), hors shell club" },
+  { file: "features/auth/InvitationPage.tsx", reason: "page publique d'invitation à token (le token EST l'identité), hors shell club — son info.isError rend « Lien invalide ou expiré », pas un vide crédible" },
   { file: "features/auth/WaitingApprovalPage.tsx", reason: "écran d'attente d'approbation hors shell club" },
   // Console superadmin — même exemption que les autres gardes (hors app club).
   { file: "features/admin/AdminLoginPage.tsx", reason: "console superadmin — hors app club" },

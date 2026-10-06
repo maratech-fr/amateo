@@ -259,7 +259,7 @@ describe("ClubPage", () => {
   });
 
   it("hides the Invitations section for a non-admin member", () => {
-    me.data = { role: "member", club: { name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null } };
+    me.data = { role: "member", club: { ...baseClub, name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null } };
     render(<ClubPage />);
     expect(screen.queryByRole("button", { name: /^Invitations$/ })).toBeNull();
   });
