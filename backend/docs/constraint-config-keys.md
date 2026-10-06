@@ -1,9 +1,11 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-10-06 (ALIGN-21 : le refus 422 des clés de tag sur la famille
-`COACH_AVAILABILITY` ajouté à la liste des refus d'écriture — vérifié contre
+Last verified @ 2026-10-06 (P4-312 : `preferredDays` passe « émis par le wizard » dans la rangée
+DAY — mode JOUR « à privilégier », `PREFERRED` soft, refus `HARD` inchangé en bas de page, vérifié
+contre `ConstraintConfigValidator` §whitelist et `ConstraintValidationService` §refus HARD). Le
+refus 422 des clés de tag sur la famille `COACH_AVAILABILITY` (ALIGN-21) reste vérifié contre
 `ConstraintConfigValidator::errors` et `ScheduleConstraintBuilder::serializeUnifiedConstraints`,
-qui ne résout les tags qu'en lignes TEAM). Le reste de la page non ré-audité cette passe
+qui ne résout les tags qu'en lignes TEAM. Le reste de la page non ré-audité cette passe
 (dernière confrontation P4-300 : la ligne FACILITY `venue_closed` confrontée aux trois
 consommateurs MATCHS `MatchPlacementPayloadBuilder.php`/`ConflictRadarLoader.php`/`FixtureStateProcessor.php`
 et à `PlanVenueClosures::closureIntervals`/`VenueClosureDays::rawIntervals` ;
@@ -29,7 +31,7 @@ avec le nom de la clé et les réglages acceptés pour la famille.
 | Famille | Clé | Type attendu | Lue par |
 |---|---|---|---|
 | **TIME** | `minStartTime` `maxStartTime` `maxEndTime` | `HH:MM` | moteur (`constraints/` — paquet) |
-| **DAY** | `preferredDays` `forbiddenDays` `forcedDays` `allowedDays` | liste d'entiers 1-7 (lundi = 1) | moteur (`constraints/`, `objective.py`). **`forcedDays` crédite les verrous (ALIGN-16, patron P4-97)** : une séance déjà verrouillée le jour imposé satisfait la règle, aucune contrainte posée par-dessus — détail du mécanisme et du diagnostic quand le jour est vidé par ailleurs : `engine/docs/constraint-vocabulary.md` §DAY |
+| **DAY** | `preferredDays` `forbiddenDays` `forcedDays` `allowedDays` | liste d'entiers 1-7 (lundi = 1) | moteur (`constraints/`, `objective.py`). **`preferredDays` émis par le wizard depuis P4-312** (mode JOUR « à privilégier », `PREFERRED` soft ; refusé en `HARD`, cf. matrice d'intensité plus bas). **`forcedDays` crédite les verrous (ALIGN-16, patron P4-97)** : une séance déjà verrouillée le jour imposé satisfait la règle, aucune contrainte posée par-dessus — détail du mécanisme et du diagnostic quand le jour est vidé par ailleurs : `engine/docs/constraint-vocabulary.md` §DAY |
 | **COACH_AVAILABILITY** | `unavailableDays` `availableDays` | liste d'entiers 1-7 | moteur (`constraints/` — paquet). **Honoré seulement pour un coach PRINCIPAL d'au moins une équipe (ALIGN-19)** : un coach adjoint partout a une indisponibilité jamais lue par le moteur, signalée Indicative au récap et à l'écran Contraintes des matchs — détail : `engine/docs/constraint-vocabulary.md` §COACH_AVAILABILITY |
 | **FACILITY** | `forcedVenueId` `forbiddenVenueId` `preferredVenueId` `minAtVenueId` | UUID de gymnase | moteur (`constraints/` — paquet) |
 | **FACILITY** | `minAtVenueCount` | entier ≥ 1 | moteur |

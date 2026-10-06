@@ -155,6 +155,11 @@ def _violates(cell: MatrixCell, slot: dict[str, Any]) -> bool:
         # A 1-session team: "at least one session on ONE of the forced days" reduces
         # to "the single session is on a forced day" — same shape as the whitelist.
         return int(slot["dayOfWeek"]) not in set(config["forcedDays"])
+    if key == "preferredDays":
+        # P4-312 soft day wish: a placement away from a preferred day is the
+        # disfavored outcome. In the mixed scenario the objective must land on the
+        # preferred day; only-bad asserts a placement STILL happens off it (soft).
+        return int(slot["dayOfWeek"]) not in set(config["preferredDays"])
     raise AssertionError(f"no violation predicate for {key}")
 
 

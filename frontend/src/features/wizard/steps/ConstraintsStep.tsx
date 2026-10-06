@@ -165,12 +165,13 @@ export function ConstraintsStep() {
   // "finir avant" = maxEndTime (l'engine calcule fin = début + durée du créneau).
   const [endTime, setEndTime] = useState("");
   const [days, setDays] = useState<Set<number>>(new Set());
-  // Trois modes JOUR, trois clés engine (littéraux HONNÊTES) :
+  // Quatre modes JOUR, quatre clés engine (littéraux HONNÊTES) :
   //   "forbidden" → forbiddenDays (à éviter, soft possible) ;
+  //   "preferred" → preferredDays (à privilégier — souhait positif, TOUJOURS soft, P4-312) ;
   //   "only"      → allowedDays (whitelist : SEULS ces jours, l'engine interdit le complément) ;
   //   "atLeast"   → forcedDays (« au moins une séance l'UN de ces jours » — somme agrégée sur
   //                 l'union, PAS « chacun »). "only" et "atLeast" sont TOUJOURS obligatoires.
-  const [dayMode, setDayMode] = useState<"forbidden" | "only" | "atLeast">("forbidden");
+  const [dayMode, setDayMode] = useState<"forbidden" | "preferred" | "only" | "atLeast">("forbidden");
   // "préfère" (preferredVenueId) · "évite" (forbiddenVenueId) · "impose"
   // (forcedVenueId, dur) · "au moins N" (minAtVenueId + minAtVenueCount, dur).
   const [venueMode, setVenueMode] = useState<"preferred" | "forbidden" | "forced" | "min">("preferred");
@@ -366,6 +367,12 @@ export function ConstraintsStep() {
         // "au moins une" = forcedDays (« au moins une séance l'un de ces jours ») — toujours dur.
         return { name: `${who} · au moins une séance ${dayNames(days)}`, scope, scopeTargetId, family, ruleType: "HARD", config: { ...tagConfig, forcedDays: [...days] } };
       }
+      if ("preferred" === dayMode) {
+        // P4-312 — « à privilégier » = souhait positif de jour (preferredDays), TOUJOURS une
+        // préférence (PREFERRED épinglé, jamais la valeur d'état — patron D1 du « préfère ce
+        // gymnase »). L'objectif oriente vers ces jours, ne bloque jamais.
+        return { name: `${who} · privilégie ${dayNames(days)}`, scope, scopeTargetId, family, ruleType: "PREFERRED", config: { ...tagConfig, preferredDays: [...days] } };
+      }
       return { name: `${who} · pas ${dayNames(days)}`, scope, scopeTargetId, family, ruleType, config: { ...tagConfig, forbiddenDays: [...days] } };
     }
     if ("FACILITY" === family) {
@@ -505,14 +512,17 @@ export function ConstraintsStep() {
       setEndTime("string" === typeof cfg.maxEndTime ? cfg.maxEndTime : "");
     }
     if ("DAY" === c.family) {
-      // Trois clés, trois modes : allowedDays → "uniquement", forcedDays → "au moins une",
-      // sinon forbiddenDays → "à éviter".
+      // Quatre clés, quatre modes : allowedDays → "uniquement", forcedDays → "au moins une",
+      // preferredDays → "à privilégier" (P4-312), sinon forbiddenDays → "à éviter".
       if (Array.isArray(cfg.allowedDays)) {
         setDayMode("only");
         setDays(new Set(asNums(cfg.allowedDays)));
       } else if (Array.isArray(cfg.forcedDays)) {
         setDayMode("atLeast");
         setDays(new Set(asNums(cfg.forcedDays)));
+      } else if (Array.isArray(cfg.preferredDays)) {
+        setDayMode("preferred");
+        setDays(new Set(asNums(cfg.preferredDays)));
       } else {
         setDayMode("forbidden");
         setDays(new Set(asNums(cfg.forbiddenDays)));
@@ -865,12 +875,13 @@ export function ConstraintsStep() {
 
         {"DAY" === family && (
           <>
-            <Select aria-label="Type de jour" wrapperClassName="w-36" value={dayMode} onChange={(e) => setDayMode(e.target.value as "forbidden" | "only" | "atLeast")}>
+            <Select aria-label="Type de jour" wrapperClassName="w-36" value={dayMode} onChange={(e) => setDayMode(e.target.value as "forbidden" | "preferred" | "only" | "atLeast")}>
               <option value="forbidden">à éviter</option>
+              <option value="preferred">à privilégier</option>
               <option value="only">uniquement</option>
               <option value="atLeast">au moins une</option>
             </Select>
-            <DayMultiPicker value={daySelection} onChange={setDaySelection} legend={"only" === dayMode ? "Seuls jours autorisés" : "atLeast" === dayMode ? "Au moins une séance l'un de ces jours" : "Jours à éviter"} />
+            <DayMultiPicker value={daySelection} onChange={setDaySelection} legend={"preferred" === dayMode ? "Jours à privilégier" : "only" === dayMode ? "Seuls jours autorisés" : "atLeast" === dayMode ? "Au moins une séance l'un de ces jours" : "Jours à éviter"} />
           </>
         )}
 
@@ -952,15 +963,16 @@ export function ConstraintsStep() {
             <RuleBadge label="Indicatif" />
             <span className="text-xs text-muted-foreground">un adjoint indisponible ne bloque jamais une séance</span>
           </div>
-        ) : "COACH_AVAILABILITY" === family || ("TIME" === family && "" !== endTime) || ("DAY" === family && "forbidden" !== dayMode) || ("FACILITY" === family && ("forced" === effectiveVenueMode || "min" === effectiveVenueMode)) ? (
+        ) : "COACH_AVAILABILITY" === family || ("TIME" === family && "" !== endTime) || ("DAY" === family && "forbidden" !== dayMode && "preferred" !== dayMode) || ("FACILITY" === family && ("forced" === effectiveVenueMode || "min" === effectiveVenueMode)) ? (
           // Coach availability + "impose"/"uniquement"/"au moins une" + "Fini avant" are
           // ALWAYS hard (a person can't be in two places; a forced venue, a whitelist/at-least
           // day rule, and a gym-closing end-bound are musts, not nudges) — the payload pins
           // HARD, so a rule selector here would be a lie.
           <RuleBadge label={RULE_LABEL.HARD} />
-        ) : "FACILITY" === family && "preferred" === effectiveVenueMode ? (
-          // D1 — « préfère ce gymnase » est TOUJOURS une préférence (PREFERRED) : jamais un
-          // must. L'obligatoire, c'est le mode « impose » (forcedVenueId). Pas de sélecteur ici
+        ) : ("FACILITY" === family && "preferred" === effectiveVenueMode) || ("DAY" === family && "preferred" === dayMode) ? (
+          // D1 — « préfère ce gymnase » / « à privilégier ces jours » (P4-312) sont TOUJOURS
+          // une préférence (PREFERRED) : jamais un must. L'obligatoire, c'est « impose »
+          // (forcedVenueId) / « uniquement »/« au moins une » côté jours. Pas de sélecteur ici
           // — une pastille figée « Préféré », comme « Obligatoire » l'est pour les règles dures.
           <RuleBadge label={RULE_LABEL.PREFERRED} />
         ) : (
