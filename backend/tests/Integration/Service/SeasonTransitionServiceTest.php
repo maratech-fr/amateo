@@ -332,6 +332,20 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         self::assertSame(CoachGender::FEMALE, $copiedAnna->getGender(), 'le genre du coach survit au passage de saison (P4-311)');
     }
 
+    public function testCoachIsVehicledSurvivesTheTransition(): void
+    {
+        // P4-311 — la case « véhiculé » (le coach peut transporter : attribut métier qui
+        // pèse sur l'affectation) est permanente : elle suit la copie N+1 comme phone/genre,
+        // jamais retomber à false au passage de saison. Anna est posée véhiculée.
+        [, $season] = $this->createClubGraph();
+
+        $target = $this->service->transition($season);
+
+        $copiedAnna = $this->em->getRepository(Coach::class)->findOneBy(['seasonId' => $target->getId(), 'firstName' => 'Anna']);
+        self::assertNotNull($copiedAnna);
+        self::assertTrue($copiedAnna->isVehicled(), 'la case véhiculé du coach survit au passage de saison (P4-311)');
+    }
+
     public function testCanPrepareNextSeasonInJuneFromASettledCurrentSeason(): void
     {
         // Real anticipation flow (spec §1): mid-June, the current season's plan
@@ -515,9 +529,10 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $unavailability->setLabel('travaux');
         $this->em->persist($unavailability);
 
-        // P4-311 — genre NON-DÉFAUT : la recopie N+1 doit le transporter (sinon le coach
-        // retomberait à UNSPECIFIED au passage de saison — le NR rougit si setGender est omis).
-        $anna = $this->coach($club, $season, 'Anna', CoachGender::FEMALE);
+        // P4-311 — genre + case véhiculé NON-DÉFAUT : la recopie N+1 doit les transporter
+        // (sinon le coach retomberait à UNSPECIFIED / non véhiculé au passage de saison —
+        // les NR rougissent si setGender/setIsVehicled sont omis).
+        $anna = $this->coach($club, $season, 'Anna', CoachGender::FEMALE, true);
         $bob = $this->coach($club, $season, 'Bob');
 
         $teamA = $this->team($club, $season, 'SM1', $category->getId(), (int) $tier->getId(), $venueA->getId());
@@ -744,7 +759,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         return $venue;
     }
 
-    private function coach(Club $club, Season $season, string $firstName, CoachGender $gender = CoachGender::UNSPECIFIED): Coach
+    private function coach(Club $club, Season $season, string $firstName, CoachGender $gender = CoachGender::UNSPECIFIED, bool $isVehicled = false): Coach
     {
         $coach = new Coach;
         $coach->setClubId($club->getId());
@@ -752,6 +767,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $coach->setFirstName($firstName);
         $coach->setLastName('Test');
         $coach->setGender($gender);
+        $coach->setIsVehicled($isVehicled);
         $this->em->persist($coach);
         $this->em->flush();
 
