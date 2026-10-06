@@ -41,7 +41,10 @@ paths:
   Les maisons uniques (extensible) : **chargement** — `FullPageSpinner` (chargement de PAGE,
   standard `cockpit`/`planning`/`profile`/`club`), `Spinner` (inline, dans un bouton),
   `EmptyHint`/`EmptyBlock`/`EmptyState` (vide), `LoadErrorHint`+`readState` (échec de lecture avec
-  retry), `ActionVeil` (voile de navigation/sauvegarde global — `app/ActionVeil.tsx`) ;
+  retry — **jamais rendre un échec comme du vide** ; gardé contre la Nᵉ récidive par
+  `frontend/src/test/readStateGuard.test.ts`, liste NOMINATIVE des pages de route de `app/routes.tsx`
+  référençant le patron + exemptions motivées + complétude, patron `pageHeaderGuard.test.ts`,
+  UXS-09/10), `ActionVeil` (voile de navigation/sauvegarde global — `app/ActionVeil.tsx`) ;
   **primitives** `shared/components/ui/*` (Button, Modal, Select, Input, Card, StepRail, Menu APG,
   **Listbox** — sélecteur riche à choix unique (couleur/icône, compte, sous-ligne, option
   désactivée motivée), patron APG, P4-164 PR-1, maison des sélecteurs qui dépassent le `<select>`
