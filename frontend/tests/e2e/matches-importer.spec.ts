@@ -141,7 +141,7 @@ test("importer: onglet, badge absent, configuration allégée, file de traitemen
 
   // Les entrées de données de match sont là.
   await expect(page.getByRole("button", { name: /Importer FBI/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Vérifier via l'API FFBB/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Vérifier via le Canal FFBB/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /Engagements FFBB/ })).toBeVisible();
   // File vide → « Rien à traiter » ; sinon au moins une équipe en tête de file.
   if (0 === openBefore) {

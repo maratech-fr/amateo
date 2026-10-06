@@ -81,13 +81,7 @@ async function createClosureWithPlan(page: import("./fixtures").Page): Promise<s
 
 /** Amène le calendrier sur octobre 2026 (la fenêtre de la fermeture) — il s'ouvre sur le mois courant. */
 async function goToOctober(page: import("./fixtures").Page): Promise<void> {
-  for (let i = 0; i < 6; i += 1) {
-    if (await page.getByText("Octobre 2026", { exact: true }).isVisible().catch(() => false)) {
-      return;
-    }
-    await page.getByRole("button", { name: "Mois suivant" }).click();
-  }
-  await expect(page.getByText("Octobre 2026", { exact: true })).toBeVisible({ timeout: 10_000 });
+  await goToMonth(page, "Octobre 2026");
 }
 
 /** Ouvre le dialogue du jour sur une case COUVERTE par la fermeture (son titre est dans l'aria-label). */
@@ -211,15 +205,36 @@ async function createSplitClosure(page: import("./fixtures").Page): Promise<stri
   return ids;
 }
 
-/** Amène le calendrier sur un mois donné (il s'ouvre sur le mois courant). */
+/**
+ * Amène le calendrier du cockpit sur un mois donné (il s'ouvre sur le mois courant).
+ *
+ * ⚠ Depuis UXS-09 (2026-10), le calendrier se recharge PAR ZONE à chaque navigation : changer de mois
+ * change la clé de `useCalendarEntries`, un spinner de zone DÉMONTE l'en-tête + les flèches le temps du
+ * fetch, puis les remonte. Un `isVisible()` NON BLOQUANT (l'ancien patron) perdait la course pendant ce
+ * trou et cliquait au-delà de la cible (d'où un atterrissage sur Avril/Octobre 2027). On attend donc que
+ * l'en-tête du mois soit RENDU avant de lire le mois courant, et que le mois affiché CHANGE après chaque
+ * clic (via l'en-tête remonté), jamais un sondage à sec. L'en-tête du calendrier est le SEUL `<h2>` dont
+ * le nom est « Mois AAAA ».
+ */
 async function goToMonth(page: import("./fixtures").Page, label: string): Promise<void> {
-  for (let i = 0; i < 12; i += 1) {
-    if (await page.getByText(label, { exact: true }).isVisible().catch(() => false)) {
+  const monthHeading = page.getByRole("heading", {
+    level: 2,
+    name: /^(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre) \d{4}$/i,
+  });
+  for (let i = 0; i < 14; i += 1) {
+    await expect(monthHeading).toBeVisible({ timeout: 20_000 });
+    const current = (await monthHeading.textContent())?.trim();
+    if (label === current) {
       return;
     }
     await page.getByRole("button", { name: "Mois suivant" }).click();
+    // Le mois AFFICHÉ doit changer avant la prochaine lecture (l'en-tête est démonté puis remonté par le
+    // spinner de zone) ; `catch(() => current)` garde la valeur courante pendant que l'en-tête est détaché.
+    await expect
+      .poll(async () => (await monthHeading.textContent().catch(() => current))?.trim(), { timeout: 20_000 })
+      .not.toBe(current);
   }
-  await expect(page.getByText(label, { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(monthHeading).toHaveText(label, { timeout: 10_000 });
 }
 
 /** Ouvre le dialogue d'un jour couvert par la mère, entre en mode re-datage et charge l'aperçu. */
