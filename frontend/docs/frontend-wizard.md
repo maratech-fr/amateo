@@ -1,11 +1,11 @@
 # Wizard — saisie des données (tranche 3, LIVRÉ)
 
-Last verified @ 2026-10-04 (rotation de fraîcheur, `documentation-update`, passe P4-301). Re-confronté
-au code : `lib/steps.ts` et `lib/teamColumns.ts` existent toujours (`frontend/src/features/wizard/`),
-`CoachesStep.tsx` est désormais sous `steps/` (chemin inchangé en substance) ; le pointeur
-`AuthController::seedNewClub` était STALE — cette méthode a été déplacée verbatim dans
-`App\Service\Registration\EmailVerificationService` le 2026-10-03 (lot identité club), corrigé
-ci-dessous. Reste du fichier non recontrôlé phrase à phrase cette fois.
+Last verified @ 2026-10-06 (rotation de fraîcheur, `documentation-update`, passe P5-1/2/5). Re-confronté
+au code : `lib/steps.ts`, `lib/teamColumns.ts` et `steps/CoachesStep.tsx` existent toujours
+(`frontend/src/features/wizard/`) ; `AuthController::seedNewClub` reste cité seulement en
+commentaire historique (`DefaultConstraintSeeder.php:18`, `CategoryCatalog.php:10`), la logique
+vit dans `App\Service\Registration\EmailVerificationService`. Reste du fichier non recontrôlé
+phrase à phrase cette fois.
 
 ## Flux (6 étapes, `WizardLayout` + registre `lib/steps.ts`)
 
