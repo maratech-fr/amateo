@@ -73,10 +73,17 @@ interface RadarPanelProps {
   zone: string | null;
   /** Holidays query still in flight — don't flash "zone à renseigner" meanwhile. */
   zoneLoading?: boolean;
+  /** UXS-09 — la lecture des entrées calendaires (prop `entries`) a échoué SANS cache : le panneau
+   *  la reçoit vide, et DOIT dire l'échec plutôt que « Rien à l'horizon » (doctrine `readState`). */
+  entriesFailed?: boolean;
+  /** UXS-09 — cette même lecture est en PREMIER chargement : squelette, jamais « Tout roule ». */
+  entriesLoading?: boolean;
+  /** UXS-09 — les fériés du radar (prop `publicHolidays`) ont échoué : dire l'échec, pas « Tout roule ». */
+  publicHolidaysFailed?: boolean;
 }
 
 /** The manager's to-do, sorted by urgency. "Adapter" opens the wizard in period mode (palier B). */
-export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLoading = false, zone, zoneLoading = false }: RadarPanelProps) {
+export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLoading = false, zone, zoneLoading = false, entriesFailed = false, entriesLoading = false, publicHolidaysFailed = false }: RadarPanelProps) {
   const today = todayISO();
   const navigate = useNavigate();
   const startPeriodMode = useWizardStore((s) => s.startPeriodMode);
@@ -407,10 +414,16 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
   // inconnu — squelette, jamais un « Tout roule » suivi d'une carte qui surgit.
   const holidayImpactLoading = holidaysInHorizon.length > 0 && null !== seasonChosenId && seasonSlotsQuery.isLoading;
   const stillLoading =
-    readLoading(plansQuery) || readLoading(schedulesQuery) || readLoading(campaignsQuery) || closureImpactsPending || zoneLoading || publicHolidaysLoading || holidayImpactLoading || readLoading(unavailabilitiesQuery);
-  const readsFailed = readFailed(plansQuery) || readFailed(schedulesQuery) || readFailed(campaignsQuery);
+    readLoading(plansQuery) || readLoading(schedulesQuery) || readLoading(campaignsQuery) || closureImpactsPending || zoneLoading || publicHolidaysLoading || holidayImpactLoading || readLoading(unavailabilitiesQuery) || entriesLoading;
+  // UXS-09 — l'échec de la lecture des entrées (ou des fériés) parvient au panneau par prop : une
+  // liste `entries`/`publicHolidays` vide est alors un ÉCHEC, pas « rien à traiter ».
+  const readsFailed = readFailed(plansQuery) || readFailed(schedulesQuery) || readFailed(campaignsQuery) || entriesFailed || publicHolidaysFailed;
 
   const isEmpty =
+    // UXS-09 — « Tout roule » n'est JAMAIS vrai pendant un chargement ni sur un échec : une liste
+    // dérivée d'entrées vides pour cause de panne n'est pas un horizon dégagé (doctrine `readState`).
+    !stillLoading &&
+    !readsFailed &&
     inProgressEntries.length === 0 &&
     orphanWeekChildren.length === 0 &&
     splitMothers.length === 0 &&

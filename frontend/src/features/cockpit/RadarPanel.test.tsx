@@ -1190,3 +1190,31 @@ describe("RadarPanel", () => {
     });
   });
 });
+
+describe("RadarPanel — échec de lecture jamais « Tout roule » (UXS-09)", () => {
+  // L'horloge n'importe pas ici : on exerce les drapeaux d'échec passés en prop par le cockpit.
+  beforeEach(() => setTodayOverride("2998-12-15"));
+  afterEach(() => setTodayOverride(null));
+
+  it("entriesFailed → bandeau « liste peut-être incomplète », jamais « Rien à l'horizon »", () => {
+    renderRadar({ entriesFailed: true });
+
+    expect(screen.getByText(/Impossible de charger les éléments à traiter/)).toBeInTheDocument();
+    expect(screen.queryByText("Rien à l'horizon. Tout roule.")).not.toBeInTheDocument();
+  });
+
+  it("publicHolidaysFailed → bandeau d'échec, jamais « Rien à l'horizon »", () => {
+    renderRadar({ publicHolidaysFailed: true });
+
+    expect(screen.getByText(/Impossible de charger les éléments à traiter/)).toBeInTheDocument();
+    expect(screen.queryByText("Rien à l'horizon. Tout roule.")).not.toBeInTheDocument();
+  });
+
+  it("entriesLoading → squelette, ni « Rien à l'horizon » ni bandeau d'échec", () => {
+    renderRadar({ entriesLoading: true });
+
+    expect(screen.getByText("Chargement des éléments à traiter…")).toBeInTheDocument();
+    expect(screen.queryByText("Rien à l'horizon. Tout roule.")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Impossible de charger les éléments à traiter/)).not.toBeInTheDocument();
+  });
+});

@@ -18,7 +18,9 @@ import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { HelpButton } from "@/shared/components/ui/help-button";
+import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { StepRail } from "@/shared/components/ui/step-rail";
+import { readFailed } from "@/shared/lib/readState";
 import { cn } from "@/shared/lib/utils";
 import { useSocleValidated } from "@/shared/lib/socle";
 import { armNavTransition } from "@/shared/stores/navTransitionStore";
@@ -375,6 +377,33 @@ export function WizardPage() {
       blocker.reset();
     }
   };
+
+  // UXS-10 — porte UNIQUE sur les 4 lectures fondatrices (équipes/gymnases/créneaux/coachs) : un
+  // ÉCHEC de lecture SANS cache ne doit pas rendre une étape (Équipes à zéro…) qui invite à
+  // re-saisir — on dit « Le chargement a échoué » avec un Réessayer. `matchWindows` reste HORS porte
+  // (fail-open documenté plus haut). Placée après TOUS les hooks (règles des hooks). Le mode période
+  // passe sous la même porte par construction.
+  //
+  // ⚠ On garde SEULEMENT le cas `readFailed` (pas un spinner de chargement) : pendant le premier
+  // chargement les étapes s'affichent brièvement vides, comportement PRÉ-EXISTANT et inoffensif (une
+  // attente, pas un mensonge) — le bug UXS-09/10 est l'ÉCHEC rendu comme du vide. Un early-return
+  // pendant le chargement démonterait/remonterait tout l'arbre à chaque montage, ce qui n'apporte
+  // rien ici et casse des tests de rendu nu (décalage d'un cycle de rendu).
+  const foundationalReads = [teams, venues, slots, coaches];
+  if (foundationalReads.some(readFailed)) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center p-6">
+        <LoadErrorHint
+          onRetry={() => {
+            void teams.refetch();
+            void venues.refetch();
+            void slots.refetch();
+            void coaches.refetch();
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <WizardFooterContext.Provider value={footerCtx}>
