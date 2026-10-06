@@ -373,7 +373,7 @@ services:
   # (docs/ops/backup-restore.md). Create the db + expose stats.amateo.app:
   # founder runbook docs/ops/deploy.md § Umami.
   umami:
-    image: ghcr.io/umami-software/umami:3.4.0@sha256:6cd9d24a836fac5c226c3c90cb25141d4560b7270b7827f393ccf09bf3f83b18
+    image: ghcr.io/umami-software/umami:3.4.0@sha256:85909afc45bdcda1917394594a087421fdbb05610fded0fa9f6fb861abb2f367
     container_name: amateo-umami
     environment:
       # Dedicated role/db in the SAME cluster. `:?` → a deploy without the
