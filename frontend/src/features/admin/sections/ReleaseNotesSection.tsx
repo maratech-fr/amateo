@@ -43,7 +43,6 @@ export function ReleaseNotesSection() {
           setBody("");
           setNoteDate(today());
         },
-        onError: () => toast.error("Impossible d'enregistrer la note."),
       },
     );
   }
@@ -117,8 +116,8 @@ export function ReleaseNotesSection() {
               note={note}
               publishing={publish.isPending && publish.variables === note.id}
               removing={remove.isPending && remove.variables === note.id}
-              onPublish={() => publish.mutate(note.id, { onError: () => toast.error("Impossible de publier.") })}
-              onRemove={() => remove.mutate(note.id, { onError: () => toast.error("Impossible de supprimer.") })}
+              onPublish={() => publish.mutate(note.id)}
+              onRemove={() => remove.mutate(note.id)}
             />
           ))}
         </ul>
