@@ -1,8 +1,7 @@
 import { ResourceFilter } from "@/features/planning/ResourceFilter";
 import type { GridResourceGroup } from "@/features/planning/lib/grid";
-import { Button } from "@/shared/components/ui/button";
+import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import { groupTeamsByTier, tierGroupLabel } from "@/shared/lib/teamTiers";
-import { cn } from "@/shared/lib/utils";
 
 import type { Coach, PriorityTier, Team, Venue } from "./api";
 import type { MatchFilterMode } from "./lib/matchFilter";
@@ -46,23 +45,8 @@ export function MatchesFilterBar({ mode, selected, teams, coaches, venues, tiers
   const groups = groupsFor(mode, teams, coaches, venues, tiers);
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {/* Contrôle segmenté (patron VIEWS de PlanningToolbar) — `aria-pressed` porte
-          l'état à l'AT, l'axe courant est en variante pleine. */}
-      <div className="flex items-center gap-1 rounded-md border border-border bg-card p-0.5">
-        {SEGMENTS.map((segment) => (
-          <Button
-            key={segment.key}
-            type="button"
-            size="sm"
-            aria-pressed={segment.key === mode}
-            variant={segment.key === mode ? "default" : "ghost"}
-            className={cn("h-7", segment.key === mode ? "" : "text-muted-foreground")}
-            onClick={() => onModeChange(segment.key)}
-          >
-            {segment.label}
-          </Button>
-        ))}
-      </div>
+      {/* Contrôle segmenté partagé — axe équipe/coach/gymnase (choix exclusif). */}
+      <SegmentedControl mode="single" label="Filtrer par" options={SEGMENTS} value={mode} onValueChange={onModeChange} className="flex-nowrap" />
       <ResourceFilter viewMode={mode} groups={groups} selected={selected} onToggle={onToggle} onClear={onClear} />
     </div>
   );

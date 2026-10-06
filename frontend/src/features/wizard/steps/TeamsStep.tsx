@@ -214,7 +214,7 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
         <Button size="icon" variant="ghost" className="size-8" aria-label={`Liens de ${team.name}`} onClick={() => onOpenLinks(team)}>
           <Link2 className="size-4" />
         </Button>
-        <Button size="icon" variant="ghost" className="size-8 text-destructive" aria-label="Supprimer" disabled={engaged} onClick={() => onDelete(team)}>
+        <Button size="icon" variant="ghost" className="size-8 text-destructive" aria-label={`Supprimer l'équipe ${team.name}`} disabled={engaged} onClick={() => onDelete(team)}>
           <Trash2 className="size-4" />
         </Button>
       </div>

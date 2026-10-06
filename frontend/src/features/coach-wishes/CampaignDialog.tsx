@@ -9,6 +9,7 @@ import { usePriorityTiers, useUpdateCoach, useWizardTeamCoaches, useWizardTeams 
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
+import { FilterChip } from "@/shared/components/ui/filter-chip";
 import { Input } from "@/shared/components/ui/input";
 import { Modal } from "@/shared/components/ui/modal";
 import { TabPanel, Tabs } from "@/shared/components/ui/tabs";
@@ -404,7 +405,7 @@ function CoachLinks({ campaign, onEmailSaved, onCampaignRefreshed }: { campaign:
           variant="outline"
           size="sm"
           disabled={0 === unsentWithEmail.length || sendLinks.isPending}
-          title={0 === unsentWithEmail.length ? "Tous les coachs avec un email ont déjà reçu leur lien" : undefined}
+          disabledReason={0 === unsentWithEmail.length ? "Tous les coachs avec un email ont déjà reçu leur lien" : undefined}
           onClick={() => sendLinks.mutate({ id: campaign.id }, { onSuccess: (r) => onCampaignRefreshed(r.campaign) })}
         >
           {sendLinks.isPending ? <Spinner className="size-4" /> : <Send className="size-4" />}
@@ -414,7 +415,7 @@ function CoachLinks({ campaign, onEmailSaved, onCampaignRefreshed }: { campaign:
           variant="ghost"
           size="sm"
           disabled={remindedToday || 0 === silentWithEmail.length || remind.isPending}
-          title={remindedToday ? "Déjà relancés aujourd'hui — pas deux fois le même jour" : 0 === silentWithEmail.length ? "Aucun coach silencieux avec un email" : undefined}
+          disabledReason={remindedToday ? "Déjà relancés aujourd'hui — pas deux fois le même jour" : 0 === silentWithEmail.length ? "Aucun coach silencieux avec un email" : undefined}
           onClick={() => remind.mutate(campaign.id, { onSuccess: (r) => onCampaignRefreshed(r.campaign) })}
         >
           {remind.isPending ? <Spinner className="size-4" /> : null}
@@ -433,30 +434,18 @@ function CoachLinks({ campaign, onEmailSaved, onCampaignRefreshed }: { campaign:
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-xs text-muted-foreground">Équipe&nbsp;:</span>
               {campaignTeams.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  aria-pressed={teamFilter.has(t.id)}
-                  className={`rounded-full border px-2 py-0.5 text-xs ${teamFilter.has(t.id) ? "border-accent bg-accent/15 text-foreground" : "border-border text-muted-foreground"}`}
-                  onClick={() => toggle(teamFilter, t.id, setTeamFilter)}
-                >
+                <FilterChip key={t.id} pressed={teamFilter.has(t.id)} onPress={() => toggle(teamFilter, t.id, setTeamFilter)}>
                   {t.name}
-                </button>
+                </FilterChip>
               ))}
             </div>
           ) : null}
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-xs text-muted-foreground">Statut&nbsp;:</span>
             {STATUS_LABELS.map((s) => (
-              <button
-                key={s.key}
-                type="button"
-                aria-pressed={statusFilter.has(s.key)}
-                className={`rounded-full border px-2 py-0.5 text-xs ${statusFilter.has(s.key) ? "border-accent bg-accent/15 text-foreground" : "border-border text-muted-foreground"}`}
-                onClick={() => toggle(statusFilter, s.key, setStatusFilter)}
-              >
+              <FilterChip key={s.key} pressed={statusFilter.has(s.key)} onPress={() => toggle(statusFilter, s.key, setStatusFilter)}>
                 {s.label}
-              </button>
+              </FilterChip>
             ))}
           </div>
         </div>

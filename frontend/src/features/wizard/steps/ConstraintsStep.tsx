@@ -1088,10 +1088,10 @@ export function ConstraintsStep() {
                           // épaissir la ligne — la passe de design nommait `w-6 h-6` comme le
                           // mauvais exemple de cible de clic.
                           <div className="flex items-center justify-end gap-1">
-                            <button type="button" aria-label="Modifier" className="-m-1.5 rounded p-1.5 text-muted-foreground hover:text-foreground" onClick={() => editConstraint(c)}>
+                            <button type="button" aria-label={`Modifier la contrainte « ${RULE_LABEL[c.ruleType]} »`} className="-m-1.5 rounded p-1.5 text-muted-foreground hover:text-foreground" onClick={() => editConstraint(c)}>
                               <Pencil className="size-4" />
                             </button>
-                            <button type="button" aria-label="Supprimer" className="-m-1.5 rounded p-1.5 text-muted-foreground hover:text-destructive" onClick={() => setPendingDelete(c)}>
+                            <button type="button" aria-label={`Supprimer la contrainte « ${RULE_LABEL[c.ruleType]} »`} className="-m-1.5 rounded p-1.5 text-muted-foreground hover:text-destructive" onClick={() => setPendingDelete(c)}>
                               <Trash2 className="size-4" />
                             </button>
                           </div>

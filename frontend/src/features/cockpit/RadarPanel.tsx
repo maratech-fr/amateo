@@ -485,7 +485,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
         const locked = !socleValidated && !startedEntryIds.has(e.id);
         return (
           <RadarCard key={`wip-${e.id}`} icon={<Pencil className="size-4 text-accent" />} title={e.title} detail="Planning en cours — à finaliser">
-            <Button variant="outline" size="sm" disabled={locked} title={locked ? lockTitle : undefined} onClick={() => adapt(e.id)}>
+            <Button variant="outline" size="sm" disabled={locked} disabledReason={locked ? lockTitle : undefined} onClick={() => adapt(e.id)}>
               Reprendre
             </Button>
           </RadarCard>
@@ -497,7 +497,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
         const locked = !socleValidated && !startedEntryIds.has(e.id);
         return (
           <RadarCard key={`orphan-${e.id}`} icon={<Pencil className="size-4 text-accent" />} title={e.title} detail="Planning de semaine à finaliser">
-            <Button variant="outline" size="sm" disabled={locked} title={locked ? lockTitle : undefined} onClick={() => adapt(e.id)}>
+            <Button variant="outline" size="sm" disabled={locked} disabledReason={locked ? lockTitle : undefined} onClick={() => adapt(e.id)}>
               Reprendre
             </Button>
           </RadarCard>
@@ -561,7 +561,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
                     variant="outline"
                     size="sm"
                     disabled={createWeekChildren.isPending || !socleValidated}
-                    title={lockTitle}
+                    disabledReason={!socleValidated ? lockTitle : undefined}
                     onClick={() => createOneWeek(m, group.weeks[0])}
                   >
                     {`+ sem. du ${frDateShort(group.startDate)}`}
@@ -580,7 +580,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
                   variant={null !== activeId ? "ghost" : "outline"}
                   size="sm"
                   disabled={chipLocked}
-                  title={chipLocked ? lockTitle : undefined}
+                  disabledReason={chipLocked ? lockTitle : undefined}
                   onClick={() => (null !== activeId ? viewOverlay(activeId) : adapt(child.id))}
                 >
                   {`sem. du ${frDateShort(child.startDate)}${span} ${null !== activeId ? "✅ validée" : wip ? "· en cours" : "· à faire"}`}
@@ -623,7 +623,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
                 Voir le planning
               </Button>
             ) : entry ? (
-              <Button variant="outline" size="sm" disabled={!socleValidated} title={lockTitle} onClick={() => requestAdapt(entry)}>
+              <Button variant="outline" size="sm" disabled={!socleValidated} disabledReason={!socleValidated ? lockTitle : undefined} onClick={() => requestAdapt(entry)}>
                 Adapter
               </Button>
             ) : (
@@ -631,7 +631,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
                 variant="outline"
                 size="sm"
                 disabled={createHoliday.isPending || null === seasonClamp(h) || !socleValidated}
-                title={lockTitle}
+                disabledReason={!socleValidated ? lockTitle : undefined}
                 onClick={() => {
                   const range = seasonClamp(h);
                   if (null === range) {
@@ -700,7 +700,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
               variant="outline"
               size="sm"
               disabled={!socleValidated || createClosureFromUnavailability.isPending}
-              title={lockTitle}
+              disabledReason={!socleValidated ? lockTitle : undefined}
               onClick={() => {
                 const title = `${venueNameOf(u.venueId)} indisponible${null !== u.label ? ` (${u.label})` : ""}`;
                 const params = { title, venueId: u.venueId, startDate: u.startDate, endDate: u.endDate };
@@ -859,7 +859,7 @@ function ClosureRadarItem({ entry, activeScheduleId, staleness, inProgress = fal
       ) : (
         // Gating seulement sur une fermeture À DÉMARRER (« Adapter ») ; « Reprendre »
         // (travail en cours) reste actif même si la saison est rouverte.
-        <Button variant="outline" size="sm" disabled={!inProgress && seasonUnvalidated} title={!inProgress ? adaptTitle : undefined} onClick={onAdapt}>
+        <Button variant="outline" size="sm" disabled={!inProgress && seasonUnvalidated} disabledReason={!inProgress && seasonUnvalidated ? adaptTitle : undefined} onClick={onAdapt}>
           {inProgress ? "Reprendre" : "Adapter"}
         </Button>
       )}

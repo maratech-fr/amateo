@@ -76,9 +76,9 @@ const selectorSyntax = [
 const heightSyntax = [
   {
     selector:
-      "JSXOpeningElement[name.name=/^(Button|Input|Select|Listbox|TeamSelect|VenueSelect)$/] > JSXAttribute[name.name='className'] Literal[value=/(^|[^\\w-])h-(8|10|11)([^\\w-]|$)/]",
+      "JSXOpeningElement[name.name=/^(Button|Input|Select|Listbox|TeamSelect|VenueSelect)$/] > JSXAttribute[name.name='className'] Literal[value=/(^|[^\\w-])h-(7|8|10|11)([^\\w-]|$)/]",
     message:
-      "La hauteur d'un contrôle vient de la primitive (h-9 par défaut) ou d'une variante nommée (prop `compact` → h-8 ; `size=\"icon-sm\"` → 36 px) — jamais une classe h-8/h-10/h-11 littérale en className (série « uniformité des écrans », PR 7/7).",
+      "La hauteur d'un contrôle vient de la primitive (h-9 par défaut) ou d'une variante nommée (prop `compact` → h-8 ; `size=\"icon-sm\"` → 36 px) — jamais une classe h-7/h-8/h-10/h-11 littérale en className. `h-7` (28 px) contournait la norme 36 px (UXC-29, audit 2026-10-03) ; série « uniformité des écrans », PR 7/7.",
   },
 ]
 

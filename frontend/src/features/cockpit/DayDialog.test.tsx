@@ -466,7 +466,8 @@ describe("DayDialog — holiday awareness (Lot B)", () => {
     meData = { seasonPlan: { chosenScheduleId: null } };
     renderDialog([], { holiday: schoolHoliday() });
 
-    expect(screen.getByRole("button", { name: "Adapter" })).toBeDisabled();
+    // Désactivé mais DÉCOUVRABLE (A11Y-30, `disabledReason`) : aria-disabled, pas le `disabled` natif.
+    expect(screen.getByRole("button", { name: "Adapter" })).toHaveAttribute("aria-disabled", "true");
   });
 
   // B1 (retour fondateur 2026-07-19) : clic-jour → les plannings couvrants (fermeture
@@ -585,7 +586,8 @@ describe("DayDialog — holiday block chips (3 states) and integrated week delet
     renderDialog([mother(), week()], { holiday: schoolHoliday() });
 
     const chip = await screen.findByRole("button", { name: /sem\. du 11 mai .*· à faire/ });
-    expect(chip).toBeDisabled();
+    // Désactivé mais DÉCOUVRABLE (A11Y-30, `disabledReason`) : aria-disabled, pas le `disabled` natif.
+    expect(chip).toHaveAttribute("aria-disabled", "true");
   });
 
   // A11Y-18 — l'état validé d'une chip de semaine ne peut reposer sur le seul emoji ✅ : il porte
@@ -924,7 +926,8 @@ describe("DayDialog — re-datage d'une fermeture (« Modifier les dates », D3 
 
     await userEvent.click(screen.getByRole("button", { name: redateLabel }));
     const save = screen.getByRole("button", { name: "Enregistrer" });
-    expect(save).toBeDisabled();
+    // Désactivé mais DÉCOUVRABLE (A11Y-30, `disabledReason`) : aria-disabled + raison en title/description.
+    expect(save).toHaveAttribute("aria-disabled", "true");
     expect(save).toHaveAttribute("title");
     expect(redateMutateAsync).not.toHaveBeenCalled();
   });
@@ -936,7 +939,7 @@ describe("DayDialog — re-datage d'une fermeture (« Modifier les dates », D3 
     const endInput = screen.getByLabelText("Jusqu'au");
     await userEvent.clear(endInput);
     await userEvent.type(endInput, "2026-05-01"); // avant le début servi (12 mai)
-    expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Enregistrer" })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("succès : appelle le re-datage avec la fenêtre saisie, ferme le dialogue et annonce la phrase unique", async () => {

@@ -224,12 +224,12 @@ function DayList({ entries, holiday, publicHoliday, onCreate, onRedate, onClose 
                         Consulter
                       </Button>
                     ) : (
-                      <Button variant="outline" size="sm" disabled={adjustLocked || createPeriodPlan.isPending} title={adjustLocked ? lockTitle : undefined} onClick={() => requestAdapt(entry)}>
+                      <Button variant="outline" size="sm" disabled={adjustLocked || createPeriodPlan.isPending} disabledReason={adjustLocked ? lockTitle : undefined} onClick={() => requestAdapt(entry)}>
                         Ajuster
                       </Button>
                     )
                   ) : adaptable ? (
-                    <Button variant="outline" size="sm" disabled={!socleValidated || createPeriodPlan.isPending} title={!socleValidated ? lockTitle : undefined} onClick={() => requestAdapt(entry)}>
+                    <Button variant="outline" size="sm" disabled={!socleValidated || createPeriodPlan.isPending} disabledReason={!socleValidated ? lockTitle : undefined} onClick={() => requestAdapt(entry)}>
                       Adapter
                     </Button>
                   ) : null}
@@ -478,7 +478,7 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
                   variant="outline"
                   size="sm"
                   disabled={createWeekChildren.isPending || !socleValidated}
-                  title={lockTitle}
+                  disabledReason={!socleValidated ? lockTitle : undefined}
                   onClick={() => createOneWeek(entry, group.weeks[0])}
                 >
                   {`+ sem. du ${frDateShort(group.startDate)}`}
@@ -499,7 +499,7 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
                   variant={null !== chosen ? "ghost" : "outline"}
                   size="sm"
                   disabled={chipLocked}
-                  title={chipLocked ? lockTitle : undefined}
+                  disabledReason={chipLocked ? lockTitle : undefined}
                   onClick={() => (null !== chosen ? viewOverlay(chosen) : adapt(child.id))}
                 >
                   {`sem. du ${frDateShort(child.startDate)}${span} ${null !== chosen ? "✅ validée" : wip ? "· en cours" : "· à faire"}`}
@@ -527,7 +527,7 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
         </div>
       ) : entry ? (
         <div className="flex justify-end">
-          <Button variant="outline" size="sm" disabled={!socleValidated} title={lockTitle} onClick={() => requestAdapt(entry)}>
+          <Button variant="outline" size="sm" disabled={!socleValidated} disabledReason={!socleValidated ? lockTitle : undefined} onClick={() => requestAdapt(entry)}>
             Adapter
           </Button>
         </div>
@@ -543,7 +543,7 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
             variant="outline"
             size="sm"
             disabled={createHoliday.isPending || null === clamped || !socleValidated}
-            title={lockTitle}
+            disabledReason={!socleValidated ? lockTitle : undefined}
             onClick={async () => {
               if (null === clamped) {
                 return;
@@ -868,7 +868,7 @@ function RedateForm({ entry, onBack, onDone }: { entry: CalendarEntry; onBack: (
           <WindowAlreadyPlannedNotice message={windowConflict.message} onOpen={() => openConflict(windowConflict.entryId)} />
         </div>
       ) : null}
-      <Button className="w-full" onClick={() => void submit()} disabled={redate.isPending || !changed || !valid} title={disabledReason}>
+      <Button className="w-full" onClick={() => void submit()} disabled={redate.isPending || !changed || !valid} disabledReason={disabledReason}>
         Enregistrer
       </Button>
     </FormShell>
@@ -1047,7 +1047,7 @@ function RedateWithPreviewForm({ entry, onBack, onDone }: { entry: CalendarEntry
           <WindowAlreadyPlannedNotice message={windowConflict.message} onOpen={() => openConflict(windowConflict.entryId)} />
         </div>
       ) : null}
-      <Button className="w-full" variant={deletionAhead ? "destructive" : undefined} onClick={() => void (previewValid ? confirm() : loadPreview())} disabled={actionDisabled} title={actionTitle}>
+      <Button className="w-full" variant={deletionAhead ? "destructive" : undefined} onClick={() => void (previewValid ? confirm() : loadPreview())} disabled={actionDisabled} disabledReason={actionTitle}>
         {actionLabel}
       </Button>
     </FormShell>
