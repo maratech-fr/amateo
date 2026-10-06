@@ -40,7 +40,9 @@ export async function submitRegister(page: Page, opts: RegisterOpts): Promise<vo
   await page.getByLabel("Mot de passe", { exact: true }).fill(password);
   // Champ de confirmation obligatoire (le bouton reste désarmé sans lui).
   await page.getByLabel("Confirmer le mot de passe").fill(password);
-  await page.getByLabel(/code ara/i).fill(opts.ara);
+  // Le champ du code club (ex-« Code ARA du club », renommé « Code club FFBB » par le lot UX
+  // d'octobre 2026 — placeholder « Ex. ARA0069013 »). La valeur, elle, reste un code ARA/FFBB.
+  await page.getByLabel(/code club ffbb/i).fill(opts.ara);
   if (undefined !== opts.clubName) {
     await page.getByLabel(/nom du club/i).fill(opts.clubName);
   }
