@@ -153,7 +153,9 @@ final class PublicCoachWishTest extends WebTestCase
             'submissions' => [['teamId' => $this->team->getId(), 'weekStart' => '2026-02-16', 'slotsWanted' => 2, 'unavailableDays' => [3], 'wishedDays' => [3], 'comment' => null]],
         ], \JSON_THROW_ON_ERROR));
         self::assertResponseStatusCodeSame(422);
-        self::assertStringContainsString('Un jour ne peut pas être à la fois souhaité et indisponible.', (string) $this->client->getResponse()->getContent());
+        // `JsonResponse` échappe les non-ASCII (`ê`…) : on décode avant d'asserter le motif.
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertSame('Un jour ne peut pas être à la fois souhaité et indisponible.', $body['error']);
 
         $this->em->clear();
         $this->scopeGucToClub($this->club->getId());

@@ -67,7 +67,7 @@ class CoachWishResource
     public array $unavailableDays = [];
 
     /**
-     * Jours souhaités, ISO 1–7 (P4-312) — informatif, aucun effet solveur.
+     * Jours souhaités, ISO 1–7 — informatif, aucun effet solveur.
      *
      * @var list<int>
      */

@@ -1,10 +1,9 @@
-Last verified @ 2026-10-06 (P4-299 — un gestionnaire invite une adresse e-mail à rejoindre son club :
-6 routes custom (`InvitationPaths`) — gestion `GET`/`POST /api/invitations`, `POST /api/invitations/{id}/resend`,
-`DELETE /api/invitations/{id}`, acceptation connectée `POST /api/invitations/{token}/accept`, et la page
-publique à jeton `GET`/`POST /api/invitations/public/{token}[/accept]`. +6 paths).
+Last verified @ 2026-10-06 (P4-312 — champ « Jours souhaités » informatif sur la doléance coach :
+`wishedDays` ajouté au schéma `CoachWish`/`CoachWishInput` et à la forme inline de la page publique
+à jeton `coach-wishes/public/{token}` (GET/POST). Aucune route nouvelle — +0 path).
 
 **231 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`e9b901515c23b31289ff8e9c2250dd3c36b4e2afd8b626455bbd94666ab0a60a` (`sha256sum` sur le fichier).
+`07781ae455f6ba5b355b89e032d433d6ea16d48b46da343bab27ce9b9ad8a376` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

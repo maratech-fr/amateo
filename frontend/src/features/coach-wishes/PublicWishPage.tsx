@@ -100,7 +100,7 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
     if (null !== draft) {
       for (const [key, value] of draft.sections) {
         if (base.has(key)) {
-          base.set(key, { slotsWanted: value.slotsWanted, days: new Set(value.days), comment: value.comment });
+          base.set(key, { slotsWanted: value.slotsWanted, days: new Set(value.days), wishedDays: new Set(value.wishedDays), comment: value.comment });
         }
       }
     }
