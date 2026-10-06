@@ -53,7 +53,7 @@ stage prod red le job même si aucun build dev ne l'utilise.
 
 ## Mesure d'audience de la vitrine (Umami — P4-276)
 
-Service `umami` (image `ghcr.io/umami-software/umami`, **v2 épinglée tag + digest**,
+Service `umami` (image `ghcr.io/umami-software/umami`, **v3 épinglée tag + digest** — `3.4.0`,
 patron Mercure) : il mesure l'audience de la **page de vente** (`landing/`) seule, pas
 l'application. Le navigateur d'un visiteur de `amateo.app` charge un script sans cookie (injecté
 par `landing/config.js`, double garde clés + hostname).
@@ -79,8 +79,10 @@ Umami (jeton côté serveur, jamais exposé au front).
   manquant) n'affecte jamais l'app. Les variables du service portent `:?` → un deploy sans les
   secrets Umami est refusé au `compose config`, avant toute mutation de la VM.
 - **Dependabot** suit cette image via l'écosystème `docker-compose` (`.github/dependabot.yml`,
-  ajouté avec Umami) — semver-major ignoré (on reste en v2). Ce même scan couvre désormais aussi
-  les autres pins compose (`dunglas/mercure`, `redis:7-alpine`).
+  ajouté avec Umami) — semver-major ignoré (on reste sur la majeure épinglée, v3 : le tag v3 est
+  en semver propre `3.x.y`). Ce même scan couvre désormais aussi les autres pins compose :
+  `postgres` et `redis` (semver-major ignoré), et `dunglas/mercure` (borné `versions: >=1.0.0`
+  car en 0.x `semver-major` ne capte pas le saut 0.x → 1.0).
 
 ## Accès opérateur à la base — jamais un port ouvert
 
