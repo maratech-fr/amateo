@@ -400,6 +400,20 @@ async function runImport(browser, divisionMap) {
     // ne crée AUCUNE rencontre (le bac à sable n'a pas les engagements FFBB qui suggèrent l'équipe).
     await applyDivisionMap(page, divisionMap);
 
+    // La réponse HTTP de l'import est la SEULE preuve fiable. Le texte « mis à jour » figure DÉJÀ
+    // dans la description de la modale (« …les matchs connus sont mis à jour, jamais dupliqués. »),
+    // donc l'attendre à l'écran matcherait instantanément et fermerait le contexte PENDANT le POST
+    // en vol (nginx logue un 499, 0 rencontre importée). On arme l'attente de la réponse AVANT de
+    // cliquer — le POST peut partir soit du bouton « Importer », soit de la confirmation
+    // « Importer quand même » (divisions sans équipe) : le prédicat couvre les deux chemins.
+    const importResponse = page.waitForResponse(
+      (r) =>
+        r.url().includes("/api/fixtures/import") &&
+        !r.url().includes("/analyze") &&
+        "POST" === r.request().method(),
+      { timeout: 180_000 },
+    );
+
     await importBtn.click();
 
     // Divisions sans équipe ⇒ confirmation (celles hors table restent non associées).
@@ -408,18 +422,27 @@ async function runImport(browser, divisionMap) {
       .click({ timeout: 3_000 })
       .catch(() => {});
 
-    // Le rapport d'import (« … créé · … mis à jour · … inchangé ») apparaît en place.
-    const reportLine = page.getByText(/mis à jour/).first();
-    await reportLine.waitFor({ timeout: NAV_TIMEOUT });
+    const response = await importResponse;
+    const status = response.status();
+    const body = await response.text();
+    if (status < 200 || status >= 300) {
+      throw new Error(`POST /api/fixtures/import a échoué (HTTP ${status}) : ${body.slice(0, 500)}`);
+    }
+
+    // Les compteurs viennent du corps JSON (ImportFixturesController → created · updated ·
+    // unchanged), jamais plus du texte de l'écran.
+    const report = JSON.parse(body);
+    const created = Number(report.created ?? 0);
+    const updated = Number(report.updated ?? 0);
+    const unchanged = Number(report.unchanged ?? 0);
+    const summary = `${created} créé · ${updated} mis à jour · ${unchanged} inchangé`;
+
     await waitForStability(page);
-    const reportText = (await reportLine.textContent()) ?? "";
-    const created = Number(reportText.match(/(\d+)\s*créé/)?.[1] ?? "0");
-    const updated = Number(reportText.match(/(\d+)\s*mis à jour/)?.[1] ?? "0");
     if (created > 0) {
-      console.log(`✓ import FBI depuis ${filePath} — ${reportText.trim()}`);
+      console.log(`✓ import FBI depuis ${filePath} — ${summary}`);
     } else {
       console.warn(
-        `⚠ import FBI depuis ${filePath} : 0 rencontre CRÉÉE (${reportText.trim()}). ` +
+        `⚠ import FBI depuis ${filePath} : 0 rencontre CRÉÉE (${summary}). ` +
           (updated > 0
             ? "Des rencontres ont été mises à jour (ré-import ?) — vérifier que le calendrier n'est pas vide."
             : "Vérifier l'appariement Division→équipe et le fichier d'import avant de garder les captures matchs."),
