@@ -21,6 +21,7 @@ de l'UI (verrouillé par le test Vitest).
 | TIME `minStartTime`/`maxStartTime` | dure | soft |
 | TIME `maxEndTime` | dure — mode **« Fini avant »** (fin = début + durée du créneau), toujours HARD (pas de sélecteur) *(ALIGN-04)* | — *(le chemin soft `preferredTime` ne lit que min/maxStartTime → une préférence serait un placebo)* |
 | DAY `forbiddenDays` | dure | **soft « éviter ces jours »** *(fix ENG-10 — était un placebo)* |
+| DAY `preferredDays` | **refusé à l'écriture** (une préférence ne peut pas être obligatoire, `ConstraintValidationService`, 422) ; honoré si donnée LEGACY : — | **soft « à privilégier »** — mode positif du wizard (P4-312) : l'objectif oriente vers ces jours, ne bloque jamais la faisabilité |
 | DAY `allowedDays` | dure — mode **« uniquement »** (whitelist : l'engine interdit tous les autres jours), toujours HARD (pas de sélecteur) | — |
 | DAY `forcedDays` | dure — mode **« au moins une »** (somme agrégée ≥ 1 sur l'UNION des jours listés, ≠ « uniquement » : les autres jours restent ouverts), toujours HARD (pas de sélecteur) *(ALIGN-09)* ; **une séance déjà VERROUILLÉE un jour imposé SATISFAIT la règle** (patron P4-97, ALIGN-16 — aucune contrainte posée par-dessus, le verrou EST la séance) ; si le jour imposé a un créneau candidat mais que TOUTES ses places sont fermées par une autre règle HARD (indispo de l'entraîneur principal toute la journée, fenêtre horaire), le récap pré-génération le NOMME (`PreSolvePreventionWarnings::forcedDayEmptiedByClosingRules`) et le moteur, lui, nomme la même cause en diagnostic `day_constraint_conflict` plutôt qu'un INFEASIBLE muet — la génération RESTE infaisable, seule la cause est désormais dite | — |
 | FACILITY `preferredVenueId` | **refusé à l'écriture** (D1, `ConstraintStateProcessor::assertPreferredVenueIsNotMandatory`, 422 — « choisissez « impose » ») ; honoré si donnée LEGACY : dure (salle forcée) | soft |
@@ -49,10 +50,12 @@ de l'UI (verrouillé par le test Vitest).
 
 ## Vocabulaire compris par l'engine mais jamais émis par le wizard (« non proposé »)
 
-`preferredDays` (lu par l'objectif, jamais émis — la racine d'ENG-10) · `slotTemplates` (verrou
-HARD), hors matrice constraints. ⚠ **`forcedDays` N'EST PLUS dans cette liste** : le wizard
-l'émet depuis le mode « au moins une » (ALIGN-09, ligne DAY ci-dessus) — lui seul, « uniquement »,
-reste sur `allowedDays` (cf. ENG-16 ci-dessous).
+`slotTemplates` (verrou HARD), hors matrice constraints. ⚠ **`forcedDays` N'EST PLUS dans cette
+liste** : le wizard l'émet depuis le mode « au moins une » (ALIGN-09, ligne DAY ci-dessus) — lui
+seul, « uniquement », reste sur `allowedDays` (cf. ENG-16 ci-dessous). ⚠ **`preferredDays` N'EST
+PLUS dans cette liste non plus** : il fut la racine d'ENG-10 (lu par l'objectif, mais jamais émis —
+d'où le placebo), puis le wizard l'émet depuis le mode JOUR « à privilégier » (P4-312, ligne DAY
+ci-dessus).
 
 > `allowedDays` et `forcedVenueId` sont **émis par le wizard** (modes « uniquement »/« impose »,
 > toujours HARD) : l'édition des contraintes fixtures (`SM4 → Jean Vilar`, `Veterans vendredi

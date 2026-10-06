@@ -353,15 +353,19 @@ MATRIX: tuple[MatrixCell, ...] = (
         config={"forcedDays": [1]},
         lock_silence=LockSilence.DIAGNOSED,
     ),
-    # --- Understood by the engine but never emitted by the wizard ---------------
+    # P4-312: the wizard DAY mode "à privilégier" now emits this soft positive day
+    # wish (ruleType PREFERRED). The objective already read the key (ENG-10 root) —
+    # only the wizard surface was missing. Steers toward the preferred day, never
+    # blocks feasibility when only another day exists.
     MatrixCell(
         "DAY",
         "PREFERRED",
         "preferredDays",
         "TEAM",
-        Expectation.NOT_OFFERED,
-        False,
-        note="objective reads it, wizard never emits it (ENG-10 root)",
+        Expectation.HONORED_SOFT,
+        True,
+        note="wizard 'à privilégier' = soft positive day wish (P4-312); objective steers, never blocks",
+        config={"preferredDays": [1]},
         lock_silence=LockSilence.SOFT,
     ),
 )

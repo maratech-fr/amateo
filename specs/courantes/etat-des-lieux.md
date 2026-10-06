@@ -30,6 +30,10 @@ COACH_AVAILABILITY/FACILITY_CAPACITY), liste **fermée**.
   jour, heure, raison), budget adaptatif selon la taille du problème. → [ADR-0001](../../docs/architecture/adr-0001-single-pass-solve.md)
 - **Verrous HARD pré-placés hors solveur** : souverains mais diagnostiqués (jamais silencieux) ; la matrice
   contrainte UI↔engine est gelée par un test paramétré généré. → [`constraint-matrix.md`](../../docs/architecture/constraint-matrix.md)
+- **Souhait de jour POSITIF au wizard** (P4-312) : la famille DAY offre un mode « à privilégier » (SOFT, émet
+  `preferredDays` en `PREFERRED`) à côté de « à éviter »/« uniquement »/« au moins une » — l'objectif oriente
+  vers ces jours sans jamais bloquer ; refusé en `HARD`. Cellule `preferredDays`×PREFERRED×TEAM désormais
+  « émise par le wizard » dans la matrice sémantique (jouée contre le vrai solveur).
 - **Règles implicites** appliquées sans saisie (coach principal présent, repos après jour de match, regroupement
   même-coach-même-salle) + **trajet entre gymnases** (matrice club+saison voiture/vélo, règle implicite opt-in
   à la présence de matrice, levier d'intensité Inactive/Préféré/Obligatoire + battement toléré géré management). → [`geo-api.md`](../../backend/docs/geo-api.md) ·
@@ -529,7 +533,7 @@ le front lit, il ne re-dérive plus les règles de refus, repli fail-closed si l
 | **Le workflow dérogation (RMM-7) — tracker, états, deadline, rédacteur** | Non — la dérogation n'est PAS un objet de l'app (2026-08-25) | « Une dérogation n'a pas de deadline (...) c'est juste la réponse à un conflit » (fondateur) — la boucle existante suffit |
 | **Exporter le planning en IMAGE (PNG)** | Non — retiré du produit le 2026-08-21 | C'était une capture d'une vue déjà rendue par le PDF, sans information supplémentaire, dans un format qui ne se feuillette pas |
 | **Décocher d'office une contrainte de saison devenue impossible dans une période** | Non — le bloqueur du récap reste explicite, le gestionnaire décoche lui-même (2026-08-19) | Le refus du récap nomme déjà ce qui coince — l'automatiser masquerait un choix fait à la saisie |
-| **Exposer `preferredDays` au wizard (ALIGN-09, 2026-08-23)** | Non — la clé reste engine-only | La préférence positive existe déjà en creux — un 4ᵉ mode jour brouillerait plus qu'il n'ajoute |
+| **RENVERSÉE le 2026-10-06 par P4-312 (GO fondateur, retour terrain « demander un jour précis »)** — Exposer `preferredDays` au wizard (ALIGN-09, 2026-08-23) | Renversée : le wizard offre désormais un 4ᵉ mode JOUR « à privilégier » (souhait positif SOFT, émet `preferredDays` en `PREFERRED`, pastille figée « Préféré » — patron D1 du « préfère ce gymnase ») ; reste refusé en `HARD` (une préférence ne peut pas être obligatoire). Zéro nouveau vocabulaire moteur : l'objectif lisait déjà la clé | Le besoin positif n'était plus « en creux » mais DEMANDÉ sur le terrain ; le coût redouté (un mode qui brouille) est levé en copiant exactement l'interaction déjà acceptée du gymnase préféré |
 | **Un parcours e2e dédié à l'approbation manuelle de club (P4-122 (2), 2026-08-23)** | Non — la couverture backend suffit | Un e2e devrait intercepter le mail institutionnel FFBB pour un risque résiduel faible |
 | **Étendre la garde serveur « une seule planification par fenêtre » (P2-38) aux vacances (P2-40, 2026-08-18)** | Non étendue mécaniquement — mais un calcul serveur de couverture (D4) existe désormais et est mirroré côté front | La doctrine « on ne borne que le PLAN » ne change pas |
 | **L'hébergeur de production : Scaleway, produit Instances** | CHOISI le 2026-08-21 — une VM auto-gérée portant toute la stack Docker, pas de base managée | Le choix commande l'accès opérateur (pas de bastion, l'hôte EST le point d'entrée) et le dimensionnement |

@@ -1,6 +1,6 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-10-06 (reliquat DOC de l'audit 2026-10-03 — DOC-60). `allowedDays` recalé : la whitelist n'est honorée QUE pour une règle `HARD` (`targeting.py::add_time_window_constraints` lit `allowedDays` après le filtre `ruleType == HARD`), un `PREFERRED` passe par `preferredDays` ; exemple « Camus » recalé (`forcedVenueId` force l'équipe sans réserver le gymnase) ; `engine/CONTRACT_VERSION` = `1.2`. Reste du vocabulaire non re-sondé cette passe — un stamp REMPLACE, il ne s'empile pas.
+Last verified @ 2026-10-06 (P4-312 — mode JOUR « à privilégier »). `preferredDays` recalé : il n'est plus « engine-only » — le wizard l'émet depuis le mode JOUR « à privilégier » (DAY, `PREFERRED`, soft positif), l'objectif l'oriente sans jamais bloquer ; la clé reste refusée en `HARD` (une préférence ne peut pas être obligatoire). `engine/CONTRACT_VERSION` = `1.3` (inchangé par P4-312 : aucun nouveau vocabulaire moteur, seule la surface de saisie manquait). Reste du vocabulaire non re-sondé cette passe — un stamp REMPLACE, il ne s'empile pas.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
@@ -46,7 +46,7 @@ Last verified @ 2026-10-06 (reliquat DOC de l'audit 2026-10-03 — DOC-60). `all
 | `forbiddenDays` (`[int]`) | **éviter** ces jours | `HARD` → jours interdits (dur) · `PREFERRED` → malus soft « éviter ces jours » |
 | `allowedDays` (`[int]`) | **uniquement** ces jours (whitelist) | l'engine **interdit tout jour hors liste**, mais **seulement quand la règle est `HARD`** (`targeting.py::add_time_window_constraints` ne lit `allowedDays` qu'APRÈS le filtre `ruleType == HARD`) ; un `allowedDays` `PREFERRED` n'est pas consommé — la préférence de jour passe par `preferredDays`. (liste vide = « non configuré », aucune restriction) |
 | `forcedDays` (`[int]`) | **au moins une** séance ces jours-là | pose `somme(vars de ces jours) ≥ 1`. **N'interdit PAS** les autres jours. **exposé au wizard (ALIGN-09)** (le wizard émet `allowedDays` pour « uniquement », cf. audit ENG-16). **Une séance déjà VERROUILLÉE un jour imposé SATISFAIT la règle** (ALIGN-16, patron P4-97, `targeting.py` : le jour sort de `forced_day_set` avant de poser la somme — aucune contrainte ajoutée sur un jour déjà couvert par la réservation) |
-| `preferredDays` (`[int]`) | préférer ces jours | bonus objectif. **Engine-only** (jamais émis par le wizard) |
+| `preferredDays` (`[int]`) | **à privilégier** ces jours | bonus objectif soft. **Émis par le wizard** depuis P4-312 (mode JOUR « à privilégier », `PREFERRED` épinglé) ; refusé en `HARD` (une préférence ne peut pas être obligatoire) |
 
 > **Piège** : `allowedDays` (« uniquement ») ≠ `forcedDays` (« au moins un »). « Vétérans le vendredi
 > **uniquement** » = `allowedDays:[5]` (sinon la 2ᵉ séance d'une équipe multi-séances pourrait tomber
@@ -57,6 +57,7 @@ Last verified @ 2026-10-06 (reliquat DOC de l'audit 2026-10-03 — DOC-60). `all
 - `Veterans - Vendredi uniquement` → `{ DAY, HARD, { allowedDays:[5] } }`
 - `U9M1 - Pas d'entraînement le mercredi` → `{ DAY, HARD, { forbiddenDays:[3] } }`
 - `SM2 - Évite le vendredi` → `{ DAY, PREFERRED, { forbiddenDays:[5] } }` (soft)
+- `U13M1 - Préfère le mardi` → `{ DAY, PREFERRED, { preferredDays:[2] } }` (soft, P4-312)
 
 ---
 

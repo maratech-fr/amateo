@@ -547,6 +547,62 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
     expect(h.createMut.mock.calls[0][0].name).toBe("Toutes les équipes · au moins une séance dimanche");
   });
 
+  it("DAY 'à privilégier' emits PREFERRED preferredDays (soft day wish — P4-312)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConstraintsStep />);
+
+    await user.click(screen.getByRole("button", { name: "Jours" }));
+    await user.selectOptions(screen.getByLabelText("Type de jour"), "preferred");
+    await user.click(screen.getByRole("button", { name: "mardi" }));
+    await user.click(screen.getByRole("button", { name: "Ajouter la contrainte" }));
+
+    expect(h.createMut).toHaveBeenCalledOnce();
+    expect(h.createMut.mock.calls[0][0]).toMatchObject({ family: "DAY", ruleType: "PREFERRED", config: { preferredDays: [2] } });
+    // Un souhait positif n'émet JAMAIS la clé « à éviter ».
+    expect(h.createMut.mock.calls[0][0].config).not.toHaveProperty("forbiddenDays");
+  });
+
+  it("DAY 'à privilégier' : aucun sélecteur Règle, une pastille figée « Préféré » (D1 — P4-312)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConstraintsStep />);
+
+    await user.click(screen.getByRole("button", { name: "Jours" }));
+    // « à privilégier » est TOUJOURS une préférence (soft) — comme « préfère ce gymnase ».
+    await user.selectOptions(screen.getByLabelText("Type de jour"), "preferred");
+    expect(screen.queryByLabelText("Règle")).not.toBeInTheDocument();
+    expect(screen.getByText("Préféré")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Jours à privilégier" })).toBeInTheDocument();
+  });
+
+  it("round-trips a preferredDays 'à privilégier' rule without downgrading it (P4-312)", async () => {
+    const user = userEvent.setup();
+    h.list = [
+      {
+        id: "c-preferred-day",
+        name: "SM1 · privilégie vendredi",
+        scope: "TEAM",
+        scopeTargetId: "t1",
+        family: "DAY",
+        ruleType: "PREFERRED",
+        config: { preferredDays: [5] },
+        isActive: true,
+      },
+    ];
+    renderWithProviders(<ConstraintsStep />);
+
+    await user.click(screen.getByRole("button", { name: "Jours" }));
+    await user.click(screen.getByRole("button", { name: /^Modifier la contrainte/ }));
+    // preferredDays loads as the "à privilégier" mode (PREFERRED-pinned, no rule selector), day preselected.
+    expect(screen.getByLabelText("Type de jour")).toHaveValue("preferred");
+    expect(screen.getByRole("button", { name: "vendredi", pressed: true })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Enregistrer la contrainte" }));
+
+    const arg = h.updateMut.mock.calls[0][0] as { body: Constraint };
+    expect(arg.body.config).toEqual({ preferredDays: [5] });
+    expect(arg.body.config).not.toHaveProperty("forbiddenDays");
+    expect(arg.body.ruleType).toBe("PREFERRED");
+  });
+
   it("names the day group after the polarity in force, so the gesture says its own sense (P4-58a)", async () => {
     const user = userEvent.setup();
     renderWithProviders(<ConstraintsStep />);
