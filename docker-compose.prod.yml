@@ -157,7 +157,7 @@ services:
       - amateo_network
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: amateo-redis
     # AOF + a named volume: the Messenger queue and rate-limiter state survive
     # a container restart (dev deliberately has no redis volume — prod must).
