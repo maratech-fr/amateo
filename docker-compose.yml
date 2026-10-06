@@ -159,7 +159,7 @@ services:
 
   postgres:
     restart: unless-stopped
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     container_name: amateo-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
