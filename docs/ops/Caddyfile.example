@@ -180,12 +180,12 @@ stats.amateo.app {
 	#   plus de fenêtre « UI publique avec mot de passe par défaut » — on ne
 	#   dépend plus du login Umami comme seule protection.
 	#
-	# Deux chemins publics, et EUX SEULS (tracker Umami v2.20, vérifié sur la
-	# source v2.20.0) :
+	# Deux chemins publics, et EUX SEULS (tracker Umami v3, vérifié sur l'image
+	# v3.4.0 — chemins inchangés depuis la v2) :
 	#   - GET  /script.js  — le script de mesure (chemin par défaut, servi tel
 	#     quel, aucun rewrite) ;
 	#   - POST /api/send    — la collecte des événements (endpoint par défaut).
-	# Le tracker v2.20 POSTe en `Content-Type: application/json` avec l'en-tête
+	# Le tracker v3 POSTe en `Content-Type: application/json` avec l'en-tête
 	# `x-umami-cache` : ce n'est PAS une requête simple, le navigateur émet donc
 	# d'abord un PRÉFLIGHT CORS `OPTIONS /api/send`. Le matcher `path` ignore la
 	# méthode : `/api/send` couvre à la fois ce préflight OPTIONS et le POST —
