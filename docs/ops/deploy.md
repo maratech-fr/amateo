@@ -126,9 +126,22 @@ sudo cp docs/ops/Caddyfile.example /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 ```
 
-Le modèle : [`Caddyfile.example`](Caddyfile.example). Trois blocs — la page (`file_server`
-sur des fichiers du disque), la redirection `www`, et l'app (`reverse_proxy` vers 8081 =
-`FRONTEND_PORT` de `.env.prod`, seul port publié par la stack, sur localhost uniquement).
+Le modèle : [`Caddyfile.example`](Caddyfile.example). Quatre blocs — la page (`file_server`
+sur des fichiers du disque), la redirection `www`, l'app (`reverse_proxy` vers 8081 =
+`FRONTEND_PORT` de `.env.prod`, seul port publié par la stack, sur localhost uniquement) et
+`stats.amateo.app` (collecte Umami seule, §1.11). Les blocs page et app portent `encode zstd
+gzip` ; sans danger pour les flux de l'app (SSE Mercure jamais compressé/bufferisé, PDF/xlsx
+hors liste compressible — voir le bloc `app.amateo.app` du modèle).
+
+⚠ **VM déjà en service** : un `/etc/caddy/Caddyfile` posé avant l'ajout de `encode` sur le bloc
+`app.amateo.app` ne compresse pas l'app. Geste de rattrapage (une fois) : ajouter la ligne
+`encode zstd gzip` au bloc `app.amateo.app` du Caddyfile de la VM, puis `sudo systemctl reload
+caddy`. Vérifier (vide = pas compressé) :
+
+```bash
+curl -sI -H 'Accept-Encoding: gzip' https://app.amateo.app/ | grep -i content-encoding
+# → attendu : content-encoding: gzip   (rien = la ligne encode manque ou n'a pas été rechargée)
+```
 
 ⚠ **La page de vente ET les pages système sont déposées par le workflow de déploiement**
 (`landing/` → `$DEPLOY_PATH/landing`, `system-pages/` → `$DEPLOY_PATH/system-pages`, §1.6) :
@@ -522,6 +535,28 @@ supprimer).
 - Sur la VM : `docker compose -f docker-compose.prod.yml --env-file .env.prod ps`
   → tout doit être `healthy`.
 
+### Surveillance externe (sonde d'uptime)
+
+Les vérifications ci-dessus sont **manuelles** : elles ne préviennent de rien quand personne ne
+regarde. La sonde externe est le garde-fou qui alerte **depuis l'extérieur** quand l'app ne répond
+plus (ou qu'une fenêtre de maintenance a été oubliée → 503, cf. *Maintenance planifiée*).
+
+**Choix fondateur : Better Stack** (offre gratuite suffisante), deux moniteurs HTTP :
+
+- `https://app.amateo.app/api/health` — l'app répond et son backend est vivant ;
+- `https://amateo.app` — la page de vente est servie.
+
+Alerte par **e-mail + application mobile** Better Stack. **Geste fondateur**, hors dépôt : la
+configuration vit dans le compte Better Stack, **aucun secret ni URL de sonde en git** (les deux
+URL surveillées sont publiques, elles). Rien à déployer. (Un moniteur voit le **503** d'une
+fenêtre de maintenance oubliée — c'est la « sonde » dont parle *Maintenance planifiée*.)
+
+**Facultatif — alerte budget Scaleway** : les coûts sont **majoritairement fixes** (le VPS). Les
+seules variables pouvant déraper : le **stockage des sauvegardes** off-site, les **e-mails** si le
+service d'envoi est facturé au volume, et une **clé API compromise** (usage frauduleux). Poser une
+alerte de budget dans la console Scaleway couvre ces trois cas pour un geste de quelques minutes —
+geste fondateur, hors dépôt.
+
 ### Maintenance planifiée
 
 Pour couper volontairement l'app derrière une page « on refait le parquet » (déploiement lourd,
@@ -561,8 +596,8 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://app.amateo.app/     # attendu 
 ⚠ **Anti-oubli** : `remote-deploy.sh` avertit **bruyamment** en fin de deploy si le témoin est
 encore présent. C'est un **rappel**, pas une garantie — il ne le retire jamais tout seul (une
 fenêtre peut délibérément durer plus qu'un deploy) et n'échoue pas le deploy (le deploy, lui,
-a réussi). La vraie garantie qu'une fenêtre n'a pas été oubliée, c'est le **503 qu'une sonde
-voit**.
+a réussi). La vraie garantie qu'une fenêtre n'a pas été oubliée, c'est le **503 que voit la sonde
+externe** (Better Stack, § *Surveillance externe*).
 
 ### Changer un secret / une variable d'env
 

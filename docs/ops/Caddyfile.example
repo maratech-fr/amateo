@@ -36,6 +36,15 @@ app.amateo.app {
 	# config.js de la landing) — zéro dépendance à la stack Docker ou au réseau.
 	root * /srv/amateo
 
+	# Compression des réponses (comme la vitrine ci-dessus). SANS DANGER pour les
+	# flux de l'app : `encode` NE compresse PAS `text/event-stream` (SSE Mercure,
+	# `/.well-known/mercure`) — Caddy l'exclut par défaut ET envoie ces réponses
+	# sans les retenir (pas de buffering, le stream reste temps réel). Les
+	# téléchargements PDF/xlsx (application/pdf, application/vnd.openxml…) ne sont
+	# pas dans la liste compressible par défaut (`text/*`, `application/json*`,
+	# `application/javascript*`, polices/icônes) : intacts eux aussi.
+	encode zstd gzip
+
 	# ── Interrupteur de MAINTENANCE — à fichier témoin ─────────────────────────
 	# Le matcher `file` est évalué à CHAQUE requête : poser (`touch`) ou retirer
 	# (`rm`) le témoin agit IMMÉDIATEMENT, sans reload Caddy.

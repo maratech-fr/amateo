@@ -45,6 +45,14 @@ php bin/console app:db:restore-check     # PREUVE que le dernier dump est restau
 
 ## 3. Restaurer
 
+> **Chemin éprouvé en vrai.** Deux restaurations réelles ont été faites en prod début octobre
+> 2026 : à la mise en production (~2026-10-03) et lors de la rotation des secrets (2026-10-04/05).
+> Le chemin n'est donc pas théorique.
+>
+> ⚠ **`app:db:restore-check` n'est PAS planifié** (aucun tick ne le joue) : la preuve que le
+> dernier dump est restaurable reste un geste **manuel**. Le planifier chaque semaine est un item
+> de roadmap (P4-308) — « non testé = inexistant » (§4) vaut aussi pour les dumps.
+
 ### 3a. Restauration FINE (le cas fréquent : une table/un club abîmé)
 
 1. `php bin/console app:db:restore-check` — restaure le dernier dump dans une base jetable
