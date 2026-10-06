@@ -45,13 +45,35 @@ test:
 # Purge le cache de TEST avant la suite complète. Un cache test périmé (laissé par
 # un changement de branche / un pull) a déjà fait rendre des erreurs fantômes à
 # phpstan/phpunit en local — on repart d'un cache test frais, propre.
-# ⚠ NE JAMAIS toucher var/cache/dev : phpstan-symfony LIT son XML
-# (phpstan.neon → containerXmlPath: var/cache/dev/App_KernelDevDebugContainer.xml).
-# C'est pourquoi la purge vise var/cache/TEST seulement, et pourquoi tests-complete
-# garantit la PRÉSENCE du cache dev (warmup conditionnel ci-dessous), jamais son absence.
-.PHONY: purge-test-cache ## Purge the test cache (cache:clear --env=test) before the full suite
+#
+# ⚠ `cache:clear --env=test` SEUL NE SUFFIT PAS. Les métadonnées API Platform /
+# serializer / property-info / validator d'une AUTRE branche (ex. un champ `gender`
+# ajouté puis retiré, PR #1113) survivent et rendent un 500 « Can't get a way to read
+# the property … ». Elles vivent dans des POOLS DE CACHE FICHIER (adapter cache.system
+# = PhpFilesAdapter) sous var/cache/test/pools/system :
+#   api_platform.cache.metadata.{resource,property,resource_collection,operation},
+#   api_platform.cache.route_name_resolver, api_platform.cache.openapi,
+#   cache.serializer, cache.property_info, cache.validator.
+# Deux raisons pour lesquelles cache:clear les laisse : (1) cache.serializer /
+# cache.property_info / cache.validator sont des alias PRIVÉS — `cache:pool:clear <nom>`
+# les REFUSE (« service or alias has been removed or inlined ») ; (2) un fichier de pool
+# laissé par un process d'un AUTRE uid, dans un dossier non inscriptible par l'uid qui
+# lance la purge, survit à un cache:clear/pool:clear non privilégié.
+# → On supprime l'arbre des pools fichier de TEST en root (couvre les pools privés ET
+#   toute appartenance), puis cache:clear reconstruit un cache frais et inscriptible.
+#
+# ⚠ Périmètre strict : SEUL le cache FICHIER de TEST (var/cache/test). On ne touche
+# JAMAIS Redis — les pools Redis (cache.app, le limiteur de débit cache.rate_limiter,
+# cache.schedule, le cache résultat Doctrine, http_client, messenger) sont intacts, donc
+# AUCUN FLUSHALL, le limiteur et l'état du dev/fondateur ne bougent pas. On ne touche
+# JAMAIS var/cache/dev : phpstan-symfony LIT son XML
+# (phpstan.neon → containerXmlPath: var/cache/dev/App_KernelDevDebugContainer.xml) ;
+# c'est pourquoi tests-complete garantit la PRÉSENCE du cache dev (warmup conditionnel
+# ci-dessous), jamais son absence.
+.PHONY: purge-test-cache ## Purge the test cache (pools fichier + cache:clear --env=test) before the full suite
 purge-test-cache: APP_ENV = test
 purge-test-cache:
+	$(FIG) exec --user root -T php-fpm rm -rf var/cache/test/pools
 	$(EXEC) php bin/console cache:clear --env=test
 
 .PHONY: tests-complete ## Run the FULL suite, exactly like CI (phpstan + cs + tous les tests)
