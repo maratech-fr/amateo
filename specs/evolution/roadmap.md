@@ -299,7 +299,7 @@ lecture seule `amateo_read` (**P5-20 livré**, geste jour J documenté `docs/ops
 
 ---
 
-## Findings d'audit ouverts (registre `/audit`) — 4
+## Findings d'audit ouverts (registre `/audit`) — 3
 
 > **À quoi sert cette section.** Le skill `/audit` tient un **registre à IDs stables** : un finding garde son
 > identifiant d'une édition à l'autre, ce qui rend la comparaison inter-éditions possible (« ce défaut est-il
