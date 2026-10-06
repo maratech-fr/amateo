@@ -27,8 +27,10 @@ script avant **chaque** capture, même sans réglage :
 - le nom du club et son code FFBB sont remplacés dans le DOM (table par défaut :
   `B CHARPENNES CROIX LUIZET` → `Démo Basket Club`, `ARA0069036` → `ARA9999999`, insensible à la
   casse) ;
-- le **blason du club** est retiré de l'en-tête — l'app retombe sur le monogramme produit neutre
-  qu'elle affiche quand un club n'a pas de logo (patron P5-26) ;
+- **tous les blasons du club** sont retirés, où qu'ils soient (en-tête d'app, en-tête d'écran du
+  Planning à côté du titre, page Club…) — ciblés par leur SOURCE `/api/clubs/{id}/logo` ; le logo
+  fédéral d'un **adversaire** (`/api/opponents/{code}/logo`) est public et CONSERVÉ. L'app retombe
+  sur le monogramme produit neutre là où un blason club a été retiré (patron P5-26) ;
 - `SCRUB_FILE` (optionnel, local, jamais commité) **complète/surcharge** cette table pour un nom
   supplémentaire repéré sur une capture.
 
@@ -56,6 +58,7 @@ dérive ce nom toute seule (`landing/index.html`), **aucun code vitrine à édit
 | `BASE_URL` | Cible. | `http://localhost:5173` |
 | `OUT_DIR` | Dossier de sortie (relatif = depuis la racine du dépôt). | `captures/landing-shots/` |
 | `IMPORT_FBI` | Chemin d'un export FBI `.xlsx` à importer avant les captures matchs. Vide ⇒ pas d'import. | aucun |
+| `FORCE_IMPORT` | `1` ⇒ réimporte même si la saison a déjà des rencontres (sinon la garde d'idempotence saute l'import). | aucun |
 | `SCRUB_FILE` | JSON local `{ "À remplacer": "Valeur démo" }` **fusionné** par-dessus la table par défaut. | aucun |
 | `MATCHS_WEEKEND` | Samedi ISO (`YYYY-MM-DD`) du week-end à afficher pour le calendrier matchs. | `2026-11-14` |
 
@@ -105,10 +108,26 @@ frontend`) puis `BASE_URL=http://localhost:8081`. En dev courant, `:5173` évite
 Le script, pour chaque thème (clair puis sombre) : pose `localStorage["cs-theme"]` avant le
 premier rendu (pas de flash, pas de clic), se connecte, puis pour chaque écran fixe le viewport,
 navigue, **attend la stabilité** (réseau calme + plus aucun spinner `aria-label="Chargement"`),
-**anonymise le DOM** (remplacements + blason club retiré), et capture. Si `IMPORT_FBI` est fourni,
-l'import FBI passe **une seule fois** avant la boucle, via l'UI `/matchs/importer` (dépôt du
-fichier → appariements proposés par l'écran appliqués tels quels → « Importer » ; idempotent si un
-dépôt existe déjà). Sortie : 8 fichiers dans `OUT_DIR`.
+applique les **préparations propres à l'écran** (ci-dessous), **anonymise le DOM** (remplacements
+de texte + tous les blasons club retirés), et capture.
+
+Préparations par écran :
+
+- **Planning** : ouvre d'abord la **dernière version** si le bandeau « version antérieure » l'offre
+  (sélection locale, aucune écriture), **masque** à l'écran les bandeaux d'état restants (« périmé »,
+  « version antérieure » — décision 2026-10-06, capture marketing : on retire par leur texte les
+  nœuds `NoticeBanner`, pas tout le DOM), puis **fait défiler la grille** jusqu'aux heures du soir
+  (elle démarre à 09:00 et serait vide dans le cadre).
+- **Calendrier matchs** : si le week-end `MATCHS_WEEKEND` est vide, **avance** au premier week-end
+  non vide via « Semaine suivante » (borné à 12 itérations).
+- **Conflits** : si la saison n'a **aucun conflit**, la capture est laissée en l'état mais un
+  **avertissement** est loggé (à vous de décider de garder l'écran vide).
+
+Si `IMPORT_FBI` est fourni, l'import FBI passe **une seule fois** avant la boucle, via l'UI
+`/matchs/importer` (dépôt du fichier → appariements proposés par l'écran appliqués tels quels →
+« Importer »). **Idempotent sur la PRÉSENCE de rencontres** (plus sur la date du dernier dépôt FBI) :
+si la saison a déjà des rencontres (l'état vide « Aucun match importé » du calendrier est absent),
+l'import est sauté — `FORCE_IMPORT=1` passe outre. Sortie : 8 fichiers dans `OUT_DIR`.
 
 ## 3. Vérifier, puis copier à la main
 

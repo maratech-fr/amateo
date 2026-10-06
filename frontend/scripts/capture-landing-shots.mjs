@@ -24,11 +24,14 @@
  * ── Anonymisation à l'écran (OBLIGATOIRE, `.claude/rules/landing.md` §captures) :
  *    un club RÉEL n'apparaît jamais sur la vitrine. Avant chaque capture le script
  *    (a) remplace dans le DOM le nom du club et son code FFBB par des valeurs de
- *    démo (table par défaut ci-dessous + `SCRUB_FILE` optionnel), (b) retire le
- *    BLASON du club de l'en-tête (`<img>` du logo club) — l'app retombe alors sur
- *    le monogramme produit neutre qu'elle affiche quand un club n'a pas de logo
- *    (patron P5-26 : blason retiré du DOM). Coachs déjà fictifs (surnoms du seed) ;
- *    gymnases et clubs adverses = données publiques autorisées.
+ *    démo (table par défaut ci-dessous + `SCRUB_FILE` optionnel), (b) retire TOUS les
+ *    BLASONS du club, où qu'ils soient (en-tête d'app, en-tête d'écran du Planning,
+ *    page Club…) — ciblés par la SOURCE `/api/clubs/{id}/logo` (`App\Storage\LogoUrl`),
+ *    à ne pas confondre avec le logo FÉDÉRAL d'un adversaire (`/api/opponents/{code}/logo`,
+ *    donnée publique autorisée, conservée). L'app retombe alors sur le monogramme produit
+ *    neutre qu'elle affiche quand un club n'a pas de logo (patron P5-26 : blason retiré du
+ *    DOM). Coachs déjà fictifs (surnoms du seed) ; gymnases et clubs adverses = données
+ *    publiques autorisées.
  *
  * Il s'appuie sur du câblage DÉJÀ en place, rien de neuf côté app :
  *  - le thème de l'app est persisté sous `localStorage["cs-theme"]`, forme
@@ -75,6 +78,10 @@ const SCRUB_FILE = process.env.SCRUB_FILE ?? "";
 // on ne touche pas aux rencontres (les écrans matchs capturent l'état en place).
 // Fichier recommandé : backend/tests/Fixtures/fbi/rechercherRencontre.xlsx (124 rencontres 2026-27).
 const IMPORT_FBI = process.env.IMPORT_FBI ?? "";
+// `FORCE_IMPORT=1` court-circuite la garde d'idempotence (ci-dessous, `runImport`) : on réimporte
+// même si la saison a déjà des rencontres. Sans ça, la garde saute l'import dès qu'une rencontre
+// existe (l'import serveur dédoublonne de toute façon).
+const FORCE_IMPORT = process.env.FORCE_IMPORT ?? "";
 // Calendrier des matchs : samedi ISO du week-end affiché. Défaut = un week-end de
 // novembre 2026 (saison en cours sur l'horloge RÉELLE du club). Épingler le week-end
 // évite le vide ET la bascule d'atterrissage vers Conflits (lien profond prioritaire,
@@ -157,16 +164,23 @@ async function loadScrubMap() {
 
 /**
  * Anonymise le DOM rendu AVANT la capture (patron P5-26) :
- *  - retire tout blason de club de l'en-tête (`header img` — l'icône produit est un
- *    `<svg>`, jamais un `<img>` : on ne retire donc QUE le logo club, l'app retombe
- *    sur le monogramme produit neutre) ;
+ *  - retire TOUS les blasons du club, où qu'ils soient dans la page (en-tête d'app,
+ *    en-tête d'écran du Planning, page Club…) — ciblés par la SOURCE
+ *    `/api/clubs/{id}/logo` (`App\Storage\LogoUrl`). Le logo FÉDÉRAL d'un ADVERSAIRE
+ *    (`/api/opponents/{code}/logo`) est une donnée publique autorisée : on le CONSERVE.
+ *    L'icône produit est un `<svg>`, jamais un `<img>` : elle reste. L'app retombe sur
+ *    le monogramme produit neutre là où un blason club a été retiré ;
  *  - remplace, insensible à la casse, chaque entrée de `scrubMap` dans le TEXTE.
  */
 async function anonymize(page, scrubMap) {
   await page.evaluate((pairs) => {
-    // (a) blason(s) de club dans l'en-tête → retirés (monogramme produit conservé).
-    for (const img of Array.from(document.querySelectorAll("header img"))) {
-      img.remove();
+    // (a) blason(s) du club → retirés partout (monogramme produit conservé). On cible la
+    // source servie par le backend pour le logo CLUB, jamais celle d'un logo d'adversaire.
+    const CLUB_LOGO = /\/api\/clubs\/[^/]+\/logo/;
+    for (const img of Array.from(document.querySelectorAll("img"))) {
+      if (CLUB_LOGO.test(img.src)) {
+        img.remove();
+      }
     }
     // (b) remplacements texte, insensibles à la casse.
     const regexes = pairs.map(([pattern, to]) => [new RegExp(pattern, "gi"), to]);
@@ -216,8 +230,9 @@ async function login(page) {
  * mappings persistés ET les suggestions FFBB (que `buildMappings` envoie telles quelles) :
  * un clic « Importer » suffit donc, sans toucher un seul sélecteur. Les divisions sans
  * appariement effectif déclenchent une confirmation « Importer quand même » (leurs
- * rencontres sont simplement laissées de côté). Idempotent : si un dépôt FBI a déjà eu
- * lieu, on ne réimporte pas (et l'import serveur dédoublonne de toute façon).
+ * rencontres sont simplement laissées de côté). Idempotent sur la PRÉSENCE de rencontres
+ * (pas sur la date du dernier dépôt FBI) : si la saison a déjà des rencontres, on ne
+ * réimporte pas (et l'import serveur dédoublonne de toute façon). `FORCE_IMPORT=1` passe outre.
  */
 async function runImport(browser) {
   const filePath = isAbsolute(IMPORT_FBI) ? IMPORT_FBI : resolve(REPO_ROOT, IMPORT_FBI);
@@ -226,15 +241,26 @@ async function runImport(browser) {
   page.setDefaultTimeout(NAV_TIMEOUT);
   try {
     await login(page);
+
+    // Idempotence sur la PRÉSENCE de rencontres. On atterrit sur le CALENDRIER (le paramètre
+    // d'URL force l'atterrissage calendrier — MatchesLanding : sinon un éventuel conflit
+    // renverrait vers Conflits) et on lit l'état vide « Aucun match importé ». Il n'apparaît
+    // QUE quand la saison n'a AUCUNE rencontre (`resolveActiveWeekend` → null ⟺ liste de
+    // week-ends vide, cf. useWeekView/weekendGrid). Présent ⇒ on importe ; absent ⇒ des
+    // rencontres existent déjà, on saute. (Le vieux critère « Dernier dépôt FBI : … » mentait :
+    // une date de dépôt pouvait exister sans AUCUNE rencontre en base.)
+    if ("1" !== FORCE_IMPORT) {
+      await page.goto(`${BASE_URL}/matchs?semaine=${encodeURIComponent(MATCHS_WEEKEND)}`, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
+      await waitForStability(page);
+      const noFixtures = await page.getByText("Aucun match importé").isVisible().catch(() => false);
+      if (!noFixtures) {
+        console.log("• import FBI ignoré — la saison a déjà des rencontres (état « Aucun match importé » absent). FORCE_IMPORT=1 pour réimporter.");
+        return;
+      }
+    }
+
     await page.goto(`${BASE_URL}/matchs/importer`, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
     await waitForStability(page);
-
-    // Idempotence : un dépôt FBI déjà présent ⇒ on ne rejoue pas l'import.
-    const alreadyDeposited = await page.getByText(/Dernier dépôt FBI\s*:/).count();
-    if (alreadyDeposited > 0) {
-      console.log("• import FBI ignoré — un dépôt existe déjà pour cette saison.");
-      return;
-    }
 
     await page.getByRole("button", { name: "Importer FBI" }).click();
     await page.locator('input[aria-label="Fichier FBI"]').setInputFiles(filePath);
@@ -260,6 +286,108 @@ async function runImport(browser) {
   }
 }
 
+/**
+ * Fait défiler la grille du Planning (WeekGrid) jusqu'aux heures du SOIR : la grille démarre
+ * à 09:00 et serait vide dans le cadre de capture. On agit sur le VRAI conteneur scrollable de
+ * WeekGrid (le `div.overflow-auto` parent de la grille CSS — cf. frontend/src/features/planning/
+ * WeekGrid.tsx, en-tête/colonne figés via un transform piloté par l'event `scroll`), jamais la
+ * page. On amène près du haut le premier libellé de soirée de la colonne d'heures (libellés sur
+ * les demi-heures : « 17:30 », « 18:00 »).
+ */
+async function scrollWeekGridToEvening(page) {
+  await page.evaluate(() => {
+    const grid = document.querySelector('div.grid[style*="grid-template-rows"]');
+    const container = grid?.parentElement ?? null;
+    if (null === container) {
+      return;
+    }
+    const labels = Array.from(container.querySelectorAll("div"));
+    const evening =
+      labels.find((d) => "18:00" === (d.textContent ?? "").trim())
+      ?? labels.find((d) => "17:30" === (d.textContent ?? "").trim())
+      ?? labels.find((d) => "17:00" === (d.textContent ?? "").trim());
+    if (null != evening) {
+      const cRect = container.getBoundingClientRect();
+      const eRect = evening.getBoundingClientRect();
+      container.scrollTop += eRect.top - cRect.top - 48;
+    } else {
+      container.scrollTop = container.scrollHeight;
+    }
+    // Resynchronise l'en-tête/colonne figés (le transform est posé par le handler onScroll).
+    container.dispatchEvent(new Event("scroll"));
+  });
+}
+
+/**
+ * Prépare la capture du PLANNING :
+ *  (a) ouvre la DERNIÈRE version si le bandeau « version antérieure » l'offre (le bouton
+ *      SÉLECTIONNE localement la dernière version — aucune écriture, aucune redirection) ;
+ *  (b) masque les bandeaux d'ÉTAT restants — décision 2026-10-06, c'est une capture marketing :
+ *      on retire les NŒUDS NoticeBanner des deux messages d'état par leur TEXTE (« périmé »,
+ *      ton warning ; « version antérieure », ton muted role=status), JAMAIS tout le DOM ;
+ *  (c) fait défiler la grille jusqu'aux heures du soir (sinon cadre vide).
+ */
+async function preparePlanning(page) {
+  const openLatest = page.getByRole("button", { name: "Ouvrir la dernière version" });
+  if ((await openLatest.count()) > 0) {
+    await openLatest.first().click().catch(() => {});
+    await waitForStability(page);
+  }
+  await page.evaluate(() => {
+    const NEEDLES = ["Depuis la génération de ce planning", "Vous regardez une version antérieure du planning"];
+    for (const p of Array.from(document.querySelectorAll("p"))) {
+      if (NEEDLES.some((n) => (p.textContent ?? "").includes(n))) {
+        // Le <p> du message vit dans la BOÎTE NoticeBanner (`rounded-md border`) — on retire
+        // la boîte entière (y compris l'éventuel bouton d'action), pas seulement le texte.
+        const banner = p.closest("div.rounded-md.border") ?? p.parentElement;
+        banner?.remove();
+      }
+    }
+  });
+  await scrollWeekGridToEvening(page);
+}
+
+/**
+ * Calendrier matchs : si le week-end affiché est VIDE (pas de grille `#matches-week-grid` — soit
+ * « Aucun match importé », soit « Aucun match cette semaine »), avance au premier week-end non vide
+ * via « Semaine suivante », borné. On ne garde JAMAIS une boucle non bornée (CLAUDE.md §10.4).
+ */
+async function ensureNonEmptyWeek(page) {
+  const MAX_WEEKS = 12;
+  for (let i = 0; i <= MAX_WEEKS; i++) {
+    if ((await page.locator("#matches-week-grid").count()) > 0) {
+      return;
+    }
+    const next = page.getByRole("button", { name: "Semaine suivante" });
+    if (0 === (await next.count()) || (await next.isDisabled().catch(() => true))) {
+      console.warn(`⚠ calendrier matchs : aucune semaine non vide atteignable à partir de ${MATCHS_WEEKEND} (navigation épuisée) — capture laissée en l'état.`);
+      return;
+    }
+    await next.click();
+    await waitForStability(page);
+  }
+  console.warn(`⚠ calendrier matchs : ${MAX_WEEKS} semaines parcourues sans grille non vide à partir de ${MATCHS_WEEKEND} — capture laissée en l'état.`);
+}
+
+/** Conflits : si la saison n'a AUCUN conflit, on laisse la capture en l'état mais on PRÉVIENT. */
+async function warnIfNoConflicts(page) {
+  const empty = await page.getByText("Aucun conflit sur la saison").isVisible().catch(() => false);
+  if (empty) {
+    console.warn("⚠ conflits : « Aucun conflit sur la saison » — la capture Conflits sera un écran VIDE. Vérifiez l'import / le week-end avant de garder cette image.");
+  }
+}
+
+/** Préparations propres à un écran (version en vigueur, semaine non vide, avertissements). */
+async function prepareShot(page, shot) {
+  if ("planning.png" === shot.base) {
+    await preparePlanning(page);
+  } else if ("matchs.jpg" === shot.base) {
+    await ensureNonEmptyWeek(page);
+  } else if ("matchs-conflits.jpg" === shot.base) {
+    await warnIfNoConflicts(page);
+  }
+}
+
 async function captureTheme(browser, theme, scrubMap) {
   const context = await browser.newContext({
     baseURL: BASE_URL,
@@ -278,6 +406,9 @@ async function captureTheme(browser, theme, scrubMap) {
       await page.setViewportSize({ width: shot.width, height: shot.height });
       await page.goto(`${BASE_URL}${shot.route}`, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
       await waitForStability(page);
+      // Préparation propre à l'écran AVANT l'anonymisation (elle peut re-rendre la page :
+      // ouverture de la dernière version, navigation de semaine…).
+      await prepareShot(page, shot);
       await anonymize(page, scrubMap);
       // Laisse les webfonts/images se poser après l'anonymisation (deviceScaleFactor 2).
       await waitForStability(page);
