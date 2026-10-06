@@ -14,6 +14,12 @@
 Exclus par décision (2026-07-18) : WAL/PITR, réplication, HA — RPO = la journée d'activité en
 cours, suffisant pré-commercialisation.
 
+⚠ **La base `umami`** (mesure d'audience de la vitrine, P4-276) est **hors des dumps `pg_dump`** :
+`app:db:backup` ne dumpe que `POSTGRES_DB` (= `amateo`, `DatabaseBackupCommand`). Elle n'est
+couverte que par la couche **snapshots disque** ci-dessus — **perte acceptée** par décision
+(2026-10-06) : des statistiques d'audience se reconstituent, elles ne valent pas une 2ᵉ cible de
+sauvegarde. Elle vit dans le même cluster postgres (volume `postgres_data`).
+
 ## 2. Les dumps
 
 - **Cadence** : tick nocturne (01:00) qui **skippe sans activité** — zéro club = zéro dump,
@@ -38,6 +44,14 @@ php bin/console app:db:restore-check     # PREUVE que le dernier dump est restau
 **Règle d'or : `app:db:backup --force` AVANT toute migration/manipulation risquée en prod.**
 
 ## 3. Restaurer
+
+> **Chemin éprouvé en vrai.** Deux restaurations réelles ont été faites en prod début octobre
+> 2026 : à la mise en production (~2026-10-03) et lors de la rotation des secrets (2026-10-04/05).
+> Le chemin n'est donc pas théorique.
+>
+> ⚠ **`app:db:restore-check` n'est PAS planifié** (aucun tick ne le joue) : la preuve que le
+> dernier dump est restaurable reste un geste **manuel**. Le planifier chaque semaine est un item
+> de roadmap (P4-308) — « non testé = inexistant » (§4) vaut aussi pour les dumps.
 
 ### 3a. Restauration FINE (le cas fréquent : une table/un club abîmé)
 

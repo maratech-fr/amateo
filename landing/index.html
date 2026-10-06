@@ -542,7 +542,7 @@
 <!-- ?v=… : cache-bust de config.js. Caddy file_server (comme le serveur Python de relecture)
      n'envoie pas de Cache-Control → un ancien config.js pouvait rester en cache avec un index.html
      neuf. Bumper cette date À CHAQUE ajout/retrait de clé dans config.js (cf. commentaire là-bas). -->
-<script src="config.js?v=2026-10-05"></script>
+<script src="config.js?v=2026-10-06"></script>
 <script>
   // Le nom et les liens sont injectés depuis config.js — UNE source.
   (function () {
@@ -608,6 +608,23 @@
       }
       jsonldEl.textContent = JSON.stringify({ "@context": "https://schema.org", "@graph": graph });
     }
+
+    // Mesure d'audience Umami (sans cookie, P4-276) — injection DÉFENSIVE à DOUBLE
+    // garde : (a) les deux clés `analytics` non vides ; (b) hostname courant =
+    // l'hôte dérivé de `siteUrl` (aucun nouveau littéral de domaine). En local,
+    // sur :5173 ou sur un autre domaine, RIEN n'est injecté — zéro requête.
+    try {
+      const a = window.LANDING_CONFIG.analytics;
+      let host = "";
+      try { host = new URL(window.LANDING_CONFIG.siteUrl).hostname; } catch (e) { host = ""; }
+      if (a && a.scriptUrl && a.websiteId && host && location.hostname === host) {
+        const s = document.createElement("script");
+        s.defer = true;
+        s.src = a.scriptUrl;
+        s.setAttribute("data-website-id", a.websiteId);
+        document.head.appendChild(s);
+      }
+    } catch (e) { /* config absent / ancien cache : pas de mesure, page intacte */ }
   })();
 </script>
 <script>

@@ -151,3 +151,27 @@ updates:
       - dependency-name: "postgres"
         update-types: ["version-update:semver-major"]
     labels: ["dependencies", "docker"]
+
+  # Compose — images tierces épinglées DANS les fichiers compose eux-mêmes (pas
+  # un `FROM` de Dockerfile : l'écosystème `docker` ci-dessus ne les voit pas).
+  # Ajouté pour suivre l'image Umami de `docker-compose.prod.yml` (P4-276) ; il
+  # couvre DU MÊME COUP les autres pins compose encore non suivis — `dunglas/
+  # mercure` et `redis:7-alpine` (dev ET prod) : chaque bump reste une PR que le
+  # fondateur merge ou ferme (effet de bord assumé, 2026-10-06).
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      docker-compose:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    # Umami reste en v2 (décision fondateur 2026-10-06) : un saut de majeure
+    # (v3) est une décision, pas un bump automatique.
+    ignore:
+      - dependency-name: "ghcr.io/umami-software/umami"
+        update-types: ["version-update:semver-major"]
+    labels: ["dependencies", "docker"]

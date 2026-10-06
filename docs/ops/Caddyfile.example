@@ -36,6 +36,15 @@ app.amateo.app {
 	# config.js de la landing) — zéro dépendance à la stack Docker ou au réseau.
 	root * /srv/amateo
 
+	# Compression des réponses (comme la vitrine ci-dessus). SANS DANGER pour les
+	# flux de l'app : `encode` NE compresse PAS `text/event-stream` (SSE Mercure,
+	# `/.well-known/mercure`) — Caddy l'exclut par défaut ET envoie ces réponses
+	# sans les retenir (pas de buffering, le stream reste temps réel). Les
+	# téléchargements PDF/xlsx (application/pdf, application/vnd.openxml…) ne sont
+	# pas dans la liste compressible par défaut (`text/*`, `application/json*`,
+	# `application/javascript*`, polices/icônes) : intacts eux aussi.
+	encode zstd gzip
+
 	# ── Interrupteur de MAINTENANCE — à fichier témoin ─────────────────────────
 	# Le matcher `file` est évalué à CHAQUE requête : poser (`touch`) ou retirer
 	# (`rm`) le témoin agit IMMÉDIATEMENT, sans reload Caddy.
@@ -154,6 +163,46 @@ app.amateo.app {
 			}
 		}
 	}
+}
+
+stats.amateo.app {
+	# Statistiques d'audience de la VITRINE (Umami auto-hébergé, P4-276). Le
+	# conteneur `umami` ne publie que sur localhost (`127.0.0.1:${UMAMI_PORT}`,
+	# 8082 par défaut dans .env.prod) — comme l'app, Caddy est la seule porte
+	# d'entrée.
+	#
+	# ⚠ LE TABLEAU DE BORD N'EST JAMAIS EXPOSÉ PUBLIQUEMENT (décision fondateur
+	#   2026-10-06, option A). Ce bloc n'expose QUE les routes de COLLECTE ; le
+	#   dashboard Umami (login, listes de sites, API d'admin, assets de l'UI)
+	#   n'est joignable QUE par TUNNEL SSH, jamais depuis Internet :
+	#       ssh -L 8082:127.0.0.1:8082 <hôte>   puis   http://localhost:8082
+	#   (deploy.md §1.11). Conséquence : il n'y a plus d'UI exposée du tout, donc
+	#   plus de fenêtre « UI publique avec mot de passe par défaut » — on ne
+	#   dépend plus du login Umami comme seule protection.
+	#
+	# Deux chemins publics, et EUX SEULS (tracker Umami v2.20, vérifié sur la
+	# source v2.20.0) :
+	#   - GET  /script.js  — le script de mesure (chemin par défaut, servi tel
+	#     quel, aucun rewrite) ;
+	#   - POST /api/send    — la collecte des événements (endpoint par défaut).
+	# Le tracker v2.20 POSTe en `Content-Type: application/json` avec l'en-tête
+	# `x-umami-cache` : ce n'est PAS une requête simple, le navigateur émet donc
+	# d'abord un PRÉFLIGHT CORS `OPTIONS /api/send`. Le matcher `path` ignore la
+	# méthode : `/api/send` couvre à la fois ce préflight OPTIONS et le POST —
+	# Umami pose lui-même les en-têtes CORS de la réponse. Rien d'autre à ouvrir.
+	@collect path /script.js /api/send
+	handle @collect {
+		reverse_proxy 127.0.0.1:8082
+	}
+	# Tout le reste (dashboard, /api/* d'admin, assets de l'UI…) → 404 : on ne
+	# confirme même pas qu'un Umami vit derrière ce nom. Le dashboard se consulte
+	# par tunnel SSH (ci-dessus), jamais ici.
+	handle {
+		respond 404
+	}
+	# Avant que le DNS `stats` propage et que le conteneur tourne, ce bloc rend
+	# 502 sur la collecte — sans effet sur les deux sites ci-dessus.
+	encode zstd gzip
 }
 
 # ── NOTE sur /config.js ───────────────────────────────────────────────────────

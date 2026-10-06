@@ -191,6 +191,19 @@
     </section>
 
     <section class="legal">
+      <h2>Mesure d'audience</h2>
+      <p>
+        Ce site utilise <strong>Umami</strong>, une solution de mesure d'audience
+        <strong>auto-hébergée</strong> sur notre serveur en France : elle compte les pages vues et
+        la provenance des visites pour nous aider à améliorer cette page. La mesure est
+        <strong>anonyme</strong> et <strong>sans cookie</strong> — aucun bandeau de consentement
+        n'est donc nécessaire. Aucune donnée n'est transmise à des tiers et aucun suivi n'est
+        effectué entre différents sites. Le détail de ce traitement figure dans la
+        <a data-cta="privacy" href="#">politique de confidentialité</a> de l'application.
+      </p>
+    </section>
+
+    <section class="legal">
       <h2>Propriété intellectuelle</h2>
       <p>
         La marque <strong class="brand">…</strong>, le logo, les textes et les visuels de ce site sont la
@@ -210,7 +223,7 @@
 </footer>
 
 <!-- ?v=… : cache-bust de config.js, aligné sur index.html (bumper les DEUX ensemble). -->
-<script src="config.js?v=2026-10-05"></script>
+<script src="config.js?v=2026-10-06"></script>
 <script>
   // Injection des valeurs légales depuis config.js — MÊME source unique que la vitrine.
   (function () {
@@ -246,6 +259,23 @@
       a.href = "mailto:" + contactEmail;
     });
     document.querySelectorAll('[data-cta="privacy"]').forEach((a) => { a.href = appUrl + "/confidentialite"; });
+
+    // Mesure d'audience Umami (sans cookie, P4-276) — injection DÉFENSIVE à DOUBLE
+    // garde, IDENTIQUE à index.html (dupliquée VOLONTAIREMENT, zéro brique partagée) :
+    // (a) les deux clés `analytics` non vides ; (b) hostname courant = l'hôte dérivé
+    // de `siteUrl`. En local / :5173 / autre domaine → rien n'est injecté.
+    try {
+      const a = cfg.analytics;
+      let siteHost = "";
+      try { siteHost = new URL(cfg.siteUrl).hostname; } catch (e) { siteHost = ""; }
+      if (a && a.scriptUrl && a.websiteId && siteHost && location.hostname === siteHost) {
+        const s = document.createElement("script");
+        s.defer = true;
+        s.src = a.scriptUrl;
+        s.setAttribute("data-website-id", a.websiteId);
+        document.head.appendChild(s);
+      }
+    } catch (e) { /* config absent / ancien cache : pas de mesure, page intacte */ }
   })();
 </script>
 <script>

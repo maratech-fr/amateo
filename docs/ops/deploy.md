@@ -126,9 +126,22 @@ sudo cp docs/ops/Caddyfile.example /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 ```
 
-Le modèle : [`Caddyfile.example`](Caddyfile.example). Trois blocs — la page (`file_server`
-sur des fichiers du disque), la redirection `www`, et l'app (`reverse_proxy` vers 8081 =
-`FRONTEND_PORT` de `.env.prod`, seul port publié par la stack, sur localhost uniquement).
+Le modèle : [`Caddyfile.example`](Caddyfile.example). Quatre blocs — la page (`file_server`
+sur des fichiers du disque), la redirection `www`, l'app (`reverse_proxy` vers 8081 =
+`FRONTEND_PORT` de `.env.prod`, seul port publié par la stack, sur localhost uniquement) et
+`stats.amateo.app` (collecte Umami seule, §1.11). Les blocs page et app portent `encode zstd
+gzip` ; sans danger pour les flux de l'app (SSE Mercure jamais compressé/bufferisé, PDF/xlsx
+hors liste compressible — voir le bloc `app.amateo.app` du modèle).
+
+⚠ **VM déjà en service** : un `/etc/caddy/Caddyfile` posé avant l'ajout de `encode` sur le bloc
+`app.amateo.app` ne compresse pas l'app. Geste de rattrapage (une fois) : ajouter la ligne
+`encode zstd gzip` au bloc `app.amateo.app` du Caddyfile de la VM, puis `sudo systemctl reload
+caddy`. Vérifier (vide = pas compressé) :
+
+```bash
+curl -sI -H 'Accept-Encoding: gzip' https://app.amateo.app/ | grep -i content-encoding
+# → attendu : content-encoding: gzip   (rien = la ligne encode manque ou n'a pas été rechargée)
+```
 
 ⚠ **La page de vente ET les pages système sont déposées par le workflow de déploiement**
 (`landing/` → `$DEPLOY_PATH/landing`, `system-pages/` → `$DEPLOY_PATH/system-pages`, §1.6) :
@@ -360,6 +373,108 @@ docker compose exec php-fpm sh -c 'DATABASE_URL="$DATABASE_ADMIN_URL" php bin/co
 
 ---
 
+### 1.11 Umami — mesure d'audience de la vitrine (P4-276)
+
+Umami mesure l'audience de la **page de vente** (`landing/`) SEULE — pas l'application. Service
+`umami` dans `docker-compose.prod.yml`, sous-domaine `stats.amateo.app` servi par Caddy, base
+`umami` **séparée** dans le postgres existant (**hors sauvegardes applicatives**, couverte par les
+seuls snapshots disque — [`backup-restore.md`](backup-restore.md)). Détail de la stack :
+[`prod-stack.md`](prod-stack.md) § Mesure d'audience.
+
+⚠ **ORDRE OBLIGATOIRE** — ne JAMAIS taguer un deploy avant d'avoir fait **F1 ET F2** : le service
+porte `:?` sur ses trois variables, un deploy sans elles est **refusé au `compose config`**
+(fail-closed, avant toute mutation de la VM) ; et sans la base, le conteneur partirait en boucle
+d'échec — sans jamais toucher l'app (aucun service ne `depends_on` umami).
+
+⬜ **F1 — créer la base et le rôle** (une seule fois, sur la VM). Le cluster prod est déjà
+initialisé, donc `docker/postgres/init/04-umami.sh` ne rejouera pas : on le fait à la main.
+Générer d'abord le mot de passe et le coller dans la copie de référence `.env.prod`
+(`UMAMI_DB_PASSWORD`) — jamais dans l'historique shell, le relire depuis le fichier :
+
+```bash
+ssh <hôte>
+cd /srv/amateo
+# psql en superuser bootstrap du cluster (POSTGRES_USER = amateo_owner). `$POSTGRES_USER` doit
+# être développé par le shell DU CONTENEUR (où il est défini), pas par celui de l'hôte → `sh -c` :
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec postgres sh -c 'psql -U "$POSTGRES_USER" -d postgres'
+```
+
+```sql
+-- dans psql. Le mot de passe NE se tape PAS dans CREATE ROLE (il finirait dans le .psql_history
+-- du conteneur) : rôle d'abord, mot de passe ensuite via \password (saisie masquée).
+CREATE ROLE umami LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE;
+\password umami   -- saisie MASQUÉE : coller la valeur de UMAMI_DB_PASSWORD du .env.prod
+CREATE DATABASE umami OWNER umami;
+REVOKE CONNECT ON DATABASE umami FROM PUBLIC;
+\l    -- la base `umami` doit apparaître
+\q
+```
+
+Vérif d'isolation — le rôle `umami` PEUT se connecter à `amateo` (`CONNECT` n'est PAS révoqué de
+`PUBLIC` sur `amateo`), mais n'y a **aucun droit de lecture** : aucune table applicative ne lui est
+accessible. Le prouver (résultat attendu : `permission denied`) :
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec postgres \
+  psql -U umami -d amateo -c 'select count(*) from club'
+# → ERROR:  permission denied for table club   (attendu ; si un mot de passe est demandé,
+#   coller UMAMI_DB_PASSWORD). Un SELECT qui PASSE = STOP, l'isolation est cassée.
+```
+
+`\l` doit montrer `umami`. Durcissement possible (à décider — non appliqué ici) :
+`REVOKE CONNECT, TEMP ON DATABASE amateo FROM PUBLIC;` fermerait aussi la connexion elle-même.
+Si `CREATE ROLE` est refusé (owner non-superuser et sans CREATEROLE sur l'hébergeur) : **STOP**,
+remonter — le runbook serait à revoir.
+
+⬜ **F2 — secrets** : remplir les **trois** variables dans la copie de référence `.env.prod`
+(`UMAMI_PORT`, `UMAMI_DB_PASSWORD` identique à F1, `UMAMI_APP_SECRET` = `openssl rand -hex 32`),
+puis `gh secret set ENV_PROD < .env.prod` (§ Secret `ENV_PROD`).
+
+⬜ **F3 — DNS** : enregistrement A `stats.amateo.app` → IP de la VM.
+
+⬜ **F4 — déployer** : taguer / `make deploy` quand tu veux (§ Partie 2). `umami` démarre, crée son
+schéma au premier boot, passe `healthy`. L'app n'est pas touchée.
+
+⬜ **F5 — UI Umami par tunnel SSH** (le SEUL accès au tableau de bord, maintenant et toujours).
+🔵 **Décision fondateur 2026-10-06 (option A) : le tableau de bord Umami n'est JAMAIS exposé
+publiquement.** Caddy n'expose que les routes de COLLECTE (F6) ; le dashboard (login, listes de
+sites, lecture des chiffres, toute l'admin) se consulte UNIQUEMENT par tunnel SSH. Le conteneur
+n'écoute que sur `127.0.0.1:8082` de la VM — on l'atteint sans passer par Caddy :
+
+```bash
+ssh -L 8082:127.0.0.1:8082 <hôte>    # laisser ouvert le temps de la consultation
+```
+
+puis, dans le navigateur local, `http://localhost:8082` → login par défaut `admin` / `umami` →
+🔴 **CHANGER LE MOT DE PASSE IMMÉDIATEMENT** (dès cette première connexion) → créer le site
+« amateo.app » → copier le `websiteId`. Reporter l'URL interne, l'identifiant admin et où vit le
+mot de passe dans la fiche d'instance `business/3-runbooks/` (**hors dépôt**, aucun secret ni URL
+d'admin en git). Fermer le tunnel. **Ce même tunnel SSH est le geste de consultation courante** :
+pour lire les chiffres plus tard, rouvrir `ssh -L 8082:127.0.0.1:8082 <hôte>` et aller sur
+`http://localhost:8082`. (Item roadmap P4-307 : un futur onglet « Statistiques » dans la console
+superadmin lira ces chiffres via l'API Umami, jeton côté serveur — alors plus besoin du tunnel.)
+
+⬜ **F6 — Caddy (exposition de la COLLECTE seule)** : SEULEMENT une fois F5 fait. Ajouter le 4ᵉ
+bloc `stats.amateo.app` du modèle ([`Caddyfile.example`](Caddyfile.example)) à
+`/etc/caddy/Caddyfile`, puis `sudo systemctl reload caddy`. Ce bloc n'expose QUE `GET /script.js`
+et `POST /api/send` (+ son préflight CORS `OPTIONS /api/send`) ; **tout le reste répond 404** — le
+dashboard n'est donc jamais joignable depuis Internet, seulement par le tunnel SSH de F5. ⚠ Caddy
+demande aussitôt un certificat → le nom `stats.amateo.app` paraît dans les journaux publics
+Certificate Transparency → des scanners le découvrent en minutes ; ils ne trouveront que les deux
+routes de collecte et des 404 partout ailleurs (aucune page de login à attaquer). L'ordre strict
+« mot de passe admin changé (F5) **avant** l'exposition Caddy (F6) » reste **recommandé** par
+hygiène, mais n'est plus une fenêtre d'attaque : ce bloc n'expose plus aucune UI de login.
+(Avant que le DNS propage / le conteneur tourne, le bloc rend juste 502 sur la collecte, sans
+effet ailleurs.)
+
+⬜ **F7 — brancher le script** : ouvrir une **PR** qui remplit `analytics.scriptUrl` +
+`analytics.websiteId` dans `landing/config.js` (et bumpe le `?v=` des DEUX pages). **Jamais une
+édition directe sur la VM** : le deploy réécrit `landing/` à chaque passage, elle serait écrasée.
+Un `websiteId` est public (visible dans toute page trackée) — sa place en git est correcte.
+Prochain deploy → premiers hits dans le dashboard.
+
+---
+
 ## Partie 2 — Au quotidien
 
 ### Déployer une release
@@ -420,6 +535,28 @@ supprimer).
 - Sur la VM : `docker compose -f docker-compose.prod.yml --env-file .env.prod ps`
   → tout doit être `healthy`.
 
+### Surveillance externe (sonde d'uptime)
+
+Les vérifications ci-dessus sont **manuelles** : elles ne préviennent de rien quand personne ne
+regarde. La sonde externe est le garde-fou qui alerte **depuis l'extérieur** quand l'app ne répond
+plus (ou qu'une fenêtre de maintenance a été oubliée → 503, cf. *Maintenance planifiée*).
+
+**Choix fondateur : Better Stack** (offre gratuite suffisante), deux moniteurs HTTP :
+
+- `https://app.amateo.app/api/health` — l'app répond et son backend est vivant ;
+- `https://amateo.app` — la page de vente est servie.
+
+Alerte par **e-mail + application mobile** Better Stack. **Geste fondateur**, hors dépôt : la
+configuration vit dans le compte Better Stack, **aucun secret ni URL de sonde en git** (les deux
+URL surveillées sont publiques, elles). Rien à déployer. (Un moniteur voit le **503** d'une
+fenêtre de maintenance oubliée — c'est la « sonde » dont parle *Maintenance planifiée*.)
+
+**Facultatif — alerte budget Scaleway** : les coûts sont **majoritairement fixes** (le VPS). Les
+seules variables pouvant déraper : le **stockage des sauvegardes** off-site, les **e-mails** si le
+service d'envoi est facturé au volume, et une **clé API compromise** (usage frauduleux). Poser une
+alerte de budget dans la console Scaleway couvre ces trois cas pour un geste de quelques minutes —
+geste fondateur, hors dépôt.
+
 ### Maintenance planifiée
 
 Pour couper volontairement l'app derrière une page « on refait le parquet » (déploiement lourd,
@@ -459,8 +596,8 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://app.amateo.app/     # attendu 
 ⚠ **Anti-oubli** : `remote-deploy.sh` avertit **bruyamment** en fin de deploy si le témoin est
 encore présent. C'est un **rappel**, pas une garantie — il ne le retire jamais tout seul (une
 fenêtre peut délibérément durer plus qu'un deploy) et n'échoue pas le deploy (le deploy, lui,
-a réussi). La vraie garantie qu'une fenêtre n'a pas été oubliée, c'est le **503 qu'une sonde
-voit**.
+a réussi). La vraie garantie qu'une fenêtre n'a pas été oubliée, c'est le **503 que voit la sonde
+externe** (Better Stack, § *Surveillance externe*).
 
 ### Changer un secret / une variable d'env
 
@@ -498,6 +635,10 @@ Modèle à deux fichiers (racine du repo) + un secret :
 - Le secret se renseigne avec le contenu **intégral** du `.env.prod` collé tel
   quel, ou `gh secret set ENV_PROD < .env.prod`. GitHub masque les `secrets.*`
   ligne à ligne dans les logs ; le deploy n'affiche jamais le contenu.
+- **Umami (P4-276)** ajoute trois variables à `.env.prod` (donc au secret) :
+  `UMAMI_PORT`, `UMAMI_DB_PASSWORD`, `UMAMI_APP_SECRET`. Elles sont **requises** par
+  le service `umami` (`:?` dans le compose) — un deploy sans elles est refusé au
+  `compose config`. Procédure complète : §1.11.
 - **Au deploy** : le step écrit `ENV_PROD` sur le runner (`umask 077`), le pousse
   sur la VM (chmod 600) avant `remote-deploy.sh`. Secret **vide ou absent** →
   **deploy avorté avant toute mutation de la VM** (message : créer le secret).
