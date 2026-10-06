@@ -2,7 +2,6 @@ import { Crop, ImagePlus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 
-import { errorMessage } from "@/shared/lib/errorMessage";
 import { useMe } from "@/shared/session/queries";
 import type { FfbbOrganisme, MeResponse } from "@/shared/session/api";
 import { PendingMembersSection } from "@/features/auth/PendingMembersSection";
@@ -31,7 +30,6 @@ import type { SubscriptionPlan, UsageDayHours } from "./api";
 import { LogoCropper } from "./LogoCropper";
 import { formatHours } from "./lib/venueStats";
 import { useDeleteLogo, useDownloadClubExport, useFfbbImport, useResetClub, useSubscriptionPlans, useUpdateAppearance, useUpdateSiege, useUploadLogo, useVenueUsageStats } from "./queries";
-import { toast } from "@/shared/stores/toastStore";
 import { isManagementRole } from "@/shared/lib/roles";
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -296,7 +294,7 @@ function ClubSiegeSubsection({ club }: { club: NonNullable<MeResponse["club"]> }
         label="Adresse du siège"
         statusWord="Siège localisé"
         unlocatedStatus="Siège non localisé — les trajets vers les adversaires ne sont pas estimés."
-        onPick={(candidate) => updateSiege.mutate(candidate.label, { onError: (e) => void errorMessage(e).then((m) => toast.error(m)) })}
+        onPick={(candidate) => updateSiege.mutate(candidate.label)}
       />
     </div>
   );

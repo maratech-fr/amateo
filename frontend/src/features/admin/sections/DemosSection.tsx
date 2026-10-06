@@ -101,7 +101,6 @@ function BcclCard({ account, resetState }: { account: AdminDemoAccount; resetSta
     setConfirmingReset(false);
     reset.mutate(undefined, {
       onSuccess: () => toast.success("Réinitialisation de la démo BCCL lancée."),
-      onError: () => toast.error("La réinitialisation de la démo n’a pas pu être lancée."),
     });
   };
 
@@ -147,7 +146,6 @@ function ProspectCard({ account }: { account: AdminDemoAccount }) {
     setConfirming(false);
     retain.mutate(undefined, {
       onSuccess: () => toast.success("Le club de démonstration est conservé 14 jours."),
-      onError: () => toast.error("Impossible de conserver le club de démonstration."),
     });
   };
 
@@ -208,7 +206,6 @@ function ClockCard({ account, target, label }: { account: AdminDemoAccount; targ
       { target, body: { date: dateDraft } },
       {
         onSuccess: () => toast.success("Date simulée appliquée."),
-        onError: () => toast.error("Impossible d’appliquer la date simulée."),
       },
     );
   };
@@ -218,7 +215,6 @@ function ClockCard({ account, target, label }: { account: AdminDemoAccount; targ
       { target, body: { clear: true } },
       {
         onSuccess: () => toast.success("La démo est revenue à aujourd’hui."),
-        onError: () => toast.error("Impossible de revenir à aujourd’hui."),
       },
     );
   };
@@ -257,14 +253,12 @@ function DemoCard({ title, account, target, children }: { title: string; account
   const doActivate = () => {
     activate.mutate(target, {
       onSuccess: () => toast.success("Compte de démonstration activé pour 4 h."),
-      onError: () => toast.error("Impossible d’activer le compte de démonstration."),
     });
   };
 
   const doDeactivate = () => {
     deactivate.mutate(target, {
       onSuccess: () => toast.success("Compte de démonstration désactivé."),
-      onError: () => toast.error("Impossible de désactiver le compte de démonstration."),
     });
   };
 
