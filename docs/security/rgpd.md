@@ -102,9 +102,24 @@ les champs `anonymizedAt`/`erasureScheduledAt` restaurés re-déclenchent les m�
   par l'ancre `logging` de `docker-compose.prod.yml` (cf. `docs/ops/prod-stack.md`) ; la **durée de
   rétention** reste à confirmer côté hébergeur.
 - Mercure : payloads `{status, score, unplaced, warnings}` — pas de PII.
+- **Sentry (front, `@sentry/react` v11)** : erreurs uniquement, **collecte minimale EXPLICITE** —
+  aucune PII envoyée. En v11 `sendDefaultPii` a disparu et un `dataCollection` non défini collecte
+  TOUT par défaut (IP, utilisateur, cookies, en-têtes, corps de requête) ; on fige donc chaque
+  catégorie au niveau le plus restrictif dans `buildSentryOptions`
+  (`frontend/src/app/sentry.ts`, `userInfo: false` → pas d'`ip_address`), verrouillé par
+  `frontend/src/test/sentryOptions.test.ts` (détail : `docs/ops/observability.md` § Sentry front).
+  Côté backend, les refus HTTP < 500 sont filtrés (`before_send`, même doc).
 - **Doléances (#10)** : le **commentaire libre** d'une doléance est un champ à contenu non maîtrisé
   (le coach y écrit ce qu'il veut, potentiellement des données personnelles) — **jamais loggé**,
   jamais inclus dans un payload Mercure ni dans un message d'erreur.
+- **Sentry (diagnostic d'erreurs, inerte tant que le DSN est vide)** : chaque événement envoyé porte
+  l'**identifiant INTERNE de l'utilisateur** (pseudonyme — jamais email/nom/IP) et le **code FFBB du
+  club** en tag `club_ffbb` (identifiant public FFBB), posés explicitement côté back
+  (`App\Sentry\BeforeSend`) et front (`useApplySentryIdentity`) — décision fondateur 2026-10-06,
+  finalité **diagnostic** (rejouer un bug). Collecte minimale maintenue : `send_default_pii: false`
+  et `dataCollection` restrictif → **aucune autre donnée** (pas d'IP, de cookies, d'en-têtes ni de
+  corps de requête). Base légale : intérêt légitime (fiabilité du service). Détail de la chaîne :
+  `docs/ops/observability.md`.
 
 ## 6. Reste à faire (hors P0-1)
 
