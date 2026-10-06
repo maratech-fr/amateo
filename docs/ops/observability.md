@@ -46,6 +46,32 @@ scan de robot (404/405/400/401/403 en rafale) n'inonde plus le projet de faux po
 (distincte de la `HttpException` du même nom) est écartée séparément via `ignore_exceptions` dans le
 même fichier de config. Gardé par `backend/tests/Unit/Sentry/BeforeSendTest.php`.
 
+## Sentry — identité minimale posée sur chaque événement (2026-10-06)
+
+Pour rejouer un bug sans collecter de PII, chaque événement ENVOYÉ (après le filtre `before_send`)
+porte deux valeurs, **explicitement posées, rien d'autre** — décision fondateur 2026-10-06 :
+
+- l'**identifiant INTERNE** de l'utilisateur courant (`user.id` seul, un pseudonyme ; **jamais**
+  email/nom/IP) ;
+- le **code FFBB du club** courant en tag `club_ffbb` (ex. `ARA0069013`), club de démo compris
+  (utile au diagnostic).
+
+La collecte reste par ailleurs **minimale** : `send_default_pii: false` côté backend
+(`backend/config/packages/sentry.yaml`) et `dataCollection` tout restrictif côté frontend
+(`buildSentryOptions`, `frontend/src/app/sentry.ts`) — ni IP, ni cookies/en-têtes, ni corps de
+requête, aucune collecte automatique d'utilisateur.
+
+- **Backend** : `App\Sentry\BeforeSend` lit le token de sécurité (jamais un `SuperAdmin`, qui n'est
+  pas un `User`) et l'attribut `_club_id` posé par `TenantFilterListener` — ABSENT sur
+  `/api/admin/**` (le listener sort avant toute résolution de club), donc un superadmin ne pose
+  jamais de tag club. La résolution du code FFBB (lecture du club) est best-effort (try/catch) :
+  elle ne masque jamais l'erreur d'origine. Hors requête (Messenger, console), ni token ni
+  `_club_id` → rien n'est posé. Gardé par `backend/tests/Unit/Sentry/BeforeSendTest.php`.
+- **Frontend** : `useApplySentryIdentity` (monté par `AppLayout`, l'appli CLUB) pose
+  `Sentry.setUser({ id })` et le tag `club_ffbb` depuis `/api/me`, et les RETIRE au logout
+  (démontage). La console superadmin a son propre shell (`AdminShell`), hors `AppLayout` : pas de
+  club, pas de tag. Gardé par `frontend/src/shared/hooks/useApplySentryIdentity.test.tsx`.
+
 ## Sentry — collecte minimale explicite côté frontend (v11, 2026-10-06)
 
 Le SDK front (`@sentry/react` **v11**) capture les **ERREURS uniquement** (`tracesSampleRate: 0`,

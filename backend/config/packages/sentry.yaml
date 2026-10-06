@@ -10,6 +10,11 @@ sentry:
     options:
         environment: '%kernel.environment%'
         traces_sample_rate: 0
+        # JAMAIS de PII automatique : pas d'IP, pas de cookies/en-têtes/corps de requête. On
+        # attache nous-mêmes, dans App\Sentry\BeforeSend, l'identité MINIMALE voulue (id interne
+        # de l'utilisateur + code FFBB du club en tag `club_ffbb`, décision fondateur 2026-10-06) ;
+        # `false` ici garantit que le SDK n'ajoute aucune IP ni donnée de requête par-dessus.
+        send_default_pii: false
         # 2026-10-03 — un scan Nuclei a rempli Sentry de 404/405/400/401/403 (bruit de robots,
         # aucune vraie erreur). On n'y remonte plus les refus HTTP NORMAUX : toute HttpException
         # 4xx est filtrée par STATUT dans before_send (App\Sentry\BeforeSend) ; l'AccessDeniedException
