@@ -54,6 +54,14 @@ updates:
       backend-composer:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    # Symfony reste en LTS 7.4 jusqu'à la 8.4 (~nov. 2027, CLAUDE.md §5) : Flex
+    # borne déjà `extra.symfony.require` à 7.4.*, mais Dependabot ignore cette
+    # contrainte et proposait des paquets Symfony en 8.x (PR #1093 : symfony/string
+    # 8.0.15, symfony/var-exporter 8.0.16 → rouge `SymfonyStackAlignmentTest`). On
+    # bloque toute la 8.x : la montée de majeure est une décision, pas un bump auto.
+    ignore:
+      - dependency-name: "symfony/*"
+        versions: [">=8.0"]
     labels: ["dependencies", "backend"]
 
   # CI — GitHub Actions (lit .github/workflows/*.yml)
@@ -169,9 +177,27 @@ updates:
       docker-compose:
         patterns: ["*"]
         update-types: ["minor", "patch"]
-    # Umami reste en v2 (décision fondateur 2026-10-06) : un saut de majeure
-    # (v3) est une décision, pas un bump automatique.
+    # Les sauts de MAJEURE de ces images sont des décisions, pas des bumps auto —
+    # Dependabot les ouvrait une par une (#1105 umami, #1104 postgres, #1103 redis,
+    # #1102 mercure, toutes fermées). ⚠ Le `dependency-name` est le nom d'image
+    # SANS le registre `ghcr.io/` (c'est pourquoi l'ancienne règle
+    # `ghcr.io/umami-software/umami` ne matchait pas #1105).
     ignore:
-      - dependency-name: "ghcr.io/umami-software/umami"
+      # Umami : tag v3 en semver propre (`3.x.y`), semver-major suffit (3 → 4).
+      - dependency-name: "umami-software/umami"
         update-types: ["version-update:semver-major"]
+      # PostgreSQL (dev `postgres:16-alpine`) : une majeure impose une migration
+      # de données. La prod est déjà couverte par le bloc docker /docker/postgres.
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
+      # Redis (dev+prod `redis:7-alpine`) : Redis 8 pose une question de licence,
+      # à trancher à part (roadmap P4-310).
+      - dependency-name: "redis"
+        update-types: ["version-update:semver-major"]
+      # Mercure (dev `v0.24.2`, prod `v0.19`) : en 0.x `semver-major` ne capte
+      # pas le saut 0.x → 1.0, on borne donc par version. On laisse passer les
+      # bumps 0.x (dont l'alignement dev/prod — roadmap P4-310) et on bloque la
+      # montée majeure 1.0, qui est une décision.
+      - dependency-name: "dunglas/mercure"
+        versions: [">=1.0.0"]
     labels: ["dependencies", "docker"]
