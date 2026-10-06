@@ -208,9 +208,12 @@ Le coach émet un **souhait**, le gestionnaire **arbitre et tranche** — le lie
   jeton et la page de confidentialité intégrée à l'app). → trace §3 (2026-09-22)
 - **Production** : stack `docker-compose.prod.yml` à images immuables, déploiement une commande (tag `v*` → ghcr.io → SSH,
   dump pré-migration obligatoire), **secrets prod hors dépôt** (secret GitHub `ENV_PROD` = le `.env.prod` entier,
-  le deploy l'écrit sur le runner et pousse la VM — plus aucun secret versionné), backups `pg_dump` pilotés par
-  l'activité avec `restore-check` prouvé, Sentry 3 zones câblées (le DSN front atteint désormais le bundle — reste
-  à créer le compte, geste fondateur seul).
+  le deploy l'écrit sur le runner et pousse la VM — plus aucun secret versionné). Backups `pg_dump` pilotés par
+  l'activité avec `restore-check` prouvé **et synchronisés hors-site** (bucket Object Storage `amateo-backups`,
+  région `nl-ams` — hors de la région du serveur Paris, deux restaurations réelles faites : mise en prod puis
+  rotation des secrets). **Sentry actif sur les 3 zones** (backend/engine/front) depuis le déploiement, erreurs
+  remontées en prod. **DNS posé** (`amateo.app`, `www`, `app.amateo.app`) — la vitrine, son `www` et l'app
+  répondent chacun derrière Caddy.
   → [`prod-stack.md`](../../docs/ops/prod-stack.md) · [`deploy.md`](../../docs/ops/deploy.md) · [`backup-restore.md`](../../docs/ops/backup-restore.md)
 
 ### 1.9 Transverse
@@ -679,6 +682,7 @@ le front lit, il ne re-dérive plus les règles de refus, repli fail-closed si l
 
 | Date | Id | Sujet | Documenté dans |
 |------|----|-------|----------------|
+| 2026-10-06 | P5-1, P5-2, P5-5 | **Trois gestes d'exploitation confirmés livrés (constat fondateur).** P5-1 : Sentry actif, erreurs remontées sur les 3 zones depuis le 2026-10-04. P5-2 : synchro off-site des backups vérifiée (bucket Object Storage `amateo-backups`, région `nl-ams`) et deux restaurations réelles faites (mise en prod, rotation des secrets). P5-5 : DNS posé (`amateo.app`, `www`, `app.amateo.app`), la vitrine et l'app répondent chacune derrière Caddy. **SEC-19 change de nature** : le rituel ZAP baseline + Nuclei n'est plus un item de backlog — c'est désormais un geste récurrent, à rejouer à CHAQUE déploiement (pas seulement avant la mise en prod), consigné dans `docs/ops/deploy.md` et détaillé dans `docs/security/scanners.md` §Rituel. | §1.8 ci-dessus · [`backup-restore.md`](../../docs/ops/backup-restore.md) · [`deploy.md`](../../docs/ops/deploy.md) · [`docs/security/scanners.md`](../../docs/security/scanners.md) §Rituel |
 | 2026-10-06 | ALIGN-14 | **`minStartTime` PREFERRED prouvé contre le vrai solveur.** La clé était honorée en dur mais non prouvée en souple : sur une grille d'heures le solveur place spontanément tard, or `minStartTime` récompense le tard — l'orientation ne prouvait rien. Témoin désormais construit sur une grille *spontanément tôt* (bonus implicite de repos, poids 3 < `preferred_time` 5) : sans règle → 17:00, avec `minStartTime 19:00` PREFERRED → 20:00. Les « cellules LOCK » du finding d'origine sont **dissoutes par ALIGN-18** (LOCK retiré du produit, `docs/architecture/constraint-matrix.md`). | `backend/tests/CrossStack/ConstraintKeysAreHonouredByEngineTest.php`, `engine/tests/semantic/test_min_start_preferred_steers_later.py`, `engine/tests/semantic/constraint_matrix.py` |
 | 2026-10-06 | DOC-59 | **Monolithes doc découpés PAR THÈME.** `frontend-spec.md` (1 585 l.) → shell stack/routes/conventions + `frontend-data.md`/`frontend-api-contract.md`/`frontend-workloop.md`/`frontend-features.md` ; `backend-inventory.md` (1 093 l.) → archi/resources/pagination + `backend-controllers.md`/`backend-demo.md`/`backend-auth-mercure.md`. Plafond gardé par test (un débordement = découper par thème, pas réduire). | `frontend/docs/`, `backend/docs/`, `backend/tests/Unit/Documentation/DocSizeCeilingTest.php` |
 | 2026-10-06 | DOC-56 | **Graduation de ~1 200 l. d'`evolution/` closes.** `reprise-perimetre-engage.md` supprimé (comportement dans `planning-lifecycle-validated.md`/ADR-0002/`module-matchs.md`) ; `gestion-matchs-ffbb.md` (462→53) et `ffbb-appariement-source-de-verite.md` (685→86) amincis à leur ouvert (palier C ; gymnases de match §7). Décisions fermées déjà en §2, historique dans git. | `specs/evolution/`, `etat-des-lieux.md` §2 |

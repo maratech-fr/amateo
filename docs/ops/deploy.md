@@ -486,6 +486,14 @@ git tag v1.2.0 && git push origin v1.2.0
 Rien d'autre. Le workflow build → push → déploie → migre → sonde. Vert dans
 *Actions* = en prod.
 
+### Rituel sécurité post-déploiement (ZAP + Nuclei) — obligatoire à CHAQUE déploiement
+
+Une fois le déploiement vert, rejouer le rituel décrit dans
+[`docs/security/scanners.md`](../security/scanners.md) §Rituel (commandes ZAP baseline + Nuclei
+contre l'hôte exposé). Résultat à consigner dans la même note que le déploiement (canal de suivi
+du fondateur) ; un finding ouvre une ligne de roadmap (sévérité par le barème `/audit`) plutôt
+qu'un correctif improvisé sur l'hôte.
+
 ### Hotfix / déployer sans tag
 
 ```bash

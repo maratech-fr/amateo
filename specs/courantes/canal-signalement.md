@@ -79,11 +79,12 @@ statut) — les indicateurs en découlent en SQL pur, AUCUNE collecte supplémen
 
 Surface : un petit panneau en tête de la vue console SA (D6). Pas de dashboard dédié, pas d'outil
 externe. Le reste de la qualité de service (taux de réussite des générations, erreurs techniques,
-délais de solve) est couvert ailleurs : `solver_metrics` + monitoring SA existant + Sentry
-(roadmap P5-1, pas encore activé) + métriques de capacité (`AdminCapacityService`, console
-superadmin — détail [`superadmin-auth.md`](superadmin-auth.md) § Capacité).
+délais de solve) est couvert ailleurs : `solver_metrics` + monitoring SA existant + Sentry (actif
+sur les 3 zones, `etat-des-lieux.md` §3 2026-10-06) + métriques de capacité
+(`AdminCapacityService`, console superadmin — détail [`superadmin-auth.md`](superadmin-auth.md)
+§ Capacité).
 
 ## 4. Hors périmètre
 Un système de tickets (statuts multiples, assignation, SLA), un chat, un forum, une base de
-connaissances, ni le remplaçant de Sentry (les erreurs techniques remonteront par la roadmap
-P5-1). Pas de pièces jointes (surface upload = lot sécurité à part entière si le besoin émerge).
+connaissances, ni le remplaçant de Sentry (les erreurs techniques remontent par Sentry, pas par ce
+canal). Pas de pièces jointes (surface upload = lot sécurité à part entière si le besoin émerge).

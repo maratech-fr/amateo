@@ -16,8 +16,8 @@
 | **Semgrep** | motifs de sécurité dans le code (taint, injections, désérialisation) | chaque push (job `semgrep`, **BLOQUANT**, SEC-14) | l'inventaire initial est soldé — un nouveau finding est un vrai signal |
 | **Trivy** (build) | paquets OS des images prod (openssl, libc, nginx…) — l'angle mort de dependency-audit | chaque build d'images (`build-docker`, gate CRITICAL fixables) | une image neuve ne doit pas naître trouée |
 | **Trivy** (hebdo) | CVE découvertes APRÈS le build sur les images ghcr publiées | lundi 06:00 UTC (`security-weekly.yml`, relançable à la main) | le monde bouge même quand l'image ne change pas |
-| **ZAP** | comportement de l'app qui tourne (headers, cookies, injections) vu de l'extérieur | **manuel, avant une release** (baseline) ; scan actif une fois avant la mise en prod puis à chaque changement d'infra | lent et bruyant ; l'isolation multi-tenant est mieux testée par la suite phase1, qui comprend « ce club ne voit pas l'autre » — pas lui |
-| **Nuclei** | empreintes de failles connues sur un serveur EXPOSÉ (config nginx, TLS, panneaux oubliés) | **manuel, mensuel, sur la prod déployée** — sans objet avant qu'elle existe | sa cible est ce que le monde extérieur voit du serveur |
+| **ZAP** | comportement de l'app qui tourne (headers, cookies, injections) vu de l'extérieur | **manuel, à chaque déploiement** (baseline, `docs/ops/deploy.md` §Rituel sécurité post-déploiement) ; scan actif réservé à une préprod avec un compte de test | lent et bruyant ; l'isolation multi-tenant est mieux testée par la suite phase1, qui comprend « ce club ne voit pas l'autre » — pas lui |
+| **Nuclei** | empreintes de failles connues sur un serveur EXPOSÉ (config nginx, TLS, panneaux oubliés) | **manuel, à chaque déploiement + mensuel**, sur la prod déployée | sa cible est ce que le monde extérieur voit du serveur |
 
 Rien n'est installé sur le poste : tout tourne en GitHub Actions ou via image Docker.
 
@@ -35,20 +35,23 @@ Rien n'est installé sur le poste : tout tourne en GitHub Actions ou via image D
   commentaire **inline `nosemgrep: <rule>` motivé** sur la ligne même. Ne jamais élargir
   pour faire passer la CI.
 
-## Rituel pré-production (ZAP + Nuclei) — roadmap SEC-19
+## Rituel — ZAP + Nuclei à chaque déploiement
 
-Le jour où une préprod/prod existe :
+Prod en ligne depuis le 2026-10-03. Ce rituel n'est plus un item de backlog : c'est un geste
+récurrent, à rejouer à **chaque déploiement** (`docs/ops/deploy.md` §Rituel sécurité
+post-déploiement), pas seulement avant la toute première mise en prod.
 
 ```bash
 # ZAP baseline (passif — aucune attaque, ~2 min)
-docker run --rm -t zaproxy/zap-stable zap-baseline.py -t https://preprod.example.tld
+docker run --rm -t zaproxy/zap-stable zap-baseline.py -t https://app.amateo.app
 
 # Nuclei (empreintes CVE/configs sur l'hôte exposé)
-docker run --rm projectdiscovery/nuclei:latest -u https://preprod.example.tld
+docker run --rm projectdiscovery/nuclei:latest -u https://app.amateo.app
 ```
 
-Scan actif ZAP (`zap-full-scan.py`) : une fois avant la vraie mise en prod, sur la
-préprod UNIQUEMENT, avec un compte de test — jamais sur la prod avec des données réelles.
+Scan actif ZAP (`zap-full-scan.py`) : réservé à une préprod avec un compte de test — jamais sur
+la prod avec des données réelles (aucune préprod à ce jour). Nuclei tourne en plus **mensuellement**
+sur l'hôte exposé, indépendamment des déploiements.
 
 ## Ce que ces outils ne verront jamais (et qui est couvert ailleurs)
 
