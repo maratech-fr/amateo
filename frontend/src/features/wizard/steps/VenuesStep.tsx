@@ -103,7 +103,7 @@ export function ColorField({ venue, onApply }: { venue: Venue; onApply: (color: 
         value={HEX_RE.test(hex) ? hex : current}
         onChange={(e) => commit(e.target.value)}
       />
-      <Input aria-label="Couleur (hexadécimal)" className="h-9 w-24 font-mono text-xs" value={hex} placeholder="#3498DB" onChange={(e) => commit(e.target.value)} />
+      <Input aria-label="Couleur (code)" className="h-9 w-24 font-mono text-xs" value={hex} placeholder="#3498DB" onChange={(e) => commit(e.target.value)} />
     </div>
   );
 }
@@ -520,7 +520,7 @@ function VenuesEditor() {
             <span className="text-xs font-medium text-muted-foreground">
               Gymnases à proximité (FFBB{null != nearbyQuery.data?.radiusKm ? `, ${nearbyQuery.data.radiusKm} km` : ""}) — cliquez pour ajouter, renommez ensuite à votre main :
             </span>
-            <Select aria-label="Rayon de recherche" className="ml-auto h-7 text-xs" wrapperClassName="w-28" value={nearbyRadius ?? "auto"} onChange={(e) => setNearbyRadius("auto" === e.target.value ? null : Number(e.target.value))}>
+            <Select aria-label="Rayon de recherche" className="ml-auto text-xs" wrapperClassName="w-28" value={nearbyRadius ?? "auto"} onChange={(e) => setNearbyRadius("auto" === e.target.value ? null : Number(e.target.value))}>
               <option value="auto">Auto</option>
               {[3, 5, 10, 20].map((km) => (
                 <option key={km} value={km}>
@@ -540,7 +540,7 @@ function VenuesEditor() {
                   <Button
                     size="sm"
                     variant={added ? "ghost" : "outline"}
-                    className="h-7 shrink-0"
+                    className="shrink-0"
                     disabled={added || create.isPending}
                     onClick={() => {
                       const color = nextVenueColor([...venues.map((v) => v.color), ...pendingColorsRef.current]);
@@ -562,7 +562,7 @@ function VenuesEditor() {
                     <Menu
                       label={`Associer ${salle.name} à un gymnase existant`}
                       trigger={<span className="text-xs">Associer à…</span>}
-                      triggerClassName="h-7 w-auto shrink-0 rounded-md border border-input px-2 text-xs"
+                      triggerClassName="w-auto shrink-0 rounded-md border border-input px-2 text-xs"
                     >
                       {venues.filter((v) => null == v.externalRef).map((v) => (
                         <MenuItem
@@ -713,7 +713,7 @@ function VenuesEditor() {
               role="status"
               className="mb-3"
               icon={<Lock className="size-4 text-muted-foreground" />}
-              message="Les créneaux d'entraînement sont une contrainte du planning : rouvrez le planning de la saison pour les modifier."
+              message="Les créneaux d'entraînement sont une contrainte du planning : rouvrez le planning de saison pour les modifier."
             />
           ) : (
           /* Slot-placement toolbar — only the duration of the next dropped slot.

@@ -152,7 +152,7 @@ describe("TeamsStep", () => {
     renderWithProviders(<TeamsStep />);
 
     // The row's Trash button (aria-label "Supprimer") opens the confirmation.
-    await user.click(screen.getByRole("button", { name: "Supprimer" }));
+    await user.click(screen.getByRole("button", { name: "Supprimer l'équipe SM3" }));
     const dialog = screen.getByRole("dialog");
     // P3-16 — la ligne d'impact vient du SERVEUR (libellé compris), plus du cache de l'écran.
     expect(within(dialog).getByText("1 créneau réservé")).toBeInTheDocument();
@@ -163,7 +163,7 @@ describe("TeamsStep", () => {
   });
 
   /** La ligne de l'équipe — le formulaire d'ajout porte les mêmes libellés. */
-  const teamRow = (): HTMLElement => screen.getByRole("button", { name: "Supprimer" }).closest("div") as HTMLElement;
+  const teamRow = (): HTMLElement => screen.getByRole("button", { name: "Supprimer l'équipe SM3" }).closest("div") as HTMLElement;
 
   it("locks Supprimer and the play level on a team already engaged in competition", () => {
     // Le serveur refuse les deux (ses matchs sont connus de la fédé) : l'écran ne
@@ -172,7 +172,7 @@ describe("TeamsStep", () => {
     renderWithProviders(<TeamsStep />);
     const row = teamRow();
 
-    expect(within(row).getByRole("button", { name: "Supprimer" })).toBeDisabled();
+    expect(within(row).getByRole("button", { name: "Supprimer l'équipe SM3" })).toBeDisabled();
     expect(within(row).getByRole("combobox", { name: "Niveau de jeu" })).toBeDisabled();
     // Ce qui reste libre le reste : le nom et les créneaux ne dépendent pas de la fédé.
     expect(within(row).getByRole("textbox", { name: "Nom" })).toBeEnabled();
@@ -190,7 +190,7 @@ describe("TeamsStep", () => {
     renderWithProviders(<TeamsStep />);
     const row = teamRow();
 
-    expect(within(row).getByRole("button", { name: "Supprimer" })).toBeEnabled();
+    expect(within(row).getByRole("button", { name: "Supprimer l'équipe SM3" })).toBeEnabled();
     expect(within(row).getByRole("combobox", { name: "Niveau de jeu" })).toBeEnabled();
     expect(screen.queryByText(/joue en compétition/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Engagée en compétition/)).not.toBeInTheDocument();
@@ -211,7 +211,7 @@ describe("TeamsStep", () => {
     expect(sessions).toHaveAttribute("readonly");
     expect((sessions as HTMLInputElement).value).toBe("1"); // valeur de la fixture, toujours lisible
     // Une explication, UNE fois pour la liste, cohérente avec le bandeau d'en-tête.
-    expect(screen.getByText(/séances par semaine fait partie du planning de la saison en vigueur/i)).toBeInTheDocument();
+    expect(screen.getByText(/séances par semaine fait partie du planning de saison en vigueur/i)).toBeInTheDocument();
     // Ce qui reste libre le reste : le rang (flèches) et le niveau ne sont pas des créneaux.
     expect(within(row).getByRole("combobox", { name: "Niveau de jeu" })).toBeEnabled();
     expect(within(row).getByRole("button", { name: /Descendre SM3/ })).toBeInTheDocument();
@@ -225,7 +225,7 @@ describe("TeamsStep", () => {
     const sessions = within(row).getByRole("spinbutton", { name: "Séances/sem" });
     expect(sessions).not.toHaveAttribute("readonly");
     expect(sessions).toBeEnabled();
-    expect(screen.queryByText(/séances par semaine fait partie du planning de la saison en vigueur/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/séances par semaine fait partie du planning de saison en vigueur/i)).not.toBeInTheDocument();
   });
 
   it("laisse CRÉER une équipe avec son nombre de séances même socle en vigueur (le verrou porte sur l'édition)", async () => {

@@ -6,6 +6,8 @@ import { BrandSplash } from "@/shared/components/ui/brand-splash";
 import { useMe } from "@/shared/session/queries";
 import { useLoginSplashStore } from "@/shared/stores/loginSplashStore";
 
+import { isConnectionReady } from "./loginReady";
+
 // Filet ULTIME : « prêt » ne doit jamais tarder indéfiniment. Si rien n'aboutit en 30 s, le splash
 // s'efface en douceur — un logo ne bloque JAMAIS l'écran à vie (revue sécu).
 const SPLASH_MAX_WAIT_MS = 30_000;
@@ -22,14 +24,8 @@ const SPLASH_MAX_WAIT_MS = 30_000;
  * L'overlay lui-même est un portal sur `document.body`, z-[70] — AU-DESSUS du voile d'action
  * (`ActionVeil`, z-[60]) : pendant la connexion, la signature couvre le voile générique.
  *
- * « PRÊT » (décision fondateur) = le login a abouti ET la query `me` est en succès ET la
- * navigation est posée (idle) ET on n'est plus sur /login — une adhésion en attente rendue sur
- * /waiting compte donc comme prête, elle aussi.
+ * « PRÊT » = `isConnectionReady` (`./loginReady`, sorti du module du composant pour FRT-39).
  */
-export function isConnectionReady(p: { pathname: string; navIdle: boolean; meReady: boolean }): boolean {
-  return p.meReady && p.navIdle && "/login" !== p.pathname;
-}
-
 export function LoginSplash({ children }: { children: ReactNode }) {
   const phase = useLoginSplashStore((s) => s.phase);
   const beginBreathing = useLoginSplashStore((s) => s.beginBreathing);

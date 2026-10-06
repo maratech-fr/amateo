@@ -106,7 +106,7 @@ export function VenueLabelsSection({ venues }: { venues: Venue[] | undefined }) 
         sur la grille et du radar de conflits. La suggestion « d'après les rencontres » vient des matchs déjà placés ; à confirmer.
       </p>
       {0 === rows.length ? (
-        <EmptyHint>Aucun libellé de salle importé pour l'instant. Ils arrivent avec un import FBI ou le canal API FFBB.</EmptyHint>
+        <EmptyHint>Aucun libellé de salle importé pour l'instant. Ils arrivent avec un import FBI ou le Canal FFBB.</EmptyHint>
       ) : (
         <Table>
           <TableHeader>

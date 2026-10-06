@@ -1,9 +1,8 @@
 # Accueil « cockpit temporel »
 
-Last verified @ 2026-10-05 (`documentation-update`, lot backend « horloge & démo » — BCK-34). Le
-§« Horloge simulée » gagne les BORNES de la date simulée (début de la saison en cours → fin de la
-saison suivante, `SeasonResolver::simulatedClockBoundsAmong`, 422 hors fenêtre) — confronté à
-`ClubClockController.php`. Reste du fichier non re-confronté cette passe. Historique de ce fichier :
+Last verified @ 2026-10-06 (reliquat UX de l'audit 2026-10-03, UXC-26). Mockup §5 recalé : le
+bandeau nomme « Planning de saison » (vocabulaire unifié — plus de « Planning principal », qui n'a
+plus cours dans le code). Reste du fichier non re-confronté cette passe. Historique de ce fichier :
 `git log -p --follow` dessus.
 
 > **Statut** : livré — cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2. Ce document fixe le
@@ -249,7 +248,7 @@ secondaire.
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
-│  BANDEAU · Planning principal — Validé   [ Ouvrir ▸ ] [ Modifier les données du club ] │
+│  BANDEAU · Planning de saison — Validé   [ Ouvrir ▸ ] [ Modifier les données du club ] │
 │  (Ouvrir = grille en lecture seule, avec son propre « Rouvrir » destructeur ·        │
 │   Modifier les données du club = complète équipes/gymnases/coachs SANS rouvrir)      │
 ├──────────────────────────────────────────────┬────────────────────────────┤

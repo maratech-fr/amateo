@@ -222,7 +222,7 @@ export function RegisterPage() {
   return (
     <AuthLayout
       title="Créer un compte"
-      description="Le code ARA identifie votre club FFBB. S'il existe déjà, votre demande sera soumise à l'approbation du gestionnaire."
+      description="Le code club FFBB identifie votre club. S'il existe déjà, votre demande sera soumise à l'approbation du gestionnaire."
       footer={<>Déjà un compte ? <Link className="text-accent hover:underline" to="/login">Se connecter</Link></>}
     >
       <form className="flex flex-col gap-4" onSubmit={onSubmit} noValidate>
@@ -257,8 +257,8 @@ export function RegisterPage() {
           onConfirmChange={(v) => setForm((prev) => ({ ...prev, confirm: v }))}
         />
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="ara">Code ARA du club</Label>
-          <Input id="ara" required value={form.ara} onChange={set("ara")} placeholder="Ex. BCCL0123" className="uppercase" />
+          <Label htmlFor="ara">Code club FFBB</Label>
+          <Input id="ara" required value={form.ara} onChange={set("ara")} placeholder="Ex. ARA0069013" className="uppercase" />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="club_name">Nom du club <span className="text-muted-foreground">(si nouveau club)</span></Label>

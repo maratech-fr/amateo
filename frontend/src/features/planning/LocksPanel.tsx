@@ -73,7 +73,7 @@ export function LocksPanel({ locks, lookups, selectedSlotId, onSelectSlot, lensA
           aria-pressed={lensActive}
           className={cn(
             "flex shrink-0 items-center gap-2 self-start rounded-md border px-2 py-1 text-sm transition",
-            lensActive ? "border-accent bg-accent/10 text-accent" : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+            lensActive ? "border-accent bg-surface-accent text-foreground" : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
           )}
         >
           {lensActive ? <EyeOff aria-hidden="true" className="size-4" /> : <Eye aria-hidden="true" className="size-4" />}

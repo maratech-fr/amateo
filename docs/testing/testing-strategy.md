@@ -1,26 +1,26 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-10-04 (AUD-SEC-25 — ligne `TenantIsolationTest` recalée sur ses tests réels (en-tête étranger ignoré, requête anonyme sans contexte, adhésion inactive sans donnée) ; avant cela, 2026-10-01 : `documentation-update`, PR 8/8 série « uniformité des écrans » — garde
-de captures de référence). Ce fichier ne couvre que backend+engine (« Scope » ci-dessous), sauf le
-graphe CI §1 qui est cross-zone par nature. Vérifié dans le code cette passe : le job `e2e` porte
-le nom de required check « E2E (Playwright) » et `needs: blocking-tests` (`ci.yml:1117-1123`) ;
+Last verified @ 2026-10-06 (rotation de fraîcheur, `documentation-update`, reliquat UX de l'audit
+2026-10-03 — sans rapport direct avec le sujet). Ce fichier ne couvre que backend+engine (« Scope »
+ci-dessous), sauf le graphe CI §1 qui est cross-zone par nature. Re-confronté au code cette passe :
+`blocking-tests` reste sur `needs: [lint, phpstan]` (`ci.yml:314`) ; le job `e2e` porte toujours le
+nom de required check « E2E (Playwright) » et `needs: blocking-tests` (`ci.yml:1226,1231` —
+numéros de ligne dérivés depuis la dernière passe) ;
 `frontend/tests/e2e/visual-reference.spec.ts` existe (9 `toHaveScreenshot`) avec ses 9 PNG commités
 sous `frontend/tests/e2e/visual-reference.spec.ts-snapshots/` ; `.github/workflows/
 visual-baselines.yml` existe, `workflow_dispatch` seul (pas de `push`/`pull_request`), entrée
-`update` à deux modes. Reste du fichier (§2 backend tests, §3 engine tests, §4bis a11y, §5, le
-reste de §1) non re-sondé cette passe — dernier balayage complet du §1 : 2026-09-30, voir
-`git log -p --follow docs/testing/testing-strategy.md`. Re-confronté au code lors de cette passe
-antérieure : le graphe des jobs §1 (noms et `needs`) correspond toujours à
-`.github/workflows/ci.yml` — `blocking-tests` sur `needs: [lint, phpstan]` (`ci.yml:314`),
-`e2e`/`backend-coverage` sur `needs: blocking-tests`,
+`update` à deux modes. Le reste du graphe des jobs §1 (noms et `needs`) correspond toujours à
+`.github/workflows/ci.yml` — `e2e`/`backend-coverage` sur `needs: blocking-tests`,
 `engine-coverage`/`engine-perf`/`engine-perf-pr` sur `needs: engine-tests`, `build-docker` sur
-`needs: [blocking-tests, engine-tests]` seuls (`ci.yml:1473`) ✓ ; les trois nouvelles gardes
+`needs: [blocking-tests, engine-tests]` seuls (`ci.yml:1609`) ✓. Reste du fichier (§2 backend
+tests, §3 engine tests, §4bis a11y, §5) non re-sondé cette passe — dernier balayage complet du §1 :
+2026-09-30, voir `git log -p --follow docs/testing/testing-strategy.md`. Les trois nouvelles gardes
 d'hygiène des dépendances vérifiées dans le code : **knip** (step « Dependency check (knip) », job
-`frontend`, `ci.yml:65-67`, script `lint:deps` → `frontend/knip.json`) ne bloque que le required
+`frontend`, `ci.yml:65`, script `lint:deps` → `frontend/knip.json`) ne bloque que le required
 check `Frontend (build + unit)`, jamais `build-docker` (`frontend` hors des `needs` de
-`blocking-tests`) ; **composer-unused** (step, job `phpstan`, `ci.yml:262-263`, config
+`blocking-tests`) ; **composer-unused** (step, job `phpstan`, `ci.yml:262`, config
 `backend/composer-unused.php`) bloque `build-docker` **transitivement** (`blocking-tests` a
-`phpstan` dans ses `needs`) ; **deptry** (step, job `engine-tests`, `ci.yml:881-882`, config
+`phpstan` dans ses `needs`) ; **deptry** (step, job `engine-tests`, `ci.yml:1017-1018`, config
 `[tool.deptry]` de `engine/pyproject.toml`) bloque `build-docker` **directement** (`engine-tests`
 est dans ses `needs`). `docker-compose.yml` pose `restart: unless-stopped` sur les services de dev
 durables (toujours 11 occurrences) ✓ ; **required checks de `main` re-confirmés** (`gh api

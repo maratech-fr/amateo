@@ -167,7 +167,7 @@ describe("ConstraintsPage — section Ligue (P4-272 ①)", () => {
     openLigue();
 
     // Au repos, la ligne est compacte (résumé + ✎) — on la déplie.
-    await user.click(screen.getByRole("button", { name: "Modifier" }));
+    await user.click(screen.getByRole("button", { name: /^Modifier la fenêtre/ }));
     // Le bouton reste inerte tant que rien n'a changé.
     expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
     // La ligne d'édition rend AVANT la ligne d'ajout → le premier champ « À » est le sien.
@@ -237,7 +237,7 @@ describe("ConstraintsPage — section Club (P4-272 ③)", () => {
     openClub();
     // Au repos, chaque règle CLUB porte un ✎ « Modifier » ; l'interdiction TEAM n'ajoute
     // pas de seconde ligne (une seule règle CLUB → un seul « Modifier »).
-    expect(screen.getAllByRole("button", { name: "Modifier" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /^Modifier la règle de club/ })).toHaveLength(1);
     expect(screen.queryByText(/Aucune règle de club/)).not.toBeInTheDocument();
   });
 });
@@ -290,7 +290,7 @@ describe("ConstraintsPage — section Équipes (P4-272 ④)", () => {
     expect(banRow).toHaveTextContent("SM1");
     expect(banRow).toHaveTextContent("Gymnase A");
 
-    await user.click(screen.getByRole("button", { name: "Supprimer" }));
+    await user.click(screen.getByRole("button", { name: /^Supprimer la règle/ }));
     await user.click(screen.getByRole("button", { name: "Lever l'interdiction" }));
 
     expect(deleteRule).toHaveBeenCalledWith("b1");
@@ -315,7 +315,7 @@ describe("ConstraintsPage — section Coachs (P4-272 ⑤)", () => {
     // Disposition en DEUX rangées (uniformité PR 7/7) : l'entraîneur est en rangée 1 et « Indisponible de »
     // en rangée 2 — on scope au bloc d'ajout ENTIER (bordure pointillée), pas au seul parent du bouton.
     const addRow = screen.getByRole("button", { name: "Ajouter" }).closest(".border-dashed") as HTMLElement;
-    await user.selectOptions(within(addRow).getByLabelText("Entraîneur"), "c1");
+    await user.selectOptions(within(addRow).getByLabelText("Coach"), "c1");
     fireEvent.change(within(addRow).getByLabelText("Indisponible de (début de la plage)"), { target: { value: "14:00" } });
     await user.click(screen.getByRole("button", { name: "Ajouter" }));
 
@@ -352,7 +352,7 @@ describe("ConstraintsPage — section Coachs (P4-272 ⑤)", () => {
     coachesState.data = [coachOf("c1", "Anna", "Martin")];
     openCoachs();
     // Une seule indisponibilité (scope COACH) au repos → un seul « Modifier » (ni la règle CLUB ni l'interdiction TEAM).
-    expect(screen.getAllByRole("button", { name: "Modifier" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /^Modifier l'indisponibilité/ })).toHaveLength(1);
     expect(screen.queryByText(/Aucune indisponibilité/)).not.toBeInTheDocument();
   });
 
@@ -376,8 +376,10 @@ describe("ConstraintsPage — section Coachs (P4-272 ⑤)", () => {
     coachesState.data = [coachOf("c1", "Anna", "Martin")];
     openCoachs();
 
+    await user.click(screen.getByRole("button", { name: /^Supprimer l'indisponibilité/ }));
+    // Le bouton de ligne porte désormais un nom contextualisé (A11Y-28) ; la confirmation
+    // de la modale reste le « Supprimer » nu, désormais unique à l'écran.
     await user.click(screen.getByRole("button", { name: "Supprimer" }));
-    await user.click(screen.getAllByRole("button", { name: "Supprimer" })[1]);
 
     expect(deleteRule).toHaveBeenCalledWith("u1");
   });

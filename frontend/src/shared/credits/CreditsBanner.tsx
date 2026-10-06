@@ -2,6 +2,8 @@ import { AlertTriangle, X } from "lucide-react";
 import { useReducer } from "react";
 import { Link } from "react-router";
 
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
+
 import { useCredits } from "./useCredits";
 
 // Clé de session : on y grave le solde AU MOMENT de la fermeture. Le bandeau
@@ -34,13 +36,15 @@ export function CreditsBanner() {
 
   if (0 === credits.remaining) {
     return (
-      <div className="mb-4 flex items-center gap-2 rounded-md border border-destructive/50 bg-surface-destructive px-3 py-2 text-sm text-foreground" role="alert">
-        <AlertTriangle className="size-4 shrink-0 text-destructive" aria-hidden="true" />
-        <span className="min-w-0 flex-1">
-          Vos crédits gratuits sont épuisés. Consultez et ajustez librement — passez à une offre pour générer à nouveau.
-        </span>
-        {offersCta}
-      </div>
+      <NoticeBanner tone="destructive" role="alert" className="mb-4">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="size-4 shrink-0 text-destructive" aria-hidden="true" />
+          <span className="min-w-0 flex-1">
+            Vos crédits gratuits sont épuisés. Consultez et ajustez librement — passez à une offre pour générer à nouveau.
+          </span>
+          {offersCta}
+        </div>
+      </NoticeBanner>
     );
   }
 
@@ -55,15 +59,17 @@ export function CreditsBanner() {
   };
 
   return (
-    <div className="mb-4 flex items-center gap-2 rounded-md border border-destructive/50 bg-surface-destructive px-3 py-2 text-sm text-foreground" role="alert">
-      <AlertTriangle className="size-4 shrink-0 text-destructive" aria-hidden="true" />
-      <span className="min-w-0 flex-1">
-        Il ne vous reste que {credits.remaining} crédit{credits.remaining > 1 ? "s" : ""} gratuit{credits.remaining > 1 ? "s" : ""} — chaque génération, placement de matchs ou export en consomme un.
-      </span>
-      {offersCta}
-      <button type="button" onClick={close} aria-label="Masquer l'alerte crédits" className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground">
-        <X className="size-4" />
-      </button>
-    </div>
+    <NoticeBanner tone="destructive" role="alert" className="mb-4">
+      <div className="flex items-center gap-2">
+        <AlertTriangle className="size-4 shrink-0 text-destructive" aria-hidden="true" />
+        <span className="min-w-0 flex-1">
+          Il ne vous reste que {credits.remaining} crédit{credits.remaining > 1 ? "s" : ""} gratuit{credits.remaining > 1 ? "s" : ""} — chaque génération, placement de matchs ou export en consomme un.
+        </span>
+        {offersCta}
+        <button type="button" onClick={close} aria-label="Masquer l'alerte crédits" className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground">
+          <X className="size-4" />
+        </button>
+      </div>
+    </NoticeBanner>
   );
 }

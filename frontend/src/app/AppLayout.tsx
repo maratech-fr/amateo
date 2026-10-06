@@ -1,5 +1,5 @@
 import { Flag, LogOut, Menu as MenuIcon, Moon, Settings, Sparkles, Sun, User, ShieldCheck } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { NavLink, Outlet, useNavigation } from "react-router";
 
 import { useLogout } from "@/features/auth/queries";
@@ -50,6 +50,7 @@ export function AppLayout() {
   const mode = useThemeStore((state) => state.mode);
   const toggleMode = useThemeStore((state) => state.toggleMode);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const matchsLockReasonId = useId();
 
   return (
     <div className="min-h-screen text-foreground">
@@ -100,13 +101,24 @@ export function AppLayout() {
             {null != data?.seasonPlan?.chosenScheduleId ? (
               <NavItem to="/matchs">Matchs</NavItem>
             ) : (
-              <span
-                aria-disabled="true"
-                className="cursor-not-allowed rounded-md px-3 py-1.5 text-sm text-muted-foreground/40"
-                title="Validez le planning principal pour débloquer les matchs"
-              >
-                Matchs
-              </span>
+              // Désactivé mais DÉCOUVRABLE (A11Y-30) : focalisable (`tabIndex=0`), la raison
+              // annoncée via `aria-describedby` vers un `<span sr-only>` frère — un `<span>` muet
+              // avec seulement un `title` reste invisible au clavier/lecteur d'écran.
+              <>
+                <span
+                  role="link"
+                  aria-disabled="true"
+                  tabIndex={0}
+                  aria-describedby={matchsLockReasonId}
+                  className="cursor-not-allowed rounded-md px-3 py-1.5 text-sm text-muted-foreground/40"
+                  title="Validez le planning de saison pour débloquer les matchs"
+                >
+                  Matchs
+                </span>
+                <span id={matchsLockReasonId} className="sr-only">
+                  Validez le planning de saison pour débloquer les matchs
+                </span>
+              </>
             )}
             {/* « Boîte aux lettres » : visible seulement si le club vit à une horloge simulée
                 (P4-16), avec le compteur des e-mails interceptés. Décide elle-même (null sinon). */}

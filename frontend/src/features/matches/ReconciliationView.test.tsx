@@ -68,7 +68,7 @@ describe("ReconciliationView (PR-3b — intégration des rencontres FFBB)", () =
     renderView(apiPayload);
     const banner = screen.getByText(/Ce que la FFBB publie à cet instant/i);
     expect(banner.closest("[role='status']")).not.toBeNull(); // status, jamais alert
-    expect(screen.getByText(/Source : API FFBB/i)).toBeInTheDocument();
+    expect(screen.getByText(/Source : Canal FFBB/i)).toBeInTheDocument();
     // Le panneau d'arbitrage d'écarts (RMM-4) a disparu.
     expect(screen.queryByText(/Tranchez chaque écart/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("article")).not.toBeInTheDocument();

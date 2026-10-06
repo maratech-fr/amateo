@@ -76,6 +76,54 @@ function isExempt(rel: string, line: string): boolean {
   return EXEMPTIONS.some((e) => rel.endsWith(e.file) && e.pattern.test(line));
 }
 
+/**
+ * A11Y-25 — un TEXTE de même teinte posé sur une teinte translucide de cette teinte (`text-warning`
+ * sur `bg-warning/30`, `text-accent` sur `bg-accent/10`…) tombe sous l'AA (3,1-4,4:1 mesuré), hors de
+ * la portée d'A11Y-22 (qui vise l'opacité SUR le texte, pas une teinte de FOND). Doctrine P4-265 : le
+ * fond au repos devient une SURFACE OPAQUE (`bg-surface-<ton>`) et le texte redevient `text-foreground`.
+ * Ce garde STATIQUE rougit sur une ligne `.tsx` portant, AU REPOS (hors variante `hover:`/`focus:`…),
+ * à la fois un fond `bg-<ton>/<NN>` ET un texte `text-<ton>` de la MÊME teinte.
+ *
+ * PORTÉE : jetons de teinte `warning|accent|destructive|success`. Les lignes de COMMENTAIRE sont
+ * ignorées (elles citent le motif). Exemption : un badge d'ICÔNE décoratif (`aria-hidden`), régi par
+ * le seuil graphique 1.4.11 (≥ 3:1), pas par l'AA du texte.
+ */
+const TINT_HUES = ["warning", "accent", "destructive", "success"] as const;
+const COMMENT_LINE = /^\s*(?:\/\/|\*|\/\*|\{\/\*|\*\/)/;
+const TINT_PAIR_EXEMPTIONS: Exemption[] = [
+  {
+    file: "features/matches/FbiEntryList.tsx",
+    pattern: /bg-(?:success|warning)\/\d/,
+    reason: "badges d'ICÔNE décoratifs (aria-hidden) — seuil graphique 1.4.11 (≥ 3:1), pas du texte",
+  },
+];
+
+describe("A11Y-25 — pas de texte de même teinte sur une teinte translucide", () => {
+  it("aucune ligne ne pose, au repos, bg-<ton>/NN ET text-<ton> de la même teinte (hors icône décorative)", () => {
+    const offenders: string[] = [];
+    for (const file of tsxFiles(SRC_ROOT)) {
+      const rel = file.slice(SRC_ROOT.length + 1);
+      const lines = readFileSync(file, "utf8").split("\n");
+      lines.forEach((line, index) => {
+        if (COMMENT_LINE.test(line)) return;
+        // Tokeniser : une variante (`hover:bg-accent/10`) porte un `:` et n'est PAS un état de repos.
+        const tokens = line.split(/[\s"'`{}()]+/);
+        for (const hue of TINT_HUES) {
+          const restTint = tokens.some((t) => new RegExp(`^bg-${hue}/\\d`).test(t));
+          const restText = tokens.some((t) => t === `text-${hue}`);
+          if (restTint && restText && !TINT_PAIR_EXEMPTIONS.some((e) => rel.endsWith(e.file) && e.pattern.test(line))) {
+            offenders.push(`src/${rel}:${index + 1} → bg-${hue}/NN + text-${hue}`);
+          }
+        }
+      });
+    }
+    expect(
+      offenders,
+      "Texte de même teinte sur teinte translucide (sous AA) : poser une surface OPAQUE `bg-surface-<ton>` et un texte `text-foreground` (P4-265) ; un badge d'icône décoratif (aria-hidden) entre dans TINT_PAIR_EXEMPTIONS.",
+    ).toEqual([]);
+  });
+});
+
 describe("A11Y-22 — pas d'opacité comme dé-emphase de texte/cellule", () => {
   it("aucune classe text-<jeton>/<NN> ni opacity-[3-6]0, hors inactif ou exemption nominative", () => {
     const offenders: string[] = [];

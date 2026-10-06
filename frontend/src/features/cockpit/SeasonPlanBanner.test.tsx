@@ -82,7 +82,7 @@ describe("SeasonPlanBanner", () => {
   it("titles the strip with the plan's REAL name, not a generic label", () => {
     renderBanner();
     expect(screen.getByText("Planning de la saison 2026-2027")).toBeInTheDocument();
-    expect(screen.queryByText("Planning principal")).not.toBeInTheDocument();
+    expect(screen.queryByText("Planning de saison")).not.toBeInTheDocument();
   });
 
   it("« Ouvrir » navigates to the planning (validated socle)", async () => {

@@ -64,11 +64,11 @@ const ENGAGED_REASON = "Cette équipe joue en compétition : ses matchs sont eng
  * socle EN VIGUEUR), le nombre de séances par semaine d'une équipe EXISTANTE est une CONTRAINTE du
  * planning en vigueur — visible mais verrouillé, exactement comme les créneaux. On complète le
  * modèle (niveau, rang, mutualisation) sans rouvrir ; pour changer les séances, il faut rouvrir le
- * planning de la saison. La CRÉATION d'une équipe reste libre (son formulaire porte son propre champ,
+ * planning de saison. La CRÉATION d'une équipe reste libre (son formulaire porte son propre champ,
  * jamais verrouillé — sinon on ne pourrait plus créer d'équipe utile). Sans socle validé (onboarding,
  * ou après « Rouvrir »), rien n'est verrouillé. Cohérent avec le bandeau d'en-tête du wizard.
  */
-const SESSIONS_LOCK_HINT = "Rouvrez le planning de la saison pour modifier le nombre de séances.";
+const SESSIONS_LOCK_HINT = "Rouvrez le planning de saison pour modifier le nombre de séances.";
 
 /** A team is "competitive" unless it plays at a loisir level (or has none set). */
 const isCompetitive = (level: TeamLevel | null): boolean =>
@@ -214,7 +214,7 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
         <Button size="icon" variant="ghost" className="size-8" aria-label={`Liens de ${team.name}`} onClick={() => onOpenLinks(team)}>
           <Link2 className="size-4" />
         </Button>
-        <Button size="icon" variant="ghost" className="size-8 text-destructive" aria-label="Supprimer" disabled={engaged} onClick={() => onDelete(team)}>
+        <Button size="icon" variant="ghost" className="size-8 text-destructive" aria-label={`Supprimer l'équipe ${team.name}`} disabled={engaged} onClick={() => onDelete(team)}>
           <Trash2 className="size-4" />
         </Button>
       </div>
@@ -884,7 +884,7 @@ function TeamsEditor() {
                 // « Modifier les données du club » (socle en vigueur) : le POURQUOI, UNE fois pour la
                 // liste — chaque champ « Séances/sem » d'une équipe existante est en lecture seule.
                 <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                  Le nombre de séances par semaine fait partie du planning de la saison en vigueur : il reste visible mais verrouillé. {SESSIONS_LOCK_HINT}
+                  Le nombre de séances par semaine fait partie du planning de saison en vigueur : il reste visible mais verrouillé. {SESSIONS_LOCK_HINT}
                 </p>
               )}
               <div className="flex items-center gap-2 px-2 text-xs font-medium text-muted-foreground">

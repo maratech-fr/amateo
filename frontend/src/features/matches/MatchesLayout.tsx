@@ -84,7 +84,7 @@ export function MatchesLayout() {
         <div className="mx-auto max-w-md py-10 text-center">
           <Lock className="mx-auto mb-3 size-8 text-accent" />
           <h2 className="mb-1 text-lg font-semibold">Matchs verrouillés</h2>
-          <p className="text-sm text-muted-foreground">Validez d'abord votre planning principal (accueil → Ouvrir) pour débloquer les matchs.</p>
+          <p className="text-sm text-muted-foreground">Validez d'abord votre planning de saison (accueil → Ouvrir) pour débloquer les matchs.</p>
         </div>
       </div>
     );

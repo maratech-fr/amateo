@@ -357,7 +357,6 @@ export function WeekPickerDialog({ title, startDate, endDate, weeks, season, per
                   variant="destructive"
                   size="sm"
                   disabled={busy || block?.deleting || block?.generationInFlight}
-                  title={block?.generationInFlight ? "Une génération est en cours — attendez qu'elle finisse." : undefined}
                   onClick={() => setConfirmingSplit(true)}
                 >
                   {block?.deleting ? <Spinner className="size-4" /> : null}

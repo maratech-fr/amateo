@@ -1,4 +1,6 @@
-import { Link2, Loader2 } from "lucide-react";
+import { Link2 } from "lucide-react";
+
+import { Spinner } from "@/shared/components/ui/spinner";
 import { useEffect, useState } from "react";
 
 import { useCalendarEntry, usePeriodAnchor, useSchedulePlanForEntry } from "@/features/cockpit/queries";
@@ -267,7 +269,7 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
         </Button>
         {busy ? (
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Loader2 className="size-3 animate-spin" />
+            <Spinner className="size-3" />
             Application…
           </span>
         ) : null}

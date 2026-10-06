@@ -272,7 +272,7 @@ describe("WeekWorkbench — verrou", () => {
 describe("WeekWorkbench — avertissements & radar", () => {
   it("« planning non validé » PRIME sur « conflits non vérifiés » (ordre du ternaire)", async () => {
     renderWorkbench({ seasonPlanChosen: false, conflictsError: true });
-    expect(await screen.findByText("Le planning de la saison n'est plus validé — les conflits avec les entraînements ne sont pas évalués.")).toBeInTheDocument();
+    expect(await screen.findByText("Le planning de saison n'est plus validé — les conflits avec les entraînements ne sont pas évalués.")).toBeInTheDocument();
     expect(screen.queryByText(/Les conflits n'ont pas pu être vérifiés/)).not.toBeInTheDocument();
   });
 

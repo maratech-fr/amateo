@@ -186,7 +186,7 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
             Masquer les extérieurs
           </FilterToggle>
         </div>
-        <EmptyState icon={Inbox} title="Rien à traiter" description="Toutes les rencontres importées sont à jour. Déposez un export FBI ou vérifiez via l'API FFBB pour en apporter de nouvelles." />
+        <EmptyState icon={Inbox} title="Rien à traiter" description="Toutes les rencontres importées sont à jour. Déposez un export FBI ou vérifiez via le Canal FFBB pour en apporter de nouvelles." />
       </div>
     );
   }

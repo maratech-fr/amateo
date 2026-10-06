@@ -7,8 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui
 import { FichePage } from "@/shared/components/ui/fiche-page";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { NewPasswordFields } from "@/shared/components/ui/new-password-fields";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
+import { readFailed, readLoading } from "@/shared/lib/readState";
 import { PageHeader } from "@/shared/components/ui/page-header";
 import { PasswordInput } from "@/shared/components/ui/password-input";
 import { isPasswordValid } from "@/shared/lib/passwordPolicy";
@@ -258,9 +260,22 @@ function DangerZone({ readOnly }: { readOnly: boolean }) {
 }
 
 export function ProfilePage() {
-  const { data, isLoading } = useMe();
+  const meQuery = useMe();
+  const { data } = meQuery;
 
-  if (isLoading || !data) {
+  if (readLoading(meQuery)) {
+    return <FullPageSpinner />;
+  }
+  // UXS-09 — échec de lecture de /api/me SANS cache : « Réessayer », jamais un spinner ÉTERNEL (une
+  // erreur rendue comme « ça charge »). Patron maison readState + LoadErrorHint.
+  if (readFailed(meQuery)) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center p-6">
+        <LoadErrorHint onRetry={() => void meQuery.refetch()} />
+      </div>
+    );
+  }
+  if (!data) {
     return <FullPageSpinner />;
   }
 

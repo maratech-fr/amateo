@@ -124,7 +124,7 @@ export function IdealSlotsEditor<T extends TeamLike>({
               size="sm"
               className="w-fit"
               disabled={0 === withoutSlot.length}
-              title={0 === withoutSlot.length ? "Toutes les équipes ont un créneau idéal" : undefined}
+              disabledReason={0 === withoutSlot.length ? "Toutes les équipes ont un créneau idéal" : undefined}
               onClick={() => setAdding(true)}
             >
               <Plus className="size-4" aria-hidden="true" />
@@ -166,7 +166,7 @@ function SlotFields({
   return (
     <>
       {weekendAlternates ? (
-        <label className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
+        <label className="flex flex-col gap-0.5 text-xs text-muted-foreground">
           Semaine
           <Select aria-label={`Semaine du créneau idéal de ${teamName}`} wrapperClassName="w-36" value={week} onChange={(e) => setWeek(e.target.value as MatchWeek)}>
             <option value="A">{WEEK_LABELS.A}</option>
@@ -175,7 +175,7 @@ function SlotFields({
         </label>
       ) : null}
 
-      <label className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
+      <label className="flex flex-col gap-0.5 text-xs text-muted-foreground">
         Jour
         <Select aria-label={`Jour du créneau idéal de ${teamName}`} wrapperClassName="w-28" value={day} onChange={(e) => setDay(Number(e.target.value))}>
           {[1, 2, 3, 4, 5, 6, 7].map((d) => (
@@ -186,12 +186,12 @@ function SlotFields({
         </Select>
       </label>
 
-      <label className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
+      <label className="flex flex-col gap-0.5 text-xs text-muted-foreground">
         Heure
         <Input aria-label={`Heure du créneau idéal de ${teamName}`} type="time" className="w-28" value={time} onChange={(e) => setTime(e.target.value)} />
       </label>
 
-      <div className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
+      <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
         Gymnase (optionnel)
         <VenueSelect
           aria-label={`Gymnase du créneau idéal de ${teamName}`}
@@ -371,7 +371,7 @@ function IdealSlotAddForm<T extends TeamLike>({
 
   return (
     <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed border-border bg-card px-2 py-1.5">
-      <div className="flex min-w-32 flex-1 flex-col gap-0.5 text-[10px] text-muted-foreground">
+      <div className="flex min-w-32 flex-1 flex-col gap-0.5 text-xs text-muted-foreground">
         Équipe
         <TeamSelect aria-label="Équipe du nouveau créneau idéal" wrapperClassName="w-44" teams={teams} tiers={tiers} placeholder="Choisir une équipe…" value={teamId} onValueChange={setTeamId} />
       </div>

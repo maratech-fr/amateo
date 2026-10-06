@@ -21,7 +21,7 @@ export function useSocleValidated(): boolean {
 }
 
 /** Bulle d'info d'un bouton d'ajustement bloqué faute de socle validé. */
-export const SEASON_LOCK_TITLE = "Le planning de la saison n'est pas encore validé — validez-le pour ajuster.";
+export const SEASON_LOCK_TITLE = "Le planning de saison n'est pas encore validé — validez-le pour ajuster.";
 
 /** `undefined` si le socle est validé (pas de bulle), sinon le message de blocage. */
 export function seasonLockTitle(socleValidated: boolean): string | undefined {

@@ -319,8 +319,8 @@ describe("Wizard (integration)", () => {
 describe("mode saison, socle validé (P4-268)", () => {
   it("affiche le bandeau « le planning reste en vigueur » avec le motif du verrou", async () => {
     renderWithProviders(<WizardPage />, { route: "/wizard" });
-    expect(await screen.findByText(/Le planning de la saison reste en vigueur/)).toBeInTheDocument();
-    expect(screen.getByText(/Rouvrez le planning de la saison pour modifier les contraintes/)).toBeInTheDocument();
+    expect(await screen.findByText(/Le planning de saison reste en vigueur/)).toBeInTheDocument();
+    expect(screen.getByText(/Rouvrez le planning de saison pour modifier les contraintes/)).toBeInTheDocument();
   });
 
   it("verrouille Contraintes et Génération dans le rail (boutons désactivés)", async () => {
@@ -347,7 +347,7 @@ describe("mode saison, socle validé (P4-268)", () => {
     socleChosen = null;
     renderWithProviders(<WizardPage />, { route: "/wizard" });
     await screen.findByDisplayValue("SF1");
-    expect(screen.queryByText(/Le planning de la saison reste en vigueur/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Le planning de saison reste en vigueur/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Contraintes/ })).toBeEnabled();
   });
 
@@ -428,5 +428,17 @@ describe("Wizard — le voile s'arme au GESTE, pas au montage (NR)", () => {
     await user.click(screen.getByRole("button", { name: "Suivant" }));
     // L'armement est SYNCHRONE dans le handler du bouton (armNavTransition avant next()).
     await waitFor(() => expect(useNavTransition.getState().token).toBeGreaterThan(before));
+  });
+});
+
+describe("Wizard — échec de lecture fondatrice jamais rendu comme une étape vide (UXS-10)", () => {
+  it("une lecture fondatrice en échec → porte unique « Le chargement a échoué » (jamais l'étape Équipes à zéro)", async () => {
+    vi.mocked(api.listTeams).mockRejectedValue(new Error("boom"));
+    renderWithProviders(<WizardPage />, { route: "/wizard" });
+
+    expect(await screen.findByText("Le chargement a échoué.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Réessayer" })).toBeInTheDocument();
+    // L'étape Équipes ne s'affiche PAS (pas de grille d'équipe invitant à re-saisir).
+    expect(screen.queryByDisplayValue("SF1")).not.toBeInTheDocument();
   });
 });

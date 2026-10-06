@@ -73,10 +73,17 @@ interface RadarPanelProps {
   zone: string | null;
   /** Holidays query still in flight — don't flash "zone à renseigner" meanwhile. */
   zoneLoading?: boolean;
+  /** UXS-09 — la lecture des entrées calendaires (prop `entries`) a échoué SANS cache : le panneau
+   *  la reçoit vide, et DOIT dire l'échec plutôt que « Rien à l'horizon » (doctrine `readState`). */
+  entriesFailed?: boolean;
+  /** UXS-09 — cette même lecture est en PREMIER chargement : squelette, jamais « Tout roule ». */
+  entriesLoading?: boolean;
+  /** UXS-09 — les fériés du radar (prop `publicHolidays`) ont échoué : dire l'échec, pas « Tout roule ». */
+  publicHolidaysFailed?: boolean;
 }
 
 /** The manager's to-do, sorted by urgency. "Adapter" opens the wizard in period mode (palier B). */
-export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLoading = false, zone, zoneLoading = false }: RadarPanelProps) {
+export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLoading = false, zone, zoneLoading = false, entriesFailed = false, entriesLoading = false, publicHolidaysFailed = false }: RadarPanelProps) {
   const today = todayISO();
   const navigate = useNavigate();
   const startPeriodMode = useWizardStore((s) => s.startPeriodMode);
@@ -407,10 +414,16 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
   // inconnu — squelette, jamais un « Tout roule » suivi d'une carte qui surgit.
   const holidayImpactLoading = holidaysInHorizon.length > 0 && null !== seasonChosenId && seasonSlotsQuery.isLoading;
   const stillLoading =
-    readLoading(plansQuery) || readLoading(schedulesQuery) || readLoading(campaignsQuery) || closureImpactsPending || zoneLoading || publicHolidaysLoading || holidayImpactLoading || readLoading(unavailabilitiesQuery);
-  const readsFailed = readFailed(plansQuery) || readFailed(schedulesQuery) || readFailed(campaignsQuery);
+    readLoading(plansQuery) || readLoading(schedulesQuery) || readLoading(campaignsQuery) || closureImpactsPending || zoneLoading || publicHolidaysLoading || holidayImpactLoading || readLoading(unavailabilitiesQuery) || entriesLoading;
+  // UXS-09 — l'échec de la lecture des entrées (ou des fériés) parvient au panneau par prop : une
+  // liste `entries`/`publicHolidays` vide est alors un ÉCHEC, pas « rien à traiter ».
+  const readsFailed = readFailed(plansQuery) || readFailed(schedulesQuery) || readFailed(campaignsQuery) || entriesFailed || publicHolidaysFailed;
 
   const isEmpty =
+    // UXS-09 — « Tout roule » n'est JAMAIS vrai pendant un chargement ni sur un échec : une liste
+    // dérivée d'entrées vides pour cause de panne n'est pas un horizon dégagé (doctrine `readState`).
+    !stillLoading &&
+    !readsFailed &&
     inProgressEntries.length === 0 &&
     orphanWeekChildren.length === 0 &&
     splitMothers.length === 0 &&
@@ -456,8 +469,8 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
           <div className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-destructive">Planning de la saison à valider</p>
-              <p className="text-xs text-muted-foreground">Validez le planning principal pour débloquer les ajustements.</p>
+              <p className="text-sm font-medium text-destructive">Planning de saison à valider</p>
+              <p className="text-xs text-muted-foreground">Validez le planning de saison pour débloquer les ajustements.</p>
             </div>
           </div>
           <div className="flex justify-end">
@@ -485,7 +498,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
         const locked = !socleValidated && !startedEntryIds.has(e.id);
         return (
           <RadarCard key={`wip-${e.id}`} icon={<Pencil className="size-4 text-accent" />} title={e.title} detail="Planning en cours — à finaliser">
-            <Button variant="outline" size="sm" disabled={locked} title={locked ? lockTitle : undefined} onClick={() => adapt(e.id)}>
+            <Button variant="outline" size="sm" disabled={locked} disabledReason={locked ? lockTitle : undefined} onClick={() => adapt(e.id)}>
               Reprendre
             </Button>
           </RadarCard>
@@ -497,7 +510,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
         const locked = !socleValidated && !startedEntryIds.has(e.id);
         return (
           <RadarCard key={`orphan-${e.id}`} icon={<Pencil className="size-4 text-accent" />} title={e.title} detail="Planning de semaine à finaliser">
-            <Button variant="outline" size="sm" disabled={locked} title={locked ? lockTitle : undefined} onClick={() => adapt(e.id)}>
+            <Button variant="outline" size="sm" disabled={locked} disabledReason={locked ? lockTitle : undefined} onClick={() => adapt(e.id)}>
               Reprendre
             </Button>
           </RadarCard>
@@ -561,7 +574,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
                     variant="outline"
                     size="sm"
                     disabled={createWeekChildren.isPending || !socleValidated}
-                    title={lockTitle}
+                    disabledReason={!socleValidated ? lockTitle : undefined}
                     onClick={() => createOneWeek(m, group.weeks[0])}
                   >
                     {`+ sem. du ${frDateShort(group.startDate)}`}
@@ -580,7 +593,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
                   variant={null !== activeId ? "ghost" : "outline"}
                   size="sm"
                   disabled={chipLocked}
-                  title={chipLocked ? lockTitle : undefined}
+                  disabledReason={chipLocked ? lockTitle : undefined}
                   onClick={() => (null !== activeId ? viewOverlay(activeId) : adapt(child.id))}
                 >
                   {`sem. du ${frDateShort(child.startDate)}${span} ${null !== activeId ? "✅ validée" : wip ? "· en cours" : "· à faire"}`}
@@ -623,7 +636,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
                 Voir le planning
               </Button>
             ) : entry ? (
-              <Button variant="outline" size="sm" disabled={!socleValidated} title={lockTitle} onClick={() => requestAdapt(entry)}>
+              <Button variant="outline" size="sm" disabled={!socleValidated} disabledReason={!socleValidated ? lockTitle : undefined} onClick={() => requestAdapt(entry)}>
                 Adapter
               </Button>
             ) : (
@@ -631,7 +644,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
                 variant="outline"
                 size="sm"
                 disabled={createHoliday.isPending || null === seasonClamp(h) || !socleValidated}
-                title={lockTitle}
+                disabledReason={!socleValidated ? lockTitle : undefined}
                 onClick={() => {
                   const range = seasonClamp(h);
                   if (null === range) {
@@ -700,7 +713,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
               variant="outline"
               size="sm"
               disabled={!socleValidated || createClosureFromUnavailability.isPending}
-              title={lockTitle}
+              disabledReason={!socleValidated ? lockTitle : undefined}
               onClick={() => {
                 const title = `${venueNameOf(u.venueId)} indisponible${null !== u.label ? ` (${u.label})` : ""}`;
                 const params = { title, venueId: u.venueId, startDate: u.startDate, endDate: u.endDate };
@@ -859,7 +872,7 @@ function ClosureRadarItem({ entry, activeScheduleId, staleness, inProgress = fal
       ) : (
         // Gating seulement sur une fermeture À DÉMARRER (« Adapter ») ; « Reprendre »
         // (travail en cours) reste actif même si la saison est rouverte.
-        <Button variant="outline" size="sm" disabled={!inProgress && seasonUnvalidated} title={!inProgress ? adaptTitle : undefined} onClick={onAdapt}>
+        <Button variant="outline" size="sm" disabled={!inProgress && seasonUnvalidated} disabledReason={!inProgress && seasonUnvalidated ? adaptTitle : undefined} onClick={onAdapt}>
           {inProgress ? "Reprendre" : "Adapter"}
         </Button>
       )}

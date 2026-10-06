@@ -1,4 +1,6 @@
-import { AlertTriangle, CheckCircle2, Loader2, MapPinOff } from "lucide-react";
+import { AlertTriangle, CheckCircle2, MapPinOff } from "lucide-react";
+
+import { Spinner } from "@/shared/components/ui/spinner";
 
 import { Button } from "@/shared/components/ui/button";
 import { DeclaredFixturesNotice } from "@/shared/components/ui/declared-fixtures-notice";
@@ -83,7 +85,7 @@ export function ValidateDialog({ hasAlerts, siblingCount, busy, orphan, onConfir
           grisé muet, jamais un impact inconnu présenté comme vide). */}
       {orphan.loading ? (
         <p aria-live="polite" className="mt-3 flex items-center gap-1.5 text-sm text-muted-foreground">
-          <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+          <Spinner className="size-3.5" />
           Vérification des matchs concernés…
         </p>
       ) : null}

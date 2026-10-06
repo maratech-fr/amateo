@@ -234,7 +234,8 @@ describe("RadarPanel", () => {
     schedulesData = []; // 0 version
     renderRadar({ entries: [closure({ id: "h1", periodType: "holiday", title: "Vacances de Noël", startDate: todayISO(), endDate: addDays(todayISO(), 5) })] });
 
-    expect(screen.getByRole("button", { name: "Reprendre" })).toBeDisabled();
+    // Désactivé mais DÉCOUVRABLE (A11Y-30, `disabledReason`) : aria-disabled, pas le `disabled` natif.
+    expect(screen.getByRole("button", { name: "Reprendre" })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("a CLOSURE with an in-progress plan keeps its rich impact card (sessions count) with « Reprendre »", () => {
@@ -787,8 +788,9 @@ describe("RadarPanel", () => {
     meData = { seasonPlan: { chosenScheduleId: null } };
     renderRadar({ holidays: [holiday] });
 
-    expect(screen.getByText("Planning de la saison à valider")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Adapter" })).toBeDisabled();
+    expect(screen.getByText("Planning de saison à valider")).toBeInTheDocument();
+    // Désactivé mais DÉCOUVRABLE (A11Y-30, `disabledReason`) : aria-disabled, pas le `disabled` natif.
+    expect(screen.getByRole("button", { name: "Adapter" })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("counts the sessions to replace on a closure without overlay", () => {
@@ -1186,5 +1188,33 @@ describe("RadarPanel", () => {
       expect(messages.some((m) => /planning qui couvre ces dates/i.test(m))).toBe(true);
       expect(messages.some((m) => /planning des vacances/i.test(m))).toBe(false);
     });
+  });
+});
+
+describe("RadarPanel — échec de lecture jamais « Tout roule » (UXS-09)", () => {
+  // L'horloge n'importe pas ici : on exerce les drapeaux d'échec passés en prop par le cockpit.
+  beforeEach(() => setTodayOverride("2998-12-15"));
+  afterEach(() => setTodayOverride(null));
+
+  it("entriesFailed → bandeau « liste peut-être incomplète », jamais « Rien à l'horizon »", () => {
+    renderRadar({ entriesFailed: true });
+
+    expect(screen.getByText(/Impossible de charger les éléments à traiter/)).toBeInTheDocument();
+    expect(screen.queryByText("Rien à l'horizon. Tout roule.")).not.toBeInTheDocument();
+  });
+
+  it("publicHolidaysFailed → bandeau d'échec, jamais « Rien à l'horizon »", () => {
+    renderRadar({ publicHolidaysFailed: true });
+
+    expect(screen.getByText(/Impossible de charger les éléments à traiter/)).toBeInTheDocument();
+    expect(screen.queryByText("Rien à l'horizon. Tout roule.")).not.toBeInTheDocument();
+  });
+
+  it("entriesLoading → squelette, ni « Rien à l'horizon » ni bandeau d'échec", () => {
+    renderRadar({ entriesLoading: true });
+
+    expect(screen.getByText("Chargement des éléments à traiter…")).toBeInTheDocument();
+    expect(screen.queryByText("Rien à l'horizon. Tout roule.")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Impossible de charger les éléments à traiter/)).not.toBeInTheDocument();
   });
 });

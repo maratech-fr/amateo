@@ -711,12 +711,12 @@ describe("PlanningPage (integration)", () => {
     renderWithProviders(<PlanningPage />);
     // Ouvrir le détail d'un créneau…
     await user.click(await screen.findByText("U11"));
-    expect(await screen.findByText(/90 min/)).toBeInTheDocument();
+    expect(await screen.findByText(/1h30/)).toBeInTheDocument();
 
     // …puis passer en vue jour : le détail se referme (selectedSlotId remis à zéro par
     // setViewMode, comme pour tout changement de vue), la grille reste affichée.
     await user.click(screen.getByRole("button", { name: "Par jour" }));
-    expect(screen.queryByText(/90 min/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/1h30/)).not.toBeInTheDocument();
     expect(await screen.findByText("U11")).toBeInTheDocument();
     // Les gymnases restent en colonnes (au moins un en-tête « Gymnase Alpha »).
     expect((await screen.findAllByText("Gymnase Alpha")).length).toBeGreaterThan(0);
@@ -728,7 +728,7 @@ describe("PlanningPage (integration)", () => {
     await user.click(await screen.findByText("U11"));
 
     // Le panneau ouvert affiche la sous-ligne compacte (B1) : catégorie · durée · Coach.
-    expect(await screen.findByText(/90 min/)).toBeInTheDocument();
+    expect(await screen.findByText(/1h30/)).toBeInTheDocument();
   });
 
   // Retour fondateur : « quand je sélectionne un créneau, réduire automatiquement le panel de
@@ -749,7 +749,7 @@ describe("PlanningPage (integration)", () => {
 
     // Sélection d'un créneau → le PANNEAU se replie (plus de heading), le détail prend la place…
     await user.click(screen.getByText("U11"));
-    expect(await screen.findByText(/90 min/)).toBeInTheDocument();
+    expect(await screen.findByText(/1h30/)).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Diagnostics du système" })).not.toBeInTheDocument();
     // …mais la BARRE repliée garde l'essentiel VISIBLE : le compte et la sévérité la plus haute.
     const bar = screen.getByRole("button", { name: /Diagnostics du système/ });
@@ -770,7 +770,7 @@ describe("PlanningPage (integration)", () => {
     expect(await screen.findByRole("heading", { name: "Diagnostics du système" })).toBeInTheDocument();
 
     await user.click(screen.getByText("U11"));
-    expect(await screen.findByText(/90 min/)).toBeInTheDocument();
+    expect(await screen.findByText(/1h30/)).toBeInTheDocument();
     // Plus d'exception : le panneau se replie même avec une ERREUR…
     expect(screen.queryByRole("heading", { name: "Diagnostics du système" })).not.toBeInTheDocument();
     // …mais l'erreur reste SIGNALÉE dans la barre (rien n'est enterré, elle reste atteignable).
@@ -809,7 +809,7 @@ describe("PlanningPage (integration)", () => {
     await user.click(screen.getByText("Conflit ciblé."));
 
     // Le créneau fautif est SÉLECTIONNÉ → SlotDetail s'ouvre…
-    expect(await screen.findByText(/90 min/)).toBeInTheDocument();
+    expect(await screen.findByText(/1h30/)).toBeInTheDocument();
     // …et sa cellule (data-slot-id) a été amenée à l'écran.
     expect(scrolled.some((el) => "slot-1" === el.getAttribute("data-slot-id"))).toBe(true);
 
@@ -2455,5 +2455,24 @@ describe("PlanningPage — version antérieure (P4-98)", () => {
     expect(reopenSchedule).not.toHaveBeenCalled();
     // …et aucune redirection (jamais de navigate automatique).
     expect(navigate).not.toHaveBeenCalled();
+  });
+});
+
+describe("PlanningPage — échec de lecture jamais rendu comme du vide (UXS-09)", () => {
+  it("schedules en échec → « Le chargement a échoué » (jamais « Aucun planning » qui renvoie au wizard)", async () => {
+    vi.mocked(listSchedules).mockRejectedValue(new Error("boom"));
+    renderWithProviders(<PlanningPage />);
+
+    expect(await screen.findByText("Le chargement a échoué.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Réessayer" })).toBeInTheDocument();
+    expect(screen.queryByText("Aucun planning")).not.toBeInTheDocument();
+  });
+
+  it("slots en échec → « Le chargement a échoué » à la place de « Planning vide »", async () => {
+    vi.mocked(getSlots).mockRejectedValue(new Error("boom"));
+    renderWithProviders(<PlanningPage />);
+
+    expect(await screen.findByText("Le chargement a échoué.")).toBeInTheDocument();
+    expect(screen.queryByText("Planning vide")).not.toBeInTheDocument();
   });
 });

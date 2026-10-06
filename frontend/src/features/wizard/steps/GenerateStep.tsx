@@ -290,7 +290,7 @@ export function GenerateStep() {
     <div>
       <p className="mb-4 text-sm text-muted-foreground">
         {periodMode
-          ? "Générez le planning de cette période. Il s'applique par-dessus le planning principal sur la fenêtre, sans le modifier."
+          ? "Générez le planning de cette période. Il s'applique par-dessus le planning de saison sur la fenêtre, sans le modifier."
           : "Le système place vos équipes dans les créneaux selon vos règles. Lancez, puis laissez tourner."}
       </p>
 
@@ -326,8 +326,8 @@ export function GenerateStep() {
                   // vouvoyé CETTE branche mais laissé sa voisine juste en dessous au tutoiement :
                   // le lecteur changeait d'interlocuteur selon le type d'échec. C'était le dernier
                   // tutoiement visible du produit (hors console fondateur).
-                  ? "Le service met trop de temps à répondre. Vérifiez que le moteur tourne, puis réessayez."
-                  : (launchReason ?? ("FAILED" === status && failedDiagnostics.isLoading ? "Lecture du motif de l'échec…" : (launchReason ?? "Une erreur est survenue (données ou moteur indisponible). Vous pouvez réessayer.")))}
+                  ? "La génération met trop de temps à répondre. Réessayez dans un instant."
+                  : (launchReason ?? ("FAILED" === status && failedDiagnostics.isLoading ? "Lecture du motif de l'échec…" : (launchReason ?? "Une erreur est survenue. Vous pouvez réessayer.")))}
               </p>
             )}
           </div>
@@ -352,7 +352,7 @@ export function GenerateStep() {
             <NoticeBanner
               tone="accent"
               className="max-w-sm"
-              message="Premier planning secondaire : il s'appuie sur votre planning principal, qui devient la référence — le modifier ensuite supprimera les plannings secondaires (après confirmation)."
+              message="Premier planning secondaire : il s'appuie sur votre planning de saison, qui devient la référence — le modifier ensuite supprimera les plannings secondaires (après confirmation)."
             />
           ) : null}
           <BlockerList blockers={blockers} className="max-w-md text-left" />

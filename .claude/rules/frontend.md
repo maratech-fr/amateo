@@ -41,7 +41,10 @@ paths:
   Les maisons uniques (extensible) : **chargement** — `FullPageSpinner` (chargement de PAGE,
   standard `cockpit`/`planning`/`profile`/`club`), `Spinner` (inline, dans un bouton),
   `EmptyHint`/`EmptyBlock`/`EmptyState` (vide), `LoadErrorHint`+`readState` (échec de lecture avec
-  retry), `ActionVeil` (voile de navigation/sauvegarde global — `app/ActionVeil.tsx`) ;
+  retry — **jamais rendre un échec comme du vide** ; gardé contre la Nᵉ récidive par
+  `frontend/src/test/readStateGuard.test.ts`, liste NOMINATIVE des pages de route de `app/routes.tsx`
+  référençant le patron + exemptions motivées + complétude, patron `pageHeaderGuard.test.ts`,
+  UXS-09/10), `ActionVeil` (voile de navigation/sauvegarde global — `app/ActionVeil.tsx`) ;
   **primitives** `shared/components/ui/*` (Button, Modal, Select, Input, Card, StepRail, Menu APG,
   **Listbox** — sélecteur riche à choix unique (couleur/icône, compte, sous-ligne, option
   désactivée motivée), patron APG, P4-164 PR-1, maison des sélecteurs qui dépassent le `<select>`
@@ -61,8 +64,12 @@ paths:
   filtre `aria-pressed` bordée à compteur (icône optionnelle) — consommée par les chips
   « Familles » (Calendrier + Conflits) et « Traitement » (Conflits) de `features/matches`.
   N'absorbe QUE ce contrat exact : ni les interrupteurs `role="switch"` (sémantique a11y
-  différente), ni les contrôles SEGMENTÉS (bordure portée par le conteneur, pas de compteur —
-  types de compétition, période, « Regrouper par ») ; `snapshotFile`
+  différente), ni les contrôles SEGMENTÉS — ceux-ci ont depuis leur propre maison **`SegmentedControl`**
+  (`shared/components/ui/segmented-control.tsx`, UXC-28, audit 2026-10-03) : rangée de boutons nus
+  dans UN conteneur bordé (`role="group"` nommé, segments `aria-pressed`, 36 px), union discriminée
+  `mode="single"|"multiple"`, compteur par segment optionnel — vues planning, axe équipe/coach/
+  gymnase, « Période », pivot « Regrouper par », filtre adversaires, « Types ». Gardé par
+  `frontend/src/test/segmentedControlGuard.test.ts` (un conteneur `bg-card`+`p-0.5` fait main rougit) ; `snapshotFile`
   (`shared/lib/fileSnapshot.ts`, P3-7) est la maison unique du snapshot mémoire d'un `File` avant
   envoi — ferme le piège `ERR_UPLOAD_FILE_CHANGED` (fichier relu sur disque à l'envoi, déguisé en
   « Problème de connexion ») — consommée par `TeamsImportModal.tsx` et `ImportFbiDialog.tsx` ;
@@ -116,10 +123,11 @@ paths:
 - 🔴 **Tout bandeau d'information passe par `NoticeBanner`** (`shared/components/ui/notice-banner.tsx`
   — fond opaque `bg-surface-<ton>`, bordure, rayon, padding, texte `text-foreground`), jamais une
   boîte faite main (série « uniformité des écrans », PR 4/7, 2026-10-01 — les bandeaux de
-  Planning/Matchs/Assistant/Cockpit ont été ramenés dessus). Gardé par
-  `frontend/src/test/bannerPrimitiveGuard.test.ts` (grep statique `src/features/**` hors console
-  admin : un `role="status"`/`"alert"` + une classe de bordure de ton sur la MÊME ligne hors
-  `NoticeBanner` rougit).
+  Planning/Matchs/Assistant/Cockpit ont été ramenés dessus ; portée étendue à `src/shared/**`
+  au reliquat UX de l'audit 2026-10-03, UXC-27 — `CreditsBanner`). Gardé par
+  `frontend/src/test/bannerPrimitiveGuard.test.ts` (grep statique `src/features/**` ET
+  `src/shared/**` hors console admin : un `role="status"`/`"alert"` + une classe de bordure de
+  ton sur la MÊME ligne hors `NoticeBanner` rougit).
 - 🔴 **Toute pastille d'état passe par `StatusPill`** (`shared/components/ui/badge.tsx` — icône +
   texte, bordure + fond teinté, variantes warning/accent/accent-solid/neutral), jamais un
   `<span>` arrondi recodé à la main (série « uniformité des écrans », PR 5/7, 2026-10-01 —
@@ -137,6 +145,19 @@ paths:
   interactives, relèvent de `FilterChip`), `DriftBanner` (bouton-bascule, pas une pastille d'état).
   Hors portée, délibérément : les quatre indices de chargement restés en TEXTE (`ClubPage` §
   statistiques et § offres, `PeriodTeams`, `PeriodVenues`).
+- 🔴 **Le toast d'erreur d'une mutation vit UNE fois, au NIVEAU HOOK** (`useMutation({ onError })`),
+  jamais passé à `mutate(vars, { onError })` (FRT-38, 2026-10-06). Le filet global
+  `MutationCache.onError` (`shared/lib/queryClient.ts`) ne se DÉSARME que sur
+  `mutation.options.onError` (niveau hook) : un `onError` de niveau `mutate()` ne le voit pas, donc
+  un toast d'erreur posé là en fait DEUX (ou double le toast du hook). Gardé par
+  `frontend/src/test/mutateOnErrorToastGuard.test.ts` (grep statique `src/features/**`+`src/app/**` :
+  un `onError` passé à `.mutate(`/`.mutateAsync(` dont le CORPS référence `toast.` rougit — un
+  `onError` qui ne fait que poser de l'état local, p.ex. `setError`, ou appelle un handler NOMMÉ
+  n'est PAS attrapé). Exemptions nominatives motivées : `useRetouchGestures.ts` (patron
+  split-feedback documenté `planning/queries.ts:51-74` — le hook TAIT les erreurs MÉTIER pour que la
+  page les toaste avec CONTEXTE : noms d'équipes, timeout nommé, surlignage ; le reliquat de double
+  toast PARTIEL sur transport = P4-306) et `AdminDashboardPage.tsx` (messages contextuels runtime
+  `job.label`/`club.name`). Les messages SERVEUR passent par `errorMessage()` (patron UXS-13).
 - 🔴 **La largeur d'un sélecteur passe par `wrapperClassName`, jamais `className`** (`Select`,
   `Listbox`, `TeamSelect`, `VenueSelect` — PR 3/7 de la série « uniformité des sélecteurs »,
   2026-10-01) : le contrôle intérieur (`<select>`/trigger) est toujours `w-full`, une classe
@@ -157,8 +178,10 @@ paths:
   `FIELD_CLASS` (`shared/components/ui/field.ts`), le foyer unique de la classe de champ natif,
   même apparence que `Input` sans la hauteur (multi-lignes). Gardé par ESLint
   (`frontend/eslint.config.js`, `no-restricted-syntax` sur `src/features/**`/`src/app/**`, admin
-  exempté) : une classe `h-8`/`h-10`/`h-11` littérale en `className` sur
-  `Button`/`Input`/`Select`/`Listbox`/`TeamSelect`/`VenueSelect` rougit — même limite que la règle
+  exempté) : une classe `h-7`/`h-8`/`h-10`/`h-11` littérale en `className` sur
+  `Button`/`Input`/`Select`/`Listbox`/`TeamSelect`/`VenueSelect` rougit (`h-7` = 28 px ajouté au
+  reliquat UXC-29 de l'audit 2026-10-03 : les puces de filtre et segments étaient sous la norme) —
+  même limite que la règle
   de largeur (PR 3/7) : un `cn(...)`/une variable/un template literal n'est pas couvert par l'AST,
   reste à la revue. **Ligne d'ajout/édition dont l'action ne tient pas sur une ligne à 1280 px →
   DEUX rangées structurées** (jamais un bouton d'action orphelin tombé par `flex-wrap`) : rangée 1
@@ -167,6 +190,22 @@ paths:
   décision fondateur 2026-10-01. NR e2e `tests/e2e/layout-inline-rows.spec.ts` (deux rangées à
   36 px, `Type` au-dessus, 0 débordement horizontal) ; le builder de contraintes du wizard
   (`ConstraintsStep`) partage le même risque et n'a pas encore été repris (P4-283).
+- 🔴 **La raison d'une désactivation doit être DÉCOUVRABLE au clavier/lecteur d'écran, pas qu'au
+  survol** (A11Y-30, audit 2026-10-03) : un `<button disabled>` natif sort de l'ordre de tabulation,
+  son `title`/`aria-describedby` ne sont jamais annoncés. Quand un bouton est désactivé POUR UN
+  MOTIF, passer la raison en **prop `disabledReason`** de `Button` (`shared/components/ui/button.tsx`) —
+  il rend alors `aria-disabled` (focalisable), pose `title` (souris) + `aria-describedby`→`<span
+  sr-only>` (clavier/AT), et neutralise le clic ; garder `disabled` à côté pour la condition. Un
+  `title={cond ? raison : undefined}` sur un bouton `disabled` est le vieil anti-patron. Exception
+  LÉGITIME : quand la raison est déjà en CLAIR à côté (texte visible — `WeekPickerDialog`), ne PAS
+  doubler avec `disabledReason`. Hors portée du mécanisme : `<select>`/`<option>`/`<input>` désactivés
+  (pas de `disabledReason`), à traiter autrement. Pas de garde automatique fiable (un `title`
+  d'action n'est pas une raison) — la revue tient la règle.
+- 🔴 **Un bouton d'action en LISTE porte un nom accessible CONTEXTUALISÉ, jamais un verbe nu
+  répété** (A11Y-28, audit 2026-10-03) : `aria-label={`Supprimer l'équipe ${name}`}`, pas
+  `aria-label="Supprimer"` dix fois de suite (un lecteur d'écran ne saurait pas laquelle). Gardé par
+  `frontend/src/test/genericAccessibleNameGuard.test.ts` (`aria-label` littéral « Supprimer »/
+  « Modifier »/« Retirer »/« Éditer » nu dans `features/**`/`app/**` rougit).
 - 🔴 **Tout choix de jours passe par `DayMultiPicker`, tout libellé de jour par `shared/lib/days.ts`**
   (`shared/components/ui/day-multi-picker.tsx` — PR 6/7 série « uniformité des écrans »,
   2026-10-01) : maison unique du sélecteur multi-jours (patron APG toggle button, `<fieldset>`/

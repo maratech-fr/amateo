@@ -39,7 +39,7 @@ async function fillValidForm(user: ReturnType<typeof userEvent.setup>, email = "
   await user.type(screen.getByLabelText("Email"), email);
   await user.type(screen.getByLabelText("Mot de passe"), "Sup3rStrongPwd!");
   await user.type(screen.getByLabelText("Confirmer le mot de passe"), "Sup3rStrongPwd!");
-  await user.type(screen.getByLabelText(/code ara/i), "BCCL0123");
+  await user.type(screen.getByLabelText(/code club ffbb/i), "BCCL0123");
   await user.type(screen.getByLabelText(/nom du club/i), "Basket Club");
   await user.click(screen.getByRole("checkbox", { name: /j'accepte/i }));
 }
@@ -79,7 +79,7 @@ describe("RegisterPage", () => {
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.getByLabelText("Mot de passe")).toBeInTheDocument();
     expect(screen.getByLabelText("Confirmer le mot de passe")).toBeInTheDocument();
-    expect(screen.getByLabelText(/code ara/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/code club ffbb/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /créer le compte/i })).toBeInTheDocument();
   });
 
@@ -101,7 +101,7 @@ describe("RegisterPage", () => {
     await user.type(screen.getByLabelText("Email"), "new@club.fr");
     await user.type(screen.getByLabelText("Mot de passe"), "Sup3rStrongPwd!");
     await user.type(screen.getByLabelText("Confirmer le mot de passe"), "Sup3rStrongPwd?");
-    await user.type(screen.getByLabelText(/code ara/i), "BCCL0123");
+    await user.type(screen.getByLabelText(/code club ffbb/i), "BCCL0123");
     await user.click(screen.getByRole("checkbox", { name: /j'accepte/i }));
     await user.click(screen.getByRole("button", { name: /créer le compte/i }));
     // Non-correspondance signalée sous le champ (NewPasswordFields) ; submit bloqué.
@@ -122,7 +122,7 @@ describe("RegisterPage", () => {
     await user.type(screen.getByLabelText("Email"), "new@club.fr");
     await user.type(screen.getByLabelText("Mot de passe"), "Sup3rStrongPwd!");
     await user.type(screen.getByLabelText("Confirmer le mot de passe"), "Sup3rStrongPwd!");
-    await user.type(screen.getByLabelText(/code ara/i), "BCCL0123");
+    await user.type(screen.getByLabelText(/code club ffbb/i), "BCCL0123");
     await user.type(screen.getByLabelText(/nom du club/i), "Basket Club");
     // RGPD : soumettre sans cocher affiche une erreur claire, puis cocher débloque.
     await user.click(screen.getByRole("button", { name: /créer le compte/i }));

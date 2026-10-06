@@ -36,6 +36,24 @@ const HELPER_FILES = ["shared/lib/time.ts", "shared/lib/duration.ts"];
 // Idéalement VIDE : si vous en ajoutez une, dites pourquoi le foyer ne convient pas.
 const EXEMPTIONS: { file: string; reason: string }[] = [];
 
+// UXC-30 — une DURÉE DE CRÉNEAU affichée passe par `formatDuration` (« 30 min », « 1h30 »), jamais
+// un `${minutes} min` fabriqué à la main. Mais « N min » reste la forme LÉGITIME d'une durée de
+// TRAJET (estimation aller approchée) ou de LATENCE/ÉCOULÉE — même famille que `venueStats.formatHours`
+// et les métriques de la console déjà carve-out ci-dessus, et hors de la norme de durée de créneau
+// (changer « 90 min » de trajet en « 1h30 » serait un changement de sens, pas d'uniformité). Ces
+// fichiers sont donc exemptés du SEUL motif « N min ».
+const MIN_PATTERN = "durée de créneau collée à « min » (`} min`)";
+const MIN_FAMILY_EXEMPT = [
+  "features/matches/OpponentsPage.tsx",
+  "features/matches/AwayTravelChip.tsx",
+  "features/matches/AwayFixtureCard.tsx",
+  "features/matches/lib/awayColumn.ts",
+  "features/matches/lib/awayTravelTitle.ts",
+  "features/wizard/steps/TravelMatrixModal.tsx",
+  "features/admin/AdminDashboardPage.tsx",
+  "shared/components/ui/dev-incident-details.tsx",
+];
+
 /** Les motifs interdits d'heure/durée fabriquée à la main. */
 const BANNED: { name: string; re: RegExp }[] = [
   // `${hour}h`, `${hour}h${m}` — l'heure/durée collée au caractère « h » (frClock, compact main).
@@ -48,6 +66,10 @@ const BANNED: { name: string; re: RegExp }[] = [
   { name: 'remplacement « : » → « h » (`replace(":", "h")`)', re: /replace\(\s*["'`]:["'`]\s*,\s*["'`]h["'`]\s*\)/ },
   // `${h} h ${m}` — la forme AÉRÉE avec minutes (feu `formatDurationMinutes`).
   { name: "durée aérée avec minutes (`} h ${`)", re: /\}\s+h\s+\$\{/ },
+  // `${minutes} min` / `{slot.durationMinutes} min)` — une durée de créneau collée à « min » à la
+  // main (UXC-30). La négation `(?![A-Za-z=])` épargne l'attribut HTML `min={…}` (borne d'un
+  // `<input type="date"/number">`) et le mot `minutes`.
+  { name: MIN_PATTERN, re: /\}\s*min(?![A-Za-z=])/ },
 ];
 
 function isExcluded(rel: string): boolean {
@@ -79,6 +101,8 @@ describe("Format horaire/durée unique — garde statique", () => {
       'label + "h"',
       'toHourMinute(t).replace(":", "h")',
       "`${h} h ${String(m).padStart(2, \"0\")}`",
+      "`${slot.durationMinutes} min`",
+      "({sl.durationMinutes} min)",
     ];
     for (const sample of bad) {
       expect(BANNED.some((b) => b.re.test(sample)), `devrait mordre : ${sample}`).toBe(true);
@@ -91,6 +115,8 @@ describe("Format horaire/durée unique — garde statique", () => {
       '`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`', // « HH:MM » via padStart+« : »
       '`${date.getFullYear()}-${String(month).padStart(2, "0")}`', // une date, pas une heure
       'value.replace(":", "-")', // pas un « h »
+      '<Input type="date" value={startDate} min={floor} max={max} />', // attribut HTML min={…}, pas une durée
+      "const minutes = diff;", // le mot « minutes », pas « } min »
     ];
     for (const sample of good) {
       expect(BANNED.some((b) => b.re.test(sample)), `ne devrait PAS mordre : ${sample}`).toBe(false);
@@ -104,6 +130,7 @@ describe("Format horaire/durée unique — garde statique", () => {
       if (isExcluded(rel)) continue;
       const source = readFileSync(file, "utf8");
       for (const { name, re } of BANNED) {
+        if (name === MIN_PATTERN && MIN_FAMILY_EXEMPT.includes(rel)) continue; // trajet/latence : « N min » légitime
         if (re.test(source)) {
           offenders.push(`src/${rel} → ${name}`);
         }

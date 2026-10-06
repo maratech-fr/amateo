@@ -93,7 +93,7 @@ export function SeasonPlanBanner({ schedules, socleValidated, loading = false, e
         {/* Le plan porte un NOM (ADR-0002 inv. 12) — l'afficher, pas un libellé générique
             (retour fondateur 2026-07-18 : « Planning de la saison » ici, « Planning
             principal » là = pas UX friendly). */}
-        <p className="text-sm font-semibold">{me?.seasonPlan?.name ?? "Planning principal"}</p>
+        <p className="text-sm font-semibold">{me?.seasonPlan?.name ?? "Planning de saison"}</p>
         <p className="inline-flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           {chosen ? (
             <>
@@ -109,7 +109,7 @@ export function SeasonPlanBanner({ schedules, socleValidated, loading = false, e
           ) : loading ? (
             "Chargement…"
           ) : (
-            "Aucun planning principal désigné"
+            "Aucun planning de saison désigné"
           )}
         </p>
       </div>

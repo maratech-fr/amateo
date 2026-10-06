@@ -10,6 +10,7 @@ import { Input } from "@/shared/components/ui/input";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Menu, MenuItem } from "@/shared/components/ui/menu";
 import { OpponentLogo } from "@/shared/components/ui/opponent-logo";
+import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
@@ -199,31 +200,23 @@ export function OpponentsPage() {
                 />
               </div>
 
-              <div role="group" aria-label="Filtrer les adversaires" className="flex flex-wrap items-center gap-1 rounded-md border border-border bg-card p-0.5">
-                {SEGMENTS.map((segment) => {
+              {/* Contrôle segmenté partagé — « null » (Tous) encodé par la clé sentinelle "tous".
+                  Le compteur nu reste aria-hidden ; le nom accessible du segment le reprend. */}
+              <SegmentedControl
+                mode="single"
+                label="Filtrer les adversaires"
+                options={SEGMENTS.map((segment) => {
                   const count = segmentCount(segment.key);
-                  const pressed = segment.key === activeFilter;
-                  return (
-                    <Button
-                      key={segment.label}
-                      type="button"
-                      size="sm"
-                      aria-pressed={pressed}
-                      variant={pressed ? "default" : "ghost"}
-                      // Deux unités : le texte visible est le nombre nu, l'aria-label la nomme.
-                      aria-label={null !== count ? `${segment.label} — ${count} ${segment.unit}` : segment.label}
-                      onClick={() => setActiveFilter(segment.key)}
-                    >
-                      {segment.label}
-                      {null !== count ? (
-                        <span className="ml-1 tabular-nums" aria-hidden="true">
-                          ({count})
-                        </span>
-                      ) : null}
-                    </Button>
-                  );
+                  return {
+                    key: segment.key ?? "tous",
+                    label: segment.label,
+                    count: null !== count ? count : undefined,
+                    ariaLabel: null !== count ? `${segment.label} — ${count} ${segment.unit}` : undefined,
+                  };
                 })}
-              </div>
+                value={activeFilter ?? "tous"}
+                onValueChange={(key) => setActiveFilter("tous" === key ? null : (key as OpponentFilter))}
+              />
             </div>
           ) : null}
 

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
+import { errorMessage } from "@/shared/lib/errorMessage";
 import { setClubClock } from "@/shared/session/api";
 import { useMe } from "@/shared/session/queries";
 import { toast } from "@/shared/stores/toastStore";
@@ -52,20 +53,37 @@ export function DemoClockWidget() {
       void queryClient.invalidateQueries({ queryKey: ["me"] });
       setOpen(false);
     },
-    onError: () => toast.error("Impossible de modifier l’horloge de la démo."),
+    // FRT-41 — restituer le message du serveur (409/422 écrits pour être lus) plutôt qu'un
+    // générique qui l'écrase ; repli FR par statut sinon (via `errorMessage`).
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 
+  // A11Y-29 — popover NON MODAL : Échap ferme ET rend le focus au déclencheur (patron BetaBadge) ;
+  // clic extérieur ferme sans forcer le focus. Effet inerte tant que fermé.
   useEffect(() => {
     if (!open) {
       return;
     }
+    const onKey = (event: KeyboardEvent): void => {
+      if ("Escape" === event.key) {
+        event.preventDefault();
+        setOpen(false);
+        // Le déclencheur est le seul `aria-haspopup="dialog"` de la racine — on lui rend le focus
+        // (la primitive Button ne transmet pas de `ref`).
+        rootRef.current?.querySelector<HTMLButtonElement>('[aria-haspopup="dialog"]')?.focus();
+      }
+    };
     const onDown = (event: MouseEvent): void => {
       if (null !== rootRef.current && !rootRef.current.contains(event.target as Node)) {
         setOpen(false);
       }
     };
+    document.addEventListener("keydown", onKey);
     document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onDown);
+    };
   }, [open]);
 
   // Réservé aux comptes de démonstration (le serveur refuse un vrai club de toute façon).
@@ -90,7 +108,7 @@ export function DemoClockWidget() {
         {label}
       </Button>
       {open ? (
-        <div role="dialog" aria-label="Horloge simulée de la démo" className="absolute left-0 z-40 mt-1 w-64 rounded-lg border border-border bg-card p-3 text-card-foreground shadow-lg">
+        <div role="dialog" aria-modal="false" aria-label="Horloge simulée de la démo" className="absolute left-0 z-40 mt-1 w-64 rounded-lg border border-border bg-card p-3 text-card-foreground shadow-lg">
           <p className="mb-2 text-xs text-muted-foreground">Faire vivre la démo à une autre date (écrans, échéances, rappels).</p>
           <label className="sr-only" htmlFor="demo-clock-date">Date simulée de la démo</label>
           <Input

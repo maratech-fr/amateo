@@ -111,7 +111,7 @@ describe("SlotDetail — sous-ligne compacte (B1)", () => {
   it("résume catégorie · durée · Coach sur une seule ligne discrète, sans labels", () => {
     renderDetail({ slot: { durationMinutes: 90 } });
     // Une seule ligne, séparateurs « · », aucun libellé sauf le préfixe « Coach ».
-    expect(screen.getByText("U11 · 90 min · Coach Jean Dupont")).toBeInTheDocument();
+    expect(screen.getByText("U11 · 1h30 · Coach Jean Dupont")).toBeInTheDocument();
     // Plus de lignes étiquetées « Catégorie »/« Durée ».
     expect(screen.queryByText("Catégorie")).not.toBeInTheDocument();
     expect(screen.queryByText("Durée")).not.toBeInTheDocument();
@@ -120,7 +120,7 @@ describe("SlotDetail — sous-ligne compacte (B1)", () => {
   it("omet un segment vide sans « · » orphelin", () => {
     renderDetail({ slot: { durationMinutes: 60 }, categoryLabel: "" });
     // Catégorie vide → la ligne commence à la durée, jamais par un « · » orphelin.
-    expect(screen.getByText("60 min · Coach Jean Dupont")).toBeInTheDocument();
+    expect(screen.getByText("1h · Coach Jean Dupont")).toBeInTheDocument();
   });
 
   it("remplace le nom par une croix rouge quand l'équipe n'a pas de coach", () => {

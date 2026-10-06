@@ -1,11 +1,9 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-10-05 (`documentation-update`, lot backend 5 « architecture » — BCK-19
-partie 1). Re-confronté au code : `ReopenScheduleController`/`ValidateScheduleController`
-appellent désormais `ResolvesCurrentClubTrait::resolveCurrentClubId`
-(`backend/src/Controller/ReopenScheduleController.php:66`,
-`backend/src/Controller/ValidateScheduleController.php:80`) — même comportement (null → skip,
-mismatch → 403), dédupliqué depuis un helper privé jusque-là recopié par contrôleur. Non re-sondé
+Last verified @ 2026-10-06 (reliquat UX de l'audit 2026-10-03, UXC-26). Re-confronté au code : le
+titre de `PlanningToolbar` porte le NOM RÉEL du plan (`displayedPlanName`,
+`frontend/src/features/planning/PlanningPage.tsx:563`), pas un badge générique « Planning
+principal » — doc corrigée en conséquence. Reste non re-sondé
 cette passe : les trois rendus front (`CoachesStep`, `/planning` autonome+en vigueur, pastille
 `SeasonPlanBanner`, § 2 ci-dessous) et le reste du fichier. Historique des passes vit dans git :
 `git log -p --follow specs/courantes/planning-lifecycle-validated.md`.
@@ -191,7 +189,7 @@ de versions) — jamais de N+1. Gardé par `ScheduleCapabilityParityTest` (step 
 - **PlanningToolbar** :
   - Boutons contextuels : **« Valider »** si `COMPLETED` et non choisie (→ ouvre la **modale** §3.3bis) · **« Rouvrir »** si la version est choisie (+ indicateur 🔒 « Lecture seule ») · **« Régénérer »** sinon. **Symétrie stricte** (arbitrage fondateur, 2026-08-20, correction du modèle posé la veille) : Valider/Régénérer/Supprimer/le sélecteur de versions restent bornés à `embedded` (gestes de travail, wizard seul, étape Génération) ; **Rouvrir, lui, vit sur `/planning` autonome (`!embedded`)** — il en a DISPARU de la toolbar embarquée. Valider est la sortie du wizard et navigue vers `/planning` en succès ; Rouvrir en est la sortie inverse et ramène au wizard : les deux sont les sorties symétriques du cycle de vie. Le badge de statut est visible dans les **deux** modes. Détail du contrat de routage (plan pointé → `/planning`, non pointé → wizard mode déclaré) et du libellé d'état différencié : `frontend/docs/frontend-spec.md` §6.6bis.
   - Badge statut **traduit** (FR) pour les 5 statuts (voir §5).
-  - Badge **« Planning principal »** vs **« Secondaire »**.
+  - Le titre porte le **nom réel du plan** (`displayedPlanName`, ex. « Planning de la saison 2026-2027 », défaut « Planning de saison ») — plus de badge générique « Planning principal » ; un planning de PÉRIODE se distingue par le mot « secondaire » dans ses propres phrases (compteur, confirmations), jamais une étiquette fixe sur le titre.
   - **Nom éditable** en ligne **uniquement si la version n'est pas choisie** (verrou total) ; le **nom du plan** se renomme par `PUT /api/schedule_plans/{id}`.
 - **pickLandingScheduleId** : la version choisie du plan SEASON (hors overlay, hors vol) → sinon `pickDefaultSchedule` (`COMPLETED` le plus récent).
 - **Read-only gating** : si la version sélectionnée est celle que pointe son plan → désactiver régénérer + renommage + passer `readOnly` à `SlotDetail` (move/lock off) et `WeekGrid` (clic slot off).

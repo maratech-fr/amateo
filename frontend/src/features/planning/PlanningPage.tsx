@@ -1,6 +1,6 @@
 import { IN_FLIGHT_STATUSES } from "@/shared/lib/scheduleStatus";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, GitCompare, Loader2, Lock, Pencil, Sparkles, Star, Undo2, X } from "lucide-react";
+import { AlertTriangle, GitCompare, Lock, Pencil, Sparkles, Star, Undo2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
@@ -17,11 +17,12 @@ import { useCredits } from "@/shared/credits/useCredits";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
+import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Input } from "@/shared/components/ui/input";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { PageHeader } from "@/shared/components/ui/page-header";
-import { FullPageSpinner } from "@/shared/components/ui/spinner";
+import { FullPageSpinner, Spinner } from "@/shared/components/ui/spinner";
 
 import { type Slot } from "./api";
 import { CompromiseList } from "./CompromiseList";
@@ -94,7 +95,12 @@ const DAY_ABBR = new Map(DAYS.map((d) => [d.n, d.label]));
  *  du panneau « Écarts avec le planning de saison » : sur une vacance ou `/planning` autonome, la route
  *  n'est JAMAIS appelée. */
 export function PlanningPage({ embedded = false, scopePlanId = null, calendarEntryId = null, toReplace = null, isClosurePeriod = false }: { embedded?: boolean; scopePlanId?: string | null; calendarEntryId?: string | null; toReplace?: ToReplaceEntry[] | null; isClosurePeriod?: boolean } = {}) {
-  const { data: schedules = [], isLoading: schedulesLoading } = useSchedules();
+  // UXS-09 — on garde l'objet query : `readFailed` distingue « aucun planning » d'« échec de
+  // lecture », pour ne pas renvoyer le gestionnaire au wizard sur une panne réseau. `useMemo` et non
+  // `?? []` : le repli littéral fabriquait un tableau NEUF à chaque rendu, invalidant les `useMemo`
+  // en aval (scopeInFlight…) — même raison que `allDiagnostics`/`generatedSlots` plus bas.
+  const schedulesQuery = useSchedules();
+  const schedules = useMemo(() => schedulesQuery.data ?? [], [schedulesQuery.data]);
   const { data: me } = useMe();
   // §4bis pt 2 — solde de crédits sur « Régénérer » (Découverte bridée seulement).
   const credits = useCredits();
@@ -544,8 +550,17 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
     return category?.name ?? "—";
   }, [selectedCell, slots, lookups, categories]);
 
-  if (schedulesLoading) {
+  if (readLoading(schedulesQuery)) {
     return <FullPageSpinner />;
+  }
+  // UXS-09 — échec de lecture des plannings SANS cache : « Réessayer » pleine page, jamais
+  // l'EmptyState « Aucun planning » qui renverrait activement vers le wizard sur une panne.
+  if (readFailed(schedulesQuery)) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center p-6">
+        <LoadErrorHint onRetry={() => void schedulesQuery.refetch()} />
+      </div>
+    );
   }
 
   // P2-44 (PR-2) — le surfaçage de la transcription ne vit QUE sur l'écran de génération d'une
@@ -888,6 +903,12 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           ) : 0 === slots.length ? (
             isFailed ? (
               <EmptyState title="Génération en échec" description="Aucun créneau n'a été placé, et ce planning n'a aucune réservation à afficher. Corrigez les contraintes signalées puis régénérez." />
+            ) : readFailed(slotsQuery) ? (
+              // UXS-09 — la lecture des créneaux a échoué SANS cache : « Réessayer », jamais le
+              // « Planning vide » menteur (doctrine readState — `isFetching` retombe à false sur erreur).
+              <div className="flex h-64 items-center justify-center rounded-lg border border-border bg-card">
+                <LoadErrorHint onRetry={() => void slotsQuery.refetch()} />
+              </div>
             ) : slotsBusy ? (
               // PREMIER chargement d'une version (aucune donnée précédente à voiler) : « Planning
               // vide » MENTIRAIT tant que la requête n'a pas répondu. On affiche l'état de
@@ -895,7 +916,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
               // fois la réponse arrivée et RÉELLEMENT vide, `slotsBusy` retombe → « Planning vide ».
               <div className="flex h-64 items-center justify-center rounded-lg border border-border bg-card" role="status" aria-busy="true" aria-live="polite">
                 <span className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  <Spinner className="size-4" />
                   Chargement des créneaux…
                 </span>
               </div>
@@ -1021,7 +1042,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                       {slotsBusy ? (
                         <div className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-background/50" role="status" aria-live="polite">
                           <span className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground shadow-lg">
-                            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                            <Spinner className="size-4" />
                             Chargement des créneaux…
                           </span>
                         </div>
@@ -1157,8 +1178,8 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
 
       <ConfirmDialog
         open={validateOverlayCount !== null}
-        title={`Valider « ${displayedPlanName ?? "cette version"} » et remplacer le planning principal ?`}
-        description={`Cette version deviendra le planning principal ; ${validateOverlayCount ?? 0} planning${(validateOverlayCount ?? 0) > 1 ? "s" : ""} de période bâti${(validateOverlayCount ?? 0) > 1 ? "s" : ""} sur l'ancien principal ser${(validateOverlayCount ?? 0) > 1 ? "ont" : "a"} supprimé${(validateOverlayCount ?? 0) > 1 ? "s" : ""} (à refaire ensuite).`}
+        title={`Valider « ${displayedPlanName ?? "cette version"} » et remplacer le planning de saison ?`}
+        description={`Cette version deviendra le planning de saison ; ${validateOverlayCount ?? 0} planning${(validateOverlayCount ?? 0) > 1 ? "s" : ""} de période bâti${(validateOverlayCount ?? 0) > 1 ? "s" : ""} sur l'ancien planning de saison ser${(validateOverlayCount ?? 0) > 1 ? "ont" : "a"} supprimé${(validateOverlayCount ?? 0) > 1 ? "s" : ""} (à refaire ensuite).`}
         confirmLabel="Valider et remplacer"
         destructive
         onConfirm={() => validate(true)}

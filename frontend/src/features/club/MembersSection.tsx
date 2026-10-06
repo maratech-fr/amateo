@@ -98,7 +98,7 @@ export function MembersSection() {
                         variant="ghost"
                         className="text-destructive"
                         disabled={busy || selfIsOnlyManager}
-                        title={selfIsOnlyManager ? SELF_LAST_MANAGER_HINT : undefined}
+                        disabledReason={selfIsOnlyManager ? SELF_LAST_MANAGER_HINT : undefined}
                         onClick={() => deactivate.mutate(member.id)}
                       >
                         <UserX className="size-4" /> Désactiver

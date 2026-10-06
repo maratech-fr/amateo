@@ -122,7 +122,7 @@ export function CoachWishesModal({ mother, weekFilter, onClose }: { mother: Cale
           variant="outline"
           className="ml-auto"
           disabled={0 === teamsWithMainCoach.length}
-          title={0 === teamsWithMainCoach.length ? "Aucune équipe n'a de coach principal" : undefined}
+          disabledReason={0 === teamsWithMainCoach.length ? "Aucune équipe n'a de coach principal" : undefined}
           onClick={() => {
             setEditing(null);
             setFormOpen(true);
@@ -192,7 +192,7 @@ export function CoachWishesModal({ mother, weekFilter, onClose }: { mother: Cale
                           size="icon"
                           variant="ghost"
                           className="size-7"
-                          aria-label="Modifier"
+                          aria-label={`Modifier la doléance · ${teamName.get(w.teamId) ?? "équipe"}`}
                           onClick={() => {
                             setEditing(w);
                             setFormOpen(true);
@@ -200,7 +200,7 @@ export function CoachWishesModal({ mother, weekFilter, onClose }: { mother: Cale
                         >
                           <Pencil className="size-4" />
                         </Button>
-                        <Button type="button" size="icon" variant="ghost" className="size-7 text-destructive" aria-label="Supprimer" disabled={deleteWish.isPending} onClick={() => setToDelete(w)}>
+                        <Button type="button" size="icon" variant="ghost" className="size-7 text-destructive" aria-label={`Supprimer la doléance · ${teamName.get(w.teamId) ?? "équipe"}`} disabled={deleteWish.isPending} onClick={() => setToDelete(w)}>
                           <Trash2 className="size-4" />
                         </Button>
                       </div>

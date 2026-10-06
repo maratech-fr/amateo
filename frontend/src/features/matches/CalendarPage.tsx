@@ -497,6 +497,12 @@ export function CalendarPage() {
     );
   }
 
+  // FRT-40 — sans la liste des compétitions, le formulaire ne propose que « Amical » : un match
+  // créé là serait AMICAL par défaut à l'insu du gestionnaire. On ne vide pas l'écran (les trois
+  // lectures fondatrices ont réussi) mais on DÉSACTIVE la création et on le dit. Le serveur reste
+  // seul juge du type réel.
+  const competitionsFailed = readFailed(competitions);
+
   return (
     <div className="flex flex-col gap-4">
       {/* A5 — annonce sr-only : vide au montage, remplie après la levée des masques. */}
@@ -514,7 +520,13 @@ export function CalendarPage() {
               — le backend reste seul juge (403 via `ManagementAccessGuard`), `canManage` évite
               d'offrir un geste voué au refus. */}
           {canManage ? (
-            <Button variant="outline" size="sm" onClick={() => setFixtureFormOpen(true)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={competitionsFailed}
+              disabledReason={competitionsFailed ? "Compétitions indisponibles — réessayez avant de créer un match." : undefined}
+              onClick={() => setFixtureFormOpen(true)}
+            >
               <Plus className="size-4" />
               Nouveau match
             </Button>
@@ -577,6 +589,19 @@ export function CalendarPage() {
 
       {/* « Validé ligue » en lot : rattrapage des championnats commencés (gestionnaire seul). */}
       {canManage ? <LeagueValidationBanner /> : null}
+
+      {/* FRT-40 — compétitions illisibles : la création est désactivée (un match serait « Amical »
+          par défaut), on l'explique et on offre de réessayer. */}
+      {competitionsFailed ? (
+        <NoticeBanner tone="destructive" role="alert">
+          <div className="flex flex-wrap items-center gap-2">
+            <span>Les compétitions n'ont pas pu être chargées — la création d'un match est momentanément indisponible (il serait créé « Amical » par défaut).</span>
+            <Button type="button" variant="ghost" size="sm" onClick={() => void competitions.refetch()}>
+              Réessayer
+            </Button>
+          </div>
+        </NoticeBanner>
+      ) : null}
 
       {/* Conflits SANS date (compétition incomplète…) → renvoi vers l'onglet Conflits. */}
       {dateless.length > 0 ? (
