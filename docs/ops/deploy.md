@@ -422,28 +422,37 @@ puis `gh secret set ENV_PROD < .env.prod` (§ Secret `ENV_PROD`).
 ⬜ **F4 — déployer** : taguer / `make deploy` quand tu veux (§ Partie 2). `umami` démarre, crée son
 schéma au premier boot, passe `healthy`. L'app n'est pas touchée.
 
-⬜ **F5 — UI Umami par tunnel SSH, AVANT toute exposition publique** : tant que le mot de passe
-par défaut `admin`/`umami` est en place, Umami ne doit JAMAIS être joignable depuis Internet. Le
-conteneur n'écoute que sur `127.0.0.1:8082` de la VM — on l'atteint par un tunnel SSH, sans passer
-par Caddy :
+⬜ **F5 — UI Umami par tunnel SSH** (le SEUL accès au tableau de bord, maintenant et toujours).
+🔵 **Décision fondateur 2026-10-06 (option A) : le tableau de bord Umami n'est JAMAIS exposé
+publiquement.** Caddy n'expose que les routes de COLLECTE (F6) ; le dashboard (login, listes de
+sites, lecture des chiffres, toute l'admin) se consulte UNIQUEMENT par tunnel SSH. Le conteneur
+n'écoute que sur `127.0.0.1:8082` de la VM — on l'atteint sans passer par Caddy :
 
 ```bash
-ssh -L 8082:127.0.0.1:8082 <hôte>    # laisser ouvert le temps de F5
+ssh -L 8082:127.0.0.1:8082 <hôte>    # laisser ouvert le temps de la consultation
 ```
 
 puis, dans le navigateur local, `http://localhost:8082` → login par défaut `admin` / `umami` →
-🔴 **CHANGER LE MOT DE PASSE IMMÉDIATEMENT** → créer le site « amateo.app » → copier le
-`websiteId`. Reporter l'URL, l'identifiant admin et où vit le mot de passe dans la fiche
-d'instance `business/3-runbooks/` (**hors dépôt**, aucun secret ni URL d'admin en git). Fermer le
-tunnel. Le mot de passe par défaut est ainsi changé **avant** que `stats.` n'existe publiquement.
+🔴 **CHANGER LE MOT DE PASSE IMMÉDIATEMENT** (dès cette première connexion) → créer le site
+« amateo.app » → copier le `websiteId`. Reporter l'URL interne, l'identifiant admin et où vit le
+mot de passe dans la fiche d'instance `business/3-runbooks/` (**hors dépôt**, aucun secret ni URL
+d'admin en git). Fermer le tunnel. **Ce même tunnel SSH est le geste de consultation courante** :
+pour lire les chiffres plus tard, rouvrir `ssh -L 8082:127.0.0.1:8082 <hôte>` et aller sur
+`http://localhost:8082`. (Item roadmap P4-307 : un futur onglet « Statistiques » dans la console
+superadmin lira ces chiffres via l'API Umami, jeton côté serveur — alors plus besoin du tunnel.)
 
-⬜ **F6 — Caddy (exposition publique)** : SEULEMENT une fois F5 fait. Ajouter le 4ᵉ bloc
-`stats.amateo.app` du modèle ([`Caddyfile.example`](Caddyfile.example)) à `/etc/caddy/Caddyfile`,
-puis `sudo systemctl reload caddy`. ⚠ Caddy demande aussitôt un certificat → le nom
-`stats.amateo.app` paraît dans les journaux publics Certificate Transparency → des scanners le
-découvrent en minutes. C'est pourquoi ce bloc ne vient **jamais avant F5** : l'ajouter plus tôt
-ouvrirait une fenêtre où l'UI est exposée avec son mot de passe par défaut. (Avant que le DNS
-propage / le conteneur tourne, le bloc rend juste 502 sur `stats.`, sans effet ailleurs.)
+⬜ **F6 — Caddy (exposition de la COLLECTE seule)** : SEULEMENT une fois F5 fait. Ajouter le 4ᵉ
+bloc `stats.amateo.app` du modèle ([`Caddyfile.example`](Caddyfile.example)) à
+`/etc/caddy/Caddyfile`, puis `sudo systemctl reload caddy`. Ce bloc n'expose QUE `GET /script.js`
+et `POST /api/send` (+ son préflight CORS `OPTIONS /api/send`) ; **tout le reste répond 404** — le
+dashboard n'est donc jamais joignable depuis Internet, seulement par le tunnel SSH de F5. ⚠ Caddy
+demande aussitôt un certificat → le nom `stats.amateo.app` paraît dans les journaux publics
+Certificate Transparency → des scanners le découvrent en minutes ; ils ne trouveront que les deux
+routes de collecte et des 404 partout ailleurs (aucune page de login à attaquer). L'ordre strict
+« mot de passe admin changé (F5) **avant** l'exposition Caddy (F6) » reste **recommandé** par
+hygiène, mais n'est plus une fenêtre d'attaque : ce bloc n'expose plus aucune UI de login.
+(Avant que le DNS propage / le conteneur tourne, le bloc rend juste 502 sur la collecte, sans
+effet ailleurs.)
 
 ⬜ **F7 — brancher le script** : ouvrir une **PR** qui remplit `analytics.scriptUrl` +
 `analytics.websiteId` dans `landing/config.js` (et bumpe le `?v=` des DEUX pages). **Jamais une

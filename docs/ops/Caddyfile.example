@@ -160,17 +160,40 @@ stats.amateo.app {
 	# Statistiques d'audience de la VITRINE (Umami auto-hébergé, P4-276). Le
 	# conteneur `umami` ne publie que sur localhost (`127.0.0.1:${UMAMI_PORT}`,
 	# 8082 par défaut dans .env.prod) — comme l'app, Caddy est la seule porte
-	# d'entrée. La protection du tableau de bord est le LOGIN Umami lui-même
-	# (pas de basic_auth ici ; ajout une-ligne possible plus tard si souhaité).
-	# ⚠ ORDRE — n'ajouter ce bloc QU'APRÈS avoir changé le mot de passe admin par
-	# défaut d'Umami (deploy.md §1.11, F5 par tunnel SSH). Un reload ici fait
-	# demander un certificat à Caddy : le nom `stats.amateo.app` part alors dans
-	# les journaux Certificate Transparency (publics) et les scanners le trouvent
-	# en minutes — l'activer avant F5 exposerait l'UI avec `admin`/`umami`.
+	# d'entrée.
+	#
+	# ⚠ LE TABLEAU DE BORD N'EST JAMAIS EXPOSÉ PUBLIQUEMENT (décision fondateur
+	#   2026-10-06, option A). Ce bloc n'expose QUE les routes de COLLECTE ; le
+	#   dashboard Umami (login, listes de sites, API d'admin, assets de l'UI)
+	#   n'est joignable QUE par TUNNEL SSH, jamais depuis Internet :
+	#       ssh -L 8082:127.0.0.1:8082 <hôte>   puis   http://localhost:8082
+	#   (deploy.md §1.11). Conséquence : il n'y a plus d'UI exposée du tout, donc
+	#   plus de fenêtre « UI publique avec mot de passe par défaut » — on ne
+	#   dépend plus du login Umami comme seule protection.
+	#
+	# Deux chemins publics, et EUX SEULS (tracker Umami v2.20, vérifié sur la
+	# source v2.20.0) :
+	#   - GET  /script.js  — le script de mesure (chemin par défaut, servi tel
+	#     quel, aucun rewrite) ;
+	#   - POST /api/send    — la collecte des événements (endpoint par défaut).
+	# Le tracker v2.20 POSTe en `Content-Type: application/json` avec l'en-tête
+	# `x-umami-cache` : ce n'est PAS une requête simple, le navigateur émet donc
+	# d'abord un PRÉFLIGHT CORS `OPTIONS /api/send`. Le matcher `path` ignore la
+	# méthode : `/api/send` couvre à la fois ce préflight OPTIONS et le POST —
+	# Umami pose lui-même les en-têtes CORS de la réponse. Rien d'autre à ouvrir.
+	@collect path /script.js /api/send
+	handle @collect {
+		reverse_proxy 127.0.0.1:8082
+	}
+	# Tout le reste (dashboard, /api/* d'admin, assets de l'UI…) → 404 : on ne
+	# confirme même pas qu'un Umami vit derrière ce nom. Le dashboard se consulte
+	# par tunnel SSH (ci-dessus), jamais ici.
+	handle {
+		respond 404
+	}
 	# Avant que le DNS `stats` propage et que le conteneur tourne, ce bloc rend
-	# 502 — sans effet sur les deux sites ci-dessus.
-	reverse_proxy 127.0.0.1:8082
-	encode gzip zstd
+	# 502 sur la collecte — sans effet sur les deux sites ci-dessus.
+	encode zstd gzip
 }
 
 # ── NOTE sur /config.js ───────────────────────────────────────────────────────

@@ -44,9 +44,9 @@ stage prod red le job même si aucun build dev ne l'utilise.
 
 - **Deux ports publiés, tous deux sur localhost** — Caddy (TLS, hôte) reste la
   seule porte d'entrée : `frontend` sur `127.0.0.1:${FRONTEND_PORT}` (l'app) et,
-  depuis P4-276, `umami` sur `127.0.0.1:${UMAMI_PORT}` (le tableau de bord
-  d'audience de la vitrine, derrière `stats.amateo.app`). Aucun n'écoute sur
-  l'IP publique.
+  depuis P4-276, `umami` sur `127.0.0.1:${UMAMI_PORT}` (mesure d'audience de la
+  vitrine ; `stats.amateo.app` n'expose publiquement QUE la collecte, le
+  dashboard se consulte par tunnel SSH). Aucun n'écoute sur l'IP publique.
 - postgres, redis, engine, mercure, nginx : réseau interne uniquement.
 - Mercure : `cors_origins` = `PUBLIC_BASE_URL` seul ; le navigateur passe par le
   proxy frontend (`/.well-known/mercure`).
@@ -56,8 +56,15 @@ stage prod red le job même si aucun build dev ne l'utilise.
 Service `umami` (image `ghcr.io/umami-software/umami`, **v2 épinglée tag + digest**,
 patron Mercure) : il mesure l'audience de la **page de vente** (`landing/`) seule, pas
 l'application. Le navigateur d'un visiteur de `amateo.app` charge un script sans cookie (injecté
-par `landing/config.js`, double garde clés + hostname) ; le fondateur lit les chiffres sur
-`https://stats.amateo.app`, derrière le login Umami.
+par `landing/config.js`, double garde clés + hostname).
+
+**Tableau de bord non exposé, collecte seule** (décision fondateur 2026-10-06, option A) :
+`stats.amateo.app` n'expose publiquement que les deux routes de collecte du tracker
+(`GET /script.js`, `POST /api/send`) — tout le reste répond 404. Le tableau de bord Umami (login,
+chiffres, admin) n'est JAMAIS joignable depuis Internet : le fondateur le consulte par tunnel SSH
+(`ssh -L 8082:127.0.0.1:8082 <hôte>` → `http://localhost:8082`, `deploy.md` §1.11). Un futur
+onglet « Statistiques » dans la console superadmin (roadmap P4-307) lira ces chiffres via l'API
+Umami (jeton côté serveur, jamais exposé au front).
 
 - **Base `umami` SÉPARÉE** dans le postgres existant, rôle dédié `umami` propriétaire de SA base
   seule — **aucun GRANT sur `amateo`**, ne traverse jamais la RLS (posée table par table DANS
