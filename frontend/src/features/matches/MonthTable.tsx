@@ -3,7 +3,6 @@ import { Filter } from "lucide-react";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
 
 import type { Coach, Conflict, Fixture, Team, Venue } from "./api";
-import type { CoachTeamRole } from "./lib/matchFilter";
 import { MatchRowsTable } from "./MatchRowsTable";
 
 interface MatchRowsGroup {
@@ -24,7 +23,7 @@ interface MonthTableProps {
   coaches: Map<string, Coach>;
   /** fixtureId → conflits déjà scopés au mois ET filtrés par famille. */
   conflictsByFixture: Map<string, Conflict[]>;
-  coachRoles?: Map<string, CoachTeamRole>;
+  coachRoles?: Map<string, string>;
   filterActive: boolean;
   onSelectFixture: (fixtureId: string) => void;
   onFocusConflict: (conflict: Conflict) => void;

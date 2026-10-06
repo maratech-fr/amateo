@@ -68,7 +68,9 @@ describe("buildConflictSideLines — côté MATCH", () => {
     const home = model!.sides[1];
     expect(home.kind).toBe("home");
     expect(home.teamName).toBe("SM2");
-    expect(home.roleWord).toBe("joueur");
+    expect(home.roleWord).toBe("joueur·euse"); // P4-311 : genre non précisé ⇒ double forme
+    // Accordé quand le genre du coach du conflit est passé.
+    expect(buildConflictSideLines(matchMatch(awaySide(), homeSide()), teams, venues, "FEMALE")!.sides[1].roleWord).toBe("joueuse");
     expect(home.place).toBe("domicile");
     expect(home.opponent).toBe("vs VAULX EN VELIN BASKET CLUB - 2");
     expect(home.travelUnknown).toBeUndefined();

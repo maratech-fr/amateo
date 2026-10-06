@@ -26,6 +26,7 @@ use App\Entity\VenueMatchWindow;
 use App\Entity\VenueTrainingSlot;
 use App\Entity\VenueTravelTime;
 use App\Entity\VenueUnavailability;
+use App\Enum\CoachGender;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
@@ -317,6 +318,34 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         self::assertCount(0, $this->em->getRepository(Schedule::class)->findBy(['seasonId' => $target->getId()]));
     }
 
+    public function testCoachGenderSurvivesTheTransition(): void
+    {
+        // P4-311 — le genre saisi (accord des libellés désignant LA personne) est un
+        // attribut PERMANENT du coach : il doit suivre la copie N+1 comme phone/isEmployee,
+        // jamais retomber à UNSPECIFIED au passage de saison. Anna est posée FEMALE.
+        [, $season] = $this->createClubGraph();
+
+        $target = $this->service->transition($season);
+
+        $copiedAnna = $this->em->getRepository(Coach::class)->findOneBy(['seasonId' => $target->getId(), 'firstName' => 'Anna']);
+        self::assertNotNull($copiedAnna);
+        self::assertSame(CoachGender::FEMALE, $copiedAnna->getGender(), 'le genre du coach survit au passage de saison (P4-311)');
+    }
+
+    public function testCoachIsVehicledSurvivesTheTransition(): void
+    {
+        // P4-311 — la case « véhiculé » (le coach peut transporter : attribut métier qui
+        // pèse sur l'affectation) est permanente : elle suit la copie N+1 comme phone/genre,
+        // jamais retomber à false au passage de saison. Anna est posée véhiculée.
+        [, $season] = $this->createClubGraph();
+
+        $target = $this->service->transition($season);
+
+        $copiedAnna = $this->em->getRepository(Coach::class)->findOneBy(['seasonId' => $target->getId(), 'firstName' => 'Anna']);
+        self::assertNotNull($copiedAnna);
+        self::assertTrue($copiedAnna->isVehicled(), 'la case véhiculé du coach survit au passage de saison (P4-311)');
+    }
+
     public function testCanPrepareNextSeasonInJuneFromASettledCurrentSeason(): void
     {
         // Real anticipation flow (spec §1): mid-June, the current season's plan
@@ -500,7 +529,10 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $unavailability->setLabel('travaux');
         $this->em->persist($unavailability);
 
-        $anna = $this->coach($club, $season, 'Anna');
+        // P4-311 — genre + case véhiculé NON-DÉFAUT : la recopie N+1 doit les transporter
+        // (sinon le coach retomberait à UNSPECIFIED / non véhiculé au passage de saison —
+        // les NR rougissent si setGender/setIsVehicled sont omis).
+        $anna = $this->coach($club, $season, 'Anna', CoachGender::FEMALE, true);
         $bob = $this->coach($club, $season, 'Bob');
 
         $teamA = $this->team($club, $season, 'SM1', $category->getId(), (int) $tier->getId(), $venueA->getId());
@@ -727,13 +759,15 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         return $venue;
     }
 
-    private function coach(Club $club, Season $season, string $firstName): Coach
+    private function coach(Club $club, Season $season, string $firstName, CoachGender $gender = CoachGender::UNSPECIFIED, bool $isVehicled = false): Coach
     {
         $coach = new Coach;
         $coach->setClubId($club->getId());
         $coach->setSeasonId($season->getId());
         $coach->setFirstName($firstName);
         $coach->setLastName('Test');
+        $coach->setGender($gender);
+        $coach->setIsVehicled($isVehicled);
         $this->em->persist($coach);
         $this->em->flush();
 

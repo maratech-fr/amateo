@@ -1,4 +1,5 @@
 import { coachFullName } from "@/shared/lib/coachName";
+import { type CoachGender, coachPlayerWord, salariedWord } from "@/shared/lib/coachWording";
 import { compareTeamsByRank, groupTeamsByTier } from "@/shared/lib/teamTiers";
 
 import type { Coach, PriorityTier, Team } from "../api";
@@ -78,7 +79,10 @@ export function groupedCoaches(coaches: Coach[], coachPlayerIds: Set<string>): R
   return groups;
 }
 
-/** Coach staffing tags ("salarié · coach-joueur") — undefined when neither. */
-export function coachMeta(isEmployee: boolean, isPlayer: boolean): string | undefined {
-  return [isEmployee ? "salarié" : null, isPlayer ? "coach-joueur" : null].filter(Boolean).join(" · ") || undefined;
+/**
+ * Coach staffing tags ("salarié · coach-joueur") — undefined when neither. P4-311 : les
+ * deux mots désignent LA personne, donc accordés au genre via le foyer `coachWording`.
+ */
+export function coachMeta(isEmployee: boolean, isPlayer: boolean, gender: CoachGender): string | undefined {
+  return [isEmployee ? salariedWord(gender) : null, isPlayer ? coachPlayerWord(gender) : null].filter(Boolean).join(" · ") || undefined;
 }

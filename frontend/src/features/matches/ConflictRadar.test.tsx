@@ -114,7 +114,7 @@ describe("ConflictRadar — personne en double, rôle PAR CÔTÉ (une personne =
   it("titre = nom seul ; le rôle vit PAR CÔTÉ dans le résumé (« U13 (assistant) et Seniors (coach) »)", () => {
     // Le rôle nuancé quitte le TITRE (fini « (assistant d'un côté) ») pour annoter
     // CHAQUE côté dans le résumé — coach d'un côté, assistant de l'autre.
-    const coachesMap = new Map<string, Coach>([["coach-a", { id: "coach-a", firstName: "Anna", lastName: "B" }]]);
+    const coachesMap = new Map<string, Coach>([["coach-a", { id: "coach-a", firstName: "Anna", lastName: "B", gender: "UNSPECIFIED" }]]);
     const conflicts: Conflict[] = [
       {
         type: "MATCH_MATCH",

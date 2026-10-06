@@ -1,4 +1,5 @@
 import type { Coach, Constraint, PriorityTier, Team, TeamTag, Venue } from "@/features/wizard/api";
+import { retiredWord } from "@/shared/lib/coachWording";
 import { groupTeamsByTier, tierGroupLabel } from "@/shared/lib/teamTiers";
 import { targetTagNames } from "@/shared/lib/tagTeamIds";
 
@@ -85,7 +86,9 @@ export function groupConstraints(constraints: Constraint[], family: string, ctx:
     for (const c of constraints) {
       buckets[groupOf(c.scopeTargetId) ?? "gone"].push(c);
     }
-    const labels: [string, string][] = [["salaried", "Salariés"], ["player", "Coachs-joueurs"], ["other", "Bénévoles"], ["gone", "Coach retiré"]];
+    // Pluriels de catégorie INCHANGÉS (décision fondateur) ; « Coach retiré·e » désigne une
+    // personne au genre inconnu (coach supprimé) ⇒ double forme via le foyer `coachWording`.
+    const labels: [string, string][] = [["salaried", "Salariés"], ["player", "Coachs-joueurs"], ["other", "Bénévoles"], ["gone", `Coach ${retiredWord("UNSPECIFIED")}`]];
     return labels.filter(([k]) => buckets[k].length > 0).map(([k, label]) => ({ key: `staff:${k}`, label, items: buckets[k] }));
   }
 

@@ -292,7 +292,7 @@ describe("Wizard (integration)", () => {
       // l'étape doit pouvoir se cocher — le fix ne casse pas le cas nominal.
       vi.mocked(api.listVenues).mockResolvedValue([{ id: "v1", name: "Gymnase A", color: null, canSplit: false, isActive: true, externalRef: null }]);
       vi.mocked(api.listVenueSlots).mockResolvedValue([{ id: "s1", venueId: "v1", dayOfWeek: 2, startTime: "20:30", durationMinutes: 120, capacity: 1 }]);
-      vi.mocked(api.listCoaches).mockResolvedValue([{ id: "co1", firstName: "Ana", lastName: "B", email: null, isEmployee: false, isActive: true, maxDaysOverride: null, isVehicled: false }]);
+      vi.mocked(api.listCoaches).mockResolvedValue([{ id: "co1", firstName: "Ana", lastName: "B", email: null, isEmployee: false, isActive: true, maxDaysOverride: null, isVehicled: false, gender: "UNSPECIFIED" }]);
       renderWithProviders(<WizardPage />, { route: "/wizard" });
 
       expect(await screen.findByRole("button", { name: "Contraintes — étape terminée" })).toBeInTheDocument();
@@ -338,7 +338,7 @@ describe("mode saison, socle validé (P4-268)", () => {
     // ce test ne prouverait rien de plus que le blocage récap déjà existant.
     vi.mocked(api.listVenues).mockResolvedValue([{ id: "v1", name: "Gymnase A", color: null, canSplit: false, isActive: true, externalRef: null }]);
     vi.mocked(api.listVenueSlots).mockResolvedValue([{ id: "s1", venueId: "v1", dayOfWeek: 2, startTime: "20:30", durationMinutes: 120, capacity: 1 }]);
-    vi.mocked(api.listCoaches).mockResolvedValue([{ id: "co1", firstName: "Ana", lastName: "B", email: null, isEmployee: false, isActive: true, maxDaysOverride: null, isVehicled: false }]);
+    vi.mocked(api.listCoaches).mockResolvedValue([{ id: "co1", firstName: "Ana", lastName: "B", email: null, isEmployee: false, isActive: true, maxDaysOverride: null, isVehicled: false, gender: "UNSPECIFIED" }]);
     renderWithProviders(<WizardPage />, { route: "/wizard" });
     expect(await screen.findByRole("button", { name: /Génération/ })).toBeDisabled();
   });

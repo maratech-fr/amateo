@@ -14,7 +14,6 @@ import type { Coach, Conflict, ConflictType, Fixture, Team, Venue } from "./api"
 import { ConflictLine, ConflictSeverityGroups } from "./ConflictLine";
 import { CONFLICT_FAMILIES, CONFLICT_FAMILY_LABEL } from "./lib/conflictLabels";
 import { FIXTURE_STATUS_LABEL } from "./lib/fixtureStatusLabel";
-import type { CoachTeamRole } from "./lib/matchFilter";
 
 interface MatchRowsGroup {
   key: string;
@@ -34,7 +33,7 @@ interface MatchRowsTableProps {
   /** fixtureId → conflits DÉJÀ filtrés par famille (une pastille par famille présente). */
   conflictsByFixture: Map<string, Conflict[]>;
   /** En vue coach : rôle du coach filtré sur l'équipe, en pastille (comme `AwayList`). */
-  coachRoles?: Map<string, CoachTeamRole>;
+  coachRoles?: Map<string, string>;
   /** Renvoi vers la Semaine du Calendrier sur le week-end du match (la page pose la semaine). */
   onSelectFixture: (fixtureId: string) => void;
   /**
@@ -115,7 +114,7 @@ function GroupRows({
   venues: Map<string, Venue>;
   coaches: Map<string, Coach>;
   conflictsByFixture: Map<string, Conflict[]>;
-  coachRoles?: Map<string, CoachTeamRole>;
+  coachRoles?: Map<string, string>;
   onSelectFixture: (fixtureId: string) => void;
   onFocusConflict: (conflict: Conflict) => void;
 }) {

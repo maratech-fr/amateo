@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ConflictSideRole, ConflictType } from "../api";
-import { CONFLICT_FAMILY_LABEL, SIDE_ROLE_WORD } from "./conflictLabels";
+import { CONFLICT_FAMILY_LABEL, sideRoleWord } from "./conflictLabels";
 
 // PR-2a — les familles de conflits couvertes exhaustivement. La table est un
 // `Record<ConflictType, string>` : TypeScript exige déjà toutes les clés, ce test
@@ -43,19 +43,20 @@ describe("CONFLICT_FAMILY_LABEL", () => {
   });
 });
 
-describe("SIDE_ROLE_WORD (rôle par côté d'un conflit personne-en-double)", () => {
+describe("sideRoleWord (rôle par côté d'un conflit personne-en-double)", () => {
   const ALL_ROLES: ConflictSideRole[] = ["MAIN", "ASSISTANT", "PLAYER"];
 
-  it("porte un mot pour les 3 rôles, et exactement ceux-ci", () => {
-    expect(Object.keys(SIDE_ROLE_WORD).sort()).toEqual([...ALL_ROLES].sort());
+  it("porte un mot non vide pour les 3 rôles", () => {
     for (const role of ALL_ROLES) {
-      expect(SIDE_ROLE_WORD[role]).toBeTruthy();
+      expect(sideRoleWord(role, "UNSPECIFIED")).toBeTruthy();
     }
   });
 
-  it("mappe chaque rôle sur son mot humain", () => {
-    expect(SIDE_ROLE_WORD.MAIN).toBe("coach");
-    expect(SIDE_ROLE_WORD.ASSISTANT).toBe("assistant");
-    expect(SIDE_ROLE_WORD.PLAYER).toBe("joueur");
+  it("mappe « coach » et « assistant » sans accord, « joueur » accordé au genre (P4-311)", () => {
+    expect(sideRoleWord("MAIN", "FEMALE")).toBe("coach");
+    expect(sideRoleWord("ASSISTANT", "MALE")).toBe("assistant");
+    expect(sideRoleWord("PLAYER", "MALE")).toBe("joueur");
+    expect(sideRoleWord("PLAYER", "FEMALE")).toBe("joueuse");
+    expect(sideRoleWord("PLAYER", "UNSPECIFIED")).toBe("joueur·euse");
   });
 });

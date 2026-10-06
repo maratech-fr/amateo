@@ -31,7 +31,7 @@ describe("orderedTeams", () => {
 });
 
 function coach(over: Partial<Coach>): Coach {
-  return { id: "id", firstName: "F", lastName: "L", email: null, isEmployee: false, isActive: true, maxDaysOverride: null, isVehicled: false, ...over };
+  return { id: "id", firstName: "F", lastName: "L", email: null, isEmployee: false, isActive: true, maxDaysOverride: null, isVehicled: false, gender: "UNSPECIFIED", ...over };
 }
 
 describe("orderedCoaches", () => {
@@ -73,10 +73,15 @@ describe("groupedCoaches", () => {
 
 describe("coachMeta", () => {
   it("joins the tags, undefined when neither", () => {
-    expect(coachMeta(true, true)).toBe("salarié · coach-joueur");
-    expect(coachMeta(true, false)).toBe("salarié");
-    expect(coachMeta(false, true)).toBe("coach-joueur");
-    expect(coachMeta(false, false)).toBeUndefined();
+    expect(coachMeta(true, true, "UNSPECIFIED")).toBe("salarié·e · coach-joueur·euse");
+    expect(coachMeta(true, false, "UNSPECIFIED")).toBe("salarié·e");
+    expect(coachMeta(false, true, "UNSPECIFIED")).toBe("coach-joueur·euse");
+    expect(coachMeta(false, false, "UNSPECIFIED")).toBeUndefined();
+  });
+
+  it("accorde les tags au genre (P4-311)", () => {
+    expect(coachMeta(true, true, "FEMALE")).toBe("salariée · coach-joueuse");
+    expect(coachMeta(true, true, "MALE")).toBe("salarié · coach-joueur");
   });
 });
 

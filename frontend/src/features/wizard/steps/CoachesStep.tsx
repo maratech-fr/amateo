@@ -9,6 +9,7 @@ import { Input } from "@/shared/components/ui/input";
 import { Select } from "@/shared/components/ui/select";
 import { TeamSelect } from "@/shared/components/ui/team-select";
 import { coachFullName } from "@/shared/lib/coachName";
+import { capitalizeWord, COACH_GENDER_OPTIONS, playerWord, salariedWord, vehicledWord } from "@/shared/lib/coachWording";
 import { stripDiacritics } from "@/shared/lib/utils";
 
 import type { Coach, CoachPlayerMembership, PriorityTier, Team, TeamCoach, TeamCoachRole } from "../api";
@@ -42,6 +43,7 @@ function payload(coach: Coach, patch: Partial<Coach>) {
     isActive: coach.isActive,
     maxDaysOverride: coach.maxDaysOverride,
     isVehicled: coach.isVehicled,
+    gender: coach.gender,
     ...patch,
   };
 }
@@ -132,9 +134,23 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
             onChange={(e) => setEmail(e.target.value)}
             onBlur={() => email.trim() !== (coach.email ?? "") && update.mutate({ id: coach.id, body: payload(coach, { email: email.trim() || null }) })}
           />
+          {/* P4-311 — genre pour accorder les libellés désignant la personne. Saisie
+              gestionnaire seule ; défaut « Non précisé » (double forme). */}
+          <Select
+            aria-label="Genre"
+            wrapperClassName="w-36"
+            value={coach.gender}
+            onChange={(e) => update.mutate({ id: coach.id, body: payload(coach, { gender: e.target.value as Coach["gender"] }) })}
+          >
+            {COACH_GENDER_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {`Genre : ${opt.label}`}
+              </option>
+            ))}
+          </Select>
           <label className="flex items-center gap-1 text-xs text-muted-foreground">
             <input type="checkbox" checked={coach.isEmployee} onChange={(e) => update.mutate({ id: coach.id, body: payload(coach, { isEmployee: e.target.checked }) })} />
-            Salarié
+            {capitalizeWord(salariedWord(coach.gender))}
           </label>
           {/* P2-53 RMM-8 — le statut véhiculé choisit le barème de trajet (voiture/à pied) appliqué
               aux enchaînements du coach. Défaut décoché. Aide PERSISTANTE (pas un tooltip : ce
@@ -147,7 +163,7 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
                 checked={coach.isVehicled}
                 onChange={(e) => update.mutate({ id: coach.id, body: payload(coach, { isVehicled: e.target.checked }) })}
               />
-              Véhiculé
+              {capitalizeWord(vehicledWord(coach.gender))}
             </label>
             <span id={`vehicled-help-${coach.id}`} className="text-muted-foreground">
               (trajet en voiture, à vélo sinon)
@@ -188,7 +204,7 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
           <span className="whitespace-nowrap text-sm font-medium">{`${coach.firstName} ${coach.lastName}`.trim()}</span>
           {coach.isEmployee ? (
             <StatusPill variant="accent" className="shrink-0">
-              Salarié
+              {capitalizeWord(salariedWord(coach.gender))}
             </StatusPill>
           ) : null}
           {null !== coach.maxDaysOverride ? (
@@ -205,7 +221,7 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
             ))}
             {playerLinks.map((link) => (
               <span key={link.id} className="whitespace-nowrap rounded-full border border-border px-2 py-0.5 text-xs">
-                {teamName.get(link.teamId) ?? "?"} · joueur
+                {teamName.get(link.teamId) ?? "?"} · {playerWord(coach.gender)}
               </span>
             ))}
           </div>
@@ -241,8 +257,8 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
               ))}
               {playerLinks.map((link) => (
                 <span key={link.id} className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs">
-                  {teamName.get(link.teamId) ?? "?"} · joueur
-                  <button type="button" aria-label={`Retirer de l'équipe ${teamName.get(link.teamId) ?? "?"} (joueur)`} className="rounded p-1.5 -m-1.5" onClick={() => delPlayer.mutate(link.id)}>
+                  {teamName.get(link.teamId) ?? "?"} · {playerWord(coach.gender)}
+                  <button type="button" aria-label={`Retirer de l'équipe ${teamName.get(link.teamId) ?? "?"} (${playerWord(coach.gender)})`} className="rounded p-1.5 -m-1.5" onClick={() => delPlayer.mutate(link.id)}>
                     <X className="size-3" />
                   </button>
                 </span>
@@ -411,7 +427,8 @@ function CoachesEditor() {
         <Input aria-label="Nom" placeholder="Nom" className="h-9 w-40" value={last} onChange={(e) => setLast(e.target.value)} />
         <label className="flex items-center gap-1 text-sm text-muted-foreground">
           <input type="checkbox" checked={employee} onChange={(e) => setEmployee(e.target.checked)} />
-          Salarié
+          {/* Un coach créé est « non précisé » (double forme) jusqu'à saisie du genre. */}
+          {capitalizeWord(salariedWord("UNSPECIFIED"))}
         </label>
         <Button type="submit" size="icon" className="ml-auto size-8" disabled={create.isPending} title="Ajouter le coach" aria-label="Ajouter le coach">
           <Plus className="size-4" />

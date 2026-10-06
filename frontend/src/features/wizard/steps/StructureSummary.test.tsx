@@ -7,9 +7,9 @@ vi.mock("../queries", () => ({
   useWizardCoachPlayers: () => ({ data: [{ id: "cp1", teamId: "t1", coachId: "player-bob", isActive: true }] }),
   useWizardCoaches: () => ({
     data: [
-      { id: "other-zoe", firstName: "Zoe", lastName: "Z", email: null, isEmployee: false, isActive: true },
-      { id: "player-bob", firstName: "Bob", lastName: "B", email: null, isEmployee: false, isActive: true },
-      { id: "salaried-ana", firstName: "Ana", lastName: "A", email: null, isEmployee: true, isActive: true },
+      { id: "other-zoe", firstName: "Zoe", lastName: "Z", email: null, isEmployee: false, isActive: true, gender: "UNSPECIFIED" },
+      { id: "player-bob", firstName: "Bob", lastName: "B", email: null, isEmployee: false, isActive: true, gender: "UNSPECIFIED" },
+      { id: "salaried-ana", firstName: "Ana", lastName: "A", email: null, isEmployee: true, isActive: true, gender: "UNSPECIFIED" },
     ],
   }),
   useWizardTeamCoaches: () => ({ data: [] }),
@@ -43,7 +43,7 @@ describe("ReadonlyCoaches (period, read-only)", () => {
     expect(anaIdx).toBeLessThan(bobIdx);
     expect(bobIdx).toBeLessThan(zoeIdx);
     // Tags surface the staffing type.
-    expect(screen.getByText("salarié")).toBeInTheDocument();
-    expect(screen.getByText("coach-joueur")).toBeInTheDocument();
+    expect(screen.getByText("salarié·e")).toBeInTheDocument();
+    expect(screen.getByText("coach-joueur·euse")).toBeInTheDocument();
   });
 });

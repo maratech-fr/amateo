@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
+use App\Enum\CoachGender;
 use App\Repository\CoachRepository;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
@@ -66,6 +67,14 @@ class Coach implements TenantOwnedInterface
      */
     #[ORM\Column(type: 'boolean', options: ['default' => false])]
     private bool $isVehicled = false;
+
+    /**
+     * P4-311 — genre pour accorder les libellés désignant la personne (joueur·euse…).
+     * Non nulle, défaut UNSPECIFIED (double forme) : rien à saisir à la création, les
+     * coachs existants deviennent « non précisé ». Jamais envoyé au moteur (présentation).
+     */
+    #[ORM\Column(length: 12, enumType: CoachGender::class, options: ['default' => 'UNSPECIFIED'])]
+    private CoachGender $gender = CoachGender::UNSPECIFIED;
 
     #[ORM\Column(type: 'guid', nullable: true)]
     private ?string $parentCoachId = null;
@@ -258,6 +267,18 @@ class Coach implements TenantOwnedInterface
     public function setIsVehicled(bool $isVehicled): self
     {
         $this->isVehicled = $isVehicled;
+
+        return $this;
+    }
+
+    public function getGender(): CoachGender
+    {
+        return $this->gender;
+    }
+
+    public function setGender(CoachGender $gender): self
+    {
+        $this->gender = $gender;
 
         return $this;
     }

@@ -45,6 +45,7 @@ const coach = (over: Partial<Coach> & Pick<Coach, "id" | "firstName">): Coach =>
   isActive: true,
   maxDaysOverride: null,
   isVehicled: false,
+  gender: "UNSPECIFIED",
   ...over,
 });
 
@@ -125,7 +126,7 @@ describe("CoachesStep — statut véhiculé", () => {
     renderWithProviders(<CoachesStep />);
     fireEvent.click(screen.getByRole("button", { name: "Éditer le coach" }));
 
-    const vehicled = screen.getByRole("checkbox", { name: "Véhiculé" });
+    const vehicled = screen.getByRole("checkbox", { name: "Véhiculé·e" });
     expect(vehicled).not.toBeChecked();
   });
 
@@ -134,7 +135,7 @@ describe("CoachesStep — statut véhiculé", () => {
     renderWithProviders(<CoachesStep />);
     fireEvent.click(screen.getByRole("button", { name: "Éditer le coach" }));
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "Véhiculé" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Véhiculé·e" }));
 
     expect(updateMut).toHaveBeenCalledTimes(1);
     expect(updateMut).toHaveBeenCalledWith(expect.objectContaining({ id: "c1", body: expect.objectContaining({ isVehicled: true }) }));
@@ -145,7 +146,7 @@ describe("CoachesStep — statut véhiculé", () => {
     renderWithProviders(<CoachesStep />);
     fireEvent.click(screen.getByRole("button", { name: "Éditer le coach" }));
 
-    const vehicled = screen.getByRole("checkbox", { name: "Véhiculé" });
+    const vehicled = screen.getByRole("checkbox", { name: "Véhiculé·e" });
     expect(vehicled).toBeChecked();
 
     fireEvent.click(vehicled);
@@ -159,7 +160,7 @@ describe("CoachesStep — pastilles read-only (P4-178 : StatusPill accent, repli
     renderWithProviders(<CoachesStep />);
 
     // « Salarié » apparaît aussi comme label de case dans le formulaire d'ajout : on cible le span-pastille.
-    const salarie = screen.getByText("Salarié", { selector: "span" });
+    const salarie = screen.getByText("Salarié·e", { selector: "span" });
     expect(salarie).toBeInTheDocument();
     expect(salarie).not.toHaveClass("text-accent");
 

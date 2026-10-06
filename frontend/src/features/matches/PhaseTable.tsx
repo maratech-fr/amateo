@@ -4,7 +4,6 @@ import { Button } from "@/shared/components/ui/button";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
 
 import type { Coach, Competition, Conflict, Fixture, Team, Venue } from "./api";
-import type { CoachTeamRole } from "./lib/matchFilter";
 import { MatchRowsTable } from "./MatchRowsTable";
 
 interface MatchRowsGroup {
@@ -25,7 +24,7 @@ interface PhaseTableProps {
   coaches: Map<string, Coach>;
   /** fixtureId → conflits déjà scopés à la phase ET filtrés par famille. */
   conflictsByFixture: Map<string, Conflict[]>;
-  coachRoles?: Map<string, CoachTeamRole>;
+  coachRoles?: Map<string, string>;
   onSelectFixture: (fixtureId: string) => void;
   onFocusConflict: (conflict: Conflict) => void;
   /** Ouvre le dialogue « Engagements FFBB » (état « aucune compétition appariée »). Appariement =

@@ -257,6 +257,11 @@ final class SeasonTransitionService
             $copy->setAcceptableLateMinutes($coach->getAcceptableLateMinutes());
             $copy->setIsActive($coach->getIsActive());
             $copy->setIsEmployee($coach->isEmployee());
+            // P4-311 — le genre (accord des libellés désignant la personne) et la case
+            // « véhiculé » (le coach peut transporter) sont des attributs permanents du coach :
+            // ils suivent la copie N+1 comme les autres champs saisis.
+            $copy->setGender($coach->getGender());
+            $copy->setIsVehicled($coach->isVehicled());
             $copy->setParentCoachId($coach->getId());
             $this->entityManager->persist($copy);
             $coachMap[$coach->getId()] = $copy->getId();

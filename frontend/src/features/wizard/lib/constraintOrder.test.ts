@@ -120,7 +120,7 @@ describe("groupConstraints", () => {
   it("never drops a coach constraint whose coach is absent (→ « Coach retiré »)", () => {
     const sections = groupConstraints([c({ family: "COACH_AVAILABILITY", scope: "COACH", scopeTargetId: "co-gone" })], "COACH_AVAILABILITY", ctx);
     expect(sections).toHaveLength(1);
-    expect(sections[0].label).toBe("Coach retiré");
+    expect(sections[0].label).toBe("Coach retiré·e");
     expect(sections[0].items).toHaveLength(1);
   });
 });

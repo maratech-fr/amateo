@@ -29,8 +29,8 @@ const lookups: Lookups = {
     ["v2", { id: "v2", name: "Beta", color: null }],
   ]),
   coaches: new Map<string, Coach>([
-    ["c1", { id: "c1", firstName: "Jean", lastName: "Paul" }],
-    ["c9", { id: "c9", firstName: "Team", lastName: "Coach" }],
+    ["c1", { id: "c1", firstName: "Jean", lastName: "Paul", gender: "UNSPECIFIED" }],
+    ["c9", { id: "c9", firstName: "Team", lastName: "Coach", gender: "UNSPECIFIED" }],
   ]),
   teamCoach: new Map<string, string>(),
   teamPlayerCoaches: new Map<string, string[]>(),

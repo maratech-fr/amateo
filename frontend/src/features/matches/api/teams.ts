@@ -1,5 +1,6 @@
 import { api } from "@/shared/api/client";
 import { collection, collectionAll } from "@/shared/api/collection";
+import type { CoachGender } from "@/shared/lib/coachWording";
 import type { Gender, TeamLevel } from "@/shared/lib/teamIdentity";
 
 /** Team reference row — carries the axes the league envelope maps on. */
@@ -53,6 +54,8 @@ export interface Coach {
   id: string;
   firstName: string;
   lastName: string;
+  /** P4-311 — genre pour l'accord du rôle en vue coach (`coachWording`). */
+  gender: CoachGender;
 }
 
 /** Lien équipe⇄entraîneur avec son rôle — sert à savoir si un coach n'est qu'ADJOINT (ALIGN-19). */

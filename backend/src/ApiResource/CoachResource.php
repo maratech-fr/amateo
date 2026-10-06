@@ -71,6 +71,10 @@ class CoachResource
     #[Groups(['read'])]
     public bool $isVehicled = false;
 
+    /** Genre pour l'accord des libellés (FEMALE|MALE|UNSPECIFIED). */
+    #[Groups(['read'])]
+    public string $gender = 'UNSPECIFIED';
+
     #[Groups(['read'])]
     public ?string $parentCoachId = null;
 
@@ -90,6 +94,7 @@ class CoachResource
         $dto->isActive = $entity->getIsActive();
         $dto->isEmployee = $entity->isEmployee();
         $dto->isVehicled = $entity->isVehicled();
+        $dto->gender = $entity->getGender()->value;
         $dto->parentCoachId = $entity->getParentCoachId();
 
         return $dto;

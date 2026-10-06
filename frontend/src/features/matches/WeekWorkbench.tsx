@@ -17,7 +17,6 @@ import { isEditableAway } from "./lib/fixtureOrigin";
 import type { HiddenWeekBreakdown } from "./lib/consultFilter";
 import { resolveEnvelope } from "./lib/envelope";
 import { offModelCount, sameWeekendSharedSlotCount } from "./lib/loopSteps";
-import type { CoachTeamRole } from "./lib/matchFilter";
 import { isPlacedOnGrid, weekBounds, weekendKeyOf } from "./lib/weekendGrid";
 import { buildWeekendGrid } from "./lib/weekendGrid";
 import { PlacementPanel } from "./PlacementPanel";
@@ -70,7 +69,7 @@ interface WeekWorkbenchProps {
   /** D2 — les gardes du placement (accès match + indisponibilités) + leur état de lecture. */
   guards: PlacementGuards;
   habits: TeamMatchHabit[];
-  coachRoles?: Map<string, CoachTeamRole>;
+  coachRoles?: Map<string, string>;
   resolvedTeamWindows: Record<string, string[]>;
   windows: LeagueWindow[];
   outOfEnvelope: Set<string>;

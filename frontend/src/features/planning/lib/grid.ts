@@ -1,3 +1,4 @@
+import { playerWord } from "@/shared/lib/coachWording";
 import { compareTeamsByRank, groupTeamsByTier, tierGroupLabel, type TierLike } from "@/shared/lib/teamTiers";
 
 import type { Coach, LockOrigin, Slot, Team, Venue } from "../api";
@@ -487,7 +488,9 @@ export function buildGrid(slots: Slot[], viewMode: ViewMode, lookups: Lookups, f
       if ("coach" === columnView) {
         primaryLabel = teamLabel;
         secondaryLabel = venueLabel;
-        roleTag = key !== mainCoachId ? "joueur" : null;
+        // P4-311 — accord avec le genre du coach de la COLONNE (`key`) : il joue dans
+        // cette équipe sans en être l'entraîneur principal.
+        roleTag = key !== mainCoachId ? playerWord(lookups.coaches.get(key)?.gender ?? "UNSPECIFIED") : null;
       } else if ("equipe" === columnView) {
         primaryLabel = venueLabel;
         secondaryLabel = coachLabel;
