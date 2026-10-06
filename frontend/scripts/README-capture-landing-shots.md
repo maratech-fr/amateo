@@ -43,7 +43,7 @@ Coachs = surnoms fictifs du seed. Gymnases et clubs adverses = données publique
 | Écran | Route | Fichier clair | Fichier sombre | Dimensions (viewport) |
 |-------|-------|---------------|----------------|-----------------------|
 | Planning généré | `/planning` | `planning.png` | `planning-dark.png` | 1080 × 608 |
-| Calendrier matchs (week-end) | `/matchs?semaine=…` | `matchs.jpg` | `matchs-dark.jpg` | 1080 × 585 |
+| Calendrier matchs (week-end) | `/matchs?semaine=…` | `matchs.jpg` | `matchs-dark.jpg` | 1080 × 900 |
 | Importer | `/matchs/importer` | `matchs-importer.jpg` | `matchs-importer-dark.jpg` | 1080 × 750 |
 | Conflits (regroupés par coach) | `/matchs/conflits?pivot=coach` | `matchs-conflits.jpg` | `matchs-conflits-dark.jpg` | 1080 × 750 |
 
@@ -123,16 +123,23 @@ Préparations par écran :
   nœuds `NoticeBanner`, pas tout le DOM), **retire la pastille** « Diagnostics du système (N) ·
   M erreurs » (signal négatif sur une page de vente), puis **fait défiler la grille** jusqu'aux
   heures du soir (elle démarre à 09:00 et serait vide dans le cadre).
-- **Calendrier matchs** : **avance** au premier week-end dont la grille porte au moins une **carte
-  de match** (`[data-fixture-id]` — on juge sur les cartes rendues, pas sur la seule présence du
+- **Calendrier matchs** : **avance** jusqu'à un week-end dont la grille porte **plusieurs cartes de
+  match** (≥ 3 `[data-fixture-id]` — on juge sur les cartes rendues, pas sur la seule présence du
   conteneur : une semaine 100 % extérieurs ou sans domicile placé resterait un cadre vide) à partir
-  de `MATCHS_WEEKEND`, via « Semaine suivante » (borné à 12 itérations) ; puis **masque** les deux
-  bandeaux d'état empilés au-dessus de la grille (« Depuis votre dernière visite : … » et « …
-  restent à traiter (ni heure ni gymnase… ») — même technique que le Planning. (Le masquage a lieu
-  **après** la navigation, qui re-rend React.)
+  de `MATCHS_WEEKEND`, via « Semaine suivante » (borné à 12 itérations) ; faute d'en trouver une à
+  ≥ 3 cartes, **repli sur la mieux remplie vue** (retour en arrière via « Semaine précédente »,
+  avertissement loggé). Puis **masque** les deux bandeaux d'état empilés au-dessus de la grille
+  (« Depuis votre dernière visite : … » et « … restent à traiter (ni heure ni gymnase… ») — même
+  technique que le Planning. (Le masquage a lieu **après** la navigation, qui re-rend React.) Le
+  viewport (1080 × **900**) fait entrer la grille et ses matchs **sans** masquer les filtres.
 - **Conflits** : si la saison n'a **aucun conflit**, la capture est laissée en l'état mais un
-  **avertissement** est loggé ; sinon le **premier groupe** (accordéon) est **déplié** (ils sont
-  tous repliés par défaut, cadre quasi vide) — idempotent (un groupe déjà ouvert n'est pas cliqué).
+  **avertissement** est loggé ; sinon le **premier groupe** (accordéon) est **déplié** de façon
+  robuste — idempotent (un groupe déjà ouvert n'est pas cliqué). L'état ouvert est porté par
+  `?ouvert=<clé>` dans l'URL ; comme l'effet de re-synchro de la page peut faire **retomber** cette
+  clé juste après le clic (groupe refermé), le script **re-tente** le clic (borné) après
+  stabilisation, puis, en dernier recours, **recharge** la route avec `&ouvert=<clé>` (capturée à
+  l'écriture de l'historique) — à la navigation la clé est préservée et le groupe s'ouvre d'office.
+  Si le groupe reste malgré tout replié, un **avertissement bruyant** est loggé.
 
 Si `IMPORT_FBI` est fourni, l'import FBI passe **une seule fois** avant la boucle, via l'UI
 `/matchs/importer` (dépôt du fichier → appariement Division→équipe **explicite** → « Importer »).

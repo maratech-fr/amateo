@@ -136,7 +136,10 @@ const SHOTS = [
     base: "matchs.jpg",
     route: "" !== MATCHS_WEEKEND ? `/matchs?semaine=${encodeURIComponent(MATCHS_WEEKEND)}` : "/matchs",
     width: 1080,
-    height: 585,
+    // 900 (et non 585) : à 585 le cadre s'arrêtait sous l'en-tête + les onglets + les rangées de
+    // filtres, la grille week-end ne commençant qu'en tout bas. 900 fait entrer la grille et ses
+    // matchs placés sans masquer les filtres (deviceScaleFactor 2 ⇒ image 2160 × 1800 px).
+    height: 900,
   },
   { base: "matchs-importer.jpg", route: "/matchs/importer", width: 1080, height: 750 },
   // Conflits est déjà regroupé par coach par défaut ; on le fige explicitement.
@@ -626,29 +629,59 @@ async function preparePlanning(page) {
 }
 
 /**
- * Calendrier matchs : si le week-end affiché n'a AUCUN match SUR LA GRILLE (le conteneur
- * `#matches-week-grid` peut exister pour une semaine 100 % extérieurs, ou l'écran rendre
- * « Aucun match importé »/« Aucun match cette semaine »), avance au premier week-end dont la
- * grille porte au moins une carte de match (`[data-fixture-id]`, domicile placé — cf.
- * WeekendGrid) via « Semaine suivante », borné. On ne garde JAMAIS une boucle non bornée
- * (CLAUDE.md §10.4). Juger sur les CARTES rendues, pas sur la seule présence du conteneur :
- * une semaine sans domicile sur grille resterait un cadre vide.
+ * Calendrier matchs : amène le cadre sur un week-end dont la grille est BIEN REMPLIE. Le conteneur
+ * `#matches-week-grid` peut exister pour une semaine 100 % extérieurs (grille vide), ou l'écran
+ * rendre « Aucun match importé »/« Aucun match cette semaine » ; et une semaine à une seule carte
+ * fait une capture maigre. On PRÉFÈRE donc une semaine portant plusieurs cartes de match
+ * (`[data-fixture-id]`, domicile placé — cf. WeekendGrid) : on avance via « Semaine suivante »
+ * (borné, on ne garde JAMAIS de boucle non bornée — CLAUDE.md §10.4) jusqu'à en trouver une à
+ * ≥ `PREFERRED` cartes ; faute de mieux, on retombe sur la MIEUX remplie vue (≥ 1 carte) en revenant
+ * en arrière via « Semaine précédente ». Juger sur les CARTES rendues, pas sur la seule présence du
+ * conteneur : une semaine sans domicile sur grille resterait un cadre vide.
  */
 async function ensureNonEmptyWeek(page) {
   const MAX_WEEKS = 12;
+  const PREFERRED = 3; // « plusieurs » cartes : une grille lisible plutôt qu'une carte isolée.
+  const cards = page.locator("#matches-week-grid [data-fixture-id]");
+  let pos = 0; // nombre d'avances « Semaine suivante » depuis le point de départ.
+  let best = { pos: 0, count: -1 }; // meilleure semaine VUE, pour y revenir si ≥ PREFERRED est hors d'atteinte.
+
   for (let i = 0; i <= MAX_WEEKS; i++) {
-    if ((await page.locator("#matches-week-grid [data-fixture-id]").count()) > 0) {
-      return;
+    const count = await cards.count();
+    if (count >= PREFERRED) {
+      return; // idéale : plusieurs cartes sur la grille.
+    }
+    if (count > best.count) {
+      best = { pos, count };
+    }
+    if (i === MAX_WEEKS) {
+      break; // dernière semaine évaluée : on n'avance plus.
     }
     const next = page.getByRole("button", { name: "Semaine suivante" });
     if (0 === (await next.count()) || (await next.isDisabled().catch(() => true))) {
-      console.warn(`⚠ calendrier matchs : aucune semaine avec un match sur la grille atteignable à partir de ${MATCHS_WEEKEND} (navigation épuisée) — capture laissée en l'état.`);
-      return;
+      break; // navigation épuisée.
     }
     await next.click();
     await waitForStability(page);
+    pos++;
   }
-  console.warn(`⚠ calendrier matchs : ${MAX_WEEKS} semaines parcourues sans match sur la grille à partir de ${MATCHS_WEEKEND} — capture laissée en l'état.`);
+
+  if (best.count <= 0) {
+    console.warn(`⚠ calendrier matchs : aucune semaine avec un match sur la grille atteignable à partir de ${MATCHS_WEEKEND} — capture laissée en l'état.`);
+    return;
+  }
+
+  // On a vu au moins une semaine avec des cartes, mais aucune à ≥ PREFERRED : repli sur la mieux
+  // remplie, en revenant en arrière (borné par le nombre d'avances déjà faites).
+  for (let back = pos; back > best.pos; back--) {
+    const prev = page.getByRole("button", { name: "Semaine précédente" });
+    if (0 === (await prev.count()) || (await prev.isDisabled().catch(() => true))) {
+      break;
+    }
+    await prev.click();
+    await waitForStability(page);
+  }
+  console.warn(`⚠ calendrier matchs : aucune semaine à ≥ ${PREFERRED} carte(s) atteignable à partir de ${MATCHS_WEEKEND} — repli sur la mieux remplie vue (${best.count} carte(s)).`);
 }
 
 /**
@@ -689,10 +722,21 @@ async function removeCalendarBanners(page) {
 
 /**
  * Conflits : prévient si la saison n'a AUCUN conflit (capture vide), puis DÉPLIE le premier
- * groupe (les accordéons sont tous repliés par défaut, cadre quasi vide) en cliquant son en-tête
- * — un `<button aria-expanded>` dans `[data-conflicts-entries]` (ConflictsPage/AccordionSection).
- * Idempotent : si le groupe est déjà ouvert (cas d'un seul groupe, ouvert d'office), on ne clique
- * pas (un clic le replierait).
+ * groupe (les accordéons sont tous repliés par défaut, cadre quasi vide) — un `<button
+ * aria-expanded>` dans `[data-conflicts-entries]` (ConflictsPage/AccordionSection).
+ *
+ * L'accordéon ouvert est porté par `?ouvert=<clé>` dans l'URL (posé en `replace` par le clic,
+ * ConflictsPage.tsx:263-271). L'effet de seed/re-synchro de la page (ConflictsPage.tsx:205-258)
+ * peut re-synchroniser l'URL juste APRÈS le clic et laisser retomber `?ouvert` — le groupe se
+ * referme et la capture est quasi vide. D'où un dépliage ROBUSTE :
+ *   1. déjà ouvert (groupe unique ouvert d'office) ⇒ ne rien faire (un clic le replierait) ;
+ *   2. cliquer l'en-tête, re-tenter (borné) après stabilisation tant qu'aucun groupe n'est ouvert,
+ *      en CAPTURANT la clé `?ouvert` dès que le clic l'écrit (patch synchrone de l'historique :
+ *      l'écriture est synchrone dans le handler, l'effet qui la défait tourne dans un useEffect) ;
+ *   3. repli : RECHARGER la route avec `&ouvert=<clé>` — à la navigation, la passe de seed
+ *      PRÉSERVE `?ouvert` (elle ne nettoie une clé que lors de la re-synchro, où elle existe), le
+ *      groupe s'ouvre d'office ;
+ *   4. échec persistant ⇒ avertir BRUYAMMENT (la capture montrera des accordéons repliés).
  */
 async function prepareConflicts(page) {
   const empty = await page.getByText("Aucun conflit sur la saison").isVisible().catch(() => false);
@@ -704,9 +748,68 @@ async function prepareConflicts(page) {
   if (0 === (await firstHeader.count())) {
     return;
   }
-  if ("true" !== (await firstHeader.getAttribute("aria-expanded"))) {
-    await firstHeader.click();
+  const expanded = page.locator('[data-conflicts-entries] button[aria-expanded="true"]');
+  const isOpen = async () => (await expanded.count()) > 0;
+
+  // (1) Déjà déplié (un groupe unique s'ouvre d'office) : ne pas cliquer.
+  if (await isOpen()) {
+    return;
+  }
+
+  // Patch l'historique pour CAPTURER la clé `?ouvert` à l'instant où React Router l'écrit (push/
+  // replaceState synchrone), avant que l'effet de re-synchro puisse la retirer. Idempotent.
+  await page.evaluate(() => {
+    const w = /** @type {any} */ (window);
+    if (w.__ouvertCaptureInstalled) {
+      return;
+    }
+    w.__ouvertCaptureInstalled = true;
+    w.__capturedOuvert = null;
+    const record = (url) => {
+      try {
+        const v = new URL(url ?? location.href, location.origin).searchParams.get("ouvert");
+        if (null !== v && "" !== v) {
+          w.__capturedOuvert = v;
+        }
+      } catch (_) {
+        // URL non analysable : on ignore.
+      }
+    };
+    for (const name of ["pushState", "replaceState"]) {
+      const orig = history[name].bind(history);
+      history[name] = (state, title, url) => {
+        const r = orig(state, title, url);
+        record(url);
+        return r;
+      };
+    }
+  });
+
+  // (2) Cliquer, re-tenter (borné) après stabilisation tant qu'aucun groupe n'est ouvert.
+  const MAX_CLICKS = 3;
+  for (let attempt = 0; attempt < MAX_CLICKS && !(await isOpen()); attempt++) {
+    await firstHeader.click().catch(() => {});
     await waitForStability(page);
+  }
+  if (await isOpen()) {
+    return;
+  }
+
+  // (3) Repli : recharger la route avec la clé capturée en `?ouvert`.
+  const capturedKey = await page.evaluate(() => /** @type {any} */ (window).__capturedOuvert ?? null);
+  if (null !== capturedKey) {
+    const target = new URL(page.url());
+    target.searchParams.set("ouvert", capturedKey);
+    await page.goto(target.toString(), { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
+    await waitForStability(page);
+  }
+
+  // (4) Toujours replié : avertir bruyamment.
+  if (!(await isOpen())) {
+    console.warn(
+      "⚠ conflits : impossible de DÉPLIER le premier groupe (il reste replié après reclics et " +
+        "navigation directe `?ouvert`). La capture Conflits montrera des accordéons REPLIÉS — à vérifier avant de la garder.",
+    );
   }
 }
 
