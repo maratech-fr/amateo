@@ -194,6 +194,10 @@ la remplir littéralement.
 4. ⚠ **Garde-fou actif** (hook PreToolUse Bash, `.claude/hooks/bounded-loop-guard.sh`) : toute
    boucle d'attente `while`/`until` DOIT être bornée par `timeout <durée>` ≤ 4 h — sinon refus
    (attendre la fin d'un journal, jamais un `pgrep -f` qui se trouve lui-même).
+5. ⚠ **Worktree + `docker compose exec` = code du dépôt PRINCIPAL** : les cibles Docker (make test,
+   vitest tooling) montent/copient le dépôt principal — depuis un worktree elles valident du code
+   qui n'est pas le tien ; `tests-complete`/e2e/Behat se jouent sur le dépôt principal, sérialisés
+   (`.claude/agents/coder.md` §Worktree).
 
 **Pointers:** `docs/project-map.md` (**la carte** — zones, ops, sécurité, tout le reste) ·
 `docs/glossary.md` · `docs/testing/testing-strategy.md` · `specs/evolution/roadmap.md`

@@ -15,3 +15,8 @@ Rules:
 - Run the targeted local tests for what you touched before reporting done (`cd backend && make test`, `cd engine && make test`, or the frontend equivalent) — report pass/fail, don't just assume.
 - Do not create documentation files, do not run `documentation-update`, do not open a PR — that is handled by other phases/agents.
 - Report back concisely: what changed (files), what tests you ran and their result, anything you deliberately left out of scope.
+
+**Worktree.** If you run in a git worktree (isolated copy of the repo), remember what your test targets actually execute:
+- The Docker `exec` targets (`make test` / `make tests-complete` backend, `make test` engine, vitest via the tooling image) run against the code **mounted/copied from the MAIN checkout**, not from your worktree — so launched from a worktree they validate code that is **not yours** (incident vécu : un `make test` depuis un worktree valide le dépôt principal).
+- In a worktree you may only run **lint + the zone's unit suites with your worktree's own autoload / node_modules** — install them in the worktree (`composer install` / `npm ci` there) and run through a container mounted on the worktree (e.g. `docker compose run --rm -v <worktree>:/app …`). If you cannot do that, say so and hand back rather than claim a green you did not get.
+- `make -C backend tests-complete`, the Playwright e2e specs and Behat run **only on the main checkout, serialised by the orchestrator** — never from a worktree (the shared stack binds the main checkout; two runs collide).

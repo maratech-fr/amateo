@@ -42,9 +42,24 @@ test:
 # `make test` (testsuite Unit seule) PAR CONSTRUCTION — chaque dossier est bien dans
 # UNE testsuite (garde Unit/TestsuitesCoverEveryTestDirectoryTest, P4-169), mais
 # `make test` reste volontairement la suite rapide, pas le miroir CI.
+# Purge le cache de TEST avant la suite complète. Un cache test périmé (laissé par
+# un changement de branche / un pull) a déjà fait rendre des erreurs fantômes à
+# phpstan/phpunit en local — on repart d'un cache test frais, propre.
+# ⚠ NE JAMAIS toucher var/cache/dev : phpstan-symfony LIT son XML
+# (phpstan.neon → containerXmlPath: var/cache/dev/App_KernelDevDebugContainer.xml).
+# C'est pourquoi la purge vise var/cache/TEST seulement, et pourquoi tests-complete
+# garantit la PRÉSENCE du cache dev (warmup conditionnel ci-dessous), jamais son absence.
+.PHONY: purge-test-cache ## Purge the test cache (cache:clear --env=test) before the full suite
+purge-test-cache: APP_ENV = test
+purge-test-cache:
+	$(EXEC) php bin/console cache:clear --env=test
+
 .PHONY: tests-complete ## Run the FULL suite, exactly like CI (phpstan + cs + tous les tests)
 tests-complete: APP_ENV = test
-tests-complete: db-init-test
+tests-complete: purge-test-cache db-init-test
+	# phpstan-symfony exige var/cache/dev/App_KernelDevDebugContainer.xml : présent en
+	# CI (auto-scripts composer), pas garanti sur un clone frais → warmup dev SI absent.
+	@test -f var/cache/dev/App_KernelDevDebugContainer.xml || $(EXEC) php bin/console cache:warmup -e dev
 	$(MAKE) APP_ENV=$(APP_ENV) phpstan
 	$(MAKE) APP_ENV=$(APP_ENV) cs
 	$(EXEC) php vendor/bin/phpunit tests/ --exclude-group contract
@@ -79,6 +94,10 @@ behat:
 	@bash scripts/lib/sandbox-guard.sh
 	$(FIG) up -d messenger-worker >/dev/null 2>&1 || true
 	$(FIG) restart messenger-worker >/dev/null 2>&1 || true
+	# Behat tourne en APP_ENV=dev : un cache dev périmé (après un changement de branche /
+	# un pull) a déjà fait échouer un scénario. On RECONSTRUIT le cache dev avant de lancer
+	# (cache:clear réchauffe — il ne laisse jamais le XML absent, cf. phpstan.neon).
+	$(EXEC) php bin/console cache:clear --env=dev
 	$(EXEC) php vendor/bin/behat --format=pretty --no-interaction
 
 .PHONY: phpunit ## Run blocking PHPUnit group
