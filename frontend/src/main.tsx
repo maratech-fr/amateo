@@ -5,19 +5,21 @@ import { createRoot } from "react-dom/client";
 import { AppRouter } from "@/app/router";
 import { ErrorBoundary } from "@/app/ErrorBoundary";
 import { Providers } from "@/app/providers";
+import { buildSentryOptions } from "@/app/sentry";
 import { seedOnlineFromNavigator } from "@/shared/lib/online";
 import { readPersistedThemeMode } from "@/shared/stores/themeStore";
 import "@/index.css";
 
 // Sentry ERREURS uniquement (pas d'APM/replay — quota free tier préservé). DSN
-// absent = init sautée, SDK inerte.
+// absent = init sautée, SDK inerte. Options (dont la collecte RGPD minimale v11)
+// construites par `buildSentryOptions`, verrouillées par `sentryOptions.test.ts`.
 //
 // ⚠ L'activer demande DEUX gestes, pas un (P4-65) : poser `VITE_SENTRY_DSN` au build ET
 // autoriser l'hôte d'ingestion du DSN dans `connect-src` (`docker/frontend/csp.conf`).
 // Le DSN seul initialise le SDK et la CSP jette chaque envoi EN SILENCE. Un garde de build
 // refuse désormais cette combinaison (`tooling/sentryCspGuard.ts`). INF-01.
 if (import.meta.env.VITE_SENTRY_DSN) {
-  Sentry.init({ dsn: import.meta.env.VITE_SENTRY_DSN, environment: import.meta.env.MODE, tracesSampleRate: 0 });
+  Sentry.init(buildSentryOptions(import.meta.env.VITE_SENTRY_DSN, import.meta.env.MODE));
 }
 
 // Apply the persisted theme class BEFORE React's first paint. Without this the

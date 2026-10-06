@@ -46,6 +46,21 @@ scan de robot (404/405/400/401/403 en rafale) n'inonde plus le projet de faux po
 (distincte de la `HttpException` du même nom) est écartée séparément via `ignore_exceptions` dans le
 même fichier de config. Gardé par `backend/tests/Unit/Sentry/BeforeSendTest.php`.
 
+## Sentry — collecte minimale explicite côté frontend (v11, 2026-10-06)
+
+Le SDK front (`@sentry/react` **v11**) capture les **ERREURS uniquement** (`tracesSampleRate: 0`,
+pas d'APM/replay) et **sans aucune PII**. En v11, `sendDefaultPii` a disparu au profit de
+`dataCollection`, et un `dataCollection` NON DÉFINI collecte TOUT par défaut (IP, utilisateur,
+cookies, en-têtes, corps de requête/réponse) — l'INVERSE du défaut v10. Les options d'init sont
+donc extraites en fonction pure `buildSentryOptions` (`frontend/src/app/sentry.ts`), qui fige
+chaque catégorie au niveau le plus restrictif (`userInfo: false` — donc pas d'`ip_address` —,
+`cookies/httpHeaders/urlQueryParams: false`, `httpBodies: []`, `genAI`/`graphQL`/`databaseQueryData`/
+`queues`/`stackFrameVariables` coupés), verrouillé par `frontend/src/test/sentryOptions.test.ts`.
+`frameContextLines` reste au défaut (5) : ce sont les lignes de NOTRE source autour de la trace,
+pas une donnée de l'utilisateur (`docs/security/rgpd.md` §5). Activation = DOUBLE geste P4-65
+(poser `VITE_SENTRY_DSN` au build **et** autoriser l'hôte d'ingestion dans `connect-src` —
+`docker/frontend/csp.conf`, garde `frontend/tooling/sentryCspGuard.ts`) ; sans DSN le SDK est inerte.
+
 ## Se servir de la corrélation (support)
 
 1. Le club donne la « réf. incident » affichée (8 chars) — ou le canal signalement la joint.

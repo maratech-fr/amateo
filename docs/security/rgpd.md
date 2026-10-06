@@ -102,6 +102,13 @@ les champs `anonymizedAt`/`erasureScheduledAt` restaurés re-déclenchent les m�
   par l'ancre `logging` de `docker-compose.prod.yml` (cf. `docs/ops/prod-stack.md`) ; la **durée de
   rétention** reste à confirmer côté hébergeur.
 - Mercure : payloads `{status, score, unplaced, warnings}` — pas de PII.
+- **Sentry (front, `@sentry/react` v11)** : erreurs uniquement, **collecte minimale EXPLICITE** —
+  aucune PII envoyée. En v11 `sendDefaultPii` a disparu et un `dataCollection` non défini collecte
+  TOUT par défaut (IP, utilisateur, cookies, en-têtes, corps de requête) ; on fige donc chaque
+  catégorie au niveau le plus restrictif dans `buildSentryOptions`
+  (`frontend/src/app/sentry.ts`, `userInfo: false` → pas d'`ip_address`), verrouillé par
+  `frontend/src/test/sentryOptions.test.ts` (détail : `docs/ops/observability.md` § Sentry front).
+  Côté backend, les refus HTTP < 500 sont filtrés (`before_send`, même doc).
 - **Doléances (#10)** : le **commentaire libre** d'une doléance est un champ à contenu non maîtrisé
   (le coach y écrit ce qu'il veut, potentiellement des données personnelles) — **jamais loggé**,
   jamais inclus dans un payload Mercure ni dans un message d'erreur.
