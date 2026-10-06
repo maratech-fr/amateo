@@ -208,13 +208,13 @@ async function createSplitClosure(page: import("./fixtures").Page): Promise<stri
 /**
  * Amène le calendrier du cockpit sur un mois donné (il s'ouvre sur le mois courant).
  *
- * ⚠ Depuis UXS-09 (2026-10), le calendrier se recharge PAR ZONE à chaque navigation : changer de mois
- * change la clé de `useCalendarEntries`, un spinner de zone DÉMONTE l'en-tête + les flèches le temps du
- * fetch, puis les remonte. Un `isVisible()` NON BLOQUANT (l'ancien patron) perdait la course pendant ce
- * trou et cliquait au-delà de la cible (d'où un atterrissage sur Avril/Octobre 2027). On attend donc que
- * l'en-tête du mois soit RENDU avant de lire le mois courant, et que le mois affiché CHANGE après chaque
- * clic (via l'en-tête remonté), jamais un sondage à sec. L'en-tête du calendrier est le SEUL `<h2>` dont
- * le nom est « Mois AAAA ».
+ * ⚠ Depuis UXS-09 (décision fondateur A, 2026-10), le calendrier se recharge PAR ZONE à chaque navigation :
+ * changer de mois change la clé de `useCalendarEntries` et seule la GRILLE affiche un spinner — l'en-tête du
+ * mois et les flèches restent TOUJOURS montés (ils ne sont jamais démontés). L'en-tête change de libellé dès
+ * le clic. On attend donc que l'en-tête soit RENDU avant de lire le mois courant, et que le mois affiché
+ * CHANGE après chaque clic, jamais un sondage à sec (l'ancien `isVisible()` non bloquant perdait la course et
+ * cliquait au-delà de la cible — atterrissage sur Avril/Octobre 2027). L'en-tête du calendrier est le SEUL
+ * `<h2>` dont le nom est « Mois AAAA » ; le `catch(() => current)` reste un garde-fou inoffensif.
  */
 async function goToMonth(page: import("./fixtures").Page, label: string): Promise<void> {
   const monthHeading = page.getByRole("heading", {
@@ -228,8 +228,8 @@ async function goToMonth(page: import("./fixtures").Page, label: string): Promis
       return;
     }
     await page.getByRole("button", { name: "Mois suivant" }).click();
-    // Le mois AFFICHÉ doit changer avant la prochaine lecture (l'en-tête est démonté puis remonté par le
-    // spinner de zone) ; `catch(() => current)` garde la valeur courante pendant que l'en-tête est détaché.
+    // Le mois AFFICHÉ doit changer avant la prochaine lecture (l'en-tête reste monté et change de libellé dès
+    // le clic) ; `catch(() => current)` garde la valeur courante au cas où l'en-tête serait brièvement détaché.
     await expect
       .poll(async () => (await monthHeading.textContent().catch(() => current))?.trim(), { timeout: 20_000 })
       .not.toBe(current);

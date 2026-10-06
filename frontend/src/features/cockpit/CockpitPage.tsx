@@ -7,7 +7,7 @@ import { useSchedules } from "@/features/planning/queries";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { PageHeader } from "@/shared/components/ui/page-header";
-import { FullPageSpinner, Spinner } from "@/shared/components/ui/spinner";
+import { FullPageSpinner } from "@/shared/components/ui/spinner";
 import { readFailed, readLoading } from "@/shared/lib/readState";
 
 import { SeasonPlanBanner } from "./SeasonPlanBanner";
@@ -114,26 +114,27 @@ export function CockpitPage() {
             DÉBORDE sa mère (queue/tête hors incident), la filtrer laisserait ces
             jours sans marqueur ni accès (revue #262 round 1). Le calendrier
             empile les entrées chevauchantes comme avant. */}
-        {/* UXS-09 — zone calendrier : échec ⇒ « Réessayer » (jamais une grille muette), premier
-            chargement ⇒ spinner de zone ; sinon la grille, avec un bandeau discret si seules les
-            vacances/fériés du mois ont échoué (le reste vit). */}
+        {/* UXS-09 (décision A) — l'en-tête du mois et les flèches de navigation restent TOUJOURS
+            montés : le chargement/échec de la lecture des entrées ne touche QUE la grille (le
+            calendrier reçoit `loading`/`failed`/`onRetry`), sinon chaque navigation de mois démontait
+            l'en-tête et faisait rater les clics successifs. Bandeau discret sous la grille si seules
+            les vacances/fériés du mois ont échoué (le reste vit). */}
         <div className="space-y-3">
-          {readFailed(entriesQuery) ? (
-            <div className="rounded-lg border border-border bg-card p-4">
-              <LoadErrorHint onRetry={() => void entriesQuery.refetch()}>Le calendrier n'a pas pu être chargé.</LoadErrorHint>
-            </div>
-          ) : readLoading(entriesQuery) ? (
-            <div className="flex items-center justify-center rounded-lg border border-border bg-card p-10" role="status" aria-live="polite">
-              <Spinner className="size-5" />
-            </div>
-          ) : (
-            <>
-              <MonthCalendar year={cursor.year} month={cursor.month} entries={entries} holidays={monthHolidays?.items ?? []} publicHolidays={publicHolidays?.items ?? []} onPrev={prev} onNext={next} />
-              {readFailed(monthHolidaysQuery) || readFailed(monthPublicHolidaysQuery) ? (
-                <NoticeBanner tone="warning" role="status" message="Les vacances scolaires ou les jours fériés du mois n'ont pas pu être chargés — réessayez." />
-              ) : null}
-            </>
-          )}
+          <MonthCalendar
+            year={cursor.year}
+            month={cursor.month}
+            entries={entries}
+            holidays={monthHolidays?.items ?? []}
+            publicHolidays={publicHolidays?.items ?? []}
+            onPrev={prev}
+            onNext={next}
+            loading={readLoading(entriesQuery)}
+            failed={readFailed(entriesQuery)}
+            onRetry={() => void entriesQuery.refetch()}
+          />
+          {!readFailed(entriesQuery) && !readLoading(entriesQuery) && (readFailed(monthHolidaysQuery) || readFailed(monthPublicHolidaysQuery)) ? (
+            <NoticeBanner tone="warning" role="status" message="Les vacances scolaires ou les jours fériés du mois n'ont pas pu être chargés — réessayez." />
+          ) : null}
         </div>
         <div className="flex flex-col gap-4">
           <RadarPanel

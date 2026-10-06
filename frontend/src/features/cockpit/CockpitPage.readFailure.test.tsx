@@ -35,7 +35,15 @@ vi.mock("./queries", () => ({
 // Enfants = doublures : on teste la DÉGRADATION PAR ZONE de CockpitPage, pas le rendu des enfants.
 vi.mock("./SeasonPlanBanner", () => ({ SeasonPlanBanner: () => <div data-testid="season-banner">SEASON BANNER</div> }));
 vi.mock("./FbiDeadlineCard", () => ({ FbiDeadlineCard: () => null }));
-vi.mock("./MonthCalendar", () => ({ MonthCalendar: () => <div data-testid="month-calendar">MONTH</div> }));
+// UXS-09 (décision A) : la grille reste TOUJOURS montée (en-tête + flèches), l'échec/chargement de la
+// lecture des entrées lui est passé en prop — la doublure expose ces props pour la zone CockpitPage.
+vi.mock("./MonthCalendar", () => ({
+  MonthCalendar: (p: { failed?: boolean; loading?: boolean }) => (
+    <div data-testid="month-calendar" data-failed={String(Boolean(p.failed))} data-loading={String(Boolean(p.loading))}>
+      MONTH
+    </div>
+  ),
+}));
 vi.mock("./RadarPanel", () => ({
   PUBLIC_HOLIDAY_HORIZON_DAYS: 30,
   RadarPanel: (p: { entriesFailed?: boolean; publicHolidaysFailed?: boolean }) => (
@@ -57,13 +65,13 @@ describe("CockpitPage — échec de lecture dégradé par zone (UXS-09)", () => 
   });
   afterEach(() => setTodayOverride(null));
 
-  it("entries en échec → calendrier en « Réessayer » (jamais une grille vide) + l'échec parvient au radar", () => {
+  it("entries en échec → la grille reste montée et reçoit l'échec (en-tête/flèches jamais démontés) + l'échec parvient au radar", () => {
     entriesError = true;
     renderWithProviders(<CockpitPage />);
 
-    expect(screen.getByText("Le calendrier n'a pas pu être chargé.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Réessayer" })).toBeInTheDocument();
-    expect(screen.queryByTestId("month-calendar")).not.toBeInTheDocument();
+    // Décision A : le calendrier n'est JAMAIS démonté — il reste là et reçoit l'échec en prop
+    // (c'est lui qui rend « Réessayer » dans sa zone grille, en gardant en-tête + flèches).
+    expect(screen.getByTestId("month-calendar").dataset.failed).toBe("true");
     // Décision 2 : l'échec des entrées doit PARVENIR au radar (jamais « Rien à l'horizon »).
     expect(screen.getByTestId("radar").dataset.entriesFailed).toBe("true");
   });

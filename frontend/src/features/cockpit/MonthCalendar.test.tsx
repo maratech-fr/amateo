@@ -203,3 +203,57 @@ describe("MonthCalendar — projection of the exception layer", () => {
     expect(screen.getByRole("button", { name: "Supprimer AG" })).toBeInTheDocument();
   });
 });
+
+/**
+ * UXS-09 (décision fondateur A) — à chaque navigation de mois, `useCalendarEntries` change de clé et
+ * la grille se recharge. L'en-tête du mois ET les flèches de navigation restent TOUJOURS montés ;
+ * seule la GRILLE affiche le spinner (chargement) ou le `LoadErrorHint` (échec). Sans ça l'en-tête
+ * disparaissait/réapparaissait à chaque clic, et les clics successifs rataient leur cible.
+ */
+function renderMonth(opts: { loading?: boolean; failed?: boolean; onRetry?: () => void; onPrev?: () => void; onNext?: () => void } = {}) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <MonthCalendar year={2026} month={4} entries={[]} holidays={[]} publicHolidays={[]} onPrev={opts.onPrev ?? vi.fn()} onNext={opts.onNext ?? vi.fn()} loading={opts.loading} failed={opts.failed} onRetry={opts.onRetry} />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+describe("MonthCalendar — en-tête toujours visible, seule la grille charge (UXS-09)", () => {
+  it("chargement : l'en-tête du mois et les deux flèches restent montés, la grille laisse place à un spinner", () => {
+    renderMonth({ loading: true });
+
+    expect(screen.getByRole("heading", { level: 2, name: /mai 2026/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mois précédent" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mois suivant" })).toBeInTheDocument();
+    // Jamais de cases de jour pendant le chargement — seulement le spinner de zone.
+    expect(screen.queryByRole("button", { name: /^\d+ Mai/ })).toBeNull();
+    expect(screen.getByRole("status")).toBeInTheDocument();
+  });
+
+  it("échec : en-tête + flèches présents, « Réessayer » dans la zone grille rappelle onRetry", async () => {
+    const onRetry = vi.fn();
+    renderMonth({ failed: true, onRetry });
+
+    expect(screen.getByRole("heading", { level: 2, name: /mai 2026/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mois précédent" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mois suivant" })).toBeInTheDocument();
+    expect(screen.getByText("Le calendrier n'a pas pu être chargé.")).toBeInTheDocument();
+    // Pas de grille sous l'échec, pas de spinner non plus.
+    expect(screen.queryByRole("button", { name: /^\d+ Mai/ })).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Réessayer" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("les flèches restent cliquables pendant le chargement (la navigation n'est jamais démontée)", async () => {
+    const onNext = vi.fn();
+    renderMonth({ loading: true, onNext });
+
+    await userEvent.click(screen.getByRole("button", { name: "Mois suivant" }));
+    expect(onNext).toHaveBeenCalledTimes(1);
+  });
+});
