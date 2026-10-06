@@ -4,6 +4,7 @@ import { type ReactNode, useState } from "react";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { DeleteConfirm } from "@/shared/components/ui/delete-confirm";
+import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import { Select } from "@/shared/components/ui/select";
 import { cn } from "@/shared/lib/utils";
 
@@ -208,19 +209,7 @@ export function PlanningToolbar({
             dont le second passait inaperçu. Côte à côte, ils se lisent comme un couple —
             quelle vue, puis quoi dedans. */}
         <div className="ml-auto flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1 rounded-md border border-border bg-card p-0.5">
-          {VIEWS.map((view) => (
-            <Button
-              key={view.key}
-              size="sm"
-              variant={view.key === viewMode ? "default" : "ghost"}
-              className={cn("h-7", view.key === viewMode ? "" : "text-muted-foreground")}
-              onClick={() => onViewMode(view.key)}
-            >
-              {view.label}
-            </Button>
-          ))}
-        </div>
+        <SegmentedControl mode="single" label="Vue du planning" options={VIEWS} value={viewMode} onValueChange={onViewMode} className="flex-nowrap" />
         {filterSlot}
         </div>
       </div>

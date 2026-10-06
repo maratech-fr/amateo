@@ -77,3 +77,59 @@ describe("Button désactivé — l'information vit, l'affordance meurt (P4-127 e
     }
   });
 });
+
+/**
+ * A11Y-30 (audit 2026-10-03) — la RAISON d'une désactivation doit être DÉCOUVRABLE au clavier/
+ * lecteur d'écran, pas seulement au survol souris. Un `<button disabled>` natif sort de l'ordre de
+ * tabulation : son `title`/`aria-describedby` ne sont jamais annoncés. Avec `disabledReason`, le
+ * bouton reste FOCALISABLE (`aria-disabled`, pas `disabled` natif), la raison est posée en
+ * description (`aria-describedby` → `<span sr-only>`), le clic/l'activation clavier sont neutralisés.
+ */
+describe("Button — raison de désactivation accessible (A11Y-30, disabledReason)", () => {
+  it("reste FOCALISABLE (aria-disabled, pas le disabled natif) et décrit la raison", () => {
+    render(
+      <Button disabled disabledReason="Validez le socle d'abord">
+        Adapter
+      </Button>,
+    );
+    const btn = screen.getByRole("button", { name: "Adapter" });
+    expect(btn).not.toBeDisabled(); // pas de `disabled` natif → focalisable
+    expect(btn).toHaveAttribute("aria-disabled", "true");
+    expect(btn).toHaveAccessibleDescription("Validez le socle d'abord");
+    expect(btn).toHaveAttribute("title", "Validez le socle d'abord");
+    expect(btn.className).toContain("cursor-not-allowed");
+  });
+
+  it("neutralise le clic même sans disabled natif", async () => {
+    const user = userEvent.setup();
+    const onClick = vi.fn();
+    render(
+      <Button disabled disabledReason="Raison" onClick={onClick}>
+        Adapter
+      </Button>,
+    );
+    await user.click(screen.getByRole("button", { name: "Adapter" }));
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("sans disabledReason, disabled reste le natif (comportement inchangé)", () => {
+    render(<Button disabled>Adapter</Button>);
+    const btn = screen.getByRole("button", { name: "Adapter" });
+    expect(btn).toBeDisabled();
+    expect(btn).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("disabledReason sans disabled → bouton actif normal (la raison ne s'applique pas)", async () => {
+    const user = userEvent.setup();
+    const onClick = vi.fn();
+    render(
+      <Button disabledReason="jamais vue ici" onClick={onClick}>
+        Adapter
+      </Button>,
+    );
+    const btn = screen.getByRole("button", { name: "Adapter" });
+    expect(btn).not.toHaveAttribute("aria-disabled");
+    await user.click(btn);
+    expect(onClick).toHaveBeenCalledOnce();
+  });
+});

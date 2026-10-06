@@ -196,7 +196,8 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
               ≤ {coach.maxDaysOverride} j/sem
             </StatusPill>
           ) : null}
-          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
+          {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- région défilante nommée, atteignable au clavier (WCAG 2.1.1, A11Y-26 résidu) */}
+          <div aria-label="Rattachements aux équipes" tabIndex={0} className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
             {coachLinks.map((link) => (
               <span key={link.id} className="whitespace-nowrap rounded-full bg-accent/15 px-2 py-0.5 text-xs">
                 {teamName.get(link.teamId) ?? "?"} · {link.role === "MAIN" ? "coach" : "adjoint"}
@@ -233,7 +234,7 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
               {coachLinks.map((link) => (
                 <span key={link.id} className="flex items-center gap-1 rounded-full bg-accent/15 px-2 py-0.5 text-xs">
                   {teamName.get(link.teamId) ?? "?"} · {link.role === "MAIN" ? "coach" : "adjoint"}
-                  <button type="button" aria-label="Retirer" className="rounded p-1.5 -m-1.5" onClick={() => delTeamCoach.mutate(link.id)}>
+                  <button type="button" aria-label={`Retirer de l'équipe ${teamName.get(link.teamId) ?? "?"} (${link.role === "MAIN" ? "coach" : "adjoint"})`} className="rounded p-1.5 -m-1.5" onClick={() => delTeamCoach.mutate(link.id)}>
                     <X className="size-3" />
                   </button>
                 </span>
@@ -241,7 +242,7 @@ function CoachCard({ coach, teams, tiers, teamName, coachLinks, playerLinks, edi
               {playerLinks.map((link) => (
                 <span key={link.id} className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs">
                   {teamName.get(link.teamId) ?? "?"} · joueur
-                  <button type="button" aria-label="Retirer" className="rounded p-1.5 -m-1.5" onClick={() => delPlayer.mutate(link.id)}>
+                  <button type="button" aria-label={`Retirer de l'équipe ${teamName.get(link.teamId) ?? "?"} (joueur)`} className="rounded p-1.5 -m-1.5" onClick={() => delPlayer.mutate(link.id)}>
                     <X className="size-3" />
                   </button>
                 </span>

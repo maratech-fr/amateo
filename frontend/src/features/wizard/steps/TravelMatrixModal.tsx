@@ -404,7 +404,7 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
                 <div className="flex flex-wrap gap-1">
                   {venuesWithoutGeo.map((v) =>
                     onLocateVenue ? (
-                      <Button key={v.id} size="sm" variant="ghost" className="h-7" onClick={() => onLocateVenue(v.id)}>
+                      <Button key={v.id} size="sm" variant="ghost" onClick={() => onLocateVenue(v.id)}>
                         {v.name}
                       </Button>
                     ) : (

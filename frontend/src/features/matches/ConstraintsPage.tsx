@@ -272,10 +272,10 @@ function LeagueWindowRow({ window }: { window: ClubLeagueWindow }) {
           <span className="text-sm text-foreground">{leagueWindowSummary(window)}</span>
           <div className="ml-auto flex items-center gap-2">
             {badgePill(window.badge)}
-            <Button variant="ghost" size="icon" className="size-8" aria-label="Modifier" title="Modifier" onClick={openEdit}>
+            <Button variant="ghost" size="icon" className="size-8" aria-label={`Modifier la fenêtre d'accès : ${leagueWindowSummary(window)}`} title="Modifier" onClick={openEdit}>
               <Pencil className="size-3.5" />
             </Button>
-            <Button variant="ghost" size="icon" className="size-8 text-destructive" aria-label="Supprimer" title="Supprimer" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
+            <Button variant="ghost" size="icon" className="size-8 text-destructive" aria-label={`Supprimer la fenêtre d'accès : ${leagueWindowSummary(window)}`} title="Supprimer" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
               <Trash2 className="size-3.5" />
             </Button>
           </div>
@@ -509,10 +509,10 @@ function ClubRuleRow({ rule, alerts, weekendAlternates }: { rule: MatchConstrain
         <>
           <span className="text-sm text-foreground">{clubRuleSummary(rule)}</span>
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="ghost" size="icon" className="size-8" aria-label="Modifier" title="Modifier" onClick={openEdit}>
+            <Button variant="ghost" size="icon" className="size-8" aria-label={`Modifier la règle de club : ${clubRuleSummary(rule)}`} title="Modifier" onClick={openEdit}>
               <Pencil className="size-3.5" />
             </Button>
-            <Button variant="ghost" size="icon" className="size-8 text-destructive" aria-label="Supprimer" title="Supprimer" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
+            <Button variant="ghost" size="icon" className="size-8 text-destructive" aria-label={`Supprimer la règle de club : ${clubRuleSummary(rule)}`} title="Supprimer" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
               <Trash2 className="size-3.5" />
             </Button>
           </div>
@@ -635,7 +635,7 @@ function TeamVenueBanRow({ ban, teamName, venueName }: { ban: MatchConstraint; t
       <span className="text-sm text-foreground">
         <strong>{teamName}</strong> ne joue jamais à <strong>{venueName}</strong>
       </span>
-      <Button variant="outline" size="sm" aria-label="Supprimer" className="ml-auto" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
+      <Button variant="outline" size="sm" aria-label={`Supprimer la règle : ${teamName} ne joue jamais à ${venueName}`} className="ml-auto" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
         <Trash2 className="size-3.5" />
       </Button>
       <ConfirmDialog
@@ -889,10 +889,10 @@ function CoachUnavailabilityRow({ rule, coaches, coachName }: { rule: MatchConst
         <>
           <span className="text-sm text-foreground">{coachUnavailabilitySummary(rule, coachName)}</span>
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="ghost" size="icon" className="size-8" aria-label="Modifier" title="Modifier" onClick={openEdit}>
+            <Button variant="ghost" size="icon" className="size-8" aria-label={`Modifier l'indisponibilité de coach : ${coachUnavailabilitySummary(rule, coachName)}`} title="Modifier" onClick={openEdit}>
               <Pencil className="size-3.5" />
             </Button>
-            <Button variant="ghost" size="icon" className="size-8 text-destructive" aria-label="Supprimer" title="Supprimer" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
+            <Button variant="ghost" size="icon" className="size-8 text-destructive" aria-label={`Supprimer l'indisponibilité de coach : ${coachUnavailabilitySummary(rule, coachName)}`} title="Supprimer" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
               <Trash2 className="size-3.5" />
             </Button>
           </div>

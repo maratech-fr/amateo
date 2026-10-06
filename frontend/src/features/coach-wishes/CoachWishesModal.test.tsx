@@ -143,7 +143,7 @@ describe("CoachWishesModal", () => {
     wishesState.data = [wish({ id: "w1", coachId: "c1", teamId: "t1", weekStart: "2026-02-16" })];
     const user = userEvent.setup();
     render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
-    await user.click(screen.getByRole("button", { name: "Modifier" }));
+    await user.click(screen.getByRole("button", { name: /^Modifier la doléance/ }));
     // Pas d'option vide « Coach… » sur une doléance attribuée.
     const coachSelect = screen.getByLabelText("Coach") as HTMLSelectElement;
     expect(Array.from(coachSelect.options).some((o) => "" === o.value)).toBe(false);
@@ -158,7 +158,7 @@ describe("CoachWishesModal", () => {
     wishesState.data = [wish({ id: "w1", coachId: null, teamId: "t1", weekStart: "2026-02-16" })];
     const user = userEvent.setup();
     render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
-    await user.click(screen.getByRole("button", { name: "Modifier" }));
+    await user.click(screen.getByRole("button", { name: /^Modifier la doléance/ }));
     await user.click(screen.getByRole("button", { name: "Enregistrer" }));
     expect(updateMut).toHaveBeenCalledWith(expect.objectContaining({ id: "w1", body: expect.objectContaining({ coachId: null }) }), expect.anything());
   });
@@ -256,7 +256,7 @@ describe("CoachWishesModal", () => {
     const user = userEvent.setup();
     render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
 
-    await user.click(screen.getByRole("button", { name: "Modifier" }));
+    await user.click(screen.getByRole("button", { name: /^Modifier la doléance/ }));
     const picker = screen.getByLabelText("Coach") as HTMLSelectElement;
     expect(picker.value).toBe("c2");
     expect(within(picker).getByRole("option", { name: /Léa Roy.*n'encadre plus cette équipe/ })).toBeInTheDocument();
@@ -269,6 +269,7 @@ describe("CoachWishesModal", () => {
     render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
 
     expect(screen.getByText(/rattachez-en un pour pouvoir saisir une doléance/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Ajouter/ })).toBeDisabled();
+    // Désactivé mais DÉCOUVRABLE (A11Y-30, `disabledReason`) : aria-disabled, pas le `disabled` natif.
+    expect(screen.getByRole("button", { name: /Ajouter/ })).toHaveAttribute("aria-disabled", "true");
   });
 });

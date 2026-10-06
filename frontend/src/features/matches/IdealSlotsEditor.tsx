@@ -124,7 +124,7 @@ export function IdealSlotsEditor<T extends TeamLike>({
               size="sm"
               className="w-fit"
               disabled={0 === withoutSlot.length}
-              title={0 === withoutSlot.length ? "Toutes les équipes ont un créneau idéal" : undefined}
+              disabledReason={0 === withoutSlot.length ? "Toutes les équipes ont un créneau idéal" : undefined}
               onClick={() => setAdding(true)}
             >
               <Plus className="size-4" aria-hidden="true" />

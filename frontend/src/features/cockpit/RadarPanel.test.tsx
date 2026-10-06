@@ -234,7 +234,8 @@ describe("RadarPanel", () => {
     schedulesData = []; // 0 version
     renderRadar({ entries: [closure({ id: "h1", periodType: "holiday", title: "Vacances de Noël", startDate: todayISO(), endDate: addDays(todayISO(), 5) })] });
 
-    expect(screen.getByRole("button", { name: "Reprendre" })).toBeDisabled();
+    // Désactivé mais DÉCOUVRABLE (A11Y-30, `disabledReason`) : aria-disabled, pas le `disabled` natif.
+    expect(screen.getByRole("button", { name: "Reprendre" })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("a CLOSURE with an in-progress plan keeps its rich impact card (sessions count) with « Reprendre »", () => {
@@ -788,7 +789,8 @@ describe("RadarPanel", () => {
     renderRadar({ holidays: [holiday] });
 
     expect(screen.getByText("Planning de saison à valider")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Adapter" })).toBeDisabled();
+    // Désactivé mais DÉCOUVRABLE (A11Y-30, `disabledReason`) : aria-disabled, pas le `disabled` natif.
+    expect(screen.getByRole("button", { name: "Adapter" })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("counts the sessions to replace on a closure without overlay", () => {

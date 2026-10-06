@@ -13,7 +13,8 @@ import { cn } from "@/shared/lib/utils";
  * (`aria-checked`, sémantique d'accessibilité différente) ni les contrôles segmentés (puce nue
  * dans un conteneur bordé, sans compteur). L'état vit chez l'appelant ; ceci n'est que la
  * présentation. ⚠ Rendu VOLONTAIREMENT byte-identique aux copies d'origine (mêmes rôle, nom
- * accessible, classes) — les tests d'écran existants en sont le témoin de non-régression.
+ * accessible) — les tests d'écran existants en sont le témoin de non-régression. Hauteur portée à
+ * 36 px (`size="sm"` sans surcharge) à la norme d'uniformité (UXC-29) — plus de `h-7`.
  */
 export function FilterChip({
   pressed,
@@ -36,7 +37,7 @@ export function FilterChip({
       size="sm"
       aria-pressed={pressed}
       variant={pressed ? "default" : "ghost"}
-      className={cn("h-7 gap-1.5 border border-border", pressed ? "" : "text-muted-foreground")}
+      className={cn("gap-1.5 border border-border", pressed ? "" : "text-muted-foreground")}
       onClick={onPress}
     >
       {icon}

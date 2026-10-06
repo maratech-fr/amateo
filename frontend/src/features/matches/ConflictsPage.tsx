@@ -8,6 +8,7 @@ import { EmptyHint, EmptyState } from "@/shared/components/ui/empty-hint";
 import { FilterChip } from "@/shared/components/ui/filter-chip";
 import { FilterToggle } from "@/shared/components/ui/filter-toggle";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
+import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
 import { coachFullName } from "@/shared/lib/coachName";
 import { readFailed, readLoading } from "@/shared/lib/readState";
@@ -466,26 +467,19 @@ export function ConflictsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Contrôle du pivot (« Regrouper par ») — visible même en mobile. */}
-      <div role="group" aria-labelledby="conflicts-pivot-label" className="flex flex-wrap items-center gap-2">
+      {/* Contrôle du pivot (« Regrouper par ») — visible même en mobile. Le `role="group"` nommé
+          vit sur le SegmentedControl ; ce div n'est qu'une rangée de mise en page. */}
+      <div className="flex flex-wrap items-center gap-2">
         <span id="conflicts-pivot-label" className="w-full shrink-0 text-xs font-medium text-muted-foreground sm:w-24">
           Regrouper par
         </span>
-        <div className="flex flex-wrap items-center gap-1 rounded-md border border-border bg-card p-0.5">
-          {PIVOT_AXES.map((axis) => (
-            <Button
-              key={axis}
-              type="button"
-              size="sm"
-              aria-pressed={axis === conflictsPivot}
-              variant={axis === conflictsPivot ? "default" : "ghost"}
-              className={cn("h-7", axis === conflictsPivot ? "" : "text-muted-foreground")}
-              onClick={() => onPivot(axis)}
-            >
-              {PIVOT_LABEL[axis]}
-            </Button>
-          ))}
-        </div>
+        <SegmentedControl
+          mode="single"
+          labelledBy="conflicts-pivot-label"
+          options={PIVOT_AXES.map((axis) => ({ key: axis, label: PIVOT_LABEL[axis] }))}
+          value={conflictsPivot}
+          onValueChange={onPivot}
+        />
       </div>
 
       {/* Mobile (< sm) : « Filtres » replie Familles + Traitement + domicile (même DOM). */}
@@ -517,7 +511,6 @@ export function ConflictsPage() {
             type="button"
             variant="ghost"
             size="sm"
-            className="h-7"
             onClick={() => {
               interactedRef.current = true;
               setConflictsFamilies(allFamiliesOn ? [] : null);
@@ -556,7 +549,6 @@ export function ConflictsPage() {
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7"
               onClick={() => {
                 interactedRef.current = true;
                 setTreatments(allTreatmentsOn ? [] : null);
@@ -569,7 +561,7 @@ export function ConflictsPage() {
         ) : null}
 
         {filtersDirtyCount > 0 ? (
-          <Button type="button" variant="ghost" size="sm" className="h-7 gap-1.5 self-start" onClick={resetFilters}>
+          <Button type="button" variant="ghost" size="sm" className="gap-1.5 self-start" onClick={resetFilters}>
             <RotateCcw className="size-3.5" aria-hidden="true" />
             Réinitialiser
           </Button>
