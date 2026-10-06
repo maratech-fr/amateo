@@ -72,6 +72,7 @@ const wish = (over: Record<string, unknown>) => ({
   coachId: "c1",
   slotsWanted: 2,
   unavailableDays: [],
+  wishedDays: [],
   comment: null,
   done: false,
   ...over,
@@ -183,6 +184,31 @@ describe("CoachWishesModal", () => {
     // Équipe SM1 (défaut) → coach MAIN c1 pré-rempli ; on soumet directement.
     await user.click(screen.getByRole("button", { name: /Ajouter la doléance/ }));
     expect(createMut).toHaveBeenCalledWith(expect.objectContaining({ calendarEntryId: "e1", weekStart: "2026-02-16", teamId: "t1", coachId: "c1" }), expect.anything());
+  });
+
+  // ── P4-312 — jours souhaités (informatif) ──
+
+  it("affiche les jours souhaités d'une doléance remontée", () => {
+    wishesState.data = [wish({ id: "w1", wishedDays: [2], unavailableDays: [3] })];
+    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    expect(screen.getByText(/souhaité : Mar/)).toBeInTheDocument();
+    expect(screen.getByText(/indispo : Mer/)).toBeInTheDocument();
+  });
+
+  it("le formulaire d'ajout envoie les jours souhaités, et cocher souhaité retire l'indisponibilité (exclusion)", async () => {
+    const user = userEvent.setup();
+    render(<CoachWishesModal mother={mother} weekFilter="2026-02-16" onClose={() => {}} />);
+    await user.click(screen.getByRole("button", { name: /Ajouter/ }));
+
+    const wished = screen.getByRole("group", { name: "Jours souhaités" });
+    const unavailable = screen.getByRole("group", { name: "Jours indisponibles" });
+    // mercredi indisponible, puis mercredi souhaité → quitte les indisponibilités.
+    await user.click(within(unavailable).getByRole("button", { name: "mercredi" }));
+    await user.click(within(wished).getByRole("button", { name: "mercredi" }));
+    await user.click(within(wished).getByRole("button", { name: "mardi" }));
+
+    await user.click(screen.getByRole("button", { name: /Ajouter la doléance/ }));
+    expect(createMut).toHaveBeenCalledWith(expect.objectContaining({ wishedDays: [2, 3], unavailableDays: [] }), expect.anything());
   });
 
   // ── P3-14 (retour terrain 2026-07-31) ──

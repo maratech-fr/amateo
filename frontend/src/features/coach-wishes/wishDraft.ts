@@ -6,7 +6,7 @@ import { cloneSections, type SectionState } from "./wishSections";
  * Restauré au montage, PURGÉ au succès de l'envoi. Clé par token.
  */
 interface SerializedDraft {
-  sections: Record<string, { slotsWanted: number; days: number[]; comment: string }>;
+  sections: Record<string, { slotsWanted: number; days: number[]; wishedDays?: number[]; comment: string }>;
   stepIndex: number;
 }
 
@@ -26,7 +26,7 @@ export function loadDraft(token: string): WishDraft | null {
     const parsed = JSON.parse(raw) as SerializedDraft;
     const sections = new Map<string, SectionState>();
     for (const [k, v] of Object.entries(parsed.sections)) {
-      sections.set(k, { slotsWanted: v.slotsWanted, days: new Set(v.days), comment: v.comment });
+      sections.set(k, { slotsWanted: v.slotsWanted, days: new Set(v.days), wishedDays: new Set(v.wishedDays ?? []), comment: v.comment });
     }
     return { sections, stepIndex: parsed.stepIndex };
   } catch {
@@ -39,7 +39,7 @@ export function saveDraft(token: string, sections: Map<string, SectionState>, st
     const snapshot = cloneSections(sections);
     const serialized: SerializedDraft = { sections: {}, stepIndex };
     for (const [k, v] of snapshot) {
-      serialized.sections[k] = { slotsWanted: v.slotsWanted, days: [...v.days], comment: v.comment };
+      serialized.sections[k] = { slotsWanted: v.slotsWanted, days: [...v.days], wishedDays: [...v.wishedDays], comment: v.comment };
     }
     sessionStorage.setItem(key(token), JSON.stringify(serialized));
   } catch {

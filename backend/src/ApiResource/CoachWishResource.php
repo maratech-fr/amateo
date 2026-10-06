@@ -66,6 +66,14 @@ class CoachWishResource
     #[Groups(['read'])]
     public array $unavailableDays = [];
 
+    /**
+     * Jours souhaités, ISO 1–7 (P4-312) — informatif, aucun effet solveur.
+     *
+     * @var list<int>
+     */
+    #[Groups(['read'])]
+    public array $wishedDays = [];
+
     #[Groups(['read'])]
     public ?string $comment = null;
 
@@ -85,6 +93,7 @@ class CoachWishResource
         $dto->coachId = $entity->getCoachId();
         $dto->slotsWanted = $entity->getSlotsWanted();
         $dto->unavailableDays = $entity->getUnavailableDays();
+        $dto->wishedDays = $entity->getWishedDays();
         $dto->comment = $entity->getComment();
         $dto->done = $entity->isDone();
 

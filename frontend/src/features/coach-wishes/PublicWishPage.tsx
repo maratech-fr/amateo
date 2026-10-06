@@ -137,6 +137,8 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
       return map;
     });
 
+  // Exclusion souhaité ∩ indisponible : cocher un jour d'un côté le décoche de l'autre
+  // (dernier geste gagne). Même règle que la garde serveur (422) ; ici, sans message.
   const toggleDay = (key: string, day: number) =>
     setSections((prev) => {
       const map = new Map(prev);
@@ -145,12 +147,33 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
         return prev;
       }
       const days = new Set(cur.days);
+      const wishedDays = new Set(cur.wishedDays);
       if (days.has(day)) {
         days.delete(day);
       } else {
         days.add(day);
+        wishedDays.delete(day); // un jour indisponible ne peut pas rester souhaité
       }
-      map.set(key, { ...cur, days });
+      map.set(key, { ...cur, days, wishedDays });
+      return map;
+    });
+
+  const toggleWishedDay = (key: string, day: number) =>
+    setSections((prev) => {
+      const map = new Map(prev);
+      const cur = map.get(key);
+      if (undefined === cur) {
+        return prev;
+      }
+      const wishedDays = new Set(cur.wishedDays);
+      const days = new Set(cur.days);
+      if (wishedDays.has(day)) {
+        wishedDays.delete(day);
+      } else {
+        wishedDays.add(day);
+        days.delete(day); // un jour souhaité ne peut pas rester indisponible
+      }
+      map.set(key, { ...cur, days, wishedDays });
       return map;
     });
 
@@ -199,7 +222,7 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
             />
           ) : null}
           <p className="text-sm text-muted-foreground">
-            Bonjour {context.coachFirstName} — votre club prépare le planning de {context.periodTitle}. Pour chaque équipe, indiquez combien de séances vous souhaitez et vos jours d'indisponibilité, semaine par semaine. C'est un souhait, pas un engagement&nbsp;: le club arbitre selon les
+            Bonjour {context.coachFirstName} — votre club prépare le planning de {context.periodTitle}. Pour chaque équipe, indiquez combien de séances vous souhaitez, vos jours souhaités et vos jours d'indisponibilité, semaine par semaine. C'est un souhait, pas un engagement&nbsp;: le club arbitre selon les
             gymnases disponibles. Comptez 5&nbsp;minutes — vos réponses partent en une seule fois, à la fin. À renvoyer avant le {frDate(context.deadline)}.
           </p>
           <Button className="w-full" onClick={() => stepper.next()}>
@@ -210,7 +233,7 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
 
       {"team" === current.kind ? (
         <div className="space-y-4">
-          <WishTeamStep team={context.teams[current.teamIndex ?? 0]} weeks={context.weeks} sections={sections} onPatch={patch} onToggleDay={toggleDay} />
+          <WishTeamStep team={context.teams[current.teamIndex ?? 0]} weeks={context.weeks} sections={sections} onPatch={patch} onToggleDay={toggleDay} onToggleWishedDay={toggleWishedDay} />
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="ghost" onClick={() => stepper.prev()}>
               Précédent

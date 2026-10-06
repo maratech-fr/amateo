@@ -58,7 +58,7 @@ final class PublicCoachWishTest extends WebTestCase
     public function testGetReturnsContextAndPrefillsExistingWishes(): void
     {
         // Une doléance saisie « au nom de » (par le gestionnaire) doit pré-remplir la page.
-        $this->seedWish($this->team->getId(), '2026-02-16', 2, [3], 'Note manager');
+        $this->seedWish($this->team->getId(), '2026-02-16', 2, [3], 'Note manager', wishedDays: [2]);
 
         $this->client->request('GET', '/api/coach-wishes/public/' . $this->token);
         self::assertResponseIsSuccessful();
@@ -70,6 +70,7 @@ final class PublicCoachWishTest extends WebTestCase
         self::assertCount(1, $body['wishes']);
         self::assertSame(2, $body['wishes'][0]['slotsWanted']);
         self::assertSame([3], $body['wishes'][0]['unavailableDays']);
+        self::assertSame([2], $body['wishes'][0]['wishedDays'], 'les jours souhaités sont pré-remplis');
         self::assertArrayNotHasKey('done', $body['wishes'][0], 'le drapeau done n’est jamais exposé');
     }
 
@@ -127,6 +128,36 @@ final class PublicCoachWishTest extends WebTestCase
         // Le token porte l'horodatage de réponse.
         $token = $this->em->getRepository(CoachWishToken::class)->findOneByToken($this->token);
         self::assertNotNull($token?->getRespondedAt());
+    }
+
+    public function testSubmitPersistsWishedDaysAsInformativeOnly(): void
+    {
+        // P4-312 — un jour SOUHAITÉ (positif) part et se persiste, en plus des indisponibilités.
+        $this->client->request('POST', '/api/coach-wishes/public/' . $this->token, [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'submissions' => [['teamId' => $this->team->getId(), 'weekStart' => '2026-02-16', 'slotsWanted' => 2, 'unavailableDays' => [3], 'wishedDays' => [2, 4], 'comment' => null]],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        $wish = $this->em->getRepository(CoachWish::class)->findOneBy(['calendarEntryId' => $this->mother->getId(), 'teamId' => $this->team->getId(), 'weekStart' => new DateTimeImmutable('2026-02-16 00:00:00')]);
+        self::assertNotNull($wish);
+        self::assertSame([2, 4], $wish->getWishedDays());
+        self::assertSame([3], $wish->getUnavailableDays());
+    }
+
+    public function testSubmitRejectsADayBothWishedAndUnavailableWithoutWriting(): void
+    {
+        // P4-312 — un jour ne peut pas être à la fois souhaité ET indisponible : 422, rien d'écrit.
+        $this->client->request('POST', '/api/coach-wishes/public/' . $this->token, [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'submissions' => [['teamId' => $this->team->getId(), 'weekStart' => '2026-02-16', 'slotsWanted' => 2, 'unavailableDays' => [3], 'wishedDays' => [3], 'comment' => null]],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('Un jour ne peut pas être à la fois souhaité et indisponible.', (string) $this->client->getResponse()->getContent());
+
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        self::assertCount(0, $this->em->getRepository(CoachWish::class)->findBy(['teamId' => $this->team->getId()]), 'rien écrit sur un conflit souhaité ∩ indisponible');
     }
 
     public function testSubmitRejectsATeamOutsideThePerimeterWithoutWriting(): void
@@ -342,12 +373,13 @@ final class PublicCoachWishTest extends WebTestCase
 
     /**
      * @param list<int> $days
+     * @param list<int> $wishedDays
      */
-    private function seedWish(string $teamId, string $weekStart, int $slots, array $days, ?string $comment, bool $done = false): void
+    private function seedWish(string $teamId, string $weekStart, int $slots, array $days, ?string $comment, bool $done = false, array $wishedDays = []): void
     {
         $wish = (new CoachWish)->setCalendarEntryId($this->mother->getId())->setTeamId($teamId)
             ->setWeekStart(new DateTimeImmutable($weekStart . ' 00:00:00'))->setCoachId($this->coach->getId())
-            ->setSlotsWanted($slots)->setUnavailableDays($days)->setComment($comment)->setDone($done);
+            ->setSlotsWanted($slots)->setUnavailableDays($days)->setWishedDays($wishedDays)->setComment($comment)->setDone($done);
         $wish->setClubId($this->club->getId());
         $wish->setSeasonId($this->season->getId());
         $this->em->persist($wish);

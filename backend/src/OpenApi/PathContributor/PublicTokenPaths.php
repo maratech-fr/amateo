@@ -136,7 +136,7 @@ final readonly class PublicTokenPaths implements CustomPathContributor
                         '404' => $notFound,
                         '410' => new Response('Campaign past its deadline, or its season is archived (read-only)'),
                         // Validation COMPLÈTE avant toute écriture : un 422 n'écrit rien.
-                        '422' => new Response('Missing/oversized submissions, team outside the perimeter, week outside the collection, or invalid slot/day'),
+                        '422' => new Response('Missing/oversized submissions, team outside the perimeter, week outside the collection, invalid slot/day, or a day both wished and unavailable'),
                         '429' => $tooMany,
                     ],
                     summary: 'Submit the coach wishes for the weeks of the campaign',
@@ -170,6 +170,8 @@ final readonly class PublicTokenPaths implements CustomPathContributor
                 'weekStart' => ['type' => 'string', 'format' => 'date', 'description' => 'Must be one of the campaign weeks AND still intersect the parent period'],
                 'slotsWanted' => ['type' => 'integer', 'minimum' => 0, 'maximum' => 7],
                 'unavailableDays' => ['type' => 'array', 'items' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 7]],
+                // Jours souhaités — informatif ; disjoint de unavailableDays (422 sinon).
+                'wishedDays' => ['type' => 'array', 'items' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 7]],
                 'comment' => ['type' => ['string', 'null'], 'maxLength' => 2000],
             ],
         ];

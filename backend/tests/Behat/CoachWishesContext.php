@@ -155,14 +155,15 @@ final class CoachWishesContext extends BaseContext
     #[Then('l\'entraîneur soumet ses vœux depuis cette page sans se connecter')]
     public function lEntraineurSoumetSesVoeux(): void
     {
-        // Soumission PUBLIQUE : 2 séances souhaitées, mercredi indisponible.
-        // Toujours sans Bearer.
+        // Soumission PUBLIQUE : 2 séances souhaitées, mercredi indisponible, mardi souhaité
+        // (P4-312, informatif). Toujours sans Bearer.
         $submission = $this->publicPost(\sprintf('coach-wishes/public/%s', $this->wishToken), [
             'submissions' => [[
                 'teamId' => $this->teamId,
                 'weekStart' => $this->monday,
                 'slotsWanted' => 2,
                 'unavailableDays' => [3],
+                'wishedDays' => [2],
                 'comment' => 'smoke',
             ]],
         ]);
@@ -188,6 +189,23 @@ final class CoachWishesContext extends BaseContext
         }
 
         throw new RuntimeException('le vœu soumis est introuvable côté gestionnaire');
+    }
+
+    #[Then('le jour souhaité par l\'entraîneur remonte côté gestionnaire')]
+    public function leJourSouhaiteRemonteCoteGestionnaire(): void
+    {
+        // P4-312 — le jour SOUHAITÉ (mardi = 2) remonte, en plus des indisponibilités.
+        $wishes = $this->apiGet(\sprintf('coach_wishes?calendarEntryId=%s', $this->entryId), $this->token);
+
+        foreach ($this->members($wishes['json']) as $wish) {
+            $wished = $wish['wishedDays'] ?? [];
+            if (($wish['teamId'] ?? null) === $this->teamId
+                && \is_array($wished) && \in_array(2, $wished, true)) {
+                return;
+            }
+        }
+
+        throw new RuntimeException('le jour souhaité par l\'entraîneur est introuvable côté gestionnaire');
     }
 
     /**

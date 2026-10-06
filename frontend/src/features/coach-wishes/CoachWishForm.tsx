@@ -45,7 +45,19 @@ export function CoachWishForm({
   const [coachId, setCoachId] = useState(editing?.coachId ?? "");
   const [slotsWanted, setSlotsWanted] = useState(editing?.slotsWanted ?? 1);
   const [days, setDays] = useState<number[]>(editing?.unavailableDays ?? []);
+  const [wishedDays, setWishedDays] = useState<number[]>(editing?.wishedDays ?? []);
   const [comment, setComment] = useState(editing?.comment ?? "");
+
+  // Exclusion souhaité ∩ indisponible : cocher un jour d'un côté le retire de l'autre
+  // (dernier geste gagne) — même règle que la garde serveur (422), ici silencieuse.
+  const changeDays = (next: number[]): void => {
+    setDays(next);
+    setWishedDays((w) => w.filter((d) => !next.includes(d)));
+  };
+  const changeWishedDays = (next: number[]): void => {
+    setWishedDays(next);
+    setDays((d) => d.filter((x) => !next.includes(x)));
+  };
 
   const isEdit = null !== editing;
   // Une doléance DÉ-ATTRIBUÉE (coach supprimé) : seule elle peut rester sans coach. On ne
@@ -85,6 +97,7 @@ export function CoachWishForm({
       coachId: "" === resolvedCoachId ? null : resolvedCoachId,
       slotsWanted,
       unavailableDays: days,
+      wishedDays,
       comment: "" === comment.trim() ? null : comment.trim(),
       done: editing?.done ?? false,
     });
@@ -152,7 +165,9 @@ export function CoachWishForm({
         </label>
       </div>
 
-      <DayMultiPicker legend="Jours indisponibles" legendVisible tone="accent" value={days} onChange={setDays} />
+      <DayMultiPicker legend="Jours souhaités" legendVisible tone="accent" value={wishedDays} onChange={changeWishedDays} />
+
+      <DayMultiPicker legend="Jours indisponibles" legendVisible tone="accent" value={days} onChange={changeDays} />
 
       <textarea
         aria-label="Commentaire"
