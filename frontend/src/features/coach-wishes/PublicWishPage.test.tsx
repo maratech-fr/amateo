@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router";
@@ -24,7 +24,7 @@ const context = (over: Partial<PublicWishContext> = {}): PublicWishContext => ({
   deadline: "2027-06-30",
   weeks: ["2026-02-16"],
   teams: [{ id: "t1", name: "SM1" }],
-  wishes: [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3], comment: "note manager" }],
+  wishes: [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3], wishedDays: [], comment: "note manager" }],
   respondedAt: null,
   ...over,
 });
@@ -93,7 +93,24 @@ describe("PublicWishPage — parcours en étapes", () => {
     // La validation, depuis le récap, envoie EXACTEMENT la section modifiée.
     await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
     await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
-    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 4, unavailableDays: [3], comment: "note manager" }]);
+    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 4, unavailableDays: [3], wishedDays: [], comment: "note manager" }]);
+  });
+
+  it("NR P4-312 — un jour souhaité part en wishedDays ; le cocher souhaité le retire des indisponibilités (exclusion)", async () => {
+    h.getContext.mockResolvedValue(context()); // mercredi (3) préréglé en indisponible
+    h.submit.mockResolvedValue({ deadline: "2027-06-30" });
+    renderAt();
+    await start();
+
+    const wished = screen.getByRole("group", { name: "Jours souhaités" });
+    // mardi souhaité (positif), puis mercredi souhaité → il quitte les indisponibilités.
+    await userEvent.click(within(wished).getByRole("button", { name: "mardi" }));
+    await userEvent.click(within(wished).getByRole("button", { name: "mercredi" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Suivant" })); // récap
+    await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
+    await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
+    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [], wishedDays: [2, 3], comment: "note manager" }]);
   });
 
   it("« Rien à signaler » avance sans rien modifier ; le récap affiche « aucune modification »", async () => {
@@ -126,7 +143,7 @@ describe("PublicWishPage — parcours en étapes", () => {
           { id: "t1", name: "SM1" },
           { id: "t2", name: "U13" },
         ],
-        wishes: [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3], comment: "note manager" }],
+        wishes: [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3], wishedDays: [], comment: "note manager" }],
       }),
     );
     h.submit.mockResolvedValue({ deadline: "2027-06-30" });
@@ -147,7 +164,7 @@ describe("PublicWishPage — parcours en étapes", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
     await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
-    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t2", weekStart: "2026-02-16", slotsWanted: 3, unavailableDays: [], comment: null }]);
+    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t2", weekStart: "2026-02-16", slotsWanted: 3, unavailableDays: [], wishedDays: [], comment: null }]);
   });
 
   it("depuis le récap, « Modifier » saute à l'équipe puis revient au récap", async () => {

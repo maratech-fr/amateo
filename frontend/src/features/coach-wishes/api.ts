@@ -16,6 +16,8 @@ export interface CoachWish {
   slotsWanted: number;
   /** Jours indisponibles, ISO 1–7 (1 = lundi). */
   unavailableDays: number[];
+  /** Jours souhaités, ISO 1–7 (informatif ; disjoint des indisponibilités). */
+  wishedDays: number[];
   comment: string | null;
   done: boolean;
 }
@@ -28,6 +30,7 @@ export interface CoachWishPayload {
   coachId: string | null;
   slotsWanted: number;
   unavailableDays: number[];
+  wishedDays: number[];
   comment: string | null;
   done: boolean;
 }

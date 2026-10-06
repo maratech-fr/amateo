@@ -52,11 +52,12 @@ final class CoachWishApiTest extends WebTestCase
 
     public function testCreateStampsTenantAndListScopesToPeriod(): void
     {
-        $created = $this->post($this->payload(['weekStart' => '2026-02-16', 'slotsWanted' => 2, 'unavailableDays' => [3, 5], 'comment' => 'Mutualise avec SM2']));
+        $created = $this->post($this->payload(['weekStart' => '2026-02-16', 'slotsWanted' => 2, 'unavailableDays' => [3, 5], 'wishedDays' => [2], 'comment' => 'Mutualise avec SM2']));
         self::assertResponseStatusCodeSame(201);
         self::assertSame('2026-02-16', $created['weekStart']);
         self::assertSame(2, $created['slotsWanted']);
         self::assertSame([3, 5], $created['unavailableDays']);
+        self::assertSame([2], $created['wishedDays']);
         self::assertSame('Mutualise avec SM2', $created['comment']);
         self::assertFalse($created['done']);
 
@@ -93,6 +94,16 @@ final class CoachWishApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
         // P4-126 — le motif voyage jusque dans le corps (un 422 muet rendrait `violations: []`).
         self::assertStringContainsString('Une doléance existe déjà pour cette équipe et cette semaine — modifiez-la.', (string) $this->client->getResponse()->getContent());
+    }
+
+    public function testRejectsADayBothWishedAndUnavailableWithThePlainReason(): void
+    {
+        // P4-312 — un jour ne peut pas être à la fois souhaité ET indisponible. Le chemin
+        // gestionnaire refuse via `$this->refuse(…)` : le motif voyage jusque dans le corps
+        // (un 422 muet rendrait `violations: []`).
+        $this->post($this->payload(['weekStart' => '2026-02-16', 'unavailableDays' => [3], 'wishedDays' => [3]]));
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('Un jour ne peut pas être à la fois souhaité et indisponible.', (string) $this->client->getResponse()->getContent());
     }
 
     public function testRejectedOnAClosurePeriod(): void
@@ -265,6 +276,7 @@ final class CoachWishApiTest extends WebTestCase
             'coachId' => $this->coach->getId(),
             'slotsWanted' => 2,
             'unavailableDays' => [],
+            'wishedDays' => [],
             'comment' => null,
             'done' => false,
         ], $over);

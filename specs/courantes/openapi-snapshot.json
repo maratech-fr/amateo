@@ -15666,6 +15666,14 @@
                                                             "maximum": 7
                                                         }
                                                     },
+                                                    "wishedDays": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "integer",
+                                                            "minimum": 1,
+                                                            "maximum": 7
+                                                        }
+                                                    },
                                                     "comment": {
                                                         "type": [
                                                             "string",
@@ -15741,7 +15749,7 @@
                         "description": "Campaign past its deadline, or its season is archived (read-only)"
                     },
                     "422": {
-                        "description": "Missing/oversized submissions, team outside the perimeter, week outside the collection, or invalid slot/day"
+                        "description": "Missing/oversized submissions, team outside the perimeter, week outside the collection, invalid slot/day, or a day both wished and unavailable"
                     },
                     "429": {
                         "description": "Too many attempts from this IP (rate limited before any resolution)"
@@ -15793,6 +15801,14 @@
                                                     "maximum": 7
                                                 },
                                                 "unavailableDays": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "integer",
+                                                        "minimum": 1,
+                                                        "maximum": 7
+                                                    }
+                                                },
+                                                "wishedDays": {
                                                     "type": "array",
                                                     "items": {
                                                         "type": "integer",
@@ -25864,6 +25880,13 @@
                             "type": "integer"
                         }
                     },
+                    "wishedDays": {
+                        "description": "Jours souhait\u00e9s, ISO 1\u20137 \u2014 informatif, aucun effet solveur.",
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        }
+                    },
                     "comment": {
                         "type": [
                             "string",
@@ -25945,6 +25968,15 @@
                             "type": "integer"
                         }
                     },
+                    "wishedDays": {
+                        "uniqueItems": true,
+                        "maxItems": 7,
+                        "description": "Jours souhait\u00e9s, jours ISO 1\u20137 (1 = lundi), sans doublon. Informatif : aucun effet\nsolveur. Un jour ne peut pas \u00eatre \u00e0 la fois souhait\u00e9 ET indisponible.",
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        }
+                    },
                     "comment": {
                         "maxLength": 1000,
                         "type": [
@@ -26002,6 +26034,13 @@
                         "type": "integer"
                     },
                     "unavailableDays": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        }
+                    },
+                    "wishedDays": {
+                        "description": "Jours souhait\u00e9s, ISO 1\u20137 \u2014 informatif, aucun effet solveur.",
                         "type": "array",
                         "items": {
                             "type": "integer"
@@ -26067,6 +26106,13 @@
                                 "type": "integer"
                             },
                             "unavailableDays": {
+                                "type": "array",
+                                "items": {
+                                    "type": "integer"
+                                }
+                            },
+                            "wishedDays": {
+                                "description": "Jours souhait\u00e9s, ISO 1\u20137 \u2014 informatif, aucun effet solveur.",
                                 "type": "array",
                                 "items": {
                                     "type": "integer"

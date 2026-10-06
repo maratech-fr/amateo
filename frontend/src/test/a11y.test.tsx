@@ -30,7 +30,7 @@ import { sectionKey, type SectionState } from "@/features/coach-wishes/wishSecti
 import { expectNoA11yViolations } from "./utils";
 
 // Fixture: la page publique de doléances est le cas MOBILE (coach sans login).
-const wishSections = (over: Partial<SectionState> = {}): Map<string, SectionState> => new Map([[sectionKey("t1", "2026-02-16"), { slotsWanted: 2, days: new Set([3]), comment: "note", ...over }]]);
+const wishSections = (over: Partial<SectionState> = {}): Map<string, SectionState> => new Map([[sectionKey("t1", "2026-02-16"), { slotsWanted: 2, days: new Set([3]), wishedDays: new Set([2]), comment: "note", ...over }]]);
 
 describe("a11y — shared UI primitives", () => {
   it("Button has no violations", async () => {
@@ -79,7 +79,7 @@ describe("a11y — shared UI primitives", () => {
 
 describe("a11y — étapes de doléances (cas public mobile)", () => {
   it("WishTeamStep (une équipe × ses semaines) has no violations", async () => {
-    await expectNoA11yViolations(<WishTeamStep team={{ id: "t1", name: "SM1" }} weeks={["2026-02-16"]} sections={wishSections()} onPatch={() => {}} onToggleDay={() => {}} />);
+    await expectNoA11yViolations(<WishTeamStep team={{ id: "t1", name: "SM1" }} weeks={["2026-02-16"]} sections={wishSections()} onPatch={() => {}} onToggleDay={() => {}} onToggleWishedDay={() => {}} />);
   });
 
   it("WishRecap (récapitulatif avant envoi) has no violations", async () => {

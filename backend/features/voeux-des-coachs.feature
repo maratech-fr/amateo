@@ -15,3 +15,4 @@ Fonctionnalité: Les entraîneurs expriment leurs vœux par un lien public, sans
     Et la page publique du lien reconnaît l'entraîneur sans qu'il se connecte
     Et l'entraîneur soumet ses vœux depuis cette page sans se connecter
     Et le vœu soumis remonte côté gestionnaire
+    Et le jour souhaité par l'entraîneur remonte côté gestionnaire

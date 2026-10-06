@@ -10,7 +10,7 @@ import { clearDraft, loadDraft, saveDraft } from "./wishDraft";
  */
 describe("wishDraft — migration de clé", () => {
   const token = "tok-42";
-  const sections = new Map([["s1", { slotsWanted: 2, days: new Set([1, 3]), comment: "ok" }]]);
+  const sections = new Map([["s1", { slotsWanted: 2, days: new Set([1, 3]), wishedDays: new Set([5]), comment: "ok" }]]);
 
   // Assemblée pour que le littéral de marque morte n'apparaisse pas EN DUR (garde `product.guard.test.ts`).
   const DEAD_BRAND_KEY = `${"club"}${"scheduler"}:wish-draft:`;

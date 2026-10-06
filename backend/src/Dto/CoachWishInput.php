@@ -56,6 +56,18 @@ class CoachWishInput
     #[Groups(['write'])]
     public array $unavailableDays = [];
 
+    /**
+     * Jours souhaités, jours ISO 1–7 (1 = lundi), sans doublon. Informatif : aucun effet
+     * solveur. Un jour ne peut pas être à la fois souhaité ET indisponible.
+     *
+     * @var list<int>
+     */
+    #[Assert\All([new Assert\Type('integer'), new Assert\Range(min: 1, max: 7)])]
+    #[Assert\Unique]
+    #[Assert\Count(max: 7)]
+    #[Groups(['write'])]
+    public array $wishedDays = [];
+
     #[Assert\Length(max: 1000)]
     #[Groups(['write'])]
     public ?string $comment = null;

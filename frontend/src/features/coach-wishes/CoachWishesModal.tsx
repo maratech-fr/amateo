@@ -106,7 +106,7 @@ export function CoachWishesModal({ mother, weekFilter, onClose }: { mother: Cale
       id: w.id,
       // coachId PRÉSERVÉ tel quel (null si dé-attribuée) : envoyer "" échouait le NotBlank
       // et une doléance dé-attribuée ne pouvait jamais être cochée (revue #10 C1).
-      body: { calendarEntryId: w.calendarEntryId, weekStart: w.weekStart, teamId: w.teamId, coachId: w.coachId, slotsWanted: w.slotsWanted, unavailableDays: w.unavailableDays, comment: w.comment, done: !w.done },
+      body: { calendarEntryId: w.calendarEntryId, weekStart: w.weekStart, teamId: w.teamId, coachId: w.coachId, slotsWanted: w.slotsWanted, unavailableDays: w.unavailableDays, wishedDays: w.wishedDays, comment: w.comment, done: !w.done },
     });
 
   const title = null === weekFilter ? `Doléances des coachs — ${mother.title}` : "Doléances des coachs — semaine";
@@ -182,6 +182,7 @@ export function CoachWishesModal({ mother, weekFilter, onClose }: { mother: Cale
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {0 === w.slotsWanted ? "Aucun créneau souhaité" : `${w.slotsWanted} créneau${w.slotsWanted > 1 ? "x" : ""} souhaité${w.slotsWanted > 1 ? "s" : ""}`}
+                          {w.wishedDays.length > 0 ? ` · souhaité : ${w.wishedDays.map(dayLabel).join(", ")}` : ""}
                           {w.unavailableDays.length > 0 ? ` · indispo : ${w.unavailableDays.map(dayLabel).join(", ")}` : ""}
                         </p>
                         {null !== w.comment ? <p className="mt-0.5 text-xs">{w.comment}</p> : null}

@@ -11,13 +11,28 @@ interface WishTeamStepProps {
   sections: Map<string, SectionState>;
   onPatch: (key: string, next: Partial<SectionState>) => void;
   onToggleDay: (key: string, day: number) => void;
+  onToggleWishedDay: (key: string, day: number) => void;
+}
+
+/**
+ * Rejoue, jour par jour, l'écart entre l'ancienne sélection d'un `DayMultiPicker` et la
+ * nouvelle — le parent gère un `Set` par bascule d'UN jour (l'exclusion souhaité/indispo
+ * vit côté parent). Robuste même si plus d'un jour changeait.
+ */
+function replayToggles(before: Set<number>, next: number[], toggle: (day: number) => void): void {
+  const after = new Set(next);
+  for (const day of new Set([...before, ...after])) {
+    if (before.has(day) !== after.has(day)) {
+      toggle(day);
+    }
+  }
 }
 
 /**
  * Une étape du parcours = UNE équipe et ses semaines (lot E, P2-24). Reprend le markup
  * fieldset de la page unique historique — le coach ne voit plus que son équipe courante.
  */
-export function WishTeamStep({ team, weeks, sections, onPatch, onToggleDay }: WishTeamStepProps) {
+export function WishTeamStep({ team, weeks, sections, onPatch, onToggleDay, onToggleWishedDay }: WishTeamStepProps) {
   return (
     <div className="space-y-4">
       {weeks.map((week) => {
@@ -42,22 +57,22 @@ export function WishTeamStep({ team, weeks, sections, onPatch, onToggleDay }: Wi
             </label>
             <div className="mt-2">
               <DayMultiPicker
-                legend="Jours d'indisponibilité"
+                legend="Jours souhaités"
                 legendVisible
                 // Les deux saisies de vœux (page publique ET modale gestionnaire CoachWishForm)
                 // sont en couleur du club (accent), jamais destructive (arbitrage fondateur 2026-10-01).
                 tone="accent"
+                value={[...s.wishedDays].sort((a, b) => a - b)}
+                onChange={(next) => replayToggles(s.wishedDays, next, (day) => onToggleWishedDay(key, day))}
+              />
+            </div>
+            <div className="mt-2">
+              <DayMultiPicker
+                legend="Jours d'indisponibilité"
+                legendVisible
+                tone="accent"
                 value={[...s.days].sort((a, b) => a - b)}
-                // Le parent gère un `Set` par bascule d'UN jour : on rejoue la bascule pour chaque
-                // jour qui a changé (le sélecteur n'en change qu'un à la fois, mais on reste robuste).
-                onChange={(next) => {
-                  const nextSet = new Set(next);
-                  for (const day of new Set([...s.days, ...nextSet])) {
-                    if (s.days.has(day) !== nextSet.has(day)) {
-                      onToggleDay(key, day);
-                    }
-                  }
-                }}
+                onChange={(next) => replayToggles(s.days, next, (day) => onToggleDay(key, day))}
               />
             </div>
             <label className="mt-2 block text-sm">

@@ -78,6 +78,16 @@ class CoachWish implements TenantOwnedInterface
     #[ORM\Column(type: 'json')]
     private array $unavailableDays = [];
 
+    /**
+     * Jours SOUHAITÉS, jours ISO 1–7 (1 = lundi), même convention que `unavailableDays`.
+     * Purement INFORMATIF (P4-312) : le solveur ne le lit pas, le gestionnaire arbitre. Un
+     * jour ne peut jamais être à la fois souhaité ET indisponible (garde à la saisie).
+     *
+     * @var list<int>
+     */
+    #[ORM\Column(type: 'json', options: ['default' => '[]'])]
+    private array $wishedDays = [];
+
     #[ORM\Column(type: 'text', nullable: true)]
     private ?string $comment = null;
 
@@ -218,6 +228,24 @@ class CoachWish implements TenantOwnedInterface
     public function setUnavailableDays(array $unavailableDays): self
     {
         $this->unavailableDays = $unavailableDays;
+
+        return $this;
+    }
+
+    /**
+     * @return list<int>
+     */
+    public function getWishedDays(): array
+    {
+        return $this->wishedDays;
+    }
+
+    /**
+     * @param list<int> $wishedDays
+     */
+    public function setWishedDays(array $wishedDays): self
+    {
+        $this->wishedDays = $wishedDays;
 
         return $this;
     }

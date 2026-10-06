@@ -17,6 +17,8 @@ export interface PublicWish {
   slotsWanted: number;
   /** Jours indisponibles ISO 1–7. */
   unavailableDays: number[];
+  /** Jours souhaités ISO 1–7 (informatif ; disjoint des indisponibilités). */
+  wishedDays: number[];
   comment: string | null;
 }
 
@@ -37,6 +39,7 @@ export interface PublicWishSubmission {
   weekStart: string;
   slotsWanted: number;
   unavailableDays: number[];
+  wishedDays: number[];
   comment: string | null;
 }
 

@@ -14,11 +14,16 @@ interface WishRecapProps {
 
 const dayLabel = (day: number): string => dayLabelShort(day) || String(day);
 
+const daysList = (set: Set<number>): string => [...set].sort((a, b) => a - b).map(dayLabel).join(", ");
+
 /** Résumé lisible d'une semaine modifiée. */
 function weekSummary(s: SectionState): string {
   const parts = [`${s.slotsWanted} séance${s.slotsWanted > 1 ? "s" : ""}`];
+  if (s.wishedDays.size > 0) {
+    parts.push(`souhaité ${daysList(s.wishedDays)}`);
+  }
   if (s.days.size > 0) {
-    parts.push(`indispo ${[...s.days].sort((a, b) => a - b).map(dayLabel).join(", ")}`);
+    parts.push(`indispo ${daysList(s.days)}`);
   }
   return parts.join(" · ");
 }

@@ -1,13 +1,16 @@
 # Modules produit — ce qu'Amateo vend, en langage club
 
-Last verified @ 2026-10-06 (rotation de fraîcheur, `documentation-update`, reliquat UX de l'audit
-2026-10-03 — sans rapport direct avec le sujet). Re-confronté au code : la route `/doleances/:token`
-existe toujours (`frontend/src/app/routes.tsx:119`), l'export planning n'a toujours que deux
-formats PDF/Excel (`frontend/src/features/planning/queries.ts:314`, `ExportFormat = "pdf" | "xlsx"`),
-le wizard reste à 6 étapes dans le même ordre (`frontend/src/features/wizard/lib/steps.ts:9-16`).
-Reste des claims déjà vérifiées aux passes précédentes, non re-sondées cette fois :
-`FfbbClubPopulator.php`/`FfbbTeamImporter.php` (`backend/src/Service/Basketball/`), rappels
-J-14/J-7/J-3 (`PeriodReminderCommand.php:31,40`), échéance RMM-6 (`EntryDeadlineOutlook.php:39-40`).
+Last verified @ 2026-10-06 (P4-312 PR B, `documentation-update`). Re-confronté au code : la
+doléance coach porte désormais un champ `wishedDays` informatif, symétrique de
+`unavailableDays`, sans effet solveur (`backend/src/Entity/CoachWish.php`,
+`backend/src/Controller/PublicCoachWishController.php`) ; un jour ne peut jamais être à la fois
+souhaité et indisponible (garde 422 à la saisie, `CoachWishUpserter::upsert`). Reste des claims
+déjà vérifiées aux passes précédentes, non re-sondées cette fois : la route `/doleances/:token`
+(`frontend/src/app/routes.tsx:119`), l'export planning PDF/Excel seuls
+(`frontend/src/features/planning/queries.ts:314`), le wizard à 6 étapes
+(`frontend/src/features/wizard/lib/steps.ts:9-16`), `FfbbClubPopulator.php`/`FfbbTeamImporter.php`
+(`backend/src/Service/Basketball/`), rappels J-14/J-7/J-3 (`PeriodReminderCommand.php:31,40`),
+échéance RMM-6 (`EntryDeadlineOutlook.php:39-40`).
 
 > **Rôle de ce fichier.** `etat-des-lieux.md` §1 est la carte technique (entités, PR, pointeurs) —
 > ce fichier est sa **couche en langage club** : ce que le produit fait, dit à qui le vit sur le
@@ -106,10 +109,11 @@ planning progressif, et vous êtes prévenus avant l'échéance, pas après.
 - Règles implicites honorées sans aucune saisie (le coach principal est présent à ses séances, un
   repos suit un jour de match, les séances d'un même coach dans une même salle sont regroupées) —
   `etat-des-lieux.md` §1.1.
-- Vœux et indisponibilités des coachs collectés par une page à lien personnel, **sans compte** —
-  dépôt borné au périmètre du lien, expire à la deadline — `etat-des-lieux.md` §1.6.
+- Vœux, jours souhaités et indisponibilités des coachs collectés par une page à lien personnel,
+  **sans compte** — dépôt borné au périmètre du lien, expire à la deadline — `etat-des-lieux.md` §1.6.
 - Le lien du coach dépose un souhait, il **n'écrit jamais** une contrainte : c'est toujours le
-  gestionnaire qui arbitre et tranche — `etat-des-lieux.md` §1.6.
+  gestionnaire qui arbitre et tranche (les jours souhaités sont purement informatifs, zéro effet
+  solveur) — `etat-des-lieux.md` §1.6.
 
 **Où dans l'app :** wizard étape Contraintes, page publique `/doleances/:token` (coach), cockpit
 (todo-list des doléances).

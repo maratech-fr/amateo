@@ -95,9 +95,18 @@ class CoachWishStateProcessor extends AbstractStateProcessor
 
     private function applyEditableFields(CoachWish $entity, CoachWishInput $input): void
     {
+        $unavailableDays = array_map('intval', $input->unavailableDays);
+        $wishedDays = array_map('intval', $input->wishedDays);
+        // Un jour ne peut pas être à la fois souhaité ET indisponible (P4-312). `refuse()` porte
+        // le motif dans le 422 — jamais l'exception de validation construite avec une chaîne
+        // (422 muet) — voir AbstractStateProcessor::refuse.
+        if ([] !== array_intersect($wishedDays, $unavailableDays)) {
+            $this->refuse('Un jour ne peut pas être à la fois souhaité et indisponible.');
+        }
         $entity->setCoachId($input->coachId);
         $entity->setSlotsWanted($input->slotsWanted ?? 0);
-        $entity->setUnavailableDays(array_map('intval', $input->unavailableDays));
+        $entity->setUnavailableDays($unavailableDays);
+        $entity->setWishedDays($wishedDays);
         $entity->setComment(null === $input->comment || '' === trim($input->comment) ? null : $input->comment);
         $entity->setDone($input->done);
     }

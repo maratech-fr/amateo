@@ -121,6 +121,7 @@ final class PublicCoachWishController extends AbstractController
                         'weekStart' => $wish->getWeekStart()->format('Y-m-d'),
                         'slotsWanted' => $wish->getSlotsWanted(),
                         'unavailableDays' => $wish->getUnavailableDays(),
+                        'wishedDays' => $wish->getWishedDays(),
                         'comment' => $wish->getComment(),
                     ];
                 }
@@ -209,13 +210,28 @@ final class PublicCoachWishController extends AbstractController
                     }
                     $days[] = $d;
                 }
+                $wished = [];
+                foreach ((\is_array($item) && \is_array($item['wishedDays'] ?? null) ? $item['wishedDays'] : []) as $d) {
+                    $d = (int) $d;
+                    if ($d < 1 || $d > 7) {
+                        return $this->json(['error' => 'Jour invalide.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+                    }
+                    $wished[] = $d;
+                }
+                $days = array_values(array_unique($days));
+                $wished = array_values(array_unique($wished));
+                // Un jour ne peut pas être à la fois souhaité ET indisponible : une violation → 422,
+                // rien d'écrit (le front décoche déjà l'un quand l'autre est coché — garde serveur).
+                if ([] !== array_intersect($wished, $days)) {
+                    return $this->json(['error' => 'Un jour ne peut pas être à la fois souhaité et indisponible.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+                }
                 $comment = \is_array($item) && \is_string($item['comment'] ?? null) ? mb_substr($item['comment'], 0, 2000) : null;
-                $clean[$teamId . '|' . $weekStart] = ['teamId' => $teamId, 'weekStart' => $weekStart, 'slots' => $slots, 'days' => array_values(array_unique($days)), 'comment' => $comment];
+                $clean[$teamId . '|' . $weekStart] = ['teamId' => $teamId, 'weekStart' => $weekStart, 'slots' => $slots, 'days' => $days, 'wished' => $wished, 'comment' => $comment];
             }
 
             $this->entityManager->wrapInTransaction(function () use ($clean, $campaign, $coachId, $entity): void {
                 foreach ($clean as $c) {
-                    $this->upserter->upsert($campaign, $c['teamId'], new DateTimeImmutable($c['weekStart'] . ' 00:00:00'), $coachId, $c['slots'], $c['days'], $c['comment']);
+                    $this->upserter->upsert($campaign, $c['teamId'], new DateTimeImmutable($c['weekStart'] . ' 00:00:00'), $coachId, $c['slots'], $c['days'], $c['wished'], $c['comment']);
                 }
                 $entity['token']->markResponded($this->clock->now());
                 $this->entityManager->flush();
