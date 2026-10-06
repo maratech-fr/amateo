@@ -333,7 +333,7 @@ services:
   mercure:
     # Pinned (dev uses :latest): same immutability contract as our own images —
     # a routine `docker compose pull` must never silently swap the hub version.
-    image: dunglas/mercure:v0.19
+    image: dunglas/mercure:v0.24
     container_name: amateo-mercure
     environment:
       SERVER_NAME: ":80"

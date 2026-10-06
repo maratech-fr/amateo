@@ -138,7 +138,7 @@ services:
 
   nginx:
     restart: unless-stopped
-    image: nginx:1.27-alpine
+    image: nginx:1.31-alpine
     container_name: amateo-nginx
     depends_on:
       php-fpm:
@@ -345,7 +345,7 @@ services:
     # Épinglé : Mercure 1.0 (2026-09-16) passe à l'authorization OAuth 2.0 et répond 401 aux
     # tokens 0.x → hub cassé sous `latest`. On reste sur 0.24.2 (version qui tourne) ; la
     # migration 1.0 est cadrée en roadmap. `latest` interdit ici désormais.
-    image: dunglas/mercure:v0.24.2
+    image: dunglas/mercure:v1.0.2
     container_name: amateo-mercure
     environment:
       SERVER_NAME: ":80"
