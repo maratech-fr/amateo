@@ -301,6 +301,14 @@ paths:
   garde STATIQUE (grep des sources `.tsx` sur `text-<jeton>/NN`/`opacity-[3-6]0`) qui rougit dans
   Vitest, avant le scan de contraste Playwright — sans lui une régression d'opacité sur du texte
   resterait verte jusqu'au prochain `a11y-contrast.spec.ts`.
+- 🔴 **Toute classe `animate-*` porte `motion-reduce:animate-none`, tout `.css` qui anime a un volet
+  `prefers-reduced-motion`** (A11Y-31, WCAG 2.3.3 · audit 2026-10-03) : une animation est du confort,
+  jamais de l'information, et doit s'effacer pour qui a demandé « moins de mouvement ». Gardé par
+  `frontend/src/test/motionReduceGuard.test.ts` (grep statique `src/**`, patron `textOpacityGuard`) : une
+  classe `animate-<x>` (hors `animate-none`) sur une ligne `.tsx` sans `motion-reduce:`, ou un fichier
+  `.css` de `src/` qui déclare `animation:` sans requête `prefers-reduced-motion`, rougit dans Vitest —
+  AVANT le scan Playwright, car jsdom n'a ni moteur de layout ni `matchMedia`. Un site animé borné
+  AUTREMENT (JS `matchMedia` comme `brand-splash`, bloc CSS frère) entre dans `TSX_EXEMPTIONS` (≤ 5).
 - 🔴 **Un scan a11y authentifié sur `/matchs` ne peint RIEN si le club seedé CI n'a aucune
   `Fixture`** — `app:bccl:seed` ne pose que des `TeamMatchHabit` (créneaux idéaux), jamais de
   rencontre : l'écran rend un `EmptyState` (« Aucun match importé »), le scan tourne sur du vide et

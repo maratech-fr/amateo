@@ -139,7 +139,7 @@ export function OpponentsPage() {
         </div>
         <div className="flex flex-col items-end gap-1">
           <Button variant="outline" size="sm" className="shrink-0" disabled={update.isPending || computing} onClick={update.run}>
-            <RefreshCw className={cn("size-4", update.isPending ? "animate-spin" : "")} aria-hidden="true" />
+            <RefreshCw className={cn("size-4", update.isPending ? "animate-spin motion-reduce:animate-none" : "")} aria-hidden="true" />
             {updateLabel}
           </Button>
           {"ready" === state && clubGeolocated && totalTravel > 0 ? (

@@ -754,7 +754,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
               « rien à faire » (revue #344). */}
           <span className="sr-only">Chargement des éléments à traiter…</span>
           {[0, 1].map((i) => (
-            <div key={i} className="animate-pulse rounded-md border border-border p-3">
+            <div key={i} className="animate-pulse rounded-md border border-border p-3 motion-reduce:animate-none">
               <div className="h-3 w-2/5 rounded bg-muted" />
               <div className="mt-2 h-2 w-3/5 rounded bg-muted" />
             </div>
@@ -922,15 +922,17 @@ function RadarCard({
           {badge ? <div className="mt-1 flex flex-wrap">{badge}</div> : null}
         </div>
         {foldable ? (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-sm"
             aria-expanded={open}
             aria-label={`${open ? "Replier" : "Déplier"} ${title}`}
-            className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+            className="shrink-0 text-muted-foreground"
             onClick={() => setOpen((prev) => !prev)}
           >
             <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} />
-          </button>
+          </Button>
         ) : null}
       </div>
       {actions ? <div className="mt-2 flex flex-col items-end gap-1">{actions}</div> : null}

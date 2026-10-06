@@ -94,7 +94,7 @@ export function ClubViewTable({ model, selectedSlotId, onSelectSlot, highlightSl
           "group relative flex overflow-hidden rounded border-l-4 transition hover:ring-1 hover:ring-accent",
           selected ? "ring-2 ring-accent" : "",
           dimmed ? "opacity-30" : "",
-          isSource(entry.slotId) ? "animate-pulse ring-2 ring-accent" : "",
+          isSource(entry.slotId) ? "animate-pulse ring-2 ring-accent motion-reduce:animate-none" : "",
           lensActive && null === entry.lockOrigin ? "opacity-40" : "",
           lensActive && null !== entry.lockOrigin ? LOCK_LENS_META[entry.lockOrigin].ringClass : "",
         )}
