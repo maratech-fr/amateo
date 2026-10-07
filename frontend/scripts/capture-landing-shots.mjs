@@ -726,17 +726,22 @@ async function removeCalendarBanners(page) {
  * aria-expanded>` dans `[data-conflicts-entries]` (ConflictsPage/AccordionSection).
  *
  * L'accordéon ouvert est porté par `?ouvert=<clé>` dans l'URL (posé en `replace` par le clic,
- * ConflictsPage.tsx:263-271). L'effet de seed/re-synchro de la page (ConflictsPage.tsx:205-258)
- * peut re-synchroniser l'URL juste APRÈS le clic et laisser retomber `?ouvert` — le groupe se
- * referme et la capture est quasi vide. D'où un dépliage ROBUSTE :
+ * ConflictsPage.tsx:263-271). ⚠ La bascule de l'`aria-expanded` est DIFFÉRÉE : juste après le clic
+ * (réseau calme compris) l'attribut vaut encore "false", il ne passe à "true" que ~300 ms plus tard,
+ * APRÈS la mise à jour de `?ouvert` (mesuré). Re-cliquer dans cet intervalle REFERME le groupe (le
+ * second clic bascule `setOuvert(null)`) et fige le chevron à mi-course, corps non rendu. D'où un
+ * dépliage qui NE CLIQUE QU'UNE FOIS :
  *   1. déjà ouvert (groupe unique ouvert d'office) ⇒ ne rien faire (un clic le replierait) ;
- *   2. cliquer l'en-tête, re-tenter (borné) après stabilisation tant qu'aucun groupe n'est ouvert,
- *      en CAPTURANT la clé `?ouvert` dès que le clic l'écrit (patch synchrone de l'historique :
- *      l'écriture est synchrone dans le handler, l'effet qui la défait tourne dans un useEffect) ;
- *   3. repli : RECHARGER la route avec `&ouvert=<clé>` — à la navigation, la passe de seed
- *      PRÉSERVE `?ouvert` (elle ne nettoie une clé que lors de la re-synchro, où elle existe), le
- *      groupe s'ouvre d'office ;
- *   4. échec persistant ⇒ avertir BRUYAMMENT (la capture montrera des accordéons repliés).
+ *   2. cliquer l'en-tête UNE SEULE FOIS, puis ATTENDRE que l'`aria-expanded` bascule à "true"
+ *      (jamais de second clic), en CAPTURANT la clé `?ouvert` dès que le clic l'écrit (patch
+ *      synchrone de l'historique : l'écriture est synchrone dans le handler, l'effet qui la défait
+ *      tourne dans un useEffect) ;
+ *   3. repli (la bascule n'est pas venue) : RECHARGER la route avec `&ouvert=<clé>` — à la
+ *      navigation, la passe de seed PRÉSERVE `?ouvert` (elle ne nettoie une clé que lors de la
+ *      re-synchro, où elle existe), le groupe s'ouvre d'office — puis réattendre la bascule ;
+ *   4. échec persistant ⇒ avertir BRUYAMMENT (la capture montrera des accordéons repliés) ;
+ *   5. ouvert ⇒ laisser la ROTATION du chevron (transition CSS) se poser avant de rendre la main :
+ *      attendre le corps de l'accordéon (désigné par `aria-controls`) puis un court repos.
  */
 async function prepareConflicts(page) {
   const empty = await page.getByText("Aucun conflit sur la saison").isVisible().catch(() => false);
@@ -785,32 +790,44 @@ async function prepareConflicts(page) {
     }
   });
 
-  // (2) Cliquer, re-tenter (borné) après stabilisation tant qu'aucun groupe n'est ouvert.
-  const MAX_CLICKS = 3;
-  for (let attempt = 0; attempt < MAX_CLICKS && !(await isOpen()); attempt++) {
-    await firstHeader.click().catch(() => {});
-    await waitForStability(page);
-  }
-  if (await isOpen()) {
-    return;
-  }
+  // (2) Cliquer UNE SEULE FOIS, puis attendre que l'`aria-expanded` bascule à "true". La bascule
+  //     est DIFFÉRÉE (~300 ms, après la mise à jour de `?ouvert`) : re-cliquer avant qu'elle
+  //     n'arrive REFERMERAIT le groupe. On clique donc une fois et on ATTEND — le repli `?ouvert`
+  //     (3) prend le relais si la bascule ne vient pas.
+  await firstHeader.click().catch(() => {});
+  await expanded.first().waitFor({ timeout: 10_000 }).catch(() => {});
 
-  // (3) Repli : recharger la route avec la clé capturée en `?ouvert`.
-  const capturedKey = await page.evaluate(() => /** @type {any} */ (window).__capturedOuvert ?? null);
-  if (null !== capturedKey) {
-    const target = new URL(page.url());
-    target.searchParams.set("ouvert", capturedKey);
-    await page.goto(target.toString(), { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
-    await waitForStability(page);
+  // (3) Repli : la bascule n'est pas venue ⇒ recharger la route avec la clé capturée en `?ouvert`
+  //     (écrite synchroniquement dans le handler du clic, avant que l'effet de re-synchro ne la
+  //     défasse), puis réattendre la bascule de la même façon.
+  if (!(await isOpen())) {
+    const capturedKey = await page.evaluate(() => /** @type {any} */ (window).__capturedOuvert ?? null);
+    if (null !== capturedKey) {
+      const target = new URL(page.url());
+      target.searchParams.set("ouvert", capturedKey);
+      await page.goto(target.toString(), { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
+      await waitForStability(page);
+      await expanded.first().waitFor({ timeout: 10_000 }).catch(() => {});
+    }
   }
 
   // (4) Toujours replié : avertir bruyamment.
   if (!(await isOpen())) {
     console.warn(
-      "⚠ conflits : impossible de DÉPLIER le premier groupe (il reste replié après reclics et " +
+      "⚠ conflits : impossible de DÉPLIER le premier groupe (il reste replié après le clic et la " +
         "navigation directe `?ouvert`). La capture Conflits montrera des accordéons REPLIÉS — à vérifier avant de la garder.",
     );
+    return;
   }
+
+  // (5) Ouvert : laisser la ROTATION du chevron (transition CSS) se poser avant de rendre la main.
+  //     On attend que le CORPS de l'accordéon (désigné par `aria-controls`) soit visible, puis un
+  //     court repos — sinon la capture peut figer le chevron à mi-course, corps pas encore rendu.
+  const bodyId = await expanded.first().getAttribute("aria-controls").catch(() => null);
+  if (null !== bodyId && "" !== bodyId) {
+    await page.locator(`[id="${bodyId}"]`).first().waitFor({ state: "visible", timeout: NAV_TIMEOUT }).catch(() => {});
+  }
+  await page.waitForTimeout(500);
 }
 
 /** Préparations propres à un écran (version en vigueur, semaine non vide, bandeaux, groupe ouvert). */

@@ -135,11 +135,14 @@ Préparations par écran :
 - **Conflits** : si la saison n'a **aucun conflit**, la capture est laissée en l'état mais un
   **avertissement** est loggé ; sinon le **premier groupe** (accordéon) est **déplié** de façon
   robuste — idempotent (un groupe déjà ouvert n'est pas cliqué). L'état ouvert est porté par
-  `?ouvert=<clé>` dans l'URL ; comme l'effet de re-synchro de la page peut faire **retomber** cette
-  clé juste après le clic (groupe refermé), le script **re-tente** le clic (borné) après
-  stabilisation, puis, en dernier recours, **recharge** la route avec `&ouvert=<clé>` (capturée à
+  `?ouvert=<clé>` dans l'URL ; la bascule de l'`aria-expanded` est **différée** (~300 ms, après la
+  mise à jour de `?ouvert`), aussi le script **ne clique qu'une seule fois** puis **attend** cette
+  bascule — un second clic refermerait le groupe (et figerait le chevron à mi-course). Si la bascule
+  ne vient pas, il **recharge** en dernier recours la route avec `&ouvert=<clé>` (capturée à
   l'écriture de l'historique) — à la navigation la clé est préservée et le groupe s'ouvre d'office.
-  Si le groupe reste malgré tout replié, un **avertissement bruyant** est loggé.
+  Une fois ouvert, il **laisse la rotation du chevron se poser** (corps de l'accordéon visible +
+  court repos) avant de capturer. Si le groupe reste malgré tout replié, un **avertissement
+  bruyant** est loggé.
 
 Si `IMPORT_FBI` est fourni, l'import FBI passe **une seule fois** avant la boucle, via l'UI
 `/matchs/importer` (dépôt du fichier → appariement Division→équipe **explicite** → « Importer »).
