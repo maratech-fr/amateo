@@ -399,10 +399,15 @@ function ClubTbody({
         </TableCell>
         <TableCell className="hidden text-right tabular-nums @md:table-cell">{noGym ? club.fixtureCount : ""}</TableCell>
         <TableCell className="text-right">
-          {/* Correctif 5 — bouton ICÔNE « + » (comme le déclencheur de menu des lignes gymnase) :
-              le libellé texte débordait la boîte à 360 px ; le nom reste accessible (aria-label + title). */}
-          <Button variant="ghost" size="icon" className="size-11 rounded-md @md:size-8" aria-label="Ajouter un gymnase" title="Ajouter un gymnase" onClick={onAddVenue}>
+          {/* P4-285 — bouton d'ajout libellé ; style DISCRET (`ghost`, sans bordure) sur une ligne de
+              tableau. Libellé VISIBLE dès le palier conteneur `@md` (là où la table déplie ses colonnes) ;
+              en dessous, seule l'icône « + » est peinte et le libellé devient le nom accessible via le
+              `<span sr-only>`, pour que la ligne CLUB tienne à 360 px sans défilement horizontal (décision :
+              ordinateur d'abord, garde 360 px conservé). Le bouton n'est PAS `size="icon"` (garde
+              `addButtonLabelGuard`) ; carré 36 px de cible sous `@md` (`w-9 px-0`, hauteur `h-9` de `sm`). */}
+          <Button variant="ghost" size="sm" className="w-9 px-0 @md:w-auto @md:px-3" onClick={onAddVenue}>
             <Plus className="size-3.5" aria-hidden="true" />
+            <span className="sr-only @md:not-sr-only">Ajouter un gymnase</span>
           </Button>
         </TableCell>
       </TableRow>

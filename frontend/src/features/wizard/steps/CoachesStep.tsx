@@ -430,8 +430,9 @@ function CoachesEditor() {
           {/* Un coach créé est « non précisé » (double forme) jusqu'à saisie du genre. */}
           {capitalizeWord(salariedWord("UNSPECIFIED"))}
         </label>
-        <Button type="submit" size="icon" className="ml-auto size-8" disabled={create.isPending} title="Ajouter le coach" aria-label="Ajouter le coach">
-          <Plus className="size-4" />
+        <Button type="submit" size="sm" className="ml-auto" disabled={create.isPending}>
+          <Plus className="size-3.5" />
+          Ajouter le coach
         </Button>
       </form>
 

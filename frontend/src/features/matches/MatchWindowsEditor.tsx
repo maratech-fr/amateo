@@ -91,8 +91,9 @@ export function MatchWindowsEditor({ venueId }: MatchWindowsEditorProps) {
           Fin
           <Input aria-label="Fin de la fenêtre match" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
         </label>
-        <Button size="icon-sm" aria-label="Ajouter la fenêtre match" title="Ajouter la fenêtre match" disabled={rangeInvalid || create.isPending} onClick={add}>
-          <Plus className="size-4" />
+        <Button size="sm" disabled={rangeInvalid || create.isPending} onClick={add}>
+          <Plus className="size-3.5" />
+          Ajouter la fenêtre match
         </Button>
       </div>
       {rangeInvalid && "" !== startTime && "" !== endTime ? (

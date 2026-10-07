@@ -222,14 +222,12 @@ function EditableLinks<T extends TeamLike>({
             </Select>
           </label>
           <Button
-            size="icon"
-            className="size-9"
-            aria-label="Ajouter la passerelle"
-            title="Ajouter la passerelle"
+            size="sm"
             disabled={"" === teamAId || "" === linkTeamBId || teamAId === linkTeamBId || createLink.isPending}
             onClick={addLink}
           >
-            <Plus className="size-4" />
+            <Plus className="size-3.5" />
+            Ajouter la passerelle
           </Button>
         </div>
       )}

@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, Pencil, Plus, Trash2, X } from "lucide-react";
+import { AlertTriangle, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
@@ -388,11 +388,11 @@ function IdealSlotAddForm<T extends TeamLike>({
         venues={venues}
         weekendAlternates={weekendAlternates}
       />
-      <Button size="icon" className="size-8" aria-label="Enregistrer le nouveau créneau idéal" title="Enregistrer" disabled={!canSave} onClick={save}>
-        <Check className="size-4" />
+      <Button size="sm" aria-label="Enregistrer le nouveau créneau idéal" title="Enregistrer" disabled={!canSave} onClick={save}>
+        Enregistrer
       </Button>
-      <Button variant="ghost" size="icon" className="size-8" aria-label="Annuler l’ajout d’un créneau idéal" title="Annuler" onClick={onDone}>
-        <X className="size-4" />
+      <Button variant="outline" size="sm" aria-label="Annuler l’ajout d’un créneau idéal" title="Annuler" onClick={onDone}>
+        Annuler
       </Button>
     </div>
   );

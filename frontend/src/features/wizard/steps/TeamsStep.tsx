@@ -847,8 +847,9 @@ function TeamsEditor() {
             </Select>
             {/* Désarmé tant que les catégories chargent : un submit précoce
                 enverrait sportCategoryId undefined → 422 (course vue en e2e). */}
-            <Button type="submit" size="icon" className="ml-auto size-8" disabled={create.isPending || categoriesLoading} title="Ajouter l'équipe" aria-label="Ajouter l'équipe">
-              <Plus className="size-4" />
+            <Button type="submit" size="sm" className="ml-auto" disabled={create.isPending || categoriesLoading}>
+              <Plus className="size-3.5" />
+              Ajouter l'équipe
             </Button>
           </form>
           {/* AUD-A11Y-13 — `aria-invalid` disait « ce champ est fautif » sans jamais dire
