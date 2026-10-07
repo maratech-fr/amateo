@@ -28,7 +28,7 @@ Dire l'inverse serait mentir sur la portée du correctif.
 | `httpOnly` | oui | `lexik_jwt_authentication.yaml` (`set_cookies.BEARER`) |
 | `SameSite` | `strict` | idem — **c'est toute la défense CSRF** de ce cookie |
 | `Secure` | `%env(bool:JWT_COOKIE_SECURE)%` | **défaut `true`** (fail-closed) ; `false` posé explicitement en dev/CI |
-| Durée | `token_ttl` (1 h) | héritée, non redéfinie |
+| Durée | `token_ttl` (1 h), **glissante** sous un plafond de 12 h | `token_ttl` héritée ; le glissement est porté par `JwtSlidingSessionListener` (voir plus bas) |
 
 Les quatre propriétés qui font tenir le correctif sont gardées **ensemble** par
 `backend/tests/Security/JwtCookieContractTest.php` (groupe `phase1`) : le jeton
@@ -57,6 +57,54 @@ une copie lisible, et le jeton reviendrait en `localStorage`.
   terme. `PUBLIC_ACCESS` assumé (`security.yaml`) : le geste est idempotent, ne
   révèle rien, et l'exiger authentifié rendrait indéconnectable une session déjà
   expirée — le cas où l'on en a le plus besoin.
+
+## Session glissante — 1 h d'inactivité, 12 h absolues (P4-291)
+
+Le TTL d'1 h, pris au pied de la lettre, déconnecte un gestionnaire **en plein
+geste** toutes les heures : friction pure, zéro gain de sécurité (il se
+reconnecte dans la seconde). `JwtSlidingSessionListener`
+(`backend/src/EventListener/JwtSlidingSessionListener.php`, `kernel.response`)
+fait **glisser** la fenêtre tant qu'on s'en sert, sous **deux bornes** :
+
+- **inactivité — 1 h** : chaque requête utile ré-émet un cookie au TTL frais, donc
+  la session ne meurt qu'après 1 h **sans** requête ;
+- **absolue — 12 h** : à la ré-émission, `exp = min(now + token_ttl, auth_at + 12 h)`.
+  Le jeton rejoué en continu **meurt EXACTEMENT à 12 h** — le plafond gagne sur le
+  TTL près de l'échéance, et passé 12 h il n'y a **plus aucune ré-émission**. Un
+  poste partagé laissé ouvert finit donc par se fermer.
+
+Le claim d'origine **`auth_at`** est posé à la **naissance** du jeton (listener
+`lexik_jwt_authentication.on_jwt_created`, donc login lexik, `verifyEmail` et
+démo sont couverts), reporté **verbatim** à chaque ré-émission, **jamais
+réinitialisé** ; un jeton déjà en circulation sans `auth_at` retombe sur son
+`iat` (repli migration-safe).
+
+**Ce qui ne glisse JAMAIS, par construction :**
+
+- le **flux Bearer** (scripts d'ops, Behat, helpers e2e) : il porte un en-tête
+  `Authorization`, le listener n'agit que sur le **cookie `BEARER` seul** — un
+  script re-signe ses jetons lui-même ;
+- la **console super-admin** (`^/api/admin`) : identité et firewall séparés (SA0),
+  hors périmètre ;
+- `^/api/login` et `^/api/logout` : lexik y pose/efface déjà le cookie ;
+- une réponse qui **pose déjà un cookie `BEARER` neuf** (confirmation d'email, vérification
+  d'inscription, invitation publique, inscription démo) : le listener n'y touche pas, sinon il
+  écraserait le jeton frais du contrôleur par l'ancien de la requête ;
+- un **compte démo à fenêtre d'activation fermée** (confrontée à `app.clock.real`, comme
+  `UserChecker`) : on ne prolonge pas une session que la connexion refuserait déjà.
+
+⚠ La borne 12 h est mesurée sur **`app.clock.real`**, jamais le service `clock`
+décoré par `ClubClock` : `TenantFilterListener` pose `_club_id` même pour un club
+démo dont l'horloge SIMULÉE peut être calée en l'an 2000, ce qui corromprait la
+fenêtre. Les `iat`/`exp` des jetons sont eux aussi des `time()` réels — la
+comparaison reste sur le même référentiel (même invariant que les durées de
+sécurité de P4-304).
+
+L'expiration côté serveur reste souveraine : un jeton hors fenêtre → 401 → l'UX
+existante (`frontend/src/shared/api/client.ts`) vide le drapeau et redirige. Le
+listener ne ressuscite rien — un jeton expiré n'a pas d'utilisateur authentifié,
+donc **zéro Set-Cookie**. Gardé par `backend/tests/Security/SlidingSessionTest.php`
+(step bloquant `SlidingSessionTest`, `docs/testing/blocking-tests.md`).
 
 ## ⚠ `Secure` vient d'une variable d'env, jamais de `$request->isSecure()`
 
