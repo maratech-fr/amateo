@@ -624,5 +624,111 @@ class DiagnosticPrecisionTest(unittest.TestCase):
             self.assertEqual([], _diagnose_travel_times(model_data, cp_model.OPTIMAL, slots, team_coach_map))
 
 
+class InfeasibilityCausesTest(unittest.TestCase):
+    """P4-96 — nommage du noyau d'infaisabilité (D1) et agrégat des candidats fermés (D2)."""
+
+    def _infeasible_with_two_sources(self) -> tuple[Any, cp_model.CpSolver]:
+        from app.solver.constraints.common import _assume
+        from app.solver.model import ScheduleCpModel
+
+        model = ScheduleCpModel()
+        var = model.NewBoolVar("x")
+        lit1 = _assume(model, "tw:c1", {"kind": "time_window", "constraintId": "c1", "label": "Fenêtre A"})
+        lit2 = _assume(model, "cu:c2", {"kind": "coach_unavailability", "constraintId": "c2", "label": "Indispo B"})
+        model.Add(var == 1).OnlyEnforceIf(lit1)
+        model.Add(var == 0).OnlyEnforceIf(lit2)
+        solver = cp_model.CpSolver()
+        status = solver.Solve(model)
+        self.assertEqual(status, cp_model.INFEASIBLE)
+        return model, solver
+
+    def test_core_names_both_source_rules(self) -> None:
+        from app.solver.result_builder import _collect_infeasibility_causes
+
+        model, solver = self._infeasible_with_two_sources()
+        causes, labels = _collect_infeasibility_causes(model, solver)
+        self.assertEqual({"time_window", "coach_unavailability"}, {c["kind"] for c in causes})
+        self.assertEqual({"Fenêtre A", "Indispo B"}, set(labels))
+        self.assertTrue(all(c["count"] == 1 for c in causes))
+
+    def test_core_is_empty_when_solver_lacks_the_method(self) -> None:
+        from app.solver.result_builder import _collect_infeasibility_causes
+
+        model, _solver = self._infeasible_with_two_sources()
+
+        class _NoMethodSolver:
+            pass
+
+        self.assertEqual(([], []), _collect_infeasibility_causes(model, _NoMethodSolver()))
+
+    def test_source_without_label_degrades_without_keyerror(self) -> None:
+        """Une contrainte sans id/nom → cause au kind seul (label None), jamais un KeyError, et son
+        libellé absent n'entre pas dans la liste citée."""
+        from app.solver.constraints.common import _assume
+        from app.solver.model import ScheduleCpModel
+        from app.solver.result_builder import _collect_infeasibility_causes
+
+        model = ScheduleCpModel()
+        var = model.NewBoolVar("x")
+        anon = _assume(model, "tw:anon", {"kind": "time_window", "constraintId": None, "label": None})
+        model.Add(var == 1).OnlyEnforceIf(anon)
+        model.Add(var == 0)  # fermeture inconditionnelle → infaisable sous l'hypothèse anon
+        solver = cp_model.CpSolver()
+        self.assertEqual(solver.Solve(model), cp_model.INFEASIBLE)
+
+        causes, labels = _collect_infeasibility_causes(model, solver)
+        self.assertEqual([{"kind": "time_window", "constraintId": None, "label": None, "count": 1}], causes)
+        self.assertEqual([], labels)  # pas de libellé ⇒ rien à citer, aucun plantage
+
+    def test_locked_out_team_aggregates_closed_candidates_without_solver_value(self) -> None:
+        from app.solver.constraints.common import _enforce_closure
+        from app.solver.model import ScheduleCpModel
+        from app.solver.result_builder import _collect_locked_out_teams
+
+        model = ScheduleCpModel()
+        # Trois candidats de l'équipe T, tous FERMÉS (2 par un verrou, 1 par une indispo coach).
+        for i in range(3):
+            v = model.NewBoolVar(f"x{i}")
+            model.x[("T", "gym", 1, f"18:0{i}")] = v
+            cause = {"kind": "hard_lock"} if i < 2 else {"kind": "coach_unavailability", "label": "Indispo"}
+            _enforce_closure(model, v, cause, None)
+
+        locked_out = _collect_locked_out_teams(model)
+        self.assertEqual(1, len(locked_out))
+        entry = locked_out[0]
+        self.assertEqual("T", entry["teamId"])
+        self.assertEqual(3, entry["total"])
+        counts = {(c["kind"], c["label"]): c["count"] for c in entry["causes"]}
+        self.assertEqual(2, counts[("hard_lock", None)])
+        self.assertEqual(1, counts[("coach_unavailability", "Indispo")])
+
+    def test_team_with_an_open_candidate_is_not_locked_out(self) -> None:
+        from app.solver.constraints.common import _enforce_closure
+        from app.solver.model import ScheduleCpModel
+        from app.solver.result_builder import _collect_locked_out_teams
+
+        model = ScheduleCpModel()
+        closed = model.NewBoolVar("x0")
+        model.x[("T", "gym", 1, "18:00")] = closed
+        _enforce_closure(model, closed, {"kind": "hard_lock"}, None)
+        open_var = model.NewBoolVar("x1")  # non fermé → candidat OUVERT
+        model.x[("T", "gym", 1, "19:00")] = open_var
+
+        self.assertEqual([], _collect_locked_out_teams(model))
+
+    def test_infeasible_message_stays_generic_without_model_and_solver(self) -> None:
+        """Appel direct ancien (sans model/solver) : message générique conservé, aucun plantage."""
+        from app.solver.result_builder import _diagnose_conflicts, _infeasible_message
+
+        model_data = {"teams": [], "venues": []}
+        diags = _diagnose_conflicts(model_data, cp_model.INFEASIBLE, [])
+        infeasible = next(d for d in diags if d["id"] == "diag-infeasible")
+        # Sans noyau nommé, le message reste EXACTEMENT le message générique mesuré (jamais la forme
+        # D1 « Ces N règles se contredisent : … »), et aucune cause n'est attachée.
+        self.assertFalse(infeasible["message"].startswith("Ces "))
+        self.assertEqual(_infeasible_message(model_data), infeasible["message"])
+        self.assertEqual([], infeasible["causes"])
+
+
 if __name__ == "__main__":
     unittest.main()

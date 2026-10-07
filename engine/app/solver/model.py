@@ -80,6 +80,19 @@ class ScheduleCpModel(cp_model.CpModel):
         # `main._solve`. None (défaut) ⇒ `result_builder` lit `ObjectiveValue()` tel quel :
         # sans previousAssignments le chemin reste byte-identique.
         self.reported_score_override: int | None = None
+        # P4-96 — registre des HYPOTHÈSES CP-SAT par contrainte SOURCE saisie (D1). Une littérale
+        # par clé de source (fenêtre TIME/DAY, jour imposé/interdit, indispo coach, gymnase
+        # imposé/interdit, passerelle MANDATORY, trajet MANDATORY), PARTAGÉE par tous ses sites de
+        # pose : la contrainte postée ET les fermetures de candidats (`model.Add(...).OnlyEnforceIf(lit)`)
+        # citent la MÊME littérale. `_assume` (constraints.common) la crée paresseusement et pose
+        # `AddAssumption(lit)` une seule fois. Sur INFEASIBLE, `result_builder` lit
+        # `solver.SufficientAssumptionsForInfeasibility()` → index de littérales → `assumption_sources`
+        # pour NOMMER le noyau de règles en conflit. Vide quand aucune source n'est saisie ⇒ aucune
+        # littérale, aucun `AddAssumption` ⇒ modèle byte-identique (goldens inchangés).
+        self.assumption_literals: dict[str, Any] = {}
+        # Index de littérale (`var.Index()`, entier stable) → cause {kind, constraintId, label}
+        # (forme `DiagnosticCauseSchema`) : le canal de nommage lu par le result_builder.
+        self.assumption_sources: dict[int, dict[str, Any]] = {}
 
     def NumVariables(self) -> int:
         return len(self.Proto().variables)

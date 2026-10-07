@@ -46,9 +46,11 @@ from .common import (
     AssignmentInput,
     AssignmentVariable,
     BoolVarLike,
+    _assume,
+    _enforce_closure,
     _get,
     _intervals_overlap,
-    _record_closure,
+    _source_key,
 )
 from .targeting import team_link_placements_by_team
 
@@ -315,6 +317,11 @@ def add_travel_time_hard_constraints(
         return 0
 
     added = 0
+    # P4-96 — la règle `travelTime` MANDATORY est UNE source implicite unique : une seule littérale
+    # d'hypothèse partagée par tous les battements qu'elle interdit. Son nom (générique, `travelTime`
+    # n'a pas d'id de contrainte saisie) rejoint le noyau d'infaisabilité s'il y participe.
+    cause = {"kind": "travel_time", "constraintId": None, "label": None}
+    travel_literal = _assume(model, _source_key("travel_time", None, "travelTime"), cause)
     for _traveler_key, gap, barometer, pa, pb in _iter_travel_pairs(
         assignments,
         getattr(model, "locked_slots", ()) or (),
@@ -327,17 +334,16 @@ def add_travel_time_hard_constraints(
         if gap >= required_gap(barometer, tolerance_minutes):
             continue
         a_var, b_var = pa[4], pb[4]
-        cause = {"kind": "travel_time", "constraintId": None, "label": None}
         if a_var is not None and b_var is not None:
-            model.Add(a_var + b_var <= 1)
+            mutual = model.Add(a_var + b_var <= 1)
+            if travel_literal is not None:
+                mutual.OnlyEnforceIf(travel_literal)
             added += 1
         elif a_var is not None:
-            model.Add(a_var == 0)
-            _record_closure(model, a_var, cause)
+            _enforce_closure(model, a_var, dict(cause), travel_literal)
             added += 1
         elif b_var is not None:
-            model.Add(b_var == 0)
-            _record_closure(model, b_var, cause)
+            _enforce_closure(model, b_var, dict(cause), travel_literal)
             added += 1
         # else : deux verrous → rien (diagnostic post-solve).
     return added

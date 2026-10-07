@@ -109,8 +109,11 @@ class DiagnosticSchema(SerializableModel):
     message: str
     suggestions: list[str] = Field(default_factory=list)
     created_at: datetime | None = Field(default=None, alias="createdAt")
-    # P4-99 — la cause RÉELLE d'une séance manquante, MESURÉE à la pose. Renseigné UNIQUEMENT
-    # par ``session_below_effective_min`` ; les autres types de diagnostic gardent ``causes: []``.
+    # P4-99 — la cause RÉELLE d'une séance manquante, MESURÉE à la pose. Renseigné par
+    # ``session_below_effective_min`` (solve abouti) ET, P4-96, par ``conflict`` sur INFEASIBLE :
+    # ``diag-infeasible`` porte le NOYAU de règles en conflit (hypothèses CP-SAT) et chaque
+    # ``diag-infeasible-team-*`` l'agrégat des candidats fermés de l'équipe. Les autres types de
+    # diagnostic gardent ``causes: []``.
     causes: list[DiagnosticCauseSchema] = Field(default_factory=list)
     # « Resté ouvert » n'est PAS une cause (rien ne l'a fermé) : un champ DÉDIÉ porte le
     # COMPTE des créneaux libres, non fermés et non retenus — jamais un pseudo-kind dans

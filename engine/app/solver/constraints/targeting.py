@@ -17,7 +17,9 @@ from .common import (
     AssignmentInput,
     AssignmentVariable,
     BoolVarLike,
+    _assume,
     _day_int_set,
+    _enforce_closure,
     _extract_interval,
     _get,
     _intervals_overlap,
@@ -25,6 +27,7 @@ from .common import (
     _normalise_assignments,
     _record_closure,
     _scalar_id,
+    _source_key,
 )
 
 
@@ -58,8 +61,12 @@ def add_time_window_constraints(
         lambda: defaultdict(list)
     )
     allowed_sources: dict[str, list[tuple[str | None, str | None]]] = defaultdict(list)
+    # P4-96 — contraintes source qui IMPOSENT un jour à l'équipe (``forcedDays``), pour hypothéquer
+    # le ``sum(forced_day_vars) >= 1`` posté plus bas : c'est la règle qui, en infaisabilité, est
+    # nommée AUX CÔTÉS de ce qui ferme ses jours (indispo coach, fenêtre horaire…).
+    forced_sources: dict[str, list[tuple[str | None, str | None, int]]] = defaultdict(list)
 
-    for constraint in time_windows or ():
+    for constraint_index, constraint in enumerate(time_windows or ()):
         if not constraint.get("isActive", True):
             continue
 
@@ -83,8 +90,11 @@ def add_time_window_constraints(
         if family == "DAY":
             forbidden_days = _day_int_set(config.get("forbiddenDays"))
             allowed_days = _day_int_set(config.get("allowedDays"))
-            day_rules_by_team[team_id_text]["forced"].update(_day_int_set(config.get("forcedDays")))
+            forced_days = _day_int_set(config.get("forcedDays"))
+            day_rules_by_team[team_id_text]["forced"].update(forced_days)
             day_rules_by_team[team_id_text]["forbidden"].update(forbidden_days)
+            if forced_days:
+                forced_sources[team_id_text].append((constraint.get("id"), constraint.get("name"), constraint_index))
             # An empty allowedDays is treated as "unconfigured" (no restriction),
             # matching the coach-availability whitelist semantics — never "no day
             # allowed" (which would force the team to zero sessions).
@@ -105,6 +115,19 @@ def add_time_window_constraints(
         max_start_minutes = _time_to_minutes(max_start_time) if max_start_time is not None else None
         max_end_minutes = _time_to_minutes(max_end_time) if max_end_time is not None else None
 
+        # P4-99 — fenêtre horaire violée : cause `time_window` + la contrainte source
+        # (`constraint` porte déjà son id/name, aucun re-parse).
+        window_cause: dict[str, Any] = {
+            "kind": "time_window",
+            "constraintId": constraint.get("id"),
+            "label": constraint.get("name"),
+        }
+        # P4-96 — UNE littérale d'hypothèse pour cette fenêtre, partagée par toutes les fermetures
+        # qu'elle provoque : son nom rejoint le noyau d'infaisabilité si la fenêtre y participe.
+        window_literal = _assume(
+            model, _source_key("time_window", constraint.get("id"), constraint_index), window_cause
+        )
+
         for slot_key, var in x.items():
             if not isinstance(slot_key, tuple) or len(slot_key) < 4:
                 continue
@@ -115,31 +138,21 @@ def add_time_window_constraints(
 
             slot_start = slot_key[3]
             slot_start_minutes = _time_to_minutes(slot_start)
-            # P4-99 — fenêtre horaire violée : cause `time_window` + la contrainte source
-            # (`constraint` porte déjà son id/name, aucun re-parse).
-            window_cause: dict[str, Any] = {
-                "kind": "time_window",
-                "constraintId": constraint.get("id"),
-                "label": constraint.get("name"),
-            }
             if min_start_minutes is not None and slot_start_minutes < min_start_minutes:
-                model.Add(var == 0)
+                _enforce_closure(model, var, dict(window_cause), window_literal)
                 added += 1
-                _record_closure(model, var, dict(window_cause))
                 continue
             if max_start_minutes is not None and slot_start_minutes > max_start_minutes:
-                model.Add(var == 0)
+                _enforce_closure(model, var, dict(window_cause), window_literal)
                 added += 1
-                _record_closure(model, var, dict(window_cause))
                 continue
             # maxEndTime: the session must END by that time (start + its duration).
             # The duration is the slot's own (venue/day/start), default 90 min.
             if max_end_minutes is not None:
                 duration = model.slot_durations.get((slot_key[1], slot_key[2], slot_key[3]), DEFAULT_SESSION_MINUTES)
                 if slot_start_minutes + duration > max_end_minutes:
-                    model.Add(var == 0)
+                    _enforce_closure(model, var, dict(window_cause), window_literal)
                     added += 1
-                    _record_closure(model, var, dict(window_cause))
 
     team_day_vars: dict[str, dict[int, list[BoolVarLike]]] = defaultdict(lambda: defaultdict(list))
     team_all_vars: dict[str, list[BoolVarLike]] = defaultdict(list)
@@ -213,8 +226,20 @@ def add_time_window_constraints(
             # P4-99 — les contraintes qui interdisent CE jour : celles qui le listent en
             # `forbiddenDays`, à défaut celles qui posent la liste blanche qui l'exclut.
             day_sources = day_forbid_sources.get(team_id_text, {}).get(day_value) or allowed_sources.get(team_id_text)
+            # P4-96 — hypothèque la fermeture sur la littérale de la (première) règle qui interdit ce
+            # jour : son nom rejoint le noyau d'infaisabilité quand le jour interdit y participe.
+            day_literal = None
+            if day_sources:
+                first_id, first_label = day_sources[0]
+                day_literal = _assume(
+                    model,
+                    _source_key("day_forbidden", first_id, f"{team_id_text}:{day_value}"),
+                    {"kind": "day_forbidden", "constraintId": first_id, "label": first_label},
+                )
             for var in team_day_vars.get(team_id_text, {}).get(day_value, []):
-                model.Add(var == 0)
+                closure = model.Add(var == 0)
+                if day_literal is not None:
+                    closure.OnlyEnforceIf(day_literal)
                 added += 1
                 if day_sources:
                     for source_id, source_label in day_sources:
@@ -279,7 +304,24 @@ def add_time_window_constraints(
                     }
                 )
 
-            model.Add(sum(forced_day_vars) >= 1)
+            # P4-96 — le « au moins une séance un jour imposé » est une contrainte SOURCE :
+            # hypothéquée sur la littérale de la règle qui impose le jour, elle est NOMMÉE dans le
+            # noyau d'infaisabilité aux côtés de ce qui vide ses jours (indispo coach, fenêtre…) —
+            # c'est le cœur du besoin P4-96 (« coach indispo vendredi + équipe vendredi imposé »).
+            # `day_conflict` est le kind existant le plus proche (le jour imposé entre en conflit
+            # avec les autres règles) ; le MESSAGE nomme la règle par son libellé réel.
+            forced_literal = None
+            team_forced_sources = forced_sources.get(team_id_text)
+            if team_forced_sources:
+                src_id, src_label, src_index = team_forced_sources[0]
+                forced_literal = _assume(
+                    model,
+                    _source_key("forced_day", src_id, f"{team_id_text}:{src_index}"),
+                    {"kind": "day_conflict", "constraintId": src_id, "label": src_label},
+                )
+            forced_constraint = model.Add(sum(forced_day_vars) >= 1)
+            if forced_literal is not None:
+                forced_constraint.OnlyEnforceIf(forced_literal)
             added += 1
 
     return added, conflicts
@@ -302,14 +344,18 @@ def add_forced_venue_constraints(
         target_venue_id = _forced_venue_id(assignment, forced_venues)
         if target_venue_id is None or venue_id is None or venue_id == target_venue_id:
             continue
-        model.Add(assignment.var == 0)
-        added += 1
         cause: dict[str, Any] = {"kind": "forced_venue_elsewhere"}
         source = sources.get(str(assignment.team_id)) if assignment.team_id is not None else None
+        source_id = None
         if source:
             cause["constraintId"] = source.get("constraint_id")
             cause["label"] = source.get("label")
-        _record_closure(model, assignment.var, cause)
+            source_id = source.get("constraint_id")
+        # P4-96 — gymnase imposé : UNE littérale par équipe (la règle « forcer le gymnase » est
+        # last-wins par équipe, aligné sur `forced_venues`), partagée par toutes ses fermetures.
+        literal = _assume(model, _source_key("forced_venue", source_id, assignment.team_id), cause)
+        _enforce_closure(model, assignment.var, cause, literal)
+        added += 1
     return added
 
 
@@ -738,19 +784,22 @@ def add_team_link_constraints(
         link_id = str(_get(link, "id", default=f"{team_a}_{team_b}"))
         share_declared = frozenset({team_a, team_b}) in share_pairs
         cause = {"kind": "team_link", "constraintId": link_id, "label": None}
+        # P4-96 — UNE littérale par passerelle MANDATORY, partagée par l'exclusion mutuelle des
+        # séances libres ET par les fermetures libre⇔verrou : son nom rejoint le noyau en conflit.
+        link_literal = _assume(model, _source_key("team_link", link_id, link_id), cause)
         for (_as, _ae, _ad, _av, a_var), (_bs, _be, _bd, _bv, b_var) in iter_team_link_overlaps(
             placements.get(team_a, []), placements.get(team_b, []), share_declared=share_declared
         ):
             if a_var is not None and b_var is not None:
-                model.Add(a_var + b_var <= 1)
+                mutual = model.Add(a_var + b_var <= 1)
+                if link_literal is not None:
+                    mutual.OnlyEnforceIf(link_literal)
                 added += 1
             elif a_var is not None:  # b verrouillé : la libre s'écarte, cause nommée.
-                model.Add(a_var == 0)
-                _record_closure(model, a_var, cause)
+                _enforce_closure(model, a_var, cause, link_literal)
                 added += 1
             elif b_var is not None:
-                model.Add(b_var == 0)
-                _record_closure(model, b_var, cause)
+                _enforce_closure(model, b_var, cause, link_literal)
                 added += 1
             # else : deux verrous → rien posé, diagnostic post-solve (jamais INFEASIBLE muet).
     return added

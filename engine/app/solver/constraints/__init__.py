@@ -106,6 +106,9 @@ from .common import (
     _assignment_time_key as _assignment_time_key,
 )
 from .common import (
+    _assume as _assume,
+)
+from .common import (
     _bool_field as _bool_field,
 )
 from .common import (
@@ -116,6 +119,9 @@ from .common import (
 )
 from .common import (
     _dedupe_variables as _dedupe_variables,
+)
+from .common import (
+    _enforce_closure as _enforce_closure,
 )
 from .common import (
     _extract_interval as _extract_interval,
@@ -164,6 +170,9 @@ from .common import (
 )
 from .common import (
     _scalar_id as _scalar_id,
+)
+from .common import (
+    _source_key as _source_key,
 )
 from .common import (
     _to_day_int as _to_day_int,

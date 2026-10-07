@@ -18,7 +18,9 @@ from .common import (
     RuleCollection,
     _assignment_day_start,
     _assignment_time_key,
+    _assume,
     _dedupe_variables,
+    _enforce_closure,
     _extract_interval,
     _get,
     _intervals_overlap,
@@ -26,6 +28,7 @@ from .common import (
     _locked_venue_substart_counts,
     _record_closure,
     _scalar_id,
+    _source_key,
 )
 
 # Exemption coach-joueur sur la SÉANCE DE BLOC — carte ``(venue_id, slot_id)`` (slot_id ==
@@ -536,14 +539,20 @@ def add_forbidden_assignments(
         )
         pair_match = pair is not None and pair in forbidden_pairs
         if assignment.forbidden or (assignment_id is not None and assignment_id in forbidden_ids) or pair_match:
-            model.Add(assignment.var == 0)
-            added += 1
             cause: dict[str, Any] = {"kind": "venue_forbidden"}
+            source_id: Any = None
             if pair_match and pair is not None:
                 constraint_id, label = forbidden_pairs[pair]
                 cause["constraintId"] = constraint_id
                 cause["label"] = label
-            _record_closure(model, assignment.var, cause)
+                source_id = constraint_id
+            # P4-96 — gymnase interdit saisi : UNE littérale par (équipe, gymnase), partagée par ses
+            # fermetures. Un interdit intrinsèque / par id SANS paire reste inconditionnel (literal None).
+            literal = (
+                _assume(model, _source_key("venue_forbidden", source_id, pair), cause) if pair is not None else None
+            )
+            _enforce_closure(model, assignment.var, cause, literal)
+            added += 1
     return added
 
 
@@ -603,7 +612,26 @@ def add_coach_unavailability_constraints(
                     ):
                         matched_sources.append((cid_str, src))
         if intrinsic or first_matched_coach is not None:
-            model.Add(assignment.var == 0)
+            # P4-96 — hypothèque la fermeture sur la littérale de la (première) règle d'indispo qui
+            # la provoque ; toutes les fermetures d'une même règle PARTAGENT sa littérale, son nom
+            # rejoint donc le noyau d'infaisabilité (cœur du besoin « coach indispo vendredi »). Une
+            # indispo intrinsèque / sans source identifiée reste inconditionnelle (literal None).
+            unavail_literal = None
+            if matched_sources:
+                primary_coach, primary_src = matched_sources[0]
+                unavail_literal = _assume(
+                    model,
+                    _source_key("coach_unavail", primary_src.get("constraint_id"), primary_coach),
+                    {
+                        "kind": "coach_unavailability",
+                        "coachId": primary_coach,
+                        "constraintId": primary_src.get("constraint_id"),
+                        "label": primary_src.get("label"),
+                    },
+                )
+            closure = model.Add(assignment.var == 0)
+            if unavail_literal is not None:
+                closure.OnlyEnforceIf(unavail_literal)
             added += 1
             if matched_sources:
                 # Une cause PAR contrainte qui ferme le créneau — plusieurs sont vraies quand

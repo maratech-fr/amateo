@@ -34,6 +34,12 @@ from .diagnostics import (
     _IMPLICIT_RULE_LABELS as _IMPLICIT_RULE_LABELS,
 )
 from .diagnostics import (
+    _collect_infeasibility_causes as _collect_infeasibility_causes,
+)
+from .diagnostics import (
+    _collect_locked_out_teams as _collect_locked_out_teams,
+)
+from .diagnostics import (
     _collect_session_causes as _collect_session_causes,
 )
 from .diagnostics import (
@@ -86,6 +92,9 @@ from .diagnostics import (
 )
 from .diagnostics import (
     _list_days as _list_days,
+)
+from .diagnostics import (
+    _lock_summary_message as _lock_summary_message,
 )
 from .diagnostics import (
     _saturated_venue_minimum as _saturated_venue_minimum,
@@ -236,6 +245,10 @@ def build_result(
             team_coach_map=resolved_team_coach_map,
             team_player_map=getattr(model, "team_player_map", None),
             session_causes_by_team=session_causes_by_team,
+            # P4-96 — sur INFEASIBLE, `_diagnose_conflicts` lit le noyau d'hypothèses du solveur
+            # (D1) et agrège les candidats fermés par équipe (D2) depuis le modèle.
+            model=model,
+            solver=solver,
         )
     )
 
