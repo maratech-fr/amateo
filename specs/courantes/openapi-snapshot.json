@@ -3676,33 +3676,6 @@
                 }
             }
         },
-        "/api/register/config": {
-            "get": {
-                "operationId": "getApiRegisterConfig",
-                "tags": [
-                    "Auth"
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Public registration configuration",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "turnstileSiteKey": {
-                                            "type": "string",
-                                            "nullable": true
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                "summary": "Public registration configuration (Turnstile sitekey when the anti-robot check is enabled)"
-            }
-        },
         "/api/register/club-lookup": {
             "get": {
                 "operationId": "getApiRegisterClubLookup",
@@ -3711,7 +3684,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Club identity behind an FFBB code (display only - name + city, never the mail)",
+                        "description": "Club identity behind an FFBB code (display only \u2014 name + city, never the mail)",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3753,9 +3726,37 @@
                         "required": false,
                         "schema": {
                             "type": "string"
-                        }
+                        },
+                        "description": "FFBB club code to resolve (uppercased server-side)"
                     }
                 ]
+            }
+        },
+        "/api/register/config": {
+            "get": {
+                "operationId": "getApiRegisterConfig",
+                "tags": [
+                    "Auth"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Public registration configuration",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "turnstileSiteKey": {
+                                            "type": "string",
+                                            "nullable": true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "summary": "Public registration configuration (Turnstile sitekey when the anti-robot check is enabled)"
             }
         },
         "/api/register/verify": {
@@ -25489,6 +25490,11 @@
                         "default": false,
                         "type": "boolean"
                     },
+                    "gender": {
+                        "description": "Genre pour l'accord des libell\u00e9s (FEMALE|MALE|UNSPECIFIED).",
+                        "default": "UNSPECIFIED",
+                        "type": "string"
+                    },
                     "parentCoachId": {
                         "type": [
                             "string",
@@ -25569,6 +25575,18 @@
                             "null"
                         ]
                     },
+                    "gender": {
+                        "enum": [
+                            "FEMALE",
+                            "MALE",
+                            "UNSPECIFIED"
+                        ],
+                        "description": "Genre pour l'accord des libell\u00e9s (PUT partiel : null = inchang\u00e9).",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "parentCoachId": {
                         "type": [
                             "string",
@@ -25640,6 +25658,11 @@
                         "description": "V\u00e9hicul\u00e9 (bar\u00e8me voiture) ou non (bar\u00e8me \u00e0 v\u00e9lo).",
                         "default": false,
                         "type": "boolean"
+                    },
+                    "gender": {
+                        "description": "Genre pour l'accord des libell\u00e9s (FEMALE|MALE|UNSPECIFIED).",
+                        "default": "UNSPECIFIED",
+                        "type": "string"
                     },
                     "parentCoachId": {
                         "type": [
@@ -25717,6 +25740,11 @@
                                 "description": "V\u00e9hicul\u00e9 (bar\u00e8me voiture) ou non (bar\u00e8me \u00e0 v\u00e9lo).",
                                 "default": false,
                                 "type": "boolean"
+                            },
+                            "gender": {
+                                "description": "Genre pour l'accord des libell\u00e9s (FEMALE|MALE|UNSPECIFIED).",
+                                "default": "UNSPECIFIED",
+                                "type": "string"
                             },
                             "parentCoachId": {
                                 "type": [

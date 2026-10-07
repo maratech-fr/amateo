@@ -4,7 +4,7 @@ mail) ajoutée au contributeur `AccountSessionPaths`. +1 path, aucun schéma nom
 (réponse inline)).
 
 **232 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`e3e5d2e368e2f1473bf7022f06a961afcd4efbc8017192550235d8b9e7fc768b` (`sha256sum` sur le fichier).
+`b20440778aeeaa54de112bcf765443da7c230065840f83a6b56030bfc0446de4` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne
