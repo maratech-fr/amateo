@@ -115,6 +115,18 @@ final class JwtSlidingSessionListener implements EventSubscriberInterface
             return;
         }
 
+        // Un contrôleur a pu poser un cookie NEUF sur cette réponse : confirmation
+        // d'email (`AuthController::confirmEmailChange`), vérification d'inscription
+        // (`/api/register/verify`), invitation publique (`/api/invitations/public/*`),
+        // inscription démo (`/api/dev/demo-register`). Ré-émettre ici l'ÉCRASERAIT par
+        // l'ancien cookie de la requête — on laisse donc la main au cookie déjà posé.
+        $response = $event->getResponse();
+        foreach ($response->headers->getCookies() as $cookie) {
+            if ($this->cookieName === $cookie->getName()) {
+                return;
+            }
+        }
+
         $jwt = $request->cookies->get($this->cookieName);
         if (!\is_string($jwt) || '' === $jwt) {
             return;
@@ -122,7 +134,16 @@ final class JwtSlidingSessionListener implements EventSubscriberInterface
 
         // Identité CLUB authentifiée seulement ; un jeton expiré n'a pas d'utilisateur
         // (le firewall a déjà rendu 401) → zéro ré-émission, zéro Set-Cookie.
-        if (!$this->security->getUser() instanceof User) {
+        $user = $this->security->getUser();
+        if (!$user instanceof User) {
+            return;
+        }
+
+        // Compte DÉMO à fenêtre d'activation FERMÉE : on ne prolonge pas une session
+        // que la porte (login, {@see \App\Security\UserChecker}) refuserait déjà. Fenêtre
+        // confrontée à l'horloge RÉELLE, jamais l'horloge démo simulée — même invariant
+        // que le checker. Le jeton encore en main expire normalement, sans glissement.
+        if ($user->isDemo() && !$user->isDemoWindowOpen($this->clock->now())) {
             return;
         }
 
@@ -165,7 +186,7 @@ final class JwtSlidingSessionListener implements EventSubscriberInterface
             return;
         }
 
-        $event->getResponse()->headers->setCookie($this->cookieFactory->create($reissued));
+        $response->headers->setCookie($this->cookieFactory->create($reissued));
     }
 
     private function isSlidablePath(Request $request): bool

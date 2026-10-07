@@ -86,7 +86,12 @@ réinitialisé** ; un jeton déjà en circulation sans `auth_at` retombe sur son
   script re-signe ses jetons lui-même ;
 - la **console super-admin** (`^/api/admin`) : identité et firewall séparés (SA0),
   hors périmètre ;
-- `^/api/login` et `^/api/logout` : lexik y pose/efface déjà le cookie.
+- `^/api/login` et `^/api/logout` : lexik y pose/efface déjà le cookie ;
+- une réponse qui **pose déjà un cookie `BEARER` neuf** (confirmation d'email, vérification
+  d'inscription, invitation publique, inscription démo) : le listener n'y touche pas, sinon il
+  écraserait le jeton frais du contrôleur par l'ancien de la requête ;
+- un **compte démo à fenêtre d'activation fermée** (confrontée à `app.clock.real`, comme
+  `UserChecker`) : on ne prolonge pas une session que la connexion refuserait déjà.
 
 ⚠ La borne 12 h est mesurée sur **`app.clock.real`**, jamais le service `clock`
 décoré par `ClubClock` : `TenantFilterListener` pose `_club_id` même pour un club

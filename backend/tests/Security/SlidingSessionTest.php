@@ -8,15 +8,23 @@ use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\User;
 use App\EventListener\JwtSlidingSessionListener;
+use App\Security\JwtCookieFactory;
 use App\Service\TenantConnectionContext;
 use App\Tests\StartsFreshBrowserSession;
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\BrowserKit\Cookie as BrowserKitCookie;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Event\ResponseEvent;
+use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
+use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
+use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 
 /**
  * NR d'axe « auth & memberships » (§7.1) — P4-291 : la SESSION GLISSANTE du JWT de club
@@ -30,7 +38,12 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  *   (1) un jeton rejoué en continu MEURT EXACTEMENT à 12 h (`exp` plafonné à `auth_at+12h`,
  *       puis plus aucune ré-émission, puis 401) — sans le plafond la session serait éternelle ;
  *   (2) un jeton EXPIRÉ reçoit 401 et AUCUN Set-Cookie — le glissement ne ressuscite rien ;
- *   (3) le flux Bearer (en-tête `Authorization`) ne glisse JAMAIS — un script re-signe lui-même.
+ *   (3) le flux Bearer (en-tête `Authorization`) ne glisse JAMAIS — un script re-signe lui-même ;
+ *   (4) un cookie NEUF déjà posé par un contrôleur (confirmation d'email, vérification
+ *       d'inscription, invitation publique, inscription démo) n'est JAMAIS écrasé par la
+ *       ré-émission de l'ancien — sans la garde, la session repartirait sur le jeton périmé ;
+ *   (5) un compte DÉMO à fenêtre d'activation FERMÉE ne glisse pas — on ne prolonge pas une
+ *       session que la porte de connexion refuserait déjà.
  *
  * `auth_at` est posé à la création et reporté VERBATIM, jamais réinitialisé.
  */
@@ -164,6 +177,66 @@ final class SlidingSessionTest extends WebTestCase
         self::assertGreaterThanOrEqual($now, $new['iat'], 'iat est rafraîchi, auth_at non');
     }
 
+    public function testDoesNotOverwriteABearerCookieTheResponseAlreadySet(): void
+    {
+        $now = time();
+        // Jeton navigateur « glissable » (vieux de 10 min) : sans la garde, le listener
+        // ré-émettrait et ÉCRASERAIT le cookie neuf qu'un contrôleur vient de poser.
+        $forged = $this->forge($now - 600, $now - 600, $now + (self::TTL - 600));
+
+        $container = self::getContainer();
+        $tokenStorage = $container->get(TokenStorageInterface::class);
+        \assert($tokenStorage instanceof TokenStorageInterface);
+        $tokenStorage->setToken(new UsernamePasswordToken($this->manager(), 'main', ['ROLE_USER']));
+
+        $cookieFactory = $container->get(JwtCookieFactory::class);
+        \assert($cookieFactory instanceof JwtCookieFactory);
+        $freshCookie = $cookieFactory->create('cookie-neuf-pose-par-le-controleur');
+
+        $request = Request::create('/api/me');
+        $request->cookies->set('BEARER', $forged);
+
+        $response = new Response;
+        $response->headers->setCookie($freshCookie);
+
+        $listener = $container->get(JwtSlidingSessionListener::class);
+        \assert($listener instanceof JwtSlidingSessionListener);
+        $listener->onKernelResponse(new ResponseEvent(
+            $this->createMock(HttpKernelInterface::class),
+            $request,
+            HttpKernelInterface::MAIN_REQUEST,
+            $response,
+        ));
+
+        $bearer = array_values(array_filter(
+            $response->headers->getCookies(),
+            static fn ($cookie): bool => 'BEARER' === $cookie->getName(),
+        ));
+        self::assertCount(1, $bearer, 'un seul cookie BEARER sur la réponse');
+        self::assertSame(
+            'cookie-neuf-pose-par-le-controleur',
+            $bearer[0]->getValue(),
+            'le cookie neuf du contrôleur est préservé, jamais écrasé par la ré-émission',
+        );
+    }
+
+    public function testDemoAccountWithClosedWindowDoesNotSlide(): void
+    {
+        $now = time();
+        $demo = $this->userByEmail($this->seedDemoUserWithClosedWindow());
+        // Jeton navigateur « glissable » (vieux de 10 min) pour ce compte démo : sans la
+        // garde, il glisserait comme n'importe quel navigateur actif.
+        $forged = $this->forge($now - 600, $now - 600, $now + (self::TTL - 600), $demo);
+
+        $this->sendWithCookie('GET', '/api/me', $forged);
+
+        self::assertSame(200, $this->client->getResponse()->getStatusCode());
+        self::assertNull(
+            $this->reissuedBearer(),
+            'un compte démo à fenêtre fermée ne glisse pas (aucun Set-Cookie)',
+        );
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -177,15 +250,15 @@ final class SlidingSessionTest extends WebTestCase
      * respecte iat/exp présents dans le payload. (`createFromPayload` seul n'ajoute
      * PAS le claim d'identité — il faut le reprendre du jeton de base.).
      */
-    private function forge(int $iat, int $authAt, int $exp): string
+    private function forge(int $iat, int $authAt, int $exp, ?User $user = null): string
     {
-        $manager = $this->manager();
-        $payload = $this->jwtManager()->parse($this->jwtManager()->create($manager));
+        $subject = $user ?? $this->manager();
+        $payload = $this->jwtManager()->parse($this->jwtManager()->create($subject));
         $payload['iat'] = $iat;
         $payload['auth_at'] = $authAt;
         $payload['exp'] = $exp;
 
-        return $this->jwtManager()->createFromPayload($manager, $payload);
+        return $this->jwtManager()->createFromPayload($subject, $payload);
     }
 
     private function sendWithCookie(string $method, string $uri, string $jwt): void
@@ -250,9 +323,62 @@ final class SlidingSessionTest extends WebTestCase
         return $email;
     }
 
+    /**
+     * Compte DÉMO (`is_demo`) dont la fenêtre d'activation est DÉJÀ fermée
+     * (`demo_active_until` dans le passé). Même forme que `seedManager` — club +
+     * adhésion manager — pour authentifier sur `/api/me`, mais drapeau démo posé.
+     */
+    private function seedDemoUserWithClosedWindow(): string
+    {
+        $em = $this->em();
+        $hasher = self::getContainer()->get(UserPasswordHasherInterface::class);
+        \assert($hasher instanceof UserPasswordHasherInterface);
+        $uid = substr(md5(uniqid('', true)), 0, 8);
+
+        $club = new Club;
+        $club->setName('Club démo glissant ' . $uid);
+        $club->setSlug('club-demo-glissant-' . $uid);
+        $em->persist($club);
+
+        $demo = new User;
+        $demo->setEmail('slide-demo-' . $uid . '@test.fr');
+        $demo->setFirstName('Demo');
+        $demo->setLastName('Clos');
+        $demo->setPasswordHash($hasher->hashPassword($demo, 'Password123!'));
+        $demo->setIsDemo(true);
+        $demo->setDemoActiveUntil(new DateTimeImmutable('-1 hour')); // fenêtre fermée
+        $em->persist($demo);
+        $em->flush();
+
+        $tenant = self::getContainer()->get(TenantConnectionContext::class);
+        \assert($tenant instanceof TenantConnectionContext);
+        $tenant->setClubId($club->getId());
+        try {
+            $membership = new ClubUser;
+            $membership->setClubId($club->getId());
+            $membership->setUserId($demo->getId());
+            $membership->setRole('manager');
+            $membership->setIsActive(true);
+            $em->persist($membership);
+            $em->flush();
+        } finally {
+            $tenant->clear();
+        }
+
+        $email = $demo->getEmail();
+        $em->clear();
+
+        return $email;
+    }
+
     private function manager(): User
     {
-        $user = $this->em()->getRepository(User::class)->findOneBy(['email' => $this->managerEmail]);
+        return $this->userByEmail($this->managerEmail);
+    }
+
+    private function userByEmail(string $email): User
+    {
+        $user = $this->em()->getRepository(User::class)->findOneBy(['email' => $email]);
         \assert($user instanceof User);
 
         return $user;
