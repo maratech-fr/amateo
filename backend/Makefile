@@ -108,18 +108,28 @@ tests-engine-semantics:
 # worker → moteur → import). APP_ENV=dev comme les smokes qu'ils remplacent.
 # La garde bac-à-sable s'applique (elle MEURT en mode play, comme tout script
 # mutateur) : lancer via `backend/scripts/with-sandbox.sh make -C backend behat`
-# pour jouer dans le bac à sable amateo_dev depuis le mode play. Le worker est
-# redémarré avant (consommateur frais — évite la file bloquée).
+# pour jouer dans le bac à sable amateo_dev depuis le mode play. Les workers sont
+# redémarrés (consommateurs frais — évite la file bloquée), mais APRÈS le cache:clear
+# dev (voir l'ordre critique dans la recette : un clear sous un worker déjà démarré le
+# fait planter et la file async n'est plus consommée).
 .PHONY: behat ## Run the functional tests (Behat, Gherkin FR, API-only, real stack)
 behat: APP_ENV = dev
 behat:
 	@bash scripts/lib/sandbox-guard.sh
-	$(FIG) up -d messenger-worker >/dev/null 2>&1 || true
-	$(FIG) restart messenger-worker >/dev/null 2>&1 || true
+	# ⚠ ORDRE CRITIQUE — vider le cache dev AVANT de (re)démarrer les workers.
 	# Behat tourne en APP_ENV=dev : un cache dev périmé (après un changement de branche /
-	# un pull) a déjà fait échouer un scénario. On RECONSTRUIT le cache dev avant de lancer
-	# (cache:clear réchauffe — il ne laisse jamais le XML absent, cf. phpstan.neon).
+	# un pull) a déjà fait échouer un scénario. On RECONSTRUIT donc le cache dev avant de
+	# lancer (cache:clear réchauffe — il ne laisse jamais le XML absent, cf. phpstan.neon).
+	# MAIS cache:clear SUPPRIME le conteneur compilé (var/cache/dev/ContainerXXX/) : si un
+	# process php long-vivant l'a déjà chargé, il plante au premier service tiré paresseusement
+	# (require(.../ContainerXXX/getConsole_ErrorListenerService.php): Failed to open stream) et
+	# la file async n'est plus consommée → faux rouges Behat (générations PENDING, e-mails
+	# jamais envoyés, export pending). On purge DONC le cache d'ABORD, PUIS on (re)démarre les
+	# deux services long-vivants qui exécutent bin/console avec ce cache dev — messenger-worker
+	# ET cron-runner — pour qu'ils chargent le conteneur fraîchement reconstruit.
 	$(EXEC) php bin/console cache:clear --env=dev
+	$(FIG) up -d messenger-worker cron-runner >/dev/null 2>&1 || true
+	$(FIG) restart messenger-worker cron-runner >/dev/null 2>&1 || true
 	$(EXEC) php vendor/bin/behat --format=pretty --no-interaction
 
 .PHONY: phpunit ## Run blocking PHPUnit group

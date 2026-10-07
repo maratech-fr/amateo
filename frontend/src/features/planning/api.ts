@@ -233,18 +233,24 @@ export interface SocleDeviation {
   unplaced: SocleDeviationUnplaced[];
 }
 
-/** Les 7 familles de cause qu'un `session_below_effective_min` peut porter (contrat 2.8,
+/** Les familles de cause qu'une séance manquante (`session_below_effective_min`) ou la carte
+ *  d'échec (`conflict` sur INFEASIBLE, P4-96) peuvent porter (contrat 1.4,
  *  `DiagnosticCauseSchema.kind`). Fermée côté moteur ; le front la traite en `string` (cf.
  *  `DiagnosticCause.kind`) pour dégrader proprement sur un kind futur qu'il ne connaît pas
- *  encore — la table de libellés reste, elle, exhaustive sur ces 7. */
+ *  encore — la table de libellés `CAUSE_KIND_LABELS` reste, elle, EXHAUSTIVE sur cette union. */
 export type DiagnosticCauseKind =
   | "hard_lock"
   | "venue_forbidden"
   | "coach_unavailability"
   | "time_window"
   | "day_conflict"
+  | "day_forced"
   | "day_forbidden"
-  | "forced_venue_elsewhere";
+  | "forced_venue_elsewhere"
+  | "session_floor"
+  | "shared_block"
+  | "team_link"
+  | "travel_time";
 
 /** Une cause MESURÉE (pas re-dérivée) d'un créneau fermé pour l'équipe. Le backend a
  *  déjà ramené `constraintId` à l'UUID de l'entité (il avait suffixé les CLUB→TEAM) : c'est
@@ -282,8 +288,10 @@ export interface Diagnostic {
   ruleKey: string | null;
   message: string;
   suggestions: unknown;
-  /** Causes MESURÉES d'une séance manquante — renseignées SEULEMENT par un
-   *  `session_below_effective_min` (contrat 2.8), `[]` sur les autres types. */
+  /** Causes MESURÉES — renseignées par un `session_below_effective_min` (séance manquante) ET,
+   *  P4-96/contrat 1.4, par un `conflict` sur INFEASIBLE (le noyau de règles en conflit porté par
+   *  `diag-infeasible`, et l'agrégat des candidats fermés de chaque `diag-infeasible-team-*`).
+   *  `[]` sur les autres types. */
   causes: DiagnosticCause[];
   /** Créneaux restés OUVERTS (rien ne les a fermés, l'arbitrage a placé autre chose).
    *  ⚠ `null` = non mesuré, `0` = aucun n'est resté ouvert — deux choses différentes. */

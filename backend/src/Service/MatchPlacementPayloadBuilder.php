@@ -71,7 +71,7 @@ final class MatchPlacementPayloadBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '1.3';
+    public const string CONTRACT_VERSION = '1.4';
 
     /**
      * Budget du solveur PAR SEMAINE ISO (secondes). Depuis ENG-50 le moteur découpe la

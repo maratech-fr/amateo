@@ -63,8 +63,17 @@ def _generate_diagnostics(
     team_coach_map: Mapping[str, list[str]] | None = None,
     team_player_map: Mapping[str, list[str]] | None = None,
     session_causes_by_team: Mapping[str, dict[str, Any]] | None = None,
+    model: ScheduleCpModel | Any | None = None,
+    solver: cp_model.CpSolver | Any | None = None,
+    diagnostic_model: ScheduleCpModel | Any | None = None,
+    diagnostic_solver: cp_model.CpSolver | Any | None = None,
 ) -> list[dict[str, Any]]:
-    """Run post-solve checks and return manager-readable diagnostics."""
+    """Run post-solve checks and return manager-readable diagnostics.
+
+    P4-96 — ``_diagnose_conflicts`` nomme, sur INFEASIBLE, le noyau de règles en conflit (D1) à
+    partir du SECOND solve diagnostique (``diagnostic_model``/``diagnostic_solver``), et agrège les
+    candidats fermés par équipe (D2) depuis le modèle NOMINAL (``model``). Diagnostique absent ⇒ D1
+    vide, message d'infaisabilité générique conservé ; ``model`` absent ⇒ pas d'agrégat D2."""
     diagnostics: list[dict[str, Any]] = []
     # ENG-22: every "analysis of the placed slots" diagnostic only makes sense for a REAL
     # solve (OPTIMAL/FEASIBLE). On INFEASIBLE the demand-vs-supply message explains it; on
@@ -103,7 +112,18 @@ def _generate_diagnostics(
             _diagnose_session_below_effective_min(model_data, slots, session_causes_by_team=session_causes_by_team)
         )
         diagnostics.extend(_diagnose_unused_slots(model_data, slots))
-    diagnostics.extend(_diagnose_conflicts(model_data, solver_status, slots, slot_capacities=slot_capacities))
+    diagnostics.extend(
+        _diagnose_conflicts(
+            model_data,
+            solver_status,
+            slots,
+            slot_capacities=slot_capacities,
+            model=model,
+            solver=solver,
+            diagnostic_model=diagnostic_model,
+            diagnostic_solver=diagnostic_solver,
+        )
+    )
     diagnostics.extend(_diagnose_shared_blocks(model_data, solver_status, slots))
     diagnostics.extend(_diagnose_team_links(model_data, solver_status, slots))
     diagnostics.extend(_diagnose_travel_times(model_data, solver_status, slots, team_coach_map or {}))
@@ -461,6 +481,137 @@ def _collect_session_causes(
     return result
 
 
+# P4-96 — descripteur FR d'une cause de fermeture SANS libellé de contrainte (un verrou n'a pas
+# de « nom de règle » ; les autres kinds gardent le leur quand il existe). Sert aux agrégats D2 et
+# ne touche à AUCUN message existant.
+_CAUSE_KIND_FR = {
+    "hard_lock": "un créneau verrouillé",
+    "venue_forbidden": "un gymnase interdit",
+    "coach_unavailability": "une indisponibilité de coach",
+    "time_window": "une fenêtre horaire",
+    "day_conflict": "des règles de jour contradictoires",
+    "day_forced": "un jour imposé",
+    "day_forbidden": "un jour interdit",
+    "forced_venue_elsewhere": "un gymnase imposé",
+    "session_floor": "un minimum de séances dans un gymnase",
+    "shared_block": "un bloc mutualisé",
+    "team_link": "une passerelle",
+    "travel_time": "un temps de trajet",
+}
+
+
+def _closure_var_index(var: Any) -> int | None:
+    """Index OR-Tools stable d'une variable, ou None pour un double de test sans ``.Index()``."""
+    try:
+        return int(var.Index())
+    except (AttributeError, TypeError):
+        return None
+
+
+def _collect_infeasibility_causes(
+    model: ScheduleCpModel | Any,
+    solver: cp_model.CpSolver | Any,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """P4-96 (D1) — NOMME le noyau de contraintes SOURCE en conflit sur INFEASIBLE.
+
+    Lit ``solver.SufficientAssumptionsForInfeasibility()`` (index de littérales d'hypothèse) et les
+    traduit via ``model.assumption_sources`` en causes ``{kind, constraintId, label, count}`` (forme
+    ``DiagnosticCauseSchema``, kinds EXISTANTS) + la liste ordonnée des LIBELLÉS pour le message.
+    Ne RE-TESTE aucune règle : les hypothèses ont été posées À LA POSE (``_assume``). Aucune
+    hypothèse / solveur sans la méthode (doubles de test) / noyau vide ⇒ ``([], [])`` (message
+    générique conservé, défensif comme le reste du rail)."""
+    sources: Mapping[int, dict[str, Any]] = getattr(model, "assumption_sources", None) or {}
+    if not sources or not hasattr(solver, "SufficientAssumptionsForInfeasibility"):
+        return [], []
+    try:
+        core_indices = list(solver.SufficientAssumptionsForInfeasibility())
+    except (RuntimeError, AttributeError, TypeError, ValueError):
+        return [], []
+
+    causes: list[dict[str, Any]] = []
+    labels: list[str] = []
+    seen: set[tuple[Any, Any, Any]] = set()
+    for index in core_indices:
+        source = sources.get(int(index))
+        if source is None:
+            continue
+        key = (source.get("kind"), source.get("constraintId"), source.get("label"))
+        if key in seen:
+            continue
+        seen.add(key)
+        causes.append(
+            {
+                "kind": source.get("kind"),
+                "constraintId": source.get("constraintId"),
+                "label": source.get("label"),
+                "count": 1,
+            }
+        )
+        if source.get("label"):
+            labels.append(str(source.get("label")))
+    return causes, labels
+
+
+def _collect_locked_out_teams(model: ScheduleCpModel | Any) -> list[dict[str, Any]]:
+    """P4-96 (D2) — agrège, PAR ÉQUIPE, les candidats FERMÉS sur INFEASIBLE, SANS ``solver.Value``.
+
+    Un verrou HARD n'a pas de variable : impossible de l'interroger via le solveur. On lit donc les
+    fermetures MESURÉES à la pose — par variable dans ``model.candidate_closures`` et, pour les
+    candidats sans variable (créneau retiré par le verrou d'une autre équipe), dans
+    ``model.lock_removed_candidates``. Une équipe dont TOUS les candidats sont fermés (0 ouvert) est
+    rapportée avec le décompte par cause (« U21M1 : 20 candidats, tous fermés — 12 par …, 8 par … »).
+    Renvoie une liste de ``{teamId, total, causes}`` ; ``causes`` est au format ``DiagnosticCauseSchema``.
+    """
+    closures: Mapping[int, list[dict[str, Any]]] = getattr(model, "candidate_closures", None) or {}
+    lock_removed: Mapping[Any, dict[str, Any]] = getattr(model, "lock_removed_candidates", None) or {}
+
+    team_total: dict[str, int] = defaultdict(int)
+    team_closed: dict[str, int] = defaultdict(int)
+    team_cause_counts: dict[str, dict[tuple[Any, Any, Any], int]] = defaultdict(lambda: defaultdict(int))
+
+    for slot_key, var in getattr(model, "x", {}).items():
+        team_id = str(slot_key[0])
+        team_total[team_id] += 1
+        index = _closure_var_index(var)
+        var_closures = closures.get(index) if index is not None else None
+        if var_closures:
+            team_closed[team_id] += 1
+            for cause in var_closures:
+                key = (cause.get("kind"), cause.get("constraintId"), cause.get("label"))
+                team_cause_counts[team_id][key] += 1
+
+    for slot_key, cause in lock_removed.items():
+        team_id = str(slot_key[0])
+        team_total[team_id] += 1
+        team_closed[team_id] += 1
+        key = (cause.get("kind"), cause.get("constraintId"), cause.get("label"))
+        team_cause_counts[team_id][key] += 1
+
+    locked_out: list[dict[str, Any]] = []
+    for team_id in sorted(team_total):
+        total = team_total[team_id]
+        if total == 0 or total - team_closed[team_id] > 0:
+            continue  # il reste au moins un candidat OUVERT : l'équipe n'est pas verrouillée
+        causes = [
+            {"kind": kind, "constraintId": constraint_id, "label": label, "count": count}
+            for (kind, constraint_id, label), count in team_cause_counts[team_id].items()
+        ]
+        locked_out.append({"teamId": team_id, "total": total, "causes": causes})
+    return locked_out
+
+
+def _lock_summary_message(team_label: str, total: int, causes: list[dict[str, Any]]) -> str:
+    """Message FR d'un agrégat D2 : « U21M1 : 20 candidats, tous fermés — 12 par …, 8 par … »."""
+    parts: list[str] = []
+    for cause in sorted(causes, key=lambda c: int(c.get("count") or 0), reverse=True):
+        label = cause.get("label")
+        descriptor = f"« {label} »" if label else _CAUSE_KIND_FR.get(str(cause.get("kind")), "une contrainte")
+        parts.append(f"{cause.get('count')} par {descriptor}")
+    breakdown = f" — {', '.join(parts)}" if parts else ""
+    plural = "candidat" if total == 1 else "candidats"
+    return f"{team_label} : {total} {plural}, tous fermés{breakdown}."
+
+
 def _diagnose_session_below_effective_min(
     model_data: Mapping[str, Any] | Any,
     slots: list[dict[str, Any]],
@@ -578,8 +729,21 @@ def _diagnose_conflicts(
     slots: list[dict[str, Any]],
     *,
     slot_capacities: dict[Any, int] | None = None,
+    model: ScheduleCpModel | Any | None = None,
+    solver: cp_model.CpSolver | Any | None = None,
+    diagnostic_model: ScheduleCpModel | Any | None = None,
+    diagnostic_solver: cp_model.CpSolver | Any | None = None,
 ) -> list[dict[str, Any]]:
     """Report infeasibility or detected double-bookings — who, when, why.
+
+    P4-96 — sur INFEASIBLE : ``diag-infeasible`` porte le NOYAU de règles en conflit (D1, via
+    ``_collect_infeasibility_causes`` lu sur le SECOND solve diagnostique instrumenté
+    ``diagnostic_model``/``diagnostic_solver``) — message « Ces N règles se contredisent : … » +
+    ``causes[]`` nommées —, et chaque équipe dont tous les candidats sont fermés (D2,
+    ``_collect_locked_out_teams`` sur le modèle NOMINAL ``model``) reçoit son agrégat. Sans
+    diagnostique (non lancé, ou UNKNOWN/timeout), le message générique ``_infeasible_message`` est
+    conservé et D2 reste rendu (il ne dépend pas du solveur). Appels directs anciens (ni ``model``
+    ni diagnostique) ⇒ message générique, aucune cause.
 
     ``slot_capacities`` maps ``(venue_id, day_of_week, start_time)`` to the
     maximum number of teams allowed simultaneously.  When provided, a venue
@@ -593,20 +757,68 @@ def _diagnose_conflicts(
     coach_names = _coach_name_map(model_data)
 
     if solver_status == cp_model.INFEASIBLE:
+        team_names = _team_name_map(model_data)
+        core_causes: list[dict[str, Any]] = []
+        core_labels: list[str] = []
+        locked_out: list[dict[str, Any]] = []
+        # D1 — le noyau nommé vient du SECOND solve diagnostique (seul porteur des hypothèses) ;
+        # absent ⇒ pas de noyau (message générique). On retombe sur ``model``/``solver`` pour les
+        # appels directs de test qui instrumentent eux-mêmes le modèle passé en ``model``.
+        d_model = diagnostic_model if diagnostic_model is not None else model
+        d_solver = diagnostic_solver if diagnostic_solver is not None else solver
+        if d_model is not None and d_solver is not None:
+            core_causes, core_labels = _collect_infeasibility_causes(d_model, d_solver)
+        # D2 — agrégat des candidats fermés, lu du modèle NOMINAL (fermetures inconditionnelles).
+        if model is not None:
+            locked_out = _collect_locked_out_teams(model)
+
+        # D1 — quand le noyau nomme des règles, le message les CITE comme dans l'écran de
+        # contraintes ; sinon (aucune hypothèse, noyau vide, libellés absents) on garde le
+        # message générique mesuré de `_infeasible_message` (capacité / saturation / générique).
+        if core_labels:
+            quoted = ", ".join(f"« {label} »" for label in core_labels)
+            count = len(core_labels)
+            message = (
+                f"Ces {count} règles se contredisent : {quoted}."
+                if count > 1
+                else f"Cette règle ne peut pas être honorée : {quoted}."
+            )
+        else:
+            message = _infeasible_message(model_data)
+
         diagnostics.append(
             {
                 "id": "diag-infeasible",
                 "type": "conflict",
                 "severity": "ERROR",
-                "message": _infeasible_message(model_data),
+                "message": message,
                 "suggestions": [
                     "Assouplissez ou retirez une contrainte dure (jour/heure imposé, gymnase forcé).",
                     "Ajoutez de la disponibilité de gymnase ou un coach supplémentaire.",
                     "Vérifiez les créneaux verrouillés (LOCK) qui se chevauchent entre équipes.",
                 ],
+                # D1 — causes STRUCTURÉES du noyau (cliquables côté front en PR-2) ; vide sans noyau.
+                "causes": core_causes,
                 "createdAt": datetime.now(UTC).isoformat(),
             }
         )
+        # D2 — une équipe dont TOUS les candidats sont fermés : qui + combien + par quoi.
+        for entry in locked_out:
+            team_id = str(entry["teamId"])
+            diagnostics.append(
+                {
+                    "id": f"diag-infeasible-team-{team_id}",
+                    "type": "conflict",
+                    "severity": "ERROR",
+                    "teamId": team_id,
+                    "message": _lock_summary_message(_label(team_id, team_names), int(entry["total"]), entry["causes"]),
+                    "suggestions": [
+                        "Ouvrez un créneau à cette équipe ou retirez une des règles qui ferment ses candidats.",
+                    ],
+                    "causes": entry["causes"],
+                    "createdAt": datetime.now(UTC).isoformat(),
+                }
+            )
         return diagnostics
 
     if solver_status == cp_model.UNKNOWN:

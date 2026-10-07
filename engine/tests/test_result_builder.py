@@ -624,5 +624,185 @@ class DiagnosticPrecisionTest(unittest.TestCase):
             self.assertEqual([], _diagnose_travel_times(model_data, cp_model.OPTIMAL, slots, team_coach_map))
 
 
+class InfeasibilityCausesTest(unittest.TestCase):
+    """P4-96 — nommage du noyau d'infaisabilité (D1) et agrégat des candidats fermés (D2)."""
+
+    def _infeasible_with_two_sources(self) -> tuple[Any, cp_model.CpSolver]:
+        from app.solver.constraints.common import _assume
+        from app.solver.model import ScheduleCpModel
+
+        model = ScheduleCpModel()
+        # Modèle DIAGNOSTIQUE : hypothèses armées (le nominal, lui, les laisse éteintes — repli D4).
+        model.assumptions_enabled = True
+        var = model.NewBoolVar("x")
+        lit1 = _assume(model, "tw:c1", {"kind": "time_window", "constraintId": "c1", "label": "Fenêtre A"})
+        lit2 = _assume(model, "cu:c2", {"kind": "coach_unavailability", "constraintId": "c2", "label": "Indispo B"})
+        model.Add(var == 1).OnlyEnforceIf(lit1)
+        model.Add(var == 0).OnlyEnforceIf(lit2)
+        solver = cp_model.CpSolver()
+        status = solver.Solve(model)
+        self.assertEqual(status, cp_model.INFEASIBLE)
+        return model, solver
+
+    def test_core_names_both_source_rules(self) -> None:
+        from app.solver.result_builder import _collect_infeasibility_causes
+
+        model, solver = self._infeasible_with_two_sources()
+        causes, labels = _collect_infeasibility_causes(model, solver)
+        self.assertEqual({"time_window", "coach_unavailability"}, {c["kind"] for c in causes})
+        self.assertEqual({"Fenêtre A", "Indispo B"}, set(labels))
+        self.assertTrue(all(c["count"] == 1 for c in causes))
+
+    def test_core_is_empty_when_solver_lacks_the_method(self) -> None:
+        from app.solver.result_builder import _collect_infeasibility_causes
+
+        model, _solver = self._infeasible_with_two_sources()
+
+        class _NoMethodSolver:
+            pass
+
+        self.assertEqual(([], []), _collect_infeasibility_causes(model, _NoMethodSolver()))
+
+    def test_source_without_label_degrades_without_keyerror(self) -> None:
+        """Une contrainte sans id/nom → cause au kind seul (label None), jamais un KeyError, et son
+        libellé absent n'entre pas dans la liste citée."""
+        from app.solver.constraints.common import _assume
+        from app.solver.model import ScheduleCpModel
+        from app.solver.result_builder import _collect_infeasibility_causes
+
+        model = ScheduleCpModel()
+        model.assumptions_enabled = True  # modèle diagnostique
+        var = model.NewBoolVar("x")
+        anon = _assume(model, "tw:anon", {"kind": "time_window", "constraintId": None, "label": None})
+        model.Add(var == 1).OnlyEnforceIf(anon)
+        model.Add(var == 0)  # fermeture inconditionnelle → infaisable sous l'hypothèse anon
+        solver = cp_model.CpSolver()
+        self.assertEqual(solver.Solve(model), cp_model.INFEASIBLE)
+
+        causes, labels = _collect_infeasibility_causes(model, solver)
+        self.assertEqual([{"kind": "time_window", "constraintId": None, "label": None, "count": 1}], causes)
+        self.assertEqual([], labels)  # pas de libellé ⇒ rien à citer, aucun plantage
+
+    def test_locked_out_team_aggregates_closed_candidates_without_solver_value(self) -> None:
+        from app.solver.constraints.common import _enforce_closure
+        from app.solver.model import ScheduleCpModel
+        from app.solver.result_builder import _collect_locked_out_teams
+
+        model = ScheduleCpModel()
+        # Trois candidats de l'équipe T, tous FERMÉS (2 par un verrou, 1 par une indispo coach).
+        for i in range(3):
+            v = model.NewBoolVar(f"x{i}")
+            model.x[("T", "gym", 1, f"18:0{i}")] = v
+            cause = {"kind": "hard_lock"} if i < 2 else {"kind": "coach_unavailability", "label": "Indispo"}
+            _enforce_closure(model, v, cause, None)
+
+        locked_out = _collect_locked_out_teams(model)
+        self.assertEqual(1, len(locked_out))
+        entry = locked_out[0]
+        self.assertEqual("T", entry["teamId"])
+        self.assertEqual(3, entry["total"])
+        counts = {(c["kind"], c["label"]): c["count"] for c in entry["causes"]}
+        self.assertEqual(2, counts[("hard_lock", None)])
+        self.assertEqual(1, counts[("coach_unavailability", "Indispo")])
+
+    def test_team_with_an_open_candidate_is_not_locked_out(self) -> None:
+        from app.solver.constraints.common import _enforce_closure
+        from app.solver.model import ScheduleCpModel
+        from app.solver.result_builder import _collect_locked_out_teams
+
+        model = ScheduleCpModel()
+        closed = model.NewBoolVar("x0")
+        model.x[("T", "gym", 1, "18:00")] = closed
+        _enforce_closure(model, closed, {"kind": "hard_lock"}, None)
+        open_var = model.NewBoolVar("x1")  # non fermé → candidat OUVERT
+        model.x[("T", "gym", 1, "19:00")] = open_var
+
+        self.assertEqual([], _collect_locked_out_teams(model))
+
+    def test_infeasible_message_stays_generic_without_model_and_solver(self) -> None:
+        """Appel direct ancien (sans model/solver) : message générique conservé, aucun plantage."""
+        from app.solver.result_builder import _diagnose_conflicts, _infeasible_message
+
+        model_data = {"teams": [], "venues": []}
+        diags = _diagnose_conflicts(model_data, cp_model.INFEASIBLE, [])
+        infeasible = next(d for d in diags if d["id"] == "diag-infeasible")
+        # Sans noyau nommé, le message reste EXACTEMENT le message générique mesuré (jamais la forme
+        # D1 « Ces N règles se contredisent : … »), et aucune cause n'est attachée.
+        self.assertFalse(infeasible["message"].startswith("Ces "))
+        self.assertEqual(_infeasible_message(model_data), infeasible["message"])
+        self.assertEqual([], infeasible["causes"])
+
+    def test_d1_reads_the_diagnostic_model_not_the_nominal_one(self) -> None:
+        """Repli D4 — le noyau nommé (D1) vient du SECOND solve diagnostique passé en
+        ``diagnostic_model``/``diagnostic_solver`` ; le modèle NOMINAL (sans hypothèse) ne nomme rien
+        mais sert l'agrégat D2. On vérifie les DEUX dans un seul passage de ``_diagnose_conflicts``."""
+        from app.solver.constraints.common import _enforce_closure
+        from app.solver.result_builder import _diagnose_conflicts
+
+        # Modèle diagnostique INFEASIBLE sous deux hypothèses nommées (porteur de D1).
+        diag_model, diag_solver = self._infeasible_with_two_sources()
+
+        # Modèle NOMINAL : aucune hypothèse (interrupteur éteint par défaut), mais une équipe T dont
+        # l'unique candidat est fermé → D2 doit la rapporter sans toucher au solveur.
+        from app.solver.model import ScheduleCpModel
+
+        nominal = ScheduleCpModel()
+        self.assertFalse(nominal.assumptions_enabled)  # le nominal n'instrumente rien
+        v = nominal.NewBoolVar("x0")
+        nominal.x[("T", "gym", 1, "18:00")] = v
+        _enforce_closure(nominal, v, {"kind": "coach_unavailability", "label": "Indispo B"}, None)
+        self.assertEqual({}, nominal.assumption_literals)  # aucune littérale posée sur le nominal
+
+        diags = _diagnose_conflicts(
+            {"teams": [{"id": "T", "name": "T"}], "venues": []},
+            cp_model.INFEASIBLE,
+            [],
+            model=nominal,
+            solver=cp_model.CpSolver(),
+            diagnostic_model=diag_model,
+            diagnostic_solver=diag_solver,
+        )
+        infeasible = next(d for d in diags if d["id"] == "diag-infeasible")
+        # D1 — message nommé + causes issues du modèle DIAGNOSTIQUE.
+        self.assertIn("se contredisent", infeasible["message"])
+        self.assertEqual({"time_window", "coach_unavailability"}, {c["kind"] for c in infeasible["causes"]})
+        # D2 — l'équipe verrouillée rapportée depuis le modèle NOMINAL.
+        team_diag = next(d for d in diags if d["id"] == "diag-infeasible-team-T")
+        self.assertEqual("T", team_diag["teamId"])
+
+    def test_each_new_contract_14_kind_names_its_source_in_the_core(self) -> None:
+        """P4-96 PR-2 (contrat 1.4) — les kinds DÉDIÉS `day_forced` (jour imposé), `session_floor`
+        (plancher « au moins N au gymnase ») et `shared_block` (mutualisation) remontent dans le
+        noyau d'infaisabilité et sont acceptés par le `Literal` fermé de `DiagnosticCauseSchema`.
+
+        Repli D4 — les hypothèses ne vivent que dans le SECOND solve diagnostique : on arme donc
+        `assumptions_enabled` sur le modèle (ce que fait `main._solve(..., assumptions_enabled=True)`),
+        sans quoi `_assume` renverrait `None` (comportement nominal)."""
+        from app.schemas.output_schema import DiagnosticCauseSchema
+        from app.solver.constraints.common import _assume
+        from app.solver.model import ScheduleCpModel
+        from app.solver.result_builder import _collect_infeasibility_causes
+
+        for kind, cid, label in (
+            ("day_forced", "d1", "Vendredi imposé"),
+            ("session_floor", "f1", "Au moins 2 au gymnase Matéo"),
+            ("shared_block", None, None),
+        ):
+            model = ScheduleCpModel()
+            model.assumptions_enabled = True  # modèle diagnostique (second solve)
+            var = model.NewBoolVar("x")
+            lit = _assume(model, f"{kind}:{cid}", {"kind": kind, "constraintId": cid, "label": label})
+            self.assertIsNotNone(lit, kind)  # armé ⇒ littérale réellement posée
+            model.Add(var == 1).OnlyEnforceIf(lit)
+            model.Add(var == 0)  # fermeture inconditionnelle → infaisable sous l'unique hypothèse
+            solver = cp_model.CpSolver()
+            self.assertEqual(solver.Solve(model), cp_model.INFEASIBLE, kind)
+
+            causes, _labels = _collect_infeasibility_causes(model, solver)
+            self.assertIn(kind, {c["kind"] for c in causes}, kind)
+            for cause in causes:  # le Literal étendu (contrat 1.4) valide chaque nouveau kind
+                DiagnosticCauseSchema.model_validate(cause)
+
+
 if __name__ == "__main__":
     unittest.main()

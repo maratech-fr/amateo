@@ -1,10 +1,10 @@
 # Génération d'un planning — conduite normalisée (bout en bout)
 
-Last verified @ 2026-10-06 (contrat moteur 1.2 → 1.3 — retrait des champs morts du fil — PII coach email/phone, flags isActive/tags/minSessionsOverride, priorityTiers, kickoffEstimated/roundTripMinutes, ENG-53/RGPD-03/ALIGN-20 ; antérieurement 1.1 → 1.2, vocabulaire `/place-matches` resserré en
-énums fermées, ENG-56 ; forme du payload `/generate` inchangée). `CONTRACT_VERSION`
-**`'1.3'`** confirmé aux trois foyers — `ScheduleConstraintBuilder.php:59`, `MoveSlotService.php:50`,
+Last verified @ 2026-10-07 (P4-96 PR-2 — contrat moteur 1.3 → 1.4 : trois kinds de cause DÉDIÉS (`day_forced`, `session_floor`, `shared_block`) sur `DiagnosticCauseSchema` + `causes[]` officialisé sur le diagnostic `conflict` — sur INFEASIBLE, `diag-infeasible` NOMME le noyau de règles en conflit (hypothèses CP-SAT) et chaque `diag-infeasible-team-*` l'agrégat des candidats fermés ; forme du payload `/generate` par ailleurs inchangée. Antérieurement @ 2026-10-06 : contrat moteur 1.2 → 1.3 — retrait des champs morts du fil — PII coach email/phone, flags isActive/tags/minSessionsOverride, priorityTiers, kickoffEstimated/roundTripMinutes, ENG-53/RGPD-03/ALIGN-20 ; antérieurement 1.1 → 1.2, vocabulaire `/place-matches` resserré en
+énums fermées, ENG-56). `CONTRACT_VERSION`
+**`'1.4'`** confirmé aux trois foyers — `ScheduleConstraintBuilder.php:59`, `MoveSlotService.php:50`,
 `MatchPlacementPayloadBuilder.php:74` — et
-`engine/CONTRACT_VERSION` (`1.3`). Garde de redélivrance
+`engine/CONTRACT_VERSION` (`1.4`). Garde de redélivrance
 (`GenerateScheduleHandler.php:143`, SEUL `COMPLETED` bloque) et persistance de la greffe de
 convergence (`Schedule::payloadGraft`/`engineInput()`, `Schedule.php:138`) toujours en place, code
 relu ; aucun écran frontend n'affiche `score` (grep confirmé, `frontend/src/features/planning/api.ts`).

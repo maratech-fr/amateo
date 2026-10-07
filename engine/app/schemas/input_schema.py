@@ -307,7 +307,7 @@ class ScheduleInputSchema(SerializableModel):
     # la valeur du fil. On l'aligne néanmoins sur le contrat courant (engine/CONTRACT_VERSION) pour
     # qu'aucun lecteur ne le prenne pour une version concurrente ; gardé par
     # test_schema_version_defaults_match_contract_version.
-    version: str = "1.3"
+    version: str = "1.4"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     schedule_name: str | None = Field(default=None, alias="scheduleName")

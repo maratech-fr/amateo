@@ -23,15 +23,22 @@ const ORDER = SEVERITY_ORDER;
 // P4-99 — PRÉSENTATION PURE : traduit le `kind` MESURÉ par le moteur en une phrase lisible.
 // Le front n'invente aucune règle métier ; il ne DÉCIDE d'aucun comportement à partir du kind,
 // il choisit seulement un libellé (autorisé — cf. `matches/lib/diagnostic.ts`). `Record` sur
-// l'union → le compilateur exige les 7 familles ; un kind futur, absent, dégrade au compte seul.
+// l'union → le compilateur EXIGE toutes les familles ; un kind futur, absent, dégrade au compte
+// seul. P4-96/contrat 1.4 — la table est désormais exhaustive sur les 12 kinds (dont `day_forced`,
+// `session_floor`, `shared_block`, `team_link`, `travel_time`, naguère manquants).
 const CAUSE_KIND_LABELS: Record<DiagnosticCauseKind, string> = {
   hard_lock: "un créneau déjà verrouillé",
   venue_forbidden: "un gymnase interdit",
   coach_unavailability: "l'indisponibilité d'un coach",
   time_window: "une plage horaire trop étroite",
   day_conflict: "un conflit de jour",
+  day_forced: "un jour imposé",
   day_forbidden: "un jour interdit",
   forced_venue_elsewhere: "un gymnase imposé ailleurs",
+  session_floor: "un minimum de séances dans un gymnase",
+  shared_block: "un bloc mutualisé",
+  team_link: "une passerelle entre équipes",
+  travel_time: "un temps de trajet trop court",
 };
 
 // Kind inconnu → `null` : on affiche le compte SANS phrase inventée, jamais le code brut.
@@ -253,12 +260,14 @@ export function DiagnosticsPanel({ diagnostics, slots, emptySlots = [], lookups,
                               Ajuster cette règle
                             </WizardStepLink>
                           ) : null}
-                          {/* P4-99 — la CAUSE mesurée d'une séance manquante. Une ligne par cause
+                          {/* P4-99 — la CAUSE mesurée d'une séance manquante, et P4-96 la CARTE
+                              D'ÉCHEC (`conflict` sur INFEASIBLE : le noyau de règles en conflit +
+                              l'agrégat des candidats fermés de chaque équipe). Une ligne par cause
                               (libellé du kind + compte) ; un `constraintId` connu mène à SA
                               contrainte (`?step=constraints&edit=<id>`, rail ConstraintsStep). Pas
                               d'id → pas de lien (jamais de lien mort). `openCandidates > 0` a sa
                               propre phrase : des créneaux étaient DISPONIBLES, pas une cause. */}
-                          {"session_below_effective_min" === item.type ? (
+                          {"session_below_effective_min" === item.type || ("conflict" === item.type && (item.causes?.length ?? 0) > 0) ? (
                             <div className="flex flex-col gap-1 px-3 pb-1.5">
                               {item.causes.map((cause, index) => (
                                 <div key={`${cause.kind}-${cause.constraintId ?? "none"}-${index}`} className="flex flex-col gap-0.5">

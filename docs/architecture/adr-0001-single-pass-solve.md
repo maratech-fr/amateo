@@ -98,3 +98,47 @@ lock is released in milliseconds.
   rejected as the default — it silently drops constraints the club asked for, and
   a degraded plan presented as success is misleading. Left as an opt-in extension
   point for a future, explicit decision.
+
+## Amendment (2026-10-07, P4-96) — an explicit diagnostic second solve names the conflict
+
+On INFEASIBLE the engine now **names the conflicting entered rules** instead of a
+generic message. The mechanism is a CP-SAT **assumption literal per entered SOURCE
+rule** (time/day window, forced/forbidden venue, coach unavailability, MANDATORY
+team link/travel), shared across every site that rule enforces — the posted
+constraint AND the candidate closures (`model.Add(…).OnlyEnforceIf(lit)`), with
+`AddAssumption(lit)` once — so that `solver.SufficientAssumptionsForInfeasibility()`
+returns the literals that suffice to explain the contradiction. `result_builder`
+turns that core into named `causes[]` on `diag-infeasible` (« Ces N règles se
+contredisent : … »).
+
+**This instrumentation does NOT run on the nominal solve.** It was first wired into
+the single production solve, but posting the assumption literals up front kept the
+presolve from fixing the closed candidates to 0 (an assumption literal is a free
+variable the unsat-core machinery must preserve), which stalled the optimality
+proof: measured **614 s (the 600 s budget exhausted) on the real BCCL club (50
+teams)** against **8-40 s on main**, and ~26 s vs ~2 s on the `bccl_2026_08_15`
+fixture — a 13× regression the dense-perf fixture reproduces. The async queue then
+backed up behind those solves (17 red Behat scenarios).
+
+**Decision — the second-solve fallback is RETAINED** (the extension point this ADR
+reserved). The nominal solve is built with assumptions OFF and is therefore
+byte-identical to main (no literals, no `AddAssumption`, no `OnlyEnforceIf` —
+presolve unbridled; goldens unchanged, no re-baseline; proven by
+`test_nominal_solve_has_no_assumptions`). Only **after a first INFEASIBLE** does
+`build_schedule` build a second, **instrumented** model (`assumptions_enabled=True`)
+and run it under a short, named budget (`DIAGNOSTIC_SOLVE_MAX_SECONDS = 15 s`) purely
+to read the core. If that solve does not prove INFEASIBLE within the budget
+(UNKNOWN/timeout) the generic message is kept. The diagnostic solve **produces no
+schedule** — it is not a relaxation, no HARD constraint is ever dropped. It is
+observable via a structured engine log line (the channel the regression itself was
+caught on); it does not add an output-contract field (contract unchanged, 1.3).
+
+**D2 (per-team aggregate of closed candidates) does not depend on the solver and is
+read from the NOMINAL model's pose-time closure maps** (`candidate_closures` +
+`lock_removed_candidates`, never `solver.Value` — a HARD lock has no variable), so
+it still renders even when the diagnostic second solve yields no core. HARD locks are
+deliberately NOT given assumption literals (sovereign, no variable); they surface
+through this D2 aggregate, not the unsat core.
+
+The dormant two-pass *relaxation* fallback (the top of this ADR) is unchanged and
+still OFF — the second solve here is diagnostic-only and shares nothing with it.

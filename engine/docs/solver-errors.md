@@ -1,6 +1,6 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-10-06 (contrat 1.2 → 1.3 — retrait des champs morts du fil : PII coach email/phone, flags isActive/tags/minSessionsOverride, priorityTiers, kickoffEstimated/roundTripMinutes, ENG-53/RGPD-03/ALIGN-20 ; antérieurement 1.1 → 1.2, valeur inconnue = 422, ENG-56. Citation `_adaptive_timeout` ré-ancrée sur le symbole, étiquette de version « contrat 2.8 » historique retirée, AUD-DOC-50/51) ; `engine/CONTRACT_VERSION` = `1.3` ✓ ; la liste `type` de `DiagnosticSchema` (`app/schemas/output_schema.py:69-95`) porte 15 valeurs, toutes présentes dans la table ci-dessous ✓. Reste non re-sondé cette passe.
+Last verified @ 2026-10-06 (contrat 1.2 → 1.3 — retrait des champs morts du fil : PII coach email/phone, flags isActive/tags/minSessionsOverride, priorityTiers, kickoffEstimated/roundTripMinutes, ENG-53/RGPD-03/ALIGN-20 ; antérieurement 1.1 → 1.2, valeur inconnue = 422, ENG-56. Citation `_adaptive_timeout` ré-ancrée sur le symbole, étiquette de version « contrat 2.8 » historique retirée, AUD-DOC-50/51) ; P4-96 PR-2 — contrat 1.3 → 1.4 (trois kinds de cause DÉDIÉS `day_forced`/`session_floor`/`shared_block` sur `DiagnosticCauseSchema`, liste `type` de `DiagnosticSchema` INCHANGÉE) ; `engine/CONTRACT_VERSION` = `1.4` ✓ ; la liste `type` de `DiagnosticSchema` (`app/schemas/output_schema.py`) porte 15 valeurs, toutes présentes dans la table ci-dessous ✓. Reste non re-sondé cette passe.
 
 > Ce document recense toutes les erreurs que le moteur peut produire, avec leurs causes et les actions correctives. Destine aux developpeurs et aux utilisateurs avances du club.
 
@@ -19,7 +19,7 @@ Ces erreurs sont retournees directement par l'API FastAPI, avant meme que le sol
 - `sessionsPerWeek: "trois"` au lieu d'un entier
 - Champ `sportCategoryId` manquant sur une equipe (requis)
 - Cle inconnue dans le payload (les schemas sont `extra=forbid`)
-- `version: "2.0"` alors que le moteur parle le **MAJOR 1** du contrat `1.3` (`"1.0"` comme `"1.3"` passent)
+- `version: "2.0"` alors que le moteur parle le **MAJOR 1** du contrat `1.4` (`"1.0"` comme `"1.4"` passent)
 
 **Attention — deux pieges qui ne provoquent PAS de 422** : `lockLevel` est une **chaine libre**, pas un enum (un `"FORT"` est accepte et simplement traite comme non-`HARD`), et le `dayOfWeek` d'un creneau de gymnase (`VenueTrainingSlotSchema`) est un entier **sans borne** — un `8` passe la validation (d'autres schemas du meme payload, eux, sont bornes `ge=1, le=7` : la tolerance n'est pas une regle generale).
 

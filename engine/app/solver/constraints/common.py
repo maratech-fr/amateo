@@ -9,6 +9,7 @@ eight constraint posers call it and the diagnostics re-read its causes through
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
@@ -137,6 +138,70 @@ def _record_closure(model: Any, var: BoolVarLike, cause: dict[str, Any]) -> None
     except (AttributeError, TypeError):
         return
     closures.setdefault(index, []).append(cause)
+
+
+def _source_key(family: str, constraint_id: Any, fallback: Any) -> str:
+    """Clé STABLE d'une contrainte source pour ``_assume`` (P4-96) : ``"<family>:<id>"`` quand la
+    contrainte porte un id, sinon ``"<family>:anon-<fallback>"`` (une contrainte saisie sans id
+    garde malgré tout SA littérale ; jamais un KeyError)."""
+    token = constraint_id if constraint_id is not None else f"anon-{fallback}"
+    return f"{family}:{token}"
+
+
+def _assume(model: Any, source_key: str, cause: dict[str, Any]) -> BoolVarLike | None:
+    """Littérale d'hypothèse CP-SAT PARTAGÉE pour une contrainte SOURCE saisie (P4-96, D1).
+
+    UNE littérale par ``source_key`` (ex. ``"time_window:<id>"``), réutilisée par TOUS les sites
+    de pose de cette contrainte — la contrainte postée (``model.Add(expr).OnlyEnforceIf(lit)``) ET
+    les fermetures de candidats (``model.Add(var == 0).OnlyEnforceIf(lit)``). ``model.AddAssumption(lit)``
+    est posée une seule fois, à la création : la littérale est donc TOUJOURS vraie dans un solve
+    abouti, et le noyau rendu par ``solver.SufficientAssumptionsForInfeasibility()`` sur INFEASIBLE
+    nomme les règles en conflit.
+
+    ``cause`` (``{kind, constraintId, label}``, forme ``DiagnosticCauseSchema``) est stockée par
+    index de littérale (``model.assumption_sources``) pour le nommage ; une contrainte sans id/nom
+    dégrade au ``kind`` seul, jamais un KeyError.
+
+    INTERRUPTEUR (repli D4, 2026-10-07) : renvoie ``None`` tant que ``model.assumptions_enabled`` est
+    faux — le cas du solve NOMINAL. Le poseur retombe alors sur le ``model.Add(...)`` INCONDITIONNEL
+    historique : aucune littérale, aucun ``AddAssumption``, aucun ``OnlyEnforceIf`` → pose
+    byte-identique à ``main`` (goldens inchangés, présolve non bridé). On n'arme l'instrumentation
+    QUE pour le second solve diagnostique (``main._solve(..., assumptions_enabled=True)``), construit
+    seulement après un premier INFEASIBLE. Motif : les hypothèses posées dès le premier solve
+    stagnaient la preuve d'optimalité (614 s vs 8-40 s sur BCCL, cf. ADR-0001 amendé).
+
+    DÉFENSIF par conception, comme ``_record_closure`` : un ``cp_model.CpModel`` NU (tests de pose,
+    sans attribut custom) n'a pas de registre ⇒ renvoie aussi ``None``."""
+    if not getattr(model, "assumptions_enabled", False):
+        return None
+    registry = getattr(model, "assumption_literals", None)
+    if registry is None:
+        return None
+    literal = registry.get(source_key)
+    if literal is not None:
+        return literal
+    try:
+        literal = model.NewBoolVar(f"assume[{source_key}]")
+        model.AddAssumption(literal)
+    except (AttributeError, TypeError):
+        return None
+    registry[source_key] = literal
+    sources = getattr(model, "assumption_sources", None)
+    if sources is not None:
+        with contextlib.suppress(AttributeError, TypeError):
+            sources[int(literal.Index())] = dict(cause)
+    return literal
+
+
+def _enforce_closure(model: Any, var: BoolVarLike, cause: dict[str, Any], literal: BoolVarLike | None) -> None:
+    """Ferme un candidat (``var == 0``) et enregistre sa cause mesurée (P4-99), en gardant la
+    fermeture conditionnée à la littérale d'hypothèse de sa contrainte source quand elle existe
+    (P4-96) : ``OnlyEnforceIf(literal)``. ``literal is None`` (modèle nu, ou source non hypothéquée)
+    ⇒ fermeture INCONDITIONNELLE, strictement l'ancien comportement."""
+    added = model.Add(var == 0)
+    if literal is not None:
+        added.OnlyEnforceIf(literal)
+    _record_closure(model, var, cause)
 
 
 def _fold_case_occupant_identity(

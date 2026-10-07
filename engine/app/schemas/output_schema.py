@@ -42,9 +42,25 @@ class DiagnosticCauseSchema(SerializableModel):
         "venue_forbidden",
         "coach_unavailability",
         "time_window",
+        # Jours CONTRADICTOIRES (liste blanche vs « évite » / jour imposé déjà interdit) : aucune
+        # contrainte seule n'est « la » cause, c'est leur combinaison — pas de ``constraintId`` unique.
         "day_conflict",
+        # P4-96 PR-2 — « au moins une séance un jour IMPOSÉ » (``forcedDays``) : une contrainte SOURCE
+        # à part entière (kind DÉDIÉ, ``constraintId``/``label`` = la règle de jour imposé), distincte
+        # de ``day_conflict`` (la combinaison) — c'est le cœur du besoin « coach indispo vendredi +
+        # équipe vendredi imposé », où la règle de jour imposé doit se NOMMER dans le noyau.
+        "day_forced",
         "day_forbidden",
         "forced_venue_elsewhere",
+        # P4-96 PR-2 — plancher « au moins N séances dans CE gymnase » (``minAtVenueId``,
+        # ``add_venue_minimum_constraints``) : contrainte dure SOURCE hypothéquée, nommée dans le
+        # noyau quand son ``sum >= N`` ne peut être honoré.
+        "session_floor",
+        # P4-96 PR-2 — mutualisation par BLOC (``sharedBlocks``) : le bloc pose ``Σb ==
+        # commonSessions`` (dur) ; quand il sur-contraint le modèle, le bloc est nommé dans le
+        # noyau (``constraintId``/``label`` None — un bloc n'a pas de nom de règle ; le diagnostic
+        # ``shared_block_not_honored`` dédié nomme ses équipes).
+        "shared_block",
         # Lot PASSERELLES PR-2 — un candidat LIBRE fermé parce qu'il chevauchait la séance
         # VERROUILLÉE d'une équipe passerelée MANDATORY (``constraintId`` = id de la passerelle).
         "team_link",
@@ -109,8 +125,11 @@ class DiagnosticSchema(SerializableModel):
     message: str
     suggestions: list[str] = Field(default_factory=list)
     created_at: datetime | None = Field(default=None, alias="createdAt")
-    # P4-99 — la cause RÉELLE d'une séance manquante, MESURÉE à la pose. Renseigné UNIQUEMENT
-    # par ``session_below_effective_min`` ; les autres types de diagnostic gardent ``causes: []``.
+    # P4-99 — la cause RÉELLE d'une séance manquante, MESURÉE à la pose. Renseigné par
+    # ``session_below_effective_min`` (solve abouti) ET, P4-96, par ``conflict`` sur INFEASIBLE :
+    # ``diag-infeasible`` porte le NOYAU de règles en conflit (hypothèses CP-SAT) et chaque
+    # ``diag-infeasible-team-*`` l'agrégat des candidats fermés de l'équipe. Les autres types de
+    # diagnostic gardent ``causes: []``.
     causes: list[DiagnosticCauseSchema] = Field(default_factory=list)
     # « Resté ouvert » n'est PAS une cause (rien ne l'a fermé) : un champ DÉDIÉ porte le
     # COMPTE des créneaux libres, non fermés et non retenus — jamais un pseudo-kind dans
