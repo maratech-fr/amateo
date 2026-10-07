@@ -3676,6 +3676,62 @@
                 }
             }
         },
+        "/api/register/club-lookup": {
+            "get": {
+                "operationId": "getApiRegisterClubLookup",
+                "tags": [
+                    "Auth"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Club identity behind an FFBB code (display only \u2014 name + city, never the mail)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "enum": [
+                                                "found",
+                                                "unknown",
+                                                "unavailable"
+                                            ]
+                                        },
+                                        "name": {
+                                            "type": "string",
+                                            "description": "Present only when status is \"found\""
+                                        },
+                                        "city": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "description": "Present only when status is \"found\" (nullable)"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Too many attempts (per-IP rate limited)"
+                    }
+                },
+                "summary": "Resolve a club NAME + city from its FFBB code for the registration form (display only, never pre-fills)",
+                "parameters": [
+                    {
+                        "name": "code",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "FFBB club code to resolve (uppercased server-side)"
+                    }
+                ]
+            }
+        },
         "/api/register/config": {
             "get": {
                 "operationId": "getApiRegisterConfig",
@@ -25434,6 +25490,11 @@
                         "default": false,
                         "type": "boolean"
                     },
+                    "gender": {
+                        "description": "Genre pour l'accord des libell\u00e9s (FEMALE|MALE|UNSPECIFIED).",
+                        "default": "UNSPECIFIED",
+                        "type": "string"
+                    },
                     "parentCoachId": {
                         "type": [
                             "string",
@@ -25514,6 +25575,18 @@
                             "null"
                         ]
                     },
+                    "gender": {
+                        "enum": [
+                            "FEMALE",
+                            "MALE",
+                            "UNSPECIFIED"
+                        ],
+                        "description": "Genre pour l'accord des libell\u00e9s (PUT partiel : null = inchang\u00e9).",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "parentCoachId": {
                         "type": [
                             "string",
@@ -25585,6 +25658,11 @@
                         "description": "V\u00e9hicul\u00e9 (bar\u00e8me voiture) ou non (bar\u00e8me \u00e0 v\u00e9lo).",
                         "default": false,
                         "type": "boolean"
+                    },
+                    "gender": {
+                        "description": "Genre pour l'accord des libell\u00e9s (FEMALE|MALE|UNSPECIFIED).",
+                        "default": "UNSPECIFIED",
+                        "type": "string"
                     },
                     "parentCoachId": {
                         "type": [
@@ -25662,6 +25740,11 @@
                                 "description": "V\u00e9hicul\u00e9 (bar\u00e8me voiture) ou non (bar\u00e8me \u00e0 v\u00e9lo).",
                                 "default": false,
                                 "type": "boolean"
+                            },
+                            "gender": {
+                                "description": "Genre pour l'accord des libell\u00e9s (FEMALE|MALE|UNSPECIFIED).",
+                                "default": "UNSPECIFIED",
+                                "type": "string"
                             },
                             "parentCoachId": {
                                 "type": [

@@ -13,12 +13,20 @@ const h = {
   // P5-3b/P2-4 — la config publique du register (mockée) : `demoShortcut` pilote
   // la tentative du raccourci démo ; null = Turnstile inactif + pas de raccourci.
   config: null as { turnstileSiteKey: string | null; demoShortcut?: boolean; demoEmail?: string | null } | null,
+  // P4-298 — le lookup d'identité du club (mocké) : `lookupData` pilote l'affichage,
+  // `lookupCalls` enregistre les args (code, enabled) pour prouver le gating/debounce.
+  lookupData: null as { status: string; name?: string; city?: string | null } | null,
+  lookupCalls: [] as { code: string; enabled: boolean }[],
 };
 
 vi.mock("./queries", () => ({
   useRegister: () => ({ mutateAsync: h.register, isPending: false }),
   useRegisterConfig: () => ({ data: h.config }),
   useDevDemoRegister: () => ({ mutateAsync: h.demoRegister, isPending: false }),
+  useRegisterClubLookup: (code: string, enabled: boolean) => {
+    h.lookupCalls.push({ code, enabled });
+    return { data: h.lookupData };
+  },
 }));
 vi.mock("react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router")>()),
@@ -57,6 +65,8 @@ afterEach(() => {
   h.demoRegister.mockReset();
   h.navigate.mockReset();
   h.config = null;
+  h.lookupData = null;
+  h.lookupCalls = [];
   delete (window as unknown as TurnstileStub).turnstile;
   document.querySelectorAll('script[src*="challenges.cloudflare.com"]').forEach((s) => s.remove());
 });
@@ -293,5 +303,75 @@ describe("RegisterPage", () => {
     await waitFor(() => expect(screen.getByText(/mot de passe incorrect/i)).toBeInTheDocument());
     expect(h.navigate).not.toHaveBeenCalled();
     expect(screen.queryByText(/email de confirmation/i)).not.toBeInTheDocument();
+  });
+
+  // P4-298 — « reconnu » : le nom + la ville du club, suivis de « c'est bien votre club ? ».
+  it("club lookup found: shows the club name and city confirmation", async () => {
+    h.lookupData = { status: "found", name: "Basket Club Lyon", city: "Lyon" };
+    const user = userEvent.setup();
+    renderWithProviders(<RegisterPage />);
+    await gotoDetails(user);
+    expect(screen.getByText(/Basket Club Lyon \(Lyon\) — c'est bien votre club/i)).toBeInTheDocument();
+  });
+
+  // P4-298 — « reconnu » sans ville : le nom seul, sans parenthèses vides.
+  it("club lookup found without city: shows just the name", async () => {
+    h.lookupData = { status: "found", name: "Club Sans Ville", city: null };
+    const user = userEvent.setup();
+    renderWithProviders(<RegisterPage />);
+    await gotoDetails(user);
+    expect(screen.getByText(/Club Sans Ville — c'est bien votre club/i)).toBeInTheDocument();
+    expect(screen.queryByText(/\(\)/)).not.toBeInTheDocument();
+  });
+
+  // P4-298 — « inconnu » : un message NON bloquant « code non reconnu ».
+  it("club lookup unknown: shows the non-blocking not-recognized hint", async () => {
+    h.lookupData = { status: "unknown" };
+    const user = userEvent.setup();
+    renderWithProviders(<RegisterPage />);
+    await gotoDetails(user);
+    expect(screen.getByText(/code non reconnu à la ffbb/i)).toBeInTheDocument();
+  });
+
+  // P4-298 — « muet » : FFBB indisponible (ou vérif désactivée) → RIEN n'est affiché.
+  it("club lookup unavailable: shows nothing", async () => {
+    h.lookupData = { status: "unavailable" };
+    const user = userEvent.setup();
+    renderWithProviders(<RegisterPage />);
+    await gotoDetails(user);
+    expect(screen.queryByText(/c'est bien votre club/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/code non reconnu/i)).not.toBeInTheDocument();
+  });
+
+  // P4-298 (décision fondateur) — AFFICHAGE SEUL : même « reconnu », le champ « Nom du club »
+  // n'est JAMAIS pré-rempli depuis le lookup.
+  it("club lookup found: never pre-fills the club_name field", async () => {
+    h.lookupData = { status: "found", name: "Basket Club Lyon", city: "Lyon" };
+    const user = userEvent.setup();
+    renderWithProviders(<RegisterPage />);
+    await gotoDetails(user);
+    await user.type(screen.getByLabelText(/code club ffbb/i), "ARA0069013");
+    expect(screen.getByText(/c'est bien votre club/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/nom du club/i)).toHaveValue("");
+  });
+
+  // P4-298 — un code PARTIEL (hors format FFBB complet) ne déclenche AUCUN fetch :
+  // le hook n'est jamais activé (enabled=false, code vide).
+  it("club lookup: a partial code never enables a fetch", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RegisterPage />);
+    await gotoDetails(user);
+    await user.type(screen.getByLabelText(/code club ffbb/i), "ARA006");
+    expect(h.lookupCalls.every((c) => !c.enabled)).toBe(true);
+    expect(h.lookupCalls.every((c) => c.code === "")).toBe(true);
+  });
+
+  // P4-298 — un code au format FFBB COMPLET finit par activer le lookup (après le debounce).
+  it("club lookup: a complete FFBB code enables the fetch after the debounce", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RegisterPage />);
+    await gotoDetails(user);
+    await user.type(screen.getByLabelText(/code club ffbb/i), "ARA0069013");
+    await waitFor(() => expect(h.lookupCalls.some((c) => c.enabled && c.code === "ARA0069013")).toBe(true));
   });
 });

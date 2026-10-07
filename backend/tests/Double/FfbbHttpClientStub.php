@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Double;
 
 use DateTimeImmutable;
+use Symfony\Component\HttpClient\Exception\TransportException;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
@@ -22,6 +23,8 @@ final class FfbbHttpClientStub implements HttpClientInterface
 {
     public const CLUB_CODE = 'ARA0000001';
     public const CLUB_EMAIL = 'club-officiel@stub.ffbb.fr';
+    public const CLUB_NAME = 'CLUB STUB FFBB';
+    public const CLUB_CITY = 'Villeurbanne';
     public const COMPETITION_ID = '900000000000001';
     public const COMPETITION_CODE = 'PTM';
     public const POULE_ID = '910000000000001';
@@ -123,6 +126,15 @@ final class FfbbHttpClientStub implements HttpClientInterface
             'categorie' => ['code' => 'U17', 'libelle' => 'U17'], 'niveau' => ['code' => 'PRR', 'libelle' => 'Pré régional']],
     ];
 
+    /**
+     * P4-298 — bascule de PANNE TRANSPORT de la recherche FFBB (multi-search) : quand true,
+     * toute recherche jette une `TransportException` (le jeton de config reste servi). Permet
+     * de prouver, SANS réseau réel, qu'un code valide dégrade en `unavailable` tandis qu'un
+     * code malformé ne déclenche AUCUNE recherche (donc aucune panne). Défaut false ; chaque
+     * test qui la pose la remet à false (statique partagée dans le process).
+     */
+    public static bool $failSearch = false;
+
     private readonly MockHttpClient $inner;
 
     public function __construct()
@@ -130,6 +142,11 @@ final class FfbbHttpClientStub implements HttpClientInterface
         $this->inner = new MockHttpClient(function (string $method, string $url, array $options): MockResponse {
             if (str_contains($url, 'api.ffbb.com')) {
                 return new MockResponse((string) json_encode(['data' => ['key_ms' => 'stub-token']]));
+            }
+            // P4-298 — panne transport SIMULÉE de la recherche (jamais du jeton de config
+            // ci-dessus) : prouve le dégradé `unavailable` sans jamais toucher le vrai réseau.
+            if (self::$failSearch) {
+                throw new TransportException('stub FFBB transport down');
             }
             $body = \is_string($options['body'] ?? null) ? $options['body'] : '';
 
@@ -139,8 +156,10 @@ final class FfbbHttpClientStub implements HttpClientInterface
             if (str_contains($body, 'ffbbserver_organismes')) {
                 $hits = str_contains($body, self::CLUB_CODE) ? [[
                     'code' => self::CLUB_CODE,
-                    'nom' => 'CLUB STUB FFBB',
+                    'nom' => self::CLUB_NAME,
                     'mail' => self::CLUB_EMAIL,
+                    // P4-298 — une commune, pour que le lookup d'identité rende aussi la VILLE.
+                    'commune' => ['libelle' => self::CLUB_CITY],
                 ]] : [];
 
                 return $this->search($hits);

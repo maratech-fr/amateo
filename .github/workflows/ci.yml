@@ -495,6 +495,14 @@ jobs:
       - name: RegisterTurnstileTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/RegisterTurnstileTest.php --group phase1'
 
+      # P4-298 — le lookup public du NOM de club à l'inscription (NR d'axe auth, surface anonyme
+      # adjacente au register) : réponse found SANS mail, unknown franc, code malformé SANS appel
+      # sortant, FFBB muette → unavailable (jamais 500), gating off → unavailable sans sortie, et
+      # le limiteur IP dédié épuisé → 429. Sans ce gate, le mail du club pourrait fuiter dans la
+      # réponse ou l'énumération de codes s'ouvrir, invisible aux autres checks.
+      - name: RegisterClubLookupTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/RegisterClubLookupTest.php --group phase1'
+
       # P4-45 — le pendant PAR CLUB de SEC-11. Step nommé, donc réellement bloquant :
       # porter `phase1` ne suffit pas (cf. le commentaire P2-9ter plus bas).
       - name: ClubQuotaTest

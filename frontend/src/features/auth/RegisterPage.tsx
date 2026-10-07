@@ -1,5 +1,5 @@
 import { Check } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
 import { errorMessage } from "@/shared/lib/errorMessage";
@@ -12,12 +12,19 @@ import { cn } from "@/shared/lib/utils";
 import { isPasswordValid } from "@/shared/lib/passwordPolicy";
 
 import { AuthLayout } from "./AuthLayout";
-import { useDevDemoRegister, useRegister, useRegisterConfig } from "./queries";
+import { useDevDemoRegister, useRegister, useRegisterClubLookup, useRegisterConfig } from "./queries";
 import { TurnstileWidget } from "./TurnstileWidget";
 
 // Miroir du serveur (AuthController: filter_var FILTER_VALIDATE_EMAIL) pour un
 // retour immédiat au blur ; le serveur reste l'autorité.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// P4-298 — MIROIR DÉCLARÉ (régime (2) de .claude/rules/frontend.md : duplication
+// assumée pour la réactivité sans aller-retour réseau) du format FFBB serveur
+// (FfbbApiClient::CLUB_CODE_RE, `^[A-Z]{2,4}\d{7}$`). Sert UNIQUEMENT à décider QUAND
+// déclencher le lookup d'affichage — jamais à décider une règle métier (le serveur
+// re-valide via isValidClubCode et reste l'autorité).
+const FFBB_CODE_RE = /^[A-Z]{2,4}\d{7}$/;
 
 /** Sports proposés. Basket seul aujourd'hui — les autres sont ANNONCÉS, désactivés.
  *  Le sport n'est pas encore un vrai choix (basket est posé côté serveur, cf.
@@ -62,6 +69,21 @@ export function RegisterPage() {
   // (le token est à usage unique : après un refus serveur, il faut en redemander un).
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [turnstileReset, setTurnstileReset] = useState(0);
+
+  // P4-298 — le code FFBB normalisé + sa version DEBOUNCÉE (≈400 ms). On ne déclenche le
+  // lookup d'affichage qu'au format COMPLET valide (miroir FFBB_CODE_RE) : une saisie
+  // partielle ne part JAMAIS au serveur (muet → rien), et on laisse la frappe se poser.
+  const araUpper = form.ara.trim().toUpperCase();
+  const [debouncedAra, setDebouncedAra] = useState("");
+  useEffect(() => {
+    const valid = FFBB_CODE_RE.test(araUpper);
+    // setState UNIQUEMENT dans le callback différé (jamais synchrone dans l'effet) :
+    // format complet → debounce ≈400 ms ; sinon → on vide (0 ms) pour couper le lookup.
+    const timer = setTimeout(() => setDebouncedAra(valid ? araUpper : ""), valid ? 400 : 0);
+    return () => clearTimeout(timer);
+  }, [araUpper]);
+  // AFFICHAGE SEUL : on lit `data` pour afficher, jamais pour pré-remplir `club_name`.
+  const clubLookup = useRegisterClubLookup(debouncedAra, FFBB_CODE_RE.test(debouncedAra));
 
   const set = (key: keyof typeof form) => (event: { target: { value: string } }) =>
     setForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -264,6 +286,15 @@ export function RegisterPage() {
           <Label htmlFor="club_name">Nom du club <span className="text-muted-foreground">(si nouveau club)</span></Label>
           <Input id="club_name" value={form.club_name} onChange={set("club_name")} />
           <p className="text-xs text-muted-foreground">Récupéré automatiquement depuis la FFBB si le code est reconnu.</p>
+          {/* P4-298 — affichage SEUL (jamais de pré-remplissage de club_name). FFBB muette ou
+              code encore partiel → rien (non bloquant). */}
+          {clubLookup.data?.status === "found" ? (
+            <p className="text-xs text-foreground">
+              {clubLookup.data.city ? `${clubLookup.data.name} (${clubLookup.data.city})` : clubLookup.data.name} — c'est bien votre club ?
+            </p>
+          ) : clubLookup.data?.status === "unknown" ? (
+            <p className="text-xs text-warning">Code non reconnu à la FFBB — vérifiez la saisie.</p>
+          ) : null}
         </div>
         {/* RGPD : consentement explicite requis (le backend le refuse sans). */}
         <label className="flex items-start gap-2 text-sm">

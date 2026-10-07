@@ -1,13 +1,18 @@
 # API FFBB — routes consommées
 
-Last verified @ 2026-10-05 (`documentation-update`, rotation — sans rapport avec le sujet de la
-PR). Re-confronté : mapping `EngagementLevelDeducer` toujours `D`/`R`/`N`→
-`DEPARTEMENTAL`/`REGIONAL`/`NATIONAL`, jamais `ELITE`, `PR`/`PN`/absent→`null`
-(`backend/src/Service/Basketball/EngagementLevelDeducer.php:46-49`) ✓ · les deux hosts de la liste
-blanche (`api.ffbb.com`, `meilisearch-prod.ffbb.app`) toujours ceux effectivement appelés
-(`FfbbApiClient.php`, `FfbbLogoFetcher.php`, `FfbbSallesController.php`) ✓. Reste du fichier
-hérité des passes précédentes, non re-sondé ligne à ligne cette fois. Historique des passes
-précédentes vit dans git : `git log -p --follow backend/docs/ffbb-api.md`.
+Last verified @ 2026-10-07 (P4-298 : le paragraphe « Consommateurs de cette recherche » ajouté par
+cette PR re-vérifié contre le code). `FfbbClubDirectory` a bien les trois lecteurs décrits —
+`exists()`, `lookupClubEmail()` et `lookupIdentity()` (nom + ville, JAMAIS le mail : la réponse ne
+porte que `status`/`name`/`city`, `FfbbClubDirectory.php:89-112`) ✓ ; la route publique
+`GET /api/register/club-lookup` (préfixe `^/api/register`, limiteur IP dédié `register_club_lookup`
+`config/packages/rate_limiter.yaml:126`, cache 15 min des réponses définitives, gating
+`app.ffbb_register_existence_check` → flag off ⇒ `unavailable` sans appel sortant) est un mince
+appelant de `lookupIdentity` (`RegisterClubLookupController.php:52-107`) ✓. Mapping
+`EngagementLevelDeducer` `D`/`R`/`N`→`DEPARTEMENTAL`/`REGIONAL`/`NATIONAL`, jamais `ELITE`,
+`PR`/`PN`/absent→`null` et les deux hosts de la liste blanche (`api.ffbb.com`,
+`meilisearch-prod.ffbb.app`) recalés par les livraisons jusqu'ici ✓. Reste du fichier hérité des
+passes précédentes, non re-sondé ligne à ligne cette fois. Historique des passes précédentes vit
+dans git : `git log -p --follow backend/docs/ffbb-api.md`.
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les
 > données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit
@@ -82,6 +87,17 @@ Body:
 Champs **ignorés** : `offresPratiques`, `labellisation`, `engagements_*`, `_geo`, `type_association`, `*ClubPro`, `saison`, `dateAffiliation`.
 
 > Le hit club ne porte que l'adresse **partielle** du comité (sans CP/ville). Le comité et la ligue **complets** (CP+ville, tél, mail, logo) se résolvent par un **2ᵉ `multi-search`** filtré sur leur `code` (`0069`, `ARA`).
+
+> **Consommateurs de cette recherche** (tous via `FfbbApiClient::search`, code validé par format
+> avant appel) : `FfbbClubPopulator` (mapping complet ci-dessus, à la création / au re-import) et
+> `FfbbClubDirectory` — maison unique qui ne lit QUE ce dont elle a besoin : `exists()` (garde
+> anti-squatting à l'inscription), `lookupClubEmail()` (mail institutionnel, approbation P3-4) et
+> `lookupIdentity()` (**P4-298 — nom + ville, JAMAIS le mail**, pour l'affichage « c'est bien
+> votre club ? » à la saisie du code). La route publique **`GET /api/register/club-lookup`**
+> (préfixe `^/api/register`, limiteur IP dédié `register_club_lookup`, cache 15 min des réponses
+> définitives) n'est qu'un mince appelant de `lookupIdentity`, **gaté par
+> `app.ffbb_register_existence_check`** : flag off (dev/test/Behat/démos) ⇒ `unavailable` sans
+> aucun appel sortant — même drapeau que la garde d'existence du register.
 
 ## 3. Logo d'un organisme
 
