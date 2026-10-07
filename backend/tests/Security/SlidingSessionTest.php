@@ -18,6 +18,7 @@ use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\BrowserKit\Cookie as BrowserKitCookie;
+use Symfony\Component\HttpFoundation\Cookie;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\ResponseEvent;
@@ -210,7 +211,7 @@ final class SlidingSessionTest extends WebTestCase
 
         $bearer = array_values(array_filter(
             $response->headers->getCookies(),
-            static fn ($cookie): bool => 'BEARER' === $cookie->getName(),
+            static fn (Cookie $cookie): bool => 'BEARER' === $cookie->getName(),
         ));
         self::assertCount(1, $bearer, 'un seul cookie BEARER sur la réponse');
         self::assertSame(
