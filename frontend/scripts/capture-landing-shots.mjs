@@ -18,8 +18,9 @@
  *    `dev-bccl@amateo.local`, planning de saison VALIDÉ) — PAS le club démo, dont
  *    la remise à zéro le laisse avant génération et sans matchs. Le club dev est
  *    un VRAI club (non-démo) : on N'y pose JAMAIS d'horloge simulée (règle
- *    fondateur 2026-10-02) — les captures matchs utilisent l'horloge RÉELLE et
- *    `MATCHS_WEEKEND` choisit le week-end affiché.
+ *    fondateur 2026-10-02) — les captures matchs utilisent l'horloge RÉELLE et le
+ *    week-end affiché est le PLUS RICHE en cartes de domicile sur la plage
+ *    `MATCHS_SCAN_FROM`..`MATCHS_SCAN_TO` (scan automatique).
  *
  * ── Anonymisation à l'écran (OBLIGATOIRE, `.claude/rules/landing.md` §captures) :
  *    un club RÉEL n'apparaît jamais sur la vitrine. Avant chaque capture le script
@@ -109,6 +110,13 @@ const DIVISION_MAP_FILE = process.env.DIVISION_MAP_FILE ?? "";
 // évite le vide ET la bascule d'atterrissage vers Conflits (lien profond prioritaire,
 // MatchesLanding). À ajuster si ce samedi est pauvre en rencontres sur vos données.
 const MATCHS_WEEKEND = process.env.MATCHS_WEEKEND ?? "2026-11-14";
+// Plage de scan du week-end le PLUS RICHE en cartes de domicile (`#matches-week-grid
+// [data-fixture-id]`) pour `matchs.jpg` : bornes = samedis ISO INCLUSIFS, pas de 7 jours.
+// Le script visite chaque samedi de la plage, compte les cartes RENDUES sur la grille et
+// retient le week-end le mieux rempli (journalisé). Défauts = saison en cours sur l'horloge
+// RÉELLE du club dev. `MATCHS_WEEKEND` ne sert plus qu'à l'atterrissage de la garde d'import.
+const MATCHS_SCAN_FROM = process.env.MATCHS_SCAN_FROM ?? "2026-09-26";
+const MATCHS_SCAN_TO = process.env.MATCHS_SCAN_TO ?? "2026-12-20";
 
 // Anonymisation PAR DÉFAUT (toujours appliquée, même sans SCRUB_FILE) — le club dev
 // est un VRAI club, sa marque ne doit jamais atteindre la vitrine. Remplacements
@@ -136,10 +144,10 @@ const SHOTS = [
     base: "matchs.jpg",
     route: "" !== MATCHS_WEEKEND ? `/matchs?semaine=${encodeURIComponent(MATCHS_WEEKEND)}` : "/matchs",
     width: 1080,
-    // 900 (et non 585) : à 585 le cadre s'arrêtait sous l'en-tête + les onglets + les rangées de
-    // filtres, la grille week-end ne commençant qu'en tout bas. 900 fait entrer la grille et ses
-    // matchs placés sans masquer les filtres (deviceScaleFactor 2 ⇒ image 2160 × 1800 px).
-    height: 900,
+    // 585 : le cadre ne part PAS du haut de page (en-tête + onglets + filtres repoussaient la grille
+    // hors champ) — `matchsClip` recadre sur l'ÉTABLI, bord haut = la barre de compteurs
+    // (deviceScaleFactor 2 ⇒ image 2160 × 1170 px, même gabarit que l'asset d'origine).
+    height: 585,
   },
   { base: "matchs-importer.jpg", route: "/matchs/importer", width: 1080, height: 750 },
   // Conflits est déjà regroupé par coach par défaut ; on le fige explicitement.
@@ -150,6 +158,10 @@ const THEMES = /** @type {const} */ (["light", "dark"]);
 const DEVICE_SCALE_FACTOR = 2;
 const JPEG_QUALITY = 80;
 const NAV_TIMEOUT = 30_000;
+
+// Le week-end le plus riche (déterminé UNE fois par `selectRichestWeekend`, réutilisé en clair
+// ET en sombre : le choix ne dépend pas du thème). `{ weekend, count }` ou `null` tant qu'inconnu.
+let richestWeekendCache = null;
 
 /** Nom de sortie : `planning.png` en clair, `planning-dark.png` en sombre. */
 function outName(base, theme) {
@@ -628,60 +640,73 @@ async function preparePlanning(page) {
   await scrollWeekGridToEvening(page);
 }
 
+/** Liste des samedis ISO de `fromISO` à `toISO` INCLUS, pas de 7 jours (UTC, pas de dérive TZ). */
+function saturdaysInRange(fromISO, toISO) {
+  const out = [];
+  const to = new Date(`${toISO}T00:00:00Z`);
+  for (let d = new Date(`${fromISO}T00:00:00Z`); d <= to; d.setUTCDate(d.getUTCDate() + 7)) {
+    out.push(d.toISOString().slice(0, 10));
+  }
+  return out;
+}
+
 /**
- * Calendrier matchs : amène le cadre sur un week-end dont la grille est BIEN REMPLIE. Le conteneur
- * `#matches-week-grid` peut exister pour une semaine 100 % extérieurs (grille vide), ou l'écran
- * rendre « Aucun match importé »/« Aucun match cette semaine » ; et une semaine à une seule carte
- * fait une capture maigre. On PRÉFÈRE donc une semaine portant plusieurs cartes de match
- * (`[data-fixture-id]`, domicile placé — cf. WeekendGrid) : on avance via « Semaine suivante »
- * (borné, on ne garde JAMAIS de boucle non bornée — CLAUDE.md §10.4) jusqu'à en trouver une à
- * ≥ `PREFERRED` cartes ; faute de mieux, on retombe sur la MIEUX remplie vue (≥ 1 carte) en revenant
- * en arrière via « Semaine précédente ». Juger sur les CARTES rendues, pas sur la seule présence du
- * conteneur : une semaine sans domicile sur grille resterait un cadre vide.
+ * Va au week-end `saturday` et compte les cartes de DOMICILE rendues sur la grille
+ * (`#matches-week-grid [data-fixture-id]`, cf. WeekendGrid). Relit le week-end EFFECTIF dans
+ * l'URL après re-synchro (`CalendarPage`/`useCalendarUrlSync`) : une clé hors de la liste des
+ * semaines retombe sur l'auto (urlState.ts) — on attribue alors le compte à la semaine
+ * réellement affichée, jamais à la clé demandée (sinon un samedi vide hériterait d'un compte).
  */
-async function ensureNonEmptyWeek(page) {
-  const MAX_WEEKS = 12;
-  const PREFERRED = 3; // « plusieurs » cartes : une grille lisible plutôt qu'une carte isolée.
-  const cards = page.locator("#matches-week-grid [data-fixture-id]");
-  let pos = 0; // nombre d'avances « Semaine suivante » depuis le point de départ.
-  let best = { pos: 0, count: -1 }; // meilleure semaine VUE, pour y revenir si ≥ PREFERRED est hors d'atteinte.
+async function gotoWeekendAndCount(page, saturday) {
+  await page.goto(`${BASE_URL}/matchs?semaine=${encodeURIComponent(saturday)}`, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
+  await waitForStability(page);
+  let effective = saturday;
+  try {
+    effective = new URL(page.url()).searchParams.get("semaine") ?? saturday;
+  } catch (_) {
+    // URL imprévue : on garde la clé demandée.
+  }
+  const cards = await page.locator("#matches-week-grid [data-fixture-id]").count();
+  return { effective, cards };
+}
 
-  for (let i = 0; i <= MAX_WEEKS; i++) {
-    const count = await cards.count();
-    if (count >= PREFERRED) {
-      return; // idéale : plusieurs cartes sur la grille.
+/**
+ * Calendrier matchs : scanne TOUS les samedis de [`MATCHS_SCAN_FROM`..`MATCHS_SCAN_TO`] et
+ * NAVIGUE vers le week-end le mieux rempli en cartes de domicile sur la grille — on juge sur
+ * les CARTES rendues, pas sur la seule présence du conteneur (une semaine 100 % extérieurs ou
+ * sans domicile placé resterait un cadre vide). Déterminé UNE fois (clair) puis réutilisé
+ * (sombre) via `richestWeekendCache`. Boucle BORNÉE par la plage (jamais d'attente non bornée,
+ * CLAUDE.md §10.4). Journalise le choix + le détail ; avertit bruyamment si la plage est vide.
+ */
+async function selectRichestWeekend(page) {
+  if (null === richestWeekendCache) {
+    const tally = new Map(); // week-end EFFECTIF → max de cartes vues
+    for (const sat of saturdaysInRange(MATCHS_SCAN_FROM, MATCHS_SCAN_TO)) {
+      const { effective, cards } = await gotoWeekendAndCount(page, sat);
+      tally.set(effective, Math.max(tally.get(effective) ?? 0, cards));
     }
-    if (count > best.count) {
-      best = { pos, count };
+    let best = null;
+    let bestCount = -1;
+    for (const [weekend, count] of tally) {
+      if (count > bestCount) {
+        bestCount = count;
+        best = weekend;
+      }
     }
-    if (i === MAX_WEEKS) {
-      break; // dernière semaine évaluée : on n'avance plus.
+    richestWeekendCache = { weekend: best, count: bestCount };
+    const detail = [...tally].sort((a, b) => a[0].localeCompare(b[0])).map(([w, c]) => `${w}:${c}`).join(", ");
+    console.log(`• calendrier matchs : week-end le plus riche sur [${MATCHS_SCAN_FROM}..${MATCHS_SCAN_TO}] = ${best ?? "aucun"} (${Math.max(bestCount, 0)} carte(s) domicile). Détail : ${detail}`);
+    if (bestCount <= 0) {
+      console.warn("⚠ calendrier matchs : AUCUNE carte de domicile sur la plage scannée — la capture matchs sera un cadre VIDE. Vérifiez l'import FBI et l'appariement des salles avant de garder l'image.");
     }
-    const next = page.getByRole("button", { name: "Semaine suivante" });
-    if (0 === (await next.count()) || (await next.isDisabled().catch(() => true))) {
-      break; // navigation épuisée.
-    }
-    await next.click();
+  } else {
+    console.log(`• calendrier matchs : week-end le plus riche (déjà déterminé) = ${richestWeekendCache.weekend ?? "aucun"} (${Math.max(richestWeekendCache.count, 0)} carte(s)).`);
+  }
+
+  if (null !== richestWeekendCache.weekend) {
+    await page.goto(`${BASE_URL}/matchs?semaine=${encodeURIComponent(richestWeekendCache.weekend)}`, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
     await waitForStability(page);
-    pos++;
   }
-
-  if (best.count <= 0) {
-    console.warn(`⚠ calendrier matchs : aucune semaine avec un match sur la grille atteignable à partir de ${MATCHS_WEEKEND} — capture laissée en l'état.`);
-    return;
-  }
-
-  // On a vu au moins une semaine avec des cartes, mais aucune à ≥ PREFERRED : repli sur la mieux
-  // remplie, en revenant en arrière (borné par le nombre d'avances déjà faites).
-  for (let back = pos; back > best.pos; back--) {
-    const prev = page.getByRole("button", { name: "Semaine précédente" });
-    if (0 === (await prev.count()) || (await prev.isDisabled().catch(() => true))) {
-      break;
-    }
-    await prev.click();
-    await waitForStability(page);
-  }
-  console.warn(`⚠ calendrier matchs : aucune semaine à ≥ ${PREFERRED} carte(s) atteignable à partir de ${MATCHS_WEEKEND} — repli sur la mieux remplie vue (${best.count} carte(s)).`);
 }
 
 /**
@@ -689,7 +714,7 @@ async function ensureNonEmptyWeek(page) {
  * Planning : on retire la BOÎTE NoticeBanner `rounded-md border` par le TEXTE, pas tout le DOM) —
  * le « gardien » (« Depuis votre dernière visite : … ») et le rattrapage ligue
  * (« … restent à traiter (ni heure ni gymnase… ») qui, empilés, repoussaient la grille sous le
- * cadre. À appeler APRÈS `ensureNonEmptyWeek` : la navigation de semaine re-rend React et
+ * cadre. À appeler APRÈS `selectRichestWeekend` : la navigation de semaine re-rend React et
  * ré-afficherait des bandeaux retirés trop tôt.
  */
 async function removeCalendarBanners(page) {
@@ -830,13 +855,40 @@ async function prepareConflicts(page) {
   await page.waitForTimeout(500);
 }
 
+/**
+ * Clip de `matchs.jpg` : recadre sur l'ÉTABLI de la semaine, bord HAUT = la barre de compteurs
+ * (« N à placer · ⚠ N conflits · N FBI à faire », `WeekCounters`, repérée par son groupe
+ * `aria-label="Semaine affichée"`) — et non l'en-tête de page + les filtres, qui restaient dans le
+ * cadre et repoussaient la grille hors champ (à 1080×585 elle démarrait tout en bas, invisible).
+ * On amène la barre en HAUT du viewport (l'en-tête d'app n'est PAS sticky, `AppLayout.tsx`, il
+ * défile hors champ), puis on lit sa `boundingBox()` : `boundingBox` et `clip` partagent le MÊME
+ * repère Playwright, donc `clip.y = box.y` cadre depuis la barre quelle que soit la convention
+ * (viewport/document). Repli sur le haut de page si la barre est absente (grille possiblement hors
+ * champ — avertissement loggé).
+ */
+async function matchsClip(page, shot) {
+  const fallback = { x: 0, y: 0, width: shot.width, height: shot.height };
+  const bar = page.locator('[aria-label="Semaine affichée"]').first();
+  if (0 === (await bar.count())) {
+    console.warn("⚠ calendrier matchs : barre de compteurs (« Semaine affichée ») introuvable — cadrage par défaut (haut de page), la grille risque d'être hors champ.");
+    return fallback;
+  }
+  // Scrolle la RANGÉE de compteurs (parent `border-b` du groupe) en haut du viewport.
+  await bar.evaluate((el) => (el.parentElement ?? el).scrollIntoView({ block: "start", inline: "nearest" }));
+  const box = await bar.boundingBox();
+  if (null === box) {
+    return fallback;
+  }
+  return { x: 0, y: Math.max(0, Math.round(box.y)), width: shot.width, height: shot.height };
+}
+
 /** Préparations propres à un écran (version en vigueur, semaine non vide, bandeaux, groupe ouvert). */
 async function prepareShot(page, shot) {
   if ("planning.png" === shot.base) {
     await preparePlanning(page);
   } else if ("matchs.jpg" === shot.base) {
     // Naviguer d'abord (re-rend React), masquer les bandeaux ENSUITE (sinon ré-affichés).
-    await ensureNonEmptyWeek(page);
+    await selectRichestWeekend(page);
     await removeCalendarBanners(page);
   } else if ("matchs-conflits.jpg" === shot.base) {
     await prepareConflicts(page);
@@ -872,9 +924,12 @@ async function captureTheme(browser, theme, scrubMap) {
 
       const isJpeg = name.endsWith(".jpg") || name.endsWith(".jpeg");
       const dest = join(OUT_DIR, name);
+      // `matchs.jpg` recadre sur l'établi (bord haut = barre de compteurs) ; les autres écrans
+      // cadrent depuis le haut du viewport (déjà dimensionné à la taille de la capture).
+      const clip = "matchs.jpg" === shot.base ? await matchsClip(page, shot) : { x: 0, y: 0, width: shot.width, height: shot.height };
       await page.screenshot({
         path: dest,
-        clip: { x: 0, y: 0, width: shot.width, height: shot.height },
+        clip,
         ...(isJpeg ? { type: "jpeg", quality: JPEG_QUALITY } : { type: "png" }),
       });
       console.log(`✓ ${theme.padEnd(5)} → ${name}`);
@@ -891,7 +946,7 @@ async function main() {
   console.log(`Cible : ${BASE_URL}`);
   console.log(`Sortie : ${OUT_DIR}`);
   console.log(`Import FBI : ${"" === IMPORT_FBI ? "aucun" : IMPORT_FBI}`);
-  console.log(`Week-end matchs : ${"" === MATCHS_WEEKEND ? "auto" : MATCHS_WEEKEND}`);
+  console.log(`Week-end matchs : plus riche sur [${MATCHS_SCAN_FROM}..${MATCHS_SCAN_TO}] (atterrissage garde d'import : ${"" === MATCHS_WEEKEND ? "auto" : MATCHS_WEEKEND})`);
   console.log(`Anonymisation : ${Object.keys(scrubMap).length} remplacement(s) + blason club retiré de l'en-tête`);
   if ("" !== IMPORT_FBI) {
     console.log(`Appariement Division→équipe : ${Object.keys(divisionMap).length} entrée(s) (${Object.entries(divisionMap).map(([d, t]) => `${d}→${t}`).join(", ")})`);

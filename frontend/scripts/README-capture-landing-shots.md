@@ -18,8 +18,9 @@ gestionnaire fictif par défaut `dev-bccl@amateo.local` / `charge-load-test-pwd`
 sans matchs.
 
 Le club dev est un **vrai club (non-démo)** : on **n'y pose JAMAIS d'horloge simulée** (règle
-fondateur 2026-10-02). Les écrans matchs utilisent l'**horloge réelle** ; `MATCHS_WEEKEND` choisit
-le week-end affiché.
+fondateur 2026-10-02). Les écrans matchs utilisent l'**horloge réelle** ; le week-end affiché est
+le **plus riche** en cartes de domicile sur la plage `MATCHS_SCAN_FROM`..`MATCHS_SCAN_TO` (scan
+automatique).
 
 **Anonymisation à l'écran OBLIGATOIRE** (`.claude/rules/landing.md` §captures) — appliquée par le
 script avant **chaque** capture, même sans réglage :
@@ -43,7 +44,7 @@ Coachs = surnoms fictifs du seed. Gymnases et clubs adverses = données publique
 | Écran | Route | Fichier clair | Fichier sombre | Dimensions (viewport) |
 |-------|-------|---------------|----------------|-----------------------|
 | Planning généré | `/planning` | `planning.png` | `planning-dark.png` | 1080 × 608 |
-| Calendrier matchs (week-end) | `/matchs?semaine=…` | `matchs.jpg` | `matchs-dark.jpg` | 1080 × 900 |
+| Calendrier matchs (week-end) | `/matchs?semaine=…` | `matchs.jpg` | `matchs-dark.jpg` | 1080 × 585 |
 | Importer | `/matchs/importer` | `matchs-importer.jpg` | `matchs-importer-dark.jpg` | 1080 × 750 |
 | Conflits (regroupés par coach) | `/matchs/conflits?pivot=coach` | `matchs-conflits.jpg` | `matchs-conflits-dark.jpg` | 1080 × 750 |
 
@@ -64,7 +65,9 @@ dérive ce nom toute seule (`landing/index.html`), **aucun code vitrine à édit
 | `DIVISION_MAP` | Objet JSON inline `{ "Division": "Nom d'équipe" }` **fusionné** par-dessus l'appariement BCCL par défaut. | appariement fondateur BCCL (ci-dessous) |
 | `DIVISION_MAP_FILE` | Chemin d'un JSON local `{ "Division": "Nom d'équipe" }` **fusionné** par-dessus le défaut (avant `DIVISION_MAP`). | aucun |
 | `SCRUB_FILE` | JSON local `{ "À remplacer": "Valeur démo" }` **fusionné** par-dessus la table par défaut. | aucun |
-| `MATCHS_WEEKEND` | Samedi ISO (`YYYY-MM-DD`) du week-end à afficher pour le calendrier matchs. | `2026-11-14` |
+| `MATCHS_WEEKEND` | Samedi ISO (`YYYY-MM-DD`) servant à **l'atterrissage de la garde d'import** (état « Aucun match importé »). Ne choisit **plus** le week-end capturé : c'est le scan ci-dessous. | `2026-11-14` |
+| `MATCHS_SCAN_FROM` | Samedi ISO, début (inclus) de la **plage scannée** pour trouver le week-end le plus riche en cartes de domicile (`matchs.jpg`). | `2026-09-26` |
+| `MATCHS_SCAN_TO` | Samedi ISO, fin (incluse) de cette plage. | `2026-12-20` |
 
 ## 1. Préparer les données (écrit en base dev — annoncer au fondateur avant)
 
@@ -88,7 +91,8 @@ sème que des créneaux idéaux). Les rencontres arrivent de l'**import FBI** ci
 
 Fichier d'import recommandé : **`backend/tests/Fixtures/fbi/rechercherRencontre.xlsx`**
 (124 rencontres, saison 2026-27). Pas d'horloge simulée à poser : l'horloge réelle est sur la
-saison en cours, d'où le défaut `MATCHS_WEEKEND=2026-11-14` (ajuster si ce samedi est pauvre).
+saison en cours. Le week-end capturé n'est plus épinglé : le script **scanne** la plage
+`MATCHS_SCAN_FROM`..`MATCHS_SCAN_TO` et retient celui qui a le plus de cartes de domicile.
 
 ## 2. Lancer la stack dev puis le script
 
@@ -98,10 +102,10 @@ cd frontend
 DEMO_EMAIL='dev-bccl@amateo.local' DEMO_PASSWORD='charge-load-test-pwd' \
   IMPORT_FBI=../backend/tests/Fixtures/fbi/rechercherRencontre.xlsx \
   node scripts/capture-landing-shots.mjs
-# en figeant un autre week-end et avec un scrub complémentaire :
+# en restreignant la plage de scan du week-end matchs et avec un scrub complémentaire :
 DEMO_EMAIL='dev-bccl@amateo.local' DEMO_PASSWORD='charge-load-test-pwd' \
   IMPORT_FBI=../backend/tests/Fixtures/fbi/rechercherRencontre.xlsx \
-  MATCHS_WEEKEND=2026-11-21 SCRUB_FILE=../captures/scrub.json \
+  MATCHS_SCAN_FROM=2026-11-07 MATCHS_SCAN_TO=2026-12-05 SCRUB_FILE=../captures/scrub.json \
   node scripts/capture-landing-shots.mjs
 ```
 
@@ -123,15 +127,19 @@ Préparations par écran :
   nœuds `NoticeBanner`, pas tout le DOM), **retire la pastille** « Diagnostics du système (N) ·
   M erreurs » (signal négatif sur une page de vente), puis **fait défiler la grille** jusqu'aux
   heures du soir (elle démarre à 09:00 et serait vide dans le cadre).
-- **Calendrier matchs** : **avance** jusqu'à un week-end dont la grille porte **plusieurs cartes de
-  match** (≥ 3 `[data-fixture-id]` — on juge sur les cartes rendues, pas sur la seule présence du
-  conteneur : une semaine 100 % extérieurs ou sans domicile placé resterait un cadre vide) à partir
-  de `MATCHS_WEEKEND`, via « Semaine suivante » (borné à 12 itérations) ; faute d'en trouver une à
-  ≥ 3 cartes, **repli sur la mieux remplie vue** (retour en arrière via « Semaine précédente »,
-  avertissement loggé). Puis **masque** les deux bandeaux d'état empilés au-dessus de la grille
-  (« Depuis votre dernière visite : … » et « … restent à traiter (ni heure ni gymnase… ») — même
-  technique que le Planning. (Le masquage a lieu **après** la navigation, qui re-rend React.) Le
-  viewport (1080 × **900**) fait entrer la grille et ses matchs **sans** masquer les filtres.
+- **Calendrier matchs** : **scanne** chaque samedi de `MATCHS_SCAN_FROM`..`MATCHS_SCAN_TO` (bornes
+  incluses), compte les **cartes de domicile** rendues sur la grille (`#matches-week-grid
+  [data-fixture-id]` — on juge sur les cartes rendues, pas sur la seule présence du conteneur : une
+  semaine 100 % extérieurs ou sans domicile placé resterait un cadre vide), et **navigue vers le
+  week-end le mieux rempli** (choix + détail **journalisés** ; déterminé une fois, réutilisé en clair
+  ET en sombre ; avertissement bruyant si la plage est entièrement vide). Puis **masque** les deux
+  bandeaux d'état empilés au-dessus de la grille (« Depuis votre dernière visite : … » et « …
+  championnat… ») — même technique que le Planning (le masquage a lieu **après** la navigation, qui
+  re-rend React). Enfin, à la capture, le **cadre** est recadré sur l'ÉTABLI : bord haut = la barre
+  de compteurs (« N à placer · ⚠ N conflits · N FBI à faire ») amenée en haut du viewport (l'en-tête
+  d'app n'est pas sticky, il défile hors champ), puis `clip.y = boundingBox.y` de cette barre — et
+  non plus le haut de page (en-tête + filtres), qui repoussait la grille hors champ. Sortie 1080 ×
+  585 (deviceScaleFactor 2 ⇒ 2160 × 1170 px).
 - **Conflits** : si la saison n'a **aucun conflit**, la capture est laissée en l'état mais un
   **avertissement** est loggé ; sinon le **premier groupe** (accordéon) est **déplié** de façon
   robuste — idempotent (un groupe déjà ouvert n'est pas cliqué). L'état ouvert est porté par
