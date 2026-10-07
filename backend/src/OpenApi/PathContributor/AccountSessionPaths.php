@@ -77,9 +77,6 @@ final readonly class AccountSessionPaths implements CustomPathContributor
         $paths->addPath('/api/register/club-lookup', new PathItem(get: new Operation(
             operationId: 'getApiRegisterClubLookup',
             tags: ['Auth'],
-            parameters: [
-                ['name' => 'code', 'in' => 'query', 'required' => false, 'schema' => ['type' => 'string'], 'description' => 'FFBB club code to resolve (uppercased server-side)'],
-            ],
             responses: [
                 // Display only — NEVER pre-fills club_name, NEVER exposes the club mail.
                 // Three plain states; `unavailable` also covers the gated-off env (no outbound call).
@@ -94,6 +91,9 @@ final readonly class AccountSessionPaths implements CustomPathContributor
                 '429' => new Response('Too many attempts (per-IP rate limited)'),
             ],
             summary: 'Resolve a club NAME + city from its FFBB code for the registration form (display only, never pre-fills)',
+            parameters: [
+                ['name' => 'code', 'in' => 'query', 'required' => false, 'schema' => ['type' => 'string'], 'description' => 'FFBB club code to resolve (uppercased server-side)'],
+            ],
         )));
 
         $paths->addPath('/api/register/verify', new PathItem(post: new Operation(

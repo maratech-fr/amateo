@@ -25,15 +25,6 @@ final class FfbbHttpClientStub implements HttpClientInterface
     public const CLUB_EMAIL = 'club-officiel@stub.ffbb.fr';
     public const CLUB_NAME = 'CLUB STUB FFBB';
     public const CLUB_CITY = 'Villeurbanne';
-
-    /**
-     * P4-298 — bascule de PANNE TRANSPORT de la recherche FFBB (multi-search) : quand true,
-     * toute recherche jette une `TransportException` (le jeton de config reste servi). Permet
-     * de prouver, SANS réseau réel, qu'un code valide dégrade en `unavailable` tandis qu'un
-     * code malformé ne déclenche AUCUNE recherche (donc aucune panne). Défaut false ; chaque
-     * test qui la pose la remet à false (statique partagée dans le process).
-     */
-    public static bool $failSearch = false;
     public const COMPETITION_ID = '900000000000001';
     public const COMPETITION_CODE = 'PTM';
     public const POULE_ID = '910000000000001';
@@ -134,6 +125,15 @@ final class FfbbHttpClientStub implements HttpClientInterface
             'name' => self::YOUNG_PR17_NAME, 'sexe' => 'Masculin',
             'categorie' => ['code' => 'U17', 'libelle' => 'U17'], 'niveau' => ['code' => 'PRR', 'libelle' => 'Pré régional']],
     ];
+
+    /**
+     * P4-298 — bascule de PANNE TRANSPORT de la recherche FFBB (multi-search) : quand true,
+     * toute recherche jette une `TransportException` (le jeton de config reste servi). Permet
+     * de prouver, SANS réseau réel, qu'un code valide dégrade en `unavailable` tandis qu'un
+     * code malformé ne déclenche AUCUNE recherche (donc aucune panne). Défaut false ; chaque
+     * test qui la pose la remet à false (statique partagée dans le process).
+     */
+    public static bool $failSearch = false;
 
     private readonly MockHttpClient $inner;
 
