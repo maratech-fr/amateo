@@ -8,7 +8,7 @@
 > **Rattachement roadmap** : **P1-3**.
 > ⚑ **Modèle HYBRIDE acté le 2026-08-09 (soir)** — troisième et dernière itération d'une même journée
 > de cadrage, chaque renversement tracé en §3 : générations seules (2026-08-04) → cap 12 équipes
-> (2026-08-09 matin, après l'étude [`etude-tailles-clubs-ffbb.md`](../../specs/evolution/etude-tailles-clubs-ffbb.md) et une
+> (2026-08-09 matin, après l'étude des tailles de clubs FFBB (hors dépôt, `business/1-savoir/etude-tailles-clubs-ffbb.md`) et une
 > passe `business-challenger`) → **hybride** (2026-08-09 soir : périmètre complet gratuit + générations
 > limitées + features off, cap d'équipes réservé aux paliers PAYANTS).
 > **Réutilise l'existant** : `SubscriptionPlan` (modèle livré, aucune offre seedée) · `Club.planId`

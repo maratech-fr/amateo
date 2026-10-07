@@ -11,9 +11,9 @@
 > table** (`specs/initiales/rechercherRencontre.xlsx`, 124 rencontres, saison 2026-27 de BCCL).
 > Les §2 à §8 sont des **décisions** — ne pas les re-poser sans fait nouveau. Le §12 reste ouvert.
 >
-> **Ce document AMENDE** [`gestion-matchs-ffbb.md`](../../specs/evolution/gestion-matchs-ffbb.md) (besoin initial 2026-07-06,
+> **Ce document AMENDE** [`gestion-matchs-ffbb.md`](gestion-matchs-ffbb.md) (besoin initial 2026-07-06,
 > toujours valable pour le fond : empreinte-temps, catalogue-ligue, annuaire adverse) **et s'appuie sur**
-> [`ffbb-appariement-source-de-verite.md`](../../specs/evolution/ffbb-appariement-source-de-verite.md) (appariement, poule
+> [`ffbb-appariement-source-de-verite.md`](ffbb-appariement-source-de-verite.md) (appariement, poule
 > garde-fou, gymnases de match). Le livré est dans
 > [`module-matchs.md`](../../specs/courantes/module-matchs.md) (palier A, PR-1 à PR-4).
 > **Pas un plan** — le phasage §11 découpe le lot, chaque PR aura son plan (Full lane).

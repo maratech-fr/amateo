@@ -152,7 +152,7 @@ placement dédié, périmètre engagé (§1.4).
 §2 Détecteur de conflits, §3 Solveur de placement, §4 Le gardien + échéances, §5 Écran Calendrier,
 §6 Écran Conflits, §7 Écran Importer, §8 Écran Configuration, §8bis Écran Contraintes, §9 Écran
 Adversaires, §10 Écran Semaine type, §11 Périmètre engagé, §12 Tests & gardes ·
-[`gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md)
+[`gestion-matchs-ffbb.md`](../../docs/archive/gestion-matchs-ffbb.md)
 
 ### 1.6 Collecte des demandes coach
 
@@ -270,7 +270,7 @@ NR bloquant : `PlanEntitlementsTest`, step du gate CI.
 
 → [`docs/archive/bridage-freemium-decouverte.md`](../../docs/archive/bridage-freemium-decouverte.md) (le modèle et l'historique
 des 4 itérations de cadrage) · [`superadmin-auth.md`](superadmin-auth.md) (attribution) ·
-[`../evolution/etude-tailles-clubs-ffbb.md`](../evolution/etude-tailles-clubs-ffbb.md) (l'assiette chiffrée)
+l'étude des tailles de clubs FFBB (l'assiette chiffrée, rangée hors dépôt dans `business/1-savoir/`)
 
 ### 1.12 Rôles & gestion des membres (P1-1, livré le 2026-08-10)
 
@@ -574,7 +574,7 @@ le front lit, il ne re-dérive plus les règles de refus, repli fail-closed si l
 | **Lever partiellement le refus ci-dessus pour les god-services nommés par BCK-19** | OUI, décision fondateur 2026-10-04 — UNIQUEMENT `FbiFixtureImporter` et `MatchConflictDetector` (audit 2026-10-03 : 54 → 66 fichiers > 300 l.), découpage VERBATIM iso-comportement, en lot dédié (« lot backend 5 architecture »), jamais mêlé à un changement fonctionnel | La discipline du 2026-08-07 reste la règle pour tout le reste du dépôt ; ces deux fichiers sont les god-services identifiés et mesurés par l'audit, pas une réouverture générale |
 | **FRT-10 — Charger `@sentry/react` paresseusement pour alléger l'entrée** | Non — l'entrée le garde (2026-08-07) | Le rendre paresseux ferait perdre la capture d'erreur pendant le chargement initial, le moment le plus coûteux à ne pas voir |
 | **Un champ serveur `hasVersions` pour la garde destructive du cockpit** | Non — le constat qui motivait la ligne était faux, la collection est déjà en cache (2026-08-03) | Gain réseau réel nul, et le champ dérivé aurait introduit un cache non invalidé par plusieurs mutations |
-| **Stocker un annuaire national des clubs FFBB** | Non — consultation à la demande, par club (2026-08-02) | Stocker l'ensemble serait une extraction substantielle de base de données protégée (droit sui generis, art. L341-1 CPI), sans avis juridique |
+| **Stocker un annuaire national des clubs FFBB** | Non — consultation à la demande, par club (2026-08-02) | Stocker l'ensemble serait une extraction substantielle de base de données protégée (droit sui generis, art. L341-1 CPI), sans avis juridique. Tranché pour l'architecture actuelle, pas pour toujours : constituer une base d'adversaires nationale, un fichier de prospection (`dateAffiliation`, `labellisation`, `offresPratiques`) ou tout cache global survivant à la requête d'un club ROUVRE le point et exige un avis juridique |
 | **Un nom d'usage du club, distinct du nom fédéral** | Non — l'identité FFBB fait foi (2026-08-02) | Le gestionnaire doit faire le nécessaire pour que le nom fédéral corresponde au nom réel |
 | **Inventer une identité d'équipe FFBB stable côté app** | Non — on ré-apparie à chaque phase (2026-08-02) | Aucune clé stable n'existe côté FFBB, une phase = un nouvel engagement |
 | **Libeller les versions avec le `versionNumber` du serveur** | Non — l'ordre de création parmi les versions visibles fait foi (2026-08-03) | Valider supprime les sœurs — adopter `versionNumber` ferait apparaître des trous qui n'expliquent rien |
@@ -997,8 +997,8 @@ le front lit, il ne re-dérive plus les règles de refus, repli fail-closed si l
 | 2026-08-28 | P2-56 | Lot A audit 2026-08-27 (2 dettes frontend `matches/`) SOLDÉ — P2-56 + P4-130 quittent la roadmap ; P2-56 : la saisie de la matrice de trajet remonte une erreur (toast) au lieu d'échouer en silence (aussi FRT-27) | [`../../frontend/docs/frontend-spec.md`](../../frontend/docs/frontend-spec.md) |
 | 2026-08-28 | P2-55 (audit ENG-36, Élevée) | validate_assignments.py applique désormais venueTravelTimes sous MANDATORY, parité génération⇄verdict rétablie (aussi ENG-37, P4-139) | [`../../engine/docs/constraint-vocabulary.md`](../../engine/docs/constraint-vocabulary.md) §Trajet (parité verdict) |
 | 2026-08-28 | — | (rangement doc) — le module matchs étant livré (paliers A/B soldés, dérogation fermée, palier C → V2), ses 2 fichiers de cadrage LIVRÉS quittent `evolution/` ; refonte-module-matchs.md et p1-4-cadrage-module-matchs.md archivés dans docs/archive/, référents recalés (aussi P1-4, P4-112, P4-35, P3-7) | [`docs/archive/`](../../docs/archive/refonte-module-matchs.md) |
-| 2026-08-28 | P2-54 (RMM-9) | le radar de conflits devient SPATIAL (3 PR), l'item QUITTE la roadmap ; avec elle le programme RMM (RMM-0→10) est ENTIÈREMENT CLOS ; Revue sécurité (systématique) : zéro finding (aussi BCK-18) | [`module-matchs.md`](module-matchs.md) §1 « Modèle & données transverses » · [`../evolution/gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md) §7 (volet MATCHS soldé) |
-| 2026-08-28 | P2-54 (RMM-9) PR-2 | l'annuaire adverse global + la résolution AUTOMATIQUE du lieu adverse (PR-3 solde le lot ci-dessus) ; Revue sécurité (même PR) : un défaut d'empoisonnement corrigé AVANT livraison (aussi F-2) | [`module-matchs.md`](module-matchs.md) §1 « Modèle & données transverses » · [`../evolution/gestion-matchs-ffbb.md`](../evolution/gestion-matchs-ffbb.md) §5bis (amendé) |
+| 2026-08-28 | P2-54 (RMM-9) | le radar de conflits devient SPATIAL (3 PR), l'item QUITTE la roadmap ; avec elle le programme RMM (RMM-0→10) est ENTIÈREMENT CLOS ; Revue sécurité (systématique) : zéro finding (aussi BCK-18) | [`module-matchs.md`](module-matchs.md) §1 « Modèle & données transverses » · [`../evolution/gestion-matchs-ffbb.md`](../../docs/archive/gestion-matchs-ffbb.md) §7 (volet MATCHS soldé) |
+| 2026-08-28 | P2-54 (RMM-9) PR-2 | l'annuaire adverse global + la résolution AUTOMATIQUE du lieu adverse (PR-3 solde le lot ci-dessus) ; Revue sécurité (même PR) : un défaut d'empoisonnement corrigé AVANT livraison (aussi F-2) | [`module-matchs.md`](module-matchs.md) §1 « Modèle & données transverses » · [`../evolution/gestion-matchs-ffbb.md`](../../docs/archive/gestion-matchs-ffbb.md) §5bis (amendé) |
 | 2026-08-28 | P2-54 (RMM-9) PR-1 | la durée de match devient un réglage par CATÉGORIE, la douche sort de l'empreinte (l'item RESTE ouvert : PR-2 annuaire adverse + PR-3 trajet) ; match_minutes/warmup_minutes nullables par sport_category, résolus par MatchDurationResolver (repli par famille U7-U21) (aussi FRT-27) | [`module-matchs.md`](module-matchs.md) §2 « Détecteur de conflits » |
 | 2026-08-27 | DOC-34 | Doc — les 3 findings doc de l'audit du jour soldés (DOC-34/35/36, P4-136 quitte la roadmap) ; DOC-34 : journal borné à 8 entrées ; DOC-35 : stamp d'engine-inventory.md aplati ; DOC-36 : voir détail (aussi P4-139) | [`openapi-snapshot.meta.md`](openapi-snapshot.meta.md) · [`../../engine/docs/engine-inventory.md`](../../engine/docs/engine-inventory.md) · [`../../CLAUDE.md`](../../CLAUDE.md) §2 |
 | 2026-08-27 | — | La liste canonique des « tests qui gatent » déménage de `CLAUDE.md` §4 vers `docs/testing/blocking-tests.md` | [`../../docs/testing/blocking-tests.md`](../../docs/testing/blocking-tests.md) |
@@ -1196,9 +1196,9 @@ le front lit, il ne re-dérive plus les règles de refus, repli fail-closed si l
 | 2026-08-10 | P4-74 + P4-75 | changer son e-mail sans pouvoir perdre son compte ; La revue sécu a trouvé deux trous et les deux sont fermés avant merge (aussi P4-77) | [`roadmap.md`](../evolution/roadmap.md) |
 | 2026-08-10 | P1-1 | COMPLET — 3 PR, cadré et livré dans la journée, DEUXIÈME lot du jour ; Les rôles : Gestionnaire/Membre, l'écran des membres, et la porte qui se ferme d'un coup (aussi SEC-07, P4-24, P4-74, P4-75, P4-76) | §1.12 ci-dessus · [`TENANT.md`](../../backend/docs/TENANT.md) |
 | 2026-08-10 | P1-3 | COMPLET — 3 PR + 2 suites, cadré, chiffré et livré en ~24 h ; Le modèle d'offres par statut, du cadrage business à l'UX de conversion. | [`docs/archive/bridage-freemium-decouverte.md`](../../docs/archive/bridage-freemium-decouverte.md) · §1.11 ci-dessus |
-| 2026-08-04 | P2-21 lot A (onboarding express) | L'effet waouw : les équipes engagées se créent TOUTES SEULES à l'inscription. | [`ffbb-appariement-source-de-verite.md`](../evolution/ffbb-appariement-source-de-verite.md) §6bis |
-| 2026-08-04 | P2-21 lots C+D | accent FFBB · gymnases d'à côté ; La couleur du club arrive avec son logo | [`ffbb-appariement-source-de-verite.md`](../evolution/ffbb-appariement-source-de-verite.md) §6.7+§6.9 |
-| 2026-08-04 | P2-16 · P2-21 lot E | Un club neuf naît avec ses contraintes de base | [`ffbb-appariement-source-de-verite.md`](../evolution/ffbb-appariement-source-de-verite.md) §6bis |
+| 2026-08-04 | P2-21 lot A (onboarding express) | L'effet waouw : les équipes engagées se créent TOUTES SEULES à l'inscription. | [`ffbb-appariement-source-de-verite.md`](../../docs/archive/ffbb-appariement-source-de-verite.md) §6bis |
+| 2026-08-04 | P2-21 lots C+D | accent FFBB · gymnases d'à côté ; La couleur du club arrive avec son logo | [`ffbb-appariement-source-de-verite.md`](../../docs/archive/ffbb-appariement-source-de-verite.md) §6.7+§6.9 |
+| 2026-08-04 | P2-16 · P2-21 lot E | Un club neuf naît avec ses contraintes de base | [`ffbb-appariement-source-de-verite.md`](../../docs/archive/ffbb-appariement-source-de-verite.md) §6bis |
 | 2026-08-04 | P4-35 (volet technique) | L'import Excel d'équipes retrouve une identité et devient tout-ou-rien (aussi P3-7) | roadmap P4-35 · P3-7 |
 | 2026-08-08 | SEC-13 PR A (2/3) | le cœur ; Le `config` d'une contrainte est enfin validé, et sa liste blanche est elle-même gardée par le comportement du solveur. | [`constraint-config-keys.md`](../../backend/docs/constraint-config-keys.md) |
 | 2026-08-08 | P4-72 (A11Y-06) | soldée par un partage ; 22 occurrences de texte sous 12 px passées à `text-xs`, 15 gardées. (aussi A11Y-08) | — |

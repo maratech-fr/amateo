@@ -1,6 +1,8 @@
 # Gestion des matchs (FFBB) — reste ouvert (paliers A/B livrés)
 
-> **Ce fichier ne garde plus que l'OUVERT** (graduation DOC-56, 2026-10-06). Les paliers A (placement + radar solo, P1-4) et B (trajet + annuaire, RMM-8/P2-53 · RMM-9/P2-54) sont **livrés** : leur comportement vit dans [`module-matchs.md`](../courantes/module-matchs.md), les décisions tranchées (placement manuel et non solveur ; annuaire adverse table globale public-only ; dérogation = tracker, jamais un connecteur FFBB) dans [`etat-des-lieux.md`](../courantes/etat-des-lieux.md) §2, et le cadrage d'origine (problème, reframe, moteur de conflits, contraintes, catalogue-ligue, modèle de données, positionnement) dans `git log -p --follow` ce fichier. **Reste devant** : le **palier C** (effet réseau cross-club), dont la roadmap tient la ligne.
+> 🗄 **ARCHIVÉ le 2026-10-07** (déplacé de `specs/evolution/`) : paliers A/B livrés (`specs/courantes/module-matchs.md`) ; le seul reste, le palier C (effet réseau cross-club), est une ligne en attente de la roadmap. Référence figée, plus maintenue.
+
+> **Ce fichier ne garde plus que l'OUVERT** (graduation DOC-56, 2026-10-06). Les paliers A (placement + radar solo, P1-4) et B (trajet + annuaire, RMM-8/P2-53 · RMM-9/P2-54) sont **livrés** : leur comportement vit dans [`module-matchs.md`](../../specs/courantes/module-matchs.md), les décisions tranchées (placement manuel et non solveur ; annuaire adverse table globale public-only ; dérogation = tracker, jamais un connecteur FFBB) dans [`etat-des-lieux.md`](../../specs/courantes/etat-des-lieux.md) §2, et le cadrage d'origine (problème, reframe, moteur de conflits, contraintes, catalogue-ligue, modèle de données, positionnement) dans `git log -p --follow` ce fichier. **Reste devant** : le **palier C** (effet réseau cross-club), dont la roadmap tient la ligne.
 
 ### 5bis. L'annuaire adverse = table GLOBALE, enrichie par tous les clubs
 

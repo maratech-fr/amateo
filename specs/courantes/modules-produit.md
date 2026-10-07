@@ -23,7 +23,7 @@ déjà vérifiées aux passes précédentes, non re-sondées cette fois : la rou
 
 Cette promesse rejoint une décision de fond du fondateur (2026-08-02) : **« On reste dans cette
 démarche de rendre le cerveau et la connaissance du gestionnaire facilement transférables dans
-notre outil. »** (`specs/evolution/ffbb-appariement-source-de-verite.md` §1ter). Le vrai problème
+notre outil. »** (`docs/archive/ffbb-appariement-source-de-verite.md` §1ter). Le vrai problème
 n'est pas le temps passé, c'est la **charge mentale** : aujourd'hui le gestionnaire doit penser à
 tout sans rien oublier. Le temps gagné et l'anticipation avant le week-end sont des moyens vers
 cette fin, pas la promesse elle-même.

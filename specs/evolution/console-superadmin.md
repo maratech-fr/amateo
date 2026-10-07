@@ -17,8 +17,9 @@
   = décision ultérieure séparée.
 - **Data ops FFBB — mode batch** : le refresh FFBB à la demande sur un club existe (route lot C),
   mais le rattrapage en lot des ligues/comités périmés reste à cadrer si on le garde dans ce lot.
-- **Granularité/rétention de l'audit viewer** : `admin_audit_log` capture déjà acteur, route,
-  méthode, statut, date — durée de conservation et filtres UI restent à décider.
+- **Rétention de l'audit** : `admin_audit_log` capture acteur, route, méthode, statut, date, et la
+  console l'affiche (onglet Journaux → Audit) ; aucune purge n'existe — durée de conservation à
+  décider.
 
 ## Fonctionnalités intéressantes, non cadrées (au-delà de l'évident)
 
@@ -28,8 +29,6 @@
 - **Kill switch génération** (mode maintenance) : suspendre globalement les générations pendant un
   incident.
 - **Coûts d'infra projetés à N clubs** : extrapolation charge solveur / ressources.
-- **Audit viewer dédié** : qui a fait quoi — en particulier les actions **superadmin** elles-mêmes
-  (au-delà de la capture brute déjà livrée en SA0).
 
 ## Ce que ce fichier engage / n'engage pas
 
