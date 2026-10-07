@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\EventListener;
 
+use App\Clock\ClubClock;
 use App\Entity\User;
 use App\Security\JwtCookieFactory;
+use App\Service\ClubInvitationManager;
 use Lexik\Bundle\JWTAuthenticationBundle\Encoder\JWTEncoderInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Event\JWTCreatedEvent;
 use Lexik\Bundle\JWTAuthenticationBundle\Events;
@@ -39,12 +41,12 @@ use Symfony\Component\HttpKernel\KernelEvents;
  *  - `^/api/login` et `^/api/logout` : lexik y pose/efface déjà le cookie.
  *
  * ⚠ HORLOGE RÉELLE obligatoire (`app.clock.real`, jamais le service `clock`
- * décoré par {@see \App\Clock\ClubClock}) : `TenantFilterListener` pose
+ * décoré par {@see ClubClock}) : `TenantFilterListener` pose
  * `_club_id` même sur un club démo, dont l'horloge SIMULÉE peut être calée en
  * l'an 2000 — mesurer la fenêtre de session dessus la casserait. Les `iat`/`exp`
  * des jetons sont eux aussi des `time()` réels (lexik + JwtCookieFactory), la
  * comparaison doit rester sur le même référentiel. Même invariant que les durées
- * de sécurité de P4-304 ({@see \App\Service\ClubInvitationManager}).
+ * de sécurité de P4-304 ({@see ClubInvitationManager}).
  */
 final class JwtSlidingSessionListener implements EventSubscriberInterface
 {
@@ -188,6 +190,6 @@ final class JwtSlidingSessionListener implements EventSubscriberInterface
             return $value;
         }
 
-        return \is_numeric($value) ? (int) $value : null;
+        return is_numeric($value) ? (int) $value : null;
     }
 }

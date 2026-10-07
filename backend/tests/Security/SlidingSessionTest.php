@@ -7,6 +7,7 @@ namespace App\Tests\Security;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\User;
+use App\EventListener\JwtSlidingSessionListener;
 use App\Service\TenantConnectionContext;
 use App\Tests\StartsFreshBrowserSession;
 use Doctrine\ORM\EntityManagerInterface;
@@ -19,7 +20,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 /**
  * NR d'axe « auth & memberships » (§7.1) — P4-291 : la SESSION GLISSANTE du JWT de club
- * ({@see \App\EventListener\JwtSlidingSessionListener}).
+ * ({@see JwtSlidingSessionListener}).
  *
  * Promesse : le cookie httpOnly du navigateur GLISSE tant qu'on s'en sert (ré-émission
  * d'un TTL frais à chaque requête utile), mais sous DEUX bornes infranchissables —
@@ -43,6 +44,7 @@ final class SlidingSessionTest extends WebTestCase
     private const int TWELVE_HOURS = 43200;
 
     private KernelBrowser $client;
+
     private string $managerEmail = '';
 
     public function testCookieRequestOlderThanFiveMinutesGetsReissuedCookie(): void
@@ -173,7 +175,7 @@ final class SlidingSessionTest extends WebTestCase
      * On part d'un vrai jeton (`create` pose l'identité + les rôles + `auth_at`), on
      * en réécrit les trois horodatages, puis on re-signe : le JWS provider de lexik
      * respecte iat/exp présents dans le payload. (`createFromPayload` seul n'ajoute
-     * PAS le claim d'identité — il faut le reprendre du jeton de base.)
+     * PAS le claim d'identité — il faut le reprendre du jeton de base.).
      */
     private function forge(int $iat, int $authAt, int $exp): string
     {
