@@ -3,10 +3,13 @@
 Smoke sémantique de non-régression du besoin P4-96, D1 : deux contraintes SOURCE qui se
 contredisent (coach indisponible le vendredi + équipe dont le vendredi est imposé) font sortir la
 génération INFEASIBLE avec un diagnostic ``diag-infeasible`` qui CITE les deux règles par leur
-libellé (comme dans l'écran de contraintes), via les hypothèses CP-SAT (``add_assumptions`` dès le
-premier solve → ``SufficientAssumptionsForInfeasibility``). Avant P4-96 le message était générique
-(« contraintes impossibles à satisfaire toutes ensemble ») et ``causes`` restait vide : ce test
-échouait (RED). Garde l'invariant ADR-0001 : INFEASIBLE échoue BRUYAMMENT, jamais un repli relaxé.
+libellé (comme dans l'écran de contraintes). Le nommage passe par le SECOND solve DIAGNOSTIQUE
+(repli D4) : le solve nominal ne porte aucune hypothèse (byte-identique à ``main``), puis, sur
+INFEASIBLE seulement, un modèle instrumenté (``assumptions_enabled=True``, budget court) est
+rejoué et ``SufficientAssumptionsForInfeasibility`` nomme le noyau. Avant P4-96 le message était
+générique (« contraintes impossibles à satisfaire toutes ensemble ») et ``causes`` restait vide :
+ce test échouait (RED). Garde l'invariant ADR-0001 : INFEASIBLE échoue BRUYAMMENT, jamais un repli
+relaxé (le diagnostic ne produit AUCUN planning).
 """
 
 from __future__ import annotations

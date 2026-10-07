@@ -94,3 +94,34 @@ def test_bccl_completes_under_budget() -> None:
     assert elapsed < budget, (
         f"BCCL took {elapsed:.1f}s, over the {budget:.0f}s budget (regression to the single-worker prove-stall?)"
     )
+
+
+# P4-96 (repli D4) — garde dédiée contre la régression des HYPOTHÈSES AU PREMIER SOLVE. La BCCL
+# porte 118 contraintes HARD source (49 TIME, 35 DAY, 28 FACILITY, 6 COACH_AVAILABILITY) : posées
+# en hypothèses CP-SAT dès le premier solve, elles bridaient le présolve et faisaient stagner la
+# preuve d'optimalité. Mesuré sur cette fixture : ~2 s sans hypothèse (nominal = `main`), ~26 s
+# avec (le réel BCCL, lui, montait à 614 s). Le solve nominal ne devant plus porter aucune
+# hypothèse, il reste dans l'ordre de grandeur de `main`. Budget serré (20 s) pour que tout retour
+# du mécanisme au premier solve ÉCHOUE la garde (≈10× la marge sur le ~2 s réel, bien sous le ~26 s
+# régressé) — là où la garde 60 s ci-dessus laissait passer les 26 s. La preuve STRUCTURELLE (le
+# modèle nominal ne porte aucune littérale) vit, elle, dans `test_nominal_solve_has_no_assumptions`.
+BCCL_NOMINAL_ORDER_BUDGET_SECONDS = 20.0
+
+
+@pytest.mark.perf
+def test_bccl_nominal_solve_stays_in_main_order() -> None:
+    """La génération nominale de la BCCL reste dans l'ordre de grandeur de ``main`` (~2 s),
+    PRÈS du dixième du budget — une régression aux hypothèses-au-premier-solve (~26 s) échoue."""
+    with open(FIXTURES_DIR / "bccl_2026_08_15.json", encoding="utf-8") as f:
+        data = json.load(f)
+
+    start = time.monotonic()
+    result = solve_payload(data, timeout=int(BCCL_NOMINAL_ORDER_BUDGET_SECONDS))
+    elapsed = time.monotonic() - start
+
+    assert result["status"] == "completed"
+    assert len(result["slots"]) == 90, f"la BCCL doit remplir 90/90, obtenu {len(result['slots'])}"
+    assert elapsed < BCCL_NOMINAL_ORDER_BUDGET_SECONDS, (
+        f"BCCL nominale en {elapsed:.1f}s, au-dessus de {BCCL_NOMINAL_ORDER_BUDGET_SECONDS:.0f}s : "
+        "régression probable aux hypothèses CP-SAT posées dès le premier solve (présolve bridé)."
+    )

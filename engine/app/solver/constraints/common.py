@@ -155,16 +155,25 @@ def _assume(model: Any, source_key: str, cause: dict[str, Any]) -> BoolVarLike |
     de pose de cette contrainte — la contrainte postée (``model.Add(expr).OnlyEnforceIf(lit)``) ET
     les fermetures de candidats (``model.Add(var == 0).OnlyEnforceIf(lit)``). ``model.AddAssumption(lit)``
     est posée une seule fois, à la création : la littérale est donc TOUJOURS vraie dans un solve
-    abouti (contrainte enforce exactement comme avant — neutralité, goldens), et le noyau rendu par
-    ``solver.SufficientAssumptionsForInfeasibility()`` sur INFEASIBLE nomme les règles en conflit.
+    abouti, et le noyau rendu par ``solver.SufficientAssumptionsForInfeasibility()`` sur INFEASIBLE
+    nomme les règles en conflit.
 
     ``cause`` (``{kind, constraintId, label}``, forme ``DiagnosticCauseSchema``) est stockée par
     index de littérale (``model.assumption_sources``) pour le nommage ; une contrainte sans id/nom
     dégrade au ``kind`` seul, jamais un KeyError.
 
+    INTERRUPTEUR (repli D4, 2026-10-07) : renvoie ``None`` tant que ``model.assumptions_enabled`` est
+    faux — le cas du solve NOMINAL. Le poseur retombe alors sur le ``model.Add(...)`` INCONDITIONNEL
+    historique : aucune littérale, aucun ``AddAssumption``, aucun ``OnlyEnforceIf`` → pose
+    byte-identique à ``main`` (goldens inchangés, présolve non bridé). On n'arme l'instrumentation
+    QUE pour le second solve diagnostique (``main._solve(..., assumptions_enabled=True)``), construit
+    seulement après un premier INFEASIBLE. Motif : les hypothèses posées dès le premier solve
+    stagnaient la preuve d'optimalité (614 s vs 8-40 s sur BCCL, cf. ADR-0001 amendé).
+
     DÉFENSIF par conception, comme ``_record_closure`` : un ``cp_model.CpModel`` NU (tests de pose,
-    sans attribut custom) n'a pas de registre ⇒ renvoie ``None`` et le poseur retombe sur le
-    ``model.Add(...)`` INCONDITIONNEL historique — aucune littérale, pose byte-identique."""
+    sans attribut custom) n'a pas de registre ⇒ renvoie aussi ``None``."""
+    if not getattr(model, "assumptions_enabled", False):
+        return None
     registry = getattr(model, "assumption_literals", None)
     if registry is None:
         return None

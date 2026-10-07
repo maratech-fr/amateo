@@ -632,6 +632,8 @@ class InfeasibilityCausesTest(unittest.TestCase):
         from app.solver.model import ScheduleCpModel
 
         model = ScheduleCpModel()
+        # Modèle DIAGNOSTIQUE : hypothèses armées (le nominal, lui, les laisse éteintes — repli D4).
+        model.assumptions_enabled = True
         var = model.NewBoolVar("x")
         lit1 = _assume(model, "tw:c1", {"kind": "time_window", "constraintId": "c1", "label": "Fenêtre A"})
         lit2 = _assume(model, "cu:c2", {"kind": "coach_unavailability", "constraintId": "c2", "label": "Indispo B"})
@@ -669,6 +671,7 @@ class InfeasibilityCausesTest(unittest.TestCase):
         from app.solver.result_builder import _collect_infeasibility_causes
 
         model = ScheduleCpModel()
+        model.assumptions_enabled = True  # modèle diagnostique
         var = model.NewBoolVar("x")
         anon = _assume(model, "tw:anon", {"kind": "time_window", "constraintId": None, "label": None})
         model.Add(var == 1).OnlyEnforceIf(anon)
@@ -728,6 +731,44 @@ class InfeasibilityCausesTest(unittest.TestCase):
         self.assertFalse(infeasible["message"].startswith("Ces "))
         self.assertEqual(_infeasible_message(model_data), infeasible["message"])
         self.assertEqual([], infeasible["causes"])
+
+    def test_d1_reads_the_diagnostic_model_not_the_nominal_one(self) -> None:
+        """Repli D4 — le noyau nommé (D1) vient du SECOND solve diagnostique passé en
+        ``diagnostic_model``/``diagnostic_solver`` ; le modèle NOMINAL (sans hypothèse) ne nomme rien
+        mais sert l'agrégat D2. On vérifie les DEUX dans un seul passage de ``_diagnose_conflicts``."""
+        from app.solver.constraints.common import _enforce_closure
+        from app.solver.result_builder import _diagnose_conflicts
+
+        # Modèle diagnostique INFEASIBLE sous deux hypothèses nommées (porteur de D1).
+        diag_model, diag_solver = self._infeasible_with_two_sources()
+
+        # Modèle NOMINAL : aucune hypothèse (interrupteur éteint par défaut), mais une équipe T dont
+        # l'unique candidat est fermé → D2 doit la rapporter sans toucher au solveur.
+        from app.solver.model import ScheduleCpModel
+
+        nominal = ScheduleCpModel()
+        self.assertFalse(nominal.assumptions_enabled)  # le nominal n'instrumente rien
+        v = nominal.NewBoolVar("x0")
+        nominal.x[("T", "gym", 1, "18:00")] = v
+        _enforce_closure(nominal, v, {"kind": "coach_unavailability", "label": "Indispo B"}, None)
+        self.assertEqual({}, nominal.assumption_literals)  # aucune littérale posée sur le nominal
+
+        diags = _diagnose_conflicts(
+            {"teams": [{"id": "T", "name": "T"}], "venues": []},
+            cp_model.INFEASIBLE,
+            [],
+            model=nominal,
+            solver=cp_model.CpSolver(),
+            diagnostic_model=diag_model,
+            diagnostic_solver=diag_solver,
+        )
+        infeasible = next(d for d in diags if d["id"] == "diag-infeasible")
+        # D1 — message nommé + causes issues du modèle DIAGNOSTIQUE.
+        self.assertIn("se contredisent", infeasible["message"])
+        self.assertEqual({"time_window", "coach_unavailability"}, {c["kind"] for c in infeasible["causes"]})
+        # D2 — l'équipe verrouillée rapportée depuis le modèle NOMINAL.
+        team_diag = next(d for d in diags if d["id"] == "diag-infeasible-team-T")
+        self.assertEqual("T", team_diag["teamId"])
 
 
 if __name__ == "__main__":

@@ -65,12 +65,15 @@ def _generate_diagnostics(
     session_causes_by_team: Mapping[str, dict[str, Any]] | None = None,
     model: ScheduleCpModel | Any | None = None,
     solver: cp_model.CpSolver | Any | None = None,
+    diagnostic_model: ScheduleCpModel | Any | None = None,
+    diagnostic_solver: cp_model.CpSolver | Any | None = None,
 ) -> list[dict[str, Any]]:
     """Run post-solve checks and return manager-readable diagnostics.
 
-    P4-96 — ``model``/``solver`` sont transmis à ``_diagnose_conflicts`` pour nommer, sur
-    INFEASIBLE, le noyau de règles en conflit (D1) et les équipes dont tous les candidats sont
-    fermés (D2). Absents (appels directs anciens) ⇒ message d'infaisabilité générique conservé."""
+    P4-96 — ``_diagnose_conflicts`` nomme, sur INFEASIBLE, le noyau de règles en conflit (D1) à
+    partir du SECOND solve diagnostique (``diagnostic_model``/``diagnostic_solver``), et agrège les
+    candidats fermés par équipe (D2) depuis le modèle NOMINAL (``model``). Diagnostique absent ⇒ D1
+    vide, message d'infaisabilité générique conservé ; ``model`` absent ⇒ pas d'agrégat D2."""
     diagnostics: list[dict[str, Any]] = []
     # ENG-22: every "analysis of the placed slots" diagnostic only makes sense for a REAL
     # solve (OPTIMAL/FEASIBLE). On INFEASIBLE the demand-vs-supply message explains it; on
@@ -111,7 +114,14 @@ def _generate_diagnostics(
         diagnostics.extend(_diagnose_unused_slots(model_data, slots))
     diagnostics.extend(
         _diagnose_conflicts(
-            model_data, solver_status, slots, slot_capacities=slot_capacities, model=model, solver=solver
+            model_data,
+            solver_status,
+            slots,
+            slot_capacities=slot_capacities,
+            model=model,
+            solver=solver,
+            diagnostic_model=diagnostic_model,
+            diagnostic_solver=diagnostic_solver,
         )
     )
     diagnostics.extend(_diagnose_shared_blocks(model_data, solver_status, slots))
@@ -718,14 +728,19 @@ def _diagnose_conflicts(
     slot_capacities: dict[Any, int] | None = None,
     model: ScheduleCpModel | Any | None = None,
     solver: cp_model.CpSolver | Any | None = None,
+    diagnostic_model: ScheduleCpModel | Any | None = None,
+    diagnostic_solver: cp_model.CpSolver | Any | None = None,
 ) -> list[dict[str, Any]]:
     """Report infeasibility or detected double-bookings — who, when, why.
 
-    P4-96 — sur INFEASIBLE, quand ``model`` et ``solver`` sont fournis : ``diag-infeasible`` porte
-    le NOYAU de règles en conflit (D1, via ``_collect_infeasibility_causes``) — message « Ces N
-    règles se contredisent : … » + ``causes[]`` nommées —, et chaque équipe dont tous les candidats
-    sont fermés (D2, ``_collect_locked_out_teams``) reçoit son agrégat. Sans ``model``/``solver``
-    (appels directs anciens), le message générique ``_infeasible_message`` est conservé.
+    P4-96 — sur INFEASIBLE : ``diag-infeasible`` porte le NOYAU de règles en conflit (D1, via
+    ``_collect_infeasibility_causes`` lu sur le SECOND solve diagnostique instrumenté
+    ``diagnostic_model``/``diagnostic_solver``) — message « Ces N règles se contredisent : … » +
+    ``causes[]`` nommées —, et chaque équipe dont tous les candidats sont fermés (D2,
+    ``_collect_locked_out_teams`` sur le modèle NOMINAL ``model``) reçoit son agrégat. Sans
+    diagnostique (non lancé, ou UNKNOWN/timeout), le message générique ``_infeasible_message`` est
+    conservé et D2 reste rendu (il ne dépend pas du solveur). Appels directs anciens (ni ``model``
+    ni diagnostique) ⇒ message générique, aucune cause.
 
     ``slot_capacities`` maps ``(venue_id, day_of_week, start_time)`` to the
     maximum number of teams allowed simultaneously.  When provided, a venue
@@ -743,8 +758,15 @@ def _diagnose_conflicts(
         core_causes: list[dict[str, Any]] = []
         core_labels: list[str] = []
         locked_out: list[dict[str, Any]] = []
-        if model is not None and solver is not None:
-            core_causes, core_labels = _collect_infeasibility_causes(model, solver)
+        # D1 — le noyau nommé vient du SECOND solve diagnostique (seul porteur des hypothèses) ;
+        # absent ⇒ pas de noyau (message générique). On retombe sur ``model``/``solver`` pour les
+        # appels directs de test qui instrumentent eux-mêmes le modèle passé en ``model``.
+        d_model = diagnostic_model if diagnostic_model is not None else model
+        d_solver = diagnostic_solver if diagnostic_solver is not None else solver
+        if d_model is not None and d_solver is not None:
+            core_causes, core_labels = _collect_infeasibility_causes(d_model, d_solver)
+        # D2 — agrégat des candidats fermés, lu du modèle NOMINAL (fermetures inconditionnelles).
+        if model is not None:
             locked_out = _collect_locked_out_teams(model)
 
         # D1 — quand le noyau nomme des règles, le message les CITE comme dans l'écran de

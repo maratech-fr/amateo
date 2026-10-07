@@ -178,6 +178,8 @@ def build_result(
     status: Any | None = None,
     constraint_version: str | None = None,
     team_coach_map: Mapping[str, list[str]] | None = None,
+    diagnostic_model: ScheduleCpModel | Any | None = None,
+    diagnostic_solver: cp_model.CpSolver | Any | None = None,
 ) -> dict[str, Any]:
     """Transform a CP-SAT solution into a dict matching ``ScheduleOutputSchema``.
 
@@ -245,10 +247,15 @@ def build_result(
             team_coach_map=resolved_team_coach_map,
             team_player_map=getattr(model, "team_player_map", None),
             session_causes_by_team=session_causes_by_team,
-            # P4-96 — sur INFEASIBLE, `_diagnose_conflicts` lit le noyau d'hypothèses du solveur
-            # (D1) et agrège les candidats fermés par équipe (D2) depuis le modèle.
+            # P4-96 — D2 (agrégat des candidats fermés par équipe) se lit du modèle NOMINAL, dont
+            # les fermetures sont enregistrées inconditionnellement. D1 (noyau de règles nommées)
+            # vient du SECOND solve diagnostique instrumenté (`diagnostic_model`/`diagnostic_solver`),
+            # construit par `main.build_schedule` seulement après un premier INFEASIBLE ; absents ⇒
+            # D1 vide, message générique conservé.
             model=model,
             solver=solver,
+            diagnostic_model=diagnostic_model,
+            diagnostic_solver=diagnostic_solver,
         )
     )
 

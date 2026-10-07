@@ -400,12 +400,47 @@ async def build_schedule(
             ((rusage_after.ru_utime + rusage_after.ru_stime) - (rusage_before.ru_utime + rusage_before.ru_stime)) * 1000
         )
 
+        # P4-96 (repli D4) — SECOND solve, DIAGNOSTIQUE, UNIQUEMENT sur INFEASIBLE : le modèle
+        # NOMINAL ci-dessus ne porte aucune hypothèse (il est byte-identique à `main`). On rebâtit
+        # ici un modèle INSTRUMENTÉ (hypothèses CP-SAT armées) sous un budget COURT pour lire le
+        # noyau de règles en conflit. Il reste dans le sémaphore (séquentiel, même requête) ; borné,
+        # rare (INFEASIBLE seul). S'il n'aboutit pas à INFEASIBLE dans le budget (UNKNOWN/timeout),
+        # on ne passe RIEN au builder → message générique conservé + D2 (agrégat verrous) toujours
+        # rendu (D2 ne dépend pas du solveur). Jamais un solve relaxé : aucune contrainte retirée.
+        diagnostic_model: ScheduleCpModel | None = None
+        diagnostic_solver: cp_model.CpSolver | None = None
+        if solver_status == cp_model.INFEASIBLE:
+            diag_start = time.perf_counter()
+            diag_status, diag_solver, diag_model, _diag_conflicts, _diag_stats = await asyncio.to_thread(
+                _solve,
+                data,
+                input_data,
+                assumptions_enabled=True,
+                budget_override=DIAGNOSTIC_SOLVE_MAX_SECONDS,
+            )
+            diag_seconds = round(time.perf_counter() - diag_start, 2)
+            diag_ran_to_infeasible = diag_status == cp_model.INFEASIBLE
+            if diag_ran_to_infeasible:
+                diagnostic_model, diagnostic_solver = diag_model, diag_solver
+            logger.info(
+                "infeasibility diagnostic solve club=%s ran=True status=%s seconds=%.2f named=%s",
+                input_data.club_id,
+                _STATUS_NAMES.get(cast("cp_model.CpSolverStatus", diag_status), "UNKNOWN"),
+                diag_seconds,
+                diag_ran_to_infeasible,
+            )
+
     result_dict = build_result(
         data,
         solver,
         model,
         status=solver_status,
         constraint_version=read_contract_version(),
+        # P4-96 — le noyau nommé (D1) vient du SECOND solve diagnostique ; l'agrégat D2 reste lu
+        # du modèle nominal (ses fermetures sont enregistrées inconditionnellement). Absents ⇒ D1
+        # vide, message d'infaisabilité générique conservé.
+        diagnostic_model=diagnostic_model,
+        diagnostic_solver=diagnostic_solver,
     )
     if conflicts:
         result_dict.setdefault("diagnostics", []).extend(conflicts)
@@ -438,6 +473,14 @@ async def build_schedule(
 # optimal and locked by then, so this only bounds how long we polish the small
 # back-to-back bonus — best-effort, never at the expense of placement or budget.
 CHAINING_PHASE_MAX_SECONDS = 10
+
+# P4-96 (repli D4) — SHORT, fixed ceiling for the EXPLICIT diagnostic second solve run
+# ONLY after a first INFEASIBLE (the instrumented model with assumption literals, built
+# to name the conflicting rules). Kept well under the nominal 60/180/600 s budget: the
+# diagnostic never produces a plan, it only reads the unsat core, so a tight bound is
+# right — if it does not prove INFEASIBLE in time (UNKNOWN/timeout) the generic message
+# is kept and D2 (the lock aggregate, which never needs the solver) still renders.
+DIAGNOSTIC_SOLVE_MAX_SECONDS = 15
 
 
 def _adaptive_timeout(n_teams: int, n_venues: int, payload_cap: int) -> int:
@@ -484,6 +527,9 @@ def _adaptive_workers(n_teams: int, n_venues: int) -> int:
 def _solve(
     data: dict[str, Any],
     input_data: ScheduleInputSchema,
+    *,
+    assumptions_enabled: bool = False,
+    budget_override: int | None = None,
 ) -> tuple[int, cp_model.CpSolver, ScheduleCpModel, list[dict[str, Any]], dict[str, Any]]:
     """Run the solver pipeline: build model, add constraints, solve.
 
@@ -492,8 +538,21 @@ def _solve(
     constraints.  Uses the full ``solver_timeout_seconds``. ``solve_stats`` carries
     the P5-10 capacity metrics known here: the workers/budget actually posted, and
     the PHASE-1 (real solve) status + conflict count.
+
+    P4-96 (repli D4) — two knobs, BOTH off on the nominal path so it stays
+    byte-identical to ``main``:
+      * ``assumptions_enabled`` arms the CP-SAT assumption literals (``_assume``) that
+        name the conflicting rules on INFEASIBLE. FALSE for the nominal solve (no
+        literals, no ``AddAssumption``, no ``OnlyEnforceIf`` — presolve unbridled);
+        TRUE only for the explicit diagnostic second solve built after a first
+        INFEASIBLE.
+      * ``budget_override`` replaces the adaptive 60/180/600 s budget with a fixed
+        ceiling — the SHORT budget of that diagnostic solve. ``None`` ⇒ the adaptive
+        budget (nominal). Neither knob touches ``_adaptive_workers``/the tiers.
     """
     model: ScheduleCpModel = build_model(data)
+    # Armé AVANT la pose des contraintes (``_assume`` lit cet interrupteur à chaque site de pose).
+    model.assumptions_enabled = assumptions_enabled
 
     parsed = parse_v2_constraints(data.get("constraints", []))
     team_coach_map: dict[str, list[str]] = parsed.get("team_coach_map", {})
@@ -762,10 +821,15 @@ def _solve(
             default_minutes=resolved_implicit_rules.travel_time_default_minutes,
         )
 
-    # Adaptive timeout capped by the payload budget.
+    # Adaptive timeout capped by the payload budget — or the fixed diagnostic ceiling
+    # (``budget_override``) for the P4-96 second solve, which must stay short.
     n_teams = len(data.get("teams") or [])
     n_venues = len(data.get("venues") or [])
-    timeout_seconds = _adaptive_timeout(n_teams, n_venues, input_data.solver_timeout_seconds)
+    timeout_seconds = (
+        budget_override
+        if budget_override is not None
+        else _adaptive_timeout(n_teams, n_venues, input_data.solver_timeout_seconds)
+    )
     workers = _adaptive_workers(n_teams, n_venues)
 
     # --- Phase 1: solve for the optimal placement (fast, chaining excluded). ---

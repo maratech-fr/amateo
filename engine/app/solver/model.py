@@ -80,15 +80,25 @@ class ScheduleCpModel(cp_model.CpModel):
         # `main._solve`. None (défaut) ⇒ `result_builder` lit `ObjectiveValue()` tel quel :
         # sans previousAssignments le chemin reste byte-identique.
         self.reported_score_override: int | None = None
-        # P4-96 — registre des HYPOTHÈSES CP-SAT par contrainte SOURCE saisie (D1). Une littérale
-        # par clé de source (fenêtre TIME/DAY, jour imposé/interdit, indispo coach, gymnase
-        # imposé/interdit, passerelle MANDATORY, trajet MANDATORY), PARTAGÉE par tous ses sites de
-        # pose : la contrainte postée ET les fermetures de candidats (`model.Add(...).OnlyEnforceIf(lit)`)
+        # P4-96 (repli D4, 2026-10-07) — INTERRUPTEUR des hypothèses CP-SAT. Faux par DÉFAUT : le
+        # solve NOMINAL n'instrumente RIEN, il est byte-identique à `main` (aucune littérale, aucun
+        # `AddAssumption`, aucun `OnlyEnforceIf` — `_assume` renvoie `None`, les fermetures restent
+        # inconditionnelles). On ne l'arme (`True`) que pour le SECOND solve DIAGNOSTIQUE, construit
+        # seulement après un premier INFEASIBLE (`main._solve(..., assumptions_enabled=True)`).
+        # Motif du repli : posées dès le premier solve, les hypothèses privaient le présolve de la
+        # fixation des candidats fermés et faisaient stagner la preuve d'optimalité — mesuré 614 s
+        # (budget 600 atteint) sur le vrai club BCCL (50 équipes) contre 8-40 s sur `main`, et ~26 s
+        # contre ~2 s sur la fixture `bccl_2026_08_15`. Cf. ADR-0001 (amendement 2026-10-07).
+        self.assumptions_enabled: bool = False
+        # P4-96 — registre des HYPOTHÈSES CP-SAT par contrainte SOURCE saisie (D1), peuplé
+        # UNIQUEMENT quand `assumptions_enabled` (modèle diagnostique). Une littérale par clé de
+        # source (fenêtre TIME/DAY, jour imposé/interdit, indispo coach, gymnase imposé/interdit,
+        # passerelle MANDATORY, trajet MANDATORY), PARTAGÉE par tous ses sites de pose : la
+        # contrainte postée ET les fermetures de candidats (`model.Add(...).OnlyEnforceIf(lit)`)
         # citent la MÊME littérale. `_assume` (constraints.common) la crée paresseusement et pose
         # `AddAssumption(lit)` une seule fois. Sur INFEASIBLE, `result_builder` lit
         # `solver.SufficientAssumptionsForInfeasibility()` → index de littérales → `assumption_sources`
-        # pour NOMMER le noyau de règles en conflit. Vide quand aucune source n'est saisie ⇒ aucune
-        # littérale, aucun `AddAssumption` ⇒ modèle byte-identique (goldens inchangés).
+        # pour NOMMER le noyau de règles en conflit. Reste vide sur le solve nominal (interrupteur off).
         self.assumption_literals: dict[str, Any] = {}
         # Index de littérale (`var.Index()`, entier stable) → cause {kind, constraintId, label}
         # (forme `DiagnosticCauseSchema`) : le canal de nommage lu par le result_builder.
