@@ -770,6 +770,39 @@ class InfeasibilityCausesTest(unittest.TestCase):
         team_diag = next(d for d in diags if d["id"] == "diag-infeasible-team-T")
         self.assertEqual("T", team_diag["teamId"])
 
+    def test_each_new_contract_14_kind_names_its_source_in_the_core(self) -> None:
+        """P4-96 PR-2 (contrat 1.4) — les kinds DÉDIÉS `day_forced` (jour imposé), `session_floor`
+        (plancher « au moins N au gymnase ») et `shared_block` (mutualisation) remontent dans le
+        noyau d'infaisabilité et sont acceptés par le `Literal` fermé de `DiagnosticCauseSchema`.
+
+        Repli D4 — les hypothèses ne vivent que dans le SECOND solve diagnostique : on arme donc
+        `assumptions_enabled` sur le modèle (ce que fait `main._solve(..., assumptions_enabled=True)`),
+        sans quoi `_assume` renverrait `None` (comportement nominal)."""
+        from app.schemas.output_schema import DiagnosticCauseSchema
+        from app.solver.constraints.common import _assume
+        from app.solver.model import ScheduleCpModel
+        from app.solver.result_builder import _collect_infeasibility_causes
+
+        for kind, cid, label in (
+            ("day_forced", "d1", "Vendredi imposé"),
+            ("session_floor", "f1", "Au moins 2 au gymnase Matéo"),
+            ("shared_block", None, None),
+        ):
+            model = ScheduleCpModel()
+            model.assumptions_enabled = True  # modèle diagnostique (second solve)
+            var = model.NewBoolVar("x")
+            lit = _assume(model, f"{kind}:{cid}", {"kind": kind, "constraintId": cid, "label": label})
+            self.assertIsNotNone(lit, kind)  # armé ⇒ littérale réellement posée
+            model.Add(var == 1).OnlyEnforceIf(lit)
+            model.Add(var == 0)  # fermeture inconditionnelle → infaisable sous l'unique hypothèse
+            solver = cp_model.CpSolver()
+            self.assertEqual(solver.Solve(model), cp_model.INFEASIBLE, kind)
+
+            causes, _labels = _collect_infeasibility_causes(model, solver)
+            self.assertIn(kind, {c["kind"] for c in causes}, kind)
+            for cause in causes:  # le Literal étendu (contrat 1.4) valide chaque nouveau kind
+                DiagnosticCauseSchema.model_validate(cause)
+
 
 if __name__ == "__main__":
     unittest.main()

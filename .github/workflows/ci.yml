@@ -880,6 +880,15 @@ jobs:
       - name: VenueClosureSemanticsGateTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/VenueClosureSemanticsGateTest.php --group phase1'
 
+      # P4-96 (axes constraint semantics + backend↔engine contract) — quand le moteur dit NON, il
+      # NOMME les règles en conflit. De bout en bout contre le VRAI moteur (/generate, contrat 1.4) :
+      # coach indispo vendredi + équipe vendredi imposé (seul jour ouvert) → INFEASIBLE (failed), et
+      # `diag-infeasible` cite les DEUX règles (message + causes, kinds day_forced + coach_unavailability).
+      # TÉMOIN — sans l'indispo coach, le même payload redevient résoluble. Skip propre si l'engine
+      # est absent. Sans ce gate, l'infaisabilité redeviendrait un message générique muet.
+      - name: InfeasibilityNamesConflictingRulesTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/InfeasibilityNamesConflictingRulesTest.php --group phase1'
+
       # Axe auth & memberships — le code FFBB est l'IDENTITÉ fédérale du club : un PUT
       # qui le CHANGE est refusé 422 (le même code reste idempotent). Falsifié : garde
       # désactivée → le PUT réécrit le code (200). Sans ce gate, un club pourrait migrer

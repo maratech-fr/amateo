@@ -490,8 +490,11 @@ _CAUSE_KIND_FR = {
     "coach_unavailability": "une indisponibilité de coach",
     "time_window": "une fenêtre horaire",
     "day_conflict": "des règles de jour contradictoires",
+    "day_forced": "un jour imposé",
     "day_forbidden": "un jour interdit",
     "forced_venue_elsewhere": "un gymnase imposé",
+    "session_floor": "un minimum de séances dans un gymnase",
+    "shared_block": "un bloc mutualisé",
     "team_link": "une passerelle",
     "travel_time": "un temps de trajet",
 }

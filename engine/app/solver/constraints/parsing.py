@@ -365,6 +365,11 @@ def parse_v2_constraints(constraints: list[dict[str, Any]]) -> ParsedConstraints
                     "scope_target_id": str(scope_target_id),
                     "venue_id": str(config["minAtVenueId"]),
                     "min": max(1, min_count),
+                    # P4-96 PR-2 — la contrainte source du plancher, pour que
+                    # `add_venue_minimum_constraints` hypothèque son `sum >= N` (kind
+                    # `session_floor`) et la nomme dans le noyau d'infaisabilité (cliquable côté front).
+                    "constraint_id": c.get("id"),
+                    "label": c.get("name"),
                 }
             )
 

@@ -308,8 +308,10 @@ def add_time_window_constraints(
             # hypothéquée sur la littérale de la règle qui impose le jour, elle est NOMMÉE dans le
             # noyau d'infaisabilité aux côtés de ce qui vide ses jours (indispo coach, fenêtre…) —
             # c'est le cœur du besoin P4-96 (« coach indispo vendredi + équipe vendredi imposé »).
-            # `day_conflict` est le kind existant le plus proche (le jour imposé entre en conflit
-            # avec les autres règles) ; le MESSAGE nomme la règle par son libellé réel.
+            # P4-96 PR-2 — kind DÉDIÉ `day_forced` (et non plus `day_conflict`, réservé à la
+            # COMBINAISON de jours contradictoires sans contrainte unique) : le jour imposé EST une
+            # contrainte source nommée, `constraintId`/`label` la pointent ; le MESSAGE la cite par
+            # son libellé réel et le front la rend cliquable.
             forced_literal = None
             team_forced_sources = forced_sources.get(team_id_text)
             if team_forced_sources:
@@ -317,7 +319,7 @@ def add_time_window_constraints(
                 forced_literal = _assume(
                     model,
                     _source_key("forced_day", src_id, f"{team_id_text}:{src_index}"),
-                    {"kind": "day_conflict", "constraintId": src_id, "label": src_label},
+                    {"kind": "day_forced", "constraintId": src_id, "label": src_label},
                 )
             forced_constraint = model.Add(sum(forced_day_vars) >= 1)
             if forced_literal is not None:
@@ -398,6 +400,9 @@ def add_venue_minimum_constraints(
         team_id = str(rule.get("scope_target_id"))
         venue_id = str(rule.get("venue_id"))
         minimum = int(rule.get("min") or 1)
+        # P4-96 PR-2 — la contrainte source de ce plancher, pour nommer la cause `session_floor`.
+        floor_constraint_id = rule.get("constraint_id")
+        floor_label = rule.get("label")
 
         locked_days = locked_days_by_team_venue.get((team_id, venue_id), set())
         effective_min = minimum - len(locked_days)
@@ -446,7 +451,19 @@ def add_venue_minimum_constraints(
             )
             continue
 
-        model.Add(sum(team_venue_vars) >= effective_min)
+        # P4-96 PR-2 — « au moins N séances dans ce gymnase » est une contrainte SOURCE saisie :
+        # hypothéquée sur UNE littérale (kind `session_floor`), elle est NOMMÉE dans le noyau
+        # d'infaisabilité quand son `sum >= N` ne peut être honoré. Neutre sur un solve abouti
+        # (littérale toujours assumée vraie) ; modèle nu (tests de pose) ⇒ `_assume` renvoie None et
+        # la contrainte reste INCONDITIONNELLE (chemin byte-identique).
+        floor_literal = _assume(
+            model,
+            _source_key("session_floor", floor_constraint_id, f"{team_id}:{venue_id}"),
+            {"kind": "session_floor", "constraintId": floor_constraint_id, "label": floor_label},
+        )
+        floor_constraint = model.Add(sum(team_venue_vars) >= effective_min)
+        if floor_literal is not None:
+            floor_constraint.OnlyEnforceIf(floor_literal)
         added += 1
 
     return added, conflicts
@@ -622,16 +639,34 @@ def add_shared_block_constraints(
                 member_case_bvars[(team_id, venue_id, slot_id)].append(b)
             b_list.append(b)
 
+        # P4-96 PR-2 — le bloc est une contrainte dure SOURCE saisie (``Σb == commonSessions``) :
+        # UNE littérale par bloc (kind `shared_block`), partagée par la contrainte de compte ET la
+        # contradiction d'insatisfiabilité ci-dessous, pour que le bloc soit NOMMÉ dans le noyau
+        # d'infaisabilité quand il sur-contraint le modèle (le diagnostic `shared_block_not_honored`
+        # dédié nomme, lui, ses équipes). Un bloc n'a pas de nom de règle → `label` None.
+        # Neutre sur un solve abouti (littérale assumée vraie) ; modèle nu ⇒ None → inconditionnel.
+        block_literal = _assume(
+            cast(Any, model),
+            _source_key("shared_block", block_id, block_index),
+            {"kind": "shared_block", "constraintId": None, "label": None},
+        )
         if b_list:
-            cast(Any, model).Add(sum(cast(Any, v) for v in b_list) == common_sessions)
+            count_constraint = cast(Any, model).Add(sum(cast(Any, v) for v in b_list) == common_sessions)
+            if block_literal is not None:
+                count_constraint.OnlyEnforceIf(block_literal)
             added += 1
         elif common_sessions >= 1:
             # Aucune case où le bloc peut réunir ses membres et ≥1 séance exigée → insatisfiable.
             # Contradiction propre (jamais un ``Add(0 == K)`` fragile) : la génération sort
-            # INFEASIBLE, le diagnostic ``shared_block_not_honored`` nomme le bloc.
+            # INFEASIBLE, le diagnostic ``shared_block_not_honored`` nomme le bloc. Les deux bras
+            # conditionnés sur la littérale du bloc : sous l'hypothèse (toujours assumée) la
+            # contradiction tient et le noyau nomme le bloc ; modèle nu ⇒ inconditionnel (inchangé).
             infeasible = cast(Any, model).NewBoolVar(f"block_{block_id}_infeasible")
-            cast(Any, model).Add(infeasible == 1)
-            cast(Any, model).Add(infeasible == 0)
+            one = cast(Any, model).Add(infeasible == 1)
+            zero = cast(Any, model).Add(infeasible == 0)
+            if block_literal is not None:
+                one.OnlyEnforceIf(block_literal)
+                zero.OnlyEnforceIf(block_literal)
             added += 1
 
     # Comblement — une case toute-épinglée doit porter une séance commune pour AU MOINS un des blocs

@@ -110,12 +110,15 @@ final class ScheduleDiagnosticsRecorder
             if (isset($diagnostic['rule_key']) || isset($diagnostic['ruleKey'])) {
                 $entity->setRuleKey((string) ($diagnostic['rule_key'] ?? $diagnostic['ruleKey']));
             }
-            // `session_below_effective_min` carries the MEASURED cause of a missing session:
-            // `causes` (a list of {kind, constraintId, label, count}) + `openCandidates`
-            // (slots left open, none closed them). Each cause's constraintId is NORMALISED to
-            // the entity UUID — see normalizeCauses. openCandidates is dual-cased; `isset`
-            // deliberately treats a null value as absent, preserving null (not measured) vs
-            // 0 (nothing stayed open).
+            // `session_below_effective_min` carries the MEASURED cause of a missing session, and
+            // P4-96 a `conflict` on INFEASIBLE carries its own: `diag-infeasible` holds the
+            // conflicting-rule core, each `diag-infeasible-team-*` the team's closed-candidate
+            // aggregate. Both arrive as `causes` (a list of {kind, constraintId, label, count});
+            // this generic branch persists them identically — no per-type code. `openCandidates`
+            // (slots left open, none closed them) rides alongside only on session_below. Each
+            // cause's constraintId is NORMALISED to the entity UUID — see normalizeCauses.
+            // openCandidates is dual-cased; `isset` deliberately treats a null value as absent,
+            // preserving null (not measured) vs 0 (nothing stayed open).
             if (isset($diagnostic['causes'])) {
                 $entity->setCauses($this->normalizeCauses($diagnostic['causes']));
             }
