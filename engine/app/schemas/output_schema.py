@@ -42,9 +42,25 @@ class DiagnosticCauseSchema(SerializableModel):
         "venue_forbidden",
         "coach_unavailability",
         "time_window",
+        # Jours CONTRADICTOIRES (liste blanche vs « évite » / jour imposé déjà interdit) : aucune
+        # contrainte seule n'est « la » cause, c'est leur combinaison — pas de ``constraintId`` unique.
         "day_conflict",
+        # P4-96 PR-2 — « au moins une séance un jour IMPOSÉ » (``forcedDays``) : une contrainte SOURCE
+        # à part entière (kind DÉDIÉ, ``constraintId``/``label`` = la règle de jour imposé), distincte
+        # de ``day_conflict`` (la combinaison) — c'est le cœur du besoin « coach indispo vendredi +
+        # équipe vendredi imposé », où la règle de jour imposé doit se NOMMER dans le noyau.
+        "day_forced",
         "day_forbidden",
         "forced_venue_elsewhere",
+        # P4-96 PR-2 — plancher « au moins N séances dans CE gymnase » (``minAtVenueId``,
+        # ``add_venue_minimum_constraints``) : contrainte dure SOURCE hypothéquée, nommée dans le
+        # noyau quand son ``sum >= N`` ne peut être honoré.
+        "session_floor",
+        # P4-96 PR-2 — mutualisation par BLOC (``sharedBlocks``) : le bloc pose ``Σb ==
+        # commonSessions`` (dur) ; quand il sur-contraint le modèle, le bloc est nommé dans le
+        # noyau (``constraintId``/``label`` None — un bloc n'a pas de nom de règle ; le diagnostic
+        # ``shared_block_not_honored`` dédié nomme ses équipes).
+        "shared_block",
         # Lot PASSERELLES PR-2 — un candidat LIBRE fermé parce qu'il chevauchait la séance
         # VERROUILLÉE d'une équipe passerelée MANDATORY (``constraintId`` = id de la passerelle).
         "team_link",

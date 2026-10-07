@@ -455,3 +455,79 @@ describe("DiagnosticsPanel — la cause d'une séance manquante (P4-99)", () => 
     expect(screen.queryByRole("link", { name: "Corriger cette règle" })).toBeNull();
   });
 });
+
+/**
+ * P4-96 PR-2 (contrat 1.4) — quand le moteur dit NON, la carte d'échec LISTE les règles en
+ * conflit (le NOYAU d'infaisabilité mesuré par le solveur, `diag-infeasible` de type `conflict`,
+ * `causes[]`), chacune cliquable vers SA contrainte (`?step=constraints&edit=<id>`) — le même rail
+ * que la séance manquante (P4-99). Le front AFFICHE ce que le moteur a mesuré ; il ne redérive rien.
+ */
+describe("DiagnosticsPanel — la carte d'échec nomme les règles en conflit (P4-96)", () => {
+  const infeasible = (over: Partial<Diagnostic> = {}): Diagnostic =>
+    ({
+      id: "diag-infeasible",
+      scheduleId: "s",
+      type: "conflict",
+      severity: "ERROR",
+      teamId: null,
+      coachId: null,
+      venueId: null,
+      dayOfWeek: null,
+      startTime: null,
+      ruleKey: null,
+      message: "Ces 2 règles se contredisent : « Vendredi imposé », « Indispo du vendredi ».",
+      suggestions: null,
+      causes: [],
+      openCandidates: null,
+      ...over,
+    }) as Diagnostic;
+
+  const render1 = (diagnostic: Diagnostic) =>
+    renderWithProviders(<DiagnosticsPanel diagnostics={[diagnostic]} slots={[]} lookups={lookups} onHighlight={vi.fn()} openMostSevere />);
+
+  it("liste les règles du noyau, chacune cliquable vers SA contrainte", () => {
+    render1(
+      infeasible({
+        causes: [
+          { kind: "day_forced", constraintId: "day-1", label: "Vendredi imposé", count: 1 },
+          { kind: "coach_unavailability", constraintId: "coach-1", label: "Indispo du vendredi", count: 1 },
+        ],
+      }),
+    );
+
+    // Les deux NOMS se lisent dans la carte d'échec (le message les cite ET chaque cause les
+    // nomme — d'où `getAllByText`, fidèle à ce que rend le vrai moteur).
+    expect(screen.getAllByText(/Vendredi imposé/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Indispo du vendredi/).length).toBeGreaterThan(0);
+    // …et chaque règle mène à SA contrainte.
+    const hrefs = screen.getAllByRole("link", { name: "Corriger cette règle" }).map((l) => l.getAttribute("href") ?? "");
+    expect(hrefs.some((h) => h.includes("edit=day-1"))).toBe(true);
+    expect(hrefs.some((h) => h.includes("edit=coach-1"))).toBe(true);
+  });
+
+  it("une cause sans id (un bloc mutualisé) s'affiche par sa famille, sans lien mort", () => {
+    render1(infeasible({ causes: [{ kind: "shared_block", constraintId: null, label: null, count: 1 }] }));
+
+    expect(screen.getByText(/un bloc mutualisé/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Corriger cette règle" })).toBeNull();
+  });
+
+  it("les nouveaux kinds (contrat 1.4) ont tous un libellé français, jamais le code brut", () => {
+    render1(
+      infeasible({
+        causes: [
+          { kind: "day_forced", constraintId: null, label: null, count: 1 },
+          { kind: "session_floor", constraintId: null, label: null, count: 1 },
+          { kind: "team_link", constraintId: null, label: null, count: 1 },
+          { kind: "travel_time", constraintId: null, label: null, count: 1 },
+        ],
+      }),
+    );
+
+    expect(screen.getByText(/un jour imposé/)).toBeInTheDocument();
+    expect(screen.getByText(/un minimum de séances dans un gymnase/)).toBeInTheDocument();
+    expect(screen.getByText(/une passerelle entre équipes/)).toBeInTheDocument();
+    expect(screen.getByText(/un temps de trajet trop court/)).toBeInTheDocument();
+    expect(screen.queryByText(/day_forced|session_floor|team_link|travel_time/)).toBeNull();
+  });
+});

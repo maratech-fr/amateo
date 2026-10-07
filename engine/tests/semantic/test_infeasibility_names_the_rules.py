@@ -82,10 +82,11 @@ def test_infeasibility_names_both_conflicting_rules() -> None:
     assert DAY_RULE_NAME in message, f"la règle de jour imposé doit être nommée : {message!r}"
     assert COACH_RULE_NAME in message, f"la règle d'indispo coach doit être nommée : {message!r}"
 
-    # D1 — causes STRUCTURÉES, kinds EXISTANTS, les deux familles présentes.
+    # D1 — causes STRUCTURÉES, les deux familles présentes. P4-96 PR-2 : le jour IMPOSÉ a son kind
+    # DÉDIÉ `day_forced` (distinct de `day_conflict`, réservé aux jours contradictoires combinés).
     kinds = {c["kind"] for c in infeasible["causes"]}
     assert "coach_unavailability" in kinds, f"cause coach manquante : {infeasible['causes']}"
-    assert "day_conflict" in kinds, f"cause jour imposé manquante : {infeasible['causes']}"
+    assert "day_forced" in kinds, f"cause jour imposé manquante : {infeasible['causes']}"
     labels = {c["label"] for c in infeasible["causes"]}
     assert {DAY_RULE_NAME, COACH_RULE_NAME} <= labels, f"libellés attendus dans les causes : {labels}"
 
