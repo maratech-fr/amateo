@@ -1,4 +1,4 @@
-# Roadmap (52) — ce qui reste à faire
+# Roadmap (51) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -167,7 +167,6 @@
 
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
-| P5-27 | **Avant la PROD : reprendre TOUTES les captures de la vitrine après les changements visuels** | 🟠 | S | Les captures actuelles de la vitrine figent une app visuellement périmée (logo, palette — `specs/courantes/identite-visuelle-produit.md`). **Captures concernées, toutes dans [`landing/assets/`](../../landing/assets/)** : `planning.png` (hero, P5-5 — montre l'icône de repli `CalendarCheck2` d'`AppLayout`, disparue du code), `matchs.jpg` (section matchs, P5-26), et toute capture ajoutée d'ici là. **Règle à respecter** — décision fermée `etat-des-lieux.md` §2 et `.claude/rules/landing.md` : en-tête « Démo Basket Club », zéro nom de personne dans l'image, données visibles publiques (codes d'équipe, clubs adverses, gymnases) ; deux méthodes valides, le **seed démo** (`app:demo:seed`) ou une **prise de vue sur une stack réelle** anonymisée dans le DOM au moment de la capture. **Déclencheur : le jour J de la prod** (`landing/config.js?v=` cache-bust déjà en place) — une seule passe qui reprend tout, pas une capture refaite à chaque PR intermédiaire. **Chaque capture en DEUX thèmes** : convention de nommage `nom.ext` → `nom-dark.ext` (même dossier), le swap est déjà câblé côté vitrine (`landing/index.html`, script de bascule de thème — `onerror` retombe sur la version claire tant qu'une `-dark` n'existe pas, `.claude/rules/landing.md`) — poser les fichiers suffit, aucun code à toucher |
 | P5-4b | **Re-run de la mesure de charge sur la VM de prod (Scaleway Instances)** | ⚪ | XS | Le harnais et le premier run local sont livrés (synthèse : [`docs/ops/load-test.md`](../../docs/ops/load-test.md) §Mesures). **Ce qui reste est le run qui DIMENSIONNE** : mêmes commandes (`docs/ops/load-test.md`) sur le VPS après mise en prod — en particulier le pic RAM engine d'un solve DENSE de 600 s (un solve local de 0,2 s ne stresse pas la mémoire comme 600 s de branch-and-bound) et le verdict PRO2-XXS vs PRO2-XS. **Hébergeur** : Scaleway, produit Instances (VM auto-gérée, stack Docker entière dessus, pas de base managée) — trace et conséquences en décision fermée, `etat-des-lieux.md` §2. |
 ---
 

@@ -71,9 +71,10 @@ paths:
   `specs/courantes/identite-visuelle-produit.md`.
 - **Convention `-dark` pour toute capture/asset qui varie par thème (P4-274, 2026-09-29)** :
   `nom.ext` → `nom-dark.ext`, même dossier. Le script de bascule de thème essaie systématiquement
-  la variante `-dark` en sombre et retombe sur la version claire via `onerror` tant qu'aucune
-  `-dark` n'existe — poser un fichier `*-dark.*` suffit à l'activer, **aucun code à toucher**
-  (câblage défensif, P5-27 attend seulement la reprise des captures elles-mêmes).
+  la variante `-dark` en sombre et retombe sur la version claire via `onerror` si une `-dark`
+  manque — poser un fichier `*-dark.*` suffit à l'activer, **aucun code à toucher**. Les 4 captures
+  actuelles ont chacune leur sœur `-dark` (P5-27, 2026-10-07) ; le repli `onerror` reste un filet
+  de sécurité pour un futur asset sans variante sombre.
 - **`mentions-legales.html` est une page statique SŒUR d'`index.html`, pas un fragment** (P4-275,
   2026-09-29) : même scaffolding dupliqué VOLONTAIREMENT (thème anti-flash, palette, glissement
   d'ancre — zéro brique partagée même entre pages `landing/`) ; ses valeurs (éditeur, statut,
@@ -132,10 +133,12 @@ paths:
   RÉELLE** — un nom de démo manifestement générique (ex. « Camille Durand ») est admis, remplacé
   dans le DOM au moment de la capture, jamais le nom d'une vraie personne ; (3) les données
   visibles sont publiques (codes d'équipe, clubs adverses, gymnases). Deux façons d'y arriver,
-  toutes deux valides : le **seed démo** (`app:demo:seed`, patron `landing/assets/planning.png`,
-  P5-5) ou une **prise de vue sur une stack réelle** avec le nom du club remplacé dans le DOM au
-  moment de la capture (patron `landing/assets/matchs.jpg`, P5-26, 2026-09-25 — blason retiré du
-  DOM). La vue **Conflits** (qui liste des coachs) est admise sous cette condition — un nom de
-  démo fictif suffit, elle n'est plus écartée par principe (patron
-  `landing/assets/matchs-conflits.jpg`, 2026-09-25) — décision fermée,
-  `specs/courantes/etat-des-lieux.md` §2.
+  toutes deux valides : le **seed démo** (`app:demo:seed`) ou une **prise de vue sur une stack
+  réelle** avec le nom du club remplacé dans le DOM au moment de la capture. **Les 4 captures
+  actuelles** (`planning.png`, `matchs.jpg`, `matchs-importer.jpg`, `matchs-conflits.jpg`, et leurs
+  sœurs `-dark`) suivent la seconde voie, sur le club BCCL de DÉVELOPPEMENT du bac à sable — pour
+  en reprendre une, rejouer `frontend/scripts/capture-landing-shots.mjs`
+  (`frontend/scripts/README-capture-landing-shots.md`), qui anonymise le DOM à chaque capture (nom/
+  code club remplacés, blasons retirés, chrome de dev masqué). La vue **Conflits** (qui liste des
+  coachs) est admise sous cette condition — un nom de démo fictif suffit, elle n'est plus écartée
+  par principe — décision fermée, `specs/courantes/etat-des-lieux.md` §2.
