@@ -301,7 +301,7 @@
       <p class="under">Gratuit pour découvrir — votre club complet, aucune carte bancaire.</p>
 
       <figure class="shot">
-        <img src="assets/planning.png" alt="La grille de planning générée : chaque équipe placée sur son créneau de gymnase, les contraintes respectées" width="2160" height="1215" />
+        <img src="assets/planning.png" alt="La grille de planning générée : chaque équipe placée sur son créneau de gymnase, les contraintes respectées" width="2160" height="1216" />
         <figcaption>Un planning généré : chaque équipe à sa place, chaque contrainte respectée, et tout reste ajustable à la main.</figcaption>
       </figure>
     </section>
@@ -396,17 +396,17 @@
       </div>
 
       <figure class="shot">
-        <img src="assets/matchs.jpg" alt="Le calendrier des rencontres d'un week-end : chaque match placé sur son gymnase, les conflits et les matchs à placer signalés en tête" width="2160" height="1170" loading="lazy" />
+        <img src="assets/matchs.jpg" alt="Le calendrier des rencontres d'un week-end : les matchs à domicile posés sur leur gymnase, la liste des matchs à placer à côté, les conflits signalés en tête" width="2160" height="1800" loading="lazy" />
         <figcaption>L'essentiel remonte tout seul en tête : les matchs à placer, les conflits à traiter et ce qu'il faut rendre à FBI — vous n'avez plus à y penser.</figcaption>
       </figure>
 
       <div class="shots-pair">
         <figure class="shot">
-          <img src="assets/matchs-importer.jpg" alt="L'écran Importer du module matchs : bouton « Importer FBI », date du dernier dépôt, lien « Échéances de saisie », et un bandeau proposant de valider en lot 106 rencontres de championnats échus" width="2160" height="1500" loading="lazy" />
+          <img src="assets/matchs-importer.jpg" alt="L'écran Importer du module matchs : bouton « Importer FBI », date du dernier dépôt, un bandeau proposant de valider en lot les rencontres des championnats commencés, et la liste des rencontres restant à traiter" width="2160" height="1500" loading="lazy" />
           <figcaption>Un dépôt de l'export FBI, et le club sait ce qui reste à saisir et à valider — sans traquer la ligne oubliée.</figcaption>
         </figure>
         <figure class="shot">
-          <img src="assets/matchs-conflits.jpg" alt="L'onglet Conflits regroupé par coach : un coach (nom de démo) apparaît sur trois rencontres qui se chevauchent, avec départ, coup d'envoi, retour et durée du chevauchement, et un bouton « Traiter »" width="2160" height="1500" loading="lazy" />
+          <img src="assets/matchs-conflits.jpg" alt="L'onglet Conflits regroupé par coach : un coach (nom de démo) engagé sur deux rencontres qui se chevauchent, avec départ, coup d'envoi, retour et durée du chevauchement, et un bouton « Traiter »" width="2160" height="1500" loading="lazy" />
           <figcaption>Les conflits regroupés et suivis : chaque cas dit qui, quand, et ce qu'il reste à trancher.</figcaption>
         </figure>
       </div>
@@ -637,8 +637,8 @@
 
     // `nom.ext` → `nom-dark.ext` (avant un éventuel ?query). Convention P5-27.
     const darkSrc = (src) => src.replace(/(\.[a-z0-9]+)(\?.*)?$/i, "-dark$1$2");
-    // DÉFENSIF : aucune capture `-dark` n'existe encore — onerror rend la version claire.
-    // Le jour où les `*-dark` arriveront (P5-27), elles se branchent SANS toucher au code.
+    // Chaque capture a désormais sa sœur `-dark` (livrées en P5-27) ; le repli onerror
+    // reste en filet de sécurité — si une `-dark` manque ou échoue, la version claire est rendue.
     function paintShots(theme) {
       document.querySelectorAll("figure.shot img").forEach((img) => {
         const light = img.getAttribute("data-shot-light") || img.getAttribute("src");
