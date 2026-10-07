@@ -41,7 +41,7 @@
 ### 1.1 Créer la VM
 
 ⬜ Console Scaleway → *Instances* → créer :
-- type **PLAY2-NANO/DEV1-M ou plus** (≥ 4 Go RAM — la stack est bornée à ~3,7 Go pire cas) ;
+- type **PRO2-XXS ou plus** (≥ 8 Go RAM — la somme des `mem_limit` de `docker-compose.prod.yml` vaut ~5,1 Go pire cas, à laquelle s'ajoutent le système et Docker ; la prod tourne sur une PRO2-XXS à 7,8 Go, sans swap) ;
 - image **Ubuntu 24.04** ;
 - une IP publique (IPv4).
 
