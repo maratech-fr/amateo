@@ -77,6 +77,24 @@ export function useRegisterConfig() {
   });
 }
 
+/**
+ * P4-298 — l'identité du club derrière un code FFBB, pour l'affichage « c'est bien
+ * votre club ? » pendant la saisie. `enabled` est piloté par l'appelant (format FFBB
+ * complet + debounce) : désactivé, aucun fetch ne part (muet → rien). `retry: false` —
+ * un 429/une FFBB muette est un ÉTAT (non bloquant), pas une panne à réessayer ;
+ * `staleTime` infini : un code donne la même réponse (le serveur cache déjà 15 min).
+ * Publique (pas de gate d'auth) — la page d'inscription n'est pas connectée.
+ */
+export function useRegisterClubLookup(code: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["register-club-lookup", code],
+    queryFn: () => authApi.clubLookup(code),
+    enabled,
+    staleTime: Infinity,
+    retry: false,
+  });
+}
+
 export function useVerifyEmail() {
   const setAuthenticated = useAuthStore((state) => state.setAuthenticated);
   const queryClient = useQueryClient();

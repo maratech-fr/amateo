@@ -83,6 +83,17 @@ Champs **ignorés** : `offresPratiques`, `labellisation`, `engagements_*`, `_geo
 
 > Le hit club ne porte que l'adresse **partielle** du comité (sans CP/ville). Le comité et la ligue **complets** (CP+ville, tél, mail, logo) se résolvent par un **2ᵉ `multi-search`** filtré sur leur `code` (`0069`, `ARA`).
 
+> **Consommateurs de cette recherche** (tous via `FfbbApiClient::search`, code validé par format
+> avant appel) : `FfbbClubPopulator` (mapping complet ci-dessus, à la création / au re-import) et
+> `FfbbClubDirectory` — maison unique qui ne lit QUE ce dont elle a besoin : `exists()` (garde
+> anti-squatting à l'inscription), `lookupClubEmail()` (mail institutionnel, approbation P3-4) et
+> `lookupIdentity()` (**P4-298 — nom + ville, JAMAIS le mail**, pour l'affichage « c'est bien
+> votre club ? » à la saisie du code). La route publique **`GET /api/register/club-lookup`**
+> (préfixe `^/api/register`, limiteur IP dédié `register_club_lookup`, cache 15 min des réponses
+> définitives) n'est qu'un mince appelant de `lookupIdentity`, **gaté par
+> `app.ffbb_register_existence_check`** : flag off (dev/test/Behat/démos) ⇒ `unavailable` sans
+> aucun appel sortant — même drapeau que la garde d'existence du register.
+
 ## 3. Logo d'un organisme
 
 ```

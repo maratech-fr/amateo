@@ -118,6 +118,15 @@ framework:
             policy: 'sliding_window'
             limit: 20
             interval: '15 minutes'
+        # P4-298 — le lookup public du NOM de club à l'inscription (GET /api/register/club-lookup),
+        # par IP : surface anonyme énumérable (on y jette un code FFBB), même famille que
+        # coach_wish_public. 30/15min — large pour une saisie debouncée (le front ne déclenche
+        # qu'au format FFBB complet, ~400 ms de debounce), mais une borne réelle contre
+        # l'énumération de codes depuis une IP. Keyé par IP, prod garde 30/15min.
+        register_club_lookup:
+            policy: 'sliding_window'
+            limit: 30
+            interval: '15 minutes'
         # P3-4 : page publique d'approbation de création de club, par IP. Un
         # approbateur légitime fait 2-3 requêtes — borne anti-énumération de tokens.
         club_approval_public:
@@ -228,6 +237,13 @@ when@dev:
                 policy: 'sliding_window'
                 limit: 1000
                 interval: '15 minutes'
+            # P4-298 — la suite e2e rejoue /register (et donc le lookup) en rafale depuis une IP
+            # fixe ; borne dev large, jamais reprise en prod (30/15min). Le flag d'existence est
+            # off en dev → le lookup ne sort pas, mais il consomme QUAND MÊME ce limiteur.
+            register_club_lookup:
+                policy: 'sliding_window'
+                limit: 1000
+                interval: '15 minutes'
             # P4-299 — la page publique d'invitation est jouée en rafale par la suite e2e
             # depuis une IP fixe ; borne dev large, jamais reprise en prod (20/15min).
             invitation_public:
@@ -272,6 +288,14 @@ when@test:
             coach_wish_public:
                 policy: 'sliding_window'
                 limit: 1000
+                interval: '15 minutes'
+            # P4-298 : petite borne PAR IP pour que RegisterClubLookupTest tripe le 429 en quelques
+            # requêtes (patron xlsx_import). Keyée par IP, elle ne fuit pas : aucune autre suite
+            # backend n'appelle cette route (seul le front la consomme), et ce test draine une IP
+            # DÉDIÉE (reset + consume, jamais FLUSHALL). Prod garde 30/15min.
+            register_club_lookup:
+                policy: 'sliding_window'
+                limit: 5
                 interval: '15 minutes'
             # P4-299 : large en test (par IP) pour ne pas tripper pendant les suites qui
             # rejouent la page publique d'invitation ; prod garde 20/15min.

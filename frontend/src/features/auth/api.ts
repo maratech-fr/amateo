@@ -153,6 +153,23 @@ export function register(body: RegisterPayload): Promise<RegisterResponse> {
   return api.post("register", { json: body }).json();
 }
 
+/**
+ * P4-298 — l'identité du club derrière un code FFBB (AFFICHAGE SEUL : jamais de
+ * pré-remplissage de `club_name`, jamais le mail du club). Trois états francs :
+ * `found` (name + city nullable), `unknown` (format invalide ou inconnu), `unavailable`
+ * (FFBB muette OU vérification désactivée côté serveur) → le front n'affiche alors rien.
+ */
+export interface ClubLookupResponse {
+  status: "found" | "unknown" | "unavailable";
+  name?: string;
+  city?: string | null;
+}
+
+/** GET /api/register/club-lookup?code=… — publique (préfixe ^/api/register). */
+export function clubLookup(code: string): Promise<ClubLookupResponse> {
+  return api.get("register/club-lookup", { searchParams: { code } }).json();
+}
+
 export function verifyEmail(token: string): Promise<VerifyEmailResponse> {
   return api.post("register/verify", { json: { token } }).json();
 }

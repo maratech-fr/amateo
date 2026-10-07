@@ -3703,6 +3703,61 @@
                 "summary": "Public registration configuration (Turnstile sitekey when the anti-robot check is enabled)"
             }
         },
+        "/api/register/club-lookup": {
+            "get": {
+                "operationId": "getApiRegisterClubLookup",
+                "tags": [
+                    "Auth"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Club identity behind an FFBB code (display only - name + city, never the mail)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "enum": [
+                                                "found",
+                                                "unknown",
+                                                "unavailable"
+                                            ]
+                                        },
+                                        "name": {
+                                            "type": "string",
+                                            "description": "Present only when status is \"found\""
+                                        },
+                                        "city": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "description": "Present only when status is \"found\" (nullable)"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Too many attempts (per-IP rate limited)"
+                    }
+                },
+                "summary": "Resolve a club NAME + city from its FFBB code for the registration form (display only, never pre-fills)",
+                "parameters": [
+                    {
+                        "name": "code",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            }
+        },
         "/api/register/verify": {
             "post": {
                 "operationId": "postApiRegisterVerify",

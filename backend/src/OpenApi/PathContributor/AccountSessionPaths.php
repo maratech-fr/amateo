@@ -74,6 +74,28 @@ final readonly class AccountSessionPaths implements CustomPathContributor
             summary: 'Public registration configuration (Turnstile sitekey when the anti-robot check is enabled)',
         )));
 
+        $paths->addPath('/api/register/club-lookup', new PathItem(get: new Operation(
+            operationId: 'getApiRegisterClubLookup',
+            tags: ['Auth'],
+            parameters: [
+                ['name' => 'code', 'in' => 'query', 'required' => false, 'schema' => ['type' => 'string'], 'description' => 'FFBB club code to resolve (uppercased server-side)'],
+            ],
+            responses: [
+                // Display only — NEVER pre-fills club_name, NEVER exposes the club mail.
+                // Three plain states; `unavailable` also covers the gated-off env (no outbound call).
+                '200' => $this->schemas->jsonResponse('Club identity behind an FFBB code (display only — name + city, never the mail)', [
+                    'type' => 'object',
+                    'properties' => [
+                        'status' => ['type' => 'string', 'enum' => ['found', 'unknown', 'unavailable']],
+                        'name' => ['type' => 'string', 'description' => 'Present only when status is "found"'],
+                        'city' => ['type' => ['string', 'null'], 'description' => 'Present only when status is "found" (nullable)'],
+                    ],
+                ]),
+                '429' => new Response('Too many attempts (per-IP rate limited)'),
+            ],
+            summary: 'Resolve a club NAME + city from its FFBB code for the registration form (display only, never pre-fills)',
+        )));
+
         $paths->addPath('/api/register/verify', new PathItem(post: new Operation(
             operationId: 'postApiRegisterVerify',
             tags: ['Auth'],
