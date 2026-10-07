@@ -80,6 +80,33 @@ final class RegisterClubLookupTest extends WebTestCase
         self::assertSame('unknown', $body['status'] ?? null, 'un code malformé ne doit pas sortir vers la FFBB');
     }
 
+    /**
+     * ABUS — un code MALFORMÉ n'écrit AUCUNE entrée de cache (clé telle que calculée par le
+     * contrôleur) : la garde de format court-circuite AVANT la moindre lecture/écriture du
+     * pool, sinon un input anonyme arbitraire sèmerait des clés par énumération.
+     */
+    public function testMalformedCodeWritesNoCacheEntry(): void
+    {
+        $this->setFlag('true');
+        // Code normalisé identique (déjà en majuscules, sans espaces) → clé déterministe.
+        $malformed = 'XX12';
+        $this->clearCacheFor($malformed);
+
+        $client = self::createClient();
+        [$status, $body] = $this->lookup($client, $malformed);
+
+        self::assertSame(200, $status);
+        self::assertSame('unknown', $body['status'] ?? null);
+
+        // Clé EXACTE du contrôleur : 'register_club_lookup.' . sha1($codeNormalisé).
+        $pool = self::getContainer()->get('cache.app');
+        \assert($pool instanceof CacheItemPoolInterface);
+        self::assertFalse(
+            $pool->getItem('register_club_lookup.' . sha1($malformed))->isHit(),
+            'un code malformé ne doit semer aucune entrée de cache',
+        );
+    }
+
     /** FFBB muette (transport en échec) → `unavailable`, jamais une 500. */
     public function testFfbbSilenceYieldsUnavailableNot500(): void
     {

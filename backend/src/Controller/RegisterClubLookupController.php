@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Service\Basketball\FfbbApiClient;
 use App\Service\Basketball\FfbbClubDirectory;
 use Psr\Cache\CacheItemPoolInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -57,6 +58,13 @@ final class RegisterClubLookupController extends AbstractController
         }
 
         $code = strtoupper(trim((string) $request->query->get('code', '')));
+
+        // Format hors norme fédérale : `unknown` franc AVANT tout — jamais de lecture/écriture
+        // du cache ni d'appel sortant. Un input anonyme arbitraire ne doit pas pouvoir semer
+        // d'entrées de cache (pollution de clés par énumération), et le format est SSRF-safe.
+        if (!FfbbApiClient::isValidClubCode($code)) {
+            return $this->json(['status' => 'unknown']);
+        }
 
         // Flag off (dev/test/Behat/e2e) → `unavailable` sans jamais sortir vers la FFBB.
         if (!$this->ffbbRegisterExistenceCheck) {
