@@ -127,4 +127,6 @@ def test_diagnostic_model_does_carry_assumption_literals() -> None:
     # NON vide pour ces familles.
     kinds = {src.get("kind") for src in model.assumption_sources.values()}
     expected = {"time_window", "coach_unavailability", "day_forced", "session_floor", "shared_block"}
-    assert expected <= kinds, f"familles source attendues dans les hypothèses : {expected - kinds} manquantes (obtenu {kinds})"
+    assert expected <= kinds, (
+        f"familles source attendues dans les hypothèses : {expected - kinds} manquantes (obtenu {kinds})"
+    )
