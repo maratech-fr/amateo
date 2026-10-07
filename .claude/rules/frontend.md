@@ -127,7 +127,10 @@ paths:
   de tableau (`OpponentsPage`) ; le save/cancel d'un formulaire d'ajout retombe sur N1 (texte —
   `IdealSlotsEditor`). Gardé par `frontend/src/test/addButtonLabelGuard.test.ts` (scan par ÉLÉMENT
   JSX de `src/features/**`+`src/app/**` hors admin : un `<Button>` `size="icon"`/`"icon-sm"` dont
-  l'`aria-label` commence par « Ajouter » rougit).
+  l'`aria-label` commence par « Ajouter » rougit). Exception admise : quand une LIGNE DE TABLEAU doit
+  tenir à 360 px, le libellé peut être masqué VISUELLEMENT sous le palier conteneur (`<span className="sr-only
+  @md:not-sr-only">`, icône « + » seule en dessous) — le nom accessible est CONSERVÉ (le texte reste dans le
+  DOM), le bouton n'est pas `size="icon"`, donc le garde reste vert (patron `OpponentsPage`, reflow 360 px).
 - 🔴 **Tout bandeau d'information passe par `NoticeBanner`** (`shared/components/ui/notice-banner.tsx`
   — fond opaque `bg-surface-<ton>`, bordure, rayon, padding, texte `text-foreground`), jamais une
   boîte faite main (série « uniformité des écrans », PR 4/7, 2026-10-01 — les bandeaux de

@@ -92,11 +92,13 @@ describe("OpponentsPage — la liste par club adverse (grain gymnase)", () => {
     expect(screen.getByText(/1 club adverse sans gymnase/)).toBeInTheDocument();
   });
 
-  it("« Ajouter un gymnase » porte un libellé texte VISIBLE (P4-285, bouton d'ajout toujours libellé)", () => {
+  it("« Ajouter un gymnase » : nom accessible préservé, libellé texte visible dès @md (P4-285 + reflow 360 px)", () => {
     travelState.data = { clubGeolocated: true, opponents: [club({ code: "C2", name: "BC Sans Gym", venues: [], fixtureCount: 4 })] };
     renderWithProviders(<OpponentsPage />);
     const add = screen.getByRole("button", { name: "Ajouter un gymnase" });
-    // Le nom accessible vient désormais du TEXTE visible, plus d'une icône seule.
+    // Le nom accessible vient du TEXTE (pas d'`aria-label`) : le libellé est masqué visuellement sous @md
+    // (`sr-only`) pour tenir à 360 px, mais reste dans le DOM — donc nom accessible ET textContent intacts.
+    expect(add).not.toHaveAttribute("aria-label");
     expect(add).toHaveTextContent("Ajouter un gymnase");
   });
 

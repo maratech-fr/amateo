@@ -399,11 +399,15 @@ function ClubTbody({
         </TableCell>
         <TableCell className="hidden text-right tabular-nums @md:table-cell">{noGym ? club.fixtureCount : ""}</TableCell>
         <TableCell className="text-right">
-          {/* P4-285 — bouton d'ajout TOUJOURS libellé ; style DISCRET (`ghost`, sans bordure) pour
-              ne pas peser sur une ligne de tableau (le nom vient du texte visible). */}
-          <Button variant="ghost" size="sm" onClick={onAddVenue}>
+          {/* P4-285 — bouton d'ajout libellé ; style DISCRET (`ghost`, sans bordure) sur une ligne de
+              tableau. Libellé VISIBLE dès le palier conteneur `@md` (là où la table déplie ses colonnes) ;
+              en dessous, seule l'icône « + » est peinte et le libellé devient le nom accessible via le
+              `<span sr-only>`, pour que la ligne CLUB tienne à 360 px sans défilement horizontal (décision :
+              ordinateur d'abord, garde 360 px conservé). Le bouton n'est PAS `size="icon"` (garde
+              `addButtonLabelGuard`) ; carré 36 px de cible sous `@md` (`w-9 px-0`, hauteur `h-9` de `sm`). */}
+          <Button variant="ghost" size="sm" className="w-9 px-0 @md:w-auto @md:px-3" onClick={onAddVenue}>
             <Plus className="size-3.5" aria-hidden="true" />
-            Ajouter un gymnase
+            <span className="sr-only @md:not-sr-only">Ajouter un gymnase</span>
           </Button>
         </TableCell>
       </TableRow>
