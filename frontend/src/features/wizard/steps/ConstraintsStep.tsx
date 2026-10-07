@@ -994,15 +994,9 @@ export function ConstraintsStep() {
             </Button>
           </>
         ) : (
-          <Button
-            size="icon"
-            className="ml-auto size-8"
-            onClick={submit}
-            disabled={create.isPending || update.isPending}
-            title="Ajouter la contrainte"
-            aria-label="Ajouter la contrainte"
-          >
-            <Plus className="size-4" />
+          <Button size="sm" className="ml-auto" onClick={submit} disabled={create.isPending || update.isPending}>
+            <Plus className="size-3.5" />
+            Ajouter la contrainte
           </Button>
         )}
       </div>

@@ -464,8 +464,9 @@ function VenuesEditor() {
             value={cp}
             onChange={(e) => setSalleCp(e.target.value.replace(/\D/g, ""))}
           />
-          <Button type="submit" size="icon-sm" disabled={create.isPending} title="Ajouter un gymnase" aria-label="Ajouter un gymnase">
-            <Plus className="size-4" />
+          <Button type="submit" size="sm" disabled={create.isPending}>
+            <Plus className="size-3.5" />
+            Ajouter un gymnase
           </Button>
         </div>
         {/* Suggestions FFBB (P2-20) — la liste PROPOSE, n'impose jamais : la
