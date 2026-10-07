@@ -1,13 +1,18 @@
 # API FFBB — routes consommées
 
-Last verified @ 2026-10-05 (`documentation-update`, rotation — sans rapport avec le sujet de la
-PR). Re-confronté : mapping `EngagementLevelDeducer` toujours `D`/`R`/`N`→
-`DEPARTEMENTAL`/`REGIONAL`/`NATIONAL`, jamais `ELITE`, `PR`/`PN`/absent→`null`
-(`backend/src/Service/Basketball/EngagementLevelDeducer.php:46-49`) ✓ · les deux hosts de la liste
-blanche (`api.ffbb.com`, `meilisearch-prod.ffbb.app`) toujours ceux effectivement appelés
-(`FfbbApiClient.php`, `FfbbLogoFetcher.php`, `FfbbSallesController.php`) ✓. Reste du fichier
-hérité des passes précédentes, non re-sondé ligne à ligne cette fois. Historique des passes
-précédentes vit dans git : `git log -p --follow backend/docs/ffbb-api.md`.
+Last verified @ 2026-10-07 (P4-298 : le paragraphe « Consommateurs de cette recherche » ajouté par
+cette PR re-vérifié contre le code). `FfbbClubDirectory` a bien les trois lecteurs décrits —
+`exists()`, `lookupClubEmail()` et `lookupIdentity()` (nom + ville, JAMAIS le mail : la réponse ne
+porte que `status`/`name`/`city`, `FfbbClubDirectory.php:89-112`) ✓ ; la route publique
+`GET /api/register/club-lookup` (préfixe `^/api/register`, limiteur IP dédié `register_club_lookup`
+`config/packages/rate_limiter.yaml:126`, cache 15 min des réponses définitives, gating
+`app.ffbb_register_existence_check` → flag off ⇒ `unavailable` sans appel sortant) est un mince
+appelant de `lookupIdentity` (`RegisterClubLookupController.php:52-107`) ✓. Mapping
+`EngagementLevelDeducer` `D`/`R`/`N`→`DEPARTEMENTAL`/`REGIONAL`/`NATIONAL`, jamais `ELITE`,
+`PR`/`PN`/absent→`null` et les deux hosts de la liste blanche (`api.ffbb.com`,
+`meilisearch-prod.ffbb.app`) recalés par les livraisons jusqu'ici ✓. Reste du fichier hérité des
+passes précédentes, non re-sondé ligne à ligne cette fois. Historique des passes précédentes vit
+dans git : `git log -p --follow backend/docs/ffbb-api.md`.
 
 > Répertoire **exhaustif** des endpoints externes FFBB utilisés par le backend pour alimenter les
 > données institutionnelles club/comité/ligue à la création d'un club. Toute route ajoutée ici doit

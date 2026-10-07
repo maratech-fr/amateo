@@ -90,9 +90,11 @@ final class RegisterClubLookupTest extends WebTestCase
         $this->setFlag('true');
         // Code normalisé identique (déjà en majuscules, sans espaces) → clé déterministe.
         $malformed = 'XX12';
-        $this->clearCacheFor($malformed);
 
+        // createClient() AVANT tout accès conteneur (sinon « Booting the kernel before
+        // calling WebTestCase::createClient() is not supported ») — patron des autres cas.
         $client = self::createClient();
+        $this->clearCacheFor($malformed);
         [$status, $body] = $this->lookup($client, $malformed);
 
         self::assertSame(200, $status);
