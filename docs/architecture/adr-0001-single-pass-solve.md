@@ -98,3 +98,32 @@ lock is released in milliseconds.
   rejected as the default — it silently drops constraints the club asked for, and
   a degraded plan presented as success is misleading. Left as an opt-in extension
   point for a future, explicit decision.
+
+## Amendment (2026-10-07, P4-96) — assumption literals name the conflict
+
+The single solve now posts a CP-SAT **assumption literal per entered SOURCE rule**
+(time/day window, forced/forbidden venue, coach unavailability, MANDATORY team
+link/travel), shared across every site that rule enforces — the posted constraint
+AND the candidate closures (`model.Add(…).OnlyEnforceIf(lit)`), with
+`AddAssumption(lit)` once. **This is NOT a relaxation.** Every literal is assumed
+true for the whole solve, so the feasible region and the objective are identical to
+before (verified: the goldens' exact scores are unchanged, and a feasibility
+property asserts the placement outcome is neutral with/without the literals — the
+best-effort chaining bonus of phase 2 may still jitter by ±1, as it always could).
+Their sole job: on INFEASIBLE, `solver.SufficientAssumptionsForInfeasibility()`
+returns the literals that suffice to explain the contradiction, which
+`result_builder` turns into named `causes[]` on `diag-infeasible` (« Ces N règles se
+contredisent : … ») plus a per-team aggregate of closed candidates (read from the
+pose-time closure maps, never `solver.Value` — a HARD lock has no variable).
+
+HARD locks are deliberately NOT given assumption literals (sovereign, no variable);
+they surface through the closure aggregate (D2), not the unsat core.
+
+The dormant two-pass relaxation fallback above is unchanged and still OFF. Should a
+future measurement show the first-solve assumptions hurt golden determinism or the
+perf budget, the chosen replacement is an **explicit, named diagnostic second
+solve** — an instrumented model built ONLY after a first INFEASIBLE, short budget,
+surfaced in the metrics — never a silent golden re-baseline and never a relaxed
+solve. (The P4-96 D4 gate measured green: goldens unchanged, dense/BCCL perf under
+the 60 s budget, so the first-solve mechanism shipped and no second solve was
+introduced.)
