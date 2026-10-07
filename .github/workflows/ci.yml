@@ -938,6 +938,16 @@ jobs:
       - name: TenantOwnedInterfaceCompletenessTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/TenantOwnedInterfaceCompletenessTest.php --group phase1'
 
+      # Axe auth & memberships (P4-291) — la SESSION GLISSANTE du cookie JWT de club : le jeton du
+      # navigateur glisse tant qu'on s'en sert (ré-émission d'un TTL frais au-delà de 5 min), mais
+      # sous deux bornes infranchissables — 1 h d'inactivité ET 12 h absolues depuis l'auth initiale
+      # (exp plafonné à auth_at + 12 h, mort EXACTE). Trois abus gardés : un jeton rejoué en continu
+      # meurt à 12 h puis ne glisse plus, un jeton expiré reçoit 401 SANS Set-Cookie, et le flux
+      # Bearer (en-tête Authorization) ne glisse jamais. Sans ce gate, un plafond retiré rendrait la
+      # session éternelle, ou le glissement ressusciterait un jeton expiré, en silence.
+      - name: SlidingSessionTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/SlidingSessionTest.php --group phase1'
+
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
