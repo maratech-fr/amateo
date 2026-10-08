@@ -6,7 +6,7 @@ import type { EntryConflictsResponse, SchedulePlan } from "@/features/cockpit/ap
 import { useToastStore } from "@/shared/stores/toastStore";
 import { renderWithProviders } from "@/test/utils";
 
-import { EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, getDiagnostics, getPlacedConflicts, getSlots, getSocleDeviation, getTeams, getTrainingSlots, getVenues, listSchedules, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, reopenSchedule, TargetLockedError, validateSchedule } from "./api";
+import { EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, getDiagnostics, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, reopenSchedule, TargetLockedError, validateSchedule } from "./api";
 import type { Schedule } from "./api";
 import { PlanningPage } from "./PlanningPage";
 import { usePlanningStore } from "./store";
@@ -107,6 +107,9 @@ vi.mock("./api", () => {
   getConstraints: vi.fn(() => Promise.resolve([])),
   // P2-44 PR-5 : par défaut aucun écart (le panneau ne rend rien) — les cas dédiés surchargent.
   getSocleDeviation: vi.fn(() => Promise.resolve({ socleScheduleId: "socle", moved: [], unplaced: [] })),
+  // P4-266 — l'empreinte de structure servie par plan. Par défaut `null` : aucune cause de
+  // péremption dérivée, « Régénérer » non grisé. Les cas dédiés surchargent.
+  getStructureHash: vi.fn(() => Promise.resolve({ currentStructureHash: null })),
   // P2-52 : par défaut aucun match ne perd sa salle → l'annonce de validation ne s'affiche pas,
   // « Valider » part comme aujourd'hui (les cas dédiés surchargent).
   getValidateImpact: vi.fn(() => Promise.resolve({ orphanedFixtures: 0, declaredOrphanedFixtures: 0 })),
@@ -370,7 +373,7 @@ describe("PlanningPage (integration)", () => {
     vi.mocked(listSchedules).mockResolvedValue([
       { id: SID, name: "Version de période", status: "COMPLETED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "HOLIDAY", schedulePlanId: "ete-plan" },
     ]);
-    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été S1", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true, staleness: null }];
+    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été S1", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
     usePlanningStore.setState({ selectedScheduleId: SID });
     renderWithProviders(<PlanningPage />);
 
@@ -531,7 +534,7 @@ describe("PlanningPage (integration)", () => {
     vi.mocked(listSchedules).mockResolvedValue([
       { id: SID, name: "Période", status: "COMPLETED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "HOLIDAY", schedulePlanId: "ete-plan" },
     ]);
-    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Été", startDate: "2026-08-17", calendarEntryId: "e", chosenScheduleId: null, teamSelectionInitialized: true, staleness: null }];
+    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Été", startDate: "2026-08-17", calendarEntryId: "e", chosenScheduleId: null, teamSelectionInitialized: true }];
     // La séance par défaut (slot-1) est placée dans venue-1, que l'on désactive ensuite.
     conflictsState.data = makeConflicts({ disabledVenueIds: ["venue-1"] });
     usePlanningStore.setState({ selectedScheduleId: SID, viewMode: "gymnase" });
@@ -582,7 +585,7 @@ describe("PlanningPage (integration)", () => {
     vi.mocked(listSchedules).mockResolvedValue([
       { id: SID, name: "Période", status: "FAILED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "HOLIDAY", schedulePlanId: "ete-plan" },
     ]);
-    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Été", startDate: "2026-08-17", calendarEntryId: "e", chosenScheduleId: null, teamSelectionInitialized: true, staleness: null }];
+    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Été", startDate: "2026-08-17", calendarEntryId: "e", chosenScheduleId: null, teamSelectionInitialized: true }];
     vi.mocked(getSlots).mockResolvedValue([]);
     conflictsState.data = makeConflicts({ disabledVenueIds: ["venue-1"] });
     reservationsState.rows = [
@@ -599,7 +602,7 @@ describe("PlanningPage (integration)", () => {
     vi.mocked(listSchedules).mockResolvedValue([
       { id: SID, name: "Période", status: "COMPLETED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "HOLIDAY", schedulePlanId: "ete-plan" },
     ]);
-    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Été", startDate: "2026-08-17", calendarEntryId: "e", chosenScheduleId: null, teamSelectionInitialized: true, staleness: null }];
+    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Été", startDate: "2026-08-17", calendarEntryId: "e", chosenScheduleId: null, teamSelectionInitialized: true }];
     // DEUX gymnases : sans un gymnase qui RESTE, la grille est vide et l'assertion
     // négative passerait pour la mauvaise raison (rien ne s'affiche).
     vi.mocked(getVenues).mockResolvedValue([
@@ -655,39 +658,46 @@ describe("PlanningPage (integration)", () => {
     expect(screen.queryByRole("button", { name: /rouvrir/i })).not.toBeInTheDocument();
   });
 
-  // F2c : une contrainte a changé depuis la génération → planning PÉRIMÉ (pas faux). Une seule
-  // bannière, qui nomme la cause et propose de régénérer pour SAVOIR.
-  it("shows the stale banner when a constraint changed since generation, on an editable plan", async () => {
-    vi.mocked(listSchedules).mockResolvedValue([{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", constraintsChangedSinceGeneration: true }]);
+  // P4-266 — le planning se dit PÉRIMÉ (pas faux) quand sa STRUCTURE a changé : l'empreinte servie
+  // par plan (structure-hash) diverge du snapshot figé de la version. Une seule bannière, qui nomme
+  // la cause et propose de régénérer pour SAVOIR. Sur un plan MODIFIABLE (non validé).
+  it("shows the stale banner when the structure hash diverges from the version snapshot, on an editable plan", async () => {
+    vi.mocked(listSchedules).mockResolvedValue([{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", snapshotHash: "OLD" }]);
+    vi.mocked(getStructureHash).mockResolvedValue({ currentStructureHash: "NEW" });
     renderWithProviders(<PlanningPage />);
 
-    const banner = await screen.findByText(/une contrainte a changé/i);
+    const banner = await screen.findByText(/vos données ont changé/i);
     expect(banner).toBeInTheDocument();
-    // Modifiable → « Régénérez » (pas de « Rouvrez »), et le mot est « périmé », jamais « faux ».
+    // Modifiable → « Régénérez », et le mot est « périmé », jamais « faux ».
     expect(banner).toHaveTextContent(/Régénérez/);
     expect(banner).toHaveTextContent(/périmé/);
-    expect(banner).not.toHaveTextContent(/Rouvrez ce planning/);
+    expect(banner).toHaveTextContent(/pas forcément faux/);
   });
 
-  // P4-87 : une DONNÉE DU CLUB (gymnase, coach, créneau…) a changé depuis la génération →
-  // même bannière unifiée, cause nommée « les données du club ont changé ».
-  it("shows the stale banner when a club resource changed since generation", async () => {
-    vi.mocked(listSchedules).mockResolvedValue([{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", resourcesChangedSinceGeneration: true }]);
+  // P4-266 décision 3 — un planning VALIDÉ (en vigueur, lecture seule) est MUET : aucune bannière
+  // « à régénérer », même quand l'empreinte diverge (c'est le calendrier qui fait foi ; on rouvre
+  // avant de régénérer, le signal ne crie pas sur lui).
+  it("is MUTE on a validated (in-force) plan even when the structure hash diverges", async () => {
+    vi.mocked(listSchedules).mockResolvedValue([{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", isChosen: true, snapshotHash: "OLD" }]);
+    vi.mocked(getStructureHash).mockResolvedValue({ currentStructureHash: "NEW" });
     renderWithProviders(<PlanningPage />);
 
-    const banner = await screen.findByText(/les données du club ont changé/i);
-    expect(banner).toHaveTextContent(/périmé/);
-    expect(banner).toHaveTextContent(/Régénérez/);
+    expect(await screen.findByText("U11")).toBeInTheDocument();
+    expect(screen.queryByText(/vos données ont changé/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/périmé/i)).not.toBeInTheDocument();
   });
 
-  // Le cas du planning VALIDÉ : marqué comme les autres, MAIS il est en lecture seule — la
-  // bannière doit proposer rouvrir PUIS régénérer, jamais un « Régénérer » qui finit en 409.
-  it("on a validated (in-force) plan, the stale banner offers reopen-then-regenerate", async () => {
-    vi.mocked(listSchedules).mockResolvedValue([{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", isChosen: true, constraintsChangedSinceGeneration: true }]);
-    renderWithProviders(<PlanningPage />);
+  // P4-266 décision 6 — « Régénérer » est grisé quand l'empreinte ÉGALE le snapshot, PÉRIODE
+  // INCLUSE (plus de garde `isSeasonPlanType`) : une version de plan de période (CLOSURE) dont la
+  // structure n'a pas bougé propose un « Régénérer » honnêtement grisé.
+  it("greys « Régénérer » on a PERIOD plan whose structure hash equals the snapshot (no SEASON guard)", async () => {
+    vi.mocked(listSchedules).mockResolvedValue([{ id: "ov-1", name: "Ajustement", status: "COMPLETED", score: 10, createdAt: "2026-09-10T00:00:00Z", updatedAt: "2026-09-10T00:00:00Z", planType: "CLOSURE", schedulePlanId: "ete-plan", snapshotHash: "SAME" }]);
+    vi.mocked(getStructureHash).mockResolvedValue({ currentStructureHash: "SAME" });
+    plansState.plans = [{ id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+    renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" />);
 
-    const banner = await screen.findByText(/une contrainte a changé/i);
-    expect(banner).toHaveTextContent(/Rouvrez ce planning, puis régénérez/);
+    const regen = await screen.findByRole("button", { name: /Régénérer/i });
+    expect(regen).toBeDisabled();
   });
 
   it("switches to the coach view (coach resolved from the team)", async () => {
@@ -905,7 +915,7 @@ describe("PlanningPage (integration)", () => {
     vi.mocked(listSchedules).mockResolvedValue([
       { id: SID, name: "Période", status: "COMPLETED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "HOLIDAY", schedulePlanId: "ete-plan" },
     ]);
-    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Été", startDate: "2026-08-17", calendarEntryId: "e", chosenScheduleId: null, teamSelectionInitialized: true, staleness: null }];
+    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Été", startDate: "2026-08-17", calendarEntryId: "e", chosenScheduleId: null, teamSelectionInitialized: true }];
     // venue-1 est fermé le MARDI (jour ISO 2) — la fenêtre ts-2 (mardi 19:00) tombe dessus.
     conflictsState.data = makeConflicts({ effectiveClosedWeekdays: { "venue-1": { "2": "default-incident" } } });
     usePlanningStore.setState({ selectedScheduleId: SID, viewMode: "gymnase" });
@@ -994,7 +1004,7 @@ describe("PlanningPage (integration)", () => {
       useWizardStore.getState().exitPeriodMode();
       const overlayValidated: Schedule[] = [{ id: "ov-1", name: "Ajustement", status: "COMPLETED", score: null, createdAt: "2026-09-10T00:00:00Z", updatedAt: "2026-09-10T00:00:00Z", planType: "CLOSURE", schedulePlanId: "ete-plan", isChosen: true }];
       vi.mocked(listSchedules).mockResolvedValue(overlayValidated);
-      plansState.plans = [{ id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: "ov-1", teamSelectionInitialized: true, staleness: null }];
+      plansState.plans = [{ id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: "ov-1", teamSelectionInitialized: true }];
       vi.mocked(reopenSchedule).mockResolvedValueOnce({});
       renderWithProviders(<PlanningPage scopePlanId="ete-plan" />); // Nouveau contrat : Rouvrir vit sur /planning autonome
 
@@ -1311,7 +1321,7 @@ describe("PlanningPage (integration)", () => {
       vi.mocked(listSchedules).mockResolvedValue([
         { id: SID, name: "Reprise été V1", status: "COMPLETED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "HOLIDAY", schedulePlanId: "ete-plan" },
       ]);
-      plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true, staleness: null }];
+      plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
       // U11 attend 2 séances, n'en a qu'une (slot-1) → 1 à replacer : le prédicat SERVI de la dérive.
       vi.mocked(getTeams).mockResolvedValue([{ id: "team-1", name: "U11", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 0, sessionsPerWeek: 2 }]);
       vi.mocked(fillSchedule).mockResolvedValue({ id: "sched-fill" });
@@ -1339,7 +1349,7 @@ describe("PlanningPage (integration)", () => {
       vi.mocked(listSchedules).mockResolvedValue([
         { id: SID, name: "Reprise été V1", status: "COMPLETED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "HOLIDAY", schedulePlanId: "ete-plan" },
       ]);
-      plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true, staleness: null }];
+      plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
       // U11 attend 1 séance et l'a (slot-1 par défaut) → aucune à replacer → rien à combler.
       vi.mocked(getTeams).mockResolvedValue([{ id: "team-1", name: "U11", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 0, sessionsPerWeek: 1 }]);
       usePlanningStore.setState({ selectedScheduleId: SID });
@@ -1850,7 +1860,7 @@ describe("PlanningPage (integration)", () => {
 describe("PlanningPage — portée période (embedded + scopePlanId)", () => {
   const seasonV = (id: string, over: Partial<Schedule> = {}): Schedule => ({ id, name: "Planning A", status: "COMPLETED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", ...over });
   const overlayV = (id: string, createdAt: string, over: Partial<Schedule> = {}): Schedule => ({ id, name: "Ajustement", status: "COMPLETED", score: null, createdAt, updatedAt: createdAt, planType: "CLOSURE", schedulePlanId: "ete-plan", ...over });
-  const etePlan: SchedulePlan = { id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true, staleness: null };
+  const etePlan: SchedulePlan = { id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true };
 
   it("une sélection de SAISON périmée dans le planningStore ne survit PAS — atterrit dans la période, titre = période, sans badge « principal »", async () => {
     vi.mocked(listSchedules).mockResolvedValue([
@@ -1911,7 +1921,7 @@ describe("PlanningPage — portée période (embedded + scopePlanId)", () => {
 describe("PlanningPage — atterrissage EMBARQUÉ = version la plus récente, pas le pointeur", () => {
   const seasonV = (id: string, createdAt: string, over: Partial<Schedule> = {}): Schedule => ({ id, name: "Planning A", status: "COMPLETED", score: null, createdAt, updatedAt: createdAt, planType: "SEASON", schedulePlanId: "season-plan", ...over });
   const overlayV = (id: string, createdAt: string, over: Partial<Schedule> = {}): Schedule => ({ id, name: "Ajustement", status: "COMPLETED", score: null, createdAt, updatedAt: createdAt, planType: "CLOSURE", schedulePlanId: "ete-plan", ...over });
-  const etePlan: SchedulePlan = { id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true, staleness: null };
+  const etePlan: SchedulePlan = { id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true };
 
   it("SAISON embarquée : une V1 POINTÉE plus ancienne cède la place à la V2 plus récente", async () => {
     // RED avant le fix : l'embarqué saison atterrissait via `pickLandingScheduleId` (pointeur
@@ -2100,7 +2110,7 @@ describe("PlanningPage — compteur de carence (P2-44 PR-4)", () => {
 describe("PlanningPage — écran de génération dès qu'une version EN PORTÉE est en vol (lot C)", () => {
   const seasonV = (id: string, status: Schedule["status"], createdAt: string): Schedule => ({ id, name: "Planning A", status, score: null, createdAt, updatedAt: createdAt, planType: "SEASON", schedulePlanId: "season-plan" });
   const overlayV = (id: string, status: Schedule["status"], createdAt: string): Schedule => ({ id, name: "Fermeture", status, score: null, createdAt, updatedAt: createdAt, planType: "CLOSURE", schedulePlanId: "plan-p" });
-  const closurePlan: SchedulePlan = { id: "plan-p", type: "CLOSURE", name: "Fermeture", startDate: "2026-09-10", calendarEntryId: "e-p", chosenScheduleId: null, teamSelectionInitialized: true, staleness: null };
+  const closurePlan: SchedulePlan = { id: "plan-p", type: "CLOSURE", name: "Fermeture", startDate: "2026-09-10", calendarEntryId: "e-p", chosenScheduleId: null, teamSelectionInitialized: true };
 
   // DÉCISION FONDATEUR 2026-08-21 (assumée) : pendant une régénération de saison, sélectionner
   // manuellement une ancienne version COMPLETED montre malgré tout l'écran d'attente jusqu'à la

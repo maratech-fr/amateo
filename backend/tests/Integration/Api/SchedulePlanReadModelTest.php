@@ -8,11 +8,9 @@ use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Schedule;
 use App\Entity\Season;
-use App\Entity\Team;
 use App\Entity\User;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
-use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -58,29 +56,16 @@ final class SchedulePlanReadModelTest extends WebTestCase
         self::assertSame('Planning de la saison 2025-2026', $plan['name']);
         self::assertNull($plan['chosenScheduleId'], 'aucune version choisie = espace de travail');
         self::assertFalse($plan['hasFinishedVersion'], 'aucune version encore');
-        self::assertNotNull($plan['currentStructureHash'], 'le hash courant doit être exposé pour comparer la structure');
+        // P4-266 : l'empreinte de structure n'est PLUS exposée sur /api/me — elle se lit PAR PLAN
+        // via GET /api/schedule_plans/{id}/structure-hash (divergence couverte par
+        // SchedulePlanStructureHashTest). /me ne porte donc plus `currentStructureHash`.
+        self::assertArrayNotHasKey('currentStructureHash', $plan, 'le hash courant ne doit plus être exposé sur /api/me (P4-266)');
 
         // Une version terminée débloque le cockpit (inv. 8/16) sans rien pointer.
         $v1 = $this->version($season, ScheduleStatus::COMPLETED);
         $plan = $this->me($user)['seasonPlan'];
         self::assertTrue($plan['hasFinishedVersion']);
         self::assertNull($plan['chosenScheduleId'], 'une génération ne pointe jamais toute seule');
-
-        $baselineHash = $plan['currentStructureHash'];
-        self::assertNotNull($baselineHash);
-
-        $team = new Team;
-        $team->setClubId($season->getClubId());
-        $team->setSeasonId($season->getId());
-        $team->setName('U11');
-        $team->setSportCategoryId('33333333-3333-3333-3333-333333333333');
-        $team->setPriorityTierId(1);
-        $this->em->persist($team);
-        $this->em->flush();
-        self::getContainer()->get('cache.schedule')->deleteItem(ScheduleConstraintBuilder::cacheKey($season->getClubId(), $season->getId()));
-
-        $plan = $this->me($user)['seasonPlan'];
-        self::assertNotSame($baselineHash, $plan['currentStructureHash'], 'une modification structurelle doit faire bouger le hash');
 
         // Valider pointe — via la VRAIE route, pour que les transitions de statut
         // du cycle de vie s'appliquent réellement (cf. le test suivant).

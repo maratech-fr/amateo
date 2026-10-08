@@ -268,12 +268,12 @@ for (const mode of MODES) {
         out[`${token} on background`] = ratio(fg, bg);
         out[`${token} on card`] = ratio(fg, card);
       }
-      // P4-173 — le TEXTE de la pastille « à régénérer » (StatusPill warning) : `text-foreground`
-      // sur `bg-warning/10`. Le fond est SEMI-TRANSPARENT (α 0.1) : sa vraie couleur est la
-      // composition sur `bg-background`. Le cockpit n'est pas visité par axe ici → on mesure la
-      // paire, dans les deux thèmes. `text-warning` y tombait à 4,30:1 en clair (< AA) : le texte
-      // est donc `text-foreground` (repli de la bannière /planning) ; l'icône, elle, reste
-      // `text-warning` et se mesure au seuil graphique 1.4.11 (≥ 3:1) dans le test dédié plus bas.
+      // P4-266 — le TEXTE de la bannière « à régénérer » de /planning (NoticeBanner warning) :
+      // `text-foreground` sur `bg-warning/10`. Le fond est SEMI-TRANSPARENT (α 0.1) : sa vraie
+      // couleur est la composition sur `bg-background`. Cette paire n'est pas toujours peinte par axe
+      // ici → on la mesure directement, dans les deux thèmes. `text-warning` y tombait à 4,30:1 en
+      // clair (< AA) : le texte est donc `text-foreground` ; l'icône, elle, reste `text-warning` et se
+      // mesure au seuil graphique 1.4.11 (≥ 3:1) dans le test dédié plus bas.
       const composite = (over: string, under: [number, number, number]): [number, number, number] => {
         ctx.clearRect(0, 0, 1, 1);
         ctx.fillStyle = `rgb(${under[0]}, ${under[1]}, ${under[2]})`;
@@ -431,9 +431,9 @@ for (const mode of MODES) {
       const card = of("bg-card", "backgroundColor");
       const diff = of("bg-diff", "backgroundColor");
       const diffFg = of("text-diff-foreground", "color");
-      // P4-173 — l'ICÔNE `text-warning` de la pastille « à régénérer », sur `bg-warning/10`
+      // P4-266 — l'ICÔNE `text-warning` de la bannière « à régénérer » de /planning, sur `bg-warning/10`
       // (composité sur bg) : élément graphique, seuil 1.4.11 (≥ 3:1), pas 4,5:1 (le TEXTE de la
-      // pastille est `text-foreground`, mesuré dans le test AA plus haut).
+      // bannière est `text-foreground`, mesuré dans le test AA plus haut).
       const composite = (over: string, under: [number, number, number]): [number, number, number] => {
         ctx.clearRect(0, 0, 1, 1);
         ctx.fillStyle = `rgb(${under[0]}, ${under[1]}, ${under[2]})`;

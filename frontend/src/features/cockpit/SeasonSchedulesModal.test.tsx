@@ -18,7 +18,7 @@ const DEFAULT_PLANS = [
   { id: "p1", calendarEntryId: "entry-1", chosenScheduleId: null },
   { id: "p2", calendarEntryId: "entry-2", chosenScheduleId: null },
 ];
-let plansMock: { id: string; type?: string; name?: string; calendarEntryId: string | null; chosenScheduleId: string | null; staleness?: unknown }[] = DEFAULT_PLANS;
+let plansMock: { id: string; type?: string; name?: string; calendarEntryId: string | null; chosenScheduleId: string | null }[] = DEFAULT_PLANS;
 let seasonIsReadonly = false;
 
 vi.mock("@/features/planning/store", () => ({ usePlanningStore: (sel: (s: unknown) => unknown) => sel({ setSelectedScheduleId }) }));
@@ -79,22 +79,9 @@ describe("SeasonSchedulesModal — plannings, not versions", () => {
     expect(seasonPlanCounts(withInFlight)).toEqual({ total: 3, overlays: 2, openOverlays: 1 });
   });
 
-  it("P4-173 — shows the « à régénérer » pill on the row whose plan is stale, next to its state label", () => {
-    plansMock = [
-      { id: "season-plan", calendarEntryId: null, chosenScheduleId: "v1", staleness: { manuallyEdited: false, constraintsChanged: true, resourcesChanged: false } },
-      { id: "p1", calendarEntryId: "entry-1", chosenScheduleId: null, staleness: null },
-    ];
-    open(schedules);
-    expect(screen.getByText("À régénérer — une contrainte a changé")).toBeInTheDocument();
-    // Une seule pastille : l'overlay (p1) porte staleness null → pas de doublon.
-    expect(screen.getAllByText(/À régénérer/)).toHaveLength(1);
-  });
-
-  it("P4-173 — no pill when no plan carries staleness", () => {
-    plansMock = DEFAULT_PLANS;
-    open(schedules);
-    expect(screen.queryByText(/À régénérer/)).not.toBeInTheDocument();
-  });
+  // P4-266 — la pastille « à régénérer » des lignes de plannings a été RETIRÉE : la péremption se
+  // dérive de l'empreinte de structure servie par plan (affichée sur l'écran Planning). Ses ex-tests
+  // P4-173 sont supprimés avec elle.
 
   it("lists one row per PLANNING (principal + overlay), each with view + export", () => {
     open(schedules);

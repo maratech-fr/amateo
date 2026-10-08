@@ -39,8 +39,6 @@ function renderBanner(socleValidated = true) {
   );
 }
 
-const seasonPlan = (staleness: unknown) => ({ id: "season-plan", type: "SEASON", name: "Saison", startDate: "2026-07-15", calendarEntryId: null, chosenScheduleId: "b1", teamSelectionInitialized: false, staleness });
-
 describe("SeasonPlanBanner", () => {
   // Décision fondateur 2026-09-28 : le bandeau offre « Modifier les données du club » DÈS QUE le
   // socle est validé — compléter le modèle (coachs tardifs, équipes, gymnases) sans « Rouvrir ».
@@ -98,17 +96,9 @@ describe("SeasonPlanBanner", () => {
     expect(screen.getByRole("dialog")).toHaveTextContent("Plannings de la saison");
   });
 
-  it("P4-173 — shows the « à régénérer » pill in the subtitle when the SEASON plan is stale", () => {
-    plansData = [seasonPlan({ manuallyEdited: false, constraintsChanged: true, resourcesChanged: false })];
-    renderBanner();
-    expect(screen.getByText("À régénérer — une contrainte a changé")).toBeInTheDocument();
-  });
-
-  it("P4-173 — no pill when the SEASON plan carries no staleness (null: unpointed / past)", () => {
-    plansData = [seasonPlan(null)];
-    renderBanner();
-    expect(screen.queryByText(/À régénérer/)).not.toBeInTheDocument();
-  });
+  // P4-266 — la pastille « à régénérer » du bandeau a été RETIRÉE : la péremption se dérive de
+  // l'empreinte de structure servie par plan (affichée sur l'écran Planning). Ses ex-tests P4-173
+  // sont supprimés avec elle.
 
   it("P4-269 — shows a pill counting the DISTINCT people caught in a live conflict", () => {
     // Deux conflits mais UNE seule personne (elle est prise dans les deux) → « 1 personne ».

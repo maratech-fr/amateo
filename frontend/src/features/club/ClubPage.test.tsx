@@ -312,7 +312,7 @@ describe("ClubPage", () => {
     me.data = {
       role: "admin",
       club: { ...baseClub, name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null },
-      seasonPlan: { id: "sp", name: "Plan", chosenScheduleId: "sched", hasFinishedVersion: true, currentStructureHash: null },
+      seasonPlan: { id: "sp", name: "Plan", chosenScheduleId: "sched", hasFinishedVersion: true },
       seasons: [{ id: "s1", name: "2026-2027", startDate: "2026-09-01", endDate: "2027-06-30", isCurrent: true, isReadonly: false }],
       currentSeasonId: "s1",
     };
@@ -371,7 +371,7 @@ describe("ClubPage", () => {
     me.data = {
       role: "admin",
       club: { ...baseClub, name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null },
-      seasonPlan: { id: "sp", name: "Plan", chosenScheduleId: null, hasFinishedVersion: false, currentStructureHash: null },
+      seasonPlan: { id: "sp", name: "Plan", chosenScheduleId: null, hasFinishedVersion: false },
       seasons: [{ id: "s1", name: "2026-2027", startDate: "2026-09-01", endDate: "2027-06-30", isCurrent: true, isReadonly: false }],
       currentSeasonId: "s1",
     };

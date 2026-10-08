@@ -180,16 +180,20 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         self::assertSame('seed-transcription', (string) $row['solver_version'], 'la provenance est la transcription du seed');
         self::assertSame(90, (int) $row['slot_count'], 'la transcription pose exactement 90 créneaux (lundi→samedi)');
 
-        // Section 14 — une base FRAÎCHE naît sans bandeau « périmé » : le seed continue
-        // d'insérer APRÈS la transcription (liens, blocs, incident) et les écouteurs de
-        // péremption estampillaient les versions transcrites ; le dernier geste du run les
-        // remet à zéro. Le défaut (programme plannings-bccl §5) rougirait ici.
-        $stale = $this->connection->fetchOne(
-            'SELECT COUNT(*) FROM schedule s JOIN schedule_plan sp ON sp.id = s.schedule_plan_id '
-            . 'WHERE sp.club_id = ? AND (s.constraints_changed_since_generation = true OR s.resources_changed_since_generation = true)',
+        // P4-266 — une base FRAÎCHE naît « à régénérer » MUET : la péremption ne vit plus dans un
+        // drapeau posé par un listener (supprimé), elle se dérive de l'empreinte de structure
+        // (le `snapshotHash` de la version pointée ⇄ la structure courante, servie par
+        // SchedulePlanStructureHashController). Le seed pose le snapshot de structure sur la
+        // version pointée (`buildForClubSeason`), donc son `snapshot_hash` est renseigné — base
+        // cohérente, « Régénérer » honnêtement grisé.
+        $snapshotHash = $this->connection->fetchOne(
+            'SELECT s.snapshot_hash FROM schedule_plan sp JOIN schedule s ON s.id = sp.chosen_schedule_id '
+            . 'WHERE sp.season_id = (SELECT id FROM season WHERE club_id = ? AND name = \'2026-2027\') '
+            . 'AND sp.type = \'SEASON\'',
             [$club->getId()],
         );
-        self::assertSame(0, (int) $stale, 'aucune version seedée ne naît « périmée »');
+        self::assertIsString($snapshotHash, 'la version de saison pointée porte une empreinte de structure (base fraîche cohérente)');
+        self::assertNotSame('', $snapshotHash, 'l\'empreinte de structure n\'est pas vide');
     }
 
     /**

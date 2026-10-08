@@ -1,6 +1,8 @@
 # Modules produit — ce qu'Amateo vend, en langage club
 
-Last verified @ 2026-10-06 (P4-312 PR B, `documentation-update`). Re-confronté au code : la
+Last verified @ 2026-10-08 (stamp recalé après #1125 qui a déplacé une référence
+`specs/evolution/ffbb-appariement-source-de-verite.md` → `docs/archive/…` sans bumper ; aucun autre
+changement de contenu. Base P4-312 PR B, `documentation-update`). Re-confronté au code : la
 doléance coach porte désormais un champ `wishedDays` informatif, symétrique de
 `unavailableDays`, sans effet solveur (`backend/src/Entity/CoachWish.php`,
 `backend/src/Controller/PublicCoachWishController.php`) ; un jour ne peut jamais être à la fois

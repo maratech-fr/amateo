@@ -41,7 +41,6 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *       `redateNeedsPreview` est vrai (exclusif de `redatable`) ;
  *  f.   une semaine-enfant garde sa fenêtre GELÉE (422) ;
  *  g.   le suffixe de fenêtre du titre se recale (convention « — … »), un titre libre reste intact ;
- *  h.   les versions COMPLETED sont marquées à régénérer (`resourcesChangedSinceGeneration`) ;
  *  i.   changer le type ou le kind reste refusé (422), dates ou pas ;
  *  j.   le champ servi `redatable` reflète EXACTEMENT « racine de fermeture à plan » (vrai après
  *       adaptation, faux sans plan / pour une vacance / pour une mère découpée) ;
@@ -84,7 +83,10 @@ final class PeriodRedateTest extends WebTestCase
         self::assertSame('2026-05-17', $plan->getEndDate()->format('Y-m-d'), 'la fenêtre du plan se resynchronise');
         $version = $this->em->getRepository(Schedule::class)->find($versionId);
         self::assertInstanceOf(Schedule::class, $version, 'la version survit');
-        self::assertTrue($version->isResourcesChangedSinceGeneration(), 'la version est marquée à régénérer (h)');
+        // P4-266 : la péremption « à régénérer » n'est plus un drapeau en base — elle se dérive de
+        // l'empreinte de structure (le re-datage déplace la fenêtre, donc l'empreinte servie par
+        // SchedulePlanStructureHashController). Divergence couverte par SchedulePlanStructureHashTest
+        // et le scénario Behat de re-datage (plan-de-periode-en-overlay).
 
         // La contrainte appariée suit ; la fine reste intacte.
         $paired = $this->em->getRepository(Constraint::class)->find($pairedId);

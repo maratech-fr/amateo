@@ -18,11 +18,12 @@ async function expectNoPreviewContrastViolations(page: import("./fixtures").Page
 }
 
 /**
- * **Re-dater une fermeture depuis le cockpit (D3 v1) — et le planning se dit « à régénérer ».**
+ * **Re-dater une fermeture depuis le cockpit (D3 v1).**
  *
  * Le pendant ÉCRIVANT de `club-life.spec.ts`. Il exerce le seul chemin UI du `PUT` re-datage :
  * cockpit → jour de la fermeture → « Modifier les dates » → nouvelle fenêtre → le serveur déplace
- * le plan et l'annonce (`stalenessMessage` du toast : « planning à régénérer »).
+ * le plan et l'annonce (toast de succès). P4-266 : le signal « à régénérer » n'est plus une pastille
+ * du cockpit — il se dérive de l'empreinte de structure servie par plan et vit sur /planning.
  *
  * ⚑ **SA PROPRE fermeture, pas l'incident du seed** : depuis le découpage début·milieu·fin
  * (fondateur 2026-09-05), l'incident Matéo est DÉCOUPÉ en deux enfants — sa racine porte des
@@ -102,7 +103,7 @@ async function redateTo(page: import("./fixtures").Page, newEnd: string): Promis
   await page.getByRole("button", { name: "Enregistrer" }).click();
 }
 
-test("re-dater une fermeture d'un bloc depuis le cockpit marque son planning « à régénérer »", async ({ page }) => {
+test("re-dater une fermeture d'un bloc depuis le cockpit aboutit (succès annoncé)", async ({ page }) => {
   test.setTimeout(120_000);
   const failed = watchFailedApiCalls(page);
 
@@ -115,36 +116,17 @@ test("re-dater une fermeture d'un bloc depuis le cockpit marque son planning « 
     await openClosureDay(page);
 
     // Le témoin de VÉRITÉ = le toast de succès : il ne s'affiche que si le PUT a réellement re-daté
-    // (200) — et il porte « planning à régénérer ». Re-datage vers jeudi 22/10 : toujours la même
-    // semaine (un seul segment) → la règle début·milieu·fin l'accepte.
+    // (200). Re-datage vers jeudi 22/10 : toujours la même semaine (un seul segment) → la règle
+    // début·milieu·fin l'accepte.
     await redateTo(page, REDATED_END);
     await expect(
-      page.getByText(/Fermeture re-datée du .+ — planning à régénérer/),
+      page.getByText(/Fermeture re-datée du .+ au .+/),
       `le PUT de re-datage doit réussir et l'annoncer${failed.length ? ` — échecs API: ${failed.join(", ")}` : ""}`,
     ).toBeVisible({ timeout: 30_000 });
 
-    // P4-173 (témoin) — de retour au cockpit, le signal « à régénérer » est désormais VISIBLE : re-dater
-    // a touché une donnée du club, la version pointée du plan de saison devient périmée. Le cockpit le
-    // DIT (il était muet avant P4-173 — seul /planning le savait). La pastille porte la cause en clair.
-    await expect(page.getByText(/À régénérer/).first()).toBeVisible({ timeout: 30_000 });
-
-    // Reflow (WCAG 1.4.10) — à 375 px, la pastille ENVELOPPE (whitespace-normal + flex-wrap) : son
-    // bord droit ne dépasse JAMAIS la fenêtre, sur le cockpit ET dans la modale « Tous les plannings »
-    // (où elle jouxte l'état). Mesuré au vrai moteur (jsdom n'a pas de mise en page). On borne la
-    // pastille elle-même, pas la page entière (le cockpit dense scrolle par ailleurs ses grilles).
-    const pillOverflow = () =>
-      page.evaluate(() => {
-        const pills = [...document.querySelectorAll("span")].filter((s) => /^À régénérer/.test(s.textContent ?? ""));
-        if (0 === pills.length) {
-          return -1; // aucune pastille peinte → rien à mesurer (ne fait pas échouer)
-        }
-        return Math.max(...pills.map((p) => Math.ceil(p.getBoundingClientRect().right) - window.innerWidth));
-      });
-    await page.setViewportSize({ width: 375, height: 800 });
-    await expect.poll(pillOverflow).toBeLessThanOrEqual(0);
-    await page.getByRole("button", { name: /Tous les plannings/ }).click();
-    await expect(page.getByRole("dialog")).toBeVisible({ timeout: 15_000 });
-    await expect.poll(pillOverflow).toBeLessThanOrEqual(0);
+    // P4-266 — la pastille « à régénérer » du cockpit a été RETIRÉE : le signal se dérive de
+    // l'empreinte de structure servie par plan et s'affiche sur l'écran /planning (bannière), pour une
+    // version NON validée seulement. Plus rien à vérifier au cockpit ici que le succès du re-datage.
   } finally {
     // IDEMPOTENCE : on retire la fermeture créée (cascade son plan) — aucun résidu dans la base e2e.
     if ("" !== entryId) {
@@ -257,7 +239,7 @@ async function openSplitPreview(page: import("./fixtures").Page): Promise<void> 
   await expect(page.getByRole("button", { name: "Confirmer" })).toBeVisible({ timeout: 10_000 });
 }
 
-test("re-dater une indisponibilité découpée : aperçu des effets puis confirmation marque le planning « à régénérer »", async ({ page }) => {
+test("re-dater une indisponibilité découpée : aperçu des effets puis confirmation aboutit", async ({ page }) => {
   test.setTimeout(150_000);
   const failed = watchFailedApiCalls(page);
 
@@ -275,12 +257,12 @@ test("re-dater une indisponibilité découpée : aperçu des effets puis confirm
     // Confirmer : la semaine 3 tombe → effet destructif → toast « plans de période ajustés ».
     await page.getByRole("button", { name: "Confirmer" }).click();
     await expect(
-      page.getByText(/plans de période ajustés, planning à régénérer/),
+      page.getByText(/plans de période ajustés\./),
       `la confirmation doit réussir et l'annoncer${failed.length ? ` — échecs API: ${failed.join(", ")}` : ""}`,
     ).toBeVisible({ timeout: 30_000 });
 
-    // De retour au cockpit, le signal « à régénérer » est visible (le re-datage a touché une donnée du club).
-    await expect(page.getByText(/À régénérer/).first()).toBeVisible({ timeout: 30_000 });
+    // P4-266 — plus de pastille « à régénérer » au cockpit (signal déplacé sur /planning, dérivé de
+    // l'empreinte de structure). Le succès de la confirmation suffit comme témoin ici.
   } finally {
     // Idempotence : on retire la mère (cascade son plan/ses enfants) ET chaque enfant, dans l'ordre inverse.
     for (const id of ids.reverse()) {
