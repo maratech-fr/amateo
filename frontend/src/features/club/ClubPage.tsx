@@ -29,7 +29,7 @@ import { extractPalette } from "@/shared/lib/palette";
 import type { SubscriptionPlan, UsageDayHours } from "./api";
 import { LogoCropper } from "./LogoCropper";
 import { formatHours } from "./lib/venueStats";
-import { useDeleteLogo, useDownloadClubExport, useFfbbImport, useResetClub, useSubscriptionPlans, useUpdateAppearance, useUpdateSiege, useUploadLogo, useVenueUsageStats } from "./queries";
+import { useDeleteLogo, useDownloadClubExport, useFfbbImport, useResetClub, useSubscriptionPlans, useUpdateAppearance, useUpdateShortName, useUpdateSiege, useUploadLogo, useVenueUsageStats } from "./queries";
 import { isManagementRole } from "@/shared/lib/roles";
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -263,6 +263,49 @@ function DangerSection() {
   );
 }
 
+/**
+ * Le NOM COURT du club — la seule saisie de l'identité (tout le reste vient de la FFBB). Posé sous
+ * le nom officiel. Vide = repli sur le nom complet. Enregistrer/Annuler en TEXTE (N1). L'erreur
+ * serveur (format refusé) remonte en toast au niveau du hook (patron FRT-38 + errorMessage()).
+ */
+function ClubShortNameField({ shortName }: { shortName: string | null }) {
+  const update = useUpdateShortName();
+  const [value, setValue] = useState(shortName ?? "");
+  const saved = shortName ?? "";
+  const dirty = value.trim() !== saved;
+
+  return (
+    <div>
+      <label htmlFor="club-short-name" className="mb-1 block text-xs text-muted-foreground">
+        Nom court
+      </label>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          id="club-short-name"
+          className="w-56"
+          value={value}
+          maxLength={20}
+          placeholder="Ex. BC Vallée"
+          onChange={(e) => setValue(e.target.value)}
+          disabled={update.isPending}
+        />
+        {dirty ? (
+          <>
+            <Button size="sm" onClick={() => update.mutate(value.trim())} disabled={update.isPending}>
+              {update.isPending ? <Spinner className="size-4" /> : null}
+              Enregistrer
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setValue(saved)} disabled={update.isPending}>
+              Annuler
+            </Button>
+          </>
+        ) : null}
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">Utilisé dans les e-mails envoyés aux coachs. Vide = le nom complet.</p>
+    </div>
+  );
+}
+
 /** Une donnée FFBB en lecture seule — même gabarit que le Code FFBB. */
 function ReadOnlyField({ label, value, mono }: { label: string; value: string | null; mono?: boolean }) {
   return (
@@ -324,11 +367,15 @@ function ClubInfoSection({ club }: { club: NonNullable<MeResponse["club"]> }) {
             Actualiser depuis la FFBB
           </Button>
         </div>
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <ReadOnlyField label="Code FFBB" value={club.ffbbClubCode} mono />
-          <ReadOnlyField label="Ligue" value={club.league} />
-          <ReadOnlyField label="Zone de vacances" value={club.schoolZone} />
-          <ReadOnlyField label="Comité" value={club.committeeCode} mono />
+        <div className="space-y-3 text-sm">
+          <ReadOnlyField label="Nom officiel (FFBB)" value={club.name} />
+          <ClubShortNameField shortName={club.shortName} />
+          <div className="grid grid-cols-2 gap-3">
+            <ReadOnlyField label="Code FFBB" value={club.ffbbClubCode} mono />
+            <ReadOnlyField label="Ligue" value={club.league} />
+            <ReadOnlyField label="Zone de vacances" value={club.schoolZone} />
+            <ReadOnlyField label="Comité" value={club.committeeCode} mono />
+          </div>
         </div>
       </div>
 
