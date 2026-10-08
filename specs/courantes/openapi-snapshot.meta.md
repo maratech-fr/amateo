@@ -1,9 +1,10 @@
-Last verified @ 2026-10-08 (D1 PR 2 — aperçu de l'e-mail coach : AJOUT de
-`GET /api/coach_wish_campaigns/{id}/email-preview` (`CoachWishEmailPreviewController`,
-gestionnaires), déclaré dans `CoachWishPaths`).
+Last verified @ 2026-10-09 (page publique de doléance coach — le `GET
+/api/coach-wishes/public/{token}` expose désormais `periodStart` et `periodEnd` (bornes de la
+période mère, format `date`, nullables comme `respondedAt`) ; schéma déclaré à la main dans
+`PublicTokenPaths`. Aucun path ajouté/retiré).
 
-**235 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`2b4588ac7796129e2ed0050bf8799343b37762da27826710facf22add5d47348` (`sha256sum` sur le fichier).
+**233 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`341b9bfc90e006cd0607d5f2cbed4889c0a348fa05e92061d0888e9ca96b1647` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

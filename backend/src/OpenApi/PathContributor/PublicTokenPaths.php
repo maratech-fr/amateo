@@ -107,6 +107,9 @@ final readonly class PublicTokenPaths implements CustomPathContributor
                             'properties' => [
                                 'coachFirstName' => ['type' => 'string'],
                                 'periodTitle' => ['type' => 'string'],
+                                // Bornes de la période mère — nullables (entrée de calendrier disparue), comme respondedAt.
+                                'periodStart' => ['type' => ['string', 'null'], 'format' => 'date'],
+                                'periodEnd' => ['type' => ['string', 'null'], 'format' => 'date'],
                                 'deadline' => ['type' => 'string', 'format' => 'date'],
                                 'weeks' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date']],
                                 // Le périmètre du coach SEUL — jamais les équipes d'un autre.
