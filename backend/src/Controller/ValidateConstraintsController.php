@@ -144,8 +144,8 @@ final class ValidateConstraintsController extends AbstractController
         // de payload : rien à mesurer.
         // ⚠ Le build ne doit JAMAIS faire tomber le récap : c'est l'écran où le gestionnaire
         // vient corriger les données douteuses, et un 500 l'y enfermerait (même garde que
-        // `SchedulePlanProvisioner::currentStructureHash`, seul autre appelant interactif du
-        // builder). La capacité est un CONFORT : sans elle, le récap reste utile.
+        // `SchedulePlanProvisioner::structureHashOfPlan`, autre appelant interactif du builder,
+        // qui rend `null` plutôt que de lever). La capacité est un CONFORT : sans elle, le récap reste utile.
         try {
             $capacityPayload = null;
             if (null !== $calendarEntryId) {

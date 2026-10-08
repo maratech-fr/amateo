@@ -85,33 +85,6 @@ class Schedule implements TenantOwnedInterface
     #[ORM\Column(type: 'boolean')]
     private bool $manuallyEditedSinceGeneration = false;
 
-    /**
-     * Une contrainte du club a-t-elle changé (créée, modifiée, supprimée) DEPUIS la
-     * génération de ce planning ? Vrai ⇒ ce planning décrit un état ANTÉRIEUR des règles :
-     * il n'est pas faux, il est PÉRIMÉ, et rien d'autre ne le dit. Posé par
-     * `ConstraintChangeStaleScheduleListener` (listener d'entité sur `Constraint`, il attrape
-     * TOUS les chemins d'écriture, pas un appelant nommé) ; remis à faux par un import de
-     * résultat solveur (le planning redevient fidèle aux données). Jumeau du marqueur
-     * « retouché à la main » ci-dessus, avec un autre déclencheur — l'écran les affiche unifiés.
-     */
-    #[ORM\Column(type: 'boolean')]
-    private bool $constraintsChangedSinceGeneration = false;
-
-    /**
-     * Une DONNÉE DU CLUB autre qu'une contrainte a-t-elle changé DEPUIS la génération de ce
-     * planning ? Gymnase (renommage/désactivation), coach, créneau ou grille de période
-     * (ADR-0002), réservation, override de période, tag d'équipe, entrée de calendrier : toutes
-     * ces sources nourrissent le solveur. Vrai ⇒ ce planning décrit un état ANTÉRIEUR des
-     * données — pas faux, PÉRIMÉ, et rien d'autre ne le dit. Posé par
-     * `ResourceChangeStaleScheduleListener` (listener d'entité générique, il attrape TOUS les
-     * chemins d'écriture) ; remis à faux par un import de résultat solveur. Troisième jumeau des
-     * deux marqueurs ci-dessus — l'écran les affiche unifiés. UN SEUL drapeau pour toutes ces
-     * sources : la bannière nomme la cause à granularité utile (« les données du club ont
-     * changé »), pas source par source.
-     */
-    #[ORM\Column(type: 'boolean')]
-    private bool $resourcesChangedSinceGeneration = false;
-
     #[ORM\Column(type: 'integer')]
     private int $solverSeed = 42;
 
@@ -126,8 +99,9 @@ class Schedule implements TenantOwnedInterface
      * Greffe de CONVERGENCE ajoutée à l'entrée du moteur APRÈS le hash de snapshot
      * (`previousAssignments` en régénération, `socleReferenceAssignments` en comblement) :
      * des clés DISJOINTES du snapshot, JAMAIS intégrées à `snapshotHash`/`snapshotData` —
-     * les y mettre ferait diverger `snapshotHash` de `currentStructureHash` (recalculé sans
-     * elle) à chaque régénération, cassant en silence le garde « structure inchangée ».
+     * les y mettre ferait diverger `snapshotHash` de l'empreinte de structure (recalculée sans
+     * elle par `SchedulePlanProvisioner::structureHashOfPlan`) à chaque régénération, cassant en
+     * silence le garde « structure inchangée ».
      * NULL = aucune greffe (exact pour une première génération : les builders rendent le
      * payload inchangé quand la source est vide). Persistée parce que NON reconstituable
      * après coup — cf. {@see self::engineInput()}.
@@ -327,30 +301,6 @@ class Schedule implements TenantOwnedInterface
     public function setManuallyEditedSinceGeneration(bool $manuallyEditedSinceGeneration): self
     {
         $this->manuallyEditedSinceGeneration = $manuallyEditedSinceGeneration;
-
-        return $this;
-    }
-
-    public function isConstraintsChangedSinceGeneration(): bool
-    {
-        return $this->constraintsChangedSinceGeneration;
-    }
-
-    public function setConstraintsChangedSinceGeneration(bool $constraintsChangedSinceGeneration): self
-    {
-        $this->constraintsChangedSinceGeneration = $constraintsChangedSinceGeneration;
-
-        return $this;
-    }
-
-    public function isResourcesChangedSinceGeneration(): bool
-    {
-        return $this->resourcesChangedSinceGeneration;
-    }
-
-    public function setResourcesChangedSinceGeneration(bool $resourcesChangedSinceGeneration): self
-    {
-        $this->resourcesChangedSinceGeneration = $resourcesChangedSinceGeneration;
 
         return $this;
     }

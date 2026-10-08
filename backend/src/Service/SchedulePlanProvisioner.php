@@ -164,19 +164,21 @@ final class SchedulePlanProvisioner
      * ADR-0002 : le plan SEASON d'une saison — LE calendrier de base. Exposé par
      * /api/me. `chosenScheduleId` = la version choisie (« validée ») ;
      * `hasFinishedVersion` = le plan porte au moins une version terminée
-     * (déblocage cockpit + mode guidé, inv. 8/16) ;
-     * `currentStructureHash` = le payload solver de la structure actuelle, pour
-     * griser « Régénérer » quand la version sélectionnée est déjà à l'identique.
+     * (déblocage cockpit + mode guidé, inv. 8/16).
+     *
+     * L'empreinte de structure (griser « Régénérer », bannière « à régénérer ») n'est PLUS
+     * ici : elle se lit PAR PLAN via {@see structureHashOfPlan} (route structure-hash), y compris
+     * pour les périodes (P4-266) — pas seulement le socle.
      *
      * SQL brut, comme le reste des lectures de plan ici : filter-free (la saison
      * demandée n'est pas forcément l'active) et une seule requête. RLS scope par club.
      *
-     * @return array{id: string, name: string, chosenScheduleId: string|null, hasFinishedVersion: bool, currentStructureHash: string|null}|null
+     * @return array{id: string, name: string, chosenScheduleId: string|null, hasFinishedVersion: bool}|null
      */
     public function seasonPlanPayload(string $seasonId): ?array
     {
         $row = $this->entityManager->getConnection()->fetchAssociative(
-            'SELECT p.id, p.club_id, p.name, p.chosen_schedule_id, EXISTS ( '
+            'SELECT p.id, p.name, p.chosen_schedule_id, EXISTS ( '
             . 'SELECT 1 FROM schedule s WHERE s.schedule_plan_id = p.id '
             // Déverrouille le cockpit (inv. 8/16) : il faut une PREMIÈRE version
             // COMPLETED — décision fondateur. Un solve en échec ne donne aucun planning ;
@@ -198,7 +200,6 @@ final class SchedulePlanProvisioner
             'name' => (string) $row['name'],
             'chosenScheduleId' => null === $row['chosen_schedule_id'] ? null : (string) $row['chosen_schedule_id'],
             'hasFinishedVersion' => (bool) $row['has_finished'],
-            'currentStructureHash' => $this->currentStructureHash((string) $row['club_id'], $seasonId),
         ];
     }
 
@@ -661,10 +662,9 @@ final class SchedulePlanProvisioner
     }
 
     /**
-     * L'empreinte de la structure COURANTE d'un plan, PAR PLAN — généralisation de
-     * {@see currentStructureHash} (jusqu'ici SEASON seul). C'est le signal « structure
-     * modifiée » : il DOIT valoir exactement le `snapshotHash` qu'une version fraîchement
-     * née pose, sinon il ment en permanence.
+     * L'empreinte de la structure COURANTE d'un plan, PAR PLAN — SEASON comme PÉRIODE. C'est le
+     * signal « structure modifiée » : il DOIT valoir exactement le `snapshotHash` qu'une version
+     * fraîchement née pose, sinon il ment en permanence.
      *  - SEASON  → {@see ScheduleConstraintBuilder::buildForClubSeason}, la MÊME recette que
      *    le rail de génération (qui hache l'entrée du solveur AVANT d'y greffer le placement
      *    précédent, terme de convergence — jamais une donnée de structure) ;
@@ -686,7 +686,11 @@ final class SchedulePlanProvisioner
                 return null;
             }
             if (SchedulePlanType::SEASON === $context['type']) {
-                return $this->currentStructureHash($context['clubId'], $context['seasonId']);
+                // Même recette que le rail de génération : le payload solveur de la saison, haché
+                // AVANT toute greffe de convergence (jamais une donnée de structure).
+                $payload = $this->constraintBuilder->buildForClubSeason($context['clubId'], $context['seasonId']);
+
+                return hash('sha256', json_encode($payload, \JSON_THROW_ON_ERROR));
             }
 
             $entryId = $context['calendarEntryId'];
@@ -754,17 +758,6 @@ final class SchedulePlanProvisioner
             'type' => SchedulePlanType::from((string) $row['type']),
             'calendarEntryId' => null === $row['calendar_entry_id'] ? null : (string) $row['calendar_entry_id'],
         ];
-    }
-
-    private function currentStructureHash(string $clubId, string $seasonId): ?string
-    {
-        try {
-            $payload = $this->constraintBuilder->buildForClubSeason($clubId, $seasonId);
-
-            return hash('sha256', json_encode($payload, \JSON_THROW_ON_ERROR));
-        } catch (Throwable) {
-            return null;
-        }
     }
 
     /**

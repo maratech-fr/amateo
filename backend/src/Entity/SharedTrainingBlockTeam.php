@@ -4,15 +4,13 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
-use App\EventListener\ResourceChangeStaleScheduleListener;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
  * P2-51 — un membre d'un {@see SharedTrainingBlock}. Le lien bloc → équipe, avec
- * club/saison/plan DÉNORMALISÉS : le listener de péremption
- * ({@see ResourceChangeStaleScheduleListener}) et RLS lisent la colonne,
- * jamais une jointure. Écrit une fois, jamais mis à jour (une modification de composition =
- * suppression + recréation des lignes).
+ * club/saison/plan DÉNORMALISÉS : le calcul d'empreinte de structure (entrée du solveur) et RLS
+ * lisent la colonne, jamais une jointure. Écrit une fois, jamais mis à jour (une modification de
+ * composition = suppression + recréation des lignes).
  *
  * ⚠ Multi-appartenance PERMISE (décision 2026-08-31) : une équipe peut figurer dans PLUSIEURS
  * blocs — l'unicité porte sur le couple ``(block_id, team_id)`` (pas de doublon DANS un bloc),

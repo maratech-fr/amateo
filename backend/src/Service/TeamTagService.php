@@ -92,9 +92,9 @@ final class TeamTagService
         // Ce listener est rejoué à chaque écriture de Team (renommage, édition) ET à chaque édition
         // de SportCategory (`TeamTagSyncListener::categoryUpdated`, même quand seule la DURÉE de
         // match change). Un delete+recreate systématique du MÊME ensemble de tags écrivait des
-        // `TeamTagAssignment` pour rien, ce que `ResourceChangeStaleScheduleListener` prenait pour
-        // un vrai changement de ressource → bannière « à régénérer — les données du club ont
-        // changé » à tort. On compare donc l'ensemble d'ids DÉSIRÉ à l'ENSEMBLE existant (par tag,
+        // `TeamTagAssignment` pour rien, ce qui déplaçait l'empreinte de structure du club sans
+        // vrai changement → bannière « à régénérer » à tort. On compare donc l'ensemble d'ids
+        // DÉSIRÉ à l'ENSEMBLE existant (par tag,
         // pas par ligne) : identiques ⇒ aucune écriture, aucun faux marquage.
         //
         // Approche choisie plutôt qu'un filtre de changeset côté listener (« seuls name/ageMin/

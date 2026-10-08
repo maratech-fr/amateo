@@ -267,8 +267,8 @@ final class GenerateScheduleHandler
         // du solveur APRÈS le snapshot (data + hash), jamais avant : le précédent est une
         // préférence de CONVERGENCE, pas une donnée de STRUCTURE. L'inclure dans
         // `snapshotHash` (ou dans `snapshotData`, gardée alignée sur le hash) le ferait
-        // diverger de `currentStructureHash` — recalculé SANS lui par SchedulePlanProvisioner
-        // — à CHAQUE régénération, cassant en silence le garde « structure inchangée »
+        // diverger de l'empreinte de structure (`SchedulePlanProvisioner::structureHashOfPlan`,
+        // recalculée SANS lui) à CHAQUE régénération, cassant en silence le garde « structure inchangée »
         // (bouton Régénérer grisé, signal « structure modifiée » du cockpit). Seul
         // `$scheduleInput`, l'entrée réelle envoyée au moteur, le porte.
         //
@@ -286,7 +286,7 @@ final class GenerateScheduleHandler
             // socle (plan SEASON) sont émis pour que le solveur GARDE le jour+heure de référence des
             // séances comblées (gymnase libre). Comme `previousAssignments` : APRÈS le hash (une
             // préférence de convergence, pas une donnée de structure — sinon `snapshotHash`
-            // divergerait de `currentStructureHash`). Distinct des épingles HARD (`withPinnedAssignments`,
+            // divergerait de l'empreinte de structure). Distinct des épingles HARD (`withPinnedAssignments`,
             // AVANT le hash) : celles-ci FIGENT le déjà-placé, la référence ORIENTE les trous.
             $scheduleInput = $this->constraintBuilder->withSocleReferenceAssignments(
                 $scheduleInput,

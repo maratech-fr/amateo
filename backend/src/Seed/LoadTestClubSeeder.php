@@ -635,8 +635,6 @@ final class LoadTestClubSeeder
             $manager->persist($template);
         }
         $schedule->setManuallyEditedSinceGeneration(false);
-        $schedule->setConstraintsChangedSinceGeneration(false);
-        $schedule->setResourcesChangedSinceGeneration(false);
         $manager->flush();
     }
 

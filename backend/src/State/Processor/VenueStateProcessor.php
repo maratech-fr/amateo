@@ -210,8 +210,8 @@ class VenueStateProcessor extends AbstractStateProcessor
      *     interne — cf. `PublicTextIsFreeOfInternalIdentifiersTest`) ;
      *   - avec confirmation (`VenueInput::confirmSplitCascade`) → cascade atomique déléguée à
      *     `EntityCascadeDeleter` : chaque créneau retombe à 1, perd son libellé, et voit ses
-     *     réservations (+ verrous HARD matérialisés) vidées. Le planning est marqué périmé par le
-     *     seul write du gymnase (ResourceChangeStaleScheduleListener::venueTouched → club+saison).
+     *     réservations (+ verrous HARD matérialisés) vidées. Le planning se dira à régénérer : le
+     *     seul write du gymnase déplace l'empreinte de structure (club+saison).
      */
     private function guardSplitTransition(Venue $venue, bool $confirmed): void
     {
