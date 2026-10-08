@@ -1,4 +1,4 @@
-# Roadmap (37) — ce qui reste à faire
+# Roadmap (36) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -65,12 +65,6 @@
 ---
 
 ## P4 — Dette & polish (avant GA, par lots opportunistes)
-
-### Planning — génération · verrous · périodes · diagnostics
-
-| # | Sujet | Impact | Effort | Note |
-|---|-------|:---:|:---:|---|
-| P4-266 | **Signal « à régénérer » : dérivé de l'empreinte, et muet sur un planning validé** | 🟡 | M | Absorbe l'ex-P4-10. Le bandeau de `PlanningPage` et la pastille cockpit (`StalenessPill`, servie par `SchedulePlanStalenessResolver`) lisent les drapeaux `*SinceGeneration`, posés à CHAQUE écriture (`ResourceChangeStaleScheduleListener`) : un aller-retour au résultat net nul (jours fériés ajoutés puis retirés) laisse « à régénérer » affiché alors que « Régénérer » est grisé (empreinte identique, `regenerateDisabled` de `PlanningPage.tsx`, plan SEASON seulement). En Découverte, une régénération coûte 1 crédit (`CreditBudgetSubscriber`). **Cible (décision fondateur 2026-10-07)** : (1) version de TRAVAIL → signal dérivé de l'empreinte (`snapshotHash` contre le payload recalculé, cf. `SchedulePlanProvisioner::currentStructureHash`), plus de faux positif ; (2) planning VALIDÉ → plus aucun « à régénérer », ni pastille ni bandeau — il est partagé, une donnée qui ne casse rien ne le concerne pas ; (3) plus tard, si le besoin se confirme : sur un validé, nommer seulement les séances réellement cassées (via `/validate-assignments`). À cadrer : plans de période inclus, ou saison seule. **Brique posée (PR 1)** : l'empreinte est désormais dérivable PAR PLAN — `SchedulePlanProvisioner::structureHashOfPlan` (SEASON ou PÉRIODE) servie en lecture par `GET /api/schedule_plans/{id}/structure-hash` (`backend/docs/backend-controllers.md` §Cycle de vie). Le signal affiché (bandeau/pastille/drapeaux `*SinceGeneration`) est INCHANGÉ à ce stade — reste la bascule dessus et les suppressions ci-dessus. |
 
 ### Matchs
 

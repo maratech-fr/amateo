@@ -1,11 +1,11 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-10-06 (reliquat UX de l'audit 2026-10-03, UXC-26). Re-confronté au code : le
-titre de `PlanningToolbar` porte le NOM RÉEL du plan (`displayedPlanName`,
-`frontend/src/features/planning/PlanningPage.tsx:563`), pas un badge générique « Planning
-principal » — doc corrigée en conséquence. Reste non re-sondé
-cette passe : les trois rendus front (`CoachesStep`, `/planning` autonome+en vigueur, pastille
-`SeasonPlanBanner`, § 2 ci-dessous) et le reste du fichier. Historique des passes vit dans git :
+Last verified @ 2026-10-08 (P4-266, `documentation-update`) : §2 recalée — un planning VALIDÉ (en
+vigueur) ne porte plus aucun signal « à régénérer », quelle que soit la cause (plus de pastille
+cockpit, `StalenessPill` supprimé) ; rattacher un coach à une équipe fait désormais diverger
+l'empreinte de structure sur une version de TRAVAIL (revirement sur l'ancien listener ciblé
+P4-268) ; la mention `currentStructureHash` recalée en empreinte PAR PLAN. Reste non re-sondé
+cette passe : le reste du fichier. Historique des passes vit dans git :
 `git log -p --follow specs/courantes/planning-lifecycle-validated.md`.
 
 Le plan de type **SEASON** (`schedule_plan`) et **la version qu'il pointe**
@@ -45,9 +45,12 @@ Ancrages : `AuthGuard.tsx` (onboarding = `!seasonPlan.hasFinishedVersion`), `Coc
 ## 2. Radar « une personne à deux endroits » sur le planning en vigueur (P4-269)
 
 Compléter le modèle après génération (lier un coach adjoint déclaré tard, un joueur actif) ne
-rend plus le planning « à régénérer » (P4-268, `postPersist`/`TeamCoach`/`CoachPlayerMembership`
-non écoutés) — mais peut mettre une personne sur deux séances **déjà placées** qui se
-chevauchent, sans que rien ne le dise. `App\Service\PlacedSessionPersonConflictDetector` ferme
+rend **jamais** le planning « à régénérer » sur une version **EN VIGUEUR** (validée) — P4-266 : un
+planning validé ne porte plus aucun signal, quelle qu'en soit la cause. Sur une version de
+**TRAVAIL**, en revanche, rattacher un coach à une équipe fait désormais diverger l'empreinte de
+structure (P4-266 — revirement assumé sur l'ancien listener ciblé P4-268, qui n'écoutait pas
+`TeamCoach`/`CoachPlayerMembership`). Dans tous les cas, le lien peut mettre une personne sur deux
+séances **déjà placées** qui se chevauchent, sans que rien ne le dise. `App\Service\PlacedSessionPersonConflictDetector` ferme
 cet angle mort : feed **recalculé en lecture seule** à chaque appel (rien n'est persisté), il
 croise les séances placées de la version **pointée** du plan SEASON avec les liens COURANTS —
 coach MAIN, coach ASSISTANT, joueur (`CoachPlayerMembership` actif) — et réutilise, sans le
@@ -142,8 +145,8 @@ une décision fermée (`etat-des-lieux.md` §2) — pas de migration à écrire 
 version de saison n'est créée ni résolue, et la structure du club n'est pas écrasée par une
 photo ancienne » — **pas** « rien ne touche au calendrier de saison ni à ses entrées ». La
 structure du club (équipes, gymnases, coachs, contraintes permanentes) reste modifiable toute
-l'année ; c'est précisément à ça que sert la comparaison `snapshotHash`/`currentStructureHash`,
-pas à la geler.
+l'année ; c'est précisément à ça que sert la comparaison `snapshotHash` ⇄ empreinte de structure
+(`SchedulePlanProvisioner::structureHashOfPlan`, P4-266), pas à la geler.
 
 ### 3.3bis Confirmation de validation (responsabilité gestionnaire)
 Le bouton **« Valider »** ouvre une **modale de confirmation** qui matérialise le choix du gestionnaire :

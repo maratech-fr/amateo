@@ -1,17 +1,17 @@
 # Documentation technique du flux de génération de planning
 
-Last verified @ 2026-10-07 (P4-96 PR-2 — contrat `CONTRACT_VERSION` 1.3 → 1.4 : trois kinds de cause DÉDIÉS (`day_forced`, `session_floor`, `shared_block`) + `causes[]` officialisé sur le diagnostic `conflict` ; forme du payload `/generate` par ailleurs inchangée. Antérieurement @ 2026-10-06 : contrat 1.2 → 1.3 — retrait des champs morts du fil — PII coach email/phone, flags isActive/tags/minSessionsOverride, priorityTiers, kickoffEstimated/roundTripMinutes, ENG-53/RGPD-03/ALIGN-20 ; antérieurement 1.1 → 1.2, vocabulaire `/place-matches`
-resserré en énums fermées, ENG-56). Antérieurement @
-2026-10-02 (P5-28 — `CONTRACT_VERSION` repassé 2.29 → 1.0 pour la v1). Re-confronté contre
-le code : `CONTRACT_VERSION` = `'1.4'` (`ScheduleConstraintBuilder.php:59` ⇄
-`engine/CONTRACT_VERSION`) ✓ ; le TTL du verrou (`GenerateScheduleHandler.php:62`
-`LOCK_TTL_MARGIN_SECONDS = 60`, ligne 117
+Last verified @ 2026-10-08 (P4-266, `documentation-update`) : les deux mentions de
+`currentStructureHash` (§ snapshot/détection de changement) recalées — ce nom de champ a disparu
+avec le retrait de `seasonPlan.currentStructureHash` de `/api/me` ; le garde « structure
+inchangée » lit désormais l'empreinte PAR PLAN servie par `GET /api/schedule_plans/{id}/structure-hash`
+(`SchedulePlanProvisioner::structureHashOfPlan`). Re-confronté au passage : `CONTRACT_VERSION` =
+`'1.4'` (`ScheduleConstraintBuilder::CONTRACT_VERSION` ⇄ `engine/CONTRACT_VERSION`) ✓ ; le TTL du
+verrou (`GenerateScheduleHandler::LOCK_TTL_MARGIN_SECONDS = 60`,
 `acquire(... getTimeoutSeconds() + self::LOCK_TTL_MARGIN_SECONDS)`) ✓ ; `RedeliveredGenerationTest`
-toujours listé bloquant dans `docs/testing/blocking-tests.md` (§3a-bis) ✓ ; le payload Mercure porte
-toujours exactement **5** champs (`ScheduleProgressPublisher.php:40-44` — `scheduleId`, `status`,
-`score`, `unplaced`, `warnings`, §6.2) ✓ ; le schéma de sortie engine
-`Literal["queued", "generating", "completed", "failed"]` (`engine/app/schemas/output_schema.py:152`,
-§4.2/§5.2) ✓. Reste du fichier non re-contrôlé cette passe.
+toujours listé bloquant dans `docs/testing/blocking-tests.md` ✓ ; le payload Mercure porte
+toujours exactement **5** champs (`ScheduleProgressPublisher::publish` — `scheduleId`, `status`,
+`score`, `unplaced`, `warnings`) ✓. Reste du fichier non re-contrôlé cette passe — historique :
+`git log -p --follow` sur ce fichier.
 
 > Amateo — Symfony 7 + API Platform + Messenger Redis + Mercure SSE. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
@@ -157,9 +157,9 @@ Le payload construit **à ce stade** (avant la greffe de convergence ci-dessous)
 **À quoi ça sert ?**
 
 - **Debug** : si un utilisateur dit "la génération d'hier donnait un meilleur résultat", on peut comparer les hash pour voir si les données d'entrée ont changé (nouvelle équipe, nouvelle contrainte, nouvel entraîneur).
-- **Détection de changement** : c'est ce hash, recomparé à `currentStructureHash` (recalculé à la volée par `SchedulePlanProvisioner`), qui alimente le garde « structure inchangée » (bouton Régénérer grisé, signal du cockpit) — pas une optimisation future, un mécanisme déjà en place.
+- **Détection de changement** : c'est ce hash, recomparé à l'empreinte de structure PAR PLAN (`SchedulePlanProvisioner::structureHashOfPlan`, servie par `GET /api/schedule_plans/{id}/structure-hash`), qui alimente le garde « structure inchangée » (bouton Régénérer grisé, bandeau « à régénérer » de `/planning` — P4-266) — pas une optimisation future, un mécanisme déjà en place.
 
-⚠ **`snapshotData` seul n'est PAS ce qui a été envoyé au moteur.** Après le hash, le handler greffe `previousAssignments` (régénération) ou `socleReferenceAssignments` (comblement) — une préférence de CONVERGENCE, volontairement tenue HORS du hash pour ne jamais le faire diverger de `currentStructureHash`. Cette greffe est persistée à part (`Schedule.payloadGraft`, colonne `payload_graft`, extraite par différence de clés entre le payload post-greffe et `snapshotData`) : `Schedule::engineInput()` = `snapshotData` + `payloadGraft` est la **seule** reconstitution fidèle de l'entrée RÉELLE du solve — c'est elle que consomme `FeedbackController` pour un signalement, jamais `snapshotData` seul. Un planning `COMPLETED` généré avant cette colonne a `payload_graft` à `NULL` : le passé n'est pas reconstitué a posteriori (la greffe part de la dernière version `COMPLETED` du plan, qui devient CE planning une fois terminé — la rejouer le grefferait sur lui-même).
+⚠ **`snapshotData` seul n'est PAS ce qui a été envoyé au moteur.** Après le hash, le handler greffe `previousAssignments` (régénération) ou `socleReferenceAssignments` (comblement) — une préférence de CONVERGENCE, volontairement tenue HORS du hash pour ne jamais le faire diverger de l'empreinte de structure (`structureHashOfPlan`). Cette greffe est persistée à part (`Schedule.payloadGraft`, colonne `payload_graft`, extraite par différence de clés entre le payload post-greffe et `snapshotData`) : `Schedule::engineInput()` = `snapshotData` + `payloadGraft` est la **seule** reconstitution fidèle de l'entrée RÉELLE du solve — c'est elle que consomme `FeedbackController` pour un signalement, jamais `snapshotData` seul. Un planning `COMPLETED` généré avant cette colonne a `payload_graft` à `NULL` : le passé n'est pas reconstitué a posteriori (la greffe part de la dernière version `COMPLETED` du plan, qui devient CE planning une fois terminé — la rejouer le grefferait sur lui-même).
 
 ---
 

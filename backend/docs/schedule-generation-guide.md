@@ -1,6 +1,14 @@
 # Guide de génération de planning — Amateo
 
-Last verified @ 2026-10-06 (contrat moteur 1.2 → 1.3 — retrait des champs morts du fil : PII coach email/phone, flags isActive/tags/minSessionsOverride, priorityTiers, kickoffEstimated/roundTripMinutes, aucun lu par le solveur, ENG-53/RGPD-03/ALIGN-20 ; forme consommée du payload `/generate` inchangée. Même passe DOC — AUD-DOC-51 : étiquette « contrat 2.11 » historique retirée du corps). Antérieurement @ 2026-10-05 (contrat moteur 1.1 → 1.2 — vocabulaire `/place-matches` resserré en énums fermées, ENG-56). Re-confronté contre le code : le cycle des 5 statuts (§5, `App\Enum\ScheduleStatus` : DRAFT/PENDING/GENERATING/COMPLETED/FAILED) ✓ ; le budget solveur par défaut 650 s (§6, `ScheduleConstraintBuilder.php:70` `DEFAULT_SOLVER_TIMEOUT_SECONDS`) ✓ ; `CONTRACT_VERSION` = `1.4` (`ScheduleConstraintBuilder.php:59` ⇄ `engine/CONTRACT_VERSION`, bumpé 1.3 → 1.4 par P4-96 : kinds de cause dédiés `day_forced`/`session_floor`/`shared_block` + `causes[]` sur le diagnostic `conflict`) ✓. Reste du fichier non re-contrôlé cette passe.
+Last verified @ 2026-10-08 (P4-266, `documentation-update`) : les deux mentions de
+`currentStructureHash` (§ péremption/grisage « Régénérer ») recalées — ce nom de champ a disparu
+avec le retrait de `seasonPlan.currentStructureHash` de `/api/me` ; le grisage/bandeau lisent
+désormais l'empreinte PAR PLAN servie par `GET /api/schedule_plans/{id}/structure-hash`
+(`SchedulePlanProvisioner::structureHashOfPlan`). Re-confrontés au passage : le cycle des 5 statuts
+(§5, `App\Enum\ScheduleStatus`) ✓ ; le budget solveur par défaut 650 s
+(`ScheduleConstraintBuilder::DEFAULT_SOLVER_TIMEOUT_SECONDS`) ✓ ; `CONTRACT_VERSION` = `1.4`
+(`ScheduleConstraintBuilder::CONTRACT_VERSION` ⇄ `engine/CONTRACT_VERSION`) ✓. Reste du fichier
+non re-contrôlé cette passe — historique : `git log -p --follow` sur ce fichier.
 
 > Ce guide explique, étape par étape, comment générer un planning de matchs pour un club de basket dans le backend Amateo. Il s'adresse aux développeurs juniors qui découvrent le projet.
 
@@ -657,13 +665,13 @@ avec en plus une **proximité** de poids 9 dans le placement lui-même : une rè
 prime, le confort interne cède, ADR-0001) —
 **après** avoir figé `snapshotData`/`snapshotHash`, jamais avant :
 
-1. Le payload est construit et **caché** par club+saison (`ScheduleConstraintBuilder::buildForClubSeason`/`buildForPeriodPlan`) et son hash (`snapshotHash`, comparé à `currentStructureHash` pour griser « Régénérer ») est calculé.
+1. Le payload est construit et **caché** par club+saison (`ScheduleConstraintBuilder::buildForClubSeason`/`buildForPeriodPlan`) et son hash (`snapshotHash`, comparé à l'empreinte de structure servie par `GET /api/schedule_plans/{id}/structure-hash` pour griser « Régénérer » et afficher le bandeau « à régénérer » — P4-266) est calculé.
 2. **Ensuite seulement**, `GenerateScheduleHandler::resolvePreviousAssignmentSlots()` retrouve la source : la version explicitement **regardée** (`GenerateScheduleMessage::sourceScheduleId`, posé par `RegenerateController` — « Régénérer » depuis une version précise) sinon la dernière version `COMPLETED` du **même** plan (`/generate` initial, qui ne connaît pas de source), sinon rien (première génération). La source est toujours de la même lignée que `schedule.schedulePlanId` (ADR-0002 — jamais le socle sous un overlay).
 3. `ScheduleConstraintBuilder::withPreviousAssignments()` sérialise les créneaux de la source (`{teamId, venueId, dayOfWeek, startTime}`, HARD compris — un créneau HARD n'a pas de variable côté solveur, le terme de stabilité le saute sans double paiement) et les ajoute au payload **déjà construit**, sans toucher `snapshotData`/`snapshotHash`.
 
 Pourquoi cet ordre est **la seule option correcte** : le précédent est une préférence de
 **convergence**, pas une donnée de **structure**. L'inclure dans `snapshotHash` (recalculé par
-`SchedulePlanProvisioner` comme `currentStructureHash` — SANS le précédent) le ferait diverger à
+`SchedulePlanProvisioner::structureHashOfPlan` — SANS le précédent) le ferait diverger à
 chaque régénération, dé-grisant le bouton « Régénérer » en permanence et affichant une fausse
 « structure modifiée ». Une liste de placements source vide n'ajoute pas la clé au payload
 (chemin byte-identique à l'historique).

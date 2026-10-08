@@ -1,8 +1,8 @@
 # Modules produit — ce qu'Amateo vend, en langage club
 
-Last verified @ 2026-10-08 (stamp recalé après #1125 qui a déplacé une référence
-`specs/evolution/ffbb-appariement-source-de-verite.md` → `docs/archive/…` sans bumper ; aucun autre
-changement de contenu. Base P4-312 PR B, `documentation-update`). Re-confronté au code : la
+Last verified @ 2026-10-08 (P4-266, `documentation-update`) : la ligne « à régénérer » (§ plan de
+période) recalée — ce n'est plus « le plan qui se dit lui-même », mais `/planning` qui l'affiche,
+sur une version de TRAVAIL seulement (muet sur un planning validé). Re-confronté au code : la
 doléance coach porte désormais un champ `wishedDays` informatif, symétrique de
 `unavailableDays`, sans effet solveur (`backend/src/Entity/CoachWish.php`,
 `backend/src/Controller/PublicCoachWishController.php`) ; un jour ne peut jamais être à la fois
@@ -76,8 +76,8 @@ reconstruire le planning de la saison.
   reproposé au solveur) — `etat-des-lieux.md` §1.2.
 - Les écarts avec le planning de saison sont nommés (séance déplacée, séance non replacée et
   pourquoi) — `etat-des-lieux.md` §1.2.
-- Le plan dit lui-même « à régénérer » dès que la saison a bougé depuis — `etat-des-lieux.md` §1.2
-  (P4-173).
+- `/planning` dit « à régénérer » dès que la structure a bougé depuis, sur une version de
+  TRAVAIL seulement — muet sur un planning validé — `etat-des-lieux.md` §1.2/§2 (P4-266).
 
 **Où dans l'app :** cockpit `/`, dialogue du jour, écran du plan de période.
 
