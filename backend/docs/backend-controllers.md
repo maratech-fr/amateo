@@ -2,7 +2,7 @@
 
 > Inventaire des contrôleurs Symfony custom (hors module démo) : OpenAPI des routes custom, authentification, génération & cycle de vie du planning, groupes, membres, contraintes, radar de conflits, calendriers, géo, exports, édition manuelle, import, module matchs, transition de saison, health check. Découpé mécaniquement de `backend-inventory.md` (DOC-59) ; le module démo et l'horloge simulée vivent dans `backend-demo.md`.
 
-Last verified @ 2026-10-08 (lot D1, gabarit d'e-mail commun) : §Identité du club gagne `/api/club/short-name` (`ClubShortNameController`, confronté au code — validation, PATCH dédié, gate management). Reste du fichier non re-confronté cette passe : P4-295 C1 (les deux citations engine `result_builder/diagnostics.py`), P4-266 (`/api/me`/`GET /api/schedule_plans/{id}/structure-hash`), P4-128 n°1 (§Réservation groupée) — historique des vérifications précédentes : `git log -p --follow`.
+Last verified @ 2026-10-09 (lot D1, PR 2) : nouvelle § « Aperçu de l'e-mail coach », confrontée au code (`CoachWishEmailPreviewController`, route `#[Route]` classique déclarée dans le contributeur OpenAPI `CoachWishPaths`). Drift sweep : la liste des domaines de §OpenAPI (ci-dessous) ne nommait pas ce domaine (doléances coachs) — corrigée. Reste du fichier non re-confronté cette passe : P4-295 C1 (les deux citations engine `result_builder/diagnostics.py`), P4-266 (`/api/me`/`GET /api/schedule_plans/{id}/structure-hash`), P4-128 n°1 (§Réservation groupée) — historique des vérifications précédentes : `git log -p --follow`.
 
 ## 3. Custom Controllers
 
@@ -26,8 +26,8 @@ est éclatée **par domaine** :
   (implémente `CustomPathContributor::contribute()`) : session/compte, admin (auth,
   supervision, jobs, support, journal, modération), FFBB (proxy, engagement), vacances/fériés,
   édition manuelle, trajet adverse, pages publiques à token, notes de version/feedback,
-  saison/matchs, et un fourre-tout `UncoveredCustomPaths` pour ce qui n'a pas encore de domaine
-  nommé.
+  saison/matchs, doléances coachs (`CoachWishPaths`), et un fourre-tout `UncoveredCustomPaths`
+  pour ce qui n'a pas encore de domaine nommé.
 - `OpenApiSchemas` est le **foyer unique** de `jsonBody()`/`jsonResponse()`, injecté dans chaque
   contributeur — aucun helper dupliqué. Trois helpers ne servent qu'**un seul** domaine
   (`coachWishSchema` dans `PublicTokenPaths`, `paginationSchema` dans `AdminJournalPaths`,
@@ -376,6 +376,12 @@ Champs `Club` : `accentColor` (hex), `accentPalette` (json ≤3 hex), `logoUrl`,
 | `/api/club/logo` | POST · DELETE | `ClubLogoController` | Upload (multipart `file`, raster PNG/JPEG/WebP ≤ 500 Ko) / suppression du logo du club courant. Octets stockés via l'abstraction `App\Storage\LogoStorage` (`LocalLogoStorage` en dev ; alias `services.yaml` swappable pour du stockage objet en prod). |
 | `/api/clubs/{clubId}/logo` | GET | `ClubLogoController` | Sert le logo (public, stream + mime via finfo). |
 | `/api/club/short-name` | PATCH | `ClubShortNameController` | Pose le nom COURT du club (D1, libellé affiché dans les e-mails aux coachs — `Club::emailLabel()`, nom court sinon nom long). PATCH dédié (pas un champ du PUT club générique : le nom court ne peut donc jamais y être écrasé en silence). 1-20 caractères (lettres Unicode, chiffres, espaces, `& . - '`), trim ; chaîne vide ou `null` RETIRE le nom court (repli sur le nom long). Normalisation (trim, vide → null) dans `Club::setShortName()`, foyer unique. Gate management (SEC-07). |
+
+### Aperçu de l'e-mail coach (D1)
+
+| Route | Méthode | Contrôleur | Description |
+|-------|---------|-----------|-------------|
+| `/api/coach_wish_campaigns/{id}/email-preview` | GET | `CoachWishEmailPreviewController` | Rend l'e-mail du lien coach **EXACT** que l'envoi initial produirait — construit via `CoachWishMailBuilder::buildCoachLink` avec un jeton FACTICE constant (jamais lu en base) et un prénom de coach d'exemple. Gate management (SEC-07) ; 404 byte-identique si la campagne est inconnue ou d'un autre club (RLS + filet explicite, jamais 403). Logos servis en `data:` URI (le `cid:` du mail réel ne résout pas dans l'iframe d'aperçu) ; réponse `{subject, from, html}`. Route Symfony classique, hors API Platform — déclarée dans le contributeur OpenAPI `CoachWishPaths` (§OpenAPI ci-dessus). Détail du gabarit/bouton CTA/expéditeur personnalisé : `specs/courantes/identite-visuelle-produit.md` § « Lien coach habillé ». |
 
 ### Module matchs (palier A — FFBB)
 

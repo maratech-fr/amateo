@@ -1,10 +1,15 @@
 # Console superadmin — authentification, télémétrie et API de supervision
 
-Last verified @ 2026-10-05 (`documentation-update`, lot backend « robustesse » — BCK-35). §
-« Démos — console de pilotage » : `POST /demos/bccl/reset` confronté au rail ASYNCHRONE
-(`DemoResetTracker::begin/finish`, `ResetDemoBcclMessage`/`ResetDemoBcclHandler`, 202/409) et
-`GET /demos` à l'état `reset` exposé. Reste du fichier non re-confronté cette passe ; historique
-des vérifications précédentes : `git log -p --follow specs/courantes/superadmin-auth.md`.
+Last verified @ 2026-10-09 (`documentation-update`, rotation de fraîcheur — sujet de la PR sans
+rapport, lot D1 « lien coach + aperçu »). Re-confronté au code : § « Actions de support SA4 v1 »
+citait une action `reset-generation-quota` qui N'EXISTE PLUS dans `AdminActionCatalog::all()`
+(`backend/src/AdminJob/AdminActionCatalog.php`) — retirée silencieusement par #536 (« deux morts
+qui faisaient semblant de vivre ») sans que ce fichier soit recalé ; corrigée (la liste réelle
+est `ffbb-resync`/`mark-next-season-paid`/`set-plan`/`reset-credits`/`reset-current-season`/
+`purge-old-seasons`). Confirmé par ailleurs : `AdminCsrfListener` toujours priorité 6
+(`AdminCsrfListener.php:38`), `demo-purge-stale` toujours à 03:15 et `health-alerts` toujours
+toutes les 10 minutes (`AdminJobCatalog.php`). Reste du fichier non re-confronté cette passe ;
+historique des vérifications précédentes : `git log -p --follow specs/courantes/superadmin-auth.md`.
 
 > **État courant** : SA0, SA1, la console read-only SA2, le socle
 > d'historisation SA3-A, la supervision SA3-B, la planification fiable SA3-C et
@@ -280,8 +285,7 @@ libellé, description, un drapeau `dangerous` qui pilote la confirmation côté 
 un `required`, une **enum fermée de `choices` `{value,label}`** et, pour un argument
 conditionnel, un `gate {argument, forbiddenValues}`. La console rend ses pickers DEPUIS ce
 schéma, jamais d'une liste en dur.
-Les actions livrées sont `reset-generation-quota` (remise à zéro du compteur de
-générations de la saison, non destructive), `ffbb-resync` (P2-18, 2026-08-04 : ré-importe
+Les actions livrées sont `ffbb-resync` (P2-18, 2026-08-04 : ré-importe
 l'identité FFBB du club — nom, coordonnées, logo, comité/ligue — le même `FfbbClubPopulator`
 en mode refresh que le bouton de la fiche club ; échec FRANC si l'organisme est introuvable,
 jamais un succès silencieux), `mark-next-season-paid` (P1-5, 2026-08-04 :

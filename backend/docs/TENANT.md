@@ -1,6 +1,6 @@
 # Amateo — Tenant Isolation Architecture
 
-Last verified @ 2026-10-06 (rotation de fraîcheur `documentation-update`, sujet sans rapport avec le reliquat DOC — numéros de ligne recalés après dérive). Re-confronté au code : priorité 7 toujours en place (`TenantFilterListener.php:56`, `KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · le skip `/api/admin` toujours en `str_starts_with` sur le path (`TenantFilterListener.php:79`) ✓ · `App\Service\TenantConnectionContext::setClubId` pose toujours `set_config('app.club_id', ?, false)` (`TenantConnectionContext.php:28-31`) ✓ · `App\State\Processor\AbstractStateProcessor::requiresManagementRole()` retourne toujours `true` par défaut (`AbstractStateProcessor.php:130`) ✓ · `UserResource` n'a plus que `Get`.
+Last verified @ 2026-10-09 (rotation de fraîcheur `documentation-update`, sujet sans rapport — lot D1 PR 2, lien coach + aperçu). Re-confronté au code : priorité 7 toujours en place (`TenantFilterListener.php:56`, `KernelEvents::REQUEST => ['onKernelRequest', 7]`) ✓ · le skip `/api/admin` toujours en `str_starts_with` sur le path (`TenantFilterListener.php:79`) ✓ · `App\Service\TenantConnectionContext::setClubId` pose toujours `set_config('app.club_id', ?, false)` (`TenantConnectionContext.php:28-31`) ✓ · `App\State\Processor\AbstractStateProcessor::requiresManagementRole()` retourne toujours `true` par défaut (`AbstractStateProcessor.php:130`) ✓ · `UserResource` n'a plus que `Get` (`backend/src/ApiResource/UserResource.php:22`) ✓. Rien de faux trouvé cette passe.
 
 ## Overview
 
