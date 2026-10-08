@@ -45,6 +45,8 @@ final class CoachWishCampaignActionsTest extends WebTestCase
 
     private Season $season;
 
+    private User $manager;
+
     private string $jwt;
 
     private CalendarEntry $mother;
@@ -84,6 +86,23 @@ final class CoachWishCampaignActionsTest extends WebTestCase
         $this->client->request('POST', '/api/coach_wish_campaigns/' . $this->campaign->getId() . '/send-links', [], [], $this->headers(), '{}');
         $body = json_decode((string) $this->client->getResponse()->getContent(), true);
         self::assertSame(0, $body['sent'], 'un coach déjà servi n\'est pas re-servi par le bouton global');
+    }
+
+    public function testSendLinksBodyAndSenderCarryTheTriggeringManagerIdentity(): void
+    {
+        // Formule A (D1) : le corps ET l'expéditeur portent le prénom du gestionnaire qui
+        // déclenche l'envoi + le libellé du club (ici le nom long, pas de nom court).
+        $this->client->enableProfiler();
+        $this->client->request('POST', '/api/coach_wish_campaigns/' . $this->campaign->getId() . '/send-links', [], [], $this->headers(), '{}');
+        self::assertResponseIsSuccessful();
+
+        $email = self::getMailerMessage();
+        self::assertNotNull($email);
+        self::assertEmailTextBodyContains($email, 'Gérald (' . $this->club->emailLabel() . ') prépare le planning de « Toussaint »');
+
+        $from = $email->getFrom();
+        self::assertCount(1, $from);
+        self::assertSame('Gérald (' . $this->club->emailLabel() . ') via Amateo', $from[0]->getName(), 'expéditeur « Prénom (libellé) via produit »');
     }
 
     public function testSendLinksTargetedResendsToTheListedCoach(): void
@@ -153,10 +172,11 @@ final class CoachWishCampaignActionsTest extends WebTestCase
 
         $this->club = (new Club)->setName('CWA ' . $uid)->setSlug('cwa-' . $uid)->setTimezone('Europe/Paris')->setLocale('fr')->setOnboardingCompleted(true);
         $this->em->persist($this->club);
-        $user = (new User)->setEmail('cwa' . $uid . '@test.com')->setFirstName('C')->setLastName('A');
+        $user = (new User)->setEmail('cwa' . $uid . '@test.com')->setFirstName('Gérald')->setLastName('A');
         $user->setPasswordHash($hasher->hashPassword($user, 'Password123!'));
         $this->em->persist($user);
         $this->em->flush();
+        $this->manager = $user;
 
         $this->scopeGucToClub($this->club->getId());
         $this->em->persist((new ClubUser)->setClubId($this->club->getId())->setUserId($user->getId())->setRole('admin')->setIsActive(true));

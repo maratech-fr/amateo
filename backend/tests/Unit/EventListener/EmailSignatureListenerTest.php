@@ -99,6 +99,24 @@ final class EmailSignatureListenerTest extends TestCase
         self::assertSame('image/png', $clubLogo->getContentType());
     }
 
+    public function testRendersTheCtaButtonFromHeadersAndStripsThemAtWorker(): void
+    {
+        $email = $this->emailWithText('Corps.');
+        $email->getHeaders()->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, 'https://app.amateo.test/doleances/abc');
+        $email->getHeaders()->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, 'Donner mes disponibilités');
+
+        // Enfilage : le renderer pose le bouton dans le HTML à partir des en-têtes.
+        $this->listener()->onMessage($this->enqueueEvent($email));
+        $html = (string) $email->getHtmlBody();
+        self::assertStringContainsString('Donner mes disponibilités', $html);
+        self::assertStringContainsString('href="https://app.amateo.test/doleances/abc"', $html);
+
+        // Worker : les en-têtes CTA (comme tous les X-Amateo-*) sont retirés avant SMTP.
+        $this->listener()->onMessage($this->workerEvent($email));
+        self::assertFalse($email->getHeaders()->has(EmailTemplateRenderer::CTA_URL_HEADER));
+        self::assertFalse($email->getHeaders()->has(EmailTemplateRenderer::CTA_LABEL_HEADER));
+    }
+
     public function testInternalHeadersAreStrippedAtWorkerPhase(): void
     {
         $email = $this->emailWithText('Corps.');

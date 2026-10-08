@@ -92,6 +92,78 @@ final class EmailTemplateRendererTest extends TestCase
         }
     }
 
+    public function testCtaButtonEscapesLabelAndUrl(): void
+    {
+        $html = $this->renderer()->render(
+            'Corps.',
+            self::PRODUCT,
+            self::TAGLINE,
+            self::SITE,
+            null,
+            false,
+            'https://app.amateo.test/doleances/abc?x="><script>',
+            'Donner "mes" <dispos>',
+        );
+
+        // Le bouton est rendu, avec un href http(s).
+        self::assertStringContainsString('<a href="https://app.amateo.test/doleances/abc', $html);
+        // Label ET URL échappés : aucune balise/guillemet actif ne survit.
+        self::assertStringNotContainsString('<script>', $html);
+        self::assertStringContainsString('&lt;dispos&gt;', $html);
+        self::assertStringContainsString('&quot;mes&quot;', $html);
+        self::assertStringContainsString('&quot;&gt;&lt;script&gt;', $html);
+    }
+
+    public function testCtaButtonRefusesNonHttpUrl(): void
+    {
+        $html = $this->renderer()->render(
+            'Corps.',
+            self::PRODUCT,
+            self::TAGLINE,
+            self::SITE,
+            null,
+            false,
+            'javascript:alert(1)',
+            'Cliquez',
+        );
+
+        // Une URL non http(s) ne produit AUCUN lien cliquable.
+        self::assertStringNotContainsString('javascript:', $html);
+        self::assertStringNotContainsString('<a href="javascript', $html);
+        // Pas de bouton du tout : le libellé n'est pas rendu.
+        self::assertStringNotContainsString('Cliquez', $html);
+    }
+
+    public function testNoCtaButtonWhenAbsent(): void
+    {
+        $html = $this->renderer()->render('Corps.', self::PRODUCT, self::TAGLINE, self::SITE, null, false);
+
+        // Sans en-tête CTA, aucun bouton (le lien nu reste dans la partie TEXTE, hors renderer).
+        self::assertStringNotContainsString('Donner mes disponibilités', $html);
+    }
+
+    public function testImageSourcesCanBeDataUrisForPreview(): void
+    {
+        // L'aperçu rend les logos en data: URI (les cid: ne résolvent pas en iframe).
+        $html = $this->renderer()->render(
+            'Corps.',
+            self::PRODUCT,
+            self::TAGLINE,
+            self::SITE,
+            'BC Lyon',
+            true,
+            null,
+            null,
+            'data:image/png;base64,UFJPRA==',
+            'data:image/png;base64,Q0xVQg==',
+        );
+
+        self::assertStringContainsString('src="data:image/png;base64,UFJPRA=="', $html);
+        self::assertStringContainsString('src="data:image/png;base64,Q0xVQg=="', $html);
+        // Aucun cid: résiduel quand les sources sont fournies.
+        self::assertStringNotContainsString('cid:', $html);
+    }
+
     private function renderer(): EmailTemplateRenderer
     {
         return new EmailTemplateRenderer;

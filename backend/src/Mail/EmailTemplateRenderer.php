@@ -39,12 +39,28 @@ final readonly class EmailTemplateRenderer
     public const string CLUB_LOGO_CID = 'club-email-logo';
 
     /**
+     * En-têtes INTERNES portant le bouton d'action du HTML (D1), posés à la source par le
+     * builder (patron {@see App\Mail\ClubMailMetadata}) et lus au worker par
+     * {@see App\EventListener\EmailSignatureListener}, qui les retire avant le SMTP (préfixe
+     * `X-Amateo-`). L'URL est validée `https?://` et échappée AU RENDU ({@see ctaButton}).
+     */
+    public const string CTA_URL_HEADER = 'X-Amateo-Cta-Url';
+
+    public const string CTA_LABEL_HEADER = 'X-Amateo-Cta-Label';
+
+    /**
      * Part de BLANC dans le mélange qui éclaircit chaque teinte du mark (0 = teinte pure, 1 =
      * blanc). 0.85 garde un fond pâle, lisible sous du texte sombre, qui laisse deviner la couleur
      * de marque. Le ratio est ici, nommé : le changer re-dérive le fond.
      */
     public const float WHITE_MIX_RATIO = 0.85;
 
+    /**
+     * `$ctaUrl`/`$ctaLabel` : bouton d'action optionnel (lien coach D1). `$productLogoSrc`/
+     * `$clubLogoSrc` : la SOURCE des images — `cid:` pour le mail réel (défaut), un `data:` URI
+     * pour un aperçu rendu en iframe (les `cid:` n'y résolvent pas). Le MÊME renderer sert les
+     * deux, seule la source des images change.
+     */
     public function render(
         string $bodyText,
         string $productName,
@@ -52,20 +68,28 @@ final readonly class EmailTemplateRenderer
         string $productSiteUrl,
         ?string $clubLabel,
         bool $hasClubLogo,
+        ?string $ctaUrl = null,
+        ?string $ctaLabel = null,
+        ?string $productLogoSrc = null,
+        ?string $clubLogoSrc = null,
     ): string {
         $flags = \ENT_QUOTES | \ENT_SUBSTITUTE;
+
+        $productLogoSrc ??= 'cid:' . self::PRODUCT_LOGO_CID;
+        $clubLogoSrc ??= 'cid:' . self::CLUB_LOGO_CID;
 
         $bodyHtml = nl2br(htmlspecialchars($bodyText, $flags, 'UTF-8'));
         $nameHtml = htmlspecialchars($productName, $flags, 'UTF-8');
         $taglineHtml = htmlspecialchars($productTagline, $flags, 'UTF-8');
         $hrefHtml = htmlspecialchars($productSiteUrl, $flags, 'UTF-8');
+        $productLogoSrcHtml = htmlspecialchars($productLogoSrc, $flags, 'UTF-8');
         // Libellé du lien = domaine nu de la vitrine (cf. maquette), pas l'URL entière.
         $label = parse_url($productSiteUrl, \PHP_URL_HOST) ?: $productSiteUrl;
         $labelHtml = htmlspecialchars($label, $flags, 'UTF-8');
 
-        $productCid = self::PRODUCT_LOGO_CID;
         [$pageBackground, $pageGradient] = $this->derivedBackground();
-        $clubHeaderHtml = $this->clubHeader($clubLabel, $hasClubLogo, $flags);
+        $clubHeaderHtml = $this->clubHeader($clubLabel, $hasClubLogo, $clubLogoSrc, $flags);
+        $ctaHtml = $this->ctaButton($ctaUrl, $ctaLabel, $flags);
 
         return <<<HTML
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{$pageBackground};background-image:{$pageGradient};margin:0;padding:24px 16px;">
@@ -74,9 +98,10 @@ final readonly class EmailTemplateRenderer
             <tr><td style="padding:28px 32px;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;color:#1a1a1a;">
             {$clubHeaderHtml}
             <div style="color:#1a1a1a;">{$bodyHtml}</div>
+            {$ctaHtml}
             <hr style="border:none;border-top:1px solid #e5e5e5;margin:24px 0 16px;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-            <td style="vertical-align:middle;padding-right:12px;"><img src="cid:{$productCid}" width="40" height="40" alt="{$nameHtml}" style="display:block;width:40px;height:40px;border-radius:50%;"></td>
+            <td style="vertical-align:middle;padding-right:12px;"><img src="{$productLogoSrcHtml}" width="40" height="40" alt="{$nameHtml}" style="display:block;width:40px;height:40px;border-radius:50%;"></td>
             <td style="vertical-align:middle;">
             <div style="font-weight:700;color:#1a1a1a;">{$nameHtml}</div>
             <div style="color:#6b7280;">{$taglineHtml}</div>
@@ -94,18 +119,18 @@ final readonly class EmailTemplateRenderer
      * L'en-tête de carte du club : logo (CID) + nom, ou nom seul en texte stylé, ou rien. Un
      * e-mail SANS club (libellé null) n'a pas d'en-tête club du tout.
      */
-    private function clubHeader(?string $clubLabel, bool $hasClubLogo, int $flags): string
+    private function clubHeader(?string $clubLabel, bool $hasClubLogo, string $clubLogoSrc, int $flags): string
     {
         if (null === $clubLabel) {
             return '';
         }
 
         $labelHtml = htmlspecialchars($clubLabel, $flags, 'UTF-8');
-        $logoCid = self::CLUB_LOGO_CID;
+        $logoSrcHtml = htmlspecialchars($clubLogoSrc, $flags, 'UTF-8');
 
         $logoCell = $hasClubLogo
             ? <<<HTML
-                <td style="vertical-align:middle;padding-right:12px;"><img src="cid:{$logoCid}" width="48" height="48" alt="{$labelHtml}" style="display:block;width:48px;height:48px;border-radius:8px;object-fit:contain;"></td>
+                <td style="vertical-align:middle;padding-right:12px;"><img src="{$logoSrcHtml}" width="48" height="48" alt="{$labelHtml}" style="display:block;width:48px;height:48px;border-radius:8px;object-fit:contain;"></td>
                 HTML
             : '';
 
@@ -113,6 +138,34 @@ final readonly class EmailTemplateRenderer
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px;"><tr>
             {$logoCell}
             <td style="vertical-align:middle;"><div style="font-weight:700;font-size:18px;color:#1a1a1a;">{$labelHtml}</div></td>
+            </tr></table>
+            HTML;
+    }
+
+    /**
+     * Le bouton d'action (table + styles inline, survit à Outlook/Gmail), ou '' si pas de CTA.
+     *
+     * Durcissement : l'`href` n'est rendu QUE s'il est `http(s)` — un `javascript:`/`data:`/`vbscript:`
+     * n'ouvre jamais de lien cliquable. Label ET URL sont échappés ({@see htmlspecialchars},
+     * `ENT_QUOTES`) : ce sont des données non fiables (jeton, libellé posés à la source).
+     */
+    private function ctaButton(?string $ctaUrl, ?string $ctaLabel, int $flags): string
+    {
+        if (null === $ctaUrl || '' === $ctaUrl || null === $ctaLabel || '' === $ctaLabel) {
+            return '';
+        }
+        if (1 !== preg_match('~^https?://~i', $ctaUrl)) {
+            return '';
+        }
+
+        $hrefHtml = htmlspecialchars($ctaUrl, $flags, 'UTF-8');
+        $labelHtml = htmlspecialchars($ctaLabel, $flags, 'UTF-8');
+
+        return <<<HTML
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0 4px;"><tr>
+            <td style="border-radius:8px;background-color:#1a1a1a;">
+            <a href="{$hrefHtml}" style="display:inline-block;padding:12px 24px;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">{$labelHtml}</a>
+            </td>
             </tr></table>
             HTML;
     }
