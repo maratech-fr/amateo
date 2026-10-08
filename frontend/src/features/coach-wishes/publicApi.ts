@@ -25,6 +25,9 @@ export interface PublicWish {
 export interface PublicWishContext {
   coachFirstName: string;
   periodTitle: string;
+  /** Bornes de la période mère (Y-m-d). `null` si l'entrée de calendrier a disparu. */
+  periodStart: string | null;
+  periodEnd: string | null;
   /** Y-m-d. */
   deadline: string;
   /** Lundis Y-m-d retenus. */
