@@ -1,11 +1,11 @@
 # Identité visuelle produit — la base est le produit, l'accent est le club
 
-Last verified @ 2026-10-08 (lot D1, gabarit d'e-mail commun). Re-confronté au code : le volet
+Last verified @ 2026-10-09 (lot D1, gabarit d'e-mail commun ; fond de carte recalibré à 85 %). Re-confronté au code : le volet
 e-mails (§ Ce qui reste à venir) est refondu — `App\Mail\EmailTemplateRenderer` (carte ~600 px +
 fond dérivé des trois teintes du mark, en-tête club conditionnel) et `App\Mail\ClubMailMetadata`
 (identité du club posée par les 7 builders à club connu) remplacent la signature texte échappé +
-`nl2br` d'origine ; les valeurs de fond dérivées (`#FBF1F8`/`#FCF7F0`/`#F4FAFA`/`#F9F6F6`)
-recalculées depuis `BrandAssets::MARK_TINTS` et `EmailTemplateRenderer::WHITE_MIX_RATIO` (0.94).
+`nl2br` d'origine ; les valeurs de fond dérivées (`#F4DDED`/`#F9EBD9`/`#E3F3F3`/`#F0E9E8`)
+recalculées depuis `BrandAssets::MARK_TINTS` et `EmailTemplateRenderer::WHITE_MIX_RATIO` (0.85).
 Reste du fichier non re-vérifié cette passe : le balisage JSON-LD de la vitrine (2026-10-06), le
 logo signature des pages système (P4-302, 2026-10-05), le volet PDF/OG image/doléances (P5-24,
 2026-09-29 — inchangé), les jetons `--surface-*` (P4-265, 2026-09-27),
@@ -258,9 +258,9 @@ FIGÉ**.
   « -- \nAmateo\n<accroche>\n<URL vitrine> », inchangée ; partie HTML = une carte blanche ~600 px
   centrée (`<table>` + styles inline, pensée pour les clients les plus rétifs) posée sur un FOND
   DÉRIVÉ des trois teintes du mark (`BrandAssets::MARK_TINTS`), jamais posées telles quelles :
-  chaque teinte mélangée vers le blanc à `EmailTemplateRenderer::WHITE_MIX_RATIO` (0.94) donne les
-  trois éclaircies `#FBF1F8`/`#FCF7F0`/`#F4FAFA`, la couleur unie du fond est leur moyenne
-  `#F9F6F6` et un dégradé 135° les enchaîne (ignoré sans dommage par les clients qui ne le
+  chaque teinte mélangée vers le blanc à `EmailTemplateRenderer::WHITE_MIX_RATIO` (0.85) donne les
+  trois éclaircies `#F4DDED`/`#F9EBD9`/`#E3F3F3`, la couleur unie du fond est leur moyenne
+  `#F0E9E8` et un dégradé 135° les enchaîne (ignoré sans dommage par les clients qui ne le
   rendent pas). **En-tête de carte conditionnel** : si l'e-mail porte un club connu
   (`App\Mail\ClubMailMetadata::mark()`, posé à la SOURCE par les 7 builders à club connu —
   doléances, rappels de période, transition de saison, placement, invitation, effacement RGPD

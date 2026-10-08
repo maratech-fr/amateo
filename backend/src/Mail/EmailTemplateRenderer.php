@@ -40,10 +40,10 @@ final readonly class EmailTemplateRenderer
 
     /**
      * Part de BLANC dans le mélange qui éclaircit chaque teinte du mark (0 = teinte pure, 1 =
-     * blanc). 0.94 garde un fond très pâle, lisible sous du texte sombre, qui laisse juste
-     * deviner la couleur de marque. Le ratio est ici, nommé : le changer re-dérive le fond.
+     * blanc). 0.85 garde un fond pâle, lisible sous du texte sombre, qui laisse deviner la couleur
+     * de marque. Le ratio est ici, nommé : le changer re-dérive le fond.
      */
-    public const float WHITE_MIX_RATIO = 0.94;
+    public const float WHITE_MIX_RATIO = 0.85;
 
     public function render(
         string $bodyText,

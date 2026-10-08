@@ -79,12 +79,12 @@ final class EmailTemplateRendererTest extends TestCase
     {
         $html = $this->renderer()->render('Corps.', self::PRODUCT, self::TAGLINE, self::SITE, null, false);
 
-        // Teintes CALCULÉES (mélange vers le blanc à 94 %) : chaque teinte du mark éclaircie, et le
+        // Teintes CALCULÉES (mélange vers le blanc à 85 %) : chaque teinte du mark éclaircie, et le
         // fond uni = leur moyenne. Valeurs dérivées à la main depuis BrandAssets::MARK_TINTS.
-        self::assertStringContainsString('#FBF1F8', $html); // #B51C8A éclaircie
-        self::assertStringContainsString('#FCF7F0', $html); // #D47800 éclaircie
-        self::assertStringContainsString('#F4FAFA', $html); // #46AFAC éclaircie
-        self::assertStringContainsString('#F9F6F6', $html); // moyenne des trois (fond uni)
+        self::assertStringContainsString('#F4DDED', $html); // #B51C8A éclaircie
+        self::assertStringContainsString('#F9EBD9', $html); // #D47800 éclaircie
+        self::assertStringContainsString('#E3F3F3', $html); // #46AFAC éclaircie
+        self::assertStringContainsString('#F0E9E8', $html); // moyenne des trois (fond uni)
 
         // Jamais la teinte PURE du mark comme fond (le fond est dérivé, pas recopié).
         foreach (BrandAssets::MARK_TINTS as $pureTint) {
