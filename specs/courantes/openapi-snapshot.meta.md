@@ -1,12 +1,8 @@
-Last verified @ 2026-10-08 (P4-266 2/2 — la péremption se dérive de l'empreinte de structure
-servie par plan : RETRAIT du bloc `staleness` de `SchedulePlan`, des champs
-`constraintsChangedSinceGeneration`/`resourcesChangedSinceGeneration` de `Schedule`, et du champ
-`seasonPlan.currentStructureHash` de `GET /api/me` (le schéma nommé `SchedulePlanStaleness`
-disparaît). La route `GET /api/schedule_plans/{id}/structure-hash` (PR 1) reste. Aucun path
-ajouté/retiré).
+Last verified @ 2026-10-08 (D1 PR 1 — nom court du club : AJOUT de `PATCH /api/club/short-name`
+(`ClubShortNameController`, gestionnaires) et du champ `shortName` sur la ressource `Club`).
 
-**233 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`52831910f1c4514f0bdf47dcf6f1ba413a80901f952159d835317e84b4e568ac` (`sha256sum` sur le fichier).
+**234 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`8458013929fc41dfcf44b2e81d16ed4d0e37b3a308dab1f1c8dc87b4eb01b4a2` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

@@ -1,12 +1,12 @@
 # Identité visuelle par club (logo + couleur d'accent)
 
-Last verified @ 2026-10-05 (`documentation-update`, rotation de fraîcheur, sujet sans rapport —
-P4-300) contre le code : `Club.logoUrl` / `accentColor` / `accentColorDark` / `accentPalette`
-(`backend/src/Entity/Club.php:169/173/177/185` — décalage attendu, des champs se sont ajoutés
-entre-temps, ex. `demoRetainedUntil`) ✓, `PATCH /api/club/appearance`
-(`ClubAppearanceController::__invoke`, `:34`) ✓, `GenerationWaiting.tsx` toujours sans prop
-`logoUrl`/`initial` ✓. `AppLayout.tsx` non re-sondé ligne à ligne cette passe. Historique :
-`git log -p --follow specs/courantes/identite-visuelle-club.md`.
+Last verified @ 2026-10-08 (`documentation-update`, rotation de fraîcheur, sujet sans rapport —
+lot D1 « gabarit d'e-mail commun ») contre le code : `Club.logoUrl` / `accentColor` /
+`accentColorDark` / `accentPalette` (`backend/src/Entity/Club.php:176/180/184/192` — décalage
+attendu, des champs continuent de s'ajouter entre-temps, ex. `shortName`) ✓, `PATCH
+/api/club/appearance` (`ClubAppearanceController::__invoke`, `:37`) ✓, `GenerationWaiting.tsx`
+toujours sans prop `logoUrl`/`initial` ✓. `AppLayout.tsx` non re-sondé ligne à ligne cette passe.
+Historique : `git log -p --follow specs/courantes/identite-visuelle-club.md`.
 
 > **Ce que porte cette identité** : accent par club + logo + extraction 3 couleurs + écran
 > « Gestion du club ». Ce qui reste ⬜ est du confort (voir « Reste ⬜ » ci-dessous).

@@ -95,6 +95,8 @@ export interface MeResponse {
   club: {
     id: string;
     name: string;
+    /** Nom COURT (libellé d'e-mail) — null = repli sur le nom long. Saisi dans la fiche club. */
+    shortName: string | null;
     onboardingCompleted: boolean;
     /** P4-271 — modèle de week-end sur deux semaines (A/B) : aide visuelle « Semaine type ». */
     weekendAlternates: boolean;

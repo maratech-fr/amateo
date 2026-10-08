@@ -174,7 +174,7 @@ final class TransitionReminderCommand extends Command
         $sentForSeason = 0;
         foreach ($emails as $to) {
             try {
-                $this->mailer->send($this->mailBuilder->build($to, $club->getName(), $current->getName(), $pivot, $days));
+                $this->mailer->send($this->mailBuilder->build($to, $club->getName(), $current->getName(), $pivot, $days, $club));
                 ++$sentForSeason;
             } catch (Throwable $e) {
                 $this->hadSendFailure = true;

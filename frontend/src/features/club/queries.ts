@@ -57,6 +57,19 @@ export function useUpdateSiege() {
   });
 }
 
+/**
+ * Pose le nom court du club (libellé d'e-mail) ; refetch /me (le nom court vit sur
+ * `me.club.shortName`). Le toast d'erreur (format refusé) vit au niveau hook (patron FRT-38).
+ */
+export function useUpdateShortName() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (shortName: string) => clubApi.updateShortName(shortName),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["me"] }),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
 /** Ré-import FFBB (management) : la fédération fait autorité sur les champs qu'elle fournit. */
 export function useFfbbImport() {
   const queryClient = useQueryClient();

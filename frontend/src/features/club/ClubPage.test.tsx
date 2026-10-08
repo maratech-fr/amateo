@@ -12,6 +12,7 @@ type MeData = { role: MeResponse["role"]; club: Club | null; seasonPlan?: MeResp
 const baseClub: Club = {
   id: "club-1",
   name: "BC Test",
+  shortName: null,
   onboardingCompleted: true,
   weekendAlternates: false,
   logoUrl: null,
@@ -69,6 +70,7 @@ const plans: { data: unknown[] | undefined; isError: boolean } = {
 const venueStats: { data: unknown; isLoading: boolean; isError: boolean } = { data: undefined, isLoading: false, isError: false };
 
 const updateSiege = vi.fn();
+const updateShortName = vi.fn();
 
 vi.mock("./queries", () => ({
   useUpdateAppearance: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
@@ -76,6 +78,7 @@ vi.mock("./queries", () => ({
   useDeleteLogo: () => ({ mutate: vi.fn(), isPending: false }),
   useFfbbImport: () => ({ mutate: ffbbImport, isPending: false }),
   useUpdateSiege: () => ({ mutate: updateSiege, isPending: false }),
+  useUpdateShortName: () => ({ mutate: updateShortName, isPending: false }),
   useResetClub: () => ({ mutate: vi.fn(), isPending: false }),
   useDownloadClubExport: () => ({ mutate: vi.fn(), isPending: false }),
   useSubscriptionPlans: () => plans,
@@ -107,6 +110,7 @@ describe("ClubPage", () => {
       { id: "p-sl", code: "sans-limite", name: "Sans limite", maxTeams: 0, maxVenues: 0, maxGenerations: 0 },
     ];
     plans.isError = false;
+    updateShortName.mockClear();
   });
 
   it("shows both sections for an admin, Demandes open by default", () => {
@@ -191,6 +195,46 @@ describe("ClubPage", () => {
     // Le geste de correction FFBB : le ré-import.
     await user.click(screen.getByRole("button", { name: "Actualiser depuis la FFBB" }));
     expect(ffbbImport).toHaveBeenCalledOnce();
+  });
+
+  // D1 — le NOM COURT (libellé d'e-mail) : la seule saisie d'identité, sous le nom officiel FFBB.
+  it("nom court : champ saisissable sous le nom officiel FFBB, avec l'aide « e-mails aux coachs »", async () => {
+    me.data = { role: "admin", club: { ...baseClub, name: "BASKET CLUB DE LA VALLÉE", ffbbClubCode: "ARA0690001" } };
+    const user = userEvent.setup();
+    render(<ClubPage />);
+    await user.click(screen.getByRole("button", { name: /Informations du club/ }));
+
+    // Le nom officiel FFBB est en lecture seule (il apparaît aussi en sous-titre d'en-tête).
+    expect(screen.getByText("Nom officiel (FFBB)")).toBeInTheDocument();
+    expect(screen.getAllByText("BASKET CLUB DE LA VALLÉE").length).toBeGreaterThanOrEqual(1);
+    // Le champ nom court est saisissable, avec son aide.
+    expect(screen.getByRole("textbox", { name: "Nom court" })).toBeInTheDocument();
+    expect(screen.getByText(/Utilisé dans les e-mails envoyés aux coachs/)).toBeInTheDocument();
+  });
+
+  it("nom court : éditer affiche Enregistrer/Annuler en TEXTE et enregistre la valeur trimée", async () => {
+    const user = userEvent.setup();
+    render(<ClubPage />);
+    await user.click(screen.getByRole("button", { name: /Informations du club/ }));
+
+    const field = screen.getByRole("textbox", { name: "Nom court" });
+    await user.type(field, "  BC Vallée  ");
+    // N1 : Enregistrer ET Annuler, en texte.
+    const save = screen.getByRole("button", { name: "Enregistrer" });
+    expect(screen.getByRole("button", { name: "Annuler" })).toBeInTheDocument();
+    await user.click(save);
+    expect(updateShortName).toHaveBeenCalledWith("BC Vallée");
+  });
+
+  it("nom court : affiche la valeur existante et n'offre Enregistrer qu'après modification", async () => {
+    me.data = { role: "admin", club: { ...baseClub, shortName: "BC Vallée" } };
+    const user = userEvent.setup();
+    render(<ClubPage />);
+    await user.click(screen.getByRole("button", { name: /Informations du club/ }));
+
+    expect(screen.getByRole("textbox", { name: "Nom court" })).toHaveValue("BC Vallée");
+    // Tant que rien n'a bougé, pas de bouton Enregistrer.
+    expect(screen.queryByRole("button", { name: "Enregistrer" })).toBeNull();
   });
 
   it("siège NON localisé (pas de coordonnées) : statut « Siège non localisé » + champ pré-rempli avec l'adresse FFBB", async () => {

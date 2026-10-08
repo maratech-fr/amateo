@@ -17,7 +17,11 @@ marque** (`business/7-marque/design_handoff_logo_loaders/README.md`).
   du PDF), ce n'est pas une vignette d'onglet — le disque blanc vit dans le favicon, pas ici.
 - **Couleurs EN DUR** : c'est le mark de marque, ses teintes sont fixes par définition
   (`#B51C8A` / `#D47800` / `#46AFAC`) — la règle « jamais un `#hex` » vise les surfaces d'interface
-  themables, pas un logo.
+  themables, pas un logo. Ces trois teintes sont aussi déclarées en constante
+  `App\Service\BrandAssets::MARK_TINTS` (recopie assumée depuis ce fichier) et consommées par
+  `App\Mail\EmailTemplateRenderer`, qui en DÉRIVE (mélange vers le blanc, jamais telles quelles) le
+  fond très pâle de la carte d'e-mail. Si la géométrie/les teintes de marque bougent, elles bougent
+  ici, dans `brand-icon.tsx` ET dans `MARK_TINTS`.
 
 Consommé UNIQUEMENT par `App\Service\BrandAssets::pdfLogoDataUri()`, qui l'inline en data URI :
 le worker Puppeteer ne doit dépendre d'aucun fetch réseau, le document reste auto-portant.

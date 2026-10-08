@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Entity\Club;
 use App\EventListener\EmailSignatureListener;
 use App\Mail\ClubBusinessMail;
+use App\Mail\ClubMailMetadata;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mime\Email;
 
@@ -28,7 +30,7 @@ final class PlacementRunEmailBuilder
         private readonly MailFrom $mailFrom = new MailFrom,
     ) {}
 
-    public function build(string $to, int $placed, int $toTreat): Email
+    public function build(string $to, int $placed, int $toTreat, ?Club $club = null): Email
     {
         $lines = [
             'Le placement automatique de vos matchs est terminé.',
@@ -37,7 +39,7 @@ final class PlacementRunEmailBuilder
             \sprintf('%d match%s restant%s à traiter.', $toTreat, $toTreat > 1 ? 's' : '', $toTreat > 1 ? 's' : ''),
         ];
 
-        return $this->compose('Placement automatique terminé', $lines, $to);
+        return $this->compose('Placement automatique terminé', $lines, $to, $club);
     }
 
     /**
@@ -47,14 +49,14 @@ final class PlacementRunEmailBuilder
      * travaille toute la nuit. » Aucun détail technique, aucun identifiant interne : juste le fait
      * et comment relancer.
      */
-    public function buildFailure(string $to): Email
+    public function buildFailure(string $to, ?Club $club = null): Email
     {
         $lines = [
             'Le placement automatique n\'a pas abouti.',
             'Vous pouvez le relancer depuis le calendrier des matchs.',
         ];
 
-        return $this->compose('Le placement automatique n\'a pas abouti', $lines, $to);
+        return $this->compose('Le placement automatique n\'a pas abouti', $lines, $to, $club);
     }
 
     /**
@@ -63,7 +65,7 @@ final class PlacementRunEmailBuilder
      *
      * @param list<string> $lines
      */
-    private function compose(string $subject, array $lines, string $to): Email
+    private function compose(string $subject, array $lines, string $to, ?Club $club): Email
     {
         if ('' !== $this->frontendBaseUrl) {
             $lines[] = '';
@@ -73,12 +75,18 @@ final class PlacementRunEmailBuilder
 
         // E-mail MÉTIER club : candidat à l'interception « boîte aux lettres » d'un club à
         // horloge simulée (jamais un e-mail de compte, cf. ClubBusinessMail).
-        return ClubBusinessMail::mark(
+        $email = ClubBusinessMail::mark(
             (new Email)
                 ->from($this->mailFrom->address())
                 ->to($to)
                 ->subject($subject)
                 ->text(implode("\n", $lines)),
         );
+        // Identité du club (logo + nom court) sur la carte d'e-mail (D1), quand elle est connue.
+        if ($club instanceof Club) {
+            ClubMailMetadata::mark($email, $club);
+        }
+
+        return $email;
     }
 }

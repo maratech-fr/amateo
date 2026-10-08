@@ -2,7 +2,7 @@
 
 > Inventaire des contrôleurs Symfony custom (hors module démo) : OpenAPI des routes custom, authentification, génération & cycle de vie du planning, groupes, membres, contraintes, radar de conflits, calendriers, géo, exports, édition manuelle, import, module matchs, transition de saison, health check. Découpé mécaniquement de `backend-inventory.md` (DOC-59) ; le module démo et l'horloge simulée vivent dans `backend-demo.md`.
 
-Last verified @ 2026-10-08 (P4-295 C1 : les deux citations engine `result_builder/diagnostics.py` recalées — §Réservation groupée vers `diagnostics/conflicts.py` (over-capacité repliée par case), §Validation des contraintes vers `diagnostics/infeasibility.py::_infeasible_message` (miroir littéral du repli de blocs), confronté au paquet `engine/app/solver/result_builder/diagnostics/`. P4-266 livré en entier : `/api/me` ne porte plus `seasonPlan.currentStructureHash`, la route `GET /api/schedule_plans/{id}/structure-hash` alimente désormais le bandeau/grisage de `/planning` — plus un volet additif muet ; P4-128 n°1 : index unique `uniq_reservation_case_team` + foyer aval `writeBlockReservationsAtomically` documentés dans §Réservation groupée, contre le code des 8 commits des deux PR).
+Last verified @ 2026-10-08 (lot D1, gabarit d'e-mail commun) : §Identité du club gagne `/api/club/short-name` (`ClubShortNameController`, confronté au code — validation, PATCH dédié, gate management). Reste du fichier non re-confronté cette passe : P4-295 C1 (les deux citations engine `result_builder/diagnostics.py`), P4-266 (`/api/me`/`GET /api/schedule_plans/{id}/structure-hash`), P4-128 n°1 (§Réservation groupée) — historique des vérifications précédentes : `git log -p --follow`.
 
 ## 3. Custom Controllers
 
@@ -366,15 +366,16 @@ consomme le limiteur `xlsx_import` **deux fois** (un jeton par appel `gate()`), 
 |-------|---------|------------|-------------|
 | `/api/reset-season` | DELETE | `ResetSeasonController` | Supprime toutes les données d'une saison pour un club. Résout `clubId` et `seasonId` depuis `_club_id` (posé par le listener tenant depuis le JWT) et `_season_id` / `X-Season-Id`. Supprime en cascade : `ScheduleDiagnostic`, `ScheduleSlotTemplate`, `Constraint`, `TeamCoach`, `CoachPlayerMembership`, `Schedule`, `Team`, `Coach`, `Venue`. Retourne 200 avec `deleted`. |
 
-### Identité du club (accent + logo)
+### Identité du club (accent + logo + nom court)
 
-Champs `Club` : `accentColor` (hex), `accentPalette` (json ≤3 hex), `logoUrl` — exposés en lecture (ClubResource, `/api/me`).
+Champs `Club` : `accentColor` (hex), `accentPalette` (json ≤3 hex), `logoUrl`, `shortName` — exposés en lecture (ClubResource, `/api/me`).
 
 | Route | Méthode | Contrôleur | Description |
 |-------|---------|-----------|-------------|
 | `/api/club/appearance` | PATCH | `ClubAppearanceController` | MAJ partielle de l'accent (`accentColor`, `accentPalette`) du club courant (résolu depuis `_club_id`/JWT), validation hex. |
 | `/api/club/logo` | POST · DELETE | `ClubLogoController` | Upload (multipart `file`, raster PNG/JPEG/WebP ≤ 500 Ko) / suppression du logo du club courant. Octets stockés via l'abstraction `App\Storage\LogoStorage` (`LocalLogoStorage` en dev ; alias `services.yaml` swappable pour du stockage objet en prod). |
 | `/api/clubs/{clubId}/logo` | GET | `ClubLogoController` | Sert le logo (public, stream + mime via finfo). |
+| `/api/club/short-name` | PATCH | `ClubShortNameController` | Pose le nom COURT du club (D1, libellé affiché dans les e-mails aux coachs — `Club::emailLabel()`, nom court sinon nom long). PATCH dédié (pas un champ du PUT club générique : le nom court ne peut donc jamais y être écrasé en silence). 1-20 caractères (lettres Unicode, chiffres, espaces, `& . - '`), trim ; chaîne vide ou `null` RETIRE le nom court (repli sur le nom long). Normalisation (trim, vide → null) dans `Club::setShortName()`, foyer unique. Gate management (SEC-07). |
 
 ### Module matchs (palier A — FFBB)
 

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Entity\Club;
 use App\Mail\ClubBusinessMail;
+use App\Mail\ClubMailMetadata;
 use DateTimeImmutable;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mime\Email;
@@ -22,7 +24,7 @@ final class TransitionReminderMailBuilder
         private readonly MailFrom $mailFrom = new MailFrom,
     ) {}
 
-    public function build(string $to, string $clubName, string $currentSeasonName, DateTimeImmutable $pivot, int $days): Email
+    public function build(string $to, string $clubName, string $currentSeasonName, DateTimeImmutable $pivot, int $days, ?Club $club = null): Email
     {
         $red = $days <= 14; // last milestone before the pivot = the "red" alert.
         $subject = \sprintf('%s Préparez la saison suivante — bascule dans %d j', $red ? '🔴' : '⏳', $days);
@@ -41,12 +43,18 @@ final class TransitionReminderMailBuilder
         }
 
         // E-mail MÉTIER club : candidat à l'interception « boîte aux lettres » (cf. ClubBusinessMail).
-        return ClubBusinessMail::mark(
+        $email = ClubBusinessMail::mark(
             (new Email)
                 ->from($this->mailFrom->address())
                 ->to($to)
                 ->subject($subject)
                 ->text(implode("\n", $lines)),
         );
+        // Identité du club (logo + nom court) sur la carte d'e-mail (D1), quand elle est connue.
+        if ($club instanceof Club) {
+            ClubMailMetadata::mark($email, $club);
+        }
+
+        return $email;
     }
 }

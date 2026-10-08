@@ -24,6 +24,20 @@ use RuntimeException;
  */
 final readonly class BrandAssets
 {
+    /**
+     * Les TROIS teintes du mark produit (les trois arcs concentriques), en `#RRGGBB`.
+     *
+     * Provenance : recopie des teintes de `assets/brand/icon.svg` (et de son README),
+     * elles-mêmes recopiées de `frontend/src/shared/components/ui/brand-icon.tsx` — zéro
+     * import cross-zone par convention (`CLAUDE.md` §2). La règle « jamais un `#hex` » vise
+     * les surfaces d'interface themables, pas le mark de marque dont les teintes sont fixes
+     * par définition. Consommées par {@see App\Mail\EmailTemplateRenderer} pour DÉRIVER le
+     * fond très pâle de la carte d'e-mail (jamais posées telles quelles comme fond).
+     *
+     * @var list<string>
+     */
+    public const array MARK_TINTS = ['#B51C8A', '#D47800', '#46AFAC'];
+
     public function __construct(
         private string $brandAssetsDir = __DIR__ . '/../../assets/brand',
     ) {}

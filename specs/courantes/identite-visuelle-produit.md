@@ -1,17 +1,18 @@
 # Identité visuelle produit — la base est le produit, l'accent est le club
 
-Last verified @ 2026-10-06 (balisage JSON-LD `schema.org` de la vitrine). Re-confronté au code :
-`landing/index.html` injecte par script (`[data-brand-jsonld]`) un graphe `SoftwareApplication` +
-`Organization` depuis `config.js` (`brand`/`editor`/`siteUrl`/`logo`), sans `offers` (paliers
-payants non publics) ; `landing/mentions-legales.html` porte son propre `og:title` (« Mentions
-légales ») au lieu de celui de l'accueil. Reste du fichier non re-vérifié cette passe : le logo
-signature des pages système (P4-302, confronté au code le 2026-10-05 — inchangé depuis), le volet
-PDF/e-mails/OG image/doléances (P5-24, confronté au code le 2026-09-29 — inchangé depuis), les
-jetons `--surface-*` (P4-265, 2026-09-27), `color.ts`/`ClubPage.tsx`/`brand-icon.tsx`/
-`favicon.svg`/`brand-mark.tsx`/`system-screen.tsx`/`AdminAuthLayout.tsx` (2026-09-26) — historique
-des vérifications précédentes : `git log -p --follow`. Les ratios de contraste des jetons
-`--surface-*` sont ceux consignés en commentaire dans `index.css` (non recalculés
-indépendamment cette passe).
+Last verified @ 2026-10-09 (lot D1, gabarit d'e-mail commun ; fond de carte recalibré à 85 %). Re-confronté au code : le volet
+e-mails (§ Ce qui reste à venir) est refondu — `App\Mail\EmailTemplateRenderer` (carte ~600 px +
+fond dérivé des trois teintes du mark, en-tête club conditionnel) et `App\Mail\ClubMailMetadata`
+(identité du club posée par les 7 builders à club connu) remplacent la signature texte échappé +
+`nl2br` d'origine ; les valeurs de fond dérivées (`#F4DDED`/`#F9EBD9`/`#E3F3F3`/`#F0E9E8`)
+recalculées depuis `BrandAssets::MARK_TINTS` et `EmailTemplateRenderer::WHITE_MIX_RATIO` (0.85).
+Reste du fichier non re-vérifié cette passe : le balisage JSON-LD de la vitrine (2026-10-06), le
+logo signature des pages système (P4-302, 2026-10-05), le volet PDF/OG image/doléances (P5-24,
+2026-09-29 — inchangé), les jetons `--surface-*` (P4-265, 2026-09-27),
+`color.ts`/`ClubPage.tsx`/`brand-icon.tsx`/`favicon.svg`/`brand-mark.tsx`/`system-screen.tsx`/
+`AdminAuthLayout.tsx` (2026-09-26) — historique des vérifications précédentes :
+`git log -p --follow`. Les ratios de contraste des jetons `--surface-*` sont ceux consignés en
+commentaire dans `index.css` (non recalculés indépendamment cette passe).
 
 > Ce fichier est le pendant **PRODUIT** de [`identite-visuelle-club.md`](identite-visuelle-club.md)
 > (qui reste la maison du **CLUB** : logo, upload, palette extraite, écran « Gestion du club »).
@@ -249,30 +250,48 @@ FIGÉ**.
   `CLAUDE.md` §2). **Décision fermée** : le mark va en PIED, jamais en en-tête, et reste en couleur
   (pas de variante grayscale distincte) — `etat-des-lieux.md` §2. Détail de la chaîne worker
   (marge basse, `footerOptions`) : `backend/docs/backend-controllers.md` § « Export PDF / Excel ».
-- **E-mails — posé (P5-24 PR-2, 2026-09-29)** : `App\EventListener\EmailSignatureListener`
-  (branché sur le `MessageEvent` de `symfony/mailer`) pose la signature de marque sur TOUS les
-  e-mails automatiques dont le corps HTML est encore nul — envois club ET superadmin, un seul
-  foyer, aucun contrôleur ni builder de mail retouché. Partie texte = le texte métier d'origine
-  (préfixe byte-identique) suivi de « -- \nAmateo\n<accroche>\n<URL vitrine> » ; partie HTML = ce
-  même texte échappé + `nl2br`, puis un bloc signature (trait, logo 40 px en pièce inline
-  `Content-ID`, nom en gras, accroche, lien vitrine). Un e-mail qui porte déjà du HTML est laissé
-  intact (garde d'idempotence — aucun envoi de l'app n'est dans ce cas à ce jour). `ProductIdentity`
-  gagne `tagline()` (accroche produit FIXE, bind littéral — identique au `<title>`/`<h1>` de
-  `landing/index.html`, « Le planning de votre club, sans le casse-tête ») et `siteUrl()` (variable
-  d'env dédiée `PRODUCT_SITE_URL`, le domaine NU de la vitrine `https://amateo.app` — **jamais**
-  `FRONTEND_BASE_URL`, qui est l'app `app.amateo.app`). Le logo est un second asset PNG
-  (`backend/assets/brand/email-icon.png`, pastille couleur sur disque blanc 128×128, README de
-  provenance à côté — PNG et non SVG, les clients de messagerie ne rendent pas fiablement un SVG)
-  servi en octets bruts par `BrandAssets::emailLogoPngBytes()` et embarqué en pièce inline (l'icône
-  voyage avec l'e-mail, aucun fetch réseau côté destinataire). ⚠ **Timing Mailer vérifié** :
-  `Mailer::send()` dispatche un premier `MessageEvent` à l'enfilage sur un CLONE (mutation jetée,
-  seul le message NON signé part sur Messenger/Redis) — c'est le second `MessageEvent`
-  (`queued=false`), redispatché par le transport chez le `messenger-worker` juste avant le SMTP,
-  qui porte la mutation réellement livrée ; preuve : un e-mail livré en sandbox par le worker,
-  capté dans Mailpit, porte la signature et une partie inline `image/png` dont le Content-ID
-  correspond au `src="cid:…"` du HTML. **Décision fermée** (fondateur, 2026-09-29) : signature sur
-  tous les e-mails, superadmin compris ; l'accroche reprend le titre de la vitrine ; le lien pointe
-  vers la vitrine, jamais l'app — `etat-des-lieux.md` §2.
+- **E-mails — posé (P5-24 PR-2, 2026-09-29), refondu en gabarit CARTE commun par le lot D1
+  (2026-10-08)** : `App\EventListener\EmailSignatureListener` (branché sur le `MessageEvent` de
+  `symfony/mailer`) délègue tout le rendu HTML à `App\Mail\EmailTemplateRenderer` — le SEUL foyer
+  du gabarit de TOUS les e-mails sortants, club ET superadmin, aucun contrôleur ni builder de mail
+  retouché. Partie texte = le texte métier d'origine (préfixe byte-identique) suivi de
+  « -- \nAmateo\n<accroche>\n<URL vitrine> », inchangée ; partie HTML = une carte blanche ~600 px
+  centrée (`<table>` + styles inline, pensée pour les clients les plus rétifs) posée sur un FOND
+  DÉRIVÉ des trois teintes du mark (`BrandAssets::MARK_TINTS`), jamais posées telles quelles :
+  chaque teinte mélangée vers le blanc à `EmailTemplateRenderer::WHITE_MIX_RATIO` (0.85) donne les
+  trois éclaircies `#F4DDED`/`#F9EBD9`/`#E3F3F3`, la couleur unie du fond est leur moyenne
+  `#F0E9E8` et un dégradé 135° les enchaîne (ignoré sans dommage par les clients qui ne le
+  rendent pas). **En-tête de carte conditionnel** : si l'e-mail porte un club connu
+  (`App\Mail\ClubMailMetadata::mark()`, posé à la SOURCE par les 7 builders à club connu —
+  doléances, rappels de période, transition de saison, placement, invitation, effacement RGPD
+  ×2), la carte affiche le logo du club en pièce inline (`cid:`, octets lus via `LogoStorage` au
+  worker) ou, à défaut de logo, son libellé en texte stylé — le nom COURT s'il existe, sinon le
+  nom long (`Club::emailLabel()`) ; un e-mail sans club connu (envois de compte) n'a aucun
+  en-tête club. **Pied de carte inchangé** : trait, logo produit 40 px en pièce inline, nom en
+  gras, accroche, lien vitrine. `ProductIdentity` porte `tagline()` (accroche produit FIXE, bind
+  littéral — identique au `<title>`/`<h1>` de `landing/index.html`, « Le planning de votre club,
+  sans le casse-tête ») et `siteUrl()` (variable d'env dédiée `PRODUCT_SITE_URL`, le domaine NU
+  de la vitrine `https://amateo.app` — **jamais** `FRONTEND_BASE_URL`, qui est l'app
+  `app.amateo.app`). Le logo produit est un second asset PNG (`backend/assets/brand/email-icon.png`,
+  pastille couleur sur disque blanc 128×128, README de provenance à côté — PNG et non SVG, les
+  clients de messagerie ne rendent pas fiablement un SVG) servi en octets bruts par
+  `BrandAssets::emailLogoPngBytes()` (l'icône voyage avec l'e-mail, aucun fetch réseau côté
+  destinataire). Un e-mail qui porte déjà du HTML est laissé intact (garde d'idempotence — aucun
+  envoi de l'app n'est dans ce cas à ce jour). **Retrait des en-têtes internes** : les deux
+  marqueurs posés à la source (`X-Amateo-Club-Id`/`X-Amateo-Club-Label`) et tout autre
+  `X-Amateo-*` (dont `X-Amateo-Scope`, lu par l'intercepteur démo ci-dessous avant nous) sont
+  RETIRÉS à la phase WORKER, juste avant le SMTP — ils ne fuient jamais sur le message livré. ⚠
+  **Timing Mailer vérifié** : `Mailer::send()` dispatche un premier `MessageEvent` à l'enfilage sur
+  un CLONE (mutation jetée, seul le message NON signé part sur Messenger/Redis) — c'est le second
+  `MessageEvent` (`queued=false`), redispatché par le transport chez le `messenger-worker` juste
+  avant le SMTP, qui porte la mutation réellement livrée ; preuve : un e-mail livré en sandbox par
+  le worker, capté dans Mailpit, porte la carte et une partie inline `image/png` dont le
+  Content-ID correspond au `src="cid:…"` du HTML. La boîte aux lettres d'un club à horloge
+  simulée (`ClockedClubMailInterceptor`, priorité 100, à l'ENFILAGE seul) capte le texte métier
+  AVANT ce gabarit — inchangée par ce lot (`backend-demo.md` § « Boîte aux lettres »). **Décision
+  fermée** (fondateur, 2026-09-29) : signature sur tous les e-mails, superadmin compris ;
+  l'accroche reprend le titre de la vitrine ; le lien pointe vers la vitrine, jamais l'app —
+  `etat-des-lieux.md` §2.
 - **Image OG — posée (P5-24 PR-3, 2026-09-29)** : une image de partage Open Graph **UNIQUE** (1200×630,
   fond CLAIR `#faf9f7`, logotype + accroche de la vitrine), servie en deux copies octet-identiques
   — `landing/assets/brand/og.png` et `frontend/public/brand/og.png`, chacune sur son propre

@@ -44,6 +44,14 @@ export interface SiegeResult {
  */
 export const updateSiege = (address: string): Promise<SiegeResult> => api.patch("club/siege", { json: { address } }).json();
 
+/**
+ * Pose le NOM COURT du club (libellé d'e-mail), management. PATCH dédié (le nom court vit hors du
+ * PUT club générique, il ne peut donc jamais y être écrasé). Chaîne vide → le serveur efface le
+ * nom court (repli sur le nom long). 422 si le format est refusé (remonté via `errorMessage()`).
+ */
+export const updateShortName = (shortName: string): Promise<{ shortName: string | null }> =>
+  api.patch("club/short-name", { json: { shortName } }).json();
+
 // La fiche club n'a plus AUCUN champ saisissable (décision fondateur 2026-08-04) :
 // la FFBB fait autorité, le geste de correction est le ré-import ci-dessous.
 // L'ancien PATCH /api/club/info a été supprimé avec ses champs.

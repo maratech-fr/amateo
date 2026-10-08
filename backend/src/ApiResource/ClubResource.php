@@ -55,6 +55,10 @@ class ClubResource
     #[Groups(['read'])]
     public string $name = '';
 
+    /** Nom COURT (libellé d'e-mail) — null = repli sur le nom long. Saisi via /api/club/short-name. */
+    #[Groups(['read'])]
+    public ?string $shortName = null;
+
     #[Groups(['read'])]
     public string $slug = '';
 
@@ -110,6 +114,7 @@ class ClubResource
         $dto->createdAt = $entity->getCreatedAt();
         $dto->updatedAt = $entity->getUpdatedAt();
         $dto->name = $entity->getName();
+        $dto->shortName = $entity->getShortName();
         $dto->slug = $entity->getSlug();
         $dto->planId = $entity->getPlanId();
         $dto->billingCycle = $entity->getBillingCycle();
