@@ -103,6 +103,21 @@ final readonly class UncoveredCustomPaths implements CustomPathContributor
                 ],
                 summary: 'Birth the period plan V1 as a copy of the season baseline',
             )),
+            '/api/schedule_plans/{id}/structure-hash' => new PathItem(get: new Operation(
+                operationId: 'getApiSchedulePlanStructureHash',
+                tags: ['Schedules'],
+                responses: [
+                    '200' => $this->schemas->jsonResponse('Fingerprint of the plan CURRENT structure — the very SHA-256 a freshly generated (season) or transcribed (period) version stores as its snapshot hash, computed per plan from the same payload the solver receives (the season payload for a SEASON plan, the period payload with the exact same selection the snapshot rail uses for a period). Equal to the pointed version hash ⇒ the structure has not moved (regenerate stays greyed); different ⇒ it has. Scoped per plan: editing the season grid never moves a period hash, since the period grid is a copy taken at birth. `null` when the structure cannot be built. Read-only, open to members.', [
+                        'type' => 'object',
+                        'properties' => [
+                            'currentStructureHash' => ['type' => ['string', 'null'], 'description' => 'SHA-256 of the current structure payload, or null if it cannot be built'],
+                        ],
+                    ]),
+                    '401' => $unauthorized,
+                    '404' => new Response('Unknown plan, or another club\'s (never an existence oracle)'),
+                ],
+                summary: 'Current structure fingerprint of a plan, compared against a version snapshot hash',
+            )),
             '/api/schedules/{id}/regenerate' => new PathItem(post: new Operation(
                 operationId: 'postApiScheduleRegenerate',
                 tags: ['Schedules'],

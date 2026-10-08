@@ -1,10 +1,10 @@
-Last verified @ 2026-10-07 (P4-298 — lookup public du NOM de club à l'inscription : route
-`GET /api/register/club-lookup` (affichage seul, réponse found/unknown/unavailable, jamais le
-mail) ajoutée au contributeur `AccountSessionPaths`. +1 path, aucun schéma nommé nouveau
-(réponse inline)).
+Last verified @ 2026-10-08 (P4-266 — empreinte de structure PAR PLAN : route
+`GET /api/schedule_plans/{id}/structure-hash` (lecture seule, `{currentStructureHash}`, 404
+byte-identique pour un plan inconnu ou d'un autre club) ajoutée au contributeur
+`UncoveredCustomPaths`. +1 path, aucun schéma nommé nouveau (réponse inline)).
 
-**232 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`b20440778aeeaa54de112bcf765443da7c230065840f83a6b56030bfc0446de4` (`sha256sum` sur le fichier).
+**233 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`5c42a093025ea16461cfa4d79a0a6aad9c05e067de2583c305e2b793548cea3a` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

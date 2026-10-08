@@ -1,5 +1,5 @@
 {
-  "_source": "specs/evolution/gestion-matchs-ffbb.md §6bis — seed AURA (Auvergne-Rhône-Alpes), fourni par le gestionnaire 2026-07-06. Base fédérale par défaut de TOUT club. dayOfWeek: 1=lundi..7=dimanche. kickoffMin/Max = plage de coup d'envoi.",
+  "_source": "docs/archive/gestion-matchs-ffbb.md §6bis — seed AURA (Auvergne-Rhône-Alpes), fourni par le gestionnaire 2026-07-06. Base fédérale par défaut de TOUT club. dayOfWeek: 1=lundi..7=dimanche. kickoffMin/Max = plage de coup d'envoi.",
   "windows": [
     { "league": "AURA", "category": "U9",     "level": "DEPARTEMENTAL", "gender": null, "dayOfWeek": 6, "kickoffMin": "09:30", "kickoffMax": "17:00" },
     { "league": "AURA", "category": "U11",    "level": "DEPARTEMENTAL", "gender": null, "dayOfWeek": 6, "kickoffMin": "09:30", "kickoffMax": "17:00" },

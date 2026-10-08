@@ -12,6 +12,7 @@ use App\Service\PlanVenueClosures;
 use App\Service\ReservationGroupOccupancy;
 use App\State\Processor\AssertsSchedulePlanExistsTrait;
 use DateTimeImmutable;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Exception;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -126,6 +127,44 @@ final class GroupReservationController extends AbstractController implements Sea
     }
 
     /**
+     * FOYER AVAL de l'unicité de case (P4-128 n°1) : l'écriture ATOMIQUE N-réservations/1-flush,
+     * gardée en DERNIER RESSORT par l'index `uniq_reservation_case_team`. Une COURSE concurrente
+     * qui a franchi la garde amont (a) bute sur l'index au flush
+     * (UniqueConstraintViolationException) → 422 avec le MÊME message humain que (a) (source
+     * unique {@see ReservationGroupOccupancy::SLOT_ALREADY_OCCUPIED}, jamais recopié).
+     * L'EntityManager est fermé par l'exception : la réponse part, aucun flush n'a lieu ensuite.
+     *
+     * Public pour être éprouvé DIRECTEMENT : en HTTP SÉQUENTIEL la garde (a) masque l'index (elle
+     * refuse avant d'atteindre la base), un test doit donc appeler ce foyer avec un doublon DÉJÀ
+     * en base (piège `.claude/rules/backend.md` : une garde amont qui double un foyer sur le même
+     * chemin d'écriture le rend intestable par le chemin HTTP).
+     *
+     * @param list<string> $members
+     *
+     * @throws UnprocessableEntityHttpException
+     *
+     * @return list<string> the created reservation ids
+     */
+    public function writeBlockReservationsAtomically(
+        string $clubId,
+        string $seasonId,
+        array $members,
+        string $venueId,
+        int $dayOfWeek,
+        DateTimeImmutable $startTime,
+        int $durationMinutes,
+        ?string $schedulePlanId,
+    ): array {
+        try {
+            return $this->rejectingConcurrentPlanDeletion(fn (): array => $this->entityManager->wrapInTransaction(
+                fn (): array => $this->persistReservations($clubId, $seasonId, $members, $venueId, $dayOfWeek, $startTime, $durationMinutes, $schedulePlanId),
+            ));
+        } catch (UniqueConstraintViolationException $e) {
+            throw new UnprocessableEntityHttpException(ReservationGroupOccupancy::SLOT_ALREADY_OCCUPIED, $e);
+        }
+    }
+
+    /**
      * Forme d'UUID — motif canonique du dépôt (`TenantFilterListener::isUuid`). Ne juge QUE la
      * forme : l'existence et la portée restent tranchées par les lookups sous filtre tenant.
      */
@@ -190,9 +229,7 @@ final class GroupReservationController extends AbstractController implements Sea
             $this->reservationGroupOccupancy->assertBlockReservationAllowed($block, $members, $venueId, $dayOfWeek, $startTime, $schedulePlanId);
 
             // Écriture ATOMIQUE : N réservations, UN flush. Un refus laisse ZÉRO ligne.
-            $ids = $this->rejectingConcurrentPlanDeletion(fn (): array => $this->entityManager->wrapInTransaction(
-                fn (): array => $this->persistReservations((string) $block->getClubId(), $block->getSeasonId(), $members, $venueId, $dayOfWeek, $startTime, $durationMinutes, $schedulePlanId),
-            ));
+            $ids = $this->writeBlockReservationsAtomically((string) $block->getClubId(), $block->getSeasonId(), $members, $venueId, $dayOfWeek, $startTime, $durationMinutes, $schedulePlanId);
         } catch (UnprocessableEntityHttpException $e) {
             return $this->json(['error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
         }

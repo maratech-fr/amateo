@@ -1,6 +1,8 @@
 # La FFBB comme source, le gestionnaire comme juge — reste ouvert
 
-> **Ce fichier ne garde plus que l'OUVERT** (graduation DOC-56, 2026-10-06). Le besoin est **tranché et livré** : l'appariement engagements↔équipes et la résolution des gymnases nourrissent les paliers B/C (P3-7, P4-35 livrés/soldés). Le comportement vit dans [`module-matchs.md`](../courantes/module-matchs.md) ; les décisions fermées (« on accompagne, on ne décide pas » — écran d'arbitrage, aucun refus modélisé ; la page jamais vierge ; l'identité du club tranchée ; le forfait général P4-69 ; l'annuaire national non stocké) dans [`etat-des-lieux.md`](../courantes/etat-des-lieux.md) §2 ; le cadrage d'origine (mesures FFBB du second balayage, exploitation de l'API, onboarding express) dans `git log -p --follow` ce fichier. **Reste devant** : les **gymnases de match** (§7, besoin neuf non codé) et les questions résiduelles (§8) ; §6.8 est conservé parce que §7 s'y appuie.
+> 🗄 **ARCHIVÉ le 2026-10-07** (déplacé de `specs/evolution/`) : tout ce qu'il tenait encore pour ouvert est livré ou tranché (gymnases de match = fenêtres match `VenueMatchWindow` ; résolution de gymnase livrée ; forfait général fermé P4-69 ; correspondance saison = `FfbbSeasonCode`) — décisions dans `specs/courantes/etat-des-lieux.md` §2. Référence figée, plus maintenue.
+
+> **Ce fichier ne garde plus que l'OUVERT** (graduation DOC-56, 2026-10-06). Le besoin est **tranché et livré** : l'appariement engagements↔équipes et la résolution des gymnases nourrissent les paliers B/C (P3-7, P4-35 livrés/soldés). Le comportement vit dans [`module-matchs.md`](../../specs/courantes/module-matchs.md) ; les décisions fermées (« on accompagne, on ne décide pas » — écran d'arbitrage, aucun refus modélisé ; la page jamais vierge ; l'identité du club tranchée ; le forfait général P4-69 ; l'annuaire national non stocké) dans [`etat-des-lieux.md`](../../specs/courantes/etat-des-lieux.md) §2 ; le cadrage d'origine (mesures FFBB du second balayage, exploitation de l'API, onboarding express) dans `git log -p --follow` ce fichier. **Reste devant** : les **gymnases de match** (§7, besoin neuf non codé) et les questions résiduelles (§8) ; §6.8 est conservé parce que §7 s'y appuie.
 
 ### 6.8 🟢 Résoudre les GYMNASES — la trouvaille du second balayage
 
@@ -31,7 +33,7 @@ VILAR** — un gymnase de BCCL. **L'index couvre donc aussi NOS salles**, pas se
 > gymnases de match. »** (fondateur, 2026-08-02)
 
 **Rien n'existe.** `Venue` porte `isExternal`, `canSplit`, `isActive`, `parentVenueId`, `latitude/longitude` —
-**aucun marqueur d'aptitude au match**. [P1-4 (4)](roadmap.md) l'avait noté en passant (« un gymnase n'accueille
+**aucun marqueur d'aptitude au match**. [P1-4 (4)](../../specs/evolution/roadmap.md) l'avait noté en passant (« un gymnase n'accueille
 pas forcément des matchs ») sans le spécifier.
 
 ⚑ **La collision, à traiter avant de coder** : le wizard **exige aujourd'hui au moins un créneau par gymnase**

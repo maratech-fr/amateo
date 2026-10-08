@@ -1,13 +1,10 @@
 # Documentation métier du système de contraintes
 
-Last verified @ 2026-10-05 (rotation `documentation-update` — `ConstraintRuleType` confirmé à
-deux cas (`HARD`/`PREFERRED`, `backend/src/Enum/ConstraintRuleType.php`) ; ALIGN-18, branche
-`fix/audit-1003-align-verrou` — décision fondateur
-« on ne verrouille que les créneaux » : le cran `LOCK` quitte `ConstraintRuleType`
-(`backend/src/Enum/ConstraintRuleType.php`), une écriture `ruleType: "LOCK"` rend 422
-(`ConstraintValidationService` ne le valide plus, il n'existe plus) ; §2.3/§6 et les mentions
-`HARD`/`LOCK` du reste du fichier recalées à deux valeurs. Les verrous de CRÉNEAU/MATCH
-(`lockLevel`, onglet « Réserver ») sont un autre concept, non touchés, non décrits ici).
+Last verified @ 2026-10-08 (rotation `documentation-update`, sans rapport avec le sujet de la PR
+— re-confronté au code : `ConstraintRuleType` toujours à deux cas `HARD`/`PREFERRED` SEULEMENT,
+`LOCK` absent (`backend/src/Enum/ConstraintRuleType.php`) ✓. Rien de faux trouvé cette passe ;
+les verrous de CRÉNEAU/MATCH (`lockLevel`, onglet « Réserver ») restent un autre concept, non
+décrit ici).
 
 > Amateo — Symfony 7 + API Platform. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
