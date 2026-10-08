@@ -101,7 +101,7 @@ describe("PublicWishPage — parcours en étapes", () => {
     renderAt();
 
     // Intro d'abord : le texte d'accueil, pas encore les champs de saisie.
-    expect(await screen.findByText(/votre club prépare le planning/)).toBeInTheDocument();
+    expect(await screen.findByText(/club prépare le planning/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/Séances souhaitées/)).not.toBeInTheDocument();
 
     await start();
@@ -226,7 +226,7 @@ describe("PublicWishPage — parcours en étapes", () => {
   it("la progression marque l'étape courante avec aria-current=\"step\"", async () => {
     h.getContext.mockResolvedValue(context());
     const { container } = renderAt();
-    await screen.findByText(/votre club prépare le planning/);
+    await screen.findByText(/club prépare le planning/);
     expect(container.querySelector('[aria-current="step"]')).toHaveTextContent("Début");
 
     await start();
@@ -282,16 +282,21 @@ describe("PublicWishPage — en-tête D2 (dates, intro, animation)", () => {
   it("affiche deux pastilles : la fenêtre de la période et la date limite", async () => {
     h.getContext.mockResolvedValue(context({ periodStart: "2026-02-16", periodEnd: "2026-03-01", deadline: "2027-06-30" }));
     renderAt();
-    await screen.findByText(/votre club prépare le planning/);
+    await screen.findByText(/club prépare le planning/);
 
-    expect(screen.getByText("Vacances du 16/02/2026 au 01/03/2026")).toBeInTheDocument();
-    expect(screen.getByText("Répondre avant le 30/06/2027")).toBeInTheDocument();
+    expect(screen.getByText("Vacances du 16/02 au 01/03")).toBeInTheDocument();
+    expect(screen.getByText("Répondre avant le 30/06")).toBeInTheDocument();
   });
 
   it("découpe l'intro en 3 puces + la ligne « souhait, pas un engagement »", async () => {
     h.getContext.mockResolvedValue(context());
     const { container } = renderAt();
-    await screen.findByText(/votre club prépare le planning/);
+    await screen.findByText(/club prépare le planning/);
+
+    // Le titre de la carte dit déjà « Bonjour … » : la phrase d'intro ne le répète pas.
+    expect(screen.getByRole("heading", { name: "Bonjour Maxime" })).toBeInTheDocument();
+    expect(screen.getByText("Votre club prépare le planning de Vacances de février.")).toBeInTheDocument();
+    expect(screen.queryByText(/Bonjour Maxime —/)).not.toBeInTheDocument();
 
     expect(container.querySelectorAll("ul li")).toHaveLength(3);
     expect(screen.getByText(/nombre de séances, jours souhaités et jours d'indisponibilité/)).toBeInTheDocument();
@@ -367,7 +372,7 @@ describe("PublicWishPage — pied « Propulsé par » (P5-24)", () => {
   it("état FORMULAIRE — pied présent", async () => {
     h.getContext.mockResolvedValue(context());
     renderAt();
-    await screen.findByText(/votre club prépare le planning/);
+    await screen.findByText(/club prépare le planning/);
     expectFooter();
   });
 

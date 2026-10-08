@@ -10,7 +10,7 @@
  * `Gender`/`TeamLevel` (P4-148), et que la règle ESLint `no-restricted-imports` : « ce qui est
  * partagé descend dans shared/ ».
  *
- * ⚠ CE SONT QUATRE FORMATS DISTINCTS — jamais à fusionner. Chacun porte un nom qui dit sa
+ * ⚠ CE SONT CINQ FORMATS DISTINCTS — jamais à fusionner. Chacun porte un nom qui dit sa
  * forme et un exemple de rendu. Le choix de construction de chaque `Date` est CELUI DE SON
  * ORIGINE et ne doit pas changer (l'affichage rendu est identique au précédent) : les variantes
  * cockpit lisent la date en LOCAL (`new Date(y, m-1, d)`), la variante à jour de semaine la lit
@@ -22,6 +22,13 @@
 export function frDateNumeric(iso: string): string {
   const [y, m, d] = iso.split("-");
   return `${d}-${m}-${y}`;
+}
+
+/** Date française numérique jj/mm SANS l'année (barres obliques), ex. « 2026-10-17 » → « 17/10 » —
+ *  pour les pastilles dont la fenêtre tient dans la saison courante (l'année est alors du bruit). */
+export function frDateNumericNoYear(iso: string): string {
+  const [, m, d] = iso.split("-");
+  return `${d}/${m}`;
 }
 
 /** Date française courte pour la copie UI compacte, ex. « 2026-12-19 » → « 19 déc. 2026 ». */

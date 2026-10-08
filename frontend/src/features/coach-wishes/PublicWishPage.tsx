@@ -10,6 +10,7 @@ import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Spinner } from "@/shared/components/ui/spinner";
+import { frDateNumericNoYear } from "@/shared/lib/date";
 import { PRODUCT_SITE_URL } from "@/shared/lib/product";
 
 import { getPublicWishContext, isPublicWishError, submitPublicWishes, type PublicWishContext, type PublicWishSubmission } from "./publicApi";
@@ -236,10 +237,10 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
       <div className="mb-4 flex flex-wrap gap-2">
         {null !== context.periodStart && null !== context.periodEnd ? (
           <StatusPill variant="neutral">
-            Vacances du {frDate(context.periodStart)} au {frDate(context.periodEnd)}
+            Vacances du {frDateNumericNoYear(context.periodStart)} au {frDateNumericNoYear(context.periodEnd)}
           </StatusPill>
         ) : null}
-        <StatusPill variant="accent">Répondre avant le {frDate(context.deadline)}</StatusPill>
+        <StatusPill variant="accent">Répondre avant le {frDateNumericNoYear(context.deadline)}</StatusPill>
       </div>
 
       <WishProgress stepper={stepper} teams={context.teams} />
@@ -269,9 +270,7 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
             />
           ) : null}
           <div className="space-y-3 text-sm text-foreground">
-            <p>
-              Bonjour {context.coachFirstName} — votre club prépare le planning de {context.periodTitle}.
-            </p>
+            <p>Votre club prépare le planning de {context.periodTitle}.</p>
             <ul className="list-disc space-y-1.5 pl-5">
               <li>Pour chaque équipe&nbsp;: nombre de séances, jours souhaités et jours d'indisponibilité, semaine par semaine.</li>
               <li>Comptez 5&nbsp;minutes&nbsp;: vos réponses partent en une seule fois, à la fin.</li>
