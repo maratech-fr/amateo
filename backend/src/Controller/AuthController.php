@@ -168,6 +168,9 @@ final class AuthController extends AbstractController
                 $club = [
                     'id' => $clubEntity->getId(),
                     'name' => $clubEntity->getName(),
+                    // Nom COURT (libellé d'e-mail), null = repli sur le nom long. Saisi dans
+                    // la fiche club, affiché sous le nom officiel FFBB.
+                    'shortName' => $clubEntity->getShortName(),
                     'onboardingCompleted' => $clubEntity->getOnboardingCompleted(),
                     // P4-271 — modèle de week-end A/B : aide visuelle de « Semaine type ».
                     'weekendAlternates' => $clubEntity->weekendAlternates(),

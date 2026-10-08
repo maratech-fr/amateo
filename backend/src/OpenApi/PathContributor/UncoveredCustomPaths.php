@@ -309,6 +309,18 @@ final readonly class UncoveredCustomPaths implements CustomPathContributor
                 ],
                 summary: 'Club colours and display preferences',
             )),
+            '/api/club/short-name' => new PathItem(patch: new Operation(
+                operationId: 'patchApiClubShortName',
+                tags: ['Club'],
+                responses: [
+                    '200' => new Response('Short name set (returns { shortName }); empty/null clears it (falls back to the long name)'),
+                    '400' => new Response('No club in context, or invalid JSON'),
+                    '403' => new Response('Not a management member'),
+                    '404' => new Response('Club not found'),
+                    '422' => new Response('Short name must be 1-20 chars: letters, digits, spaces and & . - \' only'),
+                ],
+                summary: 'Set the club short name — the email display label (management only; empty clears it)',
+            )),
             '/api/club/siege' => new PathItem(patch: new Operation(
                 operationId: 'patchApiClubSiege',
                 tags: ['Club'],

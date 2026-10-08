@@ -41,6 +41,13 @@ class Club
     #[ORM\Column(type: 'string', length: 180)]
     private string $slug;
 
+    // Nom COURT choisi par le club (jamais FFBB) : le libellé affiché dans les
+    // e-mails envoyés aux coachs, plus lisible que la raison sociale fédérale
+    // (« BASKET CLUB … »). Facultatif — vide = repli sur le nom long ({@see
+    // emailLabel}). Normalisé par le setter (trim, chaîne vide → null).
+    #[ORM\Column(type: 'string', length: 20, nullable: true)]
+    private ?string $shortName = null;
+
     // P1-3 — offre souscrite : FK UUID (nullable) vers subscription_plan. null =
     // offre Découverte (le défaut de tout compte). L'offre EFFECTIVE se calcule à
     // la lecture (PlanEntitlements) — une offre payante/bêta dont paidSeasonYear
@@ -319,6 +326,29 @@ class Club
         $this->slug = $slug;
 
         return $this;
+    }
+
+    public function getShortName(): ?string
+    {
+        return $this->shortName;
+    }
+
+    /** Foyer UNIQUE de normalisation : trim, chaîne vide → null (pas de nom court). */
+    public function setShortName(?string $shortName): self
+    {
+        $trimmed = null === $shortName ? null : trim($shortName);
+        $this->shortName = '' === $trimmed ? null : $trimmed;
+
+        return $this;
+    }
+
+    /**
+     * Le libellé du club à poser dans un e-mail : le nom COURT s'il existe, sinon
+     * le nom long. Foyer unique de cette résolution (jamais redérivée ailleurs).
+     */
+    public function emailLabel(): string
+    {
+        return $this->shortName ?? $this->name;
     }
 
     public function getPlanId(): ?string
