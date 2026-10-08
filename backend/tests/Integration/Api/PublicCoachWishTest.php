@@ -65,6 +65,15 @@ final class PublicCoachWishTest extends WebTestCase
         $body = json_decode((string) $this->client->getResponse()->getContent(), true);
         self::assertSame('Maxime', $body['coachFirstName']);
         self::assertSame('2027-06-30', $body['deadline']);
+        // D2 PR A — les bornes de la période mère sont exposées (format ISO comme `deadline`),
+        // pour la pastille « Vacances du … au … » de la page publique.
+        self::assertSame('2026-02-16', $body['periodStart']);
+        self::assertSame('2026-03-01', $body['periodEnd']);
+        // Et RIEN de plus que le contrat attendu (la page publique ne voit que ce périmètre).
+        self::assertSame(
+            ['coachFirstName', 'periodTitle', 'periodStart', 'periodEnd', 'deadline', 'weeks', 'teams', 'wishes', 'respondedAt'],
+            array_keys($body),
+        );
         self::assertSame(['2026-02-16', '2026-02-23'], $body['weeks']);
         self::assertSame([['id' => $this->team->getId(), 'name' => 'SM1']], $body['teams']);
         self::assertCount(1, $body['wishes']);
