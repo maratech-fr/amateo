@@ -441,9 +441,10 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
     /**
      * D3 v1 — une fois l'entrée re-datée par le parent : (3) resync la fenêtre du plan de période,
      * (4) re-date les contraintes appariées (le venue_closed né du même geste), (5) recale le
-     * suffixe de fenêtre du titre puis, s'il coïncidait, le nom du plan. La péremption des versions
-     * COMPLETED (`resourcesChangedSinceGeneration`) est posée toute seule par
-     * ResourceChangeStaleScheduleListener au postUpdate de l'entrée — rien à écrire ici.
+     * suffixe de fenêtre du titre puis, s'il coïncidait, le nom du plan. La péremption « à régénérer »
+     * se dérive de l'empreinte de structure servie par plan — rien à écrire ici ; elle ne diverge que
+     * si le re-datage change réellement le payload (une contrainte datée qui entre ou sort via
+     * `PeriodConstraintSelection`), pas du simple déplacement de la fenêtre.
      *
      * @param array{clubId: string, seasonId: string, entryId: string, oldTitle: string, oldStart: DateTimeImmutable, oldEnd: DateTimeImmutable, newStart: DateTimeImmutable, newEnd: DateTimeImmutable} $redate
      */
@@ -527,7 +528,7 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
      * l'aperçu). Sinon, dans l'ordre : suppressions (absorption + disparition, cascade complète par
      * enfant) → glissements (enfant + plan re-datés) → naissances (enfant + plan neufs vides) →
      * re-datage de la MÈRE (parent::processPut, fenêtre dégelée) + ses contraintes appariées + son
-     * suffixe de titre. La péremption « à régénérer » est posée par ResourceChangeStaleScheduleListener.
+     * suffixe de titre. La péremption « à régénérer » se dérive de l'empreinte de structure servie par plan ; elle ne diverge que si le re-datage change réellement le payload (contrainte datée entrante/sortante), pas du simple déplacement de fenêtre.
      *
      * @param array<string, mixed>                                                                                                                                                                       $uriVariables
      * @param array{clubId: string, seasonId: string, entryId: string, oldTitle: string, oldStart: DateTimeImmutable, oldEnd: DateTimeImmutable, newStart: DateTimeImmutable, newEnd: DateTimeImmutable} $split

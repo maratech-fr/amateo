@@ -654,8 +654,8 @@ final class ScheduleConstraintBuilder
      * (`buildPayload`) : le payload y est caché par club+saison, sa clé ne connaît pas la
      * version source. Le handler l'injecte donc APRÈS coup — et, décision B, APRÈS le hash
      * de snapshot : le précédent est une préférence de CONVERGENCE, pas une donnée de
-     * STRUCTURE. L'inclure dans `snapshotHash` le ferait diverger de `currentStructureHash`
-     * (recalculé sans lui) à chaque régénération.
+     * STRUCTURE. L'inclure dans `snapshotHash` le ferait diverger de l'empreinte de structure
+     * (`SchedulePlanProvisioner::structureHashOfPlan`, recalculée sans lui) à chaque régénération.
      *
      * Chaque placement = `{teamId, venueId, dayOfWeek, startTime}` (H:i:s — l'engine
      * normalise via `_time_to_minutes`, H:i et H:i:s convergent). TOUS les placements de la
@@ -702,7 +702,7 @@ final class ScheduleConstraintBuilder
      *
      * Comme `withPreviousAssignments`, ce bloc n'entre PAS dans `buildPayload`/le snapshot : le
      * handler l'injecte APRÈS le hash de snapshot — c'est une préférence de CONVERGENCE, jamais
-     * une donnée de STRUCTURE (sinon `snapshotHash` divergerait de `currentStructureHash`).
+     * une donnée de STRUCTURE (sinon `snapshotHash` divergerait de l'empreinte de structure).
      *
      * FILTRÉ au ROSTER du payload (équipes seulement — pas de gymnase dans la clé) : une référence
      * dont l'équipe est hors sélection de période serait un id fantôme côté moteur. DÉDUPLIQUÉ par

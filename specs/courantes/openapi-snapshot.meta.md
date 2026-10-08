@@ -1,10 +1,12 @@
-Last verified @ 2026-10-08 (P4-266 — empreinte de structure PAR PLAN : route
-`GET /api/schedule_plans/{id}/structure-hash` (lecture seule, `{currentStructureHash}`, 404
-byte-identique pour un plan inconnu ou d'un autre club) ajoutée au contributeur
-`UncoveredCustomPaths`. +1 path, aucun schéma nommé nouveau (réponse inline)).
+Last verified @ 2026-10-08 (P4-266 2/2 — la péremption se dérive de l'empreinte de structure
+servie par plan : RETRAIT du bloc `staleness` de `SchedulePlan`, des champs
+`constraintsChangedSinceGeneration`/`resourcesChangedSinceGeneration` de `Schedule`, et du champ
+`seasonPlan.currentStructureHash` de `GET /api/me` (le schéma nommé `SchedulePlanStaleness`
+disparaît). La route `GET /api/schedule_plans/{id}/structure-hash` (PR 1) reste. Aucun path
+ajouté/retiré).
 
 **233 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`5c42a093025ea16461cfa4d79a0a6aad9c05e067de2583c305e2b793548cea3a` (`sha256sum` sur le fichier).
+`52831910f1c4514f0bdf47dcf6f1ba413a80901f952159d835317e84b4e568ac` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

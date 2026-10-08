@@ -101,25 +101,6 @@ class ScheduleResource
     #[Groups(['read'])]
     public bool $manuallyEditedSinceGeneration = false;
 
-    /**
-     * Une contrainte a-t-elle changé depuis la génération de ce planning ? Vrai ⇒ ce
-     * planning décrit un état ANTÉRIEUR des règles — pas faux, mais PÉRIMÉ. L'écran l'affiche
-     * (bannière unifiée avec « retouché à la main ») pour que le gestionnaire régénère afin
-     * de savoir. Remis à faux par une (re)génération.
-     */
-    #[Groups(['read'])]
-    public bool $constraintsChangedSinceGeneration = false;
-
-    /**
-     * Une donnée du club autre qu'une contrainte (gymnase, coach, créneau, grille de période,
-     * réservation, override, tag d'équipe, calendrier) a-t-elle changé depuis la génération de
-     * ce planning ? Vrai ⇒ ce planning décrit un état ANTÉRIEUR des données — pas faux, PÉRIMÉ.
-     * L'écran l'affiche dans la bannière unifiée de péremption. Remis à faux par une
-     * (re)génération.
-     */
-    #[Groups(['read'])]
-    public bool $resourcesChangedSinceGeneration = false;
-
     #[Groups(['read'])]
     public int $solverSeed = 0;
 
@@ -218,8 +199,6 @@ class ScheduleResource
         $dto->versionNumber = $entity->getVersionNumber();
         $dto->score = $entity->getScore();
         $dto->manuallyEditedSinceGeneration = $entity->isManuallyEditedSinceGeneration();
-        $dto->constraintsChangedSinceGeneration = $entity->isConstraintsChangedSinceGeneration();
-        $dto->resourcesChangedSinceGeneration = $entity->isResourcesChangedSinceGeneration();
         $dto->solverSeed = $entity->getSolverSeed();
         $dto->snapshotHash = $entity->getSnapshotHash();
         $dto->solverVersion = $entity->getSolverVersion();

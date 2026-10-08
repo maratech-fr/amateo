@@ -32,7 +32,7 @@ const redateMutateAsync = vi.fn().mockResolvedValue({});
 // D3 v2 (P4-174) — l'aperçu du re-datage d'une mère découpée : mutateAsync espionné.
 const previewMutateAsync = vi.fn();
 // Plans couvrant le jour (B1) : DayList lit chosenScheduleId par calendarEntryId.
-let allPlansMock: { id: string; calendarEntryId: string | null; chosenScheduleId: string | null; staleness?: unknown }[] = [];
+let allPlansMock: { id: string; calendarEntryId: string | null; chosenScheduleId: string | null }[] = [];
 
 // ADR-0002 lot D-b : « overlay validé » (HolidayBlock « Voir le planning ») = plan de
 // période avec chosenScheduleId ; « porte des versions » (garde destructive de suppression)
@@ -160,22 +160,9 @@ describe("DayDialog — deletion is always confirmed", () => {
     expect(screen.queryByText(/Supprimer « AG du club » \?/)).not.toBeInTheDocument();
   });
 
-  it("P4-173 — shows the « à régénérer » pill next to a stale period's title (outside the truncated node)", () => {
-    allPlansMock = [{ id: "plan-p1", calendarEntryId: "p1", chosenScheduleId: "ov1", staleness: { manuallyEdited: false, constraintsChanged: true, resourcesChanged: false } }];
-    renderDialog([entry({ id: "p1", kind: "period", periodType: "closure", title: "Gym fermé" })]);
-
-    const pill = screen.getByText("À régénérer — une contrainte a changé");
-    expect(pill).toBeInTheDocument();
-    // Jamais dans un nœud tronqué : la cause s'enveloppe, elle ne se coupe pas.
-    expect(pill.closest(".truncate")).toBeNull();
-  });
-
-  it("P4-173 — no pill when the period plan carries no staleness (null)", () => {
-    allPlansMock = [{ id: "plan-p1", calendarEntryId: "p1", chosenScheduleId: "ov1", staleness: null }];
-    renderDialog([entry({ id: "p1", kind: "period", periodType: "closure", title: "Gym fermé" })]);
-
-    expect(screen.queryByText(/À régénérer/)).not.toBeInTheDocument();
-  });
+  // P4-266 — la pastille « à régénérer » à côté du titre de période a été RETIRÉE : la péremption
+  // se dérive de l'empreinte de structure servie par plan (affichée sur l'écran Planning). Ses
+  // ex-tests P4-173 sont supprimés avec elle.
 
   it("warns that deleting a period cascades to its plan and all its versions", async () => {
     // Décision fondateur : la suppression emporte le plan ET toutes ses versions —
@@ -955,7 +942,7 @@ describe("DayDialog — re-datage d'une fermeture (« Modifier les dates », D3 
     await waitFor(() =>
       expect(redateMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ entry: expect.objectContaining({ id: "inc" }), startDate: "2026-05-12", endDate: "2026-06-20" })),
     );
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Fermeture re-datée du 12 mai 2026 au 20 juin 2026 — planning à régénérer"));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Fermeture re-datée du 12 mai 2026 au 20 juin 2026"));
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -1150,16 +1137,16 @@ describe("DayDialog — re-datage d'une indisponibilité découpée (« aperçu 
     await waitFor(() =>
       expect(redateMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ entry: expect.objectContaining({ id: "mother" }), startDate: "2026-05-12", endDate: "2026-06-20", previewToken: "tok-42" })),
     );
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringMatching(/planning à régénérer/)));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringMatching(/Fermeture re-datée/)));
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("succès AVEC suppression : le toast dit « plans de période ajustés, planning à régénérer »", async () => {
+  it("succès AVEC suppression : le toast dit « plans de période ajustés »", async () => {
     const { toast } = await import("@/shared/stores/toastStore");
     renderWith([split()]);
     await openAndPreview([{ kind: "vanish", label: "Le plan de la semaine du 15 au 21 juin est supprimé." }], "tok-9");
     await userEvent.click(await screen.findByRole("button", { name: "Confirmer" }));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Dates modifiées — plans de période ajustés, planning à régénérer."));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Dates modifiées — plans de période ajustés."));
   });
 
   it("422 à l'aperçu : le message serveur s'affiche DANS le panneau, aucune confirmation possible", async () => {

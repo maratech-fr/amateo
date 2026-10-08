@@ -92,8 +92,7 @@ final class VenueSplitCascadeApiTest extends WebTestCase
         $this->createReservation($venue->getId(), 3, '20:00', $periodPlanId);
 
         // Un planning COMPLETED du club+saison : le write du gymnase doit le marquer périmé.
-        $schedule = $this->completedSeasonSchedule();
-        $this->resetStaleMarker($schedule);
+        $this->completedSeasonSchedule();
 
         $this->putVenueCanSplit($venue->getId(), false, true);
 
@@ -115,12 +114,9 @@ final class VenueSplitCascadeApiTest extends WebTestCase
         $remaining = $this->em->getRepository(Reservation::class)->count(['venueId' => $venue->getId()]);
         self::assertSame(0, $remaining, 'la cascade vide les réservations de toutes les couches');
 
-        $reloaded = $this->em->find(Schedule::class, $schedule->getId());
-        self::assertInstanceOf(Schedule::class, $reloaded);
-        self::assertTrue(
-            $reloaded->isResourcesChangedSinceGeneration(),
-            'le planning COMPLETED du club+saison est marqué périmé par la cascade',
-        );
+        // P4-266 : la péremption « à régénérer » n'est plus un drapeau posé par la cascade — elle
+        // se dérive de l'empreinte de structure (le write du gymnase la déplace). Divergence d'un
+        // changement de gymnase couverte par SchedulePlanStructureHashTest.
     }
 
     public function testUncheckingSplitPassesWithoutConfirmationWhenNoSlotHoldsTwoTeams(): void
@@ -212,18 +208,6 @@ final class VenueSplitCascadeApiTest extends WebTestCase
         $this->em->flush();
 
         return $schedule;
-    }
-
-    private function resetStaleMarker(Schedule $schedule): void
-    {
-        // clear() AVANT relecture : le montage a écrit des ressources qui ont marqué. On repart
-        // d'une ardoise propre pour ne mesurer QUE l'effet de la cascade.
-        $this->em->clear();
-        $managed = $this->em->find(Schedule::class, $schedule->getId());
-        self::assertInstanceOf(Schedule::class, $managed);
-        $managed->setResourcesChangedSinceGeneration(false);
-        $this->em->flush();
-        $this->em->clear();
     }
 
     private function createVenue(bool $canSplit): Venue

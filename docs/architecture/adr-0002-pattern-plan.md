@@ -67,7 +67,8 @@ Schedule (= Version)                    ← existant, recentré
    cessait d'être vraie, ce test tomberait avant que les trois portes ne se rouvrent. **Ce que
    l'invariant NE dit PAS** : la structure du club (équipes, gymnases, coachs, contraintes
    permanentes) reste modifiable toute l'année — c'est l'objet de la comparaison
-   `snapshotHash`/`currentStructureHash`, pas de son gel.
+   `snapshotHash` ⇄ empreinte de structure (`SchedulePlanProvisioner::structureHashOfPlan`,
+   P4-266), pas de son gel.
 2. **Pointeur NULL = espace de travail.** On (re)travaille ⇒ pointeur remis à null, on
    génère des versions (V4, V5…), on choisira. **Aucun pointage automatique** (l'auto-baseline
    au 1er COMPLETED disparaît) — seul le gestionnaire pointe.

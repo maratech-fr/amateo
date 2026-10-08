@@ -232,8 +232,6 @@ final class PeriodPlanTranscriber
 
         // Miroir de ScheduleResultImporter : une version fraîchement transcrite n'est pas périmée.
         $schedule->setManuallyEditedSinceGeneration(false);
-        $schedule->setConstraintsChangedSinceGeneration(false);
-        $schedule->setResourcesChangedSinceGeneration(false);
         $this->entityManager->flush();
 
         return new PeriodTranscriptionResult($schedule->getId(), $schedule->getVersionNumber(), $copied, $toReplace);

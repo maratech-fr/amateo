@@ -1,10 +1,11 @@
 # Documentation métier du système de contraintes
 
-Last verified @ 2026-10-08 (rotation `documentation-update`, sans rapport avec le sujet de la PR
-— re-confronté au code : `ConstraintRuleType` toujours à deux cas `HARD`/`PREFERRED` SEULEMENT,
-`LOCK` absent (`backend/src/Enum/ConstraintRuleType.php`) ✓. Rien de faux trouvé cette passe ;
-les verrous de CRÉNEAU/MATCH (`lockLevel`, onglet « Réserver ») restent un autre concept, non
-décrit ici).
+Last verified @ 2026-10-08 (P4-266, `documentation-update`) : la mention de
+`ResourceChangeStaleScheduleListener` (§ Génération automatique des tags) recalée — le listener
+est SUPPRIMÉ, le mécanisme est désormais la divergence de l'empreinte de structure. Re-confronté
+au passage : `ConstraintRuleType` toujours à deux cas `HARD`/`PREFERRED` SEULEMENT, `LOCK` absent
+(`backend/src/Enum/ConstraintRuleType.php`) ✓ ; les verrous de CRÉNEAU/MATCH (`lockLevel`, onglet
+« Réserver ») restent un autre concept, non décrit ici.
 
 > Amateo — Symfony 7 + API Platform. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
@@ -203,7 +204,7 @@ L'administrateur du BCCL crée une contrainte `CLUB` avec `targetTag = "JEUNE"`.
 
 **Étape 2 — Génération automatique des tags**
 
-`TeamTagService` s'exécute régulièrement (ou à la création/modification d'une équipe) pour maintenir les tags à jour. Il inspecte chaque équipe et lui attribue des tags système. **`syncTeamTags` court-circuite si l'ensemble de tags désiré est identique à l'existant** (retour terrain 2026-09-27) : sans ce garde, un delete+recreate systématique du MÊME ensemble (rejoué à chaque écriture de `Team`, y compris depuis `TeamTagSyncListener::categoryUpdated` sur un simple changement de durée de match) écrivait des `TeamTagAssignment` pour rien, que `ResourceChangeStaleScheduleListener` prenait pour un vrai changement de ressource — bannière « à régénérer » à tort. La comparaison porte sur l'ENSEMBLE d'ids désiré vs existant, jamais sur un filtre de champs (`determineTagNames` reste libre d'évoluer sans faire revivre le bug) :
+`TeamTagService` s'exécute régulièrement (ou à la création/modification d'une équipe) pour maintenir les tags à jour. Il inspecte chaque équipe et lui attribue des tags système. **`syncTeamTags` court-circuite si l'ensemble de tags désiré est identique à l'existant** (retour terrain 2026-09-27) : sans ce garde, un delete+recreate systématique du MÊME ensemble (rejoué à chaque écriture de `Team`, y compris depuis `TeamTagSyncListener::categoryUpdated` sur un simple changement de durée de match) écrivait des `TeamTagAssignment` pour rien, ce qui faisait diverger l'empreinte de structure pour rien (bannière « à régénérer » à tort — P4-266). La comparaison porte sur l'ENSEMBLE d'ids désiré vs existant, jamais sur un filtre de champs (`determineTagNames` reste libre d'évoluer sans faire revivre le bug) :
 
 - Une équipe U13F se voit attribuer `JEUNE`, `U13`, `FEMININE`.
 - Une équipe SM1 se voit attribuer `SENIOR`, `MASCULINE` (plus un tag niveau si défini).

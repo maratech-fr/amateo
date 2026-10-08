@@ -23,8 +23,8 @@ final readonly class DeletionImpact
          * Combien des séances touchées vivent dans une version EN VIGUEUR — le planning que
          * le club distribue aujourd'hui. C'est une précision SUR une ligne d'impact, pas une
          * destruction de plus : la ligne dit combien de séances partent, celle-ci dit combien
-         * font mal. Les plannings terminés du club sont marqués PÉRIMÉS par le geste
-         * (`ResourceChangeStaleScheduleListener`), ce que l'écran annonce aussi.
+         * font mal. Les plannings terminés du club se diront à régénérer (le geste déplace
+         * l'empreinte de structure servie par plan), ce que l'écran annonce aussi.
          */
         public int $slotsInForce,
         /**

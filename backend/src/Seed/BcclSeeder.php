@@ -18,7 +18,6 @@ use App\Entity\OpponentVenueSuggestion;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
-use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
@@ -1391,10 +1390,8 @@ final class BcclSeeder
         // SECTION 13bis — RÉPARTITION WE DES MATCHS (profil dev)
         // ============================================================
         // L'état terrain du week-end : fenêtres d'accès match des gymnases, habitudes de match des
-        // équipes et créneaux de match partagés (rotations A/B). Placée AVANT la remise à zéro des
-        // drapeaux de péremption (section 14) : ces trois entités sont écoutées par
-        // ResourceChangeStaleScheduleListener — écrire APRÈS ferait naître les versions transcrites
-        // « périmées ». Démo/charge restent sans donnée WE (drapeau à false).
+        // équipes et créneaux de match partagés (rotations A/B). Démo/charge restent sans donnée WE
+        // (drapeau à false).
         if ($profile->seedWeekendMatchLayout) {
             $this->seedWeekendMatchLayout($manager, $season, $clubId, $teams, $venues);
         }
@@ -1411,23 +1408,12 @@ final class BcclSeeder
             $this->seedOpponentData($manager, $clubId);
         }
 
-        // ============================================================
-        // SECTION 14 — LES VERSIONS TRANSCRITES NAISSENT FRAÎCHES
-        // ============================================================
-        // Le seed crée les versions transcrites (sections 11-12) PUIS continue d'insérer
-        // (incident, liens, blocs…) : chaque écriture post-transcription déclenche les
-        // écouteurs de péremption (Constraint/ResourceChangeStaleScheduleListener), et une
-        // base FRAÎCHE naissait avec ses 3 plannings marqués « périmés » — faux par
-        // construction, la transcription égale l'état FINAL seedé (défaut consigné au
-        // programme plannings-bccl, §5). Dernier geste du run : remise à zéro des deux
-        // drapeaux sur TOUTES les versions du club. En exploitation réelle rien ne repasse
-        // par ici — les écouteurs gardent leur plein sens hors seed.
+        // P4-266 (2/2) — plus de drapeaux de péremption à remettre à zéro ici : la péremption se
+        // DÉRIVE désormais de l'empreinte de structure servie par plan (`structureHashOfPlan` ⇄
+        // `snapshotHash` de la version), et un planning VALIDÉ (toutes les versions pointées du
+        // seed le sont) ne porte AUCUN signal « à régénérer » côté écran. Un simple flush final
+        // scelle les dernières écritures du run.
         $manager->flush();
-        $manager->createQuery(
-            'UPDATE ' . Schedule::class . ' s
-             SET s.constraintsChangedSinceGeneration = false, s.resourcesChangedSinceGeneration = false
-             WHERE s.schedulePlanId IN (SELECT sp.id FROM ' . SchedulePlan::class . ' sp WHERE sp.clubId = :clubId)',
-        )->setParameter('clubId', $clubId)->execute();
 
         return $club;
     }
@@ -1891,7 +1877,7 @@ final class BcclSeeder
         }
 
         // Snapshot = la STRUCTURE courante (même recette que GenerateScheduleHandler et
-        // currentStructureHash), pour que « Régénérer » soit honnêtement grisé (structure
+        // structureHashOfPlan), pour que « Régénérer » soit honnêtement grisé (structure
         // inchangée depuis la « génération »).
         $payload = $this->constraintBuilder->buildForClubSeason($clubId, $season->getId());
         $schedule->setSnapshotData($payload);
@@ -1926,12 +1912,9 @@ final class BcclSeeder
         }
         $manager->flush();
 
-        // Miroir de ScheduleResultImporter (remise à zéro des 3 marqueurs) : un résultat
-        // fraîchement transcrit n'est pas périmé — sinon un 2e seed afficherait
-        // « planning périmé » sans raison.
+        // Miroir de ScheduleResultImporter : une version fraîchement transcrite n'est pas retouchée
+        // à la main (la péremption « à régénérer » se dérive désormais de l'empreinte de structure).
         $schedule->setManuallyEditedSinceGeneration(false);
-        $schedule->setConstraintsChangedSinceGeneration(false);
-        $schedule->setResourcesChangedSinceGeneration(false);
         $manager->flush();
     }
 
@@ -2390,10 +2373,8 @@ final class BcclSeeder
         }
         $manager->flush();
 
-        // Miroir de ScheduleResultImporter : une version fraîchement transcrite n'est pas périmée.
+        // Miroir de ScheduleResultImporter : une version fraîchement transcrite n'est pas retouchée à la main.
         $schedule->setManuallyEditedSinceGeneration(false);
-        $schedule->setConstraintsChangedSinceGeneration(false);
-        $schedule->setResourcesChangedSinceGeneration(false);
         $manager->flush();
     }
 

@@ -32,7 +32,6 @@ export interface MeSeasonPlan {
   name: string;
   chosenScheduleId: string | null;
   hasFinishedVersion: boolean;
-  currentStructureHash: string | null;
 }
 
 /**

@@ -87,8 +87,8 @@ final class EntityCascadeDeleter
      * Bornage par COUCHE assuré par `deleteBySlotKey` : chaque créneau porte son `schedulePlanId`,
      * donc un créneau de saison ne vide que les épinglages de base, un créneau de période que les
      * siens — les deux couches sont couvertes parce que l'appelant passe TOUS les créneaux ≥ 2 du
-     * gymnase. Écrit en DQL comme le reste du service (hors UnitOfWork). Le planning est marqué
-     * périmé par le write du gymnase lui-même (ResourceChangeStaleScheduleListener::venueTouched).
+     * gymnase. Écrit en DQL comme le reste du service (hors UnitOfWork). Le planning se dira à
+     * régénérer de lui-même : le write du gymnase déplace l'empreinte de structure servie par plan.
      *
      * @param list<VenueTrainingSlot> $slots les créneaux du gymnase à capacité ≥ 2
      */

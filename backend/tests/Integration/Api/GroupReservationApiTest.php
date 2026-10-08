@@ -8,7 +8,6 @@ use App\Controller\GroupReservationController;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Reservation;
-use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
@@ -16,7 +15,6 @@ use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
-use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Service\ReservationGroupOccupancy;
 use App\Service\SeasonResolver;
@@ -128,34 +126,11 @@ final class GroupReservationApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(409);
     }
 
-    // ── PÉREMPTION DES PLANNINGS (listener, sans le modifier) ─────────────────────
-
-    public function testBatchWriteMarksCompletedSchedulesStale(): void
-    {
-        [$t1, $t2] = [$this->team(2), $this->team(2)];
-        $venue = $this->venue(false);
-        $block = $this->block(null, [$t1, $t2], 2);
-
-        // Un planning COMPLETED du plan SEASON, marqueur remis à zéro.
-        $schedule = (new Schedule)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setName('S')->setStatus(ScheduleStatus::COMPLETED);
-        $this->linkSeededSchedule($schedule);
-        $this->em->flush();
-        $this->em->clear();
-        $managed = $this->em->find(Schedule::class, $schedule->getId());
-        self::assertInstanceOf(Schedule::class, $managed);
-        $managed->setResourcesChangedSinceGeneration(false);
-        $this->em->flush();
-        $this->em->clear();
-
-        $this->postBlock($block->getId(), $venue->getId(), 2, '18:00', null);
-        self::assertResponseStatusCodeSame(201);
-
-        $this->em->clear();
-        $reloaded = $this->em->find(Schedule::class, $schedule->getId());
-        self::assertInstanceOf(Schedule::class, $reloaded);
-        self::assertTrue($reloaded->isResourcesChangedSinceGeneration(), 'l\'écriture batch doit périmer le planning de saison COMPLETED');
-    }
+    // P4-266 — le test « l'écriture batch périme le planning COMPLETED » a été retiré : la
+    // péremption « à régénérer » n'est plus un drapeau posé par un listener (supprimé), elle se
+    // dérive de l'empreinte de structure (une réservation nourrit le payload /generate, donc le
+    // hash servi par SchedulePlanStructureHashController). La divergence sur changement de
+    // ressource est couverte par SchedulePlanStructureHashTest.
 
     // ── Parité de VALIDATION avec le rail unitaire (revue sécu 2026-08-23) ───────
 

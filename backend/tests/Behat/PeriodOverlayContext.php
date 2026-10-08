@@ -72,6 +72,9 @@ final class PeriodOverlayContext extends BaseContext
 
     private string $redateNewEnd = '';
 
+    /** Empreinte de structure du plan de période relevée juste après sa génération (P4-266). */
+    private string $redatePlanHashBefore = '';
+
     private string $splitStart = '';
 
     private string $splitShortEnd = '';
@@ -334,6 +337,13 @@ final class PeriodOverlayContext extends BaseContext
         if ('COMPLETED' !== $this->pollUntilTerminal($this->redateVersionId)) {
             throw new RuntimeException('la génération overlay de la fermeture à re-dater n\'a pas abouti');
         }
+
+        // P4-266 — l'empreinte de structure du plan JUSTE APRÈS la génération : c'est la référence
+        // que le re-datage doit faire bouger (le signal « à régénérer » se dérive de sa divergence).
+        $this->redatePlanHashBefore = $this->planStructureHash($this->redatePlanId);
+        if ('' === $this->redatePlanHashBefore) {
+            throw new RuntimeException('le plan de période ne sert aucune empreinte de structure après génération — décor non tenu');
+        }
     }
 
     #[When('je prolonge la fermeture de deux semaines')]
@@ -357,7 +367,7 @@ final class PeriodOverlayContext extends BaseContext
         }
     }
 
-    #[Then('la période porte les nouvelles dates, son plan aussi, la version existe toujours et le planning est signalé à régénérer')]
+    #[Then('la période porte les nouvelles dates, son plan aussi, la version existe toujours et le planning n\'est pas signalé à régénérer')]
     public function laPeriodeEtSonPlanPortentLesNouvellesDates(): void
     {
         $entry = $this->apiGet(\sprintf('calendar_entries/%s', $this->entryId), $this->token);
@@ -381,12 +391,25 @@ final class PeriodOverlayContext extends BaseContext
             throw new RuntimeException('la version overlay n\'a pas survécu au re-datage');
         }
 
-        $stale = $this->dbalScalar(
-            \sprintf('SELECT CASE WHEN resources_changed_since_generation THEN \'oui\' ELSE \'non\' END AS behatval FROM schedule WHERE id = \'%s\'', $this->redateVersionId),
+        // P4-266 — un re-datage qui ne fait PAS entrer/sortir de contrainte datée ne change rien au
+        // payload /generate (buildForPeriodPlan ne dépend des dates de l'entrée QUE via
+        // PeriodConstraintSelection : contraintes datées retenues, fermetures effectives, équipes
+        // désactivées). L'empreinte servie reste donc égale au snapshotHash FIGÉ de la version, et au
+        // hash relevé AVANT le re-datage : le planning n'est PAS signalé à régénérer (règle fondateur
+        // « si ça ne change rien au planning, pas de bandeau »).
+        $hashAfter = $this->planStructureHash($this->redatePlanId);
+        if ('' === $hashAfter) {
+            throw new RuntimeException('le plan ne sert plus d\'empreinte de structure après le re-datage');
+        }
+        $snapshotHash = $this->dbalScalar(
+            \sprintf('SELECT snapshot_hash AS behatval FROM schedule WHERE id = \'%s\'', $this->redateVersionId),
             admin: true,
         );
-        if ('oui' !== $stale) {
-            throw new RuntimeException('la version n\'est pas signalée à régénérer après le re-datage');
+        if ($hashAfter !== $snapshotHash) {
+            throw new RuntimeException('l\'empreinte servie a divergé du snapshotHash de la version alors que le re-datage ne touche aucune contrainte datée : le planning se signalerait à régénérer à tort');
+        }
+        if ($hashAfter !== $this->redatePlanHashBefore) {
+            throw new RuntimeException('l\'empreinte de structure a bougé après le re-datage alors qu\'il ne change rien à la structure');
         }
     }
 
@@ -499,6 +522,15 @@ final class PeriodOverlayContext extends BaseContext
                 admin: true,
             );
         }
+    }
+
+    /** L'empreinte de structure COURANTE d'un plan, servie par la route structure-hash (P4-266). */
+    private function planStructureHash(string $planId): string
+    {
+        $seen = $this->apiGet(\sprintf('schedule_plans/%s/structure-hash', $planId), $this->token);
+        $hash = $seen['json']['currentStructureHash'] ?? null;
+
+        return \is_string($hash) ? $hash : '';
     }
 
     /**

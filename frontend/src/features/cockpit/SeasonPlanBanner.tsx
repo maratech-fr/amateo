@@ -14,7 +14,6 @@ import { SeasonSchedulesModal } from "./SeasonSchedulesModal";
 import { planRepresentative, visibleSeasonPlans } from "@/features/planning/lib/versions";
 
 import type { CalendarEntry } from "./api";
-import { StalenessPill } from "./StalenessPill";
 import { useSchedulePlans } from "./queries";
 import { seasonPlanCounts } from "./seasonPlannings";
 
@@ -50,9 +49,6 @@ export function SeasonPlanBanner({ schedules, socleValidated, loading = false, e
   // compteur colle à « tous les plannings » (retour fondateur 2026-07-19).
   const { data: plans } = useSchedulePlans();
   const { total: planCount, overlays: overlayCount, openOverlays: openOverlayCount } = seasonPlanCounts(schedules, plans ?? [], entries, !loading);
-  // P4-173 — la péremption du SOCLE vient du plan SEASON (calendarEntryId === null), servie par le
-  // backend ; null (donc pas de pastille) tant qu'aucune version n'est pointée ou fenêtre révolue.
-  const seasonStaleness = (plans ?? []).find((p) => null === p.calendarEntryId)?.staleness ?? null;
   // P4-269 — le radar « personne à deux endroits » du planning EN VIGUEUR, résumé en une pastille :
   // le nombre de PERSONNES concernées (une personne peut porter plusieurs conflits). Recalculé
   // serveur ; vide (donc pas de pastille) tant qu'aucune version n'est pointée.
@@ -98,7 +94,6 @@ export function SeasonPlanBanner({ schedules, socleValidated, loading = false, e
           {chosen ? (
             <>
               <span>{STATUS_LABELS[chosen.status]}</span>
-              <StalenessPill staleness={seasonStaleness} />
               {conflictedPeople > 0 ? (
                 <StatusPill variant="warning" icon={<AlertTriangle className="size-3.5 shrink-0 text-warning" aria-hidden="true" />}>
                   {`${conflictedPeople} personne${conflictedPeople > 1 ? "s" : ""} à deux endroits`}

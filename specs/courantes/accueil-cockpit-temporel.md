@@ -1,9 +1,11 @@
 # Accueil « cockpit temporel »
 
-Last verified @ 2026-10-06 (reliquat UX de l'audit 2026-10-03, UXC-26). Mockup §5 recalé : le
-bandeau nomme « Planning de saison » (vocabulaire unifié — plus de « Planning principal », qui n'a
-plus cours dans le code). Reste du fichier non re-confronté cette passe. Historique de ce fichier :
-`git log -p --follow` dessus.
+Last verified @ 2026-10-08 (P4-266, `documentation-update`). §5bis recalé contre le code : plus
+aucune pastille cockpit (`StalenessPill` supprimé, `SchedulePlanResource.staleness` retiré), le
+signal « à régénérer » ne vit plus que sur `/planning`, dérivé de l'empreinte de structure
+(`GET /api/schedule_plans/{id}/structure-hash`) et muet sur un planning validé ; les deux toasts de
+re-datage ne mentionnent plus « à régénérer ». Reste du fichier non re-confronté cette passe.
+Historique de ce fichier : `git log -p --follow` dessus.
 
 > **Statut** : livré — cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2. Ce document fixe le
 > modèle d'UX + d'architecture de l'accueil cockpit et la fondation des **calendriers
@@ -449,16 +451,26 @@ saison en cours.
     fin précède le début. Un conflit de fenêtre (409) s'affiche **à l'endroit du geste**
     (`WindowAlreadyPlannedNotice`, valeurs conservées, focus sur « Ouvrir le planning en place ») ;
     tout autre refus part au filet global. Un succès invalide les lectures dérivées de la fenêtre,
-    ferme le dialogue et annonce « Fermeture re-datée du … au … — planning à régénérer » (jamais
-    de mention du pivot socle dans ce toast, décision fermée `etat-des-lieux.md` §2) : la version
-    pointée survit ; la bannière de `/planning` la signale comme obsolète (`stalenessMessage`,
-    `PlanningPage.tsx:634`).
-  - **Le cockpit affiche lui-même la péremption d'une version** : `SchedulePlanResource.staleness`
-    sert la péremption de la version **POINTÉE** par le plan — `null` tant que rien n'est pointé,
-    ou dès que la fenêtre du plan est révolue (horloge serveur : pas de faux « à régénérer » sur
-    du passé). Le front **affiche sans redériver** (`StalenessPill`) sur quatre surfaces : la
-    carte Saison, le radar, la modale « Tous les plannings » et la ligne du jour. Pastille **non
-    cliquable** (chaque surface porte déjà son CTA).
+    ferme le dialogue et annonce « Fermeture re-datée du … au … » (jamais de mention du pivot
+    socle ni de « à régénérer » dans ce toast, décision fermée `etat-des-lieux.md` §2) : la
+    version pointée survit. Prolonger/raccourcir la fenêtre ne fait PAS, en soi, diverger
+    l'empreinte de structure (`buildForPeriodPlan` ne dépend des dates de l'entrée QUE via la
+    sélection des contraintes datées retenues) — un re-datage qui ne fait entrer ni sortir aucune
+    contrainte datée laisse `/planning` **MUET** ; c'est seulement si le re-datage en fait
+    entrer/sortir une que le bandeau apparaît sur une version de travail — voir ci-dessous.
+  - **P4-266 — plus aucune pastille cockpit.** Le signal « à régénérer » ne vit plus QUE sur
+    `/planning`, et ne vient plus de drapeaux posés par un listener à l'écriture
+    (`*SinceGeneration`) : il se **dérive** de l'empreinte de structure COURANTE du plan, servie
+    par `GET /api/schedule_plans/{id}/structure-hash`
+    (`App\Service\SchedulePlanProvisioner::structureHashOfPlan`), comparée au `snapshotHash` figé
+    de la version affichée — SEASON comme PÉRIODE. Deux causes seulement, pour une version de
+    **travail** (non pointée) : modifiée à la main (`manuallyEditedSinceGeneration`), ou structure
+    changée (empreinte ≠ snapshot — contrainte, gymnase, coach, créneau, équipe… une seule cause
+    recouvre tout ce qui nourrit le solveur, y compris **rattacher un coach à une équipe**, qui
+    entre désormais dans le payload). Un planning **VALIDÉ** (en vigueur, lecture seule) est
+    **MUET** : aucun signal, ni bandeau ni pastille — on le rouvre avant de régénérer
+    (`stalenessMessage`, `frontend/src/features/planning/lib/staleness.ts`, consommé par
+    `PlanningPage.tsx`). Le même hash grise le bouton « Régénérer » quand il égale le snapshot.
   - **Sur une indisponibilité déjà découpée** (mère `closure` segmentée en début/milieu/fin,
     exclusif de `redatable`), « Modifier les dates de … » passe par un **aperçu puis
     confirmation** : le bouton s'intitule « Voir les effets » tant qu'aucun aperçu n'est chargé,
@@ -466,9 +478,10 @@ saison en cours.
     dans une région annoncée aux lecteurs d'écran. Dès qu'un effet supprime un planning, la liste
     est encadrée d'un avertissement et le bouton devient « Confirmer ». Toute retouche de date
     après coup **périme l'aperçu** (retour à « Voir les effets ») ; un jeton expiré redemande
-    l'aperçu automatiquement, la confirmation restant **manuelle**. Succès → même toast
-    « … — planning à régénérer » (variante « plans de période ajustés » si l'aperçu portait une
-    suppression). Détail : [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md) ·
+    l'aperçu automatiquement, la confirmation restant **manuelle**. Succès → « Fermeture re-datée
+    du … au … » (variante « Dates modifiées — plans de période ajustés. » si l'aperçu portait une
+    suppression) — aucun des deux ne mentionne plus « à régénérer » (P4-266). Détail :
+    [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md) ·
     [`types-de-planning.md`](types-de-planning.md) §2.
 - **L'écran dédié « calendrier secondaire »** = le wizard réutilisé en « mode période » (§6bis) :
   les mêmes 6 étapes, mais le roster/les gymnases restent **hérités** (non ré-éditables comme

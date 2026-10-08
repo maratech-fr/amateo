@@ -1,13 +1,14 @@
 # Génération d'un planning — conduite normalisée (bout en bout)
 
-Last verified @ 2026-10-07 (P4-96 PR-2 — contrat moteur 1.3 → 1.4 : trois kinds de cause DÉDIÉS (`day_forced`, `session_floor`, `shared_block`) sur `DiagnosticCauseSchema` + `causes[]` officialisé sur le diagnostic `conflict` — sur INFEASIBLE, `diag-infeasible` NOMME le noyau de règles en conflit (hypothèses CP-SAT) et chaque `diag-infeasible-team-*` l'agrégat des candidats fermés ; forme du payload `/generate` par ailleurs inchangée. Antérieurement @ 2026-10-06 : contrat moteur 1.2 → 1.3 — retrait des champs morts du fil — PII coach email/phone, flags isActive/tags/minSessionsOverride, priorityTiers, kickoffEstimated/roundTripMinutes, ENG-53/RGPD-03/ALIGN-20 ; antérieurement 1.1 → 1.2, vocabulaire `/place-matches` resserré en
-énums fermées, ENG-56). `CONTRACT_VERSION`
-**`'1.4'`** confirmé aux trois foyers — `ScheduleConstraintBuilder.php:59`, `MoveSlotService.php:50`,
-`MatchPlacementPayloadBuilder.php:74` — et
-`engine/CONTRACT_VERSION` (`1.4`). Garde de redélivrance
-(`GenerateScheduleHandler.php:143`, SEUL `COMPLETED` bloque) et persistance de la greffe de
-convergence (`Schedule::payloadGraft`/`engineInput()`, `Schedule.php:138`) toujours en place, code
-relu ; aucun écran frontend n'affiche `score` (grep confirmé, `frontend/src/features/planning/api.ts`).
+Last verified @ 2026-10-08 (P4-266, `documentation-update`) : la mention de `currentStructureHash`
+(§ greffe de convergence) recalée — le garde « structure inchangée » compare désormais au
+`snapshotHash` l'empreinte de structure PAR PLAN (`SchedulePlanProvisioner::structureHashOfPlan`).
+Re-confronté au passage : `CONTRACT_VERSION` **`'1.4'`** confirmé aux trois foyers
+(`ScheduleConstraintBuilder::CONTRACT_VERSION`, `MoveSlotService::CONTRACT_VERSION`,
+`MatchPlacementPayloadBuilder::CONTRACT_VERSION`) et `engine/CONTRACT_VERSION` (`1.4`) ✓ ; garde de
+redélivrance (`GenerateScheduleHandler`, SEUL `COMPLETED` bloque) et persistance de la greffe de
+convergence (`Schedule::payloadGraft`/`engineInput()`) toujours en place ✓ ; aucun écran frontend
+n'affiche `score` (`frontend/src/features/planning/api.ts`) ✓.
 *(historique des passes vit dans git : `git log -p --follow specs/courantes/generation-pipeline.md`)*
 
 > Vérité courante. Décrit ce qui **doit** se passer, zone par zone, quand un
@@ -106,8 +107,9 @@ via `POST /generate` ; backend → frontend via Mercure SSE `club:{clubId}:sched
 - **La greffe de convergence est persistée, jamais recalculée après coup**
   (`Schedule::payloadGraft`, colonne `payload_graft`) : `previousAssignments`
   (régénération) ou `socleReferenceAssignments` (comblement) sont émis au moteur APRÈS le hash
-  de snapshot — les y inclure ferait diverger `snapshotHash` de `currentStructureHash` et
-  casserait en silence le garde « structure inchangée ». Le handler extrait la greffe par
+  de snapshot — les y inclure ferait diverger `snapshotHash` de l'empreinte de structure
+  (`SchedulePlanProvisioner::structureHashOfPlan`) et casserait en silence le garde « structure
+  inchangée ». Le handler extrait la greffe par
   différence de clés entre le payload post-greffe et le snapshot pré-greffe, et la flushe avant
   le solve. `Schedule::engineInput()` (snapshot + greffe) est la maison unique de recomposition
   de l'entrée RÉELLE envoyée au moteur — consommée par `FeedbackController` pour qu'un

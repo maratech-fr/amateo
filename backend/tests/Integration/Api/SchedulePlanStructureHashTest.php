@@ -54,7 +54,8 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  *   (c) PORTÉE PAR PLAN (ADR-0002, grille copiée) : toucher la grille SAISON ne bouge pas le hash
  *       d'une période ;
  *   (d) 404 pour le plan d'un AUTRE club (jamais un oracle d'existence) ;
- *   (e) `null` propre — jamais une 500 — quand la structure ne peut pas être bâtie.
+ *   (e) `null` propre — jamais une 500 — quand la structure ne peut pas être bâtie ;
+ *   (f) la ressource plan ne sert PLUS de bloc `staleness` (P4-266 : la péremption se dérive du hash).
  *
  * Références de recette (citées, pas devinées) :
  *  - SEASON : `GenerateScheduleHandler` hache l'entrée du solveur AVANT les greffes de convergence
@@ -232,6 +233,20 @@ final class SchedulePlanStructureHashTest extends WebTestCase
         $body = $this->getHash($user, $season, $planId);
         self::assertSame(200, $this->client->getResponse()->getStatusCode(), 'une structure imbâtissable ne casse jamais la route');
         self::assertNull($body['currentStructureHash'], 'structure imbâtissable → hash null, jamais une 500');
+    }
+
+    /** (f) P4-266 : la ressource plan ne sert plus de bloc `staleness` — plus aucun signal « à régénérer » servi là. */
+    public function testSchedulePlanResourceNoLongerServesStaleness(): void
+    {
+        [$user, , $season] = $this->seedClub('NOSTALE');
+
+        $this->client->request('GET', '/api/schedule_plans', [], [], $this->headers($user, $season));
+        self::assertResponseIsSuccessful();
+        self::assertStringNotContainsString(
+            '"staleness"',
+            (string) $this->client->getResponse()->getContent(),
+            'la ressource plan ne doit plus servir de bloc staleness (péremption désormais dérivée de l\'empreinte)',
+        );
     }
 
     protected function setUp(): void

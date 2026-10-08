@@ -681,24 +681,17 @@ jobs:
       - name: LockOriginProvenanceTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Service/LockOriginProvenanceTest.php --group phase1'
 
-      # F2c (axe planning lifecycle) : une contrainte modifiée APRÈS génération marque les
-      # plannings COMPLETED du club+saison comme PÉRIMÉS (état en base), et un import de
-      # résultat solveur les démarque. Le marquage passe par un listener d'entité (tout writer,
-      # même hors API) et respecte la frontière saison. Sans ce gate, l'application remettrait à
-      # afficher un planning comme courant alors qu'une règle a changé sous lui — le bug de
-      # confiance qui a fait perdre foi dans le produit.
-      - name: ConstraintChangeStaleScheduleTest
-        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Service/ConstraintChangeStaleScheduleTest.php --group phase1'
-
-      # P4-87 (axe planning lifecycle) : une contrainte n'est pas la seule entrée du solveur.
-      # Un gymnase, un coach, un créneau/grille de période, une réservation, un override, un tag
-      # ou une entrée de calendrier modifiés APRÈS génération marquent les plannings COMPLETED
-      # comme PÉRIMÉS (état en base), un import démarque. Le CŒUR est ADR-0002 : le périmètre se
-      # dérive MÉCANIQUEMENT de schedule_plan_id — la grille SAISON ne périme pas les COPIES de
-      # période, et inversement. Sans ce gate, un planning serait périmé sans le dire pour toutes
-      # ces raisons — le défaut de confiance qu'on a réparé pour les contraintes, resté ouvert.
-      - name: ResourceChangeStaleScheduleTest
-        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Service/ResourceChangeStaleScheduleTest.php --group phase1'
+      # P4-266 (axe planning lifecycle) : le signal « à régénérer » ne vit plus dans un drapeau
+      # posé par un listener — il se DÉRIVE de l'empreinte de structure servie PAR PLAN (route
+      # structure-hash), que l'écran compare au snapshotHash figé de la version pointée. Ce gate
+      # tient la promesse de l'empreinte : elle vaut EXACTEMENT le snapshotHash d'une version
+      # fraîchement née (SEASON générée ET période transcrite), diverge sur un changement de
+      # ressource ou de contrainte, reste PORTÉE PAR PLAN (ADR-0002 : la grille saison ne bouge pas
+      # le hash d'une période), rend 404 pour le plan d'un autre club et `null` plutôt qu'une 500
+      # sur une structure imbâtissable. Sans lui, l'empreinte mentirait en permanence — bouton
+      # « Régénérer » grisé à tort ou jamais, bannière « à régénérer » muette ou criant sans cesse.
+      - name: SchedulePlanStructureHashTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Api/SchedulePlanStructureHashTest.php --group phase1'
 
       # P3-16 + DOC-2 (axes planning lifecycle + périmètre engagé) : supprimer une salle, une
       # équipe ou un coach détruit en cascade — et la modale annonçait, depuis le cache du

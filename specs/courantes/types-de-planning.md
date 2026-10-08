@@ -1,6 +1,10 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-10-06 (rotation de fraîcheur `documentation-update`, sujet sans rapport avec le reliquat DOC). Re-confronté au code : `assertValidWeekChild` (`backend/src/State/Processor/CalendarEntryStateProcessor.php:673`) garde toujours le segment de taille 1 ✓ ; `OrphanPinGuard` (`backend/src/Service/OrphanPinGuard.php:32`) ✓ ; `segmentsFromOffer` (`frontend/src/features/cockpit/lib/date.ts:231`) ✓. Reste du fichier non rejoué ligne à ligne cette passe.
+Last verified @ 2026-10-08 (P4-266, `documentation-update`) : § Re-dater un incident recalée — la
+version en vigueur (validée) d'un incident re-daté ne porte plus AUCUN signal, et un simple
+déplacement de fenêtre (sans contrainte datée qui entre/sort) ne fait PAS diverger l'empreinte
+d'une version de travail non plus (confronté à `CalendarEntryStateProcessor.php` et au scénario
+Behat `plan-de-periode-en-overlay.feature`). Reste du fichier non rejoué ligne à ligne cette passe.
 
 > **Rôle de ce document** : la trace durable du modèle métier des plannings. C'est LA référence
 > à consulter avant tout travail sur la génération : quel type se déclenche quand, ce qu'on y
@@ -121,8 +125,13 @@ début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
 - **Résultat** : un calendrier secondaire borné à la semaine ; hors des jours d'indispo,
   les créneaux du socle restants **sont conservés**.
 - **Re-dater un incident sans le redéclarer** : changer les dates d'une fermeture qui porte déjà
-  un plan ne détruit ni le plan ni ses versions — la version en vigueur survit, simplement marquée
-  à régénérer. Le geste diffère selon la forme de la fermeture :
+  un plan ne détruit ni le plan ni ses versions — la version pointée survit. Si elle est **en
+  vigueur** (validée), aucun signal ne s'affiche (P4-266, décision fondateur : un planning validé
+  est muet) ; sinon, le bandeau de `/planning` la signale « à régénérer » SEULEMENT si le
+  déplacement fait entrer ou sortir une contrainte datée de la sélection de la période (sinon
+  l'empreinte reste à l'identique — prolonger/raccourcir une fenêtre sans y toucher laisse le
+  planning muet, règle fondateur « si ça ne change rien, pas de bandeau »). Le geste diffère selon
+  la forme de la fermeture :
   - **Un seul bloc** (pas encore découpée en semaines-enfants) : re-datage direct — la fenêtre du
     plan, les contraintes datées nées du même geste et le titre du plan (s'il portait encore le
     libellé auto) suivent la nouvelle fenêtre. Refusé si la fenêtre chevauche un autre plan déjà en
