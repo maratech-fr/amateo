@@ -21,6 +21,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Index(name: 'idx_reservation_club_season', columns: ['club_id', 'season_id'])]
 #[ORM\Index(name: 'idx_reservation_schedule_plan', columns: ['schedule_plan_id'])]
 #[ORM\Index(name: 'idx_reservation_team', columns: ['team_id'])]
+// Colonnes de l'unicité seulement — le NULLS NOT DISTINCT (qui fait collisionner deux
+// réservations de SOCLE, plan NULL, de la même équipe sur la même case) vit dans la migration :
+// Doctrine ne sait pas l'exprimer en attribut, et aucun gate schema:validate ne lit cet attribut.
+#[ORM\UniqueConstraint(name: 'uniq_reservation_case_team', columns: ['club_id', 'season_id', 'schedule_plan_id', 'venue_id', 'day_of_week', 'start_time', 'team_id'])]
 #[ORM\HasLifecycleCallbacks]
 class Reservation implements TenantOwnedInterface
 {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Controller\GroupReservationController;
 use App\Entity\Reservation;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
@@ -50,6 +51,14 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  */
 final class ReservationGroupOccupancy
 {
+    /**
+     * Message HUMAIN de la règle (a) EXCLUSIVITÉ — SOURCE UNIQUE. Partagé avec le foyer aval de
+     * {@see GroupReservationController} : quand une course concurrente franchit
+     * cette garde amont et bute sur l'index `uniq_reservation_case_team`, le 422 rend le MÊME
+     * texte (jamais une copie — la divergence ferait dire deux choses de la même règle).
+     */
+    public const string SLOT_ALREADY_OCCUPIED = 'Ce créneau est déjà occupé par d\'autres réservations : un entraînement mutualisé demande un créneau entièrement libre. Choisissez un créneau vide, ou retirez d\'abord les réservations en place.';
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly EffectiveTeamSessions $effectiveTeamSessions,
@@ -125,7 +134,7 @@ final class ReservationGroupOccupancy
     ): void {
         // (a) EXCLUSIVITÉ — le créneau visé doit être VIDE de toute autre réservation.
         if ([] !== $this->reservationsOnCase($venueId, $dayOfWeek, $startTime, $schedulePlanId)) {
-            throw new UnprocessableEntityHttpException('Ce créneau est déjà occupé par d\'autres réservations : un entraînement mutualisé demande un créneau entièrement libre. Choisissez un créneau vide, ou retirez d\'abord les réservations en place.');
+            throw new UnprocessableEntityHttpException(self::SLOT_ALREADY_OCCUPIED);
         }
 
         // (c) PLAFOND — la case visée est vide (règle a), elle deviendra « bloc-complète » : les

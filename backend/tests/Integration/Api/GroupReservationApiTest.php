@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Api;
 
+use App\Controller\GroupReservationController;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Reservation;
@@ -17,16 +18,19 @@ use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Service\ReservationGroupOccupancy;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 /**
  * P2-46 PR-2 — la règle d'occupation exclusive + le rail d'écriture batch d'un entraînement
@@ -381,6 +385,88 @@ final class GroupReservationApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(403);
     }
 
+    // ══════════════════════════════════════════════════════════════════════════════
+    // P4-128 n°1 — index UNIQUE de case : le dernier filet sous la garde amont (a)
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * PREUVE DB de `uniq_reservation_case_team` : deux réservations IDENTIQUES sur la même case,
+     * toutes deux de SOCLE (schedule_plan_id NULL), DOIVENT collisionner. C'est précisément ce
+     * qu'un index UNIQUE ordinaire LAISSERAIT passer (NULL ≠ NULL) et que `NULLS NOT DISTINCT`
+     * rejette — la raison d'être du modificateur.
+     */
+    public function testLIndexUniqueRefuseLeDoublonDeCase(): void
+    {
+        $team = $this->team(2);
+        $venue = $this->venue(false);
+
+        $this->em->persist($this->rawReservation($team->getId(), $venue->getId(), 2, '18:00', null));
+        $this->em->flush();
+
+        $this->expectException(UniqueConstraintViolationException::class);
+        $this->em->persist($this->rawReservation($team->getId(), $venue->getId(), 2, '18:00', null));
+        $this->em->flush();
+    }
+
+    /**
+     * FOYER AVAL testé DIRECTEMENT : en HTTP SÉQUENTIEL la garde amont (a) refuse avant la base,
+     * donc l'index ne se voit jamais par le chemin HTTP (piège `.claude/rules/backend.md`). On
+     * simule la COURSE — un doublon déjà en base — et on appelle l'écriture atomique du
+     * contrôleur : l'index lève, le foyer rend un 422 avec le MÊME message que la règle (a), et la
+     * transaction laisse ZÉRO ligne orpheline.
+     */
+    public function testUneCourseSurLaMemeCaseRend422SansLigneOrpheline(): void
+    {
+        $t1 = $this->team(3);
+        $t2 = $this->team(3);
+        $venue = $this->venue(false);
+        $this->block(null, [$t1, $t2], 1);
+
+        // La COURSE : t1 occupe déjà la case (posé directement, la garde (a) ne l'a pas vu).
+        $this->em->persist($this->rawReservation($t1->getId(), $venue->getId(), 2, '18:00', null));
+        $this->em->flush();
+
+        $controller = self::getContainer()->get(GroupReservationController::class);
+        self::assertInstanceOf(GroupReservationController::class, $controller);
+
+        $thrown = null;
+        try {
+            $controller->writeBlockReservationsAtomically(
+                $this->club->getId(),
+                $this->season->getId(),
+                [$t1->getId(), $t2->getId()],
+                $venue->getId(),
+                2,
+                new DateTimeImmutable('18:00'),
+                90,
+                null,
+            );
+        } catch (UnprocessableEntityHttpException $e) {
+            $thrown = $e;
+        }
+
+        self::assertInstanceOf(UnprocessableEntityHttpException::class, $thrown, 'la course sur la même case doit être refusée');
+        self::assertSame(ReservationGroupOccupancy::SLOT_ALREADY_OCCUPIED, $thrown->getMessage(), 'le 422 réutilise le message de la règle (a)');
+
+        // L'EntityManager est fermé par l'exception (flush échoué) : on le réinitialise pour les
+        // assertions d'état. Le rollback au savepoint (DBAL 4) a préservé la transaction DAMA.
+        $em = self::getContainer()->get('doctrine')->resetManager();
+        self::assertInstanceOf(EntityManagerInterface::class, $em);
+        $this->scopeGucToClub($this->club->getId());
+
+        // Zéro ligne orpheline : la transaction a tout annulé, t2 n'a AUCUNE réservation…
+        $t2Count = (int) $em->getRepository(Reservation::class)->createQueryBuilder('r')
+            ->select('COUNT(r.id)')->where('r.teamId = :t')->setParameter('t', $t2->getId())
+            ->getQuery()->getSingleScalarResult();
+        self::assertSame(0, $t2Count, 'l\'écriture atomique n\'a laissé aucune ligne pour t2');
+
+        // … et la case ne porte toujours QUE la réservation pré-existante de t1.
+        $onCase = (int) $em->getRepository(Reservation::class)->createQueryBuilder('r')
+            ->select('COUNT(r.id)')->where('r.venueId = :v')->andWhere('r.dayOfWeek = 2')
+            ->setParameter('v', $venue->getId())->getQuery()->getSingleScalarResult();
+        self::assertSame(1, $onCase, 'seule la réservation pré-existante demeure');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -422,6 +508,19 @@ final class GroupReservationApiTest extends WebTestCase
         $this->em->flush();
 
         $this->token = $container->get(JWTTokenManagerInterface::class)->create($this->user);
+    }
+
+    private function rawReservation(string $teamId, string $venueId, int $dayOfWeek, string $startTime, ?string $planId): Reservation
+    {
+        return (new Reservation)
+            ->setClubId($this->club->getId())
+            ->setSeasonId($this->season->getId())
+            ->setSchedulePlanId($planId)
+            ->setTeamId($teamId)
+            ->setVenueId($venueId)
+            ->setDayOfWeek($dayOfWeek)
+            ->setStartTime(new DateTimeImmutable($startTime))
+            ->setDurationMinutes(90);
     }
 
     private function team(int $sessionsPerWeek): Team
