@@ -43,7 +43,7 @@ import { buildClubView } from "./lib/clubView";
 import { ClubViewTable } from "./ClubViewTable";
 import { availableResourceGroups, buildGrid, DAYS, type Lookups, slotGroupKey } from "./lib/grid";
 import { PlanningToolbar } from "./PlanningToolbar";
-import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, usePlacedConflicts, useRegenerate, useRegenerateFromVersion, useRegenerateOverlay, useSchedules, useSlots, useSocleDeviation, useTeamCoaches, useTeams, useTrainingSlots, useVenues } from "./queries";
+import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, usePlacedConflicts, useRegenerate, useRegenerateFromVersion, useRegenerateOverlay, useSchedules, useSlots, useSocleDeviation, useStructureHash, useTeamCoaches, useTeams, useTrainingSlots, useVenues } from "./queries";
 import { blocksForSlot } from "./lib/blockSession";
 import { ResourceFilter } from "./ResourceFilter";
 import { SlotDetail } from "./SlotDetail";
@@ -274,10 +274,17 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // par une sélection LOCALE. Aucune écriture, aucune redirection : la version en vigueur (isChosen)
   // reste le calendrier. Même borne de plan que `scopeInFlight` (cf. lib/versions).
   const laterVersionId = useMemo(() => laterCompletedVersionId(displayed, schedules), [displayed, schedules]);
+  // P4-266 — l'empreinte de structure COURANTE du plan de la version affichée (SEASON ou période),
+  // servie par le backend. On la COMPARE au snapshotHash figé de la version (le backend dit, le
+  // front affiche) : égale ⇒ structure inchangée (« Régénérer » grisé) ; différente ⇒ la structure
+  // a bougé (planning à régénérer). `null` (plan non résolu / structure imbâtissable) ⇒ aucune cause,
+  // bouton NON grisé. Par planId (react-query), périodes incluses.
+  const structureHashQuery = useStructureHash(selectedSchedule?.schedulePlanId ?? null);
+  const currentStructureHash = structureHashQuery.data?.currentStructureHash ?? null;
+  const structureChanged =
+    null !== currentStructureHash && null !== selectedSchedule && selectedSchedule.snapshotHash !== currentStructureHash;
   const regenerateDisabled =
-    null !== selectedSchedule
-    && isSeasonPlanType(selectedSchedule.planType)
-    && selectedSchedule.snapshotHash === me?.seasonPlan?.currentStructureHash;
+    null !== currentStructureHash && null !== selectedSchedule && selectedSchedule.snapshotHash === currentStructureHash;
   // regenerateFromMutation.isPending: "Charger cette version" no longer creates a
   // PENDING schedule (nothing sets isGenerating), so its own restore must disable
   // the action here — else a second click double-runs the destructive restore.
@@ -582,10 +589,6 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // Repli sur le nom de la version si le plan n'est pas encore résolu : un fichier au
   // nom imparfait vaut mieux qu'un « planning.xlsx » anonyme (revue #339).
   const exportName = displayedPlanName;
-  const structureDiverged =
-    null !== selectedSchedule && isSeasonPlanType(selectedSchedule.planType)
-    && typeof selectedSchedule.generatedTeamCount === "number" && teams.length > 0
-    && selectedSchedule.generatedTeamCount !== teams.length;
 
   return (
     <div>
@@ -663,19 +666,17 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
         />
       )}
 
-      {/* Planning PÉRIMÉ (pas faux) : retouché à la main (F2b), une contrainte a changé (F2c),
-          une DONNÉE DU CLUB a changé (P4-87), ou des équipes ont été ajoutées/retirées
-          (structureDiverged, fusionné ICI plutôt qu'en bandeau séparé). UNE seule bannière qui
-          nomme sa/ses cause(s) ; sur un planning validé (lecture seule) elle propose « rouvrir
-          puis régénérer », jamais un geste qui finirait en 409. Voir lib/staleness. */}
+      {/* Planning PÉRIMÉ (pas faux) : retouché à la main (F2b), OU sa structure a changé depuis la
+          génération — l'empreinte servie par le backend diverge du snapshot figé (P4-266, une seule
+          cause pour contraintes/gymnases/coachs/équipes/…). UNE seule bannière qui nomme sa/ses
+          cause(s). Un planning VALIDÉ (lecture seule) est MUET (décision fondateur) : stalenessMessage
+          rend null. Voir lib/staleness. */}
       {(() => {
         const stale = showGenerationWaiting || null === selectedSchedule
           ? null
           : stalenessMessage({
             manuallyEdited: true === selectedSchedule.manuallyEditedSinceGeneration,
-            constraintsChanged: true === selectedSchedule.constraintsChangedSinceGeneration,
-            resourcesChanged: true === selectedSchedule.resourcesChangedSinceGeneration,
-            structureDiverged,
+            structureChanged,
             readOnly: isReadOnly,
           });
         return null === stale ? null : <NoticeBanner tone="warning" className="mb-4" message={stale} />;

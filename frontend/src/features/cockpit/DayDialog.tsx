@@ -26,7 +26,6 @@ import { WindowAlreadyPlannedNotice } from "./WindowAlreadyPlannedNotice";
 import { entryIcon, entryLabel, holidayIcon, isHolidayAnchor, isHolidayWeekChild } from "./lib/markers";
 import { useCalendarEntries, useCreateCutoff, useCreateEvent, useCreateVenueClosure, useDeleteEntry, useRedateEntry, useRedatePreview, useSchedulePlanForEntry, useSchedulePlans } from "./queries";
 import { WeekPickerDialog } from "./WeekPickerDialog";
-import { StalenessPill } from "./StalenessPill";
 
 type Mode = "list" | "event" | "closure" | "cutoff" | "redate";
 
@@ -214,8 +213,6 @@ function DayList({ entries, holiday, publicHoliday, onCreate, onRedate, onClose 
                       the title/fallback text carries the meaning). */}
                   <span aria-hidden className="text-base leading-none">{entryIcon(entry)}</span>
                   <span className="truncate">{entry.title || entryLabel(entry)}</span>
-                  {/* P4-173 — « à régénérer » à côté du titre (frère du nœud tronqué, jamais dedans). */}
-                  <StalenessPill staleness={plan?.staleness ?? null} />
                 </span>
                 <span className="flex shrink-0 items-center gap-1">
                   {null !== plan ? (
@@ -847,7 +844,7 @@ function RedateForm({ entry, onBack, onDone }: { entry: CalendarEntry; onBack: (
     setWindowConflict(null); // réinitialisé à chaque tentative (jamais un refus périmé collé au geste)
     try {
       await redate.mutateAsync({ entry, startDate, endDate });
-      toast.success(`Fermeture re-datée du ${frDateShort(startDate)} au ${frDateShort(endDate)} — planning à régénérer`);
+      toast.success(`Fermeture re-datée du ${frDateShort(startDate)} au ${frDateShort(endDate)}`);
       onDone();
     } catch (error) {
       if (error instanceof WindowAlreadyPlannedError) {
@@ -1003,7 +1000,7 @@ function RedateWithPreviewForm({ entry, onBack, onDone }: { entry: CalendarEntry
     setWindowConflict(null);
     try {
       await redate.mutateAsync({ entry, startDate, endDate, previewToken: token });
-      toast.success(hasDeletion ? "Dates modifiées — plans de période ajustés, planning à régénérer." : `Fermeture re-datée du ${frDateShort(startDate)} au ${frDateShort(endDate)} — planning à régénérer`);
+      toast.success(hasDeletion ? "Dates modifiées — plans de période ajustés." : `Fermeture re-datée du ${frDateShort(startDate)} au ${frDateShort(endDate)}`);
       onDone();
     } catch (error) {
       if (error instanceof WindowAlreadyPlannedError) {

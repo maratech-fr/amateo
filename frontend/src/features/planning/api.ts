@@ -109,21 +109,6 @@ export interface Schedule {
    * une réponse d'écriture nue, traité comme faux.
    */
   manuallyEditedSinceGeneration?: boolean;
-  /**
-   * F2c : une contrainte a-t-elle changé (créée, modifiée, supprimée) depuis la génération de
-   * ce planning ? Vrai ⇒ le planning décrit un état ANTÉRIEUR des règles — pas faux, mais
-   * PÉRIMÉ ; l'écran le dit (bannière unifiée avec « retouché à la main »). Remis à faux par
-   * une (re)génération. Absent (undefined) sur une réponse d'écriture nue, traité comme faux.
-   */
-  constraintsChangedSinceGeneration?: boolean;
-  /**
-   * P4-87 : une DONNÉE DU CLUB autre qu'une contrainte (gymnase, coach, créneau/grille de
-   * période, réservation, override, tag d'équipe, calendrier) a-t-elle changé depuis la
-   * génération ? Vrai ⇒ le planning décrit un état ANTÉRIEUR des données — pas faux, PÉRIMÉ ;
-   * l'écran le dit (même bannière unifiée). Remis à faux par une (re)génération. Absent
-   * (undefined) sur une réponse d'écriture nue, traité comme faux.
-   */
-  resourcesChangedSinceGeneration?: boolean;
   createdAt: string;
   updatedAt: string;
   /**
@@ -874,6 +859,14 @@ export const listSchedules = (): Promise<Schedule[]> =>
   );
 export const getSchedule = (id: string): Promise<Schedule> => api.get(`schedules/${id}`).json<Schedule>();
 export const getSlots = (scheduleId: string): Promise<Slot[]> => collection<Slot>("schedule_slot_templates", { scheduleId });
+
+/**
+ * P4-266 — l'empreinte de la structure COURANTE d'un plan (SEASON ou période). Le signal
+ * « structure modifiée » : si elle diverge du `snapshotHash` figé d'une version, le planning est
+ * périmé (à régénérer) ; si elle l'égale, rien à régénérer (bouton « Régénérer » grisé). `null`
+ * quand la structure ne peut pas être bâtie (le backend tranche, le front ne re-dérive rien). */
+export const getStructureHash = (planId: string): Promise<{ currentStructureHash: string | null }> =>
+  api.get(`schedule_plans/${planId}/structure-hash`).json<{ currentStructureHash: string | null }>();
 /**
  * Les écarts NOMMÉS d'une version de plan de FERMETURE vs le socle pointé (P2-44 PR-5). Lecture pure
  * re-appelable ; le backend calcule, le front présente. Réponse JSON simple (pas une collection).

@@ -114,6 +114,21 @@ export function useSlots(scheduleId: string | null) {
   });
 }
 
+/**
+ * P4-266 — l'empreinte de structure COURANTE d'un plan (`GET /schedule_plans/{id}/structure-hash`).
+ * Comparée au `snapshotHash` figé de la version affichée, elle dit si le planning est périmé (à
+ * régénérer) ou grise « Régénérer » quand la structure n'a pas bougé — SEASON comme période. Désarmé
+ * (planId nul) tant qu'aucun plan n'est résolu.
+ */
+export function useStructureHash(planId: string | null) {
+  return useQuery({
+    queryKey: ["structure-hash", planId],
+    queryFn: () => planningApi.getStructureHash(planId as string),
+    enabled: null !== planId,
+    staleTime: 30_000,
+  });
+}
+
 export function useDiagnostics(scheduleId: string | null) {
   return useQuery({
     queryKey: ["diagnostics", scheduleId],
