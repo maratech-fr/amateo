@@ -84,9 +84,10 @@ final class PeriodRedateTest extends WebTestCase
         $version = $this->em->getRepository(Schedule::class)->find($versionId);
         self::assertInstanceOf(Schedule::class, $version, 'la version survit');
         // P4-266 : la péremption « à régénérer » n'est plus un drapeau en base — elle se dérive de
-        // l'empreinte de structure (le re-datage déplace la fenêtre, donc l'empreinte servie par
-        // SchedulePlanStructureHashController). Divergence couverte par SchedulePlanStructureHashTest
-        // et le scénario Behat de re-datage (plan-de-periode-en-overlay).
+        // l'empreinte de structure servie par SchedulePlanStructureHashController. L'empreinte ne
+        // diverge que si le payload change réellement (contrainte datée entrante/sortante), pas du
+        // simple déplacement de fenêtre : divergence couverte par SchedulePlanStructureHashTest ; le
+        // scénario Behat de re-datage prouve, lui, que prolonger une fenêtre laisse le planning MUET.
 
         // La contrainte appariée suit ; la fine reste intacte.
         $paired = $this->em->getRepository(Constraint::class)->find($pairedId);

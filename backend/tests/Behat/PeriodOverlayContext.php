@@ -367,7 +367,7 @@ final class PeriodOverlayContext extends BaseContext
         }
     }
 
-    #[Then('la période porte les nouvelles dates, son plan aussi, la version existe toujours et le planning est signalé à régénérer')]
+    #[Then('la période porte les nouvelles dates, son plan aussi, la version existe toujours et le planning n\'est pas signalé à régénérer')]
     public function laPeriodeEtSonPlanPortentLesNouvellesDates(): void
     {
         $entry = $this->apiGet(\sprintf('calendar_entries/%s', $this->entryId), $this->token);
@@ -391,11 +391,25 @@ final class PeriodOverlayContext extends BaseContext
             throw new RuntimeException('la version overlay n\'a pas survécu au re-datage');
         }
 
-        // P4-266 — « signalé à régénérer » = l'empreinte de structure du plan a DIVERGÉ de celle
-        // figée à la génération (le re-datage a déplacé la fenêtre de la période, donc son payload).
+        // P4-266 — un re-datage qui ne fait PAS entrer/sortir de contrainte datée ne change rien au
+        // payload /generate (buildForPeriodPlan ne dépend des dates de l'entrée QUE via
+        // PeriodConstraintSelection : contraintes datées retenues, fermetures effectives, équipes
+        // désactivées). L'empreinte servie reste donc égale au snapshotHash FIGÉ de la version, et au
+        // hash relevé AVANT le re-datage : le planning n'est PAS signalé à régénérer (règle fondateur
+        // « si ça ne change rien au planning, pas de bandeau »).
         $hashAfter = $this->planStructureHash($this->redatePlanId);
-        if ('' === $hashAfter || $hashAfter === $this->redatePlanHashBefore) {
-            throw new RuntimeException('l\'empreinte de structure du plan n\'a pas divergé après le re-datage : le planning ne se signalerait pas à régénérer');
+        if ('' === $hashAfter) {
+            throw new RuntimeException('le plan ne sert plus d\'empreinte de structure après le re-datage');
+        }
+        $snapshotHash = $this->dbalScalar(
+            \sprintf('SELECT snapshot_hash AS behatval FROM schedule WHERE id = \'%s\'', $this->redateVersionId),
+            admin: true,
+        );
+        if ($hashAfter !== $snapshotHash) {
+            throw new RuntimeException('l\'empreinte servie a divergé du snapshotHash de la version alors que le re-datage ne touche aucune contrainte datée : le planning se signalerait à régénérer à tort');
+        }
+        if ($hashAfter !== $this->redatePlanHashBefore) {
+            throw new RuntimeException('l\'empreinte de structure a bougé après le re-datage alors qu\'il ne change rien à la structure');
         }
     }
 

@@ -32,11 +32,15 @@ Fonctionnalité: Un plan de période se génère en overlay, sur sa propre grill
     Quand je lance le remplissage de la période
     Alors le remplissage aboutit et l'équipe au jour imposé garde sa séance ce jour-là
 
-  Scénario: Je re-date l'incident : le plan survit et son empreinte se dit à régénérer
+  Scénario: Je re-date l'incident : le plan survit, la version aussi, et l'empreinte reste inchangée
+    Prolonger une fermeture SANS faire entrer ni sortir de contrainte datée ne change rien à ce que
+    le solveur placerait : l'empreinte de structure reste égale au snapshot figé de la version, donc
+    le planning ne se signale PAS à régénérer (règle fondateur : si ça ne change rien au planning,
+    pas de bandeau).
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une fermeture à venir avec une version overlay aboutie
     Quand je prolonge la fermeture de deux semaines
-    Alors la période porte les nouvelles dates, son plan aussi, la version existe toujours et le planning est signalé à régénérer
+    Alors la période porte les nouvelles dates, son plan aussi, la version existe toujours et le planning n'est pas signalé à régénérer
 
   Scénario: Je re-date l'incident découpé : l'aperçu m'annonce ce qui change, je confirme
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
