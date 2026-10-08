@@ -1,6 +1,6 @@
 # Project Map — Amateo (engine + backend)
 
-Last verified @ 2026-10-06 (reliquat DOC de l'audit 2026-10-03 — AUD-DOC-51). Ligne de contrat réécrite au présent : `engine/CONTRACT_VERSION` = `1.2`, un seul contrat pour `/generate` · `/place-matches` · `/validate-assignments`, synchro manuelle, gardé par les trois `*ContractSchemaTest` (confronté à `engine/CONTRACT_VERSION` et au garde `test_contract_version_doc_sync.py`) ; l'historique des bumps sort du corps vers l'historique versionné. Reste du fichier non reconfronté cette passe.
+Last verified @ 2026-10-08 (P4-295 C1) : ligne `app/solver/result_builder/` du tableau Engine §3 recalée — `diagnostics.py` est devenu le sous-paquet `diagnostics/` (8 modules par type de diagnostic, façade `__init__`), confronté à `engine/app/solver/result_builder/diagnostics/__init__.py`. Un seul contrat pour `/generate` · `/place-matches` · `/validate-assignments`, synchro manuelle, gardé par les trois `*ContractSchemaTest` (confronté à `engine/CONTRACT_VERSION` = `1.4`). Reste du fichier non reconfronté cette passe.
 
 Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend has been **rebuilt (React 19) and is active** — features live under `frontend/src/features/` (`ls` it, no count here — it rots): `auth`, `wizard` (data entry), `planning` (work-loop), `cockpit`, `matches`, `coach-wishes` (doléances), `club`, `profile`, `season-transition`, `legal`, `release-notes` (journal + modale « quoi de neuf ») et `admin` (console superadmin, garde et session distinctes). The feedback button/dialog are a shared primitive, not their own feature: `frontend/src/shared/feedback/`. See `../frontend/docs/frontend-wizard.md` and `frontend-spec.md`. Generated/verified during onboarding against the real code and the `code-review-graph` knowledge graph.
 
@@ -143,7 +143,7 @@ All services share the Docker network `amateo_network`.
 | `app/solver/model.py` | `ScheduleCpModel(cp_model.CpModel)`, `build_model`, slot/lock/capacity extraction |
 | `app/solver/constraints/` | **Paquet** (ENG-32) : Level-1 hard constraints (`structural`/`wellness`/`targeting`), `parse_v2_constraints()` (`parsing`), `diagnose_locked_slot_violations()` (`diagnostics`) — façade `__init__` à surface d'import inchangée, orchestrateur inclus (couture de test) |
 | `app/solver/objective/` | **Paquet** (`weights.py`/`terms.py`/`normalise.py`, façade `__init__`) : Level-2 soft objective, tiered placement scoring, bonuses (dont la référence socle du comblement, PR-3), `SCORE_FORMULA_VERSION` |
-| `app/solver/result_builder/` | **Paquet** (`slots.py`/`diagnostics.py`/`helpers.py`, façade `__init__`) : CP-SAT solution → output schema + diagnostics |
+| `app/solver/result_builder/` | **Paquet** (`slots.py`/`helpers.py`/`diagnostics/` — ce dernier un sous-paquet par type de diagnostic (`locks`/`placement`/`sessions`/`infeasibility`/`conflicts`/`shared_blocks`/`links_travel`/`implicit_rules`), façade `__init__`) : CP-SAT solution → output schema + diagnostics |
 | `app/solver/match_placement.py` | `POST /place-matches` model build + solve (match placement rail) |
 | `app/solver/validate_assignments.py` | `POST /validate-assignments` verdict rail (hard-layer replay + compromise scoring) |
 | `app/solver/compromise.py` | named compromise scoring shared by `validate_assignments.py` |

@@ -1,7 +1,7 @@
 # Frontend Strategy — TDD, Stack Fixée & Anti-patterns
 
-Last verified @ 2026-10-05 (`documentation-update`, rotation de fraîcheur — sujet de la PR sans
-rapport, lot backend 5 « architecture »). Re-confronté : `testTimeout: 15_000` (`vitest.config.ts:49`)
+Last verified @ 2026-10-08 (`documentation-update`, rotation de fraîcheur — sujet de la PR sans
+rapport, lot engine P4-295 C1). Re-confronté : `testTimeout: 15_000` (`vitest.config.ts:49`)
 et `asyncUtilTimeout: 5_000` (`src/test/setup.ts:28`) toujours les valeurs posées ✓ ; `lint:deps`
 toujours câblé dans `package.json`/`Makefile` ✓. Reste du fichier (§ Stack Versions Fixed et le
 reste) non reconfronté cette passe. Chronique des passes antérieures : `git log -p --follow` ce
