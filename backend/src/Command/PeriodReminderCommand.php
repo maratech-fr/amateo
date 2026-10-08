@@ -154,7 +154,7 @@ final class PeriodReminderCommand extends Command
             $sentForEntry = 0;
             foreach ($emails as $to) {
                 try {
-                    $this->mailer->send($this->mailBuilder->build($to, $club->getName(), $entry, $days));
+                    $this->mailer->send($this->mailBuilder->build($to, $club->getName(), $entry, $days, $club));
                     ++$sentForEntry;
                 } catch (Throwable $e) {
                     $this->hadSendFailure = true;

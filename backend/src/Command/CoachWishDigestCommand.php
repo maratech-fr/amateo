@@ -172,7 +172,7 @@ final class CoachWishDigestCommand extends Command
 
         $sent = 0;
         foreach ($emails as $to) {
-            $sent += $this->send($this->mailBuilder->buildDigest($to, $club->getName(), $periodTitle, $newNames, $respondedNames, $silentNames), $io);
+            $sent += $this->send($this->mailBuilder->buildDigest($to, $club->getName(), $periodTitle, $newNames, $respondedNames, $silentNames, $club), $io);
         }
         // On n'avance lastDigestAt QUE si au moins un gestionnaire a été atteint — sinon
         // (SMTP mort) le digest de cette réponse serait perdu à jamais (jamais retenté).
@@ -214,7 +214,7 @@ final class CoachWishDigestCommand extends Command
 
         $sent = 0;
         foreach ($emails as $to) {
-            $sent += $this->send($this->mailBuilder->buildFinalRecap($to, $club->getName(), $periodTitle, $respondedNames, $silentNames, $openWishCount), $io);
+            $sent += $this->send($this->mailBuilder->buildFinalRecap($to, $club->getName(), $periodTitle, $respondedNames, $silentNames, $openWishCount, $club), $io);
         }
         // Récap une seule fois — mais seulement s'il est PARTI : un échec total ne grille pas
         // la clôture (elle sera retentée le lendemain).

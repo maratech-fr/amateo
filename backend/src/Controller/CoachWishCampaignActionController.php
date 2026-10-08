@@ -134,7 +134,8 @@ final class CoachWishCampaignActionController extends AbstractController
      */
     private function dispatchToCoaches(CoachWishCampaign $campaign, bool $isReminder, ?array $onlyCoachIds): int
     {
-        $clubName = $this->entityManager->getRepository(Club::class)->find((string) $campaign->getClubId())?->getName() ?? '';
+        $club = $this->entityManager->getRepository(Club::class)->find((string) $campaign->getClubId());
+        $clubName = $club?->getName() ?? '';
         $entry = $this->entityManager->getRepository(CalendarEntry::class)->find($campaign->getCalendarEntryId());
         $periodTitle = $entry?->getTitle() ?? 'la période';
 
@@ -160,7 +161,7 @@ final class CoachWishCampaignActionController extends AbstractController
             }
 
             try {
-                $this->mailer->send($this->mailBuilder->buildCoachLink($email, $coach->getFirstName(), $clubName, $campaign, $periodTitle, $token->getToken(), $isReminder));
+                $this->mailer->send($this->mailBuilder->buildCoachLink($email, $coach->getFirstName(), $clubName, $campaign, $periodTitle, $token->getToken(), $isReminder, $club));
                 $token->markSent($this->clock->now());
                 ++$sent;
             } catch (Throwable) {

@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Entity\Club;
 use App\Entity\CoachWishCampaign;
 use App\Mail\ClubBusinessMail;
+use App\Mail\ClubMailMetadata;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mime\Email;
 
@@ -27,7 +29,7 @@ final class CoachWishMailBuilder
     ) {}
 
     /** Le lien personnel du coach — envoi initial ou relance (même contenu, sujet dédié). */
-    public function buildCoachLink(string $to, string $coachFirstName, string $clubName, CoachWishCampaign $campaign, string $periodTitle, string $token, bool $isReminder = false): Email
+    public function buildCoachLink(string $to, string $coachFirstName, string $clubName, CoachWishCampaign $campaign, string $periodTitle, string $token, bool $isReminder = false, ?Club $club = null): Email
     {
         $subject = $isReminder
             ? \sprintf('Rappel — vos disponibilités pour %s', $periodTitle)
@@ -49,7 +51,7 @@ final class CoachWishMailBuilder
         $lines[] = '';
         $lines[] = 'C\'est un souhait, pas un engagement : le club arbitre ensuite.';
 
-        return $this->email($to, $subject, $lines);
+        return $this->email($to, $subject, $lines, $club);
     }
 
     /**
@@ -60,7 +62,7 @@ final class CoachWishMailBuilder
      * @param list<string> $respondedNames
      * @param list<string> $silentNames
      */
-    public function buildDigest(string $to, string $clubName, string $periodTitle, array $newNames, array $respondedNames, array $silentNames): Email
+    public function buildDigest(string $to, string $clubName, string $periodTitle, array $newNames, array $respondedNames, array $silentNames, ?Club $club = null): Email
     {
         $subject = \sprintf('Doléances « %s » — %s', $periodTitle, 1 === \count($newNames) ? $newNames[0] . ' a répondu' : \count($newNames) . ' nouvelles réponses');
 
@@ -75,7 +77,7 @@ final class CoachWishMailBuilder
         ];
         $lines = [...$lines, ...$this->cockpitFooter()];
 
-        return $this->email($to, $subject, $lines);
+        return $this->email($to, $subject, $lines, $club);
     }
 
     /**
@@ -85,7 +87,7 @@ final class CoachWishMailBuilder
      * @param list<string> $respondedNames
      * @param list<string> $silentNames
      */
-    public function buildFinalRecap(string $to, string $clubName, string $periodTitle, array $respondedNames, array $silentNames, int $openWishCount): Email
+    public function buildFinalRecap(string $to, string $clubName, string $periodTitle, array $respondedNames, array $silentNames, int $openWishCount, ?Club $club = null): Email
     {
         $total = \count($respondedNames) + \count($silentNames);
         $subject = \sprintf('Collecte close « %s » — %d/%d coachs ont répondu', $periodTitle, \count($respondedNames), $total);
@@ -100,7 +102,7 @@ final class CoachWishMailBuilder
         ];
         $lines = [...$lines, ...$this->cockpitFooter()];
 
-        return $this->email($to, $subject, $lines);
+        return $this->email($to, $subject, $lines, $club);
     }
 
     /** Lien public absolu, ou null si aucune base front n'est configurée (lien non cliquable). */
@@ -124,18 +126,24 @@ final class CoachWishMailBuilder
     }
 
     /** @param list<string> $lines */
-    private function email(string $to, string $subject, array $lines): Email
+    private function email(string $to, string $subject, array $lines, ?Club $club): Email
     {
         // E-mail MÉTIER club (lien coach, digest/relance gestionnaire, récap) : candidat à
         // l'interception « boîte aux lettres » d'un club à horloge simulée (cf. ClubBusinessMail).
         // Le destinataire coach peut être un NON-utilisateur : l'intercepteur vérifie aussi
         // l'appartenance via Coach.email, pas seulement les membres.
-        return ClubBusinessMail::mark(
+        $email = ClubBusinessMail::mark(
             (new Email)
                 ->from($this->mailFrom->address())
                 ->to($to)
                 ->subject($subject)
                 ->text(implode("\n", $lines)),
         );
+        // Identité du club (logo + nom court) sur la carte d'e-mail (D1), quand elle est connue.
+        if ($club instanceof Club) {
+            ClubMailMetadata::mark($email, $club);
+        }
+
+        return $email;
     }
 }

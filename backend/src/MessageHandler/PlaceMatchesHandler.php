@@ -184,8 +184,12 @@ final class PlaceMatchesHandler
         $placed = \is_int($result['placed'] ?? null) ? $result['placed'] : 0;
         $toTreat = \is_array($result['unplaced'] ?? null) ? \count($result['unplaced']) : 0;
 
+        // Identité du club (logo + nom court) sur la carte d'e-mail (D1). Nullable best-effort :
+        // un club introuvable ne doit pas faire échouer l'e-mail de fin de run.
+        $club = $this->entityManager->getRepository(Club::class)->find((string) $run->getClubId());
+
         try {
-            $this->mailer->send($this->emailBuilder->build($user->getEmail(), $placed, $toTreat));
+            $this->mailer->send($this->emailBuilder->build($user->getEmail(), $placed, $toTreat, $club));
         } catch (Throwable $exception) {
             $this->logger?->warning('Match placement completion e-mail failed (best-effort)', ['runId' => $run->getId(), 'exception' => $exception]);
         }
@@ -217,8 +221,11 @@ final class PlaceMatchesHandler
             return;
         }
 
+        // Identité du club (logo + nom court) sur la carte d'e-mail (D1), nullable best-effort.
+        $club = $this->entityManager->getRepository(Club::class)->find((string) $run->getClubId());
+
         try {
-            $this->mailer->send($this->emailBuilder->buildFailure($user->getEmail()));
+            $this->mailer->send($this->emailBuilder->buildFailure($user->getEmail(), $club));
         } catch (Throwable $exception) {
             $this->logger?->warning('Match placement failure e-mail failed (best-effort)', ['runId' => $run->getId(), 'exception' => $exception]);
         }

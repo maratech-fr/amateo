@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Entity\Club;
+use App\Mail\ClubMailMetadata;
 use App\Service\AccountErasureService;
 use App\Service\Basketball\FfbbClubDirectory;
 use App\Service\MailFrom;
@@ -152,17 +153,18 @@ final class ClubErasureReminderCommand extends Command
 
         $product = $this->productIdentity->name();
         try {
-            $this->mailer->send(
-                (new Email)
-                    ->from($this->mailFrom->address())
-                    ->to($to)
-                    ->subject(\sprintf('Rappel — l\'espace %s du club %s sera supprimé le %s', $product, $club->getName(), $deadline->format('d/m/Y')))
-                    ->text(\sprintf(
-                        "Bonjour,\n\nL'espace {$product} du club %s n'a toujours pas de gestionnaire et sera supprimé DÉFINITIVEMENT avec toutes ses données le %s.\n\nPour le conserver, un gestionnaire du club doit s'inscrire sur {$product} avec le code FFBB du club : sa demande vous sera soumise pour approbation.\n\n{$product}",
-                        $club->getName(),
-                        $deadline->format('d/m/Y'),
-                    )),
-            );
+            $email = (new Email)
+                ->from($this->mailFrom->address())
+                ->to($to)
+                ->subject(\sprintf('Rappel — l\'espace %s du club %s sera supprimé le %s', $product, $club->getName(), $deadline->format('d/m/Y')))
+                ->text(\sprintf(
+                    "Bonjour,\n\nL'espace {$product} du club %s n'a toujours pas de gestionnaire et sera supprimé DÉFINITIVEMENT avec toutes ses données le %s.\n\nPour le conserver, un gestionnaire du club doit s'inscrire sur {$product} avec le code FFBB du club : sa demande vous sera soumise pour approbation.\n\n{$product}",
+                    $club->getName(),
+                    $deadline->format('d/m/Y'),
+                ));
+            // Identité du club (logo + nom court) sur la carte d'e-mail (D1).
+            ClubMailMetadata::mark($email, $club);
+            $this->mailer->send($email);
         } catch (Throwable $e) {
             // Envoi raté → on NE pose PAS le stamp : la commande réessaiera demain
             // (tant que l'échéance reste dans la fenêtre).

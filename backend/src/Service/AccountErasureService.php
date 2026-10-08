@@ -9,6 +9,7 @@ use App\Entity\EmailChangeToken;
 use App\Entity\EmailVerificationToken;
 use App\Entity\ResetPasswordRequest;
 use App\Entity\User;
+use App\Mail\ClubMailMetadata;
 use App\Repository\ClubUserRepository;
 use App\Service\Basketball\FfbbClubDirectory;
 use DateTimeImmutable;
@@ -227,17 +228,18 @@ final class AccountErasureService
 
             $product = $this->productIdentity->name();
             try {
-                $this->mailer->send(
-                    (new Email)
-                        ->from($this->mailFrom->address())
-                        ->to($to)
-                        ->subject(\sprintf('L\'espace %s du club %s va être supprimé', $product, $club->getName()))
-                        ->text(\sprintf(
-                            "Bonjour,\n\nLe dernier gestionnaire de l'espace {$product} du club %s vient de supprimer son compte : cet espace n'a plus de gestionnaire.\n\nSans reprise, il sera supprimé DÉFINITIVEMENT avec toutes ses données le %s.\n\nPour le conserver, un gestionnaire du club doit s'inscrire sur {$product} avec le code FFBB du club : sa demande vous sera soumise pour approbation.\n\n{$product}",
-                            $club->getName(),
-                            $deadline->format('d/m/Y'),
-                        )),
-                );
+                $email = (new Email)
+                    ->from($this->mailFrom->address())
+                    ->to($to)
+                    ->subject(\sprintf('L\'espace %s du club %s va être supprimé', $product, $club->getName()))
+                    ->text(\sprintf(
+                        "Bonjour,\n\nLe dernier gestionnaire de l'espace {$product} du club %s vient de supprimer son compte : cet espace n'a plus de gestionnaire.\n\nSans reprise, il sera supprimé DÉFINITIVEMENT avec toutes ses données le %s.\n\nPour le conserver, un gestionnaire du club doit s'inscrire sur {$product} avec le code FFBB du club : sa demande vous sera soumise pour approbation.\n\n{$product}",
+                        $club->getName(),
+                        $deadline->format('d/m/Y'),
+                    ));
+                // Identité du club (logo + nom court) sur la carte d'e-mail (D1).
+                ClubMailMetadata::mark($email, $club);
+                $this->mailer->send($email);
             } catch (Throwable $e) {
                 $this->logger->warning('Orphaned-club erasure notice failed', ['clubId' => $clubId, 'error' => $e->getMessage()]);
             }

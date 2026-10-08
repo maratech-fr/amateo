@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Entity\Club;
 use App\Entity\ClubInvitation;
+use App\Mail\ClubMailMetadata;
 use DateTimeImmutable;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
@@ -35,7 +37,7 @@ final readonly class ClubInvitationMailer
         private LoggerInterface $logger,
     ) {}
 
-    public function send(ClubInvitation $invitation, string $rawToken, string $inviterFirstName, string $clubName, string $requestHost): void
+    public function send(ClubInvitation $invitation, string $rawToken, string $inviterFirstName, string $clubName, string $requestHost, ?Club $club = null): void
     {
         $base = '' !== $this->frontendBaseUrl ? rtrim($this->frontendBaseUrl, '/') : $requestHost;
         $link = $base . '/invitation/' . $rawToken;
@@ -43,20 +45,24 @@ final readonly class ClubInvitationMailer
         $expiry = $this->frenchDate($invitation->getExpiresAt());
         $inviter = '' !== trim($inviterFirstName) ? trim($inviterFirstName) : $clubName;
 
-        try {
-            $this->mailer->send(
-                (new Email)
-                    ->from($this->mailFrom->address())
-                    ->to($invitation->getEmail())
-                    ->subject(\sprintf('%s vous invite à rejoindre %s', $inviter, $clubName))
-                    ->text(
-                        "Bonjour,\n\n"
-                        . "{$inviter} vous invite à rejoindre {$clubName} sur {$product}.\n\n"
-                        . "Pour accepter et accéder au planning du club, ouvrez ce lien :\n{$link}\n\n"
-                        . "Ce lien expire le {$expiry}.\n\n"
-                        . 'Si vous n\'attendiez pas cette invitation, ignorez simplement cet e-mail.',
-                    ),
+        $email = (new Email)
+            ->from($this->mailFrom->address())
+            ->to($invitation->getEmail())
+            ->subject(\sprintf('%s vous invite à rejoindre %s', $inviter, $clubName))
+            ->text(
+                "Bonjour,\n\n"
+                . "{$inviter} vous invite à rejoindre {$clubName} sur {$product}.\n\n"
+                . "Pour accepter et accéder au planning du club, ouvrez ce lien :\n{$link}\n\n"
+                . "Ce lien expire le {$expiry}.\n\n"
+                . 'Si vous n\'attendiez pas cette invitation, ignorez simplement cet e-mail.',
             );
+        // Identité du club (logo + nom court) sur la carte d'e-mail (D1), quand elle est connue.
+        if ($club instanceof Club) {
+            ClubMailMetadata::mark($email, $club);
+        }
+
+        try {
+            $this->mailer->send($email);
         } catch (Throwable $e) {
             // mailer->send ne fait qu'ENFILER sur le bus ; seul un échec de DISPATCH (Redis)
             // tombe ici. Avalé pour ne pas faire échouer l'émission côté gestionnaire, mais

@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\CalendarEntry;
+use App\Entity\Club;
 use App\Mail\ClubBusinessMail;
+use App\Mail\ClubMailMetadata;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mime\Email;
 
@@ -22,7 +24,7 @@ final class PeriodReminderMailBuilder
         private readonly MailFrom $mailFrom = new MailFrom,
     ) {}
 
-    public function build(string $to, string $clubName, CalendarEntry $entry, int $days): Email
+    public function build(string $to, string $clubName, CalendarEntry $entry, int $days, ?Club $club = null): Email
     {
         $red = $days <= 3; // J-3 = the "red" alert (v3 §8.2).
         $subject = \sprintf('%s %s dans %d j — pas de plan de période', $red ? '🔴' : '⏳', $entry->getTitle(), $days);
@@ -42,12 +44,18 @@ final class PeriodReminderMailBuilder
 
         // E-mail MÉTIER club : candidat à l'interception « boîte aux lettres » d'un club à
         // horloge simulée (jamais un e-mail de compte, cf. ClubBusinessMail).
-        return ClubBusinessMail::mark(
+        $email = ClubBusinessMail::mark(
             (new Email)
                 ->from($this->mailFrom->address())
                 ->to($to)
                 ->subject($subject)
                 ->text(implode("\n", $lines)),
         );
+        // Identité du club (logo + nom court) sur la carte d'e-mail (D1), quand elle est connue.
+        if ($club instanceof Club) {
+            ClubMailMetadata::mark($email, $club);
+        }
+
+        return $email;
     }
 }

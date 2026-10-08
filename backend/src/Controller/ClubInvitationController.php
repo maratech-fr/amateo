@@ -124,6 +124,7 @@ final class ClubInvitationController extends AbstractController
             $actingUser->getFirstName(),
             $this->clubName($clubId),
             $request->getSchemeAndHttpHost(),
+            $this->clubEntity($clubId),
         );
 
         return $this->json($this->serialize($invitation), 201);
@@ -159,6 +160,7 @@ final class ClubInvitationController extends AbstractController
             $actingUser->getFirstName(),
             $this->clubName((string) $admin['clubId']),
             $request->getSchemeAndHttpHost(),
+            $this->clubEntity((string) $admin['clubId']),
         );
 
         return $this->json($this->serialize($invitation));
@@ -226,9 +228,12 @@ final class ClubInvitationController extends AbstractController
 
     private function clubName(string $clubId): string
     {
-        $club = $this->entityManager->getRepository(Club::class)->find($clubId);
+        return $this->clubEntity($clubId)?->getName() ?? '';
+    }
 
-        return $club instanceof Club ? $club->getName() : '';
+    private function clubEntity(string $clubId): ?Club
+    {
+        return $this->entityManager->getRepository(Club::class)->find($clubId);
     }
 
     /**
