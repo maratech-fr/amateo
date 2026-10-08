@@ -13,7 +13,7 @@ surface stays byte-identical to the pre-split module). The submodules form a
 simple DAG: ``helpers`` (field readers, name maps, FR labels — base of the DAG) →
 ``slots`` (locked + solver output slots) and ``diagnostics`` (``_generate_diagnostics``
 + the thirteen ``_diagnose_*``). ``diagnostics`` owns the ENG-37 travel-geometry
-delegation: patch ``…result_builder.diagnostics.is_travel_too_tight``, not this
+delegation: patch ``…result_builder.diagnostics.links_travel.is_travel_too_tight``, not this
 package namespace.
 """
 
