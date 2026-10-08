@@ -99,6 +99,30 @@ final class ClockedClubMailInterceptTest extends WebTestCase
         self::assertStringContainsString('lien personnel masqué', $body, 'il est remplacé par un libellé neutre');
     }
 
+    public function testCoachTokenNeverStoredInMailboxBodiesIncludingHrefs(): void
+    {
+        // Le gabarit commun (D1) produit désormais un corps HTML avec le lien en `href`. La
+        // capture en boîte se fait à l'ENFILAGE, AVANT la signature (intercepteur priorité 100,
+        // signature priorité 0) : ni le texte ni l'HTML stocké ne doivent porter le jeton — y
+        // compris dans un `href`. Garde l'ordre des phases contre une régression.
+        [$clubId, , $coachEmail] = $this->seedClockedClub();
+
+        $token = bin2hex(random_bytes(32));
+        $link = 'https://app.amateo.test/doleances/' . $token;
+        $this->sendBusinessAs($clubId, $coachEmail, 'Vos disponibilités', "Bonjour,\n\n" . $link . "\n\nMerci.");
+
+        self::assertSame([], $this->queuedEmails());
+        $stored = $this->mailbox->findForClubNewestFirst($clubId);
+        self::assertCount(1, $stored);
+
+        $bodyText = (string) $stored[0]->getBodyText();
+        $bodyHtml = (string) $stored[0]->getBodyHtml();
+        foreach ([$bodyText, $bodyHtml] as $body) {
+            self::assertStringNotContainsString($token, $body, 'le jeton personnel ne doit JAMAIS être stocké (SEC-31), href compris');
+            self::assertStringNotContainsString('/doleances/', $body, 'le lien personnel entier est masqué, href compris');
+        }
+    }
+
     public function testBusinessMailToAnOutOfClubRecipientIsSentReal(): void
     {
         [$clubId] = $this->seedClockedClub();
