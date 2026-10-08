@@ -7176,6 +7176,64 @@
                 }
             }
         },
+        "/api/coach_wish_campaigns/{id}/email-preview": {
+            "get": {
+                "operationId": "getCoachWishEmailPreview",
+                "tags": [
+                    "CoachWishCampaign"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The exact coach-link e-mail the initial send would produce \u2014 built with a FAKE token (never a real personal link) and an example coach first name. Logos are inlined as data URIs for in-iframe rendering.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "subject": {
+                                            "type": "string"
+                                        },
+                                        "from": {
+                                            "type": "string",
+                                            "description": "Display name + address, e.g. \"First (Club) via Amateo <no-reply@amateo.app>\"."
+                                        },
+                                        "html": {
+                                            "type": "string",
+                                            "description": "Rendered HTML body, safe to show in a sandboxed iframe."
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "Caller is not a manager of the current club"
+                    },
+                    "404": {
+                        "description": "Unknown campaign, or it belongs to another club (byte-identical)"
+                    }
+                },
+                "summary": "Preview the coach-link e-mail of a campaign (manager only)",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "The campaign id",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ]
+            }
+        },
         "/api/coach_wish_campaigns/{id}/remind": {
             "post": {
                 "operationId": "remind_coach_wish_campaign",
