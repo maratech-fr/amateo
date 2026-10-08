@@ -134,6 +134,33 @@ final class EmailTemplateRendererTest extends TestCase
         self::assertStringNotContainsString('Cliquez', $html);
     }
 
+    public function testCtaUrlRawLineRemovedFromBodyWhenButtonRendered(): void
+    {
+        $url = 'https://app.amateo.test/doleances/tok123';
+        $body = "Bonjour,\n\nPrépare le planning.\n\n" . $url . "\n\nC'est un souhait.";
+
+        $html = $this->renderer()->render($body, self::PRODUCT, self::TAGLINE, self::SITE, null, false, $url, 'Donner mes disponibilités');
+
+        // L'URL n'apparaît qu'UNE fois — dans le href du bouton, jamais en doublon dans le corps.
+        self::assertSame(1, substr_count($html, $url), 'l\'URL ne doit plus être dupliquée au-dessus du bouton');
+        self::assertStringContainsString('href="' . $url . '"', $html);
+        // Le reste du corps est conservé.
+        self::assertStringContainsString('Prépare le planning.', $html);
+        self::assertStringContainsString('est un souhait.', $html); // la dernière ligne survit (apostrophe échappée)
+    }
+
+    public function testCtaUrlStaysInBodyWhenNoButton(): void
+    {
+        $url = 'https://app.amateo.test/doleances/tok123';
+        $body = "Bonjour,\n\n" . $url . "\n\nFin.";
+
+        // Sans CTA, le lien nu reste dans le corps (aucun bouton ne le porte).
+        $html = $this->renderer()->render($body, self::PRODUCT, self::TAGLINE, self::SITE, null, false);
+
+        self::assertStringContainsString($url, $html);
+        self::assertStringNotContainsString('href="' . $url . '"', $html, 'pas de bouton = pas de href CTA');
+    }
+
     public function testNoCtaButtonWhenAbsent(): void
     {
         $html = $this->renderer()->render('Corps.', self::PRODUCT, self::TAGLINE, self::SITE, null, false);

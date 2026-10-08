@@ -117,6 +117,24 @@ final class EmailSignatureListenerTest extends TestCase
         self::assertFalse($email->getHeaders()->has(EmailTemplateRenderer::CTA_LABEL_HEADER));
     }
 
+    public function testTextKeepsTheRawLinkButHtmlShowsItOnlyInTheButton(): void
+    {
+        // Le corps porte le lien nu (comme le fait le builder) ET les en-têtes CTA le désignent.
+        $url = 'https://app.amateo.test/doleances/tok123';
+        $email = $this->emailWithText("Bonjour,\n\nPrépare le planning.\n\n" . $url . "\n\nMerci.");
+        $email->getHeaders()->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, $url);
+        $email->getHeaders()->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, 'Donner mes disponibilités');
+
+        $this->listener()->onMessage($this->enqueueEvent($email));
+
+        // La partie TEXTE garde le lien nu (inchangée — Behat/boîte démo l'y attendent).
+        self::assertStringContainsString($url, (string) $email->getTextBody());
+        // La partie HTML ne le montre QUE dans le bouton (href), jamais en doublon brut au-dessus.
+        $html = (string) $email->getHtmlBody();
+        self::assertSame(1, substr_count($html, $url));
+        self::assertStringContainsString('href="' . $url . '"', $html);
+    }
+
     public function testInternalHeadersAreStrippedAtWorkerPhase(): void
     {
         $email = $this->emailWithText('Corps.');

@@ -78,7 +78,6 @@ final readonly class EmailTemplateRenderer
         $productLogoSrc ??= 'cid:' . self::PRODUCT_LOGO_CID;
         $clubLogoSrc ??= 'cid:' . self::CLUB_LOGO_CID;
 
-        $bodyHtml = nl2br(htmlspecialchars($bodyText, $flags, 'UTF-8'));
         $nameHtml = htmlspecialchars($productName, $flags, 'UTF-8');
         $taglineHtml = htmlspecialchars($productTagline, $flags, 'UTF-8');
         $hrefHtml = htmlspecialchars($productSiteUrl, $flags, 'UTF-8');
@@ -90,6 +89,12 @@ final readonly class EmailTemplateRenderer
         [$pageBackground, $pageGradient] = $this->derivedBackground();
         $clubHeaderHtml = $this->clubHeader($clubLabel, $hasClubLogo, $clubLogoSrc, $flags);
         $ctaHtml = $this->ctaButton($ctaUrl, $ctaLabel, $flags);
+
+        // Quand un bouton CTA est rendu, la ligne du corps qui ne porte QUE l'URL du CTA ferait
+        // doublon disgracieux (URL brute juste au-dessus du bouton). On la retire du HTML — la
+        // partie TEXTE, elle, garde le lien nu (inchangée, byte-identique, extraite par Behat).
+        $bodyForHtml = '' !== $ctaHtml && null !== $ctaUrl ? $this->stripCtaUrlLine($bodyText, $ctaUrl) : $bodyText;
+        $bodyHtml = nl2br(htmlspecialchars($bodyForHtml, $flags, 'UTF-8'));
 
         return <<<HTML
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{$pageBackground};background-image:{$pageGradient};margin:0;padding:24px 16px;">
@@ -168,6 +173,34 @@ final readonly class EmailTemplateRenderer
             </td>
             </tr></table>
             HTML;
+    }
+
+    /**
+     * Retire du corps la/les ligne(s) ne contenant QUE l'URL du CTA (comparaison sur le texte
+     * trimé, AVANT échappement/nl2br) et réduit les sauts de ligne en double qui en résultent —
+     * le lien vit déjà dans le bouton, le répéter brut au-dessus fait doublon. Opère sur le corps
+     * passé au HTML seulement ; la partie TEXTE de l'e-mail n'est jamais touchée.
+     */
+    private function stripCtaUrlLine(string $bodyText, string $ctaUrl): string
+    {
+        $lines = preg_split('/\r\n|\r|\n/', $bodyText);
+        if (false === $lines) {
+            return $bodyText;
+        }
+
+        $collapsed = [];
+        foreach ($lines as $line) {
+            if (trim($line) === $ctaUrl) {
+                continue; // la ligne « URL nue » du corps — portée par le bouton désormais
+            }
+            // Évite deux lignes vides d'affilée nées du retrait (la ligne URL était encadrée de vides).
+            if ('' === trim($line) && [] !== $collapsed && '' === trim((string) end($collapsed))) {
+                continue;
+            }
+            $collapsed[] = $line;
+        }
+
+        return implode("\n", $collapsed);
     }
 
     /**
