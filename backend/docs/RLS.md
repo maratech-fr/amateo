@@ -1,22 +1,11 @@
 # Amateo — PostgreSQL Row-Level Security (RLS)
 
-Last verified @ 2026-10-05 (`documentation-update`, rotation — sans rapport avec le sujet de la
+Last verified @ 2026-10-08 (`documentation-update`, rotation — sans rapport avec le sujet de la
 PR). Re-confronté au code : `TenantFilterListener` toujours `KernelEvents::REQUEST =>
 ['onKernelRequest', 7]` (`backend/src/EventListener/TenantFilterListener.php:56`) ✓ ·
-`TenantConnectionContext` pose `set_config('app.club_id', ?, false)`
-(`backend/src/Service/TenantConnectionContext.php:30`) ✓ · `Version20260703120000` porte toujours
-le prédicat `TENANT_PREDICATE` (`club_id = NULLIF(current_setting('app.club_id', true),
-'')::uuid`, `backend/migrations/Version20260703120000.php:49`) ✓ · `Version20260813130000` pose
-bien un `admin_all` (FOR ALL, USING/WITH CHECK `true`, TO `amateo_owner`) énuméré `pg_class`-side
-sur chaque table FORCE existante (`backend/migrations/Version20260813130000.php:19-30`) ✓ ·
-`Version20260731090000` dépose bien `migration_user` (`DROP OWNED BY` + `DROP ROLE`,
-`Version20260731090000.php:50-51`) ✓ · `docker/postgres/init/02-users.sh` crée `amateo_app`
-`NOSUPERUSER NOCREATEDB NOCREATEROLE` avec seulement `SELECT, INSERT, UPDATE, DELETE` (DML, aucun
-DDL) ✓ · `Version20260930090000` crée `amateo_read` `LOGIN` sans mot de
-passe, `ALTER ROLE … NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOREPLICATION` explicite
-(`backend/migrations/Version20260930090000.php:143`), GRANT en liste blanche stricte (aucun `GRANT
-… ON ALL TABLES`, aucun `ALTER DEFAULT PRIVILEGES`), policy `readonly_tenant FOR SELECT TO
-amateo_read` par table `club_id` portant le prédicat canonique — jamais `admin_all` ✓. Rien de faux
+`TenantConnectionContext::setClubId` pose toujours `set_config('app.club_id', ?, false)`
+(`backend/src/Service/TenantConnectionContext.php:28-32`) ✓ · `Version20260930090000` crée toujours
+`amateo_read` `NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOREPLICATION` ✓. Rien de faux
 trouvé cette passe.
 
 > ✅ **STATUS: ACTIVE** since migration `Version20260703120000` (SEC-03 fixed). The migration — not the initdb scripts — is the source of truth for policies and grants: **every table carrying a `club_id` column** is under `FORCE ROW LEVEL SECURITY` with a `tenant_isolation` policy `TO amateo_app` (no hard count here — new tenant tables inherit the pattern via the migration helper; the count would rot). `club_user` and `coach_wish_token` carry the hybrid SELECT bootstrap policy (open only while NO tenant GUC is set — scoped to the tenant otherwise, SEC-12 residual closed by `Version20260804120000`; deliberate cross-tenant reads go through `TenantConnectionContext::runWithoutTenant()`). Runtime connects as `amateo_app`; the GUC is set via `TenantConnectionContext` (`set_config`, session-scoped). **This file = operator how-to (env, roles, troubleshooting). The effective architecture — who sets the GUC, the exception tables, the superadmin door — is `docs/security/rls.md`, and it is CANONICAL.** ⚑ Deux fichiers maintenus « en phase » à la main finissent par diverger — le seul garde-fou est de ne PAS redire ici ce que le canon dit là-bas : on pointe. The `01/02/03-*.sql` initdb scripts remain for fresh volumes only.
