@@ -1,6 +1,6 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-10-06 (contrat 1.2 → 1.3 — retrait des champs morts du fil : PII coach email/phone, flags isActive/tags/minSessionsOverride, priorityTiers, kickoffEstimated/roundTripMinutes, ENG-53/RGPD-03/ALIGN-20 ; antérieurement 1.1 → 1.2, valeur inconnue = 422, ENG-56. Citation `_adaptive_timeout` ré-ancrée sur le symbole, étiquette de version « contrat 2.8 » historique retirée, AUD-DOC-50/51) ; P4-96 PR-2 — contrat 1.3 → 1.4 (trois kinds de cause DÉDIÉS `day_forced`/`session_floor`/`shared_block` sur `DiagnosticCauseSchema`, liste `type` de `DiagnosticSchema` INCHANGÉE) ; `engine/CONTRACT_VERSION` = `1.4` ✓ ; la liste `type` de `DiagnosticSchema` (`app/schemas/output_schema.py`) porte 15 valeurs, toutes présentes dans la table ci-dessous ✓. Reste non re-sondé cette passe.
+Last verified @ 2026-10-08 (P4-295 C1) : propriétaire du texte `message` de `unused_slot` ré-ancré — `_diagnose_unused_slots` vit désormais dans `result_builder/diagnostics/placement.py` (anciennement `diagnostics.py`, redécoupé en paquet) ; `engine/CONTRACT_VERSION` = `1.4` ✓. Reste non re-sondé cette passe.
 
 > Ce document recense toutes les erreurs que le moteur peut produire, avec leurs causes et les actions correctives. Destine aux developpeurs et aux utilisateurs avances du club.
 
@@ -73,7 +73,7 @@ Les diagnostics apparaissent dans le tableau `diagnostics[]` de la reponse. Ils 
 | `travel_time_infeasible` | ERROR | Un coach (ou une passerelle) enchaine deux seances VERROUILLEES a des gymnases differents sans le temps materiel du trajet | Contrainte `travelTime` MANDATORY : le battement entre les deux creneaux verrouilles est plus court que le bareme de trajet (a pied entre deux equipes passerelees, module chez un coach). Comme `team_link_not_honored`, jamais un INFEASIBLE muet — la contradiction entre deux verrous est ANNONCEE post-solve. | Deverrouiller l'une des deux seances, les ecarter dans la journee, ou ajuster le temps de trajet entre ces deux gymnases. |
 
 ⚑ **Proprietaire du texte `message`** (ENG-47) : pour `unused_slot`, le moteur (`_diagnose_unused_slots`,
-`result_builder/diagnostics.py`) n'envoie plus qu'une chaine VIDE — gymnase/jour/plage sont reconstruits
+`result_builder/diagnostics/placement.py`) n'envoie plus qu'une chaine VIDE — gymnase/jour/plage sont reconstruits
 cote backend par `DiagnosticMessageBuilder`, qui possede aussi la correction du decalage de nom de jour
 (le moteur numerote 0=dimanche, le payload `dayOfWeek` est ISO 1=lundi..7=dimanche). `soft_lock_moved`
 reste sur l'ancien patron : le moteur envoie encore un texte anglais brut, que le backend reconstruit
