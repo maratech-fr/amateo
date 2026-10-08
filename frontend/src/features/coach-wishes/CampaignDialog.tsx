@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { HTTPError } from "ky";
-import { Check, Copy, Send } from "lucide-react";
+import { Check, Copy, Mail, Send } from "lucide-react";
 
 import type { CalendarEntry } from "@/features/cockpit/api";
 import type { Team } from "@/features/wizard/api";
@@ -11,15 +11,16 @@ import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { FilterChip } from "@/shared/components/ui/filter-chip";
 import { Input } from "@/shared/components/ui/input";
+import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Modal } from "@/shared/components/ui/modal";
 import { TabPanel, Tabs } from "@/shared/components/ui/tabs";
 import { compareTeamsByRank } from "@/shared/lib/teamTiers";
-import { Spinner } from "@/shared/components/ui/spinner";
+import { FullPageSpinner, Spinner } from "@/shared/components/ui/spinner";
 import { copyToClipboard } from "@/shared/lib/clipboard";
 
 import { doleancesLink, type CampaignCoach, type CoachWishCampaign } from "./campaignApi";
 import { TeamPicker } from "./TeamPicker";
-import { useCreateCoachWishCampaign, useRemindCampaignSilent, useSendCampaignLinks, useUpdateCoachWishCampaign } from "./campaignQueries";
+import { useCoachWishEmailPreview, useCreateCoachWishCampaign, useRemindCampaignSilent, useSendCampaignLinks, useUpdateCoachWishCampaign } from "./campaignQueries";
 
 interface CampaignDialogProps {
   /** Entrée MÈRE des vacances à laquelle la campagne s'ancre. */
@@ -349,6 +350,8 @@ function CoachLinks({ campaign, onEmailSaved, onCampaignRefreshed }: { campaign:
   const remind = useRemindCampaignSilent();
   const teamsQuery = useWizardTeams();
   const teamCoachesQuery = useWizardTeamCoaches();
+  // Aperçu de l'e-mail (envoi initial) — chargé seulement quand la fenêtre est ouverte.
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   // Filtres (D1/D2/D3) : par ÉQUIPE (celles de la campagne) et par STATUT, additifs dans
   // chaque axe, combinés en ET entre axes. N'affectent QUE la liste, jamais les boutons (D4).
@@ -421,7 +424,13 @@ function CoachLinks({ campaign, onEmailSaved, onCampaignRefreshed }: { campaign:
           {remind.isPending ? <Spinner className="size-4" /> : null}
           Relancer les silencieux
         </Button>
+        {/* Aperçu : ce que le gestionnaire verra PARTIR à l'envoi initial (lien coach habillé). */}
+        <Button variant="ghost" size="sm" onClick={() => setPreviewOpen(true)}>
+          <Mail className="size-4" />
+          Aperçu de l'e-mail
+        </Button>
       </div>
+      {previewOpen ? <EmailPreviewModal campaignId={campaign.id} onClose={() => setPreviewOpen(false)} /> : null}
       {/* Sans ceci un 422/409 resterait muet ; on distingue « saison close » (409) de « déjà
           relancé aujourd'hui » (422 — cache périmé, autre onglet) pour ne pas mal expliquer. */}
       {sendLinks.isError ? <p className="mt-2 text-sm text-destructive">{errorMessage(sendLinks.error, "Envoi impossible pour le moment. Réessayez.")}</p> : null}
@@ -464,6 +473,47 @@ function CoachLinks({ campaign, onEmailSaved, onCampaignRefreshed }: { campaign:
       )}
     </div>
   );
+}
+
+/**
+ * Aperçu de l'e-mail du lien coach (D1) — le rendu EXACT du serveur (sujet + expéditeur +
+ * HTML), bâti avec un jeton factice. Le HTML vit dans une iframe `sandbox=""` (ni script, ni
+ * même origine), patron de `MailboxPage` : du HTML non fiable ne s'injecte jamais autrement.
+ * Lecture lue à la `readState` (inlinée) : `undefined` = chargement, ou échec s'il n'y a rien.
+ */
+function EmailPreviewModal({ campaignId, onClose }: { campaignId: string; onClose: () => void }) {
+  const query = useCoachWishEmailPreview(campaignId, true);
+
+  return (
+    <Modal label="Aperçu de l'e-mail" title="Aperçu de l'e-mail" size="lg" onClose={onClose}>
+      {renderBody()}
+    </Modal>
+  );
+
+  function renderBody() {
+    if (undefined === query.data) {
+      return query.isError ? (
+        <LoadErrorHint onRetry={() => void query.refetch()}>L'aperçu n'a pas pu être chargé.</LoadErrorHint>
+      ) : (
+        <FullPageSpinner />
+      );
+    }
+
+    const preview = query.data;
+    return (
+      <div className="space-y-3">
+        <div className="space-y-1 border-b border-border pb-3 text-sm">
+          <p>
+            <span className="text-muted-foreground">Objet&nbsp;:</span> <span className="font-semibold text-foreground">{preview.subject}</span>
+          </p>
+          <p>
+            <span className="text-muted-foreground">De&nbsp;:</span> <span className="text-foreground">{preview.from}</span>
+          </p>
+        </div>
+        <iframe title="Aperçu de l'e-mail" sandbox="" srcDoc={preview.html} className="h-[28rem] w-full rounded border border-border bg-white" />
+      </div>
+    );
+  }
 }
 
 function CoachRow({ coach, campaignId, onEmailSaved, onCampaignRefreshed }: { coach: CampaignCoach; campaignId: string; onEmailSaved: (coachId: string, email: string) => void; onCampaignRefreshed: (c: CoachWishCampaign) => void }) {
