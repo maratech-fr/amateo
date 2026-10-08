@@ -32,7 +32,7 @@ Fonctionnalité: Un plan de période se génère en overlay, sur sa propre grill
     Quand je lance le remplissage de la période
     Alors le remplissage aboutit et l'équipe au jour imposé garde sa séance ce jour-là
 
-  Scénario: Je re-date l'incident : le plan survit et sa version est marquée à régénérer
+  Scénario: Je re-date l'incident : le plan survit et son empreinte se dit à régénérer
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une fermeture à venir avec une version overlay aboutie
     Quand je prolonge la fermeture de deux semaines
