@@ -1,10 +1,8 @@
-Last verified @ 2026-10-09 (page publique de doléance coach — le `GET
-/api/coach-wishes/public/{token}` expose désormais `periodStart` et `periodEnd` (bornes de la
-période mère, format `date`, nullables comme `respondedAt`) ; schéma déclaré à la main dans
-`PublicTokenPaths`. Aucun path ajouté/retiré).
+Last verified @ 2026-10-09 (D2 PR A rebasée sur le lot D1 complet, #1128 + #1129 : `periodStart`/`periodEnd` sur le
+GET public de doléance coach, en plus de `PATCH /api/club/short-name` et de l'aperçu d'e-mail coach).
 
-**233 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`341b9bfc90e006cd0607d5f2cbed4889c0a348fa05e92061d0888e9ca96b1647` (`sha256sum` sur le fichier).
+**235 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`93dabf1fceaace7d2913bacea5828567381ccc682a20eb9f4473907c1da6c596` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne
