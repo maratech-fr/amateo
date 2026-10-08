@@ -4653,6 +4653,32 @@
                 "summary": "Remove the club logo"
             }
         },
+        "/api/club/short-name": {
+            "patch": {
+                "operationId": "patchApiClubShortName",
+                "tags": [
+                    "Club"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Short name set (returns { shortName }); empty/null clears it (falls back to the long name)"
+                    },
+                    "400": {
+                        "description": "No club in context, or invalid JSON"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "404": {
+                        "description": "Club not found"
+                    },
+                    "422": {
+                        "description": "Short name must be 1-20 chars: letters, digits, spaces and & . - ' only"
+                    }
+                },
+                "summary": "Set the club short name \u2014 the email display label (management only; empty clears it)"
+            }
+        },
         "/api/club/siege": {
             "patch": {
                 "operationId": "patchApiClubSiege",
@@ -24797,6 +24823,13 @@
                         "default": "",
                         "type": "string"
                     },
+                    "shortName": {
+                        "description": "Nom COURT (libell\u00e9 d'e-mail) \u2014 null = repli sur le nom long. Saisi via /api/club/short-name.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "slug": {
                         "default": "",
                         "type": "string"
@@ -25001,6 +25034,13 @@
                         "default": "",
                         "type": "string"
                     },
+                    "shortName": {
+                        "description": "Nom COURT (libell\u00e9 d'e-mail) \u2014 null = repli sur le nom long. Saisi via /api/club/short-name.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "slug": {
                         "default": "",
                         "type": "string"
@@ -25114,6 +25154,13 @@
                             "name": {
                                 "default": "",
                                 "type": "string"
+                            },
+                            "shortName": {
+                                "description": "Nom COURT (libell\u00e9 d'e-mail) \u2014 null = repli sur le nom long. Saisi via /api/club/short-name.",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
                             },
                             "slug": {
                                 "default": "",

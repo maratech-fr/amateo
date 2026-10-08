@@ -1,7 +1,7 @@
 # Living Specs System
 
-Last verified @ 2026-10-05 (`documentation-update`, rotation de fraîcheur — sujet de la PR sans
-rapport, lot backend 5 « architecture »). Re-confronté : les six gardes `{DocPlacementTest,
+Last verified @ 2026-10-08 (`documentation-update`, rotation de fraîcheur — sujet de la PR sans
+rapport, lot D1 « gabarit d'e-mail commun »). Re-confronté : les six gardes `{DocPlacementTest,
 DocStampFreshnessTest, RoadmapIdentityTest, BlockingTestsListMatchesCiTest,
 SpecsCarryNoHistoryTest, WorkflowPermissionsDeclaredTest}.php` existent toujours
 (`ls backend/tests/Unit/Documentation/`) ; `docs/testing/blocking-tests.md` existe ;

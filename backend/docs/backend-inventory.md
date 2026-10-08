@@ -3,7 +3,7 @@
 > Backward inventory of the existing backend (Symfony 7.4 + API Platform). This document
 > describes what exists in the codebase at the time of verification — it is not a roadmap.
 
-Last verified @ 2026-10-08 (P4-266, `documentation-update`). §11bis/§12 recalés contre le code : `SchedulePlanResource.staleness`, `SchedulePlanStalenessResolver` et les deux colonnes/listeners `*SinceGeneration`/`*StaleScheduleListener` sont SUPPRIMÉS (migration `Version20261008120000`) ; les trois mentions downstream (SharedTrainingBlock, TeamMatchHabit, VenueTravelTime) recalées sur le mécanisme par empreinte (`structureHashOfPlan`). Reste du fichier non re-confronté cette passe ; l'historique de vérification vit dans `git log -p --follow` ce fichier.
+Last verified @ 2026-10-08 (lot D1, gabarit d'e-mail commun) : l'arbre `src/` gagne `Mail/` (`ClubBusinessMail`, `ClubMailMetadata`, `EmailTemplateRenderer`) ; `EventListener/` recalé (`EmailSignatureListener` délègue le rendu HTML, `ClockedClubMailInterceptor` ajouté à la ligne). Reste du fichier non re-confronté cette passe (dernière passe ciblée : P4-266, §11bis/§12 — `SchedulePlanResource.staleness` et les colonnes/listeners `*SinceGeneration` SUPPRIMÉS, migration `Version20261008120000`) ; l'historique de vérification vit dans `git log -p --follow` ce fichier.
 
 ---
 
@@ -37,7 +37,8 @@ backend/
 │   ├── Service/Conflicts/    # Découpage verbatim, iso-comportement, de `MatchConflictDetector` (BCK-19 partie 2) par famille de conflit : `VenueConflicts` (gymnase — chevauchements, indisponibilités/fermetures, gymnase interdit, fenêtre d'accès perdue), `RuleWindowConflicts` (fenêtres ligue, règles club), `PersonConflicts` (personnes — match×match, match×entraînement, sévérités), `ConflictMoments` (helpers purs partagés, zéro doublon) — `MatchConflictDetector` reste dans `Service/`, façade unique (`detect()`, 4 prédicats statiques publics inchangés)
 │   ├── State/Provider/       # State providers API Platform (par ressource)
 │   ├── State/Processor/      # State processors API Platform (par ressource)
-│   ├── EventListener/        # TenantFilterListener (résolution tenant : attribut / header / JWT), EmailSignatureListener (signature de marque sur tout e-mail sortant, MessageEvent symfony/mailer — P5-24)
+│   ├── EventListener/        # TenantFilterListener (résolution tenant : attribut / header / JWT), EmailSignatureListener (gabarit de marque sur tout e-mail sortant, délègue le rendu HTML à Mail/EmailTemplateRenderer — MessageEvent symfony/mailer, P5-24/D1), ClockedClubMailInterceptor (boîte aux lettres démo, §backend-demo.md)
+│   ├── Mail/                 # ClubBusinessMail (marqueur « e-mail métier club », candidat interception démo), ClubMailMetadata (pose l'identité club — id + libellé — à la source), EmailTemplateRenderer (D1 : SEUL foyer du gabarit HTML, carte + fond dérivé du mark)
 │   ├── Doctrine/Filter/      # TenantFilter (Doctrine filter SQL)
 │   ├── Enum/                 # ScheduleStatus, LockLevel, ...
 │   ├── Dto/                  # Input DTOs (ClubInput, ScheduleInput, ...)
