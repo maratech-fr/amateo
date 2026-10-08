@@ -18,3 +18,25 @@ describe("AuthLayout — en-tête logo", () => {
     expect(container.querySelector('[class*="calendar-check"]')).toBeNull();
   });
 });
+
+describe("AuthLayout — largeur du conteneur", () => {
+  it("par défaut, le conteneur reste en max-w-md (login/inscription inchangés)", () => {
+    const { container } = render(
+      <AuthLayout title="Connexion">
+        <p>corps</p>
+      </AuthLayout>,
+    );
+    expect(container.querySelector(".max-w-md")).not.toBeNull();
+    expect(container.querySelector(".max-w-2xl")).toBeNull();
+  });
+
+  it('width="2xl" élargit le conteneur (page doléance uniquement)', () => {
+    const { container } = render(
+      <AuthLayout title="Doléances" width="2xl">
+        <p>corps</p>
+      </AuthLayout>,
+    );
+    expect(container.querySelector(".max-w-2xl")).not.toBeNull();
+    expect(container.querySelector(".max-w-md")).toBeNull();
+  });
+});

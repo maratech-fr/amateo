@@ -46,6 +46,13 @@ describe("BrandSplash — rendu", () => {
     expect(screen.getByText("Connexion en cours…")).toBeInTheDocument();
   });
 
+  it("l'annonce du lecteur d'écran est paramétrable (défaut inchangé)", () => {
+    mockReducedMotion(false);
+    render(<BrandSplash phase="intro" announcement="Préparation de votre formulaire…" {...inertProps} />);
+    expect(screen.getByText("Préparation de votre formulaire…")).toBeInTheDocument();
+    expect(screen.queryByText("Connexion en cours…")).not.toBeInTheDocument();
+  });
+
   it("dessine le mot produit, ses 2 dernières lettres en teal", () => {
     mockReducedMotion(false);
     render(<BrandSplash phase="breathing" {...inertProps} />);
