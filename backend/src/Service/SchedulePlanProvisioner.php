@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Entity\CalendarEntry;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\Season;
@@ -657,6 +658,57 @@ final class SchedulePlanProvisioner
     public function windowLabel(DateTimeImmutable $start, DateTimeImmutable $end): string
     {
         return $this->windowSuffix($start, $end);
+    }
+
+    /**
+     * L'empreinte de la structure COURANTE d'un plan, PAR PLAN — généralisation de
+     * {@see currentStructureHash} (jusqu'ici SEASON seul). C'est le signal « structure
+     * modifiée » : il DOIT valoir exactement le `snapshotHash` qu'une version fraîchement
+     * née pose, sinon il ment en permanence.
+     *  - SEASON  → {@see ScheduleConstraintBuilder::buildForClubSeason}, la MÊME recette que
+     *    le rail de génération (qui hache l'entrée du solveur AVANT d'y greffer le placement
+     *    précédent, terme de convergence — jamais une donnée de structure) ;
+     *  - PÉRIODE → {@see ScheduleConstraintBuilder::buildForPeriodPlan} avec la MÊME
+     *    dérivation (entrée de calendrier, sélection de période) que le rail qui pose
+     *    `snapshotHash` ({@see PeriodPlanTranscriber}). Le builder recalcule la sélection
+     *    à l'identique quand on ne la lui passe pas : même source, jamais un second calcul.
+     *
+     * Portée par plan (ADR-0002) : la grille d'une période est une COPIE prise à la naissance,
+     * donc modifier la grille SAISON ne bouge pas le hash d'une période.
+     *
+     * `null` propre quand le plan a disparu, n'a pas d'entrée, ou si le build lève.
+     */
+    public function structureHashOfPlan(string $planId): ?string
+    {
+        try {
+            $context = $this->fetchPlanContext($planId);
+            if (null === $context) {
+                return null;
+            }
+            if (SchedulePlanType::SEASON === $context['type']) {
+                return $this->currentStructureHash($context['clubId'], $context['seasonId']);
+            }
+
+            $entryId = $context['calendarEntryId'];
+            if (null === $entryId) {
+                return null; // inv. 9 : un plan de période a toujours une entrée — défense.
+            }
+            $entry = $this->entityManager->getRepository(CalendarEntry::class)->find($entryId);
+            if (!$entry instanceof CalendarEntry) {
+                return null;
+            }
+
+            $payload = $this->constraintBuilder->buildForPeriodPlan(
+                $context['clubId'],
+                $context['seasonId'],
+                $planId,
+                $entry,
+            );
+
+            return hash('sha256', json_encode($payload, \JSON_THROW_ON_ERROR));
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     /** Inv. 9 : seuls closure/holiday portent un plan. Source unique du mapping. */
