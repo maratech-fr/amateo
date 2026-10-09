@@ -7176,60 +7176,148 @@
                 }
             }
         },
-        "/api/coach_wish_campaigns/{id}/email-preview": {
+        "/api/coach_wish_campaigns/{id}/preview": {
             "get": {
-                "operationId": "getCoachWishEmailPreview",
+                "operationId": "previewCoachWishCampaign",
                 "tags": [
                     "CoachWishCampaign"
                 ],
                 "responses": {
                     "200": {
-                        "description": "The exact coach-link e-mail the initial send would produce \u2014 built with a FAKE token (never a real personal link) and an example coach first name. Logos are inlined as data URIs for in-iframe rendering.",
+                        "description": "The real coach-facing form as the chosen coach will see it \u2014 read-only preview, with no wishes/mutualizations and respondedAt null",
                         "content": {
                             "application/json": {
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "subject": {
+                                        "coachFirstName": {
                                             "type": "string"
                                         },
-                                        "from": {
-                                            "type": "string",
-                                            "description": "Display name + address, e.g. \"First (Club) via Amateo <no-reply@amateo.app>\"."
+                                        "periodTitle": {
+                                            "type": "string"
                                         },
-                                        "html": {
+                                        "periodStart": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "format": "date"
+                                        },
+                                        "periodEnd": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "format": "date"
+                                        },
+                                        "deadline": {
                                             "type": "string",
-                                            "description": "Rendered HTML body, safe to show in a sandboxed iframe."
+                                            "format": "date"
+                                        },
+                                        "weeks": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string",
+                                                "format": "date"
+                                            }
+                                        },
+                                        "teams": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    },
+                                                    "name": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "partnerTeams": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    },
+                                                    "name": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "teamLinks": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "teamAId": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    },
+                                                    "teamBId": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "wishes": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object"
+                                            }
+                                        },
+                                        "mutualizations": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object"
+                                            }
+                                        },
+                                        "respondedAt": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "format": "date-time"
                                         }
                                     }
                                 }
                             }
                         }
                     },
-                    "401": {
-                        "description": "Unauthorized (missing/expired JWT)"
-                    },
                     "403": {
-                        "description": "Caller is not a manager of the current club"
+                        "description": "The caller is not a manager of the current club"
                     },
                     "404": {
-                        "description": "Unknown campaign, or it belongs to another club (byte-identical)"
+                        "description": "Campaign not found (another club or absent) or coach outside the campaign perimeter \u2014 byte-identical"
                     }
                 },
-                "summary": "Preview the coach-link e-mail of a campaign (manager only)",
+                "summary": "Preview the coach wish form as a chosen coach of the campaign will see it (manager-only, read-only)",
                 "parameters": [
                     {
                         "name": "id",
                         "in": "path",
-                        "description": "The campaign id",
                         "required": true,
-                        "deprecated": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "name": "coachId",
+                        "in": "query",
+                        "required": true,
                         "schema": {
                             "type": "string",
                             "format": "uuid"
                         },
-                        "style": "simple",
-                        "explode": false
+                        "description": "A coach of the campaign perimeter to preview"
                     }
                 ]
             }
@@ -7401,6 +7489,404 @@
                         "name": "id",
                         "in": "path",
                         "description": "CoachWishCampaign identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ]
+            }
+        },
+        "/api/coach_wish_mutualizations": {
+            "get": {
+                "operationId": "api_coach_wish_mutualizations_get_collection",
+                "tags": [
+                    "CoachWishMutualization"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "CoachWishMutualization collection",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "type": "object",
+                                    "description": "CoachWishMutualization.jsonld collection.",
+                                    "allOf": [
+                                        {
+                                            "$ref": "#/components/schemas/HydraCollectionBaseSchemaNoPagination"
+                                        },
+                                        {
+                                            "type": "object",
+                                            "required": [
+                                                "member"
+                                            ],
+                                            "properties": {
+                                                "member": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/CoachWishMutualization.jsonld"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/CoachWishMutualization"
+                                    }
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/CoachWishMutualization.html"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "summary": "Retrieves the collection of CoachWishMutualization resources.",
+                "description": "Retrieves the collection of CoachWishMutualization resources.",
+                "parameters": []
+            },
+            "post": {
+                "operationId": "api_coach_wish_mutualizations_post",
+                "tags": [
+                    "CoachWishMutualization"
+                ],
+                "responses": {
+                    "201": {
+                        "description": "CoachWishMutualization resource created",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CoachWishMutualization.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CoachWishMutualization"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CoachWishMutualization.html"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "422": {
+                        "description": "An error occurred",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Creates a CoachWishMutualization resource.",
+                "description": "Creates a CoachWishMutualization resource.",
+                "parameters": [],
+                "requestBody": {
+                    "description": "The new CoachWishMutualization resource",
+                    "content": {
+                        "application/ld+json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CoachWishMutualization.CoachWishMutualizationInput"
+                            }
+                        },
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CoachWishMutualization.CoachWishMutualizationInput"
+                            }
+                        },
+                        "text/html": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CoachWishMutualization.CoachWishMutualizationInput"
+                            }
+                        }
+                    },
+                    "required": true
+                }
+            }
+        },
+        "/api/coach_wish_mutualizations/{id}": {
+            "get": {
+                "operationId": "api_coach_wish_mutualizations_id_get",
+                "tags": [
+                    "CoachWishMutualization"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "CoachWishMutualization resource",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CoachWishMutualization.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CoachWishMutualization"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CoachWishMutualization.html"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Retrieves a CoachWishMutualization resource.",
+                "description": "Retrieves a CoachWishMutualization resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "CoachWishMutualization identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ]
+            },
+            "put": {
+                "operationId": "api_coach_wish_mutualizations_id_put",
+                "tags": [
+                    "CoachWishMutualization"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "CoachWishMutualization resource updated",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CoachWishMutualization.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CoachWishMutualization"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CoachWishMutualization.html"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "422": {
+                        "description": "An error occurred",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Replaces the CoachWishMutualization resource.",
+                "description": "Replaces the CoachWishMutualization resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "CoachWishMutualization identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ],
+                "requestBody": {
+                    "description": "The updated CoachWishMutualization resource",
+                    "content": {
+                        "application/ld+json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CoachWishMutualization.CoachWishMutualizationInput"
+                            }
+                        },
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CoachWishMutualization.CoachWishMutualizationInput"
+                            }
+                        },
+                        "text/html": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CoachWishMutualization.CoachWishMutualizationInput"
+                            }
+                        }
+                    },
+                    "required": true
+                }
+            },
+            "delete": {
+                "operationId": "api_coach_wish_mutualizations_id_delete",
+                "tags": [
+                    "CoachWishMutualization"
+                ],
+                "responses": {
+                    "204": {
+                        "description": "CoachWishMutualization resource deleted"
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Removes the CoachWishMutualization resource.",
+                "description": "Removes the CoachWishMutualization resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "CoachWishMutualization identifier",
                         "required": true,
                         "deprecated": false,
                         "schema": {
@@ -26614,6 +27100,227 @@
                 ],
                 "description": "La campagne de collecte des dol\u00e9ances coachs d'une p\u00e9riode (feature #10, lot C2). Writes\nmanagement-only. La sortie porte les compteurs du radar et la liste des coachs\navec leur token (le front construit l'URL publique) \u2014 jamais les dol\u00e9ances elles-m\u00eames."
             },
+            "CoachWishMutualization": {
+                "type": "object",
+                "description": "Demande de mutualisation d'un coach pour une p\u00e9riode de vacances (feature #10, lot D2).\nDEMANDE informative, jamais une contrainte : aucun effet solveur. Ancr\u00e9e \u00e0 l'entr\u00e9e M\u00c8RE des\nvacances + une \u00e9quipe (une par p\u00e9riode, pas par semaine). Writes management-only (processor).",
+                "properties": {
+                    "id": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "version": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "calendarEntryId": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "teamId": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "coachId": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "partnerTeamIds": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "sharedSlots": {
+                        "default": 1,
+                        "type": "integer"
+                    },
+                    "done": {
+                        "default": false,
+                        "type": "boolean"
+                    }
+                }
+            },
+            "CoachWishMutualization.CoachWishMutualizationInput": {
+                "type": "object",
+                "description": "Demande de mutualisation d'un coach pour une p\u00e9riode de vacances (feature #10, lot D2).\nDEMANDE informative, jamais une contrainte : aucun effet solveur. Ancr\u00e9e \u00e0 l'entr\u00e9e M\u00c8RE des\nvacances + une \u00e9quipe (une par p\u00e9riode, pas par semaine). Writes management-only (processor).",
+                "required": [
+                    "calendarEntryId",
+                    "teamId",
+                    "sharedSlots"
+                ],
+                "properties": {
+                    "calendarEntryId": {
+                        "format": "uuid",
+                        "externalDocs": {
+                            "url": "https://schema.org/identifier"
+                        },
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "teamId": {
+                        "format": "uuid",
+                        "externalDocs": {
+                            "url": "https://schema.org/identifier"
+                        },
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "coachId": {
+                        "format": "uuid",
+                        "description": "Requis \u00e0 la CR\u00c9ATION (\u00ab au nom d'un coach \u00bb, impos\u00e9 par le processor), mais NULLABLE en\n\u00e9criture : une demande d\u00e9-attribu\u00e9e (coach supprim\u00e9, coachId=null) doit pouvoir \u00eatre\nre-coch\u00e9e \u00ab trait\u00e9e \u00bb ou \u00e9dit\u00e9e sans qu'un NotBlank la bloque (parit\u00e9 CoachWish).",
+                        "externalDocs": {
+                            "url": "https://schema.org/identifier"
+                        },
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "partnerTeamIds": {
+                        "uniqueItems": true,
+                        "maxItems": 50,
+                        "description": "\u00c9quipes partenaires pressenties (uuid), sans doublon. Au moins une (le processor refuse\nune demande vide \u2014 supprimez-la plut\u00f4t).",
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "sharedSlots": {
+                        "minimum": 1,
+                        "maximum": 7,
+                        "default": 1,
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "done": {
+                        "default": false,
+                        "type": "boolean"
+                    }
+                }
+            },
+            "CoachWishMutualization.html": {
+                "type": "object",
+                "description": "Demande de mutualisation d'un coach pour une p\u00e9riode de vacances (feature #10, lot D2).\nDEMANDE informative, jamais une contrainte : aucun effet solveur. Ancr\u00e9e \u00e0 l'entr\u00e9e M\u00c8RE des\nvacances + une \u00e9quipe (une par p\u00e9riode, pas par semaine). Writes management-only (processor).",
+                "properties": {
+                    "id": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "version": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "calendarEntryId": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "teamId": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "coachId": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "partnerTeamIds": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "sharedSlots": {
+                        "default": 1,
+                        "type": "integer"
+                    },
+                    "done": {
+                        "default": false,
+                        "type": "boolean"
+                    }
+                }
+            },
+            "CoachWishMutualization.jsonld": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/HydraItemBaseSchema"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "default": "",
+                                "type": "string"
+                            },
+                            "version": {
+                                "default": 0,
+                                "type": "integer"
+                            },
+                            "createdAt": {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            "updatedAt": {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            "calendarEntryId": {
+                                "default": "",
+                                "type": "string"
+                            },
+                            "teamId": {
+                                "default": "",
+                                "type": "string"
+                            },
+                            "coachId": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "partnerTeamIds": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            },
+                            "sharedSlots": {
+                                "default": 1,
+                                "type": "integer"
+                            },
+                            "done": {
+                                "default": false,
+                                "type": "boolean"
+                            }
+                        }
+                    }
+                ],
+                "description": "Demande de mutualisation d'un coach pour une p\u00e9riode de vacances (feature #10, lot D2).\nDEMANDE informative, jamais une contrainte : aucun effet solveur. Ancr\u00e9e \u00e0 l'entr\u00e9e M\u00c8RE des\nvacances + une \u00e9quipe (une par p\u00e9riode, pas par semaine). Writes management-only (processor)."
+            },
             "Competition": {
                 "type": "object",
                 "properties": {
@@ -35109,6 +35816,10 @@
         {
             "name": "CoachWishCampaign",
             "description": "La campagne de collecte des dol\u00e9ances coachs d'une p\u00e9riode (feature #10, lot C2). Writes\nmanagement-only. La sortie porte les compteurs du radar et la liste des coachs\navec leur token (le front construit l'URL publique) \u2014 jamais les dol\u00e9ances elles-m\u00eames."
+        },
+        {
+            "name": "CoachWishMutualization",
+            "description": "Demande de mutualisation d'un coach pour une p\u00e9riode de vacances (feature #10, lot D2).\nDEMANDE informative, jamais une contrainte : aucun effet solveur. Ancr\u00e9e \u00e0 l'entr\u00e9e M\u00c8RE des\nvacances + une \u00e9quipe (une par p\u00e9riode, pas par semaine). Writes management-only (processor)."
         },
         {
             "name": "CoachWish",
