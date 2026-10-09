@@ -1,6 +1,6 @@
 # Doléances → planning : jours disponibles, créneaux habituels, ajout manuel, « Transférer au planning » (P2-63)
 
-> **Statut** : cadrage en cours de validation par le fondateur (Q1-Q4 tranchées, Q3bis + Q5-Q8 ouvertes, §5) ; plan (`planner`) après
+> **Statut** : cadrage en cours de validation par le fondateur (Q1-Q4 + Q3bis tranchées, Q5-Q8 ouvertes, §5) ; plan (`planner`) après
 > validation ; **code APRÈS le chantier vidéo P4-297** (place dans la file fixée par le fondateur le
 > 2026-10-09).
 > **Origine** : besoin d'un gestionnaire de club, dicté par le fondateur le 2026-10-09 (mots exacts §0).
@@ -277,10 +277,17 @@ Chaque chemin devient un test d'abus NOMMÉ au plan (fichier + suite).
   ⇒ les poids actuels du bonus de référence (S 20 → D 12, `weights.py:289`, échelle de départage) ne
   suffisent pas : calibrage à arbitrer (question ouverte ci-dessous). Touche le contrat
   backend⇄engine (gymnase dans la référence) et la sémantique des contraintes (NR).
-- **Q3bis (ouverte) — calibrage de « très forte »** : quand garder le créneau de saison d'une équipe
-  empêche de placer une séance d'une autre équipe, qui l'emporte ?
+- **Q3bis — calibrage de « très forte » : placer les séances reste prioritaire, et on ALERTE.**
+  « Garder ses créneaux de saison » passe avant TOUTES les autres préférences (jours souhaités, gymnase
+  préféré, enchaînements…) mais jamais avant le placement d'une séance demandée : si les U13 n'ont
+  AUCUNE autre place que le créneau de saison des SM1, les SM1 bougent ; s'ils en ont une autre, même
+  moins bonne, les U13 bougent. Mots du fondateur : « placer les séances reste prioritaire, mais on
+  alerte que SM1 2/3 créneaux sont conservés pour le bien du planning ». ⇒ diagnostic de fin de
+  génération par équipe concernée : « SM1 : 2/3 créneaux de saison conservés », avec la raison quand
+  un créneau n'a pas pu l'être. Écartés : b (le créneau avant le placement des autres) et c (selon les
+  rangs).
 
-Questions restantes : Q3bis, puis Q5 à Q8 ci-dessous.
+Questions restantes : Q5 à Q8 ci-dessous.
 
 
 1. **Grain semaine vs plan multi-semaines.** Un plan peut couvrir 2+ semaines avec UNE seule grille
