@@ -69,7 +69,6 @@ const campaign = (over: Partial<CoachWishCampaign> = {}): CoachWishCampaign => (
 });
 
 const renderTab = (c: CoachWishCampaign) => render(<SollicitationTab campaign={c} onEmailSaved={vi.fn()} onCampaignRefreshed={vi.fn()} />);
-const list = () => screen.queryByRole("list", { name: "Coachs sollicités" });
 const inList = (name: string) => within(screen.getByRole("list", { name: "Coachs sollicités" })).queryByText(name);
 
 describe("SollicitationTab", () => {
@@ -107,6 +106,26 @@ describe("SollicitationTab", () => {
     expect(screen.getByRole("button", { name: "En attente" })).toHaveAttribute("aria-pressed", "true");
     expect(inList("Maxime SM1")).toBeInTheDocument();
     expect(inList("Wanda U13")).not.toBeInTheDocument();
+  });
+
+  // Bug #1137 (décision fondateur 2026-10-09) : « En attente » = tout coach SANS réponse, qu'il
+  // ait un email ou non — « ce n'est pas parce que tu n'as pas d'email que tu n'as pas répondu ».
+  it("« En attente » liste tout coach sans réponse, avec OU sans email (#1137)", () => {
+    renderTab(
+      campaign({
+        totalCoachCount: 2,
+        teamIds: ["t1", "t2"],
+        coaches: [
+          coach({ coachId: "c1", firstName: "Maxime", lastName: "SM1", email: "max@test.fr" }), // email, sans réponse
+          coach({ coachId: "c2", firstName: "Mara", lastName: "U13", email: null }), // SANS email, sans réponse
+        ],
+      }),
+    );
+    // Défaut « En attente » : les deux sont là (aucun n'a répondu), email ou pas.
+    expect(inList("Maxime SM1")).toBeInTheDocument();
+    expect(inList("Mara U13")).toBeInTheDocument();
+    // La marque « pas d'email » reste visible sur la ligne du coach sans email.
+    expect(within(screen.getByRole("list", { name: "Coachs sollicités" })).getByText("pas d'email")).toBeInTheDocument();
   });
 
   // Décision 6 : le filtre par ÉQUIPE utilise `ResourceFilter` (même sélecteur que l'onglet
@@ -154,10 +173,9 @@ describe("SollicitationTab", () => {
 
   // Décision 5 : bouton COMPACT « Lien » (→ « Copié »), nom accessible contextualisé (A11Y-28).
   it("copie le lien personnel via le bouton « Lien »", async () => {
-    // On vide le filtre « En attente » pour voir un coach sans email (classé « pas d'email »).
+    // Le coach (sans email, sans réponse) est visible d'emblée sous le défaut « En attente » (#1137).
     const user = userEvent.setup();
     renderTab(campaign());
-    await user.click(screen.getByRole("button", { name: "En attente" })); // retire le défaut
 
     const btn = screen.getByRole("button", { name: "Copier le lien de Maxime Durand" });
     expect(btn).toHaveTextContent("Lien");
@@ -188,8 +206,7 @@ describe("SollicitationTab", () => {
       }),
     );
 
-    // On vide le défaut « En attente » pour voir le coach sans email et son badge.
-    await user.click(screen.getByRole("button", { name: "En attente" }));
+    // Sous le défaut « En attente », le coach sans email (sans réponse) est visible avec son badge (#1137).
     expect(screen.getByText("pas d'email")).toBeInTheDocument();
 
     // Bouton GLOBAL (périmètre plein, décision 7) : envoie à tous les coachs à email pas servis.
@@ -203,7 +220,10 @@ describe("SollicitationTab", () => {
     expect(screen.getByText("Aucun coach sur le périmètre choisi.")).toBeInTheDocument();
   });
 
-  it("classe un répondant SANS email en « Répondu », pas « Pas d'email » (WhatsApp)", async () => {
+  // #1137 — « Pas d'email » est un critère INDÉPENDANT : il liste les coachs sans email QUELLE
+  // QUE soit leur réponse. Un répondant via WhatsApp (sans email) relève des DEUX : « Répondu »
+  // (il a répondu) ET « Pas d'email » (il n'a pas d'email).
+  it("« Pas d'email » liste un coach sans email MÊME s'il a répondu (critère indépendant, WhatsApp)", async () => {
     const user = userEvent.setup();
     renderTab(
       campaign({
@@ -211,23 +231,24 @@ describe("SollicitationTab", () => {
         teamIds: ["t1", "t2"],
         respondedCoachCount: 1,
         coaches: [
-          coach({ coachId: "c1", firstName: "Maxime", lastName: "SM1", email: "max@test.fr" }), // en attente
-          // Répond via WhatsApp, aucun email : doit rester « Répondu ».
+          coach({ coachId: "c1", firstName: "Maxime", lastName: "SM1", email: "max@test.fr" }), // email, sans réponse
+          // Répond via WhatsApp, aucun email : « Répondu » ET « Pas d'email » à la fois.
           coach({ coachId: "c2", firstName: "Wanda", lastName: "U13", email: null, respondedAt: "2026-02-01T10:00:00Z" }),
         ],
       }),
     );
 
-    // On montre les répondants : Wanda apparaît.
+    // On montre les répondants : Wanda (réponse WhatsApp) apparaît sous « Répondu ».
     await user.click(screen.getByRole("button", { name: "Répondu" }));
     expect(within(screen.getByRole("list", { name: "Coachs sollicités" })).getByText("Wanda U13")).toBeInTheDocument();
 
-    // Statut « Pas d'email » SEUL : Wanda (répondante) en est exclue, Maxime (a un email) aussi → vide.
+    // Statut « Pas d'email » SEUL : Wanda (sans email) RESTE listée bien qu'elle ait répondu ;
+    // Maxime (a un email) en est exclu.
     await user.click(screen.getByRole("button", { name: "Répondu" })); // retire Répondu → {En attente}
     await user.click(screen.getByRole("button", { name: "En attente" })); // retire En attente → {}
     await user.click(screen.getByRole("button", { name: "Pas d'email" }));
-    expect(list()).not.toBeInTheDocument();
-    expect(screen.getByText("Aucun coach pour ce filtre.")).toBeInTheDocument();
+    expect(within(screen.getByRole("list", { name: "Coachs sollicités" })).getByText("Wanda U13")).toBeInTheDocument();
+    expect(inList("Maxime SM1")).not.toBeInTheDocument();
   });
 
   it("affiche « saison archivée » sur un 409, pas « déjà relancé »", () => {

@@ -43,11 +43,22 @@ const errorMessage = (error: unknown, fallback: string): string => (error instan
 type CoachStatus = "responded" | "pending" | "no-email";
 
 /**
- * Statut mutuellement exclusif d'un coach (D2). « Répondu » PRIME : un coach répond souvent
- * via WhatsApp SANS email (respondedAt posé, email null) — il reste « répondu », jamais rangé
- * en « pas d'email » (sinon le filtre le cacherait alors que le badge le compte répondant).
+ * Prédicats de statut d'un coach — NON exclusifs (correctif #1137, décision fondateur 2026-10-09 :
+ * « tu n'as pas répondu, ce n'est pas parce que tu n'as pas d'email que tu n'as pas répondu »).
+ *  - « En attente » (`pending`) = tout coach SANS réponse, avec OU sans email — son décompte
+ *    coïncide ainsi avec le N du libellé d'onglet (`CoachWishesHub.sollicitationLabel`, même
+ *    critère `respondedAt === null`).
+ *  - « Répondu » (`responded`) = a répondu (souvent via WhatsApp, sans email).
+ *  - « Pas d'email » (`no-email`) = critère INDÉPENDANT : les coachs sans email, qu'ils aient
+ *    répondu ou non.
+ * Un même coach peut relever de PLUSIEURS statuts (p. ex. « Répondu » + « Pas d'email »). Les
+ * puces se cumulent en OU : un coach apparaît s'il satisfait AU MOINS une puce cochée.
  */
-const coachStatus = (c: CampaignCoach): CoachStatus => (null !== c.respondedAt ? "responded" : null === c.email || "" === c.email ? "no-email" : "pending");
+const STATUS_MATCHERS: Record<CoachStatus, (c: CampaignCoach) => boolean> = {
+  responded: (c) => null !== c.respondedAt,
+  pending: (c) => null === c.respondedAt,
+  "no-email": (c) => null === c.email || "" === c.email,
+};
 
 const STATUS_LABELS: { key: CoachStatus; label: string }[] = [
   { key: "responded", label: "Répondu" },
@@ -113,7 +124,7 @@ export function SollicitationTab({
 
   const visibleCoaches = campaign.coaches.filter((c) => {
     const okTeam = 0 === teamFilter.length || [...(coachTeams.get(c.coachId) ?? new Set<string>())].some((t) => teamFilter.includes(t));
-    const okStatus = 0 === statusFilter.size || statusFilter.has(coachStatus(c));
+    const okStatus = 0 === statusFilter.size || [...statusFilter].some((s) => STATUS_MATCHERS[s](c));
     return okTeam && okStatus;
   });
 
