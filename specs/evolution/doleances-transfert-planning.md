@@ -1,6 +1,6 @@
 # Doléances → planning : jours disponibles, créneaux habituels, ajout manuel, « Transférer au planning » (P2-63)
 
-> **Statut** : cadrage en cours de validation par le fondateur (Q1-Q7 + Q3bis tranchées, Q8 ouverte, §5) ; plan (`planner`) après
+> **Statut** : cadrage en cours de validation par le fondateur (toutes les questions tranchées le 2026-10-09, §5 ; plan à suivre) ; plan (`planner`) après
 > validation ; **code APRÈS le chantier vidéo P4-297** (place dans la file fixée par le fondateur le
 > 2026-10-09).
 > **Origine** : besoin d'un gestionnaire de club, dicté par le fondateur le 2026-10-09 (mots exacts §0).
@@ -253,9 +253,9 @@ Chaque chemin devient un test d'abus NOMMÉ au plan (fichier + suite).
   propose une semaine que l'on va dupliquer. Il est complètement stupide de proposer deux semaines
   distinctes alors que le planning n'est qu'un seul gros bloc. » ⇒ planning d'un bloc = le coach remplit
   UNE semaine type pour le bloc ; planning scindé = une doléance par semaine ; aucun arbitrage
-  max/min/signalement au transfert. Reste à cadrer : la collecte est souvent lancée AVANT la naissance
-  du planning (semaines cochées dans Réglages) — qui fixe alors le découpage ? À traiter avec **P2-64**
-  (plannings de vacances scindés par défaut, fusion à la demande), née de cette question.
+  max/min/signalement au transfert. Le découpage est fixé par le PLANNING : la collecte ne se lance
+  qu'après sa naissance (Q8). **P2-64** (plannings de vacances scindés par défaut, fusion à la demande)
+  est née de cette question.
 - **Q2 — indisponibilité coach transférée = OBLIGATOIRE (HARD).** Mots du fondateur : « il dit qu'il
   n'est pas dispo, et pas il préfère ne pas être dispo ». Les jours souhaités restent en Préféré
   (décision 6).
@@ -310,7 +310,26 @@ Chaque chemin devient un test d'abus NOMMÉ au plan (fichier + suite).
   case de SÉLECTION pour le transfert et l'état « traité » ne doivent pas se confondre à l'écran
   (à trancher au plan, passe ui-ux, captures au fondateur).
 
-Questions restantes : Q8 ci-dessous.
+- **Q8 — la collecte de doléances n'existe QU'APRÈS la naissance du (des) planning(s) de vacances.**
+  Proposition du fondateur (« la demande de doléance est quelque chose qui doit se faire avec un
+  planning en cours car les deux sont liés »), reco suivie entre ses deux options : sur une carte de
+  vacances SANS planning, « Doléances » ouvre la fenêtre qui explique « Créez d'abord le planning des
+  vacances » et mène au geste « Adapter » ; les semaines de la collecte ne se cochent plus dans
+  Réglages, elles DÉRIVENT des segments des plannings (une semaine par planning scindé, une semaine type
+  par planning d'un bloc). Ferme le point resté ouvert en Q1 (qui fixe le découpage : le planning) et
+  supprime le cas « semaine sans planning » au transfert ; le transfert reste aux deux portes (Q6).
+  Écarté : le transfert limité à l'édition du planning (ne règle pas le découpage d'une collecte
+  lancée avant le planning).
+- **Q8bis — valider/rouvrir la saison supprime AUSSI la collecte et les doléances des vacances à
+  venir.** Proposition du fondateur, avec deux précisions validées : (1) la confirmation de validation
+  de la saison, qui annonce déjà la suppression des plannings de période futurs (ADR-0002), annonce
+  aussi, chiffres à l'appui, les doléances reçues qui partiront (« … et les 25 doléances déjà reçues
+  pour la Toussaint ; il faudra relancer la collecte ») ; (2) la CAMPAGNE (liens envoyés aux coachs)
+  part avec, pour qu'aucun coach ne remplisse un formulaire dont les semaines ne correspondent plus.
+  Même critère que la suppression des plans : la DATE (`startDate > today`). Le coût assumé : les coachs
+  répondent une seconde fois.
+
+**Toutes les questions sont tranchées (2026-10-09).** Le plan (`planner`) suit.
 
 
 1. **Grain semaine vs plan multi-semaines.** Un plan peut couvrir 2+ semaines avec UNE seule grille
