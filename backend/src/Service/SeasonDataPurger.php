@@ -10,6 +10,7 @@ use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\CoachWish;
 use App\Entity\CoachWishCampaign;
+use App\Entity\CoachWishMutualization;
 use App\Entity\Competition;
 use App\Entity\ConflictResolution;
 use App\Entity\Constraint;
@@ -115,6 +116,8 @@ final class SeasonDataPurger
         CoachWish::class => ['calendarEntryId', CalendarEntry::class],
         // #10 C2 — campagnes de collecte (leurs tokens partent par FK CASCADE).
         CoachWishCampaign::class => ['calendarEntryId', CalendarEntry::class],
+        // #10 D2 — demandes de mutualisation (ancrées à l'entrée de vacances, comme coach_wish).
+        CoachWishMutualization::class => ['calendarEntryId', CalendarEntry::class],
     ];
 
     /**

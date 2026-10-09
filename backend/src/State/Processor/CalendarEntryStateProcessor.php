@@ -10,6 +10,7 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\CoachWish;
 use App\Entity\CoachWishCampaign;
+use App\Entity\CoachWishMutualization;
 use App\Entity\Constraint;
 use App\Entity\PeriodReminderLog;
 use App\Enum\CalendarEntryKind;
@@ -965,6 +966,11 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
             // #10 C2 — et la campagne de collecte de la période (ses tokens partent par FK CASCADE).
             foreach ($this->entityManager->getRepository(CoachWishCampaign::class)->findBy(['calendarEntryId' => $id]) as $campaign) {
                 $this->entityManager->remove($campaign);
+            }
+            // #10 D2 — et les demandes de mutualisation de la période mère (parité CoachWish :
+            // elles ne vivent que sur la mère, supprimer la mère les emporte toutes).
+            foreach ($this->entityManager->getRepository(CoachWishMutualization::class)->findBy(['calendarEntryId' => $id]) as $mutualization) {
+                $this->entityManager->remove($mutualization);
             }
             $this->entityManager->flush();
         }
