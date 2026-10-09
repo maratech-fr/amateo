@@ -21,8 +21,8 @@ import { unavailabilitiesToAlert } from "./lib/venueUnavailabilityRadar";
 import { useWeekAdapt } from "./lib/useWeekAdapt";
 import { WeekPickerDialog } from "./WeekPickerDialog";
 import { WindowAlreadyPlannedNotice } from "./WindowAlreadyPlannedNotice";
-import { CoachWishesModal } from "@/features/coach-wishes/CoachWishesModal";
-import { RadarCoachWishAction } from "@/features/coach-wishes/RadarCoachWishAction";
+import { CoachWishesHub } from "@/features/coach-wishes/CoachWishesHub";
+import { RadarCoachWishBadge } from "@/features/coach-wishes/RadarCoachWishBadge";
 import { useCoachWishCampaigns } from "@/features/coach-wishes/campaignQueries";
 import { useState } from "react";
 import { isoDayOf } from "@/shared/lib/days";
@@ -35,8 +35,9 @@ export const PUBLIC_HOLIDAY_HORIZON_DAYS = 30;
  * fondateur — ramenée à 30 j le 2026-08-19 (elle valait 60) : une vacance n'apparaît au radar
  * que 30 jours avant son début.
  *
- * ⚠ Ce que l'horizon masque, il le masque AUSSI pour les doléances — `RadarCoachWishAction`
- * n'est rendu nulle part ailleurs dans l'application. Arbitrage fondateur 2026-08-01, après
+ * ⚠ Ce que l'horizon masque, il le masque AUSSI pour les doléances — le bouton « Doléances »
+ * et son badge `RadarCoachWishBadge` ne sont rendus nulle part ailleurs dans l'application.
+ * Arbitrage fondateur 2026-08-01, après
  * que la revue #344 l'a soulevé : « en général ça se fait 3 semaines avant les vacances » —
  * la sollicitation tient donc largement dans les 30 j. Le cas d'une collecte plus lointaine
  * n'existe pas dans l'usage réel, et aucun second point d'entrée n'est à créer.
@@ -551,7 +552,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
                     <MessageSquare className="size-4" />
                     Doléances
                   </Button>
-                  <RadarCoachWishAction entry={m} season={workingSeason} campaign={campaignByEntry.get(m.id) ?? null} />
+                  <RadarCoachWishBadge campaign={campaignByEntry.get(m.id) ?? null} />
                 </>
               ) : null
             }
@@ -625,7 +626,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
                 Doléances
               </Button>
             ) : null}
-            {undefined !== entry ? <RadarCoachWishAction entry={entry} season={workingSeason} campaign={campaignByEntry.get(entry.id) ?? null} /> : null}
+            {undefined !== entry ? <RadarCoachWishBadge campaign={campaignByEntry.get(entry.id) ?? null} /> : null}
             {stateUnknown ? null : null !== activeId ? (
               <Button variant="outline" size="sm" onClick={() => viewOverlay(activeId)}>
                 Voir le planning
@@ -811,7 +812,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
           onOpenConflict={adapt}
         />
       ) : null}
-      {null !== wishesEntry ? <CoachWishesModal mother={wishesEntry} weekFilter={null} onClose={() => setWishesEntry(null)} /> : null}
+      {null !== wishesEntry ? <CoachWishesHub mother={wishesEntry} weekFilter={null} source="cockpit" onClose={() => setWishesEntry(null)} /> : null}
     </aside>
   );
 }

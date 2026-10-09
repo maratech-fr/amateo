@@ -8,7 +8,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useMe } from "@/shared/session/queries";
 import { useCalendarEntry, useDeleteEntry, usePeriodAnchor } from "@/features/cockpit/queries";
 import { frDateNumeric } from "@/features/cockpit/lib/date";
-import { CoachWishesModal } from "@/features/coach-wishes/CoachWishesModal";
+import { CoachWishesHub } from "@/features/coach-wishes/CoachWishesHub";
 import { canOpenWishes, wishesMotherId, wishesWeekFilter } from "@/features/coach-wishes/wishesTarget";
 import { DeletePlanningButton } from "@/features/cockpit/DeletePlanningButton";
 import { FeedbackButton } from "@/shared/feedback/FeedbackButton";
@@ -627,7 +627,7 @@ export function WizardPage() {
       </div>
       <ScrollJumpButtons suppressed={suppressScrollJump} />
       {wishesOpen && null !== wishesMother ? (
-        <CoachWishesModal mother={wishesMother} weekFilter={wishesFilter} onClose={() => setWishesOpen(false)} />
+        <CoachWishesHub mother={wishesMother} weekFilter={wishesFilter} source="wizard" onClose={() => setWishesOpen(false)} />
       ) : null}
     </WizardFooterContext.Provider>
   );

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CalendarEntry } from "@/features/cockpit/api";
 
-import { CoachWishesModal } from "./CoachWishesModal";
+import { WishesTab } from "./WishesTab";
 
 // Saison couvrant les deux semaines des vacances de test (lun 2026-02-16 → dim 2026-03-01).
 // P3-14 : le tri des filtres (staffing / rang) et le bornage du coach aux MAIN de l'équipe
@@ -89,7 +89,7 @@ const wish = (over: Record<string, unknown>) => ({
   ...over,
 });
 
-describe("CoachWishesModal", () => {
+describe("WishesTab", () => {
   beforeEach(() => {
     wishesState.data = [];
     mutualizationsState.data = [];
@@ -108,7 +108,7 @@ describe("CoachWishesModal", () => {
 
   it("groupe les doléances par semaine quand aucun filtre de semaine", () => {
     wishesState.data = [wish({ id: "w1", weekStart: "2026-02-16" }), wish({ id: "w2", teamId: "t2", weekStart: "2026-02-23" })];
-    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter={null} />);
     // Deux en-têtes de semaine (les deux semaines des vacances).
     expect(screen.getByText(/Semaine du 2026-02-16/)).toBeInTheDocument();
     expect(screen.getByText(/Semaine du 2026-02-23/)).toBeInTheDocument();
@@ -118,13 +118,13 @@ describe("CoachWishesModal", () => {
   // P4-150 — la copie d'écran de l'état vide (semaine sans aucune doléance) est assertée.
   it("annonce « Aucune doléance pour cette semaine. » quand la semaine filtrée est vide", () => {
     wishesState.data = [];
-    render(<CoachWishesModal mother={mother} weekFilter="2026-02-16" onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
     expect(screen.getByText("Aucune doléance pour cette semaine.")).toBeInTheDocument();
   });
 
   it("ne montre qu'une semaine quand weekFilter est posé (vue wizard d'un plan de semaine)", () => {
     wishesState.data = [wish({ id: "w1", weekStart: "2026-02-16" }), wish({ id: "w2", teamId: "t2", weekStart: "2026-02-23" })];
-    render(<CoachWishesModal mother={mother} weekFilter="2026-02-23" onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter="2026-02-23" />);
     expect(screen.queryByText(/Semaine du 2026-02-16/)).toBeNull();
     // La doléance de la semaine filtrée (U13) est là ; celle de l'autre semaine non.
     expect(screen.getByText("U13", { exact: false })).toBeInTheDocument();
@@ -133,7 +133,7 @@ describe("CoachWishesModal", () => {
 
   it("cocher « traité » appelle update avec done inversé", async () => {
     wishesState.data = [wish({ id: "w1", done: false })];
-    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter={null} />);
     await userEvent.click(screen.getByRole("checkbox", { name: /Traité/ }));
     expect(updateMut).toHaveBeenCalledWith(expect.objectContaining({ id: "w1", body: expect.objectContaining({ done: true }) }));
   });
@@ -142,14 +142,14 @@ describe("CoachWishesModal", () => {
     // Revue #10 C1 finding #1 : envoyer coachId:"" échouait le NotBlank et une doléance
     // dé-attribuée ne pouvait jamais être cochée. On préserve null.
     wishesState.data = [wish({ id: "w1", coachId: null, done: false })];
-    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter={null} />);
     await userEvent.click(screen.getByRole("checkbox", { name: /Traité/ }));
     expect(updateMut).toHaveBeenCalledWith(expect.objectContaining({ id: "w1", body: expect.objectContaining({ coachId: null, done: true }) }));
   });
 
   it("une doléance dé-attribuée (coachId null) l'affiche explicitement", () => {
     wishesState.data = [wish({ id: "w1", coachId: null })];
-    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter={null} />);
     expect(screen.getByText(/coach dé-attribué/)).toBeInTheDocument();
   });
 
@@ -158,7 +158,7 @@ describe("CoachWishesModal", () => {
     // dé-attribuées) ne doit PAS laisser dé-attribuer une doléance attribuée.
     wishesState.data = [wish({ id: "w1", coachId: "c1", teamId: "t1", weekStart: "2026-02-16" })];
     const user = userEvent.setup();
-    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter={null} />);
     await user.click(screen.getByRole("button", { name: /^Modifier la doléance/ }));
     // Pas d'option vide « Coach… » sur une doléance attribuée.
     const coachSelect = screen.getByLabelText("Coach") as HTMLSelectElement;
@@ -173,7 +173,7 @@ describe("CoachWishesModal", () => {
     // dé-attribuée retombait sur lui, corrompant l'auteur. On garde coachId null.
     wishesState.data = [wish({ id: "w1", coachId: null, teamId: "t1", weekStart: "2026-02-16" })];
     const user = userEvent.setup();
-    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter={null} />);
     await user.click(screen.getByRole("button", { name: /^Modifier la doléance/ }));
     await user.click(screen.getByRole("button", { name: "Enregistrer" }));
     expect(updateMut).toHaveBeenCalledWith(expect.objectContaining({ id: "w1", body: expect.objectContaining({ coachId: null }) }), expect.anything());
@@ -182,7 +182,7 @@ describe("CoachWishesModal", () => {
   it("le filtre par équipe masque les autres équipes", async () => {
     wishesState.data = [wish({ id: "w1", teamId: "t1" }), wish({ id: "w2", teamId: "t2" })];
     const user = userEvent.setup();
-    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter={null} />);
     // Ouvre le filtre Équipes, coche U13, referme le popover.
     await user.click(screen.getByRole("button", { name: /Équipes/ }));
     await user.click(screen.getByRole("button", { name: "U13" }));
@@ -194,7 +194,7 @@ describe("CoachWishesModal", () => {
 
   it("le formulaire d'ajout soumet le payload avec la semaine figée quand weekFilter", async () => {
     const user = userEvent.setup();
-    render(<CoachWishesModal mother={mother} weekFilter="2026-02-16" onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
     await user.click(screen.getByRole("button", { name: "Ajouter" }));
     // Équipe SM1 (défaut) → coach MAIN c1 pré-rempli ; on soumet directement.
     await user.click(screen.getByRole("button", { name: /Ajouter la doléance/ }));
@@ -205,14 +205,14 @@ describe("CoachWishesModal", () => {
 
   it("affiche les jours souhaités d'une doléance remontée", () => {
     wishesState.data = [wish({ id: "w1", wishedDays: [2], unavailableDays: [3] })];
-    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter={null} />);
     expect(screen.getByText(/souhaité : Mar/)).toBeInTheDocument();
     expect(screen.getByText(/indispo : Mer/)).toBeInTheDocument();
   });
 
   it("le formulaire d'ajout envoie les jours souhaités, et cocher souhaité retire l'indisponibilité (exclusion)", async () => {
     const user = userEvent.setup();
-    render(<CoachWishesModal mother={mother} weekFilter="2026-02-16" onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
     await user.click(screen.getByRole("button", { name: "Ajouter" }));
 
     const wished = screen.getByRole("group", { name: "Jours souhaités" });
@@ -233,7 +233,7 @@ describe("CoachWishesModal", () => {
   // récap et à l'onglet contraintes.
   it("groupe les coachs du filtre par staffing", async () => {
     const user = userEvent.setup();
-    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter={null} />);
 
     await user.click(screen.getByRole("button", { name: /Coachs/ }));
     expect(screen.getByText("Salariés")).toBeInTheDocument();
@@ -243,7 +243,7 @@ describe("CoachWishesModal", () => {
   // Les équipes du filtre suivent le RANG, comme partout où une équipe se choisit.
   it("groupe les équipes du filtre par rang, fanion d'abord", async () => {
     const user = userEvent.setup();
-    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter={null} />);
 
     await user.click(screen.getByRole("button", { name: /Équipes/ }));
     const headers = screen.getAllByText(/^(S · Fanion|B · Moyenne)$/).map((el) => el.textContent);
@@ -254,7 +254,7 @@ describe("CoachWishesModal", () => {
   // coach ? ben c'est pas possible ». U13 n'a aucun lien MAIN → hors du FORMULAIRE.
   it("n'offre pas à la saisie une équipe sans coach principal", async () => {
     const user = userEvent.setup();
-    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter={null} />);
 
     await user.click(screen.getByRole("button", { name: "Ajouter" }));
     const picker = screen.getByLabelText("Équipe");
@@ -266,7 +266,7 @@ describe("CoachWishesModal", () => {
   // équipe qui a perdu son coach depuis. Cacher ne vaut que pour un CHOIX.
   it("garde toutes les équipes dans le filtre, y compris sans coach", async () => {
     const user = userEvent.setup();
-    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter={null} />);
 
     await user.click(screen.getByRole("button", { name: /Équipes/ }));
     expect(screen.getByRole("button", { name: "U13" })).toBeInTheDocument();
@@ -276,7 +276,7 @@ describe("CoachWishesModal", () => {
   // une équipe avec un coach qui ne l'encadre pas.
   it("n'offre que le coach principal de l'équipe choisie", async () => {
     const user = userEvent.setup();
-    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter={null} />);
 
     await user.click(screen.getByRole("button", { name: "Ajouter" }));
     const picker = screen.getByLabelText("Coach");
@@ -295,7 +295,7 @@ describe("CoachWishesModal", () => {
   it("garde le coach d'une doléance existante même s'il n'encadre plus l'équipe", async () => {
     wishesState.data = [wish({ id: "w1", teamId: "t1", coachId: "c2", weekStart: "2026-02-16" })]; // Léa n'encadre pas SM1
     const user = userEvent.setup();
-    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter={null} />);
 
     await user.click(screen.getByRole("button", { name: /^Modifier la doléance/ }));
     const picker = screen.getByLabelText("Coach") as HTMLSelectElement;
@@ -307,26 +307,26 @@ describe("CoachWishesModal", () => {
 
   it("liste une mutualisation déclarée avec ses partenaires et le nombre de séances", () => {
     mutualizationsState.data = [{ id: "m1", calendarEntryId: "e1", teamId: "t1", coachId: "c1", partnerTeamIds: ["t2", "t3"], sharedSlots: 2, done: false }];
-    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter={null} />);
     expect(screen.getByRole("heading", { name: "Mutualisations" })).toBeInTheDocument();
     expect(screen.getByText(/souhaite mutualiser 2 séances avec : U13, Fanion/)).toBeInTheDocument();
   });
 
   it("annonce l'état vide des mutualisations", () => {
-    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter={null} />);
     expect(screen.getByText("Aucune mutualisation déclarée pour cette période.")).toBeInTheDocument();
   });
 
   it("cocher « traité » sur une mutualisation appelle update avec done inversé", async () => {
     mutualizationsState.data = [{ id: "m1", calendarEntryId: "e1", teamId: "t1", coachId: "c1", partnerTeamIds: ["t2"], sharedSlots: 1, done: false }];
-    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter={null} />);
     await userEvent.click(screen.getByRole("checkbox", { name: /Traité — mutualisation/ }));
     expect(updateMutu).toHaveBeenCalledWith(expect.objectContaining({ id: "m1", body: expect.objectContaining({ done: true }) }));
   });
 
   it("le formulaire d'ajout de mutualisation soumet équipe + coach MAIN + partenaire + séances", async () => {
     const user = userEvent.setup();
-    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter={null} />);
     await user.click(screen.getByRole("button", { name: /Ajouter une mutualisation/ }));
     // Équipe SM1 (défaut) → coach MAIN c1 ; on coche U13 en partenaire.
     await user.click(screen.getByRole("checkbox", { name: "Partenaire U13" }));
@@ -338,7 +338,7 @@ describe("CoachWishesModal", () => {
   // cible (un select d'équipes vide, dont rien n'expliquerait le vide).
   it("annonce ce qui manque quand aucune équipe n'a de coach principal", () => {
     teamCoachesState.data = [];
-    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    render(<WishesTab mother={mother} weekFilter={null} />);
 
     expect(screen.getByText(/rattachez-en un pour pouvoir saisir une doléance/i)).toBeInTheDocument();
     // Désactivé mais DÉCOUVRABLE (A11Y-30, `disabledReason`) : aria-disabled, pas le `disabled` natif.

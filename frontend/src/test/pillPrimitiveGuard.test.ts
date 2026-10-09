@@ -35,7 +35,6 @@ interface Exemption {
 const EXEMPTIONS: Exemption[] = [
   { path: "features/admin/", reason: "console superadmin — hors périmètre des écrans de l'app club (même exemption de périmètre que pageHeaderGuard/deleteConfirmGuard)" },
   { path: "features/wizard/steps/CoachesStep.tsx", reason: "pastilles de LIAISON coach/joueur ↔ équipe (certaines avec un bouton « Retirer ») — hors contrat StatusPill, geste réversible : exemptées nominativement, exactement comme dans deleteConfirmGuard (N2)" },
-  { path: "features/coach-wishes/CampaignDialog.tsx", reason: "puces de FILTRE interactives (`<button>` `aria-pressed`, bascule) — relèvent de FilterChip, pas de la pastille d'état statique StatusPill" },
   { path: "features/planning/DriftBanner.tsx", reason: "bouton-bascule (`<button>` à fond de survol `hover:bg-warning/20`) — un contrôle interactif, pas une pastille d'état" },
 ];
 

@@ -206,7 +206,7 @@ describe("Tabs", () => {
 
   // A11Y-23 — un `aria-controls` ne doit JAMAIS pointer un panneau absent du DOM. La primitive
   // ne pose donc `aria-controls` que sur l'onglet ACTIF (attribut optionnel, APG). Ici un seul
-  // panneau est rendu (le cas des consommateurs qui ne montent que l'actif : CampaignDialog,
+  // panneau est rendu (le cas des consommateurs qui ne montent que l'actif : CoachWishesHub,
   // TypicalWeekendGrid) : chaque `aria-controls` présent doit résoudre vers un id existant.
   it("A11Y-23 — tout aria-controls d'onglet référence un panneau présent (seul l'actif le porte)", () => {
     render(
