@@ -96,7 +96,7 @@
       border-bottom: 1px solid var(--line);
     }
     header.site .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; }
-    .logotype { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; }
+    .logotype { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; flex-shrink: 0; }
     .brand-logo { height: 30px; width: 30px; display: block; }
     .logo-word { font-family: var(--display); font-weight: 800; font-size: 23px; letter-spacing: -0.03em; line-height: 1; color: var(--ink); text-transform: lowercase; }
     nav.top { display: flex; gap: 16px; align-items: center; font-size: 15px; }
@@ -104,7 +104,7 @@
     nav.top a:hover { color: var(--ink); }
     .theme-toggle {
       display: inline-flex; align-items: center; justify-content: center;
-      width: 40px; height: 40px; padding: 0; border-radius: 10px;
+      width: 40px; height: 40px; padding: 0; border-radius: 10px; flex-shrink: 0;
       border: 1.5px solid var(--line); background: var(--surface); color: var(--ink-2);
       cursor: pointer; transition: color 80ms ease, border-color 80ms ease;
     }
@@ -129,6 +129,16 @@
     .foot-brand { display: inline-flex; align-items: center; gap: 7px; vertical-align: -5px; }
     footer.site .brand-logo { height: 20px; width: 20px; }
     footer.site .logo-word { font-size: 16px; }
+
+    /* Cibles tactiles ≥44px en mobile (lien « Accueil » de l'en-tête, retour, pied de page) :
+       padding gonflé, marge négative pour COMPENSER — rendu desktop inchangé, zone cliquable
+       plus grande. Borné à ≤880px (au pointeur, 44px n'est pas requis). Pas de burger : l'en-tête
+       (logo + « Accueil » + bascule) tient dès 360px. */
+    @media (max-width: 880px) {
+      nav.top a { display: inline-block; padding: 12px 6px; margin: -12px -6px; }
+      .back a { display: inline-block; padding: 11px 4px; margin: -11px -4px; }
+      footer.site a { display: inline-block; padding: 12px 4px; margin: -12px -4px; }
+    }
 
     @media (prefers-reduced-motion: reduce) {
       /* Saut d'ancre direct : le script de glissement teste prefers-reduced-motion. */
