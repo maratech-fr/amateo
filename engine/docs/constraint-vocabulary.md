@@ -1,6 +1,6 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-10-06 (P4-312 — mode JOUR « à privilégier »). `preferredDays` recalé : il n'est plus « engine-only » — le wizard l'émet depuis le mode JOUR « à privilégier » (DAY, `PREFERRED`, soft positif), l'objectif l'oriente sans jamais bloquer ; la clé reste refusée en `HARD` (une préférence ne peut pas être obligatoire). `engine/CONTRACT_VERSION` = `1.3` (inchangé par P4-312 : aucun nouveau vocabulaire moteur, seule la surface de saisie manquait). Reste du vocabulaire non re-sondé cette passe — un stamp REMPLACE, il ne s'empile pas.
+Last verified @ 2026-10-09 (P4-295 C3) : citation du solveur de placement recalée — `W_COACH_UNAVAILABLE` (indisponibilité de coach, TOUJOURS SOFT) pointe désormais le sous-module `engine/app/solver/match_placement/weights.py` du paquet `match_placement/` (découpe pure verbatim, zéro effet gestionnaire). Reste du vocabulaire non re-sondé cette passe — un stamp REMPLACE, il ne s'empile pas.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
@@ -142,7 +142,7 @@ Last verified @ 2026-10-06 (P4-312 — mode JOUR « à privilégier »). `prefer
 > famille gouverne **uniquement** le solveur d'ENTRAÎNEMENT (`/generate`, toujours dure). Le rail
 > matchs (`/place-matches`) reçoit un bloc top-level SÉPARÉ, `coachUnavailabilities`
 > (`match_input_schema.py::CoachUnavailabilitySchema`) — TOUJOURS SOFT (`W_COACH_UNAVAILABLE=60`,
-> `engine/app/solver/match_placement.py`), jamais un élagage de domaine ni un HARD. Les deux
+> `engine/app/solver/match_placement/weights.py`), jamais un élagage de domaine ni un HARD. Les deux
 > mécanismes ne partagent ni schéma ni mécanisme — voir
 > [`../../specs/courantes/module-matchs.md`](../../specs/courantes/module-matchs.md) §1/§3.
 

@@ -1,20 +1,6 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-10-07 : `CONTRACT_VERSION` 1.4 (P4-96 PR-2 — trois kinds de cause DÉDIÉS `day_forced`/`session_floor`/`shared_block` + `causes[]` sur le diagnostic `conflict` ; `/place-matches` inchangé. Antérieurement 1.3 : retrait des champs morts du fil — PII coach email/phone, flags isActive/tags/minSessionsOverride, priorityTiers, kickoffEstimated/roundTripMinutes, ENG-53/RGPD-03/ALIGN-20 ; antérieurement 1.2, vocabulaire `/place-matches` —
-`clubRules[].ruleType`, `teams[].coaches[].role`, `teamLinks[].type` — énum fermée côté moteur,
-valeur inconnue = 422, ENG-56) et P4-300 — une fermeture `venue_closed` du calendrier s'applique
-aussi aux matchs, maison unique `PlanVenueClosures::closureIntervals`, consommée par le payload
-`/place-matches`, le radar, le refus serveur et le sélecteur grisé, plus l'endpoint lecture
-`GET /api/venue_closures` — confirmés contre `MatchPlacementPayloadBuilder.php`,
-`ConflictRadarLoader.php`, `FixtureStateProcessor.php`, `matchAccess.ts`, `usePlacementGuards.ts`,
-`PlacementPanel.tsx` ; et BCK-19 partie 2 — `MatchConflictDetector` reste l'unique façade
-(`detect()`, 4 prédicats statiques publics inchangés), son corps découpé VERBATIM dans
-`backend/src/Service/Conflicts/` (`VenueConflicts`, `RuleWindowConflicts`, `PersonConflicts`,
-`ConflictMoments`) — confirmé contre `backend/src/Service/MatchConflictDetector.php` et les
-quatre fichiers de `Conflicts/`.
-Reste du contenu (P4-271/P4-272 et antérieur, dont §7 « Engagements FFBB ») non réaudité cette
-passe. Historique :
-`git log -p --follow specs/courantes/module-matchs.md`.
+Last verified @ 2026-10-09 (P4-295 C3) : `CONTRACT_VERSION` 1.4 inchangé — le solveur de placement est devenu le paquet `app/solver/match_placement/` (découpe pure verbatim : façade `__init__` portant `solve_match_placement`/`_solve_one_week`/`_place_matches`, sous-modules `geometry`/`weights`/`reasons`/`budget`/`candidates`/`weeks`) ; les citations §3 (poids SOFT `W_COACH_UNAVAILABLE`/`W_CLUB_RULE`/`W_PROTECT_HABIT` → `weights.py`, raisons `_candidate_kickoffs` → `candidates.py`) ré-ancrées sur les sous-modules, plus de numéros de ligne. Reste du module (P4-96/P4-300/BCK-19 et antérieur) non réaudité cette passe — un stamp REMPLACE, il ne s'empile pas. Historique : `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
 > d'une PR. Le JOURNAL (qui a livré quoi, quand, sous quel id) vit dans
@@ -608,7 +594,7 @@ gymnase interdit à l'équipe (scope TEAM HARD) ne rejoint JAMAIS son domaine �
 été légal (accès ∩ ligue ∩ règles CLUB) mais uniquement sur un gymnase banni ; **cette raison est
 testée AVANT `club_rule_no_slot`** dans la même passe de résolution (un slot déjà refusé par une
 règle CLUB n'entre jamais dans les candidats d'un gymnase, donc n'y contribue jamais) —
-`_candidate_kickoffs`, `engine/app/solver/match_placement.py`. Les deux dernières raisons se
+`_candidate_kickoffs`, `engine/app/solver/match_placement/candidates.py`. Les deux dernières raisons se
 distinguent post-solve sur l'occupation finale : `venue_full` = plus aucun créneau licite libre à
 sa date (gymnase saturé) ; `not_selected` = un créneau licite restait libre mais le solve ne l'a
 pas retenu dans son budget — « relancez le placement » (ADR-0003 §3).
@@ -676,25 +662,25 @@ personne du solveur ne provient plus JAMAIS d'un trajet ni d'un échauffement �
 fenêtre salle `[kickoff, kickoff+matchMinutes]` (lot M + décision B).
 
 **SOFT (golden-épinglés)** : conflit personne (coach MAIN ou joueuse active) −60 · indisponibilité
-de coach violée −60 (`W_COACH_UNAVAILABLE=60`, P4-272 ⑤, `match_placement.py:57` — MÊME poids qu'un
+de coach violée −60 (`W_COACH_UNAVAILABLE=60`, P4-272 ⑤, `match_placement/weights.py` — MÊME poids qu'un
 conflit personne ; le coup d'envoi du candidat retenu tombe dans une plage d'un coach de l'équipe,
 sur un jour couvert par cette plage ; jamais d'élagage de domaine, jamais de raison `unplaced`,
 jamais de radar — le placement l'évite quand une alternative existe, sans jamais rendre un match
 impossible) · coach ASSISTANT −10 · passerelle `NOT_SIMULTANEOUS` violée −40 (⚠ **asymétrie
 délibérée** : le radar §2 ne signale jamais cette famille, le solveur GARDE cette préférence
 souple — sens sûr, une pénalité SOFT ne bloque jamais rien, à ne pas « aligner » en la retirant) ·
-règle de match CLUB PREFERRED violée −30 (`W_CLUB_RULE=30`, P4-272 ③, `match_placement.py:55` —
+règle de match CLUB PREFERRED violée −30 (`W_CLUB_RULE=30`, P4-272 ③, `match_placement/weights.py` —
 arbitrage fondateur : plus qu'une habitude +15+5, moins qu'une passerelle `NOT_SIMULTANEOUS` −40 ou
 qu'un conflit coach −60 ; une règle HARD n'entre jamais dans l'objectif, elle élague le domaine, §3
 ci-dessus) · habitude heure +15/gymnase +5 · fenêtre
-habituelle protégée −25 (`W_PROTECT_HABIT=25`, `match_placement.py:58`) · `BACK_TO_BACK` enchaîné +15 ·
+habituelle protégée −25 (`W_PROTECT_HABIT=25`, `match_placement/weights.py`) · `BACK_TO_BACK` enchaîné +15 ·
 stabilité re-solve +8 · compactage −1/15 min de trou. **La protection ne s'applique JAMAIS au
 créneau idéal PROPRE de l'équipe candidate** (`is_own_ideal`, P4-271) — sans cette exception, le
 bonus +15+5 d'une équipe perdrait toujours face à la protection −25 dès qu'une AUTRE équipe déclare
 son créneau idéal sur le même gymnase+jour+heure (l'ex-alternance A/B). Deux créneaux idéaux qui
 coïncident physiquement (même gymnase+jour+heure) protègent la MÊME fenêtre sur une date sans
 membre — dédupliquée par `(gymnase, date)` pour qu'un troisième candidat chevauchant ne soit jamais
-pénalisé deux fois (`match_placement.py:433-439`).
+pénalisé deux fois (`_place_matches`, `match_placement/__init__.py`).
 
 **Ancres — `Fixture.placementSource`** : geste manuel API → `MANUAL` ; `MANUAL` + `SUBMITTED`/
 `VALIDATED` = **FIXED**, ne bouge jamais ; `SOLVER` = re-plaçable. Un amical n'est **jamais**

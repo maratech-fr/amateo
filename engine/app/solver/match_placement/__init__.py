@@ -1,94 +1,141 @@
+"""Placement daté des matchs — solve ISO-semaine par ISO-semaine (paquet).
+
+Ce ``__init__`` est le point d'entrée du paquet : il porte cette docstring, le ``logger``, le
+plafond de BUILD ``BUILD_BUDGET_SECONDS`` (ADR-0001), le cœur ``_place_matches`` (indécoupable
+verbatim — il tient ses closures ``_ensure_budget`` / ``_greedy_key`` / ``_apply_greedy_hints`` /
+``_overlap_pairs``), le solve d'une semaine ``_solve_one_week`` et l'orchestrateur public
+``solve_match_placement`` ; les ré-exports ``from .x import y as y`` de chaque sous-module gardent
+la surface d'import byte-identique au module d'avant la découpe (noms publics ET privés — plusieurs
+``_…`` et constantes sont importés directement par ``tests/``).
+
+Les sous-modules forment un DAG simple assis sur les schémas ``match_input_schema`` : ``geometry``
+(constantes de durée D1/lot M, lecteurs d'horaire ``_minutes`` / ``_to_time`` / ``_iso_day``,
+prédicats de fenêtre ``_kick_in_club_rule`` / ``_kick_in_unavailability``, durées ``_durations`` et
+personnes ``_team_players``) · ``weights`` (les poids d'objectif SOFT, ADR-0003) · ``reasons``
+(table ``REASON_MESSAGES`` et reclassement ``_remaining_reason``) · ``budget`` (dépassement de
+build ``_BuildBudgetExceeded`` et réponse ``_too_large_result``) · ``candidates`` (seule arête
+interne : ``_candidate_kickoffs`` assis sur ``geometry``, et la classe ``_Candidate``) · ``weeks``
+(partition ``_partition_by_iso_week`` / clé ``_iso_week`` et fusion ``_merge_week_results``).
+
+⚠ Coutures : ``tests/test_match_placement.py`` fait
+``monkeypatch.setattr(match_placement, "BUILD_BUDGET_SECONDS", 0.0)`` — ``_place_matches`` lit cette
+constante dans SES globals (ce module), d'où son ancrage ici. Et ``main.py`` dé-pickle
+``solve_match_placement`` par nom qualifié dans le process fils (executor ``spawn``) : il doit rester
+défini DANS ce ``__init__`` (``__module__ == "app.solver.match_placement"``).
+"""
+
 from __future__ import annotations
 
 import logging
 import time as time_module
 import uuid
-from datetime import date, time
+from datetime import date
 from typing import Any
 
 from ortools.sat.python import cp_model
 
 from app.schemas.match_input_schema import (
-    ClubRuleSchema,
     CoachUnavailabilitySchema,
     MatchPlacementInputSchema,
     MatchSchema,
-    MatchTeamSchema,
     TeamHabitSchema,
-    TrainingOccupancySchema,
+)
+
+from .budget import (
+    _BuildBudgetExceeded as _BuildBudgetExceeded,
+)
+from .budget import (
+    _too_large_result as _too_large_result,
+)
+from .candidates import (
+    _Candidate as _Candidate,
+)
+from .candidates import (
+    _candidate_kickoffs as _candidate_kickoffs,
+)
+from .geometry import (
+    DEFAULT_MATCH_MIN as DEFAULT_MATCH_MIN,
+)
+from .geometry import (
+    DEFAULT_WARMUP_MIN as DEFAULT_WARMUP_MIN,
+)
+from .geometry import (
+    STEP_MIN as STEP_MIN,
+)
+from .geometry import (
+    _durations as _durations,
+)
+from .geometry import (
+    _iso_day as _iso_day,
+)
+from .geometry import (
+    _kick_in_club_rule as _kick_in_club_rule,
+)
+from .geometry import (
+    _kick_in_unavailability as _kick_in_unavailability,
+)
+from .geometry import (
+    _minutes as _minutes,
+)
+from .geometry import (
+    _team_players as _team_players,
+)
+from .geometry import (
+    _to_time as _to_time,
+)
+from .reasons import (
+    REASON_MESSAGES as REASON_MESSAGES,
+)
+from .reasons import (
+    _remaining_reason as _remaining_reason,
+)
+from .weeks import (
+    _iso_week as _iso_week,
+)
+from .weeks import (
+    _merge_week_results as _merge_week_results,
+)
+from .weeks import (
+    _partition_by_iso_week as _partition_by_iso_week,
+)
+from .weights import (
+    W_BACK_TO_BACK as W_BACK_TO_BACK,
+)
+from .weights import (
+    W_CLUB_RULE as W_CLUB_RULE,
+)
+from .weights import (
+    W_COACH_ASSISTANT as W_COACH_ASSISTANT,
+)
+from .weights import (
+    W_COACH_MAIN as W_COACH_MAIN,
+)
+from .weights import (
+    W_COACH_UNAVAILABLE as W_COACH_UNAVAILABLE,
+)
+from .weights import (
+    W_GAP_PER_STEP as W_GAP_PER_STEP,
+)
+from .weights import (
+    W_HABIT_TIME as W_HABIT_TIME,
+)
+from .weights import (
+    W_HABIT_VENUE as W_HABIT_VENUE,
+)
+from .weights import (
+    W_LINK_NOT_SIMULTANEOUS as W_LINK_NOT_SIMULTANEOUS,
+)
+from .weights import (
+    W_PLACE as W_PLACE,
+)
+from .weights import (
+    W_PROTECT_HABIT as W_PROTECT_HABIT,
+)
+from .weights import (
+    W_STABILITY as W_STABILITY,
 )
 
 logger = logging.getLogger("engine.match_placement")
-
-# ── Geometry (D1, P4-203, lot M) ──────────────────────────────────────────────
-# Durations are PER TEAM now: the payload carries teams[].matchMinutes /
-# teams[].warmupMinutes (resolved by the backend from the sport category). The
-# court is held for the MATCH only ([kickoff, kickoff + matchMinutes]) — the
-# warm-up no longer occupies the venue (founder decision 2026-09-13: "you warm
-# up on the side during the previous match").
-#
-# ⚠ Lot M — the PERSON footprint (coach / player / NOT_SIMULTANEOUS link) ALSO
-# drops the warm-up, mirroring MatchConflictDetector: a person coming from another
-# engagement only has to ARRIVE by the kickoff, the warm-up is hers to skip.
-#
-# ⚠ P4-240 ③ (décision B) — the placement solver IGNORES every person footprint of
-# an AWAY match: away matches project NO person window at all (« c'est la vie ; the
-# radar signals the conflict, we handle it after »). Only FIXED (home) anchors and
-# projected trainings hold a person; the only person window in play is therefore
-# [kickoff, kickoff + matchMinutes] (home = no travel, warm-up dropped = the VENUE
-# window). `roundTripMinutes` is still carried on the contract but no longer read.
-# A PERSON is a coach OR an active player (teams[].players, P4-240 ③): both project
-# and clash on the same window, a player weighted like a MAIN coach (W_COACH_MAIN).
-# warmupMinutes stays on the contract (no version bump) but the solver no longer
-# reads it for any window; keeping it avoids re-syncing the schemas for a nil gain.
-STEP_MIN = 15
-DEFAULT_MATCH_MIN = 105
-DEFAULT_WARMUP_MIN = 30
-
-# ── Objective weights (ADR-0003 — fixed, documented, golden-pinned) ──────────
-# Placement dominates every SOFT combination of one match: the solver never
-# sacrifices a placement for comfort.
-W_PLACE = 10_000
-W_COACH_MAIN = 60
-# P4-272 ⑤ — a coach of the match's team is UNAVAILABLE at a candidate's kickoff (a declared
-# window on a covered day). SOFT (validé fondateur : même niveau que les autres pénalités
-# coach — W_CLUB_RULE 30 < NOT_SIMULTANEOUS 40 < coach 60) : it steers the placement out of
-# the window when an alternative exists, it NEVER blocks (a match is never left unplaced for
-# a coach unavailability — no domain pruning, no unplaced reason).
-W_COACH_UNAVAILABLE = 60
-W_LINK_NOT_SIMULTANEOUS = 40
-# P4-272 ③ — a PREFERRED club rule violated by a candidate (validé fondateur : > une
-# habitude 15+5, < NOT_SIMULTANEOUS 40 < coach 60). A HARD club rule never reaches
-# the objective: it prunes the domain (see _candidate_kickoffs), it is not a penalty.
-W_CLUB_RULE = 30
-W_HABIT_TIME = 15  # on top of the implicit day match (constant per candidate set)
-W_HABIT_VENUE = 5
-W_PROTECT_HABIT = 25
-W_BACK_TO_BACK = 15
-W_COACH_ASSISTANT = 10
-W_STABILITY = 8
-W_GAP_PER_STEP = 1
-
-REASON_MESSAGES = {
-    "venue_unavailable": "Tous les gymnases de match sont indisponibles à cette date.",
-    "no_access_window": "Aucune fenêtre d'accès match ne contient la durée du match ce jour-là.",
-    "no_league_intersection": "Les fenêtres de la ligue ne croisent aucune fenêtre d'accès ce jour-là.",
-    # venue_full ≠ not_selected : venue_full = plus AUCUN créneau licite libre ce jour-là
-    # (le gymnase est réellement saturé) ; not_selected = un créneau licite restait libre mais
-    # le solveur ne l'a pas retenu dans le temps imparti — la reclassification post-solve tranche.
-    "venue_full": "Tous les créneaux licites sont déjà occupés par d'autres matchs.",
-    "not_selected": "Le solveur n'a pas retenu de créneau dans le temps imparti — relancez le placement.",
-    # P4-272 ③ — a HARD club rule empties the domain: a legal (access ∩ league) slot
-    # existed but every one is refused by a club rule. The manager must relax the rule
-    # or place the match by hand (manual placement outside a HARD rule stays PERMITTED,
-    # only the radar signals it).
-    "club_rule_no_slot": "Aucun créneau compatible avec les règles du club.",
-    # P4-272 ④ — the team is FORBIDDEN from every venue that would otherwise have held
-    # the match: a legal slot existed, but only on a forbidden venue. Same remedy as a
-    # club rule — lift the ban or place by hand (a manual placement in a forbidden venue
-    # stays PERMITTED, only the radar signals it). Founder wording (2026-09-29).
-    "team_venue_forbidden": "Gymnase interdit pour cette équipe.",
-}
 
 # ── Build budget (ADR-0001: name the impossible, never hang) ──────────────────
 # The CP-SAT time limit only bounds the SOLVE. A pathological placement problem
@@ -99,349 +146,6 @@ REASON_MESSAGES = {
 # wall-clock deadline over the hot loops and abort with a named diagnostic rather
 # than let a request hang. 10 s is orders of magnitude over a real club's build.
 BUILD_BUDGET_SECONDS = 10.0
-
-
-class _BuildBudgetExceeded(Exception):
-    """Raised when building the CP-SAT model overruns ``BUILD_BUDGET_SECONDS``.
-
-    Carries the measured shape (matches + candidate variables built so far) so the
-    caller can name the problem to the manager instead of failing mutely."""
-
-    def __init__(self, n_matches: int, n_candidates: int) -> None:
-        self.n_matches = n_matches
-        self.n_candidates = n_candidates
-        super().__init__(f"match placement build budget exceeded ({n_matches} matches, {n_candidates} candidates)")
-
-
-def _too_large_result(exc: _BuildBudgetExceeded) -> dict[str, Any]:
-    """The failed response for a placement problem too large to build in budget."""
-    return {
-        "status": "failed",
-        "placements": [],
-        "unplaced": [],
-        "diagnostics": [
-            {
-                "id": str(uuid.uuid5(uuid.NAMESPACE_URL, "placement-too-large")),
-                "type": "placement_problem_too_large",
-                "severity": "error",
-                "message": (
-                    f"Le placement des matchs est trop volumineux pour être calculé "
-                    f"({exc.n_matches} matchs, {exc.n_candidates} créneaux candidats) : "
-                    "réduisez le volume de matchs à placer ou les fenêtres d'accès."
-                ),
-                "suggestions": [
-                    "Placez les matchs par lots plus petits, ou resserrez les fenêtres d'accès des gymnases.",
-                ],
-            }
-        ],
-        "metrics": None,
-    }
-
-
-def _minutes(value: time) -> int:
-    return value.hour * 60 + value.minute
-
-
-def _remaining_reason(
-    slots: list[tuple[str, int]],
-    match_date: date,
-    match_min: int,
-    busy: dict[tuple[str, date], list[tuple[int, int]]],
-) -> str:
-    """Reason for a match the solve left unplaced, given the FINAL occupancy.
-
-    ``venue_full`` when EVERY legal slot of the match overlaps an occupied window
-    at its date (the venue is genuinely saturated); ``not_selected`` when at least
-    one legal slot stays free — the solver simply did not retain it within the
-    budget (« relancez le placement »). Pure so both branches are falsifiable
-    without a full solve (not_selected is otherwise a budget-exhaustion artefact,
-    impossible to force deterministically on a tiny problem)."""
-    for venue_id, kickoff in slots:
-        occupied = busy.get((venue_id, match_date), [])
-        if not any(kickoff < b_end and b_start < kickoff + match_min for b_start, b_end in occupied):
-            return "not_selected"
-    return "venue_full"
-
-
-def _to_time(total: int) -> time:
-    return time(hour=(total // 60) % 24, minute=total % 60)
-
-
-def _iso_day(value: date) -> int:
-    return value.isoweekday()
-
-
-def _kick_in_club_rule(kick: int, rule: ClubRuleSchema) -> bool:
-    """Does a kickoff (minutes) satisfy a club rule's range? A missing bound is OPEN
-    on that side (« pas après 21h » = kickoff_max only). Closed interval, matching the
-    league window (both bounds inclusive)."""
-    below_min = rule.kickoff_min is not None and kick < _minutes(rule.kickoff_min)
-    above_max = rule.kickoff_max is not None and kick > _minutes(rule.kickoff_max)
-    return not (below_min or above_max)
-
-
-def _kick_in_unavailability(kick: int, unav: CoachUnavailabilitySchema) -> bool:
-    """Is a kickoff (minutes) INSIDE a coach's unavailability window (P4-272 ⑤)? A missing
-    bound is OPEN on that side (« indispo avant 12h » = kickoff_max only). Closed interval —
-    the coach cannot be there, so a candidate at that kickoff is PENALISED (SOFT). Same range
-    shape as a club rule, but the intent is inverted: a club rule wants the kickoff IN range,
-    an unavailability penalises the kickoff being IN range."""
-    after_min = unav.kickoff_min is None or kick >= _minutes(unav.kickoff_min)
-    before_max = unav.kickoff_max is None or kick <= _minutes(unav.kickoff_max)
-    return after_min and before_max
-
-
-def _durations(team: MatchTeamSchema | None) -> tuple[int, int]:
-    """(matchMinutes, warmupMinutes) of a team — the documented defaults when the
-    team is absent or the fields were omitted (Pydantic already fills 105 / 30)."""
-    if team is None:
-        return DEFAULT_MATCH_MIN, DEFAULT_WARMUP_MIN
-    return team.match_minutes, team.warmup_minutes
-
-
-def _team_players(team: MatchTeamSchema | None) -> list[str]:
-    """The player person-ids of a team, MINUS anyone who also coaches it (the coach
-    role wins — parité MatchConflictDetector) and MINUS duplicates. The backend
-    already excludes coaches (PlayersPayloadParityTest); this belt keeps a defensive
-    double-listing from ever yielding a double malus (P4-240 ③)."""
-    if team is None:
-        return []
-    coach_ids = {ref.coach_id for ref in team.coaches}
-    seen: set[str] = set()
-    out: list[str] = []
-    for player_id in team.players:
-        if player_id in coach_ids or player_id in seen:
-            continue
-        seen.add(player_id)
-        out.append(player_id)
-    return out
-
-
-class _Candidate:
-    __slots__ = ("kickoff_min", "var", "venue_id")
-
-    def __init__(self, venue_id: str, kickoff_min: int, var: cp_model.IntVar) -> None:
-        self.venue_id = venue_id
-        self.kickoff_min = kickoff_min
-        self.var = var
-
-
-def _candidate_kickoffs(
-    input_data: MatchPlacementInputSchema,
-    match: MatchSchema,
-) -> tuple[dict[str, list[int]], str]:
-    """Legal (venue → kickoff minutes) domain of a TO_PLACE match, plus the
-    reason when it is EMPTY (derived at build time, before any solve)."""
-    day = _iso_day(match.match_date)
-    team = next((t for t in input_data.teams if t.id == match.team_id), None)
-    match_min, _ = _durations(team)
-    league = [w for w in (team.league_windows if team else []) if w.day_of_week == day]
-    league_mapped = team is not None and len(team.league_windows) > 0
-    # P4-272 ③ — HARD club rules covering this ISO day. Every one must accept the
-    # kickoff (AND semantics); a domain emptied by them alone is `club_rule_no_slot`.
-    hard_rules = [r for r in input_data.club_rules if r.rule_type == "HARD" and day in r.days_of_week]
-    # P4-272 ④ — venues this team is FORBIDDEN to play at. A forbidden venue is removed
-    # from the domain (never chosen), but tracked apart: if a legal (access ∩ league ∩
-    # club-rule) slot existed ONLY on forbidden venues, the reason is `team_venue_forbidden`.
-    forbidden_venues = set(team.forbidden_venue_ids) if team else set()
-
-    domain: dict[str, list[int]] = {}
-    saw_open_venue = False
-    saw_access_candidate = False
-    saw_league_candidate = False
-    saw_forbidden_legal = False
-    for venue in input_data.venues:
-        if any(u.start_date <= match.match_date <= u.end_date for u in venue.unavailabilities):
-            continue
-        saw_open_venue = True
-        kicks: list[int] = []
-        for window in venue.match_windows:
-            if window.day_of_week != day:
-                continue
-            # The venue is held for the MATCH only (D1): kickoff ≥ start and
-            # kickoff + matchMinutes ≤ end. The warm-up no longer reserves the
-            # court, so a match may start at the very opening of the window.
-            first = _minutes(window.start)
-            last = _minutes(window.end) - match_min
-            kick = ((first + STEP_MIN - 1) // STEP_MIN) * STEP_MIN
-            while kick <= last:
-                saw_access_candidate = True
-                # League HARD only when the team maps: the kickoff must fall in
-                # SOME league window of that day.
-                league_ok = not league_mapped or any(
-                    _minutes(w.kickoff_min) <= kick <= _minutes(w.kickoff_max) for w in league
-                )
-                if league_ok:
-                    saw_league_candidate = True
-                    # Club HARD rules (P4-272 ③): every rule covering this day must
-                    # accept the kickoff. A club rule that empties an otherwise-legal
-                    # domain is told apart below (`club_rule_no_slot`).
-                    if all(_kick_in_club_rule(kick, rule) for rule in hard_rules):
-                        kicks.append(kick)
-                kick += STEP_MIN
-        if not kicks:
-            continue
-        # P4-272 ④ — a forbidden venue never enters the domain (the solver must never
-        # put the team there), but a would-be-legal slot on it flags the reason so an
-        # emptied domain reads `team_venue_forbidden`, not a misleading access/league one.
-        if venue.id in forbidden_venues:
-            saw_forbidden_legal = True
-            continue
-        domain[venue.id] = kicks
-
-    if domain:
-        return domain, ""
-    if not saw_open_venue:
-        return {}, "venue_unavailable"
-    if not saw_access_candidate:
-        return {}, "no_access_window"
-    if not saw_league_candidate:
-        return {}, "no_league_intersection"
-    # A legal slot survived on a forbidden venue alone → the ban is what empties the
-    # domain (told apart from a club rule doing the same, `club_rule_no_slot`).
-    if saw_forbidden_legal:
-        return {}, "team_venue_forbidden"
-    return {}, "club_rule_no_slot"
-
-
-def _iso_week(value: date) -> tuple[int, int]:
-    """(ISO year, ISO week) of a date — the partition key. The ISO year (not the
-    calendar year) is part of the key so the last days of December that belong to
-    week 1 of the next year group with that week, not a phantom week 53 (and the
-    reverse in early January). A weekend's Saturday and Sunday always share one key."""
-    iso = value.isocalendar()
-    return (iso.year, iso.week)
-
-
-def _partition_by_iso_week(
-    input_data: MatchPlacementInputSchema,
-) -> list[tuple[tuple[int, int], MatchPlacementInputSchema]]:
-    """Split a placement request into one sub-request per ISO WEEK (ENG-50).
-
-    Each slice embeds EVERY match dated in the week — TO_PLACE, FIXED AND AWAY: a
-    FIXED anchor consumes its venue slot and a person window, an AWAY match frees
-    that day's habit protection (``team_dates``), so dropping either would change
-    the week's optimum — plus the week's ``training_occupancies``. Everything else
-    (teams, venues, club rules, links, coach unavailabilities, solver params) is
-    COMMON and copied verbatim onto each slice. Weeks are returned in ascending key
-    order so the merged output is deterministic.
-
-    Correctness rests on an invariant of ``_place_matches``: NO term couples two
-    different dates. Every cross-date construction requires ``match_date`` equality
-    — the no-overlap group key is (venue, date), ``_overlap_pairs`` returns early
-    when the two dates differ, BACK_TO_BACK is same-date, habit-window protection
-    and person windows are indexed by date, and training occupancies by date. Since
-    each date belongs to exactly one ISO week, solving a week in isolation yields
-    the same placement for that week as the global solve would — the slicing is
-    behaviour-preserving, it only bounds the model size (and the memory) per build.
-    """
-    matches_by_week: dict[tuple[int, int], list[MatchSchema]] = {}
-    for match in input_data.matches:
-        matches_by_week.setdefault(_iso_week(match.match_date), []).append(match)
-    occupancies_by_week: dict[tuple[int, int], list[TrainingOccupancySchema]] = {}
-    for occupancy in input_data.training_occupancies:
-        occupancies_by_week.setdefault(_iso_week(occupancy.occupancy_date), []).append(occupancy)
-
-    slices: list[tuple[tuple[int, int], MatchPlacementInputSchema]] = []
-    for key in sorted(matches_by_week):
-        # model_copy(update=…) swaps the two per-week lists without re-validating
-        # the already-validated shared objects; no new schema is constructed.
-        sub_input = input_data.model_copy(
-            update={
-                "matches": matches_by_week[key],
-                "training_occupancies": occupancies_by_week.get(key, []),
-            }
-        )
-        slices.append((key, sub_input))
-    return slices
-
-
-def _solve_one_week(sub_input: MatchPlacementInputSchema, week_key: tuple[int, int]) -> dict[str, Any]:
-    """Solve a single ISO-week slice, aborting its BUILD with a named
-    ``placement_problem_too_large`` diagnostic if it overruns the per-build budget
-    (ADR-0001 — the impossible is spelled out, never a silent hang). A too-large
-    week fails on its OWN; ``_merge_week_results`` keeps the other weeks' work."""
-    try:
-        return _place_matches(sub_input)
-    except _BuildBudgetExceeded as exc:
-        logger.warning(
-            "match placement build budget exceeded club=%s iso_week=%s matches=%d candidates=%d",
-            sub_input.club_id,
-            week_key,
-            exc.n_matches,
-            exc.n_candidates,
-        )
-        return _too_large_result(exc)
-
-
-def _merge_week_results(results: list[dict[str, Any]]) -> dict[str, Any]:
-    """Concatenate the per-week results into the single response the contract
-    expects (no schema change, CONTRACT_VERSION stays 1.2).
-
-    Placements / unplaced / diagnostics are concatenated in week order (stable,
-    deterministic). ``metrics``: ``wall_time_ms`` SUMMED (total solve time of the
-    pass), and ``nb_variables`` / ``nb_constraints`` SUMMED too — each week is a
-    SEPARATE CP-SAT build, so the total model size the pass constructed is the sum,
-    not the max of one week (summing also stays coherent with the summed wall time;
-    a single-week request keeps byte-identical metrics, the sum of one term). A
-    too-large week carries ``metrics=None`` (nothing was built) and is skipped in
-    the aggregation. ``status``: "failed" ONLY when EVERY attempted week failed —
-    so one too-large week never sinks the weeks that did place (its error
-    diagnostic still rides in ``diagnostics``); with a single week this degrades to
-    the historical single-solve behaviour (one too-large week → "failed")."""
-    if not results:
-        # No week held a TO_PLACE match → nothing to solve. A no-op completed result
-        # (the backend controller already short-circuits toPlaceCount == 0 upstream).
-        return {"status": "completed", "placements": [], "unplaced": [], "diagnostics": [], "metrics": None}
-
-    placements: list[dict[str, Any]] = []
-    unplaced: list[dict[str, str]] = []
-    diagnostics: list[dict[str, Any]] = []
-    nb_variables = nb_constraints = wall_time_ms = 0
-    any_metrics = False
-    for result in results:
-        placements.extend(result["placements"])
-        unplaced.extend(result["unplaced"])
-        diagnostics.extend(result["diagnostics"])
-        metrics = result["metrics"]
-        if metrics is not None:
-            any_metrics = True
-            nb_variables += metrics["nb_variables"]
-            nb_constraints += metrics["nb_constraints"]
-            wall_time_ms += metrics["wall_time_ms"]
-
-    status = "failed" if all(result["status"] == "failed" for result in results) else "completed"
-    merged_metrics: dict[str, Any] | None = None
-    if any_metrics:
-        merged_metrics = {
-            "solver_version": "cp-sat",
-            "nb_variables": nb_variables,
-            "nb_constraints": nb_constraints,
-            "wall_time_ms": wall_time_ms,
-        }
-    return {
-        "status": status,
-        "placements": placements,
-        "unplaced": unplaced,
-        "diagnostics": diagnostics,
-        "metrics": merged_metrics,
-    }
-
-
-def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
-    """Public entry point (ENG-50): solve the request ISO WEEK by ISO WEEK, under a
-    PER-WEEK budget (``solver_timeout_seconds`` is now the budget OF EACH week, and
-    ``BUILD_BUDGET_SECONDS`` the budget of each sub-build), and return ONE merged
-    response. Slicing keeps every sub-model small so the child process's peak memory
-    stays bounded (the whole pass runs in the single spawned child, main.py). A week
-    with no TO_PLACE match is never solved. See ``_partition_by_iso_week`` for why
-    this is equivalent to a single global solve."""
-    results = [
-        _solve_one_week(sub_input, week_key)
-        for week_key, sub_input in _partition_by_iso_week(input_data)
-        if any(match.kind == "TO_PLACE" for match in sub_input.matches)
-    ]
-    return _merge_week_results(results)
 
 
 def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
@@ -963,3 +667,37 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
             "wall_time_ms": int(solver.wall_time * 1000),
         },
     }
+
+
+def _solve_one_week(sub_input: MatchPlacementInputSchema, week_key: tuple[int, int]) -> dict[str, Any]:
+    """Solve a single ISO-week slice, aborting its BUILD with a named
+    ``placement_problem_too_large`` diagnostic if it overruns the per-build budget
+    (ADR-0001 — the impossible is spelled out, never a silent hang). A too-large
+    week fails on its OWN; ``_merge_week_results`` keeps the other weeks' work."""
+    try:
+        return _place_matches(sub_input)
+    except _BuildBudgetExceeded as exc:
+        logger.warning(
+            "match placement build budget exceeded club=%s iso_week=%s matches=%d candidates=%d",
+            sub_input.club_id,
+            week_key,
+            exc.n_matches,
+            exc.n_candidates,
+        )
+        return _too_large_result(exc)
+
+
+def solve_match_placement(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
+    """Public entry point (ENG-50): solve the request ISO WEEK by ISO WEEK, under a
+    PER-WEEK budget (``solver_timeout_seconds`` is now the budget OF EACH week, and
+    ``BUILD_BUDGET_SECONDS`` the budget of each sub-build), and return ONE merged
+    response. Slicing keeps every sub-model small so the child process's peak memory
+    stays bounded (the whole pass runs in the single spawned child, main.py). A week
+    with no TO_PLACE match is never solved. See ``_partition_by_iso_week`` for why
+    this is equivalent to a single global solve."""
+    results = [
+        _solve_one_week(sub_input, week_key)
+        for week_key, sub_input in _partition_by_iso_week(input_data)
+        if any(match.kind == "TO_PLACE" for match in sub_input.matches)
+    ]
+    return _merge_week_results(results)

@@ -28,7 +28,7 @@ use PHPUnit\Framework\TestCase;
 #[Group('contract')]
 final class PlacementLockOutlivesTheSolveTest extends TestCase
 {
-    private const string MATCH_PLACEMENT = __DIR__ . '/../../../engine/app/solver/match_placement.py';
+    private const string MATCH_PLACEMENT = __DIR__ . '/../../../engine/app/solver/match_placement/__init__.py';
 
     public function testTheReservedPerWeekBudgetCoversTheEngineWorstCasePerWeek(): void
     {
@@ -92,7 +92,7 @@ final class PlacementLockOutlivesTheSolveTest extends TestCase
     private function source(): string
     {
         $source = file_get_contents(self::MATCH_PLACEMENT);
-        self::assertIsString($source, 'engine/app/solver/match_placement.py est illisible.');
+        self::assertIsString($source, 'engine/app/solver/match_placement/__init__.py est illisible.');
 
         return $source;
     }
