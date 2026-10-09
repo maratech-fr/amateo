@@ -1,6 +1,6 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-10-09 (P4-295 C3) : citation du solveur de placement recalée — `W_COACH_UNAVAILABLE` (indisponibilité de coach, TOUJOURS SOFT) pointe désormais le sous-module `engine/app/solver/match_placement/weights.py` du paquet `match_placement/` (découpe pure verbatim, zéro effet gestionnaire). Reste du vocabulaire non re-sondé cette passe — un stamp REMPLACE, il ne s'empile pas. Également (P4-295 C4) : citation `add_socle_reference_bonus` recalée — ce constructeur vit depuis P4-295 C4 dans le sous-module `engine/app/solver/objective/terms/stability.py` (l'ancien `objective/terms.py` est devenu un paquet, découpe pure verbatim, surface d'import byte-identique, `objective/__init__` inchangé). Aucun vocabulaire moteur touché (refactor pur). Reste du vocabulaire non re-sondé cette passe — un stamp REMPLACE, il ne s'empile pas.
+Last verified @ 2026-10-09 (P4-295 C3) : citation du solveur de placement recalée — `W_COACH_UNAVAILABLE` (indisponibilité de coach, TOUJOURS SOFT) pointe désormais le sous-module `engine/app/solver/match_placement/weights.py` du paquet `match_placement/` (découpe pure verbatim, zéro effet gestionnaire). Reste du vocabulaire non re-sondé cette passe — un stamp REMPLACE, il ne s'empile pas. Également (P4-295 C4) : citation `add_socle_reference_bonus` recalée — ce constructeur vit depuis P4-295 C4 dans le sous-module `engine/app/solver/objective/terms/stability.py` (l'ancien `objective/terms.py` est devenu un paquet, découpe pure verbatim, surface d'import byte-identique, `objective/__init__` inchangé). Aucun vocabulaire moteur touché (refactor pur). Reste du vocabulaire non re-sondé cette passe — un stamp REMPLACE, il ne s'empile pas. Également (P4-295 C5) : les 2 citations du balayage capacité et du `x ≤ Σb` de séance de bloc sont ré-ancrées sur `constraints/structural/capacity.py`. Fond du vocabulaire non re-sondé cette passe — dernière vérif contre le code à P4-312 (mode JOUR « à privilégier ») : `preferredDays` n'est plus « engine-only », le wizard l'émet en mode JOUR « à privilégier » (DAY, `PREFERRED`, soft positif), l'objectif l'oriente sans jamais bloquer, la clé reste refusée en `HARD`. `engine/CONTRACT_VERSION` = `1.3` (inchangé par ces deux passes). Un stamp REMPLACE, il ne s'empile pas.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
@@ -241,7 +241,7 @@ dé-comptage `(n_libres−1)·b`, que `add_room_at_most_one` soustrait (`shared_
 patron du crédit des verrouillés). Ce dé-comptage couvre aussi le **partenaire VERROUILLÉ** : un
 membre du bloc épinglé en HARD sur une case (transcription du socle) laisse la place aux membres
 libres du même bloc — et à eux seuls — aux deux étages (candidats de `model.py`, balayage par
-sous-départs de `structural.py`) ; gardé par `tests/semantic/test_fill_pinned_block_partner.py`.
+sous-départs de `constraints/structural/capacity.py`) ; gardé par `tests/semantic/test_fill_pinned_block_partner.py`.
 
 Cette porte est CONDITIONNÉE à la séance de bloc active, jamais à la seule présence du verrou : (1)
 une case où TOUS les membres d'un bloc sont épinglés ensemble est une séance commune RÉALISÉE pour
@@ -251,7 +251,7 @@ distinctness plafonne à 1 pour les blocs qui partagent un membre) — elle cons
 et le budget se dépense ailleurs). ⚠ Pas `b == 1` PAR bloc : deux blocs IMBRIQUÉS (ex.
 {U9F1,U9F2} ⊂ {U9F1,U9F2,U9M2} au club BCCL) toute-épinglés sur la même case rendraient tout
 INFEASIBLE (1 + 1 ≤ 1) ; (2) un membre libre qui ne survit sur une case saturée QUE grâce au
-dé-compte du verrou partenaire reçoit `x ≤ Σ b` des blocs de la case (`structural.py`) — rejoindre
+dé-compte du verrou partenaire reçoit `x ≤ Σ b` des blocs de la case (`constraints/structural/capacity.py`) — rejoindre
 l'épingle d'un partenaire n'est permis QU'au titre d'une séance de bloc active, jamais comme simple
 voisin (le liage `x ≥ b` est unidirectionnel : `b = 0` n'interdit rien à `x` de lui-même).
 Corollaire assumé : deux cases toute-épinglées EXCLUSIVES (aucun autre bloc n'y est toute-épinglé)
