@@ -34,6 +34,13 @@ permissions:
   contents: read
   packages: write
 
+# Identifiants Docker Hub exposés au niveau workflow pour que le `if:` du step de login puisse
+# les tester (un secret n'est JAMAIS lisible dans un `if:`). Vides sans secrets → login sauté,
+# tirage anonyme comme avant. Les builds prod tirent leurs bases (php/node/nginx/python/postgres)
+# de Docker Hub : anti-429 sur IP partagée (incident 2026-10-09).
+env:
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+
 jobs:
   build-push:
     name: Build & push prod images
@@ -92,6 +99,16 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Connexion Docker Hub avant les builds prod (FROM php/node/nginx/python/postgres) : les
+      # runners partagés épuisent le quota ANONYME (429 Too Many Requests — incident 2026-10-09).
+      # Conditionnelle : sans les secrets la CI tire en anonyme, comme avant.
+      - name: Login to Docker Hub (anti-429)
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # Rollback short-circuit: if this version's images already exist in the
       # registry, DO NOT rebuild — reuse the exact artifacts that ran. A fresh

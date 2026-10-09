@@ -1,9 +1,9 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-10-09 (P4-295 C2 : §3 « HARD-layer parity guard » recalée — le garde AST parse
-désormais `validate_assignments/hard_layer.py`, le module `validate_assignments.py` étant devenu un
-paquet ; confronté à `engine/tests/test_hard_layer_parity_registry.py`. Reste du fichier non
-re-confronté cette passe — dernier balayage complet du graphe CI §1 : 2026-10-06, voir
+Last verified @ 2026-10-10 (§1 : ajout du régime « Connexion Docker Hub (anti-429) » — steps
+`docker/login-action` conditionnels dans les jobs qui tirent de Docker Hub, confronté aux cinq
+workflows `.github/workflows/*.yml`. Reste du fichier non re-confronté cette passe — dernier
+balayage complet du graphe CI §1 : 2026-10-06, voir
 `git log -p --follow docs/testing/testing-strategy.md`). Ce fichier ne couvre que backend+engine
 (« Scope » ci-dessous), sauf le graphe CI §1 qui est cross-zone par nature.
 
@@ -122,6 +122,8 @@ bloquent le merge sans gater aucun job. Même raison pour laquelle `SymfonyStack
 dans `unit-tests` et non dans le gate bloquant.
 
 **Régime de permissions des workflows (P4-92)** : chaque workflow de `.github/workflows/` déclare un bloc `permissions:` racine explicite (`contents: read` sur `ci.yml`, surchargé `packages: read` sur `secrets-scan`/`build-docker` qui pullent une image miroir ghcr ; `contents: read` + `packages: read` à la racine de `security-weekly.yml`), cliquet gardé par `WorkflowPermissionsDeclaredTest` (testsuite `Unit`, **ne gate pas**) qui rougit sur un bloc racine manquant ou un scope `write` hors de la liste fermée `deploy.yml`/`mirror-images.yml` — ce n'est PAS un correctif de faille, `default_workflow_permissions` valant déjà `read` côté dépôt.
+
+**Connexion Docker Hub (anti-429, 2026-10-09)** : chaque job qui tire une image Docker Hub (build/pull de bases `php`/`node`/`nginx`/`python`/`postgres`, `docker compose`, `semgrep/semgrep`, `aquasec/trivy`) se connecte à Docker Hub **si les secrets `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` existent** (jeton « Public Repo Read-only ») via un step `docker/login-action` conditionnel `if: env.DOCKERHUB_USERNAME != ''` — les secrets passant par un `env:` au niveau du workflow (un secret n'est jamais lisible dans un `if:`). Motif : les runners partagés tapent sur le quota **anonyme** par IP et se font refuser `429 Too Many Requests`. **Sans secrets (PR de fork, secrets non posés), la CI tire en anonyme exactement comme avant.** Couvre `ci.yml`, `visual-baselines.yml`, `security-weekly.yml`, `mirror-images.yml` et `deploy.yml` (builds prod) ; les images servies par `ghcr.io/maratech-fr/mirror-*` (gitleaks, trivy du build-docker) restent tirées de ghcr et ne sont pas concernées.
 
 **Régime de dépréciations** : `phpunit.xml.dist` fixe `SYMFONY_DEPRECATIONS_HELPER` à `max[direct]=0`, ce qui **définit ce qui peut rougir `unit-tests`** (et tout job PHPUnit) — une dépréciation `direct` (une API Symfony dépréciée appelée par notre code, dont l'avertissement part du vendor et non de nos fichiers) fait échouer la suite, attrapant la dérive vers Symfony 8.4 que le seuil `self` (dépréciations émises depuis nos seuls fichiers) laisserait passer.
 

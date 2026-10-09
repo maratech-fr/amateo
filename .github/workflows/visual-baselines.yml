@@ -28,6 +28,12 @@ on:
 permissions:
   contents: read
 
+# Identifiants Docker Hub exposés au niveau workflow pour que le `if:` du step de login puisse
+# les tester (un secret n'est JAMAIS lisible dans un `if:`). Vides sans secrets → login sauté,
+# tirage anonyme comme avant. Anti-429 sur IP partagée (incident 2026-10-09).
+env:
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+
 jobs:
   visual-baselines:
     name: Visual Baselines
@@ -40,6 +46,16 @@ jobs:
       COMPOSE_BAKE: "false"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Connexion Docker Hub avant tout tirage (build-php-cached, compose pull/build) : les
+      # runners partagés épuisent le quota ANONYME (429 Too Many Requests — incident 2026-10-09).
+      # Conditionnelle : sans les secrets la CI tire en anonyme, comme avant.
+      - name: Login to Docker Hub (anti-429)
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Prepare .env
         run: |
