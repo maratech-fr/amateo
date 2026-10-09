@@ -1,33 +1,11 @@
 # Testing Strategy — Amateo
 
-Last verified @ 2026-10-06 (rotation de fraîcheur, `documentation-update`, reliquat UX de l'audit
-2026-10-03 — sans rapport direct avec le sujet). Ce fichier ne couvre que backend+engine (« Scope »
-ci-dessous), sauf le graphe CI §1 qui est cross-zone par nature. Re-confronté au code cette passe :
-`blocking-tests` reste sur `needs: [lint, phpstan]` (`ci.yml:314`) ; le job `e2e` porte toujours le
-nom de required check « E2E (Playwright) » et `needs: blocking-tests` (`ci.yml:1226,1231` —
-numéros de ligne dérivés depuis la dernière passe) ;
-`frontend/tests/e2e/visual-reference.spec.ts` existe (9 `toHaveScreenshot`) avec ses 9 PNG commités
-sous `frontend/tests/e2e/visual-reference.spec.ts-snapshots/` ; `.github/workflows/
-visual-baselines.yml` existe, `workflow_dispatch` seul (pas de `push`/`pull_request`), entrée
-`update` à deux modes. Le reste du graphe des jobs §1 (noms et `needs`) correspond toujours à
-`.github/workflows/ci.yml` — `e2e`/`backend-coverage` sur `needs: blocking-tests`,
-`engine-coverage`/`engine-perf`/`engine-perf-pr` sur `needs: engine-tests`, `build-docker` sur
-`needs: [blocking-tests, engine-tests]` seuls (`ci.yml:1609`) ✓. Reste du fichier (§2 backend
-tests, §3 engine tests, §4bis a11y, §5) non re-sondé cette passe — dernier balayage complet du §1 :
-2026-09-30, voir `git log -p --follow docs/testing/testing-strategy.md`. Les trois nouvelles gardes
-d'hygiène des dépendances vérifiées dans le code : **knip** (step « Dependency check (knip) », job
-`frontend`, `ci.yml:65`, script `lint:deps` → `frontend/knip.json`) ne bloque que le required
-check `Frontend (build + unit)`, jamais `build-docker` (`frontend` hors des `needs` de
-`blocking-tests`) ; **composer-unused** (step, job `phpstan`, `ci.yml:262`, config
-`backend/composer-unused.php`) bloque `build-docker` **transitivement** (`blocking-tests` a
-`phpstan` dans ses `needs`) ; **deptry** (step, job `engine-tests`, `ci.yml:1017-1018`, config
-`[tool.deptry]` de `engine/pyproject.toml`) bloque `build-docker` **directement** (`engine-tests`
-est dans ses `needs`). `docker-compose.yml` pose `restart: unless-stopped` sur les services de dev
-durables (toujours 11 occurrences) ✓ ; **required checks de `main` re-confirmés** (`gh api
-repos/maratech-fr/amateo/branches/main/protection --jq .required_status_checks.contexts`) : les 14
-contexts listés couvrent toujours `Engine semantics` et `Functional Tests (Behat)` ; le step
-`MatchPlacementSemanticsGateTest` reste dans le job `blocking-tests` (`ci.yml:744-745`). Reste du
-fichier (§2 backend tests, §3 engine tests, §4bis a11y, §5) non re-sondé cette passe.
+Last verified @ 2026-10-09 (P4-295 C2 : §3 « HARD-layer parity guard » recalée — le garde AST parse
+désormais `validate_assignments/hard_layer.py`, le module `validate_assignments.py` étant devenu un
+paquet ; confronté à `engine/tests/test_hard_layer_parity_registry.py`. Reste du fichier non
+re-confronté cette passe — dernier balayage complet du graphe CI §1 : 2026-10-06, voir
+`git log -p --follow docs/testing/testing-strategy.md`). Ce fichier ne couvre que backend+engine
+(« Scope » ci-dessous), sauf le graphe CI §1 qui est cross-zone par nature.
 
 Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL unit/integration with `vi.mock`, Playwright e2e in `frontend/tests/e2e`, and the container screenshot pipelines). Companion to [`/CLAUDE.md`](../../CLAUDE.md) §4, [`blocking-tests.md`](blocking-tests.md) (la liste canonique), [`test-coverage-map.md`](test-coverage-map.md) (qui teste quoi, angles morts) and [`../project-map.md`](../project-map.md).
 
@@ -256,7 +234,7 @@ actually gates the merge).
 HARD layer — a HARD family born on one path without its mirror on the other lets a manual move
 that breaks it be judged **valid** in silence (exactly ENG-36, the travel-time finding, fixed in
 PR #779). This guard makes a *next* asymmetry impossible to miss, rather than fixing one:
-- **AST, not regex** — parses `app/main.py` and `validate_assignments.py`; resistant to reformatting.
+- **AST, not regex** — parses `app/main.py` and `validate_assignments/hard_layer.py`; resistant to reformatting.
 - **Anchor = the aggregator** `add_level_1_hard_constraints`: both paths call it. The `/generate`
   side is the **single** function of `main.py` that composes it (today `_solve`); the verdict side
   is `_apply_hard`, checked to still compose the aggregator. Either anchor failing hard (0 or
