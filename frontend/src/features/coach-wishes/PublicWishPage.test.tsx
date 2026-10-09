@@ -14,7 +14,7 @@ const h = { getContext: vi.fn(), submit: vi.fn() };
 vi.mock("./publicApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./publicApi")>()),
   getPublicWishContext: (token: string) => h.getContext(token),
-  submitPublicWishes: (token: string, submissions: unknown) => h.submit(token, submissions),
+  submitPublicWishes: (token: string, submissions: unknown, mutualizations: unknown) => h.submit(token, submissions, mutualizations),
 }));
 
 import { PublicWishPage } from "./PublicWishPage";
@@ -27,7 +27,10 @@ const context = (over: Partial<PublicWishContext> = {}): PublicWishContext => ({
   deadline: "2027-06-30",
   weeks: ["2026-02-16"],
   teams: [{ id: "t1", name: "SM1" }],
+  partnerTeams: [],
+  teamLinks: [],
   wishes: [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3], wishedDays: [], comment: "note manager" }],
+  mutualizations: [],
   respondedAt: null,
   ...over,
 });
@@ -128,7 +131,7 @@ describe("PublicWishPage — parcours en étapes", () => {
     // La validation, depuis le récap, envoie EXACTEMENT la section modifiée.
     await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
     await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
-    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 4, unavailableDays: [3], wishedDays: [], comment: "note manager" }]);
+    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 4, unavailableDays: [3], wishedDays: [], comment: "note manager" }], []);
   });
 
   it("NR P4-312 — un jour souhaité part en wishedDays ; le cocher souhaité le retire des indisponibilités (exclusion)", async () => {
@@ -145,7 +148,37 @@ describe("PublicWishPage — parcours en étapes", () => {
     await userEvent.click(screen.getByRole("button", { name: "Suivant" })); // récap
     await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
     await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
-    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [], wishedDays: [2, 3], comment: "note manager" }]);
+    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [], wishedDays: [2, 3], comment: "note manager" }], []);
+  });
+
+  it("NR D2 — cocher un partenaire envoie une mutualisation (passerelle en tête)", async () => {
+    h.getContext.mockResolvedValue(
+      context({
+        teams: [{ id: "t1", name: "SM1" }],
+        partnerTeams: [
+          { id: "t1", name: "SM1" },
+          { id: "t2", name: "SF1" },
+          { id: "t3", name: "SF3" },
+        ],
+        teamLinks: [{ teamAId: "t1", teamBId: "t3" }], // SF3 est une passerelle de SM1
+        wishes: [],
+        mutualizations: [],
+      }),
+    );
+    h.submit.mockResolvedValue({ deadline: "2027-06-30" });
+    renderAt();
+    await start();
+
+    // La passerelle (SF3) est proposée AVANT SF1, et marquée.
+    const checkboxes = screen.getAllByRole("checkbox", { name: /Mutualiser SM1 avec/ });
+    expect(checkboxes[0]).toHaveAccessibleName(/SF3 \(passerelle\)/);
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /Mutualiser SM1 avec SF1/ }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Suivant" })); // récap
+    await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
+    await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
+    expect(h.submit).toHaveBeenCalledWith("abc", [], [{ teamId: "t1", partnerTeamIds: ["t2"], sharedSlots: 1 }]);
   });
 
   it("« Rien à signaler » avance sans rien modifier ; le récap affiche « aucune modification »", async () => {
@@ -168,7 +201,7 @@ describe("PublicWishPage — parcours en étapes", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /Confirmer sans modification/ }));
     await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
-    expect(h.submit).toHaveBeenCalledWith("abc", []);
+    expect(h.submit).toHaveBeenCalledWith("abc", [], []);
   });
 
   it("une modif à l'étape 2, un retour arrière, puis validation : la modif part quand même", async () => {
@@ -199,7 +232,7 @@ describe("PublicWishPage — parcours en étapes", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
     await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
-    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t2", weekStart: "2026-02-16", slotsWanted: 3, unavailableDays: [], wishedDays: [], comment: null }]);
+    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t2", weekStart: "2026-02-16", slotsWanted: 3, unavailableDays: [], wishedDays: [], comment: null }], []);
   });
 
   it("depuis le récap, « Modifier » saute à l'équipe puis revient au récap", async () => {

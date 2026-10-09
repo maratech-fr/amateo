@@ -13,11 +13,12 @@ import { Spinner } from "@/shared/components/ui/spinner";
 import { frDateNumericNoYear } from "@/shared/lib/date";
 import { PRODUCT_SITE_URL } from "@/shared/lib/product";
 
-import { getPublicWishContext, isPublicWishError, submitPublicWishes, type PublicWishContext, type PublicWishSubmission } from "./publicApi";
+import { getPublicWishContext, isPublicWishError, submitPublicWishes, type PublicMutualizationSubmission, type PublicWishContext, type PublicWishSubmission } from "./publicApi";
 import { useWishStepper } from "./useWishStepper";
 import { WishRecap } from "./WishRecap";
 import { WishTeamStep } from "./WishTeamStep";
 import { clearDraft, loadDraft, saveDraft } from "./wishDraft";
+import { buildInitialMutualizations, cloneMutualizations, isMutualizationDirty, toMutualizationSubmission, type MutualizationState } from "./wishMutualizations";
 import { buildInitialSections, cloneSections, frDate, isSectionDirty, toSubmission, type SectionState } from "./wishSections";
 
 /**
@@ -91,12 +92,14 @@ export function PublicWishPage() {
   return <PublicWishForm token={token} context={query.data} />;
 }
 
-function PublicWishForm({ token, context }: { token: string; context: PublicWishContext }) {
+export function PublicWishForm({ token, context, preview = false }: { token: string; context: PublicWishContext; preview?: boolean }) {
   // Snapshot initial (état courant pré-rempli côté serveur) — référence du dirty-tracking.
   const initial = useMemo(() => buildInitialSections(context), [context]);
+  const initialMutualizations = useMemo(() => buildInitialMutualizations(context), [context]);
 
-  // Brouillon LOCAL éventuel (rechargement d'onglet) — lu une seule fois au montage.
-  const draft = useMemo(() => loadDraft(token), [token]);
+  // Brouillon LOCAL éventuel (rechargement d'onglet) — lu une seule fois au montage. Jamais en
+  // APERÇU : la page gestionnaire est en lecture seule, elle n'a ni jeton ni brouillon.
+  const draft = useMemo(() => (preview ? null : loadDraft(token)), [preview, token]);
 
   const [sections, setSections] = useState<Map<string, SectionState>>(() => {
     const base = cloneSections(initial);
@@ -104,6 +107,17 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
       for (const [key, value] of draft.sections) {
         if (base.has(key)) {
           base.set(key, { slotsWanted: value.slotsWanted, days: new Set(value.days), wishedDays: new Set(value.wishedDays), comment: value.comment });
+        }
+      }
+    }
+    return base;
+  });
+  const [mutualizations, setMutualizations] = useState<Map<string, MutualizationState>>(() => {
+    const base = cloneMutualizations(initialMutualizations);
+    if (null !== draft) {
+      for (const [key, value] of draft.mutualizations) {
+        if (base.has(key)) {
+          base.set(key, { partnerTeamIds: new Set(value.partnerTeamIds), sharedSlots: value.sharedSlots });
         }
       }
     }
@@ -133,19 +147,21 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
   const stepper = useWishStepper(teamIds, draft?.stepIndex ?? 0);
 
   const mutation = useMutation({
-    mutationFn: (submissions: PublicWishSubmission[]) => submitPublicWishes(token, submissions),
+    mutationFn: (payload: { submissions: PublicWishSubmission[]; mutualizations: PublicMutualizationSubmission[] }) =>
+      submitPublicWishes(token, payload.submissions, payload.mutualizations),
     onSuccess: () => {
       clearDraft(token);
       setDone(true);
     },
   });
 
-  // Filet LOCAL : sauvegarde à chaque changement de section ou d'étape (jamais serveur).
+  // Filet LOCAL : sauvegarde à chaque changement de section/mutualisation ou d'étape (jamais
+  // serveur). Désactivé en APERÇU (lecture seule — aucun brouillon posé).
   useEffect(() => {
-    if (!done) {
-      saveDraft(token, sections, stepper.index);
+    if (!done && !preview) {
+      saveDraft(token, sections, mutualizations, stepper.index);
     }
-  }, [done, sections, stepper.index, token]);
+  }, [done, preview, sections, mutualizations, stepper.index, token]);
 
   const patch = (key: string, next: Partial<SectionState>) =>
     setSections((prev) => {
@@ -198,11 +214,39 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
       return map;
     });
 
+  // Bascule d'un partenaire de mutualisation pour une équipe (une par équipe, pour la période).
+  const togglePartner = (teamId: string, partnerId: string) =>
+    setMutualizations((prev) => {
+      const map = new Map(prev);
+      const cur = map.get(teamId) ?? { partnerTeamIds: new Set<string>(), sharedSlots: 1 };
+      const partnerTeamIds = new Set(cur.partnerTeamIds);
+      if (partnerTeamIds.has(partnerId)) {
+        partnerTeamIds.delete(partnerId);
+      } else {
+        partnerTeamIds.add(partnerId);
+      }
+      map.set(teamId, { ...cur, partnerTeamIds });
+      return map;
+    });
+
+  const setSharedSlots = (teamId: string, slots: number) =>
+    setMutualizations((prev) => {
+      const map = new Map(prev);
+      const cur = map.get(teamId) ?? { partnerTeamIds: new Set<string>(), sharedSlots: 1 };
+      map.set(teamId, { ...cur, sharedSlots: slots });
+      return map;
+    });
+
   const dirtyKeys = [...sections.keys()].filter((key) => isSectionDirty(sections.get(key), initial.get(key)));
+  const dirtyMutKeys = [...mutualizations.keys()].filter((key) => isMutualizationDirty(mutualizations.get(key), initialMutualizations.get(key)));
+  const dirtyCount = dirtyKeys.length + dirtyMutKeys.length;
+
+  const partnerName = useMemo(() => new Map(context.partnerTeams.map((t) => [t.id, t.name])), [context.partnerTeams]);
 
   const submit = () => {
     const submissions: PublicWishSubmission[] = dirtyKeys.map((key) => toSubmission(key, sections.get(key) as SectionState));
-    mutation.mutate(submissions);
+    const mutualizationPayload: PublicMutualizationSubmission[] = dirtyMutKeys.map((key) => toMutualizationSubmission(key, mutualizations.get(key) as MutualizationState));
+    mutation.mutate({ submissions, mutualizations: mutualizationPayload });
   };
 
   // Clic « Commencer »/« Réviser mes réponses » : on avance tout de suite, puis on lance le splash
@@ -242,6 +286,8 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
         ) : null}
         <StatusPill variant="accent">Répondre avant le {frDateNumericNoYear(context.deadline)}</StatusPill>
       </div>
+
+      {preview ? <NoticeBanner tone="accent" className="mb-4" message={`Aperçu — ce que voit ${context.coachFirstName}. L'envoi est désactivé.`} /> : null}
 
       <WishProgress stepper={stepper} teams={context.teams} />
 
@@ -286,7 +332,20 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
 
       {"team" === current.kind ? (
         <div className="space-y-4">
-          <WishTeamStep team={context.teams[current.teamIndex ?? 0]} weeks={context.weeks} sections={sections} onPatch={patch} onToggleDay={toggleDay} onToggleWishedDay={toggleWishedDay} />
+          <WishTeamStep
+            team={context.teams[current.teamIndex ?? 0]}
+            weeks={context.weeks}
+            sections={sections}
+            partnerTeams={context.partnerTeams}
+            teamLinks={context.teamLinks}
+            mutualization={mutualizations.get(context.teams[current.teamIndex ?? 0]?.id ?? "")}
+            onPatch={patch}
+            onToggleDay={toggleDay}
+            onToggleWishedDay={toggleWishedDay}
+            onTogglePartner={togglePartner}
+            onSharedSlots={setSharedSlots}
+            readOnly={preview}
+          />
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="ghost" onClick={() => stepper.prev()}>
               Précédent
@@ -308,16 +367,16 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
 
       {"recap" === current.kind ? (
         <div className="space-y-4">
-          <WishRecap teams={context.teams} weeks={context.weeks} sections={sections} initial={initial} onEditTeam={(id) => stepper.editTeam(id)} />
+          <WishRecap teams={context.teams} weeks={context.weeks} sections={sections} initial={initial} mutualizations={mutualizations} partnerName={partnerName} onEditTeam={(id) => stepper.editTeam(id)} />
           {mutation.isError ? <p className="text-sm text-destructive">Envoi impossible pour le moment. Réessayez dans un instant.</p> : null}
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="ghost" onClick={() => stepper.prev()}>
               Précédent
             </Button>
             <div className="flex-1" />
-            <Button disabled={mutation.isPending} onClick={submit}>
+            <Button disabled={preview || mutation.isPending} disabledReason={preview ? "Aperçu : l'envoi est désactivé" : undefined} onClick={submit}>
               {mutation.isPending ? <Spinner className="size-4" /> : null}
-              {0 === dirtyKeys.length ? "Confirmer sans modification" : `Valider et envoyer${dirtyKeys.length > 1 ? ` (${dirtyKeys.length})` : ""}`}
+              {0 === dirtyCount ? "Confirmer sans modification" : `Valider et envoyer${dirtyCount > 1 ? ` (${dirtyCount})` : ""}`}
             </Button>
           </div>
         </div>

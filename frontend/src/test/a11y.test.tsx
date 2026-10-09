@@ -79,7 +79,21 @@ describe("a11y — shared UI primitives", () => {
 
 describe("a11y — étapes de doléances (cas public mobile)", () => {
   it("WishTeamStep (une équipe × ses semaines) has no violations", async () => {
-    await expectNoA11yViolations(<WishTeamStep team={{ id: "t1", name: "SM1" }} weeks={["2026-02-16"]} sections={wishSections()} onPatch={() => {}} onToggleDay={() => {}} onToggleWishedDay={() => {}} />);
+    await expectNoA11yViolations(
+      <WishTeamStep
+        team={{ id: "t1", name: "SM1" }}
+        weeks={["2026-02-16"]}
+        sections={wishSections()}
+        partnerTeams={[{ id: "t2", name: "SF1" }]}
+        teamLinks={[]}
+        mutualization={{ partnerTeamIds: new Set(), sharedSlots: 1 }}
+        onPatch={() => {}}
+        onToggleDay={() => {}}
+        onToggleWishedDay={() => {}}
+        onTogglePartner={() => {}}
+        onSharedSlots={() => {}}
+      />,
+    );
   });
 
   it("WishRecap (récapitulatif avant envoi) has no violations", async () => {
@@ -92,6 +106,8 @@ describe("a11y — étapes de doléances (cas public mobile)", () => {
         weeks={["2026-02-16"]}
         sections={wishSections({ slotsWanted: 4 })}
         initial={wishSections()}
+        mutualizations={new Map()}
+        partnerName={new Map()}
         onEditTeam={() => {}}
       />,
     );

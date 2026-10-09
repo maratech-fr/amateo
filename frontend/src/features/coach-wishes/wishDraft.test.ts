@@ -11,6 +11,7 @@ import { clearDraft, loadDraft, saveDraft } from "./wishDraft";
 describe("wishDraft — migration de clé", () => {
   const token = "tok-42";
   const sections = new Map([["s1", { slotsWanted: 2, days: new Set([1, 3]), wishedDays: new Set([5]), comment: "ok" }]]);
+  const mutualizations = new Map([["t1", { partnerTeamIds: new Set(["t2"]), sharedSlots: 1 }]]);
 
   // Assemblée pour que le littéral de marque morte n'apparaisse pas EN DUR (garde `product.guard.test.ts`).
   const DEAD_BRAND_KEY = `${"club"}${"scheduler"}:wish-draft:`;
@@ -18,7 +19,7 @@ describe("wishDraft — migration de clé", () => {
   beforeEach(() => sessionStorage.clear());
 
   it("écrit sous la nouvelle clé", () => {
-    saveDraft(token, sections, 1);
+    saveDraft(token, sections, mutualizations, 1);
 
     expect(sessionStorage.getItem(`amateo:wish-draft:${token}`)).not.toBeNull();
     expect(sessionStorage.getItem(`${DEAD_BRAND_KEY}${token}`)).toBeNull();
@@ -38,7 +39,7 @@ describe("wishDraft — migration de clé", () => {
   });
 
   it("purge la clé au succès de l'envoi", () => {
-    saveDraft(token, sections, 0);
+    saveDraft(token, sections, mutualizations, 0);
 
     clearDraft(token);
 

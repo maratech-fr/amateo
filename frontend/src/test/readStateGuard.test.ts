@@ -71,6 +71,10 @@ const EXEMPTIONS: { file: string; reason: string }[] = [
     file: "features/coach-wishes/PublicWishPage.tsx",
     reason: "page publique à token, hors shell club authentifié (le token EST l'identité) — son échec de lecture est hors du périmètre de ce lot",
   },
+  {
+    file: "features/coach-wishes/PreviewWishPage.tsx",
+    reason: "aperçu gestionnaire standalone (D2) — rend le formulaire public ; son query.isError affiche « Aperçu indisponible », jamais un vide crédible",
+  },
   // Écrans d'AUTH / approbation hors shell club : formulaires + mutations, pas de GET rendu comme vide.
   { file: "features/auth/LoginPage.tsx", reason: "écran d'auth hors shell club — formulaire, pas de lecture rendue comme vide" },
   { file: "features/auth/RegisterPage.tsx", reason: "écran d'auth hors shell club — formulaire" },

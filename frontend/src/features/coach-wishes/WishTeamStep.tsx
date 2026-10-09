@@ -1,17 +1,28 @@
+import { StatusPill } from "@/shared/components/ui/badge";
 import { DayMultiPicker } from "@/shared/components/ui/day-multi-picker";
 import { FIELD_CLASS } from "@/shared/components/ui/field";
 import { Input } from "@/shared/components/ui/input";
 import { cn } from "@/shared/lib/utils";
 
+import type { PublicTeamLink } from "./publicApi";
+import { partnerOptionsFor, type MutualizationState } from "./wishMutualizations";
 import { frDate, sectionKey, type SectionState } from "./wishSections";
 
 interface WishTeamStepProps {
   team: { id: string; name: string };
   weeks: string[];
   sections: Map<string, SectionState>;
+  /** Équipes de la campagne proposables en partenaires + passerelles (pour le bloc mutualisation). */
+  partnerTeams: { id: string; name: string }[];
+  teamLinks: PublicTeamLink[];
+  mutualization: MutualizationState | undefined;
   onPatch: (key: string, next: Partial<SectionState>) => void;
   onToggleDay: (key: string, day: number) => void;
   onToggleWishedDay: (key: string, day: number) => void;
+  onTogglePartner: (teamId: string, partnerId: string) => void;
+  onSharedSlots: (teamId: string, slots: number) => void;
+  /** Aperçu gestionnaire : lecture seule (inputs désactivés). */
+  readOnly?: boolean;
 }
 
 /**
@@ -29,17 +40,63 @@ function replayToggles(before: Set<number>, next: number[], toggle: (day: number
 }
 
 /**
- * Une étape du parcours = UNE équipe et ses semaines (lot E, P2-24). Reprend le markup
- * fieldset de la page unique historique — le coach ne voit plus que son équipe courante.
+ * Une étape du parcours = UNE équipe et ses semaines (lot E, P2-24). Depuis D2, un bloc
+ * « Mutualisation (facultatif) » UNE fois par équipe, AU-DESSUS des semaines : le coach
+ * choisit des équipes partenaires (passerelles en tête) et un nombre de séances à partager.
+ * C'est une DEMANDE informative, jamais une contrainte : le club arbitre.
  */
-export function WishTeamStep({ team, weeks, sections, onPatch, onToggleDay, onToggleWishedDay }: WishTeamStepProps) {
+export function WishTeamStep({ team, weeks, sections, partnerTeams, teamLinks, mutualization, onPatch, onToggleDay, onToggleWishedDay, onTogglePartner, onSharedSlots, readOnly = false }: WishTeamStepProps) {
+  const partners = partnerOptionsFor(team.id, partnerTeams, teamLinks);
+  const selectedPartners = mutualization?.partnerTeamIds ?? new Set<string>();
+  const sharedSlots = mutualization?.sharedSlots ?? 1;
+
   return (
     <div className="space-y-4">
+      {partners.length > 0 ? (
+        <fieldset disabled={readOnly} className="rounded-lg border border-border bg-card p-3">
+          <legend className="px-1 text-sm font-medium">Mutualisation (facultatif)</legend>
+          <p className="mt-1 text-xs text-muted-foreground">Partagez une ou plusieurs séances de {team.name} avec une autre équipe. Le club arbitre ensuite.</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {partners.map((p) => (
+              <label key={p.id} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-sm">
+                <input
+                  type="checkbox"
+                  className="size-4 accent-[var(--accent)]"
+                  checked={selectedPartners.has(p.id)}
+                  onChange={() => onTogglePartner(team.id, p.id)}
+                  aria-label={`Mutualiser ${team.name} avec ${p.name}${p.isBridge ? " (passerelle)" : ""}`}
+                />
+                {p.name}
+                {p.isBridge ? (
+                  <StatusPill variant="accent" className="ml-0.5">
+                    passerelle
+                  </StatusPill>
+                ) : null}
+              </label>
+            ))}
+          </div>
+          {selectedPartners.size > 0 ? (
+            <label className="mt-2 flex items-center gap-2 text-sm">
+              Séances à mutualiser
+              <Input
+                type="number"
+                min={1}
+                max={7}
+                aria-label={`Séances à mutualiser — ${team.name}`}
+                className="w-16"
+                value={sharedSlots}
+                onChange={(e) => onSharedSlots(team.id, Math.max(1, Math.min(7, Number(e.target.value) || 1)))}
+              />
+            </label>
+          ) : null}
+        </fieldset>
+      ) : null}
+
       {weeks.map((week) => {
         const key = sectionKey(team.id, week);
         const s = sections.get(key) as SectionState;
         return (
-          <fieldset key={key} className="rounded-lg border border-border bg-card p-3">
+          <fieldset key={key} disabled={readOnly} className="rounded-lg border border-border bg-card p-3">
             <legend className="px-1 text-sm font-medium">
               {team.name} · semaine du {frDate(week)}
             </legend>
