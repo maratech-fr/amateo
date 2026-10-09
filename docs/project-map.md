@@ -1,6 +1,6 @@
 # Project Map — Amateo (engine + backend)
 
-Last verified @ 2026-10-09 (D2 PR B) : ligne « Doléances coachs » gagne `CoachWishMutualization` (#10 D2), nouvelle ligne `CoachWishCampaignPreviewController` — confronté à `Entity/CoachWishMutualization.php`/`Controller/CoachWishCampaignPreviewController.php`. Reste du fichier non reconfronté cette passe (dernière passe ciblée : P4-295 C1, tableau Engine §3).
+Last verified @ 2026-10-09 (D2 PR B) : ligne « Doléances coachs » gagne `CoachWishMutualization` (#10 D2), nouvelle ligne `CoachWishCampaignPreviewController` — confronté à `Entity/CoachWishMutualization.php`/`Controller/CoachWishCampaignPreviewController.php`. Reste du fichier non reconfronté cette passe (dernière passe ciblée : P4-295 C1, tableau Engine §3). Également (P4-295 C2) : ligne `app/solver/validate_assignments/` du tableau Engine §3 recalée — `validate_assignments.py` est devenu le paquet `validate_assignments/` (`mirrors.py`/`hard_layer.py`/`compromises.py`, façade `__init__` portant l'orchestrateur `validate_assignment`), confronté à `engine/app/solver/validate_assignments/__init__.py`. Un seul contrat pour `/generate` · `/place-matches` · `/validate-assignments`, synchro manuelle, gardé par les trois `*ContractSchemaTest` (confronté à `engine/CONTRACT_VERSION` = `1.4`). Reste du fichier non reconfronté cette passe.
 
 Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend has been **rebuilt (React 19) and is active** — features live under `frontend/src/features/` (`ls` it, no count here — it rots): `auth`, `wizard` (data entry), `planning` (work-loop), `cockpit`, `matches`, `coach-wishes` (doléances), `club`, `profile`, `season-transition`, `legal`, `release-notes` (journal + modale « quoi de neuf ») et `admin` (console superadmin, garde et session distinctes). The feedback button/dialog are a shared primitive, not their own feature: `frontend/src/shared/feedback/`. See `../frontend/docs/frontend-wizard.md` and `frontend-spec.md`. Generated/verified during onboarding against the real code and the `code-review-graph` knowledge graph.
 
@@ -146,8 +146,8 @@ All services share the Docker network `amateo_network`.
 | `app/solver/objective/` | **Paquet** (`weights.py`/`terms.py`/`normalise.py`, façade `__init__`) : Level-2 soft objective, tiered placement scoring, bonuses (dont la référence socle du comblement, PR-3), `SCORE_FORMULA_VERSION` |
 | `app/solver/result_builder/` | **Paquet** (`slots.py`/`helpers.py`/`diagnostics/` — ce dernier un sous-paquet par type de diagnostic (`locks`/`placement`/`sessions`/`infeasibility`/`conflicts`/`shared_blocks`/`links_travel`/`implicit_rules`), façade `__init__`) : CP-SAT solution → output schema + diagnostics |
 | `app/solver/match_placement.py` | `POST /place-matches` model build + solve (match placement rail) |
-| `app/solver/validate_assignments.py` | `POST /validate-assignments` verdict rail (hard-layer replay + compromise scoring) |
-| `app/solver/compromise.py` | named compromise scoring shared by `validate_assignments.py` |
+| `app/solver/validate_assignments/` | **Paquet** (`mirrors.py`/`hard_layer.py`/`compromises.py`, façade `__init__` — orchestrateur `validate_assignment` inclus, couture de test) : `POST /validate-assignments` verdict rail (hard-layer replay + compromise scoring) |
+| `app/solver/compromise.py` | named compromise scoring shared by `validate_assignments/` |
 | `app/solver/helpers.py` | shared sentinels/utilities (deduplicated out of constraints/objective) |
 
 ### 3.2 Solve pipeline (`POST /generate`)

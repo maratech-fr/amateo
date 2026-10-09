@@ -1,6 +1,6 @@
 # Engine Inventory — Backward Spec
 
-Last verified @ 2026-10-08 (P4-295 C1) : §1 Architecture Engine recalée — `app/solver/result_builder/` passe de `diagnostics.py` (module) à `diagnostics/` (sous-paquet de 8 modules par type de diagnostic : `locks`/`placement`/`sessions`/`infeasibility`/`conflicts`/`shared_blocks`/`links_travel`/`implicit_rules`, façade `__init__` portant l'orchestrateur `_generate_diagnostics`), confronté à `engine/app/solver/result_builder/diagnostics/__init__.py` ; citation §5 Solver (diagnostic over-capacité sur verrou partagé) ré-ancrée sur `diagnostics/conflicts.py::_diagnose_conflicts`. Reste du fichier non reconfronté cette passe — historique des bumps de contrat dans `git log -p --follow` / `specs/courantes/etat-des-lieux.md`.
+Last verified @ 2026-10-09 (P4-295 C2) : §POST /validate-assignments recalée — `app/solver/validate_assignments.py` est devenu le paquet `validate_assignments/` (`mirrors.py` les quatre miroirs de contrainte, `hard_layer.py` `_apply_hard`/`_solve`/`_build_assignments`/`_baseline_solve_status`, `compromises.py` `_evaluate_state`/`_compromises_for`, façade `__init__` portant l'orchestrateur `validate_assignment`), découpe PURE verbatim ; citations `_compromises_for` et `_shared_block_move_violation` ré-ancrées sur `validate_assignments/compromises.py` et `validate_assignments/mirrors.py`. Reste du fichier non reconfronté cette passe — historique des bumps de contrat dans `git log -p --follow` / `specs/courantes/etat-des-lieux.md`.
 
 > Inventaire BACKWARD de l'existant engine. Reflète le code lu au SHA ci-dessus, pas les features futures.
 > Source de vérité : `engine/app/main.py`, `engine/app/schemas/input_schema.py`, `engine/app/schemas/output_schema.py`, `engine/app/solver/{model,constraints,objective,result_builder}.py`, `engine/app/core/config.py`.
@@ -178,7 +178,7 @@ Le verdict F2a (§ci-dessus) porte aussi les **compromis nommés** d'un verdict 
 - **Périmètre** : un compromis est le delta de confort d'un déplacement, **jamais** un verdict —
   le booléen `valid` continue de venir SEUL du test de faisabilité HARD (`_apply_hard` sur les N
   candidats épinglés). Les compromis ne sont calculés **qu'après** un `valid=True`, dans
-  `_compromises_for` (`validate_assignments.py`) ; le chemin refus n'appelle jamais le solveur une
+  `_compromises_for` (`validate_assignments/compromises.py`) ; le chemin refus n'appelle jamais le solveur une
   deuxième fois.
 - **Deux états FIGÉS, évalués par LE SOLVEUR** (`_evaluate_state`) : le modèle est reconstruit à
   chaque appel (mêmes builders HARD que le verdict, `_apply_hard` — parité avec `/generate`
@@ -250,7 +250,7 @@ Le verdict F2a (§ci-dessus) porte aussi les **compromis nommés** d'un verdict 
   case pour tenir `commonSessions` et conclut « oui » à tort. `validate_assignment` juge donc
   l'**état concret proposé** (baseline sans la source + candidat) de façon déterministe, AVANT tout
   solve, en miroir du liage `add_shared_block_constraints` (`_shared_block_move_violation`,
-  `validate_assignments.py`). **Garde anti-enfermement** : un bloc DÉJÀ cassé dans la
+  `validate_assignments/mirrors.py`). **Garde anti-enfermement** : un bloc DÉJÀ cassé dans la
   baseline ne bloque pas les déplacements — seul un bloc HONORÉ avant et rompu après refuse. Refus
   nommé `"rule": "shared_block_broken"`, message français nommant les équipes.
 - **N déplacements sous UN verdict, sur l'ÉTAT FINAL** :

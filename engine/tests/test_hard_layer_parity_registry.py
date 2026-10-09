@@ -16,7 +16,7 @@ Patron maison : ``BlockingTestsListMatchesCiTest`` (diff bidirectionnel + except
 
 Lire des appels dans un fichier source est fragile ; on le rend honnête plutôt que malin.
 
-1. **AST, pas regex.** On parse `app/main.py` et `validate_assignments.py` avec ``ast`` et on
+1. **AST, pas regex.** On parse `app/main.py` et `validate_assignments/hard_layer.py` avec ``ast`` et on
    collecte les ``Call`` par nom de fonction (résistant au reformatage, aux retours à la ligne).
 2. **Ancre = l'agrégateur.** ``add_level_1_hard_constraints`` EST la couche HARD ; les deux
    chemins l'appellent. Le côté `/generate` est la fonction UNIQUE de `main.py` qui le compose
@@ -57,7 +57,7 @@ from collections.abc import Iterator
 
 ENGINE_ROOT = pathlib.Path(__file__).resolve().parents[1]
 MAIN_PY = ENGINE_ROOT / "app" / "main.py"
-VALIDATE_PY = ENGINE_ROOT / "app" / "solver" / "validate_assignments.py"
+VALIDATE_PY = ENGINE_ROOT / "app" / "solver" / "validate_assignments" / "hard_layer.py"
 
 FuncDef = ast.FunctionDef | ast.AsyncFunctionDef
 
@@ -163,7 +163,7 @@ def _verdict_hard_families() -> set[str]:
 
     assert len(functions) == 1, (
         f"Attendu EXACTEMENT une fonction `{VERDICT_HARD_FUNCTION}` dans "
-        f"app/solver/validate_assignments.py, trouvé {len(functions)}. La couche HARD du verdict "
+        f"app/solver/validate_assignments/hard_layer.py, trouvé {len(functions)}. La couche HARD du verdict "
         f"a été renommée ou dupliquée : ré-ancrer ce garde plutôt que de le laisser diffuser sur "
         f"une fonction fantôme."
     )
@@ -358,7 +358,7 @@ def _verdict_aggregator_call_owner() -> FuncDef:
     functions = _functions_named(module, VERDICT_HARD_FUNCTION)
     assert len(functions) == 1, (
         f"Attendu EXACTEMENT une fonction `{VERDICT_HARD_FUNCTION}` dans "
-        f"app/solver/validate_assignments.py, trouvé {len(functions)}. Ré-ancrer le registre "
+        f"app/solver/validate_assignments/hard_layer.py, trouvé {len(functions)}. Ré-ancrer le registre "
         f"d'arguments plutôt que de le laisser diffuser sur une fonction fantôme."
     )
     verdict = functions[0]
