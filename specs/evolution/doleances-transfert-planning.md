@@ -1,6 +1,6 @@
 # Doléances → planning : jours disponibles, créneaux habituels, ajout manuel, « Transférer au planning » (P2-63)
 
-> **Statut** : cadrage en cours de validation par le fondateur (Q1-Q5 + Q3bis tranchées, Q6-Q8 ouvertes, §5) ; plan (`planner`) après
+> **Statut** : cadrage en cours de validation par le fondateur (Q1-Q6 + Q3bis tranchées, Q7-Q8 ouvertes, §5) ; plan (`planner`) après
 > validation ; **code APRÈS le chantier vidéo P4-297** (place dans la file fixée par le fondateur le
 > 2026-10-09).
 > **Origine** : besoin d'un gestionnaire de club, dicté par le fondateur le 2026-10-09 (mots exacts §0).
@@ -294,11 +294,15 @@ Chaque chemin devient un test d'abus NOMMÉ au plan (fichier + suite).
   reste bornée aux équipes à coach principal ; l'ajout manuel du gestionnaire accepte TOUTE équipe, coach
   facultatif — le `coachId` de `CoachWish` devient nullable pour une saisie manuelle
   (`CoachWishStateProcessor.php:48-52` exige aujourd'hui un coach), et le filtre de l'ajout manuel
-  (`WishesTab.tsx:85-93`, équipes à coach principal seulement) s'ouvre à toutes les équipes. Conséquence
-  à confirmer : une doléance SANS coach qui porte des jours indisponibles ne peut pas devenir une
-  indisponibilité COACH au transfert.
+  (`WishesTab.tsx:85-93`, équipes à coach principal seulement) s'ouvre à toutes les équipes.
+  **Conséquence (validée)** : une doléance SANS coach qui porte des jours indisponibles devient, au
+  transfert, « l'équipe ne s'entraîne pas ces jours-là », OBLIGATOIRE comme l'indisponibilité coach (Q2).
+- **Q6 — « Transférer au planning » vit dans l'onglet Doléances, aux deux portes (reco suivie).**
+  Ouverte depuis le cockpit, la fenêtre transfère toutes les semaines (ou blocs) qui ont déjà un
+  planning ; ouverte depuis le wizard du planning en cours, elle transfère la semaine ou le bloc de ce
+  planning. Écarté : le wizard seul.
 
-Questions restantes : Q6 à Q8 ci-dessous.
+Questions restantes : Q7 et Q8 ci-dessous.
 
 
 1. **Grain semaine vs plan multi-semaines.** Un plan peut couvrir 2+ semaines avec UNE seule grille
