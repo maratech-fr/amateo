@@ -1,4 +1,4 @@
-# Roadmap (36) — ce qui reste à faire
+# Roadmap (37) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -29,6 +29,7 @@
 >
 > **Fichiers de détail actifs** — référencés depuis des lignes ci-dessous quand le sujet dépasse une ligne :
 > [`console-superadmin.md`](console-superadmin.md) (P4-54) ·
+> [`doleances-transfert-planning.md`](doleances-transfert-planning.md) (P2-63 — cadrage, 8 questions ouvertes) ·
 > [`duplications-de-verite.md`](duplications-de-verite.md) (doctrine du motif « une vérité, deux endroits » —
 > le test de fusion réutilisé par `documentation-update`, les duplications délibérées à ne jamais mutualiser.
 > Reste **D-11**, dormant : `match_day` est NULL sur toutes les équipes et aucun écran ne l'expose — à traiter
@@ -53,6 +54,7 @@
 
 | # | Sujet | Impact | Effort | Note |
 |---|-------|:---:|:---:|---|
+| P2-63 | **Doléances → planning : « Transférer au planning », jours disponibles, créneaux habituels, ajout manuel semaine d'abord** | 🟠 | L | Besoin terrain (un gestionnaire, via le fondateur) : convertir les doléances sélectionnées en réglages du plan de période (nombre de séances de l'équipe, indisponibilité coach datée, jours souhaités en préféré) au lieu de les recopier une à une (25 doléances au BCCL) ; une équipe hors périmètre du plan (ex. Vétérans) y entre avec une trace « via doléances » ; page coach en « jours disponibles » (tout coché, on décoche) + case « garder mes créneaux habituels » ; ajout manuel semaine d'abord, filtré aux équipes sans doléance, avec le sélecteur d'équipes partagé. Cadrage, 13 décisions proposées et 8 questions ouvertes : [`doleances-transfert-planning.md`](doleances-transfert-planning.md). Se code APRÈS P4-297. Axes constraint semantics + planning lifecycle (NR) ; page publique à jeton → `/security-review` |
 
 ---
 
