@@ -129,6 +129,13 @@ export const routes: RouteObject[] = [
         element: <AuthGuard />,
         children: [
           {
+            // #10 D2 — aperçu coach par coach d'une campagne : page AUTHENTIFIÉE mais
+            // STANDALONE (hors AppLayout, pas de chrome cockpit) — elle rend le formulaire
+            // public en lecture seule. Le GET /preview authentifié tient lieu d'identité.
+            path: "/doleances/apercu/:campaignId",
+            lazy: async () => ({ Component: (await import("@/features/coach-wishes/PreviewWishPage")).PreviewWishPage }),
+          },
+          {
             element: <AppLayout />,
             // Filet IMBRIQUÉ : sans lui, l'échec du chunk d'UNE page démontait
             // l'en-tête, la navigation et les bandeaux — pour une panne réseau

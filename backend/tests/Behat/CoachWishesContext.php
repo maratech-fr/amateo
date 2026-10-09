@@ -32,6 +32,8 @@ final class CoachWishesContext extends BaseContext
 
     private string $teamId = '';
 
+    private string $partnerTeamId = '';
+
     private string $coachId = '';
 
     private string $entryId = '';
@@ -97,35 +99,31 @@ final class CoachWishesContext extends BaseContext
         $this->entryId = $this->idOf($entry, 'période de vacances');
     }
 
+    #[Given('une deuxième équipe pour la mutualisation')]
+    public function uneDeuxiemeEquipePourLaMutualisation(): void
+    {
+        $teams = $this->apiGet('teams?itemsPerPage=5', $this->token);
+        foreach ($this->members($teams['json']) as $team) {
+            $id = $team['id'] ?? null;
+            if (\is_string($id) && '' !== $id && $id !== $this->teamId) {
+                $this->partnerTeamId = $id;
+
+                return;
+            }
+        }
+        throw new RuntimeException('le club de démonstration n\'a pas de deuxième équipe pour la mutualisation');
+    }
+
     #[When('le gestionnaire ouvre une campagne de vœux et envoie les liens')]
     public function leGestionnaireOuvreLaCampagne(): void
     {
-        $deadline = date('Y-m-d', (int) strtotime($this->monday . ' -3 days'));
-        $campaign = $this->apiPost('coach_wish_campaigns', [
-            'calendarEntryId' => $this->entryId,
-            'deadline' => $deadline,
-            'weeks' => [$this->monday],
-            'teamIds' => [$this->teamId],
-        ], $this->token);
-        $this->campaignId = $this->idOf($campaign, 'campagne');
+        $this->openCampaignAndSendLinks([$this->teamId]);
+    }
 
-        foreach ($this->asArray($campaign['json']['coaches'] ?? []) as $entry) {
-            if (\is_array($entry) && ($entry['coachId'] ?? null) === $this->coachId) {
-                $token = $entry['token'] ?? null;
-                if (\is_string($token) && '' !== $token) {
-                    $this->wishToken = $token;
-                }
-
-                break;
-            }
-        }
-        if ('' === $this->wishToken) {
-            throw new RuntimeException('aucun jeton forgé pour l\'entraîneur sollicité');
-        }
-
-        $links = $this->apiPost(\sprintf('coach_wish_campaigns/%s/send-links', $this->campaignId), [], $this->token);
-        $sent = $links['json']['sent'] ?? null;
-        $this->sent = \is_int($sent) ? $sent : (int) $sent;
+    #[When('le gestionnaire ouvre une campagne couvrant l\'équipe et sa partenaire et envoie les liens')]
+    public function leGestionnaireOuvreLaCampagneAvecPartenaire(): void
+    {
+        $this->openCampaignAndSendLinks([$this->teamId, $this->partnerTeamId]);
     }
 
     #[Then('au moins un lien de sollicitation est envoyé')]
@@ -208,6 +206,40 @@ final class CoachWishesContext extends BaseContext
         throw new RuntimeException('le jour souhaité par l\'entraîneur est introuvable côté gestionnaire');
     }
 
+    #[When('l\'entraîneur déclare une mutualisation avec la deuxième équipe sans se connecter')]
+    public function lEntraineurDeclareUneMutualisation(): void
+    {
+        // Soumission PUBLIQUE (aucun Bearer) : l'entraîneur mutualise 1 séance de son équipe
+        // avec la deuxième équipe de la campagne.
+        $submission = $this->publicPost(\sprintf('coach-wishes/public/%s', $this->wishToken), [
+            'submissions' => [],
+            'mutualizations' => [[
+                'teamId' => $this->teamId,
+                'partnerTeamIds' => [$this->partnerTeamId],
+                'sharedSlots' => 1,
+            ]],
+        ]);
+        if (200 !== $submission['status']) {
+            throw new RuntimeException(\sprintf('la soumission de mutualisation a répondu %d (200 attendu)', $submission['status']));
+        }
+    }
+
+    #[Then('la mutualisation déclarée remonte côté gestionnaire')]
+    public function laMutualisationRemonteCoteGestionnaire(): void
+    {
+        $rows = $this->apiGet(\sprintf('coach_wish_mutualizations?calendarEntryId=%s', $this->entryId), $this->token);
+
+        foreach ($this->members($rows['json']) as $row) {
+            $partners = $row['partnerTeamIds'] ?? [];
+            if (($row['teamId'] ?? null) === $this->teamId
+                && \is_array($partners) && \in_array($this->partnerTeamId, $partners, true)) {
+                return;
+            }
+        }
+
+        throw new RuntimeException('la mutualisation déclarée est introuvable côté gestionnaire');
+    }
+
     /**
      * Nettoyage dans l'ordre du smoke (`trap cleanup`) : campagne, période, puis
      * entraîneur. Quoi qu'il arrive (succès, échec, exception).
@@ -228,6 +260,39 @@ final class CoachWishesContext extends BaseContext
         if ('' !== $this->coachId) {
             $this->apiDelete(\sprintf('coaches/%s', $this->coachId), $this->token);
         }
+    }
+
+    /**
+     * @param list<string> $teamIds
+     */
+    private function openCampaignAndSendLinks(array $teamIds): void
+    {
+        $deadline = date('Y-m-d', (int) strtotime($this->monday . ' -3 days'));
+        $campaign = $this->apiPost('coach_wish_campaigns', [
+            'calendarEntryId' => $this->entryId,
+            'deadline' => $deadline,
+            'weeks' => [$this->monday],
+            'teamIds' => $teamIds,
+        ], $this->token);
+        $this->campaignId = $this->idOf($campaign, 'campagne');
+
+        foreach ($this->asArray($campaign['json']['coaches'] ?? []) as $entry) {
+            if (\is_array($entry) && ($entry['coachId'] ?? null) === $this->coachId) {
+                $token = $entry['token'] ?? null;
+                if (\is_string($token) && '' !== $token) {
+                    $this->wishToken = $token;
+                }
+
+                break;
+            }
+        }
+        if ('' === $this->wishToken) {
+            throw new RuntimeException('aucun jeton forgé pour l\'entraîneur sollicité');
+        }
+
+        $links = $this->apiPost(\sprintf('coach_wish_campaigns/%s/send-links', $this->campaignId), [], $this->token);
+        $sent = $links['json']['sent'] ?? null;
+        $this->sent = \is_int($sent) ? $sent : (int) $sent;
     }
 
     /**

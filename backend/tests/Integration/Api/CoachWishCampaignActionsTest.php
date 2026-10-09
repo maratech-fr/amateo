@@ -162,6 +162,65 @@ final class CoachWishCampaignActionsTest extends WebTestCase
         self::assertResponseStatusCodeSame(409);
     }
 
+    public function testPreviewRendersTheCoachFacingFormInReadOnlyMode(): void
+    {
+        // D2 — aperçu gestionnaire : la VRAIE page du coach, mais vidée de ses données.
+        $this->client->request('GET', '/api/coach_wish_campaigns/' . $this->campaign->getId() . '/preview?coachId=' . $this->withEmail->getId(), [], [], $this->headers());
+        self::assertResponseIsSuccessful();
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertSame('Maxime', $body['coachFirstName']);
+        // Lecture seule : aucune donnée du coach, aucune réponse.
+        self::assertSame([], $body['wishes']);
+        self::assertSame([], $body['mutualizations']);
+        self::assertNull($body['respondedAt']);
+        // Même forme que le GET public.
+        self::assertSame(
+            ['coachFirstName', 'periodTitle', 'periodStart', 'periodEnd', 'deadline', 'weeks', 'teams', 'partnerTeams', 'teamLinks', 'wishes', 'mutualizations', 'respondedAt'],
+            array_keys($body),
+        );
+    }
+
+    public function testPreviewFollowsCampaignAccessAndCrossClub404IsByteIdentical(): void
+    {
+        // Un coach HORS du périmètre de la campagne → 404.
+        $this->scopeGucToClub($this->club->getId());
+        $stranger = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setFirstName('Zoé')->setLastName('Hors');
+        $this->em->persist($stranger);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/coach_wish_campaigns/' . $this->campaign->getId() . '/preview?coachId=' . $stranger->getId(), [], [], $this->headers());
+        self::assertResponseStatusCodeSame(404);
+        $coachOutside404 = (string) $this->client->getResponse()->getContent();
+
+        // Une campagne d'un AUTRE club → 404 (RLS la rend invisible), BYTE-IDENTIQUE.
+        $otherCampaignId = $this->seedForeignCampaignId();
+        $this->client->request('GET', '/api/coach_wish_campaigns/' . $otherCampaignId . '/preview?coachId=' . $this->withEmail->getId(), [], [], $this->headers());
+        self::assertResponseStatusCodeSame(404);
+        self::assertSame($coachOutside404, (string) $this->client->getResponse()->getContent(), 'cross-club et coach hors campagne : 404 identique');
+    }
+
+    public function testPreviewRefusesANonManagerWith403(): void
+    {
+        // Parité SEC-07 : un membre NON gestionnaire (rôle non management) est refusé en 403.
+        $this->scopeGucToClub($this->club->getId());
+        $hasher = self::getContainer()->get('security.user_password_hasher');
+        $uid = uniqid('', true);
+        $user = (new User)->setEmail('viewer' . $uid . '@test.com')->setFirstName('V')->setLastName('V');
+        $user->setPasswordHash($hasher->hashPassword($user, 'Password123!'));
+        $this->em->persist($user);
+        $this->em->flush();
+        $this->em->persist((new ClubUser)->setClubId($this->club->getId())->setUserId($user->getId())->setRole('editor')->setIsActive(true));
+        $this->em->flush();
+        $jwt = self::getContainer()->get(JWTTokenManagerInterface::class)->create($user);
+
+        $this->client->request('GET', '/api/coach_wish_campaigns/' . $this->campaign->getId() . '/preview?coachId=' . $this->withEmail->getId(), [], [], [
+            'HTTP_X-Season-Id' => $this->season->getId(),
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $jwt,
+            'CONTENT_TYPE' => 'application/json',
+        ]);
+        self::assertResponseStatusCodeSame(403);
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -216,6 +275,30 @@ final class CoachWishCampaignActionsTest extends WebTestCase
         $this->em->flush();
 
         $this->jwt = $container->get(JWTTokenManagerInterface::class)->create($user);
+    }
+
+    /** Crée un club étranger avec sa propre campagne et retourne son id (invisible au club courant). */
+    private function seedForeignCampaignId(): string
+    {
+        $uid = uniqid('', true);
+        $club = (new Club)->setName('Etr ' . $uid)->setSlug('etr-' . $uid)->setTimezone('Europe/Paris')->setLocale('fr')->setOnboardingCompleted(true);
+        $this->em->persist($club);
+        $this->em->flush();
+        $this->scopeGucToClub($club->getId());
+        $season = (new Season)->setClubId($club->getId())->setName('2025-2026')
+            ->setStartDate(new DateTimeImmutable('2025-09-01'))->setEndDate(new DateTimeImmutable('2026-06-30'))->setStatus(SeasonStatus::ACTIVE);
+        $this->em->persist($season);
+        $entry = (new CalendarEntry)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setKind(CalendarEntryKind::PERIOD)->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Toussaint')
+            ->setStartDate(new DateTimeImmutable('2026-02-16'))->setEndDate(new DateTimeImmutable('2026-03-01'));
+        $this->em->persist($entry);
+        $campaign = (new CoachWishCampaign)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setCalendarEntryId($entry->getId())->setDeadline(new DateTimeImmutable('2027-06-30'))->setWeeks(['2026-02-16'])->setTeamIds([]);
+        $this->em->persist($campaign);
+        $this->em->flush();
+        $this->scopeGucToClub($this->club->getId());
+
+        return $campaign->getId();
     }
 
     /** @return array<string, string> */

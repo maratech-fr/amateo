@@ -1,6 +1,8 @@
 import { api } from "@/shared/api/client";
 import { collectionAll } from "@/shared/api/collection";
 
+import type { PublicWishContext } from "./publicApi";
+
 /**
  * Une campagne de collecte des doléances (feature #10, lot C2) : une par période de
  * vacances (ancrée à l'entrée MÈRE), modifiable (semaines/équipes/deadline). Le back
@@ -82,3 +84,11 @@ export interface CoachWishEmailPreview {
 
 /** Récupère l'aperçu de l'e-mail du lien coach d'une campagne (gestionnaire seulement). */
 export const getCoachWishEmailPreview = (id: string): Promise<CoachWishEmailPreview> => api.get(`coach_wish_campaigns/${id}/email-preview`).json();
+
+/**
+ * Aperçu gestionnaire (D2) : la VRAIE page telle que le coach `coachId` la verra, en lecture
+ * seule. Authentifié (cookie JWT), jamais de jeton forgé. Même forme que le GET public, vidée
+ * des données du coach (wishes=[], mutualizations=[], respondedAt=null).
+ */
+export const getCampaignPreview = (campaignId: string, coachId: string): Promise<PublicWishContext> =>
+  api.get(`coach_wish_campaigns/${campaignId}/preview`, { searchParams: { coachId } }).json();

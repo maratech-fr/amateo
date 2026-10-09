@@ -1,10 +1,10 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-10-08 (P4-266, `documentation-update`) : § Re-dater un incident recalée — la
-version en vigueur (validée) d'un incident re-daté ne porte plus AUCUN signal, et un simple
-déplacement de fenêtre (sans contrainte datée qui entre/sort) ne fait PAS diverger l'empreinte
-d'une version de travail non plus (confronté à `CalendarEntryStateProcessor.php` et au scénario
-Behat `plan-de-periode-en-overlay.feature`). Reste du fichier non rejoué ligne à ligne cette passe.
+Last verified @ 2026-10-09 (D2 PR B, `documentation-update`) : § Collecte des doléances coachs
+(E5) recalée — mutualisation déclarative (`CoachWishMutualization`, informative, jamais une
+contrainte) + aperçu gestionnaire par coach (`/doleances/apercu/{campaignId}`), confrontée à
+`CoachWishMutualizationStateProcessor.php`/`CoachWishCampaignPreviewController.php`. Reste du
+fichier non rejoué ligne à ligne cette passe.
 
 > **Rôle de ce document** : la trace durable du modèle métier des plannings. C'est LA référence
 > à consulter avant tout travail sur la génération : quel type se déclenche quand, ce qu'on y
@@ -180,16 +180,24 @@ début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
   - **Noël** : 1 semaine blanche (aucun planning) + 1 semaine de reprise → **1 planning**.
   - **Été** : rien pendant l'été, puis **2 semaines de reprise dégradée** → **2 plannings**.
 - **Collecte des doléances coachs (E5)** : bouton **« Doléances »**
-  (todo-list par équipe × semaine, coche « traité ») + **« Solliciter les coachs »**
-  (campagne → lien tokenisé sans login `/doleances/{token}` → page publique pré-remplie →
-  emails + digest quotidien + relance) + **badge radar** « X/Y répondu · N à traiter ».
-  Un souhait, jamais une contrainte. Détail :
+  (todo-list par équipe × semaine, coche « traité », + section **« Mutualisations »** — une
+  demande par équipe × PÉRIODE, saisissable aussi au nom d'un coach) + **« Solliciter les
+  coachs »** (campagne → lien tokenisé sans login `/doleances/{token}` → page publique
+  pré-remplie, bloc **« Mutualisation (facultatif) »** par équipe — partenaires proposés =
+  équipes de la campagne, passerelles `TeamLink` en tête — → emails + digest quotidien +
+  relance) + **« Voir la page d'un coach »** (aperçu gestionnaire en lecture seule de la VRAIE
+  page d'un coach choisi, `/doleances/apercu/{campaignId}?coach=`) + **badge radar**
+  « X/Y répondu · N à traiter ». Une mutualisation est une demande **informative**, jamais une
+  contrainte — le solveur ne la lit pas, rien n'est pré-rempli ; une équipe partenaire supprimée
+  depuis n'est jamais purgée, elle est ignorée à l'affichage (décision fermée,
+  [`etat-des-lieux.md`](etat-des-lieux.md) §2). Détail :
   [`backend-inventory.md`](../../backend/docs/backend-inventory.md) §2 (entités, token, page publique).
 - **État** : rodé — héritage des contraintes avec défaut intelligent, équipes activables/
   désactivables et séances ajustables, grille de gymnases possédée par la période (copie du
   modèle de saison, éditable gymnase par gymnase à l'écran), choix des semaines, été inclus,
   défaut équipes = Fanion + importantes, nom auto `{label vacances} — {repère}` (E6), collecte
-  des doléances coachs (E5). Reste optionnel, non demandé : un flux guidé « reprise progressive ».
+  des doléances coachs + mutualisations déclaratives + aperçu gestionnaire par coach (E5).
+  Reste optionnel, non demandé : un flux guidé « reprise progressive ».
 
 > **Décisions de conception figées de la collecte** — le *pourquoi*
 > derrière E5, à ne pas re-poser : **token stocké EN CLAIR** (« copier le lien » doit

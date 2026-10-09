@@ -10,6 +10,7 @@ use App\Entity\ClubUser;
 use App\Entity\Coach;
 use App\Entity\CoachWish;
 use App\Entity\CoachWishCampaign;
+use App\Entity\CoachWishMutualization;
 use App\Entity\CoachWishToken;
 use App\Entity\Season;
 use App\Entity\Team;
@@ -70,8 +71,9 @@ final class PublicCoachWishTest extends WebTestCase
         self::assertSame('2026-02-16', $body['periodStart']);
         self::assertSame('2026-03-01', $body['periodEnd']);
         // Et RIEN de plus que le contrat attendu (la page publique ne voit que ce périmètre).
+        // D2 PR B — ajout de partnerTeams / teamLinks / mutualizations (demande de mutualisation).
         self::assertSame(
-            ['coachFirstName', 'periodTitle', 'periodStart', 'periodEnd', 'deadline', 'weeks', 'teams', 'wishes', 'respondedAt'],
+            ['coachFirstName', 'periodTitle', 'periodStart', 'periodEnd', 'deadline', 'weeks', 'teams', 'partnerTeams', 'teamLinks', 'wishes', 'mutualizations', 'respondedAt'],
             array_keys($body),
         );
         self::assertSame(['2026-02-16', '2026-02-23'], $body['weeks']);
@@ -327,6 +329,117 @@ final class PublicCoachWishTest extends WebTestCase
         self::assertResponseIsSuccessful();
     }
 
+    public function testPartnerTeamsExposeOnlyCampaignTeams(): void
+    {
+        // D2 PR B — `partnerTeams` = les équipes de la CAMPAGNE (le front retire l'équipe
+        // courante par bloc). Une équipe du club HORS campagne n'y figure jamais.
+        $partner = $this->newTeam('SF1');
+        $outside = $this->newTeam('U13'); // du club, mais pas dans la campagne
+        $this->addTeamToCampaign($partner->getId());
+
+        $this->client->request('GET', '/api/coach-wishes/public/' . $this->token);
+        self::assertResponseIsSuccessful();
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+
+        $partnerIds = array_column($body['partnerTeams'], 'id');
+        self::assertContains($this->team->getId(), $partnerIds, 'l’équipe de la campagne y figure');
+        self::assertContains($partner->getId(), $partnerIds, 'l’autre équipe de la campagne y figure');
+        self::assertNotContains($outside->getId(), $partnerIds, 'une équipe hors campagne n’y figure jamais');
+        // La page ne voit que le périmètre : partnerTeams = exactement les équipes de la campagne.
+        self::assertCount(2, $partnerIds);
+    }
+
+    public function testSubmitUpsertsAMutualizationWithCoachClubAndSeason(): void
+    {
+        $partner = $this->newTeam('SF1');
+        $this->addTeamToCampaign($partner->getId());
+
+        $this->client->request('POST', '/api/coach-wishes/public/' . $this->token, [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'submissions' => [],
+            'mutualizations' => [['teamId' => $this->team->getId(), 'partnerTeamIds' => [$partner->getId()], 'sharedSlots' => 1]],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        $row = $this->em->getRepository(CoachWishMutualization::class)->findOneBy(['calendarEntryId' => $this->mother->getId(), 'teamId' => $this->team->getId()]);
+        self::assertNotNull($row);
+        self::assertSame([$partner->getId()], $row->getPartnerTeamIds());
+        self::assertSame(1, $row->getSharedSlots());
+        self::assertSame($this->coach->getId(), $row->getCoachId());
+        self::assertSame($this->club->getId(), $row->getClubId());
+        self::assertSame($this->season->getId(), $row->getSeasonId());
+        self::assertFalse($row->isDone());
+    }
+
+    public function testResubmittingAMutualizationWithNoPartnerDeletesTheLine(): void
+    {
+        $partner = $this->newTeam('SF1');
+        $this->addTeamToCampaign($partner->getId());
+        // Une mutualisation déjà posée.
+        $this->seedMutualization($this->team->getId(), [$partner->getId()], 1);
+
+        // Resoumission à 0 partenaire → la ligne est SUPPRIMÉE (le coach ne mutualise plus).
+        $this->client->request('POST', '/api/coach-wishes/public/' . $this->token, [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'submissions' => [],
+            'mutualizations' => [['teamId' => $this->team->getId(), 'partnerTeamIds' => [], 'sharedSlots' => 0]],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        self::assertCount(0, $this->em->getRepository(CoachWishMutualization::class)->findBy(['teamId' => $this->team->getId()]), 'la ligne a été supprimée');
+    }
+
+    public function testMutualizationRejectsAPartnerTeamOfAnotherClubWithoutWriting(): void
+    {
+        [, $otherTeamId] = $this->seedIntruderClub();
+        $this->client->request('POST', '/api/coach-wishes/public/' . $this->token, [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'submissions' => [],
+            'mutualizations' => [['teamId' => $this->team->getId(), 'partnerTeamIds' => [$otherTeamId], 'sharedSlots' => 1]],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertSame('Équipe partenaire hors de la collecte.', $body['error']);
+
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        self::assertCount(0, $this->em->getRepository(CoachWishMutualization::class)->findBy(['teamId' => $this->team->getId()]), 'rien écrit sur un partenaire d’un autre club');
+    }
+
+    public function testMutualizationPartnerProbingGetsAUniform422(): void
+    {
+        // Un partenaire d'un AUTRE club et un partenaire du club MAIS hors campagne rendent le
+        // MÊME corps 422 : impossible de distinguer « existe ailleurs » de « hors campagne ».
+        // On sème les deux équipes AVANT toute requête (chaque requête vide le GUC en finally).
+        [, $otherTeamId] = $this->seedIntruderClub();
+        $insideClubOutsideCampaign = $this->newTeam('U13'); // du club, pas dans la campagne
+
+        $this->client->request('POST', '/api/coach-wishes/public/' . $this->token, [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'submissions' => [],
+            'mutualizations' => [['teamId' => $this->team->getId(), 'partnerTeamIds' => [$otherTeamId], 'sharedSlots' => 1]],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+        $otherClubBody = (string) $this->client->getResponse()->getContent();
+
+        $this->client->request('POST', '/api/coach-wishes/public/' . $this->token, [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'submissions' => [],
+            'mutualizations' => [['teamId' => $this->team->getId(), 'partnerTeamIds' => [$insideClubOutsideCampaign->getId()], 'sharedSlots' => 1]],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame($otherClubBody, (string) $this->client->getResponse()->getContent(), 'sonde du périmètre : corps 422 identique');
+    }
+
+    public function testAnOversizedMutualizationsArrayIsRejected(): void
+    {
+        $items = array_fill(0, 201, ['teamId' => $this->team->getId(), 'partnerTeamIds' => [], 'sharedSlots' => 0]);
+        $this->client->request('POST', '/api/coach-wishes/public/' . $this->token, [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'submissions' => [],
+            'mutualizations' => $items,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -394,6 +507,28 @@ final class PublicCoachWishTest extends WebTestCase
         $wish->setClubId($this->club->getId());
         $wish->setSeasonId($this->season->getId());
         $this->em->persist($wish);
+        $this->em->flush();
+    }
+
+    private function addTeamToCampaign(string $teamId): void
+    {
+        // Une requête publique a pu vider le GUC (finally clear) : le re-poser avant le flush.
+        $this->scopeGucToClub($this->club->getId());
+        $this->campaign->setTeamIds([...$this->campaign->getTeamIds(), $teamId]);
+        $this->em->flush();
+    }
+
+    /**
+     * @param list<string> $partnerTeamIds
+     */
+    private function seedMutualization(string $teamId, array $partnerTeamIds, int $sharedSlots): void
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $m = (new CoachWishMutualization)->setCalendarEntryId($this->mother->getId())->setTeamId($teamId)
+            ->setCoachId($this->coach->getId())->setPartnerTeamIds($partnerTeamIds)->setSharedSlots($sharedSlots);
+        $m->setClubId($this->club->getId());
+        $m->setSeasonId($this->season->getId());
+        $this->em->persist($m);
         $this->em->flush();
     }
 
