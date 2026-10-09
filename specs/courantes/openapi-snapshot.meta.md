@@ -1,10 +1,11 @@
-Last verified @ 2026-10-09 (D2 PR B : rail gestionnaire des demandes de mutualisation
-`/api/coach_wish_mutualizations` (collection + item) + aperçu coach par coach
-`GET /api/coach_wish_campaigns/{id}/preview` ; le GET public de doléance coach porte désormais
-`partnerTeams`/`teamLinks`/`mutualizations`).
+Last verified @ 2026-10-09 (D2 PR B rebasée sur main = D1 + D2 PR A : rail gestionnaire des
+demandes de mutualisation `/api/coach_wish_mutualizations` (collection + item) + aperçu coach par
+coach `GET /api/coach_wish_campaigns/{id}/preview` ; le GET public de doléance coach porte désormais
+`partnerTeams`/`teamLinks`/`mutualizations` ; le snapshot régénéré intègre aussi l'aperçu d'e-mail
+D1 `GET /api/coach_wish_campaigns/{id}/email-preview`).
 
-**237 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`0838f5179bc909c7152657fff1c7cc57e2b9b5f5aa9962699d6d161e475ccdad` (`sha256sum` sur le fichier).
+**238 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`f0cb26e25486c49e3249ee75e1879569384c8f8c1343ea9ae72dab29a5e1f2e8` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne
