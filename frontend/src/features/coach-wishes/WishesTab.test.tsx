@@ -153,17 +153,20 @@ describe("WishesTab", () => {
     expect(screen.getByText(/coach dé-attribué/)).toBeInTheDocument();
   });
 
-  it("éditer une doléance ATTRIBUÉE ne peut pas la dé-attribuer (pas d'option coach vide)", async () => {
-    // Revue #10 C1 round 2 finding #1 : autoriser le coach vide en édition (pour les
-    // dé-attribuées) ne doit PAS laisser dé-attribuer une doléance attribuée.
+  it("éditer une doléance ATTRIBUÉE garde son coach par défaut (pas de dé-attribution SILENCIEUSE)", async () => {
+    // P2-63 PR 2 / Q5 (fondateur 2026-10-09) — le coach est désormais FACULTATIF par le canal
+    // gestionnaire : « (aucun) » est toujours offert, en création comme en édition. Le garde
+    // qui compte reste (revue #10 C1 round 2) : l'édition d'une doléance attribuée ne la
+    // dé-attribue JAMAIS en silence — le coach d'origine est le défaut et survit à un
+    // enregistrement qui n'y touche pas (seul un choix explicite de « (aucun) » détacherait).
     wishesState.data = [wish({ id: "w1", coachId: "c1", teamId: "t1", weekStart: "2026-02-16" })];
     const user = userEvent.setup();
     render(<WishesTab mother={mother} weekFilter={null} />);
     await user.click(screen.getByRole("button", { name: /^Modifier la doléance/ }));
-    // Pas d'option vide « Coach… » sur une doléance attribuée.
     const coachSelect = screen.getByLabelText("Coach") as HTMLSelectElement;
-    expect(Array.from(coachSelect.options).some((o) => "" === o.value)).toBe(false);
-    // Enregistrer garde le coach d'origine.
+    // Le défaut reste le coach attribué (pas de bascule silencieuse vers « (aucun) »).
+    expect(coachSelect.value).toBe("c1");
+    // Enregistrer sans toucher au coach garde le coach d'origine.
     await user.click(screen.getByRole("button", { name: "Enregistrer" }));
     expect(updateMut).toHaveBeenCalledWith(expect.objectContaining({ body: expect.objectContaining({ coachId: "c1" }) }), expect.anything());
   });
@@ -384,7 +387,7 @@ describe("WishesTab", () => {
     const add = screen.getByRole("button", { name: "Ajouter" });
     expect(add).not.toHaveAttribute("aria-disabled", "true");
     await user.click(add);
-    expect(screen.getByRole("button", { name: /^Équipe/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Équipe SM1/ })).toBeInTheDocument();
   });
 
   // ── P2-63 PR 2 / D — semaine d'abord, équipe servie désactivée, coach facultatif ──
@@ -396,7 +399,7 @@ describe("WishesTab", () => {
     await user.click(screen.getByRole("button", { name: "Ajouter" }));
 
     const semaine = screen.getByLabelText("Semaine");
-    const equipe = screen.getByRole("button", { name: /^Équipe/ });
+    const equipe = screen.getByRole("button", { name: /^Équipe SM1/ });
     // Ordre du DOM : Semaine précède Équipe (comparaison de position documentaire).
     expect(semaine.compareDocumentPosition(equipe) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
@@ -407,7 +410,7 @@ describe("WishesTab", () => {
     const user = userEvent.setup();
     render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
     await user.click(screen.getByRole("button", { name: "Ajouter" }));
-    await user.click(screen.getByRole("button", { name: /^Équipe/ }));
+    await user.click(screen.getByRole("button", { name: /^Équipe SM1/ }));
 
     const served = screen.getByRole("option", { name: /SM1/ });
     expect(served).toHaveAttribute("aria-disabled", "true");
@@ -422,7 +425,7 @@ describe("WishesTab", () => {
     const user = userEvent.setup();
     render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
     await user.click(screen.getByRole("button", { name: "Ajouter" }));
-    await user.click(screen.getByRole("button", { name: /^Équipe/ }));
+    await user.click(screen.getByRole("button", { name: /^Équipe SM1/ }));
     await user.click(screen.getByRole("option", { name: "U13" }));
     // Coach par défaut « (aucun) » (U13 n'a pas de coach principal).
     expect((screen.getByLabelText("Coach") as HTMLSelectElement).value).toBe("");
