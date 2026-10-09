@@ -1,6 +1,6 @@
 # Doléances → planning : jours disponibles, créneaux habituels, ajout manuel, « Transférer au planning » (P2-63)
 
-> **Statut** : cadrage en cours de validation par le fondateur (Q1-Q6 + Q3bis tranchées, Q7-Q8 ouvertes, §5) ; plan (`planner`) après
+> **Statut** : cadrage en cours de validation par le fondateur (Q1-Q7 + Q3bis tranchées, Q8 ouverte, §5) ; plan (`planner`) après
 > validation ; **code APRÈS le chantier vidéo P4-297** (place dans la file fixée par le fondateur le
 > 2026-10-09).
 > **Origine** : besoin d'un gestionnaire de club, dicté par le fondateur le 2026-10-09 (mots exacts §0).
@@ -302,7 +302,15 @@ Chaque chemin devient un test d'abus NOMMÉ au plan (fichier + suite).
   planning ; ouverte depuis le wizard du planning en cours, elle transfère la semaine ou le bloc de ce
   planning. Écarté : le wizard seul.
 
-Questions restantes : Q7 et Q8 ci-dessous.
+- **Q7 — seules les doléances COCHÉES partent au transfert, et une doléance transférée est TRAITÉE.**
+  Mots du fondateur : « dans ma tête seules les doléances qui sont cochées partent dans transférer et
+  comme elles sont transférées, elles sont donc traitées ». ⇒ le transfert coche `done` sur les
+  converties (décochable à la main ; une re-soumission du coach la remet « à traiter », comportement
+  existant). Point de conception pour le plan : la todo porte DÉJÀ une case « traité » (`done`) — la
+  case de SÉLECTION pour le transfert et l'état « traité » ne doivent pas se confondre à l'écran
+  (à trancher au plan, passe ui-ux, captures au fondateur).
+
+Questions restantes : Q8 ci-dessous.
 
 
 1. **Grain semaine vs plan multi-semaines.** Un plan peut couvrir 2+ semaines avec UNE seule grille
