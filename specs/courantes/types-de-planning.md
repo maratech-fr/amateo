@@ -1,6 +1,6 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-10-09 (D2 PR B, `documentation-update`) : § Collecte des doléances coachs
+Last verified @ 2026-10-09 (fusion fenêtre doléances #10) : § Collecte des doléances coachs (E5) recalé — UN bouton « Doléances » ouvre une fenêtre à trois onglets (Doléances · Sollicitation · Réglages) ; précédente passe D2 PR B (`documentation-update`) : § Collecte des doléances coachs
 (E5) recalée — mutualisation déclarative (`CoachWishMutualization`, informative, jamais une
 contrainte) + aperçu gestionnaire par coach (`/doleances/apercu/{campaignId}`), confrontée à
 `CoachWishMutualizationStateProcessor.php`/`CoachWishCampaignPreviewController.php`. Reste du
@@ -179,15 +179,18 @@ début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
   - **Toussaint** : 2 semaines différentes → **2 plannings**.
   - **Noël** : 1 semaine blanche (aucun planning) + 1 semaine de reprise → **1 planning**.
   - **Été** : rien pendant l'été, puis **2 semaines de reprise dégradée** → **2 plannings**.
-- **Collecte des doléances coachs (E5)** : bouton **« Doléances »**
-  (todo-list par équipe × semaine, coche « traité », + section **« Mutualisations »** — une
-  demande par équipe × PÉRIODE, saisissable aussi au nom d'un coach) + **« Solliciter les
-  coachs »** (campagne → lien tokenisé sans login `/doleances/{token}` → page publique
-  pré-remplie, bloc **« Mutualisation (facultatif) »** par équipe — partenaires proposés =
-  équipes de la campagne, passerelles `TeamLink` en tête — → emails + digest quotidien +
-  relance) + **« Voir la page d'un coach »** (aperçu gestionnaire en lecture seule de la VRAIE
-  page d'un coach choisi, `/doleances/apercu/{campaignId}?coach=`) + **badge radar**
-  « X/Y répondu · N à traiter ». Une mutualisation est une demande **informative**, jamais une
+- **Collecte des doléances coachs (E5)** : UN seul bouton **« Doléances »** (radar + bandeau
+  wizard) ouvre **une fenêtre unique** à trois onglets — **Doléances** (todo-list par équipe ×
+  semaine, coche « traité », + section **« Mutualisations »** — une demande par équipe × PÉRIODE,
+  saisissable aussi au nom d'un coach), **Sollicitation** (la campagne : liens tokenisés sans
+  login `/doleances/{token}` → page publique pré-remplie, bloc **« Mutualisation (facultatif) »**
+  par équipe — partenaires proposés = équipes de la campagne, passerelles `TeamLink` en tête — →
+  emails + digest quotidien + relance ; bouton **« Voir la page d'un coach »** = aperçu
+  gestionnaire en lecture seule, `/doleances/apercu/{campaignId}?coach=` ; l'onglet n'existe
+  qu'une fois la campagne créée et son libellé compte les coachs sans réponse) et **Réglages**
+  (création/paramétrage de la collecte : semaines, équipes, date limite). La fenêtre résout
+  elle-même sa campagne. Le radar garde en plus son **badge** « X/Y répondu · N à traiter »,
+  visible sans clic et hors du repli. Une mutualisation est une demande **informative**, jamais une
   contrainte — le solveur ne la lit pas, rien n'est pré-rempli ; une équipe partenaire supprimée
   depuis n'est jamais purgée, elle est ignorée à l'affichage (décision fermée,
   [`etat-des-lieux.md`](etat-des-lieux.md) §2). Détail :

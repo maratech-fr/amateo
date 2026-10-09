@@ -1,11 +1,13 @@
 # Accueil « cockpit temporel »
 
-Last verified @ 2026-10-08 (P4-266, `documentation-update`). §5bis recalé contre le code : plus
-aucune pastille cockpit (`StalenessPill` supprimé, `SchedulePlanResource.staleness` retiré), le
-signal « à régénérer » ne vit plus que sur `/planning`, dérivé de l'empreinte de structure
-(`GET /api/schedule_plans/{id}/structure-hash`) et muet sur un planning validé ; les deux toasts de
-re-datage ne mentionnent plus « à régénérer ». Reste du fichier non re-confronté cette passe.
-Historique de ce fichier : `git log -p --follow` dessus.
+Last verified @ 2026-10-09 (fusion fenêtre doléances #10). § doléances recalé contre le code : le
+point d'entrée radar est désormais UN seul bouton « Doléances » (→ `CoachWishesHub`) accompagné
+du badge `RadarCoachWishBadge` (ex-`RadarCoachWishAction`), tous deux hors du repli et sous
+horizon. §5bis (passe P4-266) inchangé : plus aucune pastille cockpit (`StalenessPill` supprimé,
+`SchedulePlanResource.staleness` retiré), le signal « à régénérer » ne vit plus que sur
+`/planning`, dérivé de l'empreinte de structure (`GET /api/schedule_plans/{id}/structure-hash`) et
+muet sur un planning validé ; les deux toasts de re-datage ne mentionnent plus « à régénérer ».
+Reste du fichier non re-confronté cette passe. Historique de ce fichier : `git log -p --follow` dessus.
 
 > **Statut** : livré — cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2. Ce document fixe le
 > modèle d'UX + d'architecture de l'accueil cockpit et la fondation des **calendriers
@@ -324,13 +326,14 @@ Une to-do n'est pas un inventaire. Trois règles :
   long (les N puces de semaine). L'en-tête (titre, dates, compteur « x/y couvertes ») reste
   toujours lisible.
 
-⚠ **L'horizon masque aussi les doléances** — `RadarCoachWishAction` n'est rendu nulle part
+⚠ **L'horizon masque aussi les doléances** — le bouton **« Doléances »** (point d'entrée unique
+vers la fenêtre `CoachWishesHub`) et son badge `RadarCoachWishBadge` ne sont rendus nulle part
 ailleurs dans l'application : « on ne les sollicite pas au-delà de l'horizon, en général ça se
 fait 3 semaines avant les vacances » (décision fermée, [`etat-des-lieux.md`](etat-des-lieux.md)
 §2 — aucun second point d'entrée). Une vacance qui porte **déjà** une campagne garde sa carte
 quelle que soit sa distance — on ne fait jamais disparaître un travail engagé ; pour la même
-raison, « Doléances » et « Solliciter les coachs » restent **hors du repli** de la carte de
-couverture.
+raison, le bouton **« Doléances »** et le **badge de suivi** restent **hors du repli** de la
+carte de couverture.
 
 **Chargement** : tant que les plans, les versions, les campagnes, les impacts de fermeture ou la
 zone scolaire sont en vol, le radar affiche un **squelette** (région live pour les lecteurs
