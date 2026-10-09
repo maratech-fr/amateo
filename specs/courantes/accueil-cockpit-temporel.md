@@ -1,13 +1,15 @@
 # Accueil « cockpit temporel »
 
-Last verified @ 2026-10-09 (fusion fenêtre doléances #10). § doléances recalé contre le code : le
-point d'entrée radar est désormais UN seul bouton « Doléances » (→ `CoachWishesHub`) accompagné
-du badge `RadarCoachWishBadge` (ex-`RadarCoachWishAction`), tous deux hors du repli et sous
-horizon. §5bis (passe P4-266) inchangé : plus aucune pastille cockpit (`StalenessPill` supprimé,
-`SchedulePlanResource.staleness` retiré), le signal « à régénérer » ne vit plus que sur
-`/planning`, dérivé de l'empreinte de structure (`GET /api/schedule_plans/{id}/structure-hash`) et
-muet sur un planning validé ; les deux toasts de re-datage ne mentionnent plus « à régénérer ».
-Reste du fichier non re-confronté cette passe. Historique de ce fichier : `git log -p --follow` dessus.
+Last verified @ 2026-10-10 (P2-63 PR 2 + PR 4). § doléances recalé contre le code : la fenêtre
+unique `CoachWishesHub` (un seul bouton « Doléances » + badge `RadarCoachWishBadge`, hors du repli
+et sous horizon) ne lance une collecte que sur une période portant déjà un planning — semaines
+dérivées des plannings (`SchedulePlanProvisioner::planWeekMondaysForPeriod` côté serveur, garde 422
+dans `CoachWishCampaignStateProcessor`, affichage `campaignWeeks.ts::planDerivedWeeks`), invite
+« Créez d'abord le planning » + « Adapter » (`CampaignSettingsTab`/`RadarPanel.onRequestPlanning`)
+sinon ; l'ajout manuel (`CoachWishForm`) se fait semaine d'abord, toutes équipes, coach facultatif
+(`CoachWishStateProcessor` accepte `coachId` null en création gestionnaire). Reste du fichier
+(§5bis P4-266 : signal « à régénérer » sur `/planning` seul, pas de pastille cockpit) non
+re-confronté cette passe.
 
 > **Statut** : livré — cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2. Ce document fixe le
 > modèle d'UX + d'architecture de l'accueil cockpit et la fondation des **calendriers
@@ -334,6 +336,17 @@ fait 3 semaines avant les vacances » (décision fermée, [`etat-des-lieux.md`](
 quelle que soit sa distance — on ne fait jamais disparaître un travail engagé ; pour la même
 raison, le bouton **« Doléances »** et le **badge de suivi** restent **hors du repli** de la
 carte de couverture.
+
+**La collecte suit le planning, l'ajout manuel suit la semaine.** La fenêtre `CoachWishesHub`
+n'ouvre une collecte (onglet **Réglages**) que sur une période qui porte **déjà** un planning :
+ses semaines **dérivent** des plannings de la période (une par planning de semaine, une semaine
+type ancrée au premier lundi pour un planning de bloc), le serveur refuse en 422 toute semaine
+qu'aucun planning ne couvre, et une période sans planning affiche l'invite « Créez d'abord le
+planning des vacances » + « Adapter cette période ». L'**ajout manuel** d'une doléance (onglet
+Doléances) se fait **semaine d'abord** puis équipe : la semaine choisie désactive avec motif les
+équipes déjà servies (jamais masquées), offre **toutes** les équipes (le périmètre « coach
+principal » ne borne que la collecte par mail) et rend le **coach facultatif** — le gestionnaire
+peut saisir à la main une doléance pour une équipe sans coach (Vétérans).
 
 **Chargement** : tant que les plans, les versions, les campagnes, les impacts de fermeture ou la
 zone scolaire sont en vol, le radar affiche un **squelette** (région live pour les lecteurs

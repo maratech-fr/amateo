@@ -4,7 +4,7 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-10-09 (fusion fenêtre doléances #10 : §2 `/doleances/apercu/:campaignId` et l'arbre §10 recalés — `CoachWishesModal`/`CampaignDialog`/`RadarCoachWishAction` → `CoachWishesHub` (3 onglets `WishesTab`/`SollicitationTab`/`CampaignSettingsTab`) + `RadarCoachWishBadge`). Passe D2 PR B (`documentation-update`) : la ligne `/doleances/:token` (§2) regagne le bloc mutualisation (confronté à `WishTeamStep.tsx`), nouvelle ligne `/doleances/apercu/:campaignId` (confrontée à `routes.tsx`/`PreviewWishPage.tsx`) ; `ONBOARDING_ALLOWED` recalée contre `AuthGuard.tsx:19` (`/boite-aux-lettres` manquait à la liste). Reste du fichier non re-sondé ligne à ligne cette passe (dernière passe de fond : DOC-59, 2026-10-06, découpage thématique sans réécriture) — historique : `git log -p --follow` ce fichier.
+Last verified @ 2026-10-10 (P2-63 PR 2 + PR 4) : l'arbre §10 `coach-wishes/` recalé contre `CoachWishForm.tsx` (ajout manuel semaine d'abord, coach facultatif), `CampaignSettingsTab.tsx`/`useCampaignSettings.ts`/`campaignWeeks.ts` (semaines dérivées des plannings, état « sans planning ») et `RadarPanel.tsx` (`onRequestPlanning`). La ligne publique `/doleances/:token` (§2) est INCHANGÉE par ce lot (les changements sont manager-side). Reste du fichier non re-sondé ligne à ligne cette passe — historique : `git log -p --follow` ce fichier.
 
 ## 1. Stack Decided
 
@@ -135,7 +135,13 @@ frontend/src/
 │   ├── coach-wishes/           # #10 doléances : CoachWishesHub (fenêtre unique, 3 onglets) → WishesTab,
 │   │                           # SollicitationTab, CampaignSettingsTab + useCampaignSettings ; CoachWishForm,
 │   │                           # MutualizationForm (D2), PublicWishPage (route publique),
-│   │                           # PreviewWishPage (aperçu gestionnaire, D2), RadarCoachWishBadge (badge radar)
+│   │                           # PreviewWishPage (aperçu gestionnaire, D2), RadarCoachWishBadge (badge radar).
+│   │                           # P2-63 PR 2 — CoachWishForm : ajout manuel SEMAINE d'abord puis équipe
+│   │                           # (TeamSelect, équipe déjà servie désactivée avec motif), coach FACULTATIF
+│   │                           # (« (aucun) »). PR 4 — CampaignSettingsTab : semaines DÉRIVÉES des plannings
+│   │                           # (campaignWeeks.ts::planDerivedWeeks + useSchedulePlans/useCalendarEntries),
+│   │                           # état « sans planning » = invite « Créez d'abord le planning » + « Adapter »
+│   │                           # (RadarPanel.onRequestPlanning) ; le serveur reste l'autorité (garde 422)
 │   ├── cockpit/                # CockpitPage : bandeau planning socle, calendrier mensuel, radar
 │   │                           # overlays, FbiDeadlineCard (rappel FBI + escalade login, RMM-6 PR-3)
 │   ├── legal/                  # PrivacyPage (/confidentialite)

@@ -1,14 +1,10 @@
 # Commandes backend — référence complète
 
-Last verified @ 2026-10-06 (INF-06 durcissement : le paragraphe `with-sandbox.sh` décrit l'auto-mise
-à niveau du schéma du bac à sable ET l'abandon bruyant si la base réellement visée n'est pas
-`amateo_dev` avant tout create/migrate — vérifié contre `backend/scripts/with-sandbox.sh`
-`ensure_sandbox_migrated`/`assert_target_is_sandbox`). Même passe : la ligne `make tests-complete`
-décrit la purge APPROFONDIE de `var/cache/test` (`rm -rf var/cache/test/pools` en root PUIS
-`cache:clear --env=test` — les métadonnées fichier API Platform/serializer d'une autre branche
-survivaient au seul `cache:clear`, Redis jamais touché) + le warmup `var/cache/dev` conditionnel, et
-`make behat` le `cache:clear --env=dev` de `behat` — vérifié contre `backend/Makefile`. Le
-reste de la page (autres commandes, garde-fou, modes play/sandbox) non re-sondé cette passe — un
+Last verified @ 2026-10-10 (rotation de fraîcheur, passe P2-63 lot 5) : `make tests-complete` dépend
+bien de `purge-test-cache` (`rm -rf var/cache/test/pools` puis `cache:clear --env=test`) + warmup
+`var/cache/dev` conditionnel, et `make behat` fait son `cache:clear --env=dev` — reconfrontés contre
+`backend/Makefile` (cibles `purge-test-cache`, `tests-complete`, `behat`). Le reste de la page
+(autres commandes, garde-fou, modes play/sandbox, `with-sandbox.sh`) non re-sondé cette passe — un
 stamp REMPLACE, l'historique vit dans git.
 
 > **Tout se lance dans le container** (`docker compose exec php-fpm …`) — les cibles `make`

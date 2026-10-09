@@ -1,8 +1,9 @@
 # Doléances → planning : jours disponibles, créneaux habituels, ajout manuel, « Transférer au planning » (P2-63)
 
-> **Statut** : cadrage en cours de validation par le fondateur (questions tranchées le 2026-10-09, §5 ; plan en 7 PR §8 ; points D-a → D-g tranchés le 2026-10-09, §8.10 — prêt à coder après la vidéo) ; plan (`planner`) après
-> validation ; **code APRÈS le chantier vidéo P4-297** (place dans la file fixée par le fondateur le
-> 2026-10-09).
+> **Statut** : questions tranchées le 2026-10-09 (§5) ; plan en 7 PR (§8) ; points D-a → D-g tranchés
+> le 2026-10-09 (§8.10). **PR 1, PR 2 et PR 4 LIVRÉES** (§8.3) ; PR 3, 5, 6, 7 restent à coder. L'item
+> P2-63 reste ouvert tant que les 7 PR ne sont pas toutes livrées (il ne quittera la roadmap et ce
+> fichier ne sera supprimé qu'à ce moment-là).
 > **Origine** : besoin d'un gestionnaire de club, dicté par le fondateur le 2026-10-09 (mots exacts §0).
 > Fichier de détail de la ligne **P2-63** de [`roadmap.md`](roadmap.md) — il quitte le dépôt quand l'item
 > est livré (règle d'entretien de la roadmap). Toutes les citations `fichier:ligne` sont relatives à la
@@ -421,14 +422,14 @@ Chaque chemin devient un test d'abus NOMMÉ au plan (fichier + suite).
 
 ### 8.3 Découpage en PR (ordre ; 1 et 2 parallélisables ; 3 et 4 indépendantes ; 5 dépend de 2+3+4 ; 6 de 5 ; 7 indépendante dès 3)
 
-**PR 1 — A + C (frontend pur).** « Jours disponibles » (tout pressé, on dépresse ; payload
+**PR 1 — A + C (frontend pur) — LIVRÉE (#1139).** « Jours disponibles » (tout pressé, on dépresse ; payload
 `unavailableDays` inchangé) dans `WishTeamStep.tsx`, `CoachWishForm.tsx`, intro `PublicWishPage.tsx` ;
 lecture todo en creux inchangée (`WishesTab.tsx:219`) ; `TeamSelect` dans `CoachWishForm.tsx` et
 `MutualizationForm.tsx`. Gardes : `dayPickerGuard`, passe `ui-ux-pro-max` (polarité du picker inversé).
 Validation : image tooling rebâtie, `make -C frontend lint` + `test`. `/security-review` : oui (libellés
 de la page publique).
 
-**PR 2 — D + Q5.** `CoachWishStateProcessor` : coach FACULTATIF en création gestionnaire (canal public
+**PR 2 — D + Q5 — LIVRÉE (2026-10-10).** `CoachWishStateProcessor` : coach FACULTATIF en création gestionnaire (canal public
 inchangé ; colonne déjà nullable, aucune migration). `CoachWishForm` : semaine → équipe ; TOUTES les
 équipes ; équipes déjà servies sur la semaine désactivées avec motif (jamais masquées) ; coach
 « (aucun) ». Tests : `backend/tests/Integration/Api/CoachWishApiTest.php`, vitest du formulaire.
@@ -440,7 +441,7 @@ Validation : `tests-complete` + `rector` + Behat (`voeux-des-coachs.feature`,
 créneaux de saison (booléen nu) ; case dans `CoachWishForm`, pastille StatusPill dans la todo.
 Tests : `PublicCoachWishTest.php`, `CoachWishUpserterTest.php`, vitest. `/security-review` : OUI.
 
-**PR 4 — Q8 : collecte seulement après la naissance des plannings.** Semaines de campagne DÉRIVÉES des
+**PR 4 — Q8 : collecte seulement après la naissance des plannings — LIVRÉE (2026-10-10).** Semaines de campagne DÉRIVÉES des
 segments des plannings de la période (une par planning scindé, une semaine type par planning d'un bloc
 — D-c) ; `CampaignSettingsTab`/`useCampaignSettings` affichent, une garde BACKEND décide (semaines ⊆
 semaines portées par un plan, refus 422 via `refuse()`) ; carte de vacances sans planning : la fenêtre
