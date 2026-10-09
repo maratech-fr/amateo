@@ -60,6 +60,13 @@ curl -sS "${H[@]}" "$API/coaches?itemsPerPage=300" > "$TMP/coaches.json" 2>/dev/
     echo "- (coach non cree — P05 cote coach saute)"
   fi
   echo
+  echo "## Membre du bureau en lecture seule (pour le plan 10)"
+  if [[ -f "$TMP/member.txt" ]]; then
+    cat "$TMP/member.txt"
+  else
+    echo "- (compte membre non cree — P10 non capture, voir le rapport)"
+  fi
+  echo
   echo "## Coachs de la base demo (apparaissent dans la fenetre Doleances / page coach)"
   extract_names "$TMP/coaches.json"
   echo

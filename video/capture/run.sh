@@ -156,10 +156,37 @@ seed_doleances() {
 }
 seed_doleances || echo "WARN: seed_doleances a rencontre une erreur — on continue."
 
+# ---- Membre du bureau en LECTURE SEULE (plan 10) ------------------------------------------------
+# Aucune API ne cree un membre pour un compte de DEMO (POST /api/invitations -> 403 pour un demo ;
+# pas de POST /api/memberships ni de ressource ClubUser ; aucune commande console). On insere donc
+# directement les deux lignes dans le bac a sable (contournement « cote donnees », jamais l'appli)
+# via psql superuser (bypass RLS), puis on fabrique un JWT pour ce membre. Le mot de passe n'est
+# jamais utilise (connexion par cookie Bearer JWT, UserChecker absent du pare-feu /api).
+MEMBER_JWT=""
+MEMBER_EMAIL='bureau.lecture@exemple-bureau.fr'
+psql_owner() { docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d amateo_dev -v ON_ERROR_STOP=1 -Atc "$0"' "$1"; }
+seed_member() {
+  local club_id
+  club_id="$(psql_owner "SELECT id FROM club WHERE ffbb_club_code='ARA9999999'" | tr -d '[:space:]')"
+  if [[ -z "$club_id" ]]; then echo "WARN: club demo introuvable — P10 saute."; return 0; fi
+  psql_owner "
+    INSERT INTO app_user (id, version, created_at, updated_at, email, password_hash, first_name, last_name, email_verified_at, is_demo)
+    VALUES (gen_random_uuid(), 1, now(), now(), '$MEMBER_EMAIL', 'unused_login_disabled_jwt_only_placeholder_000000000000', 'Bureau', 'Lecture', now(), false)
+    ON CONFLICT DO NOTHING;
+    INSERT INTO club_user (id, version, created_at, updated_at, club_id, user_id, role, joined_at, is_active)
+    SELECT gen_random_uuid(), 1, now(), now(), '$club_id', u.id, 'member', now(), true FROM app_user u WHERE u.email = '$MEMBER_EMAIL'
+    ON CONFLICT DO NOTHING;
+  " || { echo "WARN: insertion du membre echouee — P10 saute."; return 0; }
+  MEMBER_JWT="$(console lexik:jwt:generate-token "$MEMBER_EMAIL" --user-class='App\Entity\User' | tr -d '[:space:]')"
+  printf -- '- Nom affiche : **Bureau Lecture** (fictif, exemple)\n- E-mail : `%s` (role membre, lecture seule)\n' "$MEMBER_EMAIL" > "$TMP/member.txt"
+  echo "membre lecture seule : $MEMBER_EMAIL (jwt: ${MEMBER_JWT:+ok}${MEMBER_JWT:-ECHEC})"
+}
+seed_member || echo "WARN: seed_member erreur — on continue."
+
 # ---- Captures ------------------------------------------------------------------------------------
 cd "$REPO/video"
 echo "==> capture de l'application (Playwright)..."
-PW_CHROME="$CHROME" node capture/capture-app.cjs "$TOKEN" "${WISH_TOKEN:-}" "${MAILID:-}" 2>&1 | tee "$OUT/capture-app.log" || true
+PW_CHROME="$CHROME" node capture/capture-app.cjs "$TOKEN" "${WISH_TOKEN:-}" "${MAILID:-}" "${MEMBER_JWT:-}" 2>&1 | tee "$OUT/capture-app.log" || true
 echo "==> export des images du logo..."
 PW_CHROME="$CHROME" node capture/capture-logo.cjs 2>&1 | tee "$OUT/capture-logo.log" || true
 echo "==> generation de noms-visibles.md..."
