@@ -1,6 +1,6 @@
 # Couverture des contraintes — besoins gestionnaire
 
-Last verified @ 2026-10-06 (reliquat DOC de l'audit 2026-10-03 — DOC-60). `MIN_SESSIONS` recalé en « soft par décision » (triage 2026-09-25, plus « à trancher ») ; `ConstraintFamily` porte toujours exactement 4 cas (`TIME`/`DAY`/`FACILITY`/`COACH_AVAILABILITY`, `FACILITY_CAPACITY` absent, `backend/src/Enum/ConstraintFamily.php`) ✓ ; « Réserver un gymnase à un groupe » toujours ❌ (`forcedVenueId` ne réserve rien aux autres). Non re-sondé cette passe : les poids.
+Last verified @ 2026-10-09 (rotation de fraîcheur `documentation-update`, D2 PR B — sujet sans rapport). `ConstraintFamily` porte toujours exactement 4 cas (`TIME`/`DAY`/`FACILITY`/`COACH_AVAILABILITY`, `FACILITY_CAPACITY` absent, `backend/src/Enum/ConstraintFamily.php`) ✓ ; `MIN_SESSIONS` toujours « soft par décision » (`engine/app/solver/constraints/structural.py:668-670`, soft TARGET seul — production passe 0 comme plancher dur, confronté) ✓ ; « Réserver un gymnase à un groupe » toujours ❌ (`forcedVenueId` ne réserve rien aux autres). Non re-sondé cette passe : les poids.
 
 > **But** : liste **exhaustive** des besoins qu'un gestionnaire de club peut vouloir exprimer, et
 > **ce que l'application couvre** aujourd'hui — pour voir clairement les cas couverts (✅), partiels
