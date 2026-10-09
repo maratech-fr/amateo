@@ -9,6 +9,7 @@ on:
 permissions:
   contents: read
 
+
 jobs:
   lint:
     name: Lint
@@ -156,6 +157,16 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Connexion Docker Hub avant tout tirage : les runners partagés GitHub épuisent le
+      # quota ANONYME (429 Too Many Requests — incident 2026-10-09, python:3.12-slim refusé).
+      # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
+      - name: Login to Docker Hub (anti-429)
+        if: vars.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Run semgrep
         run: >
           docker run --rm -v "$PWD:/src" semgrep/semgrep:latest
@@ -172,6 +183,16 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Connexion Docker Hub avant tout tirage : les runners partagés GitHub épuisent le
+      # quota ANONYME (429 Too Many Requests — incident 2026-10-09, python:3.12-slim refusé).
+      # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
+      - name: Login to Docker Hub (anti-429)
+        if: vars.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Prepare .env
         run: |
@@ -230,6 +251,16 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # Connexion Docker Hub avant tout tirage : les runners partagés GitHub épuisent le
+      # quota ANONYME (429 Too Many Requests — incident 2026-10-09, python:3.12-slim refusé).
+      # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
+      - name: Login to Docker Hub (anti-429)
+        if: vars.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Prepare .env
         run: |
           cp .env.dist .env
@@ -282,6 +313,16 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # Connexion Docker Hub avant tout tirage : les runners partagés GitHub épuisent le
+      # quota ANONYME (429 Too Many Requests — incident 2026-10-09, python:3.12-slim refusé).
+      # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
+      - name: Login to Docker Hub (anti-429)
+        if: vars.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Prepare .env
         run: |
           cp .env.dist .env
@@ -314,6 +355,16 @@ jobs:
     needs: [lint, phpstan]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Connexion Docker Hub avant tout tirage : les runners partagés GitHub épuisent le
+      # quota ANONYME (429 Too Many Requests — incident 2026-10-09, python:3.12-slim refusé).
+      # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
+      - name: Login to Docker Hub (anti-429)
+        if: vars.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Prepare .env
         run: |
@@ -974,6 +1025,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Connexion Docker Hub avant tout tirage : les runners partagés GitHub épuisent le
+      # quota ANONYME (429 Too Many Requests — incident 2026-10-09, python:3.12-slim refusé).
+      # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
+      - name: Login to Docker Hub (anti-429)
+        if: vars.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Prepare .env
         run: |
           cp .env.dist .env
@@ -1012,6 +1073,16 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Connexion Docker Hub avant tout tirage : les runners partagés GitHub épuisent le
+      # quota ANONYME (429 Too Many Requests — incident 2026-10-09, python:3.12-slim refusé).
+      # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
+      - name: Login to Docker Hub (anti-429)
+        if: vars.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Prepare .env
         run: |
@@ -1063,6 +1134,16 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # Connexion Docker Hub avant tout tirage : les runners partagés GitHub épuisent le
+      # quota ANONYME (429 Too Many Requests — incident 2026-10-09, python:3.12-slim refusé).
+      # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
+      - name: Login to Docker Hub (anti-429)
+        if: vars.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Prepare .env
         run: |
           cp .env.dist .env
@@ -1098,6 +1179,16 @@ jobs:
         with:
           # need base..HEAD to diff which paths changed on this PR
           fetch-depth: 0
+
+      # Connexion Docker Hub avant tout tirage : les runners partagés GitHub épuisent le
+      # quota ANONYME (429 Too Many Requests — incident 2026-10-09, python:3.12-slim refusé).
+      # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
+      - name: Login to Docker Hub (anti-429)
+        if: vars.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # Path filter WITHOUT a third-party action: the repo pins every external
       # action by SHA and gates supply chain with semgrep/secrets-scan, so the
@@ -1167,6 +1258,16 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # Connexion Docker Hub avant tout tirage : les runners partagés GitHub épuisent le
+      # quota ANONYME (429 Too Many Requests — incident 2026-10-09, python:3.12-slim refusé).
+      # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
+      - name: Login to Docker Hub (anti-429)
+        if: vars.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Prepare .env
         run: |
           cp .env.dist .env
@@ -1215,6 +1316,16 @@ jobs:
     needs: blocking-tests
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Connexion Docker Hub avant tout tirage : les runners partagés GitHub épuisent le
+      # quota ANONYME (429 Too Many Requests — incident 2026-10-09, python:3.12-slim refusé).
+      # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
+      - name: Login to Docker Hub (anti-429)
+        if: vars.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Prepare .env
         run: |
@@ -1267,6 +1378,16 @@ jobs:
       COMPOSE_BAKE: "false"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Connexion Docker Hub avant tout tirage : les runners partagés GitHub épuisent le
+      # quota ANONYME (429 Too Many Requests — incident 2026-10-09, python:3.12-slim refusé).
+      # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
+      - name: Login to Docker Hub (anti-429)
+        if: vars.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Prepare .env
         run: |
@@ -1524,6 +1645,16 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # Connexion Docker Hub avant tout tirage : les runners partagés GitHub épuisent le
+      # quota ANONYME (429 Too Many Requests — incident 2026-10-09, python:3.12-slim refusé).
+      # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
+      - name: Login to Docker Hub (anti-429)
+        if: vars.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Prepare .env
         run: |
           cp .env.dist .env
@@ -1577,6 +1708,16 @@ jobs:
     # ⚠ À ajouter aux required status checks de `main` pour qu'il BLOQUE — côté GitHub.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Connexion Docker Hub avant tout tirage : les runners partagés GitHub épuisent le
+      # quota ANONYME (429 Too Many Requests — incident 2026-10-09, python:3.12-slim refusé).
+      # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
+      - name: Login to Docker Hub (anti-429)
+        if: vars.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Prepare .env
         run: |
@@ -1639,6 +1780,16 @@ jobs:
     needs: [blocking-tests, engine-tests]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Connexion Docker Hub avant tout tirage : les runners partagés GitHub épuisent le
+      # quota ANONYME (429 Too Many Requests — incident 2026-10-09, python:3.12-slim refusé).
+      # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
+      - name: Login to Docker Hub (anti-429)
+        if: vars.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Prepare .env
         run: |
