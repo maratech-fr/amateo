@@ -1,6 +1,6 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-10-09 (P4-295 C3) : citation du solveur de placement recalée — `W_COACH_UNAVAILABLE` (indisponibilité de coach, TOUJOURS SOFT) pointe désormais le sous-module `engine/app/solver/match_placement/weights.py` du paquet `match_placement/` (découpe pure verbatim, zéro effet gestionnaire). Reste du vocabulaire non re-sondé cette passe — un stamp REMPLACE, il ne s'empile pas.
+Last verified @ 2026-10-09 (P4-295 C3) : citation du solveur de placement recalée — `W_COACH_UNAVAILABLE` (indisponibilité de coach, TOUJOURS SOFT) pointe désormais le sous-module `engine/app/solver/match_placement/weights.py` du paquet `match_placement/` (découpe pure verbatim, zéro effet gestionnaire). Reste du vocabulaire non re-sondé cette passe — un stamp REMPLACE, il ne s'empile pas. Également (P4-295 C4) : citation `add_socle_reference_bonus` recalée — ce constructeur vit depuis P4-295 C4 dans le sous-module `engine/app/solver/objective/terms/stability.py` (l'ancien `objective/terms.py` est devenu un paquet, découpe pure verbatim, surface d'import byte-identique, `objective/__init__` inchangé). Aucun vocabulaire moteur touché (refactor pur). Reste du vocabulaire non re-sondé cette passe — un stamp REMPLACE, il ne s'empile pas.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
@@ -335,7 +335,7 @@ withSocleReferenceAssignments`, backend) : les placements de la version **point�
 (le socle), injectés APRÈS le hash de snapshot comme `previousAssignments` (préférence de
 convergence, jamais une donnée de structure).
 
-`add_socle_reference_bonus` (`engine/app/solver/objective/terms.py`) ajoute, dans l'objectif de
+`add_socle_reference_bonus` (`engine/app/solver/objective/terms/stability.py`) ajoute, dans l'objectif de
 **PLACEMENT** (phase 1, patron du malus passerelle `extra_placement_terms` — comme la proximité
 P2-61 dérivée de `build_stability_terms`, poids 9, jamais co-émise avec ce bloc), un bonus `+SOCLE_REFERENCE_TIER_WEIGHTS[tier]` sur
 chaque variable `model.x[(team, venue, day, start)]` dont `(team, day, start)` — **gymnase
