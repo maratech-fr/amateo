@@ -1,14 +1,19 @@
 import { type FormEvent, useState } from "react";
 
-import type { Coach, Team, TeamCoach } from "@/features/wizard/api";
+import type { Coach, PriorityTier, Team, TeamCoach } from "@/features/wizard/api";
 import { Button } from "@/shared/components/ui/button";
 import { DayMultiPicker } from "@/shared/components/ui/day-multi-picker";
 import { FIELD_CLASS } from "@/shared/components/ui/field";
 import { Select } from "@/shared/components/ui/select";
+import { TeamSelect } from "@/shared/components/ui/team-select";
+import { DAYS } from "@/shared/lib/days";
 import { cn } from "@/shared/lib/utils";
 
 import type { CoachWish, CoachWishPayload } from "./api";
 import type { WeekWindow } from "@/features/cockpit/lib/date";
+
+/** Les sept jours ISO (foyer `shared/lib/days`), pour calculer le complément « disponibles ». */
+const ALL_DAYS: number[] = DAYS.map((d) => d.n);
 
 /**
  * Saisie « au nom d'un coach » d'une doléance (feature #10, lot C1) — ajout ou édition.
@@ -22,6 +27,7 @@ export function CoachWishForm({
   weeks,
   lockedWeek,
   teams,
+  tiers,
   coaches,
   teamCoaches,
   editing,
@@ -33,6 +39,7 @@ export function CoachWishForm({
   weeks: WeekWindow[];
   lockedWeek: string | null;
   teams: Team[];
+  tiers: PriorityTier[];
   coaches: Coach[];
   teamCoaches: TeamCoach[];
   editing: CoachWish | null;
@@ -58,6 +65,11 @@ export function CoachWishForm({
     setWishedDays(next);
     setDays((d) => d.filter((x) => !next.includes(x)));
   };
+  // P2-63 A — le picker montre les jours DISPONIBLES (complément des indisponibilités), tous
+  // pressés par défaut. La donnée/le payload restent `unavailableDays` : dépresser un jour
+  // disponible revient à l'inscrire en indisponible.
+  const availableDays = ALL_DAYS.filter((d) => !days.includes(d));
+  const changeAvailableDays = (nextAvailable: number[]): void => changeDays(ALL_DAYS.filter((d) => !nextAvailable.includes(d)));
 
   const isEdit = null !== editing;
   // Une doléance DÉ-ATTRIBUÉE (coach supprimé) : seule elle peut rester sans coach. On ne
@@ -106,25 +118,24 @@ export function CoachWishForm({
   return (
     <form onSubmit={submit} className="space-y-2 rounded-md border border-border bg-surface-muted p-2">
       <div className="flex flex-wrap items-end gap-2">
-        <label className="text-xs text-muted-foreground">
+        {/* P2-63 C — sélecteur d'équipe PARTAGÉ (TeamSelect : groupes par rang, pastille couleur,
+            recherche au-delà de 8) : visible « Équipe » en caption, nom accessible via `aria-label`
+            (TeamSelect est un listbox bouton, pas un `<select>` labellable). */}
+        <div className="text-xs text-muted-foreground">
           Équipe
-          <Select
+          <TeamSelect
             aria-label="Équipe"
             wrapperClassName="mt-0.5 w-40"
+            teams={teams}
+            tiers={tiers}
             value={teamId}
             disabled={null !== editing}
-            onChange={(e) => {
-              setTeamId(e.target.value);
+            onValueChange={(v) => {
+              setTeamId(v);
               setCoachId(""); // recalcule le défaut coach sur la nouvelle équipe
             }}
-          >
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </Select>
-        </label>
+          />
+        </div>
         <label className="text-xs text-muted-foreground">
           Coach
           <Select aria-label="Coach" wrapperClassName="mt-0.5 w-40" value={resolvedCoachId} onChange={(e) => setCoachId(e.target.value)}>
@@ -167,7 +178,8 @@ export function CoachWishForm({
 
       <DayMultiPicker legend="Jours souhaités" legendVisible tone="accent" value={wishedDays} onChange={changeWishedDays} />
 
-      <DayMultiPicker legend="Jours indisponibles" legendVisible tone="accent" value={days} onChange={changeDays} />
+      {/* Pressé = DISPONIBLE (positif) : `tone="accent"`, jamais `destructive` (« bloqué »). */}
+      <DayMultiPicker legend="Jours disponibles" legendVisible tone="accent" value={availableDays} onChange={changeAvailableDays} />
 
       <textarea
         aria-label="Commentaire"

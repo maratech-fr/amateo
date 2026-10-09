@@ -183,6 +183,7 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
             weeks={shownWeeks}
             lockedWeek={weekFilter}
             teams={teamsWithMainCoach}
+            tiers={tiers}
             coaches={coaches}
             teamCoaches={teamCoaches}
             editing={editing}
@@ -274,6 +275,7 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
               calendarEntryId={mother.id}
               teams={teamsWithMainCoach}
               allTeams={teams}
+              tiers={tiers}
               coaches={coaches}
               teamCoaches={teamCoaches}
               editing={editingMut}

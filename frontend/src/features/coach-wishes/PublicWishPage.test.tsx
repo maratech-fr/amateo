@@ -110,7 +110,9 @@ describe("PublicWishPage — parcours en étapes", () => {
     await start();
     // Pré-remplissage « au nom de » sur l'étape de l'équipe.
     expect(screen.getByLabelText(/Séances souhaitées — SM1/)).toHaveValue(2);
-    expect(screen.getByRole("button", { name: "mercredi", pressed: true })).toBeInTheDocument();
+    // P2-63 A — « Jours disponibles » : mercredi (indisponible) est dépressé, pas pressé.
+    const dispo = screen.getByRole("group", { name: "Jours disponibles" });
+    expect(within(dispo).getByRole("button", { name: "mercredi" })).toHaveAttribute("aria-pressed", "false");
   });
 
   it("NR — le payload d'envoi reste octet-identique et ne part QU'À la validation (dirty-tracking)", async () => {
@@ -149,6 +151,27 @@ describe("PublicWishPage — parcours en étapes", () => {
     await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
     await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
     expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [], wishedDays: [2, 3], comment: "note manager" }], []);
+  });
+
+  // P2-63 A — inversion de PRÉSENTATION : « Jours disponibles » (tous pressés, on dépresse) ;
+  // le payload reste `unavailableDays` (jours dépressés = indisponibles), zéro migration.
+  it("P2-63 A — « Jours disponibles » : tout pressé sauf l'indisponible, et dépresser un jour l'envoie en unavailableDays", async () => {
+    h.getContext.mockResolvedValue(context()); // mercredi (3) préréglé indisponible
+    h.submit.mockResolvedValue({ deadline: "2027-06-30" });
+    renderAt();
+    await start();
+
+    const dispo = screen.getByRole("group", { name: "Jours disponibles" });
+    // Les six autres jours sont PRESSÉS (disponibles) ; mercredi (indisponible) est dépressé.
+    expect(within(dispo).getByRole("button", { name: "lundi" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(dispo).getByRole("button", { name: "mercredi" })).toHaveAttribute("aria-pressed", "false");
+
+    // Dépresser jeudi (disponible → indisponible) : il rejoint `unavailableDays`, donnée inchangée.
+    await userEvent.click(within(dispo).getByRole("button", { name: "jeudi" }));
+    await userEvent.click(screen.getByRole("button", { name: "Suivant" }));
+    await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
+    await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
+    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3, 4], wishedDays: [], comment: "note manager" }], []);
   });
 
   it("NR D2 — cocher un partenaire envoie une mutualisation (passerelle en tête)", async () => {
@@ -332,7 +355,7 @@ describe("PublicWishPage — en-tête D2 (dates, intro, animation)", () => {
     expect(screen.queryByText(/Bonjour Maxime —/)).not.toBeInTheDocument();
 
     expect(container.querySelectorAll("ul li")).toHaveLength(3);
-    expect(screen.getByText(/nombre de séances, jours souhaités et jours d'indisponibilité/)).toBeInTheDocument();
+    expect(screen.getByText(/nombre de séances, jours souhaités et jours de disponibilité/)).toBeInTheDocument();
     expect(screen.getByText(/vos réponses partent en une seule fois/)).toBeInTheDocument();
     expect(screen.getByText(/revenir modifier jusqu'à la date limite/)).toBeInTheDocument();
     expect(screen.getByText(/C'est un souhait, pas un engagement/)).toBeInTheDocument();

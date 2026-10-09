@@ -1,8 +1,9 @@
 import { type FormEvent, useState } from "react";
 
-import type { Coach, Team, TeamCoach } from "@/features/wizard/api";
+import type { Coach, PriorityTier, Team, TeamCoach } from "@/features/wizard/api";
 import { Button } from "@/shared/components/ui/button";
 import { Select } from "@/shared/components/ui/select";
+import { TeamSelect } from "@/shared/components/ui/team-select";
 
 import type { CoachWishMutualization, CoachWishMutualizationPayload } from "./mutualizationApi";
 
@@ -16,6 +17,7 @@ export function MutualizationForm({
   calendarEntryId,
   teams,
   allTeams,
+  tiers,
   coaches,
   teamCoaches,
   editing,
@@ -28,6 +30,7 @@ export function MutualizationForm({
   teams: Team[];
   /** Équipes pouvant être PARTENAIRES (toutes). */
   allTeams: Team[];
+  tiers: PriorityTier[];
   coaches: Coach[];
   teamCoaches: TeamCoach[];
   editing: CoachWishMutualization | null;
@@ -82,30 +85,27 @@ export function MutualizationForm({
   return (
     <form onSubmit={submit} className="space-y-2 rounded-md border border-border bg-surface-muted p-2">
       <div className="flex flex-wrap items-end gap-2">
-        <label className="text-xs text-muted-foreground">
+        {/* P2-63 C — sélecteur d'équipe PARTAGÉ (TeamSelect : groupes par rang, pastille, recherche). */}
+        <div className="text-xs text-muted-foreground">
           Équipe
-          <Select
+          <TeamSelect
             aria-label="Équipe"
             wrapperClassName="mt-0.5 w-40"
+            teams={teams}
+            tiers={tiers}
             value={teamId}
             disabled={isEdit}
-            onChange={(e) => {
-              setTeamId(e.target.value);
+            onValueChange={(v) => {
+              setTeamId(v);
               setCoachId("");
               setPartnerTeamIds((prev) => {
                 const next = new Set(prev);
-                next.delete(e.target.value); // une équipe ne se mutualise pas avec elle-même
+                next.delete(v); // une équipe ne se mutualise pas avec elle-même
                 return next;
               });
             }}
-          >
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </Select>
-        </label>
+          />
+        </div>
         <label className="text-xs text-muted-foreground">
           Coach
           <Select aria-label="Coach" wrapperClassName="mt-0.5 w-40" value={resolvedCoachId} onChange={(e) => setCoachId(e.target.value)}>
