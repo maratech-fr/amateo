@@ -79,4 +79,29 @@ describe("StepRail", () => {
     expect(screen.getByRole("button", { name: /Équipes/ }).textContent).toContain("1");
     expect(screen.getByRole("button", { name: /Coachs/ }).textContent).toContain("3");
   });
+
+  // D1 (lot 2) — le rail devient TRI-ÉTAT. L'état arrive CALCULÉ par l'appelant (présentation pure).
+  const triState: StepRailStep[] = [
+    { id: "a", label: "Équipes", state: "error" },
+    { id: "b", label: "Gymnases", state: "warning" },
+    { id: "c", label: "Coachs", state: "done" },
+  ];
+
+  it("état « error » → nom accessible « à corriger » et pastille au ton destructif", () => {
+    render(<StepRail steps={triState} currentId="a" onSelect={vi.fn()} />);
+    const err = screen.getByRole("button", { name: "Équipes — à corriger" });
+    expect(err.querySelector(".text-destructive")).not.toBeNull();
+  });
+
+  it("état « warning » → nom accessible « à vérifier » et pastille au ton d'avertissement", () => {
+    render(<StepRail steps={triState} currentId="a" onSelect={vi.fn()} />);
+    const warn = screen.getByRole("button", { name: "Gymnases — à vérifier" });
+    expect(warn.querySelector(".text-warning")).not.toBeNull();
+  });
+
+  it("état « done » via `state` → ✓ et « étape terminée » (équivalent au raccourci `done`)", () => {
+    render(<StepRail steps={triState} currentId="a" onSelect={vi.fn()} />);
+    const done = screen.getByRole("button", { name: "Coachs — étape terminée" });
+    expect(done.textContent).not.toContain("3");
+  });
 });

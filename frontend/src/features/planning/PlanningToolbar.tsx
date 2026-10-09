@@ -188,7 +188,10 @@ export function PlanningToolbar({
           // de travail — il vit au wizard (où l'on choisit la version), et son succès
           // atterrit sur /planning. Sur /planning autonome (la version en vigueur), c'est
           // « Rouvrir » qui prend le relais, pas Valider.
-          <Button size="sm" variant="outline" disabled={actionBusy} onClick={onValidate}>
+          // D4 (lot 2) — « Valider » passe en accent PLEIN (`default`) : c'est l'action de SORTIE
+          // de l'espace de travail, elle doit se lire comme le bouton principal. Même place, même
+          // taille (`size="sm"`).
+          <Button size="sm" variant="default" disabled={actionBusy} onClick={onValidate}>
             <CheckCircle2 className="size-4" />
             Valider
           </Button>

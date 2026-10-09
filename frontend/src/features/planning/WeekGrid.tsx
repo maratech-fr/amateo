@@ -515,10 +515,20 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                   {cell.roleTag ? <span className="shrink-0 rounded-sm bg-accent px-1 text-[10px] text-accent-foreground">{cell.roleTag}</span> : null}
                 </span>
                 {/* A11Y-22 — case RÉELLE teintée (`tint(venueColor)`) : sous-ligne en `text-foreground`,
-                    dé-emphase par la TAILLE seule (`text-[10px]`), jamais par l'opacité/`muted` (même
-                    recette que `WeekendGrid`). Le `text-muted-foreground` tombait à 4,24-4,33 en sombre
-                    (un coach, « Sans coach ») sur une teinte de gymnase composée sur card. */}
-                <span className="truncate text-[10px] text-foreground">{cell.secondaryLabel}</span>
+                    dé-emphase par la TAILLE seule (`text-[10px]`/`text-[9px]`), jamais par l'opacité/`muted`
+                    (même recette que `WeekendGrid`). Le `text-muted-foreground` tombait à 4,24-4,33 en sombre
+                    (un coach, « Sans coach ») sur une teinte de gymnase composée sur card.
+                    D5 (lot 2) — quand la sous-ligne est un COACH et que la tuile a la hauteur
+                    (`gridRowSpan ≥ 2`), prénom sur une ligne puis nom plus petit dessous ; sinon ligne
+                    unique. Dé-emphase du nom par la TAILLE seule (A11Y-22). */}
+                {null !== cell.coachName && cell.gridRowSpan >= 2 ? (
+                  <span className="flex min-w-0 flex-col leading-none">
+                    <span className="truncate text-[10px] text-foreground">{cell.coachName.first}</span>
+                    {"" === cell.coachName.last ? null : <span className="truncate text-[9px] text-foreground">{cell.coachName.last}</span>}
+                  </span>
+                ) : (
+                  <span className="truncate text-[10px] text-foreground">{cell.secondaryLabel}</span>
+                )}
               </button>
               {renderLock(cell.slotId, cell.teamLabel, cell.locked)}
               {lensActive && null !== cell.lockOrigin ? renderLensBadge(cell.lockOrigin) : null}

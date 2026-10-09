@@ -76,6 +76,33 @@ describe("WeekGrid", () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 
+  // D5 (lot 2) — la sous-ligne coach des vues gymnase/équipe : prénom puis nom plus petit dessous
+  // QUAND la tuile a la hauteur (gridRowSpan ≥ 2), sinon la ligne unique « Prénom Nom ».
+  describe("sous-ligne coach en deux lignes quand la tuile a la hauteur (D5)", () => {
+    const coachLookups: Lookups = {
+      teams: new Map<string, Team>([["t1", { id: "t1", name: "U11", sportCategoryId: "c", priorityTierId: 1, tierOrder: 0, sessionsPerWeek: 2 }]]),
+      venues: new Map<string, Venue>([["v1", { id: "v1", name: "Gymnase Alpha", color: "#00aa00" }]]),
+      coaches: new Map<string, Coach>([["c1", { id: "c1", firstName: "Marie", lastName: "Durand", gender: "UNSPECIFIED" }]]),
+      teamCoach: new Map<string, string>(),
+      teamPlayerCoaches: new Map<string, string[]>(),
+    };
+
+    it("tuile haute (90 min) → prénom et nom sur deux lignes distinctes", () => {
+      const model = buildGrid([{ ...slot, coachId: "c1", durationMinutes: 90 }], "gymnase", coachLookups);
+      render(<WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} />);
+      expect(screen.getByText("Marie")).toBeInTheDocument();
+      expect(screen.getByText("Durand")).toBeInTheDocument();
+      // Pas de ligne unique « Marie Durand » — les deux moitiés vivent séparément.
+      expect(screen.queryByText("Marie Durand")).toBeNull();
+    });
+
+    it("tuile courte (15 min, gridRowSpan 1) → ligne unique « Marie Durand »", () => {
+      const model = buildGrid([{ ...slot, coachId: "c1", durationMinutes: 15 }], "gymnase", coachLookups);
+      render(<WeekGrid model={model} selectedSlotId={null} onSelectSlot={vi.fn()} />);
+      expect(screen.getByText("Marie Durand")).toBeInTheDocument();
+    });
+  });
+
   describe("cadenas sur la carte (toggle en un clic)", () => {
     it("expose un cadenas nommant l'équipe qui bascule le verrou SANS ouvrir le panneau", async () => {
       const onSelect = vi.fn();

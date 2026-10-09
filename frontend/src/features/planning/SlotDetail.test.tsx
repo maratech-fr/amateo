@@ -45,6 +45,7 @@ const cell = (locked: boolean): GridCell => ({
   venueId: "venue-1",
   venueColor: null,
   coachLabel: "Jean Dupont",
+  coachName: { first: "Jean", last: "Dupont" },
   day: 2,
   startLabel: "18:00",
   endLabel: "19:30",

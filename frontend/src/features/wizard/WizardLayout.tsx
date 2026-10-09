@@ -30,7 +30,8 @@ import { toast } from "@/shared/stores/toastStore";
 import { parseWizardDeepLink, stepLockReason } from "./lib/deepLink";
 import { STEP_HELP_LABEL, STEP_HELP_TRIGGER, WIZARD_STEP_HELP } from "./lib/stepHelp";
 import { WizardFooterContext } from "./lib/footerSlot";
-import { WIZARD_STEPS, type WizardStepId } from "./lib/steps";
+import { type StepValidation, WIZARD_STEPS, type WizardStepId } from "./lib/steps";
+import { type RailState, railState } from "./lib/railState";
 import { useStepValidation } from "./lib/useStepValidation";
 import { useVenueMatchWindows } from "@/features/matches/queries";
 
@@ -145,6 +146,25 @@ export function WizardPage() {
     constraints: teamsDone && venuesDone && coachesDone && 0 === constraintsValidation.errors.length && true !== constraintsValidation.pending,
     recap: 0 === recapValidation.errors.length && true !== recapValidation.pending,
   };
+  // D1 (lot 2) — le rail est TRI-ÉTAT : rouge (blocage) > orange (alertes non bloquantes) > vert
+  // (fait). Même source que les coches et les portes (`useStepValidation`) ; la règle de priorité
+  // vit en fonction pure (`railState`). La GÉNÉRATION n'en porte pas (c'est l'action, pas une
+  // saisie à terminer) — seul son verrou (generateBlocked) la concerne.
+  const validationByStep: Partial<Record<WizardStepId, StepValidation>> = {
+    teams: teamsValidation,
+    venues: venuesValidation,
+    coaches: coachesValidation,
+    constraints: constraintsValidation,
+    recap: recapValidation,
+  };
+  const stepState: Partial<Record<WizardStepId, RailState>> = {};
+  for (const id of Object.keys(validationByStep) as WizardStepId[]) {
+    const v = validationByStep[id];
+    const s = undefined === v ? undefined : railState(v, true === stepDone[id]);
+    if (undefined !== s) {
+      stepState[id] = s;
+    }
+  }
 
   // « On part » — lu par le prédicat du blocker au moment de la navigation (les
   // valeurs de render y sont STALE : react-router enregistre le prédicat en
@@ -521,7 +541,7 @@ export function WizardPage() {
         <StepRail
           steps={WIZARD_STEPS.map((step, i) => ({
             ...step,
-            done: true === stepDone[step.id],
+            state: stepState[step.id],
             locked:
               (guided && i > maxIndex) ||
               ("generate" === step.id && generateBlocked) ||
@@ -570,7 +590,9 @@ export function WizardPage() {
 
         <StepContent stepId={stepId} />
 
-        {/* Récap renders its own grouped blocker panel, so skip the generic alerts there. */}
+        {/* Récap rend son PROPRE accordéon d'alertes groupées (D3) — erreurs ET warnings y
+            vivent (revirement fondateur 2026-10-09). On saute donc les deux rendus génériques
+            sur le récap ; partout ailleurs, erreurs puis warnings sous l'étape. */}
         {"recap" === stepId
           ? null
           : validation.errors.map((error) => (
@@ -579,12 +601,14 @@ export function WizardPage() {
                 {error}
               </p>
             ))}
-        {validation.warnings.map((warning) => (
-          <p key={warning} className="mt-3 flex items-center gap-2 text-sm text-warning">
-            <AlertTriangle className="size-4 shrink-0" />
-            {warning}
-          </p>
-        ))}
+        {"recap" === stepId
+          ? null
+          : validation.warnings.map((warning) => (
+              <p key={warning} className="mt-3 flex items-center gap-2 text-sm text-warning">
+                <AlertTriangle className="size-4 shrink-0" />
+                {warning}
+              </p>
+            ))}
 
         {/* Prev/Next footer (W7). Sticky on the data-entry steps; NOT sticky on
             Génération — there the embedded planning stack is taller than the

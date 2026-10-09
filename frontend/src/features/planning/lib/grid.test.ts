@@ -246,6 +246,28 @@ describe("buildGrid", () => {
   });
 });
 
+describe("buildGrid — nom du coach en deux moitiés sur la sous-ligne (D5, lot 2)", () => {
+  it("vues gymnase et équipe : la cellule porte prénom + nom du coach", () => {
+    const s = slot({ id: "a", coachId: "c1", teamId: "t1" });
+    const gym = buildGrid([s], "gymnase", lookups).cells.find((c) => c.slotId === "a")!;
+    expect(gym.coachName).toEqual({ first: "Jean", last: "Paul" });
+    const equipe = buildGrid([s], "equipe", lookups).cells.find((c) => c.slotId === "a")!;
+    expect(equipe.coachName).toEqual({ first: "Jean", last: "Paul" });
+  });
+
+  it("vue coach : la sous-ligne est le GYMNASE, pas un coach → coachName null", () => {
+    const s = slot({ id: "a", coachId: "c1", teamId: "t1" });
+    const coachCell = buildGrid([s], "coach", lookups).cells.find((c) => c.slotId === "a")!;
+    expect(coachCell.coachName).toBeNull();
+  });
+
+  it("une équipe sans coach ne porte pas de nom à couper (coachName null)", () => {
+    const s = slot({ id: "a", coachId: null, teamId: "t1" });
+    const gym = buildGrid([s], "gymnase", lookups).cells.find((c) => c.slotId === "a")!;
+    expect(gym.coachName).toBeNull();
+  });
+});
+
 describe("buildGrid — libellé de groupe / fusion (P2-17 D4)", () => {
   const u15: Team = { id: "t3", name: "U15", sportCategoryId: "cat1", priorityTierId: 3, tierOrder: 0, sessionsPerWeek: 2 };
   const withLabels = (entries: [string, string][], teams?: Map<string, Team>): Lookups => ({

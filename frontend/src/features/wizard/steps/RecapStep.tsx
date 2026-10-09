@@ -11,7 +11,7 @@ import { cn } from "@/shared/lib/utils";
 import { FAMILY_LABEL, FAMILY_ORDER, groupConstraints } from "../lib/constraintOrder";
 import { LEVEL_LABEL } from "../lib/labels";
 import { coachMeta, groupedCoaches } from "../lib/ranking";
-import { sharedSlotStatuses, slotKey } from "../lib/reservationSlots";
+import { slotKey } from "../lib/reservationSlots";
 import { postedGroupOnSlot, type PostedGroupLot } from "../lib/groupReservation";
 import { toast } from "@/shared/stores/toastStore";
 import { coachTeamNames, countSlotsByVenue } from "../lib/summary";
@@ -29,7 +29,7 @@ import { unservedReservationIds } from "../lib/orphanReservations";
 import { closuresByVenue } from "../lib/venueClosures";
 import { useDeleteReservation } from "../queries";
 import { Button } from "@/shared/components/ui/button";
-import { Trash2 } from "lucide-react";
+import { AlertTriangle, Trash2 } from "lucide-react";
 
 // Manager-facing labels for the FFBB play levels (mirrors the teams step).
 /**
@@ -160,9 +160,10 @@ export function RecapStep() {
   const sharedBlocks = null === layerPlanId ? sharedBlocksAll.filter((b) => null === b.schedulePlanId) : sharedBlocksAll;
   const { data: tiers = [] } = usePriorityTiers();
   const { data: tags = [] } = useWizardTeamTags();
-  // Blockers live in useStepValidation("recap") so the footer "Continuer vers la
-  // génération" button is gated by the same rules (single source of truth).
-  const { errors: blockers } = useStepValidation("recap");
+  // D2/D3 (lot 2) — le verdict du récap est la source UNIQUE : blocages (`errors`), warnings du
+  // serveur, et notices de créneau partagé typées. Le footer « Continuer vers la génération » est
+  // gaté par les mêmes `errors` ; l'accordéon d'alertes (plus bas) réunit les trois.
+  const { errors: blockers = [], warnings = [], notices = [] } = useStepValidation("recap");
 
   // Les équipes en pause : hors des compteurs (elles ne seront pas générées) mais
   // VISIBLES et barrées dans le détail — on doit voir ce qu'on a mis en pause.
@@ -191,21 +192,9 @@ export function RecapStep() {
   const teamName = new Map(allTeams.map((t) => [t.id, t.name]));
   const venueName = new Map(allVenues.map((v) => [v.id, v.name]));
   const coachName = new Map(coaches.map((c) => [c.id, `${c.firstName} ${c.lastName}`.trim()]));
-  // Créneaux PARTAGÉS (capacité ≥ 2) non ou partiellement réservés — décision P3-8 :
-  // pas d'écran binômes, le récap AVERTIT sans bloquer. Deux messages distincts parce
-  // que les conséquences diffèrent : non réservé = le système choisit (information) ;
-  // partiel = la place restante restera VIDE (ALIGN-07 — une réservation ferme le
-  // créneau entier au système), c'est une perte qu'il faut nommer.
-  // Créneaux et réservations lus sur la MÊME couche (layerPlanId / plan de l'ancre).
-  const sharedSlotNotices = sharedSlotStatuses(slots, reservations, new Map(allVenues.map((v) => [v.id, v.canSplit]))).map((s) => ({
-    key: s.slot.id,
-    partial: "partial" === s.kind,
-    place: `${venueName.get(s.slot.venueId) ?? "?"} · ${dayLabel(s.slot.dayOfWeek)} ${hhmm(s.slot.startTime)}`,
-    message:
-      "partial" === s.kind
-        ? `${s.reservedTeamIds.length} équipe(s) réservée(s) sur ${s.capacity} places — le système ne complétera pas ce créneau, la place restante restera vide. Réservez aussi l'autre équipe, ou retirez la réservation pour laisser le système choisir.`
-        : `créneau partagé (${s.capacity} places) sans réservation — le système associera les équipes lui-même. Pour choisir lesquelles, réservez-les (étape Contraintes, onglet Réserver).`,
-  }));
+  // D2 (lot 2) — les notices de créneau partagé sont désormais CALCULÉES par le verdict
+  // (`useStepValidation("recap")`, lues plus haut) et rendues dans l'accordéon d'alertes en haut :
+  // une seule vérité, partagée avec le rail et le gate (fini la copie locale ici).
   // Reservations ordered by team rank (fanion S → A → B → C → D), then day + time.
   const teamRank = new Map(groupTeamsByTier(teams, tiers).flatMap((g) => g.teams).map((t, i) => [t.id, i]));
   const rankOf = (id: string): number => teamRank.get(id) ?? Number.MAX_SAFE_INTEGER;
@@ -356,6 +345,55 @@ export function RecapStep() {
           <NoticeBanner key={notice.message} tone="warning" className="mb-3" message={notice.message} />
         ),
       )}
+      {/* D3 (lot 2, revirement fondateur 2026-10-09) — l'accordéon d'alertes vit EN HAUT du récap,
+          OUVERT par défaut : tout ce qui pèse sur la décision de lancer (blocages + notices de
+          créneau partagé + warnings serveur) y est réuni. Rouge si ≥ 1 blocage, sinon orange ; le
+          sens vit dans le TITRE (icône + couleur), l'accordéon partagé portant son liseré teal. Le
+          bas de page ne garde qu'UNE ligne d'état courte. L'ancienne décision (2026-08-04 : encart
+          « en bas, avec la zone de décision ») est explicitement revue. */}
+      {blockers.length + notices.length + warnings.length > 0 ? (
+        <AccordionSection
+          defaultOpen
+          className="mb-4"
+          title={
+            // Le TEXTE porte toujours le sens (les mots « blocage(s) »/« alerte(s) ») et reste
+            // `text-foreground` (jamais `text-warning`/`text-destructive` en TEXTE sur bg-card,
+            // sous l'AA sur leur teinte) ; la sévérité se LIT en plus sur l'icône (élément
+            // graphique, AA 1.4.11 ≥ 3:1), rouge si blocage, orange sinon.
+            blockers.length > 0 ? (
+              <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <AlertTriangle className="size-4 text-destructive" aria-hidden="true" />
+                {blockers.length} blocage(s) à corriger avant de générer
+              </span>
+            ) : (
+              <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <AlertTriangle className="size-4 text-warning" aria-hidden="true" />
+                {notices.length + warnings.length} alerte(s) à vérifier
+              </span>
+            )
+          }
+        >
+          <div className="space-y-2">
+            <BlockerList blockers={blockers} />
+            {notices.map((notice) => (
+              // Partiel = warning (une place se PERD) ; non réservé = information neutre (le système
+              // fera un choix légitime). Le ton visuel suit la gravité (même œil que layerNotices).
+              <NoticeBanner
+                key={notice.key}
+                tone={notice.tone}
+                message={
+                  <>
+                    <span className="font-medium">{notice.place}</span> : {notice.message}
+                  </>
+                }
+              />
+            ))}
+            {warnings.map((warning) => (
+              <NoticeBanner key={warning} tone="warning" message={warning} />
+            ))}
+          </div>
+        </AccordionSection>
+      ) : null}
       {/* P4-107 (4ᵉ tranche) — la bande de cartes est BORNÉE : à 1920 chacune faisait ~460 px
           pour porter un nombre à deux chiffres, et l'œil devait parcourir toute la largeur pour
           lire quatre chiffres qui se comparent. ⚠ Ce cap est un choix ERGONOMIQUE, pas une
@@ -504,26 +542,11 @@ export function RecapStep() {
         </AccordionSection>
       </div>
 
-      {/* Encarts créneaux partagés AVEC les bloqueurs, au-dessus du bouton (demande
-          fondateur 2026-08-04) : tout ce qui pèse sur la décision de lancer vit au
-          même endroit — en haut ils étaient incohérents avec les warnings du bas. */}
-      {sharedSlotNotices.map((notice) => (
-        // Partiel = warning (une place se PERD) ; non réservé = information neutre (le système
-        // fera un choix légitime). Même œil que layerNotices : le ton visuel suit la gravité,
-        // sinon tout bandeau finit par ne plus rien dire.
-        <NoticeBanner
-          key={notice.key}
-          tone={notice.partial ? "warning" : "muted"}
-          className="mb-3"
-          message={
-            <>
-              <span className="font-medium">{notice.place}</span> : {notice.message}
-            </>
-          }
-        />
-      ))}
+      {/* D3 (lot 2) — le bas ne porte plus qu'UNE ligne d'état courte : le détail (blocages,
+          notices, warnings) vit dans l'accordéon EN HAUT. Un blocage renvoie l'œil vers le haut
+          plutôt que de recopier la liste au ras du bouton. */}
       {blockers.length > 0 ? (
-        <BlockerList blockers={blockers} className="mb-4" />
+        <p className="text-sm text-destructive">{blockers.length} blocage(s) — détail en haut de page.</p>
       ) : (
         <p className="text-sm text-success">Tout est prêt. Utilisez « Continuer vers la génération » en bas pour lancer.</p>
       )}

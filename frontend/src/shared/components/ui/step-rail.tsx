@@ -1,16 +1,40 @@
-import { Check, Lock } from "lucide-react";
+import { AlertTriangle, Check, Lock } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
+
+/** L'état TRI-ÉTAT d'une étape (D1) : fait (vert), alertes non bloquantes (orange), blocage (rouge). */
+export type StepRailState = "done" | "warning" | "error";
 
 /** Une étape du rail. Les états VIVENT dans l'entrée (pas de map parallèle : un `id`
  *  fantôme est ainsi impossible). Le numéro affiché est dérivé de la position, jamais porté. */
 export interface StepRailStep<Id extends string = string> {
   id: Id;
   label: string;
-  /** Étape complète → pastille ✓ + nom accessible enrichi. */
+  /**
+   * D1 — l'état TRI-ÉTAT, CALCULÉ par l'appelant (présentation pure ici) : `done` ✓ vert,
+   * `warning` ⚠ orange (alertes non bloquantes), `error` ⚠ rouge (blocage). Prime sur `done`.
+   */
+  state?: StepRailState;
+  /** Raccourci rétro-compatible de `state: "done"` → pastille ✓ + nom accessible enrichi. */
   done?: boolean;
   /** Étape hors d'atteinte → bouton `disabled` + cadenas. */
   locked?: boolean;
+}
+
+/** Nom accessible (WCAG 2.5.3) : le texte visible + l'état, s'il y en a un. `done` prime (une
+ *  étape faite ne se dit jamais « verrouillée » — cf. une étape terminée mais en lecture seule). */
+function stateSuffix(state: StepRailState | undefined, locked: boolean): string {
+  if ("done" === state) {
+    return " — étape terminée";
+  }
+  if ("error" === state) {
+    return " — à corriger";
+  }
+  if ("warning" === state) {
+    return " — à vérifier";
+  }
+
+  return locked ? " — étape verrouillée" : "";
 }
 
 interface StepRailProps<Id extends string> {
@@ -41,8 +65,11 @@ export function StepRail<Id extends string>({ steps, currentId, onSelect }: Step
     <nav className="shrink-0 md:w-44">
       <ol className="flex flex-col gap-1">
         {steps.map((step, i) => {
-          const done = true === step.done;
+          // `state` prime ; `done` reste un raccourci rétro-compatible de `state: "done"`.
+          const state: StepRailState | undefined = step.state ?? (true === step.done ? "done" : undefined);
+          const done = "done" === state;
           const locked = true === step.locked;
+          const suffix = stateSuffix(state, locked);
           return (
             <li key={step.id}>
               <button
@@ -51,23 +78,24 @@ export function StepRail<Id extends string>({ steps, currentId, onSelect }: Step
                 onClick={() => onSelect(step.id)}
                 aria-current={step.id === currentId ? "step" : undefined}
                 // WCAG 2.5.3 : le nom accessible CONTIENT le texte visible, l'état s'ajoute.
-                // Verrouillée : on dit l'ÉTAT (pas le POURQUOI — le rail est présentation pure,
-                // il ne connaît pas la raison métier du verrou).
-                aria-label={done ? `${step.label} — étape terminée` : locked ? `${step.label} — étape verrouillée` : undefined}
+                // L'état (fait/à vérifier/à corriger/verrouillée) n'est jamais porté par la seule
+                // couleur — le rail est présentation pure, il ne connaît pas le POURQUOI du verrou.
+                aria-label={"" === suffix ? undefined : `${step.label}${suffix}`}
                 className={cn(
                   "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition",
                   step.id === currentId ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/60",
                   locked ? "cursor-not-allowed opacity-40 hover:bg-transparent" : "",
                 )}
               >
-                {/* La pastille dit l'ÉTAT : ✓ = étape complète, numéro (dérivé de la position) sinon. */}
+                {/* La pastille dit l'ÉTAT par sa teinte (le nom accessible porte le sens) : ✓ vert =
+                    fait ; ⚠ rouge = blocage ; ⚠ orange = alertes ; numéro (dérivé de la position) sinon. */}
                 <span
                   className={cn(
                     "flex size-5 shrink-0 items-center justify-center rounded-full border text-xs",
-                    done ? "border-success text-success" : "border-border",
+                    done ? "border-success text-success" : "error" === state ? "border-destructive text-destructive" : "warning" === state ? "border-warning text-warning" : "border-border",
                   )}
                 >
-                  {done ? <Check className="size-3" aria-hidden="true" /> : i + 1}
+                  {done ? <Check className="size-3" aria-hidden="true" /> : "error" === state || "warning" === state ? <AlertTriangle className="size-3" aria-hidden="true" /> : i + 1}
                 </span>
                 <span className="flex-1">{step.label}</span>
                 {/* Décoratif : l'état est déjà porté par le nom accessible (aria-label), comme le ✓. */}

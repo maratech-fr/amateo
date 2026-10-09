@@ -7,8 +7,9 @@ import { useWizardStore } from "../store";
 import { DAY_LABEL_LONG } from "@/shared/lib/days";
 
 import { activeTeams, activeVenues, pausedTeamIds } from "./activeLayer";
-import { effectiveSlotCapacity, slotKey } from "./reservationSlots";
-import { okValidation, type StepValidation, type WizardStepId } from "./steps";
+import { dayLabel, hhmm } from "./days";
+import { effectiveSlotCapacity, sharedSlotStatuses, slotKey } from "./reservationSlots";
+import { okValidation, type RecapNotice, type StepValidation, type WizardStepId } from "./steps";
 
 // D-22 : libellés longs partagés (index 0 vide EXPRÈS — le jour ISO commence à 1).
 const DAY_LABELS = DAY_LABEL_LONG;
@@ -304,12 +305,31 @@ export function useStepValidation(stepId: WizardStepId): StepValidation {
       errors.push("La vérification des contraintes n'a pas pu être effectuée — réessayez avant de générer.");
     }
 
+    // D2 (lot 2) — les notices de créneau partagé sont désormais FONDUES dans le verdict (source
+    // unique lue par le rail, l'accordéon et le gate) plutôt que recalculées dans RecapStep. Même
+    // couche que le reste du récap : les créneaux de la grille éditée (période ou socle) et les
+    // réservations de l'ancre, canSplit lu des gymnases. La LOGIQUE vit dans `sharedSlotStatuses`.
+    const gridSlots = periodMode ? periodSlots : slots;
+    const canSplit = new Map(venues.map((v) => [v.id, v.canSplit]));
+    const venueNameById = new Map(venues.map((v) => [v.id, v.name]));
+    const notices: RecapNotice[] = sharedSlotStatuses(gridSlots, reservations, canSplit).map((s) => ({
+      key: s.slot.id,
+      // Partiel = une place se PERD (avertissement orange) ; non réservé = information neutre
+      // (le système choisira, gris). Mêmes deux tons et mêmes textes qu'auparavant côté récap.
+      tone: "partial" === s.kind ? "warning" : "muted",
+      place: `${venueNameById.get(s.slot.venueId) ?? "?"} · ${dayLabel(s.slot.dayOfWeek)} ${hhmm(s.slot.startTime)}`,
+      message:
+        "partial" === s.kind
+          ? `${s.reservedTeamIds.length} équipe(s) réservée(s) sur ${s.capacity} places — le système ne complétera pas ce créneau, la place restante restera vide. Réservez aussi l'autre équipe, ou retirez la réservation pour laisser le système choisir.`
+          : `créneau partagé (${s.capacity} places) sans réservation — le système associera les équipes lui-même. Pour choisir lesquelles, réservez-les (étape Contraintes, onglet Réserver).`,
+    }));
+
     // Les avertissements du serveur — une contrainte écartée du payload parce qu'elle
     // nomme un gymnase désactivé. ⚠ LUS HORS du `if (!valid)` ci-dessus : ils n'invalident
     // rien (règle #8), donc ils arrivent précisément avec `valid: true`. Pas de
     // `humanizeConstraintError` : le serveur nomme déjà la contrainte ET le gymnase,
-    // l'humaniser effacerait ce qui permet d'agir. `WizardLayout` les rend déjà.
-    return { errors, warnings: constraintValidation?.warnings ?? [], pending: constraintNeeded && constraintQuery.isLoading };
+    // l'humaniser effacerait ce qui permet d'agir. Le récap les rend dans son accordéon.
+    return { errors, warnings: constraintValidation?.warnings ?? [], notices, pending: constraintNeeded && constraintQuery.isLoading };
   }
   return okValidation();
 }
