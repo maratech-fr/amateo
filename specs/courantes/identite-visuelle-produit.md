@@ -1,14 +1,19 @@
 # Identité visuelle produit — la base est le produit, l'accent est le club
 
-Last verified @ 2026-10-09 (lot D1, gabarit d'e-mail commun ; fond de carte recalibré à 85 %). Re-confronté au code : le volet
-e-mails (§ Ce qui reste à venir) est refondu — `App\Mail\EmailTemplateRenderer` (carte ~600 px +
-fond dérivé des trois teintes du mark, en-tête club conditionnel) et `App\Mail\ClubMailMetadata`
-(identité du club posée par les 7 builders à club connu) remplacent la signature texte échappé +
-`nl2br` d'origine ; les valeurs de fond dérivées (`#F4DDED`/`#F9EBD9`/`#E3F3F3`/`#F0E9E8`)
-recalculées depuis `BrandAssets::MARK_TINTS` et `EmailTemplateRenderer::WHITE_MIX_RATIO` (0.85).
-Reste du fichier non re-vérifié cette passe : le balisage JSON-LD de la vitrine (2026-10-06), le
-logo signature des pages système (P4-302, 2026-10-05), le volet PDF/OG image/doléances (P5-24,
-2026-09-29 — inchangé), les jetons `--surface-*` (P4-265, 2026-09-27),
+Last verified @ 2026-10-09 (lot D1, PR 1 + PR 2 — gabarit commun, fond recalibré à 85 %, lien coach personnalisé
++ aperçu). Re-confronté au code : fond de carte dérivé de `BrandAssets::MARK_TINTS` à
+`EmailTemplateRenderer::WHITE_MIX_RATIO` 0.85 (`#F4DDED`/`#F9EBD9`/`#E3F3F3`, uni `#F0E9E8`) ; le gabarit de carte (§ Ce qui reste à venir) gagne un bouton CTA HTML optionnel
+(`EmailTemplateRenderer::ctaButton`, en-têtes internes `X-Amateo-Cta-Url`/`-Label` posés à la
+SOURCE par `CoachWishMailBuilder::buildCoachLink`, lus/retirés par `EmailSignatureListener`, href
+rendu seulement s'il est `http(s)`) et le lien coach (envoi initial + relance) porte un
+expéditeur personnalisé — « {Prénom du gestionnaire qui déclenche} ({libellé club}) via
+{produit} » (`MailFrom::addressAs()`, MÊME adresse, seul le nom affiché varie). Nouveau
+`GET /api/coach_wish_campaigns/{id}/email-preview` (`CoachWishEmailPreviewController`,
+gestionnaires) rend ce MÊME gabarit avec un jeton factice constant et les logos en `data:` URI
+(un `cid:` ne résout pas dans l'iframe d'aperçu du front). Reste du fichier non re-vérifié cette
+passe : le balisage JSON-LD de la vitrine (2026-10-06), le logo signature des pages système
+(P4-302, 2026-10-05), le volet PDF/OG image/doléances (P5-24, 2026-09-29 — inchangé), les jetons
+`--surface-*` (P4-265, 2026-09-27),
 `color.ts`/`ClubPage.tsx`/`brand-icon.tsx`/`favicon.svg`/`brand-mark.tsx`/`system-screen.tsx`/
 `AdminAuthLayout.tsx` (2026-09-26) — historique des vérifications précédentes :
 `git log -p --follow`. Les ratios de contraste des jetons `--surface-*` sont ceux consignés en
@@ -292,6 +297,25 @@ FIGÉ**.
   fermée** (fondateur, 2026-09-29) : signature sur tous les e-mails, superadmin compris ;
   l'accroche reprend le titre de la vitrine ; le lien pointe vers la vitrine, jamais l'app —
   `etat-des-lieux.md` §2.
+- **Lien coach habillé (D1, 2026-10-09)** : le gabarit CARTE ci-dessus gagne un **bouton CTA**
+  optionnel (`EmailTemplateRenderer::ctaButton` — table + styles inline, survit à Outlook/Gmail),
+  posé par `App\Service\CoachWishMailBuilder::buildCoachLink` sur l'envoi initial ET la relance
+  (en-têtes internes `X-Amateo-Cta-Url`/`-Label`, lus et RETIRÉS au worker par
+  `EmailSignatureListener` comme les autres `X-Amateo-*`) ; l'`href` n'est rendu que s'il est
+  `http(s)` (un `javascript:`/`data:` n'est jamais cliquable), label et URL échappés. La partie
+  TEXTE garde le lien nu en plus du bouton (un client sans HTML reste cliquable, le masquage démo
+  l'attend). Le corps et l'expéditeur portent désormais le **prénom du gestionnaire qui déclenche
+  CET envoi** (pas un libellé de club impersonnel) : « {Prénom} ({`Club::emailLabel()`}) prépare
+  le planning de « {période} » … » et un expéditeur « {Prénom} ({libellé}) via {produit} »
+  (`App\Service\MailFrom::addressAs()` — MÊME adresse d'envoi, seul le nom affiché varie, encodé
+  RFC 2047 à la construction). **Aperçu avant envoi** : `GET /api/coach_wish_campaigns/{id}/
+  email-preview` (`CoachWishEmailPreviewController`, gestionnaires, 404 byte-identique hors club)
+  construit ce MÊME e-mail avec un jeton FACTICE constant (jamais un vrai lien personnel) et un
+  prénom de coach d'exemple, et sert ses logos en `data:` URI (les `cid:` du mail réel ne
+  résolvent pas dans l'iframe) ; le front (`CampaignDialog`) l'affiche dans une iframe
+  `sandbox=""` (patron `MailboxPage` : du HTML non fiable ne s'injecte jamais
+  autrement). Détail API/contrôleur : `backend/docs/backend-controllers.md` §
+  « Aperçu de l'e-mail coach ».
 - **Image OG — posée (P5-24 PR-3, 2026-09-29)** : une image de partage Open Graph **UNIQUE** (1200×630,
   fond CLAIR `#faf9f7`, logotype + accroche de la vitrine), servie en deux copies octet-identiques
   — `landing/assets/brand/og.png` et `frontend/public/brand/og.png`, chacune sur son propre

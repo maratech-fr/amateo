@@ -35,13 +35,16 @@ const createMut = vi.fn();
 const updateMut = vi.fn();
 const sendMut = vi.fn();
 const remindMut = vi.fn();
+const refetchPreview = vi.fn();
 const sendState: { isError: boolean; error: unknown } = { isError: false, error: null };
 const remindState: { isError: boolean; error: unknown } = { isError: false, error: null };
+const previewState: { data: { subject: string; from: string; html: string } | undefined; isError: boolean } = { data: undefined, isError: false };
 vi.mock("./campaignQueries", () => ({
   useCreateCoachWishCampaign: () => ({ mutate: createMut, isPending: false, isError: false }),
   useUpdateCoachWishCampaign: () => ({ mutate: updateMut, isPending: false, isError: false }),
   useSendCampaignLinks: () => ({ mutate: sendMut, isPending: false, isError: sendState.isError, error: sendState.error }),
   useRemindCampaignSilent: () => ({ mutate: remindMut, isPending: false, isError: remindState.isError, error: remindState.error }),
+  useCoachWishEmailPreview: () => ({ data: previewState.data, isError: previewState.isError, refetch: refetchPreview }),
 }));
 
 const copyMock = vi.fn().mockResolvedValue(true);
@@ -84,6 +87,9 @@ describe("CampaignDialog", () => {
     sendState.error = null;
     remindState.isError = false;
     remindState.error = null;
+    previewState.data = undefined;
+    previewState.isError = false;
+    refetchPreview.mockReset();
   });
   afterEach(() => setTodayOverride(null));
 
@@ -752,5 +758,56 @@ describe("CampaignDialog", () => {
     render(<CampaignDialog entry={entry} season={season} existing={existing} onClose={vi.fn()} />);
 
     expect(screen.getByRole("button", { name: /Relancer les silencieux/ })).toBeEnabled();
+  });
+
+  // ── D1 — aperçu de l'e-mail du lien coach (envoi initial) ──
+
+  const previewCampaign: CoachWishCampaign = {
+    id: "camp1",
+    calendarEntryId: "e1",
+    deadline: "2027-06-30",
+    weeks: ["2026-02-16"],
+    teamIds: ["t1"],
+    totalCoachCount: 1,
+    respondedCoachCount: 0,
+    openWishCount: 0,
+    lastReminderAt: null,
+    coaches: [{ coachId: "c1", firstName: "Maxime", lastName: "Durand", email: "m@x.fr", token: "a".repeat(64), respondedAt: null, sentAt: null }],
+  };
+
+  it("ouvre l'aperçu de l'e-mail dans une iframe sandboxée, objet et expéditeur au-dessus", async () => {
+    previewState.data = { subject: "Vos disponibilités pour Toussaint", from: "Gérald (BCCL) via Amateo <no-reply@amateo.app>", html: "<p>Bonjour Prénom</p>" };
+    render(<CampaignDialog entry={entry} season={season} existing={previewCampaign} onClose={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /Aperçu de l'e-mail/ }));
+
+    expect(screen.getByText("Vos disponibilités pour Toussaint")).toBeInTheDocument();
+    expect(screen.getByText(/via Amateo/)).toBeInTheDocument();
+    const iframe = screen.getByTitle("Aperçu de l'e-mail");
+    // sandbox="" = bac à sable inerte (ni script, ni même origine) — patron MailboxPage.
+    expect(iframe).toHaveAttribute("sandbox", "");
+    expect(iframe).toHaveAttribute("srcdoc", "<p>Bonjour Prénom</p>");
+  });
+
+  it("montre un chargement tant que l'aperçu n'est pas arrivé (jamais une iframe vide)", async () => {
+    previewState.data = undefined;
+    render(<CampaignDialog entry={entry} season={season} existing={previewCampaign} onClose={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /Aperçu de l'e-mail/ }));
+
+    expect(screen.getByLabelText("Chargement")).toBeInTheDocument();
+    expect(screen.queryByTitle("Aperçu de l'e-mail")).toBeNull();
+  });
+
+  it("montre une erreur avec « Réessayer » quand l'aperçu échoue", async () => {
+    previewState.data = undefined;
+    previewState.isError = true;
+    render(<CampaignDialog entry={entry} season={season} existing={previewCampaign} onClose={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /Aperçu de l'e-mail/ }));
+
+    expect(screen.getByText(/aperçu n'a pas pu être chargé/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Réessayer" }));
+    expect(refetchPreview).toHaveBeenCalled();
   });
 });

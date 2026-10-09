@@ -1,8 +1,9 @@
-Last verified @ 2026-10-08 (D1 PR 1 — nom court du club : AJOUT de `PATCH /api/club/short-name`
-(`ClubShortNameController`, gestionnaires) et du champ `shortName` sur la ressource `Club`).
+Last verified @ 2026-10-08 (D1 PR 2 — aperçu de l'e-mail coach : AJOUT de
+`GET /api/coach_wish_campaigns/{id}/email-preview` (`CoachWishEmailPreviewController`,
+gestionnaires), déclaré dans `CoachWishPaths`).
 
-**234 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`8458013929fc41dfcf44b2e81d16ed4d0e37b3a308dab1f1c8dc87b4eb01b4a2` (`sha256sum` sur le fichier).
+**235 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`2b4588ac7796129e2ed0050bf8799343b37762da27826710facf22add5d47348` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

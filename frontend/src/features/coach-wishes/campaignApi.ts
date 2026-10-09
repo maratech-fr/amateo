@@ -66,3 +66,19 @@ export const sendCampaignLinks = (id: string, coachIds?: string[]): Promise<Camp
 
 /** Relance les silencieux (1×/jour — 422 si déjà relancé aujourd'hui). */
 export const remindCampaignSilent = (id: string): Promise<CampaignActionResult> => api.post(`coach_wish_campaigns/${id}/remind`, { json: {} }).json();
+
+/**
+ * Aperçu de l'e-mail du lien coach (D1) : l'e-mail EXACT de l'envoi initial, bâti côté serveur
+ * avec un jeton FACTICE (jamais un vrai lien personnel) et un prénom de coach d'exemple. Le HTML
+ * est prêt à afficher dans une iframe sandboxée (logos en data: URI).
+ */
+export interface CoachWishEmailPreview {
+  subject: string;
+  /** Expéditeur affiché, p. ex. « Prénom (Club) via Amateo <no-reply@amateo.app> ». */
+  from: string;
+  /** Corps HTML rendu, sûr à injecter dans une iframe `sandbox=""`. */
+  html: string;
+}
+
+/** Récupère l'aperçu de l'e-mail du lien coach d'une campagne (gestionnaire seulement). */
+export const getCoachWishEmailPreview = (id: string): Promise<CoachWishEmailPreview> => api.get(`coach_wish_campaigns/${id}/email-preview`).json();

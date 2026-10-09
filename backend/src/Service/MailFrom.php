@@ -33,4 +33,18 @@ final readonly class MailFrom
     {
         return new Address($this->mailFromAddress, $this->mailFromName);
     }
+
+    /**
+     * La MÊME adresse d'envoi, mais avec un nom affiché FOURNI — p. ex. « Prénom (BC Lyon)
+     * via Amateo » sur le lien coach (D1). L'adresse ne change jamais (elle doit suivre le
+     * domaine vérifié SPF/DKIM/DMARC) ; seul le nom varie, personnalisé à la source.
+     *
+     * Maison unique de cette variante : {@see Address} strippe les CR/LF du nom à la
+     * construction et encode le reste en RFC 2047 au rendu — aucune injection d'en-tête
+     * possible depuis un prénom ou un nom court non fiables.
+     */
+    public function addressAs(string $displayName): Address
+    {
+        return new Address($this->mailFromAddress, $displayName);
+    }
 }

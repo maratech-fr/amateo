@@ -8,6 +8,7 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\Coach;
 use App\Entity\CoachWishCampaign;
+use App\Entity\User;
 use App\Repository\CoachWishTokenRepository;
 use App\Service\CoachWishCampaignPresenter;
 use App\Service\CoachWishMailBuilder;
@@ -139,6 +140,11 @@ final class CoachWishCampaignActionController extends AbstractController
         $entry = $this->entityManager->getRepository(CalendarEntry::class)->find($campaign->getCalendarEntryId());
         $periodTitle = $entry?->getTitle() ?? 'la période';
 
+        // Formule A (D1) : le corps et l'expéditeur portent le PRÉNOM du gestionnaire qui
+        // déclenche CET envoi/relance — le `getUser()` courant, après assertManager (SEC-07).
+        $user = $this->getUser();
+        $senderFirstName = $user instanceof User ? $user->getFirstName() : '';
+
         $tokens = $this->tokenRepository->findByCampaign($campaign->getId());
         $wanted = null === $onlyCoachIds ? null : array_flip($onlyCoachIds);
         $sent = 0;
@@ -161,7 +167,7 @@ final class CoachWishCampaignActionController extends AbstractController
             }
 
             try {
-                $this->mailer->send($this->mailBuilder->buildCoachLink($email, $coach->getFirstName(), $clubName, $campaign, $periodTitle, $token->getToken(), $isReminder, $club));
+                $this->mailer->send($this->mailBuilder->buildCoachLink($email, $coach->getFirstName(), $clubName, $campaign, $periodTitle, $token->getToken(), $senderFirstName, $isReminder, $club));
                 $token->markSent($this->clock->now());
                 ++$sent;
             } catch (Throwable) {

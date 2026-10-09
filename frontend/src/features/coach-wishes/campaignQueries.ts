@@ -49,3 +49,17 @@ export function useRemindCampaignSilent() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["coach-wish-campaigns"] }),
   });
 }
+
+/**
+ * D1 — aperçu de l'e-mail du lien coach, chargé À LA DEMANDE (`enabled` = fenêtre d'aperçu
+ * ouverte). On ne précharge pas : c'est un rendu serveur, inutile tant que le gestionnaire ne le
+ * demande pas.
+ */
+export function useCoachWishEmailPreview(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["coach-wish-campaign-email-preview", id],
+    queryFn: () => campaignApi.getCoachWishEmailPreview(id),
+    enabled,
+    staleTime: 60_000,
+  });
+}

@@ -99,6 +99,42 @@ final class EmailSignatureListenerTest extends TestCase
         self::assertSame('image/png', $clubLogo->getContentType());
     }
 
+    public function testRendersTheCtaButtonFromHeadersAndStripsThemAtWorker(): void
+    {
+        $email = $this->emailWithText('Corps.');
+        $email->getHeaders()->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, 'https://app.amateo.test/doleances/abc');
+        $email->getHeaders()->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, 'Donner mes disponibilités');
+
+        // Enfilage : le renderer pose le bouton dans le HTML à partir des en-têtes.
+        $this->listener()->onMessage($this->enqueueEvent($email));
+        $html = (string) $email->getHtmlBody();
+        self::assertStringContainsString('Donner mes disponibilités', $html);
+        self::assertStringContainsString('href="https://app.amateo.test/doleances/abc"', $html);
+
+        // Worker : les en-têtes CTA (comme tous les X-Amateo-*) sont retirés avant SMTP.
+        $this->listener()->onMessage($this->workerEvent($email));
+        self::assertFalse($email->getHeaders()->has(EmailTemplateRenderer::CTA_URL_HEADER));
+        self::assertFalse($email->getHeaders()->has(EmailTemplateRenderer::CTA_LABEL_HEADER));
+    }
+
+    public function testTextKeepsTheRawLinkButHtmlShowsItOnlyInTheButton(): void
+    {
+        // Le corps porte le lien nu (comme le fait le builder) ET les en-têtes CTA le désignent.
+        $url = 'https://app.amateo.test/doleances/tok123';
+        $email = $this->emailWithText("Bonjour,\n\nPrépare le planning.\n\n" . $url . "\n\nMerci.");
+        $email->getHeaders()->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, $url);
+        $email->getHeaders()->addTextHeader(EmailTemplateRenderer::CTA_LABEL_HEADER, 'Donner mes disponibilités');
+
+        $this->listener()->onMessage($this->enqueueEvent($email));
+
+        // La partie TEXTE garde le lien nu (inchangée — Behat/boîte démo l'y attendent).
+        self::assertStringContainsString($url, (string) $email->getTextBody());
+        // La partie HTML ne le montre QUE dans le bouton (href), jamais en doublon brut au-dessus.
+        $html = (string) $email->getHtmlBody();
+        self::assertSame(1, substr_count($html, $url));
+        self::assertStringContainsString('href="' . $url . '"', $html);
+    }
+
     public function testInternalHeadersAreStrippedAtWorkerPhase(): void
     {
         $email = $this->emailWithText('Corps.');

@@ -109,8 +109,14 @@ final readonly class EmailSignatureListener implements EventSubscriberInterface
             $message->embed($clubLogoBytes, EmailTemplateRenderer::CLUB_LOGO_CID, $this->detectImageMime($clubLogoBytes));
         }
 
+        // Bouton CTA (lien coach D1) : URL + libellé posés en en-têtes internes à la source. Le
+        // renderer valide l'URL (`https?://`) et l'échappe ; les en-têtes sont retirés au worker
+        // comme les autres `X-Amateo-*`.
+        $ctaUrl = $this->headerValue($message, EmailTemplateRenderer::CTA_URL_HEADER);
+        $ctaLabel = $this->headerValue($message, EmailTemplateRenderer::CTA_LABEL_HEADER);
+
         $message->html(
-            $this->renderer->render($originalText, $name, $tagline, $siteUrl, $clubLabel, null !== $clubLogoBytes),
+            $this->renderer->render($originalText, $name, $tagline, $siteUrl, $clubLabel, null !== $clubLogoBytes, $ctaUrl, $ctaLabel),
             $charset,
         );
 
