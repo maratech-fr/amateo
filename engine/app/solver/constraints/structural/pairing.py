@@ -14,7 +14,6 @@ from typing import Any
 from ...model import _format_time
 from ..common import BoolVarLike, _dedupe_variables, _intervals_overlap, _record_closure
 
-
 # Exemption coach-joueur sur la SÉANCE DE BLOC — carte ``(venue_id, slot_id)`` (slot_id ==
 # "day:HH:MM") → ``[(frozenset(membres du bloc), b)]``, remplie par ``add_shared_block_constraints``
 # et portée par le modèle (``ScheduleCpModel.shared_block_case_bvars``). ``None`` (modèle nu des
