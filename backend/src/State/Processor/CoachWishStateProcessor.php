@@ -44,11 +44,11 @@ class CoachWishStateProcessor extends AbstractStateProcessor
         $weekStart = $this->parseWeekStart((string) $input->weekStart);
         $this->assertValidAnchor($input, $weekStart);
 
-        // À la CRÉATION la doléance est saisie « au nom d'un coach » : coachId requis ici
-        // (le DTO l'a rendu nullable pour l'ÉDITION d'une doléance dé-attribuée — revue #10 C1).
-        if (null === $input->coachId) {
-            $this->refuse('Une doléance se saisit au nom d’un coach.');
-        }
+        // Coach FACULTATIF en saisie gestionnaire (P2-63 PR 2 / Q5, fondateur 2026-10-09 :
+        // « une équipe sans coach ne peut pas avoir de doléance via mail de coach… mais il est
+        // facultatif si on passe en mode manuel »). Le canal public (CoachWishUpserter) reste
+        // borné au périmètre coach du jeton, inchangé. La colonne `coachId` est déjà nullable
+        // (une doléance dé-attribuée vit sans coach) : rien à migrer.
 
         // Une seule doléance par (période, équipe, semaine) — l'index unique remonterait
         // sinon en 500 sur un double-submit ; on rend un 422 propre (l'édition passe par PUT).

@@ -286,16 +286,18 @@ describe("WishesTab", () => {
     expect(headers.indexOf("S · Fanion")).toBeLessThan(headers.indexOf("B · Moyenne"));
   });
 
-  // (b) décision fondateur : « comment avoir une doléance de coach si une équipe n'a pas de
-  // coach ? ben c'est pas possible ». U13 n'a aucun lien MAIN → hors du FORMULAIRE.
-  it("n'offre pas à la saisie une équipe sans coach principal", async () => {
+  // P2-63 PR 2 / Q5 (fondateur 2026-10-09) — la saisie MANUELLE offre TOUTES les équipes,
+  // coach facultatif : « il est facultatif si on passe en mode manuel ». U13 n'a aucun lien
+  // MAIN mais doit être proposée (inverse exact de la règle 2026-08-01, qui ne vaut plus que
+  // pour la collecte par mail).
+  it("offre à la saisie manuelle TOUTES les équipes, y compris sans coach principal", async () => {
     const user = userEvent.setup();
     render(<WishesTab mother={mother} weekFilter={null} />);
 
     await user.click(screen.getByRole("button", { name: "Ajouter" }));
     // TeamSelect (P2-63 C) : les options ne vivent que le panneau ouvert.
     await user.click(screen.getByRole("button", { name: /^Équipe SM1/ }));
-    expect(screen.queryByRole("option", { name: "U13" })).toBeNull();
+    expect(screen.getByRole("option", { name: "U13" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "SM1" })).toBeInTheDocument();
   });
 
@@ -372,14 +374,59 @@ describe("WishesTab", () => {
     expect(createMutu).toHaveBeenCalledWith(expect.objectContaining({ calendarEntryId: "e1", teamId: "t1", coachId: "c1", partnerTeamIds: ["t2"], sharedSlots: 1 }), expect.anything());
   });
 
-  // Aucune équipe saisissable : on dit ce qui manque plutôt que d'ouvrir un formulaire sans
-  // cible (un select d'équipes vide, dont rien n'expliquerait le vide).
-  it("annonce ce qui manque quand aucune équipe n'a de coach principal", () => {
+  // P2-63 PR 2 / Q5 — sans AUCUN coach principal, la saisie manuelle reste possible (coach
+  // facultatif) : « Ajouter » n'est plus désactivé, et le formulaire offre toutes les équipes.
+  it("permet la saisie manuelle même quand aucune équipe n'a de coach principal", async () => {
     teamCoachesState.data = [];
+    const user = userEvent.setup();
     render(<WishesTab mother={mother} weekFilter={null} />);
 
-    expect(screen.getByText(/rattachez-en un pour pouvoir saisir une doléance/i)).toBeInTheDocument();
-    // Désactivé mais DÉCOUVRABLE (A11Y-30, `disabledReason`) : aria-disabled, pas le `disabled` natif.
-    expect(screen.getByRole("button", { name: "Ajouter" })).toHaveAttribute("aria-disabled", "true");
+    const add = screen.getByRole("button", { name: "Ajouter" });
+    expect(add).not.toHaveAttribute("aria-disabled", "true");
+    await user.click(add);
+    expect(screen.getByRole("button", { name: /^Équipe/ })).toBeInTheDocument();
+  });
+
+  // ── P2-63 PR 2 / D — semaine d'abord, équipe servie désactivée, coach facultatif ──
+
+  // Le founder : « sélection de la semaine d'abord ». Le sélecteur Semaine précède Équipe.
+  it("D — rend la Semaine AVANT l'Équipe dans le formulaire d'ajout", async () => {
+    const user = userEvent.setup();
+    render(<WishesTab mother={mother} weekFilter={null} />);
+    await user.click(screen.getByRole("button", { name: "Ajouter" }));
+
+    const semaine = screen.getByLabelText("Semaine");
+    const equipe = screen.getByRole("button", { name: /^Équipe/ });
+    // Ordre du DOM : Semaine précède Équipe (comparaison de position documentaire).
+    expect(semaine.compareDocumentPosition(equipe) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  // Une équipe DÉJÀ servie sur la semaine choisie est DÉSACTIVÉE avec motif, jamais masquée.
+  it("D — désactive avec motif une équipe déjà servie sur la semaine, sans la masquer", async () => {
+    wishesState.data = [wish({ id: "w1", teamId: "t1", weekStart: "2026-02-16" })]; // SM1 servie S1
+    const user = userEvent.setup();
+    render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
+    await user.click(screen.getByRole("button", { name: "Ajouter" }));
+    await user.click(screen.getByRole("button", { name: /^Équipe/ }));
+
+    const served = screen.getByRole("option", { name: /SM1/ });
+    expect(served).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByText("a déjà une doléance cette semaine")).toBeInTheDocument();
+    // U13, non servie, reste choisissable.
+    expect(screen.getByRole("option", { name: "U13" })).not.toHaveAttribute("aria-disabled", "true");
+  });
+
+  // Q5 — coach FACULTATIF : une équipe sans coach principal (U13) se saisit avec « (aucun) »
+  // et le payload porte coachId:null.
+  it("Q5 — soumet une doléance manuelle sans coach (coachId null) pour une équipe sans coach", async () => {
+    const user = userEvent.setup();
+    render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
+    await user.click(screen.getByRole("button", { name: "Ajouter" }));
+    await user.click(screen.getByRole("button", { name: /^Équipe/ }));
+    await user.click(screen.getByRole("option", { name: "U13" }));
+    // Coach par défaut « (aucun) » (U13 n'a pas de coach principal).
+    expect((screen.getByLabelText("Coach") as HTMLSelectElement).value).toBe("");
+    await user.click(screen.getByRole("button", { name: /Ajouter la doléance/ }));
+    expect(createMut).toHaveBeenCalledWith(expect.objectContaining({ teamId: "t2", coachId: null }), expect.anything());
   });
 });

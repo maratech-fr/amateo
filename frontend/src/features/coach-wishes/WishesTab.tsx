@@ -82,15 +82,29 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
     .map(([label, group]) => ({ label, resources: group.map((c) => ({ id: c.id, label: `${c.firstName} ${c.lastName}`.trim() })) }));
   const teamGroups = groupTeamsByTier(teams, tiers).map((g) => ({ label: tierGroupLabel(g.tier), resources: g.teams.map((t) => ({ id: t.id, label: t.name })) }));
 
-  // ⚠ Les équipes offertes à la SAISIE ne sont pas celles du FILTRE (décision fondateur
-  // 2026-08-01 : « comment avoir une doléance de coach si une équipe n'a pas de coach ?
-  // ben c'est pas possible »). Le filtre, lui, garde toutes les équipes : il sert à LIRE
-  // des doléances existantes — dont celles d'une équipe qui a perdu son coach depuis.
+  // La COLLECTE par mail reste bornée aux équipes à coach principal (décision fondateur
+  // 2026-08-01) — c'est ce que sert `teamsWithMainCoach`, encore la cible de la mutualisation.
+  // ⚠ L'AJOUT MANUEL, lui, accepte TOUTE équipe depuis P2-63 PR 2 (Q5 : « il est facultatif si
+  // on passe en mode manuel ») : le gestionnaire doit pouvoir saisir une doléance pour une
+  // équipe sans coach (Vétérans). Le formulaire reçoit donc `teams` entier, coach facultatif.
   const teamsWithMainCoach = useMemo(() => {
     const withMain = new Set(teamCoaches.filter((tc) => "MAIN" === tc.role).map((tc) => tc.teamId));
 
     return teams.filter((t) => withMain.has(t.id));
   }, [teams, teamCoaches]);
+
+  // P2-63 D — par semaine, les équipes DÉJÀ servies : le formulaire d'ajout les désactive
+  // (jamais masquées) et le serveur rend un 422 sur un doublon (période, équipe, semaine).
+  const servedByWeek = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const w of wishes) {
+      const set = map.get(w.weekStart) ?? new Set<string>();
+      set.add(w.teamId);
+      map.set(w.weekStart, set);
+    }
+
+    return map;
+  }, [wishes]);
 
   const visible = wishes.filter(
     (w) =>
@@ -154,8 +168,8 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
           size="sm"
           variant="outline"
           className="ml-auto"
-          disabled={0 === teamsWithMainCoach.length}
-          disabledReason={0 === teamsWithMainCoach.length ? "Aucune équipe n'a de coach principal" : undefined}
+          disabled={0 === teams.length}
+          disabledReason={0 === teams.length ? "Aucune équipe dans ce club" : undefined}
           onClick={() => {
             setEditing(null);
             setFormOpen(true);
@@ -166,26 +180,26 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
         </Button>
       </div>
 
-      {/* Sans équipe à coach principal, « Ajouter » n'ouvrirait qu'un formulaire sans
-          cible : on dit ce qui manque, au lieu de laisser un select vide. */}
-      {0 === teamsWithMainCoach.length ? (
+      {/* Sans équipe du tout, « Ajouter » n'ouvrirait qu'un formulaire sans cible. */}
+      {0 === teams.length ? (
         <NoticeBanner
           tone="muted"
           className="mt-2"
-          message="Aucune équipe n'a de coach principal : rattachez-en un pour pouvoir saisir une doléance."
+          message="Aucune équipe dans ce club : ajoutez-en une pour pouvoir saisir une doléance."
         />
       ) : null}
 
-      {formOpen && teamsWithMainCoach.length > 0 ? (
+      {formOpen && teams.length > 0 ? (
         <div className="mt-2">
           <CoachWishForm
             calendarEntryId={mother.id}
             weeks={shownWeeks}
             lockedWeek={weekFilter}
-            teams={teamsWithMainCoach}
+            teams={teams}
             tiers={tiers}
             coaches={coaches}
             teamCoaches={teamCoaches}
+            servedByWeek={servedByWeek}
             editing={editing}
             pending={createWish.isPending || updateWish.isPending}
             onSubmit={submit}
