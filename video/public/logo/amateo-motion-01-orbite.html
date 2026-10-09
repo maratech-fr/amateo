@@ -1,0 +1,916 @@
+<!doctype html>
+<html lang="fr" data-theme="night">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amateo motion 01 · Orbite</title>
+<style>
+@font-face { font-family: 'Poppins'; font-weight: 500; font-style: normal; font-display: block;
+  src: url(data:font/woff2;base64,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) format('woff2'); }
+:root {
+  --bg: #08070a; --fg: #f4f2ee; --muted: rgba(244,242,238,.52); --glass: rgba(24,21,28,.62);
+  --line: rgba(255,255,255,.1); --seg: rgba(255,255,255,.09); --seg-on: rgba(255,255,255,.2);
+  --fill: #46AFAC; --btn: rgba(255,255,255,.06); --btn-hover: rgba(255,255,255,.12);
+}
+:root[data-theme="paper"] {
+  --bg: #faf9f7; --fg: #464646; --muted: rgba(70,70,70,.58); --glass: rgba(253,252,250,.78);
+  --line: rgba(70,70,70,.13); --seg: rgba(70,70,70,.08); --seg-on: rgba(70,70,70,.16);
+  --fill: #46AFAC; --btn: rgba(70,70,70,.05); --btn-hover: rgba(70,70,70,.1);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
+#stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.ui { position: fixed; inset: 0; pointer-events: none; color: var(--fg);
+  font: 500 13px/1.2 Poppins, system-ui, sans-serif; transition: opacity .45s ease; }
+.ui.hidden { opacity: 0; }
+.top { position: absolute; top: 18px; left: 22px; right: 22px; display: flex; justify-content: space-between;
+  gap: 16px; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.top b { color: var(--fg); font-weight: 500; }
+.keys { text-align: right; }
+.bar { pointer-events: auto; position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%);
+  width: min(920px, calc(100% - 32px)); display: flex; align-items: center; gap: 8px; padding: 9px 10px;
+  border-radius: 14px; background: var(--glass); border: 1px solid var(--line);
+  -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+button { font: inherit; color: var(--fg); background: var(--btn); border: 1px solid var(--line);
+  border-radius: 9px; height: 34px; padding: 0 12px; cursor: pointer; white-space: nowrap;
+  transition: background .2s, border-color .2s, opacity .2s; }
+button:hover { background: var(--btn-hover); }
+button:focus-visible { outline: 2px solid var(--fill); outline-offset: 2px; }
+button[aria-pressed="true"] { border-color: var(--fill); }
+button:disabled { opacity: .35; cursor: default; }
+button.icon { width: 34px; padding: 0; display: grid; place-items: center; }
+button.icon svg { width: 18px; height: 18px; }
+#bExit.armed { background: var(--fill); color: #fff; border-color: var(--fill); }
+.track { position: relative; flex: 1; height: 34px; cursor: pointer; touch-action: none; min-width: 120px; }
+.seg { position: absolute; top: 0; bottom: 0; border-radius: 7px; background: var(--seg); overflow: hidden;
+  display: flex; align-items: center; padding: 0 7px; font-size: 10.5px; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--muted); transition: background .2s, color .2s; }
+.seg::before { content: ""; position: absolute; inset: 0; transform-origin: left;
+  transform: scaleX(var(--fill-p, 0)); background: var(--fill); opacity: .22; }
+.seg.on { background: var(--seg-on); color: var(--fg); }
+.seg span { position: relative; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seg i { font-style: normal; opacity: .6; margin-left: 6px; }
+.head { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; border-radius: 1px;
+  background: var(--fg); pointer-events: none; }
+.time { width: 74px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
+.reduced { pointer-events: auto; position: absolute; top: 56px; left: 50%; transform: translateX(-50%);
+  padding: 10px 14px; border-radius: 12px; background: var(--glass); border: 1px solid var(--line);
+  display: flex; gap: 12px; align-items: center; font-size: 13px; }
+.reduced[hidden] { display: none; }
+@media (max-width: 1180px) { .seg i { display: none; } }
+@media (max-width: 720px) {
+  .keys, .time, #bSlow, .seg i { display: none; }
+  .bar { flex-wrap: wrap; }
+  .track { order: -1; flex-basis: 100%; }
+  .seg { padding: 0 6px; font-size: 9.5px; letter-spacing: .06em; }
+  .reduced { width: calc(100% - 32px); }
+}
+</style>
+</head>
+<body>
+<canvas id="stage" role="img" aria-label="Animation du logo amateo, version Orbite : intro, boucle d'attente, sortie"></canvas>
+<div class="ui" id="ui">
+  <div class="top">
+    <span><b>amateo</b> · motion 01 — Orbite · <span id="phase">Intro</span></span>
+    <span class="keys">Espace lecture · S sortie · L attente infinie · V ralenti · ←/→ image · R rejouer</span>
+  </div>
+  <div class="reduced" id="reduced" hidden>Animations réduites (préférence système) : logo statique. <button type="button">Lire quand même</button></div>
+  <div class="bar" role="group" aria-label="Lecteur">
+    <button class="icon" id="bPlay" type="button" aria-label="Lecture / pause"></button>
+    <button class="icon" id="bReplay" type="button" aria-label="Rejouer depuis le début"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5a7 7 0 1 1-6.6 4.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 4.5v5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <div class="track" id="track" aria-label="Frise : intro, boucle, sortie">
+      <div class="seg" id="segIntro" title="Intro · 1,5 s"><span>Intro</span></div>
+      <div class="seg" id="segLoop"><span>Boucle · attente<i>6 s</i></span></div>
+      <div class="seg" id="segOutro" title="Sortie · 1,5 s"><span>Sortie</span></div>
+      <div class="head" id="head"></div>
+    </div>
+    <span class="time" id="time">0.00 s</span>
+    <button id="bExit" type="button" title="Simule la réponse de l'appli : la sortie part tout de suite">Réponse reçue</button>
+    <button id="bHold" type="button" aria-pressed="false" title="La boucle tourne jusqu'à « Réponse reçue »">∞ Attente</button>
+    <button id="bSlow" type="button" aria-pressed="false">¼ ×</button>
+  </div>
+</div>
+<script>
+/* ==========================================================================
+   Amateo · motion — noyau commun
+   Math (easings, ressorts), géométrie du logo (spec du graphiste), glyphes
+   Poppins 500 vectorisés, et le lecteur 3 temps : INTRO → BOUCLE → SORTIE.
+   Tout est une fonction PURE du temps : render(phase, t) ne garde aucun état,
+   d'où le scrub, le pas-à-pas, le ralenti et l'export image par image exacts.
+   ========================================================================== */
+'use strict';
+
+/* ---------- math ---------- */
+const TAU = Math.PI * 2;
+const DEG = Math.PI / 180;
+const clamp = (x, a = 0, b = 1) => (x < a ? a : x > b ? b : x);
+const lerp = (a, b, t) => a + (b - a) * t;
+const prog = (t, a, b, ease) => {
+  const p = clamp((t - a) / (b - a));
+  return ease ? ease(p) : p;
+};
+const smooth = (x) => x * x * (3 - 2 * x);
+const lerpAngle = (a, b, t) => a + ((((b - a + Math.PI) % TAU) + TAU) % TAU - Math.PI) * t;
+
+/* cubic-bezier CSS, résolu par Newton puis dichotomie */
+function bezier(x1, y1, x2, y2) {
+  const cx = 3 * x1, bx = 3 * (x2 - x1) - cx, ax = 1 - cx - bx;
+  const cy = 3 * y1, by = 3 * (y2 - y1) - cy, ay = 1 - cy - by;
+  const sx = (u) => ((ax * u + bx) * u + cx) * u;
+  const sy = (u) => ((ay * u + by) * u + cy) * u;
+  const dx = (u) => (3 * ax * u + 2 * bx) * u + cx;
+  return (x) => {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    let u = x;
+    for (let i = 0; i < 8; i++) {
+      const e = sx(u) - x;
+      if (Math.abs(e) < 1e-7) return sy(u);
+      const d = dx(u);
+      if (Math.abs(d) < 1e-6) break;
+      u -= e / d;
+    }
+    let lo = 0, hi = 1;
+    u = x;
+    for (let i = 0; i < 40; i++) {
+      const v = sx(u);
+      if (Math.abs(v - x) < 1e-7) break;
+      if (v < x) lo = u; else hi = u;
+      u = (lo + hi) / 2;
+    }
+    return sy(u);
+  };
+}
+
+const Ease = {
+  inQuad: (x) => x * x,
+  inCubic: (x) => x * x * x,
+  outCubic: (x) => 1 - (1 - x) ** 3,
+  inOutCubic: (x) => (x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2),
+  outQuint: (x) => 1 - (1 - x) ** 5,
+  inOutSine: (x) => -(Math.cos(Math.PI * x) - 1) / 2,
+  outBack: (s = 1.70158) => (x) => 1 + (s + 1) * (x - 1) ** 3 + s * (x - 1) ** 2,
+  inBack: (s = 1.70158) => (x) => (s + 1) * x ** 3 - s * x * x,
+  /* réponse indicielle d'un ressort sous-amorti, recalée pour finir EXACTEMENT à 1 */
+  spring(zeta = 0.5, omega = 12) {
+    const wd = omega * Math.sqrt(1 - zeta * zeta);
+    const f = (x) => 1 - Math.exp(-zeta * omega * x) * (Math.cos(wd * x) + (zeta * omega / wd) * Math.sin(wd * x));
+    const r = 1 - f(1);
+    return (x) => f(x) + r * x * x * x;
+  },
+};
+/* impulsion amortie (choc) : nulle avant τ=0, oscille, s'éteint */
+const ring = (tau, freq = 3, decay = 6) => (tau <= 0 ? 0 : Math.exp(-decay * tau) * Math.sin(TAU * freq * tau));
+
+/* PRNG déterministe : mêmes étincelles à chaque rendu */
+function rng(seed) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* ---------- marque (handoff graphiste — valeurs définitives) ---------- */
+const BRAND = { magenta: '#B51C8A', orange: '#D47800', teal: '#46AFAC', ink: '#464646' };
+const ARCS = [
+  { key: 'magenta', color: BRAND.magenta, R: 313, w: 83, start: 98, len: 133 },
+  { key: 'orange', color: BRAND.orange, R: 325, w: 66, start: 252, len: 69 },
+  { key: 'teal', color: BRAND.teal, R: 332, w: 50, start: 334.5, len: 89 },
+];
+ARCS.forEach((a) => (a.mid = a.start + a.len / 2));
+/* verrouillage horizontal du handoff (scène 1920×1080, position finale de « Signature ») */
+const LOCKUP = { cx: 535, cy: 540, k: 0.35, wordX: 705, baseY: 597.5, fs: 0.21 };
+const TEAL_EDGE_U = 332 + 25; /* bord extérieur du trait teal, en unités d'icône */
+
+/* ---------- glyphes « amateo » (Poppins 500, mis en forme par HarfBuzz) ---------- */
+const WORD = (() => {
+  const g = {"upem":1000,"glyphs":[{"ch":"a","x":0,"bounds":[37,-9,603,560],"d":"M297 560Q362 560 410.5 534.5Q459 509 488 471V551H603V0H488V82Q459 43 409.0 17.0Q359 -9 295 -9Q224 -9 165.0 27.5Q106 64 71.5 129.5Q37 195 37 278Q37 361 71.5 425.0Q106 489 165.5 524.5Q225 560 297 560ZM321 461Q277 461 239.0 439.5Q201 418 177.5 376.5Q154 335 154 278Q154 221 177.5 178.0Q201 135 239.5 112.5Q278 90 321 90Q365 90 403.0 112.0Q441 134 464.5 176.5Q488 219 488 276Q488 333 464.5 375.0Q441 417 403.0 439.0Q365 461 321 461Z"},{"ch":"m","x":668.0,"bounds":[75,0,969,560],"d":"M969 325V0H856V308Q856 382 819.0 421.5Q782 461 718 461Q654 461 616.5 421.5Q579 382 579 308V0H466V308Q466 382 429.0 421.5Q392 461 328 461Q264 461 226.5 421.5Q189 382 189 308V0H75V551H189V488Q217 522 260.0 541.0Q303 560 352 560Q418 560 470.0 532.0Q522 504 550 451Q575 501 628.0 530.5Q681 560 742 560Q807 560 858.5 533.0Q910 506 939.5 453.0Q969 400 969 325Z"},{"ch":"a","x":1697.0,"bounds":[37,-9,603,560],"d":"M297 560Q362 560 410.5 534.5Q459 509 488 471V551H603V0H488V82Q459 43 409.0 17.0Q359 -9 295 -9Q224 -9 165.0 27.5Q106 64 71.5 129.5Q37 195 37 278Q37 361 71.5 425.0Q106 489 165.5 524.5Q225 560 297 560ZM321 461Q277 461 239.0 439.5Q201 418 177.5 376.5Q154 335 154 278Q154 221 177.5 178.0Q201 135 239.5 112.5Q278 90 321 90Q365 90 403.0 112.0Q441 134 464.5 176.5Q488 219 488 276Q488 333 464.5 375.0Q441 417 403.0 439.0Q365 461 321 461Z"},{"ch":"t","x":2365.0,"bounds":[28,0,342,688],"d":"M208 458V153Q208 122 222.5 108.5Q237 95 272 95H342V0H252Q175 0 134.0 36.0Q93 72 93 153V458H28V551H93V688H208V551H342V458Z"},{"ch":"e","x":2727.0,"bounds":[37,-9,580,560],"d":"M576 233H155Q160 167 204.0 127.0Q248 87 312 87Q404 87 442 164H565Q540 88 474.5 39.5Q409 -9 312 -9Q233 -9 170.5 26.5Q108 62 72.5 126.5Q37 191 37 276Q37 361 71.5 425.5Q106 490 168.5 525.0Q231 560 312 560Q390 560 451.0 526.0Q512 492 546.0 430.5Q580 369 580 289Q580 258 576 233ZM461 325Q460 388 416.0 426.0Q372 464 307 464Q248 464 206.0 426.5Q164 389 156 325Z"},{"ch":"o","x":3334.0,"bounds":[38,-9,600,560],"d":"M38 276Q38 360 75.0 425.0Q112 490 176.0 525.0Q240 560 319 560Q398 560 462.0 525.0Q526 490 563.0 425.0Q600 360 600 276Q600 192 562.0 127.0Q524 62 458.5 26.5Q393 -9 314 -9Q236 -9 173.0 26.5Q110 62 74.0 126.5Q38 191 38 276ZM483 276Q483 336 460.0 377.5Q437 419 399.0 440.0Q361 461 317 461Q273 461 235.5 440.0Q198 419 176.0 377.5Q154 336 154 276Q154 187 199.5 138.5Q245 90 314 90Q358 90 396.5 111.0Q435 132 459.0 174.0Q483 216 483 276Z"}]};
+  return g.glyphs.map((gl, i) => ({
+    ch: gl.ch,
+    x: gl.x,
+    bounds: gl.bounds,
+    path: new Path2D(gl.d),
+    teal: i >= 4,
+  }));
+})();
+const WORD_RIGHT = LOCKUP.wordX + (WORD[5].x + WORD[5].bounds[2]) * LOCKUP.fs;
+
+/* ---------- primitives de dessin ---------- */
+function strokeArc(ctx, cx, cy, r, startDeg, lenDeg, width, color) {
+  if (lenDeg < 0.5 || width < 0.05 || r < 0.05) return;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, startDeg * DEG, (startDeg + lenDeg) * DEG);
+  ctx.lineWidth = width;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = color;
+  ctx.stroke();
+}
+
+/* capsule de longueur s (axe), largeur w, courbure kappa, milieu (mx,my), tangente phi.
+   kappa = 0 → barre droite ; kappa = 1/R → arc de cercle. La longueur est conservée :
+   c'est ce qui permet de « plier » un créneau de planning en arc du logo. */
+function strokeBent(ctx, mx, my, phi, s, kappa, width, color) {
+  if (width < 0.05) return;
+  ctx.lineWidth = width;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = color;
+  if (s < 0.05) {
+    ctx.beginPath();
+    ctx.arc(mx, my, width / 2, 0, TAU);
+    ctx.fillStyle = color;
+    ctx.fill();
+    return;
+  }
+  ctx.beginPath();
+  if (Math.abs(kappa * s) < 2e-3) {
+    const hx = (Math.cos(phi) * s) / 2, hy = (Math.sin(phi) * s) / 2;
+    ctx.moveTo(mx - hx, my - hy);
+    ctx.lineTo(mx + hx, my + hy);
+  } else {
+    const r = 1 / Math.abs(kappa);
+    const ox = mx - Math.sin(phi) / kappa;
+    const oy = my + Math.cos(phi) / kappa;
+    if (kappa > 0) ctx.arc(ox, oy, r, phi - (kappa * s) / 2 - Math.PI / 2, phi + (kappa * s) / 2 - Math.PI / 2, false);
+    else ctx.arc(ox, oy, r, phi - (kappa * s) / 2 + Math.PI / 2, phi + (kappa * s) / 2 + Math.PI / 2, true);
+  }
+  ctx.stroke();
+}
+
+/* pose « capsule » exacte de l'arc i d'une icône centrée (cx,cy) à l'échelle k, tournée de rotDeg */
+function arcPose(i, cx, cy, k, rotDeg = 0) {
+  const a = ARCS[i];
+  const am = (a.mid + rotDeg) * DEG;
+  const R = a.R * k;
+  return { mx: cx + R * Math.cos(am), my: cy + R * Math.sin(am), phi: am + Math.PI / 2, s: R * a.len * DEG, kappa: 1 / R, w: a.w * k };
+}
+
+function drawLetter(ctx, i, x, y, s, color, rotDeg = 0) {
+  ctx.save();
+  ctx.translate(x, y);
+  if (rotDeg) ctx.rotate(rotDeg * DEG);
+  ctx.scale(s, -s);
+  ctx.fillStyle = color;
+  ctx.fill(WORD[i].path);
+  ctx.restore();
+}
+
+function grainTile(seed, alpha, size = 192) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const g = c.getContext('2d');
+  const img = g.createImageData(size, size);
+  const r = rng(seed);
+  for (let p = 0; p < img.data.length; p += 4) {
+    const v = (r() * 255) | 0;
+    img.data[p] = img.data[p + 1] = img.data[p + 2] = v;
+    img.data[p + 3] = alpha;
+  }
+  g.putImageData(img, 0, 0);
+  return c;
+}
+
+/* ==========================================================================
+   Lecteur : machine à états intro → boucle → sortie.
+   - La sortie part À TOUT INSTANT de la boucle (l'appli répond quand elle
+     répond) : la scène reçoit tau0, le temps de boucle au moment du départ,
+     et raccorde position ET vitesse.
+   - Frise « film » = intro + 1 boucle + sortie, pour le scrub et l'export.
+   ========================================================================== */
+function mountPlayer(scene) {
+  const qs = new URLSearchParams(location.search);
+  const EXPORT = qs.has('export');
+  const T = scene.T;
+  const T_END = 0.9;
+  const FILM = T.intro + T.loop + T.outro;
+
+  const canvas = document.getElementById('stage');
+  const main = canvas.getContext('2d');
+  const layerC = document.createElement('canvas');
+  const layer = layerC.getContext('2d');
+  const smallC = document.createElement('canvas');
+  const small = smallC.getContext('2d');
+
+  const R = { main, layer, layerC, small, smallC, W: 0, H: 0, s: 1, ox: 0, oy: 0 };
+  R.logical = (ctx) => ctx.setTransform(R.s, 0, 0, R.s, R.ox, R.oy);
+  R.device = (ctx) => ctx.setTransform(1, 0, 0, 1, 0, 0);
+  R.view = () => ({ x0: -R.ox / R.s, y0: -R.oy / R.s, x1: (R.W - R.ox) / R.s, y1: (R.H - R.oy) / R.s });
+  R.clearLayer = () => {
+    R.device(layer);
+    layer.globalCompositeOperation = 'source-over';
+    layer.globalAlpha = 1;
+    layer.clearRect(0, 0, R.W, R.H);
+  };
+  /* halo : le calque est réduit au quart, flouté, puis ajouté en mode « lighter » */
+  R.extra = [];
+  R.newLayer = () => {
+    const c = document.createElement('canvas');
+    c.width = R.W || 1;
+    c.height = R.H || 1;
+    R.extra.push(c);
+    return c;
+  };
+  R.bloom = (amount, blur, src = layerC) => {
+    if (amount <= 0.001) return;
+    const sw = smallC.width, sh = smallC.height;
+    R.device(small);
+    small.globalCompositeOperation = 'source-over';
+    small.clearRect(0, 0, sw, sh);
+    small.filter = `blur(${Math.max(0.5, (blur * R.s) / 4)}px)`;
+    small.drawImage(src, 0, 0, sw, sh);
+    small.filter = 'none';
+    R.device(main);
+    main.globalCompositeOperation = 'lighter';
+    main.globalAlpha = Math.min(1, amount);
+    main.drawImage(smallC, 0, 0, R.W, R.H);
+    main.globalAlpha = 1;
+    main.globalCompositeOperation = 'source-over';
+  };
+  R.composite = (alpha = 1, src = layerC) => {
+    R.device(main);
+    main.globalAlpha = alpha;
+    main.drawImage(src, 0, 0);
+    main.globalAlpha = 1;
+  };
+
+  function resize() {
+    const dpr = EXPORT ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+    const W = Math.round(window.innerWidth * dpr);
+    const H = Math.round(window.innerHeight * dpr);
+    if (W === R.W && H === R.H) return;
+    canvas.width = layerC.width = W;
+    canvas.height = layerC.height = H;
+    for (const c of R.extra) { c.width = W; c.height = H; }
+    smallC.width = Math.max(1, Math.round(W / 4));
+    smallC.height = Math.max(1, Math.round(H / 4));
+    R.W = W;
+    R.H = H;
+    R.s = Math.min(W / 1920, H / 1080);
+    R.ox = (W - 1920 * R.s) / 2;
+    R.oy = (H - 1080 * R.s) / 2;
+  }
+
+  /* ---------- état ---------- */
+  const st = { phase: 'intro', t: 0, tau0: 0, loops: 0 };
+  let playing = true, speed = 1, hold = false, exitReq = false;
+
+  function filmTime() {
+    if (st.phase === 'intro') return st.t;
+    if (st.phase === 'loop') return T.intro + st.t;
+    if (st.phase === 'outro') return T.intro + T.loop + st.t;
+    return FILM;
+  }
+  function seekFilm(ft) {
+    exitReq = false;
+    if (ft < T.intro) Object.assign(st, { phase: 'intro', t: Math.max(0, ft) });
+    else if (ft < T.intro + T.loop) Object.assign(st, { phase: 'loop', t: ft - T.intro, loops: 0 });
+    else if (ft < FILM) Object.assign(st, { phase: 'outro', t: ft - T.intro - T.loop, tau0: 0 });
+    else Object.assign(st, { phase: 'outro', t: T.outro, tau0: 0 });
+  }
+  function advance(dt) {
+    st.t += dt * speed;
+    for (let guard = 0; guard < 8; guard++) {
+      if (st.phase === 'intro' && st.t >= T.intro) {
+        st.t -= T.intro;
+        if (exitReq) { exitReq = false; Object.assign(st, { phase: 'outro', tau0: 0 }); }
+        else Object.assign(st, { phase: 'loop', loops: 0 });
+        continue;
+      }
+      if (st.phase === 'loop') {
+        if (exitReq) { exitReq = false; Object.assign(st, { phase: 'outro', tau0: st.t % T.loop, t: 0 }); continue; }
+        if (st.t >= T.loop) {
+          st.t -= T.loop;
+          st.loops++;
+          if (!hold) Object.assign(st, { phase: 'outro', tau0: 0 });
+          continue;
+        }
+      }
+      if (st.phase === 'outro' && st.t >= T.outro) { st.t -= T.outro; st.phase = 'end'; continue; }
+      if (st.phase === 'end' && st.t >= T_END) { st.t -= T_END; Object.assign(st, { phase: 'intro' }); continue; }
+      break;
+    }
+  }
+  function draw() {
+    resize();
+    const ph = st.phase === 'end' ? 'outro' : st.phase;
+    const t = st.phase === 'end' ? T.outro : st.t;
+    scene.render(R, ph, t, st.tau0);
+    if (!EXPORT) syncUI();
+  }
+
+  /* ---------- UI ---------- */
+  const $ = (id) => document.getElementById(id);
+  const ui = $('ui');
+  const segs = [
+    { el: $('segIntro'), d: T.intro, phase: 'intro' },
+    { el: $('segLoop'), d: T.loop, phase: 'loop' },
+    { el: $('segOutro'), d: T.outro, phase: 'outro' },
+  ];
+  const head = $('head');
+  const track = $('track');
+  let acc = 0;
+  for (const sg of segs) {
+    sg.t0 = acc;
+    sg.el.style.left = `${(acc / FILM) * 100}%`;
+    sg.el.style.width = `calc(${(sg.d / FILM) * 100}% - 3px)`;
+    acc += sg.d;
+  }
+  function syncUI() {
+    const ft = filmTime();
+    head.style.left = `${(ft / FILM) * 100}%`;
+    for (const sg of segs) {
+      sg.el.classList.toggle('on', st.phase === sg.phase || (st.phase === 'end' && sg.phase === 'outro'));
+      sg.el.style.setProperty('--fill-p', clamp((ft - sg.t0) / sg.d).toFixed(4));
+    }
+    const label = { intro: 'Intro', loop: `Boucle${st.loops ? ' ×' + (st.loops + 1) : ''}`, outro: 'Sortie', end: 'Fin' }[st.phase];
+    $('phase').textContent = label;
+    $('time').textContent = `${(st.phase === 'end' ? T.outro : st.t).toFixed(2)} s`;
+    $('bPlay').setAttribute('aria-pressed', String(playing));
+    const icon = playing ? ICON_PAUSE : ICON_PLAY;
+    if ($('bPlay').dataset.icon !== icon) { $('bPlay').innerHTML = icon; $('bPlay').dataset.icon = icon; }
+    $('bHold').setAttribute('aria-pressed', String(hold));
+    $('bSlow').setAttribute('aria-pressed', String(speed !== 1));
+    $('bExit').classList.toggle('armed', exitReq);
+    $('bExit').disabled = st.phase === 'outro' || st.phase === 'end';
+  }
+  const ICON_PLAY = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>';
+  const ICON_PAUSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" fill="currentColor"/></svg>';
+
+  const actions = {
+    play() { if (st.phase === 'end' && !playing) seekFilm(0); playing = !playing; },
+    replay() { seekFilm(0); playing = true; },
+    exit() { if (st.phase === 'intro' || st.phase === 'loop') exitReq = true; },
+    hold() { hold = !hold; },
+    slow() { speed = speed === 1 ? 0.25 : 1; },
+    step(d) { playing = false; seekFilm(clamp(filmTime() + d, 0, FILM)); },
+  };
+  if (!EXPORT) {
+    $('bPlay').onclick = actions.play;
+    $('bReplay').onclick = actions.replay;
+    $('bExit').onclick = actions.exit;
+    $('bHold').onclick = actions.hold;
+    $('bSlow').onclick = actions.slow;
+    window.addEventListener('keydown', (e) => {
+      if (e.target.closest && e.target.closest('button') && (e.key === ' ' || e.key === 'Enter')) return;
+      const k = e.key.toLowerCase();
+      if (k === ' ') actions.play();
+      else if (k === 'r') actions.replay();
+      else if (k === 's' || k === 'enter') actions.exit();
+      else if (k === 'l') actions.hold();
+      else if (k === 'v') actions.slow();
+      else if (k === 'arrowright') actions.step(1 / 60);
+      else if (k === 'arrowleft') actions.step(-1 / 60);
+      else return;
+      e.preventDefault();
+      poke();
+    });
+    let dragging = false, wasPlaying = false;
+    const scrub = (e) => {
+      const r = track.getBoundingClientRect();
+      seekFilm(clamp((e.clientX - r.left) / r.width) * FILM);
+    };
+    track.addEventListener('pointerdown', (e) => {
+      dragging = true;
+      wasPlaying = playing;
+      playing = false;
+      track.setPointerCapture(e.pointerId);
+      scrub(e);
+    });
+    track.addEventListener('pointermove', (e) => dragging && scrub(e));
+    track.addEventListener('pointerup', () => { dragging = false; playing = wasPlaying; });
+    let idle;
+    const poke = () => {
+      ui.classList.remove('hidden');
+      clearTimeout(idle);
+      idle = setTimeout(() => playing && ui.classList.add('hidden'), 2600);
+    };
+    window.addEventListener('pointermove', poke);
+    window.addEventListener('pointerdown', poke);
+    poke();
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      playing = false;
+      seekFilm(T.intro);
+      $('reduced').hidden = false;
+      $('reduced').querySelector('button').onclick = () => { $('reduced').hidden = true; actions.replay(); };
+    }
+  } else {
+    ui.remove();
+  }
+
+  let last = null;
+  function tick(now) {
+    if (last !== null && playing) advance(Math.min(0.05, (now - last) / 1000));
+    last = now;
+    draw();
+    requestAnimationFrame(tick);
+  }
+
+  /* API d'export : rendu exact d'un instant du film, sans horloge */
+  window.__film = { duration: FILM, T };
+  window.__seek = (ft) => { seekFilm(ft); draw(); };
+
+  document.fonts.load('500 20px Poppins').finally(() => {
+    window.addEventListener('resize', draw);
+    if (EXPORT) { playing = false; seekFilm(0); draw(); window.__ready = true; }
+    else requestAnimationFrame(tick);
+  });
+}
+
+/* ==========================================================================
+   Version 01 · ORBITE — nuit, lumière, mécanique céleste
+   INTRO  1,5 s  un point s'allume, implose, trois comètes en jaillissent en
+                 spirale et sont « capturées » sur leur orbite ; le mot sort du
+                 trait teal en accordéon.
+   BOUCLE 6 s    l'anneau tourne (2 tours) en « chenille » : 4 battements par
+                 cycle, la queue de chaque arc rattrape puis la tête bondit,
+                 en cascade magenta → orange → teal. Les arcs ne se croisent
+                 JAMAIS (l'écart entre deux arcs ne descend pas sous celui du
+                 logo). Cadran de 60 graduations, qui avance d'un cran par cycle
+                 et s'allume au passage des têtes ; le mot se soulève quand un
+                 arc passe face à lui ; un reflet le balaie une fois par cycle.
+   SORTIE 1,5 s  depuis N'IMPORTE QUEL instant de la boucle : le mot rentre
+                 dans le teal, les arcs accélèrent en spirale et implosent,
+                 éclair + onde de choc qui balaie l'écran.
+   Raccords C¹ : à 1,5 s les arcs arrivent EXACTEMENT à la vitesse de boucle ;
+   la sortie repart de la position ET de la vitesse courantes.
+   ========================================================================== */
+const SCENE = (() => {
+  const T = { intro: 1.5, loop: 6, outro: 1.5 };
+  const { cx: CX, cy: CY, k: K } = LOCKUP;
+  const OMEGA = 90; /* °/s de fond : 2 tours par boucle avec les 4 bonds de 45° */
+  const BEAT = 1.5, LEAP = 45, CASCADE = 0.1, STRIDE = 0.75, HEAD_LAG = 0.55;
+  const tailEase = Ease.inOutCubic, headEase = bezier(0.55, 0, 0.2, 1);
+  const BIRTH = [0.3, 0.33, 0.36];
+  const D_IN = [250, 330, 410];
+  const D_OUT = [260, 390, 540];
+  const LAND = [0.95, 1.02, 1.09];
+  const FIELD_A = [5, 4, 3.5];
+  const EDGE = CX + TEAL_EDGE_U * K;
+  const HIDE = WORD_RIGHT + 24 - EDGE;
+  const WHITE = '#FFFFFF';
+
+  const rand = rng(20260925);
+  const sparksLand = ARCS.map(() =>
+    Array.from({ length: 9 }, () => ({ u: rand(), jit: (rand() - 0.5) * 70 * DEG, dist: 26 + rand() * 64, life: 0.3 + rand() * 0.25, delay: rand() * 0.05 })),
+  );
+  const sparksEnd = Array.from({ length: 40 }, (_, j) => ({
+    ang: rand() * TAU, dist: 150 + rand() * 460, life: 0.3 + rand() * 0.24, delay: rand() * 0.05, color: j % 4 === 3 ? WHITE : ARCS[j % 3].color, w: 1.4 + rand() * 2.4,
+  }));
+  const radSpring = Ease.spring(0.55, 11);
+  const grow = Ease.outBack(1.6);
+  const widen = Ease.outBack(2);
+  const wordIn = Ease.outQuint;
+  const wordOut = Ease.inBack(1.6);
+  const angDiff = (a, b) => ((((a - b + 180) % 360) + 360) % 360) - 180;
+  let grainPat = null;
+  let wordC = null;
+  const grain = grainTile(11, 9);
+
+  /* ---------- arcs : un état par phase, fonctions pures du temps ---------- */
+  /* chenille : sur chaque battement, la queue avance de LEAP puis la tête la rejoint.
+     La queue part toujours AVANT la tête de l'arc qui la précède → aucun chevauchement. */
+  function loopArcs(tau) {
+    return ARCS.map((a, i) => {
+      let tail = 0, headD = 0;
+      for (let c = 0; c < 4; c++) {
+        const t0 = c * BEAT + i * CASCADE;
+        tail += LEAP * tailEase(prog(tau, t0, t0 + STRIDE));
+        headD += LEAP * headEase(prog(tau, t0 + HEAD_LAG, t0 + HEAD_LAG + STRIDE));
+      }
+      const from = a.start + OMEGA * tau + tail;
+      const to = a.start + a.len + OMEGA * tau + headD;
+      return { r: a.R * K, mid: (from + to) / 2, len: to - from, w: a.w * K, alpha: 1, color: a.color };
+    });
+  }
+  function introArcs(t) {
+    return ARCS.map((a, i) => {
+      const B = BIRTH[i];
+      if (t < B) return null;
+      const p = prog(t, B, T.intro);
+      const mid = a.mid + OMEGA * (t - T.intro) - D_IN[i] * (1 - p) ** 3;
+      const speed = OMEGA + (3 * D_IN[i] * (1 - p) ** 2) / (T.intro - B);
+      const tail = clamp(speed * 0.07, 6, a.len * 0.95);
+      const len = lerp(tail, a.len, grow(prog(t, 0.72 + 0.07 * i, 1.3 + 0.07 * i)));
+      const r = a.R * K * radSpring(prog(t, B, B + 1.0));
+      const w = a.w * K * (0.32 + 0.68 * widen(prog(t, 0.66 + 0.07 * i, 1.24 + 0.07 * i)));
+      return { r, mid, len, w, alpha: prog(t, B, B + 0.08), color: a.color };
+    });
+  }
+  function outroArcs(t, tau0) {
+    const c = prog(t, 0.22, 0.95, Ease.inCubic);
+    const p = prog(t, 0, 0.95);
+    const open = Math.sin(Math.PI * prog(t, 0, 0.42)) ** 2; /* anticipation : le cercle s'ouvre avant d'imploser */
+    return loopArcs(tau0 + t).map((s, i) => ({
+      ...s,
+      mid: s.mid + D_OUT[i] * p ** 3,
+      r: s.r * (1 + 0.08 * open) * (1 - c),
+      len: s.len * (1 - 0.72 * c),
+      w: s.w * (1 - 0.5 * c),
+      alpha: 1 - prog(t, 0.86, 0.95),
+    }));
+  }
+  const arcsAt = (phase, t, tau0) => (phase === 'intro' ? introArcs(t) : phase === 'loop' ? loopArcs(t) : outroArcs(t, tau0));
+
+  /* ---------- mot ---------- */
+  function wordDX(phase, t, j) {
+    if (phase === 'intro') {
+      const s = 0.7 + (5 - j) * 0.05;
+      return -HIDE * (1 - wordIn(prog(t, s, s + 0.55)));
+    }
+    if (phase === 'outro') {
+      const s = (5 - j) * 0.035;
+      return -HIDE * wordOut(prog(t, s, s + 0.42));
+    }
+    return 0;
+  }
+  /* couplage « champ » : chaque lettre se soulève quand un arc passe à 3 h, face à elle.
+     Fonction des angles (continus) → aucun raccord à gérer entre phases. */
+  function fieldStrength(phase, t) {
+    if (phase === 'intro') return smooth(prog(t, 1.0, 1.5));
+    if (phase === 'outro') return 1 - smooth(prog(t, 0, 0.3));
+    return 1;
+  }
+  function wordDY(arcs, j, strength) {
+    if (strength <= 0) return 0;
+    let f = 0;
+    arcs.forEach((s, i) => {
+      if (!s) return;
+      const d = angDiff(s.mid, j * 6) / 22;
+      f += FIELD_A[i] * Math.exp(-d * d);
+    });
+    return -f * strength;
+  }
+
+  /* ---------- cadran ---------- */
+  function dialState(phase, t, tau0) {
+    if (phase === 'intro') return { rot: t - T.intro, sweep: prog(t, 0.12, 0.85, Ease.inOutCubic) * 390, rk: 1, a: 1 };
+    if (phase === 'loop') return { rot: t, sweep: 400, rk: 1, a: 1 };
+    return { rot: tau0 + t, sweep: 400, rk: 1 - Ease.inCubic(prog(t, 0.1, 0.75)), a: 1 - prog(t, 0.25, 0.75) };
+  }
+  function drawDial(ctx, d, arcs) {
+    if (d.a <= 0) return;
+    ctx.lineCap = 'round';
+    for (let j = 0; j < 60; j++) {
+      const ang = -90 + j * 6 + d.rot;
+      const reveal = clamp((d.sweep - j * 6) / 30);
+      if (reveal <= 0) continue;
+      const major = j % 5 === 0;
+      let boost = 0;
+      arcs.forEach((s) => {
+        if (!s) return;
+        const e = angDiff(ang, s.mid + s.len / 2) / 7;
+        boost += Math.exp(-e * e) * 0.65 * s.alpha;
+      });
+      const r0 = (major ? 386 : 394) * K * d.rk, r1 = (major ? 420 : 410) * K * d.rk;
+      const c = Math.cos(ang * DEG), sn = Math.sin(ang * DEG);
+      ctx.beginPath();
+      ctx.moveTo(CX + r0 * c, CY + r0 * sn);
+      ctx.lineTo(CX + r1 * c, CY + r1 * sn);
+      ctx.lineWidth = major ? 2.2 : 1.4;
+      ctx.strokeStyle = `rgba(255,255,255,${clamp(((major ? 0.24 : 0.09) + boost) * reveal * d.a)})`;
+      ctx.stroke();
+    }
+  }
+
+  function drawArcs(ctx, arcs, alphaMul = 1) {
+    arcs.forEach((s) => {
+      if (!s) return;
+      ctx.globalAlpha = s.alpha * alphaMul;
+      strokeArc(ctx, CX, CY, s.r, s.mid - s.len / 2, s.len, s.w, s.color);
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  function drawCore(ctx, r, glowR, glowA) {
+    if (glowA > 0.002 && glowR > 0.5) {
+      const g = ctx.createRadialGradient(CX, CY, 0, CX, CY, glowR);
+      g.addColorStop(0, `rgba(255,255,255,${glowA})`);
+      g.addColorStop(0.22, `rgba(190,240,236,${glowA * 0.45})`);
+      g.addColorStop(1, 'rgba(70,175,172,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(CX, CY, glowR, 0, TAU);
+      ctx.fill();
+    }
+    if (r > 0.05) {
+      ctx.fillStyle = WHITE;
+      ctx.beginPath();
+      ctx.arc(CX, CY, r, 0, TAU);
+      ctx.fill();
+    }
+  }
+  function strokeRing(ctx, r, startDeg, lenDeg, w, color, a) {
+    if (a <= 0.002) return;
+    ctx.globalAlpha = a;
+    ctx.beginPath();
+    if (lenDeg >= 360) ctx.arc(CX, CY, r, 0, TAU);
+    else ctx.arc(CX, CY, r, startDeg * DEG, (startDeg + lenDeg) * DEG);
+    ctx.lineWidth = w;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = color;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  function streak(ctx, x, y, ang, len, w, color, a) {
+    if (a <= 0.002) return;
+    ctx.globalAlpha = a;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - Math.cos(ang) * len, y - Math.sin(ang) * len);
+    ctx.lineWidth = w;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = color;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  /* ---------- rendu ---------- */
+  function render(R, phase, t, tau0) {
+    const { main, layer } = R;
+    const v = R.view();
+
+    /* fond : nuit chaude + grain + vignette */
+    R.device(main);
+    main.globalCompositeOperation = 'source-over';
+    main.fillStyle = '#08070a';
+    main.fillRect(0, 0, R.W, R.H);
+    R.logical(main);
+    const bg = main.createRadialGradient(900, 540, 0, 900, 540, 1250);
+    bg.addColorStop(0, '#1c1920');
+    bg.addColorStop(0.55, '#0f0d12');
+    bg.addColorStop(1, '#060508');
+    main.fillStyle = bg;
+    main.fillRect(v.x0, v.y0, v.x1 - v.x0, v.y1 - v.y0);
+    R.device(main);
+    if (!grainPat) grainPat = main.createPattern(grain, 'repeat');
+    main.fillStyle = grainPat;
+    main.fillRect(0, 0, R.W, R.H);
+
+    /* caméra */
+    let cam = 1;
+    if (phase === 'intro') cam = 1 + 0.06 * (1 - Ease.outCubic(prog(t, 0, 1.5))) + 0.014 * ring(t - 0.3, 3, 7) * (1 - smooth(prog(t, 1.1, 1.5)));
+    if (phase === 'outro') cam = 1 + 0.05 * Ease.inCubic(prog(t, 0.2, 0.95)) + 0.035 * ring(t - 0.95, 2, 5);
+
+    R.clearLayer();
+    R.logical(layer);
+    layer.translate(CX, CY);
+    layer.scale(cam, cam);
+    layer.translate(-CX, -CY);
+
+    const arcs = arcsAt(phase, t, tau0);
+
+    /* cadran */
+    drawDial(layer, dialState(phase, t, tau0), arcs);
+
+    /* ondes de choc et étincelles d'atterrissage (intro) */
+    if (phase === 'intro') {
+      const pl = prog(t, 0.3, 0.9, Ease.outCubic);
+      if (t > 0.3) strokeRing(layer, 8 + 230 * pl, 0, 360, 1.6, WHITE, 0.42 * (1 - pl));
+      ARCS.forEach((a, i) => {
+        const L = LAND[i];
+        if (t < L) return;
+        const at = introArcs(L)[i];
+        const p = prog(t, L, L + 0.4, Ease.outCubic);
+        strokeRing(layer, a.R * K + 6 + 64 * p, at.mid - a.len / 2 - 16, a.len + 32, 2.6 * (1 - p) + 0.3, a.color, 0.55 * (1 - p) ** 1.2);
+        sparksLand[i].forEach((sp) => {
+          const life = Math.min(sp.life, T.intro - (L - 0.03) - sp.delay - 0.01);
+          const q = (t - (L - 0.03) - sp.delay) / life;
+          if (q <= 0 || q >= 1) return;
+          const th = (at.mid + (sp.u - 0.5) * a.len) * DEG;
+          const r0 = a.R * K + (a.w * K) / 2;
+          const dir = th + sp.jit;
+          const d = sp.dist * Ease.outCubic(q);
+          const x = CX + r0 * Math.cos(th) + d * Math.cos(dir);
+          const y = CY + r0 * Math.sin(th) + d * Math.sin(dir);
+          streak(layer, x, y, dir, 12 * (1 - q) + 1, 2, a.color, (1 - q) ** 1.4);
+        });
+      });
+    }
+
+    /* traînées (flou de mouvement) puis arcs */
+    for (let g = 4; g >= 1; g--) drawArcs(layer, arcsAt(phase, t - g / 90, tau0), 0.2 * (1 - g / 5));
+    drawArcs(layer, arcs);
+
+    /* mot : sur son propre calque (halo plus discret que les arcs), masqué au bord du teal */
+    if (!wordC) wordC = R.newLayer();
+    const wctx = wordC.getContext('2d');
+    wctx.setTransform(1, 0, 0, 1, 0, 0);
+    wctx.globalCompositeOperation = 'source-over';
+    wctx.clearRect(0, 0, wordC.width, wordC.height);
+    R.logical(wctx);
+    wctx.translate(CX, CY);
+    wctx.scale(cam, cam);
+    wctx.translate(-CX, -CY);
+    const fs = fieldStrength(phase, t);
+    {
+    const layer = wctx;
+    layer.save();
+    layer.beginPath();
+    layer.rect(EDGE, v.y0 - 200, v.x1 - EDGE + 400, v.y1 - v.y0 + 400);
+    layer.clip();
+    for (let j = 0; j < 6; j++) {
+      const x = LOCKUP.wordX + WORD[j].x * LOCKUP.fs;
+      const color = WORD[j].teal ? BRAND.teal : WHITE;
+      const dx = wordDX(phase, t, j);
+      if (phase !== 'loop') {
+        for (let g = 2; g >= 1; g--) {
+          const dg = wordDX(phase, t - g / 90, j);
+          if (Math.abs(dg - dx) < 2) continue;
+          layer.globalAlpha = g === 1 ? 0.3 : 0.13;
+          drawLetter(layer, j, x + dg, LOCKUP.baseY, LOCKUP.fs, color);
+        }
+        layer.globalAlpha = 1;
+      }
+      drawLetter(layer, j, x + dx, LOCKUP.baseY + wordDY(arcs, j, fs), LOCKUP.fs, color);
+    }
+    layer.restore();
+    }
+
+    /* point de lumière : naissance (intro) et implosion (sortie) */
+    if (phase === 'intro') {
+      const appear = prog(t, 0, 0.18, Ease.outBack(2.5));
+      const charge = prog(t, 0.1, 0.3, Ease.inCubic);
+      const gone = prog(t, 0.3, 0.6, Ease.outCubic);
+      const flash = t > 0.3 ? Math.exp(-(t - 0.3) * 10) : 0;
+      drawCore(layer, (5 * appear + 4 * charge) * (1 - gone), (22 + 50 * charge) * (1 - gone) + 150 * flash, 0.6 * appear * (1 - gone) + 0.7 * flash);
+    }
+    if (phase === 'outro') {
+      const fade = 1 - prog(t, 1.25, 1.5);
+      const flash = (t < 0.95 ? prog(t, 0.72, 0.95, Ease.inCubic) : Math.exp(-(t - 0.95) * 7)) * fade;
+      drawCore(layer, 11 * flash, 40 + 230 * flash, 0.95 * flash);
+      const p = prog(t, 0.95, 1.48, Ease.outCubic);
+      if (t > 0.95) {
+        strokeRing(layer, 10 + 1050 * p, 0, 360, 3.2 * (1 - p) + 0.4, WHITE, 0.55 * (1 - p) ** 1.3);
+        const p2 = prog(t, 1.0, 1.48, Ease.outCubic);
+        strokeRing(layer, 10 + 720 * p2, 0, 360, 2 * (1 - p2) + 0.3, BRAND.teal, 0.4 * (1 - p2));
+      }
+      sparksEnd.forEach((sp) => {
+        const life = Math.min(sp.life, T.outro - 0.95 - sp.delay - 0.01);
+        const q = (t - 0.95 - sp.delay) / life;
+        if (q <= 0 || q >= 1) return;
+        const d = sp.dist * Ease.outCubic(q);
+        streak(layer, CX + d * Math.cos(sp.ang), CY + d * Math.sin(sp.ang), sp.ang, 26 * (1 - q) + 2, sp.w, sp.color, (1 - q) ** 1.3);
+      });
+    }
+
+    /* reflet : une bande de lumière balaie le logo une fois par boucle */
+    let gleam = 0, gx = 0;
+    const gTau = phase === 'loop' ? t : phase === 'outro' ? tau0 + t : -1;
+    if (gTau >= 0) {
+      const gp = prog(gTau % T.loop, 3.5, 4.45, Ease.inOutSine);
+      if (gp > 0 && gp < 1) {
+        gleam = Math.sin(Math.PI * gp) * (phase === 'outro' ? 1 - prog(t, 0, 0.25) : 1);
+        gx = lerp(330, 1700, gp);
+      }
+    }
+    if (gleam > 0.002) {
+      for (const [g, strength] of [[layer, 0.75], [wctx, 0.55]]) {
+        R.logical(g);
+        g.save();
+        g.globalCompositeOperation = 'source-atop';
+        g.translate(gx, 540);
+        g.rotate(18 * DEG);
+        const lg = g.createLinearGradient(-120, 0, 120, 0);
+        lg.addColorStop(0, 'rgba(70,175,172,0)');
+        lg.addColorStop(0.5, `rgba(255,255,255,${strength * gleam})`);
+        lg.addColorStop(1, 'rgba(70,175,172,0)');
+        g.fillStyle = lg;
+        g.fillRect(-120, -900, 240, 1800);
+        g.restore();
+      }
+    }
+
+    /* halo + composition */
+    let bloom = 0.42;
+    if (phase === 'intro') {
+      bloom = 0.42 + 0.9 * (t > 0.3 ? Math.exp(-(t - 0.3) * 8) : 0);
+      LAND.forEach((L) => { if (t > L) bloom += 0.3 * Math.exp(-(t - L) * 7) * (1 - smooth(prog(t, 1.2, 1.5))); });
+    } else {
+      const tau = phase === 'loop' ? t : tau0 + t;
+      bloom = 0.42 + 0.14 * Math.sin((Math.PI * tau) / BEAT) ** 2 + 0.25 * gleam;
+      if (phase === 'outro') bloom += 1.3 * (t < 0.95 ? prog(t, 0.72, 0.95) : Math.exp(-(t - 0.95) * 6));
+    }
+    R.bloom(bloom * 0.85, 10);
+    R.bloom(bloom * 0.55, 44);
+    R.bloom(0.16 + 0.3 * gleam, 16, wordC);
+    R.composite();
+    R.composite(1, wordC);
+
+    /* vignette */
+    R.logical(main);
+    const vg = main.createRadialGradient(900, 540, 420, 900, 540, 1300);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.55)');
+    main.fillStyle = vg;
+    main.fillRect(v.x0, v.y0, v.x1 - v.x0, v.y1 - v.y0);
+  }
+
+  return { T, render };
+})();
+
+mountPlayer(SCENE);
+</script>
+</body>
+</html>

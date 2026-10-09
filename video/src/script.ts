@@ -124,7 +124,9 @@ export const PLANS: readonly Plan[] = [
     kind: "capture",
     shot: "Une seance deplacee a la main puis verrouillee sur son creneau.",
     cues: [
-      { fromSec: 32, toSec: 34, text: "Glissez, verrouillez, régénérez." },
+      // Décision fondateur 2026-10-09 : « Glissez » → « Déplacez » (la grille n'a pas de
+      // glisser-déposer — on sélectionne une séance puis « Placer ici »). Second segment inchangé.
+      { fromSec: 32, toSec: 34, text: "Déplacez, verrouillez, régénérez." },
       { fromSec: 34, toSec: 36, text: "L'outil optimise, vous décidez." },
     ],
     captures: ["P07-drag-lock.webm"],

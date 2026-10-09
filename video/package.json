@@ -5,11 +5,15 @@
   "description": "Video promotionnelle 60 s (Remotion) — projet isole a la racine du depot, zero dependance avec frontend/ ou landing/ (meme logique d'isolement que landing/).",
   "license": "UNLICENSED",
   "scripts": {
-    "studio": "remotion studio src/index.ts",
-    "render": "remotion render src/index.ts AmateoPromo out/amateo-promo-60s.mp4",
-    "still": "remotion still src/index.ts AmateoPromo out/stills/plan01.png --frame=120",
+    "stage-media": "node scripts/stage-media.cjs",
+    "studio": "node scripts/stage-media.cjs && remotion studio src/index.ts",
+    "render": "node scripts/stage-media.cjs && remotion render src/index.ts AmateoPromo out/amateo-promo-60s.mp4",
+    "draft": "node scripts/stage-media.cjs && remotion render src/index.ts AmateoPromo out/draft-720p.mp4 --scale=0.6666666666666666",
+    "stills": "node scripts/stage-media.cjs && node scripts/render-stills.cjs",
+    "still": "node scripts/stage-media.cjs && remotion still src/index.ts AmateoPromo out/stills/plan01.png --frame=200",
     "capture": "bash capture/run.sh",
     "logo": "node capture/capture-logo.cjs",
+    "click": "node scripts/make-click-track.cjs",
     "vtt": "tsx scripts/make-vtt.ts",
     "typecheck": "tsc --noEmit"
   },

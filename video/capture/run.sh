@@ -30,6 +30,12 @@ CHROME="$(ls -d "$HOME"/.cache/ms-playwright/chromium-*/chrome-linux64/chrome 2>
 mkdir -p "$CAPTURES" "$TMP"
 cd "$REPO"
 
+# Filtre de plans (ne pas tout refaire) : PLANS="P04 P07" ne recapture QUE ces plans + prerequis,
+# saute la mise en scene inutile (doleances/membre), le logo, noms-visibles et la planche contact.
+# Vide = run COMPLET (reconstruit tout, regenere logo + planche).
+PLANS_FILTER="${PLANS:-}"
+want_plan() { [[ -z "$PLANS_FILTER" ]] || [[ " $PLANS_FILTER " == *" $1 "* ]]; }
+
 console() { docker compose exec -T -e APP_ENV=dev php-fpm php bin/console "$@"; }
 
 # pj EXPR [args] : evalue EXPR (python) avec d = JSON de stdin, A = args (comme la ref). -I : isole.
@@ -38,6 +44,13 @@ d=json.load(sys.stdin); A=sys.argv[2:]
 r=eval(sys.argv[1])
 print(json.dumps(r) if isinstance(r,(list,dict)) else ("" if r is None else r))' "$@"; }
 
+# psql sur la base « postgres » (pour agir SUR amateo_dev sans y etre connecte) + terminaison des
+# sessions restantes sur amateo_dev : sinon `db-empty` echoue (« database is being accessed by other
+# users ») — c'est le worker Messenger qui garde une connexion ouverte (l'engine, lui, ne touche pas
+# la base). On l'arrete AVANT db-empty, puis on termine les sessions residuelles par ceinture.
+psql_pg() { docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=0 -Atc "$0"' "$1"; }
+kill_sandbox_conns() { psql_pg "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='amateo_dev' AND pid<>pg_backend_pid()" >/dev/null 2>&1 || true; }
+
 # ---- Restauration de l'etat CI, quoi qu'il arrive -----------------------------------------------
 _restored=0
 restore_ci() {
@@ -45,9 +58,12 @@ restore_ci() {
   _restored=1
   set +e
   echo "==> run.sh: restauration du bac a sable dans l'etat CI (BCCL seul)..." >&2
+  docker compose stop messenger-worker >/dev/null 2>&1 || true   # libere sa connexion a amateo_dev
+  kill_sandbox_conns                                             # ceinture : termine les sessions restantes
   CONFIRM=yes make -C "$REPO/backend" db-empty >&2
   CONFIRM=yes bash -c "make -C '$REPO/backend' seed-bccl && make -C '$REPO/backend' seed-holidays" >&2
-  docker compose restart engine messenger-worker >/dev/null 2>&1 || true
+  docker compose start messenger-worker >/dev/null 2>&1 || true
+  docker compose restart engine >/dev/null 2>&1 || true
   echo "==> run.sh: bac a sable remis dans l'etat CI (BCCL + vacances)." >&2
 }
 trap restore_ci EXIT INT TERM
@@ -67,7 +83,10 @@ assert_sandbox() {
 # ---- Reconstruction du club de demonstration ----------------------------------------------------
 reconstruct_demo() {
   echo "==> reconstruction du club de DEMONSTRATION (seed-demo)..."
+  docker compose stop messenger-worker >/dev/null 2>&1 || true
+  kill_sandbox_conns
   CONFIRM=yes make -C "$REPO/backend" db-empty || { echo "db-empty echoue — abandon."; exit 1; }
+  docker compose start messenger-worker >/dev/null 2>&1 || true
   CONFIRM=yes bash -c "make -C '$REPO/backend' seed-demo && make -C '$REPO/backend' seed-holidays" \
     || { echo "seed-demo / seed-holidays echoue — abandon."; exit 1; }
   docker compose restart engine messenger-worker >/dev/null 2>&1 || true
@@ -154,7 +173,8 @@ seed_doleances() {
   # Pour noms-visibles.md
   printf '%s\n' "$EMAIL" > "$TMP/coach-email.txt"
 }
-seed_doleances || echo "WARN: seed_doleances a rencontre une erreur — on continue."
+if want_plan P05; then seed_doleances || echo "WARN: seed_doleances a rencontre une erreur — on continue."
+else echo "filtre $PLANS_FILTER : mise en scene doleances (P05) sautee."; fi
 
 # ---- Membre du bureau en LECTURE SEULE (plan 10) ------------------------------------------------
 # Aucune API ne cree un membre pour un compte de DEMO (POST /api/invitations -> 403 pour un demo ;
@@ -181,17 +201,23 @@ seed_member() {
   printf -- '- Nom affiche : **Bureau Lecture** (fictif, exemple)\n- E-mail : `%s` (role membre, lecture seule)\n' "$MEMBER_EMAIL" > "$TMP/member.txt"
   echo "membre lecture seule : $MEMBER_EMAIL (jwt: ${MEMBER_JWT:+ok}${MEMBER_JWT:-ECHEC})"
 }
-seed_member || echo "WARN: seed_member erreur — on continue."
+if want_plan P10; then seed_member || echo "WARN: seed_member erreur — on continue."
+else echo "filtre $PLANS_FILTER : membre lecture seule (P10) saute."; fi
 
 # ---- Captures ------------------------------------------------------------------------------------
 cd "$REPO/video"
-echo "==> capture de l'application (Playwright)..."
-PW_CHROME="$CHROME" node capture/capture-app.cjs "$TOKEN" "${WISH_TOKEN:-}" "${MAILID:-}" "${MEMBER_JWT:-}" 2>&1 | tee "$OUT/capture-app.log" || true
-echo "==> export des images du logo..."
-PW_CHROME="$CHROME" node capture/capture-logo.cjs 2>&1 | tee "$OUT/capture-logo.log" || true
-echo "==> generation de noms-visibles.md..."
-bash capture/make-noms-visibles.sh "$TOKEN" 2>&1 | tee "$OUT/noms-visibles.log" || true
-echo "==> planche contact..."
-PW_CHROME="$CHROME" node capture/contact-sheet.cjs 2>&1 | tee "$OUT/contact-sheet.log" || true
+echo "==> capture de l'application (Playwright, filtre: ${PLANS_FILTER:-TOUT})..."
+PW_CHROME="$CHROME" CAPTURE_PLANS="$PLANS_FILTER" node capture/capture-app.cjs "$TOKEN" "${WISH_TOKEN:-}" "${MAILID:-}" "${MEMBER_JWT:-}" 2>&1 | tee "$OUT/capture-app.log" || true
+
+if [[ -z "$PLANS_FILTER" ]]; then
+  echo "==> export des images du logo..."
+  PW_CHROME="$CHROME" node capture/capture-logo.cjs 2>&1 | tee "$OUT/capture-logo.log" || true
+  echo "==> generation de noms-visibles.md..."
+  bash capture/make-noms-visibles.sh "$TOKEN" 2>&1 | tee "$OUT/noms-visibles.log" || true
+  echo "==> planche contact..."
+  PW_CHROME="$CHROME" node capture/contact-sheet.cjs 2>&1 | tee "$OUT/contact-sheet.log" || true
+else
+  echo "filtre $PLANS_FILTER : logo, noms-visibles et planche contact NON regeneres (deja valides)."
+fi
 
 echo "==> capture terminee. Restauration de l'etat CI en sortie (trap)."

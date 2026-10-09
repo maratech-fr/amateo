@@ -6,6 +6,12 @@ node_modules/
 # TOUT est reproductible par `npm run capture` / `npm run logo` / `npm run render` / `npm run vtt`.
 out/
 
+# Montage : pont vers out/ pour que Remotion (staticFile, publicDir=public) lise les medias
+# regenerables (captures, images du logo exportees, piste audio). C'est un LIEN symbolique
+# public/media -> ../out, cree par `npm run capture`/`npm run logo` (ou `npm run stage-media`).
+# Jamais commite : tout ce qu'il expose vit deja dans out/ (gitignore ci-dessus).
+public/media
+
 # Divers
 *.log
 .DS_Store
