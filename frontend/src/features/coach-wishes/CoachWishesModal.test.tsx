@@ -49,6 +49,17 @@ vi.mock("./queries", () => ({
   useDeleteCoachWish: () => ({ mutate: deleteMut, isPending: false }),
 }));
 
+const mutualizationsState: { data: unknown[] } = { data: [] };
+const createMutu = vi.fn();
+const updateMutu = vi.fn();
+const deleteMutu = vi.fn();
+vi.mock("./mutualizationQueries", () => ({
+  useCoachWishMutualizations: () => ({ data: mutualizationsState.data }),
+  useCreateCoachWishMutualization: () => ({ mutate: createMutu, isPending: false }),
+  useUpdateCoachWishMutualization: () => ({ mutate: updateMutu, isPending: false }),
+  useDeleteCoachWishMutualization: () => ({ mutate: deleteMutu, isPending: false }),
+}));
+
 const mother: CalendarEntry = {
   id: "e1",
   kind: "period",
@@ -81,6 +92,7 @@ const wish = (over: Record<string, unknown>) => ({
 describe("CoachWishesModal", () => {
   beforeEach(() => {
     wishesState.data = [];
+    mutualizationsState.data = [];
     // Un cas vide les liens coach : sans ré-armement, il contaminerait les suivants.
     teamCoachesState.data = [
       { id: "tc1", teamId: "t1", coachId: "c1", role: "MAIN" },
@@ -89,6 +101,9 @@ describe("CoachWishesModal", () => {
     createMut.mockClear();
     updateMut.mockClear();
     deleteMut.mockClear();
+    createMutu.mockClear();
+    updateMutu.mockClear();
+    deleteMutu.mockClear();
   });
 
   it("groupe les doléances par semaine quand aucun filtre de semaine", () => {
@@ -180,7 +195,7 @@ describe("CoachWishesModal", () => {
   it("le formulaire d'ajout soumet le payload avec la semaine figée quand weekFilter", async () => {
     const user = userEvent.setup();
     render(<CoachWishesModal mother={mother} weekFilter="2026-02-16" onClose={() => {}} />);
-    await user.click(screen.getByRole("button", { name: /Ajouter/ }));
+    await user.click(screen.getByRole("button", { name: "Ajouter" }));
     // Équipe SM1 (défaut) → coach MAIN c1 pré-rempli ; on soumet directement.
     await user.click(screen.getByRole("button", { name: /Ajouter la doléance/ }));
     expect(createMut).toHaveBeenCalledWith(expect.objectContaining({ calendarEntryId: "e1", weekStart: "2026-02-16", teamId: "t1", coachId: "c1" }), expect.anything());
@@ -198,7 +213,7 @@ describe("CoachWishesModal", () => {
   it("le formulaire d'ajout envoie les jours souhaités, et cocher souhaité retire l'indisponibilité (exclusion)", async () => {
     const user = userEvent.setup();
     render(<CoachWishesModal mother={mother} weekFilter="2026-02-16" onClose={() => {}} />);
-    await user.click(screen.getByRole("button", { name: /Ajouter/ }));
+    await user.click(screen.getByRole("button", { name: "Ajouter" }));
 
     const wished = screen.getByRole("group", { name: "Jours souhaités" });
     const unavailable = screen.getByRole("group", { name: "Jours indisponibles" });
@@ -241,7 +256,7 @@ describe("CoachWishesModal", () => {
     const user = userEvent.setup();
     render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
 
-    await user.click(screen.getByRole("button", { name: /Ajouter/ }));
+    await user.click(screen.getByRole("button", { name: "Ajouter" }));
     const picker = screen.getByLabelText("Équipe");
     expect(within(picker).queryByRole("option", { name: "U13" })).toBeNull();
     expect(within(picker).getByRole("option", { name: "SM1" })).toBeInTheDocument();
@@ -263,7 +278,7 @@ describe("CoachWishesModal", () => {
     const user = userEvent.setup();
     render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
 
-    await user.click(screen.getByRole("button", { name: /Ajouter/ }));
+    await user.click(screen.getByRole("button", { name: "Ajouter" }));
     const picker = screen.getByLabelText("Coach");
     expect(within(picker).getByRole("option", { name: /Maxime Durand/ })).toBeInTheDocument();
     expect(within(picker).queryByRole("option", { name: /Léa Roy/ })).toBeNull();
@@ -288,6 +303,37 @@ describe("CoachWishesModal", () => {
     expect(within(picker).getByRole("option", { name: /Léa Roy.*n'encadre plus cette équipe/ })).toBeInTheDocument();
   });
 
+  // ── D2 — section Mutualisations ──
+
+  it("liste une mutualisation déclarée avec ses partenaires et le nombre de séances", () => {
+    mutualizationsState.data = [{ id: "m1", calendarEntryId: "e1", teamId: "t1", coachId: "c1", partnerTeamIds: ["t2", "t3"], sharedSlots: 2, done: false }];
+    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    expect(screen.getByRole("heading", { name: "Mutualisations" })).toBeInTheDocument();
+    expect(screen.getByText(/souhaite mutualiser 2 séances avec : U13, Fanion/)).toBeInTheDocument();
+  });
+
+  it("annonce l'état vide des mutualisations", () => {
+    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    expect(screen.getByText("Aucune mutualisation déclarée pour cette période.")).toBeInTheDocument();
+  });
+
+  it("cocher « traité » sur une mutualisation appelle update avec done inversé", async () => {
+    mutualizationsState.data = [{ id: "m1", calendarEntryId: "e1", teamId: "t1", coachId: "c1", partnerTeamIds: ["t2"], sharedSlots: 1, done: false }];
+    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("checkbox", { name: /Traité — mutualisation/ }));
+    expect(updateMutu).toHaveBeenCalledWith(expect.objectContaining({ id: "m1", body: expect.objectContaining({ done: true }) }));
+  });
+
+  it("le formulaire d'ajout de mutualisation soumet équipe + coach MAIN + partenaire + séances", async () => {
+    const user = userEvent.setup();
+    render(<CoachWishesModal mother={mother} weekFilter={null} onClose={() => {}} />);
+    await user.click(screen.getByRole("button", { name: /Ajouter une mutualisation/ }));
+    // Équipe SM1 (défaut) → coach MAIN c1 ; on coche U13 en partenaire.
+    await user.click(screen.getByRole("checkbox", { name: "Partenaire U13" }));
+    await user.click(screen.getByRole("button", { name: /Ajouter la mutualisation/ }));
+    expect(createMutu).toHaveBeenCalledWith(expect.objectContaining({ calendarEntryId: "e1", teamId: "t1", coachId: "c1", partnerTeamIds: ["t2"], sharedSlots: 1 }), expect.anything());
+  });
+
   // Aucune équipe saisissable : on dit ce qui manque plutôt que d'ouvrir un formulaire sans
   // cible (un select d'équipes vide, dont rien n'expliquerait le vide).
   it("annonce ce qui manque quand aucune équipe n'a de coach principal", () => {
@@ -296,6 +342,6 @@ describe("CoachWishesModal", () => {
 
     expect(screen.getByText(/rattachez-en un pour pouvoir saisir une doléance/i)).toBeInTheDocument();
     // Désactivé mais DÉCOUVRABLE (A11Y-30, `disabledReason`) : aria-disabled, pas le `disabled` natif.
-    expect(screen.getByRole("button", { name: /Ajouter/ })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("button", { name: "Ajouter" })).toHaveAttribute("aria-disabled", "true");
   });
 });

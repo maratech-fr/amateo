@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HTTPError } from "ky";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -91,7 +91,10 @@ describe("CampaignDialog", () => {
     previewState.isError = false;
     refetchPreview.mockReset();
   });
-  afterEach(() => setTodayOverride(null));
+  afterEach(() => {
+    setTodayOverride(null);
+    vi.unstubAllGlobals();
+  });
 
   it("crée une campagne avec les semaines et équipes choisies", async () => {
     render(<CampaignDialog entry={entry} season={season} existing={null} onClose={vi.fn()} />);
@@ -196,6 +199,29 @@ describe("CampaignDialog", () => {
     };
     render(<CampaignDialog entry={entry} season={season} existing={existing} onClose={vi.fn()} />);
     expect(screen.getByRole("tab", { name: /Coachs/ })).toHaveAttribute("aria-selected", "true");
+  });
+
+  // D2 — « Voir la page d'un coach » ouvre l'aperçu (route standalone authentifiée) dans un
+  // nouvel onglet, pour le coach sélectionné (défaut = le premier).
+  it("ouvre l'aperçu de la page du coach sélectionné dans un nouvel onglet", async () => {
+    const user = userEvent.setup();
+    const open = vi.fn();
+    vi.stubGlobal("open", open);
+    const existing: CoachWishCampaign = {
+      id: "camp1",
+      calendarEntryId: "e1",
+      deadline: "2027-06-30",
+      weeks: ["2026-02-16"],
+      teamIds: ["t1"],
+      totalCoachCount: 1,
+      respondedCoachCount: 0,
+      openWishCount: 0,
+      lastReminderAt: null,
+      coaches: [{ coachId: "c1", firstName: "Maxime", lastName: "Durand", email: null, token: "a".repeat(64), respondedAt: null, sentAt: null }],
+    };
+    render(<CampaignDialog entry={entry} season={season} existing={existing} onClose={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: /Voir la page d'un coach/ }));
+    expect(open).toHaveBeenCalledWith("/doleances/apercu/camp1?coach=c1", "_blank", "noopener");
   });
 
   // P4-178 — repli AA : la pastille « répondu le … » (StatusPill accent) et le filtre de statut
@@ -629,21 +655,24 @@ describe("CampaignDialog", () => {
       ],
     };
     render(<CampaignDialog entry={entry} season={season} existing={existing} onClose={vi.fn()} />);
+    // ⚠ Le sélecteur d'aperçu (D2) liste aussi les noms des coachs : on SCOPE les assertions
+    // de la LISTE sollicitée (aria-label) pour ne pas confondre une ligne avec une <option>.
+    const inList = (name: string) => within(screen.getByRole("list", { name: "Coachs sollicités" })).queryByText(name);
 
     // Sans filtre : les deux coachs.
-    expect(screen.getByText("Maxime SM1")).toBeInTheDocument();
-    expect(screen.getByText("Mara U13")).toBeInTheDocument();
+    expect(inList("Maxime SM1")).toBeInTheDocument();
+    expect(inList("Mara U13")).toBeInTheDocument();
 
     // Filtre équipe SM1 → Mara (U13) disparaît.
     await userEvent.click(screen.getByRole("button", { name: "SM1", pressed: false }));
-    expect(screen.getByText("Maxime SM1")).toBeInTheDocument();
-    expect(screen.queryByText("Mara U13")).not.toBeInTheDocument();
+    expect(inList("Maxime SM1")).toBeInTheDocument();
+    expect(inList("Mara U13")).not.toBeInTheDocument();
 
     // On enlève le filtre équipe, on filtre par statut « pas d'email » → seul Mara.
     await userEvent.click(screen.getByRole("button", { name: "SM1", pressed: true }));
     await userEvent.click(screen.getByRole("button", { name: "Pas d'email" }));
-    expect(screen.getByText("Mara U13")).toBeInTheDocument();
-    expect(screen.queryByText("Maxime SM1")).not.toBeInTheDocument();
+    expect(inList("Mara U13")).toBeInTheDocument();
+    expect(inList("Maxime SM1")).not.toBeInTheDocument();
 
     // P4-150 — équipe SM1 (Maxime, qui A un email) + statut « Pas d'email » → aucun coach
     // visible : la copie d'écran de l'état vide filtré est assertée.
@@ -670,12 +699,15 @@ describe("CampaignDialog", () => {
     };
     render(<CampaignDialog entry={entry} season={season} existing={existing} onClose={vi.fn()} />);
 
+    // Le sélecteur d'aperçu (D2) liste aussi les noms : on scope sur la LISTE sollicitée.
     await userEvent.click(screen.getByRole("button", { name: "Répondu" }));
-    expect(screen.getByText("Wanda U13")).toBeInTheDocument();
+    expect(within(screen.getByRole("list", { name: "Coachs sollicités" })).getByText("Wanda U13")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Répondu", pressed: true }));
     await userEvent.click(screen.getByRole("button", { name: "Pas d'email" }));
-    expect(screen.queryByText("Wanda U13")).not.toBeInTheDocument();
+    // « Pas d'email » exclut Wanda (répondante) ET Maxime (a un email) → liste vide.
+    expect(screen.queryByRole("list", { name: "Coachs sollicités" })).not.toBeInTheDocument();
+    expect(screen.getByText("Aucun coach pour ce filtre.")).toBeInTheDocument();
   });
 
   it("affiche « saison archivée » sur un 409, pas « déjà relancé »", () => {

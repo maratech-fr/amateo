@@ -18,6 +18,9 @@ import { cn } from "@/shared/lib/utils";
 
 import type { CoachWish, CoachWishPayload } from "./api";
 import { CoachWishForm } from "./CoachWishForm";
+import type { CoachWishMutualization, CoachWishMutualizationPayload } from "./mutualizationApi";
+import { MutualizationForm } from "./MutualizationForm";
+import { useCoachWishMutualizations, useCreateCoachWishMutualization, useDeleteCoachWishMutualization, useUpdateCoachWishMutualization } from "./mutualizationQueries";
 import { useCoachWishes, useCreateCoachWish, useDeleteCoachWish, useUpdateCoachWish } from "./queries";
 
 /**
@@ -41,12 +44,19 @@ export function CoachWishesModal({ mother, weekFilter, onClose }: { mother: Cale
   const createWish = useCreateCoachWish();
   const updateWish = useUpdateCoachWish();
   const deleteWish = useDeleteCoachWish();
+  const { data: mutualizations = [] } = useCoachWishMutualizations(mother.id);
+  const createMut = useCreateCoachWishMutualization();
+  const updateMut = useUpdateCoachWishMutualization();
+  const deleteMut = useDeleteCoachWishMutualization();
 
   const [coachFilter, setCoachFilter] = useState<string[]>([]);
   const [teamFilter, setTeamFilter] = useState<string[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<CoachWish | null>(null);
   const [toDelete, setToDelete] = useState<CoachWish | null>(null);
+  const [mutFormOpen, setMutFormOpen] = useState(false);
+  const [editingMut, setEditingMut] = useState<CoachWishMutualization | null>(null);
+  const [toDeleteMut, setToDeleteMut] = useState<CoachWishMutualization | null>(null);
 
   const weeks = useMemo(
     () => (null === season ? [] : periodAdjustWeeks(mother.startDate, mother.endDate, season, mother.periodType)),
@@ -108,6 +118,31 @@ export function CoachWishesModal({ mother, weekFilter, onClose }: { mother: Cale
       // et une doléance dé-attribuée ne pouvait jamais être cochée (revue #10 C1).
       body: { calendarEntryId: w.calendarEntryId, weekStart: w.weekStart, teamId: w.teamId, coachId: w.coachId, slotsWanted: w.slotsWanted, unavailableDays: w.unavailableDays, wishedDays: w.wishedDays, comment: w.comment, done: !w.done },
     });
+
+  const submitMut = (payload: CoachWishMutualizationPayload) => {
+    const after = () => {
+      setMutFormOpen(false);
+      setEditingMut(null);
+    };
+    if (null !== editingMut) {
+      updateMut.mutate({ id: editingMut.id, body: payload }, { onSuccess: after });
+    } else {
+      createMut.mutate(payload, { onSuccess: after });
+    }
+  };
+
+  const toggleMutDone = (m: CoachWishMutualization) =>
+    updateMut.mutate({
+      id: m.id,
+      // coachId PRÉSERVÉ tel quel (null si dé-attribuée) — parité toggleDone des doléances.
+      body: { calendarEntryId: m.calendarEntryId, teamId: m.teamId, coachId: m.coachId, partnerTeamIds: m.partnerTeamIds, sharedSlots: m.sharedSlots, done: !m.done },
+    });
+
+  // Les mutualisations sont au grain PÉRIODE (pas par semaine) : on les filtre seulement par
+  // équipe/coach (les mêmes filtres que les doléances), jamais par la semaine affichée.
+  const visibleMut = mutualizations.filter(
+    (m) => (0 === teamFilter.length || teamFilter.includes(m.teamId)) && (0 === coachFilter.length || (null !== m.coachId && coachFilter.includes(m.coachId))),
+  );
 
   const title = null === weekFilter ? `Doléances des coachs — ${mother.title}` : "Doléances des coachs — semaine";
 
@@ -213,6 +248,100 @@ export function CoachWishesModal({ mother, weekFilter, onClose }: { mother: Cale
           );
         })}
       </div>
+
+      {/* Mutualisations — grain PÉRIODE (une par équipe), hors de la boucle des semaines. */}
+      <section className="mt-5 border-t border-border pt-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-sm font-semibold">Mutualisations</h3>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="ml-auto"
+            disabled={0 === teamsWithMainCoach.length}
+            disabledReason={0 === teamsWithMainCoach.length ? "Aucune équipe n'a de coach principal" : undefined}
+            onClick={() => {
+              setEditingMut(null);
+              setMutFormOpen(true);
+            }}
+          >
+            <Plus className="size-4" />
+            Ajouter une mutualisation
+          </Button>
+        </div>
+
+        {mutFormOpen && teamsWithMainCoach.length > 0 ? (
+          <div className="mt-2">
+            <MutualizationForm
+              calendarEntryId={mother.id}
+              teams={teamsWithMainCoach}
+              allTeams={teams}
+              coaches={coaches}
+              teamCoaches={teamCoaches}
+              editing={editingMut}
+              pending={createMut.isPending || updateMut.isPending}
+              onSubmit={submitMut}
+              onCancel={() => {
+                setMutFormOpen(false);
+                setEditingMut(null);
+              }}
+            />
+          </div>
+        ) : null}
+
+        {0 === visibleMut.length ? (
+          <EmptyHint className="mt-2 text-xs">Aucune mutualisation déclarée pour cette période.</EmptyHint>
+        ) : (
+          <ul className="mt-2 space-y-1">
+            {visibleMut.map((m) => (
+              <li key={m.id} className="flex items-start gap-2 rounded-md border border-border px-3 py-2 text-sm">
+                <input type="checkbox" aria-label={`Traité — mutualisation ${teamName.get(m.teamId) ?? "équipe"}`} className="mt-1 size-4" checked={m.done} onChange={() => toggleMutDone(m)} />
+                <div className={cn("min-w-0 flex-1", m.done && "line-through")}>
+                  <p className="font-medium">
+                    {teamName.get(m.teamId) ?? "Équipe"} · {null === m.coachId ? <span className="italic text-muted-foreground">coach dé-attribué</span> : (coachName.get(m.coachId) ?? "Coach")}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    souhaite mutualiser {m.sharedSlots} séance{m.sharedSlots > 1 ? "s" : ""} avec : {m.partnerTeamIds.map((id) => teamName.get(id) ?? "équipe").join(", ")}
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="size-7"
+                    aria-label={`Modifier la mutualisation · ${teamName.get(m.teamId) ?? "équipe"}`}
+                    onClick={() => {
+                      setEditingMut(m);
+                      setMutFormOpen(true);
+                    }}
+                  >
+                    <Pencil className="size-4" />
+                  </Button>
+                  <Button type="button" size="icon" variant="ghost" className="size-7 text-destructive" aria-label={`Supprimer la mutualisation · ${teamName.get(m.teamId) ?? "équipe"}`} disabled={deleteMut.isPending} onClick={() => setToDeleteMut(m)}>
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <ConfirmDialog
+        open={null !== toDeleteMut}
+        title="Supprimer cette mutualisation ?"
+        description={null !== toDeleteMut ? `La mutualisation de « ${teamName.get(toDeleteMut.teamId) ?? "l'équipe"} » sera définitivement retirée.` : undefined}
+        confirmLabel="Supprimer"
+        destructive
+        onConfirm={() => {
+          if (null !== toDeleteMut) {
+            deleteMut.mutate(toDeleteMut.id);
+          }
+          setToDeleteMut(null);
+        }}
+        onCancel={() => setToDeleteMut(null)}
+      />
 
       <ConfirmDialog
         open={null !== toDelete}

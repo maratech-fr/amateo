@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { HTTPError } from "ky";
-import { Check, Copy, Mail, Send } from "lucide-react";
+import { Check, Copy, Eye, Mail, Send } from "lucide-react";
 
 import type { CalendarEntry } from "@/features/cockpit/api";
 import type { Team } from "@/features/wizard/api";
@@ -13,6 +13,7 @@ import { FilterChip } from "@/shared/components/ui/filter-chip";
 import { Input } from "@/shared/components/ui/input";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Modal } from "@/shared/components/ui/modal";
+import { Select } from "@/shared/components/ui/select";
 import { TabPanel, Tabs } from "@/shared/components/ui/tabs";
 import { compareTeamsByRank } from "@/shared/lib/teamTiers";
 import { FullPageSpinner, Spinner } from "@/shared/components/ui/spinner";
@@ -398,6 +399,11 @@ function CoachLinks({ campaign, onEmailSaved, onCampaignRefreshed }: { campaign:
   const silentWithEmail = campaign.coaches.filter((c) => null !== c.email && "" !== c.email && null === c.respondedAt);
   const remindedToday = isSameParisDay(campaign.lastReminderAt);
 
+  // Aperçu « ce que voit le coach » (D2) : un sélecteur de coach + ouverture de la VRAIE page en
+  // lecture seule dans un nouvel onglet (le gestionnaire garde la collecte sous les yeux). Défaut
+  // = le premier coach. Le bouton d'ajout de bloc #1129 vit ailleurs : zone distincte, voulu.
+  const [previewCoachId, setPreviewCoachId] = useState(campaign.coaches[0]?.coachId ?? "");
+
   return (
     <div className="mt-5 border-t border-border pt-4">
       <p className="text-sm font-medium">
@@ -431,6 +437,31 @@ function CoachLinks({ campaign, onEmailSaved, onCampaignRefreshed }: { campaign:
         </Button>
       </div>
       {previewOpen ? <EmailPreviewModal campaignId={campaign.id} onClose={() => setPreviewOpen(false)} /> : null}
+      {/* Aperçu coach par coach (D2) — zone distincte du reste des actions. */}
+      {campaign.coaches.length > 0 ? (
+        <div className="mt-2 flex flex-wrap items-end gap-2">
+          <label className="text-xs text-muted-foreground">
+            Aperçu de la page
+            <Select aria-label="Coach à prévisualiser" wrapperClassName="mt-0.5 w-48" value={previewCoachId} onChange={(e) => setPreviewCoachId(e.target.value)}>
+              {campaign.coaches.map((c) => (
+                <option key={c.coachId} value={c.coachId}>
+                  {c.firstName} {c.lastName}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={"" === previewCoachId}
+            onClick={() => window.open(`/doleances/apercu/${campaign.id}?coach=${previewCoachId}`, "_blank", "noopener")}
+          >
+            <Eye className="size-4" />
+            Voir la page d'un coach
+          </Button>
+        </div>
+      ) : null}
+
       {/* Sans ceci un 422/409 resterait muet ; on distingue « saison close » (409) de « déjà
           relancé aujourd'hui » (422 — cache périmé, autre onglet) pour ne pas mal expliquer. */}
       {sendLinks.isError ? <p className="mt-2 text-sm text-destructive">{errorMessage(sendLinks.error, "Envoi impossible pour le moment. Réessayez.")}</p> : null}
@@ -465,7 +496,7 @@ function CoachLinks({ campaign, onEmailSaved, onCampaignRefreshed }: { campaign:
       ) : 0 === visibleCoaches.length ? (
         <EmptyHint className="mt-2">Aucun coach pour ce filtre.</EmptyHint>
       ) : (
-        <ul className="mt-2 space-y-2">
+        <ul className="mt-2 space-y-2" aria-label="Coachs sollicités">
           {visibleCoaches.map((coach) => (
             <CoachRow key={coach.coachId} coach={coach} campaignId={campaign.id} onEmailSaved={onEmailSaved} onCampaignRefreshed={onCampaignRefreshed} />
           ))}
