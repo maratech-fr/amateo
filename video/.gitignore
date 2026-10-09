@@ -1,0 +1,12 @@
+# Tout ce qui se regenere (npm install / npm run capture / logo / render / vtt).
+node_modules/
+
+# Sorties : captures d'ecran et clips de l'app, images du logo rendues image par image,
+# planche contact, noms-visibles.md, stills de preuve, exports video, .vtt genere.
+# TOUT est reproductible par `npm run capture` / `npm run logo` / `npm run render` / `npm run vtt`.
+out/
+
+# Divers
+*.log
+.DS_Store
+npm-debug.log*

@@ -1,0 +1,31 @@
+{
+  "name": "amateo-video-promo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Video promotionnelle 60 s (Remotion) — projet isole a la racine du depot, zero dependance avec frontend/ ou landing/ (meme logique d'isolement que landing/).",
+  "license": "UNLICENSED",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts AmateoPromo out/amateo-promo-60s.mp4",
+    "still": "remotion still src/index.ts AmateoPromo out/stills/plan01.png --frame=120",
+    "capture": "bash capture/run.sh",
+    "logo": "node capture/capture-logo.cjs",
+    "vtt": "tsx scripts/make-vtt.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.534",
+    "@remotion/fonts": "4.0.534",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "remotion": "4.0.534"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "5.9.3"
+  }
+}
