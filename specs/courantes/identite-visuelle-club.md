@@ -1,6 +1,6 @@
 # Identité visuelle par club (logo + couleur d'accent)
 
-Last verified @ 2026-10-08 (`documentation-update`, rotation de fraîcheur, sujet sans rapport —
+Last verified @ 2026-10-09 (`documentation-update`, rotation de fraîcheur, sujet sans rapport —
 lot D1 « gabarit d'e-mail commun ») contre le code : `Club.logoUrl` / `accentColor` /
 `accentColorDark` / `accentPalette` (`backend/src/Entity/Club.php:176/180/184/192` — décalage
 attendu, des champs continuent de s'ajouter entre-temps, ex. `shortName`) ✓, `PATCH

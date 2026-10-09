@@ -1,11 +1,14 @@
 # Conventions API, Layout et primitives UI partagées
 
-Last verified @ 2026-10-08 (P4-266, `documentation-update`) : `StalenessPill` SUPPRIMÉ (plus de
-pastille cockpit) — retiré de la liste des consommateurs de `StatusPill`. Reste de la table hérité
-des passes précédentes (PR 7/7 hauteurs, PR 6/7 `DayMultiPicker`, PR 4/7 bandeaux, PR 3/7
-sélecteurs, P4-252 splash de connexion, PR #1031 `Listbox`/`VenueSelect`, passe « apparence &
-accessibilité » du 2026-10-06), non rejoué ligne à ligne cette fois — historique :
-`git log -p --follow` sur ce fichier). **§3 est la
+Last verified @ 2026-10-09 (D2 PR A, `documentation-update`) contre le code : `AuthLayout` prend
+une prop `width` (`md`/`2xl`, `frontend/src/features/auth/AuthLayout.tsx`) ✓ ; `BrandSplash` prend
+une prop `announcement` et est désormais consommé hors connexion par `PublicWishPage`
+(`frontend/src/features/coach-wishes/PublicWishPage.tsx`) ✓ — la phrase « jamais sur les autres
+écrans publics d'`AuthLayout` » (vraie au P4-252) corrigée en conséquence. Reste de la table
+hérité des passes précédentes (PR 7/7 hauteurs, PR 6/7 `DayMultiPicker`, PR 4/7 bandeaux, PR 3/7
+sélecteurs, PR #1031 `Listbox`/`VenueSelect`, passe « apparence &
+accessibilité » du 2026-10-06, P4-266 du 2026-10-08), non rejoué ligne à ligne cette fois —
+historique : `git log -p --follow` sur ce fichier). **§3 est la
 maison unique des primitives UI partagées** (décision fondateur 2026-09-26) : les entrées
 déménagées depuis `frontend/AGENTS.md` § « Primitives that matter » sont vérifiées contre
 `frontend/src/shared/components/ui/` (`ls` : tous les fichiers cités existent).
@@ -59,7 +62,9 @@ ici, voir `frontend-wizard.md`).
 Les deux sont une carte centrée sur fond plein écran (`AuthLayout` : le fond d'écran commun
 app/vitrine posé sur `body`, P5-16 — sa racine ne porte pas `bg-background` ;
 `AdminAuthLayout` : `bg-console-surface` sombre + halos décoratifs, hors du fond commun, UXC-12),
-sans navigation. La marque est le logotype complet **`BrandMark`**
+sans navigation. `AuthLayout` prend une prop **`width`** (`"md"` par défaut, 448 px — login/
+inscription/toutes les pages publiques à token inchangées ; `"2xl"`, ~672 px, réservée à la page
+publique de doléances — formulaire dense, semaine par semaine, D2 PR A). La marque est le logotype complet **`BrandMark`**
 (`shared/components/ui/brand-mark.tsx`, `role="img"` nommé `PRODUCT_NAME`) — `AuthLayout`
 l'affiche en couleur, bascule thème clair/sombre juste à côté ; `AdminAuthLayout` le teinte en
 blanc sur son fond sombre, sous-titré « Console sécurisée ». Gardé par `AuthLayout.test.tsx` /
@@ -69,8 +74,7 @@ blanc sur son fond sombre, sous-titré « Console sécurisée ». Gardé par `Au
 ### Splash de connexion (`LoginSplash` / `BrandSplash`, P4-252)
 
 Au submit du formulaire de `/login` (`features/auth/LoginPage.tsx`), le logo joue une animation
-« Signature » **une fois par tentative** — jamais à la simple arrivée sur `/login`, jamais sur les
-autres écrans publics d'`AuthLayout`. Trois pièces :
+« Signature » **une fois par tentative** — jamais à la simple arrivée sur `/login`. Trois pièces :
 
 - **`shared/stores/loginSplashStore.ts`** : la machine à phases `idle → intro → (breathing) →
   outro → idle`, ou `intro|breathing → cancelling → idle` sur identifiants refusés. Ne porte que la
@@ -86,8 +90,13 @@ autres écrans publics d'`AuthLayout`. Trois pièces :
   police **dédiée** « Poppins Signature » (Poppins Medium 500, sous-ensemble latin embarqué
   `public/fonts/poppins-500-latin.woff2`, `@font-face` dans `index.css` — Google Fonts au runtime
   est interdit par la CSP `font-src 'self'`) — cette famille ne sert QUE ce logotype animé, jamais
-  la typo de l'app (`system-ui`).
-- **`app/LoginSplash.tsx`** : l'orchestrateur, monté dans `RootShell` (donc **persistant** au
+  la typo de l'app (`system-ui`). Prop **`announcement`** (lue par le lecteur d'écran, défaut
+  « Connexion en cours… ») : le composant est RÉUTILISÉ hors connexion par la page publique de
+  doléances (`PublicWishPage`, D2 PR A) — sa propre machine `idle → intro → outro → done`, locale
+  au composant (pas `loginSplashStore`), joue l'intro au clic « Commencer »/« Réviser mes
+  réponses » avec `announcement="Préparation de votre formulaire…"`, filet borné ~5 s.
+- **`app/LoginSplash.tsx`** : l'orchestrateur **de connexion uniquement** (cf. ci-dessus pour
+  l'usage hors connexion), monté dans `RootShell` (donc **persistant** au
   `navigate("/")` que déclenche un login réussi — un montage dans `LoginPage` aurait été démonté
   par la navigation). Overlay plein écran en `createPortal(document.body)`, `z-[70]` — au-dessus du
   voile d'action générique `ActionVeil` (`z-[60]`) : `useLogin` (`features/auth/queries.ts`) porte

@@ -1,9 +1,10 @@
+import { act } from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { HTTPError } from "ky";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PRODUCT_SITE_URL } from "@/shared/lib/product";
 
@@ -21,6 +22,8 @@ import { PublicWishPage } from "./PublicWishPage";
 const context = (over: Partial<PublicWishContext> = {}): PublicWishContext => ({
   coachFirstName: "Maxime",
   periodTitle: "Vacances de février",
+  periodStart: "2026-02-16",
+  periodEnd: "2026-03-01",
   deadline: "2027-06-30",
   weeks: ["2026-02-16"],
   teams: [{ id: "t1", name: "SM1" }],
@@ -54,6 +57,38 @@ async function start() {
   await userEvent.click(await screen.findByRole("button", { name: /Commencer/ }));
 }
 
+// Le splash de marque joué au clic « Commencer » (D2 PR A) tourne en requestAnimationFrame et lit
+// `performance.now()`. On CAPTURE les frames (file) sans les jouer : le reste des tests n'anime donc
+// rien (aucun `setState` hors `act`, donc aucun avertissement act), et le test dédié déroule l'horloge
+// à la main pour prouver que l'overlay se retire (filet borné — patron d'injection `brand-splash.tsx`).
+let rafQueue: FrameRequestCallback[] = [];
+let nowMs = 0;
+
+/** Avance l'horloge injectée à `t` ms et rejoue les frames en attente (dans `act`). */
+function flushFrame(t: number): void {
+  nowMs = t;
+  const cbs = rafQueue;
+  rafQueue = [];
+  act(() => {
+    for (const cb of cbs) {
+      cb(t);
+    }
+  });
+}
+
+beforeEach(() => {
+  rafQueue = [];
+  nowMs = 0;
+  vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => rafQueue.push(cb));
+  vi.stubGlobal("cancelAnimationFrame", () => {});
+  vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
 describe("PublicWishPage — parcours en étapes", () => {
   beforeEach(() => {
     h.getContext.mockReset();
@@ -66,7 +101,7 @@ describe("PublicWishPage — parcours en étapes", () => {
     renderAt();
 
     // Intro d'abord : le texte d'accueil, pas encore les champs de saisie.
-    expect(await screen.findByText(/votre club prépare le planning/)).toBeInTheDocument();
+    expect(await screen.findByText(/club prépare le planning/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/Séances souhaitées/)).not.toBeInTheDocument();
 
     await start();
@@ -191,7 +226,7 @@ describe("PublicWishPage — parcours en étapes", () => {
   it("la progression marque l'étape courante avec aria-current=\"step\"", async () => {
     h.getContext.mockResolvedValue(context());
     const { container } = renderAt();
-    await screen.findByText(/votre club prépare le planning/);
+    await screen.findByText(/club prépare le planning/);
     expect(container.querySelector('[aria-current="step"]')).toHaveTextContent("Début");
 
     await start();
@@ -232,6 +267,61 @@ describe("PublicWishPage — parcours en étapes", () => {
     h.getContext.mockRejectedValue(httpError(410));
     renderAt();
     expect(await screen.findByText(/Lien expiré/)).toBeInTheDocument();
+  });
+});
+
+// D2 PR A — en-tête de la page publique : largeur, dates en pastilles, intro découpée, animation
+// de bienvenue jouée au clic « Commencer ».
+describe("PublicWishPage — en-tête D2 (dates, intro, animation)", () => {
+  beforeEach(() => {
+    h.getContext.mockReset();
+    h.submit.mockReset();
+    sessionStorage.clear();
+  });
+
+  it("affiche deux pastilles : la fenêtre de la période et la date limite", async () => {
+    h.getContext.mockResolvedValue(context({ periodStart: "2026-02-16", periodEnd: "2026-03-01", deadline: "2027-06-30" }));
+    renderAt();
+    await screen.findByText(/club prépare le planning/);
+
+    expect(screen.getByText("Vacances du 16/02 au 01/03")).toBeInTheDocument();
+    expect(screen.getByText("Répondre avant le 30/06")).toBeInTheDocument();
+  });
+
+  it("découpe l'intro en 3 puces + la ligne « souhait, pas un engagement »", async () => {
+    h.getContext.mockResolvedValue(context());
+    const { container } = renderAt();
+    await screen.findByText(/club prépare le planning/);
+
+    // Le titre de la carte dit déjà « Bonjour … » : la phrase d'intro ne le répète pas.
+    expect(screen.getByRole("heading", { name: "Bonjour Maxime" })).toBeInTheDocument();
+    expect(screen.getByText("Votre club prépare le planning de Vacances de février.")).toBeInTheDocument();
+    expect(screen.queryByText(/Bonjour Maxime —/)).not.toBeInTheDocument();
+
+    expect(container.querySelectorAll("ul li")).toHaveLength(3);
+    expect(screen.getByText(/nombre de séances, jours souhaités et jours d'indisponibilité/)).toBeInTheDocument();
+    expect(screen.getByText(/vos réponses partent en une seule fois/)).toBeInTheDocument();
+    expect(screen.getByText(/revenir modifier jusqu'à la date limite/)).toBeInTheDocument();
+    expect(screen.getByText(/C'est un souhait, pas un engagement/)).toBeInTheDocument();
+  });
+
+  it("joue le splash « Préparation… » au 1er « Commencer », le retire (filet borné), et ne le rejoue pas au « Suivant »", async () => {
+    h.getContext.mockResolvedValue(context());
+    renderAt();
+    await userEvent.click(await screen.findByRole("button", { name: /Commencer/ }));
+
+    // L'overlay de marque couvre la transition, le stepper a déjà avancé dessous.
+    expect(screen.getByText("Préparation de votre formulaire…")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Séances souhaitées — SM1/)).toBeInTheDocument();
+
+    // On déroule l'horloge injectée : fin d'intro → outro → l'overlay se retire.
+    flushFrame(1500);
+    flushFrame(2700);
+    expect(screen.queryByText("Préparation de votre formulaire…")).not.toBeInTheDocument();
+
+    // Avancer d'étape ne rejoue PAS le splash (une seule fois par montage).
+    await userEvent.click(screen.getByRole("button", { name: "Suivant" }));
+    expect(screen.queryByText("Préparation de votre formulaire…")).not.toBeInTheDocument();
   });
 });
 
@@ -282,7 +372,7 @@ describe("PublicWishPage — pied « Propulsé par » (P5-24)", () => {
   it("état FORMULAIRE — pied présent", async () => {
     h.getContext.mockResolvedValue(context());
     renderAt();
-    await screen.findByText(/votre club prépare le planning/);
+    await screen.findByText(/club prépare le planning/);
     expectFooter();
   });
 

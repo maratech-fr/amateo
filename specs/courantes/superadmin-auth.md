@@ -8,7 +8,12 @@ qui faisaient semblant de vivre ») sans que ce fichier soit recalé ; corrigée
 est `ffbb-resync`/`mark-next-season-paid`/`set-plan`/`reset-credits`/`reset-current-season`/
 `purge-old-seasons`). Confirmé par ailleurs : `AdminCsrfListener` toujours priorité 6
 (`AdminCsrfListener.php:38`), `demo-purge-stale` toujours à 03:15 et `health-alerts` toujours
-toutes les 10 minutes (`AdminJobCatalog.php`). Reste du fichier non re-confronté cette passe ;
+toutes les 10 minutes (`AdminJobCatalog.php`). Également re-confronté (rotation D2 PR A) : `AdminCsrfListener` toujours en priorité 6 sur `kernel.request`
+(`backend/src/EventListener/AdminCsrfListener.php:38`) ✓ ; les 7 routes `AdminDemoController`
+(`/demos`, `/demos/prospect/retain`, `/demos/{target}/activate|deactivate`, `/demos/bccl/reset`,
+`/demos/{target}/clock`) existent toutes ✓ ; les 3 jobs `manualTriggerAllowed` du catalogue
+(`backend/src/AdminJob/AdminJobCatalog.php`) sont bien `club-approval-digest`,
+`import-school-holidays`, `import-public-holidays` ✓. Reste du fichier non re-confronté cette passe ;
 historique des vérifications précédentes : `git log -p --follow specs/courantes/superadmin-auth.md`.
 
 > **État courant** : SA0, SA1, la console read-only SA2, le socle

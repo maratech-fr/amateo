@@ -3,11 +3,14 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
 
 import { AuthLayout } from "@/features/auth/AuthLayout";
+import { StatusPill } from "@/shared/components/ui/badge";
 import { BrandMark } from "@/shared/components/ui/brand-mark";
+import { BrandSplash } from "@/shared/components/ui/brand-splash";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Spinner } from "@/shared/components/ui/spinner";
+import { frDateNumericNoYear } from "@/shared/lib/date";
 import { PRODUCT_SITE_URL } from "@/shared/lib/product";
 
 import { getPublicWishContext, isPublicWishError, submitPublicWishes, type PublicWishContext, type PublicWishSubmission } from "./publicApi";
@@ -108,6 +111,24 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
   });
   const [done, setDone] = useState(false);
 
+  // Animation de bienvenue (logo de marque) jouée UNE fois par montage, au clic « Commencer » :
+  // machine locale idle → intro → outro → done (jamais `loginSplashStore`, propre à la connexion).
+  // Le stepper avance dès le clic (l'overlay couvre la transition) ; le splash n'est que décor.
+  const [splash, setSplash] = useState<"idle" | "intro" | "outro" | "done">("idle");
+  const splashActive = "intro" === splash || "outro" === splash;
+
+  // Filet anti-blocage borné : si l'animation cale, on force la fin après ~5 s. La dépendance est
+  // le BOOLÉEN `splashActive` — le timer s'arme une fois au démarrage et ne se réarme pas sur
+  // intro→outro (patron `LoginSplash` avec `waiting`) ; `prefers-reduced-motion` rend l'animation
+  // quasi instantanée, le filet ne sert que de garde-fou.
+  useEffect(() => {
+    if (!splashActive) {
+      return;
+    }
+    const timer = setTimeout(() => setSplash("done"), 5000);
+    return () => clearTimeout(timer);
+  }, [splashActive]);
+
   const teamIds = useMemo(() => context.teams.map((t) => t.id), [context.teams]);
   const stepper = useWishStepper(teamIds, draft?.stepIndex ?? 0);
 
@@ -184,6 +205,13 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
     mutation.mutate(submissions);
   };
 
+  // Clic « Commencer »/« Réviser mes réponses » : on avance tout de suite, puis on lance le splash
+  // (une seule fois — le garde `"idle" === p` empêche un rejeu au retour sur l'intro).
+  const beginFromIntro = () => {
+    stepper.next();
+    setSplash((p) => ("idle" === p ? "intro" : p));
+  };
+
   if (0 === context.teams.length) {
     return (
       <AuthLayout title="Aucune équipe concernée" description={context.periodTitle} footer={<PoweredByFooter />}>
@@ -200,14 +228,34 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
     );
   }
 
-  const description = `${context.periodTitle} · à renvoyer avant le ${frDate(context.deadline)}`;
   const { current } = stepper;
 
   const title = "intro" === current.kind ? `Bonjour ${context.coachFirstName}` : "team" === current.kind ? (context.teams[current.teamIndex ?? 0]?.name ?? "Votre équipe") : "Récapitulatif";
 
   return (
-    <AuthLayout title={title} description={description} footer={<PoweredByFooter />}>
+    <AuthLayout title={title} description={context.periodTitle} footer={<PoweredByFooter />} width="2xl">
+      <div className="mb-4 flex flex-wrap gap-2">
+        {null !== context.periodStart && null !== context.periodEnd ? (
+          <StatusPill variant="neutral">
+            Vacances du {frDateNumericNoYear(context.periodStart)} au {frDateNumericNoYear(context.periodEnd)}
+          </StatusPill>
+        ) : null}
+        <StatusPill variant="accent">Répondre avant le {frDateNumericNoYear(context.deadline)}</StatusPill>
+      </div>
+
       <WishProgress stepper={stepper} teams={context.teams} />
+
+      {"intro" === splash || "outro" === splash ? (
+        <BrandSplash
+          phase={splash}
+          ready
+          announcement="Préparation de votre formulaire…"
+          onIntroComplete={() => setSplash("outro")}
+          onBreathingSettled={() => setSplash("outro")}
+          onOutroComplete={() => setSplash("done")}
+          onCancelComplete={() => setSplash("done")}
+        />
+      ) : null}
 
       {"intro" === current.kind ? (
         <div className="space-y-4">
@@ -221,11 +269,16 @@ function PublicWishForm({ token, context }: { token: string; context: PublicWish
               }
             />
           ) : null}
-          <p className="text-sm text-muted-foreground">
-            Bonjour {context.coachFirstName} — votre club prépare le planning de {context.periodTitle}. Pour chaque équipe, indiquez combien de séances vous souhaitez, vos jours souhaités et vos jours d'indisponibilité, semaine par semaine. C'est un souhait, pas un engagement&nbsp;: le club arbitre selon les
-            gymnases disponibles. Comptez 5&nbsp;minutes — vos réponses partent en une seule fois, à la fin. À renvoyer avant le {frDate(context.deadline)}.
-          </p>
-          <Button className="w-full" onClick={() => stepper.next()}>
+          <div className="space-y-3 text-sm text-foreground">
+            <p>Votre club prépare le planning de {context.periodTitle}.</p>
+            <ul className="list-disc space-y-1.5 pl-5">
+              <li>Pour chaque équipe&nbsp;: nombre de séances, jours souhaités et jours d'indisponibilité, semaine par semaine.</li>
+              <li>Comptez 5&nbsp;minutes&nbsp;: vos réponses partent en une seule fois, à la fin.</li>
+              <li>Vous pouvez revenir modifier jusqu'à la date limite.</li>
+            </ul>
+            <p>C'est un souhait, pas un engagement&nbsp;: le club arbitre selon les gymnases disponibles.</p>
+          </div>
+          <Button className="w-full" onClick={beginFromIntro}>
             {null !== context.respondedAt ? "Réviser mes réponses" : "Commencer"}
           </Button>
         </div>

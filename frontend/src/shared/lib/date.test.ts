@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { frDateNumeric, frDateShort, frDateShortNoYear, frDateWeekdayNoYear } from "./date";
+import { frDateNumeric, frDateNumericNoYear, frDateShort, frDateShortNoYear, frDateWeekdayNoYear } from "./date";
 
 /**
  * Foyer unique du formatage de date FR (UXC-19). Ces goldens gardent l'AFFICHAGE : les
@@ -13,6 +13,10 @@ describe("shared/lib/date — les quatre formats FR distincts", () => {
 
   it("frDateNumeric : jj-mm-aaaa", () => {
     expect(frDateNumeric("2026-10-17")).toBe("17-10-2026");
+  });
+
+  it("frDateNumericNoYear : jj/mm (sans année)", () => {
+    expect(frDateNumericNoYear("2026-10-17")).toBe("17/10");
   });
 
   it("frDateShort : « 19 déc. 2026 » (jour, mois court, année)", () => {

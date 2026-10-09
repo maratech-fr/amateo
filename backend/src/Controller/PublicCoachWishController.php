@@ -130,6 +130,10 @@ final class PublicCoachWishController extends AbstractController
             return $this->json([
                 'coachFirstName' => $coach->getFirstName(),
                 'periodTitle' => $entry?->getTitle() ?? '',
+                // Bornes de la période mère (ISO, comme `deadline`) — la page publique en fait une
+                // pastille « Vacances du … au … ». Null si l'entrée de calendrier a disparu (idem titre).
+                'periodStart' => $entry?->getStartDate()->format('Y-m-d'),
+                'periodEnd' => $entry?->getEndDate()->format('Y-m-d'),
                 'deadline' => $campaign->getDeadline()->format('Y-m-d'),
                 'weeks' => $campaign->getWeeks(),
                 'teams' => $teams,

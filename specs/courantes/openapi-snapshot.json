@@ -15743,6 +15743,20 @@
                                         "periodTitle": {
                                             "type": "string"
                                         },
+                                        "periodStart": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "format": "date"
+                                        },
+                                        "periodEnd": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "format": "date"
+                                        },
                                         "deadline": {
                                             "type": "string",
                                             "format": "date"

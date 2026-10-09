@@ -52,6 +52,8 @@ export interface BrandSplashProps {
   onBreathingSettled: () => void;
   onOutroComplete: () => void;
   onCancelComplete: () => void;
+  /** Annonce lue par le lecteur d'écran (région `status` polie). Défaut : la connexion. */
+  announcement?: string;
   /** Injection pour tests déterministes (défaut : horloge et rAF réels). */
   now?: () => number;
   raf?: (cb: (t: number) => void) => number;
@@ -65,6 +67,7 @@ export function BrandSplash({
   onBreathingSettled,
   onOutroComplete,
   onCancelComplete,
+  announcement = "Connexion en cours…",
   now = REAL_NOW,
   raf = REAL_RAF,
   caf = REAL_CAF,
@@ -163,7 +166,7 @@ export function BrandSplash({
       className="fixed inset-0 z-[70] flex items-center justify-center bg-background"
       style={{ opacity: overlayOpacity, pointerEvents: "cancelling" === phase ? "none" : "auto" }}
     >
-      <span className="sr-only">Connexion en cours…</span>
+      <span className="sr-only">{announcement}</span>
       <div
         aria-hidden="true"
         style={{
