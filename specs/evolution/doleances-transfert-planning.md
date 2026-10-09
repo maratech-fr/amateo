@@ -1,6 +1,6 @@
 # Doléances → planning : jours disponibles, créneaux habituels, ajout manuel, « Transférer au planning » (P2-63)
 
-> **Statut** : cadrage en cours de validation par le fondateur (toutes les questions tranchées le 2026-10-09, §5 ; plan à suivre) ; plan (`planner`) après
+> **Statut** : cadrage en cours de validation par le fondateur (questions tranchées le 2026-10-09, §5 ; plan en 7 PR §8 ; points D-a → D-g à trancher avant le code, §8.10) ; plan (`planner`) après
 > validation ; **code APRÈS le chantier vidéo P4-297** (place dans la file fixée par le fondateur le
 > 2026-10-09).
 > **Origine** : besoin d'un gestionnaire de club, dicté par le fondateur le 2026-10-09 (mots exacts §0).
@@ -382,3 +382,162 @@ Chaque chemin devient un test d'abus NOMMÉ au plan (fichier + suite).
 - Zones : `backend/` + `frontend/` (pas d'engine, pas de landing) ⇒ `make -C backend behat` au plan.
 - **`/security-review` systématique** : page publique à jeton touchée (A/B modifient la page et le
   contrat public GET/POST) ; les 5 chemins du §3bis deviennent des tests d'abus nommés.
+
+## 8. Plan d'implémentation (agent `planner`, 2026-10-09)
+
+> Plan produit après la validation de toutes les questions (§5). Il PRIME sur §6/§7 du cadrage là où
+> les décisions du fondateur les ont rendus caducs (notamment « aucun changement moteur » : faux depuis
+> Q3/Q4). Le code se fera après le chantier vidéo P4-297. **Les points D-a → D-g (§8.10) restent à
+> trancher par le fondateur AVANT le code.** Lane Full, 7 PR.
+
+### 8.1 Précisions de code relevées par le plan (vs cadrage)
+
+- Le seed « Fanion + importantes » d'un plan de reprise vit CÔTÉ FRONTEND
+  (`frontend/src/features/wizard/steps/PeriodTeams.tsx:163-175`, garde `teamSelectionInitialized`) : un
+  transfert avant la première ouverture du wizard le désarmerait en silence (point D-e).
+- La cascade « valider/rouvrir la saison détruit les plans futurs » ne vit PAS dans `SocleGuard` mais
+  dans `backend/src/Controller/ValidateScheduleController.php:174-197` et
+  `ReopenScheduleController.php:91-109` (409 `overlays_exist` puis
+  `OverlayManager::deletePeriodPlanForEntry`), critère `CalendarEntryRepository::findWithPlanNotStarted`
+  (`startDate > :today`, `:57-70`) ; annonce front `frontend/src/features/planning/PlanningPage.tsx:1181-1183`.
+- Contrat de la référence de saison : `engine/app/schemas/input_schema.py:227-239`
+  (`SocleReferenceAssignmentSchema`, sans gymnase) ; émise en comblement seul
+  (`backend/src/MessageHandler/GenerateScheduleHandler.php:475-497`).
+- Barème moteur : `engine/app/solver/objective/weights.py:31` (`SCORE_FORMULA_VERSION` V13), `:33-120`
+  (S 10000 / A 1000 / B 100 / C 10 / D 1, session_count 20, preferred 10, preferred_day 5,
+  preferred_time 5, rest 3, spacing −2, avoided_venue −10, overload_day −15, bien-être −6,
+  missing_session −1000), `:291-299` référence de saison S 20 → D 12.
+
+### 8.2 Zones et périmètre
+
+- Zones : `backend/` + `engine/` + `frontend/`.
+- Autorisés : `backend/{src,migrations,tests,features,docs}`, `engine/{app,tests,CONTRACT_VERSION}`,
+  `frontend/{src,tests/e2e}`, `specs/`, `docs/testing/`, `.github/workflows/ci.yml` (steps NR seulement).
+- Interdits : `landing/`, `system-pages/`, console superadmin, Mercure, auth/JWT,
+  `engine/app/solver/match_placement/**`, TenantFilter/RLS, `_adaptive_workers`, socle SAISON
+  (`Team.sessionsPerWeek`, contraintes permanentes).
+- Hors refactor : le seed S+A n'est PAS déplacé au backend (répliqué au transfert en miroir déclaré +
+  test de parité) ; mails de campagne, onglet Sollicitation, mutualisations, radar : intouchés.
+
+### 8.3 Découpage en PR (ordre ; 1 et 2 parallélisables ; 3 et 4 indépendantes ; 5 dépend de 2+3+4 ; 6 de 5 ; 7 indépendante dès 3)
+
+**PR 1 — A + C (frontend pur).** « Jours disponibles » (tout pressé, on dépresse ; payload
+`unavailableDays` inchangé) dans `WishTeamStep.tsx`, `CoachWishForm.tsx`, intro `PublicWishPage.tsx` ;
+lecture todo en creux inchangée (`WishesTab.tsx:219`) ; `TeamSelect` dans `CoachWishForm.tsx` et
+`MutualizationForm.tsx`. Gardes : `dayPickerGuard`, passe `ui-ux-pro-max` (polarité du picker inversé).
+Validation : image tooling rebâtie, `make -C frontend lint` + `test`. `/security-review` : oui (libellés
+de la page publique).
+
+**PR 2 — D + Q5.** `CoachWishStateProcessor` : coach FACULTATIF en création gestionnaire (canal public
+inchangé ; colonne déjà nullable, aucune migration). `CoachWishForm` : semaine → équipe ; TOUTES les
+équipes ; équipes déjà servies sur la semaine désactivées avec motif (jamais masquées) ; coach
+« (aucun) ». Tests : `backend/tests/Integration/Api/CoachWishApiTest.php`, vitest du formulaire.
+Validation : `tests-complete` + `rector` + Behat (`voeux-des-coachs.feature`,
+`generation-du-planning-de-saison.feature`) + frontend.
+
+**PR 3 — B : champ « garder ses créneaux de saison ».** Migration à la main `CoachWish.keepSeasonSlots`
+(bool, défaut false) ; GET/POST publics étendus, bornés au périmètre du jeton, AUCUNE exposition des
+créneaux de saison (booléen nu) ; case dans `CoachWishForm`, pastille StatusPill dans la todo.
+Tests : `PublicCoachWishTest.php`, `CoachWishUpserterTest.php`, vitest. `/security-review` : OUI.
+
+**PR 4 — Q8 : collecte seulement après la naissance des plannings.** Semaines de campagne DÉRIVÉES des
+segments des plannings de la période (une par planning scindé, une semaine type par planning d'un bloc
+— D-c) ; `CampaignSettingsTab`/`useCampaignSettings` affichent, une garde BACKEND décide (semaines ⊆
+semaines portées par un plan, refus 422 via `refuse()`) ; carte de vacances sans planning : la fenêtre
+explique « Créez d'abord le planning » et mène à « Adapter ». Campagnes existantes : D-f.
+Tests : `CoachWishCampaignApiTest.php`, vitest, scénario Behat « la collecte attend le planning ».
+
+**PR 5 — E + F : « Transférer au planning ».** `POST /api/coach-wishes/transfer` (patron
+`FillPeriodPlanController`), management-only (`ManagementAccessGuard::assertManager`), sous
+`SchedulePlanProvisioner::lockPlanScope`. Conversions : `slotsWanted>0` → `TeamPeriodOverride.sessionsPerWeek`
+du plan de la semaine, `=0` → `isActive=false` ; `unavailableDays` + coach → UNE datée COACH
+COACH_AVAILABILITY **HARD** (enfant de la semaine, mère si bloc), commentaire en description ; sans coach
+→ TEAM DAY `forbiddenDays` **HARD** (D-a) ; `wishedDays` → TEAM DAY `preferredDays` PREFERRED ;
+idempotence `source='coach_wish'` + `sourceOccurrenceId` = id de la doléance ; modifier/supprimer une
+doléance ne touche jamais le plan ; F : `isActive=true` + nouveau champ de provenance
+`TeamPeriodOverride.source` (migration) + pastille « via doléances » (PeriodTeams, contrainte, todo) ;
+seed S+A matérialisé côté serveur si le plan n'est pas initialisé (D-e, miroir + parité) ; `done=true`
+sur les converties, jamais de re-transfert automatique. Front : case de sélection par ligne
+(présélection = non traitées), « Transférer au planning (N) », récap « N converties · M ignorées
+(motif) », distinction sélection/traité (D-b, passe ui-ux + captures). NR planning lifecycle :
+`CoachWishTransferTest::testTransferNeverBirthsAPlanNorTouchesValidatedSocle` + scénario Behat ; gate =
+step `ci.yml` ET ligne `docs/testing/blocking-tests.md`, même PR. `/security-review` : OUI.
+
+**PR 6 — Q3/Q4/Q3bis : contrainte « Garder ses créneaux de saison ».** Famille
+`ConstraintFamily::SEASON_SLOTS` (TEAM, toujours Préférée, HARD refusé), visible/supprimable à l'étape
+Contraintes, créée par le transfert (idempotente) ; en génération PLEINE d'un plan de période, le
+backend émet pour CES équipes les placements de la version pointée du socle **avec `venueId` et
+`keep: true`** (le comblement reste byte-identique — D-d). Contrat : `SocleReferenceAssignmentSchema`
+gagne `venue_id` et `keep` → **CONTRACT_VERSION 1.4 → 1.5** (les 3 `*ContractSchemaTest`, balayage des
+citations « 1.4 », pytest relancé). Moteur : deux niveaux de bonus pour `keep` — plein
+(gymnase+jour+heure) et partiel (jour+heure). Calibrage (preuve d'empilement, patron `weights.py`) :
+plein S 85 / A 80 / B 75 / C 70 / D 65 ; partiel S 60 / A 56 / B 52 / C 48 / D 44 — sous 90 (écart
+contesté B−C : au-delà, une équipe B non placée sauterait au profit d'un keep C/D) et ≪ 1021 (une
+séance perdue), au-dessus de l'empilement réaliste des autres préférences (~35-40) ; résiduel
+pathologique (~68) documenté (D-g). `SCORE_FORMULA_VERSION` → V14 ; nouvelle golden + invariant.
+Diagnostic « N/M créneaux de saison conservés » : `engine/app/solver/result_builder/diagnostics/season_slots.py`,
+code `season-slots-kept`, causes `slot_absent` / `displaced`, traduit par `DiagnosticMessageBuilder.php`,
+affiché par `DiagnosticsPanel.tsx`, gardé par `DiagnosticCodesExistUpstreamTest`. NR constraint
+semantics : `backend/tests/CrossStack/SeasonSlotKeepSemanticsGateTest.php` (vrai moteur, témoin
+falsifiable + contre-témoin Q3bis) + `SocleReferencePayloadParityTest` à jour. Validation :
+`make -C engine test` (goldens), restart engine, `tests-complete` + `rector` + Behat + frontend.
+
+**PR 7 — Q8bis : valider/rouvrir la saison emporte collecte + doléances futures.**
+`ValidateScheduleController` + `ReopenScheduleController` suppriment aussi `CoachWishCampaign` (jetons
+par FK cascade), `CoachWish`, `CoachWishMutualization` des MÈRES de vacances `startDate > today`
+(nouvelle requête, `ClockInterface`) ; le 409 `overlays_exist` gagne les compteurs, l'annonce dit « … et
+les 25 doléances déjà reçues pour la Toussaint ; il faudra relancer la collecte ». NR : scénario Behat
+dans `le-socle-commande-les-plans.feature` + test de 404 byte-identique du jeton purgé.
+
+### 8.4 Tests d'abus (§3bis)
+
+1. `CoachWishTransferTest::testTransferConvertsOnlyExplicitlySelectedWishes` +
+   `testPublicSubmissionAloneNeverWritesPlanObjects`.
+2. `CoachWishTransferTest::testResubmissionResetsDoneButNeverRetransfers` +
+   `testRetransferIsIdempotentBySourceOccurrenceId`.
+3. `PublicCoachWishTest::testKeepSeasonSlotsIsBoundedToTokenPerimeter` +
+   `testPublicPostCannotIncludeATeamInThePlan`.
+4. `PublicCoachWishTest::testPublicContextExposesNoSeasonSlots`.
+5. `CoachWishTransferTest::testTransferRequiresManagementRole` (garde FALSIFIÉE, pas seulement lue).
+
+### 8.5 Axes, revues, Behat/e2e
+
+- constraint semantics : `SeasonSlotKeepSemanticsGateTest` (groupe `contract`, job `engine-semantics`) +
+  golden/invariant + scénario Behat « transférer ». planning lifecycle : `CoachWishTransferTest` +
+  scénario Q8bis. Contrat backend⇄engine : 1.5 + les 3 `*ContractSchemaTest` +
+  `SocleReferencePayloadParityTest`. Non touchés : tenant isolation, pipeline de génération, périmètre
+  engagé, auth & memberships.
+- `/security-review` : PR 1, 3 et 5 (page publique à jeton).
+- Behat : `voeux-des-coachs.feature` (PR 2-5), `le-socle-commande-les-plans.feature` (PR 7),
+  `generation-du-planning-de-saison.feature` à chaque PR backend/engine. E2E : seul
+  `visual-reference.spec.ts` peut demander une re-baseline (écran wizard contraintes, PR 6).
+- Doc : ce fichier + roadmap, `specs/courantes/{accueil-cockpit-temporel,types-de-planning,openapi-snapshot.meta}.md`,
+  `backend/docs/constraint-config-keys.md`, `docs/testing/blocking-tests.md` (dont la ligne
+  `SocleReferencePayloadParityTest` « sans venueId » et la citation « contrat 1.4 »), CLAUDE.md §6
+  (contrat 1.5), état des lieux à la livraison.
+
+### 8.10 Points à trancher par le fondateur AVANT le code (reco + exemple)
+
+- **D-a — « l'équipe ne s'entraîne pas ces jours-là »** : TEAM DAY `forbiddenDays` HARD (clé existante).
+  Ex. : Vétérans sans coach, indispo jeu+ven → « Jours interdits Vétérans : jeudi, vendredi · Obligatoire ».
+- **D-b — sélection vs « traité »** : case de sélection à gauche, l'état « traité » reste à droite ;
+  présélection = non traitées ; après transfert les lignes passent barrées. Passe ui-ux + captures.
+- **D-c — semaine type d'un planning d'un bloc** : `weekStart` = lundi de la première semaine du bloc,
+  affiché « Semaine type du bloc (20/04 → 01/05) » (zéro migration).
+- **D-d — le comblement gagne-t-il le niveau gymnase ?** Non en v1 : « Combler » reste au point près ;
+  seule la contrainte active le barème fort et le gymnase.
+- **D-e — seed S+A au transfert avant la première ouverture du wizard** : le transfert matérialise le seed
+  côté serveur puis convertit (Vétérans actifs via doléances, U13/U15 loisir désactivés comme si le wizard
+  avait semé).
+- **D-f — campagnes existantes à la bascule Q8** : compat lecture seule ; seule la création/édition passe
+  au régime dérivé.
+- **D-g — calibrage** : « très forte » reste sous l'écart B−C (90) pour ne pas casser l'ordre de placement
+  des rangs : SM1 garde son créneau même contre gymnase + jour + heure préférés ailleurs (20 < 85), mais
+  bouge si les U13 n'ont aucune autre place (85 ≪ 1021), avec « SM1 : 2/3 conservés ».
+
+### 8.11 Conditions de retour en validation
+
+Redemander avant d'implémenter si : un point D-a → D-g est tranché autrement ; l'empilement réaliste
+mesuré sur les données BCCL dépasse 90 ; la purge Q8bis devait toucher une période déjà commencée ; un
+verrou type `ClubGenerationLock` s'avérait nécessaire au transfert ; une migration devait reformater des
+doléances existantes ; il fallait étendre la liste des axes §7.1.
