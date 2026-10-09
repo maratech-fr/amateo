@@ -1,6 +1,6 @@
 # Doléances → planning : jours disponibles, créneaux habituels, ajout manuel, « Transférer au planning » (P2-63)
 
-> **Statut** : cadrage en cours de validation par le fondateur (Q1-Q4 + Q3bis tranchées, Q5-Q8 ouvertes, §5) ; plan (`planner`) après
+> **Statut** : cadrage en cours de validation par le fondateur (Q1-Q5 + Q3bis tranchées, Q6-Q8 ouvertes, §5) ; plan (`planner`) après
 > validation ; **code APRÈS le chantier vidéo P4-297** (place dans la file fixée par le fondateur le
 > 2026-10-09).
 > **Origine** : besoin d'un gestionnaire de club, dicté par le fondateur le 2026-10-09 (mots exacts §0).
@@ -287,7 +287,18 @@ Chaque chemin devient un test d'abus NOMMÉ au plan (fichier + suite).
   un créneau n'a pas pu l'être. Écartés : b (le créneau avant le placement des autres) et c (selon les
   rangs).
 
-Questions restantes : Q5 à Q8 ci-dessous.
+- **Q5 — coach OBLIGATOIRE par le canal coach, FACULTATIF en saisie manuelle.** Mots du fondateur :
+  « une équipe sans coach ne peut pas avoir de doléance via mail de coach. Si le gestionnaire veut gérer
+  en manuel les vétérans, il a le droit, on ne doit pas le bloquer. Le coach est obligatoire à l'envoi
+  des créneaux mais il est facultatif si on passe en mode manuel. » ⇒ la collecte (mail + page publique)
+  reste bornée aux équipes à coach principal ; l'ajout manuel du gestionnaire accepte TOUTE équipe, coach
+  facultatif — le `coachId` de `CoachWish` devient nullable pour une saisie manuelle
+  (`CoachWishStateProcessor.php:48-52` exige aujourd'hui un coach), et le filtre de l'ajout manuel
+  (`WishesTab.tsx:85-93`, équipes à coach principal seulement) s'ouvre à toutes les équipes. Conséquence
+  à confirmer : une doléance SANS coach qui porte des jours indisponibles ne peut pas devenir une
+  indisponibilité COACH au transfert.
+
+Questions restantes : Q6 à Q8 ci-dessous.
 
 
 1. **Grain semaine vs plan multi-semaines.** Un plan peut couvrir 2+ semaines avec UNE seule grille
