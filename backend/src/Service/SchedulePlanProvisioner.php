@@ -491,6 +491,37 @@ final class SchedulePlanProvisioner
     }
 
     /**
+     * P2-63 PR 4 (Q8/D-c) — les LUNDIS que les plannings d'une période de vacances portent.
+     *
+     * La collecte de doléances ne couvre QUE des semaines déjà planifiées (décision fondateur
+     * 2026-10-09 : « la demande de doléance doit se faire avec un planning en cours »). Chaque
+     * planning de la période contribue UNE semaine, rattachée au lundi de sa PREMIÈRE semaine
+     * (D-c : « on attache à la première semaine ») — un planning scindé = sa semaine ; un
+     * planning d'un bloc = sa semaine type ancrée au premier lundi. On balaie le plan de la
+     * MÈRE (bloc non découpé) comme ceux des semaines-ENFANTS (période découpée).
+     *
+     * SQL brut, comme toute lecture de plan ici : la saison n'est pas filtrée (season_filter
+     * cacherait un plan d'une autre saison active de requête), RLS scope le club. `date_trunc`
+     * sur la DATE rend un lundi ISO stable, indépendant du fuseau.
+     *
+     * @return list<string> lundis Y-m-d, dédupliqués et triés
+     */
+    public function planWeekMondaysForPeriod(string $motherEntryId): array
+    {
+        /** @var list<string> $rows */
+        $rows = $this->entityManager->getConnection()->fetchFirstColumn(
+            'SELECT DISTINCT to_char(date_trunc(\'week\', sp.start_date::date), \'YYYY-MM-DD\') AS monday '
+            . 'FROM schedule_plan sp '
+            . 'JOIN calendar_entry ce ON ce.id = sp.calendar_entry_id '
+            . 'WHERE sp.calendar_entry_id IS NOT NULL AND (ce.id = :mid OR ce.parent_entry_id = :mid) '
+            . 'ORDER BY monday',
+            ['mid' => $motherEntryId],
+        );
+
+        return array_map('strval', $rows);
+    }
+
+    /**
      * ADR-0002 inv. 12 — LE nom d'un planning, vu depuis une de ses versions : celui de son
      * PLAN, toujours. SOURCE UNIQUE de la règle et de son repli.
      *

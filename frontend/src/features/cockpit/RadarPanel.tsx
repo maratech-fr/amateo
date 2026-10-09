@@ -812,7 +812,23 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
           onOpenConflict={adapt}
         />
       ) : null}
-      {null !== wishesEntry ? <CoachWishesHub mother={wishesEntry} weekFilter={null} source="cockpit" onClose={() => setWishesEntry(null)} /> : null}
+      {null !== wishesEntry ? (
+        <CoachWishesHub
+          mother={wishesEntry}
+          weekFilter={null}
+          source="cockpit"
+          onClose={() => setWishesEntry(null)}
+          // P2-63 PR 4 — depuis l'état « sans planning », « Adapter cette période » ferme la
+          // fenêtre et lance le geste de découpe/adaptation (naissance du planning).
+          onRequestPlanning={() => {
+            const target = wishesEntry;
+            setWishesEntry(null);
+            if (null !== target) {
+              requestAdapt(target);
+            }
+          }}
+        />
+      ) : null}
     </aside>
   );
 }

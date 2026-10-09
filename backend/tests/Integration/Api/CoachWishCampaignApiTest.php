@@ -11,12 +11,14 @@ use App\Entity\Coach;
 use App\Entity\CoachWish;
 use App\Entity\CoachWishCampaign;
 use App\Entity\CoachWishToken;
+use App\Entity\SchedulePlan;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\User;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
+use App\Enum\SchedulePlanType;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Tests\TenantGucTrait;
@@ -105,6 +107,51 @@ final class CoachWishCampaignApiTest extends WebTestCase
     {
         $this->post($this->payload(['weeks' => ['2026-03-30']])); // lundi bien après la fenêtre
         self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testCampaignRefusedWhenThePeriodHasNoPlanning(): void
+    {
+        // P2-63 PR 4 (Q8, fondateur 2026-10-09) — « la demande de doléance doit se faire avec
+        // un planning en cours ». Sans AUCUN planning sur la période, la création est refusée.
+        $bare = $this->holidayMother('2026-04-06', '2026-04-12'); // aucun plan matérialisé
+        $this->post($this->payload(['calendarEntryId' => $bare->getId(), 'weeks' => ['2026-04-06'], 'teamIds' => [$this->teamA->getId()]]));
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('pas encore de planning de vacances', (string) $this->client->getResponse()->getContent());
+    }
+
+    public function testAWeekNotCoveredByAnyPlanningIsRejectedWith422(): void
+    {
+        // Période de 2 semaines dont SEULE la première est planifiée : choisir aussi la seconde
+        // (fenêtre OK, mais sans planning) est refusé — les semaines dérivent des plannings.
+        $period = $this->holidayMother('2026-04-06', '2026-04-19'); // lundis 04-06 et 04-13
+        $this->seedWeekPlan($period, '2026-04-06', '2026-04-12'); // seule la semaine 1 est planifiée
+
+        $this->post($this->payload(['calendarEntryId' => $period->getId(), 'weeks' => ['2026-04-06', '2026-04-13'], 'teamIds' => [$this->teamA->getId()]]));
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('pas encore de planning de vacances', (string) $this->client->getResponse()->getContent());
+
+        // La semaine PLANIFIÉE seule passe.
+        $this->post($this->payload(['calendarEntryId' => $period->getId(), 'weeks' => ['2026-04-06'], 'teamIds' => [$this->teamA->getId()]]));
+        self::assertResponseStatusCodeSame(201);
+    }
+
+    public function testExistingCampaignRemainsReadableRegardlessOfPlanning(): void
+    {
+        // D-f (fondateur 2026-10-09 : « on ne touche pas aux collectes existantes ») — une
+        // campagne déjà en base, portant une semaine qu'aucun planning ne couvre, reste
+        // LISIBLE telle quelle (compat lecture seule) ; seule l'écriture passe au régime dérivé.
+        $this->scopeGucToClub($this->club->getId());
+        $legacy = (new CoachWishCampaign)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setCalendarEntryId($this->mother->getId())->setDeadline(new DateTimeImmutable('2027-06-30'))
+            ->setWeeks(['2026-02-02'])->setTeamIds([$this->teamA->getId()]); // semaine qu'aucun planning ne couvre
+        $this->em->persist($legacy);
+        $this->em->flush();
+        $this->em->clear();
+
+        $this->client->request('GET', '/api/coach_wish_campaigns/' . $legacy->getId(), [], [], $this->headers());
+        self::assertResponseIsSuccessful();
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertSame(['2026-02-02'], $body['weeks'], 'la campagne existante est servie intacte, sans re-validation du régime dérivé');
     }
 
     public function testPutAddingATeamAddsAMissingTokenWithoutTouchingExistingOnes(): void
@@ -240,7 +287,41 @@ final class CoachWishCampaignApiTest extends WebTestCase
         $this->em->persist($this->mother);
         $this->em->flush();
 
+        // P2-63 PR 4 (Q8) — la collecte ne couvre que des semaines PLANIFIÉES : on matérialise
+        // les deux plannings de semaine de la période (scindée) pour que le payload par défaut
+        // (lundis 02-16 et 02-23) passe la garde dérivée.
+        $this->seedWeekPlan($this->mother, '2026-02-16', '2026-02-22');
+        $this->seedWeekPlan($this->mother, '2026-02-23', '2026-03-01');
+
         $this->jwt = $container->get(JWTTokenManagerInterface::class)->create($user);
+    }
+
+    /** Matérialise une semaine-enfant planifiée (entrée + plan HOLIDAY ancré au lundi). */
+    private function seedWeekPlan(CalendarEntry $mother, string $monday, string $sunday): void
+    {
+        $child = (new CalendarEntry)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setKind(CalendarEntryKind::PERIOD)->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Semaine ' . $monday)
+            ->setStartDate(new DateTimeImmutable($monday))->setEndDate(new DateTimeImmutable($sunday))
+            ->setParentEntryId($mother->getId());
+        $this->em->persist($child);
+
+        $plan = (new SchedulePlan)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setType(SchedulePlanType::HOLIDAY)->setName('Semaine ' . $monday)
+            ->setStartDate(new DateTimeImmutable($monday))->setEndDate(new DateTimeImmutable($sunday))
+            ->setCalendarEntryId($child->getId());
+        $this->em->persist($plan);
+        $this->em->flush();
+    }
+
+    private function holidayMother(string $start, string $end): CalendarEntry
+    {
+        $entry = (new CalendarEntry)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setKind(CalendarEntryKind::PERIOD)->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Vacances')
+            ->setStartDate(new DateTimeImmutable($start))->setEndDate(new DateTimeImmutable($end));
+        $this->em->persist($entry);
+        $this->em->flush();
+
+        return $entry;
     }
 
     private function memberJwt(string $role): string

@@ -262,11 +262,66 @@ final class CoachWishesContext extends BaseContext
         }
     }
 
+    #[When('le gestionnaire tente d\'ouvrir une campagne sans planning de vacances')]
+    public function leGestionnaireTenteSansPlanning(): void
+    {
+        // P2-63 PR 4 (Q8) — aucune `schedule_plans` créée sur la période : la collecte doit
+        // être refusée. On consigne le statut pour l'assertion.
+        $deadline = date('Y-m-d', (int) strtotime($this->monday . ' -3 days'));
+        $attempt = $this->apiPost('coach_wish_campaigns', [
+            'calendarEntryId' => $this->entryId,
+            'deadline' => $deadline,
+            'weeks' => [$this->monday],
+            'teamIds' => [$this->teamId],
+        ], $this->token);
+        $this->submissionStatus = $attempt['status'];
+    }
+
+    #[Then('la collecte est refusée tant qu\'aucun planning n\'existe')]
+    public function laCollecteEstRefuseeSansPlanning(): void
+    {
+        if (422 !== $this->submissionStatus) {
+            throw new RuntimeException(\sprintf('la collecte sans planning a répondu %d (422 attendu)', $this->submissionStatus));
+        }
+    }
+
+    #[Then('une fois le planning des vacances créé, la campagne s\'ouvre')]
+    public function uneFoisLePlanningCreeLaCampagneSOuvre(): void
+    {
+        $this->createHolidayPlanning();
+        $deadline = date('Y-m-d', (int) strtotime($this->monday . ' -3 days'));
+        $campaign = $this->apiPost('coach_wish_campaigns', [
+            'calendarEntryId' => $this->entryId,
+            'deadline' => $deadline,
+            'weeks' => [$this->monday],
+            'teamIds' => [$this->teamId],
+        ], $this->token);
+        if (201 !== $campaign['status']) {
+            throw new RuntimeException(\sprintf('la collecte APRÈS planning a répondu %d (201 attendu)', $campaign['status']));
+        }
+        $this->campaignId = $this->idOf($campaign, 'campagne');
+    }
+
+    /**
+     * « Adapter » la période (ADR-0002) : POST schedule_plans crée le planning de vacances. La
+     * période n'étant pas découpée, c'est un plan de BLOC ancré au lundi de la période.
+     */
+    private function createHolidayPlanning(): void
+    {
+        $plan = $this->apiPost('schedule_plans', ['calendarEntryId' => $this->entryId], $this->token);
+        if (!\in_array($plan['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('la création du planning de vacances a répondu %d (201 attendu)', $plan['status']));
+        }
+    }
+
     /**
      * @param list<string> $teamIds
      */
     private function openCampaignAndSendLinks(array $teamIds): void
     {
+        // P2-63 PR 4 (Q8) — la collecte n'existe qu'après la naissance du planning : on crée
+        // d'abord le planning de vacances, sinon la garde dérivée refuse la campagne (422).
+        $this->createHolidayPlanning();
         $deadline = date('Y-m-d', (int) strtotime($this->monday . ' -3 days'));
         $campaign = $this->apiPost('coach_wish_campaigns', [
             'calendarEntryId' => $this->entryId,
