@@ -2,7 +2,7 @@
 
 > Inventaire des contrôleurs Symfony custom (hors module démo) : OpenAPI des routes custom, authentification, génération & cycle de vie du planning, groupes, membres, contraintes, radar de conflits, calendriers, géo, exports, édition manuelle, import, module matchs, transition de saison, health check. Découpé mécaniquement de `backend-inventory.md` (DOC-59) ; le module démo et l'horloge simulée vivent dans `backend-demo.md`.
 
-Last verified @ 2026-10-09 (lot D1, PR 2) : nouvelle § « Aperçu de l'e-mail coach », confrontée au code (`CoachWishEmailPreviewController`, route `#[Route]` classique déclarée dans le contributeur OpenAPI `CoachWishPaths`). Drift sweep : la liste des domaines de §OpenAPI (ci-dessous) ne nommait pas ce domaine (doléances coachs) — corrigée. Reste du fichier non re-confronté cette passe : P4-295 C1 (les deux citations engine `result_builder/diagnostics.py`), P4-266 (`/api/me`/`GET /api/schedule_plans/{id}/structure-hash`), P4-128 n°1 (§Réservation groupée) — historique des vérifications précédentes : `git log -p --follow`.
+Last verified @ 2026-10-09 (lot D1, PR 2) : nouvelle § « Aperçu de l'e-mail coach », confrontée au code (`CoachWishEmailPreviewController`, route `#[Route]` classique déclarée dans le contributeur OpenAPI `CoachWishPaths`). Drift sweep : la liste des domaines de §OpenAPI (ci-dessous) ne nommait pas ce domaine (doléances coachs) — corrigée. Reste du fichier non re-confronté cette passe : P4-295 C1 (les deux citations engine `result_builder/diagnostics.py`), P4-266 (`/api/me`/`GET /api/schedule_plans/{id}/structure-hash`), P4-128 n°1 (§Réservation groupée) — historique des vérifications précédentes : `git log -p --follow`. Également (P4-295 C4) : citation engine `add_socle_reference_bonus` recalée sur `engine/app/solver/objective/terms/stability.py` (l'ancien `objective/terms.py` est devenu un paquet, surface d'import byte-identique).
 
 ## 3. Custom Controllers
 
@@ -147,7 +147,7 @@ jour+heure du socle compte). Comme `previousAssignments`, greffé **après** le 
 (préférence de convergence, jamais une donnée de structure). Côté moteur, le bloc produit un
 **bonus d'objectif en phase 1** (placement) par tier de priorité — `S=20, A=18, B=16, C=14, D=12`
 (`SOCLE_REFERENCE_TIER_WEIGHTS`, `engine/app/solver/objective/weights.py`), appliqué par
-`add_socle_reference_bonus` (`engine/app/solver/objective/terms.py`) sur toute variable dont
+`add_socle_reference_bonus` (`engine/app/solver/objective/terms/stability.py`) sur toute variable dont
 `(team, day, start)` matche une entrée de référence — le gymnase de la variable est ignoré. Champ
 absent/vide ⇒ payload byte-identique à l'historique (chemin inerte, comme `previousAssignments`) ;
 ce bloc vit sous le contrat backend⇄engine courant (`engine/CONTRACT_VERSION`, CLAUDE.md §6),

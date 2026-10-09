@@ -1,6 +1,6 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-10-09 (P4-295 C3) : `CONTRACT_VERSION` 1.4 inchangé — le solveur de placement est devenu le paquet `app/solver/match_placement/` (découpe pure verbatim : façade `__init__` portant `solve_match_placement`/`_solve_one_week`/`_place_matches`, sous-modules `geometry`/`weights`/`reasons`/`budget`/`candidates`/`weeks`) ; les citations §3 (poids SOFT `W_COACH_UNAVAILABLE`/`W_CLUB_RULE`/`W_PROTECT_HABIT` → `weights.py`, raisons `_candidate_kickoffs` → `candidates.py`) ré-ancrées sur les sous-modules, plus de numéros de ligne. Reste du module (P4-96/P4-300/BCK-19 et antérieur) non réaudité cette passe — un stamp REMPLACE, il ne s'empile pas. Historique : `git log -p --follow specs/courantes/module-matchs.md`.
+Last verified @ 2026-10-09 (P4-295 C3) : `CONTRACT_VERSION` 1.4 inchangé — le solveur de placement est devenu le paquet `app/solver/match_placement/` (découpe pure verbatim : façade `__init__` portant `solve_match_placement`/`_solve_one_week`/`_place_matches`, sous-modules `geometry`/`weights`/`reasons`/`budget`/`candidates`/`weeks`) ; les citations §3 (poids SOFT `W_COACH_UNAVAILABLE`/`W_CLUB_RULE`/`W_PROTECT_HABIT` → `weights.py`, raisons `_candidate_kickoffs` → `candidates.py`) ré-ancrées sur les sous-modules, plus de numéros de ligne. Reste du module (P4-96/P4-300/BCK-19 et antérieur) non réaudité cette passe — un stamp REMPLACE, il ne s'empile pas. Historique : `git log -p --follow specs/courantes/module-matchs.md`. Également (P4-295 C4) : citation `objective/terms.py` recalée — la logique de repos après match (`rest_day = match_day % 7 + 1`, `add_match_day_rest_bonus`) vit depuis P4-295 C4 dans le sous-module `engine/app/solver/objective/terms/rhythm.py` (l'ancien `objective/terms.py` est devenu un paquet, découpe pure verbatim, surface d'import byte-identique, `objective/__init__` inchangé). `engine/CONTRACT_VERSION` = `1.4`, inchangé (refactor pur, zéro effet gestionnaire). Reste du contenu (vocabulaire `/place-matches`, P4-96/P4-300/BCK-19, P4-271/P4-272 et §7 « Engagements FFBB ») non réaudité cette passe. Historique : `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
 > d'une PR. Le JOURNAL (qui a livré quoi, quand, sous quel id) vit dans
@@ -132,7 +132,7 @@ vigueur, il n'a rien à comparer.
   créneau idéal, tagué A ou B). L'habitude alimente aussi le solveur d'ENTRAÎNEMENT : `Team.matchDay`
   (`ScheduleConstraintBuilder::deriveMatchDay`, `POST /generate`) émet le DERNIER jour ISO de match
   de la semaine — le repos qui compte est celui d'après lui (`rest_day = match_day % 7 + 1`,
-  `engine/app/solver/objective/terms.py`) — pour le bonus SOFT « jour de repos après un match ».
+  `engine/app/solver/objective/terms/rhythm.py`) — pour le bonus SOFT « jour de repos après un match ».
   Sans habitude, repli sur le champ déclaré `Team.matchDay` (0-based, converti en ISO à l'émission).
 - **`VenueMatchWindow`** (jour ISO + plage horaire, gymnase = « de match » ssi ≥ 1 fenêtre — aucun
   booléen sur `Venue`) et **`VenueUnavailability`** (plage de dates + motif, toutes circonstances,

@@ -1,19 +1,6 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-10-06 (P4-312 : `preferredDays` passe « émis par le wizard » dans la rangée
-DAY — mode JOUR « à privilégier », `PREFERRED` soft, refus `HARD` inchangé en bas de page, vérifié
-contre `ConstraintConfigValidator` §whitelist et `ConstraintValidationService` §refus HARD). Le
-refus 422 des clés de tag sur la famille `COACH_AVAILABILITY` (ALIGN-21) reste vérifié contre
-`ConstraintConfigValidator::errors` et `ScheduleConstraintBuilder::serializeUnifiedConstraints`,
-qui ne résout les tags qu'en lignes TEAM. Le reste de la page non ré-audité cette passe
-(dernière confrontation P4-300 : la ligne FACILITY `venue_closed` confrontée aux trois
-consommateurs MATCHS `MatchPlacementPayloadBuilder.php`/`ConflictRadarLoader.php`/`FixtureStateProcessor.php`
-et à `PlanVenueClosures::closureIntervals`/`VenueClosureDays::rawIntervals` ;
-ENG-48/ALIGN-16/ENG-51/ALIGN-19, contrat 1.1, contre
-`engine/app/solver/constraints/targeting.py`/`parsing.py`). `App\Enum\ConstraintRuleType`
-(`backend/src/Enum/ConstraintRuleType.php`) ne compte toujours que HARD/PREFERRED — le cran `LOCK`
-reste retiré (« on ne verrouille que les créneaux »), la matrice d'intensité ci-dessous à deux
-crans. Historique : `git log -p --follow`. Un stamp REMPLACE, il ne s'empile pas.
+Last verified @ 2026-10-09 (P4-295 C4) : citation engine recalée — les clés `preferredDays`/`forbiddenDays`/`minStartTime`/`maxStartTime` lues strictement côté moteur vivent depuis P4-295 C4 dans le sous-module `engine/app/solver/objective/terms/preferred.py` (l'ancien `objective/terms.py` est devenu un paquet, découpe pure verbatim, surface d'import byte-identique). La liste blanche et les refus 422 (clés de tag sur `COACH_AVAILABILITY`, refus `HARD` d'une préférence) non ré-audités cette passe, confrontés en dernier contre `ConstraintConfigValidator`/`ConstraintValidationService`. Historique : `git log -p --follow`. Un stamp REMPLACE, il ne s'empile pas.
 
 > Source de vérité du code : `App\Service\ConstraintConfigValidator`.
 > Cette page explique le POURQUOI ; la liste qui fait foi est dans la classe.
@@ -60,7 +47,7 @@ avec le nom de la clé et les réglages acceptés pour la famille.
 Une clé de la liste blanche n'est pas honorée à tous les crans. Le moteur range les règles par
 `ruleType` **avant** de les appliquer : le chemin dur ne lit que HARD
 (`engine/app/solver/constraints/targeting.py`), le chemin souple filtre `ruleType == "PREFERRED"`
-strictement et ne connaît qu'une poignée de clés (`engine/app/solver/objective/terms.py`). Une clé
+strictement et ne connaît qu'une poignée de clés (`engine/app/solver/objective/terms/preferred.py`). Une clé
 posée au mauvais cran tombe donc entre les deux : **elle s'affiche comme active et ne fait rien**.
 
 | Clé | Cran refusé | Pourquoi elle serait muette |
