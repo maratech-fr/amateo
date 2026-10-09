@@ -9,7 +9,7 @@ bloc, et pour EUX SEULS — une équipe non partenaire reste refusée sur une ca
 
 Ce fichier prouve les DEUX sites du kill par le VRAI pipeline (``solve_payload``) :
   * (a) même case, même départ — le montage retirait la variable du membre libre (model.py) ET le
-        balayage capacité la fermait (structural.py). Les deux réparés → COMPLETED + co-présence.
+        balayage capacité la fermait (constraints/structural/capacity.py). Les deux réparés → COMPLETED + co-présence.
   * (b) variante départs chevauchants — le membre libre co-localise sur la case du pin (même début),
         et son candidat à un début DIFFÉRENT qui chevauche le pin reste, lui, refusé (borne case).
   * (c) « à eux seuls » — une équipe NON partenaire reste refusée sur la case saturée par le pin.
@@ -49,7 +49,7 @@ def _cases_of(result: dict[str, Any], team_id: str) -> set[tuple[str, int, str]]
 
 def test_free_partner_lands_on_the_exact_case_of_a_pinned_partner() -> None:
     """(a) t2 est ÉPINGLÉ HARD sur V/lundi/19:30 (gymnase capacité 1) ; t1, LIBRE, partage le bloc
-    {t1,t2}. Sans le fix, model.py supprime la variable de t1 sur cette case ET structural.py la
+    {t1,t2}. Sans le fix, model.py supprime la variable de t1 sur cette case ET constraints/structural/capacity.py la
     ferme (le verrou de t2 sature la capacité) → génération FAILED. Avec : t1 rejoint t2 sur la
     MÊME case, les deux tiennent en UNE occupation de capacité 1."""
     payload = make_payload(
