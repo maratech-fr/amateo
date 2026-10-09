@@ -31,7 +31,11 @@ class ReservationInput
     #[Groups(['write'])]
     public ?DateTimeImmutable $startTime = null;
 
-    #[Assert\Range(min: 15, max: 300)]
+    // Plafond retiré (décision fondateur) : un créneau peut couvrir un événement de club
+    // (9h-17h = 480 min), au-delà des 5 h de l'ancienne borne. La SEULE borne haute est
+    // « début + durée ≤ minuit », vérifiée dans ReservationStateProcessor (422 nommé) — en
+    // parité avec le rail batch (GroupReservationController) et la saisie « Autre… » du front.
+    #[Assert\Range(min: 15)]
     #[Groups(['write'])]
     public ?int $durationMinutes = 90;
 

@@ -8,12 +8,14 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Schedule;
+use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
+use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Export\ScheduleExportDataProvider;
@@ -98,9 +100,81 @@ final class ScheduleExportEmptySlotsTest extends KernelTestCase
             'le décor du bug : le même créneau existe deux fois en base, un par couche',
         );
 
+        // D7 (lot 2) — le gymnase doit être UTILISÉ (≥ 1 séance placée) pour que sa fenêtre vide
+        // subsiste à l'export d'ensemble ; sinon il disparaît. On place une séance (jeu. 20:00,
+        // hors de la fenêtre vide du mer. 18:00) sur CHAQUE version, pour que la garde anti-doublon
+        // #8 reste observable sous le filtre D7.
+        foreach ([$seasonVersion, $periodVersion] as $version) {
+            $placed = new ScheduleSlotTemplate;
+            $placed->setClubId($club->getId());
+            $placed->setSeasonId($season->getId());
+            $placed->setScheduleId($version->getId());
+            $placed->setTeamId($this->uuid());
+            $placed->setVenueId($venue->getId());
+            $placed->setDayOfWeek(4);
+            $placed->setStartTime(new DateTimeImmutable('20:00'));
+            $placed->setDurationMinutes(90);
+            $placed->setLockLevel(LockLevel::NONE);
+            $this->em->persist($placed);
+        }
+        $this->em->flush();
+
         // Chaque planning n'affiche QUE le sien — une fois, pas deux.
         self::assertCount(1, $this->provider->load($seasonVersion)->emptySlots, 'le planning de saison montre son créneau vide une seule fois');
         self::assertCount(1, $this->provider->load($periodVersion)->emptySlots, 'la période montre le sien, pas celui du socle en plus');
+    }
+
+    /**
+     * D7 (lot 2) — à l'export d'ensemble, un gymnase SANS aucune séance placée DISPARAÎT (ses
+     * fenêtres « vide » n'encombrent plus la grille) ; un gymnase utilisé garde, lui, ses cellules
+     * « vide ». L'export d'UN seul gymnase (`?venueId=`) n'applique pas ce filtre.
+     */
+    public function testUnusedVenueVanishesFromExportButItsOwnExportKeepsIt(): void
+    {
+        [$club, $season] = $this->seed();
+
+        // Gymnase A — DEUX fenêtres (socle), dont une recevra une séance → gymnase UTILISÉ.
+        $venueA = $this->makeVenue($club, $season, 'Alpha');
+        $this->makeWindow($club, $season, $venueA, 3, '18:00'); // sera remplie
+        $this->makeWindow($club, $season, $venueA, 4, '18:00'); // restera vide
+        // Gymnase B — UNE fenêtre, jamais remplie → gymnase ENTIÈREMENT vide.
+        $venueB = $this->makeVenue($club, $season, 'Beta');
+        $this->makeWindow($club, $season, $venueB, 3, '18:00');
+        $this->em->flush();
+
+        $seasonVersion = new Schedule;
+        $seasonVersion->setClubId($club->getId());
+        $seasonVersion->setSeasonId($season->getId());
+        $seasonVersion->setName('Socle');
+        $seasonVersion->setStatus(ScheduleStatus::COMPLETED);
+        $this->linkSeededSchedule($seasonVersion);
+        $this->em->flush();
+
+        // Une séance placée sur le gymnase A (mer. 18:00) → A est « utilisé », sa fenêtre du jeudi
+        // reste « vide ».
+        $placed = new ScheduleSlotTemplate;
+        $placed->setClubId($club->getId());
+        $placed->setSeasonId($season->getId());
+        $placed->setScheduleId($seasonVersion->getId());
+        $placed->setTeamId($this->uuid());
+        $placed->setVenueId($venueA->getId());
+        $placed->setDayOfWeek(3);
+        $placed->setStartTime(new DateTimeImmutable('18:00'));
+        $placed->setDurationMinutes(90);
+        $placed->setLockLevel(LockLevel::NONE);
+        $this->em->persist($placed);
+        $this->em->flush();
+
+        // Export d'ensemble : SEUL le gymnase A (utilisé) garde sa fenêtre vide (jeu. 18:00) ;
+        // le gymnase B, entièrement vide, disparaît.
+        $empty = $this->provider->load($seasonVersion)->emptySlots;
+        self::assertCount(1, $empty, 'seule la fenêtre vide du gymnase UTILISÉ subsiste');
+        self::assertSame($venueA->getId(), $empty[0]->venueId, 'et c\'est bien celle du gymnase A');
+
+        // Export du SEUL gymnase B : on garde toute sa grille, vides compris (pas de filtre).
+        $soloB = $this->provider->load($seasonVersion, $venueB->getId())->emptySlots;
+        self::assertCount(1, $soloB, 'l\'export mono-gymnase d\'un gymnase vide garde sa grille');
+        self::assertSame($venueB->getId(), $soloB[0]->venueId);
     }
 
     protected function setUp(): void
@@ -108,6 +182,37 @@ final class ScheduleExportEmptySlotsTest extends KernelTestCase
         self::bootKernel();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
         $this->provider = self::getContainer()->get(ScheduleExportDataProvider::class);
+    }
+
+    private function makeVenue(Club $club, Season $season, string $name): Venue
+    {
+        $venue = new Venue;
+        $venue->setClubId($club->getId());
+        $venue->setSeasonId($season->getId());
+        $venue->setName($name);
+        $venue->setCanSplit(false);
+        $venue->setSource('manual');
+        $this->em->persist($venue);
+
+        return $venue;
+    }
+
+    private function makeWindow(Club $club, Season $season, Venue $venue, int $day, string $start): void
+    {
+        $slot = new VenueTrainingSlot;
+        $slot->setClubId($club->getId());
+        $slot->setSeasonId($season->getId());
+        $slot->setVenueId($venue->getId());
+        $slot->setDayOfWeek($day);
+        $slot->setStartTime(new DateTimeImmutable($start));
+        $slot->setDurationMinutes(90);
+        $slot->setCapacity(1);
+        $this->em->persist($slot);
+    }
+
+    private function uuid(): string
+    {
+        return \sprintf('%08x-%04x-4%03x-%04x-%012x', random_int(0, 0xFFFFFFFF), random_int(0, 0xFFFF), random_int(0, 0xFFF), random_int(0x8000, 0xBFFF), random_int(0, 0xFFFFFFFFFFFF));
     }
 
     /** @return array{0: Club, 1: Season} */
