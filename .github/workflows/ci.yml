@@ -1028,6 +1028,8 @@ jobs:
       # dernier commit ayant touché le fichier. Un clone superficiel ne connaît qu'un commit :
       # le test se saborderait en skip (il le dit) et le garde ne verrait plus rien.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
 
       # Connexion Docker Hub avant tout tirage : les runners partagés GitHub épuisent le
       # quota ANONYME (429 Too Many Requests — incident 2026-10-09, python:3.12-slim refusé).
@@ -1038,8 +1040,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-        with:
-          fetch-depth: 0
 
       - name: Prepare .env
         run: |
@@ -1182,6 +1182,9 @@ jobs:
       PERF_PR_BUDGET: "60"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # need base..HEAD to diff which paths changed on this PR
+          fetch-depth: 0
 
       # Connexion Docker Hub avant tout tirage : les runners partagés GitHub épuisent le
       # quota ANONYME (429 Too Many Requests — incident 2026-10-09, python:3.12-slim refusé).
@@ -1192,9 +1195,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-        with:
-          # need base..HEAD to diff which paths changed on this PR
-          fetch-depth: 0
 
       # Path filter WITHOUT a third-party action: the repo pins every external
       # action by SHA and gates supply chain with semgrep/secrets-scan, so the
