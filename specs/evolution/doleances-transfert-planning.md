@@ -1,6 +1,6 @@
 # Doléances → planning : jours disponibles, créneaux habituels, ajout manuel, « Transférer au planning » (P2-63)
 
-> **Statut** : cadrage en attente de validation du fondateur (8 questions, §5) ; plan (`planner`) après
+> **Statut** : cadrage en cours de validation par le fondateur (Q1-Q2 tranchées, Q3-Q8 ouvertes, §5) ; plan (`planner`) après
 > validation ; **code APRÈS le chantier vidéo P4-297** (place dans la file fixée par le fondateur le
 > 2026-10-09).
 > **Origine** : besoin d'un gestionnaire de club, dicté par le fondateur le 2026-10-09 (mots exacts §0).
@@ -245,6 +245,23 @@ Chaque chemin devient un test d'abus NOMMÉ au plan (fichier + suite).
     partenaires pressentis fausserait le volume commun. → Écarté : conversion automatique du bloc.
 
 ## 5. Questions au fondateur (par ordre d'importance, avec la recommandation)
+
+### Décisions du fondateur (2026-10-09)
+
+- **Q1 — grain semaine vs planning d'un bloc : la question tombe, la doléance SUIT le découpage du
+  planning.** Mots du fondateur : « si le planning de vacances se fait en un bloc, ça veut dire que l'on
+  propose une semaine que l'on va dupliquer. Il est complètement stupide de proposer deux semaines
+  distinctes alors que le planning n'est qu'un seul gros bloc. » ⇒ planning d'un bloc = le coach remplit
+  UNE semaine type pour le bloc ; planning scindé = une doléance par semaine ; aucun arbitrage
+  max/min/signalement au transfert. Reste à cadrer : la collecte est souvent lancée AVANT la naissance
+  du planning (semaines cochées dans Réglages) — qui fixe alors le découpage ? À traiter avec **P2-64**
+  (plannings de vacances scindés par défaut, fusion à la demande), née de cette question.
+- **Q2 — indisponibilité coach transférée = OBLIGATOIRE (HARD).** Mots du fondateur : « il dit qu'il
+  n'est pas dispo, et pas il préfère ne pas être dispo ». Les jours souhaités restent en Préféré
+  (décision 6).
+
+Questions restantes : Q3 à Q8 ci-dessous.
+
 
 1. **Grain semaine vs plan multi-semaines.** Un plan peut couvrir 2+ semaines avec UNE seule grille
    hebdo ; or les doléances divergent par semaine (ex. 2 créneaux en S1, 1 en S2). Que fait le transfert
