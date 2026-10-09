@@ -1,6 +1,6 @@
 # Doléances → planning : jours disponibles, créneaux habituels, ajout manuel, « Transférer au planning » (P2-63)
 
-> **Statut** : cadrage en cours de validation par le fondateur (questions tranchées le 2026-10-09, §5 ; plan en 7 PR §8 ; points D-a → D-g à trancher avant le code, §8.10) ; plan (`planner`) après
+> **Statut** : cadrage en cours de validation par le fondateur (questions tranchées le 2026-10-09, §5 ; plan en 7 PR §8 ; points D-a → D-g tranchés le 2026-10-09, §8.10 — prêt à coder après la vidéo) ; plan (`planner`) après
 > validation ; **code APRÈS le chantier vidéo P4-297** (place dans la file fixée par le fondateur le
 > 2026-10-09).
 > **Origine** : besoin d'un gestionnaire de club, dicté par le fondateur le 2026-10-09 (mots exacts §0).
@@ -387,8 +387,8 @@ Chaque chemin devient un test d'abus NOMMÉ au plan (fichier + suite).
 
 > Plan produit après la validation de toutes les questions (§5). Il PRIME sur §6/§7 du cadrage là où
 > les décisions du fondateur les ont rendus caducs (notamment « aucun changement moteur » : faux depuis
-> Q3/Q4). Le code se fera après le chantier vidéo P4-297. **Les points D-a → D-g (§8.10) restent à
-> trancher par le fondateur AVANT le code.** Lane Full, 7 PR.
+> Q3/Q4). Le code se fera après le chantier vidéo P4-297. **Les points D-a → D-g (§8.10) sont tranchés
+> (2026-10-09).** Lane Full, 7 PR.
 
 ### 8.1 Précisions de code relevées par le plan (vs cadrage)
 
@@ -518,20 +518,20 @@ dans `le-socle-commande-les-plans.feature` + test de 404 byte-identique du jeton
 
 ### 8.10 Points à trancher par le fondateur AVANT le code (reco + exemple)
 
-- **D-a — « l'équipe ne s'entraîne pas ces jours-là »** : TEAM DAY `forbiddenDays` HARD (clé existante).
+- **D-a — « l'équipe ne s'entraîne pas ces jours-là » — TRANCHÉ (fondateur, 2026-10-09 : « ok pour jours interdits »)** : TEAM DAY `forbiddenDays` HARD (clé existante).
   Ex. : Vétérans sans coach, indispo jeu+ven → « Jours interdits Vétérans : jeudi, vendredi · Obligatoire ».
-- **D-b — sélection vs « traité »** : case de sélection à gauche, l'état « traité » reste à droite ;
+- **D-b — sélection vs « traité » — TRANCHÉ sur le principe (fondateur, 2026-10-09 ; captures avant de figer)** : case de sélection à gauche, l'état « traité » reste à droite ;
   présélection = non traitées ; après transfert les lignes passent barrées. Passe ui-ux + captures.
-- **D-c — semaine type d'un planning d'un bloc** : `weekStart` = lundi de la première semaine du bloc,
+- **D-c — semaine type d'un planning d'un bloc — TRANCHÉ (fondateur, 2026-10-09 : « on attache à la première semaine et la 2e semaine n'est qu'une copie au résultat »)** : `weekStart` = lundi de la première semaine du bloc,
   affiché « Semaine type du bloc (20/04 → 01/05) » (zéro migration).
-- **D-d — le comblement gagne-t-il le niveau gymnase ?** Non en v1 : « Combler » reste au point près ;
+- **D-d — TRANCHÉ (fondateur, 2026-10-09) : « Combler » reste comme aujourd'hui ; la contrainte « Garder ses créneaux de saison » garde équipe + jour + heure, et le gymnase SI POSSIBLE (quand il existe dans ce planning).** Question d'origine — le comblement gagne-t-il le niveau gymnase ? Non en v1 : « Combler » reste au point près ;
   seule la contrainte active le barème fort et le gymnase.
-- **D-e — seed S+A au transfert avant la première ouverture du wizard** : le transfert matérialise le seed
+- **D-e — seed S+A au transfert avant la première ouverture du wizard — TRANCHÉ (fondateur, 2026-10-09 : « ok pour appliquer le tri par défaut »)** : le transfert matérialise le seed
   côté serveur puis convertit (Vétérans actifs via doléances, U13/U15 loisir désactivés comme si le wizard
   avait semé).
-- **D-f — campagnes existantes à la bascule Q8** : compat lecture seule ; seule la création/édition passe
+- **D-f — campagnes existantes à la bascule Q8 — TRANCHÉ (fondateur, 2026-10-09 : « on ne touche pas aux collectes existantes »)** : compat lecture seule ; seule la création/édition passe
   au régime dérivé.
-- **D-g — calibrage** : « très forte » reste sous l'écart B−C (90) pour ne pas casser l'ordre de placement
+- **D-g — calibrage — TRANCHÉ (fondateur, 2026-10-09 : « ok pour le calibrage »)** : « très forte » reste sous l'écart B−C (90) pour ne pas casser l'ordre de placement
   des rangs : SM1 garde son créneau même contre gymnase + jour + heure préférés ailleurs (20 < 85), mais
   bouge si les U13 n'ont aucune autre place (85 ≪ 1021), avec « SM1 : 2/3 conservés ».
 
