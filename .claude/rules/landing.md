@@ -64,11 +64,26 @@ paths:
   (avant le `<style>`, anti-flash) pose `data-theme="dark"` sur `<html>` depuis `localStorage.theme`
   (choix explicite du visiteur) sinon `prefers-color-scheme`, enveloppé (navigation privée,
   cookies refusés → repli clair silencieux). Un bouton `.theme-toggle` (lune/soleil, dans
-  `nav.top` — un `<button>`, pas un `<a>`, donc épargné par la règle mobile `a:not(.btn){display:none}`)
+  `nav.top` — un `<button>`, pas un `<a>`, donc épargné par la règle mobile `nav.top > a { display:none }`
+  qui masque les liens inline ≤880px, cf. burger ci-dessous)
   bascule l'attribut et persiste le choix. Jetons sombres **dérivés PAR CONVENTION** des jetons
   `.dark` de l'app (`frontend/src/index.css`, même hue 75, mêmes L/chroma) — jamais importés, les
   deux zones restent indépendantes (règle ci-dessus). Détail des jetons et du fond sombre :
   `specs/courantes/identite-visuelle-produit.md`.
+- **Mise en page mobile (lot 4, 2026-10-09)** : ≤880px la barre passe au **burger** — un
+  `<details class="nav-menu">`/`<summary>` NATIF (ouvre/ferme **sans JS** ; le JS n'ajoute que le
+  confort : miroir `aria-expanded`, fermeture au clic sur une ancre, Échap → focus). Le panneau
+  (`position:absolute` sous l'en-tête sticky, recouvre, **pas de scroll-lock**) **reprend** les
+  liens de la barre — ancres + « Se connecter » + CTA : **deux jeux distincts** (inline masqué en
+  mobile, panneau masqué en desktop), jamais partagés, chacun câblé par `config.js`
+  (`querySelectorAll` sur `[data-cta]`). Le **desktop reste intact** (le burger est `display:none`
+  ≥881px, les liens inline inchangés). Logo et bascule de thème : `flex-shrink:0` (le carré 40px ne
+  s'écrase plus). Paragraphes de **contenu** à 16px ≤720px (`.pain p`/`.step p`/`.faq .a`, règle
+  placée APRÈS leurs règles de base — à spécificité égale c'est l'ordre source qui tranche, pas la
+  media query). Étapes en **1 colonne + séparateur horizontal** <600px. Cibles tactiles ≥44px en
+  mobile par padding gonflé + marge négative de compensation (bornées ≤880px, le rendu desktop ne
+  bouge pas). Preuve = banc Playwright 6 largeurs × clair/sombre × burger ouvert/fermé × JS coupé,
+  captures `captures/lot4-*` (aucun job CI ne couvre `landing/`, cf. ci-dessous).
 - **Convention `-dark` pour toute capture/asset qui varie par thème (P4-274, 2026-09-29)** :
   `nom.ext` → `nom-dark.ext`, même dossier. Le script de bascule de thème essaie systématiquement
   la variante `-dark` en sombre et retombe sur la version claire via `onerror` si une `-dark`

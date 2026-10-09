@@ -122,7 +122,7 @@
        à la couleur du thème, un seul rendu clair/sombre. Le mot vient de `brand` (config, via
        `.brand`) ; `text-transform` le met en minuscules comme le logo, sans dupliquer le nom.
        Repli conservé : si l'icône manque/échoue, le mot seul reste (marque toujours lisible). */
-    .logotype { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; }
+    .logotype { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; flex-shrink: 0; }
     .brand-logo { height: 30px; width: 30px; display: block; }
     .logo-word { font-family: var(--display); font-weight: 800; font-size: 23px; letter-spacing: -0.03em; line-height: 1; color: var(--ink); text-transform: lowercase; }
     footer.site .brand-logo { height: 20px; width: 20px; }
@@ -133,11 +133,13 @@
     nav.top a:hover { color: var(--ink); }
     nav.top a.btn-primary { color: var(--accent-foreground); }
     nav.top a.btn-primary:hover { color: var(--accent-foreground); }
-    /* Bascule de thème : bouton (pas un lien), donc épargné par la règle `a:not(.btn)` de mobile —
-       reste visible < 720px. Lune en clair (« passer en sombre »), soleil en sombre. */
+    /* Bascule de thème : un <button>, pas un <a> — donc hors de la règle mobile
+       `nav.top > a { display:none }` (≤880px, cf. burger ci-dessous) : reste visible dans
+       l'en-tête aux côtés du burger. `flex-shrink:0` : le carré ne se fait jamais écraser quand
+       l'espace manque (sinon 40px → 28px de large à 360px). Lune en clair, soleil en sombre. */
     .theme-toggle {
       display: inline-flex; align-items: center; justify-content: center;
-      width: 40px; height: 40px; padding: 0; border-radius: 10px;
+      width: 40px; height: 40px; padding: 0; border-radius: 10px; flex-shrink: 0;
       border: 1.5px solid var(--line); background: var(--surface); color: var(--ink-2);
       cursor: pointer; transition: color 80ms ease, border-color 80ms ease;
     }
@@ -147,9 +149,47 @@
     .theme-toggle .icon-sun { display: none; }
     html[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
     html[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
-    @media (max-width: 720px) {
-      nav.top { gap: 14px; }
-      nav.top a:not(.btn) { display: none; }
+
+    /* ── Menu mobile (burger) ─────────────────────────────────────────────────────
+       `<details>`/`<summary>` : marche SANS JS (le navigateur ouvre/ferme nativement) ;
+       le JS n'ajoute que le confort (fermeture au clic sur une ancre, Échap → focus, miroir
+       aria-expanded). Masqué en desktop (`display:none` de base) — le desktop reste INTACT,
+       les liens inline de `nav.top` sont inchangés ; le burger n'apparaît qu'≤880px. Le panneau
+       est en `position:absolute` sous l'en-tête sticky (offset parent = `header.site`, positionné) :
+       il recouvre, ne pousse rien, pas de scroll-lock. */
+    .nav-menu { display: none; }
+    .nav-menu > summary {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0; list-style: none;
+      border: 1.5px solid var(--line); background: var(--surface); color: var(--ink-2);
+      cursor: pointer; transition: color 80ms ease, border-color 80ms ease;
+    }
+    .nav-menu > summary::-webkit-details-marker { display: none; }
+    .nav-menu > summary::marker { content: ""; }
+    .nav-menu > summary:hover { color: var(--ink); border-color: var(--muted); }
+    .nav-menu > summary:focus-visible { outline: 3px solid var(--accent-ink); outline-offset: 2px; }
+    .nav-menu > summary svg { width: 20px; height: 20px; display: block; }
+    .nav-menu > summary .icon-close { display: none; }
+    .nav-menu[open] > summary .icon-menu { display: none; }
+    .nav-menu[open] > summary .icon-close { display: block; }
+    .nav-panel {
+      position: absolute; top: 100%; left: 0; right: 0;
+      display: flex; flex-direction: column; gap: 6px;
+      padding: 10px 16px 16px; background: var(--surface);
+      border-bottom: 1px solid var(--line); box-shadow: 0 18px 40px -22px rgba(25,23,20,.4);
+    }
+    .nav-panel a { display: block; padding: 13px 12px; border-radius: 8px; text-decoration: none; font-size: 16px; line-height: 1.25; }
+    .nav-panel a:not(.btn) { color: var(--ink-2); }
+    .nav-panel a:not(.btn):hover { color: var(--ink); background: var(--accent-soft); }
+    .nav-panel a.btn { margin-top: 8px; }  /* « Essayer gratuitement » : garde son fond plein, pleine largeur */
+
+    /* ≤880px : la barre passe au burger (décision fondateur). Les liens inline de `nav.top`
+       (ancres, « Se connecter », CTA) cèdent la place au panneau ; le logo et la bascule de
+       thème (un <button>, pas un <a>) restent dans l'en-tête. */
+    @media (max-width: 880px) {
+      nav.top { gap: 12px; }
+      nav.top > a { display: none; }
+      .nav-menu { display: block; }
     }
 
     /* ── Boutons ── */
@@ -218,6 +258,13 @@
     }
     .step h3 { font-size: 17px; }
     .step p { margin-top: 6px; font-size: 15px; color: var(--ink-2); }
+    /* <600px : une seule colonne, séparateur HORIZONTAL (le trait vertical + l'indentation de
+       26px, pensés pour des colonnes côte à côte, n'ont plus de sens empilés). */
+    @media (max-width: 600px) {
+      .steps { grid-template-columns: 1fr; }
+      .step { padding: 8px 0; }
+      .step + .step { border-left: 0; border-top: 1px solid var(--line); padding-left: 0; padding-top: 22px; margin-top: 14px; }
+    }
 
     /* ── Offres ── */
     .plans { margin-top: 40px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; align-items: stretch; }
@@ -256,6 +303,20 @@
     footer.site { border-top: 1px solid var(--line); padding: 28px 0 40px; font-size: 14px; color: var(--muted); }
     footer.site .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 
+    /* Cibles tactiles ≥44px en mobile (lien FAQ en ligne + liens de pied de page) : padding gonflé,
+       marge négative pour COMPENSER — le rendu visuel desktop ne bouge pas, seule la zone cliquable
+       grandit. Borné à ≤880px : au pointeur (desktop) 44px n'est pas requis, le desktop reste intact. */
+    @media (max-width: 880px) {
+      footer.site a { display: inline-block; padding: 12px 4px; margin: -12px -4px; }
+      .faq .a a { display: inline-block; padding: 11px 0; margin: -11px 0; }
+    }
+    /* Paragraphes de CONTENU à 16px en mobile (décision fondateur) — lisibilité au pouce. Placé
+       APRÈS les règles de base `.pain p`/`.step p`/`.faq .a` : à spécificité égale, c'est l'ordre
+       source qui tranche, pas la media query. */
+    @media (max-width: 720px) {
+      .pain p, .step p, .faq .a { font-size: 16px; }
+    }
+
     @media (prefers-reduced-motion: reduce) {
       /* Le saut d'ancre redevient direct : le script de glissement teste lui-même
          prefers-reduced-motion et fait un window.scrollTo instantané. */
@@ -280,6 +341,23 @@
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M4.22 4.22l1.77 1.77M18.01 18.01l1.77 1.77M2 12h2.5M19.5 12H22M4.22 19.78l1.77-1.77M18.01 5.99l1.77-1.77"/></svg>
       </button>
       <a class="btn btn-primary" data-cta="register" href="#">Essayer gratuitement</a>
+      <!-- Menu mobile (≤880px) : <details>/<summary> natif (marche sans JS). Le panneau REPREND
+           les liens de la barre (ancres + « Se connecter » + CTA) ; en desktop ce bloc est
+           masqué et seuls les liens inline ci-dessus s'affichent — aucun lien partagé, deux
+           jeux distincts, chacun câblé par config.js (querySelectorAll sur [data-cta]). -->
+      <details class="nav-menu">
+        <summary data-nav-burger aria-label="Ouvrir le menu" aria-expanded="false">
+          <svg class="icon-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+          <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>
+        </summary>
+        <div class="nav-panel">
+          <a href="#fonctionnement">Comment ça marche</a>
+          <a href="#offres">Offres</a>
+          <a href="#faq">FAQ</a>
+          <a data-cta="login" href="#">Se connecter</a>
+          <a class="btn btn-primary" data-cta="register" href="#">Essayer gratuitement</a>
+        </div>
+      </details>
     </nav>
   </div>
 </header>
@@ -672,6 +750,24 @@
         paintShots(next);
       });
     }
+  })();
+</script>
+<script>
+  // Menu mobile (burger) — confort au-dessus du <details> natif (qui, lui, marche sans JS) :
+  // miroir aria-expanded, fermeture au clic sur un lien du panneau, Échap → focus le burger.
+  (function () {
+    const menu = document.querySelector("details.nav-menu");
+    if (!menu) return;
+    const summary = menu.querySelector("summary");
+    const sync = () => { if (summary) summary.setAttribute("aria-expanded", String(menu.open)); };
+    menu.addEventListener("toggle", sync);
+    sync();
+    menu.querySelectorAll(".nav-panel a").forEach((a) => {
+      a.addEventListener("click", () => { menu.open = false; });
+    });
+    menu.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && menu.open) { menu.open = false; if (summary) summary.focus(); }
+    });
   })();
 </script>
 <script>
