@@ -2,6 +2,7 @@ import { StatusPill } from "@/shared/components/ui/badge";
 import { DayMultiPicker } from "@/shared/components/ui/day-multi-picker";
 import { FIELD_CLASS } from "@/shared/components/ui/field";
 import { Input } from "@/shared/components/ui/input";
+import { DAYS } from "@/shared/lib/days";
 import { cn } from "@/shared/lib/utils";
 
 import type { PublicTeamLink } from "./publicApi";
@@ -38,6 +39,9 @@ function replayToggles(before: Set<number>, next: number[], toggle: (day: number
     }
   }
 }
+
+/** Les sept jours ISO (foyer `shared/lib/days`), pour calculer le complément « disponibles ». */
+const ALL_DAYS: number[] = DAYS.map((d) => d.n);
 
 /**
  * Une étape du parcours = UNE équipe et ses semaines (lot E, P2-24). Depuis D2, un bloc
@@ -95,6 +99,11 @@ export function WishTeamStep({ team, weeks, sections, partnerTeams, teamLinks, m
       {weeks.map((week) => {
         const key = sectionKey(team.id, week);
         const s = sections.get(key) as SectionState;
+        // P2-63 A — inversion de PRÉSENTATION : on affiche les jours DISPONIBLES (le complément
+        // des indisponibilités), tous pressés par défaut, le coach dépresse ses creux. La DONNÉE
+        // reste `s.days` (indisponibilités) : dépresser un jour disponible == le basculer en
+        // indisponible, donc `onToggleDay` (bascule d'UN jour d'indispo) fait le travail inchangé.
+        const availableDays = ALL_DAYS.filter((d) => !s.days.has(d));
         return (
           <fieldset key={key} disabled={readOnly} className="rounded-lg border border-border bg-card p-3">
             <legend className="px-1 text-sm font-medium">
@@ -124,12 +133,15 @@ export function WishTeamStep({ team, weeks, sections, partnerTeams, teamLinks, m
               />
             </div>
             <div className="mt-2">
+              {/* Pressé = DISPONIBLE (état positif/neutre) : `tone="accent"`, jamais `destructive`
+                  (qui signale « bloqué ») — polarité documentée du DayMultiPicker + arbitrage
+                  fondateur 2026-10-01 (les deux saisies de vœux sont en accent). */}
               <DayMultiPicker
-                legend="Jours d'indisponibilité"
+                legend="Jours disponibles"
                 legendVisible
                 tone="accent"
-                value={[...s.days].sort((a, b) => a - b)}
-                onChange={(next) => replayToggles(s.days, next, (day) => onToggleDay(key, day))}
+                value={availableDays}
+                onChange={(next) => replayToggles(new Set(availableDays), next, (day) => onToggleDay(key, day))}
               />
             </div>
             <label className="mt-2 block text-sm">

@@ -318,7 +318,7 @@ export function PublicWishForm({ token, context, preview = false }: { token: str
           <div className="space-y-3 text-sm text-foreground">
             <p>Votre club prépare le planning de {context.periodTitle}.</p>
             <ul className="list-disc space-y-1.5 pl-5">
-              <li>Pour chaque équipe&nbsp;: nombre de séances, jours souhaités et jours d'indisponibilité, semaine par semaine.</li>
+              <li>Pour chaque équipe&nbsp;: nombre de séances, jours souhaités et jours de disponibilité, semaine par semaine.</li>
               <li>Comptez 5&nbsp;minutes&nbsp;: vos réponses partent en une seule fois, à la fin.</li>
               <li>Vous pouvez revenir modifier jusqu'à la date limite.</li>
             </ul>

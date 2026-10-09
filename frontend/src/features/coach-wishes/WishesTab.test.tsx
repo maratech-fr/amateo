@@ -216,14 +216,50 @@ describe("WishesTab", () => {
     await user.click(screen.getByRole("button", { name: "Ajouter" }));
 
     const wished = screen.getByRole("group", { name: "Jours souhaités" });
-    const unavailable = screen.getByRole("group", { name: "Jours indisponibles" });
-    // mercredi indisponible, puis mercredi souhaité → quitte les indisponibilités.
-    await user.click(within(unavailable).getByRole("button", { name: "mercredi" }));
+    const dispo = screen.getByRole("group", { name: "Jours disponibles" });
+    // mercredi indisponible (on le dépresse des disponibles), puis souhaité → il quitte les indispo.
+    await user.click(within(dispo).getByRole("button", { name: "mercredi" }));
     await user.click(within(wished).getByRole("button", { name: "mercredi" }));
     await user.click(within(wished).getByRole("button", { name: "mardi" }));
 
     await user.click(screen.getByRole("button", { name: /Ajouter la doléance/ }));
     expect(createMut).toHaveBeenCalledWith(expect.objectContaining({ wishedDays: [2, 3], unavailableDays: [] }), expect.anything());
+  });
+
+  // ── P2-63 A — « Jours disponibles » (inversion de présentation, payload inchangé) ──
+
+  it("A — défaut tout pressé ; dépresser jeu+ven ⇒ unavailableDays:[4,5]", async () => {
+    const user = userEvent.setup();
+    render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
+    await user.click(screen.getByRole("button", { name: "Ajouter" }));
+    const dispo = screen.getByRole("group", { name: "Jours disponibles" });
+    // Tous les jours pressés par défaut (le coach EST disponible partout, il dépresse les creux).
+    expect(within(dispo).getByRole("button", { name: "lundi" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(within(dispo).getByRole("button", { name: "jeudi" }));
+    await user.click(within(dispo).getByRole("button", { name: "vendredi" }));
+    await user.click(screen.getByRole("button", { name: /Ajouter la doléance/ }));
+    expect(createMut).toHaveBeenCalledWith(expect.objectContaining({ unavailableDays: [4, 5] }), expect.anything());
+  });
+
+  it("A — ré-affiche une réponse existante (unavailableDays:[4]) : 6 jours pressés, jeudi dépressé", async () => {
+    wishesState.data = [wish({ id: "w1", unavailableDays: [4], teamId: "t1", weekStart: "2026-02-16" })];
+    const user = userEvent.setup();
+    render(<WishesTab mother={mother} weekFilter={null} />);
+    await user.click(screen.getByRole("button", { name: /^Modifier la doléance/ }));
+    const dispo = screen.getByRole("group", { name: "Jours disponibles" });
+    expect(within(dispo).getByRole("button", { name: "jeudi" })).toHaveAttribute("aria-pressed", "false");
+    expect(within(dispo).getByRole("button", { name: "lundi" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  // ── P2-63 C — sélecteur d'équipe partagé (TeamSelect, groupé par rang) ──
+
+  it("C — le sélecteur « Équipe » est un TeamSelect groupé par rang", async () => {
+    const user = userEvent.setup();
+    render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
+    await user.click(screen.getByRole("button", { name: "Ajouter" }));
+    await user.click(screen.getByRole("button", { name: /^Équipe SM1/ }));
+    expect(within(screen.getByRole("group", { name: /Fanion/ })).getByRole("option", { name: "Fanion" })).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: /Moyenne/ })).getByRole("option", { name: "SM1" })).toBeInTheDocument();
   });
 
   // ── P3-14 (retour terrain 2026-07-31) ──
@@ -257,9 +293,10 @@ describe("WishesTab", () => {
     render(<WishesTab mother={mother} weekFilter={null} />);
 
     await user.click(screen.getByRole("button", { name: "Ajouter" }));
-    const picker = screen.getByLabelText("Équipe");
-    expect(within(picker).queryByRole("option", { name: "U13" })).toBeNull();
-    expect(within(picker).getByRole("option", { name: "SM1" })).toBeInTheDocument();
+    // TeamSelect (P2-63 C) : les options ne vivent que le panneau ouvert.
+    await user.click(screen.getByRole("button", { name: /^Équipe SM1/ }));
+    expect(screen.queryByRole("option", { name: "U13" })).toBeNull();
+    expect(screen.getByRole("option", { name: "SM1" })).toBeInTheDocument();
   });
 
   // …mais le FILTRE la garde : il sert à LIRE des doléances existantes, dont celles d'une
@@ -284,7 +321,8 @@ describe("WishesTab", () => {
     expect(within(picker).queryByRole("option", { name: /Léa Roy/ })).toBeNull();
 
     // Changer d'équipe change la liste : Fanion est encadrée par Léa, pas par Maxime.
-    await user.selectOptions(screen.getByLabelText("Équipe"), "t3");
+    await user.click(screen.getByRole("button", { name: /^Équipe SM1/ }));
+    await user.click(screen.getByRole("option", { name: "Fanion" }));
     expect(within(screen.getByLabelText("Coach")).getByRole("option", { name: /Léa Roy/ })).toBeInTheDocument();
     expect(within(screen.getByLabelText("Coach")).queryByRole("option", { name: /Maxime Durand/ })).toBeNull();
   });
