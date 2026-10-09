@@ -102,13 +102,17 @@ export function conflictingReservation(candidate: Candidate, reservations: Reser
 
   return (
     reservations.find((other) => {
+      // Lot 4bis — un créneau libre (teamId null) n'a pas de coach : jamais un double-booking.
+      if (null === other.teamId) {
+        return false;
+      }
       const otherCoach = coachByTeam.get(other.teamId);
       const otherStart = minutes(other.startTime);
       if (undefined === otherCoach || null === otherStart) {
         return false;
       }
 
-      return bookingsCollide(here, { ...other, coachId: otherCoach, startMinutes: otherStart });
+      return bookingsCollide(here, { ...other, teamId: other.teamId, coachId: otherCoach, startMinutes: otherStart });
     }) ?? null
   );
 }

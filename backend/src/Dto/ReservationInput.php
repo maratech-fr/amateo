@@ -10,10 +10,22 @@ use Symfony\Component\Validator\Constraints as Assert;
 
 class ReservationInput
 {
-    #[Assert\NotBlank]
+    // XOR teamId/label (lot 4bis) : une réservation cible une équipe OU un créneau libre nommé,
+    // jamais les deux ni aucun — tranché dans ReservationStateProcessor (422 nommé). `teamId` n'est
+    // donc plus NotBlank : un créneau libre le laisse null. NotBlank(allowNull) court-circuite
+    // quand même la chaîne vide (sinon `""` filerait dans une colonne uuid → 500).
+    #[Assert\NotBlank(allowNull: true)]
     #[Assert\Uuid]
     #[Groups(['write'])]
     public ?string $teamId = null;
+
+    /**
+     * Libellé d'un créneau LIBRE (court, ≤ 40). XOR avec `teamId`. Length(max) seul : le XOR et le
+     * « non vide » d'un libellé réellement posé vivent dans le processor, avec le reste de la règle.
+     */
+    #[Assert\Length(max: 40)]
+    #[Groups(['write'])]
+    public ?string $label = null;
 
     #[Assert\NotBlank]
     #[Assert\Uuid]

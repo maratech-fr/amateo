@@ -43,6 +43,9 @@ export function computeReservationWarnings(reservations: Reservation[], teams: T
   // Rule 1 — same slot shared by more distinct teams than allowed.
   const bySlot = new Map<string, Set<string>>();
   for (const r of reservations) {
+    if (null === r.teamId) {
+      continue; // lot 4bis — un créneau libre n'est pas une équipe : hors des règles d'équipe.
+    }
     const key = slotKey(r.venueId, r.dayOfWeek, r.startTime);
     bySlot.set(key, (bySlot.get(key) ?? new Set()).add(r.teamId));
   }
@@ -65,6 +68,9 @@ export function computeReservationWarnings(reservations: Reservation[], teams: T
   // Rules 2 & 3 — per team: total count vs sessions/week, and same-day duplicates.
   const byTeam = new Map<string, Reservation[]>();
   for (const r of reservations) {
+    if (null === r.teamId) {
+      continue; // lot 4bis — un créneau libre n'a pas d'équipe à compter.
+    }
     byTeam.set(r.teamId, [...(byTeam.get(r.teamId) ?? []), r]);
   }
   byTeam.forEach((group, teamId) => {

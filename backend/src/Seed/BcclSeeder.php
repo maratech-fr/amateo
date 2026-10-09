@@ -2317,6 +2317,10 @@ final class BcclSeeder
         // Réservations DE CE PLAN → clés de placement (dérivation des verrous, comme l'import).
         $reservationPlacements = [];
         foreach ($manager->getRepository(Reservation::class)->findBy(['schedulePlanId' => $planId]) as $reservation) {
+            // Lot 4bis — un créneau LIBRE (teamId null) n'est pas un placement d'équipe : ignoré.
+            if (null === $reservation->getTeamId()) {
+                continue;
+            }
             $reservationPlacements[$this->placementKey($reservation->getTeamId(), $reservation->getVenueId(), $reservation->getDayOfWeek(), $reservation->getStartTime()->format('H:i'))] = true;
         }
 

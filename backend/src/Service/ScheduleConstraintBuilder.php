@@ -71,6 +71,16 @@ final class ScheduleConstraintBuilder
     private array $currentAvailabilitiesByVenue = [];
 
     /**
+     * Lot 4bis — nombre de créneaux LIBRES (réservations sans équipe) par case
+     * (`venueId|dayOfWeek|H:i`), calculé au début de chaque `buildPayload` depuis ses réservations.
+     * `buildTrainingSlots` en retire autant de places à la capacité de la case (créneau supprimé si
+     * 0). Un créneau libre n'entre JAMAIS dans `slotTemplates` (le moteur exige un team_id).
+     *
+     * @var array<string, int>
+     */
+    private array $currentFreeSlotCountByCase = [];
+
+    /**
      * Period-editable structure: teamId → period sessions-per-week override, set
      * only during an overlay build (serializeTeam reads it, else the seasonal value).
      *
@@ -560,6 +570,13 @@ final class ScheduleConstraintBuilder
             $this->serializeUnifiedConstraints($constraints, $seasonId, $clubId, $teams),
         );
 
+        // Lot 4bis — on sépare les réservations d'ÉQUIPE des créneaux LIBRES (teamId null). Seules
+        // les premières deviennent des épingles HARD (`slotTemplates`, le moteur exige un team_id) ;
+        // les seconds RETIRENT une place à leur case (capacité −1 dans `buildTrainingSlots`), d'où
+        // le décompte par case posé ici, lu pendant la sérialisation des gymnases ci-dessous.
+        $teamReservations = array_values(array_filter($reservations, static fn (Reservation $r): bool => null !== $r->getTeamId()));
+        $this->currentFreeSlotCountByCase = $this->freeSlotCountByCase($reservations);
+
         // Reservations feed the SAME engine `slotTemplates` payload (HARD pins) —
         // they are just sourced from the durable Reservation entity instead of the
         // ephemeral, schedule-bound ScheduleSlotTemplate.
@@ -568,7 +585,7 @@ final class ScheduleConstraintBuilder
                 array_map($this->serializeSlotTemplate(...), $slotTemplates),
                 static fn (?array $slotTemplate): bool => null !== $slotTemplate,
             ),
-            array_map($this->serializeReservation(...), $reservations),
+            array_map($this->serializeReservation(...), $teamReservations),
         );
 
         // Règles implicites « bien-être » (contrat 2.7) : le bloc RÉSOLU des 4 clés, réglages
@@ -1051,6 +1068,18 @@ final class ScheduleConstraintBuilder
             // court) can host at most one team per slot, whatever the slot's
             // stored capacity. Only a splittable venue may expose capacity > 1.
             $capacity = $canSplit ? $slot->getCapacity() : 1;
+            // Lot 4bis — un créneau LIBRE posé sur cette case RETIRE une place. Non sécable (cap 1)
+            // → le créneau DISPARAÎT du payload (capacité 0) ; le solveur ne peut plus y placer
+            // personne, exactement comme une capacité en moins (reco A + C). On ne touche la case que
+            // s'il EXISTE des créneaux libres — sinon on n'accède même pas au venueId (économie +
+            // compatibilité avec les créneaux de test sans venueId).
+            if ([] !== $this->currentFreeSlotCountByCase) {
+                $key = $slot->getVenueId() . '|' . $slot->getDayOfWeek() . '|' . $slot->getStartTime()->format('H:i');
+                $capacity -= $this->currentFreeSlotCountByCase[$key] ?? 0;
+                if ($capacity <= 0) {
+                    continue;
+                }
+            }
             $result[] = [
                 'dayOfWeek' => $slot->getDayOfWeek(),
                 'startTime' => $slot->getStartTime()->format('H:i'),
@@ -1062,6 +1091,28 @@ final class ScheduleConstraintBuilder
         usort($result, static fn (array $a, array $b): int => $a['dayOfWeek'] <=> $b['dayOfWeek'] ?: strcmp($a['startTime'], $b['startTime']));
 
         return $result;
+    }
+
+    /**
+     * Lot 4bis — nombre de créneaux LIBRES (réservations sans équipe) par case
+     * (`venueId|dayOfWeek|H:i`). `buildTrainingSlots` en retire autant de places à la capacité.
+     *
+     * @param array<Reservation> $reservations
+     *
+     * @return array<string, int>
+     */
+    private function freeSlotCountByCase(array $reservations): array
+    {
+        $byCase = [];
+        foreach ($reservations as $reservation) {
+            if (null !== $reservation->getTeamId()) {
+                continue;
+            }
+            $key = $reservation->getVenueId() . '|' . $reservation->getDayOfWeek() . '|' . $reservation->getStartTime()->format('H:i');
+            $byCase[$key] = ($byCase[$key] ?? 0) + 1;
+        }
+
+        return $byCase;
     }
 
     /** @return array<string, mixed> */

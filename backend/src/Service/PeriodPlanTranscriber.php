@@ -151,6 +151,10 @@ final class PeriodPlanTranscriber
         // Réservations DE CE PLAN → clés de placement (dérivation des verrous, comme l'import).
         $reservationPlacements = [];
         foreach ($this->entityManager->getRepository(Reservation::class)->findBy(['schedulePlanId' => $schedulePlanId]) as $reservation) {
+            // Lot 4bis — un créneau LIBRE (teamId null) n'est pas un placement d'équipe : ignoré.
+            if (null === $reservation->getTeamId()) {
+                continue;
+            }
             $reservationPlacements[$this->placementKey($reservation->getTeamId(), $reservation->getVenueId(), $reservation->getDayOfWeek(), $reservation->getStartTime()->format('H:i'))] = true;
         }
 

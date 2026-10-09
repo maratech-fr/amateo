@@ -28,6 +28,15 @@ Fonctionnalité: Un verrou est souverain à la régénération
     Quand je régénère le planning de saison
     Alors la régénération aboutit, le verrou satisfaisant le jour imposé
 
+  Scénario: Un créneau libre réservé retire la place au solveur
+    Une case réservée en créneau libre n'accueille plus aucune équipe à la génération : la
+    place est retirée, exactement comme une capacité en moins. Le créneau libre n'est pas une
+    équipe — il n'épingle personne, il occupe la case.
+    Étant donné le club de démonstration, connecté, avec une version de saison rouverte
+    Et un créneau libre réservé sur une case occupée du socle
+    Quand je régénère le planning de saison
+    Alors aucune équipe n'est placée sur la case du créneau libre
+
   Scénario: Une règle qui contredit un verrou est signalée, le créneau reste
     Étant donné le club de démonstration, connecté, avec une version de saison rouverte
     Et une séance de cette version verrouillée en dur

@@ -6,6 +6,7 @@ namespace App\Export;
 
 use App\Entity\Coach;
 use App\Entity\PriorityTier;
+use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\SportCategory;
@@ -93,6 +94,28 @@ final class ScheduleExportDataProvider
             $filled[$slot->getVenueId() . '|' . $slot->getDayOfWeek() . '|' . $slot->getStartTime()->format('H:i')] = true;
             $usedVenues[$slot->getVenueId()] = true;
         }
+
+        // Lot 4bis — les CRÉNEAUX LIBRES réservés (réservation sans équipe) de la MÊME couche que la
+        // version exportée (socle NULL / période). Ils occupent leur case (nommée) : on les marque
+        // « filled » + « used » pour qu'ils ne retombent pas en case « vide », et on les rend à
+        // l'export comme cases occupées. La case d'un créneau libre a perdu sa place au payload, donc
+        // aucune séance n'y est jamais placée — c'est bien un occupant nommé, pas un trou.
+        $freeSlotCriteria = ['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $this->slotLayerOf($schedule), 'teamId' => null];
+        if (null !== $venueId) {
+            $freeSlotCriteria['venueId'] = $venueId;
+        }
+        $freeSlots = [];
+        foreach ($this->entityManager->getRepository(Reservation::class)->findBy($freeSlotCriteria) as $reservation) {
+            $filled[$reservation->getVenueId() . '|' . $reservation->getDayOfWeek() . '|' . $reservation->getStartTime()->format('H:i')] = true;
+            $usedVenues[$reservation->getVenueId()] = true;
+            $freeSlots[] = new ExportReservedWindow(
+                $reservation->getVenueId(),
+                $reservation->getDayOfWeek(),
+                $reservation->getStartTime(),
+                $reservation->getDurationMinutes(),
+                $reservation->getLabel() ?? 'Créneau réservé',
+            );
+        }
         // #8 — LA COUCHE DE LA VERSION EXPORTÉE, et elle seule. Depuis que chaque période
         // possède sa grille (copie du modèle de saison à la naissance du plan), un club à
         // trois périodes a quatre exemplaires du même créneau en base : sans ce filtre,
@@ -125,7 +148,7 @@ final class ScheduleExportDataProvider
             }
         }
 
-        return new ScheduleExportData($slots, $teamNames, $teamCategories, $venues, $coachNames, $emptySlots, $teamRanks, $groupLabels);
+        return new ScheduleExportData($slots, $teamNames, $teamCategories, $venues, $coachNames, $emptySlots, $teamRanks, $groupLabels, $freeSlots);
     }
 
     /**

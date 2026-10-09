@@ -351,11 +351,18 @@ export const createConstraintPeriodOverride = (body: ConstraintPeriodOverridePay
 export const updateConstraintPeriodOverride = (id: string, body: ConstraintPeriodOverridePayload): Promise<ConstraintPeriodOverride> => api.put(`constraint_period_overrides/${id}`, { json: body }).json();
 export const deleteConstraintPeriodOverride = (id: string): Promise<void> => api.delete(`constraint_period_overrides/${id}`).then(() => undefined);
 
-/** A persistent team→slot HARD pin (base plan or a period overlay). Server-backed. */
+/**
+ * A persistent HARD pin (base plan or a period overlay). Server-backed. Lot 4bis — une réservation
+ * cible SOIT une équipe (`teamId`), SOIT un créneau LIBRE nommé (`label`, `teamId` null). Le front
+ * n'invente pas la règle : un créneau libre retire une place à sa case, le backend l'honore.
+ */
 export interface Reservation {
   id: string;
   schedulePlanId: string | null;
-  teamId: string;
+  /** null = créneau LIBRE (voir `label`). */
+  teamId: string | null;
+  /** Libellé d'un créneau LIBRE ; null (ou absent) pour une réservation d'équipe. */
+  label?: string | null;
   venueId: string;
   dayOfWeek: number;
   startTime: string;
@@ -363,7 +370,10 @@ export interface Reservation {
 }
 
 export interface ReservationPayload {
-  teamId: string;
+  /** XOR avec `label` : une équipe, ou un créneau libre nommé. */
+  teamId?: string | null;
+  /** Libellé d'un créneau LIBRE (≤ 40) ; XOR avec `teamId`. */
+  label?: string | null;
   venueId: string;
   dayOfWeek: number;
   startTime: string;

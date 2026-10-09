@@ -32,6 +32,9 @@ final readonly class ScheduleExportData
      *                                                    only for the windows that carry one — the
      *                                                    slot layer of THIS export (venue+day+start
      *                                                    is the window's identity across layers)
+     * @param list<ExportReservedWindow>  $freeSlots      lot 4bis — créneaux LIBRES réservés
+     *                                                    (réservation sans équipe, nommée) de la
+     *                                                    couche exportée : des cases occupées nommées
      */
     public function __construct(
         public array $slots,
@@ -42,5 +45,6 @@ final readonly class ScheduleExportData
         public array $emptySlots = [],
         public array $teamRanks = [],
         public array $groupLabels = [],
+        public array $freeSlots = [],
     ) {}
 }

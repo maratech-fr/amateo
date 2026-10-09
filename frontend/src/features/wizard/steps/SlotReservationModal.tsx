@@ -1,8 +1,9 @@
-import { AlertTriangle, Lock, Trash2, Undo2, Users } from "lucide-react";
+import { AlertTriangle, CalendarClock, Lock, Trash2, Undo2, Users } from "lucide-react";
 import { useId, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
+import { Input } from "@/shared/components/ui/input";
 import { Modal } from "@/shared/components/ui/modal";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { TeamSelect } from "@/shared/components/ui/team-select";
@@ -115,6 +116,9 @@ export function SlotReservationModal({
   // P2-51 — BLOCS de mutualisation posés dans le brouillon (rail batch, champ `sharedTrainingBlockId`).
   const [addedBlocks, setAddedBlocks] = useState<string[]>([]);
   const [removed, setRemoved] = useState<string[]>([]);
+  // Lot 4bis — créneau LIBRE en attente dans le brouillon (un max par case) : son libellé, ou null.
+  const [addedFree, setAddedFree] = useState<string | null>(null);
+  const [freeLabel, setFreeLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -132,7 +136,11 @@ export function SlotReservationModal({
   const capacity = effectiveSlotCapacity(slot, venueCanSplit);
 
   const onSlot = reservations.filter((r) => slotKey(r.venueId, r.dayOfWeek, r.startTime) === key && !removed.includes(r.id));
-  const occupied = onSlot.length + added.length;
+  // Lot 4bis — on sépare les réservations d'ÉQUIPE des créneaux LIBRES (sans équipe) : la logique
+  // d'équipe (lignes, lot, occupants) ne voit que les premières ; les seconds occupent une place.
+  const teamOnSlot = onSlot.filter((r) => null !== r.teamId);
+  const freeOnSlot = onSlot.filter((r) => null === r.teamId);
+  const occupied = onSlot.length + added.length + (null !== addedFree ? 1 : 0);
 
   // Le picker doit refléter le BROUILLON, pas l'état serveur : une équipe ajoutée à
   // l'instant ne doit plus être proposée, une équipe retirée doit redevenir choisissable.
@@ -177,7 +185,7 @@ export function SlotReservationModal({
   const remainingByTeam = new Map(assignable.map((a) => [a.team.id, a.remaining]));
   // Occupantes de CETTE case (posées + brouillon d'ajouts) : ni proposées, ni montrées « à résidu
   // nul » — elles sont déjà là.
-  const occupant = new Set<string>([...onSlot.map((r) => r.teamId), ...added]);
+  const occupant = new Set<string>([...teamOnSlot.map((r) => r.teamId as string), ...added]);
   const draftAddedCount = new Map<string, number>();
   for (const teamId of added) {
     draftAddedCount.set(teamId, (draftAddedCount.get(teamId) ?? 0) + 1);
@@ -220,17 +228,19 @@ export function SlotReservationModal({
   // validation), et une fois posé, aucune autre équipe ne s'y ajoute.
   const blockById = new Map(sharedTrainingBlocks.map((b) => [b.id, b]));
   // Un lot posé se lit par son `teamIds` (seul champ utile au rendu).
-  const postedLot = postedGroupOnSlot(onSlot, sharedTrainingBlocks);
+  const postedLot = postedGroupOnSlot(teamOnSlot, sharedTrainingBlocks);
   // P2-62 — le retrait en attente d'un lot entier s'affiche en UNE ligne (symétrique de la ligne
   // posée) : les réservations `removed` de CETTE case dont l'ensemble égale un entraînement
   // mutualisé forment un lot, restauré d'un seul Undo. `onSlot` filtrant déjà `removed`, on relit
   // les réservations retirées ici plutôt que via `onSlot`.
-  const removedOnSlot = reservations.filter((r) => removed.includes(r.id) && slotKey(r.venueId, r.dayOfWeek, r.startTime) === key);
+  const removedOnSlot = reservations.filter((r) => removed.includes(r.id) && slotKey(r.venueId, r.dayOfWeek, r.startTime) === key && null !== r.teamId);
   const removedLot = postedGroupOnSlot(removedOnSlot, sharedTrainingBlocks);
   const hasDraftedMutualisation = addedBlocks.length > 0;
   // La case est occupée par une mutualisation : lot DÉJÀ écrit, ou lot dans le brouillon.
   const groupOccupies = null !== postedLot || hasDraftedMutualisation;
-  const slotEmptyInDraft = 0 === onSlot.length && 0 === added.length && !hasDraftedMutualisation;
+  // Lot 4bis — un créneau libre (posé ou en brouillon) rend la case NON vide : un bloc exige un
+  // créneau entièrement libre, donc il n'est plus posable.
+  const slotEmptyInDraft = 0 === onSlot.length && 0 === added.length && !hasDraftedMutualisation && null === addedFree;
   // L'offre des blocs, avec ses règles d'ergonomie (capacité, séances communes, membre en pause) via
   // le patron `offerableGroups` (structurel `GroupLike`).
   const blockOffer = blockAdd ? { offerable: [], blocked: [] } : offerableGroups(sharedTrainingBlocks, teams, draftReservations, slotEmptyInDraft, budgetByTeam, pausedTeamIds);
@@ -255,7 +265,7 @@ export function SlotReservationModal({
       // Le message nomme l'équipe, l'heure et le gymnase : sans ça le gestionnaire sait
       // qu'on refuse, pas ce qu'il doit changer.
       setError(
-        `${teamName.get(teamId) ?? "Cette équipe"} ne peut pas être ajoutée : son coach entraîne déjà ${teamName.get(clash.teamId) ?? "une autre équipe"} à ${hhmm(clash.startTime)} à ${venueName.get(clash.venueId) ?? "un autre gymnase"}.`,
+        `${teamName.get(teamId) ?? "Cette équipe"} ne peut pas être ajoutée : son coach entraîne déjà ${teamName.get(clash.teamId ?? "") ?? "une autre équipe"} à ${hhmm(clash.startTime)} à ${venueName.get(clash.venueId) ?? "un autre gymnase"}.`,
       );
 
       return;
@@ -297,6 +307,12 @@ export function SlotReservationModal({
         await create.mutateAsync({ teamId, venueId: slot.venueId, dayOfWeek: slot.dayOfWeek, startTime: hhmm(slot.startTime), durationMinutes: slot.durationMinutes, schedulePlanId });
         setAdded((prev) => prev.filter((pending) => pending !== teamId));
       }
+      // Lot 4bis — le créneau LIBRE en attente part SANS teamId (le backend garde le XOR et refuse
+      // une case pleine). Purgé du brouillon dès qu'il est passé (reprise sûre comme les ajouts).
+      if (null !== addedFree) {
+        await create.mutateAsync({ label: addedFree, venueId: slot.venueId, dayOfWeek: slot.dayOfWeek, startTime: hhmm(slot.startTime), durationMinutes: slot.durationMinutes, schedulePlanId });
+        setAddedFree(null);
+      }
     } catch (e) {
       // La modale RESTE ouverte, avec ce qui n'est pas passé (l'ajout refusé garde sa ligne « à
       // valider » et son Undo). D3 (P2-60) : un 422 sur un ajout unitaire (ex. résidu solo dépassé)
@@ -324,7 +340,7 @@ export function SlotReservationModal({
   };
 
   const busy = create.isPending || del.isPending || createGroup.isPending;
-  const dirty = added.length > 0 || removed.length > 0 || addedBlocks.length > 0;
+  const dirty = added.length > 0 || removed.length > 0 || addedBlocks.length > 0 || null !== addedFree;
   // Fermer pendant l'envoi laisserait des mutations en vol s'appliquer sans trace à l'écran.
   const dismiss = () => {
     if (!busy) {
@@ -352,7 +368,7 @@ export function SlotReservationModal({
         Fixe une équipe sur ce créneau (verrou pris en compte à chaque génération). Ce créneau accepte {capacity} équipe{capacity > 1 ? "s" : ""}.
       </p>
 
-      {onSlot.length > 0 || added.length > 0 || removed.length > 0 || addedBlocks.length > 0 ? (
+      {onSlot.length > 0 || added.length > 0 || removed.length > 0 || addedBlocks.length > 0 || null !== addedFree ? (
         <ul className="mb-3 flex flex-col gap-1">
           {/* Un lot mutualisé DÉJÀ écrit = UNE ligne (membres nommés), pas N verrous anonymes : son
               retrait empile les N `DELETE`. Sinon, les réservations individuelles ligne à ligne. */}
@@ -375,13 +391,13 @@ export function SlotReservationModal({
               </button>
             </li>
           ) : (
-            onSlot.map((r) => (
+            teamOnSlot.map((r) => (
               <li key={r.id} className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm">
                 <Lock className="size-3.5 text-accent" />
-                <span className="flex-1 font-medium">{teamName.get(r.teamId) ?? "?"}</span>
+                <span className="flex-1 font-medium">{teamName.get(r.teamId ?? "") ?? "?"}</span>
                 <button
                   type="button"
-                  aria-label={`Retirer ${teamName.get(r.teamId) ?? "l'équipe"}`}
+                  aria-label={`Retirer ${teamName.get(r.teamId ?? "") ?? "l'équipe"}`}
                   className="rounded p-1 text-muted-foreground hover:text-destructive"
                   onClick={() => {
                     setError(null); // le refus affiché peut devenir caduc en libérant la place
@@ -421,11 +437,11 @@ export function SlotReservationModal({
             .map((r) => (
               <li key={`removed-${r.id}`} className="flex items-center gap-2 rounded-md border border-dashed border-destructive/50 bg-surface-destructive px-3 py-1.5 text-sm">
                 <Trash2 className="size-3.5 text-destructive" />
-                <span className="flex-1 font-medium line-through">{teamName.get(r.teamId) ?? "?"}</span>
+                <span className="flex-1 font-medium line-through">{null === r.teamId ? (r.label ?? "Créneau libre") : (teamName.get(r.teamId) ?? "?")}</span>
                 <span className="text-xs text-muted-foreground">retrait à valider</span>
                 <button
                   type="button"
-                  aria-label={`Annuler le retrait de ${teamName.get(r.teamId) ?? "l'équipe"}`}
+                  aria-label={`Annuler le retrait de ${null === r.teamId ? (r.label ?? "ce créneau libre") : (teamName.get(r.teamId) ?? "l'équipe")}`}
                   // AUD-A11Y-15 — p-1 : 16 px d'icône + 4 px de part et d'autre = 24 px, le
                   // minimum WCAG 2.5.8. Ce bouton était le seul des trois du fichier resté nu
                   // après AUD-A11Y-12 (ses jumeaux :213 et :251 l'avaient déjà).
@@ -480,6 +496,47 @@ export function SlotReservationModal({
               </li>
             );
           })}
+          {/* Lot 4bis — les CRÉNEAUX LIBRES déjà posés sur la case (retrait immédiat au brouillon). */}
+          {freeOnSlot.map((r) => (
+            <li key={`free-${r.id}`} className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm">
+              <CalendarClock className="size-3.5 text-accent" />
+              <span className="flex-1 font-medium">
+                {r.label ?? "Créneau réservé"} <span className="font-normal text-muted-foreground">· créneau libre</span>
+              </span>
+              <button
+                type="button"
+                aria-label={`Retirer le créneau libre ${r.label ?? ""}`}
+                className="rounded p-1 text-muted-foreground hover:text-destructive"
+                onClick={() => {
+                  setError(null);
+                  setRemoved((prev) => [...prev, r.id]);
+                }}
+              >
+                <Trash2 className="size-4" />
+              </button>
+            </li>
+          ))}
+          {/* Lot 4bis — le créneau libre en attente dans le brouillon = UNE ligne « à valider » + undo. */}
+          {null !== addedFree ? (
+            <li key="draft-free" className="flex items-center gap-2 rounded-md border border-dashed border-accent/60 bg-surface-accent px-3 py-1.5 text-sm">
+              <CalendarClock className="size-3.5 text-accent" />
+              <span className="flex-1 font-medium">
+                {addedFree} <span className="font-normal text-muted-foreground">· créneau libre</span>
+              </span>
+              <span className="text-xs text-muted-foreground">à valider</span>
+              <button
+                type="button"
+                aria-label={`Annuler le créneau libre ${addedFree}`}
+                className="rounded p-1 text-muted-foreground hover:text-destructive"
+                onClick={() => {
+                  setError(null);
+                  setAddedFree(null);
+                }}
+              >
+                <Undo2 className="size-4" />
+              </button>
+            </li>
+          ) : null}
         </ul>
       ) : null}
 
@@ -597,6 +654,40 @@ export function SlotReservationModal({
           groupe n'est proposé et où agir (les retirer). `status` poli, comme « Créneau complet ». */}
       {showGroupGuide ? (
         <NoticeBanner tone="warning" role="status" className="mt-3" message="Un entraînement mutualisé ne se pose que sur un créneau libre — retirez les équipes ci-dessus pour en poser un." />
+      ) : null}
+
+      {/* Lot 4bis — poser un CRÉNEAU LIBRE (sans équipe) : il occupe la case comme une place en
+          moins. Un max par case, donc l'offre disparaît dès qu'un créneau libre est posé ou en
+          brouillon. Fermé quand la case est pleine, bloquée (fermeture/désactivée) ou occupée par
+          une mutualisation — mêmes gardes que l'ajout d'équipe. */}
+      {!blockAdd && !groupOccupies && guardReady && budgetReady && 0 === freeOnSlot.length && null === addedFree && occupied < capacity ? (
+        <div className="mt-3 border-t border-border pt-3">
+          <p className="mb-1 text-xs font-medium text-foreground">Créneau libre…</p>
+          <p className="mb-2 text-xs text-muted-foreground">Occupez cette case sans équipe (un évènement, un prêt, une fermeture ponctuelle) : elle ne sera plus proposée comme place disponible à la génération.</p>
+          <div className="flex items-center gap-2">
+            <Input
+              aria-label="Libellé du créneau libre"
+              className="flex-1"
+              maxLength={40}
+              value={freeLabel}
+              onChange={(e) => setFreeLabel(e.target.value)}
+              placeholder="Ex. Loto du club"
+              disabled={busy}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy || "" === freeLabel.trim()}
+              onClick={() => {
+                setError(null);
+                setAddedFree(freeLabel.trim());
+                setFreeLabel("");
+              }}
+            >
+              Poser un créneau libre
+            </Button>
+          </div>
+        </div>
       ) : null}
 
       {null !== error || null !== submitError ? (

@@ -84,6 +84,12 @@ final class ReservationGroupOccupancy
 
         $byCase = [];
         foreach ($reservations as $reservation) {
+            // Lot 4bis — un créneau LIBRE (teamId null) n'est pas une équipe : il ne compose pas
+            // un jeu de membres et n'entre donc jamais dans la dérivation « case bloc-complète »
+            // (reco A : le créneau libre est ignoré de la case bloc-complète).
+            if (null === $reservation->getTeamId()) {
+                continue;
+            }
             $key = $reservation->getVenueId() . '|' . $reservation->getDayOfWeek() . '|' . $reservation->getStartTime()->format('H:i');
             $byCase[$key][] = $reservation;
         }
@@ -184,15 +190,46 @@ final class ReservationGroupOccupancy
         }
 
         // (e) CAPACITÉ — le nombre d'occupants APRÈS ajout ne dépasse pas la capacité effective du
-        // créneau (un bloc complet compte pour UN occupant).
+        // créneau (un bloc complet compte pour UN occupant ; lot 4bis : un créneau LIBRE compte
+        // pour UN occupant, comme une place en moins).
         $finalSet = $reserved;
         $finalSet[$teamId] = true;
         $capacity = $this->effectiveSlotCapacity($venueId, $dayOfWeek, $startTime, $schedulePlanId);
-        if ($this->occupantCount($finalSet, $schedulePlanId) > $capacity) {
+        $freeSlots = $this->freeSlotCountOnCase($venueId, $dayOfWeek, $startTime, $schedulePlanId);
+        if ($this->occupantCount($finalSet, $schedulePlanId) + $freeSlots > $capacity) {
             throw new UnprocessableEntityHttpException(\sprintf('Ce créneau est déjà plein (capacité %d) : aucune équipe supplémentaire ne peut y être réservée. Choisissez un autre créneau, ou activez le partage de ce gymnase.', $capacity));
         }
 
         $this->assertSoloBudgetAllows($teamId, $finalSet, $schedulePlanId, $clubId, $seasonId);
+    }
+
+    /**
+     * Lot 4bis — règle (e) CAPACITÉ pour un créneau LIBRE (sans équipe). Il RETIRE une place à la
+     * case : refusé si la case est déjà pleine (occupants d'équipes, blocs ET créneaux libres déjà
+     * posés, +1 pour celui-ci, > capacité). Aucune autre règle ne le concerne — ni budget solo, ni
+     * bloc, ni coach.
+     */
+    public function assertFreeSlotReservationAllowed(
+        string $venueId,
+        int $dayOfWeek,
+        DateTimeImmutable $startTime,
+        ?string $schedulePlanId,
+    ): void {
+        $freeSlots = $this->freeSlotCountOnCase($venueId, $dayOfWeek, $startTime, $schedulePlanId);
+        // Décision fondateur « un max par case » : un seul créneau libre par case, quelle que soit
+        // la capacité. Garde 422 AMONT ; l'index `uniq_reservation_case_team` (NULLS NOT DISTINCT,
+        // team_id NULL == NULL) est le dernier filet sur une course concurrente.
+        if ($freeSlots >= 1) {
+            throw new UnprocessableEntityHttpException('Ce créneau porte déjà un créneau libre : il n’en accepte qu’un. Retirez-le d’abord, ou choisissez un autre créneau.');
+        }
+
+        $reserved = $this->reservedTeamSetOnCase($venueId, $dayOfWeek, $startTime, $schedulePlanId);
+        $capacity = $this->effectiveSlotCapacity($venueId, $dayOfWeek, $startTime, $schedulePlanId);
+        // Règle (e) — le créneau libre RETIRE une place : refusé si la case est déjà pleine
+        // (occupants d'équipes/blocs, +1 pour celui-ci, > capacité).
+        if ($this->occupantCount($reserved, $schedulePlanId) + 1 > $capacity) {
+            throw new UnprocessableEntityHttpException(\sprintf('Ce créneau est déjà plein (capacité %d) : aucun créneau libre supplémentaire ne peut y être posé. Choisissez un autre créneau, ou activez le partage de ce gymnase.', $capacity));
+        }
     }
 
     /**
@@ -230,6 +267,21 @@ final class ReservationGroupOccupancy
         }
 
         return [];
+    }
+
+    /**
+     * Lot 4bis — combien de créneaux LIBRES (réservations sans équipe) occupent déjà la case.
+     */
+    private function freeSlotCountOnCase(string $venueId, int $dayOfWeek, DateTimeImmutable $startTime, ?string $schedulePlanId): int
+    {
+        $count = 0;
+        foreach ($this->reservationsOnCase($venueId, $dayOfWeek, $startTime, $schedulePlanId) as $reservation) {
+            if (null === $reservation->getTeamId()) {
+                ++$count;
+            }
+        }
+
+        return $count;
     }
 
     private function caseKey(Reservation $reservation): string
@@ -341,7 +393,11 @@ final class ReservationGroupOccupancy
     {
         $set = [];
         foreach ($this->reservationsOnCase($venueId, $dayOfWeek, $startTime, $schedulePlanId) as $reservation) {
-            $set[$reservation->getTeamId()] = true;
+            // Lot 4bis — les créneaux LIBRES (teamId null) ne sont pas des équipes : comptés à part
+            // dans la capacité ({@see freeSlotCountOnCase}), jamais dans l'ensemble d'équipes.
+            if (null !== $reservation->getTeamId()) {
+                $set[$reservation->getTeamId()] = true;
+            }
         }
 
         return $set;

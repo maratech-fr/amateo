@@ -303,6 +303,59 @@ final class ReservationApiTest extends WebTestCase
         self::assertNotNull($this->em->getRepository(Reservation::class)->find($otherId), 'aucune autre réservation n\'est touchée');
     }
 
+    // ── Lot 4bis : créneau LIBRE nommé (réservation sans équipe) ──
+
+    public function testCreateFreeSlotReservation(): void
+    {
+        $status = $this->postBody(['label' => 'Loto du club', 'venueId' => self::VENUE, 'dayOfWeek' => 2, 'startTime' => '20:30', 'durationMinutes' => 90, 'schedulePlanId' => null]);
+        self::assertSame(201, $status);
+
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertNull($body['teamId'] ?? null, 'un créneau libre ne cible aucune équipe');
+        self::assertSame('Loto du club', $body['label'] ?? null);
+    }
+
+    public function testFreeSlotCreationRequiresManager(): void
+    {
+        $viewerToken = $this->viewerToken();
+
+        self::assertSame(403, $this->postBody(['label' => 'Loto du club', 'venueId' => self::VENUE, 'dayOfWeek' => 2, 'startTime' => '20:30', 'durationMinutes' => 90, 'schedulePlanId' => null], $viewerToken), 'poser un créneau libre est réservé aux gestionnaires');
+    }
+
+    public function testSecondFreeSlotOnSameCaseIsRefused(): void
+    {
+        self::assertSame(201, $this->postBody(['label' => 'Loto du club', 'venueId' => self::VENUE, 'dayOfWeek' => 2, 'startTime' => '20:30', 'durationMinutes' => 90, 'schedulePlanId' => null]));
+        // « un max par case » : le second créneau libre sur la MÊME case est refusé à la source (422).
+        self::assertSame(422, $this->postBody(['label' => 'Autre évènement', 'venueId' => self::VENUE, 'dayOfWeek' => 2, 'startTime' => '20:30', 'durationMinutes' => 90, 'schedulePlanId' => null]));
+        self::assertStringContainsString('qu’un', (string) $this->client->getResponse()->getContent());
+    }
+
+    public function testFreeSlotLabelBounds(): void
+    {
+        // 41 caractères : au-delà de la borne (max 40) → 422.
+        self::assertSame(422, $this->postBody(['label' => str_repeat('x', 41), 'venueId' => self::VENUE, 'dayOfWeek' => 3, 'startTime' => '18:00', 'durationMinutes' => 90, 'schedulePlanId' => null]));
+        // 40 caractères pile : accepté.
+        self::assertSame(201, $this->postBody(['label' => str_repeat('x', 40), 'venueId' => self::VENUE, 'dayOfWeek' => 3, 'startTime' => '18:00', 'durationMinutes' => 90, 'schedulePlanId' => null]));
+    }
+
+    public function testTeamAndLabelAreExclusive(): void
+    {
+        // Les deux renseignés → 422 (XOR).
+        self::assertSame(422, $this->postBody(['teamId' => '11111111-1111-4111-8111-111111111111', 'label' => 'Loto', 'venueId' => self::VENUE, 'dayOfWeek' => 4, 'startTime' => '18:00', 'durationMinutes' => 90, 'schedulePlanId' => null]));
+        self::assertStringContainsString('pas les deux', (string) $this->client->getResponse()->getContent());
+        // Aucun des deux → 422 (une réservation doit viser une cible).
+        self::assertSame(422, $this->postBody(['venueId' => self::VENUE, 'dayOfWeek' => 4, 'startTime' => '18:00', 'durationMinutes' => 90, 'schedulePlanId' => null]));
+        self::assertStringContainsString('équipe ou nommer un créneau libre', (string) $this->client->getResponse()->getContent());
+    }
+
+    public function testFreeSlotRefusedOnFullCase(): void
+    {
+        // Case non divisible (capacité 1) : une équipe l'occupe → un créneau libre y est refusé (plein).
+        self::assertSame(201, $this->postBody(['teamId' => '11111111-1111-4111-8111-111111111111', 'venueId' => self::VENUE, 'dayOfWeek' => 5, 'startTime' => '19:00', 'durationMinutes' => 90, 'schedulePlanId' => null]));
+        self::assertSame(422, $this->postBody(['label' => 'Loto du club', 'venueId' => self::VENUE, 'dayOfWeek' => 5, 'startTime' => '19:00', 'durationMinutes' => 90, 'schedulePlanId' => null]));
+        self::assertStringContainsString('plein', (string) $this->client->getResponse()->getContent());
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -400,12 +453,51 @@ final class ReservationApiTest extends WebTestCase
     }
 
     /** @return array<string, string> */
-    private function headers(): array
+    private function headers(?string $token = null): array
     {
         return [
-            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
+            'HTTP_AUTHORIZATION' => 'Bearer ' . ($token ?? $this->token),
             'CONTENT_TYPE' => 'application/ld+json',
         ];
+    }
+
+    /**
+     * POST /api/reservations avec un corps libre (lot 4bis), renvoie le code HTTP.
+     *
+     * @param array<string, mixed> $body
+     */
+    private function postBody(array $body, ?string $token = null): int
+    {
+        $this->client->request('POST', '/api/reservations', [], [], $this->headers($token), json_encode($body, \JSON_THROW_ON_ERROR));
+
+        return $this->client->getResponse()->getStatusCode();
+    }
+
+    /** Un membre VIEWER (rôle non-gestionnaire) du même club, et son jeton. */
+    private function viewerToken(): string
+    {
+        $container = self::getContainer();
+        $hasher = $container->get('security.user_password_hasher');
+        $uid = uniqid('', true);
+
+        $viewer = new User;
+        $viewer->setEmail('viewer' . $uid . '@test.com');
+        $viewer->setFirstName('View');
+        $viewer->setLastName('Only');
+        $viewer->setPasswordHash($hasher->hashPassword($viewer, 'Password123!'));
+        $this->em->persist($viewer);
+        $this->em->flush();
+
+        $this->scopeGucToClub($this->club->getId());
+        $cu = new ClubUser;
+        $cu->setClubId($this->club->getId());
+        $cu->setUserId($viewer->getId());
+        $cu->setRole('viewer');
+        $cu->setIsActive(true);
+        $this->em->persist($cu);
+        $this->em->flush();
+
+        return $container->get(JWTTokenManagerInterface::class)->create($viewer);
     }
 
     /** $schedulePlanId : null = réservation de BASE ; set = propre à ce plan (lot C3). */

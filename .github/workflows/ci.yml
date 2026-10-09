@@ -924,6 +924,16 @@ jobs:
       - name: VenueClosureSemanticsGateTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/VenueClosureSemanticsGateTest.php --group phase1'
 
+      # Lot 4bis (axes constraint semantics + backend↔engine contract) — un CRÉNEAU LIBRE réservé
+      # (réservation sans équipe) RETIRE une place à sa case, comme une capacité en moins. De bout en
+      # bout contre le VRAI moteur (/generate, contrat 1.4) : un gymnase non divisible, une case
+      # (capacité 1) et une équipe (1 séance) qui n'a qu'elle ; AVEC le créneau libre la case tombe à
+      # 0, l'équipe n'y est placée nulle part. TÉMOIN — sans le créneau libre, le même payload rebâti
+      # l'y pose. Skip propre si l'engine est absent. Sans ce gate, un créneau libre cesserait en
+      # silence de protéger sa case.
+      - name: FreeSlotSemanticsGateTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/FreeSlotSemanticsGateTest.php --group phase1'
+
       # P4-96 (axes constraint semantics + backend↔engine contract) — quand le moteur dit NON, il
       # NOMME les règles en conflit. De bout en bout contre le VRAI moteur (/generate, contrat 1.4) :
       # coach indispo vendredi + équipe vendredi imposé (seul jour ouvert) → INFEASIBLE (failed), et

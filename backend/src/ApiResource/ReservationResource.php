@@ -40,7 +40,11 @@ class ReservationResource
     public ?string $schedulePlanId = null;
 
     #[Groups(['read'])]
-    public string $teamId = '';
+    public ?string $teamId = null;
+
+    /** Libellé d'un créneau LIBRE (lot 4bis) — null pour une réservation d'équipe. */
+    #[Groups(['read'])]
+    public ?string $label = null;
 
     #[Groups(['read'])]
     public string $venueId = '';
@@ -63,6 +67,7 @@ class ReservationResource
         $dto->updatedAt = $entity->getUpdatedAt();
         $dto->schedulePlanId = $entity->getSchedulePlanId();
         $dto->teamId = $entity->getTeamId();
+        $dto->label = $entity->getLabel();
         $dto->venueId = $entity->getVenueId();
         $dto->dayOfWeek = $entity->getDayOfWeek();
         $dto->startTime = $entity->getStartTime();

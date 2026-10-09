@@ -318,9 +318,12 @@ final class CoachDoubleBookingDetector
      */
     private function bookingOf(Reservation $reservation, array $mainCoachByTeam): array
     {
+        // Lot 4bis — un créneau LIBRE (teamId null) n'a pas de coach : il est déjà écarté en amont
+        // (le filtre `isset($mainCoachByTeam[teamId])` de `detect`/`detectUnavailabilityClashes`),
+        // jamais une réservation passée ici. Le `?? ''` ne fait que satisfaire le typage.
         return [
-            'coachId' => $mainCoachByTeam[$reservation->getTeamId()] ?? '',
-            'teamId' => $reservation->getTeamId(),
+            'coachId' => $mainCoachByTeam[$reservation->getTeamId() ?? ''] ?? '',
+            'teamId' => $reservation->getTeamId() ?? '',
             'venueId' => $reservation->getVenueId(),
             'dayOfWeek' => $reservation->getDayOfWeek(),
             'startMinutes' => (int) $reservation->getStartTime()->format('H') * 60 + (int) $reservation->getStartTime()->format('i'),
@@ -336,7 +339,7 @@ final class CoachDoubleBookingDetector
      */
     private function displayNames(array $reservations, array $mainCoachByTeam): array
     {
-        $teamIds = array_values(array_unique(array_map(static fn (Reservation $r): string => $r->getTeamId(), $reservations)));
+        $teamIds = array_values(array_unique(array_map(static fn (Reservation $r): string => $r->getTeamId() ?? '', $reservations)));
         $venueIds = array_values(array_unique(array_map(static fn (Reservation $r): string => $r->getVenueId(), $reservations)));
         $coachIds = array_values(array_unique(array_intersect_key($mainCoachByTeam, array_flip($teamIds))));
 

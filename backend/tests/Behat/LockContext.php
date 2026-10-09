@@ -79,6 +79,15 @@ final class LockContext extends BaseContext
     /** Gymnase jetable SANS aucun créneau ouvert — la « case fermée » du scénario b. */
     private string $closedVenueId = '';
 
+    /** Lot 4bis — créneau LIBRE posé sur une case occupée du socle, et sa case. */
+    private string $freeSlotReservationId = '';
+
+    private string $freeSlotVenueId = '';
+
+    private int $freeSlotDay = 0;
+
+    private string $freeSlotStart = '';
+
     private int $moveStatus = 0;
 
     private string $moveMessage = '';
@@ -217,6 +226,50 @@ final class LockContext extends BaseContext
         }
     }
 
+    #[Given('un créneau libre réservé sur une case occupée du socle')]
+    public function unCreneauLibreReserveSurUneCaseOccupee(): void
+    {
+        // Une case ACTUELLEMENT occupée du socle, servie par un créneau NON divisible de capacité 1
+        // (base, schedule_plan_id NULL) : un créneau libre y retire LA place, donc après régénération
+        // la case est vide — preuve que le créneau libre a bien retiré la place (pas un trou préexistant).
+        $row = $this->dbalScalar(
+            \sprintf(
+                'SELECT sst.venue_id || \'|\' || sst.day_of_week || \'|\' || to_char(sst.start_time, \'HH24:MI\') AS behatval'
+                . ' FROM schedule_slot_template sst'
+                . ' JOIN venue v ON v.id = sst.venue_id AND v.can_split = false'
+                . ' JOIN venue_training_slot vts ON vts.venue_id = sst.venue_id AND vts.day_of_week = sst.day_of_week'
+                . ' AND to_char(vts.start_time, \'HH24:MI\') = to_char(sst.start_time, \'HH24:MI\')'
+                . ' AND vts.schedule_plan_id IS NULL AND vts.club_id = \'%s\' AND vts.capacity = 1'
+                . ' WHERE sst.schedule_id = \'%s\' ORDER BY sst.id LIMIT 1',
+                $this->clubId,
+                $this->socleVersionId,
+            ),
+            admin: true,
+        );
+        $parts = '' === $row ? [] : explode('|', $row);
+        if (3 !== \count($parts)) {
+            throw new RuntimeException('aucune case occupée servie par un créneau non divisible de capacité 1 — la base est-elle seedée ?');
+        }
+        [$this->freeSlotVenueId, $day, $this->freeSlotStart] = $parts;
+        $this->freeSlotDay = (int) $day;
+
+        $created = $this->apiPost('reservations', [
+            'label' => 'Loto du club (fonctionnel)',
+            'venueId' => $this->freeSlotVenueId,
+            'dayOfWeek' => $this->freeSlotDay,
+            'startTime' => $this->freeSlotStart,
+            'durationMinutes' => 90,
+            'schedulePlanId' => null,
+        ], $this->token);
+        if (!\in_array($created['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('la pose du créneau libre a répondu %d (201 attendu)', $created['status']));
+        }
+        $this->freeSlotReservationId = (string) ($created['json']['id'] ?? '');
+        if ('' === $this->freeSlotReservationId) {
+            throw new RuntimeException('le créneau libre n\'a pas rendu d\'identifiant');
+        }
+    }
+
     #[When('je tente de déplacer cette séance vers une case sans créneau ouvert')]
     public function jeTenteUnDeplacementImpossible(): void
     {
@@ -279,6 +332,30 @@ final class LockContext extends BaseContext
         }
 
         $this->assertSeanceALaMemeCaseDans($this->regeneratedId);
+    }
+
+    #[Then('aucune équipe n\'est placée sur la case du créneau libre')]
+    public function aucuneEquipeSurLaCaseDuCreneauLibre(): void
+    {
+        if ('COMPLETED' !== $this->finalStatus) {
+            throw new RuntimeException(\sprintf('la régénération aurait dû aboutir (COMPLETED) : un créneau libre retire une place, il ne rend jamais le planning infaisable ; statut obtenu « %s »', $this->finalStatus));
+        }
+
+        // La case du créneau libre a perdu sa place : le payload n'y a plus de créneau, le solveur
+        // n'y place personne. Aucune séance de la version régénérée ne tombe sur cette case.
+        $placed = (int) $this->dbalScalar(
+            \sprintf(
+                'SELECT COUNT(*) AS behatval FROM schedule_slot_template WHERE schedule_id=\'%s\' AND venue_id=\'%s\' AND day_of_week=%d AND to_char(start_time, \'HH24:MI\')=\'%s\'',
+                $this->regeneratedId,
+                $this->freeSlotVenueId,
+                $this->freeSlotDay,
+                $this->freeSlotStart,
+            ),
+            admin: true,
+        );
+        if (0 !== $placed) {
+            throw new RuntimeException('un créneau libre aurait dû retirer la place : aucune équipe ne devait être placée sur sa case après régénération');
+        }
     }
 
     #[Then('le verrou reste à sa case et la règle violée est signalée')]
@@ -347,6 +424,11 @@ final class LockContext extends BaseContext
 
         if ('' !== $this->closedVenueId) {
             $this->apiDelete(\sprintf('venues/%s', $this->closedVenueId), $this->token);
+        }
+
+        // Lot 4bis — retirer le créneau libre posé (quoi qu'il arrive), pour rendre la case au seed.
+        if ('' !== $this->freeSlotReservationId) {
+            $this->apiDelete(\sprintf('reservations/%s', $this->freeSlotReservationId), $this->token);
         }
 
         if ('' !== $this->constraintId) {

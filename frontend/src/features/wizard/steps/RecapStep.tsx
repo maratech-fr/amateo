@@ -11,6 +11,7 @@ import { cn } from "@/shared/lib/utils";
 import { FAMILY_LABEL, FAMILY_ORDER, groupConstraints } from "../lib/constraintOrder";
 import { LEVEL_LABEL } from "../lib/labels";
 import { coachMeta, groupedCoaches } from "../lib/ranking";
+import type { Reservation } from "../api";
 import { slotKey } from "../lib/reservationSlots";
 import { postedGroupOnSlot, type PostedGroupLot } from "../lib/groupReservation";
 import { toast } from "@/shared/stores/toastStore";
@@ -91,6 +92,29 @@ function MutualisationRemovalRow({ label, where, reason, onRemove, busy }: { lab
       action={
         unserved ? (
           <Button variant="ghost" size="icon" className="size-7" aria-label={`Retirer l'entraînement mutualisé ${label}`} disabled={busy} onClick={onRemove}>
+            <Trash2 className="size-4" />
+          </Button>
+        ) : undefined
+      }
+    />
+  );
+}
+
+/**
+ * Lot 4bis — une ligne de CRÉNEAU LIBRE (réservation sans équipe, nommée). Comme {@link ReservationRow},
+ * le retrait n'est offert au récap que lorsqu'elle est NON SERVIE (orpheline) ; sinon elle se gère
+ * depuis l'écran « Réserver ».
+ */
+function FreeSlotRow({ label, where, reason, onRemove, busy }: { label: string; where: string; reason: string | null; onRemove: () => void; busy: boolean }) {
+  const unserved = null !== reason;
+
+  return (
+    <SummaryRow
+      label={unserved ? <span className="text-destructive">{label} — {reason}</span> : <span>{label} <span className="text-muted-foreground">· créneau libre</span></span>}
+      meta={<span className={unserved ? "text-destructive" : undefined}>{where}</span>}
+      action={
+        unserved ? (
+          <Button variant="ghost" size="icon" className="size-7" aria-label={`Retirer le créneau libre ${label}`} disabled={busy} onClick={onRemove}>
             <Trash2 className="size-4" />
           </Button>
         ) : undefined
@@ -244,7 +268,11 @@ export function RecapStep() {
   // attente, discriminée, les deux confirmées par la même `ConfirmDialog`.
   const [pendingRemoval, setPendingRemoval] = useState<{ kind: "reservation"; id: string; name: string } | { kind: "lot"; lot: PostedGroupLot; name: string } | null>(null);
 
-  const sortedReservations = [...reservations].sort((a, b) => rankOf(a.teamId) - rankOf(b.teamId) || a.dayOfWeek - b.dayOfWeek || hhmm(a.startTime).localeCompare(hhmm(b.startTime)));
+  // Lot 4bis — on sépare les réservations d'ÉQUIPE (groupées par rang) des créneaux LIBRES (sans
+  // équipe, leur propre groupe). Les premières seules passent dans le tri/groupage par tier.
+  const teamReservations = reservations.filter((r) => null !== r.teamId) as (Reservation & { teamId: string })[];
+  const sortedReservations = [...teamReservations].sort((a, b) => rankOf(a.teamId) - rankOf(b.teamId) || a.dayOfWeek - b.dayOfWeek || hhmm(a.startTime).localeCompare(hhmm(b.startTime)));
+  const freeSlots = reservations.filter((r) => null === r.teamId).sort((a, b) => a.dayOfWeek - b.dayOfWeek || hhmm(a.startTime).localeCompare(hhmm(b.startTime)));
 
   // P2-62 — on ne retire pas une équipe d'un groupe, on retire le groupe : les réservations NON
   // SERVIES d'une même case dont l'ensemble égale un entraînement mutualisé se fondent en UNE ligne
@@ -505,7 +533,7 @@ export function RecapStep() {
               ))}
         </AccordionSection>
         <AccordionSection title={<SectionCountTitle label="Réservations" count={reservations.length} />}>
-          {0 === sortedReservations.length
+          {0 === sortedReservations.length && 0 === freeSlots.length
             ? empty
             : (() => {
                 // Sections PAR RANG (demande fondateur 2026-08-05) — le tri seul ne se
@@ -529,6 +557,22 @@ export function RecapStep() {
                       <div className="mb-2 last:mb-0">
                         <p className="px-1 pb-0.5 pt-1 text-xs font-semibold text-muted-foreground">Autres</p>
                         {orphanRows.map(renderReservationRow)}
+                      </div>
+                    ) : null}
+                    {/* Lot 4bis — les CRÉNEAUX LIBRES (réservations sans équipe) dans leur propre groupe. */}
+                    {freeSlots.length > 0 ? (
+                      <div className="mb-2 last:mb-0">
+                        <p className="px-1 pb-0.5 pt-1 text-xs font-semibold text-muted-foreground">Créneaux libres</p>
+                        {freeSlots.map((r) => (
+                          <FreeSlotRow
+                            key={r.id}
+                            label={r.label ?? "Créneau réservé"}
+                            where={`${venueName.get(r.venueId) ?? "?"} · ${dayLabel(r.dayOfWeek)} ${hhmm(r.startTime)}`}
+                            reason={reservationReason(r)}
+                            onRemove={() => setPendingRemoval({ kind: "reservation", id: r.id, name: r.label ?? "Créneau réservé" })}
+                            busy={deleteReservation.isPending}
+                          />
+                        ))}
                       </div>
                     ) : null}
                   </>

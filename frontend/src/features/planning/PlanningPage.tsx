@@ -161,10 +161,13 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const teamOverridesQuery = useTeamPeriodOverrides(slotLayerId);
   const reservationsQuery = useReservations(slotLayerId, isFailed);
   const reservationSlots = useMemo<Slot[]>(
-    () => !isFailed || null === validScheduleId ? [] : (reservationsQuery.data ?? []).filter((r) => !disabledVenueIds.has(r.venueId)).map((r) => ({
+    // Lot 4bis — un créneau LIBRE (teamId null) n'est pas une séance d'équipe : la grille du
+    // planning est orientée équipe, on ne la peuple que des réservations d'équipe (le créneau libre
+    // a déjà retiré sa place au payload ; il n'a pas de séance à afficher ici).
+    () => !isFailed || null === validScheduleId ? [] : (reservationsQuery.data ?? []).filter((r) => null !== r.teamId && !disabledVenueIds.has(r.venueId)).map((r) => ({
       id: `reservation-${r.id}`,
       scheduleId: validScheduleId,
-      teamId: r.teamId,
+      teamId: r.teamId as string,
       venueId: r.venueId,
       coachId: null,
       dayOfWeek: r.dayOfWeek,
