@@ -12,7 +12,6 @@ import { groupTeamsByTier, tierGroupLabel } from "@/shared/lib/teamTiers";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
-import { Modal } from "@/shared/components/ui/modal";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { cn } from "@/shared/lib/utils";
 
@@ -24,16 +23,17 @@ import { useCoachWishMutualizations, useCreateCoachWishMutualization, useDeleteC
 import { useCoachWishes, useCreateCoachWish, useDeleteCoachWish, useUpdateCoachWish } from "./queries";
 
 /**
- * La todo-list des doléances coachs d'une période de vacances (feature #10, lot C1).
- * Composant PARTAGÉ : ouvert depuis le wizard (bandeau période, filtré sur la semaine du
- * plan courant) ET depuis le cockpit (carte de la période mère, toutes semaines). Même
- * objet, deux portes : cocher « traité » ici se voit là-bas.
+ * La todo-list des doléances coachs d'une période de vacances (feature #10, lot C1) — onglet
+ * « Doléances » de la fenêtre unique `CoachWishesHub`. Ouvert depuis le wizard (bandeau période,
+ * filtré sur la semaine du plan courant) ET depuis le cockpit (carte de la période mère, toutes
+ * semaines). Même objet, deux portes : cocher « traité » ici se voit là-bas.
  *
- * `mother` est toujours l'entrée MÈRE des vacances (le wizard résout parentEntryId ?? id
- * avant d'ouvrir). `weekFilter` (lundi ISO | null) = la semaine du plan courant, ou null
- * pour tout voir groupé par semaine.
+ * `mother` est toujours l'entrée MÈRE des vacances (le wizard résout parentEntryId ?? id avant
+ * d'ouvrir). `weekFilter` (lundi ISO | null) = la semaine du plan courant, ou null pour tout voir
+ * groupé par semaine. Déplacement VERBATIM du corps de l'ex-`CoachWishesModal` (le titre et le
+ * `Modal` vivent désormais au niveau du conteneur `CoachWishesHub`).
  */
-export function CoachWishesModal({ mother, weekFilter, onClose }: { mother: CalendarEntry; weekFilter: string | null; onClose: () => void }) {
+export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekFilter: string | null }) {
   const season = useWorkingSeason();
   const { data: wishes = [] } = useCoachWishes(mother.id);
   const { data: teams = [] } = useWizardTeams();
@@ -144,10 +144,8 @@ export function CoachWishesModal({ mother, weekFilter, onClose }: { mother: Cale
     (m) => (0 === teamFilter.length || teamFilter.includes(m.teamId)) && (0 === coachFilter.length || (null !== m.coachId && coachFilter.includes(m.coachId))),
   );
 
-  const title = null === weekFilter ? `Doléances des coachs — ${mother.title}` : "Doléances des coachs — semaine";
-
   return (
-    <Modal label="Doléances des coachs" title={title} onClose={onClose} size="lg">
+    <>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <ResourceFilter viewMode="coach" groups={coachGroups} selected={coachFilter} onToggle={(id) => setCoachFilter((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))} onClear={() => setCoachFilter([])} />
         <ResourceFilter viewMode="equipe" groups={teamGroups} selected={teamFilter} onToggle={(id) => setTeamFilter((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))} onClear={() => setTeamFilter([])} />
@@ -357,6 +355,6 @@ export function CoachWishesModal({ mother, weekFilter, onClose }: { mother: Cale
         }}
         onCancel={() => setToDelete(null)}
       />
-    </Modal>
+    </>
   );
 }

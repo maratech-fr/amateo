@@ -1,6 +1,6 @@
 # Identité visuelle produit — la base est le produit, l'accent est le club
 
-Last verified @ 2026-10-09 (lot D1, PR 1 + PR 2 — gabarit commun, fond recalibré à 85 %, lien coach personnalisé
+Last verified @ 2026-10-09 (fusion fenêtre doléances #10 : l'aperçu e-mail du lien coach est désormais affiché par `SollicitationTab`, ex-`CampaignDialog` ; reste inchangé). Passe lot D1, PR 1 + PR 2 — gabarit commun, fond recalibré à 85 %, lien coach personnalisé
 + aperçu). Re-confronté au code : fond de carte dérivé de `BrandAssets::MARK_TINTS` à
 `EmailTemplateRenderer::WHITE_MIX_RATIO` 0.85 (`#F4DDED`/`#F9EBD9`/`#E3F3F3`, uni `#F0E9E8`) ; le gabarit de carte (§ Ce qui reste à venir) gagne un bouton CTA HTML optionnel
 (`EmailTemplateRenderer::ctaButton`, en-têtes internes `X-Amateo-Cta-Url`/`-Label` posés à la
@@ -312,7 +312,7 @@ FIGÉ**.
   email-preview` (`CoachWishEmailPreviewController`, gestionnaires, 404 byte-identique hors club)
   construit ce MÊME e-mail avec un jeton FACTICE constant (jamais un vrai lien personnel) et un
   prénom de coach d'exemple, et sert ses logos en `data:` URI (les `cid:` du mail réel ne
-  résolvent pas dans l'iframe) ; le front (`CampaignDialog`) l'affiche dans une iframe
+  résolvent pas dans l'iframe) ; le front (`SollicitationTab`) l'affiche dans une iframe
   `sandbox=""` (patron `MailboxPage` : du HTML non fiable ne s'injecte jamais
   autrement). Détail API/contrôleur : `backend/docs/backend-controllers.md` §
   « Aperçu de l'e-mail coach ».

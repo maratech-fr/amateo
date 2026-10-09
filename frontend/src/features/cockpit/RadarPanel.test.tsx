@@ -616,10 +616,13 @@ describe("RadarPanel", () => {
       entries: [closure({ id: "h1", periodType: "holiday", title: "Vacances de Noël", schoolHolidayId: "h1", startDate: FUTURE, endDate: FUTURE_END })],
     });
 
-    // ⚠ On épingle le BADGE, pas le titre : l'exemption existe pour lui, et un test sur le
-    // titre resterait vert si la carte survivait sans son suivi (revue #344 round 2).
+    // ⚠ On épingle le BADGE de suivi (StatusPill), pas le titre : l'exemption d'horizon existe
+    // pour lui, et un test sur le titre resterait vert si la carte survivait sans son suivi
+    // (revue #344 round 2). Depuis la fusion de la fenêtre (2026-10-09), l'ouverture passe par
+    // l'unique bouton « Doléances » ; le badge « X/Y ont répondu · N à traiter » reste hors du repli.
     expect(screen.getByText("Vacances de Noël")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Solliciter les coachs|Suivre la collecte|traiter/ })).toBeInTheDocument();
+    expect(screen.getByText(/1\/4 coachs ont répondu · 2 à traiter/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Doléances/ })).toBeInTheDocument();
   });
 
   // Le badge de suivi n'existe nulle part ailleurs : le replier le rendait invisible, et
