@@ -1,6 +1,6 @@
 # Doléances → planning : jours disponibles, créneaux habituels, ajout manuel, « Transférer au planning » (P2-63)
 
-> **Statut** : cadrage en cours de validation par le fondateur (Q1-Q2 tranchées, Q3-Q8 ouvertes, §5) ; plan (`planner`) après
+> **Statut** : cadrage en cours de validation par le fondateur (Q1-Q4 tranchées, Q3bis + Q5-Q8 ouvertes, §5) ; plan (`planner`) après
 > validation ; **code APRÈS le chantier vidéo P4-297** (place dans la file fixée par le fondateur le
 > 2026-10-09).
 > **Origine** : besoin d'un gestionnaire de club, dicté par le fondateur le 2026-10-09 (mots exacts §0).
@@ -260,7 +260,27 @@ Chaque chemin devient un test d'abus NOMMÉ au plan (fichier + suite).
   n'est pas dispo, et pas il préfère ne pas être dispo ». Les jours souhaités restent en Préféré
   (décision 6).
 
-Questions restantes : Q3 à Q8 ci-dessous.
+- **Q3/Q4 — « garder mes créneaux habituels » = une CONTRAINTE NOUVELLE côté gestionnaire, adossée à
+  un mécanisme moteur EXISTANT (reco suivie).** Une ligne par équipe, « Garder ses créneaux de
+  saison » (scope TEAM, toujours Préférée, marque « via doléances », visible et supprimable à l'étape
+  Contraintes du planning) ; le transfert la crée pour chaque équipe dont le coach a coché la case ; la
+  case suit le grain de Q1 (une par doléance). À la génération, le backend émet la référence de saison
+  (`socleReferenceAssignments`, aujourd'hui émise par « Combler » seul, `ScheduleConstraintBuilder.php:691`)
+  pour CES équipes seulement ; le moteur favorise gymnase + jour + heure, puis jour + heure (le niveau
+  gymnase est À AJOUTER : `add_socle_reference_bonus`, `engine/app/solver/objective/terms/stability.py:60`,
+  ignore le gymnase) ; force modulée par le rang. Écarté : un LOT de contraintes (jours préférés + plage
+  horaire + gymnase préféré) — perd le couplage jour∧heure∧gymnase d'un créneau, multiplie les objets,
+  fige une photo du socle. **Force = préférence TRÈS FORTE, pas un bonus de départage.** Mots du
+  fondateur : « ce n'est pas un bonus, c'est une préférence TRÈS FORTE. Un coach senior qui a demandé
+  son créneau garde son créneau un maximum, il n'y a pas de raison pour que cela change. Les seniors sont
+  des adultes, donc n'ont pas de réelles vacances, on ne peut pas chambouler leur planning facilement. »
+  ⇒ les poids actuels du bonus de référence (S 20 → D 12, `weights.py:289`, échelle de départage) ne
+  suffisent pas : calibrage à arbitrer (question ouverte ci-dessous). Touche le contrat
+  backend⇄engine (gymnase dans la référence) et la sémantique des contraintes (NR).
+- **Q3bis (ouverte) — calibrage de « très forte »** : quand garder le créneau de saison d'une équipe
+  empêche de placer une séance d'une autre équipe, qui l'emporte ?
+
+Questions restantes : Q3bis, puis Q5 à Q8 ci-dessous.
 
 
 1. **Grain semaine vs plan multi-semaines.** Un plan peut couvrir 2+ semaines avec UNE seule grille
