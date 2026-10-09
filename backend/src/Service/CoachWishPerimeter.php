@@ -40,4 +40,25 @@ final class CoachWishPerimeter
 
         return $set;
     }
+
+    /**
+     * Les équipes d'UN coach qui sont retenues par la campagne : TeamCoach du coach ∩
+     * `teamIds`, dans l'ordre de première rencontre, sans doublon. Le périmètre d'écriture
+     * et d'affichage d'un coach donné (page publique, aperçu gestionnaire) — source unique
+     * partagée avec le contrôleur public (POST) et le presenter du formulaire.
+     *
+     * @return list<string>
+     */
+    public function teamIdsForCoach(CoachWishCampaign $campaign, string $coachId): array
+    {
+        $campaignTeams = array_flip($campaign->getTeamIds());
+        $result = [];
+        foreach ($this->entityManager->getRepository(TeamCoach::class)->findBy(['coachId' => $coachId]) as $link) {
+            if (isset($campaignTeams[$link->getTeamId()]) && !\in_array($link->getTeamId(), $result, true)) {
+                $result[] = $link->getTeamId();
+            }
+        }
+
+        return $result;
+    }
 }

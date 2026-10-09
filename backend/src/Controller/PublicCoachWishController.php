@@ -7,13 +7,13 @@ namespace App\Controller;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\Coach;
-use App\Entity\CoachWish;
 use App\Entity\CoachWishCampaign;
 use App\Entity\CoachWishToken;
-use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Repository\CoachWishTokenRepository;
 use App\Service\ClubDay;
+use App\Service\CoachWishFormPresenter;
+use App\Service\CoachWishMutualizationUpserter;
 use App\Service\CoachWishSeasonGuard;
 use App\Service\CoachWishUpserter;
 use App\Service\TenantConnectionContext;
@@ -56,6 +56,8 @@ final class PublicCoachWishController extends AbstractController
         private readonly EntityManagerInterface $entityManager,
         private readonly TenantConnectionContext $tenantConnectionContext,
         private readonly CoachWishUpserter $upserter,
+        private readonly CoachWishMutualizationUpserter $mutualizationUpserter,
+        private readonly CoachWishFormPresenter $formPresenter,
         private readonly ClockInterface $clock,
         private readonly RateLimiterFactory $coachWishPublicLimiter,
         private readonly CoachWishSeasonGuard $seasonGuard,
@@ -89,57 +91,16 @@ final class PublicCoachWishController extends AbstractController
             if (!$coach instanceof Coach) {
                 return $this->notFound();
             }
-            $entry = $this->entityManager->getRepository(CalendarEntry::class)->find($campaign->getCalendarEntryId());
-            $teamIds = $this->perimeterTeamIds($coach->getId(), $campaign);
 
-            // Chargement groupé (une requête) plutôt qu'un find() par équipe — page publique,
-            // rate-limitée : on évite le N+1. On préserve l'ordre du périmètre.
-            $teamsById = [];
-            if ([] !== $teamIds) {
-                foreach ($this->entityManager->getRepository(Team::class)->findBy(['id' => $teamIds]) as $team) {
-                    $teamsById[$team->getId()] = $team;
-                }
-            }
-            $teams = [];
-            foreach ($teamIds as $teamId) {
-                if (isset($teamsById[$teamId])) {
-                    $teams[] = ['id' => $teamId, 'name' => $teamsById[$teamId]->getName()];
-                }
-            }
-
-            // Les doléances existantes de SES équipes (toute source — pré-remplissage de
-            // l'état courant), jamais celles d'autres équipes ni le drapeau `done` ni des
-            // noms tiers.
-            $wishes = [];
-            if ([] !== $teamIds) {
-                foreach ($this->entityManager->getRepository(CoachWish::class)->findBy(['calendarEntryId' => $campaign->getCalendarEntryId(), 'teamId' => $teamIds]) as $wish) {
-                    if (!\in_array($wish->getWeekStart()->format('Y-m-d'), $campaign->getWeeks(), true)) {
-                        continue;
-                    }
-                    $wishes[] = [
-                        'teamId' => $wish->getTeamId(),
-                        'weekStart' => $wish->getWeekStart()->format('Y-m-d'),
-                        'slotsWanted' => $wish->getSlotsWanted(),
-                        'unavailableDays' => $wish->getUnavailableDays(),
-                        'wishedDays' => $wish->getWishedDays(),
-                        'comment' => $wish->getComment(),
-                    ];
-                }
-            }
-
-            return $this->json([
-                'coachFirstName' => $coach->getFirstName(),
-                'periodTitle' => $entry?->getTitle() ?? '',
-                // Bornes de la période mère (ISO, comme `deadline`) — la page publique en fait une
-                // pastille « Vacances du … au … ». Null si l'entrée de calendrier a disparu (idem titre).
-                'periodStart' => $entry?->getStartDate()->format('Y-m-d'),
-                'periodEnd' => $entry?->getEndDate()->format('Y-m-d'),
-                'deadline' => $campaign->getDeadline()->format('Y-m-d'),
-                'weeks' => $campaign->getWeeks(),
-                'teams' => $teams,
-                'wishes' => $wishes,
-                'respondedAt' => $entity['token']->getRespondedAt()?->format(DateTimeInterface::ATOM),
-            ]);
+            // Contexte COACH (prénom, équipes, partenaires possibles, passerelles, doléances et
+            // mutualisations déjà saisies) — foyer unique partagé avec l'aperçu gestionnaire
+            // (CoachWishFormPresenter). Ici `includeExisting: true` + le respondedAt du token.
+            return $this->json($this->formPresenter->build(
+                $campaign,
+                $coach,
+                includeExisting: true,
+                respondedAt: $entity['token']->getRespondedAt()?->format(DateTimeInterface::ATOM),
+            ));
         } finally {
             $this->tenantConnectionContext->clear();
         }
@@ -164,11 +125,16 @@ final class PublicCoachWishController extends AbstractController
         if (null === $submissions) {
             return $this->json(['error' => 'submissions requis.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
+        // Mutualisations (D2) : clé OPTIONNELLE, rétro-compatible (un client C2/C3 ne l'envoie
+        // pas). Validée AVANT toute écriture, comme les doléances — une violation → 422, rien
+        // d'écrit.
+        // `$payload` est déjà prouvé tableau ici (le guard `submissions` ci-dessus l'exige).
+        $mutualizations = isset($payload['mutualizations']) && \is_array($payload['mutualizations']) ? $payload['mutualizations'] : [];
         // Borne de cardinalité AVANT toute itération : le périmètre réel d'un coach est petit
         // (ses équipes × les semaines de la campagne). Un plafond large mais fini coupe l'abus
         // O(N) d'un tableau géant sur un endpoint sans login (le reste est déjà borné par le
         // rate-limit et post_max_size).
-        if (\count($submissions) > self::MAX_SUBMISSIONS) {
+        if (\count($submissions) > self::MAX_SUBMISSIONS || \count($mutualizations) > self::MAX_SUBMISSIONS) {
             return $this->json(['error' => 'Trop de lignes.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
@@ -233,9 +199,41 @@ final class PublicCoachWishController extends AbstractController
                 $clean[$teamId . '|' . $weekStart] = ['teamId' => $teamId, 'weekStart' => $weekStart, 'slots' => $slots, 'days' => $days, 'wished' => $wished, 'comment' => $comment];
             }
 
-            $this->entityManager->wrapInTransaction(function () use ($clean, $campaign, $coachId, $entity): void {
+            // Mutualisations (D2) : une par équipe DU COACH, partenaires PARMI les équipes de la
+            // campagne. Clé par teamId (unique métier (entrée, équipe)) — la dernière l'emporte.
+            $campaignTeams = array_flip($campaign->getTeamIds());
+            $cleanMut = [];
+            foreach ($mutualizations as $item) {
+                $teamId = \is_array($item) && \is_string($item['teamId'] ?? null) ? $item['teamId'] : '';
+                if (!isset($perimeter[$teamId])) {
+                    return $this->json(['error' => 'Équipe hors de votre périmètre.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+                }
+                $partners = [];
+                foreach ((\is_array($item) && \is_array($item['partnerTeamIds'] ?? null) ? $item['partnerTeamIds'] : []) as $p) {
+                    // Message 422 UNIFORME : qu'un partenaire soit inconnu, d'un autre club ou
+                    // hors campagne, le corps est le même (anti-énumération du périmètre).
+                    if (!\is_string($p) || !isset($campaignTeams[$p]) || $p === $teamId) {
+                        return $this->json(['error' => 'Équipe partenaire hors de la collecte.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+                    }
+                    if (!\in_array($p, $partners, true)) {
+                        $partners[] = $p;
+                    }
+                }
+                $sharedSlots = \is_array($item) ? (int) ($item['sharedSlots'] ?? 0) : 0;
+                // Un nombre de séances n'a de sens qu'avec au moins un partenaire ; sans partenaire
+                // l'upserter supprimera la ligne (le coach ne mutualise plus), sharedSlots ignoré.
+                if ([] !== $partners && ($sharedSlots < 1 || $sharedSlots > 7)) {
+                    return $this->json(['error' => 'Nombre de séances à mutualiser invalide.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+                }
+                $cleanMut[$teamId] = ['teamId' => $teamId, 'partners' => $partners, 'sharedSlots' => $sharedSlots];
+            }
+
+            $this->entityManager->wrapInTransaction(function () use ($clean, $cleanMut, $campaign, $coachId, $entity): void {
                 foreach ($clean as $c) {
                     $this->upserter->upsert($campaign, $c['teamId'], new DateTimeImmutable($c['weekStart'] . ' 00:00:00'), $coachId, $c['slots'], $c['days'], $c['wished'], $c['comment']);
+                }
+                foreach ($cleanMut as $m) {
+                    $this->mutualizationUpserter->upsert($campaign, $m['teamId'], $coachId, $m['partners'], $m['sharedSlots']);
                 }
                 $entity['token']->markResponded($this->clock->now());
                 $this->entityManager->flush();

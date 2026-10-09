@@ -110,6 +110,32 @@ final class CoachWishMailBuilderTest extends TestCase
         self::assertStringNotContainsString("\nBcc:", $rendered);
     }
 
+    public function testMailsCarryOnlyNamesAndCounters(): void
+    {
+        // D2 décision 7 : le DÉTAIL (séances souhaitées, jours, partenaires de mutualisation,
+        // commentaires) reste HORS des e-mails — digest et récap final ne portent que des NOMS
+        // et des COMPTEURS. Garde de non-régression : aucun vocabulaire de détail ne doit
+        // apparaître, même si une future évolution ajoutait une mutualisation au walker.
+        $builder = new CoachWishMailBuilder('https://app.example.test');
+        $digest = (string) $builder->buildDigest('m@x.fr', 'Club', 'Toussaint', ['Anna Martin'], ['Anna Martin'], ['Bob Durand'])->getTextBody();
+        $recap = (string) $builder->buildFinalRecap('m@x.fr', 'Club', 'Toussaint', ['Anna Martin'], ['Bob Durand'], 3)->getTextBody();
+
+        foreach ([$digest, $recap] as $body) {
+            // Les noms et les compteurs voyagent.
+            self::assertStringContainsString('Anna Martin', $body);
+            self::assertStringContainsString('Bob Durand', $body);
+            // Mais AUCUN détail de doléance ni de mutualisation.
+            self::assertStringNotContainsString('mutualis', $body, 'aucun détail de mutualisation dans l’e-mail');
+            self::assertStringNotContainsString('indispo', $body);
+            self::assertStringNotContainsString('souhait', $body);
+            self::assertStringNotContainsString('partenaire', $body);
+        }
+        // Le digest porte bien un compteur « Ont répondu (N) ».
+        self::assertStringContainsString('Ont répondu (1)', $digest);
+        // Le récap final porte bien le compteur « à traiter » (un nombre, pas le détail).
+        self::assertStringContainsString('à traiter : 3', $recap);
+    }
+
     private function campaign(): CoachWishCampaign
     {
         return (new CoachWishCampaign)->setDeadline(new DateTimeImmutable('2027-06-30'));
