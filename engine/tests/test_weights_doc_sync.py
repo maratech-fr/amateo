@@ -18,7 +18,7 @@ Portée choisie (lue dans le code, pas devinée) : le couple gymnase préféré/
 DOC-45, plus les autres poids d'arbitrage que ces trois docs CITENT AVEC UNE VALEUR — espacement,
 paliers de priorité S..D, bonus socle, malus passerelle, proximité au précédent — et un poids de
 placement de match (`W_PROTECT_HABIT`) cité avec sa valeur. `W_COACH_MAIN` (le brief l'a nommé)
-vit dans `app/solver/match_placement.py`, PAS dans `weights.py`, et n'est cité AVEC SA VALEUR que
+vit dans `app/solver/match_placement/weights.py`, PAS dans `weights.py`, et n'est cité AVEC SA VALEUR que
 par l'instantané d'audit daté (`specs/audit/…`, gelé par construction) et le symbole nu de la
 roadmap : rien de vivant à garder, il est donc importé et NOMMÉ dans le registre (preuve que la
 valeur = 60) sans ligne de citation.
