@@ -103,7 +103,14 @@ test("lot7 — captures du transfert et de l'avertissement", async ({ page }) =>
     const doleancesBtn = page.getByRole("button", { name: /Doléances/ }).first();
     if (await doleancesBtn.isVisible().catch(() => false)) {
       await doleancesBtn.click();
+      // Le bouton « Transférer au planning (N) » vit désormais dans le PIED de la fenêtre (lot 7 PR 5,
+      // retour fondateur 2026-10-11) : même sélecteur, il est juste en bas à droite.
       await expect(page.getByRole("button", { name: /Transférer au planning/ })).toBeVisible({ timeout: 15_000 });
+      // ⚠ Attendre que les ÉQUIPES soient chargées avant la capture : sinon la liste rend « Équipe »
+      // (nom de repli) le temps du chargement, et c'est ce qu'avait saisi la capture précédente. On
+      // attend le commentaire déterministe de la doléance seedée ET la fin des requêtes réseau (teams).
+      await expect(page.getByText("Indispo jeu/ven")).toBeVisible({ timeout: 15_000 });
+      await page.waitForLoadState("networkidle").catch(() => undefined);
       await shot(page, "lot7-transfert-liste.png");
 
       // ── Capture 2/2 : le récap après transfert (toast) ─────────────────────────────────────────

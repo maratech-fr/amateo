@@ -35,7 +35,7 @@ interface Exemption {
 const EXEMPTIONS: Exemption[] = [
   {
     file: "badge.tsx",
-    pattern: /bg-(?:warning|accent)\/10/,
+    pattern: /bg-(?:warning|accent|success)\/10/,
     reason: "StatusPill — pastille inline (bordure + fond teinté + icône + texte), pas une surface/tuile ; contrastes gardés par a11y-contrast",
   },
 ];

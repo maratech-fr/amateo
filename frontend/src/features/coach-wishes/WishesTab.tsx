@@ -1,4 +1,4 @@
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { CalendarEntry } from "@/features/cockpit/api";
@@ -14,7 +14,6 @@ import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
-import { Spinner } from "@/shared/components/ui/spinner";
 import { cn } from "@/shared/lib/utils";
 import { toast } from "@/shared/stores/toastStore";
 
@@ -26,13 +25,54 @@ import { useCoachWishMutualizations, useCreateCoachWishMutualization, useDeleteC
 import { useCoachWishes, useCreateCoachWish, useDeleteCoachWish, useTransferCoachWishes, useUpdateCoachWish } from "./queries";
 import { frDate } from "./wishSections";
 
-/** Le texte de récap d'un transfert : « N converties · M ignorées » (singulier/pluriel soignés). */
+/** État du geste « Transférer » remonté au pied de la fenêtre (CoachWishesHub) : le pied unique est
+ *  piloté par l'onglet actif, mais le DÉTAIL (compteur, action, attente) vit ici, avec la sélection
+ *  et les filtres. `run` appelle TOUJOURS le dernier `doTransfer` (via une ref), jamais une capture
+ *  figée. `null` = rien à transférer dans la vue (aucune doléance visible) → pas de pied. */
+export interface WishTransferFooter {
+  count: number;
+  pending: boolean;
+  run: () => void;
+}
+
+/** Libellés FR des motifs d'ignorance du serveur (`CoachWishTransferService`) — on INFORME toujours
+ *  de la raison d'une ignorée (retour fondateur 2026-10-11). Clé inconnue → « autre » (jamais un code
+ *  serveur brut à l'écran). */
+const IGNORED_REASON_LABELS: Record<string, string> = {
+  semaine_sans_plan: "semaine sans planning",
+  introuvable: "introuvable",
+  id_invalide: "identifiant invalide",
+  autre_saison: "autre saison",
+};
+
+const ignoredReasonLabel = (key: string): string => IGNORED_REASON_LABELS[key] ?? "autre";
+
+/** Résume les motifs d'ignorance, regroupés et comptés : un seul motif couvrant TOUTES les ignorées
+ *  → juste son libellé (« semaine sans planning ») ; plusieurs → comptés (« 2 semaine sans planning,
+ *  1 autre saison »), du plus fréquent au moins fréquent. */
+function ignoredReasonsSummary(reasons: Record<string, number>, total: number): string {
+  const entries = Object.entries(reasons)
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1]);
+  if (0 === entries.length) {
+    return "";
+  }
+  if (1 === entries.length && entries[0][1] === total) {
+    return ignoredReasonLabel(entries[0][0]);
+  }
+  return entries.map(([key, n]) => `${n} ${ignoredReasonLabel(key)}`).join(", ");
+}
+
+/** Le texte de récap d'un transfert : « N converties · M ignorées : <raisons> » (singulier/pluriel
+ *  soignés). On donne TOUJOURS la raison des ignorées (retour fondateur 2026-10-11). */
 function transferRecapMessage(recap: CoachWishTransferRecap): string {
   const converted = `${recap.converted} convertie${recap.converted > 1 ? "s" : ""}`;
   if (0 === recap.ignored) {
     return 0 === recap.converted ? "Aucune doléance à transférer" : converted;
   }
-  return `${converted} · ${recap.ignored} ignorée${recap.ignored > 1 ? "s" : ""}`;
+  const ignored = `${recap.ignored} ignorée${recap.ignored > 1 ? "s" : ""}`;
+  const reasons = ignoredReasonsSummary(recap.ignoredReasons, recap.ignored);
+  return `${converted} · ${ignored}${"" === reasons ? "" : ` : ${reasons}`}`;
 }
 
 /**
@@ -46,10 +86,27 @@ function transferRecapMessage(recap: CoachWishTransferRecap): string {
  * groupé par semaine. Déplacement VERBATIM du corps de l'ex-`CoachWishesModal` (le titre et le
  * `Modal` vivent désormais au niveau du conteneur `CoachWishesHub`).
  */
-export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekFilter: string | null }) {
+export function WishesTab({
+  mother,
+  weekFilter,
+  onTransferStateChange,
+}: {
+  mother: CalendarEntry;
+  weekFilter: string | null;
+  /** Remonte l'état du geste « Transférer » au pied de la fenêtre (CoachWishesHub), ou `null` quand
+   *  il n'y a rien à transférer dans la vue. Stable (c'est le `setState` du hub) : pas de boucle. */
+  onTransferStateChange?: (state: WishTransferFooter | null) => void;
+}) {
   const season = useWorkingSeason();
   const { data: wishes = [] } = useCoachWishes(mother.id);
-  const { data: teams = [] } = useWizardTeams();
+  const teamsQuery = useWizardTeams();
+  // Mémorisé sur `teamsQuery.data` : stable d'un rendu à l'autre (sinon le `?? []` fabriquerait un
+  // nouveau tableau à chaque rendu et ferait « bouger » les useMemo qui en dépendent).
+  const teams = useMemo(() => teamsQuery.data ?? [], [teamsQuery.data]);
+  // « Aucune équipe dans ce club » ne doit s'afficher que sur une lecture POSÉE, jamais pendant le
+  // chargement (sinon un vide crédible : le bandeau s'affichait À TORT alors qu'une doléance existait,
+  // retour fondateur 2026-10-11). `undefined` = pas encore lu (règle readState).
+  const teamsReady = undefined !== teamsQuery.data;
   const { data: coaches = [] } = useWizardCoaches();
   const { data: teamCoaches = [] } = useWizardTeamCoaches();
   const { data: coachPlayers = [] } = useWizardCoachPlayers();
@@ -176,6 +233,29 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
     });
   };
 
+  // Le geste « Transférer » vit désormais dans le PIED de la fenêtre (CoachWishesHub) — un seul pied
+  // piloté par l'onglet actif (retour fondateur 2026-10-11). On remonte le DÉTAIL (compteur, attente,
+  // action) ; la sélection et les filtres restent ici. `run` appelle le dernier `doTransfer` via une
+  // ref (jamais une capture figée), donc l'effet ne dépend QUE des valeurs primitives : pas de boucle
+  // (`onTransferStateChange` est le `setState` stable du hub). `null` quand rien n'est visible → pas de pied.
+  const doTransferRef = useRef(doTransfer);
+  // La ref se met à jour dans un EFFET (jamais pendant le rendu — react-hooks/refs) : `run` appelle le
+  // dernier `doTransfer` au clic, toujours après commit, donc la ref est à jour.
+  useEffect(() => {
+    doTransferRef.current = doTransfer;
+  });
+  const visibleCount = visible.length;
+  const selectedCount = selectedVisible.length;
+  const transferPending = transfer.isPending;
+  useEffect(() => {
+    if (0 === visibleCount) {
+      onTransferStateChange?.(null);
+      return;
+    }
+    onTransferStateChange?.({ count: selectedCount, pending: transferPending, run: () => doTransferRef.current() });
+    return () => onTransferStateChange?.(null);
+  }, [onTransferStateChange, visibleCount, selectedCount, transferPending]);
+
   const submit = (payload: CoachWishPayload) => {
     const after = () => {
       setFormOpen(false);
@@ -187,14 +267,6 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
       createWish.mutate(payload, { onSuccess: after });
     }
   };
-
-  const toggleDone = (w: CoachWish) =>
-    updateWish.mutate({
-      id: w.id,
-      // coachId PRÉSERVÉ tel quel (null si dé-attribuée) : envoyer "" échouait le NotBlank
-      // et une doléance dé-attribuée ne pouvait jamais être cochée (revue #10 C1).
-      body: { calendarEntryId: w.calendarEntryId, weekStart: w.weekStart, teamId: w.teamId, coachId: w.coachId, slotsWanted: w.slotsWanted, unavailableDays: w.unavailableDays, wishedDays: w.wishedDays, comment: w.comment, done: !w.done, keepSeasonSlots: w.keepSeasonSlots },
-    });
 
   const submitMut = (payload: CoachWishMutualizationPayload) => {
     const after = () => {
@@ -243,26 +315,15 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
         </Button>
       </div>
 
-      {/* P2-63 PR 5 — le geste de MASSE : les doléances cochées (à gauche de chaque ligne)
-          deviennent des réglages du plan de leur semaine. Récap en toast au retour. */}
+      {/* P2-63 PR 5 — le geste de MASSE vit dans le PIED de la fenêtre (retour fondateur 2026-10-11) :
+          ici, juste l'aide qui explique les cases (prose → corps défilant, jamais le pied). */}
       {visible.length > 0 ? (
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            size="sm"
-            disabled={0 === selectedVisible.length || transfer.isPending}
-            disabledReason={0 === selectedVisible.length ? "Cochez au moins une doléance à transférer" : undefined}
-            onClick={doTransfer}
-          >
-            {transfer.isPending ? <Spinner className="size-4" /> : null}
-            Transférer au planning ({selectedVisible.length})
-          </Button>
-          <span className="text-xs text-muted-foreground">Cochez à gauche les doléances à transférer : elles deviennent des réglages du plan de leur semaine (volume, indisponibilités, jours souhaités).</span>
-        </div>
+        <p className="mt-2 text-xs text-muted-foreground">Cochez les doléances à transférer : elles deviennent des réglages du plan de leur semaine.</p>
       ) : null}
 
-      {/* Sans équipe du tout, « Ajouter » n'ouvrirait qu'un formulaire sans cible. */}
-      {0 === teams.length ? (
+      {/* Sans équipe du tout, « Ajouter » n'ouvrirait qu'un formulaire sans cible. Sur une lecture
+          POSÉE seulement (jamais pendant le chargement — vide crédible, retour fondateur 2026-10-11). */}
+      {teamsReady && 0 === teams.length ? (
         <NoticeBanner
           tone="muted"
           className="mt-2"
@@ -303,17 +364,29 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
                 <ul className="space-y-1">
                   {items.map((w) => (
                     <li key={w.id} className="flex items-start gap-2 rounded-md border border-border px-3 py-2 text-sm">
-                      {/* D-b — case de SÉLECTION du transfert, à gauche (distincte de « traité »). */}
-                      <input type="checkbox" aria-label={`Sélectionner la doléance — ${teamName.get(w.teamId) ?? "équipe"} · semaine du ${frDate(week.startDate)}`} className="mt-1 size-4" checked={selected.has(w.id)} onChange={() => toggleSelected(w.id)} />
-                      <div className={cn("min-w-0 flex-1", w.done && "line-through")}>
+                      {/* Case de SÉLECTION du transfert, à gauche. Une doléance TRAITÉE est déjà
+                          transférée : elle n'a plus de case (retour fondateur 2026-10-11). */}
+                      {w.done ? null : (
+                        <input type="checkbox" aria-label={`Sélectionner la doléance — ${teamName.get(w.teamId) ?? "équipe"} · semaine du ${frDate(week.startDate)}`} className="mt-1 size-4" checked={selected.has(w.id)} onChange={() => toggleSelected(w.id)} />
+                      )}
+                      <div className="min-w-0 flex-1">
                         {/* Pas de coach (coachId null) = doléance manuelle sans coach : on n'affiche
                             AUCUN coach (juste l'équipe). « coach dé-attribué » ne vaut QUE pour le vrai
                             cas « coach retiré » : un coachId posé mais introuvable (coach supprimé/parti),
                             retours fondateur 2026-10-10. */}
-                        <p className="font-medium">
-                          {teamName.get(w.teamId) ?? "Équipe"}
-                          {null !== w.coachId ? <> · {coachName.get(w.coachId) ?? <span className="italic text-muted-foreground">coach dé-attribué</span>}</> : null}
-                        </p>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <p className="font-medium">
+                            {teamName.get(w.teamId) ?? "Équipe"}
+                            {null !== w.coachId ? <> · {coachName.get(w.coachId) ?? <span className="italic text-muted-foreground">coach dé-attribué</span>}</> : null}
+                          </p>
+                          {/* Pastille VERTE « Traité » À CÔTÉ du nom (plus de case à droite), retour
+                              fondateur 2026-10-11 : une doléance transférée/traitée est marquée ici. */}
+                          {w.done ? (
+                            <StatusPill variant="success" icon={<Check className="size-3 text-success" aria-hidden="true" />}>
+                              Traité
+                            </StatusPill>
+                          ) : null}
+                        </div>
                         <p className="text-xs text-muted-foreground">
                           {0 === w.slotsWanted ? "Aucun créneau souhaité" : `${w.slotsWanted} créneau${w.slotsWanted > 1 ? "x" : ""} souhaité${w.slotsWanted > 1 ? "s" : ""}`}
                           {w.wishedDays.length > 0 ? ` · souhaité : ${w.wishedDays.map(dayLabel).join(", ")}` : ""}
@@ -328,11 +401,8 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
                         ) : null}
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
-                        {/* D-b — l'état « traité » reste à DROITE (coche + libellé texte). */}
-                        <label className="mr-1 flex items-center gap-1 text-xs text-muted-foreground">
-                          <input type="checkbox" aria-label={`Traité — ${teamName.get(w.teamId) ?? "équipe"} · semaine du ${frDate(week.startDate)}`} className="size-4" checked={w.done} onChange={() => toggleDone(w)} />
-                          traité
-                        </label>
+                        {/* Le marquage « traité / non traité » passe par le crayon (formulaire),
+                            retour fondateur 2026-10-11 : plus de coche « traité » ici. */}
                         <Button
                           type="button"
                           size="icon"

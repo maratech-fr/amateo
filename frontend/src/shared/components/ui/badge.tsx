@@ -23,6 +23,10 @@ import { cn } from "@/shared/lib/utils";
  *    que les boutons (AA par construction) ; le fond PLEIN (pas de `/NN`) ne tombe pas sous P4-265
  *    et la bordure `border-accent` se fond dans le fond (pas de liseré visible). ⚠ statique : pas de
  *    `hover:opacity-90` sur ce fond plein (compositerait l'accent, cf. AGENTS.md gotcha #11).
+ *  - `success` : `border-success/50 bg-success/10` + TEXTE `text-foreground` — un état ABOUTI (une
+ *    doléance « Traité », transférée au planning). Même repli AA que `warning`/`accent` : `text-success`
+ *    sur un fond teinté succès tombe sous 4,5:1 ; c'est l'ICÔNE, passée par l'appelant, qui porte
+ *    `text-success` (graphique, ≥ 3:1). Paires verrouillées dans `a11y-contrast.spec.ts`.
  *  - `neutral` : `border-border bg-muted text-muted-foreground` — un état informatif.
  *
  * L'icône est passée par l'appelant (aria-hidden — le texte visible EST l'annonce). La pastille
@@ -42,7 +46,7 @@ export function StatusPill({
 }: {
   icon?: ReactNode;
   children: ReactNode;
-  variant?: "warning" | "accent" | "accent-solid" | "neutral";
+  variant?: "warning" | "accent" | "accent-solid" | "success" | "neutral";
   className?: string;
   title?: string;
   "aria-label"?: string;
@@ -54,7 +58,9 @@ export function StatusPill({
         ? "border-accent/50 bg-accent/10 text-foreground"
         : "accent-solid" === variant
           ? "border-accent bg-accent text-accent-foreground"
-          : "border-border bg-muted text-muted-foreground";
+          : "success" === variant
+            ? "border-success/50 bg-success/10 text-foreground"
+            : "border-border bg-muted text-muted-foreground";
   return (
     <span
       title={title}
