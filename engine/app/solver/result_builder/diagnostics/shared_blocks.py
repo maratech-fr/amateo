@@ -12,7 +12,9 @@ from typing import Any
 
 from ortools.sat.python import cp_model
 
+from ...constraints.availability import _coach_available_at, case_has_available_coach, required_coaches_of
 from ...constraints.common import _fold_case_occupant_identity
+from ...model import _time_to_minutes
 from ..helpers import (
     _collection,
     _get,
@@ -26,6 +28,10 @@ def _diagnose_shared_blocks(
     model_data: Mapping[str, Any] | Any,
     solver_status: int,
     slots: list[dict[str, Any]],
+    *,
+    team_coach_map: Mapping[str, Any] | None = None,
+    coach_unavailability: Mapping[str, Any] | None = None,
+    coach_unavailability_sources: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """P2-51 (arbitrage n°7) — mutualisation par BLOC : nommer le bloc quand il n'est pas honoré,
     code ``shared_block_not_honored`` (severity ERROR).
@@ -130,6 +136,22 @@ def _diagnose_shared_blocks(
                         "createdAt": datetime.now(UTC).isoformat(),
                     }
                 )
+        # Lot 3B PR B — rail de preuve « un coach suffit » (Q4B). La boucle ci-dessus ne compte que
+        # les cases de gymnase (sur-contrainte de PLACE/verrous). Un bloc peut avoir ASSEZ de cases
+        # mais AUCUNE où un coach de l'UNION de ses membres soit disponible : après la pose « un
+        # coach suffit » (``closures._close_coachless_block_cases``), ces cases sont fermées → le
+        # bloc est infaisable. On rejoue ICI la MÊME question (helper UNIQUE ``constraints.availability``)
+        # pour NOMMER le groupe et les indisponibilités en cause, sans re-tester une seconde logique.
+        diagnostics.extend(
+            _diagnose_blocks_without_union_coach(
+                model_data,
+                valid_blocks,
+                team_names,
+                team_coach_map or {},
+                coach_unavailability or {},
+                coach_unavailability_sources or {},
+            )
+        )
         return diagnostics
 
     if solver_status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
@@ -190,3 +212,143 @@ def _diagnose_shared_blocks(
                 }
             )
     return diagnostics
+
+
+def _block_candidate_cases(model_data: Mapping[str, Any] | Any) -> list[tuple[int, int]]:
+    """Les cases de gymnase ``(jour, minute de début)`` où un bloc POURRAIT tenir une séance commune
+    — toutes les ``trainingSlots`` du payload, le gymnase étant indifférent au relais de coach (un
+    coach de l'union couvre la case quel que soit le gymnase). Slot illisible (jour/heure) écarté."""
+    cases: list[tuple[int, int]] = []
+    for venue in _collection(model_data, "venues"):
+        for slot in _collection(venue, "training_slots", "trainingSlots"):
+            raw_day = _get(slot, "day_of_week", "dayOfWeek", default=None)
+            raw_start = _get(slot, "start_time", "startTime", default=None)
+            if raw_day is None or raw_start is None:
+                continue
+            try:
+                day = int(raw_day)
+                start = _time_to_minutes(str(raw_start))
+            except (TypeError, ValueError):
+                continue
+            cases.append((day, start))
+    return cases
+
+
+def _diagnose_blocks_without_union_coach(
+    model_data: Mapping[str, Any] | Any,
+    valid_blocks: list[tuple[int, Any, list[str], set[str]]],
+    team_names: Mapping[str, str],
+    team_coach_map: Mapping[str, Any],
+    coach_unavailability: Mapping[str, Any],
+    coach_unavailability_sources: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """PROUVE, à l'échec, qu'un bloc est infaisable parce qu'AUCUN (ou trop peu de) créneau n'a de
+    coach de l'union disponible — et NOMME le groupe + les indisponibilités en cause.
+
+    Miroir exact de la pose « un coach suffit » (``closures._close_coachless_block_cases`` via le
+    helper UNIQUE ``constraints.availability.case_has_available_coach``) : une case sert le bloc dès
+    qu'UN coach de l'union de ses membres y est libre. On ne tire la sonnette que lorsque les cases
+    servables sont STRICTEMENT moins nombreuses que les séances communes demandées ALORS QUE la
+    grille en offre assez (``commonSessions <= total``) — sinon la pénurie est de PLACE (gymnase),
+    déjà nommée par la boucle de sur-contrainte ci-dessus, pas de coach. Les blocs IMBRIQUÉS
+    servables ont ≥ ``commonSessions`` cases à coach (leur union est plus riche) : ils ne sont pas
+    accusés (non-régression).
+
+    ``causes[]`` porte les contraintes d'indisponibilité des coachs de l'union (kind EXISTANT
+    ``coach_unavailability`` — aucun bump de contrat), nommées pour que le backend compose leur
+    ORIGINE (héritée de la saison / posée pour la période)."""
+    cases = _block_candidate_cases(model_data)
+    total = len(cases)
+    if total == 0:
+        return []  # Aucune case du tout : pénurie de place, la boucle de sur-contrainte l'a dite.
+
+    rules: Mapping[str, Any] = coach_unavailability if isinstance(coach_unavailability, Mapping) else {}
+    diagnostics: list[dict[str, Any]] = []
+    for index, block, members, _member_set in valid_blocks:
+        common_sessions = int(_get(block, "commonSessions", "common_sessions", default=0) or 0)
+        if common_sessions <= 0:
+            continue
+        servable = sum(
+            1 for day, start in cases if case_has_available_coach(members, day, start, rules, team_coach_map)
+        )
+        # Pénurie de coach PROUVÉE, et de coach SEULEMENT : assez de cases dans la grille
+        # (``common_sessions <= total``), mais trop peu portent un coach de l'union.
+        if not (servable < common_sessions <= total):
+            continue
+
+        causes = _coach_unavailability_causes(members, cases, team_coach_map, rules, coach_unavailability_sources)
+        names = _named_list(members, team_names)
+        if servable == 0:
+            message = f"Groupe {names} : aucun créneau où au moins un coach du groupe est disponible."
+        else:
+            message = (
+                f"Groupe {names} : seulement {servable} créneau(x) où au moins un coach du groupe est "
+                f"disponible, pour {common_sessions} séance(s) commune(s) à placer."
+            )
+        diagnostics.append(
+            {
+                "id": f"shared-block-coachless-{_get(block, 'id', default=index)}",
+                "type": "shared_block_not_honored",
+                "severity": "ERROR",
+                "message": message,
+                "causes": causes,
+                "suggestions": [
+                    "Rendez au moins un coach du groupe disponible sur un créneau commun, "
+                    "ou allégez l'indisponibilité en cause.",
+                ],
+                "createdAt": datetime.now(UTC).isoformat(),
+            }
+        )
+    return diagnostics
+
+
+def _coach_unavailability_causes(
+    members: list[str],
+    cases: list[tuple[int, int]],
+    team_coach_map: Mapping[str, Any],
+    rules: Mapping[str, Any],
+    coach_unavailability_sources: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Les contraintes d'indisponibilité des coachs de l'UNION du bloc, chacune avec le COMPTE de
+    cases candidates qu'elle ferme pour son coach. Ordre déterministe (union ordonnée de
+    ``required_coaches_of``, sources dans l'ordre de pose), dédup par ``constraintId`` (first-wins —
+    une contrainte citée une fois). Un coach sans source (dispo pleine, ou lien absent) n'est pas
+    une cause ; une source qui ne ferme AUCUNE case candidate non plus (elle ne pèse pas ici)."""
+    union = required_coaches_of(members, team_coach_map)
+    causes: list[dict[str, Any]] = []
+    seen: set[Any] = set()
+    for coach_id in union:
+        for source in coach_unavailability_sources.get(str(coach_id)) or []:
+            constraint_id = source.get("constraint_id")
+            if constraint_id in seen:
+                continue
+            intervals = source.get("intervals") or ()
+            closed = sum(
+                1
+                for day, start in cases
+                if any(iv_day == day and iv_from <= start < iv_to for iv_day, iv_from, iv_to in intervals)
+            )
+            if closed == 0:
+                continue
+            seen.add(constraint_id)
+            causes.append(
+                {
+                    "kind": "coach_unavailability",
+                    "constraintId": constraint_id,
+                    "label": source.get("label"),
+                    "count": closed,
+                }
+            )
+    # Repli : l'union est bloquée mais AUCUNE source nommée (indispo portée par la whitelist
+    # ``availableDays`` d'une contrainte sans libellé, ou fixture legacy) — on cite tout de même le
+    # kind, cause dégradée (``constraintId``/``label`` None), jamais un groupe accusé sans cause.
+    if not causes:
+        degraded = _coachless_case_count(cases, union, rules)
+        causes.append({"kind": "coach_unavailability", "constraintId": None, "label": None, "count": degraded})
+    return causes
+
+
+def _coachless_case_count(cases: list[tuple[int, int]], union: list[str], rules: Mapping[str, Any]) -> int:
+    """Nombre de cases candidates où AUCUN coach de l'union n'est disponible (le poids de la cause
+    dégradée quand aucune source nommée ne porte l'indisponibilité)."""
+    return sum(1 for day, start in cases if not any(_coach_available_at(c, day, start, rules) for c in union))

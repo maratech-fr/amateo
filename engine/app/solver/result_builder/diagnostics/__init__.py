@@ -192,7 +192,19 @@ def _generate_diagnostics(
             diagnostic_solver=diagnostic_solver,
         )
     )
-    diagnostics.extend(_diagnose_shared_blocks(model_data, solver_status, slots))
+    diagnostics.extend(
+        _diagnose_shared_blocks(
+            model_data,
+            solver_status,
+            slots,
+            # Lot 3B PR B — le rail de preuve « bloc sans case à coach de l'union » rejoue la pose
+            # (`constraints.closures` via le helper UNIQUE `constraints.availability`) : cartes lues
+            # du MODÈLE, jamais re-parsées. `model` absent (doubles de test) ⇒ vides ⇒ rail muet.
+            team_coach_map=team_coach_map or {},
+            coach_unavailability=getattr(model, "coach_unavailability", None) or {},
+            coach_unavailability_sources=getattr(model, "coach_unavailability_sources", None) or {},
+        )
+    )
     diagnostics.extend(_diagnose_team_links(model_data, solver_status, slots))
     diagnostics.extend(_diagnose_travel_times(model_data, solver_status, slots, team_coach_map or {}))
     return diagnostics

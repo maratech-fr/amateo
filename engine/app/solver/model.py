@@ -75,6 +75,12 @@ class ScheduleCpModel(cp_model.CpModel):
         # (aucune signature publique de `constraints.py` ne change — le canal est le modèle).
         self.forced_venue_sources: dict[str, dict[str, Any]] = {}
         self.coach_unavailability_sources: dict[str, list[dict[str, Any]]] = {}
+        # Lot 3B PR B — l'algèbre d'indisponibilité de coach (coach_id → intervalles bloqués
+        # (jour, de, à)), posée par `_solve` depuis `parse_v2_constraints`. Le diagnostic de bloc
+        # (`shared_blocks._diagnose_shared_blocks`) la lit pour rejouer, à l'échec, la MÊME question
+        # « un coach de l'union est-il disponible sur cette case ? » que la pose (helper UNIQUE
+        # `constraints.availability`), sans re-parser. Vide ⇒ aucune fermeture d'indispo (défensif).
+        self.coach_unavailability: dict[str, Any] = {}
         # P3-21 — score RAPPORTÉ recalculé aux poids d'ORIGINE (placement + chaînage naturel,
         # stabilité EXCLUE) quand la phase 2 applique le terme de stabilité, posé par
         # `main._solve`. None (défaut) ⇒ `result_builder` lit `ObjectiveValue()` tel quel :

@@ -65,6 +65,21 @@ final class SharedBlockCoachRelayGateTest extends TestCase
             $this->coLocated($noCoach),
             'témoin cassé : sans coach de l\'union, le bloc ne doit JAMAIS être placé',
         );
+
+        // Lot 3B PR B — l'échec NOMME désormais le groupe : un shared_block_not_honored cite t1 et t2
+        // et porte les indisponibilités de coach en cause (kind coach_unavailability, contrat 1.4),
+        // de quoi composer l'origine côté backend. Sans le rail de preuve, l'infaisabilité
+        // retomberait au message générique muet.
+        $named = $this->notHonoured($noCoach);
+        self::assertNotEmpty($named, 'PR B : l\'échec d\'un bloc sans coach de l\'union doit NOMMER le groupe');
+        self::assertStringContainsString('T1', (string) $named[0]['message']);
+        self::assertStringContainsString('T2', (string) $named[0]['message']);
+        $causeKinds = array_column($named[0]['causes'] ?? [], 'kind');
+        self::assertContains(
+            'coach_unavailability',
+            $causeKinds,
+            'PR B : les indisponibilités de coach en cause doivent être portées en causes[] (kind existant)',
+        );
     }
 
     /**

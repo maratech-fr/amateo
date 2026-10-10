@@ -19,15 +19,19 @@ final class DiagnosticMessageBuilder
 
     /**
      * @param array<string, mixed>  $diagnostic
-     * @param array<string, string> $teamNames  teamId => name
-     * @param array<string, string> $coachNames coachId => name
-     * @param array<string, string> $venueNames venueId => name
+     * @param array<string, string> $teamNames         teamId => name
+     * @param array<string, string> $coachNames        coachId => name
+     * @param array<string, string> $venueNames        venueId => name
+     * @param array<string, bool>   $constraintOrigins constraintId => la contrainte est HÉRITÉE du
+     *                                                 planning de saison (calendarEntryId NULL) ;
+     *                                                 `false` = posée pour cette période
      */
     public function build(
         array $diagnostic,
         array $teamNames = [],
         array $coachNames = [],
         array $venueNames = [],
+        array $constraintOrigins = [],
     ): string {
         $type = (string) ($diagnostic['type'] ?? '');
         $engineMessage = trim((string) ($diagnostic['message'] ?? ''));
@@ -47,8 +51,78 @@ final class DiagnosticMessageBuilder
             'coach_overload' => '' !== $engineMessage ? $engineMessage : $this->buildCoachOverload($diagnostic, $coachNames),
             'soft_lock_moved' => $this->buildSoftLockMoved($diagnostic, $teamNames, $venueNames),
             'unused_slot' => $this->buildUnusedSlot($diagnostic, $venueNames),
+            // Lot 3B PR B — le moteur nomme déjà le GROUPE (« Groupe A, B, C : aucun créneau… ») ;
+            // le backend AJOUTE l'ORIGINE de chaque contrainte citée, qu'il est le seul à connaître
+            // (le moteur ignore `calendarEntryId`). Message vide ⇒ repli générique.
+            'shared_block_not_honored' => $this->buildSharedBlockNotHonored($diagnostic, $engineMessage, $constraintOrigins),
             default => '' !== $engineMessage ? $engineMessage : 'Diagnostic inconnu.',
         };
+    }
+
+    /**
+     * Compose le message d'un bloc de mutualisation non honoré : le texte du moteur (groupe nommé)
+     * SUIVI, pour chaque contrainte citée en `causes[]`, de son origine — « héritée du planning de
+     * saison — désactivable pour cette période » quand elle n'est PAS datée (`calendarEntryId` NULL),
+     * « posée pour cette période » sinon. Aucun identifiant interne (seulement le LIBELLÉ de la
+     * contrainte, texte gestionnaire). Une cause dégradée (sans libellé) ou une contrainte non
+     * résolue n'ajoute rien — jamais un groupe accusé avec une origine fantôme.
+     *
+     * @param array<string, mixed> $diagnostic
+     * @param array<string, bool>  $constraintOrigins
+     */
+    private function buildSharedBlockNotHonored(array $diagnostic, string $engineMessage, array $constraintOrigins): string
+    {
+        if ('' === $engineMessage) {
+            return 'Un groupe de mutualisation ne peut pas être honoré : aucun créneau commun servable.';
+        }
+
+        $causes = \is_array($diagnostic['causes'] ?? null) ? $diagnostic['causes'] : [];
+        $sentences = [];
+        $seen = [];
+        foreach ($causes as $cause) {
+            if (!\is_array($cause)) {
+                continue;
+            }
+            $label = trim((string) ($cause['label'] ?? $cause['name'] ?? ''));
+            if ('' === $label || isset($seen[$label])) {
+                continue;
+            }
+            $seen[$label] = true;
+            $origin = $this->constraintOrigin($cause, $constraintOrigins);
+            $sentences[] = null !== $origin
+                ? \sprintf('Contrainte en cause : « %s » (%s).', $label, $origin)
+                : \sprintf('Contrainte en cause : « %s ».', $label);
+        }
+
+        return [] === $sentences ? $engineMessage : $engineMessage . ' ' . implode(' ', $sentences);
+    }
+
+    /**
+     * L'origine d'une contrainte citée, ou `null` si son id est absent/non résolu. L'id est
+     * NORMALISÉ au premier `:` (une contrainte CLUB suffixée `<uuid>:<teamId>` par le builder —
+     * {@see ScheduleConstraintBuilder} — revient à son UUID d'entité), symétrie de
+     * {@see ScheduleDiagnosticsRecorder::normalizeCauses}.
+     *
+     * @param array<string, mixed> $cause
+     * @param array<string, bool>  $constraintOrigins
+     */
+    private function constraintOrigin(array $cause, array $constraintOrigins): ?string
+    {
+        $rawId = $cause['constraintId'] ?? $cause['constraint_id'] ?? null;
+        if (null === $rawId) {
+            return null;
+        }
+        $id = (string) $rawId;
+        $colon = strpos($id, ':');
+        $id = false === $colon ? $id : substr($id, 0, $colon);
+
+        if (!\array_key_exists($id, $constraintOrigins)) {
+            return null;
+        }
+
+        return $constraintOrigins[$id]
+            ? 'héritée du planning de saison — désactivable pour cette période'
+            : 'posée pour cette période';
     }
 
     /**

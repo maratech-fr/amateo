@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\Coach;
+use App\Entity\Constraint;
 use App\Entity\Schedule;
 use App\Entity\ScheduleDiagnostic;
 use App\Entity\Team;
@@ -69,6 +70,11 @@ final class ScheduleDiagnosticsRecorder
         }
 
         [$teamNames, $coachNames, $venueNames] = $this->buildNameMaps($schedule);
+        // L'origine (héritée de la saison / posée pour la période) n'est composée que pour les
+        // diagnostics de bloc : on ne charge les contraintes que si l'un s'y présente.
+        $constraintOrigins = $this->hasSharedBlockDiagnostic($diagnostics)
+            ? $this->buildConstraintOrigins($schedule)
+            : [];
 
         foreach ($diagnostics as $diagnostic) {
             if (!\is_array($diagnostic)) {
@@ -76,7 +82,7 @@ final class ScheduleDiagnosticsRecorder
                 continue;
             }
 
-            $message = $this->diagnosticMessageBuilder->build($diagnostic, $teamNames, $coachNames, $venueNames);
+            $message = $this->diagnosticMessageBuilder->build($diagnostic, $teamNames, $coachNames, $venueNames, $constraintOrigins);
 
             $entity = (new ScheduleDiagnostic)
                 ->setClubId($schedule->getClubId())
@@ -212,6 +218,43 @@ final class ScheduleDiagnosticsRecorder
         }
 
         return $diagnostics;
+    }
+
+    /**
+     * Un diagnostic de bloc de mutualisation est-il présent ? (déclenche le chargement des origines).
+     *
+     * @param array<int, mixed> $diagnostics
+     */
+    private function hasSharedBlockDiagnostic(array $diagnostics): bool
+    {
+        foreach ($diagnostics as $diagnostic) {
+            if (\is_array($diagnostic) && 'shared_block_not_honored' === ($diagnostic['type'] ?? null)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * L'ORIGINE de chaque contrainte de club+saison : `true` = héritée du planning de saison
+     * (`calendarEntryId` NULL), `false` = posée pour une période. Le diagnostic cite une contrainte
+     * par son id ; cette carte dit au builder comment en décrire la provenance au gestionnaire.
+     *
+     * @return array<string, bool> constraintId => héritée de la saison
+     */
+    private function buildConstraintOrigins(Schedule $schedule): array
+    {
+        $origins = [];
+        $constraints = $this->entityManager->getRepository(Constraint::class)->findBy([
+            'clubId' => $schedule->getClubId(),
+            'seasonId' => $schedule->getSeasonId(),
+        ]);
+        foreach ($constraints as $constraint) {
+            $origins[$constraint->getId()] = null === $constraint->getCalendarEntryId();
+        }
+
+        return $origins;
     }
 
     /**
