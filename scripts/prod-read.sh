@@ -18,10 +18,14 @@
 # sortie n'est écrit : le résultat part sur stdout.
 #
 # Pré-requis (gestes fondateur, une fois — docs/ops/deploy.md §1.8) :
-#   - la clé SSH dédiée posée dans authorized_keys de la VM (restreinte) ;
+#   - la clé SSH dédiée (À PHRASE DE PASSE) posée dans authorized_keys de la VM
+#     (restreinte) ;
 #   - l'entrée `Host amateo-prod-read` dans ~/.ssh/config ;
 #   - ~/.pgpass-amateo (chmod 600) avec la ligne
 #       127.0.0.1:15432:amateo:amateo_read:<mot de passe>
+# Avant chaque enquête, le fondateur DÉVERROUILLE la clé dans l'agent SSH, pour
+# une durée limitée : `ssh-add -t 4h ~/.ssh/amateo_prod_read`. Clé verrouillée =
+# ce script échoue net, aucune session n'atteint la prod.
 #
 # Usage :
 #   scripts/prod-read.sh [--club <uuid|nom>] [--csv] "<requête SQL>"
@@ -36,6 +40,7 @@
 set -euo pipefail
 
 readonly SSH_ALIAS="amateo-prod-read"
+readonly SSH_KEY="${HOME}/.ssh/amateo_prod_read"
 readonly LOCAL_PORT=15432
 readonly PGPASS_HOST="${HOME}/.pgpass-amateo"
 readonly PSQL_IMAGE="postgres:16-alpine"
@@ -104,6 +109,15 @@ command -v docker >/dev/null 2>&1 || die "docker introuvable"
 perms="$(stat -c '%a' "$PGPASS_HOST" 2>/dev/null || stat -f '%Lp' "$PGPASS_HOST")"
 [[ "$perms" == "600" ]] || die "${PGPASS_HOST} doit être en chmod 600 (actuel : ${perms})"
 
+# ── Interrupteur : la clé dédiée (à phrase de passe) doit être DÉVERROUILLÉE ──
+# dans l'agent SSH. Clé absente de l'agent = aucune session ne peut atteindre la
+# prod. On compare l'empreinte de la clé publique à celles que porte l'agent.
+[[ -f "${SSH_KEY}.pub" ]] || die "clé publique absente : ${SSH_KEY}.pub — cf. docs/ops/deploy.md §1.8"
+key_fpr="$(ssh-keygen -lf "${SSH_KEY}.pub" | awk '{print $2}')"
+if ! ssh-add -l 2>/dev/null | awk '{print $2}' | grep -qxF "$key_fpr"; then
+  die "clé amateo-prod-read verrouillée : demander au fondateur \`ssh-add -t 4h ~/.ssh/amateo_prod_read\`"
+fi
+
 # ── Barrière 2 : le tunnel SSH, via un socket de contrôle pour le refermer ──
 control_dir="$(mktemp -d "${TMPDIR:-/tmp}/prod-read.XXXXXX")"
 control_sock="${control_dir}/ctrl.sock"
@@ -117,10 +131,11 @@ cleanup() {
 trap cleanup EXIT
 
 ssh -fN -M -S "$control_sock" \
+  -o BatchMode=yes \
   -o ExitOnForwardFailure=yes \
   -L "${LOCAL_PORT}:127.0.0.1:5432" \
   "$SSH_ALIAS" \
-  || die "tunnel SSH refusé — vérifier l'alias « ${SSH_ALIAS} » (~/.ssh/config) et la clé dédiée (docs/ops/deploy.md §1.8)"
+  || die "tunnel SSH refusé — vérifier l'alias « ${SSH_ALIAS} » (~/.ssh/config), que la clé est déverrouillée (\`ssh-add -t 4h ~/.ssh/amateo_prod_read\`) et autorisée sur la VM (docs/ops/deploy.md §1.8)"
 
 # ── Préambule optionnel : poser le club (AIDE, pas une frontière — rls.md) ──
 preamble=""

@@ -238,7 +238,10 @@ Depuis un poste, la lecture passe par un **tunnel SSH vers le port loopback de P
 opérateur). Le tunnel s'ouvre avec une **clé dédiée et restreinte**, jamais une clé d'admin :
 
 ```bash
-# a. Générer la clé dédiée sur ton poste (jamais réutiliser une clé d'admin) :
+# a. Générer la clé dédiée sur ton poste (jamais réutiliser une clé d'admin).
+#    SURTOUT PAS `-N ''` : ssh-keygen DOIT demander une PHRASE DE PASSE — c'est elle
+#    que tu déverrouilles dans l'agent pour une durée limitée (étape e), l'interrupteur
+#    d'accès à la prod. Une clé en clair sur le disque donnerait un accès permanent.
 ssh-keygen -t ed25519 -f ~/.ssh/amateo_prod_read -C amateo-prod-read
 
 # b. Sur la VM, ajouter la clé PUBLIQUE à ~/.ssh/authorized_keys du compte de déploiement,
@@ -262,6 +265,32 @@ EOF
    printf '127.0.0.1:15432:amateo:amateo_read:%s\n' "$PW" > ~/.pgpass-amateo && \
    chmod 600 ~/.pgpass-amateo && unset PW && echo OK
 ```
+
+⬜ **Prérequis WSL — un agent SSH sur un socket fixe** (une fois, dans `~/.bashrc`). Sous WSL un
+shell non interactif (celui qui lance `scripts/prod-read.sh`) ne trouve pas l'agent par défaut :
+on l'ancre sur un socket connu et on l'exporte, pour que tous les shells le partagent :
+
+```bash
+# ~/.bashrc
+export SSH_AUTH_SOCK=$HOME/.ssh/agent.sock
+[ -S "$SSH_AUTH_SOCK" ] || ssh-agent -a "$SSH_AUTH_SOCK" >/dev/null
+```
+
+Alternative : [`keychain`](https://www.funtoo.org/Keychain) (`eval "$(keychain --eval --agent ssh id_ed25519)"` dans `~/.bashrc`) gère cet agent unique et persistant à ta place.
+
+⬜ **Avant chaque enquête — déverrouiller la clé**, pour une durée limitée. C'est
+**l'interrupteur** : clé verrouillée = aucune session n'atteint la prod, et l'accès **expire seul**
+au bout du délai (pas de clé qui traîne déverrouillée) :
+
+```bash
+ssh-add -t 4h ~/.ssh/amateo_prod_read   # saisis la phrase de passe ; accès ouvert 4 h max
+ssh-add -l                              # vérifier qu'elle est bien chargée
+ssh-add -d ~/.ssh/amateo_prod_read      # COUPER l'accès tout de suite (sans attendre l'expiration)
+```
+
+`scripts/prod-read.sh` **refuse de démarrer** si la clé n'est pas dans l'agent (il compare
+l'empreinte `ssh-keygen -lf …pub` à `ssh-add -l`) et ouvre le tunnel en `BatchMode=yes` (jamais
+d'invite interactive) — une clé verrouillée échoue net, elle ne demande pas la phrase en douce.
 
 ⬜ **Utiliser** — `scripts/prod-read.sh` fait tout : il ouvre le tunnel (`127.0.0.1:15432` →
 `127.0.0.1:5432` via l'alias `amateo-prod-read`), se connecte en `amateo_read` en transaction
