@@ -33,6 +33,10 @@ final class TrainingBlockContext extends BaseContext
 
     private const string START_TIME = '18:00';
 
+    private const int POLL_INTERVAL_SECONDS = 2;
+
+    private const int TIMEOUT_SECONDS = 120;
+
     private string $token = '';
 
     private string $clubId = '';
@@ -54,6 +58,34 @@ final class TrainingBlockContext extends BaseContext
 
     /** @var list<string> */
     private array $groupReservationIds = [];
+
+    // Scénario « mutualiser une séance placée d'un plan de période » (lot 9, rail depuis la
+    // génération) : décor jetable d'un plan de période transcrit du socle, nettoyé en fin de run.
+    private bool $pointerSetBySelf = false;
+
+    private string $periodEntryId = '';
+
+    private string $periodPlanId = '';
+
+    private string $periodVersionId = '';
+
+    private string $periodSeasonId = '';
+
+    private string $sourceSlotId = '';
+
+    private string $sourceTeamId = '';
+
+    private string $sourceVenueId = '';
+
+    private int $sourceDay = 0;
+
+    private string $sourceStart = '';
+
+    private string $joinerSlotId = '';
+
+    private string $joinerTeamId = '';
+
+    private string $periodBlockId = '';
 
     #[Given('le club de démonstration et son gestionnaire connecté')]
     public function leClubEtSonGestionnaireConnecte(): void
@@ -175,6 +207,149 @@ final class TrainingBlockContext extends BaseContext
         }
     }
 
+    #[Given('le club de démonstration et un plan de période généré')]
+    public function unPlanDePeriodeGenere(): void
+    {
+        $this->token = $this->mintToken(self::USER_EMAIL);
+
+        $me = $this->apiGet('me', $this->token);
+        $club = $me['json']['club'] ?? null;
+        $clubId = \is_array($club) ? ($club['id'] ?? null) : null;
+        if (!\is_string($clubId) || '' === $clubId) {
+            throw new RuntimeException('aucun club pour le gestionnaire de démonstration — la base est-elle seedée ?');
+        }
+        $this->clubId = $clubId;
+
+        // Ouvrir un plan de période exige que le socle pointe une version (SocleGuard) : on le pose
+        // si vide, et on le repose à NULL en fin de scénario.
+        $chosen = $this->dbalScalar(
+            \sprintf('SELECT chosen_schedule_id AS behatval FROM schedule_plan WHERE club_id=\'%s\' AND type=\'SEASON\' LIMIT 1', $this->clubId),
+            admin: true,
+        );
+        if ('' === $chosen) {
+            $completed = $this->dbalScalar(
+                \sprintf('SELECT id AS behatval FROM schedule WHERE club_id=\'%s\' AND status=\'COMPLETED\' AND schedule_plan_id=(SELECT id FROM schedule_plan WHERE club_id=\'%s\' AND type=\'SEASON\') ORDER BY created_at DESC LIMIT 1', $this->clubId, $this->clubId),
+                admin: true,
+            );
+            if ('' === $completed) {
+                throw new RuntimeException('aucun planning de saison COMPLETED — la base est-elle seedée ?');
+            }
+            $this->dbalExec(
+                \sprintf('UPDATE schedule_plan SET chosen_schedule_id=\'%s\' WHERE club_id=\'%s\' AND type=\'SEASON\'', $completed, $this->clubId),
+                admin: true,
+            );
+            $this->pointerSetBySelf = true;
+        }
+
+        // Une période jetable et son plan ; la transcription depuis le socle garnit une PREMIÈRE
+        // version de séances PLACÉES (copie de la grille de saison) — un décor déterministe, sans
+        // dépendre d'un solve frais.
+        $this->periodEntryId = $this->createClosurePeriod($this->holidayFreeMonday(56), 'Mutualiser depuis la génération (fonctionnel)');
+
+        $plan = $this->apiPost('schedule_plans', ['calendarEntryId' => $this->periodEntryId], $this->token);
+        $this->periodPlanId = $this->createdId($plan, 'plan de période');
+
+        $transcribed = $this->apiPost(\sprintf('schedule_plans/%s/transcribe-from-socle', $this->periodPlanId), [], $this->token);
+        $this->periodVersionId = $this->createdId($transcribed, 'transcription du socle');
+        $status = $this->pollUntilTerminal($this->periodVersionId);
+        if ('COMPLETED' !== $status) {
+            throw new RuntimeException(\sprintf('la transcription du plan de période n\'a pas abouti (statut « %s »)', $status));
+        }
+
+        $this->periodSeasonId = $this->dbalScalar(
+            \sprintf('SELECT season_id AS behatval FROM schedule WHERE id=\'%s\'', $this->periodVersionId),
+            admin: true,
+        );
+    }
+
+    #[Given('deux séances placées d\'équipes distinctes, chacune sur sa propre case')]
+    public function deuxSeancesPlacees(): void
+    {
+        // La SOURCE : une séance SOLO (hors bloc) dont l'équipe n'a qu'UNE séance dans cette version,
+        // sans réservation individuelle, sur une case qu'elle occupe SEULE — la capacité tiendra le
+        // bloc sans déborder et le budget Σ (1 séance commune ≤ son volume) passe.
+        $source = $this->pickCleanSoloSlot('', null);
+        $parts = '' === $source ? [] : explode('|', $source);
+        if (5 !== \count($parts)) {
+            throw new RuntimeException('aucune séance solo exploitable dans le plan de période transcrit — décor non tenu');
+        }
+        [$this->sourceSlotId, $this->sourceTeamId, $this->sourceVenueId, $sourceDay, $this->sourceStart] = $parts;
+        $this->sourceDay = (int) $sourceDay;
+
+        // La JOINER : une AUTRE équipe, elle aussi SOLO et sans réservation, sur une AUTRE case.
+        $joiner = $this->pickCleanSoloSlot($this->sourceTeamId, [$this->sourceVenueId, $this->sourceDay, $this->sourceStart]);
+        $parts = '' === $joiner ? [] : explode('|', $joiner);
+        if (5 !== \count($parts)) {
+            throw new RuntimeException('aucune seconde séance solo exploitable (équipe distincte, autre case) — décor non tenu');
+        }
+        [$this->joinerSlotId, $this->joinerTeamId] = $parts;
+    }
+
+    #[When('je mutualise la première séance en y rattachant la seconde équipe')]
+    public function jeMutualise(): void
+    {
+        $result = $this->apiPost(
+            \sprintf('schedule-slots/%s/mutualize', $this->sourceSlotId),
+            ['teamIds' => [$this->sourceTeamId, $this->joinerTeamId], 'replacedSlotIds' => [$this->joinerSlotId]],
+            $this->token,
+        );
+        if (200 !== $result['status']) {
+            $detail = json_encode($result['json'], \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES);
+            throw new RuntimeException(\sprintf('la mutualisation a répondu %d (200 attendu) — %s', $result['status'], \is_string($detail) ? $detail : '?'));
+        }
+        $blockId = $result['json']['blockId'] ?? null;
+        if (!\is_string($blockId) || '' === $blockId) {
+            throw new RuntimeException('la mutualisation n\'a pas renvoyé d\'identifiant de bloc');
+        }
+        $this->periodBlockId = $blockId;
+    }
+
+    #[Then('les deux séances partagent la même case, liées à un même bloc de mutualisation')]
+    public function lesDeuxSeancesPartagentLaCase(): void
+    {
+        $onCaseLinked = (int) $this->dbalScalar(
+            \sprintf(
+                'SELECT COUNT(*) AS behatval FROM schedule_slot_template'
+                . ' WHERE schedule_id=\'%s\' AND shared_training_block_id=\'%s\''
+                . ' AND venue_id=\'%s\' AND day_of_week=%d AND start_time=\'%s\'',
+                $this->periodVersionId,
+                $this->periodBlockId,
+                $this->sourceVenueId,
+                $this->sourceDay,
+                $this->sourceStart,
+            ),
+            admin: true,
+        );
+        if (2 !== $onCaseLinked) {
+            throw new RuntimeException(\sprintf('les deux séances du groupe devraient siéger sur la case d\'ancrage, liées au bloc (%d trouvée[s])', $onCaseLinked));
+        }
+    }
+
+    #[When('je supprime le bloc de mutualisation')]
+    public function jeSupprimeLeBloc(): void
+    {
+        $removed = $this->apiDelete(\sprintf('shared_training_blocks/%s', $this->periodBlockId), $this->token);
+        if (204 !== $removed['status']) {
+            throw new RuntimeException(\sprintf('la suppression du bloc a répondu %d (204 attendu)', $removed['status']));
+        }
+    }
+
+    #[Then('les deux séances du groupe ont disparu du plan')]
+    public function lesSeancesDuGroupeOntDisparu(): void
+    {
+        $remaining = (int) $this->dbalScalar(
+            \sprintf(
+                'SELECT COUNT(*) AS behatval FROM schedule_slot_template WHERE id IN (\'%s\', \'%s\')',
+                $this->sourceSlotId,
+                $this->joinerSlotId,
+            ),
+            admin: true,
+        );
+        if (0 !== $remaining) {
+            throw new RuntimeException(\sprintf('les séances liées au bloc auraient dû disparaître avec lui (%d subsiste[nt])', $remaining));
+        }
+    }
+
     /**
      * Retire les réservations posées (en base, pour couvrir la cascade), puis les équipes
      * jetables (leur suppression cascade le bloc de mutualisation) et le gymnase. Quoi qu'il arrive.
@@ -203,6 +378,19 @@ final class TrainingBlockContext extends BaseContext
         }
         if ('' !== $this->venueId) {
             $this->apiDelete(\sprintf('venues/%s', $this->venueId), $this->token);
+        }
+
+        // Décor du scénario « plan de période » : la suppression de la période cascade son plan,
+        // ses versions, leurs séances et le bloc ; puis on repose le pointeur du socle à NULL si
+        // c'est nous qui l'avons posé. Guardé (champ vide = scénario socle, rien à faire).
+        if ('' !== $this->periodEntryId) {
+            $this->apiDelete(\sprintf('calendar_entries/%s', $this->periodEntryId), $this->token);
+        }
+        if ($this->pointerSetBySelf && '' !== $this->clubId) {
+            $this->dbalExec(
+                \sprintf('UPDATE schedule_plan SET chosen_schedule_id=NULL WHERE club_id=\'%s\' AND type=\'SEASON\'', $this->clubId),
+                admin: true,
+            );
         }
     }
 
@@ -269,5 +457,107 @@ final class TrainingBlockContext extends BaseContext
         $members = $json['member'] ?? $json;
 
         return array_values(array_filter(\is_array($members) ? $members : [], 'is_array'));
+    }
+
+    private function createClosurePeriod(string $start, string $title): string
+    {
+        $end = date('Y-m-d', (int) strtotime($start . ' +4 days'));
+
+        $entry = $this->apiPost('calendar_entries', [
+            'kind' => 'period',
+            'periodType' => 'closure',
+            'title' => $title,
+            'startDate' => $start,
+            'endDate' => $end,
+        ], $this->token);
+
+        return $this->createdId($entry, 'période jetable');
+    }
+
+    /**
+     * Le lundi (Y-m-d) d'une fenêtre de 4 jours SANS vacances scolaires de la zone du club, à partir
+     * de « next monday +$offsetDays » — glisse de semaine en semaine jusqu'à en trouver une (un
+     * décor relatif à aujourd'hui traverse les vacances au fil de l'année). Patron PeriodOverlayContext.
+     */
+    private function holidayFreeMonday(int $offsetDays): string
+    {
+        $monday = (int) strtotime(\sprintf('next monday +%d days', $offsetDays));
+        for ($attempt = 0; $attempt < 30; ++$attempt) {
+            $start = date('Y-m-d', $monday);
+            $end = date('Y-m-d', (int) strtotime('+4 days', $monday));
+            $hits = $this->dbalScalar(\sprintf(
+                'SELECT count(*) AS behatval FROM school_holiday_period h JOIN club c ON c.school_zone = h.zone WHERE c.id=\'%s\' AND h.start_date <= \'%s\' AND h.end_date >= \'%s\'',
+                $this->clubId,
+                $end,
+                $start,
+            ), admin: true);
+            if ('0' === $hits) {
+                return $start;
+            }
+            $monday = (int) strtotime('+7 days', $monday);
+        }
+
+        throw new RuntimeException(\sprintf('aucune fenêtre de 4 jours sans vacances scolaires trouvée après « next monday +%d days »', $offsetDays));
+    }
+
+    private function pollUntilTerminal(string $scheduleId): string
+    {
+        $deadline = time() + self::TIMEOUT_SECONDS;
+        $status = '';
+
+        do {
+            $response = $this->apiGet(\sprintf('schedules/%s', $scheduleId), $this->token);
+            if (200 !== $response['status']) {
+                throw new RuntimeException(\sprintf('lecture de la version en échec (HTTP %d)', $response['status']));
+            }
+
+            $status = $response['json']['status'] ?? '';
+            if (\is_string($status) && \in_array($status, ['COMPLETED', 'FAILED'], true)) {
+                return $status;
+            }
+
+            sleep(self::POLL_INTERVAL_SECONDS);
+        } while (time() < $deadline);
+
+        throw new RuntimeException(\sprintf('la génération n\'a pas abouti dans le délai imparti (dernier statut « %s »)', \is_string($status) ? $status : 'inconnu'));
+    }
+
+    /**
+     * Une séance SOLO (hors bloc) du plan transcrit : son équipe n'a qu'UNE séance ici, aucune
+     * réservation individuelle, et sa case n'a qu'UN occupant (capacité sereine). Rendu
+     * « id|team|venue|day|start », ou '' si aucune. Enveloppé dans un SELECT extérieur
+     * (`dbal:run-sql` traiterait un WITH comme une écriture, cf. PeriodOverlayContext).
+     *
+     * @param array{0: string, 1: int, 2: string}|null $excludeCase
+     */
+    private function pickCleanSoloSlot(string $excludeTeam, ?array $excludeCase): string
+    {
+        $filters = '';
+        if ('' !== $excludeTeam) {
+            $filters .= \sprintf(' AND s.team_id <> \'%s\'', $excludeTeam);
+        }
+        if (null !== $excludeCase) {
+            $filters .= \sprintf(' AND NOT (s.venue_id = \'%s\' AND s.day_of_week = %d AND s.start_time = \'%s\')', $excludeCase[0], $excludeCase[1], $excludeCase[2]);
+        }
+
+        return $this->dbalScalar(
+            \sprintf(
+                'SELECT sub.behatval AS behatval FROM ('
+                . ' SELECT s.id || \'|\' || s.team_id || \'|\' || s.venue_id || \'|\' || s.day_of_week || \'|\' || s.start_time AS behatval'
+                . ' FROM schedule_slot_template s'
+                . ' WHERE s.schedule_id = \'%1$s\' AND s.team_id IS NOT NULL AND s.shared_training_block_id IS NULL'
+                . ' AND (SELECT COUNT(*) FROM schedule_slot_template o WHERE o.schedule_id = s.schedule_id AND o.team_id = s.team_id) = 1'
+                . ' AND (SELECT COUNT(*) FROM schedule_slot_template c WHERE c.schedule_id = s.schedule_id AND c.venue_id = s.venue_id AND c.day_of_week = s.day_of_week AND c.start_time = s.start_time) = 1'
+                . ' AND NOT EXISTS (SELECT 1 FROM shared_training_block_team bt WHERE bt.team_id = s.team_id AND bt.season_id = \'%2$s\')'
+                . ' AND NOT EXISTS (SELECT 1 FROM reservation r WHERE r.team_id = s.team_id)'
+                . '%3$s'
+                . ' ORDER BY s.id LIMIT 1'
+                . ') sub',
+                $this->periodVersionId,
+                $this->periodSeasonId,
+                $filters,
+            ),
+            admin: true,
+        );
     }
 }
