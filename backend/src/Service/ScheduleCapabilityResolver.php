@@ -6,6 +6,7 @@ namespace App\Service;
 
 use App\Dto\ScheduleCapabilities;
 use App\Entity\Schedule;
+use App\Entity\SchedulePlan;
 use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
 use Doctrine\DBAL\ArrayParameterType;
@@ -88,13 +89,15 @@ final class ScheduleCapabilityResolver
      * reproduisent EXACTEMENT les prédicats unitaires ci-dessus.
      *
      * @param list<Schedule>        $schedules
-     * @param array<string, true>   $chosenIds    ids des versions que leur plan pointe
-     * @param array<string, string> $planTypeById scheduleId => type de plan (SEASON|CLOSURE|HOLIDAY)
-     * @param array<string, true>   $withPhoto    ids des versions portant une photo de structure
+     * @param array<string, true>   $chosenIds     ids des versions que leur plan pointe
+     * @param array<string, string> $planTypeById  scheduleId => type de plan (SEASON|CLOSURE|HOLIDAY)
+     * @param array<string, true>   $withPhoto     ids des versions portant une photo de structure
+     * @param array<string, true>   $lockSourceIds ids des versions qui SONT la source des verrous de
+     *                                             leur plan (maison {@see SchedulePlanProvisioner::lockSourceScheduleIdOfPlan})
      *
      * @return array<string, ScheduleCapabilities> scheduleId => capacités
      */
-    public function forSchedules(array $schedules, array $chosenIds, array $planTypeById, array $withPhoto): array
+    public function forSchedules(array $schedules, array $chosenIds, array $planTypeById, array $withPhoto, array $lockSourceIds = []): array
     {
         if ([] === $schedules) {
             return [];
@@ -105,6 +108,9 @@ final class ScheduleCapabilityResolver
             $planIds[$schedule->getSchedulePlanId()] = true;
         }
         $planStats = $this->planStats(array_keys($planIds));
+        // V1bis — les plans VALIDÉS (chosen_schedule_id non-null) du lot : « Charger » (load-locks)
+        // est refusé sur un plan validé (rouvrir d'abord), donc canLoadLocks le lit par plan.
+        $validatedPlanIds = $this->validatedPlanIds(array_keys($planIds));
 
         $seasonInFlight = []; // seasonId => bool, résolu une fois par saison
         $seasonOverlays = []; // seasonId => int, résolu une fois par saison
@@ -140,11 +146,21 @@ final class ScheduleCapabilityResolver
                 $overlaysDropped = $seasonOverlays[$seasonId];
             }
 
+            // V1bis — « Charger » pour une PÉRIODE (load-locks) : version de période (plan non-SEASON,
+            // jamais une version anomale sans plan) TERMINÉE, plan NON validé, aucune génération en
+            // cours dans la saison, ET pas DÉJÀ la source (sinon le geste ne changerait rien — on ne
+            // l'offre pas). Miroir des gardes de LoadLocksController (la génération en cours y est lue
+            // sur la ClubGenerationLock Redis ; ici son miroir base PENDING/GENERATING de la saison).
+            $isPeriod = !$isSeason && null !== ($planTypeById[$id] ?? null);
+            $planValidated = isset($validatedPlanIds[$schedule->getSchedulePlanId()]);
+
             $capabilities[$id] = new ScheduleCapabilities(
                 canDelete: !$isChosen && !$isInFlight && !$isLastFinishedSeasonVersion,
                 canValidate: $isCompleted && !$hasInFlightSibling,
                 canRegenerateFrom: $isSeason && $isCompleted && !$isChosen
                     && !$seasonInFlight[$seasonId] && isset($withPhoto[$id]),
+                canLoadLocks: $isPeriod && $isCompleted && !$planValidated
+                    && !$seasonInFlight[$seasonId] && !isset($lockSourceIds[$id]),
                 versionsDeletedOnValidate: max(0, $stats['total'] - 1),
                 overlaysDroppedOnValidate: $overlaysDropped,
             );
@@ -195,5 +211,38 @@ final class ScheduleCapabilityResolver
         }
 
         return $stats;
+    }
+
+    /**
+     * V1bis — les plans VALIDÉS (chosen_schedule_id non-null) parmi `$planIds`, en UN batch.
+     * Tenant+season filtrés comme le reste des lectures ORM du provider (un plan appartient à UNE
+     * saison). Un plan absent de la carte est NON validé (espace de travail).
+     *
+     * @param list<string> $planIds
+     *
+     * @return array<string, true>
+     */
+    private function validatedPlanIds(array $planIds): array
+    {
+        if ([] === $planIds) {
+            return [];
+        }
+
+        /** @var list<array{id: string}> $rows */
+        $rows = $this->entityManager->createQueryBuilder()
+            ->select('p.id AS id')
+            ->from(SchedulePlan::class, 'p')
+            ->where('p.id IN (:planIds)')
+            ->andWhere('p.chosenScheduleId IS NOT NULL')
+            ->setParameter('planIds', $planIds, ArrayParameterType::STRING)
+            ->getQuery()
+            ->getScalarResult();
+
+        $set = [];
+        foreach ($rows as $row) {
+            $set[$row['id']] = true;
+        }
+
+        return $set;
     }
 }

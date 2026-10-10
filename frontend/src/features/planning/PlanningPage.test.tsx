@@ -6,7 +6,7 @@ import type { EntryConflictsResponse, SchedulePlan } from "@/features/cockpit/ap
 import { useToastStore } from "@/shared/stores/toastStore";
 import { renderWithProviders } from "@/test/utils";
 
-import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, getDiagnostics, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, reopenSchedule, TargetLockedError, validateSchedule } from "./api";
+import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, getDiagnostics, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, loadLocks, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, reopenSchedule, TargetLockedError, validateSchedule } from "./api";
 import type { Schedule } from "./api";
 import { PlanningPage } from "./PlanningPage";
 import { usePlanningStore } from "./store";
@@ -144,6 +144,8 @@ vi.mock("./api", () => {
   generateSchedule: vi.fn(),
   // V1 — « Régénérer » un overlay crée une nouvelle version puis la génère (useRegenerateOverlay).
   createOverlayVersion: vi.fn(() => Promise.resolve({ id: "ov-new" })),
+  // V1bis — « Charger » les verrous d'une version de période (pose le pointeur, ne génère pas).
+  loadLocks: vi.fn(() => Promise.resolve({ id: SID })),
   validateSchedule: vi.fn(),
   STATUS_LABELS: { DRAFT: "Brouillon", PENDING: "En attente", GENERATING: "Génération…", COMPLETED: "Terminé", FAILED: "Échec" },
   // P4-119 c bis : EvictConfirmDialog lit cette constante de `./api` pour AFFICHER la borne
@@ -256,7 +258,7 @@ vi.mock("@/features/auth/queries", () => ({
 
 // P2-8 : la toolbar lit les gestes (Valider…) du bloc `capabilities` serveur, plus d'un
 // calcul client — une version de travail terminée « ordinaire » est validable.
-const workVersion: Schedule[] = [{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", capabilities: { canDelete: false, canValidate: true, canRegenerateFrom: false, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 } }];
+const workVersion: Schedule[] = [{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", capabilities: { canDelete: false, canValidate: true, canRegenerateFrom: false, canLoadLocks: false, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 } }];
 
 beforeEach(() => {
   meState.chosenScheduleId = null;
@@ -395,6 +397,33 @@ describe("PlanningPage (integration)", () => {
     await userEvent.type(field, "Reprise d'été S2{Enter}");
 
     expect(renameSpy).toHaveBeenCalledWith({ planId: "ete-plan", name: "Reprise d'été S2" });
+  });
+
+  // V1bis — « Charger » pour une version de PÉRIODE : le bouton offert par le serveur
+  // (capabilities.canLoadLocks) ouvre une confirmation qui NOMME la version et dit l'effet,
+  // puis pose le pointeur (loadLocks) sans générer.
+  it("charge les verrous d'une version de période : confirmation nommée puis pose du pointeur", async () => {
+    vi.mocked(listSchedules).mockResolvedValue([
+      {
+        id: SID, name: "Version de période", status: "COMPLETED", score: null,
+        createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z",
+        planType: "HOLIDAY", schedulePlanId: "ete-plan", isChosen: false,
+        capabilities: { canDelete: true, canValidate: false, canRegenerateFrom: false, canLoadLocks: true, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 },
+      },
+    ]);
+    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été S1", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+    usePlanningStore.setState({ selectedScheduleId: SID });
+    renderWithProviders(<PlanningPage />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /charger cette version/i }));
+
+    // La confirmation NOMME la version (le libellé V1 — … d'une version seule) et dit l'effet,
+    // mot pour mot de la décision fondateur. On épingle l'effet (stable) et la mention de la version.
+    const confirmText = await screen.findByText(/deviendront les données en cours : la prochaine régénération repartira d'eux\./);
+    expect(confirmText).toHaveTextContent(/Les verrous de la version V1/);
+
+    await userEvent.click(screen.getByRole("button", { name: "Charger" }));
+    expect(vi.mocked(loadLocks)).toHaveBeenCalledWith(SID);
   });
 
   it("renomme bien le plan de SAISON quand c'est lui qui est affiché", async () => {

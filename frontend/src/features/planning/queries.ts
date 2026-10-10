@@ -501,6 +501,21 @@ export function useRegenerateFromVersion() {
   });
 }
 
+/**
+ * V1bis — « Charger » pour une version de PÉRIODE : pose ses verrous comme les données EN COURS
+ * de son plan (le serveur pose le pointeur), SANS générer. `isLockSource` bascule sur la version
+ * chargée → on rafraîchit la liste des versions. Le motif d'un refus serveur (409/404) est toasté
+ * plutôt qu'un échec anonyme, comme ses sœurs de régénération.
+ */
+export function useLoadLocks() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => planningApi.loadLocks(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["schedules"] }),
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
 /** planning-versions (overlay versions): "Régénérer" on a period overlay creates
  *  a NEW overlay version (a new Schedule for the same period) and generates it —
  *  unlike a season plan, which regenerates from the current structure. */

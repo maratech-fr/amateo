@@ -249,31 +249,85 @@ final class SchedulePlanProvisioner
 
     /**
      * MAISON UNIQUE des « verrous effectifs d'un plan » : l'id de la version dont les verrous HARD
-     * sont HÉRITÉS par la prochaine génération du plan — SEASON comme PÉRIODE. En V1 = la DERNIÈRE
-     * version COMPLETED du plan (créée en dernier). « Régénérer » repart donc toujours des verrous
-     * de la version EN COURS (patron « Charger ») : une version NUE n'a pas de slotTemplates propres,
-     * et sans cette source les verrous ne voyageaient qu'en `previousAssignments` (SOFT) et revenaient
-     * NONE — le bug que V1 corrige.
+     * sont HÉRITÉS par la prochaine génération du plan — SEASON comme PÉRIODE. « Régénérer » repart
+     * donc toujours des verrous de la version EN COURS (patron « Charger ») : une version NUE n'a pas
+     * de slotTemplates propres, et sans cette source les verrous ne voyageaient qu'en
+     * `previousAssignments` (SOFT) et revenaient NONE — le bug que V1 corrige.
+     *
+     * V1bis — DEUX régimes, un seul foyer : le POINTEUR `schedule_plan.lock_source_schedule_id`
+     * (posé par « Charger »/load-locks, re-pointé à chaque nouvelle version COMPLETED) FAIT FOI
+     * s'il désigne une version EXISTANTE, COMPLETED et DU MÊME plan ; sinon (pointeur nul ou devenu
+     * incohérent — version supprimée/échouée) on retombe sur la DERNIÈRE version COMPLETED du plan.
+     * Ce repli garde le comportement V1 pour tout plan dont personne n'a « chargé » une version.
      *
      * Consommée par {@see ScheduleConstraintBuilder::buildForPeriodPlan} (greffe canonique),
-     * {@see ScheduleResultImporter} (origine MANUAL d'un verrou réimporté) et {@see OrphanPinGuard}
-     * (verrous effectifs) : une seule définition de « quelle version porte les verrous du plan ».
-     *
-     * (V1bis greffera le pointeur `schedule_plan.lock_source_schedule_id`, avec repli sur cette
-     *  dernière COMPLETED.)
+     * {@see ScheduleResultImporter} (origine MANUAL d'un verrou réimporté), {@see OrphanPinGuard}
+     * (verrous effectifs) et le batch `isLockSource` du provider : une seule définition de « quelle
+     * version porte les verrous du plan ».
      *
      * SQL brut : esquive le `season_filter` (la saison du plan n'est pas forcément l'active) ; RLS
      * scope le club. Tri `created_at DESC, version_number DESC` = dernière née, déterministe sur ex æquo.
      */
     public function lockSourceScheduleIdOfPlan(string $schedulePlanId): ?string
     {
-        $id = $this->entityManager->getConnection()->fetchOne(
+        $connection = $this->entityManager->getConnection();
+
+        // Le pointeur fait foi s'il reste cohérent (version existante, COMPLETED, du même plan).
+        $pointer = $connection->fetchOne(
+            'SELECT lock_source_schedule_id FROM schedule_plan WHERE id = :pid',
+            ['pid' => $schedulePlanId],
+        );
+        if (\is_string($pointer)) {
+            $valid = $connection->fetchOne(
+                'SELECT id FROM schedule WHERE id = :sid AND schedule_plan_id = :pid AND status = \'COMPLETED\'',
+                ['sid' => $pointer, 'pid' => $schedulePlanId],
+            );
+            if (\is_string($valid)) {
+                return $valid;
+            }
+        }
+
+        // Repli (pas de pointeur, ou pointeur périmé) : la dernière version COMPLETED du plan.
+        $id = $connection->fetchOne(
             'SELECT id FROM schedule WHERE schedule_plan_id = :pid AND status = \'COMPLETED\' '
             . 'ORDER BY created_at DESC, version_number DESC LIMIT 1',
             ['pid' => $schedulePlanId],
         );
 
         return \is_string($id) ? $id : null;
+    }
+
+    /**
+     * V1bis — POSE le pointeur de source des verrous d'un plan sur `$scheduleId` : « Charger »
+     * (load-locks) le pose sur la version choisie par le gestionnaire ; la complétion d'une
+     * génération le re-pointe sur la version fraîchement terminée (générer devient la source,
+     * patron de l'auto-★ saison). SQL brut, comme {@see choose} : le plan n'est pas chargé dans
+     * l'UnitOfWork sur ces chemins (worker de génération, contrôleur load-locks). On ne touche PAS
+     * `version` (l'optimistic-lock de SchedulePlan) : le pointeur n'est lu que par la maison
+     * ci-dessus, aucun lecteur n'en dérive un état de concurrence. RLS scope le club.
+     */
+    public function pointLockSource(string $schedulePlanId, string $scheduleId): void
+    {
+        $this->entityManager->getConnection()->executeStatement(
+            'UPDATE schedule_plan SET lock_source_schedule_id = :sid, updated_at = now() WHERE id = :pid',
+            ['sid' => $scheduleId, 'pid' => $schedulePlanId],
+        );
+    }
+
+    /**
+     * La version CHOISIE (« le pointeur », = « validé ») d'un plan DONNÉ PAR SON ID — SEASON comme
+     * PÉRIODE. null = espace de travail (plan non validé). Sœur par-id de {@see chosenOfPeriodPlan}
+     * (par entrée de calendrier) : le contrôleur load-locks n'a que le planId de la version.
+     * SQL brut, filter-free ; RLS scope le club.
+     */
+    public function chosenScheduleIdOfPlan(string $schedulePlanId): ?string
+    {
+        $chosen = $this->entityManager->getConnection()->fetchOne(
+            'SELECT chosen_schedule_id FROM schedule_plan WHERE id = :pid',
+            ['pid' => $schedulePlanId],
+        );
+
+        return \is_string($chosen) ? $chosen : null;
     }
 
     /**

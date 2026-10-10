@@ -256,6 +256,18 @@ final class LockContext extends BaseContext
         }
     }
 
+    #[When('je charge les verrous de cette version')]
+    public function jeChargeLesVerrousDeCetteVersion(): void
+    {
+        // V1bis — « Charger » : pose le pointeur de source des verrous du plan sur la version source
+        // (le rail que `useLoadLocks` suit côté front). Ne génère pas ; la régénération qui suit
+        // repartira de SES verrous.
+        $loaded = $this->apiPost(\sprintf('schedules/%s/load-locks', $this->periodSourceVersionId), [], $this->token);
+        if (200 !== $loaded['status']) {
+            throw new RuntimeException(\sprintf('« Charger » les verrous d\'une version de période a répondu %d (200 attendu)', $loaded['status']));
+        }
+    }
+
     #[When('je régénère le plan de période')]
     #[When('je régénère encore le plan de période')]
     public function jeRegenereLePlanDePeriode(): void
@@ -572,6 +584,17 @@ final class LockContext extends BaseContext
         // Le pointeur du plan de période N'EST JAMAIS touché ici (on n'a ni validé ni rouvert la période).
         foreach ($this->periodCreatedVersionIds as $versionId) {
             $this->apiDelete(\sprintf('schedules/%s', $versionId), $this->token);
+        }
+        // V1bis — le scénario « Charger » pose le pointeur de source des verrous (schedule_plan.
+        // lock_source_schedule_id) sur une version du plan de période. La suppression ci-dessus des
+        // versions créées DANS le scénario le relâche déjà (FK ON DELETE SET NULL, la version pointée
+        // en fait partie), mais un scénario interrompu AVANT ces suppressions le laisserait posé. On
+        // le remet à NULL (état de la branche) quoi qu'il arrive.
+        if ('' !== $this->periodPlanId) {
+            $this->dbalExec(
+                \sprintf('UPDATE schedule_plan SET lock_source_schedule_id = NULL WHERE id = \'%s\'', $this->periodPlanId),
+                admin: true,
+            );
         }
 
         if ('' !== $this->closedVenueId) {

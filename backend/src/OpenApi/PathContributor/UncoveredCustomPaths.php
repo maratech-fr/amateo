@@ -140,6 +140,17 @@ final readonly class UncoveredCustomPaths implements CustomPathContributor
                 ],
                 summary: 'Create a new version from an existing one and regenerate it',
             )),
+            '/api/schedules/{id}/load-locks' => new PathItem(post: new Operation(
+                operationId: 'postApiScheduleLoadLocks',
+                tags: ['Schedules'],
+                responses: [
+                    '200' => new Response('This period version is now the source of its plan locks — the next regeneration restarts from them. Does NOT generate.'),
+                    '401' => $unauthorized,
+                    '404' => $notFound,
+                    '409' => new Response('Not a period version, version not completed, the period plan is validated (reopen first), or a generation is running for the club (body carries code=generation_in_progress)'),
+                ],
+                summary: 'Load a period version locks as the plan current data (sets the pointer, no solve)',
+            )),
             '/api/schedules/{id}/fill' => new PathItem(post: new Operation(
                 operationId: 'postApiScheduleFill',
                 tags: ['Schedules'],

@@ -544,6 +544,13 @@ final class GenerateScheduleHandler
         // (null === overlayEntry) et passé ici — zéro lecture de plan à la complétion.
         if ($isSeasonPlan) {
             $this->anchorSeasonToCompletedPlan($schedule);
+        } else {
+            // V1bis (planning lifecycle) — sur le patron de l'auto-★ saison : une PÉRIODE qui
+            // vient de se terminer DEVIENT la source des verrous de son plan. « Régénérer » repartira
+            // d'elle, et « Charger » une version plus ancienne la remplacera ensuite comme source. Pose
+            // immédiate (SQL brut hors UnitOfWork) : le plan n'est pas chargé ici et la ClubGenerationLock
+            // sérialise les écritures de génération du club.
+            $this->schedulePlanProvisioner->pointLockSource($schedule->getSchedulePlanId(), $schedule->getId());
         }
         $this->completeOnboarding($schedule);
     }

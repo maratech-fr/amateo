@@ -14,8 +14,8 @@ use App\Entity\ScheduleStructureSnapshot;
 use App\Entity\Season;
 use App\Enum\LockLevel;
 use App\Enum\SchedulePlanType;
-use App\Enum\ScheduleStatus;
 use App\Service\ScheduleCapabilityResolver;
+use App\Service\SchedulePlanProvisioner;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
 
@@ -29,6 +29,7 @@ class ScheduleStateProvider extends AbstractStateProvider
         RequestStack $requestStack,
         Pagination $pagination,
         private readonly ScheduleCapabilityResolver $capabilityResolver,
+        private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
     ) {
         parent::__construct($entityManager, $requestStack, $pagination);
     }
@@ -52,8 +53,12 @@ class ScheduleStateProvider extends AbstractStateProvider
         /** @var iterable<ScheduleResource> $dtos */
         $dtos = $result instanceof ScheduleResource ? [$result] : $result;
         $ids = [];
+        $planIds = [];
         foreach ($dtos as $dto) {
             $ids[] = $dto->id;
+            if (null !== $dto->schedulePlanId) {
+                $planIds[$dto->schedulePlanId] = true;
+            }
         }
         if ([] === $ids) {
             return $result;
@@ -63,7 +68,7 @@ class ScheduleStateProvider extends AbstractStateProvider
         $liveContext = $this->liveContextScheduleIds($ids);
         $chosen = $this->chosenScheduleIds($ids);
         $planType = $this->planTypeByScheduleId($ids);
-        $lockSource = $this->lockSourceScheduleIds($ids);
+        $lockSource = $this->lockSourceScheduleIds(array_keys($planIds));
         $hardLockCount = $this->hardLockCountByScheduleId($ids);
         // P2-8 : le résolveur travaille sur les ENTITÉS (il lui faut club/saison, absents
         // du DTO). Une seule requête pour tout le lot (identity-map déjà chaude), puis les
@@ -73,6 +78,7 @@ class ScheduleStateProvider extends AbstractStateProvider
             $chosen,
             $planType,
             $withPhoto,
+            $lockSource,
         );
         foreach ($dtos as $dto) {
             $dto->hasStructurePhoto = isset($withPhoto[$dto->id]);
@@ -165,34 +171,26 @@ class ScheduleStateProvider extends AbstractStateProvider
     }
 
     /**
-     * V1 — les versions du lot qui sont la SOURCE des verrous de leur plan (ADR-0002 : les données
-     * « en cours », d'où « Régénérer » repart). MÊME définition que la maison unique {@see
-     * \App\Service\SchedulePlanProvisioner::lockSourceScheduleIdOfPlan} : la version COMPLETED
-     * lexicographiquement maximale sur (createdAt, versionNumber) de son plan — ici en BATCH par un
-     * `NOT EXISTS` de pair strictement postérieur, tenant-filtré (Schedule porte un club_id), jamais
-     * cross-club. versionNumber étant unique par plan, le max est unique.
+     * V1/V1bis — les versions du lot qui sont la SOURCE des verrous de leur plan (les données
+     * « en cours », d'où « Régénérer » repart). Passe par la MAISON UNIQUE {@see
+     * \App\Service\SchedulePlanProvisioner::lockSourceScheduleIdOfPlan}, par plan présent dans le lot
+     * (jamais plus que le nombre de PLANS affichés, pas de version) : V1bis a rendu cette source
+     * dépendante du pointeur `lock_source_schedule_id`, qu'un `NOT EXISTS` « dernière COMPLETED »
+     * ignorerait — deux définitions divergeraient. La maison esquive le season_filter ; RLS scope le
+     * club. Une version du lot est la source ssi son id est celui que la maison rend pour son plan.
      *
-     * @param list<string> $scheduleIds
+     * @param list<string> $planIds
      *
      * @return array<string, true>
      */
-    private function lockSourceScheduleIds(array $scheduleIds): array
+    private function lockSourceScheduleIds(array $planIds): array
     {
-        /** @var list<array{id: string}> $rows */
-        $rows = $this->entityManager->createQueryBuilder()
-            ->select('s.id AS id')
-            ->from(Schedule::class, 's')
-            ->where('s.id IN (:ids)')
-            ->andWhere('s.status = :completed')
-            ->andWhere('NOT EXISTS (SELECT 1 FROM ' . Schedule::class . ' s2 WHERE s2.schedulePlanId = s.schedulePlanId AND s2.status = :completed AND (s2.createdAt > s.createdAt OR (s2.createdAt = s.createdAt AND s2.versionNumber > s.versionNumber)))')
-            ->setParameter('ids', $scheduleIds)
-            ->setParameter('completed', ScheduleStatus::COMPLETED)
-            ->getQuery()
-            ->getScalarResult();
-
         $set = [];
-        foreach ($rows as $row) {
-            $set[$row['id']] = true;
+        foreach ($planIds as $planId) {
+            $sourceId = $this->schedulePlanProvisioner->lockSourceScheduleIdOfPlan($planId);
+            if (null !== $sourceId) {
+                $set[$sourceId] = true;
+            }
         }
 
         return $set;
