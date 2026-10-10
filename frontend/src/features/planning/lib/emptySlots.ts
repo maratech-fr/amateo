@@ -7,20 +7,34 @@ export const EMPTY_SLOT_PREFIX = "empty:";
 
 export const isEmptySlotId = (slotId: string): boolean => slotId.startsWith(EMPTY_SLOT_PREFIX);
 
-const windowKey = (venueId: string, dayOfWeek: number, startTime: string): string => `${venueId}|${dayOfWeek}|${parseTimeToMinutes(startTime)}`;
+/** Two half-open minute intervals [aStart, aEnd) and [bStart, bEnd) intersect. */
+const overlaps = (aStart: number, aEnd: number, bStart: number, bEnd: number): boolean => aStart < bEnd && bStart < aEnd;
 
 /**
  * Availability windows the solver placed NO team on ("créneaux vides"). Returned
  * as synthetic Slots (teamId "") so the existing venue-view grid machinery lays
  * them out as `vide` cells — WeekGrid renders them muted, DiagnosticsPanel lists
- * them as warnings. Matching is by venue + day + start (minute-normalised so a
- * "18:00" placement matches an "18:00:00" window). Capacity is not split: a
- * window with at least one placement counts as filled (MVP).
+ * them as warnings. A window counts as FILLED as soon as at least one placement on
+ * the same venue + day OVERLAPS it in time ([start, end) intervals that intersect),
+ * not only one that shares its exact start. A period grid can be retailored AFTER
+ * generation, so a LOCKED session keeps a start that no longer coincides with the
+ * window's (prod BCCL : fenêtre 17:30-18:45, séance verrouillée 17:15-18:45) — the
+ * old exact-start match drew a spurious half-width `vide` cell beside it. Capacity
+ * is not split: one overlap is enough (MVP).
  */
 export function computeEmptySlots(trainingSlots: VenueTrainingSlot[], slots: Slot[], scheduleId: string): Slot[] {
-  const filled = new Set(slots.map((s) => windowKey(s.venueId, s.dayOfWeek, s.startTime)));
   return trainingSlots
-    .filter((ts) => !filled.has(windowKey(ts.venueId, ts.dayOfWeek, ts.startTime)))
+    .filter((ts) => {
+      const windowStart = parseTimeToMinutes(ts.startTime);
+      const windowEnd = windowStart + ts.durationMinutes;
+      return !slots.some((s) => {
+        if (s.venueId !== ts.venueId || s.dayOfWeek !== ts.dayOfWeek) {
+          return false;
+        }
+        const slotStart = parseTimeToMinutes(s.startTime);
+        return overlaps(slotStart, slotStart + s.durationMinutes, windowStart, windowEnd);
+      });
+    })
     .map((ts) => ({
       id: `${EMPTY_SLOT_PREFIX}${ts.id}`,
       scheduleId,
