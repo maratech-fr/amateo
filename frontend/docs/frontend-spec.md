@@ -4,7 +4,7 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-10-10 (P2-63 PR 2 + PR 4) : l'arbre §10 `coach-wishes/` recalé contre `CoachWishForm.tsx` (ajout manuel semaine d'abord, coach facultatif), `CampaignSettingsTab.tsx`/`useCampaignSettings.ts`/`campaignWeeks.ts` (semaines dérivées des plannings, état « sans planning ») et `RadarPanel.tsx` (`onRequestPlanning`). La ligne publique `/doleances/:token` (§2) est INCHANGÉE par ce lot (les changements sont manager-side). Reste du fichier non re-sondé ligne à ligne cette passe — historique : `git log -p --follow` ce fichier.
+Last verified @ 2026-10-10 (P2-63 PR 2 + PR 4 + lot 5) : l'arbre §10 `coach-wishes/` recalé contre `CoachWishForm.tsx` (ajout manuel semaine d'abord, coach DÉDUIT sans champ, créneaux souhaités en champ nombre), `WishTeamStep.tsx`/`WishesTab.tsx` (jours disponibles au-dessus des jours souhaités, dé-attribution limitée à un coach retiré), `CampaignSettingsTab.tsx`/`useCampaignSettings.ts`/`campaignWeeks.ts` (semaines dérivées des plannings, état « sans planning », dates FR via `wishSections.ts::frDate`) et `RadarPanel.tsx` (`onRequestPlanning`). La ligne publique `/doleances/:token` (§2) gagne l'inversion « disponibles au-dessus » et le jour non disponible désactivé côté souhaités (lot 5), le reste de son contrat est inchangé. Reste du fichier non re-sondé ligne à ligne cette passe — historique : `git log -p --follow` ce fichier.
 
 ## 1. Stack Decided
 
@@ -137,11 +137,19 @@ frontend/src/
 │   │                           # MutualizationForm (D2), PublicWishPage (route publique),
 │   │                           # PreviewWishPage (aperçu gestionnaire, D2), RadarCoachWishBadge (badge radar).
 │   │                           # P2-63 PR 2 — CoachWishForm : ajout manuel SEMAINE d'abord puis équipe
-│   │                           # (TeamSelect, équipe déjà servie désactivée avec motif), coach FACULTATIF
-│   │                           # (« (aucun) »). PR 4 — CampaignSettingsTab : semaines DÉRIVÉES des plannings
+│   │                           # (TeamSelect, équipe déjà servie désactivée avec motif). PR 4 —
+│   │                           # CampaignSettingsTab : semaines DÉRIVÉES des plannings
 │   │                           # (campaignWeeks.ts::planDerivedWeeks + useSchedulePlans/useCalendarEntries),
 │   │                           # état « sans planning » = invite « Créez d'abord le planning » + « Adapter »
-│   │                           # (RadarPanel.onRequestPlanning) ; le serveur reste l'autorité (garde 422)
+│   │                           # (RadarPanel.onRequestPlanning) ; le serveur reste l'autorité (garde 422).
+│   │                           # Lot 5 (retours fondateur 2026-10-10) : plus de champ Coach, coach DÉDUIT
+│   │                           # (principal de l'équipe à la création, conservé tel quel en édition) ;
+│   │                           # « créneaux souhaités » en champ nombre 0-7 ; « Jours disponibles » AU-DESSUS
+│   │                           # de « Jours souhaités » (form ET page coach), jour non disponible DÉSACTIVÉ
+│   │                           # côté souhaités (`DayMultiPicker` props `disabledDays`/`disabledReason`) ;
+│   │                           # dates jj/mm/aaaa via `wishSections.ts::frDate` (foyer unique) ; « coach
+│   │                           # dé-attribué » affiché seulement pour un `coachId` posé mais introuvable
+│   │                           # (coach retiré), jamais pour un `coachId` null.
 │   ├── cockpit/                # CockpitPage : bandeau planning socle, calendrier mensuel, radar
 │   │                           # overlays, FbiDeadlineCard (rappel FBI + escalade login, RMM-6 PR-3)
 │   ├── legal/                  # PrivacyPage (/confidentialite)

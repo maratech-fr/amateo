@@ -431,8 +431,12 @@ de la page publique).
 
 **PR 2 — D + Q5 — LIVRÉE (2026-10-10).** `CoachWishStateProcessor` : coach FACULTATIF en création gestionnaire (canal public
 inchangé ; colonne déjà nullable, aucune migration). `CoachWishForm` : semaine → équipe ; TOUTES les
-équipes ; équipes déjà servies sur la semaine désactivées avec motif (jamais masquées) ; coach
-« (aucun) ». Tests : `backend/tests/Integration/Api/CoachWishApiTest.php`, vitest du formulaire.
+équipes ; équipes déjà servies sur la semaine désactivées avec motif (jamais masquées). **Retouché
+le jour même sur retours fondateur (lot 5)** : plus de champ Coach — le coach est DÉDUIT (principal
+de l'équipe à la création, conservé tel quel en édition, jamais dé-attribué en silence) ; «
+créneaux souhaités » passe en champ NOMBRE (0-7, bornes serveur) ; « coach dé-attribué » ne
+s'affiche que pour un `coachId` introuvable (coach retiré), jamais pour un `coachId` null. Tests :
+`backend/tests/Integration/Api/CoachWishApiTest.php`, vitest du formulaire.
 Validation : `tests-complete` + `rector` + Behat (`voeux-des-coachs.feature`,
 `generation-du-planning-de-saison.feature`) + frontend.
 

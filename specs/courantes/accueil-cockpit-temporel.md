@@ -1,13 +1,14 @@
 # Accueil « cockpit temporel »
 
-Last verified @ 2026-10-10 (P2-63 PR 2 + PR 4). § doléances recalé contre le code : la fenêtre
+Last verified @ 2026-10-10 (P2-63 PR 2 + PR 4 + lot 5). § doléances recalé contre le code : la fenêtre
 unique `CoachWishesHub` (un seul bouton « Doléances » + badge `RadarCoachWishBadge`, hors du repli
 et sous horizon) ne lance une collecte que sur une période portant déjà un planning — semaines
 dérivées des plannings (`SchedulePlanProvisioner::planWeekMondaysForPeriod` côté serveur, garde 422
 dans `CoachWishCampaignStateProcessor`, affichage `campaignWeeks.ts::planDerivedWeeks`), invite
 « Créez d'abord le planning » + « Adapter » (`CampaignSettingsTab`/`RadarPanel.onRequestPlanning`)
-sinon ; l'ajout manuel (`CoachWishForm`) se fait semaine d'abord, toutes équipes, coach facultatif
-(`CoachWishStateProcessor` accepte `coachId` null en création gestionnaire). Reste du fichier
+sinon ; l'ajout manuel (`CoachWishForm`) se fait semaine d'abord, toutes équipes, coach DÉDUIT sans
+champ (principal de l'équipe à la création, conservé tel quel en édition — `CoachWishStateProcessor`
+continue d'accepter `coachId` null en création gestionnaire, côté serveur inchangé). Reste du fichier
 (§5bis P4-266 : signal « à régénérer » sur `/planning` seul, pas de pastille cockpit) non
 re-confronté cette passe.
 
@@ -345,8 +346,10 @@ qu'aucun planning ne couvre, et une période sans planning affiche l'invite « C
 planning des vacances » + « Adapter cette période ». L'**ajout manuel** d'une doléance (onglet
 Doléances) se fait **semaine d'abord** puis équipe : la semaine choisie désactive avec motif les
 équipes déjà servies (jamais masquées), offre **toutes** les équipes (le périmètre « coach
-principal » ne borne que la collecte par mail) et rend le **coach facultatif** — le gestionnaire
-peut saisir à la main une doléance pour une équipe sans coach (Vétérans).
+principal » ne borne que la collecte par mail) ; le **coach est DÉDUIT, sans champ** (principal de
+l'équipe à la création, recalculé si l'équipe change ; conservé tel quel en édition, jamais
+dé-attribué en silence) — une équipe sans coach (Vétérans) reçoit `coachId` null et peut recevoir
+une doléance manuelle comme n'importe quelle autre.
 
 **Chargement** : tant que les plans, les versions, les campagnes, les impacts de fermeture ou la
 zone scolaire sont en vol, le radar affiche un **squelette** (région live pour les lecteurs
