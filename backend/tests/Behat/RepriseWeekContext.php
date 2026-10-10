@@ -30,7 +30,11 @@ final class RepriseWeekContext extends BaseContext
 
     private const int POLL_INTERVAL_SECONDS = 2;
 
-    private const int TIMEOUT_SECONDS = 180;
+    // Budget moteur 600 s + marge, comme les autres contextes de génération : pour un club de la
+    // taille du BCCL (50 équipes × 9 gymnases, complexité > 200) `_adaptive_timeout` accorde 600 s.
+    // Depuis le lot 3b C, les contraintes d'équipe et de coach sont OFF par défaut en vacances :
+    // moins d'élagage, donc un solve plus long qui peut approcher ce budget.
+    private const int TIMEOUT_SECONDS = 650;
 
     // Noms ASCII (sans accent ni apostrophe) : on les cherche VERBATIM dans le JSON du snapshot,
     // où json_encode échapperait un caractère non-ASCII.
