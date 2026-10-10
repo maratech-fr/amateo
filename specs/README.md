@@ -1,11 +1,12 @@
 # Living Specs System
 
-Last verified @ 2026-10-10 (`documentation-update`, rotation de fraîcheur — sujet de la PR sans
-rapport, lot 3a « case vide / chevauchement »). Re-confronté : les six gardes `{DocPlacementTest,
+Last verified @ 2026-10-11 (`documentation-update`, rotation de fraîcheur — sujet de la PR sans
+rapport, fix verrous V3 frontend). Re-confronté : les six gardes `{DocPlacementTest,
 DocStampFreshnessTest, RoadmapIdentityTest, BlockingTestsListMatchesCiTest,
 SpecsCarryNoHistoryTest, WorkflowPermissionsDeclaredTest}.php` existent toujours
 (`ls backend/tests/Unit/Documentation/`) ; `docs/testing/blocking-tests.md` existe ;
-`ls specs/courantes/*.md` rend toujours 13 fichiers, inchangé. Rien de faux trouvé cette passe.
+`ls specs/courantes/*.md` rend toujours 13 fichiers, inchangé, et la liste du § « Files Overview »
+ci-dessous les nomme bien tous. Rien de faux trouvé cette passe.
 `ls specs/evolution/` et `ls specs/audit/` non re-sondés cette passe (zone non touchée par ce
 fichier).
 
