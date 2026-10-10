@@ -1,6 +1,16 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-10-10 (lot 3B PR A) : §COACH_AVAILABILITY et §Bloc de mutualisation confrontées à `engine/app/solver/constraints/structural/closures.py::add_coach_unavailability_constraints` et au nouveau `engine/app/solver/constraints/availability.py` — « un coach suffit » (Q4B, fondateur 2026-10-10) : une équipe à plusieurs coachs requis n'est fermée que si TOUS sont indisponibles ; une case de bloc emprunte un coach de l'union, un membre sans coach propre n'y est que via le bloc (`x ≤ Σb`), un bloc sans aucun coach de l'union dispo est fermé (`b == 0`). Renverse l'ancienne règle d'audit « un co-coach indisponible ferme le jour ». `engine/CONTRACT_VERSION` = `1.4` (inchangé par ce lot). Reste du vocabulaire non re-sondé cette passe. Un stamp REMPLACE, il ne s'empile pas.
+Last verified @ 2026-10-11 (lot 3B PR B') : §Bloc de mutualisation complétée du MIROIR pré-solve
+déclaré de « un coach suffit » — confronté à `backend/src/Service/PreSolvePreventionWarnings.php::sharedBlockWithoutCommonServableCase`
+et à `backend/tests/CrossStack/SharedBlockPreSolveMirrorParityTest.php`. §COACH_AVAILABILITY et
+§Bloc de mutualisation (règle moteur elle-même) restent telles que confrontées en PR A à
+`engine/app/solver/constraints/structural/closures.py::add_coach_unavailability_constraints` et
+`engine/app/solver/constraints/availability.py` — « un coach suffit » (Q4B, fondateur 2026-10-10) :
+une équipe à plusieurs coachs requis n'est fermée que si TOUS sont indisponibles ; une case de
+bloc emprunte un coach de l'union, un membre sans coach propre n'y est que via le bloc (`x ≤ Σb`),
+un bloc sans aucun coach de l'union dispo est fermé (`b == 0`). `engine/CONTRACT_VERSION` = `1.4`
+(inchangé par ces deux lots). Reste du vocabulaire non re-sondé cette passe. Un stamp REMPLACE, il
+ne s'empile pas.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
@@ -154,6 +164,14 @@ Last verified @ 2026-10-10 (lot 3B PR A) : §COACH_AVAILABILITY et §Bloc de mut
 >
 > `validate-assignments` partage le même foyer (`hard_layer.py`) : le verdict d'un déplacement
 > applique la même règle « un coach suffit », jamais une seconde logique.
+>
+> **Miroir pré-solve DÉCLARÉ, côté backend (lot 3B PR B').**
+> `PreSolvePreventionWarnings::sharedBlockWithoutCommonServableCase` réplique cette algèbre (union
+> des coachs principaux des membres, cases candidates du payload) pour PRÉVENIR au récap du
+> wizard, AVANT génération, qu'un bloc n'a aucune case commune servable — nomme le groupe, la
+> contrainte en cause et son origine (héritée de la saison / posée pour la période). Parité gardée
+> contre le VRAI moteur par `SharedBlockPreSolveMirrorParityTest` (même patron que le miroir de
+> capacité, `CapacityMirrorParityTest`).
 >
 > **La cible est le `scope`, jamais le `config` (SEC-13).** La clé `coachId` n'existe plus : elle
 > valait exactement `scopeTargetId`, et un doublon de cible est une occasion de divergence (deux
