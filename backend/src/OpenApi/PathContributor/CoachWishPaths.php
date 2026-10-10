@@ -42,5 +42,33 @@ final readonly class CoachWishPaths implements CustomPathContributor
             summary: 'Preview the coach-link e-mail of a campaign (manager only)',
             parameters: [new Parameter('id', 'path', 'The campaign id', required: true, schema: ['type' => 'string', 'format' => 'uuid'])],
         )));
+
+        $paths->addPath('/api/coach-wishes/transfer', new PathItem(post: new Operation(
+            operationId: 'transferCoachWishes',
+            tags: ['CoachWish'],
+            responses: [
+                '200' => $this->schemas->jsonResponse('Converts the SELECTED coach wishes (manager-only gesture) into standard plan objects of their week: slotsWanted>0 → a team period override (active + sessionsPerWeek), slotsWanted=0 → the team is deactivated for that week; unavailableDays → one DATED HARD constraint (coach availability, or team forbidden-days when there is no coach / a co-coached team only partly answered); wishedDays → one DATED PREFERRED team day constraint. Idempotent by (source=coach_wish, occurrence = wish id). A week with no plan is NEVER born, it is counted as ignored with its reason.', [
+                    'type' => 'object',
+                    'properties' => [
+                        'converted' => ['type' => 'integer', 'description' => 'Wishes converted into plan objects (and marked done)'],
+                        'ignored' => ['type' => 'integer', 'description' => 'Wishes left untouched'],
+                        'ignoredReasons' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer'], 'description' => 'Per-reason count of ignored wishes (e.g. semaine_sans_plan, introuvable, autre_saison, id_invalide)'],
+                    ],
+                ]),
+                '400' => new Response('Malformed wishIds list, or an oversized batch (more than 500)'),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+                '403' => new Response('Caller is not a manager of the current club, or no club/season in context'),
+                '409' => new Response('A generation is running for the club (generation_in_progress) — transferring now would overwrite its result'),
+                '422' => new Response('A plan was deleted during the transfer (reload the page)'),
+            ],
+            summary: 'Transfer the selected coach wishes into their week plan settings (management only)',
+            requestBody: $this->schemas->jsonBody([
+                'type' => 'object',
+                'required' => ['wishIds'],
+                'properties' => [
+                    'wishIds' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'uuid'], 'description' => 'The ids of the checked wishes to transfer (non-empty)'],
+                ],
+            ]),
+        )));
     }
 }
