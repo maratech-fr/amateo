@@ -1,11 +1,13 @@
 # Documentation métier du système de contraintes
 
-Last verified @ 2026-10-08 (P4-266, `documentation-update`) : la mention de
-`ResourceChangeStaleScheduleListener` (§ Génération automatique des tags) recalée — le listener
-est SUPPRIMÉ, le mécanisme est désormais la divergence de l'empreinte de structure. Re-confronté
-au passage : `ConstraintRuleType` toujours à deux cas `HARD`/`PREFERRED` SEULEMENT, `LOCK` absent
-(`backend/src/Enum/ConstraintRuleType.php`) ✓ ; les verrous de CRÉNEAU/MATCH (`lockLevel`, onglet
-« Réserver ») restent un autre concept, non décrit ici.
+Last verified @ 2026-10-10 (rotation de fraîcheur, lot 3b PR C, `documentation-update`) : re-confronté
+au code — `ConstraintRuleType` toujours à deux cas `HARD`/`PREFERRED` SEULEMENT
+(`backend/src/Enum/ConstraintRuleType.php:11-12`) ; pas de famille `FACILITY_CAPACITY` (confirmé,
+seuls des commentaires/noms de variable la citent comme mécanisme RETIRÉ) ; `ConstraintValidationService`
+existe toujours comme foyer unique de validation pré-solve ; `TeamTagService::syncTeamTags` toujours
+le garde court-circuit. Ce document décrit le modèle de contrainte de SAISON — l'héritage par
+défaut en période (overlay/vacances) est hors de son périmètre, documenté dans
+[`types-de-planning.md`](../../specs/courantes/types-de-planning.md).
 
 > Amateo — Symfony 7 + API Platform. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 

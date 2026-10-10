@@ -1,11 +1,9 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-10-10 (lot 9 F3, `documentation-update`). Re-confronté au code : nouvel e2e
-`frontend/tests/e2e/lot9-mutualize-reachability.spec.ts` ajouté en §2 (cycle de vie des plans) —
-preuve que le bouton « Mutualiser… » n'est atteignable que par le vrai chemin cockpit → « Ajuster »
-→ wizard étape Génération (grille embarquée non validée), jamais par l'overlay `/planning` validé.
-Reste des lignes non re-sondées cette passe — historique complet :
-`git log -p --follow docs/testing/test-coverage-map.md`.
+Last verified @ 2026-10-10 (lot 3b PR C, `documentation-update`). Re-confronté au code : la ligne
+`la-semaine-de-reprise.feature` (§ Période) recalée avec le nouveau scénario Behat sur le défaut
+vacances (`PeriodConstraintSelector`). Reste des lignes non re-sondées cette passe — historique
+complet : `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
 > prouve**, **par quel job CI**, et **ce que personne ne prouve**. Il ne remplace ni
@@ -216,7 +214,7 @@ Calendrier, ouvre la liste « FBI — à faire », coche « saisi » sur sa renc
 | Feature | Ce qu'elle prouve |
 |---|---|
 | `plan-de-periode-en-overlay.feature` | une période génère son plan en overlay sur sa propre grille, et le remplissage recolle un membre de bloc libéré sur la case de son partenaire épinglé (remplace `smoke-overlay.sh`) |
-| `la-semaine-de-reprise.feature` | détacher une semaine de vacances fait naître son plan, et sa génération aboutit sur la grille PROPRE de la semaine — jamais l'union avec le planning de saison |
+| `la-semaine-de-reprise.feature` | détacher une semaine de vacances fait naître son plan, et sa génération aboutit sur la grille PROPRE de la semaine — jamais l'union avec le planning de saison ; une contrainte de saison de portée ÉQUIPE n'est plus héritée par défaut pendant les vacances, le scope CLUB l'est toujours (PR C, `PeriodConstraintSelector`) |
 | `une-indisponibilite-se-decoupe-en-debut-milieu-fin.feature` | une fermeture à semaine entamée se découpe en début/milieu/fin (jamais une semaine complète isolée, jamais « d'un bloc ») ; les trois segments sont acceptés ensemble |
 | `une-semaine-de-vacances-couvre-lundi-vendredi.feature` | une semaine n'est de vacances que si tout son lundi→vendredi tombe dans les vacances — une semaine partielle se planifie comme une semaine de saison |
 

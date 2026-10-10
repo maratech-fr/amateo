@@ -84,8 +84,8 @@ final class FrontRederivationRegistryTest extends TestCase
             'parityTest' => 'TagTeamIdsMirrorParityTest.php',
         ],
         'features/wizard/steps/PeriodConstraints.tsx' => [
-            'decides' => 'défaut reprise/fermeture par scope + masquage CLUB+tag sans équipe active',
-            'backendTruth' => 'App\\Service\\ScheduleConstraintBuilder::inheritedPermanents',
+            'decides' => 'défaut par scope (fermeture : tout gardé ; vacances : seul CLUB hérité, TEAM/COACH/FACILITY OFF) + masquage CLUB+tag sans équipe active',
+            'backendTruth' => 'App\\Service\\PeriodConstraintSelector::selectForPeriodPlan (keepByDefault)',
             'parityTest' => 'TagTeamIdsMirrorParityTest.php',
         ],
         'features/wizard/lib/coachDoubleBooking.ts' => [

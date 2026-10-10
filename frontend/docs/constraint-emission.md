@@ -1,11 +1,9 @@
 # Émission des contraintes (frontend) + alignement 3 couches
 
-Last verified @ 2026-10-10 (rotation `documentation-update`) : §2 recalée sur quatre points —
-`ConstraintStateProcessor::assertPreferredVenueIsNotMandatory` existe toujours (422 sur un
-`preferredVenueId` HARD) ; la liste blanche `config` est toujours portée par la constante `SPEC` de
-`ConstraintConfigValidator` ; `VenueTravelRuleSetting` existe toujours (entité dédiée au réglage de
-trajet) ; le commentaire mort `FACILITY_CAPACITY` est toujours présent dans `engine/app/main.py`
-(ancré sans numéro de ligne). Reste de la table non rejoué ligne à ligne cette passe.
+Last verified @ 2026-10-10 (lot 3b PR C, `documentation-update`) : la ligne `ConstraintPeriodOverride`
+recalée contre `PeriodConstraintSelector::selectForPeriodPlan` — le défaut vacances ne garde plus
+que le scope CLUB (TEAM/COACH/FACILITY off, décision fondateur 2026-10-10). Reste de la table non
+rejoué ligne à ligne cette passe.
 
 > **But** : (1) lister ce que le **wizard émet** réellement, et (2) mettre les **3 couches côte à côte**
 > (frontend → backend → engine) pour repérer les **scissions** et les **angles morts** — les cas où
@@ -49,7 +47,7 @@ couches et rester sans effet parce que son gymnase est désactivé pour la péri
 |---|---|---|
 | **Grille de la période** | `VenueTrainingSlot` propres au plan de période (création / édition / suppression) | La période **possède** sa grille — copie du modèle de saison prise à la naissance du plan ; l'overlay ne s'unit **jamais** aux créneaux de la saison |
 | **`VenuePeriodOverride`** | `mode: "DISABLED"` (état persisté, table *sparse* — pas de ligne = hériter) + deux **actions** atomiques `reset-grid` (« reprendre la grille ») et `clear-grid` (« vider ») | `DISABLED` retire le gymnase de la période **sans toucher sa grille** ; les deux actions sont destructives et emportent les réservations du gymnase en cascade |
-| **`ConstraintPeriodOverride`** | Bascule d'une contrainte **permanente héritée**, uniquement quand elle **dévie du défaut intelligent** | Active/désactive la contrainte **pour la fenêtre** ; le plan de base et le `Constraint.isActive` ne sont jamais modifiés |
+| **`ConstraintPeriodOverride`** | Bascule d'une contrainte **permanente héritée**, uniquement quand elle **dévie du défaut** (`PeriodConstraintSelector` — fermeture : tout gardé ; vacances : seul le scope CLUB hérité, TEAM/COACH/FACILITY off) | Active/désactive la contrainte **pour la fenêtre** ; le plan de base et le `Constraint.isActive` ne sont jamais modifiés |
 | **`TeamPeriodOverride`** | Activation / désactivation d'une équipe pour la fenêtre | Une contrainte TEAM d'une équipe désactivée est **non applicable** et retirée du payload côté serveur |
 
 Détail des écrans et des arbitrages : `frontend-wizard.md`.

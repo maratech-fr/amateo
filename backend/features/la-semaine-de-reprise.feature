@@ -10,3 +10,13 @@ Fonctionnalité: Une semaine de vacances s'adapte et obtient son propre planning
     Et des vacances jetables couvrant deux semaines pleines
     Quand je détache une semaine entière et je génère son planning
     Alors la génération aboutit sur la grille propre de la semaine, avec le statut « COMPLETED »
+
+  Scénario: Une contrainte d'équipe de la saison ne s'applique plus par défaut pendant les vacances
+    Garder le club sans traîner ses réglages d'équipe : pendant des vacances, une contrainte de
+    saison de portée CLUB continue de partir au solveur, une contrainte de portée ÉQUIPE non — le
+    gestionnaire réactive au cas par cas celle qui s'applique vraiment.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une contrainte de saison d'équipe et une contrainte de saison de club
+    Et des vacances jetables couvrant deux semaines pleines
+    Quand je détache une semaine entière et je génère son planning
+    Alors le planning de la semaine a hérité la contrainte de club, jamais la contrainte d'équipe
