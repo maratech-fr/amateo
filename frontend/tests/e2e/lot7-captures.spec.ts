@@ -1,5 +1,7 @@
-import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 
 import { forceTheme, loginSeededClub, settleVeil } from "./support";
 
@@ -18,7 +20,9 @@ import { forceTheme, loginSeededClub, settleVeil } from "./support";
  * PNG partiels restent utiles. Le script SEEDE ses données via l'API (cookie JWT du club seedé)
  * puis nettoie la période créée en fin de run.
  */
-const OUT = path.resolve(__dirname, "../../../captures");
+// `package.json` est `"type": "module"` : `__dirname` n'existe pas (le spec ne se chargeait
+// même pas). Patron maison : `import.meta.url` (cf. `support-admin.ts`).
+const OUT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../captures");
 
 const shot = (page: Page, name: string) => page.screenshot({ path: path.join(OUT, name), animations: "disabled" });
 
@@ -47,18 +51,29 @@ async function firstId(api: APIRequestContext, path_: string): Promise<string | 
 }
 
 test("lot7 — captures du transfert et de l'avertissement", async ({ page }) => {
+  // Script de CAPTURE pour le fondateur, pas un test de régression : il dépend d'un club seedé,
+  // de l'horizon du cockpit et d'une carte « Doléances » — trop fragile pour gater la CI. Hors CI
+  // seulement (il tourne en local sous with-sandbox). Le reste de l'e2e reste couvert normalement.
+  test.skip(Boolean(process.env.CI), "script de capture — hors CI (lancé en local sous with-sandbox)");
   test.setTimeout(300_000);
   await forceTheme(page, "light");
   await page.setViewportSize({ width: 1280, height: 900 });
   await loginSeededClub(page);
   const api = page.request;
 
-  const monday = nextMonday(35);
-  const end = new Date(monday);
-  end.setUTCDate(end.getUTCDate() + 13);
-  const endStr = end.toISOString().slice(0, 10);
+  const addDays = (iso: string, n: number): string => {
+    const d = new Date(iso);
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+  const monday = nextMonday(7); // DANS l'horizon du radar (< 30 j) — sinon la carte est masquée.
+  const endStr = addDays(monday, 13); // deux semaines pleines
+  const week2Monday = addDays(monday, 7);
+  const week2End = addDays(monday, 13);
 
-  // ── Seed : période de vacances + planning + campagne + deux doléances ─────────────────────────
+  // ── Seed : vacances (2 semaines) + une semaine DÉTACHÉE (fait naître SON plan, rail 1 entrée =
+  //    1 plan) + une doléance sur cette semaine. Une mère scindée affiche au cockpit sa carte avec
+  //    le bouton « Doléances » (patron du flux Behat RepriseWeekContext). ───────────────────────
   let motherId: string | null = null;
   const teamId = await firstId(api, "/api/teams?itemsPerPage=1");
   const coachId = await firstId(api, "/api/coaches?itemsPerPage=1");
@@ -69,17 +84,22 @@ test("lot7 — captures du transfert et de l'avertissement", async ({ page }) =>
     motherId = entry.ok() ? ((await entry.json()) as { id: string }).id : null;
 
     if (motherId) {
-      await api.post("/api/schedule_plans", { data: { calendarEntryId: motherId } });
+      // Détacher la 2ᵉ semaine (enfant de la mère) : le provisioning fait naître son plan.
+      await api.post("/api/calendar_entries", {
+        data: { kind: "period", periodType: "holiday", title: "Semaine détachée (captures lot 7)", startDate: week2Monday, endDate: week2End, parentEntryId: motherId },
+      });
       if (teamId && coachId) {
         await api.post("/api/coach_wishes", {
-          data: { calendarEntryId: motherId, weekStart: monday, teamId, coachId, slotsWanted: 3, unavailableDays: [4, 5], wishedDays: [1], comment: "Indispo jeu/ven", done: false },
+          data: { calendarEntryId: motherId, weekStart: week2Monday, teamId, coachId, slotsWanted: 3, unavailableDays: [4, 5], wishedDays: [1], comment: "Indispo jeu/ven", done: false },
         });
       }
     }
 
     // ── Capture 1/2 : la todo avec cases de sélection + bouton « Transférer » ────────────────────
-    await page.goto("/cockpit").catch(() => page.goto("/"));
+    // Le cockpit (radar « À traiter ») vit à la racine `/` (CockpitPage), pas sur `/cockpit`.
+    await page.goto("/");
     await settleVeil(page).catch(() => undefined);
+    await page.waitForLoadState("networkidle").catch(() => undefined);
     const doleancesBtn = page.getByRole("button", { name: /Doléances/ }).first();
     if (await doleancesBtn.isVisible().catch(() => false)) {
       await doleancesBtn.click();
