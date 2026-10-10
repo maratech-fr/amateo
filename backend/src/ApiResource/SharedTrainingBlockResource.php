@@ -56,6 +56,10 @@ class SharedTrainingBlockResource
     #[Groups(['read'])]
     public int $commonSessions = 0;
 
+    /** Nom OPTIONNEL du bloc, affiché grille/fiche/PDF/Excel ; NULL = bloc sans nom. */
+    #[Groups(['read'])]
+    public ?string $label = null;
+
     /**
      * @param list<string> $teamIds
      */
@@ -69,6 +73,7 @@ class SharedTrainingBlockResource
         $dto->schedulePlanId = $entity->getSchedulePlanId();
         $dto->teamIds = $teamIds;
         $dto->commonSessions = $entity->getCommonSessions();
+        $dto->label = $entity->getLabel();
 
         return $dto;
     }

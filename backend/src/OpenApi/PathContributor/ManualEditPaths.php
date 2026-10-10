@@ -267,6 +267,41 @@ final readonly class ManualEditPaths implements CustomPathContributor
                     ],
                 ]),
             )),
+            '/api/schedule-slots/{id}/mutualize' => new PathItem(post: new Operation(
+                operationId: 'postScheduleSlotMutualize',
+                tags: ['ManualEdit'],
+                responses: [
+                    '200' => $this->schemas->jsonResponse('The mutualisation block was declared and anchored to the anchor slot\'s case: all member sessions are co-located and HARD-locked there, the schedule is flagged manually edited. Nothing is sent to the solver', [
+                        'type' => 'object',
+                        'properties' => [
+                            'message' => ['type' => 'string'],
+                            'blockId' => ['type' => 'string', 'description' => 'Id of the created mutualisation block'],
+                            'movedSlotIds' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Sessions of already-placed joining teams that were moved onto the case'],
+                            'createdSlotIds' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Sessions created for joining teams that had none in the plan'],
+                            'activatedTeamIds' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Teams activated for the period (one session, origin mutualisation) to join the block'],
+                        ],
+                    ]),
+                    '400' => new Response('Missing or invalid field (teamIds, label over 40 chars, replacedSlotIds)'),
+                    '404' => new Response('Anchor slot not found'),
+                    '409' => new Response('Schedule is validated (read-only), or a generation is running for the club (body carries code=generation_in_progress)'),
+                    '422' => $this->schemas->jsonResponse('Refused with NOTHING written (transaction rolled back): the target is the season base plan (period plans only), a team is inactive or unknown, a block with exactly these teams already exists in this scope, the case is already full (capacity), the shared sessions would exceed a team\'s weekly volume, or an already-placed team did not designate the session the common one replaces', [
+                        'type' => 'object',
+                        'properties' => [
+                            'error' => ['type' => 'string', 'description' => 'Ready-to-display reason for the refusal (no internal identifier)'],
+                        ],
+                    ]),
+                ],
+                summary: 'Declare a mutualisation block anchored to the anchor slot\'s case (lot 9): the named teams train together there as ONE common session, in place on a PERIOD plan, with no solver verdict. The source team\'s session is locked there; an already-placed joining team\'s designated session is moved onto the case; a joining team with no session is activated for the period with one. teamIds are re-validated server-side (the source team is always a member)',
+                requestBody: $this->schemas->jsonBody([
+                    'type' => 'object',
+                    'required' => ['teamIds'],
+                    'properties' => [
+                        'teamIds' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'The block members (the anchor slot\'s team is forced in server-side)'],
+                        'label' => ['type' => 'string', 'nullable' => true, 'maxLength' => 40, 'description' => 'Optional block name, shown on the grid, the slot detail, the PDF and the Excel export'],
+                        'replacedSlotIds' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'For each already-placed joining team, the id of the session the common one replaces (moved onto the case). A team with a single session may omit it'],
+                    ],
+                ]),
+            )),
         ];
     }
 }

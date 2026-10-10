@@ -25059,6 +25059,123 @@
                     }
                 ]
             }
+        },
+        "/api/schedule-slots/{id}/mutualize": {
+            "post": {
+                "operationId": "postScheduleSlotMutualize",
+                "tags": [
+                    "ManualEdit"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The mutualisation block was declared and anchored to the anchor slot's case",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "blockId": {
+                                            "type": "string"
+                                        },
+                                        "movedSlotIds": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "createdSlotIds": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "activatedTeamIds": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Missing or invalid field (teamIds, label over 40 chars, replacedSlotIds)"
+                    },
+                    "404": {
+                        "description": "Anchor slot not found"
+                    },
+                    "409": {
+                        "description": "Schedule is validated (read-only), or a generation is running (code=generation_in_progress)"
+                    },
+                    "422": {
+                        "description": "Refused with nothing written: period-only, inactive/unknown team, same team-set, capacity, sum over budget, or an already-placed team did not designate the replaced session",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "summary": "Declare a mutualisation block anchored to the anchor slot's case (lot 9): the named teams train together there as ONE common session, in place on a PERIOD plan, with no solver verdict. The source team's session is locked there; an already-placed joining team's designated session is moved onto the case; a joining team with no session is activated for the period with one. teamIds are re-validated server-side (the source team is always a member)",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "teamIds"
+                                ],
+                                "properties": {
+                                    "teamIds": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "The block members (the anchor slot's team is forced in server-side)"
+                                    },
+                                    "label": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "maxLength": 40,
+                                        "description": "Optional block name, shown on the grid, the slot detail, the PDF and the Excel export"
+                                    },
+                                    "replacedSlotIds": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "For each already-placed joining team, the id of the session the common one replaces"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Anchor schedule-slot id"
+                    }
+                ]
+            }
         }
     },
     "components": {
@@ -31956,6 +32073,10 @@
                     "commonSessions": {
                         "default": 0,
                         "type": "integer"
+                    },
+                    "label": {
+                        "type": "string",
+                        "nullable": true
                     }
                 }
             },
@@ -32033,6 +32154,10 @@
                     "commonSessions": {
                         "default": 0,
                         "type": "integer"
+                    },
+                    "label": {
+                        "type": "string",
+                        "nullable": true
                     }
                 }
             },
@@ -32079,7 +32204,13 @@
                         }
                     }
                 ],
-                "description": "Le bloc de mutualisation : d\u00e9clarer un ensemble d'\u00e9quipes qui se comporte comme UNE \u00e9quipe,\navec son propre nombre de s\u00e9ances communes (``commonSessions``). Scop\u00e9 club+saison, filtrable\npar ``schedulePlanId`` (NULL = socle saison ; un UUID = plan de p\u00e9riode). \u00c9criture r\u00e9serv\u00e9e au\nmanagement."
+                "description": "Le bloc de mutualisation : d\u00e9clarer un ensemble d'\u00e9quipes qui se comporte comme UNE \u00e9quipe,\navec son propre nombre de s\u00e9ances communes (``commonSessions``). Scop\u00e9 club+saison, filtrable\npar ``schedulePlanId`` (NULL = socle saison ; un UUID = plan de p\u00e9riode). \u00c9criture r\u00e9serv\u00e9e au\nmanagement.",
+                "properties": {
+                    "label": {
+                        "type": "string",
+                        "nullable": true
+                    }
+                }
             },
             "Sport": {
                 "type": "object",

@@ -17,6 +17,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Index(name: 'idx_schedule_slot_template_team', columns: ['team_id'])]
 #[ORM\Index(name: 'idx_schedule_slot_template_venue', columns: ['venue_id'])]
 #[ORM\Index(name: 'idx_schedule_slot_template_coach', columns: ['coach_id'])]
+#[ORM\Index(name: 'idx_schedule_slot_template_shared_block', columns: ['shared_training_block_id'])]
 #[ORM\HasLifecycleCallbacks]
 class ScheduleSlotTemplate implements TenantOwnedInterface
 {
@@ -74,6 +75,15 @@ class ScheduleSlotTemplate implements TenantOwnedInterface
     /** @var array<string, mixed>|null */
     #[ORM\Column(type: 'json', nullable: true)]
     private ?array $pendingConstraintSuggestion = null;
+
+    /**
+     * Lot 9 — le bloc de mutualisation DONT cette séance est une séance de groupe (option B).
+     * NULL = séance ordinaire. Posé par le geste « mutualiser » sur la source, les séances
+     * remplacées et la séance neuve d'une équipe activée ; FK `ON DELETE CASCADE` — la séance ne
+     * survit jamais à son bloc.
+     */
+    #[ORM\Column(type: 'guid', nullable: true)]
+    private ?string $sharedTrainingBlockId = null;
 
     public function __construct()
     {
@@ -272,6 +282,18 @@ class ScheduleSlotTemplate implements TenantOwnedInterface
     public function setPendingConstraintSuggestion(?array $pendingConstraintSuggestion): self
     {
         $this->pendingConstraintSuggestion = $pendingConstraintSuggestion;
+
+        return $this;
+    }
+
+    public function getSharedTrainingBlockId(): ?string
+    {
+        return $this->sharedTrainingBlockId;
+    }
+
+    public function setSharedTrainingBlockId(?string $sharedTrainingBlockId): self
+    {
+        $this->sharedTrainingBlockId = $sharedTrainingBlockId;
 
         return $this;
     }

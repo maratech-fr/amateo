@@ -934,6 +934,16 @@ jobs:
       - name: FreeSlotSemanticsGateTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/FreeSlotSemanticsGateTest.php --group phase1'
 
+      # Lot 9 (axes constraint semantics + planning lifecycle) — un bloc de mutualisation ANCRÉ à
+      # une case par le geste « mutualiser depuis la génération » (sharedBlocks + séances
+      # co-localisées HARD) reste sur sa case à la RÉGÉNÉRATION et au COMBLEMENT contre le VRAI
+      # moteur, honoré et sans conflit de sur-capacité ; TÉMOIN — sans la déclaration de bloc, les
+      # deux séances HARD co-localisées sur une case capacité 1 déclenchent le conflit. Skip propre
+      # si l'engine est absent. Sans ce gate, une régénération/un comblement pourrait déloger en
+      # silence un bloc de sa case.
+      - name: SharedBlockAnchoredCaseGateTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/SharedBlockAnchoredCaseGateTest.php --group phase1'
+
       # P4-96 (axes constraint semantics + backend↔engine contract) — quand le moteur dit NON, il
       # NOMME les règles en conflit. De bout en bout contre le VRAI moteur (/generate, contrat 1.4) :
       # coach indispo vendredi + équipe vendredi imposé (seul jour ouvert) → INFEASIBLE (failed), et
