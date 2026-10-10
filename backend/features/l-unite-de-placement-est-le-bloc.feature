@@ -23,3 +23,11 @@ Fonctionnalité: Un entraînement mutualisé se réserve et se retire comme un b
     Et l'entraînement mutualisé est réservé sur un créneau libre
     Quand je retire une seule séance du lot
     Alors tout le lot mutualisé a disparu du créneau
+
+  Scénario: Mutualiser une séance placée d'un plan de période garde la case, défaire le groupe l'emporte
+    Étant donné le club de démonstration et un plan de période généré
+    Et deux séances placées d'équipes distinctes, chacune sur sa propre case
+    Quand je mutualise la première séance en y rattachant la seconde équipe
+    Alors les deux séances partagent la même case, liées à un même bloc de mutualisation
+    Quand je supprime le bloc de mutualisation
+    Alors les deux séances du groupe ont disparu du plan

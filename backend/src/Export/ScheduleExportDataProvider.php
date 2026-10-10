@@ -9,6 +9,7 @@ use App\Entity\PriorityTier;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
+use App\Entity\SharedTrainingBlock;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\Venue;
@@ -148,7 +149,55 @@ final class ScheduleExportDataProvider
             }
         }
 
+        // Lot 9 — le NOM d'un bloc de mutualisation PRIME sur le libellé de la fenêtre : une case qui
+        // porte une séance de groupe affiche le nom du bloc (grille / fiche / PDF / Excel). On lit le
+        // lien que la séance porte (`schedule_slot_template.shared_training_block_id`, option B) et on
+        // recouvre la clé de case correspondante, APRÈS la boucle des fenêtres pour primer dessus.
+        foreach ($this->blockLabelsByCase($slots) as $key => $label) {
+            $groupLabels[$key] = $label;
+        }
+
         return new ScheduleExportData($slots, $teamNames, $teamCategories, $venues, $coachNames, $emptySlots, $teamRanks, $groupLabels, $freeSlots);
+    }
+
+    /**
+     * Les noms de bloc à afficher, par case "venueId|day|H:i", lus du lien porté par chaque séance.
+     * Seuls les blocs NOMMÉS paraissent (un bloc sans nom laisse la case à son libellé de fenêtre).
+     *
+     * @param list<ScheduleSlotTemplate> $slots
+     *
+     * @return array<string, string>
+     */
+    private function blockLabelsByCase(array $slots): array
+    {
+        $blockIds = [];
+        foreach ($slots as $slot) {
+            $blockId = $slot->getSharedTrainingBlockId();
+            if (null !== $blockId) {
+                $blockIds[$blockId] = true;
+            }
+        }
+        if ([] === $blockIds) {
+            return [];
+        }
+
+        $labels = [];
+        foreach ($this->entityManager->getRepository(SharedTrainingBlock::class)->findBy(['id' => array_keys($blockIds)]) as $block) {
+            $label = $block->getLabel();
+            if (null !== $label && '' !== $label) {
+                $labels[$block->getId()] = $label;
+            }
+        }
+
+        $byCase = [];
+        foreach ($slots as $slot) {
+            $blockId = $slot->getSharedTrainingBlockId();
+            if (null !== $blockId && isset($labels[$blockId])) {
+                $byCase[$slot->getVenueId() . '|' . $slot->getDayOfWeek() . '|' . $slot->getStartTime()->format('H:i')] = $labels[$blockId];
+            }
+        }
+
+        return $byCase;
     }
 
     /**
