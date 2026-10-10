@@ -7,11 +7,7 @@ import { Spinner } from "@/shared/components/ui/spinner";
 
 import type { CampaignSettings } from "./useCampaignSettings";
 import { TeamPicker } from "./TeamPicker";
-
-const frDate = (iso: string): string => {
-  const [y, m, d] = iso.split("-");
-  return `${d}/${m}/${y}`;
-};
+import { frDate } from "./wishSections";
 
 /**
  * Onglet « Réglages » de la fenêtre doléances (ex-moitié Réglages de `CampaignDialog`) : choix

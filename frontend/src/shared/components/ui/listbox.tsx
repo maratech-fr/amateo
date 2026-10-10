@@ -70,6 +70,12 @@ interface ListboxProps {
    * codé en dur et forçait la pleine largeur).
    */
   wrapperClassName?: string;
+  /**
+   * Largeur MINIMALE du panneau déroulant, en px (défaut : la largeur du déclencheur). Pour un
+   * déclencheur étroit dont les options portent une sous-ligne ou un champ de recherche qui
+   * seraient à l'étroit (P2-63 lot 5) : on élargit le PANNEAU plutôt que le champ.
+   */
+  panelMinWidth?: number;
   autoFocus?: boolean;
   "aria-label"?: string;
   "aria-labelledby"?: string;
@@ -168,6 +174,7 @@ export function Listbox({
   id,
   className,
   wrapperClassName = "w-full",
+  panelMinWidth,
   autoFocus,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledby,
@@ -201,6 +208,7 @@ export function Listbox({
     setPopupStyle({
       left: rect.left,
       width: rect.width,
+      minWidth: panelMinWidth,
       ...(dropUp ? { bottom: window.innerHeight - rect.top + POPUP_GAP_PX } : { top: rect.bottom + POPUP_GAP_PX }),
     });
   };
@@ -298,6 +306,9 @@ export function Listbox({
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
+    // `place` ferme sur des refs + `panelMinWidth` (prop statique) : on ne (ré)abonne qu'à l'ouverture,
+    // comme les deux autres effets de ce composant.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Keyboard handling as a NATIVE listener on the popup container (see the Escape decision above).

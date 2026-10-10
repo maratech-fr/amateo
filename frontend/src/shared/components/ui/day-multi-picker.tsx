@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 import { DAYS, dayLabelLong, dayLabelShort } from "@/shared/lib/days";
 import { cn } from "@/shared/lib/utils";
 
@@ -19,6 +21,14 @@ export interface DayMultiPickerProps {
   tone?: DayPickerTone;
   /** Désactive tout le groupe (fieldset natif). */
   disabled?: boolean;
+  /**
+   * Jours ISO présents mais INERTES (visibles, grisés, non basculables) — p. ex. un jour
+   * souhaité qui n'est plus disponible. `aria-disabled` (le bouton reste focalisable et sa
+   * raison reste découvrable, A11Y-30), jamais un `disabled` natif qui sort du focus.
+   */
+  disabledDays?: number[];
+  /** Motif commun aux jours désactivés, annoncé au clavier/lecteur d'écran (`aria-describedby` + `title`). */
+  disabledReason?: string;
 }
 
 /** Surface PLEINE au repos pressé (jamais une teinte `/NN`, P4-265) ; texte `foreground` (AA sur teinte). */
@@ -44,7 +54,9 @@ const ALL_DAYS: number[] = DAYS.map((d) => d.n);
  * sélection neutre — le sens vit dans un `Select`/une legend voisins ; destructive = « jour
  * indisponible/bloqué »), pas un simple habillage. La forme reste identique dans les deux tons.
  */
-export function DayMultiPicker({ value, onChange, legend, legendVisible = false, days = ALL_DAYS, tone = "accent", disabled = false }: DayMultiPickerProps) {
+export function DayMultiPicker({ value, onChange, legend, legendVisible = false, days = ALL_DAYS, tone = "accent", disabled = false, disabledDays = [], disabledReason }: DayMultiPickerProps) {
+  const reasonId = useId();
+  const hasReason = disabledReason !== undefined && disabledDays.length > 0;
   const toggle = (n: number): void => {
     const next = value.includes(n) ? value.filter((d) => d !== n) : [...value, n];
     onChange(next.sort((a, b) => a - b));
@@ -53,19 +65,34 @@ export function DayMultiPicker({ value, onChange, legend, legendVisible = false,
   return (
     <fieldset disabled={disabled} className="min-w-0 border-0 p-0">
       <legend className={legendVisible ? "mb-1 text-xs text-muted-foreground" : "sr-only"}>{legend}</legend>
+      {hasReason ? (
+        <span id={reasonId} className="sr-only">
+          {disabledReason}
+        </span>
+      ) : null}
       <div className="flex flex-wrap gap-1">
         {days.map((n) => {
-          const on = value.includes(n);
+          const isDisabled = disabledDays.includes(n);
+          const on = value.includes(n) && !isDisabled;
           return (
             <button
               key={n}
               type="button"
               aria-pressed={on}
+              aria-disabled={isDisabled || undefined}
               aria-label={dayLabelLong(n)}
-              onClick={() => toggle(n)}
+              aria-describedby={isDisabled && hasReason ? reasonId : undefined}
+              title={isDisabled ? disabledReason : undefined}
+              // Jour inerte : le clic est neutralisé ICI (pas un `disabled` natif) pour que le
+              // bouton reste focalisable et son motif annoncé (A11Y-30).
+              onClick={() => {
+                if (!isDisabled) {
+                  toggle(n);
+                }
+              }}
               className={cn(
                 "inline-flex min-h-6 min-w-9 items-center justify-center rounded-md border px-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
-                on ? PRESSED[tone] : "border-border text-muted-foreground",
+                isDisabled ? "cursor-not-allowed border-border text-muted-foreground opacity-50" : on ? PRESSED[tone] : "border-border text-muted-foreground",
               )}
             >
               {dayLabelShort(n)}

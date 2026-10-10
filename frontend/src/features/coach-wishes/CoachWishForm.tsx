@@ -1,15 +1,17 @@
 import { type FormEvent, useState } from "react";
 
-import type { Coach, PriorityTier, Team, TeamCoach } from "@/features/wizard/api";
+import type { PriorityTier, Team, TeamCoach } from "@/features/wizard/api";
 import { Button } from "@/shared/components/ui/button";
 import { DayMultiPicker } from "@/shared/components/ui/day-multi-picker";
 import { FIELD_CLASS } from "@/shared/components/ui/field";
+import { Input } from "@/shared/components/ui/input";
 import { Select } from "@/shared/components/ui/select";
 import { TeamSelect } from "@/shared/components/ui/team-select";
 import { DAYS } from "@/shared/lib/days";
 import { cn } from "@/shared/lib/utils";
 
 import type { CoachWish, CoachWishPayload } from "./api";
+import { frDate } from "./wishSections";
 import type { WeekWindow } from "@/features/cockpit/lib/date";
 
 /** Les sept jours ISO (foyer `shared/lib/days`), pour calculer le complément « disponibles ». */
@@ -26,9 +28,16 @@ const ALL_DAYS: number[] = DAYS.map((d) => d.n);
  *    « coach principal » de `WishesTab` ne s'applique qu'à la collecte par mail, pas à la
  *    saisie manuelle ;
  *  - une équipe DÉJÀ servie sur la semaine choisie est DÉSACTIVÉE avec motif (jamais masquée :
- *    « un état invisible est un état faux ») ;
- *  - le coach est FACULTATIF (« (aucun) ») : une équipe sans coach (Vétérans) peut avoir une
- *    doléance manuelle.
+ *    « un état invisible est un état faux »).
+ *
+ * P2-63 lot 5 (retours fondateur 2026-10-10) :
+ *  - PLUS de champ Coach : le coach est DÉDUIT — à la création, le coach PRINCIPAL de l'équipe
+ *    s'il existe (sinon aucun), recalculé quand l'équipe change ; à l'édition, le `coachId`
+ *    existant est gardé tel quel, jamais dé-attribué en silence. Côté serveur, rien ne change
+ *    (coach facultatif, `coachId` nullable) ;
+ *  - « Créneaux souhaités » est un champ NOMBRE (0-7, bornes serveur) ;
+ *  - « Jours disponibles » AU-DESSUS de « Jours souhaités » ; un jour non disponible est
+ *    DÉSACTIVÉ côté souhaités (un jour souhaité est au minimum un jour disponible).
  *
  * La semaine est FIGÉE quand la modale est filtrée sur une semaine (vue wizard d'un plan
  * de semaine) : on ne saisit alors une doléance que pour cette semaine-là.
@@ -39,7 +48,6 @@ export function CoachWishForm({
   lockedWeek,
   teams,
   tiers,
-  coaches,
   teamCoaches,
   servedByWeek,
   editing,
@@ -52,7 +60,6 @@ export function CoachWishForm({
   lockedWeek: string | null;
   teams: Team[];
   tiers: PriorityTier[];
-  coaches: Coach[];
   teamCoaches: TeamCoach[];
   /** Pour chaque lundi, les équipes qui ONT déjà une doléance cette semaine-là (désactivées). */
   servedByWeek: Map<string, Set<string>>;
@@ -67,8 +74,9 @@ export function CoachWishForm({
   const initialTeamId = editing?.teamId ?? teams[0]?.id ?? "";
   const [weekStart, setWeekStart] = useState(editing?.weekStart ?? lockedWeek ?? weeks[0]?.monday ?? "");
   const [teamId, setTeamId] = useState(initialTeamId);
-  // À la création, le coach PRINCIPAL de l'équipe est le défaut ; l'édition garde ce qui est là
-  // (y compris "" d'une doléance dé-attribuée). « (aucun) » est toujours un choix valide.
+  // Coach DÉDUIT, sans champ (retours fondateur 2026-10-10) : à la création le coach PRINCIPAL
+  // de l'équipe (sinon aucun), recalculé quand l'équipe change ; à l'édition le `coachId`
+  // existant est gardé TEL QUEL (y compris null), jamais dé-attribué en silence.
   const [coachId, setCoachId] = useState(editing?.coachId ?? (null === editing ? mainCoachId(initialTeamId) : ""));
   const [slotsWanted, setSlotsWanted] = useState(editing?.slotsWanted ?? 1);
   const [days, setDays] = useState<number[]>(editing?.unavailableDays ?? []);
@@ -98,11 +106,6 @@ export function CoachWishForm({
   const servedTeams = servedByWeek.get(weekStart) ?? new Set<string>();
   const isServed = (id: string): boolean => !isEdit && servedTeams.has(id);
 
-  // Coach : liste les coachs PRINCIPAUX de l'équipe choisie, + la valeur courante si elle n'y
-  // est plus (choisir n'est pas nommer, leçon #342). « (aucun) » est toujours offert.
-  const offerableCoachIds = new Set(mainCoachIds(teamId));
-  const offeredCoaches = coaches.filter((c) => offerableCoachIds.has(c.id) || c.id === coachId);
-
   const selectedTeamServed = isServed(teamId);
 
   const submit = (e: FormEvent) => {
@@ -130,18 +133,20 @@ export function CoachWishForm({
       <div className="flex flex-wrap items-end gap-2">
         {/* P2-63 D — la SEMAINE se choisit d'abord : c'est elle qui décide quelles équipes sont
             encore disponibles (celles déjà servies sont désactivées, jamais retirées). */}
+        {/* Semaine assez large pour « Semaine du 19/10/2026 » en entier (jamais tronqué, retours
+            fondateur 2026-10-10). */}
         <label className="text-xs text-muted-foreground">
           Semaine
           <Select
             aria-label="Semaine"
-            wrapperClassName="mt-0.5 w-40"
+            wrapperClassName="mt-0.5 w-64"
             value={weekStart}
             disabled={null !== lockedWeek || null !== editing}
             onChange={(e) => setWeekStart(e.target.value)}
           >
             {weeks.map((w) => (
               <option key={w.monday} value={w.monday}>
-                Semaine du {w.startDate}
+                Semaine du {frDate(w.startDate)}
               </option>
             ))}
           </Select>
@@ -149,12 +154,15 @@ export function CoachWishForm({
         {/* P2-63 C — sélecteur d'équipe PARTAGÉ (TeamSelect : groupes par rang, pastille couleur,
             recherche au-delà de 8) : visible « Équipe » en caption, nom accessible via `aria-label`
             (TeamSelect est un listbox bouton, pas un `<select>` labellable). Une équipe déjà servie
-            sur la semaine est désactivée AVEC MOTIF (option atteignable au clavier, inerte). */}
+            sur la semaine est désactivée AVEC MOTIF (option atteignable au clavier, inerte). Le
+            PANNEAU est élargi (`panelMinWidth`) pour que le motif et la recherche respirent, plutôt
+            que de gonfler le champ (retours fondateur 2026-10-10). */}
         <div className="text-xs text-muted-foreground">
           Équipe
           <TeamSelect
             aria-label="Équipe"
             wrapperClassName="mt-0.5 w-40"
+            panelMinWidth={320}
             teams={teams}
             tiers={tiers}
             value={teamId}
@@ -162,38 +170,40 @@ export function CoachWishForm({
             optionMeta={(t) => (isServed(t.id) ? { disabled: true, sub: "a déjà une doléance cette semaine" } : {})}
             onValueChange={(v) => {
               setTeamId(v);
-              setCoachId(mainCoachId(v)); // recalcule le défaut coach sur la nouvelle équipe
+              setCoachId(mainCoachId(v)); // coach déduit : recalcule le coach principal de la nouvelle équipe
             }}
           />
         </div>
-        <label className="text-xs text-muted-foreground">
-          Coach
-          <Select aria-label="Coach" wrapperClassName="mt-0.5 w-40" value={coachId} onChange={(e) => setCoachId(e.target.value)}>
-            <option value="">(aucun)</option>
-            {offeredCoaches.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.firstName} {c.lastName}
-                {offerableCoachIds.has(c.id) ? "" : " (n'encadre plus cette équipe)"}
-              </option>
-            ))}
-          </Select>
-        </label>
+        {/* Créneaux souhaités = champ NOMBRE borné 0-7 (bornes serveur, retours fondateur 2026-10-10). */}
         <label className="text-xs text-muted-foreground">
           Créneaux souhaités
-          <Select aria-label="Créneaux souhaités" wrapperClassName="mt-0.5 w-24" value={slotsWanted} onChange={(e) => setSlotsWanted(Number(e.target.value))}>
-            {[0, 1, 2, 3, 4, 5, 6, 7].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </Select>
+          <Input
+            type="number"
+            min={0}
+            max={7}
+            aria-label="Créneaux souhaités"
+            className="mt-0.5 w-20"
+            value={slotsWanted}
+            onChange={(e) => setSlotsWanted(Math.max(0, Math.min(7, Number(e.target.value) || 0)))}
+          />
         </label>
       </div>
 
-      <DayMultiPicker legend="Jours souhaités" legendVisible tone="accent" value={wishedDays} onChange={changeWishedDays} />
-
-      {/* Pressé = DISPONIBLE (positif) : `tone="accent"`, jamais `destructive` (« bloqué »). */}
+      {/* « Jours disponibles » AU-DESSUS (tout pressé par défaut, on dépresse les creux) ;
+          « Jours souhaités » dessous. Pressé = DISPONIBLE (positif) : `tone="accent"`. */}
       <DayMultiPicker legend="Jours disponibles" legendVisible tone="accent" value={availableDays} onChange={changeAvailableDays} />
+
+      {/* Un jour souhaité est au minimum un jour DISPONIBLE : les jours indisponibles (`days`) sont
+          DÉSACTIVÉS ici (visibles, grisés, avec motif), jamais seulement décochés. */}
+      <DayMultiPicker
+        legend="Jours souhaités"
+        legendVisible
+        tone="accent"
+        value={wishedDays}
+        onChange={changeWishedDays}
+        disabledDays={days}
+        disabledReason="Jour non disponible : rendez-le disponible pour pouvoir le souhaiter."
+      />
 
       <textarea
         aria-label="Commentaire"

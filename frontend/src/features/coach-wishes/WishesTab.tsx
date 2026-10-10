@@ -21,6 +21,7 @@ import type { CoachWishMutualization, CoachWishMutualizationPayload } from "./mu
 import { MutualizationForm } from "./MutualizationForm";
 import { useCoachWishMutualizations, useCreateCoachWishMutualization, useDeleteCoachWishMutualization, useUpdateCoachWishMutualization } from "./mutualizationQueries";
 import { useCoachWishes, useCreateCoachWish, useDeleteCoachWish, useUpdateCoachWish } from "./queries";
+import { frDate } from "./wishSections";
 
 /**
  * La todo-list des doléances coachs d'une période de vacances (feature #10, lot C1) — onglet
@@ -197,7 +198,6 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
             lockedWeek={weekFilter}
             teams={teams}
             tiers={tiers}
-            coaches={coaches}
             teamCoaches={teamCoaches}
             servedByWeek={servedByWeek}
             editing={editing}
@@ -216,7 +216,7 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
           const items = visible.filter((w) => w.weekStart === week.monday);
           return (
             <section key={week.monday}>
-              {null === weekFilter ? <h3 className="mb-1 text-xs font-semibold text-muted-foreground">Semaine du {week.startDate}</h3> : null}
+              {null === weekFilter ? <h3 className="mb-1 text-xs font-semibold text-muted-foreground">Semaine du {frDate(week.startDate)}</h3> : null}
               {0 === items.length ? (
                 <EmptyHint className="text-xs">Aucune doléance pour cette semaine.</EmptyHint>
               ) : (
@@ -225,8 +225,13 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
                     <li key={w.id} className="flex items-start gap-2 rounded-md border border-border px-3 py-2 text-sm">
                       <input type="checkbox" aria-label={`Traité — ${teamName.get(w.teamId) ?? "équipe"}`} className="mt-1 size-4" checked={w.done} onChange={() => toggleDone(w)} />
                       <div className={cn("min-w-0 flex-1", w.done && "line-through")}>
+                        {/* Pas de coach (coachId null) = doléance manuelle sans coach : on n'affiche
+                            AUCUN coach (juste l'équipe). « coach dé-attribué » ne vaut QUE pour le vrai
+                            cas « coach retiré » : un coachId posé mais introuvable (coach supprimé/parti),
+                            retours fondateur 2026-10-10. */}
                         <p className="font-medium">
-                          {teamName.get(w.teamId) ?? "Équipe"} · {null === w.coachId ? <span className="italic text-muted-foreground">coach dé-attribué</span> : (coachName.get(w.coachId) ?? "Coach")}
+                          {teamName.get(w.teamId) ?? "Équipe"}
+                          {null !== w.coachId ? <> · {coachName.get(w.coachId) ?? <span className="italic text-muted-foreground">coach dé-attribué</span>}</> : null}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {0 === w.slotsWanted ? "Aucun créneau souhaité" : `${w.slotsWanted} créneau${w.slotsWanted > 1 ? "x" : ""} souhaité${w.slotsWanted > 1 ? "s" : ""}`}

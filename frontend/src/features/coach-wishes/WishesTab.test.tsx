@@ -109,9 +109,9 @@ describe("WishesTab", () => {
   it("groupe les doléances par semaine quand aucun filtre de semaine", () => {
     wishesState.data = [wish({ id: "w1", weekStart: "2026-02-16" }), wish({ id: "w2", teamId: "t2", weekStart: "2026-02-23" })];
     render(<WishesTab mother={mother} weekFilter={null} />);
-    // Deux en-têtes de semaine (les deux semaines des vacances).
-    expect(screen.getByText(/Semaine du 2026-02-16/)).toBeInTheDocument();
-    expect(screen.getByText(/Semaine du 2026-02-23/)).toBeInTheDocument();
+    // Deux en-têtes de semaine (les deux semaines des vacances), en format FR jj/mm/aaaa (lot 5).
+    expect(screen.getByText(/Semaine du 16\/02\/2026/)).toBeInTheDocument();
+    expect(screen.getByText(/Semaine du 23\/02\/2026/)).toBeInTheDocument();
     expect(screen.getByText("SM1", { exact: false })).toBeInTheDocument();
   });
 
@@ -125,7 +125,7 @@ describe("WishesTab", () => {
   it("ne montre qu'une semaine quand weekFilter est posé (vue wizard d'un plan de semaine)", () => {
     wishesState.data = [wish({ id: "w1", weekStart: "2026-02-16" }), wish({ id: "w2", teamId: "t2", weekStart: "2026-02-23" })];
     render(<WishesTab mother={mother} weekFilter="2026-02-23" />);
-    expect(screen.queryByText(/Semaine du 2026-02-16/)).toBeNull();
+    expect(screen.queryByText(/Semaine du 16\/02\/2026/)).toBeNull();
     // La doléance de la semaine filtrée (U13) est là ; celle de l'autre semaine non.
     expect(screen.getByText("U13", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("SM1", { exact: false })).toBeNull();
@@ -147,26 +147,33 @@ describe("WishesTab", () => {
     expect(updateMut).toHaveBeenCalledWith(expect.objectContaining({ id: "w1", body: expect.objectContaining({ coachId: null, done: true }) }));
   });
 
-  it("une doléance dé-attribuée (coachId null) l'affiche explicitement", () => {
-    wishesState.data = [wish({ id: "w1", coachId: null })];
+  // Lot 5 (fondateur 2026-10-10) — une doléance qui n'a JAMAIS eu de coach (coachId null, p. ex.
+  // saisie manuelle Vétérans) n'affiche AUCUN coach : « U13 », pas « U13 · coach dé-attribué ».
+  it("une doléance sans coach (coachId null) n'affiche aucun coach, pas « dé-attribué »", () => {
+    wishesState.data = [wish({ id: "w1", coachId: null, teamId: "t2" })];
+    render(<WishesTab mother={mother} weekFilter={null} />);
+    expect(screen.getByText("U13")).toBeInTheDocument();
+    expect(screen.queryByText(/dé-attribué/)).toBeNull();
+  });
+
+  // …mais le VRAI cas « coach retiré » (coachId posé mais introuvable — coach supprimé/parti) garde
+  // le libellé « coach dé-attribué ».
+  it("une doléance dont le coach a été retiré (coachId introuvable) affiche « coach dé-attribué »", () => {
+    wishesState.data = [wish({ id: "w1", coachId: "cGone", teamId: "t2" })];
     render(<WishesTab mother={mother} weekFilter={null} />);
     expect(screen.getByText(/coach dé-attribué/)).toBeInTheDocument();
   });
 
-  it("éditer une doléance ATTRIBUÉE garde son coach par défaut (pas de dé-attribution SILENCIEUSE)", async () => {
-    // P2-63 PR 2 / Q5 (fondateur 2026-10-09) — le coach est désormais FACULTATIF par le canal
-    // gestionnaire : « (aucun) » est toujours offert, en création comme en édition. Le garde
-    // qui compte reste (revue #10 C1 round 2) : l'édition d'une doléance attribuée ne la
-    // dé-attribue JAMAIS en silence — le coach d'origine est le défaut et survit à un
-    // enregistrement qui n'y touche pas (seul un choix explicite de « (aucun) » détacherait).
+  it("éditer une doléance ATTRIBUÉE garde son coach (pas de dé-attribution SILENCIEUSE)", async () => {
+    // Lot 5 (fondateur 2026-10-10) — PLUS de champ Coach : le coach est déduit et, à l'édition,
+    // le `coachId` existant est gardé TEL QUEL, jamais dé-attribué en silence. Enregistrer sans
+    // rien toucher garde donc le coach d'origine.
     wishesState.data = [wish({ id: "w1", coachId: "c1", teamId: "t1", weekStart: "2026-02-16" })];
     const user = userEvent.setup();
     render(<WishesTab mother={mother} weekFilter={null} />);
     await user.click(screen.getByRole("button", { name: /^Modifier la doléance/ }));
-    const coachSelect = screen.getByLabelText("Coach") as HTMLSelectElement;
-    // Le défaut reste le coach attribué (pas de bascule silencieuse vers « (aucun) »).
-    expect(coachSelect.value).toBe("c1");
-    // Enregistrer sans toucher au coach garde le coach d'origine.
+    // Plus aucun champ Coach dans le formulaire.
+    expect(screen.queryByLabelText("Coach")).toBeNull();
     await user.click(screen.getByRole("button", { name: "Enregistrer" }));
     expect(updateMut).toHaveBeenCalledWith(expect.objectContaining({ body: expect.objectContaining({ coachId: "c1" }) }), expect.anything());
   });
@@ -213,20 +220,47 @@ describe("WishesTab", () => {
     expect(screen.getByText(/indispo : Mer/)).toBeInTheDocument();
   });
 
-  it("le formulaire d'ajout envoie les jours souhaités, et cocher souhaité retire l'indisponibilité (exclusion)", async () => {
+  // Lot 5 (fondateur 2026-10-10) — un jour souhaité est au minimum un jour DISPONIBLE : rendre un
+  // jour indisponible le DÉSACTIVE côté souhaités (pas seulement décoché). On souhaite donc un
+  // jour disponible.
+  it("le formulaire d'ajout envoie les jours souhaités ; un jour rendu indisponible est désactivé côté souhaités", async () => {
     const user = userEvent.setup();
     render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
     await user.click(screen.getByRole("button", { name: "Ajouter" }));
 
-    const wished = screen.getByRole("group", { name: "Jours souhaités" });
     const dispo = screen.getByRole("group", { name: "Jours disponibles" });
-    // mercredi indisponible (on le dépresse des disponibles), puis souhaité → il quitte les indispo.
+    const wished = screen.getByRole("group", { name: "Jours souhaités" });
+    // mercredi rendu indisponible (dépressé côté disponibles) → désactivé côté souhaités.
     await user.click(within(dispo).getByRole("button", { name: "mercredi" }));
-    await user.click(within(wished).getByRole("button", { name: "mercredi" }));
+    expect(within(wished).getByRole("button", { name: "mercredi" })).toHaveAttribute("aria-disabled", "true");
+    // On souhaite mardi (disponible).
     await user.click(within(wished).getByRole("button", { name: "mardi" }));
 
     await user.click(screen.getByRole("button", { name: /Ajouter la doléance/ }));
-    expect(createMut).toHaveBeenCalledWith(expect.objectContaining({ wishedDays: [2, 3], unavailableDays: [] }), expect.anything());
+    expect(createMut).toHaveBeenCalledWith(expect.objectContaining({ wishedDays: [2], unavailableDays: [3] }), expect.anything());
+  });
+
+  // Lot 5 — « Jours disponibles » est rendu AU-DESSUS de « Jours souhaités ».
+  it("rend « Jours disponibles » AVANT « Jours souhaités »", async () => {
+    const user = userEvent.setup();
+    render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
+    await user.click(screen.getByRole("button", { name: "Ajouter" }));
+
+    const dispo = screen.getByRole("group", { name: "Jours disponibles" });
+    const wished = screen.getByRole("group", { name: "Jours souhaités" });
+    expect(dispo.compareDocumentPosition(wished) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  // Lot 5 — « Créneaux souhaités » est un champ NOMBRE (spinbutton) borné 0-7 (bornes serveur).
+  it("rend « Créneaux souhaités » en champ nombre borné 0-7", async () => {
+    const user = userEvent.setup();
+    render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
+    await user.click(screen.getByRole("button", { name: "Ajouter" }));
+
+    const slots = screen.getByRole("spinbutton", { name: "Créneaux souhaités" });
+    expect(slots).toHaveAttribute("type", "number");
+    expect(slots).toHaveAttribute("min", "0");
+    expect(slots).toHaveAttribute("max", "7");
   });
 
   // ── P2-63 A — « Jours disponibles » (inversion de présentation, payload inchangé) ──
@@ -314,36 +348,32 @@ describe("WishesTab", () => {
     expect(screen.getByRole("button", { name: "U13" })).toBeInTheDocument();
   });
 
-  // « Je veux que les MAIN coach » : le select listait TOUT le club, on pouvait enregistrer
-  // une équipe avec un coach qui ne l'encadre pas.
-  it("n'offre que le coach principal de l'équipe choisie", async () => {
+  // Lot 5 (fondateur 2026-10-10) — plus de champ Coach : le coach est DÉDUIT. À la création, le
+  // coach PRINCIPAL de l'équipe (recalculé au changement d'équipe) ; SM1 → Maxime (c1).
+  it("déduit le coach principal de l'équipe à la création (sans champ Coach)", async () => {
     const user = userEvent.setup();
-    render(<WishesTab mother={mother} weekFilter={null} />);
+    render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
 
     await user.click(screen.getByRole("button", { name: "Ajouter" }));
-    const picker = screen.getByLabelText("Coach");
-    expect(within(picker).getByRole("option", { name: /Maxime Durand/ })).toBeInTheDocument();
-    expect(within(picker).queryByRole("option", { name: /Léa Roy/ })).toBeNull();
-
-    // Changer d'équipe change la liste : Fanion est encadrée par Léa, pas par Maxime.
-    await user.click(screen.getByRole("button", { name: /^Équipe SM1/ }));
-    await user.click(screen.getByRole("option", { name: "Fanion" }));
-    expect(within(screen.getByLabelText("Coach")).getByRole("option", { name: /Léa Roy/ })).toBeInTheDocument();
-    expect(within(screen.getByLabelText("Coach")).queryByRole("option", { name: /Maxime Durand/ })).toBeNull();
+    // Aucun champ Coach n'est rendu (déduction automatique).
+    expect(screen.queryByLabelText("Coach")).toBeNull();
+    // SM1 (défaut) → coach MAIN c1 déduit et envoyé au payload.
+    await user.click(screen.getByRole("button", { name: /Ajouter la doléance/ }));
+    expect(createMut).toHaveBeenCalledWith(expect.objectContaining({ teamId: "t1", coachId: "c1" }), expect.anything());
   });
 
-  // ⚠ CHOISIR n'est pas NOMMER (leçon #342) : un coach qui a perdu son lien MAIN reste
-  // affiché sur la doléance qu'il porte — sinon le select rend blanc sur une doléance qui
-  // nomme pourtant quelqu'un, et « combler le trou » la réattribue en silence.
-  it("garde le coach d'une doléance existante même s'il n'encadre plus l'équipe", async () => {
+  // ⚠ CHOISIR n'est pas NOMMER (leçon #342) : un coach qui a perdu son lien MAIN reste PORTÉ par
+  // la doléance — l'édition ne le re-dérive JAMAIS vers le MAIN courant en silence. Léa (c2)
+  // n'encadre pas SM1, mais une doléance SM1 qu'elle porte garde c2 à l'enregistrement.
+  it("garde le coach d'une doléance existante même s'il n'encadre plus l'équipe (pas de re-dérivation)", async () => {
     wishesState.data = [wish({ id: "w1", teamId: "t1", coachId: "c2", weekStart: "2026-02-16" })]; // Léa n'encadre pas SM1
     const user = userEvent.setup();
     render(<WishesTab mother={mother} weekFilter={null} />);
 
     await user.click(screen.getByRole("button", { name: /^Modifier la doléance/ }));
-    const picker = screen.getByLabelText("Coach") as HTMLSelectElement;
-    expect(picker.value).toBe("c2");
-    expect(within(picker).getByRole("option", { name: /Léa Roy.*n'encadre plus cette équipe/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
+    // Le coach d'origine (c2) survit — jamais re-dérivé vers le MAIN de SM1 (c1).
+    expect(updateMut).toHaveBeenCalledWith(expect.objectContaining({ id: "w1", body: expect.objectContaining({ coachId: "c2" }) }), expect.anything());
   });
 
   // ── D2 — section Mutualisations ──
@@ -427,8 +457,7 @@ describe("WishesTab", () => {
     await user.click(screen.getByRole("button", { name: "Ajouter" }));
     await user.click(screen.getByRole("button", { name: /^Équipe SM1/ }));
     await user.click(screen.getByRole("option", { name: "U13" }));
-    // Coach par défaut « (aucun) » (U13 n'a pas de coach principal).
-    expect((screen.getByLabelText("Coach") as HTMLSelectElement).value).toBe("");
+    // U13 n'a pas de coach principal : le coach déduit est « aucun » → coachId null au payload.
     await user.click(screen.getByRole("button", { name: /Ajouter la doléance/ }));
     expect(createMut).toHaveBeenCalledWith(expect.objectContaining({ teamId: "t2", coachId: null }), expect.anything());
   });
