@@ -75,7 +75,13 @@ test("lot7 — captures du transfert et de l'avertissement", async ({ page }) =>
   //    1 plan) + une doléance sur cette semaine. Une mère scindée affiche au cockpit sa carte avec
   //    le bouton « Doléances » (patron du flux Behat RepriseWeekContext). ───────────────────────
   let motherId: string | null = null;
-  const teamId = await firstId(api, "/api/teams?itemsPerPage=1");
+  // Deux équipes distinctes : la pastille « Traité » (done) et la doléance convertie partagent la
+  // même semaine (week2) et doivent donc porter des équipes différentes (unicité période·équipe·
+  // semaine, `CoachWishStateProcessor`). Le club seedé en a largement assez.
+  const teamsRes = await api.get("/api/teams?itemsPerPage=5");
+  const teamIds = teamsRes.ok() ? (((await teamsRes.json()) as { member?: { id: string }[] }).member ?? []).map((t) => t.id) : [];
+  const team1 = teamIds[0] ?? null;
+  const team2 = teamIds[1] ?? null;
   const coachId = await firstId(api, "/api/coaches?itemsPerPage=1");
   try {
     const entry = await api.post("/api/calendar_entries", {
@@ -84,13 +90,28 @@ test("lot7 — captures du transfert et de l'avertissement", async ({ page }) =>
     motherId = entry.ok() ? ((await entry.json()) as { id: string }).id : null;
 
     if (motherId) {
-      // Détacher la 2ᵉ semaine (enfant de la mère) : le provisioning fait naître son plan.
+      // Détacher la 2ᵉ semaine (enfant de la mère) : le provisioning fait naître SON plan — et SON
+      // plan SEUL (créer une mère holiday racine ne provisionne rien, ADR-0002 amendement
+      // 2026-07-24). Donc week2 a un plan, week1 (la semaine mère) n'en a PAS : une doléance sur
+      // week1 est IGNORÉE au transfert avec le motif « semaine sans planning ».
       await api.post("/api/calendar_entries", {
         data: { kind: "period", periodType: "holiday", title: "Semaine détachée (captures lot 7)", startDate: week2Monday, endDate: week2End, parentEntryId: motherId },
       });
-      if (teamId && coachId) {
+      // Trois doléances, pour montrer les trois états demandés par le fondateur (2026-10-11) :
+      //  1. week1 (SANS plan) — non traitée : cochée, mais IGNORÉE au transfert → « semaine sans planning » ;
+      //  2. week2 (AVEC plan) — non traitée : cochée et CONVERTIE au transfert ;
+      //  3. week2 (AVEC plan) — DÉJÀ traitée (`done: true`) : pas de case, pastille verte « Traité ».
+      if (team1 && coachId) {
         await api.post("/api/coach_wishes", {
-          data: { calendarEntryId: motherId, weekStart: week2Monday, teamId, coachId, slotsWanted: 3, unavailableDays: [4, 5], wishedDays: [1], comment: "Indispo jeu/ven", done: false },
+          data: { calendarEntryId: motherId, weekStart: monday, teamId: team1, coachId, slotsWanted: 2, unavailableDays: [4, 5], wishedDays: [1], comment: "Indispo jeu/ven", done: false },
+        });
+        await api.post("/api/coach_wishes", {
+          data: { calendarEntryId: motherId, weekStart: week2Monday, teamId: team1, coachId, slotsWanted: 3, wishedDays: [2], comment: "Souhaite le mardi", done: false },
+        });
+      }
+      if (team2 && coachId) {
+        await api.post("/api/coach_wishes", {
+          data: { calendarEntryId: motherId, weekStart: week2Monday, teamId: team2, coachId, slotsWanted: 1, done: true },
         });
       }
     }
@@ -105,12 +126,18 @@ test("lot7 — captures du transfert et de l'avertissement", async ({ page }) =>
       await doleancesBtn.click();
       // Le bouton « Transférer au planning (N) » vit désormais dans le PIED de la fenêtre (lot 7 PR 5,
       // retour fondateur 2026-10-11) : même sélecteur, il est juste en bas à droite.
-      await expect(page.getByRole("button", { name: /Transférer au planning/ })).toBeVisible({ timeout: 15_000 });
-      // ⚠ Attendre que les ÉQUIPES soient chargées avant la capture : sinon la liste rend « Équipe »
-      // (nom de repli) le temps du chargement, et c'est ce qu'avait saisi la capture précédente. On
-      // attend le commentaire déterministe de la doléance seedée ET la fin des requêtes réseau (teams).
-      await expect(page.getByText("Indispo jeu/ven")).toBeVisible({ timeout: 15_000 });
-      await page.waitForLoadState("networkidle").catch(() => undefined);
+      const dialog = page.getByRole("dialog");
+      await expect(dialog.getByRole("button", { name: /Transférer au planning/ })).toBeVisible({ timeout: 15_000 });
+      // ⚠ Attendre que les ÉQUIPES **et** les COACHS soient chargés avant la capture : sinon la liste
+      // rend « Équipe »/« coach dé-attribué » (noms de repli) le temps du chargement — c'est ce
+      // qu'avaient saisi les captures précédentes (le commentaire de la doléance et `networkidle`
+      // se posaient AVANT que ces deux lectures ne reviennent). Signal DÉTERMINISTE : les puces de
+      // filtre (ResourceFilter) ne se rendent QUE lorsque leur groupe est non vide (`ResourceFilter`
+      // renvoie null sinon) — leur présence PROUVE que coachs et équipes sont revenus, donc que les
+      // noms sont résolus. Scopées au `dialog` pour ne pas viser un contrôle du cockpit en fond.
+      await expect(dialog.getByRole("button", { name: /Équipes/ })).toBeVisible({ timeout: 15_000 });
+      await expect(dialog.getByRole("button", { name: /Coachs/ })).toBeVisible({ timeout: 15_000 });
+      await expect(dialog.getByText("Indispo jeu/ven")).toBeVisible({ timeout: 15_000 });
       await shot(page, "lot7-transfert-liste.png");
 
       // ── Capture 2/2 : le récap après transfert (toast) ─────────────────────────────────────────
