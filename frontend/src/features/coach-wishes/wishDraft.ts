@@ -30,7 +30,9 @@ export function loadDraft(token: string): WishDraft | null {
     const parsed = JSON.parse(raw) as SerializedDraft;
     const sections = new Map<string, SectionState>();
     for (const [k, v] of Object.entries(parsed.sections)) {
-      sections.set(k, { slotsWanted: v.slotsWanted, days: new Set(v.days), wishedDays: new Set(v.wishedDays ?? []), comment: v.comment, keepSeasonSlots: v.keepSeasonSlots ?? false });
+      // `byAnotherCoach` est un drapeau SERVEUR (non éditable, non sérialisé) : le brouillon
+      // repart à false, la fusion dans l'état serveur (PublicWishPage) rétablit la vérité.
+      sections.set(k, { slotsWanted: v.slotsWanted, days: new Set(v.days), wishedDays: new Set(v.wishedDays ?? []), comment: v.comment, keepSeasonSlots: v.keepSeasonSlots ?? false, byAnotherCoach: false });
     }
     const mutualizations = new Map<string, MutualizationState>();
     for (const [k, v] of Object.entries(parsed.mutualizations ?? {})) {

@@ -1,5 +1,6 @@
 import { StatusPill } from "@/shared/components/ui/badge";
 import { DayMultiPicker } from "@/shared/components/ui/day-multi-picker";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { FIELD_CLASS } from "@/shared/components/ui/field";
 import { Input } from "@/shared/components/ui/input";
 import { DAYS } from "@/shared/lib/days";
@@ -109,6 +110,16 @@ export function WishTeamStep({ team, weeks, sections, partnerTeams, teamLinks, m
             <legend className="px-1 text-sm font-medium">
               {team.name} · semaine du {frDate(week)}
             </legend>
+            {/* Option A — un autre coach de cette équipe a déjà répondu pour cette semaine : on
+                prévient que l'envoi remplacera sa version. JAMAIS son prénom (« un autre coach ») ;
+                sa saisie est déjà pré-remplie dans les champs ci-dessous. */}
+            {s.byAnotherCoach ? (
+              <NoticeBanner
+                tone="warning"
+                className="mt-2"
+                message="Un autre coach a déjà répondu pour cette équipe cette semaine (sa saisie est pré-remplie ci-dessous). Votre envoi remplacera sa version — précisez les particularités dans le commentaire."
+              />
+            ) : null}
             <label className="mt-2 flex items-center gap-2 text-sm">
               Séances souhaitées
               <Input

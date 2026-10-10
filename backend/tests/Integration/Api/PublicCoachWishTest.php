@@ -211,12 +211,66 @@ final class PublicCoachWishTest extends WebTestCase
             ['coachFirstName', 'periodTitle', 'periodStart', 'periodEnd', 'deadline', 'weeks', 'teams', 'partnerTeams', 'teamLinks', 'wishes', 'mutualizations', 'respondedAt'],
             array_keys($body),
         );
-        // Une doléance n'expose que son souhait + le drapeau NU — jamais un horaire/gymnase.
+        // Une doléance n'expose que son souhait + les drapeaux NUS — jamais un horaire/gymnase,
+        // jamais un nom ou un identifiant de coach (option A : `byAnotherCoach` est un BOOLÉEN).
         self::assertSame(
-            ['teamId', 'weekStart', 'slotsWanted', 'unavailableDays', 'wishedDays', 'comment', 'keepSeasonSlots'],
+            ['teamId', 'weekStart', 'slotsWanted', 'unavailableDays', 'wishedDays', 'comment', 'keepSeasonSlots', 'byAnotherCoach'],
             array_keys($body['wishes'][0]),
         );
         self::assertFalse($body['wishes'][0]['keepSeasonSlots'], 'drapeau nu, défaut false');
+    }
+
+    public function testGetWarnsWhenAnotherCoachRespondedWithoutExposingTheirName(): void
+    {
+        // Option A (fondateur 2026-10-10) — équipe co-coachée : une doléance saisie par UN AUTRE
+        // coach (Julie) pour (équipe × semaine) est signalée `byAnotherCoach` à Maxime, pour le
+        // prévenir que son envoi remplacera celle de Julie. On n'expose JAMAIS le prénom ni l'id
+        // de Julie : juste sa saisie déjà pré-remplie + le booléen.
+        $julie = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setFirstName('Julie')->setLastName('Martin');
+        $this->em->persist($julie);
+        $this->em->flush();
+        $wish = (new CoachWish)->setCalendarEntryId($this->mother->getId())->setTeamId($this->team->getId())
+            ->setWeekStart(new DateTimeImmutable('2026-02-16 00:00:00'))->setCoachId($julie->getId())
+            ->setSlotsWanted(2)->setUnavailableDays([2])->setComment('indispo mardi');
+        $wish->setClubId($this->club->getId());
+        $wish->setSeasonId($this->season->getId());
+        $this->em->persist($wish);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/coach-wishes/public/' . $this->token);
+        self::assertResponseIsSuccessful();
+        $raw = (string) $this->client->getResponse()->getContent();
+        $body = json_decode($raw, true);
+
+        self::assertCount(1, $body['wishes']);
+        self::assertTrue($body['wishes'][0]['byAnotherCoach'], 'la saisie d’un autre coach est signalée');
+        self::assertSame([2], $body['wishes'][0]['unavailableDays'], 'la saisie de l’autre coach est pré-remplie');
+        // Aucune donnée personnelle de l'autre coach : ni prénom, ni id.
+        self::assertStringNotContainsString('Julie', $raw, 'le prénom de l’autre coach n’est jamais exposé');
+        self::assertStringNotContainsString($julie->getId(), $raw, 'l’id de l’autre coach n’est jamais exposé');
+    }
+
+    public function testGetNeverExposesAWishForATeamOutsideTheTokenPerimeter(): void
+    {
+        // Abus §3bis — la page publique à jeton n'expose QUE les doléances des équipes du
+        // périmètre du jeton (ses équipes ∩ campagne). Une doléance d'une équipe que ce coach
+        // n'encadre pas ne doit JAMAIS fuiter par le contexte GET.
+        $otherTeam = $this->newTeam('U15'); // existe, mais pas d'encadrement par Maxime
+        $wish = (new CoachWish)->setCalendarEntryId($this->mother->getId())->setTeamId($otherTeam->getId())
+            ->setWeekStart(new DateTimeImmutable('2026-02-16 00:00:00'))->setCoachId(null)
+            ->setSlotsWanted(5)->setUnavailableDays([1]);
+        $wish->setClubId($this->club->getId());
+        $wish->setSeasonId($this->season->getId());
+        $this->em->persist($wish);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/coach-wishes/public/' . $this->token);
+        self::assertResponseIsSuccessful();
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+
+        foreach ($body['wishes'] as $exposed) {
+            self::assertNotSame($otherTeam->getId(), $exposed['teamId'], 'une doléance hors périmètre ne doit jamais être exposée');
+        }
     }
 
     public function testSubmitRejectsADayBothWishedAndUnavailableWithoutWriting(): void

@@ -29,7 +29,7 @@ const context = (over: Partial<PublicWishContext> = {}): PublicWishContext => ({
   teams: [{ id: "t1", name: "SM1" }],
   partnerTeams: [],
   teamLinks: [],
-  wishes: [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3], wishedDays: [], comment: "note manager", keepSeasonSlots: false }],
+  wishes: [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3], wishedDays: [], comment: "note manager", keepSeasonSlots: false, byAnotherCoach: false }],
   mutualizations: [],
   respondedAt: null,
   ...over,
@@ -264,7 +264,7 @@ describe("PublicWishPage — parcours en étapes", () => {
           { id: "t1", name: "SM1" },
           { id: "t2", name: "U13" },
         ],
-        wishes: [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3], wishedDays: [], comment: "note manager", keepSeasonSlots: false }],
+        wishes: [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3], wishedDays: [], comment: "note manager", keepSeasonSlots: false, byAnotherCoach: false }],
       }),
     );
     h.submit.mockResolvedValue({ deadline: "2027-06-30" });

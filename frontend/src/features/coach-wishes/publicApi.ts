@@ -22,6 +22,12 @@ export interface PublicWish {
   comment: string | null;
   /** Le coach souhaite garder ses créneaux habituels de saison cette semaine-là (volet B). */
   keepSeasonSlots: boolean;
+  /**
+   * Cette (équipe × semaine) a été saisie par un AUTRE coach (équipe co-coachée) — option A :
+   * on prévient que la réponse remplacera la sienne. Jamais le prénom de l'autre coach (« un
+   * autre coach » à l'affichage), ni rien hors de la saisie déjà pré-remplie.
+   */
+  byAnotherCoach: boolean;
 }
 
 /** Une mutualisation déjà déclarée (une par équipe, pour la période) — pré-remplissage. */
