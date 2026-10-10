@@ -1,6 +1,6 @@
 # Amateo — PostgreSQL Row-Level Security (RLS)
 
-Last verified @ 2026-10-08 (`documentation-update`, rotation — sans rapport avec le sujet de la
+Last verified @ 2026-10-10 (`documentation-update`, rotation — sans rapport avec le sujet de la
 PR). Re-confronté au code : `TenantFilterListener` toujours `KernelEvents::REQUEST =>
 ['onKernelRequest', 7]` (`backend/src/EventListener/TenantFilterListener.php:56`) ✓ ·
 `TenantConnectionContext::setClubId` pose toujours `set_config('app.club_id', ?, false)`

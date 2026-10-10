@@ -1369,20 +1369,50 @@ describe("PeriodConstraints — inherited constraints toggle", () => {
     expect(createConstraintOverride).toHaveBeenCalledTimes(1);
   });
 
-  it("reprise (holiday): default follows the team selection", () => {
+  // PR C (fondateur 2026-10-10) : en vacances, seules les contraintes de saison de portée CLUB
+  // sont héritées par défaut. ÉQUIPE / COACH / GYMNASE sont désactivées par défaut — même pour
+  // une équipe qui reprend. (Avant PR C, une TEAM d'équipe active était cochée.)
+  it("reprise (holiday): only the CLUB scope is kept by default — TEAM/COACH/FACILITY are off", () => {
     entryState.data = { periodType: "holiday" };
-    overridesState.data = [{ id: "to1", teamId: "t2", isActive: false, sessionsPerWeek: null, schedulePlanId: "plan-1" }]; // t2 en pause
     constraintsState.data = [
       constraint({ id: "kc", name: "Club rule", ruleType: "PREFERRED", scope: "CLUB", scopeTargetId: null }),
       constraint({ id: "kf", name: "Gym rule", ruleType: "PREFERRED", scope: "FACILITY", scopeTargetId: "v1" }),
       constraint({ id: "kt1", name: "SM1 rule", ruleType: "PREFERRED", scope: "TEAM", scopeTargetId: "t1" }), // équipe active
-      constraint({ id: "kt2", name: "U13 rule", ruleType: "PREFERRED", scope: "TEAM", scopeTargetId: "t2" }), // équipe en pause
+      constraint({ id: "kco", name: "Coach rule", ruleType: "PREFERRED", scope: "COACH", scopeTargetId: "c1" }),
     ];
     render(<PeriodConstraints calendarEntryId="e1" />);
     expect(screen.getByRole("checkbox", { name: "Club rule appliquée cette période" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "Gym rule appliquée cette période" })).not.toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "SM1 rule appliquée cette période" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "U13 rule appliquée cette période" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "SM1 rule appliquée cette période" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Coach rule appliquée cette période" })).not.toBeChecked();
+  });
+
+  it("reprise: a warning banner counts the season constraints disabled by default", () => {
+    entryState.data = { periodType: "holiday" };
+    constraintsState.data = [
+      constraint({ id: "kc", name: "Club rule", ruleType: "PREFERRED", scope: "CLUB", scopeTargetId: null }),
+      constraint({ id: "kt1", name: "SM1 rule", ruleType: "PREFERRED", scope: "TEAM", scopeTargetId: "t1" }),
+      constraint({ id: "kco", name: "Coach rule", ruleType: "PREFERRED", scope: "COACH", scopeTargetId: "c1" }),
+    ];
+    render(<PeriodConstraints calendarEntryId="e1" />);
+    expect(screen.getByText(/2 contraintes du planning de saison sont désactivées pour cette période/)).toBeInTheDocument();
+  });
+
+  it("reprise: the banner does not count a constraint the manager re-activated", () => {
+    entryState.data = { periodType: "holiday" };
+    constraintOverridesState.data = [{ id: "ov1", constraintId: "kt1", isActive: true, schedulePlanId: "plan-1" }];
+    constraintsState.data = [
+      constraint({ id: "kt1", name: "SM1 rule", ruleType: "PREFERRED", scope: "TEAM", scopeTargetId: "t1" }),
+      constraint({ id: "kco", name: "Coach rule", ruleType: "PREFERRED", scope: "COACH", scopeTargetId: "c1" }),
+    ];
+    render(<PeriodConstraints calendarEntryId="e1" />);
+    expect(screen.getByText(/1 contrainte du planning de saison est désactivée pour cette période/)).toBeInTheDocument();
+  });
+
+  it("closure: no 'disabled by default' banner — everything is kept", () => {
+    constraintsState.data = [constraint({ id: "kt1", name: "SM1 rule", ruleType: "PREFERRED", scope: "TEAM", scopeTargetId: "t1" })];
+    render(<PeriodConstraints calendarEntryId="e1" />);
+    expect(screen.queryByText(/du planning de saison (?:sont désactivées|est désactivée) pour cette période/)).toBeNull();
   });
 
   it("reprise: waits for team overrides before rendering (no wrong-default flash)", () => {

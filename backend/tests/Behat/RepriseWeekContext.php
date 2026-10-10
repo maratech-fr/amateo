@@ -30,7 +30,19 @@ final class RepriseWeekContext extends BaseContext
 
     private const int POLL_INTERVAL_SECONDS = 2;
 
-    private const int TIMEOUT_SECONDS = 180;
+    // Budget moteur 600 s + marge, comme les autres contextes de génération : pour un club de la
+    // taille du BCCL (50 équipes × 9 gymnases, complexité > 200) `_adaptive_timeout` accorde 600 s.
+    // Depuis le lot 3b C, les contraintes d'équipe et de coach sont OFF par défaut en vacances :
+    // moins d'élagage, donc un solve plus long qui peut approcher ce budget.
+    private const int TIMEOUT_SECONDS = 650;
+
+    // Noms ASCII (sans accent ni apostrophe) : on les cherche VERBATIM dans le JSON du snapshot,
+    // où json_encode échapperait un caractère non-ASCII.
+    private const string CLUB_CONSTRAINT_NAME = 'Contrainte club saison gardee en vacances (fonctionnel)';
+
+    private const string TEAM_CONSTRAINT_NAME = 'Contrainte equipe saison off en vacances (fonctionnel)';
+
+    private const string TEAM_NAME = 'SM1';
 
     private string $token = '';
 
@@ -47,6 +59,10 @@ final class RepriseWeekContext extends BaseContext
     private string $versionId = '';
 
     private string $finalStatus = '';
+
+    private string $seasonTeamConstraintId = '';
+
+    private string $seasonClubConstraintId = '';
 
     #[Given('le club de démonstration, connecté, dont le planning de saison est en vigueur')]
     public function leClubConnecteAvecSocleEnVigueur(): void
@@ -81,6 +97,47 @@ final class RepriseWeekContext extends BaseContext
             );
             $this->pointerSetBySelf = true;
         }
+    }
+
+    #[Given('une contrainte de saison d\'équipe et une contrainte de saison de club')]
+    public function uneContrainteEquipeEtUneContrainteClub(): void
+    {
+        $teamId = $this->dbalScalar(
+            \sprintf('SELECT id AS behatval FROM team WHERE club_id=\'%s\' AND name=\'%s\' LIMIT 1', $this->clubId, self::TEAM_NAME),
+            admin: true,
+        );
+        if (1 !== preg_match('/^[0-9a-f-]{36}$/i', $teamId)) {
+            throw new RuntimeException(\sprintf('équipe « %s » introuvable — la base est-elle seedée ?', self::TEAM_NAME));
+        }
+
+        // Permanentes de saison (calendarEntryId nul), toutes deux inoffensives pour la faisabilité :
+        // la CLUB « rien après 23h30 » est toujours vraie, la TEAM « rien avant 6h » aussi.
+        $club = $this->apiPost('constraints', [
+            'name' => self::CLUB_CONSTRAINT_NAME,
+            'scope' => 'CLUB',
+            'family' => 'TIME',
+            'ruleType' => 'PREFERRED',
+            'config' => ['maxStartTime' => '23:30'],
+            'isActive' => true,
+        ], $this->token);
+        if (!\in_array($club['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('création de la contrainte de club refusée (HTTP %d)', $club['status']));
+        }
+        $this->seasonClubConstraintId = $this->idOf($club, 'contrainte de club');
+
+        $team = $this->apiPost('constraints', [
+            'name' => self::TEAM_CONSTRAINT_NAME,
+            'scope' => 'TEAM',
+            'scopeTargetId' => $teamId,
+            'family' => 'TIME',
+            'ruleType' => 'PREFERRED',
+            'config' => ['minStartTime' => '06:00'],
+            'isActive' => true,
+        ], $this->token);
+        if (!\in_array($team['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('création de la contrainte d\'équipe refusée (HTTP %d)', $team['status']));
+        }
+        $this->seasonTeamConstraintId = $this->idOf($team, 'contrainte d\'équipe');
     }
 
     #[Given('des vacances jetables couvrant deux semaines pleines')]
@@ -167,15 +224,47 @@ final class RepriseWeekContext extends BaseContext
         }
     }
 
+    #[Then('le planning de la semaine a hérité la contrainte de club, jamais la contrainte d\'équipe')]
+    public function leSnapshotHeriteClubPasEquipe(): void
+    {
+        if ('COMPLETED' !== $this->finalStatus) {
+            throw new RuntimeException(\sprintf('la génération de la semaine aurait dû aboutir (COMPLETED), obtenu « %s »', $this->finalStatus));
+        }
+
+        // Le snapshot figé de la version EST l'entrée envoyée au solveur (constraintes nommées).
+        $snapshot = $this->dbalScalar(
+            \sprintf('SELECT snapshot_data::text AS behatval FROM schedule WHERE id=\'%s\'', $this->versionId),
+            admin: true,
+        );
+        if ('' === $snapshot) {
+            throw new RuntimeException('la version générée n\'a pas de snapshot — rien à prouver');
+        }
+
+        if (!str_contains($snapshot, self::CLUB_CONSTRAINT_NAME)) {
+            throw new RuntimeException('la contrainte de saison de CLUB aurait dû partir au solveur pendant les vacances (scope CLUB gardé)');
+        }
+        if (str_contains($snapshot, self::TEAM_CONSTRAINT_NAME)) {
+            throw new RuntimeException('la contrainte de saison d\'ÉQUIPE ne doit PAS partir au solveur par défaut pendant les vacances (scope TEAM désactivé)');
+        }
+    }
+
     /**
-     * Supprime les entrées créées (cascade plans et versions) et repose le pointeur du socle à
-     * NULL si c'est nous qui l'avons posé — quoi qu'il arrive (succès, échec, exception).
+     * Supprime les entrées et les contraintes créées (cascade plans et versions) et repose le
+     * pointeur du socle à NULL si c'est nous qui l'avons posé — quoi qu'il arrive (succès, échec,
+     * exception).
      */
     #[AfterScenario]
     public function nettoyer(): void
     {
         if ('' === $this->token) {
             return;
+        }
+
+        if ('' !== $this->seasonTeamConstraintId) {
+            $this->apiDelete(\sprintf('constraints/%s', $this->seasonTeamConstraintId), $this->token);
+        }
+        if ('' !== $this->seasonClubConstraintId) {
+            $this->apiDelete(\sprintf('constraints/%s', $this->seasonClubConstraintId), $this->token);
         }
 
         // La suppression de l'entrée cascade son plan et ses versions (EntityCascadeDeleter) ;

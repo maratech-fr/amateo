@@ -1,10 +1,9 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-10-09 (fusion fenêtre doléances #10) : § Collecte des doléances coachs (E5) recalé — UN bouton « Doléances » ouvre une fenêtre à trois onglets (Doléances · Sollicitation · Réglages) ; précédente passe D2 PR B (`documentation-update`) : § Collecte des doléances coachs
-(E5) recalée — mutualisation déclarative (`CoachWishMutualization`, informative, jamais une
-contrainte) + aperçu gestionnaire par coach (`/doleances/apercu/{campaignId}`), confrontée à
-`CoachWishMutualizationStateProcessor.php`/`CoachWishCampaignPreviewController.php`. Reste du
-fichier non rejoué ligne à ligne cette passe.
+Last verified @ 2026-10-10 (lot 3b PR C, `documentation-update`) : § Vue d'ensemble (ligne
+Contraintes) et § planning de reprise recalés contre `PeriodConstraintSelector::
+selectForPeriodPlan` — en vacances, seul le scope CLUB reste hérité par défaut (ÉQUIPE/COACH/
+GYMNASE off, décision fondateur 2026-10-10). Reste du fichier non rejoué ligne à ligne cette passe.
 
 > **Rôle de ce document** : la trace durable du modèle métier des plannings. C'est LA référence
 > à consulter avant tout travail sur la génération : quel type se déclenche quand, ce qu'on y
@@ -25,7 +24,7 @@ fichier non rejoué ligne à ligne cette passe.
 | **Déclenchement** | **Automatique** : création du compte / démarrage de saison. Anticipable dès la saison N-1 (transition). | Une **indisponibilité est déclarée d'abord** ; puis **le gestionnaire décide** de s'y ajuster. Rien d'automatique dans le déclenchement. | **Manuel** : le gestionnaire **choisit les semaines** qu'il veut travailler parmi celles disponibles dans les vacances. |
 | **Couverture** | **Toute la saison** | **1 semaine** (découpage auto en semaines englobant l'indispo une fois la décision prise) | **1 semaine** choisie à l'intérieur des vacances (ou N semaines identiques, voir règle) |
 | **Structure** | Saisie complète (wizard) | **Verrouillée** : équipes, gymnases/créneaux, coachs non modifiables — **exception : les séances/équipe sont ajustables** (3→2, 0 = pas de créneau cette semaine) | Équipes **cochables/décochables** (défaut : **Fanion + importantes**), créneaux gym **redéfinissables** (prêts mairie), coachs lecture seule |
-| **Contraintes** | Toutes (permanentes) | **C'est ce qui bouge** : héritées + datées, ajustables pour la semaine | Héritées avec défaut intelligent (suit les équipes) + propres à la période |
+| **Contraintes** | Toutes (permanentes) | **C'est ce qui bouge** : héritées + datées, ajustables pour la semaine | Seul le scope CLUB hérité par défaut (ÉQUIPE/COACH/GYMNASE off) + propres à la période |
 | **Ce que ça comble** | Le plan de base de l'année — le process **le mieux rodé** | **Réparer un souci ponctuel** (gym fermé, coach absent) sans toucher le socle | La **reprise progressive** semaine par semaine (vacances, effectif réduit) |
 | **Nom par défaut** | `Planning de la saison 20XX-20XX` | **le TITRE de son entrée de calendrier** (décision fondateur 2026-08-23 — une seule identité ; ex. `Matéo indisponible (incident) — du 31 août 2026 au 16 oct. 2026`) | **le TITRE de son entrée** (ex. `Vacances de la Toussaint — du 20 oct. 2026 au 2 nov. 2026`) |
 
@@ -173,8 +172,9 @@ début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
 - **Manipulation** : équipes **cochables/décochables** — défaut : **Fanion + importantes**
   (rangs S + A) pré-cochées ; séances/équipe surchargables ; **créneaux gym
   redéfinissables** (un gymnase prêté par la mairie juste pour la fenêtre) ; contraintes
-  **héritées** avec défaut intelligent (club/coach gardées, équipe-en-pause et gymnase
-  décochées) + contraintes propres à la période.
+  **héritées** avec un défaut qui ne garde QUE le scope CLUB (équipe, coach et gymnase
+  désactivés par défaut — décision fondateur 2026-10-10, un bandeau compte celles encore
+  désactivées) + contraintes propres à la période.
 - **Exemples réels** :
   - **Toussaint** : 2 semaines différentes → **2 plannings**.
   - **Noël** : 1 semaine blanche (aucun planning) + 1 semaine de reprise → **1 planning**.
@@ -195,7 +195,7 @@ début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
   depuis n'est jamais purgée, elle est ignorée à l'affichage (décision fermée,
   [`etat-des-lieux.md`](etat-des-lieux.md) §2). Détail :
   [`backend-inventory.md`](../../backend/docs/backend-inventory.md) §2 (entités, token, page publique).
-- **État** : rodé — héritage des contraintes avec défaut intelligent, équipes activables/
+- **État** : rodé — héritage des contraintes limité au scope CLUB par défaut, équipes activables/
   désactivables et séances ajustables, grille de gymnases possédée par la période (copie du
   modèle de saison, éditable gymnase par gymnase à l'écran), choix des semaines, été inclus,
   défaut équipes = Fanion + importantes, nom auto `{label vacances} — {repère}` (E6), collecte

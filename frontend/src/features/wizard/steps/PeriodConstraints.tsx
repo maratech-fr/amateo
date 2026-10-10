@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { useCalendarEntry, usePeriodAnchor } from "@/features/cockpit/queries";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { buildTagTeamIds, resolveConstraintTeamIds, targetsTags } from "@/shared/lib/tagTeamIds";
 import { cn } from "@/shared/lib/utils";
 
@@ -38,8 +39,10 @@ const familyTabOf = (family: Constraint["family"]): Constraint["family"] => fami
  * Constraint's own isActive are never touched.
  *
  * - Fermeture (closure): default = keep every constraint (B3+F2 — unchanged).
- * - Reprise (holiday): default FOLLOWS the team selection — CLUB/COACH kept, a TEAM
- *   constraint kept only if its team reprend (not deactivated), FACILITY dropped.
+ * - Vacances (holiday): default = ONLY the CLUB scope is inherited. Season constraints of
+ *   scope TEAM / COACH / FACILITY are OFF by default (the holiday has its own grid and its own
+ *   present coaches — dragging the season settings in broke it, décision fondateur 2026-10-10).
+ *   The manager re-checks, one by one, those that still apply during the holiday.
  *
  * Rendered only for overlay-generating periods (closure | holiday), on a CONFIRMED entry
  * (never during its load window, so the wrong default can't flash).
@@ -125,8 +128,8 @@ function PeriodConstraintsPanel({
   const tagResolutionReady = !needsTagResolution || (!tagsLoading && !tagAssignmentsLoading && !tagsError && !tagAssignmentsError);
   // ⚠️ MIROIR DÉCLARÉ (régime 2, P4-88). Deux branchements sur les valeurs d'un enum de
   // contrainte, reflétant le serveur :
-  //  - `defaultKept` (scope) reflète `ScheduleConstraintBuilder::inheritedPermanents` (prédicat
-  //    reprise) — FACILITY tombe, TEAM garde si l'équipe reprend, CLUB/COACH gardés ;
+  //  - `defaultKept` (scope) reflète `PeriodConstraintSelector::keepByDefault` — fermeture :
+  //    tout gardé ; vacances : seul le scope CLUB est hérité, TEAM/COACH/FACILITY sont OFF ;
   //  - `hidden` (CLUB ciblant un/des tag(s), sans AUCUNE équipe active résolue) reflète
   //    l'expansion du payload — P2-29 : « (∩ targetTags) − (∪ excludeTags) » sur les équipes
   //    actives, via le foyer partagé `resolveConstraintTeamIds`.
@@ -137,14 +140,9 @@ function PeriodConstraintsPanel({
     if (isClosure) {
       return true; // fermeture: everything kept by default (B3+F2 unchanged)
     }
-    switch (c.scope) {
-      case "FACILITY":
-        return false;
-      case "TEAM":
-        return !deactivatedTeamIds.has(c.scopeTargetId ?? "");
-      default:
-        return true; // CLUB, COACH
-    }
+    // Vacances : seules les contraintes de saison de portée CLUB sont héritées par défaut.
+    // TEAM / COACH / FACILITY sont désactivées (décision fondateur 2026-10-10).
+    return "CLUB" === c.scope;
   };
   // A TEAM constraint whose team is paused can't ship (server-side buildForOverlay drops it) —
   // show it struck & disabled, never toggle-able, so the checklist matches the payload.
@@ -217,40 +215,55 @@ function PeriodConstraintsPanel({
   if (undefined !== family && !constraintsError && (!presenceSettled || 0 === visible.length)) {
     return null;
   }
+  // Vacances : combien de contraintes de saison sont désactivées PAR DÉFAUT (TEAM/COACH/FACILITY)
+  // et PAS encore réactivées par le gestionnaire — le bandeau d'avertissement en donne le compte
+  // réel. On exclut les non-applicables (équipe en pause) : elles ne partent pas quelle que soit
+  // la période, et ne sont pas réactivables ici. Stable une fois le corps chargé (sinon le compte
+  // s'appuierait sur des overrides non encore lus).
+  const disabledByDefaultCount = isReprise && !constraintsError && !bodyLoading ? visible.filter((c) => !notApplicable(c) && !defaultKept(c) && !activeOf(c)).length : 0;
 
   return (
-    <div className="mb-4 space-y-2 rounded-lg border border-border bg-card p-3">
-      <p className="text-sm font-medium">Contraintes du planning de saison</p>
-      <p className="text-xs text-muted-foreground">Cochez celles à garder pendant cette période — le planning de saison n'est pas modifié.</p>
-      {/* Le corps attend les requêtes qui pilotent l'ÉTAT des cases (overrides de la période —
-          sinon un toggle 422 sur une ligne existante — et overrides d'équipes, qui donnent le
-          défaut reprise et le barré non-applicable). Sur ERREUR des contraintes on le dit
-          explicitement : afficher « Aucune contrainte permanente » serait le mensonge exact
-          que le panneau doit éviter — le gestionnaire validerait la période en croyant que
-          rien n'est hérité (revue #284 round 2). */}
-      {constraintsError ? (
-        <LoadErrorHint>Impossible de charger les contraintes du planning de saison. Elles restent appliquées selon leur réglage actuel — rechargez la page pour les ajuster.</LoadErrorHint>
-      ) : bodyLoading ? null : 0 === visible.length ? (
-        <EmptyHint>Aucune contrainte permanente.</EmptyHint>
-      ) : (
-        <ul className="flex flex-col gap-1">
-          {visible.map((c) => {
-            const active = activeOf(c);
-            const naf = notApplicable(c);
-            const tagUnknown = "CLUB" === c.scope && targetsTags(c.config) && !tagResolutionReady;
-            return (
-              <li key={c.id} className="flex items-center justify-between gap-3 border-b border-border/60 py-1.5 text-sm last:border-0">
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={active} disabled={mutating || naf || overridesError || teamStateUnknown(c) || tagUnknown} onChange={(e) => toggle(c, e.target.checked)} aria-label={`${c.name} appliquée cette période`} />
-                  <span className={cn(!active && "text-muted-foreground line-through")}>{c.name}</span>
-                  {naf ? <span className="text-xs text-muted-foreground">(équipe en pause)</span> : null}
-                </label>
-                <span className="shrink-0 text-xs text-muted-foreground">{RULE_LABEL[c.ruleType]}</span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+    <div className="mb-4 space-y-2">
+      {disabledByDefaultCount > 0 ? (
+        <NoticeBanner
+          tone="warning"
+          role="status"
+          message={`${disabledByDefaultCount} contrainte${disabledByDefaultCount > 1 ? "s" : ""} du planning de saison ${disabledByDefaultCount > 1 ? "sont désactivées" : "est désactivée"} pour cette période — activez celles qui s'appliquent pendant les vacances.`}
+        />
+      ) : null}
+      <div className="space-y-2 rounded-lg border border-border bg-card p-3">
+        <p className="text-sm font-medium">Contraintes du planning de saison</p>
+        <p className="text-xs text-muted-foreground">Cochez celles à garder pendant cette période — le planning de saison n'est pas modifié.</p>
+        {/* Le corps attend les requêtes qui pilotent l'ÉTAT des cases (overrides de la période —
+            sinon un toggle 422 sur une ligne existante — et overrides d'équipes, qui donnent le
+            défaut reprise et le barré non-applicable). Sur ERREUR des contraintes on le dit
+            explicitement : afficher « Aucune contrainte permanente » serait le mensonge exact
+            que le panneau doit éviter — le gestionnaire validerait la période en croyant que
+            rien n'est hérité (revue #284 round 2). */}
+        {constraintsError ? (
+          <LoadErrorHint>Impossible de charger les contraintes du planning de saison. Elles restent appliquées selon leur réglage actuel — rechargez la page pour les ajuster.</LoadErrorHint>
+        ) : bodyLoading ? null : 0 === visible.length ? (
+          <EmptyHint>Aucune contrainte permanente.</EmptyHint>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {visible.map((c) => {
+              const active = activeOf(c);
+              const naf = notApplicable(c);
+              const tagUnknown = "CLUB" === c.scope && targetsTags(c.config) && !tagResolutionReady;
+              return (
+                <li key={c.id} className="flex items-center justify-between gap-3 border-b border-border/60 py-1.5 text-sm last:border-0">
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={active} disabled={mutating || naf || overridesError || teamStateUnknown(c) || tagUnknown} onChange={(e) => toggle(c, e.target.checked)} aria-label={`${c.name} appliquée cette période`} />
+                    <span className={cn(!active && "text-muted-foreground line-through")}>{c.name}</span>
+                    {naf ? <span className="text-xs text-muted-foreground">(équipe en pause)</span> : null}
+                  </label>
+                  <span className="shrink-0 text-xs text-muted-foreground">{RULE_LABEL[c.ruleType]}</span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

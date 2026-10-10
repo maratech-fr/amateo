@@ -8,6 +8,7 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Constraint;
+use App\Entity\ConstraintPeriodOverride;
 use App\Entity\PriorityTier;
 use App\Entity\Season;
 use App\Entity\Sport;
@@ -28,6 +29,7 @@ use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
 use App\Enum\VenuePeriodMode;
+use App\Service\PeriodConstraintSelection;
 use App\Service\PeriodConstraintSelector;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\ProvisionsPeriodPlanTrait;
@@ -306,6 +308,56 @@ final class PeriodGatePayloadParityTest extends WebTestCase
         $payloadRootIds = array_keys($payloadRootIds);
         sort($payloadRootIds);
         self::assertSame($expected, $payloadRootIds, 'le payload sérialise EXACTEMENT l\'union que le gate a retenue');
+    }
+
+    /**
+     * PR C (axe planning lifecycle — défaut d'héritage overlay §7.1) — en VACANCES, les
+     * contraintes permanentes de saison de portée ÉQUIPE et COACH sont OFF par défaut ; seul le
+     * scope CLUB reste hérité. Un override explicite les RAMÈNE.
+     *
+     * Falsifiable : sous l'ancien défaut (TEAM/COACH hérités), `kept` contiendrait les trois dès
+     * le premier appel et l'assertion « CLUB seul » tomberait rouge.
+     */
+    public function testRepriseDisablesTeamAndCoachPermanentsByDefault(): void
+    {
+        [$club, $season, $entry, $planId, $ids] = $this->seedScopeDefaultScenario(CalendarEntryPeriodType::HOLIDAY);
+        $selector = self::getContainer()->get(PeriodConstraintSelector::class);
+
+        self::assertSame(
+            [$ids['club']],
+            $this->keptIds($selector->selectForPeriodPlan($club->getId(), $season->getId(), $planId, $entry)),
+            'en vacances, seul le scope CLUB est hérité par défaut — TEAM et COACH sont désactivées',
+        );
+
+        // Un override isActive=true les ramène, chacune pour son propre geste.
+        $this->keepOverride($club, $season, $planId, $ids['team']);
+        $this->keepOverride($club, $season, $planId, $ids['coach']);
+        $this->em->flush();
+
+        $expected = [$ids['club'], $ids['team'], $ids['coach']];
+        sort($expected);
+        self::assertSame(
+            $expected,
+            $this->keptIds($selector->selectForPeriodPlan($club->getId(), $season->getId(), $planId, $entry)),
+            'un override isActive=true ramène une TEAM/COACH désactivée par défaut',
+        );
+    }
+
+    /**
+     * PR C — une FERMETURE est INCHANGÉE : elle hérite TOUT par défaut, quelle que soit la portée.
+     * Le défaut OFF ne concerne que les vacances (HOLIDAY).
+     */
+    public function testClosureKeepsEveryScopePermanentByDefault(): void
+    {
+        [$club, $season, $entry, $planId, $ids] = $this->seedScopeDefaultScenario(CalendarEntryPeriodType::CLOSURE);
+
+        $expected = [$ids['club'], $ids['team'], $ids['coach']];
+        sort($expected);
+        self::assertSame(
+            $expected,
+            $this->keptIds(self::getContainer()->get(PeriodConstraintSelector::class)->selectForPeriodPlan($club->getId(), $season->getId(), $planId, $entry)),
+            'une fermeture hérite TOUTES les permanentes par défaut (CLOSURE inchangée)',
+        );
     }
 
     protected function setUp(): void
@@ -896,6 +948,16 @@ final class PeriodGatePayloadParityTest extends WebTestCase
         ];
         $this->em->flush();
 
+        // PR C (vacances) — une PERMANENTE de portée ÉQUIPE est désormais OFF par défaut dans un
+        // plan HOLIDAY. Les deux TEAM permanentes que ce scénario veut faire ATTEINDRE les filtres
+        // éprouvés ici — `teamOk` (gardée) et `prefDisabledVenue` (droppée pour gymnase désactivé) —
+        // sont donc RAMENÉES par un override explicite ; sans lui, le nouveau défaut les sortirait de
+        // `$permanent` en amont et aucun de ces filtres ne serait exercé. Les DATÉES (datedOk,
+        // datedInertTag, datedDeactivated) sont hors défaut et ne bougent pas.
+        $this->keepOverride($club, $season, $planId, $ids['teamOk']);
+        $this->keepOverride($club, $season, $planId, $ids['prefDisabledVenue']);
+        $this->em->flush();
+
         return [$user, $club, $season, $entry, $planId, $ids];
     }
 
@@ -948,5 +1010,87 @@ final class PeriodGatePayloadParityTest extends WebTestCase
         $this->em->persist($constraint);
 
         return $constraint;
+    }
+
+    /** Pose un override « gardée » (isActive=true) sur un plan pour une contrainte donnée. */
+    private function keepOverride(Club $club, Season $season, string $planId, string $constraintId): void
+    {
+        $override = new ConstraintPeriodOverride;
+        $override->setClubId($club->getId());
+        $override->setSeasonId($season->getId());
+        $override->setSchedulePlanId($planId);
+        $override->setConstraintId($constraintId);
+        $override->setIsActive(true);
+        $this->em->persist($override);
+    }
+
+    /**
+     * Les ids des contraintes retenues par la sélection, triés.
+     *
+     * @return list<string>
+     */
+    private function keptIds(PeriodConstraintSelection $selection): array
+    {
+        $ids = array_map(static fn (Constraint $c): string => $c->getId(), $selection->kept);
+        sort($ids);
+
+        return $ids;
+    }
+
+    /**
+     * Club/saison + un plan de période du type demandé, portant une permanente par portée
+     * (CLUB, TEAM, COACH) — les seules dont le défaut HOLIDAY diffère de CLOSURE. Aucune n'est
+     * datée. TEAM/COACH visent un id arbitraire : la sélection ne les drope que sur une équipe
+     * désactivée (aucune ici), elle n'exige pas que la cible existe.
+     *
+     * @return array{0: Club, 1: Season, 2: CalendarEntry, 3: string, 4: array<string, string>}
+     */
+    private function seedScopeDefaultScenario(CalendarEntryPeriodType $periodType): array
+    {
+        $uid = uniqid('', true);
+
+        $club = new Club;
+        $club->setName('Club défaut ' . $uid);
+        $club->setSlug('defaut-' . $uid);
+        $club->setTimezone('Europe/Paris');
+        $club->setLocale('fr');
+        $club->setOnboardingCompleted(true);
+        $club->setFfbbClubCode('DEF' . strtoupper(substr(md5($uid), 0, 10)));
+        $this->em->persist($club);
+        $this->em->flush();
+
+        $this->scopeGucToClub($club->getId());
+
+        $season = new Season;
+        $season->setClubId($club->getId());
+        $season->setName('2025-2026');
+        $season->setStartDate(new DateTimeImmutable('2025-09-01'));
+        $season->setEndDate(new DateTimeImmutable('2026-06-30'));
+        $season->setStatus(SeasonStatus::ACTIVE);
+        $this->em->persist($season);
+        $this->em->flush();
+
+        $entry = new CalendarEntry;
+        $entry->setClubId($club->getId());
+        $entry->setSeasonId($season->getId());
+        $entry->setKind(CalendarEntryKind::PERIOD);
+        $entry->setTitle('Période défaut');
+        $entry->setStartDate(new DateTimeImmutable('2025-10-20'));
+        $entry->setEndDate(new DateTimeImmutable('2025-10-26'));
+        $entry->setPeriodType($periodType);
+        $entry->setStatus(CalendarEntryStatus::ACTIVE);
+        $this->em->persist($entry);
+        $this->em->flush();
+
+        $planId = $this->planIdOf($entry);
+
+        $ids = [
+            'club' => $this->constraint($club, $season, ConstraintScope::CLUB, null, ConstraintFamily::TIME, ['maxStartTime' => '21:00'], null)->getId(),
+            'team' => $this->constraint($club, $season, ConstraintScope::TEAM, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ConstraintFamily::TIME, ['maxStartTime' => '20:00'], null)->getId(),
+            'coach' => $this->constraint($club, $season, ConstraintScope::COACH, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', ConstraintFamily::COACH_AVAILABILITY, ['unavailableDays' => [3]], null)->getId(),
+        ];
+        $this->em->flush();
+
+        return [$club, $season, $entry, $planId, $ids];
     }
 }
