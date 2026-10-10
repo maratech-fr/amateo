@@ -257,12 +257,18 @@ final class LoadLocksTest extends WebTestCase
         $otherClub = (new Club)->setName('Other ' . $uid)->setSlug('other-' . $uid)
             ->setTimezone('Europe/Paris')->setLocale('fr')->setOnboardingCompleted(true);
         $this->em->persist($otherClub);
+        $this->em->flush();
+
+        // season/schedule de l'autre club sont club-scopés (policy RLS WITH CHECK sur app.club_id) :
+        // on bascule le GUC tenant sur l'AUTRE club AVANT d'insérer ses lignes — sinon la RLS les
+        // rejette (le GUC est encore sur le club du requérant, posé en setUp) — puis on rend la main
+        // au club du requérant pour la suite du test.
+        $this->scopeGucToClub($otherClub->getId());
         $otherSeason = (new Season)->setClubId($otherClub->getId())->setName('2025-2026')
             ->setStartDate(new DateTimeImmutable('2025-09-01'))->setEndDate(new DateTimeImmutable('2026-06-30'))->setStatus(SeasonStatus::ACTIVE);
         $this->em->persist($otherSeason);
         $this->em->flush();
 
-        $this->scopeGucToClub($otherClub->getId());
         $planId = $this->createPeriodPlan($otherClub->getId(), $otherSeason->getId());
         $schedule = (new Schedule)->setClubId($otherClub->getId())->setSeasonId($otherSeason->getId())
             ->setName('V')->setStatus(ScheduleStatus::COMPLETED)->setSchedulePlanId($planId);
