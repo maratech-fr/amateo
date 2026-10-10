@@ -52,13 +52,26 @@ final class CoachWishTransferController extends AbstractController implements Se
             return $this->json(['error' => 'Club introuvable.'], Response::HTTP_FORBIDDEN);
         }
 
+        // B5 — la saison du gestionnaire (en-tête X-Season-Id, validée côté serveur par
+        // TenantFilterListener qui pose `_season_id`). Le service ignore toute doléance d'une
+        // autre saison. Absente = anomalie sur une écriture authentifiée → refus.
+        $seasonId = $request->attributes->get('_season_id');
+        if (!\is_string($seasonId) || '' === $seasonId) {
+            return $this->json(['error' => 'Saison introuvable.'], Response::HTTP_FORBIDDEN);
+        }
+
         $wishIds = $this->readWishIds($request);
         if (null === $wishIds) {
             return $this->json(['error' => 'La liste des doléances à transférer est invalide.'], Response::HTTP_BAD_REQUEST);
         }
+        // B3 — plafond dur : un lot au-delà de 500 doléances n'est pas un geste de gestionnaire,
+        // c'est un abus O(N) sur un endpoint d'écriture. 400 NOMMÉ avant toute transaction.
+        if (\count($wishIds) > 500) {
+            return $this->json(['error' => 'Trop de doléances à transférer (maximum 500).'], Response::HTTP_BAD_REQUEST);
+        }
 
         try {
-            $recap = $this->transferService->transfer($clubId, $wishIds);
+            $recap = $this->transferService->transfer($clubId, $seasonId, $wishIds);
         } catch (ScheduleGenerationInProgressException) {
             // Q-B — transférer pendant une génération écraserait son résultat.
             return $this->json([

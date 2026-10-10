@@ -12,14 +12,17 @@ use App\Entity\CoachWish;
 use App\Entity\CoachWishCampaign;
 use App\Entity\CoachWishMutualization;
 use App\Entity\CoachWishToken;
+use App\Entity\Constraint;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
+use App\Entity\TeamPeriodOverride;
 use App\Entity\User;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Service\CoachWishTransferService;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -554,6 +557,37 @@ final class PublicCoachWishTest extends WebTestCase
             'mutualizations' => $items,
         ], \JSON_THROW_ON_ERROR));
         self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testPublicSubmissionAloneNeverWritesPlanObjects(): void
+    {
+        // §8.4 — le SEUL chemin d'écriture non authentifié (page à jeton) ne crée JAMAIS d'objet de
+        // plan : une soumission publique ne pose que des SOUHAITS. Aucun override, aucune contrainte
+        // de transfert, même quand elle porte volume + indisponibilités + jours souhaités.
+        $this->client->request('POST', '/api/coach-wishes/public/' . $this->token, [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'submissions' => [['teamId' => $this->team->getId(), 'weekStart' => '2026-02-16', 'slotsWanted' => 3, 'unavailableDays' => [4], 'wishedDays' => [1], 'comment' => 'x']],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        self::assertSame([], $this->em->getRepository(TeamPeriodOverride::class)->findBy(['teamId' => $this->team->getId()]), 'une soumission publique ne crée aucun override de plan');
+        self::assertSame([], $this->em->getRepository(Constraint::class)->findBy(['source' => CoachWishTransferService::SOURCE]), 'une soumission publique ne crée aucune contrainte de plan');
+    }
+
+    public function testPublicPostCannotIncludeATeamInThePlan(): void
+    {
+        // §8.4 — inclure une équipe au plan est un geste GESTIONNAIRE (le transfert) : la page
+        // publique ne le peut pas. Même pour une équipe de SON périmètre, une soumission n'active
+        // rien au plan (aucun TeamPeriodOverride) — seul « Transférer au planning » le fait.
+        $this->client->request('POST', '/api/coach-wishes/public/' . $this->token, [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'submissions' => [['teamId' => $this->team->getId(), 'weekStart' => '2026-02-16', 'slotsWanted' => 2, 'unavailableDays' => [], 'comment' => null]],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        self::assertNull($this->em->getRepository(TeamPeriodOverride::class)->findOneBy(['teamId' => $this->team->getId()]), 'la page publique n\'inclut jamais une équipe au plan');
     }
 
     protected function setUp(): void

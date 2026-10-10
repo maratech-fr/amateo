@@ -205,6 +205,17 @@ final class CoachWishTransferTest extends WebTestCase
 
     public function testRetransferIsIdempotentBySourceOccurrence(): void
     {
+        // Une contrainte MANUELLE du gestionnaire (source null, MÊME équipe, MÊME entrée) : elle
+        // ne doit JAMAIS être emportée par le « efface puis recrée » du transfert (qui ne vise que
+        // source=coach_wish). On la pose avant, on vérifie qu'elle survit au re-transfert.
+        $manual = (new Constraint)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setCalendarEntryId($this->mother->getId())->setName('Jours interdits (manuel)')
+            ->setScope(ConstraintScope::TEAM)->setScopeTargetId($this->teamS->getId())
+            ->setFamily(ConstraintFamily::DAY)->setRuleType(ConstraintRuleType::HARD)->setConfig(['forbiddenDays' => [7]]);
+        $this->em->persist($manual);
+        $this->em->flush();
+        $manualId = $manual->getId();
+
         $wish = $this->createWish($this->teamS->getId(), $this->coach->getId(), slots: 2, unavailableDays: [4]);
         $this->transfer([$wish->getId()]);
         self::assertCount(1, $this->transferConstraintsFor($wish->getId()));
@@ -220,6 +231,99 @@ final class CoachWishTransferTest extends WebTestCase
         $constraints = $this->transferConstraintsFor($wish->getId());
         self::assertCount(1, $constraints, 'idempotence — une seule contrainte pour la doléance');
         self::assertSame(['unavailableDays' => [4, 6]], $constraints[0]->getConfig());
+        self::assertInstanceOf(Constraint::class, $this->em->getRepository(Constraint::class)->find($manualId), 'la contrainte MANUELLE survit au re-transfert');
+    }
+
+    public function testResubmissionResetsDoneButNeverRetransfers(): void
+    {
+        // §8.4 — une re-soumission du coach remet « à traiter » (done=false) MAIS ne re-synchronise
+        // JAMAIS le plan : seul un NOUVEAU transfert explicite recale (décision 8). On transfère,
+        // puis on simule une re-soumission (done=false + jours changés) SANS re-transférer : le plan
+        // garde l'override ET la contrainte du 1er transfert, inchangés.
+        $wish = $this->createWish($this->teamS->getId(), $this->coach->getId(), slots: 2, unavailableDays: [4]);
+        $this->transfer([$wish->getId()]);
+        self::assertTrue($this->reload($wish)->isDone());
+        self::assertSame(['unavailableDays' => [4]], $this->transferConstraintsFor($wish->getId())[0]->getConfig());
+
+        // Re-soumission (ce que fait CoachWishUpserter côté public) : done=false + jours changés.
+        $reloaded = $this->reload($wish);
+        $reloaded->setDone(false)->setUnavailableDays([6]);
+        $this->em->flush();
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+
+        // Le plan n'a PAS bougé : override toujours là, contrainte TOUJOURS sur [4] (pas [6]).
+        $override = $this->overrideFor($this->teamS->getId());
+        self::assertInstanceOf(TeamPeriodOverride::class, $override);
+        self::assertTrue($override->isActive());
+        self::assertSame(CoachWishTransferService::SOURCE, $override->getSource());
+        self::assertSame(['unavailableDays' => [4]], $this->transferConstraintsFor($wish->getId())[0]->getConfig(), 'la re-soumission ne re-synchronise jamais le plan');
+        self::assertFalse($this->reload($wish)->isDone(), 'la re-soumission remet « à traiter »');
+    }
+
+    public function testInvalidWishIdIsIgnoredWithAReason(): void
+    {
+        // B3 — un id non-UUID n'atteint jamais find() (il casserait la PK guid) : ignoré avec motif.
+        $recap = $this->transfer(['pas-un-uuid']);
+        self::assertSame(0, $recap['converted']);
+        self::assertSame(1, $recap['ignored']);
+        self::assertArrayHasKey('id_invalide', $recap['ignoredReasons']);
+    }
+
+    public function testAnOversizedBatchIsRejectedWith400(): void
+    {
+        // B3 — plafond dur : > 500 ids → 400 nommé, aucune transaction.
+        $ids = array_fill(0, 501, '11111111-1111-4111-8111-111111111111');
+        $this->client->request('POST', '/api/coach-wishes/transfer', [], [], $this->headers(), json_encode(['wishIds' => $ids], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(400);
+    }
+
+    public function testWishOfAnotherSeasonIsNeverConverted(): void
+    {
+        // B5 — une doléance d'une AUTRE saison que celle du gestionnaire (en-tête) est ignorée.
+        $otherSeason = (new Season)->setClubId($this->club->getId())->setName('2024-2025')
+            ->setStartDate(new DateTimeImmutable('2024-09-01'))->setEndDate(new DateTimeImmutable('2025-06-30'))->setStatus(SeasonStatus::ACTIVE);
+        $this->em->persist($otherSeason);
+        $this->em->flush();
+        $wish = (new CoachWish)->setClubId($this->club->getId())->setSeasonId($otherSeason->getId())
+            ->setCalendarEntryId($this->mother->getId())->setWeekStart(new DateTimeImmutable('2026-02-16'))
+            ->setTeamId($this->teamS->getId())->setCoachId($this->coach->getId())->setSlotsWanted(2);
+        $this->em->persist($wish);
+        $this->em->flush();
+
+        $recap = $this->transfer([$wish->getId()]);
+        // But de sécurité B5 : une doléance d'une autre saison n'est JAMAIS convertie. Le MOTIF
+        // peut être 'autre_saison' (garde du service) OU 'introuvable' si un season_filter l'a déjà
+        // masquée au find() — les deux sont des refus corrects ; on vérifie surtout l'effet (0 écrit).
+        self::assertSame(0, $recap['converted']);
+        self::assertSame(1, $recap['ignored']);
+        self::assertTrue(
+            isset($recap['ignoredReasons']['autre_saison']) || isset($recap['ignoredReasons']['introuvable']),
+            'une doléance d\'une autre saison est ignorée (autre_saison, ou introuvable si déjà masquée)',
+        );
+        self::assertNull($this->overrideFor($this->teamS->getId()), 'aucun réglage de plan écrit pour une doléance d\'une autre saison');
+    }
+
+    public function testMutualisationActivatedTeamSurvivesTheSeedOnTransfer(): void
+    {
+        // Bug corrigé — le seed S+A ne doit JAMAIS désactiver un override EXISTANT. Une équipe de
+        // rang bas activée par mutualisation (source=mutualisation, isActive=true) sur un plan NON
+        // initialisé doit rester active après un transfert (qui déclenche le seed serveur, D-e).
+        $mutualized = $this->team('Loisirs', 5); // rang bas → le seed la désactiverait s'il osait
+        $override = (new TeamPeriodOverride)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setSchedulePlanId($this->planId)->setTeamId($mutualized->getId())->setIsActive(true)->setSessionsPerWeek(1)
+            ->setSource('mutualisation');
+        $this->em->persist($override);
+        $this->em->flush();
+
+        // Un transfert d'une AUTRE équipe déclenche le seed (plan non initialisé) : il ne touche pas Loisirs.
+        $wish = $this->createWish($this->teamS->getId(), $this->coach->getId(), slots: 2);
+        $this->transfer([$wish->getId()]);
+
+        $survivor = $this->overrideFor($mutualized->getId());
+        self::assertInstanceOf(TeamPeriodOverride::class, $survivor);
+        self::assertTrue($survivor->isActive(), 'l\'activation par mutualisation survit au seed du transfert');
+        self::assertSame('mutualisation', $survivor->getSource(), 'le seed n\'a pas réécrit la provenance');
     }
 
     public function testReactivatesSeededOffTeamWithProvenance(): void

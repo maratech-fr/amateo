@@ -16,7 +16,11 @@ use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Exception\ScheduleGenerationInProgressException;
+use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
+use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * P2-63 PR 5 (volets E + F) — « TRANSFÉRER AU PLANNING » : convertit en MASSE des doléances
@@ -70,13 +74,27 @@ final class CoachWishTransferService
     ) {}
 
     /**
+     * Une doléance appartient-elle à CE club ? Garde applicative « autre club » extraite en
+     * prédicat PUR (§3bis #5) pour qu'elle soit directement falsifiable (test unitaire) : en
+     * intégration, RLS rend déjà une doléance d'un autre club introuvable (`find` → null), donc
+     * la garde n'y est jamais ATTEINTE — c'est ce prédicat, testé à part, qui la tient. Défense
+     * en profondeur : `find()` applique bien le `TenantFilter` quand l'entité vient de la base,
+     * et RLS scope au club en SQL ; ce prédicat est la 3ᵉ couche (un dépôt simulé la franchirait).
+     */
+    public static function isOwnedBy(CoachWish $wish, string $clubId): bool
+    {
+        return $wish->getClubId() === $clubId;
+    }
+
+    /**
      * @param list<string> $wishIds les doléances COCHÉES par le gestionnaire (Q7)
      *
      * @throws ScheduleGenerationInProgressException une génération tourne pour ce club (→ 409)
+     * @throws UnprocessableEntityHttpException      un plan a été supprimé pendant le transfert (→ 422, B4)
      *
      * @return array{converted: int, ignored: int, ignoredReasons: array<string, int>}
      */
-    public function transfer(string $clubId, array $wishIds): array
+    public function transfer(string $clubId, string $seasonId, array $wishIds): array
     {
         // Q-B = A — refus 409 pendant une génération : elle réécrit le planning, transférer
         // maintenant écraserait son résultat. Simple LECTURE du verrou (patron
@@ -85,43 +103,82 @@ final class CoachWishTransferService
             throw new ScheduleGenerationInProgressException;
         }
 
-        return $this->entityManager->wrapInTransaction(function () use ($clubId, $wishIds): array {
-            $converted = 0;
-            $ignored = 0;
-            $reasons = [];
-            $wishRepository = $this->entityManager->getRepository(CoachWish::class);
+        try {
+            return $this->entityManager->wrapInTransaction(function () use ($clubId, $seasonId, $wishIds): array {
+                $converted = 0;
+                $ignored = 0;
+                $reasons = [];
+                $wishRepository = $this->entityManager->getRepository(CoachWish::class);
 
-            foreach (array_unique($wishIds) as $wishId) {
-                $wish = $wishRepository->find($wishId);
-                // `find()` n'applique PAS les filtres Doctrine (seule RLS scope le club en base) :
-                // le contrôle de club explicite est LA garde — une doléance d'un autre club n'est
-                // jamais convertie (abus « autre club », §3bis #5).
-                if (!$wish instanceof CoachWish || $wish->getClubId() !== $clubId) {
-                    ++$ignored;
-                    $reasons['introuvable'] = ($reasons['introuvable'] ?? 0) + 1;
+                foreach (array_unique($wishIds) as $wishId) {
+                    // B3 — un id qui n'est pas un UUID n'atteint jamais `find()` : il casserait la
+                    // conversion de la PK `guid` (SQLSTATE 22P02 → 500). Ignoré avec motif, comme un
+                    // id inconnu — un id malformé dans un lot de masse ne doit pas faire tomber tout le geste.
+                    if (!Uuid::isValid($wishId)) {
+                        ++$ignored;
+                        $reasons['id_invalide'] = ($reasons['id_invalide'] ?? 0) + 1;
 
-                    continue;
+                        continue;
+                    }
+
+                    // B1 — verrou pessimiste : deux « Transférer » concurrents de la MÊME doléance se
+                    // sérialisent (SELECT … FOR UPDATE), le 2ᵉ attend le commit du 1er avant son
+                    // « efface puis recrée » de contraintes (sinon deux jeux concurrents, ou une
+                    // suppression qui emporte une création de l'autre transaction).
+                    $wish = $wishRepository->find($wishId, LockMode::PESSIMISTIC_WRITE);
+                    if (!$wish instanceof CoachWish || !self::isOwnedBy($wish, $clubId)) {
+                        ++$ignored;
+                        $reasons['introuvable'] = ($reasons['introuvable'] ?? 0) + 1;
+
+                        continue;
+                    }
+
+                    // B5 — une doléance d'une AUTRE saison que celle du gestionnaire (en-tête X-Season-Id)
+                    // n'est jamais convertie : un lot transféré ne touche QUE la saison de travail.
+                    if ($wish->getSeasonId() !== $seasonId) {
+                        ++$ignored;
+                        $reasons['autre_saison'] = ($reasons['autre_saison'] ?? 0) + 1;
+
+                        continue;
+                    }
+
+                    $target = $this->schedulePlanProvisioner->periodWeekPlanTarget($wish->getCalendarEntryId(), $wish->getWeekStart());
+                    if (null === $target) {
+                        // Semaine sans plan : on ne fait JAMAIS naître un plan (décision 10) — on
+                        // ignore et on le dit. Q8 rend ce cas improbable (collecte après planning).
+                        ++$ignored;
+                        $reasons['semaine_sans_plan'] = ($reasons['semaine_sans_plan'] ?? 0) + 1;
+
+                        continue;
+                    }
+
+                    $this->convertOne($wish, $target['planId'], $target['entryId'], $clubId);
+                    $wish->setDone(true); // Q7 — une doléance transférée est traitée.
+                    ++$converted;
                 }
 
-                $target = $this->schedulePlanProvisioner->periodWeekPlanTarget($wish->getCalendarEntryId(), $wish->getWeekStart());
-                if (null === $target) {
-                    // Semaine sans plan : on ne fait JAMAIS naître un plan (décision 10) — on
-                    // ignore et on le dit. Q8 rend ce cas improbable (collecte après planning).
-                    ++$ignored;
-                    $reasons['semaine_sans_plan'] = ($reasons['semaine_sans_plan'] ?? 0) + 1;
-
-                    continue;
+                // B2 — re-sonde le verrou JUSTE AVANT le commit : si une génération a démarré pendant
+                // le transfert (entre la 1re sonde et ici), elle va réécrire le planning — on annule
+                // TOUT (le throw rollback la transaction) plutôt que de mêler nos écritures aux siennes.
+                // ⚠ Fenêtre résiduelle ASSUMÉE : entre cette sonde et le COMMIT réel (puis l'acquisition
+                // du ClubGenerationLock par la génération), les deux peuvent encore se chevaucher — on
+                // la réduit au minimum, sans verrou partagé (le verrou de génération est pris par le
+                // handler, pas ici). C'est le même compromis que MutualizeSlotService.
+                if ($this->clubGenerationLock->isGenerating($clubId)) {
+                    throw new ScheduleGenerationInProgressException;
                 }
 
-                $this->convertOne($wish, $target['planId'], $target['entryId'], $clubId);
-                $wish->setDone(true); // Q7 — une doléance transférée est traitée.
-                ++$converted;
-            }
+                $this->entityManager->flush();
 
-            $this->entityManager->flush();
-
-            return ['converted' => $converted, 'ignored' => $ignored, 'ignoredReasons' => $reasons];
-        });
+                return ['converted' => $converted, 'ignored' => $ignored, 'ignoredReasons' => $reasons];
+            });
+        } catch (ForeignKeyConstraintViolationException $e) {
+            // B4 — un plan a été supprimé pendant le transfert (validation/réouverture du socle qui
+            // balaie les plans futurs, suppression de période) : la FK remonte au flush. Même
+            // enveloppe que les processors de période (AssertsSchedulePlanExistsTrait) — 422 propre,
+            // jamais un 500 opaque. La transaction est déjà annulée (rien d'écrit).
+            throw new UnprocessableEntityHttpException('Ce planning n\'existe plus — rechargez la page.', $e);
+        }
     }
 
     private function convertOne(CoachWish $wish, string $planId, string $entryId, string $clubId): void

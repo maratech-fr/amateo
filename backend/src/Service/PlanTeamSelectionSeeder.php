@@ -124,18 +124,25 @@ final class PlanTeamSelectionSeeder
             if (isset($keepIds[$team->getId()])) {
                 continue; // retenue : le défaut actif suffit, aucune ligne.
             }
-            $override = $overrideRepository->findOneBy(['schedulePlanId' => $schedulePlanId, 'teamId' => $team->getId()]);
-            if (!$override instanceof TeamPeriodOverride) {
-                $override = (new TeamPeriodOverride)
-                    ->setClubId($clubId)
-                    ->setSeasonId($seasonId)
-                    ->setSchedulePlanId($schedulePlanId)
-                    ->setTeamId($team->getId());
-                $this->entityManager->persist($override);
+            // ⚠ Le seed ne MODIFIE JAMAIS un override existant : il n'en crée que pour les équipes
+            // qui n'en ont pas. Un override posé par un AUTRE geste — p.ex. une activation par
+            // mutualisation (`source='mutualisation'`, isActive=true, MutualizeSlotService) — doit
+            // SURVIVRE : le désactiver ici écraserait en silence une décision déjà prise. (Le wizard
+            // ne sème que sur 0 override ; le transfert, lui, peut semer sur un plan où la
+            // mutualisation a déjà posé une ligne — d'où cette garde côté serveur.)
+            if ($overrideRepository->findOneBy(['schedulePlanId' => $schedulePlanId, 'teamId' => $team->getId()]) instanceof TeamPeriodOverride) {
+                continue;
             }
             // Source NULLE : le seed est indistinguable d'un décochage manuel (pas « via
             // doléances » — c'est le transfert, plus tard, qui estampille ce qu'il touche).
-            $override->setIsActive(false);
+            $this->entityManager->persist(
+                (new TeamPeriodOverride)
+                    ->setClubId($clubId)
+                    ->setSeasonId($seasonId)
+                    ->setSchedulePlanId($schedulePlanId)
+                    ->setTeamId($team->getId())
+                    ->setIsActive(false),
+            );
         }
 
         // Le drapeau pose que « ce plan a été configuré » : le wizard ne re-sèmera plus.
