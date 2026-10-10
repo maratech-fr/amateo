@@ -58,6 +58,14 @@ class TeamPeriodOverrideResource
     #[Groups(['read'])]
     public ?int $sessionsPerWeek = null;
 
+    /**
+     * Lot 9 — l'origine de cet override quand il a été posé par un geste nommé (``mutualisation``
+     * pour une équipe activée par la mutualisation d'une case) ; NULL pour un réglage ordinaire du
+     * wizard. Le planning l'AFFICHE (pastille « via mutualisation »), il ne décide rien avec.
+     */
+    #[Groups(['read'])]
+    public ?string $source = null;
+
     public static function fromEntity(TeamPeriodOverride $entity): self
     {
         $dto = new self;
@@ -69,6 +77,7 @@ class TeamPeriodOverrideResource
         $dto->teamId = $entity->getTeamId();
         $dto->isActive = $entity->isActive();
         $dto->sessionsPerWeek = $entity->getSessionsPerWeek();
+        $dto->source = $entity->getSource();
 
         return $dto;
     }

@@ -55,6 +55,7 @@ const block = (id: string, teamIds: string[], commonSessions = 1, schedulePlanId
   schedulePlanId,
   teamIds,
   commonSessions,
+  label: null,
 });
 
 const renderPanel = (schedulePlanId: string | null = null, initialTeamId?: string) =>
@@ -91,7 +92,7 @@ describe("SharedTrainingBlockPanel — la LISTE DÉROULANTE des séances commune
 
   it("suit l'override de période dans le plafond (l'override est prioritaire)", async () => {
     const user = userEvent.setup();
-    overridesState.data = [{ id: "o", schedulePlanId: "plan-1", teamId: "t1", isActive: true, sessionsPerWeek: 1 }];
+    overridesState.data = [{ id: "o", schedulePlanId: "plan-1", teamId: "t1", isActive: true, sessionsPerWeek: 1, source: null }];
     renderPanel("plan-1");
 
     await user.click(screen.getByRole("checkbox", { name: "U9F1" }));

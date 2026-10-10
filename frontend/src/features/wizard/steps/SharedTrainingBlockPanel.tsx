@@ -277,7 +277,16 @@ export function SharedTrainingBlockPanel({
       <ConfirmDialog
         open={pendingDelete !== null}
         title="Supprimer ce groupe ?"
-        description={pendingDelete ? <>« {sharedGroupLabel(pendingDelete.teamIds, pendingDelete.commonSessions, nameOf)} » sera supprimé. Les équipes ne seront plus placées ensemble.</> : null}
+        // Lot 9 — NOMMER ce que la suppression emporte : les séances communes DÉJÀ PLACÉES du groupe
+        // disparaissent du planning (cascade `shared_training_block_id`), équipe par équipe. Le détail
+        // jour/heure/gymnase des séances vit côté planning (pas chargé ici) ; on nomme les équipes.
+        description={
+          pendingDelete ? (
+            <>
+              Supprimer le groupe « {sharedGroupLabel(pendingDelete.teamIds, pendingDelete.commonSessions, nameOf)} » retirera du planning les séances communes de {pendingDelete.teamIds.map(nameOf).join(", ")}, et ces équipes ne seront plus placées ensemble.
+            </>
+          ) : null
+        }
         confirmLabel="Supprimer"
         onCancel={() => setPendingDelete(null)}
         onConfirm={() => {

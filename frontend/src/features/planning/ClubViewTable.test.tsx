@@ -13,6 +13,7 @@ const entry = (over: Partial<ClubViewModel["groups"][number]["rows"][number]["ce
   endLabel: "19:30",
   locked: false,
   lockOrigin: null,
+  sharedTrainingBlockId: null,
   ...over,
 });
 

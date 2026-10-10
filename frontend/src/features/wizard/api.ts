@@ -318,6 +318,9 @@ export interface TeamPeriodOverride {
   teamId: string;
   isActive: boolean;
   sessionsPerWeek: number | null;
+  /** Lot 9 — origine d'un override posé par un geste nommé (`mutualisation` = équipe activée par la
+   *  mutualisation d'une case) ; `null` pour un réglage ordinaire du wizard. Le planning l'AFFICHE. */
+  source: string | null;
 }
 
 export interface TeamPeriodOverridePayload {
@@ -445,6 +448,8 @@ export interface SharedTrainingBlock {
   schedulePlanId: string | null;
   teamIds: string[];
   commonSessions: number;
+  /** Lot 9 — nom OPTIONNEL du bloc (≤ 40), affiché grille/fiche/PDF/Excel ; `null` = bloc sans nom. */
+  label: string | null;
 }
 
 /** POST porte la portée (`schedulePlanId`) ; PUT ne la remappe jamais (le plan est figé à la création). */

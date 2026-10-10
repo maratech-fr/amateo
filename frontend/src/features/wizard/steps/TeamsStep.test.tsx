@@ -254,7 +254,7 @@ describe("TeamsStep", () => {
   it("marks a team mutualised through a block, naming the co-team", () => {
     teamsState.data = [baseTeam, { ...baseTeam, id: "t2", name: "SM4" }];
     sharedBlocksState.data = [
-      { id: "b1", version: 1, createdAt: "2026-08-31T00:00:00+00:00", updatedAt: "2026-08-31T00:00:00+00:00", schedulePlanId: null, teamIds: ["t1", "t2"], commonSessions: 1 },
+      { id: "b1", version: 1, createdAt: "2026-08-31T00:00:00+00:00", updatedAt: "2026-08-31T00:00:00+00:00", schedulePlanId: null, teamIds: ["t1", "t2"], commonSessions: 1, label: null },
     ];
     renderWithProviders(<TeamsStep />);
 

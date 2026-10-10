@@ -5,7 +5,7 @@ import type { Slot, VenueTrainingSlot } from "../api";
 import { computeEmptySlots, EMPTY_SLOT_PREFIX, isEmptySlotId } from "./emptySlots";
 
 const ts = (o: Partial<VenueTrainingSlot>): VenueTrainingSlot => ({ id: "ts", venueId: "v1", dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, capacity: 1, ...o });
-const slot = (o: Partial<Slot>): Slot => ({ id: "s", scheduleId: "sc", teamId: "t1", venueId: "v1", coachId: null, dayOfWeek: 1, startTime: "18:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null, ...o });
+const slot = (o: Partial<Slot>): Slot => ({ id: "s", scheduleId: "sc", teamId: "t1", venueId: "v1", coachId: null, dayOfWeek: 1, startTime: "18:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null, sharedTrainingBlockId: null, ...o });
 
 describe("computeEmptySlots", () => {
   it("returns only the windows with no placement, as synthetic empty slots", () => {

@@ -9,8 +9,8 @@ import { registerLongAction, unregisterLongAction } from "@/shared/lib/longActio
 import { isScheduleStreamConnected, useScheduleStream } from "./lib/scheduleStream";
 import { toast } from "@/shared/stores/toastStore";
 
-import type { LockLevel, PlaceSlotBody, SlotMovePatch } from "./api";
-import { EngineTimeoutError, GenerationInProgressError, MoveRejectedError, OverlaysExistError, SlotEditError, TargetLockedError, VerdictAbandonedError } from "./api";
+import type { LockLevel, MutualizeBody, PlaceSlotBody, SlotMovePatch } from "./api";
+import { EngineTimeoutError, GenerationInProgressError, MoveRejectedError, MutualizationRefusedError, OverlaysExistError, SlotEditError, TargetLockedError, VerdictAbandonedError } from "./api";
 import * as planningApi from "./api";
 
 /**
@@ -232,6 +232,35 @@ export function useLockSlot() {
     // Un verrouillage qui échoue (moteur/réseau) restait MUET : le cadenas ne bougeait pas
     // sans un mot. On remonte le motif du serveur (patron useReopenSchedule/useRegenerate).
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
+/**
+ * Lot 9 — MUTUALISER depuis la fiche d'une séance (geste F3) : déclarer un bloc de mutualisation
+ * ancré à la case. Écriture directe (pas de verdict moteur). Un refus NOMMÉ (422/409/404) est
+ * affiché PAR LA MODALE via le rejet de `mutateAsync` — on le TAIT ici pour ne pas le doubler d'un
+ * toast (FRT-38, le feedback vit une seule fois au niveau hook) ; seul un vrai transport est toasté.
+ */
+export function useMutualizeSlot() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: MutualizeBody }) => planningApi.mutualizeSlot(id, body),
+    onSuccess: () => {
+      // Le placement change (slots), le planning est marqué retouché (schedules), les diagnostics
+      // peuvent bouger. Le bloc neuf et l'override d'activation (pastille « via mutualisation »)
+      // sont relus par les hooks wizard partagés.
+      void queryClient.invalidateQueries({ queryKey: ["slots"] });
+      void queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      void queryClient.invalidateQueries({ queryKey: ["diagnostics"] });
+      void queryClient.invalidateQueries({ queryKey: ["wizard", "shared_training_blocks"] });
+      void queryClient.invalidateQueries({ queryKey: ["wizard", "team_period_overrides"] });
+    },
+    onError: (error) => {
+      if (error instanceof MutualizationRefusedError || error instanceof GenerationInProgressError) {
+        return; // refus NOMMÉ affiché par la modale, jamais un second toast
+      }
+      void errorMessage(error).then((message) => toast.error(message));
+    },
   });
 }
 

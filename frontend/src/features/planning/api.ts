@@ -174,6 +174,13 @@ export interface Slot {
   lockLevel: LockLevel;
   /** Pourquoi ce créneau est verrouillé (F1). `null` quand il ne l'est pas. */
   lockOrigin: LockOrigin | null;
+  /**
+   * Lot 9 — le bloc de mutualisation DONT cette séance est une séance de groupe. `null` = séance
+   * ordinaire. Server-authoritative : le front l'AFFICHE (nom du bloc, pastille), il ne re-dérive
+   * pas l'appartenance par co-localisation. API Platform OMET les null → normalisé à `null` par
+   * `getSlots` (comme planType/schedulePlanId ailleurs).
+   */
+  sharedTrainingBlockId: string | null;
 }
 
 /** Un placement (où, quand) — l'identité d'un écart (P2-44 PR-5) ; ni durée ni coach. */
@@ -864,7 +871,65 @@ export const listSchedules = (): Promise<Schedule[]> =>
     rows.map((s) => ({ ...s, planType: s.planType ?? null, schedulePlanId: s.schedulePlanId ?? null, score: s.score ?? null })),
   );
 export const getSchedule = (id: string): Promise<Schedule> => api.get(`schedules/${id}`).json<Schedule>();
-export const getSlots = (scheduleId: string): Promise<Slot[]> => collection<Slot>("schedule_slot_templates", { scheduleId });
+// API Platform OMET les null du JSON : `sharedTrainingBlockId` arrive ABSENT (undefined) pour une
+// séance ordinaire, jamais `null`. On le normalise ici pour que tout consommateur voie un vrai null
+// (même raison que planType/schedulePlanId sur `listSchedules`).
+export const getSlots = (scheduleId: string): Promise<Slot[]> =>
+  collection<Slot>("schedule_slot_templates", { scheduleId }).then((rows) =>
+    rows.map((s) => ({ ...s, sharedTrainingBlockId: s.sharedTrainingBlockId ?? null })),
+  );
+
+/**
+ * Lot 9 — MUTUALISER DEPUIS LA GÉNÉRATION EN GARDANT LE CRÉNEAU : depuis la fiche d'une séance (la
+ * case d'ancrage `id`), déclarer un bloc de mutualisation ancré à cette case. `teamIds` = les
+ * équipes à rattacher (la source est ajoutée côté serveur) ; `label` = nom optionnel du bloc (≤ 40) ;
+ * `replacedSlotIds` = la séance que la séance commune remplace, une par équipe REJOIGNANTE déjà
+ * placée (la séance unique est prise par défaut côté serveur si une seule, donc elle peut être omise).
+ */
+export interface MutualizeBody {
+  teamIds: string[];
+  label?: string;
+  replacedSlotIds: string[];
+}
+
+export interface MutualizeResult {
+  blockId: string;
+  movedSlotIds: string[];
+  createdSlotIds: string[];
+  activatedTeamIds: string[];
+}
+
+/**
+ * Le serveur a REFUSÉ la mutualisation (422, ou 409/404 nommé) : rien n'a été écrit, le message est
+ * déjà humain (capacité de la case, Σ des séances communes, équipe inactive, ensemble déjà déclaré,
+ * socle, planning validé…). L'écran l'affiche TEL QUEL — aucune re-dérivation côté front.
+ */
+export class MutualizationRefusedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MutualizationRefusedError";
+  }
+}
+
+export async function mutualizeSlot(id: string, body: MutualizeBody): Promise<MutualizeResult> {
+  try {
+    return await api.post(`schedule-slots/${id}/mutualize`, { json: body }).json<MutualizeResult>();
+  } catch (error) {
+    if (error instanceof HTTPError) {
+      // ky 2.x : le corps d'erreur vit dans error.data (re-lire la réponse jette).
+      const data = ((error as { data?: unknown }).data ?? {}) as { code?: string; error?: string };
+      if (409 === error.response.status && "generation_in_progress" === data.code) {
+        throw new GenerationInProgressError();
+      }
+      // 422 (refus métier nommé), 409 (planning validé / lecture seule), 404 (séance disparue) :
+      // tous portent un message serveur humain → on le remonte pour l'afficher dans la modale.
+      if (422 === error.response.status || 409 === error.response.status || 404 === error.response.status) {
+        throw new MutualizationRefusedError(data.error ?? "La mutualisation n'a pas pu être appliquée.");
+      }
+    }
+    throw error;
+  }
+}
 
 /**
  * P4-266 — l'empreinte de la structure COURANTE d'un plan (SEASON ou période). Le signal

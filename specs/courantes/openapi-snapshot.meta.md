@@ -1,10 +1,11 @@
-Last verified @ 2026-10-10 (lot 9 « mutualiser depuis la génération », rebasé sur P2-63 PR 3) : nouvelle
-route custom `POST /api/schedule-slots/{id}/mutualize` (+1 path) et schéma `SharedTrainingBlock` enrichi
-d'un `label` (string nullable, ≤ 40) ; schémas `CoachWish`/`CoachWishInput` portent `keepSeasonSlots`
-(boolean, défaut false, P2-63 PR 3).
+Last verified @ 2026-10-10 (lot 9 F3, surface de lecture du planning) : `ScheduleSlotTemplate` expose
+`sharedTrainingBlockId` (guid nullable — le bloc dont la séance est membre) et `TeamPeriodOverride`
+expose `source` (string nullable — `mutualisation` pour une équipe activée par le geste) ; aucun nouveau
+path. Acquis antérieurs : route `POST /api/schedule-slots/{id}/mutualize` + `SharedTrainingBlock.label`
+(lot 9 B1), `CoachWish.keepSeasonSlots` (P2-63 PR 3).
 
 **239 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`328c389e5b4be44ee82d1b20ed22f6e7b676b9ca7947d360bfcd7fa1aae86961` (`sha256sum` sur le fichier).
+`2d808c61cc08db1a3b6645258b658ce1e7cd5df8d561315ff254e8ef1f338b04` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

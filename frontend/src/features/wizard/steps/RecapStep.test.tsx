@@ -101,7 +101,7 @@ import { toast } from "@/shared/stores/toastStore";
 
 /** Un bloc de mutualisation de la portée courante (P2-51) — forme minimale pour le récap. */
 const recapBlock = (teamIds: string[]): SharedTrainingBlock =>
-  ({ id: "g", version: 1, createdAt: "2026-08-31T00:00:00+00:00", updatedAt: "2026-08-31T00:00:00+00:00", schedulePlanId: null, teamIds, commonSessions: 1 });
+  ({ id: "g", version: 1, createdAt: "2026-08-31T00:00:00+00:00", updatedAt: "2026-08-31T00:00:00+00:00", schedulePlanId: null, teamIds, commonSessions: 1, label: null });
 
 describe("RecapStep — read-only summary", () => {
   beforeEach(() => {
@@ -471,7 +471,7 @@ describe("RecapStep — fermetures de gymnase et semaine enfant", () => {
   // portée courante, nommé avec le libellé partagé.
   it("liste les blocs de mutualisation de la portée courante", async () => {
     sharedBlocksState.data = [
-      { id: "g1", version: 1, createdAt: "2026-08-17T00:00:00+00:00", updatedAt: "2026-08-17T00:00:00+00:00", schedulePlanId: "plan-1", teamIds: ["t1", "t2"], commonSessions: 1 },
+      { id: "g1", version: 1, createdAt: "2026-08-17T00:00:00+00:00", updatedAt: "2026-08-17T00:00:00+00:00", schedulePlanId: "plan-1", teamIds: ["t1", "t2"], commonSessions: 1, label: null },
     ];
     renderWithProviders(<RecapStep />);
 

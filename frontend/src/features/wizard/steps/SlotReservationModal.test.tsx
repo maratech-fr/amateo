@@ -32,7 +32,7 @@ const VENUE: Venue = { id: "v1", name: "Gymnase A", color: null, canSplit: true,
 const SLOT: VenueTrainingSlot = { id: "slot1", venueId: "v1", dayOfWeek: 1, startTime: "18:00", durationMinutes: 90, capacity: 2 };
 
 const block = (id: string, teamIds: string[], commonSessions = 1): SharedTrainingBlock =>
-  ({ id, version: 1, createdAt: "2026-08-31T00:00:00+00:00", updatedAt: "2026-08-31T00:00:00+00:00", schedulePlanId: null, teamIds, commonSessions });
+  ({ id, version: 1, createdAt: "2026-08-31T00:00:00+00:00", updatedAt: "2026-08-31T00:00:00+00:00", schedulePlanId: null, teamIds, commonSessions, label: null });
 
 const resa = (teamId: string, venueId: string, dayOfWeek: number, startTime: string): Reservation =>
   ({ id: `${teamId}-${venueId}-${dayOfWeek}-${startTime}`, schedulePlanId: null, teamId, venueId, dayOfWeek, startTime, durationMinutes: 90 });

@@ -18,6 +18,7 @@ function slot(over: Partial<Slot>): Slot {
     durationMinutes: 90,
     lockLevel: "NONE",
     lockOrigin: null,
+    sharedTrainingBlockId: null,
     ...over,
   };
 }
