@@ -1051,6 +1051,15 @@ jobs:
       - name: SlidingSessionTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/SlidingSessionTest.php --group phase1'
 
+      # Axe planning lifecycle (P2-63 PR 5) — « Transférer au planning » n'écrit QUE des objets de
+      # période (overrides d'équipe, contraintes datées), ne fait JAMAIS naître un plan (semaine sans
+      # plan → ignorée) et ne touche ni le socle ni sa version choisie ; idempotence par
+      # (source=coach_wish, occurrence) ; 409 pendant une génération ; garde SEC-07 falsifiée ; une
+      # doléance d'un autre club n'est jamais convertie. Sans ce gate, un transfert qui ferait naître
+      # un plan ou toucherait le socle passerait les checks requis.
+      - name: CoachWishTransferTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Api/CoachWishTransferTest.php --group phase1'
+
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
