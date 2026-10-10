@@ -2,7 +2,7 @@
 
 > Les besoins produit identifiés par l'expérience (onboarding, grille `WeekGrid`, tri des équipes, diagnostics, export, multi-tenant, cycle de vie côté UI, fiche club, stats gymnases), les écrans système (loading/erreur/503) et les largeurs d'écran. Découpé mécaniquement de `frontend-spec.md` (DOC-59).
 
-Last verified @ 2026-10-06 (découpage thématique DOC-59 — contenu déplacé TEL QUEL depuis `frontend-spec.md`, sans réécriture de fond ; la fraîcheur du contenu est celle de la passe du même jour sur `frontend-spec.md`, l'historique de vérification vit dans `git log -p --follow` ce fichier).
+Last verified @ 2026-10-10 (rotation documentation-update) : les 6 étapes du wizard recalées contre `WizardLayout.tsx` (`teams`/`venues`/`coaches`/`constraints`/`recap`/`generate`) ; l'absence d'en-tête `X-Club-Id` côté serveur recalée contre `TenantFilterListener.php` (AUD-SEC-25) ; `POST /api/teams/reorder` recalé contre `ReorderTeamsController.php`. Reste du fichier non re-confronté cette passe ; l'historique de vérification vit dans `git log -p --follow` ce fichier.
 
 ## 6. Besoins identifiés par l'expérience (forward)
 

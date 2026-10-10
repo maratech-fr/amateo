@@ -2,7 +2,7 @@
 
 > La boucle de travail sur un planning : retouche manuelle (mode cible, éviction, dérive, verrou — rail read-only + verdict moteur) et transcription depuis le socle (bouton, panneau « à replacer », comparaison). Découpé mécaniquement de `frontend-spec.md` (DOC-59).
 
-Last verified @ 2026-10-06 (découpage thématique DOC-59 — contenu déplacé TEL QUEL depuis `frontend-spec.md`, sans réécriture de fond ; la fraîcheur du contenu est celle de la passe du même jour sur `frontend-spec.md`, l'historique de vérification vit dans `git log -p --follow` ce fichier).
+Last verified @ 2026-10-10 (rotation documentation-update, croisée avec lot 9 B1) : `schedule_slot_templates` reste `GET`/`GetCollection` SEULEMENT et `ScheduleSlotTemplateResource` n'expose toujours aucun champ d'appartenance à un bloc (`sharedTrainingBlockId`, posé en base par le lot 9, n'est PAS dans ses `Groups(['read'])`) — la ligne « L'appartenance à un bloc n'est PORTÉE PAR AUCUN champ du `Slot` » reste vraie côté API ; `POST /api/schedule-slots/move-group` recalé contre `ManualEditController.php`. Reste du fichier non re-confronté cette passe ; l'historique de vérification vit dans `git log -p --follow` ce fichier.
 
 ### 6.7 Retouche manuelle — mode cible, éviction, dérive, verrouiller (rail read-only + verdict moteur, 2026-08-16)
 
