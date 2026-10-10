@@ -1,13 +1,11 @@
 # Documentation métier du système de contraintes
 
-Last verified @ 2026-10-10 (rotation de fraîcheur, lot 3b PR C, `documentation-update`) : re-confronté
-au code — `ConstraintRuleType` toujours à deux cas `HARD`/`PREFERRED` SEULEMENT
-(`backend/src/Enum/ConstraintRuleType.php:11-12`) ; pas de famille `FACILITY_CAPACITY` (confirmé,
-seuls des commentaires/noms de variable la citent comme mécanisme RETIRÉ) ; `ConstraintValidationService`
-existe toujours comme foyer unique de validation pré-solve ; `TeamTagService::syncTeamTags` toujours
-le garde court-circuit. Ce document décrit le modèle de contrainte de SAISON — l'héritage par
-défaut en période (overlay/vacances) est hors de son périmètre, documenté dans
-[`types-de-planning.md`](../../specs/courantes/types-de-planning.md).
+Last verified @ 2026-10-10 (rotation, lot 3B PR A) : deux dérives corrigées — l'exemple BCCL
+`COACH_AVAILABILITY` portait encore `config.coachId` (clé retirée de la liste blanche par
+`Version20260807190000`, `ConstraintConfigValidator`) ; la clé `preferredDays` était dite « jamais
+émise par le wizard », alors que `ConstraintsStep.tsx` l'émet depuis P4-312 (mode « à privilégier »,
+toujours `PREFERRED`). `ConstraintRuleType` toujours à deux cas `HARD`/`PREFERRED` SEULEMENT, `LOCK`
+absent (`backend/src/Enum/ConstraintRuleType.php`) ✓. Reste non re-sondé cette passe.
 
 > Amateo — Symfony 7 + API Platform. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
@@ -63,7 +61,7 @@ Définit les jours autorisés, à éviter ou imposés pour l'entraînement (`all
 
 > Exemple : `{allowedDays: [3]}` force l'entraînement le mercredi uniquement (tous les autres jours sont interdits). `{forbiddenDays: [6, 7]}` évite le week-end.
 
-À noter : l'engine reconnaît aussi une clé `preferredDays` (bonus **SOFT** sur les jours cités), mais elle n'est **jamais émise par le wizard** et ne suffit pas à elle seule — une contrainte `DAY` dont la config ne contient que `preferredDays` est **rejetée** par la validation (`allowedDays`, `forbiddenDays` ou `forcedDays` requis).
+À noter : l'engine reconnaît aussi une clé `preferredDays` (bonus **SOFT** sur les jours cités, souhait **positif** de jour) — le wizard l'émet depuis P4-312 (mode « à privilégier », `ConstraintsStep.tsx`), toujours en `PREFERRED`, jamais en `HARD`.
 
 #### `FACILITY` — Affectation de salle
 
@@ -138,7 +136,7 @@ Voici huit contraintes réelles ou plausibles pour le BCCL, présentées sous fo
 | SM3 — mercredi seulement | `TEAM` | `DAY` | `HARD` | `{allowedDays:[3]}` | SM3 ne s'entraîne que le mercredi |
 | SM3 — à partir de 20h | `TEAM` | `TIME` | `HARD` | `{minStartTime:"20:00"}` | SM3 commence au plus tôt à 20h |
 | ADN — fermé (période datée) | — (cockpit) | — (aucune contrainte) | — | — | Fermeture saisie dans le cockpit (`venue_closed`) : le backend **retire les créneaux d'ADN du payload** sur ses jours fermés, sans produire aucune contrainte (§3.3) |
-| Coach Enzo — indisponible vendredi | `COACH` | `COACH_AVAILABILITY` | `HARD` | `{coachId:"uuid-enzo", unavailableDays:[5]}` | Enzo n'est disponible aucun vendredi |
+| Coach Enzo — indisponible vendredi | `COACH` (`scopeTargetId:"uuid-enzo"`) | `COACH_AVAILABILITY` | `HARD` | `{unavailableDays:[5]}` | Enzo n'est disponible aucun vendredi |
 
 ### 3.1 Exemple détaillé : "Jeunes — fin à 19h30"
 

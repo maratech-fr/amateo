@@ -169,11 +169,15 @@ def test_coach_unavailable_day_no_session() -> None:
     assert _days_of(result, "t"), "team should still be placed on an available day"
 
 
-def test_coach_unavailable_day_enforced_for_second_coach() -> None:
-    # Regression (audit review): a team can have two required coaches; the
-    # assignment carries only the first. The SECOND coach's unavailability must
-    # still block the day, else ENG-01 survives for co-coached teams.
-    venue = make_venue("v", [(2, "18:00"), (4, "18:00")])
+def test_coach_unavailable_day_one_required_coach_still_covers() -> None:
+    # ⚑ LOT 3B — INVERSION ASSUMÉE de l'ancien ``test_coach_unavailable_day_enforced_for_second_coach``
+    # (décision fondateur Q4B, 2026-10-10 ; docstring de ``closures.add_coach_unavailability_constraints``).
+    # ANCIEN sens (règle d'audit) : un co-coach indisponible fermait le jour pour TOUTE l'équipe,
+    # même si l'autre coach requis était libre. NOUVEAU sens — « un coach suffit » : tant qu'UN coach
+    # requis est disponible, l'équipe peut s'entraîner. Ici coach-B est indisponible le jour 2 mais
+    # coach-A est libre ; le seul créneau proposé tombe le jour 2, donc l'équipe DOIT y être placée
+    # (sous l'ancienne règle, le jour 2 était fermé → aucune séance : l'assertion était ``2 not in …``).
+    venue = make_venue("v", [(2, "18:00")])
     payload = make_payload(
         teams=[_team("t", sessions=1)],
         venues=[venue],
@@ -184,7 +188,7 @@ def test_coach_unavailable_day_enforced_for_second_coach() -> None:
         ],
     )
     result = solve_payload(payload)
-    assert 2 not in _days_of(result, "t"), "co-head-coach B unavailable day 2 → no session"
+    assert 2 in _days_of(result, "t"), "un coach requis (coach-A) libre le jour 2 suffit : séance placée"
 
 
 def test_empty_available_days_is_no_restriction() -> None:

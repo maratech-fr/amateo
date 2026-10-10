@@ -1,6 +1,6 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-10-09 (P4-295 C3) : citation du solveur de placement recalée — `W_COACH_UNAVAILABLE` (indisponibilité de coach, TOUJOURS SOFT) pointe désormais le sous-module `engine/app/solver/match_placement/weights.py` du paquet `match_placement/` (découpe pure verbatim, zéro effet gestionnaire). Reste du vocabulaire non re-sondé cette passe — un stamp REMPLACE, il ne s'empile pas. Également (P4-295 C4) : citation `add_socle_reference_bonus` recalée — ce constructeur vit depuis P4-295 C4 dans le sous-module `engine/app/solver/objective/terms/stability.py` (l'ancien `objective/terms.py` est devenu un paquet, découpe pure verbatim, surface d'import byte-identique, `objective/__init__` inchangé). Aucun vocabulaire moteur touché (refactor pur). Reste du vocabulaire non re-sondé cette passe — un stamp REMPLACE, il ne s'empile pas. Également (P4-295 C5) : les 2 citations du balayage capacité et du `x ≤ Σb` de séance de bloc sont ré-ancrées sur `constraints/structural/capacity.py`. Également (P4-295 C6) : citation `add_max_consecutive_days_constraints` ré-ancrée sur `constraints/wellness/consecutive_days.py` (`wellness.py` devenu sous-paquet, découpe verbatim). Fond du vocabulaire non re-sondé cette passe — dernière vérif contre le code à P4-312 (mode JOUR « à privilégier ») : `preferredDays` n'est plus « engine-only », le wizard l'émet en mode JOUR « à privilégier » (DAY, `PREFERRED`, soft positif), l'objectif l'oriente sans jamais bloquer, la clé reste refusée en `HARD`. `engine/CONTRACT_VERSION` = `1.3` (inchangé par ces deux passes). Un stamp REMPLACE, il ne s'empile pas.
+Last verified @ 2026-10-10 (lot 3B PR A) : §COACH_AVAILABILITY et §Bloc de mutualisation confrontées à `engine/app/solver/constraints/structural/closures.py::add_coach_unavailability_constraints` et au nouveau `engine/app/solver/constraints/availability.py` — « un coach suffit » (Q4B, fondateur 2026-10-10) : une équipe à plusieurs coachs requis n'est fermée que si TOUS sont indisponibles ; une case de bloc emprunte un coach de l'union, un membre sans coach propre n'y est que via le bloc (`x ≤ Σb`), un bloc sans aucun coach de l'union dispo est fermé (`b == 0`). Renverse l'ancienne règle d'audit « un co-coach indisponible ferme le jour ». `engine/CONTRACT_VERSION` = `1.4` (inchangé par ce lot). Reste du vocabulaire non re-sondé cette passe. Un stamp REMPLACE, il ne s'empile pas.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
@@ -129,6 +129,31 @@ Last verified @ 2026-10-09 (P4-295 C3) : citation du solveur de placement recal�
 > un créneau candidat. Elle est **Indicative** — signalée par `PreSolvePreventionWarnings` au
 > récap pré-génération et à l'écran Contraintes des matchs (frontend), jamais bloquante. Un coach
 > principal d'au moins une équipe sort de ce lot (son indisponibilité, elle, ferme bien).
+>
+> **Une équipe à PLUSIEURS coachs requis (non-ASSISTANT) : UN SEUL disponible suffit (Q4B,
+> fondateur 2026-10-10).** `add_coach_unavailability_constraints` (`constraints/structural/closures.py`)
+> ne ferme une case que si **TOUS** les coachs requis de l'équipe y sont indisponibles — la
+> question « au moins un coach requis est-il disponible ? » a une maison UNIQUE,
+> `constraints/availability.py::case_has_available_coach`/`available_coach_exists`, partagée par la
+> fermeture et par la séance de **BLOC** ci-dessous. Seule l'indisponibilité est relâchée :
+> l'anti-chevauchement coach (`COACH_AT_MOST_ONE`, `COACH_PLAYER_NO_OVERLAP`) garde sa règle
+> intacte. Renverse l'ancienne règle d'audit « un co-coach indisponible ferme le jour pour toute
+> l'équipe » (prod Toussaint BCCL — un bloc de 4 équipes aux coachs mono-jour incompatibles sortait
+> INFEASIBLE alors qu'un coach de l'union couvrait chaque jour).
+>
+> **Séance de BLOC — l'UNION des coachs des membres.** Une case de bloc (`model.shared_block_case_bvars`)
+> n'est ouverte que si **au moins un** coach requis de l'UNION des membres y est disponible
+> (`case_has_available_coach` sur l'union). Deux effets, posés en plus de la fermeture solo
+> ci-dessus (même fonction, même fichier) :
+> - un membre **sans aucun coach propre disponible** sur la case n'y est présent **QUE via le
+>   bloc** — relâché en `x ≤ Σ b` (les `b` des blocs du membre sur cette case) au lieu d'une
+>   fermeture dure, au lieu de dégénérer en « placé sans coach » ;
+> - un bloc dont **l'union n'a AUCUN coach disponible** sur une case est **fermé** (`b == 0`,
+>   littérale assumable nommée `coach_unavail_block` pour que le noyau d'infaisabilité cite la
+>   cause) — une séance de bloc sans aucun coach n'existe pas.
+>
+> `validate-assignments` partage le même foyer (`hard_layer.py`) : le verdict d'un déplacement
+> applique la même règle « un coach suffit », jamais une seconde logique.
 >
 > **La cible est le `scope`, jamais le `config` (SEC-13).** La clé `coachId` n'existe plus : elle
 > valait exactement `scopeTargetId`, et un doublon de cible est une occasion de divergence (deux
@@ -265,6 +290,7 @@ membre de s'effondrer sur la MÊME case (sinon une séance physique compterait p
 | `add_room_at_most_one` | dé-compte `(n_libres−1)·b` — une séance de bloc = une occupation ; `x ≤ Σ b` sur le membre libre qui ne tient sur la case que par le dé-compte d'un verrou partenaire |
 | `team_share_declared_pairs` | co-présence des membres exemptée de l'anti-chevauchement passerelle (§ci-dessus) |
 | `shared_block_case_bvars` → `add_coach_player_non_overlap` | co-présence des membres exemptée de l'anti-chevauchement coach-joueur/joueur-joueur QUAND la séance de bloc de la case est active (borne `≤ 1 + Σb`) — voir `COACH_PLAYER_NO_OVERLAP` ci-dessus |
+| `shared_block_case_bvars` → `add_coach_unavailability_constraints` (`constraints/structural/closures.py`, Q4B) | « un coach suffit » (§COACH_AVAILABILITY ci-dessus) : un membre sans coach propre dispo n'est présent sur la case QUE via le bloc (`x ≤ Σ b`) ; un bloc dont l'UNION n'a aucun coach dispo sur la case est fermé (`b == 0`, littérale nommée `coach_unavail_block`) |
 | Diagnostic post-solve (`_diagnose_shared_blocks`) | `shared_block_not_honored` — INFEASIBLE : moins de cases communes candidates que de séances demandées, OU plus de cases toute-épinglées EXCLUSIVES (aucun autre bloc toute-épinglé dessus) que de séances demandées (deux causes certaines, la seconde nomme le bloc sur-épinglé) ; solve abouti : défense en profondeur si le compte réel diverge — **une case de co-présence n'est comptée pour un bloc QUE s'il y est le bloc ÉLU** (maximal, `_fold_case_occupant_identity`, comme la sur-capacité ci-dessous), jamais la co-présence BRUTE : deux blocs imbriqués réunis sur une même case créditent le seul bloc maximal (P4-183, sinon faux positif sur le bloc inclus) |
 | Sur-capacité gymnase (post-solve) | attribuée **PAR CASE** (multi-appartenance permise, `_fold_case_occupant_identity`) — jamais « premier bloc gagne » via une carte globale, contrairement au groupe historique (unicité un-groupe-par-équipe). **Blocs IMBRIQUÉS sur la MÊME case** (l'un contient l'autre) : le repli élit le bloc **MAXIMAL** — tri déterministe taille décroissante puis clé (`sorted(blocks, key=(-len, key))`) — MIROIR EXACT du repli backend (`ReservationGroupOccupancy::occupantCount`, même tri). Un tri sur la seule clé (« premier bloc gagne » par l'alphabet) élirait un bloc de 2 devant un bloc de 3 et compterait un occupant fantôme (le tiers isolé) là où le solveur, par sa garde de distinctness (`targeting.py`), réunit le bloc de 3 en une seule occupation |
 | `/validate-assignments` | miroir déterministe `_shared_block_move_violation` (D11), dans les DEUX sens de `Σb == commonSessions` — `shared_block_broken` : un déplacement qui RETIRE un membre d'une séance de bloc jusque-là honorée ; `shared_block_overformed` : un déplacement qui FORME une séance commune de TROP (plutôt que de tomber sur `unknown_hard_conflict` générique) ; **garde anti-enfermement** (patron `_venue_minimum_move_violation`) : un bloc DÉJÀ cassé (ou déjà sur-formé) dans la baseline ne bloque pas les déplacements |

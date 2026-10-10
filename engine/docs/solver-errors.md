@@ -1,6 +1,6 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-10-08 (P4-295 C1) : propriétaire du texte `message` de `unused_slot` ré-ancré — `_diagnose_unused_slots` vit désormais dans `result_builder/diagnostics/placement.py` (anciennement `diagnostics.py`, redécoupé en paquet) ; `engine/CONTRACT_VERSION` = `1.4` ✓. Reste non re-sondé cette passe.
+Last verified @ 2026-10-10 (rotation, lot 3B PR A) : les deux énumérations fermées `output_schema.py` recomptées contre le code — `DiagnosticCauseSchema.kind` (12 valeurs) et `DiagnosticSchema.type` (15 valeurs) inchangées ; les lignes `day_constraint_conflict`/`coach_overload`/`shared_block_not_honored`/`conflict`/`travel_time_infeasible` confrontées au lot « un coach suffit » (Q4B) — aucune n'est affectée (le cas ALIGN-16 et `coach_overload` restent sur un coach UNIQUE ou le premier coach MAIN, hors du relâchement multi-coachs). `engine/CONTRACT_VERSION` = `1.4` ✓. Reste non re-sondé cette passe.
 
 > Ce document recense toutes les erreurs que le moteur peut produire, avec leurs causes et les actions correctives. Destine aux developpeurs et aux utilisateurs avances du club.
 

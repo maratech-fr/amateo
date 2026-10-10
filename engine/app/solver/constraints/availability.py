@@ -1,0 +1,87 @@
+"""Disponibilité des coachs sur une case — maison UNIQUE de la question « un coach suffit » (Q4B).
+
+« Cette case ``(jour, début)`` a-t-elle AU MOINS un coach requis disponible pour cet ENSEMBLE
+d'équipes ? » Un seul coach disponible suffit à servir la case (arbitrage fondateur Q4B,
+2026-10-10) : une équipe SEULE honore ses séances dès qu'UN de ses coachs requis est libre, et une
+séance de BLOC dès qu'un coach de l'UNION de ses membres l'est. Les deux appelants — la fermeture
+d'indisponibilité (``structural.closures.add_coach_unavailability_constraints``) et, plus tard, le
+diagnostic de bloc (PR B) — passent par ICI, jamais par une seconde logique.
+
+Base de la DAG du paquet : n'importe que ``..model`` (comme ``common``), aucune arête vers un
+sous-module frère — closures/targeting importent CE module, jamais l'inverse."""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Mapping
+from typing import Any
+
+from ..model import _time_to_minutes
+
+
+def _coach_available_at(coach_id: str, day: int, start: int, blocked: Mapping[str, Any]) -> bool:
+    """Un coach est DISPONIBLE à ``(jour, minute de début)`` quand AUCUN de ses intervalles
+    d'indisponibilité ``(jour, de, à)`` ne couvre ce moment (``de <= début < à``, fenêtre fondée sur
+    le DÉBUT, comme la pose historique et les fenêtres d'équipe)."""
+    return not any(
+        iv_day == day and iv_from <= start < iv_to for iv_day, iv_from, iv_to in (blocked.get(str(coach_id)) or ())
+    )
+
+
+def available_coach_exists(coach_ids: Iterable[str], day: int, start: int, coach_unavailability: Any) -> bool:
+    """AU MOINS un des coachs REQUIS donnés est-il disponible à ``(jour, début)`` ?
+
+    Un ensemble VIDE de coachs ⇒ ``True`` : la case n'exige aucun coach, l'indisponibilité ne la
+    ferme pas (patron historique « sans coach connu, aucune fermeture »). C'est le CŒUR de Q4B : on
+    ne ferme que si TOUS les coachs requis sont bloqués (``not available_coach_exists``)."""
+    rules: Mapping[str, Any] = coach_unavailability if isinstance(coach_unavailability, Mapping) else {}
+    ids = [str(c) for c in coach_ids]
+    if not ids:
+        return True
+    return any(_coach_available_at(cid, day, start, rules) for cid in ids)
+
+
+def required_coaches_of(team_ids: Iterable[str], team_coach_map: Mapping[str, Any] | None) -> list[str]:
+    """Union ORDONNÉE et dédupliquée des coachs requis (MAIN, non-ASSISTANT — ``team_coach_map``)
+    des équipes données. Déterministe : l'ordre d'apparition est conservé (le solveur et les
+    goldens restent reproductibles)."""
+    coach_map = team_coach_map or {}
+    union: list[str] = []
+    seen: set[str] = set()
+    for team_id in team_ids:
+        for coach_id in coach_map.get(str(team_id), ()) or ():
+            key = str(coach_id)
+            if key not in seen:
+                seen.add(key)
+                union.append(key)
+    return union
+
+
+def case_has_available_coach(
+    team_ids: Iterable[str],
+    day: int,
+    start: int,
+    coach_unavailability: Any,
+    team_coach_map: Mapping[str, Any] | None,
+) -> bool:
+    """LA question Q4B : la case ``(jour, début)`` a-t-elle au moins un coach requis disponible pour
+    CET ENSEMBLE d'équipes ? On prend l'UNION des coachs requis des équipes puis on applique
+    ``available_coach_exists``. Union vide ⇒ ``True`` (aucune exigence de coach sur cette case)."""
+    return available_coach_exists(required_coaches_of(team_ids, team_coach_map), day, start, coach_unavailability)
+
+
+def case_day_start(slot_id: str | None) -> tuple[int | None, int | None]:
+    """``(jour, minute de début)`` d'une clé de case ``"jour:HH:MM"`` (ex. ``"3:18:00"`` → ``(3,
+    1080)``), ou ``(None, None)`` si illisible. Même découpe que ``common._assignment_day_start``,
+    exposée ici pour les cases de BLOC dont la clé porte le ``slot_id`` sans objet d'affectation."""
+    if not isinstance(slot_id, str) or ":" not in slot_id:
+        return None, None
+    head, _, rest = slot_id.partition(":")
+    try:
+        day: int | None = int(head)
+    except ValueError:
+        day = None
+    try:
+        start: int | None = _time_to_minutes(rest)
+    except (ValueError, TypeError):
+        start = None
+    return day, start
