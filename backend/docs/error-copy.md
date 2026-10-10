@@ -4,10 +4,10 @@
 > Pas d'inventaire ligne à ligne (il dériverait), pas de décompte (« N messages »).
 > Le code fait foi ; ce doc dit **comment décider**, pas **combien**.
 
-Last verified @ 2026-10-08 (rotation `documentation-update`, lot P4-295 C1 engine — sans
-rapport avec le sujet). Re-confronté au code : la règle « le corps du serveur ne parle qu'en deçà
-de 500 » tient toujours (`frontend/src/shared/lib/errorMessage.ts:55`) ✓ ; `ENGLISH_STATUS_TEXTS`
-déclarée `:16` ✓ ; `backend/tests/Unit/ValidationExceptionCarriesViolationsTest.php` et
+Last verified @ 2026-10-11 (rotation `documentation-update`, lot 3B PR B — sans rapport avec le
+sujet). Re-confronté au code : la règle « le corps du serveur ne parle qu'en deçà de 500 » tient
+toujours (`frontend/src/shared/lib/errorMessage.ts:55`) ✓ ; `ENGLISH_STATUS_TEXTS` déclarée `:16`
+✓ ; `backend/tests/Unit/ValidationExceptionCarriesViolationsTest.php` et
 `backend/tests/Security/LoginFailureCopyTest.php` toujours présents ✓ ;
 `ConstraintStateProcessor::assertPreferredVenueIsNotMandatory`
 (`backend/src/State/Processor/ConstraintStateProcessor.php:174`) suit toujours l'idiome unique

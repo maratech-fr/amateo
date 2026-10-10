@@ -571,6 +571,10 @@ def _solve(
     # les sites de pose nomment la contrainte fermant un candidat sans re-parser (décision B).
     model.forced_venue_sources = parsed.get("forced_venue_sources", {})
     model.coach_unavailability_sources = parsed.get("coach_unavailability_sources", {})
+    # Lot 3B PR B — l'algèbre d'indispo coach sur le MODÈLE, pour que le diagnostic de bloc rejoue
+    # à l'échec la MÊME question « un coach de l'union est-il libre ici ? » que la pose (helper
+    # UNIQUE `constraints.availability`), sans re-parser les contraintes.
+    model.coach_unavailability = parsed["coach_unavailability"]
 
     # (La famille FACILITY_CAPACITY rabotait ici la capacité d'un gymnase entier
     # à `maxTeams`. RETIRÉE le 2026-08-08 : aucun chemin UI ne la créait, zéro

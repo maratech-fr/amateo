@@ -130,6 +130,65 @@ final class DiagnosticMessageBuilderTest extends TestCase
         self::assertStringNotContainsString('(7', $result);
     }
 
+    // ── Lot 3B PR B — l'ORIGINE d'une contrainte citée par un diagnostic de bloc ────────────────
+
+    public function testSharedBlockNotHonoredAppendsSeasonInheritedOrigin(): void
+    {
+        // Le moteur nomme le groupe ; le backend AJOUTE l'origine. La contrainte citée n'est PAS
+        // datée (calendarEntryId NULL = héritée de la saison) → le texte le dit et propose de la
+        // désactiver pour la période.
+        $diagnostic = [
+            'type' => 'shared_block_not_honored',
+            'message' => 'Groupe U9F1, U9F2 : aucun créneau où au moins un coach du groupe est disponible.',
+            'causes' => [
+                ['kind' => 'coach_unavailability', 'constraintId' => 'av-1', 'label' => 'Coach X · indispo lundi-jeudi', 'count' => 2],
+            ],
+        ];
+
+        $result = $this->builder->build($diagnostic, [], [], [], ['av-1' => true]);
+
+        self::assertStringContainsString('Groupe U9F1, U9F2', $result);
+        self::assertStringContainsString('Coach X · indispo lundi-jeudi', $result);
+        self::assertStringContainsString('héritée du planning de saison — désactivable pour cette période', $result);
+    }
+
+    public function testSharedBlockNotHonoredAppendsPeriodPostedOrigin(): void
+    {
+        // La contrainte citée EST datée (calendarEntryId non NULL = posée pour la période) → origine
+        // « posée pour cette période », jamais « héritée ».
+        $diagnostic = [
+            'type' => 'shared_block_not_honored',
+            'message' => 'Groupe U11M1, U11M2 : aucun créneau où au moins un coach du groupe est disponible.',
+            'causes' => [
+                ['kind' => 'coach_unavailability', 'constraintId' => 'av-dated', 'label' => 'Coach Y · indispo vacances', 'count' => 1],
+            ],
+        ];
+
+        $result = $this->builder->build($diagnostic, [], [], [], ['av-dated' => false]);
+
+        self::assertStringContainsString('Coach Y · indispo vacances', $result);
+        self::assertStringContainsString('posée pour cette période', $result);
+        self::assertStringNotContainsString('héritée du planning de saison', $result);
+    }
+
+    public function testSharedBlockNotHonoredKeepsEngineMessageWhenCauseHasNoResolvableOrigin(): void
+    {
+        // Cause sans libellé (dégradée) ⇒ aucune phrase d'origine ajoutée ; le message moteur reste
+        // tel quel — jamais un groupe accusé avec une origine fantôme.
+        $diagnostic = [
+            'type' => 'shared_block_not_honored',
+            'message' => 'Groupe A, B : aucun créneau où au moins un coach du groupe est disponible.',
+            'causes' => [
+                ['kind' => 'coach_unavailability', 'constraintId' => null, 'label' => null, 'count' => 3],
+            ],
+        ];
+
+        $result = $this->builder->build($diagnostic, [], [], [], []);
+
+        self::assertSame('Groupe A, B : aucun créneau où au moins un coach du groupe est disponible.', $result);
+        self::assertStringNotContainsString('Contrainte en cause', $result);
+    }
+
     protected function setUp(): void
     {
         $this->builder = new DiagnosticMessageBuilder;
