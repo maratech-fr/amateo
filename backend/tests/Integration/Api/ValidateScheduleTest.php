@@ -7,6 +7,11 @@ namespace App\Tests\Integration\Api;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Coach;
+use App\Entity\CoachWish;
+use App\Entity\CoachWishCampaign;
+use App\Entity\CoachWishMutualization;
+use App\Entity\CoachWishToken;
 use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\SolverMetric;
@@ -344,6 +349,77 @@ final class ValidateScheduleTest extends WebTestCase
         self::assertNotNull($this->em->getRepository(CalendarEntry::class)->find($entry->getId()), 'la période reste au calendrier, à refaire');
     }
 
+    public function testChoosingAnotherSeasonVersionPurgesTheFutureHolidayCollecteAndKillsItsTokens(): void
+    {
+        // §7.1 planning lifecycle — Q8bis (P2-63) : déplacer le socle emporte AUSSI la collecte
+        // de doléances et les doléances des vacances ENTIÈREMENT à venir (campagne → jetons par FK
+        // cascade), MÊME pivot que les plannings de période (startDate > today). Une vacance DÉJÀ
+        // COMMENCÉE garde sa collecte. Le lien coach purgé devient un 404 BYTE-IDENTIQUE à un
+        // jeton inconnu (anti-énumération préservée).
+        [$user, $club, $season] = $this->seed('VAL14');
+        $v1 = $this->createSchedule($season, ScheduleStatus::COMPLETED);
+        $this->choosePlanVersion($v1);
+
+        // Vacances À VENIR, avec un planning de période (overlay) → comptées par la garde.
+        $future = (new CalendarEntry)
+            ->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setKind(CalendarEntryKind::PERIOD)->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Toussaint')
+            ->setStartDate(new DateTimeImmutable('+1 month'))->setEndDate(new DateTimeImmutable('+1 month +7 days'));
+        $this->em->persist($future);
+        $this->em->flush();
+        $overlay = $this->createSchedule($season, ScheduleStatus::COMPLETED, $future->getId());
+        $this->choosePlanVersion($overlay);
+
+        // Vacances DÉJÀ COMMENCÉES (startDate ≤ today) : leur collecte doit SURVIVRE.
+        $started = (new CalendarEntry)
+            ->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setKind(CalendarEntryKind::PERIOD)->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Vacances en cours')
+            ->setStartDate(new DateTimeImmutable('-2 days'))->setEndDate(new DateTimeImmutable('+5 days'));
+        $this->em->persist($started);
+        $this->em->flush();
+
+        $this->scopeGucToClub($club->getId());
+        $futureToken = $this->seedCollecte($club, $season, $future->getId(), 2); // 2 doléances à venir
+        $startedToken = $this->seedCollecte($club, $season, $started->getId(), 1); // 1 doléance déjà commencée
+
+        $v2 = $this->createSchedule($season, ScheduleStatus::COMPLETED);
+        $jwt = self::getContainer()->get(JWTTokenManagerInterface::class)->create($user);
+        $auth = ['HTTP_AUTHORIZATION' => 'Bearer ' . $jwt, 'CONTENT_TYPE' => 'application/json'];
+
+        // Sans confirmation → 409 qui ANNONCE les doléances à venir (2), jamais celles déjà
+        // commencées. Rien n'est écrit.
+        $this->client->request('POST', "/api/schedules/{$v2->getId()}/validate", [], [], $auth);
+        self::assertResponseStatusCodeSame(409);
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertSame('overlays_exist', $body['code'] ?? null);
+        self::assertSame(2, $body['coachWishCount'] ?? null, 'le 409 annonce les doléances des vacances À VENIR seulement');
+
+        // 404 d'un jeton INCONNU (référence anti-énumération), capturé AVANT la purge.
+        $this->client->request('GET', '/api/coach-wishes/public/' . str_repeat('a', 64));
+        self::assertResponseStatusCodeSame(404);
+        $unknown404 = (string) $this->client->getResponse()->getContent();
+
+        // Avec confirmation → la bascule détruit l'overlay ET purge la collecte à venir.
+        $this->client->request('POST', "/api/schedules/{$v2->getId()}/validate", [], [], $auth, json_encode(['confirmDeleteOverlays' => true], \JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+
+        $this->em->clear();
+        $this->scopeGucToClub($club->getId());
+        // Les vacances À VENIR : campagne, doléances, mutualisation ET jetons (FK cascade) partis.
+        self::assertCount(0, $this->em->getRepository(CoachWishCampaign::class)->findBy(['calendarEntryId' => $future->getId()]), 'la campagne des vacances à venir est supprimée');
+        self::assertCount(0, $this->em->getRepository(CoachWish::class)->findBy(['calendarEntryId' => $future->getId()]), 'les doléances des vacances à venir sont supprimées');
+        self::assertCount(0, $this->em->getRepository(CoachWishMutualization::class)->findBy(['calendarEntryId' => $future->getId()]), 'les mutualisations des vacances à venir sont supprimées');
+        self::assertCount(0, $this->em->getRepository(CoachWishToken::class)->findBy(['campaignId' => $futureToken['campaignId']]), 'les jetons partent par FK cascade avec la campagne');
+        // Les vacances DÉJÀ COMMENCÉES gardent leur collecte.
+        self::assertCount(1, $this->em->getRepository(CoachWishCampaign::class)->findBy(['calendarEntryId' => $started->getId()]), 'la collecte d\'une vacance déjà commencée survit');
+        self::assertCount(1, $this->em->getRepository(CoachWish::class)->findBy(['calendarEntryId' => $started->getId()]), 'ses doléances survivent');
+
+        // Le lien coach purgé est un 404 BYTE-IDENTIQUE à un jeton inconnu.
+        $this->client->request('GET', '/api/coach-wishes/public/' . $futureToken['token']);
+        self::assertResponseStatusCodeSame(404);
+        self::assertSame($unknown404, (string) $this->client->getResponse()->getContent(), 'le lien d\'un jeton purgé est un 404 identique à un inconnu');
+    }
+
     public function testAPeriodAlreadyUnderWaySurvivesTheSeasonChange(): void
     {
         // « Rien du passé, rien de ce qui est en cours » (décision fondateur 2026-07-16,
@@ -451,6 +527,54 @@ final class ValidateScheduleTest extends WebTestCase
         $container = self::getContainer();
         $this->em = $container->get(EntityManagerInterface::class);
         $this->hasher = $container->get('security.user_password_hasher');
+    }
+
+    /**
+     * Sème une campagne de collecte sur une MÈRE de vacances : coach + campagne + jeton +
+     * `$wishCount` doléances + 1 mutualisation. Rend l'id de la campagne et le jeton (clair).
+     * Le GUC doit être posé sur le club (RLS) par l'appelant.
+     *
+     * @return array{campaignId: string, token: string}
+     */
+    private function seedCollecte(Club $club, Season $season, string $motherId, int $wishCount): array
+    {
+        $coach = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())->setFirstName('Maxime')->setLastName('Durand');
+        $this->em->persist($coach);
+
+        $campaign = (new CoachWishCampaign)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setCalendarEntryId($motherId)->setDeadline(new DateTimeImmutable('+1 year'))
+            ->setWeeks(['2099-01-05'])->setTeamIds([]);
+        $this->em->persist($campaign);
+
+        $token = (new CoachWishToken)->setCampaignId($campaign->getId())->setCoachId($coach->getId())->setClubId($club->getId());
+        $this->em->persist($token);
+
+        for ($i = 0; $i < $wishCount; ++$i) {
+            $wish = (new CoachWish)->setCalendarEntryId($motherId)->setTeamId($this->uuid())
+                ->setWeekStart(new DateTimeImmutable('2099-01-05 00:00:00'))->setCoachId($coach->getId())->setSlotsWanted(2);
+            $wish->setClubId($club->getId());
+            $wish->setSeasonId($season->getId());
+            $this->em->persist($wish);
+        }
+
+        $mut = (new CoachWishMutualization)->setCalendarEntryId($motherId)->setTeamId($this->uuid())
+            ->setCoachId($coach->getId())->setPartnerTeamIds([$this->uuid()])->setSharedSlots(1);
+        $mut->setClubId($club->getId());
+        $mut->setSeasonId($season->getId());
+        $this->em->persist($mut);
+
+        $this->em->flush();
+
+        return ['campaignId' => $campaign->getId(), 'token' => $token->getToken()];
+    }
+
+    private function uuid(): string
+    {
+        $bytes = random_bytes(16);
+        $bytes[6] = \chr((\ord($bytes[6]) & 0x0F) | 0x40);
+        $bytes[8] = \chr((\ord($bytes[8]) & 0x3F) | 0x80);
+
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4));
     }
 
     private function slot(Club $club, Season $season, string $venueId, ?string $schedulePlanId): string

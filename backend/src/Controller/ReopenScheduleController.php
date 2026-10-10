@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Entity\CalendarEntry;
 use App\Entity\Schedule;
 use App\Entity\Season;
+use App\Service\FutureHolidayCollectePurger;
 use App\Service\ManagementAccessGuard;
 use App\Service\OverlayManager;
 use App\Service\SchedulePlanProvisioner;
@@ -38,6 +39,7 @@ final class ReopenScheduleController extends AbstractController implements Seaso
         private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
+        private readonly FutureHolidayCollectePurger $collectePurger,
     ) {}
 
     // SEC-13 — la cible est le Schedule nommé dans l'URL (id de version).
@@ -90,11 +92,15 @@ final class ReopenScheduleController extends AbstractController implements Seaso
             if ($schedule->getId() === $this->schedulePlanProvisioner->chosenOfSeasonPlan($schedule->getSeasonId())) {
                 $overlays = $this->overlayManager->periodPlansInvalidatedBySeasonChange($schedule->getClubId(), $schedule->getSeasonId());
                 if ([] !== $overlays) {
+                    // Q8bis — rouvrir le socle emporte AUSSI la collecte et les doléances des
+                    // vacances à venir : annoncées (chiffre) et purgées au même geste confirmé.
+                    $futureHolidayMotherIds = $this->collectePurger->futureHolidayMotherIds($schedule->getClubId(), $schedule->getSeasonId());
                     if (!$this->confirmedDeleteOverlays()) {
                         return $this->json([
                             'code' => 'overlays_exist',
                             'error' => 'Rouvrir le planning de la saison supprime les plannings de période à venir, qui devront être refaits.',
                             'count' => \count($overlays),
+                            'coachWishCount' => $this->collectePurger->countReceivedWishes($futureHolidayMotherIds),
                             'overlays' => array_map(static fn (CalendarEntry $e): array => [
                                 'entryId' => $e->getId(),
                                 'title' => $e->getTitle(),
@@ -108,6 +114,9 @@ final class ReopenScheduleController extends AbstractController implements Seaso
                         // the one in force included (this IS the authorized destructive path).
                         $this->overlayManager->deletePeriodPlanForEntry($entry, force: true);
                     }
+                    // Q8bis — la collecte + les doléances des vacances à venir partent avec
+                    // (campagne → jetons en cascade). Jamais une vacance déjà commencée.
+                    $this->collectePurger->purge($futureHolidayMotherIds);
                 }
             }
 

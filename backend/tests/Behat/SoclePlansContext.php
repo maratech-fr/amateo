@@ -48,6 +48,13 @@ final class SoclePlansContext extends BaseContext
 
     private string $startedPlanId = '';
 
+    /** Collecte de doléances sur des vacances à venir (Q8bis : détruite par la bascule du socle). */
+    private string $collecteEntryId = '';
+
+    private string $collecteCampaignId = '';
+
+    private string $collecteWishId = '';
+
     /** Entrée de la période dont on tente l'ouverture sans socle (scénario refus). */
     private string $refusedEntryId = '';
 
@@ -143,6 +150,56 @@ final class SoclePlansContext extends BaseContext
         );
     }
 
+    #[Given('une collecte de doléances ouverte sur des vacances à venir')]
+    public function uneCollecteSurVacancesAVenir(): void
+    {
+        // Vacances À VENIR, adaptées par le vrai geste « Adapter » → un plan de période qui entre
+        // dans la bascule du socle (`findWithPlanNotStarted`). Fenêtre bien au-delà des seeds et
+        // des autres scénarios (qui utilisent +105/+112 jours).
+        $start = date('Y-m-d', (int) strtotime('next monday +126 days'));
+        $end = date('Y-m-d', (int) strtotime($start . ' +11 days'));
+        $entry = $this->apiPost('calendar_entries', [
+            'kind' => 'period',
+            'periodType' => 'holiday',
+            'title' => 'Vacances à venir (collecte fonctionnel)',
+            'startDate' => $start,
+            'endDate' => $end,
+        ], $this->token);
+        $this->collecteEntryId = $this->idOf($entry, 'vacances à venir');
+
+        $plan = $this->apiPost('schedule_plans', ['calendarEntryId' => $this->collecteEntryId], $this->token);
+        $this->idOf($plan, 'planning des vacances à venir'); // overlay futur → entre dans la bascule
+
+        // Collecte + une doléance, semées en base, ancrées à la MÈRE des vacances (coach facultatif).
+        $this->collecteCampaignId = $this->uuid();
+        $this->collecteWishId = $this->uuid();
+        $this->dbalExec(
+            \sprintf(
+                'INSERT INTO coach_wish_campaign (id, version, created_at, updated_at, club_id, season_id, calendar_entry_id, deadline, weeks, team_ids)'
+                . ' VALUES (\'%s\', 1, now(), now(), \'%s\', \'%s\', \'%s\', \'%s\', \'[]\', \'[]\')',
+                $this->collecteCampaignId,
+                $this->clubId,
+                $this->seasonId,
+                $this->collecteEntryId,
+                $end,
+            ),
+            admin: true,
+        );
+        $this->dbalExec(
+            \sprintf(
+                'INSERT INTO coach_wish (id, version, created_at, updated_at, club_id, season_id, calendar_entry_id, week_start, team_id, slots_wanted, unavailable_days)'
+                . ' VALUES (\'%s\', 1, now(), now(), \'%s\', \'%s\', \'%s\', \'%s\', \'%s\', 2, \'[]\')',
+                $this->collecteWishId,
+                $this->clubId,
+                $this->seasonId,
+                $this->collecteEntryId,
+                $start,
+                $this->uuid(),
+            ),
+            admin: true,
+        );
+    }
+
     #[When('je valide le planning de saison')]
     public function jeValideLePlanningDeSaison(): void
     {
@@ -192,6 +249,26 @@ final class SoclePlansContext extends BaseContext
         );
         if ('1' !== $started) {
             throw new RuntimeException('le planning de période déjà commencé aurait dû subsister — jamais détruit au milieu');
+        }
+    }
+
+    #[Then('la collecte et ses doléances des vacances à venir ont disparu')]
+    public function laCollecteADisparu(): void
+    {
+        $campaign = $this->dbalScalar(
+            \sprintf('SELECT COUNT(*) AS behatval FROM coach_wish_campaign WHERE calendar_entry_id=\'%s\'', $this->collecteEntryId),
+            admin: true,
+        );
+        if ('0' !== $campaign) {
+            throw new RuntimeException('la collecte des vacances à venir aurait dû disparaître avec la bascule du socle');
+        }
+
+        $wishes = $this->dbalScalar(
+            \sprintf('SELECT COUNT(*) AS behatval FROM coach_wish WHERE calendar_entry_id=\'%s\'', $this->collecteEntryId),
+            admin: true,
+        );
+        if ('0' !== $wishes) {
+            throw new RuntimeException('les doléances des vacances à venir auraient dû disparaître avec la collecte');
         }
     }
 
@@ -265,9 +342,18 @@ final class SoclePlansContext extends BaseContext
             }
         }
 
+        // La collecte des vacances à venir : purgée par la bascule en cas de succès, retirée
+        // ici défensivement si le scénario s'est arrêté avant (DELETE tolérant).
+        if ('' !== $this->collecteWishId) {
+            $this->dbalExec(\sprintf('DELETE FROM coach_wish WHERE id=\'%s\'', $this->collecteWishId), admin: true);
+        }
+        if ('' !== $this->collecteCampaignId) {
+            $this->dbalExec(\sprintf('DELETE FROM coach_wish_campaign WHERE id=\'%s\'', $this->collecteCampaignId), admin: true);
+        }
+
         // Le planning de période à venir : son entrée survit à la bascule (l'entrée n'est jamais
         // détruite), on la retire ; DELETE tolérant si elle a déjà disparu.
-        foreach ([$this->futureEntryId, $this->refusedEntryId] as $entryId) {
+        foreach ([$this->futureEntryId, $this->refusedEntryId, $this->collecteEntryId] as $entryId) {
             if ('' !== $entryId) {
                 $this->apiDelete(\sprintf('calendar_entries/%s', $entryId), $this->token);
             }

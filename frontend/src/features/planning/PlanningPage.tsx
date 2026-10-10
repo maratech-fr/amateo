@@ -94,6 +94,17 @@ const DAY_ABBR = new Map(DAYS.map((d) => [d.n, d.label]));
  *  `periodEntry.periodType`, le serveur reste seul juge — la route refuse 422 sinon). SEUL déclencheur
  *  du panneau « Écarts avec le planning de saison » : sur une vacance ou `/planning` autonome, la route
  *  n'est JAMAIS appelée. */
+/**
+ * Q8bis (P2-63) — clause annoncée au confirm de validation/réouverture du socle : les
+ * doléances déjà reçues pour les vacances à venir partent avec la collecte. Vide si 0.
+ */
+function coachWishPurgeClause(coachWishCount: number): string {
+  if (coachWishCount <= 0) {
+    return "";
+  }
+  return ` Et ${coachWishCount} doléance${coachWishCount > 1 ? "s" : ""} déjà reçue${coachWishCount > 1 ? "s" : ""} pour les vacances à venir partiront aussi — il faudra relancer la collecte.`;
+}
+
 export function PlanningPage({ embedded = false, scopePlanId = null, calendarEntryId = null, toReplace = null, isClosurePeriod = false }: { embedded?: boolean; scopePlanId?: string | null; calendarEntryId?: string | null; toReplace?: ToReplaceEntry[] | null; isClosurePeriod?: boolean } = {}) {
   // UXS-09 — on garde l'objet query : `readFailed` distingue « aucun planning » d'« échec de
   // lecture », pour ne pas renvoyer le gestionnaire au wizard sur une panne réseau. `useMemo` et non
@@ -242,7 +253,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // Validation et réouverture (le cœur du lifecycle — ADR-0002) : états, mutations, impact de
   // dépointage, validate()/reopen(). `actionBusy` est recomposé plus bas depuis les mutations
   // retournées (deleteMutation et regenerateFromMutation restent en page).
-  const { validateOpen, setValidateOpen, reopenOverlayCount, setReopenOverlayCount, validateOverlayCount, setValidateOverlayCount, validateMutation, reopenMutation, orphanImpact, validate, reopen } = useValidateReopen(validScheduleId, displayed, allSchedulePlans, navigate);
+  const { validateOpen, setValidateOpen, reopenOverlayCount, setReopenOverlayCount, reopenWishCount, validateOverlayCount, setValidateOverlayCount, validateWishCount, validateMutation, reopenMutation, orphanImpact, validate, reopen } = useValidateReopen(validScheduleId, displayed, allSchedulePlans, navigate);
 
   const selectedSchedule = displayed;
   // Identité du plan affiché et renommage (ADR-0002 inv. 12) : nom en édition, mutation de
@@ -1143,7 +1154,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
         open={reopenOverlayCount !== null}
         destructive
         title={`Rouvrir « ${displayedPlanName ?? "ce planning"} » ?`}
-        description={`Rouvrir « ${displayedPlanName ?? "ce planning"} » supprimera ${reopenOverlayCount ?? 0} planning${(reopenOverlayCount ?? 0) > 1 ? "s" : ""} secondaire${(reopenOverlayCount ?? 0) > 1 ? "s" : ""} (à refaire ensuite).`}
+        description={`Rouvrir « ${displayedPlanName ?? "ce planning"} » supprimera ${reopenOverlayCount ?? 0} planning${(reopenOverlayCount ?? 0) > 1 ? "s" : ""} secondaire${(reopenOverlayCount ?? 0) > 1 ? "s" : ""} (à refaire ensuite).${coachWishPurgeClause(reopenWishCount)}`}
         confirmLabel="Rouvrir et supprimer"
         confirmPhrase="modifier mon planning de saison"
         onConfirm={() => reopen(true)}
@@ -1183,7 +1194,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
       <ConfirmDialog
         open={validateOverlayCount !== null}
         title={`Valider « ${displayedPlanName ?? "cette version"} » et remplacer le planning de saison ?`}
-        description={`Cette version deviendra le planning de saison ; ${validateOverlayCount ?? 0} planning${(validateOverlayCount ?? 0) > 1 ? "s" : ""} de période bâti${(validateOverlayCount ?? 0) > 1 ? "s" : ""} sur l'ancien planning de saison ser${(validateOverlayCount ?? 0) > 1 ? "ont" : "a"} supprimé${(validateOverlayCount ?? 0) > 1 ? "s" : ""} (à refaire ensuite).`}
+        description={`Cette version deviendra le planning de saison ; ${validateOverlayCount ?? 0} planning${(validateOverlayCount ?? 0) > 1 ? "s" : ""} de période bâti${(validateOverlayCount ?? 0) > 1 ? "s" : ""} sur l'ancien planning de saison ser${(validateOverlayCount ?? 0) > 1 ? "ont" : "a"} supprimé${(validateOverlayCount ?? 0) > 1 ? "s" : ""} (à refaire ensuite).${coachWishPurgeClause(validateWishCount)}`}
         confirmLabel="Valider et remplacer"
         destructive
         onConfirm={() => validate(true)}
