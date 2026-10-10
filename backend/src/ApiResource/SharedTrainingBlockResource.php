@@ -61,9 +61,20 @@ class SharedTrainingBlockResource
     public ?string $label = null;
 
     /**
-     * @param list<string> $teamIds
+     * Lot 9 — les séances DÉJÀ PLACÉES liées au bloc (créneaux `shared_training_block_id`), pour
+     * NOMMER à l'écran ce que la suppression du bloc emporte. Vide `[]` pour un bloc socle ou un
+     * bloc de période sans séance placée.
+     *
+     * @var list<SharedTrainingBlockSession>
      */
-    public static function fromEntity(SharedTrainingBlock $entity, array $teamIds): self
+    #[Groups(['read'])]
+    public array $sessions = [];
+
+    /**
+     * @param list<string>                     $teamIds
+     * @param list<SharedTrainingBlockSession> $sessions
+     */
+    public static function fromEntity(SharedTrainingBlock $entity, array $teamIds, array $sessions = []): self
     {
         $dto = new self;
         $dto->id = $entity->getId();
@@ -74,6 +85,7 @@ class SharedTrainingBlockResource
         $dto->teamIds = $teamIds;
         $dto->commonSessions = $entity->getCommonSessions();
         $dto->label = $entity->getLabel();
+        $dto->sessions = $sessions;
 
         return $dto;
     }

@@ -6,8 +6,14 @@ namespace App\State\Provider;
 
 use ApiPlatform\Metadata\Operation;
 use App\ApiResource\SharedTrainingBlockResource;
+use App\ApiResource\SharedTrainingBlockSession;
+use App\Entity\ScheduleSlotTemplate;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
+use App\Entity\Team;
+use App\Entity\Venue;
+use DateTimeImmutable;
+use Doctrine\ORM\Query\Expr\Join;
 use Symfony\Component\HttpFoundation\Request;
 
 /**
@@ -27,7 +33,11 @@ class SharedTrainingBlockStateProvider extends AbstractStateProvider
      */
     protected function mapEntityToOutput(object $entity): SharedTrainingBlockResource
     {
-        return SharedTrainingBlockResource::fromEntity($entity, $this->teamIdsOf($entity->getId()));
+        return SharedTrainingBlockResource::fromEntity(
+            $entity,
+            $this->teamIdsOf($entity->getId()),
+            $this->sessionsOfMany([$entity->getId()])[$entity->getId()] ?? [],
+        );
     }
 
     /**
@@ -59,16 +69,72 @@ class SharedTrainingBlockStateProvider extends AbstractStateProvider
         /** @var list<SharedTrainingBlock> $blocks */
         $blocks = $qb->getQuery()->getResult();
 
-        // Les membres des blocs en UNE requête, pas une par bloc.
-        $teamIdsByBlock = $this->teamIdsOfMany(array_map(static fn (SharedTrainingBlock $b): string => $b->getId(), $blocks));
+        // Les membres ET les séances placées des blocs en UNE requête CHACUN, pas une par bloc.
+        $blockIds = array_map(static fn (SharedTrainingBlock $b): string => $b->getId(), $blocks);
+        $teamIdsByBlock = $this->teamIdsOfMany($blockIds);
+        $sessionsByBlock = $this->sessionsOfMany($blockIds);
 
         return array_map(
             static fn (SharedTrainingBlock $block): SharedTrainingBlockResource => SharedTrainingBlockResource::fromEntity(
                 $block,
                 $teamIdsByBlock[$block->getId()] ?? [],
+                $sessionsByBlock[$block->getId()] ?? [],
             ),
             $blocks,
         );
+    }
+
+    /**
+     * Les SÉANCES PLACÉES de plusieurs blocs (créneaux dont `shared_training_block_id` cible le
+     * bloc), en une requête — jamais une par bloc. Le join passe par le filtre tenant Doctrine
+     * (`ScheduleSlotTemplate`/`Team`/`Venue` sont tous scopés club) : aucun créneau d'un autre club
+     * ne remonte. Un bloc socle ou sans séance liée n'a simplement aucune ligne ici → `[]`.
+     *
+     * @param list<string> $blockIds
+     *
+     * @return array<string, list<SharedTrainingBlockSession>>
+     */
+    private function sessionsOfMany(array $blockIds): array
+    {
+        if ([] === $blockIds) {
+            return [];
+        }
+
+        /** @var list<array{blockId: string, teamId: string, teamName: string, dayOfWeek: int, startTime: DateTimeImmutable, durationMinutes: int, venueName: string}> $rows */
+        $rows = $this->entityManager->createQueryBuilder()
+            ->select(
+                's.sharedTrainingBlockId AS blockId',
+                's.teamId AS teamId',
+                't.name AS teamName',
+                's.dayOfWeek AS dayOfWeek',
+                's.startTime AS startTime',
+                's.durationMinutes AS durationMinutes',
+                'v.name AS venueName',
+            )
+            ->from(ScheduleSlotTemplate::class, 's')
+            ->innerJoin(Team::class, 't', Join::WITH, 't.id = s.teamId')
+            ->innerJoin(Venue::class, 'v', Join::WITH, 'v.id = s.venueId')
+            ->where('s.sharedTrainingBlockId IN (:blockIds)')
+            ->setParameter('blockIds', $blockIds)
+            ->orderBy('s.dayOfWeek', 'ASC')
+            ->addOrderBy('s.startTime', 'ASC')
+            ->addOrderBy('t.name', 'ASC')
+            ->getQuery()
+            ->getResult();
+
+        $byBlock = [];
+        foreach ($rows as $row) {
+            $byBlock[$row['blockId']][] = SharedTrainingBlockSession::of(
+                $row['teamId'],
+                $row['teamName'],
+                $row['dayOfWeek'],
+                $row['startTime'],
+                $row['startTime']->modify(\sprintf('+%d minutes', $row['durationMinutes'])),
+                $row['venueName'],
+            );
+        }
+
+        return $byBlock;
     }
 
     /**

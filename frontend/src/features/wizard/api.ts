@@ -450,6 +450,18 @@ export interface SharedTrainingBlock {
   commonSessions: number;
   /** Lot 9 — nom OPTIONNEL du bloc (≤ 40), affiché grille/fiche/PDF/Excel ; `null` = bloc sans nom. */
   label: string | null;
+  /** Lot 9 — les séances DÉJÀ PLACÉES liées au bloc (plan de période) ; `[]` pour un bloc socle ou sans séance. Sert à NOMMER ce que la suppression emporte. */
+  sessions: SharedBlockSession[];
+}
+
+/** Lot 9 — une séance de groupe placée (servie par le backend) ; `startTime`/`endTime` sont des instants ISO à formater via `shared/lib/time.ts`. */
+export interface SharedBlockSession {
+  teamId: string;
+  teamName: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  venueName: string;
 }
 
 /** POST porte la portée (`schedulePlanId`) ; PUT ne la remappe jamais (le plan est figé à la création). */

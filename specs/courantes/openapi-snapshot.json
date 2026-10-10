@@ -32095,6 +32095,13 @@
                             "string",
                             "null"
                         ]
+                    },
+                    "sessions": {
+                        "description": "Lot 9 \u2014 les s\u00e9ances D\u00c9J\u00c0 PLAC\u00c9ES li\u00e9es au bloc (cr\u00e9neaux `shared_training_block_id`), pour\nNOMMER \u00e0 l'\u00e9cran ce que la suppression du bloc emporte. Vide `[]` pour un bloc socle ou un\nbloc de p\u00e9riode sans s\u00e9ance plac\u00e9e.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/SharedTrainingBlockSession"
+                        }
                     }
                 }
             },
@@ -32179,6 +32186,13 @@
                             "string",
                             "null"
                         ]
+                    },
+                    "sessions": {
+                        "description": "Lot 9 \u2014 les s\u00e9ances D\u00c9J\u00c0 PLAC\u00c9ES li\u00e9es au bloc (cr\u00e9neaux `shared_training_block_id`), pour\nNOMMER \u00e0 l'\u00e9cran ce que la suppression du bloc emporte. Vide `[]` pour un bloc socle ou un\nbloc de p\u00e9riode sans s\u00e9ance plac\u00e9e.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/SharedTrainingBlockSession.html"
+                        }
                     }
                 }
             },
@@ -32228,11 +32242,111 @@
                                     "string",
                                     "null"
                                 ]
+                            },
+                            "sessions": {
+                                "description": "Lot 9 \u2014 les s\u00e9ances D\u00c9J\u00c0 PLAC\u00c9ES li\u00e9es au bloc (cr\u00e9neaux `shared_training_block_id`), pour\nNOMMER \u00e0 l'\u00e9cran ce que la suppression du bloc emporte. Vide `[]` pour un bloc socle ou un\nbloc de p\u00e9riode sans s\u00e9ance plac\u00e9e.",
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/components/schemas/SharedTrainingBlockSession.jsonld"
+                                }
                             }
                         }
                     }
                 ],
                 "description": "Le bloc de mutualisation : d\u00e9clarer un ensemble d'\u00e9quipes qui se comporte comme UNE \u00e9quipe,\navec son propre nombre de s\u00e9ances communes (``commonSessions``). Scop\u00e9 club+saison, filtrable\npar ``schedulePlanId`` (NULL = socle saison ; un UUID = plan de p\u00e9riode). \u00c9criture r\u00e9serv\u00e9e au\nmanagement."
+            },
+            "SharedTrainingBlockSession": {
+                "type": "object",
+                "properties": {
+                    "teamId": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "teamName": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "dayOfWeek": {
+                        "description": "Jour ISO 1..7 (1 = lundi \u2026 7 = dimanche).",
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "startTime": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "endTime": {
+                        "description": "Fin = d\u00e9but + dur\u00e9e du cr\u00e9neau (d\u00e9riv\u00e9e c\u00f4t\u00e9 serveur).",
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "venueName": {
+                        "default": "",
+                        "type": "string"
+                    }
+                }
+            },
+            "SharedTrainingBlockSession.html": {
+                "type": "object",
+                "properties": {
+                    "teamId": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "teamName": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "dayOfWeek": {
+                        "description": "Jour ISO 1..7 (1 = lundi \u2026 7 = dimanche).",
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "startTime": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "endTime": {
+                        "description": "Fin = d\u00e9but + dur\u00e9e du cr\u00e9neau (d\u00e9riv\u00e9e c\u00f4t\u00e9 serveur).",
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "venueName": {
+                        "default": "",
+                        "type": "string"
+                    }
+                }
+            },
+            "SharedTrainingBlockSession.jsonld": {
+                "type": "object",
+                "properties": {
+                    "teamId": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "teamName": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "dayOfWeek": {
+                        "description": "Jour ISO 1..7 (1 = lundi \u2026 7 = dimanche).",
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "startTime": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "endTime": {
+                        "description": "Fin = d\u00e9but + dur\u00e9e du cr\u00e9neau (d\u00e9riv\u00e9e c\u00f4t\u00e9 serveur).",
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "venueName": {
+                        "default": "",
+                        "type": "string"
+                    }
+                }
             },
             "Sport": {
                 "type": "object",
