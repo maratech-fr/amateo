@@ -17,6 +17,7 @@ use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\TeamPeriodOverride;
+use App\Entity\User;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ConstraintFamily;

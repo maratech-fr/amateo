@@ -36,8 +36,9 @@ use Doctrine\ORM\EntityManagerInterface;
  * Un override `isActive=false`, SOURCE NULLE (indistinguable d'un décochage manuel), est
  * écrit pour chaque équipe NON retenue ; les retenues gardent le défaut actif (zéro ligne).
  *
- * N'écrit RIEN pour un plan déjà initialisé (l'appelant garde) et ne flush pas : l'appelant
- * commite sa transaction.
+ * N'écrit RIEN pour un plan déjà initialisé (l'appelant garde). Flush ses PROPRES écritures
+ * (pour qu'un `findOneBy` immédiat de l'appelant les voie, sinon unique violée) ; c'est
+ * l'appelant qui COMMITE la transaction.
  */
 final class PlanTeamSelectionSeeder
 {
@@ -120,6 +121,7 @@ final class PlanTeamSelectionSeeder
         $keepIds = self::keptTeamIds($teams, $tiers, $isClosure);
 
         $overrideRepository = $this->entityManager->getRepository(TeamPeriodOverride::class);
+        $wrote = false;
         foreach ($teams as $team) {
             if (isset($keepIds[$team->getId()])) {
                 continue; // retenue : le défaut actif suffit, aucune ligne.
@@ -143,6 +145,16 @@ final class PlanTeamSelectionSeeder
                     ->setTeamId($team->getId())
                     ->setIsActive(false),
             );
+            $wrote = true;
+        }
+
+        // Les overrides semés doivent être QUERYABLES tout de suite : l'appelant (le transfert)
+        // enchaîne sur un `findOneBy(schedulePlanId, teamId)` pour réactiver l'équipe de la
+        // doléance — un `findOneBy` interroge la base et ne voit pas un persist non flushé, donc
+        // sans ce flush il en recréerait un SECOND et violerait l'unique (schedule_plan_id, team_id)
+        // au commit. On flush DANS la transaction de l'appelant (qui, lui, commite).
+        if ($wrote) {
+            $this->entityManager->flush();
         }
 
         // Le drapeau pose que « ce plan a été configuré » : le wizard ne re-sèmera plus.
