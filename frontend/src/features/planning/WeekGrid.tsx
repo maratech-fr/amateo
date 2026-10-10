@@ -529,6 +529,12 @@ export function WeekGrid({ model, selectedSlotId, onSelectSlot, highlightSlotIds
                 ) : (
                   <span className="truncate text-[10px] text-foreground">{cell.secondaryLabel}</span>
                 )}
+                {/* Lot 9 — nom du bloc de mutualisation sur la carte (séance de groupe ancrée). Texte
+                    `text-foreground` dé-emphasé par la TAILLE (A11Y-22, jamais par l'opacité), affiché
+                    seulement quand le bloc est nommé — invisible sinon (pas de régression visuelle). */}
+                {null !== cell.blockLabel ? (
+                  <span className="truncate text-[9px] font-medium text-foreground">Groupe « {cell.blockLabel} »</span>
+                ) : null}
               </button>
               {renderLock(cell.slotId, cell.teamLabel, cell.locked)}
               {lensActive && null !== cell.lockOrigin ? renderLensBadge(cell.lockOrigin) : null}

@@ -6,7 +6,7 @@ import { useSlotHighlight } from "./useSlotHighlight";
 
 /** Un `Slot` minimal — le surlignage ne lit que `id` et `teamId`. */
 function slot(id: string, teamId: string): Slot {
-  return { id, scheduleId: "s", teamId, venueId: "v", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null };
+  return { id, scheduleId: "s", teamId, venueId: "v", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null, sharedTrainingBlockId: null };
 }
 
 describe("useSlotHighlight", () => {

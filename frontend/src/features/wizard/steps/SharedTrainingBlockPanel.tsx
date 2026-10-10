@@ -6,8 +6,10 @@ import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
 import { Select } from "@/shared/components/ui/select";
+import { dayLabelLong } from "@/shared/lib/days";
 import { errorMessage } from "@/shared/lib/errorMessage";
 import { groupTeamsByTier } from "@/shared/lib/teamTiers";
+import { formatMinutes, parseTime } from "@/shared/lib/time";
 import { cn } from "@/shared/lib/utils";
 
 import type { PriorityTier, SharedTrainingBlock, Team } from "../api";
@@ -134,6 +136,9 @@ export function SharedTrainingBlockPanel({
   const busy = create.isPending || update.isPending;
   const tooMany = checked.size > 3;
   const blockNames = (teamIds: string[]): string => teamIds.map(nameOf).join(" + ");
+  // Heure de pendule : foyer unique `formatMinutes` (jamais un « 18h » fait main). La séance vient
+  // du serveur sous forme d'instant ISO ; `parseTime` en tire les minutes.
+  const sessionClock = (iso: string): string => formatMinutes(parseTime(iso) ?? 0);
 
   const candidateRow = (t: Team) => {
     // Multi-appartenance PERMISE : jamais de verrou. Un simple repère informatif dit combien de
@@ -277,7 +282,30 @@ export function SharedTrainingBlockPanel({
       <ConfirmDialog
         open={pendingDelete !== null}
         title="Supprimer ce groupe ?"
-        description={pendingDelete ? <>« {sharedGroupLabel(pendingDelete.teamIds, pendingDelete.commonSessions, nameOf)} » sera supprimé. Les équipes ne seront plus placées ensemble.</> : null}
+        // Lot 9 — NOMMER ce que la suppression emporte : les séances communes DÉJÀ PLACÉES du groupe
+        // disparaissent du planning (cascade `shared_training_block_id`). Quand le serveur les connaît
+        // (bloc de période avec séances placées), on les NOMME une par une (équipe · jour · heure ·
+        // gymnase) ; sinon (bloc socle, aucune séance) on retombe sur le texte par équipes.
+        description={
+          pendingDelete ? (
+            pendingDelete.sessions.length > 0 ? (
+              <>
+                Supprimer le groupe « {sharedGroupLabel(pendingDelete.teamIds, pendingDelete.commonSessions, nameOf)} » retirera ces séances du planning :
+                <ul className="mt-2 list-disc space-y-0.5 pl-5">
+                  {pendingDelete.sessions.map((s, i) => (
+                    <li key={`${s.teamId}-${i}`}>
+                      {s.teamName} — {dayLabelLong(s.dayOfWeek)} {sessionClock(s.startTime)}-{sessionClock(s.endTime)}, {s.venueName}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <>
+                Supprimer le groupe « {sharedGroupLabel(pendingDelete.teamIds, pendingDelete.commonSessions, nameOf)} » retirera du planning les séances communes de {pendingDelete.teamIds.map(nameOf).join(", ")}, et ces équipes ne seront plus placées ensemble.
+              </>
+            )
+          ) : null
+        }
         confirmLabel="Supprimer"
         onCancel={() => setPendingDelete(null)}
         onConfirm={() => {

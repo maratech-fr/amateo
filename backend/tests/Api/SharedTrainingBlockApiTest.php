@@ -7,6 +7,7 @@ namespace App\Tests\Api;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\SchedulePlan;
+use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
@@ -14,6 +15,7 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
+use App\Entity\Venue;
 use App\Enum\SchedulePlanType;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
@@ -226,6 +228,80 @@ final class SharedTrainingBlockApiTest extends WebTestCase
         self::assertCount(0, $this->em->getRepository(SharedTrainingBlockTeam::class)->findBy(['blockId' => $id]));
     }
 
+    public function testSessionsExposeThePlacedSessionsOfAPeriodBlock(): void
+    {
+        [$club, $user, $season] = $this->createClubUser('a');
+        $t1 = $this->createTeam($club, $season, 'U9F1', 2);
+        $t2 = $this->createTeam($club, $season, 'U9F2', 2);
+        $plan = $this->periodPlan($club, $season);
+        $venue = $this->createVenue($club, $season, 'Gymnase Jean-Macé');
+        $headers = $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'];
+
+        $this->client->request('POST', '/api/shared_training_blocks', [], [], $headers, json_encode([
+            'schedulePlanId' => $plan->getId(), 'teamIds' => [$t1->getId(), $t2->getId()], 'commonSessions' => 1,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+        $blockId = $this->responseData()['id'];
+
+        // Deux séances placées, liées au bloc : mardi (2) 18:00, durée 90 → fin 19:30.
+        $this->placeSession($club, $season, $blockId, $t1, $venue, 2, '18:00', 90);
+        $this->placeSession($club, $season, $blockId, $t2, $venue, 2, '18:00', 90);
+
+        $this->client->request('GET', '/api/shared_training_blocks/' . $blockId, [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(200);
+        $sessions = $this->responseData()['sessions'];
+        self::assertCount(2, $sessions);
+        // Tri : jour, heure, nom d'équipe → U9F1 avant U9F2.
+        self::assertSame(['U9F1', 'U9F2'], array_map(static fn (array $s): string => $s['teamName'], $sessions));
+        self::assertSame([$t1->getId(), $t2->getId()], array_map(static fn (array $s): string => $s['teamId'], $sessions));
+        self::assertSame(2, $sessions[0]['dayOfWeek']);
+        self::assertStringContainsString('18:00', (string) $sessions[0]['startTime']);
+        self::assertStringContainsString('19:30', (string) $sessions[0]['endTime']);
+        self::assertSame('Gymnase Jean-Macé', $sessions[0]['venueName']);
+    }
+
+    public function testSocleBlockHasNoSessions(): void
+    {
+        [$club, $user, $season] = $this->createClubUser('a');
+        $t1 = $this->createTeam($club, $season, 'U9F1', 2);
+        $t2 = $this->createTeam($club, $season, 'U9F2', 2);
+        $this->client->request('POST', '/api/shared_training_blocks', [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'schedulePlanId' => null, 'teamIds' => [$t1->getId(), $t2->getId()], 'commonSessions' => 1,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+        $blockId = $this->responseData()['id'];
+
+        $this->client->request('GET', '/api/shared_training_blocks/' . $blockId, [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame([], $this->responseData()['sessions']);
+    }
+
+    public function testSessionsOfAnotherClubNeverLeak(): void
+    {
+        // Club A : un bloc de période AVEC séances placées.
+        [$clubA, $userA, $seasonA] = $this->createClubUser('a');
+        $a1 = $this->createTeam($clubA, $seasonA, 'U9F1', 2);
+        $a2 = $this->createTeam($clubA, $seasonA, 'U9F2', 2);
+        $planA = $this->periodPlan($clubA, $seasonA);
+        $venueA = $this->createVenue($clubA, $seasonA, 'Gymnase A');
+        $this->client->request('POST', '/api/shared_training_blocks', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'schedulePlanId' => $planA->getId(), 'teamIds' => [$a1->getId(), $a2->getId()], 'commonSessions' => 1,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+        $blockA = $this->responseData()['id'];
+        $this->placeSession($clubA, $seasonA, $blockA, $a1, $venueA, 2, '18:00', 90);
+        $this->placeSession($clubA, $seasonA, $blockA, $a2, $venueA, 2, '18:00', 90);
+
+        // Club B ne voit NI le bloc de A NI ses séances — ni en collection, ni en item (404).
+        [, $userB] = $this->createClubUser('b');
+        $this->client->request('GET', '/api/shared_training_blocks', [], [], $this->authHeaders($userB));
+        self::assertResponseStatusCodeSame(200);
+        self::assertCount(0, $this->responseData()['member'] ?? []);
+
+        $this->client->request('GET', '/api/shared_training_blocks/' . $blockA, [], [], $this->authHeaders($userB));
+        self::assertResponseStatusCodeSame(404);
+    }
+
     public function testNonManagementWriteRefused(): void
     {
         [$club, , $season] = $this->createClubUser('a');
@@ -291,6 +367,41 @@ final class SharedTrainingBlockApiTest extends WebTestCase
         $this->em->flush();
 
         return $team;
+    }
+
+    private function createVenue(Club $club, Season $season, string $name): Venue
+    {
+        $this->scopeGucToClub($club->getId());
+        $venue = (new Venue)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setName($name)
+            ->setSource('manual');
+        $this->em->persist($venue);
+        $this->em->flush();
+
+        return $venue;
+    }
+
+    /**
+     * Pose une séance DÉJÀ PLACÉE liée au bloc : un créneau `schedule_slot_template` dont
+     * `shared_training_block_id` cible le bloc (l'image de la cascade de suppression).
+     */
+    private function placeSession(Club $club, Season $season, string $blockId, Team $team, Venue $venue, int $dayOfWeek, string $startTime, int $durationMinutes): void
+    {
+        $this->scopeGucToClub($club->getId());
+        $slot = (new ScheduleSlotTemplate)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setScheduleId('00000000-0000-4000-8000-000000000001')
+            ->setTeamId($team->getId())
+            ->setVenueId($venue->getId())
+            ->setDayOfWeek($dayOfWeek)
+            ->setStartTime(new DateTimeImmutable('1970-01-01 ' . $startTime . ':00'))
+            ->setDurationMinutes($durationMinutes)
+            ->setSharedTrainingBlockId($blockId);
+        $this->em->persist($slot);
+        $this->em->flush();
     }
 
     private function createMember(Club $club, string $role): User

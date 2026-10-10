@@ -102,6 +102,11 @@ export interface Lookups {
    * vue gymnase (D4) est alors inerte.
    */
   groupLabels?: Map<string, string>;
+  /**
+   * Lot 9 — `slotId` → nom du bloc de mutualisation (non vide) dont la séance est membre. Purement
+   * esthétique (le lien séance→bloc et le nom vivent côté serveur) ; absent = aucun bloc nommé.
+   */
+  blockLabelBySlotId?: Map<string, string>;
 }
 
 /** The (main) coach of a slot: the slot's own coach if set, else its team's main coach. */
@@ -310,6 +315,13 @@ export interface GridCell {
    * créneau mutualisé libellé) ; `null` sur une cellule ordinaire à une seule équipe.
    */
   groupLabel: string | null;
+  /**
+   * Lot 9 — nom du BLOC DE MUTUALISATION dont CETTE séance (ordinaire) est membre ; `null` sinon.
+   * Distinct de `groupLabel` (titre d'une carte fusionnée de la vue gymnase, P2-17) : la
+   * mutualisation ancre des équipes à une même case sans forcément porter de libellé de fenêtre.
+   * Le front l'AFFICHE (le lien séance→bloc est posé serveur) — il ne re-dérive pas l'appartenance.
+   */
+  blockLabel: string | null;
   /** Les équipes d'une carte fusionnée, chacune cliquable ; vide sur une cellule ordinaire. */
   members: GridCellMember[];
 }
@@ -471,6 +483,8 @@ export function buildGrid(slots: Slot[], viewMode: ViewMode, lookups: Lookups, f
             locked,
             lockOrigin: slot.lockOrigin,
             groupLabel: label,
+            // Une carte fusionnée EST déjà un regroupement titré (venue) : pas de second libellé.
+            blockLabel: null,
             members: [member],
           };
           const interval: Interval = { startMin: start, endMin: start + slot.durationMinutes, cell };
@@ -530,6 +544,7 @@ export function buildGrid(slots: Slot[], viewMode: ViewMode, lookups: Lookups, f
         locked,
         lockOrigin: slot.lockOrigin,
         groupLabel: null,
+        blockLabel: lookups.blockLabelBySlotId?.get(slot.id) ?? null,
         members: [],
       };
       cells.push(cell);

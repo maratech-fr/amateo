@@ -15,6 +15,7 @@ function slot(over: Partial<Slot>): Slot {
     durationMinutes: 90,
     lockLevel: "NONE",
     lockOrigin: null,
+    sharedTrainingBlockId: null,
     ...over,
   };
 }
@@ -526,6 +527,21 @@ describe("le dimanche dans la boucle de travail (revue P4-37)", () => {
     const grid = buildGrid([slot({ dayOfWeek: 2 })], "equipe", lookups);
 
     expect(grid.dayGroups.map((g) => g.label)).toEqual(["Mar"]);
+  });
+});
+
+describe("blockLabel transite dans la grille (lot 9 — nom du groupe de mutualisation)", () => {
+  // Le nom du bloc est posé par équipe via `blockLabelBySlotId` (dérivé du lien serveur
+  // séance→bloc). Il doit atteindre la cellule ordinaire pour que WeekGrid le peigne.
+  it("porte le nom du bloc sur une cellule ordinaire dont la séance est membre", () => {
+    const withBlock: Lookups = { ...lookups, blockLabelBySlotId: new Map([["a", "U11"]]) };
+    const grid = buildGrid([slot({ id: "a", sharedTrainingBlockId: "blk" })], "equipe", withBlock);
+    expect(grid.cells.find((c) => c.slotId === "a")?.blockLabel).toBe("U11");
+  });
+
+  it("laisse blockLabel à null quand la séance n'appartient à aucun bloc nommé", () => {
+    const grid = buildGrid([slot({ id: "a" })], "equipe", lookups);
+    expect(grid.cells.find((c) => c.slotId === "a")?.blockLabel).toBeNull();
   });
 });
 

@@ -12664,6 +12664,117 @@
                 }
             }
         },
+        "/api/schedule-slots/{id}/mutualize": {
+            "post": {
+                "operationId": "postScheduleSlotMutualize",
+                "tags": [
+                    "ManualEdit"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The mutualisation block was declared and anchored to the anchor slot's case: all member sessions are co-located and HARD-locked there, the schedule is flagged manually edited. Nothing is sent to the solver",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "blockId": {
+                                            "type": "string",
+                                            "description": "Id of the created mutualisation block"
+                                        },
+                                        "movedSlotIds": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            },
+                                            "description": "Sessions of already-placed joining teams that were moved onto the case"
+                                        },
+                                        "createdSlotIds": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            },
+                                            "description": "Sessions created for joining teams that had none in the plan"
+                                        },
+                                        "activatedTeamIds": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            },
+                                            "description": "Teams activated for the period (one session, origin mutualisation) to join the block"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Missing or invalid field (teamIds, label over 40 chars, replacedSlotIds)"
+                    },
+                    "404": {
+                        "description": "Anchor slot not found"
+                    },
+                    "409": {
+                        "description": "Schedule is validated (read-only), or a generation is running for the club (body carries code=generation_in_progress)"
+                    },
+                    "422": {
+                        "description": "Refused with NOTHING written (transaction rolled back): the target is the season base plan (period plans only), a team is inactive or unknown, a block with exactly these teams already exists in this scope, the case is already full (capacity), the shared sessions would exceed a team's weekly volume, or an already-placed team did not designate the session the common one replaces",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "string",
+                                            "description": "Ready-to-display reason for the refusal (no internal identifier)"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "summary": "Declare a mutualisation block anchored to the anchor slot's case (lot 9): the named teams train together there as ONE common session, in place on a PERIOD plan, with no solver verdict. The source team's session is locked there; an already-placed joining team's designated session is moved onto the case; a joining team with no session is activated for the period with one. teamIds are re-validated server-side (the source team is always a member)",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "teamIds"
+                                ],
+                                "properties": {
+                                    "teamIds": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "The block members (the anchor slot's team is forced in server-side)"
+                                    },
+                                    "label": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "maxLength": 40,
+                                        "description": "Optional block name, shown on the grid, the slot detail, the PDF and the Excel export"
+                                    },
+                                    "replacedSlotIds": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "For each already-placed joining team, the id of the session the common one replaces (moved onto the case). A team with a single session may omit it"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
+            }
+        },
         "/api/schedules/{id}/place-slot": {
             "post": {
                 "operationId": "postSchedulePlaceSlot",
@@ -25059,123 +25170,6 @@
                     }
                 ]
             }
-        },
-        "/api/schedule-slots/{id}/mutualize": {
-            "post": {
-                "operationId": "postScheduleSlotMutualize",
-                "tags": [
-                    "ManualEdit"
-                ],
-                "responses": {
-                    "200": {
-                        "description": "The mutualisation block was declared and anchored to the anchor slot's case",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "message": {
-                                            "type": "string"
-                                        },
-                                        "blockId": {
-                                            "type": "string"
-                                        },
-                                        "movedSlotIds": {
-                                            "type": "array",
-                                            "items": {
-                                                "type": "string"
-                                            }
-                                        },
-                                        "createdSlotIds": {
-                                            "type": "array",
-                                            "items": {
-                                                "type": "string"
-                                            }
-                                        },
-                                        "activatedTeamIds": {
-                                            "type": "array",
-                                            "items": {
-                                                "type": "string"
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Missing or invalid field (teamIds, label over 40 chars, replacedSlotIds)"
-                    },
-                    "404": {
-                        "description": "Anchor slot not found"
-                    },
-                    "409": {
-                        "description": "Schedule is validated (read-only), or a generation is running (code=generation_in_progress)"
-                    },
-                    "422": {
-                        "description": "Refused with nothing written: period-only, inactive/unknown team, same team-set, capacity, sum over budget, or an already-placed team did not designate the replaced session",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "type": "string"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                "summary": "Declare a mutualisation block anchored to the anchor slot's case (lot 9): the named teams train together there as ONE common session, in place on a PERIOD plan, with no solver verdict. The source team's session is locked there; an already-placed joining team's designated session is moved onto the case; a joining team with no session is activated for the period with one. teamIds are re-validated server-side (the source team is always a member)",
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "required": [
-                                    "teamIds"
-                                ],
-                                "properties": {
-                                    "teamIds": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "string"
-                                        },
-                                        "description": "The block members (the anchor slot's team is forced in server-side)"
-                                    },
-                                    "label": {
-                                        "type": "string",
-                                        "nullable": true,
-                                        "maxLength": 40,
-                                        "description": "Optional block name, shown on the grid, the slot detail, the PDF and the Excel export"
-                                    },
-                                    "replacedSlotIds": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "string"
-                                        },
-                                        "description": "For each already-placed joining team, the id of the session the common one replaces"
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        },
-                        "description": "Anchor schedule-slot id"
-                    }
-                ]
-            }
         }
     },
     "components": {
@@ -31652,6 +31646,13 @@
                                 "null"
                             ]
                         }
+                    },
+                    "sharedTrainingBlockId": {
+                        "description": "Lot 9 \u2014 le bloc de mutualisation DONT cette s\u00e9ance est une s\u00e9ance de groupe (NULL = s\u00e9ance\nordinaire). Le planning l'AFFICHE (nom du bloc, pastille) sans re-d\u00e9river l'appartenance par\nco-localisation ; server-authoritative, pos\u00e9 par le geste \u00ab mutualiser \u00bb, jamais par l'API.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     }
                 }
             },
@@ -31737,6 +31738,13 @@
                                 "null"
                             ]
                         }
+                    },
+                    "sharedTrainingBlockId": {
+                        "description": "Lot 9 \u2014 le bloc de mutualisation DONT cette s\u00e9ance est une s\u00e9ance de groupe (NULL = s\u00e9ance\nordinaire). Le planning l'AFFICHE (nom du bloc, pastille) sans re-d\u00e9river l'appartenance par\nco-localisation ; server-authoritative, pos\u00e9 par le geste \u00ab mutualiser \u00bb, jamais par l'API.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     }
                 }
             },
@@ -31827,6 +31835,13 @@
                                         "null"
                                     ]
                                 }
+                            },
+                            "sharedTrainingBlockId": {
+                                "description": "Lot 9 \u2014 le bloc de mutualisation DONT cette s\u00e9ance est une s\u00e9ance de groupe (NULL = s\u00e9ance\nordinaire). Le planning l'AFFICHE (nom du bloc, pastille) sans re-d\u00e9river l'appartenance par\nco-localisation ; server-authoritative, pos\u00e9 par le geste \u00ab mutualiser \u00bb, jamais par l'API.",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
                             }
                         }
                     }
@@ -32075,8 +32090,18 @@
                         "type": "integer"
                     },
                     "label": {
-                        "type": "string",
-                        "nullable": true
+                        "description": "Nom OPTIONNEL du bloc, affich\u00e9 grille/fiche/PDF/Excel ; NULL = bloc sans nom.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "sessions": {
+                        "description": "Lot 9 \u2014 les s\u00e9ances D\u00c9J\u00c0 PLAC\u00c9ES li\u00e9es au bloc (cr\u00e9neaux `shared_training_block_id`), pour\nNOMMER \u00e0 l'\u00e9cran ce que la suppression du bloc emporte. Vide `[]` pour un bloc socle ou un\nbloc de p\u00e9riode sans s\u00e9ance plac\u00e9e.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/SharedTrainingBlockSession"
+                        }
                     }
                 }
             },
@@ -32156,8 +32181,18 @@
                         "type": "integer"
                     },
                     "label": {
-                        "type": "string",
-                        "nullable": true
+                        "description": "Nom OPTIONNEL du bloc, affich\u00e9 grille/fiche/PDF/Excel ; NULL = bloc sans nom.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "sessions": {
+                        "description": "Lot 9 \u2014 les s\u00e9ances D\u00c9J\u00c0 PLAC\u00c9ES li\u00e9es au bloc (cr\u00e9neaux `shared_training_block_id`), pour\nNOMMER \u00e0 l'\u00e9cran ce que la suppression du bloc emporte. Vide `[]` pour un bloc socle ou un\nbloc de p\u00e9riode sans s\u00e9ance plac\u00e9e.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/SharedTrainingBlockSession.html"
+                        }
                     }
                 }
             },
@@ -32200,15 +32235,116 @@
                             "commonSessions": {
                                 "default": 0,
                                 "type": "integer"
+                            },
+                            "label": {
+                                "description": "Nom OPTIONNEL du bloc, affich\u00e9 grille/fiche/PDF/Excel ; NULL = bloc sans nom.",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "sessions": {
+                                "description": "Lot 9 \u2014 les s\u00e9ances D\u00c9J\u00c0 PLAC\u00c9ES li\u00e9es au bloc (cr\u00e9neaux `shared_training_block_id`), pour\nNOMMER \u00e0 l'\u00e9cran ce que la suppression du bloc emporte. Vide `[]` pour un bloc socle ou un\nbloc de p\u00e9riode sans s\u00e9ance plac\u00e9e.",
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/components/schemas/SharedTrainingBlockSession.jsonld"
+                                }
                             }
                         }
                     }
                 ],
-                "description": "Le bloc de mutualisation : d\u00e9clarer un ensemble d'\u00e9quipes qui se comporte comme UNE \u00e9quipe,\navec son propre nombre de s\u00e9ances communes (``commonSessions``). Scop\u00e9 club+saison, filtrable\npar ``schedulePlanId`` (NULL = socle saison ; un UUID = plan de p\u00e9riode). \u00c9criture r\u00e9serv\u00e9e au\nmanagement.",
+                "description": "Le bloc de mutualisation : d\u00e9clarer un ensemble d'\u00e9quipes qui se comporte comme UNE \u00e9quipe,\navec son propre nombre de s\u00e9ances communes (``commonSessions``). Scop\u00e9 club+saison, filtrable\npar ``schedulePlanId`` (NULL = socle saison ; un UUID = plan de p\u00e9riode). \u00c9criture r\u00e9serv\u00e9e au\nmanagement."
+            },
+            "SharedTrainingBlockSession": {
+                "type": "object",
                 "properties": {
-                    "label": {
+                    "teamId": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "teamName": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "dayOfWeek": {
+                        "description": "Jour ISO 1..7 (1 = lundi \u2026 7 = dimanche).",
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "startTime": {
                         "type": "string",
-                        "nullable": true
+                        "format": "date-time"
+                    },
+                    "endTime": {
+                        "description": "Fin = d\u00e9but + dur\u00e9e du cr\u00e9neau (d\u00e9riv\u00e9e c\u00f4t\u00e9 serveur).",
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "venueName": {
+                        "default": "",
+                        "type": "string"
+                    }
+                }
+            },
+            "SharedTrainingBlockSession.html": {
+                "type": "object",
+                "properties": {
+                    "teamId": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "teamName": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "dayOfWeek": {
+                        "description": "Jour ISO 1..7 (1 = lundi \u2026 7 = dimanche).",
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "startTime": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "endTime": {
+                        "description": "Fin = d\u00e9but + dur\u00e9e du cr\u00e9neau (d\u00e9riv\u00e9e c\u00f4t\u00e9 serveur).",
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "venueName": {
+                        "default": "",
+                        "type": "string"
+                    }
+                }
+            },
+            "SharedTrainingBlockSession.jsonld": {
+                "type": "object",
+                "properties": {
+                    "teamId": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "teamName": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "dayOfWeek": {
+                        "description": "Jour ISO 1..7 (1 = lundi \u2026 7 = dimanche).",
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "startTime": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "endTime": {
+                        "description": "Fin = d\u00e9but + dur\u00e9e du cr\u00e9neau (d\u00e9riv\u00e9e c\u00f4t\u00e9 serveur).",
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "venueName": {
+                        "default": "",
+                        "type": "string"
                     }
                 }
             },
@@ -33783,6 +33919,13 @@
                             "integer",
                             "null"
                         ]
+                    },
+                    "source": {
+                        "description": "Lot 9 \u2014 l'origine de cet override quand il a \u00e9t\u00e9 pos\u00e9 par un geste nomm\u00e9 (``mutualisation``\npour une \u00e9quipe activ\u00e9e par la mutualisation d'une case) ; NULL pour un r\u00e9glage ordinaire du\nwizard. Le planning l'AFFICHE (pastille \u00ab via mutualisation \u00bb), il ne d\u00e9cide rien avec.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     }
                 }
             },
@@ -33866,6 +34009,13 @@
                             "integer",
                             "null"
                         ]
+                    },
+                    "source": {
+                        "description": "Lot 9 \u2014 l'origine de cet override quand il a \u00e9t\u00e9 pos\u00e9 par un geste nomm\u00e9 (``mutualisation``\npour une \u00e9quipe activ\u00e9e par la mutualisation d'une case) ; NULL pour un r\u00e9glage ordinaire du\nwizard. Le planning l'AFFICHE (pastille \u00ab via mutualisation \u00bb), il ne d\u00e9cide rien avec.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     }
                 }
             },
@@ -33908,6 +34058,13 @@
                             "sessionsPerWeek": {
                                 "type": [
                                     "integer",
+                                    "null"
+                                ]
+                            },
+                            "source": {
+                                "description": "Lot 9 \u2014 l'origine de cet override quand il a \u00e9t\u00e9 pos\u00e9 par un geste nomm\u00e9 (``mutualisation``\npour une \u00e9quipe activ\u00e9e par la mutualisation d'une case) ; NULL pour un r\u00e9glage ordinaire du\nwizard. Le planning l'AFFICHE (pastille \u00ab via mutualisation \u00bb), il ne d\u00e9cide rien avec.",
+                                "type": [
+                                    "string",
                                     "null"
                                 ]
                             }

@@ -30,12 +30,12 @@ describe("effectiveSessionsPerWeek — the period override is priority (mirror o
   });
 
   it("prefers the override's sessionsPerWeek over the seasonal one", () => {
-    const override: TeamPeriodOverride = { id: "o", schedulePlanId: "p", teamId: "t1", isActive: true, sessionsPerWeek: 1 };
+    const override: TeamPeriodOverride = { id: "o", schedulePlanId: "p", teamId: "t1", isActive: true, sessionsPerWeek: 1, source: null };
     expect(effectiveSessionsPerWeek(t, override)).toBe(1);
   });
 
   it("falls back to the seasonal value when the override carries no session count", () => {
-    const override: TeamPeriodOverride = { id: "o", schedulePlanId: "p", teamId: "t1", isActive: true, sessionsPerWeek: null };
+    const override: TeamPeriodOverride = { id: "o", schedulePlanId: "p", teamId: "t1", isActive: true, sessionsPerWeek: null, source: null };
     expect(effectiveSessionsPerWeek(t, override)).toBe(3);
   });
 });
@@ -48,7 +48,7 @@ describe("maxCommonSessions — the smallest effective sessionsPerWeek of the se
 
   it("honours the period override when computing the floor", () => {
     const teams = [team({ id: "t1", name: "A", sessionsPerWeek: 3 }), team({ id: "t2", name: "B", sessionsPerWeek: 3 })];
-    const overrides = new Map<string, TeamPeriodOverride>([["t2", { id: "o", schedulePlanId: "p", teamId: "t2", isActive: true, sessionsPerWeek: 1 }]]);
+    const overrides = new Map<string, TeamPeriodOverride>([["t2", { id: "o", schedulePlanId: "p", teamId: "t2", isActive: true, sessionsPerWeek: 1, source: null }]]);
     expect(maxCommonSessions(teams, overrides)).toBe(1);
   });
 

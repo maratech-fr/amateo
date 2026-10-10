@@ -103,7 +103,7 @@ vi.mock("./api", () => {
   listSchedules: vi.fn(() => Promise.resolve([{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan" }])),
   getSlots: vi.fn(() =>
     Promise.resolve([
-      { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null },
+      { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null, sharedTrainingBlockId: null },
     ]),
   ),
   getConstraints: vi.fn(() => Promise.resolve([])),
@@ -270,7 +270,7 @@ beforeEach(() => {
   // gymnase désactivé) et `mockResolvedValue` SURVIT au test suivant — une fuite qui
   // rendrait un échec ultérieur incompréhensible.
   vi.mocked(getSlots).mockResolvedValue([
-    { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null },
+    { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null, sharedTrainingBlockId: null },
   ]);
   vi.mocked(getVenues).mockResolvedValue([{ id: "venue-1", name: "Gymnase Alpha", color: "#00aa00" }]);
   vi.mocked(getTrainingSlots).mockResolvedValue([
@@ -423,7 +423,7 @@ describe("PlanningPage (integration)", () => {
     vi.mocked(getSlots).mockImplementation((id: string) =>
       "sched-2" === id
         ? (secondSlots as Promise<Awaited<ReturnType<typeof getSlots>>>)
-        : Promise.resolve([{ id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null }]),
+        : Promise.resolve([{ id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null, sharedTrainingBlockId: null }]),
     );
 
     renderWithProviders(<PlanningPage />);
@@ -442,7 +442,7 @@ describe("PlanningPage (integration)", () => {
 
     // Les créneaux arrivent : le voile disparaît, la grille redevient nette.
     await act(async () => {
-      releaseSecond([{ id: "slot-2", scheduleId: "sched-2", teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 3, startTime: "17:00:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null }]);
+      releaseSecond([{ id: "slot-2", scheduleId: "sched-2", teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 3, startTime: "17:00:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null, sharedTrainingBlockId: null }]);
       await secondSlots;
     });
     await waitFor(() => expect(screen.queryByText(/chargement des créneaux/i)).not.toBeInTheDocument());
@@ -622,7 +622,7 @@ describe("PlanningPage (integration)", () => {
     // FENÊTRES LIBRES d'un gymnase désactivé (le bruit du retour terrain), pas celui des
     // séances déjà placées — c'est le test au-dessus qui les garde.
     vi.mocked(getSlots).mockResolvedValue([
-      { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-2", coachId: null, dayOfWeek: 3, startTime: "17:00:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null },
+      { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-2", coachId: null, dayOfWeek: 3, startTime: "17:00:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null, sharedTrainingBlockId: null },
     ]);
     conflictsState.data = makeConflicts({ disabledVenueIds: ["venue-1"] });
     usePlanningStore.setState({ selectedScheduleId: SID, viewMode: "gymnase" });
@@ -1105,8 +1105,8 @@ describe("PlanningPage (integration)", () => {
         { id: "team-2", name: "U13", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 1, sessionsPerWeek: 1 },
       ]);
       vi.mocked(getSlots).mockResolvedValue([
-        { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null },
-        { id: "slot-2", scheduleId: SID, teamId: "team-2", venueId: "venue-1", coachId: null, dayOfWeek: 2, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null },
+        { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null, sharedTrainingBlockId: null },
+        { id: "slot-2", scheduleId: SID, teamId: "team-2", venueId: "venue-1", coachId: null, dayOfWeek: 2, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null, sharedTrainingBlockId: null },
       ]);
       vi.mocked(moveSlot).mockRejectedValue(
         new MoveRejectedError([{ rule: "coach_double_booking", message: "le coach a déjà les U13 ici.", conflictingTeamId: "team-2" }]),
@@ -1157,7 +1157,7 @@ describe("PlanningPage (integration)", () => {
       const user = userEvent.setup();
       vi.mocked(lockSlot).mockResolvedValue({});
       vi.mocked(getSlots).mockResolvedValue([
-        { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "HARD", lockOrigin: "RESERVATION" },
+        { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "HARD", lockOrigin: "RESERVATION", sharedTrainingBlockId: null },
       ]);
       renderWithProviders(<PlanningPage />);
 
@@ -1177,7 +1177,7 @@ describe("PlanningPage (integration)", () => {
       const user = userEvent.setup();
       vi.mocked(lockSlot).mockResolvedValue({});
       vi.mocked(getSlots).mockResolvedValue([
-        { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "HARD", lockOrigin: "MANUAL" },
+        { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "HARD", lockOrigin: "MANUAL", sharedTrainingBlockId: null },
       ]);
       renderWithProviders(<PlanningPage />);
 
@@ -1210,7 +1210,7 @@ describe("PlanningPage (integration)", () => {
       const user = userEvent.setup();
       vi.mocked(lockSlot).mockResolvedValue({});
       vi.mocked(getSlots).mockResolvedValue([
-        { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "HARD", lockOrigin: "RESERVATION" },
+        { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "HARD", lockOrigin: "RESERVATION", sharedTrainingBlockId: null },
       ]);
       renderWithProviders(<PlanningPage />);
       await screen.findByText("U11");
@@ -1233,8 +1233,8 @@ describe("PlanningPage (integration)", () => {
     ];
     // Source (slot-1, lundi 18:00) + occupant (slot-2, U13, mercredi 18:00) — cible d'éviction.
     const twoSlots = [
-      { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE" as const, lockOrigin: null },
-      { id: "slot-2", scheduleId: SID, teamId: "team-2", venueId: "venue-1", coachId: null, dayOfWeek: 3, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE" as const, lockOrigin: null },
+      { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE" as const, lockOrigin: null, sharedTrainingBlockId: null },
+      { id: "slot-2", scheduleId: SID, teamId: "team-2", venueId: "venue-1", coachId: null, dayOfWeek: 3, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE" as const, lockOrigin: null, sharedTrainingBlockId: null },
     ];
     const evictedBlock = { slotId: "slot-2", teamId: "team-2", dayOfWeek: 3, startTime: "18:00", venueId: "venue-1", durationMinutes: 90 };
 
@@ -1542,8 +1542,8 @@ describe("PlanningPage (integration)", () => {
       { id: "team-2", name: "U13", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 1, sessionsPerWeek: 1 },
     ];
     const twoSlots = [
-      { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE" as const, lockOrigin: null },
-      { id: "slot-2", scheduleId: SID, teamId: "team-2", venueId: "venue-1", coachId: null, dayOfWeek: 3, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE" as const, lockOrigin: null },
+      { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE" as const, lockOrigin: null, sharedTrainingBlockId: null },
+      { id: "slot-2", scheduleId: SID, teamId: "team-2", venueId: "venue-1", coachId: null, dayOfWeek: 3, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE" as const, lockOrigin: null, sharedTrainingBlockId: null },
     ];
 
     beforeEach(() => {
@@ -1609,8 +1609,8 @@ describe("PlanningPage (integration)", () => {
       { id: "team-2", name: "U13", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 1, sessionsPerWeek: 1 },
     ];
     const twoSlots = [
-      { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE" as const, lockOrigin: null },
-      { id: "slot-2", scheduleId: SID, teamId: "team-2", venueId: "venue-1", coachId: null, dayOfWeek: 3, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE" as const, lockOrigin: null },
+      { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE" as const, lockOrigin: null, sharedTrainingBlockId: null },
+      { id: "slot-2", scheduleId: SID, teamId: "team-2", venueId: "venue-1", coachId: null, dayOfWeek: 3, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE" as const, lockOrigin: null, sharedTrainingBlockId: null },
     ];
     const evictedBlock = { slotId: "slot-2", teamId: "team-2", dayOfWeek: 3, startTime: "18:00", venueId: "venue-1", durationMinutes: 90 };
     const brokenGained = [
@@ -1821,8 +1821,8 @@ describe("PlanningPage (integration)", () => {
       ]);
       // Un verrou MANUEL, une RÉSERVATION : seul le MANUEL doit compter et peupler le panneau.
       vi.mocked(getSlots).mockResolvedValue([
-        { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "HARD", lockOrigin: "MANUAL" },
-        { id: "slot-2", scheduleId: SID, teamId: "team-2", venueId: "venue-1", coachId: null, dayOfWeek: 2, startTime: "18:00:00", durationMinutes: 90, lockLevel: "HARD", lockOrigin: "RESERVATION" },
+        { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "HARD", lockOrigin: "MANUAL", sharedTrainingBlockId: null },
+        { id: "slot-2", scheduleId: SID, teamId: "team-2", venueId: "venue-1", coachId: null, dayOfWeek: 2, startTime: "18:00:00", durationMinutes: 90, lockLevel: "HARD", lockOrigin: "RESERVATION", sharedTrainingBlockId: null },
       ]);
     });
 
@@ -2174,7 +2174,7 @@ describe("PlanningPage — écran de génération dès qu'une version EN PORTÉE
       { id: "team-2", name: "U13", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 1, sessionsPerWeek: 1 },
     ]);
     vi.mocked(getSlots).mockResolvedValue([
-      { id: "slot-1", scheduleId: "ov-1", teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null },
+      { id: "slot-1", scheduleId: "ov-1", teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null, sharedTrainingBlockId: null },
     ]);
   }
 
@@ -2222,8 +2222,8 @@ describe("PlanningPage — filet du surlignage (P4-255 PR 2)", () => {
     { id: "team-2", name: "U13", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 1, sessionsPerWeek: 1 },
   ];
   const twoSlots = [
-    { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE" as const, lockOrigin: null },
-    { id: "slot-2", scheduleId: SID, teamId: "team-2", venueId: "venue-1", coachId: null, dayOfWeek: 3, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE" as const, lockOrigin: null },
+    { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE" as const, lockOrigin: null, sharedTrainingBlockId: null },
+    { id: "slot-2", scheduleId: SID, teamId: "team-2", venueId: "venue-1", coachId: null, dayOfWeek: 3, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE" as const, lockOrigin: null, sharedTrainingBlockId: null },
   ];
   // Un bloc de mutualisation à UNE équipe (team-1) : dégénéré mais structurellement valide, il suffit
   // à faire de slot-1 une « séance de bloc » sans co-localisation (donc rendu en carte normale).

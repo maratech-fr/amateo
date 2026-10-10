@@ -425,7 +425,7 @@ describe("PeriodTeams — repère de mutualisation (P2-51)", () => {
   it("marque une équipe mutualisée via un bloc en période", () => {
     overridesState.data = [{ id: "o2", teamId: "t2", isActive: true, sessionsPerWeek: null, schedulePlanId: "plan-1" }];
     sharedBlocksState.data = [
-      { id: "b1", version: 1, createdAt: "2026-08-31T00:00:00+00:00", updatedAt: "2026-08-31T00:00:00+00:00", schedulePlanId: "plan-1", teamIds: ["t1", "t2"], commonSessions: 1 },
+      { id: "b1", version: 1, createdAt: "2026-08-31T00:00:00+00:00", updatedAt: "2026-08-31T00:00:00+00:00", schedulePlanId: "plan-1", teamIds: ["t1", "t2"], commonSessions: 1, label: null, sessions: [] },
     ];
     render(<PeriodTeams calendarEntryId="mutualise-block-marker" />);
 

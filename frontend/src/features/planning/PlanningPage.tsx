@@ -43,10 +43,12 @@ import { buildClubView } from "./lib/clubView";
 import { ClubViewTable } from "./ClubViewTable";
 import { availableResourceGroups, buildGrid, DAYS, type Lookups, slotGroupKey } from "./lib/grid";
 import { PlanningToolbar } from "./PlanningToolbar";
-import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, usePlacedConflicts, useRegenerate, useRegenerateFromVersion, useRegenerateOverlay, useSchedules, useSlots, useSocleDeviation, useStructureHash, useTeamCoaches, useTeams, useTrainingSlots, useVenues } from "./queries";
+import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useMutualizeSlot, usePlacedConflicts, useRegenerate, useRegenerateFromVersion, useRegenerateOverlay, useSchedules, useSlots, useSocleDeviation, useStructureHash, useTeamCoaches, useTeams, useTrainingSlots, useVenues } from "./queries";
 import { blocksForSlot } from "./lib/blockSession";
 import { ResourceFilter } from "./ResourceFilter";
 import { SlotDetail } from "./SlotDetail";
+import { MutualizeDialog } from "./MutualizeDialog";
+import { GenerationInProgressError, MutualizationRefusedError } from "./api";
 
 import { stalenessMessage } from "./lib/staleness";
 import type { ToReplaceEntry } from "./lib/toReplaceReason";
@@ -187,6 +189,8 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
       lockLevel: "HARD" as const,
       // Ces pseudo-créneaux SONT des réservations — l'origine du verrou est explicite.
       lockOrigin: "RESERVATION" as const,
+      // Une réservation n'est pas une séance de bloc de mutualisation.
+      sharedTrainingBlockId: null,
     })),
     [isFailed, reservationsQuery.data, validScheduleId, disabledVenueIds],
   );
@@ -240,6 +244,11 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const deleteMutation = useDeleteSchedule();
   const regenerateFromMutation = useRegenerateFromVersion();
   const [regenerateFromOpen, setRegenerateFromOpen] = useState(false);
+  // Lot 9 — la modale de mutualisation (geste F3) et le message d'un refus serveur (422/409/404)
+  // affiché DANS la modale (jamais toasté — FRT-38 : le feedback vit une fois, côté hook/modale).
+  const mutualizeMutation = useMutualizeSlot();
+  const [mutualizeOpen, setMutualizeOpen] = useState(false);
+  const [mutualizeError, setMutualizeError] = useState<string | null>(null);
   // Repli CONTEXTUEL (P4-40). En boucle de travail, replié par défaut : la grille prend
   // toute la largeur pour vérifier, une barre compacte rouvre l'aside — c'est la demande
   // utilisateur d'origine, inchangée. Au sortir d'une génération lancée DEPUIS LE WIZARD
@@ -334,6 +343,32 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
     [selectedSlot, sharedBlocks, slots],
   );
 
+  // Lot 9 — le nom d'un bloc de mutualisation, lu du bloc (serveur), par bloc ET par créneau (via le
+  // lien `sharedTrainingBlockId` que l'API expose désormais sur la séance). Le front AFFICHE : plus
+  // de dérivation par co-localisation pour NOMMER (celle-ci ne sert qu'au geste « déplacer le groupe »).
+  const blockLabelById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const b of sharedBlocks) {
+      const label = (b.label ?? "").trim();
+      if ("" !== label) {
+        map.set(b.id, label);
+      }
+    }
+    return map;
+  }, [sharedBlocks]);
+  const blockLabelBySlotId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of slots) {
+      if (null !== s.sharedTrainingBlockId) {
+        const label = blockLabelById.get(s.sharedTrainingBlockId);
+        if (undefined !== label) {
+          map.set(s.id, label);
+        }
+      }
+    }
+    return map;
+  }, [slots, blockLabelById]);
+
   const lookups: Lookups = useMemo(() => {
     // teamId → main coachId (the engine leaves slot.coachId empty).
     const teamCoach = new Map<string, string>();
@@ -365,8 +400,9 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
       teamCoach,
       teamPlayerCoaches,
       groupLabels,
+      blockLabelBySlotId,
     };
-  }, [teams, venues, coaches, teamCoaches, coachPlayers, trainingSlots]);
+  }, [teams, venues, coaches, teamCoaches, coachPlayers, trainingSlots, blockLabelBySlotId]);
 
   // Defined venue windows the solver left unfilled ("créneaux vides"). Injected
   // into the grid in the GYMNASE view only (they have no team/coach) so they
@@ -530,6 +566,24 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // (P4-255 PR 2) — corps inchangé, identité STABLE (contrat anti-boucle de DiagnosticsPanel).
 
   const selectedCell = model.cells.find((c) => c.slotId === selectedSlotId) ?? null;
+
+  // Lot 9 — la mutualisation ne s'offre QUE sur un plan de PÉRIODE (slotLayerId non-null = période).
+  const isPeriodPlan = null !== slotLayerId;
+  // Les équipes ACTIVÉES par la mutualisation (override `source = mutualisation`, actif) : pastille
+  // « via mutualisation ». Le serveur pose la source ; le front ne fait que la lire.
+  const activatedViaMutualisation = useMemo(() => {
+    const set = new Set<string>();
+    for (const o of teamOverridesQuery.data ?? []) {
+      if (o.isActive && "mutualisation" === o.source) {
+        set.add(o.teamId);
+      }
+    }
+    return set;
+  }, [teamOverridesQuery.data]);
+  // Appartenance du créneau sélectionné à un bloc, lue du lien serveur (jamais re-dérivée) + son nom.
+  const selectedSlotBlockId = selectedSlot?.sharedTrainingBlockId ?? null;
+  const selectedSlotBlockLabel = null === selectedSlotBlockId ? null : (blockLabelById.get(selectedSlotBlockId) ?? null);
+  const selectedViaMutualisation = null !== selectedSlot && activatedViaMutualisation.has(selectedSlot.teamId);
 
   // Sélectionner un créneau REPLIE les diagnostics (retour fondateur : « réduire
   // automatiquement le panel de diagnostique, sinon c'est impossible de le relancer »). Repli,
@@ -1123,6 +1177,21 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                               ? armMoveGroup(selectedSlot.id, selectedSlotBlock.id, { venueId: selectedSlot.venueId, dayOfWeek: selectedSlot.dayOfWeek, startTime: selectedSlot.startTime })
                               : armMove(selectedSlot.id)
                           }
+                          // Lot 9 — « Mutualiser… » (plan de période uniquement). Désactivé AVEC motif
+                          // si la séance est déjà en groupe ; nom du bloc + pastille « via mutualisation »
+                          // affichés depuis le lien serveur (jamais re-dérivés).
+                          isPeriodPlan={isPeriodPlan}
+                          inBlock={null !== selectedSlotBlockId}
+                          blockLabel={selectedSlotBlockLabel}
+                          viaMutualisation={selectedViaMutualisation}
+                          onMutualize={
+                            isPeriodPlan
+                              ? () => {
+                                  setMutualizeError(null);
+                                  setMutualizeOpen(true);
+                                }
+                              : undefined
+                          }
                         />
                       ) : null}
                       {showDiagnostics ? (
@@ -1225,6 +1294,46 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
       {/* P2-44 (PR-2) — « Comparer avec la saison » : consultation lecture seule du socle pointé. */}
       {compareOpen && null !== seasonComparisonId ? (
         <SeasonComparisonModal seasonScheduleId={seasonComparisonId} viewMode={viewMode} onClose={() => setCompareOpen(false)} />
+      ) : null}
+
+      {/* Lot 9 — MUTUALISER depuis la fiche d'une séance (plan de période). La modale pré-coche la
+          source (verrouillée), fait choisir les équipes à rattacher + la séance remplacée, annonce
+          une activation à 0 séance, et affiche un refus 422 tel quel. */}
+      {mutualizeOpen && null !== selectedSlot && isPeriodPlan ? (
+        <MutualizeDialog
+          anchor={selectedSlot}
+          teams={teams}
+          tiers={tiers}
+          slots={slots}
+          teamName={teamNameOf}
+          venueName={venueNameOf}
+          busy={mutualizeMutation.isPending}
+          error={mutualizeError}
+          onClose={() => {
+            setMutualizeOpen(false);
+            setMutualizeError(null);
+          }}
+          onConfirm={(body) => {
+            setMutualizeError(null);
+            mutualizeMutation.mutate(
+              { id: selectedSlot.id, body },
+              {
+                onSuccess: () => setMutualizeOpen(false),
+                onError: (e) => {
+                  // Refus NOMMÉ → la modale le montre (jamais un toast ici) ; un vrai transport est
+                  // déjà toasté par le hook, on ferme alors la modale.
+                  if (e instanceof MutualizationRefusedError) {
+                    setMutualizeError(e.message);
+                  } else if (e instanceof GenerationInProgressError) {
+                    setMutualizeError("Une génération est en cours pour ce club — réessayez une fois qu'elle est terminée.");
+                  } else {
+                    setMutualizeOpen(false);
+                  }
+                },
+              },
+            );
+          }}
+        />
       ) : null}
     </div>
   );

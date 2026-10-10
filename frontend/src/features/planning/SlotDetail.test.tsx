@@ -26,6 +26,7 @@ const slot = (over: Partial<Slot> = {}): Slot => ({
   durationMinutes: 90,
   lockLevel: "HARD",
   lockOrigin: "RESERVATION",
+  sharedTrainingBlockId: null,
   ...over,
 });
 
@@ -52,6 +53,7 @@ const cell = (locked: boolean): GridCell => ({
   locked,
   lockOrigin: locked ? "MANUAL" : null,
   groupLabel: null,
+  blockLabel: null,
   members: [],
 });
 
@@ -81,6 +83,12 @@ function renderDetail(
     armed?: boolean;
     onArmMove?: () => void;
     groupSession?: { memberCount: number } | null;
+    readOnly?: boolean;
+    isPeriodPlan?: boolean;
+    inBlock?: boolean;
+    blockLabel?: string | null;
+    viaMutualisation?: boolean;
+    onMutualize?: (() => void) | null;
   } = {},
 ) {
   const s = slot(over.slot);
@@ -96,11 +104,17 @@ function renderDetail(
       coachName={over.coachName}
       busy={false}
       moveState={over.moveState}
+      readOnly={over.readOnly}
       armed={over.armed}
       groupSession={over.groupSession}
+      isPeriodPlan={over.isPeriodPlan}
+      inBlock={over.inBlock}
+      blockLabel={over.blockLabel}
+      viaMutualisation={over.viaMutualisation}
       onClose={vi.fn()}
       onToggleLock={vi.fn()}
       onArmMove={over.onArmMove ?? vi.fn()}
+      onMutualize={null === over.onMutualize ? undefined : (over.onMutualize ?? vi.fn())}
     />,
   );
 }
@@ -382,5 +396,46 @@ describe("SlotDetail — déplacer le GROUPE de mutualisation (P2-51 PR-6, D11)"
     renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null } });
     expect(screen.getByRole("button", { name: "Déplacer" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Déplacer le groupe/ })).toBeNull();
+  });
+});
+
+describe("SlotDetail — mutualiser depuis la fiche (lot 9, F3)", () => {
+  it("n'offre PAS « Mutualiser… » hors plan de période (socle de saison)", () => {
+    renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null }, isPeriodPlan: false });
+    expect(screen.queryByRole("button", { name: /Mutualiser/ })).toBeNull();
+  });
+
+  it("sur un plan de période, « Mutualiser… » appelle onMutualize", async () => {
+    const onMutualize = vi.fn();
+    renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null }, isPeriodPlan: true, onMutualize });
+    await userEvent.click(screen.getByRole("button", { name: /Mutualiser/ }));
+    expect(onMutualize).toHaveBeenCalledTimes(1);
+  });
+
+  it("désactive « Mutualiser… » AVEC MOTIF quand la séance est déjà en groupe", () => {
+    const onMutualize = vi.fn();
+    renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null }, isPeriodPlan: true, inBlock: true, onMutualize });
+    const btn = screen.getByRole("button", { name: /Mutualiser/ });
+    // disabledReason → aria-disabled (focalisable) + motif découvrable (A11Y-30), pas un `disabled` muet.
+    expect(btn).toHaveAttribute("aria-disabled", "true");
+    expect(btn).toHaveAttribute("title", expect.stringContaining("déjà partie d'un groupe"));
+  });
+
+  it("désactive « Mutualiser… » AVEC MOTIF quand le planning est validé (lecture seule)", () => {
+    renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null }, isPeriodPlan: true, readOnly: true, onMutualize: vi.fn() });
+    const btn = screen.getByRole("button", { name: /Mutualiser/ });
+    expect(btn).toHaveAttribute("aria-disabled", "true");
+    expect(btn).toHaveAttribute("title", expect.stringContaining("validé"));
+  });
+
+  it("affiche le NOM du groupe et la pastille « via mutualisation »", () => {
+    renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null }, isPeriodPlan: true, inBlock: true, blockLabel: "U11", viaMutualisation: true });
+    expect(screen.getByText(/Groupe « U11 »/)).toBeInTheDocument();
+    expect(screen.getByText("via mutualisation")).toBeInTheDocument();
+  });
+
+  it("un bloc SANS nom affiche « Mutualisé » plutôt qu'un nom vide", () => {
+    renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null }, isPeriodPlan: true, inBlock: true, blockLabel: null });
+    expect(screen.getByText("Mutualisé")).toBeInTheDocument();
   });
 });

@@ -1,8 +1,9 @@
-Last verified @ 2026-10-07 (Sentry actif : les deux mentions « roadmap P5-1, pas encore activé »
-recalées, cf. `etat-des-lieux.md` §3). Re-confronté au code : `POST /api/feedback`
-(`FeedbackController.php:68`) ✓ ; `FeedbackButton`/`FeedbackDialog`/`api.ts`/`queries.ts` vivent
-toujours dans `frontend/src/shared/feedback/` ✓ ; `Schedule::$snapshotData` toujours présent
-(`backend/src/Entity/Schedule.php:123`) ✓ (D1 porte (a) : `PageHeader`, `frontend/docs/frontend-components.md`).
+Last verified @ 2026-10-10 (rotation `documentation-update`, lot 9 F3). Re-confronté au code :
+`POST /api/feedback` (`FeedbackController.php:68`) ✓ ; `FeedbackButton`/`FeedbackDialog`/`api.ts`/
+`queries.ts` vivent toujours dans `frontend/src/shared/feedback/` ✓ ; `Schedule::$snapshotData`
+toujours présent, mais la citation de ligne avait dérivé — **corrigée `:96`**
+(`backend/src/Entity/Schedule.php:96`, pas `:123` comme précédemment écrit) ✓ (D1 porte (a) :
+`PageHeader`, `frontend/docs/frontend-components.md`).
 
 # Canal signalement, support & reproduction
 
@@ -11,7 +12,7 @@ toujours dans `frontend/src/shared/feedback/` ✓ ; `Schedule::$snapshotData` to
 > sans sur-ingénierie tickets. Les décisions D1-D6 + §3bis/§3ter ci-dessous sont implémentées.
 >
 > **La reproduction d'une génération n'est jamais le problème** : `Schedule::$snapshotData`
-> (`backend/src/Entity/Schedule.php:123`) porte le payload engine complet et figé, écrit avant
+> (`backend/src/Entity/Schedule.php:96`) porte le payload engine complet et figé, écrit avant
 > l'appel moteur, avec son sha256 — rejouable tel quel sur `/generate`. Ce que le canal
 > signalement capte en plus, c'est le reste : l'écran, le geste, l'intention de l'utilisateur.
 

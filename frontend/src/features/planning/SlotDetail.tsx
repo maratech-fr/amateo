@@ -1,4 +1,4 @@
-import { AlertTriangle, ChevronDown, ChevronRight, Lock, LockOpen, Move, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, Lock, LockOpen, Move, Users, X } from "lucide-react";
 
 import { Spinner } from "@/shared/components/ui/spinner";
 import { useState } from "react";
@@ -65,8 +65,20 @@ interface SlotDetailProps {
    *  individuel n'est plus proposé — le moteur le refuse). `memberCount` = nombre d'équipes du bloc,
    *  annoncé sur le bouton et en note. `null`/absent = créneau ordinaire. */
   groupSession?: { memberCount: number } | null;
+  /** Lot 9 — la mutualisation ne s'offre que sur un plan de PÉRIODE (jamais le socle de saison). */
+  isPeriodPlan?: boolean;
+  /** Lot 9 — cette séance fait DÉJÀ partie d'un groupe de mutualisation : le geste est désactivé
+   *  (motif), et le nom du bloc + l'origine « via mutualisation » s'affichent. */
+  inBlock?: boolean;
+  /** Lot 9 — nom du bloc de mutualisation dont cette séance est membre (null = aucun / bloc sans nom). */
+  blockLabel?: string | null;
+  /** Lot 9 — cette équipe a été ACTIVÉE par la mutualisation (override `source = mutualisation`) :
+   *  pastille « via mutualisation ». */
+  viaMutualisation?: boolean;
   onClose: () => void;
   onToggleLock: () => void;
+  /** Lot 9 — ouvre la modale de mutualisation ancrée à cette case. Absent = geste indisponible. */
+  onMutualize?: () => void;
   /** P2-30 : « Déplacer » n'ouvre plus de formulaire — il ARME le mode cible click-click (la
    *  cible se choisit sur la grille). Rappeler quand c'est armé = annuler (toggle côté page).
    *  P2-51 PR-6 : sur une séance de bloc, la page route ce geste vers le déplacement de GROUPE. */
@@ -123,7 +135,7 @@ function ConstraintList({ label, items, describe }: { label: string; items: Cons
 
 const noName = (): string | undefined => undefined;
 
-export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tagTeamIds = NO_TAGS, teamName = noName, coachName = noName, busy, moveState = { status: "idle" }, readOnly = false, armed = false, groupSession = null, onClose, onToggleLock, onArmMove }: SlotDetailProps) {
+export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tagTeamIds = NO_TAGS, teamName = noName, coachName = noName, busy, moveState = { status: "idle" }, readOnly = false, armed = false, groupSession = null, isPeriodPlan = false, inBlock = false, blockLabel = null, viaMutualisation = false, onClose, onToggleLock, onArmMove, onMutualize }: SlotDetailProps) {
   // Repliées par défaut : ouvrir un créneau ne doit pas agrandir l'aside (retour fondateur).
   // Le compte reste visible replié pour savoir s'il y a quelque chose à ouvrir.
   const [constraintsOpen, setConstraintsOpen] = useState(false);
@@ -173,6 +185,20 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
             </>
           ) : null}
         </p>
+
+        {/* Lot 9 — appartenance à un groupe de mutualisation : le nom du bloc (si nommé) et, pour une
+            équipe activée par le geste, l'origine « via mutualisation ». Le front AFFICHE ce que le
+            serveur a posé (lien du créneau au bloc, source de l'override) — aucune re-dérivation. */}
+        {inBlock || viaMutualisation ? (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {inBlock ? (
+              <StatusPill variant="accent" icon={<Users className="size-3" />}>
+                {null !== blockLabel && "" !== blockLabel ? `Groupe « ${blockLabel} »` : "Mutualisé"}
+              </StatusPill>
+            ) : null}
+            {viaMutualisation ? <StatusPill>via mutualisation</StatusPill> : null}
+          </div>
+        ) : null}
 
         {null !== origin ? (
           <div className="mt-3 border-t border-border pt-3">
@@ -300,6 +326,26 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
           ) : null}
         </div>
         )}
+
+        {/* Lot 9 — « Mutualiser… » : plans de PÉRIODE seulement. Désactivé AVEC MOTIF découvrable au
+            clavier (disabledReason) si le planning est validé (lecture seule) ou si la séance fait
+            déjà partie d'un groupe. Rendu même en lecture seule pour porter son motif, contrairement
+            aux gestes Déplacer/Verrouiller (qui disparaissent). */}
+        {isPeriodPlan && undefined !== onMutualize ? (
+          <div className="mt-3 border-t border-border pt-3">
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full"
+              disabled={busy || readOnly || inBlock}
+              disabledReason={readOnly ? "Planning validé — rouvrez-le pour mutualiser ce créneau." : inBlock ? "Cette séance fait déjà partie d'un groupe de mutualisation." : undefined}
+              onClick={onMutualize}
+            >
+              <Users className="size-4" aria-hidden="true" />
+              Mutualiser…
+            </Button>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

@@ -69,6 +69,14 @@ class ScheduleSlotTemplateResource
     #[Groups(['read'])]
     public ?array $pendingConstraintSuggestion = null;
 
+    /**
+     * Lot 9 — le bloc de mutualisation DONT cette séance est une séance de groupe (NULL = séance
+     * ordinaire). Le planning l'AFFICHE (nom du bloc, pastille) sans re-dériver l'appartenance par
+     * co-localisation ; server-authoritative, posé par le geste « mutualiser », jamais par l'API.
+     */
+    #[Groups(['read'])]
+    public ?string $sharedTrainingBlockId = null;
+
     public static function fromEntity(ScheduleSlotTemplate $entity): self
     {
         $dto = new self;
@@ -86,6 +94,7 @@ class ScheduleSlotTemplateResource
         $dto->lockLevel = $entity->getLockLevel();
         $dto->lockOrigin = $entity->getLockOrigin();
         $dto->pendingConstraintSuggestion = $entity->getPendingConstraintSuggestion();
+        $dto->sharedTrainingBlockId = $entity->getSharedTrainingBlockId();
 
         return $dto;
     }

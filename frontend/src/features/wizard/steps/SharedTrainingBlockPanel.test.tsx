@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
 
-import type { PriorityTier, SharedTrainingBlock, Team, TeamPeriodOverride } from "../api";
+import type { PriorityTier, SharedBlockSession, SharedTrainingBlock, Team, TeamPeriodOverride } from "../api";
 
 const stbCreate = vi.fn();
 const stbUpdate = vi.fn();
@@ -47,7 +47,7 @@ const TIERS: PriorityTier[] = [
   { id: 2, label: "A", name: "Importante", color: null },
 ];
 
-const block = (id: string, teamIds: string[], commonSessions = 1, schedulePlanId: string | null = null): SharedTrainingBlock => ({
+const block = (id: string, teamIds: string[], commonSessions = 1, schedulePlanId: string | null = null, sessions: SharedBlockSession[] = []): SharedTrainingBlock => ({
   id,
   version: 1,
   createdAt: "2026-08-31T00:00:00+00:00",
@@ -55,6 +55,8 @@ const block = (id: string, teamIds: string[], commonSessions = 1, schedulePlanId
   schedulePlanId,
   teamIds,
   commonSessions,
+  label: null,
+  sessions,
 });
 
 const renderPanel = (schedulePlanId: string | null = null, initialTeamId?: string) =>
@@ -91,7 +93,7 @@ describe("SharedTrainingBlockPanel — la LISTE DÉROULANTE des séances commune
 
   it("suit l'override de période dans le plafond (l'override est prioritaire)", async () => {
     const user = userEvent.setup();
-    overridesState.data = [{ id: "o", schedulePlanId: "plan-1", teamId: "t1", isActive: true, sessionsPerWeek: 1 }];
+    overridesState.data = [{ id: "o", schedulePlanId: "plan-1", teamId: "t1", isActive: true, sessionsPerWeek: 1, source: null }];
     renderPanel("plan-1");
 
     await user.click(screen.getByRole("checkbox", { name: "U9F1" }));
@@ -153,14 +155,43 @@ describe("SharedTrainingBlockPanel — créer / modifier / supprimer", () => {
     expect(arg.body.commonSessions).toBe(2);
   });
 
-  it("supprime un bloc après confirmation", async () => {
+  it("supprime un bloc après confirmation ; sans séance placée, la confirmation reste par équipes", async () => {
     const user = userEvent.setup();
     blocksState.data = [block("b1", ["t1", "t2"], 1)];
     renderPanel();
 
     await user.click(screen.getByRole("button", { name: /Supprimer le groupe/ }));
+    // Bloc sans séance servie : on garde le texte par équipes, jamais de liste vide.
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/les séances communes de U9F1, U9F2/)).toBeInTheDocument();
+    expect(within(dialog).queryAllByRole("listitem")).toHaveLength(0);
+
     await user.click(screen.getByRole("button", { name: "Supprimer" }));
     expect(stbDelete).toHaveBeenCalledWith("b1");
+  });
+
+  it("NOMME les séances emportées dans la confirmation (jour en français, heures HH:MM, gymnase)", async () => {
+    const user = userEvent.setup();
+    const session = (teamId: string, teamName: string): SharedBlockSession => ({
+      teamId,
+      teamName,
+      dayOfWeek: 2,
+      startTime: "2026-01-06T18:00:00+00:00",
+      endTime: "2026-01-06T19:30:00+00:00",
+      venueName: "Gymnase Jean-Macé",
+    });
+    blocksState.data = [block("b1", ["t1", "t2"], 1, "plan-1", [session("t1", "U9F1"), session("t2", "U9F2")])];
+    renderPanel("plan-1");
+
+    await user.click(screen.getByRole("button", { name: /Supprimer le groupe/ }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/retirera ces séances du planning/)).toBeInTheDocument();
+    const lines = within(dialog)
+      .getAllByRole("listitem")
+      .map((li) => li.textContent);
+    expect(lines).toContain("U9F1 — mardi 18:00-19:30, Gymnase Jean-Macé");
+    expect(lines).toContain("U9F2 — mardi 18:00-19:30, Gymnase Jean-Macé");
   });
 
   it("affiche le motif d'un 422 serveur (garde Σ) sans vider la sélection", async () => {
