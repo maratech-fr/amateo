@@ -26,6 +26,15 @@ Fonctionnalité: Les entraîneurs expriment leurs vœux par un lien public, sans
     Et l'entraîneur déclare une mutualisation avec la deuxième équipe sans se connecter
     Alors la mutualisation déclarée remonte côté gestionnaire
 
+  Scénario: Le gestionnaire transfère une doléance au planning des vacances
+    Étant donné le club de démonstration et son gestionnaire connecté
+    Et un entraîneur rattaché à une équipe
+    Et une période de vacances à venir
+    Quand le gestionnaire ouvre une campagne de vœux et envoie les liens
+    Et l'entraîneur soumet ses vœux depuis cette page sans se connecter
+    Et le gestionnaire transfère les doléances au planning
+    Alors le planning de la semaine reflète la doléance transférée
+
   Scénario: La collecte attend le planning des vacances
     Étant donné le club de démonstration et son gestionnaire connecté
     Et un entraîneur rattaché à une équipe

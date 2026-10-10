@@ -50,6 +50,10 @@ final class CoachWishesContext extends BaseContext
 
     private int $submissionStatus = 0;
 
+    private string $holidayPlanId = '';
+
+    private int $transferConverted = 0;
+
     #[Given('le club de démonstration et son gestionnaire connecté')]
     public function leClubEtSonGestionnaireConnecte(): void
     {
@@ -262,6 +266,62 @@ final class CoachWishesContext extends BaseContext
         }
     }
 
+    #[When('le gestionnaire transfère les doléances au planning')]
+    public function leGestionnaireTransfereAuPlanning(): void
+    {
+        // P2-63 PR 5 — le gestionnaire coche les doléances et les convertit en masse. On
+        // ramasse les doléances de la période, on les transfère toutes.
+        $wishes = $this->apiGet(\sprintf('coach_wishes?calendarEntryId=%s', $this->entryId), $this->token);
+        $ids = [];
+        foreach ($this->members($wishes['json']) as $wish) {
+            $id = $wish['id'] ?? null;
+            if (\is_string($id) && '' !== $id) {
+                $ids[] = $id;
+            }
+        }
+        if ([] === $ids) {
+            throw new RuntimeException('aucune doléance à transférer');
+        }
+
+        $response = $this->apiPost('coach-wishes/transfer', ['wishIds' => $ids], $this->token);
+        $this->submissionStatus = $response['status'];
+        $converted = $response['json']['converted'] ?? null;
+        $this->transferConverted = \is_int($converted) ? $converted : 0;
+    }
+
+    #[Then('le planning de la semaine reflète la doléance transférée')]
+    public function lePlanningRefleteLaDoleanceTransferee(): void
+    {
+        if (200 !== $this->submissionStatus) {
+            throw new RuntimeException(\sprintf('le transfert a répondu %d (200 attendu)', $this->submissionStatus));
+        }
+        if ($this->transferConverted < 1) {
+            throw new RuntimeException(\sprintf('le transfert n\'a converti aucune doléance (converties : %d)', $this->transferConverted));
+        }
+        if ('' === $this->holidayPlanId) {
+            throw new RuntimeException('le plan de vacances n\'a pas été résolu');
+        }
+
+        // F — l'équipe de la doléance est active sur le plan avec la trace « via doléances ».
+        $overrides = $this->apiGet(\sprintf('team_period_overrides?schedulePlanId=%s', $this->holidayPlanId), $this->token);
+        foreach ($this->members($overrides['json']) as $override) {
+            if (($override['teamId'] ?? null) === $this->teamId
+                && true === ($override['isActive'] ?? null)
+                && 'coach_wish' === ($override['source'] ?? null)) {
+                // Q7 — la doléance transférée est passée « traité ».
+                $wishes = $this->apiGet(\sprintf('coach_wishes?calendarEntryId=%s', $this->entryId), $this->token);
+                foreach ($this->members($wishes['json']) as $wish) {
+                    if (($wish['teamId'] ?? null) === $this->teamId && true === ($wish['done'] ?? null)) {
+                        return;
+                    }
+                }
+                throw new RuntimeException('la doléance transférée n\'est pas passée « traité »');
+            }
+        }
+
+        throw new RuntimeException('le plan ne reflète pas la doléance transférée (override « via doléances » introuvable)');
+    }
+
     #[When('le gestionnaire tente d\'ouvrir une campagne sans planning de vacances')]
     public function leGestionnaireTenteSansPlanning(): void
     {
@@ -312,6 +372,8 @@ final class CoachWishesContext extends BaseContext
         if (!\in_array($plan['status'], [200, 201], true)) {
             throw new RuntimeException(\sprintf('la création du planning de vacances a répondu %d (201 attendu)', $plan['status']));
         }
+        $planId = $plan['json']['id'] ?? null;
+        $this->holidayPlanId = \is_string($planId) ? $planId : '';
     }
 
     /**
