@@ -21,6 +21,12 @@ const overlaps = (aStart: number, aEnd: number, bStart: number, bEnd: number): b
  * window's (prod BCCL : fenêtre 17:30-18:45, séance verrouillée 17:15-18:45) — the
  * old exact-start match drew a spurious half-width `vide` cell beside it. Capacity
  * is not split: one overlap is enough (MVP).
+ *
+ * MIROIR DÉCLARÉ (régime 2 de `.claude/rules/frontend.md`) : la MÊME règle vit côté backend dans
+ * `App\Service\VenueWindowOccupancy::windowIsFilled` (la case « vide » de l'export PDF/XLSX). Parité
+ * mécanique sur `emptySlots.parity.json` : `emptySlots.parity.test.ts` ⇄ `EmptySlotOverlapMirrorParityTest.php`,
+ * inscrit au registre `FrontRederivationRegistryTest`. Ne pas modifier la règle d'un seul côté sans
+ * porter le cas partagé.
  */
 export function computeEmptySlots(trainingSlots: VenueTrainingSlot[], slots: Slot[], scheduleId: string): Slot[] {
   return trainingSlots

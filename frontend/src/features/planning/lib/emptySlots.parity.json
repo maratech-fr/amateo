@@ -1,0 +1,47 @@
+{
+  "_comment": "Cas de PARITÉ MÉCANIQUE de la règle « un créneau de grille est-il OCCUPÉ ? » (une séance du même gymnase+jour le CHEVAUCHE dans le temps, [début, fin) demi-ouvert — pas seulement un début exact). Consommé par emptySlots.parity.test.ts (front, planning/lib/emptySlots.ts::computeEmptySlots) ET par EmptySlotOverlapMirrorParityTest.php (backend, App\\Service\\VenueWindowOccupancy::windowIsFilled, l'export PDF/XLSX). `expectedFilled` = true quand le créneau est occupé (aucune case « vide »). Changer la règle d'un seul côté rougit le côté qui dérive. Ne pas éditer une seule des deux implémentations sans porter le cas ici.",
+  "cases": [
+    {
+      "label": "cas prod BCCL : fenêtre retaillée 17:30-18:45 (75 min), séance verrouillée 17:15-18:45 (90 min) qui la chevauche → occupé, pas de « vide »",
+      "window": { "venueId": "v1", "dayOfWeek": 3, "startTime": "17:30", "durationMinutes": 75 },
+      "placements": [{ "venueId": "v1", "dayOfWeek": 3, "startTime": "17:15", "durationMinutes": 90 }],
+      "expectedFilled": true
+    },
+    {
+      "label": "séance CONTIGUË 16:00-17:30 qui FINIT quand la fenêtre 17:30 commence → pas de chevauchement ([début, fin) demi-ouvert) → « vide » gardé",
+      "window": { "venueId": "v1", "dayOfWeek": 3, "startTime": "17:30", "durationMinutes": 90 },
+      "placements": [{ "venueId": "v1", "dayOfWeek": 3, "startTime": "16:00", "durationMinutes": 90 }],
+      "expectedFilled": false
+    },
+    {
+      "label": "même heure chevauchante mais AUTRE gymnase → « vide » gardé",
+      "window": { "venueId": "v1", "dayOfWeek": 3, "startTime": "17:30", "durationMinutes": 75 },
+      "placements": [{ "venueId": "v2", "dayOfWeek": 3, "startTime": "17:15", "durationMinutes": 90 }],
+      "expectedFilled": false
+    },
+    {
+      "label": "même heure chevauchante mais AUTRE jour → « vide » gardé",
+      "window": { "venueId": "v1", "dayOfWeek": 3, "startTime": "17:30", "durationMinutes": 75 },
+      "placements": [{ "venueId": "v1", "dayOfWeek": 4, "startTime": "17:15", "durationMinutes": 90 }],
+      "expectedFilled": false
+    },
+    {
+      "label": "chevauchement PARTIEL en fin de fenêtre : fenêtre 17:30-19:00, séance 18:45-19:45 (chevauche 18:45-19:00) → occupé",
+      "window": { "venueId": "v1", "dayOfWeek": 3, "startTime": "17:30", "durationMinutes": 90 },
+      "placements": [{ "venueId": "v1", "dayOfWeek": 3, "startTime": "18:45", "durationMinutes": 60 }],
+      "expectedFilled": true
+    },
+    {
+      "label": "début EXACT (régression de base) : fenêtre 18:00-19:30, séance 18:00-19:30 → occupé",
+      "window": { "venueId": "v1", "dayOfWeek": 3, "startTime": "18:00", "durationMinutes": 90 },
+      "placements": [{ "venueId": "v1", "dayOfWeek": 3, "startTime": "18:00", "durationMinutes": 90 }],
+      "expectedFilled": true
+    },
+    {
+      "label": "aucune séance → « vide » gardé",
+      "window": { "venueId": "v1", "dayOfWeek": 3, "startTime": "19:00", "durationMinutes": 90 },
+      "placements": [],
+      "expectedFilled": false
+    }
+  ]
+}
