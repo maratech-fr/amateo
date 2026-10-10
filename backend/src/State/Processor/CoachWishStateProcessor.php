@@ -109,6 +109,7 @@ class CoachWishStateProcessor extends AbstractStateProcessor
         $entity->setWishedDays($wishedDays);
         $entity->setComment(null === $input->comment || '' === trim($input->comment) ? null : $input->comment);
         $entity->setDone($input->done);
+        $entity->setKeepSeasonSlots($input->keepSeasonSlots);
     }
 
     /**

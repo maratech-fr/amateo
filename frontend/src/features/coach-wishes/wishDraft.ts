@@ -7,7 +7,7 @@ import { cloneSections, type SectionState } from "./wishSections";
  * Restauré au montage, PURGÉ au succès de l'envoi. Clé par token.
  */
 interface SerializedDraft {
-  sections: Record<string, { slotsWanted: number; days: number[]; wishedDays?: number[]; comment: string }>;
+  sections: Record<string, { slotsWanted: number; days: number[]; wishedDays?: number[]; comment: string; keepSeasonSlots?: boolean }>;
   /** Mutualisations par équipe (optionnel — rétro-compatible avec un brouillon C2/C3). */
   mutualizations?: Record<string, { partnerTeamIds: string[]; sharedSlots: number }>;
   stepIndex: number;
@@ -30,7 +30,7 @@ export function loadDraft(token: string): WishDraft | null {
     const parsed = JSON.parse(raw) as SerializedDraft;
     const sections = new Map<string, SectionState>();
     for (const [k, v] of Object.entries(parsed.sections)) {
-      sections.set(k, { slotsWanted: v.slotsWanted, days: new Set(v.days), wishedDays: new Set(v.wishedDays ?? []), comment: v.comment });
+      sections.set(k, { slotsWanted: v.slotsWanted, days: new Set(v.days), wishedDays: new Set(v.wishedDays ?? []), comment: v.comment, keepSeasonSlots: v.keepSeasonSlots ?? false });
     }
     const mutualizations = new Map<string, MutualizationState>();
     for (const [k, v] of Object.entries(parsed.mutualizations ?? {})) {
@@ -52,7 +52,7 @@ export function saveDraft(
     const snapshot = cloneSections(sections);
     const serialized: SerializedDraft = { sections: {}, mutualizations: {}, stepIndex };
     for (const [k, v] of snapshot) {
-      serialized.sections[k] = { slotsWanted: v.slotsWanted, days: [...v.days], wishedDays: [...v.wishedDays], comment: v.comment };
+      serialized.sections[k] = { slotsWanted: v.slotsWanted, days: [...v.days], wishedDays: [...v.wishedDays], comment: v.comment, keepSeasonSlots: v.keepSeasonSlots };
     }
     for (const [k, v] of cloneMutualizations(mutualizations)) {
       (serialized.mutualizations ??= {})[k] = { partnerTeamIds: [...v.partnerTeamIds], sharedSlots: v.sharedSlots };

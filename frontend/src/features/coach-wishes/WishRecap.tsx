@@ -29,6 +29,9 @@ function weekSummary(s: SectionState): string {
   if (s.days.size > 0) {
     parts.push(`indispo ${daysList(s.days)}`);
   }
+  if (s.keepSeasonSlots) {
+    parts.push("garde ses créneaux habituels");
+  }
   return parts.join(" · ");
 }
 

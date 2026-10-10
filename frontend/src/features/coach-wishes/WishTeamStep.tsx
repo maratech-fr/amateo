@@ -149,6 +149,18 @@ export function WishTeamStep({ team, weeks, sections, partnerTeams, teamLinks, m
                 disabledReason="Jour non disponible : rendez-le disponible pour pouvoir le souhaiter."
               />
             </div>
+            {/* Volet B — « garder mes créneaux habituels » (ceux du planning de saison) : un
+                souhait de plus, par équipe × semaine. La page n'expose AUCUN horaire de saison,
+                juste cette case ; le club arbitre au transfert vers le planning. */}
+            <label className="mt-2 flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="size-4 accent-[var(--accent)]"
+                checked={s.keepSeasonSlots}
+                onChange={() => onPatch(key, { keepSeasonSlots: !s.keepSeasonSlots })}
+              />
+              Garder mes créneaux habituels
+            </label>
             <label className="mt-2 block text-sm">
               <span className="text-muted-foreground">Commentaire</span>
               <textarea

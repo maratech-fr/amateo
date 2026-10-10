@@ -82,6 +82,7 @@ export function CoachWishForm({
   const [days, setDays] = useState<number[]>(editing?.unavailableDays ?? []);
   const [wishedDays, setWishedDays] = useState<number[]>(editing?.wishedDays ?? []);
   const [comment, setComment] = useState(editing?.comment ?? "");
+  const [keepSeasonSlots, setKeepSeasonSlots] = useState(editing?.keepSeasonSlots ?? false);
 
   // Exclusion souhaité ∩ indisponible : cocher un jour d'un côté le retire de l'autre
   // (dernier geste gagne) — même règle que la garde serveur (422), ici silencieuse.
@@ -125,6 +126,7 @@ export function CoachWishForm({
       wishedDays,
       comment: "" === comment.trim() ? null : comment.trim(),
       done: editing?.done ?? false,
+      keepSeasonSlots,
     });
   };
 
@@ -204,6 +206,12 @@ export function CoachWishForm({
         disabledDays={days}
         disabledReason="Jour non disponible : rendez-le disponible pour pouvoir le souhaiter."
       />
+      {/* Volet B — « garder les créneaux habituels » (ceux du planning de saison), par
+          équipe × semaine. Souhait de plus ; le transfert vers le planning l'honore. */}
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" className="size-4 accent-[var(--accent)]" checked={keepSeasonSlots} onChange={() => setKeepSeasonSlots((v) => !v)} />
+        Garder les créneaux habituels
+      </label>
 
       <textarea
         aria-label="Commentaire"

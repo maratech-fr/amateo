@@ -86,6 +86,7 @@ const wish = (over: Record<string, unknown>) => ({
   wishedDays: [],
   comment: null,
   done: false,
+  keepSeasonSlots: false,
   ...over,
 });
 
@@ -136,6 +137,22 @@ describe("WishesTab", () => {
     render(<WishesTab mother={mother} weekFilter={null} />);
     await userEvent.click(screen.getByRole("checkbox", { name: /Traité/ }));
     expect(updateMut).toHaveBeenCalledWith(expect.objectContaining({ id: "w1", body: expect.objectContaining({ done: true }) }));
+  });
+
+  it("P2-63 B — une doléance « garder ses créneaux » porte la pastille ; cocher traité préserve le drapeau", async () => {
+    wishesState.data = [wish({ id: "w1", keepSeasonSlots: true, done: false })];
+    render(<WishesTab mother={mother} weekFilter={null} />);
+    expect(screen.getByText("souhaite garder ses créneaux")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /Traité/ }));
+    // Le transfert/ la coche « traité » ne doit jamais retomber keepSeasonSlots à false.
+    expect(updateMut).toHaveBeenCalledWith(expect.objectContaining({ id: "w1", body: expect.objectContaining({ done: true, keepSeasonSlots: true }) }));
+  });
+
+  it("une doléance sans « garder ses créneaux » ne porte pas la pastille", () => {
+    wishesState.data = [wish({ id: "w1", keepSeasonSlots: false })];
+    render(<WishesTab mother={mother} weekFilter={null} />);
+    expect(screen.queryByText("souhaite garder ses créneaux")).toBeNull();
   });
 
   it("cocher « traité » sur une doléance dé-attribuée préserve coachId null (pas de 422)", async () => {

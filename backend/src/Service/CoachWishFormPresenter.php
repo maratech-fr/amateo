@@ -45,7 +45,7 @@ final class CoachWishFormPresenter
      *     teams: list<array{id: string, name: string}>,
      *     partnerTeams: list<array{id: string, name: string}>,
      *     teamLinks: list<array{teamAId: string, teamBId: string}>,
-     *     wishes: list<array{teamId: string, weekStart: string, slotsWanted: int, unavailableDays: list<int>, wishedDays: list<int>, comment: string|null}>,
+     *     wishes: list<array{teamId: string, weekStart: string, slotsWanted: int, unavailableDays: list<int>, wishedDays: list<int>, comment: string|null, keepSeasonSlots: bool}>,
      *     mutualizations: list<array{teamId: string, partnerTeamIds: list<string>, sharedSlots: int}>,
      *     respondedAt: string|null
      * }
@@ -108,6 +108,8 @@ final class CoachWishFormPresenter
                     'unavailableDays' => $wish->getUnavailableDays(),
                     'wishedDays' => $wish->getWishedDays(),
                     'comment' => $wish->getComment(),
+                    // Booléen NU (volet B) : jamais les horaires de saison, juste le drapeau.
+                    'keepSeasonSlots' => $wish->keepsSeasonSlots(),
                 ];
             }
 

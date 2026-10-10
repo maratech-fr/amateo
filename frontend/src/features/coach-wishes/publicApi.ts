@@ -20,6 +20,8 @@ export interface PublicWish {
   /** Jours souhaités ISO 1–7 (informatif ; disjoint des indisponibilités). */
   wishedDays: number[];
   comment: string | null;
+  /** Le coach souhaite garder ses créneaux habituels de saison cette semaine-là (volet B). */
+  keepSeasonSlots: boolean;
 }
 
 /** Une mutualisation déjà déclarée (une par équipe, pour la période) — pré-remplissage. */
@@ -65,6 +67,8 @@ export interface PublicWishSubmission {
   unavailableDays: number[];
   wishedDays: number[];
   comment: string | null;
+  /** Le coach souhaite garder ses créneaux habituels de saison cette semaine-là (volet B). */
+  keepSeasonSlots: boolean;
 }
 
 /** La soumission d'une mutualisation (0 partenaire = supprimer la ligne côté serveur). */

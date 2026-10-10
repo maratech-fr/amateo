@@ -43,6 +43,7 @@ final class CoachWishUpserter
         array $unavailableDays,
         array $wishedDays,
         ?string $comment,
+        bool $keepSeasonSlots = false,
     ): CoachWish {
         // Garde de dernier recours (défense en profondeur) : un jour ne peut pas être à la fois
         // souhaité ET indisponible. Le contrôleur public refuse déjà en amont (422) — ce foyer
@@ -72,6 +73,7 @@ final class CoachWishUpserter
         $wish->setUnavailableDays($unavailableDays);
         $wish->setWishedDays($wishedDays);
         $wish->setComment(null === $comment || '' === trim($comment) ? null : $comment);
+        $wish->setKeepSeasonSlots($keepSeasonSlots);
         // La parole du coach prime : sa re-soumission remet le drapeau à « à retraiter ».
         $wish->setDone(false);
 
