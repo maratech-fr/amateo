@@ -47,3 +47,22 @@ export const createCoachWish = (body: CoachWishPayload): Promise<CoachWish> => a
 export const updateCoachWish = (id: string, body: CoachWishPayload): Promise<CoachWish> => api.put(`coach_wishes/${id}`, { json: body }).json();
 
 export const deleteCoachWish = (id: string): Promise<void> => api.delete(`coach_wishes/${id}`).then(() => undefined);
+
+/**
+ * Récap d'un « Transférer au planning » (P2-63 PR 5, volets E/F) : combien de doléances ont
+ * produit des réglages de plan, combien ont été IGNORÉES et pourquoi (ex. `semaine_sans_plan`,
+ * `introuvable`). `ignoredReasons` est un décompte par motif.
+ */
+export interface CoachWishTransferRecap {
+  converted: number;
+  ignored: number;
+  ignoredReasons: Record<string, number>;
+}
+
+/**
+ * Transfère les doléances COCHÉES vers le plan de leur semaine (geste gestionnaire).
+ * 409 `generation_in_progress` si une génération tourne (son message serveur est surfacé par le
+ * filet global des mutations).
+ */
+export const transferCoachWishes = (wishIds: string[]): Promise<CoachWishTransferRecap> =>
+  api.post("coach-wishes/transfer", { json: { wishIds } }).json();

@@ -42,11 +42,13 @@ const wishesState: { data: unknown[] } = { data: [] };
 const createMut = vi.fn();
 const updateMut = vi.fn();
 const deleteMut = vi.fn();
+const transferMut = vi.fn();
 vi.mock("./queries", () => ({
   useCoachWishes: () => ({ data: wishesState.data }),
   useCreateCoachWish: () => ({ mutate: createMut, isPending: false }),
   useUpdateCoachWish: () => ({ mutate: updateMut, isPending: false }),
   useDeleteCoachWish: () => ({ mutate: deleteMut, isPending: false }),
+  useTransferCoachWishes: () => ({ mutate: transferMut, isPending: false }),
 }));
 
 const mutualizationsState: { data: unknown[] } = { data: [] };

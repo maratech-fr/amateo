@@ -1,5 +1,5 @@
 import { Pencil, Plus, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { CalendarEntry } from "@/features/cockpit/api";
 import { periodAdjustWeeks } from "@/features/cockpit/lib/date";
@@ -14,15 +14,26 @@ import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
+import { Spinner } from "@/shared/components/ui/spinner";
 import { cn } from "@/shared/lib/utils";
+import { toast } from "@/shared/stores/toastStore";
 
-import type { CoachWish, CoachWishPayload } from "./api";
+import type { CoachWish, CoachWishPayload, CoachWishTransferRecap } from "./api";
 import { CoachWishForm } from "./CoachWishForm";
 import type { CoachWishMutualization, CoachWishMutualizationPayload } from "./mutualizationApi";
 import { MutualizationForm } from "./MutualizationForm";
 import { useCoachWishMutualizations, useCreateCoachWishMutualization, useDeleteCoachWishMutualization, useUpdateCoachWishMutualization } from "./mutualizationQueries";
-import { useCoachWishes, useCreateCoachWish, useDeleteCoachWish, useUpdateCoachWish } from "./queries";
+import { useCoachWishes, useCreateCoachWish, useDeleteCoachWish, useTransferCoachWishes, useUpdateCoachWish } from "./queries";
 import { frDate } from "./wishSections";
+
+/** Le texte de récap d'un transfert : « N converties · M ignorées » (singulier/pluriel soignés). */
+function transferRecapMessage(recap: CoachWishTransferRecap): string {
+  const converted = `${recap.converted} convertie${recap.converted > 1 ? "s" : ""}`;
+  if (0 === recap.ignored) {
+    return 0 === recap.converted ? "Aucune doléance à transférer" : converted;
+  }
+  return `${converted} · ${recap.ignored} ignorée${recap.ignored > 1 ? "s" : ""}`;
+}
 
 /**
  * La todo-list des doléances coachs d'une période de vacances (feature #10, lot C1) — onglet
@@ -46,6 +57,7 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
   const createWish = useCreateCoachWish();
   const updateWish = useUpdateCoachWish();
   const deleteWish = useDeleteCoachWish();
+  const transfer = useTransferCoachWishes();
   const { data: mutualizations = [] } = useCoachWishMutualizations(mother.id);
   const createMut = useCreateCoachWishMutualization();
   const updateMut = useUpdateCoachWishMutualization();
@@ -59,6 +71,10 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
   const [mutFormOpen, setMutFormOpen] = useState(false);
   const [editingMut, setEditingMut] = useState<CoachWishMutualization | null>(null);
   const [toDeleteMut, setToDeleteMut] = useState<CoachWishMutualization | null>(null);
+  // P2-63 PR 5 (D-b) — la case de SÉLECTION du transfert (à gauche), distincte de l'état
+  // « traité » (à droite). Présélection = les doléances NON traitées de la vue (effet one-shot).
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const preselectedView = useRef<string | null>(null);
 
   const weeks = useMemo(
     () => (null === season ? [] : periodAdjustWeeks(mother.startDate, mother.endDate, season, mother.periodType)),
@@ -114,6 +130,46 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
       (0 === teamFilter.length || teamFilter.includes(w.teamId)) &&
       (0 === coachFilter.length || (null !== w.coachId && coachFilter.includes(w.coachId))),
   );
+
+  // Présélection one-shot des doléances NON traitées quand la vue (période × semaine) se charge.
+  // Keyée par la vue : rouvrir sur une autre semaine re-présélectionne ; les cases cochées à la
+  // main ensuite ne sont pas écrasées (l'effet ne retourne qu'une fois par vue).
+  useEffect(() => {
+    const key = `${mother.id}|${weekFilter ?? "all"}`;
+    if (preselectedView.current === key || 0 === wishes.length) {
+      return;
+    }
+    preselectedView.current = key;
+    const untreated = wishes.filter((w) => shownWeeks.some((sw) => sw.monday === w.weekStart) && !w.done).map((w) => w.id);
+    setSelected(new Set(untreated));
+  }, [mother.id, weekFilter, wishes, shownWeeks]);
+
+  const selectedVisible = visible.filter((w) => selected.has(w.id));
+  const toggleSelected = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+
+  const doTransfer = () => {
+    const ids = selectedVisible.map((w) => w.id);
+    if (0 === ids.length) {
+      return;
+    }
+    transfer.mutate(ids, {
+      // onSuccess (jamais onError) peut poser un toast : le récap EST le retour du geste. Les
+      // erreurs (dont le 409 « génération en cours ») restent au filet global (règle FRT-38).
+      onSuccess: (recap) => {
+        toast.success(transferRecapMessage(recap));
+        setSelected(new Set());
+      },
+    });
+  };
 
   const submit = (payload: CoachWishPayload) => {
     const after = () => {
@@ -182,6 +238,24 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
         </Button>
       </div>
 
+      {/* P2-63 PR 5 — le geste de MASSE : les doléances cochées (à gauche de chaque ligne)
+          deviennent des réglages du plan de leur semaine. Récap en toast au retour. */}
+      {visible.length > 0 ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            disabled={0 === selectedVisible.length || transfer.isPending}
+            disabledReason={0 === selectedVisible.length ? "Cochez au moins une doléance à transférer" : undefined}
+            onClick={doTransfer}
+          >
+            {transfer.isPending ? <Spinner className="size-4" /> : null}
+            Transférer au planning ({selectedVisible.length})
+          </Button>
+          <span className="text-xs text-muted-foreground">Les doléances cochées deviennent des réglages du plan de leur semaine (volume, indisponibilités, jours souhaités).</span>
+        </div>
+      ) : null}
+
       {/* Sans équipe du tout, « Ajouter » n'ouvrirait qu'un formulaire sans cible. */}
       {0 === teams.length ? (
         <NoticeBanner
@@ -224,7 +298,8 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
                 <ul className="space-y-1">
                   {items.map((w) => (
                     <li key={w.id} className="flex items-start gap-2 rounded-md border border-border px-3 py-2 text-sm">
-                      <input type="checkbox" aria-label={`Traité — ${teamName.get(w.teamId) ?? "équipe"}`} className="mt-1 size-4" checked={w.done} onChange={() => toggleDone(w)} />
+                      {/* D-b — case de SÉLECTION du transfert, à gauche (distincte de « traité »). */}
+                      <input type="checkbox" aria-label={`Sélectionner la doléance — ${teamName.get(w.teamId) ?? "équipe"}`} className="mt-1 size-4" checked={selected.has(w.id)} onChange={() => toggleSelected(w.id)} />
                       <div className={cn("min-w-0 flex-1", w.done && "line-through")}>
                         {/* Pas de coach (coachId null) = doléance manuelle sans coach : on n'affiche
                             AUCUN coach (juste l'équipe). « coach dé-attribué » ne vaut QUE pour le vrai
@@ -247,7 +322,12 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
                           </StatusPill>
                         ) : null}
                       </div>
-                      <div className="flex shrink-0 gap-1">
+                      <div className="flex shrink-0 items-center gap-1">
+                        {/* D-b — l'état « traité » reste à DROITE (coche + libellé texte). */}
+                        <label className="mr-1 flex items-center gap-1 text-xs text-muted-foreground">
+                          <input type="checkbox" aria-label={`Traité — ${teamName.get(w.teamId) ?? "équipe"}`} className="size-4" checked={w.done} onChange={() => toggleDone(w)} />
+                          traité
+                        </label>
                         <Button
                           type="button"
                           size="icon"

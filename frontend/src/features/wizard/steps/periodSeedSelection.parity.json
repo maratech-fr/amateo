@@ -1,0 +1,48 @@
+{
+  "_comment": "Cas PARTAGÉS du tri d'équipes par défaut d'un plan de période (D-e). Traversés par periodSeedSelection.parity.test.ts (front) ET PeriodSeedSelectionMirrorParityTest.php (backend). Changer la règle d'un seul côté rougit ce côté-là.",
+  "cases": [
+    {
+      "name": "reprise : S+A seulement",
+      "tiers": [1, 2, 3, 4, 5],
+      "teams": [
+        { "id": "t-s", "tierId": 1 },
+        { "id": "t-a", "tierId": 2 },
+        { "id": "t-b", "tierId": 3 },
+        { "id": "t-d", "tierId": 5 }
+      ],
+      "isClosure": false,
+      "kept": ["t-s", "t-a"]
+    },
+    {
+      "name": "repli sur le meilleur rang present (aucune equipe en S/A)",
+      "tiers": [1, 2, 3, 4, 5],
+      "teams": [
+        { "id": "t-c1", "tierId": 4 },
+        { "id": "t-c2", "tierId": 4 },
+        { "id": "t-d", "tierId": 5 }
+      ],
+      "isClosure": false,
+      "kept": ["t-c1", "t-c2"]
+    },
+    {
+      "name": "rang par id, pas par occupation (pas de Fanion, A+B presents)",
+      "tiers": [1, 2, 3, 4, 5],
+      "teams": [
+        { "id": "t-a", "tierId": 2 },
+        { "id": "t-b", "tierId": 3 }
+      ],
+      "isClosure": false,
+      "kept": ["t-a"]
+    },
+    {
+      "name": "fermeture : tout le club actif",
+      "tiers": [1, 2, 3, 4, 5],
+      "teams": [
+        { "id": "t-s", "tierId": 1 },
+        { "id": "t-d", "tierId": 5 }
+      ],
+      "isClosure": true,
+      "kept": ["t-s", "t-d"]
+    }
+  ]
+}

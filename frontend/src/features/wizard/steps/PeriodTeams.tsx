@@ -13,6 +13,7 @@ import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
 import { groupTeamsByTier, tierGroupLabel } from "@/shared/lib/teamTiers";
+import { StatusPill } from "@/shared/components/ui/badge";
 import { cn } from "@/shared/lib/utils";
 import { toast } from "@/shared/stores/toastStore";
 
@@ -29,6 +30,7 @@ import {
 } from "../queries";
 import { SectionCountTitle } from "./StructureSummary";
 import { claimPeriodSeed, periodSeedWasClaimed } from "./periodSeed";
+import { periodSeedKeptTeamIds } from "./periodSeedSelection";
 import { PeriodAnchorGate } from "./PeriodAnchorGate";
 import { TeamLinksModal } from "./TeamLinksModal";
 
@@ -164,16 +166,11 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
       return;
     }
     claimPeriodSeed(calendarEntryId);
-    // Fermeture (structure verrouillée) : tout le club reste actif → aucun retrait d'office.
-    // Reprise : garder les 2 premiers RANGS (S+A) par RANG et non par occupation — un rang vide
-    // (pas de Fanion) ne doit pas promouvoir un rang inférieur par un slice() positionnel des
-    // groupes. Les rangs sont ordonnés par id (1=S…5=D). GARDE-FOU : un club SANS aucune équipe
-    // en S/A (petit club tout en loisir) ne doit pas voir TOUT le monde désactivé — on retombe
-    // alors sur le meilleur rang réellement présent (topTierId) : la reprise n'est jamais vide.
-    const topRankIds = new Set([...tiers].sort((a, b) => a.id - b.id).slice(0, 2).map((t) => t.id));
-    const keptByRank = teams.filter((t) => topRankIds.has(t.priorityTierId));
-    const keepIds = new Set((keptByRank.length > 0 ? keptByRank : teams.filter((t) => t.priorityTierId === topTierId)).map((t) => t.id));
-    const toDeactivate = isClosure ? [] : teams.filter((t) => !keepIds.has(t.id));
+    // Le tri par défaut vit dans la MAISON UNIQUE partagée (D-e) : `periodSeedKeptTeamIds`,
+    // miroir de `PlanTeamSelectionSeeder::keptTeamIds` côté serveur (le transfert le matérialise).
+    // Fermeture → tout retenu (toDeactivate vide) ; reprise → S+A, repli sur le meilleur rang présent.
+    const keepIds = periodSeedKeptTeamIds(teams, tiers, isClosure);
+    const toDeactivate = teams.filter((t) => !keepIds.has(t.id));
     if (0 === toDeactivate.length) {
       return;
     }
@@ -282,11 +279,16 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
               const active = isActive(t);
               return (
                 <div key={t.id} className="flex items-center justify-between gap-3 border-b border-border/60 py-1.5 text-sm last:border-0">
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" checked={active} disabled={busy} onChange={(e) => toggle(t, e.target.checked)} aria-label={`${t.name} active cette période`} />
-                    <span className={cn(!active && "text-muted-foreground line-through")}>{t.name}</span>
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={active} disabled={busy} onChange={(e) => toggle(t, e.target.checked)} aria-label={`${t.name} active cette période`} />
+                      <span className={cn(!active && "text-muted-foreground line-through")}>{t.name}</span>
+                    </label>
                     {linksLabelOf(t.id) ? <span className="text-xs italic text-muted-foreground">· {linksLabelOf(t.id)}</span> : null}
-                  </label>
+                    {/* P2-63 PR 5 (F) — provenance « via doléances », SEULEMENT pour la valeur
+                        'coach_wish' (une équipe activée par la mutualisation porte 'mutualisation'). */}
+                    {"coach_wish" === overrideOf.get(t.id)?.source ? <StatusPill variant="accent">via doléances</StatusPill> : null}
+                  </div>
                   <div className="flex items-center gap-2">
                     <label className={cn("flex items-center gap-1 text-xs text-muted-foreground", !active && "opacity-50")}>
                       séances
