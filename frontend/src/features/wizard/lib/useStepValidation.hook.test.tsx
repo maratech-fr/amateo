@@ -12,6 +12,7 @@ let constraintValidation: ReturnType<typeof q>;
 let teamOverrides: ReturnType<typeof q>;
 let venueOverrides: ReturnType<typeof q>;
 let periodSlots: ReturnType<typeof q>;
+let reservations: ReturnType<typeof q>;
 const store = { reservations: [], mode: "season", calendarEntryId: null as string | null, stepId: "recap" };
 
 // Le plan de la période : ancre des réservations depuis le lot C3 (inv. 5).
@@ -33,7 +34,7 @@ vi.mock("../queries", () => ({
   useWizardTeamCoaches: () => q([]),
   useWizardCoachPlayers: () => q([]),
   useConstraintValidation: () => constraintValidation,
-  useReservations: () => q([]),
+  useReservations: () => reservations,
   useTeamPeriodOverrides: () => teamOverrides,
   usePeriodSlots: () => periodSlots,
   useVenuePeriodOverrides: () => venueOverrides,
@@ -53,6 +54,7 @@ describe("useStepValidation — no false blocking error during load", () => {
     constraintValidation = q(undefined);
     teamOverrides = q([]);
     venueOverrides = q([]);
+    reservations = q([]);
     periodSlots = q([]);
     store.mode = "season";
     store.calendarEntryId = null;
@@ -86,6 +88,7 @@ describe("useStepValidation — les avertissements du serveur remontent au réca
     constraintValidation = q(undefined);
     teamOverrides = q([]);
     venueOverrides = q([]);
+    reservations = q([]);
     periodSlots = q([]);
     store.mode = "season";
     store.calendarEntryId = null;
@@ -137,6 +140,7 @@ describe("useStepValidation — période : le verdict compte les ACTIFS", () => 
     constraintValidation = q(undefined);
     teamOverrides = q([]);
     venueOverrides = q([]);
+    reservations = q([]);
     periodSlots = q([{ venueId: "v1" }, { venueId: "v2" }]);
     store.mode = "period";
     store.calendarEntryId = "entry-1";
@@ -175,5 +179,52 @@ describe("useStepValidation — période : le verdict compte les ACTIFS", () => 
 
     expect(result.current.pending).toBe(true);
     expect(result.current.errors).toEqual([]);
+  });
+});
+
+/**
+ * D2 (lot 2) — le verdict du récap PORTE les notices de créneau partagé (une seule vérité, lue
+ * par le rail, l'accordéon et le gate). La LOGIQUE de `sharedSlotStatuses` est couverte par
+ * `reservationSlots.test.ts` ; ici on vérifie seulement que le verdict les expose, typées.
+ */
+describe("useStepValidation — recap : les notices de créneau partagé (D2)", () => {
+  const sharedSlot = { id: "sl1", venueId: "v1", dayOfWeek: 1, startTime: "18:00", durationMinutes: 90, capacity: 2 };
+  beforeEach(() => {
+    teams = q([{ id: "t1" }, { id: "t2" }]);
+    venues = q([{ id: "v1", name: "Gymnase A", canSplit: true }]);
+    slots = q([sharedSlot]);
+    coaches = q([{ id: "c1" }]);
+    constraintValidation = q(undefined);
+    teamOverrides = q([]);
+    venueOverrides = q([]);
+    periodSlots = q([]);
+    reservations = q([]);
+    store.mode = "season";
+    store.calendarEntryId = null;
+    store.stepId = "recap";
+  });
+
+  it("expose une notice d'INFORMATION grise sur un créneau partagé sans réservation", () => {
+    const { result } = renderHook(() => useStepValidation("recap"));
+    expect(result.current.notices).toEqual([
+      expect.objectContaining({ key: "sl1", tone: "muted", place: expect.stringContaining("Gymnase A · Lun 18:00") }),
+    ]);
+  });
+
+  it("expose une notice d'AVERTISSEMENT (orange) sur un créneau partiellement réservé", () => {
+    reservations = q([{ id: "r1", teamId: "t1", venueId: "v1", dayOfWeek: 1, startTime: "18:00" }]);
+    const { result } = renderHook(() => useStepValidation("recap"));
+    expect(result.current.notices).toEqual([
+      expect.objectContaining({ key: "sl1", tone: "warning" }),
+    ]);
+  });
+
+  it("se tait quand le créneau partagé est plein", () => {
+    reservations = q([
+      { id: "r1", teamId: "t1", venueId: "v1", dayOfWeek: 1, startTime: "18:00" },
+      { id: "r2", teamId: "t2", venueId: "v1", dayOfWeek: 1, startTime: "18:00" },
+    ]);
+    const { result } = renderHook(() => useStepValidation("recap"));
+    expect(result.current.notices).toEqual([]);
   });
 });

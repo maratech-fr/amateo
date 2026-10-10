@@ -89,7 +89,10 @@ vi.mock("../queries", () => ({
     ],
   }),
 }));
-vi.mock("../lib/useStepValidation", () => ({ useStepValidation: () => ({ errors: [] }) }));
+// D2/D3 (lot 2) — le verdict du récap porte désormais `errors` (blocages), `warnings` et des
+// notices TYPÉES (créneaux partagés). RecapStep les rend dans l'accordéon d'alertes en haut.
+const validationState = vi.hoisted(() => ({ value: { errors: [] as string[], warnings: [] as string[], notices: [] as Array<{ key: string; tone: "warning" | "muted"; place: string; message: string }> } }));
+vi.mock("../lib/useStepValidation", () => ({ useStepValidation: () => validationState.value }));
 vi.mock("../store", () => ({ useWizardStore: (sel: (s: { mode: string; calendarEntryId: string | null }) => unknown) => sel(storeState.value) }));
 vi.mock("@/shared/stores/toastStore", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -117,6 +120,37 @@ describe("RecapStep — read-only summary", () => {
     recapLayer.venuesRead = "ready";
     anchorState.value = { state: "period", planId: "plan-1" };
     storeState.value = { mode: "season", calendarEntryId: null };
+    validationState.value = { errors: [], warnings: [], notices: [] };
+  });
+
+  // D3 (lot 2) — l'accordéon d'alertes vit EN HAUT, ouvert par défaut ; le bas ne porte plus
+  // qu'une ligne d'état courte. Blocages + notices + warnings y sont réunis.
+  describe("accordéon d'alertes en haut (D3)", () => {
+    it("sans aucune alerte : pas d'accordéon, et le bas dit « Tout est prêt »", async () => {
+      renderWithProviders(<RecapStep />);
+      expect(await screen.findByText(/Tout est prêt/)).toBeInTheDocument();
+      expect(screen.queryByText("À corriger avant de générer")).toBeNull();
+    });
+
+    it("avec un blocage : l'accordéon le montre en haut et le bas renvoie au détail", async () => {
+      validationState.value = { errors: ["Ajoutez au moins une équipe."], warnings: [], notices: [] };
+      renderWithProviders(<RecapStep />);
+      expect(await screen.findByText("À corriger avant de générer")).toBeInTheDocument();
+      expect(screen.getByText("Ajoutez au moins une équipe.")).toBeInTheDocument();
+      expect(screen.getByText(/détail en haut de page/)).toBeInTheDocument();
+      expect(screen.queryByText(/Tout est prêt/)).toBeNull();
+    });
+
+    it("une notice de créneau partagé partiel remonte dans l'accordéon (avertissement)", async () => {
+      validationState.value = {
+        errors: [],
+        warnings: [],
+        notices: [{ key: "s1", tone: "warning", place: "Gymnase A · Lun 18:00", message: "1 équipe(s) réservée(s) sur 2 places — la place restante restera vide." }],
+      };
+      renderWithProviders(<RecapStep />);
+      expect(await screen.findByText(/la place restante restera vide/)).toBeInTheDocument();
+      expect(screen.getByText("Gymnase A · Lun 18:00")).toBeInTheDocument();
+    });
   });
 
   // P2-15 (retour fondateur) — LE symptôme : « je sélectionne 6 équipes sur l'overlay, il
@@ -341,50 +375,43 @@ describe("RecapStep — read-only summary", () => {
  * La règle vit en fonction pure (`sharedSlotStatuses`, testée à part) ; ici on garde le
  * CÂBLAGE : l'écran rend bien les deux messages, nommés par gymnase · jour · heure.
  */
-describe("RecapStep — créneaux partagés", () => {
-  const sharedSlot = { id: "sl1", venueId: "v1", dayOfWeek: 6, startTime: "14:00", durationMinutes: 90, capacity: 2 };
-
+// D2/D3 (lot 2) — les notices de créneau partagé sont désormais CALCULÉES par le verdict
+// (`useStepValidation`, couvert par `reservationSlots.test.ts` + `useStepValidation.hook.test.tsx`)
+// et RENDUES par le récap dans l'accordéon d'alertes, EN HAUT (revirement 2026-10-09 de la
+// décision « en bas » du 2026-08-04). Ces tests ne vérifient plus que le RENDU et sa place.
+describe("RecapStep — créneaux partagés (notices du verdict, D2/D3)", () => {
   beforeEach(() => {
-    h.reservations = [];
-    conflictsState.data = { closures: [], fullyClosedVenueIds: [] };
     recapLayer.teams = [team("t1", "SM1", 3), team("t2", "Fanion", 1)];
     recapLayer.pausedIds = [];
-    // canSplit ABSENT du mock d'origine : on le pose, c'est lui qui arme la capacité 2.
     recapLayer.venues = [{ id: "v1", name: "Gymnase A", color: null, isActive: true, canSplit: true }];
-    recapLayer.slots = [sharedSlot];
+    recapLayer.slots = [];
     recapLayer.teamsRead = "ready";
     recapLayer.venuesRead = "ready";
     anchorState.value = { state: "period", planId: "plan-1" };
     storeState.value = { mode: "season", calendarEntryId: null };
+    validationState.value = { errors: [], warnings: [], notices: [] };
   });
 
-  it("annonce qu'un créneau partagé SANS réservation sera composé par le système", () => {
+  it("rend une notice d'information (créneau partagé sans réservation) venue du verdict", () => {
+    validationState.value = { errors: [], warnings: [], notices: [{ key: "sl1", tone: "muted", place: "Gymnase A · Sam 14:00", message: "créneau partagé (2 places) sans réservation — le système associera les équipes lui-même." }] };
     renderWithProviders(<RecapStep />);
     expect(screen.getByText(/le système associera les équipes lui-même/)).toBeInTheDocument();
     expect(screen.getByText(/Gymnase A · Sam 14:00/)).toBeInTheDocument();
   });
 
-  it("place l'encart EN BAS, avec la zone de décision — pas au-dessus des compteurs (UX fondateur 2026-08-04)", () => {
+  it("place l'accordéon d'alertes EN HAUT, avant les compteurs (D3, revirement 2026-10-09)", () => {
+    validationState.value = { errors: [], warnings: [], notices: [{ key: "sl1", tone: "muted", place: "Gymnase A · Sam 14:00", message: "créneau partagé (2 places) sans réservation." }] };
     renderWithProviders(<RecapStep />);
-    const notice = screen.getByText(/le système associera les équipes lui-même/);
+    const notice = screen.getByText(/Gymnase A · Sam 14:00/);
     const counters = screen.getAllByText("Équipes")[0];
-    // compareDocumentPosition : FOLLOWING = l'encart vient APRÈS les compteurs dans le DOM.
-    expect(counters.compareDocumentPosition(notice.closest("p") ?? notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // PRECEDING = l'accordéon vient AVANT les compteurs dans le DOM (il est en haut de page).
+    expect(counters.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
   });
 
   it("avertit qu'un créneau partagé PARTIELLEMENT réservé gardera sa place vide (ALIGN-07)", () => {
-    h.reservations = [{ id: "r1", teamId: "t1", venueId: "v1", dayOfWeek: 6, startTime: "14:00" }];
+    validationState.value = { errors: [], warnings: [], notices: [{ key: "sl1", tone: "warning", place: "Gymnase A · Sam 14:00", message: "1 équipe(s) réservée(s) sur 2 places — le système ne complétera pas ce créneau, la place restante restera vide." }] };
     renderWithProviders(<RecapStep />);
     expect(screen.getByText(/le système ne complétera pas ce créneau/)).toBeInTheDocument();
-  });
-
-  it("se tait quand le créneau partagé est plein", () => {
-    h.reservations = [
-      { id: "r1", teamId: "t1", venueId: "v1", dayOfWeek: 6, startTime: "14:00" },
-      { id: "r2", teamId: "t2", venueId: "v1", dayOfWeek: 6, startTime: "14:00" },
-    ];
-    renderWithProviders(<RecapStep />);
-    expect(screen.queryByText(/créneau partagé|ne complétera pas/)).not.toBeInTheDocument();
   });
 });
 

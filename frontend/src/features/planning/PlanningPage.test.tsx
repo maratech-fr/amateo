@@ -302,7 +302,10 @@ describe("PlanningPage (integration)", () => {
     renderWithProviders(<PlanningPage />);
 
     expect(await screen.findByText("U11")).toBeInTheDocument();
-    expect(await screen.findByText("Jean Dupont")).toBeInTheDocument();
+    // D5 (lot 2) — la tuile (90 min, gridRowSpan ≥ 2) coupe le coach en deux lignes :
+    // prénom puis nom plus petit dessous. « Jean Dupont » ne vit donc plus en un seul nœud.
+    expect(await screen.findByText("Jean")).toBeInTheDocument();
+    expect(screen.getByText("Dupont")).toBeInTheDocument();
     // Standalone /planning (consultation) hides the toolbar's version SELECTOR — see
     // PlanningToolbar.test (le badge de statut, lui, s'affiche désormais en standalone).
     // ⚠ L'assertion sur le score a été retirée ici : P4-39 l'ayant supprimé partout, elle

@@ -22,7 +22,7 @@ import { toast } from "@/shared/stores/toastStore";
 import type { Closure } from "@/features/cockpit/api";
 
 import type { Venue, VenuePeriodOverride, VenueTrainingSlot } from "../api";
-import { DAYS, DURATIONS, durationOptions, hhmm } from "../lib/days";
+import { DAYS, hhmm } from "../lib/days";
 import { closuresByVenue, closurePeriodLabel } from "../lib/venueClosures";
 import { computeDayMaskToggle, manualClosedWeekdays } from "../lib/venueDays";
 import type { DayMask } from "../lib/venueDays";
@@ -43,7 +43,7 @@ import {
   useWizardVenues,
 } from "../queries";
 import { WEEK } from "../lib/weekGrid";
-import { CapacitySelect, GroupLabelField, SharedSlotHint } from "./slotFields";
+import { CapacitySelect, DurationSelect, GroupLabelField, SharedSlotHint } from "./slotFields";
 import { VenueAvailabilityGrid } from "./VenueAvailabilityGrid";
 import { PeriodAnchorGate } from "./PeriodAnchorGate";
 
@@ -458,13 +458,8 @@ function PeriodVenuePanel({
             l'éditeur — un créneau neuf vaut toujours 1, comme en saison. */}
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground">À poser :</span>
-          <Select aria-label="Durée à poser" className="h-9" wrapperClassName="w-24" value={posingDuration} onChange={(e) => onPosingDuration(Number(e.target.value))}>
-            {DURATIONS.map((d) => (
-              <option key={d} value={d}>
-                {formatDuration(d)}
-              </option>
-            ))}
-          </Select>
+          {/* D8 — sélecteur partagé « Autre… » ; la borne de minuit est vérifiée à la pose. */}
+          <DurationSelect aria-label="Durée à poser" className="h-9" wrapperClassName="w-24" value={posingDuration} onChange={onPosingDuration} />
           <span className="text-xs text-muted-foreground">— cliquez la grille pour ajouter un créneau</span>
         </div>
 
@@ -696,13 +691,8 @@ function PeriodSlotEditor({
         </label>
         <label className="text-xs text-muted-foreground">
           Durée
-          <Select aria-label="Durée" className="mt-0.5 h-9" wrapperClassName="w-28" value={duration} onChange={(e) => (setDuration(Number(e.target.value)), setError(null))}>
-            {durationOptions(duration, slot.durationMinutes).map((d) => (
-              <option key={d} value={d}>
-                {formatDuration(d)}
-              </option>
-            ))}
-          </Select>
+          {/* D8 — « Autre… » ouvre une saisie libre (pas de 15, min 15, fin ≤ minuit vu le début). */}
+          <DurationSelect aria-label="Durée" className="mt-0.5 h-9" wrapperClassName="w-28" value={duration} present={[slot.durationMinutes]} startTime={time} onChange={(d) => (setDuration(d), setError(null))} />
         </label>
         {canSplit ? (
           <div className="text-xs text-muted-foreground">

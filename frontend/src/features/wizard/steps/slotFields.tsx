@@ -1,8 +1,118 @@
+import { useState } from "react";
+
+import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Select } from "@/shared/components/ui/select";
+import { formatDuration } from "@/shared/lib/duration";
+
+import { durationOptions } from "../lib/days";
+import { pastMidnightMessage } from "../lib/slotOverlap";
 
 const CAP_HINT = "Nombre d'équipes pouvant s'entraîner en même temps sur ce créneau (2 = terrain coupé en deux).";
+
+/** Sentinelle de l'option « Autre… » du sélecteur de durée (D8). */
+const OTHER_DURATION = "__other__";
+
+/**
+ * Sélecteur de durée de créneau, foyer unique des quatre sélecteurs (saison/période × barre « À
+ * poser »/éditeur). L'option « Autre… » en FIN de liste ouvre une saisie libre par pas de 15 min
+ * (min 15) ; quand l'heure de début est connue (`startTime`), la fin ne peut pas dépasser minuit.
+ * Le bouton de confirmation DIT son motif de désactivation (`disabledReason`, A11Y-30).
+ *
+ * CHOISIR se restreint, NOMMER jamais : la liste offerte garde les durées non standard déjà
+ * présentes (`present`), comme le faisait `durationOptions`.
+ */
+export function DurationSelect({
+  value,
+  onChange,
+  present = [],
+  startTime,
+  wrapperClassName,
+  className,
+  "aria-label": ariaLabel = "Durée",
+}: {
+  value: number;
+  onChange: (minutes: number) => void;
+  /** Durées non standard à garder OFFERTES (p.ex. la valeur stockée du créneau). */
+  present?: number[];
+  /** HH:MM de début si connu — valide « début + durée ≤ minuit » (sinon la pose le fera plus tard). */
+  startTime?: string;
+  wrapperClassName?: string;
+  className?: string;
+  "aria-label"?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(value));
+  const parsed = Number(draft);
+  let reason: string | null = null;
+  if (!Number.isFinite(parsed) || parsed < 15) {
+    reason = "La durée minimale est de 15 minutes.";
+  } else if (0 !== parsed % 15) {
+    reason = "La durée doit être un multiple de 15 minutes (15, 30, 45…).";
+  } else if (undefined !== startTime) {
+    // `pastMidnightMessage` nomme l'heure et la durée, ou null si le créneau tient dans la journée.
+    reason = pastMidnightMessage(startTime, parsed);
+  }
+  const apply = (): void => {
+    if (null !== reason) {
+      return;
+    }
+    onChange(parsed);
+    setEditing(false);
+  };
+
+  return (
+    <div className="inline-flex flex-col gap-1">
+      <Select
+        aria-label={ariaLabel}
+        wrapperClassName={wrapperClassName}
+        className={className}
+        value={editing ? OTHER_DURATION : String(value)}
+        onChange={(e) => {
+          if (OTHER_DURATION === e.target.value) {
+            setDraft(String(value));
+            setEditing(true);
+            return;
+          }
+          setEditing(false);
+          onChange(Number(e.target.value));
+        }}
+      >
+        {durationOptions(value, ...present).map((d) => (
+          <option key={d} value={d}>
+            {formatDuration(d)}
+          </option>
+        ))}
+        <option value={OTHER_DURATION}>Autre…</option>
+      </Select>
+      {editing ? (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={15}
+              step={15}
+              aria-label="Durée en minutes"
+              className="w-24"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+            />
+            <span className="text-xs text-muted-foreground">min</span>
+            <Button type="button" size="sm" disabled={null !== reason} disabledReason={reason ?? undefined} onClick={apply}>
+              OK
+            </Button>
+          </div>
+          {null !== reason ? (
+            <p role="alert" className="text-xs text-destructive">
+              {reason}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 /**
  * Sélecteur de capacité — seul un gymnase divisible (canSplit) accueille 2 ou 3

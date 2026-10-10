@@ -25,7 +25,9 @@ export function FeedbackButton({ screen, scheduleId, variant = "ghost", classNam
   return (
     <>
       <Button type="button" variant={variant} size="sm" className={cn("h-8 gap-1.5 px-2 text-muted-foreground", className)} onClick={() => setOpen(true)}>
-        <Flag className="size-4" />
+        {/* D6 (lot 2) — l'icône passe au ton destructif (repère visuel du canal de signalement) ;
+            le libellé reste gris (`text-muted-foreground` du bouton) : on attire l'œil sans crier. */}
+        <Flag className="size-4 text-destructive" />
         Signaler
       </Button>
       {open ? <FeedbackDialog variant="contextual" screen={screen} scheduleId={scheduleId} onClose={() => setOpen(false)} /> : null}

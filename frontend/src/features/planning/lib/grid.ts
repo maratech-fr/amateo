@@ -43,7 +43,7 @@ export function parseTimeToMinutes(time: string): number {
 /** minutes → "HH:MM" (zero-padded). */
 // D-20 : le formateur vit en `shared/lib/time` — cette copie ne clampait pas et rendait « 25:15 ».
 import { formatMinutes, parseTime } from "@/shared/lib/time";
-import { coachFullName } from "@/shared/lib/coachName";
+import { coachFullName, coachNameParts } from "@/shared/lib/coachName";
 import { assignLanes } from "@/shared/lib/gridLayout";
 import { compareNamesFr } from "@/shared/lib/nameOrder";
 
@@ -291,6 +291,13 @@ export interface GridCell {
   venueId: string;
   venueColor: string | null;
   coachLabel: string;
+  /**
+   * D5 (lot 2) — les deux moitiés du nom du coach QUAND la sous-ligne est un coach (vues gymnase
+   * et équipe, avec un coach réel), pour que la tuile le coupe sur deux lignes si elle a la
+   * hauteur (`gridRowSpan ≥ 2`). `null` sinon : vue coach (sous-ligne = gymnase), équipe sans
+   * coach, ou carte fusionnée (qui liste des équipes). La MISE EN PAGE reste côté `WeekGrid`.
+   */
+  coachName: { first: string; last: string } | null;
   day: number;
   startLabel: string;
   endLabel: string;
@@ -456,6 +463,8 @@ export function buildGrid(slots: Slot[], viewMode: ViewMode, lookups: Lookups, f
             venueId: slot.venueId,
             venueColor: venue?.color ?? null,
             coachLabel,
+            // Carte fusionnée : elle liste des ÉQUIPES, pas un coach en sous-ligne.
+            coachName: null,
             day: slot.dayOfWeek,
             startLabel: formatMinutes(start),
             endLabel: formatMinutes(start + slot.durationMinutes),
@@ -512,6 +521,9 @@ export function buildGrid(slots: Slot[], viewMode: ViewMode, lookups: Lookups, f
         venueId: slot.venueId,
         venueColor: venue?.color ?? null,
         coachLabel,
+        // D5 — la sous-ligne porte le coach dans les vues gymnase/équipe (jamais en vue coach, où
+        // elle montre le gymnase). `null` quand l'équipe n'a pas de coach : rien à couper en deux.
+        coachName: ("gymnase" === columnView || "equipe" === columnView) && null !== mainCoachId ? coachNameParts(lookups.coaches.get(mainCoachId)) : null,
         day: slot.dayOfWeek,
         startLabel: formatMinutes(start),
         endLabel: formatMinutes(start + slot.durationMinutes),

@@ -159,6 +159,13 @@ describe("PlanningToolbar — schedule lifecycle (N3)", () => {
     expect(screen.getByText("Terminé")).toBeInTheDocument();
   });
 
+  // D4 (lot 2) — « Valider » passe en accent PLEIN (variant default) : c'est l'action de sortie
+  // de l'espace de travail, elle doit se lire comme le bouton principal, même place, même taille.
+  it("rend « Valider » en accent plein (variant default)", () => {
+    renderToolbar(schedule("COMPLETED"));
+    expect(screen.getByRole("button", { name: /valider/i })).toHaveClass("bg-accent");
+  });
+
   it("hides Rouvrir (it lives on standalone /planning now) and hides Régénérer on the version in force (read-only)", () => {
     // « En vigueur » is the plan's pointer (isChosen), not a status. Nouveau contrat
     // (2026-08-20) : Rouvrir est le geste de l'écran /planning (la version en vigueur),

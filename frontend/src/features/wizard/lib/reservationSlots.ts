@@ -91,7 +91,9 @@ export function sharedSlotStatuses(
   const statuses: SharedSlotStatus[] = [];
   for (const slot of slots) {
     const capacity = effectiveSlotCapacity(slot, venueCanSplit);
-    if (capacity < 2) {
+    // Contrôle POSITIF `>= 2` (plutôt que `< 2`) : fail-closed sur une capacité absente — un
+    // créneau sans capacité connue n'est pas « partagé », et on ne lit alors pas plus loin.
+    if (!(capacity >= 2)) {
       continue;
     }
     const reservedTeamIds = bySlot.get(slotKey(slot.venueId, slot.dayOfWeek, slot.startTime)) ?? [];

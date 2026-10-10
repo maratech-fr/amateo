@@ -17,7 +17,6 @@ import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
 import { nextVenueColor } from "@/shared/lib/color";
 import { useSocleValidated } from "@/shared/lib/socle";
-import { formatDuration } from "@/shared/lib/duration";
 import { toast } from "@/shared/stores/toastStore";
 
 import { MatchWindowsEditor } from "@/features/matches/MatchWindowsEditor";
@@ -26,7 +25,7 @@ import { useVenueMatchWindows } from "@/features/matches/queries";
 import { useMe } from "@/shared/session/queries";
 
 import type { FfbbSalle, Venue, VenueTrainingSlot } from "../api";
-import { DAYS, durationOptions, DURATIONS, hhmm } from "../lib/days";
+import { DAYS, hhmm } from "../lib/days";
 import { filterSalles } from "../lib/salleSuggestions";
 import { slotPlacementError } from "../lib/slotOverlap";
 import { useCreateSlot, useCreateVenue, useDeleteSlot, useDeletionImpact, useDeleteVenue, useFfbbSalles, useFfbbSallesProches, useReservations, useUpdateSlot, useUpdateVenue, useVenueGeoCheck, useVenueSlots, useWizardVenues } from "../queries";
@@ -37,7 +36,7 @@ import { PeriodVenues } from "./PeriodVenues";
 import { TravelMatrixModal } from "./TravelMatrixModal";
 import { VenueAvailabilityGrid } from "./VenueAvailabilityGrid";
 import { VenueGeocodeField } from "./VenueGeocodeField";
-import { CapacitySelect, GroupLabelField, SharedSlotHint } from "./slotFields";
+import { CapacitySelect, DurationSelect, GroupLabelField, SharedSlotHint } from "./slotFields";
 import { WEEK } from "../lib/weekGrid";
 import { venuesWithoutSlot } from "../lib/useStepValidation";
 import { splitCascadePreview, type SplitCascadePreview } from "../lib/reservationSlots";
@@ -182,13 +181,8 @@ function SlotEditor({ slot, canSplit, otherSlots, onClose }: { slot: VenueTraini
         </label>
         <label className="text-xs text-muted-foreground">
           Durée
-          <Select aria-label="Durée" className="mt-0.5 h-9" wrapperClassName="w-28" value={duration} onChange={(e) => (setDuration(Number(e.target.value)), setError(null))}>
-            {durationOptions(duration, slot.durationMinutes).map((d) => (
-              <option key={d} value={d}>
-                {formatDuration(d)}
-              </option>
-            ))}
-          </Select>
+          {/* D8 — « Autre… » ouvre une saisie libre (pas de 15, min 15, fin ≤ minuit vu le début). */}
+          <DurationSelect aria-label="Durée" className="mt-0.5 h-9" wrapperClassName="w-28" value={duration} present={[slot.durationMinutes]} startTime={time} onChange={(d) => (setDuration(d), setError(null))} />
         </label>
         {canSplit ? (
           <div className="text-xs text-muted-foreground">
@@ -721,13 +715,9 @@ function VenuesEditor() {
               Capacity is set per-slot in the edit panel (a new slot is always 1). */
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <span className="text-xs text-muted-foreground">À poser :</span>
-            <Select aria-label="Durée à poser" className="h-9" wrapperClassName="w-24" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
-              {DURATIONS.map((d) => (
-                <option key={d} value={d}>
-                  {formatDuration(d)}
-                </option>
-              ))}
-            </Select>
+            {/* D8 — même sélecteur partagé ; pas d'heure connue ici (le début vient du clic
+                sur la grille) : la borne de minuit est vérifiée à la pose (`slotPlacementError`). */}
+            <DurationSelect aria-label="Durée à poser" className="h-9" wrapperClassName="w-24" value={duration} onChange={setDuration} />
             {/* L'indice manquait : la barre annonçait une durée sans dire ce qu'on en fait
                 (retour terrain). Il vit ICI, là où le regard est déjà au moment où la
                 question se pose. */}

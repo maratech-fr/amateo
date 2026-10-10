@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { COACH_UNKNOWN, coachFullName } from "./coachName";
+import { COACH_UNKNOWN, coachFullName, coachNameParts } from "./coachName";
 import { isManagementRole, MANAGEMENT_ROLES } from "./roles";
 
 /**
@@ -19,6 +19,27 @@ describe("nom affiché d'un coach (foyer unique, D-33)", () => {
   it("un coach absent ou sans nom rend UN seul libellé", () => {
     expect(coachFullName(null)).toBe(COACH_UNKNOWN);
     expect(coachFullName({ firstName: "", lastName: "" })).toBe(COACH_UNKNOWN);
+  });
+});
+
+/**
+ * D5 (lot 2) — la tuile du planning coupe le nom du coach en deux lignes (prénom puis nom plus
+ * petit) quand elle a la hauteur : le foyer unique fournit les deux moitiés, trimmées, sans
+ * décider de la mise en page.
+ */
+describe("coachNameParts — les deux moitiés du nom (D5)", () => {
+  it("rend prénom et nom trimmés séparément", () => {
+    expect(coachNameParts({ firstName: "Marie", lastName: "Durand" })).toEqual({ first: "Marie", last: "Durand" });
+    expect(coachNameParts({ firstName: " Marie ", lastName: " Durand " })).toEqual({ first: "Marie", last: "Durand" });
+  });
+
+  it("laisse `last` vide quand le coach n'a pas de nom de famille", () => {
+    expect(coachNameParts({ firstName: "Alex", lastName: null })).toEqual({ first: "Alex", last: "" });
+  });
+
+  it("un coach absent ou totalement vide retombe sur le libellé d'inconnu", () => {
+    expect(coachNameParts(null)).toEqual({ first: COACH_UNKNOWN, last: "" });
+    expect(coachNameParts({ firstName: "", lastName: "" })).toEqual({ first: COACH_UNKNOWN, last: "" });
   });
 });
 

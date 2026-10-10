@@ -16,3 +16,19 @@ interface CoachLike {
 /** « Prénom Nom », sans espace parasite quand une des deux moitiés manque. */
 export const coachFullName = (coach: CoachLike | null | undefined): string =>
   null == coach ? COACH_UNKNOWN : `${coach.firstName ?? ""} ${coach.lastName ?? ""}`.trim() || COACH_UNKNOWN;
+
+/**
+ * Les deux moitiés du nom, trimmées (D5) — la tuile du planning coupe le nom du coach sur deux
+ * lignes (prénom puis nom plus petit) quand elle a la hauteur. Mêmes replis que `coachFullName` :
+ * un coach absent ou totalement vide retombe sur `COACH_UNKNOWN` (dans `first`, `last` vide). La
+ * mise en page (deux lignes ou une seule) est décidée par l'appelant, jamais ici.
+ */
+export const coachNameParts = (coach: CoachLike | null | undefined): { first: string; last: string } => {
+  if (null == coach) {
+    return { first: COACH_UNKNOWN, last: "" };
+  }
+  const first = (coach.firstName ?? "").trim();
+  const last = (coach.lastName ?? "").trim();
+
+  return "" === first && "" === last ? { first: COACH_UNKNOWN, last: "" } : { first, last };
+};
