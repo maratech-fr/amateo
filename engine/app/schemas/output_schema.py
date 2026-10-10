@@ -68,6 +68,13 @@ class DiagnosticCauseSchema(SerializableModel):
         # DIFFÉRENT, une séance VERROUILLÉE dont le battement était plus court que le barème de
         # trajet (règle ``travelTime`` MANDATORY).
         "travel_time",
+        # PR 6 (lot 8) — « garder ses créneaux de saison » : un créneau de socle NON conservé.
+        # ``slot_absent`` = aucune fenêtre de gymnase de la période ne couvre ce jour+heure ;
+        # ``displaced`` = une fenêtre existe mais l'équipe n'y est pas (déplacée, ou jour fermé par
+        # indisponibilité). Portés par le diagnostic ``season_slots_kept`` (jamais une séance fermée
+        # par une RÈGLE — ils vivent dans la même liste ``causes`` par commodité de contrat).
+        "slot_absent",
+        "displaced",
     ]
     constraint_id: str | None = Field(default=None, alias="constraintId")
     label: str | None = None
@@ -110,6 +117,10 @@ class DiagnosticSchema(SerializableModel):
         "placement_problem_too_large",
         "unused_slot",
         "venue_minimum_unreachable",
+        # PR 6 (lot 8) — « garder ses créneaux de saison » (Q3bis) : N/M créneaux de la version
+        # pointée du socle conservés pour une équipe qui porte la contrainte SEASON_SLOTS, les
+        # perdus nommés avec leur cause (``slot_absent`` / ``displaced``, cf. DiagnosticCauseSchema).
+        "season_slots_kept",
     ]
     severity: str
     # ``implicit_rule_not_honored`` porte la RÈGLE concernée (les 4 clés du bloc

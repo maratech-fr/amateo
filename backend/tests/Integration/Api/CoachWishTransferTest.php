@@ -204,6 +204,43 @@ final class CoachWishTransferTest extends WebTestCase
         self::assertSame(['preferredDays' => [1]], $constraint->getConfig());
     }
 
+    public function testKeepSeasonSlotsWritesASeasonSlotsConstraint(): void
+    {
+        // PR 6 — le coach a coché « garder mes créneaux habituels » : le transfert crée une
+        // contrainte SEASON_SLOTS (TEAM, toujours PRÉFÉRÉE, sans config, ciblant l'équipe).
+        $wish = $this->createWish($this->teamS->getId(), $this->coach->getId(), slots: 2);
+        $reloaded = $this->em->getRepository(CoachWish::class)->find($wish->getId());
+        self::assertInstanceOf(CoachWish::class, $reloaded);
+        $reloaded->setKeepSeasonSlots(true);
+        $this->em->flush();
+
+        $this->transfer([$wish->getId()]);
+
+        $seasonSlots = array_values(array_filter(
+            $this->transferConstraintsFor($wish->getId()),
+            static fn (Constraint $c): bool => ConstraintFamily::SEASON_SLOTS === $c->getFamily(),
+        ));
+        self::assertCount(1, $seasonSlots, 'une case « garder ses créneaux » cochée crée UNE contrainte SEASON_SLOTS');
+        self::assertSame(ConstraintScope::TEAM, $seasonSlots[0]->getScope());
+        self::assertSame($this->teamS->getId(), $seasonSlots[0]->getScopeTargetId());
+        self::assertSame(ConstraintRuleType::PREFERRED, $seasonSlots[0]->getRuleType());
+        self::assertSame([], $seasonSlots[0]->getConfig());
+    }
+
+    public function testKeepSeasonSlotsUncheckedWritesNoSeasonSlotsConstraint(): void
+    {
+        // Témoin : sans la case cochée, aucune contrainte SEASON_SLOTS (défaut keepSeasonSlots = false).
+        $wish = $this->createWish($this->teamS->getId(), $this->coach->getId(), slots: 2, wishedDays: [1]);
+
+        $this->transfer([$wish->getId()]);
+
+        $seasonSlots = array_filter(
+            $this->transferConstraintsFor($wish->getId()),
+            static fn (Constraint $c): bool => ConstraintFamily::SEASON_SLOTS === $c->getFamily(),
+        );
+        self::assertCount(0, $seasonSlots, 'sans la case cochée, pas de contrainte SEASON_SLOTS');
+    }
+
     public function testRetransferIsIdempotentBySourceOccurrence(): void
     {
         // Une contrainte MANUELLE du gestionnaire (source null, MÊME équipe, MÊME entrée) : elle

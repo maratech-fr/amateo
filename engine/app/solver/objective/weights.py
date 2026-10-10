@@ -28,7 +28,16 @@ from ..helpers import MISSING
 # l'identifiant du barème change. INERTE par défaut (aucun ``socleReferenceAssignments`` émis ⇒
 # aucun bonus, goldens et score byte-identiques) — le backend ne l'émet QU'en comblement —,
 # mais présent dès qu'une référence l'est.
-SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"
+# V14 (PR 6, lot 8 — « garder ses créneaux de saison ») — le MÊME terme de référence socle
+# (``add_socle_reference_bonus``) gagne un SECOND régime : pour une référence ``keep: true`` (émise
+# en génération PLEINE pour les équipes portant la contrainte ``SEASON_SLOTS``, avec son gymnase),
+# le bonus est PLEIN (gymnase ∧ jour ∧ heure, ``SOCLE_KEEP_FULL_TIER_WEIGHTS`` 65-85) ou PARTIEL
+# (jour ∧ heure seuls, gymnase différent, ``SOCLE_KEEP_PARTIAL_TIER_WEIGHTS`` 44-60). Même règle de
+# bump que V12/V13 : dès qu'un terme peut faire BOUGER le score rapporté, l'identifiant du barème
+# change. INERTE par défaut (aucune référence ``keep`` émise ⇒ aucun bonus de ce régime, goldens et
+# score du régime comblement byte-identiques — les poids 12-20 de ``SOCLE_REFERENCE_TIER_WEIGHTS``
+# ne bougent pas), mais présent dès qu'une équipe « garde ses créneaux ».
+SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V14"
 
 LEVEL_2_OBJECTIVE_WEIGHTS = MappingProxyType(
     {
@@ -293,6 +302,73 @@ SOCLE_REFERENCE_TIER_WEIGHTS = MappingProxyType(
         "B": 16,
         "C": 14,
         "D": 12,
+    }
+)
+
+# PR 6 (lot 8 — « garder ses créneaux de saison », Q3/Q4/Q3bis) — BONUS de référence socle en
+# régime « keep » : quand une équipe porte la contrainte ``SEASON_SLOTS``, le backend émet en
+# génération PLEINE ses placements de socle AVEC le gymnase (``keep: true``, ``venue_id`` posé).
+# La MÊME variable ``model.x[(team, venue, day, start)]`` reçoit alors :
+#   - le poids PLEIN si ``venue ∧ day ∧ start`` sont TOUS ceux du socle (le créneau est intégralement
+#     restitué) ;
+#   - le poids PARTIEL si seuls ``day ∧ start`` le sont (même jour+heure, autre gymnase).
+# « On garde surtout le jour+heure ; le gymnase si possible » (D-d). Deux tables DÉDIÉES sur le
+# patron de ``SOCLE_REFERENCE_TIER_WEIGHTS`` ; le poids CROÎT avec le tier (S>A>B>C>D) : un coach
+# senior « garde son créneau un maximum » (mots du fondateur), une équipe secondaire absorbe le
+# déplacement. Plein > partiel à tier égal : à horaire tenu, garder AUSSI le gymnase vaut toujours
+# mieux. « Préférence TRÈS FORTE, pas un bonus de départage » (Q3/Q4) : les poids sont un ordre de
+# grandeur AU-DESSUS de l'empilement réaliste des autres préférences (~35-40, D-g).
+#
+# Preuve d'empilement (patron des « ceilings » SOCLE_REFERENCE_TIER_WEIGHTS / TEAM_LINK_TIER_WEIGHTS) :
+#   0. Une séance PLACÉE vaut au minimum 21 (tier D 1 + session_count 20) ; retirer une séance d'une
+#      équipe SOUS son quota déclenche ``missing_session`` (−1000) : le plancher réel d'une
+#      suppression est ≥ 1021.
+#   1. LE BONUS NE SUPPRIME JAMAIS UNE SÉANCE (Q3bis — « placer les séances reste prioritaire »). Le
+#      bonus n'existe QUE sur une variable POSÉE ; le retirer coûte ≥ 21 + le bonus (≤ 85) + 1000 si
+#      l'équipe passe sous quota. Un bonus ≤ 85 ≪ 1021 : garder un créneau de saison ne peut jamais
+#      rentabiliser la perte d'une séance (ni la sienne, ni celle d'une autre équipe). Chaque variable
+#      ne porte qu'UN bonus de référence (sa propre clé ``(team, day, start)`` y est ou n'y est pas —
+#      dédup dans ``add_socle_reference_bonus``), donc aucun empilement > 85 sur une seule séance ;
+#      plein ET partiel ne se CUMULENT pas (une référence est l'un OU l'autre selon le gymnase posé).
+#   2. L'ORDRE DES TIERS POUR LE PLACEMENT RESTE S>A>B>C>D (D-g — « sous l'écart B−C »). Deux équipes
+#      qui se disputent UN créneau départagent d'abord sur le placement : les écarts de tier posés
+#      sont S−A = 9000, A−B = 900, B−C = 90 (``tier + session_count``). Le plus GRAND poids que puisse
+#      porter l'équipe de tier INFÉRIEUR d'un couple B−C est le plein de C = 70 < 90 : jamais une
+#      équipe C ne vole le créneau d'une B grâce à son keep (« une équipe B non placée ne saute pas au
+#      profit d'un keep C/D »). A fortiori pour A−B (900) et S−A (9000). Le SEUL couple à écart < bonus
+#      est C−D = 9 : là, comme le fait déjà le confort, le bonus réalloue entre C et D, et le bonus
+#      DÉCROISSANT (C 70 > D 65, C 48 > D 44) fait tenir le tier SUPÉRIEUR — « wobble C↔D » DÉCLARÉ
+#      ACCEPTÉ (voir CHAINING_TIER_WEIGHTS : « the club treats C/D as indifferent »). Aucune inversion
+#      S>A / A>B / B>C possible.
+#   3. DISCRIMINANCE vs les autres préférences (Q3 — « très forte, pas un bonus »). Le plus PETIT keep
+#      (partiel D 44) domine tout empilement réaliste de confort sur la MÊME séance : preferred 10 +
+#      preferred_day 5 + preferred_time 5 + deux bien-être 6+6 = 32 < 44 ; le résiduel pathologique
+#      (~68, D-g) reste sous le plein D 65 et sous tous les pleins. « Garder ses créneaux de saison
+#      passe avant TOUTES les autres préférences » (Q3bis).
+#   4. COEXISTENCE avec la proximité au précédent (``PLACEMENT_PROXIMITY_WEIGHT`` 9, régénération). La
+#      note (d) de PLACEMENT_PROXIMITY_WEIGHT supposait les deux greffes exclusives ; en génération
+#      PLEINE d'un plan de période RÉGÉNÉRÉ, ``previousAssignments`` ET un keep peuvent coexister sur
+#      une même variable (9 + keep). Le plafond reste tenu : sur l'équipe de tier INFÉRIEUR d'un couple
+#      B−C, le pire total est plein C 70 + proximité 9 = 79 < 90 — toujours pas d'inversion B−C. Et
+#      9 + 85 ≪ 1021 : aucune suppression de séance. La coexistence ne franchit que le wobble C↔D,
+#      déjà accepté.
+SOCLE_KEEP_FULL_TIER_WEIGHTS = MappingProxyType(
+    {
+        "S": 85,
+        "A": 80,
+        "B": 75,
+        "C": 70,
+        "D": 65,
+    }
+)
+
+SOCLE_KEEP_PARTIAL_TIER_WEIGHTS = MappingProxyType(
+    {
+        "S": 60,
+        "A": 56,
+        "B": 52,
+        "C": 48,
+        "D": 44,
     }
 )
 

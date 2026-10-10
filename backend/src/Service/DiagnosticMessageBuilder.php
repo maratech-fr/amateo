@@ -55,6 +55,9 @@ final class DiagnosticMessageBuilder
             // le backend AJOUTE l'ORIGINE de chaque contrainte citée, qu'il est le seul à connaître
             // (le moteur ignore `calendarEntryId`). Message vide ⇒ repli générique.
             'shared_block_not_honored' => $this->buildSharedBlockNotHonored($diagnostic, $engineMessage, $constraintOrigins),
+            // PR 6 (lot 8) — « Garder ses créneaux de saison » : le moteur émet déjà le message
+            // nommé (« SM1 : 2/3 créneaux de saison conservés. Non conservés : … »), on le préfère.
+            'season_slots_kept' => '' !== $engineMessage ? $engineMessage : 'Des créneaux de saison n\'ont pas pu être conservés.',
             default => '' !== $engineMessage ? $engineMessage : 'Diagnostic inconnu.',
         };
     }

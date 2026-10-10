@@ -225,17 +225,31 @@ class PreviousAssignmentSchema(SerializableModel):
 
 
 class SocleReferenceAssignmentSchema(SerializableModel):
-    """PR-3 (comblement) — un placement de la version POINTÉE du socle, référence de comblement.
+    """Un placement de la version POINTÉE du socle, émis par le backend comme référence.
 
-    Chaque entrée désigne ``(teamId, dayOfWeek, startTime)`` — SANS ``venueId`` : le gymnase est
-    LIBRE (« changer de gymnase = pas grave ; changer de jour/heure = coûteux »). En comblement,
-    le solveur reçoit un bonus PAR TIER (``add_socle_reference_bonus``) quand une séance comblée
-    retrouve ce jour+heure, quel que soit le gymnase. Le champ est INERTE tant que le backend ne
-    l'émet pas (patron ``previousAssignments``) : absent/vide ⇒ chemin byte-identique."""
+    Deux usages, portés par le même bloc (contrat 1.5) :
+
+    - **COMBLEMENT** (``keep`` absent/false, ``venueId`` absent) — PR-3 : chaque entrée désigne
+      ``(teamId, dayOfWeek, startTime)`` SANS gymnase ; en comblement le solveur reçoit un bonus
+      PAR TIER (``SOCLE_REFERENCE_TIER_WEIGHTS`` 12-20) quand une séance comblée retrouve ce
+      jour+heure, quel que soit le gymnase.
+    - **« GARDER SES CRÉNEAUX DE SAISON »** (``keep: true``, ``venueId`` renseigné) — PR 6 (lot 8) :
+      en génération PLEINE d'un plan de période, le backend émet pour les équipes qui portent la
+      contrainte ``SEASON_SLOTS`` les placements de socle AVEC leur gymnase. Le bonus est alors
+      PLEIN quand gymnase ∧ jour ∧ heure sont tous retrouvés (``SOCLE_KEEP_FULL_TIER_WEIGHTS``
+      65-85), PARTIEL quand seuls jour ∧ heure le sont (gymnase différent,
+      ``SOCLE_KEEP_PARTIAL_TIER_WEIGHTS`` 44-60) — « on garde surtout le jour+heure, et le gymnase
+      si possible » (D-d). Le ``venueId`` reste FACULTATIF : une référence ``keep`` sans gymnase
+      retombe sur le barème partiel (jour+heure seuls).
+
+    Le champ est INERTE tant que le backend ne l'émet pas (patron ``previousAssignments``) :
+    absent/vide ⇒ chemin byte-identique. ``add_socle_reference_bonus`` consomme les deux régimes."""
 
     team_id: str = Field(alias="teamId")
     day_of_week: int = Field(alias="dayOfWeek", ge=1, le=7)
     start_time: str = Field(alias="startTime")  # "19:00"
+    venue_id: str | None = Field(default=None, alias="venueId")
+    keep: bool = False
 
 
 class SharedTrainingBlockSchema(SerializableModel):
@@ -307,7 +321,7 @@ class ScheduleInputSchema(SerializableModel):
     # la valeur du fil. On l'aligne néanmoins sur le contrat courant (engine/CONTRACT_VERSION) pour
     # qu'aucun lecteur ne le prenne pour une version concurrente ; gardé par
     # test_schema_version_defaults_match_contract_version.
-    version: str = "1.4"
+    version: str = "1.5"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     schedule_name: str | None = Field(default=None, alias="scheduleName")

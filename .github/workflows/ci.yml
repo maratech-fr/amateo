@@ -981,6 +981,15 @@ jobs:
       - name: SharedBlockPreSolveMirrorParityTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/SharedBlockPreSolveMirrorParityTest.php --group phase1'
 
+      # PR 6 / lot 8 (axe constraint semantics) — « Garder ses créneaux de saison » est HONORÉ par le
+      # VRAI moteur (/generate, contrat 1.5) : l'effet passe par socleReferenceAssignments en keep. (1)
+      # TÉMOIN — une équipe qui préfère (souple) un autre jour garde quand même son créneau de saison
+      # grâce au keep ; sans keep, elle suit sa préférence. (2) CONTRE-TÉMOIN (Q3bis) — quand une autre
+      # équipe n'a aucune autre place, le keep cède et l'équipe de saison bouge (placer une séance
+      # prime). Skip propre si l'engine est absent. Sans ce gate, le keep cesserait en silence de tenir.
+      - name: SeasonSlotKeepSemanticsGateTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/SeasonSlotKeepSemanticsGateTest.php --group phase1'
+
       # Axe auth & memberships — le code FFBB est l'IDENTITÉ fédérale du club : un PUT
       # qui le CHANGE est refusé 422 (le même code reste idempotent). Falsifié : garde
       # désactivée → le PUT réécrit le code (200). Sans ce gate, un club pourrait migrer

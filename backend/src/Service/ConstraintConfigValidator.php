@@ -96,6 +96,10 @@ final class ConstraintConfigValidator
             'fromTime' => 'time',
             'untilTime' => 'time',
         ],
+        // PR 6 (lot 8) — « Garder ses créneaux de saison » : AUCUNE clé de config (un marqueur
+        // scope TEAM). Son effet n'est pas porté par un config lu au moteur mais par les placements
+        // de socle émis en `socleReferenceAssignments` (keep). Toute clé posée dessus est refusée.
+        'SEASON_SLOTS' => [],
     ];
 
     /** La seule valeur que `type` accepte — cf. `VenueClosureDays::isVenueClosure`. */

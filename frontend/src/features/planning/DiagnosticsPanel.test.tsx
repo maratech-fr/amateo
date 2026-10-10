@@ -532,3 +532,24 @@ describe("DiagnosticsPanel — la carte d'échec nomme les règles en conflit (P
     expect(screen.queryByText(/day_forced|session_floor|team_link|travel_time/)).toBeNull();
   });
 });
+
+describe("DiagnosticsPanel — « garder ses créneaux de saison » (PR 6 / lot 8)", () => {
+  it("affiche le message N/M du diagnostic season_slots_kept (rendu générique)", async () => {
+    // Le moteur émet un message déjà nommé ; le panneau le rend tel quel, groupé par sévérité.
+    const seasonSlots: Diagnostic = {
+      id: "diag-season-slots-SM1",
+      scheduleId: "s",
+      type: "season_slots_kept",
+      severity: "WARNING",
+      teamId: "SM1",
+      coachId: null,
+      venueId: null,
+      message: "SM1 : 2/3 créneaux de saison conservés. Non conservés : jeudi 19:00 (déplacé).",
+      suggestions: null,
+    } as Diagnostic;
+
+    render(panel({ diagnostics: [seasonSlots], openMostSevere: true, seedToken: "v" }));
+
+    expect(screen.getByText(/2\/3 créneaux de saison conservés/)).toBeInTheDocument();
+  });
+});

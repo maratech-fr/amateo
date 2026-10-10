@@ -177,6 +177,21 @@ final class ConstraintValidationService
                     $errors[] = 'L\'heure de début doit précéder l\'heure de fin.';
                 }
                 break;
+
+            case ConstraintFamily::SEASON_SLOTS:
+                // PR 6 (lot 8) — « Garder ses créneaux de saison » : préférence TRÈS FORTE, JAMAIS
+                // obligatoire. En HARD elle épinglerait le créneau de socle et un gymnase fermé aux
+                // vacances rendrait l'épingle ORPHELINE → génération bloquée (OrphanPinGuard), tout
+                // l'inverse de son intention (« placer les séances reste prioritaire », Q3bis). Le
+                // moteur ne la reçoit jamais comme contrainte : son effet passe par
+                // `socleReferenceAssignments` (keep). Scope TEAM (déjà exigé plus haut), aucun config.
+                if ('HARD' === $constraint->getRuleType()->value) {
+                    $errors[] = '« Garder ses créneaux de saison » est une préférence, jamais une règle obligatoire.';
+                }
+                if (ConstraintScope::TEAM !== $scope) {
+                    $errors[] = '« Garder ses créneaux de saison » doit cibler une équipe.';
+                }
+                break;
         }
 
         return $errors;

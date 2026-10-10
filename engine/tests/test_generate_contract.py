@@ -469,8 +469,10 @@ class TestGenerateContract:
         assert previous[0].day_of_week == 3
 
     def test_socle_reference_assignments_is_accepted_and_defaults_to_empty(self) -> None:
-        """PR-3 — le champ optionnel ``socleReferenceAssignments`` est recevable (défaut []),
-        SANS ``venueId`` (le gymnase est libre), et un payload sans le champ le garde vide."""
+        """Le champ optionnel ``socleReferenceAssignments`` est recevable (défaut []), et un payload
+        sans le champ le garde vide. Deux régimes (contrat 1.5) : COMBLEMENT (``keep`` absent, défaut
+        false ; ``venueId`` absent, défaut None — gymnase libre) et KEEP (``keep: true`` + ``venueId``
+        pour « garder ses créneaux de saison », PR 6 lot 8)."""
         without = ScheduleInputSchema.model_validate({"clubId": "club-sr", "seasonId": "season-sr"})
         assert without.socle_reference_assignments == []
 
@@ -480,27 +482,33 @@ class TestGenerateContract:
                 "seasonId": "season-sr",
                 "socleReferenceAssignments": [
                     {"teamId": "t1", "dayOfWeek": 3, "startTime": "19:00"},
+                    {"teamId": "t2", "dayOfWeek": 4, "startTime": "20:00", "venueId": "v9", "keep": True},
                 ],
             }
         )
         socle = withfield.socle_reference_assignments
-        assert len(socle) == 1
+        assert len(socle) == 2
+        # Comblement : venueId absent → None, keep absent → false (chemin PR-3 inchangé).
         assert socle[0].team_id == "t1"
         assert socle[0].day_of_week == 3
         assert socle[0].start_time == "19:00"
-        # Pas de venueId sur le schéma de référence socle (gymnase libre).
-        assert not hasattr(socle[0], "venue_id")
+        assert socle[0].venue_id is None
+        assert socle[0].keep is False
+        # Keep (PR 6) : venueId renseigné + keep true.
+        assert socle[1].venue_id == "v9"
+        assert socle[1].keep is True
 
     def test_current_contract_version_is_1_4_and_payload_stays_recevable(self) -> None:
-        """Le contrat courant est 1.4 (fichier source de vérité : v1 a remis le contrat à 1.0, puis
+        """Le contrat courant est 1.5 (fichier source de vérité : v1 a remis le contrat à 1.0, puis
         1.0 → 1.1, puis 1.1 → 1.2 — resserrage du vocabulaire de `/place-matches` en énums fermées —,
         puis 1.2 → 1.3 — retrait des champs morts du fil —, puis 1.3 → 1.4 — P4-96 : trois kinds de
         cause DÉDIÉS (`day_forced`, `session_floor`, `shared_block`) + `causes[]` officialisé sur le
-        type `conflict`) et un payload qui s'attribue cette version est recevable comme un payload
-        qui n'annonce rien."""
+        type `conflict` —, puis 1.4 → 1.5 — PR 6 (lot 8) : `SocleReferenceAssignmentSchema` gagne
+        `venueId` + `keep` pour « garder ses créneaux de saison ») et un payload qui s'attribue cette
+        version est recevable comme un payload qui n'annonce rien."""
         from app.main import read_contract_version
 
-        assert read_contract_version() == "1.4"
+        assert read_contract_version() == "1.5"
 
-        stamped = ScheduleInputSchema.model_validate({"clubId": "club-v", "seasonId": "season-v", "version": "1.4"})
-        assert stamped.version == "1.4"
+        stamped = ScheduleInputSchema.model_validate({"clubId": "club-v", "seasonId": "season-v", "version": "1.5"})
+        assert stamped.version == "1.5"
