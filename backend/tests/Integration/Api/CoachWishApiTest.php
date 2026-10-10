@@ -85,6 +85,22 @@ final class CoachWishApiTest extends WebTestCase
         self::assertTrue($body['done']);
     }
 
+    public function testKeepSeasonSlotsRoundTripsOnCreateAndUpdate(): void
+    {
+        // P2-63 B — « garder les créneaux habituels » (saisie gestionnaire) : booléen qui
+        // s'écrit, se relit, et bascule au PUT. Défaut false.
+        $created = $this->post($this->payload(['weekStart' => '2026-02-16', 'keepSeasonSlots' => true]));
+        self::assertResponseStatusCodeSame(201);
+        self::assertTrue($created['keepSeasonSlots']);
+
+        $this->client->request('PUT', '/api/coach_wishes/' . $created['id'], [], [], $this->headers(), json_encode($this->payload([
+            'weekStart' => '2026-02-16', 'keepSeasonSlots' => false,
+        ]), \JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertFalse($body['keepSeasonSlots'], 'le PUT rebascule le drapeau');
+    }
+
     public function testDuplicateForSameTeamAndWeekIsRejectedWith422(): void
     {
         $this->post($this->payload(['weekStart' => '2026-02-16']));

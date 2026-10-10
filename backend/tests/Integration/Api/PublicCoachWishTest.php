@@ -157,6 +157,68 @@ final class PublicCoachWishTest extends WebTestCase
         self::assertSame([3], $wish->getUnavailableDays());
     }
 
+    public function testSubmitPersistsKeepSeasonSlotsAsABareBoolean(): void
+    {
+        // P2-63 B — « garder mes créneaux habituels » : booléen NU transmis/persisté, aucune
+        // exposition d'horaires de saison. Défaut false ; coché → true.
+        $this->client->request('POST', '/api/coach-wishes/public/' . $this->token, [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'submissions' => [['teamId' => $this->team->getId(), 'weekStart' => '2026-02-16', 'slotsWanted' => 2, 'unavailableDays' => [], 'keepSeasonSlots' => true, 'comment' => null]],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        $wish = $this->em->getRepository(CoachWish::class)->findOneBy(['calendarEntryId' => $this->mother->getId(), 'teamId' => $this->team->getId(), 'weekStart' => new DateTimeImmutable('2026-02-16 00:00:00')]);
+        self::assertNotNull($wish);
+        self::assertTrue($wish->keepsSeasonSlots(), 'le drapeau « garder ses créneaux » est persisté');
+
+        // Et le GET le ré-expose (ré-affichage), toujours comme un booléen nu.
+        $this->client->request('GET', '/api/coach-wishes/public/' . $this->token);
+        self::assertResponseIsSuccessful();
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertTrue($body['wishes'][0]['keepSeasonSlots']);
+    }
+
+    public function testKeepSeasonSlotsIsBoundedToTokenPerimeter(): void
+    {
+        // Chemin d'abus §3bis #3 : le drapeau « garder mes créneaux » n'élargit RIEN. Une
+        // soumission qui le coche pour une équipe HORS du périmètre du token est refusée (422),
+        // rien d'écrit — la garde de périmètre s'applique AVANT de lire le booléen.
+        $foreignTeam = $this->newTeam('U13'); // existe, mais hors campagne + pas au coach
+        $this->client->request('POST', '/api/coach-wishes/public/' . $this->token, [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'submissions' => [['teamId' => $foreignTeam->getId(), 'weekStart' => '2026-02-16', 'slotsWanted' => 2, 'unavailableDays' => [], 'keepSeasonSlots' => true, 'comment' => null]],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        self::assertCount(0, $this->em->getRepository(CoachWish::class)->findBy(['teamId' => $foreignTeam->getId()]), 'cocher « garder ses créneaux » ne franchit pas le périmètre du token');
+    }
+
+    public function testPublicContextExposesNoSeasonSlots(): void
+    {
+        // Chemin d'abus §3bis #4 : la page publique ne doit JAMAIS exposer la grille de saison.
+        // Le volet B n'ajoute qu'un booléen nu DANS chaque doléance — aucun horaire, aucun
+        // gymnase, aucune clé de créneau de saison, ni au niveau du contexte ni dans wishes.
+        $this->seedWish($this->team->getId(), '2026-02-16', 2, [3], 'Note', wishedDays: [2]);
+
+        $this->client->request('GET', '/api/coach-wishes/public/' . $this->token);
+        self::assertResponseIsSuccessful();
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+
+        // Le contexte garde EXACTEMENT ses clés (aucune clé de grille ajoutée par le volet B).
+        self::assertSame(
+            ['coachFirstName', 'periodTitle', 'periodStart', 'periodEnd', 'deadline', 'weeks', 'teams', 'partnerTeams', 'teamLinks', 'wishes', 'mutualizations', 'respondedAt'],
+            array_keys($body),
+        );
+        // Une doléance n'expose que son souhait + le drapeau NU — jamais un horaire/gymnase.
+        self::assertSame(
+            ['teamId', 'weekStart', 'slotsWanted', 'unavailableDays', 'wishedDays', 'comment', 'keepSeasonSlots'],
+            array_keys($body['wishes'][0]),
+        );
+        self::assertFalse($body['wishes'][0]['keepSeasonSlots'], 'drapeau nu, défaut false');
+    }
+
     public function testSubmitRejectsADayBothWishedAndUnavailableWithoutWriting(): void
     {
         // P4-312 — un jour ne peut pas être à la fois souhaité ET indisponible : 422, rien d'écrit.

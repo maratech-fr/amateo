@@ -26672,6 +26672,11 @@
                     "done": {
                         "default": false,
                         "type": "boolean"
+                    },
+                    "keepSeasonSlots": {
+                        "description": "Le coach souhaite garder ses cr\u00e9neaux habituels de saison cette semaine-l\u00e0 (volet B).",
+                        "default": false,
+                        "type": "boolean"
                     }
                 }
             },
@@ -26763,6 +26768,11 @@
                     "done": {
                         "default": false,
                         "type": "boolean"
+                    },
+                    "keepSeasonSlots": {
+                        "description": "Le coach souhaite garder ses cr\u00e9neaux habituels (ceux du planning de saison) cette\nsemaine-l\u00e0 (volet B). Souhait de plus, aucun effet solveur ici.",
+                        "default": false,
+                        "type": "boolean"
                     }
                 }
             },
@@ -26829,6 +26839,11 @@
                         ]
                     },
                     "done": {
+                        "default": false,
+                        "type": "boolean"
+                    },
+                    "keepSeasonSlots": {
+                        "description": "Le coach souhaite garder ses cr\u00e9neaux habituels de saison cette semaine-l\u00e0 (volet B).",
                         "default": false,
                         "type": "boolean"
                     }
@@ -26901,6 +26916,11 @@
                                 ]
                             },
                             "done": {
+                                "default": false,
+                                "type": "boolean"
+                            },
+                            "keepSeasonSlots": {
+                                "description": "Le coach souhaite garder ses cr\u00e9neaux habituels de saison cette semaine-l\u00e0 (volet B).",
                                 "default": false,
                                 "type": "boolean"
                             }

@@ -95,6 +95,16 @@ class CoachWish implements TenantOwnedInterface
     #[ORM\Column(type: 'boolean', options: ['default' => false])]
     private bool $done = false;
 
+    /**
+     * Le coach souhaite GARDER ses créneaux habituels (ceux du planning de saison) cette
+     * semaine-là (volet B, P2-63). Booléen NU : jamais exposé avec les horaires de saison,
+     * transmis et AFFICHÉ (pastille côté gestionnaire). La CONTRAINTE qui l'honore est créée
+     * côté gestionnaire au transfert (une étape ultérieure) ; ce champ n'a ici aucun effet
+     * solveur, c'est un souhait de plus.
+     */
+    #[ORM\Column(type: 'boolean', options: ['default' => false])]
+    private bool $keepSeasonSlots = false;
+
     public function __construct()
     {
         $this->id = $this->newUuid();
@@ -270,6 +280,18 @@ class CoachWish implements TenantOwnedInterface
     public function setDone(bool $done): self
     {
         $this->done = $done;
+
+        return $this;
+    }
+
+    public function keepsSeasonSlots(): bool
+    {
+        return $this->keepSeasonSlots;
+    }
+
+    public function setKeepSeasonSlots(bool $keepSeasonSlots): self
+    {
+        $this->keepSeasonSlots = $keepSeasonSlots;
 
         return $this;
     }

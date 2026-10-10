@@ -70,6 +70,39 @@ final class CalendarEntryRepository extends ServiceEntityRepository
     }
 
     /**
+     * Les MÈRES de vacances (kind=PERIOD, periodType=HOLIDAY, parentEntryId=null) de la saison
+     * ENTIÈREMENT à venir — même pivot que `findWithPlanNotStarted` (startDate > today, Q8bis).
+     *
+     * C'est l'ancre des doléances (CoachWish/CoachWishCampaign/CoachWishMutualization y pendent) :
+     * valider/rouvrir le socle déplace la base, les semaines annoncées aux coachs périment, donc
+     * la collecte et les doléances de CES vacances partent. Jamais une vacance DÉJÀ COMMENCÉE
+     * (startDate ≤ today) : annoncée et à moitié jouée — on ne la détruit pas au milieu.
+     *
+     * @return list<string> les identifiants des entrées mères
+     */
+    public function findFutureHolidayMotherIds(string $clubId, string $seasonId, DateTimeImmutable $today): array
+    {
+        /** @var list<string> $ids */
+        $ids = $this->createQueryBuilder('e')
+            ->select('e.id')
+            ->andWhere('e.clubId = :clubId')
+            ->andWhere('e.seasonId = :seasonId')
+            ->andWhere('e.kind = :kind')
+            ->andWhere('e.periodType = :holiday')
+            ->andWhere('e.parentEntryId IS NULL')
+            ->andWhere('e.startDate > :today')
+            ->setParameter('clubId', $clubId)
+            ->setParameter('seasonId', $seasonId)
+            ->setParameter('kind', CalendarEntryKind::PERIOD)
+            ->setParameter('holiday', CalendarEntryPeriodType::HOLIDAY)
+            ->setParameter('today', $today->format('Y-m-d'))
+            ->getQuery()
+            ->getSingleColumnResult();
+
+        return $ids;
+    }
+
+    /**
      * Period entries of a club whose window already ended (endDate < today) — the
      * overlay-purge scope. Explicit clubId (no ambient season filter in CLI); the
      * caller purges every overlay version of each returned entry.

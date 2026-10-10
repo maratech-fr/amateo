@@ -13,6 +13,8 @@ export interface SectionState {
   /** Jours souhaités (P4-312, informatif) — toujours disjoint de `days`. */
   wishedDays: Set<number>;
   comment: string;
+  /** Le coach souhaite garder ses créneaux habituels de saison cette semaine-là (volet B). */
+  keepSeasonSlots: boolean;
 }
 
 export const sectionKey = (teamId: string, weekStart: string): string => `${teamId}|${weekStart}`;
@@ -28,6 +30,7 @@ export function buildInitialSections(context: PublicWishContext): Map<string, Se
         days: new Set(existing?.unavailableDays ?? []),
         wishedDays: new Set(existing?.wishedDays ?? []),
         comment: existing?.comment ?? "",
+        keepSeasonSlots: existing?.keepSeasonSlots ?? false,
       });
     }
   }
@@ -36,7 +39,7 @@ export function buildInitialSections(context: PublicWishContext): Map<string, Se
 
 /** Copie profonde d'une carte de sections (les `Set` sont clonés). */
 export function cloneSections(source: Map<string, SectionState>): Map<string, SectionState> {
-  return new Map([...source].map(([k, v]) => [k, { slotsWanted: v.slotsWanted, days: new Set(v.days), wishedDays: new Set(v.wishedDays), comment: v.comment }]));
+  return new Map([...source].map(([k, v]) => [k, { slotsWanted: v.slotsWanted, days: new Set(v.days), wishedDays: new Set(v.wishedDays), comment: v.comment, keepSeasonSlots: v.keepSeasonSlots }]));
 }
 
 /** Une section est MODIFIÉE si elle diffère de l'état initial — seules celles-là partent. */
@@ -44,7 +47,7 @@ export function isSectionDirty(a: SectionState | undefined, b: SectionState | un
   if (undefined === a || undefined === b) {
     return false;
   }
-  if (a.slotsWanted !== b.slotsWanted || a.comment.trim() !== b.comment.trim() || a.days.size !== b.days.size || a.wishedDays.size !== b.wishedDays.size) {
+  if (a.slotsWanted !== b.slotsWanted || a.comment.trim() !== b.comment.trim() || a.keepSeasonSlots !== b.keepSeasonSlots || a.days.size !== b.days.size || a.wishedDays.size !== b.wishedDays.size) {
     return true;
   }
   for (const d of a.days) {
@@ -70,5 +73,6 @@ export function toSubmission(key: string, s: SectionState): PublicWishSubmission
     unavailableDays: [...s.days].sort((x, y) => x - y),
     wishedDays: [...s.wishedDays].sort((x, y) => x - y),
     comment: s.comment.trim() || null,
+    keepSeasonSlots: s.keepSeasonSlots,
   };
 }

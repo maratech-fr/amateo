@@ -9,6 +9,7 @@ import { usePriorityTiers, useWizardCoachPlayers, useWizardCoaches, useWizardTea
 import { dayLabel } from "@/features/wizard/lib/days";
 import { groupedCoaches } from "@/features/wizard/lib/ranking";
 import { groupTeamsByTier, tierGroupLabel } from "@/shared/lib/teamTiers";
+import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
@@ -131,7 +132,7 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
       id: w.id,
       // coachId PRÉSERVÉ tel quel (null si dé-attribuée) : envoyer "" échouait le NotBlank
       // et une doléance dé-attribuée ne pouvait jamais être cochée (revue #10 C1).
-      body: { calendarEntryId: w.calendarEntryId, weekStart: w.weekStart, teamId: w.teamId, coachId: w.coachId, slotsWanted: w.slotsWanted, unavailableDays: w.unavailableDays, wishedDays: w.wishedDays, comment: w.comment, done: !w.done },
+      body: { calendarEntryId: w.calendarEntryId, weekStart: w.weekStart, teamId: w.teamId, coachId: w.coachId, slotsWanted: w.slotsWanted, unavailableDays: w.unavailableDays, wishedDays: w.wishedDays, comment: w.comment, done: !w.done, keepSeasonSlots: w.keepSeasonSlots },
     });
 
   const submitMut = (payload: CoachWishMutualizationPayload) => {
@@ -239,6 +240,12 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
                           {w.unavailableDays.length > 0 ? ` · indispo : ${w.unavailableDays.map(dayLabel).join(", ")}` : ""}
                         </p>
                         {null !== w.comment ? <p className="mt-0.5 text-xs">{w.comment}</p> : null}
+                        {/* Volet B — le coach souhaite garder ses créneaux habituels (saison). */}
+                        {w.keepSeasonSlots ? (
+                          <StatusPill variant="accent" className="mt-1">
+                            souhaite garder ses créneaux
+                          </StatusPill>
+                        ) : null}
                       </div>
                       <div className="flex shrink-0 gap-1">
                         <Button

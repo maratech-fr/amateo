@@ -1,16 +1,20 @@
 # Accueil « cockpit temporel »
 
-Last verified @ 2026-10-10 (P2-63 PR 2 + PR 4 + lot 5). § doléances recalé contre le code : la fenêtre
-unique `CoachWishesHub` (un seul bouton « Doléances » + badge `RadarCoachWishBadge`, hors du repli
-et sous horizon) ne lance une collecte que sur une période portant déjà un planning — semaines
-dérivées des plannings (`SchedulePlanProvisioner::planWeekMondaysForPeriod` côté serveur, garde 422
-dans `CoachWishCampaignStateProcessor`, affichage `campaignWeeks.ts::planDerivedWeeks`), invite
-« Créez d'abord le planning » + « Adapter » (`CampaignSettingsTab`/`RadarPanel.onRequestPlanning`)
-sinon ; l'ajout manuel (`CoachWishForm`) se fait semaine d'abord, toutes équipes, coach DÉDUIT sans
-champ (principal de l'équipe à la création, conservé tel quel en édition — `CoachWishStateProcessor`
-continue d'accepter `coachId` null en création gestionnaire, côté serveur inchangé). Reste du fichier
-(§5bis P4-266 : signal « à régénérer » sur `/planning` seul, pas de pastille cockpit) non
-re-confronté cette passe.
+Last verified @ 2026-10-10 (P2-63 PR 2 + PR 3 + PR 4 + PR 7 + lot 5). § doléances recalé contre le
+code : la fenêtre unique `CoachWishesHub` (un seul bouton « Doléances » + badge
+`RadarCoachWishBadge`, hors du repli et sous horizon) ne lance une collecte que sur une période
+portant déjà un planning — semaines dérivées des plannings
+(`SchedulePlanProvisioner::planWeekMondaysForPeriod` côté serveur, garde 422 dans
+`CoachWishCampaignStateProcessor`, affichage `campaignWeeks.ts::planDerivedWeeks`), invite « Créez
+d'abord le planning » + « Adapter » (`CampaignSettingsTab`/`RadarPanel.onRequestPlanning`) sinon ;
+l'ajout manuel (`CoachWishForm`) se fait semaine d'abord, toutes équipes, coach DÉDUIT sans champ
+(principal de l'équipe à la création, conservé tel quel en édition — `CoachWishStateProcessor`
+continue d'accepter `coachId` null en création gestionnaire, côté serveur inchangé) ; case « garder
+mes créneaux habituels » (`CoachWish.keepSeasonSlots`, booléen nu) sur les deux saisies. Valider/
+rouvrir le socle confirmé en présence de plans secondaires emporte aussi la collecte des vacances
+à venir (`FutureHolidayCollectePurger`, confrontée à `ValidateScheduleController.php`/
+`ReopenScheduleController.php`). Reste du fichier (§5bis P4-266 : signal « à régénérer » sur
+`/planning` seul, pas de pastille cockpit) non re-confronté cette passe.
 
 > **Statut** : livré — cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2. Ce document fixe le
 > modèle d'UX + d'architecture de l'accueil cockpit et la fondation des **calendriers
@@ -350,6 +354,17 @@ principal » ne borne que la collecte par mail) ; le **coach est DÉDUIT, sans c
 l'équipe à la création, recalculé si l'équipe change ; conservé tel quel en édition, jamais
 dé-attribué en silence) — une équipe sans coach (Vétérans) reçoit `coachId` null et peut recevoir
 une doléance manuelle comme n'importe quelle autre.
+
+**« Garder mes créneaux habituels »** : chaque doléance (page publique et modale gestionnaire)
+porte une case « garder les créneaux habituels » (`CoachWish.keepSeasonSlots`, booléen NU, défaut
+non coché) — le coach souhaite conserver ses créneaux du planning de SAISON pour cette semaine de
+vacances, sans que la page ne lui montre jamais ces horaires. Un souhait de plus, zéro effet
+solveur ici ; coché, il se voit dans la todo-list (pastille `StatusPill`) et le récap de la page
+publique. **Valider ou rouvrir le socle emporte aussi la collecte des vacances À VENIR** (campagne,
+doléances, mutualisations — jamais une vacance déjà commencée, même pivot que la destruction des
+plannings de période) : la confirmation annonce le nombre de doléances déjà reçues qui partiront
+avec, et qu'il faudra relancer la collecte (`FutureHolidayCollectePurger`, détail
+[`planning-lifecycle-validated.md`](planning-lifecycle-validated.md) §6).
 
 **Chargement** : tant que les plans, les versions, les campagnes, les impacts de fermeture ou la
 zone scolaire sont en vol, le radar affiche un **squelette** (région live pour les lecteurs

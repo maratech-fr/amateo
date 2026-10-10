@@ -80,6 +80,10 @@ class CoachWishResource
     #[Groups(['read'])]
     public bool $done = false;
 
+    /** Le coach souhaite garder ses créneaux habituels de saison cette semaine-là (volet B). */
+    #[Groups(['read'])]
+    public bool $keepSeasonSlots = false;
+
     public static function fromEntity(CoachWish $entity): self
     {
         $dto = new self;
@@ -96,6 +100,7 @@ class CoachWishResource
         $dto->wishedDays = $entity->getWishedDays();
         $dto->comment = $entity->getComment();
         $dto->done = $entity->isDone();
+        $dto->keepSeasonSlots = $entity->keepsSeasonSlots();
 
         return $dto;
     }

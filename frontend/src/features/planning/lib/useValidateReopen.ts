@@ -41,10 +41,14 @@ export function useValidateReopen(
   );
   // Reopening the baseline with period overlays → 409; confirm to delete them.
   const [reopenOverlayCount, setReopenOverlayCount] = useState<number | null>(null);
+  // Q8bis (P2-63) — doléances des vacances à venir emportées avec la collecte, annoncées
+  // au même confirm que les plannings de période à refaire. 0 = rien à dire.
+  const [reopenWishCount, setReopenWishCount] = useState(0);
 
   // Validating a non-baseline version with overlays → 409 escalation (same
   // destructive idiom as reopen): confirm, then re-POST with the flag.
   const [validateOverlayCount, setValidateOverlayCount] = useState<number | null>(null);
+  const [validateWishCount, setValidateWishCount] = useState(0);
   const validate = (confirmDeleteOverlays?: boolean) => {
     if (!validScheduleId) {
       return;
@@ -54,6 +58,7 @@ export function useValidateReopen(
       {
         onSuccess: () => {
           setValidateOverlayCount(null);
+          setValidateWishCount(0);
           setValidateOpen(false);
           // Validated → land on /planning, the screen of the version IN FORCE. Valider
           // est la SORTIE de l'espace de travail (l'étape Génération du wizard) : le socle
@@ -65,6 +70,7 @@ export function useValidateReopen(
           if (error instanceof OverlaysExistError) {
             setValidateOpen(false);
             setValidateOverlayCount(error.count);
+            setValidateWishCount(error.coachWishCount);
           }
         },
       },
@@ -80,6 +86,7 @@ export function useValidateReopen(
       {
         onSuccess: () => {
           setReopenOverlayCount(null);
+          setReopenWishCount(0);
           // RÈGLE : toute navigation vers /wizard DÉCLARE son mode — aucun héritage du mode
           // ambiant du localStorage. Sans quoi rouvrir un overlay ouvrait la SAISON (ou la
           // mauvaise période) : `jumpTo("generate")` SEUL laissait le mode persisté décider.
@@ -104,11 +111,12 @@ export function useValidateReopen(
         onError: (error) => {
           if (error instanceof OverlaysExistError) {
             setReopenOverlayCount(error.count);
+            setReopenWishCount(error.coachWishCount);
           }
         },
       },
     );
   };
 
-  return { validateOpen, setValidateOpen, reopenOverlayCount, setReopenOverlayCount, validateOverlayCount, setValidateOverlayCount, validateMutation, reopenMutation, orphanImpact, validate, reopen };
+  return { validateOpen, setValidateOpen, reopenOverlayCount, setReopenOverlayCount, reopenWishCount, validateOverlayCount, setValidateOverlayCount, validateWishCount, validateMutation, reopenMutation, orphanImpact, validate, reopen };
 }

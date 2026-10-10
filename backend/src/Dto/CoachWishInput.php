@@ -74,4 +74,11 @@ class CoachWishInput
 
     #[Groups(['write'])]
     public bool $done = false;
+
+    /**
+     * Le coach souhaite garder ses créneaux habituels (ceux du planning de saison) cette
+     * semaine-là (volet B). Souhait de plus, aucun effet solveur ici.
+     */
+    #[Groups(['write'])]
+    public bool $keepSeasonSlots = false;
 }

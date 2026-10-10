@@ -20,6 +20,8 @@ export interface CoachWish {
   wishedDays: number[];
   comment: string | null;
   done: boolean;
+  /** Le coach souhaite garder ses créneaux habituels de saison cette semaine-là (volet B). */
+  keepSeasonSlots: boolean;
 }
 
 export interface CoachWishPayload {
@@ -33,6 +35,8 @@ export interface CoachWishPayload {
   wishedDays: number[];
   comment: string | null;
   done: boolean;
+  /** Le coach souhaite garder ses créneaux habituels de saison cette semaine-là (volet B). */
+  keepSeasonSlots: boolean;
 }
 
 export const listCoachWishes = (calendarEntryId: string): Promise<CoachWish[]> =>

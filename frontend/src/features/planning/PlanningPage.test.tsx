@@ -23,12 +23,14 @@ vi.mock("./api", () => {
   class OverlaysExistError extends Error {
     public count: number;
     public overlays: unknown[];
+    public coachWishCount: number;
 
-    constructor(count: number, overlays: unknown[]) {
+    constructor(count: number, overlays: unknown[], coachWishCount = 0) {
       super("overlays");
       this.name = "OverlaysExistError";
       this.count = count;
       this.overlays = overlays;
+      this.coachWishCount = coachWishCount;
     }
   }
   // F2b : mêmes classes réelles pour que `error instanceof …` branche depuis un moveSlot moqué.
@@ -965,6 +967,19 @@ describe("PlanningPage (integration)", () => {
       expect(vi.mocked(reopenSchedule).mock.calls[1]).toEqual([SID, { confirmDeleteOverlays: true }]);
       // Reopened → back to the wizard's generation step.
       expect(navigate).toHaveBeenCalledWith("/wizard");
+    });
+
+    // Q8bis (P2-63) — le confirm annonce AUSSI les doléances des vacances à venir qui partiront.
+    it("409 avec doléances → le confirm annonce les doléances emportées (relancer la collecte)", async () => {
+      const user = userEvent.setup();
+      vi.mocked(listSchedules).mockResolvedValue(validated);
+      vi.mocked(reopenSchedule).mockRejectedValueOnce(new OverlaysExistError(1, [], 25)).mockResolvedValueOnce({});
+      renderWithProviders(<PlanningPage />);
+      await screen.findByText("U11");
+
+      await user.click(screen.getByRole("button", { name: /rouvrir/i }));
+      expect(await screen.findByText(/25 doléances déjà reçues pour les vacances à venir partiront aussi/i)).toBeInTheDocument();
+      expect(screen.getByText(/il faudra relancer la collecte/i)).toBeInTheDocument();
     });
 
     it("« Rouvrir » (no overlays) → wizard generation step", async () => {

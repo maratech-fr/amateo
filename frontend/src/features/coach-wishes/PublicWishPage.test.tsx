@@ -29,7 +29,7 @@ const context = (over: Partial<PublicWishContext> = {}): PublicWishContext => ({
   teams: [{ id: "t1", name: "SM1" }],
   partnerTeams: [],
   teamLinks: [],
-  wishes: [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3], wishedDays: [], comment: "note manager" }],
+  wishes: [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3], wishedDays: [], comment: "note manager", keepSeasonSlots: false }],
   mutualizations: [],
   respondedAt: null,
   ...over,
@@ -133,7 +133,7 @@ describe("PublicWishPage — parcours en étapes", () => {
     // La validation, depuis le récap, envoie EXACTEMENT la section modifiée.
     await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
     await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
-    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 4, unavailableDays: [3], wishedDays: [], comment: "note manager" }], []);
+    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 4, unavailableDays: [3], wishedDays: [], comment: "note manager" , keepSeasonSlots: false }], []);
   });
 
   it("P2-63 lot 5 — un jour non disponible est DÉSACTIVÉ côté souhaités ; le rendre disponible permet de le souhaiter", async () => {
@@ -156,7 +156,7 @@ describe("PublicWishPage — parcours en étapes", () => {
     await userEvent.click(screen.getByRole("button", { name: "Suivant" })); // récap
     await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
     await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
-    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [], wishedDays: [2, 3], comment: "note manager" }], []);
+    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [], wishedDays: [2, 3], comment: "note manager" , keepSeasonSlots: false }], []);
   });
 
   // Lot 5 — « Jours disponibles » est rendu AU-DESSUS de « Jours souhaités » sur la page coach aussi.
@@ -188,7 +188,20 @@ describe("PublicWishPage — parcours en étapes", () => {
     await userEvent.click(screen.getByRole("button", { name: "Suivant" }));
     await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
     await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
-    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3, 4], wishedDays: [], comment: "note manager" }], []);
+    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3, 4], wishedDays: [], comment: "note manager" , keepSeasonSlots: false }], []);
+  });
+
+  it("P2-63 B — cocher « Garder mes créneaux habituels » envoie keepSeasonSlots: true", async () => {
+    h.getContext.mockResolvedValue(context());
+    h.submit.mockResolvedValue({ deadline: "2027-06-30" });
+    renderAt();
+    await start();
+
+    await userEvent.click(screen.getByRole("checkbox", { name: "Garder mes créneaux habituels" }));
+    await userEvent.click(screen.getByRole("button", { name: "Suivant" }));
+    await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
+    await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
+    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3], wishedDays: [], comment: "note manager", keepSeasonSlots: true }], []);
   });
 
   it("NR D2 — cocher un partenaire envoie une mutualisation (passerelle en tête)", async () => {
@@ -251,7 +264,7 @@ describe("PublicWishPage — parcours en étapes", () => {
           { id: "t1", name: "SM1" },
           { id: "t2", name: "U13" },
         ],
-        wishes: [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3], wishedDays: [], comment: "note manager" }],
+        wishes: [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [3], wishedDays: [], comment: "note manager", keepSeasonSlots: false }],
       }),
     );
     h.submit.mockResolvedValue({ deadline: "2027-06-30" });
@@ -272,7 +285,7 @@ describe("PublicWishPage — parcours en étapes", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
     await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
-    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t2", weekStart: "2026-02-16", slotsWanted: 3, unavailableDays: [], wishedDays: [], comment: null }], []);
+    expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t2", weekStart: "2026-02-16", slotsWanted: 3, unavailableDays: [], wishedDays: [], comment: null , keepSeasonSlots: false }], []);
   });
 
   it("depuis le récap, « Modifier » saute à l'équipe puis revient au récap", async () => {

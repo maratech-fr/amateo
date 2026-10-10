@@ -196,7 +196,11 @@ final class PublicCoachWishController extends AbstractController
                     return $this->json(['error' => 'Un jour ne peut pas être à la fois souhaité et indisponible.'], Response::HTTP_UNPROCESSABLE_ENTITY);
                 }
                 $comment = \is_array($item) && \is_string($item['comment'] ?? null) ? mb_substr($item['comment'], 0, 2000) : null;
-                $clean[$teamId . '|' . $weekStart] = ['teamId' => $teamId, 'weekStart' => $weekStart, 'slots' => $slots, 'days' => $days, 'wished' => $wished, 'comment' => $comment];
+                // Volet B : booléen NU. Le périmètre (équipe ∩ campagne, semaines de la campagne)
+                // est déjà vérifié ci-dessus — cocher « garder mes créneaux » n'élargit RIEN et
+                // n'inclut aucune équipe au plan (ça, c'est un geste gestionnaire).
+                $keepSeasonSlots = \is_array($item) && true === ($item['keepSeasonSlots'] ?? false);
+                $clean[$teamId . '|' . $weekStart] = ['teamId' => $teamId, 'weekStart' => $weekStart, 'slots' => $slots, 'days' => $days, 'wished' => $wished, 'comment' => $comment, 'keepSeasonSlots' => $keepSeasonSlots];
             }
 
             // Mutualisations (D2) : une par équipe DU COACH, partenaires PARMI les équipes de la
@@ -230,7 +234,7 @@ final class PublicCoachWishController extends AbstractController
 
             $this->entityManager->wrapInTransaction(function () use ($clean, $cleanMut, $campaign, $coachId, $entity): void {
                 foreach ($clean as $c) {
-                    $this->upserter->upsert($campaign, $c['teamId'], new DateTimeImmutable($c['weekStart'] . ' 00:00:00'), $coachId, $c['slots'], $c['days'], $c['wished'], $c['comment']);
+                    $this->upserter->upsert($campaign, $c['teamId'], new DateTimeImmutable($c['weekStart'] . ' 00:00:00'), $coachId, $c['slots'], $c['days'], $c['wished'], $c['comment'], $c['keepSeasonSlots']);
                 }
                 foreach ($cleanMut as $m) {
                     $this->mutualizationUpserter->upsert($campaign, $m['teamId'], $coachId, $m['partners'], $m['sharedSlots']);

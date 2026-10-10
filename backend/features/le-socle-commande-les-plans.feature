@@ -18,6 +18,12 @@ Fonctionnalité: Le planning de saison commande les plannings de période
     Quand je rouvre le planning de saison
     Alors le planning de période à venir a disparu et celui déjà commencé subsiste
 
+  Scénario: Valider le planning de saison emporte aussi la collecte de doléances des vacances à venir
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une collecte de doléances ouverte sur des vacances à venir
+    Quand je valide le planning de saison
+    Alors la collecte et ses doléances des vacances à venir ont disparu
+
   Scénario: Sans planning de saison en vigueur, ouvrir un planning de période est refusé
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et le planning de saison n'est plus en vigueur

@@ -222,7 +222,10 @@ modèle — ils ne correspondent plus à une section de ce document (l'historiqu
     sur l'ancien socle. S'applique aux deux portes (`ValidateScheduleController` choisissant
     une autre version, `ReopenScheduleController` dépointant le socle) via le même 409
     `overlays_exist` + `confirmDeleteOverlays: true` — « le premier plan secondaire fige le
-    socle » reste vrai.
+    socle » reste vrai. **Amendement (Q8bis, P2-63 PR 7, 2026-10-10)** : la même bascule emporte
+    aussi la collecte de doléances des vacances **entièrement à venir** (campagne, doléances,
+    mutualisations), même pivot — le 409 gagne `coachWishCount`, `App\Service\FutureHolidayCollectePurger`
+    exécute la purge dans la même transaction destructive.
 15. **Module matchs & radars de conflits** : ils **lisent le plan SEASON** (sa version
     choisie). Le comportement en espace de travail (pointeur null) sera **confirmé au
     cadrage du module matchs**. Consommateurs recensés : `MatchConflictDetector`,

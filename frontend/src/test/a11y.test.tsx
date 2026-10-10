@@ -30,7 +30,7 @@ import { sectionKey, type SectionState } from "@/features/coach-wishes/wishSecti
 import { expectNoA11yViolations } from "./utils";
 
 // Fixture: la page publique de doléances est le cas MOBILE (coach sans login).
-const wishSections = (over: Partial<SectionState> = {}): Map<string, SectionState> => new Map([[sectionKey("t1", "2026-02-16"), { slotsWanted: 2, days: new Set([3]), wishedDays: new Set([2]), comment: "note", ...over }]]);
+const wishSections = (over: Partial<SectionState> = {}): Map<string, SectionState> => new Map([[sectionKey("t1", "2026-02-16"), { slotsWanted: 2, days: new Set([3]), wishedDays: new Set([2]), comment: "note", keepSeasonSlots: false, ...over }]]);
 
 describe("a11y — shared UI primitives", () => {
   it("Button has no violations", async () => {

@@ -10,6 +10,7 @@ use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Enum\ScheduleStatus;
 use App\Service\FixtureVenueLossMarker;
+use App\Service\FutureHolidayCollectePurger;
 use App\Service\ManagementAccessGuard;
 use App\Service\OrphanedFixtureFinder;
 use App\Service\OverlayManager;
@@ -52,6 +53,7 @@ final class ValidateScheduleController extends AbstractController implements Sea
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
         private readonly OrphanedFixtureFinder $orphanedFixtureFinder,
         private readonly FixtureVenueLossMarker $fixtureVenueLossMarker,
+        private readonly FutureHolidayCollectePurger $collectePurger,
     ) {}
 
     // SEC-13 — la cible est le Schedule nommé dans l'URL (id de version).
@@ -172,13 +174,21 @@ final class ValidateScheduleController extends AbstractController implements Sea
             // interdit sans socle pointé — donc la garde ne coûte rien.)
             $currentlyChosen = $this->schedulePlanProvisioner->chosenOfSeasonPlan($schedule->getSeasonId());
             $overlaysToDelete = [];
+            $futureHolidayMotherIds = [];
             if (null === $entryId && $schedule->getId() !== $currentlyChosen) {
                 $overlaysToDelete = $this->overlayManager->periodPlansInvalidatedBySeasonChange($schedule->getClubId(), $schedule->getSeasonId());
+                if ([] !== $overlaysToDelete) {
+                    // Q8bis — déplacer le socle emporte AUSSI la collecte et les doléances des
+                    // vacances à venir : on les annonce (chiffre) et on les purge au même geste
+                    // confirmé que les plannings de période (wishes ⟹ plan ⟹ overlay, Q8).
+                    $futureHolidayMotherIds = $this->collectePurger->futureHolidayMotherIds($schedule->getClubId(), $schedule->getSeasonId());
+                }
                 if ([] !== $overlaysToDelete && !$this->confirmedDeleteOverlays()) {
                     return $this->json([
                         'code' => 'overlays_exist',
                         'error' => 'Choisir cette version remplace le planning de la saison : les plannings de période à venir sont supprimés et devront être refaits.',
                         'count' => \count($overlaysToDelete),
+                        'coachWishCount' => $this->collectePurger->countReceivedWishes($futureHolidayMotherIds),
                         'overlays' => array_map(static fn (CalendarEntry $e): array => [
                             'entryId' => $e->getId(),
                             'title' => $e->getTitle(),
@@ -195,6 +205,12 @@ final class ValidateScheduleController extends AbstractController implements Sea
                 // la grille d'une période est copiée, la déplacer périme cette copie
                 // (décision fondateur 2026-07-24). force : destruction confirmée.
                 $this->overlayManager->deletePeriodPlanForEntry($entry, force: true);
+            }
+
+            // Q8bis — même geste destructif : la collecte + les doléances des vacances à venir
+            // partent (campagne → jetons en cascade). Jamais une vacance déjà commencée.
+            if ([] !== $overlaysToDelete) {
+                $this->collectePurger->purge($futureHolidayMotherIds);
             }
 
             // ADR-0002 inv. 1 — VALIDER = POINTER. Seule vérité : « validé » se dérive
