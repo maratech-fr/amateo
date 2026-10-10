@@ -180,11 +180,14 @@ final class CoachWishApiTest extends WebTestCase
         self::assertTrue($body['done']);
     }
 
-    public function testCreateWithoutACoachIsRejected(): void
+    public function testCreateWithoutACoachIsAcceptedForManualEntry(): void
     {
-        // « Une doléance se saisit au nom d'un coach » : la CRÉATION sans coach est refusée.
-        $this->post($this->payload(['weekStart' => '2026-02-16', 'coachId' => null]));
-        self::assertResponseStatusCodeSame(422);
+        // P2-63 PR 2 / Q5 (fondateur 2026-10-09) — le gestionnaire doit pouvoir saisir à la
+        // main une doléance pour une équipe sans coach (Vétérans). Le coach est désormais
+        // FACULTATIF par ce canal management ; la doléance naît dé-attribuée.
+        $created = $this->post($this->payload(['weekStart' => '2026-02-16', 'coachId' => null]));
+        self::assertResponseStatusCodeSame(201);
+        self::assertNull($created['coachId'], 'la doléance manuelle sans coach naît dé-attribuée');
     }
 
     public function testPutWithAStaleDeletedCoachIdDetachesInsteadOfResurrecting(): void

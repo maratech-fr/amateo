@@ -28,6 +28,8 @@ interface TeamSelectProps<T extends TeamLike> {
   className?: string;
   /** Wraps the field (width usually lives here). Forwarded to Listbox; défaut "w-full". */
   wrapperClassName?: string;
+  /** Largeur min du panneau déroulant, en px (forwarded to Listbox) — élargit le PANNEAU, pas le champ. */
+  panelMinWidth?: number;
   id?: string;
   title?: string;
   autoFocus?: boolean;

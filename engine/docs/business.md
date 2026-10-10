@@ -1,6 +1,6 @@
 # Documentation metier du moteur de generation
 
-Last verified @ 2026-10-06 (reliquat DOC de l'audit 2026-10-03 — AUD-DOC-50). Citations de `engine/app/main.py` ré-ancrées sur le symbole : `_adaptive_timeout` (paliers ≤50→60 s · ≤200→180 s · sinon 600 s, confronté à `app/main.py`) et le commentaire mort FACILITY_CAPACITY ; tiers de poids S=10000/A=1000/B=100/C=10/D=1 toujours en dur dans `app/solver/objective/weights.py` (`LEVEL_2_OBJECTIVE_WEIGHTS`). Reste non re-sondé cette passe.
+Last verified @ 2026-10-10 (rotation de fraîcheur) : `_adaptive_timeout` (`app/main.py::_adaptive_timeout`) confirme les paliers ≤50→60 s · ≤200→180 s · sinon 600 s, plafonnés par `payload_cap` ; le commentaire `FACILITY_CAPACITY` existe toujours (`app/main.py`, commentaire sans symbole propre) ; les tiers de poids S=10000/A=1000/B=100/C=10/D=1 sont toujours en dur dans `app/solver/objective/weights.py::LEVEL_2_OBJECTIVE_WEIGHTS`. Reste non re-sondé cette passe — historique de vérification : `git log -p --follow` ce fichier.
 
 > Ce document explique le domaine de la planification sportive et ce que le moteur `engine` resout. Destine aux nouveaux developpeurs rejoignant le projet ClubScheduler.
 

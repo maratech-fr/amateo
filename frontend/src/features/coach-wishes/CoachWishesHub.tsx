@@ -35,11 +35,14 @@ export function CoachWishesHub({
   weekFilter,
   source,
   onClose,
+  onRequestPlanning,
 }: {
   mother: CalendarEntry;
   weekFilter: string | null;
   source: "wizard" | "cockpit";
   onClose: () => void;
+  /** P2-63 PR 4 — « Adapter cette période » depuis l'état « sans planning » (geste du cockpit). */
+  onRequestPlanning?: () => void;
 }) {
   const season = useWorkingSeason();
   const campaignsQuery = useCoachWishCampaigns();
@@ -79,7 +82,7 @@ export function CoachWishesHub({
   const existing = (campaignsQuery.data ?? []).find((c) => c.calendarEntryId === mother.id) ?? null;
   const wishes = wishesQuery.data ?? [];
 
-  return <CoachWishesHubReady mother={mother} weekFilter={weekFilter} source={source} season={season} existing={existing} wishesCount={wishes.length} title={title} onClose={onClose} />;
+  return <CoachWishesHubReady mother={mother} weekFilter={weekFilter} source={source} season={season} existing={existing} wishesCount={wishes.length} title={title} onClose={onClose} onRequestPlanning={onRequestPlanning} />;
 }
 
 /** Libellé compté de l'onglet « Sollicitation » (décision fondateur 2026-10-09 : « 1 coach n'a
@@ -112,6 +115,7 @@ function CoachWishesHubReady({
   wishesCount,
   title,
   onClose,
+  onRequestPlanning,
 }: {
   mother: CalendarEntry;
   weekFilter: string | null;
@@ -121,6 +125,7 @@ function CoachWishesHubReady({
   wishesCount: number;
   title: string;
   onClose: () => void;
+  onRequestPlanning?: () => void;
 }) {
   // Le focus suit la bascule programmatique (après création) : une ref + un effet (interdits
   // pendant le rendu, autorisés ici) plutôt qu'un état, qu'aucun rendu ne devrait porter.
@@ -198,7 +203,7 @@ function CoachWishesHubReady({
 
       {"reglages" === activeTab ? (
         <TabPanel tabId="reglages" idPrefix="doleances" active className="pt-3">
-          <CampaignSettingsTab settings={settings} />
+          <CampaignSettingsTab settings={settings} onRequestPlanning={onRequestPlanning} />
         </TabPanel>
       ) : null}
     </Modal>

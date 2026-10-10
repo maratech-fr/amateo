@@ -1,14 +1,6 @@
 # API géo — routes externes consommées
 
-Last verified @ 2026-10-06 (contrat `CONTRACT_VERSION` 1.2 → 1.3 — retrait des champs morts du fil — PII coach email/phone, flags isActive/tags/minSessionsOverride, priorityTiers, kickoffEstimated/roundTripMinutes, ENG-53/RGPD-03/ALIGN-20 ; antérieurement 1.1 → 1.2, resserrage du vocabulaire
-`/place-matches` en énums fermées, ENG-56 ; le bloc `venueTravelTimes` de `/generate` est
-inchangé, cité à jour au § solveur d'entraînement). Antérieurement @ 2026-10-02 (P5-28 —
-`CONTRACT_VERSION` repassé **2.29 → 1.0** pour la v1, forme du payload inchangée. Passe précédente 2026-09-30, commit `19aed0f1` — recalé contre le code : `VenueGeoCheck::checkVenue`
-(reverse puis forward BAN, seuil `FAR_THRESHOLD_METERS`), `FfbbSalleAddressResolver::resolveAddress`
-(rayon `VERIFY_RADIUS_METERS`), `BanGeocodingClient::reverseStreet`, `VenueGeoCheckController`
-(priority 10, `ManagementAccessGuard::assertManager`) — § 5 ci-dessous. Reste du fichier hérité de la
-passe précédente (PR #1031), non re-sondé ligne à ligne cette fois. Historique des passes
-précédentes vit dans git : `git log -p --follow backend/docs/geo-api.md`.
+Last verified @ 2026-10-10 (rotation de fraîcheur, passe P2-63 lot 5) : le § solveur d'entraînement cite `CONTRACT_VERSION` **1.4** — confronté à `engine/CONTRACT_VERSION` (= 1.4), à jour. Le reste du fichier (hosts en liste blanche, `VenueGeoCheck`/`FfbbSalleAddressResolver`/`BanGeocodingClient`/`VenueGeoCheckController` au § 5) non re-sondé ligne à ligne cette passe. Historique des passes : `git log -p --follow backend/docs/geo-api.md`.
 
 > Répertoire des endpoints externes **géo** utilisés par le backend — deuxième famille de sorties
 > non-FFBB après `ffbb-api.md` (même patron : liste blanche de hosts codés en dur, SSRF-safe,

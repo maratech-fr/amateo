@@ -104,6 +104,28 @@ describe("DayMultiPicker", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it("disabledDays rend un jour INERTE (aria-disabled, focalisable, motif découvrable) sans le basculer", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<DayMultiPicker value={[]} onChange={onChange} legend="Jours souhaités" disabledDays={[6]} disabledReason="Jour non disponible" />);
+
+    const saturday = screen.getByRole("button", { name: "samedi" });
+    // `aria-disabled` (le bouton reste focalisable, A11Y-30) — PAS un `disabled` natif.
+    expect(saturday).toHaveAttribute("aria-disabled", "true");
+    expect(saturday).not.toBeDisabled();
+    // Le motif est découvrable (title + aria-describedby → span sr-only).
+    expect(saturday).toHaveAttribute("title", "Jour non disponible");
+    const descId = saturday.getAttribute("aria-describedby");
+    expect(descId).not.toBeNull();
+    expect(document.getElementById(descId as string)).toHaveTextContent("Jour non disponible");
+
+    // Le clic sur un jour désactivé ne bascule rien ; un jour normal bascule comme d'habitude.
+    await user.click(saturday);
+    expect(onChange).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "lundi" }));
+    expect(onChange).toHaveBeenCalledWith([1]);
+  });
+
   it("le ton destructive habille l'état pressé d'une surface opaque (polarité « bloqué »)", () => {
     render(<DayMultiPicker value={[6]} onChange={() => {}} legend="Jours indisponibles" tone="destructive" />);
 

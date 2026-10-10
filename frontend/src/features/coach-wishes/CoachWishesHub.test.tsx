@@ -13,6 +13,25 @@ import type { CoachWishCampaign } from "./campaignApi";
 const campaignsState: { data: CoachWishCampaign[] | undefined; isError: boolean } = { data: [], isError: false };
 const wishesState: { data: unknown[] | undefined; isError: boolean } = { data: [], isError: false };
 
+// P2-63 PR 4 — les semaines collectables DÉRIVENT des plannings de la période (`useCampaignSettings`
+// lit `useSchedulePlans` + `useCalendarEntries`). Par défaut, les deux semaines de la période (e1,
+// lun 16/02 et 23/02) sont planifiées (une entrée-enfant + un plan par semaine). Un test peut vider
+// `plansState` pour exercer l'état « sans planning » (bannière « Créez d'abord le planning »).
+const PLANNED_ENTRIES = [
+  { id: "c1", parentEntryId: "e1" },
+  { id: "c2", parentEntryId: "e1" },
+];
+const PLANNED_PLANS = [
+  { calendarEntryId: "c1", startDate: "2026-02-16" },
+  { calendarEntryId: "c2", startDate: "2026-02-23" },
+];
+const plansState: { data: unknown[] | undefined } = { data: PLANNED_PLANS };
+const entriesState: { data: unknown[] | undefined } = { data: PLANNED_ENTRIES };
+vi.mock("@/features/cockpit/queries", () => ({
+  useSchedulePlans: () => ({ data: plansState.data }),
+  useCalendarEntries: () => ({ data: entriesState.data }),
+}));
+
 const teamsLate = { value: false };
 const teamsFetching = { value: false };
 const teamCoachesUnread = { value: false };
@@ -90,6 +109,8 @@ describe("CoachWishesHub", () => {
     campaignsState.isError = false;
     wishesState.data = [];
     wishesState.isError = false;
+    plansState.data = PLANNED_PLANS;
+    entriesState.data = PLANNED_ENTRIES;
     createMut.mockReset();
     updateMut.mockReset();
   });
@@ -619,5 +640,31 @@ describe("CoachWishesHub", () => {
     renderHub({ wishes: [{ id: "w1" }] });
     expect(screen.getByRole("tab", { name: "Doléances" })).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByRole("tab", { name: /Sollicitation/ })).toBeNull();
+  });
+
+  // ── P2-63 PR 4 (Q8) — la collecte attend le planning ──
+
+  // Sans planning sur la période, les Réglages expliquent qu'il faut d'abord créer le planning,
+  // et « Adapter cette période » déclenche le geste du cockpit (onRequestPlanning).
+  it("invite à créer d'abord le planning quand la période n'en porte aucun, et relaie « Adapter »", async () => {
+    plansState.data = [];
+    entriesState.data = [];
+    const onRequestPlanning = vi.fn();
+    render(<CoachWishesHub mother={entry} weekFilter={null} source="cockpit" onClose={vi.fn()} onRequestPlanning={onRequestPlanning} />);
+
+    // Ouverture sur Réglages (ni campagne, ni doléance) → bannière d'invite, pas de cases de semaine.
+    expect(screen.getByText(/Créez d'abord le planning des vacances/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Semaine du/)).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Adapter cette période" }));
+    expect(onRequestPlanning).toHaveBeenCalledTimes(1);
+  });
+
+  // Dès qu'un planning couvre une semaine, les Réglages offrent cette semaine (régime dérivé).
+  it("offre les semaines dérivées des plannings quand la période en porte", () => {
+    renderHub();
+    expect(screen.getByLabelText(/Semaine du 16\/02\/2026/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Semaine du 23\/02\/2026/)).toBeInTheDocument();
+    expect(screen.queryByText(/Créez d'abord le planning/)).toBeNull();
   });
 });

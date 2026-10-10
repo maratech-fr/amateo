@@ -122,18 +122,8 @@ export function WishTeamStep({ team, weeks, sections, partnerTeams, teamLinks, m
               />
             </label>
             <div className="mt-2">
-              <DayMultiPicker
-                legend="Jours souhaités"
-                legendVisible
-                // Les deux saisies de vœux (page publique ET modale gestionnaire CoachWishForm)
-                // sont en couleur du club (accent), jamais destructive (arbitrage fondateur 2026-10-01).
-                tone="accent"
-                value={[...s.wishedDays].sort((a, b) => a - b)}
-                onChange={(next) => replayToggles(s.wishedDays, next, (day) => onToggleWishedDay(key, day))}
-              />
-            </div>
-            <div className="mt-2">
-              {/* Pressé = DISPONIBLE (état positif/neutre) : `tone="accent"`, jamais `destructive`
+              {/* « Jours disponibles » AU-DESSUS de « Jours souhaités » (retours fondateur 2026-10-10).
+                  Pressé = DISPONIBLE (état positif/neutre) : `tone="accent"`, jamais `destructive`
                   (qui signale « bloqué ») — polarité documentée du DayMultiPicker + arbitrage
                   fondateur 2026-10-01 (les deux saisies de vœux sont en accent). */}
               <DayMultiPicker
@@ -142,6 +132,21 @@ export function WishTeamStep({ team, weeks, sections, partnerTeams, teamLinks, m
                 tone="accent"
                 value={availableDays}
                 onChange={(next) => replayToggles(new Set(availableDays), next, (day) => onToggleDay(key, day))}
+              />
+            </div>
+            <div className="mt-2">
+              {/* Un jour souhaité est au minimum un jour DISPONIBLE : les jours indisponibles
+                  (`s.days`) sont DÉSACTIVÉS ici (visibles, grisés, avec motif), jamais seulement
+                  décochés. Les deux saisies de vœux (page publique ET modale gestionnaire) sont en
+                  couleur du club (accent), jamais destructive (arbitrage fondateur 2026-10-01). */}
+              <DayMultiPicker
+                legend="Jours souhaités"
+                legendVisible
+                tone="accent"
+                value={[...s.wishedDays].sort((a, b) => a - b)}
+                onChange={(next) => replayToggles(s.wishedDays, next, (day) => onToggleWishedDay(key, day))}
+                disabledDays={[...s.days].sort((a, b) => a - b)}
+                disabledReason="Jour non disponible : rendez-le disponible pour pouvoir le souhaiter."
               />
             </div>
             <label className="mt-2 block text-sm">

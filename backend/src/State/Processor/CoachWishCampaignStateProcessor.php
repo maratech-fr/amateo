@@ -14,6 +14,7 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Service\CoachWishCampaignPresenter;
 use App\Service\CoachWishCampaignTokenSync;
 use App\Service\ManagementAccessGuard;
+use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
 use DateTimeImmutable;
@@ -39,6 +40,7 @@ class CoachWishCampaignStateProcessor extends AbstractStateProcessor
         ManagementAccessGuard $managementAccessGuard,
         private readonly CoachWishCampaignTokenSync $tokenSync,
         private readonly CoachWishCampaignPresenter $presenter,
+        private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
     ) {
         parent::__construct($entityManager, $requestStack, $seasonResolver, $seasonAccessGuard, $managementAccessGuard);
     }
@@ -159,6 +161,15 @@ class CoachWishCampaignStateProcessor extends AbstractStateProcessor
             $this->refuse('Adressez la collecte à la période mère, pas à une semaine isolée.');
         }
 
+        // P2-63 PR 4 (Q8/D-c, fondateur 2026-10-09) — la collecte ne couvre QUE des semaines
+        // déjà planifiées : ses semaines DÉRIVENT des plannings de la période (une par planning,
+        // ancrée au lundi de sa première semaine). Le serveur DÉCIDE (le front ne fait qu'afficher
+        // le dérivé) : chaque semaine choisie doit appartenir aux lundis portés par un planning.
+        // Aucun planning ⇒ liste vide ⇒ toute création est refusée (« Créez d'abord le planning »).
+        // D-f (campagnes existantes) : ces objets restent LISIBLES tels quels ; seule
+        // l'écriture (POST/PUT) passe par ce régime dérivé.
+        $planMondays = $this->schedulePlanProvisioner->planWeekMondaysForPeriod($entry->getId());
+
         foreach ($input->weeks as $week) {
             $weekStart = new DateTimeImmutable((string) $week . ' 00:00:00');
             if ('1' !== $weekStart->format('N')) {
@@ -168,6 +179,9 @@ class CoachWishCampaignStateProcessor extends AbstractStateProcessor
             $weekEnd = $weekStart->modify('+6 days');
             if ($weekStart > $entry->getEndDate() || $weekEnd < $entry->getStartDate()) {
                 $this->refuse('Une semaine choisie ne recoupe pas la période de vacances.');
+            }
+            if (!\in_array($weekStart->format('Y-m-d'), $planMondays, true)) {
+                $this->refuse('Cette semaine n’a pas encore de planning de vacances — créez-le d’abord.');
             }
         }
 

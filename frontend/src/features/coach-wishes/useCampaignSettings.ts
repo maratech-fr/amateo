@@ -2,9 +2,11 @@ import { type Dispatch, type SetStateAction, useMemo, useState } from "react";
 
 import type { CalendarEntry } from "@/features/cockpit/api";
 import type { PriorityTier, Team } from "@/features/wizard/api";
-import { addDays, isActionableWeek, periodAdjustWeeks, todayISO } from "@/features/cockpit/lib/date";
+import { addDays, isActionableWeek, todayISO } from "@/features/cockpit/lib/date";
+import { useCalendarEntries, useSchedulePlans } from "@/features/cockpit/queries";
 import { usePriorityTiers, useWizardTeamCoaches, useWizardTeams } from "@/features/wizard/queries";
 import { useCreateCoachWishCampaign, useUpdateCoachWishCampaign } from "./campaignQueries";
+import { planDerivedWeeks } from "./campaignWeeks";
 
 import type { CoachWishCampaign } from "./campaignApi";
 
@@ -46,6 +48,12 @@ export interface CampaignSettings {
   /** Deux motifs réunis (#344 round 2) : une semaine retenue RÉVOLUE, ou que la période n'ÉMET
    *  plus — les deux doivent ramener le gestionnaire sur les Réglages à l'ouverture. */
   weeksNeedAttention: boolean;
+  /** P2-63 PR 4 (Q8) — la période porte-t-elle au moins un planning (donc une semaine
+   *  collectable) ? Faux ⇒ la fenêtre invite à créer d'abord le planning. */
+  hasPlannings: boolean;
+  /** Vrai tant que les plannings/entrées ne sont pas POSÉS : on ne conclut pas « sans planning »
+   *  sur une lecture en cours (sinon faux vide, règle readState). */
+  planningsLoading: boolean;
 }
 
 export function useCampaignSettings({
@@ -64,6 +72,18 @@ export function useCampaignSettings({
   const { data: tiers = [] } = usePriorityTiers();
   const createCampaign = useCreateCoachWishCampaign();
   const updateCampaign = useUpdateCoachWishCampaign();
+
+  // P2-63 PR 4 (Q8) — les semaines collectables DÉRIVENT des plannings de la période (celui de
+  // la mère pour un bloc, ceux des semaines-enfants pour une période scindée). On lit tous les
+  // plannings de la saison + les entrées de la fenêtre de la période pour rattacher chaque plan
+  // à sa semaine type. Le serveur reste l'autorité (garde 422) ; ce dérivé ne sert qu'à afficher.
+  const plansQuery = useSchedulePlans();
+  const entriesQuery = useCalendarEntries(entry.startDate, entry.endDate);
+  const planningsSettled = undefined !== plansQuery.data && undefined !== entriesQuery.data;
+  const plannedWeeks = useMemo(
+    () => planDerivedWeeks(entry.id, entriesQuery.data ?? [], plansQuery.data ?? []),
+    [entry.id, entriesQuery.data, plansQuery.data],
+  );
 
   // Campagne courante (après enregistrement, on garde la réponse pour afficher les liens).
   const [campaign, setCampaign] = useState<CoachWishCampaign | null>(existing);
@@ -84,7 +104,10 @@ export function useCampaignSettings({
     if (null === season) {
       return [];
     }
-    const all = periodAdjustWeeks(entry.startDate, entry.endDate, season, entry.periodType);
+    // P2-63 PR 4 — l'offre DÉRIVE des plannings (plus de `periodAdjustWeeks`). Une campagne
+    // EXISTANTE (D-f) peut porter une semaine qu'aucun planning ne couvre : elle reste listée
+    // et marquée (orpheline ci-dessous), jamais offerte à une nouvelle sélection.
+    const all = plannedWeeks;
     const kept = new Set(existing?.weeks ?? []);
     const offered = all.filter((w) => isActionableWeek(w, today) || kept.has(w.monday));
     // ⚠ Une semaine retenue par la campagne peut ne PLUS être émise du tout — la période
@@ -97,7 +120,7 @@ export function useCampaignSettings({
     const orphans = [...kept].filter((monday) => !shown.has(monday)).map((monday) => ({ monday, startDate: monday, endDate: addDays(monday, 6) }));
 
     return [...offered, ...orphans].sort((a, b) => a.monday.localeCompare(b.monday));
-  }, [entry, season, existing, today]);
+  }, [plannedWeeks, season, existing, today]);
 
   // Équipes ayant AU MOINS un coach — cocher une équipe sans coach ne crée aucun lien.
   const coachCountByTeam = useMemo(() => {
@@ -219,13 +242,19 @@ export function useCampaignSettings({
   // ne plus être ÉMISE par la période — c'est ce second cas que #344 avait attrapé, et que
   // mon premier jet laissait filer parce qu'une semaine orpheline encore future passe pour
   // actionnable. Les deux doivent ramener le gestionnaire sur les Réglages.
-  const emittedMondays = useMemo(
-    () => new Set(null === season ? [] : periodAdjustWeeks(entry.startDate, entry.endDate, season, entry.periodType).map((w) => w.monday)),
-    [entry, season],
-  );
+  // « Émis » = porté par un planning (P2-63 PR 4) : une campagne dont une semaine n'est plus
+  // couverte par aucun planning doit ramener le gestionnaire sur les Réglages. On n'en conclut
+  // rien tant que les plannings ne sont pas POSÉS (sinon toute campagne ouvrirait à tort sur
+  // Réglages pendant le chargement).
+  const emittedMondays = useMemo(() => new Set(plannedWeeks.map((w) => w.monday)), [plannedWeeks]);
   const weeksNeedAttention =
     null !== existing &&
+    planningsSettled &&
     (existing.weeks.some((monday) => !emittedMondays.has(monday)) || availableWeeks.some((w) => existing.weeks.includes(w.monday) && !isActionableWeek(w, today)));
+
+  // P2-63 PR 4 (Q8) — « sans planning » ne se conclut que sur une lecture POSÉE.
+  const planningsLoading = !planningsSettled;
+  const hasPlannings = planningsSettled && plannedWeeks.length > 0;
 
   return {
     campaign,
@@ -246,5 +275,7 @@ export function useCampaignSettings({
     failed,
     save,
     weeksNeedAttention,
+    hasPlannings,
+    planningsLoading,
   };
 }

@@ -1,23 +1,50 @@
 import { isActionableWeek } from "@/features/cockpit/lib/date";
+import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
+import { NoticeBanner } from "@/shared/components/ui/notice-banner";
+import { Spinner } from "@/shared/components/ui/spinner";
 
 import type { CampaignSettings } from "./useCampaignSettings";
 import { TeamPicker } from "./TeamPicker";
-
-const frDate = (iso: string): string => {
-  const [y, m, d] = iso.split("-");
-  return `${d}/${m}/${y}`;
-};
+import { frDate } from "./wishSections";
 
 /**
  * Onglet « Réglages » de la fenêtre doléances (ex-moitié Réglages de `CampaignDialog`) : choix
  * des semaines, des équipes et de la date limite de la collecte. L'état et la logique vivent dans
  * `useCampaignSettings` (porté par le conteneur, qui tient aussi le pied de modale « Créer /
- * Enregistrer ») ; ce composant n'en est que le rendu. Déplacement VERBATIM de `CampaignDialog`.
+ * Enregistrer ») ; ce composant n'en est que le rendu.
+ *
+ * P2-63 PR 4 (Q8) — la collecte n'existe QU'APRÈS la naissance du planning : sans planning sur la
+ * période, le réglage invite à le créer d'abord (geste « Adapter », `onRequestPlanning`) plutôt
+ * que d'offrir un choix de semaines vide. Les semaines offertes DÉRIVENT des plannings.
  */
-export function CampaignSettingsTab({ settings }: { settings: CampaignSettings }) {
-  const { availableWeeks, weeks, toggleWeek, today, pickerTeams, ineligibleIds, tiers, teamIds, setTeamIds, deadline, setDeadline, failed } = settings;
+export function CampaignSettingsTab({ settings, onRequestPlanning }: { settings: CampaignSettings; onRequestPlanning?: () => void }) {
+  const { availableWeeks, weeks, toggleWeek, today, pickerTeams, ineligibleIds, tiers, teamIds, setTeamIds, deadline, setDeadline, failed, hasPlannings, planningsLoading } = settings;
+
+  if (planningsLoading) {
+    return (
+      <div className="flex justify-center py-8">
+        <Spinner className="size-6" />
+      </div>
+    );
+  }
+
+  if (!hasPlannings) {
+    return (
+      <NoticeBanner tone="muted">
+        <p>
+          Créez d'abord le planning des vacances : la collecte de doléances couvre les semaines de ce
+          planning. Adaptez la période pour le créer, puis revenez ouvrir la collecte.
+        </p>
+        {onRequestPlanning ? (
+          <Button size="sm" onClick={onRequestPlanning}>
+            Adapter cette période
+          </Button>
+        ) : null}
+      </NoticeBanner>
+    );
+  }
 
   return (
     <>

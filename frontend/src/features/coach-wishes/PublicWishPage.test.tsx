@@ -136,21 +136,38 @@ describe("PublicWishPage — parcours en étapes", () => {
     expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 4, unavailableDays: [3], wishedDays: [], comment: "note manager" }], []);
   });
 
-  it("NR P4-312 — un jour souhaité part en wishedDays ; le cocher souhaité le retire des indisponibilités (exclusion)", async () => {
+  it("P2-63 lot 5 — un jour non disponible est DÉSACTIVÉ côté souhaités ; le rendre disponible permet de le souhaiter", async () => {
     h.getContext.mockResolvedValue(context()); // mercredi (3) préréglé en indisponible
     h.submit.mockResolvedValue({ deadline: "2027-06-30" });
     renderAt();
     await start();
 
+    const dispo = screen.getByRole("group", { name: "Jours disponibles" });
     const wished = screen.getByRole("group", { name: "Jours souhaités" });
-    // mardi souhaité (positif), puis mercredi souhaité → il quitte les indisponibilités.
+    // mercredi indisponible → le jour souhaité correspondant est DÉSACTIVÉ (aria-disabled), pas cochable.
+    expect(within(wished).getByRole("button", { name: "mercredi" })).toHaveAttribute("aria-disabled", "true");
+
+    // mardi (disponible) peut être souhaité tout de suite.
     await userEvent.click(within(wished).getByRole("button", { name: "mardi" }));
+    // Rendre mercredi disponible (le represser côté disponibles) le réactive côté souhaités ; on le souhaite alors.
+    await userEvent.click(within(dispo).getByRole("button", { name: "mercredi" }));
     await userEvent.click(within(wished).getByRole("button", { name: "mercredi" }));
 
     await userEvent.click(screen.getByRole("button", { name: "Suivant" })); // récap
     await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/ }));
     await waitFor(() => expect(h.submit).toHaveBeenCalledTimes(1));
     expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [], wishedDays: [2, 3], comment: "note manager" }], []);
+  });
+
+  // Lot 5 — « Jours disponibles » est rendu AU-DESSUS de « Jours souhaités » sur la page coach aussi.
+  it("P2-63 lot 5 — rend « Jours disponibles » AVANT « Jours souhaités »", async () => {
+    h.getContext.mockResolvedValue(context());
+    renderAt();
+    await start();
+
+    const dispo = screen.getByRole("group", { name: "Jours disponibles" });
+    const wished = screen.getByRole("group", { name: "Jours souhaités" });
+    expect(dispo.compareDocumentPosition(wished) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   // P2-63 A — inversion de PRÉSENTATION : « Jours disponibles » (tous pressés, on dépresse) ;

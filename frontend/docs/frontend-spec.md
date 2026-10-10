@@ -4,7 +4,7 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-10-09 (fusion fenêtre doléances #10 : §2 `/doleances/apercu/:campaignId` et l'arbre §10 recalés — `CoachWishesModal`/`CampaignDialog`/`RadarCoachWishAction` → `CoachWishesHub` (3 onglets `WishesTab`/`SollicitationTab`/`CampaignSettingsTab`) + `RadarCoachWishBadge`). Passe D2 PR B (`documentation-update`) : la ligne `/doleances/:token` (§2) regagne le bloc mutualisation (confronté à `WishTeamStep.tsx`), nouvelle ligne `/doleances/apercu/:campaignId` (confrontée à `routes.tsx`/`PreviewWishPage.tsx`) ; `ONBOARDING_ALLOWED` recalée contre `AuthGuard.tsx:19` (`/boite-aux-lettres` manquait à la liste). Reste du fichier non re-sondé ligne à ligne cette passe (dernière passe de fond : DOC-59, 2026-10-06, découpage thématique sans réécriture) — historique : `git log -p --follow` ce fichier.
+Last verified @ 2026-10-10 (P2-63 PR 2 + PR 4 + lot 5) : l'arbre §10 `coach-wishes/` recalé contre `CoachWishForm.tsx` (ajout manuel semaine d'abord, coach DÉDUIT sans champ, créneaux souhaités en champ nombre), `WishTeamStep.tsx`/`WishesTab.tsx` (jours disponibles au-dessus des jours souhaités, dé-attribution limitée à un coach retiré), `CampaignSettingsTab.tsx`/`useCampaignSettings.ts`/`campaignWeeks.ts` (semaines dérivées des plannings, état « sans planning », dates FR via `wishSections.ts::frDate`) et `RadarPanel.tsx` (`onRequestPlanning`). La ligne publique `/doleances/:token` (§2) gagne l'inversion « disponibles au-dessus » et le jour non disponible désactivé côté souhaités (lot 5), le reste de son contrat est inchangé. Reste du fichier non re-sondé ligne à ligne cette passe — historique : `git log -p --follow` ce fichier.
 
 ## 1. Stack Decided
 
@@ -135,7 +135,21 @@ frontend/src/
 │   ├── coach-wishes/           # #10 doléances : CoachWishesHub (fenêtre unique, 3 onglets) → WishesTab,
 │   │                           # SollicitationTab, CampaignSettingsTab + useCampaignSettings ; CoachWishForm,
 │   │                           # MutualizationForm (D2), PublicWishPage (route publique),
-│   │                           # PreviewWishPage (aperçu gestionnaire, D2), RadarCoachWishBadge (badge radar)
+│   │                           # PreviewWishPage (aperçu gestionnaire, D2), RadarCoachWishBadge (badge radar).
+│   │                           # P2-63 PR 2 — CoachWishForm : ajout manuel SEMAINE d'abord puis équipe
+│   │                           # (TeamSelect, équipe déjà servie désactivée avec motif). PR 4 —
+│   │                           # CampaignSettingsTab : semaines DÉRIVÉES des plannings
+│   │                           # (campaignWeeks.ts::planDerivedWeeks + useSchedulePlans/useCalendarEntries),
+│   │                           # état « sans planning » = invite « Créez d'abord le planning » + « Adapter »
+│   │                           # (RadarPanel.onRequestPlanning) ; le serveur reste l'autorité (garde 422).
+│   │                           # Lot 5 (retours fondateur 2026-10-10) : plus de champ Coach, coach DÉDUIT
+│   │                           # (principal de l'équipe à la création, conservé tel quel en édition) ;
+│   │                           # « créneaux souhaités » en champ nombre 0-7 ; « Jours disponibles » AU-DESSUS
+│   │                           # de « Jours souhaités » (form ET page coach), jour non disponible DÉSACTIVÉ
+│   │                           # côté souhaités (`DayMultiPicker` props `disabledDays`/`disabledReason`) ;
+│   │                           # dates jj/mm/aaaa via `wishSections.ts::frDate` (foyer unique) ; « coach
+│   │                           # dé-attribué » affiché seulement pour un `coachId` posé mais introuvable
+│   │                           # (coach retiré), jamais pour un `coachId` null.
 │   ├── cockpit/                # CockpitPage : bandeau planning socle, calendrier mensuel, radar
 │   │                           # overlays, FbiDeadlineCard (rappel FBI + escalade login, RMM-6 PR-3)
 │   ├── legal/                  # PrivacyPage (/confidentialite)
