@@ -652,8 +652,10 @@ final class SchedulePlanProvisioner
      */
     public function planTeamSelectionInitialized(string $schedulePlanId): bool
     {
+        // Prédicat SQL (pas une lecture de colonne booléenne nue) : pdo_pgsql rend « t »/« f »
+        // qu'un `(bool)` interprète tous deux comme vrai — l'idiome maison est `SELECT 1 WHERE …`.
         return (bool) $this->entityManager->getConnection()->fetchOne(
-            'SELECT team_selection_initialized FROM schedule_plan WHERE id = :pid',
+            'SELECT 1 FROM schedule_plan WHERE id = :pid AND team_selection_initialized',
             ['pid' => $schedulePlanId],
         );
     }

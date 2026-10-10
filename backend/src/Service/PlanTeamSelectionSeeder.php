@@ -23,10 +23,12 @@ use Doctrine\ORM\EntityManagerInterface;
  * tout le club resterait « actif par défaut », au lieu de reprendre S+A seulement. On
  * matérialise donc le seed ICI, en amont de la 1re écriture du transfert.
  *
- * ⚠ MIROIR DÉCLARÉ (frontend/src/features/wizard/steps/periodSeedSelection.ts ⇄ ce service),
- * gardé en parité par le test `PlanTeamSelectionSeedParityTest` : le
- * wizard sème le MÊME défaut à l'ouverture de l'étape Équipes d'un plan neuf. Deux
- * producteurs du même tri — la règle ne doit diverger dans aucun des deux. Règle (E3) :
+ * ⚠ MIROIR DÉCLARÉ du seed du wizard (frontend/src/features/wizard/steps/PeriodTeams.tsx) :
+ * le wizard sème le MÊME défaut à l'ouverture de l'étape Équipes d'un plan neuf. Deux
+ * producteurs du même tri — la règle ne doit diverger dans aucun des deux. La règle backend
+ * est gardée par le test `PlanTeamSelectionSeederTest` ; la PARITÉ cross-stack avec le front
+ * (extraction du calcul en lib pure + test de parité + entrée au registre
+ * `FrontRederivationRegistryTest`) reste à câbler côté frontend. Règle (E3) :
  *  - REPRISE (holiday) : seuls les 2 premiers RANGS (par id de rang croissant : S puis A)
  *    reprennent ; REPLI sur le meilleur rang réellement présent si aucune équipe en S/A
  *    (un petit club tout en loisir ne reprend jamais « personne ») ;
@@ -55,7 +57,7 @@ final class PlanTeamSelectionSeeder
      *
      * @return array<string, true> set des ids retenus
      */
-    public function keptTeamIds(array $teams, array $tiers, bool $isClosure): array
+    public static function keptTeamIds(array $teams, array $tiers, bool $isClosure): array
     {
         if ($isClosure) {
             // Fermeture : structure verrouillée, tout le club reste actif → tout est « retenu ».
@@ -115,7 +117,7 @@ final class PlanTeamSelectionSeeder
         $teams = $this->teamRepository->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]);
         /** @var list<PriorityTier> $tiers */
         $tiers = $this->priorityTierRepository->findAll();
-        $keepIds = $this->keptTeamIds($teams, $tiers, $isClosure);
+        $keepIds = self::keptTeamIds($teams, $tiers, $isClosure);
 
         $overrideRepository = $this->entityManager->getRepository(TeamPeriodOverride::class);
         foreach ($teams as $team) {
