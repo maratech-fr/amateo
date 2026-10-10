@@ -30,7 +30,7 @@
 #       127.0.0.1:15432:amateo:amateo_read:<mot de passe>
 # Avant chaque enquête, le fondateur DÉVERROUILLE la clé dans l'agent DÉDIÉ, pour
 # une durée limitée :
-#   SSH_AUTH_SOCK=~/.ssh/agent-prodread.sock ssh-add -t 4h ~/.ssh/amateo_prod_read
+#   SSH_AUTH_SOCK=~/.ssh/agent-prodread.sock ssh-add -t 1h ~/.ssh/amateo_prod_read
 # Clé verrouillée (ou absente de cet agent) = ce script échoue net, aucune
 # session n'atteint la prod.
 #
@@ -122,12 +122,17 @@ perms="$(stat -c '%a' "$PGPASS_HOST" 2>/dev/null || stat -f '%Lp' "$PGPASS_HOST"
 # ── Interrupteur : la clé dédiée (à phrase de passe) doit être DÉVERROUILLÉE ──
 # dans l'agent DÉDIÉ (socket fixe — jamais l'agent ambiant : lui seul doit porter
 # cette clé). Clé absente de cet agent = aucune session ne peut atteindre la prod.
-[[ -S "$SSH_AGENT_SOCK" ]] || die "agent SSH dédié absent (${SSH_AGENT_SOCK}) : le démarrer puis \`SSH_AUTH_SOCK=${SSH_AGENT_SOCK} ssh-add -t 4h ~/.ssh/amateo_prod_read\` — cf. docs/ops/deploy.md §1.8"
+[[ -S "$SSH_AGENT_SOCK" ]] || die "agent SSH dédié absent (${SSH_AGENT_SOCK}) : le démarrer puis \`SSH_AUTH_SOCK=${SSH_AGENT_SOCK} ssh-add -t 1h ~/.ssh/amateo_prod_read\` — cf. docs/ops/deploy.md §1.8"
 [[ -f "${SSH_KEY}.pub" ]] || die "clé publique absente : ${SSH_KEY}.pub — cf. docs/ops/deploy.md §1.8"
 key_fpr="$(ssh-keygen -lf "${SSH_KEY}.pub" | awk '{print $2}')"
 if ! SSH_AUTH_SOCK="$SSH_AGENT_SOCK" ssh-add -l 2>/dev/null | awk '{print $2}' | grep -qxF "$key_fpr"; then
-  die "clé amateo-prod-read verrouillée dans l'agent dédié : demander au fondateur \`SSH_AUTH_SOCK=${SSH_AGENT_SOCK} ssh-add -t 4h ~/.ssh/amateo_prod_read\`"
+  die "clé amateo-prod-read verrouillée dans l'agent dédié : demander au fondateur \`SSH_AUTH_SOCK=${SSH_AGENT_SOCK} ssh-add -t 1h ~/.ssh/amateo_prod_read\`"
 fi
+
+# ── S'assurer de l'image psql AVANT d'ouvrir le tunnel ──
+# Un premier `docker pull` peut durer plus que `UnusedConnectionTimeout 1m` côté VM
+# et couperait le tunnel pendant le téléchargement — on le fait donc en amont.
+docker image inspect "$PSQL_IMAGE" >/dev/null 2>&1 || docker pull "$PSQL_IMAGE"
 
 # ── Barrière 2 : le tunnel SSH, via un socket de contrôle pour le refermer ──
 control_dir="$(mktemp -d "${TMPDIR:-/tmp}/prod-read.XXXXXX")"
@@ -148,7 +153,7 @@ ssh -fN -M -S "$control_sock" \
   -o ServerAliveCountMax=2 \
   -L "${LOCAL_PORT}:127.0.0.1:5432" \
   "$SSH_ALIAS" \
-  || die "tunnel SSH refusé — vérifier l'alias « ${SSH_ALIAS} » (~/.ssh/config), que la clé est déverrouillée (\`ssh-add -t 4h ~/.ssh/amateo_prod_read\`) et autorisée sur la VM (docs/ops/deploy.md §1.8)"
+  || die "tunnel SSH refusé — vérifier l'alias « ${SSH_ALIAS} » (~/.ssh/config), que la clé est déverrouillée (\`ssh-add -t 1h ~/.ssh/amateo_prod_read\`) et autorisée sur la VM (docs/ops/deploy.md §1.8)"
 
 # ── Préambule optionnel : poser le club (AIDE, pas une frontière — rls.md) ──
 preamble=""
