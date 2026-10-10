@@ -1,12 +1,10 @@
 # Carte de la couverture de tests — qui teste quoi, ce qui gate, ce qui manque
 
-Last verified @ 2026-10-08 (P4-266, `documentation-update`). Re-confronté au code : les deux
-lignes « Cycle de vie des plans » citant `SchedulePlanStalenessServedTest`/le scénario « Le
-cockpit le sait » sont remplacées — `Integration/Api/SchedulePlanStructureHashTest` (bloquant,
-remplace aussi `ConstraintChangeStaleScheduleTest`/`ResourceChangeStaleScheduleTest`, supprimés)
-et le scénario Behat `le-planning-se-dit-a-regenerer.feature` recalé (rattacher un coach fait
-désormais diverger l'empreinte). Reste des lignes non re-sondées cette passe — historique complet :
-`git log -p --follow docs/testing/test-coverage-map.md`.
+Last verified @ 2026-10-10 (lot 9 B2, `documentation-update`). Re-confronté au code : la ligne
+`l-unite-de-placement-est-le-bloc.feature` gagne le scénario « mutualiser une séance placée d'un
+plan de période garde la case, défaire le groupe l'emporte » (steps dans
+`backend/tests/Behat/TrainingBlockContext.php`). Reste des lignes non re-sondées cette passe —
+historique complet : `git log -p --follow docs/testing/test-coverage-map.md`.
 
 > **Ce que ce fichier est** : la carte, pour le fondateur et pour un agent, de **ce que chaque outil
 > prouve**, **par quel job CI**, et **ce que personne ne prouve**. Il ne remplace ni
@@ -227,7 +225,7 @@ Calendrier, ouvre la liste « FBI — à faire », coche « saisi » sur sa renc
 |---|---|
 | `le-socle-commande-les-plans.feature` | valider ou rouvrir le planning de saison efface les plans de période ENTIÈREMENT à venir, jamais un déjà commencé ; aucune génération de période sans socle en vigueur |
 | `une-contrainte-saisie-est-honoree.feature` | une contrainte saisie est honorée par le solveur (aucune séance hors fenêtre) ; une contrainte impossible fait échouer la génération avec un diagnostic nommé, jamais un plan bricolé |
-| `l-unite-de-placement-est-le-bloc.feature` | une équipe qui ne s'entraîne qu'en groupe ne se réserve pas seule ; réserver le groupe pose la séance pour tout le monde ; retirer une séance du lot emporte le groupe entier |
+| `l-unite-de-placement-est-le-bloc.feature` | une équipe qui ne s'entraîne qu'en groupe ne se réserve pas seule ; réserver le groupe pose la séance pour tout le monde ; retirer une séance du lot emporte le groupe entier ; mutualiser une séance déjà placée d'un plan de période garde la case (lot 9 B1), défaire le bloc emporte ses séances de groupe liées (lot 9 B2) |
 | `un-verrou-est-souverain.feature` | une séance verrouillée en dur reste à la même case après régénération ; un déplacement impossible (case sans créneau ouvert) est refusé et nommé, rien n'est écrit ; une règle qui contredit un verrou ne le déplace pas, le créneau reste et la règle violée est signalée (P4-176) |
 | `le-perimetre-engage-est-protege.feature` | une équipe engagée en compétition (elle a des matchs) n'est ni supprimable ni changeable de niveau ; une équipe qui ne joue pas reste libre |
 | `le-planning-se-dit-a-regenerer.feature` | **P4-266** — le signal « à régénérer » se dérive de l'empreinte de structure servie PAR PLAN, comparée au `snapshotHash` figé ; rattacher un coach à une équipe le fait désormais diverger (le coach entre dans le payload haché), le détacher le réaligne |

@@ -1,13 +1,13 @@
 # Vacances scolaires & jours fériés — référentiels calendaires
 
-Last verified @ 2026-10-06 (`documentation-update`, rotation de fraîcheur — sujet sans rapport,
-passe P5-1/2/5). Re-confronté : `SchoolZoneResolver::ZONES` porte exactement les 13 codes listés
-(`A`/`B`/`C`/`CORSE` + 9 DOM/TOM, `backend/src/Service/SchoolZoneResolver.php:27-32`) ✓ ;
-`HolidayPaths` toujours composé par `CustomRoutesOpenApiFactory` (`import App\OpenApi\PathContributor\HolidayPaths`,
-`backend/src/OpenApi/CustomRoutesOpenApiFactory.php:20,75`) ✓ ; `AdminJobCatalog` déclare toujours
-`import-school-holidays`/`import-public-holidays` en `quarterly(4)`/`quarterly(4, 30)`,
-`manualTriggerAllowed: true` (`backend/src/AdminJob/AdminJobCatalog.php:71-72`) ✓. Reste du fichier
-non re-contrôlé cette passe.
+Last verified @ 2026-10-10 (`documentation-update`, rotation de fraîcheur — sujet sans rapport, lot
+9 B2). Re-confronté : `SchoolZoneResolver::ZONES` porte toujours exactement les 13 codes listés
+(`A`/`B`/`C`/`CORSE` + 9 DOM/TOM, `backend/src/Service/SchoolZoneResolver.php:27`) ✓ ; `HolidayPaths`
+toujours composé par `CustomRoutesOpenApiFactory` (`backend/src/OpenApi/CustomRoutesOpenApiFactory.php:22,77`) ✓ ;
+`AdminJobCatalog` déclare toujours `import-school-holidays`/`import-public-holidays` en
+`quarterly(4)`/`quarterly(4, 30)`, `manualTriggerAllowed: true`
+(`backend/src/AdminJob/AdminJobCatalog.php:71-72`) ✓ ; migration `Version20260706120000` toujours
+présente ✓. Reste du fichier non re-contrôlé cette passe.
 *(historique des passes : `git log -p --follow specs/courantes/vacances-scolaires-jours-feries.md`)*
 
 Feed d'affichage du cockpit (accueil temporel) : vacances scolaires de la zone du club + jours fériés applicables. **Display-only — jamais consommé par le solveur** : si un férié ou une vacance gêne un entraînement, le gestionnaire pose une période (`CalendarEntry` `closure`/`holiday`), il n'y a aucune règle implicite.
