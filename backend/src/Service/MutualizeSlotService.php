@@ -183,15 +183,20 @@ final class MutualizeSlotService
                 $member->setTeamId($teamId);
                 $this->entityManager->persist($member);
             }
+            // Le bloc doit EXISTER en base avant que les séances le référencent : la colonne
+            // `shared_training_block_id` porte une FK et Doctrine n'ordonne pas l'INSERT du bloc
+            // avant l'UPDATE des séances (colonne `guid` nue, pas une association). D'où ce flush.
+            $this->entityManager->flush();
 
             // ANCRAGE — la source verrouillée sur place, les remplacées déplacées+verrouillées, les
-            // activées créées+verrouillées : toutes co-localisées HARD/MANUAL à la case.
-            $this->lockOnCase($anchor);
+            // activées créées+verrouillées : toutes co-localisées HARD/MANUAL à la case ET LIÉES au
+            // bloc (le lien EST ce qui fait disparaître ces séances quand le bloc est supprimé).
+            $this->lockOnCase($anchor, $block->getId());
 
             $movedSlotIds = [];
             foreach ($toMove as $slot) {
                 $slot->setVenueId($venueId)->setDayOfWeek($dayOfWeek)->setStartTime($startTime)->setDurationMinutes($durationMinutes);
-                $this->lockOnCase($slot);
+                $this->lockOnCase($slot, $block->getId());
                 $movedSlotIds[] = $slot->getId();
             }
 
@@ -207,7 +212,8 @@ final class MutualizeSlotService
                     ->setStartTime($startTime)
                     ->setDurationMinutes($durationMinutes)
                     ->setLockLevel(LockLevel::HARD)
-                    ->setLockOrigin(LockOrigin::MANUAL);
+                    ->setLockOrigin(LockOrigin::MANUAL)
+                    ->setSharedTrainingBlockId($block->getId());
                 $this->entityManager->persist($slot);
                 $createdSlotIds[] = $slot->getId();
             }
@@ -358,10 +364,13 @@ final class MutualizeSlotService
         }
     }
 
-    /** Verrouille une séance HARD/MANUAL : c'est ce que le solveur lit pour ancrer le bloc à la case. */
-    private function lockOnCase(ScheduleSlotTemplate $slot): void
+    /**
+     * Fait d'une séance une séance de GROUPE du bloc : verrou HARD/MANUAL (ce que le solveur lit
+     * pour ancrer le bloc à la case) ET lien au bloc (ce qui l'emporte quand le bloc est supprimé).
+     */
+    private function lockOnCase(ScheduleSlotTemplate $slot, string $blockId): void
     {
-        $slot->setLockLevel(LockLevel::HARD)->setLockOrigin(LockOrigin::MANUAL);
+        $slot->setLockLevel(LockLevel::HARD)->setLockOrigin(LockOrigin::MANUAL)->setSharedTrainingBlockId($blockId);
     }
 
     /**

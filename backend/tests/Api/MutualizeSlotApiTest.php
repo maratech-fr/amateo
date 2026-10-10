@@ -75,7 +75,7 @@ final class MutualizeSlotApiTest extends WebTestCase
         self::assertSame('Baby U7-U9', $block->getLabel());
         self::assertCount(2, $this->em->getRepository(SharedTrainingBlockTeam::class)->findBy(['blockId' => $block->getId()]));
 
-        // Les deux séances co-localisées sur la case, verrouillées HARD/MANUAL.
+        // Les deux séances co-localisées sur la case, verrouillées HARD/MANUAL ET LIÉES au bloc.
         foreach ([$source->getId(), $joinerSlot->getId()] as $slotId) {
             $slot = $this->em->getRepository(ScheduleSlotTemplate::class)->find($slotId);
             self::assertInstanceOf(ScheduleSlotTemplate::class, $slot);
@@ -84,6 +84,7 @@ final class MutualizeSlotApiTest extends WebTestCase
             self::assertSame('18:00', $slot->getStartTime()->format('H:i'));
             self::assertSame(LockLevel::HARD, $slot->getLockLevel());
             self::assertSame(LockOrigin::MANUAL, $slot->getLockOrigin());
+            self::assertSame($block->getId(), $slot->getSharedTrainingBlockId(), 'la séance de groupe est liée à son bloc (option B)');
         }
     }
 
@@ -110,12 +111,15 @@ final class MutualizeSlotApiTest extends WebTestCase
         self::assertSame(1, $override->getSessionsPerWeek());
         self::assertSame(MutualizeSlotService::OVERRIDE_SOURCE, $override->getSource());
 
-        // Une séance NEUVE verrouillée pour le joiner sur la case.
+        // Une séance NEUVE verrouillée pour le joiner sur la case, liée au bloc.
+        $block = $this->em->getRepository(SharedTrainingBlock::class)->findOneBy(['clubId' => $ctx['clubId'], 'schedulePlanId' => $ctx['planId']]);
+        self::assertInstanceOf(SharedTrainingBlock::class, $block);
         $created = $this->em->getRepository(ScheduleSlotTemplate::class)->findBy(['scheduleId' => $ctx['scheduleId'], 'teamId' => $ctx['teams']['joiner']]);
         self::assertCount(1, $created);
         self::assertSame(LockLevel::HARD, $created[0]->getLockLevel());
         self::assertSame($ctx['venueId'], $created[0]->getVenueId());
         self::assertSame('18:00', $created[0]->getStartTime()->format('H:i'));
+        self::assertSame($block->getId(), $created[0]->getSharedTrainingBlockId());
     }
 
     public function testNonManagerRefused(): void
@@ -216,6 +220,11 @@ final class MutualizeSlotApiTest extends WebTestCase
         $ctx = $this->seedPeriod('i', capacity: 2);
         $foreignSlot = $this->placeSlot($ctx, $ctx['teams']['source'], $ctx['case']);
         $other = $this->seedPeriod('j', capacity: 2); // un autre club
+
+        // Une requête RÉELLE part d'un cache d'identité VIDE : sans ce clear, `find()` servirait la
+        // séance de l'autre club depuis la map (court-circuitant le filtre tenant / RLS) et le geste
+        // partirait au lieu de 404. On rejoue la requête à froid, comme en production.
+        $this->em->clear();
 
         $this->client->request('POST', '/api/schedule-slots/' . $foreignSlot->getId() . '/mutualize', [], [], $this->managerHeaders($other), json_encode([
             'teamIds' => [$other['teams']['source'], $other['teams']['joiner']], 'replacedSlotIds' => [],
