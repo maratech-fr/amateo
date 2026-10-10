@@ -1,9 +1,9 @@
 # Doléances → planning : jours disponibles, créneaux habituels, ajout manuel, « Transférer au planning » (P2-63)
 
 > **Statut** : questions tranchées le 2026-10-09 (§5) ; plan en 7 PR (§8) ; points D-a → D-g tranchés
-> le 2026-10-09 (§8.10). **PR 1, PR 2 et PR 4 LIVRÉES** (§8.3) ; PR 3, 5, 6, 7 restent à coder. L'item
-> P2-63 reste ouvert tant que les 7 PR ne sont pas toutes livrées (il ne quittera la roadmap et ce
-> fichier ne sera supprimé qu'à ce moment-là).
+> le 2026-10-09 (§8.10). **PR 1, PR 2, PR 3, PR 4 et PR 7 LIVRÉES** (§8.3) ; PR 5 et 6 restent à
+> coder. L'item P2-63 reste ouvert tant que les 7 PR ne sont pas toutes livrées (il ne quittera la
+> roadmap et ce fichier ne sera supprimé qu'à ce moment-là).
 > **Origine** : besoin d'un gestionnaire de club, dicté par le fondateur le 2026-10-09 (mots exacts §0).
 > Fichier de détail de la ligne **P2-63** de [`roadmap.md`](roadmap.md) — il quitte le dépôt quand l'item
 > est livré (règle d'entretien de la roadmap). Toutes les citations `fichier:ligne` sont relatives à la
@@ -440,10 +440,15 @@ s'affiche que pour un `coachId` introuvable (coach retiré), jamais pour un `coa
 Validation : `tests-complete` + `rector` + Behat (`voeux-des-coachs.feature`,
 `generation-du-planning-de-saison.feature`) + frontend.
 
-**PR 3 — B : champ « garder ses créneaux de saison ».** Migration à la main `CoachWish.keepSeasonSlots`
-(bool, défaut false) ; GET/POST publics étendus, bornés au périmètre du jeton, AUCUNE exposition des
-créneaux de saison (booléen nu) ; case dans `CoachWishForm`, pastille StatusPill dans la todo.
-Tests : `PublicCoachWishTest.php`, `CoachWishUpserterTest.php`, vitest. `/security-review` : OUI.
+**PR 3 — B : champ « garder ses créneaux de saison » — LIVRÉE (2026-10-10).** Migration à la main
+`CoachWish.keepSeasonSlots` (bool, défaut false, `Version20261010100000`) ; GET/POST publics étendus
+(`PublicCoachWishController`, `CoachWishUpserter::upsert`), bornés au périmètre du jeton — cocher la
+case n'élargit rien, aucune exposition des créneaux de saison (booléen nu) ; case « Garder les
+créneaux habituels » dans `WishTeamStep.tsx` (page publique) et `CoachWishForm.tsx` (gestionnaire),
+pastille `StatusPill` dans `WishesTab` et ligne dans `WishRecap`. Tests : `PublicCoachWishTest.php`
+(persistance + périmètre + contexte sans créneaux), `CoachWishUpserterTest.php`, `CoachWishApiTest.php`
+(round-trip), vitest (soumission, pastille, récap). `/security-review` : requis (page publique à
+jeton, §8.5) — à faire avant merge.
 
 **PR 4 — Q8 : collecte seulement après la naissance des plannings — LIVRÉE (2026-10-10).** Semaines de campagne DÉRIVÉES des
 segments des plannings de la période (une par planning scindé, une semaine type par planning d'un bloc
@@ -487,12 +492,19 @@ semantics : `backend/tests/CrossStack/SeasonSlotKeepSemanticsGateTest.php` (vrai
 falsifiable + contre-témoin Q3bis) + `SocleReferencePayloadParityTest` à jour. Validation :
 `make -C engine test` (goldens), restart engine, `tests-complete` + `rector` + Behat + frontend.
 
-**PR 7 — Q8bis : valider/rouvrir la saison emporte collecte + doléances futures.**
-`ValidateScheduleController` + `ReopenScheduleController` suppriment aussi `CoachWishCampaign` (jetons
-par FK cascade), `CoachWish`, `CoachWishMutualization` des MÈRES de vacances `startDate > today`
-(nouvelle requête, `ClockInterface`) ; le 409 `overlays_exist` gagne les compteurs, l'annonce dit « … et
-les 25 doléances déjà reçues pour la Toussaint ; il faudra relancer la collecte ». NR : scénario Behat
-dans `le-socle-commande-les-plans.feature` + test de 404 byte-identique du jeton purgé.
+**PR 7 — Q8bis : valider/rouvrir la saison emporte collecte + doléances futures — LIVRÉE
+(2026-10-10).** `App\Service\FutureHolidayCollectePurger` (nouveau service) : `findFutureHolidayMotherIds`
+(`CalendarEntryRepository`, même pivot `startDate > today` que `findWithPlanNotStarted`, horloge club
+via `ClockInterface`), `countReceivedWishes`, `purge` (DQL `CoachWish` → `CoachWishMutualization` →
+`CoachWishCampaign` en dernier, ses `CoachWishToken` partant par FK cascade). Câblé dans
+`ValidateScheduleController` et `ReopenScheduleController` : le 409 `overlays_exist` gagne
+`coachWishCount` ; sur confirmation, la purge s'exécute dans la même transaction destructive que les
+plannings de période, APRÈS leur suppression. Jamais une vacance déjà commencée. Front
+(`useValidateReopen.ts`, `api.ts::OverlaysExistError`, `PlanningPage.tsx::coachWishPurgeClause`) :
+l'annonce de confirmation ajoute « … et N doléance(s) déjà reçue(s) pour les vacances à venir
+partiront aussi — il faudra relancer la collecte » quand `coachWishCount > 0`. NR planning lifecycle :
+scénario Behat dans `le-socle-commande-les-plans.feature` + `ValidateScheduleTest` (purge + 404
+byte-identique du jeton purgé).
 
 ### 8.4 Tests d'abus (§3bis)
 

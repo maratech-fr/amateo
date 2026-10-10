@@ -103,7 +103,8 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
   IMPOSSIBLE, jamais un repli à écrire ; (2) **valider/rouvrir le socle DÉTRUIT les plans de
   période FUTURS** (l'entrée de calendrier survit) — ⚠ critère = la **DATE** (`startDate >
   today`), PAS l'avancement : un plan futur DÉJÀ généré est balayé aussi. Corollaire : la grille
-  copiée ne peut périmer en silence que pour une période **déjà commencée**.
+  copiée ne peut périmer en silence que pour une période **déjà commencée**. Même bascule emporte
+  aussi la collecte de doléances des vacances à venir (`FutureHolidayCollectePurger`).
 - **Contrat backend⇄engine** : Pydantic ⇄ payload, `engine/CONTRACT_VERSION` (**1.4**, un seul
   contrat pour `/generate` · `/place-matches` · `/validate-assignments`), **sync manuelle, pas de
   codegen** — gardé par les 3 `*ContractSchemaTest`.

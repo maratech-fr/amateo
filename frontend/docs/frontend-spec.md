@@ -4,7 +4,7 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-10-10 (P2-63 PR 2 + PR 4 + lot 5) : l'arbre §10 `coach-wishes/` recalé contre `CoachWishForm.tsx` (ajout manuel semaine d'abord, coach DÉDUIT sans champ, créneaux souhaités en champ nombre), `WishTeamStep.tsx`/`WishesTab.tsx` (jours disponibles au-dessus des jours souhaités, dé-attribution limitée à un coach retiré), `CampaignSettingsTab.tsx`/`useCampaignSettings.ts`/`campaignWeeks.ts` (semaines dérivées des plannings, état « sans planning », dates FR via `wishSections.ts::frDate`) et `RadarPanel.tsx` (`onRequestPlanning`). La ligne publique `/doleances/:token` (§2) gagne l'inversion « disponibles au-dessus » et le jour non disponible désactivé côté souhaités (lot 5), le reste de son contrat est inchangé. Reste du fichier non re-sondé ligne à ligne cette passe — historique : `git log -p --follow` ce fichier.
+Last verified @ 2026-10-10 (P2-63 PR 2 + PR 3 + PR 4 + PR 7 + lot 5) : l'arbre §10 `coach-wishes/` recalé contre `CoachWishForm.tsx` (ajout manuel semaine d'abord, coach DÉDUIT sans champ, créneaux souhaités en champ nombre, case « garder les créneaux habituels »), `WishTeamStep.tsx`/`WishesTab.tsx` (jours disponibles au-dessus des jours souhaités, dé-attribution limitée à un coach retiré, case « garder mes créneaux habituels » + pastille `StatusPill`), `CampaignSettingsTab.tsx`/`useCampaignSettings.ts`/`campaignWeeks.ts` (semaines dérivées des plannings, état « sans planning », dates FR via `wishSections.ts::frDate`) et `RadarPanel.tsx` (`onRequestPlanning`). La ligne publique `/doleances/:token` (§2) gagne l'inversion « disponibles au-dessus », le jour non disponible désactivé côté souhaités (lot 5) et la case « garder mes créneaux habituels » (PR 3), le reste de son contrat est inchangé. `planning/` (§10) recalé contre `useValidateReopen.ts`/`api.ts::OverlaysExistError` (PR 7 : `coachWishCount` sur le 409 `overlays_exist`, annonce `PlanningPage.tsx::coachWishPurgeClause` dans les deux dialogues de confirmation Valider/Rouvrir). Reste du fichier non re-sondé ligne à ligne cette passe — historique : `git log -p --follow` ce fichier.
 
 ## 1. Stack Decided
 
@@ -150,6 +150,10 @@ frontend/src/
 │   │                           # dates jj/mm/aaaa via `wishSections.ts::frDate` (foyer unique) ; « coach
 │   │                           # dé-attribué » affiché seulement pour un `coachId` posé mais introuvable
 │   │                           # (coach retiré), jamais pour un `coachId` null.
+│   │                           # PR 3 — case « garder les créneaux habituels » (`CoachWish.keepSeasonSlots`,
+│   │                           # booléen NU, aucun horaire de saison exposé) sur la page publique
+│   │                           # (WishTeamStep) et la modale gestionnaire (CoachWishForm), pastille
+│   │                           # StatusPill dans WishesTab + ligne dans WishRecap.
 │   ├── cockpit/                # CockpitPage : bandeau planning socle, calendrier mensuel, radar
 │   │                           # overlays, FbiDeadlineCard (rappel FBI + escalade login, RMM-6 PR-3)
 │   ├── legal/                  # PrivacyPage (/confidentialite)

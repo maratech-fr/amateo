@@ -1,11 +1,9 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-10-08 (P4-266, `documentation-update`) : §2 recalée — un planning VALIDÉ (en
-vigueur) ne porte plus aucun signal « à régénérer », quelle que soit la cause (plus de pastille
-cockpit, `StalenessPill` supprimé) ; rattacher un coach à une équipe fait désormais diverger
-l'empreinte de structure sur une version de TRAVAIL (revirement sur l'ancien listener ciblé
-P4-268) ; la mention `currentStructureHash` recalée en empreinte PAR PLAN. Reste non re-sondé
-cette passe : le reste du fichier. Historique des passes vit dans git :
+Last verified @ 2026-10-10 (P2-63 PR 7) : §6 gagne la purge de la collecte de doléances des
+vacances à venir sur la même bascule destructive, confrontée à `ValidateScheduleController.php`/
+`ReopenScheduleController.php`/`Service/FutureHolidayCollectePurger.php`. Reste non re-sondé cette
+passe : le reste du fichier. Historique des passes vit dans git :
 `git log -p --follow specs/courantes/planning-lifecycle-validated.md`.
 
 Le plan de type **SEASON** (`schedule_plan`) et **la version qu'il pointe**
@@ -216,6 +214,7 @@ de versions) — jamais de N+1. Gardé par `ScheduleCapabilityParityTest` (step 
 - **Tenant isolation** (blocking) : `/validate` et `/reopen` cross-club → 403.
 - **Déblocage du cockpit** : `seasonPlan.hasFinishedVersion` = le plan SEASON porte ≥1 version terminée (`COMPLETED`/`FAILED`). **Dérivé, jamais posé, indépendant du pointeur** — `/reopen` ne re-verrouille pas. Exposé sur `/api/me`. Débloque l'accueil cockpit (vs work-loop). Voir `specs/courantes/accueil-cockpit-temporel.md` §2ter.
 - **Reopen destructeur du calendrier de saison** : rouvrir la **version choisie du plan SEASON** alors que des calendriers secondaires (plans de période) existent les **supprime** (spec §2bis, inv. 14). `POST /api/schedules/{id}/reopen` renvoie **409 `{code:"overlays_exist", count, overlays:[{entryId,title}]}`** ; le client confirme avec le body `{"confirmDeleteOverlays": true}` → chaque période est détruite **de bout en bout** (`OverlayManager::deletePeriodPlanForEntry`) : ses versions, **son plan**, et tous les réglages ancrés au plan (grille de créneaux copiée, réservations, modes gymnase, overrides d'équipes/de contraintes) — **l'entrée de calendrier survit** et retombe « à traiter » au radar, à refaire — puis le reopen procède. Même garde, même code, sur `/validate` quand choisir une **autre** version déplacerait le calendrier de la saison. **Portée (amendement fondateur, 2026-07-24, ADR-0002 inv. 14)** : toute période qui porte un plan, **validé ou non** (une période « Adaptée » mais jamais générée compte aussi), et seulement celles **entièrement à venir** — pivot = la date de **début** : « rien du passé, rien de ce qui est en cours » (décision fondateur 2026-07-16), `CalendarEntryRepository::findWithPlanNotStarted`. Zéro période concernée, ou reopen d'un overlay de période : comportement inchangé.
+- **Même bascule emporte la collecte de doléances des vacances à venir (Q8bis, P2-63 PR 7)** : quand des plans secondaires sont détruits (ci-dessus), la réponse 409 `overlays_exist` porte aussi `coachWishCount` — les doléances DÉJÀ reçues sur les mères de vacances **entièrement à venir** (même pivot `startDate > today`, `CalendarEntryRepository::findFutureHolidayMotherIds`). Confirmée, la même transaction supprime leur campagne (`CoachWishCampaign` — ses `CoachWishToken` partent par FK cascade), leurs doléances (`CoachWish`) et leurs mutualisations (`CoachWishMutualization`) via `App\Service\FutureHolidayCollectePurger`, APRÈS la destruction des plans de période — jamais une vacance déjà commencée. Front : `useValidateReopen.ts` relaie `OverlaysExistError.coachWishCount`, `PlanningPage.tsx::coachWishPurgeClause` l'ajoute aux deux dialogues de confirmation (Valider/Rouvrir) sous la forme « … et N doléance(s) déjà reçue(s) pour les vacances à venir partiront aussi — il faudra relancer la collecte ».
 
 **Frontend** :
 - Toolbar : bouton Valider (`COMPLETED` non choisie) / Rouvrir (version choisie), read-only gating, libellés statut, badge « Planning de la saison ». Bandeau cockpit : `SeasonPlanBanner`.

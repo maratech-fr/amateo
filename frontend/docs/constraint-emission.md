@@ -1,6 +1,11 @@
 # Émission des contraintes (frontend) + alignement 3 couches
 
-Last verified @ 2026-10-06 (reliquat DOC de l'audit 2026-10-03 — AUD-DOC-50/51, DOC-45). Citation du commentaire mort FACILITY_CAPACITY ré-ancrée sur `app/main.py` (plus de numéro de ligne), étiquettes de version « contrat 2.x » historiques retirées ; poids préféré/évité toujours +10/−10 (`app/solver/objective/weights.py`, gardé par `test_weights_doc_sync.py`). Reste de la table §2 non rejoué ligne à ligne cette passe.
+Last verified @ 2026-10-10 (rotation `documentation-update`) : §2 recalée sur quatre points —
+`ConstraintStateProcessor::assertPreferredVenueIsNotMandatory` existe toujours (422 sur un
+`preferredVenueId` HARD) ; la liste blanche `config` est toujours portée par la constante `SPEC` de
+`ConstraintConfigValidator` ; `VenueTravelRuleSetting` existe toujours (entité dédiée au réglage de
+trajet) ; le commentaire mort `FACILITY_CAPACITY` est toujours présent dans `engine/app/main.py`
+(ancré sans numéro de ligne). Reste de la table non rejoué ligne à ligne cette passe.
 
 > **But** : (1) lister ce que le **wizard émet** réellement, et (2) mettre les **3 couches côte à côte**
 > (frontend → backend → engine) pour repérer les **scissions** et les **angles morts** — les cas où

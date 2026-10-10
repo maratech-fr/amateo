@@ -1,10 +1,9 @@
-Last verified @ 2026-10-10 (lot 4bis « créneau libre ») : schémas `Reservation`/`ReservationInput`
-régénérés — nouvelle propriété `label` (string nullable, ≤ 40) et `teamId` passé NULLABLE (un
-créneau libre ne cible pas d'équipe). Aucune route ajoutée/retirée (238 paths inchangés) : seul le
-contenu des deux schémas bouge.
+Last verified @ 2026-10-10 (P2-63 PR 3) : schémas `CoachWish`/`CoachWishInput` régénérés — nouvelle
+propriété `keepSeasonSlots` (boolean, défaut false). Aucune route ajoutée/retirée (238 paths
+inchangés) : seul le contenu des deux schémas bouge.
 
 **238 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`250bdce332cd04117005b00b4cef4393025a7e33acd84b8a4cf877d7252ddb35` (`sha256sum` sur le fichier).
+`a0bac0eec67c5351de07b972d9dc451310323db6d4cd0e32fb6b437031074045` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne
