@@ -6,6 +6,7 @@ namespace App\Tests\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
@@ -246,6 +247,59 @@ final class MutualizeSlotApiTest extends WebTestCase
         self::assertCount(1, $this->em->getRepository(SharedTrainingBlock::class)->findBy(['clubId' => $ctx['clubId']]), 'aucun second bloc identique');
     }
 
+    /**
+     * B2 — supprimer le bloc (DELETE) emporte SES séances de groupe LIÉES (FK ON DELETE CASCADE) ;
+     * une séance NON liée d'un membre ailleurs ne bouge jamais (exemple fondateur U11M1 jeudi).
+     */
+    public function testDeletingTheBlockRemovesLinkedGroupSessionsButKeepsUnlinked(): void
+    {
+        $ctx = $this->seedPeriod('l', capacity: 2);
+        $source = $this->placeSlot($ctx, $ctx['teams']['source'], $ctx['case']);
+        $joinerSlot = $this->placeSlot($ctx, $ctx['teams']['joiner'], ['venueId' => $ctx['venueId'], 'dayOfWeek' => 3, 'startTime' => '18:00']);
+        // Une séance NON liée de la source, ailleurs (jeudi) : elle survit à la suppression du bloc.
+        $unlinked = $this->placeSlot($ctx, $ctx['teams']['source'], ['venueId' => $ctx['venueId'], 'dayOfWeek' => 4, 'startTime' => '18:00']);
+
+        $this->client->request('POST', '/api/schedule-slots/' . $source->getId() . '/mutualize', [], [], $this->managerHeaders($ctx), json_encode([
+            'teamIds' => [$ctx['teams']['source'], $ctx['teams']['joiner']], 'replacedSlotIds' => [$joinerSlot->getId()],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(200);
+        $blockId = $this->responseData()['blockId'];
+
+        $this->client->request('DELETE', '/api/shared_training_blocks/' . $blockId, [], [], $this->authHeaders($ctx['user']));
+        self::assertResponseStatusCodeSame(204);
+
+        $this->em->clear();
+        $this->scopeGucToClub($ctx['clubId']);
+        self::assertNull($this->em->getRepository(SharedTrainingBlock::class)->find($blockId));
+        self::assertNull($this->em->getRepository(ScheduleSlotTemplate::class)->find($source->getId()), 'la séance source liée part avec le bloc');
+        self::assertNull($this->em->getRepository(ScheduleSlotTemplate::class)->find($joinerSlot->getId()), 'la séance remplacée liée part avec le bloc');
+        self::assertNotNull($this->em->getRepository(ScheduleSlotTemplate::class)->find($unlinked->getId()), 'une séance NON liée ne bouge jamais');
+    }
+
+    /** B2 — supprimer le bloc emporte aussi les réservations « bloc-complètes » de sa portée. */
+    public function testDeletingTheBlockRemovesBlocCompleteReservations(): void
+    {
+        $ctx = $this->seedPeriod('m', capacity: 2);
+        $source = $this->placeSlot($ctx, $ctx['teams']['source'], $ctx['case']);
+        // Une case bloc-complète : les DEUX membres réservés sur la case du bloc, dans la portée.
+        $r1 = $this->createReservation($ctx, $ctx['teams']['source'], $ctx['case']);
+        $r2 = $this->createReservation($ctx, $ctx['teams']['joiner'], $ctx['case']);
+
+        $this->client->request('POST', '/api/schedule-slots/' . $source->getId() . '/mutualize', [], [], $this->managerHeaders($ctx), json_encode([
+            'teamIds' => [$ctx['teams']['source'], $ctx['teams']['joiner']], 'replacedSlotIds' => [],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(200);
+        $blockId = $this->responseData()['blockId'];
+
+        $this->client->request('DELETE', '/api/shared_training_blocks/' . $blockId, [], [], $this->authHeaders($ctx['user']));
+        self::assertResponseStatusCodeSame(204);
+
+        $this->em->clear();
+        $this->scopeGucToClub($ctx['clubId']);
+        self::assertNull($this->em->getRepository(Reservation::class)->find($r1), 'réservation bloc-complète emportée');
+        self::assertNull($this->em->getRepository(Reservation::class)->find($r2), 'réservation bloc-complète emportée');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -379,6 +433,28 @@ final class MutualizeSlotApiTest extends WebTestCase
         $this->em->flush();
 
         return $slot;
+    }
+
+    /**
+     * @param array{clubId: string, seasonId: string, planId?: ?string} $ctx
+     * @param array{venueId: string, dayOfWeek: int, startTime: string} $case
+     */
+    private function createReservation(array $ctx, string $teamId, array $case): string
+    {
+        $this->scopeGucToClub($ctx['clubId']);
+        $reservation = (new Reservation)
+            ->setClubId($ctx['clubId'])
+            ->setSeasonId($ctx['seasonId'])
+            ->setTeamId($teamId)
+            ->setVenueId($case['venueId'])
+            ->setDayOfWeek($case['dayOfWeek'])
+            ->setStartTime(DateTimeImmutable::createFromFormat('!H:i', $case['startTime']))
+            ->setDurationMinutes(90);
+        $reservation->setSchedulePlanId($ctx['planId'] ?? null);
+        $this->em->persist($reservation);
+        $this->em->flush();
+
+        return $reservation->getId();
     }
 
     private function linkPeriodSchedule(string $clubId, string $seasonId, string $planId): Schedule

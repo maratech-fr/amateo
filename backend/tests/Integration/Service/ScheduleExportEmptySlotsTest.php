@@ -10,6 +10,8 @@ use App\Entity\ClubUser;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
@@ -175,6 +177,77 @@ final class ScheduleExportEmptySlotsTest extends KernelTestCase
         $soloB = $this->provider->load($seasonVersion, $venueB->getId())->emptySlots;
         self::assertCount(1, $soloB, 'l\'export mono-gymnase d\'un gymnase vide garde sa grille');
         self::assertSame($venueB->getId(), $soloB[0]->venueId);
+    }
+
+    /**
+     * Lot 9 (B2) — le NOM d'un bloc de mutualisation PRIME sur le libellé de la fenêtre : une case
+     * portant des séances de groupe LIÉES à un bloc nommé affiche le nom du bloc à l'export.
+     */
+    public function testBlockLabelPrimesOverWindowGroupLabel(): void
+    {
+        [$club, $season] = $this->seed();
+        $venue = $this->makeVenue($club, $season, 'Barros');
+
+        // La fenêtre à la case porte DÉJÀ un libellé de créneau.
+        $window = new VenueTrainingSlot;
+        $window->setClubId($club->getId());
+        $window->setSeasonId($season->getId());
+        $window->setVenueId($venue->getId());
+        $window->setDayOfWeek(3);
+        $window->setStartTime(new DateTimeImmutable('18:00'));
+        $window->setDurationMinutes(90);
+        $window->setCapacity(2);
+        $window->setGroupLabel('CEC3');
+        $this->em->persist($window);
+        $this->em->flush();
+
+        $version = new Schedule;
+        $version->setClubId($club->getId());
+        $version->setSeasonId($season->getId());
+        $version->setName('Socle');
+        $version->setStatus(ScheduleStatus::COMPLETED);
+        $this->linkSeededSchedule($version);
+        $this->em->flush();
+
+        // Un bloc NOMMÉ + deux séances de groupe LIÉES, co-localisées sur la case.
+        $t1 = $this->uuid();
+        $t2 = $this->uuid();
+        $block = new SharedTrainingBlock;
+        $block->setClubId($club->getId());
+        $block->setSeasonId($season->getId());
+        $block->setSchedulePlanId(null);
+        $block->setCommonSessions(1);
+        $block->setLabel('Baby U7-U9');
+        $this->em->persist($block);
+        foreach ([$t1, $t2] as $teamId) {
+            $member = new SharedTrainingBlockTeam;
+            $member->setClubId($club->getId());
+            $member->setSeasonId($season->getId());
+            $member->setSchedulePlanId(null);
+            $member->setBlockId($block->getId());
+            $member->setTeamId($teamId);
+            $this->em->persist($member);
+        }
+        $this->em->flush();
+
+        foreach ([$t1, $t2] as $teamId) {
+            $slot = new ScheduleSlotTemplate;
+            $slot->setClubId($club->getId());
+            $slot->setSeasonId($season->getId());
+            $slot->setScheduleId($version->getId());
+            $slot->setTeamId($teamId);
+            $slot->setVenueId($venue->getId());
+            $slot->setDayOfWeek(3);
+            $slot->setStartTime(new DateTimeImmutable('18:00'));
+            $slot->setDurationMinutes(90);
+            $slot->setLockLevel(LockLevel::HARD);
+            $slot->setSharedTrainingBlockId($block->getId());
+            $this->em->persist($slot);
+        }
+        $this->em->flush();
+
+        $groupLabels = $this->provider->load($version)->groupLabels;
+        self::assertSame('Baby U7-U9', $groupLabels[$venue->getId() . '|3|18:00'] ?? null, 'le nom du bloc prime sur le libellé de la fenêtre');
     }
 
     protected function setUp(): void

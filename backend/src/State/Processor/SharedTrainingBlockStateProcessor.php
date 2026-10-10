@@ -6,9 +6,11 @@ namespace App\State\Processor;
 
 use App\ApiResource\SharedTrainingBlockResource;
 use App\Dto\SharedTrainingBlockInput;
+use App\Entity\Reservation;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
+use App\Service\ReservationGroupOccupancy;
 use App\Service\SoloReservationBudget;
 use Symfony\Contracts\Service\Attribute\Required;
 
@@ -120,10 +122,31 @@ class SharedTrainingBlockStateProcessor extends AbstractStateProcessor
      */
     protected function cascadeBeforeDelete(object $entity): void
     {
-        // Pas de cascade ORM : on purge les lignes membres à la main avant la suppression du
-        // parent. PR-1 : le bloc n'a AUCUNE réservation/placement (PR-3/4) — rien d'autre à
-        // dénouer ici, contrairement au groupe qui purge ses réservations de lot.
-        foreach ($this->membershipRows($entity->getId()) as $row) {
+        $members = $this->membershipRows($entity->getId());
+
+        // Lot 9 — supprimer la mutualisation (bloc de PÉRIODE) emporte aussi les réservations
+        // « bloc-complètes » de sa portée : le bloc `sharedBlocks` qui les exemptait disparaissant,
+        // les N verrous restants feraient diagnostiquer au moteur une sur-capacité FANTÔME (patron
+        // {@see App\Deletion\SharedBlockReservationPruneStep}, ici depuis le DELETE du bloc, non la
+        // suppression d'une équipe — on retire TOUTES les réservations de la case bloc-complète).
+        // Les SÉANCES de groupe liées, elles, partent par la FK `ON DELETE CASCADE` du lien
+        // `schedule_slot_template.shared_training_block_id` au `remove` du parent — rien à refaire
+        // ici. Le DELETE d'un bloc SOCLE reste inchangé (socle : ni séance liée, ni cette purge).
+        $planId = $entity->getSchedulePlanId();
+        $clubId = $entity->getClubId();
+        $seasonId = $entity->getSeasonId();
+        if (null !== $planId && null !== $clubId && [] !== $members) {
+            $memberSet = [];
+            foreach ($members as $member) {
+                $memberSet[$member->getTeamId()] = true;
+            }
+            foreach (ReservationGroupOccupancy::reservationsOnGroupCompleteCases($this->reservationsInScope($clubId, $seasonId, $planId), $memberSet) as $reservation) {
+                $this->entityManager->remove($reservation);
+            }
+        }
+
+        // Pas de cascade ORM sur les lignes membres : on les purge à la main avant le parent.
+        foreach ($members as $row) {
             $this->entityManager->remove($row);
         }
     }
@@ -140,6 +163,27 @@ class SharedTrainingBlockStateProcessor extends AbstractStateProcessor
         sort($teamIds);
 
         return SharedTrainingBlockResource::fromEntity($entity, $teamIds);
+    }
+
+    /**
+     * Les réservations d'un plan de période (club + saison explicites, portée = le plan).
+     *
+     * @return list<Reservation>
+     */
+    private function reservationsInScope(string $clubId, string $seasonId, string $planId): array
+    {
+        /** @var list<Reservation> $rows */
+        $rows = $this->entityManager->getRepository(Reservation::class)->createQueryBuilder('r')
+            ->where('r.clubId = :clubId')
+            ->andWhere('r.seasonId = :seasonId')
+            ->andWhere('r.schedulePlanId = :planId')
+            ->setParameter('clubId', $clubId)
+            ->setParameter('seasonId', $seasonId)
+            ->setParameter('planId', $planId)
+            ->getQuery()
+            ->getResult();
+
+        return $rows;
     }
 
     /**
