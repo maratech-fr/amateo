@@ -188,10 +188,15 @@ final class OrphanPinGuard
         // d'orphelin — grille vidée, jour de fermeture — bloquent toujours : là, une
         // séance SERAIT déplacée ailleurs sans le dire.
 
-        // Verrous HARD du work-loop de CETTE version. Les placements SOFT/NONE sont des
-        // RÉSULTATS de solve, pas des épinglages : les refuser bloquerait toute
-        // régénération après un simple changement de grille.
-        foreach ($this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy(['scheduleId' => $schedule->getId()]) as $lock) {
+        // Verrous HARD EFFECTIFS du plan. V1 : « Régénérer » crée une version NUE, dont les
+        // slotTemplates propres sont vides ; les verrous qui comptent sont ceux de la version
+        // SOURCE (maison unique {@see SchedulePlanProvisioner::lockSourceScheduleIdOfPlan}), que le
+        // builder réépinglera. Lire la version NUE laissait passer un verrou orphelin hérité (la
+        // séance aurait été perdue en silence à la génération — ce que ce garde existe pour
+        // empêcher). Repli sur la version elle-même si le plan n'a aucune COMPLETED (1re génération).
+        // Les placements SOFT/NONE sont des RÉSULTATS de solve, pas des épinglages.
+        $lockSourceId = $this->schedulePlanProvisioner->lockSourceScheduleIdOfPlan((string) $schedulePlanId) ?? $schedule->getId();
+        foreach ($this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy(['scheduleId' => $lockSourceId]) as $lock) {
             if (LockLevel::HARD !== $lock->getLockLevel()) {
                 continue;
             }

@@ -43,3 +43,23 @@ Fonctionnalité: Un verrou est souverain à la régénération
     Et une règle qui interdit à cette équipe de s'entraîner ce jour-là
     Quand je régénère le planning de saison
     Alors le verrou reste à sa case et la règle violée est signalée
+
+  Scénario: Deux séances verrouillées d'un plan de période reviennent verrouillées, aux mêmes cases, après régénération
+    Un verrou de période SURVIT à « Régénérer », exactement comme un verrou de saison : la version
+    nouvelle repart des DONNÉES EN COURS (la dernière version terminée du plan) et en réépingle les
+    verrous HARD. Avant le correctif, une version nue n'héritait d'aucun verrou et les séances
+    revenaient déverrouillées, replacées ailleurs.
+    Étant donné le club de démonstration, connecté, avec un plan de période portant une version terminée
+    Et deux séances libres de cette version verrouillées en dur
+    Quand je régénère le plan de période
+    Alors les deux séances reviennent verrouillées, aux mêmes cases
+
+  Scénario: Régénérer repart des données en cours (la dernière version terminée), ses verrous compris
+    « Régénérer » repart TOUJOURS de la version en cours, même quand on en consultait une plus
+    ancienne : une deuxième régénération repart de la version née de la première (devenue la version
+    en cours), verrous compris — ils ne se perdent pas d'une génération à l'autre.
+    Étant donné le club de démonstration, connecté, avec un plan de période portant une version terminée
+    Et deux séances libres de cette version verrouillées en dur
+    Quand je régénère le plan de période
+    Et je régénère encore le plan de période
+    Alors les deux séances reviennent verrouillées, aux mêmes cases

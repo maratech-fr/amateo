@@ -99,6 +99,24 @@ final class LockContext extends BaseContext
 
     private string $finalStatus = '';
 
+    /** Vrai seulement si un scénario a RÉOUVERT le socle (SQL brut) : conditionne sa restauration en fin. */
+    private bool $reopenedSocle = false;
+
+    /** V1 — plan de PÉRIODE : le plan, sa version source, et les séances qu'on y verrouille. */
+    private string $periodPlanId = '';
+
+    private string $periodSourceVersionId = '';
+
+    /** @var list<array{slotId: string, teamId: string, venueId: string, day: int, start: string}> */
+    private array $periodLockedSlots = [];
+
+    /** @var list<string> Versions de période nées des régénérations — à supprimer en fin. */
+    private array $periodRegeneratedIds = [];
+
+    private string $periodLastRegeneratedId = '';
+
+    private string $periodFinalStatus = '';
+
     /**
      * Purge le pool `cache.schedule` (payload solveur) avant chaque scénario. Le pointeur du socle
      * est toggle en SQL brut (voir l'en-tête de classe), écriture que le listener Doctrine
@@ -148,6 +166,131 @@ final class LockContext extends BaseContext
         // futurs — voir l'en-tête de classe). Une version choisie est en lecture seule et non
         // régénérable ; restauré en fin de scénario.
         $this->pointSocleTo('');
+        $this->reopenedSocle = true;
+    }
+
+    #[Given('le club de démonstration, connecté, avec un plan de période portant une version terminée')]
+    public function leClubAvecPlanDePeriodeTermine(): void
+    {
+        $this->token = $this->mintToken(self::USER_EMAIL);
+
+        $me = $this->apiGet('me', $this->token);
+        $club = $me['json']['club'] ?? null;
+        $clubId = \is_array($club) ? ($club['id'] ?? null) : null;
+        if (!\is_string($clubId) || '' === $clubId) {
+            throw new RuntimeException('aucun club pour le gestionnaire de démonstration — la base est-elle seedée ?');
+        }
+        $this->clubId = $clubId;
+
+        // Un plan de PÉRIODE (closure/holiday) du club portant une version COMPLETED avec AU MOINS
+        // deux séances LIBRES (verrou NONE) qu'on puisse verrouiller/déverrouiller proprement par
+        // l'API, sans toucher un verrou seedé (réservation) qu'on ne saurait pas restaurer.
+        $row = $this->dbalScalar(
+            \sprintf(
+                'SELECT s.id || \'|\' || s.schedule_plan_id AS behatval FROM schedule s'
+                . ' JOIN schedule_plan p ON p.id = s.schedule_plan_id'
+                . ' WHERE s.club_id=\'%s\' AND p.type IN (\'CLOSURE\',\'HOLIDAY\') AND s.status=\'COMPLETED\''
+                . ' AND (SELECT COUNT(*) FROM schedule_slot_template t WHERE t.schedule_id = s.id AND t.lock_level=\'NONE\') >= 2'
+                . ' ORDER BY s.created_at DESC LIMIT 1',
+                $this->clubId,
+            ),
+            admin: true,
+        );
+        $parts = '' === $row ? [] : explode('|', $row);
+        if (2 !== \count($parts)) {
+            throw new RuntimeException('aucun plan de période avec une version terminée portant ≥ 2 séances libres — la base est-elle seedée ?');
+        }
+        [$this->periodSourceVersionId, $this->periodPlanId] = $parts;
+    }
+
+    #[Given('deux séances libres de cette version verrouillées en dur')]
+    public function deuxSeancesLibresVerrouillees(): void
+    {
+        $raw = $this->dbalScalar(
+            \sprintf(
+                'SELECT string_agg(row, \';\') AS behatval FROM ('
+                . ' SELECT id || \'|\' || team_id || \'|\' || venue_id || \'|\' || day_of_week || \'|\' || to_char(start_time, \'HH24:MI\') AS row'
+                . ' FROM schedule_slot_template WHERE schedule_id=\'%s\' AND lock_level=\'NONE\' ORDER BY id LIMIT 2'
+                . ') q',
+                $this->periodSourceVersionId,
+            ),
+            admin: true,
+        );
+        $rows = '' === $raw ? [] : explode(';', $raw);
+        if (2 !== \count($rows)) {
+            throw new RuntimeException('la version de période devait porter deux séances libres à verrouiller');
+        }
+
+        foreach ($rows as $encoded) {
+            $cols = explode('|', $encoded);
+            if (5 !== \count($cols)) {
+                throw new RuntimeException('format de séance inattendu lors du verrouillage de période');
+            }
+            [$slotId, $teamId, $venueId, $day, $start] = $cols;
+            $locked = $this->apiPost(
+                \sprintf('schedule-slots/%s/manual-edit/lock', $slotId),
+                ['lockLevel' => 'HARD'],
+                $this->token,
+            );
+            if (200 !== $locked['status']) {
+                throw new RuntimeException(\sprintf('le verrouillage d\'une séance de période a répondu %d (200 attendu)', $locked['status']));
+            }
+            $this->periodLockedSlots[] = ['slotId' => $slotId, 'teamId' => $teamId, 'venueId' => $venueId, 'day' => (int) $day, 'start' => $start];
+        }
+    }
+
+    #[When('je régénère le plan de période')]
+    #[When('je régénère encore le plan de période')]
+    public function jeRegenereLePlanDePeriode(): void
+    {
+        // Overlay : créer une NOUVELLE version sous le plan de période (nue), puis la générer. Elle
+        // repart des DONNÉES EN COURS (la dernière version COMPLETED du plan) — c'est le rail que
+        // `useRegenerateOverlay` suit côté front (createOverlayVersion + generate).
+        $created = $this->apiPost('schedules', ['schedulePlanId' => $this->periodPlanId, 'status' => 'DRAFT'], $this->token);
+        if (!\in_array($created['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('la création de la version de période a répondu %d (201 attendu)', $created['status']));
+        }
+        $newId = (string) ($created['json']['id'] ?? '');
+        if ('' === $newId) {
+            throw new RuntimeException('la création de la version de période n\'a pas rendu d\'identifiant');
+        }
+        $this->periodRegeneratedIds[] = $newId;
+
+        $launched = $this->apiPost(\sprintf('schedules/%s/generate', $newId), [], $this->token);
+        if (202 !== $launched['status']) {
+            throw new RuntimeException(\sprintf('le déclenchement de la génération de période a répondu %d (202 attendu)', $launched['status']));
+        }
+
+        $this->periodLastRegeneratedId = $newId;
+        $this->periodFinalStatus = $this->pollUntilTerminal($newId);
+    }
+
+    #[Then('les deux séances reviennent verrouillées, aux mêmes cases')]
+    public function lesDeuxSeancesReviennentVerrouillees(): void
+    {
+        if ('COMPLETED' !== $this->periodFinalStatus) {
+            throw new RuntimeException(\sprintf('la régénération de période aurait dû aboutir (COMPLETED), statut obtenu « %s »', $this->periodFinalStatus));
+        }
+        if ([] === $this->periodLockedSlots) {
+            throw new RuntimeException('aucune séance verrouillée à vérifier — le décor a-t-il bien verrouillé ?');
+        }
+
+        foreach ($this->periodLockedSlots as $slot) {
+            $count = (int) $this->dbalScalar(
+                \sprintf(
+                    'SELECT COUNT(*) AS behatval FROM schedule_slot_template WHERE schedule_id=\'%s\' AND team_id=\'%s\' AND venue_id=\'%s\' AND day_of_week=%d AND to_char(start_time, \'HH24:MI\')=\'%s\' AND lock_level=\'HARD\'',
+                    $this->periodLastRegeneratedId,
+                    $slot['teamId'],
+                    $slot['venueId'],
+                    $slot['day'],
+                    $slot['start'],
+                ),
+                admin: true,
+            );
+            if ($count < 1) {
+                throw new RuntimeException('une séance verrouillée d\'un plan de période aurait dû revenir VERROUILLÉE (HARD) à la même case après régénération');
+            }
+        }
     }
 
     #[Given('une séance de cette version verrouillée en dur')]
@@ -422,6 +565,17 @@ final class LockContext extends BaseContext
             return;
         }
 
+        // V1 (période) — supprimer les versions nées des régénérations de période (DELETE API : purge
+        // séances/diagnostics ; elles ne sont pas pointées, donc supprimables), puis DÉVERROUILLER les
+        // séances libres qu'on avait verrouillées sur la version source (retour à NONE). Le pointeur du
+        // plan de période N'EST JAMAIS touché ici (on n'a ni validé ni rouvert la période).
+        foreach ($this->periodRegeneratedIds as $versionId) {
+            $this->apiDelete(\sprintf('schedules/%s', $versionId), $this->token);
+        }
+        foreach ($this->periodLockedSlots as $slot) {
+            $this->apiPost(\sprintf('schedule-slots/%s/manual-edit/lock', $slot['slotId']), ['lockLevel' => 'NONE'], $this->token);
+        }
+
         if ('' !== $this->closedVenueId) {
             $this->apiDelete(\sprintf('venues/%s', $this->closedVenueId), $this->token);
         }
@@ -455,7 +609,12 @@ final class LockContext extends BaseContext
         }
 
         // Restaure « socle en vigueur » (SQL brut, voir l'en-tête) : la version d'entrée si elle
-        // existe encore, sinon la plus fraîche COMPLETED parmi les préexistantes.
+        // existe encore, sinon la plus fraîche COMPLETED parmi les préexistantes. UNIQUEMENT si le
+        // scénario a RÉOUVERT le socle — un scénario de PÉRIODE n'y a jamais touché, le repointer
+        // corromprait le pointeur du seed pour les runs suivants.
+        if (!$this->reopenedSocle) {
+            return;
+        }
         $target = '';
         if ($this->isUuid($this->chosenAtEntry)
             && '1' === $this->dbalScalar(\sprintf('SELECT COUNT(*) AS behatval FROM schedule WHERE id=\'%s\'', $this->chosenAtEntry), admin: true)) {

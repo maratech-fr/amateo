@@ -9,6 +9,7 @@ use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Constraint;
 use App\Entity\ConstraintPeriodOverride;
+use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
@@ -26,6 +27,8 @@ use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\Gender;
+use App\Enum\LockLevel;
+use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\VenuePeriodMode;
@@ -650,6 +653,70 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
     }
 
     /**
+     * V1 (NR, axes constraint semantics + planning lifecycle) — LES VERROUS D'UNE PÉRIODE SURVIVENT
+     * À « RÉGÉNÉRER ». Une version NUE n'a aucun slotTemplate propre : le builder GREFFE les HARD de
+     * la version SOURCE du plan, en forme CANONIQUE (id dérivé du PLACEMENT, suggestion à null), pour
+     * que le hash de structure reste stable d'une génération à l'autre. Un créneau repassé NONE (un
+     * RÉSULTAT de solve, plus un verrou) ne revient PAS.
+     */
+    public function testPeriodHardLocksAreInheritedInCanonicalFormAndNoneIsNot(): void
+    {
+        [$club, $season] = $this->seed();
+        $team = $this->team($club, $season, 'SM1');
+        $entry = $this->closurePeriod($club, $season);
+        $planId = $this->planIdOf($entry);
+        $this->venue($club, $season, self::VENUE_OPEN, 'Gym actif');
+
+        // Version SOURCE : COMPLETED, un verrou HARD (MANUAL) + un créneau NONE (résultat de solve).
+        $source = $this->overlaySchedule($club, $season, $entry);
+        $source->setStatus(ScheduleStatus::COMPLETED);
+        $this->lockedSlot($source, $team->getId(), self::VENUE_OPEN, 2, '18:00', LockLevel::HARD, LockOrigin::MANUAL);
+        $this->lockedSlot($source, $team->getId(), self::VENUE_OPEN, 2, '19:00', LockLevel::NONE, null);
+        $this->em->flush();
+
+        // Build PRÉ-GÉNÉRATION (scheduleId null = la version nue n'a rien de propre) : le HARD de la
+        // source est hérité, le NONE non.
+        $slots = $this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $planId, $entry)['slotTemplates'];
+
+        self::assertCount(1, $slots, 'seul le verrou HARD de la source est hérité (le NONE ne revient pas)');
+        self::assertSame(LockLevel::HARD->value, $slots[0]['lockLevel']);
+        self::assertSame(
+            $team->getId() . ':' . self::VENUE_OPEN . ':2:18:00',
+            $slots[0]['id'],
+            'id CANONIQUE dérivé du placement (team:venue:jour:HH:MM), jamais l’id de ligne scopé par version',
+        );
+        self::assertSame('18:00:00', $slots[0]['startTime']);
+        self::assertNull($slots[0]['pendingConstraintSuggestion'], 'forme canonique : suggestion à null');
+    }
+
+    /**
+     * V1 (NR) — dédup par PLACEMENT, le propre gagnant. Un verrou HARD hérité qui coïncide avec une
+     * RÉSERVATION du plan (déjà dans le payload) ne double pas : la réservation gagne.
+     */
+    public function testInheritedHardLockIsDedupedByPlacement(): void
+    {
+        [$club, $season] = $this->seed();
+        $team = $this->team($club, $season, 'SM1');
+        $entry = $this->closurePeriod($club, $season);
+        $planId = $this->planIdOf($entry);
+        $this->venue($club, $season, self::VENUE_OPEN, 'Gym actif');
+
+        $source = $this->overlaySchedule($club, $season, $entry);
+        $source->setStatus(ScheduleStatus::COMPLETED);
+        $this->lockedSlot($source, $team->getId(), self::VENUE_OPEN, 2, '18:00', LockLevel::HARD, LockOrigin::MANUAL);
+        $this->planReservation($club, $season, $planId, $team->getId(), self::VENUE_OPEN, 2, '18:00');
+        $this->em->flush();
+
+        $slots = $this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $planId, $entry)['slotTemplates'];
+
+        $atPlacement = array_values(array_filter(
+            $slots,
+            static fn (array $s): bool => self::VENUE_OPEN === $s['venueId'] && 2 === $s['dayOfWeek'] && '18:00:00' === $s['startTime'],
+        ));
+        self::assertCount(1, $atPlacement, 'un seul créneau au placement partagé : la réservation gagne, le HARD hérité ne double pas');
+    }
+
+    /**
      * P2-9ter NR-2 — le chemin scalaire et `buildForOverlay` sont UNE SEULE source.
      *
      * C'est la garantie qui manquait : trois tentatives ont recopié à la main ce que le
@@ -1086,6 +1153,38 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $slot->setStartTime(new DateTimeImmutable('18:00'));
         $slot->setDurationMinutes(90);
         $this->em->persist($slot);
+    }
+
+    /** Un créneau de version au placement/verrou EXPLICITE — pour une version SOURCE qui porte des verrous hérités (V1). */
+    private function lockedSlot(Schedule $schedule, string $teamId, string $venueId, int $day, string $start, LockLevel $lock, ?LockOrigin $origin): void
+    {
+        $slot = (new ScheduleSlotTemplate)
+            ->setClubId($schedule->getClubId())
+            ->setSeasonId($schedule->getSeasonId())
+            ->setScheduleId($schedule->getId())
+            ->setTeamId($teamId)
+            ->setVenueId($venueId)
+            ->setDayOfWeek($day)
+            ->setStartTime(new DateTimeImmutable($start))
+            ->setDurationMinutes(90)
+            ->setLockLevel($lock)
+            ->setLockOrigin($origin);
+        $this->em->persist($slot);
+    }
+
+    /** Une réservation d'ÉQUIPE ancrée au plan — pour exercer la dédup placement de l'héritage (V1). */
+    private function planReservation(Club $club, Season $season, string $planId, string $teamId, string $venueId, int $day, string $start): void
+    {
+        $reservation = (new Reservation)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setSchedulePlanId($planId)
+            ->setTeamId($teamId)
+            ->setVenueId($venueId)
+            ->setDayOfWeek($day)
+            ->setStartTime(new DateTimeImmutable($start))
+            ->setDurationMinutes(90);
+        $this->em->persist($reservation);
     }
 
     /**

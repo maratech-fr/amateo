@@ -16,6 +16,7 @@ use App\Dto\ScheduleCapabilities;
 use App\Dto\ScheduleInput;
 use App\Entity\Schedule;
 use App\Enum\ScheduleStatus;
+use App\Service\SchedulePlanProvisioner;
 use App\State\Processor\ScheduleStateProcessor;
 use App\State\Provider\ScheduleStateProvider;
 use DateTimeImmutable;
@@ -173,6 +174,24 @@ class ScheduleResource
      */
     #[Groups(['read'])]
     public bool $isChosen = false;
+
+    /**
+     * V1 « les verrous d'une période survivent à Régénérer » — cette version est-elle la SOURCE des
+     * verrous de son plan ({@see SchedulePlanProvisioner::lockSourceScheduleIdOfPlan} :
+     * la dernière COMPLETED, les données « en cours ») ? « Régénérer » repart TOUJOURS de cette
+     * source ; le front confirme quand on régénère en regardant une AUTRE version que la source.
+     * Renseigné EN BATCH par ScheduleStateProvider ; false sur le chemin fromEntity nu.
+     */
+    #[Groups(['read'])]
+    public bool $isLockSource = false;
+
+    /**
+     * Nombre de verrous HARD (épingles de work-loop) que porte CETTE version — ce que « (N verrous) »
+     * annonce dans la confirmation de régénération, lu sur la version SOURCE. Renseigné EN BATCH par
+     * ScheduleStateProvider ; 0 sur le chemin fromEntity nu.
+     */
+    #[Groups(['read'])]
+    public int $hardLockCount = 0;
 
     // P2-8 (PR A) : bloc calculé SERVEUR par le même code que les gardes d'écriture
     // (ScheduleCapabilityResolver) — « capacité affichée == verdict du refus » ; renseigné

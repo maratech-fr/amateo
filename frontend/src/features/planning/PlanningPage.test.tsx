@@ -6,7 +6,7 @@ import type { EntryConflictsResponse, SchedulePlan } from "@/features/cockpit/ap
 import { useToastStore } from "@/shared/stores/toastStore";
 import { renderWithProviders } from "@/test/utils";
 
-import { EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, getDiagnostics, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, reopenSchedule, TargetLockedError, validateSchedule } from "./api";
+import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, getDiagnostics, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, reopenSchedule, TargetLockedError, validateSchedule } from "./api";
 import type { Schedule } from "./api";
 import { PlanningPage } from "./PlanningPage";
 import { usePlanningStore } from "./store";
@@ -142,6 +142,8 @@ vi.mock("./api", () => {
   moveSlot: vi.fn(),
   placeSlot: vi.fn(),
   generateSchedule: vi.fn(),
+  // V1 — « Régénérer » un overlay crée une nouvelle version puis la génère (useRegenerateOverlay).
+  createOverlayVersion: vi.fn(() => Promise.resolve({ id: "ov-new" })),
   validateSchedule: vi.fn(),
   STATUS_LABELS: { DRAFT: "Brouillon", PENDING: "En attente", GENERATING: "Génération…", COMPLETED: "Terminé", FAILED: "Échec" },
   // P4-119 c bis : EvictConfirmDialog lit cette constante de `./api` pour AFFICHER la borne
@@ -703,6 +705,49 @@ describe("PlanningPage (integration)", () => {
 
     const regen = await screen.findByRole("button", { name: /Régénérer/i });
     expect(regen).toBeDisabled();
+  });
+
+  // V1 — « Régénérer » un overlay repart TOUJOURS des DONNÉES EN COURS (la version SOURCE des
+  // verrous). Quand on REGARDE DÉJÀ la source, la nouvelle version part sans confirmation.
+  it("overlay « Régénérer » en regardant la version SOURCE : mutation directe, aucune confirmation", async () => {
+    const user = userEvent.setup();
+    vi.mocked(listSchedules).mockResolvedValue([
+      { id: "ov-src", name: "Ajustement", status: "COMPLETED", score: 10, createdAt: "2026-09-12T00:00:00Z", updatedAt: "2026-09-12T00:00:00Z", planType: "CLOSURE", schedulePlanId: "ete-plan", isLockSource: true, hardLockCount: 2 },
+    ]);
+    plansState.plans = [{ id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+    renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" />);
+
+    await user.click(await screen.findByRole("button", { name: /^Régénérer/i }));
+
+    // Aucune confirmation : la régénération part directement (de la source = le plan).
+    expect(screen.queryByText(/les données en cours sont celles de la version/i)).not.toBeInTheDocument();
+    await waitFor(() => expect(vi.mocked(createOverlayVersion)).toHaveBeenCalledWith("ete-plan"));
+  });
+
+  // V1 — régénérer en regardant une ANCIENNE version : confirmation que ça repartira des données en
+  // cours (la version SOURCE), avec son nombre de verrous — et rien ne part avant de confirmer.
+  it("overlay « Régénérer » en regardant une ANCIENNE version : confirme avant de repartir de la source", async () => {
+    const user = userEvent.setup();
+    vi.mocked(listSchedules).mockResolvedValue([
+      { id: "ov-old", name: "Ajustement", status: "COMPLETED", score: 10, createdAt: "2026-09-10T00:00:00Z", updatedAt: "2026-09-10T00:00:00Z", planType: "CLOSURE", schedulePlanId: "ete-plan", isLockSource: false, hardLockCount: 0 },
+      { id: "ov-src", name: "Ajustement", status: "COMPLETED", score: 12, createdAt: "2026-09-12T00:00:00Z", updatedAt: "2026-09-12T00:00:00Z", planType: "CLOSURE", schedulePlanId: "ete-plan", isLockSource: true, hardLockCount: 3 },
+    ]);
+    plansState.plans = [{ id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+    // On REGARDE la version la plus ancienne (non source) — posée avant le rendu.
+    usePlanningStore.setState({ selectedScheduleId: "ov-old" });
+    renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" />);
+
+    await user.click(await screen.findByRole("button", { name: /^Régénérer/i }));
+
+    // La confirmation nomme les données en cours + le nombre de verrous de la source ; rien n'est
+    // encore régénéré.
+    expect(await screen.findByText(/les données en cours sont celles de la version/i)).toBeInTheDocument();
+    expect(screen.getByText(/3 verrous/)).toBeInTheDocument();
+    expect(vi.mocked(createOverlayVersion)).not.toHaveBeenCalled();
+
+    // Confirmer : la régénération part (depuis le plan = la source).
+    await user.click(screen.getByRole("button", { name: /Régénérer depuis la version/i }));
+    await waitFor(() => expect(vi.mocked(createOverlayVersion)).toHaveBeenCalledWith("ete-plan"));
   });
 
   it("switches to the coach view (coach resolved from the team)", async () => {

@@ -139,6 +139,15 @@ export interface Schedule {
    */
   isChosen?: boolean;
   /**
+   * V1: is THIS version the SOURCE of its plan's locks (the last COMPLETED — the "current"
+   * data "Régénérer" restarts from)? When regenerating while VIEWING another version, the front
+   * confirms before restarting from the source. Set server-side (batched); absent on write responses.
+   */
+  isLockSource?: boolean;
+  /** V1: number of HARD locks this version carries — the "(N verrous)" in the regenerate confirmation
+   *  (read off the source version). Set server-side (batched); absent on write responses. */
+  hardLockCount?: number;
+  /**
    * P2-8: server-computed permissions for THIS version — the front reads them
    * instead of re-deriving the write guards. null on write responses (POST/PUT,
    * the front refetches the collection) and treated fail-closed when absent.

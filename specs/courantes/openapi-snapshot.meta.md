@@ -1,12 +1,15 @@
-Last verified @ 2026-10-10 (lot 9 F3, nommer les séances emportées) : `SharedTrainingBlock` expose
-`sessions` (tableau des séances placées liées au bloc — nouveau schéma `SharedTrainingBlockSession` :
-`teamId`/`teamName`/`dayOfWeek`/`startTime`/`endTime`/`venueName`, vide pour un bloc socle ou sans
-séance) ; aucun nouveau path. Acquis antérieurs : `ScheduleSlotTemplate.sharedTrainingBlockId` +
-`TeamPeriodOverride.source` (lot 9 F3), route `POST /api/schedule-slots/{id}/mutualize` +
-`SharedTrainingBlock.label` (lot 9 B1), `CoachWish.keepSeasonSlots` (P2-63 PR 3).
+Last verified @ 2026-10-10 (verrous de période survivent à « Régénérer », V1) : `Schedule` expose
+`isLockSource` (booléen — cette version est la SOURCE des verrous de son plan, dernière COMPLETED,
+d'où « Régénérer » repart) et `hardLockCount` (entier — nombre de verrous HARD de la version, pour le
+« (N verrous) » de la confirmation de régénération) ; aucun nouveau path. Acquis antérieurs :
+`SharedTrainingBlock.sessions` (schéma `SharedTrainingBlockSession` :
+`teamId`/`teamName`/`dayOfWeek`/`startTime`/`endTime`/`venueName`, lot 9 F3),
+`ScheduleSlotTemplate.sharedTrainingBlockId` + `TeamPeriodOverride.source` (lot 9 F3), route
+`POST /api/schedule-slots/{id}/mutualize` + `SharedTrainingBlock.label` (lot 9 B1),
+`CoachWish.keepSeasonSlots` (P2-63 PR 3).
 
 **239 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`28dfb0f8b83c81cc1fe2d3bdc472e14af16297c52f710055b7c787ac5b8fb6e6` (`sha256sum` sur le fichier).
+`842941dd5dd1261ceac0c4c70178aa9419767d99cca5d3938d177e0fcb06faa3` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

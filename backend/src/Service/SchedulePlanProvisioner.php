@@ -248,6 +248,35 @@ final class SchedulePlanProvisioner
     }
 
     /**
+     * MAISON UNIQUE des « verrous effectifs d'un plan » : l'id de la version dont les verrous HARD
+     * sont HÉRITÉS par la prochaine génération du plan — SEASON comme PÉRIODE. En V1 = la DERNIÈRE
+     * version COMPLETED du plan (créée en dernier). « Régénérer » repart donc toujours des verrous
+     * de la version EN COURS (patron « Charger ») : une version NUE n'a pas de slotTemplates propres,
+     * et sans cette source les verrous ne voyageaient qu'en `previousAssignments` (SOFT) et revenaient
+     * NONE — le bug que V1 corrige.
+     *
+     * Consommée par {@see ScheduleConstraintBuilder::buildForPeriodPlan} (greffe canonique),
+     * {@see ScheduleResultImporter} (origine MANUAL d'un verrou réimporté) et {@see OrphanPinGuard}
+     * (verrous effectifs) : une seule définition de « quelle version porte les verrous du plan ».
+     *
+     * (V1bis greffera le pointeur `schedule_plan.lock_source_schedule_id`, avec repli sur cette
+     *  dernière COMPLETED.)
+     *
+     * SQL brut : esquive le `season_filter` (la saison du plan n'est pas forcément l'active) ; RLS
+     * scope le club. Tri `created_at DESC, version_number DESC` = dernière née, déterministe sur ex æquo.
+     */
+    public function lockSourceScheduleIdOfPlan(string $schedulePlanId): ?string
+    {
+        $id = $this->entityManager->getConnection()->fetchOne(
+            'SELECT id FROM schedule WHERE schedule_plan_id = :pid AND status = \'COMPLETED\' '
+            . 'ORDER BY created_at DESC, version_number DESC LIMIT 1',
+            ['pid' => $schedulePlanId],
+        );
+
+        return \is_string($id) ? $id : null;
+    }
+
+    /**
      * La version CHOISIE du plan d'une PÉRIODE (ADR-0002) — l'overlay validé de
      * l'entrée. null = plan non validé (espace de travail) : on n'expose alors
      * aucune version active (le cockpit route vers « Ajuster »). Miroir période de

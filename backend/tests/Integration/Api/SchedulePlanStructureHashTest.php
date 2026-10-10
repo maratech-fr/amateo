@@ -31,6 +31,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
+use App\Service\ScheduleResultImporter;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
@@ -129,6 +130,86 @@ final class SchedulePlanStructureHashTest extends WebTestCase
 
         $served = $this->hashOf($user, $season, $planId);
         self::assertSame($snapshotHash, $served, 'PÉRIODE : le hash servi == le snapshotHash de la version transcrite');
+    }
+
+    /**
+     * (a bis) V1 — LE test du lot « les verrous d'une période survivent à Régénérer » : APRÈS une
+     * régénération qui fait survivre les verrous, le hash servi == le snapshotHash de la NOUVELLE
+     * version. On rejoue le mécanisme réel : le snapshot de la V+1 NUE est haché comme le fait
+     * `GenerateScheduleHandler` (`buildForOverlay` sur la version nue, qui GREFFE les HARD de la
+     * version SOURCE), puis le moteur RÉÉMET ces HARD à l'identique (round-trip gardé par le contrat
+     * moteur) → `import` → la V+1 porte les mêmes HARD et devient la nouvelle source. Si la forme
+     * canonique ne tenait pas, le hash servi (source = V+1) divergerait du snapshot figé (source = V)
+     * et le bandeau « à régénérer » s'allumerait juste après la régénération — ce que ceci interdit.
+     */
+    public function testPeriodHashEqualsTheNextVersionSnapshotAfterRegeneratingWithLocks(): void
+    {
+        [$user, $club, $season] = $this->seedClub('REGEN');
+        $team = $this->team($club, $season, 'U13');
+        $venue = $this->venue($club, $season, 'Gym');
+
+        $socle = $this->socleVersion($club, $season);
+        $this->socleSlot($socle, $team, $venue, 1, '18:00');
+        $this->em->flush();
+        $this->choosePlanVersion($socle);
+
+        $entry = $this->period($club, $season);
+        $planId = $this->planIdOf($entry);
+
+        // V1 transcrite (route réelle) : COMPLETED, portant au moins un verrou HARD.
+        $this->client->request('POST', '/api/schedule_plans/' . $planId . '/transcribe-from-socle', [], [], $this->headers($user, $season));
+        self::assertSame(201, $this->client->getResponse()->getStatusCode(), (string) $this->client->getResponse()->getContent());
+        $v1Id = (string) json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR)['id'];
+
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+
+        $builder = self::getContainer()->get(ScheduleConstraintBuilder::class);
+        $importer = self::getContainer()->get(ScheduleResultImporter::class);
+        $entryFresh = $this->em->getRepository(CalendarEntry::class)->find($entry->getId());
+        self::assertInstanceOf(CalendarEntry::class, $entryFresh);
+
+        // Le RÉSULTAT moteur que la régénération recevrait : les HARD de V1 réémis à l'identique.
+        $engineSlots = [];
+        foreach ($this->em->getRepository(ScheduleSlotTemplate::class)->findBy(['scheduleId' => $v1Id]) as $slot) {
+            if (LockLevel::HARD !== $slot->getLockLevel()) {
+                continue;
+            }
+            $engineSlots[] = [
+                'id' => $slot->getId(),
+                'teamId' => $slot->getTeamId(),
+                'venueId' => $slot->getVenueId(),
+                'coachId' => $slot->getCoachId(),
+                'dayOfWeek' => $slot->getDayOfWeek(),
+                'startTime' => $slot->getStartTime()->format('H:i:s'),
+                'durationMinutes' => $slot->getDurationMinutes(),
+                'lockLevel' => $slot->getLockLevel()->value,
+            ];
+        }
+        self::assertNotSame([], $engineSlots, 'garde : la V1 transcrite doit porter au moins un verrou HARD');
+
+        // V+1 NUE (comme « Régénérer » la crée) : son snapshot est haché comme le handler le fait —
+        // `buildForOverlay` sur la version nue, qui hérite les HARD de la source (V1).
+        $v2 = (new Schedule)->setClubId($club->getId())->setSeasonId($season->getId())->setName('V2')->setStatus(ScheduleStatus::GENERATING);
+        $this->linkSeededSchedule($v2, $entry->getId());
+        $this->em->flush();
+        $payload = $builder->buildForOverlay($v2, $entryFresh);
+        $v2->setSnapshotData($payload);
+        $v2->setSnapshotHash(hash('sha256', (string) json_encode($payload, \JSON_THROW_ON_ERROR)));
+        self::assertNotSame([], $payload['slotTemplates'] ?? [], 'garde : les HARD de V1 doivent être hérités dans l’entrée du solve de V2');
+        $this->em->flush();
+
+        // Le moteur réémet les HARD → import → V2 porte les mêmes verrous et devient la SOURCE.
+        $importer->import($v2, ['slots' => $engineSlots]);
+        $v2->setStatus(ScheduleStatus::COMPLETED);
+        $this->em->flush();
+
+        $served = $this->hashOf($user, $season, $planId);
+        self::assertSame(
+            $v2->getSnapshotHash(),
+            $served,
+            'après une régénération avec verrous, le hash servi (source = V+1) == le snapshotHash figé de V+1 (source = V) : la forme canonique rend les deux identiques, le bandeau reste éteint',
+        );
     }
 
     /** (b) Le hash SEASON diverge après un changement de ressource (gymnase) ET de contrainte. */
