@@ -9,6 +9,11 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
+from ..availability import (
+    available_coach_exists,
+    case_day_start,
+    case_has_available_coach,
+)
 from ..common import (
     AssignmentVariable,
     RuleCollection,
@@ -104,7 +109,7 @@ def add_coach_unavailability_constraints(
     *,
     team_coach_map: dict[str, list[str]] | None = None,
 ) -> int:
-    """Constraint 7: coach-unavailable assignment variables are fixed to 0.
+    """Constraint 7: close an assignment variable when the team has NO required coach available.
 
     ``coach_unavailability`` maps a coach id to a set of blocked ``(weekday,
     from_minute, to_minute)`` intervals. A slot is blocked when its day matches
@@ -112,10 +117,29 @@ def add_coach_unavailability_constraints(
     windows). A whole-day block is ``(day, 0, 1440)`` — the legacy day-level
     behaviour (Lot C added the time dimension; ENG-01 fixed the old no-match bug).
 
-    A team can have several required (non-ASSISTANT) coaches; the assignment only
-    carries the first. If ``team_coach_map`` is given, EVERY coach of the team is
-    checked — a co-head-coach's unavailability must block the slot too (audit
-    review), otherwise ENG-01 survives for co-coached teams.
+    ⚑ LOT 3B — « UN COACH SUFFIT » (Q4B, décision fondateur 2026-10-10). Une équipe peut avoir
+    PLUSIEURS coachs requis (non-ASSISTANT ; l'assignment n'en porte que le premier). La règle
+    d'AUDIT antérieure — « EVERY coach of the team is checked ; a co-head-coach's unavailability
+    must block the slot too » — est **INVERSÉE ici** : la case n'est fermée par l'indisponibilité
+    QUE si AUCUN coach requis n'est disponible (TOUS bloqués). Prod Toussaint BCCL : un bloc U11 de
+    4 équipes aux coachs mono-jour incompatibles sortait INFEASIBLE alors qu'un coach de l'union
+    couvre chaque jour. Le test ``test_coach_unavailable_day_enforced_for_second_coach`` qui épinglait
+    l'ancien sens est inversé **en le disant**. On ne relâche QUE l'indisponibilité (Q3) :
+    l'anti-chevauchement coach (``add_coach_at_most_one`` / ``add_coach_player_non_overlap``) garde
+    sa règle, intact.
+
+    SÉANCE DE BLOC. Les blocs sont posés AVANT cette passe (``constraints/__init__`` step 0), donc
+    ``model.shared_block_case_bvars`` (``(venue, "jour:HH:MM") -> [(membres, b)]``) EXISTE ici :
+      * un membre sans coach PROPRE disponible, mais dont l'UNION du bloc a un coach disponible sur
+        la case, n'y est QUE via le bloc → ``x <= Σ b`` (``b`` des blocs du membre sur cette case) au
+        lieu d'une fermeture dure (le bloc emprunte le coach libre d'un autre membre) ;
+      * un bloc dont l'UNION n'a AUCUN coach disponible sur la case → ``b == 0`` (une séance de bloc
+        sans coach n'existe pas), posé avec une littérale assumable pour que le noyau
+        d'infaisabilité nomme la cause (patron ``_assume``/``_record_closure``).
+    Hors bloc (relais vide) : la case reste fermée, comme une équipe seule sans aucun coach libre.
+
+    La question « cette case a-t-elle un coach requis disponible pour cet ensemble d'équipes ? » a
+    une seule maison (``..availability``) — réutilisée par le diagnostic de bloc (PR B).
     """
     rules: Mapping[Any, Any] = coach_unavailability if isinstance(coach_unavailability, Mapping) else {}
     coach_map = team_coach_map or {}
@@ -124,6 +148,10 @@ def add_coach_unavailability_constraints(
     # contrainte — jamais la « première venue ». L'arité `(day, from, to)` de `rules` (union
     # consommée par validate_assignments) NE change pas ; `intervals` vit dans la carte parallèle.
     sources: Mapping[str, Any] = getattr(model, "coach_unavailability_sources", {}) or {}
+    # Cases de bloc posées au step 0 (modèle nu des tests de pose ⇒ absente ⇒ {} ⇒ chemin solo).
+    case_bvars: Mapping[tuple[str, str], list[tuple[frozenset[str], Any]]] = (
+        getattr(model, "shared_block_case_bvars", {}) or {}
+    )
     added = 0
     for assignment in assignments:
         intrinsic = assignment.coach_unavailable
@@ -132,27 +160,38 @@ def add_coach_unavailability_constraints(
         # ce sont TOUTES celles qui ferment réellement ce créneau (même règle que day_forbidden).
         matched_sources: list[tuple[str, dict[str, Any]]] = []
         first_matched_coach: str | None = None
+        # Q4B — la case n'est fermée par l'indispo QUE si AUCUN coach requis n'est libre (TOUS
+        # bloqués). `available_coach_exists` répond « un coach suffit » (liste vide ⇒ aucune
+        # fermeture, patron historique « sans coach connu »).
+        all_required_blocked = False
         if not intrinsic and rules and day is not None and start is not None:
             coach_ids = coach_map.get(str(assignment.team_id))
             if not coach_ids:
                 single = assignment.coach_id
                 coach_ids = [str(single)] if single is not None else []
-            for cid in coach_ids:
-                cid_str = str(cid)
-                coach_blocked = any(
-                    iv_day == day and iv_from <= start < iv_to for iv_day, iv_from, iv_to in (rules.get(cid_str) or ())
-                )
-                if not coach_blocked:
-                    continue
-                if first_matched_coach is None:
-                    first_matched_coach = cid_str
-                for src in sources.get(cid_str) or []:
-                    if any(
-                        iv_day == day and iv_from <= start < iv_to
-                        for iv_day, iv_from, iv_to in (src.get("intervals") or ())
-                    ):
-                        matched_sources.append((cid_str, src))
-        if intrinsic or first_matched_coach is not None:
+            all_required_blocked = bool(coach_ids) and not available_coach_exists(coach_ids, day, start, rules)
+            if all_required_blocked:
+                # Tous bloqués : CHAQUE coach ferme le créneau → tous sont des causes mesurées.
+                for cid in coach_ids:
+                    cid_str = str(cid)
+                    if first_matched_coach is None:
+                        first_matched_coach = cid_str
+                    for src in sources.get(cid_str) or []:
+                        if any(
+                            iv_day == day and iv_from <= start < iv_to
+                            for iv_day, iv_from, iv_to in (src.get("intervals") or ())
+                        ):
+                            matched_sources.append((cid_str, src))
+        if intrinsic or all_required_blocked:
+            # SÉANCE DE BLOC — un membre sans coach propre dispo n'y est QUE via le bloc : x <= Σb
+            # (le bloc emprunte le coach libre d'un autre membre). Pas de fermeture dure ; si aucun
+            # bloc n'est actif sur la case, Σb = 0 ⇒ x = 0 (équivalent fermeture). Jamais pour une
+            # indispo intrinsèque (drapeau legacy per-assignment, byte-identique).
+            relay_bvars = [] if intrinsic else _relay_block_vars(assignment, case_bvars)
+            if relay_bvars:
+                model.Add(assignment.var <= sum(relay_bvars))
+                added += 1
+                continue
             # P4-96 — hypothèque la fermeture sur la littérale de la (première) règle d'indispo qui
             # la provoque ; toutes les fermetures d'une même règle PARTAGENT sa littérale, son nom
             # rejoint donc le noyau d'infaisabilité (cœur du besoin « coach indispo vendredi »). Une
@@ -195,4 +234,49 @@ def add_coach_unavailability_constraints(
                 if first_matched_coach is not None:
                     cause["coachId"] = first_matched_coach
                 _record_closure(model, assignment.var, cause)
+    # SÉANCE DE BLOC — un bloc dont l'UNION n'a aucun coach dispo sur la case ne peut y tenir séance.
+    added += _close_coachless_block_cases(model, case_bvars, rules, coach_map)
+    return added
+
+
+def _relay_block_vars(
+    assignment: AssignmentVariable,
+    case_bvars: Mapping[tuple[str, str], list[tuple[frozenset[str], Any]]],
+) -> list[Any]:
+    """Les variables de décision ``b`` des blocs qui CONTIENNENT l'équipe de ``assignment`` sur SA
+    case ``(venue, slot_id)``. Vide si l'équipe n'est membre d'aucun bloc présent sur cette case
+    (chemin solo, byte-identique)."""
+    if not case_bvars:
+        return []
+    key = (str(assignment.venue_id), str(assignment.slot_id))
+    team = str(assignment.team_id)
+    return [b for members, b in case_bvars.get(key, ()) if team in members]
+
+
+def _close_coachless_block_cases(
+    model: Any,
+    case_bvars: Mapping[tuple[str, str], list[tuple[frozenset[str], Any]]],
+    rules: Mapping[Any, Any],
+    coach_map: dict[str, list[str]],
+) -> int:
+    """Force ``b == 0`` pour tout bloc dont l'UNION des coachs requis n'a AUCUN coach disponible sur
+    sa case : une séance de bloc sans coach n'existe pas. La fermeture est hypothéquée sur une
+    littérale assumable (patron ``_assume``) pour que le noyau d'infaisabilité NOMME la cause, et
+    enregistrée (``_record_closure``) — neutre sur le solve nominal (``_assume`` renvoie ``None`` ⇒
+    ``b == 0`` inconditionnel). Carte vide ⇒ aucune pose (chemin byte-identique, goldens)."""
+    added = 0
+    for (venue_id, slot_id), entries in case_bvars.items():
+        day, start = case_day_start(slot_id)
+        if day is None or start is None:
+            continue
+        for members, b in entries:
+            if case_has_available_coach(members, day, start, rules, coach_map):
+                continue
+            cause: dict[str, Any] = {"kind": "coach_unavailability"}
+            literal = _assume(model, _source_key("coach_unavail_block", None, f"{venue_id}:{slot_id}"), cause)
+            closure = model.Add(b == 0)
+            if literal is not None:
+                closure.OnlyEnforceIf(literal)
+            _record_closure(model, b, dict(cause))
+            added += 1
     return added
