@@ -496,8 +496,11 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         self::assertContains('Contrainte permanente', $overlayNames, 'only isActive=false drops the constraint');
     }
 
-    public function testRepriseInheritsPermanentsWithSmartDefault(): void
+    public function testRepriseDisablesTeamCoachFacilityPermanentsByDefault(): void
     {
+        // PR C (décision fondateur 2026-10-10) : en vacances, seules les permanentes de portée
+        // CLUB sont héritées par défaut. ÉQUIPE, COACH et GYMNASE sont OFF — même pour une équipe
+        // qui reprend. (Avant PR C, une TEAM d'équipe active ÉTAIT gardée.)
         [$club, $season] = $this->seed();
         $active = $this->team($club, $season, 'SM1'); // reprend (Fanion, actif)
         $paused = $this->team($club, $season, 'U11'); // en pause pour la période
@@ -506,31 +509,42 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $this->permanentScoped($club, $season, ConstraintScope::CLUB, null, 'Club perm');
         $this->permanentScoped($club, $season, ConstraintScope::TEAM, $active->getId(), 'Team active perm');
         $this->permanentScoped($club, $season, ConstraintScope::TEAM, $paused->getId(), 'Team paused perm');
+        $this->permanentScoped($club, $season, ConstraintScope::COACH, 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Coach perm');
         $this->permanentScoped($club, $season, ConstraintScope::FACILITY, 'ffffffff-ffff-4fff-8fff-ffffffffffff', 'Facility perm');
         $schedule = $this->overlaySchedule($club, $season, $entry);
         $this->em->flush();
 
         $names = array_map(static fn (array $c): string => $c['name'] ?? '', $this->builder->buildForOverlay($schedule, $entry)['constraints']);
-        self::assertContains('Club perm', $names, 'CLUB kept by default in a reprise');
-        self::assertContains('Team active perm', $names, 'a TEAM constraint of a team that reprend is kept');
-        self::assertNotContains('Team paused perm', $names, 'a TEAM constraint of a paused team is dropped by default');
-        self::assertNotContains('Facility perm', $names, 'a FACILITY constraint is dropped by default in a reprise');
+        self::assertContains('Club perm', $names, 'CLUB reste hérité par défaut en vacances');
+        self::assertNotContains('Team active perm', $names, 'une contrainte d\'ÉQUIPE est OFF par défaut en vacances, même si l\'équipe reprend (PR C)');
+        self::assertNotContains('Team paused perm', $names, 'une contrainte d\'équipe en pause reste hors payload de toute façon');
+        self::assertNotContains('Coach perm', $names, 'une contrainte COACH est OFF par défaut en vacances (PR C)');
+        self::assertNotContains('Facility perm', $names, 'une contrainte GYMNASE est OFF par défaut en vacances (inchangé)');
     }
 
     public function testRepriseOverrideDeviatesFromDefault(): void
     {
+        // Un override explicite dévie du défaut dans les DEUX sens : il retire un CLUB gardé, et il
+        // ramène une TEAM/COACH/GYMNASE désactivée par défaut. Les « ramène » prouvent aussi que le
+        // « NotContains par défaut » du test ci-dessus n'est pas creux : kept, ces noms APPARAISSENT.
         [$club, $season] = $this->seed();
-        $this->team($club, $season, 'SM1');
+        $team = $this->team($club, $season, 'SM1');
         $entry = $this->holidayPeriod($club, $season);
         $clubC = $this->permanentScoped($club, $season, ConstraintScope::CLUB, null, 'Club perm');
+        $teamC = $this->permanentScoped($club, $season, ConstraintScope::TEAM, $team->getId(), 'Team perm');
+        $coachC = $this->permanentScoped($club, $season, ConstraintScope::COACH, 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Coach perm');
         $facilityC = $this->permanentScoped($club, $season, ConstraintScope::FACILITY, 'ffffffff-ffff-4fff-8fff-ffffffffffff', 'Facility perm');
         $this->constraintOverride($club, $season, $entry, $clubC, false); // drop a CLUB kept by default
+        $this->constraintOverride($club, $season, $entry, $teamC, true); // bring back a TEAM off by default
+        $this->constraintOverride($club, $season, $entry, $coachC, true); // bring back a COACH off by default
         $this->constraintOverride($club, $season, $entry, $facilityC, true); // keep a FACILITY dropped by default
         $schedule = $this->overlaySchedule($club, $season, $entry);
         $this->em->flush();
 
         $names = array_map(static fn (array $c): string => $c['name'] ?? '', $this->builder->buildForOverlay($schedule, $entry)['constraints']);
         self::assertNotContains('Club perm', $names, 'an explicit isActive=false drops a CLUB kept by default');
+        self::assertContains('Team perm', $names, 'an explicit isActive=true brings back a TEAM off by default (PR C)');
+        self::assertContains('Coach perm', $names, 'an explicit isActive=true brings back a COACH off by default (PR C)');
         self::assertContains('Facility perm', $names, 'an explicit isActive=true keeps a FACILITY dropped by default');
     }
 

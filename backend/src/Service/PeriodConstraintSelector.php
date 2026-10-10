@@ -107,12 +107,17 @@ final class PeriodConstraintSelector
             }
         }
 
-        // Fermeture : TOUT hérité par défaut. Reprise : défaut intelligent qui suit la
-        // sélection d'équipes — les FACILITY sont droppées (la période possède sa grille).
-        // Un override explicite dévie du défaut dans les deux sens.
+        // Fermeture : TOUT hérité par défaut. Vacances (reprise) : les contraintes de saison de
+        // portée ÉQUIPE, COACH et GYMNASE (scope TEAM/COACH/FACILITY) sont OFF par défaut — la
+        // période a sa propre vie (sa grille, les coachs réellement présents) et traîner les
+        // réglages de saison la cassait (décision fondateur 2026-10-10). Seul le scope CLUB reste
+        // hérité. Un override explicite dévie du défaut dans les deux sens. (Les FACILITY étaient
+        // DÉJÀ droppées hors fermeture ; TEAM/COACH les rejoignent.) Les STRUCTURES — blocs de
+        // mutualisation, liens coach↔équipe, coach↔joueur, passerelles — passent hors de ce
+        // sélecteur (elles ne sont pas des `Constraint`) et ne changent donc pas.
         $permanent = [];
         foreach ($this->constraintRepository->findPermanentByClubSeason($clubId, $seasonId) as $constraint) {
-            $keepByDefault = CalendarEntryPeriodType::CLOSURE === $periodType || ConstraintScope::FACILITY !== $constraint->getScope();
+            $keepByDefault = CalendarEntryPeriodType::CLOSURE === $periodType || ConstraintScope::CLUB === $constraint->getScope();
             if (\array_key_exists($constraint->getId(), $overrides) ? $overrides[$constraint->getId()] : $keepByDefault) {
                 $permanent[] = $constraint;
             }
