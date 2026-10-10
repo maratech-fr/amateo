@@ -231,19 +231,60 @@ ssh <hôte> "docker compose exec postgres psql -U amateo_owner -d amateo -c '\du
 ssh -t <hôte> "docker compose exec postgres psql -U amateo_owner -d amateo -c '\\password amateo_read'"
 ```
 
-⬜ Se connecter ensuite depuis ton poste par **tunnel SSH vers l'IP interne du conteneur**
-(jamais de port Postgres publié — [`prod-stack.md`](prod-stack.md) § Accès opérateur), puis
-**poser le club** avant toute lecture :
+#### Clé SSH dédiée au tunnel de lecture seule — à poser **une fois**
+
+Depuis un poste, la lecture passe par un **tunnel SSH vers le port loopback de Postgres**
+(`127.0.0.1:5432`, publié seulement sur la VM — [`prod-stack.md`](prod-stack.md) § Accès
+opérateur). Le tunnel s'ouvre avec une **clé dédiée et restreinte**, jamais une clé d'admin :
 
 ```bash
-# IP du conteneur sur le réseau Docker interne (change si le conteneur est recréé — rejouer la commande) :
-ssh <hôte> "docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' amateo-postgres"
-# → ex. 172.19.0.3 : un client graphique (PhpStorm, DBeaver, TablePlus) fait le tunnel SSH
-# lui-même depuis son propre onglet « SSH » — hôte SSH = <hôte>, hôte distant = <IP conteneur>,
-# port 5432, rôle amateo_read. Pas de `ssh -L` séparé à tenir ouvert dans un terminal.
-# Une fois connecté :
-SET app.club_id = '<uuid-du-club>';           -- sans ce contexte, les tables tenant rendent 0 ligne (fail-closed)
-SELECT * FROM team_tag;                        -- ne voit que le club posé ; toute écriture est refusée
+# a. Générer la clé dédiée sur ton poste (jamais réutiliser une clé d'admin) :
+ssh-keygen -t ed25519 -f ~/.ssh/amateo_prod_read -C amateo-prod-read
+
+# b. Sur la VM, ajouter la clé PUBLIQUE à ~/.ssh/authorized_keys du compte de déploiement,
+#    RESTREINTE : elle n'ouvre QUE le tunnel vers 127.0.0.1:5432, ni shell ni docker.
+#    Coller le contenu de ~/.ssh/amateo_prod_read.pub à la place de « ssh-ed25519 AAAA… », sur UNE ligne :
+restrict,port-forwarding,permitopen="127.0.0.1:5432",command="/bin/false" ssh-ed25519 AAAA… amateo-prod-read
+
+# c. Déclarer l'alias SSH sur ton poste (~/.ssh/config) :
+cat >> ~/.ssh/config <<'EOF'
+Host amateo-prod-read
+    HostName <ip-ou-dns-de-la-vm>
+    User <compte-de-déploiement>
+    IdentityFile ~/.ssh/amateo_prod_read
+    IdentitiesOnly yes
+EOF
+
+# d. Poser le mot de passe de amateo_read dans ~/.pgpass-amateo (chmod 600), SANS l'historiser.
+#    `read -rsp` lit en saisie masquée ; le mot de passe ne touche ni l'historique ni les logs.
+#    (L'espace initial sur la ligne évite de la stocker si HISTCONTROL=ignorespace est actif.)
+ read -rsp 'Mot de passe amateo_read : ' PW && \
+   printf '127.0.0.1:15432:amateo:amateo_read:%s\n' "$PW" > ~/.pgpass-amateo && \
+   chmod 600 ~/.pgpass-amateo && unset PW && echo OK
+```
+
+⬜ **Utiliser** — `scripts/prod-read.sh` fait tout : il ouvre le tunnel (`127.0.0.1:15432` →
+`127.0.0.1:5432` via l'alias `amateo-prod-read`), se connecte en `amateo_read` en transaction
+**read-only**, puis referme le tunnel en sortant. `--club` pose `SET app.club_id` (une AIDE pour
+ne pas mélanger les clubs, **PAS une frontière** — l'opérateur peut poser n'importe quel club) :
+
+```bash
+scripts/prod-read.sh "SELECT id, name FROM club ORDER BY name;"
+scripts/prod-read.sh --club "<uuid|nom>" "SELECT * FROM team_tag;"   # pose SET app.club_id
+echo "SELECT count(*) FROM team;" | scripts/prod-read.sh --csv        # requête sur stdin, sortie CSV
+```
+
+Un client graphique (DBeaver, PhpStorm, TablePlus) peut viser le même port via son propre onglet
+« SSH tunnel » (hôte SSH `amateo-prod-read`, distant `127.0.0.1:5432`, rôle `amateo_read`) —
+[`prod-stack.md`](prod-stack.md) § Accès opérateur, geste 3.
+
+⬜ **Révoquer la clé** (poste compromis, fin de mission) — retirer sa ligne d'`authorized_keys`
+sur la VM, puis détruire la paire locale ; pour couper aussi l'accès BASE, changer/retirer le mot
+de passe de `amateo_read` (ci-dessus, ou § Supprimer `amateo_read`) :
+
+```bash
+ssh <hôte> "sed -i '/amateo-prod-read/d' ~/.ssh/authorized_keys"
+rm -f ~/.ssh/amateo_prod_read ~/.ssh/amateo_prod_read.pub ~/.pgpass-amateo
 ```
 
 #### Supprimer `amateo_read` (si tu n'en veux plus)
