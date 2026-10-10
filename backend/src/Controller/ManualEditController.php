@@ -13,11 +13,13 @@ use App\Exception\DurationMismatchException;
 use App\Exception\EngineTimeoutException;
 use App\Exception\EvictTargetLockedException;
 use App\Exception\EvictTargetMismatchException;
+use App\Exception\MutualizationRefusedException;
 use App\Exception\ScheduleGenerationInProgressException;
 use App\Exception\SlotUnavailableException;
 use App\Service\ManagementAccessGuard;
 use App\Service\ManualEditService;
 use App\Service\MoveSlotService;
+use App\Service\MutualizeSlotService;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\WriteTargetSeasonResolver;
 use DateTimeImmutable;
@@ -40,6 +42,7 @@ final class ManualEditController extends AbstractController implements SeasonSco
         private readonly LoggerInterface $logger,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly MoveSlotService $moveSlotService,
+        private readonly MutualizeSlotService $mutualizeSlotService,
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
     ) {}
 
@@ -466,6 +469,98 @@ final class ManualEditController extends AbstractController implements SeasonSco
             'compromises' => $result['compromises'],
             'movedSlotIds' => $result['movedSlotIds'] ?? [],
         ], Response::HTTP_OK);
+    }
+
+    /**
+     * MUTUALISER DEPUIS LA GÉNÉRATION EN GARDANT LE CRÉNEAU (lot 9) — depuis la fiche d'une séance
+     * (la case d'ancrage, `{id}`), déclarer un bloc de mutualisation ANCRÉ à cette case : un
+     * ensemble d'équipes s'entraînant ensemble là, une séance commune, sans quitter le créneau.
+     * Retouche EN PLACE d'un plan de PÉRIODE, SANS verdict moteur (l'ancrage = séances co-localisées
+     * HARD/MANUAL que le solveur comprend déjà). Management (403), 409 si la version est choisie
+     * (lecture seule) ou si une génération tourne, 422 pour chaque refus NOMMÉ.
+     */
+    #[Route('/api/schedule-slots/{id}/mutualize', name: 'api_schedule_slot_mutualize', methods: ['POST'])]
+    public function mutualize(string $id, Request $request): JsonResponse
+    {
+        $this->managementAccessGuard->assertManager(); // SEC-07
+        $slot = $this->findSlot($id);
+
+        if (!$slot instanceof ScheduleSlotTemplate) {
+            return $this->json(['error' => 'Ce créneau n\'existe plus — rechargez le planning.'], Response::HTTP_NOT_FOUND);
+        }
+
+        if ($this->scheduleIsLocked($slot)) {
+            return $this->json(['error' => 'Ce planning est validé (lecture seule) — rouvrez-le avant de le modifier.'], Response::HTTP_CONFLICT);
+        }
+
+        $data = json_decode($request->getContent(), true);
+        if (!\is_array($data)) {
+            return $this->json(['error' => 'Invalid JSON body.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $teamIds = $this->stringList($data['teamIds'] ?? null);
+        if (null === $teamIds || [] === $teamIds) {
+            return $this->json(['error' => 'Missing or invalid field: teamIds.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $label = null;
+        if (isset($data['label']) && \is_string($data['label'])) {
+            $label = $data['label'];
+            if (mb_strlen($label) > 40) {
+                return $this->json(['error' => 'Invalid field: label (40 characters max).'], Response::HTTP_BAD_REQUEST);
+            }
+        }
+
+        $replacedSlotIds = $this->stringList($data['replacedSlotIds'] ?? []) ?? null;
+        if (null === $replacedSlotIds) {
+            return $this->json(['error' => 'Invalid field: replacedSlotIds.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        try {
+            $result = $this->mutualizeSlotService->mutualize($slot, $teamIds, $label, $replacedSlotIds);
+        } catch (ScheduleGenerationInProgressException) {
+            return $this->json(['code' => 'generation_in_progress'], Response::HTTP_CONFLICT);
+        } catch (MutualizationRefusedException $e) {
+            // Refus NOMMÉ (capacité, Σ, inactive, ensemble déjà déclaré, socle, séance non désignée) :
+            // 422 avec le message humain, RIEN n'est écrit (la transaction a été annulée).
+            return $this->json(['error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (Throwable $e) {
+            // SEC-08 : on journalise le détail, jamais getMessage() au client.
+            $this->logger->error('Slot mutualization failed.', ['exception' => $e]);
+
+            return $this->json(['error' => 'The request could not be processed.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        return $this->json([
+            'message' => 'Block mutualized.',
+            'blockId' => $result['blockId'],
+            'movedSlotIds' => $result['movedSlotIds'],
+            'createdSlotIds' => $result['createdSlotIds'],
+            'activatedTeamIds' => $result['activatedTeamIds'],
+        ], Response::HTTP_OK);
+    }
+
+    /**
+     * Une liste de chaînes non vides lue d'un champ du corps : null si ce n'est pas un tableau de
+     * chaînes (le champ est présent mais mal typé), une liste éventuellement vide sinon.
+     *
+     * @return list<string>|null
+     */
+    private function stringList(mixed $raw): ?array
+    {
+        if (!\is_array($raw)) {
+            return null;
+        }
+
+        $out = [];
+        foreach ($raw as $value) {
+            if (!\is_string($value) || '' === $value) {
+                return null;
+            }
+            $out[] = $value;
+        }
+
+        return $out;
     }
 
     /**

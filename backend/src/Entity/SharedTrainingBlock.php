@@ -67,6 +67,10 @@ class SharedTrainingBlock implements TenantOwnedInterface
     #[ORM\Column(type: 'integer')]
     private int $commonSessions = 1;
 
+    /** Nom OPTIONNEL du bloc (« Baby U7-U9 »…), affiché partout où le bloc paraît ; NULL = sans nom. */
+    #[ORM\Column(type: 'string', length: 40, nullable: true)]
+    private ?string $label = null;
+
     public function __construct()
     {
         $this->id = $this->newUuid();
@@ -153,6 +157,18 @@ class SharedTrainingBlock implements TenantOwnedInterface
     public function setCommonSessions(int $commonSessions): self
     {
         $this->commonSessions = $commonSessions;
+
+        return $this;
+    }
+
+    public function getLabel(): ?string
+    {
+        return $this->label;
+    }
+
+    public function setLabel(?string $label): self
+    {
+        $this->label = $label;
 
         return $this;
     }

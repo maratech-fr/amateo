@@ -60,6 +60,15 @@ class TeamPeriodOverride implements TenantOwnedInterface
     #[ORM\Column(type: 'integer', nullable: true)]
     private ?int $sessionsPerWeek = null;
 
+    /**
+     * Generic ORIGIN marker for an override NOT entered by hand by the manager. null = a
+     * manager-entered override (the historical default). A producer stamps its own value — e.g.
+     * 'mutualisation' when a mutualize gesture activates a zero-session team so it can join a
+     * shared block. Several rails may reuse this column with their own marker.
+     */
+    #[ORM\Column(type: 'string', length: 30, nullable: true)]
+    private ?string $source = null;
+
     public function __construct()
     {
         $this->id = $this->newUuid();
@@ -163,6 +172,18 @@ class TeamPeriodOverride implements TenantOwnedInterface
     public function setSessionsPerWeek(?int $sessionsPerWeek): self
     {
         $this->sessionsPerWeek = $sessionsPerWeek;
+
+        return $this;
+    }
+
+    public function getSource(): ?string
+    {
+        return $this->source;
+    }
+
+    public function setSource(?string $source): self
+    {
+        $this->source = $source;
 
         return $this;
     }
