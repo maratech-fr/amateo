@@ -338,6 +338,11 @@ vers l'**IP interne du conteneur** `amateo-postgres` (décision fondateur 2026-1
 changent la cible `permitopen`/`PermitOpen` et la variable `PROD_READ_REMOTE` — **tout le reste est
 identique** (compte dédié, socket Unix refusé, `-R` refusé, agent dédié).
 
+> **État de la VM au 2026-10-10** : le port loopback n'est pas encore déployé sur la VM réelle — la
+> cible en vigueur est `172.18.0.2:5432` (`permitopen`/`PermitOpen` côté VM, `PROD_READ_REMOTE`
+> côté poste). Repasser à `127.0.0.1:5432` aux deux endroits une fois le port loopback déployé
+> (section précédente) — ne plus alors passer `PROD_READ_REMOTE`.
+
 ```bash
 # 1. Lire l'IP interne du conteneur, SUR la VM :
 ssh <hôte> "docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' amateo-postgres"
