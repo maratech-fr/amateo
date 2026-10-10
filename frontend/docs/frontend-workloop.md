@@ -2,7 +2,7 @@
 
 > La boucle de travail sur un planning : retouche manuelle (mode cible, éviction, dérive, verrou — rail read-only + verdict moteur) et transcription depuis le socle (bouton, panneau « à replacer », comparaison). Découpé mécaniquement de `frontend-spec.md` (DOC-59).
 
-Last verified @ 2026-10-10 (rotation documentation-update, croisée avec lot 9 B1) : `schedule_slot_templates` reste `GET`/`GetCollection` SEULEMENT et `ScheduleSlotTemplateResource` n'expose toujours aucun champ d'appartenance à un bloc (`sharedTrainingBlockId`, posé en base par le lot 9, n'est PAS dans ses `Groups(['read'])`) — la ligne « L'appartenance à un bloc n'est PORTÉE PAR AUCUN champ du `Slot` » reste vraie côté API ; `POST /api/schedule-slots/move-group` recalé contre `ManualEditController.php`. Reste du fichier non re-confronté cette passe ; l'historique de vérification vit dans `git log -p --follow` ce fichier.
+Last verified @ 2026-10-10 (lot 9 F3, `documentation-update`) : `schedule_slot_templates` reste `GET`/`GetCollection` SEULEMENT, mais `ScheduleSlotTemplateResource.sharedTrainingBlockId` est désormais dans `Groups(['read'])` — la ligne « l'appartenance à un bloc n'est portée par aucun champ du `Slot` » ci-dessous est corrigée (le champ sert à NOMMER/AFFICHER, le geste « Déplacer le groupe » continue de dériver par co-localisation, inchangé) ; §6.7 ter (nouveau) décrit le rail « Mutualiser… » depuis `SlotDetail`. `POST /api/schedule-slots/move-group` recalé contre `ManualEditController.php`. Reste du fichier non re-confronté cette passe ; l'historique de vérification vit dans `git log -p --follow` ce fichier.
 
 ### 6.7 Retouche manuelle — mode cible, éviction, dérive, verrouiller (rail read-only + verdict moteur, 2026-08-16)
 
@@ -146,8 +146,10 @@ par un CRUD brut sur la ressource :
   séance de bloc de mutualisation (tous ses membres co-localisés sur la même case), le bouton
   « Déplacer » de `SlotDetail` devient **« Déplacer le groupe »** (compte de membres annoncé, note
   de conséquence « Déplace les N équipes du groupe ensemble. ») — pas de déplacement individuel
-  proposé, le verdict le refuserait (`shared_block_broken`). **L'appartenance à un bloc n'est
-  PORTÉE PAR AUCUN champ du `Slot`** (le backend n'en expose pas) : elle est **dérivée FAIL-SAFE**
+  proposé, le verdict le refuserait (`shared_block_broken`). **Ce geste continue de dériver
+  l'appartenance par CO-LOCALISATION**, pas par le lien serveur : `ScheduleSlotTemplateResource`
+  expose bien `sharedTrainingBlockId` depuis le lot 9 (F3), mais seulement pour NOMMER/AFFICHER
+  (§6.7 ter) — « Déplacer le groupe » reste câblé sur la dérivation **FAIL-SAFE**
   côté front (`frontend/src/features/planning/lib/blockSession.ts::blocksForSlot` — un bloc
   « siège » sur une case quand TOUS ses membres y ont un créneau), le serveur restant seul juge —
   la dérivation ne décide QUE de PROPOSER le geste, jamais de l'accepter (une case source devenue
@@ -377,4 +379,46 @@ la saison au moindre effort », 2026-09-02)** :
   bloc-aware : une séance de bloc de mutualisation réunit N membres sur UNE place, cf.
   `PayloadCapacityMirror::demand`). Rien sur une vacance (`capacityArmed` exclut HOLIDAY) ou sans
   payload.
+
+### 6.7 ter Mutualiser depuis une séance déjà placée (lot 9 F3, 2026-10-10)
+
+Second rail de mutualisation, distinct de la déclaration du wizard (§1 de `frontend-wizard.md`,
+qui attend la génération pour placer les séances) et du rail « Déplacer le groupe » ci-dessus
+(§6.7). Depuis la fiche d'une séance d'un plan de **PÉRIODE** (jamais le socle de saison), le
+bouton **« Mutualiser… »** de `SlotDetail` (`onMutualize`) ouvre `MutualizeDialog`
+(`features/planning/MutualizeDialog.tsx`) — **désactivé avec motif découvrable** (`disabledReason`)
+si le planning est **validé** (« Planning validé — rouvrez-le pour mutualiser ce créneau. ») ou si
+la séance est **déjà membre d'un groupe** (« Cette séance fait déjà partie d'un groupe de
+mutualisation. »).
+
+- **La séance d'ancrage (source) est pré-cochée et VERROUILLÉE** dans la modale : elle reste sur
+  place et devient la séance commune du groupe. Les équipes à rattacher se choisissent via
+  `TeamSelect`. Par équipe rattachée : **plusieurs séances existantes** → un `Select` fait choisir
+  celle que la séance commune remplace (`replacedSlotIds`, défaut = la première, annoncé) ;
+  **une seule séance** → elle est prise par défaut (annoncé en texte, pas de choix à faire) ;
+  **aucune séance** → l'équipe est **ACTIVÉE** dans le plan avec la séance du groupe (pastille
+  « via mutualisation », rien à retirer). Nom de groupe optionnel ≤ 40 caractères.
+- `POST /api/schedule-slots/{id}/mutualize` (`api.ts::mutualizeSlot`, hook `useMutualizeSlot`) :
+  un refus **NOMMÉ** (422 métier, 409 planning validé/génération en cours, 404 séance disparue)
+  est affiché **TEL QUEL dans la modale** (`MutualizationRefusedError`) — jamais un second toast
+  (même règle FRT-38 que le reste du work-loop) ; un vrai transport (`GenerationInProgressError`
+  mis à part, géré dans la modale) reste toasté par le hook.
+- **Affichage de l'appartenance (server-authoritative, aucune re-dérivation)** : le lien
+  `Slot.sharedTrainingBlockId` (désormais dans `Groups(['read'])` de `ScheduleSlotTemplateResource`,
+  depuis ce lot — auparavant interne) nomme le bloc sur la grille (`GridCell.blockLabel`,
+  `WeekGrid` — « Groupe « {nom} » » en petite ligne sur la carte, seulement si le bloc a un nom) et
+  sur `SlotDetail` (`StatusPill` « Groupe « {nom} » » ou « Mutualisé » si sans nom). La pastille
+  « via mutualisation » se lit sur `TeamPeriodOverride.source === "mutualisation"` (désormais
+  exposé par `TeamPeriodOverrideResource`, même lot) pour l'équipe de la séance sélectionnée. Ce
+  champ ne sert QU'à nommer/afficher — le geste « Déplacer le groupe » (§6.7) continue de dériver
+  par co-localisation, inchangé.
+- **Confirmation de suppression d'un groupe NOMME les séances qu'elle emporte**
+  (`SharedTrainingBlockPanel` du wizard, `frontend-wizard.md` §1) : quand le bloc a des séances
+  déjà placées (`SharedTrainingBlock.sessions`, servi par le serveur), chacune est listée — équipe ·
+  jour · heure · gymnase ; un bloc SOCLE ou sans séance placée retombe sur le texte par équipes.
+- **Chemin réel pour atteindre ce bouton** : la grille d'un plan de période non validé ne se voit
+  QUE via le wizard (cockpit → « Ajuster » la période → étape **Génération**, grille EMBARQUÉE —
+  `PlanningPage embedded scopePlanId=…`). `/planning` en autonome ne rend qu'un **overlay validé**,
+  lecture seule, où le bouton resterait toujours désactivé — preuve de bout en bout dans
+  `frontend/tests/e2e/lot9-mutualize-reachability.spec.ts`.
 
