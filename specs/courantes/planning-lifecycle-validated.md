@@ -1,9 +1,13 @@
 # Cycle de vie des plannings — le pointeur du plan (N3)
 
-Last verified @ 2026-10-10 (P2-63 PR 7) : §6 gagne la purge de la collecte de doléances des
-vacances à venir sur la même bascule destructive, confrontée à `ValidateScheduleController.php`/
-`ReopenScheduleController.php`/`Service/FutureHolidayCollectePurger.php`. Reste non re-sondé cette
-passe : le reste du fichier. Historique des passes vit dans git :
+Last verified @ 2026-10-11 (lot verrous V1/V1bis) : nouveau §3.1bis (verrous d'une période
+survivant à « Régénérer », « Charger » pour une période) confronté à
+`SchedulePlanProvisioner::lockSourceScheduleIdOfPlan`/`pointLockSource`, `LoadLocksController` et
+`ScheduleConstraintBuilder::buildForPeriodPlan` ; §3.5 et §4 gagnent `canLoadLocks`/
+`isLockSource`/`hardLockCount` ; §6 gagne `LoadLocksTest`, l'extension de
+`ScheduleConstraintBuilderOverlayTest`/`LockOriginProvenanceTest`/`SchedulePlanStructureHashTest`
+et les 3 scénarios Behat de `un-verrou-est-souverain.feature`. Reste non re-sondé cette passe : le
+reste du fichier. Historique des passes vit dans git :
 `git log -p --follow specs/courantes/planning-lifecycle-validated.md`.
 
 Le plan de type **SEASON** (`schedule_plan`) et **la version qu'il pointe**
@@ -93,6 +97,28 @@ conflits d'entraînement ».
 - **Aucun pointage automatique** (inv. 2) : la génération ne pointe jamais.
 - **Tenant** : les deux endpoints de cycle de vie partagent `ResolvesCurrentClubTrait::resolveCurrentClubId` (null → skip, RLS 404 ; mismatch → 403). Les deux exigent en plus le rôle management (SEC-07).
 
+### 3.1bis Les verrous d'une période survivent à « Régénérer » ; « Charger » pour une période (ADR-0002 inv. 21)
+
+Sur un plan de **PÉRIODE**, « Régénérer » crée une version NUE (aucun `ScheduleSlotTemplate`
+propre) ; sans mécanisme dédié, ses verrous HARD se perdaient. Elle repart désormais TOUJOURS des
+**données en cours** du plan — la version **SOURCE**, dont les verrous HARD sont greffés par
+`ScheduleConstraintBuilder::buildForPeriodPlan` (maison de résolution :
+`SchedulePlanProvisioner::lockSourceScheduleIdOfPlan`, SEASON comme PÉRIODE) :
+
+| Action | Endpoint | Effet | Garde |
+|--------|----------|-------|-------|
+| **Régénérer un overlay** | `POST /api/schedules` (plan de PÉRIODE) + `generate` | nouvelle version du plan, verrous HARD de la source réépinglés | le socle, la génération en cours (409) |
+| **Charger** (période) | `POST /api/schedules/{id}/load-locks` | pose le **pointeur** `schedule_plan.lock_source_schedule_id` sur cette version — ses verrous deviennent les données en cours, aucun solve lancé | 409 sur un plan SEASON, une version non `COMPLETED`, un plan **validé**, une génération en cours (`generation_in_progress`) |
+
+La source d'un plan est le pointeur s'il désigne une version `COMPLETED` existante du même plan,
+sinon sa dernière version `COMPLETED` — ce repli couvre tout plan sur lequel personne n'a « chargé »
+une version. Le pointeur se pose de deux façons : automatiquement (chaque génération de période qui
+vient de `COMPLETED` devient la source — `GenerateScheduleHandler`) ou par **Charger**, réservé à un
+plan non validé (un plan SEASON garde son propre « Charger cette version », `regenerate-from`, qui
+restaure une structure et ne pose jamais ce pointeur). Régénérer en REGARDANT une autre version que
+la source ne change pas la source retenue — c'est pour ça que « Charger » existe : sans lui, la
+phrase de confirmation ci-dessous (§3.5) mentirait sur une période.
+
 ### 3.2 Verrou lecture seule **côté serveur** (les 3 chemins)
 Le verrou se dérive du **pointeur** : « verrouillé » = **le plan pointe cette version** (`SchedulePlanProvisioner::isChosen`), jamais un statut. Les mutations de **contenu** sont alors refusées (409 « planning en vigueur ») :
 - `GenerateScheduleController` : refuse la régénération de la version choisie — la rouvrir (dépointer) d'abord.
@@ -173,15 +199,19 @@ DRAFT ──generate──▶ PENDING ──▶ GENERATING ──▶ COMPLETED
 ### 3.5 Capacités exposées par le serveur (`ScheduleCapabilityResolver`, P2-8)
 
 Le front ne re-dérive plus les règles de refus du planning : chaque `Schedule` de `GET /api/schedules` porte un
-bloc `capabilities` (`canDelete`, `canValidate`, `canRegenerateFrom`, `versionsDeletedOnValidate`,
-`overlaysDroppedOnValidate`), calculé par `App\Service\ScheduleCapabilityResolver` — les gardes d'écriture
-(DELETE / validate / regenerate-from) et le sérialiseur tirent le **même verdict** via les mêmes prédicats
+bloc `capabilities` (`canDelete`, `canValidate`, `canRegenerateFrom`, `canLoadLocks`,
+`versionsDeletedOnValidate`, `overlaysDroppedOnValidate`), calculé par `App\Service\ScheduleCapabilityResolver` — les gardes d'écriture
+(DELETE / validate / regenerate-from / load-locks) et le sérialiseur tirent le **même verdict** via les mêmes prédicats
 unitaires (`isInFlight`, `isChosen`, `isLastFinishedSeasonVersion`, `inFlightInSeason`), donc la capacité
 affichée EST le refus réel — pas de dérive front↔serveur possible. Le front lit, il n'infère plus ; repli
 fail-closed (capacité absente → geste non offert). `forSchedules()` calcule le bloc en BATCH pour toute une
 collection (un `GROUP BY (schedule_plan_id, status)` + un appel par saison, coût fixe quel que soit le nombre
-de versions) — jamais de N+1. Gardé par `ScheduleCapabilityParityTest` (step du gate CI) : la capacité exposée
-== le verdict du garde, prouvé dans les deux sens.
+de versions) — jamais de N+1. **`canLoadLocks`** (V1bis, §3.1bis) : version de PÉRIODE `COMPLETED`, plan
+**non validé**, aucune génération en cours, et **pas déjà** la source des verrous de son plan — un batch
+distinct lu sur `SchedulePlanProvisioner::lockSourceScheduleIdOfPlan`. Gardé par `ScheduleCapabilityParityTest` (step du gate CI) : la capacité exposée
+== le verdict du garde, prouvé dans les deux sens. `Schedule` porte aussi **`isLockSource`/`hardLockCount`**
+(V1, renseignés EN BATCH par `ScheduleStateProvider`) — est-ce que CETTE version est la source des verrous
+de son plan, et combien elle en porte ; consommés par la confirmation de régénération ci-dessous (§4).
 
 ## 4. Frontend
 
@@ -198,6 +228,14 @@ de versions) — jamais de N+1. Gardé par `ScheduleCapabilityParityTest` (step 
   y compris `planning/lib/pickLandingSchedule.ts` — jamais de copie littérale du statut.
 - **Confirmation tapée à la réouverture** (P2-7, 2026-07-30) : la popup de réouverture (`ConfirmDialog` dans `PlanningPage.tsx`) porte `confirmPhrase="modifier mon planning de saison"` — son bouton reste désactivé tant que le gestionnaire n'a pas tapé la phrase exacte, et le champ **se revide à chaque tentative** (une confirmation qui échoue sans fermer le dialogue ne laisse pas le geste destructif à un clic). Prop additive sur `shared/components/ui/confirm-dialog.tsx`, câblée **uniquement** sur ce dialogue (pas sur celui de validation).
   ⚠ **Portée exacte, à ne pas surestimer** : cette popup n'apparaît **que** si la réouverture rencontre le 409 `overlays_exist`, c'est-à-dire s'il y a des plannings de période à détruire. **Un socle sans période à venir se rouvre en un clic, sans dialogue ni phrase** — décision fondateur assumée (2026-07-30) : la friction protège la destruction de plannings secondaires, pas le geste nu. Le serveur, lui, n'exige jamais la phrase : elle est purement cliente, c'est un garde-fou anti-fausse-manip, pas un contrôle de sécurité.
+- **« Charger cette version » pour une PÉRIODE + confirmation de régénération** (V1/V1bis, §3.1bis) :
+  `PlanningToolbar` offre un second bouton « Charger cette version » (`canLoadLocks`) qui pose le
+  pointeur de source via `POST /api/schedules/{id}/load-locks` (`useLoadLocks`), sans générer — une
+  `ConfirmDialog` NON destructive l'annonce. Et régénérer un overlay en REGARDANT une version qui
+  n'est pas la source (`isLockSource`) ouvre une seconde `ConfirmDialog` NON destructive nommant les
+  deux versions et le nombre de verrous HARD de la source (`hardLockCount`) avant de confirmer la
+  régénération depuis la source. Détail des deux dialogues : `frontend/docs/frontend-workloop.md`
+  §6.7 quater.
 
 ## 5. Libellés FR des statuts
 `DRAFT`=Brouillon · `PENDING`=En attente · `GENERATING`=Génération… · `COMPLETED`=Terminé · `FAILED`=Échec (`STATUS_LABELS`, `planning/api.ts`). « Validé » ne figure pas dans cette liste : ce n'est pas un statut mais l'état du **pointeur**, affiché à part (badge / 🔒 « Lecture seule »).
@@ -215,7 +253,24 @@ de versions) — jamais de N+1. Gardé par `ScheduleCapabilityParityTest` (step 
 - **Déblocage du cockpit** : `seasonPlan.hasFinishedVersion` = le plan SEASON porte ≥1 version terminée (`COMPLETED`/`FAILED`). **Dérivé, jamais posé, indépendant du pointeur** — `/reopen` ne re-verrouille pas. Exposé sur `/api/me`. Débloque l'accueil cockpit (vs work-loop). Voir `specs/courantes/accueil-cockpit-temporel.md` §2ter.
 - **Reopen destructeur du calendrier de saison** : rouvrir la **version choisie du plan SEASON** alors que des calendriers secondaires (plans de période) existent les **supprime** (spec §2bis, inv. 14). `POST /api/schedules/{id}/reopen` renvoie **409 `{code:"overlays_exist", count, overlays:[{entryId,title}]}`** ; le client confirme avec le body `{"confirmDeleteOverlays": true}` → chaque période est détruite **de bout en bout** (`OverlayManager::deletePeriodPlanForEntry`) : ses versions, **son plan**, et tous les réglages ancrés au plan (grille de créneaux copiée, réservations, modes gymnase, overrides d'équipes/de contraintes) — **l'entrée de calendrier survit** et retombe « à traiter » au radar, à refaire — puis le reopen procède. Même garde, même code, sur `/validate` quand choisir une **autre** version déplacerait le calendrier de la saison. **Portée (amendement fondateur, 2026-07-24, ADR-0002 inv. 14)** : toute période qui porte un plan, **validé ou non** (une période « Adaptée » mais jamais générée compte aussi), et seulement celles **entièrement à venir** — pivot = la date de **début** : « rien du passé, rien de ce qui est en cours » (décision fondateur 2026-07-16), `CalendarEntryRepository::findWithPlanNotStarted`. Zéro période concernée, ou reopen d'un overlay de période : comportement inchangé.
 - **Même bascule emporte la collecte de doléances des vacances à venir (Q8bis, P2-63 PR 7)** : quand des plans secondaires sont détruits (ci-dessus), la réponse 409 `overlays_exist` porte aussi `coachWishCount` — les doléances DÉJÀ reçues sur les mères de vacances **entièrement à venir** (même pivot `startDate > today`, `CalendarEntryRepository::findFutureHolidayMotherIds`). Confirmée, la même transaction supprime leur campagne (`CoachWishCampaign` — ses `CoachWishToken` partent par FK cascade), leurs doléances (`CoachWish`) et leurs mutualisations (`CoachWishMutualization`) via `App\Service\FutureHolidayCollectePurger`, APRÈS la destruction des plans de période — jamais une vacance déjà commencée. Front : `useValidateReopen.ts` relaie `OverlaysExistError.coachWishCount`, `PlanningPage.tsx::coachWishPurgeClause` l'ajoute aux deux dialogues de confirmation (Valider/Rouvrir) sous la forme « … et N doléance(s) déjà reçue(s) pour les vacances à venir partiront aussi — il faudra relancer la collecte ».
+- **Les verrous d'une période survivent à « Régénérer » ; « Charger » (V1/V1bis, §3.1bis)** :
+  `LoadLocksTest` (gardes manager/tenant/période/terminée/plan non validé/génération en cours, effet
+  du pointeur, re-pointage automatique à la complétion, parité `canLoadLocks` ⇄ verdict) ;
+  `ScheduleConstraintBuilderOverlayTest` étendu (la greffe des HARD hérités, forme canonique,
+  dédup par placement, un verrou repassé NONE ne revient pas) ; `LockOriginProvenanceTest` étendu
+  (un verrou MANUAL hérité ne dégrade jamais en UNKNOWN) ; `SchedulePlanStructureHashTest` étendu
+  (le hash tient le round-trip après une régénération qui fait survivre des verrous) ;
+  `OverlayVersionsTest` (parité `isLockSource`/`hardLockCount` de la collection, batch, sans fuite
+  inter-club) ; `MigrationLockSourcePointerTest` (aller-retour DDL, FK `SET NULL` sur suppression de
+  la version pointée). Feature Behat `un-verrou-est-souverain.feature` : 3 scénarios dédiés — deux
+  séances d'un plan de période reviennent verrouillées après régénération ; « Charger » une version
+  plus ancienne puis régénérer repart de SES verrous (pas de la plus récente) ; deux régénérations
+  successives transportent les verrous de l'une à l'autre.
 
 **Frontend** :
 - Toolbar : bouton Valider (`COMPLETED` non choisie) / Rouvrir (version choisie), read-only gating, libellés statut, badge « Planning de la saison ». Bandeau cockpit : `SeasonPlanBanner`.
+- `PlanningToolbar.test.tsx`/`PlanningPage.test.tsx` (V1/V1bis) : le bouton « Charger cette version »
+  de PÉRIODE n'apparaît QUE si `canLoadLocks` ; la confirmation de régénération depuis une autre
+  version que la source nomme les deux versions et le compte de verrous de la source ; aucune
+  régénération directe n'est émise tant que la confirmation n'est pas validée.
 

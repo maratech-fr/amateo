@@ -5,8 +5,8 @@ PR). Re-confronté au code : `TenantFilterListener` toujours `KernelEvents::REQU
 ['onKernelRequest', 7]` (`backend/src/EventListener/TenantFilterListener.php:56`) ✓ ·
 `TenantConnectionContext::setClubId` pose toujours `set_config('app.club_id', ?, false)`
 (`backend/src/Service/TenantConnectionContext.php:28-32`) ✓ · `Version20260930090000` crée toujours
-`amateo_read` `NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOREPLICATION` ✓. Rien de faux
-trouvé cette passe.
+`amateo_read` `NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOREPLICATION`
+(`CREATE ROLE`/`ALTER ROLE` lines 131/143) ✓. Rien de faux trouvé cette passe.
 
 > ✅ **STATUS: ACTIVE** since migration `Version20260703120000` (SEC-03 fixed). The migration — not the initdb scripts — is the source of truth for policies and grants: **every table carrying a `club_id` column** is under `FORCE ROW LEVEL SECURITY` with a `tenant_isolation` policy `TO amateo_app` (no hard count here — new tenant tables inherit the pattern via the migration helper; the count would rot). `club_user` and `coach_wish_token` carry the hybrid SELECT bootstrap policy (open only while NO tenant GUC is set — scoped to the tenant otherwise, SEC-12 residual closed by `Version20260804120000`; deliberate cross-tenant reads go through `TenantConnectionContext::runWithoutTenant()`). Runtime connects as `amateo_app`; the GUC is set via `TenantConnectionContext` (`set_config`, session-scoped). **This file = operator how-to (env, roles, troubleshooting). The effective architecture — who sets the GUC, the exception tables, the superadmin door — is `docs/security/rls.md`, and it is CANONICAL.** ⚑ Deux fichiers maintenus « en phase » à la main finissent par diverger — le seul garde-fou est de ne PAS redire ici ce que le canon dit là-bas : on pointe. The `01/02/03-*.sql` initdb scripts remain for fresh volumes only.
 

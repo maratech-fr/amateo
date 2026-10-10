@@ -2,7 +2,12 @@
 
 > La boucle de travail sur un planning : retouche manuelle (mode cible, éviction, dérive, verrou — rail read-only + verdict moteur) et transcription depuis le socle (bouton, panneau « à replacer », comparaison). Découpé mécaniquement de `frontend-spec.md` (DOC-59).
 
-Last verified @ 2026-10-10 (lot 9 F3, `documentation-update`) : `schedule_slot_templates` reste `GET`/`GetCollection` SEULEMENT, mais `ScheduleSlotTemplateResource.sharedTrainingBlockId` est désormais dans `Groups(['read'])` — la ligne « l'appartenance à un bloc n'est portée par aucun champ du `Slot` » ci-dessous est corrigée (le champ sert à NOMMER/AFFICHER, le geste « Déplacer le groupe » continue de dériver par co-localisation, inchangé) ; §6.7 ter (nouveau) décrit le rail « Mutualiser… » depuis `SlotDetail`. `POST /api/schedule-slots/move-group` recalé contre `ManualEditController.php`. Reste du fichier non re-confronté cette passe ; l'historique de vérification vit dans `git log -p --follow` ce fichier.
+Last verified @ 2026-10-11 (lot verrous V1/V1bis) : §6.7 quater (nouveau) décrit le bouton
+« Charger cette version » d'une PÉRIODE et la confirmation de régénération depuis les données en
+cours, confrontés à `PlanningToolbar.tsx`/`PlanningPage.tsx` ; la phrase « vos créneaux verrouillés
+sont conservés à la régénération » (ci-dessous) est désormais VRAIE aussi pour un overlay de
+période (backend : [`schedule-generation-guide.md`](../../backend/docs/schedule-generation-guide.md) §10). Reste du fichier non re-confronté cette
+passe ; l'historique de vérification vit dans `git log -p --follow` ce fichier.
 
 ### 6.7 Retouche manuelle — mode cible, éviction, dérive, verrouiller (rail read-only + verdict moteur, 2026-08-16)
 
@@ -215,7 +220,8 @@ par un CRUD brut sur la ressource :
   non-`isChosen` de `PlanningToolbar` : « Vos créneaux verrouillés sont conservés à la
   régénération. ». L'intro du panneau Réserver du wizard (`ReservationPanel`) porte la même
   garantie : « Cliquez un créneau pour y fixer une équipe (verrou HARD, conservé à chaque
-  régénération). »
+  régénération). » Cette phrase rend le MÊME bouton pour un overlay de PÉRIODE — la greffe des
+  verrous hérités (§6.7 quater) la tient aussi pour une version NUE née de « Régénérer ».
 - **Panneau latéral des verrous manuels + lentille** (**P2-31 PR 3, 2026-08-16 — lot SOLDÉ**) :
   la barre compacte de la grille (celle qui porte « Diagnostics du système ») gagne un bouton
   FRÈRE **« Verrous manuels (n) »** (icône `Lock`) comptant les créneaux `lockOrigin === "MANUAL"`
@@ -421,4 +427,28 @@ mutualisation. »).
   `PlanningPage embedded scopePlanId=…`). `/planning` en autonome ne rend qu'un **overlay validé**,
   lecture seule, où le bouton resterait toujours désactivé — preuve de bout en bout dans
   `frontend/tests/e2e/lot9-mutualize-reachability.spec.ts`.
+
+### 6.7 quater « Régénérer » un overlay repart des données en cours ; « Charger » pour une période (lot verrous V1/V1bis)
+
+`PlanningToolbar` expose un second bouton **« Charger cette version »** (icône `History`, même ton
+que celui du socle, §3.1 de [`planning-lifecycle-validated.md`](../../specs/courantes/planning-lifecycle-validated.md)) quand
+`selected.capabilities.canLoadLocks` est vrai — un plan de **PÉRIODE** non validé, une version
+**terminée**, rien en cours, qui n'est **pas déjà** la source des verrous de son plan (sinon le
+geste ne changerait rien, il n'est pas offert). Les deux boutons « Charger cette version » sont
+mutuellement exclusifs (`canRegenerateFrom` est socle-only, `canLoadLocks` est période-only — ils
+ne peuvent jamais s'afficher ensemble sur la même version). Le clic ouvre une `ConfirmDialog` **NON
+destructive** (`destructive={false}` explicite — aucune version n'est détruite) : « Les verrous de
+la version {n} deviendront les données en cours : la prochaine régénération repartira d'eux. »
+Confirmé, `POST /api/schedules/{id}/load-locks` (`useLoadLocks`) pose le pointeur serveur, sans
+générer, et invalide la liste des versions.
+
+« Régénérer » un overlay (bouton principal) repart TOUJOURS de la version **source** des verrous de
+son plan (`isLockSource`). Si le gestionnaire regarde (`selectedSchedule`) une AUTRE version que la
+source, `PlanningPage.tsx` ouvre une seconde `ConfirmDialog` NON destructive nommant les deux
+versions et le nombre de verrous HARD de la source (`hardLockCount`) : « Vous regardez la version
+{viewed}, mais les données en cours sont celles de la version {source} ({n} verrou(s)). La
+régénération repartira de la version {source}. Pour repartir de la version {viewed}, chargez
+d'abord ses données avec « Charger ». » — annulable, ou confirmée (régénère depuis la source,
+sélectionne la nouvelle version créée). Si aucune sœur n'est la source (version unique dans le
+lot, ou la version regardée EST la source), la mutation part directement, sans dialogue.
 

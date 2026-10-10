@@ -247,6 +247,27 @@ modèle — ils ne correspondent plus à une section de ce document (l'historiqu
     purges (`SeasonDataPurger`, cascades) comme toute donnée club.
 20. **Validation pré-solve** (`ValidateConstraintsController`) : filtre par **plan**
     (ses réglages + datées du fait), plus par entry — absorbe la dette P4-13.
+21. **« Régénérer » un plan de PÉRIODE repart des DONNÉES EN COURS, jamais de la version regardée**
+    (amendement, lot verrous V1/V1bis, 2026-10-10) : une version NUE — celle que crée « Régénérer »
+    sur un plan de PÉRIODE — n'a aucun `slotTemplates` propre ; sans greffe, ses verrous HARD ne
+    voyageaient qu'en `previousAssignments` (terme SOFT de convergence, `backend/docs/schedule-generation-guide.md`
+    §10) et pouvaient se perdre. `ScheduleConstraintBuilder::buildForPeriodPlan` greffe donc les HARD de la version
+    **SOURCE** du plan sur le payload déjà sérialisé, en forme CANONIQUE (`id` dérivé du placement
+    `team:venue:jour:HH:MM`, jamais de l'id de ligne — pour que le hash de structure reste STABLE
+    d'une régénération à l'autre), dédupliqués par placement (slotTemplates propres et réservations
+    du payload priment ; un verrou repassé NONE ne revient pas). La version SOURCE d'un plan (SEASON
+    comme PÉRIODE, maison unique `SchedulePlanProvisioner::lockSourceScheduleIdOfPlan`) est le
+    pointeur `schedule_plan.lock_source_schedule_id` s'il désigne une version COMPLETED existante
+    du même plan, sinon sa dernière version COMPLETED. Pour une PÉRIODE, ce pointeur se pose de deux
+    façons : automatiquement (chaque version qui vient de COMPLETED devient la source) ou par
+    « Charger » (`POST /api/schedules/{id}/load-locks`, réservé à un plan de période **non validé** —
+    un plan SEASON garde son propre « Charger cette version », `RegenerateFromVersionController`,
+    qui restaure une structure et ne pose jamais ce pointeur). Régénérer en REGARDANT une autre
+    version que la source ne change pas la source retenue — le front confirme avant (« vous
+    regardez la version N, les données en cours sont celles de la version M… »). `ScheduleResource`
+    expose `isLockSource`/`hardLockCount` ; `OrphanPinGuard` et `ScheduleResultImporter` (origine
+    `MANUAL` d'un verrou hérité, répare le compteur de verrous posés de la saison) lisent la MÊME
+    source.
 
 ## Mapping legacy → modèle
 
