@@ -42,12 +42,15 @@ stage prod red le job même si aucun build dev ne l'utilise.
 
 ## Sécurité réseau
 
-- **Deux ports publiés, tous deux sur localhost** — Caddy (TLS, hôte) reste la
-  seule porte d'entrée : `frontend` sur `127.0.0.1:${FRONTEND_PORT}` (l'app) et,
-  depuis P4-276, `umami` sur `127.0.0.1:${UMAMI_PORT}` (mesure d'audience de la
-  vitrine ; `stats.amateo.app` n'expose publiquement QUE la collecte, le
-  dashboard se consulte par tunnel SSH). Aucun n'écoute sur l'IP publique.
-- postgres, redis, engine, mercure, nginx : réseau interne uniquement.
+- **Trois ports publiés, tous sur `127.0.0.1` de la VM** — aucun n'écoute sur
+  l'IP publique. Caddy (TLS, hôte) reste la seule porte d'entrée WEB :
+  `frontend` sur `127.0.0.1:${FRONTEND_PORT}` (l'app) et, depuis P4-276, `umami`
+  sur `127.0.0.1:${UMAMI_PORT}` (mesure d'audience de la vitrine ;
+  `stats.amateo.app` n'expose publiquement QUE la collecte, le dashboard se
+  consulte par tunnel SSH). Le troisième n'est **pas** une entrée web :
+  `postgres` sur `127.0.0.1:5432`, joignable depuis la seule VM, pour le tunnel
+  SSH de la clé de lecture seule dédiée (→ § Accès opérateur ci-dessous).
+- redis, engine, mercure, nginx : réseau interne uniquement.
 - Mercure : `cors_origins` = `PUBLIC_BASE_URL` seul ; le navigateur passe par le
   proxy frontend (`/.well-known/mercure`).
 
@@ -84,12 +87,20 @@ Umami (jeton côté serveur, jamais exposé au front).
   `postgres` et `redis` (semver-major ignoré), et `dunglas/mercure` (borné `versions: >=1.0.0`
   car en 0.x `semver-major` ne capte pas le saut 0.x → 1.0).
 
-## Accès opérateur à la base — jamais un port ouvert
+## Accès opérateur à la base — un port sur la boucle locale seulement
 
-**Postgres ne publie AUCUN port hôte en prod** (`docker-compose.prod.yml`, service `postgres` :
-pas de `ports:`) — il n'existe que sur le réseau Docker interne. **Ne l'ouvre jamais.** Un
-Postgres joignable depuis Internet est balayé en heures, et cette base contient des données
-personnelles de licenciés, mineurs compris.
+**Postgres publie UN SEUL port, et seulement sur la boucle locale de la VM**
+(`docker-compose.prod.yml`, service `postgres` : `ports: ["127.0.0.1:5432:5432"]`). Ce port
+n'est joignable **que depuis la VM elle-même** — jamais depuis Internet : le préfixe
+`127.0.0.1` lie l'écoute à l'interface loopback, pas à l'IP publique. Il ne sert qu'au **tunnel
+SSH de la clé de lecture seule dédiée** (ci-dessous). **Ne le passe JAMAIS en `0.0.0.0` ni sans
+le préfixe `127.0.0.1`** : un Postgres joignable depuis Internet est balayé en heures, et cette
+base contient des données personnelles de licenciés, mineurs compris.
+
+> ⚠ **Docker ≥ 28 requis sur la VM.** Avant Docker 28 (moby#45610), un port publié sur `127.0.0.1`
+> pouvait rester joignable depuis le réseau local via `route_localnet` ; la 28 referme ce défaut.
+> Vérifier `docker version` sur la VM — sinon le « seulement la boucle locale » ci-dessus n'est pas
+> garanti face au LAN.
 
 **Pas de bastion.** Un bastion se justifie sur un réseau privé à plusieurs machines, pour avoir un
 point d'entrée unique et audité. Sur une machine unique, l'hôte **EST** ce point d'entrée : ajouter
@@ -101,26 +112,33 @@ s'applique donc tel quel. ⚠ Si un jour la base passait sur un **Postgres manag
 Database ou autre), l'accès passerait par le réseau privé du fournisseur et ses ACL d'IP, et le
 tunnel ci-dessous n'aurait plus lieu d'être — la présente section serait à réécrire, pas à adapter.
 
-Deux gestes, par ordre de préférence :
+Trois gestes, par ordre de préférence :
 
 ```bash
-# 1. Rien n'écoute, rien n'est publié — le plus sûr.
+# 1. Sur la VM, rien à tunneler — le plus sûr pour un geste ponctuel.
 ssh <hôte> 'docker compose exec postgres psql -U <rôle> -d amateo'
 
-# 2. Tunnel SSH, seulement si un client graphique est nécessaire (DBeaver, PhpStorm, TablePlus).
-#    AUCUN port à publier sur l'hôte — Postgres ne publie toujours rien. Le tunnel SSH vise
-#    directement l'IP du conteneur sur le réseau Docker INTERNE (jointe par l'hôte, pas par
-#    Internet) :
-ssh <hôte> "docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' amateo-postgres"
-# → ex. 172.19.0.3 : c'est l'hôte du tunnel, PAS localhost ; un client graphique (PhpStorm,
-# DBeaver) qui porte son propre onglet SSH (« SSH/SSL » ou « SSH tunnel ») fait le tunnel
-# lui-même — pas de `ssh -L` séparé à tenir dans un terminal. Pointer la connexion sur
-# <IP conteneur>:5432, hôte SSH = <hôte>. ⚠ Cette IP peut CHANGER quand le conteneur
-# `postgres` est recréé (déploiement, redémarrage) — rejouer la commande `docker inspect`
-# si la connexion tombe.
+# 2. Depuis un poste, lecture seule SCRIPTÉE (le geste courant d'enquête).
+#    scripts/prod-read.sh ouvre le tunnel sur 127.0.0.1:5432 via la clé dédiée
+#    `amateo-prod-read`, se connecte en `amateo_read` en transaction read-only,
+#    puis referme le tunnel en sortant. Gestes fondateur (clé SSH restreinte,
+#    alias ~/.ssh/config, ~/.pgpass-amateo) : docs/ops/deploy.md §1.8.
+scripts/prod-read.sh --club "<uuid|nom>" "SELECT id, name FROM team;"
+
+# 3. Client graphique (DBeaver, PhpStorm, TablePlus), si vraiment nécessaire : il porte
+#    son propre onglet « SSH tunnel ». Hôte SSH = <hôte> (clé dédiée `amateo-prod-read`),
+#    hôte distant = 127.0.0.1, port 5432, rôle `amateo_read`. Plus besoin de viser l'IP
+#    interne du conteneur (qui changeait à chaque recréation) : le port loopback est stable.
 ```
 
-SSH **par clé, authentification par mot de passe désactivée**.
+SSH **par clé, authentification par mot de passe désactivée**. La clé de lecture seule est portée
+par un **compte Unix dédié `amateo-tunnel`** (sans shell, **HORS groupe docker**) et bornée par un
+bloc sshd `Match User amateo-tunnel` (`AllowTcpForwarding local`, `AllowStreamLocalForwarding no`,
+`PermitOpen 127.0.0.1:5432`, `PermitListen none`, `ForceCommand /bin/false`) : elle n'ouvre QUE ce
+tunnel — **ni shell, ni docker, ni forward de socket Unix** ni transfert inverse `-R`. ⚠ Le
+`permitopen` d'`authorized_keys` NE bloque PAS à lui seul le forward de socket Unix vers
+`docker.sock` (qui donnerait root sur la VM via le groupe docker) : d'où le compte dédié hors
+groupe docker + `AllowStreamLocalForwarding no`. Pose et **test de refus** : `deploy.md` §1.8.
 
 ### Avec quel rôle — la question qui compte
 

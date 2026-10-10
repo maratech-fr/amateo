@@ -328,10 +328,51 @@ final class ReadOnlyRoleTest extends KernelTestCase
         }
     }
 
+    public function testReadonlyRoleCarriesQueryAndLockTimeouts(): void
+    {
+        // Sécurité M3 (revue 2026-10-10) : une enquête opérateur ne doit pas pouvoir
+        // immobiliser la prod. Le rôle amateo_read porte des bornes (ALTER ROLE … SET,
+        // Version20261010150000), visibles dans pg_roles.rolconfig. On compare en INTERVAL
+        // pour être robuste à la canonicalisation Postgres (60s ⇄ 1min).
+        $expected = [
+            'statement_timeout' => '60s',
+            'lock_timeout' => '5s',
+            'idle_in_transaction_session_timeout' => '60s',
+        ];
+        $admin = $this->adminConnection();
+        foreach ($expected as $name => $want) {
+            $value = $this->roleSetting($admin, $name);
+            self::assertNotNull(
+                $value,
+                \sprintf('amateo_read doit porter %s (ALTER ROLE … SET) — sinon une requête opérateur peut tourner sans fin ou tenir un verrou (migration Version20261010150000).', $name),
+            );
+            self::assertTrue(
+                (bool) $admin->fetchOne('SELECT CAST(? AS interval) = CAST(? AS interval)', [$value, $want]),
+                \sprintf('amateo_read.%s = %s, attendu %s', $name, $value, $want),
+            );
+        }
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
         $this->connection = self::getContainer()->get(Connection::class);
+    }
+
+    /**
+     * La valeur d'un GUC attaché au rôle amateo_read (pg_authid.rolconfig, exposé par pg_roles),
+     * ou null si absente. Lu sur la connexion admin (superuser en dev/test) — pas d'ambiguïté de
+     * visibilité de rolconfig pour un rôle de login ordinaire.
+     */
+    private function roleSetting(Connection $admin, string $name): ?string
+    {
+        $value = $admin->fetchOne(
+            'SELECT split_part(cfg, \'=\', 2) FROM pg_roles r, unnest(r.rolconfig) AS cfg '
+            . 'WHERE r.rolname = \'amateo_read\' AND split_part(cfg, \'=\', 1) = ?',
+            [$name],
+        );
+
+        return false === $value ? null : (string) $value;
     }
 
     /** @return list<string> */
