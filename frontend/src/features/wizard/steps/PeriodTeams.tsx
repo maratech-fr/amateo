@@ -1,6 +1,7 @@
-import { Link2 } from "lucide-react";
+import { Link2, X } from "lucide-react";
 
 import { Spinner } from "@/shared/components/ui/spinner";
+import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { useEffect, useState } from "react";
 
 import { useCalendarEntry, usePeriodAnchor, useSchedulePlanForEntry } from "@/features/cockpit/queries";
@@ -21,11 +22,13 @@ import type { Team, TeamPeriodOverride } from "../api";
 import { mutualisedTeammateLabel } from "../lib/sharedTraining";
 import {
   useCreateTeamPeriodOverride,
+  useDeleteConstraint,
   useDeleteTeamPeriodOverride,
   usePriorityTiers,
   useSharedTrainingBlocks,
   useTeamPeriodOverrides,
   useUpdateTeamPeriodOverride,
+  useWizardConstraints,
   useWizardTeams,
 } from "../queries";
 import { SectionCountTitle } from "./StructureSummary";
@@ -85,6 +88,18 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
   // et la modale Liens. En période elles sont en LECTURE SEULE (structure de saison).
   const { data: teamLinks = [] } = useTeamLinks();
   const [linksTeam, setLinksTeam] = useState<Team | null>(null);
+  // PR 6 (lot 8, décision 9 A) — « Garder ses créneaux de saison » se VOIT et s'ENLÈVE ici. La
+  // lecture vient du SERVEUR (les contraintes datées de CETTE entrée de période, même hook que
+  // l'étape Contraintes) : le front ne re-dérive rien, il affiche ce que le transfert a posé.
+  // Une seule contrainte SEASON_SLOTS ACTIVE par équipe (le transfert efface/recrée) → map directe.
+  const { data: datedConstraints = [] } = useWizardConstraints(calendarEntryId);
+  const deleteConstraint = useDeleteConstraint();
+  const [removeSeasonSlots, setRemoveSeasonSlots] = useState<{ constraintId: string; teamName: string } | null>(null);
+  const seasonSlotConstraintOf = new Map<string, string>(
+    datedConstraints
+      .filter((c) => "SEASON_SLOTS" === c.family && c.isActive && null !== c.scopeTargetId)
+      .map((c) => [c.scopeTargetId as string, c.id]),
+  );
   const nameOf = (id: string): string => teams.find((t) => t.id === id)?.name ?? "?";
   // P2-51 — la sous-ligne « Mutualisée avec … » tirée des blocs (helper pur, testé).
   const mutualiseLabelOf = (teamId: string): string | null => mutualisedTeammateLabel(teamId, sharedBlocks, nameOf);
@@ -288,6 +303,23 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
                     {/* P2-63 PR 5 (F) — provenance « via doléances », SEULEMENT pour la valeur
                         'coach_wish' (une équipe activée par la mutualisation porte 'mutualisation'). */}
                     {"coach_wish" === overrideOf.get(t.id)?.source ? <StatusPill variant="accent">via doléances</StatusPill> : null}
+                    {/* PR 6 (lot 8) — « garde ses créneaux de saison » : pastille + retrait. Variante
+                        neutre (distincte de l'accent « via doléances », qui peut coexister sur la ligne) ;
+                        pas de bouton d'ajout ici — la contrainte naît du transfert seul. */}
+                    {seasonSlotConstraintOf.has(t.id) ? (
+                      <span className="inline-flex items-center gap-1">
+                        <StatusPill variant="neutral">garde ses créneaux de saison</StatusPill>
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          disabled={busy}
+                          aria-label={`Ne plus garder les créneaux de saison de ${t.name}`}
+                          onClick={() => setRemoveSeasonSlots({ constraintId: seasonSlotConstraintOf.get(t.id) as string, teamName: t.name })}
+                        >
+                          <X className="size-3.5" />
+                        </Button>
+                      </span>
+                    ) : null}
                   </div>
                   <div className="flex items-center gap-2">
                     <label className={cn("flex items-center gap-1 text-xs text-muted-foreground", !active && "opacity-50")}>
@@ -331,6 +363,24 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
           onClose={() => setLinksTeam(null)}
         />
       ) : null}
+
+      {/* PR 6 (lot 8) — confirmation légère avant de retirer « garder ses créneaux de saison ».
+          La suppression passe par l'API Constraint (DELETE) ; le hook invalide la liste, la
+          pastille disparaît. Modifier/supprimer une doléance ne touche PAS le plan (décision 8) —
+          seul ce retrait explicite, ou un nouveau transfert, recale. */}
+      <ConfirmDialog
+        open={null !== removeSeasonSlots}
+        title="Ne plus garder les créneaux de saison"
+        description={null !== removeSeasonSlots ? <>L'équipe <strong>{removeSeasonSlots.teamName}</strong> ne gardera plus ses créneaux de saison sur cette période. Vous pourrez la re-transférer depuis les doléances.</> : null}
+        confirmLabel="Confirmer"
+        onConfirm={() => {
+          if (null !== removeSeasonSlots) {
+            deleteConstraint.mutate(removeSeasonSlots.constraintId);
+          }
+          setRemoveSeasonSlots(null);
+        }}
+        onCancel={() => setRemoveSeasonSlots(null)}
+      />
     </div>
   );
 }

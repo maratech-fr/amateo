@@ -21,6 +21,7 @@ const clearGrid = vi.fn();
 const createConstraintOverride = vi.fn();
 const updateConstraintOverride = vi.fn();
 const deleteConstraintOverride = vi.fn();
+const deleteConstraintImpl = vi.fn();
 const overridesState: { data: Array<{ id: string; teamId: string; isActive: boolean; sessionsPerWeek: number | null; schedulePlanId: string }> } = { data: [] };
 // Le VRAI type, pas une copie étroite : une seconde description du même objet finit
 // toujours par diverger — celle d'avant ignorait family/config/isActive, que les tests
@@ -156,6 +157,7 @@ vi.mock("../queries", () => ({
   useReservations: () => ({ data: reservationsState.data }),
   useDeleteReservation: () => ({ mutate: delReservation }),
   useWizardConstraints: () => ({ data: constraintsState.data, isLoading: constraintsState.isLoading, isError: constraintsState.isError }),
+  useDeleteConstraint: () => ({ mutate: deleteConstraintImpl, mutateAsync: deleteConstraintImpl, isPending: false }),
   usePeriodConstraintOverrides: (anchor: string | null) => {
     constraintOverridesAnchor.value = anchor;
 
@@ -266,6 +268,7 @@ afterEach(() => {
   createConstraintOverride.mockClear();
   updateConstraintOverride.mockClear();
   deleteConstraintOverride.mockClear();
+  deleteConstraintImpl.mockClear();
 });
 
 describe("PeriodTeams — default team selection (E3) + toggles", () => {
@@ -430,6 +433,49 @@ describe("PeriodTeams — repère de mutualisation (P2-51)", () => {
     render(<PeriodTeams calendarEntryId="mutualise-block-marker" />);
 
     expect(screen.getByText(/Mutualisée avec U13/)).toBeInTheDocument();
+  });
+});
+
+describe("PeriodTeams — « garder ses créneaux de saison » (PR 6 / lot 8, décision 9 A)", () => {
+  // La contrainte SEASON_SLOTS datée du plan se VOIT et s'ENLÈVE à l'étape Équipes. Lecture
+  // serveur (liste des contraintes de la période) ; aucune re-dérivation front.
+  const seasonSlots = (teamId: string) => constraint({ id: `ss-${teamId}`, name: "Garder les créneaux de saison", scope: "TEAM", scopeTargetId: teamId, family: "SEASON_SLOTS" });
+
+  it("affiche la pastille « garde ses créneaux de saison » pour la SEULE équipe concernée", () => {
+    overridesState.data = [{ id: "o2", teamId: "t2", isActive: true, sessionsPerWeek: null, schedulePlanId: "plan-1" }];
+    constraintsState.data = [seasonSlots("t1")]; // SM1 porte la contrainte, pas U13
+    render(<PeriodTeams calendarEntryId="season-slots-marker" />);
+
+    const pills = screen.getAllByText(/garde ses créneaux de saison/);
+    expect(pills).toHaveLength(1);
+    // Et le ✕ nommé de l'équipe concernée est présent.
+    expect(screen.getByRole("button", { name: "Ne plus garder les créneaux de saison de SM1" })).toBeInTheDocument();
+    // U13 (sans la contrainte) n'a PAS de bouton de retrait.
+    expect(screen.queryByRole("button", { name: "Ne plus garder les créneaux de saison de U13" })).toBeNull();
+  });
+
+  it("le ✕ demande confirmation puis appelle la suppression de LA contrainte", async () => {
+    const user = userEvent.setup();
+    overridesState.data = [{ id: "o2", teamId: "t2", isActive: true, sessionsPerWeek: null, schedulePlanId: "plan-1" }];
+    constraintsState.data = [seasonSlots("t1")];
+    render(<PeriodTeams calendarEntryId="season-slots-remove" />);
+
+    await user.click(screen.getByRole("button", { name: "Ne plus garder les créneaux de saison de SM1" }));
+    // Confirmation légère affichée, rien n'est encore supprimé.
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(deleteConstraintImpl).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Confirmer" }));
+    expect(deleteConstraintImpl).toHaveBeenCalledWith("ss-t1");
+  });
+
+  it("n'affiche aucune pastille ni aucun bouton d'ajout quand aucune équipe ne garde ses créneaux", () => {
+    overridesState.data = [{ id: "o2", teamId: "t2", isActive: true, sessionsPerWeek: null, schedulePlanId: "plan-1" }];
+    constraintsState.data = [];
+    render(<PeriodTeams calendarEntryId="season-slots-none" />);
+
+    expect(screen.queryByText(/garde ses créneaux de saison/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Garder les créneaux de saison/ })).toBeNull();
   });
 });
 
