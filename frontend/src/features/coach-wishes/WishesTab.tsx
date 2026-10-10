@@ -75,6 +75,10 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
   // « traité » (à droite). Présélection = les doléances NON traitées de la vue (effet one-shot).
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const preselectedView = useRef<string | null>(null);
+  // Après un transfert réussi la sélection se vide → le bouton « Transférer » se désactive ALORS
+  // QU'IL A LE FOCUS, qui retombe sur <body> (même piège que la bascule d'onglet, revue #346). On
+  // ramène le focus sur la liste (ses lignes converties sont barrées, le résultat est là).
+  const listRegionRef = useRef<HTMLDivElement>(null);
 
   const weeks = useMemo(
     () => (null === season ? [] : periodAdjustWeeks(mother.startDate, mother.endDate, season, mother.periodType)),
@@ -167,6 +171,7 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
       onSuccess: (recap) => {
         toast.success(transferRecapMessage(recap));
         setSelected(new Set());
+        listRegionRef.current?.focus();
       },
     });
   };
@@ -252,7 +257,7 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
             {transfer.isPending ? <Spinner className="size-4" /> : null}
             Transférer au planning ({selectedVisible.length})
           </Button>
-          <span className="text-xs text-muted-foreground">Les doléances cochées deviennent des réglages du plan de leur semaine (volume, indisponibilités, jours souhaités).</span>
+          <span className="text-xs text-muted-foreground">Cochez à gauche les doléances à transférer : elles deviennent des réglages du plan de leur semaine (volume, indisponibilités, jours souhaités).</span>
         </div>
       ) : null}
 
@@ -286,7 +291,7 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
         </div>
       ) : null}
 
-      <div className="mt-3 space-y-3">
+      <div ref={listRegionRef} tabIndex={-1} className="mt-3 space-y-3 outline-none">
         {shownWeeks.map((week) => {
           const items = visible.filter((w) => w.weekStart === week.monday);
           return (
@@ -299,7 +304,7 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
                   {items.map((w) => (
                     <li key={w.id} className="flex items-start gap-2 rounded-md border border-border px-3 py-2 text-sm">
                       {/* D-b — case de SÉLECTION du transfert, à gauche (distincte de « traité »). */}
-                      <input type="checkbox" aria-label={`Sélectionner la doléance — ${teamName.get(w.teamId) ?? "équipe"}`} className="mt-1 size-4" checked={selected.has(w.id)} onChange={() => toggleSelected(w.id)} />
+                      <input type="checkbox" aria-label={`Sélectionner la doléance — ${teamName.get(w.teamId) ?? "équipe"} · semaine du ${frDate(week.startDate)}`} className="mt-1 size-4" checked={selected.has(w.id)} onChange={() => toggleSelected(w.id)} />
                       <div className={cn("min-w-0 flex-1", w.done && "line-through")}>
                         {/* Pas de coach (coachId null) = doléance manuelle sans coach : on n'affiche
                             AUCUN coach (juste l'équipe). « coach dé-attribué » ne vaut QUE pour le vrai
@@ -325,7 +330,7 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
                       <div className="flex shrink-0 items-center gap-1">
                         {/* D-b — l'état « traité » reste à DROITE (coche + libellé texte). */}
                         <label className="mr-1 flex items-center gap-1 text-xs text-muted-foreground">
-                          <input type="checkbox" aria-label={`Traité — ${teamName.get(w.teamId) ?? "équipe"}`} className="size-4" checked={w.done} onChange={() => toggleDone(w)} />
+                          <input type="checkbox" aria-label={`Traité — ${teamName.get(w.teamId) ?? "équipe"} · semaine du ${frDate(week.startDate)}`} className="size-4" checked={w.done} onChange={() => toggleDone(w)} />
                           traité
                         </label>
                         <Button
@@ -333,7 +338,7 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
                           size="icon"
                           variant="ghost"
                           className="size-7"
-                          aria-label={`Modifier la doléance · ${teamName.get(w.teamId) ?? "équipe"}`}
+                          aria-label={`Modifier la doléance · ${teamName.get(w.teamId) ?? "équipe"} · semaine du ${frDate(week.startDate)}`}
                           onClick={() => {
                             setEditing(w);
                             setFormOpen(true);
@@ -341,7 +346,7 @@ export function WishesTab({ mother, weekFilter }: { mother: CalendarEntry; weekF
                         >
                           <Pencil className="size-4" />
                         </Button>
-                        <Button type="button" size="icon" variant="ghost" className="size-7 text-destructive" aria-label={`Supprimer la doléance · ${teamName.get(w.teamId) ?? "équipe"}`} disabled={deleteWish.isPending} onClick={() => setToDelete(w)}>
+                        <Button type="button" size="icon" variant="ghost" className="size-7 text-destructive" aria-label={`Supprimer la doléance · ${teamName.get(w.teamId) ?? "équipe"} · semaine du ${frDate(week.startDate)}`} disabled={deleteWish.isPending} onClick={() => setToDelete(w)}>
                           <Trash2 className="size-4" />
                         </Button>
                       </div>
