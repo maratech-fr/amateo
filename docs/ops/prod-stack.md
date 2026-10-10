@@ -97,6 +97,11 @@ SSH de la clé de lecture seule dédiée** (ci-dessous). **Ne le passe JAMAIS en
 le préfixe `127.0.0.1`** : un Postgres joignable depuis Internet est balayé en heures, et cette
 base contient des données personnelles de licenciés, mineurs compris.
 
+> ⚠ **Docker ≥ 28 requis sur la VM.** Avant Docker 28 (moby#45610), un port publié sur `127.0.0.1`
+> pouvait rester joignable depuis le réseau local via `route_localnet` ; la 28 referme ce défaut.
+> Vérifier `docker version` sur la VM — sinon le « seulement la boucle locale » ci-dessus n'est pas
+> garanti face au LAN.
+
 **Pas de bastion.** Un bastion se justifie sur un réseau privé à plusieurs machines, pour avoir un
 point d'entrée unique et audité. Sur une machine unique, l'hôte **EST** ce point d'entrée : ajouter
 un bastion, c'est une seconde machine à patcher et à surveiller pour zéro sécurité de plus.
@@ -126,9 +131,14 @@ scripts/prod-read.sh --club "<uuid|nom>" "SELECT id, name FROM team;"
 #    interne du conteneur (qui changeait à chaque recréation) : le port loopback est stable.
 ```
 
-SSH **par clé, authentification par mot de passe désactivée** ; la clé de lecture seule est en
-plus **restreinte côté VM** (`command="/bin/false"`, `permitopen="127.0.0.1:5432"`) : elle
-n'ouvre que le tunnel, ni shell ni docker (pose : `deploy.md` §1.8).
+SSH **par clé, authentification par mot de passe désactivée**. La clé de lecture seule est portée
+par un **compte Unix dédié `amateo-tunnel`** (sans shell, **HORS groupe docker**) et bornée par un
+bloc sshd `Match User amateo-tunnel` (`AllowTcpForwarding local`, `AllowStreamLocalForwarding no`,
+`PermitOpen 127.0.0.1:5432`, `PermitListen none`, `ForceCommand /bin/false`) : elle n'ouvre QUE ce
+tunnel — **ni shell, ni docker, ni forward de socket Unix** ni transfert inverse `-R`. ⚠ Le
+`permitopen` d'`authorized_keys` NE bloque PAS à lui seul le forward de socket Unix vers
+`docker.sock` (qui donnerait root sur la VM via le groupe docker) : d'où le compte dédié hors
+groupe docker + `AllowStreamLocalForwarding no`. Pose et **test de refus** : `deploy.md` §1.8.
 
 ### Avec quel rôle — la question qui compte
 

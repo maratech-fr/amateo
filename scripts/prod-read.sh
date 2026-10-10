@@ -5,10 +5,13 @@
 # § Accès opérateur, docs/security/rls.md) :
 #   1. BASE   — le rôle `amateo_read` : liste blanche de SELECT, aucun DML,
 #               aucun secret. C'est la vraie frontière.
-#   2. SSH    — une clé dédiée (`amateo-prod-read`) restreinte côté VM à
-#               `restrict,port-forwarding,permitopen="127.0.0.1:5432",
-#               command="/bin/false"` : elle n'ouvre QUE le tunnel, ni shell
-#               ni docker.
+#   2. SSH    — un compte Unix dédié `amateo-tunnel` (sans shell, HORS groupe
+#               docker) et un bloc sshd `Match User amateo-tunnel`
+#               (`AllowTcpForwarding local`, `AllowStreamLocalForwarding no`,
+#               `PermitOpen 127.0.0.1:5432`, `PermitListen none`, `ForceCommand
+#               /bin/false`) : la clé `amateo-prod-read` n'ouvre QUE ce tunnel —
+#               ni shell, ni docker, ni forward de socket Unix vers docker.sock
+#               (docs/ops/deploy.md §1.8).
 #   3. OUTIL  — ce script : il ne parle à la prod QUE par ce tunnel, en
 #               `amateo_read`, en transaction read-only, et refuse par
 #               courtoisie tout ce qui n'est pas SELECT/WITH/SET/SHOW/\d.
@@ -18,14 +21,18 @@
 # sortie n'est écrit : le résultat part sur stdout.
 #
 # Pré-requis (gestes fondateur, une fois — docs/ops/deploy.md §1.8) :
-#   - la clé SSH dédiée (À PHRASE DE PASSE) posée dans authorized_keys de la VM
-#     (restreinte) ;
-#   - l'entrée `Host amateo-prod-read` dans ~/.ssh/config ;
+#   - le compte Unix `amateo-tunnel` + le bloc sshd `Match User amateo-tunnel`
+#     sur la VM, et la clé `amateo-prod-read` (À PHRASE DE PASSE) dans le SEUL
+#     authorized_keys de ce compte ;
+#   - l'entrée `Host amateo-prod-read` dans ~/.ssh/config (User amateo-tunnel,
+#     IdentityAgent ~/.ssh/agent-prodread.sock) ;
 #   - ~/.pgpass-amateo (chmod 600) avec la ligne
 #       127.0.0.1:15432:amateo:amateo_read:<mot de passe>
-# Avant chaque enquête, le fondateur DÉVERROUILLE la clé dans l'agent SSH, pour
-# une durée limitée : `ssh-add -t 4h ~/.ssh/amateo_prod_read`. Clé verrouillée =
-# ce script échoue net, aucune session n'atteint la prod.
+# Avant chaque enquête, le fondateur DÉVERROUILLE la clé dans l'agent DÉDIÉ, pour
+# une durée limitée :
+#   SSH_AUTH_SOCK=~/.ssh/agent-prodread.sock ssh-add -t 4h ~/.ssh/amateo_prod_read
+# Clé verrouillée (ou absente de cet agent) = ce script échoue net, aucune
+# session n'atteint la prod.
 #
 # Usage :
 #   scripts/prod-read.sh [--club <uuid|nom>] [--csv] "<requête SQL>"
@@ -41,6 +48,7 @@ set -euo pipefail
 
 readonly SSH_ALIAS="amateo-prod-read"
 readonly SSH_KEY="${HOME}/.ssh/amateo_prod_read"
+readonly SSH_AGENT_SOCK="${HOME}/.ssh/agent-prodread.sock"
 readonly LOCAL_PORT=15432
 readonly PGPASS_HOST="${HOME}/.pgpass-amateo"
 readonly PSQL_IMAGE="postgres:16-alpine"
@@ -91,8 +99,10 @@ done
 
 [[ -n "$query" ]] || query="$(cat)"
 
-# ── Barrière 3 : garde de COURTOISIE (la vraie barrière reste la base) ──
-# On ne regarde que le premier mot-clé : lecture seule par intention.
+# ── Barrière 3 : garde de COURTOISIE — PAS une barrière de sécurité ──
+# On ne regarde QUE le premier mot-clé : ça arrête une faute de frappe (un UPDATE
+# collé par mégarde), pas un acte hostile — « SELECT … ; UPDATE … » passerait
+# cette garde. La vraie frontière est la base : amateo_read n'a aucun droit d'écriture.
 keyword="$(printf '%s' "$query" | sed -E 's/^[[:space:]]+//' | awk 'NR==1{print tolower($1)}')"
 case "$keyword" in
   select | with | set | show) ;;
@@ -110,12 +120,13 @@ perms="$(stat -c '%a' "$PGPASS_HOST" 2>/dev/null || stat -f '%Lp' "$PGPASS_HOST"
 [[ "$perms" == "600" ]] || die "${PGPASS_HOST} doit être en chmod 600 (actuel : ${perms})"
 
 # ── Interrupteur : la clé dédiée (à phrase de passe) doit être DÉVERROUILLÉE ──
-# dans l'agent SSH. Clé absente de l'agent = aucune session ne peut atteindre la
-# prod. On compare l'empreinte de la clé publique à celles que porte l'agent.
+# dans l'agent DÉDIÉ (socket fixe — jamais l'agent ambiant : lui seul doit porter
+# cette clé). Clé absente de cet agent = aucune session ne peut atteindre la prod.
+[[ -S "$SSH_AGENT_SOCK" ]] || die "agent SSH dédié absent (${SSH_AGENT_SOCK}) : le démarrer puis \`SSH_AUTH_SOCK=${SSH_AGENT_SOCK} ssh-add -t 4h ~/.ssh/amateo_prod_read\` — cf. docs/ops/deploy.md §1.8"
 [[ -f "${SSH_KEY}.pub" ]] || die "clé publique absente : ${SSH_KEY}.pub — cf. docs/ops/deploy.md §1.8"
 key_fpr="$(ssh-keygen -lf "${SSH_KEY}.pub" | awk '{print $2}')"
-if ! ssh-add -l 2>/dev/null | awk '{print $2}' | grep -qxF "$key_fpr"; then
-  die "clé amateo-prod-read verrouillée : demander au fondateur \`ssh-add -t 4h ~/.ssh/amateo_prod_read\`"
+if ! SSH_AUTH_SOCK="$SSH_AGENT_SOCK" ssh-add -l 2>/dev/null | awk '{print $2}' | grep -qxF "$key_fpr"; then
+  die "clé amateo-prod-read verrouillée dans l'agent dédié : demander au fondateur \`SSH_AUTH_SOCK=${SSH_AGENT_SOCK} ssh-add -t 4h ~/.ssh/amateo_prod_read\`"
 fi
 
 # ── Barrière 2 : le tunnel SSH, via un socket de contrôle pour le refermer ──
@@ -133,6 +144,8 @@ trap cleanup EXIT
 ssh -fN -M -S "$control_sock" \
   -o BatchMode=yes \
   -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=30 \
+  -o ServerAliveCountMax=2 \
   -L "${LOCAL_PORT}:127.0.0.1:5432" \
   "$SSH_ALIAS" \
   || die "tunnel SSH refusé — vérifier l'alias « ${SSH_ALIAS} » (~/.ssh/config), que la clé est déverrouillée (\`ssh-add -t 4h ~/.ssh/amateo_prod_read\`) et autorisée sur la VM (docs/ops/deploy.md §1.8)"
@@ -158,9 +171,12 @@ psql_args=(
 [[ "$csv" -eq 1 ]] && psql_args+=(--csv)
 psql_args+=(-f -)
 
-printf '%s\n%s\n' "$preamble" "$query" | docker run --rm -i --network host \
+# `timeout` borne la phase psql (le tunnel ne survit pas à une session qui traîne) ;
+# les `statement_timeout`/`lock_timeout` de PGOPTIONS doublent côté serveur les
+# réglages portés par le rôle amateo_read (migration) — défense en profondeur.
+printf '%s\n%s\n' "$preamble" "$query" | timeout 600 docker run --rm -i --network host \
   -e PGPASSFILE=/root/.pgpass \
-  -e "PGOPTIONS=-c default_transaction_read_only=on" \
+  -e "PGOPTIONS=-c default_transaction_read_only=on -c statement_timeout=60s -c lock_timeout=5s" \
   -v "${PGPASS_HOST}:/root/.pgpass:ro" \
   "$PSQL_IMAGE" \
   psql "${psql_args[@]}"

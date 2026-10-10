@@ -235,67 +235,138 @@ ssh -t <hôte> "docker compose exec postgres psql -U amateo_owner -d amateo -c '
 
 Depuis un poste, la lecture passe par un **tunnel SSH vers le port loopback de Postgres**
 (`127.0.0.1:5432`, publié seulement sur la VM — [`prod-stack.md`](prod-stack.md) § Accès
-opérateur). Le tunnel s'ouvre avec une **clé dédiée et restreinte**, jamais une clé d'admin :
+opérateur). Le tunnel s'ouvre avec une **clé dédiée à phrase de passe**, portée par un **compte
+Unix dédié `amateo-tunnel`** — jamais le compte de déploiement.
+
+> ⚠ **Pourquoi un compte Unix dédié, et pas juste une ligne dans l'`authorized_keys` du compte de
+> deploy ?** `permitopen` ne filtre QUE les redirections TCP (`-L host:port`), **pas** les
+> redirections de **socket Unix** (`direct-streamlocal`, `ssh -L /chemin.sock:/var/run/docker.sock`).
+> Le compte de déploiement étant dans le groupe `docker`, une clé posée chez lui pourrait tunneler
+> vers `docker.sock` et obtenir **root** sur la VM. Parade : un compte `amateo-tunnel` **hors du
+> groupe docker, sans shell**, + un `Match User` sshd qui **interdit** le forward de socket Unix.
+
+**a. Sur le poste — générer la clé dédiée** (jamais une clé d'admin). **SURTOUT PAS `-N ''`** :
+ssh-keygen DOIT demander une **phrase de passe** — c'est l'interrupteur que tu déverrouilleras dans
+l'agent pour une durée limitée. Une clé en clair sur le disque donnerait un accès permanent.
 
 ```bash
-# a. Générer la clé dédiée sur ton poste (jamais réutiliser une clé d'admin).
-#    SURTOUT PAS `-N ''` : ssh-keygen DOIT demander une PHRASE DE PASSE — c'est elle
-#    que tu déverrouilles dans l'agent pour une durée limitée (étape e), l'interrupteur
-#    d'accès à la prod. Une clé en clair sur le disque donnerait un accès permanent.
 ssh-keygen -t ed25519 -f ~/.ssh/amateo_prod_read -C amateo-prod-read
+```
 
-# b. Sur la VM, ajouter la clé PUBLIQUE à ~/.ssh/authorized_keys du compte de déploiement,
-#    RESTREINTE : elle n'ouvre QUE le tunnel vers 127.0.0.1:5432, ni shell ni docker.
-#    Coller le contenu de ~/.ssh/amateo_prod_read.pub à la place de « ssh-ed25519 AAAA… », sur UNE ligne :
-restrict,port-forwarding,permitopen="127.0.0.1:5432",command="/bin/false" ssh-ed25519 AAAA… amateo-prod-read
+**b. Sur la VM (root/sudo) — créer `amateo-tunnel` et y poser la clé publique.** Les options
+d'`authorized_keys` restent, en **défense en profondeur** (avec `permitlisten=""` pour neutraliser
+tout transfert inverse) — mais la vraie barrière est le bloc sshd de l'étape c :
 
-# c. Déclarer l'alias SSH sur ton poste (~/.ssh/config) :
+```bash
+sudo useradd --system --create-home --shell /usr/sbin/nologin amateo-tunnel
+sudo install -d -m 700 -o amateo-tunnel -g amateo-tunnel /home/amateo-tunnel/.ssh
+# Coller la clé PUBLIQUE du poste (~/.ssh/amateo_prod_read.pub) à la place de « ssh-ed25519 AAAA… » :
+printf '%s %s\n' \
+  'restrict,port-forwarding,permitopen="127.0.0.1:5432",permitlisten="",command="/bin/false"' \
+  'ssh-ed25519 AAAA… amateo-prod-read' | sudo tee /home/amateo-tunnel/.ssh/authorized_keys
+sudo chown amateo-tunnel:amateo-tunnel /home/amateo-tunnel/.ssh/authorized_keys
+sudo chmod 600 /home/amateo-tunnel/.ssh/authorized_keys
+```
+
+**c. Sur la VM — le bloc sshd** (`/etc/ssh/sshd_config.d/amateo-tunnel.conf`) — LA barrière :
+
+```
+Match User amateo-tunnel
+    AllowTcpForwarding local
+    AllowStreamLocalForwarding no
+    PermitOpen 127.0.0.1:5432
+    PermitListen none
+    X11Forwarding no
+    AllowAgentForwarding no
+    PermitTTY no
+    ForceCommand /bin/false
+    ChannelTimeout direct-tcpip=10m
+    UnusedConnectionTimeout 1m
+```
+
+```bash
+sudo sshd -t && sudo systemctl reload ssh   # (le service s'appelle `sshd` sur certaines distros)
+```
+
+> **Version minimale d'OpenSSH.** `ChannelTimeout` et `UnusedConnectionTimeout` existent **depuis
+> OpenSSH 9.2** (Debian 12 : 9.2 ✓ ; Ubuntu 24.04 : 9.6 ✓ ; **Ubuntu 22.04 : 8.9 ✗**). Vérifier
+> `ssh -V` sur la VM. Si **< 9.2** : **retirer ces deux dernières lignes** du bloc (sinon `sshd -t`
+> échoue et le reload est refusé) — la borne de durée est alors tenue côté client
+> (`ServerAliveInterval`/`timeout` de `prod-read.sh`, clé déverrouillée 4 h max) et côté base
+> (`idle_in_transaction_session_timeout` du rôle `amateo_read`) ; ou mieux, mettre OpenSSH à jour.
+
+**d. Sur le poste — l'alias SSH** (`~/.ssh/config`) : `User amateo-tunnel` et **agent dédié** :
+
+```bash
 cat >> ~/.ssh/config <<'EOF'
 Host amateo-prod-read
     HostName <ip-ou-dns-de-la-vm>
-    User <compte-de-déploiement>
+    User amateo-tunnel
     IdentityFile ~/.ssh/amateo_prod_read
     IdentitiesOnly yes
+    IdentityAgent ~/.ssh/agent-prodread.sock
 EOF
+```
 
-# d. Poser le mot de passe de amateo_read dans ~/.pgpass-amateo (chmod 600), SANS l'historiser.
-#    `read -rsp` lit en saisie masquée ; le mot de passe ne touche ni l'historique ni les logs.
-#    (L'espace initial sur la ligne évite de la stocker si HISTCONTROL=ignorespace est actif.)
+**e. Sur le poste — le mot de passe de `amateo_read` dans `~/.pgpass-amateo`** (chmod 600), SANS
+l'historiser (`read -rsp` lit en masqué ; l'espace initial évite le stockage si
+`HISTCONTROL=ignorespace`) :
+
+```bash
  read -rsp 'Mot de passe amateo_read : ' PW && \
    printf '127.0.0.1:15432:amateo:amateo_read:%s\n' "$PW" > ~/.pgpass-amateo && \
    chmod 600 ~/.pgpass-amateo && unset PW && echo OK
 ```
 
-⬜ **Prérequis WSL — un agent SSH sur un socket fixe** (une fois, dans `~/.bashrc`). Sous WSL un
-shell non interactif (celui qui lance `scripts/prod-read.sh`) ne trouve pas l'agent par défaut :
-on l'ancre sur un socket connu et on l'exporte, pour que tous les shells le partagent :
+> ⚠ **`~/.pgpass-amateo` en 600 reste lisible par TOUT processus de ton compte** sur le poste — ce
+> n'est pas un coffre. La vraie barrière n'est pas ce fichier mais la **phrase de passe de la clé +
+> l'agent dédié**. Garde le poste sain et **coupe l'accès dès que tu as fini** (ci-dessous).
+
+⚠ **La clé a peut-être été posée d'abord chez le compte de déploiement** (première mise en place).
+Une fois `amateo-tunnel` créé, la **RETIRER de l'`authorized_keys` du compte de deploy** :
 
 ```bash
-# ~/.bashrc
-export SSH_AUTH_SOCK=$HOME/.ssh/agent.sock
-[ -S "$SSH_AUTH_SOCK" ] || ssh-agent -a "$SSH_AUTH_SOCK" >/dev/null
+ssh <hôte> "sed -i '/amateo-prod-read/d' ~/.ssh/authorized_keys"
 ```
 
-Alternative : [`keychain`](https://www.funtoo.org/Keychain) (`eval "$(keychain --eval --agent ssh id_ed25519)"` dans `~/.bashrc`) gère cet agent unique et persistant à ta place.
+⬜ **Prérequis de sécurité du POSTE (finding C2).** Le modèle ne tient que si **aucune clé non
+verrouillée vers la VM ne vit sur le poste**. La clé de déploiement (`amateo_deploy`/`amateo_prod`)
+doit vivre **dans le seul secret GitHub** `ENV_PROD` côté CI, ou **à phrase de passe** sur le
+poste — jamais en clair à côté de `amateo_prod_read`. Et **ne jamais charger la clé de deploy dans
+l'agent dédié** (étape suivante).
 
-⬜ **Avant chaque enquête — déverrouiller la clé**, pour une durée limitée. C'est
-**l'interrupteur** : clé verrouillée = aucune session n'atteint la prod, et l'accès **expire seul**
-au bout du délai (pas de clé qui traîne déverrouillée) :
+⬜ **Agent SSH dédié + déverrouillage** (une fois par session). Un agent **dédié** au tunnel, sur
+un socket fixe — **jamais l'agent ambiant** : lui seul porte cette clé, et l'alias y est routé par
+`IdentityAgent` (étape d). Cela remplace tout `SSH_AUTH_SOCK` global dans `~/.bashrc` :
 
 ```bash
-ssh-add -t 4h ~/.ssh/amateo_prod_read   # saisis la phrase de passe ; accès ouvert 4 h max
-ssh-add -l                              # vérifier qu'elle est bien chargée
-ssh-add -d ~/.ssh/amateo_prod_read      # COUPER l'accès tout de suite (sans attendre l'expiration)
+# démarrer l'agent dédié (une fois ; peut aller dans ~/.bashrc, SANS export global)
+[ -S ~/.ssh/agent-prodread.sock ] || ssh-agent -a ~/.ssh/agent-prodread.sock >/dev/null
+
+# AVANT chaque enquête — déverrouiller la clé dans CET agent, 4 h max :
+SSH_AUTH_SOCK=~/.ssh/agent-prodread.sock ssh-add -t 4h ~/.ssh/amateo_prod_read
+SSH_AUTH_SOCK=~/.ssh/agent-prodread.sock ssh-add -l      # vérifier qu'elle est chargée
 ```
 
-`scripts/prod-read.sh` **refuse de démarrer** si la clé n'est pas dans l'agent (il compare
-l'empreinte `ssh-keygen -lf …pub` à `ssh-add -l`) et ouvre le tunnel en `BatchMode=yes` (jamais
-d'invite interactive) — une clé verrouillée échoue net, elle ne demande pas la phrase en douce.
+C'est **l'interrupteur** : clé absente de cet agent = `scripts/prod-read.sh` **refuse de démarrer**
+(il compare l'empreinte `ssh-keygen -lf …pub` à l'agent dédié) et le tunnel s'ouvre en
+`BatchMode=yes` — jamais d'invite qui quémanderait la phrase en douce. L'accès **expire seul** au
+bout du délai. **Ne charge JAMAIS `amateo_deploy`/`amateo_prod` dans cet agent.**
 
-⬜ **Utiliser** — `scripts/prod-read.sh` fait tout : il ouvre le tunnel (`127.0.0.1:15432` →
-`127.0.0.1:5432` via l'alias `amateo-prod-read`), se connecte en `amateo_read` en transaction
-**read-only**, puis referme le tunnel en sortant. `--club` pose `SET app.club_id` (une AIDE pour
-ne pas mélanger les clubs, **PAS une frontière** — l'opérateur peut poser n'importe quel club) :
+⬜ **Vérifier que la VM refuse tout le reste** (une fois, après le `reload` sshd) — ces trois
+premiers DOIVENT échouer, le dernier DOIT marcher :
+
+```bash
+ssh -N -L /tmp/x.sock:/var/run/docker.sock amateo-prod-read   # ÉCHOUE (AllowStreamLocalForwarding no)
+ssh -N -R 127.0.0.1:8080:127.0.0.1:8080 amateo-prod-read      # ÉCHOUE (AllowTcpForwarding local + PermitListen none)
+ssh amateo-prod-read                                          # PAS de shell (ForceCommand /bin/false)
+ssh -N -L 15432:127.0.0.1:5432 amateo-prod-read               # MARCHE (le seul usage permis)
+```
+
+⬜ **Utiliser** — `scripts/prod-read.sh` fait tout : tunnel `127.0.0.1:15432` → `127.0.0.1:5432`
+via l'alias, `amateo_read` en transaction **read-only** (requêtes bornées à 60 s côté rôle, migration `Version20261010150000`),
+fermeture du tunnel en sortant. `--club` pose `SET app.club_id` (une AIDE pour ne pas mélanger les
+clubs, **PAS une frontière** — l'opérateur peut poser n'importe quel club) :
 
 ```bash
 scripts/prod-read.sh "SELECT id, name FROM club ORDER BY name;"
@@ -305,16 +376,23 @@ echo "SELECT count(*) FROM team;" | scripts/prod-read.sh --csv        # requête
 
 Un client graphique (DBeaver, PhpStorm, TablePlus) peut viser le même port via son propre onglet
 « SSH tunnel » (hôte SSH `amateo-prod-read`, distant `127.0.0.1:5432`, rôle `amateo_read`) —
-[`prod-stack.md`](prod-stack.md) § Accès opérateur, geste 3.
+[`prod-stack.md`](prod-stack.md) § Accès opérateur.
 
-⬜ **Révoquer la clé** (poste compromis, fin de mission) — retirer sa ligne d'`authorized_keys`
-sur la VM, puis détruire la paire locale ; pour couper aussi l'accès BASE, changer/retirer le mot
-de passe de `amateo_read` (ci-dessus, ou § Supprimer `amateo_read`) :
+⬜ **Révoquer** (poste compromis, fin de mission) — couper les sessions en cours, retirer la clé,
+détruire la paire locale :
 
 ```bash
-ssh <hôte> "sed -i '/amateo-prod-read/d' ~/.ssh/authorized_keys"
+# 1. couper TOUT DE SUITE les sessions ouvertes côté VM :
+ssh <hôte> "sudo loginctl terminate-user amateo-tunnel 2>/dev/null || sudo pkill -u amateo-tunnel sshd"
+# 2. vider l'authorized_keys du compte dédié :
+ssh <hôte> "sudo truncate -s 0 /home/amateo-tunnel/.ssh/authorized_keys"
+# 3. détruire la paire locale + le pgpass, et retirer la clé de l'agent dédié :
 rm -f ~/.ssh/amateo_prod_read ~/.ssh/amateo_prod_read.pub ~/.pgpass-amateo
+SSH_AUTH_SOCK=~/.ssh/agent-prodread.sock ssh-add -d ~/.ssh/amateo_prod_read 2>/dev/null || true
 ```
+
+Pour couper l'accès BASE (au-delà de la clé), changer/retirer le mot de passe de `amateo_read`
+(§ Supprimer `amateo_read`, ou `\password amateo_read`).
 
 #### Supprimer `amateo_read` (si tu n'en veux plus)
 
