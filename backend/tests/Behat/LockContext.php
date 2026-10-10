@@ -117,6 +117,12 @@ final class LockContext extends BaseContext
     /** @var list<string> Versions de période présentes sous le plan à l'entrée — à épargner et à contrôler au nettoyage (aucun résidu). */
     private array $periodPreexistingVersionIds = [];
 
+    /** V1bis — scénario « Charger » : entrée de calendrier JETABLE d'un plan de période NEUF (non validé) ; supprimée en fin (cascade plan + versions). */
+    private string $periodDisposableEntryId = '';
+
+    /** V1bis — vrai seulement si le scénario « Charger » a dû POINTER le socle (SocleGuard) : conditionne sa remise à NULL en fin. */
+    private bool $socleSetForPeriod = false;
+
     private string $periodLastRegeneratedId = '';
 
     private string $periodFinalStatus = '';
@@ -218,6 +224,105 @@ final class LockContext extends BaseContext
             throw new RuntimeException(\sprintf('la version source de période aurait dû aboutir (COMPLETED), statut obtenu « %s »', $overlay['status']));
         }
         $this->periodSourceVersionId = $overlay['id'];
+    }
+
+    /**
+     * V1bis — décor du scénario « Charger ». « Charger » (load-locks) n'est offert que sur un plan de
+     * période NON validé (LoadLocksController refuse 409 un plan validé : « Rouvrez-le d'abord ») : on
+     * ne peut donc pas l'éprouver sur le plan validé du seed. On construit un plan de période JETABLE,
+     * non validé (patron de TrainingBlockContext) : entrée de fermeture jetable → plan → transcription
+     * du socle (v1 COMPLETED, sans solve) → régénération (v2). v2 devient les DONNÉES EN COURS ; v1 est
+     * la version plus ANCIENNE que « Charger » désignera. Aucune mutation du pointeur choisi du seed ;
+     * tout est supprimé en fin de scénario (cascade de l'entrée) avec contrôle SQL d'absence de résidu.
+     */
+    #[Given('le club de démonstration, connecté, avec un plan de période jetable portant une version terminée plus ancienne que les données en cours')]
+    public function leClubAvecPlanDePeriodeJetableAncienne(): void
+    {
+        $this->token = $this->mintToken(self::USER_EMAIL);
+
+        $me = $this->apiGet('me', $this->token);
+        $club = $me['json']['club'] ?? null;
+        $clubId = \is_array($club) ? ($club['id'] ?? null) : null;
+        if (!\is_string($clubId) || '' === $clubId) {
+            throw new RuntimeException('aucun club pour le gestionnaire de démonstration — la base est-elle seedée ?');
+        }
+        $this->clubId = $clubId;
+
+        // Ouvrir un plan de période exige un socle EN VIGUEUR (SocleGuard) : on le pose si vide (et on
+        // le repose à NULL en fin), sans jamais toucher un pointeur déjà posé par le seed.
+        $chosen = $this->dbalScalar(
+            \sprintf('SELECT chosen_schedule_id AS behatval FROM schedule_plan WHERE club_id=\'%s\' AND type=\'SEASON\' LIMIT 1', $this->clubId),
+            admin: true,
+        );
+        if (!$this->isUuid($chosen)) {
+            $target = $this->freshestCompletedSeasonVersion();
+            if ('' === $target) {
+                throw new RuntimeException('aucune version de saison COMPLETED pour pointer le socle — la base est-elle seedée ?');
+            }
+            $this->pointSocleTo($target);
+            $this->socleSetForPeriod = true;
+        }
+
+        // Entrée de fermeture JETABLE (hors vacances scolaires) + son plan de période NON validé.
+        $this->periodDisposableEntryId = $this->createDisposableClosureEntry();
+        $plan = $this->apiPost('schedule_plans', ['calendarEntryId' => $this->periodDisposableEntryId], $this->token);
+        if (!\in_array($plan['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('la création du plan de période jetable a répondu %d (201 attendu)', $plan['status']));
+        }
+        $this->periodPlanId = (string) ($plan['json']['id'] ?? '');
+        if (!$this->isUuid($this->periodPlanId)) {
+            throw new RuntimeException('la création du plan de période jetable n\'a pas rendu d\'identifiant');
+        }
+
+        // Plan NEUF : aucune version préexistante à épargner (le contrôle de résidu de fin exige 0).
+        $this->periodPreexistingVersionIds = [];
+
+        // Transcription du socle → v1 (COMPLETED, sans solve) : la version plus ANCIENNE, celle que
+        // « Charger » désignera. On verrouille sur ELLE (periodSourceVersionId).
+        $transcribed = $this->apiPost(\sprintf('schedule_plans/%s/transcribe-from-socle', $this->periodPlanId), [], $this->token);
+        if (!\in_array($transcribed['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('la transcription du socle a répondu %d (201 attendu)', $transcribed['status']));
+        }
+        $this->periodSourceVersionId = (string) ($transcribed['json']['id'] ?? '');
+        if (!$this->isUuid($this->periodSourceVersionId)) {
+            throw new RuntimeException('la transcription du socle n\'a pas rendu d\'identifiant de version');
+        }
+        $status = $this->pollUntilTerminal($this->periodSourceVersionId);
+        if ('COMPLETED' !== $status) {
+            throw new RuntimeException(\sprintf('la transcription du socle aurait dû aboutir (COMPLETED), statut obtenu « %s »', $status));
+        }
+
+        // La transcription verrouille (HARD) TOUTE séance copiée (PeriodPlanTranscriber) : pour
+        // pouvoir éprouver « verrouiller des séances LIBRES », on en DÉVERROUILLE deux — d'origine
+        // MANUAL (jamais une réservation, qu'on ne saurait pas restaurer). Elles deviennent NONE sur
+        // v1, et la régénération qui suit les replacera librement (créneaux ouverts dans v2).
+        $toFree = $this->dbalScalar(
+            \sprintf(
+                'SELECT string_agg(id::text, \',\') AS behatval FROM ('
+                . ' SELECT id FROM schedule_slot_template WHERE schedule_id=\'%s\' AND lock_level=\'HARD\' AND lock_origin=\'MANUAL\' ORDER BY id LIMIT 2'
+                . ') q',
+                $this->periodSourceVersionId,
+            ),
+            admin: true,
+        );
+        $freeIds = '' === $toFree ? [] : array_values(array_filter(explode(',', $toFree), $this->isUuid(...)));
+        if (2 !== \count($freeIds)) {
+            throw new RuntimeException('la transcription du socle aurait dû porter au moins deux séances HARD d\'origine MANUAL à déverrouiller');
+        }
+        foreach ($freeIds as $slotId) {
+            $unlocked = $this->apiPost(\sprintf('schedule-slots/%s/manual-edit/lock', $slotId), ['lockLevel' => 'NONE'], $this->token);
+            if (200 !== $unlocked['status']) {
+                throw new RuntimeException(\sprintf('le déverrouillage d\'une séance transcrite a répondu %d (200 attendu)', $unlocked['status']));
+            }
+        }
+
+        // Une régénération → v2, qui devient les DONNÉES EN COURS (dernière COMPLETED du plan). Sans
+        // « Charger », la régénération finale repartirait de v2 et perdrait les verrous de v1 : c'est
+        // ce que le scénario éprouve. v1 reste periodSourceVersionId.
+        $v2 = $this->creerEtGenererOverlayDePeriode();
+        if ('COMPLETED' !== $v2['status']) {
+            throw new RuntimeException(\sprintf('la version « données en cours » de période aurait dû aboutir (COMPLETED), statut obtenu « %s »', $v2['status']));
+        }
     }
 
     #[Given('deux séances libres de cette version verrouillées en dur')]
@@ -596,6 +701,16 @@ final class LockContext extends BaseContext
                 admin: true,
             );
         }
+        // V1bis (scénario « Charger ») — SUPPRIMER l'entrée de calendrier JETABLE : sa suppression
+        // cascade le plan de période, toutes ses versions (la transcription v1 comprise, non tracée
+        // ci-dessus) et leurs séances/verrous. Puis, si c'est NOUS qui avons pointé le socle pour
+        // ouvrir ce plan, le remettre à NULL — jamais si le seed le pointait déjà.
+        if ('' !== $this->periodDisposableEntryId) {
+            $this->apiDelete(\sprintf('calendar_entries/%s', $this->periodDisposableEntryId), $this->token);
+        }
+        if ($this->socleSetForPeriod) {
+            $this->pointSocleTo('');
+        }
 
         if ('' !== $this->closedVenueId) {
             $this->apiDelete(\sprintf('venues/%s', $this->closedVenueId), $this->token);
@@ -731,6 +846,60 @@ final class LockContext extends BaseContext
         );
 
         return array_values(array_filter(explode(',', $raw), $this->isUuid(...)));
+    }
+
+    /**
+     * V1bis — crée une entrée de calendrier de fermeture JETABLE (kind=period, closure) sur une
+     * fenêtre de 4 jours SANS vacances scolaires de la zone du club, et rend son identifiant.
+     * Patron de TrainingBlockContext / PeriodOverlayContext.
+     */
+    private function createDisposableClosureEntry(): string
+    {
+        $start = $this->holidayFreeMonday(56);
+        $end = date('Y-m-d', (int) strtotime($start . ' +4 days'));
+
+        $entry = $this->apiPost('calendar_entries', [
+            'kind' => 'period',
+            'periodType' => 'closure',
+            'title' => 'Charger les verrous (fonctionnel)',
+            'startDate' => $start,
+            'endDate' => $end,
+        ], $this->token);
+        if (!\in_array($entry['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('la création de la période jetable a répondu %d (201 attendu)', $entry['status']));
+        }
+        $id = (string) ($entry['json']['id'] ?? '');
+        if (!$this->isUuid($id)) {
+            throw new RuntimeException('la création de la période jetable n\'a pas rendu d\'identifiant');
+        }
+
+        return $id;
+    }
+
+    /**
+     * Le lundi (Y-m-d) d'une fenêtre de 4 jours SANS vacances scolaires de la zone du club, à partir de
+     * « next monday +$offsetDays », en glissant de semaine en semaine. Un décor relatif à aujourd'hui
+     * traverserait sinon les vacances au fil de l'année (patron TrainingBlockContext).
+     */
+    private function holidayFreeMonday(int $offsetDays): string
+    {
+        $monday = (int) strtotime(\sprintf('next monday +%d days', $offsetDays));
+        for ($attempt = 0; $attempt < 30; ++$attempt) {
+            $start = date('Y-m-d', $monday);
+            $end = date('Y-m-d', (int) strtotime('+4 days', $monday));
+            $hits = $this->dbalScalar(\sprintf(
+                'SELECT count(*) AS behatval FROM school_holiday_period h JOIN club c ON c.school_zone = h.zone WHERE c.id=\'%s\' AND h.start_date <= \'%s\' AND h.end_date >= \'%s\'',
+                $this->clubId,
+                $end,
+                $start,
+            ), admin: true);
+            if ('0' === $hits) {
+                return $start;
+            }
+            $monday = (int) strtotime('+7 days', $monday);
+        }
+
+        throw new RuntimeException(\sprintf('aucune fenêtre de 4 jours sans vacances scolaires trouvée après « next monday +%d days »', $offsetDays));
     }
 
     private function freshestCompletedSeasonVersion(): string

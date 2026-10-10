@@ -54,11 +54,13 @@ Fonctionnalité: Un verrou est souverain à la régénération
     Quand je régénère le plan de période
     Alors les deux séances reviennent verrouillées, aux mêmes cases
 
-  Scénario: Charger les verrous d'une version de période, puis régénérer, repart de SES verrous
-    « Charger » fait des verrous d'une version de période les données EN COURS de son plan : la
-    régénération qui suit repart d'eux, verrous compris. C'est la promesse de la confirmation de
-    « Régénérer » (« chargez d'abord ses données avec Charger ») rendue VRAIE pour une période.
-    Étant donné le club de démonstration, connecté, avec un plan de période portant une version terminée
+  Scénario: Charger les verrous d'une version de période plus ANCIENNE, puis régénérer, repart de SES verrous
+    « Charger » fait des verrous d'une version de période les données EN COURS de son plan, MÊME quand
+    une version plus RÉCENTE existe : la régénération qui suit repart de la version CHARGÉE, ses verrous
+    compris, et non de la plus récente. C'est la promesse de la confirmation de « Régénérer » (« chargez
+    d'abord ses données avec Charger ») rendue VRAIE pour une période. Sans « Charger », on repartirait
+    des données en cours (la version récente) et les verrous de l'ancienne se perdraient.
+    Étant donné le club de démonstration, connecté, avec un plan de période jetable portant une version terminée plus ancienne que les données en cours
     Et deux séances libres de cette version verrouillées en dur
     Quand je charge les verrous de cette version
     Et je régénère le plan de période
