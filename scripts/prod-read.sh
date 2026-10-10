@@ -34,6 +34,12 @@
 # Clé verrouillée (ou absente de cet agent) = ce script échoue net, aucune
 # session n'atteint la prod.
 #
+# Env :
+#   PROD_READ_REMOTE=hôte:port  — cible distante du tunnel (défaut 127.0.0.1:5432).
+#     Mode TRANSITOIRE (avant le déploiement du port loopback) : viser l'IP interne
+#     du conteneur amateo-postgres (docs/ops/deploy.md §1.8). `permitopen` /
+#     `PermitOpen` côté VM DOIVENT viser EXACTEMENT cette cible.
+#
 # Usage :
 #   scripts/prod-read.sh [--club <uuid|nom>] [--csv] "<requête SQL>"
 #   scripts/prod-read.sh [--club <uuid|nom>] [--csv] < requete.sql
@@ -53,9 +59,15 @@ readonly LOCAL_PORT=15432
 readonly PGPASS_HOST="${HOME}/.pgpass-amateo"
 readonly PSQL_IMAGE="postgres:16-alpine"
 readonly UUID_RE='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+# Cible distante du tunnel (hôte:port). Défaut = boucle locale de la VM (port loopback).
+# Surchargeable pour le mode transitoire (IP interne du conteneur amateo-postgres).
+readonly PROD_READ_REMOTE="${PROD_READ_REMOTE:-127.0.0.1:5432}"
+# IPv4:port STRICT (octets 0-255, port 1-65535 borné plus bas) — aucune autre forme permise.
+readonly IPV4_PORT_RE='^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]):([1-9][0-9]{0,4})$'
 
 usage() {
-  sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'
+  # Tout l'en-tête de commentaire (lignes 2 → avant `set -euo pipefail`), dé-commenté.
+  sed -n '2,/^set /{/^set /d;p;}' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -112,6 +124,11 @@ case "$keyword" in
     ;;
 esac
 
+# ── Valider la cible distante (aucune autre ouverture que IPv4:port) ──
+[[ "$PROD_READ_REMOTE" =~ $IPV4_PORT_RE ]] || die "PROD_READ_REMOTE invalide (attendu IPv4:port, ex. 172.19.0.3:5432) : « ${PROD_READ_REMOTE} »"
+remote_port="${PROD_READ_REMOTE##*:}"
+(( remote_port >= 1 && remote_port <= 65535 )) || die "PROD_READ_REMOTE : port hors plage 1-65535 (${remote_port})"
+
 # ── Pré-requis locaux ──
 command -v ssh >/dev/null 2>&1 || die "ssh introuvable"
 command -v docker >/dev/null 2>&1 || die "docker introuvable"
@@ -151,9 +168,9 @@ ssh -fN -M -S "$control_sock" \
   -o ExitOnForwardFailure=yes \
   -o ServerAliveInterval=30 \
   -o ServerAliveCountMax=2 \
-  -L "${LOCAL_PORT}:127.0.0.1:5432" \
+  -L "${LOCAL_PORT}:${PROD_READ_REMOTE}" \
   "$SSH_ALIAS" \
-  || die "tunnel SSH refusé — vérifier l'alias « ${SSH_ALIAS} » (~/.ssh/config), que la clé est déverrouillée (\`ssh-add -t 1h ~/.ssh/amateo_prod_read\`) et autorisée sur la VM (docs/ops/deploy.md §1.8)"
+  || die "tunnel SSH refusé vers ${PROD_READ_REMOTE} — vérifier l'alias « ${SSH_ALIAS} » (~/.ssh/config), que la clé est déverrouillée (\`ssh-add -t 1h ~/.ssh/amateo_prod_read\`), et que \`permitopen\` (authorized_keys) ET \`PermitOpen\` (bloc Match sshd) côté VM visent EXACTEMENT ${PROD_READ_REMOTE} (docs/ops/deploy.md §1.8)"
 
 # ── Préambule optionnel : poser le club (AIDE, pas une frontière — rls.md) ──
 preamble=""

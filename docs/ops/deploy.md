@@ -331,6 +331,36 @@ Une fois `amateo-tunnel` créé, la **RETIRER de l'`authorized_keys` du compte d
 ssh <hôte> "sed -i '/amateo-prod-read/d' ~/.ssh/authorized_keys"
 ```
 
+##### Mode transitoire — AVANT le déploiement du port loopback
+
+Tant que `docker-compose.prod.yml` ne publie pas encore `127.0.0.1:5432`, on enquête par un tunnel
+vers l'**IP interne du conteneur** `amateo-postgres` (décision fondateur 2026-10-10, option A). Seuls
+changent la cible `permitopen`/`PermitOpen` et la variable `PROD_READ_REMOTE` — **tout le reste est
+identique** (compte dédié, socket Unix refusé, `-R` refusé, agent dédié).
+
+```bash
+# 1. Lire l'IP interne du conteneur, SUR la VM :
+ssh <hôte> "docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' amateo-postgres"
+#    → ex. 172.19.0.3. Mettre CETTE IP dans les DEUX endroits (à la place de 127.0.0.1) :
+#    - authorized_keys d'amateo-tunnel : permitopen="<IP>:5432"
+#    - bloc Match sshd                 : PermitOpen <IP>:5432
+#    puis : sudo sshd -t && sudo systemctl reload ssh
+
+# 2. Lancer en pointant la même IP (sinon le tunnel est refusé) :
+PROD_READ_REMOTE=<IP>:5432 scripts/prod-read.sh "SELECT id, name FROM club ORDER BY name;"
+```
+
+Les **tests de preuve** sont les mêmes qu'en mode loopback, avec cette cible (le test positif
+devient `PROD_READ_REMOTE=<IP>:5432 scripts/prod-read.sh "SELECT 1;"`).
+
+⚠ **L'IP interne CHANGE si le conteneur est recréé** (tout deploy, tout restart) : relire la
+commande du point 1 et corriger les **deux** lignes (`permitopen` + `PermitOpen`), puis `sshd -t`
+& reload.
+
+**Une fois le port loopback déployé** (`ports: ["127.0.0.1:5432:5432"]` en vigueur) : remettre
+`127.0.0.1:5432` aux deux endroits, `sudo sshd -t && sudo systemctl reload ssh`, et **ne plus
+passer `PROD_READ_REMOTE`** (le défaut `127.0.0.1:5432` reprend).
+
 ⬜ **Prérequis de sécurité du POSTE (finding C2).** Le modèle ne tient que si **aucune clé non
 verrouillée vers la VM ne vit sur le poste**. Deux clés à ne pas confondre :
 - **`amateo_deploy`** — la clé SSH **du CI**, qui vit **dans le seul secret GitHub `DEPLOY_SSH_KEY`**
