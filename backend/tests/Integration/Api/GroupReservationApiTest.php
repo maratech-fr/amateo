@@ -102,6 +102,47 @@ final class GroupReservationApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(422, 'un gymnase non divisible plafonne à 1 quelle que soit la capacité du créneau');
     }
 
+    // ── (g) BORNE DE DURÉE = LA JOURNÉE (lot 2 : plafond 300 retiré) ─────────────
+
+    /**
+     * Lot 2 — le plafond de durée a disparu (décision fondateur) : une réservation UNITAIRE peut
+     * couvrir un événement de club (9h-17h = 480 min) tant qu'elle FINIT dans la journée. La seule
+     * borne haute est « début + durée ≤ minuit », rendue en 422 nommé par `ReservationStateProcessor`.
+     */
+    public function testIndividualReservationCoversAClubEventButNeverPastMidnight(): void
+    {
+        $t1 = $this->team(3);
+        $venue = $this->venue(false);
+        $this->slot($venue->getId(), 2, '09:00', 1, null);
+        $this->postReservationWithDuration($t1->getId(), $venue->getId(), 2, '09:00', 480);
+        self::assertResponseStatusCodeSame(201, 'une réservation de 8 h finissant avant minuit est acceptée');
+
+        $t2 = $this->team(3);
+        $late = $this->venue(false);
+        $this->slot($late->getId(), 3, '23:00', 1, null);
+        $this->postReservationWithDuration($t2->getId(), $late->getId(), 3, '23:00', 120);
+        self::assertResponseStatusCodeSame(422, 'une réservation qui finirait après minuit est refusée');
+        self::assertStringContainsString('minuit', $this->body());
+    }
+
+    /**
+     * Même règle, même borne pour le rail BATCH (un bloc mutualisé) : parité explicite avec le rail
+     * unitaire et la saisie « Autre… » du front (`GroupReservationController`).
+     */
+    public function testBlockRailAcceptsALongCaseButRefusesPastMidnight(): void
+    {
+        $block = $this->block(null, [$this->team(2), $this->team(2)], 2);
+        $venue = $this->venue(false);
+        $this->postBlockWithDuration($block->getId(), $venue->getId(), 2, '09:00', 480);
+        self::assertResponseStatusCodeSame(201, 'un bloc de 8 h finissant avant minuit est accepté');
+
+        $block2 = $this->block(null, [$this->team(2), $this->team(2)], 2);
+        $late = $this->venue(false);
+        $this->postBlockWithDuration($block2->getId(), $late->getId(), 3, '23:00', 120);
+        self::assertResponseStatusCodeSame(422, 'un bloc qui finirait après minuit est refusé');
+        self::assertStringContainsString('minuit', $this->body());
+    }
+
     // ── PORTÉE socle / période ───────────────────────────────────────────────────
 
     // ── TENANT ───────────────────────────────────────────────────────────────────
@@ -704,6 +745,36 @@ final class GroupReservationApiTest extends WebTestCase
             'startTime' => $startTime,
             'durationMinutes' => 90,
             'schedulePlanId' => $planId,
+        ], \JSON_THROW_ON_ERROR));
+    }
+
+    private function postReservationWithDuration(string $teamId, string $venueId, int $dayOfWeek, string $startTime, int $durationMinutes): void
+    {
+        $this->client->request('POST', '/api/reservations', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
+            'CONTENT_TYPE' => 'application/ld+json',
+        ], json_encode([
+            'teamId' => $teamId,
+            'venueId' => $venueId,
+            'dayOfWeek' => $dayOfWeek,
+            'startTime' => $startTime,
+            'durationMinutes' => $durationMinutes,
+            'schedulePlanId' => null,
+        ], \JSON_THROW_ON_ERROR));
+    }
+
+    private function postBlockWithDuration(string $blockId, string $venueId, int $dayOfWeek, string $startTime, int $durationMinutes): void
+    {
+        $this->client->request('POST', '/api/reservations/group', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
+            'CONTENT_TYPE' => 'application/json',
+        ], json_encode([
+            'sharedTrainingBlockId' => $blockId,
+            'venueId' => $venueId,
+            'dayOfWeek' => $dayOfWeek,
+            'startTime' => $startTime,
+            'durationMinutes' => $durationMinutes,
+            'schedulePlanId' => null,
         ], \JSON_THROW_ON_ERROR));
     }
 

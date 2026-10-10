@@ -100,20 +100,27 @@ final class GroupReservationController extends AbstractController implements Sea
             return $this->json(['error' => 'Identifiant de planning invalide.'], Response::HTTP_BAD_REQUEST);
         }
         // PARITÉ des bornes avec `ReservationInput` (#[Assert\Range]) : sans elles, `dayOfWeek: 8`
-        // ou une durée de 5000 min s'écrivent en base et DÉGRADENT le solve en silence (le schéma
+        // ou une durée négative s'écrivent en base et DÉGRADENT le solve en silence (le schéma
         // moteur ne borne pas `day_of_week`), tandis qu'un entier hors SMALLINT lève un 500 au
-        // flush. Un rail batch ne peut pas être plus permissif que son rail unitaire.
+        // flush. Un rail batch ne peut pas être plus permissif que son rail unitaire. Le plafond
+        // de durée a disparu (un événement de club 9h-17h = 480 min) : la seule borne haute est
+        // « début + durée ≤ minuit », vérifiée plus bas une fois l'heure de début parsée.
         if ($dayOfWeek < 1 || $dayOfWeek > 7) {
             return $this->json(['error' => 'Le jour doit être compris entre 1 (lundi) et 7 (dimanche).'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
         $durationMinutes = \is_int($durationRaw) ? $durationRaw : 90;
-        if ($durationMinutes < 15 || $durationMinutes > 300) {
-            return $this->json(['error' => 'La durée doit être comprise entre 15 et 300 minutes.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        if ($durationMinutes < 15) {
+            return $this->json(['error' => 'La durée minimale d\'un créneau est de 15 minutes.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
         try {
             $startTime = new DateTimeImmutable($startTimeRaw);
         } catch (Exception) {
             return $this->json(['error' => 'startTime must be a valid time (HH:MM).'], Response::HTTP_BAD_REQUEST);
+        }
+        // Borne haute = la journée : début + durée ≤ minuit (24:00 pile autorisé), en parité avec
+        // `ReservationStateProcessor::assertEndsWithinDay` et la saisie « Autre… » du front.
+        if (((int) $startTime->format('H')) * 60 + ((int) $startTime->format('i')) + $durationMinutes > 24 * 60) {
+            return $this->json(['error' => \sprintf('Un créneau qui commence à %s ne peut pas durer %d minutes : il finirait après minuit.', $startTime->format('H:i'), $durationMinutes)], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         // Bloc résolu SOUS le filtre tenant (findOneBy, jamais find — un bloc d'un AUTRE club

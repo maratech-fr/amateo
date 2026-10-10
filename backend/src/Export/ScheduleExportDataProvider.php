@@ -83,8 +83,15 @@ final class ScheduleExportDataProvider
         // on-screen grid shows. A window is "filled" as soon as ≥1 team is placed
         // on the same venue+day+start (capacity is not split — MVP, matches the UI).
         $filled = [];
+        // Gymnases RÉELLEMENT utilisés par cette version (≥ 1 séance placée) — sert à faire
+        // DISPARAÎTRE de l'export d'ensemble un gymnase dont AUCUNE séance n'a été placée
+        // (décision fondateur : ses créneaux « vide » encombraient la grille). Un gymnase utilisé
+        // garde ses cellules « vide ». ⚠ L'export d'UN seul gymnase (`$venueId`) n'applique pas ce
+        // filtre : on consulte alors sa grille complète, vides compris.
+        $usedVenues = [];
         foreach ($slots as $slot) {
             $filled[$slot->getVenueId() . '|' . $slot->getDayOfWeek() . '|' . $slot->getStartTime()->format('H:i')] = true;
+            $usedVenues[$slot->getVenueId()] = true;
         }
         // #8 — LA COUCHE DE LA VERSION EXPORTÉE, et elle seule. Depuis que chaque période
         // possède sa grille (copie du modèle de saison à la naissance du plan), un club à
@@ -106,6 +113,12 @@ final class ScheduleExportDataProvider
             $label = $window->getGroupLabel();
             if (null !== $label && '' !== $label) {
                 $groupLabels[$key] = $label;
+            }
+            // Un gymnase ENTIÈREMENT vide (aucune séance placée) disparaît de l'export d'ensemble :
+            // ses fenêtres vides ne créent ni colonne (PDF) ni ligne « (vide) » (Excel). Sur un
+            // export mono-gymnase (`$venueId`), on garde toute sa grille, vides compris.
+            if (null === $venueId && !isset($usedVenues[$window->getVenueId()])) {
+                continue;
             }
             if (!isset($filled[$key])) {
                 $emptySlots[] = new ExportEmptyWindow($window->getVenueId(), $window->getDayOfWeek(), $window->getStartTime(), $window->getDurationMinutes());

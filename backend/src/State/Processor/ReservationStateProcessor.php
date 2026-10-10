@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\State\Processor;
 
 use App\ApiResource\ReservationResource;
+use App\Controller\GroupReservationController;
 use App\Dto\ReservationInput;
 use App\Entity\Reservation;
 use App\Entity\ScheduleSlotTemplate;
@@ -149,6 +150,7 @@ class ReservationStateProcessor extends AbstractStateProcessor
         if (null !== $input->durationMinutes) {
             $entity->setDurationMinutes($input->durationMinutes);
         }
+        $this->assertEndsWithinDay($input->startTime, $input->durationMinutes ?? 90);
         $this->assertSchedulePlanExists($this->entityManager, $input->schedulePlanId);
         $this->assertVenueOpen($input->schedulePlanId, $input->venueId, $input->dayOfWeek);
 
@@ -197,6 +199,28 @@ class ReservationStateProcessor extends AbstractStateProcessor
         ]);
         foreach ($materialised as $template) {
             $this->entityManager->remove($template);
+        }
+    }
+
+    /**
+     * Le plafond de durée ayant disparu (un événement de club peut couvrir 9h-17h), la seule borne
+     * haute est qu'un créneau FINIT dans SA journée : début + durée ≤ minuit (24:00 pile autorisé).
+     * 422 nommé via {@see refuse} (jamais le constructeur d'exception de validation nu), en parité
+     * avec le rail batch {@see GroupReservationController} et la saisie « Autre… » du front.
+     * `startTime` est garanti non-null par `ReservationInput` (NotNull) avant d'arriver ici.
+     */
+    private function assertEndsWithinDay(?DateTimeImmutable $startTime, int $durationMinutes): void
+    {
+        if (!$startTime instanceof DateTimeImmutable) {
+            return;
+        }
+        $startMinutes = (int) $startTime->format('H') * 60 + (int) $startTime->format('i');
+        if ($startMinutes + $durationMinutes > 24 * 60) {
+            $this->refuse(\sprintf(
+                'Un créneau qui commence à %s ne peut pas durer %d minutes : il finirait après minuit.',
+                $startTime->format('H:i'),
+                $durationMinutes,
+            ));
         }
     }
 
