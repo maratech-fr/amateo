@@ -8,15 +8,54 @@ import { hhmm } from "./days";
  *  slots may carry seconds or an ISO datetime, so normalise both sides. */
 export const slotKey = (venueId: string, dayOfWeek: number, startTime: string): string => `${venueId}|${dayOfWeek}|${hhmm(startTime)}`;
 
+/** Lot 4bis — un créneau LIBRE est une réservation SANS équipe (`teamId` null, `label` posé). */
+export const isFreeSlot = (r: Reservation): boolean => null === r.teamId;
+
 /**
  * Teams reserved on each slot (by slotKey → list of teamIds, insertion order).
  * Drives the grid badges and tells the modal who is already on a slot.
+ *
+ * Lot 4bis — les créneaux LIBRES (sans équipe) ne sont PAS des équipes : exclus ici (le front
+ * n'invente pas la règle — ils comptent dans la CAPACITÉ via {@link freeSlotsBySlot}, jamais dans
+ * la logique d'équipe : budget solo, bloc, double-booking coach).
  */
 export function reservedTeamsBySlot(reservations: Reservation[]): Map<string, string[]> {
   const map = new Map<string, string[]>();
   for (const r of reservations) {
+    if (null === r.teamId) {
+      continue;
+    }
     const key = slotKey(r.venueId, r.dayOfWeek, r.startTime);
     map.set(key, [...(map.get(key) ?? []), r.teamId]);
+  }
+  return map;
+}
+
+/** Lot 4bis — les CRÉNEAUX LIBRES par slotKey (ordre d'insertion). Sert la grille (case nommée),
+ *  la modale (lister/retirer) et la capacité (un créneau libre occupe une place). */
+export function freeSlotsBySlot(reservations: Reservation[]): Map<string, Reservation[]> {
+  const map = new Map<string, Reservation[]>();
+  for (const r of reservations) {
+    if (null !== r.teamId) {
+      continue;
+    }
+    const key = slotKey(r.venueId, r.dayOfWeek, r.startTime);
+    map.set(key, [...(map.get(key) ?? []), r]);
+  }
+  return map;
+}
+
+/**
+ * Lot 4bis — les OCCUPANTS affichés de chaque case (slotKey → libellés, ordre d'insertion) : noms
+ * d'équipes PUIS libellés de créneaux libres. Sert la grille « Réserver » (compte + libellés) :
+ * un créneau libre occupe une place, nommée, comme une équipe.
+ */
+export function occupantsBySlot(reservations: Reservation[], teamNameOf: (teamId: string) => string): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  for (const r of reservations) {
+    const key = slotKey(r.venueId, r.dayOfWeek, r.startTime);
+    const label = null === r.teamId ? (r.label ?? "Créneau réservé") : teamNameOf(r.teamId);
+    map.set(key, [...(map.get(key) ?? []), label]);
   }
   return map;
 }
@@ -25,6 +64,9 @@ export function reservedTeamsBySlot(reservations: Reservation[]): Map<string, st
 export function teamReservationCount(reservations: Reservation[]): Map<string, number> {
   const counts = new Map<string, number>();
   for (const r of reservations) {
+    if (null === r.teamId) {
+      continue; // lot 4bis — un créneau libre n'est pas une séance d'équipe.
+    }
     counts.set(r.teamId, (counts.get(r.teamId) ?? 0) + 1);
   }
   return counts;
@@ -135,8 +177,11 @@ export function assignableTeams(
   budgetByTeam: Map<string, TeamSoloBudget>,
   draftAdded: string[],
 ): AssignableTeam[] {
-  const onSlot = new Set(reservedTeamsBySlot(reservations).get(slotKey(slot.venueId, slot.dayOfWeek, slot.startTime)) ?? []);
-  if (onSlot.size >= effectiveSlotCapacity(slot, venueCanSplit)) {
+  const key = slotKey(slot.venueId, slot.dayOfWeek, slot.startTime);
+  const onSlot = new Set(reservedTeamsBySlot(reservations).get(key) ?? []);
+  // Lot 4bis — un créneau LIBRE occupe une place : il compte dans la capacité, pas comme une équipe.
+  const freeOnSlot = (freeSlotsBySlot(reservations).get(key) ?? []).length;
+  if (onSlot.size + freeOnSlot >= effectiveSlotCapacity(slot, venueCanSplit)) {
     return [];
   }
   const draftAddedCount = new Map<string, number>();

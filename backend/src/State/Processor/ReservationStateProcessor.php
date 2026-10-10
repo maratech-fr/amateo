@@ -134,10 +134,23 @@ class ReservationStateProcessor extends AbstractStateProcessor
         // surcharge EXPLICITE » — sur un sujet d'autorisation, la nuance décidait mal
         // (relevé en livrant le rail de groupe, P2-46 PR-2 : c'est la parité avec
         // cette route qui a imposé d'y poser `assertManager()`).
+        // Lot 4bis — XOR team_id/label : une réservation cible SOIT une équipe, SOIT un créneau
+        // LIBRE nommé, jamais les deux ni aucun. Tranché ICI (422 nommé via refuse), là où le
+        // gestionnaire comprend son geste — le DTO ne porte que Length(max) sur le libellé.
+        $label = null === $input->label ? null : trim($input->label);
+        $label = '' === $label ? null : $label;
+        if (null === $input->teamId && null === $label) {
+            $this->refuse('Une réservation doit cibler une équipe ou nommer un créneau libre.');
+        }
+        if (null !== $input->teamId && null !== $label) {
+            $this->refuse('Un créneau libre ne cible pas d’équipe : renseignez une équipe, ou un libellé de créneau libre, pas les deux.');
+        }
+
         $entity = new Reservation;
         if (null !== $input->teamId) {
             $entity->setTeamId($input->teamId);
         }
+        $entity->setLabel($label);
         if (null !== $input->venueId) {
             $entity->setVenueId($input->venueId);
         }
@@ -188,6 +201,11 @@ class ReservationStateProcessor extends AbstractStateProcessor
      */
     private function purgeMaterialisedHardTemplates(Reservation $reservation): void
     {
+        // Lot 4bis — un créneau LIBRE (teamId null) n'a jamais été matérialisé en verrou HARD (il
+        // n'entre pas dans `slotTemplates`) : rien à purger.
+        if (null === $reservation->getTeamId()) {
+            return;
+        }
         $materialised = $this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy([
             'clubId' => $reservation->getClubId(),
             'seasonId' => $reservation->getSeasonId(),
@@ -248,9 +266,6 @@ class ReservationStateProcessor extends AbstractStateProcessor
      */
     private function assertOccupancy(ReservationInput $input): void
     {
-        if (null === $input->teamId) {
-            return;
-        }
         if (null === $input->venueId) {
             return;
         }
@@ -266,6 +281,19 @@ class ReservationStateProcessor extends AbstractStateProcessor
         $seasonIdRaw = $request?->attributes->get('_season_id') ?? $request?->headers->get('X-Season-Id');
         $clubId = \is_string($clubIdRaw) ? $clubIdRaw : null;
         $seasonId = $this->resolveSeasonId($clubId, \is_string($seasonIdRaw) ? $seasonIdRaw : null);
+
+        // Lot 4bis — un créneau LIBRE (teamId null) ne porte ni budget solo, ni bloc, ni coach : la
+        // SEULE règle qui le concerne est la CAPACITÉ (règle e), car il RETIRE une place à la case.
+        if (null === $input->teamId) {
+            $this->reservationGroupOccupancy->assertFreeSlotReservationAllowed(
+                $input->venueId,
+                $input->dayOfWeek,
+                $input->startTime,
+                $input->schedulePlanId,
+            );
+
+            return;
+        }
 
         $this->reservationGroupOccupancy->assertIndividualReservationAllowed(
             $input->teamId,

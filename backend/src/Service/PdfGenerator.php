@@ -8,6 +8,7 @@ use App\Entity\Club;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Export\ExportEmptyWindow;
+use App\Export\ExportReservedWindow;
 use App\Export\ScheduleExportData;
 use App\Export\ScheduleExportDataProvider;
 use App\Storage\LogoStorage;
@@ -189,6 +190,11 @@ class PdfGenerator
         foreach ($data->emptySlots as $window) {
             $present[$window->dayOfWeek][$window->venueId] = true;
         }
+        // Lot 4bis — un créneau LIBRE réservé crée aussi sa colonne (un gymnase utilisé UNIQUEMENT
+        // par des créneaux libres mérite sa colonne de cases nommées).
+        foreach ($data->freeSlots as $window) {
+            $present[$window->dayOfWeek][$window->venueId] = true;
+        }
         ksort($present);
         /** @var list<array{day:int,venueId:string}> $columns */
         $columns = [];
@@ -211,7 +217,7 @@ class PdfGenerator
             $prevDay = $col['day'];
         }
 
-        [$startMin, $endMin] = $this->timeBounds($slots, $data->emptySlots);
+        [$startMin, $endMin] = $this->timeBounds($slots, [...$data->emptySlots, ...$data->freeSlots]);
 
         // Index slots by column + start step. A step can hold MORE than one slot
         // (a split court runs two teams at the same time in the same gym), so we
@@ -231,9 +237,17 @@ class PdfGenerator
             $startStep = intdiv($this->minutesOf($window->startTime) - $startMin, self::STEP_MINUTES);
             $emptyByColStep[$key][$startStep] = $window;
         }
+        // Lot 4bis — créneaux LIBRES indexés col+step, comme les vides. Rendus AVANT la case
+        // « vide » (la case est occupée, pas un trou).
+        $freeByColStep = [];
+        foreach ($data->freeSlots as $window) {
+            $key = $window->dayOfWeek . '|' . $window->venueId;
+            $startStep = intdiv($this->minutesOf($window->startTime) - $startMin, self::STEP_MINUTES);
+            $freeByColStep[$key][$startStep] = $window;
+        }
 
         $steps = max(1, intdiv($endMin - $startMin, self::STEP_MINUTES));
-        $rows = $this->buildRows($columns, $byColStep, $emptyByColStep, $startMin, $steps, $teamNames, $venues, $data->groupLabels, $dayStartCols);
+        $rows = $this->buildRows($columns, $byColStep, $emptyByColStep, $freeByColStep, $startMin, $steps, $teamNames, $venues, $data->groupLabels, $dayStartCols);
         $header = $this->buildHeader($columns, $venues, $dayStartCols);
 
         $scopeLabel = null === $venueId ? 'Tous les gymnases' : ($venues[$venueId]['name'] ?? 'Gymnase');
@@ -271,12 +285,13 @@ class PdfGenerator
      * @param list<array{day:int,venueId:string}>                   $columns
      * @param array<string, array<int, list<ScheduleSlotTemplate>>> $byColStep
      * @param array<string, array<int, ExportEmptyWindow>>          $emptyByColStep
+     * @param array<string, array<int, ExportReservedWindow>>       $freeByColStep  lot 4bis free slots
      * @param array<string, string>                                 $teamNames
      * @param array<string, array{name:string,color:?string}>       $venues
      * @param array<string, string>                                 $groupLabels    "venue|day|H:i" → label
      * @param array<int, true>                                      $dayStartCols   column indices that open a new day
      */
-    private function buildRows(array $columns, array $byColStep, array $emptyByColStep, int $startMin, int $steps, array $teamNames, array $venues, array $groupLabels, array $dayStartCols): string
+    private function buildRows(array $columns, array $byColStep, array $emptyByColStep, array $freeByColStep, int $startMin, int $steps, array $teamNames, array $venues, array $groupLabels, array $dayStartCols): string
     {
         // covered[colIndex][step] = true when a rowspan from above occupies the cell.
         $covered = [];
@@ -300,6 +315,22 @@ class PdfGenerator
                 $colKey = $col['day'] . '|' . $col['venueId'];
                 $bucket = $byColStep[$colKey][$step] ?? [];
                 if ([] === $bucket) {
+                    // Lot 4bis — un créneau LIBRE ici → une case OCCUPÉE nommée (pas un trou, pas
+                    // « vide »), couvrant sa durée sans jamais recouvrir une case placée/déjà prise.
+                    $free = $freeByColStep[$colKey][$step] ?? null;
+                    if (null !== $free) {
+                        $maxSpan = max(1, (int) ceil($free->durationMinutes / self::STEP_MINUTES));
+                        $span = 1;
+                        while ($span < $maxSpan && !isset($covered[$colIndex][$step + $span]) && [] === ($byColStep[$colKey][$step + $span] ?? [])) {
+                            ++$span;
+                        }
+                        for ($k = 1; $k < $span; ++$k) {
+                            $covered[$colIndex][$step + $k] = true;
+                        }
+                        $cells .= $this->freeSlotCell($free, $span, $dayStart);
+
+                        continue;
+                    }
                     // A defined-but-unfilled window here → a `vide` cell spanning its
                     // duration; otherwise a blank gap.
                     $window = $emptyByColStep[$colKey][$step] ?? null;
@@ -395,6 +426,22 @@ class PdfGenerator
             $time,
             $title,
             $entries,
+        );
+    }
+
+    /**
+     * Lot 4bis — la case d'un CRÉNEAU LIBRE réservé : l'heure en tête, le libellé centré dessous,
+     * sur un fond neutre tramé (distinct d'une séance d'équipe, qui porte la couleur du gymnase).
+     * Le libellé est du contenu club, échappé comme tout le reste du gabarit.
+     */
+    private function freeSlotCell(ExportReservedWindow $free, int $span, bool $dayStart): string
+    {
+        return \sprintf(
+            '<td class="%s" rowspan="%d"><div class="cell-time">%s</div><div class="entry"><span class="team">%s</span></div></td>',
+            $dayStart ? 'cell filled free day-start' : 'cell filled free',
+            $span,
+            htmlspecialchars($free->startTime->format('H:i')),
+            htmlspecialchars($free->label),
         );
     }
 
@@ -592,14 +639,14 @@ class PdfGenerator
     }
 
     /**
-     * @param array<ScheduleSlotTemplate> $slots
-     * @param list<ExportEmptyWindow>     $emptySlots
+     * @param array<ScheduleSlotTemplate>                  $slots
+     * @param list<ExportEmptyWindow|ExportReservedWindow> $windows empty windows + lot 4bis free slots
      *
      * @return array{0:int,1:int} floor(min start)/ceil(max end) to the hour
      */
-    private function timeBounds(array $slots, array $emptySlots = []): array
+    private function timeBounds(array $slots, array $windows = []): array
     {
-        if ([] === $slots && [] === $emptySlots) {
+        if ([] === $slots && [] === $windows) {
             return [17 * 60, 21 * 60];
         }
         $min = \PHP_INT_MAX;
@@ -609,7 +656,7 @@ class PdfGenerator
             $min = min($min, $start);
             $max = max($max, $start + $slot->getDurationMinutes());
         }
-        foreach ($emptySlots as $window) {
+        foreach ($windows as $window) {
             $start = $this->minutesOf($window->startTime);
             $min = min($min, $start);
             $max = max($max, $start + $window->durationMinutes);
@@ -674,6 +721,10 @@ class PdfGenerator
                 td.filled .team { display: block; font-weight: bold; line-height: 1.1; }
                 .empty { color: #999; font-style: italic; }
                 td.cell.empty { text-align: center; vertical-align: middle; color: #999; font-style: italic; font-size: 8px; border: 1px dashed #ccc; }
+                /* Lot 4bis — case de creneau LIBRE reserve : fond neutre trame, libelle en gris
+                   fonce, distinct dune seance dequipe (qui porte la couleur du gymnase). */
+                td.filled.free { background: repeating-linear-gradient(45deg, #f0f0f0 0 5px, #e6e6e6 5px 10px); color: #444; }
+                td.filled.free .team { font-weight: 600; font-style: italic; }
                 /* Midday break [12:00, 14:00): a rosé band on empty cells + gutter, with a
                    marked rule at its 12:00/14:00 edges — a real placement shows through in
                    its venue colour, same intent as the wizard slot grid. */

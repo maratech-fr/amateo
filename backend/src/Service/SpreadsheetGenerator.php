@@ -98,6 +98,21 @@ class SpreadsheetGenerator
                 ],
             ];
         }
+        // Lot 4bis — un CRÉNEAU LIBRE réservé : une ligne occupée dont la colonne « Équipe » porte
+        // son libellé (ex. « Loto du club »), jamais « (vide) » — la place est prise.
+        foreach ($data->freeSlots as $window) {
+            $end = $window->startTime->add(new DateInterval('PT' . $window->durationMinutes . 'M'));
+            $rows[] = [
+                'day' => $window->dayOfWeek, 'start' => $window->startTime->format('H:i'), 'venue' => $venueName($window->venueId),
+                'cells' => [
+                    'Jour' => ScheduleExportData::DAY_LABELS[$window->dayOfWeek] ?? '',
+                    'Début' => $window->startTime->format('H:i'),
+                    'Fin' => $end->format('H:i'),
+                    'Gymnase' => $venueName($window->venueId),
+                    'Équipe' => $window->label,
+                ],
+            ];
+        }
         usort($rows, static fn (array $a, array $b): int => [$a['day'], $a['start'], $a['venue']] <=> [$b['day'], $b['start'], $b['venue']]);
 
         $spreadsheet = new Spreadsheet;

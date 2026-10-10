@@ -1,11 +1,10 @@
-Last verified @ 2026-10-09 (D2 PR B rebasée sur main = D1 + D2 PR A : rail gestionnaire des
-demandes de mutualisation `/api/coach_wish_mutualizations` (collection + item) + aperçu coach par
-coach `GET /api/coach_wish_campaigns/{id}/preview` ; le GET public de doléance coach porte désormais
-`partnerTeams`/`teamLinks`/`mutualizations` ; le snapshot régénéré intègre aussi l'aperçu d'e-mail
-D1 `GET /api/coach_wish_campaigns/{id}/email-preview`).
+Last verified @ 2026-10-10 (lot 4bis « créneau libre ») : schémas `Reservation`/`ReservationInput`
+régénérés — nouvelle propriété `label` (string nullable, ≤ 40) et `teamId` passé NULLABLE (un
+créneau libre ne cible pas d'équipe). Aucune route ajoutée/retirée (238 paths inchangés) : seul le
+contenu des deux schémas bouge.
 
 **238 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`f0cb26e25486c49e3249ee75e1879569384c8f8c1343ea9ae72dab29a5e1f2e8` (`sha256sum` sur le fichier).
+`250bdce332cd04117005b00b4cef4393025a7e33acd84b8a4cf877d7252ddb35` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

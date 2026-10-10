@@ -8,7 +8,7 @@ import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { readFailed } from "@/shared/lib/readState";
 
 import type { PriorityTier, Team, Venue, VenueTrainingSlot } from "../api";
-import { reservedTeamsBySlot, effectiveSlotCapacity, slotKey } from "../lib/reservationSlots";
+import { occupantsBySlot, effectiveSlotCapacity, slotKey } from "../lib/reservationSlots";
 import { closuresByVenue, closurePeriodLabel, isSlotClosed } from "../lib/venueClosures";
 import { useGridSlots, useReservations, useSharedTrainingBlocks, useTeamSoloBudgets, useWizardTeamCoaches } from "../queries";
 import { ReservationGrid } from "./ReservationGrid";
@@ -98,9 +98,9 @@ export function ReservationPanel({
   const fullyClosed = new Set(conflictsQuery.data?.fullyClosedVenueIds ?? []);
   const selectedFullyClosed = fullyClosed.has(selected.id);
 
-  // slotKey → reserved team NAMES (for the grid badges).
-  const reservedNames = new Map<string, string[]>();
-  reservedTeamsBySlot(reservations).forEach((ids, key) => reservedNames.set(key, ids.map((id) => teamName.get(id) ?? "?")));
+  // slotKey → occupant LABELS (noms d'équipes + libellés de créneaux libres, lot 4bis) pour la
+  // grille : un créneau libre occupe une place nommée, comptée comme une équipe.
+  const reservedNames = occupantsBySlot(reservations, (id) => teamName.get(id) ?? "?");
 
   return (
     <div>

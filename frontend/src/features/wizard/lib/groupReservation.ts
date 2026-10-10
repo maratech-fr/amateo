@@ -136,7 +136,8 @@ export function postedGroupOnSlot(onSlotReservations: Reservation[], groups: Gro
   if (0 === onSlotReservations.length) {
     return null;
   }
-  const reservedTeamIds = onSlotReservations.map((r) => r.teamId);
+  // Lot 4bis — un créneau libre (teamId null) n'est pas membre d'un groupe : exclu du jeu comparé.
+  const reservedTeamIds = onSlotReservations.map((r) => r.teamId).filter((id): id is string => null !== id);
   for (const group of groups) {
     if (sameTeamSet(reservedTeamIds, new Set(group.teamIds))) {
       return { group, reservationIds: onSlotReservations.map((r) => r.id) };

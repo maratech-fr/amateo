@@ -30055,8 +30055,17 @@
                         ]
                     },
                     "teamId": {
-                        "default": "",
-                        "type": "string"
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "label": {
+                        "description": "Libell\u00e9 d'un cr\u00e9neau LIBRE (lot 4bis) \u2014 null pour une r\u00e9servation d'\u00e9quipe.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     },
                     "venueId": {
                         "default": "",
@@ -30078,18 +30087,20 @@
             },
             "Reservation.ReservationInput": {
                 "type": "object",
-                "required": [
-                    "teamId",
-                    "venueId",
-                    "dayOfWeek",
-                    "startTime"
-                ],
                 "properties": {
                     "teamId": {
                         "format": "uuid",
                         "externalDocs": {
                             "url": "https://schema.org/identifier"
                         },
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "label": {
+                        "maxLength": 40,
+                        "description": "Libell\u00e9 d'un cr\u00e9neau LIBRE (court, \u2264 40). XOR avec `teamId`. Length(max) seul : le XOR et le\n\u00ab non vide \u00bb d'un libell\u00e9 r\u00e9ellement pos\u00e9 vivent dans le processor, avec le reste de la r\u00e8gle.",
                         "type": [
                             "string",
                             "null"
@@ -30122,7 +30133,6 @@
                     },
                     "durationMinutes": {
                         "minimum": 15,
-                        "maximum": 300,
                         "default": 90,
                         "type": [
                             "integer",
@@ -30140,7 +30150,12 @@
                             "null"
                         ]
                     }
-                }
+                },
+                "required": [
+                    "venueId",
+                    "dayOfWeek",
+                    "startTime"
+                ]
             },
             "Reservation.html": {
                 "type": "object",
@@ -30168,8 +30183,17 @@
                         ]
                     },
                     "teamId": {
-                        "default": "",
-                        "type": "string"
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "label": {
+                        "description": "Libell\u00e9 d'un cr\u00e9neau LIBRE (lot 4bis) \u2014 null pour une r\u00e9servation d'\u00e9quipe.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     },
                     "venueId": {
                         "default": "",
@@ -30220,8 +30244,17 @@
                                 ]
                             },
                             "teamId": {
-                                "default": "",
-                                "type": "string"
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "label": {
+                                "description": "Libell\u00e9 d'un cr\u00e9neau LIBRE (lot 4bis) \u2014 null pour une r\u00e9servation d'\u00e9quipe.",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
                             },
                             "venueId": {
                                 "default": "",

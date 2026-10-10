@@ -15,6 +15,14 @@ use Doctrine\ORM\Mapping as ORM;
  * pre-generation intent, layered: `schedulePlanId` NULL = base
  * plan, set = a period overlay. The generation pipeline reads these into the
  * engine's `slotTemplates` payload.
+ *
+ * Lot 4bis « créneau libre » — une réservation cible SOIT une équipe (`teamId`), SOIT
+ * un créneau LIBRE nommé (`label`, `teamId` null) : un XOR gardé à l'écriture
+ * ({@see App\State\Processor\ReservationStateProcessor::createEntityFromInput}). Un créneau
+ * libre n'entre JAMAIS dans `slotTemplates` (le moteur exige un team_id) ; il RETIRE une place
+ * à la case (capacité −1 dans {@see App\Service\ScheduleConstraintBuilder::buildTrainingSlots},
+ * créneau supprimé si 0). Il compte dans la CAPACITÉ (règle (e)), mais est ignoré du budget solo,
+ * de la case bloc-complète, du double-booking coach, des doléances et des matchs.
  */
 #[ORM\Entity(repositoryClass: ReservationRepository::class)]
 #[ORM\Table(name: 'reservation')]
@@ -56,8 +64,20 @@ class Reservation implements TenantOwnedInterface
     #[ORM\Column(type: 'guid', nullable: true)]
     private ?string $schedulePlanId = null;
 
-    #[ORM\Column(type: 'guid')]
-    private string $teamId;
+    /**
+     * null = créneau LIBRE (le `label` nomme alors l'occupation) ; sinon l'équipe épinglée.
+     * L'index `uniq_reservation_case_team` NULLS NOT DISTINCT fait collisionner DEUX créneaux
+     * libres (team_id NULL) de la même case/portée — « un max par case » gardé par la base.
+     */
+    #[ORM\Column(type: 'guid', nullable: true)]
+    private ?string $teamId = null;
+
+    /**
+     * Libellé d'un créneau LIBRE (court, ≤ 40 ; ex. « Loto du club »). Null pour une réservation
+     * d'équipe. XOR avec `teamId` gardé à l'écriture.
+     */
+    #[ORM\Column(type: 'string', length: 40, nullable: true)]
+    private ?string $label = null;
 
     #[ORM\Column(type: 'guid')]
     private string $venueId;
@@ -148,14 +168,26 @@ class Reservation implements TenantOwnedInterface
         return $this;
     }
 
-    public function getTeamId(): string
+    public function getTeamId(): ?string
     {
         return $this->teamId;
     }
 
-    public function setTeamId(string $teamId): self
+    public function setTeamId(?string $teamId): self
     {
         $this->teamId = $teamId;
+
+        return $this;
+    }
+
+    public function getLabel(): ?string
+    {
+        return $this->label;
+    }
+
+    public function setLabel(?string $label): self
+    {
+        $this->label = $label;
 
         return $this;
     }

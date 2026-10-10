@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import type { PriorityTier, Reservation, Team, TeamSoloBudget, VenueTrainingSlot } from "../api";
-import { assignableTeams, effectiveSlotCapacity, reservedTeamsBySlot, sharedSlotStatuses, splitCascadePreview, teamReservationCount } from "./reservationSlots";
+import { assignableTeams, effectiveSlotCapacity, freeSlotsBySlot, isFreeSlot, occupantsBySlot, reservedTeamsBySlot, sharedSlotStatuses, splitCascadePreview, teamReservationCount } from "./reservationSlots";
 
 const slot = (id: string, venueId: string, dayOfWeek: number, startTime: string, capacity = 1): VenueTrainingSlot =>
   ({ id, venueId, dayOfWeek, startTime, durationMinutes: 90, capacity }) as VenueTrainingSlot;
 
 const resa = (teamId: string, venueId: string, dayOfWeek: number, startTime: string): Reservation =>
-  ({ id: `${teamId}-${venueId}-${dayOfWeek}-${startTime}`, teamId, venueId, dayOfWeek, startTime, durationMinutes: 90 }) as Reservation;
+  ({ id: `${teamId}-${venueId}-${dayOfWeek}-${startTime}`, teamId, label: null, venueId, dayOfWeek, startTime, durationMinutes: 90 }) as Reservation;
+
+/** Lot 4bis — un créneau LIBRE (réservation sans équipe, nommée). */
+const free = (label: string, venueId: string, dayOfWeek: number, startTime: string): Reservation =>
+  ({ id: `free-${label}-${venueId}-${dayOfWeek}-${startTime}`, teamId: null, label, venueId, dayOfWeek, startTime, durationMinutes: 90 }) as Reservation;
 
 const team = (id: string, name: string, priorityTierId: number, sessionsPerWeek: number, tierOrder = 0): Team =>
   ({ id, name, priorityTierId, tierOrder, sessionsPerWeek, sportCategoryId: "c" }) as Team;
@@ -154,5 +158,42 @@ describe("sharedSlotStatuses — les avertissements du récap sur créneau parta
     const isoSlot = slot("s", "v1", 2, "1970-01-01T20:30:00+00:00", 2);
     const full = [resa("a", "v1", 2, "20:30"), resa("b", "v1", 2, "20:30")];
     expect(sharedSlotStatuses([isoSlot], full, SPLIT)).toEqual([]);
+  });
+});
+
+describe("lot 4bis — créneaux libres", () => {
+  it("isFreeSlot distingue un créneau sans équipe", () => {
+    expect(isFreeSlot(free("Loto", "v1", 2, "18:00"))).toBe(true);
+    expect(isFreeSlot(resa("t1", "v1", 2, "18:00"))).toBe(false);
+  });
+
+  it("reservedTeamsBySlot EXCLUT les créneaux libres (ce ne sont pas des équipes)", () => {
+    const map = reservedTeamsBySlot([resa("t1", "v1", 2, "18:00"), free("Loto", "v1", 2, "18:00")]);
+    expect(map.get("v1|2|18:00")).toEqual(["t1"]);
+  });
+
+  it("teamReservationCount ignore les créneaux libres", () => {
+    const counts = teamReservationCount([resa("t1", "v1", 2, "18:00"), free("Loto", "v1", 3, "18:00")]);
+    expect(counts.get("t1")).toBe(1);
+    expect([...counts.keys()]).toEqual(["t1"]);
+  });
+
+  it("freeSlotsBySlot ne retient QUE les créneaux libres, par case", () => {
+    const map = freeSlotsBySlot([resa("t1", "v1", 2, "18:00"), free("Loto", "v1", 2, "18:00")]);
+    expect(map.get("v1|2|18:00")?.map((r) => r.label)).toEqual(["Loto"]);
+  });
+
+  it("occupantsBySlot mêle noms d'équipes ET libellés de créneaux libres", () => {
+    const occ = occupantsBySlot([resa("t1", "v1", 2, "18:00"), free("Loto du club", "v1", 2, "18:00")], (id) => (id === "t1" ? "SM1" : "?"));
+    expect(occ.get("v1|2|18:00")).toEqual(["SM1", "Loto du club"]);
+  });
+
+  it("un créneau libre OCCUPE une place : plus aucune équipe n'est assignable sur une case capacité 1", () => {
+    const s = slot("s", "v1", 2, "18:00", 1);
+    const teams = [team("t1", "SM1", 1, 2)];
+    // Sans le créneau libre : t1 est assignable (résidu 2).
+    expect(assignableTeams(teams, TIERS, s, [], NON_SPLIT, budgets(soloBudget("t1", 2)), []).map((a) => a.team.id)).toEqual(["t1"]);
+    // Avec un créneau libre posé sur la case : la place est prise, plus personne d'assignable.
+    expect(assignableTeams(teams, TIERS, s, [free("Loto", "v1", 2, "18:00")], NON_SPLIT, budgets(soloBudget("t1", 2)), [])).toEqual([]);
   });
 });

@@ -178,6 +178,11 @@ final class ScheduleResultImporter
 
         $placements = [];
         foreach ($reservations as $reservation) {
+            // Lot 4bis — un créneau LIBRE (teamId null) ne matérialise aucun verrou HARD d'équipe :
+            // il n'entre pas dans les clés de placement.
+            if (null === $reservation->getTeamId()) {
+                continue;
+            }
             $placements[$this->placementKey(
                 $reservation->getTeamId(),
                 $reservation->getVenueId(),

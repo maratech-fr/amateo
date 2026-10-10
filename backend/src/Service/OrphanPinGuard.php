@@ -208,7 +208,11 @@ final class OrphanPinGuard
                 continue;
             }
             if (!isset($available[$this->key($reservation->getVenueId(), $reservation->getDayOfWeek(), $reservation->getStartTime()->format('H:i'))])) {
-                return $this->message($reservation->getVenueId(), $reservation->getDayOfWeek(), $reservation->getTeamId(), $closureByVenueDay[$reservation->getVenueId()][$reservation->getDayOfWeek()] ?? null);
+                // Lot 4bis — un créneau LIBRE (teamId null) est épinglé lui aussi : on nomme la cause
+                // par son libellé plutôt que par une équipe (le label est du texte club, pas un id).
+                $subject = null === $reservation->getTeamId() ? ($reservation->getLabel() ?? 'un créneau réservé') : null;
+
+                return $this->message($reservation->getVenueId(), $reservation->getDayOfWeek(), $reservation->getTeamId(), $closureByVenueDay[$reservation->getVenueId()][$reservation->getDayOfWeek()] ?? null, $subject);
             }
         }
 
@@ -228,12 +232,14 @@ final class OrphanPinGuard
      *
      * @param array{constraintId: string, venueId: string, title: string, startDate: string, endDate: string, weekdays: list<int>}|null $closure la fermeture qui cause l'orphelin, si c'en est une
      */
-    private function message(string $venueId, int $dayOfWeek, string $teamId, ?array $closure = null): string
+    private function message(string $venueId, int $dayOfWeek, ?string $teamId, ?array $closure = null, ?string $subjectLabel = null): string
     {
         $venue = $this->entityManager->getRepository(Venue::class)->find($venueId);
         $venueName = $venue?->getName() ?? 'ce gymnase';
-        $team = $this->entityManager->getRepository(Team::class)->find($teamId);
-        $teamName = $team?->getName() ?? 'une équipe';
+        // Lot 4bis — un créneau LIBRE porte un libellé, pas une équipe : on nomme le libellé (jamais
+        // `find(null)`). Sinon, le NOM de l'équipe épinglée (jamais son id).
+        $team = null !== $teamId ? $this->entityManager->getRepository(Team::class)->find($teamId) : null;
+        $teamName = $team?->getName() ?? $subjectLabel ?? 'une équipe';
         $days = [1 => 'lundi', 2 => 'mardi', 3 => 'mercredi', 4 => 'jeudi', 5 => 'vendredi', 6 => 'samedi', 7 => 'dimanche'];
         $dayLabel = $days[$dayOfWeek] ?? 'jour ' . $dayOfWeek;
 
