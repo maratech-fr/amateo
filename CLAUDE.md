@@ -121,6 +121,9 @@ Agents/skills = **manuels, déclenchés par le user** (exception : hook `code-re
 ⚠ **Les subagents ne reçoivent PAS ce fichier** — leurs définitions leur ordonnent de le lire en
 première action. **Git (non négociable)** : **JAMAIS de commit sur `main`** (docs/specs compris) —
 branche puis PR ; **JAMAIS de merge sans le GO explicite du user** ; push libre, stop à « PR ready ».
+**Branche `release`** = iso-prod, pilotée par le workflow de déploiement (recalée sur le commit
+déployé) — **jamais de commit direct** ; correctif rapide = PR vers `release` puis report sur `main`
+(`docs/ops/deploy.md`).
 
 **Deux lanes — choisir AVANT de commencer et le dire** :
 - **Full** (défaut : feature, comportement/API/schéma, axe §7.1).
