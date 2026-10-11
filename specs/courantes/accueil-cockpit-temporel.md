@@ -1,10 +1,27 @@
 # Accueil « cockpit temporel »
 
-Last verified @ 2026-10-10 (lot 3b PR C, `documentation-update`) : la ligne Contraintes du tableau
-mode période et § e. « additive vs remplaçante » recalées contre
-`PeriodConstraintSelector::selectForPeriodPlan` — en vacances, seul le scope CLUB reste hérité par
-défaut, TEAM/COACH/FACILITY désactivées (décision fondateur 2026-10-10). Reste du fichier non
-re-confronté cette passe (historique des passes précédentes : `git log -p --follow` sur ce fichier).
+Last verified @ 2026-10-11 (P2-63 PR 5, « Transférer au planning »). § doléances gagne le geste de
+transfert : `POST /api/coach-wishes/transfer` (`CoachWishTransferService`) convertit en masse les
+doléances cochées en réglages standards du plan de leur semaine ; bouton « Transférer au planning
+(N) » dans le pied de `CoachWishesHub`, couleur d'ACCENT du club ; case de sélection distincte de
+l'état « traité » (pastille verte, marquage manuel au crayon) ; le seed « Fanion + importantes »
+d'un plan de reprise neuf est désormais aussi matérialisé CÔTÉ SERVEUR (`PlanTeamSelectionSeeder`,
+miroir déclaré de `PeriodTeams.tsx`) avant la 1ʳᵉ écriture du transfert. Acquis antérieurs (P2-63
+PR 2 + PR 3 + PR 4 + PR 7 + lot 5), re-confrontés : la fenêtre unique `CoachWishesHub` (un seul
+bouton « Doléances » + badge `RadarCoachWishBadge`, hors du repli et sous horizon) ne lance une
+collecte que sur une période portant déjà un planning — semaines dérivées des plannings
+(`SchedulePlanProvisioner::planWeekMondaysForPeriod` côté serveur, garde 422 dans
+`CoachWishCampaignStateProcessor`, affichage `campaignWeeks.ts::planDerivedWeeks`), invite « Créez
+d'abord le planning » + « Adapter » (`CampaignSettingsTab`/`RadarPanel.onRequestPlanning`) sinon ;
+l'ajout manuel (`CoachWishForm`) se fait semaine d'abord, toutes équipes, coach DÉDUIT sans champ
+(principal de l'équipe à la création, conservé tel quel en édition — `CoachWishStateProcessor`
+continue d'accepter `coachId` null en création gestionnaire, côté serveur inchangé) ; case « garder
+mes créneaux habituels » (`CoachWish.keepSeasonSlots`, booléen nu) sur les deux saisies, et une
+équipe co-coachée dont un seul coach a répondu voit l'autre prévenu (`byAnotherCoach`) que son
+envoi remplacera le sien. Valider/rouvrir le socle confirmé en présence de plans secondaires
+emporte aussi la collecte des vacances à venir (`FutureHolidayCollectePurger`, confrontée à
+`ValidateScheduleController.php`/`ReopenScheduleController.php`). Reste du fichier (§5bis P4-266 :
+signal « à régénérer » sur `/planning` seul, pas de pastille cockpit) non re-confronté cette passe.
 
 > **Statut** : livré — cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2. Ce document fixe le
 > modèle d'UX + d'architecture de l'accueil cockpit et la fondation des **calendriers
@@ -345,6 +362,28 @@ l'équipe à la création, recalculé si l'équipe change ; conservé tel quel e
 dé-attribué en silence) — une équipe sans coach (Vétérans) reçoit `coachId` null et peut recevoir
 une doléance manuelle comme n'importe quelle autre.
 
+**« Transférer au planning » (P2-63 PR 5)** : dans l'onglet Doléances, une case de sélection à
+GAUCHE de chaque ligne NON traitée (une doléance déjà traitée n'en porte plus) ; le pied de la
+fenêtre `CoachWishesHub` — piloté par l'onglet actif — porte « Transférer au planning (N) » à
+DROITE en couleur d'ACCENT du club (jamais rouge, réservé au destructif) avec le compteur de
+sélection à gauche. Le geste convertit chaque doléance cochée en réglages STANDARDS du plan de sa
+semaine (`POST /api/coach-wishes/transfer`, 409 si une génération tourne) : le nombre de créneaux
+devient le volume de l'équipe (0 = désactivée cette semaine, une équipe hors périmètre comme les
+Vétérans y entre avec la pastille « via doléances ») ; une indisponibilité devient une
+indisponibilité du COACH si l'équipe est mono-coach ou si tous ses coachs requis ont répondu
+(« un coach suffit »), sinon un jour interdit pour l'ÉQUIPE (une équipe co-coachée dont un seul a
+répondu) ; les jours souhaités deviennent une préférence. Une semaine sans planning n'est JAMAIS
+créée : elle est ignorée, et le récap le dit toujours (« N converties · M ignorées : raison »,
+jamais un compte nu). Après transfert, la doléance passe « traité » (pastille verte à côté du nom,
+le marquage manuel se fait désormais par le crayon — champ « Traitée » du formulaire, plus de
+case à droite dans la liste).
+
+**Équipe à plusieurs coachs : une doléance par équipe × semaine, jamais par coach (option A,
+fondateur 2026-10-10).** Un second coach qui répond pour une équipe déjà servie cette semaine voit
+sa saisie PRÉ-REMPLIE de la réponse du premier et un bandeau « un autre coach a déjà répondu pour
+cette équipe cette semaine — votre envoi remplacera sa version » (`byAnotherCoach`, jamais le
+prénom de l'autre coach) ; le champ commentaire sert à préciser les particularités à la main.
+
 **« Garder mes créneaux habituels »** : chaque doléance (page publique et modale gestionnaire)
 porte une case « garder les créneaux habituels » (`CoachWish.keepSeasonSlots`, booléen NU, défaut
 non coché) — le coach souhaite conserver ses créneaux du planning de SAISON pour cette semaine de
@@ -589,7 +628,7 @@ différents** :
 
 | Étape wizard | En mode période |
 |---|---|
-| Équipes | Roster **hérité** (non ré-éditable), mais **activable/désactivable** pour la période + **séances** surchargeables (champ 1–7, toggle = 0 séance). **Défaut conscient du type de période** : **reprise** (`holiday`) = **Fanion + importantes** (les 2 premiers rangs, S+A) pré-cochées, avec repli sur le meilleur rang réellement présent si le club n'a ni S ni A — la reprise n'est jamais vide ; **fermeture** (`closure`) = **tout le club actif** (structure verrouillée, les équipes loisir se décochent à la main). |
+| Équipes | Roster **hérité** (non ré-éditable), mais **activable/désactivable** pour la période + **séances** surchargeables (champ 1–7, toggle = 0 séance). **Défaut conscient du type de période** : **reprise** (`holiday`) = **Fanion + importantes** (les 2 premiers rangs, S+A) pré-cochées, avec repli sur le meilleur rang réellement présent si le club n'a ni S ni A — la reprise n'est jamais vide ; **fermeture** (`closure`) = **tout le club actif** (structure verrouillée, les équipes loisir se décochent à la main). **Même règle matérialisée CÔTÉ SERVEUR** (P2-63 PR 5, D-e) : `PlanTeamSelectionSeeder::keptTeamIds` (maison unique) écrit ce défaut avant la 1ʳᵉ écriture d'un « Transférer au planning » sur un plan pas encore ouvert au wizard — miroir déclaré de `periodSeedSelection.ts`, parité mécanique gardée par `PeriodSeedSelectionMirrorParityTest`. |
 | Gymnases | **La période possède SA grille** : les créneaux de saison y sont **copiés** à la naissance du plan, puis modifiables sans jamais toucher au planning principal — aucune union entre le socle et la période. Fermetures datées marquées au **grain JOUR** (`frontend-wizard.md` pour le détail). Un **sélecteur de gymnase** (une grille à la fois) montre la grille servie à la période, éditable créneau par créneau (clic = poser, clic sur un créneau = modale jour/heure/durée/capacité + suppression confirmée) ; chaque option porte, en sous-ligne sous son nom, l'état effectif — « désactivé » / « indisponible toute la période » / « fermé {jours} » (masque manuel OU indispo déclarée, priorité désactivé > fermé total > fermé partiel) ou rien s'il est ouvert. La modale d'édition d'un créneau dit si le jour est fermé (cause nommée) — poser reste **permis**, l'éditeur se contente de le dire. Les deux lisent l'état effectif SERVI, jamais recomposé côté front. Par gymnase : un état actif/désactivé qui ne touche jamais la grille, et deux actions destructives atomiques (« reprendre la grille du planning principal », « vider »), chacune confirmée en nommant les réservations emportées ; un gymnase désactivé a sa grille **gelée** (créneaux non éditables) — réactiver la rend telle quelle. Sous le capot : réglage épars `VenuePeriodOverride` — `mode` NULLABLE (DISABLED/BLANK/hériter) et un **masque manuel** jour ISO 1..7 → OPEN\|CLOSED (`dayOverrides`), qui s'ajoute au défaut jour par jour. Une **fermeture datée est INFORMATIVE** : elle PRÉ-REMPLIT le défaut, que le masque du plan peut contredire (jour rouvert `OPEN`, jour décoché `CLOSED`) — la composition (incident × masque) vit dans la maison unique `PlanVenueClosures::effectiveStateForPlan/Entry`, partagée par TOUS les consommateurs (gate, payload, `OrphanPinGuard`, réservations, radar). Un épinglage qui ne retombe sur aucun créneau **bloque la génération** en nommant le gymnase, le jour et l'équipe — sauf sur un gymnase désactivé ou **effectivement fermé-total**, où il devient inerte ; un jour effectivement fermé d'un gymnase par ailleurs ouvert reste bloquant, un jour rouvert par le masque ne l'est plus. Réactiver un gymnase entièrement fermé (POST/PUT ou DELETE de son override) est **accepté** : DELETE purge mode ET masque, retour complet au défaut. **Écran** : sous le sélecteur, une **rangée de 7 coches jour** lit l'état EFFECTIF servi (`effectiveClosedWeekdays`) — cochée = ouvert, décochée = effectivement fermé — avec sa **provenance** en info-bulle (indisponibilité déclarée / décoché manuellement / réactivé malgré l'indisponibilité) ; cliquer une coche écrit l'opposé de l'état effectif dans le masque, ou retire l'entrée existante (retour au défaut), jamais de recomposition côté front. L'interrupteur Désactiver/Réactiver reste visible même sur un gymnase entièrement fermé (le serveur accepte le geste) — la raison s'affiche en badge d'information, à côté de l'interrupteur, jamais à sa place. Sous la rangée de coches : « Réactiver malgré l'indisponibilité » (pose `dayOverrides` = OPEN×7, mode préservé) et « Revenir au défaut » (DELETE, purge mode ET masque). Sous **DISABLED**, la rangée est gelée (coches conservées, réactiver ne perd pas le masque manuel posé avant). **Grain semaine-type** : décocher/cocher un jour vaut pour **toutes les semaines de la période**, pas une date précise. Un bandeau au-dessus du sélecteur liste les gymnases indisponibles (déclaré) ET ceux portant des jours décochés à la main. Le **récap** lit le même état effectif pour les réservations non servies et le motif affiché, plus les fermetures brutes pour le titre. ⚠ **Point contre-intuitif, vérifié au code** : la grille d'un gymnase entièrement fermé reste **modifiable** (créneaux, Reprendre/Vider) — seule la réservation est refusée en 422 au grain jour effectif, jamais un geste de grille ; le front serait sinon plus strict que le serveur (règle d'or). Point tranché, `etat-des-lieux.md` §2. |
 | Coachs | **Hérités, lecture seule** (lien équipe↔coach préservé) |
 | **Contraintes** | **Active.** Pré-remplie avec **l'exception** (ex. De Barros indispo sur la fenêtre) ; le gestionnaire **ajoute les contraintes propres à la période** (« du coup U13 passe le mercredi ») et **hérite les contraintes permanentes du socle**, chacune **cochable/décochable** pour la fenêtre. DIFF `ConstraintPeriodOverride` épars : une ligne n'existe que pour une **déviation** du défaut (le socle et le `isActive` propre de la contrainte ne sont **jamais** touchés). **Défaut selon le type de période :** <br>• **Fermeture** (closure) → **tout gardé** (on décoche ce qui gêne). <br>• **Vacances** (holiday) → **seul le scope CLUB reste hérité** ; contrainte **d'équipe, de coach et de gymnase** (TEAM/COACH/FACILITY) **désactivée par défaut** (décision fondateur 2026-10-10), le gestionnaire réactive au cas par cas — un bandeau compte celles encore désactivées. `PeriodConstraintSelector::selectForPeriodPlan`, miroir back/front. |

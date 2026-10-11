@@ -4,7 +4,27 @@
 > livré (`frontend/src/`). L'inventaire backward du backend est dans
 > `backend-inventory.md` — ce document le référence sans le dupliquer.
 
-Last verified @ 2026-10-10 (P2-63 PR 2 + PR 3 + PR 4 + PR 7 + lot 5) : l'arbre §10 `coach-wishes/` recalé contre `CoachWishForm.tsx` (ajout manuel semaine d'abord, coach DÉDUIT sans champ, créneaux souhaités en champ nombre, case « garder les créneaux habituels »), `WishTeamStep.tsx`/`WishesTab.tsx` (jours disponibles au-dessus des jours souhaités, dé-attribution limitée à un coach retiré, case « garder mes créneaux habituels » + pastille `StatusPill`), `CampaignSettingsTab.tsx`/`useCampaignSettings.ts`/`campaignWeeks.ts` (semaines dérivées des plannings, état « sans planning », dates FR via `wishSections.ts::frDate`) et `RadarPanel.tsx` (`onRequestPlanning`). La ligne publique `/doleances/:token` (§2) gagne l'inversion « disponibles au-dessus », le jour non disponible désactivé côté souhaités (lot 5) et la case « garder mes créneaux habituels » (PR 3), le reste de son contrat est inchangé. `planning/` (§10) recalé contre `useValidateReopen.ts`/`api.ts::OverlaysExistError` (PR 7 : `coachWishCount` sur le 409 `overlays_exist`, annonce `PlanningPage.tsx::coachWishPurgeClause` dans les deux dialogues de confirmation Valider/Rouvrir). Reste du fichier non re-sondé ligne à ligne cette passe — historique : `git log -p --follow` ce fichier.
+Last verified @ 2026-10-11 (P2-63 PR 5, « Transférer au planning ») : l'arbre §10 `coach-wishes/`
+gagne le geste de transfert — `CoachWishesHub.tsx` (pied de modale piloté par l'onglet actif,
+bouton « Transférer au planning (N) » en couleur d'ACCENT du club, jamais rouge), `WishesTab.tsx`
+(case de sélection à gauche — absente sur une doléance déjà traitée —, récap toujours motivé des
+ignorées, focus ramené sur la liste après transfert), `CoachWishForm.tsx` (champ « Traitée »
+remplace le marquage dans la liste), `PeriodTeams.tsx` (pastille « via doléances » conditionnée à
+`TeamPeriodOverride.source === 'coach_wish'`, tri par défaut délégué à la lib pure partagée
+`periodSeedSelection.ts`). Acquis antérieurs (P2-63 PR 2 + PR 3 + PR 4 + PR 7 + lot 5) :
+`CoachWishForm.tsx` (ajout manuel semaine d'abord, coach DÉDUIT sans champ, créneaux souhaités en
+champ nombre, case « garder les créneaux habituels »), `WishTeamStep.tsx`/`WishesTab.tsx` (jours
+disponibles au-dessus des jours souhaités, dé-attribution limitée à un coach retiré, case
+« garder mes créneaux habituels » + pastille `StatusPill`), `CampaignSettingsTab.tsx`/
+`useCampaignSettings.ts`/`campaignWeeks.ts` (semaines dérivées des plannings, état
+« sans planning », dates FR via `wishSections.ts::frDate`) et `RadarPanel.tsx`
+(`onRequestPlanning`). La ligne publique `/doleances/:token` (§2) gagne la bannière « un autre
+coach a déjà répondu » (`byAnotherCoach`, option A — le modèle reste une doléance par équipe ×
+semaine). `planning/` (§10) recalé contre `useValidateReopen.ts`/`api.ts::OverlaysExistError`
+(PR 7 : `coachWishCount` sur le 409 `overlays_exist`, annonce
+`PlanningPage.tsx::coachWishPurgeClause` dans les deux dialogues de confirmation Valider/Rouvrir).
+Reste du fichier non re-sondé ligne à ligne cette passe — historique : `git log -p --follow` ce
+fichier.
 
 ## 1. Stack Decided
 
@@ -154,6 +174,15 @@ frontend/src/
 │   │                           # booléen NU, aucun horaire de saison exposé) sur la page publique
 │   │                           # (WishTeamStep) et la modale gestionnaire (CoachWishForm), pastille
 │   │                           # StatusPill dans WishesTab + ligne dans WishRecap.
+│   │                           # PR 5 — « Transférer au planning » : pied de CoachWishesHub piloté par
+│   │                           # l'onglet actif (bouton accent club, compteur à gauche) ; WishesTab porte
+│   │                           # la case de sélection (absente sur une doléance traitée) et remonte l'état
+│   │                           # au hub (`onTransferStateChange`) ; pastille « Traité » = StatusPill variante
+│   │                           # `success` (nouvelle) ; CoachWishForm gagne le champ « Traitée » (le
+│   │                           # marquage manuel quitte la liste) ; récap toujours motivé des ignorées
+│   │                           # (`semaine_sans_plan`/`introuvable`/`id_invalide`/`autre_saison`). Page
+│   │                           # publique : bannière `byAnotherCoach` (« un autre coach a déjà répondu »)
+│   │                           # — le modèle reste une doléance par équipe × semaine (option A).
 │   ├── cockpit/                # CockpitPage : bandeau planning socle, calendrier mensuel, radar
 │   │                           # overlays, FbiDeadlineCard (rappel FBI + escalade login, RMM-6 PR-3)
 │   ├── legal/                  # PrivacyPage (/confidentialite)

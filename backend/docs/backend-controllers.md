@@ -2,14 +2,18 @@
 
 > Inventaire des contrôleurs Symfony custom (hors module démo) : OpenAPI des routes custom, authentification, génération & cycle de vie du planning, groupes, membres, contraintes, radar de conflits, calendriers, géo, exports, édition manuelle, import, module matchs, transition de saison, health check. Découpé mécaniquement de `backend-inventory.md` (DOC-59) ; le module démo et l'horloge simulée vivent dans `backend-demo.md`.
 
-Last verified @ 2026-10-11 (lot verrous V1/V1bis) : nouvelle ligne `/api/schedules/{id}/load-locks`
-(`LoadLocksController`) ajoutée au tableau « Cycle de vie du planning » et confrontée au contrôleur ;
-la ligne `/api/schedules/{id}/regenerate` reste correcte telle quelle (son « aucune copie de
-créneaux » ne vaut que pour la régénération de SAISON qu'elle décrit — la greffe des verrous
-hérités d'une PÉRIODE vit dans `ScheduleConstraintBuilder::buildForPeriodPlan`, hors de ce
-contrôleur). Reste du fichier non re-confronté cette passe : P4-295 C1 (les deux citations engine
-`result_builder/diagnostics.py`), P4-266 (`/api/me`/`GET /api/schedule_plans/{id}/structure-hash`),
-P4-128 n°1 (§Réservation groupée) — historique des vérifications précédentes : `git log -p --follow`.
+Last verified @ 2026-10-11 (P2-63 PR 5, « Transférer au planning ») : nouvelle section
+§« Transférer au planning » ajoutée et confrontée à `CoachWishTransferController`/
+`CoachWishTransferService` — le verrouillage réel est une double sonde
+`ClubGenerationLock::isGenerating` + un verrou pessimiste par doléance, **jamais**
+`SchedulePlanProvisioner::lockPlanScope`. Ligne `/api/schedule-slots/{id}/mutualize` (lot 9 F3) :
+le bouton d'écran annoncé « PR suivante » est livré (`SlotDetail`/`MutualizeDialog`,
+`frontend-workloop.md` §6.7 ter) ; la suppression du bloc (`DELETE /api/shared_training_blocks/{id}`)
+reste un CRUD API Platform standard (pas un contrôleur custom de ce fichier), détail cascade
+renvoyé à `backend-inventory.md`. Reste du fichier non re-confronté cette passe : P4-295 C1 (les
+deux citations engine `result_builder/diagnostics.py`), P4-266 (`/api/me`/
+`GET /api/schedule_plans/{id}/structure-hash`), P4-128 n°1 (§Réservation groupée) — historique des
+vérifications précédentes : `git log -p --follow`.
 
 ## 3. Custom Controllers
 
@@ -391,6 +395,12 @@ Champs `Club` : `accentColor` (hex), `accentPalette` (json ≤3 hex), `logoUrl`,
 | Route | Méthode | Contrôleur | Description |
 |-------|---------|-----------|-------------|
 | `/api/coach_wish_campaigns/{id}/email-preview` | GET | `CoachWishEmailPreviewController` | Rend l'e-mail du lien coach **EXACT** que l'envoi initial produirait — construit via `CoachWishMailBuilder::buildCoachLink` avec un jeton FACTICE constant (jamais lu en base) et un prénom de coach d'exemple. Gate management (SEC-07) ; 404 byte-identique si la campagne est inconnue ou d'un autre club (RLS + filet explicite, jamais 403). Logos servis en `data:` URI (le `cid:` du mail réel ne résout pas dans l'iframe d'aperçu) ; réponse `{subject, from, html}`. Route Symfony classique, hors API Platform — déclarée dans le contributeur OpenAPI `CoachWishPaths` (§OpenAPI ci-dessus). Détail du gabarit/bouton CTA/expéditeur personnalisé : `specs/courantes/identite-visuelle-produit.md` § « Lien coach habillé ». |
+
+### Transférer au planning (P2-63 PR 5)
+
+| Route | Méthode | Contrôleur | Description |
+|-------|---------|-----------|-------------|
+| `/api/coach-wishes/transfer` | POST | `CoachWishTransferController` | Convertit en MASSE les doléances COCHÉES (`{wishIds}`, max 500) en réglages standards du plan de leur semaine (`CoachWishTransferService`). Gate management (SEC-07) ; écriture de COLLECTION (`SeasonScopedWriteInterface::writeTargetSeasonId` → `null`, la saison du header `X-Season-Id` gouverne, une doléance d'une AUTRE saison est ignorée). Verrouillage RÉEL = double sonde `ClubGenerationLock::isGenerating` (avant la boucle ET juste avant le commit, patron `MutualizeSlotService`) → 409 `generation_in_progress`, **jamais** un `lockPlanScope` exclusif ; verrou pessimiste `SELECT … FOR UPDATE` PAR doléance (deux transferts concurrents de la même doléance se sérialisent). Conversions, par doléance : `slotsWanted>0` → `TeamPeriodOverride` actif + `sessionsPerWeek` ; `=0` → désactivé ; `unavailableDays` → UNE contrainte DATÉE HARD pendue à l'entrée qui PORTE le plan de la semaine (`SchedulePlanProvisioner::periodWeekPlanTarget`) — COACH `COACH_AVAILABILITY` si l'équipe est mono-coach ou si TOUS ses coachs requis ont répondu à la collecte (moteur « un coach suffit »), sinon TEAM DAY `forbiddenDays` ; `wishedDays` → TEAM DAY `preferredDays` PREFERRED. Idempotent par (`source=coach_wish`, `sourceOccurrenceId`=id de la doléance) : un re-transfert efface puis recrée, jamais une 2ᵉ ligne. F : réactive une équipe hors périmètre (`TeamPeriodOverride.source='coach_wish'`) ; le seed « Fanion + importantes » d'un plan de reprise neuf est matérialisé AVANT la 1ʳᵉ écriture (`PlanTeamSelectionSeeder::seed`), sans jamais toucher un override déjà posé par un autre geste. Un id malformé/introuvable/d'une autre saison/semaine sans plan est IGNORÉ avec son motif (`id_invalide`/`introuvable`/`autre_saison`/`semaine_sans_plan`), jamais un abandon du lot entier ; rend `{converted, ignored, ignoredReasons}`. 422 si un plan a été supprimé PENDANT le transfert (FK, `ForeignKeyConstraintViolationException` enveloppée). `done=true` sur les converties, modifier/supprimer une doléance plus tard ne touche jamais le plan. |
 
 ### Module matchs (palier A — FFBB)
 
