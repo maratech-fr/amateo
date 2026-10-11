@@ -738,6 +738,54 @@ release fautive contenait une migration destructive : restaurer le dump pris
 automatiquement AVANT la migration (`backup-restore.md` §3 — le script refuse
 de migrer sans ce dump, il est fail-closed).
 
+### Branche `release` et correctif rapide (hotfix)
+
+La branche **`release` est ISO-prod** : à **chaque déploiement VM réussi**, le
+workflow la recale (`git push --force`) sur le commit qui vient de partir en
+prod (job `update-release-branch` de `deploy.yml`, voir aussi *Comment ça
+marche*). Rien à faire à la main. Tant que la VM n'existe pas
+(`DEPLOY_ENABLED` ≠ `true`), le job de déploiement est sauté, donc `release` ne
+bouge pas — elle ne suit que de **vrais** déploiements.
+
+À quoi elle sert : reproduire un retour terrain **sur exactement le code de la
+prod** et livrer le correctif **sans embarquer tout `main`** (qui contient du
+travail pas encore voulu en prod).
+
+**Procédure d'un correctif rapide (hotfix) :**
+
+```bash
+git fetch origin
+git switch -c hotfix/<sujet> origin/release   # on PART de la prod, pas de main
+# … corriger, committer …
+git push -u origin hotfix/<sujet>
+```
+
+1. Ouvrir une **PR vers `release`** (pas vers `main`) ; valider comme une PR
+   normale (tests verts), **merge sur GO fondateur**.
+2. **Taguer la nouvelle version sur `release`** → le déploiement part, et
+   `release` est aussitôt recalée dessus (elle l'était déjà par le merge, le
+   déploiement la confirme) :
+   ```bash
+   git switch release && git pull
+   git tag vX.Y.Z+1 && git push origin vX.Y.Z+1
+   ```
+   (Ou `make deploy` en *workflow_dispatch* si on déploie sans tag : même
+   résultat, `release` suit le commit déployé.)
+3. **Reporter le correctif sur `main`** pour ne pas le perdre au prochain
+   déploiement (qui repart de `main`) : PR `release` → `main`, ou cherry-pick du
+   correctif dans une PR vers `main`. Sans ce report, le fix disparaît de la
+   prod dès la release suivante issue de `main`.
+
+⚠ **Ne jamais committer directement sur `release`** : elle est pilotée par le
+workflow et par les merges de PR de hotfix. Un commit poussé à la main y serait
+écrasé au prochain déploiement (force-push sur le commit déployé).
+
+⚠ Un **rollback** `make deploy VERSION=<ancien tag>` recale aussi `release` sur
+le commit du *dispatch* (celui de `main`), pas sur l'ancien tag redéployé : le
+workflow suit `github.sha`. Après un rollback, considérer `release` comme non
+fiable tant qu'un déploiement normal (tag sur `release` ou hotfix) ne l'a pas
+réalignée.
+
 ### Règle d'écriture des migrations (convention, à respecter dans les PRs)
 
 Le deploy migre **avant** de basculer les conteneurs : pendant quelques

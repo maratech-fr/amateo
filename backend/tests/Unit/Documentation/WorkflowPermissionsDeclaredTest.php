@@ -21,8 +21,10 @@ use Symfony\Component\Yaml\Yaml;
  * escalade future à venir s'inscrire ICI, sous les yeux d'un relecteur.
  *
  * La liste est fermée à dessein : `deploy.yml` et `mirror-images.yml` poussent des images vers
- * ghcr.io et ont donc légitimement besoin de `packages: write`. Tout autre `write` — nouveau
- * fichier, nouveau scope, ou l'un de ces deux fichiers réclamant un scope supplémentaire — doit
+ * ghcr.io et ont donc légitimement besoin de `packages: write`. `deploy.yml` a en plus un seul job
+ * (`update-release-branch`) qui pousse la branche `release` sur le commit déployé, d'où
+ * `contents: write` — accordé par job (moindre privilège), jamais à la racine. Tout autre `write` —
+ * nouveau fichier, nouveau scope, ou l'un de ces fichiers réclamant un scope supplémentaire — doit
  * rougir et forcer son auteur à motiver l'ajout dans self::ALLOWED_WRITE.
  *
  * Le glob couvre TOUT `.github/workflows/*.yml` : un workflow ajouté demain est gardé sans
@@ -40,7 +42,7 @@ final class WorkflowPermissionsDeclaredTest extends TestCase
      * @var array<string, list<string>>
      */
     private const array ALLOWED_WRITE = [
-        'deploy.yml' => ['packages'],
+        'deploy.yml' => ['packages', 'contents'],
         'mirror-images.yml' => ['packages'],
     ];
 

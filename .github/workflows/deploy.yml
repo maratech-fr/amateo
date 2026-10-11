@@ -10,6 +10,11 @@
 # artifact that actually ran is what comes back, and history is never
 # overwritten by a fresh build with drifted base layers.
 #
+# After a SUCCESSFUL VM roll, the `release` branch is fast-forwarded to the
+# deployed commit so it stays ISO-prod — the starting point for fast fixes
+# (hotfix) without dragging all of `main` into prod. See the
+# update-release-branch job below and docs/ops/deploy.md §Branche `release`.
+#
 # The deploy job is gated on the repo variable DEPLOY_ENABLED == 'true' so the
 # whole workflow is mergeable and the image-publishing half works BEFORE any
 # VM exists; flipping the variable (plus the DEPLOY_* secrets) arms it.
@@ -331,3 +336,36 @@ jobs:
           # Executed as a FILE, never piped: `docker compose run` reads stdin
           # and would swallow the rest of a piped script (silent half-deploy).
           "${SSH[@]}" "DEPLOY_PATH='$DEPLOY_PATH' VERSION='$VERSION' bash '$DEPLOY_PATH/remote-deploy.sh'"
+
+  # Après un déploiement VM RÉUSSI, faire suivre la branche `release` au commit
+  # qui vient de partir en prod : `release` reste ISO-prod, point de départ des
+  # correctifs rapides (hotfix) sans embarquer tout `main`
+  # (docs/ops/deploy.md §Branche `release` et correctif rapide).
+  #   - `needs: deploy` → par la sémantique par défaut de `needs`, ce job ne
+  #     tourne QUE si `deploy` a réussi ; tant que la VM n'existe pas
+  #     (DEPLOY_ENABLED != 'true'), `deploy` est `skipped`, donc ce job aussi et
+  #     `release` ne bouge pas — elle ne suit que de VRAIS déploiements.
+  #   - Les deux déclencheurs y passent : push d'un tag `v*` (release normale ou
+  #     hotfix tagué sur `release`) ET workflow_dispatch (hotfix/manuel).
+  update-release-branch:
+    name: Fast-forward `release` to the deployed commit
+    runs-on: ubuntu-latest
+    needs: deploy
+    # Moindre privilège : ce job est le SEUL à écrire dans le dépôt (pousser la
+    # ref `release`). Un bloc `permissions:` par job REMPLACE le régime racine
+    # (`contents: read`) ; `packages:` est donc absent ici — inutile pour ce job.
+    permissions:
+      contents: write
+    steps:
+      # persist-credentials (défaut d'actions/checkout) enregistre le
+      # GITHUB_TOKEN du job — porté au scope `contents: write` ci-dessus — comme
+      # credential git : le push s'authentifie SANS secret dans `env:` (convention
+      # du dépôt). fetch-depth 1 (défaut) suffit : on ne pousse que le commit HEAD.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Point `release` at the deployed commit (${{ github.sha }})
+        run: |
+          # `--force` crée `release` si absente et la recale sinon : la branche a
+          # sa propre histoire (partie de la 1re prod, v1.0.0), un push fast-forward
+          # strict échouerait. On pousse le commit déployé (GITHUB_SHA).
+          git push --force origin "${GITHUB_SHA}:refs/heads/release"
