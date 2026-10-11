@@ -280,6 +280,88 @@ final class VenueTrainingSlotApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
     }
 
+    /**
+     * Lot A « l'export ne ment plus » (décision fondateur 2026-10-11) : le libellé de groupe
+     * appartient au planning de SAISON. Le poser DIRECTEMENT sur un créneau de PÉRIODE (POST) —
+     * contournant le front qui n'offre plus le champ — est refusé 422 avec un motif parlant, mais
+     * la SAISON l'accepte toujours.
+     */
+    public function testPostingAGroupLabelOnAPeriodSlotIsRejectedButSeasonStillAcceptsIt(): void
+    {
+        $venue = $this->createVenue(true);
+        $planId = $this->createPeriodPlan($this->club->getId(), $this->season->getId());
+
+        // Abus : un libellé sur un créneau de période → 422 nommé.
+        $this->client->request('POST', '/api/venue_training_slots', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
+            'CONTENT_TYPE' => 'application/ld+json',
+        ], json_encode([
+            'venueId' => $venue->getId(),
+            'dayOfWeek' => 2,
+            'startTime' => '20:00',
+            'durationMinutes' => 90,
+            'capacity' => 2,
+            'groupLabel' => 'CEC3',
+            'schedulePlanId' => $planId,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('Le libellé de groupe appartient au planning de saison.', (string) $this->client->getResponse()->getContent());
+
+        // Contrôle : la SAISON (schedulePlanId absent) accepte toujours le même libellé.
+        $this->client->request('POST', '/api/venue_training_slots', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
+            'CONTENT_TYPE' => 'application/ld+json',
+        ], json_encode([
+            'venueId' => $venue->getId(),
+            'dayOfWeek' => 2,
+            'startTime' => '20:00',
+            'durationMinutes' => 90,
+            'capacity' => 2,
+            'groupLabel' => 'CEC3',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+    }
+
+    /**
+     * Même règle à l'ÉDITION (PUT) : un créneau de période créé sans libellé ne peut pas s'en
+     * voir poser un — le schedulePlanId du créneau (jamais migré) décide, pas l'absence du champ.
+     */
+    public function testPuttingAGroupLabelOntoAPeriodSlotIsRejected(): void
+    {
+        $venue = $this->createVenue(true);
+        $planId = $this->createPeriodPlan($this->club->getId(), $this->season->getId());
+
+        $this->client->request('POST', '/api/venue_training_slots', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
+            'CONTENT_TYPE' => 'application/ld+json',
+        ], json_encode([
+            'venueId' => $venue->getId(),
+            'dayOfWeek' => 2,
+            'startTime' => '20:00',
+            'durationMinutes' => 90,
+            'capacity' => 2,
+            'schedulePlanId' => $planId,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+        $created = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($created);
+        self::assertIsString($created['@id'] ?? null);
+
+        $this->client->request('PUT', (string) $created['@id'], [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
+            'CONTENT_TYPE' => 'application/ld+json',
+        ], json_encode([
+            'venueId' => $venue->getId(),
+            'dayOfWeek' => 2,
+            'startTime' => '20:00',
+            'durationMinutes' => 90,
+            'capacity' => 2,
+            'groupLabel' => 'CEC3',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('Le libellé de groupe appartient au planning de saison.', (string) $this->client->getResponse()->getContent());
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();

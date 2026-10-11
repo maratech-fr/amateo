@@ -42,7 +42,7 @@ import {
   useWizardVenues,
 } from "../queries";
 import { WEEK } from "../lib/weekGrid";
-import { CapacitySelect, DurationSelect, GroupLabelField, SharedSlotHint } from "./slotFields";
+import { CapacitySelect, DurationSelect, SharedSlotHint } from "./slotFields";
 import { VenueAvailabilityGrid } from "./VenueAvailabilityGrid";
 import { PeriodAnchorGate } from "./PeriodAnchorGate";
 
@@ -596,7 +596,6 @@ function PeriodSlotEditor({
   const [time, setTime] = useState(hhmm(slot.startTime));
   const [duration, setDuration] = useState(slot.durationMinutes);
   const [capacity, setCapacity] = useState(slot.capacity);
-  const [groupLabel, setGroupLabel] = useState(slot.groupLabel ?? "");
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmMove, setConfirmMove] = useState(false);
@@ -623,9 +622,11 @@ function PeriodSlotEditor({
     // reste légitime, la seule borne est MINUIT — posée en amont par `slotPlacementError`
     // dans `save`, pas ici. Ne referme qu'au succès : une écriture rejetée garde l'éditeur
     // ouvert plutôt que de disparaître en donnant l'illusion d'être enregistrée.
-    // Libellé de groupe : envoyé seulement sur un créneau partageable (≥ 2), sinon null (P2-17).
+    // Libellé de groupe : il appartient au planning de SAISON (décision fondateur 2026-10-11). En
+    // période, le champ n'existe plus et le payload porte toujours null — le back le refuserait
+    // sinon (VenueTrainingSlotStateProcessor).
     update.mutate(
-      { id: slot.id, body: { venueId: slot.venueId, dayOfWeek: day, startTime: time, durationMinutes: duration, capacity: effCapacity, groupLabel: effCapacity >= 2 ? groupLabel : null } },
+      { id: slot.id, body: { venueId: slot.venueId, dayOfWeek: day, startTime: time, durationMinutes: duration, capacity: effCapacity, groupLabel: null } },
       // Le backend déplace lui-même les réservations portées par ce créneau (P4-44) : on ne
       // les supprime plus (ça emporterait leur verrou HARD). On ferme seulement au succès.
       { onSuccess: onClose },
@@ -707,7 +708,6 @@ function PeriodSlotEditor({
       ) : null}
 
       {canSplit ? <SharedSlotHint capacity={capacity} /> : null}
-      {canSplit ? <GroupLabelField capacity={capacity} value={groupLabel} onChange={setGroupLabel} /> : null}
 
       {null !== error ? (
         <p role="alert" className="mt-3 text-sm text-destructive">

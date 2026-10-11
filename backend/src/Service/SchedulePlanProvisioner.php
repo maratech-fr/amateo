@@ -1062,8 +1062,13 @@ final class SchedulePlanProvisioner
     /** @param string|null $venueId null = tous les gymnases */
     private function copySeasonalSlotRows(string $schedulePlanId, string $clubId, string $seasonId, ?string $venueId): void
     {
+        // Le libellé de groupe appartient au planning de saison : une période naît SANS libellé.
+        // La colonne `group_label` reste dans l'INSERT (sa place dans la copie est surveillée par
+        // PeriodSlotCopyKeepsEveryColumnTest), mais le SELECT émet NULL plutôt que la valeur du
+        // modèle — jamais la copie du libellé de saison. Couvre les deux appelants (naissance du
+        // plan et reprise de la grille d'un gymnase), qui passent tous deux par ici.
         $sql = 'INSERT INTO venue_training_slot (id, version, created_at, updated_at, club_id, season_id, venue_id, day_of_week, start_time, duration_minutes, capacity, group_label, schedule_plan_id) '
-            . 'SELECT gen_random_uuid(), 1, now(), now(), club_id, season_id, venue_id, day_of_week, start_time, duration_minutes, capacity, group_label, :planId '
+            . 'SELECT gen_random_uuid(), 1, now(), now(), club_id, season_id, venue_id, day_of_week, start_time, duration_minutes, capacity, NULL, :planId '
             . 'FROM venue_training_slot WHERE club_id = :clubId AND season_id = :seasonId AND schedule_plan_id IS NULL';
         $params = ['planId' => $schedulePlanId, 'clubId' => $clubId, 'seasonId' => $seasonId];
         if (null !== $venueId) {

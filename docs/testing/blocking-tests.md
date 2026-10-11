@@ -107,7 +107,10 @@ pour `amateo_read` — sinon l'opérateur la verrait à 0 ligne, ou cross-club s
 409 `window_already_planned` dans les deux sens quand deux plans de période se chevauchent ; garde
 aussi, D10bis, la COPIE des blocs de mutualisation du socle à la naissance d'un plan de FERMETURE —
 contenu exact, instantané bidirectionnel, zéro copie pour un plan de vacances, pas de doublon au
-geste rejoué, cascade de suppression) ·
+geste rejoué, cascade de suppression ; garde aussi, lot A (2026-10-11, `etat-des-lieux.md` §2 « le
+libellé appartient au planning de saison »), que la copie des créneaux à la naissance du plan
+n'émet JAMAIS le `group_label` du modèle — la grille de saison garde le sien, la période copiée
+n'en porte aucun) ·
 `Security/PeriodCopyBirthTest` (l'adaptation naît comme une COPIE du socle : la V1 d'un plan de
 période transcrit la version POINTÉE du socle filtrée des réglages/fermetures — falsifié dans les
 deux sens ; séance saine copiée+verrouillée, jour fermé/gymnase désactivé/équipe réduite « à
