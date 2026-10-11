@@ -32,6 +32,7 @@ use App\Service\RequestIdContext;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\ScheduleProgressPublisher;
+use App\Service\TeamCaseOccupancyGuard;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -332,6 +333,7 @@ final class SlotMoveGridParityTest extends KernelTestCase
             new EngineClient($client, new RequestIdContext),
             new ScheduleProgressPublisher($hub),
             new NullLogger,
+            new TeamCaseOccupancyGuard($this->em),
         );
     }
 

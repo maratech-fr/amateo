@@ -16,6 +16,7 @@ use App\Exception\EvictTargetLockedException;
 use App\Exception\EvictTargetMismatchException;
 use App\Exception\ScheduleGenerationInProgressException;
 use App\Exception\SlotUnavailableException;
+use App\Exception\TeamAlreadyAtCaseException;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use InvalidArgumentException;
@@ -78,12 +79,14 @@ final class MoveSlotService
         private readonly EngineClient $engineClient,
         private readonly ScheduleProgressPublisher $progressPublisher,
         private readonly LoggerInterface $logger,
+        private readonly TeamCaseOccupancyGuard $teamCaseOccupancyGuard,
     ) {}
 
     /**
      * @throws ScheduleGenerationInProgressException une génération tourne pour ce club (→ 409)
      * @throws SlotUnavailableException              aucune fenêtre de gymnase à la destination — cible
      *                                               inexistante ou jour fermé (→ 422 `slot_unavailable`)
+     * @throws TeamAlreadyAtCaseException            l'équipe siège déjà à la cible, sans éviction (→ 422)
      * @throws EvictTargetMismatchException          l'occupant à évincer ne siège pas à la cible (→ 422)
      * @throws EvictTargetLockedException            l'occupant à évincer est verrouillé, D3 (→ 422)
      * @throws EngineTimeoutException                le moteur a été trop lent (→ 504 `engine_timeout`)
@@ -145,6 +148,24 @@ final class MoveSlotService
             ));
         }
 
+        // (2quater) Règle fondateur : la MÊME équipe ne siège jamais deux fois à la même case. Si une
+        //           AUTRE séance de l'équipe déplacée (≠ la source, ≠ l'évincé) occupe déjà la cible,
+        //           le déplacement est refusé AVANT le moteur (qui fusionne par case et ne verrait pas
+        //           le doublon) — rien n'est écrit. Évincer SA propre autre séance reste un échange
+        //           légal : l'évincé est exclu, la garde ne le compte pas.
+        $excludedSlotIds = [$slot->getId()];
+        if ($evicted instanceof ScheduleSlotTemplate) {
+            $excludedSlotIds[] = $evicted->getId();
+        }
+        $this->teamCaseOccupancyGuard->assertTeamNotAlreadyAtCase(
+            $schedule->getId(),
+            $slot->getTeamId(),
+            $venueId,
+            $dayOfWeek,
+            $startTime,
+            $excludedSlotIds,
+        );
+
         // (3) Le candidat : l'équipe posée dans l'emplacement de destination, à la durée de la
         //     FENÊTRE. Le solveur ne lit pas `candidate.durationMinutes` (il dérive tout de la
         //     grille) — cette valeur ne sert qu'à l'écriture serveur qui suivra un « oui ».
@@ -199,29 +220,37 @@ final class MoveSlotService
             return $dryResponse;
         }
 
-        // (5) Écrire le déplacement, supprimer l'occupant évincé (MÊME transaction), poser le
-        //     marqueur (score désormais périmé), publier.
-        $slot
-            ->setDayOfWeek($dayOfWeek)
-            ->setStartTime($startTime)
-            ->setVenueId($venueId)
-            // LA RÈGLE : la durée écrite est TOUJOURS celle de l'emplacement de destination, jamais
-            // celle que la source portait — sinon la séance emporterait sa taille d'un gymnase à l'autre.
-            ->setDurationMinutes($durationMinutes);
-
+        // (5) Écrire le déplacement, supprimer l'occupant évincé, poser le marqueur (score désormais
+        //     périmé), publier — le tout en UNE transaction (tout-ou-rien). L'ORDRE compte quand on
+        //     évince : on SUPPRIME l'occupant et on flush AVANT de déplacer la source. Lors d'un
+        //     ÉCHANGE (l'évincé est une AUTRE séance de la MÊME équipe), l'index UNIQUE (schedule,
+        //     équipe, gymnase, jour, heure) rejetterait sinon l'UPDATE de la source tant que l'évincé
+        //     y siège encore — Doctrine ordonnant les UPDATE avant les DELETE. Libérer la case d'abord
+        //     lève l'ambiguïté sans affaiblir l'atomicité.
         $response = ['valid' => true, 'violations' => [], 'compromises' => $compromises];
-        if ($evicted instanceof ScheduleSlotTemplate) {
-            // Capturer l'état d'AVANT suppression : le front s'en sert pour proposer de replacer.
-            $response['evicted'] = $this->describeEvicted($evicted);
-            $this->entityManager->remove($evicted);
-        }
-        $schedule->setManuallyEditedSinceGeneration(true);
-        $this->entityManager->flush();
 
-        // Les autres gestionnaires voient le planning bouger (best-effort, comme la génération).
-        $this->progressPublisher->publishSafely($schedule, []);
+        return $this->entityManager->wrapInTransaction(function () use ($slot, $schedule, $dayOfWeek, $startTime, $venueId, $durationMinutes, $evicted, $response): array {
+            if ($evicted instanceof ScheduleSlotTemplate) {
+                // Capturer l'état d'AVANT suppression : le front s'en sert pour proposer de replacer.
+                $response['evicted'] = $this->describeEvicted($evicted);
+                $this->entityManager->remove($evicted);
+                $this->entityManager->flush();
+            }
+            $slot
+                ->setDayOfWeek($dayOfWeek)
+                ->setStartTime($startTime)
+                ->setVenueId($venueId)
+                // LA RÈGLE : la durée écrite est TOUJOURS celle de l'emplacement de destination, jamais
+                // celle que la source portait — sinon la séance emporterait sa taille d'un gymnase à l'autre.
+                ->setDurationMinutes($durationMinutes);
+            $schedule->setManuallyEditedSinceGeneration(true);
+            $this->entityManager->flush();
 
-        return $response;
+            // Les autres gestionnaires voient le planning bouger (best-effort, comme la génération).
+            $this->progressPublisher->publishSafely($schedule, []);
+
+            return $response;
+        });
     }
 
     /**
@@ -241,6 +270,7 @@ final class MoveSlotService
      *
      * @throws ScheduleGenerationInProgressException une génération tourne pour ce club (→ 409)
      * @throws SlotUnavailableException              aucune fenêtre de gymnase à ce créneau (→ 422)
+     * @throws TeamAlreadyAtCaseException            l'équipe siège déjà à cette case (→ 422)
      * @throws DurationMismatchException             la durée du client contredit la fenêtre (→ 422)
      * @throws EngineTimeoutException                le moteur a été trop lent (→ 504 `engine_timeout`)
      * @throws TransportExceptionInterface           le moteur est injoignable/cassé (→ 502)
@@ -271,6 +301,17 @@ final class MoveSlotService
             // Le client a menti sur la durée de la fenêtre : refus avant le moteur, rien écrit.
             throw new DurationMismatchException;
         }
+
+        // Règle fondateur : la MÊME équipe ne siège jamais deux fois à la même case. Créer une séance
+        // là où l'équipe siège DÉJÀ est un refus sec AVANT le moteur (qui fusionne par case) — rien
+        // n'est créé. Une AUTRE équipe à capacité restante reste permise (le moteur en juge).
+        $this->teamCaseOccupancyGuard->assertTeamNotAlreadyAtCase(
+            $schedule->getId(),
+            $teamId,
+            $venueId,
+            $dayOfWeek,
+            $startTime,
+        );
 
         // Contrat 2.18 : `candidates` est une LISTE (ici à UN élément — une création à la dérive) ;
         // aucune `references` (pas de source d'origine → « avant » = baseline nue).
@@ -342,6 +383,7 @@ final class MoveSlotService
      *
      * @throws ScheduleGenerationInProgressException une génération tourne pour ce club (→ 409)
      * @throws SlotUnavailableException              aucune séance de bloc à la source, ou fenêtre cible absente (→ 422)
+     * @throws TeamAlreadyAtCaseException            un membre déplacé siège déjà à la case cible (→ 422)
      * @throws EngineTimeoutException                le moteur a été trop lent (→ 504)
      * @throws TransportExceptionInterface           le moteur est injoignable/cassé (→ 502)
      *
@@ -379,6 +421,22 @@ final class MoveSlotService
         $durationMinutes = $this->resolveWindowDurationMinutes($payload, $venueId, $dayOfWeek, $startTime);
         if (null === $durationMinutes) {
             throw new SlotUnavailableException;
+        }
+
+        // (3bis) Règle fondateur : aucun membre déplacé ne doit déjà siéger à la case cible par une
+        //        AUTRE séance (ce rail n'a PAS d'éviction — on ne peut pas évincer ici). On exclut les
+        //        sources elles-mêmes (elles SONT ce qui bouge). Un conflit refuse AVANT le moteur,
+        //        NOMMÉ, et aucun des N créneaux ne bouge.
+        foreach ($sources as $source) {
+            $this->teamCaseOccupancyGuard->assertTeamNotAlreadyAtCase(
+                $schedule->getId(),
+                $source->getTeamId(),
+                $venueId,
+                $dayOfWeek,
+                $startTime,
+                $sourceIds,
+                ' — déplacez-la ou retirez-la d\'abord.',
+            );
         }
 
         // (4) UN verdict, N candidats : chaque membre posé à la case cible, chaque référence = sa
