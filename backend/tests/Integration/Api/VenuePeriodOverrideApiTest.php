@@ -465,6 +465,44 @@ final class VenuePeriodOverrideApiTest extends WebTestCase
         self::assertSame(3, $this->countSeasonSlots(), 'et le planning principal reste intact');
     }
 
+    /**
+     * Lot A « l'export ne ment plus » (décision fondateur 2026-10-11), axe planning lifecycle : le
+     * libellé de groupe appartient au planning de SAISON. Reprendre la grille d'un gymnase pour une
+     * période (reset-grid) recopie le modèle de saison SANS son libellé — la période n'en porte
+     * jamais, pendant que la saison garde le sien. Même foyer de copie que la naissance du plan.
+     */
+    public function testResetGridCopiesTheSeasonGridWithoutItsGroupLabel(): void
+    {
+        // Un créneau SAISONNIER mutualisé et NOMMÉ sur venueA (hors API : capacité 2 + libellé).
+        $labelled = $this->seasonSlot($this->venueA, 6, '21:00');
+        $labelled->setCapacity(2)->setGroupLabel('CEC3');
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/venue_period_overrides/reset-grid', [], [], $this->headers(), json_encode([
+            'schedulePlanId' => $this->planId,
+            'venueId' => $this->venueA->getId(),
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+
+        $this->em->clear();
+        $copies = $this->periodSlots($this->venueA);
+        self::assertNotSame([], $copies, 'la reprise a bien recopié la grille du gymnase');
+        foreach ($copies as $copy) {
+            self::assertNull($copy->getGroupLabel(), 'un créneau repris dans la période ne porte jamais le libellé de saison');
+        }
+        // Preuve que l'assertion n'est pas creuse : le créneau à 21:00 (ex-« CEC3 ») est bien repris.
+        $keys = array_map(static fn (VenueTrainingSlot $s): string => $s->getDayOfWeek() . '@' . $s->getStartTime()->format('H:i'), $copies);
+        self::assertContains('6@21:00', $keys, 'le créneau nommé a bien été repris (désormais à NULL)');
+
+        // …et la grille de SAISON garde son libellé : c'est elle qui le possède.
+        $this->em->clear();
+        $seasonal = $this->em->getRepository(VenueTrainingSlot::class)->findBy([
+            'schedulePlanId' => null, 'venueId' => $this->venueA->getId(), 'dayOfWeek' => 6,
+        ]);
+        self::assertCount(1, $seasonal);
+        self::assertSame('CEC3', $seasonal[0]->getGroupLabel(), 'le libellé reste dans la grille de saison');
+    }
+
     public function testResetGridIsIdempotentAndNeverDuplicates(): void
     {
         // Rejouer le geste (double-clic, retry réseau) doit redonner la MÊME grille.

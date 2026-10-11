@@ -105,6 +105,7 @@ class VenueTrainingSlotStateProcessor extends AbstractStateProcessor
 
         $this->validateEndsWithinDay($entity);
         $this->validateCapacityForVenue($entity);
+        $this->validateGroupLabelBelongsToSeason($entity);
         $this->validateGroupLabel($entity);
         $this->validateNoOverlap($entity);
 
@@ -138,6 +139,7 @@ class VenueTrainingSlotStateProcessor extends AbstractStateProcessor
 
         $this->validateEndsWithinDay($entity);
         $this->validateCapacityForVenue($entity);
+        $this->validateGroupLabelBelongsToSeason($entity);
         $this->validateGroupLabel($entity);
         $this->validateNoOverlap($entity);
     }
@@ -189,6 +191,22 @@ class VenueTrainingSlotStateProcessor extends AbstractStateProcessor
 
         if ($venue instanceof Venue && false === $venue->getCanSplit()) {
             $this->refuse('Un créneau ne peut accueillir 2 équipes ou plus que si le gymnase est déclaré divisible : cochez « terrain divisible » dans l\'étape Gymnases, ou laissez la capacité à 1.');
+        }
+    }
+
+    /**
+     * Le libellé de groupe (« CEC3 ») appartient au planning de SAISON : c'est là qu'une
+     * mutualisation se nomme, et la période hérite de son modèle sans libellé propre (la copie
+     * l'émet NULL, SchedulePlanProvisioner::copySeasonalSlotRows). Un créneau rattaché à un
+     * plan (schedulePlanId non null = créneau de période) ne peut donc pas en porter un — ni à la
+     * création ni à l'édition. On refuse plutôt que d'accepter un libellé que l'écran et l'export
+     * montreraient pour une période sans que personne l'ait voulu. Vérifié AVANT la garde de
+     * capacité (validateGroupLabel) pour que le motif renvoyé soit bien celui-ci.
+     */
+    private function validateGroupLabelBelongsToSeason(VenueTrainingSlot $entity): void
+    {
+        if (null !== $entity->getSchedulePlanId() && null !== $entity->getGroupLabel()) {
+            $this->refuse('Le libellé de groupe appartient au planning de saison.');
         }
     }
 

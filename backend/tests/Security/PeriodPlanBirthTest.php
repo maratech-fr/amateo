@@ -740,6 +740,58 @@ final class PeriodPlanBirthTest extends WebTestCase
     }
 
     /**
+     * NR — lot A « l'export ne ment plus » (décision fondateur 2026-10-11), axe planning lifecycle :
+     * LE LIBELLÉ DE CRÉNEAU APPARTIENT AU PLANNING DE SAISON. Une période naît d'une COPIE de la
+     * grille de saison (#8) ; cette copie ne reporte JAMAIS le libellé de groupe — la période naît
+     * sans libellé propre, pendant que la grille de saison garde le sien.
+     *
+     * Falsification : remettre `group_label` (au lieu de NULL) dans le SELECT de
+     * SchedulePlanProvisioner::copySeasonalSlotRows rougit ici — le créneau copié porterait « CEC3 ».
+     */
+    public function testPeriodBornFromASeasonCarriesNoGroupLabelOnItsCopiedSlots(): void
+    {
+        [$user, $club, $season] = $this->createClubWithSeason();
+
+        $this->scopeGucToClub($club->getId());
+        $venue = new Venue;
+        $venue->setClubId($club->getId());
+        $venue->setSeasonId($season->getId());
+        $venue->setName('Gymnase du libellé');
+        $venue->setSource('manual');
+        $this->em->persist($venue);
+
+        // Un créneau SAISONNIER mutualisé et NOMMÉ (capacité 2, libellé « CEC3 »).
+        $seasonal = new VenueTrainingSlot;
+        $seasonal->setClubId($club->getId());
+        $seasonal->setSeasonId($season->getId());
+        $seasonal->setVenueId($venue->getId());
+        $seasonal->setDayOfWeek(2);
+        $seasonal->setStartTime(new DateTimeImmutable('18:00'));
+        $seasonal->setDurationMinutes(90);
+        $seasonal->setCapacity(2);
+        $seasonal->setGroupLabel('CEC3');
+        $seasonal->setSchedulePlanId(null);
+        $this->em->persist($seasonal);
+        $this->em->flush();
+
+        $entryId = $this->postPeriod($user, 'holiday', 'Vacances');
+        $planId = $this->adaptPeriod($user, $entryId);
+
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        $copies = $this->em->getRepository(VenueTrainingSlot::class)->findBy(['schedulePlanId' => $planId]);
+        self::assertNotSame([], $copies, 'la naissance du plan copie bien la grille de saison (sinon l’assertion serait creuse)');
+        foreach ($copies as $copy) {
+            self::assertNull($copy->getGroupLabel(), 'un créneau copié dans un plan de période ne porte jamais le libellé de saison');
+        }
+
+        // …et la grille de SAISON garde le sien : c'est elle qui possède le libellé.
+        $seasonalReread = $this->em->getRepository(VenueTrainingSlot::class)->findBy(['schedulePlanId' => null, 'venueId' => $venue->getId()]);
+        self::assertCount(1, $seasonalReread);
+        self::assertSame('CEC3', $seasonalReread[0]->getGroupLabel(), 'le libellé reste dans la grille de saison');
+    }
+
+    /**
      * NR lot C3 — les contraintes DATÉES, elles, NE bougent PAS : elles restent sur la
      * CalendarEntry, et le RADAR doit pouvoir les lire AVANT tout plan.
      *

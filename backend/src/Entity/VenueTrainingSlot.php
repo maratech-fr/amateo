@@ -54,6 +54,11 @@ class VenueTrainingSlot implements TenantOwnedInterface
      * le NOMME. Esthétique pur : le solveur ne le consomme pas, il n'apparaît qu'à l'écran et
      * dans les exports. Posé ⟺ fusion (pas de booléen séparé) ; n'a de sens qu'avec capacity ≥ 2
      * (garde côté processeur). null = créneau ordinaire sans libellé.
+     *
+     * SAISON SEULEMENT (décision fondateur 2026-10-11) : le libellé appartient au planning de
+     * saison. Un créneau rattaché à un plan (schedulePlanId non null = créneau de période) ne le
+     * porte jamais — la copie prise à la naissance du plan l'émet NULL, et le processeur refuse
+     * de l'y poser. null constant sur toute la grille de période.
      */
     #[ORM\Column(type: 'string', length: 40, nullable: true)]
     private ?string $groupLabel = null;

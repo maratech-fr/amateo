@@ -46,6 +46,43 @@ final class PeriodSlotCopyKeepsEveryColumnTest extends KernelTestCase
         'schedule_plan_id' => 'c\'est le sens même de la copie : la ligne rejoint le plan de période',
     ];
 
+    /**
+     * Colonnes présentes dans l'INSERT mais dont le SELECT émet NULL plutôt que la valeur du
+     * modèle — la copie en est AMPUTÉE à dessein. Différent de NOT_COPIED : la colonne EST écrite,
+     * mais toujours à NULL. Lire le source garde l'intention honnête : rétablir la copie verbatim
+     * (remplacer NULL par le nom de colonne dans le SELECT) rougit {@see testColumnsCopiedAsNullAreEmittedAsNull}.
+     *
+     * @var array<string, string>
+     */
+    private const array NULLED_COPY = [
+        'group_label' => 'le libellé de groupe appartient au planning de saison (décision fondateur 2026-10-11) — une période naît sans libellé, jamais la copie du modèle',
+    ];
+
+    /**
+     * Les colonnes déclarées NULLED_COPY sont bien émises NULL par le SELECT, à leur place — pas
+     * recopiées depuis le modèle. C'est la garde de l'intention « copiée à NULL, voulue » : elle
+     * tombe si quelqu'un rétablit la copie verbatim du libellé dans le SELECT.
+     */
+    public function testColumnsCopiedAsNullAreEmittedAsNull(): void
+    {
+        $exprByColumn = $this->selectExpressionByColumn();
+
+        foreach (self::NULLED_COPY as $column => $reason) {
+            self::assertArrayHasKey($column, $exprByColumn, \sprintf(
+                'La colonne « %s » est déclarée NULLED_COPY mais n\'est plus dans l\'INSERT de copie (%s).',
+                $column,
+                $reason,
+            ));
+            self::assertSame('NULL', strtoupper($exprByColumn[$column]), \sprintf(
+                "Le SELECT de copie émet « %s » pour « %s », alors qu'elle doit valoir NULL : %s.\n"
+                . 'Si le libellé doit de nouveau être copié, retirer la colonne de NULLED_COPY.',
+                $exprByColumn[$column],
+                $column,
+                $reason,
+            ));
+        }
+    }
+
     public function testEveryColumnOfTheEntityIsCarriedOverOrExcludedOnPurpose(): void
     {
         $inserted = $this->insertedColumns();
@@ -100,6 +137,39 @@ final class PeriodSlotCopyKeepsEveryColumnTest extends KernelTestCase
         self::assertNotEmpty($columns, 'L\'INSERT de copie ne cite plus aucune colonne.');
 
         return $columns;
+    }
+
+    /**
+     * L'INSERT et le SELECT de la copie, appariés colonne → expression dans l'ORDRE du SQL (pas
+     * trié : l'appariement positionnel EST le sens). Lu dans le source, jamais recopié ici.
+     *
+     * @return array<string, string>
+     */
+    private function selectExpressionByColumn(): array
+    {
+        $source = file_get_contents(self::PROVISIONER_SOURCE);
+        self::assertIsString($source, 'SchedulePlanProvisioner est illisible.');
+
+        // Un seul motif, ancré sur l'INSERT INTO venue_training_slot, pour apparier la liste de
+        // colonnes et les expressions du SELECT de CE bloc — le provisioner contient d'autres
+        // SELECT (sur schedule_plan, calendar_entry) qu'il ne faut pas confondre avec celui-ci.
+        $found = preg_match(
+            '/INSERT INTO venue_training_slot \(([^)]+)\)\s*\'\s*\.\s*\'SELECT (.+?)\s*\'\s*\.\s*\'FROM venue_training_slot/s',
+            $source,
+            $match,
+        );
+        self::assertSame(1, $found, 'L\'INSERT … SELECT de copie a disparu ou changé de forme — ce test doit suivre, pas se taire.');
+
+        $columns = array_map(trim(...), explode(',', $match[1]));
+        $expressions = array_map(trim(...), explode(',', trim($match[2])));
+
+        self::assertCount(
+            \count($columns),
+            $expressions,
+            \sprintf('INSERT (%d colonnes) et SELECT (%d expressions) ne s\'apparient plus un pour un.', \count($columns), \count($expressions)),
+        );
+
+        return array_combine($columns, $expressions);
     }
 
     /** @return list<string> */
