@@ -198,12 +198,27 @@ final class SocleReferencePayloadParityTest extends KernelTestCase
         self::assertIsArray($payload);
         self::assertArrayHasKey('socleReferenceAssignments', $payload, 'une équipe « garder ses créneaux » doit émettre la référence keep');
 
-        // teamIds[0] référencée AVEC gymnase + keep (dédup (équipe,jour,heure) : une seule entrée),
-        // teamIds[1] (sans SEASON_SLOTS) JAMAIS référencée.
+        // teamIds[0] référencée AVEC gymnase + keep ; teamIds[1] (sans SEASON_SLOTS) JAMAIS référencée.
+        // Le socle porte CE créneau (lundi 18:00) sur DEUX gymnases (A ET B) : un même
+        // (équipe,jour,heure) ne se déduplique qu'entre gymnases DISTINCTS (l'index UNIQUE de case
+        // interdit le doublon exact), et LEQUEL des deux survit à la dédup dépend de l'ordre des
+        // lignes (`socleReferenceSlots` trie par `id`, un UUID ALÉATOIRE). On n'épingle donc PAS un
+        // gymnase précis — l'y figer était un flake ~50 % : on exige un gymnase RÉEL du créneau de
+        // socle (A ou B), puis on compare le RESTE de l'entrée à l'exact. Falsifiable à l'identique :
+        // retirer la greffe keep ⇒ clé absente (assertArrayHasKey plus haut) ; émettre pour teamIds[1]
+        // ⇒ assertCount(1) rouge + teamId faux ; omettre le gymnase ⇒ assertArrayHasKey('venueId') rouge.
+        $keepReferences = $payload['socleReferenceAssignments'];
+        self::assertIsArray($keepReferences);
+        self::assertCount(1, $keepReferences, 'dédup (équipe,jour,heure) + seule l\'équipe « garder » : exactement une entrée');
+        $keepEntry = $keepReferences[0];
+        self::assertIsArray($keepEntry);
+        self::assertArrayHasKey('venueId', $keepEntry, 'le keep porte un gymnase (régime keep ≠ comblement, où le gymnase est libre)');
+        self::assertContains($keepEntry['venueId'], [$venueA, $venueB], 'le gymnase keep est l\'un des gymnases de socle de ce créneau (dédup A/B non déterministe)');
+        unset($keepEntry['venueId']);
         self::assertEqualsCanonicalizing(
-            [['teamId' => $teamIds[0], 'dayOfWeek' => 1, 'startTime' => '18:00:00', 'venueId' => $venueA, 'keep' => true]],
-            $payload['socleReferenceAssignments'],
-            'keep = placements de socle de l\'équipe « garder », avec gymnase, pour elle seule',
+            ['teamId' => $teamIds[0], 'dayOfWeek' => 1, 'startTime' => '18:00:00', 'keep' => true],
+            $keepEntry,
+            'keep = placements de socle de l\'équipe « garder » (gymnase mis à part), pour elle seule',
         );
 
         // Hors snapshot (préférence de convergence), comme le comblement.
