@@ -43,10 +43,14 @@ final readonly class PreSolvePreventionWarnings
 
     /**
      * @param array<string, mixed> $payload
+     * @param array<string, bool>  $constraintOrigins constraintId => héritée du planning de saison
+     *                                                (calendarEntryId NULL) ; `false` = posée pour
+     *                                                la période. Vide ⇒ aucune origine composée
+     *                                                (la SERVABILITÉ reste calculée du payload seul).
      *
      * @return list<string>
      */
-    public function detect(array $payload): array
+    public function detect(array $payload, array $constraintOrigins = []): array
     {
         $venues = $this->listOf($payload, 'venues');
         $teams = $this->listOf($payload, 'teams');
@@ -60,6 +64,7 @@ final readonly class PreSolvePreventionWarnings
             ...$this->mergedForcedDayRules($teams, $constraints),
             ...$this->forcedDayEmptiedByClosingRules($teams, $venues, $constraints),
             ...$this->adjointOnlyUnavailabilityIsIndicative($payload, $constraints),
+            ...$this->sharedBlockWithoutCommonServableCase($payload, $venues, $teams, $constraints, $constraintOrigins),
         ];
     }
 
@@ -560,6 +565,298 @@ final readonly class PreSolvePreventionWarnings
         }
 
         return array_diff_key($linked, $main);
+    }
+
+    /**
+     * Lot 3B PR B' — MIROIR DÉCLARÉ de la règle moteur « un coach suffit » (Q4B) appliquée aux
+     * SÉANCES DE BLOC ({@see app/solver/constraints/structural/closures.py}
+     * `_close_coachless_block_cases` via le helper UNIQUE `app/solver/constraints/availability.py`,
+     * et son diagnostic jumeau `result_builder/diagnostics/shared_blocks.py`). Une séance de bloc est
+     * servable sur une case dès qu'UN coach de l'UNION des coachs PRINCIPAUX de ses membres y est
+     * disponible ; un bloc dont les cases servables sont STRICTEMENT moins nombreuses que ses séances
+     * communes est INFEASIBLE côté moteur. On le PRÉVIENT au récap, AVANT de générer.
+     *
+     * ⚠ C'est une copie de l'algèbre du moteur : {@see SharedBlockPreSolveMirrorParityTest} épingle
+     * la parité (warning ⇒ INFEASIBLE, pas de warning ⇒ COMPLETED) contre le VRAI moteur, exactement
+     * comme {@see CapacityMirrorParityTest} pour l'algèbre de capacité. La SERVABILITÉ se calcule du
+     * PAYLOAD seul (grille + indispos + sharedBlocks), comme toute prévention (P4-57) ; l'ORIGINE
+     * des contraintes citées (héritée de la saison / posée pour la période) est le SEUL apport
+     * externe, car le payload ne la porte pas — carte vide ⇒ on nomme la contrainte sans son origine.
+     *
+     * @param array<string, mixed>       $payload
+     * @param list<array<string, mixed>> $venues
+     * @param list<array<string, mixed>> $teams
+     * @param list<array<string, mixed>> $constraints
+     * @param array<string, bool>        $constraintOrigins
+     *
+     * @return list<string>
+     */
+    private function sharedBlockWithoutCommonServableCase(array $payload, array $venues, array $teams, array $constraints, array $constraintOrigins): array
+    {
+        $blocks = $this->listOf($payload, 'sharedBlocks');
+        if ([] === $blocks) {
+            return [];
+        }
+
+        // Cases candidates DISTINCTES (gymnase, jour, début) — une séance de bloc occupe UNE case ;
+        // le relais de coach est indifférent au gymnase, mais chaque (gymnase, jour, début) est une
+        // place à part (même grain que `Σb == commonSessions` côté moteur). Aucune case ⇒ pénurie
+        // de place, déjà dite par le récap.
+        $cases = [];
+        foreach ($venues as $venue) {
+            $venueId = $this->stringOf($venue, 'id');
+            foreach ($this->listOf($venue, 'trainingSlots') as $slot) {
+                $day = (int) ($slot['dayOfWeek'] ?? 0);
+                $start = $this->minutesOf($this->stringOf($slot, 'startTime'));
+                $cases[$venueId . '|' . $day . '|' . $start] = [$day, $start];
+            }
+        }
+        if ([] === $cases) {
+            return [];
+        }
+        $caseList = array_values($cases);
+
+        $teamNames = [];
+        foreach ($teams as $team) {
+            $teamNames[$this->stringOf($team, 'id')] = $this->nameOf($team);
+        }
+        $mainCoaches = $this->teamMainCoaches($constraints);
+
+        $messages = [];
+        foreach ($blocks as $block) {
+            $memberIds = array_values(array_filter(array_map(
+                static fn (mixed $id): string => \is_string($id) ? $id : (string) $id,
+                \is_array($block['teamIds'] ?? null) ? $block['teamIds'] : [],
+            )));
+            if (\count($memberIds) < 2) {
+                continue;
+            }
+            $commonSessions = (int) ($block['commonSessions'] ?? 0);
+            if ($commonSessions <= 0) {
+                continue;
+            }
+
+            $union = [];
+            foreach ($memberIds as $memberId) {
+                foreach ($mainCoaches[$memberId] ?? [] as $coachId) {
+                    $union[$coachId] = true;
+                }
+            }
+            if ([] === $union) {
+                continue; // Aucun coach requis sur le bloc : ce n'est pas un problème de coach.
+            }
+            $unionIds = array_keys($union);
+
+            $servable = 0;
+            foreach ($caseList as [$day, $start]) {
+                foreach ($unionIds as $coachId) {
+                    if (!$this->coachBlockedAt($coachId, $day, $start, $constraints)) {
+                        ++$servable;
+                        break;
+                    }
+                }
+            }
+            if ($servable >= $commonSessions) {
+                continue; // Assez de cases à coach de l'union : le bloc est servable, rien à dire.
+            }
+
+            $names = implode(', ', array_map(static fn (string $id): string => $teamNames[$id] ?? $id, $memberIds));
+            $cited = $this->citedCoachConstraints($unionIds, $caseList, $constraints, $constraintOrigins);
+            $head = 0 === $servable
+                ? \sprintf('Groupe %s : aucun créneau où au moins un coach du groupe n\'est disponible pour une séance commune — la génération échouera.', $names)
+                : \sprintf('Groupe %s : seulement %d créneau(x) où un coach du groupe est disponible, pour %d séance(s) commune(s) — la génération échouera.', $names, $servable, $commonSessions);
+            $messages[] = '' !== $cited ? $head . ' ' . $cited : $head;
+        }
+
+        sort($messages);
+
+        return $messages;
+    }
+
+    /**
+     * Les contraintes d'indisponibilité des coachs de l'union qui ferment AU MOINS une case
+     * candidate, nommées avec leur ORIGINE (si connue). Dédup par libellé, ordre déterministe.
+     *
+     * @param list<string>                $unionIds
+     * @param list<array{0: int, 1: int}> $cases
+     * @param list<array<string, mixed>>  $constraints
+     * @param array<string, bool>         $constraintOrigins
+     */
+    private function citedCoachConstraints(array $unionIds, array $cases, array $constraints, array $constraintOrigins): string
+    {
+        $union = array_flip($unionIds);
+        $sentences = [];
+        $seen = [];
+        foreach ($constraints as $constraint) {
+            if (false === ($constraint['isActive'] ?? true)
+                || ConstraintScope::COACH->value !== ($constraint['scope'] ?? null)
+                || ConstraintFamily::COACH_AVAILABILITY->value !== ($constraint['family'] ?? null)
+                || !isset($union[$this->stringOf($constraint, 'scopeTargetId')])
+            ) {
+                continue;
+            }
+            $label = trim($this->stringOf($constraint, 'name'));
+            if ('' === $label || isset($seen[$label])) {
+                continue;
+            }
+            // Ne citer qu'une contrainte qui ferme RÉELLEMENT une case candidate du bloc.
+            $closesACase = false;
+            foreach ($cases as [$day, $start]) {
+                if ($this->oneConstraintBlocksAt($constraint, $day, $start)) {
+                    $closesACase = true;
+                    break;
+                }
+            }
+            if (!$closesACase) {
+                continue;
+            }
+            $seen[$label] = true;
+            $origin = $this->constraintOrigin($this->stringOf($constraint, 'id'), $constraintOrigins);
+            $sentences[] = null !== $origin
+                ? \sprintf('Contrainte en cause : « %s » (%s).', $label, $origin)
+                : \sprintf('Contrainte en cause : « %s ».', $label);
+        }
+
+        return implode(' ', $sentences);
+    }
+
+    /**
+     * L'origine d'une contrainte citée, ou `null` si non résolue. Id normalisé au premier `:` (une
+     * CLUB suffixée `<uuid>:<teamId>` revient à son UUID) — miroir de
+     * {@see ScheduleDiagnosticsRecorder::normalizeCauses}.
+     *
+     * @param array<string, bool> $constraintOrigins
+     */
+    private function constraintOrigin(string $constraintId, array $constraintOrigins): ?string
+    {
+        $colon = strpos($constraintId, ':');
+        $id = false === $colon ? $constraintId : substr($constraintId, 0, $colon);
+        if (!\array_key_exists($id, $constraintOrigins)) {
+            return null;
+        }
+
+        return $constraintOrigins[$id]
+            ? 'héritée du planning de saison — désactivable pour cette période'
+            : 'posée pour cette période';
+    }
+
+    /**
+     * Carte équipe → coachs PRINCIPAUX (MAIN) requis, depuis les liens v1 TEAM_COACH du payload. Un
+     * ADJOINT (role ASSISTANT) ne compte pas (le moteur ne le rend pas requis — {@see parsing.py}).
+     * Role absent ⇒ MAIN (legacy-safe, comme le moteur).
+     *
+     * @param list<array<string, mixed>> $constraints
+     *
+     * @return array<string, list<string>>
+     */
+    private function teamMainCoaches(array $constraints): array
+    {
+        $map = [];
+        foreach ($constraints as $constraint) {
+            if ('TEAM_COACH' !== ($constraint['type'] ?? null)) {
+                continue;
+            }
+            $metadata = \is_array($constraint['metadata'] ?? null) ? $constraint['metadata'] : [];
+            $role = strtoupper((string) ($metadata['role'] ?? 'MAIN'));
+            if ('ASSISTANT' === $role) {
+                continue;
+            }
+            $teamId = $this->stringOf($constraint, 'teamId');
+            $coachId = $this->stringOf($metadata, 'coachId');
+            if ('' === $teamId || '' === $coachId) {
+                continue;
+            }
+            if (!\in_array($coachId, $map[$teamId] ?? [], true)) {
+                $map[$teamId][] = $coachId;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Un coach est-il BLOQUÉ à `(jour, minute de début)` par l'une de ses COACH_AVAILABILITY ?
+     * Miroir de {@see parsing.py} `parse_v2_constraints` (algèbre De Morgan : unavailableDays +
+     * complément d'availableDays, borné par la fenêtre fromTime/untilTime). Aucune règle ⇒ libre.
+     *
+     * @param list<array<string, mixed>> $constraints
+     */
+    private function coachBlockedAt(string $coachId, int $day, int $start, array $constraints): bool
+    {
+        foreach ($constraints as $constraint) {
+            if (false === ($constraint['isActive'] ?? true)
+                || ConstraintScope::COACH->value !== ($constraint['scope'] ?? null)
+                || ConstraintFamily::COACH_AVAILABILITY->value !== ($constraint['family'] ?? null)
+                || $this->stringOf($constraint, 'scopeTargetId') !== $coachId
+            ) {
+                continue;
+            }
+            if ($this->oneConstraintBlocksAt($constraint, $day, $start)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Une SEULE contrainte COACH_AVAILABILITY bloque-t-elle `(jour, début)` ? (Même algèbre que
+     * {@see parsing.py} : fenêtre fromTime/untilTime [repli jour entier si absente/inversée],
+     * unavailableDays dans la fenêtre, et complément d'une whitelist availableDays.).
+     *
+     * @param array<string, mixed> $constraint
+     */
+    private function oneConstraintBlocksAt(array $constraint, int $day, int $start): bool
+    {
+        $config = \is_array($constraint['config'] ?? null) ? $constraint['config'] : [];
+        [$from, $to] = $this->coachWindowMinutes($config);
+
+        $unavailable = $this->dayInts($config['unavailableDays'] ?? null);
+        if (\in_array($day, $unavailable, true) && $start >= $from && $start < $to) {
+            return true;
+        }
+
+        $available = $this->dayInts($config['availableDays'] ?? null);
+        if ([] !== $available) {
+            if (!\in_array($day, $available, true)) {
+                return true; // jour hors liste blanche : bloqué toute la journée.
+            }
+            if ($start < $from || $start >= $to) {
+                return true; // jour autorisé mais hors de la fenêtre horaire.
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Bornes (minutes) de la fenêtre d'une COACH_AVAILABILITY, miroir de {@see parsing.py}
+     * `_coach_window_minutes` : absente → jour entier (0, 1440) ; malformée ou inversée
+     * (from >= to) → jour entier (honore l'indisponibilité prudemment).
+     *
+     * @param array<string, mixed> $config
+     *
+     * @return array{0: int, 1: int}
+     */
+    private function coachWindowMinutes(array $config): array
+    {
+        $from = $this->boundMinutes($config['fromTime'] ?? null, 0);
+        $to = $this->boundMinutes($config['untilTime'] ?? null, 1440);
+        if (null === $from || null === $to || $from >= $to) {
+            return [0, 1440];
+        }
+
+        return [$from, $to];
+    }
+
+    /** Minutes d'une borne "HH:MM", le défaut si absente/vide, `null` si malformée (→ jour entier). */
+    private function boundMinutes(mixed $raw, int $default): ?int
+    {
+        if (null === $raw || '' === $raw) {
+            return $default;
+        }
+
+        return 1 === preg_match('/^(\d{1,2}):(\d{2})$/', (string) $raw, $m) ? ((int) $m[1]) * 60 + (int) $m[2] : null;
     }
 
     /**

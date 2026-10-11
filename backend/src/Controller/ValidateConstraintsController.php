@@ -165,7 +165,7 @@ final class ValidateConstraintsController extends AbstractController
                     // solveur va réellement recevoir : gymnase sans créneau, équipe qu'aucun
                     // créneau ne peut accueillir, coach surchargé, contrainte visant une équipe
                     // absente. Chacune ne se voyait qu'APRÈS génération, en diagnostic.
-                    ...$this->preventionWarnings->detect($capacityPayload),
+                    ...$this->preventionWarnings->detect($capacityPayload, $this->constraintOrigins($constraints)),
                 ];
             }
         } catch (Throwable $exception) {
@@ -479,6 +479,25 @@ final class ValidateConstraintsController extends AbstractController
      * (`PeriodConstraintSelector`), la même que `buildForPeriodPlan`. Ce qui reste ici est
      * l'habillage : transformer les drops en messages pour le gestionnaire.
      *
+     * L'ORIGINE de chaque contrainte en vigueur : `true` = héritée du planning de saison
+     * (`calendarEntryId` NULL), `false` = posée pour une période. Nourrit les préventions pré-solve
+     * qui citent une contrainte (le payload, lui, ne porte pas l'origine).
+     *
+     * @param list<Constraint> $constraints
+     *
+     * @return array<string, bool>
+     */
+    private function constraintOrigins(array $constraints): array
+    {
+        $origins = [];
+        foreach ($constraints as $constraint) {
+            $origins[$constraint->getId()] = null === $constraint->getCalendarEntryId();
+        }
+
+        return $origins;
+    }
+
+    /**
      * @return array{constraints: list<Constraint>, warnings: list<string>, selection: PeriodConstraintSelection|null}
      */
     private function constraintsForPeriod(string $clubId, string $seasonId, CalendarEntry $calendarEntry): array

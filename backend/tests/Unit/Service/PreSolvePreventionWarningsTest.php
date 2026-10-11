@@ -461,9 +461,136 @@ final class PreSolvePreventionWarningsTest extends TestCase
         self::assertSame([], $this->warnings->detectBlockers([]));
     }
 
+    // ── Lot 3B PR B' — « groupe sans case commune servable » (miroir « un coach suffit ») ───────
+
+    public function testSharedBlockWithoutCommonServableCaseIsWarnedAndNamesTeams(): void
+    {
+        // Gymnase ouvert mardi (2) seul ; les deux coachs requis du bloc sont indisponibles mardi →
+        // aucune case n'a de coach de l'union → le bloc est inservable, on AVERTIT en nommant le groupe.
+        $found = $this->warnings->detect($this->blockPayload(
+            venueDays: [2],
+            coachA: $this->coachAvailabilityRule('avA', 'cA', unavailableDays: [2], name: 'Coach A · indispo mardi'),
+            coachB: $this->coachAvailabilityRule('avB', 'cB', unavailableDays: [2], name: 'Coach B · indispo mardi'),
+        ));
+
+        $blockWarnings = array_values(array_filter($found, static fn (string $w): bool => str_contains($w, 'coach du groupe')));
+        self::assertCount(1, $blockWarnings, 'un bloc inservable doit produire exactement un avertissement');
+        self::assertStringContainsString('Groupe U9F1, U9F2', $blockWarnings[0]);
+        self::assertStringContainsString('Coach A · indispo mardi', $blockWarnings[0]);
+    }
+
+    public function testServableSharedBlockIsSilent(): void
+    {
+        // Mêmes équipes et gymnase, mais les coachs sont disponibles le mardi (aucune indispo) → le
+        // bloc est servable → aucun avertissement de bloc (le miroir sait se taire).
+        $found = $this->warnings->detect($this->blockPayload(
+            venueDays: [2],
+            coachA: $this->coachAvailabilityRule('avA', 'cA', unavailableDays: []),
+            coachB: $this->coachAvailabilityRule('avB', 'cB', unavailableDays: []),
+        ));
+
+        self::assertSame([], array_values(array_filter($found, static fn (string $w): bool => str_contains($w, 'coach du groupe'))));
+    }
+
+    public function testBlockWarningComposesSeasonInheritedOriginWhenKnown(): void
+    {
+        // La contrainte citée est HÉRITÉE de la saison (origins[id] = true) → le texte le dit et
+        // propose de la désactiver pour la période.
+        $found = $this->warnings->detect(
+            $this->blockPayload(
+                venueDays: [2],
+                coachA: $this->coachAvailabilityRule('avA', 'cA', unavailableDays: [2], name: 'Coach A · indispo mardi'),
+                coachB: $this->coachAvailabilityRule('avB', 'cB', unavailableDays: [2], name: 'Coach B · indispo mardi'),
+            ),
+            ['avA' => true, 'avB' => true],
+        );
+
+        $blockWarnings = array_values(array_filter($found, static fn (string $w): bool => str_contains($w, 'coach du groupe')));
+        self::assertNotEmpty($blockWarnings);
+        self::assertStringContainsString('héritée du planning de saison — désactivable pour cette période', $blockWarnings[0]);
+    }
+
+    public function testBlockWarningComposesPeriodPostedOriginWhenDated(): void
+    {
+        // La contrainte citée est POSÉE pour la période (origins[id] = false) → « posée pour cette période ».
+        $found = $this->warnings->detect(
+            $this->blockPayload(
+                venueDays: [2],
+                coachA: $this->coachAvailabilityRule('avA', 'cA', unavailableDays: [2], name: 'Coach A · indispo vacances'),
+                coachB: $this->coachAvailabilityRule('avB', 'cB', unavailableDays: [2], name: 'Coach B · indispo vacances'),
+            ),
+            ['avA' => false, 'avB' => false],
+        );
+
+        $blockWarnings = array_values(array_filter($found, static fn (string $w): bool => str_contains($w, 'coach du groupe')));
+        self::assertNotEmpty($blockWarnings);
+        self::assertStringContainsString('posée pour cette période', $blockWarnings[0]);
+        self::assertStringNotContainsString('héritée du planning de saison', $blockWarnings[0]);
+    }
+
+    public function testASingleTeamMultiCoachIsNeverAccusedAsABlock(): void
+    {
+        // Pas de sharedBlocks du tout → aucun avertissement de bloc, quoi qu'il arrive aux coachs.
+        $payload = $this->blockPayload(
+            venueDays: [2],
+            coachA: $this->coachAvailabilityRule('avA', 'cA', unavailableDays: [2]),
+            coachB: $this->coachAvailabilityRule('avB', 'cB', unavailableDays: [2]),
+        );
+        unset($payload['sharedBlocks']);
+
+        $found = $this->warnings->detect($payload);
+
+        self::assertSame([], array_values(array_filter($found, static fn (string $w): bool => str_contains($w, 'coach du groupe'))));
+    }
+
     protected function setUp(): void
     {
         $this->warnings = new PreSolvePreventionWarnings;
+    }
+
+    /**
+     * Payload avec un bloc {t1,t2} (1 séance commune), un gymnase ouvert les ``venueDays``, et les
+     * liens coach cA (t1) / cB (t2) + leurs règles de disponibilité.
+     *
+     * @param list<int>            $venueDays
+     * @param array<string, mixed> $coachA
+     * @param array<string, mixed> $coachB
+     *
+     * @return array<string, mixed>
+     */
+    private function blockPayload(array $venueDays, array $coachA, array $coachB): array
+    {
+        return [
+            'venues' => [$this->venue('v1', 'V1', $venueDays)],
+            'teams' => [$this->team('t1', 'U9F1'), $this->team('t2', 'U9F2')],
+            'coaches' => [],
+            'constraints' => [
+                $this->teamCoach('t1', 'cA'),
+                $this->teamCoach('t2', 'cB'),
+                $coachA,
+                $coachB,
+            ],
+            'sharedBlocks' => [['id' => 'b', 'teamIds' => ['t1', 't2'], 'commonSessions' => 1]],
+        ];
+    }
+
+    /**
+     * Une règle COACH_AVAILABILITY v2 nommée, avec id (pour l'origine). @return array<string, mixed>.
+     *
+     * @param list<int> $unavailableDays
+     */
+    private function coachAvailabilityRule(string $id, string $coachId, array $unavailableDays, string $name = 'dispo'): array
+    {
+        return [
+            'id' => $id,
+            'scope' => 'COACH',
+            'scopeTargetId' => $coachId,
+            'family' => 'COACH_AVAILABILITY',
+            'ruleType' => 'HARD',
+            'name' => $name,
+            'config' => ['unavailableDays' => $unavailableDays],
+            'isActive' => true,
+        ];
     }
 
     /**

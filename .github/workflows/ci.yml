@@ -964,6 +964,16 @@ jobs:
       - name: SharedBlockCoachRelayGateTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/SharedBlockCoachRelayGateTest.php --group phase1'
 
+      # Lot 3B PR B' (axes constraint semantics + backend↔engine contract) — MIROIR pré-solve de
+      # « un coach suffit » pour les blocs : le récap PRÉVIENT, avant génération, qu'un groupe sans
+      # case où un coach de l'union soit disponible est infaisable. Gate de parité contre le VRAI
+      # moteur (patron CapacityMirrorParityTest) : le miroir AVERTIT ⇒ le moteur sort failed ;
+      # le miroir se tait ⇒ completed, bascule coordonnée sur le même scénario. Skip propre si
+      # l'engine est absent. Sans ce gate, les deux copies de la règle dériveraient et le récap
+      # mentirait (crie à tort, ou se tait à tort).
+      - name: SharedBlockPreSolveMirrorParityTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/CrossStack/SharedBlockPreSolveMirrorParityTest.php --group phase1'
+
       # Axe auth & memberships — le code FFBB est l'IDENTITÉ fédérale du club : un PUT
       # qui le CHANGE est refusé 422 (le même code reste idempotent). Falsifié : garde
       # désactivée → le PUT réécrit le code (200). Sans ce gate, un club pourrait migrer
