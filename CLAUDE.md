@@ -137,9 +137,11 @@ branche puis PR ; **JAMAIS de merge sans le GO explicite du user** ; push libre,
 4. **NR obligatoire si axe §7.1 touché — même PR.** ⚠ `phase1` ne gate pas (§4) : un NR qui doit
    gater = step `ci.yml` **ET** ligne `docs/testing/blocking-tests.md`, même PR — sinon le dire.
 5. **Tests verts en local avant de proposer le merge** : `/validation-runner` (suite ciblée +
-   contrats cross-zone + **`make -C backend behat` obligatoire si engine/backend touché** — la
-   feature pertinente dépend de la zone touchée, table `.claude/skills/validation-runner/SKILL.md`,
-   `COMPLETED` attendu).
+   contrats cross-zone). **Behat** : le gate est le job CI `functional-tests` (required check,
+   §4) — plus de run local systématique avant chaque PR/merge (décision fondateur 2026-10-11) ;
+   en local (toujours sous `with-sandbox.sh`) seulement si la CI est bloquée ou pour diagnostiquer
+   un Behat rouge en CI — table feature↔zone pour ce diagnostic :
+   `.claude/skills/validation-runner/SKILL.md`.
 6. Résumé + **`documentation-update` (avant CHAQUE PR, les deux lanes)** — « rien d'impacté » se
    conclut en regardant, jamais en supposant.
 7. **`/code-review` : le fondateur seul le déclenche.** **`/security-review` RESTE systématique**
@@ -178,9 +180,9 @@ l'état des lieux.
 ## 9. Scope checklist
 
 La checklist de cadrage (zone, dossiers autorisés/interdits, fichiers probables, doc à mettre à
-jour, axes §7.1 → NR, feature Behat `make -C backend behat` si engine/backend) **vit dans
-`.claude/agents/planner.md`** — maison unique, c'est l'agent qui l'exécute. Tout plan produit doit
-la remplir littéralement.
+jour, axes §7.1 → NR, feature Behat qui prouve la zone si backend/engine touché — info de
+couverture, pas un run local obligatoire, §7 étape 5) **vit dans `.claude/agents/planner.md`** —
+maison unique, c'est l'agent qui l'exécute. Tout plan produit doit la remplir littéralement.
 
 ## 10. Gotchas (top)
 
