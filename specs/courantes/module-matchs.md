@@ -1,6 +1,11 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-10-09 (P4-295 C3) : `CONTRACT_VERSION` 1.4 inchangé — le solveur de placement est devenu le paquet `app/solver/match_placement/` (découpe pure verbatim : façade `__init__` portant `solve_match_placement`/`_solve_one_week`/`_place_matches`, sous-modules `geometry`/`weights`/`reasons`/`budget`/`candidates`/`weeks`) ; les citations §3 (poids SOFT `W_COACH_UNAVAILABLE`/`W_CLUB_RULE`/`W_PROTECT_HABIT` → `weights.py`, raisons `_candidate_kickoffs` → `candidates.py`) ré-ancrées sur les sous-modules, plus de numéros de ligne. Reste du module (P4-96/P4-300/BCK-19 et antérieur) non réaudité cette passe — un stamp REMPLACE, il ne s'empile pas. Historique : `git log -p --follow specs/courantes/module-matchs.md`. Également (P4-295 C4) : citation `objective/terms.py` recalée — la logique de repos après match (`rest_day = match_day % 7 + 1`, `add_match_day_rest_bonus`) vit depuis P4-295 C4 dans le sous-module `engine/app/solver/objective/terms/rhythm.py` (l'ancien `objective/terms.py` est devenu un paquet, découpe pure verbatim, surface d'import byte-identique, `objective/__init__` inchangé). `engine/CONTRACT_VERSION` = `1.4`, inchangé (refactor pur, zéro effet gestionnaire). Reste du contenu (vocabulaire `/place-matches`, P4-96/P4-300/BCK-19, P4-271/P4-272 et §7 « Engagements FFBB ») non réaudité cette passe. Historique : `git log -p --follow specs/courantes/module-matchs.md`.
+Last verified @ 2026-10-11 (PR 6 / lot 8, « garder ses créneaux de saison ») : `CONTRACT_VERSION` 1.5
+(bump 1.4 → 1.5, `SocleReferenceAssignmentSchema` gagne `venueId`/`keep` — bloc sans effet sur
+`/place-matches`, qui ne réutilise pas les schémas hebdomadaires de `/generate`) confronté à
+`engine/CONTRACT_VERSION`. Le reste du module (découpe en paquet `match_placement/`, citations
+P4-295 C3-C4, P4-96/P4-300/BCK-19, vocabulaire `/place-matches`, P4-271/P4-272 et §7 « Engagements
+FFBB ») non réaudité cette passe. Historique : `git log -p --follow specs/courantes/module-matchs.md`.
 
 > **Règle de forme** : ce fichier décrit **l'état courant, par écran** — jamais une section datée
 > d'une PR. Le JOURNAL (qui a livré quoi, quand, sous quel id) vit dans
@@ -95,7 +100,7 @@ vigueur, il n'a rien à comparer.
   Le moteur reçoit les règles CLUB VERBATIM dans le bloc top-level `clubRules`, les interdictions
   TEAM dans `teams[].forbiddenVenueIds` (liste triée, déterministe) et les indisponibilités COACH
   dans le bloc top-level `coachUnavailabilities` (verbatim {coachId, daysOfWeek, kickoffMin,
-  kickoffMax}) du payload `/place-matches` (`CONTRACT_VERSION` 1.4) — un domaine vidé par les
+  kickoffMax}) du payload `/place-matches` (`CONTRACT_VERSION` 1.5) — un domaine vidé par les
   seules règles CLUB HARD ressort `club_rule_no_slot`, un domaine vidé par un gymnase interdit
   alors qu'un créneau licite y existait ressort `team_venue_forbidden` (précédence sur
   `club_rule_no_slot`, §3) ; une indisponibilité COACH ne vide JAMAIS de domaine — elle pénalise
@@ -142,7 +147,7 @@ vigueur, il n'a rien à comparer.
   aux matchs : maison unique `PlanVenueClosures::closureIntervals` (le FAIT brut — dates du
   `config`, repli legacy = fenêtre de l'entrée porteuse, **jamais** la composition
   `VenuePeriodOverride` d'un plan d'entraînement) consommée par `MatchPlacementPayloadBuilder`
-  (fusionnée dans `venues[].unavailabilities` du payload `/place-matches`, contrat 1.4 inchangé),
+  (fusionnée dans `venues[].unavailabilities` du payload `/place-matches`, sans bump de contrat),
   `ConflictRadarLoader` (fusionnée avec `VenueUnavailability` dans la même famille radar), et
   `FixtureStateProcessor::assertVenueAccessAllowed` (refus 422, placement manuel).
 - **`ConflictResolution`** (clé `(club, saison, fingerprint)`, l'empreinte STABLE d'un conflit) :
@@ -572,7 +577,7 @@ Présentation pure — aucune formule de gravité redérivée.
 ## 3. Solveur de placement (`POST /api/fixtures/place` → engine `/place-matches`)
 
 Second problème solveur ([ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md)),
-même `CONTRACT_VERSION` **1.4** que `/generate`/`/validate-assignments` (un seul contrat pour les
+même `CONTRACT_VERSION` **1.5** que `/generate`/`/validate-assignments` (un seul contrat pour les
 trois endpoints — voir §6 `CLAUDE.md`). **Rail ASYNCHRONE** (amendement ADR-0003 2026-10-04, patron
 exact de la génération) : `PlaceMatchesController` garde toutes ses gardes (management + saison
 écrivable + socle pointé), prend le verrou, ENFILE un `PlaceMatchesMessage` et répond **202**

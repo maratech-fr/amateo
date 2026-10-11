@@ -1,6 +1,6 @@
 # `config` d'une contrainte — la liste blanche (SEC-13)
 
-Last verified @ 2026-10-09 (P4-295 C4) : citation engine recalée — les clés `preferredDays`/`forbiddenDays`/`minStartTime`/`maxStartTime` lues strictement côté moteur vivent depuis P4-295 C4 dans le sous-module `engine/app/solver/objective/terms/preferred.py` (l'ancien `objective/terms.py` est devenu un paquet, découpe pure verbatim, surface d'import byte-identique). La liste blanche et les refus 422 (clés de tag sur `COACH_AVAILABILITY`, refus `HARD` d'une préférence) non ré-audités cette passe, confrontés en dernier contre `ConstraintConfigValidator`/`ConstraintValidationService`. Historique : `git log -p --follow`. Un stamp REMPLACE, il ne s'empile pas.
+Last verified @ 2026-10-11 (PR 6 / lot 8, « garder ses créneaux de saison ») : ligne `SEASON_SLOTS` ajoutée — AUCUNE clé de config, refus confronté à `ConstraintConfigValidator::SPEC['SEASON_SLOTS']` (tableau vide) et `ConstraintValidationService` (HARD refusé, scope TEAM exigé). Le reste de la liste blanche et les citations engine (P4-295 C4, 2026-10-09) non ré-audités cette passe. Historique : `git log -p --follow`. Un stamp REMPLACE, il ne s'empile pas.
 
 > Source de vérité du code : `App\Service\ConstraintConfigValidator`.
 > Cette page explique le POURQUOI ; la liste qui fait foi est dans la classe.
@@ -27,6 +27,7 @@ avec le nom de la clé et les réglages acceptés pour la famille.
 | **toutes** | `targetTag` | libellé de groupe non vide | **backend seul** — éclaté en N contraintes par équipe, puis RETIRÉ du payload (`ScheduleConstraintBuilder`). **Forme HISTORIQUE, toujours lue** : équivaut à `targetTags: [x]` |
 | **toutes** | `targetTags` | liste de tags | **INTERSECTION** — l'équipe doit porter TOUS ces tags (ex. `["SENIOR","COMPETITION"]`). Mélanger avec `targetTag` → **422** (jamais d'ambiguïté silencieuse) |
 | **toutes** | `excludeTags` | liste de tags | **UNION soustraite** de la cible (ex. `targetTags:["ADULTE"], excludeTags:["LOISIR_ADULTE"]` → les adultes en compétition, sans le loisir adulte). **Sans `targetTags`** : la base est TOUTE la saison, moins les exclus |
+| **SEASON_SLOTS** | *(aucune)* | — | **ni le moteur ni une règle de validation ne lisent de config** — toute clé posée dessus est refusée (PR 6, lot 8, `ConstraintConfigValidator`). Un marqueur scope TEAM : son effet passe par `socleReferenceAssignments` en régime `keep`, détail `engine/docs/constraint-vocabulary.md` §Référence socle |
 
 
 > ⚑ **Résolution des cibles par tag — foyer UNIQUE** (`TeamTagResolver::resolveConstraintTeamIds`) :

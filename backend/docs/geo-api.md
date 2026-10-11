@@ -1,6 +1,6 @@
 # API géo — routes externes consommées
 
-Last verified @ 2026-10-10 (rotation de fraîcheur, passe P2-63 lot 5) : le § solveur d'entraînement cite `CONTRACT_VERSION` **1.4** — confronté à `engine/CONTRACT_VERSION` (= 1.4), à jour. Le reste du fichier (hosts en liste blanche, `VenueGeoCheck`/`FfbbSalleAddressResolver`/`BanGeocodingClient`/`VenueGeoCheckController` au § 5) non re-sondé ligne à ligne cette passe. Historique des passes : `git log -p --follow backend/docs/geo-api.md`.
+Last verified @ 2026-10-11 (PR 6 / lot 8, « garder ses créneaux de saison ») : le § solveur d'entraînement cite `CONTRACT_VERSION` **1.5** — confronté à `engine/CONTRACT_VERSION` (= 1.5, bump 1.4 → 1.5), à jour. Le reste du fichier (hosts en liste blanche, `VenueGeoCheck`/`FfbbSalleAddressResolver`/`BanGeocodingClient`/`VenueGeoCheckController` au § 5) non re-sondé ligne à ligne cette passe. Historique des passes : `git log -p --follow backend/docs/geo-api.md`.
 
 > Répertoire des endpoints externes **géo** utilisés par le backend — deuxième famille de sorties
 > non-FFBB après `ffbb-api.md` (même patron : liste blanche de hosts codés en dur, SSRF-safe,
@@ -363,8 +363,8 @@ Mécanique commune :
 
 - **Le solveur d'ENTRAÎNEMENT la lit** — `POST /generate` seul (jamais `/place-matches`) :
   `ScheduleConstraintBuilder` sérialise la matrice club+saison (TRIÉE) dans le bloc
-  `venueTravelTimes` du payload, contrat **`CONTRACT_VERSION`** (`engine/CONTRACT_VERSION`, **1.4**
-  à ce jour, repassé en 1.0 pour la v1 puis bumpé 1.0 → 1.1 → 1.2 → 1.3 → 1.4 — l'historique : le bump 2.28→2.29 avait porté notamment ce
+  `venueTravelTimes` du payload, contrat **`CONTRACT_VERSION`** (`engine/CONTRACT_VERSION`, **1.5**
+  à ce jour, repassé en 1.0 pour la v1 puis bumpé 1.0 → 1.1 → 1.2 → 1.3 → 1.4 → 1.5 — l'historique : le bump 2.28→2.29 avait porté notamment ce
   bloc : sens de `walkingMinutes` désormais vélo,
   plus les champs `implicitRules.travelTime.toleranceMinutes`/`defaultMinutes`). Sa présence (≥1
   ligne) — ELLE SEULE — active la règle implicite `travelTime` côté moteur (opt-in au premier

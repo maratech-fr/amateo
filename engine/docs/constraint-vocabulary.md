@@ -1,16 +1,21 @@
 # Vocabulaire des contraintes — ce que l'engine comprend
 
-Last verified @ 2026-10-11 (lot 3B PR B') : §Bloc de mutualisation complétée du MIROIR pré-solve
-déclaré de « un coach suffit » — confronté à `backend/src/Service/PreSolvePreventionWarnings.php::sharedBlockWithoutCommonServableCase`
-et à `backend/tests/CrossStack/SharedBlockPreSolveMirrorParityTest.php`. §COACH_AVAILABILITY et
-§Bloc de mutualisation (règle moteur elle-même) restent telles que confrontées en PR A à
+Last verified @ 2026-10-11 (rebase lot 8 PR 6 sur lot 3B PR B') : `engine/CONTRACT_VERSION` = `1.5`
+(bump 1.4 → 1.5, et non 1.3 comme l'écrivait un stamp précédent — dérive corrigée) ; section
+« Référence socle » réécrite pour le second régime KEEP (`SOCLE_KEEP_FULL_TIER_WEIGHTS`/
+`SOCLE_KEEP_PARTIAL_TIER_WEIGHTS`, `weights.py`), `SCORE_FORMULA_VERSION` V13 → V14 ; §Bloc de
+mutualisation complétée du MIROIR pré-solve déclaré de « un coach suffit » — confronté à
+`backend/src/Service/PreSolvePreventionWarnings.php::sharedBlockWithoutCommonServableCase` et à
+`backend/tests/CrossStack/SharedBlockPreSolveMirrorParityTest.php`. §COACH_AVAILABILITY et §Bloc de
+mutualisation (règle moteur elle-même) restent telles que confrontées en PR A à
 `engine/app/solver/constraints/structural/closures.py::add_coach_unavailability_constraints` et
 `engine/app/solver/constraints/availability.py` — « un coach suffit » (Q4B, fondateur 2026-10-10) :
-une équipe à plusieurs coachs requis n'est fermée que si TOUS sont indisponibles ; une case de
-bloc emprunte un coach de l'union, un membre sans coach propre n'y est que via le bloc (`x ≤ Σb`),
-un bloc sans aucun coach de l'union dispo est fermé (`b == 0`). `engine/CONTRACT_VERSION` = `1.4`
-(inchangé par ces deux lots). Reste du vocabulaire non re-sondé cette passe. Un stamp REMPLACE, il
-ne s'empile pas.
+une équipe à plusieurs coachs requis n'est fermée que si TOUS sont indisponibles ; une case de bloc
+emprunte un coach de l'union, un membre sans coach propre n'y est que via le bloc (`x ≤ Σb`), un
+bloc sans aucun coach de l'union dispo est fermé (`b == 0`). Reste du vocabulaire (découpe en
+paquets `constraints/structural/`, `constraints/wellness/`, `match_placement/`, citations P4-295
+C3-C6, 2026-10-09 ; `preferredDays` P4-312) non re-sondé cette passe — un stamp REMPLACE, il ne
+s'empile pas.
 
 > **But** : lister **exhaustivement** tout le vocabulaire (familles + clés de `config`) que le
 > solveur CP-SAT (`engine/app/solver`) sait **parser et appliquer**. Source de vérité côté engine.
@@ -371,27 +376,41 @@ voyagent (`OFF` ⇒ clé absente). Le MÊME gymnase n'est jamais concerné (l'ex
 même-gymnase D-14 reste intacte). `venueTravelTimes` absent/vide OU règle inactive ⇒ aucune variable
 posée, chemin byte-identique, goldens inchangés.
 
-## Référence socle du comblement (`socleReferenceAssignments`) — bonus de PLACEMENT par tier
+## Référence socle (`socleReferenceAssignments`) — bonus de PLACEMENT par tier, DEUX régimes
 
-Bloc d'entrée `socleReferenceAssignments[]` (`{teamId, dayOfWeek, startTime}`, **sans** `venueId`,
-cap `MAX_SLOT_TEMPLATES`) — émis **uniquement en comblement** (`ScheduleConstraintBuilder::
-withSocleReferenceAssignments`, backend) : les placements de la version **pointée** du plan SEASON
-(le socle), injectés APRÈS le hash de snapshot comme `previousAssignments` (préférence de
-convergence, jamais une donnée de structure).
+Bloc d'entrée `socleReferenceAssignments[]` (`{teamId, dayOfWeek, startTime, venueId?, keep?}`, cap
+`MAX_SLOT_TEMPLATES`) — les placements de la version **pointée** du plan SEASON (le socle), injectés
+APRÈS le hash de snapshot (préférence de convergence, jamais une donnée de structure). DEUX régimes
+EXCLUSIFS, jamais émis ensemble sur la même clé (le backend les émet dans des branches exclusives) :
 
-`add_socle_reference_bonus` (`engine/app/solver/objective/terms/stability.py`) ajoute, dans l'objectif de
-**PLACEMENT** (phase 1, patron du malus passerelle `extra_placement_terms` — comme la proximité
-P2-61 dérivée de `build_stability_terms`, poids 9, jamais co-émise avec ce bloc), un bonus `+SOCLE_REFERENCE_TIER_WEIGHTS[tier]` sur
-chaque variable `model.x[(team, venue, day, start)]` dont `(team, day, start)` — **gymnase
-ignoré** — matche une entrée du bloc. Poids par tier (`weights.py`) : `S=20 · A=18 · B=16 · C=14 ·
-D=12` — le club tient plus fort l'horaire de socle d'une équipe fanion qu'une équipe secondaire.
+- **COMBLEMENT** (PR-3, `keep` absent/`false`, SANS `venueId`) — émis **uniquement en comblement**
+  (`ScheduleConstraintBuilder::withSocleReferenceAssignments`, backend). Bonus `+SOCLE_REFERENCE_TIER_WEIGHTS[tier]`
+  sur chaque variable `model.x[(team, venue, day, start)]` dont `(team, day, start)` — **gymnase
+  ignoré** — matche une entrée. Poids par tier (`weights.py`) : `S=20 · A=18 · B=16 · C=14 · D=12` —
+  le club tient plus fort l'horaire de socle d'une équipe fanion qu'une équipe secondaire.
+- **KEEP** (PR 6, lot 8 — « garder ses créneaux de saison », `keep: true`, `venueId` posé) — émis
+  **uniquement en génération PLEINE d'un plan de période**, pour les SEULES équipes qui portent une
+  contrainte `SEASON_SLOTS` ACTIVE (`ScheduleConstraintBuilder::withSeasonSlotKeepReferences`,
+  backend — filtré au roster, dédupliqué par `(teamId, dayOfWeek, startTime)`). Bonus `+SOCLE_KEEP_FULL_TIER_WEIGHTS[tier]`
+  quand `(team, venue, day, start)` matche **intégralement** (gymnase ∧ jour ∧ heure) une entrée, ou
+  `+SOCLE_KEEP_PARTIAL_TIER_WEIGHTS[tier]` quand seuls `(team, day, start)` matchent (gymnase
+  différent, ou référence `keep` sans `venueId`) — « on garde surtout le jour+heure, et le gymnase
+  si possible » (D-d). Poids par tier (`weights.py`) : plein `S=85 · A=80 · B=75 · C=70 · D=65` ;
+  partiel `S=60 · A=56 · B=52 · C=48 · D=44` — très au-dessus de l'empilement réaliste des autres
+  préférences (~35-40), mais toujours sous le plancher d'une suppression de séance (≥1021).
+
+Dans les deux régimes, `add_socle_reference_bonus` (`engine/app/solver/objective/terms/stability.py`)
+ajoute le bonus dans l'objectif de **PLACEMENT** (phase 1, patron du malus passerelle
+`extra_placement_terms` — comme la proximité P2-61 dérivée de `build_stability_terms`, poids 9, jamais co-émise avec ce bloc).
 Un créneau HARD n'a pas de variable dans `model.x` → naturellement ignoré, la référence n'oriente
-que les trous du comblement. `socleReferenceAssignments` absent/vide ⇒ `[]`, chemin
-byte-identique (le backend ne l'émet qu'en comblement, en génération pleine il est absent).
+que les séances réellement à placer. `socleReferenceAssignments` absent/vide ⇒ `[]`, chemin
+byte-identique.
 
-`SCORE_FORMULA_VERSION` = **`T24_LEVEL_2_FIXED_WEIGHTS_V13`** (V12 sans le terme, INERTE tant
-qu'aucune référence n'est émise). `sharedBlocks`/`slotTemplates` — miroir `MAX_SLOT_TEMPLATES` sur
-le cap de la liste. Gardé côté backend par `CrossStack/SocleReferencePayloadParityTest`.
+`SCORE_FORMULA_VERSION` = **`T24_LEVEL_2_FIXED_WEIGHTS_V14`** (V13 sans le régime KEEP, lui-même V12
+sans le terme de référence socle — chacun INERTE tant qu'aucune référence du régime correspondant
+n'est émise). `sharedBlocks`/`slotTemplates` — miroir `MAX_SLOT_TEMPLATES` sur le cap de la liste.
+Gardé côté backend par `CrossStack/SocleReferencePayloadParityTest` (les deux régimes) et
+`CrossStack/SeasonSlotKeepSemanticsGateTest` (KEEP, vrai moteur, témoin + contre-témoin).
 
 ## Ce qu'un verrou HARD écrase (P2-9)
 

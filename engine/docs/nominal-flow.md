@@ -1,18 +1,18 @@
 # Flux nominal : de l'appel backend a la reponse du moteur
 
-Last verified @ 2026-10-10 (rotation `documentation-update`, lot 9 F3) : `engine/CONTRACT_VERSION` = `1.4` ✓ ; `_adaptive_timeout`/`_adaptive_workers` (`app/main.py`) confrontés — paliers ≤50→60 s/1 worker · ≤200→180 s/1 worker · sinon 600 s/8 workers, inchangés ; `lockLevel` reste une chaîne libre (`str`, défaut `"NONE"`, `input_schema.py:298`) ; `ConstraintFamily` ne porte toujours que TIME/DAY/FACILITY/COACH_AVAILABILITY (`backend/src/Enum/ConstraintFamily.php`), FACILITY_CAPACITY absent. Reste non re-parcouru ligne à ligne cette passe.
+Last verified @ 2026-10-11 (PR 6 / lot 8, « garder ses créneaux de saison ») : `engine/CONTRACT_VERSION` = `1.5` ✓ (bump 1.4 → 1.5, `SocleReferenceAssignmentSchema` gagne `venueId`/`keep`) ; `ConstraintFamily` gagne `SEASON_SLOTS` (`backend/src/Enum/ConstraintFamily.php`) — famille FILTRÉE du payload moteur (`ScheduleConstraintBuilder::serializeUnifiedConstraints`), donc `constraints[]` ne porte TOUJOURS que TIME/DAY/FACILITY/COACH_AVAILABILITY ; FACILITY_CAPACITY absent. Reste non re-parcouru ligne à ligne cette passe (dernière passe ligne à ligne : `_adaptive_timeout`/`_adaptive_workers`, `lockLevel`, 2026-10-10).
 
 > Ce document decrit le chemin complet d'une requete de generation d'emploi du temps, du moment ou le backend construit le payload jusqu'a la notification en temps reel du frontend. Destine aux developpeurs travaillant sur l'integration backend/engine.
 
 ---
 
-## 1. Le backend construit le payload (contrat 1.4)
+## 1. Le backend construit le payload (contrat 1.5)
 
-Quand un utilisateur clique sur "Generer l'emploi du temps" dans le frontend, le backend assemble un objet JSON conforme au schema `ScheduleInputSchema` (version de contrat **1.4**, fichier `engine/CONTRACT_VERSION`). Voici la structure complete, avec des explications inline.
+Quand un utilisateur clique sur "Generer l'emploi du temps" dans le frontend, le backend assemble un objet JSON conforme au schema `ScheduleInputSchema` (version de contrat **1.5**, fichier `engine/CONTRACT_VERSION`). Voici la structure complete, avec des explications inline.
 
 ```json
 {
-  "version": "1.4",
+  "version": "1.5",
   "clubId": "550e8400-e29b-41d4-a716-446655440000",
   "seasonId": "660e8400-e29b-41d4-a716-446655440001",
 
@@ -127,7 +127,7 @@ Quand un utilisateur clique sur "Generer l'emploi du temps" dans le frontend, le
 
 ### Explications par section
 
-- **`version`** : version du contrat (actuellement `1.4`). Le moteur ne compare que le **MAJOR** : `"1.0"` et `"1.2"` passent tous les deux ; un payload `0.x` ou `2.x` est refuse.
+- **`version`** : version du contrat (actuellement `1.5`). Le moteur ne compare que le **MAJOR** : `"1.0"` et `"1.2"` passent tous les deux ; un payload `0.x` ou `2.x` est refuse.
 - **`clubId` / `seasonId`** : identifiants du club et de la saison en cours. Le moteur ne les utilise pas pour le calcul, mais les inclut dans les logs et les diagnostics.
 - **`venues`** : liste des salles. Chaque salle porte ses **creneaux d'entrainement** explicites dans la cle `trainingSlots` : `{dayOfWeek, startTime, durationMinutes, capacity}`. Il n'existe **ni** cle `availability` **ni** champ `endTime` (la fin se deduit de `startTime + durationMinutes`) — les schemas Pydantic sont `extra=forbid`, donc une cle inconnue provoque un `422`. La `capacity` indique combien d'equipes peuvent occuper le creneau simultanement (gymnase divisible : le backend envoie `canSplit ? capacity : 1`).
 - **`teams`** : liste des equipes. Le champ `sportCategoryId` est **requis** (son absence provoque un `422`). Le `priorityTierId` identifie le rang de priorite (1 = S ... 5 = D), dont le poids est code en dur cote moteur.
@@ -158,7 +158,7 @@ Avant de lancer le solveur, le moteur acquiert un verrou asyncio specifique au `
 
 ### Verification de version
 
-Le moteur verifie que le **MAJOR** de `version` correspond au MAJOR de son contrat (`1` pour le contrat `1.4`) : `"1.0"` comme `"1.9"` sont acceptes — le MINOR est ignore. C'est pourquoi la version que le PAYLOAD s'attribue (constante PHP du builder) DOIT valoir exactement `engine/CONTRACT_VERSION` et non « un `1.x` quelconque » : sinon un changement de forme du payload sans bump de MAJOR passerait inapercu des deux cotes. Cette egalite stricte est gardee par `PayloadVersionMatchesContractVersionTest`. Si le MAJOR differe, le moteur retourne une erreur indiquant la version attendue et la version recue.
+Le moteur verifie que le **MAJOR** de `version` correspond au MAJOR de son contrat (`1` pour le contrat `1.5`) : `"1.0"` comme `"1.9"` sont acceptes — le MINOR est ignore. C'est pourquoi la version que le PAYLOAD s'attribue (constante PHP du builder) DOIT valoir exactement `engine/CONTRACT_VERSION` et non « un `1.x` quelconque » : sinon un changement de forme du payload sans bump de MAJOR passerait inapercu des deux cotes. Cette egalite stricte est gardee par `PayloadVersionMatchesContractVersionTest`. Si le MAJOR differe, le moteur retourne une erreur indiquant la version attendue et la version recue.
 
 ---
 
@@ -340,7 +340,7 @@ Le frontend ecoute ce topic via `EventSource`. Des que l'evenement arrive, le fr
 
 ## Resume du flux en 5 etapes
 
-1. **Backend** : construit le payload (contrat 1.4) a partir des entites du club (equipes, salles, entraineurs, contraintes)
+1. **Backend** : construit le payload (contrat 1.5) a partir des entites du club (equipes, salles, entraineurs, contraintes)
 2. **Moteur** : valide le payload, acquiert le verrou club, verifie le MAJOR de la version
 3. **Solveur** : construit le modele, ajoute les contraintes HARD, definit l'objectif, resout dans le budget adaptatif (60/180/600 s selon la taille du probleme)
 4. **Moteur** : retourne `ScheduleOutputSchema` avec creneaux, diagnostics, metriques
