@@ -120,10 +120,19 @@ final class ExportScheduleTest extends WebTestCase
             $unknownBody = (string) $this->client->getResponse()->getContent();
             self::assertStringContainsString('Gymnase introuvable', $unknownBody);
 
-            // 404 BYTE-IDENTIQUE : un gymnase d'un AUTRE club (existant) ne doit pas se distinguer d'un
-            // gymnase INEXISTANT — sinon la réponse divulguerait, par différence, l'existence d'un
-            // gymnase d'autrui (énumération). Même refus, même corps, à l'octet près.
-            self::assertSame($foreignBody, $unknownBody, $route . ' : les deux 404 doivent être byte-identiques (aucune divulgation d’existence)');
+            // 404 IDENTIQUE HORS TRACE : un gymnase d'un AUTRE club (existant) ne doit pas se
+            // distinguer d'un gymnase INEXISTANT — sinon la réponse divulguerait, par différence,
+            // l'existence d'un gymnase d'autrui (énumération). En APP_ENV=test (debug=true) le corps
+            // porte une clé `trace` de débogage qui cite la ligne de l'appelant (112 vs 118) ; elle
+            // n'existe pas en prod (debug off) et c'est la SEULE clé propre au debug qui diffère ici
+            // (title/detail/description/status/type… sont stables, cf. ExportPdfHandlerRlsTest). On la
+            // retire — et elle seule — des deux corps décodés, puis on compare le reste.
+            $foreign = json_decode($foreignBody, true, 512, \JSON_THROW_ON_ERROR);
+            $unknown = json_decode($unknownBody, true, 512, \JSON_THROW_ON_ERROR);
+            self::assertIsArray($foreign);
+            self::assertIsArray($unknown);
+            unset($foreign['trace'], $unknown['trace']);
+            self::assertSame($foreign, $unknown, $route . ' : les deux 404 doivent être identiques hors trace de débogage — aucune divulgation d’existence');
         }
     }
 
