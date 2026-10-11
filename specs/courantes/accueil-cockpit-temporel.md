@@ -1,10 +1,13 @@
 # Accueil « cockpit temporel »
 
-Last verified @ 2026-10-10 (lot 3b PR C, `documentation-update`) : la ligne Contraintes du tableau
-mode période et § e. « additive vs remplaçante » recalées contre
-`PeriodConstraintSelector::selectForPeriodPlan` — en vacances, seul le scope CLUB reste hérité par
-défaut, TEAM/COACH/FACILITY désactivées (décision fondateur 2026-10-10). Reste du fichier non
-re-confronté cette passe (historique des passes précédentes : `git log -p --follow` sur ce fichier).
+Last verified @ 2026-10-11 (P2-63 PR 5, « Transférer au planning »). Re-confronté : le geste de
+transfert (§5.1 — `POST /api/coach-wishes/transfer`, `CoachWishTransferService`) et les acquis
+antérieurs P2-63 PR 2/3/4/7 + lot 5 (collecte dérivée des plannings, ajout manuel semaine-d'abord,
+« garder mes créneaux habituels », mutualisation « un coach suffit », purge à la
+validation/réouverture du socle). §9ter (modèle de données `CalendarEntry`) a quitté ce fichier
+pour [`calendar-entry-modele-donnees.md`](calendar-entry-modele-donnees.md) — plafond de 800
+lignes, `DocSizeCeilingTest`. §5bis (P4-266, signal « à régénérer » sur `/planning` seul) non
+re-confronté cette passe.
 
 > **Statut** : livré — cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2. Ce document fixe le
 > modèle d'UX + d'architecture de l'accueil cockpit et la fondation des **calendriers
@@ -76,7 +79,8 @@ La **semaine type** reste la **source de vérité**, **derrière le bandeau** �
 le calendrier. Le **calendrier** est la **couche d'exceptions** sur des dates réelles : il montre
 **ce qui sort de l'ordinaire** (événements, indispos, périodes, vacances), pas les séances de
 base — un jour vide = la base tourne normalement. Les **vraies séances d'une date** se
-**projettent à la demande**, jamais stockées (§9ter). Un **calendrier secondaire** = un **plan
+**projettent à la demande**, jamais stockées
+([`calendar-entry-modele-donnees.md`](calendar-entry-modele-donnees.md)). Un **calendrier secondaire** = un **plan
 adapté, borné à une période**, qui **surcharge** la base uniquement sur ces dates.
 
 ---
@@ -222,7 +226,8 @@ Pour éviter 4 tables (`period_templates`, `period_template_slots`, `period_assi
 
 > **Deux `kind`, pas trois** (`CalendarEntryKind` = `event` \| `period`) : « signaler une
 > indispo » n'est pas un type d'objet, c'est un **raccourci de saisie** vers une `period`
-> `closure` dont la contrainte datée est pré-remplie. Voir §9ter.a.
+> `closure` dont la contrainte datée est pré-remplie. Voir
+> [`calendar-entry-modele-donnees.md`](calendar-entry-modele-donnees.md) §a.
 
 Un **événement club** est un post-it daté (tournoi, AG, stage) ; marqué **perturbant** (au choix du
 gestionnaire, événement par événement), il devient une mini-indisponibilité et alimente le radar.
@@ -344,6 +349,28 @@ principal » ne borne que la collecte par mail) ; le **coach est DÉDUIT, sans c
 l'équipe à la création, recalculé si l'équipe change ; conservé tel quel en édition, jamais
 dé-attribué en silence) — une équipe sans coach (Vétérans) reçoit `coachId` null et peut recevoir
 une doléance manuelle comme n'importe quelle autre.
+
+**« Transférer au planning » (P2-63 PR 5)** : dans l'onglet Doléances, une case de sélection à
+GAUCHE de chaque ligne NON traitée (une doléance déjà traitée n'en porte plus) ; le pied de la
+fenêtre `CoachWishesHub` — piloté par l'onglet actif — porte « Transférer au planning (N) » à
+DROITE en couleur d'ACCENT du club (jamais rouge, réservé au destructif) avec le compteur de
+sélection à gauche. Le geste convertit chaque doléance cochée en réglages STANDARDS du plan de sa
+semaine (`POST /api/coach-wishes/transfer`, 409 si une génération tourne) : le nombre de créneaux
+devient le volume de l'équipe (0 = désactivée cette semaine, une équipe hors périmètre comme les
+Vétérans y entre avec la pastille « via doléances ») ; une indisponibilité devient une
+indisponibilité du COACH si l'équipe est mono-coach ou si tous ses coachs requis ont répondu
+(« un coach suffit »), sinon un jour interdit pour l'ÉQUIPE (une équipe co-coachée dont un seul a
+répondu) ; les jours souhaités deviennent une préférence. Une semaine sans planning n'est JAMAIS
+créée : elle est ignorée, et le récap le dit toujours (« N converties · M ignorées : raison »,
+jamais un compte nu). Après transfert, la doléance passe « traité » (pastille verte à côté du nom,
+le marquage manuel se fait désormais par le crayon — champ « Traitée » du formulaire, plus de
+case à droite dans la liste).
+
+**Équipe à plusieurs coachs : une doléance par équipe × semaine, jamais par coach (option A,
+fondateur 2026-10-10).** Un second coach qui répond pour une équipe déjà servie cette semaine voit
+sa saisie PRÉ-REMPLIE de la réponse du premier et un bandeau « un autre coach a déjà répondu pour
+cette équipe cette semaine — votre envoi remplacera sa version » (`byAnotherCoach`, jamais le
+prénom de l'autre coach) ; le champ commentaire sert à préciser les particularités à la main.
 
 **« Garder mes créneaux habituels »** : chaque doléance (page publique et modale gestionnaire)
 porte une case « garder les créneaux habituels » (`CoachWish.keepSeasonSlots`, booléen NU, défaut
@@ -589,7 +616,7 @@ différents** :
 
 | Étape wizard | En mode période |
 |---|---|
-| Équipes | Roster **hérité** (non ré-éditable), mais **activable/désactivable** pour la période + **séances** surchargeables (champ 1–7, toggle = 0 séance). **Défaut conscient du type de période** : **reprise** (`holiday`) = **Fanion + importantes** (les 2 premiers rangs, S+A) pré-cochées, avec repli sur le meilleur rang réellement présent si le club n'a ni S ni A — la reprise n'est jamais vide ; **fermeture** (`closure`) = **tout le club actif** (structure verrouillée, les équipes loisir se décochent à la main). |
+| Équipes | Roster **hérité** (non ré-éditable), mais **activable/désactivable** pour la période + **séances** surchargeables (champ 1–7, toggle = 0 séance). **Défaut conscient du type de période** : **reprise** (`holiday`) = **Fanion + importantes** (les 2 premiers rangs, S+A) pré-cochées, avec repli sur le meilleur rang réellement présent si le club n'a ni S ni A — la reprise n'est jamais vide ; **fermeture** (`closure`) = **tout le club actif** (structure verrouillée, les équipes loisir se décochent à la main). **Même règle matérialisée CÔTÉ SERVEUR** (P2-63 PR 5, D-e) : `PlanTeamSelectionSeeder::keptTeamIds` (maison unique) écrit ce défaut avant la 1ʳᵉ écriture d'un « Transférer au planning » sur un plan pas encore ouvert au wizard — miroir déclaré de `periodSeedSelection.ts`, parité mécanique gardée par `PeriodSeedSelectionMirrorParityTest`. |
 | Gymnases | **La période possède SA grille** : les créneaux de saison y sont **copiés** à la naissance du plan, puis modifiables sans jamais toucher au planning principal — aucune union entre le socle et la période. Fermetures datées marquées au **grain JOUR** (`frontend-wizard.md` pour le détail). Un **sélecteur de gymnase** (une grille à la fois) montre la grille servie à la période, éditable créneau par créneau (clic = poser, clic sur un créneau = modale jour/heure/durée/capacité + suppression confirmée) ; chaque option porte, en sous-ligne sous son nom, l'état effectif — « désactivé » / « indisponible toute la période » / « fermé {jours} » (masque manuel OU indispo déclarée, priorité désactivé > fermé total > fermé partiel) ou rien s'il est ouvert. La modale d'édition d'un créneau dit si le jour est fermé (cause nommée) — poser reste **permis**, l'éditeur se contente de le dire. Les deux lisent l'état effectif SERVI, jamais recomposé côté front. Par gymnase : un état actif/désactivé qui ne touche jamais la grille, et deux actions destructives atomiques (« reprendre la grille du planning principal », « vider »), chacune confirmée en nommant les réservations emportées ; un gymnase désactivé a sa grille **gelée** (créneaux non éditables) — réactiver la rend telle quelle. Sous le capot : réglage épars `VenuePeriodOverride` — `mode` NULLABLE (DISABLED/BLANK/hériter) et un **masque manuel** jour ISO 1..7 → OPEN\|CLOSED (`dayOverrides`), qui s'ajoute au défaut jour par jour. Une **fermeture datée est INFORMATIVE** : elle PRÉ-REMPLIT le défaut, que le masque du plan peut contredire (jour rouvert `OPEN`, jour décoché `CLOSED`) — la composition (incident × masque) vit dans la maison unique `PlanVenueClosures::effectiveStateForPlan/Entry`, partagée par TOUS les consommateurs (gate, payload, `OrphanPinGuard`, réservations, radar). Un épinglage qui ne retombe sur aucun créneau **bloque la génération** en nommant le gymnase, le jour et l'équipe — sauf sur un gymnase désactivé ou **effectivement fermé-total**, où il devient inerte ; un jour effectivement fermé d'un gymnase par ailleurs ouvert reste bloquant, un jour rouvert par le masque ne l'est plus. Réactiver un gymnase entièrement fermé (POST/PUT ou DELETE de son override) est **accepté** : DELETE purge mode ET masque, retour complet au défaut. **Écran** : sous le sélecteur, une **rangée de 7 coches jour** lit l'état EFFECTIF servi (`effectiveClosedWeekdays`) — cochée = ouvert, décochée = effectivement fermé — avec sa **provenance** en info-bulle (indisponibilité déclarée / décoché manuellement / réactivé malgré l'indisponibilité) ; cliquer une coche écrit l'opposé de l'état effectif dans le masque, ou retire l'entrée existante (retour au défaut), jamais de recomposition côté front. L'interrupteur Désactiver/Réactiver reste visible même sur un gymnase entièrement fermé (le serveur accepte le geste) — la raison s'affiche en badge d'information, à côté de l'interrupteur, jamais à sa place. Sous la rangée de coches : « Réactiver malgré l'indisponibilité » (pose `dayOverrides` = OPEN×7, mode préservé) et « Revenir au défaut » (DELETE, purge mode ET masque). Sous **DISABLED**, la rangée est gelée (coches conservées, réactiver ne perd pas le masque manuel posé avant). **Grain semaine-type** : décocher/cocher un jour vaut pour **toutes les semaines de la période**, pas une date précise. Un bandeau au-dessus du sélecteur liste les gymnases indisponibles (déclaré) ET ceux portant des jours décochés à la main. Le **récap** lit le même état effectif pour les réservations non servies et le motif affiché, plus les fermetures brutes pour le titre. ⚠ **Point contre-intuitif, vérifié au code** : la grille d'un gymnase entièrement fermé reste **modifiable** (créneaux, Reprendre/Vider) — seule la réservation est refusée en 422 au grain jour effectif, jamais un geste de grille ; le front serait sinon plus strict que le serveur (règle d'or). Point tranché, `etat-des-lieux.md` §2. |
 | Coachs | **Hérités, lecture seule** (lien équipe↔coach préservé) |
 | **Contraintes** | **Active.** Pré-remplie avec **l'exception** (ex. De Barros indispo sur la fenêtre) ; le gestionnaire **ajoute les contraintes propres à la période** (« du coup U13 passe le mercredi ») et **hérite les contraintes permanentes du socle**, chacune **cochable/décochable** pour la fenêtre. DIFF `ConstraintPeriodOverride` épars : une ligne n'existe que pour une **déviation** du défaut (le socle et le `isActive` propre de la contrainte ne sont **jamais** touchés). **Défaut selon le type de période :** <br>• **Fermeture** (closure) → **tout gardé** (on décoche ce qui gêne). <br>• **Vacances** (holiday) → **seul le scope CLUB reste hérité** ; contrainte **d'équipe, de coach et de gymnase** (TEAM/COACH/FACILITY) **désactivée par défaut** (décision fondateur 2026-10-10), le gestionnaire réactive au cas par cas — un bandeau compte celles encore désactivées. `PeriodConstraintSelector::selectForPeriodPlan`, miroir back/front. |
@@ -653,7 +680,8 @@ endroits** seulement.
 
 ## 9. Tranché vs ouvert
 
-**Tranché** : le modèle décrit dans ce document (§2 à §6ter, §9ter) est l'architecture livrée —
+**Tranché** : le modèle décrit dans ce document (§2 à §6ter) et dans
+[`calendar-entry-modele-donnees.md`](calendar-entry-modele-donnees.md) est l'architecture livrée —
 aucun point n'est rouvert. Une décision qui n'est pas déjà l'état du code ci-dessus (un abandon,
 un arbitrage tranché contre une option qui paraissait évidente) vit dans
 [`etat-des-lieux.md`](etat-des-lieux.md) §2, jamais recopiée ici.
@@ -664,116 +692,11 @@ ouvertes (radar, collecte coach, calendriers secondaires) vivent dans
 
 ---
 
-## 9ter. Modèle de données : `CalendarEntry` (poussé)
+## 9ter. Modèle de données : `CalendarEntry`
 
-En creusant, la taxonomie à 3 objets (§4) **se réduit en fait à 2 sur le plan données** — et
-surtout, **on réutilise l'existant au lieu d'ajouter des tables.**
-
-### a. Deux `kind`, pas trois
-
-- **`event`** — un **marqueur** sur le calendrier (AG, tournoi, stage). Informatif. Peut être
-  marqué **`isDisruptive`** (« pas d'entraînement ce jour »).
-- **`period`** — une **fenêtre qui altère le plan** (fermeture de salle, vacances, coupure,
-  mutualisation). Porte des **contraintes datées** + un **plan secondaire** (overlay).
-
-> **« Signaler une indispo » n'est pas un 3ᵉ type : c'est un raccourci pour créer une `period`**
-> dont la contrainte « gym X fermé » est pré-remplie. De même, un événement `isDisruptive`
-> devient/produit une mini-période « pas d'entraînement ce jour ». Fermeture / vacances / coupure
-> / mutualisation = un `periodType`, pas des entités séparées.
-
-### b. L'entité
-
-```
-CalendarEntry
-  id                uuid
-  clubId, seasonId
-  kind              event | period
-  title             "AG du club" · "Vacances Toussaint" · "Gym Barros fermé"
-  startDate, endDate            -- un jour : endDate == startDate
-  -- event
-  isDisruptive      bool         -- bloque les entraînements ce jour
-  -- period
-  periodType        closure | holiday | cutoff | mutualisation | custom
-  schoolHolidayId   uuid?        -- si dérivée d'une période de vacances (zone du club)
-  status            proposed | active | ignored   -- « proposed » = vacances suggérées par le radar
-  parentEntryId     uuid?        -- semaine ENFANT d'une période mère
-  createdBy, createdAt, updatedAt
-```
-
-> **L'entrée ne porte pas de pointeur d'overlay.** Le plan secondaire est un `SchedulePlan` ancré
-> à la `CalendarEntry`, et c'est **lui** qui pointe sa version (`chosenScheduleId`) — une seule
-> maison pour « quelle version est active ». Lecture : `SchedulePlanProvisioner::chosenOfPeriodPlan`,
-> ou `chosenByPeriodPlans` pour résoudre N entrées en une requête. Un plan de période qui ne pointe
-> rien = **aucun overlay applicable**, pas un overlay vide.
-
-### c. La réutilisation maligne (≈ zéro nouvelle table à part `CalendarEntry`)
-
-- **Contrainte datée = la `Constraint` existante + un FK nullable `calendarEntryId`.**
-  Une contrainte est soit **permanente** (`calendarEntryId = null`, le plan de base), soit
-  **de période** (`calendarEntryId` renseigné). Une « fermeture de salle » = une `Constraint`
-  `family=FACILITY` rattachée à l'entrée. **On ne réinvente pas les contraintes.**
-  **Deux natures de datées (modèle FAIT/GENÈSE)** : le **FAIT**
-  décrit l'incident et pend à la **mère** — il s'impose à toutes ses semaines ; la **GENÈSE**
-  répond aux doléances d'UNE semaine et pend à l'entrée-**enfant** — elle n'existe que pour ce
-  plan (« chaque plan est indépendant ; si je voulais les mêmes règles j'aurais couvert la zone
-  d'un seul plan »). La lecture est l'**union** : un plan lit ses genèses + les faits de sa mère
-  (`CalendarEntry::datedConstraintSourceIds()` — `[id]` racine, `[id, parentEntryId]` enfant),
-  côté payload solveur, gate pré-solve ET radar. Le wizard d'une semaine **crée en genèse**
-  (l'entrée du plan) et liste les deux : genèses éditables, **faits en lecture seule** badgés
-  « Toutes les semaines de {mère} » (un fait se modifie à sa source — l'incident — jamais depuis
-  une semaine, qui muterait ses sœurs en silence). Une datée **ne se décoche pas** par plan
-  (422 dans les deux sens : poser un override sur une datée, ou dater une contrainte qui a des
-  overrides) — elle se modifie ou se supprime.
-- **Overlay = le `Schedule` existant + un lien vers la `CalendarEntry` + la fenêtre.** Ses slots
-  sont des `ScheduleSlotTemplate` bornés à la fenêtre. **On ne réinvente pas le planning.**
-- **Pas de table `schedule_slot_occurrences` per-date au départ.** L'override se fait au grain
-  **période** (la fenêtre bascule sur l'overlay). ⚠ Le grain fin « juste ce mardi-là est annulé »
-  **n'existe pas** : `ManualEditController` ne porte plus de route one-time et le contrat
-  backend⇄engine ne transporte plus de verrou temporaire — une vraie table d'occurrences éparses
-  repartirait de zéro, ne s'ajoute **que si** le besoin fin le justifie.
-
-### d. Deux lectures distinctes — ne pas les confondre
-
-**Le calendrier cockpit ne dessine QUE les `CalendarEntry`** (events, jalons de period, vacances).
-Il **ne projette pas** la semaine type ; un jour sans entrée est **vide** (la base tourne,
-implicite). C'est une **couche d'exceptions**, pas une grille de séances.
-
-**La projection ne sert qu'ailleurs** — quand on a besoin des **vraies séances d'une date**
-(ouvrir l'atelier overlay d'une période, un export PDF daté, un « détail du jour »). Là, pour
-une date `d` :
-1. `d` dans la fenêtre d'une `period` **active** avec overlay ? → **les slots de l'overlay**.
-2. Sinon → **projeter** la semaine type : les `ScheduleSlotTemplate` du plan principal dont le
-   `dayOfWeek` correspond à `d`, contraintes **permanentes** (`calendarEntryId = null`).
-
-Supprimer une `period` → son overlay + ses contraintes datées partent → l'étape 1 ne matche plus
-→ la base **re-projette** naturellement (cohérent avec « overlay supprimable, principal non »).
-
-> **La distinction** : le **cockpit** répond à « qu'est-ce qui sort de l'ordinaire ? » (les
-> entrées). La **projection** répond à « qu'y a-t-il concrètement le mardi 6 mai ? » (à la
-> demande, jamais matérialisée d'avance).
-
-### e. L'arbitrage « additive vs remplaçante »
-
-Ni l'une ni l'autre : **la période est PROPRIÉTAIRE.**
-
-- **Créneaux** : la période possède sa grille — copie du modèle de saison prise à la naissance du
-  plan (ancre `schedulePlanId`), **jamais unie** au socle. Le build d'overlay ne lit que les
-  créneaux du plan. Détail des réglages par gymnase (`VenuePeriodOverride`, indisponibilité
-  informative) : §6bis, ligne Gymnases.
-- **Contraintes permanentes** : c'est là, et seulement là, que `periodType` porte encore une
-  sémantique d'héritage. `closure` → toutes gardées (le gestionnaire décoche) ; `holiday` →
-  seul le scope CLUB reste hérité par défaut (TEAM/COACH/FACILITY désactivées, décision
-  fondateur 2026-10-10, `PeriodConstraintSelector::selectForPeriodPlan`). Diff épars
-  `ConstraintPeriodOverride` : une ligne n'existe que pour une **déviation** du défaut.
-- **Contraintes datées** : portées par la `CalendarEntry` — le **fait** (« Barros fermé ») par
-  la mère, la **genèse** d'une semaine par son entrée-enfant (modèle FAIT/GENÈSE, §c) ; jamais
-  décochables par plan.
-- `cutoff` et `mutualisation` ne portent pas de plan de période.
-
-Corollaire : un épinglage HARD qui ne retombe sur aucun créneau de la grille de la période
-**bloque la génération** (422 nommant le gymnase, le jour et l'équipe, `OrphanPinGuard`), sauf sur
-un gymnase désactivé ou effectivement fermé-total — dans un modèle additif il aurait
-silencieusement retrouvé un créneau de saison.
+Détail complet (taxonomie à 2 `kind`, l'entité, la réutilisation de l'existant — contrainte
+datée, overlay —, les deux lectures distinctes cockpit/projection, l'arbitrage « additive vs
+remplaçante ») : [`calendar-entry-modele-donnees.md`](calendar-entry-modele-donnees.md).
 
 ## 10. En une phrase
 

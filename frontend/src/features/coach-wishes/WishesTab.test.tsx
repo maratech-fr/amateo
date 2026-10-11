@@ -1,20 +1,23 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CalendarEntry } from "@/features/cockpit/api";
+import { toast } from "@/shared/stores/toastStore";
 
-import { WishesTab } from "./WishesTab";
+import { WishesTab, type WishTransferFooter } from "./WishesTab";
 
 // Saison couvrant les deux semaines des vacances de test (lun 2026-02-16 → dim 2026-03-01).
 // P3-14 : le tri des filtres (staffing / rang) et le bornage du coach aux MAIN de l'équipe
 // se lisent tous deux dans ces fixtures. `t2`/U13 n'a VOLONTAIREMENT aucun lien coach —
 // c'est ce qui rend observable qu'elle sort du formulaire sans sortir du filtre.
-const teamsState = { data: [
+// `data` peut être `undefined` (lecture pas encore posée) : certains cas l'exercent (bandeau
+// « Aucune équipe » qui ne doit s'afficher que sur une lecture POSÉE).
+const teamsState: { data: { id: string; name: string; priorityTierId: number; tierOrder: number }[] | undefined } = { data: [
   { id: "t1", name: "SM1", priorityTierId: 3, tierOrder: 0 },
   { id: "t2", name: "U13", priorityTierId: 3, tierOrder: 1 },
   { id: "t3", name: "Fanion", priorityTierId: 1, tierOrder: 0 },
-] as { id: string; name: string; priorityTierId: number; tierOrder: number }[] };
+] };
 const coachesState = { data: [
   { id: "c1", firstName: "Maxime", lastName: "Durand", isEmployee: false },
   { id: "c2", firstName: "Léa", lastName: "Roy", isEmployee: true },
@@ -42,11 +45,13 @@ const wishesState: { data: unknown[] } = { data: [] };
 const createMut = vi.fn();
 const updateMut = vi.fn();
 const deleteMut = vi.fn();
+const transferMut = vi.fn();
 vi.mock("./queries", () => ({
   useCoachWishes: () => ({ data: wishesState.data }),
   useCreateCoachWish: () => ({ mutate: createMut, isPending: false }),
   useUpdateCoachWish: () => ({ mutate: updateMut, isPending: false }),
   useDeleteCoachWish: () => ({ mutate: deleteMut, isPending: false }),
+  useTransferCoachWishes: () => ({ mutate: transferMut, isPending: false }),
 }));
 
 const mutualizationsState: { data: unknown[] } = { data: [] };
@@ -94,6 +99,12 @@ describe("WishesTab", () => {
   beforeEach(() => {
     wishesState.data = [];
     mutualizationsState.data = [];
+    // teamsState est muté par certains cas (chargement/vide) : ré-armer le défaut, sinon contamination.
+    teamsState.data = [
+      { id: "t1", name: "SM1", priorityTierId: 3, tierOrder: 0 },
+      { id: "t2", name: "U13", priorityTierId: 3, tierOrder: 1 },
+      { id: "t3", name: "Fanion", priorityTierId: 1, tierOrder: 0 },
+    ];
     // Un cas vide les liens coach : sans ré-armement, il contaminerait les suivants.
     teamCoachesState.data = [
       { id: "tc1", teamId: "t1", coachId: "c1", role: "MAIN" },
@@ -102,9 +113,13 @@ describe("WishesTab", () => {
     createMut.mockClear();
     updateMut.mockClear();
     deleteMut.mockClear();
+    transferMut.mockReset();
     createMutu.mockClear();
     updateMutu.mockClear();
     deleteMutu.mockClear();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("groupe les doléances par semaine quand aucun filtre de semaine", () => {
@@ -114,6 +129,24 @@ describe("WishesTab", () => {
     expect(screen.getByText(/Semaine du 16\/02\/2026/)).toBeInTheDocument();
     expect(screen.getByText(/Semaine du 23\/02\/2026/)).toBeInTheDocument();
     expect(screen.getByText("SM1", { exact: false })).toBeInTheDocument();
+  });
+
+  // Lot 7 PR 5 (retour fondateur 2026-10-11) — « Aucune équipe dans ce club » s'affichait À TORT
+  // pendant le chargement des équipes, alors qu'une doléance existait. Le bandeau ne doit paraître
+  // que sur une lecture POSÉE (règle readState : jamais un vide dérivé d'un chargement).
+  // Regex sur la phrase COMPLÈTE du bandeau : « Aucune équipe dans ce club » seul est aussi le motif
+  // de désactivation (sr-only) du bouton « Ajouter » → on cible le bandeau, pas le bouton.
+  it("n'affiche PAS le bandeau « Aucune équipe » tant que les équipes ne sont pas chargées", () => {
+    teamsState.data = undefined;
+    wishesState.data = [wish({ id: "w1", teamId: "t1", weekStart: "2026-02-16" })];
+    render(<WishesTab mother={mother} weekFilter={null} />);
+    expect(screen.queryByText(/Aucune équipe dans ce club : ajoutez-en une/)).toBeNull();
+  });
+
+  it("affiche le bandeau « Aucune équipe » quand les équipes sont chargées et vides", () => {
+    teamsState.data = [];
+    render(<WishesTab mother={mother} weekFilter={null} />);
+    expect(screen.getByText(/Aucune équipe dans ce club : ajoutez-en une/)).toBeInTheDocument();
   });
 
   // P4-150 — la copie d'écran de l'état vide (semaine sans aucune doléance) est assertée.
@@ -132,21 +165,29 @@ describe("WishesTab", () => {
     expect(screen.queryByText("SM1", { exact: false })).toBeNull();
   });
 
-  it("cocher « traité » appelle update avec done inversé", async () => {
-    wishesState.data = [wish({ id: "w1", done: false })];
+  // Lot 7 PR 5 (retour fondateur 2026-10-11) — le marquage « traité » passe par le CRAYON
+  // (formulaire), plus par une coche dans la liste. Ouvrir, cocher « Traitée », enregistrer.
+  it("marque « traité » via le crayon (formulaire) : update avec done:true", async () => {
+    wishesState.data = [wish({ id: "w1", done: false, teamId: "t1", weekStart: "2026-02-16" })];
+    const user = userEvent.setup();
     render(<WishesTab mother={mother} weekFilter={null} />);
-    await userEvent.click(screen.getByRole("checkbox", { name: /Traité/ }));
-    expect(updateMut).toHaveBeenCalledWith(expect.objectContaining({ id: "w1", body: expect.objectContaining({ done: true }) }));
+    await user.click(screen.getByRole("button", { name: /^Modifier la doléance/ }));
+    await user.click(screen.getByRole("checkbox", { name: "Traitée" }));
+    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
+    expect(updateMut).toHaveBeenCalledWith(expect.objectContaining({ id: "w1", body: expect.objectContaining({ done: true }) }), expect.anything());
   });
 
-  it("P2-63 B — une doléance « garder ses créneaux » porte la pastille ; cocher traité préserve le drapeau", async () => {
-    wishesState.data = [wish({ id: "w1", keepSeasonSlots: true, done: false })];
+  it("P2-63 B — une doléance « garder ses créneaux » porte la pastille ; marquer traité (crayon) préserve le drapeau", async () => {
+    wishesState.data = [wish({ id: "w1", keepSeasonSlots: true, done: false, teamId: "t1", weekStart: "2026-02-16" })];
+    const user = userEvent.setup();
     render(<WishesTab mother={mother} weekFilter={null} />);
     expect(screen.getByText("souhaite garder ses créneaux")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("checkbox", { name: /Traité/ }));
-    // Le transfert/ la coche « traité » ne doit jamais retomber keepSeasonSlots à false.
-    expect(updateMut).toHaveBeenCalledWith(expect.objectContaining({ id: "w1", body: expect.objectContaining({ done: true, keepSeasonSlots: true }) }));
+    await user.click(screen.getByRole("button", { name: /^Modifier la doléance/ }));
+    await user.click(screen.getByRole("checkbox", { name: "Traitée" }));
+    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
+    // Marquer « traité » ne doit jamais retomber keepSeasonSlots à false.
+    expect(updateMut).toHaveBeenCalledWith(expect.objectContaining({ id: "w1", body: expect.objectContaining({ done: true, keepSeasonSlots: true }) }), expect.anything());
   });
 
   it("une doléance sans « garder ses créneaux » ne porte pas la pastille", () => {
@@ -155,13 +196,76 @@ describe("WishesTab", () => {
     expect(screen.queryByText("souhaite garder ses créneaux")).toBeNull();
   });
 
-  it("cocher « traité » sur une doléance dé-attribuée préserve coachId null (pas de 422)", async () => {
-    // Revue #10 C1 finding #1 : envoyer coachId:"" échouait le NotBlank et une doléance
-    // dé-attribuée ne pouvait jamais être cochée. On préserve null.
-    wishesState.data = [wish({ id: "w1", coachId: null, done: false })];
+  it("marquer « traité » (crayon) sur une doléance dé-attribuée préserve coachId null (pas de 422)", async () => {
+    // Revue #10 C1 finding #1 : envoyer coachId:"" échouait le NotBlank. On préserve null.
+    wishesState.data = [wish({ id: "w1", coachId: null, done: false, teamId: "t1", weekStart: "2026-02-16" })];
+    const user = userEvent.setup();
     render(<WishesTab mother={mother} weekFilter={null} />);
-    await userEvent.click(screen.getByRole("checkbox", { name: /Traité/ }));
-    expect(updateMut).toHaveBeenCalledWith(expect.objectContaining({ id: "w1", body: expect.objectContaining({ coachId: null, done: true }) }));
+    await user.click(screen.getByRole("button", { name: /^Modifier la doléance/ }));
+    await user.click(screen.getByRole("checkbox", { name: "Traitée" }));
+    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
+    expect(updateMut).toHaveBeenCalledWith(expect.objectContaining({ id: "w1", body: expect.objectContaining({ coachId: null, done: true }) }), expect.anything());
+  });
+
+  // ── Lot 7 PR 5 (retours fondateur 2026-10-11) : pastille « Traité », sélection, pied, récap ──
+
+  it("une doléance traitée porte la pastille verte « Traité » et n'a plus de case de sélection", () => {
+    wishesState.data = [wish({ id: "w1", done: true, teamId: "t1", weekStart: "2026-02-16" })];
+    render(<WishesTab mother={mother} weekFilter={null} />);
+    expect(screen.getByText("Traité")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /^Sélectionner la doléance/ })).toBeNull();
+  });
+
+  it("une doléance non traitée a une case de sélection et aucune pastille « Traité »", () => {
+    wishesState.data = [wish({ id: "w1", done: false, teamId: "t1", weekStart: "2026-02-16" })];
+    render(<WishesTab mother={mother} weekFilter={null} />);
+    expect(screen.getByRole("checkbox", { name: /^Sélectionner la doléance/ })).toBeInTheDocument();
+    expect(screen.queryByText("Traité")).toBeNull();
+  });
+
+  it("le bouton « Transférer » ne vit PLUS dans le corps ; l'état (compteur) est remonté au pied", () => {
+    wishesState.data = [wish({ id: "w1", done: false, teamId: "t1", weekStart: "2026-02-16" })];
+    const onFooter = vi.fn();
+    render(<WishesTab mother={mother} weekFilter={null} onTransferStateChange={onFooter} />);
+    // Le corps ne porte plus le bouton de transfert (il est passé au pied de la fenêtre).
+    expect(screen.queryByRole("button", { name: /Transférer au planning/ })).toBeNull();
+    // L'état est remonté : la doléance non traitée est présélectionnée (count 1).
+    const last = onFooter.mock.calls.at(-1)?.[0] as WishTransferFooter | null;
+    expect(last).not.toBeNull();
+    expect(last?.count).toBe(1);
+  });
+
+  it("aucun pied remonté quand la vue n'a aucune doléance (null)", () => {
+    wishesState.data = [];
+    const onFooter = vi.fn();
+    render(<WishesTab mother={mother} weekFilter="2026-02-16" onTransferStateChange={onFooter} />);
+    expect(onFooter.mock.calls.at(-1)?.[0]).toBeNull();
+  });
+
+  it("récap : informe TOUJOURS de la raison des ignorées (« 1 convertie · 1 ignorée : semaine sans planning »)", async () => {
+    wishesState.data = [wish({ id: "w1", done: false, teamId: "t1", weekStart: "2026-02-16" })];
+    transferMut.mockImplementation((_ids: string[], opts: { onSuccess: (r: unknown) => void }) => opts.onSuccess({ converted: 1, ignored: 1, ignoredReasons: { semaine_sans_plan: 1 } }));
+    const toastSpy = vi.spyOn(toast, "success");
+    const onFooter = vi.fn();
+    render(<WishesTab mother={mother} weekFilter={null} onTransferStateChange={onFooter} />);
+    const footer = onFooter.mock.calls.at(-1)?.[0] as WishTransferFooter;
+    await act(async () => {
+      footer.run();
+    });
+    expect(toastSpy).toHaveBeenCalledWith("1 convertie · 1 ignorée : semaine sans planning");
+  });
+
+  it("récap : regroupe et compte plusieurs raisons, du plus fréquent au moins fréquent", async () => {
+    wishesState.data = [wish({ id: "w1", done: false, teamId: "t1", weekStart: "2026-02-16" })];
+    transferMut.mockImplementation((_ids: string[], opts: { onSuccess: (r: unknown) => void }) => opts.onSuccess({ converted: 2, ignored: 3, ignoredReasons: { autre_saison: 1, semaine_sans_plan: 2 } }));
+    const toastSpy = vi.spyOn(toast, "success");
+    const onFooter = vi.fn();
+    render(<WishesTab mother={mother} weekFilter={null} onTransferStateChange={onFooter} />);
+    const footer = onFooter.mock.calls.at(-1)?.[0] as WishTransferFooter;
+    await act(async () => {
+      footer.run();
+    });
+    expect(toastSpy).toHaveBeenCalledWith("2 converties · 3 ignorées : 2 semaine sans planning, 1 autre saison");
   });
 
   // Lot 5 (fondateur 2026-10-10) — une doléance qui n'a JAMAIS eu de coach (coachId null, p. ex.

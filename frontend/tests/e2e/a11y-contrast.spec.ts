@@ -301,6 +301,11 @@ for (const mode of MODES) {
       // Les surfaces porteuses (compromis /planning, matrice de trajets) ne sont pas visitées par axe
       // ici → on verrouille la paire dans les deux thèmes.
       out["text-foreground on bg-accent/10"] = ratio(of("text-foreground", "color"), composite("bg-accent/10", bg));
+      // Lot 7 PR 5 — le TEXTE de la pastille `success` (StatusPill : doléance « Traité », transférée) :
+      // `text-foreground` sur `bg-success/10` (fond α 0.1 → composité sur `bg-background`). `text-success`
+      // y tombe sous AA (même repli que warning/accent) ; le texte est donc `text-foreground`, l'icône
+      // reste `text-success` (seuil graphique, test dédié plus bas). Paire verrouillée, deux thèmes.
+      out["text-foreground on bg-success/10"] = ratio(of("text-foreground", "color"), composite("bg-success/10", bg));
       // P4-164 — le LIBELLÉ d'une option de listbox (`text-foreground`) sur la surbrillance
       // active/survol (`bg-muted`, opaque) : la ligne active d'un sélecteur d'équipe n'est pas
       // toujours peinte quand axe scanne (liste fermée), on verrouille la paire ici, deux thèmes.
@@ -453,6 +458,9 @@ for (const mode of MODES) {
         // `bg-accent/10` (composité sur bg) : élément graphique, seuil 1.4.11 (≥ 3:1). Le TEXTE de
         // cette variante est `text-foreground`, mesuré au seuil AA dans le test plus haut.
         "text-accent icon on bg-accent/10": ratio(of("text-accent", "color"), composite("bg-accent/10", bg)),
+        // Lot 7 PR 5 — l'ICÔNE `text-success` de la pastille `success` (StatusPill, doléance « Traité »),
+        // sur `bg-success/10` (composité sur bg) : élément graphique, seuil 1.4.11 (≥ 3:1).
+        "text-success icon on bg-success/10": ratio(of("text-success", "color"), composite("bg-success/10", bg)),
         // P4-164 — l'ICÔNE d'alerte (`text-warning`) d'une option de listbox DÉSACTIVÉE, sur la
         // surbrillance active (`bg-muted`, opaque) : élément graphique, seuil 1.4.11 (≥ 3:1).
         "text-warning icon on bg-muted": ratio(of("text-warning", "color"), of("bg-muted", "backgroundColor")),

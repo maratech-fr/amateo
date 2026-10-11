@@ -83,6 +83,10 @@ export function CoachWishForm({
   const [wishedDays, setWishedDays] = useState<number[]>(editing?.wishedDays ?? []);
   const [comment, setComment] = useState(editing?.comment ?? "");
   const [keepSeasonSlots, setKeepSeasonSlots] = useState(editing?.keepSeasonSlots ?? false);
+  // Marquage manuel « traité / non traité » (retour fondateur 2026-10-11) : la coche vit dans le
+  // formulaire (le crayon), plus dans la liste. Le serveur ACCEPTE déjà `done` au PUT (CoachWishInput,
+  // groupe `write`) — rien à changer côté API.
+  const [done, setDone] = useState(editing?.done ?? false);
 
   // Exclusion souhaité ∩ indisponible : cocher un jour d'un côté le retire de l'autre
   // (dernier geste gagne) — même règle que la garde serveur (422), ici silencieuse.
@@ -125,7 +129,7 @@ export function CoachWishForm({
       unavailableDays: days,
       wishedDays,
       comment: "" === comment.trim() ? null : comment.trim(),
-      done: editing?.done ?? false,
+      done,
       keepSeasonSlots,
     });
   };
@@ -211,6 +215,13 @@ export function CoachWishForm({
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" className="size-4 accent-[var(--accent)]" checked={keepSeasonSlots} onChange={() => setKeepSeasonSlots((v) => !v)} />
         Garder les créneaux habituels
+      </label>
+
+      {/* Marquage manuel « traité » (retour fondateur 2026-10-11) : la pastille verte « Traité » de la
+          liste suit ce drapeau. Une doléance transférée est déjà traitée ; ici on peut la (dé)marquer. */}
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" className="size-4 accent-[var(--accent)]" checked={done} onChange={() => setDone((v) => !v)} />
+        Traitée
       </label>
 
       <textarea

@@ -1,9 +1,11 @@
 # Les 3 types de planning — référence produit
 
-Last verified @ 2026-10-10 (lot 3b PR C, `documentation-update`) : § Vue d'ensemble (ligne
-Contraintes) et § planning de reprise recalés contre `PeriodConstraintSelector::
-selectForPeriodPlan` — en vacances, seul le scope CLUB reste hérité par défaut (ÉQUIPE/COACH/
-GYMNASE off, décision fondateur 2026-10-10). Reste du fichier non rejoué ligne à ligne cette passe.
+Last verified @ 2026-10-11 (P2-63 PR 5) : § Collecte des doléances coachs (E5) recalé contre
+`WishesTab.tsx`/`CoachWishesHub.tsx` — l'onglet Doléances porte la case de sélection + le bouton
+« Transférer au planning » au pied de la fenêtre (la coche directe « traité » de la todo-list a
+disparu, remplacée par une pastille + le crayon) ; UN bouton « Doléances » ouvre toujours une
+fenêtre à trois onglets (Doléances · Sollicitation · Réglages). Reste du fichier non rejoué ligne
+à ligne cette passe.
 
 > **Rôle de ce document** : la trace durable du modèle métier des plannings. C'est LA référence
 > à consulter avant tout travail sur la génération : quel type se déclenche quand, ce qu'on y
@@ -181,7 +183,10 @@ début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
   - **Été** : rien pendant l'été, puis **2 semaines de reprise dégradée** → **2 plannings**.
 - **Collecte des doléances coachs (E5)** : UN seul bouton **« Doléances »** (radar + bandeau
   wizard) ouvre **une fenêtre unique** à trois onglets — **Doléances** (todo-list par équipe ×
-  semaine, coche « traité », + section **« Mutualisations »** — une demande par équipe × PÉRIODE,
+  semaine ; case de sélection par ligne NON traitée + bouton **« Transférer au planning (N) »**
+  au pied convertit en masse les cochées en réglages de plan, P2-63 PR 5 — « traité » se lit en
+  pastille verte, (dé)marquage manuel au crayon ; + section **« Mutualisations »** — une demande
+  par équipe × PÉRIODE, coche « traité »,
   saisissable aussi au nom d'un coach), **Sollicitation** (la campagne : liens tokenisés sans
   login `/doleances/{token}` → page publique pré-remplie, bloc **« Mutualisation (facultatif) »**
   par équipe — partenaires proposés = équipes de la campagne, passerelles `TeamLink` en tête — →

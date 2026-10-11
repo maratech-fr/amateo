@@ -36,7 +36,7 @@ final class ConstraintRepository extends ServiceEntityRepository
     /**
      * Permanent (non-dated) constraints only — the base plan. Dated constraints
      * (calendarEntryId set) belong to a CalendarEntry period and must NOT feed
-     * base-plan generation. See accueil-cockpit-temporel.md §9ter.c.
+     * base-plan generation. See specs/courantes/calendar-entry-modele-donnees.md §c.
      *
      * @return list<Constraint>
      */

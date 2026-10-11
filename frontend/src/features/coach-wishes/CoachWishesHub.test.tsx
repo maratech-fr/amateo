@@ -1,11 +1,13 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CalendarEntry } from "@/features/cockpit/api";
 import { setTodayOverride } from "@/shared/lib/clock";
 
 import type { CoachWishCampaign } from "./campaignApi";
+import type { WishTransferFooter } from "./WishesTab";
 
 // La fenêtre RÉSOUT elle-même sa campagne (décision 8) via `useCoachWishCampaigns`, et ses
 // doléances via `useCoachWishes` : on pilote les deux lectures par ces objets mutables (même
@@ -67,8 +69,18 @@ vi.mock("@/shared/session/queries", () => ({ useWorkingSeason: () => ({ startDat
 
 // Les onglets Doléances et Sollicitation sont testés dans leurs propres fichiers
 // (`WishesTab.test.tsx`, `SollicitationTab.test.tsx`) : ici on neutralise leur contenu pour
-// tester l'ORCHESTRATION du hub (onglets, onglet d'ouverture, pied de modale, compteur).
-vi.mock("./WishesTab", () => ({ WishesTab: () => null }));
+// tester l'ORCHESTRATION du hub (onglets, onglet d'ouverture, pied de modale, compteur). La maquette
+// de WishesTab REMONTE l'état du pied « Transférer » qu'on pilote par `transferReport` (lu par la
+// paresse de l'effet, comme les autres mocks) : `null` par défaut → pas de pied côté Doléances.
+const transferReport: { value: WishTransferFooter | null } = { value: null };
+vi.mock("./WishesTab", () => ({
+  WishesTab: ({ onTransferStateChange }: { onTransferStateChange?: (s: WishTransferFooter | null) => void }) => {
+    useEffect(() => {
+      onTransferStateChange?.(transferReport.value);
+    }, [onTransferStateChange]);
+    return null;
+  },
+}));
 vi.mock("./SollicitationTab", () => ({ SollicitationTab: () => null }));
 
 import { CoachWishesHub } from "./CoachWishesHub";
@@ -111,6 +123,7 @@ describe("CoachWishesHub", () => {
     wishesState.isError = false;
     plansState.data = PLANNED_PLANS;
     entriesState.data = PLANNED_ENTRIES;
+    transferReport.value = null;
     createMut.mockReset();
     updateMut.mockReset();
   });
@@ -666,5 +679,58 @@ describe("CoachWishesHub", () => {
     expect(screen.getByLabelText(/Semaine du 16\/02\/2026/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Semaine du 23\/02\/2026/)).toBeInTheDocument();
     expect(screen.queryByText(/Créez d'abord le planning/)).toBeNull();
+  });
+
+  // ── Lot 7 PR 5 (retours fondateur 2026-10-11) : le pied « Transférer » de l'onglet Doléances ──
+
+  // Le geste de masse vit dans le PIED de la fenêtre : compteur discret à gauche, bouton d'action
+  // PRINCIPALE (accent, jamais rouge) à droite — un seul pied, piloté par l'onglet actif.
+  it("pied Doléances : compteur à gauche + « Transférer au planning (N) » à droite (action principale)", () => {
+    transferReport.value = { count: 2, pending: false, run: vi.fn() };
+    renderHub({ wishes: [{ id: "w1" }] }); // ouvre sur Doléances (cockpit + doléances saisies)
+
+    expect(screen.getByText("2 doléances sélectionnées")).toBeInTheDocument();
+    const btn = screen.getByRole("button", { name: "Transférer au planning (2)" });
+    expect(btn).toBeEnabled();
+    // Action PRINCIPALE = variante par défaut du Button (`bg-accent`), jamais destructive/rouge.
+    expect(btn.className).toContain("bg-accent");
+    expect(btn.className).not.toContain("bg-destructive");
+  });
+
+  // N = 0 : bouton désactivé AVEC motif découvrable (aria-disabled + describedby, patron `disabledReason`).
+  it("pied Doléances : bouton désactivé avec motif quand aucune sélection", () => {
+    transferReport.value = { count: 0, pending: false, run: vi.fn() };
+    renderHub({ wishes: [{ id: "w1" }] });
+
+    expect(screen.getByText("0 doléance sélectionnée")).toBeInTheDocument();
+    const btn = screen.getByRole("button", { name: "Transférer au planning (0)" });
+    expect(btn).toHaveAttribute("aria-disabled", "true");
+    expect(btn).toHaveAttribute("title", "Cochez au moins une doléance à transférer");
+  });
+
+  // Cliquer « Transférer » appelle l'action remontée par WishesTab (le détail vit là-bas).
+  it("pied Doléances : cliquer « Transférer » appelle l'action remontée", async () => {
+    const run = vi.fn();
+    transferReport.value = { count: 1, pending: false, run };
+    renderHub({ wishes: [{ id: "w1" }] });
+
+    await userEvent.click(screen.getByRole("button", { name: "Transférer au planning (1)" }));
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  // Rien à transférer (WishesTab remonte null) → pas de pied côté Doléances.
+  it("pied Doléances : aucun pied quand il n'y a rien à transférer", () => {
+    transferReport.value = null;
+    renderHub({ wishes: [{ id: "w1" }] });
+    expect(screen.queryByRole("button", { name: /Transférer au planning/ })).toBeNull();
+  });
+
+  // Le pied RÉGLAGES reste inchangé (« Créer la collecte ») : un seul pied, piloté par l'onglet.
+  it("pied Réglages : « Créer la collecte » (pas le pied de transfert)", async () => {
+    transferReport.value = { count: 2, pending: false, run: vi.fn() };
+    renderHub();
+    await userEvent.click(screen.getByRole("tab", { name: "Réglages" }));
+    expect(screen.getByRole("button", { name: /Créer la collecte/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Transférer au planning/ })).toBeNull();
   });
 });

@@ -128,6 +128,11 @@ final class FrontRederivationRegistryTest extends TestCase
             'backendTruth' => 'App\\Service\\VenueWindowOccupancy::windowIsFilled (décide la case « vide » de l\'export PDF/XLSX)',
             'parityTest' => 'EmptySlotOverlapMirrorParityTest.php',
         ],
+        'features/wizard/steps/periodSeedSelection.ts' => [
+            'decides' => 'le tri d\'équipes par défaut d\'un plan de période de reprise (2 premiers rangs S+A, repli sur le meilleur rang présent ; fermeture = tout actif) — semé au wizard, matérialisé au transfert (D-e)',
+            'backendTruth' => 'App\\Service\\PlanTeamSelectionSeeder::keptTeamIds',
+            'parityTest' => 'PeriodSeedSelectionMirrorParityTest.php',
+        ],
     ];
 
     /**

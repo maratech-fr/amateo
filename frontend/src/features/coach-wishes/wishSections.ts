@@ -15,6 +15,11 @@ export interface SectionState {
   comment: string;
   /** Le coach souhaite garder ses créneaux habituels de saison cette semaine-là (volet B). */
   keepSeasonSlots: boolean;
+  /**
+   * Lecture seule — cette (équipe × semaine) a déjà été saisie par un AUTRE coach : on prévient
+   * que l'envoi remplacera sa version (option A). Jamais pris en compte par le dirty-tracking.
+   */
+  byAnotherCoach: boolean;
 }
 
 export const sectionKey = (teamId: string, weekStart: string): string => `${teamId}|${weekStart}`;
@@ -31,6 +36,7 @@ export function buildInitialSections(context: PublicWishContext): Map<string, Se
         wishedDays: new Set(existing?.wishedDays ?? []),
         comment: existing?.comment ?? "",
         keepSeasonSlots: existing?.keepSeasonSlots ?? false,
+        byAnotherCoach: existing?.byAnotherCoach ?? false,
       });
     }
   }
@@ -39,7 +45,7 @@ export function buildInitialSections(context: PublicWishContext): Map<string, Se
 
 /** Copie profonde d'une carte de sections (les `Set` sont clonés). */
 export function cloneSections(source: Map<string, SectionState>): Map<string, SectionState> {
-  return new Map([...source].map(([k, v]) => [k, { slotsWanted: v.slotsWanted, days: new Set(v.days), wishedDays: new Set(v.wishedDays), comment: v.comment, keepSeasonSlots: v.keepSeasonSlots }]));
+  return new Map([...source].map(([k, v]) => [k, { slotsWanted: v.slotsWanted, days: new Set(v.days), wishedDays: new Set(v.wishedDays), comment: v.comment, keepSeasonSlots: v.keepSeasonSlots, byAnotherCoach: v.byAnotherCoach }]));
 }
 
 /** Une section est MODIFIÉE si elle diffère de l'état initial — seules celles-là partent. */

@@ -106,7 +106,9 @@ export function PublicWishForm({ token, context, preview = false }: { token: str
     if (null !== draft) {
       for (const [key, value] of draft.sections) {
         if (base.has(key)) {
-          base.set(key, { slotsWanted: value.slotsWanted, days: new Set(value.days), wishedDays: new Set(value.wishedDays), comment: value.comment, keepSeasonSlots: value.keepSeasonSlots });
+          // Le brouillon ne porte que les champs ÉDITABLES ; `byAnotherCoach` reste celui de
+          // l'état serveur (base), jamais écrasé par un brouillon.
+          base.set(key, { slotsWanted: value.slotsWanted, days: new Set(value.days), wishedDays: new Set(value.wishedDays), comment: value.comment, keepSeasonSlots: value.keepSeasonSlots, byAnotherCoach: base.get(key)?.byAnotherCoach ?? false });
         }
       }
     }

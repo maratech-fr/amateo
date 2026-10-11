@@ -605,6 +605,62 @@ final class SchedulePlanProvisioner
     }
 
     /**
+     * P2-63 PR 5 (transfert) — la CIBLE d'une doléance : le plan qui gouverne la semaine
+     * d'un lundi donné d'une période de vacances, et l'ENTRÉE à laquelle une contrainte
+     * datée doit s'accrocher.
+     *
+     * Miroir exact de {@see planWeekMondaysForPeriod} (D-c) : un planning SCINDÉ contribue
+     * sa semaine via son entrée-ENFANT ; un planning d'un BLOC contribue sa semaine type
+     * ancrée au premier lundi via l'entrée MÈRE. On balaie donc mère ∪ enfants et on retient
+     * celui dont le lundi de la fenêtre (`date_trunc('week', start_date)`) coïncide.
+     *
+     * `entryId` est l'entrée qui PORTE ce plan (enfant si scindé, mère si bloc) : une
+     * contrainte datée dessus est lue par CE plan seul (modèle FAIT/GENÈSE,
+     * {@see CalendarEntry::datedConstraintSourceIds}) — la semaine pour un enfant, le bloc
+     * entier pour une mère. `null` si aucun plan ne couvre cette semaine : Q8 garantit en
+     * principe le contraire (la collecte n'existe qu'après la naissance des plannings), ce
+     * `null` reste une défense (le transfert l'ignore et le DIT).
+     *
+     * SQL brut comme ses voisines : `season_filter` esquivé (la saison du plan n'est pas
+     * forcément l'active), RLS scope le club.
+     *
+     * @return array{planId: string, entryId: string}|null
+     */
+    public function periodWeekPlanTarget(string $motherEntryId, DateTimeImmutable $weekMonday): ?array
+    {
+        $row = $this->entityManager->getConnection()->fetchAssociative(
+            'SELECT sp.id AS plan_id, sp.calendar_entry_id AS entry_id '
+            . 'FROM schedule_plan sp '
+            . 'JOIN calendar_entry ce ON ce.id = sp.calendar_entry_id '
+            . 'WHERE sp.calendar_entry_id IS NOT NULL AND (ce.id = :mid OR ce.parent_entry_id = :mid) '
+            . 'AND to_char(date_trunc(\'week\', sp.start_date::date), \'YYYY-MM-DD\') = :monday '
+            . 'ORDER BY sp.start_date LIMIT 1',
+            ['mid' => $motherEntryId, 'monday' => $weekMonday->format('Y-m-d')],
+        );
+        if (false === $row) {
+            return null;
+        }
+
+        return ['planId' => (string) $row['plan_id'], 'entryId' => (string) $row['entry_id']];
+    }
+
+    /**
+     * Le plan a-t-il déjà vu sa sélection d'équipes initialisée ? (le drapeau que
+     * {@see markPlanTeamSelectionInitialized} pose à la 1re écriture d'override). Lu par le
+     * transfert pour matérialiser le seed « Fanion + importantes » AVANT sa 1re écriture (D-e)
+     * — sinon cette écriture désarmerait le seed en silence. SQL brut, comme ses voisines.
+     */
+    public function planTeamSelectionInitialized(string $schedulePlanId): bool
+    {
+        // Prédicat SQL (pas une lecture de colonne booléenne nue) : pdo_pgsql rend « t »/« f »
+        // qu'un `(bool)` interprète tous deux comme vrai — l'idiome maison est `SELECT 1 WHERE …`.
+        return (bool) $this->entityManager->getConnection()->fetchOne(
+            'SELECT 1 FROM schedule_plan WHERE id = :pid AND team_selection_initialized',
+            ['pid' => $schedulePlanId],
+        );
+    }
+
+    /**
      * ADR-0002 inv. 12 — LE nom d'un planning, vu depuis une de ses versions : celui de son
      * PLAN, toujours. SOURCE UNIQUE de la règle et de son repli.
      *

@@ -45,7 +45,7 @@ final class CoachWishFormPresenter
      *     teams: list<array{id: string, name: string}>,
      *     partnerTeams: list<array{id: string, name: string}>,
      *     teamLinks: list<array{teamAId: string, teamBId: string}>,
-     *     wishes: list<array{teamId: string, weekStart: string, slotsWanted: int, unavailableDays: list<int>, wishedDays: list<int>, comment: string|null, keepSeasonSlots: bool}>,
+     *     wishes: list<array{teamId: string, weekStart: string, slotsWanted: int, unavailableDays: list<int>, wishedDays: list<int>, comment: string|null, keepSeasonSlots: bool, byAnotherCoach: bool}>,
      *     mutualizations: list<array{teamId: string, partnerTeamIds: list<string>, sharedSlots: int}>,
      *     respondedAt: string|null
      * }
@@ -110,6 +110,12 @@ final class CoachWishFormPresenter
                     'comment' => $wish->getComment(),
                     // Booléen NU (volet B) : jamais les horaires de saison, juste le drapeau.
                     'keepSeasonSlots' => $wish->keepsSeasonSlots(),
+                    // Option A (fondateur 2026-10-10) — une doléance par (équipe × semaine) : si CE
+                    // couple a été saisi par un AUTRE coach (équipe co-coachée), on PRÉVIENT que la
+                    // réponse remplacera la sienne. On n'expose JAMAIS son prénom ni rien de plus que
+                    // la saisie déjà pré-remplie (bornée au périmètre du jeton) : le front dira « un
+                    // autre coach ». `coachId` null (doléance dé-attribuée) n'est pas « un autre coach ».
+                    'byAnotherCoach' => null !== $wish->getCoachId() && $wish->getCoachId() !== $coach->getId(),
                 ];
             }
 

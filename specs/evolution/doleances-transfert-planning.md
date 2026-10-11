@@ -1,7 +1,7 @@
 # Doléances → planning : jours disponibles, créneaux habituels, ajout manuel, « Transférer au planning » (P2-63)
 
 > **Statut** : questions tranchées le 2026-10-09 (§5) ; plan en 7 PR (§8) ; points D-a → D-g tranchés
-> le 2026-10-09 (§8.10). **PR 1, PR 2, PR 3, PR 4 et PR 7 LIVRÉES** (§8.3) ; PR 5 et 6 restent à
+> le 2026-10-09 (§8.10). **PR 1, PR 2, PR 3, PR 4, PR 5 et PR 7 LIVRÉES** (§8.3) ; PR 6 reste à
 > coder. L'item P2-63 reste ouvert tant que les 7 PR ne sont pas toutes livrées (il ne quittera la
 > roadmap et ce fichier ne sera supprimé qu'à ce moment-là).
 > **Origine** : besoin d'un gestionnaire de club, dicté par le fondateur le 2026-10-09 (mots exacts §0).
@@ -457,21 +457,48 @@ semaines portées par un plan, refus 422 via `refuse()`) ; carte de vacances san
 explique « Créez d'abord le planning » et mène à « Adapter ». Campagnes existantes : D-f.
 Tests : `CoachWishCampaignApiTest.php`, vitest, scénario Behat « la collecte attend le planning ».
 
-**PR 5 — E + F : « Transférer au planning ».** `POST /api/coach-wishes/transfer` (patron
-`FillPeriodPlanController`), management-only (`ManagementAccessGuard::assertManager`), sous
-`SchedulePlanProvisioner::lockPlanScope`. Conversions : `slotsWanted>0` → `TeamPeriodOverride.sessionsPerWeek`
-du plan de la semaine, `=0` → `isActive=false` ; `unavailableDays` + coach → UNE datée COACH
-COACH_AVAILABILITY **HARD** (enfant de la semaine, mère si bloc), commentaire en description ; sans coach
-→ TEAM DAY `forbiddenDays` **HARD** (D-a) ; `wishedDays` → TEAM DAY `preferredDays` PREFERRED ;
-idempotence `source='coach_wish'` + `sourceOccurrenceId` = id de la doléance ; modifier/supprimer une
-doléance ne touche jamais le plan ; F : `isActive=true` + nouveau champ de provenance
-`TeamPeriodOverride.source` (migration) + pastille « via doléances » (PeriodTeams, contrainte, todo) ;
-seed S+A matérialisé côté serveur si le plan n'est pas initialisé (D-e, miroir + parité) ; `done=true`
-sur les converties, jamais de re-transfert automatique. Front : case de sélection par ligne
-(présélection = non traitées), « Transférer au planning (N) », récap « N converties · M ignorées
-(motif) », distinction sélection/traité (D-b, passe ui-ux + captures). NR planning lifecycle :
-`CoachWishTransferTest::testTransferNeverBirthsAPlanNorTouchesValidatedSocle` + scénario Behat ; gate =
-step `ci.yml` ET ligne `docs/testing/blocking-tests.md`, même PR. `/security-review` : OUI.
+**PR 5 — E + F : « Transférer au planning » — LIVRÉE.** `POST /api/coach-wishes/transfer`
+(`CoachWishTransferController`), management-only (`ManagementAccessGuard::assertManager`, SEC-07),
+écriture de COLLECTION (`SeasonScopedWriteInterface`, saison du header `X-Season-Id`). Verrouillage
+RÉEL : pas un verrou exclusif `lockPlanScope` (changé pendant le code) mais une double SONDE de
+`ClubGenerationLock::isGenerating` (avant la boucle et juste avant le commit → 409
+`generation_in_progress`, patron `MutualizeSlotService`) + un verrou pessimiste PAR DOLÉANCE
+(`SELECT … FOR UPDATE`) qui sérialise deux transferts concurrents de la MÊME doléance.
+Conversions, par doléance COCHÉE : `slotsWanted>0` → `TeamPeriodOverride` actif +
+`sessionsPerWeek`, `=0` → `isActive=false` (`sessionsPerWeek=null`) ; `unavailableDays` → UNE
+contrainte DATÉE **HARD**, pendue à l'entrée qui PORTE le plan de la semaine
+(`SchedulePlanProvisioner::periodWeekPlanTarget`, nouvelle méthode) — COACH `COACH_AVAILABILITY`
+si l'équipe est MONO-coach ou si TOUS ses coachs requis ont répondu à la campagne (moteur « un
+coach suffit », lot 3b A), sinon (sans coach, ou co-coachée dont un seul a répondu) TEAM DAY
+`forbiddenDays` (**Q-A, nuance confirmée 2026-10-10** — amende D-a/Q2) ; `wishedDays` → TEAM DAY
+`preferredDays` PREFERRED ; commentaire en `description` de la contrainte seule (jamais dupliqué).
+Idempotence : `source='coach_wish'` + `sourceOccurrenceId` = id de la doléance — un re-transfert
+EFFACE les contraintes du précédent transfert de cette doléance puis recrée, jamais une 2ᵉ ligne ;
+modifier/supprimer une doléance ne touche jamais le plan. F : `TeamPeriodOverride.source`
+(migration) porte `'coach_wish'` (réactive une équipe hors périmètre, ex. Vétérans) ; pastille
+« via doléances » sur `PeriodTeams.tsx` (conditionnée à la VALEUR `'coach_wish'`, jamais
+`'mutualisation'`). Seed « Fanion + importantes » matérialisé CÔTÉ SERVEUR si le plan n'est pas
+encore initialisé (D-e, `PlanTeamSelectionSeeder`, maison unique ; miroir déclaré
+`periodSeedSelection.ts` + parité mécanique `PeriodSeedSelectionMirrorParityTest`, registre
+`FrontRederivationRegistryTest`) — le seed ne touche jamais un override déjà posé par un AUTRE
+geste (ex. mutualisation). `done=true` sur les converties (Q7), jamais de re-transfert
+automatique. Garde-fous : plafond dur de 500 doléances par appel (400 avant toute transaction),
+un id malformé/introuvable/d'une autre saison est IGNORÉ avec son motif
+(`id_invalide`/`introuvable`/`autre_saison`/`semaine_sans_plan`), jamais un 500 ni un abandon du
+lot entier ; un plan supprimé PENDANT le transfert (FK) rend un 422 nommé (B4). Front
+(retours fondateur sur captures, 2026-10-11) : bouton « Transférer au planning (N) » dans le
+PIED de la fenêtre `CoachWishesHub`, à droite, couleur d'ACCENT du club (jamais rouge — rouge =
+destructif) ; compteur de sélection à gauche. Case de sélection À GAUCHE de chaque ligne, présente
+seulement sur une doléance NON traitée (présélection = non traitées) — « traité » devient une
+PASTILLE VERTE (`StatusPill` variante `success`, nouvelle) à côté du nom, le marquage manuel
+traité/non-traité passe par le crayon (champ « Traitée » de `CoachWishForm`), plus de case à
+droite dans la liste (D-b, tranché autrement qu'au cadrage). Récap TOUJOURS motivé : « N
+converties · M ignorées : <raisons> » (jamais un compte nu). NR planning lifecycle :
+`CoachWishTransferTest` (dont `testTransferNeverBirthsAPlanNorTouchesValidatedSocle`,
+`testTransferRequiresManagementRole` FALSIFIÉE, `testMultiCoachPartialResponseClosesTeamDayForTheTeam`/
+`testMultiCoachAllRespondedWritesCoachAvailability` pour Q-A) + scénario Behat
+`voeux-des-coachs.feature` « transférer » ; gate = step `ci.yml` ET ligne
+`docs/testing/blocking-tests.md`, même PR. `/security-review` : round 1 traité.
 
 **PR 6 — Q3/Q4/Q3bis : contrainte « Garder ses créneaux de saison ».** Famille
 `ConstraintFamily::SEASON_SLOTS` (TEAM, toujours Préférée, HARD refusé), visible/supprimable à l'étape
@@ -508,10 +535,10 @@ byte-identique du jeton purgé).
 
 ### 8.4 Tests d'abus (§3bis)
 
-1. `CoachWishTransferTest::testTransferConvertsOnlyExplicitlySelectedWishes` +
-   `testPublicSubmissionAloneNeverWritesPlanObjects`.
+1. `CoachWishTransferTest::testOnlyExplicitlySelectedWishesConvert` +
+   `PublicCoachWishTest::testPublicSubmissionAloneNeverWritesPlanObjects`.
 2. `CoachWishTransferTest::testResubmissionResetsDoneButNeverRetransfers` +
-   `testRetransferIsIdempotentBySourceOccurrenceId`.
+   `testRetransferIsIdempotentBySourceOccurrence`.
 3. `PublicCoachWishTest::testKeepSeasonSlotsIsBoundedToTokenPerimeter` +
    `testPublicPostCannotIncludeATeamInThePlan`.
 4. `PublicCoachWishTest::testPublicContextExposesNoSeasonSlots`.
@@ -537,8 +564,11 @@ byte-identique du jeton purgé).
 
 - **D-a — « l'équipe ne s'entraîne pas ces jours-là » — TRANCHÉ (fondateur, 2026-10-09 : « ok pour jours interdits »)** : TEAM DAY `forbiddenDays` HARD (clé existante).
   Ex. : Vétérans sans coach, indispo jeu+ven → « Jours interdits Vétérans : jeudi, vendredi · Obligatoire ».
-- **D-b — sélection vs « traité » — TRANCHÉ sur le principe (fondateur, 2026-10-09 ; captures avant de figer)** : case de sélection à gauche, l'état « traité » reste à droite ;
-  présélection = non traitées ; après transfert les lignes passent barrées. Passe ui-ux + captures.
+- **D-b — sélection vs « traité » — LIVRÉ, retouché sur captures (fondateur, 2026-10-11)** : case
+  de sélection à GAUCHE, présente seulement sur une doléance NON traitée (présélection = non
+  traitées) ; « traité » devient une PASTILLE VERTE à côté du nom (plus de case à droite), le
+  marquage manuel passe par le champ « Traitée » du crayon (`CoachWishForm`) — la coche à droite
+  et le barré envisagés au cadrage sont ABANDONNÉS au profit de la pastille.
 - **D-c — semaine type d'un planning d'un bloc — TRANCHÉ (fondateur, 2026-10-09 : « on attache à la première semaine et la 2e semaine n'est qu'une copie au résultat »)** : `weekStart` = lundi de la première semaine du bloc,
   affiché « Semaine type du bloc (20/04 → 01/05) » (zéro migration).
 - **D-d — TRANCHÉ (fondateur, 2026-10-09) : « Combler » reste comme aujourd'hui ; la contrainte « Garder ses créneaux de saison » garde équipe + jour + heure, et le gymnase SI POSSIBLE (quand il existe dans ce planning).** Question d'origine — le comblement gagne-t-il le niveau gymnase ? Non en v1 : « Combler » reste au point près ;

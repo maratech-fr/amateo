@@ -36,3 +36,23 @@ export function useDeleteCoachWish() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["coach-wishes"] }),
   });
 }
+
+/**
+ * P2-63 PR 5 — « Transférer au planning » : convertit les doléances cochées en réglages de
+ * plan. Invalide les doléances (les converties passent « traité ») ET les objets de plan que
+ * le transfert écrit (overrides d'équipe, contraintes) pour que le wizard les reflète sans
+ * rechargement. Le toast de RÉCAP est posé par l'appelant en `onSuccess` ; les erreurs (dont le
+ * 409 nommé) restent au filet global des mutations (règle FRT-38 : pas de toast d'erreur ici).
+ */
+export function useTransferCoachWishes() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (wishIds: string[]) => coachWishApi.transferCoachWishes(wishIds),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["coach-wishes"] });
+      // Les objets de plan que le transfert écrit vivent sous la clé "wizard"
+      // (team_period_overrides + constraints d'une période) : on invalide le sous-arbre.
+      void queryClient.invalidateQueries({ queryKey: ["wizard"] });
+    },
+  });
+}
