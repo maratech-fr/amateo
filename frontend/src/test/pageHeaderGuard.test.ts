@@ -46,8 +46,24 @@ const H1_EXEMPTIONS: { file: string; reason: string }[] = [
 const H1 = /<h1[\s>]/;
 const PAGE_HEADER = /<PageHeader[\s/>]/;
 
+// Lot B — `showFeedback` masque la porte « Signaler ». C'est une EXCEPTION : « Signaler » doit
+// vivre sur chaque écran. Deux cas seulement sont légitimes — une page publique consultée
+// déconnectée, et un en-tête rendu DANS un autre en-tête qui porte déjà la porte (PlanningPage
+// embarqué dans le wizard). Tout autre `showFeedback=` rougit : on ne retire pas « Signaler » en
+// silence (une 3ᵉ récidive se motive ici ou passe par la revue).
+const SHOW_FEEDBACK = /showFeedback=/;
+const SHOW_FEEDBACK_EXEMPTIONS: { file: string; reason: string }[] = [
+  { file: "shared/components/ui/page-header.tsx", reason: "la primitive : c'est ELLE qui définit la prop" },
+  { file: "features/legal/PrivacyPage.tsx", reason: "page publique consultée DÉCONNECTÉE — le POST /feedback exige une session" },
+  { file: "features/planning/PlanningPage.tsx", reason: "embarqué dans le wizard — l'en-tête du wizard porte déjà « Signaler » (lot B)" },
+];
+
 function isH1Exempt(rel: string): boolean {
   return H1_EXEMPTIONS.some((e) => rel.includes(e.file));
+}
+
+function isShowFeedbackExempt(rel: string): boolean {
+  return SHOW_FEEDBACK_EXEMPTIONS.some((e) => rel.includes(e.file));
 }
 
 function tsxFiles(dir: string): string[] {
@@ -93,6 +109,21 @@ describe("PageHeader — brique d'en-tête unique (trait + titre + Signaler)", (
     expect(
       offenders,
       "Un <h1 doit venir de PageHeader (brique unique) ou entrer dans H1_EXEMPTIONS avec sa raison (wizard/admin/système/route-error/primitive).",
+    ).toEqual([]);
+  });
+
+  it("aucun showFeedback= hors de la liste fermée d'exemptions motivées", () => {
+    const offenders: string[] = [];
+    for (const file of tsxFiles(SRC_ROOT)) {
+      const rel = file.slice(SRC_ROOT.length + 1);
+      if (isShowFeedbackExempt(rel)) continue;
+      if (SHOW_FEEDBACK.test(readFileSync(file, "utf8"))) {
+        offenders.push(`src/${rel}`);
+      }
+    }
+    expect(
+      offenders,
+      "« Signaler » doit vivre sur chaque écran : masquer la porte (showFeedback={…}) n'est légitime qu'en page publique déconnectée ou dans un en-tête imbriqué qui la porte déjà. Motivez dans SHOW_FEEDBACK_EXEMPTIONS ou passez par la revue.",
     ).toEqual([]);
   });
 });
