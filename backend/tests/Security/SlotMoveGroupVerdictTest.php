@@ -19,6 +19,7 @@ use App\Entity\VenueTrainingSlot;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Exception\ScheduleGenerationInProgressException;
+use App\Exception\TeamAlreadyAtCaseException;
 use App\Service\ClubGenerationLock;
 use App\Service\EngineClient;
 use App\Service\MoveSlotService;
@@ -26,6 +27,7 @@ use App\Service\RequestIdContext;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\ScheduleProgressPublisher;
+use App\Service\TeamCaseOccupancyGuard;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -210,6 +212,73 @@ final class SlotMoveGroupVerdictTest extends KernelTestCase
         }
     }
 
+    /**
+     * Lot A-2, règle fondateur (reproduction du cas prod U18F1+U18F2) : la MÊME équipe ne siège jamais
+     * deux fois à la même case. Ce rail n'a PAS d'éviction — si un membre déplacé possède DÉJÀ une
+     * séance à la case CIBLE (hors du bloc), le déplacement est refusé AVANT le moteur, 422 NOMMÉ
+     * (nom réel de l'équipe, jour en toutes lettres, nom du gymnase, consigne « déplacez-la ou
+     * retirez-la d'abord »), et AUCUN des créneaux du bloc ne bouge.
+     */
+    public function testGroupMoveOntoMemberOwnSessionIsRefusedNamed(): void
+    {
+        $ctx = $this->seed();
+        // Un membre du bloc possède DÉJÀ une séance À LA CASE CIBLE (venue2, jeudi 20:00), hors bloc.
+        $firstSource = $this->em->getRepository(ScheduleSlotTemplate::class)->find($ctx['sourceIds'][0]);
+        self::assertInstanceOf(ScheduleSlotTemplate::class, $firstSource);
+        $memberTeamId = $firstSource->getTeamId();
+        $existingAtTarget = (new ScheduleSlotTemplate)
+            ->setClubId($ctx['clubId'])
+            ->setSeasonId($ctx['seasonId'])
+            ->setScheduleId($ctx['scheduleId'])
+            ->setTeamId($memberTeamId)
+            ->setVenueId($ctx['venue2'])
+            ->setDayOfWeek(4)
+            ->setStartTime(DateTimeImmutable::createFromFormat('!H:i', '20:00'))
+            ->setDurationMinutes(90);
+        $this->em->persist($existingAtTarget);
+        $this->em->flush();
+        $existingId = $existingAtTarget->getId();
+
+        $team = $this->em->getRepository(Team::class)->find($memberTeamId);
+        self::assertInstanceOf(Team::class, $team);
+
+        $client = new MockHttpClient(static function (): MockResponse {
+            self::fail('le moteur ne doit PAS être appelé quand un membre siège déjà à la case cible');
+        });
+
+        try {
+            $this->service($client)->moveGroup(
+                $ctx['schedule'],
+                $ctx['block'],
+                2,
+                DateTimeImmutable::createFromFormat('!H:i', '18:00'),
+                $ctx['venue1'],
+                4,
+                DateTimeImmutable::createFromFormat('!H:i', '20:00'),
+                $ctx['venue2'],
+            );
+            self::fail('un déplacement de bloc sur la séance existante d\'un membre doit lever');
+        } catch (TeamAlreadyAtCaseException $e) {
+            self::assertStringContainsString($team->getName(), $e->getMessage(), 'le message nomme l\'équipe réelle');
+            self::assertStringContainsString('jeudi', $e->getMessage(), 'le jour est en toutes lettres');
+            self::assertStringContainsString('Gymnase Deux', $e->getMessage(), 'le gymnase est nommé');
+            self::assertStringContainsString('déplacez-la ou retirez-la d\'abord', $e->getMessage(), 'la consigne du rail sans éviction');
+        }
+
+        // Atomicité : aucun membre du bloc n'a bougé, la séance existante n'est pas touchée, pas de marqueur.
+        $this->em->clear();
+        $this->scopeGucToClub($ctx['clubId']);
+        foreach ($ctx['sourceIds'] as $id) {
+            $reloaded = $this->em->getRepository(ScheduleSlotTemplate::class)->find($id);
+            self::assertInstanceOf(ScheduleSlotTemplate::class, $reloaded);
+            self::assertSame(2, $reloaded->getDayOfWeek(), 'aucun membre du bloc ne bouge');
+            self::assertSame($ctx['venue1'], $reloaded->getVenueId());
+        }
+        self::assertNotNull($this->em->getRepository(ScheduleSlotTemplate::class)->find($existingId), 'la séance existante du membre n\'est pas touchée');
+        $schedule = $this->em->getRepository(Schedule::class)->find($ctx['scheduleId']);
+        self::assertFalse($schedule?->isManuallyEditedSinceGeneration());
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -230,6 +299,7 @@ final class SlotMoveGroupVerdictTest extends KernelTestCase
             new EngineClient($client, new RequestIdContext),
             new ScheduleProgressPublisher($hub),
             new NullLogger,
+            new TeamCaseOccupancyGuard($this->em),
         );
     }
 

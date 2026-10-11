@@ -22,6 +22,7 @@ use App\Exception\EngineTimeoutException;
 use App\Exception\EvictTargetLockedException;
 use App\Exception\EvictTargetMismatchException;
 use App\Exception\ScheduleGenerationInProgressException;
+use App\Exception\TeamAlreadyAtCaseException;
 use App\Service\ClubGenerationLock;
 use App\Service\EngineClient;
 use App\Service\MoveSlotService;
@@ -29,6 +30,7 @@ use App\Service\RequestIdContext;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\ScheduleProgressPublisher;
+use App\Service\TeamCaseOccupancyGuard;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -554,10 +556,100 @@ final class SlotMoveVerdictTest extends KernelTestCase
         self::assertFalse($schedule->isManuallyEditedSinceGeneration(), 'un timeout ne marque pas le planning comme retouché');
     }
 
+    /**
+     * Lot A-2, règle fondateur : la MÊME équipe ne siège jamais deux fois à la même case. Déposer une
+     * séance sur une AUTRE séance de SA PROPRE équipe SANS éviction est refusé AVANT le moteur
+     * (TeamAlreadyAtCaseException → 422 `team_already_at_case`), rien n'est écrit, moteur jamais appelé.
+     */
+    public function testMoveOntoOwnOtherSessionWithoutEvictionIsRefused(): void
+    {
+        $ctx = $this->seed();
+        $slot = $ctx['slot'];
+        // Une AUTRE séance de la MÊME équipe siège déjà à la cible (venue2, jeudi 20:00).
+        $own = $this->seedOwnSession($ctx, $slot->getTeamId(), 4, '20:00', $ctx['venue2']);
+        $ownId = $own->getId();
+
+        $client = new MockHttpClient(static function (): MockResponse {
+            self::fail('le moteur ne doit PAS être appelé quand l\'équipe siège déjà à la cible');
+        });
+
+        try {
+            $this->service($client)->move($slot, 4, new DateTimeImmutable('20:00'), $ctx['venue2']);
+            self::fail('un déplacement sur sa propre autre séance, sans éviction, doit lever');
+        } catch (TeamAlreadyAtCaseException) {
+            // attendu
+        }
+
+        $this->em->clear();
+        $this->scopeGucToClub($ctx['clubId']);
+        $reloaded = $this->em->getRepository(ScheduleSlotTemplate::class)->find($slot->getId());
+        self::assertSame($slot->getDayOfWeek(), $reloaded?->getDayOfWeek(), 'la source ne bouge pas');
+        self::assertSame($ctx['venue1'], $reloaded?->getVenueId());
+        self::assertNotNull(
+            $this->em->getRepository(ScheduleSlotTemplate::class)->find($ownId),
+            'l\'autre séance de l\'équipe n\'est ni déplacée ni supprimée',
+        );
+        $schedule = $this->em->getRepository(Schedule::class)->find($ctx['scheduleId']);
+        self::assertFalse($schedule?->isManuallyEditedSinceGeneration(), 'un refus ne marque pas le planning comme retouché');
+    }
+
+    /**
+     * Lot A-2, l'échange légal : déplacer une séance SUR sa propre autre séance AVEC éviction est
+     * PERMIS (l'évincé est exclu de la garde). La source bouge, l'autre séance est supprimée.
+     */
+    public function testMoveOntoOwnOtherSessionWithEvictionSucceeds(): void
+    {
+        $ctx = $this->seed();
+        $slot = $ctx['slot'];
+        $own = $this->seedOwnSession($ctx, $slot->getTeamId(), 4, '20:00', $ctx['venue2']);
+        $ownId = $own->getId();
+
+        $service = $this->service(new MockHttpClient(new MockResponse(self::ACCEPT, ['http_code' => 200])));
+        $result = $service->move($slot, 4, new DateTimeImmutable('20:00'), $ctx['venue2'], $ownId);
+
+        self::assertTrue($result['valid']);
+        self::assertSame($ownId, $result['evicted']['slotId'] ?? null, 'l\'autre séance évincée est restituée');
+
+        $this->em->clear();
+        $this->scopeGucToClub($ctx['clubId']);
+        $reloaded = $this->em->getRepository(ScheduleSlotTemplate::class)->find($slot->getId());
+        self::assertInstanceOf(ScheduleSlotTemplate::class, $reloaded);
+        self::assertSame(4, $reloaded->getDayOfWeek());
+        self::assertSame('20:00', $reloaded->getStartTime()->format('H:i'));
+        self::assertSame($ctx['venue2'], $reloaded->getVenueId());
+        self::assertNull(
+            $this->em->getRepository(ScheduleSlotTemplate::class)->find($ownId),
+            'l\'autre séance de l\'équipe est évincée (supprimée) — échange légal',
+        );
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    /**
+     * Une AUTRE séance de la MÊME équipe que la source, sur le planning du contexte, au jour/heure/
+     * gymnase donnés — pour exercer la règle « une équipe ne siège jamais deux fois à la même case ».
+     *
+     * @param array{clubId: string, seasonId: string, scheduleId: string, venue1: string, venue2: string, slot: ScheduleSlotTemplate} $ctx
+     */
+    private function seedOwnSession(array $ctx, string $teamId, int $day, string $startHi, string $venueId): ScheduleSlotTemplate
+    {
+        $own = (new ScheduleSlotTemplate)
+            ->setClubId($ctx['clubId'])
+            ->setSeasonId($ctx['seasonId'])
+            ->setScheduleId($ctx['scheduleId'])
+            ->setTeamId($teamId)
+            ->setVenueId($venueId)
+            ->setDayOfWeek($day)
+            ->setStartTime(DateTimeImmutable::createFromFormat('!H:i', $startHi))
+            ->setDurationMinutes(90);
+        $this->em->persist($own);
+        $this->em->flush();
+
+        return $own;
     }
 
     /**
@@ -601,6 +693,7 @@ final class SlotMoveVerdictTest extends KernelTestCase
             new EngineClient($client, new RequestIdContext),
             new ScheduleProgressPublisher($hub),
             new NullLogger,
+            new TeamCaseOccupancyGuard($this->em),
         );
     }
 

@@ -202,10 +202,17 @@ final class DeletionImpactParityTest extends KernelTestCase
         $this->em->persist((new ScheduleSlotTemplate)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setScheduleId($schedule->getId())->setTeamId($team->getId())->setVenueId($venue->getId())
             ->setDayOfWeek(1)->setStartTime($at)->setDurationMinutes(90)->setLockLevel(LockLevel::HARD));
-        // Un placement que le SOLVEUR a choisi au même horaire : c'est un RÉSULTAT, il
-        // appartient à sa version — ni annoncé, ni détruit.
+        // Un placement que le SOLVEUR a choisi à la MÊME case, pour une AUTRE équipe (case
+        // mutualisée, état réel) : c'est un RÉSULTAT, il appartient à sa version — ni annoncé,
+        // ni détruit. Équipe distincte parce que (schedule, team, venue, jour, heure) est
+        // désormais unique : un HARD et un NONE de la MÊME équipe à la MÊME case est un état
+        // que l'import ne produit jamais (ScheduleResultImporter identifie un placement par
+        // team:venue:jour:heure et préserve le HARD existant sans en créer un second). La
+        // cascade raisonne par case + hardOnly (SlotPinStep), donc le NONE survit par son
+        // lockLevel, pas par son équipe — la discrimination HARD vs non-HARD reste testée à la
+        // case visée.
         $solverPick = (new ScheduleSlotTemplate)->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setScheduleId($schedule->getId())->setTeamId($team->getId())->setVenueId($venue->getId())
+            ->setScheduleId($schedule->getId())->setTeamId('44444444-4444-4444-8444-444444444444')->setVenueId($venue->getId())
             ->setDayOfWeek(1)->setStartTime($at)->setDurationMinutes(90)->setLockLevel(LockLevel::NONE);
         $this->em->persist($solverPick);
         // Une réservation d'une PÉRIODE au même triplet : le socle ne doit JAMAIS l'emporter

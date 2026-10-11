@@ -656,6 +656,13 @@ jobs:
       - name: SlotPlacementVerdictTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/SlotPlacementVerdictTest.php --group phase1'
 
+      # P2-51 D11 + lot A-2 (axes planning lifecycle + constraint semantics) : déplacer une séance
+      # de bloc ENTIÈRE passe sous UN SEUL verdict et s'écrit tout-ou-rien ; et la règle fondateur
+      # « une équipe ne siège jamais deux fois à la même case » — un membre déplacé déjà présent à
+      # la case cible refuse (422 nommé), AUCUN créneau ne bouge, moteur jamais appelé. Moteur moqué.
+      - name: SlotMoveGroupVerdictTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/SlotMoveGroupVerdictTest.php --group phase1'
+
       # Résidu de P2-43 — la garde PRÉCOCE de move() sur la grille : ce que l'écran Gymnases
       # OFFRE, le serveur l'accepte ; ce qu'il n'offre pas (triplet inexistant, jour fermé), il le
       # refuse sans appeler le moteur ; la durée écrite est TOUJOURS celle de l'emplacement, jamais

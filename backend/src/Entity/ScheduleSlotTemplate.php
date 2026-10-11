@@ -12,6 +12,9 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: ScheduleSlotTemplateRepository::class)]
 #[ORM\Table(name: 'schedule_slot_template')]
+// Une équipe ne siège JAMAIS deux fois à la même case dans une version de plan (règle fondateur) ;
+// la cohabitation à capacité restante reste permise entre équipes DIFFÉRENTES (team_id dans la clé).
+#[ORM\UniqueConstraint(name: 'uniq_schedule_slot_template_case', columns: ['schedule_id', 'team_id', 'venue_id', 'day_of_week', 'start_time'])]
 #[ORM\Index(name: 'idx_schedule_slot_template_club_season', columns: ['club_id', 'season_id'])]
 #[ORM\Index(name: 'idx_schedule_slot_template_schedule', columns: ['schedule_id'])]
 #[ORM\Index(name: 'idx_schedule_slot_template_team', columns: ['team_id'])]

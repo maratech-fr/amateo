@@ -16,6 +16,7 @@ use App\Exception\EvictTargetMismatchException;
 use App\Exception\MutualizationRefusedException;
 use App\Exception\ScheduleGenerationInProgressException;
 use App\Exception\SlotUnavailableException;
+use App\Exception\TeamAlreadyAtCaseException;
 use App\Service\ManagementAccessGuard;
 use App\Service\ManualEditService;
 use App\Service\MoveSlotService;
@@ -181,6 +182,10 @@ final class ManualEditController extends AbstractController implements SeasonSco
             // Aucune fenêtre de gymnase à la destination (cible inexistante ou jour fermé) : le
             // créneau n'existe pas, rien à faire juger, rien écrit. Miroir exact de placeSlot.
             return $this->json(['code' => 'slot_unavailable', 'error' => 'Aucun créneau de gymnase n\'est ouvert à cet horaire.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (TeamAlreadyAtCaseException $e) {
+            // Règle fondateur : l'équipe siège déjà à la cible et aucune éviction n'a été demandée —
+            // 422 NOMMÉ (message humain, noms réels), rien n'est écrit. Le moteur n'a pas été appelé.
+            return $this->json(['code' => 'team_already_at_case', 'error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (EvictTargetMismatchException) {
             // La cible d'éviction est incohérente (introuvable, autre planning, ne siège pas là) :
             // rien n'est écrit, le moteur n'est pas appelé.
@@ -326,6 +331,9 @@ final class ManualEditController extends AbstractController implements SeasonSco
         } catch (SlotUnavailableException) {
             // Aucune fenêtre de gymnase à ce créneau : rien à créer, rien écrit.
             return $this->json(['code' => 'slot_unavailable', 'error' => 'Aucun créneau de gymnase n\'est ouvert à cet horaire.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (TeamAlreadyAtCaseException $e) {
+            // Règle fondateur : l'équipe siège déjà à cette case — 422 NOMMÉ, rien n'est créé.
+            return $this->json(['code' => 'team_already_at_case', 'error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (DurationMismatchException) {
             // La durée annoncée contredit la fenêtre : c'est la fenêtre qui fait foi.
             return $this->json(['code' => 'duration_mismatch', 'error' => 'La durée indiquée ne correspond pas au créneau de gymnase.'], Response::HTTP_UNPROCESSABLE_ENTITY);
@@ -438,6 +446,10 @@ final class ManualEditController extends AbstractController implements SeasonSco
             return $this->json(['code' => 'generation_in_progress'], Response::HTTP_CONFLICT);
         } catch (SlotUnavailableException) {
             return $this->json(['code' => 'slot_unavailable', 'error' => 'Aucune séance de bloc à déplacer à cet horaire, ou créneau cible fermé.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (TeamAlreadyAtCaseException $e) {
+            // Règle fondateur : un membre déplacé siège déjà à la case cible et ce rail n'évince pas —
+            // 422 NOMMÉ (consigne « déplacez-la ou retirez-la d'abord »), aucun des N créneaux ne bouge.
+            return $this->json(['code' => 'team_already_at_case', 'error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (EngineTimeoutException $e) {
             $this->logger->error('Group move validation timed out on the engine.', ['exception' => $e]);
 

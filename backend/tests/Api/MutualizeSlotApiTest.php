@@ -300,6 +300,27 @@ final class MutualizeSlotApiTest extends WebTestCase
         self::assertNull($this->em->getRepository(Reservation::class)->find($r2), 'réservation bloc-complète emportée');
     }
 
+    /**
+     * Lot A-2, règle fondateur : la MÊME équipe ne siège jamais deux fois à la même case. Une équipe
+     * rejoignante qui possède DÉJÀ, à la case d'ancrage, une AUTRE séance que celle qu'elle désigne
+     * ferait doublon une fois la désignée déplacée → 422, rien n'est écrit (aucun bloc).
+     */
+    public function testJoiningTeamWithAnotherSessionAtAnchorCaseIsRefused(): void
+    {
+        $ctx = $this->seedPeriod('n', capacity: 2);
+        $source = $this->placeSlot($ctx, $ctx['teams']['source'], $ctx['case']);
+        // Le joiner a sa séance désignée AILLEURS (mercredi) ET une AUTRE séance À LA CASE d'ancrage.
+        $joinerElsewhere = $this->placeSlot($ctx, $ctx['teams']['joiner'], ['venueId' => $ctx['venueId'], 'dayOfWeek' => 3, 'startTime' => '18:00']);
+        $this->placeSlot($ctx, $ctx['teams']['joiner'], $ctx['case']);
+
+        $this->client->request('POST', '/api/schedule-slots/' . $source->getId() . '/mutualize', [], [], $this->managerHeaders($ctx), json_encode([
+            'teamIds' => [$ctx['teams']['source'], $ctx['teams']['joiner']],
+            'replacedSlotIds' => [$joinerElsewhere->getId()],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422);
+        self::assertCount(0, $this->em->getRepository(SharedTrainingBlock::class)->findBy(['clubId' => $ctx['clubId']]), 'aucun bloc créé : le doublon de case refuse le geste');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();

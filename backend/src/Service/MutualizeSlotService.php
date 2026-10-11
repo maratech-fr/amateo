@@ -46,7 +46,8 @@ use InvalidArgumentException;
  *
  * Refus 422 NOMMÉS (rien n'est écrit) : socle (plan de période seulement), équipe inactive, équipe
  * inconnue, ensemble déjà déclaré, case déjà occupée (capacité), Σ des séances communes dépassant
- * le volume d'une équipe, équipe déjà placée sans séance désignée.
+ * le volume d'une équipe, équipe déjà placée sans séance désignée, équipe rejoignante siégeant déjà
+ * à la case d'ancrage par une AUTRE séance (une équipe ne siège jamais deux fois à la même case).
  */
 final class MutualizeSlotService
 {
@@ -59,6 +60,7 @@ final class MutualizeSlotService
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly SoloReservationBudget $soloReservationBudget,
         private readonly ScheduleProgressPublisher $progressPublisher,
+        private readonly TeamCaseOccupancyGuard $teamCaseOccupancyGuard,
     ) {}
 
     /**
@@ -150,6 +152,13 @@ final class MutualizeSlotService
                 $replaced = $this->pickReplacedSlot($existing, $replacedSlotIds);
                 if (!$replaced instanceof ScheduleSlotTemplate) {
                     throw new MutualizationRefusedException('Choisissez la séance que la séance commune remplace pour chaque équipe déjà placée.');
+                }
+                // Règle fondateur : la MÊME équipe ne siège jamais deux fois à la même case. La séance
+                // désignée va être DÉPLACÉE sur la case d'ancrage ; si l'équipe possède à cette case une
+                // AUTRE séance (que la désignée), elle y siégerait deux fois — refus NOMMÉ, rien n'écrit.
+                $conflict = $this->teamCaseOccupancyGuard->conflictSentence($schedule->getId(), $teamId, $venueId, $dayOfWeek, $startTime, [$replaced->getId()]);
+                if (null !== $conflict) {
+                    throw new MutualizationRefusedException($conflict . '.');
                 }
                 $toMove[] = $replaced;
             }

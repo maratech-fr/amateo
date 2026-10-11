@@ -137,9 +137,15 @@ final class VenuePeriodOverrideApiTest extends WebTestCase
             ->setVenueId($this->venueA->getId())
             ->setDayOfWeek($slot->getDayOfWeek())->setStartTime($slot->getStartTime())->setDurationMinutes(90);
         $hard = $this->slotTemplate($slot, LockLevel::HARD);
-        // Un placement SOFT au même horaire est un RÉSULTAT de solve, pas un épinglage :
-        // la cascade ne l'emporte pas (EntityCascadeDeleter, hardOnly).
-        $soft = $this->slotTemplate($slot, LockLevel::SOFT);
+        // Un placement SOFT à la MÊME case est un RÉSULTAT de solve, pas un épinglage : la
+        // cascade raisonne par case + lockLevel HARD (SlotPinStep hardOnly) et ne l'emporte
+        // pas. Il porte une AUTRE équipe (case mutualisée, état réel) parce que
+        // (schedule, team, venue, jour, heure) est désormais unique : un HARD et un SOFT de la
+        // MÊME équipe à la MÊME case est un état que l'import ne produit jamais
+        // (ScheduleResultImporter identifie un placement par team:venue:jour:heure et préserve
+        // le HARD existant sans en créer un second). La discrimination HARD vs non-HARD reste
+        // testée à la case visée : seul le lockLevel épargne le SOFT, pas son équipe.
+        $soft = $this->slotTemplate($slot, LockLevel::SOFT, '22222222-2222-4222-8222-222222222222');
         $this->em->persist($reservation);
         $this->em->persist($hard);
         $this->em->persist($soft);
@@ -827,12 +833,12 @@ final class VenuePeriodOverrideApiTest extends WebTestCase
         return $this->periodSchedule;
     }
 
-    private function slotTemplate(VenueTrainingSlot $slot, LockLevel $lockLevel): ScheduleSlotTemplate
+    private function slotTemplate(VenueTrainingSlot $slot, LockLevel $lockLevel, string $teamId = '11111111-1111-4111-8111-111111111111'): ScheduleSlotTemplate
     {
         return (new ScheduleSlotTemplate)
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setScheduleId($this->periodSchedule()->getId())
-            ->setTeamId('11111111-1111-4111-8111-111111111111')
+            ->setTeamId($teamId)
             ->setVenueId($slot->getVenueId())
             ->setDayOfWeek($slot->getDayOfWeek())->setStartTime($slot->getStartTime())->setDurationMinutes(90)
             ->setLockLevel($lockLevel);
