@@ -2,7 +2,15 @@
 
 > Le module démo (seed, création de club de démonstration), la boîte aux lettres d'un club à horloge simulée et le cockpit temporel (overlays période/événement). Découpé mécaniquement de `backend-inventory.md` (DOC-59).
 
-Last verified @ 2026-10-08 (P4-266, `documentation-update`) : la mention de `ResourceChangeStaleScheduleListener` (§ Re-dater une racine CLOSURE) recalée — le listener est SUPPRIMÉ, la péremption se dérive désormais de l'empreinte de structure (`structureHashOfPlan`) ; précisé que le simple déplacement de fenêtre ne fait PAS diverger l'empreinte (seule l'entrée/sortie d'une contrainte datée le fait — confronté à `CalendarEntryStateProcessor.php` et au scénario Behat `plan-de-periode-en-overlay.feature`). Reste du fichier non re-confronté cette passe ; l'historique de vérification vit dans `git log -p --follow` ce fichier.
+Last verified @ 2026-10-11 (rotation `documentation-update`, lot B). Re-confronté au code :
+`Club::$simulatedToday` toujours à `src/Entity/Club.php`, mais la citation de ligne avait dérivé —
+**corrigée `:139`** (pas `:127`, qui pointe le commentaire d'`isDemo` juste au-dessus) ; la
+contrainte CHECK `club_simulated_today_demo_only` toujours posée par `Version20261004140000` ✓ ;
+`App\Command\ClubClockCommand` toujours nommée `app:club:clock` ✓ ; `CalendarEntryConflictsController`
+(§ ci-dessous) toujours fidèle : `disabledVenueIds` composé par `PlanVenueClosures::effectiveStateForPlan`,
+`fullyClosedVenueIds` par `VenueClosureDays::fullyClosedVenueIds` — deux sources distinctes ✓.
+Reste du fichier non re-confronté cette passe ; l'historique de vérification vit dans
+`git log -p --follow` ce fichier.
 
 ### Module démo
 
@@ -11,7 +19,7 @@ Deux mécanismes distincts, à ne pas confondre :
 1. **Horloge simulée PAR CLUB** — un seul module décide : `App\Clock\ClubClock`
    (`src/Clock/ClubClock.php`, décore le service `clock`, `services.yaml`). Son point d'entrée
    unique `simulatedTodayFor(Club $club)` lit `Club::$simulatedToday`
-   (`src/Entity/Club.php:127`, colonne `club.simulated_today`, ex `demo_today` — renommage pur,
+   (`src/Entity/Club.php:139`, colonne `club.simulated_today`, ex `demo_today` — renommage pur,
    `Version20261002090000`) ; si posée **ET que le club est démo**, `now()` rend la **date
    simulée** à l'**heure réelle** dans le fuseau réel pour ce club ; sinon l'horloge est vraie.
    **Réservée à un compte de DÉMONSTRATION** (`is_demo = TRUE` — décision fondateur 2026-10-02,
