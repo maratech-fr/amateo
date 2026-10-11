@@ -47,6 +47,7 @@ jobs:
     outputs:
       version: ${{ steps.meta.outputs.version }}
       owner: ${{ steps.meta.outputs.owner }}
+      deployed_sha: ${{ steps.meta.outputs.deployed_sha }}
     steps:
       # Dispatch with version=<existing tag> checks out THAT tag (a rollback
       # builds the OLD code if it must build at all — see the registry
@@ -81,6 +82,23 @@ jobs:
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+          # Résout le commit RÉELLEMENT déployé (output `deployed_sha`) : la
+          # branche `release` est ensuite recalée dessus — jamais sur le
+          # github.sha du dispatch (qui, pour un rollback, est le HEAD de `main`).
+          # sha-<court> → on dé-préfixe ; tag ou commit → rev-parse. fetch-depth 0
+          # (checkout ci-dessus) rend tags ET commits résolvables quel que soit le
+          # déclencheur. Échec de résolution = FATAL, jamais de repli silencieux.
+          if printf '%s' "$VERSION" | grep -Eq '^sha-[0-9a-f]{7,40}$'; then
+            DEPLOYED_REF="${VERSION#sha-}"
+          else
+            DEPLOYED_REF="$VERSION"
+          fi
+          DEPLOYED_SHA="$(git rev-parse --verify --quiet "${DEPLOYED_REF}^{commit}" || true)"
+          if [ -z "$DEPLOYED_SHA" ]; then
+            echo "FATAL: impossible de résoudre le commit déployé pour la version '$VERSION' (ref '$DEPLOYED_REF')" >&2
+            exit 1
+          fi
+          echo "deployed_sha=${DEPLOYED_SHA}" >> "$GITHUB_OUTPUT"
           # :latest only moves FORWARD, on tag releases — a dispatch that
           # rebuilds an old ref must never drag latest backwards.
           if [ "${{ github.event_name }}" = "push" ]; then
@@ -338,34 +356,46 @@ jobs:
           "${SSH[@]}" "DEPLOY_PATH='$DEPLOY_PATH' VERSION='$VERSION' bash '$DEPLOY_PATH/remote-deploy.sh'"
 
   # Après un déploiement VM RÉUSSI, faire suivre la branche `release` au commit
-  # qui vient de partir en prod : `release` reste ISO-prod, point de départ des
-  # correctifs rapides (hotfix) sans embarquer tout `main`
+  # RÉELLEMENT déployé : `release` reste ISO-prod, point de départ des correctifs
+  # rapides (hotfix) sans embarquer tout `main`
   # (docs/ops/deploy.md §Branche `release` et correctif rapide).
-  #   - `needs: deploy` → par la sémantique par défaut de `needs`, ce job ne
-  #     tourne QUE si `deploy` a réussi ; tant que la VM n'existe pas
+  #   - `needs: [build-push, deploy]` → par la sémantique par défaut de `needs`,
+  #     ce job ne tourne QUE si `deploy` a réussi ; tant que la VM n'existe pas
   #     (DEPLOY_ENABLED != 'true'), `deploy` est `skipped`, donc ce job aussi et
   #     `release` ne bouge pas — elle ne suit que de VRAIS déploiements.
+  #   - Le commit poussé est `deployed_sha` (résolu par build-push depuis la
+  #     version : tag, `sha-…` ou commit courant), PAS le github.sha du dispatch →
+  #     un rollback recale `release` sur l'artefact redéployé, pas sur `main`.
   #   - Les deux déclencheurs y passent : push d'un tag `v*` (release normale ou
-  #     hotfix tagué sur `release`) ET workflow_dispatch (hotfix/manuel).
+  #     hotfix tagué sur `release`) ET workflow_dispatch (hotfix/manuel/rollback).
   update-release-branch:
     name: Fast-forward `release` to the deployed commit
     runs-on: ubuntu-latest
-    needs: deploy
+    needs: [build-push, deploy]
     # Moindre privilège : ce job est le SEUL à écrire dans le dépôt (pousser la
     # ref `release`). Un bloc `permissions:` par job REMPLACE le régime racine
     # (`contents: read`) ; `packages:` est donc absent ici — inutile pour ce job.
     permissions:
       contents: write
     steps:
-      # persist-credentials (défaut d'actions/checkout) enregistre le
+      # On checkoute le commit déployé lui-même (fetch-depth 0 : tout l'historique
+      # + les tags, pour que ce commit soit présent localement quel que soit le
+      # déclencheur). persist-credentials (défaut d'actions/checkout) enregistre le
       # GITHUB_TOKEN du job — porté au scope `contents: write` ci-dessus — comme
-      # credential git : le push s'authentifie SANS secret dans `env:` (convention
-      # du dépôt). fetch-depth 1 (défaut) suffit : on ne pousse que le commit HEAD.
+      # credential git : le push s'authentifie SANS secret dans `env:` (convention).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.build-push.outputs.deployed_sha }}
+          fetch-depth: 0
 
-      - name: Point `release` at the deployed commit (${{ github.sha }})
+      - name: Point `release` at the deployed commit
+        env:
+          # Commit résolu de la version déployée (sortie de build-push), pas le
+          # github.sha du dispatch : un rollback recale donc `release` sur
+          # l'artefact redéployé. Passé par env, jamais interpolé dans le script.
+          DEPLOYED_SHA: ${{ needs.build-push.outputs.deployed_sha }}
         run: |
           # `--force` crée `release` si absente et la recale sinon : la branche a
           # sa propre histoire (partie de la 1re prod, v1.0.0), un push fast-forward
-          # strict échouerait. On pousse le commit déployé (GITHUB_SHA).
-          git push --force origin "${GITHUB_SHA}:refs/heads/release"
+          # strict échouerait.
+          git push --force origin "${DEPLOYED_SHA}:refs/heads/release"

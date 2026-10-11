@@ -780,11 +780,11 @@ git push -u origin hotfix/<sujet>
 workflow et par les merges de PR de hotfix. Un commit poussé à la main y serait
 écrasé au prochain déploiement (force-push sur le commit déployé).
 
-⚠ Un **rollback** `make deploy VERSION=<ancien tag>` recale aussi `release` sur
-le commit du *dispatch* (celui de `main`), pas sur l'ancien tag redéployé : le
-workflow suit `github.sha`. Après un rollback, considérer `release` comme non
-fiable tant qu'un déploiement normal (tag sur `release` ou hotfix) ne l'a pas
-réalignée.
+Le job qui met `release` à jour suit le commit **réellement déployé** (résolu
+depuis la version : tag, `sha-…` ou commit courant), pas le `github.sha` du
+dispatch. Un **rollback** `make deploy VERSION=<ancien tag>` recale donc
+`release` sur l'ancien tag redéployé : `release` reste ISO-prod dans tous les
+cas — release normale, hotfix **et** rollback.
 
 ### Règle d'écriture des migrations (convention, à respecter dans les PRs)
 
