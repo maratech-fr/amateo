@@ -17,7 +17,7 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
  * considérée. Origine prouvée en prod (Toussaint BCCL) : un bloc U11 aux coachs mono-jour
  * incompatibles sortait INFEASIBLE alors qu'un coach de l'union couvre chaque jour.
  *
- * De bout en bout contre le VRAI moteur (`/generate`, contrat 1.4), payload construit à la main :
+ * De bout en bout contre le VRAI moteur (`/generate`, contrat 1.5), payload construit à la main :
  *   (1) RELAIS — un bloc {t1,t2} dont AUCUN jour n'a les deux coachs, mais chaque jour a UN coach de
  *       l'union, place sa séance commune et co-localise les deux équipes (`completed`). Sous
  *       l'ANCIEN sens (« chaque coach requis ferme »), chaque jour fermait un membre → aucune case
@@ -67,7 +67,7 @@ final class SharedBlockCoachRelayGateTest extends TestCase
         );
 
         // Lot 3B PR B — l'échec NOMME désormais le groupe : un shared_block_not_honored cite t1 et t2
-        // et porte les indisponibilités de coach en cause (kind coach_unavailability, contrat 1.4),
+        // et porte les indisponibilités de coach en cause (kind coach_unavailability, contrat 1.5),
         // de quoi composer l'origine côté backend. Sans le rail de preuve, l'infaisabilité
         // retomberait au message générique muet.
         $named = $this->notHonoured($noCoach);

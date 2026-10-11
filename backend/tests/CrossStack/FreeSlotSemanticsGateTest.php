@@ -27,7 +27,7 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
  * Lot 4bis — NR BLOQUANT (axes §7.1 « constraint semantics » + « backend↔engine contract ») : un
  * CRÉNEAU LIBRE réservé RETIRE une place à sa case, exactement comme une capacité en moins. La
  * promesse est prouvée de bout en bout — seed → VRAI builder (`ScheduleConstraintBuilder`) → VRAI
- * moteur `/generate` (contrat 1.4) :
+ * moteur `/generate` (contrat 1.5) :
  *
  *  un gymnase NON divisible n'a qu'une case (lundi 18:00, capacité 1) et une équipe (1 séance) n'a
  *  qu'elle où aller. AVEC un créneau libre sur cette case, la capacité tombe à 0 : la case
