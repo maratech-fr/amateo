@@ -1,27 +1,13 @@
 # Accueil « cockpit temporel »
 
-Last verified @ 2026-10-11 (P2-63 PR 5, « Transférer au planning »). § doléances gagne le geste de
-transfert : `POST /api/coach-wishes/transfer` (`CoachWishTransferService`) convertit en masse les
-doléances cochées en réglages standards du plan de leur semaine ; bouton « Transférer au planning
-(N) » dans le pied de `CoachWishesHub`, couleur d'ACCENT du club ; case de sélection distincte de
-l'état « traité » (pastille verte, marquage manuel au crayon) ; le seed « Fanion + importantes »
-d'un plan de reprise neuf est désormais aussi matérialisé CÔTÉ SERVEUR (`PlanTeamSelectionSeeder`,
-miroir déclaré de `PeriodTeams.tsx`) avant la 1ʳᵉ écriture du transfert. Acquis antérieurs (P2-63
-PR 2 + PR 3 + PR 4 + PR 7 + lot 5), re-confrontés : la fenêtre unique `CoachWishesHub` (un seul
-bouton « Doléances » + badge `RadarCoachWishBadge`, hors du repli et sous horizon) ne lance une
-collecte que sur une période portant déjà un planning — semaines dérivées des plannings
-(`SchedulePlanProvisioner::planWeekMondaysForPeriod` côté serveur, garde 422 dans
-`CoachWishCampaignStateProcessor`, affichage `campaignWeeks.ts::planDerivedWeeks`), invite « Créez
-d'abord le planning » + « Adapter » (`CampaignSettingsTab`/`RadarPanel.onRequestPlanning`) sinon ;
-l'ajout manuel (`CoachWishForm`) se fait semaine d'abord, toutes équipes, coach DÉDUIT sans champ
-(principal de l'équipe à la création, conservé tel quel en édition — `CoachWishStateProcessor`
-continue d'accepter `coachId` null en création gestionnaire, côté serveur inchangé) ; case « garder
-mes créneaux habituels » (`CoachWish.keepSeasonSlots`, booléen nu) sur les deux saisies, et une
-équipe co-coachée dont un seul coach a répondu voit l'autre prévenu (`byAnotherCoach`) que son
-envoi remplacera le sien. Valider/rouvrir le socle confirmé en présence de plans secondaires
-emporte aussi la collecte des vacances à venir (`FutureHolidayCollectePurger`, confrontée à
-`ValidateScheduleController.php`/`ReopenScheduleController.php`). Reste du fichier (§5bis P4-266 :
-signal « à régénérer » sur `/planning` seul, pas de pastille cockpit) non re-confronté cette passe.
+Last verified @ 2026-10-11 (P2-63 PR 5, « Transférer au planning »). Re-confronté : le geste de
+transfert (§5.1 — `POST /api/coach-wishes/transfer`, `CoachWishTransferService`) et les acquis
+antérieurs P2-63 PR 2/3/4/7 + lot 5 (collecte dérivée des plannings, ajout manuel semaine-d'abord,
+« garder mes créneaux habituels », mutualisation « un coach suffit », purge à la
+validation/réouverture du socle). §9ter (modèle de données `CalendarEntry`) a quitté ce fichier
+pour [`calendar-entry-modele-donnees.md`](calendar-entry-modele-donnees.md) — plafond de 800
+lignes, `DocSizeCeilingTest`. §5bis (P4-266, signal « à régénérer » sur `/planning` seul) non
+re-confronté cette passe.
 
 > **Statut** : livré — cf. [`etat-des-lieux.md`](etat-des-lieux.md) §1.2. Ce document fixe le
 > modèle d'UX + d'architecture de l'accueil cockpit et la fondation des **calendriers
@@ -93,7 +79,8 @@ La **semaine type** reste la **source de vérité**, **derrière le bandeau** �
 le calendrier. Le **calendrier** est la **couche d'exceptions** sur des dates réelles : il montre
 **ce qui sort de l'ordinaire** (événements, indispos, périodes, vacances), pas les séances de
 base — un jour vide = la base tourne normalement. Les **vraies séances d'une date** se
-**projettent à la demande**, jamais stockées (§9ter). Un **calendrier secondaire** = un **plan
+**projettent à la demande**, jamais stockées
+([`calendar-entry-modele-donnees.md`](calendar-entry-modele-donnees.md)). Un **calendrier secondaire** = un **plan
 adapté, borné à une période**, qui **surcharge** la base uniquement sur ces dates.
 
 ---
@@ -239,7 +226,8 @@ Pour éviter 4 tables (`period_templates`, `period_template_slots`, `period_assi
 
 > **Deux `kind`, pas trois** (`CalendarEntryKind` = `event` \| `period`) : « signaler une
 > indispo » n'est pas un type d'objet, c'est un **raccourci de saisie** vers une `period`
-> `closure` dont la contrainte datée est pré-remplie. Voir §9ter.a.
+> `closure` dont la contrainte datée est pré-remplie. Voir
+> [`calendar-entry-modele-donnees.md`](calendar-entry-modele-donnees.md) §a.
 
 Un **événement club** est un post-it daté (tournoi, AG, stage) ; marqué **perturbant** (au choix du
 gestionnaire, événement par événement), il devient une mini-indisponibilité et alimente le radar.
@@ -692,7 +680,8 @@ endroits** seulement.
 
 ## 9. Tranché vs ouvert
 
-**Tranché** : le modèle décrit dans ce document (§2 à §6ter, §9ter) est l'architecture livrée —
+**Tranché** : le modèle décrit dans ce document (§2 à §6ter) et dans
+[`calendar-entry-modele-donnees.md`](calendar-entry-modele-donnees.md) est l'architecture livrée —
 aucun point n'est rouvert. Une décision qui n'est pas déjà l'état du code ci-dessus (un abandon,
 un arbitrage tranché contre une option qui paraissait évidente) vit dans
 [`etat-des-lieux.md`](etat-des-lieux.md) §2, jamais recopiée ici.
@@ -703,116 +692,11 @@ ouvertes (radar, collecte coach, calendriers secondaires) vivent dans
 
 ---
 
-## 9ter. Modèle de données : `CalendarEntry` (poussé)
+## 9ter. Modèle de données : `CalendarEntry`
 
-En creusant, la taxonomie à 3 objets (§4) **se réduit en fait à 2 sur le plan données** — et
-surtout, **on réutilise l'existant au lieu d'ajouter des tables.**
-
-### a. Deux `kind`, pas trois
-
-- **`event`** — un **marqueur** sur le calendrier (AG, tournoi, stage). Informatif. Peut être
-  marqué **`isDisruptive`** (« pas d'entraînement ce jour »).
-- **`period`** — une **fenêtre qui altère le plan** (fermeture de salle, vacances, coupure,
-  mutualisation). Porte des **contraintes datées** + un **plan secondaire** (overlay).
-
-> **« Signaler une indispo » n'est pas un 3ᵉ type : c'est un raccourci pour créer une `period`**
-> dont la contrainte « gym X fermé » est pré-remplie. De même, un événement `isDisruptive`
-> devient/produit une mini-période « pas d'entraînement ce jour ». Fermeture / vacances / coupure
-> / mutualisation = un `periodType`, pas des entités séparées.
-
-### b. L'entité
-
-```
-CalendarEntry
-  id                uuid
-  clubId, seasonId
-  kind              event | period
-  title             "AG du club" · "Vacances Toussaint" · "Gym Barros fermé"
-  startDate, endDate            -- un jour : endDate == startDate
-  -- event
-  isDisruptive      bool         -- bloque les entraînements ce jour
-  -- period
-  periodType        closure | holiday | cutoff | mutualisation | custom
-  schoolHolidayId   uuid?        -- si dérivée d'une période de vacances (zone du club)
-  status            proposed | active | ignored   -- « proposed » = vacances suggérées par le radar
-  parentEntryId     uuid?        -- semaine ENFANT d'une période mère
-  createdBy, createdAt, updatedAt
-```
-
-> **L'entrée ne porte pas de pointeur d'overlay.** Le plan secondaire est un `SchedulePlan` ancré
-> à la `CalendarEntry`, et c'est **lui** qui pointe sa version (`chosenScheduleId`) — une seule
-> maison pour « quelle version est active ». Lecture : `SchedulePlanProvisioner::chosenOfPeriodPlan`,
-> ou `chosenByPeriodPlans` pour résoudre N entrées en une requête. Un plan de période qui ne pointe
-> rien = **aucun overlay applicable**, pas un overlay vide.
-
-### c. La réutilisation maligne (≈ zéro nouvelle table à part `CalendarEntry`)
-
-- **Contrainte datée = la `Constraint` existante + un FK nullable `calendarEntryId`.**
-  Une contrainte est soit **permanente** (`calendarEntryId = null`, le plan de base), soit
-  **de période** (`calendarEntryId` renseigné). Une « fermeture de salle » = une `Constraint`
-  `family=FACILITY` rattachée à l'entrée. **On ne réinvente pas les contraintes.**
-  **Deux natures de datées (modèle FAIT/GENÈSE)** : le **FAIT**
-  décrit l'incident et pend à la **mère** — il s'impose à toutes ses semaines ; la **GENÈSE**
-  répond aux doléances d'UNE semaine et pend à l'entrée-**enfant** — elle n'existe que pour ce
-  plan (« chaque plan est indépendant ; si je voulais les mêmes règles j'aurais couvert la zone
-  d'un seul plan »). La lecture est l'**union** : un plan lit ses genèses + les faits de sa mère
-  (`CalendarEntry::datedConstraintSourceIds()` — `[id]` racine, `[id, parentEntryId]` enfant),
-  côté payload solveur, gate pré-solve ET radar. Le wizard d'une semaine **crée en genèse**
-  (l'entrée du plan) et liste les deux : genèses éditables, **faits en lecture seule** badgés
-  « Toutes les semaines de {mère} » (un fait se modifie à sa source — l'incident — jamais depuis
-  une semaine, qui muterait ses sœurs en silence). Une datée **ne se décoche pas** par plan
-  (422 dans les deux sens : poser un override sur une datée, ou dater une contrainte qui a des
-  overrides) — elle se modifie ou se supprime.
-- **Overlay = le `Schedule` existant + un lien vers la `CalendarEntry` + la fenêtre.** Ses slots
-  sont des `ScheduleSlotTemplate` bornés à la fenêtre. **On ne réinvente pas le planning.**
-- **Pas de table `schedule_slot_occurrences` per-date au départ.** L'override se fait au grain
-  **période** (la fenêtre bascule sur l'overlay). ⚠ Le grain fin « juste ce mardi-là est annulé »
-  **n'existe pas** : `ManualEditController` ne porte plus de route one-time et le contrat
-  backend⇄engine ne transporte plus de verrou temporaire — une vraie table d'occurrences éparses
-  repartirait de zéro, ne s'ajoute **que si** le besoin fin le justifie.
-
-### d. Deux lectures distinctes — ne pas les confondre
-
-**Le calendrier cockpit ne dessine QUE les `CalendarEntry`** (events, jalons de period, vacances).
-Il **ne projette pas** la semaine type ; un jour sans entrée est **vide** (la base tourne,
-implicite). C'est une **couche d'exceptions**, pas une grille de séances.
-
-**La projection ne sert qu'ailleurs** — quand on a besoin des **vraies séances d'une date**
-(ouvrir l'atelier overlay d'une période, un export PDF daté, un « détail du jour »). Là, pour
-une date `d` :
-1. `d` dans la fenêtre d'une `period` **active** avec overlay ? → **les slots de l'overlay**.
-2. Sinon → **projeter** la semaine type : les `ScheduleSlotTemplate` du plan principal dont le
-   `dayOfWeek` correspond à `d`, contraintes **permanentes** (`calendarEntryId = null`).
-
-Supprimer une `period` → son overlay + ses contraintes datées partent → l'étape 1 ne matche plus
-→ la base **re-projette** naturellement (cohérent avec « overlay supprimable, principal non »).
-
-> **La distinction** : le **cockpit** répond à « qu'est-ce qui sort de l'ordinaire ? » (les
-> entrées). La **projection** répond à « qu'y a-t-il concrètement le mardi 6 mai ? » (à la
-> demande, jamais matérialisée d'avance).
-
-### e. L'arbitrage « additive vs remplaçante »
-
-Ni l'une ni l'autre : **la période est PROPRIÉTAIRE.**
-
-- **Créneaux** : la période possède sa grille — copie du modèle de saison prise à la naissance du
-  plan (ancre `schedulePlanId`), **jamais unie** au socle. Le build d'overlay ne lit que les
-  créneaux du plan. Détail des réglages par gymnase (`VenuePeriodOverride`, indisponibilité
-  informative) : §6bis, ligne Gymnases.
-- **Contraintes permanentes** : c'est là, et seulement là, que `periodType` porte encore une
-  sémantique d'héritage. `closure` → toutes gardées (le gestionnaire décoche) ; `holiday` →
-  seul le scope CLUB reste hérité par défaut (TEAM/COACH/FACILITY désactivées, décision
-  fondateur 2026-10-10, `PeriodConstraintSelector::selectForPeriodPlan`). Diff épars
-  `ConstraintPeriodOverride` : une ligne n'existe que pour une **déviation** du défaut.
-- **Contraintes datées** : portées par la `CalendarEntry` — le **fait** (« Barros fermé ») par
-  la mère, la **genèse** d'une semaine par son entrée-enfant (modèle FAIT/GENÈSE, §c) ; jamais
-  décochables par plan.
-- `cutoff` et `mutualisation` ne portent pas de plan de période.
-
-Corollaire : un épinglage HARD qui ne retombe sur aucun créneau de la grille de la période
-**bloque la génération** (422 nommant le gymnase, le jour et l'équipe, `OrphanPinGuard`), sauf sur
-un gymnase désactivé ou effectivement fermé-total — dans un modèle additif il aurait
-silencieusement retrouvé un créneau de saison.
+Détail complet (taxonomie à 2 `kind`, l'entité, la réutilisation de l'existant — contrainte
+datée, overlay —, les deux lectures distinctes cockpit/projection, l'arbitrage « additive vs
+remplaçante ») : [`calendar-entry-modele-donnees.md`](calendar-entry-modele-donnees.md).
 
 ## 10. En une phrase
 

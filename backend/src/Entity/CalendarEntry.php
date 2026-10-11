@@ -18,7 +18,7 @@ use Doctrine\ORM\Mapping as ORM;
  * mutualisation); carries dated constraints (Constraint.calendarEntryId). Its
  * secondary plan (ADR-0002) lives in schedule_plan.calendarEntryId — the active
  * version is the plan's chosenScheduleId, no longer a pointer on the entry.
- * See specs/courantes/accueil-cockpit-temporel.md §9ter.
+ * See specs/courantes/calendar-entry-modele-donnees.md.
  */
 #[ORM\Entity(repositoryClass: CalendarEntryRepository::class)]
 #[ORM\Table(name: 'calendar_entry')]
