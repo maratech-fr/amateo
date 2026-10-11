@@ -4,16 +4,11 @@
 > Pas d'inventaire ligne à ligne (il dériverait), pas de décompte (« N messages »).
 > Le code fait foi ; ce doc dit **comment décider**, pas **combien**.
 
-Last verified @ 2026-10-11 (rotation `documentation-update`, lot P2-63 PR 5 — sans rapport avec le
-sujet). Re-confronté au code : la règle « le corps du serveur ne parle qu'en deçà de 500 » tient
-toujours (`frontend/src/shared/lib/errorMessage.ts:55`) ✓ ; `ENGLISH_STATUS_TEXTS` déclarée `:16`
-✓ ; `backend/tests/Unit/ValidationExceptionCarriesViolationsTest.php` et
-`backend/tests/Security/LoginFailureCopyTest.php` toujours présents ✓ ;
-`ConstraintStateProcessor::assertPreferredVenueIsNotMandatory`
-(`backend/src/State/Processor/ConstraintStateProcessor.php:174`) suit toujours l'idiome unique
-`$this->refuse(…)` (`:185`) ✓. Les deux messages de `CoachWishTransferController` (plafond 500,
-409 génération en cours) suivent la règle : français, lus par un gestionnaire. Tout confirmé
-juste. Reste du fichier non re-sondé ligne à ligne cette passe.
+Last verified @ 2026-10-11 (lot A-2, « une équipe ne siège jamais deux fois à la même case »).
+Nouveau code machine `team_already_at_case` ajouté à la liste d'exemples (§Intouchables) : son
+message (`App\Service\TeamCaseOccupancyGuard::sentence`) est français, nomme l'équipe/jour/
+gymnase réels, lu par un gestionnaire — conforme à la règle. Reste du fichier non re-sondé ligne
+à ligne cette passe.
 
 ## La règle
 
@@ -97,7 +92,7 @@ le CORPS BRUT manque « d'accès » ou « L'indisponibilité ». Décoder le JSO
 
 - **Codes machine** : toute clé `'code' => …` et sa valeur (`generation_failed`, `stuck_timeout`,
   `expired`, `window_already_planned`, `ara_taken`, `invalid_credentials`, `not_demo_account`,
-  `teardown_refused`, `slot_unavailable`, `duration_mismatch`, …). Seule la valeur de `'error'`
+  `teardown_refused`, `slot_unavailable`, `duration_mismatch`, `team_already_at_case`, …). Seule la valeur de `'error'`
   (la phrase lue par l'humain) porte la copie. Le front route sur le `code`, pas sur la phrase.
 - **404 à parité byte-identique** des pages à token (invariant sécurité, anti-énumération) :
   `Controller/ClubApprovalController.php` (`Not found`) et
