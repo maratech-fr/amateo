@@ -137,9 +137,17 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // joigne. Hors embarqué, l'en-tête de CET écran porte déjà son propre « Signaler » avec le
   // scheduleId — rien à remonter.
   useEffect(() => {
-    if (embedded) {
-      onDisplayedScheduleChange?.(validScheduleId);
+    if (!embedded) {
+      return;
     }
+    onDisplayedScheduleChange?.(validScheduleId);
+    // Revue sécu — au DÉMONTAGE du planning embarqué (sortie de l'étape Génération, bascule de
+    // période, changement de club sans rechargement), on EFFACE l'id remonté. Il est éphémère et
+    // ne doit vivre que tant que l'écran qui l'affiche est monté : sinon le « Signaler » de
+    // l'en-tête du wizard pourrait joindre un id PÉRIMÉ (planning d'une période précédente, d'un
+    // autre club). La relance de l'effet (changement de `validScheduleId`) repose aussitôt la
+    // bonne valeur, donc le nettoyage intermédiaire est sans effet de bord.
+    return () => onDisplayedScheduleChange?.(null);
   }, [embedded, onDisplayedScheduleChange, validScheduleId]);
 
   // P2-44 PR-5 — les écarts NOMMÉS vs le socle. Armés UNIQUEMENT sur l'écran embarqué et porté

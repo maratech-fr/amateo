@@ -111,12 +111,19 @@ final class ExportScheduleTest extends WebTestCase
             // Gymnase d'un AUTRE club : invisible et hors du club du planning → 404.
             $this->requestAs($token, '/api/schedules/' . $scheduleAId . '/' . $route, json_encode(['venueId' => $foreignVenueId], \JSON_THROW_ON_ERROR));
             self::assertResponseStatusCodeSame(404, $route . ' : un gymnase d’un autre club ne peut pas être ciblé');
-            self::assertStringContainsString('Gymnase introuvable', (string) $this->client->getResponse()->getContent());
+            $foreignBody = (string) $this->client->getResponse()->getContent();
+            self::assertStringContainsString('Gymnase introuvable', $foreignBody);
 
             // Gymnase INCONNU (id supprimé/forgé) → même refus.
             $this->requestAs($token, '/api/schedules/' . $scheduleAId . '/' . $route, json_encode(['venueId' => $this->uuid()], \JSON_THROW_ON_ERROR));
             self::assertResponseStatusCodeSame(404, $route . ' : un gymnase inconnu est refusé');
-            self::assertStringContainsString('Gymnase introuvable', (string) $this->client->getResponse()->getContent());
+            $unknownBody = (string) $this->client->getResponse()->getContent();
+            self::assertStringContainsString('Gymnase introuvable', $unknownBody);
+
+            // 404 BYTE-IDENTIQUE : un gymnase d'un AUTRE club (existant) ne doit pas se distinguer d'un
+            // gymnase INEXISTANT — sinon la réponse divulguerait, par différence, l'existence d'un
+            // gymnase d'autrui (énumération). Même refus, même corps, à l'octet près.
+            self::assertSame($foreignBody, $unknownBody, $route . ' : les deux 404 doivent être byte-identiques (aucune divulgation d’existence)');
         }
     }
 
