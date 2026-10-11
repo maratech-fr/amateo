@@ -123,6 +123,11 @@ final class FrontRederivationRegistryTest extends TestCase
             'backendTruth' => 'App\\Service\\WeekSegmentationRule::segments (garde du POST d\'une semaine-enfant de fermeture et du geste « d\'un bloc »)',
             'parityTest' => 'WeekSegmentationMirrorParityTest.php',
         ],
+        'features/planning/lib/emptySlots.ts' => [
+            'decides' => 'un créneau de grille est OCCUPÉ dès qu\'une séance du même gymnase+jour le CHEVAUCHE dans le temps ([début, fin) demi-ouvert) — sinon « vide » ; capacité non découpée (MVP)',
+            'backendTruth' => 'App\\Service\\VenueWindowOccupancy::windowIsFilled (décide la case « vide » de l\'export PDF/XLSX)',
+            'parityTest' => 'EmptySlotOverlapMirrorParityTest.php',
+        ],
     ];
 
     /**

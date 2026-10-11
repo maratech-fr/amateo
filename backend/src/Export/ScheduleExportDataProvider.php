@@ -15,6 +15,7 @@ use App\Entity\Team;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Service\SchedulePlanProvisioner;
+use App\Service\VenueWindowOccupancy;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -82,9 +83,15 @@ final class ScheduleExportDataProvider
         }
 
         // Defined-but-unfilled venue windows ("créneaux vides"): the same view the
-        // on-screen grid shows. A window is "filled" as soon as ≥1 team is placed
-        // on the same venue+day+start (capacity is not split — MVP, matches the UI).
+        // on-screen grid shows. A window is "filled" as soon as ≥1 session on the same venue+day
+        // OVERLAPS it in time (capacity is not split — MVP, matches the UI). Overlap, not exact
+        // start : la grille d'une période peut être RETAILLÉE après la génération, donc une séance
+        // verrouillée garde un début qui ne coïncide plus avec celui de la fenêtre (prod BCCL :
+        // fenêtre 17:30-18:45, séance 17:15-18:45). La RÈGLE vit dans App\Service\VenueWindowOccupancy,
+        // miroir déclaré de `frontend/.../emptySlots.ts` (parité EmptySlotOverlapMirrorParityTest).
         $filled = [];
+        // Les séances placées, prêtes pour le test de chevauchement (venue+day+[début, fin)).
+        $occupants = [];
         // Gymnases RÉELLEMENT utilisés par cette version (≥ 1 séance placée) — sert à faire
         // DISPARAÎTRE de l'export d'ensemble un gymnase dont AUCUNE séance n'a été placée
         // (décision fondateur : ses créneaux « vide » encombraient la grille). Un gymnase utilisé
@@ -92,7 +99,12 @@ final class ScheduleExportDataProvider
         // filtre : on consulte alors sa grille complète, vides compris.
         $usedVenues = [];
         foreach ($slots as $slot) {
-            $filled[$slot->getVenueId() . '|' . $slot->getDayOfWeek() . '|' . $slot->getStartTime()->format('H:i')] = true;
+            $occupants[] = [
+                'venueId' => $slot->getVenueId(),
+                'dayOfWeek' => $slot->getDayOfWeek(),
+                'startTime' => $slot->getStartTime()->format('H:i'),
+                'durationMinutes' => $slot->getDurationMinutes(),
+            ];
             $usedVenues[$slot->getVenueId()] = true;
         }
 
@@ -144,7 +156,15 @@ final class ScheduleExportDataProvider
             if (null === $venueId && !isset($usedVenues[$window->getVenueId()])) {
                 continue;
             }
-            if (!isset($filled[$key])) {
+            // Vide = ni occupée par une réservation à l'identique (`$filled`, clé exacte) NI chevauchée
+            // par une séance du même gymnase+jour (la règle partagée avec la grille à l'écran).
+            $isFilledByOverlap = VenueWindowOccupancy::windowIsFilled([
+                'venueId' => $window->getVenueId(),
+                'dayOfWeek' => $window->getDayOfWeek(),
+                'startTime' => $window->getStartTime()->format('H:i'),
+                'durationMinutes' => $window->getDurationMinutes(),
+            ], $occupants);
+            if (!isset($filled[$key]) && !$isFilledByOverlap) {
                 $emptySlots[] = new ExportEmptyWindow($window->getVenueId(), $window->getDayOfWeek(), $window->getStartTime(), $window->getDurationMinutes());
             }
         }

@@ -250,6 +250,62 @@ final class ScheduleExportEmptySlotsTest extends KernelTestCase
         self::assertSame('Baby U7-U9', $groupLabels[$venue->getId() . '|3|18:00'] ?? null, 'le nom du bloc prime sur le libellé de la fenêtre');
     }
 
+    /**
+     * Lot 3a — bug prod BCCL : la grille d'une période est RETAILLÉE après la génération, donc une
+     * séance VERROUILLÉE garde un début qui ne coïncide plus avec celui de la fenêtre. Un créneau
+     * compte comme occupé dès qu'une séance du même gymnase+jour le CHEVAUCHE (règle partagée avec
+     * la grille à l'écran — App\Service\VenueWindowOccupancy) : l'export ne doit plus poser une case
+     * « vide » à côté de la séance décalée. Une fenêtre NON chevauchée du même gymnase reste vide
+     * (pas de sur-remplissage).
+     */
+    public function testRetailoredWindowIsNotEmptyWhenAnOverlappingLockedSessionCoversIt(): void
+    {
+        [$club, $season] = $this->seed();
+        $venue = $this->makeVenue($club, $season, 'Armand');
+
+        // La fenêtre RETAILLÉE : mer. 17:30-18:45 (75 min) — son début ne coïncide plus avec la séance.
+        $retailored = new VenueTrainingSlot;
+        $retailored->setClubId($club->getId());
+        $retailored->setSeasonId($season->getId());
+        $retailored->setVenueId($venue->getId());
+        $retailored->setDayOfWeek(3);
+        $retailored->setStartTime(new DateTimeImmutable('17:30'));
+        $retailored->setDurationMinutes(75);
+        $retailored->setCapacity(1);
+        $this->em->persist($retailored);
+
+        // Une AUTRE fenêtre du même gymnase, jamais chevauchée (jeu. 20:00) → doit RESTER vide.
+        $this->makeWindow($club, $season, $venue, 4, '20:00');
+        $this->em->flush();
+
+        $version = new Schedule;
+        $version->setClubId($club->getId());
+        $version->setSeasonId($season->getId());
+        $version->setName('Socle');
+        $version->setStatus(ScheduleStatus::COMPLETED);
+        $this->linkSeededSchedule($version);
+        $this->em->flush();
+
+        // La séance VERROUILLÉE 17:15-18:45 (90 min) chevauche la fenêtre 17:30-18:45 : « coupé en deux » du bug.
+        $placed = new ScheduleSlotTemplate;
+        $placed->setClubId($club->getId());
+        $placed->setSeasonId($season->getId());
+        $placed->setScheduleId($version->getId());
+        $placed->setTeamId($this->uuid());
+        $placed->setVenueId($venue->getId());
+        $placed->setDayOfWeek(3);
+        $placed->setStartTime(new DateTimeImmutable('17:15'));
+        $placed->setDurationMinutes(90);
+        $placed->setLockLevel(LockLevel::HARD);
+        $this->em->persist($placed);
+        $this->em->flush();
+
+        $empty = $this->provider->load($version)->emptySlots;
+        // La fenêtre 17:30 est occupée par chevauchement → PLUS de case « vide » à côté de la séance 17:15.
+        self::assertCount(1, $empty, 'seule la fenêtre non chevauchée (jeu. 20:00) reste vide ; la fenêtre 17:30 chevauchée disparaît');
+        self::assertSame(4, $empty[0]->dayOfWeek, 'la case vide restante est bien la fenêtre du jeudi, pas la fenêtre retaillée du mercredi');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();

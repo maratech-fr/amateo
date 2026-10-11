@@ -1,12 +1,6 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-10-11 (lot 3B PR B) : ligne `shared_block_not_honored` étendue à la troisième
-cause — confrontée à `engine/app/solver/result_builder/diagnostics/shared_blocks.py::
-_diagnose_blocks_without_union_coach` (rail de preuve, maison unique `constraints/availability.py`)
-et à `backend/src/Service/DiagnosticMessageBuilder.php::buildSharedBlockNotHonored` (origine
-composée côté backend). `DiagnosticCauseSchema.kind` reste à 12 valeurs (`coach_unavailability`
-déjà existant, aucun bump) ; `engine/CONTRACT_VERSION` = `1.4` ✓. Reste du fichier non re-sondé
-cette passe.
+Last verified @ 2026-10-10 (`documentation-update`, rotation de fraîcheur — sujet de la PR sans rapport, lot 3a « case vide / chevauchement ») : `_diagnose_unused_slots` toujours dans `result_builder/diagnostics/placement.py:155` ✓ ; `engine/CONTRACT_VERSION` = `1.4` ✓ ; les deux pièges 422 toujours vrais — `VenueTrainingSlotSchema.day_of_week` (`engine/app/schemas/input_schema.py:48`) reste un entier SANS borne alors que les autres `day_of_week` du même fichier portent `ge=1, le=7` (`:223`, `:237`), et `lock_level`/`lockLevel` (`:298`) reste une chaîne libre (`str`, pas un enum). Reste non re-sondé cette passe.
 
 > Ce document recense toutes les erreurs que le moteur peut produire, avec leurs causes et les actions correctives. Destine aux developpeurs et aux utilisateurs avances du club.
 

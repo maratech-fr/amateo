@@ -1,8 +1,8 @@
 # Living Specs System
 
-Last verified @ 2026-10-11 (`documentation-update`, rotation de fraîcheur — sujet de la PR sans
-rapport, lot 3B PR B « diagnostic de bloc sans coach de l'union »). Re-confronté : les six gardes
-`{DocPlacementTest, DocStampFreshnessTest, RoadmapIdentityTest, BlockingTestsListMatchesCiTest,
+Last verified @ 2026-10-10 (`documentation-update`, rotation de fraîcheur — sujet de la PR sans
+rapport, lot 3a « case vide / chevauchement »). Re-confronté : les six gardes `{DocPlacementTest,
+DocStampFreshnessTest, RoadmapIdentityTest, BlockingTestsListMatchesCiTest,
 SpecsCarryNoHistoryTest, WorkflowPermissionsDeclaredTest}.php` existent toujours
 (`ls backend/tests/Unit/Documentation/`) ; `docs/testing/blocking-tests.md` existe ;
 `ls specs/courantes/*.md` rend toujours 13 fichiers, inchangé. Rien de faux trouvé cette passe.

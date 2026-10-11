@@ -1106,7 +1106,11 @@ describe("PlanningPage (integration)", () => {
       ]);
       vi.mocked(getSlots).mockResolvedValue([
         { id: "slot-1", scheduleId: SID, teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null, sharedTrainingBlockId: null },
-        { id: "slot-2", scheduleId: SID, teamId: "team-2", venueId: "venue-1", coachId: null, dayOfWeek: 2, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null, sharedTrainingBlockId: null },
+        // slot-2 sur MERCREDI (jour 3) : team-2 doit juste exister pour être NOMMÉE par le verdict et
+        // surlignée. On l'écarte de la fenêtre VIDE cible ts-2 (venue-1 mardi 19:00-20:30) : une séance
+        // 18:00-19:30 le mardi la CHEVAUCHERAIT, donc la remplirait (règle de chevauchement lot 3a) et
+        // la cible « Placer ici » disparaîtrait.
+        { id: "slot-2", scheduleId: SID, teamId: "team-2", venueId: "venue-1", coachId: null, dayOfWeek: 3, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE", lockOrigin: null, sharedTrainingBlockId: null },
       ]);
       vi.mocked(moveSlot).mockRejectedValue(
         new MoveRejectedError([{ rule: "coach_double_booking", message: "le coach a déjà les U13 ici.", conflictingTeamId: "team-2" }]),
