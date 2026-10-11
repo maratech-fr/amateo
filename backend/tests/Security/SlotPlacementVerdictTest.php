@@ -22,6 +22,7 @@ use App\Enum\SeasonStatus;
 use App\Exception\DurationMismatchException;
 use App\Exception\ScheduleGenerationInProgressException;
 use App\Exception\SlotUnavailableException;
+use App\Exception\TeamAlreadyAtCaseException;
 use App\Service\ClubGenerationLock;
 use App\Service\EngineClient;
 use App\Service\MoveSlotService;
@@ -29,6 +30,7 @@ use App\Service\RequestIdContext;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\ScheduleProgressPublisher;
+use App\Service\TeamCaseOccupancyGuard;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -337,6 +339,61 @@ final class SlotPlacementVerdictTest extends WebTestCase
         self::assertSame($before, $this->countSlots($ctx['scheduleId']), 'un créneau sans fenêtre ne crée aucune ligne');
     }
 
+    /**
+     * Lot A-2, règle fondateur : la MÊME équipe ne siège jamais deux fois à la même case. Placer une
+     * séance là où l'équipe siège DÉJÀ est un refus sec AVANT le moteur (TeamAlreadyAtCaseException),
+     * rien n'est créé, moteur jamais appelé.
+     */
+    public function testPlaceOnCaseWhereTeamAlreadySitsIsRefused(): void
+    {
+        $ctx = $this->seed('SPV-dup');
+        // L'équipe siège DÉJÀ à la case cible (venue2, jeudi 20:00).
+        $this->seedSlot($ctx, 4, '20:00', $ctx['venue2']);
+        $before = $this->countSlots($ctx['scheduleId']);
+
+        $client = new MockHttpClient(static function (): MockResponse {
+            self::fail('le moteur ne doit PAS être appelé quand l\'équipe siège déjà à la case');
+        });
+
+        try {
+            $this->service($client)->place($ctx['schedule'], $ctx['teamId'], 4, new DateTimeImmutable('20:00'), $ctx['venue2']);
+            self::fail('placer là où l\'équipe siège déjà doit lever');
+        } catch (TeamAlreadyAtCaseException) {
+            // attendu
+        }
+
+        self::assertSame($before, $this->countSlots($ctx['scheduleId']), 'un placement sur une case déjà occupée par l\'équipe ne crée aucune ligne');
+    }
+
+    /**
+     * Garde NON sur-large : placer une équipe là où une AUTRE équipe siège (cohabitation à capacité
+     * restante) reste PERMIS — la garde ne regarde que la MÊME équipe, le moteur juge le reste.
+     */
+    public function testPlaceWhereAnotherTeamSitsIsAllowed(): void
+    {
+        $ctx = $this->seed('SPV-cohab');
+        // Une AUTRE équipe occupe la case cible (teamId arbitraire : la table n'a pas de FK équipe).
+        $other = (new ScheduleSlotTemplate)
+            ->setClubId($ctx['clubId'])
+            ->setSeasonId($ctx['seasonId'])
+            ->setScheduleId($ctx['scheduleId'])
+            ->setTeamId('77777777-7777-4777-8777-777777777777')
+            ->setVenueId($ctx['venue2'])
+            ->setDayOfWeek(4)
+            ->setStartTime(DateTimeImmutable::createFromFormat('!H:i', '20:00'))
+            ->setDurationMinutes(90);
+        $this->em->persist($other);
+        $this->em->flush();
+        $before = $this->countSlots($ctx['scheduleId']);
+
+        $service = $this->service(new MockHttpClient(new MockResponse(self::ACCEPT, ['http_code' => 200])));
+        $result = $service->place($ctx['schedule'], $ctx['teamId'], 4, new DateTimeImmutable('20:00'), $ctx['venue2']);
+
+        self::assertTrue($result['valid'], 'cohabitation d\'équipes DIFFÉRENTES : la garde ne refuse pas');
+        self::assertArrayHasKey('slotId', $result);
+        self::assertSame($before + 1, $this->countSlots($ctx['scheduleId']), 'la séance de l\'autre équipe est bien créée');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -359,6 +416,7 @@ final class SlotPlacementVerdictTest extends WebTestCase
             new EngineClient($client, new RequestIdContext),
             new ScheduleProgressPublisher($hub),
             new NullLogger,
+            new TeamCaseOccupancyGuard($this->em),
         );
     }
 
