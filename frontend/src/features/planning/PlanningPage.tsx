@@ -107,7 +107,7 @@ function coachWishPurgeClause(coachWishCount: number): string {
   return ` Et ${coachWishCount} doléance${coachWishCount > 1 ? "s" : ""} déjà reçue${coachWishCount > 1 ? "s" : ""} pour les vacances à venir partiront aussi — il faudra relancer la collecte.`;
 }
 
-export function PlanningPage({ embedded = false, scopePlanId = null, calendarEntryId = null, toReplace = null, isClosurePeriod = false }: { embedded?: boolean; scopePlanId?: string | null; calendarEntryId?: string | null; toReplace?: ToReplaceEntry[] | null; isClosurePeriod?: boolean } = {}) {
+export function PlanningPage({ embedded = false, scopePlanId = null, calendarEntryId = null, toReplace = null, isClosurePeriod = false, onDisplayedScheduleChange }: { embedded?: boolean; scopePlanId?: string | null; calendarEntryId?: string | null; toReplace?: ToReplaceEntry[] | null; isClosurePeriod?: boolean; onDisplayedScheduleChange?: (id: string | null) => void } = {}) {
   // UXS-09 — on garde l'objet query : `readFailed` distingue « aucun planning » d'« échec de
   // lecture », pour ne pas renvoyer le gestionnaire au wizard sur une panne réseau. `useMemo` et non
   // `?? []` : le repli littéral fabriquait un tableau NEUF à chaque rendu, invalidant les `useMemo`
@@ -131,6 +131,16 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // Portée et atterrissage de version (bug fondateur 2026-08-19) : la sélection vit dans le
   // store (passée en paramètres) ; le hook n'a aucun état propre.
   const { scoped, scopeVersions, landingScheduleId, validScheduleId, displayed, slotLayerId } = useVersionLanding(schedules, scopePlanId, embedded, selectedScheduleId, setSelectedScheduleId);
+
+  // Lot B — embarqué dans le wizard, on remonte le planning AFFICHÉ (la version la plus récente en
+  // portée) au store wizard, pour que le « Signaler » de l'en-tête du wizard (étape Génération) le
+  // joigne. Hors embarqué, l'en-tête de CET écran porte déjà son propre « Signaler » avec le
+  // scheduleId — rien à remonter.
+  useEffect(() => {
+    if (embedded) {
+      onDisplayedScheduleChange?.(validScheduleId);
+    }
+  }, [embedded, onDisplayedScheduleChange, validScheduleId]);
 
   // P2-44 PR-5 — les écarts NOMMÉS vs le socle. Armés UNIQUEMENT sur l'écran embarqué et porté
   // (`transcriptionSurface`), d'une FERMETURE (le serveur reste seul juge — 422 sinon), et d'une
@@ -699,8 +709,9 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
             onBlur={() => setEditingPlanningName(null)}
             className="w-72 text-xl font-semibold"
           />
-          {/* P5-6 — porte contextuelle : joint le planning affiché au signalement. */}
-          <FeedbackButton className="ml-auto" screen="/planning" scheduleId={validScheduleId} />
+          {/* P5-6 — porte contextuelle : joint le planning affiché au signalement. Lot B —
+              masquée en embarqué : l'en-tête du wizard porte déjà le « Signaler » de l'étape. */}
+          {!embedded ? <FeedbackButton className="ml-auto" screen="/planning" scheduleId={validScheduleId} /> : null}
         </div>
       ) : (
         // En-tête d'écran unifié : trait + titre à gauche, « Signaler » à droite. Les éléments
@@ -712,6 +723,9 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           title={planningTitle}
           screen="/planning"
           scheduleId={validScheduleId}
+          /* Lot B — en embarqué, le « Signaler » vit sur l'en-tête du wizard (étape Génération),
+             pas en double sur cet en-tête-ci. Autonome : visible, comme tout écran principal. */
+          showFeedback={!embedded}
           leading={me?.club?.logoUrl ? <img src={me.club.logoUrl} alt="" className="size-8 shrink-0 rounded object-contain" /> : null}
           beside={
             <>

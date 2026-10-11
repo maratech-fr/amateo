@@ -266,6 +266,13 @@ class SpreadsheetGenerator
                     $sheet->getStyle([$firstDayCol + $offset, $row])->getAlignment()->setWrapText(true);
                 }
             }
+            // Lot B — parité frontend (`ClubViewTable.tsx`) : une équipe SANS aucune séance porte
+            // « aucune séance » dans sa PREMIÈRE cellule de jour (le modèle n'indexe `$matrix[$teamId]`
+            // que pour une équipe placée). Sans colonne de jour (aucun créneau dans tout le planning),
+            // il n'y a aucune cellule où l'écrire — on n'ajoute pas de colonne fantôme.
+            if (!isset($matrix[$teamId]) && [] !== $dayColumns) {
+                $sheet->setCellValue([$firstDayCol, $row], 'aucune séance');
+            }
             ++$row;
         }
 

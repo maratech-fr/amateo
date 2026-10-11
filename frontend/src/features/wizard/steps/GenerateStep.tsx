@@ -45,7 +45,7 @@ export function GenerateStep() {
   const credits = useCredits();
   const creditSuffix = null !== credits ? ` (${credits.remaining})` : "";
   const creditsBlocked = null !== credits && !credits.canGenerate;
-  const { mode, calendarEntryId } = useWizardStore();
+  const { mode, calendarEntryId, setDisplayedScheduleId } = useWizardStore();
   const periodMode = "period" === mode;
   const { data: periodEntry } = useCalendarEntry(periodMode ? calendarEntryId : null);
   // P2-44 PR-4 — l'auto-transcription ne vise QUE les fermetures (arbitrage fondateur 2026-08-20 :
@@ -283,7 +283,8 @@ export function GenerateStep() {
     // de fermeture des gymnases pour MARQUER (jamais offrir) les fenêtres vides fermées.
     // P2-44 — `toReplace` (session d'écran) alimente le panneau + la mise en évidence des vides.
     // P2-44 PR-5 — `isClosurePeriod` arme les écarts NOMMÉS vs le socle (fermeture seulement).
-    return <PlanningPage embedded scopePlanId={periodMode ? periodPlanId : null} calendarEntryId={periodMode ? calendarEntryId : null} toReplace={toReplace} isClosurePeriod={periodMode && isClosurePeriod} />;
+    // Lot B — on remonte le planning affiché au store : le « Signaler » de l'en-tête du wizard le joint.
+    return <PlanningPage embedded scopePlanId={periodMode ? periodPlanId : null} calendarEntryId={periodMode ? calendarEntryId : null} toReplace={toReplace} isClosurePeriod={periodMode && isClosurePeriod} onDisplayedScheduleChange={setDisplayedScheduleId} />;
   }
 
   return (

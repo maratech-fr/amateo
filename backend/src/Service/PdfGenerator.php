@@ -615,7 +615,14 @@ class PdfGenerator
      */
     private function matrixRow(string $teamId, string $teamName, array $matrix, array $dayColumns): string
     {
-        $cells = \sprintf('<th class="team-col">%s</th>', htmlspecialchars($teamName));
+        // Parité frontend (`ClubViewTable.tsx` — `sessionCount === 0`) : une équipe SANS aucune
+        // séance porte « aucune séance » sous son nom (ton d'alerte), le premier trou que le
+        // gestionnaire doit voir. Le modèle n'indexe `$matrix[$teamId]` que pour une équipe placée.
+        $teamCell = htmlspecialchars($teamName);
+        if ([] === ($matrix[$teamId] ?? [])) {
+            $teamCell .= '<div class="no-session">aucune séance</div>';
+        }
+        $cells = \sprintf('<th class="team-col">%s</th>', $teamCell);
         foreach ($dayColumns as $day) {
             $entries = $matrix[$teamId][$day] ?? [];
             usort($entries, static fn (array $a, array $b): int => $a['start'] <=> $b['start']);
@@ -738,6 +745,9 @@ class PdfGenerator
                 .matrix-title { font-size: 13px; margin: 0 0 8px; }
                 table.matrix td { text-align: center; height: 16px; padding: 0; }
                 table.matrix .team-col { text-align: left; font-weight: bold; width: 92px; background: #fafafa; }
+                /* Lot B — « aucune séance » sous le nom d\'une équipe sans créneau : ton d\'alerte
+                   (parité ClubViewTable), le premier trou à voir. */
+                table.matrix .team-col .no-session { display: block; font-weight: normal; font-size: 7px; color: #b45309; }
                 /* A whole rank group stays on one page — never split by landscape pagination. */
                 table.matrix tbody.rank-group { break-inside: avoid; }
                 /* No badge: the venue colour FILLS the cell, text centred. Two sessions in a

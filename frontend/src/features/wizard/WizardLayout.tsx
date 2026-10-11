@@ -97,7 +97,7 @@ function ScrollJumpButtons({ suppressed }: { suppressed: boolean }) {
 }
 
 export function WizardPage() {
-  const { stepId, maxIndex, mode, calendarEntryId, setStep, jumpTo, next, prev, exitPeriodMode, deepLinkOrigin, setDeepLinkOrigin, clearDeepLinkOrigin } = useWizardStore();
+  const { stepId, maxIndex, mode, calendarEntryId, setStep, jumpTo, next, prev, exitPeriodMode, deepLinkOrigin, setDeepLinkOrigin, clearDeepLinkOrigin, displayedScheduleId } = useWizardStore();
   const { data: me } = useMe();
   const navigate = useNavigate();
   const periodMode = "period" === mode;
@@ -574,8 +574,10 @@ export function WizardPage() {
             </h2>
           </div>
           <div className="flex items-center gap-2">
-            {/* P5-6 — porte contextuelle : l'étape courante voyage dans le contexte. */}
-            <FeedbackButton screen={`wizard/${stepId}`} />
+            {/* P5-6 — porte contextuelle : l'étape courante voyage dans le contexte. Lot B — à
+                l'étape Génération, on joint AUSSI le planning affiché (remonté par PlanningPage via
+                le store) ; les autres étapes n'en tiennent aucun. */}
+            <FeedbackButton screen={`wizard/${stepId}`} scheduleId={"generate" === stepId ? displayedScheduleId ?? undefined : undefined} />
             <Button
               variant="ghost"
               size="sm"
