@@ -750,23 +750,27 @@ describe("PeriodVenues — la grille de la période, gymnase par gymnase", () =>
     expect(updateSlot).toHaveBeenCalledWith(expect.objectContaining({ body: expect.objectContaining({ capacity: 1, groupLabel: null }) }), expect.anything());
   });
 
-  it("déplacer un créneau réservé confirme, puis retire la réservation orpheline", async () => {
+  // V3 (6A, 2026-10-10) — le back déplace LUI-MÊME les réservations du créneau (P4-44,
+  // EntityCascadeDeleter::moveChildrenOfSlot) ; le front ne les supprime plus (ça emporterait
+  // leur verrou HARD matérialisé). La confirmation devient informative : « elle suivra ».
+  it("déplacer un créneau réservé : la réservation SUIT (un PUT seul, aucun DELETE)", async () => {
     reservationsState.data = [{ id: "r1", venueId: "v1", dayOfWeek: 3, startTime: "20:00:00" }];
     const user = userEvent.setup();
     render(<PeriodVenues calendarEntryId="e1" />);
     await user.click(screen.getByTitle(/^20:00 .*modifier$/));
     await user.selectOptions(screen.getByLabelText("Jour"), "2");
     await user.click(screen.getByRole("button", { name: "Enregistrer" }));
+    // Rien n'est écrit tant que la confirmation n'est pas validée.
     expect(updateSlot).not.toHaveBeenCalled();
+    // Le texte annonce que la réservation SUIT le créneau — plus « la retirera ».
+    expect(screen.getByText(/elle suivra le créneau/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Déplacer" }));
-    expect(updateSlot).toHaveBeenCalled();
-    expect(delReservation).toHaveBeenCalledWith("r1");
+    // Un PUT seul (le déplacement) ; JAMAIS un DELETE — il emporterait le verrou de la réservation.
+    expect(updateSlot).toHaveBeenCalledTimes(1);
+    expect(delReservation).not.toHaveBeenCalled();
   });
 
-  // P2-62 — le déplacement retire les N réservations orphelines de la case. Le DELETE tolère le
-  // 404 (api.ts) : quand la 1ʳᵉ suppression a déjà emporté toute une case bloc-complète, la 2ᵉ sœur
-  // répond 404 SANS bruit — aucune erreur ne remonte à l'écran.
-  it("déplacer un créneau à deux réservations les retire toutes, sans toast d'erreur même si une sœur répond déjà 404", async () => {
+  it("déplacer un créneau à deux réservations : « elles suivront », un PUT seul, aucun DELETE", async () => {
     reservationsState.data = [
       { id: "r1", venueId: "v1", dayOfWeek: 3, startTime: "20:00:00" },
       { id: "r2", venueId: "v1", dayOfWeek: 3, startTime: "20:00:00" },
@@ -776,10 +780,11 @@ describe("PeriodVenues — la grille de la période, gymnase par gymnase", () =>
     await user.click(screen.getByTitle(/^20:00 .*modifier$/));
     await user.selectOptions(screen.getByLabelText("Jour"), "2");
     await user.click(screen.getByRole("button", { name: "Enregistrer" }));
+    // Accord pluriel : « 2 réservations … elles suivront ».
+    expect(screen.getByText(/2 réservations d'équipe : elles suivront le créneau/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Déplacer" }));
-
-    expect(delReservation).toHaveBeenCalledWith("r1");
-    expect(delReservation).toHaveBeenCalledWith("r2");
+    expect(updateSlot).toHaveBeenCalledTimes(1);
+    expect(delReservation).not.toHaveBeenCalled();
     expect(toast.error).not.toHaveBeenCalled();
   });
 

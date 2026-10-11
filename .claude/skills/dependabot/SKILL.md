@@ -50,8 +50,10 @@ règle « jamais merger sans go » reste en vigueur pour tout le reste).
    - `ci` (github-actions) : pas de tests locaux — vérifier que les versions d'actions existent et
      lire le diff (breaking inputs renommés/supprimés).
 4. Dépendance **runtime** backend ou engine touchée (pas dev-only) → redémarrer les containers
-   longue durée (`docker compose restart engine messenger-worker`) puis la feature de génération
-   `make -C backend behat` (planning `COMPLETED` attendu).
+   longue durée (`docker compose restart engine messenger-worker`). **Behat** : le gate reste le
+   job CI `functional-tests` (CLAUDE.md §7 étape 5) — pas de run local systématique ici non plus ;
+   un `make -C backend behat` local (sous `with-sandbox.sh`) ne se justifie que si la CI est
+   bloquée ou pour diagnostiquer un Behat rouge en CI.
 
 ## Étape 2 — Par PR : réparer si rouge
 
@@ -78,9 +80,13 @@ règle « jamais merger sans go » reste en vigueur pour tout le reste).
 
 ## Étape 3 — Par PR : merger
 
-1. Suite de zone verte (+ `make -C backend behat` si applicable) → `gh pr merge <n> --squash --delete-branch`.
+1. Suite de zone verte → `gh pr merge <n> --squash --delete-branch`. **Behat** : le merge attend
+   en plus le job CI `functional-tests` vert (required check de `main`, CLAUDE.md §7 étape 5) —
+   cohérent avec « Dependabot : merge autorisé si CI verte ».
 2. `git checkout main && git pull` avant la PR suivante (chaque verdict se rend sur main à jour).
-3. La CI GitHub ne gate pas le merge (double-contrôle) — le verdict local fait foi.
+3. Pour les suites jouées en local (étape 1), le verdict local fait foi — la CI GitHub est un
+   double-contrôle qui ne les gate pas. Pour Behat seul, c'est l'inverse : la CI `functional-tests`
+   fait foi (ci-dessus).
 
 ## Étape 4 — Bilan + journal des upgrades (obligatoire)
 

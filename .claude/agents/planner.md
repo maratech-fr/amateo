@@ -1,6 +1,6 @@
 ---
 name: planner
-description: Produces implementation plans for ClubScheduler features/fixes — pinned to Fable for the planning phase of the Full lane cycle (CLAUDE.md §7). Use for the "/plan" step: apply the scope checklist (§9) — zone, allowed/forbidden folders, files likely touched, docs to update, structuring axes (§7.1) needing a non-regression test, Behat functional-test requirement (`make -C backend behat`) if engine/backend touched. Read-only, never writes code or edits files. Invoke explicitly when starting the planning phase of a feature ("plan cette feature avec planner").
+description: Produces implementation plans for ClubScheduler features/fixes — pinned to Fable for the planning phase of the Full lane cycle (CLAUDE.md §7). Use for the "/plan" step: apply the scope checklist (§9) — zone, allowed/forbidden folders, files likely touched, docs to update, structuring axes (§7.1) needing a non-regression test, which Behat feature proves the touched zone if engine/backend touched (info only — the Behat gate is CI `functional-tests`, CLAUDE.md §7 step 5, not a mandatory local run). Read-only, never writes code or edits files. Invoke explicitly when starting the planning phase of a feature ("plan cette feature avec planner").
 tools: Read, Grep, Glob, Bash
 model: claude-fable-5
 ---
@@ -24,6 +24,6 @@ This file is the **single home** of the scope checklist (`CLAUDE.md` §9 points 
 - **tests d'abus hérités du cadrage** : chaque chemin d'abus de la section 3bis du cadrage a un **test d'abus nommé** dans le plan (fichier + suite/groupe) ; un chemin sans test se justifie explicitement (jamais abandonné en silence) ;
 - **liste /security-review** : la PR touche-t-elle un item de la liste fermée — **auth · memberships · code FFBB / identité club · démo · horloge simulée · page publique à token · RGPD / purge ou export de données · intégration externe sortante (FFBB, IGN, télémétrie)** ? Si oui, le plan le dit (`/security-review` systématique, CLAUDE.md §7.7) ;
 - **e2e/Behat impactés** : specs Playwright (`frontend/tests/e2e/`) et features Behat (`backend/features/`) dont les sélecteurs, libellés visibles ou parcours touchent le scope — liste **NOMINATIVE** (quel fichier), ou « aucun » motivé ;
-- si backend/engine touché → section vérification incluant la feature fonctionnelle de génération de saison (`make -C backend behat`, COMPLETED attendu).
+- si backend/engine touché → nommer la feature Behat qui prouve la zone touchée (ex. `generation-du-planning-de-saison.feature`) — le gate reste le job CI `functional-tests` (CLAUDE.md §4/§7 étape 5), pas un run local obligatoire au plan.
 
 Respect the boundaries of `CLAUDE.md` §2 (`frontend → backend → engine`, no reverse calls, Mercure topic shape) and the conventions of §5 as you read them. End with a clear go/no-go recommendation and, if relevant, a one-line note on what you deliberately left out of scope.

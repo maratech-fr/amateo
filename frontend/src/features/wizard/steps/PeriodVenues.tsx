@@ -31,7 +31,6 @@ import {
   useClearVenuePeriodGrid,
   useClearVenuePeriodMode,
   useCreatePeriodSlot,
-  useDeleteReservation,
   useDeletePeriodSlot,
   useDeletionImpact,
   usePeriodSlots,
@@ -563,11 +562,12 @@ function PeriodVenuePanel({
  * le supprime. Miroir de `SlotEditor` (saison), câblé sur les hooks de la COUCHE période :
  * mêmes gestes, écriture sur le plan et jamais sur le socle.
  *
- * DÉPLACER un créneau (changer jour/heure) laisse les réservations épinglées à l'ANCIENNE
- * position orphelines — et un épinglage orphelin BLOQUE la génération (OrphanPinGuard). On
- * ne le fait donc jamais en silence : si le créneau porte des réservations et que sa
- * position change, on confirme en annonçant qu'elles seront retirées, puis on déplace ET
- * on les supprime (pas d'orphelin laissé derrière — revue #8 PR-B round 2).
+ * DÉPLACER un créneau (changer jour/heure) : le BACKEND déplace lui-même les réservations
+ * portées par ce créneau vers la nouvelle position (P4-44, EntityCascadeDeleter::
+ * moveChildrenOfSlot). Le front ne les supprime donc PAS — les supprimer emporterait aussi
+ * leur verrou HARD matérialisé (verrous-V3, 6A 2026-10-10). Si le créneau porte des
+ * réservations et que sa position change, on confirme seulement, à titre informatif, que
+ * ces réservations suivront le créneau à son nouvel horaire.
  */
 function PeriodSlotEditor({
   slot,
@@ -592,7 +592,6 @@ function PeriodSlotEditor({
 }) {
   const update = useUpdatePeriodSlot(schedulePlanId);
   const del = useDeletePeriodSlot(schedulePlanId);
-  const delReservation = useDeleteReservation();
   const [day, setDay] = useState(slot.dayOfWeek);
   const [time, setTime] = useState(hhmm(slot.startTime));
   const [duration, setDuration] = useState(slot.durationMinutes);
@@ -627,16 +626,9 @@ function PeriodSlotEditor({
     // Libellé de groupe : envoyé seulement sur un créneau partageable (≥ 2), sinon null (P2-17).
     update.mutate(
       { id: slot.id, body: { venueId: slot.venueId, dayOfWeek: day, startTime: time, durationMinutes: duration, capacity: effCapacity, groupLabel: effCapacity >= 2 ? groupLabel : null } },
-      {
-        onSuccess: () => {
-          // Le déplacement a orpheliné les réservations de l'ancienne position : on les
-          // retire pour ne pas bloquer la génération (elles ont été annoncées).
-          for (const r of reservationsHere) {
-            delReservation.mutate(r.id);
-          }
-          onClose();
-        },
-      },
+      // Le backend déplace lui-même les réservations portées par ce créneau (P4-44) : on ne
+      // les supprime plus (ça emporterait leur verrou HARD). On ferme seulement au succès.
+      { onSuccess: onClose },
     );
   };
 
@@ -646,7 +638,8 @@ function PeriodSlotEditor({
       setError(invalid);
       return;
     }
-    // Déplacer un créneau réservé retire ses réservations : on le confirme d'abord.
+    // Déplacer un créneau réservé emmène ses réservations avec lui (back, P4-44) : on le
+    // confirme d'abord, à titre informatif.
     if (moved && reservationCount > 0) {
       setConfirmMove(true);
       return;
@@ -742,9 +735,9 @@ function PeriodSlotEditor({
 
       <ConfirmDialog
         open={confirmMove}
-        destructive
+        destructive={false}
         title="Déplacer ce créneau ?"
-        description={`Ce créneau porte ${reservationCount} réservation${reservationCount > 1 ? "s" : ""} d'équipe. Le déplacer ${reservationCount > 1 ? "les retirera" : "la retirera"} — il faudra ${reservationCount > 1 ? "les reposer" : "la reposer"} sur le nouveau créneau.`}
+        description={`Ce créneau porte ${reservationCount} réservation${reservationCount > 1 ? "s" : ""} d'équipe : ${reservationCount > 1 ? "elles suivront" : "elle suivra"} le créneau à son nouvel horaire.`}
         confirmLabel="Déplacer"
         onConfirm={() => {
           setConfirmMove(false);
