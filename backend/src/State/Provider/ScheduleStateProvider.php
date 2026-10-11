@@ -9,10 +9,13 @@ use ApiPlatform\State\Pagination\Pagination;
 use App\ApiResource\ScheduleResource;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
+use App\Entity\ScheduleSlotTemplate;
 use App\Entity\ScheduleStructureSnapshot;
 use App\Entity\Season;
+use App\Enum\LockLevel;
 use App\Enum\SchedulePlanType;
 use App\Service\ScheduleCapabilityResolver;
+use App\Service\SchedulePlanProvisioner;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
 
@@ -26,6 +29,7 @@ class ScheduleStateProvider extends AbstractStateProvider
         RequestStack $requestStack,
         Pagination $pagination,
         private readonly ScheduleCapabilityResolver $capabilityResolver,
+        private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
     ) {
         parent::__construct($entityManager, $requestStack, $pagination);
     }
@@ -49,8 +53,12 @@ class ScheduleStateProvider extends AbstractStateProvider
         /** @var iterable<ScheduleResource> $dtos */
         $dtos = $result instanceof ScheduleResource ? [$result] : $result;
         $ids = [];
+        $planIds = [];
         foreach ($dtos as $dto) {
             $ids[] = $dto->id;
+            if (null !== $dto->schedulePlanId) {
+                $planIds[$dto->schedulePlanId] = true;
+            }
         }
         if ([] === $ids) {
             return $result;
@@ -60,6 +68,8 @@ class ScheduleStateProvider extends AbstractStateProvider
         $liveContext = $this->liveContextScheduleIds($ids);
         $chosen = $this->chosenScheduleIds($ids);
         $planType = $this->planTypeByScheduleId($ids);
+        $lockSource = $this->lockSourceScheduleIds(array_keys($planIds));
+        $hardLockCount = $this->hardLockCountByScheduleId($ids);
         // P2-8 : le résolveur travaille sur les ENTITÉS (il lui faut club/saison, absents
         // du DTO). Une seule requête pour tout le lot (identity-map déjà chaude), puis les
         // ensembles déjà calculés ci-dessus sont réutilisés — pas de double interrogation.
@@ -68,12 +78,15 @@ class ScheduleStateProvider extends AbstractStateProvider
             $chosen,
             $planType,
             $withPhoto,
+            $lockSource,
         );
         foreach ($dtos as $dto) {
             $dto->hasStructurePhoto = isset($withPhoto[$dto->id]);
             $dto->isLiveContext = isset($liveContext[$dto->id]);
             $dto->isChosen = isset($chosen[$dto->id]);
             $dto->planType = $planType[$dto->id] ?? null;
+            $dto->isLockSource = isset($lockSource[$dto->id]);
+            $dto->hardLockCount = $hardLockCount[$dto->id] ?? 0;
             $dto->capabilities = $capabilities[$dto->id] ?? null;
         }
 
@@ -152,6 +165,63 @@ class ScheduleStateProvider extends AbstractStateProvider
             // d'hydratation Doctrine — on normalise vers la valeur string du DTO.
             $type = $row['planType'];
             $map[$row['id']] = $type instanceof SchedulePlanType ? $type->value : $type;
+        }
+
+        return $map;
+    }
+
+    /**
+     * V1/V1bis — les versions du lot qui sont la SOURCE des verrous de leur plan (les données
+     * « en cours », d'où « Régénérer » repart). Passe par la MAISON UNIQUE {@see
+     * \App\Service\SchedulePlanProvisioner::lockSourceScheduleIdOfPlan}, par plan présent dans le lot
+     * (jamais plus que le nombre de PLANS affichés, pas de version) : V1bis a rendu cette source
+     * dépendante du pointeur `lock_source_schedule_id`, qu'un `NOT EXISTS` « dernière COMPLETED »
+     * ignorerait — deux définitions divergeraient. La maison esquive le season_filter ; RLS scope le
+     * club. Une version du lot est la source ssi son id est celui que la maison rend pour son plan.
+     *
+     * @param list<string> $planIds
+     *
+     * @return array<string, true>
+     */
+    private function lockSourceScheduleIds(array $planIds): array
+    {
+        $set = [];
+        foreach ($planIds as $planId) {
+            $sourceId = $this->schedulePlanProvisioner->lockSourceScheduleIdOfPlan($planId);
+            if (null !== $sourceId) {
+                $set[$sourceId] = true;
+            }
+        }
+
+        return $set;
+    }
+
+    /**
+     * V1 — le nombre de verrous HARD (épingles de work-loop) de chaque version du lot, en UN batch
+     * groupé. Tenant-filtré (ScheduleSlotTemplate porte un club_id). Une version sans verrou HARD est
+     * absente de la carte (→ 0 côté DTO).
+     *
+     * @param list<string> $scheduleIds
+     *
+     * @return array<string, int>
+     */
+    private function hardLockCountByScheduleId(array $scheduleIds): array
+    {
+        /** @var list<array{sid: string, cnt: int|string}> $rows */
+        $rows = $this->entityManager->createQueryBuilder()
+            ->select('t.scheduleId AS sid', 'COUNT(t.id) AS cnt')
+            ->from(ScheduleSlotTemplate::class, 't')
+            ->where('t.scheduleId IN (:ids)')
+            ->andWhere('t.lockLevel = :hard')
+            ->groupBy('t.scheduleId')
+            ->setParameter('ids', $scheduleIds)
+            ->setParameter('hard', LockLevel::HARD)
+            ->getQuery()
+            ->getScalarResult();
+
+        $map = [];
+        foreach ($rows as $row) {
+            $map[$row['sid']] = (int) $row['cnt'];
         }
 
         return $map;

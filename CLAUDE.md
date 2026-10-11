@@ -97,7 +97,8 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
   import → Mercure). Worker = conteneur `messenger-worker`.
 - **Grille de gymnase possédée par la période** (ADR-0002) : slots d'une période = **copie**
   prise à la naissance du plan, jamais d'union avec la saison ; overrides sparse ; pin orphelin
-  → 422 (`OrphanPinGuard`).
+  → 422 (`OrphanPinGuard`). Les verrous HARD d'une période survivent à « Régénérer » (version
+  SOURCE du plan, `SchedulePlanProvisioner::lockSourceScheduleIdOfPlan` ; « Charger » les pose).
 - **Le socle commande les plans de période** (ADR-0002) : (1) **aucune génération de période sans
   socle EN VIGUEUR** (`SocleGuard`) — « et si le socle n'a pas de version ? » est un cas
   IMPOSSIBLE, jamais un repli à écrire ; (2) **valider/rouvrir le socle DÉTRUIT les plans de

@@ -84,6 +84,8 @@ export type SchedulePlanType = "SEASON" | "CLOSURE" | "HOLIDAY";
  *  - canDelete         : supprimer cette version (choisie / en vol / seule terminée de saison → false)
  *  - canValidate       : la valider (terminée, aucune sœur en vol ; la choisie reste validable — no-op)
  *  - canRegenerateFrom : recharger sa structure (socle terminé non-choisi, rien en cours, photo présente)
+ *  - canLoadLocks      : V1bis — « Charger » pour une PÉRIODE : poser ses verrous comme données en cours
+ *                        (période terminée, plan non validé, rien en cours, pas déjà la source)
  *  - versionsDeletedOnValidate : nb de sœurs supprimées si l'on valide (annoncé avant le clic)
  *  - overlaysDroppedOnValidate : nb de plannings de période détruits si l'on valide (= count du 409 overlays_exist)
  */
@@ -91,6 +93,7 @@ export interface ScheduleCapabilities {
   canDelete: boolean;
   canValidate: boolean;
   canRegenerateFrom: boolean;
+  canLoadLocks: boolean;
   versionsDeletedOnValidate: number;
   overlaysDroppedOnValidate: number;
 }
@@ -138,6 +141,15 @@ export interface Schedule {
    * calendar and a period's overlay alike (set server-side).
    */
   isChosen?: boolean;
+  /**
+   * V1: is THIS version the SOURCE of its plan's locks (the last COMPLETED — the "current"
+   * data "Régénérer" restarts from)? When regenerating while VIEWING another version, the front
+   * confirms before restarting from the source. Set server-side (batched); absent on write responses.
+   */
+  isLockSource?: boolean;
+  /** V1: number of HARD locks this version carries — the "(N verrous)" in the regenerate confirmation
+   *  (read off the source version). Set server-side (batched); absent on write responses. */
+  hardLockCount?: number;
   /**
    * P2-8: server-computed permissions for THIS version — the front reads them
    * instead of re-deriving the write guards. null on write responses (POST/PUT,
@@ -839,6 +851,13 @@ export const deleteSchedule = (id: string): Promise<void> => api.delete(`schedul
  * fresh generation → a new linear version. Returns the new schedule id.
  */
 export const regenerateFromVersion = (id: string): Promise<{ id: string }> => api.post(`schedules/${id}/regenerate-from`).json();
+
+/**
+ * V1bis — « Charger » pour un plan de PÉRIODE : pose les verrous de cette version comme les
+ * données EN COURS de son plan (le serveur pose le pointeur). Ne génère PAS — la prochaine
+ * « Régénérer » repartira de ces verrous. Un refus (409 : non-période / non terminée / plan validé /
+ * génération en cours ; 404 : autre club) remonte tel quel. */
+export const loadLocks = (id: string): Promise<{ id: string }> => api.post(`schedules/${id}/load-locks`).json();
 /** planning-versions: the plain "Régénérer" creates a NEW linear version (V2…)
  *  from the current structure, carrying the version's HARD-locked slots. */
 export const regenerate = (id: string): Promise<{ id: string }> => api.post(`schedules/${id}/regenerate`).json();

@@ -107,6 +107,36 @@ final class LockOriginProvenanceTest extends KernelTestCase
         self::assertNull($slot->getLockOrigin(), 'Un créneau non verrouillé n\'a pas d\'origine (NULL).');
     }
 
+    public function testAHardLockMatchingASourceManualLockReadsAsManualNotUnknown(): void
+    {
+        [$club, $season] = $this->seed();
+
+        // V1 = la version SOURCE du plan : COMPLETED, portant un verrou MANUAL au placement P,
+        // sans AUCUNE réservation à l'origine (un épinglage de work-loop, pas une réservation).
+        $v1 = $this->schedule($club, $season);
+        $sourceLock = $this->slot($club, $season, $v1, LockLevel::HARD);
+        $sourceLock->setLockOrigin(LockOrigin::MANUAL);
+        $this->em->flush();
+
+        // V2 = une NOUVELLE version du MÊME plan, en cours de génération (nue). Le builder réépingle
+        // le verrou MANUAL de la source ; le moteur le réémet HARD au même placement.
+        $v2 = (new Schedule)->setClubId($club->getId())->setSeasonId($season->getId())->setName('S2')->setStatus(ScheduleStatus::GENERATING);
+        $this->linkSeededSchedule($v2);
+        $this->em->flush();
+
+        $this->importer->import($v2, ['slots' => [$this->engineSlot(LockLevel::HARD)]]);
+
+        $this->em->clear();
+        $slots = $this->em->getRepository(ScheduleSlotTemplate::class)->findBy(['scheduleId' => $v2->getId()]);
+        self::assertCount(1, $slots);
+        self::assertSame(LockLevel::HARD, $slots[0]->getLockLevel());
+        self::assertSame(
+            LockOrigin::MANUAL,
+            $slots[0]->getLockOrigin(),
+            'Un verrou HARD réimporté qui coïncide avec un verrou MANUAL de la version SOURCE doit se lire MANUAL (V1 « les verrous survivent »), jamais UNKNOWN — sinon le compteur de verrous ment.',
+        );
+    }
+
     public function testManualPinReadsAsManualAndUnlockClearsTheOrigin(): void
     {
         [$club, $season] = $this->seed();

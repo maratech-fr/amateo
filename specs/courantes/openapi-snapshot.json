@@ -18415,6 +18415,29 @@
                 "summary": "Fill the sessions to relocate on a period version (partial solve, placed sessions kept)"
             }
         },
+        "/api/schedules/{id}/load-locks": {
+            "post": {
+                "operationId": "postApiScheduleLoadLocks",
+                "tags": [
+                    "Schedules"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "This period version is now the source of its plan locks \u2014 the next regeneration restarts from them. Does NOT generate."
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "404": {
+                        "description": "Resource not found"
+                    },
+                    "409": {
+                        "description": "Not a period version, version not completed, the period plan is validated (reopen first), or a generation is running for the club (body carries code=generation_in_progress)"
+                    }
+                },
+                "summary": "Load a period version locks as the plan current data (sets the pointer, no solve)"
+            }
+        },
         "/api/schedules/{id}/regenerate": {
             "post": {
                 "operationId": "postApiScheduleRegenerate",
@@ -30564,6 +30587,16 @@
                         "default": false,
                         "type": "boolean"
                     },
+                    "isLockSource": {
+                        "description": "V1 \u00ab les verrous d'une p\u00e9riode survivent \u00e0 R\u00e9g\u00e9n\u00e9rer \u00bb \u2014 cette version est-elle la SOURCE des\nverrous de son plan ({@see SchedulePlanProvisioner::lockSourceScheduleIdOfPlan} :\nla derni\u00e8re COMPLETED, les donn\u00e9es \u00ab en cours \u00bb) ? \u00ab R\u00e9g\u00e9n\u00e9rer \u00bb repart TOUJOURS de cette\nsource ; le front confirme quand on r\u00e9g\u00e9n\u00e8re en regardant une AUTRE version que la source.",
+                        "default": false,
+                        "type": "boolean"
+                    },
+                    "hardLockCount": {
+                        "description": "Nombre de verrous HARD (\u00e9pingles de work-loop) que porte CETTE version \u2014 ce que \u00ab (N verrous) \u00bb\nannonce dans la confirmation de r\u00e9g\u00e9n\u00e9ration, lu sur la version SOURCE. Renseign\u00e9 EN BATCH par\nScheduleStateProvider ; 0 sur le chemin fromEntity nu.",
+                        "default": 0,
+                        "type": "integer"
+                    },
                     "capabilities": {
                         "description": "Les permissions applicables \u00e0 cette version pour l'utilisateur courant (ce qu'il peut\nfaire dessus), calcul\u00e9es c\u00f4t\u00e9 serveur. Absent (null) dans la r\u00e9ponse d'une cr\u00e9ation ou\nd'une mise \u00e0 jour : rechargez la version via un GET pour les obtenir.",
                         "anyOf": [
@@ -30780,6 +30813,16 @@
                         "default": false,
                         "type": "boolean"
                     },
+                    "isLockSource": {
+                        "description": "V1 \u00ab les verrous d'une p\u00e9riode survivent \u00e0 R\u00e9g\u00e9n\u00e9rer \u00bb \u2014 cette version est-elle la SOURCE des\nverrous de son plan ({@see SchedulePlanProvisioner::lockSourceScheduleIdOfPlan} :\nla derni\u00e8re COMPLETED, les donn\u00e9es \u00ab en cours \u00bb) ? \u00ab R\u00e9g\u00e9n\u00e9rer \u00bb repart TOUJOURS de cette\nsource ; le front confirme quand on r\u00e9g\u00e9n\u00e8re en regardant une AUTRE version que la source.",
+                        "default": false,
+                        "type": "boolean"
+                    },
+                    "hardLockCount": {
+                        "description": "Nombre de verrous HARD (\u00e9pingles de work-loop) que porte CETTE version \u2014 ce que \u00ab (N verrous) \u00bb\nannonce dans la confirmation de r\u00e9g\u00e9n\u00e9ration, lu sur la version SOURCE. Renseign\u00e9 EN BATCH par\nScheduleStateProvider ; 0 sur le chemin fromEntity nu.",
+                        "default": 0,
+                        "type": "integer"
+                    },
                     "capabilities": {
                         "description": "Les permissions applicables \u00e0 cette version pour l'utilisateur courant (ce qu'il peut\nfaire dessus), calcul\u00e9es c\u00f4t\u00e9 serveur. Absent (null) dans la r\u00e9ponse d'une cr\u00e9ation ou\nd'une mise \u00e0 jour : rechargez la version via un GET pour les obtenir.",
                         "anyOf": [
@@ -30955,6 +30998,16 @@
                                 "default": false,
                                 "type": "boolean"
                             },
+                            "isLockSource": {
+                                "description": "V1 \u00ab les verrous d'une p\u00e9riode survivent \u00e0 R\u00e9g\u00e9n\u00e9rer \u00bb \u2014 cette version est-elle la SOURCE des\nverrous de son plan ({@see SchedulePlanProvisioner::lockSourceScheduleIdOfPlan} :\nla derni\u00e8re COMPLETED, les donn\u00e9es \u00ab en cours \u00bb) ? \u00ab R\u00e9g\u00e9n\u00e9rer \u00bb repart TOUJOURS de cette\nsource ; le front confirme quand on r\u00e9g\u00e9n\u00e8re en regardant une AUTRE version que la source.",
+                                "default": false,
+                                "type": "boolean"
+                            },
+                            "hardLockCount": {
+                                "description": "Nombre de verrous HARD (\u00e9pingles de work-loop) que porte CETTE version \u2014 ce que \u00ab (N verrous) \u00bb\nannonce dans la confirmation de r\u00e9g\u00e9n\u00e9ration, lu sur la version SOURCE. Renseign\u00e9 EN BATCH par\nScheduleStateProvider ; 0 sur le chemin fromEntity nu.",
+                                "default": 0,
+                                "type": "integer"
+                            },
                             "capabilities": {
                                 "description": "Les permissions applicables \u00e0 cette version pour l'utilisateur courant (ce qu'il peut\nfaire dessus), calcul\u00e9es c\u00f4t\u00e9 serveur. Absent (null) dans la r\u00e9ponse d'une cr\u00e9ation ou\nd'une mise \u00e0 jour : rechargez la version via un GET pour les obtenir.",
                                 "anyOf": [
@@ -30982,6 +31035,9 @@
                     "canRegenerateFrom": {
                         "type": "boolean"
                     },
+                    "canLoadLocks": {
+                        "type": "boolean"
+                    },
                     "versionsDeletedOnValidate": {
                         "type": "integer"
                     },
@@ -31002,6 +31058,9 @@
                     "canRegenerateFrom": {
                         "type": "boolean"
                     },
+                    "canLoadLocks": {
+                        "type": "boolean"
+                    },
                     "versionsDeletedOnValidate": {
                         "type": "integer"
                     },
@@ -31020,6 +31079,9 @@
                         "type": "boolean"
                     },
                     "canRegenerateFrom": {
+                        "type": "boolean"
+                    },
+                    "canLoadLocks": {
                         "type": "boolean"
                     },
                     "versionsDeletedOnValidate": {

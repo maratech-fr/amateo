@@ -15,7 +15,10 @@ use InvalidArgumentException;
 
 final class ScheduleResultImporter
 {
-    public function __construct(private readonly EntityManagerInterface $entityManager) {}
+    public function __construct(
+        private readonly EntityManagerInterface $entityManager,
+        private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
+    ) {}
 
     /** @param array<string, mixed> $solverOutput */
     public function import(Schedule $schedule, array $solverOutput): void
@@ -43,6 +46,7 @@ final class ScheduleResultImporter
         }
 
         $reservationPlacements = $this->reservationPlacements($schedule);
+        $manualPlacements = $this->sourceManualPlacements($schedule);
 
         $solverSlots = $this->deduplicateNoneSlots($solverOutput['slots'] ?? []);
         $keptPlacements = [];
@@ -66,7 +70,7 @@ final class ScheduleResultImporter
             }
 
             $slot = $existingSlot ?? (new ScheduleSlotTemplate)->setId(SlotIdScoper::scope($schedule->getId(), (string) $engineId));
-            $this->hydrateSlot($slot, $schedule, $slotData, $reservationPlacements);
+            $this->hydrateSlot($slot, $schedule, $slotData, $reservationPlacements, $manualPlacements);
 
             if (null === $existingSlot) {
                 $this->entityManager->persist($slot);
@@ -125,8 +129,9 @@ final class ScheduleResultImporter
     /**
      * @param array<string, mixed> $slotData
      * @param array<string, true>  $reservationPlacements placement keys of this plan's durable pins
+     * @param array<string, true>  $manualPlacements      placement keys of the source version's MANUAL locks
      */
-    private function hydrateSlot(ScheduleSlotTemplate $slot, Schedule $schedule, array $slotData, array $reservationPlacements): void
+    private function hydrateSlot(ScheduleSlotTemplate $slot, Schedule $schedule, array $slotData, array $reservationPlacements, array $manualPlacements): void
     {
         $lockLevel = LockLevel::tryFrom(strtoupper((string) ($slotData['lockLevel'] ?? 'NONE'))) ?? LockLevel::NONE;
         $slot
@@ -140,27 +145,63 @@ final class ScheduleResultImporter
             ->setStartTime($this->parseStartTime((string) $slotData['startTime']))
             ->setDurationMinutes((int) $slotData['durationMinutes'])
             ->setLockLevel($lockLevel)
-            ->setLockOrigin($this->originForImportedLock($lockLevel, $slot, $reservationPlacements));
+            ->setLockOrigin($this->originForImportedLock($lockLevel, $slot, $reservationPlacements, $manualPlacements));
     }
 
     /**
-     * L'origine d'un verrou fraîchement importé du solveur. Un verrou HARD ici ne peut naître
-     * que d'une `Reservation` : les verrous manuels préexistants sont préservés INTACTS par
-     * `import()` (leur ligne HARD est sautée, jamais réhydratée), donc un slot HARD réhydraté
-     * a forcément été alimenté au moteur comme pin durable. On VÉRIFIE tout de même
-     * l'appariement à une réservation ; sans appariement → UNKNOWN (indécidable, jamais deviné).
+     * L'origine d'un verrou fraîchement importé du solveur. Un verrou HARD réhydraté ici est forcément
+     * une épingle réalimentée au moteur : les verrous HARD de CETTE version sont préservés INTACTS par
+     * `import()` (leur ligne est sautée, jamais réhydratée), donc un HARD qui ressort du solveur vient
+     * d'un pin durable du PLAN. Deux provenances VRAIES, jamais devinées (cf. `LockOriginProvenanceTest`) :
+     *  - il coïncide avec une `Reservation` du plan → RESERVATION ;
+     *  - sinon il coïncide avec un verrou MANUAL de la version SOURCE (verrou de work-loop hérité, V1
+     *    « les verrous survivent à Régénérer ») → MANUAL. Ça RÉPARE AUSSI le compteur de la saison :
+     *    un MANUAL hérité ressortait en UNKNOWN jusqu'ici, faussant le décompte « verrous posés ».
+     *  - ni l'un ni l'autre → UNKNOWN (indécidable).
      *
      * @param array<string, true> $reservationPlacements
+     * @param array<string, true> $manualPlacements
      */
-    private function originForImportedLock(LockLevel $lockLevel, ScheduleSlotTemplate $slot, array $reservationPlacements): ?LockOrigin
+    private function originForImportedLock(LockLevel $lockLevel, ScheduleSlotTemplate $slot, array $reservationPlacements, array $manualPlacements): ?LockOrigin
     {
         if (LockLevel::NONE === $lockLevel) {
             return null;
         }
 
         $placement = $this->placementKey($slot->getTeamId(), $slot->getVenueId(), $slot->getDayOfWeek(), $slot->getStartTime()->format('H:i'));
+        if (isset($reservationPlacements[$placement])) {
+            return LockOrigin::RESERVATION;
+        }
 
-        return isset($reservationPlacements[$placement]) ? LockOrigin::RESERVATION : LockOrigin::UNKNOWN;
+        return isset($manualPlacements[$placement]) ? LockOrigin::MANUAL : LockOrigin::UNKNOWN;
+    }
+
+    /**
+     * Placement keys of the MANUAL locks carried by the PLAN's lock-source version ({@see
+     * SchedulePlanProvisioner::lockSourceScheduleIdOfPlan} — the last COMPLETED version, EXCLUDING the
+     * one being imported, which is still GENERATING at import time). These are the work-loop locks the
+     * builder re-pinned HARD into the solve input; the engine re-emits them, and matching their
+     * placement restores their MANUAL origin on the new version instead of losing it to UNKNOWN.
+     *
+     * @return array<string, true>
+     */
+    private function sourceManualPlacements(Schedule $schedule): array
+    {
+        $planId = $schedule->getSchedulePlanId();
+        $sourceId = $this->schedulePlanProvisioner->lockSourceScheduleIdOfPlan($planId);
+        if (null === $sourceId || $sourceId === $schedule->getId()) {
+            return [];
+        }
+
+        $placements = [];
+        foreach ($this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy(['scheduleId' => $sourceId]) as $slot) {
+            if (LockLevel::HARD !== $slot->getLockLevel() || LockOrigin::MANUAL !== $slot->getLockOrigin()) {
+                continue;
+            }
+            $placements[$this->placementKey($slot->getTeamId(), $slot->getVenueId(), $slot->getDayOfWeek(), $slot->getStartTime()->format('H:i'))] = true;
+        }
+
+        return $placements;
     }
 
     /**

@@ -2341,17 +2341,8 @@ final class BcclSeeder
             $this->schedulePlanProvisioner->linkSchedule($schedule);
         }
 
-        // Snapshot = la structure COURANTE du plan de période (scheduleId null = pré-génération,
-        // les Reservation portées par le plan tiennent lieu de verrous durables) : « Régénérer »
-        // honnêtement grisé, tant que rien n'a bougé.
-        $payload = $this->constraintBuilder->buildForPeriodPlan($clubId, $season->getId(), $planId, $child);
-        $schedule->setSnapshotData($payload);
-        $schedule->setSnapshotHash(hash('sha256', json_encode($payload, \JSON_THROW_ON_ERROR)));
         $schedule->setStatus(ScheduleStatus::COMPLETED);
         $manager->flush();
-
-        // VALIDER = POINTER : le plan de période nomme cette version sa choisie.
-        $this->schedulePlanProvisioner->choose($schedule);
 
         // Créneaux de la version : coachId null ; verrou dérivé des réservations (toutes les
         // séances de reprise en portent une ⇒ HARD/RESERVATION). La purge club/saison de la
@@ -2377,9 +2368,19 @@ final class BcclSeeder
         }
         $manager->flush();
 
+        // Snapshot APRÈS la pose des verrous (V1 « les verrous survivent à Régénérer ») : cette
+        // version est la SOURCE des verrous de son plan ({@see SchedulePlanProvisioner::
+        // lockSourceScheduleIdOfPlan}), donc `buildForPeriodPlan` greffe SES HARD en forme canonique
+        // — exactement ce que `structureHashOfPlan` recalculera (« Régénérer » honnêtement grisé).
+        $payload = $this->constraintBuilder->buildForPeriodPlan($clubId, $season->getId(), $planId, $child);
+        $schedule->setSnapshotData($payload);
+        $schedule->setSnapshotHash(hash('sha256', json_encode($payload, \JSON_THROW_ON_ERROR)));
         // Miroir de ScheduleResultImporter : une version fraîchement transcrite n'est pas retouchée à la main.
         $schedule->setManuallyEditedSinceGeneration(false);
         $manager->flush();
+
+        // VALIDER = POINTER : le plan de période nomme cette version sa choisie.
+        $this->schedulePlanProvisioner->choose($schedule);
     }
 
     /**

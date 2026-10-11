@@ -11,7 +11,7 @@ const noop = () => {};
 // par le bloc `capabilities` SERVEUR, plus par un calcul client. Défaut = une version de
 // travail terminée « ordinaire » ; chaque test surcharge le champ qui porte son scénario.
 // `capabilities: null` force l'absence (réponse d'écriture / cache périmé → fail-closed).
-const DEFAULT_CAPS: ScheduleCapabilities = { canDelete: false, canValidate: true, canRegenerateFrom: true, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 };
+const DEFAULT_CAPS: ScheduleCapabilities = { canDelete: false, canValidate: true, canRegenerateFrom: true, canLoadLocks: false, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 };
 type ScheduleOver = Partial<Omit<Schedule, "capabilities">> & { capabilities?: Partial<ScheduleCapabilities> | null };
 
 const schedule = (status: Schedule["status"], over: ScheduleOver = {}): Schedule => {
@@ -49,6 +49,7 @@ function renderToolbar(
       onReopen={noop}
       onDelete={noop}
       onRegenerateFrom={noop}
+      onLoadLocks={noop}
       disableRegenerate={disableRegenerate}
       outputCredits={outputCredits}
       isGenerating={false}
@@ -103,6 +104,7 @@ describe("PlanningToolbar — 4e vue « Par jour » (P2-33)", () => {
         onReopen={noop}
         onDelete={noop}
         onRegenerateFrom={noop}
+        onLoadLocks={noop}
         isGenerating={false}
         actionBusy={false}
         embedded
@@ -242,6 +244,7 @@ describe("PlanningToolbar — schedule lifecycle (N3)", () => {
         onReopen={noop}
         onDelete={noop}
         onRegenerateFrom={noop}
+        onLoadLocks={noop}
         isGenerating={false}
         actionBusy
         embedded
@@ -261,6 +264,43 @@ describe("PlanningToolbar — schedule lifecycle (N3)", () => {
   it("hides « Charger cette version » on a pre-D2 version with no structure photo (server: canRegenerateFrom:false)", () => {
     renderToolbar(schedule("COMPLETED", { hasStructurePhoto: false, capabilities: { canRegenerateFrom: false } }));
     expect(screen.queryByRole("button", { name: /charger cette version/i })).not.toBeInTheDocument();
+  });
+
+  it("V1bis — offre « Charger cette version » sur une version de PÉRIODE quand le serveur l'autorise (canLoadLocks)", () => {
+    // Une version d'overlay (plan de période) terminée, non source, plan non validé : le serveur
+    // dit canLoadLocks:true, et le socle n'a pas lieu d'être (canRegenerateFrom:false, période-only).
+    renderToolbar(schedule("COMPLETED", { planType: "HOLIDAY", schedulePlanId: "period-plan", capabilities: { canRegenerateFrom: false, canLoadLocks: true } }));
+    expect(screen.getByRole("button", { name: /charger cette version/i })).toBeEnabled();
+  });
+
+  it("V1bis — cacher « Charger » sur une version de période quand elle est DÉJÀ la source (canLoadLocks:false)", () => {
+    renderToolbar(schedule("COMPLETED", { planType: "HOLIDAY", schedulePlanId: "period-plan", capabilities: { canRegenerateFrom: false, canLoadLocks: false } }));
+    expect(screen.queryByRole("button", { name: /charger cette version/i })).not.toBeInTheDocument();
+  });
+
+  it("V1bis — le clic sur « Charger » (période) déclenche onLoadLocks", async () => {
+    const user = userEvent.setup();
+    const onLoadLocks = vi.fn();
+    render(
+      <PlanningToolbar
+        schedules={[schedule("COMPLETED", { planType: "HOLIDAY", schedulePlanId: "period-plan", capabilities: { canRegenerateFrom: false, canLoadLocks: true } })]}
+        selectedScheduleId="s1"
+        onSelectSchedule={noop}
+        viewMode="gymnase"
+        onViewMode={noop}
+        onRegenerate={noop}
+        onValidate={noop}
+        onReopen={noop}
+        onDelete={noop}
+        onRegenerateFrom={noop}
+        onLoadLocks={onLoadLocks}
+        isGenerating={false}
+        actionBusy={false}
+        embedded
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: /charger cette version/i }));
+    expect(onLoadLocks).toHaveBeenCalledTimes(1);
   });
 
   it("hides Supprimer on the version in force — whether the SEASON plan points at it or its own plan does", () => {

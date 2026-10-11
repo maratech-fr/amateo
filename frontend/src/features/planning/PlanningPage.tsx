@@ -43,7 +43,7 @@ import { buildClubView } from "./lib/clubView";
 import { ClubViewTable } from "./ClubViewTable";
 import { availableResourceGroups, buildGrid, DAYS, type Lookups, slotGroupKey } from "./lib/grid";
 import { PlanningToolbar } from "./PlanningToolbar";
-import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useMutualizeSlot, usePlacedConflicts, useRegenerate, useRegenerateFromVersion, useRegenerateOverlay, useSchedules, useSlots, useSocleDeviation, useStructureHash, useTeamCoaches, useTeams, useTrainingSlots, useVenues } from "./queries";
+import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useLoadLocks, useMutualizeSlot, usePlacedConflicts, useRegenerate, useRegenerateFromVersion, useRegenerateOverlay, useSchedules, useSlots, useSocleDeviation, useStructureHash, useTeamCoaches, useTeams, useTrainingSlots, useVenues } from "./queries";
 import { blocksForSlot } from "./lib/blockSession";
 import { ResourceFilter } from "./ResourceFilter";
 import { SlotDetail } from "./SlotDetail";
@@ -52,7 +52,7 @@ import { GenerationInProgressError, MutualizationRefusedError } from "./api";
 
 import { stalenessMessage } from "./lib/staleness";
 import type { ToReplaceEntry } from "./lib/toReplaceReason";
-import { isSeasonPlanType, laterCompletedVersionId, planRepresentative, visibleSeasonPlans } from "./lib/versions";
+import { isSeasonPlanType, laterCompletedVersionId, overlayVersionLabels, planRepresentative, visibleSeasonPlans } from "./lib/versions";
 import { useVersionLanding } from "./lib/useVersionLanding";
 import { usePeriodClosures } from "./lib/usePeriodClosures";
 import { useLockControls } from "./lib/useLockControls";
@@ -244,6 +244,15 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const deleteMutation = useDeleteSchedule();
   const regenerateFromMutation = useRegenerateFromVersion();
   const [regenerateFromOpen, setRegenerateFromOpen] = useState(false);
+  // V1bis — « Charger » les verrous d'une version de PÉRIODE (pose le pointeur, ne génère pas). La
+  // confirmation nomme la version et dit l'effet. `isLockSource` bascule ⇒ la liste des versions est
+  // invalidée par la mutation.
+  const loadLocksMutation = useLoadLocks();
+  const [loadLocksConfirm, setLoadLocksConfirm] = useState<{ scheduleId: string; label: string } | null>(null);
+  // V1 — « Régénérer » un overlay repart TOUJOURS des données EN COURS (la version SOURCE des
+  // verrous). Quand on régénère en regardant une AUTRE version que la source, on confirme (patron
+  // « Charger ») : les champs figent le libellé des deux versions et le nombre de verrous de la source.
+  const [overlayRegenConfirm, setOverlayRegenConfirm] = useState<{ planId: string; viewedLabel: string; sourceLabel: string; lockCount: number } | null>(null);
   // Lot 9 — la modale de mutualisation (geste F3) et le message d'un refus serveur (422/409/404)
   // affiché DANS la modale (jamais toasté — FRT-38 : le feedback vit une fois, côté hook/modale).
   const mutualizeMutation = useMutualizeSlot();
@@ -311,7 +320,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // regenerateFromMutation.isPending: "Charger cette version" no longer creates a
   // PENDING schedule (nothing sets isGenerating), so its own restore must disable
   // the action here — else a second click double-runs the destructive restore.
-  const actionBusy = validateMutation.isPending || reopenMutation.isPending || deleteMutation.isPending || regenerateFromMutation.isPending;
+  const actionBusy = validateMutation.isPending || reopenMutation.isPending || deleteMutation.isPending || regenerateFromMutation.isPending || loadLocksMutation.isPending;
 
   // When a running generation finishes, pull the fresh slots + diagnostics.
   const prevStatus = useRef<string | null>(null);
@@ -811,16 +820,41 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                 // An overlay "Régénérer" creates a NEW version UNDER its period's plan
                 // (ADR-0002 C4); a season plan regenerates from the current structure.
                 const overlayPlanId = !isSeasonPlanType(selectedSchedule?.planType) ? selectedSchedule?.schedulePlanId ?? null : null;
-                if (null !== overlayPlanId) {
-                  regenerateOverlayMutation.mutate(overlayPlanId, select);
-                } else {
+                if (null === overlayPlanId) {
                   regenerateMutation.mutate(validScheduleId, select);
+                  return;
                 }
+                // V1 — la régénération repart TOUJOURS des données EN COURS (la version SOURCE des
+                // verrous). Si on regarde DÉJÀ la source, mutation directe. Sinon, et si une sœur
+                // EST la source, on confirme (sans elle, version unique ou source = regardée : direct).
+                if (null === selectedSchedule || true === selectedSchedule.isLockSource) {
+                  regenerateOverlayMutation.mutate(overlayPlanId, select);
+                  return;
+                }
+                const source = schedules.find((s) => s.schedulePlanId === overlayPlanId && true === s.isLockSource);
+                if (undefined === source) {
+                  regenerateOverlayMutation.mutate(overlayPlanId, select);
+                  return;
+                }
+                const labels = overlayVersionLabels(schedules, overlayPlanId);
+                setOverlayRegenConfirm({
+                  planId: overlayPlanId,
+                  viewedLabel: labels.get(selectedSchedule.id) ?? selectedSchedule.name,
+                  sourceLabel: labels.get(source.id) ?? source.name,
+                  lockCount: source.hardLockCount ?? 0,
+                });
               }}
               onValidate={() => setValidateOpen(true)}
               onReopen={() => reopen()}
               onDelete={() => validScheduleId && deleteMutation.mutate(validScheduleId)}
               onRegenerateFrom={() => setRegenerateFromOpen(true)}
+              onLoadLocks={() => {
+                if (null === selectedSchedule || null === selectedSchedule.schedulePlanId) {
+                  return;
+                }
+                const label = overlayVersionLabels(schedules, selectedSchedule.schedulePlanId).get(selectedSchedule.id) ?? selectedSchedule.name;
+                setLoadLocksConfirm({ scheduleId: selectedSchedule.id, label });
+              }}
               embedded={embedded}
               rightSlot={
                 null !== validScheduleId && !showGenerationWaiting && slots.length > 0 ? (
@@ -1289,6 +1323,59 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           setRegenerateFromOpen(false);
         }}
         onCancel={() => setRegenerateFromOpen(false)}
+      />
+
+      {/* V1 — régénérer un overlay en regardant une AUTRE version que la source : on confirme que la
+          régénération repartira des DONNÉES EN COURS (la source), pas de la version regardée. NON
+          destructif (une nouvelle version naît, rien n'est détruit) — destructive={false} EXPLICITE,
+          le défaut du composant étant true. */}
+      <ConfirmDialog
+        open={null !== overlayRegenConfirm}
+        title="Régénérer à partir des données en cours ?"
+        destructive={false}
+        description={
+          null === overlayRegenConfirm ? null : (
+            <>
+              Vous regardez la version {overlayRegenConfirm.viewedLabel}, mais les données en cours sont celles de la version {overlayRegenConfirm.sourceLabel}. La régénération repartira de la version {overlayRegenConfirm.sourceLabel} ({overlayRegenConfirm.lockCount} verrou{overlayRegenConfirm.lockCount > 1 ? "s" : ""}). Pour repartir de la version {overlayRegenConfirm.viewedLabel}, chargez d'abord ses données avec «&nbsp;Charger&nbsp;».
+            </>
+          )
+        }
+        confirmLabel={null === overlayRegenConfirm ? "Régénérer" : `Régénérer depuis la version ${overlayRegenConfirm.sourceLabel}`}
+        onConfirm={() => {
+          if (null === overlayRegenConfirm) {
+            return;
+          }
+          const planId = overlayRegenConfirm.planId;
+          setOverlayRegenConfirm(null);
+          regenerateOverlayMutation.mutate(planId, { onSuccess: (created: { id: string }) => setSelectedScheduleId(created.id) });
+        }}
+        onCancel={() => setOverlayRegenConfirm(null)}
+      />
+
+      {/* V1bis — « Charger » les verrous d'une version de PÉRIODE : pose le pointeur (les données en
+          cours deviennent celles de cette version), sans générer. NON destructif — aucune version
+          n'est détruite (destructive={false} EXPLICITE, le défaut du composant étant true). */}
+      <ConfirmDialog
+        open={null !== loadLocksConfirm}
+        title="Charger cette version ?"
+        destructive={false}
+        description={
+          null === loadLocksConfirm ? null : (
+            <>
+              Les verrous de la version {loadLocksConfirm.label} deviendront les données en cours : la prochaine régénération repartira d'eux.
+            </>
+          )
+        }
+        confirmLabel="Charger"
+        onConfirm={() => {
+          if (null === loadLocksConfirm) {
+            return;
+          }
+          const scheduleId = loadLocksConfirm.scheduleId;
+          setLoadLocksConfirm(null);
+          loadLocksMutation.mutate(scheduleId);
+        }}
+        onCancel={() => setLoadLocksConfirm(null)}
       />
 
       {/* P2-44 (PR-2) — « Comparer avec la saison » : consultation lecture seule du socle pointé. */}

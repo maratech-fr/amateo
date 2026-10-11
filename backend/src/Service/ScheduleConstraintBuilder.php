@@ -122,6 +122,14 @@ final class ScheduleConstraintBuilder
         // Nullable pour le même mode léger sans DB : sans lui (ou sans matrice) → PREFERRED, le
         // défaut, donc payload byte-identique à avant PR-4 pour un club qui n'a rien réglé.
         private readonly ?VenueTravelRuleSettingRepository $travelRuleSettingRepository = null,
+        // V1 « les verrous d'une période survivent à Régénérer » — résout la version SOURCE des
+        // verrous d'un plan (maison unique) pour en greffer les HARD en forme canonique sur le
+        // payload de période (buildForPeriodPlan). LAZY : SchedulePlanProvisioner injecte CE builder,
+        // le rendre eager boucle le conteneur ; le proxy ne s'instancie qu'au premier appel overlay.
+        // Nullable pour le même mode léger sans DB que les deps ci-dessus (le chemin `build()` en
+        // mémoire ne connaît aucun plan) — un build de période sans lui n'hérite d'aucun verrou.
+        #[Autowire(lazy: true)]
+        private readonly ?SchedulePlanProvisioner $schedulePlanProvisioner = null,
     ) {}
 
     /**
@@ -475,6 +483,25 @@ final class ScheduleConstraintBuilder
                 },
             ));
         }
+
+        // V1 — LES VERROUS D'UNE PÉRIODE SURVIVENT À « RÉGÉNÉRER ». Une version NUE (celle que crée
+        // « Régénérer ») n'a aucun slotTemplate propre : sans cette greffe les verrous HARD ne
+        // partaient qu'en `previousAssignments` (SOFT, convergence) et revenaient NONE. On greffe
+        // donc les HARD de la version SOURCE du plan (maison unique) comme épingles, en forme
+        // CANONIQUE pour que le hash de structure soit STABLE d'une génération à l'autre :
+        //  - `id` DÉRIVÉ DU PLACEMENT (team:venue:jour:HH:MM), jamais l'id de ligne (scopé par
+        //    version, il divergerait entre la source V et la version V+1 et ferait clignoter le
+        //    bandeau « à régénérer ») ;
+        //  - `pendingConstraintSuggestion` à null, tri par placement — déterministe.
+        // Dédupliqué par PLACEMENT, le PROPRE gagnant : les slotTemplates propres (gate sur une
+        // version existante) et les réservations déjà dans le payload priment ; un verrou repassé
+        // NONE ne revient pas (il n'est plus HARD dans la source). Source absente (1re génération)
+        // ou aucun HARD ⇒ payload byte-identique à avant V1 — rien n'est appendé.
+        $payload['slotTemplates'] = $this->appendInheritedCanonicalHardSlots(
+            \is_array($payload['slotTemplates'] ?? null) ? $payload['slotTemplates'] : [],
+            $schedulePlanId,
+            $disabledVenueIds,
+        );
 
         return $payload;
     }
@@ -847,6 +874,61 @@ final class ScheduleConstraintBuilder
         $payload['slotTemplates'] = array_merge($existingSlots, $pins);
 
         return $payload;
+    }
+
+    /**
+     * Greffe les verrous HARD HÉRITÉS de la version SOURCE du plan ({@see SchedulePlanProvisioner::
+     * lockSourceScheduleIdOfPlan}) sur les slotTemplates DÉJÀ sérialisés, en forme CANONIQUE et
+     * dédupliqués par placement (les existants — propres + réservations — gagnent). Voir le POURQUOI
+     * au seul site d'appel (buildForPeriodPlan). Sans résolveur (mode sans DB) ou sans source → rend
+     * la liste telle quelle.
+     *
+     * @param array<mixed>        $existing         slotTemplates déjà dans le payload (propres ∪ réservations)
+     * @param array<string, true> $disabledVenueIds
+     *
+     * @return array<mixed>
+     */
+    private function appendInheritedCanonicalHardSlots(array $existing, string $schedulePlanId, array $disabledVenueIds): array
+    {
+        if (!$this->schedulePlanProvisioner instanceof SchedulePlanProvisioner || !$this->entityManager instanceof EntityManagerInterface) {
+            return $existing;
+        }
+        $sourceId = $this->schedulePlanProvisioner->lockSourceScheduleIdOfPlan($schedulePlanId);
+        if (null === $sourceId) {
+            return $existing;
+        }
+
+        $seen = [];
+        foreach ($existing as $slot) {
+            if (\is_array($slot)) {
+                $seen[$this->pinKey((string) ($slot['teamId'] ?? ''), (string) ($slot['venueId'] ?? ''), (int) ($slot['dayOfWeek'] ?? -1), (string) ($slot['startTime'] ?? ''))] = true;
+            }
+        }
+
+        $inherited = [];
+        foreach ($this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy(['scheduleId' => $sourceId], ['id' => 'ASC']) as $template) {
+            if (LockLevel::HARD !== $template->getLockLevel()) {
+                continue; // un verrou repassé NONE ne revient pas
+            }
+            if (isset($disabledVenueIds[$template->getVenueId()])) {
+                continue; // gymnase désactivé : même filtre défensif que les templates propres
+            }
+            $key = $this->pinKey($template->getTeamId(), $template->getVenueId(), $template->getDayOfWeek(), $template->getStartTime()->format('H:i'));
+            if (isset($seen[$key])) {
+                continue; // placement déjà épinglé (propre ou réservation) — le propre gagne
+            }
+            $seen[$key] = true;
+            $serialized = $this->serializeSlotTemplate($template);
+            // Forme CANONIQUE : id dérivé du placement (jamais l'id de ligne), suggestion à null.
+            $serialized['id'] = \sprintf('%s:%s:%d:%s', $serialized['teamId'], $serialized['venueId'], $serialized['dayOfWeek'], substr((string) $serialized['startTime'], 0, 5));
+            $serialized['pendingConstraintSuggestion'] = null;
+            $inherited[$key] = $serialized;
+        }
+
+        // Tri par placement (clé canonique) : ordre déterministe, indépendant des id de ligne.
+        ksort($inherited);
+
+        return array_merge(array_values($existing), array_values($inherited));
     }
 
     /** Identité d'un placement épinglé (heure normalisée H:i — la source peut porter les secondes). */

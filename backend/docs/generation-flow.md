@@ -1,16 +1,11 @@
 # Documentation technique du flux de génération de planning
 
-Last verified @ 2026-10-08 (P4-266, `documentation-update`) : les deux mentions de
-`currentStructureHash` (§ snapshot/détection de changement) recalées — ce nom de champ a disparu
-avec le retrait de `seasonPlan.currentStructureHash` de `/api/me` ; le garde « structure
-inchangée » lit désormais l'empreinte PAR PLAN servie par `GET /api/schedule_plans/{id}/structure-hash`
-(`SchedulePlanProvisioner::structureHashOfPlan`). Re-confronté au passage : `CONTRACT_VERSION` =
-`'1.4'` (`ScheduleConstraintBuilder::CONTRACT_VERSION` ⇄ `engine/CONTRACT_VERSION`) ✓ ; le TTL du
-verrou (`GenerateScheduleHandler::LOCK_TTL_MARGIN_SECONDS = 60`,
-`acquire(... getTimeoutSeconds() + self::LOCK_TTL_MARGIN_SECONDS)`) ✓ ; `RedeliveredGenerationTest`
-toujours listé bloquant dans `docs/testing/blocking-tests.md` ✓ ; le payload Mercure porte
-toujours exactement **5** champs (`ScheduleProgressPublisher::publish` — `scheduleId`, `status`,
-`score`, `unplaced`, `warnings`) ✓. Reste du fichier non re-contrôlé cette passe — historique :
+Last verified @ 2026-10-11 (lot verrous V1/V1bis) : §3b corrigée — elle disait encore que le
+handler bascule sur `buildForOverlay` quand `Schedule.calendarEntryId` est renseigné, un champ
+DROPPÉ depuis ADR-0002 C4 ; la branche se dérive en fait du **plan** de la version
+(`SchedulePlanProvisioner::periodEntryIdOf`, confronté à `GenerateScheduleHandler::generate`).
+Profite du passage pour noter la greffe des verrous hérités (lot verrous, §3b). Reste du fichier
+non re-contrôlé cette passe — historique :
 `git log -p --follow` sur ce fichier.
 
 > Amateo — Symfony 7 + API Platform + Messenger Redis + Mercure SSE. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
@@ -120,7 +115,14 @@ Gardé par `RedeliveredGenerationTest` (bloquant, `docs/testing/blocking-tests.m
 
 Le verrou acquis, `ScheduleConstraintBuilder` construit le payload JSON destiné au moteur.
 
-> ⚠️ **Deux branches.** Ce qui suit décrit `buildForClubSeason` (plan de base). Si le `Schedule` est l'**overlay d'une période** (`calendarEntryId` renseigné), le handler bascule sur `buildForOverlay`, qui **contourne le cache d'entrées** et lit **la grille de la période et elle seule** — les `VenueTrainingSlot` ancrés à son `schedulePlanId`, **jamais d'union** avec les créneaux de saison (feature #8). Détail dans `backend/AGENTS.md`.
+> ⚠️ **Deux branches.** Ce qui suit décrit `buildForClubSeason` (plan de base). Le handler dérive la
+> branche du **PLAN** (`SchedulePlanProvisioner::periodEntryIdOf`, ADR-0002 C4 — plus de
+> `Schedule.calendarEntryId`, colonne droppée) : si le plan de la version est une PÉRIODE, il
+> bascule sur `buildForOverlay` (adaptateur de `buildForPeriodPlan`), qui **contourne le cache
+> d'entrées** et lit **la grille de la période et elle seule** — les `VenueTrainingSlot` ancrés à
+> son `schedulePlanId`, **jamais d'union** avec les créneaux de saison (feature #8). Sur ce chemin,
+> `buildForPeriodPlan` greffe en plus les verrous HARD **hérités** de la version SOURCE du plan —
+> lot verrous V1/V1bis, détail `backend/docs/schedule-generation-guide.md` §10. Détail dans `backend/AGENTS.md`.
 >
 > **Cas comblement (fill).** Sur une génération de comblement (`GenerateScheduleMessage::fillSourceScheduleId` posé), le handler greffe en plus, APRÈS le hash de snapshot (§3c), le bloc `socleReferenceAssignments` — les placements `{teamId, dayOfWeek, startTime}` (sans `venueId`) de la version **pointée** du plan SEASON (`GenerateScheduleHandler::socleReferenceSlots`, `ScheduleConstraintBuilder::withSocleReferenceAssignments`). Le solveur y répond par un bonus d'objectif de **phase 1** par tier (`add_socle_reference_bonus`, `SOCLE_REFERENCE_TIER_WEIGHTS`, engine `weights.py`) — détail : `backend/docs/backend-inventory.md` (section « Référence socle du comblement »).
 

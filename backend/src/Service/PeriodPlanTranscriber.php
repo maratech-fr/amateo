@@ -174,14 +174,6 @@ final class PeriodPlanTranscriber
         // Primitive de l'app : NUMÉROTE la version dans son plan (V1), sous verrou. Flushe l'INSERT.
         $this->schedulePlanProvisioner->linkSchedule($schedule);
 
-        // Snapshot = la structure COURANTE du plan de période (scheduleId omis = pré-génération, les
-        // Reservation portées par le plan tiennent lieu de verrous durables) — même recette que le
-        // seed, pour que « Régénérer » soit honnêtement grisé tant que rien n'a bougé.
-        $payload = $this->constraintBuilder->buildForPeriodPlan($clubId, $seasonId, $schedulePlanId, $entry, selection: $selection);
-        $schedule->setSnapshotData($payload);
-        $schedule->setSnapshotHash(hash('sha256', json_encode($payload, \JSON_THROW_ON_ERROR)));
-        $this->entityManager->flush();
-
         $toReplace = [];
         $copied = 0;
         foreach ($socleSlots as $slot) {
@@ -234,6 +226,14 @@ final class PeriodPlanTranscriber
         }
         $this->entityManager->flush();
 
+        // Snapshot APRÈS la pose des verrous (V1 « les verrous survivent à Régénérer ») : cette
+        // version COMPLETED est désormais la SOURCE des verrous de son plan ({@see
+        // SchedulePlanProvisioner::lockSourceScheduleIdOfPlan}), donc `buildForPeriodPlan` greffe
+        // SES propres HARD en forme canonique — exactement ce que `structureHashOfPlan` recalculera.
+        // Hacher AVANT les aurait exclus, et « Régénérer » se serait allumé dès la transcription.
+        $payload = $this->constraintBuilder->buildForPeriodPlan($clubId, $seasonId, $schedulePlanId, $entry, selection: $selection);
+        $schedule->setSnapshotData($payload);
+        $schedule->setSnapshotHash(hash('sha256', json_encode($payload, \JSON_THROW_ON_ERROR)));
         // Miroir de ScheduleResultImporter : une version fraîchement transcrite n'est pas périmée.
         $schedule->setManuallyEditedSinceGeneration(false);
         $this->entityManager->flush();

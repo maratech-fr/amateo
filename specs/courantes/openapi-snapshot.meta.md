@@ -1,12 +1,18 @@
-Last verified @ 2026-10-10 (lot 9 F3, nommer les séances emportées) : `SharedTrainingBlock` expose
-`sessions` (tableau des séances placées liées au bloc — nouveau schéma `SharedTrainingBlockSession` :
-`teamId`/`teamName`/`dayOfWeek`/`startTime`/`endTime`/`venueName`, vide pour un bloc socle ou sans
-séance) ; aucun nouveau path. Acquis antérieurs : `ScheduleSlotTemplate.sharedTrainingBlockId` +
-`TeamPeriodOverride.source` (lot 9 F3), route `POST /api/schedule-slots/{id}/mutualize` +
-`SharedTrainingBlock.label` (lot 9 B1), `CoachWish.keepSeasonSlots` (P2-63 PR 3).
+Last verified @ 2026-10-10 (« Charger » pour les périodes, V1bis) : nouveau path
+`POST /api/schedules/{id}/load-locks` (fait des verrous d'une version de PÉRIODE les données en
+cours de son plan — pose le pointeur, ne génère pas) et `ScheduleCapabilities.canLoadLocks` (booléen
+— le geste est-il offert : période terminée, plan non validé, rien en cours, pas déjà la source).
+Acquis V1 : `Schedule.isLockSource` (booléen — cette version est la SOURCE des verrous de son plan,
+d'où « Régénérer » repart) et `Schedule.hardLockCount` (entier — nombre de verrous HARD de la
+version, pour le « (N verrous) » de la confirmation de régénération). Acquis antérieurs :
+`SharedTrainingBlock.sessions` (schéma `SharedTrainingBlockSession` :
+`teamId`/`teamName`/`dayOfWeek`/`startTime`/`endTime`/`venueName`, lot 9 F3),
+`ScheduleSlotTemplate.sharedTrainingBlockId` + `TeamPeriodOverride.source` (lot 9 F3), route
+`POST /api/schedule-slots/{id}/mutualize` + `SharedTrainingBlock.label` (lot 9 B1),
+`CoachWish.keepSeasonSlots` (P2-63 PR 3).
 
-**239 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`28dfb0f8b83c81cc1fe2d3bdc472e14af16297c52f710055b7c787ac5b8fb6e6` (`sha256sum` sur le fichier).
+**240 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`6214c41a1f147a3ed9b133bdc9639e84873c3573482249a91ac384c6b69f0192` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

@@ -33,6 +33,8 @@ interface PlanningToolbarProps {
   onReopen: () => void;
   onDelete: () => void;
   onRegenerateFrom: () => void;
+  /** V1bis — « Charger » les verrous d'une version de PÉRIODE comme données en cours. */
+  onLoadLocks: () => void;
   disableRegenerate?: boolean;
   /** P1-3 §4bis pt 2 — solde de crédits sur « Régénérer » (Découverte bridée) ;
    *  null = offre non bridée (payant/bêta/démo) : ni suffixe, ni blocage. La page
@@ -78,6 +80,7 @@ export function PlanningToolbar({
   onReopen,
   onDelete,
   onRegenerateFrom,
+  onLoadLocks,
   disableRegenerate = false,
   outputCredits = null,
   isGenerating,
@@ -132,6 +135,9 @@ export function PlanningToolbar({
   // d'UI (la version en vigueur montre « Rouvrir », pas « Valider » — geste no-op).
   const canValidate = true === selected?.capabilities?.canValidate;
   const canRegenerateFrom = true === selected?.capabilities?.canRegenerateFrom;
+  // V1bis — « Charger » les verrous d'une version de PÉRIODE : le serveur décide (version de période
+  // terminée, plan non validé, rien en cours, pas déjà la source). Fail-closed comme ses sœurs.
+  const canLoadLocks = true === selected?.capabilities?.canLoadLocks;
   // Reloading the version that IS the live context (★) is a no-op when its
   // snapshot already matches the current club structure — keep the button
   // visible but greyed with a reason, so the state reads as deliberate. The
@@ -248,6 +254,22 @@ export function PlanningToolbar({
             disabled={actionBusy || isGenerating || isLiveContext}
             onClick={onRegenerateFrom}
             title={isLiveContext ? "Déjà le contexte courant — rien à recharger (utilisez « Régénérer »)" : "Recharge la structure de cette version (sans régénérer) et affiche son planning"}
+          >
+            <History className="size-4" />
+            Charger cette version
+          </Button>
+        ) : null}
+        {/* V1bis — « Charger » pour une PÉRIODE : même libellé, même ton (ghost + History) que le
+            « Charger cette version » de la saison ci-dessus, mais il POSE les verrous de cette
+            version comme données en cours (il ne restaure aucune structure). Mutuellement exclusif :
+            canRegenerateFrom est socle-only, canLoadLocks est période-only. */}
+        {canLoadLocks ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={actionBusy || isGenerating}
+            onClick={onLoadLocks}
+            title="Fait des verrous de cette version les données en cours : la prochaine régénération repartira d'eux"
           >
             <History className="size-4" />
             Charger cette version

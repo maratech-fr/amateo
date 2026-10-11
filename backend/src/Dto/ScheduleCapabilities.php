@@ -18,6 +18,9 @@ use Symfony\Component\Serializer\Attribute\Groups;
  *                       reste validable — re-pointage no-op accepté)
  *  - canRegenerateFrom ⇄ RegenerateFromVersionController (socle terminé non-choisi, aucune génération
  *                       en cours dans la saison, photo de structure présente)
+ *  - canLoadLocks    ⇄ LoadLocksController (V1bis, « Charger » pour une période) : version de PÉRIODE
+ *                       terminée, plan non validé, aucune génération en cours ET pas DÉJÀ la source
+ *                       des verrous (le geste serait un no-op — on ne l'offre pas)
  *
  * Et deux compteurs, lus au même endroit que les gardes, pour que le front annonce
  * l'effet avant le clic :
@@ -34,6 +37,8 @@ final class ScheduleCapabilities
         public bool $canValidate,
         #[Groups(['read'])]
         public bool $canRegenerateFrom,
+        #[Groups(['read'])]
+        public bool $canLoadLocks,
         #[Groups(['read'])]
         public int $versionsDeletedOnValidate,
         #[Groups(['read'])]

@@ -1,14 +1,11 @@
 # Guide de génération de planning — Amateo
 
-Last verified @ 2026-10-08 (P4-266, `documentation-update`) : les deux mentions de
-`currentStructureHash` (§ péremption/grisage « Régénérer ») recalées — ce nom de champ a disparu
-avec le retrait de `seasonPlan.currentStructureHash` de `/api/me` ; le grisage/bandeau lisent
-désormais l'empreinte PAR PLAN servie par `GET /api/schedule_plans/{id}/structure-hash`
-(`SchedulePlanProvisioner::structureHashOfPlan`). Re-confrontés au passage : le cycle des 5 statuts
-(§5, `App\Enum\ScheduleStatus`) ✓ ; le budget solveur par défaut 650 s
-(`ScheduleConstraintBuilder::DEFAULT_SOLVER_TIMEOUT_SECONDS`) ✓ ; `CONTRACT_VERSION` = `1.4`
-(`ScheduleConstraintBuilder::CONTRACT_VERSION` ⇄ `engine/CONTRACT_VERSION`) ✓. Reste du fichier
-non re-contrôlé cette passe — historique : `git log -p --follow` sur ce fichier.
+Last verified @ 2026-10-11 (lot verrous V1/V1bis) : nouvelle sous-section « Les verrous HARD d'une
+période survivent à « Régénérer » » (§10) ajoutée et confrontée à
+`ScheduleConstraintBuilder::buildForPeriodPlan`/`appendInheritedCanonicalHardSlots`,
+`SchedulePlanProvisioner::lockSourceScheduleIdOfPlan`/`pointLockSource` et
+`LoadLocksController`. Reste du fichier non re-contrôlé cette passe — historique :
+`git log -p --follow` sur ce fichier.
 
 > Ce guide explique, étape par étape, comment générer un planning de matchs pour un club de basket dans le backend Amateo. Il s'adresse aux développeurs juniors qui découvrent le projet.
 
@@ -675,6 +672,39 @@ Pourquoi cet ordre est **la seule option correcte** : le précédent est une pr�
 chaque régénération, dé-grisant le bouton « Régénérer » en permanence et affichant une fausse
 « structure modifiée ». Une liste de placements source vide n'ajoute pas la clé au payload
 (chemin byte-identique à l'historique).
+
+### Les verrous HARD d'une période survivent à « Régénérer » (lot verrous V1/V1bis)
+
+Le précédent ci-dessus est une préférence SOFT : un verrou HARD (épingle de work-loop) est une
+AUTRE mécanique, qui ne passe PAS par `previousAssignments`. Sur un plan de **SAISON**,
+`ScheduleConstraintBuilder::buildForClubSeason` lit ses `ScheduleSlotTemplate` par club+saison
+(`findBaseSlotTemplates`, pas par version) — les verrous HARD de saison survivent donc à
+« Régénérer » sans mécanisme dédié. Sur un plan de **PÉRIODE**, les `ScheduleSlotTemplate` sont
+scopés PAR VERSION ; une version créée par « Régénérer » est **NUE** (aucun slotTemplate propre),
+donc sans greffe explicite ses verrous HARD se perdaient.
+
+`ScheduleConstraintBuilder::buildForPeriodPlan` greffe donc les verrous HARD de la version
+**SOURCE** du plan (`SchedulePlanProvisioner::lockSourceScheduleIdOfPlan` — maison unique) sur les
+`slotTemplates` déjà sérialisés, en forme **CANONIQUE** : `id` dérivé du placement
+(`team:venue:jour:HH:MM`, jamais l'id de ligne — sinon il diverge d'une version à l'autre et fait
+clignoter le bandeau « à régénérer »), dédupliqués par placement (les slotTemplates propres et les
+réservations du payload priment ; un verrou repassé `NONE` ne revient pas). Source absente (1ʳᵉ
+génération) ou aucun HARD → payload inchangé.
+
+La version SOURCE d'un plan (SEASON comme PÉRIODE) est le pointeur
+`schedule_plan.lock_source_schedule_id` s'il désigne une version `COMPLETED` existante du même
+plan, sinon sa dernière version `COMPLETED`. Le pointeur se pose de deux façons : automatiquement
+(`GenerateScheduleHandler` re-pointe sur chaque version qui vient de `COMPLETED` — hors plan
+SEASON, qui n'utilise pas ce pointeur) ou par « Charger » (`POST /api/schedules/{id}/load-locks`,
+`LoadLocksController`, réservé à un plan de PÉRIODE non validé). « Régénérer » repart donc
+TOUJOURS de cette source ; si le gestionnaire regarde une AUTRE version, le front confirme avant
+(`PlanningPage.tsx`).
+
+À l'import du résultat, `ScheduleResultImporter` restaure l'origine `MANUAL` d'un verrou HARD
+hérité de la source (il ressortait en `UNKNOWN`, faussant le compteur « verrous posés » de la
+saison) ; `OrphanPinGuard` lit les mêmes verrous EFFECTIFS (la source, jamais la version nue en
+cours de génération) pour refuser en 422 un épinglage qui ne retomberait plus sur aucun créneau de
+la grille.
 
 ---
 

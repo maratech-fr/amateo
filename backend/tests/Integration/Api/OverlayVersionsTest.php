@@ -8,10 +8,12 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Schedule;
+use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
+use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Service\SchedulePlanProvisioner;
@@ -133,6 +135,59 @@ final class OverlayVersionsTest extends WebTestCase
         self::assertSame($baseline->getId(), $this->chosenPlanVersion($season), 'rouvrir un plan secondaire ne touche pas au plan de la saison');
     }
 
+    /**
+     * V1 (provider) — la collection `/api/schedules` expose `isLockSource` et `hardLockCount` EN
+     * BATCH : la version SOURCE du plan (dernière COMPLETED) porte `isLockSource:true` et le compte
+     * de ses verrous HARD ; une version antérieure, `false` et 0. Et rien ne fuit d'un AUTRE club :
+     * le lot est tenant-filtré, aucune version d'un autre club n'apparaît ni ne gonfle un compte.
+     */
+    public function testCollectionExposesLockSourceAndHardLockCountBatchedWithoutCrossClubLeak(): void
+    {
+        [$user, $club, $season] = $this->seed('OVVLOCK');
+        $entry = $this->period($club, $season, 'P');
+        $older = $this->overlay($club, $season, $entry, ScheduleStatus::COMPLETED);
+        $source = $this->overlay($club, $season, $entry, ScheduleStatus::COMPLETED); // créée après → source
+        // La SOURCE porte 2 verrous HARD + 1 créneau NONE (résultat de solve, non compté).
+        $this->hardLock($source, 'aaaaaaaa-0000-4000-8000-000000000001', 1, '18:00', LockLevel::HARD);
+        $this->hardLock($source, 'aaaaaaaa-0000-4000-8000-000000000002', 2, '19:00', LockLevel::HARD);
+        $this->hardLock($source, 'aaaaaaaa-0000-4000-8000-000000000003', 3, '20:00', LockLevel::NONE);
+        $this->em->flush();
+
+        // Un AUTRE club, avec sa propre version verrouillée : elle ne doit jamais apparaître ni
+        // compter dans la réponse du club courant.
+        [, $otherClub, $otherSeason] = $this->seed('OVVLEAK');
+        $otherEntry = $this->period($otherClub, $otherSeason, 'PX');
+        $otherVersion = $this->overlay($otherClub, $otherSeason, $otherEntry, ScheduleStatus::COMPLETED);
+        $this->hardLock($otherVersion, 'bbbbbbbb-0000-4000-8000-000000000001', 1, '18:00', LockLevel::HARD);
+        $this->em->flush();
+
+        // GET en tant que club courant.
+        $this->scopeGucToClub($club->getId());
+        $this->client->request('GET', '/api/schedules?seasonId=' . $season->getId(), [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->jwt->create($user),
+            'HTTP_ACCEPT' => 'application/ld+json',
+        ]);
+        self::assertResponseStatusCodeSame(200);
+
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        $members = $body['member'] ?? $body['hydra:member'] ?? $body;
+        self::assertIsArray($members);
+        $byId = [];
+        foreach ($members as $row) {
+            self::assertIsArray($row);
+            $byId[(string) $row['id']] = $row;
+        }
+
+        self::assertArrayHasKey($source->getId(), $byId, 'la version source du club courant est servie');
+        self::assertArrayHasKey($older->getId(), $byId);
+        self::assertArrayNotHasKey($otherVersion->getId(), $byId, 'aucune version d’un autre club ne fuit dans la collection');
+
+        self::assertTrue($byId[$source->getId()]['isLockSource'], 'la dernière COMPLETED du plan est la source des verrous');
+        self::assertSame(2, $byId[$source->getId()]['hardLockCount'], 'hardLockCount compte les seuls verrous HARD (le NONE ne compte pas)');
+        self::assertFalse($byId[$older->getId()]['isLockSource'], 'une version antérieure n’est pas la source');
+        self::assertSame(0, $byId[$older->getId()]['hardLockCount']);
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -161,6 +216,21 @@ final class OverlayVersionsTest extends WebTestCase
         $this->linkSeededSchedule($schedule, $entry->getId());
 
         return $schedule;
+    }
+
+    private function hardLock(Schedule $schedule, string $teamId, int $day, string $start, LockLevel $lock): void
+    {
+        $slot = (new ScheduleSlotTemplate)
+            ->setClubId($schedule->getClubId())
+            ->setSeasonId($schedule->getSeasonId())
+            ->setScheduleId($schedule->getId())
+            ->setTeamId($teamId)
+            ->setVenueId('cccccccc-0000-4000-8000-00000000000c')
+            ->setDayOfWeek($day)
+            ->setStartTime(new DateTimeImmutable($start))
+            ->setDurationMinutes(90)
+            ->setLockLevel($lock);
+        $this->em->persist($slot);
     }
 
     private function seasonPlan(Club $club, Season $season, ScheduleStatus $status): Schedule
