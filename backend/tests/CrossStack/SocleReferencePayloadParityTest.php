@@ -6,6 +6,7 @@ namespace App\Tests\CrossStack;
 
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
+use App\Entity\Constraint;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
@@ -14,6 +15,9 @@ use App\Entity\Team;
 use App\Entity\Venue;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
+use App\Enum\ConstraintFamily;
+use App\Enum\ConstraintRuleType;
+use App\Enum\ConstraintScope;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Message\GenerateScheduleMessage;
@@ -162,6 +166,65 @@ final class SocleReferencePayloadParityTest extends KernelTestCase
         self::assertArrayNotHasKey('socleReferenceAssignments', $run['schedule']->getSnapshotData());
     }
 
+    /**
+     * PR 6 (lot 8) — « Garder ses créneaux de saison » : en génération PLEINE (hors comblement) d'un
+     * plan de PÉRIODE, le handler émet la référence socle en régime KEEP (AVEC `venueId` + `keep:true`)
+     * POUR LES SEULES équipes qui portent la contrainte SEASON_SLOTS, hors du snapshot. Falsifiable :
+     * retirer la greffe keep ⇒ clé absente ; émettre pour une équipe sans SEASON_SLOTS ⇒ entrée en trop.
+     */
+    public function testFullPeriodGenerationEmitsKeepReferenceWithVenueForSeasonSlotTeams(): void
+    {
+        [$club, $season, $venueA, $venueB, $teamIds] = $this->seed('sr-keep');
+
+        // Socle POINTÉ : teamIds[0] lundi 18:00 @ A (+ même horaire @ B → dédup), teamIds[1] mardi 19:00 @ A.
+        $seasonPlanId = $this->seasonPlanIdOf($season);
+        $socle = $this->schedule($club, $season, $seasonPlanId, ScheduleStatus::COMPLETED, 1);
+        $this->slot($socle, $teamIds[0], $venueA, 1, '18:00:00');
+        $this->slot($socle, $teamIds[0], $venueB, 1, '18:00:00');
+        $this->slot($socle, $teamIds[1], $venueA, 2, '19:00:00');
+        $this->em->flush();
+        $this->pointSeasonPlanAt($seasonPlanId, $socle->getId());
+
+        // Période + plan ; SEASON_SLOTS ACTIVE pour teamIds[0] SEULEMENT, datée sur l'entrée.
+        $entry = $this->closurePeriod($club, $season);
+        $overlayPlanId = $this->planIdOf($entry);
+        $this->seasonSlotsConstraint($club, $season, $entry, $teamIds[0]);
+        $this->em->flush();
+
+        $target = $this->schedule($club, $season, $overlayPlanId, ScheduleStatus::PENDING, 2);
+
+        $run = $this->runCapture($club->getId(), $target->getId(), null); // fillSource null ⇒ génération PLEINE
+        $payload = $run['payload'];
+        self::assertIsArray($payload);
+        self::assertArrayHasKey('socleReferenceAssignments', $payload, 'une équipe « garder ses créneaux » doit émettre la référence keep');
+
+        // teamIds[0] référencée AVEC gymnase + keep ; teamIds[1] (sans SEASON_SLOTS) JAMAIS référencée.
+        // Le socle porte CE créneau (lundi 18:00) sur DEUX gymnases (A ET B) : un même
+        // (équipe,jour,heure) ne se déduplique qu'entre gymnases DISTINCTS (l'index UNIQUE de case
+        // interdit le doublon exact), et LEQUEL des deux survit à la dédup dépend de l'ordre des
+        // lignes (`socleReferenceSlots` trie par `id`, un UUID ALÉATOIRE). On n'épingle donc PAS un
+        // gymnase précis — l'y figer était un flake ~50 % : on exige un gymnase RÉEL du créneau de
+        // socle (A ou B), puis on compare le RESTE de l'entrée à l'exact. Falsifiable à l'identique :
+        // retirer la greffe keep ⇒ clé absente (assertArrayHasKey plus haut) ; émettre pour teamIds[1]
+        // ⇒ assertCount(1) rouge + teamId faux ; omettre le gymnase ⇒ assertArrayHasKey('venueId') rouge.
+        $keepReferences = $payload['socleReferenceAssignments'];
+        self::assertIsArray($keepReferences);
+        self::assertCount(1, $keepReferences, 'dédup (équipe,jour,heure) + seule l\'équipe « garder » : exactement une entrée');
+        $keepEntry = $keepReferences[0];
+        self::assertIsArray($keepEntry);
+        self::assertArrayHasKey('venueId', $keepEntry, 'le keep porte un gymnase (régime keep ≠ comblement, où le gymnase est libre)');
+        self::assertContains($keepEntry['venueId'], [$venueA, $venueB], 'le gymnase keep est l\'un des gymnases de socle de ce créneau (dédup A/B non déterministe)');
+        unset($keepEntry['venueId']);
+        self::assertEqualsCanonicalizing(
+            ['teamId' => $teamIds[0], 'dayOfWeek' => 1, 'startTime' => '18:00:00', 'keep' => true],
+            $keepEntry,
+            'keep = placements de socle de l\'équipe « garder » (gymnase mis à part), pour elle seule',
+        );
+
+        // Hors snapshot (préférence de convergence), comme le comblement.
+        self::assertArrayNotHasKey('socleReferenceAssignments', $run['schedule']->getSnapshotData());
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -263,6 +326,22 @@ final class SocleReferencePayloadParityTest extends KernelTestCase
             ->setStartTime(new DateTimeImmutable($startTime))
             ->setDurationMinutes(90);
         $this->em->persist($slot);
+    }
+
+    /** Une contrainte « Garder ses créneaux de saison » ACTIVE, datée sur l'entrée de période. */
+    private function seasonSlotsConstraint(Club $club, Season $season, CalendarEntry $entry, string $teamId): void
+    {
+        $constraint = (new Constraint)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setCalendarEntryId($entry->getId())
+            ->setName('Garder les créneaux de saison')
+            ->setScope(ConstraintScope::TEAM)
+            ->setScopeTargetId($teamId)
+            ->setFamily(ConstraintFamily::SEASON_SLOTS)
+            ->setRuleType(ConstraintRuleType::PREFERRED)
+            ->setConfig([]);
+        $this->em->persist($constraint);
     }
 
     private function closurePeriod(Club $club, Season $season): CalendarEntry

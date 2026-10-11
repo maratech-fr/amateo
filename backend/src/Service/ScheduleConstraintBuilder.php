@@ -56,7 +56,7 @@ final class ScheduleConstraintBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '1.4';
+    public const string CONTRACT_VERSION = '1.5';
     private const CACHE_TTL_SECONDS = 14_400;
     private const DEFAULT_SOLVER_SEED = 42;
     /**
@@ -87,6 +87,17 @@ final class ScheduleConstraintBuilder
      * @var array<string, int>
      */
     private array $currentSessionOverrides = [];
+
+    /**
+     * PR 6 (lot 8) — ids des équipes qui portent une contrainte « Garder ses créneaux de saison »
+     * ACTIVE pour le plan de période en cours de construction. Positionné par
+     * `buildForPeriodPlan` depuis la sélection déjà résolue (zéro requête de plus), lu par le
+     * handler JUSTE APRÈS `buildForOverlay` pour greffer les placements de socle en keep. Vide
+     * hors build d'overlay (réinitialisé par les autres chemins) : chemin byte-identique.
+     *
+     * @var list<string>
+     */
+    private array $currentSeasonSlotKeepTeamIds = [];
 
     /**
      * BCK-04 (assumed by design): the three enrichment deps are nullable ON
@@ -199,6 +210,7 @@ final class ScheduleConstraintBuilder
         // end of buildForOverlay) so a prior overlay build that threw mid-payload on
         // the long-lived worker can never leak its overrides into a base generation.
         $this->currentSessionOverrides = [];
+        $this->currentSeasonSlotKeepTeamIds = [];
 
         $payload = $this->buildPayload(
             clubId: $clubId,
@@ -344,6 +356,22 @@ final class ScheduleConstraintBuilder
         $this->currentSessionOverrides = $selection->sessionOverrides;
         $constraints = $selection->kept;
 
+        // PR 6 (lot 8) — les équipes qui portent une contrainte « Garder ses créneaux de saison »
+        // ACTIVE pour ce plan, extraites de la sélection déjà calculée (pas de requête de plus). Le
+        // handler les lit après `buildForOverlay` pour greffer les placements de socle en keep. La
+        // famille SEASON_SLOTS est filtrée du payload moteur (serializeUnifiedConstraints) : ici on
+        // n'en garde que la CIBLE (l'équipe), jamais la contrainte elle-même.
+        $keepTeamIds = [];
+        foreach ($constraints as $constraint) {
+            if (ConstraintFamily::SEASON_SLOTS === $constraint->getFamily() && $constraint->getIsActive()) {
+                $targetId = $constraint->getScopeTargetId();
+                if (null !== $targetId) {
+                    $keepTeamIds[$targetId] = true;
+                }
+            }
+        }
+        $this->currentSeasonSlotKeepTeamIds = array_keys($keepTeamIds);
+
         // P2-5 5b / P2-38 / indispo informative — granularité JOUR des fermetures : les jours de
         // semaine EFFECTIVEMENT fermés par gymnase (incident × masque manuel), portés par la
         // SÉLECTION. La composition vit dans la MAISON UNIQUE `PlanVenueClosures`, TRANSVERSALE
@@ -437,6 +465,10 @@ final class ScheduleConstraintBuilder
 
         $this->currentAvailabilitiesByVenue = [];
         $this->currentSessionOverrides = [];
+        // ⚠ Ne PAS réinitialiser `currentSeasonSlotKeepTeamIds` ici : il est posé plus haut (depuis la
+        // sélection) et le handler le LIT APRÈS le retour de `buildForOverlay` pour greffer les keep.
+        // Les deux champs ci-dessus sont transients (consommés PENDANT buildPayload) ; celui-ci est un
+        // RÉSULTAT du build, exposé par `lastSeasonSlotKeepTeamIds()`.
 
         // P2-5 5b : les gymnases fermés sont retirés de l'availability day-précisément
         // (ci-dessus) — le forbid tous-jours `expandClosedVenues` est supprimé (l'engine
@@ -535,6 +567,7 @@ final class ScheduleConstraintBuilder
         // instance can never leak a stale map into serializeVenue/serializeTeam.
         $this->currentAvailabilitiesByVenue = [];
         $this->currentSessionOverrides = [];
+        $this->currentSeasonSlotKeepTeamIds = [];
 
         return $this->buildPayload(
             clubId: $this->firstString($venues, 'getClubId')
@@ -790,6 +823,93 @@ final class ScheduleConstraintBuilder
                 'teamId' => $teamId,
                 'dayOfWeek' => $dayOfWeek,
                 'startTime' => $startTime,
+            ];
+        }
+
+        if ([] === $entries) {
+            return $payload;
+        }
+
+        $payload['socleReferenceAssignments'] = $entries;
+
+        return $payload;
+    }
+
+    /**
+     * Les ids des équipes qui portent une contrainte « Garder ses créneaux de saison » ACTIVE pour
+     * le DERNIER plan de période construit (`buildForPeriodPlan`/`buildForOverlay`). Le handler les
+     * lit juste après le build pour greffer les keep. Vide hors build d'overlay.
+     *
+     * @return list<string>
+     */
+    public function lastSeasonSlotKeepTeamIds(): array
+    {
+        return $this->currentSeasonSlotKeepTeamIds;
+    }
+
+    /**
+     * PR 6 (lot 8) — « Garder ses créneaux de saison » : greffe `socleReferenceAssignments` en
+     * régime KEEP (gymnase INCLUS, `keep: true`) pour les équipes de `$keepTeamIds`, sur un payload
+     * de plan de période DÉJÀ construit, en génération PLEINE. Le solveur garde alors le
+     * jour+heure+gymnase de socle de ces équipes (préférence très forte) ; changer de gymnase reste
+     * possible (barème partiel), perdre le créneau aussi quand placer une séance l'exige (Q3bis).
+     *
+     * DIFFÉRENCES avec `withSocleReferenceAssignments` (régime COMBLEMENT, à ne pas confondre — les
+     * deux sont EXCLUSIFS, jamais émis ensemble : le comblement est un fill, le keep une génération
+     * pleine) : chaque entrée porte `venueId` + `keep: true`, et seules les équipes « garder ses
+     * créneaux » (∩ roster) sont référencées (le comblement référence tout le placé de la source).
+     *
+     * Comme le comblement, ce bloc n'entre PAS dans le snapshot/hash : le handler l'injecte APRÈS
+     * le hash (préférence de CONVERGENCE, pas de structure — sinon `snapshotHash` divergerait de
+     * l'empreinte de structure). FILTRÉ au ROSTER (une équipe hors sélection serait un id fantôme) ;
+     * DÉDUPLIQUÉ par `(teamId, dayOfWeek, startTime)` — le socle peut porter le même horaire sur
+     * deux gymnases, on garde le PREMIER (un créneau de saison = un keep). Liste vide (aucune équipe
+     * « garder ses créneaux », ou tout hors roster) ⇒ clé absente : chemin byte-identique.
+     *
+     * @param array<string, mixed>        $payload
+     * @param array<ScheduleSlotTemplate> $socleSlots  placements de la version pointée du socle
+     * @param list<string>                $keepTeamIds équipes portant la contrainte SEASON_SLOTS
+     *
+     * @return array<string, mixed>
+     */
+    public function withSeasonSlotKeepReferences(array $payload, array $socleSlots, array $keepTeamIds): array
+    {
+        if ([] === $socleSlots || [] === $keepTeamIds) {
+            return $payload;
+        }
+
+        $keep = [];
+        foreach ($keepTeamIds as $teamId) {
+            $keep[(string) $teamId] = true;
+        }
+
+        $rosterTeams = [];
+        foreach ($payload['teams'] ?? [] as $team) {
+            if (\is_array($team) && isset($team['id'])) {
+                $rosterTeams[(string) $team['id']] = true;
+            }
+        }
+
+        $seen = [];
+        $entries = [];
+        foreach ($socleSlots as $slot) {
+            $teamId = $slot->getTeamId();
+            if (!isset($keep[$teamId]) || !isset($rosterTeams[$teamId])) {
+                continue; // équipe sans « garder ses créneaux », ou hors sélection de période
+            }
+            $dayOfWeek = $slot->getDayOfWeek();
+            $startTime = $slot->getStartTime()->format('H:i:s');
+            $key = $teamId . '|' . $dayOfWeek . '|' . substr($startTime, 0, 5);
+            if (isset($seen[$key])) {
+                continue; // même horaire déjà référencé (socle sur 2 gymnases) : un seul keep
+            }
+            $seen[$key] = true;
+            $entries[] = [
+                'teamId' => $teamId,
+                'dayOfWeek' => $dayOfWeek,
+                'startTime' => $startTime,
+                'venueId' => $slot->getVenueId(),
+                'keep' => true,
             ];
         }
 
@@ -1418,6 +1538,14 @@ final class ScheduleConstraintBuilder
         foreach ($constraints as $constraint) {
             $scope = $constraint->getScope();
             $config = $constraint->getConfig();
+
+            // PR 6 (lot 8) — « Garder ses créneaux de saison » n'est JAMAIS une contrainte du moteur :
+            // famille inconnue de lui, son effet passe par `socleReferenceAssignments` (keep, greffé
+            // par le handler en génération pleine). On la filtre ici pour ne pas polluer le payload
+            // d'une famille qu'aucun handler solveur ne lit.
+            if (ConstraintFamily::SEASON_SLOTS === $constraint->getFamily()) {
+                continue;
+            }
 
             // Resolve a CLUB constraint targeted by tag(s) into N TEAM constraints.
             // P2-29 : targetTag (legacy, one tag), targetTags (INTERSECTION) or

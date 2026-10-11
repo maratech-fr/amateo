@@ -110,6 +110,9 @@ from .placement import (
 from .placement import (
     _unplaced_team_ids as _unplaced_team_ids,
 )
+from .season_slots import (
+    _diagnose_season_slots as _diagnose_season_slots,
+)
 from .sessions import (
     _collect_session_causes as _collect_session_causes,
 )
@@ -180,6 +183,10 @@ def _generate_diagnostics(
             _diagnose_session_below_effective_min(model_data, slots, session_causes_by_team=session_causes_by_team)
         )
         diagnostics.extend(_diagnose_unused_slots(model_data, slots))
+        # PR 6 (lot 8) — « garder ses créneaux de saison » : N/M créneaux de socle conservés par
+        # équipe concernée, perdus nommés avec leur cause. Sur solve abouti seulement (il lit les
+        # slots FINAUX) ; inerte si aucune référence KEEP n'est émise (byte-identique).
+        diagnostics.extend(_diagnose_season_slots(model_data, slots))
     diagnostics.extend(
         _diagnose_conflicts(
             model_data,

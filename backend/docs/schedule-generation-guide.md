@@ -1,10 +1,16 @@
 # Guide de génération de planning — Amateo
 
-Last verified @ 2026-10-11 (lot verrous V1/V1bis) : nouvelle sous-section « Les verrous HARD d'une
-période survivent à « Régénérer » » (§10) ajoutée et confrontée à
+Last verified @ 2026-10-11 (rebase lot 8 PR 6 sur verrous V1/V1bis) : `CONTRACT_VERSION` = `1.5`
+(bump 1.4 → 1.5, `ScheduleConstraintBuilder::CONTRACT_VERSION` ⇄ `engine/CONTRACT_VERSION`, lot 8
+« garder ses créneaux de saison ») ✓ ; nouvelle sous-section « Les verrous HARD d'une période
+survivent à « Régénérer » » (§10) ajoutée et confrontée à
 `ScheduleConstraintBuilder::buildForPeriodPlan`/`appendInheritedCanonicalHardSlots`,
-`SchedulePlanProvisioner::lockSourceScheduleIdOfPlan`/`pointLockSource` et
-`LoadLocksController`. Reste du fichier non re-contrôlé cette passe — historique :
+`SchedulePlanProvisioner::lockSourceScheduleIdOfPlan`/`pointLockSource` et `LoadLocksController` ;
+re-confrontés aussi le cycle des 5 statuts (§5, `App\Enum\ScheduleStatus` —
+`DRAFT`/`PENDING`/`GENERATING`/`COMPLETED`/`FAILED`) ✓, le budget solveur par défaut 650 s
+(`ScheduleConstraintBuilder::DEFAULT_SOLVER_TIMEOUT_SECONDS`) ✓, et l'empreinte PAR PLAN servie par
+`GET /api/schedule_plans/{id}/structure-hash` (`SchedulePlanProvisioner::structureHashOfPlan`,
+recalée le 2026-10-08, P4-266) ✓. Reste du fichier non re-contrôlé cette passe — historique :
 `git log -p --follow` sur ce fichier.
 
 > Ce guide explique, étape par étape, comment générer un planning de matchs pour un club de basket dans le backend Amateo. Il s'adresse aux développeurs juniors qui découvrent le projet.
@@ -382,7 +388,7 @@ Voici chaque panne possible, avec son symptôme, sa cause, sa vérification, sa 
 | **Symptôme** | Le statut passe à `FAILED` avec un diagnostic `engine_failed`. Il n'existe **pas** de type `engine_validation_error`. |
 | **Cause** | Le moteur a retourné une réponse JSON **sans clé `status`** (par exemple un corps d'erreur 422 de Pydantic). `EngineClient` lit la réponse avec `toArray(false)` (aucune exception sur un statut HTTP d'erreur) et le handler traite toute réponse sans `status` comme `failed`. Un 422 est improbable en pratique : le payload est construit par `ScheduleConstraintBuilder`, pas saisi à la main. |
 | **Vérification** | `make logs SERVICE=engine` + inspecte le champ `snapshot_data` de la table `schedule` (payload exact envoyé). |
-| **Correction** | Compare le `snapshot_data` au schéma du contrat engine (v1.4, `extra="forbid"`) ; corrige la donnée source incriminée. |
+| **Correction** | Compare le `snapshot_data` au schéma du contrat engine (v1.5, `extra="forbid"`) ; corrige la donnée source incriminée. |
 | **Prévention** | `ContractSchemaTest` garde la synchronisation backend ⇄ engine ; le gate `POST /api/constraints/validate` attrape les configs incohérentes avant le solve. |
 
 ### Cas 7 : COMPLETED mais 0 créneau généré

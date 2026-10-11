@@ -667,7 +667,11 @@ export const updateTravelRuleSetting = (payload: VenueTravelRuleSettingPayload):
 
 // --- Constraints (W4) ---
 
-export type ConstraintFamily = "TIME" | "DAY" | "FACILITY" | "COACH_AVAILABILITY";
+// SEASON_SLOTS (« Garder ses créneaux de saison », PR 6 / lot 8) n'est jamais SAISIE depuis le
+// wizard (pas d'onglet de création) : elle naît de « Transférer au planning » quand le coach a coché
+// « garder mes créneaux habituels ». Elle est seulement AFFICHÉE (description) là où les contraintes
+// se rendent. Son effet moteur passe par socleReferenceAssignments (keep), pas par le payload.
+export type ConstraintFamily = "TIME" | "DAY" | "FACILITY" | "COACH_AVAILABILITY" | "SEASON_SLOTS";
 export type ConstraintScope = "CLUB" | "TEAM" | "COACH" | "FACILITY";
 export type ConstraintRuleType = "HARD" | "PREFERRED";
 

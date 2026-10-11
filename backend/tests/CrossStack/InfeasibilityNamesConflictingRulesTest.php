@@ -13,11 +13,11 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 /**
  * P4-96 — NR BLOQUANT (axes §7.1 *constraint semantics* + *backend↔engine contract*) : quand le
  * moteur dit NON, il NOMME les règles en conflit. De bout en bout contre le VRAI moteur
- * (`/generate`, contrat 1.4) : deux contraintes SOURCE qui se contredisent — coach INDISPONIBLE le
+ * (`/generate`, contrat 1.5) : deux contraintes SOURCE qui se contredisent — coach INDISPONIBLE le
  * vendredi + équipe dont le vendredi est IMPOSÉ, sur un gymnase qui n'ouvre QUE le vendredi — font
  * sortir la génération INFEASIBLE (`status: "failed"`), et le diagnostic `diag-infeasible` CITE les
  * deux règles par leur libellé (comme dans l'écran de contraintes) via les hypothèses CP-SAT
- * (`SufficientAssumptionsForInfeasibility`) ; ses `causes[]` portent les kinds DÉDIÉS contrat 1.4
+ * (`SufficientAssumptionsForInfeasibility`) ; ses `causes[]` portent les kinds DÉDIÉS contrat 1.5
  * (`day_forced` pour le jour imposé, `coach_unavailability` pour l'indispo).
  *
  * TÉMOIN falsifiable : SANS la règle d'indispo coach, le MÊME payload redevient résoluble
@@ -60,7 +60,7 @@ final class InfeasibilityNamesConflictingRulesTest extends TestCase
         self::assertStringContainsString(self::DAY_RULE, $message, 'la règle de jour imposé doit être nommée : ' . $message);
         self::assertStringContainsString(self::COACH_RULE, $message, 'la règle d\'indispo coach doit être nommée : ' . $message);
 
-        // D1 — causes STRUCTURÉES, kinds DÉDIÉS du contrat 1.4, les deux familles présentes.
+        // D1 — causes STRUCTURÉES, kinds DÉDIÉS du contrat 1.5, les deux familles présentes.
         $causes = \is_array($infeasible['causes'] ?? null) ? $infeasible['causes'] : [];
         $kinds = array_column($causes, 'kind');
         self::assertContains('day_forced', $kinds, 'le jour imposé doit porter le kind dédié day_forced : ' . json_encode($causes));

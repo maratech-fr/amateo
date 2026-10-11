@@ -96,6 +96,9 @@ export function constraintPredicateParts(constraint: Constraint, venueName: Venu
       return facilityParts(cfg, venueName);
     case "COACH_AVAILABILITY":
       return coachParts(cfg);
+    case "SEASON_SLOTS":
+      // PR 6 (lot 8) — « Garder ses créneaux de saison » : pas de config, une phrase fixe.
+      return [{ verb: "garde", value: "ses créneaux de saison", verbFirst: true }];
     default:
       return [];
   }

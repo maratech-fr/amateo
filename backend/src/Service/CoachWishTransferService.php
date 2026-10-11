@@ -208,6 +208,13 @@ final class CoachWishTransferService
         if ([] !== $wish->getWishedDays()) {
             $this->createPreferredDaysConstraint($wish, $entryId, $clubId, $seasonId, $comment);
         }
+        // B (PR 6) — « garder mes créneaux habituels » cochée par le coach ⇒ une contrainte
+        // « Garder ses créneaux de saison » (TEAM, toujours PRÉFÉRÉE). À la génération pleine, le
+        // backend émettra pour cette équipe les placements de socle en keep (le moteur garde son
+        // jour+heure+gymnase). Idempotente : effacée/recréée par le même nettoyage que les autres.
+        if ($wish->keepsSeasonSlots()) {
+            $this->createSeasonSlotsConstraint($wish, $entryId, $clubId, $seasonId);
+        }
     }
 
     /**
@@ -298,6 +305,25 @@ final class CoachWishTransferService
             ->setFamily(ConstraintFamily::DAY)
             ->setRuleType(ConstraintRuleType::PREFERRED)
             ->setConfig(['preferredDays' => $wish->getWishedDays()]);
+        $this->entityManager->persist($constraint);
+    }
+
+    /**
+     * B (PR 6) — « Garder ses créneaux de saison » : TEAM, toujours PRÉFÉRÉE, sans config (un
+     * marqueur). Le moteur ne la lit jamais comme contrainte ; en génération pleine le backend
+     * émet pour l'équipe les placements de socle en `keep` (jour+heure+gymnase). HARD interdit
+     * (ConstraintValidationService) : une préférence très forte, jamais un épinglage bloquant.
+     */
+    private function createSeasonSlotsConstraint(CoachWish $wish, string $entryId, string $clubId, string $seasonId): void
+    {
+        $constraint = $this->newTransferConstraint($wish, $clubId, $seasonId, $entryId, null);
+        $constraint
+            ->setName($this->teamDayName('Garder les créneaux de saison', $wish->getTeamId()))
+            ->setScope(ConstraintScope::TEAM)
+            ->setScopeTargetId($wish->getTeamId())
+            ->setFamily(ConstraintFamily::SEASON_SLOTS)
+            ->setRuleType(ConstraintRuleType::PREFERRED)
+            ->setConfig([]);
         $this->entityManager->persist($constraint);
     }
 

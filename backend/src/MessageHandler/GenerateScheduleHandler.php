@@ -281,6 +281,24 @@ final class GenerateScheduleHandler
                 $scheduleInput,
                 $this->resolvePreviousAssignmentSlots($schedule, $message),
             );
+
+            // PR 6 (lot 8) — « Garder ses créneaux de saison » : en génération PLEINE d'un plan de
+            // PÉRIODE, les équipes qui portent la contrainte SEASON_SLOTS reçoivent, en keep, les
+            // placements de la version pointée du socle (jour+heure+gymnase) — le moteur garde alors
+            // leur créneau de saison (préférence très forte). Comme `previousAssignments` : APRÈS le
+            // hash (convergence, pas structure). Les équipes « garder » sont lues de la sélection déjà
+            // résolue par `buildForOverlay` (zéro requête de plus). Aucune SEASON_SLOTS, ou plan SEASON
+            // (socle lui-même, jamais de keep) ⇒ clé absente, chemin byte-identique.
+            if ($overlayEntry instanceof CalendarEntry) {
+                $keepTeamIds = $this->constraintBuilder->lastSeasonSlotKeepTeamIds();
+                if ([] !== $keepTeamIds) {
+                    $scheduleInput = $this->constraintBuilder->withSeasonSlotKeepReferences(
+                        $scheduleInput,
+                        $this->socleReferenceSlots($schedule),
+                        $keepTeamIds,
+                    );
+                }
+            }
         } else {
             // PR-3 (comblement) — RÉFÉRENCE de comblement : les placements de la version POINTÉE du
             // socle (plan SEASON) sont émis pour que le solveur GARDE le jour+heure de référence des

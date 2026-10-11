@@ -1,6 +1,15 @@
 # Erreurs et diagnostics du solveur
 
-Last verified @ 2026-10-11 (`documentation-update`, rotation — sans rapport avec le sujet de la PR) : `_diagnose_unused_slots` vit toujours dans `result_builder/diagnostics/placement.py` (ré-exporté par `result_builder/__init__.py` et `diagnostics/__init__.py`) ; `engine/CONTRACT_VERSION` = `1.4` ✓ ; `VenueTrainingSlotSchema.day_of_week` reste un `int` sans borne (`engine/app/schemas/input_schema.py:47`, contrairement à `capacity: int = Field(default=1, ge=1)` juste en dessous) ✓ ; `lock_level` reste une `str` libre, pas un enum (`input_schema.py:298`) ✓. Reste non re-sondé cette passe.
+Last verified @ 2026-10-11 (rebase lot 8 PR 6 sur rotation de fraîcheur) : `engine/CONTRACT_VERSION`
+= `1.5` ✓ (bump 1.4 → 1.5) ; nouveau diagnostic `season_slots_kept`
+(`result_builder/diagnostics/season_slots.py::_diagnose_season_slots`) ajouté à la table ci-dessous ;
+`SCORE_FORMULA_VERSION` = `T24_LEVEL_2_FIXED_WEIGHTS_V14` (V13 → V14, le régime KEEP du bonus de
+référence socle). Propriétaire du texte `message` de `unused_slot` (ré-ancré le 2026-10-08, P4-295
+C1) toujours dans `result_builder/diagnostics/placement.py` (ré-exporté par
+`result_builder/__init__.py` et `diagnostics/__init__.py`) ✓ ; `VenueTrainingSlotSchema.day_of_week`
+reste un `int` sans borne (`engine/app/schemas/input_schema.py:47`, contrairement à
+`capacity: int = Field(default=1, ge=1)` juste en dessous) ✓ ; `lock_level` reste une `str` libre,
+pas un enum (`input_schema.py:298`) ✓. Reste non re-sondé cette passe.
 
 > Ce document recense toutes les erreurs que le moteur peut produire, avec leurs causes et les actions correctives. Destine aux developpeurs et aux utilisateurs avances du club.
 
@@ -19,7 +28,7 @@ Ces erreurs sont retournees directement par l'API FastAPI, avant meme que le sol
 - `sessionsPerWeek: "trois"` au lieu d'un entier
 - Champ `sportCategoryId` manquant sur une equipe (requis)
 - Cle inconnue dans le payload (les schemas sont `extra=forbid`)
-- `version: "2.0"` alors que le moteur parle le **MAJOR 1** du contrat `1.4` (`"1.0"` comme `"1.4"` passent)
+- `version: "2.0"` alors que le moteur parle le **MAJOR 1** du contrat `1.5` (`"1.0"` comme `"1.5"` passent)
 
 **Attention — deux pieges qui ne provoquent PAS de 422** : `lockLevel` est une **chaine libre**, pas un enum (un `"FORT"` est accepte et simplement traite comme non-`HARD`), et le `dayOfWeek` d'un creneau de gymnase (`VenueTrainingSlotSchema`) est un entier **sans borne** — un `8` passe la validation (d'autres schemas du meme payload, eux, sont bornes `ge=1, le=7` : la tolerance n'est pas une regle generale).
 
@@ -71,6 +80,7 @@ Les diagnostics apparaissent dans le tableau `diagnostics[]` de la reponse. Ils 
 | `constraint_not_honored` | INFO / WARNING | Une contrainte saisie n'a pas pu etre appliquee | **INFO** : un verrou HARD l'a ecrasee — indisponibilite coach, fenetre horaire, jour exclu, gymnase interdit. Le verrou prime, la contrainte devient inatteignable. **WARNING** : la contrainte est arrivee sans equipe cible et n'a donc pu etre appliquee a personne, OU sa famille/son type n'est reconnu par aucune branche du parseur (ex. skew de deploiement, backend plus recent que l'engine ; message nommant la famille et le type recus). | INFO : retirer le verrou, ou assumer qu'il prime — c'est une decision de gestionnaire, pas une erreur. WARNING (cible) : verifier le ciblage de la regle cote backend. WARNING (type inconnu) : verifier la version de l'application, ou supprimer/resaisir la contrainte. |
 | `team_link_not_honored` | ERROR | Deux equipes declarees en passerelle (partage de joueurs) ont des seances qui se chevauchent dans le temps, sur un solve ABOUTI | Lu sur les PLACES finales (`_diagnose_team_links`), jamais un INFEASIBLE muet : soit la passerelle est `PREFERRED` et le solveur a CEDE le malus soft (les deux seances coincident quand meme), soit elle est `MANDATORY` et les deux seances sont verrouillees HARD par le gestionnaire — deux actes volontaires qui se contredisent. Une seance mutualisee DECLAREE (meme case, groupe partage) n'est jamais rapportee ici (exemption). | `PREFERRED` : accepter le chevauchement, ou ecarter les deux equipes dans la semaine. `MANDATORY` : lever l'un des deux verrous HARD contradictoires. |
 | `travel_time_infeasible` | ERROR | Un coach (ou une passerelle) enchaine deux seances VERROUILLEES a des gymnases differents sans le temps materiel du trajet | Contrainte `travelTime` MANDATORY : le battement entre les deux creneaux verrouilles est plus court que le bareme de trajet (a pied entre deux equipes passerelees, module chez un coach). Comme `team_link_not_honored`, jamais un INFEASIBLE muet — la contradiction entre deux verrous est ANNONCEE post-solve. | Deverrouiller l'une des deux seances, les ecarter dans la journee, ou ajuster le temps de trajet entre ces deux gymnases. |
+| `season_slots_kept` | WARNING | Une equipe qui porte la contrainte « Garder ses creneaux de saison » (`SEASON_SLOTS`) n'a pas retrouve TOUS ses creneaux de socle (jour+heure, gymnase ignore ici) | Emis seulement sur solve ABOUTI et seulement quand `kept < total` (pas un accuse de reception) : `causes[]` nomme chaque creneau perdu, `slot_absent` (aucune fenetre de gymnase de la periode ne couvre ce jour+heure) ou `displaced` (une fenetre existe, l'equipe n'y est pas — deplacee, ou jour ferme par une indisponibilite). Un creneau tenu par un verrou HARD compte TOUJOURS conserve. | Rien a faire si le placement global est bon (« placer les seances reste prioritaire », Q3bis) ; sinon ouvrir un creneau sur le jour+heure perdu, ou lever la regle qui ferme le jour. |
 
 ⚑ **Proprietaire du texte `message`** (ENG-47) : pour `unused_slot`, le moteur (`_diagnose_unused_slots`,
 `result_builder/diagnostics/placement.py`) n'envoie plus qu'une chaine VIDE — gymnase/jour/plage sont reconstruits
@@ -147,7 +157,7 @@ Le score est un nombre entier qui reflete la qualite globale de la solution.
 La version actuelle de la formule est :
 
 ```
-SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V13"
+SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V14"
 ```
 
 ⚠ Cette constante bouge plus vite que la prose : en cas de doute, `app/solver/objective/weights.py` fait foi — c'est elle qu'il faut lire, pas ce fichier.

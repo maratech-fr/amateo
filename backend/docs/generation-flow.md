@@ -1,12 +1,19 @@
 # Documentation technique du flux de génération de planning
 
-Last verified @ 2026-10-11 (lot verrous V1/V1bis) : §3b corrigée — elle disait encore que le
-handler bascule sur `buildForOverlay` quand `Schedule.calendarEntryId` est renseigné, un champ
-DROPPÉ depuis ADR-0002 C4 ; la branche se dérive en fait du **plan** de la version
-(`SchedulePlanProvisioner::periodEntryIdOf`, confronté à `GenerateScheduleHandler::generate`).
-Profite du passage pour noter la greffe des verrous hérités (lot verrous, §3b). Reste du fichier
-non re-contrôlé cette passe — historique :
-`git log -p --follow` sur ce fichier.
+Last verified @ 2026-10-11 (rebase lot 8 PR 6 sur verrous V1/V1bis) : `CONTRACT_VERSION` =
+`'1.5'` (bump 1.4 → 1.5, `ScheduleConstraintBuilder::CONTRACT_VERSION` ⇄ `engine/CONTRACT_VERSION`,
+lot 8 « garder ses créneaux de saison ») ✓ ; §3b corrigée — elle disait encore que le handler
+bascule sur `buildForOverlay` quand `Schedule.calendarEntryId` est renseigné, un champ DROPPÉ
+depuis ADR-0002 C4 ; la branche se dérive en fait du **plan** de la version
+(`SchedulePlanProvisioner::periodEntryIdOf`, confronté à `GenerateScheduleHandler::generate`),
+avec la greffe des verrous hérités notée au passage (lot verrous, §3b) ; re-confrontés aussi le TTL
+du verrou (`GenerateScheduleHandler::LOCK_TTL_MARGIN_SECONDS = 60`,
+`acquire(... getTimeoutSeconds() + self::LOCK_TTL_MARGIN_SECONDS)`) ✓, `RedeliveredGenerationTest`
+toujours listé bloquant dans `docs/testing/blocking-tests.md` ✓, le payload Mercure porte toujours
+exactement les mêmes champs (`ScheduleProgressPublisher::publish` — `scheduleId`, `status`, `score`,
+`unplaced`, `warnings`) ✓, et l'empreinte PAR PLAN servie par `GET /api/schedule_plans/{id}/structure-hash`
+(`SchedulePlanProvisioner::structureHashOfPlan`, recalée le 2026-10-08, P4-266) ✓. Reste du fichier
+non re-contrôlé cette passe — historique : `git log -p --follow` sur ce fichier.
 
 > Amateo — Symfony 7 + API Platform + Messenger Redis + Mercure SSE. Contexte : BCCL (B CHARPENNES CROIX LUIZET, code FFBB ARA0069036, ligue ARA).
 
@@ -148,7 +155,7 @@ Voici ce que fait la branche de base, dans l'ordre :
 
 6. **Niveaux de priorité** : il n'y a **pas** de clé `priorityTiers` top-level dans le payload. Les `PriorityTier` du club (S, A, B, C, D) sont sérialisés comme des **contraintes** de type `PRIORITY_TIER` dans `constraints[]`. Leurs poids ne sont pas envoyés (`orToolsWeight` volontairement omis) : le solveur applique des poids **codés en dur** côté engine — S=10000, A=1000, B=100, C=10, D=1 — un poids par tier serait accepté puis ignoré.
 
-7. **Métadonnées** : ajoute `version: "1.4"` (`ScheduleConstraintBuilder::CONTRACT_VERSION`, alignée sur `engine/CONTRACT_VERSION`), `clubId`, `seasonId`, `solverSeed` et `solverTimeoutSeconds`.
+7. **Métadonnées** : ajoute `version: "1.5"` (`ScheduleConstraintBuilder::CONTRACT_VERSION`, alignée sur `engine/CONTRACT_VERSION`), `clubId`, `seasonId`, `solverSeed` et `solverTimeoutSeconds`.
 
 Le payload complet pèse généralement entre 50 et 200 Ko de JSON selon la taille du club.
 
@@ -176,7 +183,7 @@ POST http://engine:8000/generate
 Content-Type: application/json
 
 {
-  "version": "1.4",
+  "version": "1.5",
   "clubId": "bccl-uuid",
   "seasonId": "2025-2026-uuid",
   "solverSeed": 42,
@@ -395,7 +402,7 @@ Voici un tableau récapitulatif de tous les cas d'erreur possibles, avec leur ca
 | **Épinglage orphelin** | `OrphanPinGuard` (#8) : un verrou ou une réservation ne correspond plus à aucun créneau de la grille de période | — (refus synchrone **422**) | Aucun | Le message nomme le gymnase et le jour : redéfinir les créneaux, ou retirer l'épinglage |
 | **Club déjà en génération** | Verrou Redis `schedule_generation:club:{clubId}` tenu par un autre worker | `PENDING` (retry Messenger via `RecoverableMessageHandlingException`) | Aucun | Rien à faire : la demande sera rejouée automatiquement à la fin de la génération en cours |
 | **Timeout HTTP (> 650 s)** | Problème trop complexe pour le solveur CP-SAT (budget adaptatif 60/180/600 s dépassé côté engine) | `FAILED` | `engine_timeout` | Simplifier les contraintes `HARD`, augmenter le nombre de salles, ou réduire le nombre d'équipes |
-| **Payload invalide (422)** | Réponse engine sans clé `status` (corps d'erreur Pydantic) — improbable car le payload est construit par `ScheduleConstraintBuilder` | `FAILED` | `engine_failed` | Comparer le `snapshotData` au schéma engine (contrat 1.4, `engine/CONTRACT_VERSION`) |
+| **Payload invalide (422)** | Réponse engine sans clé `status` (corps d'erreur Pydantic) — improbable car le payload est construit par `ScheduleConstraintBuilder` | `FAILED` | `engine_failed` | Comparer le `snapshotData` au schéma engine (contrat 1.5, `engine/CONTRACT_VERSION`) |
 | **Engine inaccessible** | Conteneur `engine` arrêté ou crash | `FAILED` | `engine_error` | Vérifier l'état des conteneurs Docker (`make logs SERVICE=engine`) |
 | **Planning infaisable** | Contraintes `HARD` mutuellement exclusives | `FAILED` | `conflict` + liste équipes non placées | Relâcher une contrainte `HARD` en `PREFERRED`, ou ajouter des ressources (salle, coach) |
 | **Partiellement résolu** | Ressources insuffisantes pour toutes les équipes | `COMPLETED` (score bas) | `unplaced` diagnostics | Accepter le planning incomplet, ou ajouter des créneaux/salles |
