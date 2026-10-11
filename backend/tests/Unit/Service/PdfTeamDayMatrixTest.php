@@ -89,6 +89,10 @@ final class PdfTeamDayMatrixTest extends TestCase
         // ...et elle ne porte aucun créneau (aucun « · » de cellule sur sa ligne).
         $ghostRow = $this->rowContaining($html, 'U17 M');
         self::assertStringNotContainsString(' · ', $ghostRow, 'la ligne d’une équipe sans séance ne porte aucun créneau');
+        // Lot B — et elle porte « aucune séance » SOUS le nom (parité ClubViewTable.tsx) : le premier
+        // trou que le gestionnaire doit voir. Une équipe QUI s'entraîne ne porte pas la mention.
+        self::assertStringContainsString('aucune séance', $ghostRow, 'une équipe sans séance porte « aucune séance » sous son nom');
+        self::assertStringNotContainsString('aucune séance', $this->rowContaining($html, 'U13 F'), 'une équipe avec séance ne porte pas la mention');
     }
 
     /**

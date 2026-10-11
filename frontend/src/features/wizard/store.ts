@@ -34,6 +34,14 @@ interface WizardState {
   deepLinkOrigin: DeepLinkOrigin | null;
   setDeepLinkOrigin: (origin: DeepLinkOrigin | null) => void;
   clearDeepLinkOrigin: () => void;
+  /**
+   * Lot B — le planning AFFICHÉ par l'écran de génération embarqué (`PlanningPage` dérive la
+   * version la plus récente en portée). ÉPHÉMÈRE (jamais persisté, cf. partialize — même patron que
+   * `deepLinkOrigin`) : il alimente le « Signaler » de l'en-tête du wizard à l'étape Génération, pour
+   * que le signalement y joigne le planning regardé. Hors de cette étape il n'est pas lu.
+   */
+  displayedScheduleId: string | null;
+  setDisplayedScheduleId: (id: string | null) => void;
 }
 
 const indexOf = (id: WizardStepId): number => WIZARD_STEPS.findIndex((s) => s.id === id);
@@ -67,6 +75,8 @@ export const useWizardStore = create<WizardState>()(
       deepLinkOrigin: null,
       setDeepLinkOrigin: (deepLinkOrigin) => set({ deepLinkOrigin }),
       clearDeepLinkOrigin: () => set({ deepLinkOrigin: null }),
+      displayedScheduleId: null,
+      setDisplayedScheduleId: (displayedScheduleId) => set({ displayedScheduleId }),
     }),
     {
       name: "cs-wizard",

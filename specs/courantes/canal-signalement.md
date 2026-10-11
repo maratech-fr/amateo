@@ -1,9 +1,8 @@
-Last verified @ 2026-10-10 (rotation `documentation-update`, lot 9 F3). Re-confronté au code :
-`POST /api/feedback` (`FeedbackController.php:68`) ✓ ; `FeedbackButton`/`FeedbackDialog`/`api.ts`/
-`queries.ts` vivent toujours dans `frontend/src/shared/feedback/` ✓ ; `Schedule::$snapshotData`
-toujours présent, mais la citation de ligne avait dérivé — **corrigée `:96`**
-(`backend/src/Entity/Schedule.php:96`, pas `:123` comme précédemment écrit) ✓ (D1 porte (a) :
-`PageHeader`, `frontend/docs/frontend-components.md`).
+Last verified @ 2026-10-11 (lot B). Re-confronté au code : `POST /api/feedback`
+(`FeedbackController.php:68`) ✓ ; `FeedbackButton`/`FeedbackDialog`/`api.ts`/`queries.ts` vivent
+toujours dans `frontend/src/shared/feedback/` ✓ ; `Schedule::$snapshotData`
+(`backend/src/Entity/Schedule.php:96`) ✓ ; D1 porte (a) : `PageHeader`,
+`frontend/docs/frontend-components.md`, désormais masquable en embarqué wizard (lot B).
 
 # Canal signalement, support & reproduction
 
@@ -46,7 +45,7 @@ un email vers `support@` à chaque dépôt (le mail part par le bus, rail déjà
 
 | # | Décision |
 |---|---|
-| D1 | **In-app, DEUX portes** : (a) un « Signaler » **contextuel**, dans l'en-tête (`PageHeader`, `frontend/docs/frontend-components.md`) de chaque écran principal et du wizard — contexte auto-joint (écran, club, saison, `scheduleId` s'il y en a un) + champ descriptif du bug ; (b) un « Signaler un bug » **dans le burger** — zone libre : choix d'un topic (bug / contrainte manquante / idée) + commentaire libre. Les deux portes existent partout |
+| D1 | **In-app, DEUX portes** : (a) un « Signaler » **contextuel**, dans l'en-tête (`PageHeader`, `frontend/docs/frontend-components.md`) de chaque écran principal et du wizard — contexte auto-joint (écran, club, saison, `scheduleId` s'il y en a un) + champ descriptif du bug ; (b) un « Signaler un bug » **dans le burger** — zone libre : choix d'un topic (bug / contrainte manquante / idée) + commentaire libre. Les deux portes existent partout. **Exception motivée (lot B)** : à l'étape Génération du wizard, l'écran embarqué (`PlanningPage`) masque sa propre porte (a) — celle de l'EN-TÊTE DU WIZARD reste SEULE, pour ne jamais en doubler deux sur le même écran, et joint le planning AFFICHÉ par l'écran embarqué (store wizard `displayedScheduleId`, éphémère) ; un planning ouvert via `/planning` autonome garde sa propre porte (a) |
 | D2 | **Contexte MAXIMAL, redondance assumée** : « je préfère être redondant et pouvoir reproduire plutôt que devoir redemander » — écran, club, saison, `scheduleId` ET **copie** des diagnostics + du payload rejouable dans le signalement lui-même. Justification technique de la redondance : le planning référencé peut être supprimé/régénéré après coup — la copie rend le signalement **impérissable** |
 | D3 | **Signé, et TOUT LE MONDE peut signaler** (Gestionnaires ET Membres) |
 | D4 | **Digest quotidien** vers `support@` (pas un email par dépôt) — la console SA reste la vue temps réel |

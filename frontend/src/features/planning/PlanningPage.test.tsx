@@ -326,6 +326,41 @@ describe("PlanningPage (integration)", () => {
     expect(screen.queryByRole("button", { name: /valider/i })).not.toBeInTheDocument();
   });
 
+  // Lot B — le « Signaler » de l'en-tête vit sur l'écran AUTONOME (comme tout écran principal) ;
+  // EMBARQUÉ dans le wizard, il est MASQUÉ (l'en-tête du wizard porte déjà la porte — pas de double).
+  it("autonome : l'en-tête porte « Signaler »", async () => {
+    renderWithProviders(<PlanningPage />);
+
+    expect(await screen.findByText("U11")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /signaler/i })).toBeInTheDocument();
+  });
+
+  it("embarqué (wizard) : aucun « Signaler » (l'en-tête du wizard le porte déjà)", async () => {
+    vi.mocked(listSchedules).mockResolvedValue([{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", isChosen: true }]);
+    renderWithProviders(<PlanningPage embedded />);
+
+    expect(await screen.findByText("U11")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /signaler/i })).not.toBeInTheDocument();
+  });
+
+  // Revue sécu — l'id remonté est ÉPHÉMÈRE : il alimente le « Signaler » de l'en-tête du wizard
+  // (étape Génération) tant que le planning embarqué est à l'écran. Au démontage (sortie de l'étape,
+  // bascule de période, autre club sans rechargement), il DOIT être effacé, sinon le signalement
+  // joindrait un id périmé.
+  it("embarqué (wizard) : remonte l'id affiché, puis l'EFFACE au démontage", async () => {
+    const onDisplayedScheduleChange = vi.fn();
+    const { unmount } = renderWithProviders(<PlanningPage embedded onDisplayedScheduleChange={onDisplayedScheduleChange} />);
+
+    // Écran monté : l'id de la version affichée (SID, la version en portée) est remonté au store.
+    expect(await screen.findByText("U11")).toBeInTheDocument();
+    await waitFor(() => expect(onDisplayedScheduleChange).toHaveBeenCalledWith(SID));
+
+    // Démontage : le nettoyage de l'effet remet l'id à null (porte « Signaler » purgée).
+    onDisplayedScheduleChange.mockClear();
+    unmount();
+    expect(onDisplayedScheduleChange).toHaveBeenLastCalledWith(null);
+  });
+
   it("P4-269 — affiche le bandeau « personne à deux endroits » sur la version EN VIGUEUR", async () => {
     // Version pointée (en vigueur) → le radar du planning en vigueur est montré sur /planning.
     vi.mocked(listSchedules).mockResolvedValue([{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", isChosen: true }]);

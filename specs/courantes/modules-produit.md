@@ -1,18 +1,16 @@
 # Modules produit — ce qu'Amateo vend, en langage club
 
-Last verified @ 2026-10-08 (P4-266, `documentation-update`) : la ligne « à régénérer » (§ plan de
-période) recalée — ce n'est plus « le plan qui se dit lui-même », mais `/planning` qui l'affiche,
-sur une version de TRAVAIL seulement (muet sur un planning validé). Re-confronté au code : la
-doléance coach porte désormais un champ `wishedDays` informatif, symétrique de
-`unavailableDays`, sans effet solveur (`backend/src/Entity/CoachWish.php`,
-`backend/src/Controller/PublicCoachWishController.php`) ; un jour ne peut jamais être à la fois
-souhaité et indisponible (garde 422 à la saisie, `CoachWishUpserter::upsert`). Reste des claims
-déjà vérifiées aux passes précédentes, non re-sondées cette fois : la route `/doleances/:token`
-(`frontend/src/app/routes.tsx:119`), l'export planning PDF/Excel seuls
-(`frontend/src/features/planning/queries.ts:314`), le wizard à 6 étapes
-(`frontend/src/features/wizard/lib/steps.ts:9-16`), `FfbbClubPopulator.php`/`FfbbTeamImporter.php`
-(`backend/src/Service/Basketball/`), rappels J-14/J-7/J-3 (`PeriodReminderCommand.php:31,40`),
-échéance RMM-6 (`EntryDeadlineOutlook.php:39-40`).
+Last verified @ 2026-10-11 (rotation `documentation-update`, lot B). Re-confronté au code : la
+route `/doleances/:token` toujours servie par `frontend/src/app/routes.tsx`, mais la citation de
+ligne avait dérivé — **corrigée `:125`** (pas `:119`, qui pointe `/confidentialite`) ; l'export
+planning PDF/Excel a été EXTRAIT depuis l'écriture de ce fichier — il ne vit plus dans
+`queries.ts` mais dans `frontend/src/features/planning/ExportMenu.tsx` (`api.ts:167,175` pour les
+deux routes `export-pdf`/`export-xlsx`) — **citation corrigée** ; le wizard à 6 étapes toujours
+exact (`frontend/src/features/wizard/lib/steps.ts:9-16`) ; rappels J-14/J-7/J-3 toujours à
+`backend/src/Command/PeriodReminderCommand.php:31,40` ; échéance RMM-6 toujours portée par
+`backend/src/Service/EntryDeadlineOutlook.php` (règle `REMINDER_WINDOW_DAYS`, ligne `:40`, pas
+`:39-40`). `FfbbClubPopulator.php`/`FfbbTeamImporter.php` toujours dans
+`backend/src/Service/Basketball/` ✓. Reste des claims non re-sondées cette passe.
 
 > **Rôle de ce fichier.** `etat-des-lieux.md` §1 est la carte technique (entités, PR, pointeurs) —
 > ce fichier est sa **couche en langage club** : ce que le produit fait, dit à qui le vit sur le

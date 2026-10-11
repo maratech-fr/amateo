@@ -232,9 +232,38 @@ final class SpreadsheetTeamDayMatrixTest extends TestCase
         // U17 n'a aucun créneau : sa ligne existe quand même...
         $teamColumn = array_column(\array_slice($sheet->toArray(), 1), 0);
         self::assertContains('U17 M', $teamColumn, 'une équipe sans séance garde sa ligne dans la matrice');
-        // ...et chacune de ses cellules de jour est vide (matrixCell échoue si la ligne manque).
-        foreach (['Lundi', 'Mercredi'] as $day) {
-            self::assertSame('', $this->matrixCell($book, 'U17 M', $day), 'U17 n’a aucune séance : cellule vide, ligne présente');
+        // Lot B — ...et sa PREMIÈRE cellule de jour porte « aucune séance » (parité ClubViewTable.tsx :
+        // le trou se lit d'un coup d'œil) ; les autres cellules de jour restent vides.
+        self::assertSame('aucune séance', $this->matrixCell($book, 'U17 M', 'Lundi'), 'U17 n’a aucune séance : première cellule de jour « aucune séance »');
+        self::assertSame('', $this->matrixCell($book, 'U17 M', 'Mercredi'), 'les autres cellules de jour de U17 restent vides');
+    }
+
+    /**
+     * Lot B — « aucune séance » se pose dans la PREMIÈRE cellule de JOUR. S'il n'existe AUCUNE
+     * colonne de jour (aucun créneau placé dans tout le planning), il n'y a pas de cellule où
+     * l'écrire : on n'ajoute pas de colonne fantôme, et la mention n'apparaît nulle part.
+     */
+    public function testNoSessionCaptionNeedsAtLeastOneDayColumn(): void
+    {
+        $data = new ScheduleExportData(
+            slots: [],
+            teamNames: ['t-u13' => 'U13 F'],
+            teamCategories: ['t-u13' => 'U13'],
+            venues: [],
+            coachNames: [],
+        );
+
+        $book = $this->renderAndReadBack($data);
+        $sheet = $book->getSheetByName(self::MATRIX_SHEET);
+        self::assertNotNull($sheet);
+
+        // L'équipe garde sa ligne (nom en colonne 1)...
+        self::assertContains('U13 F', array_column(\array_slice($sheet->toArray(), 1), 0), 'l’équipe garde sa ligne même sans aucun créneau');
+        // ...mais « aucune séance » n'apparaît dans AUCUNE cellule (pas de colonne de jour où l'écrire).
+        foreach ($sheet->toArray() as $line) {
+            foreach ($line as $cell) {
+                self::assertNotSame('aucune séance', (string) $cell, 'sans colonne de jour, pas de mention « aucune séance »');
+            }
         }
     }
 

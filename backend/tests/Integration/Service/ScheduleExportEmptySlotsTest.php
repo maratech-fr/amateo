@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Service;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Constraint;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
@@ -14,12 +15,18 @@ use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\User;
 use App\Entity\Venue;
+use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
+use App\Enum\ConstraintFamily;
+use App\Enum\ConstraintRuleType;
+use App\Enum\ConstraintScope;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Enum\VenuePeriodMode;
+use App\Export\ExportEmptyWindow;
 use App\Export\ScheduleExportDataProvider;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
@@ -306,6 +313,176 @@ final class ScheduleExportEmptySlotsTest extends KernelTestCase
         self::assertSame(4, $empty[0]->dayOfWeek, 'la case vide restante est bien la fenêtre du jeudi, pas la fenêtre retaillée du mercredi');
     }
 
+    /**
+     * Lot B — (a)+(b) : à l'export d'ENSEMBLE, un gymnase DÉSACTIVÉ pour la période perd ses
+     * fenêtres vides (comme un gymnase jamais utilisé), MAIS ses séances déjà placées restent
+     * (l'export ne nie pas ce qui existe).
+     */
+    public function testDisabledVenueDropsItsEmptyWindowsButKeepsItsPlacedSessions(): void
+    {
+        [$club, $season] = $this->seed();
+        // Le plan de période est créé AVANT les gymnases : sa copie des créneaux du socle (à la
+        // naissance du plan) ne ramasse rien, on maîtrise exactement les fenêtres de la couche.
+        [$version, $planId] = $this->seedPeriodVersion($club, $season, '2026-05-04', '2026-05-10');
+        $disabled = $this->makeVenue($club, $season, 'Désactivé');
+        $control = $this->makeVenue($club, $season, 'Ouvert');
+        // Une fenêtre vide (jeu. 18:00) sur la couche de la période, pour les DEUX gymnases.
+        $this->layerWindow($club, $season, $disabled, 4, '18:00', $planId);
+        $this->layerWindow($club, $season, $control, 4, '18:00', $planId);
+        $this->em->flush();
+        // Une séance placée sur CHAQUE gymnase, hors de la fenêtre vide (mer. 20:00) → gymnases UTILISÉS
+        // (sinon le filtre #1142 les escamoterait déjà, et (a) passerait pour la mauvaise raison).
+        $this->placeSession($club, $season, $version, $disabled, 3, '20:00');
+        $this->placeSession($club, $season, $version, $control, 3, '20:00');
+        $this->disableVenue($club, $season, $planId, $disabled);
+        $this->em->flush();
+
+        $data = $this->provider->load($version);
+
+        // (a) le gymnase désactivé ne porte plus AUCUNE fenêtre vide ; le gymnase ouvert garde la sienne.
+        self::assertSame(
+            [$control->getId()],
+            array_map(static fn (ExportEmptyWindow $w): string => $w->venueId, $data->emptySlots),
+            'un gymnase désactivé perd ses fenêtres vides à l’ensemble ; le gymnase ouvert garde la sienne',
+        );
+        // (b) ses séances placées, elles, restent — l'export rend ce qui existe.
+        self::assertContains(
+            $disabled->getId(),
+            array_map(static fn (ScheduleSlotTemplate $s): string => $s->getVenueId(), $data->slots),
+            'la séance placée dans le gymnase désactivé reste à l’export',
+        );
+    }
+
+    /**
+     * Lot B — (c) : un gymnase EFFECTIVEMENT fermé-total (fermeture `venue_closed` couvrant toute la
+     * fenêtre du plan) perd lui aussi ses fenêtres vides à l'ensemble.
+     */
+    public function testEffectivelyFullyClosedVenueDropsItsEmptyWindows(): void
+    {
+        [$club, $season] = $this->seed();
+        // Fenêtre d'UN seul jour (mer. 2026-05-06 = jour 3) : la couvrir d'un coup ferme TOUT le plan.
+        [$version, $planId, $entry] = $this->seedPeriodVersion($club, $season, '2026-05-06', '2026-05-06');
+        $closed = $this->makeVenue($club, $season, 'Fermé');
+        $control = $this->makeVenue($club, $season, 'Ouvert');
+        $this->layerWindow($club, $season, $closed, 3, '18:00', $planId);
+        $this->layerWindow($club, $season, $control, 3, '18:00', $planId);
+        $this->em->flush();
+        $this->placeSession($club, $season, $version, $closed, 3, '20:00');
+        $this->placeSession($club, $season, $version, $control, 3, '20:00');
+        $this->closeVenue($club, $season, $entry, $closed, '2026-05-06', '2026-05-06');
+        $this->em->flush();
+
+        self::assertSame(
+            [$control->getId()],
+            array_map(static fn (ExportEmptyWindow $w): string => $w->venueId, $this->provider->load($version)->emptySlots),
+            'un gymnase effectivement fermé-total perd ses fenêtres vides ; le gymnase ouvert garde la sienne',
+        );
+    }
+
+    /**
+     * Lot B — (d) : l'exclusion ne vaut QU'À l'ensemble. L'export MONO-gymnase d'un gymnase désactivé
+     * garde toute sa grille, vides compris (on consulte alors sa grille à lui).
+     */
+    public function testSingleVenueExportOfADisabledVenueKeepsItsFullGrid(): void
+    {
+        [$club, $season] = $this->seed();
+        [$version, $planId] = $this->seedPeriodVersion($club, $season, '2026-05-04', '2026-05-10');
+        $disabled = $this->makeVenue($club, $season, 'Désactivé');
+        $this->layerWindow($club, $season, $disabled, 4, '18:00', $planId);
+        $this->em->flush();
+        $this->disableVenue($club, $season, $planId, $disabled);
+        $this->em->flush();
+
+        // Ensemble : le gymnase désactivé n'offre aucune fenêtre vide.
+        self::assertCount(0, $this->provider->load($version)->emptySlots, 'à l’ensemble, le gymnase désactivé n’offre aucune fenêtre vide');
+        // Mono-gymnase du désactivé : toute sa grille, vides compris (pas de filtre d'ensemble).
+        $solo = $this->provider->load($version, $disabled->getId())->emptySlots;
+        self::assertCount(1, $solo, 'l’export mono-gymnase d’un gymnase désactivé garde sa grille');
+        self::assertSame($disabled->getId(), $solo[0]->venueId);
+    }
+
+    /**
+     * Lot B — (e) : le filtre #1142 (un gymnase JAMAIS utilisé disparaît) reste en vigueur sur la
+     * couche de la période, à côté de l'exclusion des gymnases fermés — aucune régression.
+     */
+    public function testUnusedVenueFilterStillAppliesOnThePeriodLayer(): void
+    {
+        [$club, $season] = $this->seed();
+        [$version, $planId] = $this->seedPeriodVersion($club, $season, '2026-05-04', '2026-05-10');
+        $unused = $this->makeVenue($club, $season, 'Jamais utilisé'); // ni séance ni désactivation
+        $used = $this->makeVenue($club, $season, 'Utilisé');
+        $this->layerWindow($club, $season, $unused, 4, '18:00', $planId);
+        $this->layerWindow($club, $season, $used, 4, '18:00', $planId);
+        $this->em->flush();
+        $this->placeSession($club, $season, $version, $used, 3, '20:00'); // seul $used est utilisé
+        $this->em->flush();
+
+        self::assertSame(
+            [$used->getId()],
+            array_map(static fn (ExportEmptyWindow $w): string => $w->venueId, $this->provider->load($version)->emptySlots),
+            'le filtre #1142 (gymnase jamais utilisé) reste en vigueur à côté de l’exclusion des fermés',
+        );
+    }
+
+    /**
+     * Lot B — (f) : un jour simplement ROUVERT à la main (masque OPEN) sur un gymnase fermé par un
+     * incident ne le rend ni désactivé ni fermé-total : ses fenêtres vides SUBSISTENT (on n'exclut
+     * que le désactivé et le fermé-total effectif, pas le partiellement fermé).
+     */
+    public function testVenueWithAManuallyReopenedDayKeepsItsEmptyWindows(): void
+    {
+        [$club, $season] = $this->seed();
+        [$version, $planId, $entry] = $this->seedPeriodVersion($club, $season, '2026-05-04', '2026-05-10');
+        $venue = $this->makeVenue($club, $season, 'Partiellement fermé');
+        $this->layerWindow($club, $season, $venue, 3, '18:00', $planId); // fenêtre vide le mercredi
+        $this->em->flush();
+        $this->placeSession($club, $season, $version, $venue, 3, '20:00'); // utilisé
+        // Un incident ferme le mercredi, MAIS le gestionnaire le ROUVRE à la main (masque OPEN).
+        $this->closeVenue($club, $season, $entry, $venue, '2026-05-06', '2026-05-06');
+        $this->reopenDay($club, $season, $planId, $venue, 3);
+        $this->em->flush();
+
+        self::assertSame(
+            [$venue->getId()],
+            array_map(static fn (ExportEmptyWindow $w): string => $w->venueId, $this->provider->load($version)->emptySlots),
+            'un jour rouvert à la main garde les fenêtres vides (ni désactivé ni fermé-total)',
+        );
+    }
+
+    /**
+     * Lot B (NR — la couche vient de la VERSION, jamais du client). `load(Schedule, ?venueId)` n'a
+     * aucun paramètre de couche : elle se dérive du schedule. Même gymnase, même fenêtre vide clonée
+     * dans les deux couches — le socle la garde (sa couche n'a pas de fermeture), la période la perd
+     * (sa couche désactive le gymnase).
+     */
+    public function testExportLayerComesFromTheScheduleNeverFromTheClient(): void
+    {
+        [$club, $season] = $this->seed();
+        [$periodVersion, $planId] = $this->seedPeriodVersion($club, $season, '2026-05-04', '2026-05-10');
+        $venue = $this->makeVenue($club, $season, 'Armand');
+        // Même fenêtre vide (jeu. 18:00) dans CHAQUE couche : socle (schedulePlanId NULL) et période.
+        $this->layerWindow($club, $season, $venue, 4, '18:00', null);
+        $this->layerWindow($club, $season, $venue, 4, '18:00', $planId);
+        $this->em->flush();
+
+        $seasonVersion = new Schedule;
+        $seasonVersion->setClubId($club->getId());
+        $seasonVersion->setSeasonId($season->getId());
+        $seasonVersion->setName('Socle');
+        $seasonVersion->setStatus(ScheduleStatus::COMPLETED);
+        $this->linkSeededSchedule($seasonVersion);
+        $this->em->flush();
+
+        // Gymnase UTILISÉ dans les deux couches (jeu. 20:00, hors de la fenêtre vide).
+        $this->placeSession($club, $season, $seasonVersion, $venue, 3, '20:00');
+        $this->placeSession($club, $season, $periodVersion, $venue, 3, '20:00');
+        $this->disableVenue($club, $season, $planId, $venue); // désactivé POUR LA PÉRIODE seulement
+        $this->em->flush();
+
+        self::assertCount(1, $this->provider->load($seasonVersion)->emptySlots, 'le socle lit SA couche : aucune fermeture, la fenêtre vide reste');
+        self::assertCount(0, $this->provider->load($periodVersion)->emptySlots, 'la période lit SA couche : gymnase désactivé, la fenêtre vide disparaît');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -342,6 +519,102 @@ final class ScheduleExportEmptySlotsTest extends KernelTestCase
     private function uuid(): string
     {
         return \sprintf('%08x-%04x-4%03x-%04x-%012x', random_int(0, 0xFFFFFFFF), random_int(0, 0xFFFF), random_int(0, 0xFFF), random_int(0x8000, 0xBFFF), random_int(0, 0xFFFFFFFFFFFF));
+    }
+
+    /**
+     * Une version de PÉRIODE liée à son plan (comme la prod au POST) : on la crée AVANT tout gymnase,
+     * pour que la copie des créneaux du socle à la naissance du plan ne ramasse rien.
+     *
+     * @return array{0: Schedule, 1: string, 2: CalendarEntry}
+     */
+    private function seedPeriodVersion(Club $club, Season $season, string $start, string $end): array
+    {
+        $entry = new CalendarEntry;
+        $entry->setClubId($club->getId());
+        $entry->setSeasonId($season->getId());
+        $entry->setKind(CalendarEntryKind::PERIOD);
+        $entry->setPeriodType(CalendarEntryPeriodType::HOLIDAY);
+        $entry->setTitle('Période');
+        $entry->setStartDate(new DateTimeImmutable($start));
+        $entry->setEndDate(new DateTimeImmutable($end));
+        $this->em->persist($entry);
+        $this->em->flush();
+
+        $version = new Schedule;
+        $version->setClubId($club->getId());
+        $version->setSeasonId($season->getId());
+        $version->setName('Période V1');
+        $version->setStatus(ScheduleStatus::COMPLETED);
+        $this->linkSeededSchedule($version, $entry->getId());
+        $this->em->flush();
+
+        return [$version, $version->getSchedulePlanId(), $entry];
+    }
+
+    /** Une fenêtre (vide) sur une COUCHE donnée (schedulePlanId null = socle, l'id = période). */
+    private function layerWindow(Club $club, Season $season, Venue $venue, int $day, string $start, ?string $planId): void
+    {
+        $slot = new VenueTrainingSlot;
+        $slot->setClubId($club->getId());
+        $slot->setSeasonId($season->getId());
+        $slot->setSchedulePlanId($planId);
+        $slot->setVenueId($venue->getId());
+        $slot->setDayOfWeek($day);
+        $slot->setStartTime(new DateTimeImmutable($start));
+        $slot->setDurationMinutes(90);
+        $slot->setCapacity(1);
+        $this->em->persist($slot);
+    }
+
+    /** Une séance placée (sur la version) — rend le gymnase « utilisé ». */
+    private function placeSession(Club $club, Season $season, Schedule $version, Venue $venue, int $day, string $start): void
+    {
+        $placed = new ScheduleSlotTemplate;
+        $placed->setClubId($club->getId());
+        $placed->setSeasonId($season->getId());
+        $placed->setScheduleId($version->getId());
+        $placed->setTeamId($this->uuid());
+        $placed->setVenueId($venue->getId());
+        $placed->setDayOfWeek($day);
+        $placed->setStartTime(new DateTimeImmutable($start));
+        $placed->setDurationMinutes(90);
+        $placed->setLockLevel(LockLevel::NONE);
+        $this->em->persist($placed);
+    }
+
+    /** Désactive un gymnase pour le plan (mode DISABLED). */
+    private function disableVenue(Club $club, Season $season, string $planId, Venue $venue): void
+    {
+        $this->em->persist(
+            (new VenuePeriodOverride)
+                ->setClubId($club->getId())->setSeasonId($season->getId())
+                ->setSchedulePlanId($planId)->setVenueId($venue->getId())
+                ->setMode(VenuePeriodMode::DISABLED)->setDayOverrides(null),
+        );
+    }
+
+    /** Rouvre un jour à la main (masque OPEN), sans mode — l'incident redevient informatif ce jour-là. */
+    private function reopenDay(Club $club, Season $season, string $planId, Venue $venue, int $day): void
+    {
+        $this->em->persist(
+            (new VenuePeriodOverride)
+                ->setClubId($club->getId())->setSeasonId($season->getId())
+                ->setSchedulePlanId($planId)->setVenueId($venue->getId())
+                ->setMode(null)->setDayOverrides([$day => 'OPEN']),
+        );
+    }
+
+    /** Une fermeture datée `venue_closed` portée par l'entrée, pour un gymnase. */
+    private function closeVenue(Club $club, Season $season, CalendarEntry $carrier, Venue $venue, string $start, string $end): void
+    {
+        $constraint = (new Constraint)
+            ->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setName('Gym en travaux')
+            ->setScope(ConstraintScope::FACILITY)->setScopeTargetId($venue->getId())
+            ->setFamily(ConstraintFamily::FACILITY)->setRuleType(ConstraintRuleType::HARD)
+            ->setCalendarEntryId($carrier->getId());
+        $constraint->setConfig(['type' => 'venue_closed', 'startDate' => $start, 'endDate' => $end]);
+        $this->em->persist($constraint);
     }
 
     /** @return array{0: Club, 1: Season} */

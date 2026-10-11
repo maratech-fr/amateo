@@ -14,6 +14,7 @@ use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
+use App\Service\PlanVenueClosures;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\VenueWindowOccupancy;
 use Doctrine\ORM\EntityManagerInterface;
@@ -28,6 +29,7 @@ final class ScheduleExportDataProvider
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
+        private readonly PlanVenueClosures $planVenueClosures,
     ) {}
 
     public function load(Schedule $schedule, ?string $venueId = null): ScheduleExportData
@@ -41,6 +43,9 @@ final class ScheduleExportDataProvider
 
         $clubId = $schedule->getClubId();
         $seasonId = $schedule->getSeasonId();
+        // La COUCHE de la version exportée (NULL = socle, l'id du plan = période) : lue UNE fois,
+        // elle borne les créneaux lus et pilote l'exclusion des gymnases fermés (lot B).
+        $layer = $this->slotLayerOf($schedule);
 
         $categoryNames = [];
         foreach ($this->entityManager->getRepository(SportCategory::class)->findBy(['clubId' => $clubId]) as $category) {
@@ -113,7 +118,7 @@ final class ScheduleExportDataProvider
         // « filled » + « used » pour qu'ils ne retombent pas en case « vide », et on les rend à
         // l'export comme cases occupées. La case d'un créneau libre a perdu sa place au payload, donc
         // aucune séance n'y est jamais placée — c'est bien un occupant nommé, pas un trou.
-        $freeSlotCriteria = ['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $this->slotLayerOf($schedule), 'teamId' => null];
+        $freeSlotCriteria = ['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $layer, 'teamId' => null];
         if (null !== $venueId) {
             $freeSlotCriteria['venueId'] = $venueId;
         }
@@ -135,10 +140,27 @@ final class ScheduleExportDataProvider
         // l'export d'un planning quelconque affichait chaque créneau vide quatre fois.
         // Un plan de saison lit les créneaux du socle (schedulePlanId NULL), une période
         // les siens — exactement la règle que suit le payload envoyé à l'engine.
-        $trainingCriteria = ['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $this->slotLayerOf($schedule)];
+        $trainingCriteria = ['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $layer];
         if (null !== $venueId) {
             $trainingCriteria['venueId'] = $venueId;
         }
+
+        // Lot B — à l'export d'ENSEMBLE d'une période, un gymnase DÉSACTIVÉ ou effectivement
+        // FERMÉ-TOTAL pour ce plan n'offre plus rien à placer : ses fenêtres VIDES disparaissent de
+        // la grille, comme un gymnase jamais utilisé (#1142). Les séances déjà placées dessus restent
+        // (`$slots`) — l'export ne nie jamais ce qui existe. L'état effectif vient de la MAISON UNIQUE
+        // `PlanVenueClosures` (incident COMPOSÉ avec les réglages du plan) : un jour simplement rouvert
+        // à la main (masque OPEN) ne rend pas le gymnase fermé-total, ses vides subsistent donc.
+        // ⚠ L'écran, lui, n'écarte à ce jour que les gymnases DÉSACTIVÉS
+        // (`CalendarEntryConflictsController`) — l'export est donc un peu plus juste (il tient compte
+        // du fermé-total effectif). Le socle (layer NULL) n'a pas de fermeture datée et le mono-gymnase
+        // (`$venueId`) garde sa grille entière : dans ces deux cas l'ensemble reste vide.
+        $hiddenVenueIds = [];
+        if (null === $venueId && null !== $layer) {
+            $state = $this->planVenueClosures->effectiveStateForPlan($layer);
+            $hiddenVenueIds = $state['disabledVenueIds'] + $state['fullyClosedVenueIds'];
+        }
+
         $emptySlots = [];
         // "venue|day|H:i" → group label ("CEC3"), read from the SAME layer's windows. A window's
         // identity (that key) is what a placement shares with its window, so the export can title a
@@ -154,6 +176,12 @@ final class ScheduleExportDataProvider
             // ses fenêtres vides ne créent ni colonne (PDF) ni ligne « (vide) » (Excel). Sur un
             // export mono-gymnase (`$venueId`), on garde toute sa grille, vides compris.
             if (null === $venueId && !isset($usedVenues[$window->getVenueId()])) {
+                continue;
+            }
+            // Lot B — gymnase désactivé / effectivement fermé-total pour ce plan : ses fenêtres vides
+            // ne paraissent pas à l'export d'ensemble (les séances placées, elles, restent via `$slots`).
+            // `$hiddenVenueIds` est déjà vide hors de l'export d'ensemble d'une période.
+            if (isset($hiddenVenueIds[$window->getVenueId()])) {
                 continue;
             }
             // Vide = ni occupée par une réservation à l'identique (`$filled`, clé exacte) NI chevauchée

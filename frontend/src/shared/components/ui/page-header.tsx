@@ -19,9 +19,11 @@ interface PageHeaderProps {
   /** Sous-titre optionnel, sous le titre (aligné sous le trait). */
   subtitle?: ReactNode;
   /**
-   * Masque la porte « Signaler ». Défaut : visible. À poser à `false` seulement là où le
-   * signalement n'a pas de sens — page publique consultée DÉCONNECTÉE (le POST /feedback exige
-   * une session).
+   * Masque la porte « Signaler ». Défaut : visible. À poser à `false` seulement dans deux cas
+   * LÉGITIMES : (1) une page publique consultée DÉCONNECTÉE (le POST /feedback exige une session —
+   * `PrivacyPage`) ; (2) un en-tête rendu À L'INTÉRIEUR d'un autre en-tête qui porte déjà « Signaler »,
+   * pour ne pas le doubler — `PlanningPage` embarqué dans le wizard (lot B), dont l'en-tête du wizard
+   * tient déjà la porte. Toute autre valeur `false` rougit `pageHeaderGuard.test.ts`.
    */
   showFeedback?: boolean;
   className?: string;
