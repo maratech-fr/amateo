@@ -11,6 +11,8 @@ import {
   useCategories,
   useCoaches,
   useDeleteSchedule,
+  useDeleteSlot,
+  useDeleteSlotGroup,
   useDiagnostics,
   useFillSchedule,
   useGenerate,
@@ -74,6 +76,8 @@ vi.mock("./api", async (importOriginal) => {
     moveSlot: vi.fn().mockResolvedValue({ valid: true, compromises: [] }),
     moveGroup: vi.fn().mockResolvedValue({ valid: true, compromises: [], movedSlotIds: [] }),
     placeSlot: vi.fn().mockResolvedValue({ valid: true, compromises: [] }),
+    removeSlot: vi.fn().mockResolvedValue({ removed: { slotId: "s1", teamId: "team-A", dayOfWeek: 2, startTime: "18:00", venueId: "v1", durationMinutes: 90 }, lockLevel: "NONE", unmetPresence: [] }),
+    removeSlotGroup: vi.fn().mockResolvedValue({ removedSlotIds: ["s1", "s2"], removed: [], unmetPresence: [] }),
     generateSchedule: vi.fn().mockResolvedValue({}),
     validateSchedule: vi.fn().mockResolvedValue({}),
     reopenSchedule: vi.fn().mockResolvedValue({}),
@@ -275,6 +279,82 @@ describe("planning queries — useMoveDryRun : un essai n'invalide rien", () => 
     expect(planningApi.moveSlot).toHaveBeenCalledWith("s1", { dryRun: true }, expect.anything());
     await new Promise((r) => setTimeout(r, 40));
     expect(planningApi.getSlots).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3bis. EFFET RÉEL — F4 « vider un créneau » : un retrait RÉEL rafraîchit le paquet
+//    (`invalidateMovePacket`, les 4 lecteurs), mais un ESSAI (dryRun) n'invalide RIEN.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("planning queries — retrait de séance (F4) : réel rafraîchit, essai n'invalide rien", () => {
+  it("useDeleteSlot (retrait RÉEL) → slots, schedules, diagnostics ET socle-deviation refetchent", async () => {
+    const client = makeClient();
+    const { result } = renderHook(
+      () => ({
+        slots: useSlots(SID),
+        schedules: useSchedules(),
+        diagnostics: useDiagnostics(SID),
+        deviation: useSocleDeviation(SID),
+        remove: useDeleteSlot(),
+      }),
+      { wrapper: wrapperFor(client) },
+    );
+
+    await waitFor(() => expect(result.current.slots.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.schedules.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.diagnostics.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.deviation.isSuccess).toBe(true));
+
+    result.current.remove.mutate({ id: "s1" });
+
+    await waitFor(() => expect(result.current.remove.isSuccess).toBe(true));
+    await waitFor(() => expect(planningApi.getSlots).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(planningApi.listSchedules).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(planningApi.getDiagnostics).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(planningApi.getSocleDeviation).toHaveBeenCalledTimes(2));
+  });
+
+  it("useDeleteSlot en dryRun (essai) → la grille NE refetche PAS (aucune écriture)", async () => {
+    vi.mocked(planningApi.removeSlot).mockResolvedValueOnce({ removed: { slotId: "s1", teamId: "team-A", dayOfWeek: 2, startTime: "18:00", venueId: "v1", durationMinutes: 90 }, lockLevel: "NONE", unmetPresence: [], dryRun: true });
+    const client = makeClient();
+    const { result } = renderHook(() => ({ slots: useSlots(SID), remove: useDeleteSlot() }), { wrapper: wrapperFor(client) });
+
+    await waitFor(() => expect(result.current.slots.isSuccess).toBe(true));
+    expect(planningApi.getSlots).toHaveBeenCalledTimes(1);
+
+    result.current.remove.mutate({ id: "s1", dryRun: true });
+
+    await waitFor(() => expect(result.current.remove.isSuccess).toBe(true));
+    await new Promise((r) => setTimeout(r, 40));
+    expect(planningApi.getSlots).toHaveBeenCalledTimes(1);
+  });
+
+  it("useDeleteSlotGroup (retrait RÉEL) → même paquet (les 4 lecteurs refetchent)", async () => {
+    const client = makeClient();
+    const { result } = renderHook(
+      () => ({
+        slots: useSlots(SID),
+        schedules: useSchedules(),
+        diagnostics: useDiagnostics(SID),
+        deviation: useSocleDeviation(SID),
+        removeGroup: useDeleteSlotGroup(),
+      }),
+      { wrapper: wrapperFor(client) },
+    );
+
+    await waitFor(() => expect(result.current.slots.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.schedules.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.diagnostics.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.deviation.isSuccess).toBe(true));
+
+    result.current.removeGroup.mutate({ scheduleId: SID, blockId: "b1", source: { venueId: "v1", dayOfWeek: 2, startTime: "18:00" } });
+
+    await waitFor(() => expect(result.current.removeGroup.isSuccess).toBe(true));
+    await waitFor(() => expect(planningApi.getSlots).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(planningApi.listSchedules).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(planningApi.getDiagnostics).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(planningApi.getSocleDeviation).toHaveBeenCalledTimes(2));
   });
 });
 

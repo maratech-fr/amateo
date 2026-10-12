@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "@/shared/api/client";
 
-import { GenerationInProgressError, MoveRejectedError, moveSlot, placeSlot, SlotEditError, TargetLockedError } from "./api";
+import { GenerationInProgressError, MoveRejectedError, moveSlot, placeSlot, removeSlot, removeSlotGroup, SlotEditError, TargetLockedError } from "./api";
 
 // F2b — le déplacement passe désormais par POST /move (verdict moteur), plus par
 // manual-edit/one-time (chevauchements bruts). Ce test garde le CHEMIN d'appel et la
@@ -187,5 +187,59 @@ describe("dry-run — essai sans écriture (P2-32)", () => {
     expect(mockPost.mock.calls[0][1]).toMatchObject({ json: { dryRun: true } });
     expect(result.dryRun).toBe(true);
     expect(result.compromises).toHaveLength(1);
+  });
+});
+
+// F4 — « Vider un créneau » : les rails remove / remove-group N'APPELLENT PAS le moteur. On garde
+// le CHEMIN d'appel (corps, dryRun) et la traduction des refus que l'UI sait montrer.
+describe("removeSlot / removeSlotGroup — retrait d'une séance placée (F4)", () => {
+  afterEach(() => mockPost.mockReset());
+
+  it("removeSlot poste {} (retrait réel) sur le rail /remove et rend removed + lockLevel + unmetPresence", async () => {
+    const body = { removed: { slotId: "s1", teamId: "team-A", dayOfWeek: 2, startTime: "18:00", venueId: "v1", durationMinutes: 90 }, lockLevel: "NONE", unmetPresence: [] };
+    mockPost.mockReturnValueOnce({ json: async () => body } as never);
+
+    const result = await removeSlot("s1");
+    expect(mockPost).toHaveBeenCalledWith("schedule-slots/s1/remove", { json: {} });
+    expect(result.removed.teamId).toBe("team-A");
+    expect(result.lockLevel).toBe("NONE");
+    expect(result.unmetPresence).toEqual([]);
+  });
+
+  it("removeSlot en dryRun poste {dryRun:true} et rend les conséquences nommées (verrou + présence)", async () => {
+    const body = {
+      removed: { slotId: "s1", teamId: "team-A", dayOfWeek: 2, startTime: "18:00", venueId: "v1", durationMinutes: 90 },
+      lockLevel: "HARD",
+      unmetPresence: [{ family: "SEASON_SLOTS", teamId: "team-A", message: "U11 : la demande « garder les créneaux de saison » n'est plus honorée." }],
+      dryRun: true,
+    };
+    mockPost.mockReturnValueOnce({ json: async () => body } as never);
+
+    const result = await removeSlot("s1", { dryRun: true });
+    expect(mockPost).toHaveBeenCalledWith("schedule-slots/s1/remove", { json: { dryRun: true } });
+    expect(result.dryRun).toBe(true);
+    expect(result.lockLevel).toBe("HARD");
+    expect(result.unmetPresence[0].message).toContain("garder les créneaux de saison");
+  });
+
+  it("removeSlot : une génération en cours (409) devient GenerationInProgressError", async () => {
+    mockPost.mockReturnValue({ json: () => Promise.reject(httpError(409, { code: "generation_in_progress" })) } as never);
+    await expect(removeSlot("s1")).rejects.toBeInstanceOf(GenerationInProgressError);
+  });
+
+  it("removeSlotGroup poste le corps (scheduleId/blockId/source) et rend removedSlotIds", async () => {
+    const source = { venueId: "v1", dayOfWeek: 2, startTime: "18:00" };
+    mockPost.mockReturnValueOnce({ json: async () => ({ removedSlotIds: ["s1", "s2"], removed: [], unmetPresence: [] }) } as never);
+
+    const result = await removeSlotGroup({ scheduleId: "sch1", blockId: "b1", source });
+    expect(mockPost).toHaveBeenCalledWith("schedule-slots/remove-group", { json: { scheduleId: "sch1", blockId: "b1", source } });
+    expect(result.removedSlotIds).toEqual(["s1", "s2"]);
+  });
+
+  it("removeSlotGroup : aucune séance de groupe à la case (422 slot_unavailable) → SlotEditError", async () => {
+    mockPost.mockReturnValue({ json: () => Promise.reject(httpError(422, { code: "slot_unavailable", error: "Aucune séance de groupe à retirer à cet horaire." })) } as never);
+    const caught = await removeSlotGroup({ scheduleId: "sch1", blockId: "b1", source: { venueId: "v1", dayOfWeek: 5, startTime: "20:00" } }).catch((e: unknown) => e);
+    expect(caught).toBeInstanceOf(SlotEditError);
+    expect((caught as SlotEditError).code).toBe("slot_unavailable");
   });
 });

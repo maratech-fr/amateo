@@ -82,6 +82,8 @@ function renderDetail(
     cell?: Partial<ReturnType<typeof cell>>;
     armed?: boolean;
     onArmMove?: () => void;
+    onRemove?: () => void;
+    removePending?: boolean;
     groupSession?: { memberCount: number } | null;
     readOnly?: boolean;
     isPeriodPlan?: boolean;
@@ -111,9 +113,11 @@ function renderDetail(
       inBlock={over.inBlock}
       blockLabel={over.blockLabel}
       viaMutualisation={over.viaMutualisation}
+      removePending={over.removePending}
       onClose={vi.fn()}
       onToggleLock={vi.fn()}
       onArmMove={over.onArmMove ?? vi.fn()}
+      onRemove={over.onRemove ?? vi.fn()}
       onMutualize={null === over.onMutualize ? undefined : (over.onMutualize ?? vi.fn())}
     />,
   );
@@ -396,6 +400,38 @@ describe("SlotDetail — déplacer le GROUPE de mutualisation (P2-51 PR-6, D11)"
     renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null } });
     expect(screen.getByRole("button", { name: "Déplacer" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Déplacer le groupe/ })).toBeNull();
+  });
+});
+
+describe("SlotDetail — retirer une séance placée (F4)", () => {
+  it("offre « Retirer » (icône + TEXTE) et appelle onRemove au clic", async () => {
+    const onRemove = vi.fn();
+    renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null }, onRemove });
+    const btn = screen.getByRole("button", { name: "Retirer" });
+    await userEvent.click(btn);
+    expect(onRemove).toHaveBeenCalledTimes(1);
+  });
+
+  it("sur une séance de bloc, le bouton devient « Retirer le groupe » et annonce les N équipes", () => {
+    renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null }, groupSession: { memberCount: 3 } });
+    expect(screen.getByRole("button", { name: "Retirer le groupe" })).toBeInTheDocument();
+    expect(screen.getByText(/Retire les 3 équipes du groupe/)).toBeInTheDocument();
+  });
+
+  it("tourne pendant l'essai/retrait (removePending) et se désactive", () => {
+    renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null }, removePending: true });
+    // Le bouton porte « Vérification… » le temps de l'essai (dryRun) ou du retrait réel.
+    expect(screen.getByText(/Vérification/i)).toBeInTheDocument();
+  });
+
+  it("masque « Retirer » pendant le ciblage d'un déplacement (geste concurrent)", () => {
+    renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null }, armed: true });
+    expect(screen.queryByRole("button", { name: /Retirer/ })).toBeNull();
+  });
+
+  it("est masqué (comme Déplacer/Verrouiller) sur un planning en lecture seule", () => {
+    renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null }, readOnly: true });
+    expect(screen.queryByRole("button", { name: /Retirer/ })).toBeNull();
   });
 });
 

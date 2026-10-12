@@ -346,6 +346,42 @@ export function useMoveGroup() {
   });
 }
 
+/**
+ * « Vider un créneau » — RETIRER une séance placée (geste F4). SANS verdict moteur. Préfixe
+ * `useDelete…` (norme N2, couvert par `deleteConfirmGuard` quand consommé dans un `.tsx`) : le
+ * ConfirmDialog OBLIGATOIRE vit côté page, alimenté par un essai `dryRun` (zéro écriture). Un essai
+ * (`dryRun`) N'INVALIDE RIEN (rien n'a bougé) ; un retrait RÉEL rafraîchit le paquet (slots,
+ * schedules, diagnostics, socle-deviation : la grille, le marqueur « retouché », la dérive). Le
+ * feedback vit UNE fois AU NIVEAU HOOK (FRT-38, patron `useMoveSlot`) : il TAIT les erreurs métier
+ * (génération en cours — la page montre le bandeau « bloqué ») et ne toaste qu'un vrai transport.
+ */
+export function useDeleteSlot() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, dryRun }: { id: string; dryRun?: boolean }) => planningApi.removeSlot(id, { dryRun }),
+    onSuccess: (result) => {
+      if (true !== result.dryRun) {
+        invalidateMovePacket(queryClient);
+      }
+    },
+    onError: (error) => ownSlotEditFeedback(error),
+  });
+}
+
+/** Idem {@link useDeleteSlot} pour une séance de GROUPE entière (tout-ou-rien, le bloc survit). */
+export function useDeleteSlotGroup() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: planningApi.RemoveSlotGroupBody) => planningApi.removeSlotGroup(body),
+    onSuccess: (result) => {
+      if (true !== result.dryRun) {
+        invalidateMovePacket(queryClient);
+      }
+    },
+    onError: (error) => ownSlotEditFeedback(error),
+  });
+}
+
 export function useGenerate() {
   const queryClient = useQueryClient();
   return useMutation({

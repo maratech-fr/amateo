@@ -492,14 +492,15 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // `slots`, `closedWindows`, `gridSlots`. Il retourne états, setters et handlers sous leurs noms
   // actuels, pour que le JSX reste intact.
   const {
-    targetMode, evictDialog, compromiseNotice, undo, evictionNotice,
-    setEvictDialog, setEvictionNotice, setCompromiseNotice,
-    moveState, moveGroupState, gridTargetMode,
+    targetMode, evictDialog, compromiseNotice, undo, evictionNotice, removeConfirm, presenceNotice,
+    setEvictDialog, setEvictionNotice, setCompromiseNotice, setPresenceNotice,
+    moveState, moveGroupState, removeState, removePending, gridTargetMode,
     armMove, armMoveGroup, armPlace, cancelTarget, onPickTarget, runUndo, placeEvictedShortcut, confirmEvict, retryEvictDryRun,
+    requestRemoveSlot, requestRemoveGroup, confirmRemove, cancelRemove,
     moveMutation, dryRunMutation, placeMutation,
   } = useRetouchGestures(slots, validScheduleId, selectedSlotId, viewMode, isReadOnly, isFailed, closuresResolved, closedWindows, gridSlots, driftEntries, teamNameOf, setSelectedSlotId, highlightViolations, clearHighlight);
   // `busy` DESCEND ici (P4-255 PR 2) : il lit les mutations retournées par le hook, plus le verrou.
-  const busy = lockMutation.isPending || moveMutation.isPending || dryRunMutation.isPending || placeMutation.isPending;
+  const busy = lockMutation.isPending || moveMutation.isPending || dryRunMutation.isPending || placeMutation.isPending || removePending;
 
   // Les séances de cette version que la période ne servirait plus : elles restent à
   // l'écran (et dans l'export), mais le gestionnaire doit savoir qu'elles sont périmées.
@@ -1001,6 +1002,28 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
             </NoticeBanner>
           ) : null}
 
+          {/* F4 — après un retrait, les présences « garder ses créneaux de saison » que le trou
+              n'honore plus : message composé CÔTÉ SERVEUR, affiché VERBATIM (jamais redérivé). */}
+          {null !== presenceNotice ? (
+            <NoticeBanner tone="warning" role="status" className="mb-4">
+              <div className="flex items-start gap-3">
+                <ul className="flex min-w-0 flex-col gap-1 text-foreground">
+                  {presenceNotice.map((p) => (
+                    <li key={p.teamId}>{p.message}</li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  onClick={() => setPresenceNotice(null)}
+                  aria-label="Ignorer"
+                  className="ml-auto shrink-0 rounded p-1 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+            </NoticeBanner>
+          ) : null}
+
           {/* Ce planning a été généré quand un gymnase servait encore la période : ses
               séances restent affichées ET exportées, mais elles ne décrivent plus la
               période telle qu'elle est réglée. On le dit plutôt que de les escamoter. */}
@@ -1209,8 +1232,10 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                           }}
                           busy={busy}
                           // P2-51 PR-6 : sur une séance de bloc, le panneau montre l'état du geste
-                          // de GROUPE (verdict move-group), sinon celui du déplacement simple.
-                          moveState={null !== selectedSlotBlock ? moveGroupState : moveState}
+                          // de GROUPE (verdict move-group), sinon celui du déplacement simple. F4 :
+                          // un retrait bloqué par une génération en cours réutilise le MÊME bandeau
+                          // « bloqué » (removeState a priorité le temps du blocage).
+                          moveState={"blocked" === removeState.status ? removeState : null !== selectedSlotBlock ? moveGroupState : moveState}
                           // Un pseudo-créneau de réservation (planning FAILED) n'existe pas
                           // côté serveur : déplacer/verrouiller le viserait dans le vide.
                           readOnly={isReadOnly || isFailed}
@@ -1232,6 +1257,15 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                             null !== selectedSlotBlock
                               ? armMoveGroup(selectedSlot.id, selectedSlotBlock.id, { venueId: selectedSlot.venueId, dayOfWeek: selectedSlot.dayOfWeek, startTime: selectedSlot.startTime })
                               : armMove(selectedSlot.id)
+                          }
+                          // F4 — « Retirer » / « Retirer le groupe » : lance l'essai (dryRun) qui
+                          // alimente le ConfirmDialog obligatoire. Sur une séance de bloc, c'est tout
+                          // le groupe (case source = celle du créneau).
+                          removePending={removePending}
+                          onRemove={() =>
+                            null !== selectedSlotBlock
+                              ? requestRemoveGroup(selectedSlotBlock.id, { venueId: selectedSlot.venueId, dayOfWeek: selectedSlot.dayOfWeek, startTime: selectedSlot.startTime }, selectedSlotBlock.teamIds.length)
+                              : requestRemoveSlot(selectedSlot.id)
                           }
                           // Lot 9 — « Mutualiser… » (plan de période uniquement). Désactivé AVEC motif
                           // si la séance est déjà en groupe ; nom du bloc + pastille « via mutualisation »
@@ -1314,6 +1348,44 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
         onConfirm={confirmEvict}
         onRetry={retryEvictDryRun}
         onClose={() => setEvictDialog(null)}
+      />
+
+      {/* F4 — « Vider un créneau » : ConfirmDialog OBLIGATOIRE, alimenté par l'essai (dryRun) qui a
+          NOMMÉ les conséquences. Le texte dit la/les séance(s) à replacer, le verrou perdu si la
+          séance était verrouillée, les N équipes d'un groupe et, verbatim, les présences de saison
+          que le retrait n'honore plus. Confirmer lance le geste RÉEL. */}
+      <ConfirmDialog
+        open={null !== removeConfirm}
+        destructive
+        title={null !== removeConfirm && "group" === removeConfirm.kind ? "Retirer le groupe ?" : "Retirer cette séance ?"}
+        confirmLabel={null !== removeConfirm && "group" === removeConfirm.kind ? "Retirer le groupe" : "Retirer"}
+        confirmDisabled={busy}
+        description={
+          null === removeConfirm ? null : "slot" === removeConfirm.kind ? (
+            <div className="flex flex-col gap-2">
+              <p>
+                Retirer <span className="font-medium text-foreground">{teamNameOf(removeConfirm.removed.teamId)}</span> de{" "}
+                {DAY_ABBR.get(removeConfirm.removed.dayOfWeek) ?? "?"} {removeConfirm.removed.startTime} ? Cette séance sera à replacer.
+              </p>
+              {"HARD" === removeConfirm.lockLevel ? <p>Elle est verrouillée — le verrou sera perdu.</p> : null}
+              {removeConfirm.unmetPresence.map((p) => (
+                <p key={p.teamId}>{p.message}</p>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <p>
+                Retirer le groupe ({removeConfirm.memberCount} équipe{removeConfirm.memberCount > 1 ? "s" : ""}) ? Les séances du groupe seront à replacer.
+              </p>
+              <p>Retire les {removeConfirm.memberCount} équipes du groupe.</p>
+              {removeConfirm.unmetPresence.map((p) => (
+                <p key={p.teamId}>{p.message}</p>
+              ))}
+            </div>
+          )
+        }
+        onConfirm={confirmRemove}
+        onCancel={cancelRemove}
       />
 
       <ConfirmDialog

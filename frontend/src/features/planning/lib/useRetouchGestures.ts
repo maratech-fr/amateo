@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 
-import { type Compromise, EngineTimeoutError, EngineVerificationInterruptedError, type EvictedSlot, GenerationInProgressError, type MoveViolation, MoveRejectedError, type Slot, SlotEditError, TargetLockedError, VerdictAbandonedError } from "../api";
+import { type Compromise, EngineTimeoutError, EngineVerificationInterruptedError, type EvictedSlot, GenerationInProgressError, type LockLevel, type MoveViolation, MoveRejectedError, type RemovedSession, type Slot, SlotEditError, TargetLockedError, type UnmetPresence, VerdictAbandonedError } from "../api";
 import type { EvictFailureKind } from "../EvictConfirmDialog";
 import type { MoveFeedback } from "../SlotDetail";
 import type { ViewMode } from "../store";
 import { toast } from "@/shared/stores/toastStore";
-import { useMoveDryRun, useMoveGroup, useMoveSlot, usePlaceSlot } from "../queries";
+import { useDeleteSlot, useDeleteSlotGroup, useMoveDryRun, useMoveGroup, useMoveSlot, usePlaceSlot } from "../queries";
 import type { DriftEntry } from "./drift";
 import { isEmptySlotId } from "./emptySlots";
 import { toHourMinute } from "./grid";
@@ -84,11 +84,26 @@ export function useRetouchGestures(
   // Raccourci d'éviction : proposer de REMETTRE l'évincée sur la case que la source vient de
   // libérer (position + équipe évincée). Effacé après usage / nouveau geste / changement de version.
   const [evictionNotice, setEvictionNotice] = useState<{ evicted: EvictedSlot; freed: { dayOfWeek: number; startTime: string; venueId: string } } | null>(null);
+  // « Vider un créneau » (geste F4) — le ConfirmDialog OBLIGATOIRE, alimenté par un essai (dryRun)
+  // qui NOMME les conséquences SANS rien écrire : la séance qui part (`removed`), le verrou perdu
+  // (`lockLevel`), les présences SEASON_SLOTS que le retrait n'honore plus (`unmetPresence`). Null =
+  // pas de confirmation en attente. Le groupe porte en plus le nombre d'équipes et la case source.
+  const [removeConfirm, setRemoveConfirm] = useState<
+    | { kind: "slot"; slotId: string; removed: RemovedSession; lockLevel: LockLevel; unmetPresence: UnmetPresence[] }
+    | { kind: "group"; blockId: string; source: { venueId: string; dayOfWeek: number; startTime: string }; memberCount: number; unmetPresence: UnmetPresence[] }
+    | null
+  >(null);
+  // Les présences SEASON_SLOTS non honorées par le DERNIER retrait écrit, affichées VERBATIM (jamais
+  // redérivées — FrontRederivationRegistryTest). Null = aucune. Purgées au geste suivant / changement
+  // de version / fermeture du bandeau.
+  const [presenceNotice, setPresenceNotice] = useState<UnmetPresence[] | null>(null);
 
   const moveMutation = useMoveSlot();
   const moveGroupMutation = useMoveGroup();
   const dryRunMutation = useMoveDryRun();
   const placeMutation = usePlaceSlot();
+  const removeMutation = useDeleteSlot();
+  const removeGroupMutation = useDeleteSlotGroup();
 
   // F2b — le retour du dernier déplacement, dérivé de la mutation (verdict moteur). Un refus
   // (422) arrive en MoveRejectedError avec ses motifs ; une génération en cours en
@@ -135,12 +150,25 @@ export function useRetouchGestures(
                 ? { status: "indeterminate" }
                 : { status: "idle" };
 
-  // Changer de créneau sélectionné efface le verdict du précédent — sinon un refus resterait
-  // affiché sous un autre créneau.
+  // F4 — l'état du RETRAIT pour le panneau : un essai/retrait en vol (spinner du bouton) et, sur une
+  // génération en cours (409), le bandeau NEUTRE « bloqué » réutilisé (même message que le move). Un
+  // retrait n'a pas d'autre verdict (pas d'appel moteur) : ni refus ni compromis.
+  const removePending = removeMutation.isPending || removeGroupMutation.isPending;
+  const removeState: MoveFeedback =
+    removeMutation.error instanceof GenerationInProgressError || removeGroupMutation.error instanceof GenerationInProgressError
+      ? { status: "blocked" }
+      : { status: "idle" };
+  const removeReset = removeMutation.reset;
+  const removeGroupReset = removeGroupMutation.reset;
+
+  // Changer de créneau sélectionné efface le verdict du précédent — sinon un refus (ou le bandeau
+  // « bloqué » d'un retrait) resterait affiché sous un autre créneau.
   useEffect(() => {
     moveReset();
     moveGroupReset();
-  }, [selectedSlotId, moveReset, moveGroupReset]);
+    removeReset();
+    removeGroupReset();
+  }, [selectedSlotId, moveReset, moveGroupReset, removeReset, removeGroupReset]);
 
   // Un déplacement REFUSÉ surligne le créneau de l'équipe EN CONFLIT (le moteur l'a nommée) —
   // présentation pure, on retrouve juste où elle siège dans le cache affiché. Ajustement en
@@ -171,6 +199,8 @@ export function useRetouchGestures(
     setEvictionNotice(null);
     setEvictDialog(null);
     setCompromiseNotice(null);
+    setRemoveConfirm(null);
+    setPresenceNotice(null);
   }
 
   // P4-119 (d) — l'armement d'un geste cible SUIT son ancre et tombe dès qu'elle disparaît, sinon
@@ -602,17 +632,117 @@ export function useRetouchGestures(
     );
   };
 
+  // F4 — « Retirer » ouvre un ESSAI (dryRun) qui NOMME les conséquences SANS écrire ; son succès
+  // arme le ConfirmDialog OBLIGATOIRE. Une génération en cours (409) ⇒ `removeState` « bloqué »
+  // (feedback au hook) et aucune confirmation. Le geste RÉEL part de `confirmRemove()`.
+  const requestRemoveSlot = (slotId: string) => {
+    removeMutation.mutate(
+      { id: slotId, dryRun: true },
+      {
+        onSuccess: (result) => {
+          if (true === result.dryRun) {
+            setRemoveConfirm({ kind: "slot", slotId, removed: result.removed, lockLevel: result.lockLevel, unmetPresence: result.unmetPresence });
+          }
+        },
+        onError: () => {}, // « bloqué » dérivé de removeState ; un vrai transport est toasté au hook
+      },
+    );
+  };
+
+  const requestRemoveGroup = (blockId: string, source: { venueId: string; dayOfWeek: number; startTime: string }, memberCount: number) => {
+    if (null === validScheduleId) {
+      return;
+    }
+    const resolvedSource = { venueId: source.venueId, dayOfWeek: source.dayOfWeek, startTime: toHourMinute(source.startTime) };
+    removeGroupMutation.mutate(
+      { scheduleId: validScheduleId, blockId, source: resolvedSource, dryRun: true },
+      {
+        onSuccess: (result) => {
+          if (true === result.dryRun) {
+            setRemoveConfirm({ kind: "group", blockId, source: resolvedSource, memberCount, unmetPresence: result.unmetPresence });
+          }
+        },
+        onError: () => {},
+      },
+    );
+  };
+
+  // Confirmer le retrait (geste RÉEL, sans dryRun). Séance seule : réutilise le bandeau d'éviction
+  // (« à replacer » + un-clic « Remettre » via `placeEvictedShortcut`, qui repose sous le verdict
+  // moteur). Groupe : pas de un-clic (le trou se lit dans la dérive). Les présences non honorées
+  // s'affichent verbatim dans les deux cas. Le panneau du créneau se ferme (sa séance a disparu).
+  const confirmRemove = () => {
+    if (null === removeConfirm) {
+      return;
+    }
+    if (removeConfirm.kind === "slot") {
+      const { slotId } = removeConfirm;
+      removeMutation.mutate(
+        { id: slotId },
+        {
+          onSuccess: (result) => {
+            if (true === result.dryRun) {
+              return; // garde-fou : un retrait réel ne porte jamais dryRun
+            }
+            setRemoveConfirm(null);
+            setSelectedSlotId(null);
+            setUndo(null);
+            setCompromiseNotice(null);
+            setEvictionNotice({ evicted: result.removed, freed: { dayOfWeek: result.removed.dayOfWeek, startTime: result.removed.startTime, venueId: result.removed.venueId } });
+            setPresenceNotice(result.unmetPresence.length > 0 ? result.unmetPresence : null);
+            toast.success(`${teamNameOf(result.removed.teamId)} retirée — à replacer.`);
+          },
+          onError: () => setRemoveConfirm(null), // « bloqué » reste affiché par removeState ; transport toasté au hook
+        },
+      );
+      return;
+    }
+    if (null === validScheduleId) {
+      return;
+    }
+    const { blockId, source } = removeConfirm;
+    removeGroupMutation.mutate(
+      { scheduleId: validScheduleId, blockId, source },
+      {
+        onSuccess: (result) => {
+          if (true === result.dryRun) {
+            return;
+          }
+          setRemoveConfirm(null);
+          setSelectedSlotId(null);
+          setUndo(null);
+          setCompromiseNotice(null);
+          setEvictionNotice(null); // groupe : pas de un-clic (décision fondateur)
+          setPresenceNotice(result.unmetPresence.length > 0 ? result.unmetPresence : null);
+          toast.success(`Groupe retiré — ${result.removedSlotIds.length} séances à replacer.`);
+        },
+        onError: () => setRemoveConfirm(null),
+      },
+    );
+  };
+
+  const cancelRemove = () => {
+    setRemoveConfirm(null);
+    removeMutation.reset();
+    removeGroupMutation.reset();
+  };
+
   return {
     targetMode,
     evictDialog,
     compromiseNotice,
     undo,
     evictionNotice,
+    removeConfirm,
+    presenceNotice,
     setEvictDialog,
     setEvictionNotice,
     setCompromiseNotice,
+    setPresenceNotice,
     moveState,
     moveGroupState,
+    removeState,
+    removePending,
     gridTargetMode,
     armMove,
     armMoveGroup,
@@ -623,8 +753,14 @@ export function useRetouchGestures(
     placeEvictedShortcut,
     confirmEvict,
     retryEvictDryRun,
+    requestRemoveSlot,
+    requestRemoveGroup,
+    confirmRemove,
+    cancelRemove,
     moveMutation,
     dryRunMutation,
     placeMutation,
+    removeMutation,
+    removeGroupMutation,
   };
 }
