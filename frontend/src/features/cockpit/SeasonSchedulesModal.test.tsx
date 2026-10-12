@@ -20,6 +20,11 @@ const DEFAULT_PLANS = [
 ];
 let plansMock: { id: string; type?: string; name?: string; calendarEntryId: string | null; chosenScheduleId: string | null }[] = DEFAULT_PLANS;
 let seasonIsReadonly = false;
+// Entrées de calendrier servies par useCalendarEntries(saison) — la modale les interroge pour la
+// LIGNE DE DATES (fenêtre de chaque plan de période), y compris les périodes PASSÉES.
+let calendarEntriesMock: { id: string; startDate: string; endDate: string }[] = [];
+let calendarEntriesError = false;
+const calendarEntriesRefetch = vi.fn();
 
 vi.mock("@/features/planning/store", () => ({ usePlanningStore: (sel: (s: unknown) => unknown) => sel({ setSelectedScheduleId }) }));
 vi.mock("@/features/wizard/store", () => ({ useWizardStore: { getState: () => ({ jumpTo, startPeriodMode, exitPeriodMode }) } }));
@@ -32,6 +37,7 @@ vi.mock("./queries", () => ({
   useSchedulePlans: () => ({ data: plansMock }),
   useDeleteEntry: () => ({ mutate: vi.fn(), isPending: false }),
   useSchedulePlanForEntry: () => ({ data: undefined }),
+  useCalendarEntries: () => ({ data: calendarEntriesError ? undefined : calendarEntriesMock, isError: calendarEntriesError, refetch: calendarEntriesRefetch }),
 }));
 vi.mock("react-router", async (orig) => ({ ...(await orig<typeof import("react-router")>()), useNavigate: () => navigate }));
 
@@ -47,6 +53,9 @@ beforeEach(() => {
   run.mockClear();
   plansMock = DEFAULT_PLANS;
   seasonIsReadonly = false;
+  calendarEntriesMock = [];
+  calendarEntriesError = false;
+  calendarEntriesRefetch.mockClear();
 });
 
 const plan = (over: Partial<Schedule>): Schedule => ({ id: "id", name: "Plan", status: "COMPLETED", score: null, createdAt: "2026-07-01T10:00:00+00:00", updatedAt: "", planType: "SEASON", schedulePlanId: "season-plan", ...over });
@@ -219,5 +228,31 @@ describe("SeasonSchedulesModal — plannings, not versions", () => {
     expect(screen.queryByRole("button", { name: "PNG" })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "PDF" }));
     expect(run).toHaveBeenCalledWith("pdf", null);
+  });
+
+  // Régression (bombe à retardement de date, 2026-10-12) : la fenêtre d'un plan de période PASSÉE
+  // disparaissait. La modale lisait les dates dans `entries` = la fenêtre RADAR (à venir seulement) ;
+  // une période dont la fin est derrière aujourd'hui n'y était plus → ligne de dates masquée. La
+  // modale interroge désormais les entrées de TOUTE la saison de travail pour sa ligne de dates.
+  it("affiche la fenêtre d'un plan de période PASSÉ — entrée hors radar mais DANS la saison", () => {
+    // entry-1 (plan p1) est PASSÉE : hors de la fenêtre radar, mais servie par useCalendarEntries(saison).
+    // `open()` ne passe AUCUN prop `entries` (radar vide) : seule la requête saison porte la fenêtre.
+    calendarEntriesMock = [{ id: "entry-1", startDate: "2026-08-31", endDate: "2026-10-11" }];
+    open([
+      plan({ id: "v1", status: "COMPLETED", isChosen: true }),
+      plan({ id: "o1", name: "Incident Matéo", status: "COMPLETED", isChosen: true, planType: "CLOSURE", schedulePlanId: "p1" }),
+    ]);
+    expect(screen.getByText("31-08-2026 → 11-10-2026")).toBeInTheDocument();
+  });
+
+  // readState : l'échec de la lecture des entrées de saison n'est JAMAIS rendu comme du vide
+  // (frontend.md) — un « Réessayer » le dit, au lieu de masquer silencieusement toutes les dates.
+  it("affiche « Réessayer » quand les fenêtres de période n'ont pas pu être chargées", async () => {
+    calendarEntriesError = true;
+    open([plan({ id: "o1", name: "Incident Matéo", status: "COMPLETED", isChosen: true, planType: "CLOSURE", schedulePlanId: "p1" })]);
+    const retry = screen.getByRole("button", { name: "Réessayer" });
+    expect(retry).toBeInTheDocument();
+    await userEvent.click(retry);
+    expect(calendarEntriesRefetch).toHaveBeenCalled();
   });
 });
