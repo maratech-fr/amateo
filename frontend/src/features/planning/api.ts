@@ -789,8 +789,8 @@ export type RemovedSession = EvictedSlot;
 
 /**
  * Une présence « garder ses créneaux de saison » (SEASON_SLOTS) qu'un retrait n'honore plus.
- * `message` est composé CÔTÉ SERVEUR et affiché TEL QUEL (jamais redérivé côté front —
- * FrontRederivationRegistryTest). `[]` sur le socle de saison (la famille n'agit qu'en période).
+ * `message` est composé CÔTÉ SERVEUR et affiché TEL QUEL — la phrase est celle que le serveur
+ * compose, jamais redérivée côté front. `[]` sur le socle de saison (la famille n'agit qu'en période).
  */
 export interface UnmetPresence {
   family: string;
@@ -801,7 +801,7 @@ export interface UnmetPresence {
 /**
  * Réponse d'un retrait de séance (`POST /schedule-slots/{id}/remove`). AUCUN appel moteur : un
  * retrait creuse un trou, il ne crée pas de conflit. Nomme les conséquences : la séance partie
- * (`removed`), le verrou perdu (`lockLevel` = HARD si elle était verrouillée), et les présences
+ * (`removed`), le verrou perdu (`lockLevel` = le niveau de verrou de la séance, `NONE` si aucun), et les présences
  * SEASON_SLOTS que le retrait n'honore plus. `dryRun: true` sur un appel à blanc (rien écrit).
  */
 export interface RemoveSlotResult {

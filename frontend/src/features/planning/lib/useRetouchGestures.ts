@@ -93,9 +93,9 @@ export function useRetouchGestures(
     | { kind: "group"; blockId: string; source: { venueId: string; dayOfWeek: number; startTime: string }; memberCount: number; unmetPresence: UnmetPresence[] }
     | null
   >(null);
-  // Les présences SEASON_SLOTS non honorées par le DERNIER retrait écrit, affichées VERBATIM (jamais
-  // redérivées — FrontRederivationRegistryTest). Null = aucune. Purgées au geste suivant / changement
-  // de version / fermeture du bandeau.
+  // Les présences SEASON_SLOTS non honorées par le DERNIER retrait écrit, affichées VERBATIM telles
+  // que le serveur les compose, jamais redérivées côté front. Null = aucune. Purgées au geste suivant
+  // / changement de version / fermeture du bandeau.
   const [presenceNotice, setPresenceNotice] = useState<UnmetPresence[] | null>(null);
 
   const moveMutation = useMoveSlot();

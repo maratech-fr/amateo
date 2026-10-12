@@ -2682,6 +2682,18 @@ describe("PlanningPage — retirer une séance placée (F4)", () => {
     expect(vi.mocked(removeSlot).mock.calls.every(([, opts]) => true === opts?.dryRun)).toBe(true);
   });
 
+  it("séance verrouillée : la confirmation annonce que le verrou sera perdu", async () => {
+    const user = userEvent.setup();
+    vi.mocked(removeSlot).mockImplementation((_id: string, opts?: { dryRun?: boolean }) =>
+      Promise.resolve({ removed: { slotId: "slot-1", teamId: "team-1", dayOfWeek: 1, startTime: "18:00", venueId: "venue-1", durationMinutes: 90 }, lockLevel: "HARD", unmetPresence: [], ...(true === opts?.dryRun ? { dryRun: true } : {}) }),
+    );
+    renderWithProviders(<PlanningPage />);
+    await openSlotAndClickRemove(user);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Elle est verrouillée — le verrou sera perdu.")).toBeInTheDocument();
+  });
+
   it("affiche VERBATIM la présence de saison que le retrait n'honore plus", async () => {
     const user = userEvent.setup();
     const message = "U11 : la demande « garder les créneaux de saison » n'est plus honorée, sa séance ayant été retirée.";

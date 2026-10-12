@@ -1367,7 +1367,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                 Retirer <span className="font-medium text-foreground">{teamNameOf(removeConfirm.removed.teamId)}</span> de{" "}
                 {DAY_ABBR.get(removeConfirm.removed.dayOfWeek) ?? "?"} {removeConfirm.removed.startTime} ? Cette séance sera à replacer.
               </p>
-              {"HARD" === removeConfirm.lockLevel ? <p>Elle est verrouillée — le verrou sera perdu.</p> : null}
+              {"NONE" !== removeConfirm.lockLevel ? <p>Elle est verrouillée — le verrou sera perdu.</p> : null}
               {removeConfirm.unmetPresence.map((p) => (
                 <p key={p.teamId}>{p.message}</p>
               ))}
