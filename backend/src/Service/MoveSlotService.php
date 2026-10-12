@@ -9,6 +9,8 @@ use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
+use App\Entity\Team;
+use App\Enum\ConstraintFamily;
 use App\Enum\LockLevel;
 use App\Exception\DurationMismatchException;
 use App\Exception\EngineTimeoutException;
@@ -80,6 +82,7 @@ final class MoveSlotService
         private readonly ScheduleProgressPublisher $progressPublisher,
         private readonly LoggerInterface $logger,
         private readonly TeamCaseOccupancyGuard $teamCaseOccupancyGuard,
+        private readonly PeriodConstraintSelector $periodConstraintSelector,
     ) {}
 
     /**
@@ -496,6 +499,172 @@ final class MoveSlotService
             'compromises' => $this->namedCompromises($result),
             'movedSlotIds' => $sourceIds,
         ];
+    }
+
+    /**
+     * RETIRER une séance placée (« vider un créneau ») — la ligne {@see ScheduleSlotTemplate}
+     * DISPARAÎT, son éventuel verrou part avec elle, et la séance passe « non placée » (un ÉCART
+     * calculé — rien n'est stocké pour ça). AUCUN appel moteur : un retrait ne crée pas de conflit,
+     * il OUVRE un trou. Le verdict n'a donc rien à juger (décision fondateur 2026-10-12).
+     *
+     * Le trou est SIGNALÉ, jamais silencieux : le front le lit via l'existant (drift/DriftBanner),
+     * et ce retour porte en plus `unmetPresence` — les contraintes « garder ses créneaux de saison »
+     * (SEASON_SLOTS) ACTIVES de l'équipe retirée, qui n'agissent qu'en PÉRIODE (`[]` sur le socle).
+     *
+     * `$dryRun` (appel à blanc du ConfirmDialog) : même calcul (conséquences nommées comprises),
+     * puis retour AVANT toute écriture/flush/marqueur/Mercure.
+     *
+     * @throws ScheduleGenerationInProgressException une génération tourne pour ce club (→ 409)
+     * @throws InvalidArgumentException              le créneau n'a pas de planning parent (état incohérent)
+     *
+     * @return array{removed: array{slotId: string, teamId: string, dayOfWeek: int, startTime: string, venueId: string, durationMinutes: int}, lockLevel: string, unmetPresence: list<array{family: string, teamId: string, message: string}>, dryRun?: bool}
+     */
+    public function remove(ScheduleSlotTemplate $slot, bool $dryRun = false): array
+    {
+        $schedule = $this->entityManager->getRepository(Schedule::class)->find($slot->getScheduleId());
+        if (!$schedule instanceof Schedule) {
+            throw new InvalidArgumentException('The slot has no parent schedule.');
+        }
+
+        // Une génération réécrit le planning : retirer maintenant écraserait son résultat en vol.
+        if ($this->clubGenerationLock->isGenerating($slot->getClubId())) {
+            throw new ScheduleGenerationInProgressException;
+        }
+
+        // Conséquences NOMMÉES, calculées AVANT toute écriture (identiques en essai et en vrai) :
+        // l'état de la séance qui part (forme `evicted`, pour le bandeau « à replacer »), le verrou
+        // perdu, et les présences SEASON_SLOTS que le retrait n'honore plus.
+        $removed = $this->describeEvicted($slot);
+        $lockLevel = $slot->getLockLevel()->value;
+        $unmetPresence = $this->unmetPresenceForRemoval($schedule, [$slot->getTeamId()]);
+
+        if ($dryRun) {
+            return ['removed' => $removed, 'lockLevel' => $lockLevel, 'unmetPresence' => $unmetPresence, 'dryRun' => true];
+        }
+
+        return $this->entityManager->wrapInTransaction(function () use ($slot, $schedule, $removed, $lockLevel, $unmetPresence): array {
+            $this->entityManager->remove($slot);
+            $schedule->setManuallyEditedSinceGeneration(true);
+            $this->entityManager->flush();
+
+            // Les autres gestionnaires voient le planning bouger (best-effort, comme la génération).
+            $this->progressPublisher->publishSafely($schedule, []);
+
+            return ['removed' => $removed, 'lockLevel' => $lockLevel, 'unmetPresence' => $unmetPresence];
+        });
+    }
+
+    /**
+     * RETIRER UNE SÉANCE DE BLOC ENTIÈRE (« vider le créneau du groupe ») — c'est le GROUPE qui
+     * occupe la case, donc tout-ou-rien : les N créneaux des membres du bloc qui siègent à la case
+     * source DISPARAISSENT ensemble, en UNE transaction. Le {@see SharedTrainingBlock} et ses
+     * adhésions SURVIVENT (le groupe existe toujours ; seule la séance de cette case est retirée).
+     * AUCUN appel moteur, comme {@see remove()}. Le serveur résout lui-même les créneaux depuis la
+     * case source (jamais des slotIds clients), patron {@see moveGroup()}.
+     *
+     * @throws ScheduleGenerationInProgressException une génération tourne pour ce club (→ 409)
+     * @throws SlotUnavailableException              aucun membre du bloc à cette case (→ 422 `slot_unavailable`)
+     *
+     * @return array{removedSlotIds: list<string>, removed: list<array{slotId: string, teamId: string, dayOfWeek: int, startTime: string, venueId: string, durationMinutes: int}>, unmetPresence: list<array{family: string, teamId: string, message: string}>, dryRun?: bool}
+     */
+    public function removeGroup(
+        Schedule $schedule,
+        SharedTrainingBlock $block,
+        int $dayOfWeek,
+        DateTimeImmutable $startTime,
+        string $venueId,
+        bool $dryRun = false,
+    ): array {
+        if ($this->clubGenerationLock->isGenerating($schedule->getClubId())) {
+            throw new ScheduleGenerationInProgressException;
+        }
+
+        // Les membres du bloc, puis les créneaux de CE planning qui siègent à la case source : la
+        // séance de groupe à retirer. C'est le serveur qui la résout (jamais des slotIds clients).
+        $memberTeamIds = $this->blockMemberTeamIds($block);
+        $sources = $this->sourceSlotsAtCase($schedule, $memberTeamIds, $venueId, $dayOfWeek, $startTime);
+        if ([] === $sources) {
+            // Aucun membre du bloc à cette case : il n'y a pas de séance de groupe à retirer ici.
+            throw new SlotUnavailableException;
+        }
+
+        $removed = array_map(fn (ScheduleSlotTemplate $s): array => $this->describeEvicted($s), $sources);
+        $removedSlotIds = array_map(static fn (ScheduleSlotTemplate $s): string => $s->getId(), $sources);
+        $teamIds = array_map(static fn (ScheduleSlotTemplate $s): string => $s->getTeamId(), $sources);
+        $unmetPresence = $this->unmetPresenceForRemoval($schedule, $teamIds);
+
+        if ($dryRun) {
+            return ['removedSlotIds' => $removedSlotIds, 'removed' => $removed, 'unmetPresence' => $unmetPresence, 'dryRun' => true];
+        }
+
+        return $this->entityManager->wrapInTransaction(function () use ($sources, $schedule, $removed, $removedSlotIds, $unmetPresence): array {
+            foreach ($sources as $source) {
+                $this->entityManager->remove($source);
+            }
+            $schedule->setManuallyEditedSinceGeneration(true);
+            $this->entityManager->flush();
+
+            $this->progressPublisher->publishSafely($schedule, []);
+
+            return ['removedSlotIds' => $removedSlotIds, 'removed' => $removed, 'unmetPresence' => $unmetPresence];
+        });
+    }
+
+    /**
+     * Les présences « garder ses créneaux de saison » (SEASON_SLOTS) ACTIVES que le retrait des
+     * équipes données n'honore plus. `[]` sur le socle de saison (la famille n'agit qu'en PÉRIODE,
+     * via les placements de socle émis en `keep` — cf. `ScheduleConstraintBuilder:364-373`, dont ce
+     * filtre est le miroir). Sinon : la sélection de contraintes de la période (source UNIQUE
+     * `PeriodConstraintSelector`), restreinte aux SEASON_SLOTS actives visant une équipe retirée, un
+     * message composé CÔTÉ SERVEUR (le front l'affiche verbatim — jamais redérivé).
+     *
+     * @param list<string> $removedTeamIds
+     *
+     * @return list<array{family: string, teamId: string, message: string}>
+     */
+    private function unmetPresenceForRemoval(Schedule $schedule, array $removedTeamIds): array
+    {
+        if ($this->schedulePlanProvisioner->isSeasonSchedule($schedule)) {
+            return [];
+        }
+        $overlayEntryId = $this->schedulePlanProvisioner->periodEntryIdOf($schedule);
+        $overlayEntry = null === $overlayEntryId
+            ? null
+            : $this->entityManager->getRepository(CalendarEntry::class)->find($overlayEntryId);
+        if (!$overlayEntry instanceof CalendarEntry) {
+            return [];
+        }
+
+        $selection = $this->periodConstraintSelector->selectForPeriodPlan(
+            $schedule->getClubId(),
+            $schedule->getSeasonId(),
+            $schedule->getSchedulePlanId(),
+            $overlayEntry,
+        );
+
+        $removedSet = array_fill_keys($removedTeamIds, true);
+        $teamRepository = $this->entityManager->getRepository(Team::class);
+        $out = [];
+        $seen = [];
+        foreach ($selection->kept as $constraint) {
+            if (ConstraintFamily::SEASON_SLOTS !== $constraint->getFamily() || !$constraint->getIsActive()) {
+                continue;
+            }
+            $teamId = $constraint->getScopeTargetId();
+            if (null === $teamId || !isset($removedSet[$teamId]) || isset($seen[$teamId])) {
+                continue;
+            }
+            $seen[$teamId] = true;
+            $team = $teamRepository->find($teamId);
+            $teamName = $team instanceof Team ? $team->getName() : 'une équipe';
+            $out[] = [
+                'family' => ConstraintFamily::SEASON_SLOTS->value,
+                'teamId' => $teamId,
+                'message' => \sprintf('%s : la demande « garder les créneaux de saison » n\'est plus honorée, sa séance ayant été retirée.', $teamName),
+            ];
+        }
+
+        return $out;
     }
 
     /**

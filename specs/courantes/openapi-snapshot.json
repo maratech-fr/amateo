@@ -12369,6 +12369,174 @@
                 }
             }
         },
+        "/api/schedule-slots/remove-group": {
+            "post": {
+                "operationId": "postScheduleSlotRemoveGroup",
+                "tags": [
+                    "ManualEdit"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The whole block session at the source case was removed \u2014 all its member slots, in one transaction (all-or-nothing); the mutualisation block itself SURVIVES. OR a dryRun essai (nothing written). No engine call. The response names the removed sessions and the season-slot presence requests no longer honored",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "dryRun": {
+                                            "type": "boolean",
+                                            "nullable": true,
+                                            "description": "When true, run the full verdict (pre-engine guards included) but write NOTHING; the response carries the verdict and its named trade-offs"
+                                        },
+                                        "removedSlotIds": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            },
+                                            "description": "Ids of the member slots removed together"
+                                        },
+                                        "removed": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "slotId": {
+                                                        "type": "string"
+                                                    },
+                                                    "teamId": {
+                                                        "type": "string"
+                                                    },
+                                                    "dayOfWeek": {
+                                                        "type": "integer"
+                                                    },
+                                                    "startTime": {
+                                                        "type": "string",
+                                                        "example": "18:00"
+                                                    },
+                                                    "venueId": {
+                                                        "type": "string"
+                                                    },
+                                                    "durationMinutes": {
+                                                        "type": "integer"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "unmetPresence": {
+                                            "type": "array",
+                                            "description": "Season-slot presence requests the removal no longer honors (empty on the season base plan)",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "family": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "SEASON_SLOTS"
+                                                        ]
+                                                    },
+                                                    "teamId": {
+                                                        "type": "string",
+                                                        "description": "The team whose season-slot presence is no longer honored"
+                                                    },
+                                                    "message": {
+                                                        "type": "string",
+                                                        "description": "Ready-to-display sentence naming the team (no internal identifier)"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Missing or invalid field (scheduleId, blockId or source case)"
+                    },
+                    "404": {
+                        "description": "Schedule or mutualisation block not found"
+                    },
+                    "409": {
+                        "description": "Schedule is validated (read-only), or a generation is running for the club (body carries code=generation_in_progress)"
+                    },
+                    "422": {
+                        "description": "Refused with NOTHING removed: no block session sits at the source case (body carries code=slot_unavailable)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "code": {
+                                            "type": "string",
+                                            "enum": [
+                                                "slot_unavailable"
+                                            ]
+                                        },
+                                        "error": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "summary": "Remove a WHOLE mutualisation-block session (all its member slots at the source case) in one transaction (all-or-nothing). The block itself survives. The server resolves the member slots itself from the block and the source case \u2014 never client slot ids. dryRun writes nothing",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "scheduleId",
+                                    "blockId",
+                                    "source"
+                                ],
+                                "properties": {
+                                    "scheduleId": {
+                                        "type": "string",
+                                        "description": "The schedule (version) being edited"
+                                    },
+                                    "blockId": {
+                                        "type": "string",
+                                        "description": "The mutualisation block whose session is removed"
+                                    },
+                                    "source": {
+                                        "type": "object",
+                                        "description": "The case the block session sits at",
+                                        "required": [
+                                            "venueId",
+                                            "dayOfWeek",
+                                            "startTime"
+                                        ],
+                                        "properties": {
+                                            "venueId": {
+                                                "type": "string"
+                                            },
+                                            "dayOfWeek": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 7
+                                            },
+                                            "startTime": {
+                                                "type": "string",
+                                                "example": "18:00"
+                                            }
+                                        }
+                                    },
+                                    "dryRun": {
+                                        "type": "boolean",
+                                        "nullable": true,
+                                        "description": "When true, run the full verdict (pre-engine guards included) but write NOTHING; the response carries the verdict and its named trade-offs"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
+            }
+        },
         "/api/schedule-slots/{id}/manual-edit/lock": {
             "post": {
                 "operationId": "postManualEditLock",
@@ -12842,6 +13010,112 @@
                                             "type": "string"
                                         },
                                         "description": "For each already-placed joining team, the id of the session the common one replaces (moved onto the case). A team with a single session may omit it"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
+            }
+        },
+        "/api/schedule-slots/{id}/remove": {
+            "post": {
+                "operationId": "postScheduleSlotRemove",
+                "tags": [
+                    "ManualEdit"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The slot was removed (schedule flagged manually edited, score now stale) \u2014 OR a dryRun essai (nothing written). No engine call: a removal opens a gap, it never creates a conflict. The response names the consequences \u2014 the removed session (so the UI can offer to re-place it), the lock that went with it, and the season-slot presence requests the removal no longer honors",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "dryRun": {
+                                            "type": "boolean",
+                                            "nullable": true,
+                                            "description": "When true, run the full verdict (pre-engine guards included) but write NOTHING; the response carries the verdict and its named trade-offs"
+                                        },
+                                        "lockLevel": {
+                                            "type": "string",
+                                            "enum": [
+                                                "NONE",
+                                                "HARD"
+                                            ],
+                                            "description": "The removed slot's lock level before removal (HARD = a lock was lost with it)"
+                                        },
+                                        "removed": {
+                                            "type": "object",
+                                            "properties": {
+                                                "slotId": {
+                                                    "type": "string"
+                                                },
+                                                "teamId": {
+                                                    "type": "string"
+                                                },
+                                                "dayOfWeek": {
+                                                    "type": "integer"
+                                                },
+                                                "startTime": {
+                                                    "type": "string",
+                                                    "example": "18:00"
+                                                },
+                                                "venueId": {
+                                                    "type": "string"
+                                                },
+                                                "durationMinutes": {
+                                                    "type": "integer"
+                                                }
+                                            }
+                                        },
+                                        "unmetPresence": {
+                                            "type": "array",
+                                            "description": "Season-slot presence requests the removal no longer honors (empty on the season base plan)",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "family": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "SEASON_SLOTS"
+                                                        ]
+                                                    },
+                                                    "teamId": {
+                                                        "type": "string",
+                                                        "description": "The team whose season-slot presence is no longer honored"
+                                                    },
+                                                    "message": {
+                                                        "type": "string",
+                                                        "description": "Ready-to-display sentence naming the team (no internal identifier)"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Slot not found"
+                    },
+                    "409": {
+                        "description": "Schedule is validated (read-only), or a generation is running for the club (body carries code=generation_in_progress)"
+                    }
+                },
+                "summary": "Remove a placed slot (empty a case): the slot row is deleted \u2014 its lock, if any, goes with it \u2014 and the session becomes unplaced (a computed gap, nothing stored). No solver verdict. dryRun runs the same consequence computation and writes nothing",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "dryRun": {
+                                        "type": "boolean",
+                                        "nullable": true,
+                                        "description": "When true, run the full verdict (pre-engine guards included) but write NOTHING; the response carries the verdict and its named trade-offs"
                                     }
                                 }
                             }
@@ -28139,7 +28413,8 @@
                             "TIME",
                             "DAY",
                             "FACILITY",
-                            "COACH_AVAILABILITY"
+                            "COACH_AVAILABILITY",
+                            "SEASON_SLOTS"
                         ],
                         "type": [
                             "string",

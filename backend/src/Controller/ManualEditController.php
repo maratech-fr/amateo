@@ -49,12 +49,12 @@ final class ManualEditController extends AbstractController implements SeasonSco
 
     /**
      * SEC-13 — la cible dépend du geste : place-slot vise un Schedule (id = schedule),
-     * lock/move visent un créneau (id = schedule-slot), move-group vise un Schedule dont
-     * l'id vit dans le CORPS (route sans `{id}`). On branche sur le nom de route.
+     * lock/move/remove visent un créneau (id = schedule-slot), move-group/remove-group visent un
+     * Schedule dont l'id vit dans le CORPS (route sans `{id}`). On branche sur le nom de route.
      */
     public function writeTargetSeasonId(Request $request): ?string
     {
-        if ('api_schedule_slot_move_group' === $request->attributes->get('_route')) {
+        if (\in_array($request->attributes->get('_route'), ['api_schedule_slot_move_group', 'api_schedule_slot_remove_group'], true)) {
             $data = json_decode($request->getContent(), true);
             $scheduleId = \is_array($data) && isset($data['scheduleId']) && \is_string($data['scheduleId'])
                 ? $data['scheduleId']
@@ -481,6 +481,111 @@ final class ManualEditController extends AbstractController implements SeasonSco
             'compromises' => $result['compromises'],
             'movedSlotIds' => $result['movedSlotIds'] ?? [],
         ], Response::HTTP_OK);
+    }
+
+    /**
+     * RETIRER UNE SÉANCE PLACÉE (« vider un créneau ») — la ligne du créneau DISPARAÎT, son verrou
+     * éventuel part avec elle, la séance passe « non placée » (écart calculé, rien de stocké). Mêmes
+     * gardes que lock/move : management (403), 409 si la version est choisie (lecture seule) ou si
+     * une génération tourne. AUCUN appel moteur (un retrait n'ouvre pas de conflit, il creuse un
+     * trou — signalé par le drift + `unmetPresence`). `dryRun` : appel à blanc du ConfirmDialog.
+     */
+    #[Route('/api/schedule-slots/{id}/remove', name: 'api_schedule_slot_remove', methods: ['POST'])]
+    public function remove(string $id, Request $request): JsonResponse
+    {
+        $this->managementAccessGuard->assertManager(); // SEC-07
+        $slot = $this->findSlot($id);
+
+        if (!$slot instanceof ScheduleSlotTemplate) {
+            return $this->json(['error' => 'Ce créneau n\'existe plus — rechargez le planning.'], Response::HTTP_NOT_FOUND);
+        }
+
+        if ($this->scheduleIsLocked($slot)) {
+            return $this->json(['error' => 'Ce planning est validé (lecture seule) — rouvrez-le avant de le modifier.'], Response::HTTP_CONFLICT);
+        }
+
+        // Corps OPTIONNEL : `{}` (retrait réel) ou `{dryRun:true}` (appel à blanc). Le retrait n'a
+        // aucun champ obligatoire — un corps absent/mal typé vaut un retrait réel (dryRun = false).
+        $data = json_decode($request->getContent(), true);
+        $dryRun = \is_array($data) && isset($data['dryRun']) && true === $data['dryRun'];
+
+        try {
+            $result = $this->moveSlotService->remove($slot, $dryRun);
+        } catch (ScheduleGenerationInProgressException) {
+            // Retirer pendant qu'une génération réécrit le planning écraserait son résultat.
+            return $this->json(['code' => 'generation_in_progress'], Response::HTTP_CONFLICT);
+        } catch (Throwable $e) {
+            // SEC-08 : on journalise le détail, jamais getMessage() au client.
+            $this->logger->error('Slot removal failed.', ['exception' => $e]);
+
+            return $this->json(['error' => 'The request could not be processed.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        return $this->json($result, Response::HTTP_OK);
+    }
+
+    /**
+     * RETIRER UNE SÉANCE DE GROUPE ENTIÈRE (« vider le créneau du groupe ») — c'est le groupe qui
+     * occupe la case, donc tout-ou-rien : les N créneaux des membres du bloc à la case source sont
+     * retirés ensemble, en UNE transaction. Le bloc de mutualisation SURVIT. Le serveur résout les
+     * créneaux membres depuis la case source (jamais des slotIds clients), patron move-group.
+     */
+    #[Route('/api/schedule-slots/remove-group', name: 'api_schedule_slot_remove_group', methods: ['POST'])]
+    public function removeGroup(Request $request): JsonResponse
+    {
+        $this->managementAccessGuard->assertManager(); // SEC-07
+
+        $data = json_decode($request->getContent(), true);
+        if (!\is_array($data)) {
+            return $this->json(['error' => 'Invalid JSON body.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $scheduleId = isset($data['scheduleId']) && \is_string($data['scheduleId']) ? $data['scheduleId'] : '';
+        if ('' === $scheduleId) {
+            return $this->json(['error' => 'Missing required field: scheduleId.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $schedule = $this->findSchedule($scheduleId);
+        if (!$schedule instanceof Schedule) {
+            return $this->json(['error' => 'Planning introuvable.'], Response::HTTP_NOT_FOUND);
+        }
+
+        // ADR-0002 inv. 1 : la version choisie du plan est le calendrier — lecture seule.
+        if ($this->schedulePlanProvisioner->isChosen($schedule->getId())) {
+            return $this->json(['error' => 'Ce planning est validé (lecture seule) — rouvrez-le avant de le modifier.'], Response::HTTP_CONFLICT);
+        }
+
+        $blockId = isset($data['blockId']) && \is_string($data['blockId']) ? $data['blockId'] : '';
+        if ('' === $blockId) {
+            return $this->json(['error' => 'Missing required field: blockId.'], Response::HTTP_BAD_REQUEST);
+        }
+        $block = $this->findBlock($blockId);
+        if (!$block instanceof SharedTrainingBlock) {
+            return $this->json(['error' => 'Bloc de mutualisation introuvable.'], Response::HTTP_NOT_FOUND);
+        }
+
+        // La case SOURCE (la séance de groupe à retirer) : {venueId, dayOfWeek, startTime}.
+        $source = $this->parseCase(\is_array($data['source'] ?? null) ? $data['source'] : []);
+        if (null === $source) {
+            return $this->json(['error' => 'Missing or invalid field: source (venueId, dayOfWeek, startTime).'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $dryRun = isset($data['dryRun']) && true === $data['dryRun'];
+
+        try {
+            $result = $this->moveSlotService->removeGroup($schedule, $block, $source['dayOfWeek'], $source['startTime'], $source['venueId'], $dryRun);
+        } catch (ScheduleGenerationInProgressException) {
+            return $this->json(['code' => 'generation_in_progress'], Response::HTTP_CONFLICT);
+        } catch (SlotUnavailableException) {
+            // Aucun membre du bloc à cette case : il n'y a pas de séance de groupe à retirer ici.
+            return $this->json(['code' => 'slot_unavailable', 'error' => 'Aucune séance de groupe à retirer à cet horaire.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (Throwable $e) {
+            $this->logger->error('Group slot removal failed.', ['exception' => $e]);
+
+            return $this->json(['error' => 'The request could not be processed.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        return $this->json($result, Response::HTTP_OK);
     }
 
     /**

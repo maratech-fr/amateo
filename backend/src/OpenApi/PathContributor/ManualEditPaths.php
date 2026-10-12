@@ -69,6 +69,22 @@ final readonly class ManualEditPaths implements CustomPathContributor
         // Additive field — absent on a tranché OPTIMAL/FEASIBLE/INFEASIBLE verdict, never both
         // true alongside named violations.
         $indeterminateProperty = ['type' => 'boolean', 'nullable' => true, 'description' => 'True when the solver could not decide within its time budget — neither accepted nor refused (no rule named); nothing was written, retry'];
+        // L'état d'une séance RETIRÉE, tel que le front s'en sert pour proposer de la replacer.
+        $removedSession = ['type' => 'object', 'properties' => [
+            'slotId' => ['type' => 'string'],
+            'teamId' => ['type' => 'string'],
+            'dayOfWeek' => ['type' => 'integer'],
+            'startTime' => ['type' => 'string', 'example' => '18:00'],
+            'venueId' => ['type' => 'string'],
+            'durationMinutes' => ['type' => 'integer'],
+        ]];
+        // Les présences « garder ses créneaux de saison » qu'un retrait n'honore plus — message
+        // composé serveur, affiché tel quel (empty on the season base plan, where the family is inert).
+        $unmetPresence = ['type' => 'array', 'description' => 'Season-slot presence requests the removal no longer honors (empty on the season base plan)', 'items' => ['type' => 'object', 'properties' => [
+            'family' => ['type' => 'string', 'enum' => ['SEASON_SLOTS']],
+            'teamId' => ['type' => 'string', 'description' => 'The team whose season-slot presence is no longer honored'],
+            'message' => ['type' => 'string', 'description' => 'Ready-to-display sentence naming the team (no internal identifier)'],
+        ]]];
 
         return [
             '/api/schedule-slots/{id}/manual-edit/lock' => new PathItem(post: new Operation(
@@ -264,6 +280,68 @@ final readonly class ManualEditPaths implements CustomPathContributor
                             'dayOfWeek' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 7],
                             'startTime' => ['type' => 'string', 'example' => '20:00'],
                         ]],
+                    ],
+                ]),
+            )),
+            '/api/schedule-slots/{id}/remove' => new PathItem(post: new Operation(
+                operationId: 'postScheduleSlotRemove',
+                tags: ['ManualEdit'],
+                responses: [
+                    '200' => $this->schemas->jsonResponse('The slot was removed (schedule flagged manually edited, score now stale) — OR a dryRun essai (nothing written). No engine call: a removal opens a gap, it never creates a conflict. The response names the consequences — the removed session (so the UI can offer to re-place it), the lock that went with it, and the season-slot presence requests the removal no longer honors', [
+                        'type' => 'object',
+                        'properties' => [
+                            'dryRun' => $dryRunProperty,
+                            'lockLevel' => ['type' => 'string', 'enum' => ['NONE', 'HARD'], 'description' => 'The removed slot\'s lock level before removal (HARD = a lock was lost with it)'],
+                            'removed' => $removedSession,
+                            'unmetPresence' => $unmetPresence,
+                        ],
+                    ]),
+                    '404' => new Response('Slot not found'),
+                    '409' => new Response('Schedule is validated (read-only), or a generation is running for the club (body carries code=generation_in_progress)'),
+                ],
+                summary: 'Remove a placed slot (empty a case): the slot row is deleted — its lock, if any, goes with it — and the session becomes unplaced (a computed gap, nothing stored). No solver verdict. dryRun runs the same consequence computation and writes nothing',
+                requestBody: $this->schemas->jsonBody([
+                    'type' => 'object',
+                    'properties' => ['dryRun' => $dryRunProperty],
+                ]),
+            )),
+            '/api/schedule-slots/remove-group' => new PathItem(post: new Operation(
+                operationId: 'postScheduleSlotRemoveGroup',
+                tags: ['ManualEdit'],
+                responses: [
+                    '200' => $this->schemas->jsonResponse('The whole block session at the source case was removed — all its member slots, in one transaction (all-or-nothing); the mutualisation block itself SURVIVES. OR a dryRun essai (nothing written). No engine call. The response names the removed sessions and the season-slot presence requests no longer honored', [
+                        'type' => 'object',
+                        'properties' => [
+                            'dryRun' => $dryRunProperty,
+                            'removedSlotIds' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Ids of the member slots removed together'],
+                            'removed' => ['type' => 'array', 'items' => $removedSession],
+                            'unmetPresence' => $unmetPresence,
+                        ],
+                    ]),
+                    '400' => new Response('Missing or invalid field (scheduleId, blockId or source case)'),
+                    '404' => new Response('Schedule or mutualisation block not found'),
+                    '409' => new Response('Schedule is validated (read-only), or a generation is running for the club (body carries code=generation_in_progress)'),
+                    '422' => $this->schemas->jsonResponse('Refused with NOTHING removed: no block session sits at the source case (body carries code=slot_unavailable)', [
+                        'type' => 'object',
+                        'properties' => [
+                            'code' => ['type' => 'string', 'enum' => ['slot_unavailable']],
+                            'error' => ['type' => 'string'],
+                        ],
+                    ]),
+                ],
+                summary: 'Remove a WHOLE mutualisation-block session (all its member slots at the source case) in one transaction (all-or-nothing). The block itself survives. The server resolves the member slots itself from the block and the source case — never client slot ids. dryRun writes nothing',
+                requestBody: $this->schemas->jsonBody([
+                    'type' => 'object',
+                    'required' => ['scheduleId', 'blockId', 'source'],
+                    'properties' => [
+                        'scheduleId' => ['type' => 'string', 'description' => 'The schedule (version) being edited'],
+                        'blockId' => ['type' => 'string', 'description' => 'The mutualisation block whose session is removed'],
+                        'source' => ['type' => 'object', 'description' => 'The case the block session sits at', 'required' => ['venueId', 'dayOfWeek', 'startTime'], 'properties' => [
+                            'venueId' => ['type' => 'string'],
+                            'dayOfWeek' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 7],
+                            'startTime' => ['type' => 'string', 'example' => '18:00'],
+                        ]],
+                        'dryRun' => $dryRunProperty,
                     ],
                 ]),
             )),
