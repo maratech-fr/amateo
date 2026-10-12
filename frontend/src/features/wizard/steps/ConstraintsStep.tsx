@@ -1009,12 +1009,11 @@ export function ConstraintsStep() {
         // `<div>` : c'est la seule règle de sévérité HAUTE rendue par la passe de design sur ce
         // lot, et c'est ce qui fait annoncer « Règle : pas après » par un lecteur d'écran au
         // lieu d'une bouillie de cellules. `overflow-x-auto` garde la promesse sur petit écran.
-        // ⚠ Le tableau est BORNÉ, et c'est le même raisonnement que le reste du lot : cinq
-        // colonnes de contenu court étalées sur 1650 px rejouent le défaut qu'on corrige —
-        // les actions se retrouvent à ~700 px du libellé qu'elles concernent. La ligne doit
-        // se lire comme UNE unité. (Choix ergonomique : le corpus de design est muet sur la
-        // largeur d'un tableau de données — cf. `frontend-features.md` §6.9.)
-        <div className="max-w-5xl overflow-x-auto rounded-lg border border-border bg-card">
+        // Le tableau prend la PLEINE LARGEUR de l'étape (plus de `max-w-5xl`) : décision fondateur
+        // 2026-10-12, « pas grave que les boutons partent loin des libellés » — les panneaux de
+        // contraintes de période respirent, au prix assumé d'une ligne plus étalée
+        // (cf. `frontend-features.md` §6.9).
+        <div className="overflow-x-auto rounded-lg border border-border bg-card">
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
