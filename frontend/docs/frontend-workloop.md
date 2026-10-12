@@ -2,12 +2,12 @@
 
 > La boucle de travail sur un planning : retouche manuelle (mode cible, éviction, dérive, verrou — rail read-only + verdict moteur) et transcription depuis le socle (bouton, panneau « à replacer », comparaison). Découpé mécaniquement de `frontend-spec.md` (DOC-59).
 
-Last verified @ 2026-10-11 (lot verrous V1/V1bis) : §6.7 quater (nouveau) décrit le bouton
-« Charger cette version » d'une PÉRIODE et la confirmation de régénération depuis les données en
-cours, confrontés à `PlanningToolbar.tsx`/`PlanningPage.tsx` ; la phrase « vos créneaux verrouillés
-sont conservés à la régénération » (ci-dessous) est désormais VRAIE aussi pour un overlay de
-période (backend : [`schedule-generation-guide.md`](../../backend/docs/schedule-generation-guide.md) §10). Reste du fichier non re-confronté cette
-passe ; l'historique de vérification vit dans `git log -p --follow` ce fichier.
+Last verified @ 2026-10-12 (« Retirer une séance placée ») : §6.7 gagne le geste F4 « Retirer »/
+« Retirer le groupe », confronté à `SlotDetail.tsx`/`PlanningPage.tsx`/`useRetouchGestures.ts`/
+`queries.ts` (`useDeleteSlot`/`useDeleteSlotGroup`) — aucun appel moteur, `dryRun` obligatoire,
+raccourci un-clic réutilisé pour une séance seule, absent pour un groupe, `unmetPresence` verbatim.
+Reste du fichier non re-confronté cette passe ; l'historique de vérification vit dans
+`git log -p --follow` ce fichier.
 
 ### 6.7 Retouche manuelle — mode cible, éviction, dérive, verrouiller (rail read-only + verdict moteur, 2026-08-16)
 
@@ -169,6 +169,33 @@ par un CRUD brut sur la ressource :
   `moveGroupState`) ; 409/502/504 toastés, mode cible reste armé. **Pas d'undo** (geste 4) pour un
   déplacement de groupe — il faudrait rejouer `move-group`, hors scope de cette PR ; un éventuel
   undo d'un geste simple précédent est invalidé au succès.
+- **Retirer une séance placée — « vider un créneau » (geste F4, 2026-10-12)** : sur `SlotDetail`,
+  un bouton **« Retirer »** (icône `Trash2`, N2 — destructif confirmé) à côté de « Déplacer » —
+  **« Retirer le groupe »** sur une séance de bloc, qui retire les N membres ensemble. Masqué
+  pendant qu'un mode cible est armé (geste concurrent). **AUCUN appel moteur** : un retrait creuse
+  un trou, il ne crée jamais de conflit (décision fondateur) — donc pas de verdict `rejected`
+  possible, seulement un bandeau `blocked` neutre si une génération tourne (409, même traitement
+  que `/move`).
+  - **Essai (`dryRun`) obligatoire avant tout retrait réel** : le clic lance
+    `POST /api/schedule-slots/{id}/remove` (ou `/remove-group`) avec `dryRun:true` (`useDeleteSlot`/
+    `useDeleteSlotGroup`) — son succès arme un `ConfirmDialog` (destructif) nommant la séance (ou
+    le nombre d'équipes du groupe) à retirer, le verrou PERDU si elle était `HARD`, et chaque
+    présence « garder ses créneaux de saison » (`unmetPresence`) que le trou n'honore plus —
+    **message composé CÔTÉ SERVEUR, affiché VERBATIM** (jamais redérivé). Confirmer déclenche le
+    geste RÉEL (sans `dryRun`) ; annuler ne touche à rien.
+  - **Après un retrait réel d'une SÉANCE SEULE** : le panneau se ferme (sa séance a disparu), le
+    **bandeau d'éviction existant** (`evictionNotice` — « à replacer » + raccourci un-clic
+    « Remettre », déjà documenté ci-dessus geste 2) se réutilise pour proposer de la replacer sur
+    la même case. Un retrait de **GROUPE** n'a **pas** de raccourci un-clic (décision fondateur) —
+    le(s) trou(s) se lisent dans le bandeau « Séances à replacer » (`DriftBanner`, ci-dessous).
+  - Les `unmetPresence` du dernier retrait ÉCRIT (séance ou groupe) restent affichées dans un
+    bandeau dédié sous la toolbar jusqu'au geste suivant, à l'undo ou au changement de version
+    (`presenceNotice`, dismissible).
+  - **Le hook POSSÈDE son feedback**, même règle que `useMoveSlot` ci-dessus : un retrait réel
+    rafraîchit le paquet `slots`/`schedules`/`diagnostics`/`socle-deviation` (un essai n'invalide
+    rien, rien n'a bougé) ; `GenerationInProgressError` est tu au niveau hook (la page montre le
+    bandeau `blocked`), un vrai transport reste toasté. NR bloquant backend `SlotRemovalTest`,
+    feature Behat `retirer-une-seance-placee.feature`.
 - **Bandeau « Séances à replacer » (`DriftBanner`, geste 3)** — présentation pure
   (`lib/drift.ts`, module PUR) : les équipes qui ont **moins** de séances placées que le seuil
   attendu, sur un planning **`COMPLETED`** seulement (hors génération). Un bouton par équipe

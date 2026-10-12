@@ -1,4 +1,9 @@
-Last verified @ 2026-10-11 (P2-63 PR 5, « Transférer au planning », rebasé sur V1/V1bis) : nouveau path
+Last verified @ 2026-10-12 (« Retirer une séance placée ») : deux nouveaux paths custom
+`POST /api/schedule-slots/{id}/remove` et `POST /api/schedule-slots/remove-group` (retrait d'une
+séance placée / d'une séance de groupe, SANS verdict moteur ; corps `{dryRun?}` et
+`{scheduleId, blockId, source{venueId,dayOfWeek,startTime}, dryRun?}` ; retour `{removed, lockLevel,
+unmetPresence, dryRun?}` / `{removedSlotIds, removed[], unmetPresence, dryRun?}` ; schémas inline),
+déclarés dans `ManualEditPaths`. Acquis antérieur : nouveau path
 `POST /api/coach-wishes/transfer` (geste gestionnaire ; corps `{wishIds}`, récap
 `{converted, ignored, ignoredReasons}` ; schémas inline, aucun nouveau composant), déclaré dans
 `CoachWishPaths`. Acquis V1bis : `POST /api/schedules/{id}/load-locks` (fait des verrous d'une
@@ -10,8 +15,8 @@ Acquis antérieurs : `SharedTrainingBlock.sessions` (schéma `SharedTrainingBloc
 `POST /api/schedule-slots/{id}/mutualize` + `SharedTrainingBlock.label` (lot 9 B1),
 `CoachWish.keepSeasonSlots` (P2-63 PR 3).
 
-**241 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`0330a92b468b6feb39a62ad533affc642e4fec02f132ca504163e7f4b3c5e3db` (`sha256sum` sur le fichier).
+**243 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
+`ecc6c3bdad5e951aba48434ff779e018c2244ca604ca055bee5826edfd464ec5` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

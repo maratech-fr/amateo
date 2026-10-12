@@ -102,6 +102,11 @@ return (new Config)
                     ->withContexts(TrainingBlockContext::class),
             )
             ->withSuite(
+                new Suite('retrait-seance')
+                    ->withPaths('%paths.base%/features/retirer-une-seance-placee.feature')
+                    ->withContexts(TrainingBlockContext::class),
+            )
+            ->withSuite(
                 new Suite('isolation')
                     ->withPaths('%paths.base%/features/un-club-ne-voit-jamais-un-autre-club.feature')
                     ->withContexts(TenantIsolationContext::class),

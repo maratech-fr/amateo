@@ -670,6 +670,14 @@ jobs:
       - name: SlotMoveGridParityTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/SlotMoveGridParityTest.php --group phase1'
 
+      # « Retirer une séance placée » (axe planning lifecycle) : le retrait SUPPRIME la ligne SANS
+      # appel moteur (un trou ne crée pas de conflit), verrou compris ; l'épingle HARD d'une source
+      # retirée ne se greffe plus au payload ; le groupe part tout-ou-rien, le bloc survit ;
+      # unmetPresence nomme la présence SEASON_SLOTS en période / [] sur le socle ; dryRun n'écrit
+      # rien ; 409 lecture seule / génération, 404 autre club, 403 SEC-07 falsifiée.
+      - name: SlotRemovalTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/SlotRemovalTest.php --group phase1'
+
       # P2-9ter — le fichier portait déjà #[Group('phase1')] sans qu'AUCUN step de CE job
       # ne le lance : il tournait bien, mais dans `unit-tests` (qui exécute `phpunit
       # tests/`) — c'est-à-dire APRÈS `blocking-tests` et sans gater `build-docker`. Il ne

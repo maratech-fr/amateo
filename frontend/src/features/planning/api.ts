@@ -780,6 +780,95 @@ export async function moveGroup(body: MoveGroupBody, signal?: AbortSignal): Prom
   }
 }
 
+/**
+ * « Vider un créneau » — l'état d'une séance RETIRÉE, tel que le serveur le rend (miroir du bloc
+ * `removed`). MÊME forme qu'{@link EvictedSlot} (le front réutilise le bandeau d'éviction pour
+ * proposer de la replacer).
+ */
+export type RemovedSession = EvictedSlot;
+
+/**
+ * Une présence « garder ses créneaux de saison » (SEASON_SLOTS) qu'un retrait n'honore plus.
+ * `message` est composé CÔTÉ SERVEUR et affiché TEL QUEL — la phrase est celle que le serveur
+ * compose, jamais redérivée côté front. `[]` sur le socle de saison (la famille n'agit qu'en période).
+ */
+export interface UnmetPresence {
+  family: string;
+  teamId: string;
+  message: string;
+}
+
+/**
+ * Réponse d'un retrait de séance (`POST /schedule-slots/{id}/remove`). AUCUN appel moteur : un
+ * retrait creuse un trou, il ne crée pas de conflit. Nomme les conséquences : la séance partie
+ * (`removed`), le verrou perdu (`lockLevel` = le niveau de verrou de la séance, `NONE` si aucun), et les présences
+ * SEASON_SLOTS que le retrait n'honore plus. `dryRun: true` sur un appel à blanc (rien écrit).
+ */
+export interface RemoveSlotResult {
+  removed: RemovedSession;
+  lockLevel: LockLevel;
+  unmetPresence: UnmetPresence[];
+  dryRun?: boolean;
+}
+
+/** Corps d'un retrait de séance de GROUPE (`POST /schedule-slots/remove-group`). */
+export interface RemoveSlotGroupBody {
+  scheduleId: string;
+  blockId: string;
+  source: MoveGroupCase;
+  dryRun?: boolean;
+}
+
+/** Réponse d'un retrait de groupe : les N créneaux partis ensemble (le bloc, lui, survit). */
+export interface RemoveSlotGroupResult {
+  removedSlotIds: string[];
+  removed: RemovedSession[];
+  unmetPresence: UnmetPresence[];
+  dryRun?: boolean;
+}
+
+/**
+ * RETIRER une séance placée (« vider un créneau ») — supprime la ligne, SANS verdict moteur. Une
+ * génération en cours (409 `generation_in_progress`) devient un {@link GenerationInProgressError}
+ * (la page montre le bandeau « bloqué »). `dryRun` : appel à blanc qui NOMME les conséquences SANS
+ * rien écrire (il alimente le ConfirmDialog obligatoire).
+ */
+export async function removeSlot(id: string, opts?: { dryRun?: boolean }): Promise<RemoveSlotResult> {
+  try {
+    return await api.post(`schedule-slots/${id}/remove`, { json: true === opts?.dryRun ? { dryRun: true } : {} }).json<RemoveSlotResult>();
+  } catch (error) {
+    if (error instanceof HTTPError && 409 === error.response.status) {
+      const body = ((error as { data?: unknown }).data ?? {}) as { code?: string };
+      if ("generation_in_progress" === body.code) {
+        throw new GenerationInProgressError();
+      }
+    }
+    throw error;
+  }
+}
+
+/**
+ * RETIRER une séance de GROUPE entière — tout-ou-rien, le serveur résout les créneaux membres depuis
+ * la case source (jamais de slotIds client). Le `SharedTrainingBlock` SURVIT. 409 → génération en
+ * cours ; 422 `slot_unavailable` (aucune séance de groupe à cette case) → {@link SlotEditError}.
+ */
+export async function removeSlotGroup(body: RemoveSlotGroupBody): Promise<RemoveSlotGroupResult> {
+  try {
+    return await api.post("schedule-slots/remove-group", { json: body }).json<RemoveSlotGroupResult>();
+  } catch (error) {
+    if (error instanceof HTTPError) {
+      const data = ((error as { data?: unknown }).data ?? {}) as { code?: string; error?: string };
+      if (409 === error.response.status && "generation_in_progress" === data.code) {
+        throw new GenerationInProgressError();
+      }
+      if (422 === error.response.status && "slot_unavailable" === data.code) {
+        throw new SlotEditError(data.code, data.error ?? "Aucune séance de groupe à retirer à cet horaire.");
+      }
+    }
+    throw error;
+  }
+}
+
 /** Queue a (re)generation of the schedule (202). Locked slots survive; the rest reshuffles. */
 export const generateSchedule = (id: string): Promise<unknown> => api.post(`schedules/${id}/generate`).json();
 

@@ -56,6 +56,9 @@ final class TrainingBlockContext extends BaseContext
     /** @var array{status: int, json: array<mixed>} */
     private array $groupResult = ['status' => 0, 'json' => []];
 
+    /** @var array{status: int, json: array<mixed>} */
+    private array $removeResult = ['status' => 0, 'json' => []];
+
     /** @var list<string> */
     private array $groupReservationIds = [];
 
@@ -347,6 +350,77 @@ final class TrainingBlockContext extends BaseContext
         );
         if (0 !== $remaining) {
             throw new RuntimeException(\sprintf('les séances liées au bloc auraient dû disparaître avec lui (%d subsiste[nt])', $remaining));
+        }
+    }
+
+    #[Given('je verrouille la première séance placée')]
+    public function jeVerrouilleLaPremiereSeance(): void
+    {
+        $locked = $this->apiPost(
+            \sprintf('schedule-slots/%s/manual-edit/lock', $this->sourceSlotId),
+            ['lockLevel' => 'HARD'],
+            $this->token,
+        );
+        if (200 !== $locked['status']) {
+            throw new RuntimeException(\sprintf('le verrouillage de la séance a répondu %d (200 attendu)', $locked['status']));
+        }
+    }
+
+    #[When('je retire la première séance placée')]
+    public function jeRetireLaPremiereSeance(): void
+    {
+        $this->removeResult = $this->apiPost(\sprintf('schedule-slots/%s/remove', $this->sourceSlotId), [], $this->token);
+        if (200 !== $this->removeResult['status']) {
+            $detail = json_encode($this->removeResult['json'], \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES);
+            throw new RuntimeException(\sprintf('le retrait de la séance a répondu %d (200 attendu) — %s', $this->removeResult['status'], \is_string($detail) ? $detail : '?'));
+        }
+    }
+
+    #[Then('la séance retirée a disparu du plan')]
+    public function laSeanceRetireeADisparu(): void
+    {
+        $remaining = (int) $this->dbalScalar(
+            \sprintf('SELECT COUNT(*) AS behatval FROM schedule_slot_template WHERE id=\'%s\'', $this->sourceSlotId),
+            admin: true,
+        );
+        if (0 !== $remaining) {
+            throw new RuntimeException('la séance retirée aurait dû disparaître du plan');
+        }
+    }
+
+    #[Then('son équipe est à replacer')]
+    public function sonEquipeEstAReplacer(): void
+    {
+        $removed = $this->removeResult['json']['removed'] ?? null;
+        $teamId = \is_array($removed) ? ($removed['teamId'] ?? null) : null;
+        if ($teamId !== $this->sourceTeamId) {
+            throw new RuntimeException('le retrait aurait dû NOMMER l\'équipe de la séance partie (à replacer)');
+        }
+    }
+
+    #[When('je retire la séance du groupe')]
+    public function jeRetireLaSeanceDuGroupe(): void
+    {
+        $this->removeResult = $this->apiPost('schedule-slots/remove-group', [
+            'scheduleId' => $this->periodVersionId,
+            'blockId' => $this->periodBlockId,
+            'source' => ['venueId' => $this->sourceVenueId, 'dayOfWeek' => $this->sourceDay, 'startTime' => $this->sourceStart],
+        ], $this->token);
+        if (200 !== $this->removeResult['status']) {
+            $detail = json_encode($this->removeResult['json'], \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES);
+            throw new RuntimeException(\sprintf('le retrait du groupe a répondu %d (200 attendu) — %s', $this->removeResult['status'], \is_string($detail) ? $detail : '?'));
+        }
+    }
+
+    #[Then('le bloc de mutualisation existe toujours')]
+    public function leBlocExisteToujours(): void
+    {
+        $remaining = (int) $this->dbalScalar(
+            \sprintf('SELECT COUNT(*) AS behatval FROM shared_training_block WHERE id=\'%s\'', $this->periodBlockId),
+            admin: true,
+        );
+        if (1 !== $remaining) {
+            throw new RuntimeException('retirer la séance du groupe ne doit PAS détruire le bloc de mutualisation');
         }
     }
 

@@ -26,6 +26,7 @@ use App\Exception\TeamAlreadyAtCaseException;
 use App\Service\ClubGenerationLock;
 use App\Service\EngineClient;
 use App\Service\MoveSlotService;
+use App\Service\PeriodConstraintSelector;
 use App\Service\RequestIdContext;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
@@ -694,6 +695,7 @@ final class SlotMoveVerdictTest extends KernelTestCase
             new ScheduleProgressPublisher($hub),
             new NullLogger,
             new TeamCaseOccupancyGuard($this->em),
+            $container->get(PeriodConstraintSelector::class),
         );
     }
 

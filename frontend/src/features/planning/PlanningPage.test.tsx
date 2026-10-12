@@ -6,7 +6,7 @@ import type { EntryConflictsResponse, SchedulePlan } from "@/features/cockpit/ap
 import { useToastStore } from "@/shared/stores/toastStore";
 import { renderWithProviders } from "@/test/utils";
 
-import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, getDiagnostics, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, loadLocks, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, reopenSchedule, TargetLockedError, validateSchedule } from "./api";
+import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, GenerationInProgressError, getDiagnostics, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, loadLocks, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, removeSlot, reopenSchedule, TargetLockedError, validateSchedule } from "./api";
 import type { Schedule } from "./api";
 import { PlanningPage } from "./PlanningPage";
 import { usePlanningStore } from "./store";
@@ -141,6 +141,14 @@ vi.mock("./api", () => {
   lockSlot: vi.fn(),
   moveSlot: vi.fn(),
   placeSlot: vi.fn(),
+  // F4 — « vider un créneau » : par défaut un essai (dryRun) renvoie les conséquences, un retrait
+  // réel renvoie la séance partie. Les cas dédiés surchargent (dryRun vs réel distingué sur l'arg).
+  removeSlot: vi.fn((_id: string, opts?: { dryRun?: boolean }) =>
+    Promise.resolve({ removed: { slotId: "slot-1", teamId: "team-1", dayOfWeek: 1, startTime: "18:00", venueId: "venue-1", durationMinutes: 90 }, lockLevel: "NONE", unmetPresence: [], ...(true === opts?.dryRun ? { dryRun: true } : {}) }),
+  ),
+  removeSlotGroup: vi.fn((body: { dryRun?: boolean }) =>
+    Promise.resolve({ removedSlotIds: ["slot-1"], removed: [], unmetPresence: [], ...(true === body?.dryRun ? { dryRun: true } : {}) }),
+  ),
   generateSchedule: vi.fn(),
   // V1 — « Régénérer » un overlay crée une nouvelle version puis la génère (useRegenerateOverlay).
   createOverlayVersion: vi.fn(() => Promise.resolve({ id: "ov-new" })),
@@ -2615,5 +2623,103 @@ describe("PlanningPage — échec de lecture jamais rendu comme du vide (UXS-09)
 
     expect(await screen.findByText("Le chargement a échoué.")).toBeInTheDocument();
     expect(screen.queryByText("Planning vide")).not.toBeInTheDocument();
+  });
+});
+
+// F4 — « Vider un créneau » : le retrait passe par un ConfirmDialog OBLIGATOIRE, alimenté par un
+// essai (dryRun) qui ne touche à RIEN. On prouve : (1) le clic « Retirer » ne retire pas tout de
+// suite — il ouvre la confirmation ; (2) confirmer lance le retrait réel et annonce « à replacer » ;
+// (3) la présence SEASON_SLOTS non honorée s'affiche verbatim ; (4) une génération en cours bloque.
+describe("PlanningPage — retirer une séance placée (F4)", () => {
+  beforeEach(() => {
+    useToastStore.setState({ toasts: [] });
+    // Isoler des fuites inter-describe non couvertes par le beforeEach global : un test « groupe »
+    // laisse `sharedBlocksState` peuplé (slot-1 deviendrait une séance de bloc → « Retirer le
+    // groupe »), et un test move réécrit `getTeams`. On repose les défauts « séance simple ».
+    sharedBlocksState.blocks = [];
+    vi.mocked(getTeams).mockResolvedValue([{ id: "team-1", name: "U11", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 0, sessionsPerWeek: 1 }]);
+    // Défaut : un essai (dryRun) renvoie les conséquences, un retrait réel la séance partie. Les
+    // cas surchargent via mockImplementation/mockRejectedValue.
+    vi.mocked(removeSlot).mockImplementation((_id: string, opts?: { dryRun?: boolean }) =>
+      Promise.resolve({ removed: { slotId: "slot-1", teamId: "team-1", dayOfWeek: 1, startTime: "18:00", venueId: "venue-1", durationMinutes: 90 }, lockLevel: "NONE", unmetPresence: [], ...(true === opts?.dryRun ? { dryRun: true } : {}) }),
+    );
+  });
+
+  async function openSlotAndClickRemove(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await user.click(await screen.findByText("U11"));
+    await user.click(await screen.findByRole("button", { name: "Retirer" }));
+  }
+
+  it("le clic « Retirer » ne retire PAS tout de suite — il lance un essai (dryRun) et OUVRE la confirmation", async () => {
+    const user = userEvent.setup();
+    vi.mocked(removeSlot).mockImplementation((_id: string, opts?: { dryRun?: boolean }) =>
+      Promise.resolve({ removed: { slotId: "slot-1", teamId: "team-1", dayOfWeek: 1, startTime: "18:00", venueId: "venue-1", durationMinutes: 90 }, lockLevel: "NONE", unmetPresence: [], ...(true === opts?.dryRun ? { dryRun: true } : {}) }),
+    );
+    renderWithProviders(<PlanningPage />);
+    await openSlotAndClickRemove(user);
+
+    // L'essai (dryRun) est parti ; AUCUN retrait réel encore (une seule confirmation en attente).
+    await waitFor(() => expect(removeSlot).toHaveBeenCalledWith("slot-1", { dryRun: true }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/Retirer cette séance/)).toBeInTheDocument();
+    expect(vi.mocked(removeSlot).mock.calls.filter(([, opts]) => true !== opts?.dryRun)).toHaveLength(0);
+
+    // Confirmer → le retrait RÉEL part (sans dryRun) et la séance passe « à replacer ».
+    await user.click(within(dialog).getByRole("button", { name: "Retirer" }));
+    await waitFor(() => expect(vi.mocked(removeSlot).mock.calls.some(([, opts]) => true !== opts?.dryRun)).toBe(true));
+    expect(await screen.findByText(/est à replacer/)).toBeInTheDocument();
+  });
+
+  it("annule : « Annuler » ferme la confirmation sans aucun retrait réel", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PlanningPage />);
+    await openSlotAndClickRemove(user);
+
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Annuler" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    // Jamais de retrait réel : seul l'essai (dryRun) a eu lieu.
+    expect(vi.mocked(removeSlot).mock.calls.every(([, opts]) => true === opts?.dryRun)).toBe(true);
+  });
+
+  it("séance verrouillée : la confirmation annonce que le verrou sera perdu", async () => {
+    const user = userEvent.setup();
+    vi.mocked(removeSlot).mockImplementation((_id: string, opts?: { dryRun?: boolean }) =>
+      Promise.resolve({ removed: { slotId: "slot-1", teamId: "team-1", dayOfWeek: 1, startTime: "18:00", venueId: "venue-1", durationMinutes: 90 }, lockLevel: "HARD", unmetPresence: [], ...(true === opts?.dryRun ? { dryRun: true } : {}) }),
+    );
+    renderWithProviders(<PlanningPage />);
+    await openSlotAndClickRemove(user);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Elle est verrouillée — le verrou sera perdu.")).toBeInTheDocument();
+  });
+
+  it("affiche VERBATIM la présence de saison que le retrait n'honore plus", async () => {
+    const user = userEvent.setup();
+    const message = "U11 : la demande « garder les créneaux de saison » n'est plus honorée, sa séance ayant été retirée.";
+    vi.mocked(removeSlot).mockImplementation((_id: string, opts?: { dryRun?: boolean }) =>
+      Promise.resolve({ removed: { slotId: "slot-1", teamId: "team-1", dayOfWeek: 1, startTime: "18:00", venueId: "venue-1", durationMinutes: 90 }, lockLevel: "NONE", unmetPresence: [{ family: "SEASON_SLOTS", teamId: "team-1", message }], ...(true === opts?.dryRun ? { dryRun: true } : {}) }),
+    );
+    renderWithProviders(<PlanningPage />);
+    await openSlotAndClickRemove(user);
+
+    const dialog = await screen.findByRole("dialog");
+    // Le texte de la confirmation nomme déjà la conséquence…
+    expect(within(dialog).getByText(message)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Retirer" }));
+    // …et le bandeau post-retrait l'affiche VERBATIM (message serveur, jamais redérivé).
+    await waitFor(() => expect(screen.getAllByText(message).length).toBeGreaterThan(0));
+  });
+
+  it("une génération en cours bloque le retrait (bandeau « génération »), sans confirmation", async () => {
+    const user = userEvent.setup();
+    vi.mocked(removeSlot).mockRejectedValue(new GenerationInProgressError());
+    renderWithProviders(<PlanningPage />);
+    await openSlotAndClickRemove(user);
+
+    // Pas de confirmation (l'essai a été refusé) ; le panneau montre le bandeau « bloqué » (le MÊME
+    // que le déplacement). Texte EXACT : le bandeau « planning périmé » contient aussi « génération ».
+    await waitFor(() => expect(screen.getByText("Une génération est en cours pour ce club — réessayez le déplacement une fois qu’elle est terminée.")).toBeInTheDocument());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

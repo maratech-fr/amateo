@@ -10,9 +10,11 @@ import { type ExportFormat, useScheduleExport } from "@/features/planning/querie
 import { usePlanningStore } from "@/features/planning/store";
 import { useWizardStore } from "@/features/wizard/store";
 import { Button } from "@/shared/components/ui/button";
+import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Modal } from "@/shared/components/ui/modal";
+import { readFailed } from "@/shared/lib/readState";
 import { frDateNumeric } from "./lib/date";
-import { useSchedulePlans } from "./queries";
+import { useCalendarEntries, useSchedulePlans } from "./queries";
 import type { CalendarEntry } from "./api";
 import { DeletePlanningButton } from "./DeletePlanningButton";
 import { type PlanningRow, seasonPlannings } from "./seasonPlannings";
@@ -89,6 +91,14 @@ export function SeasonSchedulesModal({ schedules, entries = [], schedulesResolve
   // emporterait le solve en cours). Entrée de calendrier de son plan comme cible.
   const workingSeason = useWorkingSeason();
   const isReadonly = true === workingSeason?.isReadonly;
+  // Fenêtres de période pour la LIGNE DE DATES : les entrées de TOUTE la saison de travail, et non
+  // la fenêtre RADAR (à venir seulement) que porte la prop `entries`. Une période PASSÉE (fin
+  // derrière aujourd'hui) sortait du radar → sa ligne de dates disparaissait (bombe de date,
+  // 2026-10-12). `entries` reste la source du découpage LISTE/COMPTE (seasonPlannings) — inchangé ;
+  // seule la recherche de dates s'élargit à la saison. Requête locale à la modale (donc seulement
+  // quand elle est ouverte). readState : un échec n'est jamais rendu comme du vide (LoadErrorHint).
+  const seasonEntriesQuery = useCalendarEntries(workingSeason?.startDate ?? "", workingSeason?.endDate ?? "", null !== workingSeason);
+  const datedEntries = seasonEntriesQuery.data ?? entries;
   // Période d'un planning : le principal couvre TOUTE la saison ; un overlay couvre
   // les dates de son entrée calendrier (plan → calendarEntryId → entrée). null quand
   // l'info n'est pas résolue (saison non chargée / entrée absente) → ligne masquée.
@@ -98,7 +108,7 @@ export function SeasonSchedulesModal({ schedules, entries = [], schedulesResolve
       return workingSeason ? range(workingSeason.startDate, workingSeason.endDate) : null;
     }
     const entryId = null !== row.schedulePlanId ? (entryByPlan.get(row.schedulePlanId) ?? null) : null;
-    const entry = null !== entryId ? entries.find((e) => e.id === entryId) : undefined;
+    const entry = null !== entryId ? datedEntries.find((e) => e.id === entryId) : undefined;
     return entry ? range(entry.startDate, entry.endDate) : null;
   };
   // ADR-0002 : une LIGNE de cette liste EST un PLAN. L'état affiché est donc celui du
@@ -157,6 +167,13 @@ export function SeasonSchedulesModal({ schedules, entries = [], schedulesResolve
 
   return (
     <Modal label="Plannings de la saison" title="Plannings de la saison" onClose={onClose} size="lg">
+      {/* readState — l'échec de lecture des fenêtres de période n'est jamais rendu comme du vide
+          (frontend.md) : un « Réessayer » le dit, plutôt que de masquer silencieusement les dates. */}
+      {readFailed(seasonEntriesQuery) ? (
+        <LoadErrorHint className="mt-4" onRetry={() => void seasonEntriesQuery.refetch()}>
+          Les fenêtres des plannings de période n'ont pas pu être chargées.
+        </LoadErrorHint>
+      ) : null}
       <ul className="mt-4 space-y-2">
         {rows.map((row) => {
           const resumeBlocked = row.isOverlay && row.isOpen && (null === row.schedulePlanId || !entryByPlan.has(row.schedulePlanId));

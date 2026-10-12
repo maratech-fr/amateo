@@ -1,4 +1,4 @@
-import { AlertTriangle, ChevronDown, ChevronRight, Lock, LockOpen, Move, Users, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, Lock, LockOpen, Move, Trash2, Users, X } from "lucide-react";
 
 import { Spinner } from "@/shared/components/ui/spinner";
 import { useState } from "react";
@@ -75,8 +75,13 @@ interface SlotDetailProps {
   /** Lot 9 — cette équipe a été ACTIVÉE par la mutualisation (override `source = mutualisation`) :
    *  pastille « via mutualisation ». */
   viaMutualisation?: boolean;
+  /** F4 — un retrait (essai dryRun ou geste réel) est en vol : le bouton « Retirer » tourne. */
+  removePending?: boolean;
   onClose: () => void;
   onToggleLock: () => void;
+  /** F4 — « Retirer » / « Retirer le groupe » : lance l'essai (dryRun) qui alimente le ConfirmDialog
+   *  obligatoire (la page confirme PUIS retire). Sur une séance de bloc, retire TOUT le groupe. */
+  onRemove: () => void;
   /** Lot 9 — ouvre la modale de mutualisation ancrée à cette case. Absent = geste indisponible. */
   onMutualize?: () => void;
   /** P2-30 : « Déplacer » n'ouvre plus de formulaire — il ARME le mode cible click-click (la
@@ -135,7 +140,7 @@ function ConstraintList({ label, items, describe }: { label: string; items: Cons
 
 const noName = (): string | undefined => undefined;
 
-export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tagTeamIds = NO_TAGS, teamName = noName, coachName = noName, busy, moveState = { status: "idle" }, readOnly = false, armed = false, groupSession = null, isPeriodPlan = false, inBlock = false, blockLabel = null, viaMutualisation = false, onClose, onToggleLock, onArmMove, onMutualize }: SlotDetailProps) {
+export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tagTeamIds = NO_TAGS, teamName = noName, coachName = noName, busy, moveState = { status: "idle" }, readOnly = false, armed = false, groupSession = null, isPeriodPlan = false, inBlock = false, blockLabel = null, viaMutualisation = false, removePending = false, onClose, onToggleLock, onArmMove, onRemove, onMutualize }: SlotDetailProps) {
   // Repliées par défaut : ouvrir un créneau ne doit pas agrandir l'aside (retour fondateur).
   // Le compte reste visible replié pour savoir s'il y a quelque chose à ouvrir.
   const [constraintsOpen, setConstraintsOpen] = useState(false);
@@ -275,6 +280,34 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
               (retour design : la conséquence se révèle au point d'action). Masquée pendant le ciblage. */}
           {null !== groupSession && !armed ? (
             <p className="text-xs text-muted-foreground">Déplace les {groupSession.memberCount} équipes du groupe ensemble.</p>
+          ) : null}
+
+          {/* F4 — RETIRER (« vider le créneau »). Icône + TEXTE (norme N2), geste destructif confirmé
+              PAR LA PAGE (ConfirmDialog alimenté par un essai dryRun). Sur une séance de bloc, retire
+              TOUT le groupe. Masqué pendant le ciblage d'un déplacement (geste concurrent). */}
+          {!armed ? (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full text-destructive"
+                disabled={busy}
+                onClick={onRemove}
+              >
+                {removePending ? (
+                  <>
+                    <Spinner className="size-4" />
+                    Vérification…
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="size-4" aria-hidden="true" />
+                    {null !== groupSession ? "Retirer le groupe" : "Retirer"}
+                  </>
+                )}
+              </Button>
+              {null !== groupSession ? <p className="text-xs text-muted-foreground">Retire les {groupSession.memberCount} équipes du groupe.</p> : null}
+            </>
           ) : null}
 
           {armed ? (
