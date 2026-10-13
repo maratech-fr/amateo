@@ -43,7 +43,8 @@ PROD_WEEK_BUDGET_SECONDS = 35
 # request ISO week by ISO week, spending ``solver_timeout_seconds`` on EACH week; the
 # fixture covers 24 ISO weeks carrying TO_PLACE matches, so the total wall time is the SUM
 # of the per-week solves plus model build and I/O.
-BUDGET_SECONDS = 180.0
+# Local measurement at 35 s/week: ~94 s wall, with only the 2 densest weeks capped at 35 s.
+BUDGET_SECONDS = 150.0
 
 
 @pytest.mark.perf
