@@ -1,6 +1,6 @@
 # Module matchs (FFBB) — état courant
 
-Last verified @ 2026-10-11 (PR 6 / lot 8, « garder ses créneaux de saison ») : `CONTRACT_VERSION` 1.5
+Last verified @ 2026-10-13 (couverture « Import/réconciliation » recalée : les 2 features Behat dépendant de l'API FFBB réelle retirées, promesses renvoyées vers `OpponentVenueAutoLocatorTest` et `OpponentVenueSuggestionShareTest`) : `CONTRACT_VERSION` 1.5
 (bump 1.4 → 1.5, `SocleReferenceAssignmentSchema` gagne `venueId`/`keep` — bloc sans effet sur
 `/place-matches`, qui ne réutilise pas les schémas hebdomadaires de `/generate`) confronté à
 `engine/CONTRACT_VERSION`. Le reste du module (découpe en paquet `match_placement/`, citations
@@ -1593,9 +1593,11 @@ Périmètre engagé : `EngagedTeamGuardTest`,
 `FixtureConflictsApiTest` + feature Behat `les-conflits-d-un-match-disent-la-verite.feature`
 (`ConflictTruthContext`, D1/D1 étendu, statuts joue/coache). Solveur : `test_match_placement*.py` (unit, sémantique, golden épinglé)
 + feature Behat `backend/features/placement-des-matchs.feature`. Import/réconciliation :
-`FbiFixtureImporterTest`, `FfbbRencontresApiTest`, `FixtureReviewApiTest` + features Behat dédiées
-(`un-domicile-importe-retrouve-son-gymnase`, `le-gymnase-du-fichier-localise-l-adversaire`,
-`les-gymnases-d-un-adversaire-se-partagent-en-suggestions`, `un-conflit-traite-reste-visible-mais-decompte`,
+`FbiFixtureImporterTest`, `FfbbRencontresApiTest`, `FixtureReviewApiTest`,
+`Integration/Service/Geo/OpponentVenueAutoLocatorTest` (le gymnase du fichier localise l'adversaire
+tout seul) et `Security/OpponentVenueSuggestionShareTest` (les gymnases d'un adversaire se partagent
+en suggestions — promesses des deux features Behat FFBB réelles retirées 2026-10-13) + features Behat
+dédiées (`un-domicile-importe-retrouve-son-gymnase`, `un-conflit-traite-reste-visible-mais-decompte`,
 `une-rencontre-importee-dit-si-elle-est-traitee`). « Validé ligue » en lot, piloté par l'échéance :
 `LeagueValidatedFixturesControllerTest` (prédicat, idempotence, guards, verrou
 optimiste, `testAnOutOfAccessWindowHomeFixtureStaysEligibleAndTheRadarSignalsIt` — la divergence
